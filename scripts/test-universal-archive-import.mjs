@@ -576,6 +576,23 @@ test('Instagram nested label_values keeps the caption on the post and hangs the 
   assert.equal(plan.mediaLinks.length,1);
   assert.equal(plan.mediaLinks[0].uid,post.uid);
 });
+test('Instagram media post with no real caption, only a filename-like title, does not become a junk article',async()=>{
+  // Meta's Instagram export can set a captionless post's `title` to the
+  // attached media's own filename/ID (a long digit/underscore token) rather
+  // than leaving it empty or null. Treating that as the post's caption used
+  // to create an article whose entire content — and, since the title is
+  // derived from the content, its title too — was that meaningless filename.
+  const a=await parsed('instagram-filename-title.zip',{
+    'your_instagram_activity/media/posts.json':j([
+      {timestamp:1720000000,fbid:'179000998877',
+        title:'400668176_122098823604258632_5990818633319476005_n'},
+      {timestamp:1720000100,fbid:'179000998888',title:'這是真的說明文字'}
+    ])
+  });
+  assert.equal(a.results.length,1);
+  assert.equal(a.results[0].site_id,'179000998888');
+  assert.equal(a.results[0].content,'這是真的說明文字');
+});
 test('Undated Instagram caption retains null creation time and stable Galaxy identities',async()=>{
   const file=asFile('undated.zip',zipSync({
     'your_instagram_activity/media/posts.json':j([{
