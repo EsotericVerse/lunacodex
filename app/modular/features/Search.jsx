@@ -1064,7 +1064,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   const pageContent=<>
     {managementMode?<section className="scope-search-workspace" aria-label="管理搜尋">
       <h2>管理搜尋</h2>
-      <SearchSummary scopeIds={summaryScopeIds} managementMode />
+      <SearchSummary scopeIds={summaryScopeIds}/>
       <form className="scope-search-form" onSubmit={runSearch}>
         <label htmlFor="scope-management-search-query">文章 UID、標題、正文或來源</label>
         <input id="scope-management-search-query" value={query}
