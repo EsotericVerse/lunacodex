@@ -7,11 +7,12 @@ import {readUnifiedAnchorUids} from '../app/loc/unified-anchor-uids.mjs';
 
 const spec=section=>unifiedAnchorSpec('silver','lo3rwang_'+section);
 
-test('only lo3rwang legacy relations use one eight-character Anchor store',()=>{
+test('lo3rwang and lrunes legacy relations share the eight-character Anchor contract',()=>{
   for(const [suffix,kind] of Object.entries({
     time:'time',trace:'trace',keywords:'keywords',galaxy_media:'media'
   }))assert.deepEqual(spec(suffix),{table:'lo3rwang_anchor',kind,legacy:suffix});
-  assert.equal(unifiedAnchorSpec('silver','lrunes_time'),null);
+  for(const [suffix,kind] of Object.entries({time:'time',trace:'trace',keywords:'keywords',galaxy_media:'media'}))
+    assert.deepEqual(unifiedAnchorSpec('silver','lrunes_'+suffix),{table:'lrunes_anchor',kind,legacy:suffix});
 });
 
 test('date, period and era store typed contents in attr without label',()=>{
