@@ -1,0 +1,54 @@
+name: Publish LOC Release Candidate
+run-name: Publish LOC RC from ${{ github.ref_name }} · ${{ github.sha }}
+
+# Only an intentional manual action may create the GitHub tag / prerelease.
+# Cloudflare Pages separately auto-deploys main; this is not a website build.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: loc-release-candidate
+  cancel-in-progress: false
+
+jobs:
+  publish-rc:
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout main at the requested commit
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate release identity and package metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = 'refs/heads/main'
+          test "$(node -p 'require("./package.json").version')" = '1.1.0-rc.2.1'
+          test "$(node -p 'require("./package-lock.json").version')" = '1.1.0-rc.2.1'
+          test "$(node -p 'require("./package-lock.json").packages[""].version')" = '1.1.0-rc.2.1'
+          test -s docs/releases/LOC-1.1.0-rc.2.1.md
+      - name: Publish a new GitHub prerelease and immutable tag target
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag='v1.1.0-rc.2.1'
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "::error::Release $tag already exists. Never silently overwrite a published RC."
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "::error::Tag $tag already exists. Inspect it before publishing."
+            exit 1
+          fi
+          gh release create "$tag" \
+            --target "$GITHUB_SHA" \
+            --title 'LOC 1.1 RC2.1 — Release Candidate' \
+            --notes-file docs/releases/LOC-1.1.0-rc.2.1.md \
+            --prerelease
+          gh release view "$tag" --json name,tagName,isPrerelease,htmlUrl
