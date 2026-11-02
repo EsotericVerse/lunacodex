@@ -30,12 +30,13 @@ export function isScopedGalaxy(table){
 }
 export function prepareGalaxyInsertRows(table,rows=[]){
   if(!isScopedGalaxy(table))return rows;
-  return rows.map(row=>({...row,able:galaxyAble(row)}));
+  return rows.map(row=>{const {searchable,statistics_able,...fields}=row;return {...fields,able:galaxyAble(row)};});
 }
 // Never replace an existing article's six independent toggles with defaults
 // during a partial metadata UPDATE. Callers must supply the current `able`
 // when editing that field; legacy columns are retained until this is complete.
 export function prepareGalaxyUpdateValues(table,values){
-  if(!isScopedGalaxy(table)||!Object.hasOwn(values||{},'able'))return values;
-  return {...values,able:galaxyAble(values)};
+  if(!isScopedGalaxy(table))return values;
+  const {searchable,statistics_able,...fields}=values||{};
+  return {...fields,...(Object.hasOwn(fields,'able')?{able:galaxyAble(values)}:{})};
 }
