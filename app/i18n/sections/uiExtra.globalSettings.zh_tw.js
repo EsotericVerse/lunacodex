@@ -18,7 +18,7 @@ export default {
   "personalHome": "個人首頁",
   "manageMenu": "管理選單",
   "account": "帳號",
-  "publish": "發表文章",
+  "publish": "文章管理",
   "members": "成員管理",
   "systemSettings": "系統設定",
   "savedHome": "首頁已儲存",
