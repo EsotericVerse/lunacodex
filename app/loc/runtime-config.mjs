@@ -4,8 +4,8 @@ import {dbPublicClient,dbAuthClient} from './db-client.mjs';
 import {decodeLocCache,encodeLocCache} from './runtime-cache-fields.mjs';
 
 const relation=client=>client.schema('silver').from('loc');
-const COLUMNS='id,cache';
-const runtimeRow=row=>({...row,...decodeLocCache(row?.cache)});
+const COLUMNS='id,caches';
+const runtimeRow=row=>({...row,...decodeLocCache(row?.caches)});
 
 export async function readLocRuntimeConfig(){
   const {data,error}=await relation(dbPublicClient).select(COLUMNS).eq('id','loc').single();
@@ -19,9 +19,9 @@ export async function saveLocRuntimeConfig(fields){
   const {data:before,error:readError}=await relation(dbAuthClient)
     .select(COLUMNS).eq('id','loc').single();
   if(readError||!before)throw new Error(readError?.message||'系統設定讀取失敗，請檢查管理權限');
-  const cache=encodeLocCache({...decodeLocCache(before.cache),...changes});
+  const caches=encodeLocCache({...decodeLocCache(before.caches),...changes});
   const {data,error}=await relation(dbAuthClient)
-    .update({cache})
+    .update({caches})
     .eq('id','loc').select(COLUMNS).single();
   if(error||!data)throw new Error(error?.message||'系統設定儲存失敗，請檢查管理權限');
   return runtimeRow(data);
