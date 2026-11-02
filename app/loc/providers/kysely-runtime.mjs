@@ -312,6 +312,7 @@ export function buildAllowlistedRpcQuery(input){
   // accept JSONB arrays, whereas name lists and place UID lists are SQL arrays.
   const jsonbArgsByRpc={
     'silver.management_write':new Set(['p_rows','p_values','p_filters']),
+    'silver.loc_admin_settings':new Set(['p_value']),
     'silver.read_scope_analytics':new Set(['p_options']),
     'silver.preview_timeline_place_page_json':new Set(['p_windows']),
     'silver.apply_timeline_place_ids':new Set(['p_updates'])
