@@ -1,6 +1,7 @@
 // One format contract for JSON Import and Source Refresh. No database authority lives here.
 import {MAX_ROWS,MAX_ARCHIVE_BYTES,MAX_JSON_BYTES} from './query-batch-size.mjs';
 import {unwrapArchiveArrayRows} from './archive-array-layout.mjs';
+import {runeDrawText} from './rune-draw-text.mjs';
 // Lightweight file-selection contracts remain separate from parser implementations.
 export const UNIVERSAL_IMPORT_ACCEPT='.zip,.json,.csv,.tsv,.xlsx,.ods,.docx,.pptx,.pdf,.odt,.odp,.odg,.rtf,.md,.html,.htm,.epub,.tex';
 export {MAX_ARCHIVE_BYTES as ARCHIVE_MAX_BYTES,MAX_JSON_BYTES as ARCHIVE_JSON_MAX_BYTES};
@@ -75,7 +76,9 @@ export function normalizeImportMedia(value,{title='',createtime=null,location=''
       meta_tags:(()=>{
         const description=source.meta_tags??source.description;
         if(description===undefined||description===null)return null;
-        const normalized=typeof description==='string'?description.trim():JSON.stringify(description);
+        const normalized=['rune','runes'].includes(media_type)
+          ?runeDrawText(description)
+          :(typeof description==='string'?description.trim():JSON.stringify(description));
         return normalized||null;
       })(),
       // Prefer the media's own timestamp; use its article time only as a fallback.
