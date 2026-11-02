@@ -71,7 +71,7 @@ async function fetchManagementAccount(mutate){
       scopeMetadata=[];
       authUserId='';
       authEmail='';
-            void mutate(SESSION_KEY,signedOutState,{revalidate:false});
+      void mutate(SESSION_KEY,signedOutState,{revalidate:false});
       return signedOutState;
     }
     // Only grant editor access AFTER BOTH independent checks succeed.
@@ -98,7 +98,7 @@ async function fetchManagementAccount(mutate){
     scopeMetadata=[];
     authUserId='';
     authEmail='';
-        return verifiedIdentity
+    return verifiedIdentity
       ?{...signedOutState,...verifiedIdentity,error:String(error?.message||error)}
       :failedState(error);
   }
@@ -168,7 +168,7 @@ export function useAccount({enabled=true,sessionOnly=false}={}){
     authEmail='';
     clearAuthorization();
     scopeMetadata=[];
-        pendingManagementVerification=null;
+    pendingManagementVerification=null;
     await Promise.all([
       mutate(SESSION_KEY,signedOutState,{revalidate:false}),
       mutate(VERIFIED_SESSION_KEY,signedOutState,{revalidate:false}),
