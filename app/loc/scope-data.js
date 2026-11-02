@@ -170,9 +170,15 @@ export async function selectScopeRegistry({parentScopeId=null,scopeKind=null}={}
 // LOC's public search registry: registry membership and each tree's search_able
 // are independent of an article's searchable flag.
 export async function selectLocSearchScopes(){
+  // LOC Group membership is owned by silver.manage, not by front-end routes.
+  const {data,error}=await dbPublicClient.schema('silver').rpc('scope_group',{
+    p_group_id:'loc',p_type:'search'
+  });
+  if(error)throw error;
+  const members=new Set((data?.scopes||[]).map(row=>String(row.scope_id||'').trim()));
   const registry=await selectScopeRegistry({scopeKind:'scope'});
   const scopes=await Promise.all(registry
-    .filter(row=>row.active&&row.scope_id!=='admin')
+    .filter(row=>row.active&&members.has(row.scope_id))
     .map(async row=>{
       const config=await selectScopeConfig(row.scope_id);
       if(!config||!scopeFeatureEnabled(config,'search_able'))return null;
