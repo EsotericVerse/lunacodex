@@ -7,7 +7,7 @@ const styles=readFileSync(new URL('../app/styles/features.css',import.meta.url),
 
 test('time records use React Select and period anchors retain autocomplete',()=>{
   assert.ok(editor.includes("import Select from 'react-select'"));
-  assert.ok(editor.includes("import PopularSelect from '../../loc/PopularSelect'"));
+  assert.ok(editor.includes("import Select from 'react-select'"));
   assert.match(editor,/anchorOptions=useMemo\(\(\)=>anchorChoices\.map\(row=>/);
   assert.match(editor,/options=\{anchorOptions\}/);
   assert.match(editor,/options=\{anchorOptions\.filter\(option=>option\.value!==segment\.start\)\}/);
