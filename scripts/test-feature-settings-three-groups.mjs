@@ -49,6 +49,10 @@ test('Settings fields, choices, states and group tabs have complete locale cover
   for(const pattern of [/(?:KEY|PATH)\+'([A-Za-z0-9]+)'/g,/(?:title|key):'(cultureSettings|cultureTime|cultureDisplay|cultureUnit|cultureSort|staticsSettings|staticsDisplay|staticsUnit|staticsSort|traceSettings|traceDisplay|traceTime|traceSort|searchSettings|searchField|searchSort|pref[A-Za-z0-9]+)'/g]){
     for(const match of texts.matchAll(pattern))keys.add(match[1]);
   }
+  // Dynamic timeUnit + suffix resolves to existing timeUnitAuto/Day/Week/Month/Year.
+  keys.delete('timeUnit');
+  for(const match of texts.matchAll(/\['[^']+','(pref[A-Za-z0-9]+)'\]/g))
+    keys.add(match[1]);
   for(const lang of locales){
     for(const key of keys)assert.equal(typeof lang[key],'string','Missing locale setting key: '+key);
     for(const key of ['featureFilter','featureCultureTrace','featureStaticsSearch','featureKeywordGroup'])
