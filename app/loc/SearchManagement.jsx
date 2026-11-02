@@ -1,6 +1,8 @@
 'use client';
 
+import {useEffect} from 'react';
 import dynamic from 'next/dynamic';
+import {useSearchParams} from 'next/navigation';
 import {FeaturePage} from '../modular/ui';
 import {useScopeRuntime} from '../modular/use-scope-runtime';
 import {useEditDock} from '../modular/edit-dock';
@@ -15,15 +17,13 @@ const ManagementArticlePublisher=dynamic(()=>import('./ManagementArticlePublishe
 const ManagementMediaWorkspace=dynamic(()=>import('./ManagementMediaWorkspace'),{loading:()=>null});
 const ManagementContentTarget=dynamic(()=>import('./ManagementContentTarget'),{loading:()=>null});
 const ManagementImportPanel=dynamic(()=>import('./ManagementImportPanel'),{loading:()=>null});
-const ScopeOthersSources=dynamic(()=>import('./ScopeOthersSources'),{loading:()=>null});
 
 // Article Control sections share one Scope ownership and authorization boundary. Moving a panel
 // never changes its Scope ownership, database tables or authorizer.
 export const ARTICLE_CONTROL_SECTIONS=Object.freeze([
   {value:'publish',label:'文章管理',shortLabel:'文章管理'},
   {value:'blocks',label:'修改建議與治理原則',shortLabel:'區塊修改'},
-  {value:'import',label:'匯入',shortLabel:'匯入'},
-  {value:'others',label:'個人分類',shortLabel:'個人分類'}
+  {value:'import',label:'匯入',shortLabel:'匯入'}
 ]);
 
 // LOC's global management has its own permissions and existing destinations.
@@ -40,7 +40,14 @@ const OLD_SCOPE_SECTION_ALIASES=Object.freeze({
 export default function SearchManagement(){
   const {scopeId}=useScopeRuntime();
   const editDock=useEditDock();
+  const searchParams=useSearchParams();
   const isLocAdmin=scopeId==='loc';
+  // Personal preferences belong to the last Settings tab, not Article Control.
+  // Preserve old bookmarks without mounting the Scope's ArticleTag editor.
+  useEffect(()=>{
+    if(isLocAdmin||searchParams?.get('section')!=='others')return;
+    window.location.replace('/local/settings/?section=features');
+  },[isLocAdmin,searchParams]);
   const options=isLocAdmin?LOC_OPTIONS:ARTICLE_CONTROL_SECTIONS;
   const [activeSection,setSection]=useManagementSection(options,isLocAdmin?'search':'publish',
     isLocAdmin?{}:OLD_SCOPE_SECTION_ALIASES);
@@ -91,9 +98,6 @@ export default function SearchManagement(){
 
         {!isLocAdmin&&activeSection==='import'
           ?<ManagementImportPanel key={scopeId+'-import'} scopeId={scopeId}/>:null}
-        {!isLocAdmin&&activeSection==='others'
-          ?<ScopeOthersSources key={scopeId+'-others'} scopeId={scopeId}/>:null}
-
         {isLocAdmin&&activeSection==='media'
           ?<ManagementContentTarget scopeId={scopeId} mode="media" globalAdmin/>:null}
         {isLocAdmin&&activeSection==='trace'?<ScopeEditableBlocks key={scopeId+'-trace'}
