@@ -721,7 +721,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   }
 
   async function startEditing(result){
-    if(!managementMode&&(!publicScopeEditing||result.scopeId!==scopeId))return;
+    if(!adminListRequested&&!publicScopeEditing)return;
     setEditingKey(result.key);setEditError('');
     setEditDraft(null);
     try{
@@ -761,7 +761,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     }
   }
   async function saveEditing(result){
-    if(!managementMode&&(!publicScopeEditing||result?.scopeId!==scopeId))return false;
+    if(!adminListRequested||authorizedEditingKey!==result?.key)return false;
     if(!editDraft||!result?.editableTable||!result.editableField||editBusy)return false;
     setEditBusy(true);setEditError('');
     try{
@@ -821,7 +821,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     finally{setEditBusy(false)}
   }
   async function deleteEditing(result){
-    if(!managementMode&&(!publicScopeEditing||result?.scopeId!==scopeId))return;
+    if(!adminListRequested||authorizedEditingKey!==result?.key)return;
     if(!result?.editableTable||!result?.editableIdColumn||!result?.editResourceId)return;
     setEditBusy(true);setEditError('');
     try{
@@ -1317,11 +1317,11 @@ export default function Search({managementMode:legacyManagementRoute=false}){
         // Page blocks have no Galaxy attributes. Article editing and typed
         // metadata are available only to authorized Scope managers; guest
         // search and article reading cannot reveal metadata controls.
-        const canOfferEdit=Boolean(publicScopeEditing&&row.scopeId===scopeId&&editTarget.resourceType==='galaxy'&&editTarget.editableTable&&
+        const canOfferEdit=Boolean(adminListRequested&&editTarget.resourceType==='galaxy'&&editTarget.editableTable&&
           editTarget.editableIdColumn&&editTarget.editResourceId);
         const editable=Boolean(
-          (managementMode&&canManageSearchScope(account,row.scopeId)&&editTarget.resourceType&&editTarget.editableTable&&editTarget.editableIdColumn&&editTarget.editResourceId)
-          ||(canOfferEdit&&authorizedEditingKey===row.key)
+          (adminListRequested&&managementMode&&canManageSearchScope(account,row.scopeId)&&editTarget.resourceType&&editTarget.editableTable&&editTarget.editableIdColumn&&editTarget.editResourceId)
+          ||canOfferEdit
         );
         const draft=editingKey===row.key?editDraft:null;
         const selectedDetail=fullTextKey===row.key&&!fullTextLoading?fullTextRow:null;
