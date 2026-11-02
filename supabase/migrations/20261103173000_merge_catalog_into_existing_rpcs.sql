@@ -1,4 +1,4 @@
--- Merge theme/keyword catalog into existing LOC admin settings; expose keyword catalog through canonical Scope type/attr.
+-- Retire LOC Catalog and Keyword Catalog RPCs into existing canonical endpoints.
 BEGIN;
 CREATE OR REPLACE FUNCTION silver.loc_admin_settings(p_section text, p_operation text DEFAULT 'read'::text, p_key text DEFAULT NULL::text, p_value jsonb DEFAULT NULL::jsonb)
  RETURNS jsonb
@@ -215,76 +215,7 @@ BEGIN
  v_result jsonb;
  v_public boolean:=false;
 BEGIN
- IF v_scope !~ '^[a-z][a-z0-9]{0,14}
- IF v_uid IS NOT NULL AND v_uid !~ '^[A-Za-z0-9]{8}$'
- THEN RAISE EXCEPTION 'Invalid UID' USING ERRCODE='22023'; END IF;
- v_owner:=coalesce((SELECT allowed FROM silver.manage('scope',v_scope)),false);
- v_is_public:=v_type IN ('date','period','era','point','path','trace','image','video','rune','suno');
- IF v_op='read' THEN
-   IF NOT v_owner AND NOT v_is_public THEN RETURN '[]'::jsonb; END IF;
-   v_limit:=coalesce((p_attr->>'limit')::integer,100);
-   v_offset:=coalesce((p_attr->>'offset')::integer,0);
-   IF v_limit NOT BETWEEN 1 AND 500 OR v_offset NOT BETWEEN 0 AND 100000
-   THEN RAISE EXCEPTION 'Invalid pagination' USING ERRCODE='22023'; END IF;
-   IF p_attr ? 'where' AND pg_catalog.jsonb_typeof(p_attr->'where') <> 'object'
-   THEN RAISE EXCEPTION 'Invalid attr filter' USING ERRCODE='22023'; END IF;
-   EXECUTE pg_catalog.format($q$
-     SELECT coalesce(pg_catalog.jsonb_agg(to_jsonb(x)),'[]'::jsonb) FROM
-     (SELECT uid,type,title,description,invisible,attr
-      FROM %s WHERE type=$1 AND ($2 IS NULL OR uid=$2)
-      AND ($3 OR (invisible IS FALSE AND $4))
-      AND ($5::jsonb IS NULL OR attr @> $5::jsonb)
-      ORDER BY uid LIMIT $6 OFFSET $7) x
-   $q$,v_relation)
-   INTO v_result USING v_type,v_uid,v_owner,v_is_public,p_attr->'where',v_limit,v_offset;
-   RETURN v_result;
- END IF;
- IF NOT v_owner THEN RAISE EXCEPTION 'Scope write permission required' USING ERRCODE='42501'; END IF;
- IF v_op='link' THEN
-   IF v_type<>'point' OR p_attr ? 'uid' OR p_attr ? 'data' OR
-      NOT (p_attr ? 'updates') OR
-      pg_catalog.jsonb_typeof(p_attr->'updates') IS DISTINCT FROM 'array'
-   THEN RAISE EXCEPTION 'Invalid Point links' USING ERRCODE='22023'; END IF;
-   v_link_count:=silver.apply_scope_point_links(
-     v_scope,p_attr->'updates',coalesce(p_attr->>'mode','place_id'));
-   RETURN pg_catalog.jsonb_build_object('count',v_link_count);
- END IF;
- IF v_uid IS NULL THEN RAISE EXCEPTION 'UID required' USING ERRCODE='22023'; END IF;
- IF p_attr ? 'data' AND pg_catalog.jsonb_typeof(p_attr->'data') <> 'object'
- THEN RAISE EXCEPTION 'Anchor attr must be JSON object' USING ERRCODE='22023'; END IF;
- IF v_op='insert' THEN
-   IF NOT p_attr ? 'data' THEN RAISE EXCEPTION 'data is required' USING ERRCODE='22023'; END IF;
-   EXECUTE pg_catalog.format($q$
-     INSERT INTO %s AS t(uid,type,title,description,invisible,attr)
-     VALUES ($1,$2,$3,$4,$5,$6) RETURNING to_jsonb(t)
-   $q$,v_relation)
-   INTO v_result USING v_uid,v_type,p_attr->>'title',p_attr->>'description',
-   coalesce((p_attr->>'invisible')::boolean,false),p_attr->'data';
- ELSIF v_op IN ('update','patch') THEN
-   IF v_op='patch' AND NOT (p_attr ? 'data') THEN
-     RAISE EXCEPTION 'Patch data is required' USING ERRCODE='22023'; END IF;
-   EXECUTE pg_catalog.format($q$
-     UPDATE %s AS t SET
-      title=CASE WHEN $3 THEN $4 ELSE t.title END,
-      description=CASE WHEN $5 THEN $6 ELSE t.description END,
-      invisible=CASE WHEN $7 THEN $8 ELSE t.invisible END,
-      attr=CASE WHEN $9 THEN CASE WHEN $11 THEN t.attr || $10 ELSE $10 END ELSE t.attr END
-     WHERE t.uid=$1 AND t.type=$2 RETURNING to_jsonb(t)
-   $q$,v_relation) INTO v_result
-   USING v_uid,v_type,
-     p_attr ? 'title',p_attr->>'title',
-     p_attr ? 'description',p_attr->>'description',
-     p_attr ? 'invisible',(p_attr->>'invisible')::boolean,
-     p_attr ? 'data',p_attr->'data',v_op='patch';
- ELSE
-   -- Cross-reference/merge transactions must continue using their guarded dedicated RPCs.
-   RAISE EXCEPTION 'Delete requires the dedicated reference-safe operation' USING ERRCODE='0A000';
- END IF;
- GET DIAGNOSTICS v_rows=ROW_COUNT;
- IF v_rows<>1 THEN RAISE EXCEPTION 'Anchor write affected % rows',v_rows USING ERRCODE='P0002'; END IF;
- RETURN v_result;
-END $function$
- OR NOT EXISTS(
+ IF v_scope !~ '^[a-z][a-z0-9]{0,14}$' OR NOT EXISTS(
     SELECT 1 FROM silver.manage WHERE id=v_scope AND manage_role='scope' AND active)
     THEN RETURN '{}'::jsonb; END IF;
  v_config:=to_regclass(format('silver.%I',v_scope));
@@ -300,76 +231,7 @@ END $function$
  EXECUTE format('SELECT current_keyword_class_uid FROM %s WHERE id=$1',v_config)
   INTO v_current USING v_scope;
  v_class:=coalesce(nullif(p_class_uid,''),v_current);
- IF v_class IS NULL OR v_class !~ ('^[A-Za-z0-9]{'||CASE WHEN pg_catalog.to_regclass(pg_catalog.format('silver.%I_anchor',v_scope)) IS NOT NULL THEN '8' ELSE '4' END||'}
- IF v_uid IS NOT NULL AND v_uid !~ '^[A-Za-z0-9]{8}$'
- THEN RAISE EXCEPTION 'Invalid UID' USING ERRCODE='22023'; END IF;
- v_owner:=coalesce((SELECT allowed FROM silver.manage('scope',v_scope)),false);
- v_is_public:=v_type IN ('date','period','era','point','path','trace','image','video','rune','suno');
- IF v_op='read' THEN
-   IF NOT v_owner AND NOT v_is_public THEN RETURN '[]'::jsonb; END IF;
-   v_limit:=coalesce((p_attr->>'limit')::integer,100);
-   v_offset:=coalesce((p_attr->>'offset')::integer,0);
-   IF v_limit NOT BETWEEN 1 AND 500 OR v_offset NOT BETWEEN 0 AND 100000
-   THEN RAISE EXCEPTION 'Invalid pagination' USING ERRCODE='22023'; END IF;
-   IF p_attr ? 'where' AND pg_catalog.jsonb_typeof(p_attr->'where') <> 'object'
-   THEN RAISE EXCEPTION 'Invalid attr filter' USING ERRCODE='22023'; END IF;
-   EXECUTE pg_catalog.format($q$
-     SELECT coalesce(pg_catalog.jsonb_agg(to_jsonb(x)),'[]'::jsonb) FROM
-     (SELECT uid,type,title,description,invisible,attr
-      FROM %s WHERE type=$1 AND ($2 IS NULL OR uid=$2)
-      AND ($3 OR (invisible IS FALSE AND $4))
-      AND ($5::jsonb IS NULL OR attr @> $5::jsonb)
-      ORDER BY uid LIMIT $6 OFFSET $7) x
-   $q$,v_relation)
-   INTO v_result USING v_type,v_uid,v_owner,v_is_public,p_attr->'where',v_limit,v_offset;
-   RETURN v_result;
- END IF;
- IF NOT v_owner THEN RAISE EXCEPTION 'Scope write permission required' USING ERRCODE='42501'; END IF;
- IF v_op='link' THEN
-   IF v_type<>'point' OR p_attr ? 'uid' OR p_attr ? 'data' OR
-      NOT (p_attr ? 'updates') OR
-      pg_catalog.jsonb_typeof(p_attr->'updates') IS DISTINCT FROM 'array'
-   THEN RAISE EXCEPTION 'Invalid Point links' USING ERRCODE='22023'; END IF;
-   v_link_count:=silver.apply_scope_point_links(
-     v_scope,p_attr->'updates',coalesce(p_attr->>'mode','place_id'));
-   RETURN pg_catalog.jsonb_build_object('count',v_link_count);
- END IF;
- IF v_uid IS NULL THEN RAISE EXCEPTION 'UID required' USING ERRCODE='22023'; END IF;
- IF p_attr ? 'data' AND pg_catalog.jsonb_typeof(p_attr->'data') <> 'object'
- THEN RAISE EXCEPTION 'Anchor attr must be JSON object' USING ERRCODE='22023'; END IF;
- IF v_op='insert' THEN
-   IF NOT p_attr ? 'data' THEN RAISE EXCEPTION 'data is required' USING ERRCODE='22023'; END IF;
-   EXECUTE pg_catalog.format($q$
-     INSERT INTO %s AS t(uid,type,title,description,invisible,attr)
-     VALUES ($1,$2,$3,$4,$5,$6) RETURNING to_jsonb(t)
-   $q$,v_relation)
-   INTO v_result USING v_uid,v_type,p_attr->>'title',p_attr->>'description',
-   coalesce((p_attr->>'invisible')::boolean,false),p_attr->'data';
- ELSIF v_op IN ('update','patch') THEN
-   IF v_op='patch' AND NOT (p_attr ? 'data') THEN
-     RAISE EXCEPTION 'Patch data is required' USING ERRCODE='22023'; END IF;
-   EXECUTE pg_catalog.format($q$
-     UPDATE %s AS t SET
-      title=CASE WHEN $3 THEN $4 ELSE t.title END,
-      description=CASE WHEN $5 THEN $6 ELSE t.description END,
-      invisible=CASE WHEN $7 THEN $8 ELSE t.invisible END,
-      attr=CASE WHEN $9 THEN CASE WHEN $11 THEN t.attr || $10 ELSE $10 END ELSE t.attr END
-     WHERE t.uid=$1 AND t.type=$2 RETURNING to_jsonb(t)
-   $q$,v_relation) INTO v_result
-   USING v_uid,v_type,
-     p_attr ? 'title',p_attr->>'title',
-     p_attr ? 'description',p_attr->>'description',
-     p_attr ? 'invisible',(p_attr->>'invisible')::boolean,
-     p_attr ? 'data',p_attr->'data',v_op='patch';
- ELSE
-   -- Cross-reference/merge transactions must continue using their guarded dedicated RPCs.
-   RAISE EXCEPTION 'Delete requires the dedicated reference-safe operation' USING ERRCODE='0A000';
- END IF;
- GET DIAGNOSTICS v_rows=ROW_COUNT;
- IF v_rows<>1 THEN RAISE EXCEPTION 'Anchor write affected % rows',v_rows USING ERRCODE='P0002'; END IF;
- RETURN v_result;
-END $function$
-) THEN RETURN '{}'::jsonb; END IF;
+ IF v_class IS NULL OR v_class !~ ('^[A-Za-z0-9]{'||CASE WHEN pg_catalog.to_regclass(pg_catalog.format('silver.%I_anchor',v_scope)) IS NOT NULL THEN '8' ELSE '4' END||'}$') THEN RETURN '{}'::jsonb; END IF;
  IF NOT coalesce((SELECT allowed FROM silver.manage('scope',v_scope)),false) AND
    NOT silver.keyword_class_is_shared(v_scope,v_class) THEN RETURN '{}'::jsonb; END IF;
  EXECUTE format($query$
