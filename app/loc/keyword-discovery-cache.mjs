@@ -1,6 +1,7 @@
 'use client';
 
 import {dbAuthClient,dbAuthRelation} from './db-client.mjs';
+import {isUnifiedAnchorScope} from './unified-anchor-compat.mjs';
 
 const CACHE_COLUMN='keyword_suggestions';
 const MAX_CACHE_ROWS=120;
@@ -31,7 +32,7 @@ export function decodeKeywordSuggestionCache(value){
     .slice(0,MAX_CACHE_ROWS).map(word=>({word:word.trim()}))};
 }
 export async function readKeywordSuggestionCache(scopeId){
-  if(!/^[a-z][a-z0-9]{0,14}$/.test(String(scopeId||'')))return null;
+  if(!isUnifiedAnchorScope(scopeId))return null;
   const {data,error}=await dbAuthClient.schema('silver')
     .rpc('read_scope_keyword_suggestions',{p_scope_id:scopeId});
   if(error)throw new Error(error.message||'無法讀取關鍵詞暫存');
