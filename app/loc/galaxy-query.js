@@ -592,7 +592,7 @@ function managementArticleProviders(scope,{contentType='',sourceFilter='',source
   ];
 }
 
-function genericScopeProviders(scope,{mediaOnly=false,includeHiddenText=false,contentType='',sourceFilter='',sourceTaxonomy=null,placeOnly=false}={}){
+function genericScopeProviders(scope,{mediaOnly=false,includeHiddenText=false,contentType='',sourceFilter='',sourceTaxonomy=null,placeOnly=false,searchField=''}={}){
   // These filters are applied by the existing Supabase provider, not to a
   // truncated page of client-side search results.
   const sourceSelection=resolveSourceSelection(sourceFilter,sourceTaxonomy||{});
@@ -654,6 +654,9 @@ function genericScopeProviders(scope,{mediaOnly=false,includeHiddenText=false,co
   // The basic public/guest search is intentionally limited to title/content.
   // Advanced media and timeline searches keep their explicit providers.
   if(contentType==='timeline')return [timeline];
+  // OAuth personal search mode narrows the query at the database, not after pagination.
+  if(searchField==='title')return [titleExact,title];
+  if(searchField==='content')return [contentExact,content];
   return [titleExact,title,contentExact,content];
 }
 
@@ -668,7 +671,7 @@ function normalizeSearch(value){
 export async function selectStyleKeywordMatches(){return [];}
 
 export async function searchGalaxyRows(scopes,query,{
-  limit=DEFAULT_LIST_BATCH_SIZE,cursor=null,startDate='',endDate='',and=[],nor=[],mediaOnly=false,hiddenScopeIds=[],contentType='',sourceFilter='',sourceTaxonomy=null,placeOnly=false,browse=false,signal=null,sortDirection='asc',managementOnly=false
+  limit=DEFAULT_LIST_BATCH_SIZE,cursor=null,startDate='',endDate='',and=[],nor=[],mediaOnly=false,hiddenScopeIds=[],contentType='',sourceFilter='',sourceTaxonomy=null,placeOnly=false,browse=false,signal=null,sortDirection='asc',managementOnly=false,searchField=''
 }={}){
   const q=String(query||'').trim();
   if(!q&&!browse)return {rows:[],failures:[],hasMore:false,nextCursor:null};
@@ -677,7 +680,7 @@ export async function searchGalaxyRows(scopes,query,{
   const hiddenScopes=new Set((Array.isArray(hiddenScopeIds)?hiddenScopeIds:[]).map(value=>String(value||'').trim()).filter(Boolean));
   const scopeProviders=scopeList.map(scope=>managementOnly
     ?managementArticleProviders(scope,{contentType,sourceFilter,sourceTaxonomy,placeOnly})
-    :genericScopeProviders(scope,{mediaOnly,includeHiddenText:hiddenScopes.has(scope.id),contentType,sourceFilter,sourceTaxonomy,placeOnly}));
+    :genericScopeProviders(scope,{mediaOnly,includeHiddenText:hiddenScopes.has(scope.id),contentType,sourceFilter,sourceTaxonomy,placeOnly,searchField}));
   // Every Scope's title hits are paged before any body matches.
   const providers=managementOnly
     ?browse
@@ -690,7 +693,7 @@ export async function searchGalaxyRows(scopes,query,{
           :[group[1]].filter(Boolean))
       :mediaOnly||contentType==='multimedia'||contentType==='timeline'
         ?scopeProviders.flat()
-        :Array.from({length:4},(_,index)=>scopeProviders.map(group=>group[index]).filter(Boolean)).flat();
+        :Array.from({length:searchField==='title'||searchField==='content'?2:4},(_,index)=>scopeProviders.map(group=>group[index]).filter(Boolean)).flat();
   const failures=[];
 
   let stage=Number.isInteger(cursor?.stage)?cursor.stage:1;
