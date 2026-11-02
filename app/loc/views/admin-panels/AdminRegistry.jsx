@@ -18,7 +18,7 @@ import {
 
 const EMPTY_SCOPE_CREATE={scope_id:'',email:'',locale:'zh-Hant',route_mode:'directory'};
 const EMPTY_GROUP_CREATE={scope_id:'',display_name:'',route_mode:'directory',parent_scope_id:'loc'};
-const EMPTY_MAPPING={email:'',galaxy:'galaxy',time:'time',birthday:''};
+const EMPTY_MAPPING={email:'',galaxy:'galaxy',anchor:'anchor',birthday:''};
 
 function normalizeAliases(value){
   return [...new Set((Array.isArray(value)?value:String(value||'').split(/[\n,，]/g))
@@ -75,7 +75,7 @@ function useAdminScopeData(){
         }));
         const mappingRows=locRows.filter(row=>row.email).map(row=>({
           id:row.id,email:row.email,role:row.manage_role,
-          galaxy:row.galaxy_table,time:row.time_table,
+          galaxy:row.galaxy_table,anchor:row.anchor_table,
           birthday:row.birthday,
           Title_TW:row.title_tw,Desc_TW:row.desc_tw
         }));
@@ -406,7 +406,7 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
       await updateRows('silver.manage',{
         email,
         galaxy_table:String(row.galaxy||'galaxy').trim()||'galaxy',
-        time_table:String(row.time||'time').trim()||'time',
+        anchor_table:String(row.anchor||'anchor').trim()||'anchor',
         birthday:row.birthday||null
       },{filters:[{column:'id',operator:'eq',value:row.id}]});
       setStatus('Mapping 已更新。');refresh();return true;
@@ -435,7 +435,7 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
       await updateRows('silver.manage',{
         email:email,manage_role:'scope',
         galaxy_table:String(newMapping.galaxy||'galaxy').trim()||'galaxy',
-        time_table:String(newMapping.time||'time').trim()||'time',
+        anchor_table:String(newMapping.anchor||'anchor').trim()||'anchor',
         birthday:newMapping.birthday||null
       },{filters:[{column:'id',operator:'eq',value:selected.scope_id}]});
       setNewMapping({...EMPTY_MAPPING});setStatus('Mapping 已新增。');refresh();return true;
@@ -523,7 +523,7 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
         <label><span>管理者 Email</span><input type="email" value={row.email||''} onChange={e=>patchMapping(row.id,'email',e.target.value)}/></label>
         <div className="scope-management-fields">
           <label><span><UiText id="uiExtra.adminView.galaxyTable"/></span><input value={row.galaxy||'galaxy'} onChange={e=>patchMapping(row.id,'galaxy',e.target.value)}/></label>
-          <label><span><UiText id="uiExtra.adminView.timeTable"/></span><input value={row.time||'time'} onChange={e=>patchMapping(row.id,'time',e.target.value)}/></label>
+          <label><span>Anchor</span><input value={row.anchor||'anchor'} onChange={e=>patchMapping(row.id,'anchor',e.target.value)}/></label>
           <label><span><UiText id="uiExtra.adminView.birthdayMapping"/></span><input type="date" value={row.birthday||''} onChange={e=>patchMapping(row.id,'birthday',e.target.value)}/></label>
         </div>
         <div className="scope-tabs"><button type="button" onClick={()=>saveMapping(row)}><UiText id="uiExtra.adminView.saveMapping"/></button><button type="button" disabled={['admin','loc'].includes(row.id)} onClick={()=>removeMapping(row)}><UiText id="uiExtra.adminView.remove"/></button></div>
