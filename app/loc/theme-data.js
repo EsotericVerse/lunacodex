@@ -15,7 +15,7 @@ export const THEME_DB_COLUMNS=[
 ].join(',');
 
 // The database key is a number (1..8). Legacy client Theme identifiers are
-// presentation identifiers only, never stored in silver.loc_theme.
+// presentation identifiers only, never stored in silver.loc.theme.
 export function themeUiId(value){
   const id=String(value??'').trim();
   const number=/^theme-([1-8])$/.exec(id)?.[1]||(/^[1-8]$/.test(id)?id:'');
