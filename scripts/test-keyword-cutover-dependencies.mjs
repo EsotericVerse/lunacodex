@@ -33,7 +33,7 @@ test('unified Anchor operations retain only authorized transactional RPC gateway
     import_shared_keyword_class:['p_target_scope','p_source_scope','p_class_uid'],
     save_scope_trace_place_names:['p_scope_id','p_uid','p_names'],
     preview_timeline_place_page_json:['p_scope_id','p_windows','p_limit','p_offset'],
-    apply_timeline_place_ids:['p_scope_id','p_updates'],
+    apply_scope_point_links:['p_scope_id','p_updates'],
     search_scope_trace_place_names:['p_scope_id','p_term','p_limit']
   };
   for(const [name,args] of Object.entries(expected)){
@@ -43,7 +43,7 @@ test('unified Anchor operations retain only authorized transactional RPC gateway
   assert.equal(gateway.includes("'silver.merge_scope_trace_place_names':["),false);
   assert.ok(gateway.includes("const jsonbArgsByRpc={"));
   assert.ok(gateway.includes("'silver.preview_timeline_place_page_json':new Set(['p_windows'])"));
-  assert.ok(gateway.includes("'silver.apply_timeline_place_ids':new Set(['p_updates'])"));
+  assert.ok(gateway.includes("'silver.apply_scope_point_links':new Set(['p_updates'])"));
   assert.ok(gateway.includes("jsonbArgs?.has(name)"));
 });
 

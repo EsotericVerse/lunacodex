@@ -30,7 +30,7 @@ export const RPC_ALLOWLIST={
   'silver.import_shared_keyword_class':['p_target_scope','p_source_scope','p_class_uid'],
   'silver.save_scope_trace_place_names':['p_scope_id','p_uid','p_names'],
   'silver.preview_timeline_place_page_json':['p_scope_id','p_windows','p_limit','p_offset'],
-  'silver.apply_timeline_place_ids':['p_scope_id','p_updates'],
+  'silver.apply_scope_point_links':['p_scope_id','p_updates','p_mode'],
   'silver.search_scope_trace_place_names':['p_scope_id','p_term','p_limit'],
   'silver.is_current_email_blocklisted':[],
   'silver.move_scope_block':['p_scope_id','p_page_name','p_uid','p_direction'],
@@ -50,7 +50,7 @@ const RPC_REQUIRED_ARGUMENTS={
   'silver.import_shared_keyword_class':['p_target_scope','p_source_scope','p_class_uid'],
   'silver.save_scope_trace_place_names':['p_scope_id','p_uid','p_names'],
   'silver.preview_timeline_place_page_json':['p_scope_id','p_windows'],
-  'silver.apply_timeline_place_ids':['p_scope_id','p_updates'],
+  'silver.apply_scope_point_links':['p_scope_id','p_updates','p_mode'],
   'silver.search_scope_trace_place_names':['p_scope_id','p_term'],
   'silver.move_scope_block':['p_scope_id','p_page_name','p_uid','p_direction'],
   'silver.delete_scope':['p_scope_id'],
@@ -318,7 +318,7 @@ export function buildAllowlistedRpcQuery(input){
     'silver.loc_catalog':new Set(['p_value']),
     'silver.read_scope_analytics':new Set(['p_options']),
     'silver.preview_timeline_place_page_json':new Set(['p_windows']),
-    'silver.apply_timeline_place_ids':new Set(['p_updates'])
+    'silver.apply_scope_point_links':new Set(['p_updates'])
   };
   const jsonbArgs=jsonbArgsByRpc[key];
   const params=supplied.map(name=>{
