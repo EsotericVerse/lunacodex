@@ -58,7 +58,15 @@ function AnchorEditor({scopeId,spatial,reload}){
   const mergeUids=useMemo(()=>selectPointMergeSources(ownAnchors,editingUid,bulkUids,{
     visibilityPending:Boolean(pendingVisibility)
   }),[editingUid,bulkUids,ownAnchors,pendingVisibility]);
-  const formDirty=Boolean(editingUid||title||description||postalAddress||longitude||latitude);
+  const editingRow=useMemo(()=>ownAnchors.find(row=>row.uid===editingUid),[ownAnchors,editingUid]);
+  const formDirty=editingUid?Boolean(editingRow&&(
+    title!==String(editingRow.title||'')||
+    description!==String(editingRow.description||'')||
+    postalAddress!==String(editingRow.postal_address||'')||
+    invisible!==Boolean(editingRow.invisible)||
+    longitude!==(editingRow.longitude==null?'':String(editingRow.longitude))||
+    latitude!==(editingRow.latitude==null?'':String(editingRow.latitude))
+  )):Boolean(title||description||postalAddress||longitude||latitude);
   const dirty=formDirty||Object.keys(pendingRenames).length>0||Boolean(pendingVisibility)||mergeUids.length>0;
   const pickExisting=uid=>{
     const row=ownAnchors.find(item=>item.uid===uid);
@@ -141,10 +149,9 @@ function AnchorEditor({scopeId,spatial,reload}){
         cache.invalidate({queryKey:['trace-map-index',scopeId]}),
         cache.invalidate({queryKey:['trace-current',scopeId]})
       ]);
-      if(formDirty){
-        setEditingUid('');setTitle('');setDescription('');setPostalAddress('');
-        setLongitude('');setLatitude('');setInvisible(false);
-      }
+      // Keep the upper primary selection after a successful merge. The
+      // reloaded list refreshes its title and UID, while removed sources vanish.
+      if(savedUid&&!editingUid)setEditingUid(savedUid);
       setNotice([
         mergedCount?'已合併 '+mergedCount+' 筆地點至主要 UID '+editingUid:'',
         savedUid?'定錨點 '+savedUid+' 已保存':'',
