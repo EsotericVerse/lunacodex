@@ -1,7 +1,9 @@
 // Same six-column, UID-linked hierarchy as the Scope's anchor records.
 // category -> class -> group -> item -> literal keyword strings.
 // Parent lists contain child UIDs, not names. No class_id, group_id, item_no.
-const UID=/^[0-9A-Za-z]{4}$/;
+// Native Scope Anchor UIDs are eight Base62 characters. Four-character
+// IDs remain readable only for Scopes still on their legacy Keywords table.
+const UID=/^[0-9A-Za-z]{4}(?:[0-9A-Za-z]{4})?$/;
 const ARTICLE_UID=/^[0-9A-Za-z]{8}$/;
 const NEXT={category:'class',class:'group',group:'item'};
 const TYPES=new Set(['category','class','group','item']);
@@ -36,7 +38,7 @@ export function keywordUidListRecord(type,value){
   throw new Error('Unknown Keywords node type');
 }
 const cleanUid=value=>{
-  if(typeof value!=='string'||!UID.test(value))throw new Error('Keywords UID must be four case-sensitive Base62 characters');
+  if(typeof value!=='string'||!UID.test(value))throw new Error('Keywords UID must be four or eight case-sensitive Base62 characters');
   return value;
 };
 export function normalizeKeywordTreeRow(row){
