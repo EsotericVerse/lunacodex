@@ -6,6 +6,8 @@ import {useSWRConfig} from 'swr';
 import {useEditDock} from '../modular/edit-dock';
 import {dbAuthRelation,dbPublicClient,dbAuthClient,resetKeywordClassification,updateRows,writeKeywordLibraryItem,copyKeywordLibraryClass} from './db-client.mjs';
 import {indexKeywordTree,descendantsOfKeyword} from './keyword-tree.mjs';
+import {allocateAnchorUid} from './unified-anchor-compat.mjs';
+import ManagementSectionNav from '../modular/ManagementSectionNav';
 import {keywordClassState,invalidateKeywordClass} from './keyword-class-state.mjs';
 import {generateKeywordClassUid} from './keyword-uidlist.mjs';
 
@@ -14,9 +16,11 @@ const TYPES=['class','group','item'];
 const LABEL={category:'關鍵字目錄',class:'關鍵字群組科目',group:'關鍵字分類群組',item:'關鍵詞分類'};
 const onlyWords=value=>[...new Set(String(value||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean))];
 const emptyTree={index:new Map(),parent:new Map(),roots:[]};
-const uidFor=rows=>generateKeywordClassUid(rows.map(row=>row.uid));
-function freshNode(type,rows){
-  return {uid:uidFor(rows),type,name:'',desc:'',lists:[],uid_lists:[]};
+const uidFor=(rows,scopeId)=>scopeId==='lo3rwang'
+  ?allocateAnchorUid(new Set(rows.map(row=>String(row.uid))))
+  :generateKeywordClassUid(rows.map(row=>row.uid));
+function freshNode(type,rows,scopeId){
+  return {uid:uidFor(rows,scopeId),type,name:'',desc:'',lists:[],uid_lists:[]};
 }
 function childrenOf(tree,uid){
   const parent=tree.index.get(uid);
@@ -41,6 +45,13 @@ export default function KeywordLibraryPanel({scopeId='lo3rwang',account}){
   const [pendingParent,setPendingParent]=useState('');
   const [keywordText,setKeywordText]=useState('');
   const [workspace,setWorkspace]=useState('manual');
+  const workspaceOptions=[
+    {value:'manual',label:'群組對應調整'},
+    {value:'analysis',label:'基本設定'},
+    {value:'run',label:'重新分析'},
+    {value:'network',label:'關聯圖'},
+    {value:'suggest',label:'建議新增關鍵詞'}
+  ];
   const [chosen,setChosen]=useState({category:'',class:'',group:'',item:''});
   const [copyName,setCopyName]=useState('');
   const [importScope,setImportScope]=useState('');
@@ -151,7 +162,7 @@ export default function KeywordLibraryPanel({scopeId='lo3rwang',account}){
   };
   const create=(type,parentUid='')=>{
     if(!TYPES.includes(type))return;
-    const node=freshNode(type,rows);
+    const node=freshNode(type,rows,scopeId);
     setEditor({node});setPendingParent(parentUid);
     setKeywordText('');setNotice('');
   };
@@ -426,17 +437,13 @@ export default function KeywordLibraryPanel({scopeId='lo3rwang',account}){
       group_uid:group?.uid||'',class_group:group?.name||'',class_name:selectedClass.name};
   }):[];
   return <div className="scope-keyword-management">
-    <div className="scope-stat-controls">
-      {[['manual','群組對應調整'],['analysis','基本設定'],['run','重新分析'],['network','關聯圖']].map(([key,label])=>
-        <button key={key} type="button" className="loc-button"
-          aria-pressed={workspace===key} onClick={()=>{setWorkspace(key);setEditor(null);}}>
-          {label}
-        </button>)}
-      <button type="button" className="loc-button primary" disabled={loading||busy||discoveryBusy}
-        aria-pressed={workspace==='suggest'} onClick={openSuggestedTerms}>
-        {discoveryBusy?'正在掃描內文…':'建議新增關鍵詞'}
-      </button>
-    </div>
+    <ManagementSectionNav id="scope-keyword-sections" title="關鍵詞管理"
+      panelId="scope-keyword-workspace" items={workspaceOptions}
+      value={workspace} onChange={next=>{
+        if(next==='suggest'){void openSuggestedTerms();return;}
+        setWorkspace(next);setEditor(null);
+      }}/>
+    <div id="scope-keyword-workspace">
     {loading?<p className="scope-status" role="status">讀取關鍵字資料中…</p>:null}
     {error?<p className="scope-status scope-error" role="alert">{error}</p>:null}
     {notice?<p className="scope-status" role="status">{notice}</p>:null}
@@ -613,5 +620,6 @@ export default function KeywordLibraryPanel({scopeId='lo3rwang',account}){
         onMessage={setNotice}
       />:<p className="scope-status">請先建立關鍵字群組科目、關鍵字分類群組及關鍵詞分類。</p>}
     </section>:null}
+    </div>
   </div>;
 }
