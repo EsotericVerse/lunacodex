@@ -452,10 +452,10 @@ export class LocAuthorityState extends DurableObject {
         uid:'eq.'+uid,limit:1}});
     }else if(['lo3rwang','lrunes'].includes(scopeid)){
       // Reuse existing anonymous RLS only; never infer private access.
-      const url=new URL('https://loc-sql-gateway.sopa2306.workers.dev/rest/v1/'+scopeid+'_galaxy');
+      const url=new URL('https://qlouywsdiiyiyzpoxyqy.supabase.co/rest/v1/'+scopeid+'_galaxy');
       for(const [key,value] of Object.entries({select:'uid,title,content,date,createtime,site,url',
         uid:'eq.'+uid,searchable:'eq.true',limit:1}))url.searchParams.set(key,String(value));
-      const res=await fetch(url.href,{headers:{origin:'https://loc.lo3rwang.cc',
+      const res=await fetch(url.href,{headers:{apikey:'sb_publishable_qPn0vAzozVyXKllRuEKf2Q_fvG-pLVV',
         'accept-profile':'silver'},signal:AbortSignal.timeout(8500),redirect:'manual'});
       if(!res.ok)throw fail('Public article read unavailable',502);
       rows=await res.json();
@@ -534,13 +534,13 @@ export class LocAuthorityState extends DurableObject {
         this.env.LOC_AUTHORITY_STATE.idFromName('mcp-scope:'+scopeid));
       const profile=await scopeStub.getMcpScope(scopeid);
       if(profile.configured)return (await scopeStub.mcpSearch(scopeid,query,limit)).results;
-      // Unconfigured built-in Scope: use the established public SQL Gateway + RLS.
+      // Unconfigured built-in Scope: use existing Supabase anonymous RLS.
       if(!['lo3rwang','lrunes'].includes(scopeid))return [];
-      const url=new URL('https://loc-sql-gateway.sopa2306.workers.dev/rest/v1/'+scopeid+'_galaxy');
+      const url=new URL('https://qlouywsdiiyiyzpoxyqy.supabase.co/rest/v1/'+scopeid+'_galaxy');
       for(const [key,val] of Object.entries({select:'uid,title,date,createtime',
         searchable:'eq.true',or:'(title.ilike.'+likePattern(query)+',content.ilike.'+likePattern(query)+')',
         order:'date.desc.nullslast',limit}))url.searchParams.set(key,String(val));
-      const res=await fetch(url.href,{headers:{origin:'https://loc.lo3rwang.cc',
+      const res=await fetch(url.href,{headers:{apikey:'sb_publishable_qPn0vAzozVyXKllRuEKf2Q_fvG-pLVV',
         'accept-profile':'silver'},signal:AbortSignal.timeout(8500),redirect:'manual'});
       if(!res.ok)throw fail('Public Scope search unavailable',502);
       return (await res.json()).map(row=>({...row,scopeid}));
