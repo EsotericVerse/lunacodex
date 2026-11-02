@@ -3,6 +3,7 @@ import {readFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
 import {archiveAttachmentReferences,createArchiveEvidenceCollector,prepareArchiveMedia,isArchiveMediaUrl,auditArchiveUrlAttributes} from '../app/loc/archive-media-evidence.mjs';
 import {normalizeImportMedia,mappedImportValue} from '../app/loc/import-batch.mjs';
+import {runeDrawText} from '../app/loc/rune-draw-text.mjs';
 import {extractImportCoordinates,importMapUrlCoordinates} from '../app/loc/import-geocoordinates.mjs';
 
 test('article url uses the dedicated url field, never content or unrelated links',()=>{
@@ -101,7 +102,7 @@ test('rune draw is a Galaxy media subtype with meta_tags text, not a separate ar
   assert.equal(result.records[0].media_type,'runes');
   assert.equal(result.records[0].title,'抽牌結果');
   assert.equal(result.records[0].url,null);
-  assert.match(result.records[0].meta_tags,/"rune":"月"/);
+  assert.equal(result.records[0].meta_tags,'月 正位');
   assert.equal(result.records[0].__article_uid,'ART00001');
   assert.equal(result.references.length,0);
 });
@@ -149,7 +150,7 @@ test('nested media descriptions preserve JSON rather than object-to-string corru
   assert.equal(image.records[0].meta_tags,JSON.stringify(tags));
   const spread={cards:[{rune:'月',direction:'正位'}]};
   const rune=normalizeImportMedia([{media_type:'runes',meta_tags:spread}],{article_uid:'ART00001'});
-  assert.equal(rune.records[0].meta_tags,JSON.stringify(spread));
+  assert.equal(rune.records[0].meta_tags,'月 正位');
   assert.equal(rune.records.length,1);
 });
 
@@ -265,4 +266,17 @@ test('ZIP import preview counts real article permalinks separately from media UR
   assert.match(panel,/articleWithUrl:imported\.filter\(item=>Boolean\(item\.raw\?\.url\)\)\.length/);
   assert.match(panel,/archiveSummary\.articleWithUrl/);
   assert.match(panel,/文章原始網址/);
+});
+
+test('rune card JSON becomes one readable line, with no object braces',()=>{
+  const draw={cards:[
+    {role:'原因',rune:'辰',direction:'逆位',position:1},
+    {role:'原因',rune:'靈',direction:'半逆',position:2},
+    {role:'建議',rune:'果',direction:'正位',position:3}
+  ]};
+  assert.equal(runeDrawText(draw),'辰 逆位，靈 半逆，果 正位');
+  assert.equal(runeDrawText(JSON.stringify(draw)),'辰 逆位，靈 半逆，果 正位');
+  assert.equal(runeDrawText('月 正位，韻 半正'),'月 正位，韻 半正');
+  const panel=readFileSync(new URL('../app/loc/ManagementImportPanel.jsx',import.meta.url),'utf8');
+  assert.match(panel,/const runeResultText=runeDrawText\(importedRuneReferences\)/);
 });
