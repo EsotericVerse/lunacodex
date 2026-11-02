@@ -625,6 +625,7 @@ export default function EffekseerStage({rune,onGlyphClick,vfxOnly=false,directio
   },[ceremony,reduced,key]);
   return <div className="rune-effekseer-stage" data-source="effekseer" data-rune={word}
     data-ceremony={ceremony?'summoning':undefined}
+    data-glyph-weight={letterMotion.weight||'measured'}
     data-quality={quality} data-texture-quality={textureQuality} data-effect-key={effect?.key||''}
     data-direction={direction==='正位'?'upright':direction==='半正位'?'semi-upright':direction==='半逆位'?'semi-reversed':direction==='逆位'?'reversed':undefined}>
     <EffekseerCanvas key={key} effect={effect} runeId={rune?.rune_id} reduced={reduced} ceremony={ceremony} quality={quality} textureQuality={textureQuality} onPlaybackComplete={onPlaybackComplete} onReady={()=>setVisibleKey(key)}/>
