@@ -1421,7 +1421,10 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     />
     </div>
   </>;
-  return managementMode?pageContent:<FeaturePage featureId="search">
+  // The legacy management workspace already provides its own FeaturePage.
+  // A user opting in from ordinary Search must retain the normal page shell.
+  if(managementMode)return legacyManagementRoute?pageContent:<FeaturePage featureId="search">{pageContent}</FeaturePage>;
+  return <FeaturePage featureId="search">
     <div className="scope-search-view-labels" role="group" aria-label={UI_COPY.features.search.title+' / '+UI_COPY.features.trace.detailsLabel}>
       <button type="button" aria-pressed={publicView==='search'}
         onClick={()=>setPublicView('search')}>{UI_COPY.features.search.title}</button>
