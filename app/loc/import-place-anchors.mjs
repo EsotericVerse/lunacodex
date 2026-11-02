@@ -1,8 +1,9 @@
 import {importGeoKey} from './import-geocoordinates.mjs';
+import {allocateAnchorUid} from './unified-anchor-compat.mjs';
 
 // An exact coordinate identifies an existing Trace location even if the
 // original place label differs. Without GPS, only unambiguous names are used.
-const VALID_UID=/^[A-Za-z0-9]{4}$/;
+const VALID_UID=/^[A-Za-z0-9]{8}$/;
 const normalizedPlaceText=value=>String(value??'').normalize('NFKC')
   .replace(/[\u0000-\u001f]/g,' ').replace(/\s+/g,' ').trim();
 const nameKey=value=>normalizedPlaceText(value).toLocaleLowerCase('und');
@@ -48,12 +49,12 @@ export async function prepareImportPlaceAnchors(records,{
     return unavailable();
   if(!/^[a-z][a-z0-9]{0,14}$/.test(scopeId))throw Error('空間定錨 Scope 無效');
   if(typeof relation!=='function')throw Error('空間定錨資料庫不存在');
-  const table='silver.'+scopeId+'_trace';
+  const table='silver.'+scopeId+'_anchor';
   const existingByCoordinate=new Map(),existingByName=new Map(),timesByUid=new Map();
   onProgress?.({phase:'讀取現有空間定錨',completed:0,total:0});
   for(let offset=0;;offset+=pageSize){
     const {data,error}=await relation(table)
-      .select('uid,title,address,times').eq('trace_type','space_anchor')
+      .select('uid,type,title,attr').eq('type','point')
       .order('uid',{ascending:true}).range(offset,offset+pageSize-1);
     if(error){
       if(allowMissing&&!createMissing&&['42P01','PGRST205'].includes(String(error.code||'')))
@@ -64,13 +65,13 @@ export async function prepareImportPlaceAnchors(records,{
       const name=nameKey(anchor?.title);
       const uid=String(anchor?.uid||'');
       if(!name||!VALID_UID.test(uid))continue;
-      const coordinates=importGeoKey(anchor?.address);
+      const coordinates=importGeoKey(anchor?.attr);
       const saved={uid,coordinates};
       if(!existingByName.has(name))existingByName.set(name,[]);
       existingByName.get(name).push(saved);
       if(coordinates&&!existingByCoordinate.has(coordinates))
         existingByCoordinate.set(coordinates,saved);
-      timesByUid.set(uid,Array.isArray(anchor.times)?anchor.times:[]);
+      timesByUid.set(uid,[]);
     }
     onProgress?.({phase:'讀取現有空間定錨',completed:offset+(data||[]).length,total:0});
     if((data||[]).length<pageSize)break;
@@ -112,30 +113,39 @@ export async function prepareImportPlaceAnchors(records,{
     }
     if(createMissing)pending.push(place);
   }
-  // A single ZIP can contain several genuinely different places with the
-  // same name. Keep each coordinate and its distinct Trace UID.
+  // Point identity is an exact GPS pair (or unambiguous name without GPS).
+  // Generate native 8-char UIDs and validate by UID, not response order.
+  const assigned=new Set([...existingByName.values()].flat().map(item=>item.uid));
+  onProgress?.({phase:'建立原始座標定錨',completed:0,total:pending.length});
   for(let offset=0;offset<pending.length;offset+=80){
     const chunk=pending.slice(offset,offset+80);
-    const rows=chunk.map(place=>({
-      trace_type:'space_anchor',title:place.title,
-      description:{text:'',address:place.postal||null,...(place.placeUrl?{url:place.placeUrl}:{})},
-      address:place.address,times:[],anchor_list:[],invisible:false
-    }));
-    const {data,error}=await relation(table).insert(rows).select('uid,title,address');
+    let rows,data,error;
+    for(let attempt=0;attempt<4;attempt++){
+      rows=chunk.map(place=>({
+        uid:allocateAnchorUid(assigned),type:'point',title:place.title,
+        description:JSON.stringify({text:'',address:place.postal||null,
+          ...(place.placeUrl?{url:place.placeUrl}:{})}),
+        attr:place.coordinates
+          ?{longitude:place.address[0],latitude:place.address[1]}:{},
+        invisible:false
+      }));
+      rows.forEach(row=>assigned.add(row.uid));
+      ({data,error}=await relation(table).insert(rows).select('uid,type,title,attr'));
+      if(error?.code==='23505'&&attempt<3)continue;
+      break;
+    }
     if(error)throw Error('新增空間定錨失敗：'+(error.message||error));
     if(!Array.isArray(data)||data.length!==rows.length)
-      throw Error('新增空間定錨回傳筆數不符；請重新核對再重試');
-    // A database is not required to return multi-insert rows in input order.
-    // Match each returned UID to the exact name/coordinate identity instead.
-    const expected=new Map(chunk.map(place=>[spatialKey(place.name,place.coordinates),place]));
+      throw Error('新增空間定錨回傳筆數不符；重新執行將沿用已寫入的定錨');
+    const expected=new Map(rows.map((row,i)=>[row.uid,chunk[i]]));
     const seen=new Set();
     for(const anchor of data){
-      const name=nameKey(anchor?.title),coordinates=importGeoKey(anchor?.address);
-      const key=spatialKey(name,coordinates);
-      const place=expected.get(key),uid=String(anchor?.uid||'');
-      if(!place||seen.has(key)||!VALID_UID.test(uid))
-        throw Error('新增空間定錨名稱、座標或 UID 不符；請重新核對');
-      seen.add(key);
+      const uid=String(anchor?.uid||''),place=expected.get(uid);
+      const key=spatialKey(nameKey(anchor?.title),importGeoKey(anchor?.attr));
+      if(!place||seen.has(uid)||anchor?.type!=='point'||
+          key!==spatialKey(place.name,place.coordinates)||!VALID_UID.test(uid))
+        throw Error('新增空間定錨名稱、座標或 UID 不符；重新執行將核對已寫入的定錨');
+      seen.add(uid);
       register(place,uid);
       timesByUid.set(uid,[]);
       created++;
@@ -171,6 +181,12 @@ const PLACE_VISIT_WRITE_CONCURRENCY=6;
 const PLACE_VISIT_WRITE_TIMEOUT_MS=45000;
 export async function recordImportPlaceVisits(visits,{relation,table,timesByUid,onProgress}={}){
   if(!Array.isArray(visits)||!visits.length){
+    onProgress?.({phase:'補齊定錨打卡時間',completed:0,total:0});
+    return {updated:0,added:0};
+  }
+  // Point.attr intentionally has no times array. Exact times stay in Galaxy,
+  // calendar dates in Date anchors; never persist legacy Trace.times here.
+  if(/^silver\\.[a-z][a-z0-9]{0,14}_anchor$/.test(String(table||''))){
     onProgress?.({phase:'補齊定錨打卡時間',completed:0,total:0});
     return {updated:0,added:0};
   }
