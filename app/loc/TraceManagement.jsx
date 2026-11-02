@@ -51,6 +51,7 @@ function AnchorEditor({scopeId,spatial,reload}){
   const renameGroups=useMemo(()=>reviewReorderedCoordinateNames(ownAnchors),[ownAnchors]);
   const filteredBulkAnchors=useMemo(()=>filterTraceAnchorsByText(ownAnchors,bulkFilter),
     [ownAnchors,bulkFilter]);
+  const selectedBulkUids=useMemo(()=>new Set(bulkUids),[bulkUids]);
   const formDirty=Boolean(editingUid||title||description||postalAddress||longitude||latitude);
   const dirty=formDirty||Object.keys(pendingRenames).length>0||Boolean(pendingVisibility);
   const pickExisting=uid=>{
@@ -201,7 +202,7 @@ function AnchorEditor({scopeId,spatial,reload}){
       </div>
       <div style={{maxHeight:'16rem',overflow:'auto'}}>
         {filteredBulkAnchors.map(row=><label key={row.uid} style={{display:'block'}}>
-          <input type="checkbox" disabled={busy||bulkBusy} checked={bulkUids.includes(row.uid)}
+          <input type="checkbox" disabled={busy||bulkBusy} checked={selectedBulkUids.has(row.uid)}
             onChange={e=>setBulkUids(ids=>e.target.checked?[...ids.filter(uid=>uid!==row.uid),row.uid]:ids.filter(uid=>uid!==row.uid))}/>
           {row.title} · {row.uid}
         </label>)}
