@@ -50,9 +50,11 @@ test('lo3rwang point manager uses physical _anchor with point and typed attrs',(
   assert.match(data,/attr\.latitude=coords\[1\]/);
   assert.match(data,/attr\.location=location/);
   assert.match(data,/type:'point'/);
-  assert.match(data,/\.rpc\('merge_scope_anchor_points'/);
+  assert.match(data,/\.rpc\('merge_scope_trace_place_names'/);
   assert.match(data,/p_scope_id:id,p_keep_uid:primary,p_remove_uids:sources/);
   assert.match(data,/merged_count/);
+  assert.match(data,/point:anchor_list\.flat\(\),path:route_list/);
+  assert.match(data,/point:type==='trace'\?anchor_list\.flat\(\):anchor_list/);
   assert.doesNotMatch(data,/delete\(\)\.in\('uid',sources\)/);
 });
 
