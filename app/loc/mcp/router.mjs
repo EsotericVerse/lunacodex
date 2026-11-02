@@ -175,7 +175,9 @@ export async function handleMcp(request,env={}){
         return rpcError(payload.id,-32602,'Tool arguments must be an object');
       if(name==='loc_connection_status')return toolResponse(payload.id,{
         connected:true,provider:'clerk',subject:identity.subject,
-        resource:config.resource,galaxyWriteEnabled:false,galaxyPublicReadEnabled:true});
+        resource:config.resource,galaxyPublicReadEnabled:true,
+        galaxyWriteSupported:true,writeRequiresScopeAuthorization:true,
+        availableTools:TOOLS.map(tool=>tool.name)});
       try{
         const value=(name==='search_memory'||name==='read_memory')?
           (name==='search_memory'?await searchMemory(args,env):await readMemory(args,env)):
