@@ -48,8 +48,8 @@ BEGIN
      IF rec->>'theme_id'=id_text THEN
        found_row:=true;
        -- Require every existing palette property and reject extra properties.
-       IF EXISTS(SELECT 1 FROM jsonb_object_keys(rec) k WHERE NOT p_value ? k)
-          OR EXISTS(SELECT 1 FROM jsonb_object_keys(p_value) k WHERE NOT rec ? k)
+       IF EXISTS(SELECT 1 FROM jsonb_object_keys(rec) AS x_key(key_name) WHERE NOT p_value ? x_key.key_name)
+          OR EXISTS(SELECT 1 FROM jsonb_object_keys(p_value) AS y_key(key_name) WHERE NOT rec ? y_key.key_name)
           OR EXISTS(SELECT 1 FROM jsonb_each_text(p_value) kv
             WHERE kv.key NOT IN ('theme_id','theme_order') AND
               (kv.value IS NULL OR btrim(kv.value)='' OR
