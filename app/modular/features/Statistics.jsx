@@ -554,7 +554,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
       {keywordClassQuery.error?<p className="scope-status scope-error" role="status">
         關鍵詞組讀取失敗：{featureDataErrorMessage(keywordClassQuery.error,UI_COPY)}
       </p>:null}
-      {<label>
+      <label>
         <span>時期</span>
         <select className="scope-select" aria-label="時期" value={selectedPeriodKey}
           onChange={event=>setSelectedPeriodKey(event.target.value)}>
@@ -565,7 +565,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
             {period.title||period.name||period.period}
           </option>)}
         </select>
-      </label>:null}
+      </label>
       {!mediaDimension&&rankingType!=='place'&&(rankingType==='source'||styleFilter==='keywords')?<label>
         <span>作品／個人分類</span>
         <select className="scope-select" aria-label="作品／個人分類" value={activeSourceSelection}
