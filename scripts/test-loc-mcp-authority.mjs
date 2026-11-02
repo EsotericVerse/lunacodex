@@ -92,6 +92,41 @@ test('100 parallel writes of one unchanged version create one article',async()=>
   assert.equal(writes,1);
 });
 
+test('built-in Scope can sync through existing Kysely without a user-supplied API key',async()=>{
+  const {do:authority}=state();
+  const calls=[];
+  globalThis.fetch=async(url,options)=>{
+    calls.push({url:String(url),body:JSON.parse(options.body),auth:options.headers.authorization});
+    return Response.json({data:{count:1}});
+  };
+  const oauth='eyJ.verified.mcp';
+  const first=await authority.mcpSave('lo3rwang',conversation,oauth);
+  const same=await authority.mcpSave('lo3rwang',conversation,oauth);
+  const changed=await authority.mcpSave('lo3rwang',{
+    ...conversation,updated_at:'2026-11-01T02:00:00Z',content:'New version'
+  },oauth);
+  assert.equal(first.saved,true);
+  assert.equal(same.saved,false);
+  assert.equal(changed.saved,true);
+  assert.equal(calls.length,2);
+  assert.equal(calls[0].url,'https://qlouywsdiiyiyzpoxyqy.supabase.co/functions/v1/loc-kysely-clerk');
+  assert.equal(calls[0].body.scopeid,'lo3rwang');
+  assert.equal(calls[0].body.kind,'mcp-sync');
+  assert.equal(calls[0].body.update_existing,false);
+  assert.equal(calls[1].body.update_existing,true);
+  assert.equal(calls[1].body.row.uid,calls[0].body.row.uid);
+  assert.equal(calls[0].body.row.searchable,false);
+  assert.equal(calls[0].body.row.statistics_able,false);
+  assert.equal(calls[0].auth,'Bearer '+oauth);
+});
+test('managed Scope rejects missing OAuth token and does not mark saved',async()=>{
+  const {do:authority}=state();
+  await assert.rejects(authority.mcpSave('lo3rwang',conversation),/MCP OAuth authorization required/);
+  const status=await authority.mcpCheckpoint('lo3rwang','chat-1',conversation.updated_at);
+  assert.equal(status.needs_save,true);
+  assert.equal(status.saved_at,null);
+});
+
 test('100 concurrent matching searches make one provider request per Scope',async()=>{
   const {do:authority}=state();
   authority.mcpPrivateProfile=async()=>profile;
