@@ -765,12 +765,55 @@ test('nested caption discovery is platform-agnostic: an X/Twitter post with no t
 });
 
 
-test('Facebook shared external URL is not incorrectly imported as its original permalink',async()=>{
+test('Facebook shared-link post imports the shared external URL, since Meta never exports the post\'s own permalink',async()=>{
   const a=await parsed('facebook-external.zip',{
     'your_facebook_activity/posts/your_posts_1.json':j([{
       id:'fb-external',timestamp:1720000000,
-      data:[{post:'分享外部新聞',url:'https://news.example.test/story'}],
+      data:[{post:'分享外部新聞'}],
       attachments:[{data:[{external_context:{url:'https://news.example.test/story'}}]}]
+    }])
+  });
+  assert.equal(a.results.length,1);
+  assert.equal(a.results[0].url,'https://news.example.test/story');
+});
+test('A real-platform post URL still wins over a shared external link in the same post',async()=>{
+  const ownUrl='https://www.facebook.com/posts/real-abc123';
+  const a=await parsed('facebook-external-and-own.zip',{
+    'your_facebook_activity/posts/your_posts_1.json':j([{
+      id:'fb-both',timestamp:1720000000,
+      data:[{post:'分享外部新聞',url:ownUrl}],
+      attachments:[{data:[{external_context:{url:'https://news.example.test/story'}}]}]
+    }])
+  });
+  assert.equal(a.results.length,1);
+  assert.equal(a.results[0].url,ownUrl);
+});
+test('Facebook "shared a link" post with a YouTube link (real export shape) imports the YouTube URL',async()=>{
+  const a=await parsed('facebook-youtube-share.zip',{
+    'your_facebook_activity/posts/your_posts_1.json':j([{
+      timestamp:1658576219,
+      attachments:[{data:[{external_context:{url:'https://www.youtube.com/watch?v=qGpe5AhV0Dk'}}]}],
+      data:[{post:'tag 學一下新知識。\nhttps://www.youtube.com/watch?v=qGpe5AhV0Dk'},
+        {update_timestamp:1658576219},{},{},{}],
+      title:'Wang Oscar 分享了 1 條連結。'
+    }])
+  });
+  assert.equal(a.results.length,1);
+  assert.equal(a.results[0].url,'https://www.youtube.com/watch?v=qGpe5AhV0Dk');
+});
+test('A check-in photo post\'s place page URL stays out of Galaxy.url (it belongs to the place, not the post)',async()=>{
+  const a=await parsed('facebook-photo-checkin.zip',{
+    'your_facebook_activity/posts/your_posts_1.json':j([{
+      timestamp:1656652590,
+      attachments:[
+        {data:[{media:{uri:'your_facebook_activity/posts/media/photo/5283612511727193.jpg',
+          creation_timestamp:1656652577,title:'行動上傳',description:'又漲了，唉'}}]},
+        {data:[{place:{name:'三重集美-三色布丁',coordinate:{latitude:25.05338,longitude:121.49086},
+          address:'241 台北市集美街161號',
+          url:'https://www.facebook.com/pages/%E4%B8%89%E9%87%8D%E9%9B%86%E7%BE%8E/176138829094369'}}]}
+      ],
+      data:[{post:'又漲了，唉'},{}],
+      title:'Wang Oscar 新增了 1 張相片。'
     }])
   });
   assert.equal(a.results.length,1);
