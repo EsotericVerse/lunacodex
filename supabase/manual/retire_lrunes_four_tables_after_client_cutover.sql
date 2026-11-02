@@ -20,6 +20,13 @@ BEGIN
      WHERE NOT EXISTS(SELECT 1 FROM silver.lrunes_anchor a
         WHERE a.title=t.title AND a.type=CASE WHEN t.type='anchor' THEN 'date' ELSE t.type END))
   THEN RAISE EXCEPTION 'Legacy lrunes_time rows missing from Anchor'; END IF;
+  IF EXISTS(SELECT 1 FROM silver.lrunes_trace t
+     WHERE NOT EXISTS(SELECT 1 FROM silver.lrunes_anchor a
+       WHERE a.title=t.title AND a.type=CASE
+         WHEN t.trace_type='space_anchor' THEN 'point'
+         WHEN t.trace_type='map' THEN 'trace'
+         ELSE t.trace_type END))
+  THEN RAISE EXCEPTION 'Legacy lrunes_trace rows missing from Anchor'; END IF;
   IF EXISTS(SELECT 1 FROM silver.lrunes_keywords k
      WHERE NOT EXISTS(SELECT 1 FROM silver.lrunes_anchor a
          WHERE a.type=k.type AND a.title=k.name))
