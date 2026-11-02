@@ -36,6 +36,7 @@ test('spatial management saves through the existing dock with visible selection 
   assert.match(page,/const refreshed=await reload\(\)/);
   assert.match(page,/disabled=\{busy\|\|bulkBusy\|\|row\.uid===editingUid\}/);
   assert.match(page,/useEditDockForm\(\{save,isDirty:/);
+  assert.match(page,/setBulkUids\(\[\]\);\s*setPendingVisibility\(null\);/);
   assert.match(workspace,/mode="anchor"/);
   assert.doesNotMatch(workspace,/value:'merge'|mode="merge"/);
 });

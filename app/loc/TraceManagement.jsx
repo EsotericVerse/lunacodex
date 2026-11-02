@@ -71,8 +71,10 @@ function AnchorEditor({scopeId,spatial,reload}){
   const pickExisting=uid=>{
     const row=ownAnchors.find(item=>item.uid===uid);
     setEditingUid(row?.uid||'');
-    // Changing the primary never leaves it selected as a merge source.
-    if(row?.uid)setBulkUids(ids=>ids.filter(id=>id!==row.uid));
+    // Switching primary starts a new merge selection. Never silently
+    // merge source checkboxes carried over from a previous primary.
+    setBulkUids([]);
+    setPendingVisibility(null);
     setTitle(row?.title||'');
     setDescription(row?.description||'');
     setPostalAddress(row?.postal_address||'');
