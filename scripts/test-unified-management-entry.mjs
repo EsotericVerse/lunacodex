@@ -56,3 +56,26 @@ test('embedded article management keeps one Hero with or without list opt-in',()
   assert.match(shell,/\{id:'suggestions',icon:'search',label:translateUiField\(activeLocale,'文章管理'\)/);
   assert.match(shell,/editTabHref\('search\/manage','section','publish'\)/);
 });
+
+test('Scope settings and Group authorization are hosted by Article Management',()=>{
+  const article=read('app/loc/SearchManagement.jsx');
+  const spatial=read('app/loc/ScopeManagement.jsx');
+  assert.match(article,/\{value:'settings',label:'主題／資料庫',shortLabel:'設定'\}/);
+  assert.match(article,/\{value:'groupAccess',label:'群組權限',shortLabel:'授權'\}/);
+  assert.match(article,/activeSection==='settings'/);
+  assert.match(article,/activeSection==='groupAccess'/);
+  assert.match(article,/account\.canManageGroupSync\(scopeId\)/);
+  assert.doesNotMatch(spatial,/<ScopeSettingsPanel|<ScopeGroupAccessPanel/);
+  assert.match(spatial,/\['settings','groupAccess','import','others'\]/);
+});
+
+test('Shared six-button edit dock keeps Save at left and Discard at right',()=>{
+  const shell=read('app/AppShell.jsx');
+  const css=read('app/styles/bottom-navigation.css');
+  assert.match(shell,/const editTabs=\[\s*\{id:'save'/);
+  assert.match(shell,/\.\.\.editDestinations,\s*\{id:'cancel'/);
+  assert.match(shell,/editingDockVisible\?editTabs\.map\(tab=>tab\.action/);
+  assert.doesNotMatch(shell,/editTabs\.filter\(/);
+  assert.match(css,/grid-template-columns:repeat\(6,minmax\(0,1fr\)\)/);
+  assert.doesNotMatch(css,/scope-feature-dock__groups|scope-feature-dock__navigation|scope-feature-dock__actions/);
+});

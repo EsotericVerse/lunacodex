@@ -513,15 +513,15 @@ function AppShellInner({children}){
       href:editScopeAvailable&&navScopeId!=='local'?editTabHref('statics/manage','edit','1'):''},
     {id:'manage',icon:'trace',label:navScopeId==='local'?'管理':translateUiField(activeLocale,'空間定錨'),
       href:navScopeId==='local'?navigationHref('local','manage',native)
-        :editTabHref('manage','section','placeManage')+'&edit=1'},
+        :editTabHref('manage','section','anchor')+'&edit=1'},
     {id:'suggestions',icon:'search',label:translateUiField(activeLocale,'文章管理'),
       href:navScopeId==='local'?navigationHref('local','search',native)
         :editTabHref('search/manage','section','publish')+'&edit=1'}
   ];
   const editTabs=[
-    {id:'save',icon:'save',label:isFeatureEditMode?translateUiField(activeLocale,'暫存'):translateUiField(activeLocale,'儲存'),action:'save'},
+    {id:'save',icon:'save',label:translateUiField(activeLocale,'儲存'),action:'save'},
     ...editDestinations,
-    {id:'cancel',icon:'cancel',label:isFeatureEditMode?'取消回普通頁面':translateUiField(activeLocale,'放棄'),action:'cancel'}
+    {id:'cancel',icon:'cancel',label:translateUiField(activeLocale,'取消'),action:'cancel'}
   ];
   const featureTabs=[
     {id:'home',icon:localWorkspace?'phone':'home',label:translateUiField(activeLocale,'首頁'),href:localWorkspace?deviceNavigation.mobileHomeHref(true):navigationHref(navScopeId,'',native)+(native&&navScopeId==='loc'?'?loc_direct=1':'')},
@@ -586,28 +586,22 @@ function AppShellInner({children}){
     {children}
     {restoreHomeEdit?<HomeEditModeRestore scopeId={scopeId}/>:null}
     <nav className="scope-feature-dock" aria-label={translateUiField(activeLocale,'固定功能選單')} data-scope={localWorkspace?'local':scopeId}>
-      {editingDockVisible?<div className="scope-feature-dock__groups">
-        <div className="scope-feature-dock__navigation" role="group" aria-label="切換管理頁">
-          {editTabs.filter(tab=>!tab.action).map(tab=>tab.href
-            ?<button type="button" key={tab.id} disabled={editDock.busy}
-              onClick={()=>editDock.switchTo(tab.href)}>
-              <BottomNavIcon name={tab.icon}/><span>{tab.label}</span>
-            </button>
-            :<button type="button" key={tab.id} disabled>
-              <BottomNavIcon name={tab.icon}/><span>{tab.label}</span>
-            </button>)}
-        </div>
-        <div className="scope-feature-dock__actions" role="group" aria-label="儲存或放棄變更">
-          {editTabs.filter(tab=>tab.action).map(tab=><button type="button" key={tab.id}
-            disabled={editDock.busy&&tab.action!=='cancel'}
-            onClick={()=>tab.action==='save'
-              ?editDock.save({stayInEditMode:isFeatureEditMode})
-              :editDock.discard(navigationHref(navScopeId,isFeatureEditMode?featureEditReturn:'',native),
-                {confirmOnlyWhenDirty:isFeatureEditMode})}>
+      {editingDockVisible?editTabs.map(tab=>tab.action
+        ?<button type="button" key={tab.id} className="scope-edit-dock-action"
+          disabled={editDock.busy&&tab.action!=='cancel'}
+          onClick={()=>tab.action==='save'
+            ?editDock.save({stayInEditMode:isFeatureEditMode})
+            :editDock.discard(navigationHref(navScopeId,isFeatureEditMode?featureEditReturn:'',native),
+              {confirmOnlyWhenDirty:isFeatureEditMode})}>
+          <BottomNavIcon name={tab.icon}/><span>{tab.label}</span>
+        </button>
+        :tab.href?<button type="button" key={tab.id} disabled={editDock.busy}
+            onClick={()=>editDock.switchTo(tab.href)}>
             <BottomNavIcon name={tab.icon}/><span>{tab.label}</span>
-          </button>)}
-        </div>
-      </div>
+          </button>
+          :<button type="button" key={tab.id} disabled>
+            <BottomNavIcon name={tab.icon}/><span>{tab.label}</span>
+          </button>)
       :featureTabs.map(tab=><ScopeLink key={tab.id} href={tab.href} native={native}
         aria-current={tab.id==='settings'?isSettings?'page':undefined:
           !isSettings&&(tab.id==='home'?(localWorkspace?(isMyPhone||isScopeHomepage):isScopeHomepage):currentFeature===tab.id)?'page':undefined}>
