@@ -1,3 +1,4 @@
+import {isUnifiedAnchorScope} from './unified-anchor-compat.mjs';
 import {flashMessage} from './flash-message.js';
 import {assertPlainGalaxyAttributes} from './content-policy.js';
 import {DB_QUERY_BATCH_SIZE,MAX_ROWS} from './query-batch-size.mjs';
@@ -322,7 +323,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     // Owner-only shortcut: current Keywords content is in the shared Anchor
     // relation, not in the legacy Keywords table read by the older RPC.
     // Guests keep the verified public/shared RPC (which redacts private data).
-    if(scope!=='lo3rwang'||!await verifiedKeywordOwner())return null;
+    if(!isUnifiedAnchorScope(scope)||!await verifiedKeywordOwner())return null;
     let uid=String(requestedUid||'');
     if(!uid){
       const config=await selectAuthRow('silver.'+scope,{
@@ -390,8 +391,8 @@ export function createDatabaseClient({publicClient,authClient,auth}){
 
   async function readSharedKeywordClasses(scopeId){
     const scope=normalizeScopeId(scopeId);
-    if(scope==='lo3rwang'&&await verifiedKeywordOwner()){
-      const {data,error}=await dbAuthRelation('silver.lo3rwang_keywords')
+    if(isUnifiedAnchorScope(scope)&&await verifiedKeywordOwner()){
+      const {data,error}=await dbAuthRelation('silver.'+scope+'_keywords')
         .select('uid,type,name').eq('type','class').order('uid',{ascending:true}).limit(500);
       if(error)throw Error(error.message||'Unified Class directory read failed');
       if(data?.length)return data.map(row=>({
@@ -503,11 +504,11 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     const category=categoryUid?tree.index.get(categoryUid):null;
     const descendants=descendantsOfKeyword(data,original.uid);
     const occupied=[...tree.index.keys()],mapping=new Map();
-    if(scope==='lo3rwang'){
+    if(isUnifiedAnchorScope(scope)){
       // Shared PK means 4-character class UIDs must not collide with
       // Time or Trace nodes. Read only UIDs, and only during copy.
       for(let offset=0;;offset+=500){
-        const {data,error}=await dbAuthRelation('silver.lo3rwang_anchor')
+        const {data,error}=await dbAuthRelation('silver.'+scope+'_anchor')
           .select('uid').order('uid',{ascending:true}).range(offset,offset+499);
         if(error)throw Error('無法核對統一定錨 UID：'+(error.message||error));
         for(const row of data||[])occupied.push(String(row.uid));
@@ -515,7 +516,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
       }
     }
     for(const node of descendants){
-      const uid=scope==='lo3rwang'?allocateAnchorUid(new Set(occupied)):
+      const uid=isUnifiedAnchorScope(scope)?allocateAnchorUid(new Set(occupied)):
         generateKeywordClassUid(occupied);
       occupied.push(uid);mapping.set(node.uid,uid);
     }
