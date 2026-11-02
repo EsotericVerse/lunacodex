@@ -123,7 +123,8 @@ test('UI is owner-only, grouped with default checkboxes, and location is protect
  assert.match(ui,/const \[excluded,setExcluded\]=useState\(\{\}\)/);
  assert.match(ui,/!excluded\[row\.uid\]/);
  assert.match(ui,/p_scope_id:scopeId,p_updates:batch/);
- assert.match(ui,/apply_scope_point_links/);
+ assert.match(ui,/rpc\('scope_type_attr'/);
+ assert.match(ui,/op:'link',mode:'place_id',updates:batch/);
  assert.doesNotMatch(ui,/rpc\('apply_timeline_missing_places'/);
  const revised=read('supabase/migrations/20261028183000_timeline_io_maxrows_10000.sql');
  assert.match(revised,/AND NULLIF\(btrim\(place_id\),''\) IS NULL/);
