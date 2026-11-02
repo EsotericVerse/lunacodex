@@ -6,6 +6,7 @@ import {useSearchParams} from 'next/navigation';
 import {FeaturePage} from '../modular/ui';
 import {useScopeRuntime} from '../modular/use-scope-runtime';
 import {useEditDock} from '../modular/edit-dock';
+import {useAccount} from './use-account';
 import ManagementSectionNav,{useManagementSection} from '../modular/ManagementSectionNav';
 
 const ManagementSearchWorkspace=dynamic(
@@ -17,6 +18,8 @@ const ManagementArticlePublisher=dynamic(()=>import('./ManagementArticlePublishe
 const ManagementMediaWorkspace=dynamic(()=>import('./ManagementMediaWorkspace'),{loading:()=>null});
 const ManagementContentTarget=dynamic(()=>import('./ManagementContentTarget'),{loading:()=>null});
 const ManagementImportPanel=dynamic(()=>import('./ManagementImportPanel'),{loading:()=>null});
+const ScopeSettingsPanel=dynamic(()=>import('./ScopeSettingsPanel'),{loading:()=>null});
+const ScopeGroupAccessPanel=dynamic(()=>import('./ScopeGroupAccessPanel'),{loading:()=>null});
 
 // Article Control sections share one Scope ownership and authorization boundary. Moving a panel
 // never changes its Scope ownership, database tables or authorizer.
@@ -33,6 +36,8 @@ const LOC_OPTIONS=Object.freeze([
   {value:'media',label:'發表多媒體',shortLabel:'媒體'},
   {value:'trace',label:'治理原則',shortLabel:'治理原則'}
 ]);
+const SETTINGS_OPTION={value:'settings',label:'主題／資料庫',shortLabel:'設定'};
+const GROUP_OPTION={value:'groupAccess',label:'群組權限',shortLabel:'授權'};
 const OLD_SCOPE_SECTION_ALIASES=Object.freeze({
   search:'publish',media:'publish',suggestions:'blocks',trace:'blocks',source:'import'
 });
@@ -40,6 +45,7 @@ const OLD_SCOPE_SECTION_ALIASES=Object.freeze({
 export default function SearchManagement(){
   const {scopeId}=useScopeRuntime();
   const editDock=useEditDock();
+  const account=useAccount();
   const searchParams=useSearchParams();
   const isLocAdmin=scopeId==='loc';
   // Personal preferences belong to the last Settings tab, not Article Control.
@@ -48,7 +54,10 @@ export default function SearchManagement(){
     if(isLocAdmin||searchParams?.get('section')!=='others')return;
     window.location.replace('/local/settings/?section=features');
   },[isLocAdmin,searchParams]);
-  const options=isLocAdmin?LOC_OPTIONS:ARTICLE_CONTROL_SECTIONS;
+  const options=isLocAdmin?[...LOC_OPTIONS,GROUP_OPTION]
+    :account.canManageGroupSync(scopeId)
+      ?[...ARTICLE_CONTROL_SECTIONS,SETTINGS_OPTION,GROUP_OPTION]
+      :[...ARTICLE_CONTROL_SECTIONS,SETTINGS_OPTION];
   const [activeSection,setSection]=useManagementSection(options,isLocAdmin?'search':'publish',
     isLocAdmin?{}:OLD_SCOPE_SECTION_ALIASES);
   const currentSection=options.find(option=>option.value===activeSection)||options[0];
@@ -98,6 +107,10 @@ export default function SearchManagement(){
 
         {!isLocAdmin&&activeSection==='import'
           ?<ManagementImportPanel key={scopeId+'-import'} scopeId={scopeId}/>:null}
+        {!isLocAdmin&&activeSection==='settings'
+          ?<ScopeSettingsPanel key={scopeId+'-settings'} scopeId={scopeId}/>:null}
+        {activeSection==='groupAccess'&&(isLocAdmin||account.canManageGroupSync(scopeId))
+          ?<ScopeGroupAccessPanel groupId={scopeId}/>:null}
         {isLocAdmin&&activeSection==='media'
           ?<ManagementContentTarget scopeId={scopeId} mode="media" globalAdmin/>:null}
         {isLocAdmin&&activeSection==='trace'?<ScopeEditableBlocks key={scopeId+'-trace'}
