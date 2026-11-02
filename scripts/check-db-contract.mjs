@@ -74,7 +74,7 @@ export function checkLocScopeBoundary(migrations=[]){
   for(const [name,sql] of migrations){
     const allow=approved.get(name);
     for(const statement of sql.split(';')){
-      const trimmed=statement.trim();
+      const trimmed=statement.replace(/--[^\n]*/g,'').replace(/\/\*[\s\S]*?\*\//g,'').trim();
       if(unsafe.test(trimmed)&&!(allow&&allow.test(trimmed)))
         throw Error('LOC group table is protected from migration writes or schema edits: '+name);
     }
