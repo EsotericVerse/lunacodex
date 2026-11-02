@@ -31,8 +31,10 @@ const projectUnified=(row,id)=>{
   const coordinates=lng!=null&&lat!=null&&Number.isFinite(Number(lng))&&Number.isFinite(Number(lat))
     ?[Number(lng),Number(lat)]:null;
   // An array of aliases is never an array of GPS coordinates.
+  const paths=Array.isArray(row.attr?.path)?row.attr.path:[];
+  const segments=Array.isArray(row.attr?.point?.[0])?row.attr.point:[];
   return readRow({...projected,attr:row.attr,address:coordinates,
-    route_list:{...projected.route_list,postal_address:address}},id);
+    route_list:{...projected.route_list,routes:paths,segments,postal_address:address}},id);
 };
 const normalizedInvisible=value=>{if(typeof value==='boolean')return value;if(value===0||value===1)return Boolean(value);throw Error('隱藏設定必須是 0 或 1');};
 const idScope=value=>{
@@ -318,8 +320,11 @@ async function validatedRouteList(scopeId,type,routeUids=[]){
     return [];
   }
   if(!ids.length)return [];
-  const rows=checked(await dbAuthRelation(relation(scopeId)).select('uid')
-    .eq('trace_type','path').in('uid',ids).limit(81),'確認下層路線圖')||[];
+  const rows=checked(await (isUnified(scopeId)
+    ?dbAuthClient.schema('silver').from(scopeId+'_anchor').select('uid')
+      .eq('type','path').in('uid',ids).limit(81)
+    :dbAuthRelation(relation(scopeId)).select('uid')
+      .eq('trace_type','path').in('uid',ids).limit(81)),'確認下層路線圖')||[];
   if(rows.length!==ids.length)throw Error('包含不存在或跨 Scope 的路線圖');
   return ids;
 }
@@ -327,6 +332,13 @@ const validUid=value=>VALID_ID.test(textValue(value));
 export async function addTraceMap({scopeId,title,description='',type='path',anchorUids=[],anchors=[],routeUids=[],invisible=false}){
   const id=writableScope(scopeId),route_list=await validatedRouteList(id,type,routeUids);
   const anchor_list=validatedConnections({scopeId:id,type,anchorUids,anchors,hasRoutes:route_list.length>0});
+  if(isUnified(id)){
+    return checked(await dbAuthClient.schema('silver').from(id+'_anchor').insert({
+      uid:allocateAnchorUid(),type,title:nonempty(title,'名稱'),
+      description:descriptionText(description),invisible:normalizedInvisible(invisible),
+      attr:type==='path'?{point:anchor_list}:{point:anchor_list,path:route_list}
+    }).select('uid').single(),'儲存路線或痕跡圖');
+  }
   return checked(await dbAuthRelation(relation(id)).insert({
     trace_type:type,title:nonempty(title,'名稱'),description:descriptionText(description),
     anchor_list:type==='path'?anchor_list:[...new Set(anchor_list.flat())],
@@ -338,6 +350,17 @@ export async function updateTraceMap({scopeId,uid,title,description='',type='pat
   if(!validUid(key))throw Error('無效 UID');
   const route_list=await validatedRouteList(id,type,routeUids);
   const anchor_list=validatedConnections({scopeId:id,type,anchorUids,anchors,hasRoutes:route_list.length>0});
+  if(isUnified(id)){
+    const current=checked(await dbAuthClient.schema('silver').from(id+'_anchor')
+      .select('uid,attr').eq('uid',key).eq('type',type).maybeSingle(),'讀取路線／痕跡圖');
+    if(!current)throw Error('指定的路線／痕跡圖不存在');
+    const attr={...(current.attr||{}),point:anchor_list};
+    if(type==='trace')attr.path=route_list;
+    return checked(await dbAuthClient.schema('silver').from(id+'_anchor')
+      .update({title:nonempty(title,'名稱'),description:descriptionText(description),
+        invisible:normalizedInvisible(invisible),attr})
+      .eq('uid',key).eq('type',type).select('uid').single(),'更新路線或痕跡圖');
+  }
   let query=dbAuthRelation(relation(id)).update({
     title:nonempty(title,'名稱'),description:descriptionText(description),
     anchor_list:type==='path'?anchor_list:[...new Set(anchor_list.flat())],
@@ -364,6 +387,8 @@ export async function updateTraceVisibilityBulk({scopeId,uids=[],invisible=false
 export async function deleteTraceMap({scopeId,uid,type='path'}){
   const id=writableScope(scopeId);
   if(!validUid(uid)||!['path','trace'].includes(type))throw Error('無效的刪除目標');
+  if(isUnified(id))return checked(await dbAuthClient.schema('silver').from(id+'_anchor')
+    .delete().eq('uid',uid).eq('type',type).select('uid').single(),'刪除路線或痕跡圖');
   let query=dbAuthRelation(relation(id)).delete().eq('uid',uid).eq('trace_type',type);
   if(id==='loc')query=query.eq('scope_id','loc');
   return checked(await query.select('uid').single(),'刪除路線或痕跡圖');
