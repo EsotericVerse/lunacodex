@@ -246,7 +246,7 @@ function searchHref(scopeId,query,filters={}){
 }
 
 
-export default function Search({managementMode=false}){
+export default function Search({managementMode:legacyManagementRoute=false}){
   useUiSection('search');
   useUiSection('uiExtra.searchUI');
   useUiSection('uiExtra.editBlocks');
@@ -257,14 +257,17 @@ export default function Search({managementMode=false}){
   const defaultTimeUnit=useDefaultTimeUnit();
   const {scopeId,scope}=useScopeRuntime();
   const {settings:userSettings,active:userActive}=useLocFeatureSettings('search');
+  // Personal list visibility is opt-in, even for an administrator.
+  const adminListRequested=Boolean(userActive&&userSettings.list===true);
   const editDock=useEditDock();
   const publicScopeEditing=Boolean(editDock?.active&&editDock.scopeId===scopeId&&scopeId!=='loc');
-  const account=useAccount({enabled:managementMode||publicScopeEditing});
+  const account=useAccount({enabled:adminListRequested||publicScopeEditing||legacyManagementRoute});
   // LOC's public Search is global. Only the separate authorized management
   // workspace may narrow the query to a specific Scope.
   const locPublicSearch=scopeId==='loc'&&!managementMode;
-  const managementAuthorized=Boolean(managementMode&&account.user&&!account.loading&&!account.permissionLoading&&
+  const managementAuthorized=Boolean(adminListRequested&&account.user&&!account.loading&&!account.permissionLoading&&
     (scopeId==='loc'?(account.canManageGroupSync('loc')||account.scopes.length>0):canManageSearchScope(account,scopeId)));
+  const managementMode=Boolean(adminListRequested&&managementAuthorized);
   const searchParams=useSearchParams();
   const router=useRouter();
   const resourceCache=useResourceCache();
@@ -725,11 +728,14 @@ export default function Search({managementMode=false}){
       // The public Search/正文 view never probes silver.loc just to show Edit.
       // Management Search already checks its entrance. Public readers are
       // verified on the actual Edit action, never on opening article text.
-      if(!managementMode){
-        const verified=await account.refresh();
-        if(!verified?.authorizer?.canManageScopeSync(result.scopeId)){
+      {
+        // The preference opens the interface, never grants write permission.
+        // Verify the current Scope when the user actually enters its editor.
+        const verified=await account.refresh({forceVerify:true});
+        const grants=verified?.authorizer;
+        if(!verified?.user||!(grants?.canManageScopeSync(result.scopeId)||
+          grants?.canManageGlobalSync()||grants?.canManageGroupSync('loc')))
           throw new Error('請先登入具有此 Scope 編輯權限的帳號。');
-        }
         setAuthorizedEditingKey(result.key);
       }
       // A reading UID fetch intentionally omits editor-only attributes.
