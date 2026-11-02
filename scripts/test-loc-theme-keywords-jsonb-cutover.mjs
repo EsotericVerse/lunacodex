@@ -11,7 +11,7 @@ test('public Theme uses LOC JSONB and Admin editor updates a single slot via aut
   assert.match(theme,/columns:'theme'/);
   assert.doesNotMatch(theme,/silver\.loc_theme/);
   assert.match(editor,/dbAuthRelation\('silver\.loc'\)\.select\('theme'\)/);
-  assert.match(editor,/p_section:'theme',p_action:'upsert'/);
+  assert.match(editor,/p_section:'theme',p_operation:'upsert'/);
   assert.match(publisher,/db\.from\('loc'\)/);
   assert.match(publisher,/\.select\('theme'\)/);
   assert.doesNotMatch(publisher,/db\.from\('loc_theme'\)/);
@@ -21,7 +21,7 @@ test('LOC Keyword registry reads and writes through authorized JSONB RPC',()=>{
   const gateway=file('app/loc/providers/kysely-runtime.mjs');
   assert.doesNotMatch(ui,/silver\.loc_keywords/);
   for(const operation of ['read','upsert','delete'])
-    assert.match(ui,new RegExp("p_section:'keywords',p_action:'"+operation+"'"));
+    assert.match(ui,new RegExp("p_section:'keywords',p_operation:'"+operation+"'"));
   assert.match(gateway,/'silver\.loc_catalog':\['p_section','p_action','p_key','p_value'\]/);
 });
 test('database migrations preserve every row then drop retired relations with RESTRICT',()=>{
