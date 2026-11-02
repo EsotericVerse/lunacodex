@@ -90,11 +90,10 @@ test('expired unified entry verifies identity and fresh scope grant before clear
   const ttl=read('app/loc/edit-session-ttl.mjs');
   const auth=read('app/loc/db-contract.mjs');
   assert.match(entry,/async function renew\(\)/);
-  assert.match(entry,/const verified=await verifyManagementEntry\(\(\)=>getAccountSession\(\)\)/);
-  assert.match(entry,/get_my_scope_management/);
-  assert.match(entry,/setAuthorization\(verified.user,Array.isArray\(data\)\?data:\[\]\)/);
-  assert.match(entry,/granted\(createScopeAuthorizer\(verified.user\),scopeId,level\)/);
-  assert.ok(entry.indexOf('if(!granted(createScopeAuthorizer')<entry.indexOf('clearEditorSession(window.sessionStorage)'));
+  assert.match(entry,/const verified=await verifyManagementEntry\(check\)/);
+  assert.match(entry,/granted\(verified.authorizer,scopeId,level\)/);
+  assert.ok(entry.indexOf('if(!granted(verified.authorizer')<entry.indexOf('clearEditorSession(window.sessionStorage)'));
+  assert.doesNotMatch(entry,/get_my_scope_management|setAuthorization|createScopeAuthorizer/);
   assert.match(entry,/touchEditorSession\(window.sessionStorage\)/);
   assert.match(ttl,/EDIT_IDLE_TTL_MS=30\*60\*1000/);
   assert.match(ttl,/EDIT_SESSION_TTL_MS=2\*60\*60\*1000/);
