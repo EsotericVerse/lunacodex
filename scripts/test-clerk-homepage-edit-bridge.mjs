@@ -57,11 +57,17 @@ test('management search refresh accepts exactly one Scope ID with required argum
     name:'refresh_search_summary_without_authorization',args:{p_scope_id:'lo3rwang'}}),
     /RPC is not enabled/);
 });
-test('Search public summary uses snapshot; refresh remains a manager-only action',()=>{
+test('Search summary only reads stored snapshot; refresh is handled by import management',()=>{
   const source=readFileSync(new URL('../app/loc/SearchSummary.jsx',import.meta.url),'utf8');
   const refresh=readFileSync(new URL('../app/loc/scope-search-summary.mjs',import.meta.url),'utf8');
-  assert.match(source,/managementMode\?<button/);
-  assert.match(source,/for\(const id of ids\)await refreshScopeSearchSummary\(id\)/);
+  assert.doesNotMatch(source,/refreshScopeSearchSummary|managementMode\?<button|onClick=\{refresh\}/);
+  const importer=readFileSync(new URL('../app/loc/ManagementImportPanel.jsx',import.meta.url),'utf8');
+  assert.match(importer,/async function refreshImportedSearchSummary\(\)/);
+  assert.match(importer,/const result=await refreshScopeSearchSummary\(scopeId\)/);
+  assert.match(importer,/if\(!nativeLocal\)await refreshImportedSearchSummary\(\)/);
+  assert.match(importer,/onClick=\{refreshImportedSearchSummary\}/);
+  assert.ok(importer.indexOf('await syncImportedMedia(')<importer.indexOf('if(!nativeLocal)await refreshImportedSearchSummary()'));
+  assert.match(importer,/catch\(error\)\{\s*setSummaryError\(true\)/);
   assert.match(refresh,/dbAuthClient\.schema\('silver'\)/);
   assert.match(refresh,/\.rpc\('refresh_scope_search_summary',\{p_scope_id:ids\[0\]\}\)/);
   assert.doesNotMatch(refresh,/silver\.scope_search_summary/);
