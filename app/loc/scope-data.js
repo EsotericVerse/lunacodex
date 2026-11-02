@@ -13,12 +13,12 @@ import {loadPublishedBlocks} from '../modular/published-blocks/index.js';
 // app-bootstrap request (see app/loc/app-bootstrap.js); there is no
 // standalone per-page RPC call for it any more.
 // silver.manage 為最高權限與 Registry 主表，silver.loc 為 LOC 本身設定；管理授權由
-// email/manage_role/galaxy_table/time_table/birthday 欄位提供，
+// email/manage_role/galaxy_table/anchor_table/birthday 欄位提供，
 // 公開查詢絕不包含 email；權限驗證由受保護的管理 RPC 提供。
 // 以下只對非機密欄位使用 PostgREST alias，
 // buildScopeData/scopeDataFromManageRows 完全不需要改動。
 export const MANAGE_TABLE='silver.manage';
-const MANAGE_COLUMNS='id,role:manage_role,galaxy:galaxy_table,time:time_table,birthday';
+const MANAGE_COLUMNS='id,role:manage_role,galaxy:galaxy_table,anchor:anchor_table,birthday';
 const MANAGE_ROLE_COLUMN='manage_role';
 
 const SCOPE_ID_PATTERN=/^[a-z][a-z0-9]{0,14}$/;
@@ -36,7 +36,7 @@ function requiredToken(value,label){
 
 function buildScopeData(row,id){
   const galaxySuffix=requiredToken(row?.galaxy,'galaxy');
-  const timeSuffix=requiredToken(row?.time,'time');
+  const anchorSuffix=requiredToken(row?.anchor,'anchor');
   const galaxy=`silver.${id}_${galaxySuffix}`;
   return {
     id,
@@ -45,10 +45,10 @@ function buildScopeData(row,id){
     birthday:String(row?.birthday||'').slice(0,10)||null,
     galaxy,
     // One physical store for Time, Trace, Keywords and Media.
-    anchor:'silver.'+id+'_anchor',
+    anchor:`silver.${id}_${anchorSuffix}`,
     galaxyMedia:galaxy+'_media',
     // Compatibility aliases are resolved only by the DB adapter.
-    time:`silver.${id}_${timeSuffix}`,
+    time:`silver.${id}_${anchorSuffix}`,
     keywords:`silver.${id}_keywords`,
     blocks:`silver.${id}_blocks`
   };
@@ -66,8 +66,8 @@ export function scopeDataFromManageRows(rows=[]){
     if(!SCOPE_ID_PATTERN.test(id))continue;
     const next=buildScopeData(row,id);
     const current=scopes.get(id);
-    if(current&&(current.galaxy!==next.galaxy||current.time!==next.time)){
-      throw new Error('silver.loc Scope '+id+' 的 galaxy/time 設定不一致');
+    if(current&&(current.galaxy!==next.galaxy||current.anchor!==next.anchor)){
+      throw new Error('silver.loc Scope '+id+' 的 galaxy/anchor 設定不一致');
     }
     scopes.set(id,current
       ?{...current,role:current.role==='admin'||next.role==='admin'?'admin':next.role,birthday:current.birthday||next.birthday}
