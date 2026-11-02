@@ -3,13 +3,12 @@
 import {useState} from 'react';
 import {useAsyncResource} from '../../use-async-resource';
 import {useSWRConfig} from 'swr';
-import {dbAuthRelation} from '../../db-client.mjs';
+import {dbAuthClient} from '../../db-client.mjs';
 import {useAccount} from '../../use-account';
 import {useEditDockForm} from '../../../modular/edit-dock';
 
 // The reserved ID list protects routing: this Admin page edits NOTES only.
 // Adding, renaming and deleting reserved IDs are intentionally unavailable.
-const TABLE='silver.block_scopeid';
 
 export default function AdminReservedScopeIds(){
   const account=useAccount();
@@ -19,9 +18,10 @@ export default function AdminReservedScopeIds(){
   const [message,setMessage]=useState('');
   const allowed=Boolean(account.user&&!account.loading&&!account.permissionLoading&&account.canManageGlobalSync());
   const query=useAsyncResource(['admin-reserved-scope-ids'],async()=>{
-    const {data,error}=await dbAuthRelation(TABLE).select('id,note').order('id');
+    const {data,error}=await dbAuthClient.schema('silver').rpc('loc_admin_settings',
+      {p_section:'scopeid',p_operation:'read'});
     if(error)throw new Error(error.message||'保留名稱讀取失敗。');
-    return data||[];
+    return (data||[]).sort((a,b)=>a.id.localeCompare(b.id));
   },{enabled:allowed});
   const rows=query.data||[];
   const changed=rows.filter(row=>String(notes[row.id]??row.note??'').trim()!==String(row.note||'').trim());
@@ -33,9 +33,9 @@ export default function AdminReservedScopeIds(){
     try{
       for(const row of changed){
         const note=String(notes[row.id]??row.note??'').trim();
-        const {data,error}=await dbAuthRelation(TABLE)
-          .update({note:note||null}).eq('id',row.id).select('id');
-        if(error||!data?.length)throw new Error(error?.message||'備註未儲存。');
+        const {error}=await dbAuthClient.schema('silver').rpc('loc_admin_settings',
+          {p_section:'scopeid',p_operation:'note',p_key:row.id,p_value:note||''});
+        if(error)throw new Error(error?.message||'備註未儲存。');
       }
       await mutate(key=>Array.isArray(key)&&['admin-reserved-scope-ids','settings-scope-registry'].includes(key[0]));
       setNotes({});
