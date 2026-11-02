@@ -3,32 +3,33 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
-test('Place management exposes four explicit task panels, only one at a time',()=>{
+test('Four spatial tasks live in first-level management; no nested classification',()=>{
   const source=read('app/loc/PlaceManagement.jsx');
+  const parent=read('app/loc/ScopeManagement.jsx');
   for(const label of ['空間定錨點','名稱整理','Timeline 地點整理','快速補打卡'])
     assert.ok(source.includes(label),label);
-  assert.match(source,/active==='anchor'\?<TraceManagement scopeId=\{scopeId\} mode="anchor"/);
-  assert.match(source,/active==='names'\?<TraceManagement scopeId=\{scopeId\} mode="cleanup"/);
-  assert.match(source,/active==='timeline'\?<TimelinePlaceManager/);
-  assert.match(source,/active==='quickFill'\?<PlaceBatchFill/);
-  assert.doesNotMatch(source,/<details/);
-  assert.match(source,/scopeId==='loc'\?PLACE_OPTIONS.filter/);
+  assert.match(parent,/\.\.\.PLACE_OPTIONS\.filter/);
+  assert.match(parent,/:PLACE_OPTIONS;/);
+  assert.match(parent,/PLACE_KEYS\.has\(section\)\?<PlaceManagement scopeId=\{routeScopeId\} section=\{section\}/);
+  assert.match(source,/section==='anchor'\?<TraceManagement scopeId=\{scopeId\} mode="anchor"/);
+  assert.match(source,/section==='names'\?<TraceManagement scopeId=\{scopeId\} mode="cleanup"/);
+  assert.match(source,/section==='timeline'\?<TimelinePlaceManager/);
+  assert.match(source,/section==='quickFill'\?<PlaceBatchFill/);
+  assert.doesNotMatch(source,/ManagementSectionNav|useState|<details/);
+  assert.doesNotMatch(parent,/value:'placeManage'/);
 });
-test('Switching the task panel protects unsaved edits via the existing edit dock',()=>{
-  const source=read('app/loc/PlaceManagement.jsx');
-  assert.match(source,/dock\.switchSection\(next,setSection\)/);
-  assert.match(source,/aria-labelledby=\{navId\+'-option-'\+active\}/);
-  assert.match(source,/ManagementSectionNav id=\{navId\}/);
+test('Spatial task switching protects pending edits via the existing dock',()=>{
+  const parent=read('app/loc/ScopeManagement.jsx');
+  assert.match(parent,/editDock\.switchSection\(next,setSection\)/);
+  assert.match(parent,/aria-labelledby=\{'scope-sections-option-'\+selectedOption\.value\}/);
+  assert.match(parent,/ManagementSectionNav id="scope-sections"/);
+  assert.match(parent,/\{traceAnchor:'anchor',placeManage:'anchor'\}/);
 });
-test('Subnavigation uses theme tokens, visible active/focus state and 2-column mobile grid',()=>{
+test('Top-level navigation keeps accessible focus and responsive theme styles',()=>{
   const css=read('app/styles/settings-select.css');
-  const component=css.slice(css.indexOf('/* Second-level Place Manager navigation.'));
-  assert.match(component,/grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/);
-  assert.match(component,/grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
-  assert.match(component,/\[aria-pressed="true"\]/);
-  assert.match(component,/:focus-visible/);
-  assert.match(component,/min-height:3\.35rem/);
-  assert.doesNotMatch(component,/#[0-9A-Fa-f]{3,8}\b/);
+  assert.match(css,/\.management-section-nav__items/);
+  assert.match(css,/\.management-section-nav__item\[aria-pressed="true"\]/);
+  assert.match(css,/\.management-section-nav__item:focus-visible/);
 });
 
 test('Timeline analysis is isolated from initial management entry',()=>{
@@ -65,5 +66,5 @@ test('Timeline opens with the configured Auth SDK rather than the query-only dat
   assert.doesNotMatch(timeline,/dbAuthClient\.auth/);
   assert.match(db,/export const dbAuthEvents=adapter\.auth;/);
   assert.match(provider,/auth:authenticatedSdk\.auth/);
-  assert.match(place,/active==='timeline'\?<TimelinePlaceManager/);
+  assert.match(place,/section==='timeline'\?<TimelinePlaceManager/);
 });
