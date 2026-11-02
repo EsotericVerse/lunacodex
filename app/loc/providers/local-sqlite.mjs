@@ -560,7 +560,7 @@ function localGalaxyAbleMigration(columns){
   if(columns.some(column=>column.name==='able'))return [];
   const searchable=columns.some(column=>column.name==='searchable')?'searchable':'1';
   const statistics=columns.some(column=>column.name==='statistics_able')?'statistics_able':'1';
-  const boolean=expr=>"CASE WHEN "+expr+"=0 THEN json('false') ELSE json('true') END";
+  const boolean=expr=>"CASE WHEN ("+expr+")=0 THEN json('false') ELSE json('true') END";
   const values=[
     "'statics',"+boolean(statistics),"'culture',"+boolean(statistics),
     "'search',"+boolean(searchable),"'trace',"+boolean(searchable+' AND '+statistics),
