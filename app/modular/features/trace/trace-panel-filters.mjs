@@ -55,11 +55,11 @@ export function traceMediaMatches(articles=[],media=[]){
   return articles.filter(row=>Array.isArray(row.media_link)&&row.media_link.some(id=>matchingIds.has(String(id))));
 }
 
-/** Four-character article identity; original location remains display-only. */
+/** The physical place UID may be four (legacy) or eight characters; preserve case. */
 export function traceArticleIdFilters(placeIds,{startDate='',endDate='',sourceName=''}={}){
   const ids=[...new Set((Array.isArray(placeIds)?placeIds:[])
-    .map(id=>String(id||'').trim().toUpperCase())
-    .filter(id=>/^[A-Z0-9]{4}$/.test(id)))];
+    .map(id=>String(id||'').trim())
+    .filter(id=>/^(?:[A-Za-z0-9]{4}|[A-Za-z0-9]{8})$/.test(id)))];
   if(!ids.length)return [{column:'place_id',operator:'eq',value:'__NO_PLACE_ID__'}];
   return [
     {column:'place_id',operator:ids.length===1?'eq':'in',value:ids.length===1?ids[0]:ids},
