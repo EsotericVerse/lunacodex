@@ -1014,14 +1014,15 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           :<p>目前帳號沒有這個 Scope 的管理搜尋權限。</p>}
     </section>
   </FeaturePage>;
-  if(aggregateScopes)return <FeaturePage featureId="search">
-    <ScopeGroupOverview
+  if(aggregateScopes){
+    const overview=<ScopeGroupOverview
       scopeId={scopeId}
       featureId="search"
       title={t('uiExtra.searchUI.memberSearch')}
       description=""
-    />
-  </FeaturePage>;
+    />;
+    return legacyManagementRoute?overview:<FeaturePage featureId="search">{overview}</FeaturePage>;
+  }
 
   // Suggested terms are curated examples, not unverified live popularity rankings.
   // Reuse URL-driven search so history, filters and the existing provider stay authoritative.
@@ -1421,9 +1422,12 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     />
     </div>
   </>;
-  // The legacy management workspace already provides its own FeaturePage.
-  // A user opting in from ordinary Search must retain the normal page shell.
-  if(managementMode)return legacyManagementRoute?pageContent:<FeaturePage featureId="search">{pageContent}</FeaturePage>;
+  // The management workspace owns its Hero even when the user's management
+  // list opt-in is off or permission verification is pending. Never mount
+  // a second FeaturePage inside its existing page shell.
+  if(legacyManagementRoute)return pageContent;
+  // A user opting in from ordinary Search still needs a standalone page shell.
+  if(managementMode)return <FeaturePage featureId="search">{pageContent}</FeaturePage>;
   return <FeaturePage featureId="search">
     <div className="scope-search-view-labels" role="group" aria-label={UI_COPY.features.search.title+' / '+UI_COPY.features.trace.detailsLabel}>
       <button type="button" aria-pressed={publicView==='search'}
