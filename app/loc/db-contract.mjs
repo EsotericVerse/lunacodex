@@ -5,6 +5,7 @@ import {parseVerifiedGoogleOAuthUser} from './oauth-identity.mjs';
 import {assertAuthorizationForTable,clearAuthorization,readAuthorization} from './authorization-runtime.mjs';
 import {assertEditorSession} from './edit-session-ttl.mjs';
 import {unifiedAnchorSpec} from './unified-anchor-compat.mjs';
+import {isScopedGalaxy,prepareGalaxyInsertRows,prepareGalaxyUpdateValues} from './galaxy-able.mjs';
 
 // Keyword read, write and reset use the shared MaxRows.
 export {MAX_ROWS as KEYWORD_CLASSIFICATION_BATCH_SIZE,MAX_ROWS as KEYWORD_CLASSIFICATION_WRITE_BATCH_SIZE,MAX_ROWS as KEYWORD_CLASSIFICATION_WRITE_PAUSE_INTERVAL};
@@ -77,6 +78,13 @@ export function createDatabaseClient({publicClient,authClient,auth}){
 
   async function managementWriteUnchecked(payload){
     preflightWrite(payload?.p_table);
+    // Every standard insert/import goes through this boundary; newer builds
+    // dual-write Galaxy.able while legacy columns remain for older deployments.
+    if(isScopedGalaxy(payload?.p_table)&&payload?.p_operation==='insert')
+      payload={...payload,p_rows:prepareGalaxyInsertRows(payload.p_table,payload.p_rows||[])};
+    if(isScopedGalaxy(payload?.p_table)&&payload?.p_operation==='update'&&
+      Object.hasOwn(payload.p_values||{},'able'))
+      payload={...payload,p_values:prepareGalaxyUpdateValues(payload.p_table,payload.p_values)};
     // The unified anchor store is already governed by the Clerk-verified
     // authenticated Kysely client and its database RLS. Legacy management
     // SQL RPCs are never used for this cutover.
