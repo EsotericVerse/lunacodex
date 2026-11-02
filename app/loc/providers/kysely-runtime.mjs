@@ -22,6 +22,7 @@ export const RPC_ALLOWLIST={
   'silver.refresh_scope_search_summary':['p_scope_id'],
   'silver.get_my_scope_management':[],
   'silver.loc_admin_settings':['p_section','p_operation','p_key','p_value'],
+  'silver.loc_catalog':['p_section','p_action','p_key','p_value'],
   'silver.read_music_style_tree':[],
   // These existing scope procedures perform database-side permission checks,
   // atomic multi-row writes, or bounded indexed lookups. Do not recreate
@@ -45,6 +46,7 @@ const RPC_REQUIRED_ARGUMENTS={
   'silver.read_scope_search_summary':['p_scope_ids'],
   'silver.refresh_scope_search_summary':['p_scope_id'],
   'silver.loc_admin_settings':['p_section'],
+  'silver.loc_catalog':['p_section'],
   'silver.import_shared_keyword_class':['p_target_scope','p_source_scope','p_class_uid'],
   'silver.save_scope_trace_place_names':['p_scope_id','p_uid','p_names'],
   'silver.preview_timeline_place_page_json':['p_scope_id','p_windows'],
