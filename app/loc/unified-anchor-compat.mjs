@@ -3,7 +3,7 @@
 // System/legacy Scopes are excluded until their independent migrations finish.
 // No SQL, DDL, table creation, migration or old-data synchronization here.
 const legacyName=/^([a-z][a-z0-9]{0,14})_(time|trace|keywords|galaxy_media)$/;
-const pendingAnchorScopes=new Set(['loc','lrunes']);
+const pendingAnchorScopes=new Set(['loc']);
 export const isUnifiedAnchorScope=scopeId=>/^[a-z][a-z0-9]{0,14}$/.test(String(scopeId||''))&&!pendingAnchorScopes.has(String(scopeId));
 const physicalColumns=['uid','type','title','description','invisible','attr'];
 const legacyKinds={time:'time',trace:'trace',keywords:'keywords',galaxy_media:'media'};
