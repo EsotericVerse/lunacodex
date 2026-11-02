@@ -160,3 +160,49 @@ test('unified source code does not project or persist the removed label column',
   assert.doesNotMatch(code,/\bout\.label\s*=/);
   assert.doesNotMatch(code,/\brow\.label\b/);
 });
+
+
+test('point location arrays retain readable names and survive address/coordinate edits',async()=>{
+  const trace=spec('trace');
+  const stored={uid:'P1234567',type:'point',attr:{
+    longitude:121.5,latitude:25.1,location:['板橋','新北市板橋區']
+  }};
+  assert.deepEqual(fromAnchorRow(trace,stored).address,[121.5,25.1]);
+  assert.equal(fromAnchorRow(trace,{...stored,attr:{location:['板橋','新北市板橋區']}}).address,'板橋');
+  let written=null;
+  const schema={from:()=>({
+    select:()=>({
+      eq(){return this},in(){return this},
+      maybeSingle:async()=>({data:stored,error:null})
+    }),
+    update:values=>{
+      written=values;
+      return {eq(){return this},select:async()=>({
+        data:[{...stored,...values}],error:null
+      })};
+    }
+  })};
+  await unifiedAnchorRelation(schema,trace)
+    .update({route_list:{postal_address:'新北市'}})
+    .eq('uid','P1234567').select('uid');
+  assert.deepEqual(written.attr.location,['新北市','板橋','新北市板橋區']);
+  await unifiedAnchorRelation(schema,trace)
+    .update({address:null}).eq('uid','P1234567').select('uid');
+  assert.deepEqual(written.attr.location,['板橋','新北市板橋區']);
+  assert.equal(Object.hasOwn(written.attr,'longitude'),false);
+  assert.equal(Object.hasOwn(written.attr,'latitude'),false);
+});
+
+test('retirement SQL preserves existing Anchor B-trees and repairs UID8 RPCs',()=>{
+  const sql=readFileSync(new URL(
+    '../supabase/migrations/20261103043000_lo3rwang_anchor_cutover_and_legacy_rpc_repair.sql',
+    import.meta.url),'utf8');
+  assert.doesNotMatch(sql,/CREATE\s+(?:UNIQUE\s+)?INDEX\b/i);
+  for(const fn of ['apply_timeline_missing_places','apply_timeline_place_ids',
+    'merge_scope_trace_place_names','save_scope_trace_place_names',
+    'search_scope_trace_place_names'])assert.ok(sql.includes('silver.'+fn));
+  assert.ok(sql.includes("WHEN p_scope_id='lo3rwang' THEN '8' ELSE '4'"));
+  assert.ok(sql.includes("lo3rwang_anchor"));
+  assert.ok(sql.includes('DROP TABLE IF EXISTS silver.lo3rwang_time RESTRICT'));
+  assert.ok(sql.includes('DROP TABLE IF EXISTS silver.lo3rwang_keywords RESTRICT'));
+});
