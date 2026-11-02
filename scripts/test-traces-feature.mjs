@@ -9,6 +9,21 @@ import {
 const pathOf=path=>new URL('../'+path,import.meta.url);
 const read=path=>readFileSync(pathOf(path),'utf8');
 
+test('bulk Trace saving keeps the reloaded anchor query instead of clearing it',()=>{
+  const ui=read('app/loc/TraceManagement.jsx');
+  assert.match(ui,/const refreshed=await reload\(\)/);
+  assert.match(ui,/!Array\.isArray\(refreshed\?\.anchors\)/);
+  assert.doesNotMatch(ui,/cache\.invalidate\(\{queryKey:traceKey\(scopeId\)\}\)/);
+  assert.match(ui,/query\.isPending\|\|query\.data===undefined/);
+  assert.match(ui,/const spatial=query\.data;/);
+  assert.match(ui,/cache\.invalidate\(\{queryKey:traceAllAnchorsKey\(scopeId\)\}\)/);
+  const db=read('app/loc/db-client.mjs');
+  const adapter=read('app/loc/unified-anchor-compat.mjs');
+  assert.match(db,/unified\?unifiedAnchorRelation\(cloudSchema,unified\):cloudSchema\.from\(table\)/);
+  assert.match(adapter,/matched\[1\]!=='lo3rwang'/);
+  assert.match(adapter,/trace:\['point','path','trace'\]/);
+});
+
 test('bulk spatial anchor text search filters the active Scope and selects all matching UIDs without clearing other choices',()=>{
   const anchors=[
     {uid:'Aa12Zx90',title:'板橋車站',postal_address:'新北市板橋區',description:'鐵路'},

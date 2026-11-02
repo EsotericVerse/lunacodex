@@ -107,12 +107,17 @@ function AnchorEditor({scopeId,spatial,reload}){
           });
         setPendingVisibility(null);setBulkUids([]);
       }
+      // reload() already revalidates the mounted, authenticated Trace query.
+      // Invalidating that very key again would erase the fresh result and
+      // expose an empty anchor list on the next edit without another fetch.
       let refreshFailed=false;
-      try{await reload();}catch{refreshFailed=true;}
+      try{
+        const refreshed=await reload();
+        if(!Array.isArray(refreshed?.anchors))refreshFailed=true;
+      }catch{refreshFailed=true;}
       try{await revalidateServerMetadata();}catch{refreshFailed=true;}
       await Promise.allSettled([
         cache.invalidate({queryKey:traceAllAnchorsKey(scopeId)}),
-        cache.invalidate({queryKey:traceKey(scopeId)}),
         cache.invalidate({queryKey:['trace-map-index',scopeId]}),
         cache.invalidate({queryKey:['trace-current',scopeId]})
       ]);
@@ -249,9 +254,10 @@ export default function TraceManagementPanel({scopeId,mode='anchor'}){
   });
   if(!enabled)return <p className="scope-status">此 Scope 尚未配置痕跡資料表。</p>;
   if(mode==='map')return <TraceRouteManager key={scopeId+'-map'} scopeId={scopeId}/>;
-  if(query.isPending)return <p className="scope-status" role="status">正在載入空間定錨點…</p>;
   if(query.error)return <p role="alert" className="scope-status scope-error">{String(query.error.message||query.error)}</p>;
-  const spatial=query.data||{anchors:[],maps:[]};
+  if(query.isPending||query.data===undefined)
+    return <p className="scope-status" role="status">正在載入空間定錨點…</p>;
+  const spatial=query.data;
   return mode==='cleanup'
     ?<TraceOrganizer key={scopeId+'-cleanup'} scopeId={scopeId} spatial={spatial} reload={()=>query.mutate()}/>
     :<AnchorEditor key={scopeId+'-anchor'} scopeId={scopeId} spatial={spatial} reload={()=>query.mutate()}/>;
