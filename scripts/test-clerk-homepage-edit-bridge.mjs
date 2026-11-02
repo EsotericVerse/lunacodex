@@ -23,10 +23,10 @@ test('unsigned, other-origin and unverified claims are never promoted',()=>{
     assert.throws(()=>clerkSqlClaims(payload,{issuer,origin}));
   }
 });
-test('home editor can read existing permission RPC through Kysely as a rowset',()=>{
-  assert.deepEqual(RPC_ALLOWLIST['silver.get_my_scope_management'],[]);
+test('home editor uses canonical fixed-column management RPC',()=>{
+  assert.deepEqual(RPC_ALLOWLIST['silver.manage'],['p_type','p_id']);
   const built=buildAllowlistedRpcQuery({kind:'rpc',schema:'silver',
-    name:'get_my_scope_management',args:{}});
+    name:'manage',args:{p_type:'self'}});
   assert.equal(built.returnsRows,true);
 });
 test('unified management RPC returns typed rows with fixed arguments',()=>{
