@@ -1,0 +1,67 @@
+/* Shared zebra rows: the active LOC theme supplies both colors.
+   Only record/list items participate; controls, group headings and load sentinels do not. */
+:root{
+  --loc-list-row-odd:var(--loc-panel);
+  --loc-list-row-even:var(--loc-panel-2);
+}
+
+/* Article lists (search/management, culture, statistics), linked records,
+   media records, timelines and existing reusable lists. */
+:is(.scope-list,.scope-culture-source-work-scroll,.scope-media-meta-list,
+    .scope-timeline,.loc-timeline,.scope-literature-chapters,
+    .loc-context-list,.loc-link-list)
+  > :is(article,li,.loc-context-item,.loc-link-card):nth-of-type(odd){
+  background:var(--loc-list-row-odd);
+}
+:is(.scope-list,.scope-culture-source-work-scroll,.scope-media-meta-list,
+    .scope-timeline,.loc-timeline,.scope-literature-chapters,
+    .loc-context-list,.loc-link-list)
+  > :is(article,li,.loc-context-item,.loc-link-card):nth-of-type(even){
+  background:var(--loc-list-row-even);
+}
+
+/* Style-tag recommendations retain their accent while alternating. */
+:is(.scope-list,.scope-culture-source-work-scroll)
+  > .scope-article-style-tag-hit:nth-of-type(odd){
+  background:linear-gradient(110deg,
+    color-mix(in srgb,var(--loc-accent) 9%,var(--loc-list-row-odd)),
+    var(--loc-list-row-odd) 65%);
+}
+:is(.scope-list,.scope-culture-source-work-scroll)
+  > .scope-article-style-tag-hit:nth-of-type(even){
+  background:linear-gradient(110deg,
+    color-mix(in srgb,var(--loc-accent) 9%,var(--loc-list-row-even)),
+    var(--loc-list-row-even) 65%);
+}
+
+/* Article relationship rows: reference, previous/next, media, time,
+   space, statistics and keywords use the same two theme colors. */
+.scope-article-context-row{
+  padding:.45rem .7rem;
+  border-radius:var(--loc-ui-radius-sm);
+}
+.scope-article-context-row:nth-of-type(odd){background:var(--loc-list-row-odd)}
+.scope-article-context-row:nth-of-type(even){background:var(--loc-list-row-even)}
+.scope-article-context-down[open] > .scope-article-context-items > a{
+  display:block;
+  padding:.35rem .55rem;
+  border-radius:var(--loc-ui-radius-sm);
+}
+.scope-article-context-down[open] > .scope-article-context-items > a:nth-of-type(odd){background:var(--loc-list-row-odd)}
+.scope-article-context-down[open] > .scope-article-context-items > a:nth-of-type(even){background:var(--loc-list-row-even)}
+
+/* Source/result groups, ranked records and list-style metadata. */
+:is(.scope-ranking,.loc-ranking,.loc-history) > div:nth-of-type(odd),
+.scope-culture-source-groups > .scope-culture-source-button:nth-of-type(odd):not([aria-pressed="true"]),
+:is(.scope-article-rune-list,.scope-culture-rune-list ul,.loc-trace-selection-order) > li:nth-of-type(odd),
+.loc-timeline-review-row:nth-of-type(odd){background:var(--loc-list-row-odd)}
+:is(.scope-ranking,.loc-ranking,.loc-history) > div:nth-of-type(even),
+.scope-culture-source-groups > .scope-culture-source-button:nth-of-type(even):not([aria-pressed="true"]),
+:is(.scope-article-rune-list,.scope-culture-rune-list ul,.loc-trace-selection-order) > li:nth-of-type(even),
+.loc-timeline-review-row:nth-of-type(even){background:var(--loc-list-row-even)}
+
+/* Tables use row backgrounds without changing column layout or sticky headers. */
+:is(.loc-table,.scope-stat-table) > tbody > tr:nth-child(odd){background:var(--loc-list-row-odd)}
+:is(.loc-table,.scope-stat-table) > tbody > tr:nth-child(even){background:var(--loc-list-row-even)}
+
+/* Preserve text contrast and keyboard focus from the existing theme styles. */
