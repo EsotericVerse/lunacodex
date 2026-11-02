@@ -116,6 +116,16 @@ function loadManagementAccount(mutate){
   return current;
 }
 
+// Reuse the previously verified identity/role on management page navigation.
+// Auth changes clear this grant; database writes still enforce server permission.
+export function readVerifiedManagementEntry(){
+  const grant=readAuthorization();
+  if(!grant||!authUserId||grant.userId!==authUserId||grant.email!==authEmail)return null;
+  const user={id:grant.userId,email:grant.email};
+  const authorizer=createScopeAuthorizer(user);
+  return authorizer?{user,authorizer}:null;
+}
+
 export function useAccount({enabled=true,sessionOnly=false}={}){
   const {mutate}=useSWRConfig();
   const queryKey=sessionOnly?(enabled?VERIFIED_SESSION_KEY:SESSION_KEY):MANAGEMENT_KEY;
