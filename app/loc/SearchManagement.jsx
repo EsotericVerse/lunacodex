@@ -54,12 +54,19 @@ export default function SearchManagement(){
     if(isLocAdmin||searchParams?.get('section')!=='others')return;
     window.location.replace('/local/settings/?section=features');
   },[isLocAdmin,searchParams]);
+  const groupAuthorized=isLocAdmin||account.canManageGroupSync(scopeId);
   const options=isLocAdmin?[...LOC_OPTIONS,GROUP_OPTION]
-    :account.canManageGroupSync(scopeId)
+    :groupAuthorized
       ?[...ARTICLE_CONTROL_SECTIONS,SETTINGS_OPTION,GROUP_OPTION]
       :[...ARTICLE_CONTROL_SECTIONS,SETTINGS_OPTION];
   const [activeSection,setSection]=useManagementSection(options,isLocAdmin?'search':'publish',
     isLocAdmin?{}:OLD_SCOPE_SECTION_ALIASES);
+  // Clerk authorization can arrive after the section query is first read.
+  // Restore a bookmarked Group Access tab once its permission is available.
+  useEffect(()=>{
+    if(groupAuthorized&&searchParams?.get('section')==='groupAccess'&&activeSection!=='groupAccess')
+      setSection('groupAccess');
+  },[groupAuthorized,activeSection,searchParams,setSection]);
   const currentSection=options.find(option=>option.value===activeSection)||options[0];
 
   return <FeaturePage featureId="search">
