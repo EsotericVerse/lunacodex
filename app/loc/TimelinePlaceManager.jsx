@@ -254,8 +254,8 @@ export default function TimelinePlaceManager({scopeId}){
         if(Date.now()>=deadline)throw Error('批次寫入已達 5 分鐘操作期限；請核對已成功寫入筆數。');
         assertEditorSession(window.sessionStorage);
         const batch=updates.slice(i,i+WRITE_BATCH);
-        const result=await dbAuthClient.schema('silver').rpc('apply_timeline_place_ids',{
-          p_scope_id:scopeId,p_updates:batch
+        const result=await dbAuthClient.schema('silver').rpc('apply_scope_point_links',{
+          p_scope_id:scopeId,p_updates:batch,p_mode:'place_id'
         });
         if(run!==runRef.current)break;
         const affected=Number(checked(result,'批次補寫 place_id')||0);
