@@ -578,7 +578,7 @@ function managementArticleProviders(scope,{contentType='',sourceFilter='',source
   ];
   const base={
     table:current.galaxy,source:current.id+' 文章',scope:current,idColumn:'uid',
-    columns:['uid','title','createtime'],dateColumn:dayColumn(current.galaxy),filters,sourceClause:sourceNameClause(selection),
+    columns:['uid','title','createtime','able'],dateColumn:dayColumn(current.galaxy),filters,sourceClause:sourceNameClause(selection),
     authenticated:true
   };
   if(placeOnly)return [makeProvider({
@@ -609,11 +609,12 @@ function genericScopeProviders(scope,{mediaOnly=false,includeHiddenText=false,co
   const current=scopeOf(scope);
   const textFilters=includeHiddenText
     ?textKindFilters
-    :publicContentFilters([{column:'searchable',operator:'eq',value:true},...textKindFilters]);
+    :publicContentFilters([{column:'searchable',operator:'eq',value:true},
+      {column:'able->>search',operator:'eq',value:'true'},...textKindFilters]);
   // Article content is a search predicate, not a list payload. Fetch it only
   // when the result is explicitly opened or edited.
   // Match with narrow, bounded UID-only pages; hydrate display fields later.
-  const textColumns=['uid','title','createtime'];
+  const textColumns=['uid','title','createtime','able'];
   // Existing LOC search provider, narrowed to Galaxy's check-in field only.
   // No article body is fetched by this search stage.
   if(placeOnly)return [makeProvider({
