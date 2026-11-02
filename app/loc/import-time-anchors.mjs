@@ -78,7 +78,7 @@ export async function prepareImportTimeAnchors(records,{
   // The registry supplies the logical Time relation, but the physical source
   // of truth for every scoped Date is its unified *_anchor table.
   const logical=String(timeTable||'').trim();
-  if(!/^silver\\.[a-z][a-z0-9_]*$/.test(logical)||
+  if(!/^silver\.[a-z][a-z0-9_]*$/.test(logical)||
       !logical.startsWith('silver.'+scopeId+'_'))
     throw Error('日期定錨尚未解析正確的 Scope Time 資料表');
   const table='silver.'+scopeId+'_anchor';
@@ -92,7 +92,7 @@ export async function prepareImportTimeAnchors(records,{
     const rows=data||[];
     for(const row of rows){
       const day=String(row.attr?.date||'').slice(0,10);
-      if(/^\\d{4}-\\d{2}-\\d{2}$/.test(day)&&!existingDays.has(day))
+      if(/^\d{4}-\d{2}-\d{2}$/.test(day)&&!existingDays.has(day))
         existingDays.set(day,row);
     }
     onProgress?.({phase:'核對既有日期定錨',completed:offset+rows.length,total:0});
