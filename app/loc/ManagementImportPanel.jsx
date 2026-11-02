@@ -34,6 +34,7 @@ import {createArchiveEvidenceCollector,prepareArchiveMedia,isArchiveMediaUrl,aud
 import {ARCHIVE_MAX_BYTES,IMPORT_FIELD_ALIASES,UNIVERSAL_IMPORT_ACCEPT,mappedImportValue,normalizeImportMedia,parseImportCreatedTime,extractImportCreatedAt,writeImportBatches,createImportBatchSizer,estimateImportMinutes,estimateImportStageMinutes} from './import-batch.mjs';
 import {MAX_ROWS,urlSafeInBatches} from './query-batch-size.mjs';
 import {hasIrrecoverableEncoding,isPureUrlContent,normalizeGalaxyContent,normalizeRelationIds,repairMojibakeText,resolveGalaxyTitle} from './content-policy';
+import {galaxyAble} from './galaxy-able.mjs';
 import {touchEditorSession} from './edit-session-ttl.mjs';
 import {scopeTagNames} from './scope-config-fields.mjs';
 import {runeDrawText} from './rune-draw-text.mjs';
@@ -149,7 +150,9 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t){
       ...(importPlaceName?{__importPlaceName:importPlaceName}:{}),
       ...(importPlaceAddress?{__importPlaceAddress:importPlaceAddress}:{}),
       ...(importPlaceUrl?{__importPlaceUrl:importPlaceUrl}:{})}:{}),
-    able:(()=>{
+    able:row?.able&&typeof row.able==='object'&&!Array.isArray(row.able)
+      ?galaxyAble({able:row.able})
+      :(()=>{
       const statistics=value('statistics_able')!==false&&String(value('statistics_able')).toLowerCase()!=='false'&&searchable&&!isPureUrlContent(content);
       return {statics:statistics,culture:statistics,search:searchable,trace:searchable&&statistics,
         list:searchable,keywords:searchable&&statistics,game:true,extract:true};
