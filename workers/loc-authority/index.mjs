@@ -453,7 +453,7 @@ export class LocAuthorityState extends DurableObject {
       {uid,updated_at:status.updated_at,saved_at:status.saved_at});
     // Idempotent upsert by the existing case-sensitive UID; no table scans.
     const row={uid,title:input.title,content:input.content,
-      site:'ChatGPT',site_id:conversation_id,
+      site:'mcp',site_id:conversation_id,
       able:{statics:false,culture:false,search:false,trace:false,list:false,keywords:false,game:false,extract:false},
       createtime:validTimestamp(input.created_at||requestedTime),
       UpdateTime:requestedTime};
