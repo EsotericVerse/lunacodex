@@ -6,6 +6,7 @@ import globalSettingsZh from '../i18n/sections/uiExtra.globalSettings.zh_tw.js';
 registerDefaultSection('uiExtra.globalSettings',globalSettingsZh);
 
 import {useEffect,useMemo,useState} from 'react';
+import {usePathname,useRouter} from 'next/navigation';
 import {useAsyncResource} from './use-async-resource';
 import dynamic from 'next/dynamic';
 import {Capacitor} from '@capacitor/core';
@@ -21,11 +22,8 @@ const LocalDatabaseImport=dynamic(()=>import('./LocalDatabaseImport'),{loading:P
 // 每日符文紀錄：沿用既有的獨立頁面元件（/daily/log/），同一份邏輯透過它自己
 // 既有的 embedded 模式嵌入這裡，不複製任何讀寫邏輯。
 const DailyLogClient=dynamic(()=>import('../daily/log/DailyLogClient'),{loading:PanelLoading});
-const LocUserSettingsPanel=dynamic(()=>import('./LocUserSettingsPanel'),{loading:PanelLoading});
 import {selectScopeRegistry} from './scope-data';
 import {putSetting} from './user-storage';
-import useDefaultTimeUnit from './use-default-time-unit';
-import {saveDefaultTimeUnit,DEFAULT_TIME_UNITS} from './default-time-unit.mjs';
 import {NavigationPreferences} from '../modular/navigation-preferences';
 import {getScope} from '../modular/scope-registry';
 const {account:accountNavigation,device:deviceNavigation}=NavigationPreferences;
@@ -34,14 +32,16 @@ const option=(value,label,description,shortLabel)=>({value,label,description,sho
 export default function GlobalSettings({initialSection='home'}={}){
   useUiSection('uiExtra.globalSettings');
   const uiT=useUiText();
+  const router=useRouter();
+  const pathname=usePathname()||'';
+  const featuresHref=pathname.startsWith('/local/')?'/local/settings/features/':'/settings/features/';
   const prefs=useNavigationPreferences();
   const [native,setNative]=useState(false);
   const [urlResolved,setUrlResolved]=useState(false);
   const [home,setHome]=useState('loc');
-  const timeUnit=useDefaultTimeUnit();
-  const [timeUnitError,setTimeUnitError]=useState(false);
   const sections=[
     option('home',uiT('uiExtra.globalSettings.homeSettings'),uiT('uiExtra.globalSettings.homeSettingsDescription'),uiT('uiExtra.globalSettings.tabHome')),
+    option('features',uiT('uiExtra.globalSettings.featureSettings'),uiT('uiExtra.globalSettings.featureSettingsDescription'),uiT('uiExtra.globalSettings.featureSettingsShort')),
     option('mcp',uiT('uiExtra.globalSettings.mcpSelfServiceTitle'),uiT('uiExtra.globalSettings.mcpSelfServiceIntro'),uiT('uiExtra.globalSettings.mcpTab')),
     ...(native?[option('manage',uiT('uiExtra.globalSettings.manageMenu'),uiT('uiExtra.globalSettings.manageMenuDescription'),uiT('uiExtra.globalSettings.tabManage'))]:[]),
     ...(native||prefs.account.user?[option('dailyRune',uiT('uiExtra.globalSettings.dailyRune'),uiT('uiExtra.globalSettings.dailyRuneDescription'),uiT('uiExtra.globalSettings.tabDailyRune'))]:[]),
@@ -49,6 +49,7 @@ export default function GlobalSettings({initialSection='home'}={}){
   ];
   // favorites is the legacy URL alias for the public home/settings panel.
   const [section,setSection]=useManagementSection(sections,initialSection,{favorites:'home',account:'home'});
+  useEffect(()=>{if(section==='features')router.replace(featuresHref);},[section,router,featuresHref]);
 
   const [busy,setBusy]=useState(false);
   const [status,setStatus]=useState('');
@@ -142,7 +143,7 @@ export default function GlobalSettings({initialSection='home'}={}){
     <div className="scope-settings-options management-workspace">
       <ManagementSectionNav id="settings-sections" title={uiT('uiExtra.globalSettings.settingsSections')}
         panelId="settings-management-panel" items={sections} value={activeSection}
-        onChange={next=>{setSection(next);setStatus('');}}/>
+        onChange={next=>{if(next==='features')router.push(featuresHref);else setSection(next);setStatus('');}}/>
       <div className="management-workspace-panel" id="settings-management-panel" role="region"
         aria-labelledby={'settings-sections-option-'+activeSection}>
       {activeSection==='home'?<div className="loc-settings-panel-group">
@@ -171,22 +172,6 @@ export default function GlobalSettings({initialSection='home'}={}){
           </div>
         </div>
       </section>
-      <section className="loc-card">
-        <h2>{uiT('uiExtra.globalSettings.timeFilterTitle')}</h2>
-        <label className="scope-stat-controls">
-          <span>{uiT('uiExtra.globalSettings.timeFilterLabel')}</span>
-          <select className="scope-select" value={timeUnit} onChange={event=>{
-            setTimeUnitError(!saveDefaultTimeUnit(event.target.value));
-          }}>
-            {DEFAULT_TIME_UNITS.map(unit=><option value={unit} key={unit}>
-              {uiT('uiExtra.globalSettings.timeUnit'+unit[0].toUpperCase()+unit.slice(1))}
-            </option>)}
-          </select>
-        </label>
-        <p className="scope-status">{uiT('uiExtra.globalSettings.timeFilterHint')}</p>
-        {timeUnitError?<p role="alert" className="scope-status scope-error">{uiT('uiExtra.globalSettings.timeFilterSaveFailed')}</p>:null}
-      </section>
-      {!accountWaiting&&account.user?<LocUserSettingsPanel key={account.user.id} verifiedSubject={account.user.id}/>:null}
       </div>:null}
 
       {activeSection==='mcp'?<ClerkScopeConnections availableScopes={choices}/>:null}
