@@ -19,6 +19,7 @@ export default {
   "databaseLoading": "Loading database connection settings…",
   "databaseStored": "Configuration saved (connectivity not yet verified)",
   "databaseNotStored": "Not configured",
+  "databaseManaged": "This Scope uses the existing database connection managed by LOC. No additional API key is required.",
   "databaseEndpoint": "PostgREST HTTPS Data API",
   "databaseSchema": "Schema",
   "databaseTable": "Existing table name",

@@ -14,6 +14,7 @@ export default function ScopeDatabasePanel({scopeId}){
   const [values,setValues]=useState(EMPTY);
   const [apiKey,setApiKey]=useState('');
   const [configured,setConfigured]=useState(false);
+  const [managed,setManaged]=useState(false);
   const [loadFailed,setLoadFailed]=useState(false);
   const [loading,setLoading]=useState(true);
   const [saving,setSaving]=useState(false);
@@ -22,13 +23,13 @@ export default function ScopeDatabasePanel({scopeId}){
 
   useEffect(()=>{
     let active=true;
-    setValues(EMPTY);setApiKey('');setConfigured(false);setLoadFailed(false);
+    setValues(EMPTY);setApiKey('');setConfigured(false);setManaged(false);setLoadFailed(false);
     setLoading(true);setStatus('');
     (async()=>{
       const {token}=await mcpClerkSession();
       const data=await scopeConfigRequest({scopeid:scopeId,token});
       if(!active)return;
-      setConfigured(Boolean(data.configured));
+      setConfigured(Boolean(data.configured));setManaged(Boolean(data.managed));
       setValues({endpoint:String(data.endpoint||''),
         schema:String(data.schema||'public'),table:String(data.table||'')});
     })().catch(error=>{
@@ -63,7 +64,8 @@ export default function ScopeDatabasePanel({scopeId}){
     <h2>{label('databaseTitle')}</h2>
     <p className="scope-status">{label('databaseDesc')}</p>
     {loading?<p role="status" className="scope-status">{label('databaseLoading')}</p>:
-      loadFailed?null:<form className="scope-management-fields" onSubmit={save} autoComplete="off">
+      loadFailed?null:managed?<p className="scope-status" role="status">{label('databaseManaged')}</p>:
+      <form className="scope-management-fields" onSubmit={save} autoComplete="off">
         <p className="scope-status" role="status">
           {configured?label('databaseStored'):label('databaseNotStored')}
         </p>

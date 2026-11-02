@@ -87,6 +87,18 @@ test('verified Clerk subject can be mapped to a trusted root email by server, no
   assert.throws(()=>clerkSqlClaims({...missing,azp:'https://evil.example'},
     {issuer,origin,trustedEmail:'owner@example.org'}));
 });
+test('managed MCP SQL sync is restricted to verified OAuth Scope writes',()=>{
+  const edge=readFileSync(new URL('../supabase/functions/loc-kysely/index.ts',import.meta.url),'utf8');
+  const worker=readFileSync(new URL('../workers/loc-authority/index.mjs',import.meta.url),'utf8');
+  assert.match(edge,/audience:mcpResource,algorithms:\["RS256"\]/);
+  assert.match(edge,/verifyMcpForSql\(token,String\(body\.scopeid/);
+  assert.match(edge,/MCP tokens cannot execute general database requests/);
+  assert.match(edge,/kind:"rpc",schema:"silver",name:"management_write"/);
+  assert.match(edge,/\{column:"site_id",operator:"eq",value:row\.site_id\}/);
+  assert.match(worker,/if\(!isRoot\|\|!await allowed\(scopeid,'write'\)\)/);
+  assert.match(worker,/managedMcpInsert\(scopeid,row,Boolean\(status\.uid\),oauthToken\)/);
+});
+
 test('Clerk SQL gateway obtains root email from Authority, never unsigned request email',()=>{
   const edge=readFileSync(new URL('../supabase/functions/loc-kysely/index.ts',import.meta.url),'utf8');
   assert.match(edge,/LOC Authority could not verify Clerk root identity/);

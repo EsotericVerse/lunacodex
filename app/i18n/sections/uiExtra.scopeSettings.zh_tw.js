@@ -19,6 +19,7 @@ export default {
   "databaseLoading": "正在讀取資料庫連線設定…",
   "databaseStored": "已保存連線設定（尚未驗證資料庫連線）",
   "databaseNotStored": "尚未設定",
+  "databaseManaged": "目前使用既有資料庫，已由 LOC 管理連線，不需另外提供 API Key。",
   "databaseEndpoint": "PostgREST HTTPS Data API",
   "databaseSchema": "Schema",
   "databaseTable": "既有資料表名稱",

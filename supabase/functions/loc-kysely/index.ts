@@ -29,6 +29,7 @@ if(new URL(clerkIssuer).protocol!=="https:"||
   new URL(clerkOrigin).pathname!=="/")
   throw new Error("Clerk issuer and LOC origin must be HTTPS origins");
 const clerkKeys=createRemoteJWKSet(new URL(clerkIssuer+"/.well-known/jwks.json"));
+const mcpResource="https://loc.lo3rwang.cc/mcp";
 async function verifyClerkForSql(token:string){
   const {payload}=await jwtVerify(token,clerkKeys,{
     issuer:clerkIssuer,algorithms:["RS256"]
@@ -50,6 +51,29 @@ async function verifyClerkForSql(token:string){
     trustedEmail=String(identity.email||'');
   }
   return clerkSqlClaims(payload,{issuer:clerkIssuer,origin:clerkOrigin,trustedEmail});
+}
+async function verifyMcpForSql(token:string,scopeid:string){
+  const {payload}=await jwtVerify(token,clerkKeys,{
+    issuer:clerkIssuer,audience:mcpResource,algorithms:["RS256"]
+  });
+  if(!/^user_[A-Za-z0-9]+$/.test(String(payload.sub||""))||
+    !["lo3rwang","lrunes"].includes(scopeid))
+    throw new Error("MCP identity or Scope invalid");
+  // Independent Authority verifies the same OAuth JWT and its exact Scope
+  // WRITE permission. Only the existing LOC root may use managed SQL writes.
+  const result=await fetch(
+    "https://loc-authority-control.sopa2306.workers.dev/v1/mcp/authorize-write/"+scopeid,{
+    method:"GET",headers:{authorization:"Bearer "+token,accept:"application/json"},
+    redirect:"error",signal:AbortSignal.timeout(8000)
+  });
+  if(!result.ok)throw new Error("MCP Scope write permission denied");
+  const identity=await result.json();
+  if(identity?.provider!=="clerk"||identity.authorized!==true||
+    identity.subject!==payload.sub||identity.scopeid!==scopeid||
+    !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(String(identity.email||"")))
+    throw new Error("Verified MCP identity does not match Scope owner");
+  return {role:"authenticated",sub:payload.sub,iss:payload.iss,
+    email:String(identity.email).toLowerCase(),provider:"clerk"};
 }
 function configuredPublishableKeys() {
   const keys = [Deno.env.get("LOC_KYSELY_PUBLISHABLE_KEY"), Deno.env.get("SUPABASE_PUBLISHABLE_KEY"), Deno.env.get("SUPABASE_ANON_KEY")].filter((value): value is string => Boolean(value));
@@ -214,6 +238,7 @@ Deno.serve(async (request) => {
 
   let role = "anon";
   let claims: Record<string, unknown> = { role };
+  let verifiedMcp=false;
   const authorization = request.headers.get("authorization") || "";
   if (authorization) {
     const match = authorization.match(/^Bearer\s+(.+)$/i);
@@ -223,17 +248,27 @@ Deno.serve(async (request) => {
     try{untrusted=tokenPayload(token);}
     catch{return json({error:{message:"Invalid session token"}},401);}
     if(untrusted.iss===clerkIssuer){
-      // The untrusted issuer selects a verifier, never authorizes a user.
-      // This JWT must pass Clerk JWKS signature, expiry, issuer, authorized
-      // party AND verified-email checks before PostgreSQL sees any claims.
-      try{
-        claims=await verifyClerkForSql(token);
-      }catch(error){
-        const missingEmail=error instanceof Error&&
-          error.message.startsWith("Verified Clerk email claim");
-        return json({error:{message:missingEmail
-          ?"Clerk session is missing verified email claims"
-          :"Invalid or expired Clerk session"}},missingEmail?403:401);
+      // MCP OAuth JWTs and interactive Clerk sessions have different audiences
+      // and permissions. Never let an MCP token execute general SQL requests.
+      if(body.kind==="mcp-sync"){
+        try{
+          claims=await verifyMcpForSql(token,String(body.scopeid||""));
+          verifiedMcp=true;
+        }catch{
+          return json({error:{message:"MCP Scope write authorization rejected"}},403);
+        }
+      }else{
+        if(Array.isArray(untrusted.aud)?untrusted.aud.includes(mcpResource):untrusted.aud===mcpResource)
+          return json({error:{message:"MCP tokens cannot execute general database requests"}},403);
+        try{
+          claims=await verifyClerkForSql(token);
+        }catch(error){
+          const missingEmail=error instanceof Error&&
+            error.message.startsWith("Verified Clerk email claim");
+          return json({error:{message:missingEmail
+            ?"Clerk session is missing verified email claims"
+            :"Invalid or expired Clerk session"}},missingEmail?403:401);
+        }
       }
     }else{
       const authClient = createClient(supabaseUrl, apiKey, { auth: { persistSession: false, autoRefreshToken: false } });
@@ -248,6 +283,49 @@ Deno.serve(async (request) => {
 
   let resolvingTarget = false;
   try {
+    if(body.kind==="mcp-sync"){
+      if(!verifiedMcp||role!=="authenticated")
+        return json({error:{message:"Verified MCP write permission required"}},403);
+      const scope=String(body.scopeid||"");
+      const row=body.row as Record<string,unknown>;
+      const expected=["uid","title","content","site","site_id","searchable",
+        "statistics_able","date","createtime","UpdateTime"];
+      if(!["lo3rwang","lrunes"].includes(scope)||!row||typeof row!=="object"||
+        Array.isArray(row)||Object.keys(row).length!==expected.length||
+        Object.keys(row).some(k=>!expected.includes(k))||
+        !/^[A-Za-z0-9]{8}$/.test(String(row.uid||""))||
+        typeof row.title!=="string"||row.title.length>350||
+        typeof row.content!=="string"||!row.content.trim()||
+        row.content.length>125000||row.site!=="ChatGPT"||
+        typeof row.site_id!=="string"||row.site_id.length<3||
+        row.site_id.length>150||row.searchable!==false||
+        row.statistics_able!==false||typeof row.date!=="string"||
+        !/^\\d{4}-\\d\\d-\\d\\d$/.test(row.date)||
+        typeof row.createtime!=="string"||typeof row.UpdateTime!=="string"||
+        typeof body.update_existing!=="boolean")
+        return json({error:{message:"Invalid managed conversation payload"}},400);
+      const table="silver."+scope+"_galaxy";
+      const db=await databaseForTarget(controlTarget);
+      const result=await db.transaction().execute(async trx=>{
+        if(body.update_existing){
+          const values={...row};
+          delete values.uid;
+          const update=await executeRequest(trx,controlTarget,"authenticated",claims,{
+            kind:"rpc",schema:"silver",name:"management_write",
+            args:{p_table:table,p_operation:"update",p_values:values,
+              p_filters:[{column:"uid",operator:"eq",value:row.uid},
+                {column:"site_id",operator:"eq",value:row.site_id}]}
+          });
+          if(update?.data?.count===1)return update;
+          if(update?.data?.count!==0)throw new Error("Unexpected managed sync update count");
+        }
+        return executeRequest(trx,controlTarget,"authenticated",claims,{
+          kind:"rpc",schema:"silver",name:"management_write",
+          args:{p_table:table,p_operation:"insert",p_rows:[row]}
+        });
+      });
+      return json(result);
+    }
     if(body.kind==="rpc"&&body.schema==="silver"&&body.name==="check_backup_readiness"){
       if(requestedTarget!=="configured")return json({error:{message:"Invalid health target"}},400);
       if(role!=="authenticated")return json({error:{message:"Administrator permission required"}},403);

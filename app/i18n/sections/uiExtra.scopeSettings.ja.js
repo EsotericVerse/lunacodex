@@ -19,6 +19,7 @@ export default {
   "databaseLoading": "接続設定を読み込み中…",
   "databaseStored": "接続設定は保存済み（接続確認は未実施）",
   "databaseNotStored": "未設定",
+  "databaseManaged": "既存のデータベース接続を LOC が管理しています。API キーを追加する必要はありません。",
   "databaseEndpoint": "PostgREST HTTPS Data API",
   "databaseSchema": "スキーマ",
   "databaseTable": "既存テーブル名",
