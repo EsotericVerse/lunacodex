@@ -55,7 +55,7 @@ const MEDIA_EDITOR_COLUMNS='uid,location,type,title,url,meta_tags,createtime';
 const MEDIA_ATTR_ORDER=['uid','location','type','url','meta_tags','createtime'];
 const MEDIA_ATTR_FIELDS=MEDIA_ATTR_ORDER.map(key=>({key,readOnly:key==='uid',kind:key==='createtime'?'date':'text'}));
 
-const GALAXY_EDITOR_COLUMNS='uid,title,content,createtime,location,place_id,searchable,UpdateTime,url,source_id,target_id,ref_id,site,media_link,able';
+const GALAXY_EDITOR_COLUMNS='uid,title,content,createtime,location,place_id,UpdateTime,url,source_id,target_id,ref_id,site,media_link,able';
 
 const GALAXY_ATTR_ORDER=Object.freeze([
   'uid','title','content','createtime','location','place_id',
