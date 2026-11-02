@@ -357,8 +357,9 @@ export default function KeywordLibraryPanel({scopeId='lo3rwang',account}){
     if(importBusy||busy)return;
     const from=importScope.trim().toLowerCase(),uid=importUid.trim();
     setImportClass(null);setError('');setNotice('');
-    if(!/^[a-z][a-z0-9]{0,14}$/.test(from)||!/^[0-9A-Za-z]{4}$/.test(uid)){
-      setError('請輸入來源 Scope ID 與正確的四碼 Class UID。');return;
+    if(!/^[a-z][a-z0-9]{0,14}$/.test(from)||
+      !(from==='lo3rwang'?/^[0-9A-Za-z]{8}$/:/^[0-9A-Za-z]{4}$/).test(uid)){
+      setError('請輸入來源 Scope ID 與正確的 Class UID（Anchor 八碼，舊版四碼）。');return;
     }
     setImportBusy(true);
     try{
@@ -368,7 +369,7 @@ export default function KeywordLibraryPanel({scopeId='lo3rwang',account}){
       });
       if(error)throw new Error(error.message||'查詢公開群組科目失敗');
       const found=(Array.isArray(data)?data:[]).find(item=>item.classUid===uid);
-      if(!found)throw new Error('此 Scope 找不到已公開的四碼群組科目；其他分類類型不能匯入。');
+      if(!found)throw new Error('此 Scope 找不到已公開的群組科目；其他分類類型不能匯入。');
       setImportClass({scopeid:from,uid,name:String(found.name||uid)});
     }catch(error){setError(String(error.message||error));}
     finally{setImportBusy(false);}
@@ -383,7 +384,7 @@ export default function KeywordLibraryPanel({scopeId='lo3rwang',account}){
       const {data,error}=await dbAuthClient.schema('silver').rpc('import_shared_keyword_class',{
         p_target_scope:scopeId,p_source_scope:from,p_class_uid:uid
       });
-      if(error||!/^[0-9A-Za-z]{4}$/.test(String(data?.uid||'')))
+      if(error||!/^[0-9A-Za-z]{4}(?:[0-9A-Za-z]{4})?$/.test(String(data?.uid||'')))
         throw new Error(error?.message||'匯入尚未完成，未新增關鍵字群組科目');
       await load(data.uid);await invalidate();
       setNotice('已匯入群組科目「'+importClass.name+'」，含 '+Number(data.group_count||0)+' 個分類群組、'+Number(data.item_count||0)+' 個關鍵詞分類。分析結果需在本 Scope 重新計算。');
