@@ -141,8 +141,8 @@ test('built-in Scope can sync through existing Kysely without a user-supplied AP
   assert.equal(calls[0].body.update_existing,false);
   assert.equal(calls[1].body.update_existing,true);
   assert.equal(calls[1].body.row.uid,calls[0].body.row.uid);
-  assert.equal(calls[0].body.row.searchable,false);
-  assert.equal(calls[0].body.row.statistics_able,false);
+  assert.equal(calls[0].body.row.able.search,false);
+  assert.equal(calls[0].body.row.able.statics,false);
   assert.equal(calls[0].auth,'Bearer '+oauth);
 });
 test('managed Scope rejects missing OAuth token and does not mark saved',async()=>{

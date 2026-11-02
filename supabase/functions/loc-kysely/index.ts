@@ -334,8 +334,8 @@ Deno.serve(async (request) => {
         return json({error:{message:"Verified MCP write permission required"}},403);
       const scope=String(body.scopeid||"");
       const row=body.row as Record<string,unknown>;
-      const expected=["uid","title","content","site","site_id","searchable",
-        "statistics_able","date","createtime","UpdateTime"];
+      const expected=["uid","title","content","site","site_id","able",
+        "createtime","UpdateTime"];
       if(!["lo3rwang","lrunes"].includes(scope)||!row||typeof row!=="object"||
         Array.isArray(row)||Object.keys(row).length!==expected.length||
         Object.keys(row).some(k=>!expected.includes(k))||
@@ -344,9 +344,9 @@ Deno.serve(async (request) => {
         typeof row.content!=="string"||!row.content.trim()||
         row.content.length>125000||row.site!=="ChatGPT"||
         typeof row.site_id!=="string"||row.site_id.length<3||
-        row.site_id.length>150||row.searchable!==false||
-        row.statistics_able!==false||typeof row.date!=="string"||
-        !/^\d{4}-\d\d-\d\d$/.test(row.date)||
+        row.site_id.length>150||!row.able||typeof row.able!=="object"||
+        Object.keys(row.able as Record<string,unknown>).length!==8||
+        ["statics","culture","search","trace","list","keywords","game","extract"].some(k=>(row.able as Record<string,unknown>)[k]!==false)||
         typeof row.createtime!=="string"||typeof row.UpdateTime!=="string"||
         typeof body.update_existing!=="boolean")
         return json({error:{message:"Invalid managed conversation payload"}},400);

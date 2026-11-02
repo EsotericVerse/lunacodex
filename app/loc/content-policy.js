@@ -69,7 +69,7 @@ export function publicContentFilters(filters=[]){
 export function analysisContentFilters(filters=[]){
   return [
     ...(Array.isArray(filters)?filters:[]),
-    {column:'statistics_able',operator:'eq',value:true},
+    {column:'able->>statics',operator:'eq',value:'true'},
     {column:'content',operator:'neq',value:''}
   ];
 }

@@ -122,7 +122,7 @@ export function ObjectEditor({
     </div>:null}
     {mode==='article'&&showHidden?<div className="scope-editor-options">
       <label><input type="checkbox" checked={draft.hidden===true}
-        onChange={event=>onChange?.(current=>({...current,hidden:event.target.checked,attrs:current.attrs?{...current.attrs,searchable:!event.target.checked}:current.attrs}))}/>{UI_COPY.common.hiddenFromSearch}</label>
+        onChange={event=>onChange?.(current=>({...current,hidden:event.target.checked,attrs:current.attrs?{...current.attrs,able_list:!event.target.checked,able_search:!event.target.checked}:current.attrs}))}/>{UI_COPY.common.hiddenFromSearch}</label>
     </div>:null}
     {Array.isArray(attributeFields)&&attributeFields.length?<section className="scope-search-attr-panel" aria-label={resolvedAttributeTitle}>
       <h3 className="scope-search-attr-heading">{resolvedAttributeTitle}</h3>

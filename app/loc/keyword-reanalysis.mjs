@@ -47,7 +47,7 @@ export async function reanalyzeKeywordClass({
         throw new Error('Invalid or duplicate Galaxy UID');
       seen.add(row.uid);
     }
-    const docs=page.filter(row=>row.searchable!==false&&
+    const docs=page.filter(row=>row.able?.keywords!==false&&
       hasKeywordMinimumContent(row.content,minChars));
     const data=classify(docs);
     for(const result of data.classifications||[]){

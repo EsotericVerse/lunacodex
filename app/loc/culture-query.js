@@ -619,7 +619,7 @@ export async function selectScopePeriodWorkIndex(scope,{startDate='',endDate=nul
     :baseOffset;
 
   const galaxyFilters=publicContentFilters([
-    {column:'statistics_able',operator:'eq',value:true},
+    {column:'able->>culture',operator:'eq',value:'true'},
     ...dateFilters(startDate,endDate,scope.id==='local'?'createtime':'date'),
     ...(rawSources.length?[{column:'site',operator:'in',value:rawSources}]:[])
   ]);
