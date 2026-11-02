@@ -12,6 +12,7 @@ import {DB_QUERY_BATCH_SIZE,selectRows} from '../../loc/db-query.mjs';
 import {decodeTimeSegments,encodeTimeSegment,resolveTimeSegments,isTimeUid,allocateTimeUid} from '../../loc/time-anchor-ranges.mjs';
 import {anniversarySuggestionsForDate} from '../../loc/anniversary.mjs';
 import {readUnifiedAnchorUids} from '../../loc/unified-anchor-uids.mjs';
+import ManagementSectionNav from '../ManagementSectionNav';
 
 const TIME_COLUMNS='uid,type,title,description,address,anchor_ids,range,invisible';
 const TYPES=['anchor','period','era'];
@@ -328,13 +329,13 @@ export default function CultureTimelineEditor({
     </header>
     {query.error?<p className="scope-status scope-error" role="alert">{query.error.message}</p>:null}
     <div className="scope-culture-record-browser">
-      <div className="scope-culture-record-kind" role="group" aria-label="時間紀錄類型">
-        {TYPE_TABS.map(type=><button key={type} type="button" className="loc-button"
-          aria-pressed={browseType===type} onClick={()=>switchBrowseType(type)} disabled={busy}>
-          {displayType[type]} · {all.filter(row=>row.type===type).length}
-        </button>)}
-      </div>
-      <div className="scope-culture-record-browser-row">
+      <ManagementSectionNav id="time-kind-sections" title="時間紀錄類型"
+        panelId="time-kind-panel" value={browseType}
+        items={TYPE_TABS.map(type=>({
+          value:type,label:displayType[type]+' · '+all.filter(row=>row.type===type).length
+        }))}
+        onChange={next=>{if(!busy)switchBrowseType(next);}}/>
+      <div id="time-kind-panel" className="scope-culture-record-browser-row">
         <div className="scope-culture-record-browser-select">
           <label htmlFor="culture-record-search">現有{displayType[browseType]}（依名稱搜尋）</label>
           <Select inputId="culture-record-search" instanceId="culture-record-search"
