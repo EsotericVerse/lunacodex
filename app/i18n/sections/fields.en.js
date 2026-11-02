@@ -3,6 +3,7 @@ export default {
   "時間定錨": "Time anchors",
   "暫存": "Save draft",
   "搜尋文章管理": "Article search management",
+  "文章管理": "Article management",
   "文章控管": "Article management",
   "痕跡製作": "Create traces",
   "設立定錨": "Set anchors",
