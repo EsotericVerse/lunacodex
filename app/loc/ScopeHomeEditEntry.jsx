@@ -37,7 +37,10 @@ export default function ScopeHomeEditEntry(){
         editDock?.begin('local');
         return;
       }
-      const result=await account.refresh({forceVerify:true});
+      // One server verification per current management identity. Re-entering
+      // the editor can reuse a grant already verified in this browser runtime.
+      // Sign-out/account changes invalidate it; writes still require server authorization.
+      const result=await account.refresh();
       if(!result?.user){
         setMessage({key:'uiExtra.editBlocks.signInToEnterEditMode',showLogin:true});
         return;
