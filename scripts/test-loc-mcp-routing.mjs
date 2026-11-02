@@ -55,7 +55,7 @@ test('Missing/invalid token is rejected',async()=>{
   assert.equal((await handleMcp(req('POST',await token({aud:'https://other.site/mcp'}),rpc('initialize')))).status,401);
   assert.equal((await handleMcp(req('POST',await token({exp:0}),rpc('initialize')))).status,401);
 });
-test('Valid Clerk JWT can initialize, discover a read-only tool, and ping',async()=>{
+test('Valid Clerk JWT can initialize, discover read/write tools, and ping',async()=>{
   const jwt=await token();
   let r=await handleMcp(req('POST',jwt,rpc('initialize',{protocolVersion:'2025-06-18'})));
   assert.equal(r.status,200);assert.equal((await r.json()).result.serverInfo.name,'loc-mcp');
@@ -64,7 +64,17 @@ test('Valid Clerk JWT can initialize, discover a read-only tool, and ping',async
   assert.equal(tools[0].name,'loc_connection_status');
   r=await handleMcp(req('POST',jwt,rpc('tools/call',{name:'loc_connection_status',arguments:{}})));
   const contents=(await r.json()).result.content;
-  assert.equal(JSON.parse(contents[0].text).galaxyWriteEnabled,false);
+  const status=JSON.parse(contents[0].text);
+  assert.equal(status.galaxyWriteSupported,true);
+  assert.equal(status.writeRequiresScopeAuthorization,true);
+  assert.ok(status.availableTools.includes('search_memory'));
+  assert.ok(status.availableTools.includes('read_scope'));
+  assert.ok(status.availableTools.includes('sync_conversation'));
+  assert.ok(status.availableTools.includes('grant_scope_access'));
+  assert.deepEqual(status.availableTools,tools.map(tool=>tool.name));
+  const sync=tools.find(tool=>tool.name==='sync_conversation');
+  assert.equal(sync.inputSchema.required.includes('content'),true);
+  assert.notEqual(sync.annotations?.readOnlyHint,true);
   r=await handleMcp(req('POST',jwt,rpc('ping')));
   assert.deepEqual((await r.json()).result,{});
   assert.ok(jwksQueries>=1);
