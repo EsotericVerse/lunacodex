@@ -76,3 +76,7 @@ await scopeTypeAttr('lrunes','point',{
 ```
 
 `patch` 僅覆寫 `attr` 的**頂層鍵**；未列出的屬性（例如座標）保留。`update` 仍執行全物件取代，避免既有呼叫者語義改變。此操作不創建新索引、資料表或欄位，也不取代必須連動文章 `place_id` 的地點合併交易。兩個 Scope 使用同一 RPC。
+
+### Timeline RPC 轉接退役（2026-11-03）
+
+Cloudflare Pages `loc` production 部署 commit `54844ebf19ce8d88b52c1c4534a76e49c699d571` 成功；正式客戶端已直接呼叫 `silver.apply_scope_point_links(scopeid,updates,mode)`。經確認 GitHub main 的 Timeline 呼叫端已移除舊 RPC，Supabase 以 `DROP FUNCTION ... RESTRICT` 正式退役 `silver.apply_timeline_place_ids(text,jsonb)` 和 `silver.apply_timeline_missing_places(text,jsonb)`，保留共用點位寫入 RPC。執行遷移為 `retire_timeline_compatibility_rpcs_20261103`，倉庫紀錄於 `20261103125000_retire_timeline_rpc_wrappers.sql`。
