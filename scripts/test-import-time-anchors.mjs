@@ -62,10 +62,12 @@ test('Time import reuses existing dates, respects all occupied UIDs, and is idem
   const first=await prepareImportTimeAnchors(records,{scopeId:'lo3rwang',timeTable:'silver.lo3rwang_time',relation:db.relation});
   assert.equal(first.created,2);
   assert.equal(first.reused,1);
-  assert.deepEqual(db.rows.slice(2).map(row=>[row.uid,row.address,row.type,row.invisible]),[
-    ['0003','2024-02-02','anchor',false],
-    ['0004','2024-02-03','anchor',false]
+  assert.deepEqual(db.rows.slice(2).map(row=>[row.address,row.type,row.invisible]),[
+    ['2024-02-02','anchor',false],
+    ['2024-02-03','anchor',false]
   ]);
+  assert.ok(db.rows.slice(2).every(row=>/^[A-Za-z0-9]{8}$/.test(row.uid)));
+  assert.equal(new Set(db.rows.slice(2).map(row=>row.uid)).size,2);
   const again=await prepareImportTimeAnchors(records,{scopeId:'lo3rwang',timeTable:'silver.lo3rwang_time',relation:db.relation});
   assert.equal(again.created,0);
   assert.equal(again.reused,3);

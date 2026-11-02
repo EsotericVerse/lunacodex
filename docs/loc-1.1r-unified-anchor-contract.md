@@ -1,90 +1,44 @@
-# LOC 1.1R｜四表合一 Anchor 統一規格
+# LOC 1.1R｜統一 Anchor 正式欄位契約（2026-11-02）
 
-> **規格日期：2026-11-02（Asia/Taipei）**。本文件記錄使用者已明確決定的資料語意與命名，取代舊文件中相衝突的欄位／型別描述。**`silver.lo3rwang_anchor` 已按此 Schema 清空重匯；程式部署仍以正式 PR/Cloudflare 結果為準。**
->
-> **邊界：**只有 `silver.lo3rwang_anchor` 進行 Schema 轉換；三張來源表保留，Neon 不動。匯入程式由另一工作線修正。
+## 範圍
 
-## 一、整合邊界
+僅整合 `silver.lo3rwang_anchor`。原 `_time`、`_trace`、`_keywords`、`_galaxy_media` 來源表保留；其他 Scope 與 Neon 不在這次變更範圍。
 
-Time、Trace、Media、Keywords 四類使用**同一個 Anchor 資料模型**，不是將四張舊表所有欄位直接聯集。**分類只使用原有 `type`；不得額外引入 `kind` 當作第二套分類**。個別資料特性以共用欄位和 `attr`（JSONB）表達，不因某類舊表曾有獨立欄位，就往統一表再加同義欄位。
+實體欄位只有：`uid`（大小寫敏感、8 碼主鍵）、`type`、`title`、`description`、`invisible`、`attr`（JSONB）。**`label` 已淘汰，不得恢復成另一個欄位，也不得再寫入。**
 
-### 統一欄位的語意
+`type` 唯一判斷種類，不建立第二套 `kind`；`description` 保存說明／媒體原始 meta_tags。不同種類的 `attr` 僅含該種類需要的資料。
 
-| 欄位 | 語意與邊界 |
-| --- | --- |
-| `uid` | 每筆 Anchor 的唯一識別碼；保持原先大小寫敏感及各類既定 UID 長度，不以時間戳作主鍵 |
-| `type` | **唯一的資料類型判別欄位**；見下表。不得用 `kind` 重複分類 |
-| `title` | 名稱／標題 |
-| `label` | 隨 `type` 代表日期、空間地址、媒體網址或關鍵詞組 |
-| `description` | 說明；Media 原 `meta_tags` 的內容移至此欄 |
-| `attr` | `jsonb`，僅放各 type 真正必要的結構化資料；Time 與普通 Media 必須是空物件。Keyword 分析遵循下節精簡格式 |
-| `invisible` | 沿用既有顯示／隱藏設定，不因整併擅改 |
-
-**同名欄位 `label` 的值需依 `type` 解讀；不能因為部分舊資料是日期、地址陣列或 URL，就再次增加 `date`、`address`、`location`、`url` 欄位。** 地址／座標等需要結構化處理時，應遵循最終 Schema 的 `label` 格式與 `attrs` 定義；不得以推測格式毀損原始值。
-
-## 二、`type` 名稱（定案）
-
-| 領域 | 中文名稱 | `type` |
+| type | `attr` 資料鍵 | 含義 |
 | --- | --- | --- |
-| 時間 | 時間定錨 | `date` |
-| 時間 | 期間 | `period` |
-| 時間 | 時代 | `era` |
-| 空間 | 空間定錨 | `point` |
-| 空間 | 路線 | `path` |
-| 空間 | 痕跡圖 | `trace` |
-| 媒體 | 圖片 | `image` |
-| 媒體 | 影片 | `video` |
-| 媒體 | 符文 | `rune` |
-| 媒體 | Suno 音樂 | `suno` |
-| 關鍵詞 | 目錄 | `category` |
-| 關鍵詞 | 群組科目 | `class` |
-| 關鍵詞 | 群組 | `group` |
-| 關鍵詞 | 關鍵詞分類 | `item` |
+| `date` | `date` | 日精度日期（YYYY-MM-DD） |
+| `period` | `uid` | 日期定錨八碼 UID 陣列；既有 `date` 值保留，新增時不強制複製推導日期 |
+| `era` | `period` | Period 八碼 UID 陣列；既有 `date` 值保留，新增時不強制複製推導日期 |
+| `point` | `longitude`、`latitude`、`location` | 真正存在的座標／地點文字 |
+| `path` | `point` | Point UID 陣列 |
+| `trace` | `point`、`path` | 對應的 Point、Path UID 陣列 |
+| `category`、`class` | `uid` | 下層八碼 UID 陣列 |
+| `group` | `uid`、`total` | Item 八碼 UID 陣列、已保存統計值 |
+| `item` | `keyword`、`total` | 判斷詞字串陣列、已保存統計值 |
+| `image`、`video`、`rune`、`suno` | `url`、`date`（僅現有實際資料） | 真實來源 URL 與既存日期；不推導 ZIP 路徑為 URL |
 
-「關鍵詞／判斷詞列表」屬於關鍵詞分類的列表內容，**不額外建立一個 `type`**。詞表與下層 UID 清單存成 `label` 的文字清單，文章關聯與命中統計的結構存 `attr`，不增設新的表或類別。**Suno 型別使用英文 `suno`，不使用 `音樂`。**
+**既存的 `label` 不能倒灌回 `attr`：** 部分舊 `label` 留有四碼關聯，而 `attr` 已存轉換後的八碼 UID，應以 `attr` 為準，避免污染已完成的關聯。
 
-## 三、舊資料到統一 `label`／`description` 的對應
+## 資料存取
 
-| 舊領域 | 舊來源欄位／內容 | 統一欄位 |
-| --- | --- | --- |
-| Time | `date`（舊時間定錨的日期／日精度） | `label` |
-| Trace | `address`（空間定錨的原始地址／位置資料） | `label` |
-| Media | `url`（真實外部連結） | `label` |
-| Media | `meta_tags`（原媒體描述／標籤） | `description` |
-| Keywords | 「關鍵詞組」 | `label` |
+- `app/loc/unified-anchor-compat.mjs` 將舊 Time／Trace／Keyword／Media 介面轉成實體 `attr` 讀寫，不查詢 `label`。
+- 新增統一 Anchor 的 UID 一律為八碼；同一物理表跨 `type` 共用 UID 空間。
+- 讀寫既有 JSONB 時保留其他有用的同筆屬性，不回存 `version`、`segments` 等無效時間快照。
+- 關鍵詞、音樂及痕跡相關 RPC 必須直接使用 `attr` 的鍵，不得使用舊的 `label::jsonb`。
+- `silver.lo3rwang_galaxy.media_link` 是文章到媒體的 **UID 陣列**，不等同於媒體 URL，也不存到 `attr`；媒體 URL 是媒體 Anchor 的 `attr.url`。
+- 符文、Suno 與媒體 UID 的關聯需用真實資料核對；不得用檔名、內文或 ZIP 附件路徑推導不存在的網址。
 
-- 統一 Anchor **不再保留獨立 `location`／`date`／`url`／`meta_tags` 欄位**；舊 `meta_tag` 同樣不得保留為另一個平行欄位。
-- `label` 的值必須由原始資料正確轉換，不得將 ZIP 內的 `uri`／檔案路徑當成媒體 `url`，更不能用檔名推導不存在的 URL。
-- 舊 Media `meta_tags` 遷入 `description` 時必須先核對既有值，**不得以空值覆寫**；任何舊表刪除都須在資料對帳與權限程序完成後另行處理。
-- 媒體日期不在統一表保存；每日媒體統計已取消。數量以 `galaxy.date` 篩選文章、`galaxy.media_link` 去重並比對存在的媒體 UID。
-- **`label` 是 `text`**：單值直接存文字，多值使用可解析的 JSON 陣列文字（例如 `["2009-05-01","2010-06-12"]`）。`links`、`kind`、`date`、`createtime`、`url` 與 `meta_tags` 不在統一表保留。
+## 匯入規則
 
-## 四、Anchor `attr` 最小儲存契約（2026-11-02 核實）
+- 只有文章有地點或獨立打卡事件，才建立／沿用同一天 `date` 定錨；普通文章日期不自動建立時間定錨。
+- 週年建議（aniversary）是獨立的虛擬功能，從不參與匯入及實體 Anchor 寫入。
+- 原始文章 `url` 僅對應文章來源資料的 `url`；內文網址不作文章 URL。
+- 已匯入媒體的 `media_link` 應保持真實媒體 UID，不能以文章 URL 或內文替代。
 
-- **`date`、`period`、`era`：`attr={}`。** `date.label` 是唯一日曆日期；`period.label` 是選定的 1～2 個日期定錨 UID；`era.label` 是任意選定的 Period UID 陣列，**不代表連續期間**。日期區間由程式依 UID 關聯即時計算；不得儲存 `version`、`segments`、起訖日期快照或無效清單。
-- **`category`、`class`、`rune`：`attr={}`。** Keyword 的階層 UID／判斷詞全部在各自 `label`；Rune 的必要內容沿用媒體描述，不重複塞進 JSONB。
-- **`item`、`group`：`attr={"total": 整數, "uidlists": ["8碼文章UID",...]}`。** `total` 是分析一次完成的總數；Item 為總命中次數，Group 為不重複所屬文章數。每個 Item／Group 的文章 UID 在自身清單裡只儲存一次；不儲存每篇的 `times` 或 `{"uid","times"}` 物件。依日期、來源、地點篩選時可從 UID 與文章原欄位求符合的篇數，**不能從簡化清單還原區間內逐篇出現次數**。Group 的 `label` 仍為 Item UID 列表，不得混淆。
-- **`point`、`path`、`trace`：** `point.label` 保存位置座標；`path.label` 保存點 UID 列表；`trace.label` 保存點 UID 列表。只有真正有值的附加資料才用 `attr`：例如文字地址 `route_list.postal_address`、痕跡圖參考的 `route_list.routes` 或分段連線 `route_list.segments`，及確有使用的時間資料。空陣列、空 `route_list` 不寫入。正式內容 Scope 當前無 Trace 紀錄，不能以想像的舊資料填入。
-- **`image`、`video`、`suno`：** `label` 放真實 URL，`description` 放原始 `meta_tags`。通常 `attr={}`；現有一筆 Suno 播放清單為辨別歌曲／清單，暫留 `{"media_kind":"playlist"}`，不能直接刪除導致分類失真。
-- **防回寫：** 統一 Anchor 寫入程式不得復活舊 `uid_lists.articles`、`uid_lists.hits`、`range.segments` 等巢狀物件；資料庫的 CHECK 約束拒絕 Time／Keyword 舊格式。原始 `_time`、`_trace`、`_galaxy_media`、`_keywords` 表不在這次清理範圍，亦不動 Neon。
-- **讀取函式：** Keyword／Trace 統計 RPC 必須辨識精簡 UID 陣列；全量 Item 命中統計採保存的 `total`；條件篩選回傳符合的文章數而不是已無法還原的逐篇命中數。
+## 驗證
 
-## 四、匯入的時間定錨規則
-
-- **只有真實打卡地點／獨立打卡事件才建立日期定錨**；普通文章雖然有發文日期，不能因此每天新增 Time Anchor。
-- **同一日打卡共用一筆 `type=date` 定錨**；重匯先比對沿用，不重複新增。多篇文章／多個地點可以對應同一天。
-- 獨立的打卡精確時間與日精度日期是不同資料，不得將一般文章時間或圖片檔時間冒充打卡。
-- **不在匯入一般文章時自動生成生日或週年紀念定錨**；相關日期建議／展示與實際建立是兩件事。
-- ZIP／JSON 匯入媒體時，只辨識 JSON 中真實的 `url`。圖片本體、EXIF 與 ZIP 內 `uri` 不提供可還原的外部 URL；不解壓或保存圖片檔。
-
-## 五、驗收與相容性
-
-1. 核對正式統一表的實際欄位、資料型別、RLS／約束、四類讀寫介面；**不能因本文件寫了規格便宣稱 Schema 已切換**。
-2. 對照仍保留的四張原表與統一 Anchor，逐筆核對 UID、`type`、`label`、`description`、`attr`；完整保全尚未遷入的 Media／時間資料。
-3. 停用舊 `kind`、`anchor`、`space_anchor`、`音樂` 等只屬於舊資料模型的寫入值；更新程式轉接、搜尋、文化／統計、地圖、匯入及管理畫面後才切換。
-4. 以真實打卡和普通文章混合的 ZIP 驗證「只有打卡建日錨、同日沿用」、URL 寫入、媒體關聯、失敗續跑及重匯去重。
-5. 原四表與既有正式資料**此次明確授權清空重匯的對象僅限 `_anchor`**。Schema 與程式由不同工作線處理時，合併前核對最新 `main`，避免互相覆寫。
-
-## 六、舊文件的使用方式
-
-本文件是 **2026-11-02 的現行命名／欄位契約**。較早的設計紀錄與 RC 發版說明保留為歷史證據；若舊文寫到 `source_place`、`address`、`anchor_ids`、`kind`、`meta_tags` 或舊三層關鍵詞樹，**不應將其當成現行統一 Anchor 規格**。目前正式 `_anchor` 含 1,152 筆：Time 88、Keywords 166、Suno 877、Rune 21；舊封存 Facebook 影片與舊 Trace 定錨不回填。程式及 UI 是否已跟上，需另行驗收。
+每次切換須核對欄位、CHECK 約束、RPC、相容轉接程式、匯入定錨測試及 Cloudflare 正式部署。避免只更改資料庫，留下程式仍引用已移除欄位的狀態。

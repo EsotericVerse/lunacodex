@@ -127,6 +127,21 @@ export async function prepareImportTimeAnchors(records,{
     onProgress?.({phase:'補齊舊日期定錨標題',completed:repaired,total:dates.length});
   }
   const nextUid=()=>{
+    if(scopeId==='lo3rwang'){
+      const alphabet='0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+      const random=globalThis.crypto?.getRandomValues?.bind(globalThis.crypto);
+      if(!random)throw Error('Secure Anchor UID generator unavailable');
+      for(let attempt=0;attempt<128;attempt++){
+        let uid='';
+        for(const byte of random(new Uint8Array(16))){
+          if(byte>=248)continue;
+          uid+=alphabet[byte%62];
+          if(uid.length===8)break;
+        }
+        if(uid.length===8&&!occupied.has(uid)){occupied.add(uid);return uid;}
+      }
+      throw Error('Unable to allocate an eight-character Time Anchor UID');
+    }
     while(cursor<=65535){
       const uid=cursor.toString(16).toUpperCase().padStart(4,'0');
       cursor++;

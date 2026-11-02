@@ -80,10 +80,11 @@ test('backfills only location articles, persists exact Galaxy.date and is idempo
   assert.equal(db.galaxy[2].place_id,null);
   assert.equal(db.time.at(-1).address,'2024-04-05');
   assert.equal(db.time.at(-1).type,'anchor');
-  // Physical Anchor PK is shared by Time and Trace. Reconciliation must
-  // never allocate the same four-character UID across the two kinds.
+  // New Time anchors use independent eight-character physical UIDs,
+  // never colliding with existing Trace anchors or one another.
   assert.equal(db.trace[0].uid,'0004');
-  assert.equal(db.time.at(-1).uid,'0005');
+  assert.match(db.time.at(-1).uid,/^[A-Za-z0-9]{8}$/);
+  assert.notEqual(db.time.at(-1).uid,db.trace[0].uid);
   const second=await reconcileExistingImportAnchors(options);
   assert.equal(second.linked,0);
   assert.equal(second.places.created,0);
