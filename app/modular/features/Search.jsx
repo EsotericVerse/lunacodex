@@ -1344,7 +1344,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
             ?<h2 className="scope-search-scope-heading">{scopeLabel(row.scopeId)}</h2>:null}
         <Article
           key={row.key}
-          editOnCardClick={!managementMode&&canOfferEdit}
+          editOnCardClick={false}
           managerMode={managementMode}
           uid={editTarget.editResourceId}
           title={!managementMode&&row.resourceType==='galaxy'&&row.able?.list===false?'（使用者隱藏）':row.title}
