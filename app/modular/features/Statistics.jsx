@@ -14,6 +14,7 @@ registerDefaultSection('uiExtra.chartTypes',chartTypesZh);
 
 import {useEffect,useMemo,useState} from 'react';
 import {scopeTagColumn,scopeTagNames} from '../../loc/scope-config-fields.mjs';
+import useLocFeatureSettings from '../../loc/use-loc-feature-settings';
 import dynamic from 'next/dynamic';
 import {useRouter,useSearchParams} from 'next/navigation';
 import {useAsyncResource,useAsyncInfiniteResource,useResourceCache} from '../../loc/use-async-resource';
@@ -54,7 +55,7 @@ import StatisticsDetails from '../modules/statistics/StatisticsDetails';
 import {statisticsZoomWindow} from '../modules/statistics/statistics-time-zoom.mjs';
 
 const CHART_TYPES=STAT_VISUAL_TYPES;
-const STAT_TYPES=['total','source','place'];
+const STAT_TYPES=['total','source','place','media_type','media_platform'];
 const STAT_TYPE_KEYS=Object.freeze({
   daily_rune:'uiExtra.statisticsUI.dailyRune',
   total:'statistics.totalSource',
@@ -115,9 +116,10 @@ function rowsInWindow(rows=[],range={}){
     return day&&day>=startDate&&day<=endDate;
   }),startDate,endDate,bucket};
 }
-function SourceArticleList({scope,startDate,endDate,sourceNames=null}){
+function SourceArticleList({scope,startDate,endDate,sourceNames=null,defaultSort='desc'}){
   const [selectedUid,setSelectedUid]=useState('');
-  const [articleSort,setArticleSort]=useState('desc');
+  const [articleSort,setArticleSort]=useState(defaultSort);
+  useEffect(()=>setArticleSort(defaultSort),[defaultSort]);
   const group=Array.isArray(sourceNames);
   const worksQuery=useAsyncInfiniteResource({
     queryKey:['statistics-source-articles',scope.id,startDate,endDate,sourceNames,articleSort],
@@ -209,7 +211,7 @@ async function readPersonalSourceClasses(scopeId){
   const mapped=sourceTaxonomyFromArrays([],scopeTagNames(scopeId,rows[0]));
   return {groups:mapped.groups,aliases:mapped.groupAliases};
 }
-function SummaryList({rankingType,summary,scope,range,filteredSource=false}){
+function SummaryList({rankingType,summary,scope,range,filteredSource=false,defaultSort='desc'}){
   const UI_COPY=useUiCopy();
   const rows=rankingType==='total'
     ?[{term:UI_COPY.statistics.totalSource,item_count:summary.total,
@@ -222,7 +224,7 @@ function SummaryList({rankingType,summary,scope,range,filteredSource=false}){
           {filteredSource&&rankingType==='total'&&!row.sourceNames?.length
             ?<p className="scope-status">所選來源在此區間沒有作品。</p>
             :<SourceArticleList key={scope.id+'|'+range.startDate+'|'+range.endDate}
-              scope={scope} startDate={range.startDate} endDate={range.endDate}
+              scope={scope} startDate={range.startDate} endDate={range.endDate} defaultSort={defaultSort}
               sourceNames={row.sourceNames}/>} 
         </>}
       </StatisticsDetails>
@@ -290,7 +292,9 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   const rankingType=types.includes(requested)?requested:(types[0]||'');
   const mediaDimension=MEDIA_STAT_TYPES.has(rankingType);
   const isLrunesDaily=scopeId==='lrunes'&&rankingType==='daily_rune';
-  const defaultTimeUnit=useDefaultTimeUnit();
+  const deviceTimeUnit=useDefaultTimeUnit();
+  const {settings:userSettings,active:userActive}=useLocFeatureSettings('statics');
+  const defaultTimeUnit=userActive?userSettings.unit:deviceTimeUnit;
   const [chartType,setChartType]=useState('line');
   const [zoomLevel,setZoomLevel]=useState(0);
   const [foldBlank,setFoldBlank]=useState(true);
@@ -618,7 +622,8 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
         />
       </StatisticsChartFrame>
       <StatisticsDetails>{()=> <SummaryList rankingType={rankingType} summary={sourceSummary}
-        scope={targetScopes[0]} range={queryRange} filteredSource={Boolean(activeSourceSelection)}/>}</StatisticsDetails>
+        scope={targetScopes[0]} range={queryRange} filteredSource={Boolean(activeSourceSelection)}
+        defaultSort={userActive?userSettings.sort:'desc'}/>}</StatisticsDetails>
     </>:null}
     {mediaDimension&&Boolean(targetScopes.length)&&Boolean(queryRange.startDate&&queryRange.endDate)?<div className="scope-stat-controls">
       <button type="button" className="loc-button" onClick={()=>mediaQuery.refetch()} disabled={mediaFetching||refreshGate.cooling}>
@@ -695,12 +700,17 @@ export default function Statistics(){
   const {scopeId,scope}=useScopeRuntime();
   const searchParams=useSearchParams();
   const navigation=useMemo(()=>readFeatureNavigation(searchParams),[searchParams]);
+  const {settings:userSettings,active:userActive}=useLocFeatureSettings('statics');
+  const activeNavigation=useMemo(()=>
+    userActive&&!navigation.rankingType
+      ?{...navigation,rankingType:userSettings.display}:navigation,
+    [navigation,userActive,userSettings.display]);
   return <FeaturePage featureId="statics">
     <section className="loc-card scope-feature-card">
       <StatisticsPanel
         scopeId={scopeId}
         aggregateScopes={Boolean(scope?.aggregateChildren)}
-        navigation={navigation}
+        navigation={activeNavigation}
         types={scopeId==='lrunes'?['daily_rune',...STAT_TYPES]:STAT_TYPES}
         canManageSources={false}
       />
