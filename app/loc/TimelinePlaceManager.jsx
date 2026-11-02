@@ -11,7 +11,6 @@ import {saveTimelineReviewSession,loadTimelineReviewSession,clearTimelineReviewS
 import {accumulateTimelineArticles,groupTimelineMissingPlaces,selectedTimelineArticleUpdates} from './timeline-place-matcher.mjs';
 
 // Keep request and response sizes bounded during browser-side review.
-const WINDOW_BATCH=Math.min(TIMELINE_IO.windowBatch,200);
 const RESULT_PAGE=Math.min(TIMELINE_IO.previewPage,500);
 const WRITE_BATCH=Math.min(TIMELINE_IO.writeBatch,500);
 const friendlyError=e=>String(e?.message||e||'未知錯誤');
@@ -158,31 +157,48 @@ export default function TimelinePlaceManager({scopeId}){
         setNotice('沒有任何 Timeline 造訪點落在既有空間定錨點 500 公尺內；不更新文章。');
         return;
       }
-      const articleMatches=[],byIndex=new Map(windows.map(w=>[w.index,w]));
-      const total=Math.ceil(windows.length/WINDOW_BATCH);
-      for(let i=0;i<windows.length;i+=WINDOW_BATCH){
+      // Timeline review is deliberately limited to one calendar year.
+      const years=new Set(windows.map(w=>w.from.slice(0,4)));
+      if(years.size!==1)throw Error('Timeline 每次僅能比對一個年度，請分年度匯出 JSON');
+      const year=Number([...years][0]);
+      if(!Number.isInteger(year)||year<1900||year>9998)
+        throw Error('Timeline 年度無效');
+      if(windows.some(w=>w.to.slice(0,4)!==String(year)&&
+        w.to!==String(year+1)+'-01-01T00:00:00.000Z'))
+        throw Error('Timeline 每次僅能比對一個年度，請分年度匯出 JSON');
+      const startDate=String(year)+'-01-01';
+      const nextDate=String(year+1)+'-01-01';
+      const articleMatches=[];
+      // Use the existing Galaxy.date B-tree for a single annual scan.
+      // Keep the result locally for exact visit-time matching: no per-window database calls.
+      let offset=0;
+      while(true){
         if(run!==runRef.current)return;
-        const batch=windows.slice(i,i+WINDOW_BATCH).map(w=>({
-          index:w.index,start_time:w.from,end_time:w.to
-        }));
-        let offset=0;
-        while(true){
-          if(run!==runRef.current)return;
-          const result=await dbAuthClient.schema('silver').rpc('preview_timeline_place_page_json',{
-            p_scope_id:scopeId,p_windows:batch,p_limit:RESULT_PAGE,p_offset:offset
-          });
-          const rows=checked(result,'查詢作品發表時間');
-          for(const row of rows||[])articleMatches.push({
-            uid:row.article_uid,title:row.article_title,createtime:row.article_time,
-            place_id:row.existing_place_id,window:byIndex.get(row.window_index)
-          });
-          if(articleMatches.length>250000)throw Error('候選文章超過 250,000 篇，請縮小 Timeline 年度');
-          if((rows||[]).length<RESULT_PAGE)break;
-          offset+=RESULT_PAGE;
-          if(offset>100000)throw Error('單批造訪對照超過查詢上限，請按年度拆分 JSON');
+        const result=await dbAuthClient.schema('silver').from(scopeId+'_galaxy')
+          .select('uid,title,date,createtime,place_id')
+          .gte('date',startDate).lt('date',nextDate)
+          .order('date',{ascending:true}).order('uid',{ascending:true})
+          .range(offset,offset+RESULT_PAGE-1);
+        const rows=checked(result,'查詢年度文章');
+        if(!Array.isArray(rows))throw Error('年度文章查詢結果無效');
+        for(const row of rows){
+          if(row.place_id&&String(row.place_id).trim())continue;
+          const timestamp=Date.parse(String(row.createtime||''));
+          if(!Number.isFinite(timestamp))continue;
+          // Visit intervals were already filtered against Point coordinates in the worker.
+          for(const window of windows){
+            if(Date.parse(window.from)<=timestamp&&timestamp<Date.parse(window.to)){
+              articleMatches.push({
+                uid:row.uid,title:row.title,createtime:row.createtime,
+                place_id:row.place_id,window
+              });
+            }
+          }
         }
-        setProgress({done:Math.floor(i/WINDOW_BATCH)+1,total,
-          message:'比對作品發表時間與定錨點…'});
+        if(rows.length<RESULT_PAGE)break;
+        offset+=RESULT_PAGE;
+        if(offset>100000)throw Error('單一年度文章超過查詢上限');
+        setProgress({done:offset,total:0,message:'已讀取 '+offset.toLocaleString()+' 篇年度文章，比對造訪時間…'});
       }
       if(run!==runRef.current)return;
       const classified=accumulateTimelineArticles(articleMatches);
@@ -285,7 +301,7 @@ export default function TimelinePlaceManager({scopeId}){
   if(!enabled)return <p className="scope-status">請先選擇個別 Scope，LOC 不執行跨 Scope 的行蹤比對。</p>;
   return <section className="loc-card scope-feature-card" aria-label="Google Timeline 地點整理">
     <h3>地點整理 · Google Timeline</h3>
-    <p className="scope-status">Timeline JSON 只在瀏覽器本機背景解析。以文章時間比對 500 公尺內既有定錨點，只列出 place_id 尚未填寫的文章；按定錨點集中審查。只補寫 place_id，不改 location，不儲存私人行蹤。</p>
+    <p className="scope-status">Timeline JSON 只在瀏覽器本機背景解析，每次限單一年度。先使用 date 查出同年度文章，再於瀏覽器比對時間及 500 公尺內既有定錨點，只列出 place_id 尚未填寫的文章；按定錨點集中審查。只補寫 place_id，不改 location，不儲存私人行蹤。</p>
     <div className="scope-management-fields">
       <label>選擇 Google Timeline JSON
         <input ref={fileRef} type="file" accept=".json,application/json" disabled={analyzing||writing}
