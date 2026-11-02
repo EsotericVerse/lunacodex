@@ -301,7 +301,7 @@ Deno.serve(async (request) => {
         row.site_id.length>150||row.searchable!==false||
         row.statistics_able!==false||typeof row.date!=="string"||
         !/^\\d{4}-\\d\\d-\\d\\d$/.test(row.date)||
-        !["string"].includes(typeof row.createtime)||!["string"].includes(typeof row.UpdateTime)||
+        typeof row.createtime!=="string"||typeof row.UpdateTime!=="string"||
         typeof body.update_existing!=="boolean")
         return json({error:{message:"Invalid managed conversation payload"}},400);
       const table="silver."+scope+"_galaxy";
