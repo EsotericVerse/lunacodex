@@ -46,6 +46,15 @@ let authUserId='';
 let authEmail='';
 
 let scopeMetadata=[];
+// How recently the SAME identity's management grants were confirmed against
+// the server (Clerk session + silver.get_my_scope_management RPC). Entering a
+// second management page for the same identity within this window reuses the
+// just-confirmed grants instead of repeating both round trips; any real
+// sign-out or identity change still clears this immediately (see
+// clearAuthorization() call sites) and is caught instantly by the dedicated
+// Auth-event listener in ManagementAccess, independent of this window.
+let lastVerifiedAt=0;
+const MANAGEMENT_REVERIFY_TTL_MS=20_000;
 
 // Permission authority lives in ordinary JS memory, not in a React hook.
 // No TTL, JSON parsing, file I/O or permission SQL on subsequent actions.
@@ -62,7 +71,11 @@ function cachedManagementAccount(){
 }
 
 async function loadManagementAccount(mutate,{forceVerify=false}={}){
-  const cached=forceVerify?null:cachedManagementAccount();
+  // A forced verify still skips the network round trip when the exact same
+  // identity was confirmed moments ago: this is an explicit, bounded window
+  // (MANAGEMENT_REVERIFY_TTL_MS), not an unconditional skip of forceVerify.
+  const withinReverifyWindow=lastVerifiedAt&&(Date.now()-lastVerifiedAt<MANAGEMENT_REVERIFY_TTL_MS);
+  const cached=(forceVerify&&!withinReverifyWindow)?null:cachedManagementAccount();
   if(cached)return cached;
   const startedAt=authRevision;
   const obsolete=()=>startedAt!==authRevision;
@@ -84,6 +97,7 @@ async function loadManagementAccount(mutate,{forceVerify=false}={}){
       scopeMetadata=[];
       authUserId='';
       authEmail='';
+      lastVerifiedAt=0;
       void mutate(SESSION_KEY,signedOutState,{revalidate:false});
       return signedOutState;
     }
@@ -99,6 +113,7 @@ async function loadManagementAccount(mutate,{forceVerify=false}={}){
     scopeMetadata=metadata;
     authUserId=String(user.id);
     authEmail=normalizeAuthEmail(user.email);
+    lastVerifiedAt=Date.now();
     return cachedManagementAccount()||signedOutState;
   }catch(error){
     // An older request must not erase a newer account's verified grants.
@@ -113,6 +128,7 @@ async function loadManagementAccount(mutate,{forceVerify=false}={}){
     scopeMetadata=[];
     authUserId='';
     authEmail='';
+    lastVerifiedAt=0;
     return verifiedIdentity
       ?{...signedOutState,...verifiedIdentity,error:String(error?.message||error)}
       :failedState(error);
@@ -178,6 +194,7 @@ export function useAccount({enabled=true,sessionOnly=false}={}){
     authEmail='';
     clearAuthorization();
     scopeMetadata=[];
+    lastVerifiedAt=0;
     await Promise.all([
       mutate(SESSION_KEY,signedOutState,{revalidate:false}),
       mutate(VERIFIED_SESSION_KEY,signedOutState,{revalidate:false}),
@@ -233,6 +250,7 @@ export function usePassiveSessionAccount(){
         authRevision+=1;
         clearAuthorization();
         scopeMetadata=[];
+        lastVerifiedAt=0;
       }
       authUserId=nextUserId;
       authEmail=nextEmail;
