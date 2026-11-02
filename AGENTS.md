@@ -103,6 +103,9 @@ REST 實測 API：一律使用 REST API 指令（如 gh api、gh workflow run）
 9. Galaxy 為正式紀錄來源（MCP 寫入、追溯與失敗告知）
 
 【資料主從與用途分界】
+【架構紀錄私有化】
+系統架構、Schema／Authority 設計、歷史決策與 TODO 的全文，保存於正確 Scope 的私有 Galaxy（不供公開列表與搜尋）；不再把該內容復製回公開倉庫的 Markdown。只有 AGENTS.md、必要的技術操作文件、格式使用說明及正式版本紀錄可留在 GitHub；移除已轉存 Galaxy 的過時架構 MD 之前，先確認原始全文寫入及可讀回，並核對 PR 的合併／驗收狀態。刪除 GitHub 檔案只移除目前分支可見的文件，不代表舊 commit/PR 中的版本已從 Git 歷史徹底清除。
+
 LOC Galaxy 中對應 Scope 與對象的正式紀錄，是 TODO、待辦、架構決策、專案進度、工作紀錄以及使用者明確要求保存作品的唯一正式資料來源。不再把這些資料持續寫到 GitHub 的進度／架構／TODO Markdown、Issue 或 PR 當作第二份資料庫；不為了追進度反覆新增進度 MD。**但每次 PR 改動後仍須在同一工作流程更新實際受影響的既有技術文件、版本說明、功能使用說明及其進度／實作狀態，使文件描述與已合併程式一致；正式逐 PR 工作紀錄仍以 Galaxy 為準，不在 Markdown 建立重複流水帳。** AGENTS.md 僅保留執行規範（本次修改即屬此例外），不保存會持續變動的任務進度。
 GitHub 僅保留程式碼、必要 PR 技術描述與 commit／版本紀錄；Cloudflare 是部署狀態的查驗依據。GitHub 的 PR 編號、URL、SHA、Cloudflare 部署結果可成為 Galaxy 正式紀錄的反查索引，但 GitHub PR 文字不得冒充 Galaxy 工作紀錄，且不在兩處維護互相競爭的 TODO／架構／進度。
 
