@@ -36,11 +36,12 @@ test('management gate uses a single direct verified entry, no automatic competin
   const gate=read('app/loc/ManagementAccess.jsx');
   assert.match(gate,/useAccount\(\{enabled:false\}\)/);
   assert.match(gate,/verifyManagementEntry\(check\)/);
-  assert.match(gate,/account\.refresh\(\{forceVerify:true\}\)/);
+  assert.match(gate,/account\.refresh\(\)/);
   assert.match(gate,/setVerification\(\{loading:false,user:result\?\.user/);
   assert.match(gate,/管理權限核驗失敗/);
   assert.match(gate,/重新確認管理權限/);
   assert.doesNotMatch(gate,/const ready=!account\.loading/);
+  assert.doesNotMatch(gate,/const check=useCallback\(\(\)=>account\.refresh\(\{forceVerify:true\}\)/);
 });
 
 test('UI gate only enters the editor after checked Scope authorization',()=>{
