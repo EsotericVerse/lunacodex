@@ -8,6 +8,7 @@
 - 保留 `.agents/skills/`、`.claude/skills/` 其他能力與各自的自動發現入口。此前比對有 39 個同名、Git Tree SHA 相同的目錄，但它們分屬 Codex／Claude 的主要發現路徑，**檔案重複不代表同一會話雙倍載入 Token**。不使用 Windows 相容性不確定的 Git symlink 取代。
 - 把原本 `AGENTS.md` 的長篇路由表搬到本文，僅在任務需要時載入。原有資料庫、部署、授權及安全門檻不變；`CLAUDE.md` 仍連結至 `AGENTS.md`。
 - Git `scripts/check-bulk-delete.mjs` 的 20 個 D/R 檔案防護維持，**不為本次例外永久放寬**。日後若另一個獲明確授權的提交真正超過門檻，應以原有 `[bulk-delete-ok]` 稽核標記通過，不繞過 hook；本次沒有必要啟用。
+- **2026-11-02 第二輪清理（依使用者明確授權）：** 移除 `.agents/skills/brainstorming/`、`.claude/skills/brainstorming/`、`.agents/skills/systematic-debugging/`、`.agents/skills/verification-before-completion/` 共 **20 個檔案**。理由同 tdd 那次——這三個能力 Superpowers（`superpowers:brainstorming`、`superpowers:systematic-debugging`、`superpowers:verification-before-completion`）兩個 Agent 都已安裝，repo 本地副本是重複維護。`sql-optimization-patterns`、`supabase-postgres-best-practices` 等領域知識型 skill 不受影響——Superpowers 是流程方法論（怎麼規劃/怎麼除錯/怎麼驗收），不涵蓋 SQL/Postgres 這類領域內容，不能用 Superpowers 取代，繼續保留本地版本。
 
 ## 使用與 Token 原則
 
@@ -22,13 +23,12 @@
 ### Skill 對應優先層級
 - **Security：** 新 skill/package → `find-skills`；auth/輸入輸出/密鑰相關 → `code-review-expert` 的 `security-checklist.md`（只當檢查清單用，不跑完整 review）；Postgres/Supabase schema → `supabase-postgres-best-practices`；Supabase Auth/Edge/Realtime → `supabase`；MCP server → `mcp-builder`。
 - **Portable：** 寫新程式碼前先找既有實作；改 LOC 詞彙/Scope 邊界/ADR → `domain-modeling`。
-- **Loading/UI：** React/Next.js → `vercel-react-best-practices`；不明原因的錯誤/效能 → `systematic-debugging`；N+1/慢查詢 → `sql-optimization-patterns`；元件 API → `vercel-composition-patterns`；視覺/互動 → `ui-ux-pro-max`；驗證有沒有真的動 → `webapp-testing`；宣稱修好前 → `verification-before-completion`。
+- **Loading/UI：** React/Next.js → `vercel-react-best-practices`；不明原因的錯誤/效能 → Superpowers `systematic-debugging`（本地副本已移除，見下）；N+1/慢查詢 → `sql-optimization-patterns`；元件 API → `vercel-composition-patterns`；視覺/互動 → `ui-ux-pro-max`；驗證有沒有真的動 → `webapp-testing`；宣稱修好前 → Superpowers `verification-before-completion`（本地副本已移除，見下）。
 
 ## Skill 路由表
 
 | Repository skill | Use it for |
 |---|---|
-| `.agents/skills/brainstorming/SKILL.md` | Brainstorm unresolved product choices; if goal/authorization already clear, skip ceremony. |
 | `.agents/skills/domain-modeling/SKILL.md` | LOC terminology, Scope/Registry boundaries, glossary, ADRs. |
 | `.agents/skills/vercel-react-best-practices/SKILL.md` | React/Next.js implementation and performance. |
 | `.agents/skills/vercel-composition-patterns/SKILL.md` | Component API design, compound components. |
@@ -59,21 +59,19 @@
 | `.agents/skills/skill-creator/SKILL.md` | Create/edit/evaluate a skill. |
 | `.agents/skills/grill-me/SKILL.md` / `grilling/SKILL.md` / `grill-with-docs/SKILL.md` | Stress-test a plan via interview; `grill-with-docs` also records ADRs. |
 | `.agents/skills/improve-codebase-architecture/SKILL.md` | User-invoked architecture review only (`disable-model-invocation`). |
-| `.agents/skills/tdd/SKILL.md` | Test-first development. |
 | `.agents/skills/setup-matt-pocock-skills/SKILL.md` | One-time repo setup for engineering skills. |
 | `.agents/skills/triage/SKILL.md` | Issue/PR triage. |
 | `.agents/skills/prototype/SKILL.md` | Throwaway prototype for a design question. |
 | `.agents/skills/hyperframes/SKILL.md` / `hyperframes-cli/SKILL.md` / `hyperframes-registry/SKILL.md` | HyperFrames video authoring, CLI jobs, component registry. |
 | `.agents/skills/media-use/SKILL.md` | Media for HyperFrames videos; HeyGen needs user's own key. |
-| `.agents/skills/systematic-debugging/SKILL.md` | Reproduce → trace root cause → fix minimally. |
 | `.agents/skills/webapp-testing/SKILL.md` | Playwright verification before claiming a UI change works. |
-| `.agents/skills/verification-before-completion/SKILL.md` | Fresh evidence before reporting done. |
 | `.agents/skills/mcp-builder/SKILL.md` | Build/review an MCP server. |
 | `.agents/skills/handoff/SKILL.md` | Compact a conversation into a handoff doc. |
 
-這個 repo 另外內建 `systematic-debugging`、`sql-optimization-patterns`、`verification-before-completion` 的本地副本；同名的 Global 版本跟這份一樣算一個能力，不要自動同步或覆蓋。沒裝在 runtime 或 repo 的 skill 只能當參考讀，不要當成已安裝。
+這個 repo 另外內建 `sql-optimization-patterns` 的本地副本；同名的 Global 版本跟這份一樣算一個能力，不要自動同步或覆蓋。沒裝在 runtime 或 repo 的 skill 只能當參考讀，不要當成已安裝。**`brainstorming`、`systematic-debugging`、`verification-before-completion` 已於 2026-11-02 移除本地副本，改吃已安裝的 Superpowers plugin（`superpowers:brainstorming`／`superpowers:systematic-debugging`／`superpowers:verification-before-completion`），不要再重建這三個本地目錄。**
 
 ## 本次處理後的追蹤
 
-- 只做經授權的 TDD 副本去重與 Agent 文檔整理；其餘用途不同或 Claude 仍依賴的目錄不刪。
+- 第一輪：經授權的 TDD 副本去重與 Agent 文檔整理；其餘用途不同或 Claude 仍依賴的目錄不刪。
+- 第二輪（2026-11-02）：經使用者明確授權，移除 `brainstorming`／`systematic-debugging`／`verification-before-completion` 本地副本——Superpowers **plugin 本身維持已安裝、不動**，只砍跟它重複的本地 skill。`sql-optimization-patterns`、`supabase-postgres-best-practices` 等領域知識型 skill 不在此次範圍內，Superpowers 不涵蓋這些內容，繼續保留。
 - 後續若要精簡更多內容，應先比較真實 Skill 觸發／上下文占用，以及實際 Agent 可否找到保留版本，再逐項決定，不再靠同名判斷。
