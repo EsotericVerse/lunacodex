@@ -776,6 +776,22 @@ test('Facebook shared-link post imports the shared external URL, since Meta neve
   assert.equal(a.results.length,1);
   assert.equal(a.results[0].url,'https://news.example.test/story');
 });
+test('Facebook shared-link post whose URL sits directly on the post (not inside external_context) still imports it',async()=>{
+  // Meta has used both shapes across export versions/post types for the
+  // SAME kind of post (sharing an external link): sometimes the link is
+  // nested in attachments[].data[].external_context.url, sometimes it's a
+  // plain `url` attribute directly on the post's own data[] entry. Both are
+  // inherently cross-domain, so neither should be rejected for not matching
+  // facebook.com.
+  const a=await parsed('facebook-direct-url-share.zip',{
+    'your_facebook_activity/posts/your_posts_1.json':j([{
+      id:'fb-direct',timestamp:1720000000,
+      data:[{post:'分享外部連結',url:'https://www.youtube.com/watch?v=abc123'}]
+    }])
+  });
+  assert.equal(a.results.length,1);
+  assert.equal(a.results[0].url,'https://www.youtube.com/watch?v=abc123');
+});
 test('A real-platform post URL still wins over a shared external link in the same post',async()=>{
   const ownUrl='https://www.facebook.com/posts/real-abc123';
   const a=await parsed('facebook-external-and-own.zip',{

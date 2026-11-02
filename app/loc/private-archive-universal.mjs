@@ -168,17 +168,21 @@ function pickUrl(item,platform=''){
       const url=valid(candidate);
       if(url&&sourceHost(url))return url;
     }
+    // A plain `url`/`link` attribute (and external_context.url, below) holds
+    // whatever link the post is actually about — a shared news article,
+    // video, etc. Meta's schema has used BOTH shapes for this across export
+    // versions/post types: sometimes nested in external_context, sometimes
+    // sitting directly on the post as `url`/`link`. Either way it is
+    // inherently cross-domain (that is the whole point of a shared link), so
+    // — unlike the post's-own-permalink candidates above, which must stay
+    // same-domain — these skip sourceHost on purpose. Gating them by domain
+    // was silently discarding the dominant real-world case.
     if(!fallback)for(const candidate of [
       node.url,node.link,map?.URL?.value,map?.Link?.value
     ]){
       const url=valid(candidate);
-      if(url&&sourceHost(url)){fallback=url;break;}
+      if(url){fallback=url;break;}
     }
-    // A shared external link (news article, video, etc.) is the actual
-    // subject of a "shared a link" post. Meta's export does not give the
-    // post's own same-platform permalink at all, so without this, every
-    // shared-link post would leave Galaxy.url empty. This one is inherently
-    // cross-domain, so it skips sourceHost on purpose.
     if(!fallback){
       const shared=valid(node.external_context?.url);
       if(shared)fallback=shared;
