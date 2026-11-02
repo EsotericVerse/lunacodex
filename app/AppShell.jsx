@@ -514,9 +514,9 @@ function AppShellInner({children}){
     {id:'manage',icon:'trace',label:navScopeId==='local'?'管理':translateUiField(activeLocale,'空間定錨'),
       href:navScopeId==='local'?navigationHref('local','manage',native)
         :editTabHref('manage','section','placeManage')+'&edit=1'},
-    {id:'suggestions',icon:'search',label:translateUiField(activeLocale,'進階搜尋'),
+    {id:'suggestions',icon:'search',label:translateUiField(activeLocale,'文章管理'),
       href:navScopeId==='local'?navigationHref('local','search',native)
-        :editTabHref('search/manage','section','search')+'&edit=1'}
+        :editTabHref('search/manage','section','publish')+'&edit=1'}
   ];
   const editTabs=[
     {id:'save',icon:'save',label:isFeatureEditMode?translateUiField(activeLocale,'暫存'):translateUiField(activeLocale,'儲存'),action:'save'},

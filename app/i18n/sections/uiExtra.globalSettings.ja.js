@@ -18,7 +18,7 @@ export default {
   "personalHome": "個人ホーム",
   "manageMenu": "管理メニュー",
   "account": "アカウント",
-  "publish": "記事を公開",
+  "publish": "記事管理",
   "members": "メンバー管理",
   "systemSettings": "システム設定",
   "savedHome": "ホームを保存しました。",

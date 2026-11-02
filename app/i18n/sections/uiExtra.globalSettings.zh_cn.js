@@ -18,7 +18,7 @@ export default {
   "personalHome": "个人首页",
   "manageMenu": "管理菜单",
   "account": "账户",
-  "publish": "发表文章",
+  "publish": "文章管理",
   "members": "成员管理",
   "systemSettings": "系统设置",
   "savedHome": "首页已保存",

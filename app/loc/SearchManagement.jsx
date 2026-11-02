@@ -20,8 +20,7 @@ const ScopeOthersSources=dynamic(()=>import('./ScopeOthersSources'),{loading:()=
 // Article Control sections share one Scope ownership and authorization boundary. Moving a panel
 // never changes its Scope ownership, database tables or authorizer.
 export const ARTICLE_CONTROL_SECTIONS=Object.freeze([
-  {value:'search',label:'管理搜尋',shortLabel:'管理搜尋'},
-  {value:'publish',label:'發表文章與多媒體',shortLabel:'發表'},
+  {value:'publish',label:'文章管理',shortLabel:'文章管理'},
   {value:'blocks',label:'修改建議與治理原則',shortLabel:'區塊修改'},
   {value:'import',label:'匯入',shortLabel:'匯入'},
   {value:'others',label:'個人分類',shortLabel:'個人分類'}
@@ -35,7 +34,7 @@ const LOC_OPTIONS=Object.freeze([
   {value:'trace',label:'治理原則',shortLabel:'治理原則'}
 ]);
 const OLD_SCOPE_SECTION_ALIASES=Object.freeze({
-  media:'publish',suggestions:'blocks',trace:'blocks',source:'import'
+  search:'publish',media:'publish',suggestions:'blocks',trace:'blocks',source:'import'
 });
 
 export default function SearchManagement(){
@@ -43,13 +42,13 @@ export default function SearchManagement(){
   const editDock=useEditDock();
   const isLocAdmin=scopeId==='loc';
   const options=isLocAdmin?LOC_OPTIONS:ARTICLE_CONTROL_SECTIONS;
-  const [activeSection,setSection]=useManagementSection(options,'search',
+  const [activeSection,setSection]=useManagementSection(options,isLocAdmin?'search':'publish',
     isLocAdmin?{}:OLD_SCOPE_SECTION_ALIASES);
   const currentSection=options.find(option=>option.value===activeSection)||options[0];
 
   return <FeaturePage featureId="search">
     <div className="management-workspace">
-      <ManagementSectionNav id="management-search-sections" title={isLocAdmin?'文章管理':'文章控管'}
+      <ManagementSectionNav id="management-search-sections" title="文章管理"
         panelId="management-search-panel" items={options}
         value={activeSection} onChange={next=>{
           if(next===activeSection)return;
@@ -62,7 +61,7 @@ export default function SearchManagement(){
 
         {!isLocAdmin&&activeSection==='publish'?<div className="article-control-stacked">
           <section aria-labelledby="article-control-article-heading">
-            <h3 id="article-control-article-heading">發表文章</h3>
+            <h3 id="article-control-article-heading">發表／編輯文章</h3>
             <ManagementArticlePublisher scopeId={scopeId}/>
           </section>
           <section aria-labelledby="article-control-media-heading">

@@ -42,10 +42,17 @@ test('embedded article management keeps one Hero with or without list opt-in',()
   const parent=read('app/loc/SearchManagement.jsx');
   const search=read('app/modular/features/Search.jsx');
   assert.match(parent,/return <FeaturePage featureId="search">/);
-  assert.match(parent,/<ManagementSearchWorkspace managementMode\/>/);
+  assert.match(parent,/\{value:'publish',label:'文章管理',shortLabel:'文章管理'\}/);
+  assert.match(parent,/search:'publish',media:'publish'/);
+  assert.match(parent,/useManagementSection\(options,isLocAdmin\?'search':'publish'/);
+  assert.match(parent,/activeSection==='search'\?<ManagementSearchWorkspace managementMode\/>/);
+  assert.doesNotMatch(parent,/ARTICLE_CONTROL_SECTIONS=Object\.freeze\(\[\s*\{value:'search'/);
   // An embedded search must never create its own FeaturePage when the personal
   // management toggle is off, authentication is pending, or Scope is aggregate.
   assert.match(search,/if\(legacyManagementRoute\)return pageContent;/);
   assert.match(search,/return legacyManagementRoute\?overview:<FeaturePage featureId="search">\{overview\}<\/FeaturePage>;/);
   assert.doesNotMatch(search,/if\(managementMode\)return legacyManagementRoute\?/);
+  const shell=read('app/AppShell.jsx');
+  assert.match(shell,/\{id:'suggestions',icon:'search',label:translateUiField\(activeLocale,'文章管理'\)/);
+  assert.match(shell,/editTabHref\('search\/manage','section','publish'\)/);
 });
