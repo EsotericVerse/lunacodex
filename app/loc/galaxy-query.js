@@ -409,13 +409,13 @@ export async function selectGalaxyIdentity(scope,uid,{includeHidden=false}={}){
   const {rows:articleRows}=await selectRows(current.galaxy,{
     columns:local
       ?'uid,title,createtime,content,site,url,source_id,target_id,ref_id,media_link,location,searchable'
-      :'uid,title,date,createtime,content,site,url,source_id,target_id,ref_id,media_link,place_id,location,searchable',
+      :'uid,title,date,createtime,content,site,url,source_id,target_id,ref_id,media_link,place_id,location,searchable,able',
     filters:[{column:'uid',operator:'eq',value:id}],
     orFilter:includeHidden?'':'searchable.is.null,searchable.eq.true',
     limit:1,authenticated:includeHidden
   });
   const row=articleRows[0]||null;
-  if(!row||(!includeHidden&&row.searchable===false))return null;
+  if(!row||(!includeHidden&&(row.searchable===false||row.able?.list===false)))return null;
   const mediaIds=mediaIdsOf(row.media_link);
   const placeId=String(row.place_id||'').trim();
   const day=local?localArticleDate(row.createtime):articleDate(row.date);
