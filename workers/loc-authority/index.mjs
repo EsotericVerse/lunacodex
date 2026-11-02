@@ -485,7 +485,7 @@ export class LocAuthorityState extends DurableObject {
     if(cached&&cached.expires>Date.now())return cached.value;
     const task=postgrest(profile,{params:{select:'uid,title,date,createtime',
       or:'(title.ilike.'+pattern+',content.ilike.'+pattern+')',
-      'able->>search':'eq.true',order:'date.desc.nullslast',limit}}).then(mapRows);
+      order:'date.desc.nullslast',limit}}).then(mapRows);
     this.mcpSearchCache.set(key,{value:task,expires:Date.now()+20000});
     if(this.mcpSearchCache.size>100)this.mcpSearchCache.delete(this.mcpSearchCache.keys().next().value);
     try{return await task;}
@@ -500,7 +500,7 @@ export class LocAuthorityState extends DurableObject {
     let rows;
     if(profile){
       rows=await postgrest(profile,{params:{select:'uid,title,content,date,createtime,site,url',
-        uid:'eq.'+uid,'able->>list':'eq.true',limit:1}});
+        uid:'eq.'+uid,limit:1}});
     }else if(Object.hasOwn(MANAGED_SCOPE_TABLES,scopeid)){
       rows=await managedMcpRead(scopeid,'mcp-read',{uid},oauthToken);
     }else throw fail('Scope database is not configured',409);
