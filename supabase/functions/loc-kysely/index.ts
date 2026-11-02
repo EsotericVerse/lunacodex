@@ -6,7 +6,6 @@ import {databaseForTarget,resolveConnectionProfile} from "./drivers.ts";
 import {makeConnectionProfile,readVaultConnection,saveVaultConnection} from "./database-connections.ts";
 import {normalizeDatabaseLocation} from "../../../app/loc/providers/database-link.mjs";
 import { executeAllowlistedRpc, executeKyselyQuery, isKyselyClientError } from "../../../app/loc/providers/kysely-runtime.mjs";
-import { adaptNeonThemeRequest, normalizeNeonThemeRows } from "../../../app/loc/providers/neon-theme-compat.mjs";
 import { selectedDatabaseTarget } from "../../../app/loc/providers/selected-database-target.mjs";
 import {resolveSqlExecutionPort,assertCrossEnginePublicRead} from "../../../app/loc/providers/sql-engine-ports.mjs";
 import {resolveDatabaseRouting} from "../../../app/loc/providers/routing-config.mjs";
@@ -192,12 +191,7 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
   await sql`select set_config('request.jwt.claims', ${JSON.stringify(claims)}, true)`.execute(trx);
   await sql`select set_config('request.jwt.claim.sub', ${String(claims.sub || "")}, true)`.execute(trx);
   await sql`select set_config('request.jwt.claim.role', ${role}, true)`.execute(trx);
-  if(body.kind==="query"){
-    const theme=target.provider==="neon"?adaptNeonThemeRequest(body):null;
-    const result=await executeKyselyQuery(trx,theme?.request||body);
-    if(theme)result.data=normalizeNeonThemeRows(result.data,theme.columns);
-    return result;
-  }
+  if(body.kind==="query")return await executeKyselyQuery(trx,body);
   return await executeAllowlistedRpc(trx,body);
 }
 

@@ -13,7 +13,7 @@ export const THEME_SLOTS=Object.freeze(
   THEME_META.map(([id,label,scheme,styleKey],index)=>Object.freeze({id,label,scheme,styleKey,order:index+1}))
 );
 
-// Emergency fallback only. Canonical theme attributes are loaded from silver.loc_theme.
+// Emergency fallback only. Canonical theme attributes are loaded from silver.loc.theme.
 const EMERGENCY_THEME=Object.freeze({
   id:'theme-7',
   label:'秩序',

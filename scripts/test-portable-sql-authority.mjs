@@ -5,7 +5,7 @@ import {classifyPortableSqlRequest,assertPortableSqlAuthority} from '../workers/
 const query=(table,operation='select')=>({kind:'query',schema:'silver',table,operation});
 const identity={provider:'clerk',subject:'user_ABC123'};
 test('portable public reads are narrowly restricted and never imply public writes',async()=>{
-  for(const table of ['loc_theme','runes','runes_etc','runes_group']){
+  for(const table of ['runes','runes_etc','runes_group']){
     assert.equal(classifyPortableSqlRequest(query(table)).public,true);
     assert.equal((await assertPortableSqlAuthority(query(table))).public,true);
     await assert.rejects(assertPortableSqlAuthority(query(table,'update')),/Unmapped resource|Verified identity|not permitted/);

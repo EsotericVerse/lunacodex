@@ -3,22 +3,21 @@
 import {useEffect,useRef,useState} from 'react';
 import {useAsyncResource} from './use-async-resource';
 import {useSWRConfig} from 'swr';
-import {dbAuthRelation} from './db-client.mjs';
+import {dbAuthClient} from './db-client.mjs';
 import {useEditDock} from '../modular/edit-dock';
 
-const TABLE='silver.loc_keywords';
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const HASH=/^[0-9a-f]{32}$/;
 const EMPTY={scope_id:'lo3rwang',class_name:'',hash:''};
 const keyOf=row=>JSON.stringify([row.scope_id,row.class_name]);
 
 async function readRegistry(){
-  const {data,error}=await dbAuthRelation(TABLE)
-    .select('scope_id,class_name,hash')
-    .order('scope_id',{ascending:true})
-    .order('class_name',{ascending:true});
+  const {data,error}=await dbAuthClient.schema('silver').rpc('loc_catalog',{
+    p_section:'keywords',p_action:'read'
+  });
   if(error)throw Error(error.message||'關鍵詞管理資料讀取失敗');
-  return data||[];
+  return (Array.isArray(data)?data:[]).sort((a,b)=>
+    a.scope_id.localeCompare(b.scope_id)||a.class_name.localeCompare(b.class_name));
 }
 
 export default function LocKeywordManagement(){
@@ -50,17 +49,14 @@ export default function LocKeywordManagement(){
     }
     setBusy(true);setNotice('');
     try{
-      const relation=dbAuthRelation(TABLE);
-      const result=original
-        ?await relation.update(payload)
-          .eq('scope_id',original.scope_id)
-          .eq('class_name',original.class_name)
-          .select('scope_id,class_name,hash')
-        :await relation.insert(payload).select('scope_id,class_name,hash');
+      const result=await dbAuthClient.schema('silver').rpc('loc_catalog',{
+        p_section:'keywords',p_action:'upsert',
+        p_key:original?keyOf(original):null,p_value:payload
+      });
       if(result.error)throw Error(result.error.message);
-      if(!result.data?.length)throw Error('資料未更新，請檢查 Admin 權限及資料庫 RLS。');
+      if(!result.data?.scope_id)throw Error('資料未更新，請檢查 Admin 權限。');
       await mutate(key=>Array.isArray(key)&&key[0]==='loc-keywords-admin');
-      choose(result.data[0]);
+      choose(result.data);
       setNotice('已儲存。');
       return true;
     }catch(e){
@@ -92,12 +88,11 @@ export default function LocKeywordManagement(){
     if(!window.confirm('確定刪除此大群組的 LOC 管理紀錄？不會刪除 Scope 內的原始關鍵詞。'))return;
     setBusy(true);setNotice('');
     try{
-      const {data:removed,error:deleteError}=await dbAuthRelation(TABLE).delete()
-        .eq('scope_id',original.scope_id)
-        .eq('class_name',original.class_name)
-        .select('scope_id');
+      const {data:removed,error:deleteError}=await dbAuthClient.schema('silver').rpc('loc_catalog',{
+        p_section:'keywords',p_action:'delete',p_key:keyOf(original)
+      });
       if(deleteError)throw Error(deleteError.message);
-      if(!removed?.length)throw Error('沒有刪除資料，請檢查 Admin 權限。');
+      if(!removed?.deleted)throw Error('沒有刪除資料，請檢查 Admin 權限。');
       await mutate(key=>Array.isArray(key)&&key[0]==='loc-keywords-admin');
       choose(null);setNotice('已刪除管理紀錄。');
     }catch(e){setNotice(String(e?.message||e));}
