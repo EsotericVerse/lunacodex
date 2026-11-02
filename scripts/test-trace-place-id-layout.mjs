@@ -97,3 +97,19 @@ test('name-only merge recognizes Facebook brand spacing and order while preservi
  assert.equal(floors.automatic.length,0);
  assert.equal(floors.uncertain.length,1);
 });
+
+test('lo3rwang Point aliases use native Anchor attr; Path and Trace retain attr references',()=>{
+  const ui=read('app/loc/TraceOrganizer.jsx');
+  const sql=read('supabase/migrations/20261103005000_lo3rwang_point_aliases_in_anchor.sql');
+  const retired=read('supabase/migrations/20261103006000_drop_lo3rwang_place.sql');
+  assert.match(ui,/from\('lo3rwang_anchor'\)/);
+  assert.match(ui,/data\?\.attr\?\.location/);
+  assert.match(ui,/\.eq\('type','point'\)/);
+  assert.match(sql,/silver\.lo3rwang_anchor/);
+  assert.match(sql,/attr->'location'/);
+  assert.match(sql,/jsonb_set\(attr,'\{location\}'/);
+  assert.match(sql,/a\.type IN \('path','trace'\)/);
+  assert.match(sql,/UPDATE silver\.lo3rwang_galaxy SET place_id=p_keep_uid/);
+  assert.match(retired,/DROP TABLE silver\.lo3rwang_place RESTRICT/);
+  assert.doesNotMatch(ui,/from\('lo3rwang_place'\)/);
+});
