@@ -5,7 +5,6 @@ import {allocateAnchorUid} from './unified-anchor-compat.mjs';
 // Importing a known check-in creates its calendar-day Time anchor independently
 // from the spatial anchor's full-precision visit timestamps.
 const NAME_LIMIT=120;
-const HEX=/^[0-9A-F]{4}$/;
 
 const DESCRIPTION_LIMIT=4000;
 const placeLabel=record=>String(record?.__importPlaceName||record?.location||'').trim();
@@ -67,7 +66,6 @@ export function importCheckinDates(records=[]){
 
 export async function prepareImportTimeAnchors(records,{
   scopeId,timeTable,relation,pageSize=750,onProgress,
-  includeUnifiedUidPool=false
 }={}){
   const entries=importCheckinDayEntries(records);
   const entryByDate=new Map(entries.map(item=>[item.date,item]));
