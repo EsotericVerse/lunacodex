@@ -46,37 +46,11 @@ let authUserId='';
 let authEmail='';
 
 let scopeMetadata=[];
-// How recently the SAME identity's management grants were confirmed against
-// the server (Clerk session + silver.get_my_scope_management RPC). Entering a
-// second management page for the same identity within this window reuses the
-// just-confirmed grants instead of repeating both round trips; any real
-// sign-out or identity change still clears this immediately (see
-// clearAuthorization() call sites) and is caught instantly by the dedicated
-// Auth-event listener in ManagementAccess, independent of this window.
-let lastVerifiedAt=0;
-const MANAGEMENT_REVERIFY_TTL_MS=20_000;
+// Only a pending verification is shared between concurrent edit-entry calls.
+// Completed grants do not bypass the next live server verification.
+let pendingManagementVerification=null;
 
-// Permission authority lives in ordinary JS memory, not in a React hook.
-// No TTL, JSON parsing, file I/O or permission SQL on subsequent actions.
-function cachedManagementAccount(){
-  const saved=readAuthorization();
-  if(!saved||!saved.userId||
-    (authUserId&&saved.userId!==authUserId)||
-    (authEmail&&saved.email!==authEmail))return null;
-  const user={id:saved.userId,email:saved.email};
-  const authorizer=createScopeAuthorizer(user);
-  if(!authorizer)return null;
-  return {...signedOutState,user,email:saved.email,
-    role:authorizer.role,authorizer,scopes:scopeMetadata};
-}
-
-async function loadManagementAccount(mutate,{forceVerify=false}={}){
-  // A forced verify still skips the network round trip when the exact same
-  // identity was confirmed moments ago: this is an explicit, bounded window
-  // (MANAGEMENT_REVERIFY_TTL_MS), not an unconditional skip of forceVerify.
-  const withinReverifyWindow=lastVerifiedAt&&(Date.now()-lastVerifiedAt<MANAGEMENT_REVERIFY_TTL_MS);
-  const cached=(forceVerify&&!withinReverifyWindow)?null:cachedManagementAccount();
-  if(cached)return cached;
+async function fetchManagementAccount(mutate){
   const startedAt=authRevision;
   const obsolete=()=>startedAt!==authRevision;
   let verifiedIdentity=null;
@@ -97,7 +71,6 @@ async function loadManagementAccount(mutate,{forceVerify=false}={}){
       scopeMetadata=[];
       authUserId='';
       authEmail='';
-      lastVerifiedAt=0;
       void mutate(SESSION_KEY,signedOutState,{revalidate:false});
       return signedOutState;
     }
@@ -113,26 +86,34 @@ async function loadManagementAccount(mutate,{forceVerify=false}={}){
     scopeMetadata=metadata;
     authUserId=String(user.id);
     authEmail=normalizeAuthEmail(user.email);
-    lastVerifiedAt=Date.now();
-    return cachedManagementAccount()||signedOutState;
+    const authorizer=createScopeAuthorizer(user);
+    return authorizer?{...signedOutState,...verifiedIdentity,
+      role:authorizer.role,authorizer,scopes:metadata}:signedOutState;
   }catch(error){
     // An older request must not erase a newer account's verified grants.
     if(obsolete())return signedOutState;
-    // A failed permission read (e.g. database blocked) must not erase verified
-    // grants already cached for this user; keep the last known authorization.
-    const cached=forceVerify?null:cachedManagementAccount();
-    if(cached)return cached;
-    // If a deliberate recheck fails, show the error rather than pretending
-    // the visitor signed out or silently trusting an old management snapshot.
+    // Never accept a previous local grant as proof of a failed live check.
+    // Preserve the verified identity for retry but deny editor access.
     clearAuthorization();
     scopeMetadata=[];
     authUserId='';
     authEmail='';
-    lastVerifiedAt=0;
     return verifiedIdentity
       ?{...signedOutState,...verifiedIdentity,error:String(error?.message||error)}
       :failedState(error);
   }
+}
+
+// Deduplicate only simultaneous requests; do not retain completed results.
+function loadManagementAccount(mutate){
+  if(pendingManagementVerification)return pendingManagementVerification;
+  const current=fetchManagementAccount(mutate);
+  pendingManagementVerification=current;
+  void current.then(
+    ()=>{if(pendingManagementVerification===current)pendingManagementVerification=null;},
+    ()=>{if(pendingManagementVerification===current)pendingManagementVerification=null;}
+  );
+  return current;
 }
 
 export function useAccount({enabled=true,sessionOnly=false}={}){
@@ -170,20 +151,13 @@ export function useAccount({enabled=true,sessionOnly=false}={}){
     };
   },[sessionOnly,enabled,state.error,query.mutate]);
 
-  // An explicit action checks current JS variables on every click. Only a
-  // missing/invalidated snapshot loads one server-verified permission set.
-  const refresh=useCallback(async({forceVerify=false}={})=>{
-    if(!sessionOnly&&!forceVerify){
-      const cached=cachedManagementAccount();
-      if(cached)return {user:cached.user,authorizer:cached.authorizer};
-    }
-    const fetcher=forceVerify&&!sessionOnly
-      ?()=>loadManagementAccount(mutate,{forceVerify:true}):queryFn;
-    const result=await mutate(queryKey,fetcher,{revalidate:false});
-    // A permission RPC failure is not proof that the user logged out.
+  // One live verified decision per explicit entry; no TTL or cache shortcut.
+  const refresh=useCallback(async()=>{
+    const result=await mutate(queryKey,queryFn,{revalidate:false});
     if(result?.error)throw new Error(result.error);
     if(sessionOnly)return result?.user||null;
-    return result?.user&&result.authorizer?{user:result.user,authorizer:result.authorizer}:null;
+    return result?.user&&result.authorizer
+      ?{user:result.user,authorizer:result.authorizer}:null;
   },[mutate,queryKey,queryFn,sessionOnly]);
 
   const signIn=useCallback(callbackURL=>signInWithGoogle(String(callbackURL||'').trim()),[]);
@@ -194,7 +168,7 @@ export function useAccount({enabled=true,sessionOnly=false}={}){
     authEmail='';
     clearAuthorization();
     scopeMetadata=[];
-    lastVerifiedAt=0;
+    pendingManagementVerification=null;
     await Promise.all([
       mutate(SESSION_KEY,signedOutState,{revalidate:false}),
       mutate(VERIFIED_SESSION_KEY,signedOutState,{revalidate:false}),
@@ -248,10 +222,10 @@ export function usePassiveSessionAccount(){
       });
       if(invalidate){
         authRevision+=1;
+        pendingManagementVerification=null;
         clearAuthorization();
         scopeMetadata=[];
-        lastVerifiedAt=0;
-      }
+              }
       authUserId=nextUserId;
       authEmail=nextEmail;
       // Passive navigation needs only a session ID hint, never an OAuth email.

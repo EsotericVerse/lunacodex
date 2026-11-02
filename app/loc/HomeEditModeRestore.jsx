@@ -18,8 +18,8 @@ export default function HomeEditModeRestore({scopeId}){
       dock?.begin('local');return undefined;
     }
     let active=true;
-    // Reuse verified in-memory Scope grants when returning within the same
-    // document. A full page load has no cache and still verifies remotely.
+    // Re-check live on restoration. Concurrent entry requests share only
+    // the same pending verification, not an earlier permission decision.
     void account.refresh().then(result=>{
       if(!active)return;
       const allowed=marker.userId===result?.user?.id&&(

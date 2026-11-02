@@ -37,9 +37,8 @@ export default function ScopeHomeEditEntry(){
         editDock?.begin('local');
         return;
       }
-      // One server verification per current management identity. Re-entering
-      // the editor can reuse a grant already verified in this browser runtime.
-      // Sign-out/account changes invalidate it; writes still require server authorization.
+      // One live verification for this edit entry. An earlier result is not
+      // used to bypass authorization; writes remain protected by server RLS.
       const result=await account.refresh();
       if(!result?.user){
         setMessage({key:'uiExtra.editBlocks.signInToEnterEditMode',showLogin:true});
