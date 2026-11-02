@@ -25,7 +25,10 @@ export default function ManagementAccess({scopeId,level='scope',featureId='manag
   const [locked,setLocked]=useState(false);
   const [renewing,setRenewing]=useState(false);
   const [error,setError]=useState('');
-  const check=useCallback(()=>account.refresh({forceVerify:true}),[account.refresh]);
+  // The homepage edit button already verified this same Clerk + Scope.
+  // Reuse its in-memory grant when present; a new HTML document or a changed
+  // identity has no such grant and will still perform the full server check.
+  const check=useCallback(()=>account.refresh(),[account.refresh]);
 
   useEffect(()=>{
     let active=true;
