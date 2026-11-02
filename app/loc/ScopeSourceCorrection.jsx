@@ -1,7 +1,8 @@
 'use client';
 import {useState} from 'react';
-import {scopeTagColumn,scopeTagNames} from './scope-config-fields.mjs';
+import {scopeTagNames} from './scope-config-fields.mjs';
 import {useAsyncResource} from './use-async-resource';
+import {useScopeSourceCategoryRow} from './scope-source-category-row.mjs';
 import {dbAuthClient,dbAuthRelation,readScopeCategoryTotals} from './db-client.mjs';
 import {useAccount} from './use-account';
 import {useEditDock,useEditDockForm} from '../modular/edit-dock';
@@ -22,18 +23,19 @@ export default function ScopeSourceCorrection({scopeId}){
   const [before,setBefore]=useState(''),[after,setAfter]=useState('');
   const [preview,setPreview]=useState(null),[busy,setBusy]=useState(false);
   const [notice,setNotice]=useState(''),[completed,setCompleted]=useState(0);
-  const sourceLists=useAsyncResource({
-    queryKey:['scope-source-rename-lists',scopeId],enabled:allowed,
-    queryFn:async()=>{
-      const lists=await Promise.all(['loc',scopeId].map(async id=>{
-        const {data,error}=await dbAuthRelation('silver.'+id).select(scopeTagColumn(id)).eq('id',id).maybeSingle();
-        if(error)throw new Error(error.message);
-        return scopeTagNames(id,data);
-      }));
-      const totals=await readScopeCategoryTotals(scopeId);
-      return {system:lists[0],personal:lists[1],observed:(totals||[]).filter(row=>row.kind==='source').map(row=>row.category)};
-    }
-  });
+  const systemRow=useScopeSourceCategoryRow('loc',{enabled:allowed});
+  const personalRow=useScopeSourceCategoryRow(scopeId,{enabled:allowed});
+  const totalsQuery=useAsyncResource(['scope-source-category-totals',scopeId],
+    ()=>readScopeCategoryTotals(scopeId),{enabled:allowed});
+  const sourceLists={
+    data:systemRow.data!==undefined&&personalRow.data!==undefined&&totalsQuery.data!==undefined?{
+      system:scopeTagNames('loc',systemRow.data),
+      personal:scopeTagNames(scopeId,personalRow.data),
+      observed:(totalsQuery.data||[]).filter(row=>row.kind==='source').map(row=>row.category)
+    }:undefined,
+    error:systemRow.error||personalRow.error||totalsQuery.error,
+    refetch:()=>Promise.all([systemRow.refetch(),personalRow.refetch(),totalsQuery.refetch()])
+  };
   const canonicalAfter=canonicalImportSourceName(after,sourceLists.data?.system||[],sourceLists.data?.personal||[]);
   const sourceOptions=[...new Set([...(sourceLists.data?.system||[]),...(sourceLists.data?.personal||[]),...(sourceLists.data?.observed||[])].filter(Boolean))];
   const dirty=Boolean(before.trim()&&canonicalAfter&&before.trim()!==canonicalAfter);

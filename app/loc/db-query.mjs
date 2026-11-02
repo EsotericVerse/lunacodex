@@ -2,6 +2,7 @@
 
 import {DB_QUERY_BATCH_SIZE,queryBatchSize} from './db-contract.mjs';
 import {coalescePendingPublicRead} from './inflight-public-read.mjs';
+import {mapBounded} from './bounded-parallel.mjs';
 export {DB_QUERY_BATCH_SIZE,queryBatchSize} from './db-contract.mjs';
 
 import {dbAuthClient,dbBackupPublicClient,dbConfiguredPublicClient,dbPublicClient} from './db-client.mjs';
@@ -249,6 +250,48 @@ export async function selectAllRows(table,{
     onProgress?.({completed:offset,total});
   }
   return {rows,count:total,dataSource:source};
+}
+
+// Like selectAllRows, but once the table is bigger than a couple of pages,
+// the remaining pages are fetched concurrently (bounded) instead of queued
+// one after another. A small/medium table (the common case) is read exactly
+// the same sequential way as selectAllRows -- no added connections, no
+// behavior change. Only a genuinely large table (several thousand+ rows)
+// switches to parallel paging, which is what keeps a 20k+ row full scan from
+// accumulating enough sequential round-trips to time out. Supports
+// `authenticated` since this also serves authenticated full-table scans
+// (e.g. UID-allocation reads) that selectAllRows does not cover.
+const PARALLEL_SCAN_AFTER_PAGES=3;
+const PARALLEL_SCAN_CONCURRENCY=4;
+export async function selectAllRowsBounded(table,{
+  columns,
+  filters=[],
+  orFilter='',
+  orders=[],
+  pageSize=DB_QUERY_BATCH_SIZE,
+  authenticated=false,
+  parallelAfterPages=PARALLEL_SCAN_AFTER_PAGES,
+  concurrency=PARALLEL_SCAN_CONCURRENCY
+}={}){
+  const size=Math.max(1,Math.min(queryBatchSize(columns),Math.floor(Number(pageSize)||DB_QUERY_BATCH_SIZE)));
+  const first=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset:0,count:'exact',authenticated});
+  const rows=[...first.rows];
+  const total=Number(first.count)||rows.length;
+  if(rows.length>=total)return {rows,count:total,dataSource:first.dataSource};
+  const remainingOffsets=[];
+  for(let offset=rows.length;offset<total;offset+=size)remainingOffsets.push(offset);
+  if(remainingOffsets.length<=parallelAfterPages){
+    let source=first.dataSource||'auto';
+    for(const offset of remainingOffsets){
+      const page=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset,authenticated,source});
+      rows.push(...page.rows);
+    }
+    return {rows,count:total,dataSource:source};
+  }
+  const pages=await mapBounded(remainingOffsets,concurrency,offset=>
+    selectRows(table,{columns,filters,orFilter,orders,limit:size,offset,authenticated}));
+  for(const page of pages)rows.push(...(page?.rows||[]));
+  return {rows,count:total,dataSource:first.dataSource};
 }
 
 // Streams a full table one offset/limit page at a time. Each page is handed to

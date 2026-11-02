@@ -3,7 +3,7 @@
 import {useEffect,useId,useRef,useState} from 'react';
 import {useAccount} from '../loc/use-account';
 import {selectManagedScope} from '../loc/scope-data';
-import {selectRows,DB_QUERY_BATCH_SIZE} from '../loc/db-query.mjs';
+import {selectRows,selectAllRowsBounded} from '../loc/db-query.mjs';
 import {insertRows} from '../loc/db-client.mjs';
 import {allocateTimeUid} from '../loc/time-anchor-ranges.mjs';
 import {readUnifiedAnchorUids} from '../loc/unified-anchor-uids.mjs';
@@ -22,20 +22,10 @@ async function findDateAnchor(table,date){
 }
 
 async function allocateScopedTimeUid(table){
-  const occupied=[];
-  for(let offset=0;;offset+=DB_QUERY_BATCH_SIZE){
-    const {rows=[]}=await selectRows(table,{
-      columns:'uid',orders:[{column:'uid',ascending:true}],
-      limit:DB_QUERY_BATCH_SIZE,offset,authenticated:true
-    });
-    occupied.push(...rows);
-    if(rows.length<DB_QUERY_BATCH_SIZE)break;
-  }
-  const shared=await readUnifiedAnchorUids(table,async(anchor,offset,limit)=>{
-    const {rows=[]}=await selectRows(anchor,{columns:'uid',
-      orders:[{column:'uid',ascending:true}],limit,offset,authenticated:true});
-    return rows;
+  const {rows:occupied}=await selectAllRowsBounded(table,{
+    columns:'uid',orders:[{column:'uid',ascending:true}],authenticated:true
   });
+  const shared=await readUnifiedAnchorUids(table);
   return allocateTimeUid([...occupied,...shared]);
 }
 
@@ -104,17 +94,12 @@ export default function ArticleTimeAnchorAction({
       // CREATE. Never preload all Time anchors on article detail read.
       // Suggestions are ephemeral; writes happen only on Submit.
       if(!provided.length)try{
-        const existingAnchors=[];
-        for(let offset=0;;offset+=DB_QUERY_BATCH_SIZE){
-          const result=await selectRows(target.time,{
-            columns:'uid,type,title,address',
-            filters:[{column:'type',operator:'eq',value:'anchor'}],
-            orders:[{column:'uid',ascending:true}],
-            offset,limit:DB_QUERY_BATCH_SIZE,authenticated:true
-          });
-          existingAnchors.push(...result.rows);
-          if(result.rows.length<DB_QUERY_BATCH_SIZE)break;
-        }
+        const {rows:existingAnchors}=await selectAllRowsBounded(target.time,{
+          columns:'uid,type,title,address',
+          filters:[{column:'type',operator:'eq',value:'anchor'}],
+          orders:[{column:'uid',ascending:true}],
+          authenticated:true
+        });
         const suggested=anniversarySuggestionsForDate(date,existingAnchors,{
           birthday:target.birthday
         });

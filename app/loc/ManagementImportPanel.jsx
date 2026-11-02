@@ -13,6 +13,7 @@ import ScopeSourceCorrection from './ScopeSourceCorrection';
 import {insertRows,insertImportRows,dbAuthRelation,dbAuthClient,updateImportRows} from './db-client.mjs';
 import {useAccount} from './use-account';
 import {useAsyncResource} from './use-async-resource';
+import {useScopeSourceCategoryRow} from './scope-source-category-row.mjs';
 import {canonicalImportSourceName,inferImportSourceFromFilename} from './source-name.mjs';
 import {Capacitor} from '@capacitor/core';
 import {defaultScopeData} from './scope-data';
@@ -34,7 +35,7 @@ import {ARCHIVE_MAX_BYTES,IMPORT_FIELD_ALIASES,UNIVERSAL_IMPORT_ACCEPT,mappedImp
 import {MAX_ROWS,urlSafeInBatches} from './query-batch-size.mjs';
 import {hasIrrecoverableEncoding,isPureUrlContent,normalizeGalaxyContent,normalizeRelationIds,repairMojibakeText,resolveGalaxyTitle} from './content-policy';
 import {touchEditorSession} from './edit-session-ttl.mjs';
-import {scopeTagColumn,scopeTagNames} from './scope-config-fields.mjs';
+import {scopeTagNames} from './scope-config-fields.mjs';
 import {runeDrawText} from './rune-draw-text.mjs';
 const ZIP_LAYOUT_KEYS=Object.freeze({
   'conversation-tree':'conversationTree','message-list':'messageList','post-list':'postList',
@@ -424,18 +425,14 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   const [source,setSource]=useState('');
   const [timeRange,setTimeRange]=useState('year');
   const timeWindow=useMemo(()=>importTimeRangeWindow(timeRange),[timeRange,fileName]);
-  const sourceCategories=useAsyncResource({
-    queryKey:['import-source-categories',scopeId],
-    enabled:!nativeLocal&&Boolean(account.user)&&account.canManageScopeSync(scopeId),
-    queryFn:async()=>{
-      const lists=await Promise.all(['loc',scopeId].map(async id=>{
-        const {data,error}=await dbAuthRelation('silver.'+id).select(scopeTagColumn(id)).eq('id',id).maybeSingle();
-        if(error)throw new Error(error.message);
-        return scopeTagNames(id,data);
-      }));
-      return {system:lists[0],personal:lists[1]};
-    }
-  });
+  const sourceCategoriesEnabled=!nativeLocal&&Boolean(account.user)&&account.canManageScopeSync(scopeId);
+  const sourceCategoriesSystemRow=useScopeSourceCategoryRow('loc',{enabled:sourceCategoriesEnabled});
+  const sourceCategoriesPersonalRow=useScopeSourceCategoryRow(scopeId,{enabled:sourceCategoriesEnabled});
+  const sourceCategories={
+    data:sourceCategoriesSystemRow.data!==undefined&&sourceCategoriesPersonalRow.data!==undefined
+      ?{system:scopeTagNames('loc',sourceCategoriesSystemRow.data),personal:scopeTagNames(scopeId,sourceCategoriesPersonalRow.data)}
+      :undefined
+  };
   const sourceOptions=[...new Set([...(sourceCategories.data?.system||[]),...(sourceCategories.data?.personal||[])])];
   const canonicalSource=value=>canonicalImportSourceName(value,sourceCategories.data?.system||[],sourceCategories.data?.personal||[]);
   const [importLocale,setImportLocale]=useState('zh-Hant');

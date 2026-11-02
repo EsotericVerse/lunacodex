@@ -3,7 +3,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {scopeTagColumn,scopeTagNames} from './scope-config-fields.mjs';
 import {useSWRConfig} from 'swr';
-import {useAsyncResource} from './use-async-resource';
+import {useScopeSourceCategoryRow} from './scope-source-category-row.mjs';
 import {dbAuthRelation,dbAuthClient} from './db-client.mjs';
 import {useAccount} from './use-account';
 import {useUiLocale} from '../i18n/ui-locale';
@@ -31,12 +31,12 @@ export default function FlatClassificationEditor({scopeId='loc'}){
   const listRef=useRef(null);
   const [busy,setBusy]=useState(false);
   const [notice,setNotice]=useState('');
-  const query=useAsyncResource(['default-article-class-list',scopeId],async()=>{
-    const {data,error}=await dbAuthRelation('silver.'+scopeId).select(scopeTagColumn(scopeId)).eq('id',scopeId).maybeSingle();
-    if(error)throw new Error(error.message||l.readError);
-    if(!data)throw new Error(l.notFound);
-    return scopeTagNames(scopeId,data);
-  },{enabled:allowed});
+  const row=useScopeSourceCategoryRow(scopeId,{enabled:allowed});
+  const query={
+    ...row,
+    data:row.data?scopeTagNames(scopeId,row.data):undefined,
+    error:row.error||(allowed&&!row.isPending&&row.data===null?new Error(l.notFound):null)
+  };
   const original=query.data||[];
   const rows=draft===null?original:draft;
   const changed=draft!==null&&JSON.stringify(draft)!==JSON.stringify(original);

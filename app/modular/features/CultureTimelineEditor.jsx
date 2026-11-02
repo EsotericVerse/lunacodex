@@ -259,12 +259,7 @@ export default function CultureTimelineEditor({
             day(anchors.get(segment.end)?.address)<=day(anchors.get(segment.start)?.address))
             throw new Error('結束定錨點必須晚於起始定錨點');
         }
-        const globalUids=await readUnifiedAnchorUids(timeTable,
-          async(anchor,offset,limit)=>{
-            const {rows=[]}=await selectRows(anchor,{columns:'uid',
-              orders:[{column:'uid',ascending:true}],limit,offset,authenticated:true});
-            return rows;
-          });
+        const globalUids=await readUnifiedAnchorUids(timeTable);
         let pairPeriodUids=[];
         if(draft.type==='era'&&tracePairs.length){
           if(tracePairs.some(pair=>!anchors.has(pair[0])||!anchors.has(pair[1])))
