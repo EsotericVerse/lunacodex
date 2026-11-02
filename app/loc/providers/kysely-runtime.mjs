@@ -18,6 +18,7 @@ export const RPC_ALLOWLIST={
   'silver.read_scope_analytics':['p_scope_id','p_view','p_start','p_end','p_options'],
   // The authenticated manager refresh is guarded by silver.can_manage_scope().
   // Public Search reads only the persisted summary; it cannot call this RPC.
+  'silver.read_scope_search_summary':['p_scope_ids'],
   'silver.refresh_scope_search_summary':['p_scope_id'],
   'silver.get_my_scope_management':[],
   'silver.read_music_style_tree':[],
@@ -40,6 +41,7 @@ export const RPC_ALLOWLIST={
 const RPC_REQUIRED_ARGUMENTS={
   'silver.management_write':['p_table','p_operation'],
   'silver.read_scope_analytics':['p_scope_id','p_view'],
+  'silver.read_scope_search_summary':['p_scope_ids'],
   'silver.refresh_scope_search_summary':['p_scope_id'],
   'silver.import_shared_keyword_class':['p_target_scope','p_source_scope','p_class_uid'],
   'silver.save_scope_trace_place_names':['p_scope_id','p_uid','p_names'],

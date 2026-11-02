@@ -1,7 +1,7 @@
 'use client';
 
-import {selectRows} from './db-query.mjs';
-import {dbAuthClient} from './db-client.mjs';
+
+import {dbAuthClient,dbPublicClient} from './db-client.mjs';
 
 const SCOPE_ID=/^[a-z][a-z0-9]{0,14}$/;
 
@@ -34,17 +34,12 @@ export function summarizeScopeSearchSummary(scopeIds,rows=[]){
 export async function readScopeSearchSummary(scopeIds){
   const ids=summaryScopeIds(scopeIds);
   if(!ids.length)return {rows:[],summary:null};
-  const rows=[];
-  for(let start=0;start<ids.length;start+=40){
-    const batch=ids.slice(start,start+40);
-    const result=await selectRows('silver.scope_search_summary',{
-      columns:'scope_id,article_count,word_count,first_date,last_date,refreshed_at',
-      filters:[{column:'scope_id',operator:batch.length===1?'eq':'in',value:batch.length===1?batch[0]:batch}],
-      limit:batch.length,
-      maxLimit:40
-    });
-    rows.push(...result.rows);
-  }
+  // Scope status.search is not publicly readable as a table column.
+  // This RPC projects only aggregate statistics without exposing config.
+  const {data,error}=await dbPublicClient.schema('silver').rpc(
+    'read_scope_search_summary',{p_scope_ids:ids});
+  if(error)throw new Error(error.message||'搜尋摘要讀取失敗');
+  const rows=Array.isArray(data?.rows)?data.rows:[];
   return {rows,summary:summarizeScopeSearchSummary(ids,rows)};
 }
 

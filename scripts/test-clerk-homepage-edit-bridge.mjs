@@ -29,6 +29,19 @@ test('home editor can read existing permission RPC through Kysely as a rowset',(
     name:'get_my_scope_management',args:{}});
   assert.equal(built.returnsRows,true);
 });
+test('public Scope Search summary RPC only accepts approved Scope IDs',()=>{
+  assert.deepEqual(RPC_ALLOWLIST['silver.read_scope_search_summary'],['p_scope_ids']);
+  const built=buildAllowlistedRpcQuery({kind:'rpc',schema:'silver',
+    name:'read_scope_search_summary',args:{p_scope_ids:['lo3rwang','lrunes']}});
+  assert.equal(built.returnsRows,false);
+  assert.ok(built.query);
+  assert.throws(()=>buildAllowlistedRpcQuery({kind:'rpc',schema:'silver',
+    name:'read_scope_search_summary',args:{}}),/Missing required RPC argument/);
+  assert.throws(()=>buildAllowlistedRpcQuery({kind:'rpc',schema:'silver',
+    name:'read_scope_search_summary',args:{p_scope_ids:['lo3rwang'],sql:'x'}}),
+    /Unexpected RPC argument/);
+});
+
 test('management search refresh accepts exactly one Scope ID with required argument',()=>{
   assert.deepEqual(RPC_ALLOWLIST['silver.refresh_scope_search_summary'],['p_scope_id']);
   const built=buildAllowlistedRpcQuery({kind:'rpc',schema:'silver',
@@ -51,7 +64,10 @@ test('Search public summary uses snapshot; refresh remains a manager-only action
   assert.match(source,/for\(const id of ids\)await refreshScopeSearchSummary\(id\)/);
   assert.match(refresh,/dbAuthClient\.schema\('silver'\)/);
   assert.match(refresh,/\.rpc\('refresh_scope_search_summary',\{p_scope_id:ids\[0\]\}\)/);
-  assert.match(refresh,/silver\.scope_search_summary/);
+  assert.doesNotMatch(refresh,/silver\.scope_search_summary/);
+  assert.match(refresh,/dbPublicClient\.schema\('silver'\)\.rpc/);
+  assert.match(refresh,/'read_scope_search_summary',\{p_scope_ids:ids\}/);
+  assert.match(refresh,/data\?\.rows/);
 });
 test('legacy SQL Auth continues to validate Supabase user independently',()=>{
   const code=readFileSync(new URL('../supabase/functions/loc-kysely/index.ts',import.meta.url),'utf8');
