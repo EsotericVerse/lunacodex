@@ -18,7 +18,7 @@ export default {
   "personalHome": "Personal homepage",
   "manageMenu": "Management",
   "account": "Account",
-  "publish": "Publish article",
+  "publish": "Article management",
   "members": "Manage members",
   "systemSettings": "System settings",
   "savedHome": "Homepage saved.",
