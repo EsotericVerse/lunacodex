@@ -4,7 +4,7 @@ import {usePathname} from 'next/navigation';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import {FeaturePage} from '../modular/ui';
-import ManagementSectionNav,{useManagementSection} from '../modular/ManagementSectionNav';
+import ManagementSectionNav from '../modular/ManagementSectionNav';
 import {useUiSection} from '../i18n/ui-locale';
 import {useUiText} from '../i18n/UiText';
 import {registerDefaultSection} from '../i18n/ui-copy';
@@ -18,7 +18,7 @@ registerDefaultSection('uiExtra.globalSettings',globalSettingsZh);
 const LocUserSettingsPanel=dynamic(()=>import('./LocUserSettingsPanel'),{loading:PanelLoading});
 const KEY='uiExtra.globalSettings.';
 
-export default function FeatureSettingsPage(){
+export default function FeatureSettingsPage({embedded=false}){
   useUiSection('uiExtra.globalSettings');
   const t=useUiText();
   const pathname=usePathname()||'';
@@ -32,18 +32,18 @@ export default function FeatureSettingsPage(){
     {value:'cultureTrace',label:t(KEY+'featureCultureTrace')},
     {value:'staticsSearch',label:t(KEY+'featureStaticsSearch')}
   ],[t(KEY+'featureFilter'),t(KEY+'featureCultureTrace'),t(KEY+'featureStaticsSearch')]);
-  const [section,setSection]=useManagementSection(sections,'filter');
+  // React-only category selection: never push a route or rewrite the parent Settings URL.
+  const [section,setSection]=useState('filter');
   const login=()=>{
     setLoginError('');
     void account.signIn(new URL(window.location.href).href)
       .catch(error=>setLoginError(String(error?.message||error)));
   };
 
-  return <FeaturePage featureId="setting">
-    <div className="scope-settings-options management-workspace">
+  const content=<div className="scope-settings-options management-workspace">
       <header className="loc-card">
-        <Link href={settingsHref} className="loc-button">{t(KEY+'featureSettingsBack')}</Link>
-        <h1>{t(KEY+'featureSettings')}</h1>
+        {!embedded?<Link href={settingsHref} className="loc-button">{t(KEY+'featureSettingsBack')}</Link>:null}
+        {embedded?<h2>{t(KEY+'featureSettings')}</h2>:<h1>{t(KEY+'featureSettings')}</h1>}
         <p className="scope-status">{t(KEY+'featureSettingsDescription')}</p>
       </header>
       <ManagementSectionNav id="feature-settings-sections"
@@ -76,6 +76,6 @@ export default function FeatureSettingsPage(){
               {account.error||loginError?<p role="alert" className="scope-status scope-error">{loginError||account.error}</p>:null}
             </section>}
       </div>
-    </div>
-  </FeaturePage>;
+    </div>;
+  return embedded?content:<FeaturePage featureId="setting">{content}</FeaturePage>;
 }

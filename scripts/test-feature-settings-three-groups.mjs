@@ -7,15 +7,18 @@ const root='app/i18n/sections/uiExtra.globalSettings.';
 const locales=await Promise.all(['zh_tw','zh_cn','en','ja'].map(async lang=>
   (await import('../'+root+lang+'.js')).default));
 
-test('Settings has a separate Feature Settings route on web and device paths',()=>{
+test('Feature Settings stays inline in the React Settings page and retains legacy links',()=>{
   const rootSettings=read('app/loc/GlobalSettings.jsx');
   const featurePage=read('app/loc/FeatureSettingsPage.jsx');
   assert.ok(rootSettings.includes("option('features'"));
-  assert.ok(rootSettings.includes("router.push(featuresHref)"));
-  assert.ok(rootSettings.includes('/local/settings/features/'));
+  assert.ok(rootSettings.includes("<FeatureSettingsPage embedded/>"));
+  assert.ok(rootSettings.includes('onChange={next=>{setSection(next);setStatus')); 
+  assert.ok(!rootSettings.includes('router.push(featuresHref)'));
+  assert.ok(!rootSettings.includes('router.replace(featuresHref)'));
   assert.ok(!rootSettings.includes('LocUserSettingsPanel'));
   assert.ok(!rootSettings.includes('timeFilterTitle'));
-  assert.ok(featurePage.includes('return <FeaturePage featureId="setting">'));
+  assert.ok(featurePage.includes("const [section,setSection]=useState('filter')"));
+  assert.ok(featurePage.includes('return embedded?content:<FeaturePage'));
   assert.ok(featurePage.includes('<ManagementSectionNav'));
   for(const path of ['app/local/settings/features/page.jsx','app/settings/features/page.jsx']){
     const route=read(path);
