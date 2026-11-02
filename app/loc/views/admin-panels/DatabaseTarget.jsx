@@ -8,9 +8,8 @@ import {useUiSection} from '../../../i18n/ui-locale';
 import adminViewZh from '../../../i18n/sections/uiExtra.adminView.zh_tw.js';
 import {SQL_ENGINE_OPTIONS} from '../../providers/sql-engine-ports.mjs';
 import {databaseProviderChoices,normalizeDatabaseLocation} from '../../providers/database-link.mjs';
-import {dbAuthRelation,dbAuthClient} from '../../db-client.mjs';
+import {dbAuthClient} from '../../db-client.mjs';
 import {resolveDatabaseRouting} from '../../providers/routing-config.mjs';
-import {scopedDatabaseListRelation} from '../../providers/database-list-relation.mjs';
 import {preferredDatabasePrimary} from '../../providers/emergency-primary.mjs';
 import {readonlyAuthStatus,recoveryOAuthLabel} from '../../providers/auth-status-readonly.mjs';
 import {useEditDockForm} from '../../../modular/edit-dock';
@@ -24,8 +23,7 @@ function AuthStatusLight({label,enabled}){
   </span>;
 }
 
-export default function DatabaseTarget({scopeGroup}){
-  const listRelation=scopedDatabaseListRelation(scopeGroup);
+export default function DatabaseTarget(){
   useUiSection('uiExtra.adminView');
   const [rows,setRows]=useState([]);
   const [selectedId,setSelectedId]=useState('');
@@ -58,12 +56,11 @@ export default function DatabaseTarget({scopeGroup}){
   useEffect(()=>{
     let active=true;
     (async()=>{
-      const {data,error}=await dbAuthRelation(listRelation)
-        .select('target_id,provider,engine,connection_alias,connection_mode,label,project_id,project_url,region,selected,backup_selected,updated_at')
-        .order('provider').order('target_id');
+      const {data,error}=await dbAuthClient.schema('silver').rpc('loc_admin_settings',
+        {p_section:'database',p_operation:'read'});
       if(!active)return;
       if(error){setStatus(error.message||'資料庫目標讀取失敗。');return;}
-      const next=data||[];
+      const next=(data||[]).sort((a,b)=>String(a.provider).localeCompare(String(b.provider))||String(a.target_id).localeCompare(String(b.target_id)));
       original.current={rows:next};
       setRows(next);
       setSelectedId(current=>next.some(item=>item.target_id===current)?current:
@@ -80,7 +77,7 @@ export default function DatabaseTarget({scopeGroup}){
       }
     })();
     return()=>{active=false};
-  },[revision,listRelation]);
+  },[revision]);
   const configuredBackup=rows.find(item=>item.backup_selected===true)||null;
   const index=rows.findIndex(item=>item.target_id===selectedId);
   const row=index<0?null:rows[index];
@@ -120,8 +117,10 @@ export default function DatabaseTarget({scopeGroup}){
     }
     setSaving(true);setStatus('');
     try{
-      const {data,error}=await dbAuthRelation(listRelation).delete().eq('target_id',row.target_id).select('target_id');
-      if(error||data?.length!==1)throw new Error(error?.message||'刪除資料庫目標失敗，未確認刪除。');
+      const {data,error}=await dbAuthClient.schema('silver').rpc('loc_admin_settings',
+        {p_section:'database',p_operation:'delete',p_key:row.target_id});
+      if(error||data?.some(item=>item.target_id===row.target_id))
+        throw new Error(error?.message||'刪除資料庫目標失敗，未確認刪除。');
       setStatus('已刪除資料庫目標。');setRevision(v=>v+1);
     }catch(error){setStatus(error?.message||'刪除失敗。');}
     finally{setSaving(false);}
@@ -150,15 +149,12 @@ export default function DatabaseTarget({scopeGroup}){
         region:row.region||'',
         updated_at:new Date().toISOString()
       };
-      const relation=dbAuthRelation(listRelation);
-      const changes=row._new?payload:Object.fromEntries(
-        Object.entries(payload).filter(([key])=>key==='updated_at'||row[key]!==previous?.[key])
-      );
-      const {data,error}=row._new
-        ?await relation.insert({...changes,target_id:row.target_id,selected:false,
-            backup_selected:false,routing_mode:'single'}).select('target_id')
-        :await relation.update(changes).eq('target_id',row.target_id).select('target_id');
-      if(error||data?.length!==1)throw new Error(error?.message||'資料庫目標資訊未能寫入，請檢查管理權限。');
+      const {data,error}=await dbAuthClient.schema('silver').rpc('loc_admin_settings',{
+        p_section:'database',p_operation:'upsert',p_key:row.target_id,
+        p_value:payload
+      });
+      if(error||!data?.some(item=>item.target_id===row.target_id))
+        throw new Error(error?.message||'資料庫目標資訊未能寫入，請檢查管理權限。');
       setStatus('資料庫設定已儲存。');
       setRevision(v=>v+1);
       return true;
