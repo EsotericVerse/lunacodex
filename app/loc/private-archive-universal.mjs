@@ -26,7 +26,6 @@ const MAX_EXTRACTED=1024*1024*1024;
 // Count entries but never decompress ignored media; retain a finite ZIP entry cap.
 const MAX_FILES=100000,MAX_TEXT_DOCUMENT=8*1024*1024;
 const MAX_STRUCTURED_DOCUMENT=ARCHIVE_JSON_MAX_BYTES;
-const MAX_SNIFF_INFLATE=2*1024*1024;
 const YTD=/^\s*(?:\/\*[\s\S]*?\*\/\s*)?window\.YTD\.[\w-]+\.part\d+\s*=\s*/;
 const textExtension=/\.(?:json|js|txt|md|csv|tsv|html?|xml|log|jsonl)$/i;
 const exifImage=/\.(?:jpe?g|png)$/i;
@@ -567,8 +566,7 @@ export async function detectZipArchiveSource(file,{signal,onProgress,skipPrivate
     const base=path.split('/').at(-1)||'';
     const priority=/(?:conversations|tweets|threads|messages|posts|status_updates|myactivity|result|_chat|project|workspace|knowledge|attachment|upload)/i.test(base);
     if(skippedZipEntry(path)||![0,8].includes(entry.compression)||
-       (priority?inspectedFiles>=ZIP_SNIFF_FILES*2:inspectedFiles>=ZIP_SNIFF_FILES)||
-       (entry.originalSize!==undefined&&entry.originalSize>MAX_SNIFF_INFLATE)){
+       (priority?inspectedFiles>=ZIP_SNIFF_FILES*2:inspectedFiles>=ZIP_SNIFF_FILES)){
       discardZipEntry(unzip,entry);
       return;
     }
@@ -590,13 +588,16 @@ export async function detectZipArchiveSource(file,{signal,onProgress,skipPrivate
       if(error)throw error;
       extractedBytes+=data.length;
       received+=data.length;
-      if(received>MAX_SNIFF_INFLATE)throw new Error('ZIP 取樣檔案解壓超過 2 MiB，已停止辨識。');
       if(extractedBytes>MAX_EXTRACTED)throw new Error('ZIP 解壓資料超過 1024 MiB，已停止辨識。');
+      // Only the first 64 KiB of any entry is ever used for classification.
+      // A large post/message export (often well over 2 MiB) still gets its
+      // header sampled here; once that much is collected we stop caring
+      // about the rest of this entry instead of aborting the whole scan.
       if(length<ZIP_SNIFF_BYTES){
         const part=data.subarray(0,ZIP_SNIFF_BYTES-length);
         samples.push(part);length+=part.length;
       }
-      if(final)inspectSample();
+      if(length>=ZIP_SNIFF_BYTES||final)inspectSample();
     };
     entry.start();
   });
