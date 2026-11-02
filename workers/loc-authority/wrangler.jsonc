@@ -3,6 +3,7 @@
   "name": "loc-authority-control",
   "main": "./index.mjs",
   "compatibility_date": "2026-10-31",
+  "keep_vars": true,
   "durable_objects": {
     "bindings": [
       {"name": "LOC_AUTHORITY_STATE", "class_name": "LocAuthorityState"}
