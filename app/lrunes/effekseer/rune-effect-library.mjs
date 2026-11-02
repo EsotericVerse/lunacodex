@@ -194,7 +194,7 @@ export const RUNE_EFFECT_KEYS=Object.freeze({
   "Seed": "T:hozyo2",
   "Fruit": "T:Cure3",
   "Branch": "M:Wind_Impact",
-  "Gold": "R:Light",
+  "Gold": "M:Gohlem5",
   "Jade": "M:Gohlem_Shield1",
   "Crystal": "G:ef_ice02",
   "Land": "M:Gohlem1",
@@ -254,7 +254,7 @@ export const RUNE_EFFECT_TUNING=Object.freeze({
   "Death": {"scale": 1.95, "speed": 1, "motion": "collapse"},
   "Heart": {"scale": 1.95, "speed": 1, "motion": "pulse"},
   "Love": {"scale": 1.95, "speed": 0.95, "color": [255, 182, 210, 255], "motion": "pulse"},
-  "Language": {"scale": 1.95, "speed": 1, "motion": "revelation"},
+  "Language": {"scale": 1.95, "speed": 1, "motion": "pulse"},
   "Resonance": {"scale": 1.85, "speed": 1, "motion": "pulse"},
   "Tree": {"scale": 1.9, "speed": 0.86, "motion": "branch-up"},
   "Blossom": {"scale": 2.3, "speed": 1.05, "color": [255, 196, 225, 255], "motion": "revelation"},
@@ -264,7 +264,7 @@ export const RUNE_EFFECT_TUNING=Object.freeze({
   "Seed": {"scale": 1.95, "speed": 1, "motion": "sprout"},
   "Fruit": {"scale": 1.95, "speed": 1, "motion": "result"},
   "Branch": {"scale": 1.8, "speed": 0.8, "color": [140, 200, 120, 255], "motion": "branch-up"},
-  "Gold": {"scale": 1.95, "speed": 1, "color": [255, 215, 120, 255], "motion": "radiate"},
+  "Gold": {"scale": 1.95, "speed": 1, "color": [255, 215, 120, 255], "motion": "weight"},
   "Jade": {"scale": 1.85, "speed": 0.82, "color": [118, 221, 151, 255], "motion": "jade-reflection"},
   "Crystal": {"scale": 1.9, "speed": 0.88, "color": [221, 242, 255, 255], "motion": "facet"},
   "Land": {"scale": 2, "speed": 0.85, "motion": "weight"},
@@ -337,6 +337,22 @@ export const RUNE_VFX_OVERLAYS=Object.freeze({
     [
       "T:Sword5",
       "cross-backward"
+    ]
+  ],
+  "Clarity": [
+    [
+      "T:Sword5",
+      "cross-forward"
+    ],
+    [
+      "T:Sword5",
+      "cross-backward"
+    ]
+  ],
+  "Gold": [
+    [
+      "SAMPLE:Simple_Ring_Shape2",
+      "counter-orbit"
     ]
   ],
   "Root": [
