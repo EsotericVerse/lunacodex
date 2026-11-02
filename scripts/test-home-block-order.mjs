@@ -74,13 +74,17 @@ test('Article Control and feature-aligned management Hero editor remain function
   const spatial=read('app/loc/ScopeManagement.jsx');
   const hero=read('app/loc/views/admin-panels/FeatureHeroImages.jsx');
   const css=read('app/styles/uiux.css');
-  for(const name of ["shortLabel:'發表'","shortLabel:'區塊修改'","shortLabel:'匯入'","shortLabel:'個人分類'"])
+  for(const name of ["shortLabel:'文章管理'","shortLabel:'區塊修改'","shortLabel:'匯入'"])
     assert.ok(articles.includes(name),'Article Control is missing '+name);
   assert.match(articles,/ManagementArticlePublisher scopeId=\{scopeId\}/);
   assert.match(articles,/ManagementMediaWorkspace scopeId=\{scopeId\}/);
   assert.match(articles,/page="search" orders=\{\[1\]\}/);
   assert.match(articles,/page="trace"/);
-  assert.match(articles,/ScopeOthersSources.*scopeId=\{scopeId\}/);
+  assert.doesNotMatch(articles,/ScopeOthersSources|label:'個人分類'/);
+  assert.match(articles,/window\.location\.replace\('\/local\/settings\/\?section=features'\)/);
+  const featurePrefs=read('app/loc/LocUserSettingsPanel.jsx');
+  assert.match(featurePrefs,/keyword:data\.keyword\|\|'none'/);
+  assert.match(read('app/AppShell.jsx'),/href:native\?'\/local\/settings\/index\.html':'\/local\/settings\/'/);
   assert.doesNotMatch(spatial,/section==='import'/);
   assert.doesNotMatch(spatial,/section==='others'/);
   assert.match(spatial,/requestedSection.*section/);
