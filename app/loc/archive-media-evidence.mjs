@@ -259,7 +259,7 @@ export function prepareArchiveMedia(evidence=[],knownUids=new Set(),articleTimes
     }
     if((Number.isFinite(entry.latitude)&&Number.isFinite(entry.longitude))||entry.camera_local_time)
       exif.push({
-        media_uid:hasUrl?id:null,archive_id:entry.archive_id,entry_path:entry.entry_path,
+        media_uid:hasUrl||linkedZipMedia?id:null,archive_id:entry.archive_id,entry_path:entry.entry_path,
         platform:entry.platform||null,latitude:entry.latitude,
         longitude:entry.longitude,camera_local_time:entry.camera_local_time
       });
