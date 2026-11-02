@@ -11,6 +11,7 @@ import {
   readTraceData,addTraceAnchor,updateTraceAnchor,renameTraceAnchorTitles,updateTraceVisibilityBulk,mergeTraceAnchorPoints
 } from '../modular/features/trace/trace-data';
 import {reviewReorderedCoordinateNames} from '../modular/features/trace/trace-place-names.mjs';
+import {selectPointMergeSources} from './trace-point-merge-selection.mjs';
 import {
   filterTraceAnchorsByText,addTraceAnchorSelection,removeTraceAnchorSelection
 } from './trace-bulk-anchor-filter.mjs';
@@ -54,9 +55,9 @@ function AnchorEditor({scopeId,spatial,reload}){
   const selectedBulkUids=useMemo(()=>new Set(bulkUids),[bulkUids]);
   // The upper selected point is the keeper; every lower checked point is a source.
   // Never allow selecting or deleting the keeper.
-  const mergeUids=useMemo(()=>editingUid&& !pendingVisibility
-    ?bulkUids.filter(uid=>uid!==editingUid&&ownAnchors.some(item=>item.uid===uid)):[]
-    ,[editingUid,bulkUids,ownAnchors,pendingVisibility]);
+  const mergeUids=useMemo(()=>selectPointMergeSources(ownAnchors,editingUid,bulkUids,{
+    visibilityPending:Boolean(pendingVisibility)
+  }),[editingUid,bulkUids,ownAnchors,pendingVisibility]);
   const formDirty=Boolean(editingUid||title||description||postalAddress||longitude||latitude);
   const dirty=formDirty||Object.keys(pendingRenames).length>0||Boolean(pendingVisibility)||mergeUids.length>0;
   const pickExisting=uid=>{
