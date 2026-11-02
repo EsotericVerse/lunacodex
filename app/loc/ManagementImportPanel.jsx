@@ -10,9 +10,10 @@ registerDefaultSection('uiExtra.importUI',importUIZh);
 
 import {useDeferredValue,useEffect,useMemo,useRef,useState} from 'react';
 import ScopeSourceCorrection from './ScopeSourceCorrection';
+import {refreshScopeSearchSummary} from './scope-search-summary.mjs';
 import {insertRows,insertImportRows,dbAuthRelation,dbAuthClient,updateImportRows} from './db-client.mjs';
 import {useAccount} from './use-account';
-import {useAsyncResource} from './use-async-resource';
+import {useAsyncResource,useResourceCache} from './use-async-resource';
 import {useScopeSourceCategoryRow} from './scope-source-category-row.mjs';
 import {canonicalImportSourceName,inferImportSourceFromFilename} from './source-name.mjs';
 import {Capacitor} from '@capacitor/core';
@@ -420,6 +421,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   const t=useUiText();
   const nativeLocal=scopeId==='local'&&Capacitor.isNativePlatform()&&Capacitor.getPlatform()==='ios';
   const account=useAccount({enabled:!nativeLocal});
+  const resourceCache=useResourceCache();
   const [fileName,setFileName]=useState('');
   const [archiveDetection,setArchiveDetection]=useState(null);
   const [archiveSummary,setArchiveSummary]=useState(null);
@@ -445,6 +447,9 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   const [status,setStatus]=useState('');
   const [busy,setBusy]=useState(false);
   const [progress,setProgress]=useState(null);
+  const [summaryRefreshing,setSummaryRefreshing]=useState(false);
+  const [summaryMessage,setSummaryMessage]=useState('');
+  const [summaryError,setSummaryError]=useState(false);
   const [progressTick,setProgressTick]=useState(0);
   useEffect(()=>{
     if(!busy)return undefined;
@@ -501,6 +506,32 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   })).filter(place=>place.__importPlaceName&&
     (!timeWindow||place.__importVisitTimes.length>0)),[geoPlaceCandidates,timeWindow]);
   if(!nativeLocal&&!account.canManageScopeSync(scopeId))return null;
+
+  // Refresh the persisted Search snapshot only after a completed import or
+  // an explicit manager click. It is never a dependency of importing rows.
+  async function refreshImportedSearchSummary(){
+    if(nativeLocal||scopeId==='loc'||summaryRefreshing)return false;
+    setSummaryRefreshing(true);
+    setSummaryError(false);
+    setSummaryMessage('');
+    try{
+      const result=await refreshScopeSearchSummary(scopeId);
+      // Search might be cached from an earlier visit; invalidate the
+      // persisted snapshot's read cache so the next visit gets new totals.
+      await resourceCache.invalidate({queryKey:['scope-search-summary']});
+      const nf=new Intl.NumberFormat();
+      setSummaryMessage('搜尋文章統計已更新：'+nf.format(result.article_count)+' 篇，'+
+        nf.format(result.word_count)+' 字。');
+      return true;
+    }catch(error){
+      setSummaryError(true);
+      setSummaryMessage('搜尋文章統計更新失敗：'+String(error?.message||error)+
+        '。文章匯入結果不受影響，可按「更新搜尋統計」重試。');
+      return false;
+    }finally{
+      setSummaryRefreshing(false);
+    }
+  }
 
   async function loadQueuedFile(file,index,total,language=importLocale,recordPath=format.recordPath){
     setFileName(file.name);setRows([]);setArchiveEvidence([]);setGeoPlaceCandidates([]);setArchiveDetection(null);setArchiveSummary(null);setProgress(null);setStatus('');
@@ -884,6 +915,9 @@ function UniversalImport({scopeId,format,onFormatChange}) {
             (item.mediaRefs?.length||0)))
       })&&!unique.some(record=>record.location||record.__importPlaceName||
         existingBySiteId.get(record.uid)?.location)){
+        // A no-change reimport may follow an older partial success whose
+        // Search snapshot is still stale. Refresh it once even for a no-op.
+        if(!nativeLocal)await refreshImportedSearchSummary();
         setProgress(null);
         setStatus(t('uiExtra.importUI.importNoChanges'));
         setRows([]);
@@ -1049,6 +1083,10 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         knownArticleIds,galaxy,galaxyMedia,t,
         onProgress:p=>showProgress(p.stage,p.completed,p.total||0)
       });
+      // All article and media writes are finished: now recompute the
+      // persisted Search summary once. A summary error must not turn a
+      // successful import into a retry-all error.
+      if(!nativeLocal)await refreshImportedSearchSummary();
       const skipped=analyzed.invalid.length+analyzed.skippedByRange+
         duplicateCount+ambiguousGroups.length;
       showProgress('匯入完成',1,1);
@@ -1144,6 +1182,13 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         here, and a result (success, "no changes", or an error like the
         ambiguous-duplicate abort) buried past a long ZIP summary goes unseen. */}
     {status&&(!busy||!progress)?<p className="scope-status scope-import-live-status" role="status">{status}</p>:null}
+    {!nativeLocal&&scopeId!=='loc'?<div className="scope-import-summary-refresh">
+      <button type="button" className="loc-button" disabled={busy||summaryRefreshing}
+        onClick={refreshImportedSearchSummary}>
+        {summaryRefreshing?'正在更新搜尋統計…':'更新搜尋統計（總文章數、總文字量）'}
+      </button>
+      {summaryMessage?<p role="status" className={'scope-status'+(summaryError?' scope-error':'')}>{summaryMessage}</p>:null}
+    </div>:null}
     {!nativeLocal&&scopeId!=='loc'?<details className="scope-import-maintenance">
       <summary>既有地點與日期定錨修復</summary>
       <div className="scope-import-maintenance-content">

@@ -1,11 +1,10 @@
 'use client';
 
-import {useState} from 'react';
 import {useAsyncResource} from './use-async-resource';
 import {useUiText} from '../i18n/UiText';
-import {readScopeSearchSummary,refreshScopeSearchSummary,summaryScopeIds} from './scope-search-summary.mjs';
+import {readScopeSearchSummary,summaryScopeIds} from './scope-search-summary.mjs';
 
-export default function SearchSummary({scopeIds=[],managementMode=false}){
+export default function SearchSummary({scopeIds=[]}){
   const t=useUiText();
   const ids=summaryScopeIds(scopeIds);
   const key=ids.join('|');
@@ -16,9 +15,6 @@ export default function SearchSummary({scopeIds=[],managementMode=false}){
     revalidateOnFocus:false,
     revalidateOnReconnect:false
   });
-  const [refreshing,setRefreshing]=useState(false);
-  const [refreshError,setRefreshError]=useState('');
-  const [refreshComplete,setRefreshComplete]=useState(false);
   const summary=query.data?.summary;
   const numbers=new Intl.NumberFormat();
   const summaryText=summary
@@ -35,27 +31,7 @@ export default function SearchSummary({scopeIds=[],managementMode=false}){
       :query.isError
         ?t('uiExtra.searchUI.summaryFailed')
         :t('uiExtra.searchUI.summaryMissing');
-  async function refresh(){
-    if(refreshing||!ids.length)return;
-    setRefreshing(true);
-    setRefreshError('');
-    setRefreshComplete(false);
-    try{
-      for(const id of ids)await refreshScopeSearchSummary(id);
-      await query.refetch();
-      setRefreshComplete(true);
-    }catch(error){
-      setRefreshError(String(error?.message||error));
-      await query.refetch().catch(()=>{});
-    }finally{
-      setRefreshing(false);
-    }
-  }
   return <div className="scope-search-total-bubble" role="status">
     <p className="scope-search-total-copy">{summaryText}</p>
-    {managementMode?<button type="button" className="loc-button" disabled={refreshing||!ids.length}
-      onClick={refresh}>{refreshing?t('uiExtra.searchUI.summaryRefreshing'):t('uiExtra.searchUI.summaryRefresh')}</button>:null}
-    {managementMode&&refreshError?<small className="scope-error">{t('uiExtra.searchUI.summaryRefreshFailed',{error:refreshError})}</small>:null}
-    {managementMode&&refreshComplete?<small>{t('uiExtra.searchUI.summaryRefreshed')}</small>:null}
   </div>;
 }
