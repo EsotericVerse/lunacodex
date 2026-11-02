@@ -1,8 +1,10 @@
 // Virtual legacy relation names, backed exclusively by <scope>_anchor.
-// Only the lo3rwang content Scope is cut over. Preserve Rune/Suno/local
-// providers and other Scopes until their own anchor store exists.
+// Resolve physical Anchor cutover from the Scope ID, not a single owner name.
+// System/legacy Scopes are excluded until their independent migrations finish.
 // No SQL, DDL, table creation, migration or old-data synchronization here.
 const legacyName=/^([a-z][a-z0-9]{0,14})_(time|trace|keywords|galaxy_media)$/;
+const pendingAnchorScopes=new Set(['loc','lrunes']);
+export const isUnifiedAnchorScope=scopeId=>/^[a-z][a-z0-9]{0,14}$/.test(String(scopeId||''))&&!pendingAnchorScopes.has(String(scopeId));
 const physicalColumns=['uid','type','title','description','invisible','attr'];
 const legacyKinds={time:'time',trace:'trace',keywords:'keywords',galaxy_media:'media'};
 const scopeTypes={
@@ -109,7 +111,7 @@ function prepareAnchorInsert(spec,row,assigned){
 }
 export function unifiedAnchorSpec(schema,table){
   const matched=String(table||'').match(legacyName);
-  if(schema!=='silver'||!matched||matched[1]!=='lo3rwang')return null;
+  if(schema!=='silver'||!matched||!isUnifiedAnchorScope(matched[1]))return null;
   return {table:matched[1]+'_anchor',kind:legacyKinds[matched[2]],legacy:matched[2]};
 }
 export function toAnchorRow(spec,row){

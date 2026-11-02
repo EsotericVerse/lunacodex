@@ -2,9 +2,11 @@
 
 import {dbPublicClient,dbAuthClient,dbAuthRelation} from '../../../loc/db-client.mjs';
 import {findAnchorWriteMatches,organizeAnchorCandidates} from './trace-organizer.mjs';
-import {fromAnchorRow,allocateAnchorUid} from '../../../loc/unified-anchor-compat.mjs';
+import {fromAnchorRow,allocateAnchorUid,isUnifiedAnchorScope} from '../../../loc/unified-anchor-compat.mjs';
+import {SCOPE_ROUTE_INDEX} from '../../scope-route-index.js';
 
-export const TRACE_SCOPES=Object.freeze(['loc','lo3rwang','lrunes']);
+const TRACE_SOURCE_SCOPES=Object.freeze(SCOPE_ROUTE_INDEX.map(row=>row.scope_id).filter(id=>id!=='loc'));
+export const TRACE_SCOPES=Object.freeze(['loc',...TRACE_SOURCE_SCOPES]);
 export const traceKey=(scopeId,{includeHidden=false}={})=>['scope-trace',scopeId,...(includeHidden?['manager']:[])];
 export const traceMapIndexKey=(scopeId,{nativeOnly=false,includeHidden=false}={})=>['trace-map-index',scopeId,...(nativeOnly?['native']:[]),...(includeHidden?['manager']:[])];
 export const traceCurrentKey=(scopeId,route,{nativeOnly=false,includeHidden=false}={})=>
@@ -15,7 +17,7 @@ const VALID_ID=/^(?:[A-Za-z0-9]{4}|[A-Za-z0-9]{8})$/;
 const TRACE_TYPES=['space_anchor','path','trace'];
 const CORE_COLUMNS='uid,trace_type,title,description,anchor_list,route_list,invisible,times,address';
 const ANCHOR_COLUMNS='uid,type,title,description,invisible,attr';
-const isUnified=id=>id==='lo3rwang';
+const isUnified=isUnifiedAnchorScope;
 const physicalPoint=id=>dbAuthClient.schema('silver').from(id+'_anchor');
 const pointAttr=({address,longitude,latitude})=>{
   const coords=coordinateArray(longitude,latitude),attr={};
@@ -133,7 +135,7 @@ export async function readTraceData(scopeId,{includeHidden=false}={}){
 }
 export async function readTraceMapIndex(scopeId,{nativeOnly=false,includeHidden=false}={}){
   const id=idScope(scopeId);
-  if(id==='loc')return Promise.all(['lo3rwang','lrunes'].map(source=>readTraceMapIndex(source,{includeHidden})))
+  if(id==='loc')return Promise.all(TRACE_SOURCE_SCOPES.map(source=>readTraceMapIndex(source,{includeHidden})))
     .then(groups=>groups.flat());
   return readPages(id,{columns:'uid,trace_type,title,description,anchor_list,route_list,invisible',nativeOnly,includeHidden})
     .then(rows=>rows.filter(row=>row.trace_type==='path'||row.trace_type==='trace'));
@@ -159,7 +161,7 @@ export async function readAllTraceAnchors(scopeId,{nativeOnly=false,includeHidde
   const id=idScope(scopeId);
   if(id==='loc'){
     // No LOC materialized Trace table: keep source Scope ownership and RLS intact.
-    const sources=await Promise.all(['lo3rwang','lrunes'].map(source=>
+    const sources=await Promise.all(TRACE_SOURCE_SCOPES.map(source=>
       readPages(source,{filter:'space_anchor',includeHidden})));
     return sources.flat();
   }
