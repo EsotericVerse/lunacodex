@@ -133,7 +133,7 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
   // Shares the ONE bootstrap request other shell parts already make for this
   // page: nothing here issues a second round trip for config or Themes.
   const bootstrap=useAppBootstrap(scopeId,pageName);
-  const configEnabled=!fixedDefaultThemeId&&(scope.id==='loc'||!scope.aggregateChildren)&&scope.id!=='admin';
+  const configEnabled=!fixedDefaultThemeId&&scope.id!=='loc'&&!scope.aggregateChildren&&scope.id!=='admin';
   const configuredTheme=configEnabled?String(bootstrap.data?.config?.theme||'').trim():'';
   const configuredDefaultThemeId=configuredTheme===SYSTEM_THEME_ID?'':configuredTheme;
   const [selection,setSelection]=useState(()=>({scopeId,themeId:SYSTEM_THEME_ID}));

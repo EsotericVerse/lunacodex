@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
-import {checkDbContract} from './check-db-contract.mjs';
+import {checkDbContract,checkLocScopeBoundary} from './check-db-contract.mjs';
 
 const read=file=>readFileSync(new URL('../'+file,import.meta.url),'utf8');
 const contract=read('app/loc/db-contract.mjs');
@@ -31,4 +31,16 @@ test('new Postgres keyword RPC grants only to roles present in the installation'
   assert.match(sql,/rolname='authenticated'/);
   assert.doesNotMatch(sql,/TO anon,authenticated;/);
   assert.doesNotMatch(sql,/CREATE ROLE|CREATE USER/i);
+});
+
+test('LOC cannot be used as a Scope data landing zone in new migrations',()=>{
+  assert.deepEqual(checkLocScopeBoundary([['safe.sql','SELECT id FROM silver.loc WHERE id=\'loc\';']]),{checked:1});
+  for(const sql of [
+    'INSERT INTO silver.loc(id,keyword_meta) SELECT id,to_jsonb(t) FROM silver.lo3rwang_blocks t;',
+    'ALTER TABLE silver.loc DROP CONSTRAINT loc_config_singleton;',
+    'ALTER TABLE silver.loc ADD COLUMN search_able boolean;',
+    'DELETE FROM silver.loc WHERE id=\'loc\';'
+  ]){
+    assert.throws(()=>checkLocScopeBoundary([['regression.sql',sql]]),/LOC group table is protected/);
+  }
 });

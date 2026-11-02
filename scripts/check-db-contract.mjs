@@ -1,6 +1,7 @@
-import {readFileSync} from 'node:fs';
+import {readFileSync,readdirSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {parse} from '@babel/parser';
+import {scopeConfigColumns,scopeFeatureColumns,scopeFeaturePatch} from '../app/loc/scope-config-fields.mjs';
 
 const read=relative=>readFileSync(new URL('../'+relative,import.meta.url),'utf8');
 const databaseContract='app/loc/db-contract.mjs';
@@ -54,7 +55,25 @@ export function checkDbContract(contractSource,clientSource){
   return {exported:exported.length,consumed:destructured.length};
 }
 
+
+export function checkLocScopeBoundary(migrations=[]){
+  if(scopeConfigColumns('loc')!=='id,display_name,locale'||
+      scopeFeatureColumns('loc')!==''||
+      Object.keys(scopeFeaturePatch('loc',{search_able:false,statistics_able:false,culture_able:false})).length)
+    throw Error('LOC group config must not inherit Scope theme, search, or feature switches');
+  const unsafe=/\b(?:insert\s+into|merge\s+into|alter\s+table|delete\s+from|drop\s+table|truncate(?:\s+table)?)\s+(?:if\s+(?:not\s+)?exists\s+)?(?:"?silver"?\s*\.\s*)"?loc"?(?![\w])/i;
+  for(const [name,sql] of migrations){
+    if(unsafe.test(sql))throw Error('LOC group table is protected from migration writes or schema edits: '+name);
+  }
+  return {checked:migrations.length};
+}
+
 if(process.argv[1]&&fileURLToPath(import.meta.url)===process.argv[1]){
   const result=checkDbContract(read(databaseContract),read(databaseClient));
-  console.log('DB contract OK: '+result.exported+' exports, '+result.consumed+' consumers.');
+  const migrationDir=new URL('../supabase/migrations/',import.meta.url);
+  const migrationFiles=readdirSync(migrationDir)
+    .filter(name=>name.endsWith('.sql')&&name.slice(0,8)>='20261102')
+    .map(name=>[name,read('supabase/migrations/'+name)]);
+  const loc=checkLocScopeBoundary(migrationFiles);
+  console.log('DB contract OK: '+result.exported+' exports, '+result.consumed+' consumers; LOC boundary checked '+loc.checked+' migrations.');
 }

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {scopeFeatureColumns,scopeFeatureEnabled,scopeFeaturePatch,scopeFeatureName,scopeTagColumn,scopeTagNames} from '../app/loc/scope-config-fields.mjs';
+import {scopeConfigColumns,scopeFeatureColumns,scopeFeatureEnabled,scopeFeaturePatch,scopeFeatureName,scopeTagColumn,scopeTagNames} from '../app/loc/scope-config-fields.mjs';
 
 test('lo3rwang uses one able JSONB with short keys and 0/1 flags',()=>{
   assert.equal(scopeFeatureColumns('lo3rwang'),'able');
@@ -13,7 +13,9 @@ test('lo3rwang uses one able JSONB with short keys and 0/1 flags',()=>{
   assert.equal(scopeFeatureEnabled(settings,'search_able'),false);
   assert.equal(scopeFeatureEnabled(settings,'trace'),true);
   assert.deepEqual(scopeFeaturePatch('lo3rwang',settings),{able:{search:0,statics:1,culture:0,trace:1}});
-  assert.deepEqual(scopeFeaturePatch('loc',{search_able:false}),{search_able:false,statistics_able:true,culture_able:true});
+  assert.equal(scopeFeatureColumns('loc'),'');
+  assert.equal(scopeConfigColumns('loc'),'id,display_name,locale');
+  assert.deepEqual(scopeFeaturePatch('loc',{search_able:false}),{});
 });
 test('ArticleTag JSONB stays independent of compact feature switches',()=>{
   const tags=['suno','kkcity','其他'];
@@ -34,4 +36,9 @@ test('feature gates and the admin UI use only the single numeric able map for lo
   assert.match(app,/search:'search_able'/);
   assert.match(ui,/scopeId==='lo3rwang'/);
   assert.match(read('scripts/generate-public-blocks.mjs'),/scopeConfigColumns\(id\)/);
+});
+
+test('LOC theme follows Taipei day/night; the saved Scope theme must not override it',()=>{
+  const source=readFileSync(new URL('../app/AppShell.jsx',import.meta.url),'utf8');
+  assert.match(source,/const configEnabled=!fixedDefaultThemeId&&scope\.id!=='loc'&&/);
 });
