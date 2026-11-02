@@ -18,7 +18,9 @@ export default function HomeEditModeRestore({scopeId}){
       dock?.begin('local');return undefined;
     }
     let active=true;
-    void account.refresh({forceVerify:true}).then(result=>{
+    // Reuse verified in-memory Scope grants when returning within the same
+    // document. A full page load has no cache and still verifies remotely.
+    void account.refresh().then(result=>{
       if(!active)return;
       const allowed=marker.userId===result?.user?.id&&(
         scopeId==='loc'?result.authorizer?.canManageGroupSync('loc'):

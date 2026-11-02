@@ -46,15 +46,15 @@ test('preserved ordering skips unchanged rows, including visual placeholders',()
   assert.equal(plan.hasWrites,false);
   assert.equal(plan.changed.filter(x=>x.modified).length,0);
 });
-test('homepage entry forces fresh Auth/permission and exposes database errors',()=>{
+test('homepage entry reuses verified Auth/permission and exposes database errors',()=>{
   const entry=readFileSync(new URL('../app/loc/ScopeHomeEditEntry.jsx',import.meta.url),'utf8');
   const account=readFileSync(new URL('../app/loc/use-account.js',import.meta.url),'utf8');
   const restore=readFileSync(new URL('../app/loc/HomeEditModeRestore.jsx',import.meta.url),'utf8');
   const draft=readFileSync(new URL('../app/loc/ScopeBlockDraftList.jsx',import.meta.url),'utf8');
-  assert.match(entry,/account\.refresh\(\{forceVerify:true\}\)/);
+  assert.match(entry,/account\.refresh\(\)/);
   assert.match(entry,/message\.error\|\|/);
-  assert.match(entry,/前往設定首頁登入 Google 帳號/);
-  assert.match(restore,/account\.refresh\(\{forceVerify:true\}\)/);
+  assert.match(entry,/前往設定首頁使用 Clerk Google 登入/);
+  assert.match(restore,/account\.refresh\(\)/);
   assert.match(account,/if\(result\?\.error\)throw new Error\(result\.error\)/);
   assert.match(draft,/planHomeBlockWrites/);
   assert.match(draft,/if\(plan\.hasWrites\)/);
