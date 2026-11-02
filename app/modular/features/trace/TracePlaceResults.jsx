@@ -87,7 +87,7 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
   const timeLabelForRow=row=>{
     if(timeMode==='none')return '';
     const day=String(row.date||row.createtime||'').slice(0,10);
-    if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(day))return '';
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(day))return '';
     const matches=(timeRecords.data||[]).filter(record=>
       (Array.isArray(record.ranges)&&record.ranges.length?record.ranges:[record])
         .some(range=>{
@@ -113,23 +113,30 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
       // Nearest spans the complete selected place spool: exhaust one closest
       // place before paging the next, never sort only a loaded date page.
       const nearest=sort==='nearest'&&nearestPlaceIds.length>0;
-      const placeIndex=nearest?Number(pageParam?.placeIndex)||0:0;
-      const selectedIds=nearest?[nearestPlaceIds[placeIndex]]:placeIds;
-      const filters=traceArticleIdFilters(selectedIds,{startDate,endDate,sourceName:sourceFilter});
-      const offset=nearest?Number(pageParam?.offset)||0:Number(pageParam)||0;
-      const result=await selectRows(scope.galaxy,{
-        columns:'uid,title,createtime,date,place_id',
-        filters,orders:[{column:'date',ascending:sort==='asc'},{column:'uid',ascending:true}],
-        limit:PAGE_SIZE,offset,count:offset===0?'exact':null
-      });
-      const rows=result.rows||[];
-      const total=offset===0?Number(result.count??rows.length):null;
-      const moreInPlace=rows.length===PAGE_SIZE&&(total==null||offset+rows.length<total);
-      const nextOffset=nearest
-        ?moreInPlace?{placeIndex,offset:offset+rows.length}
-          :placeIndex+1<nearestPlaceIds.length?{placeIndex:placeIndex+1,offset:0}:null
-        :offset+rows.length;
-      return {rows,total,hasMore:nearest?nextOffset!==null:moreInPlace,nextOffset};
+      let placeIndex=nearest?Number(pageParam?.placeIndex)||0:0;
+      let offset=nearest?Number(pageParam?.offset)||0:Number(pageParam)||0;
+      while(true){
+        const selectedIds=nearest?[nearestPlaceIds[placeIndex]]:placeIds;
+        const filters=traceArticleIdFilters(selectedIds,{startDate,endDate,sourceName:sourceFilter});
+        const result=await selectRows(scope.galaxy,{
+          columns:'uid,title,createtime,date,place_id',
+          filters,orders:[{column:'date',ascending:sort==='asc'},{column:'uid',ascending:true}],
+          limit:PAGE_SIZE,offset,count:offset===0?'exact':null
+        });
+        const rows=result.rows||[];
+        const total=offset===0?Number(result.count??rows.length):null;
+        const moreInPlace=rows.length===PAGE_SIZE&&(total==null||offset+rows.length<total);
+        const nextOffset=nearest
+          ?moreInPlace?{placeIndex,offset:offset+rows.length}
+            :placeIndex+1<nearestPlaceIds.length?{placeIndex:placeIndex+1,offset:0}:null
+          :offset+rows.length;
+        // Skip empty nearby places within the same request: a zero-result page
+        // is not evidence that the next distance-ranked place has no works.
+        if(rows.length||!nearest||nextOffset===null)
+          return {rows,total,hasMore:nearest?nextOffset!==null:moreInPlace,nextOffset};
+        placeIndex=nextOffset.placeIndex;
+        offset=0;
+      }
     }
   });
 
