@@ -392,7 +392,7 @@ export default function Search({managementMode=false}){
   },[results,scopeId,availableScopes,articleSort]);
   // Suggestions come from loaded results only; do not imply a database-wide ranking.
   const suggestedTitles=useMemo(()=>[...new Set(results
-    .filter(row=>row.resourceType==='galaxy')
+    .filter(row=>row.resourceType==='galaxy'&&row.able?.list!==false)
     .map(row=>String(row.title||'').trim())
     .filter(title=>title&&title.length<=80))].slice(0,8),[results]);
   const advancedRef=useRef(null);
