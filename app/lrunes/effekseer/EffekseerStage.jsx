@@ -560,6 +560,13 @@ function EffekseerCanvas({effect,runeId,reduced,onReady,onPlaybackComplete,cerem
       try{context?.stopAll();}catch{}
       try{context?.release();}catch{}
       try{renderer?.dispose();}catch{}
+      // dispose() frees GPU resources (textures/geometry/program) but does
+      // NOT guarantee the browser reclaims the underlying WebGL context.
+      // Every draw mounts a fresh renderer on a fresh canvas; without this,
+      // live contexts accumulate across a drawing session and the browser
+      // eventually force-loses the oldest ones, which commonly paints as a
+      // flat white (or black) stage after several consecutive draws.
+      try{renderer?.forceContextLoss();}catch{}
     };
   },[effect,runeId,reduced,ceremony,groupEffect,groupStage,waiting,ambient,ambientDepth,quality,textureQuality,diagnoseAmbient]);
   return <div className="rune-effekseer-canvas-wrap">
