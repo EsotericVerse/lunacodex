@@ -6,7 +6,7 @@ import {useSWRConfig} from 'swr';
 import {useEditDock} from '../modular/edit-dock';
 import {dbAuthRelation,dbPublicClient,dbAuthClient,resetKeywordClassification,updateRows,writeKeywordLibraryItem,copyKeywordLibraryClass} from './db-client.mjs';
 import {indexKeywordTree,descendantsOfKeyword} from './keyword-tree.mjs';
-import {allocateAnchorUid} from './unified-anchor-compat.mjs';
+import {allocateAnchorUid,isUnifiedAnchorScope} from './unified-anchor-compat.mjs';
 import ManagementSectionNav from '../modular/ManagementSectionNav';
 import {keywordClassState,invalidateKeywordClass} from './keyword-class-state.mjs';
 import {generateKeywordClassUid} from './keyword-uidlist.mjs';
@@ -16,7 +16,7 @@ const TYPES=['class','group','item'];
 const LABEL={category:'關鍵字目錄',class:'關鍵字群組科目',group:'關鍵字分類群組',item:'關鍵詞分類'};
 const onlyWords=value=>[...new Set(String(value||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean))];
 const emptyTree={index:new Map(),parent:new Map(),roots:[]};
-const uidFor=(rows,scopeId)=>scopeId==='lo3rwang'
+const uidFor=(rows,scopeId)=>isUnifiedAnchorScope(scopeId)
   ?allocateAnchorUid(new Set(rows.map(row=>String(row.uid))))
   :generateKeywordClassUid(rows.map(row=>row.uid));
 function freshNode(type,rows,scopeId){
@@ -32,7 +32,7 @@ function classOf(tree,uid){
   while(node&&node.type!=='class')node=parentOf(tree,node.uid);
   return node;
 }
-export default function KeywordLibraryPanel({scopeId='lo3rwang',account}){
+export default function KeywordLibraryPanel({scopeId,account}){
   const scope=account.scopeDataFor(scopeId),table=scope?.keywords||'';
   const configTable=scope?.config||'';
   const canEdit=account.canManageScopeSync(scopeId)&&Boolean(table&&configTable);
@@ -313,7 +313,7 @@ export default function KeywordLibraryPanel({scopeId='lo3rwang',account}){
       if(!controller.signal.aborted){
         setDiscovery(result);
         setDiscoveryPage(1);
-        if(scopeId==='lo3rwang'){
+        if(isUnifiedAnchorScope(scopeId)){
           try{
             const {writeKeywordSuggestionCache}=await import('./keyword-discovery-cache.mjs');
             await writeKeywordSuggestionCache(scopeId,configTable,result);
@@ -337,7 +337,7 @@ export default function KeywordLibraryPanel({scopeId='lo3rwang',account}){
     if(discoveryBusy||busy||loading)return;
     setWorkspace('suggest');setEditor(null);setError('');
     if(discovery)return;
-    if(scopeId==='lo3rwang'){
+    if(isUnifiedAnchorScope(scopeId)){
       setDiscoveryBusy(true);
       try{
         const {readKeywordSuggestionCache}=await import('./keyword-discovery-cache.mjs');
@@ -358,7 +358,7 @@ export default function KeywordLibraryPanel({scopeId='lo3rwang',account}){
     const from=importScope.trim().toLowerCase(),uid=importUid.trim();
     setImportClass(null);setError('');setNotice('');
     if(!/^[a-z][a-z0-9]{0,14}$/.test(from)||
-      !(from==='lo3rwang'?/^[0-9A-Za-z]{8}$/:/^[0-9A-Za-z]{4}$/).test(uid)){
+      !(isUnifiedAnchorScope(from)?/^[0-9A-Za-z]{8}$/:/^[0-9A-Za-z]{4}$/).test(uid)){
       setError('請輸入來源 Scope ID 與正確的 Class UID（Anchor 八碼，舊版四碼）。');return;
     }
     setImportBusy(true);
@@ -512,7 +512,7 @@ export default function KeywordLibraryPanel({scopeId='lo3rwang',account}){
           <div className="scope-management-fields">
             <label><span>來源 Scope ID</span>
               <input value={importScope} autoCapitalize="off" spellCheck={false}
-                placeholder="lo3rwang" onChange={event=>{
+                placeholder="scopeid" onChange={event=>{
                   setImportScope(event.target.value.toLowerCase());setImportClass(null);
                 }}/></label>
             <label><span>公開群組科目 UID（四碼）</span>

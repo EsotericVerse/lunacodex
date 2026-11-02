@@ -1,8 +1,8 @@
 'use client';
 
 import {dbAuthClient,dbAuthRelation} from './db-client.mjs';
+import {isUnifiedAnchorScope} from './unified-anchor-compat.mjs';
 
-const CACHE_SCOPE='lo3rwang';
 const CACHE_COLUMN='keyword_suggestions';
 const MAX_CACHE_ROWS=120;
 const REJECT_STRUCTURE=new Set('div span html script style class classname svg path section article header footer li ul ol table tr td th iframe href src meta link css js json jsonb'.split(/\s+/u));
@@ -32,7 +32,7 @@ export function decodeKeywordSuggestionCache(value){
     .slice(0,MAX_CACHE_ROWS).map(word=>({word:word.trim()}))};
 }
 export async function readKeywordSuggestionCache(scopeId){
-  if(scopeId!==CACHE_SCOPE)return null;
+  if(!isUnifiedAnchorScope(scopeId))return null;
   const {data,error}=await dbAuthClient.schema('silver')
     .rpc('read_scope_keyword_suggestions',{p_scope_id:scopeId});
   if(error)throw new Error(error.message||'無法讀取關鍵詞暫存');
@@ -40,7 +40,7 @@ export async function readKeywordSuggestionCache(scopeId){
 }
 export async function writeKeywordSuggestionCache(scopeId,table,result){
   if(scopeId!==CACHE_SCOPE)return null;
-  if(table!=='silver.lo3rwang')throw new Error('關鍵詞暫存 Scope 不一致');
+  if(table!=='silver.'+scopeId)throw new Error('關鍵詞暫存 Scope 不一致');
   const payload=encodeKeywordSuggestionCache(result);
   const {data,error}=await dbAuthRelation(table)
     .update({[CACHE_COLUMN]:payload})
