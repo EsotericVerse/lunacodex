@@ -186,7 +186,7 @@ export async function recordImportPlaceVisits(visits,{relation,table,timesByUid,
   }
   // Point.attr intentionally has no times array. Exact times stay in Galaxy,
   // calendar dates in Date anchors; never persist legacy Trace.times here.
-  if(/^silver\\.[a-z][a-z0-9]{0,14}_anchor$/.test(String(table||''))){
+  if(/^silver\.[a-z][a-z0-9]{0,14}_anchor$/.test(String(table||''))){
     onProgress?.({phase:'補齊定錨打卡時間',completed:0,total:0});
     return {updated:0,added:0};
   }
