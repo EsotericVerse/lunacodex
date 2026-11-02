@@ -1,25 +1,26 @@
-// LOC MCP public Galaxy reads. The LOC SQL Gateway and PostgreSQL anonymous RLS
-// enforce public visibility; an OAuth identity alone never grants private data access.
-const PUBLIC_ORIGIN='https://loc.lo3rwang.cc';
-const DEFAULT_GATEWAY='https://loc-sql-gateway.sopa2306.workers.dev';
+// LOC MCP public Galaxy reads through existing Supabase PostgREST and anonymous RLS.
+// A publishable key is public, not a management or write credential.
+const DEFAULT_SUPABASE_URL='https://qlouywsdiiyiyzpoxyqy.supabase.co';
+const DEFAULT_PUBLISHABLE_KEY='sb_publishable_qPn0vAzozVyXKllRuEKf2Q_fvG-pLVV';
 const SCOPE_TABLES=Object.freeze({lo3rwang:'lo3rwang_galaxy',lrunes:'lrunes_galaxy'});
 const UID=/^[A-Za-z0-9]{8}$/;
 
 function clientError(message){return Object.assign(new Error(message),{code:'INVALID_ARGUMENT'});}
-function gatewayOrigin(env){
-  const value=String(env.LOC_MCP_PUBLIC_SQL_GATEWAY||DEFAULT_GATEWAY).replace(/\/+$/,'');
-  const url=new URL(value);
-  if(url.protocol!=='https:'||url.username||url.password||url.search||url.hash||url.pathname!=='/')
-    throw new Error('Invalid LOC public SQL Gateway configuration');
-  return url.origin;
+function publicSource(env){
+  const base=new URL(String(env.NEXT_PUBLIC_SUPABASE_URL||DEFAULT_SUPABASE_URL));
+  if(base.protocol!=='https:'||base.username||base.password||base.search||base.hash||
+    base.pathname!=='/')throw new Error('Invalid LOC public Supabase source');
+  const apikey=String(env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY||DEFAULT_PUBLISHABLE_KEY);
+  if(!apikey)throw new Error('LOC public Supabase publishable key is missing');
+  return {base:base.origin,apikey};
 }
 async function galaxyRows(filters,scopeid,env={},fetchImpl=globalThis.fetch){
-  const url=new URL(gatewayOrigin(env)+'/rest/v1/'+SCOPE_TABLES[scopeid]);
+  const {base,apikey}=publicSource(env);
+  const url=new URL(base+'/rest/v1/'+SCOPE_TABLES[scopeid]);
   for(const [key,value] of Object.entries(filters))url.searchParams.set(key,String(value));
-  // Intentionally omit Authorization. The Gateway will use its public provider
-  // identity and the existing SELECT + RLS policy on the known Galaxy table.
+  // Do not forward the caller's Clerk token. Supabase enforces anonymous RLS.
   const res=await fetchImpl(url.href,{
-    method:'GET',headers:{origin:PUBLIC_ORIGIN,'accept-profile':'silver',accept:'application/json'},
+    method:'GET',headers:{apikey,'accept-profile':'silver',accept:'application/json'},
     signal:AbortSignal.timeout(8500),redirect:'manual',cache:'no-store'
   });
   if(!res.ok)throw Object.assign(new Error('LOC public Galaxy read unavailable (HTTP '+res.status+')'),
@@ -29,6 +30,7 @@ async function galaxyRows(filters,scopeid,env={},fetchImpl=globalThis.fetch){
     {code:'BACKEND_UNAVAILABLE'});
   return rows;
 }
+
 function scopeAllowed(scopeid){
   const id=scopeid??'lo3rwang';
   if(!Object.hasOwn(SCOPE_TABLES,id))
