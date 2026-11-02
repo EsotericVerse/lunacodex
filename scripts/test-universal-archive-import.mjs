@@ -495,7 +495,7 @@ test('Threads archived title is always the first ten Unicode content characters'
   assert.notEqual(article.title,'原始檔標題不應當作 Threads 標題');
 });
 
-test('Threads ZIP file with no EXIF and no media URL does not store URI-only media',async()=>{
+test('Threads ZIP confirmed media remains linked without EXIF or public URL',async()=>{
   const input=asFile('threads-no-exif.zip',zipSync({
     'activity/threads/threads_posts.json':j({text_post_app_text_posts:[{
       id:'th-no-exif',media:[{uri:'threads/media/real.jpg',title:'公開貼文的圖片',creation_timestamp:1720000000}]
@@ -517,8 +517,9 @@ test('Threads ZIP file with no EXIF and no media URL does not store URI-only med
   const plan=prepareArchiveMedia(evidence,uids);
   assert.equal(summary.exifWithGps,0);
   assert.equal(summary.exifWithTime,0);
-  assert.equal(plan.media.length,0);
-  assert.equal(plan.mediaLinks.length,0);
+  assert.equal(plan.media.length,1);
+  assert.equal(plan.media[0].url,null);
+  assert.equal(plan.mediaLinks.length,1);
   assert.equal(plan.exif.length,0);
 });
 
