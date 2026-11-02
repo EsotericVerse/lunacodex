@@ -41,12 +41,21 @@ export default function TraceOrganizer({scopeId,spatial,reload}){
   useEffect(()=>{
     let live=true;
     if(!selectedUid||scopeId==='loc'){setAliases([]);return;}
-    dbAuthClient.schema('silver').from(scopeId+'_place')
-      .select('name_lists').eq('uid',selectedUid).maybeSingle()
+    // Unified lo3rwang stores point names in attr.location; old Scopes retain _place.
+    const unified=scopeId==='lo3rwang';
+    const relation=dbAuthClient.schema('silver')
+      .from(unified?'lo3rwang_anchor':scopeId+'_place');
+    const request=unified?relation.select('attr').eq('type','point'):
+      relation.select('name_lists');
+    request.eq('uid',selectedUid).maybeSingle()
       .then(({data,error:loadError})=>{
         if(!live)return;
         if(loadError){setError(true);setNotice(String(loadError.message||loadError));return;}
-        setAliases(data?.name_lists||[]);
+        const location=data?.attr?.location;
+        setAliases(unified
+          ?Array.isArray(location)?location.filter(item=>typeof item==='string'):
+            typeof location==='string'&&location.trim()?[location]:[]
+          :data?.name_lists||[]);
       });
     return()=>{live=false;};
   },[scopeId,selectedUid]);
