@@ -26,7 +26,7 @@ BEGIN
   THEN RAISE EXCEPTION 'Legacy lrunes_keywords rows missing from Anchor'; END IF;
   IF EXISTS(SELECT 1 FROM silver.lrunes_galaxy_media m
      WHERE NOT EXISTS(SELECT 1 FROM silver.lrunes_anchor a
-         WHERE a.uid=m.uid AND a.type=CASE WHEN m.type='instagram' THEN 'image' ELSE m.type END
+         WHERE a.uid=m.uid AND (a.type=m.type OR (m.type='instagram' AND a.type IN ('image','video')))
            AND a.title IS NOT DISTINCT FROM m.title
            AND a.attr->>'url' IS NOT DISTINCT FROM m.url))
   THEN RAISE EXCEPTION 'Legacy media UID/title/URL mismatch'; END IF;
