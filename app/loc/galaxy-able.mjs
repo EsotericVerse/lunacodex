@@ -1,7 +1,7 @@
 // Scoped Galaxy article feature switches. Distinct from Scope-level `loc.able`.
 // Legacy columns remain during the two-version migration window.
 export const GALAXY_ABLE_KEYS=Object.freeze([
-  'statics','culture','search','trace','list','keywords'
+  'statics','culture','search','trace','list','keywords','game','extract'
 ]);
 export function legacyGalaxyAble(row={}){
   const searchable=row.searchable!==false;
@@ -12,7 +12,9 @@ export function legacyGalaxyAble(row={}){
     search:searchable,
     trace:searchable&&statistics,
     list:searchable,
-    keywords:searchable&&statistics
+    keywords:searchable&&statistics,
+    game:true,
+    extract:true
   };
 }
 export function galaxyAble(row={}){
