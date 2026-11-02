@@ -181,3 +181,18 @@ test('large archive media list deduplicates identical paths and keeps public URL
     uri:'threads/images/one.jpg',mediaType:'image',url:'https://example.test/one.jpg'
   }]);
 });
+
+test('ZIP-imported media uses linked article caption and does not manufacture a filename title',()=>{
+  const collector=createArchiveEvidenceCollector();
+  collector.onRecord({platform:'instagram',attachments:[{
+    uri:'media/reels/strange-name.mp4',url:'https://cdn.example.test/real.mp4'
+  }]},'ART00001');
+  const evidence=collector.rows({scopeId:'lo3rwang',archiveName:'ig.zip',archiveSize:100});
+  const plan=prepareArchiveMedia(evidence,new Set(['ART00001']),new Map(),
+    new Map([['ART00001','真實文章標題']]),new Map([['ART00001','真實文章內文']]));
+  assert.equal(plan.media.length,1);
+  assert.equal(plan.media[0].title,'真實文章標題');
+  assert.equal(plan.media[0].meta_tags,'真實文章內文');
+  assert.doesNotMatch(plan.media[0].title,/strange-name/);
+  assert.equal(plan.media[0].url,'https://cdn.example.test/real.mp4');
+});
