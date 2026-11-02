@@ -1,6 +1,6 @@
 const PREFIX='loc:trace:default-route:';
 export const TRACE_DEFAULT_ROUTE_CHANGED='loc:trace:default-route-changed';
-const validScope=value=>['loc','lo3rwang','lrunes'].includes(String(value||''));
+const validScope=value=>/^[a-z][a-z0-9]{0,14}$/.test(String(value||''));
 const validUid=value=>/^[A-Za-z0-9]{4}$/.test(String(value||''));
 export function readDefaultTraceRoute(scope){
   if(!validScope(scope)||typeof window==='undefined')return '';
