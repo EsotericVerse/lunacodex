@@ -16,6 +16,7 @@ import {defaultScopeData,selectScopeRegistry} from './scope-data';
 import {readNumericIsr,usesNumericIsr} from './numeric-isr-client';
 import {selectFirstDailyRuneDate} from './daily-runes';
 import {readTraceMapIndex} from '../modular/features/trace/trace-data.js';
+import {isUnifiedAnchorScope} from './unified-anchor-compat.mjs';
 
 function unique(values=[]){
   return [...new Set(values.map(value=>String(value||'').trim()).filter(Boolean))];
@@ -403,18 +404,18 @@ async function articleTimeContext(scope,day){
   };
 }
 async function articleSpaceContext(scope,placeId,{authenticated=false}={}){
-  if(!/^[A-Za-z0-9]{4}$/.test(placeId)||!['lo3rwang','lrunes'].includes(scope.id))
+  if(!/^[A-Za-z0-9]{4}$/.test(placeId)||!scope?.id||scope.id==='loc')
     return {place:null,routes:[],traces:[]};
-  if(scope.id==='lo3rwang'){
+  if(isUnifiedAnchorScope(scope.id)){
     // LOC's four legacy relations were consolidated into _anchor. The shared
     // Trace reader projects native attr.point/attr.path without relying on
     // removed trace_type, anchor_list or route_list physical columns.
     const [pointPage,maps]=await Promise.all([
-      selectRows('silver.lo3rwang_anchor',{columns:'uid,type,title',
+      selectRows('silver.'+scope.id+'_anchor',{columns:'uid,type,title',
         filters:[{column:'uid',operator:'eq',value:placeId},
           {column:'type',operator:'eq',value:'point'}],
         limit:1,authenticated}),
-      readTraceMapIndex('lo3rwang',{includeHidden:authenticated})
+      readTraceMapIndex(scope.id,{includeHidden:authenticated})
     ]);
     const place=pointPage.rows[0]||null;
     if(!place)return {place:null,routes:[],traces:[]};
