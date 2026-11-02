@@ -3,17 +3,18 @@
 import dynamic from 'next/dynamic';
 import {useAccount} from './use-account';
 import {defaultScopeData} from './scope-data';
+import {SCOPE_ROUTE_INDEX} from '../modular/scope-route-index.js';
 
 // Article Management is the author's workspace on LOC. Its media and
 // article destinations are derived from the owner Scope, not user-selectable
 // database identifiers. Other Scope pages continue using their own scopeId.
-const AUTHOR_SCOPE_ID='lo3rwang';
+const DEFAULT_MANAGED_SCOPE_ID=SCOPE_ROUTE_INDEX.find(row=>row.active&&row.scope_id!=='loc')?.scope_id||'';
 const ManagementMediaWorkspace=dynamic(()=>import('./ManagementMediaWorkspace'),{loading:()=>null});
 const ManagementImportPanel=dynamic(()=>import('./ManagementImportPanel'),{loading:()=>null});
 
 export default function ManagementContentTarget({scopeId,mode='import',globalAdmin=false}){
   const account=useAccount();
-  const targetScopeId=globalAdmin&&scopeId==='loc'?AUTHOR_SCOPE_ID:scopeId;
+  const targetScopeId=globalAdmin&&scopeId==='loc'?DEFAULT_MANAGED_SCOPE_ID:scopeId;
   const allowed=Boolean(targetScopeId&&(account.canManageScopeSync(targetScopeId)||(globalAdmin&&account.canManageGlobalSync())));
   const scopeData=allowed?(account.scopeDataFor(targetScopeId)||defaultScopeData(targetScopeId)):null;
   const table=mode==='media'?scopeData?.galaxyMedia:scopeData?.galaxy;

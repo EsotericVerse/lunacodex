@@ -6,6 +6,7 @@ import Select from 'react-select';
 import {planTraceVisibilityUids} from './trace-visibility-plan.mjs';
 import {useSearchParams} from 'next/navigation';
 import {useAccount} from './use-account';
+import {SCOPE_ROUTE_INDEX} from '../modular/scope-route-index.js';
 import {useEditDockForm} from '../modular/edit-dock';
 import {useAsyncResource,useResourceCache} from './use-async-resource';
 import {
@@ -20,13 +21,14 @@ import {
 const TraceMap=dynamic(()=>import('../modular/features/trace/TraceMap'),{
   ssr:false,loading:()=> <p className="scope-status">正在載入地圖…</p>
 });
+const TRACE_SOURCE_ROWS=SCOPE_ROUTE_INDEX.filter(row=>row.active&&TRACE_SCOPES.includes(row.scope_id)&&row.scope_id!=='loc');
 const MAX_ROAD=80,MAX_LINES=400;
 const unique=items=>[...new Set(items)];
 const validPair=pair=>Array.isArray(pair)&&pair.length===2&&pair[0]&&pair[1]&&pair[0]!==pair[1];
 
 export default function TraceRouteManager({scopeId}){
   const account=useAccount(),cache=useResourceCache(),params=useSearchParams();
-  const [owner,setOwner]=useState(scopeId==='loc'?'lo3rwang':scopeId);
+  const [owner,setOwner]=useState(scopeId==='loc'?(TRACE_SOURCE_ROWS[0]?.scope_id||''):scopeId);
   const [selectedUid,setSelectedUid]=useState('');
   const [editorOpen,setEditorOpen]=useState(false);
   const [editingUid,setEditingUid]=useState('');
@@ -248,7 +250,7 @@ export default function TraceRouteManager({scopeId}){
     </header>
     {scopeId==='loc'?<label>作品範圍
       <select className="scope-select" value={owner} onChange={e=>{if(allowLeave())setOwner(e.target.value);}}>
-        <option value="lo3rwang">作者作品</option><option value="lrunes">月之符文</option>
+        {TRACE_SOURCE_ROWS.map(row=><option key={row.scope_id} value={row.scope_id}>{row.config?.display_name||row.scope_id}</option>)}
       </select>
     </label>:null}
     <label>搜尋已儲存的路線／痕跡圖
