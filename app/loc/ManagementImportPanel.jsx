@@ -915,6 +915,9 @@ function UniversalImport({scopeId,format,onFormatChange}) {
             (item.mediaRefs?.length||0)))
       })&&!unique.some(record=>record.location||record.__importPlaceName||
         existingBySiteId.get(record.uid)?.location)){
+        // A no-change reimport may follow an older partial success whose
+        // Search snapshot is still stale. Refresh it once even for a no-op.
+        if(!nativeLocal)await refreshImportedSearchSummary();
         setProgress(null);
         setStatus(t('uiExtra.importUI.importNoChanges'));
         setRows([]);
