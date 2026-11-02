@@ -21,6 +21,7 @@ export const RPC_ALLOWLIST={
   'silver.read_scope_search_summary':['p_scope_ids'],
   'silver.refresh_scope_search_summary':['p_scope_id'],
   'silver.get_my_scope_management':[],
+  'silver.manage':['p_type','p_id'],
   'silver.loc_admin_settings':['p_section','p_operation','p_key','p_value'],
   'silver.loc_catalog':['p_section','p_action','p_key','p_value'],
   'silver.read_music_style_tree':[],
