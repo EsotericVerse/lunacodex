@@ -257,7 +257,8 @@ async function relatedArticleTitlesFor(scope,row,{includeHidden=false}={}){
   const pages=await mapBounded(batches,3,async batch=>{
     const {rows=[]}=await selectRows(scope.galaxy,{
       columns:'uid,title',
-      filters:[{column:'uid',operator:'in',value:batch}],
+      filters:[{column:'uid',operator:'in',value:batch},
+        ...(!includeHidden?[{column:scope.id==='local'?'searchable':'able->>list',operator:'eq',value:scope.id==='local'?true:'true'}]:[])],
       orFilter:'',
       limit:batch.length,
       authenticated:includeHidden
