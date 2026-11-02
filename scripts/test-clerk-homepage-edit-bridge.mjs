@@ -29,6 +29,30 @@ test('home editor can read existing permission RPC through Kysely as a rowset',(
     name:'get_my_scope_management',args:{}});
   assert.equal(built.returnsRows,true);
 });
+test('management search refresh accepts exactly one Scope ID with required argument',()=>{
+  assert.deepEqual(RPC_ALLOWLIST['silver.refresh_scope_search_summary'],['p_scope_id']);
+  const built=buildAllowlistedRpcQuery({kind:'rpc',schema:'silver',
+    name:'refresh_scope_search_summary',args:{p_scope_id:'lo3rwang'}});
+  assert.equal(built.returnsRows,false);
+  assert.ok(built.query,'A Kysely SQL expression must be generated');
+  assert.throws(()=>buildAllowlistedRpcQuery({kind:'rpc',schema:'silver',
+    name:'refresh_scope_search_summary',args:{}}),/Missing required RPC argument/);
+  assert.throws(()=>buildAllowlistedRpcQuery({kind:'rpc',schema:'silver',
+    name:'refresh_scope_search_summary',args:{p_scope_id:'lo3rwang',p_bypass:true}}),
+    /Unexpected RPC argument/);
+  assert.throws(()=>buildAllowlistedRpcQuery({kind:'rpc',schema:'silver',
+    name:'refresh_search_summary_without_authorization',args:{p_scope_id:'lo3rwang'}}),
+    /RPC is not enabled/);
+});
+test('Search public summary uses snapshot; refresh remains a manager-only action',()=>{
+  const source=readFileSync(new URL('../app/loc/SearchSummary.jsx',import.meta.url),'utf8');
+  const refresh=readFileSync(new URL('../app/loc/scope-search-summary.mjs',import.meta.url),'utf8');
+  assert.match(source,/managementMode\?<button/);
+  assert.match(source,/for\(const id of ids\)await refreshScopeSearchSummary\(id\)/);
+  assert.match(refresh,/dbAuthClient\.schema\('silver'\)/);
+  assert.match(refresh,/\.rpc\('refresh_scope_search_summary',\{p_scope_id:ids\[0\]\}\)/);
+  assert.match(refresh,/silver\.scope_search_summary/);
+});
 test('legacy SQL Auth continues to validate Supabase user independently',()=>{
   const code=readFileSync(new URL('../supabase/functions/loc-kysely/index.ts',import.meta.url),'utf8');
   assert.match(code,/authClient\.auth\.getUser\(token\)/);
