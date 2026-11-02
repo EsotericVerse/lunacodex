@@ -168,18 +168,18 @@ export async function readAllTraceAnchors(scopeId,{nativeOnly=false,includeHidde
 export async function readTraceAnchorSuggestions(scopeId,term,limit=8){
   const id=idScope(scopeId),q=textValue(term).slice(0,100);
   if(id==='loc'||!q)return [];
-  if(isUnified(id)){
-    const rows=checked(await dbPublicClient.schema('silver').from(id+'_anchor')
-      .select(ANCHOR_COLUMNS).eq('type','point').ilike('title','%'+q.replace(/[%,]/g,'')+'%')
-      .limit(Math.max(1,Math.min(Number(limit)||8,100))),'搜尋空間定錨')||[];
-    return rows.map(row=>projectUnified(row,id));
-  }
   const data=checked(await dbAuthClient.schema('silver').rpc('search_scope_trace_place_names',{
     p_scope_id:id,p_term:q,p_limit:Math.max(1,Math.min(Number(limit)||8,100))
   }),'搜尋地點標題')||[];
   if(!data.length)return [];
   const ids=data.map(row=>row.uid).filter(uid=>VALID_ID.test(String(uid)));
   if(!ids.length)return [];
+  if(isUnified(id)){
+    const allowed=checked(await dbPublicClient.schema('silver').from(id+'_anchor')
+      .select(ANCHOR_COLUMNS).eq('type','point').in('uid',ids),'公開地點權限檢查')||[];
+    const byUid=new Map(allowed.map(row=>[row.uid,row]));
+    return ids.map(uid=>byUid.get(uid)).filter(Boolean).map(row=>projectUnified(row,id));
+  }
   const allowed=checked(await dbPublicClient.schema('silver').from(id+'_trace')
     .select('uid').eq('trace_type','space_anchor').in('uid',ids),'公開地點權限檢查')||[];
   const visible=new Set(allowed.map(row=>row.uid));
