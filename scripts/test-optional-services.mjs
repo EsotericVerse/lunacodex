@@ -47,7 +47,7 @@ test('backup readiness check is only invoked in Admin settings',()=>{
   const server=read('supabase/functions/loc-kysely/index.ts');
   const panel=read('app/loc/views/admin-panels/DatabaseTarget.jsx');
   assert.match(server,/check_backup_readiness/);
-  assert.match(server,/\.where\("backup_selected","=",true\)/);
+  assert.match(server,/\.filter\(item=>item\.backup_selected===true\)/);
   assert.match(server,/backup\.introspection\.getTables\(\)/);
   assert.match(panel,/check_backup_readiness/);
   assert.match(panel,/backupHealth\.state==='absent'/);
