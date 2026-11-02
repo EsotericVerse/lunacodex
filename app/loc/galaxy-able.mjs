@@ -1,21 +1,10 @@
 // Scoped Galaxy article feature switches. Distinct from Scope-level `loc.able`.
-// Legacy columns remain during the two-version migration window.
+// Eight independent booleans are the only article feature switches.
 export const GALAXY_ABLE_KEYS=Object.freeze([
   'statics','culture','search','trace','list','keywords','game','extract'
 ]);
-export function legacyGalaxyAble(row={}){
-  const searchable=row.searchable!==false;
-  const statistics=row.statistics_able!==false;
-  return {
-    statics:statistics,
-    culture:statistics,
-    search:searchable,
-    trace:searchable&&statistics,
-    list:searchable,
-    keywords:searchable&&statistics,
-    game:true,
-    extract:true
-  };
+export function legacyGalaxyAble(){
+  return Object.fromEntries(GALAXY_ABLE_KEYS.map(key=>[key,true]));
 }
 export function galaxyAble(row={}){
   const legacy=legacyGalaxyAble(row);
