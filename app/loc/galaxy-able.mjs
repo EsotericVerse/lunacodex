@@ -26,7 +26,7 @@ export function galaxyAble(row={}){
   ]));
 }
 export function isScopedGalaxy(table){
-  return /^silver\.(?:lo3rwang|lrunes)_galaxy$/.test(String(table||''));
+  return /^silver\.[a-z][a-z0-9]{0,14}_galaxy$/.test(String(table||''));
 }
 export function prepareGalaxyInsertRows(table,rows=[]){
   if(!isScopedGalaxy(table))return rows;
