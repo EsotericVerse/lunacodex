@@ -1,5 +1,8 @@
 import {authorityAction} from './authority-client.mjs';
 import {searchMemory,readMemory} from './galaxy-read.mjs';
+import {SCOPE_ROUTE_INDEX} from '../../modular/scope-route-index.js';
+const PUBLIC_SCOPE_IDS=Object.freeze(SCOPE_ROUTE_INDEX.filter(row=>row.active&&row.scope_id!=='loc')
+  .map(row=>row.scope_id).filter(id=>/^[a-z][a-z0-9]{0,14}$/.test(id)));
 // LOC MCP HTTP entry point. No database write is granted by an OAuth login.
 export const MCP_RESOURCE=(globalThis.process?.env?.LOC_MCP_RESOURCE_URL||'https://loc.lo3rwang.cc/mcp').replace(/\/+$/,'');
 export const CLERK_ISSUER=(globalThis.process?.env?.LOC_CLERK_ISSUER||'https://precise-grackle-3371.clerk.accounts.dev').replace(/\/+$/,'');
@@ -86,7 +89,7 @@ const TOOLS=[
   {name:'search_memory',description:'Search PUBLIC LOC Galaxy articles in title or content, e.g. LP26. No private messages or administrator-only results. Returns article UIDs for read_memory.',
     inputSchema:{type:'object',properties:{
       query:{type:'string',minLength:2,maxLength:100,description:'Text to search in title and content'},
-      scopeid:{type:'string',enum:['lo3rwang','lrunes'],description:'Select one public LOC Scope; group aggregation requires separate authorization'},
+      scopeid:{type:'string',enum:PUBLIC_SCOPE_IDS,description:'Select one public LOC Scope; group aggregation requires separate authorization'},
       limit:{type:'integer',minimum:1,maximum:20},
       offset:{type:'integer',minimum:0,maximum:500}
     },required:['query'],additionalProperties:false},
@@ -94,7 +97,7 @@ const TOOLS=[
   {name:'read_memory',description:'Read a PUBLIC LOC Galaxy article by exact, case-sensitive UID; supports content paging with offset/max_chars.',
     inputSchema:{type:'object',properties:{
       uid:{type:'string',pattern:'^[A-Za-z0-9]{8}$',description:'Exact Galaxy article UID'},
-      scopeid:{type:'string',enum:['lo3rwang','lrunes']},
+      scopeid:{type:'string',enum:PUBLIC_SCOPE_IDS},
       offset:{type:'integer',minimum:0,maximum:1000000},
       max_chars:{type:'integer',minimum:1,maximum:40000}
     },required:['uid'],additionalProperties:false},
