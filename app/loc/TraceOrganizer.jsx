@@ -4,6 +4,7 @@ import {useEffect,useMemo,useState} from 'react';
 import {dbAuthClient} from './db-client.mjs';
 import {reviewPlaceNameGroups,compactPlaceName} from '../modular/features/trace/trace-place-names.mjs';
 import {renameTraceAnchorTitles} from '../modular/features/trace/trace-data';
+import {isUnifiedAnchorScope} from './unified-anchor-compat.mjs';
 
 const canonical=items=>[...items].sort((a,b)=>
   String(a.uid||'').localeCompare(String(b.uid||'')))[0];
@@ -41,7 +42,7 @@ export default function TraceOrganizer({scopeId,spatial,reload}){
   useEffect(()=>{
     let live=true;
     if(!selectedUid||scopeId==='loc'){setAliases([]);return;}
-    const unified=scopeId==='lo3rwang';
+    const unified=isUnifiedAnchorScope(scopeId);
     let query=dbAuthClient.schema('silver').from(scopeId+(unified?'_anchor':'_place'))
       .select(unified?'attr':'name_lists').eq('uid',selectedUid);
     if(unified)query=query.eq('type','point');
@@ -66,7 +67,7 @@ export default function TraceOrganizer({scopeId,spatial,reload}){
         .rpc('save_scope_trace_place_names',{p_scope_id:scopeId,p_uid:selectedUid,
           p_names:[...new Set([...list,place?.title].filter(Boolean))]});
       if(saveError||written!==1)throw saveError||Error('名稱對照儲存結果未確認');
-      if(scopeId==='lo3rwang'){
+      if(isUnifiedAnchorScope(scopeId)){
         const {data:current,error:readError}=await dbAuthClient.schema('silver')
           .from(scopeId+'_anchor').select('attr')
           .eq('uid',selectedUid).eq('type','point').maybeSingle();
