@@ -174,8 +174,19 @@ function pickUrl(item,platform=''){
       const url=valid(candidate);
       if(url&&sourceHost(url)){fallback=url;break;}
     }
-    // These hold the SAME post, unlike attachments/media/place/location.
-    for(const key of ['data','array','post','entry','core','thread','status','post_data']){
+    // A shared external link (news article, video, etc.) is the actual
+    // subject of a "shared a link" post. Meta's export does not give the
+    // post's own same-platform permalink at all, so without this, every
+    // shared-link post would leave Galaxy.url empty. This one is inherently
+    // cross-domain, so it skips sourceHost on purpose.
+    if(!fallback){
+      const shared=valid(node.external_context?.url);
+      if(shared)fallback=shared;
+    }
+    // These hold the SAME post, unlike media/place/location. attachments[]
+    // is only walked for its external_context link above, via 'data' below
+    // — never for its media URL or place URL, which stay out of Galaxy.url.
+    for(const key of ['data','array','post','entry','core','thread','status','post_data','attachments']){
       const child=node[key];
       if(child&&typeof child==='object')queue.push(child);
     }
