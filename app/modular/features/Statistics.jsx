@@ -289,8 +289,6 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   const requested=String(navigation.rankingType||'');
   const rankingType=types.includes(requested)?requested:(types[0]||'');
   const mediaDimension=MEDIA_STAT_TYPES.has(rankingType);
-  // All Scopes use the same article-based statistics, including lrunes.
-  const isLrunesDaily=false;
   const deviceTimeUnit=useDefaultTimeUnit();
   const {settings:userSettings,active:userActive}=useLocFeatureSettings('statics');
   const defaultTimeUnit=userActive?userSettings.unit:deviceTimeUnit;
@@ -314,7 +312,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   useEffect(()=>{setSelectedPeriodKey('latest');},[scopeId]);
   const queryEndDate=useMemo(()=>taipeiDateKey(),[]);
   // The active route already resolves the requested Scope; no registry-wide SELECT.
-  const targetScopes=useMemo(()=>isLrunesDaily?[]:[defaultScopeData(scopeId)].filter(Boolean),[scopeId,isLrunesDaily]);
+  const targetScopes=useMemo(()=>[defaultScopeData(scopeId)].filter(Boolean),[scopeId]);
   const resourceCache=useResourceCache();
   // The earliest date only widens the zoom-out limit. It arrives with the chart data
   // itself, so the first window (last year) never waits for it.
@@ -323,7 +321,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     [zoomLevel,queryEndDate,knownEarliest]);
   const periodQuery=useAsyncResource({
     queryKey:['culture-time-periods',scopeId],
-    enabled:!isLrunesDaily&&scopeId!=='local'&&scopeId!=='loc'&&Boolean(targetScopes[0]),
+    enabled:scopeId!=='local'&&scopeId!=='loc'&&Boolean(targetScopes[0]),
     queryFn:async()=>{
       // Period anchors remain on the independently working direct reader.
       // ISR never becomes a required path when an endpoint is not available.
@@ -344,7 +342,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   // An empty or non-period Scope must not request a nonexistent Period index.
   const requestedStart=dateKey(navigation.from),requestedEnd=dateKey(navigation.to);
   const hasRequestedWindow=Boolean(requestedStart&&requestedEnd&&requestedStart<=requestedEnd);
-  const periodNavigationReady=hasRequestedWindow||isLrunesDaily||scopeId==='local'||scopeId==='loc'||periodQuery.data!==undefined||Boolean(periodQuery.error);
+  const periodNavigationReady=hasRequestedWindow||scopeId==='local'||scopeId==='loc'||periodQuery.data!==undefined||Boolean(periodQuery.error);
   const queryRange=useMemo(()=>{
     if(hasRequestedWindow){
       const days=Math.round((Date.parse(requestedEnd+'T00:00:00Z')-Date.parse(requestedStart+'T00:00:00Z'))/86_400_000);
@@ -363,7 +361,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   },[selectedPeriod,customQueryRange,queryEndDate,hasRequestedWindow,requestedStart,requestedEnd,defaultTimeUnit]);
   // Both editors store flat names. Show one direct source choice, not a group tree.
   const activeSourceSelection=styleFilter==='keywords'?keywordSource:rankingType==='source'?sourceGroup:'';
-  const sourceChart=!isLrunesDaily&&!mediaDimension&&rankingType!=='place'&&Boolean(targetScopes.length)&&Boolean(rankingType);
+  const sourceChart=!mediaDimension&&rankingType!=='place'&&Boolean(targetScopes.length)&&Boolean(rankingType);
   // ONE request per source chart: earliest date + exact daily counts + source taxonomy.
   const overview=useAsyncResource({
     queryKey:['scope-overview',scopeId,queryRange.startDate,queryRange.endDate],
@@ -379,7 +377,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   // Media charts carry their own facet rows; the earliest date is one small request.
   const earliestQuery=useAsyncResource({
     queryKey:['statistics-history-start',scopeId],
-    enabled:!isLrunesDaily&&mediaDimension&&periodNavigationReady&&!selectedPeriod&&!knownEarliest&&Boolean(targetScopes[0]),
+    enabled:mediaDimension&&periodNavigationReady&&!selectedPeriod&&!knownEarliest&&Boolean(targetScopes[0]),
     queryFn:async()=>{
       const {selectScopeEarliest}=await loadGalaxyStatistics();
       return selectScopeEarliest(targetScopes[0]);
@@ -436,12 +434,12 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   // presentation work, not an independent remote resource: avoid a second SWR
   // suspense/loading cycle after the cached numeric response arrives.
   const adminSource=useMemo(()=>{
-    if(isLrunesDaily||mediaDimension||!sourceCatalog.isSuccess)return null;
+    if(mediaDimension||!sourceCatalog.isSuccess)return null;
     return administrativeSourceTrend(overview.data?.rows||[],sourceCatalog.data||{},{
       startDate:queryRange.startDate,endDate:queryRange.endDate,
       unit:queryRange.bucket,sourceCategory:activeSourceSelection,sourceNames:selectedRawNames
     });
-  },[isLrunesDaily,mediaDimension,sourceCatalog.isSuccess,sourceCatalog.data,overview.data,
+  },[mediaDimension,sourceCatalog.isSuccess,sourceCatalog.data,overview.data,
     queryRange.startDate,queryRange.endDate,queryRange.bucket,activeSourceSelection]);
   const adminSourceReady=Boolean(adminSource);
   const resolvedAdminSource=adminSource||{rows:[],series:[],distribution:[],total:0};
@@ -488,11 +486,11 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   }),[queryRange.startDate,queryRange.endDate]);
   // Separate the guest/shared directory from the owner's private catalog.
   // Never reuse a one-Class anonymous cache after an authorized sign-in.
-  const keywordAccount=useAccount({enabled:!isLrunesDaily&&styleFilter==='keywords'});
+  const keywordAccount=useAccount({enabled:styleFilter==='keywords'});
   const keywordClassQuery=useAsyncResource({
     queryKey:['scope-active-keyword-class-name',scopeId,keywordAccount.user?.id||'guest'],
     // The keyword class is optional; the ordinary Statistics view never queries it.
-    enabled:!isLrunesDaily&&styleFilter==='keywords',
+    enabled:styleFilter==='keywords',
     queryFn:async()=>{
       const {selectAvailableKeywordClasses}=await import('../../loc/keyword-analysis');
       return selectAvailableKeywordClasses(scopeId);
@@ -526,7 +524,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
         sourceAliases:keywordSourcesQuery.data?.aliases||[],sourceNames:selectedRawNames
       });
     },
-    enabled:!isLrunesDaily&&styleFilter==='keywords'&&Boolean(resolvedKeywordClassUid)&&Boolean(styleRange.startDate&&styleRange.endDate)
+    enabled:styleFilter==='keywords'&&Boolean(resolvedKeywordClassUid)&&Boolean(styleRange.startDate&&styleRange.endDate)
       &&(!keywordSource||keywordSourcesQuery.isSuccess),
   });
 
@@ -534,7 +532,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     <header className="scope-stat-domain-heading"><div><h2>{UI_COPY.statistics.result}</h2></div></header>
     <div className="scope-stat-controls">
       <StatisticTypeSelect scopeId={scopeId} navigation={navigation} types={types}/>
-      {!isLrunesDaily&&rankingType!=='place'?<label>
+      {rankingType!=='place'?<label>
         <span>顯示關鍵字</span>
         <select className="scope-select" value={styleFilter} onChange={event=>setStyleFilter(event.target.value)}>
           {STYLE_FILTERS.map(item=><option key={item.value} value={item.value}>
@@ -553,10 +551,10 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
           </option>)}
         </select>
       </label>:null}
-      {keywordClassQuery.error&&!isLrunesDaily?<p className="scope-status scope-error" role="status">
+      {keywordClassQuery.error?<p className="scope-status scope-error" role="status">
         關鍵詞組讀取失敗：{featureDataErrorMessage(keywordClassQuery.error,UI_COPY)}
       </p>:null}
-      {!isLrunesDaily?<label>
+      {<label>
         <span>時期</span>
         <select className="scope-select" aria-label="時期" value={selectedPeriodKey}
           onChange={event=>setSelectedPeriodKey(event.target.value)}>
@@ -568,7 +566,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
           </option>)}
         </select>
       </label>:null}
-      {!isLrunesDaily&&!mediaDimension&&rankingType!=='place'&&(rankingType==='source'||styleFilter==='keywords')?<label>
+      {!mediaDimension&&rankingType!=='place'&&(rankingType==='source'||styleFilter==='keywords')?<label>
         <span>作品／個人分類</span>
         <select className="scope-select" aria-label="作品／個人分類" value={activeSourceSelection}
           onChange={event=>{
@@ -581,10 +579,10 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
           <option value="unclassified">未分類</option>
         </select>
       </label>:null}
-      {periodQuery.error&&!isLrunesDaily?<span className="scope-status scope-error">
+      {periodQuery.error?<span className="scope-status scope-error">
         時期範圍無法載入，仍可使用自選時間：{featureDataErrorMessage(periodQuery.error,UI_COPY)}
       </span>:null}
-      {!isLrunesDaily&&rankingType!=='place'?<>{!mediaDimension?<label><span>{UI_COPY.statistics.chart}</span><select className="scope-select" value={effectiveChartType} onChange={event=>setChartType(event.target.value)}>
+      {rankingType!=='place'?<>{!mediaDimension?<label><span>{UI_COPY.statistics.chart}</span><select className="scope-select" value={effectiveChartType} onChange={event=>setChartType(event.target.value)}>
         {chartGroups.primary.length?<optgroup label={t('uiExtra.statisticsView.chartPrimary')}>
   {chartGroups.primary.map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}
 </optgroup>:null}
@@ -654,7 +652,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
       {!runeQuery.isPending&&!runeQuery.error&&runeQuery.data?<Rune66Summary analysis={runeQuery.data} range={queryRange} scopeId={scopeId}/>:null}
       {!runeQuery.isPending&&!runeQuery.error&&runeQuery.data&&!runeQuery.data.staticstime?<p className="scope-status">此關鍵詞組尚無已完成的分析結果；請先在關鍵詞管理執行分析，不以其他詞組數據代替。</p>:null}
     </>:null}
-    {!isLrunesDaily&&rankingType!=='place'&&Boolean(targetScopes[0])?<StatisticsDetails
+    {rankingType!=='place'&&Boolean(targetScopes[0])?<StatisticsDetails
       summary={<UiText id="uiExtra.statisticsView.selfIntersectionTitle"/>}>
       {()=> <ScopeSelfIntersection
         key={scopeId}
