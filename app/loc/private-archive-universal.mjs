@@ -208,8 +208,17 @@ function chatgptConversation(row){
     }).filter(item=>item.content.trim()).sort((a,b)=>a.time-b.time);
   return messages.length?messages.map(item=>'['+item.role+']\n'+item.content).join('\n\n'):null;
 }
-function extractCaption(item){
-  const a=item?.title??item?.caption??item?.text??item?.content??item?.description??
+// Instagram's own export can set a media post's `title` to the attached
+// media's own filename/ID when the user wrote no caption (e.g.
+// "400668176_122098823604258632_5990818633319476005_n") — never a real
+// caption. Threads/X genuinely use `title` as the post's actual text, so
+// this filter is Instagram-only, not a blanket rule.
+const instagramFilenameTitle=/^[0-9]{5,}(_[0-9A-Za-z]+){1,}_n?$/;
+function extractCaption(item,platform){
+  const rawTitle=item?.title;
+  const title=platform==='instagram'&&typeof rawTitle==='string'&&
+    instagramFilenameTitle.test(rawTitle.trim())?undefined:rawTitle;
+  const a=title??item?.caption??item?.text??item?.content??item?.description??
     item?.post??item?.body??item?.value??item?.string_map_data?.Text?.value;
   if(typeof a==='string')return a;
   if(Array.isArray(a))return a.map(v=>txt(v?.text)||txt(v?.value)||'').filter(Boolean).join('\n')||null;
@@ -235,8 +244,8 @@ function normalize(row,{platform,kind,path,index,conversation}){
   const chatText=platform==='chatgpt'?chatgptConversation(item):null;
   const text=chatText||(platform==='x'?(txt(item.full_text)||txt(item.core?.text)||txt(item.text)):
     actualKind==='message'?(txt(item.content)||txt(item.text)||null):
-    actualKind==='post'?((platform==='facebook'?facebookBackupPostText(item):null)||extractCaption(item)||txt(data['Title']?.value)||null):
-    extractCaption(item));
+    actualKind==='post'?((platform==='facebook'?facebookBackupPostText(item):null)||extractCaption(item,platform)||txt(data['Title']?.value)||null):
+    extractCaption(item,platform));
   // facebookBackupPlace recognizes Facebook's own place/check-in fields
   // (place, location, checkin, venue...). Those field names also occur,
   // unrelated to any check-in, inside Instagram/Threads/X payloads (e.g. a
@@ -278,7 +287,9 @@ function normalize(row,{platform,kind,path,index,conversation}){
   return {
     key:platform+':'+finalKind+':'+encodeURIComponent(group)+':'+stable,
     platform,kind:finalKind,nativeId:stable,siteId:siteId==null?null:String(siteId),text:visibleText,sourcePlace,
-    title:txt(item.title)||'',url:pickUrl(item,platform),
+    title:(platform==='instagram'&&typeof item.title==='string'&&
+      instagramFilenameTitle.test(item.title.trim())?'':txt(item.title))||'',
+    url:pickUrl(item,platform),
     sender,conversationId:actualKind==='message'?conv:null,attachments,
     createdAt,originalTimestamp,
     sourcePath:cleanPath(path),
