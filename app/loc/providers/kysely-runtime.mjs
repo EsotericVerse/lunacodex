@@ -134,7 +134,7 @@ function applyFilters(query,filters){
   for(const filter of filters){
     const op=operators[filter.operator],column=checkedFilterColumn(filter.column);
     if(filter.operator==='in')query=filter.negate?query.where(eb=>eb.not(eb(column,'in',filter.value))):query.where(column,'in',filter.value);
-    else if(filter.operator==='ilike')query=query.where(sql`lower(${column})`,filter.negate?'not like':'like',String(filter.value).toLowerCase());
+    else if(filter.operator==='ilike')query=query.where(sql`lower(${typeof column==='string'?sql.ref(column):column})`,filter.negate?'not like':'like',String(filter.value).toLowerCase());
     else if(filter.operator==='is')query=query.where(column,filter.value===null?(filter.negate?'is not':'is'):(filter.negate?'!=':'='),filter.value);
     else query=filter.negate?query.where(eb=>eb.not(eb(column,op,filter.value))):query.where(column,op,filter.value);
   }
