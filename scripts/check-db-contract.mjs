@@ -69,7 +69,9 @@ export function checkLocScopeBoundary(migrations=[]){
     ['20261103001000_loc_jsonb_consolidation_stage1.sql',
       /^ALTER\s+TABLE\s+silver\.loc\s+ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+(?:caches|database|blacklist)\s+jsonb\b/i],
     ['20261103003000_loc_jsonb_drop_legacy.sql',
-      /^ALTER\s+TABLE\s+silver\.loc\s+DROP\s+COLUMN\s+cache\s*$/i]
+      /^ALTER\s+TABLE\s+silver\.loc\s+DROP\s+COLUMN\s+cache\s*$/i],
+    ['20261103040000_loc_theme_keywords_jsonb_cutover.sql',
+      /^ALTER\s+TABLE\s+silver\.loc\s+ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+(?:theme|keywords)\s+jsonb\b/i]
   ]);
   for(const [name,sql] of migrations){
     const allow=approved.get(name);

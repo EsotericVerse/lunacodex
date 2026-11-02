@@ -1,4 +1,4 @@
--- Copy first; keep both old relations readable until the deployed code stops using them.
+-- Copy first. Keep both old relations readable until the deployed code stops using them.
 ALTER TABLE silver.loc ADD COLUMN IF NOT EXISTS theme jsonb NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE silver.loc ADD COLUMN IF NOT EXISTS keywords jsonb NOT NULL DEFAULT '[]'::jsonb;
 UPDATE silver.loc l
