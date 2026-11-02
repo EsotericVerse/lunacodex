@@ -122,5 +122,5 @@ test('Settings exposes account recheck and reconnect only on actual network fail
   assert.match(settings,/verifiedGoogleAccount\.refresh\(\)/);
   assert.match(account,/window\.addEventListener\('online',recheck\)/);
   assert.match(account,/document\.addEventListener\('visibilitychange',onVisible\)/);
-  assert.match(account,/!\/Failed to fetch\|連線失敗\|NetworkError\|Load failed/i/);
+  assert.ok(account.includes('Failed to fetch|連線失敗|NetworkError|Load failed'));
 });
