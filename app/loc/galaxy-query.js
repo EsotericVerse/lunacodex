@@ -15,6 +15,7 @@ import {readLocStatistics,readScopeCategoryTotals,readScopeEarliest,readScopeOve
 import {defaultScopeData,selectScopeRegistry} from './scope-data';
 import {readNumericIsr,usesNumericIsr} from './numeric-isr-client';
 import {selectFirstDailyRuneDate} from './daily-runes';
+import {readTraceMapIndex} from '../modular/features/trace/trace-data.js';
 
 function unique(values=[]){
   return [...new Set(values.map(value=>String(value||'').trim()).filter(Boolean))];
@@ -404,6 +405,30 @@ async function articleTimeContext(scope,day){
 async function articleSpaceContext(scope,placeId,{authenticated=false}={}){
   if(!/^[A-Za-z0-9]{4}$/.test(placeId)||!['lo3rwang','lrunes'].includes(scope.id))
     return {place:null,routes:[],traces:[]};
+  if(scope.id==='lo3rwang'){
+    // LOC's four legacy relations were consolidated into _anchor. The shared
+    // Trace reader projects native attr.point/attr.path without relying on
+    // removed trace_type, anchor_list or route_list physical columns.
+    const [pointPage,maps]=await Promise.all([
+      selectRows('silver.lo3rwang_anchor',{columns:'uid,type,title',
+        filters:[{column:'uid',operator:'eq',value:placeId},
+          {column:'type',operator:'eq',value:'point'}],
+        limit:1,authenticated}),
+      readTraceMapIndex('lo3rwang',{includeHidden:authenticated})
+    ]);
+    const place=pointPage.rows[0]||null;
+    if(!place)return {place:null,routes:[],traces:[]};
+    const contains=(uids,uid)=>Array.isArray(uids)&&uids.includes(uid);
+    const routes=maps.filter(row=>row.trace_type==='path'&&contains(row.anchor_list,placeId))
+      .map(({uid,title})=>({uid,title})).slice(0,100);
+    const routeUids=new Set(routes.map(row=>row.uid));
+    const traces=maps.filter(row=>row.trace_type==='trace'&&(
+      contains(row.anchor_list,placeId)||
+      (row.route_list?.routes||[]).some(uid=>routeUids.has(uid))
+    )).map(({uid,title})=>({uid,title})).slice(0,100);
+    return {place:{uid:place.uid,title:place.title},routes,traces};
+  }
+  // lrunes is not yet physically consolidated. Keep its legacy relation.
   const table='silver.'+scope.id+'_trace';
   const [anchor,routesPage]=await Promise.all([
     selectRows(table,{columns:'uid,title',filters:[
