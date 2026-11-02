@@ -36,6 +36,8 @@ import {scopeHref} from '../scope-registry';
 import {featureNavigationHref,galaxyIdentityHref,galaxyRelationLinks} from '../feature-navigation';
 import {featureDataErrorMessage} from '../feature-data-state';
 import {parseSearchQuery} from '../../loc/search-query.mjs';
+import {galaxyAble} from '../../loc/galaxy-able.mjs';
+import {extractSearchContext} from '../../loc/search-extract.mjs';
 import {searchGalaxyRows,selectGalaxyContent,selectGalaxyIdentity,selectStyleKeywordMatches,selectSourceTaxonomy} from '../../loc/galaxy-query';
 import {defaultScopeData,selectLocSearchScopes,selectScopeRegistry,revalidateServerMetadata} from '../../loc/scope-data';
 
@@ -128,7 +130,8 @@ function toResult(row,source,scopeId,copy=UI_COPY){
     source:displaySource,title:String(title),
     checkInPlace:'',
     date:row.date||row.createtime||row.address||row.record_date||row.UpdateTime||row.updated_at||'',
-    snippet:'',scopeId:scope,resourceType,resourceId,
+    snippet:'',able:isGalaxy?galaxyAble(row):null,
+    scopeId:scope,resourceType,resourceId,
     relatedMedia:Array.isArray(row.related_media)?row.related_media:[],
     relatedTime:row.related_time||null,
     relatedSpace:row.related_space||null,
@@ -160,6 +163,38 @@ function toResult(row,source,scopeId,copy=UI_COPY){
 }
 
 
+// Only after a real search, and only for current-page article IDs.
+async function loadPageSearchExcerpts(rows,query,scopeById,{authenticated=false,signal}={}){
+  if(!String(query||'').trim())return new Map();
+  const groups=new Map();
+  for(const row of rows){
+    if(row.resourceType!=='galaxy'||!row.resourceId||
+      row.able?.search===false||row.able?.extract===false)continue;
+    if(!groups.has(row.scopeId))groups.set(row.scopeId,new Set());
+    groups.get(row.scopeId).add(row.resourceId);
+  }
+  const snippets=new Map();
+  for(const [scopeId,ids] of groups){
+    if(signal?.aborted)break;
+    const scope=scopeById.get(scopeId);
+    if(!scope?.galaxy)continue;
+    try{
+      const {rows:articles=[]}=await selectRows(scope.galaxy,{
+        columns:'uid,content,able',
+        filters:[{column:'uid',operator:'in',value:[...ids]}],
+        limit:ids.size,authenticated,signal
+      });
+      for(const article of articles){
+        if(article?.able?.search===false||article?.able?.extract===false)continue;
+        const excerpt=extractSearchContext(article.content,query,10);
+        if(excerpt)snippets.set(scopeId+':'+article.uid,excerpt);
+      }
+    }catch{
+      if(signal?.aborted)break;
+    }
+  }
+  return snippets;
+}
 function uniqueExternalLinks(links=[]){
   const byHref=new Map();
   for(const link of links){
@@ -496,6 +531,17 @@ export default function Search({managementMode=false}){
       }
       const pageResults=prioritizeStyleTagResults(mergeSummaryResults(converted,UI_COPY));
       setResults(current=>append?mergeSummaryResults([...current,...pageResults],UI_COPY):pageResults);
+      if(q&&!options.browse&&!options.placeOnly&&!options.mediaOnly&&pageResults.length){
+        void loadPageSearchExcerpts(pageResults,q,scopeById,{
+          authenticated:managementMode,signal
+        }).then(previews=>{
+          if(id!==searchId.current||signal.aborted||!previews.size)return;
+          setResults(current=>current.map(item=>{
+            const excerpt=previews.get(item.scopeId+':'+item.resourceId);
+            return excerpt&&item.able?.extract!==false?{...item,snippet:excerpt}:item;
+          }));
+        }).catch(()=>{});
+      }
             setHasMore(Boolean(search.hasMore));
       setNextCursor(search.nextCursor??null);
       const partial=(search.failures?.length||styleResult?.failed)?t('uiExtra.searchUI.partialExtendedData'):'';
@@ -1295,14 +1341,15 @@ export default function Search({managementMode=false}){
           editOnCardClick={!managementMode&&canOfferEdit}
           managerMode={managementMode}
           uid={editTarget.editResourceId}
-          title={row.title}
-          articleHref={row.resourceType==='galaxy'
+          title={!managementMode&&row.resourceType==='galaxy'&&row.able?.list===false?'（使用者隱藏）':row.title}
+          articleHref={row.resourceType==='galaxy'&&(managementMode||row.able?.list!==false)
             ?(managementMode?scopeHref(scopeId,'search/manage')+'?identity='+encodeURIComponent(row.resourceId)+'&scope='+encodeURIComponent(row.scopeId):galaxyIdentityHref(row.scopeId,row.resourceId))
             :''}
           detailReading={identityReader||expandedReader}
           source={searchParams?.get('identity')?row.styleTagMatch?'':row.source:''}
           date={searchParams?.get('identity')?row.date:''}
-          body=""
+          body={row.resourceType==='galaxy'&&row.snippet&&matchedQueryRef.current&&!browseResults
+            ?highlightSearchText(row.snippet,matchedQueryRef.current):''}
           hidden={false}
           relationLinks={identityReader||expandedReader?readingLinks:[]}
           relatedMedia={identityReader||expandedReader?relatedMedia:[]}
@@ -1347,7 +1394,7 @@ export default function Search({managementMode=false}){
             <button type="button" className="loc-button scope-work-edit-button" onClick={()=>startEditing(editTarget)}>
               {row.resourceType==='galaxy'?'展開內文並編輯':'編輯媒體連結'}
             </button>
-          </div>:!managementMode&&row.resourceType==='galaxy'&&editingKey!==row.key?<div className="scope-work-fulltext-row">
+          </div>:!managementMode&&row.resourceType==='galaxy'&&row.able?.list!==false&&editingKey!==row.key?<div className="scope-work-fulltext-row">
             <WorkFullText
               open={fullTextKey===row.key}
               loading={fullTextLoading&&fullTextKey===row.key}
