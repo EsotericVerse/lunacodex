@@ -121,15 +121,15 @@ export async function prepareImportPlaceAnchors(records,{
     const chunk=pending.slice(offset,offset+80);
     let rows,data,error;
     for(let attempt=0;attempt<4;attempt++){
-      rows=chunk.map(place=>({
-        uid:allocateAnchorUid(assigned),type:'point',title:place.title,
+      rows=chunk.map(place=>{
+        const uid=allocateAnchorUid(assigned);assigned.add(uid);
+        return {uid,type:'point',title:place.title,
         description:JSON.stringify({text:'',address:place.postal||null,
           ...(place.placeUrl?{url:place.placeUrl}:{})}),
         attr:place.coordinates
           ?{longitude:place.address[0],latitude:place.address[1]}:{},
         invisible:false
-      }));
-      rows.forEach(row=>assigned.add(row.uid));
+      };});
       ({data,error}=await relation(table).insert(rows).select('uid,type,title,attr'));
       if(error?.code==='23505'&&attempt<3)continue;
       break;
