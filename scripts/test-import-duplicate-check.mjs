@@ -68,6 +68,36 @@ test('site_id matching preserves leading zeros and case',async()=>{
   });
   assert.equal(matches.size,0);
 });
+test('duplicate Instagram site IDs select the exact matching timestamp, never arbitrary UID',async()=>{
+  const source='17966628410664059';
+  const saved=[
+    {...original,uid:'OLD00001',site:'Instagram',site_id:source,
+      createtime:'2024-09-24T17:36:16Z',content:'identical'},
+    {...original,uid:'OLD00002',site:'Instagram',site_id:source,
+      createtime:'2024-10-01T15:34:12Z',content:'identical'}
+  ];
+  const incoming={...saved[0],uid:'NEW00001',createtime:saved[1].createtime};
+  const match=await matchExistingImportBySiteId([incoming],{readSiteIds:async()=>saved});
+  assert.equal(match.get(incoming.uid)?.uid,'OLD00002');
+  assert.deepEqual(match.ambiguous,[]);
+  // Same body is insufficient when neither persisted timestamp matches.
+  const missingTime={...incoming,uid:'NEW00002',createtime:'2024-10-05T00:00:00Z'};
+  const uncertain=await matchExistingImportBySiteId([missingTime],{readSiteIds:async()=>saved});
+  assert.equal(uncertain.size,0);
+  assert.equal(uncertain.ambiguous.length,1);
+  assert.deepEqual(uncertain.ambiguous[0].saved_uids,['OLD00001','OLD00002']);
+});
+
+test('duplicate persisted UID returned across pages counts as one candidate',async()=>{
+  const incoming={...original,uid:'NEW00001'};
+  const saved={...incoming,uid:'OLD00001'};
+  const result=await matchExistingImportBySiteId([incoming],{
+    readSiteIds:async(ids,consume)=>{consume([saved]);consume([saved]);}
+  });
+  assert.equal(result.get(incoming.uid)?.uid,saved.uid);
+  assert.deepEqual(result.ambiguous,[]);
+});
+
 test('source IDs from other platforms never match',async()=>{
   const input=[{...original,uid:'NEW00001'}];
   const matches=await matchExistingImportBySiteId(input,{
