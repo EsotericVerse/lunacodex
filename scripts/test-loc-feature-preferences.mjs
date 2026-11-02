@@ -72,3 +72,26 @@ test('Trace UID sorting is case-sensitive and supports eight-character identity'
  assert.ok(time.includes('const timeLabelForRow=row=>'));
  assert.ok(time.includes("const day=String(row.date||row.createtime||'').slice(0,10)"));
 });
+
+
+test('all four article-list settings are opt-in, saved per feature, and do not authorize users',()=>{
+ const read=p=>readFileSync(new URL('../'+p,import.meta.url),'utf8');
+ const store=read('app/loc/loc-user-store.mjs');
+ assert.equal((store.match(/list:false/g)||[]).length,4);
+ assert.equal((store.match(/list:\[false,true\]/g)||[]).length,4);
+ const panel=read('app/loc/LocUserSettingsPanel.jsx');
+ assert.equal((panel.match(/checkbox:true/g)||[]).length,4);
+ assert.match(panel,/type="checkbox" checked=\{value===true\}/);
+ assert.match(panel,/onChange=\{event=>onChange\(group,field.key,event.target.checked\)\}/);
+ assert.ok(!panel.includes('canManageScopeSync'));
+ const search=read('app/modular/features/Search.jsx');
+ assert.ok(search.includes('adminListRequested=Boolean(userActive&&userSettings.list===true)'));
+ assert.ok(search.includes('const managementMode=Boolean(adminListRequested&&managementAuthorized)'));
+ assert.ok(search.includes('const canOfferEdit=Boolean(adminListRequested'));
+ assert.ok(search.includes('account.refresh({forceVerify:true})'));
+ assert.ok(search.includes('editOnCardClick={false}'));
+ const culture=read('app/modular/features/Culture.jsx');
+ assert.ok(culture.includes('adminListRequested=Boolean(userActive&&userSettings.list===true)'));
+ assert.ok(culture.includes('fullTextKey===workKey&&adminListRequested?<button'));
+ assert.ok(culture.includes('const verified=await account.refresh()'));
+});

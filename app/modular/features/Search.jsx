@@ -246,7 +246,7 @@ function searchHref(scopeId,query,filters={}){
 }
 
 
-export default function Search({managementMode=false}){
+export default function Search({managementMode:legacyManagementRoute=false}){
   useUiSection('search');
   useUiSection('uiExtra.searchUI');
   useUiSection('uiExtra.editBlocks');
@@ -257,14 +257,17 @@ export default function Search({managementMode=false}){
   const defaultTimeUnit=useDefaultTimeUnit();
   const {scopeId,scope}=useScopeRuntime();
   const {settings:userSettings,active:userActive}=useLocFeatureSettings('search');
+  // Personal list visibility is opt-in, even for an administrator.
+  const adminListRequested=Boolean(userActive&&userSettings.list===true);
   const editDock=useEditDock();
   const publicScopeEditing=Boolean(editDock?.active&&editDock.scopeId===scopeId&&scopeId!=='loc');
-  const account=useAccount({enabled:managementMode||publicScopeEditing});
+  const account=useAccount({enabled:adminListRequested||publicScopeEditing||legacyManagementRoute});
   // LOC's public Search is global. Only the separate authorized management
   // workspace may narrow the query to a specific Scope.
-  const locPublicSearch=scopeId==='loc'&&!managementMode;
-  const managementAuthorized=Boolean(managementMode&&account.user&&!account.loading&&!account.permissionLoading&&
+  const managementAuthorized=Boolean(adminListRequested&&account.user&&!account.loading&&!account.permissionLoading&&
     (scopeId==='loc'?(account.canManageGroupSync('loc')||account.scopes.length>0):canManageSearchScope(account,scopeId)));
+  const managementMode=Boolean(adminListRequested&&managementAuthorized);
+  const locPublicSearch=scopeId==='loc'&&!managementMode;
   const searchParams=useSearchParams();
   const router=useRouter();
   const resourceCache=useResourceCache();
@@ -718,18 +721,21 @@ export default function Search({managementMode=false}){
   }
 
   async function startEditing(result){
-    if(!managementMode&&(!publicScopeEditing||result.scopeId!==scopeId))return;
+    if(!adminListRequested&&!publicScopeEditing)return;
     setEditingKey(result.key);setEditError('');
     setEditDraft(null);
     try{
       // The public Search/正文 view never probes silver.loc just to show Edit.
       // Management Search already checks its entrance. Public readers are
       // verified on the actual Edit action, never on opening article text.
-      if(!managementMode){
-        const verified=await account.refresh();
-        if(!verified?.authorizer?.canManageScopeSync(result.scopeId)){
+      {
+        // The preference opens the interface, never grants write permission.
+        // Verify the current Scope when the user actually enters its editor.
+        const verified=await account.refresh({forceVerify:true});
+        const grants=verified?.authorizer;
+        if(!verified?.user||!(grants?.canManageScopeSync(result.scopeId)||
+          grants?.canManageGlobalSync()||grants?.canManageGroupSync('loc')))
           throw new Error('請先登入具有此 Scope 編輯權限的帳號。');
-        }
         setAuthorizedEditingKey(result.key);
       }
       // A reading UID fetch intentionally omits editor-only attributes.
@@ -755,7 +761,7 @@ export default function Search({managementMode=false}){
     }
   }
   async function saveEditing(result){
-    if(!managementMode&&(!publicScopeEditing||result?.scopeId!==scopeId))return false;
+    if(!adminListRequested||authorizedEditingKey!==result?.key)return false;
     if(!editDraft||!result?.editableTable||!result.editableField||editBusy)return false;
     setEditBusy(true);setEditError('');
     try{
@@ -815,7 +821,7 @@ export default function Search({managementMode=false}){
     finally{setEditBusy(false)}
   }
   async function deleteEditing(result){
-    if(!managementMode&&(!publicScopeEditing||result?.scopeId!==scopeId))return;
+    if(!adminListRequested||authorizedEditingKey!==result?.key)return;
     if(!result?.editableTable||!result?.editableIdColumn||!result?.editResourceId)return;
     setEditBusy(true);setEditError('');
     try{
@@ -1311,11 +1317,11 @@ export default function Search({managementMode=false}){
         // Page blocks have no Galaxy attributes. Article editing and typed
         // metadata are available only to authorized Scope managers; guest
         // search and article reading cannot reveal metadata controls.
-        const canOfferEdit=Boolean(publicScopeEditing&&row.scopeId===scopeId&&editTarget.resourceType==='galaxy'&&editTarget.editableTable&&
+        const canOfferEdit=Boolean(adminListRequested&&editTarget.resourceType==='galaxy'&&editTarget.editableTable&&
           editTarget.editableIdColumn&&editTarget.editResourceId);
         const editable=Boolean(
-          (managementMode&&canManageSearchScope(account,row.scopeId)&&editTarget.resourceType&&editTarget.editableTable&&editTarget.editableIdColumn&&editTarget.editResourceId)
-          ||(canOfferEdit&&authorizedEditingKey===row.key)
+          (adminListRequested&&managementMode&&canManageSearchScope(account,row.scopeId)&&editTarget.resourceType&&editTarget.editableTable&&editTarget.editableIdColumn&&editTarget.editResourceId)
+          ||canOfferEdit
         );
         const draft=editingKey===row.key?editDraft:null;
         const selectedDetail=fullTextKey===row.key&&!fullTextLoading?fullTextRow:null;
@@ -1338,7 +1344,7 @@ export default function Search({managementMode=false}){
             ?<h2 className="scope-search-scope-heading">{scopeLabel(row.scopeId)}</h2>:null}
         <Article
           key={row.key}
-          editOnCardClick={!managementMode&&canOfferEdit}
+          editOnCardClick={false}
           managerMode={managementMode}
           uid={editTarget.editResourceId}
           title={!managementMode&&row.resourceType==='galaxy'&&row.able?.list===false?'（使用者隱藏）':row.title}
@@ -1415,7 +1421,10 @@ export default function Search({managementMode=false}){
     />
     </div>
   </>;
-  return managementMode?pageContent:<FeaturePage featureId="search">
+  // The legacy management workspace already provides its own FeaturePage.
+  // A user opting in from ordinary Search must retain the normal page shell.
+  if(managementMode)return legacyManagementRoute?pageContent:<FeaturePage featureId="search">{pageContent}</FeaturePage>;
+  return <FeaturePage featureId="search">
     <div className="scope-search-view-labels" role="group" aria-label={UI_COPY.features.search.title+' / '+UI_COPY.features.trace.detailsLabel}>
       <button type="button" aria-pressed={publicView==='search'}
         onClick={()=>setPublicView('search')}>{UI_COPY.features.search.title}</button>
