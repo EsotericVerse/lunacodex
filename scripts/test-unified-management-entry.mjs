@@ -19,7 +19,7 @@ test('one editor gate preserves distinct group and scope permissions',()=>{
   assert.match(gate,/grants\?\.canManageGroupSync\(id\)/);
   assert.match(gate,/grants\?\.canManageScopeSync\(id\)/);
   assert.match(gate,/editorSessionStatus\(window\.sessionStorage\)\.expired/);
-  assert.match(gate,/get_my_scope_management/);
+  assert.doesNotMatch(gate,/get_my_scope_management/);
   assert.match(app,/scopeMeta\?\.aggregateChildren\?'group':'scope'/);
 });
 test('management heroes map to the correct copy slot',()=>{
@@ -78,4 +78,13 @@ test('Shared six-button edit dock keeps Save at left and Discard at right',()=>{
   assert.doesNotMatch(shell,/editTabs\.filter\(/);
   assert.match(css,/grid-template-columns:repeat\(6,minmax\(0,1fr\)\)/);
   assert.doesNotMatch(css,/scope-feature-dock__groups|scope-feature-dock__navigation|scope-feature-dock__actions/);
+});
+
+test('management navigation reuses verified role; expired editor forces fresh check',()=>{
+  const gate=read('app/loc/ManagementAccess.jsx');
+  const account=read('app/loc/use-account.js');
+  assert.match(gate,/readVerifiedManagementEntry\(\)\|\|account\.refresh\(\)/);
+  assert.match(gate,/editorSessionStatus\(window\.sessionStorage\)\.expired\s*\?account\.refresh\(\)/);
+  assert.match(account,/grant\.userId!==authUserId\|\|grant\.email!==authEmail/);
+  assert.match(account,/clearAuthorization\(\)/);
 });
