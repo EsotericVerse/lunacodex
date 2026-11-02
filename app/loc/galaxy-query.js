@@ -72,6 +72,39 @@ function dailyRowsFromCounts(counts){
   }).sort((a,b)=>a.day.localeCompare(b.day)||a.category.localeCompare(b.category));
 }
 
+// A Statistics/Culture page view commonly renders more than one chart for the
+// same Scope + date range in one render pass (e.g. trend + density, or
+// category totals + source catalog); each used to issue its own RPC round
+// trip for the identical aggregate. This is the same short-TTL in-flight-
+// promise cache pattern already used above for articleTimeRows/
+// articleAnniversarySources, applied to the two RPC-backed statistics reads
+// so concurrent/near-concurrent calls with the same args share one request.
+// A plain .select() read already gets this via coalescePendingPublicRead in
+// db-query.mjs; these RPC calls (readScopeStatistics/readScopeCategoryTotals)
+// go through a different path (db-contract.mjs's analyticsRead) that bypasses
+// it, so they need their own cache here.
+function cachedByKey(cache,key,ttlMs,factory){
+  const now=Date.now();
+  const cached=cache.get(key);
+  if(cached&&cached.expires>now)return cached.promise;
+  const promise=factory();
+  cache.set(key,{expires:now+ttlMs,promise});
+  promise.catch(()=>{if(cache.get(key)?.promise===promise)cache.delete(key);});
+  if(cache.size>40)cache.delete(cache.keys().next().value);
+  return promise;
+}
+const scopeStatisticsCache=new Map();
+const scopeCategoryTotalsCache=new Map();
+const STATISTICS_CACHE_TTL_MS=20_000;
+function cachedReadScopeStatistics(id,args){
+  const key=String(id)+'|'+JSON.stringify(args);
+  return cachedByKey(scopeStatisticsCache,key,STATISTICS_CACHE_TTL_MS,()=>readScopeStatistics(id,args));
+}
+function cachedReadScopeCategoryTotals(id,args){
+  const key=String(id)+'|'+JSON.stringify(args);
+  return cachedByKey(scopeCategoryTotalsCache,key,STATISTICS_CACHE_TTL_MS,()=>readScopeCategoryTotals(id,args));
+}
+
 // Database-side statistics (silver.read_scope_statistics). Returns the exact
 // {day,kind,category,item_count} rows, or null when the function is not installed
 // yet so callers keep using the row-level path until it is.
@@ -86,7 +119,7 @@ async function scopeStatisticsRows(scope,{startDate='',endDate='',includeUndated
   }
   if(!statisticsRpcInstalled)return null;
   try{
-    return await readScopeStatistics(current.id,{startDate:dateOnly(startDate),endDate:dateOnly(endDate),includeUndated});
+    return await cachedReadScopeStatistics(current.id,{startDate:dateOnly(startDate),endDate:dateOnly(endDate),includeUndated});
   }catch(error){
     if(missingStatisticsRpc(error)){statisticsRpcInstalled=false;return null;}
     throw error;
@@ -129,7 +162,7 @@ export async function selectScopeDailyCounts(scope,{startDate='',endDate='',incl
 // is expanded.
 export async function selectScopeCategoryTotals(scope,{startDate='',endDate=''}={}){
   const current=scopeOf(scope);
-  const rows=await readScopeCategoryTotals(current.id,{startDate:dateOnly(startDate),endDate:dateOnly(endDate)});
+  const rows=await cachedReadScopeCategoryTotals(current.id,{startDate:dateOnly(startDate),endDate:dateOnly(endDate)});
   const pick=kind=>rows.filter(row=>row.kind===kind)
     .map(row=>({category:row.category,item_count:Number(row.item_count)||0}))
     .filter(row=>row.item_count>0);
@@ -147,7 +180,7 @@ export async function selectSourceTaxonomy(){
 
 export async function selectSourceCatalog(scope,{startDate='',endDate='',limit=20}={}){
   const current=scopeOf(scope);
-  const rows=await readScopeCategoryTotals(current.id,{
+  const rows=await cachedReadScopeCategoryTotals(current.id,{
     startDate:dateOnly(startDate),endDate:dateOnly(endDate)
   });
   const safeLimit=Math.max(1,Math.min(DB_QUERY_BATCH_SIZE,Math.floor(Number(limit)||20)));
@@ -176,7 +209,7 @@ export async function selectDailyCategoryCounts(table,categoryColumn,{startDate=
   const kind=match?.[2]?'media':'source';
   if(!match||!(kind==='media'?['type','media_type'].includes(categoryColumn):categoryColumn==='site')||filters.length)
     throw new Error('Unsupported daily category request; row-streaming fallback is disabled');
-  const rows=await readScopeStatistics(match[1],{
+  const rows=await cachedReadScopeStatistics(match[1],{
     startDate:dateOnly(startDate),endDate:dateOnly(endDate),includeUndated
   });
   return rows.filter(item=>item.kind===kind&&(includeEmpty||item.category))
@@ -191,7 +224,7 @@ async function selectCategoryCountsRaw(table,categoryColumn,{startDate='',endDat
   const media=Boolean(match?.[2]);
   if(!match||!(media?['type','media_type'].includes(categoryColumn):categoryColumn==='site')||filters.length)
     return [];
-  const rows=await readScopeCategoryTotals(match[1],{
+  const rows=await cachedReadScopeCategoryTotals(match[1],{
     startDate:dateOnly(startDate),endDate:dateOnly(endDate)
   });
   const cap=Math.max(1,Math.min(DB_QUERY_BATCH_SIZE,Math.floor(Number(limit)||20)));

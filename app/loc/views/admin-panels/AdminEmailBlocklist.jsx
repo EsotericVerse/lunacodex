@@ -41,7 +41,11 @@ export default function AdminEmailBlocklist(){
       const {error}=await dbAuthRelation('silver.email_blocklist').insert({email:value});
       if(error)throw new Error(error.message||'新增黑名單失敗');
       setEmail('');setMessage(value+' 已加入系統黑名單。');
-      await load();
+      // The written row's shape is already known; update locally (sorted) instead
+      // of re-reading the whole table just to show one more row.
+      setEmails(current=>current.some(item=>item.email===value)?current:
+        [...current,{email:value,created_at:new Date().toISOString()}]
+          .sort((a,b)=>a.email.localeCompare(b.email)));
       return true;
     }catch(error){setMessage(String(error?.message||error));return false;}
     finally{setBusy(false);}
@@ -54,7 +58,7 @@ export default function AdminEmailBlocklist(){
       const {error}=await dbAuthRelation('silver.email_blocklist').delete().eq('email',value);
       if(error)throw new Error(error.message||'移出黑名單失敗');
       setMessage(value+' 已移出黑名單。');
-      await load();
+      setEmails(current=>current.filter(item=>item.email!==value));
     }catch(error){setMessage(String(error?.message||error));}
     finally{setBusy(false);}
   }
