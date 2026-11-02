@@ -616,14 +616,15 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         setRows(imported);
         const sourceNames=[...new Set(imported.map(item=>item.raw.site))];
         setSource(sourceNames.length===1?canonicalSource(sourceNames[0]):'Mixed');
-        setStatus('已解析 '+imported.length.toLocaleString()+' 篇公開貼文；ZIP 媒體檔 '+summary.mediaFiles.toLocaleString()+
-          ' 個、已找到文章關聯的可建檔媒體 '+mediaPlan.media.length.toLocaleString()+
-          ' 筆（公開網址 '+mediaPlan.media.filter(item=>item.url).length.toLocaleString()+
-          ' 筆、僅 ZIP 附件 '+mediaPlan.media.filter(item=>!item.url).length.toLocaleString()+
-          ' 筆）；略過 '+
-          (ignored+summary.rejectedRows).toLocaleString()+' 筆'+
-          (privateSkipped?'（含 '+privateSkipped.toLocaleString()+' 筆非公開／不支援紀錄）':'')+
-          '。請核對預覽後，在「作品儲存資料庫」按開始匯入。');
+        setStatus('已解析共 '+imported.length.toLocaleString()+' 篇公開貼文，其中有 '+
+          imported.filter(item=>Boolean(item.raw?.url)).length.toLocaleString()+
+          ' 篇含原始貼文連結網址；ZIP 內，共有媒體檔總數 '+summary.mediaFiles.toLocaleString()+
+          ' 個、已找到文章關聯的可建檔媒體共 '+mediaPlan.media.length.toLocaleString()+
+          ' 筆（設定為可公開讀取共 '+mediaPlan.media.filter(item=>item.url).length.toLocaleString()+
+          ' 筆、其餘未公開媒體，僅存於 ZIP 附件，共 '+mediaPlan.media.filter(item=>!item.url).length.toLocaleString()+
+          ' 筆）；因故略過 '+
+          (ignored+summary.rejectedRows).toLocaleString()+
+          ' 筆（安全問題、空文章、已刪除內容等）。請核對預覽後，在「作品儲存資料庫」按開始匯入。');
         return;
       }
       const {parseUniversalImportFile}=await import('./universal-file-import.mjs');
