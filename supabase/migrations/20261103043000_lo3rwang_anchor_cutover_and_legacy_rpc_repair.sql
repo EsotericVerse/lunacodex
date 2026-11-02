@@ -445,7 +445,7 @@ DECLARE
   eligible integer;
   affected integer;
 BEGIN
-  IF auth.uid() IS NULL OR p_scope_id NOT IN ('lo3rwang','lrunes')
+  IF nullif(current_setting('request.jwt.claim.sub',true),'') IS NULL OR p_scope_id NOT IN ('lo3rwang','lrunes')
     OR NOT silver.can_manage_scope(p_scope_id) THEN
     RAISE EXCEPTION 'Timeline 寫入需要 Scope 管理權限' USING errcode='42501';
   END IF;
@@ -758,4 +758,31 @@ BEGIN
 END $function$
 ;
 
+CREATE OR REPLACE FUNCTION silver.trace_place_suggestions(p_scope_id text, p_limit integer DEFAULT 40)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+DECLARE target_rel text; suggestions jsonb;
+BEGIN
+ IF nullif(current_setting('request.jwt.claim.sub',true),'') IS NULL OR p_scope_id IS NULL
+    OR p_scope_id NOT IN ('lo3rwang','lrunes')
+    OR NOT silver.can_manage_scope(p_scope_id) THEN
+   RAISE EXCEPTION 'Scope management permission denied';
+ END IF;
+ IF p_limit IS NULL OR p_limit < 1 OR p_limit > 500 THEN
+   RAISE EXCEPTION 'Invalid suggestion limit';
+ END IF;
+ target_rel := format('%I.%I','silver',p_scope_id||'_galaxy');
+ EXECUTE format(
+   'SELECT coalesce(jsonb_agg(to_jsonb(p)),''[]''::jsonb) FROM ('||
+   ' SELECT btrim(location) AS name,COUNT(*)::int AS article_count'||
+   ' FROM %s WHERE nullif(btrim(location),'''') IS NOT NULL'||
+   ' GROUP BY btrim(location) ORDER BY COUNT(*) DESC,btrim(location) ASC LIMIT $1) p',
+   target_rel
+ ) INTO suggestions USING p_limit;
+ RETURN suggestions;
+END;$function$
+;
 COMMIT;
