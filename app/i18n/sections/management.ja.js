@@ -1,5 +1,5 @@
 export default {
-  "article": "記事を公開",
+  "article": "記事管理",
   "import": "データのインポート",
   "keywords": "キーワード管理",
   "checking": "ログイン状態と管理権限を確認中…",
