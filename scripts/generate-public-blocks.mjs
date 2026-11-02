@@ -49,9 +49,12 @@ for(const row of routes){
     allBlocks.get(key).push(block);
   }
 }
-const themeCols=['theme_id','theme_name','theme_order','scheme','style_key','identity_color',...THEME_TOKEN_KEYS.map(key=>key.slice(2).replaceAll('-','_'))].join(',');
-const {data:themes,error:themesError}=await db.from('loc_theme').select(themeCols).order('theme_order').limit(8);
-if(themesError||themes?.length!==8)throw Error('Cannot publish eight complete LOC Themes');
+const {data:locThemes,error:themesError}=await db.from('loc')
+  .select('theme').eq('id','loc').maybeSingle();
+const themes=Array.isArray(locThemes?.theme)
+  ?locThemes.theme.slice().sort((a,b)=>Number(a.theme_order)-Number(b.theme_order))
+  :[];
+if(themesError||themes.length!==8)throw Error('Cannot publish eight complete LOC Themes');
 const palettes=themes.map(theme=>{
   const id=Number(theme.theme_id);
   if(!Number.isInteger(id)||id<1||id>8)throw Error('Invalid Theme ID');
