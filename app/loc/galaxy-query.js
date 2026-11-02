@@ -258,7 +258,7 @@ async function relatedArticleTitlesFor(scope,row,{includeHidden=false}={}){
     const {rows=[]}=await selectRows(scope.galaxy,{
       columns:'uid,title',
       filters:[{column:'uid',operator:'in',value:batch},
-        ...(!includeHidden?[{column:scope.id==='local'?'searchable':'able->>list',operator:'eq',value:scope.id==='local'?true:'true'}]:[])],
+        ...(!includeHidden?[{column:'able->>list',operator:'eq',value:'true'}]:[])],
       orFilter:'',
       limit:batch.length,
       authenticated:includeHidden
@@ -409,14 +409,14 @@ export async function selectGalaxyIdentity(scope,uid,{includeHidden=false}={}){
   const local=current.id==='local';
   const {rows:articleRows}=await selectRows(current.galaxy,{
     columns:local
-      ?'uid,title,createtime,content,site,url,source_id,target_id,ref_id,media_link,location,searchable'
+      ?'uid,title,createtime,content,site,url,source_id,target_id,ref_id,media_link,location,able'
       :'uid,title,date,createtime,content,site,url,source_id,target_id,ref_id,media_link,place_id,location,able',
     filters:[{column:'uid',operator:'eq',value:id}],
     orFilter:'',
     limit:1,authenticated:includeHidden
   });
   const row=articleRows[0]||null;
-  if(!row||(!includeHidden&&(local?row.searchable===false:row.able?.list===false)))return null;
+  if(!row||(!includeHidden&&row.able?.list===false))return null;
   const mediaIds=mediaIdsOf(row.media_link);
   const placeId=String(row.place_id||'').trim();
   const day=local?localArticleDate(row.createtime):articleDate(row.date);

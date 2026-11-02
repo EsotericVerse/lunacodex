@@ -149,8 +149,11 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t){
       ...(importPlaceName?{__importPlaceName:importPlaceName}:{}),
       ...(importPlaceAddress?{__importPlaceAddress:importPlaceAddress}:{}),
       ...(importPlaceUrl?{__importPlaceUrl:importPlaceUrl}:{})}:{}),
-    searchable,
-    statistics_able:value('statistics_able')===false||String(value('statistics_able')).toLowerCase()==='false'||!searchable?false:!isPureUrlContent(content),
+    able:(()=>{
+      const statistics=value('statistics_able')!==false&&String(value('statistics_able')).toLowerCase()!=='false'&&searchable&&!isPureUrlContent(content);
+      return {statics:statistics,culture:statistics,search:searchable,trace:searchable&&statistics,
+        list:searchable,keywords:searchable&&statistics,game:true,extract:true};
+    })(),
     source_id:String(value('source_id')||'').trim()||null,
     target_id:normalizeRelationIds(value('target_id')),
     site_id:String(originalSiteId||'').trim()||null,

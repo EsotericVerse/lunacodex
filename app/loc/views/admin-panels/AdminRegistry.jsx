@@ -496,7 +496,7 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
         ]}/>
         <label><span><UiText id="uiExtra.adminView.theme"/></span><select className="admin-native-select" value={currentConfig.theme||'system-default'} onChange={e=>patchConfig('theme',e.target.value)}>{themeOptions.map(option=><option value={option.value} key={option.value}><FieldText text={option.label}/></option>)}</select></label>
         <label><span><UiText id="uiExtra.adminView.defaultLanguage"/></span><select className="admin-native-select" value={normalizeUiLocale(currentConfig.locale)} onChange={e=>patchConfig('locale',normalizeUiLocale(e.target.value))}>{UI_LOCALE_OPTIONS.map(option=><option value={option.value} key={option.value}><FieldText text={option.label}/></option>)}</select></label>
-        <ScopeFeatureToggles className="admin-inline-flags" scopeId={selectedId} value={currentConfig} onChange={patchConfig}/>
+        {selectedId!=='lrunes'?<ScopeFeatureToggles className="admin-inline-flags" scopeId={selectedId} value={currentConfig} onChange={patchConfig}/>:null}
       </>:null}
 
       <div className="admin-route-summary" aria-label="目前路由">

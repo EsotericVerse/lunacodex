@@ -1,21 +1,14 @@
 // Scoped Galaxy article feature switches. Distinct from Scope-level `loc.able`.
-// Legacy columns remain during the two-version migration window.
+// Eight independent booleans are the only article feature switches.
 export const GALAXY_ABLE_KEYS=Object.freeze([
   'statics','culture','search','trace','list','keywords','game','extract'
 ]);
 export function legacyGalaxyAble(row={}){
+  // Compatibility for imported archives; only `able` is persisted.
   const searchable=row.searchable!==false;
   const statistics=row.statistics_able!==false;
-  return {
-    statics:statistics,
-    culture:statistics,
-    search:searchable,
-    trace:searchable&&statistics,
-    list:searchable,
-    keywords:searchable&&statistics,
-    game:true,
-    extract:true
-  };
+  return {statics:statistics,culture:statistics,search:searchable,trace:searchable&&statistics,
+    list:searchable,keywords:searchable&&statistics,game:true,extract:true};
 }
 export function galaxyAble(row={}){
   const legacy=legacyGalaxyAble(row);
@@ -32,9 +25,8 @@ export function prepareGalaxyInsertRows(table,rows=[]){
   if(!isScopedGalaxy(table))return rows;
   return rows.map(row=>{const {searchable,statistics_able,...fields}=row;return {...fields,able:galaxyAble(row)};});
 }
-// Never replace an existing article's six independent toggles with defaults
-// during a partial metadata UPDATE. Callers must supply the current `able`
-// when editing that field; legacy columns are retained until this is complete.
+// Partial edits must provide the current eight-key `able` value whenever
+// any independent switch changes; metadata-only edits leave it untouched.
 export function prepareGalaxyUpdateValues(table,values){
   if(!isScopedGalaxy(table))return values;
   const {searchable,statistics_able,...fields}=values||{};

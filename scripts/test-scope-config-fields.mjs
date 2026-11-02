@@ -5,7 +5,10 @@ import {scopeConfigColumns,scopeFeatureColumns,scopeFeatureEnabled,scopeFeatureP
 
 test('lo3rwang uses one able JSONB with short keys and 0/1 flags',()=>{
   assert.equal(scopeFeatureColumns('lo3rwang'),'able');
-  assert.equal(scopeFeatureColumns('lrunes'),'search_able,statistics_able,culture_able');
+  assert.equal(scopeFeatureColumns('lrunes'),'');
+  assert.equal(scopeConfigColumns('lrunes'),'id,display_name,search_intro,search_aliases,theme,locale');
+  assert.deepEqual(scopeFeaturePatch('lrunes',{search_able:false}),{});
+  assert.equal(scopeFeatureEnabled({id:'lrunes'},'search_able'),true);
   assert.equal(scopeFeatureName('statistics_able'),'statics');
   const settings={able:{culture:0,statics:1,search:0,trace:1}};
   assert.equal(scopeFeatureEnabled(settings,'culture_able'),false);

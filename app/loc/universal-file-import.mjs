@@ -190,12 +190,14 @@ export async function parseGalaxyMarkdownFile(file,{importLocale='zh-Hant'}={}){
   const title=String(fields.title||heading||file.name.replace(/\.md$/i,'')).trim();
   const uid=explicitUid||await stableMarkdownUid(
     String(original).replace(/^\uFEFF/,'').replace(/\r\n?/g,'\n'));
+  const searchable=fields.searchable===undefined?true:optionalMarkdownBoolean(fields.searchable,'searchable');
+  const statistics=fields.statistics_able===undefined?true:optionalMarkdownBoolean(fields.statistics_able,'statistics_able');
   return [{
     uid,title,content,createtime:date,
     ...(fields.site?{site:String(fields.site)}:{}),
     ...(fields.location?{location:String(fields.location)}:{}),
-    ...(fields.searchable!==undefined?{searchable:optionalMarkdownBoolean(fields.searchable,'searchable')}:{}),
-    ...(fields.statistics_able!==undefined?{statistics_able:optionalMarkdownBoolean(fields.statistics_able,'statistics_able')}:{}),
+    able:{statics:statistics,culture:statistics,search:searchable,trace:searchable&&statistics,
+      list:searchable,keywords:searchable&&statistics,game:true,extract:true}
   }];
 }
 

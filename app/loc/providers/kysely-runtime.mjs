@@ -4,6 +4,13 @@ import {DB_QUERY_BATCH_SIZE} from '../query-batch-size.mjs';
 const identifier=/^[a-z][a-z0-9_]*$/i;
 const schemas=new Set(['silver','api']);
 const operators={eq:'=',neq:'!=',gt:'>',gte:'>=',lt:'<',lte:'<=',like:'like',ilike:'ilike',is:'is',in:'in'};
+const GALAXY_ABLE_FILTER_KEYS=new Set(['statics','culture','search','trace','list','keywords','game','extract']);
+function checkedFilterColumn(value){
+  if(identifier.test(String(value||'')))return value;
+  const match=String(value||'').match(/^able->>([a-z]+)$/);
+  if(!match||!GALAXY_ABLE_FILTER_KEYS.has(match[1]))throw new Error('Invalid filter column');
+  return sql`(${sql.ref('able')} ->> ${match[1]})`;
+}
 
 // Existing application RPCs only. Keep SQL identifiers fixed and bind all values.
 export const RPC_ALLOWLIST={
@@ -95,7 +102,7 @@ function validateQuery(input){
   const filters=input.filters||[];
   for(const filter of filters){
     if(!filter||typeof filter!=='object'||Array.isArray(filter))throw new Error('Invalid filter');
-    checkedIdentifier(filter.column,'filter column');
+    checkedFilterColumn(filter.column);
     if(!operators[filter.operator]||(filter.operator==='in'&&!Array.isArray(filter.value)))throw new Error('Invalid filter');
   }
   if(['update','delete'].includes(input.operation)&&!filters.length)throw new Error('Unfiltered writes are forbidden');
@@ -125,11 +132,11 @@ function validateQuery(input){
 
 function applyFilters(query,filters){
   for(const filter of filters){
-    const op=operators[filter.operator];
-    if(filter.operator==='in')query=filter.negate?query.where(eb=>eb.not(eb(filter.column,'in',filter.value))):query.where(filter.column,'in',filter.value);
-    else if(filter.operator==='ilike')query=query.where(sql`lower(${sql.ref(filter.column)})`,filter.negate?'not like':'like',String(filter.value).toLowerCase());
-    else if(filter.operator==='is')query=query.where(filter.column,filter.value===null?(filter.negate?'is not':'is'):(filter.negate?'!=':'='),filter.value);
-    else query=filter.negate?query.where(eb=>eb.not(eb(filter.column,op,filter.value))):query.where(filter.column,op,filter.value);
+    const op=operators[filter.operator],column=checkedFilterColumn(filter.column);
+    if(filter.operator==='in')query=filter.negate?query.where(eb=>eb.not(eb(column,'in',filter.value))):query.where(column,'in',filter.value);
+    else if(filter.operator==='ilike')query=query.where(sql`lower(${column})`,filter.negate?'not like':'like',String(filter.value).toLowerCase());
+    else if(filter.operator==='is')query=query.where(column,filter.value===null?(filter.negate?'is not':'is'):(filter.negate?'!=':'='),filter.value);
+    else query=filter.negate?query.where(eb=>eb.not(eb(column,op,filter.value))):query.where(column,op,filter.value);
   }
   return query;
 }

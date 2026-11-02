@@ -77,14 +77,16 @@ export default function SunoImportPanel({scopeId,dockScopeId=scopeId,globalAdmin
           uid:lyricsUid,
           title,content:lyrics,createtime,
           source_id:sourceId,target_id:normalizeRelationIds(draft.target_id),ref_id:styleUid||draft.ref_id.trim()||null,
-          url:draft.url.trim()||null,searchable:true,site:'suno',media_link:[mediaUid]
+          url:draft.url.trim()||null,site:'suno',media_link:[mediaUid],
+          able:{statics:true,culture:true,search:true,trace:true,list:true,keywords:true,game:true,extract:true}
         }]);
       }
       if(styleUid){
         await insertRows(galaxy,[{
           uid:styleUid,
           title:title+'｜Suno Style',content:stylePrompt,createtime,
-          target_id:[lyricsUid],searchable:false,statistics_able:false,site:'suno'
+          target_id:[lyricsUid],site:'suno',
+          able:{statics:false,culture:false,search:false,trace:false,list:false,keywords:false,game:true,extract:true}
         }]);
       }
       await insertRows(galaxyMedia,[{

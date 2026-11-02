@@ -1175,6 +1175,7 @@ export default function Culture(){
         bodyBlocks:plainTextToBlocks(String(row.content||'')),
         editorKey:uid,
         hidden:row.able?.list===false,
+        originalHidden:row.able?.list===false,
         able:row.able||null
       });
     }catch(exception){
@@ -1197,7 +1198,9 @@ export default function Culture(){
       await updateRows(scopeData.galaxy,{
         title:resolveGalaxyTitle(editDraft.title,plainBody),
         content,
-        able:{...editDraft.able,list:editDraft.hidden!==true,search:editDraft.hidden!==true},
+        able:editDraft.hidden===editDraft.originalHidden
+          ?editDraft.able
+          :{...editDraft.able,list:editDraft.hidden!==true,search:editDraft.hidden!==true},
         UpdateTime:new Date().toISOString()
       },{filters:[{column:'uid',operator:'eq',value:uid}]});
       const key=String(work?.key||('galaxy:'+uid));
