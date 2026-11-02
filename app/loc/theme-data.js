@@ -4,7 +4,7 @@ import {selectRows} from './db-query.mjs';
 import {getThemeSlot,THEME_TOKEN_KEYS} from '../modular/theme-registry';
 
 // CSS custom-property names are a fixed renderer contract.
-// All theme *values* come from explicit silver.loc_theme columns.
+// Theme values are persisted as rows in the public silver.loc.theme JSONB array.
 export function themeColumnForToken(key){
   if(!THEME_TOKEN_KEYS.includes(key))throw new Error('Unknown Theme token: '+key);
   return key.slice(2).replaceAll('-','_');
@@ -27,12 +27,16 @@ export function themeNumber(value){
 }
 
 export async function selectThemeRegistry(){
-  const {rows}=await selectRows('silver.loc_theme',{
-    columns:THEME_DB_COLUMNS,
-    orders:[{column:'theme_order',ascending:true}],
-    limit:8,offset:0
+  const {rows}=await selectRows('silver.loc',{
+    columns:'theme',
+    filters:[{column:'id',operator:'eq',value:'loc'}],
+    limit:1,offset:0
   });
-  return (rows||[]).map(row=>({...row,theme_id:themeUiId(row.theme_id)}));
+  const themes=rows?.[0]?.theme;
+  if(!Array.isArray(themes)||themes.length!==8)
+    throw Error('LOC Theme catalog must contain eight entries');
+  return themes.slice().sort((a,b)=>Number(a.theme_order)-Number(b.theme_order))
+    .map(row=>({...row,theme_id:themeUiId(row.theme_id)}));
 }
 
 export async function selectThemeOverride(themeId){
