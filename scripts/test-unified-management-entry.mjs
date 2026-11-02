@@ -37,3 +37,15 @@ test('management heroes map to the correct copy slot',()=>{
   for(const [url,scope,feature,expected] of pages)
     assert.equal(managementHeroSlot(url,scope,true,feature)?.page,expected,url);
 });
+
+test('embedded article management keeps one Hero with or without list opt-in',()=>{
+  const parent=read('app/loc/SearchManagement.jsx');
+  const search=read('app/modular/features/Search.jsx');
+  assert.match(parent,/return <FeaturePage featureId="search">/);
+  assert.match(parent,/<ManagementSearchWorkspace managementMode\/>/);
+  // An embedded search must never create its own FeaturePage when the personal
+  // management toggle is off, authentication is pending, or Scope is aggregate.
+  assert.match(search,/if\(legacyManagementRoute\)return pageContent;/);
+  assert.match(search,/return legacyManagementRoute\?overview:<FeaturePage featureId="search">\{overview\}<\/FeaturePage>;/);
+  assert.doesNotMatch(search,/if\(managementMode\)return legacyManagementRoute\?/);
+});
