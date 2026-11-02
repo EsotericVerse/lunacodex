@@ -280,10 +280,12 @@ export default function Rune3DPreview({mode='duel',presentationSwitcher=null}){
         </div>}
     </nav>
     <section className="rune-3d-stage" aria-label={label} ref={stageRef}
-      data-ritual-phase={isList?'atlas':phase}>
+      data-ritual-phase={isList?'atlas':phase}
+      data-rune-group={isList?(focusedRune?runeDrawGroup(focusedRune):null):(pending?.card?runeDrawGroup(pending.card):null)}>
       {!isList?<div className="rune-3d-night-backdrop" aria-hidden="true">
         <span className="rune-skin-moon rune-3d-night-moon"/>
       </div>:null}
+      {!isList?<div className="rune-3d-group-light" aria-hidden="true"/>:null}
       {!isList?<RuneMistBackdrop phase={phase} textureQuality={textureQuality} diagnoseAmbient={diagnoseAmbient}/>:null}
       {mode==='duel'&&['idle','waiting','ready'].includes(phase)?
         <div className="rune-3d-draw-deck" aria-hidden="true">

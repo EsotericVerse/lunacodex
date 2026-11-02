@@ -320,6 +320,68 @@
  .rune-3d-mist-backdrop{transition:none;will-change:auto}
 }
 
+/* Group-characteristic stage lighting: each of the nine canonical rune
+   groups gets its own light direction/color wash over the black stage,
+   so the backdrop itself echoes the group's nature rather than staying
+   uniformly black. Pure CSS, layered above the night backdrop and below
+   the mist/VFX so authored particles are unaffected. */
+.rune-3d-group-light{
+  position:absolute;inset:0;z-index:0;overflow:hidden;pointer-events:none;
+  opacity:0;mix-blend-mode:screen;transition:opacity 900ms ease;
+}
+.rune-3d-stage[data-rune-group]:not([data-rune-group=""]) .rune-3d-group-light{opacity:1}
+/* 靈魂：正上方柔光，飄浮、冷白偏紫 */
+.rune-3d-stage[data-rune-group="靈魂"] .rune-3d-group-light{
+  background:radial-gradient(ellipse 70% 55% at 50% 4%,#cfd4ff4a,#cfd4ff00 68%);
+}
+/* 連結：左側硬光，強調線條與結構 */
+.rune-3d-stage[data-rune-group="連結"] .rune-3d-group-light{
+  background:linear-gradient(100deg,#e8d9a848 0%,#e8d9a81c 28%,transparent 56%);
+}
+/* 生命：正面暖光，貼臉打光的脈動感 */
+.rune-3d-stage[data-rune-group="生命"] .rune-3d-group-light{
+  background:radial-gradient(ellipse 60% 50% at 50% 46%,#ff9f8a3c,transparent 70%);
+}
+/* 自然：下方往上透的綠調光 */
+.rune-3d-stage[data-rune-group="自然"] .rune-3d-group-light{
+  background:linear-gradient(to top,#8ef08a3a 0%,#8ef08a14 32%,transparent 60%);
+}
+/* 礦物：右側高角度冷硬光，像展櫃聚光燈 */
+.rune-3d-stage[data-rune-group="礦物"] .rune-3d-group-light{
+  background:linear-gradient(260deg,#dfe8ff4a 0%,#dfe8ff1c 26%,transparent 54%);
+}
+/* 元素：中心放射光，元素感最強烈 */
+.rune-3d-stage[data-rune-group="元素"] .rune-3d-group-light{
+  background:radial-gradient(circle at 50% 54%,#ffd77a40,transparent 62%);
+}
+/* 秩序：正上方光＋緩慢旋轉，呼應天體運行 */
+.rune-3d-stage[data-rune-group="秩序"] .rune-3d-group-light{
+  background:conic-gradient(from 0deg at 50% 10%,#fff3d040,#fff3d000 30%,#fff3d000 70%,#fff3d040 100%);
+  animation:rune-group-light-rotate 26s linear infinite;
+}
+/* 無序：多方向、不固定角度，微閃爍 */
+.rune-3d-stage[data-rune-group="無序"] .rune-3d-group-light{
+  background:radial-gradient(ellipse 50% 40% at 30% 20%,#d79bff38,transparent 60%),
+    radial-gradient(ellipse 45% 35% at 75% 70%,#9bc8ff2c,transparent 60%);
+  animation:rune-group-light-flicker 4.4s ease-in-out infinite;
+}
+/* 特殊：正中心往外擴散的深色強光，唯一感 */
+.rune-3d-stage[data-rune-group="特殊"] .rune-3d-group-light{
+  background:radial-gradient(circle at 50% 50%,#b98cff5c,transparent 66%);
+}
+@keyframes rune-group-light-rotate{to{transform:rotate(360deg)}}
+@keyframes rune-group-light-flicker{
+  0%,100%{opacity:.85}
+  38%{opacity:1}
+  52%{opacity:.62}
+  74%{opacity:.95}
+}
+.rune-3d-stage[data-ritual-phase="revealing"] .rune-3d-group-light{opacity:.3}
+.rune-3d-stage[data-ritual-phase="transfer"] .rune-3d-group-light{opacity:.55}
+@media(prefers-reduced-motion:reduce){
+  .rune-3d-group-light{transition:none;animation:none!important}
+}
+
 /* Physical draw: CSS 3D card travel uses Motion; licensed Effekseer handles VFX. */
 .rune-3d-draw-deck{position:absolute;left:24%;top:63%;z-index:3;
   width:clamp(118px,17vw,188px);aspect-ratio:1;pointer-events:none;
