@@ -41,13 +41,20 @@ export default function TraceOrganizer({scopeId,spatial,reload}){
   useEffect(()=>{
     let live=true;
     if(!selectedUid||scopeId==='loc'){setAliases([]);return;}
-    dbAuthClient.schema('silver').from(scopeId+'_place')
-      .select('name_lists').eq('uid',selectedUid).maybeSingle()
-      .then(({data,error:loadError})=>{
-        if(!live)return;
-        if(loadError){setError(true);setNotice(String(loadError.message||loadError));return;}
-        setAliases(data?.name_lists||[]);
-      });
+    // lo3rwang's name aliases live on the Point itself; the retired
+    // *_place table is never read for a native Anchor Scope.
+    const query=scopeId==='lo3rwang'
+      ?dbAuthClient.schema('silver').from('lo3rwang_anchor')
+        .select('attr').eq('uid',selectedUid).eq('type','point')
+      :dbAuthClient.schema('silver').from(scopeId+'_place')
+        .select('name_lists').eq('uid',selectedUid);
+    query.maybeSingle().then(({data,error:loadError})=>{
+      if(!live)return;
+      if(loadError){setError(true);setNotice(String(loadError.message||loadError));return;}
+      const names=scopeId==='lo3rwang'?data?.attr?.location:data?.name_lists;
+      setAliases(Array.isArray(names)?names:
+        typeof names==='string'&&names.trim()?[names]:[]);
+    });
     return()=>{live=false;};
   },[scopeId,selectedUid]);
   const saveNames=async()=>{
