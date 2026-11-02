@@ -222,7 +222,13 @@ function normalize(row,{platform,kind,path,index,conversation}){
     actualKind==='message'?(txt(item.content)||txt(item.text)||null):
     actualKind==='post'?((platform==='facebook'?facebookBackupPostText(item):null)||extractCaption(item)||txt(data['Title']?.value)||null):
     extractCaption(item));
-  const sourcePlace=actualKind==='post'?facebookBackupPlace(item):'';
+  // facebookBackupPlace recognizes Facebook's own place/check-in fields
+  // (place, location, checkin, venue...). Those field names also occur,
+  // unrelated to any check-in, inside Instagram/Threads/X payloads (e.g. a
+  // generic geotag or an unrelated "location" object), so applying it across
+  // every platform turned ordinary posts into spurious Time-anchor check-ins.
+  // Only Facebook's own export is a documented check-in source.
+  const sourcePlace=actualKind==='post'&&platform==='facebook'?facebookBackupPlace(item):'';
   const attachments=archiveAttachmentReferences(item);
   if(kind==='message'&&text===null&&!attachments.length)
     return {error:'訊息沒有文字或可辨識附件'};
