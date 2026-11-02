@@ -300,7 +300,7 @@ Deno.serve(async (request) => {
         typeof row.site_id!=="string"||row.site_id.length<3||
         row.site_id.length>150||row.searchable!==false||
         row.statistics_able!==false||typeof row.date!=="string"||
-        !/^\\d{4}-\\d\\d-\\d\\d$/.test(row.date)||
+        !/^\d{4}-\d\d-\d\d$/.test(row.date)||
         typeof row.createtime!=="string"||typeof row.UpdateTime!=="string"||
         typeof body.update_existing!=="boolean")
         return json({error:{message:"Invalid managed conversation payload"}},400);

@@ -99,6 +99,14 @@ test('managed MCP SQL sync is restricted to verified OAuth Scope writes',()=>{
   assert.match(worker,/managedMcpInsert\(scopeid,row,Boolean\(status\.uid\),oauthToken\)/);
 });
 
+test('managed MCP sync accepts a normal ISO calendar date',()=>{
+  const edge=readFileSync(new URL('../supabase/functions/loc-kysely/index.ts',import.meta.url),'utf8');
+  const match=edge.match(/!\/\^[^\n]+?\$\/\.test\(row\.date\)/);
+  assert.ok(match,'MCP date validation must be present');
+  const dateTest=new Function('return '+match[0].slice(1).replace('.test(row.date)',".test('2026-11-02')"))();
+  assert.equal(dateTest,true);
+});
+
 test('Clerk SQL gateway obtains root email from Authority, never unsigned request email',()=>{
   const edge=readFileSync(new URL('../supabase/functions/loc-kysely/index.ts',import.meta.url),'utf8');
   assert.match(edge,/LOC Authority could not verify Clerk root identity/);
