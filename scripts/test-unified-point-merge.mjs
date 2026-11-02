@@ -63,7 +63,8 @@ test('aliases use point attr.location and edit controls are apart from managemen
   const shell=read('app/AppShell.jsx');
   const css=read('app/styles/bottom-navigation.css');
   assert.match(organizer,/unified\?'_anchor':'_place'/);
-  assert.match(organizer,/attr:\{\.\.\.\(current\.attr\|\|\{\}\),location:names\}/);
+  assert.match(organizer,/\.rpc\('save_scope_trace_place_names'/);
+  assert.match(organizer,/\.from\(scopeId\+'_anchor'\)\.select\('attr'\)/);
   assert.match(shell,/className="scope-feature-dock__navigation" role="group"/);
   assert.match(shell,/className="scope-feature-dock__actions" role="group"/);
   assert.match(css,/\.scope-feature-dock__groups\{/);
