@@ -64,7 +64,8 @@ test('Search summary only reads stored snapshot; refresh is handled by import ma
   const importer=readFileSync(new URL('../app/loc/ManagementImportPanel.jsx',import.meta.url),'utf8');
   assert.match(importer,/async function refreshImportedSearchSummary\(\)/);
   assert.match(importer,/const result=await refreshScopeSearchSummary\(scopeId\)/);
-  assert.match(importer,/if\(!nativeLocal\)await refreshImportedSearchSummary\(\)/);
+  assert.equal(importer.split('if(!nativeLocal)await refreshImportedSearchSummary();').length-1,2,
+    'refresh after both normal and no-change completed imports');
   assert.match(importer,/onClick=\{refreshImportedSearchSummary\}/);
   assert.ok(importer.indexOf('await syncImportedMedia(')<importer.indexOf('if(!nativeLocal)await refreshImportedSearchSummary()'));
   assert.match(importer,/catch\(error\)\{\s*setSummaryError\(true\)/);
