@@ -64,6 +64,26 @@ const client=createDatabaseClient(routedAdapter);
 
 // Use the existing public Supabase SDK socket for browser/iOS game rooms.
 export const dbRealtimeClient=adapter.realtimeClient;
+// Canonical typed Anchor gateway. Scope resolution and authorization live in SQL,
+// not in client-side branches for lo3rwang/lrunes.
+export async function scopeTypeAttr(scopeId,type,attr={}, {write=false}={}){
+  const id=String(scopeId||'').trim().toLowerCase();
+  const kind=String(type||'').trim();
+  if(!/^[a-z][a-z0-9]{0,14}$/.test(id))throw new Error('Invalid Anchor Scope');
+  if(!['date','period','era','point','path','trace','image','video','rune','suno','category','class','group','item'].includes(kind))
+    throw new Error('Invalid Anchor type');
+  if(!attr||typeof attr!=='object'||Array.isArray(attr))throw new Error('Anchor attr must be a JSON object');
+  const op=String(attr.op||'read');
+  if(write!==['insert','update','delete'].includes(op))
+    throw new Error('Anchor write option does not match operation');
+  const client=write?adapter.authClient:adapter.publicClient;
+  const {data,error}=await client.schema('silver').rpc('scope_type_attr',{
+    p_scope_id:id,p_type:kind,p_attr:attr
+  });
+  if(error)throw new Error(error.message||'Anchor request failed');
+  return data;
+}
+
 export const dbBackupPublicClient=adapter.backupPublicClient||null;
 export const dbConfiguredPublicClient=adapter.configuredPublicClient
   ?{schema:name=>routedSchema(name,adapter.configuredPublicClient.schema(name))}:null;
