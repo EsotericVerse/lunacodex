@@ -266,7 +266,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
       columns:'current_keyword_class_uid,keyword_meta,staticstime'
     });
     const classUid=String(requestedClassUid||config?.current_keyword_class_uid||'');
-    if(!/^[A-Za-z0-9]{4}$/.test(classUid))throw new Error('尚未選取 Keywords Class');
+    if(!/^[A-Za-z0-9]{4}(?:[A-Za-z0-9]{4})?$/.test(classUid))throw new Error('尚未選取 Keywords Class');
     const all=await readOwnedKeywordNodes(table);
     const {descendantsOfKeyword,keywordUidListRecord}=await import('./keyword-tree.mjs');
     const children=descendantsOfKeyword(all,classUid)
@@ -330,7 +330,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
       });
       uid=String(config?.current_keyword_class_uid||'');
     }
-    if(!/^[A-Za-z0-9]{4}$/.test(uid))return null;
+    if(!/^[A-Za-z0-9]{4}(?:[A-Za-z0-9]{4})?$/.test(uid))return null;
     const table='silver.'+scope+'_keywords';
     const {data:classes,error:classError}=await dbAuthRelation(table)
       .select('uid,type,name,desc,lists').eq('uid',uid).eq('type','class').limit(1);
@@ -357,7 +357,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
 
   async function readKeywordClass(scopeId,classUid){
     const scope=normalizeScopeId(scopeId),uid=String(classUid||'');
-    if(!/^[A-Za-z0-9]{4}$/.test(uid))return null;
+    if(!/^[A-Za-z0-9]{4}(?:[A-Za-z0-9]{4})?$/.test(uid))return null;
     const direct=await readUnifiedKeywordCatalog(scope,uid);
     if(direct)return direct;
     const data=await keywordRead('read_scope_analytics',{p_scope_id:scope,p_view:'keyword_catalog',p_options:{classUid:uid}},{
@@ -489,12 +489,13 @@ export function createDatabaseClient({publicClient,authClient,auth}){
   async function copyKeywordLibraryClass(scopeId,sourceClassUid,targetClassName){
     const scope=normalizeScopeId(scopeId),source=String(sourceClassUid||''),
       target=String(targetClassName||'').trim();
-    if(!/^[0-9A-Za-z]{4}$/.test(source)||!target)throw new Error('Keywords Class 識別或名稱不正確');
+    if(!/^[0-9A-Za-z]{4}(?:[0-9A-Za-z]{4})?$/.test(source)||!target)throw new Error('Keywords Class 識別或名稱不正確');
     const table='silver.'+scope+'_keywords';
     preflightWrite(table);
     const data=await readOwnedKeywordNodes(table);
     const {indexKeywordTree,descendantsOfKeyword}=await import('./keyword-tree.mjs');
     const {generateKeywordClassUid}=await import('./keyword-uidlist.mjs');
+    const {allocateAnchorUid}=await import('./unified-anchor-compat.mjs');
     const tree=indexKeywordTree(data);
     const original=tree.index.get(source);
     if(!original||original.type!=='class')throw new Error('找不到來源 Class');
@@ -514,7 +515,8 @@ export function createDatabaseClient({publicClient,authClient,auth}){
       }
     }
     for(const node of descendants){
-      const uid=generateKeywordClassUid(occupied);
+      const uid=scope==='lo3rwang'?allocateAnchorUid(new Set(occupied)):
+        generateKeywordClassUid(occupied);
       occupied.push(uid);mapping.set(node.uid,uid);
     }
     const saved=[];
