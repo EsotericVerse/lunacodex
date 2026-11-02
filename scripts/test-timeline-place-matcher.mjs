@@ -7,6 +7,28 @@ import {
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 const row=(uid,title,lat,lng)=>({uid,title,trace_type:'space_anchor',address:[lng,lat]});
 
+
+test('custom Timeline date range filters out other years and includes both boundary dates',()=>{
+ const document={semanticSegments:[
+  {startTime:'2025-12-31T23:00:00Z',endTime:'2026-01-01T01:00:00Z',visit:{topCandidate:{placeLocation:{latLng:'25°,121°'}}}},
+  {startTime:'2026-06-01T11:00:00Z',endTime:'2026-06-01T12:00:00Z',visit:{topCandidate:{placeLocation:{latLng:'25°,121°'}}}},
+  {startTime:'2027-01-01T00:00:00Z',endTime:'2027-01-01T01:00:00Z',visit:{topCandidate:{placeLocation:{latLng:'25°,121°'}}}}
+ ]};
+ const selected=timelineVisitWindows(document,{startDate:'2026-01-01',endDate:'2026-12-31'});
+ assert.equal(selected.length,2);
+ assert.equal(selected[0].from,'2026-01-01T00:00:00.000Z');
+ assert.equal(selected[1].from,'2026-06-01T11:00:00.000Z');
+ const day=timelineVisitWindows(document,{startDate:'2026-06-01',endDate:'2026-06-01'});
+ assert.equal(day.length,1);
+ assert.equal(day[0].from,'2026-06-01T11:00:00.000Z');
+});
+test('Timeline review queries Galaxy by date in one-year range without per-window RPC',()=>{
+ const ui=read('app/loc/TimelinePlaceManager.jsx');
+ assert.match(ui,/\.gte\('date',startDate\)\.lt\('date',nextDate\)/);
+ assert.match(ui,/setUTCFullYear\(yearLater\.getUTCFullYear\(\)\+1\)/);
+ assert.doesNotMatch(ui,/rpc\('preview_timeline_place_page_json'/);
+});
+
 test('new Google phone Timeline uses visits, ignores movements, preserves offset',()=>{
  const document={semanticSegments:[
   {startTime:'2026-10-01T09:00:00+08:00',endTime:'2026-10-01T10:00:00+08:00',
