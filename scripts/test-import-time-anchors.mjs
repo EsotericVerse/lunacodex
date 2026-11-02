@@ -2,20 +2,34 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {importCheckinDates,importCheckinDayEntries,prepareImportTimeAnchors} from '../app/loc/import-time-anchors.mjs';
 
-function memoryTime(initial=[]){
-  const rows=[...initial],calls=[],updates=[];
+function memoryTime(initial=[],scopeId='lo3rwang'){
+  const rows=initial.map(row=>({
+    ...row,type:row.type==='anchor'?'date':row.type,
+    attr:row.type==='anchor'?{date:row.address}:row.attr||{}
+  }));
+  const calls=[],updates=[];
   return {
     rows,calls,updates,
     relation:table=>{
-      assert.equal(table,'silver.lo3rwang_time');
+      assert.equal(table,'silver.'+scopeId+'_anchor');
       return {
-        select:()=>({order:()=>({range:async(start,end)=>({
-          data:rows.slice(start,end+1),error:null
-        })})}),
+        select:()=>{
+          const filters=[];
+          const q={
+            eq:(key,value)=>{filters.push(row=>row[key]===value);return q;},
+            order:()=>q,
+            range:async(start,end)=>({
+              data:rows.filter(row=>filters.every(fn=>fn(row))).slice(start,end+1),
+              error:null
+            })
+          };
+          return q;
+        },
         insert:batch=>({select:async()=>{
           calls.push(batch);
-          rows.push(...batch);
-          return {data:batch.map(({uid,address})=>({uid,address})),error:null};
+          const saved=batch.map(row=>({...row,address:row.attr.date||null}));
+          rows.push(...saved);
+          return {data:batch.map(({uid,type,attr})=>({uid,type,attr})),error:null};
         }}),
         update:patch=>{
           const matches=[];
@@ -36,6 +50,7 @@ function memoryTime(initial=[]){
     }
   };
 }
+
 test('check-in dates are daily and deduplicated; missing names and dates are ignored',()=>{
   assert.deepEqual(importCheckinDates([
     {location:'台北車站',__importCheckin:true,createtime:'2024-02-01T08:00:00.000Z'},
@@ -50,8 +65,8 @@ test('check-in dates are daily and deduplicated; missing names and dates are ign
 
 test('Time import reuses existing dates, respects all occupied UIDs, and is idempotent',async()=>{
   const db=memoryTime([
-    {uid:'0001',type:'anchor',address:'2024-02-01'},
-    {uid:'0002',type:'time_period',address:null}
+    {uid:'00000001',type:'anchor',address:'2024-02-01'},
+    {uid:'00000002',type:'time_period',address:null}
   ]);
   const records=[
     {location:'既有地點',__importCheckin:true,createtime:'2024-02-01T09:00:00.000Z'},
@@ -63,8 +78,8 @@ test('Time import reuses existing dates, respects all occupied UIDs, and is idem
   assert.equal(first.created,2);
   assert.equal(first.reused,1);
   assert.deepEqual(db.rows.slice(2).map(row=>[row.address,row.type,row.invisible]),[
-    ['2024-02-02','anchor',false],
-    ['2024-02-03','anchor',false]
+    ['2024-02-02','date',false],
+    ['2024-02-03','date',false]
   ]);
   assert.ok(db.rows.slice(2).every(row=>/^[A-Za-z0-9]{8}$/.test(row.uid)));
   assert.equal(new Set(db.rows.slice(2).map(row=>row.uid)).size,2);
@@ -72,6 +87,28 @@ test('Time import reuses existing dates, respects all occupied UIDs, and is idem
   assert.equal(again.created,0);
   assert.equal(again.reused,3);
   assert.equal(db.calls.length,1);
+});
+
+test('lrunes Date anchors use native store and the same eight-character UID rule',async()=>{
+  const db=memoryTime([{uid:'AaBb1234',type:'date',
+    title:'已知',attr:{date:'2026-10-16'}}],'lrunes');
+  const events=[
+    {location:'已知地點',date:'2026-10-16'},
+    {location:'新地點',date:'2026-10-17'}
+  ];
+  const first=await prepareImportTimeAnchors(events,{
+    scopeId:'lrunes',timeTable:'silver.lrunes_time',relation:db.relation
+  });
+  assert.equal(first.reused,1);
+  assert.equal(first.created,1);
+  assert.equal(db.rows.at(-1).type,'date');
+  assert.match(db.rows.at(-1).uid,/^[A-Za-z0-9]{8}$/);
+  assert.deepEqual(db.rows.at(-1).attr,{date:'2026-10-17'});
+  const second=await prepareImportTimeAnchors(events,{
+    scopeId:'lrunes',timeTable:'silver.lrunes_time',relation:db.relation
+  });
+  assert.equal(second.created,0);
+  assert.equal(second.reused,2);
 });
 
 test('same-day article titles appear as 重要大事 joined with ｜, with oldest headline as title',async()=>{
@@ -100,10 +137,10 @@ test('same-day article titles appear as 重要大事 joined with ｜, with oldes
 
 test('only repairs dated blank machine placeholders, never human-authored Time anchors',async()=>{
   const db=memoryTime([
-    {uid:'0001',type:'anchor',title:'2024-08-01',description:'',address:'2024-08-01'},
-    {uid:'0002',type:'anchor',title:'2024-08-02',description:null,address:'2024-08-02'},
-    {uid:'0003',type:'anchor',title:'人工標題',description:'人工內容',address:'2024-08-03'},
-    {uid:'0004',type:'anchor',title:'2024-08-04',description:'已有敘述',address:'2024-08-04'}
+    {uid:'00000001',type:'anchor',title:'2024-08-01',description:'',address:'2024-08-01'},
+    {uid:'00000002',type:'anchor',title:'2024-08-02',description:null,address:'2024-08-02'},
+    {uid:'00000003',type:'anchor',title:'人工標題',description:'人工內容',address:'2024-08-03'},
+    {uid:'00000004',type:'anchor',title:'2024-08-04',description:'已有敘述',address:'2024-08-04'}
   ]);
   const inputs=['2024-08-01','2024-08-02','2024-08-03','2024-08-04']
     .map((date,i)=>({title:'文章'+(i+1),location:'地點',date}));
@@ -113,7 +150,7 @@ test('only repairs dated blank machine placeholders, never human-authored Time a
   assert.equal(result.created,0);
   assert.equal(result.repaired,2);
   assert.equal(result.reused,4);
-  assert.deepEqual(db.updates.map(item=>item.uid),['0001','0002']);
+  assert.deepEqual(db.updates.map(item=>item.uid),['00000001','00000002']);
   assert.equal(db.rows[0].title,'文章1');
   assert.equal(db.rows[0].description,'重要大事：文章1');
   assert.equal(db.rows[1].title,'文章2');
@@ -141,18 +178,19 @@ test('standalone visit importer keeps original per-visit timestamps and writes T
   assert.match(panel,/prepareImportTimeAnchors\(\[\.\.\.checkinAnchorRecords,\.\.\.geoAnchorRecords\]/);
 });
 
-test('the physical Time relation is supplied by Scope registry and is never guessed',async()=>{
+test('Scope Time registry stays validated while Date is stored in native Anchor',async()=>{
   const calls=[];
   const relation=table=>{
     calls.push(table);
-    return {select:()=>({order:()=>({range:async()=>({data:[],error:null})})}),
-      insert:rows=>({select:async()=>({data:rows.map(({uid,address})=>({uid,address})),error:null})})};
+    const q={eq:()=>q,order:()=>q,range:async()=>({data:[],error:null})};
+    return {select:()=>q,
+      insert:rows=>({select:async()=>({data:rows.map(({uid,type,attr})=>({uid,type,attr})),error:null})})};
   };
   const inputs=[{location:'已打卡',__importCheckin:true,createtime:'2025-07-01T08:00:00Z'}];
   await prepareImportTimeAnchors(inputs,{
     scopeId:'lo3rwang',timeTable:'silver.lo3rwang_time_archive',relation
   });
-  assert.deepEqual(calls,['silver.lo3rwang_time_archive','silver.lo3rwang_time_archive']);
+  assert.deepEqual(calls,['silver.lo3rwang_anchor','silver.lo3rwang_anchor','silver.lo3rwang_anchor']);
   await assert.rejects(()=>prepareImportTimeAnchors(inputs,{
     scopeId:'lo3rwang',relation
   }),/尚未解析正確的 Scope Time 資料表/);
@@ -171,10 +209,10 @@ test('an article location is an import check-in; date wins over timestamp',()=>{
 
 test('an existing period does not conceal a missing exact date anchor',async()=>{
   const db=memoryTime([
-    {uid:'0001',type:'anchor',address:'2024-01-01',anchor_ids:[]},
-    {uid:'0002',type:'anchor',address:'2024-01-31',anchor_ids:[]},
-    {uid:'0003',type:'period',address:null,anchor_ids:['0001','0002']},
-    {uid:'0004',type:'era',address:null,anchor_ids:['0003']}
+    {uid:'00000001',type:'anchor',address:'2024-01-01',anchor_ids:[]},
+    {uid:'00000002',type:'anchor',address:'2024-01-31',anchor_ids:[]},
+    {uid:'00000003',type:'period',address:null,anchor_ids:['00000001','00000002']},
+    {uid:'00000004',type:'era',address:null,anchor_ids:['00000003']}
   ]);
   const events=[
     {location:'期間內',__importCheckin:true,createtime:'2024-01-12T04:30:00Z'},
@@ -204,7 +242,7 @@ test('a shared timezone formatter preserves Taipei midnight and date literal pre
 });
 test('ordinary article dates never generate birthday or anniversary Time anchors',async()=>{
   const db=memoryTime([
-    {uid:'0001',type:'anchor',title:'初次事件',address:'2020-10-16',
+    {uid:'00000001',type:'anchor',title:'初次事件',address:'2020-10-16',
       description:'人工編輯'}
   ]);
   const ordinary=[
@@ -224,7 +262,7 @@ test('ordinary article dates never generate birthday or anniversary Time anchors
   assert.equal(db.calls.length,0);
 });
 test('check-in date matching an anniversary is only reused or created as a check-in',async()=>{
-  const db=memoryTime([{uid:'0001',type:'anchor',title:'原始事件',address:'2020-10-16'}]);
+  const db=memoryTime([{uid:'00000001',type:'anchor',title:'原始事件',address:'2020-10-16'}]);
   const checkins=[{title:'同日打卡',location:'咖啡店',date:'2026-10-16'}];
   const result=await prepareImportTimeAnchors(checkins,{
     scopeId:'lo3rwang',timeTable:'silver.lo3rwang_time',relation:db.relation,
@@ -239,8 +277,8 @@ test('check-in date matching an anniversary is only reused or created as a check
 
 test('existing calendar anchors always win even when imported check-ins are anniversaries',async()=>{
   const db=memoryTime([
-    {uid:'0001',type:'anchor',title:'原始日',address:'2020-06-23'},
-    {uid:'0002',type:'anchor',title:'人工名稱',description:'人工備註',address:'2026-06-23'}
+    {uid:'00000001',type:'anchor',title:'原始日',address:'2020-06-23'},
+    {uid:'00000002',type:'anchor',title:'人工名稱',description:'人工備註',address:'2026-06-23'}
   ]);
   const r=await prepareImportTimeAnchors([{location:'打卡',date:'2026-06-23'}],{
     scopeId:'lo3rwang',timeTable:'silver.lo3rwang_time',relation:db.relation,
@@ -254,7 +292,7 @@ test('existing calendar anchors always win even when imported check-ins are anni
 
 test('plain article dates never generate anniversary or birthday Time anchors',async()=>{
   const db=memoryTime([
-    {uid:'0001',type:'anchor',title:'原始事件',address:'2020-10-16',description:'人工記載'}
+    {uid:'00000001',type:'anchor',title:'原始事件',address:'2020-10-16',description:'人工記載'}
   ]);
   const result=await prepareImportTimeAnchors([],{
     scopeId:'lo3rwang',timeTable:'silver.lo3rwang_time',relation:db.relation,

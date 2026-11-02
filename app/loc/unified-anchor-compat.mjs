@@ -86,6 +86,10 @@ function newAnchorUid(length,assigned){
   }
   throw Error('Cannot allocate a unique unified anchor UID');
 }
+// Every native Anchor writer uses the same case-sensitive Base62 allocator.
+export function allocateAnchorUid(assigned=new Set()){
+  return newAnchorUid(8,assigned);
+}
 function prepareAnchorInsert(spec,row,assigned){
   if(!row||typeof row!=='object'||Array.isArray(row))
     throw Error('Invalid unified insert row');
