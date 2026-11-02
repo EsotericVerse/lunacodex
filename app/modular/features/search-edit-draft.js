@@ -33,7 +33,7 @@ function galaxyDraftFromRow(row={},fallbackTitle='',plainTextToBlocks){
     createtime:datetimeLocalValue(row.createtime),
     location:String(row.location||''),
     place_id:String(row.place_id||'').trim(),
-    searchable:row.searchable!==false,
+    ...Object.fromEntries(['statics','culture','search','trace','list','keywords','game','extract'].map(k=>['able_'+k,row.able?.[k]!==false])), 
     UpdateTime:String(row.UpdateTime||''),
     url:String(row.url||''),
     source_id:String(row.source_id||'').trim(),
@@ -41,7 +41,6 @@ function galaxyDraftFromRow(row={},fallbackTitle='',plainTextToBlocks){
     ref_id:String(row.ref_id||'').trim(),
     site:String(row.site||''),
     media_link:listText(row.media_link),
-    statistics_able:row.statistics_able!==false,
   };
   const body=String(row.content??'');
   return {
@@ -51,7 +50,7 @@ function galaxyDraftFromRow(row={},fallbackTitle='',plainTextToBlocks){
     bodyHtml:body,
     bodyBlocks:plainTextToBlocks(body),
     editorKey:String(row.uid||''),
-    hidden:row.searchable===false,
+    hidden:row.able?.list===false,
     attrs,
     originalAttrs:{...attrs}
   };
@@ -81,7 +80,8 @@ function changedGalaxyAttributes(draft,t){
   const current=draft?.attrs||{},initial=draft?.originalAttrs||{};
   const changed={};
   const differs=key=>JSON.stringify(current[key])!==JSON.stringify(initial[key]);
-  if(differs('searchable'))changed.searchable=current.searchable!==false;
+  const features=['statics','culture','search','trace','list','keywords','game','extract'];
+  if(features.some(key=>differs('able_'+key)))changed.able=Object.fromEntries(features.map(key=>[key,current['able_'+key]!==false]));
   if(differs('createtime'))changed.createtime=isoOrNull(current.createtime,t);
   if(differs('place_id')){
     const next=String(current.place_id||'').trim();
@@ -91,7 +91,6 @@ function changedGalaxyAttributes(draft,t){
   for(const key of ['location','url','source_id','ref_id','site']){
     if(differs(key))changed[key]=nullableText(current[key]);
   }
-  if(differs('statistics_able'))changed.statistics_able=current.statistics_able!==false;
   if(differs('target_id'))changed.target_id=parseListText(current.target_id);
   if(differs('media_link'))changed.media_link=parseListText(current.media_link);
   return changed;
