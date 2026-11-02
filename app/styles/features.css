@@ -1203,6 +1203,22 @@
   outline:3px solid #f7ba66;
   outline-offset:3px;
 }
+/* 文化河道掛在痰跡圖的地點上：由地點往上拉出的一條直線時間排列，
+   不是座標軸刻度，只是依日期跨度做大致的比例拉伸。 */
+.loc-trace-day-stem{
+  position:relative;width:2px;pointer-events:none;
+  margin-bottom:2px;
+}
+.loc-trace-day-stem-line{
+  position:absolute;left:0;bottom:0;width:2px;height:100%;
+  background:linear-gradient(to top,rgba(247,186,102,.95),rgba(247,186,102,.15));
+  border-radius:2px;
+}
+.loc-trace-day-stem-tick{
+  position:absolute;left:50%;width:7px;height:7px;border-radius:999px;
+  background:#f7ba66;box-shadow:0 0 0 2px rgba(20,14,38,.85);
+  transform:translate(-50%,50%);
+}
 .loc-trace-map-status{margin:0}
 .loc-trace-map-note{margin:0;font-size:.84rem;line-height:1.65}
 @media(max-width:680px){

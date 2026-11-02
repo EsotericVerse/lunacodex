@@ -49,6 +49,47 @@ function pillarGeojson(anchors){
     geometry:{type:'Polygon',coordinates:[ringAround(place,45)]}
   }))};
 }
+const DAY_MS=86400000;
+function dayDiff(a,b){
+  return Math.round((new Date(b+'T00:00:00Z')-new Date(a+'T00:00:00Z'))/DAY_MS);
+}
+// A rough, not-to-scale time stem: no axis labels or precise calendar ticks,
+// just a proportional day-based stretch so denser/longer place histories read
+// taller than sparse ones. Unit is whole days, per the author's own framing.
+function placeDayStems(rows,allowedTitles){
+  const byTitle=new Map();
+  for(const row of Array.isArray(rows)?rows:[]){
+    const title=String(row?.category||'').trim();
+    const day=String(row?.day||'').slice(0,10);
+    const count=Math.max(0,Number(row?.item_count)||0);
+    if(!title||!allowedTitles.has(title)||!/^\d{4}-\d{2}-\d{2}$/.test(day)||!count)continue;
+    if(!byTitle.has(title))byTitle.set(title,[]);
+    byTitle.get(title).push({day,count});
+  }
+  for(const list of byTitle.values())list.sort((a,b)=>a.day.localeCompare(b.day));
+  return byTitle;
+}
+function buildStemElement(days){
+  const first=days[0].day,last=days[days.length-1].day;
+  const span=Math.max(1,dayDiff(first,last));
+  const maxHeight=96,minHeight=22;
+  const height=Math.min(maxHeight,Math.max(minHeight,Math.round(Math.sqrt(span)*14)));
+  const wrap=document.createElement('div');
+  wrap.className='loc-trace-day-stem';
+  wrap.style.height=height+'px';
+  const line=document.createElement('span');
+  line.className='loc-trace-day-stem-line';
+  wrap.appendChild(line);
+  days.forEach(({day,count})=>{
+    const ratio=span>0?dayDiff(first,day)/span:0;
+    const tick=document.createElement('span');
+    tick.className='loc-trace-day-stem-tick';
+    tick.style.bottom=Math.round(ratio*(height-6))+'px';
+    tick.title=day+'　'+count+' 篇';
+    wrap.appendChild(tick);
+  });
+  return wrap;
+}
 function isValidSavedAnchor(anchor){
   if(anchor?.trace_type!=='space_anchor')return false;
   return Boolean(spaceCoordinates(anchor));
@@ -77,6 +118,8 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
   let loaded=false;
   let routeActive=false;
   let markers=[];
+  let timelineMarkers=[];
+  let timelineRows=[];
   let pickedMarker=null;
   let pickedPosition=null;
   let savedAnchors=anchors;
@@ -88,7 +131,33 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     if(!loaded)return;
     map.getSource('loc-trace-saved-anchors')?.setData(existingAnchorPoints(savedAnchors));
     refreshSavedRoute();
+    refreshTimelineStems();
     // Updating GeoJSON never resets the viewport. Only explicit navigation may.
+  }
+  // Each saved anchor currently on the map grows a small upward "day stem"
+  // for its own place-history rows -- a rough stretch by day count, not a
+  // calendar axis. Restricted to titles already shown as map anchors, per
+  // the author's own framing ("只針對痕跡圖內的地點").
+  function refreshTimelineStems(){
+    timelineMarkers.forEach(marker=>marker.remove());
+    timelineMarkers=[];
+    if(!loaded||!timelineRows.length)return;
+    const validAnchors=savedAnchors.filter(isValidSavedAnchor);
+    const allowedTitles=new Set(validAnchors.map(a=>String(a.title||'').trim()).filter(Boolean));
+    if(!allowedTitles.size)return;
+    const byTitle=placeDayStems(timelineRows,allowedTitles);
+    for(const anchor of validAnchors){
+      const title=String(anchor.title||'').trim();
+      const days=byTitle.get(title);
+      if(!days?.length)continue;
+      const element=buildStemElement(days);
+      timelineMarkers.push(new Marker({element,anchor:'bottom',offset:[0,0]})
+        .setLngLat(spaceCoordinates(anchor)).addTo(map));
+    }
+  }
+  function setPlaceTimelines(rows){
+    timelineRows=Array.isArray(rows)?rows:[];
+    refreshTimelineStems();
   }
   function savedRoutePoints(route=selectedSavedRoute){
     if(!Array.isArray(route?.anchor_list))return [];
@@ -278,6 +347,7 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
   map.once('load',()=>{
     if(removed)return;
     loaded=true;
+    refreshTimelineStems();
     if(canPickLocation){
       // The Banqiao mock stations belong to the anchor editor only.
       map.addSource('loc-trace-extrusions',{type:'geojson',data:pillarGeojson(EXAMPLE_ANCHORS)});
@@ -419,10 +489,12 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     controller.abort();
     markers.forEach(marker=>marker.remove());
     markers=[];
+    timelineMarkers.forEach(marker=>marker.remove());
+    timelineMarkers=[];
     pickedMarker?.remove();
     pickedMarker=null;
     map.remove();
   }
-  return {focus,focusCoordinates,centerIfFar,goOrigin,setAnchors,setSavedRoute,setSavedGraph,overview,showRoadRoute,
+  return {focus,focusCoordinates,centerIfFar,goOrigin,setAnchors,setPlaceTimelines,setSavedRoute,setSavedGraph,overview,showRoadRoute,
     resize:()=>{if(!removed)map.resize();},destroy};
 }
