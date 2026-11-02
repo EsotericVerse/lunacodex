@@ -94,9 +94,9 @@ BEGIN
  IF p_action='upsert' THEN
    IF jsonb_typeof(p_value)<>'object' THEN RAISE EXCEPTION 'Invalid Keyword record'; END IF;
    new_scope:=p_value->>'scope_id';new_name:=btrim(p_value->>'class_name');
-   IF new_scope !~ '^[a-z][a-z0-9]{0,14}$' OR
+   IF coalesce(new_scope,'') !~ '^[a-z][a-z0-9]{0,14}$' OR
        new_name IS NULL OR new_name='' OR length(new_name)>120 OR
-       p_value->>'hash' !~ '^[0-9a-f]{32}$' THEN
+       coalesce(p_value->>'hash','') !~ '^[0-9a-f]{32}$' THEN
      RAISE EXCEPTION 'Invalid Keyword registry fields';
    END IF;
  END IF;
