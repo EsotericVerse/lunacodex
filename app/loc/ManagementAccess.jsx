@@ -4,8 +4,7 @@ import {useAccount} from './use-account';
 import {useEditDock} from '../modular/edit-dock';
 import {FeaturePage} from '../modular/ui';
 import {editorSessionStatus,clearEditorSession,touchEditorSession} from './edit-session-ttl.mjs';
-import {getAccountSession,dbAuthClient,dbAuthEvents} from './db-client.mjs';
-import {setAuthorization,createScopeAuthorizer} from './authorization-runtime.mjs';
+import {dbAuthEvents} from './db-client.mjs';
 import {verifyManagementEntry} from './auth/management-entry-verification.mjs';
 
 const granted=(grants,id,level)=>level==='global'
@@ -78,17 +77,17 @@ export default function ManagementAccess({scopeId,level='scope',featureId='manag
     if(renewing||!allowed||entered||!locked)return;
     setRenewing(true);setError('');
     try{
-      const verified=await verifyManagementEntry(()=>getAccountSession());
+      // Exactly the same live authorization path as initial edit entry.
+      // Do not re-implement Clerk/permission checks or consult a TTL cache.
+      const verified=await verifyManagementEntry(check);
       if(!verified?.user||String(verified.user.id)!==String(verification.user.id)||
         String(verified.user.email||'').toLowerCase()!==
           String(verification.user.email||'').toLowerCase())
         throw Error('登入身分已變更，請重新驗證管理權限。');
-      const {data,error:permissionError}=await verifyManagementEntry(()=>
-        dbAuthClient.schema('silver').rpc('get_my_scope_management'));
-      if(permissionError)throw Error('管理權限重新驗證失敗：'+permissionError.message);
-      setAuthorization(verified.user,Array.isArray(data)?data:[]);
-      if(!granted(createScopeAuthorizer(verified.user),scopeId,level))
+      if(!granted(verified.authorizer,scopeId,level))
         throw Error('重新驗證後，沒有此管理範圍的權限。');
+      setVerification({loading:false,user:verified.user,
+        authorizer:verified.authorizer,error:''});
       clearEditorSession(window.sessionStorage);
       if(!touchEditorSession(window.sessionStorage))throw Error('無法重建編輯 Session。');
       setLocked(false);
