@@ -213,6 +213,8 @@ export default function Culture(){
   const {locale}=useUiLocale();
   const {scopeId,scope}=useScopeRuntime();
   const {settings:userSettings,active:userActive}=useLocFeatureSettings('culture');
+  // A list editor is offered only after the user opts in; authorization stays on Edit.
+  const adminListRequested=Boolean(userActive&&userSettings.list===true);
   const searchParams=useSearchParams();
   const editDock=useEditDock();
   const canUseScopeEditor=Boolean(editDock?.active&&editDock.scopeId===scopeId);
@@ -220,7 +222,7 @@ export default function Culture(){
   const isTimeEditingView=canUseScopeEditor&&(pathname.endsWith('/culture/manage')||
     pathname.endsWith('/culture/manage/')||searchParams?.get('edit')==='1');
   // Public Culture does not load management grants; editing must verify them.
-  const account=useAccount({enabled:isTimeEditingView||canUseScopeEditor});
+  const account=useAccount({enabled:isTimeEditingView||canUseScopeEditor||adminListRequested});
   const [lrunesView,setLrunesView]=useState('daily');
   const [locCultureView,setLocCultureView]=useState('period');
   const [locDensityOpen,setLocDensityOpen]=useState(false);
@@ -1148,7 +1150,7 @@ export default function Culture(){
   }
 
   async function startEditingWork(work){
-    if(!canUseScopeEditor)return;
+    if(!adminListRequested)return;
     const uid=String(work?.uid||'').trim();
     if(!uid)return;
     const key=String(work?.key||('galaxy:'+uid));
@@ -1186,8 +1188,8 @@ export default function Culture(){
   }
 
   async function saveEditingWork(work){
-    if(!canUseScopeEditor)return;
     const uid=String(work?.uid||'').trim();
+    if(!adminListRequested||authorizedWorkKey!==String(work?.key||('galaxy:'+uid)))return;
     if(!uid||!editDraft)return;
     setEditBusy(true);setEditError('');
     try{
@@ -1216,8 +1218,8 @@ export default function Culture(){
   }
 
   async function deleteEditingWork(work){
-    if(!canUseScopeEditor)return;
     const uid=String(work?.uid||'').trim();
+    if(!adminListRequested||authorizedWorkKey!==String(work?.key||('galaxy:'+uid)))return;
     if(!uid)return;
     setEditBusy(true);setEditError('');
     try{
@@ -1688,7 +1690,7 @@ export default function Culture(){
                     scrollRootRef={workScrollRef}
                     renderItem={(work,index)=>{
                       const workKey=String(work.key||('galaxy:'+work.uid));
-                      const canEditWork=canUseScopeEditor&&authorizedWorkKey===workKey;
+                      const canEditWork=adminListRequested&&authorizedWorkKey===workKey;
                       return <Article
                       key={work.key||work.uid||work.entry_id||String(work.createtime||work.created_at)+'-'+index}
                       uid={work.uid}
@@ -1729,7 +1731,7 @@ export default function Culture(){
                           content={fullTextKey===workKey?fullText:''}
                           onToggle={()=>toggleWorkContent(work)}
                         />
-                        {fullTextKey===workKey&&canUseScopeEditor?<button type='button' className='loc-button scope-work-edit-button'
+                        {fullTextKey===workKey&&adminListRequested?<button type='button' className='loc-button scope-work-edit-button'
                           onClick={()=>startEditingWork(work)}>編輯</button>:null}
                         
                       </div>:null}
