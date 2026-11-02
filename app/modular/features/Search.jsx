@@ -264,10 +264,10 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   const account=useAccount({enabled:adminListRequested||publicScopeEditing||legacyManagementRoute});
   // LOC's public Search is global. Only the separate authorized management
   // workspace may narrow the query to a specific Scope.
-  const locPublicSearch=scopeId==='loc'&&!managementMode;
   const managementAuthorized=Boolean(adminListRequested&&account.user&&!account.loading&&!account.permissionLoading&&
     (scopeId==='loc'?(account.canManageGroupSync('loc')||account.scopes.length>0):canManageSearchScope(account,scopeId)));
   const managementMode=Boolean(adminListRequested&&managementAuthorized);
+  const locPublicSearch=scopeId==='loc'&&!managementMode;
   const searchParams=useSearchParams();
   const router=useRouter();
   const resourceCache=useResourceCache();
