@@ -10,7 +10,7 @@ import {useUiSection} from '../../../i18n/ui-locale';
 import adminViewZh from '../../../i18n/sections/uiExtra.adminView.zh_tw.js';
 import {THEME_SLOTS,THEME_TOKEN_KEYS} from '../../../modular/theme-registry';
 import {mergeThemeSlot,THEME_DB_COLUMNS,themeColumnForToken,themeUiId,themeNumber,normalizeThemeHex,deriveThemeTokens} from '../../theme-data';
-import {dbAuthRelation} from '../../db-client.mjs';
+import {dbAuthRelation,dbAuthClient} from '../../db-client.mjs';
 import {useEditDockForm} from '../../../modular/edit-dock';
 registerDefaultSection('uiExtra.adminView',adminViewZh);
 
@@ -29,10 +29,10 @@ export default function ThemeEditor(){
   useEffect(()=>{
     let active=true;
     (async()=>{
-      const {data,error}=await dbAuthRelation('silver.loc_theme').select(THEME_DB_COLUMNS).order('theme_order');
+      const {data,error}=await dbAuthRelation('silver.loc').select('theme').eq('id','loc').single();
       if(!active)return;
       if(error){setStatus(error.message||'Theme 讀取失敗。');return;}
-      setRows((data||[]).map(row=>({
+      setRows((Array.isArray(data?.theme)?data.theme:[]).map(row=>({
         ...row,
         theme_id:themeUiId(row.theme_id),
         theme_db_numeric:typeof row.theme_id==='number'
@@ -97,7 +97,9 @@ export default function ThemeEditor(){
           themeColumnForToken(key),String(draft.tokens?.[key]||'').trim()
         ]))
       };
-      const {error}=await dbAuthRelation('silver.loc_theme').upsert(payload,{onConflict:'theme_id'});
+      const {error}=await dbAuthClient.schema('silver').rpc('loc_catalog',{
+        p_section:'theme',p_action:'upsert',p_key:String(themeNumber(themeId)),p_value:payload
+      });
       if(error)throw new Error(error.message||'Theme 儲存失敗。');
       // A successful Admin theme save deliberately refreshes the site palette;
       // browsing Guest pages never refreshes this snapshot.
