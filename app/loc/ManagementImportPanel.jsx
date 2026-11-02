@@ -13,7 +13,7 @@ import ScopeSourceCorrection from './ScopeSourceCorrection';
 import {refreshScopeSearchSummary} from './scope-search-summary.mjs';
 import {insertRows,insertImportRows,dbAuthRelation,dbAuthClient,updateImportRows} from './db-client.mjs';
 import {useAccount} from './use-account';
-import {useAsyncResource} from './use-async-resource';
+import {useAsyncResource,useResourceCache} from './use-async-resource';
 import {useScopeSourceCategoryRow} from './scope-source-category-row.mjs';
 import {canonicalImportSourceName,inferImportSourceFromFilename} from './source-name.mjs';
 import {Capacitor} from '@capacitor/core';
@@ -421,6 +421,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   const t=useUiText();
   const nativeLocal=scopeId==='local'&&Capacitor.isNativePlatform()&&Capacitor.getPlatform()==='ios';
   const account=useAccount({enabled:!nativeLocal});
+  const resourceCache=useResourceCache();
   const [fileName,setFileName]=useState('');
   const [archiveDetection,setArchiveDetection]=useState(null);
   const [archiveSummary,setArchiveSummary]=useState(null);
@@ -515,6 +516,9 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     setSummaryMessage('');
     try{
       const result=await refreshScopeSearchSummary(scopeId);
+      // Search might be cached from an earlier visit; invalidate the
+      // persisted snapshot's read cache so the next visit gets new totals.
+      await resourceCache.invalidate({queryKey:['scope-search-summary']});
       const nf=new Intl.NumberFormat();
       setSummaryMessage('搜尋文章統計已更新：'+nf.format(result.article_count)+' 篇，'+
         nf.format(result.word_count)+' 字。');
