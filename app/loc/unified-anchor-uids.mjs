@@ -1,13 +1,8 @@
 import {selectAllRowsBounded} from './db-query.mjs';
 
-// Only call when creating new content. The unified store has one PRIMARY KEY
-// across Time/Trace/Keywords/Media, even though feature lists remain kind-filtered.
-// `reader` is accepted for backward compatibility with any external caller
-// still passing its own page-reading closure; every in-repo call site now
-// omits it and gets the shared, size-aware (sequential-or-parallel) scan of
-// silver.lo3rwang_anchor below -- previously each of the three call sites
-// (ArticleTimeAnchorAction, CultureTimelineEditor, Culture) duplicated the
-// exact same reader closure.
+// New Anchor UIDs are global to Time, Point, Keywords and Media within each
+// Scope; the whole native *_anchor primary-key pool must be checked. Callers
+// may pass an authenticated reader for imports or use the bounded shared scan.
 export async function readUnifiedAnchorUids(table,reader=null,{pageSize=1000}={}){
   const matched=String(table||'').match(/^silver\.([a-z][a-z0-9]{0,14})_(?:time|anchor)$/);
   if(!matched)return [];
