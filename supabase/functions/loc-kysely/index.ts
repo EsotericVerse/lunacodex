@@ -333,7 +333,15 @@ Deno.serve(async (request) => {
       if(!verifiedMcp||role!=="authenticated")
         return json({error:{message:"Verified MCP write permission required"}},403);
       const scope=String(body.scopeid||"");
-      const row=body.row as Record<string,unknown>;
+      // MCP sync is a private conversation source, regardless of the caller's
+      // legacy site/able payload. Never inherit Galaxy's all-true defaults.
+      const incomingRow=body.row as Record<string,unknown>;
+      const row=incomingRow&&typeof incomingRow==="object"&&!Array.isArray(incomingRow)
+        ? {...incomingRow,site:"mcp",able:{
+            statics:false,culture:false,search:false,trace:false,
+            list:false,keywords:false,game:false,extract:false
+          }}
+        :incomingRow;
       const expected=["uid","title","content","site","site_id","able",
         "createtime","UpdateTime"];
       if(!["lo3rwang","lrunes"].includes(scope)||!row||typeof row!=="object"||
@@ -342,7 +350,7 @@ Deno.serve(async (request) => {
         !/^[A-Za-z0-9]{8}$/.test(String(row.uid||""))||
         typeof row.title!=="string"||row.title.length>350||
         typeof row.content!=="string"||!row.content.trim()||
-        row.content.length>125000||row.site!=="ChatGPT"||
+        row.content.length>125000||row.site!=="mcp"||
         typeof row.site_id!=="string"||row.site_id.length<3||
         row.site_id.length>150||!row.able||typeof row.able!=="object"||
         Object.keys(row.able as Record<string,unknown>).length!==8||
