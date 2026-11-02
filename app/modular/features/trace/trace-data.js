@@ -32,7 +32,14 @@ const projectUnified=(row,id)=>{
     ?[Number(lng),Number(lat)]:null;
   // An array of aliases is never an array of GPS coordinates.
   const paths=Array.isArray(row.attr?.path)?row.attr.path:[];
-  const segments=Array.isArray(row.attr?.point?.[0])?row.attr.point:[];
+  const points=Array.isArray(row.attr?.point)?row.attr.point:[];
+  // Native Trace uses a flat, ordered point UID array. Every two entries
+  // form one segment; the SQL merge contract also replaces flat UID arrays.
+  const segments=Array.isArray(points[0])?points:
+    row.type==='trace'?points.reduce((list,uid,index)=>{
+      if(index%2===0)list.push([uid]);else list[list.length-1].push(uid);
+      return list;
+    },[]):[];
   return readRow({...projected,attr:row.attr,address:coordinates,
     route_list:{...projected.route_list,routes:paths,segments,postal_address:address}},id);
 };
@@ -336,7 +343,7 @@ export async function addTraceMap({scopeId,title,description='',type='path',anch
     return checked(await dbAuthClient.schema('silver').from(id+'_anchor').insert({
       uid:allocateAnchorUid(),type,title:nonempty(title,'名稱'),
       description:descriptionText(description),invisible:normalizedInvisible(invisible),
-      attr:type==='path'?{point:anchor_list}:{point:anchor_list,path:route_list}
+      attr:type==='path'?{point:anchor_list}:{point:anchor_list.flat(),path:route_list}
     }).select('uid').single(),'儲存路線或痕跡圖');
   }
   return checked(await dbAuthRelation(relation(id)).insert({
@@ -354,7 +361,7 @@ export async function updateTraceMap({scopeId,uid,title,description='',type='pat
     const current=checked(await dbAuthClient.schema('silver').from(id+'_anchor')
       .select('uid,attr').eq('uid',key).eq('type',type).maybeSingle(),'讀取路線／痕跡圖');
     if(!current)throw Error('指定的路線／痕跡圖不存在');
-    const attr={...(current.attr||{}),point:anchor_list};
+    const attr={...(current.attr||{}),point:type==='trace'?anchor_list.flat():anchor_list};
     if(type==='trace')attr.path=route_list;
     return checked(await dbAuthClient.schema('silver').from(id+'_anchor')
       .update({title:nonempty(title,'名稱'),description:descriptionText(description),
@@ -407,7 +414,7 @@ export async function mergeTraceAnchorPoints({scopeId,keepUid,removeUids=[]}){
     sources.includes(primary)||sources.some(uid=>!/^[A-Za-z0-9]{8}$/.test(uid))||
     sources.length!==removeUids.length)
     throw Error('合併清單無效：主要地點及來源 UID 必須各自唯一');
-  const data=checked(await dbAuthClient.schema('silver').rpc('merge_scope_anchor_points',{
+  const data=checked(await dbAuthClient.schema('silver').rpc('merge_scope_trace_place_names',{
     p_scope_id:id,p_keep_uid:primary,p_remove_uids:sources
   }),'合併空間定錨');
   const count=typeof data==='number'?data:data?.merged_count;
