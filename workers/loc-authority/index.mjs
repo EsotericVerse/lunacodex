@@ -294,6 +294,25 @@ async function managedMcpInsert(scopeid,row,hasCheckpointUid,oauthToken){
   if(data?.data?.count!==1)throw fail('Managed Scope write was not confirmed',502);
 }
 
+
+async function managedMcpRead(scopeid,kind,args,oauthToken){
+  if(!Object.hasOwn(MANAGED_SCOPE_TABLES,scopeid))throw fail('Managed Scope is not supported',409);
+  if(typeof oauthToken!=='string'||!oauthToken.startsWith('eyJ'))
+    throw fail('MCP OAuth authorization required',401);
+  if(!['mcp-search','mcp-read'].includes(kind))throw fail('Invalid managed read',400);
+  const response=await fetch(MANAGED_SUPABASE_EDGE,{
+    method:'POST',headers:{apikey:MANAGED_PUBLISHABLE_KEY,
+      authorization:'Bearer '+oauthToken,'content-type':'application/json'},
+    body:JSON.stringify({kind,scopeid,...args}),
+    signal:AbortSignal.timeout(12000),redirect:'manual'
+  });
+  if(!response.ok)throw fail('Managed Scope read rejected (HTTP '+response.status+')',
+    response.status===401||response.status===403?response.status:502);
+  const data=await response.json();
+  if(!Array.isArray(data?.data))throw fail('Invalid managed Scope read results',502);
+  return data.data;
+}
+
 export class LocAuthorityState extends DurableObject {
   constructor(ctx,env){super(ctx,env);}
   async listState(){
@@ -444,29 +463,34 @@ export class LocAuthorityState extends DurableObject {
     await this.ctx.storage.put(checkpointKey,{updated_at:requestedTime,saved_at,uid});
     return {scopeid,conversation_id,updated_at:requestedTime,saved_at,uid,saved:true};
   }
-  async mcpSearch(scopeid,query,limit=10){
+  async mcpSearch(scopeid,query,limit=10,oauthToken=''){
     validScope(scopeid);
     if(!Number.isInteger(limit)||limit<1||limit>20)throw fail('Invalid search limit',400);
     const pattern=likePattern(query);
+    const profile=await this.mcpPrivateProfile(scopeid);
+    const mapRows=rows=>{
+      if(!Array.isArray(rows))throw fail('Invalid database search results',502);
+      return {scopeid,results:rows.map(r=>({scopeid,uid:r.uid,title:r.title,
+        date:r.date,createtime:r.createtime}))};
+    };
+    if(!profile){
+      // Managed private reads depend on the specific OAuth principal.
+      // Never share a private result cache across independently authorized callers.
+      return mapRows(await managedMcpRead(scopeid,'mcp-search',{query,limit},oauthToken));
+    }
     const key=scopeid+':'+limit+':'+pattern;
     this.mcpSearchCache??=new Map();
     const cached=this.mcpSearchCache.get(key);
     if(cached&&cached.expires>Date.now())return cached.value;
-    const task=(async()=>{
-      const profile=await this.mcpPrivateProfile(scopeid);
-      if(!profile)throw fail('Scope database is not configured',409);
-      const rows=await postgrest(profile,{params:{select:'uid,title,date,createtime',
-        or:'(title.ilike.'+pattern+',content.ilike.'+pattern+')',
-        order:'date.desc.nullslast',limit}});
-      if(!Array.isArray(rows))throw fail('Invalid database search results',502);
-      return {scopeid,results:rows.map(r=>({scopeid,uid:r.uid,title:r.title,date:r.date,createtime:r.createtime}))};
-    })();
+    const task=postgrest(profile,{params:{select:'uid,title,date,createtime',
+      or:'(title.ilike.'+pattern+',content.ilike.'+pattern+')',
+      order:'date.desc.nullslast',limit}}).then(mapRows);
     this.mcpSearchCache.set(key,{value:task,expires:Date.now()+20000});
     if(this.mcpSearchCache.size>100)this.mcpSearchCache.delete(this.mcpSearchCache.keys().next().value);
     try{return await task;}
     catch(error){this.mcpSearchCache.delete(key);throw error;}
   }
-  async mcpRead(scopeid,uid,offset=0,max_chars=20000){
+  async mcpRead(scopeid,uid,offset=0,max_chars=20000,oauthToken=''){ 
     validScope(scopeid);
     if(!UID.test(uid)||!Number.isInteger(offset)||offset<0||offset>1000000||
       !Number.isInteger(max_chars)||max_chars<1||max_chars>40000)
@@ -476,15 +500,8 @@ export class LocAuthorityState extends DurableObject {
     if(profile){
       rows=await postgrest(profile,{params:{select:'uid,title,content,date,createtime,site,url',
         uid:'eq.'+uid,limit:1}});
-    }else if(['lo3rwang','lrunes'].includes(scopeid)){
-      // Reuse existing anonymous RLS only; never infer private access.
-      const url=new URL('https://qlouywsdiiyiyzpoxyqy.supabase.co/rest/v1/'+scopeid+'_galaxy');
-      for(const [key,value] of Object.entries({select:'uid,title,content,date,createtime,site,url',
-        uid:'eq.'+uid,searchable:'eq.true',limit:1}))url.searchParams.set(key,String(value));
-      const res=await fetch(url.href,{headers:{apikey:'sb_publishable_qPn0vAzozVyXKllRuEKf2Q_fvG-pLVV',
-        'accept-profile':'silver'},signal:AbortSignal.timeout(8500),redirect:'manual'});
-      if(!res.ok)throw fail('Public article read unavailable',502);
-      rows=await res.json();
+    }else if(Object.hasOwn(MANAGED_SCOPE_TABLES,scopeid)){
+      rows=await managedMcpRead(scopeid,'mcp-read',{uid},oauthToken);
     }else throw fail('Scope database is not configured',409);
     if(!Array.isArray(rows))throw fail('Invalid database response',502);
     if(!rows.length)return {found:false,scopeid,uid};
@@ -641,7 +658,8 @@ async function handleMcpAuthority(request,env,url,origin){
     const scopeid=validScope(parts[1]);
     if(!await allowed(scopeid,'read'))throw fail('Scope read denied',403);
     const args=await mcpJsonBody(request,1600);
-    return json(await scoped(scopeid).mcpSearch(scopeid,args.query,args.limit||10),200,origin);
+    return json(await scoped(scopeid).mcpSearch(scopeid,args.query,args.limit||10,
+      (request.headers.get('authorization')||'').replace(/^Bearer /,'')),200,origin);
   }
   if(parts[0]==='read'&&parts.length===3&&request.method==='GET'){
     const scopeid=validScope(parts[1]);
@@ -653,7 +671,8 @@ async function handleMcpAuthority(request,env,url,origin){
     if(!permitted)throw fail('Scope article read denied',403);
     const offset=Number(url.searchParams.get('offset')||'0');
     const max_chars=Number(url.searchParams.get('max_chars')||'20000');
-    return json(await scoped(scopeid).mcpRead(scopeid,parts[2],offset,max_chars),200,origin);
+    return json(await scoped(scopeid).mcpRead(scopeid,parts[2],offset,max_chars,
+      (request.headers.get('authorization')||'').replace(/^Bearer /,'')),200,origin);
   }
   if(parts[0]==='group-search'&&parts.length===2&&request.method==='POST'){
     const groupid=validScope(parts[1]);

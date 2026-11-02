@@ -250,7 +250,7 @@ Deno.serve(async (request) => {
     if(untrusted.iss===clerkIssuer){
       // MCP OAuth JWTs and interactive Clerk sessions have different audiences
       // and permissions. Never let an MCP token execute general SQL requests.
-      if(body.kind==="mcp-sync"){
+      if(["mcp-sync","mcp-search","mcp-read"].includes(String(body.kind))){
         try{
           claims=await verifyMcpForSql(token,String(body.scopeid||""));
           verifiedMcp=true;
@@ -283,6 +283,52 @@ Deno.serve(async (request) => {
 
   let resolvingTarget = false;
   try {
+    if(body.kind==="mcp-read"||body.kind==="mcp-search"){
+      // A Clerk OAuth token is separately verified by the LOC Authority.
+      // This owner-only route accepts fixed read shapes, not arbitrary SQL.
+      if(!verifiedMcp||role!=="authenticated")
+        return json({error:{message:"Verified MCP Scope permission required"}},403);
+      if(requestedTarget!=="configured")
+        return json({error:{message:"Managed MCP reads use the control database only"}},400);
+      const scope=String(body.scopeid||"");
+      const isRead=body.kind==="mcp-read";
+      const expectedKeys=isRead?["kind","scopeid","uid"]:["kind","scopeid","query","limit"];
+      if(!["lo3rwang","lrunes"].includes(scope)||
+         Object.keys(body).length!==expectedKeys.length||
+         Object.keys(body).some(key=>!expectedKeys.includes(key)))
+        return json({error:{message:"Invalid managed MCP read payload"}},400);
+      const uid=String(body.uid||"");
+      const query=body.query;
+      const limit=body.limit;
+      if(isRead){
+        if(!/^[A-Za-z0-9]{8}$/.test(uid))
+          return json({error:{message:"Invalid managed MCP article UID"}},400);
+      }else if(typeof query!=="string"||query.trim().length<2||query.length>100||
+          /[\u0000-\u001f\u007f]/.test(query)||!Number.isInteger(limit)||
+          Number(limit)<1||Number(limit)>20){
+        return json({error:{message:"Invalid managed MCP search parameters"}},400);
+      }
+      const db=await databaseForTarget(controlTarget);
+      // The scope has already been allowlisted; the identifier is not caller-supplied.
+      const table=sql.ref("silver."+scope+"_galaxy");
+      const rows=await db.transaction().execute(async trx=>{
+        await sql`set local role authenticated`.execute(trx);
+        await sql`select set_config('request.jwt.claims',${JSON.stringify(claims)},true)`.execute(trx);
+        await sql`select set_config('request.jwt.claim.sub',${String(claims.sub||"")},true)`.execute(trx);
+        await sql`select set_config('request.jwt.claim.role','authenticated',true)`.execute(trx);
+        if(isRead){
+          const result=await sql`select uid,title,content,date,createtime,site,url
+            from ${table} where uid=${uid} limit 1`.execute(trx);
+          return result.rows;
+        }
+        const pattern="%"+String(query).trim().replace(/[\\%_]/g,"\\$&")+"%";
+        const result=await sql`select uid,title,date,createtime from ${table}
+          where title ilike ${pattern} or content ilike ${pattern}
+          order by createtime desc nulls last limit ${Number(limit)}`.execute(trx);
+        return result.rows;
+      });
+      return json({data:rows});
+    }
     if(body.kind==="mcp-sync"){
       if(!verifiedMcp||role!=="authenticated")
         return json({error:{message:"Verified MCP write permission required"}},403);
