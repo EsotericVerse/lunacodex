@@ -18,11 +18,18 @@ export async function readPlaceSummary(scopeId,{startDate='',endDate=''}={}){
     if(!Array.isArray(data))throw new Error('Invalid place summary RPC result');
     let anchors=[];
     if(['lo3rwang','lrunes'].includes(scopeId)){
-      const {rows}=await selectRows('silver.'+scopeId+'_trace',{
-        columns:'uid,title',filters:[{column:'trace_type',operator:'eq',value:'anchor'}],
-        limit:10000,offset:0
-      });
-      anchors=rows.map(row=>({uid:row.uid,title:row.title}));
+      // The Trace adapter maps space_anchor to native Anchor.type='point'
+      // for lo3rwang; 'anchor' means a Time/date node, not a place.
+      const pageSize=500;
+      for(let offset=0;;offset+=pageSize){
+        const {rows}=await selectRows('silver.'+scopeId+'_trace',{
+          columns:'uid,title',filters:[{column:'trace_type',operator:'eq',value:'space_anchor'}],
+          orders:[{column:'title',ascending:true},{column:'uid',ascending:true}],
+          limit:pageSize,offset
+        });
+        anchors.push(...rows.map(row=>({uid:row.uid,title:row.title})));
+        if(rows.length<pageSize)break;
+      }
     }
     return {rows:data,anchors};
   }
