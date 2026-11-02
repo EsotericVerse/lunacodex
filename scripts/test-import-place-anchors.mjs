@@ -186,7 +186,8 @@ test('anchor import reports a read-only scan without inserting rows',async()=>{
   });
   assert.deepEqual(states.map(p=>[p.phase,p.completed,p.total]),[
     ['讀取現有空間定錨',0,0],
-    ['讀取現有空間定錨',0,0]
+    ['讀取現有空間定錨',0,0],
+    ['建立原始座標定錨',0,0]
   ]);
   assert.equal(db.inserts,0);
 });
