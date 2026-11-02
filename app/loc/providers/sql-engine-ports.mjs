@@ -40,7 +40,7 @@ export function resolveSqlExecutionPort(target){
 // have per-row visibility policies. Until an equivalent engine-side
 // authorization implementation exists, expose only fixed public reference tables.
 export const CROSS_ENGINE_PUBLIC_READ_TABLES=Object.freeze([
-  'loc_theme','runes','runes_etc','runes_group'
+  'runes','runes_etc','runes_group'
 ]);
 const externalPublicReads=new Set(CROSS_ENGINE_PUBLIC_READ_TABLES);
 export function assertCrossEnginePublicRead(request){
