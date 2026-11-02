@@ -42,6 +42,120 @@
 .rune-effekseer-glyph[data-glyph-finish="glass"]{text-shadow:0 1px 0 color-mix(in srgb,var(--loc-text) 45%,transparent),0 6px 13px color-mix(in srgb,var(--loc-panel) 77%,transparent)}
 .rune-effekseer-glyph[data-glyph-finish="plain"]{text-shadow:0 8px 17px color-mix(in srgb,var(--loc-panel) 75%,transparent)}
 .rune-effekseer-glyph[data-glyph-finish="ink"]{text-shadow:0 2px 1px color-mix(in srgb,var(--loc-panel) 68%,transparent),0 11px 20px color-mix(in srgb,var(--loc-panel) 69%,transparent)}
+
+/* Typographic weight: the same 9 kinetic-mass categories that already
+   drive each rune's glyph entrance motion (RUNE_KINETIC_TIMING) also
+   shape the letterform itself, so text and motion read as one
+   character rather than a shape with unrelated timing bolted on.
+   Letter-spacing/weight/glow only — never overrides the font family. */
+.rune-effekseer-glyph[data-glyph-weight="ethereal"]{letter-spacing:.14em;font-weight:300;filter:brightness(1.05)}
+.rune-effekseer-glyph[data-glyph-weight="tender"]{letter-spacing:.08em;font-weight:400}
+.rune-effekseer-glyph[data-glyph-weight="fluid"]{letter-spacing:.04em}
+.rune-effekseer-glyph[data-glyph-weight="measured"]{letter-spacing:0}
+.rune-effekseer-glyph[data-glyph-weight="anchored"]{letter-spacing:-.02em;font-weight:700;text-shadow:0 3px 2px color-mix(in srgb,var(--loc-panel) 60%,transparent),0 16px 22px color-mix(in srgb,var(--loc-panel) 80%,transparent)}
+.rune-effekseer-glyph[data-glyph-weight="impact"]{letter-spacing:-.05em;font-weight:900;filter:contrast(1.12)}
+.rune-effekseer-glyph[data-glyph-weight="incisive"]{letter-spacing:-.06em;font-weight:800;filter:contrast(1.08)}
+.rune-effekseer-glyph[data-glyph-weight="energetic"]{letter-spacing:.02em;font-weight:700;filter:saturate(1.15)}
+.rune-effekseer-glyph[data-glyph-weight="fragile"]{letter-spacing:.1em;font-weight:200;filter:brightness(.97)}
+
+/* Ritual choreography: during the ceremony summon, the glyph's whole
+   stage position gets one extra layer of movement on top of its own
+   67-pose entrance, chosen from a small reused vocabulary (zoom,
+   rotate, rise/settle, diffuse/converge) so it reads as a proper
+   "pull" moment. The vocabulary repeats across the 9 weight classes
+   by design — what changes is which move fits which mass. */
+.rune-effekseer-stage[data-ceremony="summoning"] .rune-effekseer-glyph-position{
+  transform-origin:50% 50%;
+}
+.rune-effekseer-stage[data-ceremony="summoning"][data-glyph-weight="ethereal"] .rune-effekseer-glyph-position{
+  animation:rune-ritual-drift-in 5.1s cubic-bezier(.22,.7,.2,1) both;
+}
+.rune-effekseer-stage[data-ceremony="summoning"][data-glyph-weight="tender"] .rune-effekseer-glyph-position{
+  animation:rune-ritual-zoom-in-soft 4.9s cubic-bezier(.22,.7,.2,1) both;
+}
+.rune-effekseer-stage[data-ceremony="summoning"][data-glyph-weight="fluid"] .rune-effekseer-glyph-position{
+  animation:rune-ritual-diffuse-converge 4.9s cubic-bezier(.3,.6,.2,1) both;
+}
+.rune-effekseer-stage[data-ceremony="summoning"][data-glyph-weight="measured"] .rune-effekseer-glyph-position{
+  animation:rune-ritual-rise-settle 4.8s cubic-bezier(.25,.65,.25,1) both;
+}
+.rune-effekseer-stage[data-ceremony="summoning"][data-glyph-weight="anchored"] .rune-effekseer-glyph-position{
+  animation:rune-ritual-descend-root 4.5s cubic-bezier(.3,.6,.15,1) both;
+}
+.rune-effekseer-stage[data-ceremony="summoning"][data-glyph-weight="impact"] .rune-effekseer-glyph-position{
+  animation:rune-ritual-slam-zoom 4.2s cubic-bezier(.17,.9,.3,1.1) both;
+}
+.rune-effekseer-stage[data-ceremony="summoning"][data-glyph-weight="incisive"] .rune-effekseer-glyph-position{
+  animation:rune-ritual-spin-cut-in 4.4s cubic-bezier(.2,.75,.25,1) both;
+}
+.rune-effekseer-stage[data-ceremony="summoning"][data-glyph-weight="energetic"] .rune-effekseer-glyph-position{
+  animation:rune-ritual-spin-zoom 4.4s cubic-bezier(.22,.7,.2,1.08) both;
+}
+.rune-effekseer-stage[data-ceremony="summoning"][data-glyph-weight="fragile"] .rune-effekseer-glyph-position{
+  animation:rune-ritual-tremble-build 4.4s cubic-bezier(.3,.6,.2,1) both;
+}
+/* 靈/柔：由遠而近飄入，淡入上浮 */
+@keyframes rune-ritual-drift-in{
+  0%{transform:translateY(26px) scale(.82);filter:blur(6px)}
+  55%{transform:translateY(-4px) scale(1.01);filter:blur(1px)}
+  100%{transform:translateY(0) scale(1);filter:blur(0)}
+}
+@keyframes rune-ritual-zoom-in-soft{
+  0%{transform:scale(.74)}
+  60%{transform:scale(1.03)}
+  100%{transform:scale(1)}
+}
+/* 流：先擴散模糊，再集中聚焦 */
+@keyframes rune-ritual-diffuse-converge{
+  0%{transform:scale(1.7);filter:blur(10px);opacity:.4}
+  45%{transform:scale(1.7);filter:blur(10px);opacity:.75}
+  80%{transform:scale(.97);filter:blur(0);opacity:1}
+  100%{transform:scale(1);filter:blur(0);opacity:1}
+}
+/* 穩：平穩上升定位 */
+@keyframes rune-ritual-rise-settle{
+  0%{transform:translateY(36px) scale(.92)}
+  70%{transform:translateY(-3px) scale(1.01)}
+  100%{transform:translateY(0) scale(1)}
+}
+/* 錨：由上往下沉降，紮根 */
+@keyframes rune-ritual-descend-root{
+  0%{transform:translateY(-34px) scale(1.04)}
+  65%{transform:translateY(5px) scale(.98)}
+  100%{transform:translateY(0) scale(1)}
+}
+/* 衝：瞬間放大衝擊＋回彈 */
+@keyframes rune-ritual-slam-zoom{
+  0%{transform:scale(.4)}
+  55%{transform:scale(1.14)}
+  78%{transform:scale(.96)}
+  100%{transform:scale(1)}
+}
+/* 銳：快速旋轉切入 */
+@keyframes rune-ritual-spin-cut-in{
+  0%{transform:rotate(-55deg) scale(.6);opacity:.2}
+  60%{transform:rotate(6deg) scale(1.04);opacity:1}
+  100%{transform:rotate(0deg) scale(1);opacity:1}
+}
+/* 動：快速旋轉放大 */
+@keyframes rune-ritual-spin-zoom{
+  0%{transform:rotate(130deg) scale(.5);opacity:.3}
+  65%{transform:rotate(-8deg) scale(1.06);opacity:1}
+  100%{transform:rotate(0deg) scale(1);opacity:1}
+}
+/* 脆：小幅顫抖，逐漸增強後定住 */
+@keyframes rune-ritual-tremble-build{
+  0%,100%{transform:translateX(0) scale(1)}
+  10%{transform:translateX(-3px) scale(.97)}
+  20%{transform:translateX(3px) scale(.98)}
+  30%{transform:translateX(-4px) scale(.99)}
+  40%{transform:translateX(4px) scale(1)}
+  50%{transform:translateX(-2px) scale(1)}
+  60%,100%{transform:translateX(0) scale(1)}
+}
+@media(prefers-reduced-motion:reduce){
+  .rune-effekseer-stage[data-ceremony="summoning"] .rune-effekseer-glyph-position{animation:none!important}
+}
 .rune-effekseer-stage[data-rune="彩"] .rune-effekseer-glyph{
  color:var(--loc-text);
  background:linear-gradient(100deg,#ff6374 4%,#ffb34f 19%,#fce87a 33%,#64eeb4 49%,#72c5ff 65%,#aa91ff 81%,#ef7ecc 97%);
