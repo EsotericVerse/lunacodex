@@ -519,9 +519,9 @@ function AppShellInner({children}){
         :editTabHref('search/manage','section','publish')+'&edit=1'}
   ];
   const editTabs=[
-    {id:'save',icon:'save',label:isFeatureEditMode?translateUiField(activeLocale,'暫存'):translateUiField(activeLocale,'儲存'),action:'save'},
+    {id:'save',icon:'save',label:translateUiField(activeLocale,'儲存'),action:'save'},
     ...editDestinations,
-    {id:'cancel',icon:'cancel',label:isFeatureEditMode?'取消回普通頁面':translateUiField(activeLocale,'放棄'),action:'cancel'}
+    {id:'cancel',icon:'cancel',label:translateUiField(activeLocale,'取消'),action:'cancel'}
   ];
   const featureTabs=[
     {id:'home',icon:localWorkspace?'phone':'home',label:translateUiField(activeLocale,'首頁'),href:localWorkspace?deviceNavigation.mobileHomeHref(true):navigationHref(navScopeId,'',native)+(native&&navScopeId==='loc'?'?loc_direct=1':'')},
