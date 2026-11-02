@@ -610,10 +610,12 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         setRows(imported);
         const sourceNames=[...new Set(imported.map(item=>item.raw.site))];
         setSource(sourceNames.length===1?canonicalSource(sourceNames[0]):'Mixed');
-        setStatus('已解析 '+imported.length.toLocaleString()+' 篇公開貼文；ZIP 媒體檔 '+summary.mediaFiles.toLocaleString()+
+        setStatus('已解析 '+imported.length.toLocaleString()+' 篇公開貼文（文章原始網址 '+
+          imported.filter(item=>Boolean(item.raw?.url)).length.toLocaleString()+
+          ' 筆）；ZIP 媒體檔 '+summary.mediaFiles.toLocaleString()+
           ' 個、已找到文章關聯的可建檔媒體 '+mediaPlan.media.length.toLocaleString()+
-          ' 筆（公開網址 '+mediaPlan.media.filter(item=>item.url).length.toLocaleString()+
-          ' 筆、僅 ZIP 附件 '+mediaPlan.media.filter(item=>!item.url).length.toLocaleString()+
+          ' 筆（媒體公開網址 '+mediaPlan.media.filter(item=>item.url).length.toLocaleString()+
+          ' 筆、媒體僅 ZIP 附件 '+mediaPlan.media.filter(item=>!item.url).length.toLocaleString()+
           ' 筆）；略過 '+
           (ignored+summary.rejectedRows).toLocaleString()+' 筆'+
           (privateSkipped?'（含 '+privateSkipped.toLocaleString()+' 筆非公開／不支援紀錄）':'')+
