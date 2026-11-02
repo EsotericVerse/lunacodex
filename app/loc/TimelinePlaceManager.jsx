@@ -20,6 +20,8 @@ function checked(result,label){
 }
 export default function TimelinePlaceManager({scopeId}){
   const [selectedFile,setSelectedFile]=useState(null);
+  const [rangeStart,setRangeStart]=useState('');
+  const [rangeEnd,setRangeEnd]=useState('');
   const [analyzing,setAnalyzing]=useState(false);
   const [writing,setWriting]=useState(false);
   const [progress,setProgress]=useState(null);
@@ -47,7 +49,7 @@ export default function TimelinePlaceManager({scopeId}){
     workerRef.current?.abort();
     if(analyzeTimerRef.current!==null)clearTimeout(analyzeTimerRef.current);
   },[]);
-  function parseInWorker(file,anchors){
+  function parseInWorker(file,anchors,startDate,endDate){
     if(typeof Worker==='undefined')throw Error('此瀏覽器不支援背景解析 JSON');
     return new Promise((resolve,reject)=>{
       const worker=new Worker(new URL('./timeline-analysis.worker.mjs',import.meta.url),{type:'module'});
@@ -67,7 +69,7 @@ export default function TimelinePlaceManager({scopeId}){
       };
       worker.onerror=event=>finish(null,Error(event?.message||'JSON 背景處理器載入失敗'));
       worker.onmessageerror=()=>finish(null,Error('JSON 背景處理器回傳資料失敗'));
-      try{worker.postMessage({file,anchors});}catch(error){finish(null,error);}
+      try{worker.postMessage({file,anchors,startDate,endDate});}catch(error){finish(null,error);}
     });
   }
   const cache=useResourceCache();
@@ -133,6 +135,16 @@ export default function TimelinePlaceManager({scopeId}){
   }
   async function analyze(){
     if(!enabled||!selectedFile||analyzing||writing||anchorQuery.isPending)return;
+    const from=Date.parse(rangeStart+'T00:00:00.000Z');
+    const through=Date.parse(rangeEnd+'T00:00:00.000Z');
+    const yearLater=new Date(from);
+    if(!Number.isFinite(from)||!Number.isFinite(through)){
+      setNotice('請先指定有效的起訖日期');return;
+    }
+    yearLater.setUTCFullYear(yearLater.getUTCFullYear()+1);
+    if(through<from||through>yearLater.getTime()){
+      setNotice('時間範圍最多一年，且結束日期不得早於開始日期');return;
+    }
     if(!eligible.length){setNotice('目前沒有具有座標的空間定錨點，因此沒有可補寫的 place_id。');return;}
     const run=++runRef.current;
     const timer=setTimeout(()=>{
@@ -148,7 +160,7 @@ export default function TimelinePlaceManager({scopeId}){
     try{
       if(selectedFile.size>MAX_TIMELINE_BYTES)throw Error('Timeline JSON 超過檔案大小上限，請按年度拆分後匯入');
       setProgress({done:0,total:0,message:'正在瀏覽器背景處理 Timeline JSON…'});
-      const {visitCount,matched}=await parseInWorker(selectedFile,eligible);
+      const {visitCount,matched}=await parseInWorker(selectedFile,eligible,rangeStart,rangeEnd);
       if(run!==runRef.current)return;
       const windows=matched.windows;
       if(!windows.length){
@@ -157,18 +169,18 @@ export default function TimelinePlaceManager({scopeId}){
         setNotice('沒有任何 Timeline 造訪點落在既有空間定錨點 500 公尺內；不更新文章。');
         return;
       }
-      // Timeline review is deliberately limited to one calendar year.
-      const years=new Set(windows.map(w=>w.from.slice(0,4)));
-      if(years.size!==1)throw Error('Timeline 每次僅能比對一個年度，請分年度匯出 JSON');
-      const year=Number([...years][0]);
-      if(!Number.isInteger(year)||year<1900||year>9998)
-        throw Error('Timeline 年度無效');
-      if(windows.some(w=>w.to.slice(0,4)!==String(year)&&
-        w.to!==String(year+1)+'-01-01T00:00:00.000Z'))
-        throw Error('Timeline 每次僅能比對一個年度，請分年度匯出 JSON');
-      const startDate=String(year)+'-01-01';
-      const nextDate=String(year+1)+'-01-01';
+      const startDate=rangeStart;
+      const nextDate=new Date(Date.parse(rangeEnd+'T00:00:00.000Z')+86400000).toISOString().slice(0,10);
       const articleMatches=[];
+      const windowsByDay=new Map();
+      for(const window of windows){
+        const start=Date.parse(window.from),end=Date.parse(window.to);
+        for(let day=Math.floor(start/86400000);day<=Math.floor((end-1)/86400000);day++){
+          const key=new Date(day*86400000).toISOString().slice(0,10);
+          if(!windowsByDay.has(key))windowsByDay.set(key,[]);
+          windowsByDay.get(key).push({...window,startMs:start,endMs:end});
+        }
+      }
       // Use the existing Galaxy.date B-tree for a single annual scan.
       // Keep the result locally for exact visit-time matching: no per-window database calls.
       let offset=0;
@@ -186,8 +198,9 @@ export default function TimelinePlaceManager({scopeId}){
           const timestamp=Date.parse(String(row.createtime||''));
           if(!Number.isFinite(timestamp))continue;
           // Visit intervals were already filtered against Point coordinates in the worker.
-          for(const window of windows){
-            if(Date.parse(window.from)<=timestamp&&timestamp<Date.parse(window.to)){
+          const articleDay=new Date(timestamp).toISOString().slice(0,10);
+          for(const window of windowsByDay.get(articleDay)||[]){
+            if(window.startMs<=timestamp&&timestamp<window.endMs){
               articleMatches.push({
                 uid:row.uid,title:row.title,createtime:row.createtime,
                 place_id:row.place_id,window
@@ -301,7 +314,7 @@ export default function TimelinePlaceManager({scopeId}){
   if(!enabled)return <p className="scope-status">請先選擇個別 Scope，LOC 不執行跨 Scope 的行蹤比對。</p>;
   return <section className="loc-card scope-feature-card" aria-label="Google Timeline 地點整理">
     <h3>地點整理 · Google Timeline</h3>
-    <p className="scope-status">Timeline JSON 只在瀏覽器本機背景解析，每次限單一年度。先使用 date 查出同年度文章，再於瀏覽器比對時間及 500 公尺內既有定錨點，只列出 place_id 尚未填寫的文章；按定錨點集中審查。只補寫 place_id，不改 location，不儲存私人行蹤。</p>
+    <p className="scope-status">Timeline JSON 只在瀏覽器本機背景解析，每次可指定日期區間，最長一年。先使用 date 查出區間內文章，再於瀏覽器比對時間及 500 公尺內既有定錨點，只列出 place_id 尚未填寫的文章；按定錨點集中審查。只補寫 place_id，不改 location，不儲存私人行蹤。</p>
     <div className="scope-management-fields">
       <label>選擇 Google Timeline JSON
         <input ref={fileRef} type="file" accept=".json,application/json" disabled={analyzing||writing}
@@ -310,11 +323,17 @@ export default function TimelinePlaceManager({scopeId}){
             setSelectedFile(file);
           }}/>
       </label>
+      <label>開始日期（含當日）
+        <input type="date" value={rangeStart} disabled={analyzing||writing} onChange={e=>{setRangeStart(e.target.value);setAnalysis(null);}}/>
+      </label>
+      <label>結束日期（含當日，最多間隔一年）
+        <input type="date" value={rangeEnd} disabled={analyzing||writing} onChange={e=>{setRangeEnd(e.target.value);setAnalysis(null);}}/>
+      </label>
       <p className="scope-status">可比對空間定錨點：{eligible.length.toLocaleString()}；只辨識造訪地點，移動路線不直接視為文章的確定位置。</p>
     </div>
     {anchorQuery.error?<p role="alert" className="scope-status scope-error">讀取定錨點失敗：{friendlyError(anchorQuery.error)}</p>:null}
     <div className="scope-stat-controls">
-      <button type="button" className="loc-button" disabled={!selectedFile||analyzing||writing||anchorQuery.isPending||Boolean(anchorQuery.error)}
+      <button type="button" className="loc-button" disabled={!selectedFile||!rangeStart||!rangeEnd||analyzing||writing||anchorQuery.isPending||Boolean(anchorQuery.error)}
         onClick={analyze}>{analyzing?'比對中…':'分析 JSON 並預覽'}</button>
       <button type="button" className="loc-button" disabled={writing} onClick={reset}>清除暫存／重新選檔</button>
       {analyzing?<button type="button" className="loc-button" onClick={()=>{
