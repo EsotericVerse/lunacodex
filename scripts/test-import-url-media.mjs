@@ -88,7 +88,7 @@ test('media timestamp retains own source time, otherwise inherits post time',()=
 test('full importer passes article dates to ZIP and linked media-only records',()=>{
   const panel=readFileSync(new URL('../app/loc/ManagementImportPanel.jsx',import.meta.url),'utf8');
   assert.match(panel,/const articleTimes=new Map\(analyzed\.valid\.map\(row=>\[String\(row\.uid\),row\.createtime\]\)\)/);
-  assert.match(panel,/archiveEvidence,new Set\(knownArticleIds\.keys\(\)\),articleTimes/);
+  assert.match(panel,/eligibleArchiveEvidence,new Set\(knownArticleIds\.keys\(\)\),articleTimes/);
   assert.match(panel,/createtime:record\.createtime\|\|articleTimes\.get\(owner\)\|\|null/);
 });
 
@@ -201,7 +201,7 @@ test('nested attribute audit reports when capped rather than pretending complete
 });
 
 
-test('Meta candidate CDN URL is recovered and paired with its original filename',()=>{
+test('Meta candidate CDN URL is retained without leaking the ZIP-local filename',()=>{
   const url='https://cdn.example.test/asset?token=valid';
   const refs=archiveAttachmentReferences({media:[{
     uri:'photos/holiday.jpg',
@@ -214,7 +214,7 @@ test('Meta candidate CDN URL is recovered and paired with its original filename'
   const plan=prepareArchiveMedia(evidence,new Set(['ARTICLE1']));
   assert.equal(plan.media.length,1);
   assert.equal(plan.media[0].url,url);
-  assert.match(plan.media[0].title,/holiday\.jpg$/);
+  assert.equal(plan.media[0].title,'圖片');
   assert.equal(plan.media[0].__article_uid,'ARTICLE1');
 });
 
