@@ -15,30 +15,40 @@ const FIELDS=Object.freeze([
     {key:'display',title:'cultureDisplay',options:[['density','prefDensityDefault'],['keywords','prefKeywords']]},
     {key:'unit',title:'cultureUnit',options:[['day','prefDayDefault'],['week','prefWeek'],['month','prefMonth'],['year','prefYear']]},
     {key:'sort',title:'cultureSort',options:[['desc','prefLatestDefault'],['asc','prefOldest']]},
-    {key:'list',title:'featureListTitle',options:[['visible','featureListVisible'],['admin','featureListAdminAll']]}
+    {key:'list',title:'featureListTitle',checkbox:true}
   ]},
   {key:'trace',title:'traceSettings',fields:[
     {key:'display',title:'traceDisplay',options:[['anchor','prefAnchorDefault'],['path','prefPath'],['trace','prefTrace']]},
     {key:'time',title:'traceTime',options:[['none','prefNoneDefault'],['period','prefPeriod'],['era','prefEra']]},
     {key:'sort',title:'traceSort',options:[['desc','prefLatestDefault'],['nearest','prefNearest']]},
-    {key:'list',title:'featureListTitle',options:[['visible','featureListVisible'],['admin','featureListAdminAll']]}
+    {key:'list',title:'featureListTitle',checkbox:true}
   ]},
   {key:'statics',title:'staticsSettings',fields:[
     {key:'display',title:'staticsDisplay',options:[['source','prefSourceDefault'],['media_type','prefMedia']]},
     {key:'unit',title:'staticsUnit',options:[['day','prefDayDefault'],['week','prefWeek'],['month','prefMonth'],['year','prefYear']]},
     {key:'sort',title:'staticsSort',options:[['desc','prefLatestDefault'],['asc','prefOldest']]},
-    {key:'list',title:'featureListTitle',options:[['visible','featureListVisible'],['admin','featureListAdminAll']]}
+    {key:'list',title:'featureListTitle',checkbox:true}
   ]},
   {key:'search',title:'searchSettings',fields:[
     {key:'field',title:'searchField',options:[['content','prefContentDefault'],['title','prefTitle']]},
     {key:'sort',title:'searchSort',options:[['asc','prefOldestDefault'],['desc','prefLatest']]},
-    {key:'list',title:'featureListTitle',options:[['visible','featureListVisible'],['admin','featureListAdminAll']]}
+    {key:'list',title:'featureListTitle',checkbox:true}
   ]}
 ]);
 const SELECTED=Object.freeze({filter:[],cultureTrace:['culture','trace'],staticsSearch:['statics','search']});
 
 function SettingChoices({group,field,value,onChange,disabled,t}){
   const label=t(PATH+field.title);
+  if(field.checkbox)return <fieldset className="scope-stat-controls"
+    style={{border:0,margin:'.75rem 0',padding:0}}>
+    <legend style={{fontWeight:600,marginBottom:'.3rem'}}>{label}</legend>
+    <p className="scope-status">{t(PATH+'featureListVisibleHint')}</p>
+    <label style={{display:'inline-flex',alignItems:'center',gap:'.4rem',cursor:disabled?'default':'pointer'}}>
+      <input type="checkbox" checked={value===true} disabled={disabled}
+        onChange={event=>onChange(group,field.key,event.target.checked)}/>
+      {t(PATH+'featureListAdminAll')}
+    </label>
+  </fieldset>;
   return <fieldset className="scope-stat-controls" style={{border:0,margin:'.75rem 0',padding:0}}>
     <legend style={{fontWeight:600,marginBottom:'.3rem'}}>{label}</legend>
     <div role="group" aria-label={label} style={{display:'flex',flexWrap:'wrap',gap:'.45rem 1rem'}}>
