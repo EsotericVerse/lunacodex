@@ -195,7 +195,7 @@ export function fromAnchorRow(spec,row){
    out.address=row.type==='point'
      ?(Number.isFinite(Number(attr.longitude))&&Number.isFinite(Number(attr.latitude))&&
         attr.longitude!=null&&attr.latitude!=null
-         ?[Number(attr.longitude),Number(attr.latitude)]:(Array.isArray(attr.location)?attr.location[0]??null:attr.location??null))
+         ?[Number(attr.longitude),Number(attr.latitude)]:attr.location??null)
      :null;
    out.times=[];
    out.route_list=attr.path?.length?{routes:attr.path,segments:[]}:{};
@@ -422,17 +422,9 @@ class UnifiedQuery{
         // attr is the single source of typed content. Merge partial edits
         // without losing existing UID relationships, dates, or media URLs.
         const merged={...(read.data.attr||{}),...(mapped.attr||{})};
-        if(spec.kind==='trace'&&read.data.type==='point'&&
-          Array.isArray(read.data.attr?.location)&&typeof merged.location==='string'){
-          // Changing a postal address must not erase saved point-name aliases.
-          const primary=merged.location.trim();
-          merged.location=[primary,...read.data.attr.location.filter(name=>
-            typeof name==='string'&&name.trim()&&name!==primary)];
-        }
         if(spec.kind==='trace'){
           if(hasOwn(this.values,'address')&&this.values.address==null){
-            delete merged.longitude;delete merged.latitude;
-            if(!Array.isArray(merged.location))delete merged.location;
+            delete merged.longitude;delete merged.latitude;delete merged.location;
           }
           if(hasOwn(this.values,'anchor_list')&&!this.values.anchor_list?.length)
             delete merged.point;
