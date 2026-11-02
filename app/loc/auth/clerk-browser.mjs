@@ -29,9 +29,14 @@ export async function loadLocClerk(){
       throw new Error('Invalid LOC Clerk publishable key');
     const origin=secureOrigin(cfg.frontendApiUrl);
     if(!window.Clerk){
-      await loadScript(origin+'/npm/@clerk/ui@1/dist/ui.browser.js');
-      await loadScript(origin+'/npm/@clerk/clerk-js@6/dist/clerk.browser.js',
-        {'data-clerk-publishable-key':cfg.publishableKey});
+      // Two independent static bundles; clerk.load() below is the only step
+      // that needs both finished, so fetch them concurrently instead of
+      // serially to cut first-load latency.
+      await Promise.all([
+        loadScript(origin+'/npm/@clerk/ui@1/dist/ui.browser.js'),
+        loadScript(origin+'/npm/@clerk/clerk-js@6/dist/clerk.browser.js',
+          {'data-clerk-publishable-key':cfg.publishableKey})
+      ]);
     }
     const clerk=window.Clerk;
     if(!clerk)throw new Error('Clerk SDK did not initialize');
