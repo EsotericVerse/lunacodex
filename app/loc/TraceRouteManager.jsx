@@ -2,7 +2,7 @@
 
 import {useEffect,useMemo,useRef,useState} from 'react';
 import dynamic from 'next/dynamic';
-import PopularSelect from './PopularSelect';
+import Select from 'react-select';
 import {planTraceVisibilityUids} from './trace-visibility-plan.mjs';
 import {useSearchParams} from 'next/navigation';
 import {useAccount} from './use-account';
@@ -328,7 +328,7 @@ export default function TraceRouteManager({scopeId}){
       <div className="loc-trace-route-pickers">
         <div className="loc-trace-route-autocomplete">
           <label htmlFor="trace-spool-title-search">搜尋地點標題</label>
-          <PopularSelect scopeId={owner} kind="space" inputId="trace-spool-title-search" instanceId="trace-spool-title-search"
+          <Select inputId="trace-spool-title-search" instanceId="trace-spool-title-search"
             options={options.filter(opt=>!spool.includes(opt.value))}
             value={selectedAnchor} onChange={setSelectedAnchor}
             isClearable isDisabled={busy||anchorIndex.isPending}
@@ -346,7 +346,7 @@ export default function TraceRouteManager({scopeId}){
       <h4>{type==='path'?'安排路線站點順序':'安排痕跡線段'}</h4>
       {type==='path'?<>
         <div className="loc-trace-route-pickers">
-          <PopularSelect scopeId={owner} kind="space" inputId="trace-queue-stop" instanceId="trace-queue-stop"
+          <Select inputId="trace-queue-stop" instanceId="trace-queue-stop"
             options={availableRoadOptions} value={availableRoadOptions.find(x=>x.value===selectedStop)||null}
             onChange={option=>setSelectedStop(option?.value||'')} isClearable
             isDisabled={busy||queue.length>=MAX_ROAD} placeholder="選擇下一站（選過即消失）"
