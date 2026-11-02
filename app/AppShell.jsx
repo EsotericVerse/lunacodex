@@ -586,22 +586,28 @@ function AppShellInner({children}){
     {children}
     {restoreHomeEdit?<HomeEditModeRestore scopeId={scopeId}/>:null}
     <nav className="scope-feature-dock" aria-label={translateUiField(activeLocale,'固定功能選單')} data-scope={localWorkspace?'local':scopeId}>
-      {editingDockVisible?editTabs.map(tab=>tab.action
-        ?<button type="button" key={tab.id}
-          disabled={editDock.busy&&tab.action!=='cancel'}
-          onClick={()=>tab.action==='save'
-            ?editDock.save({stayInEditMode:isFeatureEditMode})
-            :editDock.discard(navigationHref(navScopeId,isFeatureEditMode?featureEditReturn:'',native),
-              {confirmOnlyWhenDirty:isFeatureEditMode})}>
-          <BottomNavIcon name={tab.icon}/><span>{tab.label}</span>
-        </button>
-        :tab.href?<button type="button" key={tab.id} disabled={editDock.busy}
-          onClick={()=>editDock.switchTo(tab.href)}>
-          <BottomNavIcon name={tab.icon}/><span>{tab.label}</span>
-        </button>
-        :<button type="button" key={tab.id} disabled>
-          <BottomNavIcon name={tab.icon}/><span>{tab.label}</span>
-        </button>)
+      {editingDockVisible?<div className="scope-feature-dock__groups">
+        <div className="scope-feature-dock__navigation" role="group" aria-label="切換管理頁">
+          {editTabs.filter(tab=>!tab.action).map(tab=>tab.href
+            ?<button type="button" key={tab.id} disabled={editDock.busy}
+              onClick={()=>editDock.switchTo(tab.href)}>
+              <BottomNavIcon name={tab.icon}/><span>{tab.label}</span>
+            </button>
+            :<button type="button" key={tab.id} disabled>
+              <BottomNavIcon name={tab.icon}/><span>{tab.label}</span>
+            </button>)}
+        </div>
+        <div className="scope-feature-dock__actions" role="group" aria-label="儲存或放棄變更">
+          {editTabs.filter(tab=>tab.action).map(tab=><button type="button" key={tab.id}
+            disabled={editDock.busy&&tab.action!=='cancel'}
+            onClick={()=>tab.action==='save'
+              ?editDock.save({stayInEditMode:isFeatureEditMode})
+              :editDock.discard(navigationHref(navScopeId,isFeatureEditMode?featureEditReturn:'',native),
+                {confirmOnlyWhenDirty:isFeatureEditMode})}>
+            <BottomNavIcon name={tab.icon}/><span>{tab.label}</span>
+          </button>)}
+        </div>
+      </div>
       :featureTabs.map(tab=><ScopeLink key={tab.id} href={tab.href} native={native}
         aria-current={tab.id==='settings'?isSettings?'page':undefined:
           !isSettings&&(tab.id==='home'?(localWorkspace?(isMyPhone||isScopeHomepage):isScopeHomepage):currentFeature===tab.id)?'page':undefined}>
