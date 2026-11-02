@@ -199,3 +199,38 @@ test('ZIP-imported media uses linked article caption and does not manufacture a 
   assert.doesNotMatch(plan.media[0].title,/strange-name/);
   assert.equal(plan.media[0].url,'https://cdn.example.test/real.mp4');
 });
+
+test('4,243 ZIP files yield exactly the uniquely article-linked records without public URLs',()=>{
+  const collector=createArchiveEvidenceCollector();
+  const archive='fb-media-export.zip',total=4243,linked=375;
+  for(let i=0;i<total;i++){
+    const path='facebook/media/photo_'+String(i).padStart(5,'0')+'.jpg';
+    collector.onMediaEntry({path});
+    if(i<linked)collector.onRecord({
+      platform:'facebook',sourcePath:'posts/your_posts_1.json',
+      attachments:[{uri:path,mediaType:'image',url:null}]
+    },'ARTICLE01');
+  }
+  const rows=collector.rows({scopeId:'lo3rwang',archiveName:archive,archiveSize:100000});
+  const eligible=rows.filter(row=>row.referenced_by_post);
+  assert.equal(eligible.length,linked);
+  const plan=prepareArchiveMedia(eligible,new Set(['ARTICLE01']),new Map([
+    ['ARTICLE01','2026-09-18T09:00:00Z']
+  ]),new Map([['ARTICLE01','作品照片']]),new Map([['ARTICLE01','真正的文字內容']]));
+  assert.equal(plan.media.length,linked);
+  assert.equal(plan.mediaLinks.length,linked);
+  assert.equal(new Set(plan.media.map(row=>row.uid)).size,linked);
+  assert.ok(plan.media.every(row=>row.url===null&&row.meta_tags==='真正的文字內容'));
+  assert.ok(plan.media.every(row=>row.title==='作品照片'));
+  assert.ok(plan.mediaLinks.every(row=>row.uid==='ARTICLE01'));
+  assert.equal(prepareArchiveMedia(eligible,new Set(['ARTICLE01'])).media[0].uid,plan.media[0].uid);
+});
+test('JSON-only path with no confirmed ZIP file cannot manufacture URL-less media',()=>{
+  const collector=createArchiveEvidenceCollector();
+  collector.onRecord({platform:'facebook',sourcePath:'posts.json',
+    attachments:[{uri:'facebook/photo_missing.jpg',mediaType:'image'}]},'ARTICLE01');
+  const entries=collector.rows({scopeId:'lo3rwang',archiveName:'test.zip',archiveSize:100});
+  const plan=prepareArchiveMedia(entries,new Set(['ARTICLE01']));
+  assert.equal(plan.media.length,0);
+  assert.equal(plan.mediaLinks.length,0);
+});
