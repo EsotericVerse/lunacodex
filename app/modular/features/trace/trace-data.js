@@ -10,7 +10,7 @@ export const traceCurrentKey=(scopeId,route,{nativeOnly=false,includeHidden=fals
   ['trace-current',scopeId,route.uid,JSON.stringify([route.anchor_list||[],route.route_list||{}]),...(nativeOnly?['native']:[]),...(includeHidden?['manager']:[])];
 export const traceAllAnchorsKey=(scopeId,{nativeOnly=false,includeHidden=false}={})=>
   ['trace-all-anchors',scopeId,...(nativeOnly?['native']:[]),...(includeHidden?['manager']:[])];
-const VALID_ID=/^[A-Za-z0-9]{4}$/;
+const VALID_ID=/^(?:[A-Za-z0-9]{4}|[A-Za-z0-9]{8})$/;
 const TRACE_TYPES=['space_anchor','path','trace'];
 const CORE_COLUMNS='uid,trace_type,title,description,anchor_list,route_list,invisible,times,address';
 const normalizedInvisible=value=>{if(typeof value==='boolean')return value;if(value===0||value===1)return Boolean(value);throw Error('隱藏設定必須是 0 或 1');};
