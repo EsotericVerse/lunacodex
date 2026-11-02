@@ -27,7 +27,11 @@ const projectUnified=(row,id)=>{
   const projected=fromAnchorRow({kind:'trace',legacy:'trace'},row);
   const location=row.attr?.location;
   const address=typeof location==='string'?location:'';
-  return readRow({...projected,attr:row.attr,
+  const lng=row.attr?.longitude,lat=row.attr?.latitude;
+  const coordinates=lng!=null&&lat!=null&&Number.isFinite(Number(lng))&&Number.isFinite(Number(lat))
+    ?[Number(lng),Number(lat)]:null;
+  // An array of aliases is never an array of GPS coordinates.
+  return readRow({...projected,attr:row.attr,address:coordinates,
     route_list:{...projected.route_list,postal_address:address}},id);
 };
 const normalizedInvisible=value=>{if(typeof value==='boolean')return value;if(value===0||value===1)return Boolean(value);throw Error('隱藏設定必須是 0 或 1');};
