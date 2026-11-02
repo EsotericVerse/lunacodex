@@ -621,7 +621,7 @@ async function handleMcpAuthority(request,env,url,origin){
     if(!isRoot||!await allowed(scopeid,'write'))throw fail('Managed Scope write denied',403);
     if(!Object.hasOwn(MANAGED_SCOPE_TABLES,scopeid))throw fail('Managed Scope is not supported',404);
     const email=String(env.LOC_ROOT_MANAGEMENT_EMAIL||'').trim().toLowerCase();
-    if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email))
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
       throw fail('Trusted root email mapping is unavailable',503);
     return json({provider:'clerk',subject:principal.subject,scopeid,email,authorized:true},200,origin);
   }
