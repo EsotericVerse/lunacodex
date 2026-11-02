@@ -41,8 +41,8 @@ test('same name or position never silently reuses another anchor UID',()=>{
 });
 test('route composer offers React Select and does not require a county selector',()=>{
  const source=readFileSync(new URL('../app/loc/TraceRouteManager.jsx',import.meta.url),'utf8');
- assert.ok(source.includes("import PopularSelect from './PopularSelect'"));
-  assert.match(source,/<PopularSelect scopeId=\{owner\} kind="space"/);
+ assert.ok(source.includes("import Select from 'react-select'"));
+  assert.match(source,/<Select /);
  assert.ok(source.includes('onClick={addToSpool}'));
  assert.ok(!source.includes('selectedCounty'));
  assert.ok(!source.includes('county_id'));

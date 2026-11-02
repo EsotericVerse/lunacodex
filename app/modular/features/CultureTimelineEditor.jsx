@@ -1,6 +1,6 @@
 'use client';
 import {useEffect,useMemo,useRef,useState} from 'react';
-import PopularSelect from '../../loc/PopularSelect';
+
 import Select from 'react-select';
 import {useSearchParams} from 'next/navigation';
 import {useUiCopy,useUiSection} from '../../i18n/ui-locale';
@@ -403,7 +403,7 @@ export default function CultureTimelineEditor({
           ?<p className="scope-status scope-error">請先建立時間定錨點，才能新增期間。</p>:null}
         {segments.map((segment,index)=><div key={index} className="scope-culture-quick-primary">
           <label>{draft.type==='era'?'第 '+(index+1)+' 個期間':'起點'}
-            <PopularSelect scopeId={dataScope} kind={draft.type==='era'?'event':'time'} classNamePrefix="loc-react-select" isClearable={false}
+            <Select classNamePrefix="loc-react-select" isClearable={false}
               options={draft.type==='era'?eventChoices.map(row=>({value:row.uid,label:'期間｜'+row.title})):anchorOptions}
               value={draft.type==='era'
                 ?(eventByUid.has(segment.start)?{value:segment.start,label:'期間｜'+eventByUid.get(segment.start).title}:{value:segment.start,label:'已失效：'+segment.start})
@@ -413,7 +413,7 @@ export default function CultureTimelineEditor({
               noOptionsMessage={()=>'沒有符合項目'}/>
           </label>
           {draft.type==='period'?<label>結束（可只有單一定錨點）
-            <PopularSelect scopeId={dataScope} kind="time" classNamePrefix="loc-react-select" isClearable
+            <Select classNamePrefix="loc-react-select" isClearable
               options={anchorOptions.filter(option=>option.value!==segment.start)}
               value={segment.end?anchorOptionOf(segment.end):null}
               onChange={option=>updateSegment(index,'end',option?.value||'')}
@@ -435,13 +435,13 @@ export default function CultureTimelineEditor({
           {!anchorChoices.length?<p className="scope-status scope-error">請先建立時間定錨點。</p>:
           <div className="scope-culture-quick-primary">
             <label>起點
-              <PopularSelect scopeId={dataScope} kind="time" classNamePrefix="loc-react-select" isClearable
+              <Select classNamePrefix="loc-react-select" isClearable
                 options={anchorOptions} value={pairFrom}
                 onChange={setPairFrom} placeholder="搜尋定錨點標題"
                 noOptionsMessage={()=>'沒有符合項目'}/>
             </label>
             <label>終點
-              <PopularSelect scopeId={dataScope} kind="time" classNamePrefix="loc-react-select" isClearable
+              <Select classNamePrefix="loc-react-select" isClearable
                 options={anchorOptions.filter(option=>option.value!==pairFrom?.value)} value={pairTo}
                 onChange={setPairTo} placeholder="搜尋定錨點標題"
                 noOptionsMessage={()=>'沒有符合項目'}/>

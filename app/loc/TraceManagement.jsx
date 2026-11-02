@@ -2,7 +2,7 @@
 
 import {useMemo,useState} from 'react';
 import dynamic from 'next/dynamic';
-import PopularSelect from './PopularSelect';
+import Select from 'react-select';
 import {useEditDockForm} from '../modular/edit-dock';
 import {useAsyncResource,useResourceCache} from './use-async-resource';
 import {revalidateServerMetadata} from './scope-data';
@@ -139,7 +139,7 @@ function AnchorEditor({scopeId,spatial,reload}){
   return <section className="loc-card scope-feature-card loc-trace-anchor-editor">
     <h3>{editingUid?'編輯空間定錨點':'新增空間定錨點'}</h3>
     <label>編輯既有地點（直接搜尋標題）
-      <PopularSelect scopeId={scopeId} kind="space" instanceId={'trace-anchor-edit-'+scopeId} inputId={'trace-anchor-edit-'+scopeId}
+      <Select instanceId={'trace-anchor-edit-'+scopeId} inputId={'trace-anchor-edit-'+scopeId}
         options={options} isClearable value={options.find(o=>o.value===editingUid)||null}
         onChange={choice=>pickExisting(choice?.value||'')} isDisabled={busy}
         placeholder="搜尋標題，或留空新增" classNamePrefix="loc-react-select"/>
