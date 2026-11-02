@@ -1,5 +1,5 @@
-import {isUnifiedAnchorScope} from './unified-anchor-compat.mjs';
 import {flashMessage} from './flash-message.js';
+import {isUnifiedAnchorScope} from './unified-anchor-compat.mjs';
 import {assertPlainGalaxyAttributes} from './content-policy.js';
 import {DB_QUERY_BATCH_SIZE,MAX_ROWS} from './query-batch-size.mjs';
 import {parseVerifiedGoogleOAuthUser} from './oauth-identity.mjs';
