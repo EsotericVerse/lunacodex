@@ -5,7 +5,7 @@ export function publicTraceMapChoices(rows=[],scopeId='loc'){
     (row?.trace_type==='path'||row?.trace_type==='trace')&&
     (scopeId==='loc'||row?.source_scope===scopeId));
   if(scopeId!=='loc')return saved;
-  return ['lo3rwang','lrunes'].flatMap(source=>{
+  return [...new Set(saved.map(row=>row.source_scope).filter(Boolean))].flatMap(source=>{
     const own=saved.filter(row=>row.source_scope===source);
     const routes=own.filter(row=>row.trace_type==='path');
     const routeById=new Map(routes.map(row=>[row.uid,row]));

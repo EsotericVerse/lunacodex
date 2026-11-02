@@ -1,6 +1,6 @@
-// The author's Scope uses a compact numeric JSONB switch map; all other Scopes
-// keep their existing independent boolean columns.
-export const isJsonbScope=id=>String(id)==='lo3rwang';
+import {isUnifiedAnchorScope} from './unified-anchor-compat.mjs';
+// Migrated Scopes use a compact numeric JSONB switch map.
+export const isJsonbScope=id=>isUnifiedAnchorScope(id);
 const authorFeatureNames=Object.freeze({
   search_able:'search',statistics_able:'statics',culture_able:'culture',trace:'trace'
 });

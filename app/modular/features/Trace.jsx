@@ -79,7 +79,7 @@ export default function Trace({scopeId='loc'}){
   const periodScopeId=isLoc?(currentMap?.source_scope||'loc'):scopeId;
   const deepLinkedPlace=useAsyncResource({
     queryKey:['trace-open-place',periodScopeId,selectedPlaceUid],
-    enabled:supported&&Boolean(selectedPlaceUid)&&['lo3rwang','lrunes'].includes(periodScopeId),
+    enabled:supported&&Boolean(selectedPlaceUid)&&TRACE_SCOPES.includes(periodScopeId)&&periodScopeId!=='loc',
     queryFn:async()=>(await readCurrentTraceAnchors(periodScopeId,[selectedPlaceUid]))[0]||null,
     revalidateOnFocus:false,revalidateOnReconnect:false
   });
