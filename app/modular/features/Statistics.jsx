@@ -40,7 +40,6 @@ import {useAccount} from '../../loc/use-account';
 import {StatisticsFacets} from '../../loc/statistics-facets';
 import {scopeHref} from '../scope-registry';
 import ScopeLink from '../ScopeLink';
-const LrunesDailyStatisticsPanel=dynamic(()=>import('../../lrunes/DailyRuneAnalytics').then(m=>m.LrunesDailyStatisticsPanel),{loading:()=>null});
 import {STAT_VISUAL_TYPES,availableStatisticChartTypes,chartTypeGroups} from '../modules/statistics/statistics-time-zoom.mjs';
 const StatisticsMultiChart=dynamic(()=>import('../modules/statistics/StatisticsMultiChart'),{loading:()=>null});
 const PlaceStatisticsPanel=dynamic(()=>import('./trace/PlaceStatisticsPanel'),{loading:()=>null});
@@ -57,7 +56,6 @@ import {statisticsZoomWindow} from '../modules/statistics/statistics-time-zoom.m
 const CHART_TYPES=STAT_VISUAL_TYPES;
 const STAT_TYPES=['total','source','place','media_type','media_platform'];
 const STAT_TYPE_KEYS=Object.freeze({
-  daily_rune:'uiExtra.statisticsUI.dailyRune',
   total:'statistics.totalSource',
   source:'uiExtra.statisticsUI.sourceGroup',
   place:'uiExtra.statisticsUI.place',
@@ -291,7 +289,8 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   const requested=String(navigation.rankingType||'');
   const rankingType=types.includes(requested)?requested:(types[0]||'');
   const mediaDimension=MEDIA_STAT_TYPES.has(rankingType);
-  const isLrunesDaily=scopeId==='lrunes'&&rankingType==='daily_rune';
+  // All Scopes use the same article-based statistics, including lrunes.
+  const isLrunesDaily=false;
   const deviceTimeUnit=useDefaultTimeUnit();
   const {settings:userSettings,active:userActive}=useLocFeatureSettings('statics');
   const defaultTimeUnit=userActive?userSettings.unit:deviceTimeUnit;
@@ -598,7 +597,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
       </label>:null}
       </>:null}
     </div>
-    {isLrunesDaily?<LrunesDailyStatisticsPanel/>:<>
+    <>
     {rankingType==='place'?<PlaceStatisticsPanel scopeId={scopeId} range={queryRange}/>:null}
     {((mediaDimension&&mediaLoading)||(rankingType!=='place'&&!mediaDimension&&!sourceRows.error&&!sourceCatalog.error&&(sourceRows.isPending||sourceCatalog.isPending||!adminSourceReady)))?<div className="scope-stat-data-pending">
       <p className="scope-status" role="status"><UiText id="uiExtra.statisticsUI.loading"/></p>
@@ -667,7 +666,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
         sharedCatalog={mediaDimension?null:sourceCatalog}
       />}
     </StatisticsDetails>:null}
-    </>}
+    </>
   </section>;
 }
 
@@ -711,7 +710,7 @@ export default function Statistics(){
         scopeId={scopeId}
         aggregateScopes={Boolean(scope?.aggregateChildren)}
         navigation={activeNavigation}
-        types={scopeId==='lrunes'?['daily_rune',...STAT_TYPES]:STAT_TYPES}
+        types={STAT_TYPES}
         canManageSources={false}
       />
     </section>
