@@ -17,6 +17,7 @@ import PanelLoading from '../PanelLoading';
 const ADMIN_OPTIONS=Object.freeze([
   {value:'registry',label:'人員',shortLabel:'人員',description:'系統人員、Email、Table 對應及群組部署。'},
   {value:'lists',label:'名單管理',shortLabel:'名單',description:'保留名稱備註及 Email 系統黑名單。'},
+  {value:'enterpriseAuth',label:'企業認證（預備）',shortLabel:'企業認證',description:'AD／LDAP 企業登入模組預留設定；目前不啟用。'},
   {value:'network',label:'網路設定',shortLabel:'網路',description:'資料庫連線、備援及快取／ISR 平台。'},
   {value:'io',label:'系統設定',shortLabel:'系統設定',description:'系統匯入、匯出及批次限制。'},
   {value:'featureHero',label:'功能區塊設定',shortLabel:'區塊',description:'編輯功能頁 Hero 與展示資源。'},
@@ -31,6 +32,7 @@ function Login({account}){
   </FeaturePage>;
 }
 
+const EnterpriseAuthReserved=dynamic(()=>import('./admin-panels/EnterpriseAuthReserved'),{loading:PanelLoading});
 const DatabaseTarget=dynamic(()=>import('./admin-panels/DatabaseTarget'),{loading:PanelLoading});
 const IsrDomainTarget=dynamic(()=>import('./admin-panels/IsrDomainTarget'),{loading:PanelLoading});
 const RuntimeIoSettings=dynamic(()=>import('./admin-panels/RuntimeIoSettings'),{loading:PanelLoading});
@@ -85,6 +87,7 @@ export default function AdminHomeView({scopeGroup}){
           <DatabaseTarget scopeGroup={scopeGroup}/>
           <IsrDomainTarget/>
         </>:null}
+        {section==='enterpriseAuth'?<EnterpriseAuthReserved/>:null}
         {section==='io'?<RuntimeIoSettings/>:null}
         {section==='featureHero'?<FeatureHeroImages/>:null}
         {section==='themes'?<ThemeEditor/>:null}
