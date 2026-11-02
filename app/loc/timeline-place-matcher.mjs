@@ -28,7 +28,9 @@ export function timelineCoordinates(input){
   return Number.isFinite(lat)&&Number.isFinite(lng)&&Math.abs(lat)<=90&&Math.abs(lng)<=180
     ?{lat,lng}:null;
 }
-export function timelineVisitWindows(document){
+export function timelineVisitWindows(document,{startDate='',endDate=''}={}){
+  const minTime=startDate?Date.parse(startDate+'T00:00:00.000Z'):-Infinity;
+  const maxTime=endDate?Date.parse(endDate+'T00:00:00.000Z')+86400000:Infinity;
   const root=Array.isArray(document)?document
     :Array.isArray(document?.semanticSegments)?document.semanticSegments
     :Array.isArray(document?.timelineObjects)?document.timelineObjects:null;
@@ -43,14 +45,14 @@ export function timelineVisitWindows(document){
     const duration=legacy?.duration||{};
     const from=asTime(item.startTime??duration.startTimestamp??duration.startTimestampMs??item.startTimestamp);
     const to=asTime(item.endTime??duration.endTimestamp??duration.endTimestampMs??item.endTimestamp);
-    if(!point||from===null||to===null||from>to)continue;
+    if(!point||from===null||to===null||from>to||to<=minTime||from>=maxTime)continue;
     const probability=modern?.topCandidate?.probability??modern?.probability;
     const lowConfidence=(probability!=null&&Number.isFinite(Number(probability))&&Number(probability)<0.5)
       ||/LOW/i.test(String(legacy?.placeConfidence||''));
     // Long visits can be split for indexed database range lookups.
     const end=Math.max(from+1,to);
-    for(let start=from;start<end;start+=12*60*60*1000){
-      const stop=Math.min(end,start+12*60*60*1000);
+    for(let start=Math.max(from,minTime);start<Math.min(end,maxTime);start+=12*60*60*1000){
+      const stop=Math.min(end,maxTime,start+12*60*60*1000);
       const key=[start,stop,point.lat.toFixed(6),point.lng.toFixed(6)].join('|');
       if(seen.has(key))continue;
       seen.add(key);
