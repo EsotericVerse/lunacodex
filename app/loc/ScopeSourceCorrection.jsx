@@ -9,7 +9,7 @@ import {useEditDock,useEditDockForm} from '../modular/edit-dock';
 import {defaultScopeData} from './scope-data';
 import {canonicalImportSourceName} from './source-name.mjs';
 import {useUiLocale} from '../i18n/ui-locale';
-export default function ScopeSourceCorrection({scopeId}){
+function ScopeSourceCorrectionEditor({scopeId}){
   const account=useAccount();
   const {locale}=useUiLocale();
   const l=({
@@ -81,7 +81,10 @@ export default function ScopeSourceCorrection({scopeId}){
   if(!allowed)return <p className="scope-status scope-error" role="alert">{l.denied}</p>;
   return <section className="loc-card scope-feature-card">
     <h2>{l.title}</h2>
-    {sourceLists.error?<p role="alert" className="scope-status scope-error">無法載入來源清單：{String(sourceLists.error.message||sourceLists.error)}</p>:null}
+    {sourceLists.error?<div className="scope-status scope-error" role="alert">
+      無法載入來源建議：{String(sourceLists.error.message||sourceLists.error)}。
+      可自行輸入來源名稱，或<button type="button" className="loc-button" disabled={busy} onClick={()=>sourceLists.refetch()}>重新載入建議</button>
+    </div>:null}
     <datalist id={'scope-source-names-'+scopeId}>{sourceOptions.map(name=><option key={name} value={name}/>)}</datalist>
     <div className="scope-management-fields">
       <label>{l.from}<input type="text" list={'scope-source-names-'+scopeId} value={before} maxLength={80} disabled={busy}
@@ -94,4 +97,24 @@ export default function ScopeSourceCorrection({scopeId}){
     {completed>0?<p role="status" className="scope-status">已更正 {completed.toLocaleString()} 篇。</p>:null}
     {notice?<p className="scope-status" role="status">{notice}</p>:null}
   </section>;
+}
+
+
+// This editor is an optional maintenance action, not an import prerequisite.
+// Keep its three source-list queries and edit-dock registration unmounted until
+// the manager deliberately opens the source correction tool.
+export default function ScopeSourceCorrection({scopeId}){
+  const [expanded,setExpanded]=useState(false);
+  const {locale}=useUiLocale();
+  const title=({
+    'zh-Hant':'匯入來源更正','zh-Hans':'导入来源更正',
+    en:'Correct import source',ja:'インポート元の修正'
+  })[locale]||'匯入來源更正';
+  return <div className="scope-source-correction">
+    <button type="button" className="loc-button"
+      aria-expanded={expanded} onClick={()=>setExpanded(value=>!value)}>
+      {expanded?'− ':'＋ '}{title}
+    </button>
+    {expanded?<ScopeSourceCorrectionEditor scopeId={scopeId}/>:null}
+  </div>;
 }
