@@ -55,17 +55,17 @@ const MEDIA_EDITOR_COLUMNS='uid,location,type,title,url,meta_tags,createtime';
 const MEDIA_ATTR_ORDER=['uid','location','type','url','meta_tags','createtime'];
 const MEDIA_ATTR_FIELDS=MEDIA_ATTR_ORDER.map(key=>({key,readOnly:key==='uid',kind:key==='createtime'?'date':'text'}));
 
-const GALAXY_EDITOR_COLUMNS='uid,title,content,createtime,location,place_id,searchable,UpdateTime,url,source_id,target_id,ref_id,site,media_link,statistics_able';
+const GALAXY_EDITOR_COLUMNS='uid,title,content,createtime,location,place_id,searchable,UpdateTime,url,source_id,target_id,ref_id,site,media_link,able';
 
 const GALAXY_ATTR_ORDER=Object.freeze([
   'uid','title','content','createtime','location','place_id',
-  'searchable','UpdateTime','url','source_id','target_id','ref_id','site',
-  'media_link','statistics_able'
+  'UpdateTime','url','source_id','target_id','ref_id','site',
+  'media_link',...['statics','culture','search','trace','list','keywords','game','extract'].map(k=>'able_'+k)
 ]);
 const GALAXY_ATTR_FIELDS=Object.freeze(GALAXY_ATTR_ORDER.map(key=>({
   key,
   readOnly:['uid','title','content','UpdateTime'].includes(key),
-  kind:['searchable','statistics_able'].includes(key)?'boolean':
+  kind:key.startsWith('able_')?'boolean':
     ['target_id','media_link'].includes(key)?'array':
     key==='createtime'?'date':'text'
 })));
