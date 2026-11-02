@@ -284,8 +284,8 @@ Deno.serve(async (request) => {
   let resolvingTarget = false;
   try {
     if(body.kind==="mcp-read"||body.kind==="mcp-search"){
-      // MCP OAuth is verified by Clerk AND the independent LOC Authority.
-      // This owner-only path does not accept arbitrary SQL, tables or filters.
+      // A Clerk OAuth token is separately verified by the LOC Authority.
+      // This owner-only route accepts fixed read shapes, not arbitrary SQL.
       if(!verifiedMcp||role!=="authenticated")
         return json({error:{message:"Verified MCP Scope permission required"}},403);
       if(requestedTarget!=="configured")
@@ -321,8 +321,7 @@ Deno.serve(async (request) => {
             from ${table} where uid=${uid} limit 1`.execute(trx);
           return result.rows;
         }
-        const pattern="%"+String(query).trim().replace(/[\\%_]/g,"\\    if(body.kind==="mcp-sync"){
-      if(!verifiedMcp||role!=="authenticated")")+"%";
+        const pattern="%"+String(query).trim().replace(/[\\%_]/g,"\\$&")+"%";
         const result=await sql`select uid,title,date,createtime from ${table}
           where title ilike ${pattern} or content ilike ${pattern}
           order by createtime desc nulls last limit ${Number(limit)}`.execute(trx);
