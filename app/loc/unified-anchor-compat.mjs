@@ -206,7 +206,7 @@ export function fromAnchorRow(spec,row){
  }else if(spec.kind==='media'){
    out.url=attr.url??null;out.meta_tags=row.description??null;
    out.createtime=null;out.location=null;
-   if(row.type==='suno'&&/\\/playlist\\//.test(String(attr.url||'')))out.type='播放清單';
+   if(row.type==='suno'&&String(attr.url||'').includes('/playlist/'))out.type='播放清單';
  }
  return out;
 }
