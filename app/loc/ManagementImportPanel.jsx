@@ -839,8 +839,13 @@ function UniversalImport({scopeId,format,onFormatChange}) {
           }
         }
       }):new Map();
+      const ambiguousById=matchesById.ambiguous||[];
+      const ambiguousByIdUids=new Set(ambiguousById.map(row=>row.uid));
       const reservedSavedUids=new Set([...matchesById.values()].map(row=>String(row.uid)));
-      const remaining=existingCandidates.filter(row=>!matchesById.has(String(row.uid)));
+      // Ambiguous site IDs must not fall through into timestamp matching,
+      // which could choose a different article and silently overwrite it.
+      const remaining=existingCandidates.filter(row=>
+        !matchesById.has(String(row.uid))&&!ambiguousByIdUids.has(String(row.uid)));
       const existingByTime=remaining.length?await matchExistingImportByCreatedAt(remaining,{
         onProgress:p=>showProgress('依網站與發文時間比對',p.completed,p.total),
         readTimestamps:(times,consumePage,site,report)=>readImportCandidatesByTimeWindows(times,{
@@ -855,7 +860,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       // this comparison exists to catch) and never allowed to abort the rest
       // of the batch — it is excluded from this run and reported for manual
       // review instead.
-      const ambiguousGroups=existingByTime.ambiguous||[];
+      const ambiguousByTime=existingByTime.ambiguous||[];
+      const ambiguousGroups=[...ambiguousById,...ambiguousByTime];
       if(ambiguousGroups.length){
         const ambiguousUids=new Set(ambiguousGroups.map(group=>group.uid));
         unique=unique.filter(record=>!ambiguousUids.has(String(record.uid)));
@@ -1043,13 +1049,16 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         knownArticleIds,galaxy,galaxyMedia,t,
         onProgress:p=>showProgress(p.stage,p.completed,p.total||0)
       });
-      const skipped=analyzed.invalid.length+analyzed.skippedByRange+duplicateCount;
+      const skipped=analyzed.invalid.length+analyzed.skippedByRange+
+        duplicateCount+ambiguousGroups.length;
       showProgress('匯入完成',1,1);
       setStatus(t('uiExtra.importUI.importLinkedComplete',{articles:result.inserted,media:mediaSummary.created,linked:mediaSummary.connected,skipped})+
         (result.conflicts?'；UID 衝突未建立文章／媒體關聯 '+result.conflicts.toLocaleString()+' 筆。':'')+
         '；已更新既有文章 '+updated.toLocaleString()+' 筆，沿用空間定錨點 '+placeAnchors.reused.toLocaleString()+' 筆，新增空間定錨點 '+placeAnchors.created.toLocaleString()+' 筆，新增日期定錨 '+timeAnchors.created.toLocaleString()+' 筆，沿用日期定錨 '+timeAnchors.reused.toLocaleString()+' 筆，補入打卡時間 '+recordedVisits.toLocaleString()+' 筆，未匹配地點 '+placeAnchors.unmatchedCoordinates.toLocaleString()+' 組。'+
-        (ambiguousGroups.length?'；同一網站同一發文時間有多篇文章、無法唯一比對而未匯入 '+ambiguousGroups.length.toLocaleString()+' 筆，需人工確認後重新匯入：'+
-          ambiguousGroups.slice(0,5).map(group=>group.site+' / '+group.createtime).join('、')+(ambiguousGroups.length>5?' 等':'')+'。':''));
+        (ambiguousGroups.length?'；來源文章 ID 或發文時間對應多篇既有文章，無法唯一比對而暫不匯入 '+
+          ambiguousGroups.length.toLocaleString()+' 筆（其他文章繼續處理）。待確認：'+
+          ambiguousGroups.slice(0,5).map(group=>group.site+' / '+
+            (group.site_id||group.createtime)).join('、')+(ambiguousGroups.length>5?' 等':'')+'。':''));
       setRows([]);setArchiveEvidence([]);setGeoPlaceCandidates([]);
       if(nativeLocal)window.dispatchEvent(new Event('loc-local-data-changed'));
     }catch(error){

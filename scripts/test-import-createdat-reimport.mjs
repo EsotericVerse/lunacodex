@@ -47,12 +47,50 @@ test('missing site_id does not invoke native ID query',async()=>{
   });
   assert.equal(matches.size,0);
 });
-test('duplicate persisted platform and site_id fails before writing',async()=>{
+test('duplicate persisted platform IDs match only a unique exact timestamp',async()=>{
+  const earlier={...post('OLD00001','Instagram','ig-1'),createtime:'2024-09-24T17:36:16Z'};
+  const later={...post('OLD00002','Instagram','ig-1'),createtime:'2024-10-01T15:34:12Z'};
+  const incoming={...post('NEW00001','Instagram','ig-1'),createtime:later.createtime};
+  const matches=await matchExistingImportBySiteId([incoming],{
+    readSiteIds:async()=>[earlier,later]
+  });
+  assert.equal(matches.get(incoming.uid)?.uid,'OLD00002');
+  assert.equal(matches.ambiguous.length,0);
+});
+
+test('conflicted saved site IDs with no unique timestamp are held for review',async()=>{
+  const saved=[
+    {...post('OLD00001','Instagram','ig-1','identical'),createtime:'2024-09-24T17:36:16Z'},
+    {...post('OLD00002','Instagram','ig-1','identical'),createtime:'2024-10-01T15:34:12Z'}
+  ];
+  const incoming={...post('NEW00001','Instagram','ig-1','identical'),
+    createtime:'2024-10-02T00:00:00Z'};
+  const unrelated=post('NEW00002','Instagram','ig-2');
+  const matches=await matchExistingImportBySiteId([incoming,unrelated],{
+    readSiteIds:async()=>[...saved]
+  });
+  assert.equal(matches.has(incoming.uid),false);
+  assert.deepEqual(matches.ambiguous.map(r=>r.uid),[incoming.uid]);
+  assert.deepEqual(matches.ambiguous[0].saved_uids,['OLD00001','OLD00002']);
+});
+
+test('duplicated source IDs with identical timestamps stay ambiguous',async()=>{
   const incoming=post('NEW00001','Instagram','ig-1');
-  await assert.rejects(()=>matchExistingImportBySiteId([incoming],{
-    readSiteIds:async()=>[post('OLD00001','Instagram','ig-1'),
-      post('OLD00002','Instagram','ig-1')]
-  }),/多筆相同平台與 site_id/);
+  const saved=[post('OLD00001','Instagram','ig-1'),post('OLD00002','Instagram','ig-1')];
+  const matches=await matchExistingImportBySiteId([incoming],{readSiteIds:async()=>saved});
+  assert.equal(matches.size,0);
+  assert.equal(matches.ambiguous.length,1);
+});
+
+test('ambiguous ID rows cannot enter time fallback or insert, but other rows continue',()=>{
+  const panel=readFileSync(new URL('../app/loc/ManagementImportPanel.jsx',import.meta.url),'utf8');
+  const mark=panel.indexOf('const ambiguousById=matchesById.ambiguous||[];');
+  const exclude=panel.indexOf('!ambiguousByIdUids.has(String(row.uid))');
+  const time=panel.indexOf('await matchExistingImportByCreatedAt(remaining,');
+  const filter=panel.indexOf('unique=unique.filter(record=>!ambiguousUids.has(String(record.uid)));');
+  const insert=panel.indexOf('const newArticleTotal=unique.length-existingBySiteId.size');
+  assert.ok(mark>0&&exclude>mark&&time>exclude&&filter>time&&insert>filter);
+  assert.match(panel,/duplicateCount\+ambiguousGroups.length/);
 });
 test('paged lookup ignores all unrelated source platforms without accumulating pages',async()=>{
   const incoming=post('NEW00001','Facebook','fb-100');
