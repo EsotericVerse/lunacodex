@@ -1127,7 +1127,6 @@ export async function rpcLocal(name,args={}){
     case 'read_scope_category_totals':return readScopeCategoryTotalsLocal(args);
     case 'read_scope_earliest':return readScopeEarliestLocal(args);
     case 'read_keyword_class_by_uid':return readKeywordClassLocal(args);
-    case 'read_keyword_tree_catalog':return readKeywordTreeCatalogLocal(args);
     case 'read_shared_keyword_classes':return readSharedKeywordClassesLocal(args);
     case 'read_keyword_tree_summary':return readKeywordTreeSummaryLocal(args);
     case 'log_search_keyword':return {data:null,error:null};
