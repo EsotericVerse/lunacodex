@@ -14,7 +14,7 @@ const granted=(grants,id,level)=>level==='global'
 const pending=()=>({loading:true,user:null,authorizer:null,error:''});
 
 // The first management entry verifies Clerk and Scope together. Subsequent
-// management page transitions reuse that signed-in identity's verified grant.
+// transitions within the same document reuse that identity's verified grant.
 // Server RLS still validates writes; expired editor sessions reverify.
 export default function ManagementAccess({scopeId,level='scope',featureId='manage',children}){
   const account=useAccount({enabled:false}),dock=useEditDock();
