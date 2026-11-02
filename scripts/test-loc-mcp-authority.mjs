@@ -6,6 +6,7 @@ import {webcrypto} from 'node:crypto';
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
 const source=readFileSync(new URL('../workers/loc-authority/index.mjs',import.meta.url),'utf8')
   .replace("import { DurableObject } from 'cloudflare:workers';",'')
+  .replace("import {validateKeywordCategoryEntry,hashKeywordCategory,assertPublicKeywordClass} from './keyword-categories.mjs';",'')
   .replace('export class LocAuthorityState','class LocAuthorityState')
   .replace('export default {','const worker={');
 const {LocAuthorityState}=new Function('DurableObject',
@@ -163,6 +164,54 @@ test('100 concurrent matching searches make one provider request per Scope',asyn
   assert.equal(rows.length,100);
   assert.equal(rows[0].results[0].uid,'1B066147');
   assert.equal(reads,1);
+});
+
+
+test('managed private Scope uses the verified OAuth Kysely edge for search and exact UID read',async()=>{
+  const {do:authority}=state();
+  const calls=[];
+  globalThis.fetch=async(url,options)=>{
+    const body=JSON.parse(options.body);
+    calls.push({url:String(url),body,auth:options.headers.authorization});
+    return Response.json({data:body.kind==='mcp-search'?
+      [{uid:'561DFE49',title:'PR #865',date:'2026-11-02'}]:
+      [{uid:'561DFE49',title:'PR #865',content:'Private changelog',
+        searchable:false,date:'2026-11-02'}]});
+  };
+  const bearer='eyJ.authorized.mcp';
+  const found=await authority.mcpSearch('lo3rwang','PR #865',5,bearer);
+  assert.equal(found.results[0].uid,'561DFE49');
+  const read=await authority.mcpRead('lo3rwang','561DFE49',0,100,bearer);
+  assert.equal(read.found,true);
+  assert.equal(read.content,'Private changelog');
+  assert.deepEqual(calls.map(x=>x.body.kind),['mcp-search','mcp-read']);
+  assert.deepEqual(calls.map(x=>x.body.scopeid),['lo3rwang','lo3rwang']);
+  assert.ok(calls.every(x=>x.auth==='Bearer '+bearer));
+  assert.ok(calls.every(x=>x.url.includes('/functions/v1/loc-kysely-clerk')));
+  assert.ok(calls.every(x=>!x.url.includes('/rest/v1/')));
+});
+
+test('managed private search does not share results across OAuth callers',async()=>{
+  const {do:authority}=state();
+  let requests=0;
+  globalThis.fetch=async(_url,options)=>{
+    requests++;
+    const caller=options.headers.authorization;
+    return Response.json({data:[{uid:'561DFE49',title:caller,date:'2026-11-02'}]});
+  };
+  const first=await authority.mcpSearch('lo3rwang','PR #865',5,'eyJ.caller.one');
+  const second=await authority.mcpSearch('lo3rwang','PR #865',5,'eyJ.caller.two');
+  assert.equal(requests,2);
+  assert.notEqual(first.results[0].title,second.results[0].title);
+});
+
+test('managed private reads fail closed when no OAuth token is supplied',async()=>{
+  const {do:authority}=state();
+  let requests=0;
+  globalThis.fetch=async()=>{requests++;throw Error('Unexpected anonymous fetch');};
+  await assert.rejects(authority.mcpRead('lo3rwang','561DFE49'),/OAuth authorization required/);
+  await assert.rejects(authority.mcpSearch('lo3rwang','PR #865'),/OAuth authorization required/);
+  assert.equal(requests,0);
 });
 
 test('Scope Group membership is explicit beyond its existing built-in Scopes',async()=>{
