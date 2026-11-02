@@ -4,7 +4,7 @@
 const scopeId=/^[a-z][a-z0-9]{0,14}$/;
 const tableId=/^[a-z][a-z0-9_]{0,62}$/;
 const allowedActions=new Set(['select','insert','update','delete','upsert']);
-const publicReferences=new Set(['loc_theme','runes','runes_etc','runes_group']);
+const publicReferences=new Set(['runes','runes_etc','runes_group']);
 export function classifyPortableSqlRequest(request){
   if(!request||request.kind!=='query'||request.schema!=='silver'||
     !tableId.test(String(request.table||''))||!allowedActions.has(request.operation))
@@ -14,7 +14,7 @@ export function classifyPortableSqlRequest(request){
   // Only one self-contained scope table family is grant-addressable;
   // non-Scope global tables require a different, explicit policy.
   const match=request.table.match(/^([a-z][a-z0-9]{0,14})(?:_(galaxy|galaxy_media|keywords|blocks|trace|road|period|settings))?$/);
-  if(!match||!scopeId.test(match[1])||['manage','loc_theme','runes'].includes(match[1]))
+  if(!match||!scopeId.test(match[1])||['manage','runes'].includes(match[1]))
     throw Object.assign(new Error('Unmapped resource requires explicit Authority policy'),{httpStatus:403});
   return Object.freeze({
     public:false,scope:match[1],resource:'silver.'+request.table,
