@@ -28,7 +28,8 @@ test('LOC and ISR read the consolidated cache array, not four SQL columns',()=>{
   const root=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
   const admin=root('app/loc/runtime-config.mjs');
   const api=root('app/api/loc/_numeric-failover.mjs');
-  assert.match(admin,/const COLUMNS='id,cache,updated_at'/);
+  assert.match(admin,/const COLUMNS='id,cache'/);
+  assert.doesNotMatch(admin,/updated_at/);
   assert.match(admin,/decodeLocCache/);
   assert.match(admin,/encodeLocCache/);
   assert.match(api,/\.select\('cache'\)/);
