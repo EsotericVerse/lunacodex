@@ -106,7 +106,8 @@ export function archiveGalaxyRows(record){
       uid:parentUid,title:name,content:description||name,createtime:albumTime,
       // The 'album:' prefix marks an album so imports compare it with albums only.
       site:'Facebook',site_id:albumTime?'album:'+albumTime:null,
-      searchable:Boolean(description),statistics_able:Boolean(description),
+      able:{statics:Boolean(description),culture:Boolean(description),search:Boolean(description),
+        trace:Boolean(description),list:Boolean(description),keywords:Boolean(description),game:true,extract:true},
       ...(captions.length?{target_id:captions.map(entry=>entry.row.uid)}:{})
     };
     return [{row:parent,attachments:looseAttachments},...captions];
