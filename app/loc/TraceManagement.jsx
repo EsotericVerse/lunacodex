@@ -11,6 +11,9 @@ import {
   readTraceData,addTraceAnchor,updateTraceAnchor,renameTraceAnchorTitles,updateTraceVisibilityBulk
 } from '../modular/features/trace/trace-data';
 import {reviewReorderedCoordinateNames} from '../modular/features/trace/trace-place-names.mjs';
+import {
+  filterTraceAnchorsByText,addTraceAnchorSelection,removeTraceAnchorSelection
+} from './trace-bulk-anchor-filter.mjs';
 
 const TraceRouteManager=dynamic(()=>import('./TraceRouteManager'),{
   loading:()=> <p className="scope-status" role="status">正在開啟路線／痕跡圖管理…</p>
@@ -29,6 +32,7 @@ function AnchorEditor({scopeId,spatial,reload}){
   const [editingUid,setEditingUid]=useState('');
   const [invisible,setInvisible]=useState(false);
   const [bulkUids,setBulkUids]=useState([]);
+  const [bulkFilter,setBulkFilter]=useState('');
   const [bulkBusy,setBulkBusy]=useState(false);
   const [pendingRenames,setPendingRenames]=useState({});
   const [pendingVisibility,setPendingVisibility]=useState(null);
@@ -45,6 +49,9 @@ function AnchorEditor({scopeId,spatial,reload}){
   const [isError,setIsError]=useState(false);
   const options=useMemo(()=>ownAnchors.map(row=>({value:row.uid,label:row.title+(row.postal_address?' · '+row.postal_address:'')})),[ownAnchors]);
   const renameGroups=useMemo(()=>reviewReorderedCoordinateNames(ownAnchors),[ownAnchors]);
+  const filteredBulkAnchors=useMemo(()=>filterTraceAnchorsByText(ownAnchors,bulkFilter),
+    [ownAnchors,bulkFilter]);
+  const selectedBulkUids=useMemo(()=>new Set(bulkUids),[bulkUids]);
   const formDirty=Boolean(editingUid||title||description||postalAddress||longitude||latitude);
   const dirty=formDirty||Object.keys(pendingRenames).length>0||Boolean(pendingVisibility);
   const pickExisting=uid=>{
@@ -169,18 +176,37 @@ function AnchorEditor({scopeId,spatial,reload}){
     </details>
     <details className="scope-card">
       <summary>大量設定空間定錨點（已選 {bulkUids.length} 筆）</summary>
+      <label>以文字篩選空間定錨點（標題、地址、說明、UID）
+        <input type="search" value={bulkFilter} disabled={busy||bulkBusy}
+          onChange={event=>setBulkFilter(event.target.value)}
+          placeholder="輸入相關文字，例如：板橋"/>
+      </label>
+      <p className="scope-status" role="status">
+        符合 {filteredBulkAnchors.length} 筆／全部 {ownAnchors.length} 筆；已勾選 {bulkUids.length} 筆。切換文字篩選不會取消先前的勾選。
+      </p>
       <div className="scope-stat-controls">
-        <button type="button" className="loc-button" disabled={bulkBusy} onClick={()=>setBulkUids(ownAnchors.map(row=>row.uid))}>全選所有定錨點</button>
-        <button type="button" className="loc-button" disabled={bulkBusy} onClick={()=>{setBulkUids([]);setPendingVisibility(null);}}>清除</button>
-        <button type="button" className="loc-button" disabled={bulkBusy||!bulkUids.length} onClick={()=>bulkApply(true)}>大量隱藏</button>
-        <button type="button" className="loc-button" disabled={bulkBusy||!bulkUids.length} onClick={()=>bulkApply(false)}>大量公開</button>
+        <button type="button" className="loc-button"
+          disabled={busy||bulkBusy||!bulkFilter.trim()||!filteredBulkAnchors.length}
+          onClick={()=>setBulkUids(ids=>addTraceAnchorSelection(ids,filteredBulkAnchors))}>勾選全部符合結果</button>
+        <button type="button" className="loc-button"
+          disabled={busy||bulkBusy||!bulkFilter.trim()||!filteredBulkAnchors.length}
+          onClick={()=>setBulkUids(ids=>removeTraceAnchorSelection(ids,filteredBulkAnchors))}>取消符合結果勾選</button>
+        <button type="button" className="loc-button" disabled={busy||bulkBusy}
+          onClick={()=>setBulkUids(ownAnchors.map(row=>row.uid))}>全選所有定錨點（不限篩選）</button>
+        <button type="button" className="loc-button" disabled={busy||bulkBusy}
+          onClick={()=>{setBulkUids([]);setPendingVisibility(null);}}>清除全部勾選</button>
+        <button type="button" className="loc-button" disabled={busy||bulkBusy||!bulkUids.length}
+          onClick={()=>bulkApply(true)}>大量隱藏</button>
+        <button type="button" className="loc-button" disabled={busy||bulkBusy||!bulkUids.length}
+          onClick={()=>bulkApply(false)}>大量公開</button>
       </div>
       <div style={{maxHeight:'16rem',overflow:'auto'}}>
-        {ownAnchors.map(row=><label key={row.uid} style={{display:'block'}}>
-          <input type="checkbox" disabled={bulkBusy} checked={bulkUids.includes(row.uid)}
+        {filteredBulkAnchors.map(row=><label key={row.uid} style={{display:'block'}}>
+          <input type="checkbox" disabled={busy||bulkBusy} checked={selectedBulkUids.has(row.uid)}
             onChange={e=>setBulkUids(ids=>e.target.checked?[...ids.filter(uid=>uid!==row.uid),row.uid]:ids.filter(uid=>uid!==row.uid))}/>
           {row.title} · {row.uid}
         </label>)}
+        {!filteredBulkAnchors.length?<p className="scope-status">沒有符合文字的定錨點。</p>:null}
       </div>
       {pendingVisibility?<p className="scope-status">待儲存：{pendingVisibility.uids.length} 個地點將設定為{pendingVisibility.invisible?'隱藏':'公開'}。</p>:null}
     </details>

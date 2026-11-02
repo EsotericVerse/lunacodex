@@ -2,9 +2,43 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {runInNewContext} from 'node:vm';
 import {existsSync,readFileSync} from 'node:fs';
+import {
+  filterTraceAnchorsByText,addTraceAnchorSelection,removeTraceAnchorSelection
+} from '../app/loc/trace-bulk-anchor-filter.mjs';
 
 const pathOf=path=>new URL('../'+path,import.meta.url);
 const read=path=>readFileSync(pathOf(path),'utf8');
+
+test('bulk spatial anchor text search filters the active Scope and selects all matching UIDs without clearing other choices',()=>{
+  const anchors=[
+    {uid:'Aa12Zx90',title:'板橋車站',postal_address:'新北市板橋區',description:'鐵路'},
+    {uid:'Bb12Zx90',title:'板橋小店',postal_address:'新北市',description:'飲料'},
+    {uid:'Cc12Zx90',title:'臺北市府',postal_address:'信義區',description:'板橋辦公往返'},
+    {uid:'Dd12Zx90',title:'高雄車站',postal_address:'高雄',description:''}
+  ];
+  assert.deepEqual(filterTraceAnchorsByText(anchors,'板橋').map(row=>row.uid),
+    ['Aa12Zx90','Bb12Zx90','Cc12Zx90']);
+  assert.deepEqual(filterTraceAnchorsByText(anchors,'  車站 ').map(row=>row.uid),
+    ['Aa12Zx90','Dd12Zx90']);
+  assert.deepEqual(filterTraceAnchorsByText(anchors,'aa12zx90').map(row=>row.uid),
+    ['Aa12Zx90']);
+  assert.deepEqual(filterTraceAnchorsByText(anchors,'zzz'),[]);
+  assert.equal(filterTraceAnchorsByText(anchors,'').length,4);
+  const selected=['Dd12Zx90'];
+  const matched=filterTraceAnchorsByText(anchors,'板橋');
+  const added=addTraceAnchorSelection(selected,matched);
+  assert.deepEqual(added,['Dd12Zx90','Aa12Zx90','Bb12Zx90','Cc12Zx90']);
+  assert.deepEqual(addTraceAnchorSelection(added,matched),added,'repeat selection is idempotent');
+  assert.deepEqual(removeTraceAnchorSelection(added,matched),selected);
+  assert.deepEqual(selected,['Dd12Zx90'],'original selection is not mutated');
+  const editor=read('app/loc/TraceManagement.jsx');
+  assert.match(editor,/filteredBulkAnchors=useMemo\(\(\)=>filterTraceAnchorsByText\(ownAnchors,bulkFilter\)/);
+  assert.match(editor,/>勾選全部符合結果<\/button>/);
+  assert.match(editor,/>取消符合結果勾選<\/button>/);
+  assert.match(editor,/filteredBulkAnchors\.map\(row=>/);
+  assert.match(editor,/onClick=\{\(\)=>bulkApply\(true\)\}/);
+  assert.match(editor,/onClick=\{\(\)=>bulkApply\(false\)\}/);
+});
 
 test('Trace owns its route and Hero; explanatory Blocks remain in Search',()=>{
   const app=read('app/loc/LocApp.jsx');
