@@ -325,7 +325,7 @@ export function buildAllowlistedRpcQuery(input){
       :sql.val(value);
     return sql`${sql.id(name)} => ${parameter}`;
   });
-  const returnsRows=key==='silver.read_scope_page_copy'||key==='silver.get_my_scope_management'||key==='silver.manage';
+  const returnsRows=key==='silver.read_scope_page_copy'||key==='silver.manage';
   return {query:returnsRows?sql`select * from ${id}(${sql.join(params)})`:sql`select ${id}(${sql.join(params)}) as result`,returnsRows};
 }
 
