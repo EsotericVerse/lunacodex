@@ -81,7 +81,7 @@ export default function LocUserSettingsPanel({verifiedSubject=''}){
       const results=await Promise.allSettled(scopes.map(async([scope,label])=>{
         const result=await selectAvailableKeywordClasses(scope);
         return (result.classes||[])
-          .filter(row=>/^[A-Za-z0-9]{4}$/.test(String(row.classUid||'')))
+          .filter(row=>/^(?:[A-Za-z0-9]{4}|[A-Za-z0-9]{8})$/.test(String(row.classUid||'')))
           .map(row=>({
             value:scope+':'+row.classUid,
             label:label+'／'+[row.categoryName,row.name].filter(Boolean).join('／')
@@ -151,6 +151,6 @@ export default function LocUserSettingsPanel({verifiedSubject=''}){
     <p role={saveError?'alert':'status'} className={'scope-status'+(saveError?' scope-error':'')}>
       {saveError|| (saving?'正在儲存…':status||'選取後立即儲存至個人帳號。')}
     </p>
-    <p className="scope-status">目前先儲存個人選項；文化、統計、痕跡與搜尋頁面待資料整合完成後套用。</p>
+    <p className="scope-status">已儲存的個人選項會直接套用至文化、統計、痕跡及搜尋頁；訪客維持公開預設。</p>
   </>;
 }

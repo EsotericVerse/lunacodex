@@ -15,6 +15,8 @@ registerDefaultSection('uiExtra.pagination',paginationZh);
 
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {scopeTagColumn,scopeTagNames} from '../../loc/scope-config-fields.mjs';
+import useLocFeatureSettings from '../../loc/use-loc-feature-settings';
+import {cultureDensityByUnit,simpleTimeRiver} from '../../loc/loc-feature-preferences.mjs';
 import dynamic from 'next/dynamic';
 import {usePathname,useSearchParams} from 'next/navigation';
 import {useAsyncResource,useAsyncInfiniteResource,useResourceCache} from '../../loc/use-async-resource';
@@ -210,6 +212,7 @@ export default function Culture(){
   const localizedLabelOf=useMemo(()=> (item,index)=>labelOf(item,index,UI_COPY.format.period(index+1)),[UI_COPY]);
   const {locale}=useUiLocale();
   const {scopeId,scope}=useScopeRuntime();
+  const {settings:userSettings,active:userActive}=useLocFeatureSettings('culture');
   const searchParams=useSearchParams();
   const editDock=useEditDock();
   const canUseScopeEditor=Boolean(editDock?.active&&editDock.scopeId===scopeId);
@@ -241,6 +244,7 @@ export default function Culture(){
   const [selectedCategory,setSelectedCategory]=useState('');
   const [worksOpen,setWorksOpen]=useState(false);
   const [articleSort,setArticleSort]=useState('desc');
+  useEffect(()=>setArticleSort(userActive?userSettings.sort:'desc'),[userActive,userSettings.sort]);
   // Keyword Class is optional; ordinary Time River views must not scan the whole article corpus.
   const [styleFilter,setStyleFilter]=useState('none');
   const [keywordOptionsScope,setKeywordOptionsScope]=useState('');
@@ -292,6 +296,10 @@ export default function Culture(){
     setFocusedAnchorDate('');
     setStructureWindowKey('');
   },[scopeId]);
+  // The saved homepage display is an initial choice, not a background analysis.
+  useEffect(()=>{
+    setStyleFilter(userActive&&userSettings.display==='keywords'?'rune66':'none');
+  },[scopeId,userActive,userSettings.display]);
 
   const isAggregateScope=Boolean(scope?.aggregateChildren);
   // LOC's first Time River never queries per-day article/media density.
@@ -678,8 +686,11 @@ export default function Culture(){
   const activeStructureKey=structureWindowKey==='all'||!structureWindowKey?'all'
     :primaryPeriods.some(item=>periodKey(item)===structureWindowKey)
       ?structureWindowKey:'all';
-  const eraRiver=useMemo(()=>buildEraRiver(timelineItems,expandedEraIds),
-    [timelineItems,expandedEraIds]);
+  const eraRiver=useMemo(()=>
+    userActive&&userSettings.time!=='era'
+      ?simpleTimeRiver(timelineItems,userSettings.time)
+      :buildEraRiver(timelineItems,expandedEraIds),
+    [timelineItems,expandedEraIds,userActive,userSettings.time]);
   const toggleTimeTrace=groupId=>{
     const open=!expandedEraIds.includes(groupId);
     setExpandedEraIds(current=>
@@ -873,11 +884,13 @@ export default function Culture(){
     sourceSnapshotQuery.data?.buckets||[]
   ).filter(item=>!keywordDrillSource||String(item.category||'')===keywordDrillSource),
   [sourceSnapshotQuery.data,keywordDrillSource]);
-  const secondRiverBuckets=classificationBuckets;
+  const secondRiverBuckets=useMemo(()=>
+    cultureDensityByUnit(classificationBuckets,userActive?userSettings.unit:'day'),
+    [classificationBuckets,userActive,userSettings.unit]);
   // Anchor-suggestion density analysis only has data once a lane is expanded
   // (secondRiverBuckets is empty until then): suggestions are never computed
   // just from opening the Culture page.
-  const densityInputBuckets=secondRiverBuckets;
+  const densityInputBuckets=classificationBuckets;
   // Close the panel again whenever the underlying daily data changes (a
   // different lane expanded, the period changed) so a stale, already-open
   // panel doesn't silently keep showing suggestions for the old data.

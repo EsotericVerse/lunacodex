@@ -5,6 +5,8 @@ import {useSearchParams} from 'next/navigation';
 import dynamic from 'next/dynamic';
 import {FeaturePage} from '../ui';
 import {useAsyncResource} from '../../loc/use-async-resource';
+import useLocFeatureSettings from '../../loc/use-loc-feature-settings';
+import {traceHomeMapChoices} from '../../loc/loc-feature-preferences.mjs';
 import {traceWindow} from './trace/trace-panel-filters.mjs';
 import {publicTraceMapChoices} from './trace/trace-map-choices.mjs';
 import {pickTraceDemoStop,traceDemoRoute} from './trace/trace-demo-route.mjs';
@@ -29,6 +31,7 @@ const TracePlaceResults=dynamic(()=>import('./trace/TracePlaceResults'),{
 
 export default function Trace({scopeId='loc'}){
   const supported=TRACE_SCOPES.includes(scopeId);
+  const {settings:userSettings,active:userActive}=useLocFeatureSettings('trace');
   const [selectedPlace,setSelectedPlace]=useState(null);
   const routeParams=useSearchParams();
   const selectedPlaceUid=String(routeParams?.get('place')||'').trim();
@@ -65,7 +68,9 @@ export default function Trace({scopeId='loc'}){
     revalidateIfStale:false,revalidateOnFocus:false,revalidateOnReconnect:false
   });
   const allMaps=traceIndex.data||[];
-  const maps=publicTraceMapChoices(allMaps,scopeId);
+  const allMapChoices=publicTraceMapChoices(allMaps,scopeId);
+  const maps=userActive&&!selectedMapUid
+    ?traceHomeMapChoices(allMapChoices,userSettings.display):allMapChoices;
   const mapChoiceKey=row=>isLoc?row.source_scope+':'+row.uid:row.uid;
   const currentMap=useMemo(()=>isLoc
     ?maps.find(row=>row.source_scope+':'+row.uid===currentTraceChoice)||maps.find(row=>row.trace_type==='trace')||maps[0]||null
@@ -99,6 +104,10 @@ export default function Trace({scopeId='loc'}){
     const found=maps.find(row=>String(row.uid)===selectedMapUid);
     if(found)setCurrentTraceChoice(isLoc?found.source_scope+':'+found.uid:found.uid);
   },[selectedMapUid,allMaps,scopeId,isLoc]);
+  useEffect(()=>{
+    if(userActive&&!selectedMapUid)
+      setCurrentTraceChoice(userSettings.display==='anchor'?'all':'auto');
+  },[scopeId,userActive,userSettings.display,selectedMapUid]);
   const chooseCurrentTrace=value=>{
     setSelectedPlace(null);
     if(isLoc){setCurrentTraceChoice(value);return;}
@@ -268,7 +277,8 @@ export default function Trace({scopeId='loc'}){
         </details>:null}
         {reportTab?<TracePlaceResults key={reportPlace.source_scope+':'+reportPlace.uid} place={reportPlace}
           anchors={spatialData?.anchors||[]} maps={spatialData?.maps||[]} scopeId={periodScopeId}
-          tab={reportTab} sourceName={sourceName} mediaType={mediaType} dateRange={dateRange}/>:null}
+          tab={reportTab} sourceName={sourceName} mediaType={mediaType} dateRange={dateRange}
+          timeMode={userActive?userSettings.time:'none'} defaultSort={userActive?userSettings.sort:'desc'}/>:null}
 
       </div>:null}
     </TraceMap>

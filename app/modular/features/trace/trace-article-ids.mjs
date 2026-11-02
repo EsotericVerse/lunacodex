@@ -1,7 +1,7 @@
 // Galaxy article membership depends only on the selected anchor UID spool.
 const shortId=value=>{
   const id=String(value||'').trim();
-  return /^[A-Za-z0-9]{4}$/.test(id)?id:'';
+  return /^(?:[A-Za-z0-9]{4}|[A-Za-z0-9]{8})$/.test(id)?id:'';
 };
 function selectedAnchors(selection,records=[]){
   if(!selection?.uid)return [];

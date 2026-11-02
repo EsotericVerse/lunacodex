@@ -7,6 +7,7 @@ import dynamic from 'next/dynamic';
 import {useAsyncInfiniteResource,useAsyncResource} from '../../../loc/use-async-resource';
 import {selectRows} from '../../../loc/db-query.mjs';
 import {traceArticleIdFilters,groupedTraceDays} from './trace-panel-filters.mjs';
+import {nearestTracePlaceIds} from '../../../loc/loc-feature-preferences.mjs';
 import {defaultScopeData} from '../../../loc/scope-data';
 import {dbPublicClient} from '../../../loc/db-client.mjs';
 import {traceArticleIds,traceArticleLabels} from './trace-article-ids.mjs';
@@ -20,7 +21,7 @@ const StatisticsMultiChart=dynamic(()=>import('../../modules/statistics/Statisti
 const PAGE_SIZE=40;
 const validDate=value=>/^\d{4}-\d{2}-\d{2}$/.test(String(value||''));
 
-function TraceWork({row,scope}){
+function TraceWork({row,scope,timeLabel=''}){
   const [opened,setOpened]=useState(false);
   const detail=useAsyncResource({
     queryKey:['trace-work-uid',scope?.id,row.uid],
@@ -44,6 +45,7 @@ function TraceWork({row,scope}){
     locationName={article?.location||''}
     links={article?.links||[]}
     editOnCardClick={false}>
+    {timeLabel?<p className="scope-status">{timeLabel}</p>:null}
     <WorkFullText open={opened} loading={opened&&detail.isPending}
       error={detail.error?String(detail.error.message||detail.error):''}
       content={String(article?.content||'')} showToggle={false}/>
@@ -53,8 +55,9 @@ function TraceWork({row,scope}){
 }
 
 export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId='',period=null,
-  tab='articles',sourceName='',mediaType='',dateRange=null}){
-  const [sort,setSort]=useState('desc');
+  tab='articles',sourceName='',mediaType='',dateRange=null,timeMode='none',defaultSort='desc'}){
+  const [sort,setSort]=useState(defaultSort);
+  useEffect(()=>setSort(defaultSort),[defaultSort]);
   const [chartType,setChartType]=useState('bar');
   const defaultTimeUnit=useDefaultTimeUnit();
   const viewUnit=defaultTimeUnit==='auto'?'month':defaultTimeUnit;
@@ -64,34 +67,76 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
   const targetScope=String(place?.source_scope||scopeId||'').trim();
   const scope=useMemo(()=>defaultScopeData(targetScope),[targetScope]);
   const placeIds=useMemo(()=>traceArticleIds(place,[...anchors,...maps]),[place,anchors,maps]);
+  const nearestPlaceIds=useMemo(()=>nearestTracePlaceIds(placeIds,anchors,place),[placeIds,anchors,place]);
   const placeLabels=useMemo(()=>traceArticleLabels(place,[...anchors,...maps]),[place,anchors,maps]);
   const placesKey=placeIds.join('|');
   const startDate=validDate(dateRange?.startDate)?dateRange.startDate
     :validDate(period?.start_date)?String(period.start_date).slice(0,10):'';
   const endDate=validDate(dateRange?.endDate)?dateRange.endDate
     :validDate(period?.end_date)?String(period.end_date).slice(0,10):'';
+  const timeRecords=useAsyncResource({
+    queryKey:['trace-saved-time-labels',targetScope,timeMode],
+    enabled:timeMode!=='none'&&tab==='articles'&&Boolean(targetScope),
+    queryFn:async()=>{
+      const {selectScopeCultureData}=await import('../../../loc/culture-query');
+      const data=await selectScopeCultureData(targetScope);
+      return (data?.timelineItems||[]).filter(row=>row.entry_type===timeMode);
+    },
+    revalidateIfStale:false,revalidateOnFocus:false,revalidateOnReconnect:false
+  });
+  const timeLabelForRow=row=>{
+    if(timeMode==='none')return '';
+    const day=String(row.date||row.createtime||'').slice(0,10);
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(day))return '';
+    const matches=(timeRecords.data||[]).filter(record=>
+      (Array.isArray(record.ranges)&&record.ranges.length?record.ranges:[record])
+        .some(range=>{
+          const first=String(range.start_date||record.start_date||'').slice(0,10);
+          const last=String(range.end_date||record.end_date||first).slice(0,10);
+          return first&&first<=day&&last>=day;
+        }));
+    return matches.length?(timeMode==='era'?'時代：':'期間：')+
+      matches.map(row=>String(row.title||row.uid)).join('、'):'';
+  };
   const sourceFilter=String(sourceName||'').trim();
   const selectedMediaType=String(mediaType||'').trim();
   const enabled=Boolean(name&&placeIds.length&&scope?.galaxy&&targetScope===scopeId);
 
   // One selected resource and one small page at a time. No eager Galaxy scan.
   const list=useAsyncInfiniteResource({
-    queryKey:['trace-articles-v3',targetScope,place?.uid||'',placesKey,startDate,endDate,sourceFilter,sort],
+    queryKey:['trace-articles-v4',targetScope,place?.uid||'',placesKey,startDate,endDate,sourceFilter,sort,
+      nearestPlaceIds.join('|')],
     enabled:enabled&&tab==='articles'&&!selectedMediaType,
-    initialPageParam:0,
+    initialPageParam:sort==='nearest'?{placeIndex:0,offset:0}:0,
     getNextPageParam:page=>page.hasMore?page.nextOffset:undefined,
     queryFn:async({pageParam})=>{
-      const filters=traceArticleIdFilters(placeIds,{startDate,endDate,sourceName:sourceFilter});
-      const offset=Number(pageParam)||0;
-      const result=await selectRows(scope.galaxy,{
-        columns:'uid,title,createtime',
-        filters,orders:[{column:'date',ascending:sort==='asc'},{column:'uid',ascending:true}],
-        limit:PAGE_SIZE,offset,count:offset===0?'exact':null
-      });
-      const rows=result.rows||[];
-      const total=offset===0?Number(result.count??rows.length):null;
-      return {rows,total,hasMore:rows.length===PAGE_SIZE&&(total==null||offset+rows.length<total),
-        nextOffset:offset+rows.length};
+      // Nearest spans the complete selected place spool: exhaust one closest
+      // place before paging the next, never sort only a loaded date page.
+      const nearest=sort==='nearest'&&nearestPlaceIds.length>0;
+      let placeIndex=nearest?Number(pageParam?.placeIndex)||0:0;
+      let offset=nearest?Number(pageParam?.offset)||0:Number(pageParam)||0;
+      while(true){
+        const selectedIds=nearest?[nearestPlaceIds[placeIndex]]:placeIds;
+        const filters=traceArticleIdFilters(selectedIds,{startDate,endDate,sourceName:sourceFilter});
+        const result=await selectRows(scope.galaxy,{
+          columns:'uid,title,createtime,date,place_id',
+          filters,orders:[{column:'date',ascending:sort==='asc'},{column:'uid',ascending:true}],
+          limit:PAGE_SIZE,offset,count:offset===0?'exact':null
+        });
+        const rows=result.rows||[];
+        const total=offset===0?Number(result.count??rows.length):null;
+        const moreInPlace=rows.length===PAGE_SIZE&&(total==null||offset+rows.length<total);
+        const nextOffset=nearest
+          ?moreInPlace?{placeIndex,offset:offset+rows.length}
+            :placeIndex+1<nearestPlaceIds.length?{placeIndex:placeIndex+1,offset:0}:null
+          :offset+rows.length;
+        // Skip empty nearby places within the same request: a zero-result page
+        // is not evidence that the next distance-ranked place has no works.
+        if(rows.length||!nearest||nextOffset===null)
+          return {rows,total,hasMore:nearest?nextOffset!==null:moreInPlace,nextOffset};
+        placeIndex=nextOffset.placeIndex;
+        offset=0;
+      }
     }
   });
 
@@ -321,7 +366,13 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
         {showAllVisits?'收合造訪時間':'顯示全部 '+visibleVisits.length+' 次造訪時間'}
       </button>:null}
     </div>:null}
-    {tab==='articles'?<ArticleSortSelect value={sort} onChange={setSort}/>:null}
+    {tab==='articles'?<label className="scope-stat-controls">文章排列
+      <select className="scope-select" value={sort} onChange={event=>setSort(event.target.value)}>
+        <option value="desc">最新的優先</option>
+        <option value="asc">最舊的優先</option>
+        <option value="nearest">最近的優先（依選定地點距離）</option>
+      </select>
+    </label>:null}
     {sourceFilter||selectedMediaType?<p className="scope-status">篩選條件：{sourceFilter?'作品來源 '+sourceFilter:'全部來源'} · {selectedMediaType?'媒體 '+selectedMediaType:'全部媒體'}（三種模式一致）</p>:null}
     {!enabled?<p className="scope-status" role="status">此地點目前沒有可對應的文章紀錄，仍可繼續查看地圖。</p>:null}
     {loading?<p role="status" className="scope-status">正在按需讀取目前時間與地點的內容…</p>:null}
@@ -341,7 +392,8 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
       loading={selectedMediaType?Boolean(mediaFiltered.isFetchingNextPage):Boolean(list.isPending||list.isFetchingNextPage)}
       error={error}
       onLoadMore={selectedMediaType?()=>mediaFiltered.fetchNextPage():list.fetchNextPage}
-      renderItem={row=><TraceWork key={targetScope+':'+row.uid} row={row} scope={scope}/>}
+      renderItem={row=><TraceWork key={targetScope+':'+row.uid} row={row} scope={scope}
+        timeLabel={timeLabelForRow(row)}/>}
     />:null}
     {selectedMediaType&&mediaFiltered.hasNextPage&&tab!=='articles'?<p className="scope-status">
       媒體篩選的圖表只呈現已按需載入的頁面，並非整個區間的總量。
