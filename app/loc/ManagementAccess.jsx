@@ -16,7 +16,7 @@ const pending=()=>({loading:true,user:null,authorizer:null,error:''});
 // The static management entry has exactly one explicit verification. It does
 // not subscribe to the SWR management key during the request: an initial Clerk
 // auth event can invalidate that key independently of the verified RPC result.
-// The same checked result populates the shared cache for mounted editors.
+// A single live verification feeds the UI; no previous grant bypasses it.
 export default function ManagementAccess({scopeId,level='scope',featureId='manage',children}){
   const account=useAccount({enabled:false}),dock=useEditDock();
   const [verification,setVerification]=useState(pending);
@@ -24,9 +24,8 @@ export default function ManagementAccess({scopeId,level='scope',featureId='manag
   const [locked,setLocked]=useState(false);
   const [renewing,setRenewing]=useState(false);
   const [error,setError]=useState('');
-  // The homepage edit button already verified this same Clerk + Scope.
-  // Reuse its in-memory grant when present; a new HTML document or a changed
-  // identity has no such grant and will still perform the full server check.
+  // Always use the live Clerk+Scope verification path. Only concurrent
+  // requests share an unfinished promise; no TTL cache authorizes access.
   const check=useCallback(()=>account.refresh(),[account.refresh]);
 
   useEffect(()=>{
