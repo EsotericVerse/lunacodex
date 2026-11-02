@@ -1,6 +1,7 @@
 'use client';
 
 import {dbAuthRelation} from './db-client.mjs';
+import {isUnifiedAnchorScope} from './unified-anchor-compat.mjs';
 import {selectAllRows,selectRows} from './db-query.mjs';
 import {defaultScopeData,selectManagedScope} from './scope-data';
 import {reanalyzeKeywordClass} from './keyword-reanalysis.mjs';
@@ -15,7 +16,7 @@ const DEFAULT_KEYWORD_MIN_CHARS=32;
 const DEFAULT_KEYWORD_MIN_DOCUMENTS=100;
 
 function normalizeScopeId(value){
-  const scope=String(value||'lo3rwang').trim().toLowerCase();
+  const scope=String(value||'').trim().toLowerCase();
   if(!/^[a-z][a-z0-9]{0,14}$/.test(scope))throw new Error('Scope ID 格式無效');
   return scope;
 }
@@ -69,7 +70,7 @@ export async function selectActiveKeywordClassName(scopeId=''){
 }
 // Only Classes that this caller can read are selectable. The existing
 // active Class is the default when it appears in that authorized directory.
-export async function selectAvailableKeywordClasses(scopeId='lo3rwang'){
+export async function selectAvailableKeywordClasses(scopeId){
   const id=normalizeScopeId(scopeId),scope=defaultScopeData(id);
   if(!scope)return {classes:[],currentClassUid:''};
   const [{readSharedKeywordClasses,dbAuthRelation},{rows}]=await Promise.all([
@@ -95,7 +96,7 @@ export async function selectAvailableKeywordClasses(scopeId='lo3rwang'){
   return {classes:keywordClassDirectory(shared,authorizedRows,id),
     currentClassUid:String(rows?.[0]?.current_keyword_class_uid||'')};
 }
-async function scopeAndConfig(scopeId='lo3rwang',{publicRead=false}={}){
+async function scopeAndConfig(scopeId,{publicRead=false}={}){
   const id=normalizeScopeId(scopeId);
   // Public statistics only read the stored summary/config and public Galaxy attrs.
   // The writer still resolves the managed Scope with authenticated access.
@@ -111,7 +112,7 @@ async function scopeAndConfig(scopeId='lo3rwang',{publicRead=false}={}){
 }
 // Portable full reanalysis: all Galaxy content is read, but only Keyword Item
 // uidlist columns are written. No old classification state is consulted.
-export async function runKeywordAnalysisBatch(scopeId='lo3rwang',{classUid:requestedClassUid='',onProgress}={}){
+export async function runKeywordAnalysisBatch(scopeId,{classUid:requestedClassUid='',onProgress}={}){
   const id=normalizeScopeId(scopeId),{scope,config}=await scopeAndConfig(id);
   const classUid=String(requestedClassUid||config.current_keyword_class_uid||'');
   if(!/^[0-9A-Za-z]{4}$/.test(classUid))throw new Error('尚未指定 Keywords Class');
@@ -182,12 +183,12 @@ export async function runKeywordAnalysisBatch(scopeId='lo3rwang',{classUid:reque
   const {keywordUidListRecord}=await import('./keyword-tree.mjs');
   const typeByUid=new Map(treeRows.map(row=>[row.uid,row.type]));
   const result=await reanalyzeKeywordClass({
-    classUid,treeRows,minChars,pageSize:KEYWORD_ANALYSIS_READ_PAGE_SIZE,expectedCount:eligibleCount,compactResults:id==='lo3rwang',
+    classUid,treeRows,minChars,pageSize:KEYWORD_ANALYSIS_READ_PAGE_SIZE,expectedCount:eligibleCount,compactResults:isUnifiedAnchorScope(id),
     readPage:readArticles,
     writeNode:async ({uid,uid_lists})=>{
       const type=typeByUid.get(uid);
       if(!type)throw new Error('Keyword UID missing during classification write');
-      const stored=id==='lo3rwang'?uid_lists:keywordUidListRecord(type,uid_lists);
+      const stored=isUnifiedAnchorScope(id)?uid_lists:keywordUidListRecord(type,uid_lists);
       const {data,error}=await dbAuthRelation(scope.keywords).update({uid_lists:stored})
         .eq('uid',uid).select('uid');
       if(error||data?.length!==1)throw new Error('Keywords.uid_lists 儲存失敗：'+uid+' '+(error?.message||''));
@@ -285,7 +286,7 @@ function storedSummary(agg,config,globalCount=agg.eligible){
     groupTotals:base.statisticsEnabled?groupTotals:[]
   };
 }
-export async function selectKeywordAnalysisSummary({scopeId='lo3rwang',classUid='',startDate='',endDate='',
+export async function selectKeywordAnalysisSummary({scopeId,classUid='',startDate='',endDate='',
   sourceCategory='',sourceCategories=[],sourceAliases=[],sourceNames=null}={}){
   const id=normalizeScopeId(scopeId);
   const category=String(sourceCategory||'').trim().toLowerCase();
