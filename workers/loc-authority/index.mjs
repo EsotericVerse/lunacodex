@@ -463,22 +463,28 @@ export class LocAuthorityState extends DurableObject {
     await this.ctx.storage.put(checkpointKey,{updated_at:requestedTime,saved_at,uid});
     return {scopeid,conversation_id,updated_at:requestedTime,saved_at,uid,saved:true};
   }
-  async mcpSearch(scopeid,query,limit=10,oauthToken=''){ 
+  async mcpSearch(scopeid,query,limit=10,oauthToken=''){
     validScope(scopeid);
     if(!Number.isInteger(limit)||limit<1||limit>20)throw fail('Invalid search limit',400);
     const pattern=likePattern(query);
+    const profile=await this.mcpPrivateProfile(scopeid);
+    const mapRows=rows=>{
+      if(!Array.isArray(rows))throw fail('Invalid database search results',502);
+      return {scopeid,results:rows.map(r=>({scopeid,uid:r.uid,title:r.title,
+        date:r.date,createtime:r.createtime}))};
+    };
+    if(!profile){
+      // Managed private reads depend on the specific OAuth principal.
+      // Never share a private result cache across independently authorized callers.
+      return mapRows(await managedMcpRead(scopeid,'mcp-search',{query,limit},oauthToken));
+    }
     const key=scopeid+':'+limit+':'+pattern;
     this.mcpSearchCache??=new Map();
     const cached=this.mcpSearchCache.get(key);
     if(cached&&cached.expires>Date.now())return cached.value;
-    const task=(async()=>{
-      const profile=await this.mcpPrivateProfile(scopeid);
-      const rows=profile?await postgrest(profile,{params:{select:'uid,title,date,createtime',
-        or:'(title.ilike.'+pattern+',content.ilike.'+pattern+')',
-        order:'date.desc.nullslast',limit}}):await managedMcpRead(scopeid,'mcp-search',{query,limit},oauthToken);
-      if(!Array.isArray(rows))throw fail('Invalid database search results',502);
-      return {scopeid,results:rows.map(r=>({scopeid,uid:r.uid,title:r.title,date:r.date,createtime:r.createtime}))};
-    })();
+    const task=postgrest(profile,{params:{select:'uid,title,date,createtime',
+      or:'(title.ilike.'+pattern+',content.ilike.'+pattern+')',
+      order:'date.desc.nullslast',limit}}).then(mapRows);
     this.mcpSearchCache.set(key,{value:task,expires:Date.now()+20000});
     if(this.mcpSearchCache.size>100)this.mcpSearchCache.delete(this.mcpSearchCache.keys().next().value);
     try{return await task;}
