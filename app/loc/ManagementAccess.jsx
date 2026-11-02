@@ -1,6 +1,6 @@
 'use client';
 import {useCallback,useEffect,useState} from 'react';
-import {useAccount} from './use-account';
+import {useAccount,readVerifiedManagementEntry} from './use-account';
 import {useEditDock} from '../modular/edit-dock';
 import {FeaturePage} from '../modular/ui';
 import {editorSessionStatus,clearEditorSession,touchEditorSession} from './edit-session-ttl.mjs';
@@ -26,7 +26,9 @@ export default function ManagementAccess({scopeId,level='scope',featureId='manag
   const [error,setError]=useState('');
   // Always use the live Clerk+Scope verification path. Only concurrent
   // requests share an unfinished promise; no TTL cache authorizes access.
-  const check=useCallback(()=>account.refresh(),[account.refresh]);
+  const check=useCallback(()=>editorSessionStatus(window.sessionStorage).expired
+    ?account.refresh()
+    :(readVerifiedManagementEntry()||account.refresh()),[account.refresh]);
 
   useEffect(()=>{
     let active=true;
