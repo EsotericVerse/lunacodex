@@ -7,7 +7,7 @@ import {workDisplayText} from '../modular/work-display-model';
 import {selectScopeDailyCounts} from './galaxy-query';
 import {DB_QUERY_BATCH_SIZE,selectAllRows,selectCount,selectRows} from './db-query.mjs';
 import {publicContentFilters} from './content-policy';
-import {selectManagedScope,selectManagedScopes} from './scope-data';
+import {selectManagedScope,selectManagedScopes,selectScopeGroupMemberIds} from './scope-data';
 import {resolveTimeSegments,resolveTimeTrace,timePeriodSortDate,timeDateWindows,timePeriodContainsDate,intersectTimeDateWindows,storedTimeRange} from './time-anchor-ranges.mjs';
 
 
@@ -294,7 +294,8 @@ export async function selectScopeCultureData(scopeId){
   if(!id)throw new Error('資料設定無效');
 
   if(id==='loc'){
-    const managedScopes=(await selectManagedScopes()).filter(scope=>scope.id!=='loc');
+    const [members,allScopes]=await Promise.all([selectScopeGroupMemberIds('loc','culture'),selectManagedScopes()]);
+    const managedScopes=allScopes.filter(scope=>members.has(scope.id));
     if(!managedScopes.length){
       return {
         scopeId:id,scope:null,eras:{eras:[]},periods:[],openRanges:[],scopeRanges:[],

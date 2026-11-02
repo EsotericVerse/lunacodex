@@ -188,6 +188,23 @@ export async function selectLocSearchScopes(){
   return scopes.filter(Boolean);
 }
 
+// Group membership is resolved by silver.manage inside scope_group. Keep the
+// caller's exact Culture/Trace range, pagination and visibility queries intact.
+const groupMembershipRequests=new Map();
+export function selectScopeGroupMemberIds(groupId='loc',type='culture'){
+  const key=groupId+':'+type;
+  if(groupMembershipRequests.has(key))return groupMembershipRequests.get(key);
+  const request=dbPublicClient.schema('silver').rpc('scope_group',{
+    p_group_id:groupId,p_type:type
+  }).then(({data,error})=>{
+    if(error)throw error;
+    if(!Array.isArray(data?.scopes))throw new Error('Invalid Scope Group membership');
+    return new Set(data.scopes.map(row=>String(row.scope_id||'').trim()).filter(Boolean));
+  }).catch(error=>{groupMembershipRequests.delete(key);throw error;});
+  groupMembershipRequests.set(key,request);
+  return request;
+}
+
 export async function selectScopeRegistryEntry(scopeId){
   const id=String(scopeId||'').trim().toLowerCase();
   if(!SCOPE_ID_PATTERN.test(id))return null;
