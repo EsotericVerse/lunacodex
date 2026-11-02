@@ -324,10 +324,10 @@ export default function TimelinePlaceManager({scopeId}){
           }}/>
       </label>
       <label>開始日期（含當日）
-        <input type="date" value={rangeStart} disabled={analyzing||writing} onChange={e=>{setRangeStart(e.target.value);setAnalysis(null);}}/>
+        <input type="date" value={rangeStart} disabled={analyzing||writing} onChange={e=>{setRangeStart(e.target.value);clearTimelineReviewSession(sessionStorage,scopeId);setSessionEnabled(false);setAnalysis(null);}}/>
       </label>
       <label>結束日期（含當日，最多間隔一年）
-        <input type="date" value={rangeEnd} disabled={analyzing||writing} onChange={e=>{setRangeEnd(e.target.value);setAnalysis(null);}}/>
+        <input type="date" value={rangeEnd} disabled={analyzing||writing} onChange={e=>{setRangeEnd(e.target.value);clearTimelineReviewSession(sessionStorage,scopeId);setSessionEnabled(false);setAnalysis(null);}}/>
       </label>
       <p className="scope-status">可比對空間定錨點：{eligible.length.toLocaleString()}；只辨識造訪地點，移動路線不直接視為文章的確定位置。</p>
     </div>
