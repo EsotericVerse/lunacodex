@@ -318,12 +318,12 @@ Deno.serve(async (request) => {
         await sql`select set_config('request.jwt.claim.role','authenticated',true)`.execute(trx);
         if(isRead){
           const result=await sql`select uid,title,content,date,createtime,site,url
-            from ${table} where uid=${uid} and able->>'list'='true' limit 1`.execute(trx);
+            from ${table} where uid=${uid} limit 1`.execute(trx);
           return result.rows;
         }
         const pattern="%"+String(query).trim().replace(/[\\%_]/g,"\\$&")+"%";
         const result=await sql`select uid,title,date,createtime from ${table}
-          where able->>'search'='true' and (title ilike ${pattern} or content ilike ${pattern})
+          where (title ilike ${pattern} or content ilike ${pattern})
           order by createtime desc nulls last limit ${Number(limit)}`.execute(trx);
         return result.rows;
       });
