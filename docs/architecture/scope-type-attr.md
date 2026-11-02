@@ -26,7 +26,7 @@ silver.scope_type_attr(p_scope_id text, p_type text, p_attr jsonb)
 ```
 
 - `data` 才對應資料列的 `attr jsonb`；`uid/title/description/invisible` 仍是既定通用欄位，不移入 `attr`。
-- 目前主入口提供 `read/insert/update`；`delete` 會拒絕，須由具關聯檢查的領域操作處理。更新 `data` 是整個 JSONB 物件替換，非部分合併。
+- 目前主入口提供 `read/insert/update/patch`；`delete` 會拒絕，須由具關聯檢查的領域操作處理。`update` 的 `data` 為整個 JSONB 物件替換；`patch` 使用 PostgreSQL `attr || data`，只更新頂層指定鍵值，不會清除其他鍵（不是遞迴深層合併）。兩者均由 Anchor CHECK 驗證合法屬性。
 - 權限由資料庫驗證；公開讀取不回傳隱藏項目，也不讀取私有關鍵詞類型；非管理者禁止寫入。
 - `attr` 的類型鍵值由各 Anchor 資料表的 CHECK 保證。符文 `attr.rune` 的資料結構是既有必要差異，不代表另一套通用 CRUD。
 
@@ -66,3 +66,13 @@ const updated=await scopeTypeAttr('lo3rwang','date',{
 - 不屬於同質 Anchor CRUD 的 `api.provision_scope`／`api.delete_scope`（Scope 生命週期）、`read_music_style_tree`（作者音樂分類）暫保留領域用途。前者的建表 LIKE 樣板仍參考現有實表，不表示執行時 Scope 讀寫有兩套邏輯。
 - SQL RPC 通用化**不表示所有前端呼叫端已切換到 `scope_type_attr`**；舊入口的安全刪除仍須完成相依檢查。
 - 正式資料庫的 `lrunes_time/trace/keywords/galaxy_media` 四表已不存在，全部已存入 Anchor；不可再依歷史四表寫入。
+
+### 通用 attr 局部更新（2026-11-03）
+
+```js
+await scopeTypeAttr('lrunes','point',{
+  op:'patch',uid:'Ab12Cd34',data:{location:['台北','臺北']}
+},{write:true});
+```
+
+`patch` 僅覆寫 `attr` 的**頂層鍵**；未列出的屬性（例如座標）保留。`update` 仍執行全物件取代，避免既有呼叫者語義改變。此操作不創建新索引、資料表或欄位，也不取代必須連動文章 `place_id` 的地點合併交易。兩個 Scope 使用同一 RPC。

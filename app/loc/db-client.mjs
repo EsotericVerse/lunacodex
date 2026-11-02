@@ -74,7 +74,7 @@ export async function scopeTypeAttr(scopeId,type,attr={}, {write=false}={}){
     throw new Error('Invalid Anchor type');
   if(!attr||typeof attr!=='object'||Array.isArray(attr))throw new Error('Anchor attr must be a JSON object');
   const op=String(attr.op||'read');
-  if(write!==['insert','update','delete'].includes(op))
+  if(write!==['insert','update','patch','delete'].includes(op))
     throw new Error('Anchor write option does not match operation');
   const client=write?adapter.authClient:adapter.publicClient;
   const {data,error}=await client.schema('silver').rpc('scope_type_attr',{
