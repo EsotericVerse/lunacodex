@@ -30,7 +30,7 @@ LOC iPhone 版的「設定 → 文件匯入 → 要將檔案內容匯入 SQLite 
 loc_format: galaxy-md/v1
 title: "時空靈魂震盪論：討論摘要"
 created_at: 2026-10-24
-site: ChatGPT
+site: chatgpt
 searchable: true
 statistics_able: true
 ---
@@ -47,6 +47,18 @@ statistics_able: true
 - ...
 ```
 
+## 原始來源 site 標記
+
+`site` 依**原始資料從哪裡產生**決定，而不是使用哪種 MCP／API 寫進資料庫。例如：
+
+- GitHub PR／Issue／Commit → `github`
+- ChatGPT 對話及帳戶資料匯出 → `chatgpt`
+- Supabase 本身的維運／SQL 操作紀錄 → `supabase`
+- MCP 自身連線、權限、工具實測紀錄 → `mcp`
+- Facebook、Threads、Instagram、Suno 等原始匯入 → 沿用各自來源名稱
+
+若透過 Supabase MCP 儲存 GitHub PR，仍記錄 `site: github`；使用 LOC MCP 儲存 ChatGPT 對話，仍記錄 `site: chatgpt`。平台來源不明時不要自行推定或批次覆寫。已存在的 `site_id` 應保留原始平台真實 ID。
+
 ## 支援的檔頭欄位
 
 | 欄位 | 說明 |
@@ -54,7 +66,7 @@ statistics_able: true
 | `loc_format` | 若填入，必須是 `galaxy-md/v1` |
 | `title` | 文章標題；省略時取第一個 `# 標題` 或檔名 |
 | `created_at` | 原文日期，例如 `2026-10-24` 或完整 ISO 8601；也接受 `createtime` |
-| `site` | 匯入來源，預設填入來源選擇欄，可在匯入前修改 |
+| `site` | 原始內容的來源平台（非使用的匯入工具），預設從來源選擇欄帶入，可在匯入前修改 |
 | `location` | 選填地點 |
 | `searchable` | `true` 或 `false`，預設 `true` |
 | `statistics_able` | `true` 或 `false`，仍遵守 LOC 原有的可搜尋與純網址判斷 |
