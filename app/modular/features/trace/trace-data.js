@@ -4,8 +4,13 @@ import {dbPublicClient,dbAuthClient,dbAuthRelation} from '../../../loc/db-client
 import {findAnchorWriteMatches,organizeAnchorCandidates} from './trace-organizer.mjs';
 import {fromAnchorRow,allocateAnchorUid,isUnifiedAnchorScope} from '../../../loc/unified-anchor-compat.mjs';
 import {SCOPE_ROUTE_INDEX} from '../../scope-route-index.js';
+import {selectScopeGroupMemberIds} from '../../../loc/scope-data';
 
 const TRACE_SOURCE_SCOPES=Object.freeze(SCOPE_ROUTE_INDEX.map(row=>row.scope_id).filter(id=>id!=='loc'));
+async function groupTraceSources(){
+  const members=await selectScopeGroupMemberIds('loc','trace');
+  return TRACE_SOURCE_SCOPES.filter(id=>members.has(id));
+}
 export const TRACE_SCOPES=Object.freeze(['loc',...TRACE_SOURCE_SCOPES]);
 export const traceKey=(scopeId,{includeHidden=false}={})=>['scope-trace',scopeId,...(includeHidden?['manager']:[])];
 export const traceMapIndexKey=(scopeId,{nativeOnly=false,includeHidden=false}={})=>['trace-map-index',scopeId,...(nativeOnly?['native']:[]),...(includeHidden?['manager']:[])];
@@ -135,7 +140,7 @@ export async function readTraceData(scopeId,{includeHidden=false}={}){
 }
 export async function readTraceMapIndex(scopeId,{nativeOnly=false,includeHidden=false}={}){
   const id=idScope(scopeId);
-  if(id==='loc')return Promise.all(TRACE_SOURCE_SCOPES.map(source=>readTraceMapIndex(source,{includeHidden})))
+  if(id==='loc')return Promise.all((await groupTraceSources()).map(source=>readTraceMapIndex(source,{includeHidden})))
     .then(groups=>groups.flat());
   return readPages(id,{columns:'uid,trace_type,title,description,anchor_list,route_list,invisible',nativeOnly,includeHidden})
     .then(rows=>rows.filter(row=>row.trace_type==='path'||row.trace_type==='trace'));
@@ -161,7 +166,7 @@ export async function readAllTraceAnchors(scopeId,{nativeOnly=false,includeHidde
   const id=idScope(scopeId);
   if(id==='loc'){
     // No LOC materialized Trace table: keep source Scope ownership and RLS intact.
-    const sources=await Promise.all(TRACE_SOURCE_SCOPES.map(source=>
+    const sources=await Promise.all((await groupTraceSources()).map(source=>
       readPages(source,{filter:'space_anchor',includeHidden})));
     return sources.flat();
   }
