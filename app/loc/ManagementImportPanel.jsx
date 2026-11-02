@@ -466,6 +466,13 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     const eligibleUids=new Set(analyzed.valid.map(row=>String(row.uid)));
     return archiveEvidence.filter(item=>item.galaxy_uids?.some(uid=>eligibleUids.has(String(uid))));
   },[archiveEvidence,analyzed.valid,timeWindow]);
+  const eligibleArchiveMediaPlan=useMemo(()=>prepareArchiveMedia(
+    eligibleArchiveEvidence,
+    new Set(analyzed.valid.map(row=>String(row.uid))),
+    new Map(analyzed.valid.map(row=>[String(row.uid),row.createtime])),
+    new Map(analyzed.valid.map(row=>[String(row.uid),row.title])),
+    new Map(analyzed.valid.map(row=>[String(row.uid),row.content]))
+  ),[eligibleArchiveEvidence,analyzed.valid]);
   const missingSiteIdCount=useMemo(()=>analyzed.valid.filter(row=>
     ['facebook','threads','instagram'].includes(String(row.site||'').trim().toLowerCase())&&
     !String(row.site_id||'').trim()).length,[analyzed.valid]);
@@ -474,10 +481,9 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     !Number.isFinite(Date.parse(String(row.createtime||'')))).length,[analyzed.valid]);
   const importEstimate=useMemo(()=>{
     const attachedMedia=analyzed.normalized.reduce((count,item)=>count+(item.mediaRecords?.length||0),0);
-    const media=Math.max(analyzed.mediaOnly.length+attachedMedia,
-      timeWindow?eligibleArchiveEvidence.length:(archiveSummary?.mediaImportable||0));
+    const media=analyzed.mediaOnly.length+attachedMedia+eligibleArchiveMediaPlan.media.length;
     return estimateImportMinutes({articles:analyzed.valid.length,media});
-  },[analyzed,archiveSummary?.mediaImportable,timeWindow,eligibleArchiveEvidence]);
+  },[analyzed,eligibleArchiveMediaPlan]);
   const stageEstimate=useMemo(()=>progress?.stageStartedAt
     ?estimateImportStageMinutes({completed:progress.completed,total:progress.total,
       elapsedMs:Date.now()-progress.stageStartedAt})
@@ -522,7 +528,11 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         const collector=createArchiveEvidenceCollector();
         const urlAudit={total:0,article:0,media:0,place:0,other:0,truncated:0};
         let ignored=0,privateSkipped=0;
-        const summary=await inspectPrivateArchive(file,{skipPrivateEntries:!nativeLocal,onGeoPlace:place=>{
+        const summary=await inspectPrivateArchive(file,{skipPrivateEntries:!nativeLocal,
+          // ZIP names are indexed without inflating photo/video bytes. Only
+          // exact article references + confirmed file presence become media.
+          onMediaEntry:entry=>collector.onMediaEntry(entry),
+          onGeoPlace:place=>{
           // Separate Facebook visit records remain review candidates, not Galaxy articles.
           const key=String(place.location||'').normalize('NFKC').trim().toLocaleLowerCase('und')+
             '|'+importGeoKey(place.__importCoordinates);
@@ -572,7 +582,12 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         }});
         const mediaEvidence=collector.rows({scopeId,archiveName:file.name,archiveSize:file.size})
           .filter(item=>nativeLocal||item.referenced_by_post||(imported.length>0&&item.galaxy_uids?.some(uid=>issuedArticleUids.has(uid))));
-        const mediaPlan=prepareArchiveMedia(mediaEvidence,issuedArticleUids);
+        const previewArticleTimes=new Map(imported.map(item=>[String(item.raw.uid),item.raw.createtime]));
+        const previewArticleTitles=new Map(imported.map(item=>[String(item.raw.uid),item.raw.title]));
+        const previewArticleContents=new Map(imported.map(item=>[String(item.raw.uid),item.raw.content]));
+        const mediaPlan=prepareArchiveMedia(
+          mediaEvidence,issuedArticleUids,previewArticleTimes,
+          previewArticleTitles,previewArticleContents);
         setArchiveEvidence(mediaEvidence);
         setGeoPlaceCandidates(geoPlaces);
         setArchiveSummary({...summary,urlAudit,
@@ -580,6 +595,9 @@ function UniversalImport({scopeId,format,onFormatChange}) {
           mediaEvidenceCount:mediaEvidence.length,
           mediaImportable:mediaPlan.media.length,
           mediaWithUrl:mediaPlan.media.filter(item=>Boolean(item.url)).length,
+          mediaZipLinked:mediaPlan.media.filter(item=>!item.url).length,
+          mediaZipNotLinked:Math.max(0,summary.mediaFiles-
+            mediaEvidence.filter(item=>item.found_in_zip&&item.galaxy_uids?.length).length),
           mediaLinked:mediaEvidence.filter(item=>item.galaxy_uids?.length).length,
           mediaUnlinked:mediaPlan.media.filter(item=>!item.__article_uid).length});
         if(!imported.length&&!mediaEvidence.length){
@@ -593,7 +611,10 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         const sourceNames=[...new Set(imported.map(item=>item.raw.site))];
         setSource(sourceNames.length===1?canonicalSource(sourceNames[0]):'Mixed');
         setStatus('已解析 '+imported.length.toLocaleString()+' 篇公開貼文；ZIP 媒體檔 '+summary.mediaFiles.toLocaleString()+
-          ' 個、可匯入媒體 '+mediaPlan.media.length.toLocaleString()+' 筆（有網址 '+mediaPlan.media.filter(item=>item.url).length.toLocaleString()+' 筆）；略過 '+
+          ' 個、已找到文章關聯的可建檔媒體 '+mediaPlan.media.length.toLocaleString()+
+          ' 筆（公開網址 '+mediaPlan.media.filter(item=>item.url).length.toLocaleString()+
+          ' 筆、僅 ZIP 附件 '+mediaPlan.media.filter(item=>!item.url).length.toLocaleString()+
+          ' 筆）；略過 '+
           (ignored+summary.rejectedRows).toLocaleString()+' 筆'+
           (privateSkipped?'（含 '+privateSkipped.toLocaleString()+' 筆非公開／不支援紀錄）':'')+
           '。請核對預覽後，在「作品儲存資料庫」按開始匯入。');
@@ -1079,18 +1100,18 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     </div>
     <ImportFormatSettings format={format} onChange={changeImportFormat} disabled={busy}/>
     {fileName?<p><UiText id="uiExtra.importUI.fileLabel"/><strong>{fileName}</strong><UiText id="uiExtra.importUI.fileQueue" params={{index:queueIndex+1,total:queue.length}}/><strong>{archiveDetection?(archiveDetection.sources.map(kind=>ZIP_SOURCE_NAMES[kind]||kind).join(' / ')||t('uiExtra.importUI.zipUnknown')):source||suggested}</strong></p>:null}
-    {rows.length||eligibleArchiveEvidence.length?<section className="scope-import-save" aria-label={t('uiExtra.importUI.saveSection')}>
+    {rows.length||eligibleArchiveMediaPlan.media.length?<section className="scope-import-save" aria-label={t('uiExtra.importUI.saveSection')}>
       <button type="button" className="loc-button primary scope-import-save-button"
-        disabled={busy||!analysisCurrent||(!analyzed.valid.length&&!analyzed.mediaOnly.length&&!eligibleArchiveEvidence.length)} onClick={run}>
+        disabled={busy||!analysisCurrent||(!analyzed.valid.length&&!analyzed.mediaOnly.length&&!eligibleArchiveMediaPlan.media.length)} onClick={run}>
         {busy?UI_COPY.management.importing:t('uiExtra.importUI.batchImport')}
       </button>
       <div className="scope-import-save-summary">
-        {!busy&&analysisCurrent?<p className="scope-import-ready-counts">{t('uiExtra.importUI.importReadyCounts',{articles:analyzed.valid.length.toLocaleString(),media:(analyzed.mediaOnly.length+eligibleArchiveEvidence.length).toLocaleString()})}</p>:null}
+        {!busy&&analysisCurrent?<p className="scope-import-ready-counts">{t('uiExtra.importUI.importReadyCounts',{articles:analyzed.valid.length.toLocaleString(),media:(analyzed.mediaOnly.length+eligibleArchiveMediaPlan.media.length).toLocaleString()})}</p>:null}
         {!busy&&analysisCurrent&&importEstimate?<p className="scope-status">{t('uiExtra.importUI.importEstimatedMinutes',importEstimate)}</p>:null}
       </div>
     </section>:null}
     {rows.length&&!busy&&!analysisCurrent?<p className="scope-status" role="status">正在更新匯入資料預覽，完成後才能開始匯入。</p>:null}
-    {rows.length&&!busy&&analysisCurrent&&!analyzed.valid.length&&!analyzed.mediaOnly.length&&!eligibleArchiveEvidence.length?<p className="scope-status" role="status">目前沒有可匯入的有效紀錄，請查看上方略過原因。</p>:null}
+    {rows.length&&!busy&&analysisCurrent&&!analyzed.valid.length&&!analyzed.mediaOnly.length&&!eligibleArchiveMediaPlan.media.length?<p className="scope-status" role="status">目前沒有可匯入的有效紀錄，請查看上方略過原因。</p>:null}
     {progress?<div role="status" aria-live="polite" aria-atomic="true" className="scope-import-progress">
       {busy?<p className="scope-status"><strong>{t('uiExtra.importUI.importProcessingWait')}</strong></p>:null}
       <p><strong>{progress.stage}</strong></p>
@@ -1168,7 +1189,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       {archiveSummary.urlAudit.truncated?' 有 '+archiveSummary.urlAudit.truncated.toLocaleString()+' 筆超過掃描上限；數量為下限。':''}
     </p>:null}
     {archiveSummary?<p className="scope-status" role="status">文章原始網址 {Number(archiveSummary.articleWithUrl||0).toLocaleString()}／{rows.length.toLocaleString()} 篇；未取得網址的文章不會以 ZIP uri、媒體連結或來源 ID 偽造文章 URL。</p>:null}
-    {archiveSummary?<p className="scope-status" role="status">已檢查 {archiveSummary.mediaFiles.toLocaleString()} 個媒體檔；與文章關聯 {archiveSummary.mediaLinked.toLocaleString()} 筆，可寫入作品儲存資料庫 {archiveSummary.mediaImportable.toLocaleString()} 筆（具公開網址 {archiveSummary.mediaWithUrl.toLocaleString()} 筆、無文章關聯 {archiveSummary.mediaUnlinked.toLocaleString()} 筆）。不會解壓或解析 ZIP 內圖片；只從 JSON 匯入真正的媒體 URL。沒有公開網址的附件不建立媒體資料。</p>:null}
+    {archiveSummary?<p className="scope-status" role="status">已清點 {archiveSummary.mediaFiles.toLocaleString()} 個 ZIP 媒體檔；符合文章關聯的媒體候選 {archiveSummary.mediaImportable.toLocaleString()} 筆（有公開網址 {archiveSummary.mediaWithUrl.toLocaleString()} 筆、無公開網址但已確認 ZIP 檔案 {archiveSummary.mediaZipLinked.toLocaleString()} 筆），未匹配或不支援的 ZIP 媒體約 {archiveSummary.mediaZipNotLinked.toLocaleString()} 筆。依目前時間範圍可建立 {eligibleArchiveMediaPlan.media.length.toLocaleString()} 筆媒體紀錄。僅 ZIP 附件會建立 UID 及文章 media_link，URL 保留空值；不會上傳圖片或影片檔案，也不會用 ZIP 路徑冒充播放網址。</p>:null}
     {archiveSummary?.geoPlaceObjects?<section className="scope-import-preview" aria-label="Facebook 地點候選">
       <p className="scope-status">Facebook 原始地點物件 {archiveSummary.geoPlaceObjects.toLocaleString()} 筆。匯入時會按原始地名建立缺少的空間定錨與日期定錨；已有的沿用，經緯度不足時不推測。獨立打卡不會轉成 Galaxy 文章。</p>
       {geoPlaceCandidates.length?<ul>{geoPlaceCandidates.slice(0,12).map((place,index)=>

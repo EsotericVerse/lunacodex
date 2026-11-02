@@ -60,7 +60,7 @@ test('import UI exposes range choices and filters both lookup and writes',()=>{
   assert.match(panel,/prepareArchiveMedia\(\s*eligibleArchiveEvidence,/);
   assert.match(panel,/const geoAnchorRecords=eligibleGeoRecords/);
   assert.match(panel,/__importVisitTimes:\(place\.__importVisitTimes\|\|\[\]\)\.filter\(time=>/);
-  assert.match(panel,/disabled=\{busy\|\|!analysisCurrent\|\|\(!analyzed.valid.length&&!analyzed.mediaOnly.length&&!eligibleArchiveEvidence.length\)\}/);
+  assert.match(panel,/disabled=\{busy\|\|!analysisCurrent\|\|\(!analyzed.valid.length&&!analyzed.mediaOnly.length&&!eligibleArchiveMediaPlan.media.length\)\}/);
 });
 
 

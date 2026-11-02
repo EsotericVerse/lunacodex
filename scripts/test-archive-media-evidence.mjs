@@ -54,7 +54,7 @@ test('Only an unambiguous full relative path can associate an article with ZIP m
   assert.equal(rows.filter(v=>v.found_in_zip).length,2);
   assert.equal(rows.filter(v=>v.found_in_zip).every(v=>v.galaxy_uids.length===0),true);
 });
-test('Article-linked archive image without a public URL retains EXIF evidence but creates no URL-less media',()=>{
+test('Article-linked ZIP photo without URL creates UID and media link, retaining EXIF evidence',()=>{
   const collector=createArchiveEvidenceCollector();
   collector.onMediaEntry({path:'facebook/photos/private.jpg'});
   collector.onRecord({platform:'facebook',attachments:[{uri:'facebook/photos/private.jpg'}]},'AAAA0001');
@@ -63,10 +63,12 @@ test('Article-linked archive image without a public URL retains EXIF evidence bu
   }});
   const entries=collector.rows({scopeId:'lo3rwang',archiveName:'fb.zip',archiveSize:1024});
   const plan=prepareArchiveMedia(entries,new Set(['AAAA0001']));
-  assert.equal(plan.media.length,0);
-  assert.equal(plan.mediaLinks.length,0);
+  assert.equal(plan.media.length,1);
+  assert.equal(plan.media[0].url,null);
+  assert.equal(plan.mediaLinks.length,1);
+  assert.equal(plan.mediaLinks[0].uid,'AAAA0001');
   assert.equal(plan.exif.length,1);
-  assert.equal(plan.exif[0].media_uid,null);
+  assert.equal(plan.exif[0].media_uid,plan.media[0].uid);
   assert.equal(plan.exif[0].latitude,25.033);
 });
 test('ZIP images with neither URL nor EXIF are not imported as media',()=>{
@@ -101,15 +103,16 @@ test('One ZIP image shared by two articles makes one media row and two links',()
   assert.equal(plan.exif.length,1);
 });
 
-test('Threads ZIP photo linked to an authored post without public URL is not saved as media',()=>{
+test('Threads ZIP photo linked to authored post survives without public URL',()=>{
   const collector=createArchiveEvidenceCollector();
   collector.onRecord({platform:'threads',attachments:[{uri:'threads/media/real.jpg'}]},'AAAA0001');
   collector.onMediaEntry({path:'threads/media/real.jpg'});
   const entries=collector.rows({scopeId:'lo3rwang',archiveName:'threads.zip',archiveSize:526});
   const plan=prepareArchiveMedia(entries,new Set(['AAAA0001']));
   assert.equal(entries.length,1);
-  assert.equal(plan.media.length,0);
-  assert.equal(plan.mediaLinks.length,0);
+  assert.equal(plan.media.length,1);
+  assert.equal(plan.media[0].url,null);
+  assert.equal(plan.mediaLinks.length,1);
   assert.equal(plan.exif.length,0);
 });
 
@@ -195,4 +198,39 @@ test('ZIP-imported media uses linked article caption and does not manufacture a 
   assert.equal(plan.media[0].meta_tags,'真實文章內文');
   assert.doesNotMatch(plan.media[0].title,/strange-name/);
   assert.equal(plan.media[0].url,'https://cdn.example.test/real.mp4');
+});
+
+test('4,243 ZIP files yield exactly the uniquely article-linked records without public URLs',()=>{
+  const collector=createArchiveEvidenceCollector();
+  const archive='fb-media-export.zip',total=4243,linked=375;
+  for(let i=0;i<total;i++){
+    const path='facebook/media/photo_'+String(i).padStart(5,'0')+'.jpg';
+    collector.onMediaEntry({path});
+    if(i<linked)collector.onRecord({
+      platform:'facebook',sourcePath:'posts/your_posts_1.json',
+      attachments:[{uri:path,mediaType:'image',url:null}]
+    },'ARTICLE01');
+  }
+  const rows=collector.rows({scopeId:'lo3rwang',archiveName:archive,archiveSize:100000});
+  const eligible=rows.filter(row=>row.referenced_by_post);
+  assert.equal(eligible.length,linked);
+  const plan=prepareArchiveMedia(eligible,new Set(['ARTICLE01']),new Map([
+    ['ARTICLE01','2026-09-18T09:00:00Z']
+  ]),new Map([['ARTICLE01','作品照片']]),new Map([['ARTICLE01','真正的文字內容']]));
+  assert.equal(plan.media.length,linked);
+  assert.equal(plan.mediaLinks.length,linked);
+  assert.equal(new Set(plan.media.map(row=>row.uid)).size,linked);
+  assert.ok(plan.media.every(row=>row.url===null&&row.meta_tags==='真正的文字內容'));
+  assert.ok(plan.media.every(row=>row.title==='作品照片'));
+  assert.ok(plan.mediaLinks.every(row=>row.uid==='ARTICLE01'));
+  assert.equal(prepareArchiveMedia(eligible,new Set(['ARTICLE01'])).media[0].uid,plan.media[0].uid);
+});
+test('JSON-only path with no confirmed ZIP file cannot manufacture URL-less media',()=>{
+  const collector=createArchiveEvidenceCollector();
+  collector.onRecord({platform:'facebook',sourcePath:'posts.json',
+    attachments:[{uri:'facebook/photo_missing.jpg',mediaType:'image'}]},'ARTICLE01');
+  const entries=collector.rows({scopeId:'lo3rwang',archiveName:'test.zip',archiveSize:100});
+  const plan=prepareArchiveMedia(entries,new Set(['ARTICLE01']));
+  assert.equal(plan.media.length,0);
+  assert.equal(plan.mediaLinks.length,0);
 });
