@@ -47,7 +47,7 @@ async function keywordEligibleCount(scope){
   // COUNT and scan must use the same authenticated visibility: public reads
   // omit owner-visible hidden articles and would report a misleading total.
   const {count,error}=await dbAuthRelation(scope.galaxy)
-    .select('uid',{count:'exact',head:true}).eq('statistics_able',true);
+    .select('uid',{count:'exact',head:true}).eq('able->>keywords','true');
   if(error||count===null||!Number.isSafeInteger(Number(count)))
     throw new Error(error?.message||'無法取得完整 Galaxy 統計總筆數');
   return Number(count);
@@ -152,11 +152,11 @@ export async function runKeywordAnalysisBatch(scopeId='lo3rwang',{classUid:reque
   // checked against their Taipei publication-date components before this
   // cutover; the reader also validates every returned row before writing.
   // Within each day articles stay in createtime + UID order.
-  const articleColumns='uid,date,createtime,content,searchable';
+  const articleColumns='uid,date,createtime,content,able';
   const readArticles=createIndexedDateKeywordReader({
     readDatePage:async ({after,limit})=>{
       let query=dbAuthRelation(scope.galaxy)
-        .select(articleColumns).eq('statistics_able',true)
+        .select(articleColumns).eq('able->>keywords','true')
         .not('date','is',null)
         .order('date',{ascending:true}).limit(limit);
       if(after!==null)query=query.gt('date',after);
@@ -166,14 +166,14 @@ export async function runKeywordAnalysisBatch(scopeId='lo3rwang',{classUid:reque
     },
     readDatePeers:async ({date,maximumRows})=>{
       const {data,count,error}=await dbAuthRelation(scope.galaxy)
-        .select(articleColumns,{count:'exact'}).eq('statistics_able',true)
+        .select(articleColumns,{count:'exact'}).eq('able->>keywords','true')
         .eq('date',date).limit(maximumRows);
       if(error)throw new Error(error.message||'Galaxy 同日文章讀取失敗');
       return {rows:data||[],count};
     },
     readUndated:async ({maximumRows})=>{
       const {data,count,error}=await dbAuthRelation(scope.galaxy)
-        .select(articleColumns,{count:'exact'}).eq('statistics_able',true)
+        .select(articleColumns,{count:'exact'}).eq('able->>keywords','true')
         .is('date',null).limit(maximumRows);
       if(error)throw new Error(error.message||'Galaxy 無日期文章讀取失敗');
       return {rows:data||[],count};
