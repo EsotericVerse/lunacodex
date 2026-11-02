@@ -28,9 +28,9 @@ export async function tryPublicSources(sources,run){
 
 export async function readIsrSummary(db,{origin,name,args}){
   const setting=await db.from('loc')
-    .select('cache').eq('id','loc').single();
+    .select('caches').eq('id','loc').single();
   if(setting.error)return {retryable:isAvailabilityFailure(setting),error:'Public ISR settings unavailable'};
-  const runtime=decodeLocCache(setting.data?.cache);
+  const runtime=decodeLocCache(setting.data?.caches);
   const chosen=Array.isArray(runtime?.isr_domains)
     ?runtime.isr_domains.find(item=>item.origin===runtime.cache_provider||item.id===runtime.cache_provider):null;
   if(runtime?.cache_mode!=='isr'||String(chosen?.origin||'').trim()!==origin)

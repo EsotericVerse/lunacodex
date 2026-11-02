@@ -5,7 +5,7 @@ import {registerDefaultSection} from '../../../i18n/ui-copy';
 import {useUiSection} from '../../../i18n/ui-locale';
 import adminViewZh from '../../../i18n/sections/uiExtra.adminView.zh_tw.js';
 import {useAccount} from '../../use-account';
-import {dbAuthRelation} from '../../db-client.mjs';
+import {dbAuthClient} from '../../db-client.mjs';
 import {useEditDockForm} from '../../../modular/edit-dock';
 registerDefaultSection('uiExtra.adminView',adminViewZh);
 
@@ -21,10 +21,10 @@ export default function AdminEmailBlocklist(){
   const load=useCallback(async()=>{
     setLoading(true);
     try{
-      const {data,error}=await dbAuthRelation('silver.email_blocklist')
-        .select('email,created_at').order('email',{ascending:true});
+      const {data,error}=await dbAuthClient.schema('silver').rpc('loc_admin_settings',
+        {p_section:'email',p_operation:'read'});
       if(error)throw new Error(error.message||'系統黑名單讀取失敗');
-      setEmails(data||[]);
+      setEmails((data||[]).sort((a,b)=>a.email.localeCompare(b.email)));
     }catch(error){setMessage(String(error?.message||error));}
     finally{setLoading(false);}
   },[]);
@@ -38,7 +38,8 @@ export default function AdminEmailBlocklist(){
     }
     setBusy(true);setMessage('');
     try{
-      const {error}=await dbAuthRelation('silver.email_blocklist').insert({email:value});
+      const {error}=await dbAuthClient.schema('silver').rpc('loc_admin_settings',
+        {p_section:'email',p_operation:'add',p_key:value});
       if(error)throw new Error(error.message||'新增黑名單失敗');
       setEmail('');setMessage(value+' 已加入系統黑名單。');
       // The written row's shape is already known; update locally (sorted) instead
@@ -55,7 +56,8 @@ export default function AdminEmailBlocklist(){
     if(!window.confirm('確認將 '+value+' 移出系統黑名單？'))return;
     setBusy(true);setMessage('');
     try{
-      const {error}=await dbAuthRelation('silver.email_blocklist').delete().eq('email',value);
+      const {error}=await dbAuthClient.schema('silver').rpc('loc_admin_settings',
+        {p_section:'email',p_operation:'remove',p_key:value});
       if(error)throw new Error(error.message||'移出黑名單失敗');
       setMessage(value+' 已移出黑名單。');
       setEmails(current=>current.filter(item=>item.email!==value));

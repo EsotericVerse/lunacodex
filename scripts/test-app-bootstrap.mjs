@@ -545,8 +545,8 @@ test('Admin first tab is People; lists and network consolidate existing secure e
   assert.match(reserved,/useEditDockForm/);
   assert.match(email,/useEditDockForm/);
   assert.match(registry,/useEditDockForm/);
-  assert.match(reserved,/silver\.block_scopeid/);
-  assert.match(email,/silver\.email_blocklist/);
+  assert.match(reserved,/p_section:'scopeid'/);
+  assert.match(email,/p_section:'email'/);
   assert.doesNotMatch(admin,/updateRows|deleteRows|insertRows/);
 });
 
