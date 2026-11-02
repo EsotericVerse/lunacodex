@@ -30,6 +30,18 @@ const conversation={conversation_id:'chat-1',updated_at:'2026-11-01T01:00:00Z',
 const originalFetch=globalThis.fetch;
 test.after(()=>{globalThis.fetch=originalFetch;});
 
+test('managed Clerk MCP authorization recognizes actual verified email addresses',()=>{
+  for(const path of ['../workers/loc-authority/index.mjs','../supabase/functions/loc-kysely/index.ts']){
+    const source=readFileSync(new URL(path,import.meta.url),'utf8');
+    const literal=source.match(/\/\^\[\^[^\n]+?\$\/(?=\.test\()/)?.[0];
+    assert.ok(literal,'Managed email matcher must exist');
+    const pattern=new Function('return '+literal)();
+    assert.equal(pattern.test('abc@example.org'),true,path);
+    assert.equal(pattern.test('a b@example.org'),false,path);
+    assert.equal(pattern.test('missing-domain'),false,path);
+  }
+});
+
 test('encrypted Scope credentials never appear in public settings',async()=>{
   const {do:authority,saved}=state();
   const configured=await authority.putMcpScope('lrunes',profile);

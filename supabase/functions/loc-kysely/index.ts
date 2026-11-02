@@ -70,7 +70,7 @@ async function verifyMcpForSql(token:string,scopeid:string){
   const identity=await result.json();
   if(identity?.provider!=="clerk"||identity.authorized!==true||
     identity.subject!==payload.sub||identity.scopeid!==scopeid||
-    !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(String(identity.email||"")))
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(identity.email||"")))
     throw new Error("Verified MCP identity does not match Scope owner");
   return {role:"authenticated",sub:payload.sub,iss:payload.iss,
     email:String(identity.email).toLowerCase(),provider:"clerk"};
