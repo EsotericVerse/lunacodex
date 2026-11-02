@@ -62,8 +62,22 @@ export function checkLocScopeBoundary(migrations=[]){
       Object.keys(scopeFeaturePatch('loc',{search_able:false,statistics_able:false,culture_able:false})).length)
     throw Error('LOC group config must not inherit Scope theme, search, or feature switches');
   const unsafe=/\b(?:insert\s+into|merge\s+into|alter\s+table|delete\s+from|drop\s+table|truncate(?:\s+table)?)\s+(?:if\s+(?:not\s+)?exists\s+)?(?:"?silver"?\s*\.\s*)"?loc"?(?![\w])/i;
+  // LOC is a Scope Group, but the explicitly approved global JSONB config
+  // consolidation is not a Scope feature switch. Permit only these precise
+  // column operations; all other LOC mutations remain prohibited.
+  const approved=new Map([
+    ['20261103001000_loc_jsonb_consolidation_stage1.sql',
+      /^ALTER\s+TABLE\s+silver\.loc\s+ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+(?:caches|database|blacklist)\s+jsonb\b/i],
+    ['20261103003000_loc_jsonb_drop_legacy.sql',
+      /^ALTER\s+TABLE\s+silver\.loc\s+DROP\s+COLUMN\s+cache\s*$/i]
+  ]);
   for(const [name,sql] of migrations){
-    if(unsafe.test(sql))throw Error('LOC group table is protected from migration writes or schema edits: '+name);
+    const allow=approved.get(name);
+    for(const statement of sql.split(';')){
+      const trimmed=statement.trim();
+      if(unsafe.test(trimmed)&&!(allow&&allow.test(trimmed)))
+        throw Error('LOC group table is protected from migration writes or schema edits: '+name);
+    }
   }
   return {checked:migrations.length};
 }
