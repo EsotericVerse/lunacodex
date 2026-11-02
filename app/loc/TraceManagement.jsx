@@ -142,6 +142,18 @@ function AnchorEditor({scopeId,spatial,reload}){
       try{
         const refreshed=await reload();
         if(!Array.isArray(refreshed?.anchors))refreshFailed=true;
+        else if(editingUid||savedUid){
+          const current=refreshed.anchors.find(row=>row.uid===(editingUid||savedUid));
+          if(current){
+            setEditingUid(current.uid);
+            setTitle(current.title||'');
+            setDescription(current.description||'');
+            setPostalAddress(current.postal_address||'');
+            setInvisible(Boolean(current.invisible));
+            setLongitude(current.longitude==null?'':String(current.longitude));
+            setLatitude(current.latitude==null?'':String(current.latitude));
+          }
+        }
       }catch{refreshFailed=true;}
       try{await revalidateServerMetadata();}catch{refreshFailed=true;}
       await Promise.allSettled([
@@ -151,7 +163,6 @@ function AnchorEditor({scopeId,spatial,reload}){
       ]);
       // Keep the upper primary selection after a successful merge. The
       // reloaded list refreshes its title and UID, while removed sources vanish.
-      if(savedUid&&!editingUid)setEditingUid(savedUid);
       setNotice([
         mergedCount?'已合併 '+mergedCount+' 筆地點至主要 UID '+editingUid:'',
         savedUid?'定錨點 '+savedUid+' 已保存':'',
