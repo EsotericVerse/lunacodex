@@ -1,5 +1,5 @@
 export default {
-  "article": "发表文章",
+  "article": "文章管理",
   "import": "资料导入",
   "keywords": "关键词管理",
   "checking": "正在确认登录与管理权限…",
