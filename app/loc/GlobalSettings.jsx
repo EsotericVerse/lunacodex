@@ -152,7 +152,13 @@ export default function GlobalSettings({initialSection='home'}={}){
           {accountWaiting?<p role="status">正在核驗 Clerk 登入身分…</p>:account.user?<p>Clerk Google（已驗證）：{account.email}</p>:null}
           {!accountWaiting&&!account.user?<button type="button" className="loc-button primary" disabled={busy} onClick={login}>使用 Clerk Google 登入</button>:null}
           {account.user||prefs.account.user?<button type="button" className="loc-button" disabled={busy} onClick={logout}><UiText id="uiExtra.globalSettings.logout"/></button>:null}
-          {account.error?<p role="alert" className="scope-status scope-error">{account.error}</p>:null}
+          {account.error?<div className="scope-status scope-error" role="alert">
+            <p>{account.error}</p>
+            <button type="button" className="loc-button" disabled={busy||account.loading}
+              onClick={()=>void verifiedGoogleAccount.refresh().catch(error=>setStatus(String(error?.message||error)))}>
+              重新確認登入狀態
+            </button>
+          </div>:null}
         </section>
         <section className="loc-card">
         <h2><UiText id="uiExtra.globalSettings.homeSettings"/></h2>

@@ -52,10 +52,20 @@ export function createIndependentClerkIdentity({loadClerk,authorityOrigin,
     if(!jwt)return null;
     if(pendingIdentity&&pendingIdentityToken===jwt)return pendingIdentity;
     const pending=(async()=>{
-      const response=await fetchImpl(authority+'/v1/identity',{
+      // Retry a dropped network request once; HTTP 401/403 is never retried.
+      const request=()=>fetchImpl(authority+'/v1/identity',{
         method:'GET',cache:'no-store',credentials:'omit',
         headers:{authorization:'Bearer '+jwt,accept:'application/json'}
       });
+      let response;
+      try{response=await request();}
+      catch(error){
+        if(!(error instanceof TypeError))throw error;
+        try{response=await request();}
+        catch(secondError){
+          throw new Error('LOC 身分核驗連線失敗，請重新確認登入狀態。',{cause:secondError});
+        }
+      }
       if(!response.ok){
         let reason='';
         try{

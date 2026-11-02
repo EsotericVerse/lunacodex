@@ -138,6 +138,21 @@ export function useAccount({enabled=true,sessionOnly=false}={}){
     ...(passive?{fallbackData:signedOutState}:{}),
   });
   const state=query.data||emptyState;
+  // A failed network read is not a sign-out. Retry only when the browser
+  // reconnects or the user returns to a tab that failed verification.
+  useEffect(()=>{
+    if(!sessionOnly||!enabled||
+      !/Failed to fetch|連線失敗|NetworkError|Load failed/i.test(String(state.error||'')))
+      return undefined;
+    const recheck=()=>{void query.mutate().catch(()=>{});};
+    const onVisible=()=>{if(document.visibilityState==='visible')recheck();};
+    window.addEventListener('online',recheck);
+    document.addEventListener('visibilitychange',onVisible);
+    return()=>{
+      window.removeEventListener('online',recheck);
+      document.removeEventListener('visibilitychange',onVisible);
+    };
+  },[sessionOnly,enabled,state.error,query.mutate]);
 
   // An explicit action checks current JS variables on every click. Only a
   // missing/invalidated snapshot loads one server-verified permission set.

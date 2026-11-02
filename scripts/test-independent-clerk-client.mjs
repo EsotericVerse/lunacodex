@@ -76,3 +76,51 @@ test('author edit displays the safe Authority rejection reason rather than only 
   await assert.rejects(fixture({status:401}).adapter.verifiedIdentity(),
     /HTTP 401：Clerk authorized party does not match LOC/);
 });
+
+test('a dropped Authority network request recovers once without losing verified identity',async()=>{
+  const {adapter}=fixture({id:'user_test'});
+  let attempts=0;
+  const identity=createIndependentClerkIdentity({
+    siteOrigin,authorityOrigin,
+    loadClerk:async()=>({user:{id:'user_test'},session:{getToken:async()=> 'signed.jwt.token'}}),
+    fetchImpl:async()=>{
+      attempts++;
+      if(attempts===1)throw new TypeError('Failed to fetch');
+      return {ok:true,status:200,json:async()=>({
+        provider:'clerk',subject:'user_test',session:'sess_verified',email:'owner@example.com'
+      })};
+    }
+  });
+  const result=await identity.verifiedIdentity();
+  assert.equal(result.subject,'user_test');
+  assert.equal(attempts,2);
+  assert.equal((await adapter.verifiedIdentity()).provider,'clerk');
+});
+test('permission denial never retries and persistent network failure is bounded',async()=>{
+  let requests=0;
+  const loadClerk=async()=>({
+    user:{id:'user_test'},session:{getToken:async()=> 'signed.jwt.token'}
+  });
+  const noPermission=createIndependentClerkIdentity({
+    siteOrigin,authorityOrigin,loadClerk,
+    fetchImpl:async()=>{requests++;return {ok:false,status:403,json:async()=>({error:'Access denied'})};}
+  });
+  await assert.rejects(noPermission.verifiedIdentity(),/HTTP 403/);
+  assert.equal(requests,1);
+  requests=0;
+  const disconnected=createIndependentClerkIdentity({
+    siteOrigin,authorityOrigin,loadClerk,
+    fetchImpl:async()=>{requests++;throw new TypeError('Failed to fetch');}
+  });
+  await assert.rejects(disconnected.verifiedIdentity(),/身分核驗連線失敗/);
+  assert.equal(requests,2);
+});
+test('Settings exposes account recheck and reconnect only on actual network failures',()=>{
+  const settings=readFileSync(new URL('../app/loc/GlobalSettings.jsx',import.meta.url),'utf8');
+  const account=readFileSync(new URL('../app/loc/use-account.js',import.meta.url),'utf8');
+  assert.match(settings,/重新確認登入狀態/);
+  assert.match(settings,/verifiedGoogleAccount\.refresh\(\)/);
+  assert.match(account,/window\.addEventListener\('online',recheck\)/);
+  assert.match(account,/document\.addEventListener\('visibilitychange',onVisible\)/);
+  assert.ok(account.includes('Failed to fetch|連線失敗|NetworkError|Load failed'));
+});
