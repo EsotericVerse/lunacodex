@@ -1,6 +1,6 @@
 // The LOC / LunaRunes statistics timeframe is controlled exclusively by +/-.
-// Default to the last calendar year; zoom out only as far as *real* historical
-// records, with no fixed year ceiling. Automatic buckets are presentation only.
+// Default to the last calendar year; never request more than one year at once.
+// Automatic week/month buckets are presentation only.
 // One page-size contract for both the visual Rune ranking and media facets.
 export const RUNE_RANKING_PAGE_SIZE=8;
 export const OTHER_RANKING_PAGE_SIZE=10;
@@ -34,18 +34,18 @@ export function statisticsZoomWindow(level=0,endDate='',earliestDate=''){
   const origin=lastYearDate(endDate);
   const baseDays=Math.max(1,Math.round((epoch(endDate)-epoch(origin))/MS_PER_DAY));
   const earliest=validDate(earliestDate)&&earliestDate<=endDate?earliestDate:'';
-  const earliestDays=earliest?Math.round((epoch(endDate)-epoch(earliest))/MS_PER_DAY):Infinity;
   const factor=2**(-zoom);
   const span=Number.isFinite(factor)?Math.max(0,Math.round(baseDays*factor)):Infinity;
-  const clamped=earliest&&zoom<0&&span>=earliestDays;
-  const startDate=clamped?earliest:dateFromEpoch(epoch(endDate)-span*MS_PER_DAY);
+  const boundedSpan=Math.min(baseDays,span);
+  const candidate=dateFromEpoch(epoch(endDate)-boundedSpan*MS_PER_DAY);
+  const startDate=earliest&&candidate<earliest?earliest:candidate;
   const days=Math.round((epoch(endDate)-epoch(startDate))/MS_PER_DAY);
   return {
     startDate,endDate,
     bucket:days>180?'month':days>31?'week':'day',
     level:zoom,
     fullHistory:Boolean(earliest&&startDate<=earliest),
-    canZoomOut:Boolean(earliest&&startDate>earliest),
+    canZoomOut:Boolean(earliest&&startDate>earliest&&startDate>origin),
     canZoomIn:Boolean(earliest&&days>0)
   };
 }
