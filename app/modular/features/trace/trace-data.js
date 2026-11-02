@@ -2,6 +2,7 @@
 
 import {dbPublicClient,dbAuthClient,dbAuthRelation} from '../../../loc/db-client.mjs';
 import {findAnchorWriteMatches,organizeAnchorCandidates} from './trace-organizer.mjs';
+import {fromAnchorRow,allocateAnchorUid} from '../../../loc/unified-anchor-compat.mjs';
 
 export const TRACE_SCOPES=Object.freeze(['loc','lo3rwang','lrunes']);
 export const traceKey=(scopeId,{includeHidden=false}={})=>['scope-trace',scopeId,...(includeHidden?['manager']:[])];
@@ -13,6 +14,35 @@ export const traceAllAnchorsKey=(scopeId,{nativeOnly=false,includeHidden=false}=
 const VALID_ID=/^(?:[A-Za-z0-9]{4}|[A-Za-z0-9]{8})$/;
 const TRACE_TYPES=['space_anchor','path','trace'];
 const CORE_COLUMNS='uid,trace_type,title,description,anchor_list,route_list,invisible,times,address';
+const ANCHOR_COLUMNS='uid,type,title,description,invisible,attr';
+const isUnified=id=>id==='lo3rwang';
+const physicalPoint=id=>dbAuthClient.schema('silver').from(id+'_anchor');
+const pointAttr=({address,longitude,latitude})=>{
+  const coords=coordinateArray(longitude,latitude),attr={};
+  if(coords){attr.longitude=coords[0];attr.latitude=coords[1];}
+  if(postalText(address))attr.location=postalText(address);
+  return attr;
+};
+const projectUnified=(row,id)=>{
+  const projected=fromAnchorRow({kind:'trace',legacy:'trace'},row);
+  const location=row.attr?.location;
+  const address=typeof location==='string'?location:'';
+  const lng=row.attr?.longitude,lat=row.attr?.latitude;
+  const coordinates=lng!=null&&lat!=null&&Number.isFinite(Number(lng))&&Number.isFinite(Number(lat))
+    ?[Number(lng),Number(lat)]:null;
+  // An array of aliases is never an array of GPS coordinates.
+  const paths=Array.isArray(row.attr?.path)?row.attr.path:[];
+  const points=Array.isArray(row.attr?.point)?row.attr.point:[];
+  // Native Trace uses a flat, ordered point UID array. Every two entries
+  // form one segment; the SQL merge contract also replaces flat UID arrays.
+  const segments=Array.isArray(points[0])?points:
+    row.type==='trace'?points.reduce((list,uid,index)=>{
+      if(index%2===0)list.push([uid]);else list[list.length-1].push(uid);
+      return list;
+    },[]):[];
+  return readRow({...projected,attr:row.attr,address:coordinates,
+    route_list:{...projected.route_list,routes:paths,segments,postal_address:address}},id);
+};
 const normalizedInvisible=value=>{if(typeof value==='boolean')return value;if(value===0||value===1)return Boolean(value);throw Error('隱藏設定必須是 0 或 1');};
 const idScope=value=>{
   const id=String(value||'').toLowerCase().trim();
@@ -69,6 +99,17 @@ async function readPages(id,{columns=CORE_COLUMNS,filter=null,nativeOnly=false,i
   // The LOC materialized union was deliberately dropped. Never query it
   // until the owner Scope place data has been reviewed and a new union built.
   if(id==='loc')return [];
+  if(isUnified(id)){
+    const rows=[],size=750,types=filter?[filter==='space_anchor'?'point':filter]:['point','path','trace'];
+    for(let offset=0;;offset+=size){
+      const result=checked(await dbAuthClient.schema('silver').from(id+'_anchor')
+        .select(ANCHOR_COLUMNS).in('type',types).order('title',{ascending:true})
+        .range(offset,offset+size-1),'空間 Anchor 讀取')||[];
+      rows.push(...result.map(row=>projectUnified(row,id)));
+      if(result.length<size)break;
+    }
+    return rows;
+  }
   const union=false,rows=[],size=750;
   for(let offset=0;;offset+=size){
     // Authenticated reads use the viewer's session and preserve Scope RLS;
@@ -106,11 +147,11 @@ export async function readCurrentTraceAnchors(scopeId,anchorUids=[],{nativeOnly=
     .map(uid=>String(uid||'').trim()).filter(uid=>VALID_ID.test(uid)))];
   if(!ids.length)return [];
   if(ids.length>800)throw Error('地點數量超過上限');
-  let query=dbAuthClient.schema('silver').from(id+'_trace')
-    .select(CORE_COLUMNS+(id==='loc'?',scope_id':''))
-    .eq('trace_type','space_anchor').in('uid',ids).limit(900);
+  let query=dbAuthClient.schema('silver').from(isUnified(id)?id+'_anchor':id+'_trace')
+    .select(isUnified(id)?ANCHOR_COLUMNS:CORE_COLUMNS+(id==='loc'?',scope_id':''))
+    .eq(isUnified(id)?'type':'trace_type',isUnified(id)?'point':'space_anchor').in('uid',ids).limit(900);
   if(id==='loc'&&nativeOnly)query=query.eq('scope_id','loc');
-  const rows=(checked(await query,'空間地點讀取')||[]).map(row=>readRow(row,id));
+  const rows=(checked(await query,'空間地點讀取')||[]).map(row=>isUnified(id)?projectUnified(row,id):readRow(row,id));
   const byId=new Map(rows.map(row=>[row.uid,row]));
   return ids.map(uid=>byId.get(uid)).filter(Boolean);
 }
@@ -133,6 +174,12 @@ export async function readTraceAnchorSuggestions(scopeId,term,limit=8){
   if(!data.length)return [];
   const ids=data.map(row=>row.uid).filter(uid=>VALID_ID.test(String(uid)));
   if(!ids.length)return [];
+  if(isUnified(id)){
+    const allowed=checked(await dbPublicClient.schema('silver').from(id+'_anchor')
+      .select(ANCHOR_COLUMNS).eq('type','point').in('uid',ids),'公開地點權限檢查')||[];
+    const byUid=new Map(allowed.map(row=>[row.uid,row]));
+    return ids.map(uid=>byUid.get(uid)).filter(Boolean).map(row=>projectUnified(row,id));
+  }
   const allowed=checked(await dbPublicClient.schema('silver').from(id+'_trace')
     .select('uid').eq('trace_type','space_anchor').in('uid',ids),'公開地點權限檢查')||[];
   const visible=new Set(allowed.map(row=>row.uid));
@@ -157,6 +204,13 @@ export async function addTraceAnchor({scopeId,title,description='',address='',lo
     description:descriptionText(description),route_list:{routes:[],segments:[],postal_address:postalText(address)},
     address:coordinateArray(longitude,latitude),invisible:normalizedInvisible(invisible),
     times:Array.isArray(times)?times:[],anchor_list:[]};
+  if(isUnified(id)){
+    if(times?.length)throw Error('請先將時間關聯儲存在正式時間資料中');
+    const row={uid:allocateAnchorUid(),type:'point',title:record.title,
+      description:record.description,invisible:record.invisible,
+      attr:pointAttr({address,longitude,latitude})};
+    return checked(await physicalPoint(id).insert(row).select('uid').single(),'新增空間定錨點');
+  }
   let query=dbAuthRelation(relation(id)).insert(record).select('uid').single();
   return checked(await query,'新增空間定錨點');
 }
@@ -166,6 +220,23 @@ export async function updateTraceAnchor({scopeId,uid,title,description='',addres
   const record={title:nonempty(title,'地點標題'),
     description:descriptionText(description),
     address:coordinateArray(longitude,latitude),invisible:normalizedInvisible(invisible),route_list:{routes:[],segments:[],postal_address:postalText(address)}};
+  if(isUnified(id)){
+    const before=checked(await physicalPoint(id).select('uid,attr').eq('uid',selected)
+      .eq('type','point').maybeSingle(),'讀取空間定錨點');
+    if(!before)throw Error('空間定錨點不存在，請重新載入');
+    const attr={...(before.attr||{})};
+    const coords=coordinateArray(longitude,latitude);
+    if(coords){attr.longitude=coords[0];attr.latitude=coords[1];}
+    else{delete attr.longitude;delete attr.latitude;}
+    const location=postalText(address);
+    if(location){
+      if(Array.isArray(attr.location))attr.location=[...new Set([...attr.location,location])];
+      else attr.location=location;
+    }
+    return checked(await physicalPoint(id).update({title:record.title,
+      description:record.description,invisible:record.invisible,attr})
+      .eq('uid',selected).eq('type','point').select('uid').single(),'更新空間定錨點');
+  }
   let query=dbAuthRelation(relation(id)).update(record).eq('uid',selected).eq('trace_type','space_anchor');
   if(id==='loc')query=query.eq('scope_id','loc');
   return checked(await query.select('uid').single(),'更新空間定錨點');
@@ -177,6 +248,12 @@ export async function renameTraceAnchorTitles({scopeId,uids,title}){
   const ids=[...new Set((uids||[]).map(value=>textValue(value)))];
   if(!ids.length||ids.length>100||ids.some(uid=>!VALID_ID.test(uid)))
     throw Error('快速更新定錨點清單無效');
+  if(isUnified(id)){
+    const rows=checked(await physicalPoint(id).update({title:nonempty(title,'地點標題')})
+      .eq('type','point').in('uid',ids).select('uid'),'快速更新地點名稱')||[];
+    if(rows.length!==ids.length)throw Error('部分地點未能更新，請重新載入確認 UID');
+    return rows.length;
+  }
   const result=checked(await dbAuthRelation(relation(id))
     .update({title:nonempty(title,'地點標題')})
     .eq('trace_type','space_anchor').in('uid',ids)
@@ -203,6 +280,20 @@ export async function addTraceAnchorsBatch({scopeId,places=[]}){
       address,anchor_list:[],times:Array.isArray(place.times)?place.times:[]});
   }
   let count=0;
+  if(isUnified(id)){
+    for(let offset=0;offset<inserts.length;offset+=80){
+      const rows=inserts.slice(offset,offset+80).map(place=>({
+        uid:allocateAnchorUid(),type:'point',title:place.title,
+        description:place.description,invisible:false,
+        attr:pointAttr({address:place.route_list.postal_address,
+          longitude:place.address?.[0],latitude:place.address?.[1]})
+      }));
+      count+=(checked(await physicalPoint(id).insert(rows).select('uid'),'批次新增地點')||[]).length;
+    }
+    const review=organizeAnchorCandidates(await readAllTraceAnchors(id));
+    return {count,skipped,consolidated:0,duplicatesInBatch:skipped,reviewCount:review.length,
+      reviewPreview:review.slice(0,8),auditError:''};
+  }
   for(let offset=0;offset<inserts.length;offset+=80){
     const chunk=inserts.slice(offset,offset+80);
     const inserted=checked(await dbAuthRelation(relation(id)).insert(chunk).select('uid'),'批次新增地點')||[];
@@ -236,8 +327,11 @@ async function validatedRouteList(scopeId,type,routeUids=[]){
     return [];
   }
   if(!ids.length)return [];
-  const rows=checked(await dbAuthRelation(relation(scopeId)).select('uid')
-    .eq('trace_type','path').in('uid',ids).limit(81),'確認下層路線圖')||[];
+  const rows=checked(await (isUnified(scopeId)
+    ?dbAuthClient.schema('silver').from(scopeId+'_anchor').select('uid')
+      .eq('type','path').in('uid',ids).limit(81)
+    :dbAuthRelation(relation(scopeId)).select('uid')
+      .eq('trace_type','path').in('uid',ids).limit(81)),'確認下層路線圖')||[];
   if(rows.length!==ids.length)throw Error('包含不存在或跨 Scope 的路線圖');
   return ids;
 }
@@ -245,6 +339,13 @@ const validUid=value=>VALID_ID.test(textValue(value));
 export async function addTraceMap({scopeId,title,description='',type='path',anchorUids=[],anchors=[],routeUids=[],invisible=false}){
   const id=writableScope(scopeId),route_list=await validatedRouteList(id,type,routeUids);
   const anchor_list=validatedConnections({scopeId:id,type,anchorUids,anchors,hasRoutes:route_list.length>0});
+  if(isUnified(id)){
+    return checked(await dbAuthClient.schema('silver').from(id+'_anchor').insert({
+      uid:allocateAnchorUid(),type,title:nonempty(title,'名稱'),
+      description:descriptionText(description),invisible:normalizedInvisible(invisible),
+      attr:type==='path'?{point:anchor_list}:{point:anchor_list.flat(),path:route_list}
+    }).select('uid').single(),'儲存路線或痕跡圖');
+  }
   return checked(await dbAuthRelation(relation(id)).insert({
     trace_type:type,title:nonempty(title,'名稱'),description:descriptionText(description),
     anchor_list:type==='path'?anchor_list:[...new Set(anchor_list.flat())],
@@ -256,6 +357,17 @@ export async function updateTraceMap({scopeId,uid,title,description='',type='pat
   if(!validUid(key))throw Error('無效 UID');
   const route_list=await validatedRouteList(id,type,routeUids);
   const anchor_list=validatedConnections({scopeId:id,type,anchorUids,anchors,hasRoutes:route_list.length>0});
+  if(isUnified(id)){
+    const current=checked(await dbAuthClient.schema('silver').from(id+'_anchor')
+      .select('uid,attr').eq('uid',key).eq('type',type).maybeSingle(),'讀取路線／痕跡圖');
+    if(!current)throw Error('指定的路線／痕跡圖不存在');
+    const attr={...(current.attr||{}),point:type==='trace'?anchor_list.flat():anchor_list};
+    if(type==='trace')attr.path=route_list;
+    return checked(await dbAuthClient.schema('silver').from(id+'_anchor')
+      .update({title:nonempty(title,'名稱'),description:descriptionText(description),
+        invisible:normalizedInvisible(invisible),attr})
+      .eq('uid',key).eq('type',type).select('uid').single(),'更新路線或痕跡圖');
+  }
   let query=dbAuthRelation(relation(id)).update({
     title:nonempty(title,'名稱'),description:descriptionText(description),
     anchor_list:type==='path'?anchor_list:[...new Set(anchor_list.flat())],
@@ -268,6 +380,12 @@ export async function updateTraceMap({scopeId,uid,title,description='',type='pat
 export async function updateTraceVisibilityBulk({scopeId,uids=[],invisible=false}){
   const id=writableScope(scopeId),ids=[...new Set(uids.map(textValue))];
   if(!ids.length||ids.length>200||ids.some(uid=>!VALID_ID.test(uid)))throw Error('請選擇 1 至 200 筆有效項目');
+  if(isUnified(id)){
+    const rows=checked(await physicalPoint(id).update({invisible:normalizedInvisible(invisible)})
+      .eq('type','point').in('uid',ids).select('uid'),'大量設定空間隱藏')||[];
+    if(rows.length!==ids.length)throw Error('部分地點權限未更新，請重新讀取');
+    return rows.length;
+  }
   const rows=checked(await dbAuthRelation(relation(id)).update({invisible:normalizedInvisible(invisible)})
     .in('uid',ids).select('uid'),'大量設定空間隱藏')||[];
   if(rows.length!==ids.length)throw Error('部分地點權限未更新，請重新讀取');
@@ -276,7 +394,30 @@ export async function updateTraceVisibilityBulk({scopeId,uids=[],invisible=false
 export async function deleteTraceMap({scopeId,uid,type='path'}){
   const id=writableScope(scopeId);
   if(!validUid(uid)||!['path','trace'].includes(type))throw Error('無效的刪除目標');
+  if(isUnified(id))return checked(await dbAuthClient.schema('silver').from(id+'_anchor')
+    .delete().eq('uid',uid).eq('type',type).select('uid').single(),'刪除路線或痕跡圖');
   let query=dbAuthRelation(relation(id)).delete().eq('uid',uid).eq('trace_type',type);
   if(id==='loc')query=query.eq('scope_id','loc');
   return checked(await query.select('uid').single(),'刪除路線或痕跡圖');
+}
+
+/** User-approved merge: one authenticated RPC owns the single database transaction.
+ * The RPC must repoint Galaxy.place_id and path/trace attr.point, retain aliases
+ * in the primary point's attr.location, and delete source points atomically.
+ * No client-side multi-step deletion or fallback to obsolete _trace.
+ */
+export async function mergeTraceAnchorPoints({scopeId,keepUid,removeUids=[]}){
+  const id=writableScope(scopeId),primary=textValue(keepUid);
+  if(!isUnified(id))throw Error('此 Scope 尚未提供統一空間合併');
+  const sources=[...new Set(removeUids.map(textValue).filter(Boolean))];
+  if(!/^[A-Za-z0-9]{8}$/.test(primary)||sources.length<1||sources.length>100||
+    sources.includes(primary)||sources.some(uid=>!/^[A-Za-z0-9]{8}$/.test(uid))||
+    sources.length!==removeUids.length)
+    throw Error('合併清單無效：主要地點及來源 UID 必須各自唯一');
+  const data=checked(await dbAuthClient.schema('silver').rpc('merge_scope_trace_place_names',{
+    p_scope_id:id,p_keep_uid:primary,p_remove_uids:sources
+  }),'合併空間定錨');
+  const count=typeof data==='number'?data:data?.merged_count;
+  if(count!==sources.length)throw Error('合併結果未確認，請重新讀取後核對');
+  return count;
 }

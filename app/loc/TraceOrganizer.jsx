@@ -41,13 +41,18 @@ export default function TraceOrganizer({scopeId,spatial,reload}){
   useEffect(()=>{
     let live=true;
     if(!selectedUid||scopeId==='loc'){setAliases([]);return;}
-    dbAuthClient.schema('silver').from(scopeId+'_place')
-      .select('name_lists').eq('uid',selectedUid).maybeSingle()
-      .then(({data,error:loadError})=>{
-        if(!live)return;
-        if(loadError){setError(true);setNotice(String(loadError.message||loadError));return;}
-        setAliases(data?.name_lists||[]);
-      });
+    const unified=scopeId==='lo3rwang';
+    let query=dbAuthClient.schema('silver').from(scopeId+(unified?'_anchor':'_place'))
+      .select(unified?'attr':'name_lists').eq('uid',selectedUid);
+    if(unified)query=query.eq('type','point');
+    query.maybeSingle().then(({data,error:loadError})=>{
+      if(!live)return;
+      if(loadError){setError(true);setNotice(String(loadError.message||loadError));return;}
+      const location=data?.attr?.location;
+      setAliases(unified
+        ?Array.isArray(location)?location:typeof location==='string'&&location?[location]:[]
+        :data?.name_lists||[]);
+    });
     return()=>{live=false;};
   },[scopeId,selectedUid]);
   const saveNames=async()=>{
@@ -55,10 +60,21 @@ export default function TraceOrganizer({scopeId,spatial,reload}){
     const list=[...new Set([...aliases,newAlias.trim()].filter(Boolean))];
     setBusy(true);setError(false);setNotice('');
     try{
-      const {error:saveError}=await dbAuthClient.schema('silver')
-        .rpc('save_scope_trace_place_names',{p_scope_id:scopeId,p_uid:selectedUid,p_names:list});
-      if(saveError)throw saveError;
-      setAliases(list);setNewAlias('');setNotice('已儲存 '+place.title+' 的名稱對照，下次 Facebook 匯入可直接沿用。');
+      // The existing RPC updates point.attr.location atomically for the
+      // unified Scope, and keeps legacy name_lists for unconverted Scopes.
+      const {data:written,error:saveError}=await dbAuthClient.schema('silver')
+        .rpc('save_scope_trace_place_names',{p_scope_id:scopeId,p_uid:selectedUid,
+          p_names:[...new Set([...list,place?.title].filter(Boolean))]});
+      if(saveError||written!==1)throw saveError||Error('名稱對照儲存結果未確認');
+      if(scopeId==='lo3rwang'){
+        const {data:current,error:readError}=await dbAuthClient.schema('silver')
+          .from(scopeId+'_anchor').select('attr')
+          .eq('uid',selectedUid).eq('type','point').maybeSingle();
+        if(readError||!current)throw readError||Error('名稱對照讀回未完成');
+        const names=current.attr?.location;
+        setAliases(Array.isArray(names)?names:typeof names==='string'?[names]:[]);
+      }else setAliases(list);
+      setNewAlias('');setNotice('已儲存 '+place.title+' 的名稱對照。');
     }catch(saveError){setError(true);setNotice(String(saveError.message||saveError));}
     finally{setBusy(false);}
   };
