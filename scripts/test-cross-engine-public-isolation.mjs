@@ -7,7 +7,7 @@ test('cross-engine Kysely reads remain usable for public references',()=>{
   for(const table of CROSS_ENGINE_PUBLIC_READ_TABLES){
     assert.doesNotThrow(()=>assertCrossEnginePublicRead({kind:'query',operation:'select',schema:'silver',table}));
   }
-  assert.deepEqual(CROSS_ENGINE_PUBLIC_READ_TABLES,['loc_theme','runes','runes_etc','runes_group']);
+  assert.deepEqual(CROSS_ENGINE_PUBLIC_READ_TABLES,['runes','runes_etc','runes_group']);
 });
 test('cross-engine Kysely cannot bypass PostgreSQL RLS for content or account records',()=>{
   for(const table of ['lo3rwang_galaxy','lrunes_galaxy','lo3rwang','lo3rwang_keywords','keyword_classes','loc_blocks','game','lrunes_daily','manage']){
