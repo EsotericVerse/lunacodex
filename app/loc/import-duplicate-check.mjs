@@ -123,9 +123,9 @@ export async function matchExistingImportBySiteId(records,{readSiteIds,onProgres
     for(const row of page){
       const key=importSourceKey(row);
       if(!key||!requested.has(key))continue;
-      const state=candidates.get(key)||{count:0,only:null};
-      state.count++;
-      state.only=state.count===1?row:null;
+      const state=candidates.get(key)||new Map();
+      // Database pages can overlap; a persisted UID is one candidate.
+      state.set(String(row.uid),row);
       candidates.set(key,state);
     }
   };
@@ -136,13 +136,34 @@ export async function matchExistingImportBySiteId(records,{readSiteIds,onProgres
     else if(returned!==undefined&&returned!==null)
       throw Error('site_id 查詢沒有回傳有效文章');
   }
+  const ambiguous=[];
   for(const [key,record] of requested){
-    const candidate=candidates.get(key);
-    if(candidate?.count>1)
-      throw Error('資料庫有多筆相同平台與 site_id，停止匯入以避免覆寫：'+String(record.site)+' / '+String(record.site_id));
-    if(candidate?.only)matches.set(String(record.uid),candidate.only);
+    const saved=[...(candidates.get(key)?.values()||[])];
+    if(saved.length===1){
+      matches.set(String(record.uid),saved[0]);
+      continue;
+    }
+    if(saved.length<2)continue;
+    // A reused platform ID must never select an arbitrary existing article.
+    // Exact timestamps can distinguish duplicate stored IDs; a matching body
+    // alone cannot, because distinct posts may carry the same text.
+    const incomingTime=Date.parse(String(record.createtime??''));
+    const sameInstant=Number.isFinite(incomingTime)?
+      saved.filter(row=>Date.parse(String(row.createtime??''))===incomingTime):[];
+    if(sameInstant.length===1){
+      matches.set(String(record.uid),sameInstant[0]);
+      continue;
+    }
+    // Do not abort the rest of a ZIP. Hold only this unresolved article and
+    // report the conflict; never update, insert or attach media to a guess.
+    ambiguous.push({
+      uid:String(record.uid),site:String(record.site),
+      site_id:String(record.site_id),createtime:record.createtime??null,
+      saved_uids:saved.map(row=>String(row.uid))
+    });
   }
-  onProgress?.({completed:total,total,matched:matches.size});
+  matches.ambiguous=ambiguous;
+  onProgress?.({completed:total,total,matched:matches.size,ambiguous:ambiguous.length});
   return matches;
 }
 
