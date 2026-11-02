@@ -42,7 +42,7 @@ silver.scope_type_attr(p_scope_id text, p_type text, p_attr jsonb)
 
 - 已建立資料庫主 RPC；客戶端統一入口：`scopeTypeAttr(scopeId,type,attr,{write})`，在 `app/loc/db-client.mjs`。
 - 既有相容層 `unified-anchor-compat.mjs` 與 `db-contract.mjs` 尚有歷史命名與 Scope 特例，**沒有全部改接主 RPC**；`lrunes` 的舊四表已於 2026-11-03 通過資料驗證並刪除，`lrunes_anchor` 與 `lrunes_daily` 保留。
-- Timeline 寫入已共用 `apply_scope_point_links`，舊入口暫為轉接。複雜的地點合併、文章關聯更新、統計聚合應保留少數領域 RPC，但不得分別為 `lo3rwang`、`lrunes` 寫同質實作。
+- Timeline 寫入已改由 `scope_type_attr(scopeid,'point',{op:'link',mode:'place_id',updates:[...]})` 單一入口轉接原交易；`apply_scope_point_links` 在新客戶端部署驗證前保留為內部相容交易函式。複雜的地點合併、文章關聯更新、統計聚合應保留少數領域 RPC，但不得分別為 `lo3rwang`、`lrunes` 寫同質實作。
 - 改寫每個呼叫端後，需先驗證 CRUD 權限、UID 大小寫、隱藏狀態、關聯更新與資料等價，再移除其轉接 RPC；**不得因新 RPC 已存在就直接刪除仍被呼叫的入口**。
 - 變更 RPC 或資料結構均須同步修改此文件及測試。
 
@@ -80,3 +80,7 @@ await scopeTypeAttr('lrunes','point',{
 ### Timeline RPC 轉接退役（2026-11-03）
 
 Cloudflare Pages `loc` production 部署 commit `54844ebf19ce8d88b52c1c4534a76e49c699d571` 成功；正式客戶端已直接呼叫 `silver.apply_scope_point_links(scopeid,updates,mode)`。經確認 GitHub main 的 Timeline 呼叫端已移除舊 RPC，Supabase 以 `DROP FUNCTION ... RESTRICT` 正式退役 `silver.apply_timeline_place_ids(text,jsonb)` 和 `silver.apply_timeline_missing_places(text,jsonb)`，保留共用點位寫入 RPC。執行遷移為 `retire_timeline_compatibility_rpcs_20261103`，倉庫紀錄於 `20261103125000_retire_timeline_rpc_wrappers.sql`。
+
+### Timeline Point 補寫寫入整合
+
+`scope_type_attr` 的 `type='point'` 支援 `op='link'`、`updates` 與 `mode`，在資料庫同一交易內委派既有 `apply_scope_point_links`，回傳 `{count}`。只有 Scope 管理者能寫入，整批 UID 和 Point 仍受原子驗證；不增加表或索引。前端 Timeline 補寫不再直接呼叫專用 RPC。正式部署新客戶端後，才能移除內部委派函式並將驗證與更新直接放進通用函式。
