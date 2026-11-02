@@ -92,6 +92,19 @@ test('100 parallel writes of one unchanged version create one article',async()=>
   assert.equal(writes,1);
 });
 
+test('built-in Scope advertises managed storage without requesting API keys',async()=>{
+  const {do:authority}=state();
+  const info=await authority.getMcpScope('lo3rwang');
+  assert.equal(info.configured,true);
+  assert.equal(info.managed,true);
+  assert.equal(info.schema,'silver');
+  assert.equal(info.table,'lo3rwang_galaxy');
+  assert.equal(info.api_key,undefined);
+  assert.deepEqual(await authority.getMcpScope('thirdscope'),{
+    scopeid:'thirdscope',configured:false
+  });
+});
+
 test('built-in Scope can sync through existing Kysely without a user-supplied API key',async()=>{
   const {do:authority}=state();
   const calls=[];
