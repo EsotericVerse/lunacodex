@@ -193,6 +193,11 @@ async function decryptProfile(value,secret){
 // MCP OAuth uses an audience-bound access token, not a Clerk session JWT.
 // Data access is separately authorized by this Group Authority's grants.
 const MCP_RESOURCE='https://loc.lo3rwang.cc/mcp';
+const MANAGED_SCOPE_TABLES=Object.freeze({lo3rwang:'lo3rwang_galaxy',lrunes:'lrunes_galaxy'});
+const MANAGED_SUPABASE_EDGE='https://qlouywsdiiyiyzpoxyqy.supabase.co/functions/v1/loc-kysely-clerk';
+// A publishable key identifies the project, not the user; the Clerk OAuth
+// token is independently verified by the Kysely Edge and LOC Authority.
+const MANAGED_PUBLISHABLE_KEY='sb_publishable_qPn0vAzozVyXKllRuEKf2Q_fvG-pLVV';
 const SCOPE_ID=/^[a-z][a-z0-9]{0,14}$/;
 const TABLE_ID=/^[a-z][a-z0-9_]{0,62}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
@@ -273,6 +278,21 @@ async function postgrest(profile,options){
   return options.body?null:res.json();
 }
 function escapeScopeValue(value){return 'eq.'+value;}
+
+async function managedMcpInsert(scopeid,row,hasCheckpointUid,oauthToken){
+  if(!Object.hasOwn(MANAGED_SCOPE_TABLES,scopeid))throw fail('Scope database is not configured',409);
+  if(typeof oauthToken!=='string'||!oauthToken.startsWith('eyJ'))throw fail('MCP OAuth authorization required',401);
+  const response=await fetch(MANAGED_SUPABASE_EDGE,{
+    method:'POST',headers:{apikey:MANAGED_PUBLISHABLE_KEY,
+      authorization:'Bearer '+oauthToken,'content-type':'application/json'},
+    body:JSON.stringify({kind:'mcp-sync',scopeid,row,update_existing:hasCheckpointUid}),
+    signal:AbortSignal.timeout(12000),redirect:'manual'
+  });
+  if(!response.ok)throw fail('Managed Scope write rejected (HTTP '+response.status+')',
+    response.status===401||response.status===403?response.status:502);
+  const data=await response.json();
+  if(data?.data?.count!==1)throw fail('Managed Scope write was not confirmed',502);
+}
 
 export class LocAuthorityState extends DurableObject {
   constructor(ctx,env){super(ctx,env);}
@@ -378,19 +398,19 @@ export class LocAuthorityState extends DurableObject {
       updated_at:item?.updated_at||null,saved_at:item?.saved_at||null,uid:item?.uid||null,
       needs_save:updatedAt?!item?.saved_at||Date.parse(validTimestamp(updatedAt))>Date.parse(item.updated_at):null};
   }
-  async mcpSave(scopeid,input){
+  async mcpSave(scopeid,input,oauthToken=''){
     validScope(scopeid);
     if(!input||typeof input.conversation_id!=='string')throw fail('Conversation ID required',400);
     // Serialize saves for one conversation within the existing Durable Object.
     const key=scopeid+':'+input.conversation_id;
     this.mcpInflight??=new Map();
     const previous=this.mcpInflight.get(key)||Promise.resolve();
-    const next=previous.catch(()=>{}).then(()=>this.mcpSaveUnlocked(scopeid,input));
+    const next=previous.catch(()=>{}).then(()=>this.mcpSaveUnlocked(scopeid,input,oauthToken));
     this.mcpInflight.set(key,next);
     try{return await next;}
     finally{if(this.mcpInflight.get(key)===next)this.mcpInflight.delete(key);}
   }
-  async mcpSaveUnlocked(scopeid,input){
+  async mcpSaveUnlocked(scopeid,input,oauthToken=''){
     validScope(scopeid);
     if(!input||typeof input!=='object'||Array.isArray(input))throw fail('Invalid conversation',400);
     const conversation_id=String(input.conversation_id||'');
@@ -398,7 +418,7 @@ export class LocAuthorityState extends DurableObject {
     const status=await this.mcpCheckpoint(scopeid,conversation_id,requestedTime);
     if(!status.needs_save)return {...status,saved:false,reason:'unchanged'};
     const profile=await this.mcpPrivateProfile(scopeid);
-    if(!profile)throw fail('Scope database is not configured',409);
+    if(!profile&&!Object.hasOwn(MANAGED_SCOPE_TABLES,scopeid))throw fail('Scope database is not configured',409);
     if(typeof input.content!=='string'||!input.content.trim()||input.content.length>125000||
       typeof input.title!=='string'||input.title.length>350)
       throw fail('Invalid conversation content or title',400);
@@ -409,10 +429,12 @@ export class LocAuthorityState extends DurableObject {
     if(!status.uid)await this.ctx.storage.put(checkpointKey,
       {uid,updated_at:status.updated_at,saved_at:status.saved_at});
     // Idempotent upsert by the existing case-sensitive UID; no table scans.
-    await postgrest(profile,{body:{uid,title:input.title,content:input.content,
+    const row={uid,title:input.title,content:input.content,
       site:'ChatGPT',site_id:conversation_id,searchable:false,statistics_able:false,
       date:requestedTime.slice(0,10),createtime:validTimestamp(input.created_at||requestedTime),
-      UpdateTime:requestedTime},params:{on_conflict:'uid'}});
+      UpdateTime:requestedTime};
+    if(profile)await postgrest(profile,{body:row,params:{on_conflict:'uid'}});
+    else await managedMcpInsert(scopeid,row,Boolean(status.uid),oauthToken);
     const saved_at=new Date().toISOString();
     this.mcpSearchCache?.clear();
     await this.ctx.storage.put(checkpointKey,{updated_at:requestedTime,saved_at,uid});
@@ -590,6 +612,15 @@ async function handleMcpAuthority(request,env,url,origin){
       return json(await scoped(scopeid).putMcpScope(scopeid,await mcpJsonBody(request,9000)),200,origin);
     }
   }
+  if(parts[0]==='authorize-write'&&parts.length===2&&request.method==='GET'){
+    const scopeid=validScope(parts[1]);
+    if(!isRoot||!await allowed(scopeid,'write'))throw fail('Managed Scope write denied',403);
+    if(!Object.hasOwn(MANAGED_SCOPE_TABLES,scopeid))throw fail('Managed Scope is not supported',404);
+    const email=String(env.LOC_ROOT_MANAGEMENT_EMAIL||'').trim().toLowerCase();
+    if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email))
+      throw fail('Trusted root email mapping is unavailable',503);
+    return json({provider:'clerk',subject:principal.subject,scopeid,email,authorized:true},200,origin);
+  }
   if(parts[0]==='checkpoint'&&parts.length===3&&request.method==='GET'){
     const scopeid=validScope(parts[1]);
     if(!await allowed(scopeid,'write'))throw fail('Scope sync denied',403);
@@ -599,7 +630,8 @@ async function handleMcpAuthority(request,env,url,origin){
   if(parts[0]==='sync'&&parts.length===2&&request.method==='POST'){
     const scopeid=validScope(parts[1]);
     if(!await allowed(scopeid,'write'))throw fail('Scope sync denied',403);
-    return json(await scoped(scopeid).mcpSave(scopeid,await mcpJsonBody(request)),200,origin);
+    return json(await scoped(scopeid).mcpSave(scopeid,await mcpJsonBody(request),
+      (request.headers.get('authorization')||'').replace(/^Bearer /,'')),200,origin);
   }
   if(parts[0]==='search'&&parts.length===2&&request.method==='POST'){
     const scopeid=validScope(parts[1]);
