@@ -182,7 +182,13 @@ export default function RuneManagementPanel(){
   }
   async function saveSlot(){
     if(!draw)return;
-    try{await putRuneDrawSlot(slot,draw);await reloadRecords();setStatus(`第 ${slot} 組已更新；舊內容已覆蓋。`);}
+    try{
+      const saved=await putRuneDrawSlot(slot,draw);
+      // The write already returns the saved row; patch the one matching slot
+      // locally instead of re-fetching all 8 slots + today's daily rows.
+      setSlots(current=>current.map(item=>item.slot===slot?{...item,record:saved}:item));
+      setStatus(`第 ${slot} 組已更新；舊內容已覆蓋。`);
+    }
     catch(error){setStatus(error?.message||'儲存失敗。');}
   }
   async function drawDailyMain(){
@@ -199,7 +205,11 @@ export default function RuneManagementPanel(){
     }catch(error){setStatus(error?.message||'副符抽牌失敗。');}
   }
   async function saveDaily(record){
-    try{await putDailyRuneRecord(record);await reloadRecords();setStatus(record.daily_role==='supplement'?'副符已儲存。':'主符已儲存。');}
+    try{
+      const saved=await putDailyRuneRecord(record);
+      setDailyRows(current=>[...current.filter(row=>row.id!==saved.id),saved]);
+      setStatus(record.daily_role==='supplement'?'副符已儲存。':'主符已儲存。');
+    }
     catch(error){setStatus(error?.message||'每日符文儲存失敗。');}
   }
   async function updateDaily(row,field,value){
@@ -214,8 +224,9 @@ export default function RuneManagementPanel(){
       nextCard.name=resolved.rune_name||String(nextCard.number);
       nextCard.card_attribute=cardAttrLabel(resolved.card_attr);
       nextCard.state='';
-      await putRecord({...row,trend:null,result:null,guidance:dailyGuidance(resolved,nextCard.direction)||directionText(resolved,nextCard.direction),cards:[nextCard]});
-      await reloadRecords();setStatus('每日符文紀錄已更新。');
+      const saved=await putRecord({...row,trend:null,result:null,guidance:dailyGuidance(resolved,nextCard.direction)||directionText(resolved,nextCard.direction),cards:[nextCard]});
+      setDailyRows(current=>current.map(item=>item.id===saved.id?saved:item));
+      setStatus('每日符文紀錄已更新。');
     }catch(error){setStatus(error?.message||'更新失敗。');}
   }
 

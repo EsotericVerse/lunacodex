@@ -70,7 +70,13 @@ test('Culture, Statistics, Periods, Daily Runes and Trace have direct data provi
   const daily=read('app/lrunes/DailyRuneAnalytics.jsx');
   const traces=read('app/modular/features/trace/TracePlaceResults.jsx');
   const places=read('app/loc/place-summary-client.js');
-  assert.match(galaxy,/readScopeStatistics\(current\.id/);
+  // scopeStatisticsRows calls the direct RPC provider through a short-TTL
+  // dedupe wrapper (cachedReadScopeStatistics) so two charts for the same
+  // Scope/range in one render share one request; the wrapper itself still
+  // calls readScopeStatistics(id,args) directly, so both are checked here.
+  assert.match(galaxy,/cachedReadScopeStatistics\(current\.id/);
+  assert.match(galaxy,/function cachedReadScopeStatistics\(id,args\)\{/);
+  assert.match(galaxy,/\(\)=>readScopeStatistics\(id,args\)/);
   assert.match(galaxy,/readScopeOverview\(current\.id/);
   assert.match(galaxy,/readLocStatistics\(/);
   assert.match(culture,/selectScopePeriodSourceSnapshot/);
