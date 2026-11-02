@@ -8,8 +8,8 @@
       {"name": "LOC_AUTHORITY_STATE", "class_name": "LocAuthorityState"}
     ]
   },
-  "migrations": [
-    {"tag": "v1", "new_sqlite_classes": ["LocAuthorityState"]}
-  ],
+  "exports": {
+    "LocAuthorityState": {"type": "durable-object", "storage": "sqlite"}
+  },
   "observability": {"enabled": true}
 }
