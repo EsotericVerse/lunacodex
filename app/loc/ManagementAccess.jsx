@@ -1,6 +1,6 @@
 'use client';
 import {useCallback,useEffect,useState} from 'react';
-import {useAccount} from './use-account';
+import {useAccount,readVerifiedManagementEntry} from './use-account';
 import {useEditDock} from '../modular/edit-dock';
 import {FeaturePage} from '../modular/ui';
 import {editorSessionStatus,clearEditorSession,touchEditorSession} from './edit-session-ttl.mjs';
@@ -13,10 +13,9 @@ const granted=(grants,id,level)=>level==='global'
   :Boolean(grants?.canManageScopeSync(id));
 const pending=()=>({loading:true,user:null,authorizer:null,error:''});
 
-// The static management entry has exactly one explicit verification. It does
-// not subscribe to the SWR management key during the request: an initial Clerk
-// auth event can invalidate that key independently of the verified RPC result.
-// A single live verification feeds the UI; no previous grant bypasses it.
+// The first management entry verifies Clerk and Scope together. Subsequent
+// transitions within the same document reuse that identity's verified grant.
+// Server RLS still validates writes; expired editor sessions reverify.
 export default function ManagementAccess({scopeId,level='scope',featureId='manage',children}){
   const account=useAccount({enabled:false}),dock=useEditDock();
   const [verification,setVerification]=useState(pending);
@@ -24,9 +23,11 @@ export default function ManagementAccess({scopeId,level='scope',featureId='manag
   const [locked,setLocked]=useState(false);
   const [renewing,setRenewing]=useState(false);
   const [error,setError]=useState('');
-  // Always use the live Clerk+Scope verification path. Only concurrent
-  // requests share an unfinished promise; no TTL cache authorizes access.
-  const check=useCallback(()=>account.refresh(),[account.refresh]);
+  // One role fetch per verified identity. Explicit expired-session renewal
+  // always performs a fresh network verification.
+  const check=useCallback(()=>editorSessionStatus(window.sessionStorage).expired
+    ?account.refresh()
+    :(readVerifiedManagementEntry()||account.refresh()),[account.refresh]);
 
   useEffect(()=>{
     let active=true;

@@ -29,6 +29,15 @@ test('home editor can read existing permission RPC through Kysely as a rowset',(
     name:'get_my_scope_management',args:{}});
   assert.equal(built.returnsRows,true);
 });
+test('unified management RPC returns typed rows with fixed arguments',()=>{
+  assert.deepEqual(RPC_ALLOWLIST['silver.manage'],['p_type','p_id']);
+  const built=buildAllowlistedRpcQuery({kind:'rpc',schema:'silver',
+    name:'manage',args:{p_type:'self'}});
+  assert.equal(built.returnsRows,true);
+  assert.ok(built.query);
+  assert.throws(()=>buildAllowlistedRpcQuery({kind:'rpc',schema:'silver',
+    name:'manage',args:{p_type:'self',p_attr:{}}}),/Unexpected RPC argument/);
+});
 test('public Scope Search summary RPC only accepts approved Scope IDs',()=>{
   assert.deepEqual(RPC_ALLOWLIST['silver.read_scope_search_summary'],['p_scope_ids']);
   const built=buildAllowlistedRpcQuery({kind:'rpc',schema:'silver',

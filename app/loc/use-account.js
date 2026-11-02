@@ -46,8 +46,8 @@ let authUserId='';
 let authEmail='';
 
 let scopeMetadata=[];
-// Only a pending verification is shared between concurrent edit-entry calls.
-// Completed grants do not bypass the next live server verification.
+// Concurrent verification is shared; completed grants can be reused during
+// navigation within the same verified identity. Explicit refresh stays live.
 let pendingManagementVerification=null;
 
 async function fetchManagementAccount(mutate){
@@ -104,7 +104,8 @@ async function fetchManagementAccount(mutate){
   }
 }
 
-// Deduplicate only simultaneous requests; do not retain completed results.
+// Deduplicate live requests while they are in flight; completed grants are
+// checked through readVerifiedManagementEntry on route changes.
 function loadManagementAccount(mutate){
   if(pendingManagementVerification)return pendingManagementVerification;
   const current=fetchManagementAccount(mutate);
@@ -114,6 +115,16 @@ function loadManagementAccount(mutate){
     ()=>{if(pendingManagementVerification===current)pendingManagementVerification=null;}
   );
   return current;
+}
+
+// Reuse the previously verified identity/role on management page navigation.
+// Auth changes clear this grant; database writes still enforce server permission.
+export function readVerifiedManagementEntry(){
+  const grant=readAuthorization();
+  if(!grant||!authUserId||grant.userId!==authUserId||grant.email!==authEmail)return null;
+  const user={id:grant.userId,email:grant.email};
+  const authorizer=createScopeAuthorizer(user);
+  return authorizer?{user,authorizer}:null;
 }
 
 export function useAccount({enabled=true,sessionOnly=false}={}){
