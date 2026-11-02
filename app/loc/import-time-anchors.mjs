@@ -131,13 +131,13 @@ export async function prepareImportTimeAnchors(records,{
     const chunk=missing.slice(offset,offset+80);
     let rows,data,error;
     for(let attempt=0;attempt<4;attempt++){
-      rows=chunk.map(date=>({
-        uid:allocateAnchorUid(occupied),type:'date',
+      rows=chunk.map(date=>{
+        const uid=allocateAnchorUid(occupied);occupied.add(uid);
+        return {uid,type:'date',
         title:entryByDate.get(date).title,
         description:entryByDate.get(date).description,
         attr:{date},invisible:false
-      }));
-      rows.forEach(row=>occupied.add(row.uid));
+      };});
       ({data,error}=await relation(table).insert(rows).select('uid,type,attr'));
       if(error?.code==='23505'&&attempt<3)continue;
       break;
