@@ -4,7 +4,7 @@ import {dbAuthRelation,getAccountSession} from './db-client.mjs';
 const TABLE='api.loc_user';
 const COLUMNS='uid,owner_id,email,culture,statics,trace,search,keyword,updated_at';
 const UID=/^[A-Za-z0-9]{8}$/;
-const KEYWORD=/^[a-z][a-z0-9]{0,30}:[A-Za-z0-9]{4}$/;
+const KEYWORD=/^[a-z][a-z0-9]{0,30}:(?:[A-Za-z0-9]{4}|[A-Za-z0-9]{8})$/;
 export const LOC_USER_FIELDS=Object.freeze(['culture','statics','trace','search','keyword']);
 export const LOC_USER_DEFAULTS=Object.freeze({
   culture:Object.freeze({time:'era',display:'density',unit:'day',sort:'desc'}),
@@ -50,7 +50,7 @@ export function validateLocUserField(field,value){
   if(!LOC_USER_FIELDS.includes(field))throw new Error('不允許修改這個個人設定欄位');
   if(field==='keyword'){
     if(value!=='none'&&!KEYWORD.test(String(value||'')))
-      throw new Error('關鍵詞群組必須為無或 Scope 與四碼 UID');
+      throw new Error('關鍵詞群組必須為無或 Scope 與四碼／八碼 UID');
     return value;
   }
   if(!value||typeof value!=='object'||Array.isArray(value))
