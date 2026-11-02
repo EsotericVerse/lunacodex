@@ -234,3 +234,32 @@ test('JSON-only path with no confirmed ZIP file cannot manufacture URL-less medi
   assert.equal(plan.media.length,0);
   assert.equal(plan.mediaLinks.length,0);
 });
+
+test('unique ZIP path suffix transfers article ownership and imports URL-less attachment',()=>{
+  const c=createArchiveEvidenceCollector();
+  c.onMediaEntry({path:'your_facebook_activity/posts/media/photos/original.jpg'});
+  c.onRecord({
+    platform:'facebook',sourcePath:'your_facebook_activity/posts/your_posts_1.json',
+    attachments:[{uri:'posts/media/photos/original.jpg',mediaType:'image'}]
+  },'ART00001');
+  const evidence=c.rows({scopeId:'lo3rwang',archiveName:'export.zip',archiveSize:250});
+  assert.equal(evidence.length,1);
+  assert.equal(evidence[0].found_in_zip,true);
+  assert.equal(evidence[0].referenced_by_post,true);
+  assert.deepEqual(evidence[0].galaxy_uids,['ART00001']);
+  const result=prepareArchiveMedia(evidence,new Set(['ART00001']));
+  assert.equal(result.media.length,1);
+  assert.equal(result.media[0].url,null);
+  assert.deepEqual(result.mediaLinks,[{uid:'ART00001',media_uid:result.media[0].uid}]);
+});
+test('ambiguous suffix never guesses the article-to-media match',()=>{
+  const c=createArchiveEvidenceCollector();
+  c.onMediaEntry({path:'accountA/posts/photos/shared.jpg'});
+  c.onMediaEntry({path:'accountB/posts/photos/shared.jpg'});
+  c.onRecord({platform:'facebook',sourcePath:'posts.json',
+    attachments:[{uri:'posts/photos/shared.jpg',mediaType:'image'}]},'ART00001');
+  const evidence=c.rows({scopeId:'lo3rwang',archiveName:'ambiguous.zip',archiveSize:251});
+  const plan=prepareArchiveMedia(evidence,new Set(['ART00001']));
+  assert.equal(plan.media.length,0);
+  assert.equal(plan.mediaLinks.length,0);
+});

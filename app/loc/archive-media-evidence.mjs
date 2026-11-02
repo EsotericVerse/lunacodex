@@ -190,6 +190,9 @@ export function createArchiveEvidenceCollector(){
         const image=suffixes.get(ref.entry_path);
         if(!image)continue;
         for(const uid of ref.galaxy_uids)image.galaxy_uids.add(uid);
+        // Suffix matching established the same proven ZIP file. Carry the
+        // exact article-reference evidence; otherwise URL-less media is lost.
+        image.referenced_by_post=image.referenced_by_post||ref.referenced_by_post;
         for(const file of ref.source_files)image.source_files.add(file);
         if(ref.url&&!image.url)image.url=ref.url;
         if(ref.platform&&!image.platform)image.platform=ref.platform;
