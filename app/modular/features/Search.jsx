@@ -28,6 +28,7 @@ import SearchSummary from '../../loc/SearchSummary';
 // Article cards/editing are requested only when results actually render.
 const Article=dynamic(()=>import('../Article'),{loading:()=>null});
 import {useScopeRuntime} from '../use-scope-runtime';
+import useLocFeatureSettings from '../../loc/use-loc-feature-settings';
 import useDefaultTimeUnit from '../../loc/use-default-time-unit';
 import {timeUnitBucket,localTodayKey} from '../../loc/default-time-unit.mjs';
 import {useEditDock} from '../edit-dock';
@@ -220,6 +221,7 @@ export default function Search({managementMode=false}){
   const t=useUiText();
   const defaultTimeUnit=useDefaultTimeUnit();
   const {scopeId,scope}=useScopeRuntime();
+  const {settings:userSettings,active:userActive}=useLocFeatureSettings('search');
   const editDock=useEditDock();
   const publicScopeEditing=Boolean(editDock?.active&&editDock.scopeId===scopeId&&scopeId!=='loc');
   const account=useAccount({enabled:managementMode||publicScopeEditing});
@@ -257,6 +259,7 @@ export default function Search({managementMode=false}){
   const activeSearchOptionsRef=useRef(null);
   const [results,setResults]=useState([]);
   const [articleSort,setArticleSort]=useState('desc');
+  useEffect(()=>setArticleSort(userActive?userSettings.sort:'desc'),[userActive,userSettings.sort]);
   const [status,setStatus]=useState(UI_COPY.search.start);
   const [error,setError]=useState('');
   const [loadMoreError,setLoadMoreError]=useState('');
@@ -460,7 +463,8 @@ export default function Search({managementMode=false}){
         mediaOnly:options.mediaOnly,hiddenScopeIds:managementMode?searchScopes.map(item=>item.id):[],
         contentType:options.contentType,sourceFilter:options.sourceFilter,sourceTaxonomy,placeOnly:managementMode&&Boolean(options.placeOnly),
         startDate:options.startDate,endDate:options.endDate,browse:options.browse,
-        managementOnly:managementMode,sortDirection:options.sortDirection,signal
+        managementOnly:managementMode,sortDirection:options.sortDirection,
+        searchField:!managementMode&&userActive?userSettings.field:'',signal
       });
       // Style tags enhance results, but their optional request must never
       // discard valid text/media hits when its own service fails.
