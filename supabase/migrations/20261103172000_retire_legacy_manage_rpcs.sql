@@ -1415,6 +1415,21 @@ ALTER POLICY "anchor_owner_insert" ON silver."lrunes_anchor" WITH CHECK (( SELEC
 ALTER POLICY "anchor_owner_delete" ON silver."lo3rwang_anchor" USING (( SELECT coalesce((SELECT allowed FROM silver.manage('scope','lo3rwang'::text)),false) AS can_manage_scope));
 ALTER POLICY "anchor_owner_insert" ON silver."lo3rwang_anchor" WITH CHECK (( SELECT coalesce((SELECT allowed FROM silver.manage('scope','lo3rwang'::text)),false) AS can_manage_scope));
 ALTER POLICY "anchor_owner_update" ON silver."lo3rwang_anchor" USING (( SELECT coalesce((SELECT allowed FROM silver.manage('scope','lo3rwang'::text)),false) AS can_manage_scope)) WITH CHECK (( SELECT coalesce((SELECT allowed FROM silver.manage('scope','lo3rwang'::text)),false) AS can_manage_scope));
+CREATE OR REPLACE VIEW api.lo3rwang_keywords_manage WITH (security_invoker=true) AS  SELECT uid,
+    type,
+    title AS name,
+    description AS "desc",
+    COALESCE(ARRAY( SELECT jsonb_array_elements_text(
+                CASE
+                    WHEN a.type = 'item'::text THEN COALESCE(a.attr -> 'keyword'::text, '[]'::jsonb)
+                    ELSE COALESCE(a.attr -> 'uid'::text, '[]'::jsonb)
+                END) AS jsonb_array_elements_text), ARRAY[]::text[]) AS lists,
+        CASE
+            WHEN type = ANY (ARRAY['group'::text, 'item'::text]) THEN jsonb_build_object('total', COALESCE((attr ->> 'total'::text)::integer, 0))
+            ELSE '{}'::jsonb
+        END AS uid_lists
+   FROM silver.lo3rwang_anchor a
+  WHERE (type = ANY (ARRAY['category'::text, 'class'::text, 'group'::text, 'item'::text])) AND coalesce((SELECT allowed FROM silver.manage('scope','lo3rwang'::text)),false);
 DROP FUNCTION silver.can_manage_scope(text) RESTRICT;
 DROP FUNCTION silver.can_manage_group(text) RESTRICT;
 DROP FUNCTION silver.can_manage_global() RESTRICT;
