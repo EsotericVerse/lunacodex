@@ -9,6 +9,9 @@ const operators={eq:'=',neq:'!=',gt:'>',gte:'>=',lt:'<',lte:'<=',like:'like',ili
 export const RPC_ALLOWLIST={
   'silver.management_write':['p_table','p_operation','p_rows','p_values','p_filters'],
   'silver.read_scope_analytics':['p_scope_id','p_view','p_start','p_end','p_options'],
+  // The authenticated manager refresh is guarded by silver.can_manage_scope().
+  // Public Search reads only the persisted summary; it cannot call this RPC.
+  'silver.refresh_scope_search_summary':['p_scope_id'],
   'silver.get_my_scope_management':[],
   'silver.read_music_style_tree':[],
   // These existing scope procedures perform database-side permission checks,
@@ -30,6 +33,7 @@ export const RPC_ALLOWLIST={
 const RPC_REQUIRED_ARGUMENTS={
   'silver.management_write':['p_table','p_operation'],
   'silver.read_scope_analytics':['p_scope_id','p_view'],
+  'silver.refresh_scope_search_summary':['p_scope_id'],
   'silver.import_shared_keyword_class':['p_target_scope','p_source_scope','p_class_uid'],
   'silver.save_scope_trace_place_names':['p_scope_id','p_uid','p_names'],
   'silver.preview_timeline_place_page_json':['p_scope_id','p_windows'],
