@@ -89,7 +89,7 @@ const STRINGS={
   }
 };
 
-export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRouteSelect=null,selectedRouteUid='',focusLocation=null,spatialData=null,mapOnly=false,hideRoutePicker=false,publicTrace=false,showAnchorSearch=true,floatingControls=null,children=null}){
+export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRouteSelect=null,selectedRouteUid='',focusLocation=null,spatialData=null,placeDayRows=null,mapOnly=false,hideRoutePicker=false,publicTrace=false,showAnchorSearch=true,floatingControls=null,children=null}){
   const {locale}=useUiLocale();
   const copy=STRINGS[locale]||STRINGS['zh-Hant'];
   const containerRef=useRef(null);
@@ -162,6 +162,10 @@ export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRout
     observer.observe(containerRef.current);
     return()=>observer.disconnect();
   },[]);
+
+  useEffect(()=>{
+    mapRef.current?.setPlaceTimelines(placeDayRows||[]);
+  },[placeDayRows]);
 
   useEffect(()=>{
     mapRef.current?.setAnchors(spatialData?.anchors||[]);

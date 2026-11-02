@@ -14,6 +14,7 @@ import {reviewReorderedCoordinateNames} from '../modular/features/trace/trace-pl
 import {
   filterTraceAnchorsByText,addTraceAnchorSelection,removeTraceAnchorSelection
 } from './trace-bulk-anchor-filter.mjs';
+import {readPlaceSummary} from './place-summary-client';
 
 const TraceRouteManager=dynamic(()=>import('./TraceRouteManager'),{
   loading:()=> <p className="scope-status" role="status">正在開啟路線／痕跡圖管理…</p>
@@ -27,6 +28,10 @@ const TraceMap=dynamic(()=>import('../modular/features/trace/TraceMap'),{
 
 function AnchorEditor({scopeId,spatial,reload}){
   const cache=useResourceCache();
+  // Day-level place rows for the "文化河道" stems drawn on the map's own
+  // saved anchors (TraceMap filters to titles it already shows).
+  const placeSummary=useAsyncResource(['trace-place-summary',scopeId],
+    ()=>readPlaceSummary(scopeId,{}),{revalidateOnFocus:false,revalidateOnReconnect:false});
   const ownAnchors=useMemo(()=>(spatial.anchors||[]).filter(row=>row.source_scope===scopeId),
     [spatial.anchors,scopeId]);
   const [editingUid,setEditingUid]=useState('');
@@ -236,7 +241,7 @@ function AnchorEditor({scopeId,spatial,reload}){
     {notice?<p role={isError?'alert':'status'} className={'scope-status'+(isError?' scope-error':'')}>{notice}</p>:null}
     <button className="loc-button" type="button" aria-expanded={mapOpen}
       onClick={()=>setMapOpen(open=>!open)}>{mapOpen?'關閉座標地圖':'開啟座標地圖'}</button>
-    {mapOpen?<TraceMap spatialData={spatial} focusLocation={focusLocation}
+    {mapOpen?<TraceMap spatialData={spatial} placeDayRows={placeSummary.data?.rows||[]} focusLocation={focusLocation}
       onLocationPick={({lng,lat,name})=>{
         if(name)setTitle(t=>t.trim()||name);
         setLongitude(String(Math.round(lng*1e6)/1e6));
