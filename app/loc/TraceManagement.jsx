@@ -8,7 +8,7 @@ import {useAsyncResource,useResourceCache} from './use-async-resource';
 import {revalidateServerMetadata} from './scope-data';
 import {
   TRACE_SCOPES,traceKey,traceAllAnchorsKey,
-  readTraceData,addTraceAnchor,updateTraceAnchor,renameTraceAnchorTitles,updateTraceVisibilityBulk
+  readTraceData,addTraceAnchor,updateTraceAnchor,renameTraceAnchorTitles,updateTraceVisibilityBulk,mergeTraceAnchorPoints
 } from '../modular/features/trace/trace-data';
 import {reviewReorderedCoordinateNames} from '../modular/features/trace/trace-place-names.mjs';
 import {
@@ -52,11 +52,18 @@ function AnchorEditor({scopeId,spatial,reload}){
   const filteredBulkAnchors=useMemo(()=>filterTraceAnchorsByText(ownAnchors,bulkFilter),
     [ownAnchors,bulkFilter]);
   const selectedBulkUids=useMemo(()=>new Set(bulkUids),[bulkUids]);
+  // The upper selected point is the keeper; every lower checked point is a source.
+  // Never allow selecting or deleting the keeper.
+  const mergeUids=useMemo(()=>editingUid&& !pendingVisibility
+    ?bulkUids.filter(uid=>uid!==editingUid&&ownAnchors.some(item=>item.uid===uid)):[]
+    ,[editingUid,bulkUids,ownAnchors,pendingVisibility]);
   const formDirty=Boolean(editingUid||title||description||postalAddress||longitude||latitude);
-  const dirty=formDirty||Object.keys(pendingRenames).length>0||Boolean(pendingVisibility);
+  const dirty=formDirty||Object.keys(pendingRenames).length>0||Boolean(pendingVisibility)||mergeUids.length>0;
   const pickExisting=uid=>{
     const row=ownAnchors.find(item=>item.uid===uid);
     setEditingUid(row?.uid||'');
+    // Changing the primary never leaves it selected as a merge source.
+    if(row?.uid)setBulkUids(ids=>ids.filter(id=>id!==row.uid));
     setTitle(row?.title||'');
     setDescription(row?.description||'');
     setPostalAddress(row?.postal_address||'');
@@ -73,6 +80,12 @@ function AnchorEditor({scopeId,spatial,reload}){
     if(busy||bulkBusy)return false;
     if(!dirty){setIsError(true);setNotice('目前沒有待儲存的地點變更。');return false;}
     const visibility=pendingVisibility;
+    const sources=[...mergeUids];
+    if(sources.length>100){
+      setIsError(true);setNotice('一次最多合併 100 個來源地點。');return false;
+    }
+    if(sources.length&&!window.confirm('確定將 '+sources.length+' 筆地點合併到「'+title+
+      '」（UID '+editingUid+'）？來源 UID 會刪除，但其文章與路線關聯將轉到主要 UID。'))return false;
     if(visibility&&!window.confirm('確定將 '+visibility.uids.length+' 個空間定錨點設定為'+
       (visibility.invisible?'隱藏':'公開')+'？'))return false;
     setBusy(true);setIsError(false);setNotice('');
@@ -80,7 +93,7 @@ function AnchorEditor({scopeId,spatial,reload}){
     try{
       // Apply queued title updates before the main editor so the explicitly
       // chosen primary title always wins when both touch the same anchor.
-      let renamed=0,visibilityCount=0;
+      let renamed=0,visibilityCount=0,mergedCount=0;
       for(const [key,task] of Object.entries(pendingRenames)){
         for(let i=0;i<task.uids.length;i+=100)
           renamed+=await renameTraceAnchorTitles({
@@ -97,8 +110,14 @@ function AnchorEditor({scopeId,spatial,reload}){
           ?await updateTraceAnchor({...input,uid:editingUid})
           :await addTraceAnchor(input);
         savedUid=saved.uid;
-        setEditingUid('');setTitle('');setDescription('');setPostalAddress('');
-        setLongitude('');setLatitude('');setInvisible(false);
+      }
+      // The server owns the entire UID rewrite/deletion transaction. Never
+      // delete selected rows in the browser or assume a title rename is a merge.
+      if(sources.length){
+        mergedCount=await mergeTraceAnchorPoints({
+          scopeId,keepUid:editingUid,removeUids:sources
+        });
+        setBulkUids(ids=>ids.filter(uid=>!sources.includes(uid)));
       }
       if(visibility){
         for(let i=0;i<visibility.uids.length;i+=200)
@@ -121,7 +140,12 @@ function AnchorEditor({scopeId,spatial,reload}){
         cache.invalidate({queryKey:['trace-map-index',scopeId]}),
         cache.invalidate({queryKey:['trace-current',scopeId]})
       ]);
+      if(formDirty){
+        setEditingUid('');setTitle('');setDescription('');setPostalAddress('');
+        setLongitude('');setLatitude('');setInvisible(false);
+      }
       setNotice([
+        mergedCount?'已合併 '+mergedCount+' 筆地點至主要 UID '+editingUid:'',
         savedUid?'定錨點 '+savedUid+' 已保存':'',
         renamed?'已統一 '+renamed+' 筆地點名稱':'',
         visibilityCount?'已更新 '+visibilityCount+' 個可見性設定':''
@@ -143,7 +167,7 @@ function AnchorEditor({scopeId,spatial,reload}){
   };
   const bulkApply=invisible=>{
     if(bulkBusy||busy||!bulkUids.length||scopeId==='loc')return;
-    setPendingVisibility({uids:[...bulkUids],invisible});
+    setPendingVisibility({uids:[...bulkUids].filter(uid=>uid!==editingUid),invisible});
     setIsError(false);setNotice('已將 '+bulkUids.length+' 個定錨點的'+
       (invisible?'隱藏':'公開')+'設定加入待儲存清單；按底部「儲存」才會寫入。');
   };
@@ -186,18 +210,24 @@ function AnchorEditor({scopeId,spatial,reload}){
           onChange={event=>setBulkFilter(event.target.value)}
           placeholder="輸入相關文字，例如：板橋"/>
       </label>
+      {editingUid?<p className="scope-status" role="status">
+        主要地點 UID：<strong>{editingUid}</strong>。下方勾選來源地點後，
+        按固定功能列的「儲存」即合併並更新所有關聯。
+        {mergeUids.length?' 待合併 '+mergeUids.length+' 筆。':''}
+        {pendingVisibility?'目前已選擇大量可見性操作，本次儲存不會合併地點。':''}
+      </p>:<p className="scope-status">要合併地點，先在上方選擇主要地點，再勾選下方來源。</p>}
       <p className="scope-status" role="status">
         符合 {filteredBulkAnchors.length} 筆／全部 {ownAnchors.length} 筆；已勾選 {bulkUids.length} 筆。切換文字篩選不會取消先前的勾選。
       </p>
       <div className="scope-stat-controls">
         <button type="button" className="loc-button"
           disabled={busy||bulkBusy||!bulkFilter.trim()||!filteredBulkAnchors.length}
-          onClick={()=>setBulkUids(ids=>addTraceAnchorSelection(ids,filteredBulkAnchors))}>勾選全部符合結果</button>
+          onClick={()=>setBulkUids(ids=>addTraceAnchorSelection(ids,filteredBulkAnchors.filter(row=>row.uid!==editingUid)))}>勾選全部符合結果</button>
         <button type="button" className="loc-button"
           disabled={busy||bulkBusy||!bulkFilter.trim()||!filteredBulkAnchors.length}
           onClick={()=>setBulkUids(ids=>removeTraceAnchorSelection(ids,filteredBulkAnchors))}>取消符合結果勾選</button>
         <button type="button" className="loc-button" disabled={busy||bulkBusy}
-          onClick={()=>setBulkUids(ownAnchors.map(row=>row.uid))}>全選所有定錨點（不限篩選）</button>
+          onClick={()=>setBulkUids(ownAnchors.filter(row=>row.uid!==editingUid).map(row=>row.uid))}>全選所有定錨點（不限篩選）</button>
         <button type="button" className="loc-button" disabled={busy||bulkBusy}
           onClick={()=>{setBulkUids([]);setPendingVisibility(null);}}>清除全部勾選</button>
         <button type="button" className="loc-button" disabled={busy||bulkBusy||!bulkUids.length}
@@ -207,9 +237,9 @@ function AnchorEditor({scopeId,spatial,reload}){
       </div>
       <div style={{maxHeight:'16rem',overflow:'auto'}}>
         {filteredBulkAnchors.map(row=><label key={row.uid} style={{display:'block'}}>
-          <input type="checkbox" disabled={busy||bulkBusy} checked={selectedBulkUids.has(row.uid)}
+          <input type="checkbox" disabled={busy||bulkBusy||row.uid===editingUid} checked={row.uid!==editingUid&&selectedBulkUids.has(row.uid)}
             onChange={e=>setBulkUids(ids=>e.target.checked?[...ids.filter(uid=>uid!==row.uid),row.uid]:ids.filter(uid=>uid!==row.uid))}/>
-          {row.title} · {row.uid}
+          {row.title} · {row.uid}{row.uid===editingUid?'（主要地點，不可合併）':''}
         </label>)}
         {!filteredBulkAnchors.length?<p className="scope-status">沒有符合文字的定錨點。</p>:null}
       </div>
@@ -231,7 +261,7 @@ function AnchorEditor({scopeId,spatial,reload}){
         value={longitude} onChange={e=>setLongitude(e.target.value)} disabled={busy}/></label>
       <label>緯度（可留空）<input type="number" min={-90} max={90} step="any"
         value={latitude} onChange={e=>setLatitude(e.target.value)} disabled={busy}/></label>
-      <p className="scope-status">新增、修改、統一名稱及大量可見性設定，請使用底部六大功能按鍵的「儲存」。</p>
+      <p className="scope-status">新增、修改、統一名稱、合併已勾選來源與大量可見性設定，使用固定功能列「儲存」；「放棄」不會刪除地點。</p>
     </div>
     {notice?<p role={isError?'alert':'status'} className={'scope-status'+(isError?' scope-error':'')}>{notice}</p>:null}
     <button className="loc-button" type="button" aria-expanded={mapOpen}
