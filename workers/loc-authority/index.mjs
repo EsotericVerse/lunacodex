@@ -384,7 +384,11 @@ export class LocAuthorityState extends DurableObject {
   }
   async getMcpScope(scopeid){validScope(scopeid);
     const item=await this.ctx.storage.get('mcp-scope:'+scopeid);
-    return item?{...item.public,configured:true}:{scopeid,configured:false};}
+    if(item)return {...item.public,configured:true};
+    if(Object.hasOwn(MANAGED_SCOPE_TABLES,scopeid))return {scopeid,configured:true,
+      managed:true,endpoint:'https://qlouywsdiiyiyzpoxyqy.supabase.co/rest/v1',
+      schema:'silver',table:MANAGED_SCOPE_TABLES[scopeid]};
+    return {scopeid,configured:false};}
   async mcpPrivateProfile(scopeid){
     const item=await this.ctx.storage.get('mcp-scope:'+scopeid);
     return item?decryptProfile(item.encrypted,this.env.LOC_CONTROL_ENCRYPTION_KEY):null;
@@ -555,7 +559,7 @@ export class LocAuthorityState extends DurableObject {
       const scopeStub=this.env.LOC_AUTHORITY_STATE.get(
         this.env.LOC_AUTHORITY_STATE.idFromName('mcp-scope:'+scopeid));
       const profile=await scopeStub.getMcpScope(scopeid);
-      if(profile.configured)return (await scopeStub.mcpSearch(scopeid,query,limit)).results;
+      if(profile.configured&&!profile.managed)return (await scopeStub.mcpSearch(scopeid,query,limit)).results;
       // Unconfigured built-in Scope: use existing Supabase anonymous RLS.
       if(!['lo3rwang','lrunes'].includes(scopeid))return [];
       const url=new URL('https://qlouywsdiiyiyzpoxyqy.supabase.co/rest/v1/'+scopeid+'_galaxy');
