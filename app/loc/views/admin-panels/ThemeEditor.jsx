@@ -97,8 +97,8 @@ export default function ThemeEditor(){
           themeColumnForToken(key),String(draft.tokens?.[key]||'').trim()
         ]))
       };
-      const {error}=await dbAuthClient.schema('silver').rpc('loc_catalog',{
-        p_section:'theme',p_action:'upsert',p_key:String(themeNumber(themeId)),p_value:payload
+      const {error}=await dbAuthClient.schema('silver').rpc('loc_admin_settings',{
+        p_section:'theme',p_operation:'upsert',p_key:String(themeNumber(themeId)),p_value:payload
       });
       if(error)throw new Error(error.message||'Theme 儲存失敗。');
       // A successful Admin theme save deliberately refreshes the site palette;
