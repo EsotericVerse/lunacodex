@@ -1,8 +1,10 @@
+import {SCOPE_ROUTE_INDEX} from '../../modular/scope-route-index.js';
 // LOC MCP public Galaxy reads through existing Supabase PostgREST and anonymous RLS.
 // A publishable key is public, not a management or write credential.
 const DEFAULT_SUPABASE_URL='https://qlouywsdiiyiyzpoxyqy.supabase.co';
 const DEFAULT_PUBLISHABLE_KEY='sb_publishable_qPn0vAzozVyXKllRuEKf2Q_fvG-pLVV';
-const SCOPE_TABLES=Object.freeze({lo3rwang:'lo3rwang_galaxy',lrunes:'lrunes_galaxy'});
+const PUBLIC_SCOPE_IDS=Object.freeze(SCOPE_ROUTE_INDEX.filter(row=>row.active&&row.scope_id!=='loc')
+  .map(row=>row.scope_id).filter(id=>/^[a-z][a-z0-9]{0,14}$/.test(id)));
 const UID=/^[A-Za-z0-9]{8}$/;
 
 function clientError(message){return Object.assign(new Error(message),{code:'INVALID_ARGUMENT'});}
@@ -16,7 +18,7 @@ function publicSource(env){
 }
 async function galaxyRows(filters,scopeid,env={},fetchImpl=globalThis.fetch){
   const {base,apikey}=publicSource(env);
-  const url=new URL(base+'/rest/v1/'+SCOPE_TABLES[scopeid]);
+  const url=new URL(base+'/rest/v1/'+scopeid+'_galaxy');
   for(const [key,value] of Object.entries(filters))url.searchParams.set(key,String(value));
   // Do not forward the caller's Clerk token. Supabase enforces anonymous RLS.
   const res=await fetchImpl(url.href,{
@@ -32,8 +34,8 @@ async function galaxyRows(filters,scopeid,env={},fetchImpl=globalThis.fetch){
 }
 
 function scopeAllowed(scopeid){
-  const id=scopeid??'lo3rwang';
-  if(!Object.hasOwn(SCOPE_TABLES,id))
+  const id=scopeid??PUBLIC_SCOPE_IDS[0];
+  if(!PUBLIC_SCOPE_IDS.includes(id))
     throw clientError('Only configured public Galaxy Scopes are available');
   return id;
 }
