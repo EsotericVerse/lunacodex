@@ -225,7 +225,8 @@ export function archiveMediaUid(scopeId,archiveId,entryPath){
     '-a'+hex.slice(17,20)+'-'+hex.slice(20,32);
   return (BigInt('0x'+uuid.replaceAll('-',''))%(36n**8n)).toString(36).toUpperCase().padStart(8,'0');
 }
-export function prepareArchiveMedia(evidence=[],knownUids=new Set(),articleTimes=new Map()){
+export function prepareArchiveMedia(evidence=[],knownUids=new Set(),articleTimes=new Map(),
+  articleTitles=new Map(),articleContents=new Map()){
   const media=[],exif=[],mediaLinks=[];
   for(const entry of evidence){
     const id=archiveMediaUid(entry.scope_id,entry.archive_id,entry.entry_path);
@@ -239,8 +240,10 @@ export function prepareArchiveMedia(evidence=[],knownUids=new Set(),articleTimes
     const articleTime=linkedTimes[0]||null;
     const row={
       uid:id,type,url:publicUrl(entry.url),
-      title:'封存'+({image:'圖片',video:'影片',audio:'音訊'}[type]||'附件')+' · '+String(entry.entry_path||'').split('/').pop().slice(0,120),
-      meta_tags:null,createtime:articleTime,location:null
+      title:owners.map(uid=>String(articleTitles.get(uid)||'').trim()).find(Boolean)||
+        ({image:'圖片',video:'影片',audio:'音訊'}[type]||'媒體'),
+      meta_tags:owners.map(uid=>String(articleContents.get(uid)||'').trim()).find(Boolean)||null,
+      createtime:articleTime,location:null
     };
     const hasUrl=Boolean(row.url);
     // Only actual URL attributes become media rows. A ZIP-local URI is not a URL.

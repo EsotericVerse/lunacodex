@@ -35,6 +35,7 @@ import {MAX_ROWS,urlSafeInBatches} from './query-batch-size.mjs';
 import {hasIrrecoverableEncoding,isPureUrlContent,normalizeGalaxyContent,normalizeRelationIds,repairMojibakeText,resolveGalaxyTitle} from './content-policy';
 import {touchEditorSession} from './edit-session-ttl.mjs';
 import {scopeTagColumn,scopeTagNames} from './scope-config-fields.mjs';
+import {runeDrawText} from './rune-draw-text.mjs';
 const ZIP_LAYOUT_KEYS=Object.freeze({
   'conversation-tree':'conversationTree','message-list':'messageList','post-list':'postList',
   activity:'activity',media:'media',table:'table','structured-records':'records',document:'document'
@@ -91,8 +92,7 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t){
     .filter(item=>item!==''&&item!==undefined&&item!==null);
   let mediaRecords=[],mediaRefs=[];
   const importedRuneReferences=value('rune_references');
-  const runeResultText=importedRuneReferences==null||importedRuneReferences===''
-    ?'':typeof importedRuneReferences==='string'?importedRuneReferences:JSON.stringify(importedRuneReferences);
+  const runeResultText=runeDrawText(importedRuneReferences);
   try{
     for(const item of mediaCandidates){
       const media=normalizeImportMedia(item,{title:rawTitle,createtime:createdAt,location:sourcePlace,article_uid:uid});
@@ -125,7 +125,7 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t){
         __article_uid:String(value('galaxy_link')||'').trim()||null,
         location:sourcePlace||null,
         media_type:type,title:rawTitle||(type==='rune'?'抽牌結果':null),url:url||null,
-        meta_tags:String(value('meta_tags')||'').trim()||(type==='rune'?runeResultText:null),
+        meta_tags:type==='rune'?(runeDrawText(value('meta_tags'))||runeResultText):String(value('meta_tags')||'').trim(),
         createtime:createdAt,
         ...(type!=='rune'&&runeResultText?{rune_references:importedRuneReferences}:{})
       }};
@@ -245,9 +245,9 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
         if(rune_references==null||rune_references===''||
             JSON.stringify(rune_references)==='[]'||JSON.stringify(rune_references)==='{}')
           return [record];
-        const content=typeof rune_references==='string'?rune_references:JSON.stringify(rune_references);
+        const content=runeDrawText(rune_references);
         if(record.type==='rune'){
-          return [{...record,title:record.title||'抽牌結果',meta_tags:record.meta_tags||content}];
+          return [{...record,title:record.title||'抽牌結果',meta_tags:runeDrawText(record.meta_tags)||content}];
         }
         if(!record.__article_uid)throw new Error('抽牌結果必須對應 Galaxy 文章 UID');
         return [record,{
@@ -996,8 +996,11 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       }
       showProgress('整理媒體資料');
       const articleTimes=new Map(analyzed.valid.map(row=>[String(row.uid),row.createtime]));
+      const articleTitles=new Map(analyzed.valid.map(row=>[String(row.uid),row.title]));
+      const articleContents=new Map(analyzed.valid.map(row=>[String(row.uid),row.content]));
       const archivePlan=prepareArchiveMedia(
-        eligibleArchiveEvidence,new Set(knownArticleIds.keys()),articleTimes);
+        eligibleArchiveEvidence,new Set(knownArticleIds.keys()),articleTimes,
+        articleTitles,articleContents);
       const canonicalArchiveMedia=archivePlan.media.map(record=>({
         ...record,__article_uid:knownArticleIds.get(String(record.__article_uid||''))||null
       }));
