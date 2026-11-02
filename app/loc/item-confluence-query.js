@@ -48,8 +48,7 @@ export async function selectLocItemDailySeries({scope,lane,startDate,endDate,kno
       {column:'createtime',operator:'gte',value:range.startDate+'T00:00:00+08:00'},
       {column:'createtime',operator:'lte',value:range.endDate+'T23:59:59.999+08:00'},
       ...(media?[]:[
-        {column:'statistics_able',operator:'eq',value:true},
-        {column:'searchable',operator:'eq',value:true},
+        {column:'able->>keywords',operator:'eq',value:'true'},
         {column:'content',operator:'neq',value:''}
       ]),
       ...(spec.source==='galaxy:exact'?[{column:'site',operator:'eq',value:spec.exact}]:[]),
