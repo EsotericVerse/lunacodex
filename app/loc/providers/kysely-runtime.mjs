@@ -16,14 +16,12 @@ function checkedFilterColumn(value){
 export const RPC_ALLOWLIST={
   'silver.management_write':['p_table','p_operation','p_rows','p_values','p_filters'],
   'silver.read_scope_analytics':['p_scope_id','p_view','p_start','p_end','p_options'],
-  // The authenticated manager refresh is guarded by silver.can_manage_scope().
+  // Management is authorized through the unified silver.manage(type,id) RPC.
   // Public Search reads only the persisted summary; it cannot call this RPC.
   'silver.read_scope_search_summary':['p_scope_ids'],
   'silver.refresh_scope_search_summary':['p_scope_id'],
-  'silver.get_my_scope_management':[],
   'silver.manage':['p_type','p_id'],
   'silver.loc_admin_settings':['p_section','p_operation','p_key','p_value'],
-  'silver.loc_catalog':['p_section','p_action','p_key','p_value'],
   'silver.read_music_style_tree':[],
   // These existing scope procedures perform database-side permission checks,
   // atomic multi-row writes, or bounded indexed lookups. Do not recreate
@@ -32,7 +30,6 @@ export const RPC_ALLOWLIST={
   'silver.save_scope_trace_place_names':['p_scope_id','p_uid','p_names'],
   'silver.scope_type_attr':['p_scope_id','p_type','p_attr'],
   'silver.scope_group':['p_group_id','p_type'],
-  'silver.manage':['p_type','p_id'],
   'silver.search_scope_trace_place_names':['p_scope_id','p_term','p_limit'],
   'silver.is_current_email_blocklisted':[],
   'silver.move_scope_block':['p_scope_id','p_page_name','p_uid','p_direction'],
@@ -48,7 +45,6 @@ const RPC_REQUIRED_ARGUMENTS={
   'silver.read_scope_search_summary':['p_scope_ids'],
   'silver.refresh_scope_search_summary':['p_scope_id'],
   'silver.loc_admin_settings':['p_section'],
-  'silver.loc_catalog':['p_section'],
   'silver.import_shared_keyword_class':['p_target_scope','p_source_scope','p_class_uid'],
   'silver.save_scope_trace_place_names':['p_scope_id','p_uid','p_names'],
   'silver.scope_type_attr':['p_scope_id','p_type','p_attr'],
@@ -318,7 +314,6 @@ export function buildAllowlistedRpcQuery(input){
   const jsonbArgsByRpc={
     'silver.management_write':new Set(['p_rows','p_values','p_filters']),
     'silver.loc_admin_settings':new Set(['p_value']),
-    'silver.loc_catalog':new Set(['p_value']),
     'silver.read_scope_analytics':new Set(['p_options']),
     'silver.scope_type_attr':new Set(['p_attr']),
   };
@@ -330,7 +325,7 @@ export function buildAllowlistedRpcQuery(input){
       :sql.val(value);
     return sql`${sql.id(name)} => ${parameter}`;
   });
-  const returnsRows=key==='silver.read_scope_page_copy'||key==='silver.get_my_scope_management'||key==='silver.manage';
+  const returnsRows=key==='silver.read_scope_page_copy'||key==='silver.manage';
   return {query:returnsRows?sql`select * from ${id}(${sql.join(params)})`:sql`select ${id}(${sql.join(params)}) as result`,returnsRows};
 }
 

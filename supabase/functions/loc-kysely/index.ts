@@ -124,7 +124,7 @@ async function checkAdminRole(claims:Record<string,unknown>){
     await sql`set local role authenticated`.execute(trx);
     await sql`select set_config('request.jwt.claims',${JSON.stringify(claims)},true)`.execute(trx);
     await sql`select set_config('request.jwt.claim.sub',${String(claims.sub||"")},true)`.execute(trx);
-    const result=await sql<{allowed:boolean}>`select silver.can_manage_global() as allowed`.execute(trx);
+    const result=await sql<{allowed:boolean}>`select coalesce((select allowed from silver.manage('global')),false) as allowed`.execute(trx);
     return result.rows[0]?.allowed===true;
   });
   if(!valid)throw Object.assign(new Error("Administrator permission required"),{httpStatus:403});

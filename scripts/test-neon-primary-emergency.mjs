@@ -60,13 +60,13 @@ test('Neon OAuth identity, management RPC and article reads never call Supabase'
     const account=await db.getAccountSession();
     assert.equal(account.oauth.provider,'google');
     assert.equal(account.oauth.email,'owner@example.com');
-    const {data:permissions,error}=await adapter.authClient.schema('silver').rpc('get_my_scope_management');
+    const {data:permissions,error}=await adapter.authClient.schema('silver').rpc('manage',{p_type:'self'});
     assert.ifError(error);
     assert.equal(permissions[0].id,'lo3rwang');
     const {data:articles,error:readError}=await adapter.publicClient.schema('silver').from('lo3rwang_galaxy').select('uid');
     assert.ifError(readError);
     assert.equal(articles[0].uid,'aB12cD34');
-    const privateRequest=calls.find(c=>c.url.includes('/rpc/get_my_scope_management'));
+    const privateRequest=calls.find(c=>c.url.includes('/rpc/manage'));
     assert.equal(privateRequest.headers.get('authorization'),'Bearer '+jwt);
     assert.equal(calls.every(c=>c.url.startsWith(auth)||c.url.startsWith(api)),true);
     assert.equal(adapter.realtimeClient,null);
