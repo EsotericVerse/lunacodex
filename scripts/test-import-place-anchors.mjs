@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import {prepareImportPlaceAnchors,importedPlaceId,recordImportPlaceVisits} from '../app/loc/import-place-anchors.mjs';
 
 const named=(name,lat,lng)=>({__importPlaceName:name,__importCoordinates:{latitude:lat,longitude:lng}});
-function memoryTrace(initial=[]){
+function memoryTrace(initial=[],scopeId='lo3rwang'){
   const rows=initial.map(row=>({...row,type:'point',attr:row.address
     ?{longitude:row.address[0],latitude:row.address[1]}:{}}));
   let inserts=0;
   const relation=table=>{
-    assert.equal(table,'silver.lo3rwang_anchor');
+    assert.equal(table,'silver.'+scopeId+'_anchor');
     return {
       select:()=>({eq:(key,val)=>({order:()=>({range:async(start,end)=>({
         data:rows.filter(row=>row[key]===val).slice(start,end+1),error:null
@@ -70,6 +70,23 @@ test('native Point reads reuse 8-character UIDs and never insert duplicated coor
   assert.equal(first.reused,1);
   assert.equal(db.inserts,0);
   assert.equal(importedPlaceId({incoming:old,byName:first.byName,byCoordinate:first.byCoordinate}),'AbCd1234');
+});
+
+test('lrunes Point import writes eight-character UIDs to lrunes_anchor',async()=>{
+  const db=memoryTrace([],'lrunes');
+  const place=named('符文打卡',24.99,121.55);
+  const saved=await prepareImportPlaceAnchors([place],{
+    scopeId:'lrunes',relation:db.relation,createMissing:true
+  });
+  assert.equal(saved.created,1);
+  assert.match(db.rows[0].uid,/^[A-Za-z0-9]{8}$/);
+  assert.equal(db.rows[0].type,'point');
+  const again=await prepareImportPlaceAnchors([place],{
+    scopeId:'lrunes',relation:db.relation,createMissing:true
+  });
+  assert.equal(again.created,0);
+  assert.equal(again.reused,1);
+  assert.equal(db.inserts,1);
 });
 
 test('native Point insert returns case-sensitive Base62 UIDs across scopes',async()=>{
