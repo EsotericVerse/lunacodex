@@ -1,5 +1,5 @@
 export default {
-  "article": "Publish article",
+  "article": "Article management",
   "import": "Data import",
   "keywords": "Keyword management",
   "checking": "Checking login and permissions…",
