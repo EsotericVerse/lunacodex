@@ -182,8 +182,9 @@ test('Scope Time registry stays validated while Date is stored in native Anchor'
   const calls=[];
   const relation=table=>{
     calls.push(table);
-    return {select:()=>({order:()=>({range:async()=>({data:[],error:null})})}),
-      insert:rows=>({select:async()=>({data:rows.map(({uid,address})=>({uid,address})),error:null})})};
+    const q={eq:()=>q,order:()=>q,range:async()=>({data:[],error:null})};
+    return {select:()=>q,
+      insert:rows=>({select:async()=>({data:rows.map(({uid,type,attr})=>({uid,type,attr})),error:null})})};
   };
   const inputs=[{location:'已打卡',__importCheckin:true,createtime:'2025-07-01T08:00:00Z'}];
   await prepareImportTimeAnchors(inputs,{
