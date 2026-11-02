@@ -7,18 +7,18 @@ const UID=/^[A-Za-z0-9]{8}$/;
 const KEYWORD=/^[a-z][a-z0-9]{0,30}:(?:[A-Za-z0-9]{4}|[A-Za-z0-9]{8})$/;
 export const LOC_USER_FIELDS=Object.freeze(['culture','statics','trace','search','keyword']);
 export const LOC_USER_DEFAULTS=Object.freeze({
-  culture:Object.freeze({time:'era',display:'density',unit:'day',sort:'desc',list:'visible'}),
-  statics:Object.freeze({display:'source',unit:'day',sort:'desc',list:'visible'}),
-  trace:Object.freeze({display:'anchor',time:'none',sort:'desc',list:'visible'}),
-  search:Object.freeze({field:'content',sort:'asc',list:'visible'}),
+  culture:Object.freeze({time:'era',display:'density',unit:'day',sort:'desc',list:false}),
+  statics:Object.freeze({display:'source',unit:'day',sort:'desc',list:false}),
+  trace:Object.freeze({display:'anchor',time:'none',sort:'desc',list:false}),
+  search:Object.freeze({field:'content',sort:'asc',list:false}),
   keyword:'none'
 });
 const ALLOWED=Object.freeze({
   culture:{time:['anchor','period','era'],display:['density','keywords'],
-    unit:['day','week','month','year'],sort:['asc','desc'],list:['visible','admin']},
-  statics:{display:['source','media_type'],unit:['day','week','month','year'],sort:['asc','desc'],list:['visible','admin']},
-  trace:{display:['anchor','path','trace'],time:['none','period','era'],sort:['desc','nearest'],list:['visible','admin']},
-  search:{field:['content','title'],sort:['asc','desc'],list:['visible','admin']}
+    unit:['day','week','month','year'],sort:['asc','desc'],list:[false,true]},
+  statics:{display:['source','media_type'],unit:['day','week','month','year'],sort:['asc','desc'],list:[false,true]},
+  trace:{display:['anchor','path','trace'],time:['none','period','era'],sort:['desc','nearest'],list:[false,true]},
+  search:{field:['content','title'],sort:['asc','desc'],list:[false,true]}
 });
 const normalizeEmail=value=>String(value||'').trim().toLowerCase();
 function checked(value,label){
