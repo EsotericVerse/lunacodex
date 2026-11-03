@@ -2,7 +2,7 @@
 
 import {Capacitor} from '@capacitor/core';
 
-// Web: use the existing DB-side aggregate RPC, not a full article scan.
+// Web: use the unified DB-side analytics entry, not a full article scan.
 // Native/local SQLite retains the original on-device row-level reader.
 export async function readPlaceSummary(scopeId,{startDate='',endDate=''}={}){
   const [{forEachAllRowsPage,selectRows},{defaultScopeData},{dbPublicClient}]=await Promise.all([
@@ -11,8 +11,9 @@ export async function readPlaceSummary(scopeId,{startDate='',endDate=''}={}){
   const scope=defaultScopeData(scopeId);
   if(!scope)return {rows:[],anchors:[]};
   if(scopeId!=='local'&&!Capacitor.isNativePlatform()){
-    const {data,error}=await dbPublicClient.schema('silver').rpc('read_scope_place_statistics',{
-      p_scope_id:scopeId,p_start:startDate||null,p_end:endDate||null
+    const {data,error}=await dbPublicClient.schema('silver').rpc('read_scope_analytics',{
+      p_scope_id:scopeId,p_view:'trace_places',
+      p_start:startDate||null,p_end:endDate||null,p_options:{}
     });
     if(error)throw error;
     if(!Array.isArray(data))throw new Error('Invalid place summary RPC result');
