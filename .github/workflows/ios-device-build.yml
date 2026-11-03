@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: 'Attach unsigned IPA only to v1.1.0-rc.2.1 prerelease (optional)'
+        description: 'Attach unsigned IPA to the matching current RC prerelease (optional)'
         required: false
         type: string
 
@@ -28,6 +28,12 @@ jobs:
   # the native build proceeds; it never blocks on anything other than a
   # real syntax break, so it can't get stuck or loop.
   guard:
+    if: ${{ github.ref == 'refs/heads/main' }}
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      base_version: ${{ steps.meta.outputs.base_version }}
+      ipa_name: ${{ steps.meta.outputs.ipa_name }}
+      release_tag: ${{ steps.meta.outputs.release_tag }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -36,6 +42,26 @@ jobs:
         with:
           node-version: '22.23.4'
           cache: npm
+      - name: Validate current version and optional release tag
+        id: meta
+        shell: bash
+        env:
+          REQUESTED_RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+(\.[0-9]+)*$ ]]; then
+            echo "::error::The iOS RC workflow requires a valid package RC version."
+            exit 1
+          fi
+          test "$(node -p "require('./package-lock.json').version")" = "$version"
+          test "$(node -p "require('./package-lock.json').packages[''].version")" = "$version"
+          if [[ -n "$REQUESTED_RELEASE_TAG" && "$REQUESTED_RELEASE_TAG" != "v$version" ]]; then
+            echo "::error::Requested tag does not match package version."
+            exit 1
+          fi
+          printf 'version=%s\nbase_version=%s\nipa_name=%s\nrelease_tag=%s\n' \
+            "$version" "${version%%-*}" "LOC-$version-device-unsigned.ipa" "$REQUESTED_RELEASE_TAG" >> "$GITHUB_OUTPUT"
       - run: npm ci --no-audit --no-fund
       - name: Parse JavaScript and JSX before paying for the macOS build
         run: npm run check:syntax
@@ -44,6 +70,12 @@ jobs:
     needs: guard
     runs-on: macos-26-intel
     timeout-minutes: 60
+    env:
+      LOC_VERSION: ${{ needs.guard.outputs.version }}
+      LOC_BASE_VERSION: ${{ needs.guard.outputs.base_version }}
+      LOC_IPA_NAME: ${{ needs.guard.outputs.ipa_name }}
+      LOC_RELEASE_TAG: ${{ needs.guard.outputs.release_tag }}
+      LOC_BUILD_NUMBER: ${{ github.run_number }}
     steps:
       - name: Checkout LOC
         uses: actions/checkout@v4
@@ -96,8 +128,8 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/loc-ios-device-build" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            MARKETING_VERSION=1.1.0 \
-            CURRENT_PROJECT_VERSION=13 \
+            MARKETING_VERSION="$LOC_BASE_VERSION" \
+            CURRENT_PROJECT_VERSION="$LOC_BUILD_NUMBER" \
             build
       - name: Package and verify unsigned IPA
         shell: bash
@@ -112,8 +144,8 @@ jobs:
           version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Info.plist")
           build=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Info.plist")
           icon=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconName' "$app/Info.plist")
-          test "$version" = '1.1.0'
-          test "$build" = '13'
+          test "$version" = "$LOC_BASE_VERSION"
+          test "$build" = "$LOC_BUILD_NUMBER"
           test "$icon" = 'AppIcon'
           xcrun lipo -archs "$app/App" | tr ' ' '\n' | grep -qx arm64
           bundle=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")
@@ -121,11 +153,12 @@ jobs:
           stage="$RUNNER_TEMP/loc-ios-package"
           mkdir -p "$stage/Payload" "$GITHUB_WORKSPACE/dist"
           ditto "$app" "$stage/Payload/App.app"
-          (cd "$stage" && zip -qry "$GITHUB_WORKSPACE/dist/LOC-1.1.0-rc.2.1-device-unsigned.ipa" Payload)
-          unzip -t "$GITHUB_WORKSPACE/dist/LOC-1.1.0-rc.2.1-device-unsigned.ipa" | tail -1
+          (cd "$stage" && zip -qry "$GITHUB_WORKSPACE/dist/$LOC_IPA_NAME" Payload)
+          unzip -t "$GITHUB_WORKSPACE/dist/$LOC_IPA_NAME" | tail -1
           python3 - <<'PY'
           from zipfile import ZipFile
-          with ZipFile('dist/LOC-1.1.0-rc.2.1-device-unsigned.ipa') as archive:
+          import os
+          with ZipFile('dist/'+os.environ['LOC_IPA_NAME']) as archive:
               paths=archive.namelist()
               assert all(name.isascii() for name in paths), 'Unicode filenames remain inside IPA'
               prefix='Payload/App.app/public/assets/lunarunes/cards/'
@@ -134,27 +167,27 @@ jobs:
               assert actual==expected, f'Expected 67 ASCII-named card images, got {len(actual)}'
               print('IPA verified: ASCII-only paths and 67 numeric card images')
           PY
-          test -s "$GITHUB_WORKSPACE/dist/LOC-1.1.0-rc.2.1-device-unsigned.ipa"
+          test -s "$GITHUB_WORKSPACE/dist/$LOC_IPA_NAME"
           echo "Unsigned IPA generated. It must be signed on the user's machine; this CI artifact is NOT directly installable."
       - name: Upload unsigned IPA artifact
         id: ipa_upload
         uses: actions/upload-artifact@v4
         with:
-          name: LOC-1.1.0-RC2.1-${{ github.run_number }}-unsigned
-          path: dist/LOC-1.1.0-rc.2.1-device-unsigned.ipa
+          name: LOC-${{ needs.guard.outputs.version }}-${{ github.run_number }}-unsigned
+          path: dist/${{ needs.guard.outputs.ipa_name }}
           retention-days: 14
           if-no-files-found: error
-      - name: Attach unsigned IPA to the 1.1 RC prerelease
-        if: ${{ inputs.release_tag == 'v1.1.0-rc.2.1' }}
+      - name: Attach unsigned IPA to the matching RC prerelease
+        if: ${{ needs.guard.outputs.release_tag != '' }}
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload '${{ inputs.release_tag }}' dist/LOC-1.1.0-rc.2.1-device-unsigned.ipa --clobber
+        run: gh release upload "$LOC_RELEASE_TAG" "dist/$LOC_IPA_NAME"
       - name: Publish build summary and artifact link
         env:
           ARTIFACT_URL: ${{ steps.ipa_upload.outputs.artifact-url }}
         run: |
           {
-            echo '## LOC 1.1 RC2.1 iOS device test build (unsigned)'
+            echo "## LOC $LOC_VERSION iOS device test build (unsigned)"
             echo "- Source branch: \`$GITHUB_REF_NAME\`"
             echo "- Commit: \`$GITHUB_SHA\`"
             echo "- [Download IPA Artifact]($ARTIFACT_URL)"
