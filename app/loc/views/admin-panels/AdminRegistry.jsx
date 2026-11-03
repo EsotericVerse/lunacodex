@@ -61,7 +61,7 @@ function useAdminScopeData(){
       try{
         // Management-only fields are returned by an admin-authorized RPC,
         // never from the public Registry's email column.
-        const locResult=await dbAuthClient.schema('silver').rpc('read_scope_registry_admin');
+        const locResult=await dbAuthClient.schema('silver').managedAction('read_scope_registry_admin');
         if(locResult.error)throw new Error(locResult.error.message||'人員目錄讀取失敗。');
 
         const locRows=locResult.data||[];
