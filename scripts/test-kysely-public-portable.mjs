@@ -60,7 +60,7 @@ test('portable bootstrap reads exactly the declared SQL Server namespace',async(
   assert.equal(result.data.scope_id,'loc');
   assert.equal(result.data.registry.length,1);
   assert.equal(result.data.themes.length,1);
-  assert.deepEqual(called,['dbo.manage','dbo.loc']);
+  assert.deepEqual(called,['dbo.manage','dbo.loc','dbo.loc','dbo.loc_blocks','dbo.loc']);
 });
 
 test('portable bootstrap works with an unqualified MySQL database',async()=>{
@@ -68,5 +68,5 @@ test('portable bootstrap works with an unqualified MySQL database',async()=>{
   const result=await publicExecutor()(db,{name:'read_app_bootstrap',
     args:{p_scope_id:'loc',p_page_name:'index'}},{engine:'mysql',namespace:'silver'});
   assert.equal(result.data.scope_id,'loc');
-  assert.deepEqual(called,['manage','loc']);
+  assert.deepEqual(called,['manage','loc','loc','loc_blocks','loc']);
 });
