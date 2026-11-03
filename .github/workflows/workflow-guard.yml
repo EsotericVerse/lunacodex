@@ -16,9 +16,24 @@ concurrency:
 jobs:
   guard:
     runs-on: ubuntu-24.04
-    timeout-minutes: 8
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - name: Sparse blobless checkout (only files the guard needs)
+        shell: bash
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          git init -q .
+          git remote add origin "https://github.com/$GITHUB_REPOSITORY.git"
+          git sparse-checkout init --no-cone
+          git sparse-checkout set \
+            '/.github/workflows/**' '/app/**' '/scripts/**' \
+            '/package.json' '/package-lock.json' '/next.config.mjs' \
+            '/open-next.config.ts' '/public/sw.js'
+          git -c protocol.version=2 fetch --quiet --depth=1 --filter=blob:none origin "refs/pull/$PR_NUMBER/merge"
+          git checkout --quiet --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
       - name: Reject unauthorized workflow triggers (parsed YAML)
         run: |
           ruby scripts/check-workflow-triggers.rb
