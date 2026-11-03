@@ -112,3 +112,23 @@ test('verified LOC owner reads current Class from unified Anchor without stale l
     scopeId:'lo3rwang',classUid:'eeCc',name:'符文 66',category:'eeCc'
   }]);
 });
+
+test('Clerk Keywords owner uses a single Authority-verified session rather than getSession then getUser',async()=>{
+  let verified=0,legacy=0;
+  const mock={
+    getVerifiedSession:async()=>{verified++;return {
+      user:{id:'owner',email:'owner@example.com'},
+      oauth:{email:'owner@example.com'}
+    };},
+    getSession:async()=>{legacy++;throw new Error('duplicate getSession');},
+    getUser:async()=>{legacy++;throw new Error('duplicate getUser');},
+    signInWithOAuth:async()=>({error:null}),signOut:async()=>({error:null})
+  };
+  const calls=[];
+  const publicClient={schema:()=>({rpc:async()=>{calls.push('public');return {data:null,error:null};}})};
+  const authClient={schema:()=>({rpc:async()=>{calls.push('private');return {data:catalog('Ab12'),error:null};}})};
+  const db=createDatabaseClient({publicClient,authClient,auth:mock});
+  assert.deepEqual(await db.readKeywordClass('lrunes','Ab12'),catalog('Ab12'));
+  assert.equal(verified,1);assert.equal(legacy,0);
+  assert.deepEqual(calls,['public','private']);
+});
