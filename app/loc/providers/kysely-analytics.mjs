@@ -1,3 +1,4 @@
+import {canManageLoc} from './loc-authorization.mjs';
 import {sql} from 'npm:kysely@0.29.8';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
@@ -28,10 +29,7 @@ function safeName(value,fallback){const name=String(value||fallback);
 }
 function relation(scope,suffix){return sql.ref('silver.'+scope+'_'+suffix);}
 async function owns(trx,scope,role){
-  if(role!=='authenticated')return false;
-  const result=await sql`select coalesce(
-    (select allowed from silver.manage('scope',${scope})),false) as allowed`.execute(trx);
-  return result.rows[0]?.allowed===true;
+  return role==='authenticated'&&await canManageLoc(trx,'scope',scope);
 }
 async function dailyStats(trx,scope,start,end,includeUndated=false){
   const galaxy=relation(scope,'galaxy');
