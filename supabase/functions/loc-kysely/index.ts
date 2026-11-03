@@ -6,6 +6,7 @@ import {databaseForTarget,resolveConnectionProfile} from "./drivers.ts";
 import {makeConnectionProfile,readVaultConnection,saveVaultConnection} from "./database-connections.ts";
 import {normalizeDatabaseLocation} from "../../../app/loc/providers/database-link.mjs";
 import { executeAllowlistedRpc, executeKyselyQuery, isKyselyClientError } from "../../../app/loc/providers/kysely-runtime.mjs";
+import {executeManagedKyselyWrite} from "../../../app/loc/providers/kysely-management.mjs";
 import { selectedDatabaseTarget } from "../../../app/loc/providers/selected-database-target.mjs";
 import {resolveSqlExecutionPort,assertCrossEnginePublicRead} from "../../../app/loc/providers/sql-engine-ports.mjs";
 import {resolveDatabaseRouting} from "../../../app/loc/providers/routing-config.mjs";
@@ -192,6 +193,10 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
   await sql`select set_config('request.jwt.claim.sub', ${String(claims.sub || "")}, true)`.execute(trx);
   await sql`select set_config('request.jwt.claim.role', ${role}, true)`.execute(trx);
   if(body.kind==="query")return await executeKyselyQuery(trx,body);
+  if(body.kind==="managed-write"){
+    if(role!=="authenticated")throw Object.assign(new Error("Management requires a verified session"),{httpStatus:403});
+    return await executeManagedKyselyWrite(trx,body);
+  }
   return await executeAllowlistedRpc(trx,body);
 }
 
@@ -366,8 +371,7 @@ Deno.serve(async (request) => {
               ?{kind:"query",schema:"silver",table:scope+"_galaxy",operation:"update",
                 values,filters:[{column:"uid",operator:"eq",value:row.uid},
                   {column:"site_id",operator:"eq",value:row.site_id}]}
-              :{kind:"rpc",schema:"silver",name:"management_write",
-                args:{p_table:table,p_operation:"update",p_values:values,
+              :{kind:"managed-write",payload:{p_table:table,p_operation:"update",p_values:values,
                   p_filters:[{column:"uid",operator:"eq",value:row.uid},
                     {column:"site_id",operator:"eq",value:row.site_id}]}});
           const updatedCount=update?.count??update?.data?.count;
@@ -375,8 +379,7 @@ Deno.serve(async (request) => {
           if(updatedCount!==0)throw new Error("Unexpected managed sync update count");
         }
         return executeRequest(trx,controlTarget,"authenticated",claims,{
-          kind:"rpc",schema:"silver",name:"management_write",
-          args:{p_table:table,p_operation:"insert",p_rows:[row]}
+          kind:"managed-write",payload:{p_table:table,p_operation:"insert",p_rows:[row]}
         });
       });
       return json(result);
@@ -423,8 +426,7 @@ Deno.serve(async (request) => {
           scope==="lo3rwang"
             ?{kind:"query",schema:"silver",table:scope+"_galaxy",operation:"update",
               values,filters:[{column:"uid",operator:"eq",value:uid}]}
-            :{kind:"rpc",schema:"silver",name:"management_write",
-              args:{p_table:table,p_operation:"update",p_values:values,
+            :{kind:"managed-write",payload:{p_table:table,p_operation:"update",p_values:values,
                 p_filters:[{column:"uid",operator:"eq",value:uid}]}});
         const count=updated?.count??updated?.data?.count;
         if(count!==1)throw new Error("Managed PR update affected an unexpected number of rows");
