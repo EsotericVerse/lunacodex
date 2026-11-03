@@ -149,7 +149,7 @@ function SourceArticleList({scope,startDate,endDate,sourceNames=null,defaultSort
   });
   const works=(worksQuery.data?.pages||[]).flatMap(page=>page.rows||[]);
   return <div className="scope-stat-source-works">
-    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:'.5rem'}}>
+    <div className="loc-public-list-header">
       <p className="scope-status">{group?'此來源的文章列表':'全部文章列表'} · {startDate} ～ {endDate}</p>
       <ArticleSortSelect value={articleSort} onChange={setArticleSort}/>
     </div>
@@ -161,7 +161,7 @@ function SourceArticleList({scope,startDate,endDate,sourceNames=null,defaultSort
       items={works}
       batchSize={DEFAULT_LIST_BATCH_SIZE}
       resetKey={scope.id+'|'+startDate+'|'+endDate+'|'+(sourceNames||[]).join('|')+'|'+articleSort}
-      className="scope-culture-source-work-scroll"
+      className="scope-culture-source-work-scroll loc-public-article-list"
       loading={worksQuery.isFetchingNextPage}
       externalHasMore={Boolean(worksQuery.hasNextPage)}
       onLoadMore={()=>worksQuery.fetchNextPage()}

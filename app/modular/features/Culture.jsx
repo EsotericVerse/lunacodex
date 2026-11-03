@@ -1672,7 +1672,7 @@ export default function Culture(){
                 {styleFilter!=='trace'&&(!(stagedSourceRiver?sourceRootQuery.error:sourceSnapshotQuery.error)
                   &&(stagedSourceRiver?sourceRootQuery.data:sourceSnapshotQuery.data)&&cultureRiver.hasSourceData)?<details className='scope-culture-source-detail' open={worksOpen} onToggle={event=>setWorksOpen(event.currentTarget.open)}>
                   <summary>點開文章列表</summary>
-                  {worksOpen?<><header style={{display:'flex',justifyContent:'space-between',gap:'.75rem',alignItems:'center',flexWrap:'wrap'}}>
+                  {worksOpen?<><header className="loc-public-list-header">
                     {selectedGroup?<button type='button' className='scope-pagination-button' onClick={()=>setSelectedCategory('')}>{UI_COPY.culture.showAllWorks}</button>:<span/>}
                     <ArticleSortSelect value={articleSort} onChange={setArticleSort} disabled={Boolean(editingWorkKey)}/>
                   </header>
@@ -1682,7 +1682,7 @@ export default function Culture(){
                     items={visibleWorkRows}
                     batchSize={DEFAULT_LIST_BATCH_SIZE}
                     resetKey={classificationWindowStart+'|'+classificationWindowEnd+'|'+selectedCategory+'|'+selectedRiverGroup+'|source|'+articleSort}
-                    className='scope-culture-source-work-scroll'
+                    className='scope-culture-source-work-scroll loc-public-article-list'
                     externalHasMore={periodWorksPage.hasMore}
                     loading={periodWorksPage.loading}
                     error={periodWorksPage.error}

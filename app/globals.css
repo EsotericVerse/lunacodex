@@ -24,6 +24,7 @@
 @import "./styles/settings-select.css";
 @import "./styles/nav.css";
 @import "./styles/list-stripes.css";
+@import "./styles/public-features.css";
 
 html[data-theme-bootstrap="scheme-only"] body{
   visibility:hidden;

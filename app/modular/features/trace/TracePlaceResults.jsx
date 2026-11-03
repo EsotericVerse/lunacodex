@@ -387,7 +387,7 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
       items={rows}
       batchSize={PAGE_SIZE}
       resetKey={[targetScope,place?.uid,placesKey,startDate,endDate,sourceFilter,selectedMediaType,sort].join('|')}
-      className="loc-trace-works-list"
+      className="loc-trace-works-list loc-public-article-list"
       externalHasMore={selectedMediaType?Boolean(mediaFiltered.hasNextPage):Boolean(list.hasNextPage)}
       loading={selectedMediaType?Boolean(mediaFiltered.isFetchingNextPage):Boolean(list.isPending||list.isFetchingNextPage)}
       error={error}

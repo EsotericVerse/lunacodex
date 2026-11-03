@@ -1,0 +1,222 @@
+/* Canonical PUBLIC feature surfaces. Use the selected LOC Theme only.
+   Never style management workspaces or introduce per-feature fixed color palettes. */
+.scope-main[data-public-feature]{
+  --loc-feature-emphasis:var(--loc-accent);
+  --loc-feature-secondary:var(--loc-gold);
+  --loc-feature-wash:color-mix(in srgb,var(--loc-feature-emphasis) 9%,var(--loc-panel));
+  --loc-feature-hairline:color-mix(in srgb,var(--loc-feature-emphasis) 27%,var(--loc-line));
+  --loc-feature-depth:color-mix(in srgb,var(--loc-panel-2) 35%,var(--loc-bg));
+}
+.scope-main[data-public-feature="statics"],
+.scope-main[data-public-feature="trace"]{
+  --loc-feature-emphasis:var(--loc-gold);
+  --loc-feature-secondary:var(--loc-accent);
+}
+.scope-main[data-public-feature="culture"]{
+  --loc-feature-emphasis:var(--loc-accent);
+  --loc-feature-secondary:var(--loc-gold);
+}
+.scope-main[data-public-feature="search"]{
+  --loc-feature-emphasis:var(--loc-accent);
+  --loc-feature-secondary:var(--loc-gold);
+}
+[data-public-feature] .loc-public-content,
+[data-public-feature] .loc-public-content > *{
+  min-width:0;
+  max-width:100%;
+}
+[data-public-feature] .loc-public-content{
+  gap:clamp(.85rem,1.5vw,1.4rem);
+}
+[data-public-feature] .loc-public-content > .scope-feature-card{
+  border-color:var(--loc-feature-hairline);
+  background:linear-gradient(155deg,var(--loc-feature-wash),var(--loc-panel) 32%,var(--loc-panel));
+  box-shadow:var(--loc-shadow-card);
+}
+[data-public-feature] :is(.scope-stat-controls,.scope-search-form,.scope-culture-source-detail,.loc-trace-works){
+  min-width:0;
+  border-color:var(--loc-feature-hairline);
+}
+[data-public-feature] :is(.scope-stat-controls,.scope-search-filter-panel,.scope-culture-source-detail){
+  background:var(--loc-feature-depth);
+}
+[data-public-feature] :is(.scope-stat-controls,.scope-search-filter-panel,.scope-trace-report-settings) :is(label,input,select,button){
+  min-width:0;
+}
+[data-public-feature] :is(.scope-stat-controls,.scope-search-form) :is(input,select,button):focus-visible,
+[data-public-feature] .loc-public-article-list a:focus-visible{
+  outline:2px solid var(--loc-feature-emphasis);
+  outline-offset:3px;
+}
+/* All four feature lists share one article DOM and list rhythm. */
+[data-public-feature] .loc-public-article-list{
+  min-width:0;
+  display:grid;
+  grid-template-columns:minmax(0,1fr);
+  align-content:start;
+  gap:clamp(.55rem,1.1vw,.9rem);
+}
+[data-public-feature] .loc-public-article-list > .loc-shared-work-card{
+  position:relative;
+  min-width:0;
+  max-width:100%;
+  border:1px solid var(--loc-feature-hairline);
+  border-inline-start:3px solid var(--loc-feature-emphasis);
+  border-radius:var(--loc-ui-radius-md);
+  padding:clamp(.8rem,1.35vw,1.1rem);
+  overflow-wrap:anywhere;
+  box-shadow:0 3px 12px color-mix(in srgb,var(--loc-bg) 24%,transparent);
+  transition:border-color .18s ease,box-shadow .18s ease;
+}
+[data-public-feature] .loc-public-article-list > .loc-shared-work-card:is(:hover,:focus-within){
+  border-color:var(--loc-feature-emphasis);
+  box-shadow:0 5px 22px color-mix(in srgb,var(--loc-feature-emphasis) 12%,transparent);
+}
+[data-public-feature] .loc-shared-work-card .scope-culture-work-heading{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:start;
+  justify-content:space-between;
+  gap:.5rem 1rem;
+}
+[data-public-feature] .loc-shared-work-card .scope-culture-work-heading > div:first-child{
+  min-width:0;
+  flex:1 1 16rem;
+}
+[data-public-feature] .loc-shared-work-card .scope-article-title-link{
+  text-decoration-thickness:1px;
+  text-underline-offset:.2em;
+}
+[data-public-feature] .loc-shared-work-card .scope-article-title-link:hover{
+  color:var(--loc-feature-emphasis);
+}
+[data-public-feature] .loc-shared-work-card .scope-result-links{
+  display:flex;
+  flex-wrap:wrap;
+  gap:.4rem;
+}
+[data-public-feature] .loc-public-list-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  flex-wrap:wrap;
+  gap:.6rem .8rem;
+  min-width:0;
+  margin:.5rem 0 .75rem;
+}
+[data-public-feature] .scope-article-sort-control{
+  display:inline-flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:.45rem;
+  font-size:var(--loc-type-ui);
+  color:var(--loc-muted);
+}
+[data-public-feature] .scope-article-sort-control select{
+  min-height:2.5rem;
+  width:auto;
+  max-width:100%;
+  padding:.35rem .65rem;
+  border-radius:var(--loc-ui-radius-sm);
+}
+/* Culture: keep the actual time river dominant; never force all density rows
+   or article details to load just to decorate the page. */
+[data-public-feature="culture"] :is(.scope-culture-classification-river,.scope-culture-structure-river,.scope-loc-time-river){
+  border-block-start:3px solid var(--loc-feature-emphasis);
+  background:linear-gradient(180deg,var(--loc-feature-wash),var(--loc-panel));
+}
+[data-public-feature="culture"] .scope-period-timeline .vis-timeline{
+  border-color:var(--loc-feature-hairline);
+}
+[data-public-feature="culture"] .scope-culture-source-detail{
+  border-inline-start:3px solid var(--loc-feature-emphasis);
+}
+[data-public-feature="culture"] .scope-culture-source-button[aria-pressed="true"]{
+  box-shadow:inset 0 0 0 1px var(--loc-feature-emphasis);
+}
+/* Statistics: chart selectors and the selected visualization stay in one
+   coordinated surface while retaining existing chart type and axes controls. */
+[data-public-feature="statics"] .scope-stat-controls{
+  border-block-start:3px solid var(--loc-feature-emphasis);
+  gap:clamp(.45rem,1vw,.85rem);
+}
+[data-public-feature="statics"] :is(.scope-ranking-chart,.scope-stat-section,.scope-stat-source-works){
+  min-width:0;
+}
+[data-public-feature="statics"] .scope-ranking-chart{
+  border:1px solid var(--loc-feature-hairline);
+  border-radius:var(--loc-ui-radius-md);
+}
+[data-public-feature="statics"] .scope-stat-domain-heading{
+  border-block-end:1px solid var(--loc-feature-hairline);
+}
+/* Search alone owns match excerpts, the before/after words and <mark>.
+   Culture/Statistics/Trace article cards never gain snippets via CSS. */
+[data-public-feature="search"] .scope-search-workspace{
+  min-width:0;
+}
+[data-public-feature="search"] .scope-search-form{
+  border-block-start:3px solid var(--loc-feature-emphasis);
+  background:var(--loc-feature-wash);
+}
+[data-public-feature="search"] .scope-search-form:focus-within{
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--loc-feature-emphasis) 12%,transparent);
+}
+[data-public-feature="search"] .scope-search-highlight,
+[data-public-feature="search"] .scope-culture-work-meta-description mark{
+  color:var(--loc-text);
+  background:color-mix(in srgb,var(--loc-feature-emphasis) 27%,var(--loc-panel));
+  border-radius:.3em;
+  box-decoration-break:clone;
+  -webkit-box-decoration-break:clone;
+  padding:.02em .18em;
+  font-weight:700;
+}
+[data-public-feature="search"] .loc-public-article-list .scope-culture-work-meta-description{
+  line-height:1.85;
+  overflow-wrap:anywhere;
+}
+/* Trace: map takes priority; the anchored article/report panel uses the same
+   public article shell without changing map interactions or floating geometry. */
+[data-public-feature="trace"] .loc-trace-panel{
+  min-width:0;
+  border-block-start:3px solid var(--loc-feature-emphasis);
+  border-color:var(--loc-feature-hairline);
+}
+[data-public-feature="trace"] :is(.loc-trace-float-report,.loc-trace-works){
+  border-color:var(--loc-feature-hairline);
+  box-shadow:var(--loc-shadow-card);
+}
+[data-public-feature="trace"] .loc-trace-float-tabs .loc-button[aria-pressed="true"]{
+  border-color:var(--loc-feature-emphasis);
+  color:var(--loc-text);
+  background:var(--loc-feature-wash);
+}
+[data-public-feature="trace"] .loc-trace-works-title{
+  border-block-end:1px solid var(--loc-feature-hairline);
+  padding-block-end:.65rem;
+}
+@media(max-width:760px){
+  [data-public-feature] .loc-public-list-header{
+    align-items:stretch;
+  }
+  [data-public-feature] .loc-public-list-header > *{
+    min-width:0;
+  }
+  [data-public-feature] .loc-public-article-list > .loc-shared-work-card{
+    border-radius:var(--loc-ui-radius-sm);
+    padding:.85rem;
+  }
+  [data-public-feature] .scope-article-sort-control{
+    width:100%;
+    justify-content:space-between;
+  }
+  [data-public-feature] .scope-article-sort-control select{
+    max-width:min(100%,16rem);
+  }
+}
+@media(prefers-reduced-motion:reduce){
+  [data-public-feature] .loc-public-article-list > .loc-shared-work-card{
+    transition:none;
+  }
+}

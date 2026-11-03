@@ -1296,6 +1296,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     {loadMoreError?<p role="alert" className="scope-status scope-error">{loadMoreError} <button type="button" className="loc-button" disabled={loadingMore} onClick={loadNextSearch}><UiText id="uiExtra.cultureView.reloadWorks"/></button></p>:null}
     <IncrementalList
       items={orderedResults}
+      className={managementMode?'scope-list':'scope-list loc-public-article-list'}
       batchSize={pageSize}
       resetKey={matchedQueryRef.current+'|'+String(browseResults)+'|'+scopeFilter+'|'+articleSort}
       externalHasMore={hasMore}
