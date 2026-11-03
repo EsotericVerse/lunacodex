@@ -87,3 +87,26 @@ test('verified LOC administrator is checked before touching an external SQL host
   assert.ok(authorized>=0&&connection>=0&&authorized<connection,
     'Reject unauthorized LOC requests before attempting external database DDL');
 });
+
+
+test('rejects existing incompatible Galaxy/Anchor before selecting a new SQL target',()=>{
+  const check=new Function('sql','portableRelation',source
+    .replace(/^import .*$/gm,'').replace(/^export /gm,'')+
+    ';return validatePortableScopeSchema;')(
+    Object.assign((strings,...values)=>({strings,values}),{raw:value=>value}),
+    (table,engine,ns)=>engine==='mysql'?table:ns+'.'+table);
+  const names=['uid','title','content','createtime','location','UpdateTime',
+    'url','source_id','target_id','ref_id','site','place_id','media_link',
+    'date','site_id','statics','culture','search','trace','list','keyword',
+    'extract','others'];
+  const entries=[
+    {name:'writer_galaxy',schema:'dbo',columns:names.map(name=>({name}))},
+    {name:'writer_anchor',schema:'dbo',columns:['uid','type','title',
+      'description','invisible','attr'].map(name=>({name}))}
+  ];
+  assert.deepEqual(check(entries,{engine:'mssql',namespace:'dbo',scopeId:'writer'}),
+    {scopeId:'writer',galaxy:'dbo.writer_galaxy',anchor:'dbo.writer_anchor'});
+  const broken=structuredClone(entries);
+  broken[0].columns=broken[0].columns.filter(row=>row.name!=='search');
+  assert.throws(()=>check(broken,{engine:'mssql',namespace:'dbo',scopeId:'writer'}),/search/);
+});
