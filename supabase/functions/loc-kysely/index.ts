@@ -102,28 +102,16 @@ function isSupabaseControlTarget(target:Record<string,unknown>){
 }
 
 
+const profileCache=new Map<string,{until:number,profile:any}>();
 async function profileForTarget(target:Record<string,unknown>){
-  // The selected primary Supabase control project already has its trusted
-  // connection URL in Edge secrets. Do not open a second connection or read
-  // Vault on every ordinary public request.
   if(isSupabaseControlTarget(target))return resolveConnectionProfile(controlTarget);
-  // A custom SQL primary must not depend on Supabase being reachable simply
-  // to find its own driver credentials. This alias resolves only server secrets.
-  if(target.provider==="custom")return resolveConnectionProfile(target);
+  const key=String(target.connection_alias||'')+':'+String(target.project_url||'');
+  const cached=profileCache.get(key);
+  if(cached&&Date.now()<cached.until)return cached.profile;
   const control=await databaseForTarget(controlTarget);
-  const secret=await readVaultConnection(control,target);
-  if(secret)return secret;
-  const profile=resolveConnectionProfile(target);
-  if(typeof target.project_url==="string"&&target.project_url){
-    const location=normalizeDatabaseLocation(String(target.provider),target.project_url);
-    if(target.provider==="supabase"){
-      if(location.projectId!==new URL(supabaseUrl).hostname.split(".")[0])
-        throw Object.assign(new Error("Supabase Link has no matching saved credentials"),{httpStatus:400});
-    }else if(target.provider==="neon"){
-      if(location.host!==new URL(profile.url).hostname)
-        throw Object.assign(new Error("Neon Link has no matching saved credentials"),{httpStatus:400});
-    }
-  }
+  const profile=await readVaultConnection(control,target)||
+    resolveConnectionProfile(target);
+  profileCache.set(key,{until:Date.now()+30_000,profile});
   return profile;
 }
 async function checkAdminRole(claims:Record<string,unknown>){
@@ -144,6 +132,21 @@ async function databaseListForControl(control:any):Promise<Record<string,any>[]>
     .where("id","=","loc").executeTakeFirst();
   if(!Array.isArray(row?.database))throw new Error("LOC database routing list is missing");
   return row.database;
+}
+// The live selection is stored in LOC metadata; no redeploy is required.
+let selectedRouteCache:{until:number,target:Record<string,unknown>|null}={until:0,target:null};
+async function liveConfiguredTarget():Promise<Record<string,unknown>>{
+  if(selectedRouteCache.target&&Date.now()<selectedRouteCache.until)
+    return selectedRouteCache.target;
+  const control=await databaseForTarget(controlTarget);
+  const entries=await databaseListForControl(control);
+  const selected=entries.filter(row=>row.selected===true);
+  if(selected.length!==1)throw new Error("LOC needs exactly one selected SQL target");
+  const target=selected[0].provider==="supabase"&&
+    selected[0].connection_alias==="supabase_current"
+      ?controlTarget:selectedDatabaseTarget([{...selected[0],selected:true}]);
+  selectedRouteCache={until:Date.now()+5000,target};
+  return target;
 }
 async function saveDatabaseTarget(input:Record<string,unknown>,role:string,claims:Record<string,unknown>){
   if(role!=="authenticated")throw Object.assign(new Error("Sign in as administrator"),{httpStatus:403});
@@ -193,6 +196,8 @@ async function saveDatabaseTarget(input:Record<string,unknown>,role:string,claim
     }
     await trx.updateTable("silver.loc").set({database:sql`${JSON.stringify(next)}::jsonb`})
       .where("id","=","loc").execute();
+    selectedRouteCache.until=0;
+    profileCache.delete(alias+':'+location.link);
     return {target_id:targetId,provider,engine,selected:input.activate===true||
       targetId===routing.primaryId};
   });
@@ -519,11 +524,8 @@ Deno.serve(async (request) => {
       return json({error:{message:"Database routing is set in app/loc/providers/routing-config.mjs and requires deployment"}},409);
 
     let target=controlTarget as Record<string,any>;
-    if(requestedTarget==="configured"&&routing.provider==="custom"){
-      target=selectedDatabaseTarget([{provider:"custom",
-        engine:routing.engine,connection_alias:routing.connectionAlias,
-        connection_mode:"direct",selected:true}]);
-    }
+    if(requestedTarget==="configured")
+      target=await liveConfiguredTarget() as Record<string,any>;
     if(requestedTarget==="neon"){
       if(routing.backupId!=="neon-current"||routing.backupProvider!=="neon")
         return json({error:{message:"Neon target is not enabled by repository routing"}},403);
