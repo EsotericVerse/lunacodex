@@ -561,7 +561,7 @@ async function upgradeNativeLocalGalaxySiteId(conn){
 
 // Preserve device-local Galaxy data while migrating JSONB feature flags to
 // independently queryable boolean columns (no new table or temp table).
-const LOCAL_GALAXY_COLUMNS=['statics','culture','search','trace','list','keyword','others','extract'];
+const LOCAL_GALAXY_COLUMNS=['statics','culture','search','trace','list','keyword','extract','others'];
 function localGalaxyAbleMigration(columns){
   const existing=new Set(columns.map(column=>column.name));
   const legacy=existing.has('able');
