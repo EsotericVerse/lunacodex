@@ -1,6 +1,7 @@
 // One Scope may analyze many Keyword Classes. The active Class chooses the
 // default view only; completed results are independently keyed by Class UID.
-const UID=/^[0-9A-Za-z]{4}$/;
+// Existing Classes can have four-character legacy IDs or eight-character native Anchor IDs.
+const UID=/^[0-9A-Za-z]{4}(?:[0-9A-Za-z]{4})?$/;
 export function keywordClassState(config={},classUid=''){
   if(!UID.test(classUid))return null;
   const meta=config.keyword_meta&&typeof config.keyword_meta==='object'
