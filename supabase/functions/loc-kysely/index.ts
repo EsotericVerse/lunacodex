@@ -371,7 +371,7 @@ Deno.serve(async (request) => {
                   p_filters:[{column:"uid",operator:"eq",value:row.uid},
                     {column:"site_id",operator:"eq",value:row.site_id}]}});
           const updatedCount=update?.count??update?.data?.count;
-          if(updatedCount===1)return update;
+          if(updatedCount===1)return {data:{count:1},count:1};
           if(updatedCount!==0)throw new Error("Unexpected managed sync update count");
         }
         return executeRequest(trx,controlTarget,"authenticated",claims,{
@@ -419,13 +419,16 @@ Deno.serve(async (request) => {
         if(!prMarker.test(row.title))
           throw Object.assign(new Error("PR number does not match this article's title"),{httpStatus:403});
         const values={title:body.title,content:body.content,UpdateTime:body.updated_at};
-        return executeRequest(trx,controlTarget,"authenticated",claims,
+        const updated=await executeRequest(trx,controlTarget,"authenticated",claims,
           scope==="lo3rwang"
             ?{kind:"query",schema:"silver",table:scope+"_galaxy",operation:"update",
               values,filters:[{column:"uid",operator:"eq",value:uid}]}
             :{kind:"rpc",schema:"silver",name:"management_write",
               args:{p_table:table,p_operation:"update",p_values:values,
                 p_filters:[{column:"uid",operator:"eq",value:uid}]}});
+        const count=updated?.count??updated?.data?.count;
+        if(count!==1)throw new Error("Managed PR update affected an unexpected number of rows");
+        return {data:{count:1},count:1};
 
       });
       return json(result);
