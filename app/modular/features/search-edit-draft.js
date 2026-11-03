@@ -59,9 +59,8 @@ function galaxyDraftFromRow(row={},fallbackTitle='',plainTextToBlocks){
 function mediaDraftFromRow(row={},fallbackTitle='',plainTextToBlocks){
   const attrs={
     uid:String(row.uid||''), title:String(row.title||''),
-    location:String(row.location||''),type:String(row.type||''),
-    url:String(row.url||''),meta_tags:String(row.meta_tags||''),
-    createtime:datetimeLocalValue(row.createtime)
+    type:String(row.type||''),url:String(row.url||''),
+    meta_tags:String(row.meta_tags||''),date:String(row.date||'').slice(0,10)
   };
   return {title:String(row.title??fallbackTitle??''),originalTitle:String(row.title??fallbackTitle??''),
     body:'',bodyHtml:'',bodyBlocks:plainTextToBlocks(''),editorKey:String(row.uid||''),
@@ -69,11 +68,15 @@ function mediaDraftFromRow(row={},fallbackTitle='',plainTextToBlocks){
 }
 function changedMediaAttributes(draft,t){
   const current=draft?.attrs||{},initial=draft?.originalAttrs||{},changed={};
-  for(const key of ['location','type','url','meta_tags']){
+  for(const key of ['type','url','meta_tags']){
     if(current[key]!==initial[key])changed[key]=nullableText(current[key]);
   }
   if(Object.hasOwn(changed,'type')&&!changed.type)throw new Error(t('uiExtra.searchUI.mediaTypeRequired'));
-  if(current.createtime!==initial.createtime)changed.createtime=isoOrNull(current.createtime,t);
+  if(current.date!==initial.date){
+    const day=String(current.date||'').trim();
+    if(day&&!/^\d{4}-\d{2}-\d{2}$/.test(day))throw new Error(t('uiExtra.searchUI.articleDateInvalid'));
+    changed.date=day||null;
+  }
   return changed;
 }
 function changedGalaxyAttributes(draft,t){
@@ -85,7 +88,7 @@ function changedGalaxyAttributes(draft,t){
   if(differs('createtime'))changed.createtime=isoOrNull(current.createtime,t);
   if(differs('place_id')){
     const next=String(current.place_id||'').trim();
-    if(next&&!/^[A-Za-z0-9]{4}$/.test(next))throw new Error('定錨點 ID 必須為四碼');
+    if(next&&!/^[A-Za-z0-9]{8}$/.test(next))throw new Error('定錨點 ID 必須為八碼');
     changed.place_id=next||null;
   }
   for(const key of ['location','url','source_id','ref_id','site']){
