@@ -178,3 +178,120 @@ export async function executeManagedKyselyWrite(trx,body){
   }
   return {data:{count},count:null};
 }
+
+const ACTIONS=new Set(['read_group_members','update_group_member_name',
+  'update_group_default_article_class','is_current_email_blocklisted','move_scope_block']);
+function validScope(value){
+  const id=String(value||'').trim().toLowerCase();
+  if(!/^[a-z][a-z0-9]{0,14}$/.test(id))reject('Invalid Scope ID');
+  return id;
+}
+function validUid(value){
+  const uid=String(value||'').trim();
+  if(!UID.test(uid))reject('Invalid block UID');
+  return uid;
+}
+export async function executeManagedKyselyAction(trx,body,claims={}){
+  const name=String(body?.name||'');
+  if(!ACTIONS.has(name)||!body.args||typeof body.args!=='object'||
+    Array.isArray(body.args))reject('Unknown Kysely action');
+  const args=body.args;
+  const keys={
+    read_group_members:['p_group_id'],
+    update_group_member_name:['p_group_id','p_member_id','p_display_name'],
+    update_group_default_article_class:['p_group_id','p_names'],
+    is_current_email_blocklisted:[],
+    move_scope_block:['p_scope_id','p_page_name','p_uid','p_direction']
+  }[name];
+  if(Object.keys(args).some(key=>!keys.includes(key)))reject('Unexpected Kysely action argument');
+  if(name==='is_current_email_blocklisted'){
+    const email=String(claims.email||'').trim().toLowerCase();
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))reject('Verified email unavailable',403);
+    await sql`reset role`.execute(trx);
+    const config=await trx.selectFrom('silver.loc').select('blacklist')
+      .where('id','=','loc').executeTakeFirst();
+    const list=config?.blacklist?.email;
+    return {data:Array.isArray(list)&&list.some(item=>
+      String(item?.email||'').trim().toLowerCase()===email),count:null};
+  }
+  if(name==='read_group_members'){
+    const group=validScope(args.p_group_id);
+    if(!await canManage(trx,'group',group))reject('Group management permission required',403);
+    await sql`reset role`.execute(trx);
+    const rows=await trx.selectFrom('silver.manage')
+      .select(['id','display_name','parent_scope_id','active','sort_order'])
+      .where('parent_scope_id','=',group).where('manage_role','=','scope')
+      .orderBy('sort_order','asc').orderBy('id','asc').execute();
+    return {data:rows,count:null};
+  }
+  if(name==='update_group_member_name'){
+    const group=validScope(args.p_group_id);
+    const member=validScope(args.p_member_id);
+    const title=String(args.p_display_name||'').trim();
+    if(!title||title.length>120)reject('Group member name must contain 1–120 characters');
+    if(!await canManage(trx,'group',group))reject('Group management permission required',403);
+    await sql`reset role`.execute(trx);
+    const parent=await trx.selectFrom('silver.manage').select('id')
+      .where('id','=',member).where('parent_scope_id','=',group)
+      .where('manage_role','=','scope').executeTakeFirst();
+    if(!parent)reject('Scope is outside this Group',403);
+    const updated=await trx.updateTable('silver.'+member)
+      .set({display_name:title,updated_at:sql`now()`})
+      .where('id','=',member).executeTakeFirst();
+    if(Number(updated?.numUpdatedRows||0)!==1)reject('Group member configuration was not updated');
+    const registry=await trx.updateTable('silver.manage')
+      .set({display_name:title,updated_at:sql`now()`})
+      .where('id','=',member).where('parent_scope_id','=',group)
+      .where('manage_role','=','scope').executeTakeFirst();
+    if(Number(registry?.numUpdatedRows||0)!==1)reject('Group member registry was not updated');
+    return {data:true,count:null};
+  }
+  if(name==='update_group_default_article_class'){
+    const group=validScope(args.p_group_id);
+    const names=args.p_names;
+    if(group!=='loc'||!Array.isArray(names)||
+      names.some(n=>typeof n!=='string'||n.trim().length<1||n.trim().length>80)||
+      new Set(names.map(n=>n.trim().toLowerCase())).size!==names.length)
+      reject('Invalid Group article classifications');
+    if(!await canManage(trx,'group',group))reject('Group management permission required',403);
+    await sql`reset role`.execute(trx);
+    const exists=await trx.selectFrom('silver.loc').select('id')
+      .where('id','=',group).forUpdate().executeTakeFirst();
+    if(!exists)reject('Group config not found');
+    const updated=await trx.updateTable('silver.loc')
+      .set({DefaultArticleClass:sql`${JSON.stringify(names)}::jsonb`})
+      .where('id','=',group).executeTakeFirst();
+    if(Number(updated?.numUpdatedRows||0)!==1)reject('Group classification update failed');
+    return {data:true,count:null};
+  }
+  const scope=validScope(args.p_scope_id);
+  const page=String(args.p_page_name||'').trim().toLowerCase();
+  const uid=validUid(args.p_uid);
+  const direction=Number(args.p_direction);
+  if(!page||page.length>80||![-1,1].includes(direction))
+    reject('Invalid block move');
+  const authorized=scope==='loc'
+    ?(await canManage(trx,'global')||(page==='index'&&await canManage(trx,'group','loc')))
+    :await canManage(trx,'scope',scope);
+  if(!authorized)reject('Block management permission required',403);
+  await sql`reset role`.execute(trx);
+  const relation='silver.'+scope+'_blocks';
+  await sql`select pg_advisory_xact_lock(hashtext(${scope}),hashtext(${page}))`.execute(trx);
+  const original=await trx.selectFrom(relation).select(['uid','block_order'])
+    .where('uid','=',uid).where('page_name','=',page).executeTakeFirst();
+  if(!original)reject('Block not found on this page');
+  let neighbor=trx.selectFrom(relation).select(['uid','block_order'])
+    .where('page_name','=',page)
+    .where('block_order',direction===-1?'<':'>',original.block_order);
+  neighbor=neighbor.orderBy('block_order',direction===-1?'desc':'asc')
+    .orderBy('uid',direction===-1?'desc':'asc');
+  const next=await neighbor.limit(1).executeTakeFirst();
+  if(!next)reject('Block is already at the page boundary');
+  const ref=sql.ref(relation);
+  const result=await sql`update ${ref}
+    set block_order=case when uid=${uid} then ${next.block_order} else ${original.block_order} end
+    where page_name=${page} and uid in (${uid},${next.uid})`.execute(trx);
+  if(Number(result.numAffectedRows||0)!==2)reject('Block order update incomplete');
+  return {data:{uid,block_order:next.block_order,
+    neighbor_uid:next.uid,neighbor_order:original.block_order},count:null};
+}
