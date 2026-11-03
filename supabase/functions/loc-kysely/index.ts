@@ -193,7 +193,7 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
     if(body.kind==="managed-write"){
       if(role!=="authenticated")
         throw Object.assign(new Error("Management requires verified Clerk identity"),{httpStatus:403});
-      return await executeCrossEngineManagedWrite(trx,body,{role,claims});
+      return await executeCrossEngineManagedWrite(trx,body,{role,claims,engine:executionPort.engine});
     }
     await authorizeCrossEngineQuery(trx,body,{role,claims});
     return await executeKyselyQuery(trx,body,{dialect:executionPort.engine});
