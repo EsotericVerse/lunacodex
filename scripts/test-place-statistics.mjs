@@ -47,7 +47,9 @@ test('Culture and Statistics use optional SQL place summaries without ISR or req
   const cultPlace=read('app/modular/features/trace/CulturePlaceRiver.jsx');
   const statPlace=read('app/modular/features/trace/PlaceStatisticsPanel.jsx');
   assert.match(route,/status:410/);
-  assert.match(read('app/loc/place-summary-client.js'),/read_scope_place_statistics/);
+  assert.match(read('app/loc/place-summary-client.js'),/p_view:'trace_places'/);
+  assert.doesNotMatch(read('app/loc/place-summary-client.js'),/rpc\\('read_scope_place_statistics'/);
+  assert.match(read('supabase/migrations/20261103091000_scope_trace_places_analytics.sql'),/v_mode='trace_places'/);
   assert.match(client,/return false/);
   assert.match(culture,/<option value='trace'>痕跡（地點）<\/option>/);
   assert.match(culture,/<CulturePlaceRiver/);
