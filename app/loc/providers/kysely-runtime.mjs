@@ -129,13 +129,17 @@ function validateQuery(input){
   return {...input,schema,table,filters,columns,orders,limit,offset,orFilters};
 }
 
+const GALAXY_BOOLEAN_COLUMNS=new Set(['statics','culture','search','trace','list','keyword','others','extract']);
 function applyFilters(query,filters){
   for(const filter of filters){
     const op=operators[filter.operator],column=checkedFilterColumn(filter.column);
-    if(filter.operator==='in')query=filter.negate?query.where(eb=>eb.not(eb(column,'in',filter.value))):query.where(column,'in',filter.value);
-    else if(filter.operator==='ilike')query=query.where(sql`lower(${typeof column==='string'?sql.ref(column):column})`,filter.negate?'not like':'like',String(filter.value).toLowerCase());
-    else if(filter.operator==='is')query=query.where(column,filter.value===null?(filter.negate?'is not':'is'):(filter.negate?'!=':'='),filter.value);
-    else query=filter.negate?query.where(eb=>eb.not(eb(column,op,filter.value))):query.where(column,op,filter.value);
+    const value=GALAXY_BOOLEAN_COLUMNS.has(filter.column)&&
+      (filter.value==='true'||filter.value==='false')
+      ?filter.value==='true':filter.value;
+    if(filter.operator==='in')query=filter.negate?query.where(eb=>eb.not(eb(column,'in',value))):query.where(column,'in',value);
+    else if(filter.operator==='ilike')query=query.where(sql`lower(${typeof column==='string'?sql.ref(column):column})`,filter.negate?'not like':'like',String(value).toLowerCase());
+    else if(filter.operator==='is')query=query.where(column,value===null?(filter.negate?'is not':'is'):(filter.negate?'!=':'='),value);
+    else query=filter.negate?query.where(eb=>eb.not(eb(column,op,value))):query.where(column,op,value);
   }
   return query;
 }
