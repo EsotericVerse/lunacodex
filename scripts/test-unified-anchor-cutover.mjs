@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {unifiedAnchorSpec,toAnchorRow,fromAnchorRow,unifiedAnchorRelation}
+import {isUnifiedAnchorScope,unifiedAnchorSpec,toAnchorRow,fromAnchorRow,unifiedAnchorRelation}
   from '../app/loc/unified-anchor-compat.mjs';
 import {readUnifiedAnchorUids} from '../app/loc/unified-anchor-uids.mjs';
 
@@ -208,4 +208,13 @@ test('Search editor uses eight-character Point UIDs and only persisted media att
   assert.match(draft,/changed\.date=/);
   assert.match(ui,/const MEDIA_EDITOR_COLUMNS='uid,type,title,url,meta_tags,date'/);
   assert.doesNotMatch(ui,/const MEDIA_EDITOR_COLUMNS='uid,location/);
+});
+
+
+test('device-local SQLite and LOC Group do not use scoped cloud Anchor projections',()=>{
+  assert.equal(isUnifiedAnchorScope('local'),false);
+  assert.equal(isUnifiedAnchorScope('loc'),false);
+  assert.equal(isUnifiedAnchorScope('lo3rwang'),true);
+  assert.equal(isUnifiedAnchorScope('lrunes'),true);
+  assert.equal(unifiedAnchorSpec('silver','local_time'),null);
 });
