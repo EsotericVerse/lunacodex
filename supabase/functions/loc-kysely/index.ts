@@ -13,7 +13,7 @@ import {executeKyselyScopeAdmin} from "../../../app/loc/providers/kysely-scope-a
 import { selectedDatabaseTarget } from "../../../app/loc/providers/selected-database-target.mjs";
 import {resolveSqlExecutionPort,assertCrossEnginePublicRead,authorizeCrossEngineQuery,executeCrossEngineManagedWrite} from "../../../app/loc/providers/sql-engine-ports.mjs";
 import {resolveDatabaseRouting} from "../../../app/loc/providers/routing-config.mjs";
-import {bindLocAuthorization,canManageLoc} from "../../../app/loc/providers/loc-authorization.mjs";
+import {bindLocAuthorization,canManageLoc,locPermissions} from "../../../app/loc/providers/loc-authorization.mjs";
 
 const corsHeaders = {
   "access-control-allow-origin": "*",
@@ -203,10 +203,12 @@ async function saveDatabaseTarget(input:Record<string,unknown>,role:string,claim
   });
 }
 
-async function executeRequest(trx: any, target: Record<string,any>, role: string, claims: Record<string, unknown>, body: Record<string, unknown>) {
+async function executeRequest(trx: any, target: Record<string,any>, role: string,
+  claims: Record<string, unknown>, body: Record<string, unknown>,
+  snapshot:any=null) {
   const executionPort=resolveSqlExecutionPort(target);
-  bindLocAuthorization(trx,{role,claims});
-  if(executionPort.session!=="postgres-rls"){
+  bindLocAuthorization(trx,{role,claims,snapshot});
+  if(target.provider==="custom"||executionPort.session!=="postgres-rls"){
     // No PostgreSQL RLS on other engines. Authorize each request against
     // the target Scope Registry using the already verified Clerk identity.
     if(body.kind==="managed-write"){
@@ -561,7 +563,7 @@ Deno.serve(async (request) => {
     // Reject public or unsupported cross-engine actions before opening a
     // connection; private CRUD receives a second, row-owner ACL gate in
     // executeRequest after verified Clerk claims have been established.
-    if(target.engine!=="postgres"){
+    if(target.provider==="custom"||target.engine!=="postgres"){
       if(role!=="authenticated")assertCrossEnginePublicRead(body);
       else if(body.kind!=="query"&&body.kind!=="managed-write")return json({
         error:{message:"Cross-engine actions must use the Kysely query contract"}},403);
@@ -569,7 +571,19 @@ Deno.serve(async (request) => {
     const db=isSupabaseControlTarget(target)
       ?await databaseForTarget(controlTarget)
       :await databaseForTarget(target,{profileLookup:profileForTarget});
-    const result=await db.transaction().execute(trx=>executeRequest(trx,target,role,claims,body));
+    // The LOC control database supplies authorization; a user's external
+    // database needs its own Galaxy/Anchor data tables, not LOC RPC/ACL tables.
+    let permissionSnapshot=null;
+    if(target.provider==="custom"&&role==="authenticated"){
+      const control=await databaseForTarget(controlTarget);
+      permissionSnapshot=await control.transaction().execute(async trx=>{
+        await sql`set local role authenticated`.execute(trx);
+        bindLocAuthorization(trx,{role,claims});
+        return await locPermissions(trx);
+      });
+    }
+    const result=await db.transaction().execute(trx=>
+      executeRequest(trx,target,role,claims,body,permissionSnapshot));
     return json(result,200,result.count===null?{}:{"content-range":`0-${Math.max(0,(Array.isArray(result.data)?result.data.length:0)-1)}/${result.count}`});
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
