@@ -1,3 +1,3 @@
 export default {
-  "guide": "此 Scope Group 只負責成員總覽與導引；實際內容與分析由各子 Scope 自己處理。"
+  "guide": "這是成員群組總覽；作品與統計仍保存在各成員自己的資料來源中。"
 };
