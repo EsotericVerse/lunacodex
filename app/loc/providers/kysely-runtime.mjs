@@ -1,4 +1,4 @@
-import {sql} from 'npm:kysely@0.29.6';
+import {sql} from 'npm:kysely@0.29.8';
 import {DB_QUERY_BATCH_SIZE} from '../query-batch-size.mjs';
 import {serializePortableJsonFields} from './sql-engine-ports.mjs';
 
