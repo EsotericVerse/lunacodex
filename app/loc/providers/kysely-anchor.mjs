@@ -1,3 +1,5 @@
+import {canManageLoc} from './loc-authorization.mjs';
+import {portableRelation,serializePortableJsonFields} from './sql-engine-ports.mjs';
 import {sql} from 'npm:kysely@0.29.8';
 
 const scopePattern=/^[a-z][a-z0-9]{0,14}$/;
@@ -10,9 +12,7 @@ function reject(message,status=400){
   const error=new Error(message);error.httpStatus=status;throw error;
 }
 async function isOwner(trx,scope,role){
-  if(role!=='authenticated')return false;
-  const check=await sql`select coalesce((select allowed from silver.manage('scope',${scope})),false) as allowed`.execute(trx);
-  return check.rows[0]?.allowed===true;
+  return role==='authenticated'&&await canManageLoc(trx,'scope',scope);
 }
 function asPositiveInteger(value,fallback,max){
   const number=value===undefined?fallback:Number(value);
@@ -193,4 +193,138 @@ export async function executeKyselyAnchor(trx,body,{role='anon'}={}){
     .returning(['uid','type','title','description','invisible','attr']).executeTakeFirst();
   if(!updated)reject('Anchor row not found');
   return {data:updated,count:null};
+}
+
+function portableAttr(value){
+  if(typeof value==='string'){try{return JSON.parse(value)}catch{return {}}}
+  return value&&typeof value==='object'?value:{};
+}
+const portableRow=row=>row?{...row,attr:portableAttr(row.attr)}:null;
+const modified=result=>Number(result?.numUpdatedRows??result?.numAffectedRows??0);
+export async function executePortableKyselyAnchor(db,body,{role='anon',engine,namespace=''}={}){
+  const scope=String(body?.scopeid||'').trim().toLowerCase();
+  const type=String(body?.type||'').trim(),data=body?.attr??{};
+  if(!scopePattern.test(scope)||!(publicTypes.has(type)||keywordTypes.has(type))||
+     !data||typeof data!=='object'||Array.isArray(data)||
+     Object.keys(data).some(key=>!allowedFields.has(key)))
+    reject('Invalid portable Anchor request');
+  const op=String(data.op||'read'),uid=data.uid==null?null:String(data.uid);
+  if(uid&&!uidPattern.test(uid))reject('Invalid UID');
+  const table=portableRelation(scope+'_anchor',engine,namespace);
+  const owner=await isOwner(db,scope,role);
+  const columns=['uid','type','title','description','invisible','attr'];
+  if(op==='read'){
+    if(!owner&&!publicTypes.has(type))return {data:[],count:null};
+    const limit=asPositiveInteger(data.limit,100,500);
+    const offset=data.offset==null?0:Number(data.offset);
+    if(!Number.isInteger(offset)||offset<0||offset>100000)reject('Invalid offset');
+    let query=db.selectFrom(table).select(columns).where('type','=',type);
+    if(uid)query=query.where('uid','=',uid);
+    if(!owner)query=query.where('invisible','=',false);
+    if(data.where!==undefined){
+      if(!data.where||typeof data.where!=='object'||Array.isArray(data.where))
+        reject('Invalid Anchor JSON filter');
+      if(engine==='postgres')query=query.where(sql`attr @> ${JSON.stringify(data.where)}::jsonb`);
+      else if(engine==='mysql')query=query.where(sql`json_contains(attr, ${JSON.stringify(data.where)})`);
+      else for(const [key,value] of Object.entries(data.where)){
+        if(!/^[a-z][a-z0-9_]*$/i.test(key)||value!==null&&typeof value==='object')
+          reject('Unsupported nested JSON filter');
+        query=query.where(sql`json_value(attr, ${'$.'+key})`,
+          value===null?'is':'=',value===null?null:String(value));
+      }
+    }
+    return {data:(await query.orderBy('uid','asc').limit(limit).offset(offset)
+      .execute()).map(portableRow),count:null};
+  }
+  if(op==='catalog'){
+    if(type!=='class'||uid||data.data!==undefined)reject('Invalid catalog');
+    if(!owner)return {data:{},count:null};
+    const query=db.selectFrom(table).select(columns).where('type','=','class');
+    const node=await (data.classUid?query.where('uid','=',String(data.classUid)):
+      query.orderBy('uid','asc')).executeTakeFirst();
+    if(!node)return {data:{},count:null};
+    const root=portableRow(node);
+    const groups=(namesFrom(root).length?await db.selectFrom(table).select(columns)
+      .where('type','=','group').where('uid','in',namesFrom(root)).execute():[]).map(portableRow);
+    const ordered=namesFrom(root).map(id=>groups.find(g=>g.uid===id)).filter(Boolean);
+    const ids=[...new Set(ordered.flatMap(namesFrom))];
+    const items=(ids.length?await db.selectFrom(table).select(columns)
+      .where('type','=','item').where('uid','in',ids).execute():[]).map(portableRow);
+    const mapped=n=>({uid:n.uid,type:n.type,name:n.title,
+      desc:n.type==='item'?'':n.description,lists:n.type==='item'?[]:namesFrom(n),uid_lists:[]});
+    return {data:{class_uid:root.uid,rows:[mapped(root),...ordered.map(mapped),
+      ...ordered.flatMap(g=>namesFrom(g).map(id=>items.find(x=>x.uid===id))
+        .filter(Boolean).map(mapped))]},count:null};
+  }
+  if(!owner)reject('Scope management permission required',403);
+  if(op==='suggestions'){
+    if(type==='item')return {data:[],count:null};
+    if(type!=='point')reject('Invalid Point suggestions');
+    const galaxy=portableRelation(scope+'_galaxy',engine,namespace);
+    const rows=await db.selectFrom(galaxy).select('location')
+      .select(eb=>eb.fn.countAll().as('article_count'))
+      .where('location','is not',null).where('location','!=','')
+      .groupBy('location').orderBy('article_count','desc')
+      .limit(asPositiveInteger(data.limit,40,500)).execute();
+    return {data:rows.map(row=>({name:String(row.location).trim(),
+      article_count:Number(row.article_count)})).filter(row=>row.name),count:null};
+  }
+  if(op==='link'){
+    if(type!=='point'||uid||!Array.isArray(data.updates)||!data.updates.length||
+       data.updates.length>10000)reject('Invalid Point links');
+    const mode=data.mode||'place_id';
+    if(!['place_id','missing_location'].includes(mode))reject('Invalid link mode');
+    const ids=new Set();
+    for(const row of data.updates){
+      if(!uidPattern.test(String(row?.uid||''))||
+         !uidPattern.test(String(row?.place_id||''))||ids.has(row.uid))
+        reject('Invalid Point link UID');
+      ids.add(row.uid);
+    }
+    const points=await db.selectFrom(table).select(['uid','title'])
+      .where('type','=','point').where('uid','in',
+        [...new Set(data.updates.map(row=>row.place_id))]).execute();
+    const names=new Map(points.map(row=>[row.uid,String(row.title||'').trim()]));
+    const galaxy=portableRelation(scope+'_galaxy',engine,namespace);
+    let count=0;
+    for(const row of data.updates){
+      if(!names.has(row.place_id))reject('Missing Point');
+      let query=db.updateTable(galaxy).where('uid','=',row.uid);
+      if(mode==='place_id')query=query.set({place_id:row.place_id})
+        .where(eb=>eb.or([eb('place_id','is',null),eb('place_id','=','')]));
+      else query=query.set({place_id:row.place_id,location:names.get(row.place_id)})
+        .where(eb=>eb.or([eb('location','is',null),eb('location','=','')]));
+      count+=modified(await query.executeTakeFirst());
+    }
+    if(count!==data.updates.length)reject('Concurrent Point link changes',409);
+    return {data:{count},count:null};
+  }
+  if(op==='delete')reject('Anchor deletion requires reference-safe operation');
+  if(!['insert','update','patch'].includes(op)||!uid)reject('Invalid Anchor operation');
+  if(data.data!==undefined&&(!data.data||typeof data.data!=='object'||Array.isArray(data.data)))
+    reject('Invalid Anchor data');
+  if((op==='insert'||op==='patch')&&data.data===undefined)reject('Anchor data required');
+  const current=op==='insert'?null:await db.selectFrom(table).select(columns)
+    .where('uid','=',uid).where('type','=',type).executeTakeFirst();
+  if(op!=='insert'&&!current)reject('Anchor row missing');
+  const changes={};
+  for(const key of ['title','description','invisible'])
+    if(Object.hasOwn(data,key))changes[key]=data[key];
+  if(Object.hasOwn(data,'data'))changes.attr=op==='patch'
+    ?{...portableAttr(current.attr),...data.data}:data.data;
+  if(op==='insert'){
+    await db.insertInto(table).values(serializePortableJsonFields({
+      uid,type,title:data.title??null,description:data.description??null,
+      invisible:data.invisible??false,attr:data.data
+    },engine)).execute();
+  }else{
+    if(!Object.keys(changes).length)reject('Empty update');
+    const result=await db.updateTable(table).set(serializePortableJsonFields(changes,engine))
+      .where('uid','=',uid).where('type','=',type).executeTakeFirst();
+    if(modified(result)!==1)reject('Anchor update incomplete');
+  }
+  const result=await db.selectFrom(table).select(columns)
+    .where('uid','=',uid).where('type','=',type).executeTakeFirst();
+  if(!result)reject('Anchor write incomplete');
+  return {data:portableRow(result),count:null};
 }

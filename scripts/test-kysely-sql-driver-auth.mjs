@@ -27,3 +27,14 @@ test('SQL Server supports independently configured SQL, NTLM and Entra login',()
     type:'azure-active-directory-service-principal-secret',clientId:'abc'}},'',''),
     /incomplete/);
 });
+
+test('SQL Server Entra token works without database password or a Supabase Auth login',()=>{
+  assert.deepEqual(mssqlAuthentication({authentication:{type:'azure-active-directory-access-token',token:'signed-token'}},'',''),
+    {type:'azure-active-directory-access-token',options:{token:'signed-token'}});
+  assert.deepEqual(mssqlAuthentication({authentication:{type:'azure-active-directory-access-token'}},'','direct-token'),
+    {type:'azure-active-directory-access-token',options:{token:'direct-token'}});
+  assert.throws(()=>mssqlAuthentication({authentication:{type:'azure-active-directory-access-token'}},'',''),
+    /access token required/);
+  assert.equal(mssqlAuthentication({authentication:{type:'azure-active-directory-password'}},
+    'user','secret').options.userName,'user');
+});

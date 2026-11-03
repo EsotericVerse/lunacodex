@@ -6,13 +6,15 @@ import {makeConnectionProfile,readVaultConnection,saveVaultConnection} from "./d
 import {normalizeDatabaseLocation} from "../../../app/loc/providers/database-link.mjs";
 import { executeKyselyQuery, isKyselyClientError } from "../../../app/loc/providers/kysely-runtime.mjs";
 import {executeManagedKyselyWrite,executeManagedKyselyAction} from "../../../app/loc/providers/kysely-management.mjs";
-import {executeKyselyAnchor} from "../../../app/loc/providers/kysely-anchor.mjs";
-import {executeKyselyAnalytics} from "../../../app/loc/providers/kysely-analytics.mjs";
+import {executeKyselyAnchor,executePortableKyselyAnchor} from "../../../app/loc/providers/kysely-anchor.mjs";
+import {executeKyselyAnalytics,executePortableKyselyAnalytics} from "../../../app/loc/providers/kysely-analytics.mjs";
 import {executeKyselyPublicAction} from "../../../app/loc/providers/kysely-public.mjs";
 import {executeKyselyScopeAdmin} from "../../../app/loc/providers/kysely-scope-admin.mjs";
+import {ensurePortableScopeSchema,validatePortableScopeSchema} from "../../../app/loc/providers/kysely-schema.mjs";
 import { selectedDatabaseTarget } from "../../../app/loc/providers/selected-database-target.mjs";
 import {resolveSqlExecutionPort,assertCrossEnginePublicRead,authorizeCrossEngineQuery,executeCrossEngineManagedWrite} from "../../../app/loc/providers/sql-engine-ports.mjs";
 import {resolveDatabaseRouting} from "../../../app/loc/providers/routing-config.mjs";
+import {bindLocAuthorization,canManageLoc,locPermissions} from "../../../app/loc/providers/loc-authorization.mjs";
 
 const corsHeaders = {
   "access-control-allow-origin": "*",
@@ -101,28 +103,16 @@ function isSupabaseControlTarget(target:Record<string,unknown>){
 }
 
 
+const profileCache=new Map<string,{until:number,profile:any}>();
 async function profileForTarget(target:Record<string,unknown>){
-  // The selected primary Supabase control project already has its trusted
-  // connection URL in Edge secrets. Do not open a second connection or read
-  // Vault on every ordinary public request.
   if(isSupabaseControlTarget(target))return resolveConnectionProfile(controlTarget);
-  // A custom SQL primary must not depend on Supabase being reachable simply
-  // to find its own driver credentials. This alias resolves only server secrets.
-  if(target.provider==="custom")return resolveConnectionProfile(target);
+  const key=String(target.connection_alias||'')+':'+String(target.project_url||'');
+  const cached=profileCache.get(key);
+  if(cached&&Date.now()<cached.until)return cached.profile;
   const control=await databaseForTarget(controlTarget);
-  const secret=await readVaultConnection(control,target);
-  if(secret)return secret;
-  const profile=resolveConnectionProfile(target);
-  if(typeof target.project_url==="string"&&target.project_url){
-    const location=normalizeDatabaseLocation(String(target.provider),target.project_url);
-    if(target.provider==="supabase"){
-      if(location.projectId!==new URL(supabaseUrl).hostname.split(".")[0])
-        throw Object.assign(new Error("Supabase Link has no matching saved credentials"),{httpStatus:400});
-    }else if(target.provider==="neon"){
-      if(location.host!==new URL(profile.url).hostname)
-        throw Object.assign(new Error("Neon Link has no matching saved credentials"),{httpStatus:400});
-    }
-  }
+  const profile=await readVaultConnection(control,target)||
+    resolveConnectionProfile(target);
+  profileCache.set(key,{until:Date.now()+30_000,profile});
   return profile;
 }
 async function checkAdminRole(claims:Record<string,unknown>){
@@ -131,8 +121,8 @@ async function checkAdminRole(claims:Record<string,unknown>){
     await sql`set local role authenticated`.execute(trx);
     await sql`select set_config('request.jwt.claims',${JSON.stringify(claims)},true)`.execute(trx);
     await sql`select set_config('request.jwt.claim.sub',${String(claims.sub||"")},true)`.execute(trx);
-    const result=await sql<{allowed:boolean}>`select coalesce((select allowed from silver.manage('global')),false) as allowed`.execute(trx);
-    return result.rows[0]?.allowed===true;
+    bindLocAuthorization(trx,{role:'authenticated',claims});
+    return await canManageLoc(trx,'global');
   });
   if(!valid)throw Object.assign(new Error("Administrator permission required"),{httpStatus:403});
   return control;
@@ -144,6 +134,21 @@ async function databaseListForControl(control:any):Promise<Record<string,any>[]>
   if(!Array.isArray(row?.database))throw new Error("LOC database routing list is missing");
   return row.database;
 }
+// The live selection is stored in LOC metadata; no redeploy is required.
+let selectedRouteCache:{until:number,target:Record<string,unknown>|null}={until:0,target:null};
+async function liveConfiguredTarget():Promise<Record<string,unknown>>{
+  if(selectedRouteCache.target&&Date.now()<selectedRouteCache.until)
+    return selectedRouteCache.target;
+  const control=await databaseForTarget(controlTarget);
+  const entries=await databaseListForControl(control);
+  const selected=entries.filter(row=>row.selected===true);
+  if(selected.length!==1)throw new Error("LOC needs exactly one selected SQL target");
+  const target=selected[0].provider==="supabase"&&
+    selected[0].connection_alias==="supabase_current"
+      ?controlTarget:selectedDatabaseTarget([{...selected[0],selected:true}]);
+  selectedRouteCache={until:Date.now()+5000,target};
+  return target;
+}
 async function saveDatabaseTarget(input:Record<string,unknown>,role:string,claims:Record<string,unknown>){
   if(role!=="authenticated")throw Object.assign(new Error("Sign in as administrator"),{httpStatus:403});
   if(!input||typeof input!=="object"||Array.isArray(input))throw Object.assign(new Error("Invalid target payload"),{httpStatus:400});
@@ -153,20 +158,47 @@ async function saveDatabaseTarget(input:Record<string,unknown>,role:string,claim
   const provider=String(input.provider||"custom");
   const alias=String(input.connection_alias||targetId.replaceAll("-","_"));
   const target=selectedDatabaseTarget([{provider,engine,connection_alias:alias,connection_mode:String(input.connection_mode||"direct"),selected:true}]);
-  const location=normalizeDatabaseLocation(provider,input.project_url);
+  const connectionUrl=String(input.connection_url||'').trim();
+  const inferredHost=connectionUrl?new URL(connectionUrl).host:'';
+  const location=normalizeDatabaseLocation(provider,input.project_url||inferredHost);
   const region=String(input.region||"").trim();
   if(region.length>64||!/^([a-z0-9-]+)?$/.test(region))throw Object.assign(new Error("Invalid Region"),{httpStatus:400});
   const label=String(input.label||targetId).trim();
   if(!label||label.length>160)throw Object.assign(new Error("Invalid target label"),{httpStatus:400});
-  const password=typeof input.password==="string"?input.password:"";
-  if(input.activate===true)throw Object.assign(new Error("Database routing is managed in the repository config, not in SQL"),{httpStatus:409});
-  const profile=password?makeConnectionProfile({...target,...input,project_url:location.link},password):null;
+  const token=typeof input.control_token==='string'?input.control_token:
+    typeof input.password==='string'?input.password:'';
+  // Reject requests that cannot manage LOC before probing user-supplied
+  // database hosts or issuing Kysely CREATE TABLE statements.
   const control=await checkAdminRole(claims);
+  const profile=token?makeConnectionProfile({...target,...input,project_url:location.link},token):null;
+  if(input.activate===true&&!profile)
+    throw Object.assign(new Error("A database URL and control token are required to connect"),{httpStatus:400});
+  if(profile){
+    // Probe the selected driver before accepting it as the running LOC database.
+    const candidate=await databaseForTarget(target,{profileLookup:async()=>profile});
+    // A valid control token owns its target SQL database. Provision only
+    // Galaxy and Anchor with Kysely Schema Builder; no RPC or LOC ACL tables.
+    const requestedScope=String(input.scopeid||'lo3rwang');
+    if(!/^[a-z][a-z0-9]{0,14}$/.test(requestedScope))
+      throw Object.assign(new Error('Invalid LOC Scope ID'),{httpStatus:400});
+    const tables=await candidate.introspection.getTables();
+    const matched=tables.find((table:any)=>
+      table.name===requestedScope+'_galaxy'||table.name===requestedScope+'_anchor');
+    const schemaName=engine==='mysql'?'':String(
+      matched?.schema||input.schema_name||(engine==='mssql'?'dbo':'public'));
+    await ensurePortableScopeSchema(candidate,{
+      engine,namespace:schemaName,scopeId:requestedScope
+    });
+    const verified=await candidate.introspection.getTables();
+    validatePortableScopeSchema(verified,{engine,namespace:schemaName,scopeId:requestedScope});
+    input.schema_name=schemaName;
+  }
   if(!profile)await profileForTarget({...target,project_url:location.link});
   const record={
     provider,engine,connection_alias:alias,connection_mode:target.connection_mode,
     label,project_id:provider==="supabase"?location.projectId:String(input.project_id||"")||null,
-    project_url:location.link,region,updated_at:new Date()
+    project_url:location.link,region,
+    schema_name:String(input.schema_name||''),updated_at:new Date()
   };
   return control.transaction().execute(async trx=>{
     if(profile)await saveVaultConnection(trx,alias,profile);
@@ -178,24 +210,47 @@ async function saveDatabaseTarget(input:Record<string,unknown>,role:string,claim
       item.target_id===targetId?{...item,...record}:item):
       [...current.database,{...record,target_id:targetId,selected:false,
         backup_selected:false,routing_mode:"single"}];
+    if(input.activate===true){
+      for(const item of next)item.selected=item.target_id===targetId;
+    }
     await trx.updateTable("silver.loc").set({database:sql`${JSON.stringify(next)}::jsonb`})
       .where("id","=","loc").execute();
-    return {target_id:targetId,provider,engine,selected:targetId===routing.primaryId};
+    selectedRouteCache.until=0;
+    profileCache.delete(alias+':'+location.link);
+    return {target_id:targetId,provider,engine,selected:input.activate===true||
+      targetId===routing.primaryId};
   });
 }
 
-async function executeRequest(trx: any, target: Record<string,any>, role: string, claims: Record<string, unknown>, body: Record<string, unknown>) {
+async function executeRequest(trx: any, target: Record<string,any>, role: string,
+  claims: Record<string, unknown>, body: Record<string, unknown>,
+  snapshot:any=null) {
   const executionPort=resolveSqlExecutionPort(target);
-  if(executionPort.session!=="postgres-rls"){
+  bindLocAuthorization(trx,{role,claims,snapshot});
+  if(target.provider==="custom"||executionPort.session!=="postgres-rls"){
     // No PostgreSQL RLS on other engines. Authorize each request against
     // the target Scope Registry using the already verified Clerk identity.
     if(body.kind==="managed-write"){
       if(role!=="authenticated")
         throw Object.assign(new Error("Management requires verified Clerk identity"),{httpStatus:403});
-      return await executeCrossEngineManagedWrite(trx,body,{role,claims,engine:executionPort.engine});
+      return await executeCrossEngineManagedWrite(trx,body,{role,claims,
+        engine:executionPort.engine,namespace:target.schema_name});
     }
-    await authorizeCrossEngineQuery(trx,body,{role,claims});
-    return await executeKyselyQuery(trx,body,{dialect:executionPort.engine});
+    if(body.kind==="anchor")return await executePortableKyselyAnchor(trx,body,{
+      role,engine:executionPort.engine,namespace:target.schema_name
+    });
+    if(body.kind==="analytics")return await executePortableKyselyAnalytics(trx,body,{
+      role,engine:executionPort.engine,namespace:target.schema_name
+    });
+    if(body.kind==="public-action")return await executeKyselyPublicAction(trx,body,{
+      engine:executionPort.engine,namespace:String(target.schema_name||
+        (executionPort.engine==="mssql"?"dbo":"silver"))
+    });
+    const access=await authorizeCrossEngineQuery(trx,body,{role,claims});
+    return await executeKyselyQuery(trx,body,{dialect:executionPort.engine,
+      namespace:String(target.schema_name||(
+        executionPort.engine==='mssql'?'dbo':'public')),
+      publicOnly:access?.publicOnly===true});
   }
   if (role === "authenticated") await sql`set local role authenticated`.execute(trx);
   else if (target.provider === "neon") await sql`set local role anonymous`.execute(trx);
@@ -490,9 +545,11 @@ Deno.serve(async (request) => {
         mode:routing.mode
       }});
     }
-    if(body.kind==="rpc"&&body.schema==="silver"&&body.name==="save_database_target"){
-      if(!body.args||typeof body.args!=="object"||Array.isArray(body.args)||Object.keys(body.args).some(key=>key!=="p_target"))
-        return json({error:{message:"Invalid target settings"}},400);
+    // LOC management action, not a database RPC.
+    if(body.kind==="managed-action"&&body.name==="connect_database_target"){
+      if(!body.args||typeof body.args!=="object"||Array.isArray(body.args)||
+        Object.keys(body.args).some(key=>key!=="p_target"))
+        return json({error:{message:"Invalid connection settings"}},400);
       const result=await saveDatabaseTarget((body.args as Record<string,any>).p_target,role,claims);
       return json({data:result,count:null});
     }
@@ -501,12 +558,23 @@ Deno.serve(async (request) => {
        (body.name==="set_database_target"||body.name==="set_database_routing"))
       return json({error:{message:"Database routing is set in app/loc/providers/routing-config.mjs and requires deployment"}},409);
 
-    let target=controlTarget as Record<string,any>;
-    if(requestedTarget==="configured"&&routing.provider==="custom"){
-      target=selectedDatabaseTarget([{provider:"custom",
-        engine:routing.engine,connection_alias:routing.connectionAlias,
-        connection_mode:"direct",selected:true}]);
+    // LOC registry, user settings and public presentation are control-plane
+    // actions. A user-managed SQL target only needs its own data tables.
+    const controlManage=new Set(["manage","read_group_members",
+      "update_group_member_name","update_group_default_article_class",
+      "loc_admin_settings","is_current_email_blocklisted",
+      "read_scope_registry_admin","manage_scope_registry",
+      "provision_scope","delete_scope"]);
+    if(requestedTarget==="configured"&&
+      body.kind==="managed-action"&&controlManage.has(String(body.name))){
+      const control=await databaseForTarget(controlTarget);
+      const result=await control.transaction().execute(trx=>
+        executeRequest(trx,controlTarget,role,claims,body));
+      return json(result);
     }
+    let target=controlTarget as Record<string,any>;
+    if(requestedTarget==="configured")
+      target=await liveConfiguredTarget() as Record<string,any>;
     if(requestedTarget==="neon"){
       if(routing.backupId!=="neon-current"||routing.backupProvider!=="neon")
         return json({error:{message:"Neon target is not enabled by repository routing"}},403);
@@ -542,15 +610,33 @@ Deno.serve(async (request) => {
     // Reject public or unsupported cross-engine actions before opening a
     // connection; private CRUD receives a second, row-owner ACL gate in
     // executeRequest after verified Clerk claims have been established.
-    if(target.engine!=="postgres"){
-      if(role!=="authenticated")assertCrossEnginePublicRead(body);
-      else if(body.kind!=="query"&&body.kind!=="managed-write")return json({
-        error:{message:"Cross-engine actions must use the Kysely query contract"}},403);
+    if(target.provider==="custom"||target.engine!=="postgres"){
+      if(role!=="authenticated"){
+        const publicAnchor=body.kind==="anchor"&&
+          (body.attr?.op===undefined||body.attr?.op==="read"||body.attr?.op==="catalog");
+        const publicAnalytics=body.kind==="analytics";
+        const publicAction=body.kind==="public-action"&&
+          ["read_app_bootstrap","read_scope_page_copy","search_scope_trace_place_names"].includes(String(body.name));
+        if(!publicAnchor&&!publicAnalytics&&!publicAction)assertCrossEnginePublicRead(body);
+      }else if(!["query","managed-write","anchor","analytics","public-action"].includes(String(body.kind)))
+        return json({error:{message:"Unsupported SQL target action"}},403);
     }
     const db=isSupabaseControlTarget(target)
       ?await databaseForTarget(controlTarget)
       :await databaseForTarget(target,{profileLookup:profileForTarget});
-    const result=await db.transaction().execute(trx=>executeRequest(trx,target,role,claims,body));
+    // The LOC control database supplies authorization; a user's external
+    // database needs its own Galaxy/Anchor data tables, not LOC RPC/ACL tables.
+    let permissionSnapshot=null;
+    if(target.provider==="custom"&&role==="authenticated"){
+      const control=await databaseForTarget(controlTarget);
+      permissionSnapshot=await control.transaction().execute(async trx=>{
+        await sql`set local role authenticated`.execute(trx);
+        bindLocAuthorization(trx,{role,claims});
+        return await locPermissions(trx);
+      });
+    }
+    const result=await db.transaction().execute(trx=>
+      executeRequest(trx,target,role,claims,body,permissionSnapshot));
     return json(result,200,result.count===null?{}:{"content-range":`0-${Math.max(0,(Array.isArray(result.data)?result.data.length:0)-1)}/${result.count}`});
   } catch (error) {
     const message = error instanceof Error ? error.message : "";

@@ -17,6 +17,17 @@ export function mssqlAuthentication(profile,username,password){
     return {type:'ntlm',options:{userName:username,password,
       domain:String(options.domain).trim()}};
   }
+  if(type==='azure-active-directory-access-token'){
+    const token=String(options.token||password||'').trim();
+    if(!token)throw new Error('SQL Server access token required');
+    return {type,options:{token}};
+  }
+  if(type==='azure-active-directory-password'){
+    if(!username||!password)throw new Error('SQL Server Entra user credentials required');
+    return {type,options:{userName:username,password,
+      ...(options.tenantId?{tenantId:String(options.tenantId)}:{}),
+      ...(options.clientId?{clientId:String(options.clientId)}:{})}};
+  }
   if(type==='azure-active-directory-default'){
     return {type,options:options.clientId?{clientId:String(options.clientId)}:{}};
   }

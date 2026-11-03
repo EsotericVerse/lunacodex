@@ -30,6 +30,11 @@ export default function DatabaseTarget(){
   const [status,setStatus]=useState('');
   const [revision,setRevision]=useState(0);
   const [saving,setSaving]=useState(false);
+  // Transient credentials are not stored in LOC metadata or browser storage.
+  const [connectionUrl,setConnectionUrl]=useState('');
+  const [controlToken,setControlToken]=useState('');
+  const [authType,setAuthType]=useState('default');
+  const [authDomain,setAuthDomain]=useState('');
   const [backupHealth,setBackupHealth]=useState({state:'idle'});
   const [authOverview,setAuthOverview]=useState(()=>readonlyAuthStatus({
     identityProvider:process.env.NEXT_PUBLIC_LOC_IDENTITY_PROVIDER||'',
@@ -98,12 +103,14 @@ export default function DatabaseTarget(){
     if(id===selectedId||saving)return;
     if(!discardCurrent())return;
     setSelectedId(id);setStatus('');
+    setConnectionUrl('');setControlToken('');setAuthType('default');setAuthDomain('');
   };
   const add=()=>{
     if(saving||!discardCurrent())return;
     const id='target_'+crypto.randomUUID().replaceAll('-','').slice(0,20);
     setRows(current=>[...current,{target_id:id,provider:'custom',engine:'postgres',connection_alias:id,connection_mode:'direct',label:'新資料庫',project_id:'',project_url:'',region:'',selected:false,_new:true}]);
     setSelectedId(id);setStatus('');
+    setConnectionUrl('');setControlToken('');setAuthType('default');setAuthDomain('');
   };
   async function remove(){
     if(!row||saving)return;
@@ -127,15 +134,17 @@ export default function DatabaseTarget(){
   }
   async function save(){
     if(!row||saving)return false;
-    if(!rowDirty(row))return true;
+    if(!rowDirty(row)&&!connectionUrl&&!controlToken)return true;
     setSaving(true);setStatus('');
     try{
       const name=String(row.label||'').trim();
       if(!name||name.length>120)throw new Error('請輸入 1–120 字的資料庫名稱。');
       const previous=savedRow(row);
-      const location=!row._new&&previous?.project_url===row.project_url&&previous?.provider===row.provider
-        ?{link:row.project_url}
-        :normalizeDatabaseLocation(row.provider,row.project_url);
+      const inputHost=row.project_url||(
+        connectionUrl?new URL(connectionUrl).host:'');
+      const location=!row._new&&previous?.project_url===inputHost&&previous?.provider===row.provider
+        ?{link:inputHost}
+        :normalizeDatabaseLocation(row.provider,inputHost);
       // Only non-sensitive target metadata belongs here. The former
       // save_database_target endpoint is absent; admin RLS secures writes.
       const payload={
@@ -149,12 +158,19 @@ export default function DatabaseTarget(){
         region:row.region||'',
         updated_at:new Date().toISOString()
       };
-      const {data,error}=await dbAuthClient.schema('silver').managedAction('loc_admin_settings',{
-        p_section:'database',p_operation:'upsert',p_key:row.target_id,
-        p_value:payload
-      });
-      if(error||!data?.some(item=>item.target_id===row.target_id))
-        throw new Error(error?.message||'資料庫目標資訊未能寫入，請檢查管理權限。');
+      if(Boolean(connectionUrl)!==Boolean(controlToken))
+        throw new Error('請同時提供資料庫完整 URL 與 Control Token。');
+      const action=connectionUrl&&controlToken?'connect_database_target':'loc_admin_settings';
+      const args=action==='connect_database_target'
+        ?{p_target:{...payload,target_id:row.target_id,connection_url:connectionUrl,
+          control_token:controlToken,auth_type:authType,domain:authDomain,activate:true}}
+        :{p_section:'database',p_operation:'upsert',p_key:row.target_id,p_value:payload};
+      const {data,error}=await dbAuthClient.schema('silver').managedAction(action,args);
+      if(error||(action==='connect_database_target'
+        ?data?.target_id!==row.target_id
+        :!data?.some(item=>item.target_id===row.target_id)))
+        throw new Error(error?.message||'資料庫連線未完成，原設定維持不變。');
+      setControlToken('');setConnectionUrl('');
       setStatus('資料庫設定已儲存。');
       setRevision(v=>v+1);
       return true;
@@ -164,7 +180,7 @@ export default function DatabaseTarget(){
   const changedRows=rows.filter(item=>JSON.stringify(item)!==JSON.stringify(original.current.rows.find(saved=>saved.target_id===item.target_id)));
   useEditDockForm({
     isBusy:()=>saving,
-    isDirty:()=>changedRows.length>0,
+    isDirty:()=>changedRows.length>0||Boolean(connectionUrl||controlToken),
     save:async()=>{
       if(changedRows.some(item=>item.target_id!==selectedId)){
         setStatus('其他資料庫仍有未儲存資料，請逐筆儲存後再切換分區。');
@@ -175,7 +191,7 @@ export default function DatabaseTarget(){
   });
   return <section className="loc-card admin-workspace">
     <h2><UiText id="uiExtra.adminView.databaseRouting"/></h2>
-    <p className="scope-status">主要：{STATIC_ROUTING.primaryId}｜備援資料庫：{configuredBackup?.label||'未設定（選配）'}</p>
+    <p className="scope-status">主要：{rows.find(item=>item.selected)?.label||STATIC_ROUTING.primaryId}｜備援資料庫：{configuredBackup?.label||'未設定（選配）'}</p>
     <p className="scope-status" role="status">
       {backupHealth.state==='absent'?'備援：未設定（選配，不需檢查）':
         backupHealth.state==='idle'||backupHealth.state==='checking'
@@ -235,12 +251,45 @@ export default function DatabaseTarget(){
       <label><span><UiText id="uiExtra.adminView.databaseEndpoint"/></span><input value={row.project_url||''} onChange={event=>patch('project_url',event.target.value)}
         placeholder={row.provider==='supabase'?'Project ID 或 https://xxx.supabase.co':row.provider==='neon'?'Neon DB Endpoint 或 Data API URL':'db.example.com:5432'}/></label>
       <label><span><UiText id="uiExtra.adminView.regionArea"/></span><input value={row.region||''} onChange={event=>patch('region',event.target.value)} placeholder="例如 ap-southeast-1、eastus"/></label>
+      {row.provider==='custom'?<div className="scope-management-wide-field" style={{display:'grid',gap:8}}>
+        <label>SQL 連線 URL（僅安全連線時使用）
+          <input value={connectionUrl} autoComplete="off" spellCheck={false}
+            onChange={event=>setConnectionUrl(event.target.value)}
+            placeholder={row.engine==='mssql'
+              ?'mssql://user@server:1433/database'
+              :row.engine==='mysql'
+                ?'mysql://user@server:3306/database'
+                :'postgresql://user@server:5432/database'}/>
+        </label>
+        <label>SQL Driver 認證
+          <select className="admin-native-select" value={authType}
+            onChange={event=>setAuthType(event.target.value)}>
+            <option value="default">資料庫密碼／Token</option>
+            {row.engine==='mysql'?<option value="ldap-simple">MySQL LDAP Simple（TLS）</option>:null}
+            {row.engine==='mssql'?<>
+              <option value="ntlm">SQL Server NTLM／AD</option>
+              <option value="azure-active-directory-access-token">Microsoft Entra Access Token</option>
+              <option value="azure-active-directory-default">Microsoft Entra Default Credential</option>
+            </>:null}
+          </select>
+        </label>
+        {authType==='ntlm'?<label>Windows／AD 網域
+          <input value={authDomain} autoComplete="off"
+            onChange={event=>setAuthDomain(event.target.value)} placeholder="CORP"/>
+        </label>:null}
+        <label>Database Control Token／Password
+          <input type="password" value={controlToken} autoComplete="new-password"
+            onChange={event=>setControlToken(event.target.value)}
+            placeholder="只傳送至 LOC SQL Gateway"/>
+        </label>
+        <p className="scope-status">儲存前以 Kysely 實際連線檢查；成功後立即切換主要資料庫。憑證僅存受保護的伺服器 Vault。</p>
+      </div>:null}
       <div className="scope-management-wide-field">
         <button type="button" className="loc-button" onClick={remove} disabled={saving||protectedTarget}
           title={protectedTarget?'主要或備援資料庫使用中，不可刪除':undefined}><UiText id="uiExtra.adminView.delete"/></button>
       </div>
     </div>:null}
-    <p className="scope-status">只需要一個主要資料庫即可完整使用；備援資料庫不是安裝條件，平常不會連線或同步。這裡管理資料庫連線清單；正式主／備援路由由部署設定決定，新增清單項目不會自動切換。未配置備援時可將 NEXT_PUBLIC_LOC_BACKUP_ID 設為空值，重新部署後生效。</p>
+    <p className="scope-status">只需要一個主要資料庫。輸入 SQL 連線 URL 和 Control Token 後，由可信任 Gateway 驗證並儲存於 Vault；成功的連線可直接成為主要資料來源。備援資料庫為選配。</p>
     {status?<p className="scope-status" role="status">{status}</p>:null}
   </section>;
 }
