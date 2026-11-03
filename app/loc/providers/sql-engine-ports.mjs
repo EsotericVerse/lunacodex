@@ -1,3 +1,4 @@
+import {canManageLoc} from './loc-authorization.mjs';
 // Single source of truth for the LOC SQL engine plug-in points.
 // Kysely provides dialect-specific SQL generation; connection and security
 // adapters remain on the trusted runtime (never in the browser).
@@ -76,48 +77,19 @@ export async function authorizeCrossEngineQuery(db,request,{role='anon',claims={
     const error=new Error('Unsupported cross-engine LOC request');
     error.httpStatus=403;throw error;
   }
-  const email=String(claims.email||'').trim().toLowerCase();
-  if(!VERIFIED_EMAIL.test(email)||claims.provider!=='clerk'||
-     !/^user_[A-Za-z0-9]+$/.test(String(claims.sub||''))){
-    const error=new Error('Verified Clerk identity required for cross-engine SQL');
-    error.httpStatus=403;throw error;
-  }
   const table=request.table;
   if(CROSS_ENGINE_PUBLIC_READ_TABLES.includes(table)&&request.operation==='select')
     return;
-  // Match the existing LOC Authority semantics on every SQL dialect:
-  // globally blocked identities may not gain Scope grants. External
-  // databases must carry the same LOC blacklist and managed Registry.
-  const config=await db.selectFrom('silver.loc').select('blacklist')
-    .where('id','=','loc').executeTakeFirst();
-  let blacklist=config?.blacklist;
-  if(typeof blacklist==='string'){
-    try{blacklist=JSON.parse(blacklist)}catch{blacklist=null}
+  if(table==='loc'||table==='manage'){
+    if(!await canManageLoc(db,'global'))throw Object.assign(
+      new Error('Global LOC permission denied'),{httpStatus:403});
+    return;
   }
-  if(!blacklist||typeof blacklist!=='object'||Array.isArray(blacklist)||
-     blacklist.email!==undefined&&!Array.isArray(blacklist.email)){
-    const error=new Error('LOC authorization configuration unavailable');
-    error.httpStatus=403;throw error;
-  }
-  if((blacklist.email||[]).some(row=>
-    String(row?.email||'').trim().toLowerCase()===email)){
-    const error=new Error('LOC identity is blocked');
-    error.httpStatus=403;throw error;
-  }
-  const permissions=await db.selectFrom('silver.manage')
-    .select(['id','email','manage_role','active'])
-    .where(db.fn('lower',['email']),'=',email).execute();
-  const global=permissions.some(row=>row.id==='admin'&&row.manage_role==='admin');
-  if(global)return;
-  const match=table.match(PRIVATE_RELATION);
-  const scope=match?.[1];
-  const owner=scope&&SCOPE_ID.test(scope)&&permissions.some(row=>
-    row.id===scope&&(row.active===true||row.active===1)&&
-    (row.manage_role==='scope'||row.manage_role==='group'));
-  if(!owner||table==='manage'||table==='loc'){
-    const error=new Error('LOC Scope permission denied for selected SQL target');
-    error.httpStatus=403;throw error;
-  }
+  const scope=table.match(PRIVATE_RELATION)?.[1];
+  const permitted=await canManageLoc(db,'global')||
+    scope&&SCOPE_ID.test(scope)&&await canManageLoc(db,'scope',scope);
+  if(!permitted)throw Object.assign(
+    new Error('LOC Scope permission denied for selected SQL target'),{httpStatus:403});
 }
 
 const SAFE_FIELD=/^[a-z][a-z0-9_]*$/i;
