@@ -504,7 +504,7 @@ export class LocAuthorityState extends DurableObject {
     // Idempotent upsert by the existing case-sensitive UID; no table scans.
     const row={uid,title:input.title,content:input.content,
       site:'mcp',site_id:conversation_id,
-      able:{statics:false,culture:false,search:false,trace:false,list:false,keywords:false,game:false,extract:false},
+      statics:false,culture:false,search:false,trace:false,list:false,keyword:false,others:false,extract:false,
       createtime:validTimestamp(input.created_at||requestedTime),
       UpdateTime:requestedTime};
     if(profile)await postgrest(profile,{body:row,params:{on_conflict:'uid'}});
@@ -656,7 +656,7 @@ export class LocAuthorityState extends DurableObject {
       if(!['lo3rwang','lrunes'].includes(scopeid))return [];
       const url=new URL('https://qlouywsdiiyiyzpoxyqy.supabase.co/rest/v1/'+scopeid+'_galaxy');
       for(const [key,val] of Object.entries({select:'uid,title,date,createtime',
-        'able->>search':'eq.true',or:'(title.ilike.'+likePattern(query)+',content.ilike.'+likePattern(query)+')',
+        search:'eq.true',or:'(title.ilike.'+likePattern(query)+',content.ilike.'+likePattern(query)+')',
         order:'date.desc.nullslast',limit}))url.searchParams.set(key,String(val));
       const res=await fetch(url.href,{headers:{apikey:'sb_publishable_qPn0vAzozVyXKllRuEKf2Q_fvG-pLVV',
         'accept-profile':'silver'},signal:AbortSignal.timeout(8500),redirect:'manual'});
