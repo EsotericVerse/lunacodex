@@ -90,3 +90,9 @@ Cloudflare Pages `loc` production 部署 commit `54844ebf19ce8d88b52c1c4534a76e4
 - `scope_type_attr(scopeid,'item',{op:'suggestions'})`：僅限 Scope 管理者取得既有關鍵詞建議暫存（維持原本 text[] 內容，回傳 JSON 陣列）。
 - `scope_type_attr(scopeid,'point',{op:'suggestions',limit:60})`：僅限已核驗身分與 Scope 管理者，從文章地點欄位讀取批次建議（仍以單次 SQL 聚合）。
 - 對應前端已改用統一入口；退役 `read_scope_keyword_suggestions`、`trace_place_suggestions` 和無執行期需求的 `read_music_style_tree`。公開地點名稱搜尋與需原子更新的地點合併仍保留自身交易／RLS 邊界。
+
+### PostgreSQL portable 身分與舊路由清理（2026-11-03）
+
+- 仍由搜尋／地點批次與來源修正頁使用的三項原子操作保留原先 Scope 管理權限、預覽防呆與批次寫入流程；只將 Supabase Auth 專用的 UUID 身分判斷改用既有 `api.current_user_id()`（取經簽章 JWT 的文字型 sub，Kysely PostgreSQL 交易會設定相同的 claims）。因此 Clerk 及其他 PostgreSQL 供應者不需為此建立 Supabase Auth 帳號。
+- 無程式、SQL、View、Trigger 相依的舊路由函式 `loc_public_routing_state` 已透過 `DROP ... RESTRICT` 退役，去掉資料庫中寫死的 Supabase 專案網址；連線位置與供應者核驗仍由可信任的 SQL Gateway 負責。
+- 這是 **PostgreSQL 提供者可攜**，不代表 MySQL／SQLite 自動支援 PostgreSQL RLS 或儲存函式；後者仍須實作等效授權適配層。沒有複製資料到 Neon，也沒有增加欄位、表、索引或 RPC。
