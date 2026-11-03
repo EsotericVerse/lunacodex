@@ -81,3 +81,17 @@ test('owner-only Point and Item suggestions use one Scope type/attr entry',()=>{
   assert.match(sql,/DROP FUNCTION silver.read_scope_keyword_suggestions\(text\) RESTRICT/);
   assert.match(sql,/DROP FUNCTION silver.trace_place_suggestions\(text,integer\) RESTRICT/);
 });
+
+test('retired pre-Anchor Trace helpers cannot be reintroduced as independent RPCs',()=>{
+  const migration=readFileSync(new URL('../supabase/migrations/20261103183000_retire_pre_anchor_trace_utilities.sql',import.meta.url),'utf8');
+  for(const [name,signature] of [
+    ['trace_normalize_place_name','text'],
+    ['trace_prevent_identity_change',''],
+    ['validate_scoped_trace_map','']
+  ]){
+    assert.ok(migration.includes('DROP FUNCTION silver.'+name+'('+signature+') RESTRICT;'),
+      'Expected dependency-safe retirement of '+name);
+  }
+  assert.doesNotMatch(migration,/\bCASCADE\b/);
+  assert.match(migration,/domain_has_repeated_labels/);
+});
