@@ -10,6 +10,7 @@ import {executeManagedKyselyWrite,executeManagedKyselyAction} from "../../../app
 import {executeKyselyAnchor} from "../../../app/loc/providers/kysely-anchor.mjs";
 import {executeKyselyAnalytics} from "../../../app/loc/providers/kysely-analytics.mjs";
 import {executeKyselyPublicAction} from "../../../app/loc/providers/kysely-public.mjs";
+import {executeKyselyScopeAdmin} from "../../../app/loc/providers/kysely-scope-admin.mjs";
 import { selectedDatabaseTarget } from "../../../app/loc/providers/selected-database-target.mjs";
 import {resolveSqlExecutionPort,assertCrossEnginePublicRead} from "../../../app/loc/providers/sql-engine-ports.mjs";
 import {resolveDatabaseRouting} from "../../../app/loc/providers/routing-config.mjs";
@@ -203,7 +204,9 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
     if(role!=="authenticated")throw Object.assign(new Error("Management requires a verified session"),{httpStatus:403});
     return body.kind==="managed-write"
       ?await executeManagedKyselyWrite(trx,body)
-      :await executeManagedKyselyAction(trx,body,claims);
+      :["manage_scope_registry","delete_scope","provision_scope"].includes(String(body.name))
+        ?await executeKyselyScopeAdmin(trx,body)
+        :await executeManagedKyselyAction(trx,body,claims);
   }
   return await executeAllowlistedRpc(trx,body);
 }
