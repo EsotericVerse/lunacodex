@@ -227,8 +227,8 @@ test('portable Kysely accepts only fixed Anchor JSON text paths',()=>{
     .replace(/\bexport\s+(?=(?:async\s+)?(?:const|function|class|let)\b)/g,'');
   const sql=(parts,...values)=>({type:'sql',parts,values});
   sql.ref=name=>({type:'ref',name});
-  const {buildKyselySelectQuery}=new Function('sql','DB_QUERY_BATCH_SIZE',
-    source+';return {buildKyselySelectQuery};')(sql,10000);
+  const {buildKyselySelectQuery,buildKyselyMutationQuery}=new Function('sql','DB_QUERY_BATCH_SIZE',
+    source+';return {buildKyselySelectQuery,buildKyselyMutationQuery};')(sql,10000);
   const calls=[];
   const eb=(...args)=>{calls.push(['expression',...args]);return args;};
   eb.and=items=>items;
@@ -237,10 +237,11 @@ test('portable Kysely accepts only fixed Anchor JSON text paths',()=>{
     select(columns){calls.push(['select',columns]);return this;},
     where(...args){calls.push(['where',...args]);if(typeof args[0]==='function')args[0](eb);return this;},
     orderBy(...args){calls.push(['order',...args]);return this;},
+    set(values){calls.push(['set',values]);return this;},
     limit(value){calls.push(['limit',value]);return this;},
     offset(value){calls.push(['offset',value]);return this;}
   };
-  const trx={selectFrom:()=>builder};
+  const trx={selectFrom:()=>builder,updateTable:()=>builder};
   const request={
     kind:'query',schema:'silver',table:'lo3rwang_anchor',operation:'select',
     columns:['uid','attr'],
@@ -251,6 +252,9 @@ test('portable Kysely accepts only fixed Anchor JSON text paths',()=>{
   const result=buildKyselySelectQuery(trx,request);
   assert.equal(result.request.table,'lo3rwang_anchor');
   assert.ok(calls.some(([name])=>name==='order'));
+  const changed=buildKyselyMutationQuery(trx,{...request,operation:'update',
+    values:{title:'更新'},or:[],orders:[]});
+  assert.equal(changed.request.operation,'update');
   assert.throws(()=>buildKyselySelectQuery(trx,{
     ...request,filters:[{column:'attr->>password',operator:'eq',value:'x'}],or:[]
   }),/Invalid filter column/);
