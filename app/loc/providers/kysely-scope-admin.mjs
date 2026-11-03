@@ -223,36 +223,33 @@ async function provisionScope(trx,args){
   await sql`create table ${anchor} (like silver.lrunes_anchor including all)`.execute(trx);
   for(const table of [config,galaxy,anchor,blocks])
     await sql`alter table ${table} enable row level security`.execute(trx);
-  const owner=sql.lit(id);
-  const can=sql`coalesce((select allowed from silver.manage('scope',${owner})),false)`;
-  const policy=async(suffix,table,command,qual,check)=>{
-    const name=sql.ref(id+suffix);
-    await sql`create policy ${name} on ${table} ${sql.raw(command)}
-      ${sql.raw(qual)} ${sql.raw(check||'')}`.execute(trx);
-  };
-  await policy('_config_public_read',config,
-    'for select to anonymous,authenticated','using (true)');
-  await policy('_config_scope_update',config,'for update to authenticated',
-    'using ('+can.compile(trx).sql+')','with check ('+can.compile(trx).sql+')');
-  await policy('_galaxy_public_read',galaxy,
-    'for select to anonymous,authenticated','using (true)');
-  await policy('_galaxy_scope_update',galaxy,'for update to authenticated',
-    'using ('+can.compile(trx).sql+')','with check ('+can.compile(trx).sql+')');
-  const publicType=sql.raw("type in ('date','period','era','point','path','trace','image','video','rune','suno') and invisible is false");
+  // CREATE POLICY does not accept bind placeholders. sql.lit is safe here
+  // because Scope IDs were validated by the strict ^[a-z][a-z0-9]{0,14}$ rule.
+  const can=sql`coalesce((select allowed from silver.manage('scope',${sql.lit(id)})),false)`;
+  await sql`create policy ${sql.ref(id+'_config_public_read')} on ${config}
+    for select to anonymous,authenticated using (true)`.execute(trx);
+  await sql`create policy ${sql.ref(id+'_config_scope_update')} on ${config}
+    for update to authenticated using (${can}) with check (${can})`.execute(trx);
+  await sql`create policy ${sql.ref(id+'_galaxy_public_read')} on ${galaxy}
+    for select to anonymous,authenticated using (true)`.execute(trx);
+  await sql`create policy ${sql.ref(id+'_galaxy_scope_update')} on ${galaxy}
+    for update to authenticated using (${can}) with check (${can})`.execute(trx);
   await sql`create policy ${sql.ref(id+'_anchor_public_read')} on ${anchor}
-    for select to anonymous,authenticated using (${publicType})`.execute(trx);
-  await policy('_anchor_owner_read',anchor,'for select to authenticated',
-    'using ('+can.compile(trx).sql+')');
-  await policy('_anchor_owner_insert',anchor,'for insert to authenticated',
-    'with check ('+can.compile(trx).sql+')');
-  await policy('_anchor_owner_update',anchor,'for update to authenticated',
-    'using ('+can.compile(trx).sql+')','with check ('+can.compile(trx).sql+')');
-  await policy('_anchor_owner_delete',anchor,'for delete to authenticated',
-    'using ('+can.compile(trx).sql+')');
-  await policy('_blocks_public_read',blocks,
-    'for select to anonymous,authenticated','using (true)');
-  await policy('_blocks_scope_all',blocks,'for all to authenticated',
-    'using ('+can.compile(trx).sql+')','with check ('+can.compile(trx).sql+')');
+    for select to anonymous,authenticated
+    using (type in ('date','period','era','point','path','trace',
+      'image','video','rune','suno') and invisible is false)`.execute(trx);
+  await sql`create policy ${sql.ref(id+'_anchor_owner_read')} on ${anchor}
+    for select to authenticated using (${can})`.execute(trx);
+  await sql`create policy ${sql.ref(id+'_anchor_owner_insert')} on ${anchor}
+    for insert to authenticated with check (${can})`.execute(trx);
+  await sql`create policy ${sql.ref(id+'_anchor_owner_update')} on ${anchor}
+    for update to authenticated using (${can}) with check (${can})`.execute(trx);
+  await sql`create policy ${sql.ref(id+'_anchor_owner_delete')} on ${anchor}
+    for delete to authenticated using (${can})`.execute(trx);
+  await sql`create policy ${sql.ref(id+'_blocks_public_read')} on ${blocks}
+    for select to anonymous,authenticated using (true)`.execute(trx);
+  await sql`create policy ${sql.ref(id+'_blocks_scope_all')} on ${blocks}
+    for all to authenticated using (${can}) with check (${can})`.execute(trx);
   for(const table of [config,galaxy,anchor,blocks]){
     await sql`grant select on ${table} to anonymous,authenticated`.execute(trx);
   }
