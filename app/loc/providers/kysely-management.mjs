@@ -182,7 +182,7 @@ export async function executeManagedKyselyWrite(trx,body){
 const ACTIONS=new Set(['read_group_members','update_group_member_name',
   'update_group_default_article_class','is_current_email_blocklisted','move_scope_block',
   'preview_or_fill_galaxy_place','batch_fill_galaxy_location',
-  'rename_scope_site_batch','save_scope_trace_place_names']);
+  'rename_scope_site_batch','save_scope_trace_place_names','loc_admin_settings']);
 function validScope(value){
   const id=String(value||'').trim().toLowerCase();
   if(!/^[a-z][a-z0-9]{0,14}$/.test(id))reject('Invalid Scope ID');
@@ -207,9 +207,11 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     preview_or_fill_galaxy_place:['p_scope_id','p_start_date','p_end_date','p_place','p_apply','p_expected_count'],
     batch_fill_galaxy_location:['p_scope_id','p_uids','p_place','p_apply','p_expected_count'],
     rename_scope_site_batch:['p_scope_id','p_before','p_after','p_batch_size'],
-    save_scope_trace_place_names:['p_scope_id','p_uid','p_names']
+    save_scope_trace_place_names:['p_scope_id','p_uid','p_names'],
+    loc_admin_settings:['p_section','p_operation','p_key','p_value']
   }[name];
   if(Object.keys(args).some(key=>!keys.includes(key)))reject('Unexpected Kysely action argument');
+  if(name==='loc_admin_settings')return {data:await managedLocSettings(trx,args,claims),count:null};
   if(name==='preview_or_fill_galaxy_place')return {data:await previewOrFillGalaxyPlace(trx,args),count:null};
   if(name==='batch_fill_galaxy_location')return {data:await batchFillGalaxyLocation(trx,args),count:null};
   if(name==='rename_scope_site_batch')return {data:await renameScopeSiteBatch(trx,args),count:null};
@@ -414,4 +416,137 @@ async function saveScopePointAliases(trx,args){
   const result=await trx.updateTable(table).set({attr:change})
     .where('uid','=',uid).where('type','=','point').executeTakeFirst();
   return Number(result?.numUpdatedRows||0);
+}
+
+function validCatalog(value,label){
+  if(!Array.isArray(value))reject('LOC '+label+' is unavailable');
+  return value;
+}
+function catalogObject(value){
+  return value&&typeof value==='object'&&!Array.isArray(value);
+}
+async function managedLocSettings(trx,args,claims){
+  if(!await canManage(trx,'global'))reject('Global administrator required',403);
+  const section=String(args.p_section||'');
+  const operation=String(args.p_operation||'read');
+  const key=String(args.p_key??'').trim();
+  const value=args.p_value;
+  if(!['theme','keywords','database','email','scopeid'].includes(section))
+    reject('Invalid LOC settings section');
+  // Permission was established with the signed Clerk identity; no arbitrary
+  // table is addressable through this route.
+  await sql`reset role`.execute(trx);
+  const row=await trx.selectFrom('silver.loc')
+    .select(['theme','keywords','database','blacklist'])
+    .where('id','=','loc').forUpdate().executeTakeFirst();
+  if(!row)reject('LOC settings unavailable');
+  const saved=validCatalog(section==='database'?row.database:
+    section==='theme'?row.theme:section==='keywords'?row.keywords:row.blacklist?.[section],section);
+  if(operation==='read')return saved;
+  let updated=[],column='blacklist',returnValue;
+  if(section==='theme'){
+    if(operation!=='upsert'||!/^[1-8]$/.test(key)||!catalogObject(value)||
+       value.theme_id!==key||!['dark','light'].includes(value.scheme)||
+       !String(value.theme_name||'').trim())reject('Invalid Theme update');
+    const previous=saved.find(item=>String(item?.theme_id)===key);
+    if(!previous||saved.length!==8||!catalogObject(previous))reject('Theme slot missing');
+    const a=Object.keys(previous).sort(),b=Object.keys(value).sort();
+    if(a.join('\0')!==b.join('\0'))reject('Incomplete Theme palette');
+    for(const [field,raw] of Object.entries(value)){
+      if(field==='theme_id'||field==='theme_order')continue;
+      if(raw===null||!String(raw).trim()||/[;{}<>\\]/.test(String(raw))||
+         /url\s*\(|@import|!important/i.test(String(raw)))
+        reject('Unsafe Theme palette');
+    }
+    updated=saved.map(item=>String(item.theme_id)===key?value:item);
+    column='theme';returnValue=value;
+  }else if(section==='keywords'){
+    if(!['upsert','delete'].includes(operation))reject('Invalid Keyword operation');
+    let oldScope='',oldName='';
+    if(args.p_key!==undefined&&args.p_key!==null){
+      let decoded;try{decoded=JSON.parse(args.p_key)}catch{reject('Invalid Keyword identifier')}
+      if(!Array.isArray(decoded)||decoded.length!==2)reject('Invalid Keyword identifier');
+      [oldScope,oldName]=decoded;
+    }
+    let next=null;
+    if(operation==='upsert'){
+      const id=value?.scope_id,category=String(value?.class_name||'').trim(),hash=value?.hash;
+      if(!catalogObject(value)||!/^[a-z][a-z0-9]{0,14}$/.test(String(id||''))||
+         !category||category.length>120||!/^[0-9a-f]{32}$/.test(String(hash||'')))
+        reject('Invalid Keyword record');
+      next={scope_id:id,class_name:category,hash};
+    }
+    let found=false;
+    for(const item of saved){
+      if(args.p_key!==undefined&&args.p_key!==null&&item?.scope_id===oldScope&&item?.class_name===oldName){
+        found=true;if(operation==='upsert')updated.push(next);
+      }else updated.push(item);
+    }
+    if(args.p_key!==undefined&&args.p_key!==null&&!found)reject('Keyword registry entry not found');
+    if(operation==='upsert'&&(args.p_key===undefined||args.p_key===null))updated.push(next);
+    const seen=new Set();
+    for(const item of updated){
+      const signature=JSON.stringify([item?.scope_id,item?.class_name]);
+      if(seen.has(signature))reject('Duplicate Scope and Keyword Class');
+      seen.add(signature);
+    }
+    column='keywords';returnValue=operation==='delete'?{deleted:true}:next;
+  }else if(section==='database'){
+    if(!['upsert','delete'].includes(operation)||!/^[A-Za-z][A-Za-z0-9_-]{0,80}$/.test(key))
+      reject('Invalid database target operation');
+    if(operation==='upsert'&&(!catalogObject(value)||
+       !['supabase','neon','custom'].includes(value.provider)||!String(value.label||'').trim()))
+      reject('Invalid database metadata');
+    let found=false;
+    for(const item of saved){
+      if(item?.target_id!==key){updated.push(item);continue;}
+      found=true;
+      if(operation==='delete'){
+        if(item.selected===true||item.backup_selected===true)
+          reject('Active routing target cannot be deleted');
+      }else{
+        const {target_id,selected,backup_selected,routing_mode,...fields}=value;
+        updated.push({...item,...fields,updated_at:new Date().toISOString()});
+      }
+    }
+    if(operation==='delete'&&!found)reject('Unknown database target');
+    if(operation==='upsert'&&!found){
+      const {target_id,selected,backup_selected,routing_mode,...fields}=value;
+      updated.push({...fields,target_id:key,selected:false,
+        backup_selected:false,routing_mode:'single',updated_at:new Date().toISOString()});
+    }
+    column='database';returnValue=updated;
+  }else if(section==='email'){
+    const email=key.toLowerCase();
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||!['add','remove'].includes(operation))
+      reject('Invalid email blacklist operation');
+    if(operation==='add'&&email===String(claims.email||'').trim().toLowerCase())
+      reject('Current administrator cannot be blocked');
+    updated=saved.filter(item=>operation==='add'||
+      String(item?.email||'').toLowerCase()!==email);
+    if(operation==='add'&&!saved.some(item=>String(item?.email||'').toLowerCase()===email))
+      updated.push({email,created_at:new Date().toISOString()});
+    returnValue=updated;
+  }else{
+    if(operation!=='note'||!key)reject('Reserved Scope notes only');
+    let found=false;
+    updated=saved.map(item=>{
+      if(item?.id!==key)return item;
+      found=true;const note=String(value??'').trim();
+      return {...item,note:note||null};
+    });
+    if(!found)reject('Reserved Scope ID not found');
+    returnValue=updated;
+  }
+  if(column==='blacklist'){
+    await trx.updateTable('silver.loc').set({
+      blacklist:sql`jsonb_set(blacklist,${JSON.stringify([section])}::text[],
+        ${JSON.stringify(updated)}::jsonb,true)`
+    }).where('id','=','loc').executeTakeFirst();
+  }else{
+    await trx.updateTable('silver.loc').set({
+      [column]:sql`${JSON.stringify(updated)}::jsonb`
+    }).where('id','=','loc').executeTakeFirst();
+  }
+  return returnValue;
 }
