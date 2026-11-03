@@ -1,8 +1,11 @@
 name: Deploy Main Next to GitHub Pages
 
-# Cost control: no automatic rebuild of the public website on each commit.
-# Manually run this workflow only for an intentional GitHub Pages deployment.
+# Owner-approved: publish GitHub Pages automatically when main receives a push.
+# The existing concurrency group cancels superseded deployments.
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
