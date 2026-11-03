@@ -444,7 +444,7 @@ Deno.serve(async (request) => {
       });
       return json(result);
     }
-    if(body.kind==="rpc"&&body.schema==="silver"&&body.name==="check_backup_readiness"){
+    if(body.kind==="managed-action"&&body.name==="check_backup_readiness"){
       if(requestedTarget!=="configured")return json({error:{message:"Invalid health target"}},400);
       if(role!=="authenticated")return json({error:{message:"Administrator permission required"}},403);
       const control=await checkAdminRole(claims);
