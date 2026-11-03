@@ -142,6 +142,13 @@ export async function executeManagedKyselyWrite(trx,body){
   // with the connection's original role (same privilege as old definer RPC).
   await sql`reset role`.execute(trx);
   const name='silver.'+table;
+  if(operation==='update'){
+    const pk=await sql`select a.attname as name from pg_index i
+      join pg_attribute a on a.attrelid=i.indrelid and a.attnum=any(i.indkey)
+      where i.indrelid=${name}::regclass and i.indisprimary`.execute(trx);
+    if(pk.rows.some(row=>Object.hasOwn(values,String(row.name))))
+      reject('Primary keys cannot be updated');
+  }
   let count=0;
   if(operation==='update_batch')count=await writeBatch(trx,table,payload.p_rows);
   else if(operation==='insert'){
@@ -153,8 +160,16 @@ export async function executeManagedKyselyWrite(trx,body){
       else groups.push({keys,rows:[row]});
     }
     for(const group of groups){
-      const result=await trx.insertInto(name).values(group.rows).execute();
-      count+=Number(result[0]?.numInsertedOrUpdatedRows||0);
+      const columns=Object.keys(group.rows[0]);
+      const columnRefs=columns.map(column=>sql.ref(column));
+      const relation=sql.ref(name);
+      // One typed JSONB parameter, rather than thousands of bound values:
+      // preserves defaults and avoids PostgreSQL's 65,535-parameter ceiling.
+      const result=await sql`insert into ${relation} (${sql.join(columnRefs)})
+        select ${sql.join(columnRefs)} from
+        jsonb_populate_recordset(NULL::${relation},${JSON.stringify(group.rows)}::jsonb)`
+        .execute(trx);
+      count+=Number(result.numAffectedRows||0);
     }
   }else{
     const base=operation==='update'?trx.updateTable(name).set(values):trx.deleteFrom(name);
