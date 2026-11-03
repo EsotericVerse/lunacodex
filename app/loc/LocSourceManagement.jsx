@@ -2,6 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import LocManagementWorkspace from './LocManagementWorkspace';
+import ManagementWorkspaceFrame from './ManagementWorkspaceFrame';
 import ManagementSectionNav,{useManagementSection} from '../modular/ManagementSectionNav';
 import {useEditDock} from '../modular/edit-dock';
 import PanelLoading from './PanelLoading';
@@ -22,7 +23,7 @@ export default function LocSourceManagement(){
   const editDock=useEditDock();
   const selected=OPTIONS.find(option=>option.value===section)||OPTIONS[0];
   return <LocManagementWorkspace featureId="culture" navId="loc-source-sections" item={ITEM} standalone>
-    <div className="management-workspace">
+    <ManagementWorkspaceFrame level="group" title="人員作品管理">
       <ManagementSectionNav id="loc-source-sections" title="人員作品管理" panelId="loc-source-panel"
         items={OPTIONS} value={section} onChange={next=>{
           if(next===section)return;
@@ -34,6 +35,6 @@ export default function LocSourceManagement(){
         {section==='works'?<WorkClassificationPage/>:null}
         {section==='members'?<LocGroupMemberList groupId="loc"/>:null}
       </div>
-    </div>
+    </ManagementWorkspaceFrame>
   </LocManagementWorkspace>;
 }
