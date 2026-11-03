@@ -118,7 +118,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
       }
       throw Error('Unsupported unified operation: '+op);
     }
-    const {data,error}=await authClient.schema('silver').rpc('management_write',payload);
+    const {data,error}=await authClient.schema('silver').managedWrite(payload);
     if(error)throw new Error(error.message||'Management write failed');
     if(payload?.p_table==='silver.manage'){
       const values=payload.p_values||{};
