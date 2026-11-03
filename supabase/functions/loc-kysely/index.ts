@@ -12,7 +12,7 @@ import {executeKyselyAnalytics} from "../../../app/loc/providers/kysely-analytic
 import {executeKyselyPublicAction} from "../../../app/loc/providers/kysely-public.mjs";
 import {executeKyselyScopeAdmin} from "../../../app/loc/providers/kysely-scope-admin.mjs";
 import { selectedDatabaseTarget } from "../../../app/loc/providers/selected-database-target.mjs";
-import {resolveSqlExecutionPort,assertCrossEnginePublicRead} from "../../../app/loc/providers/sql-engine-ports.mjs";
+import {resolveSqlExecutionPort,assertCrossEnginePublicRead,authorizeCrossEngineQuery} from "../../../app/loc/providers/sql-engine-ports.mjs";
 import {resolveDatabaseRouting} from "../../../app/loc/providers/routing-config.mjs";
 
 const corsHeaders = {
@@ -185,9 +185,9 @@ async function saveDatabaseTarget(input:Record<string,unknown>,role:string,claim
 async function executeRequest(trx: any, target: Record<string,any>, role: string, claims: Record<string, unknown>, body: Record<string, unknown>) {
   const executionPort=resolveSqlExecutionPort(target);
   if(executionPort.session!=="postgres-rls"){
-    // No PostgreSQL RLS or set-local-role on other engines. Until the target's
-    // authorization adapter exists, permit only the public LOC read surface.
-    assertCrossEnginePublicRead(body);
+    // No PostgreSQL RLS on other engines. Authorize each request against
+    // the target Scope Registry using the already verified Clerk identity.
+    await authorizeCrossEngineQuery(trx,body,{role,claims});
     return await executeKyselyQuery(trx,body,{dialect:executionPort.engine});
   }
   if (role === "authenticated") await sql`set local role authenticated`.execute(trx);
@@ -528,10 +528,14 @@ Deno.serve(async (request) => {
     if(target.provider==="neon"&&(body.schema!=="silver"||typeof body.table!=="string"))
       return json({error:{message:"Neon LOC mirror table is not enabled"}},403);
     if(target.provider==="neon"&&role==="anon"){role="anonymous";claims.role=role;}
-    // Non-PostgreSQL engines have no equivalent to PostgreSQL RLS yet.
-    // Enforce the same small public reference whitelist BEFORE opening a
-    // database connection; executeRequest repeats the gate defensively.
-    if(target.engine!=="postgres")assertCrossEnginePublicRead(body);
+    // Reject public or unsupported cross-engine actions before opening a
+    // connection; private CRUD receives a second, row-owner ACL gate in
+    // executeRequest after verified Clerk claims have been established.
+    if(target.engine!=="postgres"){
+      if(role!=="authenticated")assertCrossEnginePublicRead(body);
+      else if(body.kind!=="query")return json({
+        error:{message:"Cross-engine actions must use the Kysely query contract"}},403);
+    }
     const db=isSupabaseControlTarget(target)
       ?await databaseForTarget(controlTarget)
       :await databaseForTarget(target,{profileLookup:profileForTarget});
