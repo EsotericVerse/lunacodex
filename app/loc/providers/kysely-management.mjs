@@ -2,7 +2,7 @@ import {sql} from 'npm:kysely@0.29.6';
 
 const ID=/^[a-z][a-z0-9_]*$/i;
 const UID=/^[A-Za-z0-9]{8}$/;
-const SCOPED_SUFFIXES=['_galaxy_media','_galaxy','_anchor','_blocks'];
+const SCOPED_SUFFIXES=['_galaxy','_anchor','_blocks'];
 
 function reject(message,status=400){
   const error=new Error(message);
@@ -82,7 +82,7 @@ async function authorizeRelation(trx,table,operation,values,filters,rows){
   const anchor=String(record.anchor_table||'anchor');
   if(!ID.test(galaxy)||!ID.test(anchor))reject('Scope registry is invalid',403);
   const allowed=new Set([scope,scope+'_blocks',scope+'_'+galaxy,
-    scope+'_'+galaxy+'_media',scope+'_'+anchor]);
+    scope+'_'+anchor]);
   if(!allowed.has(table))reject('Relation is not managed by this Scope',403);
 }
 async function writeBatch(trx,table,rows){
