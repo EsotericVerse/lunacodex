@@ -549,7 +549,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
   }
 
   async function isCurrentEmailBlocklisted(){
-    const {data,error}=await authClient.schema('silver').rpc('is_current_email_blocklisted');
+    const {data,error}=await authClient.schema('silver').managedAction('is_current_email_blocklisted');
     if(error)throw new Error(error.message||'無法核對系統黑名單');
     return data===true;
   }
@@ -566,7 +566,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     const blockUid=String(uid||'').trim();
     if(!scope||!page||!(/^[A-Za-z0-9]{8}$/.test(blockUid))||![1,-1].includes(direction))throw new Error('無效的區塊移動參數。');
     preflightWrite('silver.'+scope+'_blocks');
-    const {data,error}=await authClient.schema('silver').rpc('move_scope_block',{
+    const {data,error}=await authClient.schema('silver').managedAction('move_scope_block',{
       p_scope_id:scope,p_page_name:page,p_uid:blockUid,p_direction:direction
     });
     if(error)throw new Error(error.message||'區塊移動失敗');
