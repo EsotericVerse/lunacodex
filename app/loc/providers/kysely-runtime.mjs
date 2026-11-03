@@ -131,26 +131,35 @@ export function buildKyselyUpsertQuery(trx,req,dialect='postgres'){
   const rows=Array.isArray(req.values)?req.values:[req.values];
   if(!sameKeys(rows))throw new Error('Upsert rows must have the same columns');
   const table=`${req.schema}.${req.table}`;
-  const updates=Object.fromEntries(Object.keys(rows[0]||{}).filter(col=>!req.onConflict.includes(col)).map(col=>[col,rows[0][col]]));
+  const updateColumns=Object.keys(rows[0]||{}).filter(col=>!req.onConflict.includes(col));
   if(dialect==='mysql'){
-    const duplicateUpdates=req.ignoreDuplicates||!Object.keys(updates).length
+    const duplicateUpdates=req.ignoreDuplicates||!updateColumns.length
       ?Object.fromEntries(req.onConflict.map(col=>[col,sql.ref(col)]))
-      :Object.fromEntries(Object.keys(updates).map(col=>[col,sql`values(${sql.ref(col)})`]));
+      :Object.fromEntries(updateColumns.map(col=>[col,sql`values(${sql.ref(col)})`]));
     return trx.insertInto(table).values(req.values).onDuplicateKeyUpdate(duplicateUpdates);
   }
   if(dialect==='mssql'){
-    let source=trx.selectNoFrom(Object.keys(rows[0]).map(col=>sql`${sql.val(rows[0][col])}`.as(col)));
-    for(const row of rows.slice(1))source=source.unionAll(trx.selectNoFrom(Object.keys(rows[0]).map(col=>sql`${sql.val(row[col])}`.as(col))));
+    const columns=Object.keys(rows[0]);
+    let source=trx.selectNoFrom(columns.map(col=>sql`${sql.val(rows[0][col])}`.as(col)));
+    for(const row of rows.slice(1))
+      source=source.unionAll(trx.selectNoFrom(columns.map(col=>sql`${sql.val(row[col])}`.as(col))));
     let query=trx.mergeInto(table).using(source.as('source'),join=>{
       let condition=join.onRef(`${table}.${req.onConflict[0]}`,'=','source.'+req.onConflict[0]);
       for(const col of req.onConflict.slice(1))condition=condition.onRef(`${table}.${col}`,'=','source.'+col);
       return condition;
     });
-    if(!req.ignoreDuplicates&&Object.keys(updates).length)query=query.whenMatched().thenUpdateSet(eb=>Object.fromEntries(Object.keys(updates).map(col=>[col,eb.ref('source.'+col)])));
-    return query.whenNotMatched().thenInsertValues(req.values);
+    if(!req.ignoreDuplicates&&updateColumns.length)
+      query=query.whenMatched().thenUpdateSet(eb=>Object.fromEntries(
+        updateColumns.map(col=>[col,eb.ref('source.'+col)])));
+    return query.whenNotMatched().thenInsertValues(eb=>Object.fromEntries(
+      columns.map(col=>[col,eb.ref('source.'+col)])));
   }
-  return trx.insertInto(table).values(req.values).onConflict(oc=>Object.keys(updates).length&&!req.ignoreDuplicates
-    ?oc.columns(req.onConflict).doUpdateSet(updates)
+  // PostgreSQL and SQLite: excluded.<column> represents EACH incoming row.
+  // Reusing rows[0] here silently overwrote multi-row upserts with the
+  // first row's values. Kysely supports the native excluded reference.
+  return trx.insertInto(table).values(req.values).onConflict(oc=>updateColumns.length&&!req.ignoreDuplicates
+    ?oc.columns(req.onConflict).doUpdateSet(eb=>Object.fromEntries(
+      updateColumns.map(col=>[col,eb.ref('excluded.'+col)])))
     :oc.columns(req.onConflict).doNothing());
 }
 
