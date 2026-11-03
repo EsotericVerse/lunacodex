@@ -44,15 +44,23 @@ export const CROSS_ENGINE_PUBLIC_READ_TABLES=Object.freeze([
   'runes','runes_etc','runes_group'
 ]);
 const externalPublicReads=new Set(CROSS_ENGINE_PUBLIC_READ_TABLES);
+const publicScopeData=/^[a-z][a-z0-9]{0,14}_(galaxy|anchor)$/;
+export function portableRelation(table,engine,namespace=''){
+  if(!/^[a-z][a-z0-9_]*$/i.test(table))throw new Error('Invalid SQL relation');
+  if(engine==='mysql')return table;
+  const schema=String(namespace|| (engine==='mssql'?'dbo':'public'));
+  if(!/^[a-z][a-z0-9_]*$/i.test(schema))throw new Error('Invalid SQL namespace');
+  return schema+'.'+table;
+}
 export function assertCrossEnginePublicRead(request){
   if(request?.kind!=='query'||request.operation!=='select'||
       request.schema!=='silver'||typeof request.table!=='string'||
-      !externalPublicReads.has(request.table)){
-    const error=new Error('Cross-engine private data requires an authorization adapter');
+      !(externalPublicReads.has(request.table)||publicScopeData.test(request.table))){
+    const error=new Error('External SQL public read requires a published LOC relation');
     error.httpStatus=403;
     throw error;
   }
-  return request;
+  return {publicOnly:publicScopeData.test(request.table)};
 }
 
 const SCOPE_ID=/^[a-z][a-z0-9]{0,14}$/;
@@ -68,10 +76,8 @@ const VERIFIED_EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  * the same ACL; PostgreSQL-specific actions are not dispatched here.
  */
 export async function authorizeCrossEngineQuery(db,request,{role='anon',claims={}}={}){
-  if(role!=='authenticated'){
-    assertCrossEnginePublicRead(request);
-    return;
-  }
+  if(role!=='authenticated')
+    return assertCrossEnginePublicRead(request);
   if(request?.kind!=='query'||request.schema!=='silver'||
      typeof request.table!=='string'){
     const error=new Error('Unsupported cross-engine LOC request');
@@ -79,16 +85,19 @@ export async function authorizeCrossEngineQuery(db,request,{role='anon',claims={
   }
   const table=request.table;
   if(CROSS_ENGINE_PUBLIC_READ_TABLES.includes(table)&&request.operation==='select')
-    return;
+    return {publicOnly:false};
   if(table==='loc'||table==='manage'){
     if(!await canManageLoc(db,'global'))throw Object.assign(
       new Error('Global LOC permission denied'),{httpStatus:403});
-    return;
+    return {publicOnly:false};
   }
   const scope=table.match(PRIVATE_RELATION)?.[1];
   const permitted=await canManageLoc(db,'global')||
     scope&&SCOPE_ID.test(scope)&&await canManageLoc(db,'scope',scope);
-  if(!permitted)throw Object.assign(
+  if(permitted)return {publicOnly:false};
+  if(request.operation==='select'&&publicScopeData.test(table))
+    return {publicOnly:true};
+  throw Object.assign(
     new Error('LOC Scope permission denied for selected SQL target'),{httpStatus:403});
 }
 
@@ -129,7 +138,7 @@ export async function executeCrossEngineManagedWrite(db,body,context){
     invalidWrite('Invalid managed operation');
   await authorizeCrossEngineQuery(db,{kind:'query',schema:'silver',table,
     operation:operation==='update_batch'?'update':operation},context);
-  const name='silver.'+table;
+  const name=portableRelation(table,context.engine,context.namespace);
   let count=0;
   if(operation==='insert'){
     const rows=p.p_rows;
