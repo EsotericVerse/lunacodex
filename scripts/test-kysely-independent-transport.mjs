@@ -34,6 +34,20 @@ test('independent Kysely Gateway uses verified access-token callback without Sup
   assert.equal(spy[0].init.headers.apikey,undefined);
   assert.equal(spy[0].init.credentials,'omit');
 });
+test('Clerk managed writes use Kysely instead of the management SQL RPC',async()=>{
+  const spy=[];
+  const client=createKyselyEdgeClient({
+    gatewayUrl:'https://db-gateway.example/v1/sql',
+    role:'authenticated',getAccessToken:async()=> 'trusted.jwt.token',fetch:fakeFetch(spy)
+  });
+  const payload={p_table:'silver.lo3rwang_galaxy',p_operation:'update',
+    p_values:{title:'Updated'},p_filters:[{column:'uid',operator:'eq',value:'aB12cD34'}]};
+  const result=await client.schema('silver').managedWrite(payload);
+  assert.ifError(result.error);
+  assert.deepEqual(JSON.parse(spy[0].init.body),{kind:'managed-write',payload,target:'configured'});
+  assert.equal(spy[0].init.headers.authorization,'Bearer trusted.jwt.token');
+  assert.equal(spy[0].init.credentials,'omit');
+});
 test('SQL Gateway never sends unauthenticated private requests',async()=>{
   const spy=[];
   const client=createKyselyEdgeClient({
