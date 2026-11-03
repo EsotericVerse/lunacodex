@@ -89,7 +89,7 @@ function AnchorEditor({scopeId,spatial,reload}){
     if(row?.longitude!=null&&row?.latitude!=null)
       setFocusLocation({longitude:row.longitude,latitude:row.latitude,name:row.title});
   };
-  const save=async()=>{
+  const save=async({switching=false}={})=>{
     if(scopeId==='loc'){
       setIsError(true);setNotice('LOC 空間聚合已暫停；請先在來源 Scope 編輯。');return false;
     }
@@ -100,9 +100,11 @@ function AnchorEditor({scopeId,spatial,reload}){
     if(sources.length>100){
       setIsError(true);setNotice('一次最多合併 100 個來源地點。');return false;
     }
-    if(sources.length&&!window.confirm('確定將 '+sources.length+' 筆地點合併到「'+title+
+    // The Save-and-switch dialog already confirms this destructive operation.
+    // Never stack a native window.confirm behind an open modal dialog.
+    if(sources.length&&!switching&&!window.confirm('確定將 '+sources.length+' 筆地點合併到「'+title+
       '」（UID '+editingUid+'）？來源 UID 會刪除，但其文章與路線關聯將轉到主要 UID。'))return false;
-    if(visibility&&!window.confirm('確定將 '+visibility.uids.length+' 個空間定錨點設定為'+
+    if(visibility&&!switching&&!window.confirm('確定將 '+visibility.uids.length+' 個空間定錨點設定為'+
       (visibility.invisible?'隱藏':'公開')+'？'))return false;
     setBusy(true);setIsError(false);setNotice('');
     let savedUid='';
@@ -178,7 +180,15 @@ function AnchorEditor({scopeId,spatial,reload}){
       ].filter(Boolean).join('；')+'。'+
         (refreshFailed?'重新讀取未完成，請勿重複提交。':''));
       return true;
-    }catch(e){setIsError(true);setNotice(String(e.message||e));return false;}
+    }catch(e){
+      // The edit dock owns the visible Save/Save-and-switch result. Returning
+      // false hides the actual RPC/permission/validation failure behind a
+      // generic warning and traps the user in its open switch dialog.
+      const message=String(e?.message||e||'空間定錨儲存失敗');
+      setIsError(true);
+      setNotice(message);
+      throw new Error(message,{cause:e});
+    }
     finally{setBusy(false);}
   };
   const quickRename=group=>{
@@ -197,7 +207,8 @@ function AnchorEditor({scopeId,spatial,reload}){
     setIsError(false);setNotice('已將 '+bulkUids.length+' 個定錨點的'+
       (invisible?'隱藏':'公開')+'設定加入待儲存清單；按底部「儲存」才會寫入。');
   };
-  useEditDockForm({save,isDirty:()=>dirty,isBusy:()=>busy||bulkBusy});
+  useEditDockForm({save,isDirty:()=>dirty,isBusy:()=>busy||bulkBusy,
+    isDestructive:()=>mergeUids.length>0||Boolean(pendingVisibility)});
   return <section className="loc-card scope-feature-card loc-trace-anchor-editor">
     <h3>{editingUid?'編輯空間定錨點':'新增空間定錨點'}</h3>
     <label>編輯既有地點（直接搜尋標題）
