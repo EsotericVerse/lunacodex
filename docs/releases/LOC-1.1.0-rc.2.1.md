@@ -42,6 +42,13 @@
 - 仍由既有 Supabase RLS 僅顯示 invisible=false 的公開地點；明確要求 includeHidden 的管理讀取維持經 Clerk 驗證的通道。不涉及 Schema、RPC 或 RLS 修改。
 - 驗證：npm run check:syntax 828 檔案零錯誤；新增測試先失敗再修復通過；Bootstrap 483 項、430 通過、53 項為基線既存失敗，與更新前 Main 的 482 項／429 通過／53 失敗比較，新失敗 0。正式訪客地圖實測與 Cloudflare 部署需於合併後另行確認。
 
+### LOC Clerk 登入頁視覺整合
+
+- 獨立 `/login/` 登入頁改為 LOC 既有日夜 Theme 語意色系、柔和圓角、環形月象與雙欄／手機單欄的響應式版面；保留 Google、Email、Clerk 原生輸入及驗證流程。
+- 登入頁不再包覆多層硬邊框，Clerk 表單寬度隨容器收合，並提供繁體中文引導、登入後核驗及清楚的返回入口。鍵盤焦點和減少動態效果設定均保留。
+- 因 AppShell 不跨路由持久化單一 Scope 的臨時 Theme 選擇，獨立登入頁遵守 LOC 日間 theme-7／夜間 theme-1 預設，不將登入頁色彩另存為新的個人設定。
+- 只調整畫面及 Clerk 的外觀／介面文字設定，`validReturnPath`、Clerk Session Token、LOC Authority 驗證、寫入權限與登出行為保持不變。需以實際桌機／手機瀏覽器和現有驗證測試核實。
+
 ## 已知待驗收項目
 
 - 統計與痕跡的管理列表完整查詢，以及隱藏文章在各功能頁的端到端可見性，仍須完成整合與操作驗收；勾選個人設定不授予資料庫管理權限。
