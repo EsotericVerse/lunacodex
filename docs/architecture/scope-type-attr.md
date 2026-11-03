@@ -1,3 +1,17 @@
+
+### Kysely 跨 SQL 引擎可攜性（PR #995，尚未正式部署）
+
+Kysely **不是 PostgreSQL RPC 的包裝器**。LOC 共用資料操作應採 Kysely query builder／transaction／schema builder，由 Dialect 配合既有資料庫 Driver；資料庫憑證驗證與 LOC Clerk／Authority Scope 授權是兩個獨立責任。
+
+- PostgreSQL（Supabase、Neon、Cloud SQL 等）：`PostgresDialect`，現行 RLS 和 `silver.manage(type,id)` 權限保持既有機制。
+- MySQL／MariaDB：`MysqlDialect`；已加入原生通用 CRUD、Scope 所有權檢查、文章分批寫入。選配簡易 LDAP（`mysql_clear_password`）僅允許 TLS；LDAP SASL 仍取決於可用的 Driver Plugin，**不宣稱已支援**。
+- SQL Server：`MssqlDialect`；已加入原生 CRUD、Scope 所有權檢查，以及獨立 NTLM／Microsoft Entra Driver 驗證模式。MSSQL Upsert 以 Kysely MERGE 建立來源資料、逐列引用欄位。
+- SQLite：目前保留裝置／常駐 Gateway 模式；尚未將整套 LOC 遠端功能經 Kysely SQLite 驗證。
+
+可選自訂主庫的建置設定：`NEXT_PUBLIC_LOC_PRIMARY_ID=custom-current`、`NEXT_PUBLIC_LOC_SQL_ENGINE=mysql|mssql`、`NEXT_PUBLIC_LOC_SQL_ALIAS=<可信別名>`，對應的連線憑證必須只存於 **Gateway 伺服器端** 的 `LOC_DB_CONNECTIONS_JSON`。現有預設仍是 `supabase-current`，未自行切換主庫。MySQL 與 SQL Server 的目的庫需有 LOC 實際使用的 Registry／Scope 資料結構；Kysely 負責 SQL Dialect，**不會自動把 PostgreSQL JSONB、RLS、Trigger 等資料庫專屬語義變成另一種 SQL**。
+
+目前通用 `query` 與 `managed-write` 已具備非 PostgreSQL 的原生 Kysely 路徑；`anchor`、`analytics`、`public-action`、`managed-action`、Scope DDL 等仍有 PostgreSQL 專有實作，非 PG 路徑暫拒絕這些操作而非繞回 PostgreSQL RPC。此分支尚不能宣告「所有功能都已跨引擎驗收」。須完成 Dialect 逐功能對等實作與實際資料庫／Authority 整合驗證後才合併或啟用。
+
 # LOC 通用 Anchor RPC 契約
 
 ## 架構決議（2026-11-03）
