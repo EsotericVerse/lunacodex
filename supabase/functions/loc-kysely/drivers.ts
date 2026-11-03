@@ -12,7 +12,7 @@ const instances=new Map<string, Kysely<Record<string,Record<string,unknown>>>>()
 const {Pool}=pg;
 type ConnectionProfile={engine:string,url:string,tls?:boolean,
   authentication?:{type?:string,domain?:string,clientId?:string,
-    clientSecret?:string,tenantId?:string}};
+    clientSecret?:string,tenantId?:string,token?:string}};
 function connectionProfiles():Record<string,ConnectionProfile>{
   const raw=Deno.env.get("LOC_DB_CONNECTIONS_JSON")||"{}";
   let json:unknown;
