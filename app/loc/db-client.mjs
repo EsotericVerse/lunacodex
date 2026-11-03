@@ -53,6 +53,9 @@ function routedSchema(schemaName,cloudSchema){
       return isLocalRelation(payload?.p_table,schemaName)
         ?localSchema.rpc('management_write',payload)
         :cloudSchema.managedWrite(payload);
+    },
+    managedAction(name,args={}){
+      return cloudSchema.managedAction(name,args);
     }
   };
 }
