@@ -13,7 +13,7 @@ import {executeKyselyScopeAdmin} from "../../../app/loc/providers/kysely-scope-a
 import { selectedDatabaseTarget } from "../../../app/loc/providers/selected-database-target.mjs";
 import {resolveSqlExecutionPort,assertCrossEnginePublicRead,authorizeCrossEngineQuery,executeCrossEngineManagedWrite} from "../../../app/loc/providers/sql-engine-ports.mjs";
 import {resolveDatabaseRouting} from "../../../app/loc/providers/routing-config.mjs";
-import {bindLocAuthorization} from "../../../app/loc/providers/loc-authorization.mjs";
+import {bindLocAuthorization,canManageLoc} from "../../../app/loc/providers/loc-authorization.mjs";
 
 const corsHeaders = {
   "access-control-allow-origin": "*",
@@ -132,8 +132,8 @@ async function checkAdminRole(claims:Record<string,unknown>){
     await sql`set local role authenticated`.execute(trx);
     await sql`select set_config('request.jwt.claims',${JSON.stringify(claims)},true)`.execute(trx);
     await sql`select set_config('request.jwt.claim.sub',${String(claims.sub||"")},true)`.execute(trx);
-    const result=await sql<{allowed:boolean}>`select coalesce((select allowed from silver.manage('global')),false) as allowed`.execute(trx);
-    return result.rows[0]?.allowed===true;
+    bindLocAuthorization(trx,{role:'authenticated',claims});
+    return await canManageLoc(trx,'global');
   });
   if(!valid)throw Object.assign(new Error("Administrator permission required"),{httpStatus:403});
   return control;
