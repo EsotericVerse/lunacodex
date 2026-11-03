@@ -1,4 +1,4 @@
-import { sql } from "npm:kysely@0.29.6";
+import { sql } from "npm:kysely@0.29.8";
 import {createRemoteJWKSet,jwtVerify} from "npm:jose@5.9.6";
 import {clerkSqlClaims} from "../../../app/loc/auth/clerk-sql-claims.mjs";
 import {databaseForTarget,resolveConnectionProfile} from "./drivers.ts";
