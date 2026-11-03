@@ -35,7 +35,8 @@ export function createClerkGatewayAdapter({
     getAccessToken,fetch:fetchImpl
   });
   return {
-    publicClient:publicSdk,
+    // All LOC public data follows the selected Kysely target; Supabase SDK stays for Realtime only.
+    publicClient:publicSql,
     authClient:edge,auth,
     configuredPublicClient:publicSql,
     backupPublicClient:null,
