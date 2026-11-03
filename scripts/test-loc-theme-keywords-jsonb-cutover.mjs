@@ -22,7 +22,12 @@ test('LOC Keyword registry reads and writes through authorized JSONB RPC',()=>{
   assert.doesNotMatch(ui,/silver\.loc_keywords/);
   for(const operation of ['read','upsert','delete'])
     assert.match(ui,new RegExp("p_section:'keywords',p_operation:'"+operation+"'"));
-  assert.match(gateway,/'silver\.loc_catalog':\['p_section','p_action','p_key','p_value'\]/);
+  assert.match(gateway,/'silver\\.loc_admin_settings':\\['p_section','p_operation','p_key','p_value'\\]/);
+  assert.doesNotMatch(gateway,/'silver\\.loc_catalog':/);
+  assert.match(ui,/rpc\\('loc_admin_settings'/);
+  const retired=file('supabase/migrations/20261103173000_merge_catalog_into_existing_rpcs.sql');
+  assert.match(retired,/DROP FUNCTION silver\\.loc_catalog\\(text,text,text,jsonb\\) RESTRICT/);
+  assert.match(retired,/DROP FUNCTION silver\\.read_keyword_tree_catalog\\(text,text\\) RESTRICT/);
 });
 test('database migrations preserve every row then drop retired relations with RESTRICT',()=>{
   const stage=file('supabase/migrations/20261103040000_loc_theme_keywords_jsonb_cutover.sql');
