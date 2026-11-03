@@ -1,6 +1,8 @@
 // One Scope may analyze many Keyword Classes. The active Class chooses the
 // default view only; completed results are independently keyed by Class UID.
-const UID=/^[0-9A-Za-z]{4}$/;
+// Native unified Anchor Class UID is Base62(8). Preserve legacy Base62(4)
+// for existing per-Class metadata until it is migrated, not for new Anchors.
+const UID=/^[0-9A-Za-z]{4}(?:[0-9A-Za-z]{4})?$/;
 export function keywordClassState(config={},classUid=''){
   if(!UID.test(classUid))return null;
   const meta=config.keyword_meta&&typeof config.keyword_meta==='object'
