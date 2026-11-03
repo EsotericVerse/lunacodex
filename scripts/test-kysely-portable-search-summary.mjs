@@ -49,3 +49,28 @@ for(const [engine,namespace,lengthFunction] of [
     assert.ok(functions.includes(lengthFunction));
   });
 }
+
+
+test('two-table external LOC statistics uses discovered Scope instead of loc_galaxy',async()=>{
+  const readTables=[];
+  const eb={fn:{countAll:()=>({as:key=>({key})})}};
+  const db={
+    introspection:{getTables:async()=>[
+      {schema:'dbo',name:'writer_galaxy'},
+      {schema:'dbo',name:'writer_anchor'}
+    ]},
+    selectFrom:table=>{
+      readTables.push(table);
+      const q={select(value){if(typeof value==='function')value(eb);return this},
+        where(){return this},groupBy(){return this},orderBy(){return this},
+        execute:async()=>[{date:'2026-01-01',n:'3'}]};
+      return q;
+    }
+  };
+  const result=await executor(db,{kind:'analytics',
+    args:{p_scope_id:'loc',p_view:'loc',p_options:{}}},
+    {engine:'mssql',namespace:'dbo',role:'anon'});
+  assert.deepEqual(result.data.scopes,[{scope_id:'writer',display_name:'writer'}]);
+  assert.deepEqual(result.data.rows,[{scope_id:'writer',day:'2026-01-01',item_count:3}]);
+  assert.deepEqual(readTables,['dbo.writer_galaxy']);
+});
