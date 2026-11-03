@@ -138,7 +138,8 @@ export function EditDockProvider({children}){
   // Each mounted editor supplies the *current page's* save function.
   // Unmounting clears it only if no later editor has replaced it.
   const register=useCallback(actions=>{
-    const editor={save:actions.save,discard:actions.discard,isDirty:actions.isDirty,isBusy:actions.isBusy};
+    const editor={save:actions.save,discard:actions.discard,isDirty:actions.isDirty,
+      isBusy:actions.isBusy,isDestructive:actions.isDestructive};
     registeredEditors.current.add(editor);
     const activate=()=>{
       currentEditor.current=editor;
@@ -311,6 +312,8 @@ export function EditDockProvider({children}){
       onCancel={event=>{event.preventDefault();cancelSwitch();}}>
       <h2 id="scope-edit-switch-title">有未儲存的編輯內容</h2>
       <p id="scope-edit-switch-description">切換頁面前，要如何處理目前的變更？</p>
+      {[...registeredEditors.current].some(editor=>editor.isDirty?.()&&editor.isDestructive?.())
+        ?<p className="scope-status" role="status">此儲存包含合併地點或大量可見性更新；合併會將來源地點的文章、路線關聯轉至主要 UID，並刪除來源 UID。按「儲存並切換」即確認執行。</p>:null}
       {switchError?<p role="alert" className="scope-status scope-error">{switchError}</p>:null}
       <div className="scope-edit-switch-actions">
         <button type="button" className="loc-button primary" disabled={busy} onClick={saveAndSwitch}>儲存並切換</button>
@@ -335,7 +338,8 @@ export function useEditDockForm(actions){
       save:options=>latest.current.save?.(options),
       discard:()=>latest.current.discard?.(),
       isDirty:()=>Boolean(latest.current.isDirty?.()),
-      isBusy:()=>Boolean(latest.current.isBusy?.())
+      isBusy:()=>Boolean(latest.current.isBusy?.()),
+      isDestructive:()=>Boolean(latest.current.isDestructive?.())
     });
   },[dock?.register]);
 }
