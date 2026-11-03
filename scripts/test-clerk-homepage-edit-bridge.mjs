@@ -147,3 +147,18 @@ test('Clerk SQL gateway obtains root email from Authority, never unsigned reques
   assert.match(edge,/identity.session!==payload.sid/);
   assert.match(edge,/trustedEmail/);
 });
+
+test('retired management RPCs are absent from deployed Edge source and client RPC contract',()=>{
+  const edge=readFileSync(new URL('../supabase/functions/loc-kysely/index.ts',import.meta.url),'utf8');
+  const gateway=readFileSync(new URL('../app/loc/providers/kysely-runtime.mjs',import.meta.url),'utf8');
+  const account=readFileSync(new URL('../app/loc/use-account.js',import.meta.url),'utf8');
+  assert.match(edge,/silver\.manage\('global'\)/);
+  assert.doesNotMatch(edge,/silver\.can_manage_(global|scope|group)\(/);
+  assert.doesNotMatch(gateway,/'silver\.(?:loc_catalog|get_my_scope_management)'/);
+  assert.match(account,/\.rpc\('manage',\{p_type:'self'\}\)/);
+  const keywordEditor=readFileSync(new URL('../app/loc/LocKeywordManagement.jsx',import.meta.url),'utf8');
+  const themeEditor=readFileSync(new URL('../app/loc/views/admin-panels/ThemeEditor.jsx',import.meta.url),'utf8');
+  assert.doesNotMatch(keywordEditor+themeEditor,/\.rpc\('loc_catalog'/);
+  assert.match(keywordEditor,/\.rpc\('loc_admin_settings'/);
+  assert.match(themeEditor,/\.rpc\('loc_admin_settings'/);
+});
