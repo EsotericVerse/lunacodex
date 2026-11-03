@@ -31,10 +31,18 @@ test('search is primary, excerpt is optional and never loads in regular browse',
   const query=readFileSync(new URL('../app/loc/galaxy-query.js',import.meta.url),'utf8');
   assert.match(query,/column:'search'/);
   assert.doesNotMatch(ui,/media_link,able/);
-  assert.match(ui,/columns:'uid,content,search,extract'/);
-  assert.match(ui,/row\.search===false\|\|row\.extract===false/);
+  assert.match(ui,/scopeId==='local'\?'uid,content,able':'uid,content,search,extract'/);
+  assert.match(ui,/galaxyAble\(article\)\.search===false\|\|galaxyAble\(article\)\.extract===false/);
   assert.match(ui,/if\(q&&!options\.browse&&!options\.placeOnly&&!options\.mediaOnly/);
   assert.match(ui,/extractSearchContext\(article\.content,query,10\)/);
   assert.match(ui,/highlightSearchText\(row\.snippet,matchedQueryRef\.current\)/);
   assert.match(ui,/row\.list===false\?'（使用者隱藏）'/);
+});
+
+test('device-local SQLite continues storing the archived able payload',()=>{
+  const local=prepareGalaxyInsertRows('silver.local_galaxy',[{uid:'ABcD1234',list:false}])[0];
+  assert.equal(local.able.list,false);
+  assert.equal(Object.hasOwn(local,'list'),false);
+  assert.equal(local.able.keywords,true);
+  assert.equal(local.able.game,true);
 });

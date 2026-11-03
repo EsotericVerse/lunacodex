@@ -24,8 +24,8 @@ export default {
     "able_search": "Public search",
     "able_trace": "Trace display",
     "able_list": "Article list",
-    "able_keywords": "Keyword statistics",
-    "able_game": "Game density",
+    "able_keyword": "Keyword statistics",
+    "able_others": "Other features",
     "able_extract": "Search excerpt",
     "type": "Media type",
     "meta_tags": "Media tags"

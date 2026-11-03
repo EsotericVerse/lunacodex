@@ -65,6 +65,8 @@ a:focus-visible,button:focus-visible,#login-root :is(button,input,a):focus-visib
 #login-root .cl-headerSubtitle{line-height:1.6!important}
 #login-root .cl-main{padding:0!important}
 #login-root .cl-footer{background:transparent!important;border:0!important;box-shadow:none!important}
+/* Clerk's orange security credit needs a dark foreground even with LOC night Theme. */
+#login-root .cl-footer [data-variant="buttonSmall"][data-color="inherit"]{color:#251710!important}
 #login-root :is(.cl-main,.cl-footer,.cl-header,.cl-form){max-width:100%;min-width:0}
 #login-root :is(.cl-socialButtonsBlockButton,.cl-formButtonPrimary,.cl-formFieldInput){min-height:46px!important;border-radius:13px!important}
 #login-root .cl-socialButtonsBlockButton{border:1px solid var(--loc-line)!important;background:var(--loc-accent-surface)!important}

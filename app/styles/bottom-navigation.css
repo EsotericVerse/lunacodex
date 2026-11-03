@@ -50,7 +50,7 @@
 .scope-feature-dock a[aria-current="page"]{
   position:relative;
   border-color:var(--loc-accent);
-  background:color-mix(in srgb,var(--loc-accent) 46%,var(--loc-panel) 54%);
+  background:color-mix(in srgb,var(--loc-accent) 23%,var(--loc-panel) 77%);
   box-shadow:
     0 0 0 1px color-mix(in srgb,var(--loc-accent) 48%,transparent),
     0 0 20px color-mix(in srgb,var(--loc-accent) 42%,transparent),

@@ -159,6 +159,17 @@
   border-block-start:3px solid var(--loc-feature-emphasis);
   background:var(--loc-feature-wash);
 }
+/* Search suggestions are a keyboard-and-touch action, not a double-click secret. */
+[data-public-feature="search"] .scope-search-popular-toggle{
+  justify-self:start;min-height:44px;padding:.55rem 1rem;
+  border:1px solid var(--loc-feature-hairline);
+  border-radius:var(--loc-ui-radius-md);
+  background:var(--loc-feature-wash);color:var(--loc-text);
+}
+[data-public-feature="search"] .scope-search-popular-toggle:focus-visible{
+  outline:2px solid var(--loc-feature-emphasis);outline-offset:3px;
+}
+[data-public-feature="search"] .scope-search-suggestions[hidden]{display:none!important}
 [data-public-feature="search"] .scope-search-form:focus-within{
   box-shadow:0 0 0 3px color-mix(in srgb,var(--loc-feature-emphasis) 12%,transparent);
 }

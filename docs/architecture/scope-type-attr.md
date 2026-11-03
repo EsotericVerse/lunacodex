@@ -148,3 +148,10 @@ Cloudflare Pages `loc` production 部署 commit `54844ebf19ce8d88b52c1c4534a76e4
 - 已確認 `trace_normalize_place_name`、`trace_prevent_identity_change`、`validate_scoped_trace_map` 沒有程式呼叫，且沒有 SQL、Trigger、View、RLS 或其他物件相依；其歷史實作仍使用已淘汰的 `trace_type`、`route_list`、`anchor_list` 和四字元 UID，不屬於統一 Anchor 的 `(scopeid,type,attr)` 架構。已用 `DROP FUNCTION ... RESTRICT` 退役，未重建任何相同功能的 RPC。
 - `domain_has_repeated_labels` 雖無前端呼叫，仍有正式資料庫約束依賴，因此**保留**；`manage_id_not_blocked` 是身份／Scope 管理相關檢查，不隨四表清理逕刪。
 - 本批只移除真正無相依的舊 SQL，不變動路線、痕跡與文章定錨資料，亦不更動 PostgreSQL／非 PostgreSQL 的授權與交易介面。
+
+### Galaxy 權限實體欄位（2026-11-03）
+
+- `silver.{scopeid}_galaxy` 的文章層開關為八個獨立 Boolean 欄位：`statics`、`culture`、`search`、`trace`、`list`、`keyword`、`others`、`extract`。不要再向 PostgreSQL 寫 `galaxy.able` JSONB，亦不要用 `able->>` 過濾。歷史 JSON 名稱 `keywords/game` 對應 `keyword/others`，只在舊檔匯入或裝置本機 SQLite 相容層轉換。
+- `silver.lo3rwang.able` 是 **Scope 設定**，不是 Galaxy 文章權限；不得隨文章欄位退役刪除。
+- 本次先補齊 `lo3rwang_galaxy`、`lrunes_galaxy` 的八欄並讓既有 RPC 直接查布林欄位；舊客戶端仍存在時保留相容觸發器及原 RLS。新客戶端、Clerk Edge Function、LOC Authority 真正部署且讀寫／隱私檢查通過後，才執行最後的 RLS／觸發器切換與 `DROP COLUMN able`，避免資料公開或連線中斷。
+- 用既有 UID 保留文章隱藏狀態；公開 `search`／`list`、搜尋 `extract`、統計與文化視圖不可因遷移而放寬。第三方 Scope 未遷移其儲存結構前，保留其獨立相容入口。

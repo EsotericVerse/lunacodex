@@ -507,8 +507,16 @@ export class LocAuthorityState extends DurableObject {
       statics:false,culture:false,search:false,trace:false,list:false,keyword:false,extract:false,others:false,
       createtime:validTimestamp(input.created_at||requestedTime),
       UpdateTime:requestedTime};
-    if(profile)await postgrest(profile,{body:row,params:{on_conflict:'uid'}});
-    else await managedMcpInsert(scopeid,row,Boolean(status.uid),oauthToken);
+    if(profile){
+      // Third-party Scope providers manage their own schema independently.
+      const legacy={...row,able:{
+        statics:false,culture:false,search:false,trace:false,list:false,
+        keywords:false,game:false,extract:false
+      }};
+      for(const key of ['statics','culture','search','trace','list','keyword','others','extract'])
+        delete legacy[key];
+      await postgrest(profile,{body:legacy,params:{on_conflict:'uid'}});
+    }else await managedMcpInsert(scopeid,row,Boolean(status.uid),oauthToken);
     const saved_at=new Date().toISOString();
     this.mcpSearchCache?.clear();
     await this.ctx.storage.put(checkpointKey,{updated_at:requestedTime,saved_at,uid});

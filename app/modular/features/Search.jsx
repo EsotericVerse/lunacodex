@@ -37,6 +37,7 @@ import {featureNavigationHref,galaxyIdentityHref,galaxyRelationLinks} from '../f
 import {featureDataErrorMessage} from '../feature-data-state';
 import {parseSearchQuery} from '../../loc/search-query.mjs';
 import {extractSearchContext} from '../../loc/search-extract.mjs';
+import {galaxyAble} from '../../loc/galaxy-able.mjs';
 import {searchGalaxyRows,selectGalaxyContent,selectGalaxyIdentity,selectStyleKeywordMatches,selectSourceTaxonomy} from '../../loc/galaxy-query';
 import {defaultScopeData,selectLocSearchScopes,selectScopeRegistry,revalidateServerMetadata} from '../../loc/scope-data';
 
@@ -179,12 +180,12 @@ async function loadPageSearchExcerpts(rows,query,scopeById,{authenticated=false,
     if(!scope?.galaxy)continue;
     try{
       const {rows:articles=[]}=await selectRows(scope.galaxy,{
-        columns:'uid,content,search,extract',
+        columns:scopeId==='local'?'uid,content,able':'uid,content,search,extract',
         filters:[{column:'uid',operator:'in',value:[...ids]}],
         limit:ids.size,authenticated,signal
       });
       for(const article of articles){
-        if(article?.search===false||article?.extract===false)continue;
+        if(galaxyAble(article).search===false||galaxyAble(article).extract===false)continue;
         const excerpt=extractSearchContext(article.content,query,10);
         if(excerpt)snippets.set(scopeId+':'+article.uid,excerpt);
       }
@@ -743,7 +744,11 @@ export default function Search({managementMode:legacyManagementRoute=false}){
         result.editableTable,
         result.editableIdColumn,
         result.editResourceId||result.resourceId,
-        result.resourceType==='galaxy'?GALAXY_EDITOR_COLUMNS:MEDIA_EDITOR_COLUMNS,
+        result.resourceType==='galaxy'
+          ?(result.scopeId==='local'
+            ?'uid,title,content,createtime,location,UpdateTime,url,source_id,target_id,ref_id,site,media_link,able'
+            :GALAXY_EDITOR_COLUMNS)
+          :MEDIA_EDITOR_COLUMNS,
         {authenticated:result.resourceType==='galaxy'}
       );
       if(!fullRow)throw new Error(UI_COPY.search.editNotFound);
@@ -1112,7 +1117,6 @@ export default function Search({managementMode:legacyManagementRoute=false}){
         <input id="scope-search-query" list={!searchPopularOpen&&suggestedTitles.length?'scope-search-loaded-titles':undefined}
           value={query} onDoubleClick={()=>setSearchPopularOpen(true)}
           onChange={event=>{setQuery(event.target.value);setSearchPopularOpen(false);}}
-          aria-expanded={searchPopularOpen}
           placeholder={managementMode?'':UI_COPY.search.textPlaceholder} aria-label={UI_COPY.search.textPromptLabel}/>
         {suggestedTitles.length?<datalist id="scope-search-loaded-titles">
           {suggestedTitles.map(title=><option key={title} value={title}/>)}
@@ -1128,14 +1132,20 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           }}>瀏覽文章列表（不需輸入關鍵詞）</button>:null}
         <button type="button" className="loc-button" onClick={clearSearchFilters}>{t('uiExtra.searchUI.clearAll')}</button>
       </form>
-      {searchPopularOpen?<div className="scope-search-suggestions" role="group" aria-label="雙擊建議搜尋前10項">
+      <button type="button" className="loc-button scope-search-popular-toggle"
+        aria-expanded={searchPopularOpen} aria-controls="scope-search-suggestions"
+        onClick={()=>setSearchPopularOpen(open=>!open)}>
+        {searchPopularOpen?'收起建議搜尋':'顯示建議搜尋'}
+      </button>
+      <div id="scope-search-suggestions" className="scope-search-suggestions"
+        role="group" aria-label="建議搜尋前10項" hidden={!searchPopularOpen}>
         <span className="scope-status">建議搜尋（最多 10 項）</span>
         <div className="scope-search-active-filters">
           {suggestedTerms.map(term=><button key={term} type="button" className="loc-button"
             onClick={()=>{setQuery(term);setSearchPopularOpen(false);followSearchSuggestion(term);}}>{term}</button>)}
           {!suggestedTerms.length?<span className="scope-status">目前沒有已發布的搜尋建議。</span>:null}
         </div>
-      </div>:null}
+      </div>
       {!managementMode&&results.length>0&&matchedQueryRef.current?<div className="scope-search-suggestions" aria-label="延伸搜尋">
         <span className="scope-status">延伸搜尋（保留原本的時間與來源條件）</span>
         <div className="scope-search-active-filters">
