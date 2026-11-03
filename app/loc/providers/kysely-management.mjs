@@ -572,7 +572,7 @@ async function managedLocSettings(trx,args,claims){
   }
   if(column==='blacklist'){
     await trx.updateTable('silver.loc').set({
-      blacklist:sql`jsonb_set(blacklist,${JSON.stringify([section])}::text[],
+      blacklist:sql`jsonb_set(blacklist,ARRAY[${section}]::text[],
         ${JSON.stringify(updated)}::jsonb,true)`
     }).where('id','=','loc').executeTakeFirst();
   }else{
