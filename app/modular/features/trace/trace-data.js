@@ -176,7 +176,7 @@ export async function readAllTraceAnchors(scopeId,{nativeOnly=false,includeHidde
 export async function readTraceAnchorSuggestions(scopeId,term,limit=8){
   const id=idScope(scopeId),q=textValue(term).slice(0,100);
   if(id==='loc'||!q)return [];
-  const data=checked(await dbAuthClient.schema('silver').rpc('search_scope_trace_place_names',{
+  const data=checked(await dbAuthClient.schema('silver').publicAction('search_scope_trace_place_names',{
     p_scope_id:id,p_term:q,p_limit:Math.max(1,Math.min(Number(limit)||8,100))
   }),'搜尋地點標題')||[];
   if(!data.length)return [];
@@ -422,7 +422,7 @@ export async function mergeTraceAnchorPoints({scopeId,keepUid,removeUids=[]}){
     sources.includes(primary)||sources.some(uid=>!/^[A-Za-z0-9]{8}$/.test(uid))||
     sources.length!==removeUids.length)
     throw Error('合併清單無效：主要地點及來源 UID 必須各自唯一');
-  const data=checked(await dbAuthClient.schema('silver').rpc('merge_scope_trace_place_names',{
+  const data=checked(await dbAuthClient.schema('silver').managedAction('merge_scope_trace_place_names',{
     p_scope_id:id,p_keep_uid:primary,p_remove_uids:sources
   }),'合併空間定錨');
   const count=typeof data==='number'?data:data?.merged_count;
