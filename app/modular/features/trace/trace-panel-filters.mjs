@@ -28,7 +28,7 @@ export function traceArticleFilters(places,{startDate='',endDate='',sourceName='
   return [
     {column:'location',operator:names.length===1?'eq':'in',
       value:names.length===1?names[0]:names},
-    {column:'able->>trace',operator:'eq',value:'true'},
+    {column:'trace',operator:'eq',value:true},
     ...(sourceName.trim()?[{column:'site',operator:'ilike',value:sourceName.trim()}]:[]),
     ...(startDate?[{column:'date',operator:'gte',value:startDate}]:[]),
     ...(endDate?[{column:'date',operator:'lte',value:endDate}]:[])
@@ -63,7 +63,7 @@ export function traceArticleIdFilters(placeIds,{startDate='',endDate='',sourceNa
   if(!ids.length)return [{column:'place_id',operator:'eq',value:'__NO_PLACE_ID__'}];
   return [
     {column:'place_id',operator:ids.length===1?'eq':'in',value:ids.length===1?ids[0]:ids},
-    {column:'able->>trace',operator:'eq',value:'true'},
+    {column:'trace',operator:'eq',value:true},
     ...(sourceName.trim()?[{column:'site',operator:'ilike',value:sourceName.trim()}]:[]),
     ...(startDate?[{column:'date',operator:'gte',value:startDate}]:[]),
     ...(endDate?[{column:'date',operator:'lte',value:endDate}]:[])
