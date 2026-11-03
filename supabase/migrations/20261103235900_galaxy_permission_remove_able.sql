@@ -36,8 +36,8 @@ CREATE TRIGGER lrunes_galaxy_content_validity
 -- only replace the obsolete JSONB search predicate inside the SELECT RLS policies.
 DO $do$
 DECLARE item record;
-DECLARE old_predicate text:='((able ->> ''search''::text))::boolean IS TRUE';
-DECLARE replacement text;
+old_predicate text:='((able ->> ''search''::text))::boolean IS TRUE';
+replacement text;
 BEGIN
   FOR item IN
     SELECT schemaname,tablename,policyname,qual FROM pg_policies
