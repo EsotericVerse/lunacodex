@@ -1,4 +1,4 @@
-import {Kysely,PostgresDialect,MysqlDialect,MssqlDialect,ParseJSONResultsPlugin} from "npm:kysely@0.29.6";
+import {Kysely,PostgresDialect,MysqlDialect,MssqlDialect,ParseJSONResultsPlugin} from "npm:kysely@0.29.8";
 import pg from "npm:pg@8.16.3";
 import {normalizeDatabaseTarget} from "../../../app/loc/providers/selected-database-target.mjs";
 import {mysqlLdapOptions,mssqlAuthentication} from "../../../app/loc/providers/sql-driver-auth.mjs";
