@@ -33,9 +33,8 @@ BEGIN
     NEW.able:=COALESCE(NEW.able,'{}'::jsonb)||'{"search":false,"list":false}'::jsonb;
   END IF;
   IF lower(btrim(COALESCE(NEW.site,'')))='mcp' THEN
-    NEW.search:=false;
     NEW."list":=false;
-    NEW.able:=COALESCE(NEW.able,'{}'::jsonb)||'{"search":false,"list":false}'::jsonb;
+    NEW.able:=COALESCE(NEW.able,'{}'::jsonb)||'{"list":false}'::jsonb;
   END IF;
   RETURN NEW;
 END;
