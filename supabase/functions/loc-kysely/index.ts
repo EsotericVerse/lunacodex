@@ -107,6 +107,9 @@ async function profileForTarget(target:Record<string,unknown>){
   // connection URL in Edge secrets. Do not open a second connection or read
   // Vault on every ordinary public request.
   if(isSupabaseControlTarget(target))return resolveConnectionProfile(controlTarget);
+  // A custom SQL primary must not depend on Supabase being reachable simply
+  // to find its own driver credentials. This alias resolves only server secrets.
+  if(target.provider==="custom")return resolveConnectionProfile(target);
   const control=await databaseForTarget(controlTarget);
   const secret=await readVaultConnection(control,target);
   if(secret)return secret;
@@ -502,6 +505,11 @@ Deno.serve(async (request) => {
       return json({error:{message:"Database routing is set in app/loc/providers/routing-config.mjs and requires deployment"}},409);
 
     let target=controlTarget as Record<string,any>;
+    if(requestedTarget==="configured"&&routing.provider==="custom"){
+      target=selectedDatabaseTarget([{provider:"custom",
+        engine:routing.engine,connection_alias:routing.connectionAlias,
+        connection_mode:"direct",selected:true}]);
+    }
     if(requestedTarget==="neon"){
       if(routing.backupId!=="neon-current"||routing.backupProvider!=="neon")
         return json({error:{message:"Neon target is not enabled by repository routing"}},403);
@@ -523,8 +531,9 @@ Deno.serve(async (request) => {
       if(target.provider!==routing.backupProvider)return json({error:{message:"Backup provider differs from repository config"}},503);
       resolvingTarget=false;
     }
-    // configured and supabase always execute on the trusted Supabase control target.
-    // No per-request database_targets lookup, even for RPCs and authenticated writes.
+    // Supabase remains the explicit control target; "configured" can route to
+    // an opt-in custom Kysely primary using only trusted repository settings.
+    // No untrusted per-request connection alias selection.
     if(target.provider==="neon"&&(body.kind!=="query"||body.operation!=="select"))
       return json({error:{message:"Neon LOC mirror is read-only"}},403);
     // PostgreSQL mirrors enforce per-row access through RLS, not table-name
