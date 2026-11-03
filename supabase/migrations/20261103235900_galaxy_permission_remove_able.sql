@@ -14,9 +14,9 @@ BEGIN
     NEW.search:=false;
     NEW."list":=false;
   END IF;
-  -- MCP conversations are private even when a writer omits permission fields.
+  -- MCP-origin records are list-hidden by default; search visibility remains
+  -- under the article's separate search flag (conversation sync sets false).
   IF lower(btrim(COALESCE(NEW.site,'')))='mcp' THEN
-    NEW.search:=false;
     NEW."list":=false;
   END IF;
   RETURN NEW;
