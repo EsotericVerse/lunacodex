@@ -91,7 +91,8 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
     description:resolvedDescription
   };
 
-  return <main className={'scope-main'+(managementMode?' scope-main--edit-workspace':'')}>
+  const publicFeature=!managementMode&&['culture','statics','search','trace'].includes(featureId)?featureId:'';
+  return <main className={'scope-main'+(managementMode?' scope-main--edit-workspace':'')} data-public-feature={publicFeature||undefined}>
     <section className="scope-page">
       <header className={heroClassName} style={heroStyle} data-feature-hero-source={managementMode?managementTextPage:shared?'loc':'default'}>
         <FeatureHeroContent
@@ -103,7 +104,7 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
           rich={Boolean(shared)&&!managementMode}
         />
       </header>
-      <div className="scope-content">{children}</div>
+      <div className={"scope-content"+(publicFeature?" loc-public-content":"")}>{children}</div>
     </section>
   </main>;
 }
@@ -437,11 +438,10 @@ function IncrementalLoad({
 }
 
 export function ArticleSortSelect({value='desc',onChange,disabled=false}){
-  return <label style={{display:'inline-flex',alignItems:'center',gap:'.4rem',fontSize:'.875rem'}}>
+  return <label className="scope-article-sort-control">
     排序
-    <select aria-label="文章列表排序" value={value} disabled={disabled}
-      onChange={event=>onChange(event.target.value)}
-      style={{maxWidth:'100%',padding:'.25rem .45rem',fontSize:'inherit',borderRadius:'.4rem'}}>
+    <select className="scope-select" aria-label="文章列表排序" value={value} disabled={disabled}
+      onChange={event=>onChange(event.target.value)}>
       <option value="desc">最新優先</option>
       <option value="asc">最舊優先</option>
     </select>
