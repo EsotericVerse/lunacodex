@@ -1,8 +1,8 @@
 export default {
   "settingsLoading": "載入關鍵詞設定…",
   "settingsTitle": "關鍵詞設定",
-  "settingsGuide": "此頁獨立於統計查詢。手動編輯不會啟動 vis-network；只有選擇關鍵詞關聯圖才載入圖形。",
+  "settingsGuide": "在這裡編輯關鍵詞與分類規則；只有開啟關聯圖時才載入圖形，不會影響手動編輯。",
   "backToStatistics": "返回統計頁",
   "verifyingAccess": "正在確認管理權限…",
-  "accessDenied": "此頁僅供擁有該 Scope 管理權限的登入者使用。"
+  "accessDenied": "目前沒有管理這組關鍵詞的權限。"
 };

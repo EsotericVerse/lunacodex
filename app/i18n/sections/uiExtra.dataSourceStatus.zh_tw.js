@@ -1,8 +1,8 @@
 export default {
-  "primary": "主要資料",
-  "backup": "備援資料",
+  "primary": "主要資料來源",
+  "backup": "備用資料來源",
   "unavailable": "資料暫時無法讀取",
-  "localTitle": "本機資料來源",
-  "localActive": "目前使用：SQLite（local，本機檔案）",
-  "detailsTitle": "資料來源詳情"
+  "localTitle": "此裝置的資料",
+  "localActive": "目前使用：本機資料庫（資料只保存在這台裝置）",
+  "detailsTitle": "目前使用的資料來源"
 };

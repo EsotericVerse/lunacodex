@@ -185,11 +185,11 @@ export default function KeywordLibraryPanel({scopeId,account}){
       if(!node.name)throw new Error('請填寫名稱');
       if(!TYPES.includes(node.type))throw new Error('Keywords Type 無效');
       const isNew=!tree.index.has(node.uid);
-      if(node.type==='category')throw new Error('關鍵字目錄由 Scope Group 管理');
+      if(node.type==='category')throw new Error('群組關鍵字目錄請到群組管理頁面編輯。');
       if(isNew&&node.type!=='class'){
         const parent=tree.index.get(pendingParent);
         const expected=TYPES[TYPES.indexOf(node.type)-1];
-        if(!parent||parent.type!==expected)throw new Error('缺少上層 UID');
+        if(!parent||parent.type!==expected)throw new Error('請先選擇上層分類。');
         await writeKeywordLibraryItem(scopeId,'insert',node);
         try{await writeKeywordLibraryItem(scopeId,'update',{
           ...parent,lists:[...parent.lists,node.uid]
@@ -344,11 +344,11 @@ export default function KeywordLibraryPanel({scopeId,account}){
         const cached=await readKeywordSuggestionCache(scopeId);
         if(cached){
           setDiscovery(cached);setDiscoveryPage(1);
-          setNotice('已載入上次掃描的暫存列表；如需更新，按「重新掃描」。');
+          setNotice('已載入上次掃描結果；如需更新，按「重新掃描」。');
           return;
         }
       }catch(e){
-        setNotice('無法讀取暫存：'+String(e.message||e)+'。可重新掃描。');
+        setNotice('無法讀取上次掃描結果：'+String(e.message||e)+'。可重新掃描。');
       }finally{setDiscoveryBusy(false);}
     }
     await discoverNewTerms();
@@ -359,7 +359,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
     setImportClass(null);setError('');setNotice('');
     if(!/^[a-z][a-z0-9]{0,14}$/.test(from)||
       !(isUnifiedAnchorScope(from)?/^[0-9A-Za-z]{8}$/:/^[0-9A-Za-z]{4}$/).test(uid)){
-      setError('請輸入來源 Scope ID 與正確的 Class UID（Anchor 八碼，舊版四碼）。');return;
+      setError('請輸入來源資料代碼及公開的群組科目代碼（新版 8 碼、舊版 4 碼）。');return;
     }
     setImportBusy(true);
     try{
@@ -369,7 +369,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
       });
       if(error)throw new Error(error.message||'查詢公開群組科目失敗');
       const found=(Array.isArray(data)?data:[]).find(item=>item.classUid===uid);
-      if(!found)throw new Error('此 Scope 找不到已公開的群組科目；其他分類類型不能匯入。');
+      if(!found)throw new Error('在這個資料來源中找不到指定的公開群組科目。');
       setImportClass({scopeid:from,uid,name:String(found.name||uid)});
     }catch(error){setError(String(error.message||error));}
     finally{setImportBusy(false);}
@@ -387,7 +387,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
       if(error||!/^[0-9A-Za-z]{4}(?:[0-9A-Za-z]{4})?$/.test(String(data?.uid||'')))
         throw new Error(error?.message||'匯入尚未完成，未新增關鍵字群組科目');
       await load(data.uid);await invalidate();
-      setNotice('已匯入群組科目「'+importClass.name+'」，含 '+Number(data.group_count||0)+' 個分類群組、'+Number(data.item_count||0)+' 個關鍵詞分類。分析結果需在本 Scope 重新計算。');
+      setNotice('已匯入群組科目「'+importClass.name+'」，含 '+Number(data.group_count||0)+' 個分類群組、'+Number(data.item_count||0)+' 個關鍵詞分類。分析結果需在目前資料來源重新計算。');
       setImportClass(null);setImportUid('');
     }catch(error){setError(String(error.message||error));}
     finally{setImportBusy(false);}
@@ -495,9 +495,9 @@ export default function KeywordLibraryPanel({scopeId,account}){
           </select>
         </label>
         {classShareEnabled(activeClass.uid)
-          ?<span className="scope-status">公開 Class UID：<code>{activeClass.uid}</code></span>:null}
+          ?<span className="scope-status">公開群組科目代碼：<code>{activeClass.uid}</code></span>:null}
         {classShareEnabled(activeClass.uid)?<p className="scope-status">
-          公開群組科目 UID：<code>{activeClass.uid}</code>（來源 Scope：{scopeId}）
+          公開群組科目代碼：<code>{activeClass.uid}</code>（來源：{scopeId}）
         </p>:null}
       </div>:null}
       <div className="scope-stat-controls">
@@ -508,16 +508,16 @@ export default function KeywordLibraryPanel({scopeId,account}){
       <details className="scope-import-maintenance">
         <summary>關鍵字群組科目匯入</summary>
         <div className="scope-import-maintenance-content">
-          <p className="scope-status">輸入來源 Scope ID 和公開四碼 UID。只查詢 Class；Group、Item 不會顯示或匯入。</p>
+          <p className="scope-status">輸入資料來源代碼與公開群組科目代碼（新版 8 碼、舊版 4 碼）。只會匯入分類規則，不會複製文章。</p>
           <div className="scope-management-fields">
-            <label><span>來源 Scope ID</span>
+            <label><span>資料來源代碼（Scope ID）</span>
               <input value={importScope} autoCapitalize="off" spellCheck={false}
-                placeholder="scopeid" onChange={event=>{
+                placeholder="例如 lo3rwang" onChange={event=>{
                   setImportScope(event.target.value.toLowerCase());setImportClass(null);
                 }}/></label>
-            <label><span>公開群組科目 UID（四碼）</span>
-              <input value={importUid} maxLength={4} autoCapitalize="off" spellCheck={false}
-                placeholder="A1b2" onChange={event=>{setImportUid(event.target.value);setImportClass(null);}}/></label>
+            <label><span>公開群組科目代碼（8 碼／舊版 4 碼）</span>
+              <input value={importUid} maxLength={8} autoCapitalize="off" spellCheck={false}
+                placeholder="例如 ZCBXGIGR" onChange={event=>{setImportUid(event.target.value);setImportClass(null);}}/></label>
           </div>
           <div className="scope-preview-links">
             <button type="button" className="loc-button" disabled={busy||importBusy}
@@ -525,12 +525,12 @@ export default function KeywordLibraryPanel({scopeId,account}){
             {importClass?<button type="button" className="loc-button primary" disabled={busy||importBusy}
               onClick={importPublicClass}>匯入「{importClass.name}」</button>:null}
           </div>
-          {importClass?<p className="scope-status">已核對：{importClass.scopeid}／{importClass.uid}（只複製規則，不含文章統計）</p>:null}
+          {importClass?<p className="scope-status">已核對：{importClass.scopeid}／{importClass.uid}（只匯入分類規則，不含文章或統計結果）</p>:null}
         </div>
       </details>
     </section>:null}
     {!loading&&workspace==='analysis'?<section className="loc-card scope-feature-card">
-      <h2>基本設定（此 Scope 共用）</h2>
+      <h2>基本設定（適用於目前資料來源）</h2>
       <div className="scope-management-fields">
         <label><span>目前使用的關鍵字群組</span><select className="scope-select" value={config.current_keyword_class_uid||''}
           onChange={e=>setConfig(v=>({...v,current_keyword_class_uid:e.target.value}))}>
@@ -559,7 +559,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
     </section>:null}
     {!loading&&workspace==='suggest'?<section className="loc-card scope-feature-card">
       <h2>建議新增關鍵詞</h2>
-      <p className="scope-status">僅從目前 Scope 的文章內文找出尚未收錄的詞與詞組；既有關鍵詞不分析、不更改，也不會自動新增。</p>
+      <p className="scope-status">只從目前資料來源的文章內文找出尚未收錄的詞與詞組；不修改既有關鍵詞，也不會自動新增。</p>
       {discoveryBusy?<div className="scope-preview-links">
         <p className="scope-status" role="status">分析中：{Number(discoveryProgress?.completed||0).toLocaleString()} / {Number(discoveryProgress?.total||0).toLocaleString()} 篇</p>
         <button className="loc-button" type="button" onClick={()=>discoveryAbort.current?.abort()}>停止掃描</button>
