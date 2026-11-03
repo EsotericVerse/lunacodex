@@ -72,8 +72,10 @@ function placeDayStems(rows,allowedTitles){
 function buildStemElement(days){
   const first=days[0].day,last=days[days.length-1].day;
   const span=Math.max(1,dayDiff(first,last));
-  const maxHeight=96,minHeight=22;
-  const height=Math.min(maxHeight,Math.max(minHeight,Math.round(Math.sqrt(span)*14)));
+  // Four fixed tiers, not a continuous curve: a day-ish history, a week-ish
+  // one, a month-ish one, and a year-or-more one each get one set height,
+  // so the step between tiers reads clearly instead of blending together.
+  const height=span<=1?22:span<=7?44:span<=31?68:96;
   const wrap=document.createElement('div');
   wrap.className='loc-trace-day-stem';
   wrap.style.height=height+'px';
@@ -123,6 +125,7 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
   let pickedMarker=null;
   let pickedPosition=null;
   let savedAnchors=anchors;
+  let activeStemKey='';
   let selectedSavedRoute=null;
   let selectedSavedGraph=null;
   let lastGraphFocusKey='';
@@ -134,29 +137,37 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     refreshTimelineStems();
     // Updating GeoJSON never resets the viewport. Only explicit navigation may.
   }
-  // Each saved anchor currently on the map grows a small upward "day stem"
-  // for its own place-history rows -- a rough stretch by day count, not a
-  // calendar axis. Restricted to titles already shown as map anchors, per
-  // the author's own framing ("只針對痕跡圖內的地點").
+  function anchorKey(anchor){
+    return String(anchor?.uid||'')+':'+String(anchor?.source_scope||'');
+  }
+  // Only the one just-clicked anchor grows its "day stem" -- not every
+  // anchor on the map at once. Clicking it again hides it. This is
+  // deliberately a single on-demand lookup, not a standing comparison
+  // across every place currently shown.
   function refreshTimelineStems(){
     timelineMarkers.forEach(marker=>marker.remove());
     timelineMarkers=[];
-    if(!loaded||!timelineRows.length)return;
-    const validAnchors=savedAnchors.filter(isValidSavedAnchor);
-    const allowedTitles=new Set(validAnchors.map(a=>String(a.title||'').trim()).filter(Boolean));
-    if(!allowedTitles.size)return;
-    const byTitle=placeDayStems(timelineRows,allowedTitles);
-    for(const anchor of validAnchors){
-      const title=String(anchor.title||'').trim();
-      const days=byTitle.get(title);
-      if(!days?.length)continue;
-      const element=buildStemElement(days);
-      timelineMarkers.push(new Marker({element,anchor:'bottom',offset:[0,0]})
-        .setLngLat(spaceCoordinates(anchor)).addTo(map));
-    }
+    if(!loaded||!timelineRows.length||!activeStemKey)return;
+    const anchor=savedAnchors.filter(isValidSavedAnchor)
+      .find(row=>anchorKey(row)===activeStemKey);
+    if(!anchor)return;
+    const title=String(anchor.title||'').trim();
+    if(!title)return;
+    const byTitle=placeDayStems(timelineRows,new Set([title]));
+    const days=byTitle.get(title);
+    if(!days?.length)return;
+    const element=buildStemElement(days);
+    timelineMarkers.push(new Marker({element,anchor:'bottom',offset:[0,0]})
+      .setLngLat(spaceCoordinates(anchor)).addTo(map));
   }
   function setPlaceTimelines(rows){
     timelineRows=Array.isArray(rows)?rows:[];
+    refreshTimelineStems();
+  }
+  // Toggle: clicking the same anchor again hides its stem.
+  function toggleStem(anchor){
+    const key=anchorKey(anchor);
+    activeStemKey=activeStemKey===key?'':key;
     refreshTimelineStems();
   }
   function savedRoutePoints(route=selectedSavedRoute){
@@ -376,6 +387,7 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
           &&String(row.source_scope||'')===String(props.source_scope||''));
         if(anchor){
           if(showAnchorPopup)centerIfFar(...spaceCoordinates(anchor));
+          toggleStem(anchor);
           onAnchorSelect(anchor);
           if(showAnchorPopup)new Popup({closeButton:true,offset:18})
             .setLngLat(spaceCoordinates(anchor))
@@ -414,6 +426,7 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
           &&String(row.source_scope||'')===String(props?.source_scope||''));
         if(!anchor)return;
         if(showAnchorPopup)centerIfFar(...spaceCoordinates(anchor));
+        toggleStem(anchor);
         onAnchorSelect(anchor);
       };
       for(const layer of ['loc-trace-user-route-stops','loc-trace-user-route-order']){
