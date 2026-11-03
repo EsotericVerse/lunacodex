@@ -292,6 +292,13 @@ export function createDatabaseClient({publicClient,authClient,auth}){
   }
 
   async function verifiedKeywordOwner(){
+    // Clerk already returns an Authority-verified identity. Calling getUser()
+    // after getSession() would reverify the same JWT a second time.
+    if(typeof auth.getVerifiedSession==='function'){
+      const verified=await auth.getVerifiedSession();
+      return Boolean(verified?.user?.id&&verified?.oauth?.email&&
+        String(verified.user.email||'').toLowerCase()===String(verified.oauth.email).toLowerCase());
+    }
     const current=await auth.getSession();
     if(current.error)throw new Error(current.error.message||'Keyword session unavailable');
     const session=current.data?.session;

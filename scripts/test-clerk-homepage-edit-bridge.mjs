@@ -38,17 +38,22 @@ test('unified management RPC returns typed rows with fixed arguments',()=>{
   assert.throws(()=>buildAllowlistedRpcQuery({kind:'rpc',schema:'silver',
     name:'manage',args:{p_type:'self',p_attr:{}}}),/Unexpected RPC argument/);
 });
-test('public Scope Search summary RPC only accepts approved Scope IDs',()=>{
-  assert.deepEqual(RPC_ALLOWLIST['silver.read_scope_search_summary'],['p_scope_ids']);
+test('public Search summary uses canonical Scope analytics contract',()=>{
+  assert.deepEqual(RPC_ALLOWLIST['silver.read_scope_analytics'],
+    ['p_scope_id','p_view','p_start','p_end','p_options']);
   const built=buildAllowlistedRpcQuery({kind:'rpc',schema:'silver',
-    name:'read_scope_search_summary',args:{p_scope_ids:['lo3rwang','lrunes']}});
+    name:'read_scope_analytics',args:{p_scope_id:'loc',p_view:'search_summary',
+      p_options:{scopeIds:['lo3rwang','lrunes']}}});
   assert.equal(built.returnsRows,false);
   assert.ok(built.query);
   assert.throws(()=>buildAllowlistedRpcQuery({kind:'rpc',schema:'silver',
-    name:'read_scope_search_summary',args:{}}),/Missing required RPC argument/);
+    name:'read_scope_analytics',args:{p_scope_id:'loc'}}),/Missing required RPC argument/);
   assert.throws(()=>buildAllowlistedRpcQuery({kind:'rpc',schema:'silver',
-    name:'read_scope_search_summary',args:{p_scope_ids:['lo3rwang'],sql:'x'}}),
+    name:'read_scope_analytics',args:{p_scope_id:'loc',p_view:'search_summary',sql:'x'}}),
     /Unexpected RPC argument/);
+  const client=readFileSync(new URL('../app/loc/scope-search-summary.mjs',import.meta.url),'utf8');
+  assert.match(client,/p_view:'search_summary'/);
+  assert.doesNotMatch(client,/rpc\('read_scope_search_summary'/);
 });
 
 test('management search refresh accepts exactly one Scope ID with required argument',()=>{

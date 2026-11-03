@@ -18,7 +18,6 @@ export const RPC_ALLOWLIST={
   'silver.read_scope_analytics':['p_scope_id','p_view','p_start','p_end','p_options'],
   // Management is authorized through the unified silver.manage(type,id) RPC.
   // Public Search reads only the persisted summary; it cannot call this RPC.
-  'silver.read_scope_search_summary':['p_scope_ids'],
   'silver.refresh_scope_search_summary':['p_scope_id'],
   'silver.manage':['p_type','p_id'],
   'silver.loc_admin_settings':['p_section','p_operation','p_key','p_value'],
@@ -43,7 +42,6 @@ export const RPC_ALLOWLIST={
 const RPC_REQUIRED_ARGUMENTS={
   'silver.management_write':['p_table','p_operation'],
   'silver.read_scope_analytics':['p_scope_id','p_view'],
-  'silver.read_scope_search_summary':['p_scope_ids'],
   'silver.refresh_scope_search_summary':['p_scope_id'],
   'silver.loc_admin_settings':['p_section'],
   'silver.import_shared_keyword_class':['p_target_scope','p_source_scope','p_class_uid'],
