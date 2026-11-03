@@ -167,6 +167,9 @@ async function saveDatabaseTarget(input:Record<string,unknown>,role:string,claim
   if(!label||label.length>160)throw Object.assign(new Error("Invalid target label"),{httpStatus:400});
   const token=typeof input.control_token==='string'?input.control_token:
     typeof input.password==='string'?input.password:'';
+  // Reject requests that cannot manage LOC before probing user-supplied
+  // database hosts or issuing Kysely CREATE TABLE statements.
+  const control=await checkAdminRole(claims);
   const profile=token?makeConnectionProfile({...target,...input,project_url:location.link},token):null;
   if(input.activate===true&&!profile)
     throw Object.assign(new Error("A database URL and control token are required to connect"),{httpStatus:400});
@@ -193,7 +196,6 @@ async function saveDatabaseTarget(input:Record<string,unknown>,role:string,claim
       throw Object.assign(new Error('LOC two-table initialization failed'),{httpStatus:409});
     input.schema_name=schemaName;
   }
-  const control=await checkAdminRole(claims);
   if(!profile)await profileForTarget({...target,project_url:location.link});
   const record={
     provider,engine,connection_alias:alias,connection_mode:target.connection_mode,
