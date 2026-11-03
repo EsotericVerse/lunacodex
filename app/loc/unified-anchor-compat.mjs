@@ -12,10 +12,10 @@ const scopeTypes={
  keywords:['category','class','group','item'],media:['image','video','rune','suno']
 };
 const aliases={
- time:{address:'attr',anchor_ids:'attr',range:'attr'},
+ time:{address:'attr',date:'attr',anchor_ids:'attr',range:'attr'},
  trace:{trace_type:'type',anchor_list:'attr',address:'attr',times:'attr',route_list:'attr'},
  keywords:{name:'title',desc:'description',lists:'attr',uid_lists:'attr'},
- galaxy_media:{url:'attr',meta_tags:'description'}
+ galaxy_media:{url:'attr',meta_tags:'description',date:'attr',createtime:'attr'}
 };
 
 const realTypes={anchor:'date',space_anchor:'point','音樂':'suno','播放清單':'suno',runes:'rune'};
@@ -163,6 +163,7 @@ export function toAnchorRow(spec,row){
    }
  }else if(spec.kind==='media'){
    if(hasOwn(data,'url'))attributes.url=data.url;
+   if(hasOwn(data,'date'))attributes.date=data.date==null?null:String(data.date).slice(0,10);
    if(hasOwn(data,'meta_tags'))out.description=data.meta_tags;
  }
  if(hasOwn(data,'attrs')&&data.attrs&&typeof data.attrs==='object')
@@ -175,7 +176,7 @@ export function toAnchorRow(spec,row){
  for(const key of Object.keys(data)){
    if(['uid','type','trace_type','title','name','invisible','description','desc',
      'address','anchor_ids','range','anchor_list','times','route_list','lists',
-     'uid_lists','url','meta_tags','createtime','location','attr','attrs'].includes(key))continue;
+     'uid_lists','url','meta_tags','createtime','date','location','attr','attrs'].includes(key))continue;
    throw Error('Unsupported legacy anchor column: '+key);
  }
  return out;
@@ -188,6 +189,7 @@ export function fromAnchorRow(spec,row){
  if(hasOwn(row,'type'))out.type=legacyType(row.type);
  if(spec.kind==='time'){
    out.address=row.type==='date'?(attr.date??null):null;
+   out.date=attr.date??null;
    out.anchor_ids=row.type==='period'?listOf(attr.uid):
      row.type==='era'?listOf(attr.period):[];
    out.range=null;
@@ -211,7 +213,7 @@ export function fromAnchorRow(spec,row){
    out.uid_lists=attr.total!=null?{total:attr.total,uidlists:[]}:null;
  }else if(spec.kind==='media'){
    out.url=attr.url??null;out.meta_tags=row.description??null;
-   out.createtime=null;out.location=null;
+   out.date=attr.date??null;out.createtime=attr.date??null;out.location=null;
    if(row.type==='suno'&&String(attr.url||'').includes('/playlist/'))out.type='播放清單';
  }
  return out;
@@ -224,7 +226,7 @@ function fieldsForSelect(spec,columns){
    const name=raw.trim().split(':').at(-1).trim(),mapped=readColumn(spec,name);
    // A few old media readers still request these removed fields. They are
    // nullable compatibility projections, not aliases to UID or other data.
-   if(spec.kind==='media'&&['createtime','location'].includes(name))continue;
+   if(spec.kind==='media'&&name==='location')continue;
    if(spec.kind==='time'&&name==='range')continue;
    if(!physicalColumns.includes(mapped))throw Error('Unknown unified anchor column: '+name);
    fields.add(mapped);
@@ -324,9 +326,17 @@ class UnifiedQuery{
     const jsonFilters=[];
     for(const filter of this.filters){
       const mapped=readColumn(spec,filter.column);
+      // Native JSON-date predicates stay in SQL; never scan all Anchor rows client-side.
+      if((spec.kind==='time'&&['address','date'].includes(filter.column))||
+        (spec.kind==='media'&&['date','createtime'].includes(filter.column))){
+        const day=value=>value==null?null:String(value).slice(0,10);
+        const value=filter.method==='in'?(filter.value||[]).map(day):day(filter.value);
+        physical=applyFilter(physical,{...filter,column:'attr->>date',value});
+        continue;
+      }
       if(mapped==='attr'){jsonFilters.push(filter);continue}
       // A timestamp filter cannot be silently converted into a UID filter.
-      if(spec.kind==='media'&&['createtime','location'].includes(filter.column))
+      if(spec.kind==='media'&&filter.column==='location'
         throw Error('Media '+filter.column+' filtering requires article Galaxy.date/media_link');
       if(!physicalColumns.includes(mapped))throw Error('Unmapped anchor filter: '+filter.column);
       physical=applyFilter(physical,{...filter,column:mapped,
@@ -340,13 +350,18 @@ class UnifiedQuery{
       if(/\b(address|times|route_list|uid_lists|range)\b/.test(expression))
         throw Error('JSONB OR filters require a native unified query');
       const rewritten=expression.replace(/([a-z][a-z0-9_]*)(?=\.)/gi,(column)=>
+        spec.kind==='media'&&column==='url'?'attr->>url':
+        ((spec.kind==='time'&&['address','date'].includes(column))||
+         (spec.kind==='media'&&['date','createtime'].includes(column)))?'attr->>date':
         readColumn(spec,column));
       physical=physical.or(rewritten);
     }
     for(const order of this.orders){
       // Media has no creation timestamp by design. Sort its legacy lists by
       // title instead of the unrelated UID (which is not a time key).
-      const mapped=spec.kind==='media'&&order.column==='createtime'?'title':readColumn(spec,order.column);
+      const mapped=((spec.kind==='time'&&['address','date'].includes(order.column))||
+        (spec.kind==='media'&&['date','createtime'].includes(order.column)))
+        ?'attr->>date':readColumn(spec,order.column);
       if(mapped==='attr')throw Error('JSONB sort requires a native unified query');
       physical=physical.order(mapped,{ascending:order.ascending,nullsFirst:order.nullsFirst});
     }
