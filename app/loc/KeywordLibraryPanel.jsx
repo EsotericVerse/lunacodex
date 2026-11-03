@@ -381,7 +381,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
     try{
       // Server checks actual source Class and published flag. The import
       // transaction allocates fresh UIDs and clears source article hit lists.
-      const {data,error}=await dbAuthClient.schema('silver').rpc('import_shared_keyword_class',{
+      const {data,error}=await dbAuthClient.schema('silver').managedAction('import_shared_keyword_class',{
         p_target_scope:scopeId,p_source_scope:from,p_class_uid:uid
       });
       if(error||!/^[0-9A-Za-z]{4}(?:[0-9A-Za-z]{4})?$/.test(String(data?.uid||'')))
