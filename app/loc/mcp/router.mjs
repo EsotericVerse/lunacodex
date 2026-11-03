@@ -172,7 +172,8 @@ export async function handleMcp(request,env={}){
     case 'initialize':{
       const proposed=payload.params?.protocolVersion;
       return result(payload.id,{protocolVersion:SUPPORTED_PROTOCOLS.has(proposed)?proposed:DEFAULT_PROTOCOL,
-        capabilities:{tools:{listChanged:false}},serverInfo:{name:'loc-mcp',version:'0.2.0'},
+        capabilities:{tools:{listChanged:false}},serverInfo:{name:'loc-mcp',version:'0.2.0',
+           ...(proposed==='2025-11-25'?{icons:[{src:'https://loc.lo3rwang.cc/assets/site/icons/loc-favicon.png',mimeType:'image/png'}]}:{})},
         instructions:'Public search/read use existing Galaxy RLS. Private Scope read, write and Group search are independently authorized by Clerk + LOC Authority. sync_conversation only processes supplied source content.'});
     }
     case 'ping':return result(payload.id,{});
