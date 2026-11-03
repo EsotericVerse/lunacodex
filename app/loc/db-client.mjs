@@ -77,6 +77,57 @@ export async function scopeTypeAttr(scopeId,type,attr={}, {write=false}={}){
   if(write!==['insert','update','patch','delete','link'].includes(op))
     throw new Error('Anchor write option does not match operation');
   const client=write?adapter.authClient:adapter.publicClient;
+  // Convert the ordinary Anchor CRUD surface to real Kysely-backed table
+  // operations. Preserve the guarded RPC for relational links, JSONB patches,
+  // special catalog/suggestion queries and non-unified Scopes.
+  const relation=id+'_anchor';
+  const fields=new Set(Object.keys(attr));
+  const only=(...allowed)=>[...fields].every(key=>allowed.includes(key));
+  const validUid=typeof attr.uid==='string'&&/^[A-Za-z0-9]{8}$/.test(attr.uid);
+  if(['lo3rwang','lrunes'].includes(id)){
+    if(op==='read'&&
+      ['date','period','era','point','path','trace','image','video','rune','suno'].includes(kind)&&
+      only('op','uid','limit','offset')&&
+      (attr.uid===undefined||validUid)){
+      const limit=attr.limit===undefined?100:Number(attr.limit);
+      const offset=attr.offset===undefined?0:Number(attr.offset);
+      if(Number.isInteger(limit)&&limit>=1&&limit<=500&&
+        Number.isInteger(offset)&&offset>=0&&offset<=100000){
+        let query=client.schema('silver').from(relation)
+          .select('uid,type,title,description,invisible,attr')
+          .eq('type',kind).eq('invisible',false).order('uid')
+          .range(offset,offset+limit-1);
+        if(validUid)query=query.eq('uid',attr.uid);
+        const {data,error}=await query;
+        if(error)throw new Error(error.message||'Anchor read failed');
+        return data||[];
+      }
+    }
+    if(write&&validUid&&only('op','uid','title','description','invisible','data')&&
+      ['insert','update'].includes(op)&&
+      (attr.data===undefined||(attr.data&&typeof attr.data==='object'&&!Array.isArray(attr.data)))&&
+      (attr.invisible===undefined||typeof attr.invisible==='boolean')){
+      const values={};
+      if(Object.hasOwn(attr,'title'))values.title=attr.title;
+      if(Object.hasOwn(attr,'description'))values.description=attr.description;
+      if(Object.hasOwn(attr,'invisible'))values.invisible=attr.invisible;
+      if(Object.hasOwn(attr,'data'))values.attr=attr.data;
+      let query;
+      if(op==='insert'&&Object.hasOwn(attr,'data')){
+        query=client.schema('silver').from(relation)
+          .insert({uid:attr.uid,type:kind,title:values.title??null,
+            description:values.description??null,invisible:values.invisible??false,attr:values.attr});
+      }else if(op==='update'&&Object.keys(values).length){
+        query=client.schema('silver').from(relation).update(values)
+          .eq('uid',attr.uid).eq('type',kind);
+      }
+      if(query){
+        const {data,error}=await query.select('uid,type,title,description,invisible,attr').single();
+        if(error)throw new Error(error.message||'Anchor write failed');
+        return data;
+      }
+    }
+  }
   const {data,error}=await client.schema('silver').rpc('scope_type_attr',{
     p_scope_id:id,p_type:kind,p_attr:attr
   });
