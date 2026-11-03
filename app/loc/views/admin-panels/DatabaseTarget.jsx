@@ -70,7 +70,7 @@ export default function DatabaseTarget(){
       else {
         setBackupHealth({state:'checking'});
         try{
-          const {data:health,error:healthError}=await dbAuthClient.schema('silver').rpc('check_backup_readiness');
+          const {data:health,error:healthError}=await dbAuthClient.schema('silver').managedAction('check_backup_readiness');
           if(active)setBackupHealth(healthError?{state:'offline'}:health?.online
             ?{state:health.schema?'online':'schema-error'}:{state:'offline'});
         }catch{if(active)setBackupHealth({state:'offline'});}
