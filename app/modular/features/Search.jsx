@@ -983,7 +983,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     const target=selectedPlaceArticles.slice();
     setBulkBusy(true);setBulkNotice('');
     try{
-      const {data,error}=await dbAuthClient.schema('silver').rpc('batch_fill_galaxy_location',{
+      const {data,error}=await dbAuthClient.schema('silver').managedAction('batch_fill_galaxy_location',{
         p_scope_id:target[0].scopeId,p_uids:target.map(row=>row.uid),p_place:bulkPlace.trim(),
         p_apply:apply,p_expected_count:apply?Number(selectedPreview.eligible):null
       });
