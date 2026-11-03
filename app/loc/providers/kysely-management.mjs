@@ -180,7 +180,9 @@ export async function executeManagedKyselyWrite(trx,body){
 }
 
 const ACTIONS=new Set(['read_group_members','update_group_member_name',
-  'update_group_default_article_class','is_current_email_blocklisted','move_scope_block']);
+  'update_group_default_article_class','is_current_email_blocklisted','move_scope_block',
+  'preview_or_fill_galaxy_place','batch_fill_galaxy_location',
+  'rename_scope_site_batch','save_scope_trace_place_names']);
 function validScope(value){
   const id=String(value||'').trim().toLowerCase();
   if(!/^[a-z][a-z0-9]{0,14}$/.test(id))reject('Invalid Scope ID');
@@ -201,9 +203,17 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     update_group_member_name:['p_group_id','p_member_id','p_display_name'],
     update_group_default_article_class:['p_group_id','p_names'],
     is_current_email_blocklisted:[],
-    move_scope_block:['p_scope_id','p_page_name','p_uid','p_direction']
+    move_scope_block:['p_scope_id','p_page_name','p_uid','p_direction'],
+    preview_or_fill_galaxy_place:['p_scope_id','p_start_date','p_end_date','p_place','p_apply','p_expected_count'],
+    batch_fill_galaxy_location:['p_scope_id','p_uids','p_place','p_apply','p_expected_count'],
+    rename_scope_site_batch:['p_scope_id','p_before','p_after','p_batch_size'],
+    save_scope_trace_place_names:['p_scope_id','p_uid','p_names']
   }[name];
   if(Object.keys(args).some(key=>!keys.includes(key)))reject('Unexpected Kysely action argument');
+  if(name==='preview_or_fill_galaxy_place')return {data:await previewOrFillGalaxyPlace(trx,args),count:null};
+  if(name==='batch_fill_galaxy_location')return {data:await batchFillGalaxyLocation(trx,args),count:null};
+  if(name==='rename_scope_site_batch')return {data:await renameScopeSiteBatch(trx,args),count:null};
+  if(name==='save_scope_trace_place_names')return {data:await saveScopePointAliases(trx,args),count:null};
   if(name==='is_current_email_blocklisted'){
     const email=String(claims.email||'').trim().toLowerCase();
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))reject('Verified email unavailable',403);
@@ -294,4 +304,114 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
   if(Number(result.numAffectedRows||0)!==2)reject('Block order update incomplete');
   return {data:{uid,block_order:next.block_order,
     neighbor_uid:next.uid,neighbor_order:original.block_order},count:null};
+}
+
+async function scopedWrite(trx,input){
+  const scope=validScope(input);
+  if(!await canManage(trx,'scope',scope))reject('Scope write permission required',403);
+  const registry=await trx.selectFrom('silver.manage').select(['id','manage_role','active'])
+    .where('id','=',scope).executeTakeFirst();
+  if(!registry||registry.manage_role!=='scope'||registry.active!==true)
+    reject('Unknown or inactive Scope',403);
+  await sql`reset role`.execute(trx);
+  return scope;
+}
+function placeLabel(value){
+  const label=String(value??'').trim();
+  if(!label||label.length>200)reject('Place must have 1–200 characters');
+  return label;
+}
+async function previewOrFillGalaxyPlace(trx,args){
+  const scope=await scopedWrite(trx,args.p_scope_id);
+  const start=String(args.p_start_date||''),end=String(args.p_end_date||'');
+  const place=placeLabel(args.p_place);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(start)||!/^\d{4}-\d{2}-\d{2}$/.test(end)||
+     start>end||start<'1900-01-01'||end>='2100-01-01')reject('Invalid date interval');
+  const rel=sql.ref('silver.'+scope+'_galaxy');
+  const condition=sql`createtime>=(${start}::date::timestamp at time zone 'Asia/Taipei')
+    and createtime<((${end}::date+1)::timestamp at time zone 'Asia/Taipei')
+    and nullif(btrim(location),'') is null`;
+  const tally=await sql`select count(*)::integer as count from ${rel}
+    where ${condition}`.execute(trx);
+  const count=Number(tally.rows[0]?.count||0);
+  if(args.p_apply===true){
+    const expected=Number(args.p_expected_count);
+    if(!Number.isInteger(expected)||expected<1||expected!==count)
+      reject('Preview is stale; repeat the preview',409);
+    const result=await sql`update ${rel} set location=${place}
+      where ${condition}`.execute(trx);
+    if(Number(result.numAffectedRows||0)!==expected)
+      reject('Article count changed during update',409);
+    return {count:expected,applied:true};
+  }
+  const first=await sql`select btrim(uid::text) as uid,coalesce(title,'') as title,
+      to_char(createtime at time zone 'Asia/Taipei','YYYY-MM-DD') as date
+    from ${rel} where ${condition}
+    order by createtime asc,uid asc limit 3`.execute(trx);
+  const last=await sql`select btrim(uid::text) as uid,coalesce(title,'') as title,
+      to_char(createtime at time zone 'Asia/Taipei','YYYY-MM-DD') as date
+    from ${rel} where ${condition}
+    order by createtime desc,uid desc limit 3`.execute(trx);
+  return {count,first:first.rows,last:last.rows,applied:false};
+}
+async function batchFillGalaxyLocation(trx,args){
+  const scope=await scopedWrite(trx,args.p_scope_id);
+  const place=placeLabel(args.p_place);
+  const values=args.p_uids;
+  if(!Array.isArray(values)||values.length<1||values.length>200||
+     values.some(uid=>!UID.test(String(uid||''))))reject('Select 1–200 valid articles');
+  const uids=[...new Set(values)];
+  const table='silver.'+scope+'_galaxy';
+  const found=await trx.selectFrom(table).select('uid').where('uid','in',uids).execute();
+  if(found.length!==uids.length)reject('Article selection changed',409);
+  const eligible=await trx.selectFrom(table).select('uid').where('uid','in',uids)
+    .where(sql`nullif(btrim(location),'') is null`).execute();
+  if(args.p_apply!==true)return {applied:false,selected:uids.length,
+    eligible:eligible.length,skipped:uids.length-eligible.length};
+  const expected=Number(args.p_expected_count);
+  if(!Number.isInteger(expected)||expected<1||expected!==eligible.length)
+    reject('Preview is stale; repeat selection',409);
+  const result=await trx.updateTable(table).set({location:place})
+    .where('uid','in',uids).where(sql`nullif(btrim(location),'') is null`).executeTakeFirst();
+  const count=Number(result?.numUpdatedRows||0);
+  if(count!==expected)reject('Article count changed during update',409);
+  return {applied:true,selected:uids.length,count,skipped:uids.length-count};
+}
+async function renameScopeSiteBatch(trx,args){
+  const scope=await scopedWrite(trx,args.p_scope_id);
+  const before=String(args.p_before??'').trim(),after=String(args.p_after??'').trim();
+  const limit=args.p_batch_size===undefined?1000:Number(args.p_batch_size);
+  if(!before||!after||before===after||before.length>80||after.length>80||
+     !Number.isInteger(limit)||limit<1||limit>1000)
+    reject('Invalid source correction');
+  const table='silver.'+scope+'_galaxy';
+  const targets=await trx.selectFrom(table).select('uid')
+    .where('site','=',before).orderBy('uid','asc')
+    .limit(limit).forUpdate().skipLocked().execute();
+  if(!targets.length)return 0;
+  const result=await trx.updateTable(table).set({site:after})
+    .where('uid','in',targets.map(row=>row.uid)).executeTakeFirst();
+  return Number(result?.numUpdatedRows||0);
+}
+async function saveScopePointAliases(trx,args){
+  const scope=await scopedWrite(trx,args.p_scope_id);
+  const uid=validUid(args.p_uid);
+  const requested=args.p_names;
+  if(!Array.isArray(requested)||requested.length>250||
+     requested.some(name=>typeof name!=='string'))reject('Invalid Point aliases');
+  const table='silver.'+scope+'_anchor';
+  const point=await trx.selectFrom(table).select('attr')
+    .where('uid','=',uid).where('type','=','point')
+    .forUpdate().executeTakeFirst();
+  if(!point)reject('Selected Point not found');
+  const previous=point.attr?.location;
+  const old=Array.isArray(previous)?previous:typeof previous==='string'?[previous]:[];
+  const aliases=[...new Set([...old,...requested].map(n=>String(n).trim())
+    .filter(n=>n&&n.length<=320))].sort();
+  const change=aliases.length
+    ?sql`jsonb_set(attr,'{location}',${JSON.stringify(aliases)}::jsonb,true)`
+    :sql`attr-'location'`;
+  const result=await trx.updateTable(table).set({attr:change})
+    .where('uid','=',uid).where('type','=','point').executeTakeFirst();
+  return Number(result?.numUpdatedRows||0);
 }
