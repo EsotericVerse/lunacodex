@@ -63,3 +63,14 @@ test('already present Scope tables are never replaced',async()=>{
   assert.equal(out.created.length,0);
   assert.equal(tables.length,0);
 });
+
+
+test('MySQL existing tables are recognized regardless of database name',async()=>{
+  const {db,tables}=mockDb([
+    {schema:'client_database',name:'writer_galaxy'},
+    {schema:'client_database',name:'writer_anchor'}
+  ]);
+  const out=await create(db,{engine:'mysql',namespace:'',scopeId:'writer'});
+  assert.deepEqual(out.created,[]);
+  assert.deepEqual(tables,[]);
+});
