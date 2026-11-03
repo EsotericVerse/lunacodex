@@ -48,6 +48,11 @@ function routedSchema(schemaName,cloudSchema){
     rpc(name,args={},options={}){
       const toLocal=name==='management_write'?isLocalRelation(args?.p_table,schemaName):String(args?.p_scope_id||'')==='local';
       return toLocal?localSchema.rpc(name,args):cloudSchema.rpc(name,args,options);
+    },
+    managedWrite(payload){
+      return isLocalRelation(payload?.p_table,schemaName)
+        ?localSchema.rpc('management_write',payload)
+        :cloudSchema.managedWrite(payload);
     }
   };
 }
