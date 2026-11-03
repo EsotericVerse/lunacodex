@@ -74,3 +74,41 @@ test('two-table external LOC statistics uses discovered Scope instead of loc_gal
   assert.deepEqual(result.data.rows,[{scope_id:'writer',day:'2026-01-01',item_count:3}]);
   assert.deepEqual(readTables,['dbo.writer_galaxy']);
 });
+
+
+test('portable owner can read keyword classes and class/group/item catalog',async()=>{
+  const own=new Function('sql','canManageLoc','portableRelation',
+    source.replace(/^import .*$/gm,'').replace(/^export /gm,'')+
+    ';return executePortableKyselyAnalytics')({},async()=>true,
+    (table,engine,namespace)=>engine==='mysql'?table:namespace+'.'+table);
+  const classUid='ABCD1234',groupUid='EFGH5678',itemUid='IJKL9012';
+  const nodes=[
+    {uid:classUid,type:'class',title:'符文66',description:'分類',
+      attr:JSON.stringify({uid:[groupUid]})},
+    {uid:groupUid,type:'group',title:'靈魂組',description:'分組',
+      attr:JSON.stringify({uid:[itemUid]})},
+    {uid:itemUid,type:'item',title:'靈',description:'規則',
+      attr:JSON.stringify({total:0,keyword:['心靈']})}
+  ];
+  const db={selectFrom:()=>{const filters=[];
+    const q={
+      select(){return this},where(column,operator,value){
+        filters.push({column,operator,value});return this;},
+      orderBy(){return this},execute:async()=>nodes.filter(row=>
+        filters.every(f=>f.column==='uid'&&f.operator==='in'
+          ?f.value.includes(row.uid):row[f.column]===f.value)),
+      async executeTakeFirst(){return (await this.execute())[0]||null}
+    };
+    return q;
+  }};
+  const params={engine:'mssql',namespace:'dbo',role:'authenticated'};
+  const shared=await own(db,{args:{p_scope_id:'writer',p_view:'shared_classes'}},params);
+  assert.deepEqual(shared.data,[{scopeId:'writer',classUid,name:'符文66',category:classUid}]);
+  const catalog=await own(db,{args:{p_scope_id:'writer',p_view:'keyword_catalog',
+    p_options:{classUid}}},params);
+  assert.equal(catalog.data.class_uid,classUid);
+  assert.deepEqual(catalog.data.rows.map(x=>x.name),['符文66','靈魂組','靈']);
+  const hidden=await executor(db,{args:{p_scope_id:'writer',p_view:'keyword_catalog',
+    p_options:{classUid}}},{engine:'mssql',namespace:'dbo',role:'anon'});
+  assert.deepEqual(hidden.data,{});
+});
