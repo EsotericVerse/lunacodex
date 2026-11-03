@@ -254,7 +254,7 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
         });
         entries.push(...rows);
       }
-      return {rows:groupedTraceDays(entries.filter(row=>row.able?.trace===true),{key:'place_id'})};
+      return {rows:groupedTraceDays(entries.filter(row=>row.trace===true),{key:'place_id'})};
     },
     revalidateOnFocus:false,revalidateOnReconnect:false
   });
