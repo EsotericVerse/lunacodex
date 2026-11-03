@@ -34,7 +34,10 @@ export function makeConnectionProfile(raw:Record<string,unknown>,password:string
   if(direct){
     let parsed:URL;
     try{parsed=new URL(direct)}catch{bad("Invalid SQL connection URL")}
-    if(!parsed||parsed.protocol!==protocol||!parsed.hostname||parsed.password||
+    const compatible=engine==='postgres'
+      ?['postgres:','postgresql:']
+      :engine==='mssql'?['mssql:','sqlserver:']:[protocol];
+    if(!parsed||!compatible.includes(parsed.protocol)||!parsed.hostname||parsed.password||
        parsed.search||parsed.hash)bad("SQL URL needs a valid host and no embedded secret");
     if(!parsed.pathname||parsed.pathname==='/')bad("SQL URL needs a database name");
     if(!parsed.username&&!(engine==='mssql'&&
