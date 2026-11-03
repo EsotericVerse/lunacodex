@@ -48,7 +48,7 @@ function buildScopeData(row,id){
     anchor:`silver.${id}_${anchorSuffix}`,
     galaxyMedia:galaxy+'_media',
     // Compatibility aliases are resolved only by the DB adapter.
-    time:`silver.${id}_${anchorSuffix}`,
+    time:`silver.${id}_time`,
     keywords:`silver.${id}_keywords`,
     blocks:`silver.${id}_blocks`
   };
