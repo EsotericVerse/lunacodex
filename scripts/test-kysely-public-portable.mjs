@@ -64,7 +64,7 @@ test('portable bootstrap reads exactly the declared SQL Server namespace',async(
 });
 
 test('portable bootstrap works with an unqualified MySQL database',async()=>{
-  const {db,called}=mockSql('silver');
+  const {db,called}=mockSql('client_database');
   const result=await publicExecutor()(db,{name:'read_app_bootstrap',
     args:{p_scope_id:'loc',p_page_name:'index'}},{engine:'mysql',namespace:'silver'});
   assert.equal(result.data.scope_id,'loc');
