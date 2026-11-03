@@ -72,3 +72,21 @@ test('aliases use point attr.location and edit controls are apart from managemen
   assert.match(css,/grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/);
   assert.match(css,/grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
 });
+
+
+test('Save-and-switch confirms spatial UID merge once and shows the original RPC error',()=>{
+  const form=read('app/loc/TraceManagement.jsx');
+  const dock=read('app/modular/edit-dock.jsx');
+  assert.match(form,/const save=async\(\{switching=false\}=\{\}\)=>\{/);
+  assert.match(form,/sources\.length&&!switching&&!window\.confirm/);
+  assert.match(form,/visibility&&!switching&&!window\.confirm/);
+  assert.match(form,/mergedCount=await mergeTraceAnchorPoints/);
+  assert.match(form,/setBulkUids\(ids=>ids\.filter\(uid=>!sources\.includes\(uid\)\)\)/);
+  assert.match(form,/throw new Error\(message,\{cause:e\}\)/,
+    'server and permission errors must reach the visible switch dialog');
+  assert.match(form,/isDestructive:\(\)=>mergeUids\.length>0\|\|Boolean\(pendingVisibility\)/);
+  assert.match(dock,/isDestructive:actions\.isDestructive/);
+  assert.match(dock,/editor\.isDirty\?\.\(\)&&editor\.isDestructive\?\.\(\)/);
+  assert.match(dock,/按「儲存並切換」即確認執行/);
+  assert.match(dock,/saved!==true\)throw new Error\('儲存尚未完成/);
+});
