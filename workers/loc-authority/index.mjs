@@ -504,7 +504,7 @@ export class LocAuthorityState extends DurableObject {
     // Idempotent upsert by the existing case-sensitive UID; no table scans.
     const row={uid,title:input.title,content:input.content,
       site:'mcp',site_id:conversation_id,
-      statics:false,culture:false,search:false,trace:false,list:false,keyword:false,others:false,extract:false,
+      statics:false,culture:false,search:false,trace:false,list:false,keyword:false,extract:false,others:false,
       createtime:validTimestamp(input.created_at||requestedTime),
       UpdateTime:requestedTime};
     if(profile)await postgrest(profile,{body:row,params:{on_conflict:'uid'}});
