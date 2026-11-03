@@ -70,3 +70,22 @@ test('portable bootstrap works with an unqualified MySQL database',async()=>{
   assert.equal(result.data.scope_id,'loc');
   assert.deepEqual(called,['manage','loc','loc','loc_blocks','loc']);
 });
+
+
+test('two-table SQL installation boots without manage, loc or any RPC',async()=>{
+  let metadataReads=0;const queries=[];
+  const db={
+    introspection:{getTables:async()=>{metadataReads++;return [
+      {schema:'dbo',name:'writer_galaxy'},{schema:'dbo',name:'writer_anchor'}
+    ];}},
+    selectFrom:table=>{queries.push(table);throw Error('Unexpected SQL query '+table);}
+  };
+  const data=await publicExecutor()(db,{name:'read_app_bootstrap',
+    args:{p_scope_id:'loc',p_page_name:'index'}},
+    {engine:'mssql',namespace:'dbo'});
+  assert.equal(data.data.registry.length,1);
+  assert.equal(data.data.registry[0].scope_id,'writer');
+  assert.equal(data.data.scope_id,'loc');
+  assert.deepEqual(queries,[]);
+  assert.equal(metadataReads,1);
+});
