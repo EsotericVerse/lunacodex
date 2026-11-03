@@ -23,8 +23,7 @@ export async function GET(request,{params}){
   const start=url.searchParams.get('startDate')||'',end=url.searchParams.get('endDate')||'';
   if((start&&!day(start))||(end&&!day(end))||start&&end&&start>end)
     return reply(request,{error:'Invalid date range'},400);
-  // All numerical views share the same SQL entrypoint; the selected view
-  // is still computed lazily inside Postgres, never loaded in the browser.
+  // The Kysely Gateway computes bounded numeric aggregates lazily.
   const name='read_scope_analytics';
   const view={culture:'daily',statistics:'overview',earliest:'earliest',
     'loc-statistics':'loc'}[kind];
