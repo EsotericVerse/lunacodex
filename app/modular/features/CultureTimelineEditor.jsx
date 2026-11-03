@@ -21,14 +21,7 @@ const normalizeType=value=>({event:'period'}[value]||value);
 const displayType={anchor:'定錨點',period:'期間',era:'時代'};
 const blank=(type='anchor')=>({uid:'',type:normalizeType(type),title:'',description:'',address:'',anchor_ids:[],invisible:false});
 const day=value=>value?String(value).slice(0,10):'';
-function nextTimeUid(rows){
-  const taken=new Set(rows.map(row=>String(row.uid||'')));
-  for(let i=1;i<=65535;i++){
-    const candidate=i.toString(16).toUpperCase().padStart(4,'0');
-    if(!taken.has(candidate))return candidate;
-  }
-  throw new Error('本 Scope 的四碼時間 UID 已用盡');
-}
+function nextTimeUid(rows){return allocateTimeUid(rows);}
 function normalizeDraft(row){
   if(!row)return blank();
   return {...blank(row.type),...row,address:day(row.address),
