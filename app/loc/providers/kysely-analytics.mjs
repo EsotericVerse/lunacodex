@@ -383,7 +383,7 @@ export async function executePortableKyselyAnalytics(db,body,{engine,namespace='
       reject('Invalid Search summary Scope list');
     const tables=await db.introspection.getTables();
     const present=new Set(tables
-      .filter(t=>!t.schema||t.schema===namespace)
+      .filter(t=>engine==='mysql'||!t.schema||t.schema===namespace)
       .map(t=>t.name));
     const rows=[];
     for(const id of [...new Set(ids)].sort()){
@@ -409,7 +409,7 @@ export async function executePortableKyselyAnalytics(db,body,{engine,namespace='
     // Kysely introspection replaces the old LOC registry RPC.
     const tables=await db.introspection.getTables();
     const present=new Set(tables
-      .filter(t=>!t.schema||t.schema===namespace)
+      .filter(t=>engine==='mysql'||!t.schema||t.schema===namespace)
       .map(t=>t.name));
     const ids=[...present].filter(name=>name.endsWith('_galaxy'))
       .map(name=>name.slice(0,-'_galaxy'.length))
