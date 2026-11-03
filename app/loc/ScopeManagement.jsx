@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import {useSearchParams} from 'next/navigation';
 import {useEditDock} from '../modular/edit-dock';
 import {FeaturePage} from '../modular/ui';
+import ManagementWorkspaceFrame from './ManagementWorkspaceFrame';
 import ManagementSectionNav,{useManagementSection} from '../modular/ManagementSectionNav';
 import PanelLoading from './PanelLoading';
 import {recoverChunkOnce} from './chunk-recovery.mjs';
@@ -48,7 +49,8 @@ export default function ScopeManagement({scopeId:routeScopeId='loc',section:entr
   return <FeaturePage featureId={isLoc||traceOnly?'trace':'manage'}>
     <div className={PLACE_KEYS.has(section)
       ?'scope-management-layout scope-management-layout--anchor':'scope-management-layout'}>
-      <div className="management-workspace">
+      <ManagementWorkspaceFrame level={isLoc?'group':'scope'}
+        title={traceOnly?'痕跡圖管理':'空間定錨管理'}>
         <ManagementSectionNav id="scope-sections" title="空間定錨管理" panelId="scope-management-panel"
           items={options} value={section} onChange={next=>{
             if(next===section)return;
@@ -60,7 +62,7 @@ export default function ScopeManagement({scopeId:routeScopeId='loc',section:entr
           {PLACE_KEYS.has(section)?<PlaceManagement scopeId={routeScopeId} section={section}/>:null}
           {section==='traceMap'?<TraceManagementPanel scopeId={routeScopeId} mode="map"/>:null}
         </div>
-      </div>
+      </ManagementWorkspaceFrame>
     </div>
   </FeaturePage>;
 }
