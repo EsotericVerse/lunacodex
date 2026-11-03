@@ -18,7 +18,11 @@ test('portable Postgres/Kysely RPC allowlist follows the six-column cutover',()=
   assert.doesNotMatch(code,/'silver\.read_keyword_tree_catalog':\[/);
   assert.doesNotMatch(code,/'silver\.read_keyword_tree_summary':\[/);
   assert.doesNotMatch(code,/'silver\.read_trace_keyword_group_totals':\[/);
-  assert.match(code,/'silver\.read_music_style_tree':\[\]/);
+  assert.doesNotMatch(code,/'silver\\.read_music_style_tree':\\[\\]/);
+  const migration=readFileSync(new URL('../supabase/migrations/20261103173000_scope_suggestions_consolidation.sql',import.meta.url),'utf8');
+  assert.match(migration,/DROP FUNCTION silver\\.read_music_style_tree\\(\\) RESTRICT/);
+  assert.match(migration,/DROP FUNCTION silver\\.trace_place_suggestions\\(text,integer\\) RESTRICT/);
+  assert.match(migration,/DROP FUNCTION silver\\.read_scope_keyword_suggestions\\(text\\) RESTRICT/);
   assert.ok(code.includes("'silver.read_scope_analytics':['p_scope_id','p_view','p_start','p_end','p_options']"));
   for(const name of [
     'apply_keyword_classification','read_keyword_class_by_uid',
