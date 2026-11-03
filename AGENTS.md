@@ -142,3 +142,25 @@ GitHub 與 Cloudflare 可能因版本部署時間差，造成 LOC MCP 一邊有�
 
 【GitHub 手動工作流程／Cloudflare Pages main 自動部署】
 **GitHub 工作流程與 Cloudflare Pages 正式部署須分開看。** GitHub Actions 的高成本建置與 GitHub Pages `deploy-pages.yml` 是 `workflow_dispatch` 手動啟動；GitHub PR 合併本身不等於 GitHub Actions 自動部署。Cloudflare Pages `loc` 已連接 `EsotericVerse/moon-runes-pwa` 的 `main`，正式版在 main 更新後**自動建置與部署**；preview branch 部署停用，`AGENTS.md`、一般 `*.md`／`**/*.md`、`.githooks/**` 等文件／排除目錄不觸發正式建置。以 Cloudflare 實際 production 部署的 `commit_hash`、`latest_stage.status` 核對是否已上線，不得把 GitHub PR 已合併直接當成功部署，也不得反過來要求使用者手動部署已成功自動上線的 Pages。獨立的 Cloudflare Workers（例如 Authority／ISR）與 Supabase Edge Function 各自確認，不能由 Pages 成功推定它們也已部署。不得將 GitHub 手動 workflow 改為自動，也不得啟用 branch/PR preview 造成額外計費。
+
+11. 需求粒度、GitHub Pages 部署節奏、中斷收尾與 Workflow 守門（2026-11-03 補充）
+
+這條是為了修正「一個需求被拆成 3-5 個 PR、每個 PR 合併都連帶觸發一次 GitHub Pages 手動部署、流量與費用一起炸掉」的實際發生狀況，並補上「中斷之後那個分支怎麼辦」「怎麼防止 agent 再偷塞自動觸發 workflow」兩個原本沒講清楚的收尾機制。
+
+【一個需求原則上一個 PR】
+同一個使用者需求，不論改動大小，原則上只開一個 PR，不准為了分批送審、規避審查、或讓每次 diff 看起來小一點，把同一個需求人為拆成 3-5 個 PR。只有內容本質上是彼此獨立、拆開也能各自成立的不同需求時，才允許分開各自開 PR。判斷不出來算不算同一需求時，預設合併成同一個 PR，不要預設拆開。
+
+【GitHub Pages 部署不跟著每個 PR 走】
+注意區分兩種部署：Cloudflare Pages（`loc`）已連接 `main`，main 更新後自動建置部署，這部分不需要、也不應該由 agent 額外手動觸發。真正會被濫用、造成費用暴增的是 `deploy-pages.yml`（GitHub Pages，`workflow_dispatch` 手動觸發，內含完整 npm 安裝、語法檢查、安全掃描、遊戲回歸測試、正式 build）。這個手動部署，不准在每次 PR merge 後都各自觸發一次；只在一個需求或一個工作批次全部完成、通過驗證後，才觸發一次。同一批次內有多個 PR 陸續 merge 時，只在最後一個完成時部署一次。部署觸發與結果核對永遠是 agent 的責任，不得要求使用者親自觸發或親自核對結果（呼應第 1 條終極原則）。
+
+【中斷是正常事件，分支要有結局】
+使用者隨時可能中斷 agent，這是正常、預期中的行為，不是錯誤，不准因此把尚未驗證的內容硬推進 main。中斷發生時：
+- 尚未通過本機語法檢查與回歸測試的需求，一律留在獨立分支／PR 上，不准進 main；main 分支必須隨時維持「乾淨、可直接部署」的狀態。
+- 下次有 agent（不論是否同一個）要接續被中斷的需求時，必須先檢查是否已有對應的既有分支／PR，能接續的接續下去，不准無視既有分支另開一個，造成分支氾濫、彼此打架。
+- 若判斷既有分支的做法已經走不通、需要砍掉重練，必須明確關閉並刪除該分支／PR，且在關閉時附上一句話白話說明「為什麼放棄、改成怎麼做」，不准放著不處理，也不准默默留著造成之後有人誤用裡面未驗證的內容。
+
+【禁止用文字宣稱驗證取代真正的自動化檢查】
+PR 說明或任何回報中，不准用「我手動檢查過 XX、YY」這類文字敘述來取代真正跑過的自動化檢查結果。沒有真正觸發對應 workflow 並取得 pass 結果的項目，一律照實標示「尚未驗證」或「本次未執行」，不准用描述性文字製造已驗證的假象，也不准以此為由直接合併。
+
+【Workflow 守門：禁止未授權的自動觸發】
+`.github/workflows/workflow-guard.yml` 是唯一被預先授權、可以用 `pull_request` 自動觸發的 workflow——它不安裝任何依賴、幾秒內跑完、零額外費用風險，存在的目的就是在 PR 階段自動擋下任何其他 workflow 偷偷把觸發條件改成 `push`／`pull_request`／`schedule` 等自動觸發。任何 agent 都不准修改、停用或繞過這個守門 workflow 來規避檢查；如果真的評估後認為需要新增一個自動觸發的 workflow，必須先用白話向使用者說明原因與預期的額外成本，取得明確同意後才能調整守門規則把該檔案加入白名單。
