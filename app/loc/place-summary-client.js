@@ -11,7 +11,7 @@ export async function readPlaceSummary(scopeId,{startDate='',endDate=''}={}){
   const scope=defaultScopeData(scopeId);
   if(!scope)return {rows:[],anchors:[]};
   if(scopeId!=='local'&&!Capacitor.isNativePlatform()){
-    const {data,error}=await dbPublicClient.schema('silver').rpc('read_scope_analytics',{
+    const {data,error}=await dbPublicClient.schema('silver').analytics({
       p_scope_id:scopeId,p_view:'trace_places',
       p_start:startDate||null,p_end:endDate||null,p_options:{}
     });
