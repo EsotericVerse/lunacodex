@@ -30,6 +30,14 @@ test('home editor re-entry requires the verified entry marker and expires',()=>{
   clearHomeEditorAccess(storage);
   assert.equal(readHomeEditorAccess(storage,10001),null);
   const source=read('app/loc/HomeEditModeRestore.jsx');
-  assert.match(source,/marker.userId===result\?\.user\?\.id/);
-  assert.match(source,/canManageScopeSync\(scopeId\)/);
+  // The marker's own TTL (edit-session-ttl.mjs) is the trust window now:
+  // restoring edit mode across a static-export page reload must NOT repeat
+  // the live silver.manage RPC that ScopeHomeEditEntry.jsx already ran once
+  // at the single unified entry point. A live re-check here on every page
+  // mount was what made entering edit mode trigger a fresh DB query on
+  // every subsequent page within the same still-valid editing session.
+  assert.doesNotMatch(source,/useAccount/);
+  assert.doesNotMatch(source,/\.refresh\(\)/);
+  assert.match(source,/marker\.scopeId!==scopeId/);
+  assert.match(source,/dock\?\.begin\(scopeId\)/);
 });
