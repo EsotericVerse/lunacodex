@@ -1,4 +1,17 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {extractImportCreatedAt,createImportBatchSizer,estimateImportMinutes} from '../app/loc/import-batch.mjs';
+import {
+  dedupeIncomingImport,matchExistingImportBySiteId,matchExistingImportByCreatedAt,
+  readImportCandidatesByTimeWindows,isUnchangedImportBeforeWrite,insertImportBatches
+} from '../app/loc/import-duplicate-check.mjs';
 
+const post=(uid,site,site_id,content='original')=>({
+  uid,site,site_id,
+  createtime:'2024-08-01T00:00:00.000Z',
+  title:'Post',content
+});
 test('empty sites do not enter matching pools, but every input row is deduplicated before inserting',()=>{
   const panel=readFileSync(new URL('../app/loc/ManagementImportPanel.jsx',import.meta.url),'utf8');
   const site=panel.indexOf('const distinctSites=[...new Set(analyzed.valid.map(');
