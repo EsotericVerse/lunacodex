@@ -455,21 +455,22 @@ export function createDatabaseClient({publicClient,authClient,auth}){
   // here -- the caller reviews each group and deletes explicitly.
   async function findGalaxyDuplicates(scopeId){
     const scope=normalizeScopeId(scopeId);
-    const data=await rpcJson('find_galaxy_duplicates',{p_scope_id:scope},'Duplicate scan');
-    const groups=(Array.isArray(data)?data:[]).map(row=>({
-      sourceName:String(row?.site||''),
-      createtime:String(row?.createtime||''),
-      uids:(Array.isArray(row?.uids)?row.uids:[]).map(String),
-      titles:(Array.isArray(row?.titles)?row.titles:[]).map(String),
-      updateTimes:(Array.isArray(row?.update_times)?row.update_times:[]).map(value=>String(value||''))
-    }));
-    // Rows whose body still holds line breaks are the re-imported copies of a post
-    // that is normally stored on one line.
-    const allUids=groups.flatMap(group=>group.uids);
-    const withBreaks=allUids.length
-      ?new Set((await rpcJson('galaxy_uids_with_newline',{p_scope_id:scope,p_uids:allUids},'Duplicate scan')||[]).map(String))
-      :new Set();
-    return groups.map(group=>({...group,hasNewline:group.uids.map(uid=>withBreaks.has(uid))}));
+    const {data,error}=await authClient.schema('silver').managedAction(
+      'find_galaxy_duplicates',{p_scope_id:scope});
+    if(error)throw new Error(error.message||'Duplicate scan failed');
+    return (Array.isArray(data)?data:[]).map(row=>{
+      const uids=(Array.isArray(row?.uids)?row.uids:[]).map(String);
+      const newlineFlags=Array.isArray(row?.newline_flags)?row.newline_flags:[];
+      return {
+        sourceName:String(row?.site||''),
+        createtime:String(row?.createtime||''),
+        uids,
+        titles:(Array.isArray(row?.titles)?row.titles:[]).map(String),
+        updateTimes:(Array.isArray(row?.update_times)?row.update_times:[])
+          .map(value=>String(value||'')),
+        hasNewline:uids.map((_,index)=>newlineFlags[index]===true)
+      };
+    });
   }
 
   async function writeKeywordLibraryItem(scopeId,operation,node={}){
