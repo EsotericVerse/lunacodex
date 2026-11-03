@@ -10,7 +10,9 @@ export function makeConnectionProfile(raw:Record<string,unknown>,password:string
   const location=normalizeDatabaseLocation(provider,raw.project_url);
   const username=String(raw.username||"").trim();
   const database=String(raw.database||"").trim();
-  if(!username||!database||!password)bad("Database username, database and password are required");
+  const direct=String(raw.connection_url||'').trim();
+  if(!password||!direct&&(!username||!database))
+    bad("Database URL and control token, or user/database/password, are required");
   if(username.length>160||database.length>160||password.length>1024)bad("Database credentials exceed allowed length");
   const region=String(raw.region||"").trim();
   let host:string;let port:number;let user=username;
@@ -26,8 +28,34 @@ export function makeConnectionProfile(raw:Record<string,unknown>,password:string
   if(!host||!port)bad("Invalid SQL destination");
   const protocol={postgres:"postgresql:",mysql:"mysql:",mssql:"mssql:"}[engine];
   if(!protocol)bad("This SQL driver requires a supported persistent runtime");
-  const url=protocol+"//"+encodeURIComponent(user)+":"+encodeURIComponent(password)+"@"+host+":"+port+"/"+encodeURIComponent(database);
-  return {engine,url,link:location.link,region,tls:true};
+  // A complete SQL URL plus a separate token is a private driver profile.
+  // The URL and token never belong in the public LOC registry JSON.
+  let url:string;
+  if(direct){
+    let parsed:URL;
+    try{parsed=new URL(direct)}catch{bad("Invalid SQL connection URL")}
+    if(!parsed||parsed.protocol!==protocol||!parsed.hostname||parsed.password||
+       parsed.search||parsed.hash)bad("SQL URL needs a valid host and no embedded secret");
+    if(!parsed.pathname||parsed.pathname==='/')bad("SQL URL needs a database name");
+    if(!parsed.username&&!(engine==='mssql'&&
+       raw.auth_type==='azure-active-directory-access-token'))
+      bad("SQL URL needs a user name");
+    parsed.password=password;
+    url=parsed.toString();
+  }else{
+    url=protocol+"//"+encodeURIComponent(user)+":"+encodeURIComponent(password)+"@"+host+":"+port+"/"+encodeURIComponent(database);
+  }
+  const type=String(raw.auth_type||'default');
+  if(!['default','ldap-simple','ntlm','azure-active-directory-access-token',
+    'azure-active-directory-default','azure-active-directory-password',
+    'azure-active-directory-msi-vm','azure-active-directory-msi-app-service',
+    'azure-active-directory-service-principal-secret'].includes(type))
+    bad("Unsupported SQL authentication");
+  const authentication=type==='default'?undefined:{type,
+    ...(raw.domain?{domain:String(raw.domain)}:{}),
+    ...(raw.client_id?{clientId:String(raw.client_id)}:{}),
+    ...(raw.tenant_id?{tenantId:String(raw.tenant_id)}:{})};
+  return {engine,url,link:location.link,region,tls:true,authentication};
 }
 export async function readVaultConnection(controlDb:any,target:Record<string,unknown>){
   const name=vaultName(String(target.connection_alias||""));
