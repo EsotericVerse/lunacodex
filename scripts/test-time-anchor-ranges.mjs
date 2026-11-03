@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {encodeTimeSegment,decodeTimeSegments,resolveTimeSegments,
+import {allocateTimeUid,isTimeUid,encodeTimeSegment,decodeTimeSegments,resolveTimeSegments,
   timePeriodContainsDate,resolveTimeTrace,timeDateWindows,intersectTimeDateWindows,storedTimeRange
 } from '../app/loc/time-anchor-ranges.mjs';
 const anchors=new Map([
@@ -114,4 +114,13 @@ test('stored versioned Time ranges retain disjoint period segments and invalid r
  assert.deepEqual(storedTimeRange(JSON.stringify(doc)),projection);
  assert.equal(storedTimeRange({}),null);
  assert.equal(storedTimeRange({version:1,segments:[{start_date:'yesterday'}]}),null);
+});
+
+
+test('new Time UIDs are eight-character case-sensitive Base62 without uppercasing links',()=>{
+ const uid=allocateTimeUid([{uid:'ABcd1234'}]);
+ assert.match(uid,/^[A-Za-z0-9]{8}$/);
+ assert.equal(isTimeUid('ABcd1234'),true);
+ assert.deepEqual(encodeTimeSegment('ABcd1234','Wxyz5678'),['ABcd1234','Wxyz5678']);
+ assert.equal(decodeTimeSegments(['ABcd1234','Wxyz5678'])[0].malformed,false);
 });
