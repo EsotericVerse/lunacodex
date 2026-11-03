@@ -1,4 +1,4 @@
-import {sql} from 'npm:kysely@0.29.6';
+import {sql} from 'npm:kysely@0.29.8';
 const scopePattern=/^[a-z][a-z0-9]{0,14}$/;
 function id(value){
   const s=String(value||'').trim().toLowerCase();
