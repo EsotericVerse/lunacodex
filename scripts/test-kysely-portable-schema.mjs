@@ -74,3 +74,16 @@ test('MySQL existing tables are recognized regardless of database name',async()=
   assert.deepEqual(out.created,[]);
   assert.deepEqual(tables,[]);
 });
+
+
+test('verified LOC administrator is checked before touching an external SQL host',()=>{
+  const gateway=fs.readFileSync('supabase/functions/loc-kysely/index.ts','utf8');
+  const start=gateway.indexOf('async function saveDatabaseTarget(');
+  const end=gateway.indexOf('\nasync function executeRequest(',start);
+  assert.ok(start>=0&&end>start);
+  const implementation=gateway.slice(start,end);
+  const authorized=implementation.indexOf('await checkAdminRole(claims)');
+  const connection=implementation.indexOf('await databaseForTarget(target,{profileLookup:async()=>profile})');
+  assert.ok(authorized>=0&&connection>=0&&authorized<connection,
+    'Reject unauthorized LOC requests before attempting external database DDL');
+});
