@@ -172,14 +172,24 @@ async function saveDatabaseTarget(input:Record<string,unknown>,role:string,claim
   if(profile){
     // Probe the selected driver before accepting it as the running LOC database.
     const candidate=await databaseForTarget(target,{profileLookup:async()=>profile});
-    await candidate.introspection.getTables();
+    const tables=await candidate.introspection.getTables();
+    if(!tables.length)throw Object.assign(new Error(
+      "No SQL tables found. LOC needs Galaxy/Anchor tables before activation"),{httpStatus:409});
+    // The relation namespace belongs to the SQL engine, not the old Silver RPC.
+    const requestedScope=String(input.scopeid||'lo3rwang');
+    const matches=tables.filter((table:any)=>
+      table.name===requestedScope+'_galaxy'||table.name===requestedScope+'_anchor');
+    if(matches.length!==2)throw Object.assign(new Error(
+      "LOC requires "+requestedScope+"_galaxy and "+requestedScope+"_anchor"),{httpStatus:409});
+    input.schema_name=engine==='mysql'?'':String(matches[0].schema||'public');
   }
   const control=await checkAdminRole(claims);
   if(!profile)await profileForTarget({...target,project_url:location.link});
   const record={
     provider,engine,connection_alias:alias,connection_mode:target.connection_mode,
     label,project_id:provider==="supabase"?location.projectId:String(input.project_id||"")||null,
-    project_url:location.link,region,updated_at:new Date()
+    project_url:location.link,region,
+    schema_name:String(input.schema_name||''),updated_at:new Date()
   };
   return control.transaction().execute(async trx=>{
     if(profile)await saveVaultConnection(trx,alias,profile);
@@ -214,10 +224,14 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
     if(body.kind==="managed-write"){
       if(role!=="authenticated")
         throw Object.assign(new Error("Management requires verified Clerk identity"),{httpStatus:403});
-      return await executeCrossEngineManagedWrite(trx,body,{role,claims,engine:executionPort.engine});
+      return await executeCrossEngineManagedWrite(trx,body,{role,claims,
+        engine:executionPort.engine,namespace:target.schema_name});
     }
-    await authorizeCrossEngineQuery(trx,body,{role,claims});
-    return await executeKyselyQuery(trx,body,{dialect:executionPort.engine});
+    const access=await authorizeCrossEngineQuery(trx,body,{role,claims});
+    return await executeKyselyQuery(trx,body,{dialect:executionPort.engine,
+      namespace:String(target.schema_name||(
+        executionPort.engine==='mssql'?'dbo':'public')),
+      publicOnly:access?.publicOnly===true});
   }
   if (role === "authenticated") await sql`set local role authenticated`.execute(trx);
   else if (target.provider === "neon") await sql`set local role anonymous`.execute(trx);
