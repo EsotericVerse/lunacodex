@@ -149,11 +149,21 @@ export async function executeCrossEngineManagedWrite(db,body,context){
          Object.keys(row).some(key=>!SAFE_FIELD.test(key)||key==='able'))
         invalidWrite('Invalid managed insert columns');
     }
-    // Insert individually: heterogeneous row shapes keep database defaults.
-    // The outer Gateway transaction guarantees all-or-nothing semantics.
+    // Batch by column shape to preserve omitted database defaults.
+    // 50 rows bounds SQL Server's 2,100-parameter ceiling while avoiding
+    // one round trip per imported article.
+    const groups=new Map();
     for(const row of rows){
-      const result=await db.insertInto(name).values(row).executeTakeFirst();
-      count+=managedAffected(result);
+      const shape=Object.keys(row).sort().join('|');
+      const group=groups.get(shape)||[];
+      group.push(row);groups.set(shape,group);
+    }
+    for(const group of groups.values()){
+      for(let i=0;i<group.length;i+=50){
+        const batch=group.slice(i,i+50);
+        const result=await db.insertInto(name).values(batch).executeTakeFirst();
+        count+=managedAffected(result);
+      }
     }
   }else if(operation==='update_batch'){
     if(!table.endsWith('_galaxy')||!Array.isArray(p.p_rows)||
