@@ -61,6 +61,12 @@ function routedSchema(schemaName,cloudSchema){
       return scopeId==='local'
         ?localSchema.rpc('scope_type_attr',{p_scope_id:scopeId,p_type:type,p_attr:attr})
         :cloudSchema.anchor(scopeId,type,attr);
+    },
+    analytics(args){
+      if(String(args?.p_scope_id||'')==='local')return localSchema.rpc('read_scope_analytics',args);
+      const source=cloudSchema.analytics?cloudSchema:
+        (adapter.configuredPublicClient||adapter.publicClient).schema(schemaName);
+      return source.analytics(args);
     }
   };
 }
