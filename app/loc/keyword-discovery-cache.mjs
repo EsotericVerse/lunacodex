@@ -34,7 +34,7 @@ export function decodeKeywordSuggestionCache(value){
 export async function readKeywordSuggestionCache(scopeId){
   if(!isUnifiedAnchorScope(scopeId))return null;
   const {data,error}=await dbAuthClient.schema('silver')
-    .rpc('read_scope_keyword_suggestions',{p_scope_id:scopeId});
+    .rpc('scope_type_attr',{p_scope_id:scopeId,p_type:'item',p_attr:{op:'suggestions'}});
   if(error)throw new Error(error.message||'無法讀取關鍵詞暫存');
   return decodeKeywordSuggestionCache(data);
 }

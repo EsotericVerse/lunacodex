@@ -21,7 +21,6 @@ export const RPC_ALLOWLIST={
   'silver.refresh_scope_search_summary':['p_scope_id'],
   'silver.manage':['p_type','p_id'],
   'silver.loc_admin_settings':['p_section','p_operation','p_key','p_value'],
-  'silver.read_music_style_tree':[],
   // These existing scope procedures perform database-side permission checks,
   // atomic multi-row writes, or bounded indexed lookups. Do not recreate
   // transactions as multiple browser requests.
