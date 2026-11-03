@@ -53,3 +53,50 @@ export function assertCrossEnginePublicRead(request){
   }
   return request;
 }
+
+const SCOPE_ID=/^[a-z][a-z0-9]{0,14}$/;
+const PRIVATE_RELATION=/^([a-z][a-z0-9]{0,14})(?:_(galaxy|anchor|blocks|keywords|trace|time|galaxy_media))?$/;
+const VERIFIED_EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/**
+ * LOC ownership must be established independently of database login.
+ * MySQL/MSSQL don't inherit PostgreSQL RLS, so never "reset role" and assume
+ * writes became safe. Validate the verified Clerk identity against the
+ * target database's own Scope Registry using only Kysely queries.
+ *
+ * This is the generic CRUD gate. Higher-level features must use Kysely and
+ * the same ACL; PostgreSQL-specific actions are not dispatched here.
+ */
+export async function authorizeCrossEngineQuery(db,request,{role='anon',claims={}}={}){
+  if(role!=='authenticated'){
+    assertCrossEnginePublicRead(request);
+    return;
+  }
+  if(request?.kind!=='query'||request.schema!=='silver'||
+     typeof request.table!=='string'){
+    const error=new Error('Unsupported cross-engine LOC request');
+    error.httpStatus=403;throw error;
+  }
+  const email=String(claims.email||'').trim().toLowerCase();
+  if(!VERIFIED_EMAIL.test(email)||claims.provider!=='clerk'||
+     !/^user_[A-Za-z0-9]+$/.test(String(claims.sub||''))){
+    const error=new Error('Verified Clerk identity required for cross-engine SQL');
+    error.httpStatus=403;throw error;
+  }
+  const table=request.table;
+  if(CROSS_ENGINE_PUBLIC_READ_TABLES.includes(table)&&request.operation==='select')
+    return;
+  const permissions=await db.selectFrom('silver.manage')
+    .select(['id','email','manage_role','active'])
+    .where('email','=',email).execute();
+  const global=permissions.some(row=>row.id==='admin'&&row.manage_role==='admin');
+  if(global)return;
+  const match=table.match(PRIVATE_RELATION);
+  const scope=match?.[1];
+  const owner=scope&&SCOPE_ID.test(scope)&&permissions.some(row=>
+    row.id===scope&&row.active===true&&
+    (row.manage_role==='scope'||row.manage_role==='group'));
+  if(!owner||table==='manage'||table==='loc'){
+    const error=new Error('LOC Scope permission denied for selected SQL target');
+    error.httpStatus=403;throw error;
+  }
+}
