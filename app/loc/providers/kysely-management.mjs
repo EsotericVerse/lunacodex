@@ -183,7 +183,7 @@ const ACTIONS=new Set(['read_group_members','update_group_member_name',
   'update_group_default_article_class','is_current_email_blocklisted','move_scope_block',
   'preview_or_fill_galaxy_place','batch_fill_galaxy_location',
   'rename_scope_site_batch','save_scope_trace_place_names','loc_admin_settings',
-  'refresh_scope_search_summary','merge_scope_trace_place_names','import_shared_keyword_class']);
+  'refresh_scope_search_summary','merge_scope_trace_place_names','import_shared_keyword_class','manage']);
 function validScope(value){
   const id=String(value||'').trim().toLowerCase();
   if(!/^[a-z][a-z0-9]{0,14}$/.test(id))reject('Invalid Scope ID');
@@ -212,9 +212,21 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     loc_admin_settings:['p_section','p_operation','p_key','p_value'],
     refresh_scope_search_summary:['p_scope_id'],
     merge_scope_trace_place_names:['p_scope_id','p_keep_uid','p_remove_uids'],
-    import_shared_keyword_class:['p_target_scope','p_source_scope','p_class_uid']
+    import_shared_keyword_class:['p_target_scope','p_source_scope','p_class_uid'],
+    manage:['p_type','p_id']
   }[name];
   if(Object.keys(args).some(key=>!keys.includes(key)))reject('Unexpected Kysely action argument');
+  if(name==='manage'){
+    const type=String(args.p_type||'').toLowerCase();
+    if(!['self','global','group','scope'].includes(type))reject('Invalid management type');
+    const id=type==='self'?null:args.p_id??null;
+    if(['group','scope'].includes(type)&&!/^[a-z][a-z0-9]{0,14}$/.test(String(id||'')))
+      reject('Invalid management Scope');
+    // Do not migrate permission semantics yet. Existing manage(type,id)
+    // remains the security authority, executed through Kysely SQL only.
+    const result=await sql`select * from silver.manage(${type},${id})`.execute(trx);
+    return {data:result.rows,count:null};
+  }
   if(name==='merge_scope_trace_place_names')return {data:await mergeScopePoints(trx,args),count:null};
   if(name==='import_shared_keyword_class')return {data:await importSharedKeywordClass(trx,args),count:null};
   if(name==='refresh_scope_search_summary')return {data:await refreshScopeSearchSummary(trx,args),count:null};
