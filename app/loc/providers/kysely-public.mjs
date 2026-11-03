@@ -93,7 +93,7 @@ export async function executeKyselyPublicAction(trx,body,{engine='postgres',name
   const available=new Set(metadata.map(row=>String(row.schema||'')+'.'+row.name));
   const relationAvailable=async name=>{
     const [schema,tableName]=name.split('.');
-    return available.has(schema+'.'+tableName)||
+    return available.has((portable?namespace:schema)+'.'+tableName)||
       portable&&available.has('.'+tableName);
   };
   const registry=[];
