@@ -1,19 +1,31 @@
-// Galaxy article feature permissions use eight independent boolean columns.
-// The retired JSONB payload remains accepted only as a legacy import input.
-export const GALAXY_ABLE_KEYS=Object.freeze(['statics','culture','search','trace','list','keyword','extract','others']);
+// Canonical eight independent Galaxy permission columns, ordered as in the schema.
+// A legacy input payload can be converted when importing an old archive, but
+// no database query or write ever references Galaxy.able.
+export const GALAXY_ABLE_KEYS=Object.freeze([
+  'statics','culture','search','trace','list','keyword','extract','others'
+]);
 const legacyKeys={keyword:'keywords',others:'game'};
+function booleanOrUndefined(raw){
+  if(typeof raw==='boolean')return raw;
+  if(raw===1||raw==='1'||String(raw).toLowerCase()==='true')return true;
+  if(raw===0||raw==='0'||String(raw).toLowerCase()==='false')return false;
+  return undefined;
+}
 export function legacyGalaxyAble(row={}){
-  const searchable=row.searchable!==false;
-  const statistics=row.statistics_able!==false;
-  return {statics:statistics,culture:statistics,search:searchable,trace:searchable&&statistics,
-    list:searchable,keyword:searchable&&statistics,extract:true,others:true};
+  const searchable=booleanOrUndefined(row.searchable)!==false;
+  const statistics=booleanOrUndefined(row.statistics_able)!==false;
+  return {statics:statistics,culture:statistics,search:searchable,
+    trace:searchable&&statistics,list:searchable,keyword:searchable&&statistics,
+    extract:true,others:true};
 }
 export function galaxyAble(row={}){
   const fallback=legacyGalaxyAble(row);
+  // Legacy archive input only. This object is always expanded to columns.
   const packed=row.able&&typeof row.able==='object'&&!Array.isArray(row.able)?row.able:{};
   return Object.fromEntries(GALAXY_ABLE_KEYS.map(key=>{
-    const raw=row[key]??packed[key]??packed[legacyKeys[key]];
-    return [key,typeof raw==='boolean'?raw:fallback[key]];
+    const direct=booleanOrUndefined(row[key]);
+    const imported=booleanOrUndefined(packed[key]??packed[legacyKeys[key]]);
+    return [key,direct??imported??fallback[key]];
   }));
 }
 export function isScopedGalaxy(table){
@@ -29,8 +41,19 @@ export function prepareGalaxyInsertRows(table,rows=[]){
 export function prepareGalaxyUpdateValues(table,values){
   if(!isScopedGalaxy(table))return values;
   const {able,searchable,statistics_able,keywords,game,...fields}=values||{};
-  const updated=able&&typeof able==='object'&&!Array.isArray(able)?galaxyAble(values):{};
-  if(typeof keywords==='boolean')updated.keyword=keywords;
-  if(typeof game==='boolean')updated.others=game;
-  return {...fields,...updated};
+  // A partial edit must only touch flags explicitly provided. Never reset
+  // other columns or rebuild the old packed "able" payload.
+  const updated={...fields};
+  if(booleanOrUndefined(keywords)!==undefined&&updated.keyword===undefined)
+    updated.keyword=booleanOrUndefined(keywords);
+  if(booleanOrUndefined(game)!==undefined&&updated.others===undefined)
+    updated.others=booleanOrUndefined(game);
+  for(const key of GALAXY_ABLE_KEYS){
+    if(Object.hasOwn(updated,key)){
+      const normalized=booleanOrUndefined(updated[key]);
+      if(normalized===undefined)throw new Error('Invalid Galaxy boolean: '+key);
+      updated[key]=normalized;
+    }
+  }
+  return updated;
 }
