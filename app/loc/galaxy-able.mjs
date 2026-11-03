@@ -52,6 +52,12 @@ export function prepareGalaxyUpdateValues(table,values){
   if(!hasFlags)return fields;
   if(localGalaxy(table))return toLocalFields(fields);
   const {able,game,keywords,...rest}=fields;
-  if(!Object.hasOwn(fields,'able'))return rest;
+  if(!Object.hasOwn(fields,'able')){
+    // Older edit payloads may still use the two retired names.
+    // Never reset unrelated flags during a partial update.
+    if(!Object.hasOwn(rest,'keyword')&&Object.hasOwn(fields,'keywords'))rest.keyword=enabled(keywords);
+    if(!Object.hasOwn(rest,'others')&&Object.hasOwn(fields,'game'))rest.others=enabled(game);
+    return rest;
+  }
   return {...rest,...galaxyAble(fields)};
 }
