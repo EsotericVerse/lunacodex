@@ -336,7 +336,7 @@ class UnifiedQuery{
       }
       if(mapped==='attr'){jsonFilters.push(filter);continue}
       // A timestamp filter cannot be silently converted into a UID filter.
-      if(spec.kind==='media'&&filter.column==='location'
+      if(spec.kind==='media'&&filter.column==='location')
         throw Error('Media '+filter.column+' filtering requires article Galaxy.date/media_link');
       if(!physicalColumns.includes(mapped))throw Error('Unmapped anchor filter: '+filter.column);
       physical=applyFilter(physical,{...filter,column:mapped,
@@ -357,8 +357,7 @@ class UnifiedQuery{
       physical=physical.or(rewritten);
     }
     for(const order of this.orders){
-      // Media has no creation timestamp by design. Sort its legacy lists by
-      // title instead of the unrelated UID (which is not a time key).
+      // Both logical dates sort by the explicitly stored Anchor attr.date.
       const mapped=((spec.kind==='time'&&['address','date'].includes(order.column))||
         (spec.kind==='media'&&['date','createtime'].includes(order.column)))
         ?'attr->>date':readColumn(spec,order.column);
