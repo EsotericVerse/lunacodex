@@ -31,3 +31,23 @@ test('switching active Class never revives invalidated Class from global complet
  assert.equal(keywordClassState(config,'ClA1'),null);
  assert.equal(keywordClassState(config,'ClB1').matchedDocuments,5);
 });
+
+test('native eight-character Anchor Class keeps state, invalidation and completion',()=>{
+ const uid='ZCBXGIGR',date='2026-11-03T00:00:00Z';
+ const meta=completeKeywordClass({},uid,{matchedDocuments:67},date);
+ assert.equal(keywordClassState({keyword_meta:meta},uid).matchedDocuments,67);
+ assert.equal(activeKeywordMeta({keyword_meta:meta},uid).matchedDocuments,67);
+ const stale=invalidateKeywordClass(meta,uid);
+ assert.equal(keywordClassState({keyword_meta:stale},uid),null);
+ const restored=completeKeywordClass(stale,uid,{matchedDocuments:5},date);
+ assert.equal(keywordClassState({keyword_meta:restored},uid).matchedDocuments,5);
+});
+test('Class UIDs remain case-sensitive and only four or eight Base62 characters',()=>{
+ const uid='ZCBXGIGR',date='2026-11-03T00:00:00Z';
+ const meta=completeKeywordClass({},uid,{},date);
+ assert.equal(keywordClassState({keyword_meta:meta},'zCBXGIGR'),null);
+ for(const invalid of ['ABC','ABCDE','ABCDEFG','ABCDEFGHI','abcd123!']){
+   assert.throws(()=>invalidateKeywordClass({},invalid),/Invalid Keywords Class UID/);
+   assert.throws(()=>completeKeywordClass({},invalid,{},date),/Invalid analysis completion/);
+ }
+});
