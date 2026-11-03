@@ -1,14 +1,22 @@
 'use client';
 import {useEffect,useState} from 'react';
 import {useUiText} from '../i18n/UiText';
+import {useUiSection} from '../i18n/ui-locale';
+import {registerDefaultSection} from '../i18n/ui-copy';
+import scopeSettingsZh from '../i18n/sections/uiExtra.scopeSettings.zh_tw.js';
 import {mcpClerkSession} from './mcp/clerk-access.mjs';
 import {scopeGroupRequest} from './mcp/scope-group-client.mjs';
 import {dbPublicClient} from './db-client.mjs';
 
+registerDefaultSection('uiExtra.scopeSettings',scopeSettingsZh);
+
 const ACTIONS=['read','write','configure','manage'];
 export default function ScopeGroupAccessPanel({groupId}){
+  useUiSection('uiExtra.scopeSettings');
   const ui=useUiText();
   const t=k=>ui('uiExtra.scopeSettings.'+k);
+  const actionLabel=action=>ACTIONS.includes(action)
+    ?t('groupAction'+action.charAt(0).toUpperCase()+action.slice(1)):action;
   const [data,setData]=useState(null);
   const [subject,setSubject]=useState('');
   const [scope,setScope]=useState('');
@@ -109,7 +117,7 @@ export default function ScopeGroupAccessPanel({groupId}){
           <div style={{display:'flex',gap:16,flexWrap:'wrap'}}>
             {ACTIONS.map(action=><label key={action} style={{display:'inline-flex',alignItems:'center',gap:6}}>
               <input type="checkbox" checked={selected.includes(action)}
-                onChange={()=>toggle(action)}/>{action}
+                onChange={()=>toggle(action)}/>{actionLabel(action)}
             </label>)}
           </div>
         </fieldset>
@@ -126,7 +134,7 @@ export default function ScopeGroupAccessPanel({groupId}){
           {data.grants.map(grant=><div className="scope-management-wide-field" key={grant.key}
             style={{display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
             <span><strong>{grant.scope}</strong> · {grant.subject}</span>
-            <span className="scope-status">{grant.actions.join(', ')} · {new Date(grant.expires_at).toLocaleDateString()}</span>
+            <span className="scope-status">{grant.actions.map(actionLabel).join(', ')} · {new Date(grant.expires_at).toLocaleDateString()}</span>
             <button type="button" className="loc-button" disabled={busy}
               onClick={()=>{
                 if(globalThis.confirm?.(t('groupConfirmRevoke')))
