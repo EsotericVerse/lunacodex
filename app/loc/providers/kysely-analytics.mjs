@@ -404,6 +404,32 @@ export async function executePortableKyselyAnalytics(db,body,{engine,namespace='
     }
     return {data:{rows},count:null};
   }
+  if(mode==='loc'&&scope==='loc'){
+    // A self-hosted LOC database only needs Galaxy + Anchor per Scope.
+    // Kysely introspection replaces the old LOC registry RPC.
+    const tables=await db.introspection.getTables();
+    const present=new Set(tables
+      .filter(t=>!t.schema||t.schema===namespace)
+      .map(t=>t.name));
+    const ids=[...present].filter(name=>name.endsWith('_galaxy'))
+      .map(name=>name.slice(0,-'_galaxy'.length))
+      .filter(id=>SCOPE.test(id)&&present.has(id+'_anchor')).sort();
+    const scopes=[],rows=[];let earliest=null;
+    for(const id of ids){
+      const relation=portableRelation(id+'_galaxy',engine,namespace);
+      let q=portableStatBase(db,relation,start,end,'statics');
+      q=q.select('date').select(eb=>eb.fn.countAll().as('n'))
+        .groupBy('date').orderBy('date','asc');
+      const counts=await q.execute();
+      scopes.push({scope_id:id,display_name:id});
+      for(const row of counts){
+        const day=portableDay(row.date);
+        rows.push({scope_id:id,day,item_count:Number(row.n||0)});
+        if(day&&(!earliest||day<earliest))earliest=day;
+      }
+    }
+    return {data:{earliest,scopes,rows},count:null};
+  }
   const galaxy=portableRelation(scope+'_galaxy',engine,namespace);
   const anchor=portableRelation(scope+'_anchor',engine,namespace);
   const grouped=async(flag,fields,opts={})=>{
