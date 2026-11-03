@@ -361,14 +361,18 @@ Deno.serve(async (request) => {
         if(body.update_existing){
           const values={...row};
           delete values.uid;
-          const update=await executeRequest(trx,controlTarget,"authenticated",claims,{
-            kind:"rpc",schema:"silver",name:"management_write",
-            args:{p_table:table,p_operation:"update",p_values:values,
-              p_filters:[{column:"uid",operator:"eq",value:row.uid},
-                {column:"site_id",operator:"eq",value:row.site_id}]}
-          });
-          if(update?.data?.count===1)return update;
-          if(update?.data?.count!==0)throw new Error("Unexpected managed sync update count");
+          const update=await executeRequest(trx,controlTarget,"authenticated",claims,
+            scope==="lo3rwang"
+              ?{kind:"query",schema:"silver",table:scope+"_galaxy",operation:"update",
+                values,filters:[{column:"uid",operator:"eq",value:row.uid},
+                  {column:"site_id",operator:"eq",value:row.site_id}]}
+              :{kind:"rpc",schema:"silver",name:"management_write",
+                args:{p_table:table,p_operation:"update",p_values:values,
+                  p_filters:[{column:"uid",operator:"eq",value:row.uid},
+                    {column:"site_id",operator:"eq",value:row.site_id}]}});
+          const updatedCount=update?.count??update?.data?.count;
+          if(updatedCount===1)return update;
+          if(updatedCount!==0)throw new Error("Unexpected managed sync update count");
         }
         return executeRequest(trx,controlTarget,"authenticated",claims,{
           kind:"rpc",schema:"silver",name:"management_write",
@@ -414,12 +418,15 @@ Deno.serve(async (request) => {
         const prMarker=new RegExp("(?:^|[^0-9])PR\\s*#"+Number(prNumber)+"(?:[^0-9]|$)");
         if(!prMarker.test(row.title))
           throw Object.assign(new Error("PR number does not match this article's title"),{httpStatus:403});
-        return executeRequest(trx,controlTarget,"authenticated",claims,{
-          kind:"rpc",schema:"silver",name:"management_write",
-          args:{p_table:table,p_operation:"update",
-            p_values:{title:body.title,content:body.content,UpdateTime:body.updated_at},
-            p_filters:[{column:"uid",operator:"eq",value:uid}]}
-        });
+        const values={title:body.title,content:body.content,UpdateTime:body.updated_at};
+        return executeRequest(trx,controlTarget,"authenticated",claims,
+          scope==="lo3rwang"
+            ?{kind:"query",schema:"silver",table:scope+"_galaxy",operation:"update",
+              values,filters:[{column:"uid",operator:"eq",value:uid}]}
+            :{kind:"rpc",schema:"silver",name:"management_write",
+              args:{p_table:table,p_operation:"update",p_values:values,
+                p_filters:[{column:"uid",operator:"eq",value:uid}]}});
+
       });
       return json(result);
     }
