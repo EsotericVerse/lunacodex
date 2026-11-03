@@ -35,9 +35,9 @@ export async function readScopeSearchSummary(scopeIds){
   const ids=summaryScopeIds(scopeIds);
   if(!ids.length)return {rows:[],summary:null};
   // Scope status.search is not publicly readable as a table column.
-  // This RPC projects only aggregate statistics without exposing config.
+  // Unified analytics projects only aggregate statistics without exposing config.
   const {data,error}=await dbPublicClient.schema('silver').rpc(
-    'read_scope_search_summary',{p_scope_ids:ids});
+    'read_scope_analytics',{p_scope_id:'loc',p_view:'search_summary',p_options:{scopeIds:ids}});
   if(error)throw new Error(error.message||'搜尋摘要讀取失敗');
   const rows=Array.isArray(data?.rows)?data.rows:[];
   return {rows,summary:summarizeScopeSearchSummary(ids,rows)};
