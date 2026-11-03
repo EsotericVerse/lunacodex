@@ -559,7 +559,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
     </section>:null}
     {!loading&&workspace==='suggest'?<section className="loc-card scope-feature-card">
       <h2>建議新增關鍵詞</h2>
-      <p className="scope-status">僅從目前 Scope 的文章內文找出尚未收錄的詞與詞組；既有關鍵詞不分析、不更改，也不會自動新增。</p>
+      <p className="scope-status">只從目前資料來源的文章內文找出尚未收錄的詞與詞組；不修改既有關鍵詞，也不會自動新增。</p>
       {discoveryBusy?<div className="scope-preview-links">
         <p className="scope-status" role="status">分析中：{Number(discoveryProgress?.completed||0).toLocaleString()} / {Number(discoveryProgress?.total||0).toLocaleString()} 篇</p>
         <button className="loc-button" type="button" onClick={()=>discoveryAbort.current?.abort()}>停止掃描</button>
