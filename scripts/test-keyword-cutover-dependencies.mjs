@@ -31,23 +31,22 @@ test('portable Postgres/Kysely RPC allowlist follows the six-column cutover',()=
   ])assert.doesNotMatch(code,new RegExp("'silver\."+name+"'"));
 });
 
-test('unified Anchor operations retain only authorized transactional RPC gateways',()=>{
+test('unified Anchor operations expose only remaining domain transaction gateways',()=>{
   const gateway=readFileSync(new URL('../app/loc/providers/kysely-runtime.mjs',import.meta.url),'utf8');
   const expected={
     import_shared_keyword_class:['p_target_scope','p_source_scope','p_class_uid'],
     save_scope_trace_place_names:['p_scope_id','p_uid','p_names'],
-    preview_timeline_place_page_json:['p_scope_id','p_windows','p_limit','p_offset'],
-    apply_scope_point_links:['p_scope_id','p_updates'],
+    merge_scope_trace_place_names:['p_scope_id','p_keep_uid','p_remove_uids'],
+    scope_type_attr:['p_scope_id','p_type','p_attr'],
     search_scope_trace_place_names:['p_scope_id','p_term','p_limit']
   };
   for(const [name,args] of Object.entries(expected)){
     assert.ok(gateway.includes("'silver."+name+"':["+args.map(a=>"'"+a+"'").join(',')+"]"),
-      'Missing existing RPC gateway entry: '+name);
+      'Missing active RPC gateway entry: '+name);
   }
-  assert.equal(gateway.includes("'silver.merge_scope_trace_place_names':["),false);
-  assert.ok(gateway.includes("const jsonbArgsByRpc={"));
-  assert.ok(gateway.includes("'silver.preview_timeline_place_page_json':new Set(['p_windows'])"));
-  assert.ok(gateway.includes("'silver.apply_scope_point_links':new Set(['p_updates'])"));
+  assert.doesNotMatch(gateway,/'silver\\.preview_timeline_place_page_json':/);
+  assert.doesNotMatch(gateway,/'silver\\.apply_scope_point_links':/);
+  assert.match(gateway,/'silver\\.scope_type_attr':new Set\\(\\['p_attr'\\]\\)/);
   assert.ok(gateway.includes("jsonbArgs?.has(name)"));
 });
 
