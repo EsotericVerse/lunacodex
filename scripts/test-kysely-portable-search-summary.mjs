@@ -17,7 +17,7 @@ function fixture(engine,namespace){
     sum:()=>({as:key=>({key})})
   })};
   const db={
-    introspection:{getTables:async()=>[{schema:namespace,name:'writer_galaxy'},
+    introspection:{getTables:async()=>[{schema:engine==='mysql'?'client_database':namespace,name:'writer_galaxy'},
       {schema:namespace,name:'writer_anchor'}]},
     selectFrom:table=>{
       calls.push(table);
