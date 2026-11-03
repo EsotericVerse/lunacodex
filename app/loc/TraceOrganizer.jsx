@@ -64,7 +64,7 @@ export default function TraceOrganizer({scopeId,spatial,reload}){
       // The existing RPC updates point.attr.location atomically for the
       // unified Scope, and keeps legacy name_lists for unconverted Scopes.
       const {data:written,error:saveError}=await dbAuthClient.schema('silver')
-        .rpc('save_scope_trace_place_names',{p_scope_id:scopeId,p_uid:selectedUid,
+        .managedAction('save_scope_trace_place_names',{p_scope_id:scopeId,p_uid:selectedUid,
           p_names:[...new Set([...list,place?.title].filter(Boolean))]});
       if(saveError||written!==1)throw saveError||Error('名稱對照儲存結果未確認');
       if(isUnifiedAnchorScope(scopeId)){
