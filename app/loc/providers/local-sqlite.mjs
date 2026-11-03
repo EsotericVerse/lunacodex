@@ -1038,7 +1038,7 @@ async function readKeywordTreeSummaryLocal({p_class_uid=null,p_start=null,p_end=
       FROM items i JOIN json_each(CASE WHEN json_type(i.uid_lists)='array' THEN i.uid_lists ELSE json_extract(i.uid_lists,'$.hits') END) hit
       JOIN local_galaxy article ON article.uid=json_extract(hit.value,'$.uid')
       JOIN settings s
-      WHERE json_extract(article.able,'$.keywords')=1
+      WHERE article.keyword=1
         AND (s.start_day IS NULL OR date(article.createtime,'+8 hours')>=s.start_day)
         AND (s.end_day IS NULL OR date(article.createtime,'+8 hours')<=s.end_day)
         AND (s.source IS NULL OR article.site=s.source)
