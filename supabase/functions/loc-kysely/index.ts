@@ -13,6 +13,7 @@ import {executeKyselyScopeAdmin} from "../../../app/loc/providers/kysely-scope-a
 import { selectedDatabaseTarget } from "../../../app/loc/providers/selected-database-target.mjs";
 import {resolveSqlExecutionPort,assertCrossEnginePublicRead,authorizeCrossEngineQuery,executeCrossEngineManagedWrite} from "../../../app/loc/providers/sql-engine-ports.mjs";
 import {resolveDatabaseRouting} from "../../../app/loc/providers/routing-config.mjs";
+import {bindLocAuthorization} from "../../../app/loc/providers/loc-authorization.mjs";
 
 const corsHeaders = {
   "access-control-allow-origin": "*",
@@ -186,6 +187,7 @@ async function saveDatabaseTarget(input:Record<string,unknown>,role:string,claim
 
 async function executeRequest(trx: any, target: Record<string,any>, role: string, claims: Record<string, unknown>, body: Record<string, unknown>) {
   const executionPort=resolveSqlExecutionPort(target);
+  bindLocAuthorization(trx,{role,claims});
   if(executionPort.session!=="postgres-rls"){
     // No PostgreSQL RLS on other engines. Authorize each request against
     // the target Scope Registry using the already verified Clerk identity.
