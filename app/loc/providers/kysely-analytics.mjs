@@ -1,4 +1,5 @@
 import {canManageLoc} from './loc-authorization.mjs';
+import {portableRelation} from './sql-engine-ports.mjs';
 import {sql} from 'npm:kysely@0.29.8';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
@@ -349,6 +350,98 @@ export async function executeKyselyAnalytics(trx,body,{role='anon'}={}){
       ?await traceDaily(trx,scope,ids,start,end,options.source||null)
       :await traceKeywordGroups(trx,scope,'silver.'+scope+'_'+anchorSuffix,
         ids,start,end,options.source||null,options.classUid,role);
+  }
+  return {data,count:null};
+}
+
+function portableDay(value){
+  if(value===null||value===undefined)return '';
+  if(value instanceof Date)return value.toISOString().slice(0,10);
+  return String(value).slice(0,10);
+}
+function portableStatBase(db,table,start,end,flag='statics',includeUndated=false){
+  let query=db.selectFrom(table).where(flag,'=',true).where('content','!=','');
+  if(!includeUndated)query=query.where('date','is not',null);
+  if(start)query=query.where('date','>=',start);
+  if(end)query=query.where('date','<=',end);
+  return query;
+}
+// Common LOC statistics, implemented with dialect-native Kysely builders.
+export async function executePortableKyselyAnalytics(db,body,{engine,namespace='',role='anon'}={}){
+  const args=body?.args??body;
+  const scope=scopeId(args.p_scope_id),mode=String(args.p_view||'').trim().toLowerCase();
+  const start=dateOnly(args.p_start),end=dateOnly(args.p_end);
+  const options=args.p_options??{};
+  if(start&&end&&start>end||!options||typeof options!=='object'||Array.isArray(options))
+    reject('Invalid statistics range');
+  if(!MODES.has(mode))reject('Unknown LOC statistics view');
+  const galaxy=portableRelation(scope+'_galaxy',engine,namespace);
+  const anchor=portableRelation(scope+'_anchor',engine,namespace);
+  const grouped=async(flag,fields,opts={})=>{
+    let query=portableStatBase(db,galaxy,start,end,flag,opts.includeUndated);
+    for(const field of fields)query=query.where(field,'is not',null);
+    return query.select(fields)
+      .select(eb=>eb.fn.countAll().as('n'))
+      .groupBy(fields).orderBy(fields[0],'asc').execute();
+  };
+  const first=async()=>{
+    const row=await db.selectFrom(galaxy)
+      .select(eb=>eb.fn.min('date').as('day'))
+      .where('statics','=',true).where('content','!=','').executeTakeFirst();
+    return row?.day??null;
+  };
+  let data;
+  if(mode==='earliest')data=await first();
+  else if(mode==='daily'||mode==='overview'||mode==='loc'){
+    const rows=await grouped('statics',['date','site'],
+      {includeUndated:options.includeUndated===true});
+    const source=rows.map(row=>({day:portableDay(row.date),kind:'source',
+      category:String(row.site||'').trim(),item_count:Number(row.n)}));
+    const totals=new Map();
+    for(const row of source)totals.set(row.day,(totals.get(row.day)||0)+row.item_count);
+    const summary=[...source,...[...totals].map(([day,n])=>({
+      day,kind:'total',category:'文字作品',item_count:n
+    }))].sort((a,b)=>a.day.localeCompare(b.day)||a.kind.localeCompare(b.kind));
+    if(mode==='daily')data=summary;
+    else if(mode==='overview'){
+      // Count public media in Anchor as the portable media inventory.
+      const count=await db.selectFrom(anchor)
+        .select(eb=>eb.fn.countAll().as('n'))
+        .where('type','in',['image','video','rune','suno'])
+        .where('invisible','=',false).executeTakeFirst();
+      data={earliest:await first(),media_count:Number(count?.n||0),
+        rows:summary,categories:[],aliases:[]};
+    }else data={earliest:await first(),scopes:[{
+      scope_id:scope,display_name:scope
+    }],rows:summary.filter(x=>x.kind==='total').map(x=>({
+      scope_id:scope,day:x.day,item_count:x.item_count
+    }))};
+  }else if(mode==='totals'){
+    const rows=await grouped('statics',['site'],{includeUndated:true});
+    data=rows.map(row=>({kind:'source',category:String(row.site||'').trim(),
+      item_count:Number(row.n)}));
+  }else if(mode==='trace_places'){
+    const rows=await grouped('trace',['date','location']);
+    data=rows.filter(row=>String(row.location||'').trim()).map(row=>({
+      day:portableDay(row.date),category:String(row.location).trim(),
+      item_count:Number(row.n)
+    }));
+  }else if(mode==='trace_daily'){
+    const ids=options.placeIds;
+    if(!Array.isArray(ids)||ids.length<1||ids.length>80||
+       ids.some(id=>!UID.test(String(id||''))))reject('Invalid Point IDs');
+    let query=portableStatBase(db,galaxy,start,end,'trace')
+      .where('place_id','in',ids);
+    if(options.source)query=query.where('site','=',String(options.source));
+    const rows=await query.select(['date','place_id'])
+      .select(eb=>eb.fn.countAll().as('n'))
+      .groupBy(['date','place_id']).orderBy('date','asc').execute();
+    data=rows.map(row=>({day:portableDay(row.date),category:row.place_id,
+      item_count:Number(row.n)}));
+  }else{
+    // Advanced private keyword/trace joins require a matching portable
+    // summary contract. Never silently substitute legacy Supabase totals.
+    reject('Unsupported portable LOC analytics mode');
   }
   return {data,count:null};
 }
