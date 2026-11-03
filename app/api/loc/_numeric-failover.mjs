@@ -35,14 +35,16 @@ export async function readIsrSummary(db,{origin,name,args}){
     ?runtime.isr_domains.find(item=>item.origin===runtime.cache_provider||item.id===runtime.cache_provider):null;
   if(runtime?.cache_mode!=='isr'||String(chosen?.origin||'').trim()!==origin)
     return {disabled:true,error:'ISR not enabled for this domain'};
-  const result=await db.rpc(name,args);
+  const result=db.analytics?await db.analytics(args):await db.rpc(name,args);
   if(result.error)return {retryable:isAvailabilityFailure(result),error:'Public summary unavailable'};
   return {data:result.data};
 }
 
 export async function readPublishedBootstrap(sources){
   const result=await tryPublicSources(sources,async client=>{
-    const response=await client.rpc('read_app_bootstrap',{p_scope_id:'loc',p_page_name:'index'});
+    const response=client.publicAction
+      ?await client.publicAction('read_app_bootstrap',{p_scope_id:'loc',p_page_name:'index'})
+      :await client.rpc('read_app_bootstrap',{p_scope_id:'loc',p_page_name:'index'});
     if(response.error)return {error:'Cannot publish public Bootstrap',retryable:isAvailabilityFailure(response)};
     if(!response.data||!Array.isArray(response.data.registry))return {error:'Invalid public Bootstrap',retryable:false};
     return {data:response.data,client};

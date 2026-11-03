@@ -1,31 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {GALAXY_ABLE_KEYS,galaxyAble,prepareGalaxyInsertRows,prepareGalaxyUpdateValues} from '../app/loc/galaxy-able.mjs';
+import {GALAXY_ABLE_KEYS,galaxyAble,prepareGalaxyInsertRows} from '../app/loc/galaxy-able.mjs';
 import {extractSearchContext} from '../app/loc/search-extract.mjs';
 
 test('Galaxy stores eight independent feature flags, even when an article is hidden',()=>{
-  assert.deepEqual(GALAXY_ABLE_KEYS,['statics','culture','search','trace','list','keyword','others','extract']);
+  assert.deepEqual(GALAXY_ABLE_KEYS,['statics','culture','search','trace','list','keyword','extract','others']);
   const features=galaxyAble({searchable:false,statistics_able:false,
     able:{statics:true,culture:false,search:true,trace:false,list:false,keywords:true,game:true,extract:true}});
   assert.equal(features.statics,true);
   assert.equal(features.list,false);
   assert.equal(features.search,true);
   assert.equal(features.extract,true);
-  const inserted=prepareGalaxyInsertRows('silver.lo3rwang_galaxy',[{uid:'0123aBCD'}])[0];
-  assert.equal(inserted.others,true);
-  assert.equal(inserted.keyword,true);
-  assert.equal(Object.hasOwn(inserted,'able'),false);
-});
-test('legacy keyword/game edits update physical flags without resetting other permissions',()=>{
-  const updated=prepareGalaxyUpdateValues('silver.lo3rwang_galaxy',{
-    uid:'0123aBCD',keywords:false,game:true
-  });
-  assert.deepEqual(updated,{uid:'0123aBCD',keyword:false,others:true});
-  const partial=prepareGalaxyUpdateValues('silver.lo3rwang_galaxy',{
-    uid:'0123aBCD',list:false
-  });
-  assert.deepEqual(partial,{uid:'0123aBCD',list:false});
+  const saved=prepareGalaxyInsertRows('silver.lo3rwang_galaxy',[{uid:'0123aBCD'}])[0];
+  assert.equal(saved.others,true);
+  assert.equal(Object.hasOwn(saved,'able'),false);
 });
 test('search excerpt shows exactly the hit with approximately ten surrounding characters',()=>{
   const text='天涯海角的深處星光照耀我們的混沌之月漸漸走向黎明朝陽';
@@ -40,11 +29,20 @@ test('search excerpt shows exactly the hit with approximately ten surrounding ch
 test('search is primary, excerpt is optional and never loads in regular browse',()=>{
   const ui=readFileSync(new URL('../app/modular/features/Search.jsx',import.meta.url),'utf8');
   const query=readFileSync(new URL('../app/loc/galaxy-query.js',import.meta.url),'utf8');
-  assert.match(query,/articlePermissionFilter\(current,'search'\)/);
-  assert.match(query,/GALAXY_ABLE_KEYS/);
-  assert.match(ui,/row\.able\?\.search===false\|\|row\.able\?\.extract===false/);
+  assert.match(query,/column:'search'/);
+  assert.doesNotMatch(ui,/media_link,able/);
+  assert.match(ui,/scopeId==='local'\?'uid,content,able':'uid,content,search,extract'/);
+  assert.match(ui,/galaxyAble\(article\)\.search===false\|\|galaxyAble\(article\)\.extract===false/);
   assert.match(ui,/if\(q&&!options\.browse&&!options\.placeOnly&&!options\.mediaOnly/);
   assert.match(ui,/extractSearchContext\(article\.content,query,10\)/);
   assert.match(ui,/highlightSearchText\(row\.snippet,matchedQueryRef\.current\)/);
-  assert.match(ui,/row\.able\?\.list===false\?'（使用者隱藏）'/);
+  assert.match(ui,/row\.list===false\?'（使用者隱藏）'/);
+});
+
+test('device-local SQLite continues storing the archived able payload',()=>{
+  const local=prepareGalaxyInsertRows('silver.local_galaxy',[{uid:'ABcD1234',list:false}])[0];
+  assert.equal(local.able.list,false);
+  assert.equal(Object.hasOwn(local,'list'),false);
+  assert.equal(local.able.keywords,true);
+  assert.equal(local.able.game,true);
 });

@@ -79,8 +79,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
 
   async function managementWriteUnchecked(payload){
     preflightWrite(payload?.p_table);
-    // All Cloud Galaxy writes use the eight boolean permission columns.
-    // Only device-local SQLite retains its private archive compatibility field.
+    // Persist the eight Galaxy permission booleans, never the removed JSONB column.
     if(isScopedGalaxy(payload?.p_table)&&payload?.p_operation==='insert')
       payload={...payload,p_rows:prepareGalaxyInsertRows(payload.p_table,payload.p_rows||[])};
     if(isScopedGalaxy(payload?.p_table)&&payload?.p_operation==='update')
@@ -117,7 +116,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
       }
       throw Error('Unsupported unified operation: '+op);
     }
-    const {data,error}=await authClient.schema('silver').rpc('management_write',payload);
+    const {data,error}=await authClient.schema('silver').managedWrite(payload);
     if(error)throw new Error(error.message||'Management write failed');
     if(payload?.p_table==='silver.manage'){
       const values=payload.p_values||{};
@@ -308,7 +307,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
 
   async function analyticsRead(scope,view,{startDate='',endDate='',options={}}={},client=publicClient){
     const day=value=>/^\d{4}-\d{2}-\d{2}/.test(String(value||''))?String(value).slice(0,10):null;
-    const {data,error}=await client.schema('silver').rpc('read_scope_analytics',{
+    const {data,error}=await client.schema('silver').analytics({
       p_scope_id:scope,p_view:view,p_start:day(startDate),p_end:day(endDate),p_options:options
     });
     if(error){const failure=new Error(error.message||'Scope analytics unavailable');failure.code=error.code;throw failure;}
@@ -316,11 +315,12 @@ export function createDatabaseClient({publicClient,authClient,auth}){
   }
 
   async function keywordRead(name,args,{isEmpty=data=>!data}={}){
-    const publicResult=await publicClient.schema('silver').rpc(name,args);
+    if(name!=='read_scope_analytics')throw Error('Unsupported keyword aggregate');
+    const publicResult=await publicClient.schema('silver').analytics(args);
     if(publicResult.error)throw new Error(publicResult.error.message||('Keyword RPC '+name+' failed'));
     if(!isEmpty(publicResult.data))return publicResult.data;
     if(!await verifiedKeywordOwner())return publicResult.data;
-    const privateResult=await authClient.schema('silver').rpc(name,args);
+    const privateResult=await authClient.schema('silver').analytics(args);
     if(privateResult.error)throw new Error(privateResult.error.message||('Private Keyword RPC '+name+' failed'));
     return privateResult.data;
   }
@@ -455,21 +455,22 @@ export function createDatabaseClient({publicClient,authClient,auth}){
   // here -- the caller reviews each group and deletes explicitly.
   async function findGalaxyDuplicates(scopeId){
     const scope=normalizeScopeId(scopeId);
-    const data=await rpcJson('find_galaxy_duplicates',{p_scope_id:scope},'Duplicate scan');
-    const groups=(Array.isArray(data)?data:[]).map(row=>({
-      sourceName:String(row?.site||''),
-      createtime:String(row?.createtime||''),
-      uids:(Array.isArray(row?.uids)?row.uids:[]).map(String),
-      titles:(Array.isArray(row?.titles)?row.titles:[]).map(String),
-      updateTimes:(Array.isArray(row?.update_times)?row.update_times:[]).map(value=>String(value||''))
-    }));
-    // Rows whose body still holds line breaks are the re-imported copies of a post
-    // that is normally stored on one line.
-    const allUids=groups.flatMap(group=>group.uids);
-    const withBreaks=allUids.length
-      ?new Set((await rpcJson('galaxy_uids_with_newline',{p_scope_id:scope,p_uids:allUids},'Duplicate scan')||[]).map(String))
-      :new Set();
-    return groups.map(group=>({...group,hasNewline:group.uids.map(uid=>withBreaks.has(uid))}));
+    const {data,error}=await authClient.schema('silver').managedAction(
+      'find_galaxy_duplicates',{p_scope_id:scope});
+    if(error)throw new Error(error.message||'Duplicate scan failed');
+    return (Array.isArray(data)?data:[]).map(row=>{
+      const uids=(Array.isArray(row?.uids)?row.uids:[]).map(String);
+      const newlineFlags=Array.isArray(row?.newline_flags)?row.newline_flags:[];
+      return {
+        sourceName:String(row?.site||''),
+        createtime:String(row?.createtime||''),
+        uids,
+        titles:(Array.isArray(row?.titles)?row.titles:[]).map(String),
+        updateTimes:(Array.isArray(row?.update_times)?row.update_times:[])
+          .map(value=>String(value||'')),
+        hasNewline:uids.map((_,index)=>newlineFlags[index]===true)
+      };
+    });
   }
 
   async function writeKeywordLibraryItem(scopeId,operation,node={}){
@@ -550,7 +551,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
   }
 
   async function isCurrentEmailBlocklisted(){
-    const {data,error}=await authClient.schema('silver').rpc('is_current_email_blocklisted');
+    const {data,error}=await authClient.schema('silver').managedAction('is_current_email_blocklisted');
     if(error)throw new Error(error.message||'無法核對系統黑名單');
     return data===true;
   }
@@ -567,7 +568,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     const blockUid=String(uid||'').trim();
     if(!scope||!page||!(/^[A-Za-z0-9]{8}$/.test(blockUid))||![1,-1].includes(direction))throw new Error('無效的區塊移動參數。');
     preflightWrite('silver.'+scope+'_blocks');
-    const {data,error}=await authClient.schema('silver').rpc('move_scope_block',{
+    const {data,error}=await authClient.schema('silver').managedAction('move_scope_block',{
       p_scope_id:scope,p_page_name:page,p_uid:blockUid,p_direction:direction
     });
     if(error)throw new Error(error.message||'區塊移動失敗');
@@ -578,7 +579,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     const scope=normalizeScopeId(scopeId);
     if(!scope)throw new Error('Scope ID 格式不正確。');
     preflightWrite('silver.manage');
-    const {data,error}=await authClient.schema('silver').rpc('delete_scope',{p_scope_id:scope});
+    const {data,error}=await authClient.schema('silver').managedAction('delete_scope',{p_scope_id:scope});
     if(error)throw new Error(error.message||'Scope 刪除失敗。');
     invalidateRelevantAuthorization(scope);
     return data||{};
@@ -598,7 +599,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
       p_theme:String(values.theme||'system-default').trim()||'system-default',
       p_copy_keywords:values.copy_keywords!==false
     };
-    const {data,error}=await authClient.schema('silver').rpc('provision_scope',payload);
+    const {data,error}=await authClient.schema('silver').managedAction('provision_scope',payload);
     if(error)throw new Error(error.message||'Scope provisioning failed');
     invalidateRelevantAuthorization(scopeId,values.email);
     return data||{};
@@ -609,7 +610,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     const op=String(operation||'').trim().toLowerCase();
     if(!['create_group','update'].includes(op))throw new Error('Unsupported Scope Registry operation');
     preflightWrite('silver.manage');
-    const {data,error}=await authClient.schema('silver').rpc('manage_scope_registry',{
+    const {data,error}=await authClient.schema('silver').managedAction('manage_scope_registry',{
       p_operation:op,
       p_scope_id:scope,
       p_values:values&&typeof values==='object'?values:{}

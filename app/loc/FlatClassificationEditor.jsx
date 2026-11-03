@@ -76,7 +76,7 @@ export default function FlatClassificationEditor({scopeId='loc'}){
     setBusy(true);setNotice('');
     try{
       if(global){
-        const {data,error}=await dbAuthClient.schema('silver').rpc('update_group_default_article_class',{
+        const {data,error}=await dbAuthClient.schema('silver').managedAction('update_group_default_article_class',{
           p_group_id:'loc',p_names:names
         });
         if(error||data!==true)throw new Error(error?.message||l.noPermission);

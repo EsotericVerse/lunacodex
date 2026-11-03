@@ -283,10 +283,8 @@ export default function TimelinePlaceManager({scopeId}){
         if(Date.now()>=deadline)throw Error('批次寫入已達 5 分鐘操作期限；請核對已成功寫入筆數。');
         assertEditorSession(window.sessionStorage);
         const batch=updates.slice(i,i+WRITE_BATCH);
-        const result=await dbAuthClient.schema('silver').rpc('scope_type_attr',{
-          p_scope_id:scopeId,p_type:'point',
-          p_attr:{op:'link',mode:'place_id',updates:batch}
-        });
+        const result=await dbAuthClient.schema('silver').anchor(scopeId,'point',
+          {op:'link',mode:'place_id',updates:batch});
         if(run!==runRef.current)break;
         const affected=Number(checked(result,'批次補寫 place_id')?.count||0);
         if(affected!==batch.length)throw Error('資料庫回報的寫入筆數不一致，請重新分析');

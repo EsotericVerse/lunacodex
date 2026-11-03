@@ -1,0 +1,356 @@
+import {sql} from 'npm:kysely@0.29.8';
+
+const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
+const UID=/^[A-Za-z0-9]{8}$/;
+const MODES=new Set(['loc','daily','overview','earliest','totals','search_summary',
+  'trace_places','keyword_summary','keyword_catalog','shared_classes','trace_daily','trace_keywords']);
+function reject(message,status=400){
+  const error=new Error(message);error.httpStatus=status;throw error;
+}
+function dateOnly(value){
+  if(value==null||value==='')return null;
+  if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(value))reject('Invalid statistics date');
+  return value;
+}
+function scopeId(value){const id=String(value||'').trim().toLowerCase();
+  if(!SCOPE.test(id))reject('Invalid statistics Scope');return id;
+}
+async function registry(trx,scope){
+  const row=await trx.selectFrom('silver.manage')
+    .select(['id','manage_role','active','display_name','anchor_table',
+      'galaxy_table','sort_order'])
+    .where('id','=',scope).executeTakeFirst();
+  if(!row||row.manage_role!=='scope'||row.active!==true)reject('Unknown statistics Scope');
+  return row;
+}
+function safeName(value,fallback){const name=String(value||fallback);
+  if(!/^[a-z][a-z0-9_]*$/.test(name))reject('Invalid registered SQL relation');return name;
+}
+function relation(scope,suffix){return sql.ref('silver.'+scope+'_'+suffix);}
+async function owns(trx,scope,role){
+  if(role!=='authenticated')return false;
+  const result=await sql`select coalesce(
+    (select allowed from silver.manage('scope',${scope})),false) as allowed`.execute(trx);
+  return result.rows[0]?.allowed===true;
+}
+async function dailyStats(trx,scope,start,end,includeUndated=false){
+  const galaxy=relation(scope,'galaxy');
+  const rows=await sql`with s as (
+    select coalesce(date::text,'') as d,btrim(coalesce(site,'')) as c
+    from ${galaxy}
+    where statics is true and content<>''
+      and (${includeUndated} or date is not null)
+      and (${start}::date is null or date>=${start}::date)
+      and (${end}::date is null or date<=${end}::date)
+  )
+  select s.d as day,'source'::text as kind,s.c as category,
+      count(*)::integer as item_count from s group by 1,3
+  union all
+  select s.d as day,'total'::text as kind,'文字作品'::text as category,
+      count(*)::integer as item_count from s group by 1
+  order by 1,2,3`.execute(trx);
+  return rows.rows;
+}
+async function earliest(trx,scope){
+  const galaxy=relation(scope,'galaxy');
+  const result=await sql`select min(date) as day from ${galaxy}
+    where statics is true and content<>''`.execute(trx);
+  return result.rows[0]?.day??null;
+}
+async function sourceTotals(trx,scope,start,end){
+  const galaxy=relation(scope,'galaxy');
+  const response=await sql`select 'source'::text as kind,
+      btrim(coalesce(site,'')) as category,count(*)::integer as item_count
+    from ${galaxy} where statics is true and content<>''
+      and (${start}::date is null or date>=${start}::date)
+      and (${end}::date is null or date<=${end}::date)
+    group by 1,2 order by 1,2`.execute(trx);
+  return response.rows;
+}
+async function linkedMediaCount(trx,scope,anchorSuffix,start,end){
+  const galaxy=relation(scope,'galaxy'),anchor=relation(scope,anchorSuffix);
+  const response=await sql`select count(*)::integer as n from (
+      select distinct unnest(g.media_link)::text as uid from ${galaxy} as g
+      where g.statics is true and coalesce(g.content,'')<>''
+        and (${start}::date is null or g.date>=${start}::date)
+        and (${end}::date is null or g.date<=${end}::date)
+    ) refs where exists(select 1 from ${anchor} m where m.uid=refs.uid
+       and m.type in ('image','video','rune','suno') and m.invisible is false)`.execute(trx);
+  return Number(response.rows[0]?.n||0);
+}
+async function scopeOverview(trx,scope,suffix,start,end){
+  const [rows,first,media,loc]=await Promise.all([
+    dailyStats(trx,scope,start,end),
+    earliest(trx,scope),
+    linkedMediaCount(trx,scope,suffix,start,end),
+    trx.selectFrom('silver.loc').select('DefaultArticleClass')
+      .where('id','=','loc').executeTakeFirst()
+  ]);
+  const list=Array.isArray(loc?.DefaultArticleClass)?loc.DefaultArticleClass:[];
+  const categories=list.map(name=>({category_code:String(name).trim().toLowerCase(),
+    display_name:String(name).trim(),enabled:true}));
+  const aliases=list.map(name=>({source_key:String(name).trim().toLowerCase(),
+    category_code:String(name).trim().toLowerCase()}));
+  return {earliest:first,media_count:media,rows,categories,aliases};
+}
+async function searchSummary(trx,options){
+  const scopes=options.scopeIds;
+  if(!Array.isArray(scopes)||scopes.length>100||
+    scopes.some(x=>typeof x!=='string'||!SCOPE.test(x)))
+    reject('Invalid Scope Search summary request');
+  const result=[];
+  for(const scope of [...new Set(scopes)].sort()){
+    const row=await trx.selectFrom('silver.manage')
+      .select('id').where('id','=',scope)
+      .where('manage_role','=','scope').where('active','=',true)
+      .executeTakeFirst();
+    if(!row)continue;
+    const config=await trx.selectFrom('silver.'+scope)
+      .select('status').where('id','=',scope).executeTakeFirst();
+    const item=config?.status?.search;
+    if(item&&typeof item==='object'&&!Array.isArray(item)){
+      result.push({scope_id:scope,article_count:item.article_count??null,
+        word_count:item.word_count??null,first_date:item.first_date??null,
+        last_date:item.last_date??null,refreshed_at:item.refreshed_at??null});
+    }
+  }
+  return {rows:result};
+}
+async function tracePlaces(trx,scope,start,end){
+  const galaxy=relation(scope,'galaxy');
+  const response=await sql`select date::text as day,btrim(location) as category,
+    count(*)::bigint as item_count from ${galaxy}
+    where trace is true and content<>'' and date is not null
+      and location is not null and btrim(location)<>''
+      and (${start}::date is null or date>=${start}::date)
+      and (${end}::date is null or date<=${end}::date)
+    group by 1,2 order by 1,2`.execute(trx);
+  return response.rows.map(row=>({...row,item_count:Number(row.item_count||0)}));
+}
+function uidList(node){
+  return Array.isArray(node?.attr?.uid)?node.attr.uid.filter(id=>UID.test(id)):[];
+}
+function published(cfg,uid){
+  return Boolean(cfg?.keyword_meta?.class_shares?.[uid]===true);
+}
+async function keywordClassInfo(trx,scope,anchor,requested,role){
+  const config=await trx.selectFrom('silver.'+scope)
+    .select(['current_keyword_class_uid','keyword_meta','staticstime'])
+    .where('id','=',scope).executeTakeFirst();
+  const uid=String(requested||config?.current_keyword_class_uid||'');
+  if(!UID.test(uid))return null;
+  const allowed=await owns(trx,scope,role)||published(config,uid);
+  const meta=config?.keyword_meta??{};
+  const done=meta.by_class?.[uid]?.completedAt||
+    (uid===config?.current_keyword_class_uid&&meta.class_uid===uid&&config?.staticstime);
+  return {uid,allowed,ready:Boolean(done),config};
+}
+async function sharedClasses(trx,scope,anchor,role){
+  const owner=await owns(trx,scope,role);
+  const cfg=await trx.selectFrom('silver.'+scope).select('keyword_meta')
+    .where('id','=',scope).executeTakeFirst();
+  const classes=await trx.selectFrom(anchor).select(['uid','title'])
+    .where('type','=','class').orderBy('uid','asc').execute();
+  const result=[];
+  for(const item of classes){
+    if(!owner&&!published(cfg,item.uid))continue;
+    let category=item.uid;
+    if(!owner){
+      const hex=await sql`select encode(sha256(convert_to(
+        ${scope}::text||':'||${String(item.uid)}::text,'UTF8')),'hex') as hash`.execute(trx);
+      category=String(hex.rows[0]?.hash||'');
+    }
+    result.push({scopeId:scope,classUid:item.uid,name:item.title,category});
+  }
+  return result;
+}
+async function keywordCatalog(trx,scope,anchor,requested,role){
+  const info=await keywordClassInfo(trx,scope,anchor,requested,role);
+  if(!info?.allowed)return {};
+  const root=await trx.selectFrom(anchor).select(['uid','type','title','description','attr'])
+    .where('uid','=',info.uid).where('type','=','class').executeTakeFirst();
+  if(!root)return {class_uid:info.uid,rows:[]};
+  const groupIds=uidList(root);
+  const groups=groupIds.length?await trx.selectFrom(anchor)
+    .select(['uid','type','title','description','attr'])
+    .where('type','=','group').where('uid','in',groupIds).execute():[];
+  const byGroup=new Map(groups.map(g=>[g.uid,g]));
+  const ordered=groupIds.map(uid=>byGroup.get(uid)).filter(Boolean);
+  const itemIds=[...new Set(ordered.flatMap(uidList))];
+  const items=itemIds.length?await trx.selectFrom(anchor)
+    .select(['uid','type','title','description','attr'])
+    .where('type','=','item').where('uid','in',itemIds).execute():[];
+  const byItem=new Map(items.map(i=>[i.uid,i]));
+  const model=node=>({uid:node.uid,type:node.type,name:node.title,
+    desc:node.type==='item'?'':node.description,lists:node.type==='item'?[]:uidList(node),uid_lists:[]});
+  return {class_uid:info.uid,rows:[model(root),...ordered.map(model),
+    ...ordered.flatMap(group=>uidList(group).map(id=>byItem.get(id)).filter(Boolean).map(model))]};
+}
+async function traceDaily(trx,scope,places,start,end,source){
+  const galaxy=relation(scope,'galaxy');
+  const result=await sql`select (g.createtime at time zone 'Asia/Taipei')::date as day,
+      g.place_id::text as category,count(*)::bigint as item_count
+    from ${galaxy} g where g.place_id=any(${places}::text[])
+      and g.trace is true and g.createtime is not null
+      and (${start}::date is null or g.createtime>=
+        (${start}::date::timestamp at time zone 'Asia/Taipei'))
+      and (${end}::date is null or g.createtime<
+        ((${end}::date+1)::timestamp at time zone 'Asia/Taipei'))
+      and (${source}::text is null or g.site ilike ${source})
+    group by 1,2 order by 1,2`.execute(trx);
+  return result.rows.map(row=>({...row,item_count:Number(row.item_count||0)}));
+}
+async function traceKeywordGroups(trx,scope,anchor,places,start,end,source,requested,role){
+  const info=await keywordClassInfo(trx,scope,anchor,requested,role);
+  if(!info?.allowed||!info.ready)return [];
+  const galaxy=relation(scope,'galaxy');
+  const a=sql.ref(anchor);
+  const result=await sql`with cl as(
+      select uid,attr from ${a} where type='class' and uid=${info.uid}
+    ),groups as(
+      select g.uid,g.title,g.attr from cl c
+      cross join lateral jsonb_array_elements_text(coalesce(c.attr->'uid','[]'::jsonb)) child(uid)
+      join ${a} g on g.uid=child.uid and g.type='group'
+    ),articles as materialized(
+      select g.uid::text as uid from ${galaxy} g
+      where g.place_id=any(${places}::text[]) and g.keyword is true
+        and (${start}::date is null or g.date>=${start}::date)
+        and (${end}::date is null or g.date<=${end}::date)
+        and (${source}::text is null or g.site=${source})
+    )
+    select k.uid::text as group_uid,k.title as group_name,
+      count(distinct article.uid)::bigint as document_count from groups k
+      left join articles article on (coalesce(k.attr->'uidlists',
+        k.attr->'articles','[]'::jsonb)) ? article.uid
+      group by k.uid,k.title order by k.title,k.uid`.execute(trx);
+  return result.rows.map(row=>({...row,document_count:Number(row.document_count||0)}));
+}
+async function keywordSummary(trx,scope,anchor,start,end,source,requested,role){
+  const info=await keywordClassInfo(trx,scope,anchor,requested,role);
+  if(!info?.allowed||!info.ready)return [];
+  const galaxy=relation(scope,'galaxy'),a=sql.ref(anchor);
+  const result=await sql`with clazz as(
+      select uid,attr from ${a} where type='class' and uid=${info.uid}
+    ),groups as materialized (
+      select g.uid::text uid,g.title,g.attr
+      from clazz c
+      cross join lateral jsonb_array_elements_text(coalesce(c.attr->'uid','[]'::jsonb)) child(uid)
+      join ${a} g on g.uid=child.uid and g.type='group'
+    ), items as materialized(
+      select i.uid::text as uid,g.uid as group_uid,i.attr
+      from groups g cross join lateral jsonb_array_elements_text(
+        coalesce(g.attr->'uid','[]'::jsonb)) child(uid)
+      join ${a} i on i.uid=child.uid and i.type='item'
+    ),group_hits as materialized(
+      select g.uid as group_uid,article.uid::text as article_uid,article.date::text as d
+      from groups g cross join lateral jsonb_array_elements_text(
+        coalesce(g.attr->'uidlists',g.attr->'articles','[]'::jsonb)) x(uid)
+      join ${galaxy} article on article.uid::text=x.uid
+      where article.keyword is true
+        and (${start}::date is null or article.date>=${start}::date)
+        and (${end}::date is null or article.date<=${end}::date)
+        and (${source}::text is null or article.site=${source})
+    ),item_hits as materialized(
+      select i.uid as item_uid,i.group_uid,article.uid::text as article_uid,
+        article.date::text as d,
+        case when jsonb_typeof(x.entry)='string' then 1
+          else (x.entry->>'times')::bigint end as times,
+        (i.attr->>'total')::bigint as total
+      from items i cross join lateral jsonb_array_elements(
+        coalesce(i.attr->'uidlists',i.attr->'hits','[]'::jsonb)) x(entry)
+      join ${galaxy} article on article.uid::text=case
+        when jsonb_typeof(x.entry)='string' then x.entry#>>'{}'
+        else x.entry->>'uid' end
+      where article.keyword is true
+        and (${start}::date is null or article.date>=${start}::date)
+        and (${end}::date is null or article.date<=${end}::date)
+        and (${source}::text is null or article.site=${source})
+    )
+    select 'eligible'::text kind,null::text item_key,null::text group_uid,
+      ''::text day,count(distinct article_uid)::bigint hit_count,
+      count(distinct article_uid)::bigint document_count from group_hits
+    union all
+    select 'class_day',null,group_uid,d,count(distinct article_uid),
+      count(distinct article_uid) from group_hits group by group_uid,d
+    union all
+    select 'item',item_uid,group_uid,'',
+      (case when ${start}::date is null and ${end}::date is null and ${source}::text is null
+        then coalesce(max(total),sum(times)) else sum(times) end)::bigint,
+      count(distinct article_uid) from item_hits where times>0 group by item_uid,group_uid
+    union all
+    select 'item_day',item_uid,group_uid,d,sum(times)::bigint,
+      count(distinct article_uid) from item_hits where times>0 group by item_uid,group_uid,d
+    union all
+    select 'keyword_all_day',null,null,d,count(distinct article_uid),
+      count(distinct article_uid) from item_hits where times>0 group by d
+    union all
+    select 'group_items_day',null,group_uid,d,count(distinct article_uid),
+      count(distinct article_uid) from item_hits where times>0 group by group_uid,d`.execute(trx);
+  return result.rows.map(row=>({...row,hit_count:Number(row.hit_count||0),
+    document_count:Number(row.document_count||0)}));
+}
+export async function executeKyselyAnalytics(trx,body,{role='anon'}={}){
+  const args=body?.args??body;
+  const mode=String(args.p_view||'').trim().toLowerCase();
+  const scope=scopeId(args.p_scope_id);
+  const start=dateOnly(args.p_start),end=dateOnly(args.p_end);
+  const options=args.p_options??{};
+  if(!MODES.has(mode)||!options||typeof options!=='object'||Array.isArray(options)||
+     start&&end&&start>end)reject('Invalid statistics parameters');
+  // Legacy summaries were SECURITY DEFINER aggregates. Keep the same public
+  // totals without exposing private article text or private keyword metadata.
+  await sql`reset role`.execute(trx);
+  if(mode==='search_summary'){
+    if(scope!=='loc'||start||end)reject('Invalid Search summary request');
+    return {data:await searchSummary(trx,options),count:null};
+  }
+  if(mode==='loc'){
+    if(scope!=='loc')reject('Invalid LOC statistics Scope');
+    const groups=await trx.selectFrom('silver.manage')
+      .select(['id','display_name','galaxy_table','anchor_table'])
+      .where('manage_role','=','scope').where('active','=',true)
+      .orderBy('sort_order','asc').orderBy('id','asc').execute();
+    const scopes=[],rows=[];let first=null;
+    for(const group of groups){
+      if(!SCOPE.test(group.id))continue;
+      const suffix=safeName(group.anchor_table,'anchor');
+      const galaxy=safeName(group.galaxy_table,'galaxy');
+      if(galaxy!=='galaxy')continue;
+      const relations=await sql`select to_regclass(${'silver.'+group.id+'_'+galaxy}) is not null as galaxy_exists,
+        to_regclass(${'silver.'+group.id+'_'+suffix}) is not null as anchor_exists`.execute(trx);
+      if(!relations.rows[0]?.galaxy_exists||!relations.rows[0]?.anchor_exists)continue;
+      scopes.push({scope_id:group.id,display_name:group.display_name});
+      const day=await dailyStats(trx,group.id,start,end);
+      rows.push(...day.filter(r=>r.kind==='total').map(r=>({scope_id:group.id,
+        day:r.day,item_count:r.item_count})));
+      const early=await earliest(trx,group.id);
+      if(early&&(!first||String(early)<String(first)))first=early;
+    }
+    return {data:{earliest:first,scopes,rows},count:null};
+  }
+  const reg=await registry(trx,scope);
+  const galaxy=safeName(reg.galaxy_table,'galaxy'),anchorSuffix=safeName(reg.anchor_table,'anchor');
+  if(galaxy!=='galaxy')reject('Unsupported configured Galaxy relation');
+  let data;
+  if(mode==='daily')data=await dailyStats(trx,scope,start,end,options.includeUndated===true);
+  else if(mode==='earliest')data=await earliest(trx,scope);
+  else if(mode==='totals')data=await sourceTotals(trx,scope,start,end);
+  else if(mode==='overview')data=await scopeOverview(trx,scope,anchorSuffix,start,end);
+  else if(mode==='trace_places')data=await tracePlaces(trx,scope,start,end);
+  else if(mode==='shared_classes')data=await sharedClasses(trx,scope,
+    'silver.'+scope+'_'+anchorSuffix,role);
+  else if(mode==='keyword_catalog')data=await keywordCatalog(trx,scope,
+    'silver.'+scope+'_'+anchorSuffix,options.classUid,role);
+  else if(mode==='keyword_summary')data=await keywordSummary(trx,scope,
+    'silver.'+scope+'_'+anchorSuffix,start,end,options.source||null,options.classUid,role);
+  else{
+    const ids=options.placeIds;
+    if(!Array.isArray(ids)||!ids.length||ids.length>80||
+       ids.some(uid=>!UID.test(String(uid||''))))reject('Invalid Trace Point UID list');
+    data=mode==='trace_daily'
+      ?await traceDaily(trx,scope,ids,start,end,options.source||null)
+      :await traceKeywordGroups(trx,scope,'silver.'+scope+'_'+anchorSuffix,
+        ids,start,end,options.source||null,options.classUid,role);
+  }
+  return {data,count:null};
+}

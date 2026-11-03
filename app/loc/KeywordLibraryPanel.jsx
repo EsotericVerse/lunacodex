@@ -364,7 +364,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
     setImportBusy(true);
     try{
       // Anonymous reader returns only publicly shared Class rows, no Group/Item.
-      const {data,error}=await dbPublicClient.schema('silver').rpc('read_scope_analytics',{
+      const {data,error}=await dbPublicClient.schema('silver').analytics({
         p_scope_id:from,p_view:'shared_classes',p_start:null,p_end:null,p_options:{}
       });
       if(error)throw new Error(error.message||'查詢公開群組科目失敗');
@@ -381,7 +381,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
     try{
       // Server checks actual source Class and published flag. The import
       // transaction allocates fresh UIDs and clears source article hit lists.
-      const {data,error}=await dbAuthClient.schema('silver').rpc('import_shared_keyword_class',{
+      const {data,error}=await dbAuthClient.schema('silver').managedAction('import_shared_keyword_class',{
         p_target_scope:scopeId,p_source_scope:from,p_class_uid:uid
       });
       if(error||!/^[0-9A-Za-z]{4}(?:[0-9A-Za-z]{4})?$/.test(String(data?.uid||'')))

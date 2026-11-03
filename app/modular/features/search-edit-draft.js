@@ -2,7 +2,6 @@
 // an article or media entry for editing (dynamic import in Search.jsx), so the
 // plain search page never ships this code.
 import {plainTextToBlocks} from '../../loc/blocknote-content.mjs';
-import {galaxyAble} from '../../loc/galaxy-able.mjs';
 
 function nullableText(value){
   const text=String(value??'').trim();
@@ -29,13 +28,12 @@ function isoOrNull(value,t){
   return date.toISOString();
 }
 function galaxyDraftFromRow(row={},fallbackTitle='',plainTextToBlocks){
-  const permissions=galaxyAble(row);
   const attrs={
     uid:String(row.uid||'').trim(),
     createtime:datetimeLocalValue(row.createtime),
     location:String(row.location||''),
     place_id:String(row.place_id||'').trim(),
-    ...Object.fromEntries(['statics','culture','search','trace','list','keyword','others','extract'].map(k=>['able_'+k,permissions[k]!==false])), 
+    ...Object.fromEntries(['statics','culture','search','trace','list','keyword','extract','others'].map(k=>[k,row[k]!==false])), 
     UpdateTime:String(row.UpdateTime||''),
     url:String(row.url||''),
     source_id:String(row.source_id||'').trim(),
@@ -52,7 +50,7 @@ function galaxyDraftFromRow(row={},fallbackTitle='',plainTextToBlocks){
     bodyHtml:body,
     bodyBlocks:plainTextToBlocks(body),
     editorKey:String(row.uid||''),
-    hidden:permissions.list===false,
+    hidden:row.list===false,
     attrs,
     originalAttrs:{...attrs}
   };
@@ -82,12 +80,12 @@ function changedGalaxyAttributes(draft,t){
   const current=draft?.attrs||{},initial=draft?.originalAttrs||{};
   const changed={};
   const differs=key=>JSON.stringify(current[key])!==JSON.stringify(initial[key]);
-  const features=['statics','culture','search','trace','list','keyword','others','extract'];
-  if(features.some(key=>differs('able_'+key)))changed.able=Object.fromEntries(features.map(key=>[key,current['able_'+key]!==false]));
+  const features=['statics','culture','search','trace','list','keyword','extract','others'];
+  for(const key of features)if(differs(key))changed[key]=current[key]!==false;
   if(differs('createtime'))changed.createtime=isoOrNull(current.createtime,t);
   if(differs('place_id')){
     const next=String(current.place_id||'').trim();
-    if(next&&!/^[A-Za-z0-9]{4}$/.test(next))throw new Error('定錨點 ID 必須為四碼');
+    if(next&&!/^[A-Za-z0-9]{8}$/.test(next))throw new Error('定錨點 ID 必須為八碼');
     changed.place_id=next||null;
   }
   for(const key of ['location','url','source_id','ref_id','site']){

@@ -1,8 +1,54 @@
+### 官方 Kysely 版本與 Agent 文件（2026-11-04）
+
+- 官方目前最新穩定版本為 **Kysely 0.29.8**（2026-11-01）；PR #995 已同步 `package.json`、`package-lock.json`、所有 Deno `npm:kysely@...` 版本引用。0.29.7 修正 controlled transaction 的競態／連線與 MSSQL JSON；0.29.8 修正 PostgreSQL rollback／aborted-commit。
+- Kysely 官方推薦 AI 文件：[llms.txt](https://kysely.dev/llms.txt)、[llms-full.txt](https://kysely.dev/llms-full.txt)；專案本機使用 `.github/skills/kysely-portable-loc/SKILL.md` 指向官方文件及版本，不依賴第三方過時 Skill。
+- 官方有 `Dialect`、`SchemaBuilder`、`Migrator`、`transaction`、`withPlugin`、`withSchema`，可以實作無 RPC 的 CRUD、Schema 與資料異動；但**沒有可取代 Clerk 驗證／LOC Authority 的內建登入系統**。官方的 `$pickTables`／`$omitTables` 只縮小 TypeScript 型別視野，不能當執行期權限檢查。
+- 使用 Kysely **取代可替換的 SQL RPC** 是正確的可攜性方向；PostgreSQL RLS／Policy 與其他引擎的授權、JSON 資料型別和 DDL 差異，仍需要可信 Gateway 依既有語義處理，才能真的達到「連線與最小必要資料表」即可運作。
+- 本次是原分支 PR 變更，尚未通過完整 `npm run check:syntax`、真實 Dialect／Clerk 整合與部署驗收；不得誤稱正式資料庫已同步或 RPC 已刪完。
+
+### 身分驗證與 SQL 可攜性修正（2026-11-04）
+
+- LOC 網站身份固定為 **Clerk + LOC Authority**，不再允許 Supabase Auth JWT 取代 Clerk 登入。PostgreSQL 以既有 `silver.manage()` 保持權限判定；非 PostgreSQL 透過 Kysely 讀取目標庫既有 `silver.manage` Registry 與 `silver.loc.blacklist`，比對經驗證的 Clerk email/subject，拒絕已封鎖帳號與未授權 Scope。
+- 資料庫連線使用該資料庫自己的連線 Driver／認證（MySQL 可選 LDAP simple + TLS，SQL Server 可選 NTLM／Entra）；**資料庫驗證不等於 LOC 使用者登入**。MySQL Driver 更新至已修補的 `mysql2@3.22.0`。
+- 原生 Kysely CRUD／UPSERT／transaction 優先使用 Dialect，不因 MySQL／SQL Server 缺少 PostgreSQL RLS 而一概拒絕；但對外公開文章的 `search/list/extract` 隱藏規則、Anchor 複合 JSON 查詢／關聯寫入、文化／統計與 Scope DDL 尚待逐引擎等價驗收。未證明安全等價前仍拒絕這些操作，不可繞過授權。
+- 歷史的獨立 `neon-primary.mjs`／Neon Data API 備援仍含 Neon Auth token 流程，**不在目前預設 Clerk 登入路徑中**；若要求 Neon 備援完全不依賴 Neon Auth，必須先配置獨立可信任 Kysely Gateway 及其資料庫權限，再切換該備援傳輸。當前不能宣稱備援已完全解耦。
+- 回歸檢查：`scripts/test-kysely-clerk-only-auth.mjs`、`scripts/test-kysely-portable-access.mjs`；正式 `npm run check:syntax` 與完整 Dialect/Clerk 整合測試仍需執行，不得以獨立模擬取代。
+
+
+### Kysely 跨 SQL 引擎可攜性（PR #995，尚未正式部署）
+
+Kysely **不是 PostgreSQL RPC 的包裝器**。LOC 共用資料操作應採 Kysely query builder／transaction／schema builder，由 Dialect 配合既有資料庫 Driver；資料庫憑證驗證與 LOC Clerk／Authority Scope 授權是兩個獨立責任。
+
+- PostgreSQL（Supabase、Neon、Cloud SQL 等）：`PostgresDialect`，現行 RLS 和 `silver.manage(type,id)` 權限保持既有機制。
+- MySQL／MariaDB：`MysqlDialect`；已加入原生通用 CRUD、Scope 所有權檢查、文章分批寫入。選配簡易 LDAP（`mysql_clear_password`）僅允許 TLS；LDAP SASL 仍取決於可用的 Driver Plugin，**不宣稱已支援**。
+- SQL Server：`MssqlDialect`；已加入原生 CRUD、Scope 所有權檢查，以及獨立 NTLM／Microsoft Entra Driver 驗證模式。MSSQL Upsert 以 Kysely MERGE 建立來源資料、逐列引用欄位。
+- SQLite：目前保留裝置／常駐 Gateway 模式；尚未將整套 LOC 遠端功能經 Kysely SQLite 驗證。
+
+可選自訂主庫的建置設定：`NEXT_PUBLIC_LOC_PRIMARY_ID=custom-current`、`NEXT_PUBLIC_LOC_SQL_ENGINE=mysql|mssql`、`NEXT_PUBLIC_LOC_SQL_ALIAS=<可信別名>`，對應的連線憑證必須只存於 **Gateway 伺服器端** 的 `LOC_DB_CONNECTIONS_JSON`。現有預設仍是 `supabase-current`，未自行切換主庫。MySQL 與 SQL Server 的目的庫需有 LOC 實際使用的 Registry／Scope 資料結構；Kysely 負責 SQL Dialect，**不會自動把 PostgreSQL JSONB、RLS、Trigger 等資料庫專屬語義變成另一種 SQL**。
+
+目前通用 `query` 與 `managed-write` 已具備非 PostgreSQL 的原生 Kysely 路徑；`anchor`、`analytics`、`public-action`、`managed-action`、Scope DDL 等仍有 PostgreSQL 專有實作，非 PG 路徑暫拒絕這些操作而非繞回 PostgreSQL RPC。此分支尚不能宣告「所有功能都已跨引擎驗收」。須完成 Dialect 逐功能對等實作與實際資料庫／Authority 整合驗證後才合併或啟用。
+
 # LOC 通用 Anchor RPC 契約
 
 ## 架構決議（2026-11-03）
 
 **求同存異**：所有一般 Scope（包含 `lo3rwang`、`lrunes`）共用同一套 Anchor 資料讀寫規則。Scope 名稱不決定邏輯分支，`scopeid` 決定資料歸屬，`type` 決定資料類別，`attr jsonb` 承載類別特有的結構。符文首頁、每日符文行事曆、遊戲可維持專用功能；符文內容、一般文章、時間、空間、關鍵詞、媒體及一般統計仍應與其他 Scope 通用。
+
+
+### 現行 Kysely 主入口（2026-11-04）
+
+前述 `silver.scope_type_attr`、`silver.read_scope_analytics` 與各領域 RPC 為**歷史 SQL 函式契約**。改寫後，網站現行 PostgreSQL 路徑改走 Clerk JWT 驗證的 Kysely Gateway：
+
+- `anchor(scopeid,type,attr)`：直接存取 `{scopeid}_anchor` 的讀取、寫入、局部更新、關鍵詞目錄／建議，以及 Point 連結補寫。
+- `analytics(args)`：時間、地點、文章、關鍵詞、共享 Class 與公開搜尋摘要，使用 Kysely 查詢與參數化聚合。
+- `managedWrite(payload)` 與 `managedAction(name,args)`：文章批次、搜尋摘要更新、群組與權限設定、空間合併、關鍵詞分享匯入與 Scope 建立／刪除。權限先由現有 Clerk claims 與 `silver.manage(type,id)` 判斷；沿用 LOC Authority，無第二套身分系統。
+- `publicAction(name,args)`：公開 Bootstrap、頁面簡介與地點名稱搜尋。
+
+`silver.manage(type,id)` 與 UID 配號函式仍屬資料庫內部的**身分驗證／配號輔助**，不是前端呼叫的 SQL RPC；網站的通用 SQL RPC 執行路由已退役。裝置本機 `local` Scope 使用獨立 SQLite 介面，不屬於遠端 RPC 清理範圍。
+
+Galaxy 文章權限改採八個獨立 boolean 欄位，順序為 `statics`、`culture`、`search`、`trace`、`list`、`keyword`、`extract`、`others`。所有新讀寫都直接使用欄位；舊 `galaxy.able` 只在歷史匯入資料解析或既有本機 SQLite 資料一次性轉換時讀取，不得重新寫入伺服器。**正式資料庫的舊欄位須待新版經部署驗收及相依檢查後另行移除**，不能把程式端切換誤稱為已刪欄位。
+
+**驗證與版本狀態**：本段描述目標分支 `refactor/kysely-clerk-rpc-removal` 的改動，不代表部署、正式合併或資料庫舊欄位已刪除。須以該分支實際回歸測試、PR 合併與 Cloudflare 部署結果分別核對。
 
 ### 主入口
 
@@ -37,13 +83,6 @@ silver.scope_type_attr(p_scope_id text, p_type text, p_attr jsonb)
 - 不新增 `attr` GIN、額外 B-tree、暫存表或觸發器。通用 RPC 不需新表。
 - `lrunes_daily` 獨立保留，僅在設定顯示行事曆，不進一般統計。
 - `loc` 是 Group 設定與統合功能，**不是**一般 Scope Anchor；`_scope_group(groupid,type)` 尚未授權進行，不在本次實作範圍。
-
-### Galaxy 權限實體欄位（2026-11-03）
-
-- `silver.{scopeid}_galaxy` 的文章層開關為八個獨立 Boolean 欄位：`statics`、`culture`、`search`、`trace`、`list`、`keyword`、`others`、`extract`。不要再向 PostgreSQL 寫 `galaxy.able` JSONB，亦不要用 `able->>` 過濾。歷史 JSON 名稱 `keywords/game` 對應 `keyword/others`，只在舊檔匯入或裝置本機 SQLite 相容層轉換。
-- `silver.lo3rwang.able` 是 **Scope 設定**，不是 Galaxy 文章權限；不得隨文章欄位退役刪除。
-- 本次先補齊 `lo3rwang_galaxy`、`lrunes_galaxy` 的八欄並讓既有 RPC 直接查布林欄位；舊客戶端仍存在時保留相容觸發器及原 RLS。新客戶端、Clerk Edge Function、LOC Authority 真正部署且讀寫／隱私檢查通過後，才執行最後的 RLS／觸發器切換與 `DROP COLUMN able`，避免資料公開或連線中斷。
-- 用既有 UID 保留文章隱藏狀態；公開 `search`／`list`、搜尋 `extract`、統計與文化視圖不可因遷移而放寬。第三方 Scope 未遷移其儲存結構前，保留其獨立相容入口。
 
 ### 遷移現況與退役規則
 
@@ -109,3 +148,10 @@ Cloudflare Pages `loc` production 部署 commit `54844ebf19ce8d88b52c1c4534a76e4
 - 已確認 `trace_normalize_place_name`、`trace_prevent_identity_change`、`validate_scoped_trace_map` 沒有程式呼叫，且沒有 SQL、Trigger、View、RLS 或其他物件相依；其歷史實作仍使用已淘汰的 `trace_type`、`route_list`、`anchor_list` 和四字元 UID，不屬於統一 Anchor 的 `(scopeid,type,attr)` 架構。已用 `DROP FUNCTION ... RESTRICT` 退役，未重建任何相同功能的 RPC。
 - `domain_has_repeated_labels` 雖無前端呼叫，仍有正式資料庫約束依賴，因此**保留**；`manage_id_not_blocked` 是身份／Scope 管理相關檢查，不隨四表清理逕刪。
 - 本批只移除真正無相依的舊 SQL，不變動路線、痕跡與文章定錨資料，亦不更動 PostgreSQL／非 PostgreSQL 的授權與交易介面。
+
+### Galaxy 權限實體欄位（2026-11-03）
+
+- `silver.{scopeid}_galaxy` 的文章層開關為八個獨立 Boolean 欄位：`statics`、`culture`、`search`、`trace`、`list`、`keyword`、`others`、`extract`。不要再向 PostgreSQL 寫 `galaxy.able` JSONB，亦不要用 `able->>` 過濾。歷史 JSON 名稱 `keywords/game` 對應 `keyword/others`，只在舊檔匯入或裝置本機 SQLite 相容層轉換。
+- `silver.lo3rwang.able` 是 **Scope 設定**，不是 Galaxy 文章權限；不得隨文章欄位退役刪除。
+- 本次先補齊 `lo3rwang_galaxy`、`lrunes_galaxy` 的八欄並讓既有 RPC 直接查布林欄位；舊客戶端仍存在時保留相容觸發器及原 RLS。新客戶端、Clerk Edge Function、LOC Authority 真正部署且讀寫／隱私檢查通過後，才執行最後的 RLS／觸發器切換與 `DROP COLUMN able`，避免資料公開或連線中斷。
+- 用既有 UID 保留文章隱藏狀態；公開 `search`／`list`、搜尋 `extract`、統計與文化視圖不可因遷移而放寬。第三方 Scope 未遷移其儲存結構前，保留其獨立相容入口。

@@ -12,7 +12,7 @@ const EMPTY={scope_id:'lo3rwang',class_name:'',hash:''};
 const keyOf=row=>JSON.stringify([row.scope_id,row.class_name]);
 
 async function readRegistry(){
-  const {data,error}=await dbAuthClient.schema('silver').rpc('loc_admin_settings',{
+  const {data,error}=await dbAuthClient.schema('silver').managedAction('loc_admin_settings',{
     p_section:'keywords',p_operation:'read'
   });
   if(error)throw Error(error.message||'關鍵詞管理資料讀取失敗');
@@ -49,7 +49,7 @@ export default function LocKeywordManagement(){
     }
     setBusy(true);setNotice('');
     try{
-      const result=await dbAuthClient.schema('silver').rpc('loc_admin_settings',{
+      const result=await dbAuthClient.schema('silver').managedAction('loc_admin_settings',{
         p_section:'keywords',p_operation:'upsert',
         p_key:original?keyOf(original):null,p_value:payload
       });
@@ -88,7 +88,7 @@ export default function LocKeywordManagement(){
     if(!window.confirm('確定刪除此大群組的 LOC 管理紀錄？不會刪除 Scope 內的原始關鍵詞。'))return;
     setBusy(true);setNotice('');
     try{
-      const {data:removed,error:deleteError}=await dbAuthClient.schema('silver').rpc('loc_admin_settings',{
+      const {data:removed,error:deleteError}=await dbAuthClient.schema('silver').managedAction('loc_admin_settings',{
         p_section:'keywords',p_operation:'delete',p_key:keyOf(original)
       });
       if(deleteError)throw Error(deleteError.message);

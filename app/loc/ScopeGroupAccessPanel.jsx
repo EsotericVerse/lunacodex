@@ -55,14 +55,14 @@ export default function ScopeGroupAccessPanel({groupId}){
     setClassesLoading(true);setClassesError('');setCategoryUid('');
     // SQL only returns published type=class nodes from the selected Scope's
     // own Keywords table. Group/Item identifiers are never included.
-    dbPublicClient.schema('silver').rpc('read_scope_analytics',{
+    dbPublicClient.schema('silver').analytics({
       p_scope_id:scope,p_view:'shared_classes',p_start:null,p_end:null,p_options:{}
     })
       .then(({data:rows,error})=>{
         if(!active)return;
         if(error)throw error;
         setPublicClasses((Array.isArray(rows)?rows:[])
-          .filter(row=>row.scopeId===scope&&/^[A-Za-z0-9]{4}$/.test(row.classUid)));
+          .filter(row=>row.scopeId===scope&&/^[A-Za-z0-9]{8}$/.test(row.classUid)));
       }).catch(()=>{if(active){setPublicClasses([]);setClassesError('目前無法查詢已公開的群組科目，請稍後再試。');}})
       .finally(()=>{if(active)setClassesLoading(false);});
     return()=>{active=false;};
@@ -77,7 +77,7 @@ export default function ScopeGroupAccessPanel({groupId}){
   const toggle=action=>setSelected(previous=>previous.includes(action)?
     previous.filter(x=>x!==action):[...previous,action]);
   const updateCategory=async(kind,scopeid,classUid)=>{
-    if(busy||!scopeid||!/^[A-Za-z0-9]{4}$/.test(classUid))return;
+    if(busy||!scopeid||!/^[A-Za-z0-9]{8}$/.test(classUid))return;
     setBusy(true);setStatus('');
     try{
       if(kind==='categoryAdd'){

@@ -1,5 +1,4 @@
 'use client';
-import {galaxyAble} from '../../loc/galaxy-able.mjs';
 import UiText from '../../i18n/UiText';
 import FieldText from '../../i18n/FieldText';
 
@@ -1165,7 +1164,7 @@ export default function Culture(){
       setAuthorizedWorkKey(key);
       if(!scopeData)throw new Error(l.sourceUnresolved);
       const {rows=[]}=await selectRows(scopeData.galaxy,{
-        columns:scopeId==='local'?'uid,title,content,able':'uid,title,content,statics,culture,search,trace,list,keyword,others,extract',
+        columns:'uid,title,content,able',
         filters:[{column:'uid',operator:'eq',value:uid}],
         limit:1
       });
@@ -1178,9 +1177,9 @@ export default function Culture(){
         bodyHtml:String(row.content||''),
         bodyBlocks:plainTextToBlocks(String(row.content||'')),
         editorKey:uid,
-        hidden:galaxyAble(row).list===false,
-        originalHidden:galaxyAble(row).list===false,
-        able:galaxyAble(row)
+        hidden:row.list===false,
+        originalHidden:row.list===false,
+        originalSearch:row.search!==false
       });
     }catch(exception){
       setEditingWorkKey('');setAuthorizedWorkKey('');
@@ -1202,9 +1201,7 @@ export default function Culture(){
       await updateRows(scopeData.galaxy,{
         title:resolveGalaxyTitle(editDraft.title,plainBody),
         content,
-        able:editDraft.hidden===editDraft.originalHidden
-          ?editDraft.able
-          :{...editDraft.able,list:editDraft.hidden!==true,search:editDraft.hidden!==true},
+        ...(editDraft.hidden===editDraft.originalHidden?{}:{list:editDraft.hidden!==true,search:editDraft.hidden!==true}),
         UpdateTime:new Date().toISOString()
       },{filters:[{column:'uid',operator:'eq',value:uid}]});
       const key=String(work?.key||('galaxy:'+uid));

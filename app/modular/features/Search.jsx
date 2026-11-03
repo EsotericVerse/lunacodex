@@ -36,8 +36,8 @@ import {scopeHref} from '../scope-registry';
 import {featureNavigationHref,galaxyIdentityHref,galaxyRelationLinks} from '../feature-navigation';
 import {featureDataErrorMessage} from '../feature-data-state';
 import {parseSearchQuery} from '../../loc/search-query.mjs';
-import {galaxyAble} from '../../loc/galaxy-able.mjs';
 import {extractSearchContext} from '../../loc/search-extract.mjs';
+import {galaxyAble} from '../../loc/galaxy-able.mjs';
 import {searchGalaxyRows,selectGalaxyContent,selectGalaxyIdentity,selectStyleKeywordMatches,selectSourceTaxonomy} from '../../loc/galaxy-query';
 import {defaultScopeData,selectLocSearchScopes,selectScopeRegistry,revalidateServerMetadata} from '../../loc/scope-data';
 
@@ -55,17 +55,17 @@ const MEDIA_EDITOR_COLUMNS='uid,location,type,title,url,meta_tags,createtime';
 const MEDIA_ATTR_ORDER=['uid','location','type','url','meta_tags','createtime'];
 const MEDIA_ATTR_FIELDS=MEDIA_ATTR_ORDER.map(key=>({key,readOnly:key==='uid',kind:key==='createtime'?'date':'text'}));
 
-const GALAXY_EDITOR_COLUMNS='uid,title,content,createtime,location,place_id,UpdateTime,url,source_id,target_id,ref_id,site,media_link,statics,culture,search,trace,list,keyword,others,extract';
+const GALAXY_EDITOR_COLUMNS='uid,title,content,createtime,location,place_id,UpdateTime,url,source_id,target_id,ref_id,site,media_link,statics,culture,search,trace,list,keyword,extract,others';
 
 const GALAXY_ATTR_ORDER=Object.freeze([
   'uid','title','content','createtime','location','place_id',
   'UpdateTime','url','source_id','target_id','ref_id','site',
-  'media_link',...['statics','culture','search','trace','list','keyword','others','extract'].map(k=>'able_'+k)
+  'media_link','statics','culture','search','trace','list','keyword','extract','others'
 ]);
 const GALAXY_ATTR_FIELDS=Object.freeze(GALAXY_ATTR_ORDER.map(key=>({
   key,
   readOnly:['uid','title','content','UpdateTime'].includes(key),
-  kind:key.startsWith('able_')?'boolean':
+  kind:['statics','culture','search','trace','list','keyword','extract','others'].includes(key)?'boolean':
     ['target_id','media_link'].includes(key)?'array':
     key==='createtime'?'date':'text'
 })));
@@ -130,7 +130,7 @@ function toResult(row,source,scopeId,copy=UI_COPY){
     source:displaySource,title:String(title),
     checkInPlace:'',
     date:row.date||row.createtime||row.address||row.record_date||row.UpdateTime||row.updated_at||'',
-    snippet:'',able:isGalaxy?galaxyAble(row):null,
+    snippet:'',...(isGalaxy?{statics:row.statics,culture:row.culture,search:row.search,trace:row.trace,list:row.list,keyword:row.keyword,others:row.others,extract:row.extract}:{}),
     scopeId:scope,resourceType,resourceId,
     relatedMedia:Array.isArray(row.related_media)?row.related_media:[],
     relatedTime:row.related_time||null,
@@ -169,7 +169,7 @@ async function loadPageSearchExcerpts(rows,query,scopeById,{authenticated=false,
   const groups=new Map();
   for(const row of rows){
     if(row.resourceType!=='galaxy'||!row.resourceId||
-      row.able?.search===false||row.able?.extract===false)continue;
+      row.search===false||row.extract===false)continue;
     if(!groups.has(row.scopeId))groups.set(row.scopeId,new Set());
     groups.get(row.scopeId).add(row.resourceId);
   }
@@ -395,7 +395,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   },[results,scopeId,availableScopes,articleSort]);
   // Suggestions come from loaded results only; do not imply a database-wide ranking.
   const suggestedTitles=useMemo(()=>[...new Set(results
-    .filter(row=>row.resourceType==='galaxy'&&row.able?.list!==false)
+    .filter(row=>row.resourceType==='galaxy'&&row.list!==false)
     .map(row=>String(row.title||'').trim())
     .filter(title=>title&&title.length<=80))].slice(0,8),[results]);
   const advancedRef=useRef(null);
@@ -541,7 +541,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           if(id!==searchId.current||signal.aborted||!previews.size)return;
           setResults(current=>current.map(item=>{
             const excerpt=previews.get(item.scopeId+':'+item.resourceId);
-            return excerpt&&item.able?.extract!==false?{...item,snippet:excerpt}:item;
+            return excerpt&&item.extract!==false?{...item,snippet:excerpt}:item;
           }));
         }).catch(()=>{});
       }
@@ -745,7 +745,9 @@ export default function Search({managementMode:legacyManagementRoute=false}){
         result.editableIdColumn,
         result.editResourceId||result.resourceId,
         result.resourceType==='galaxy'
-          ?(result.scopeId==='local'?'uid,title,content,createtime,location,UpdateTime,url,source_id,target_id,ref_id,site,media_link,able':GALAXY_EDITOR_COLUMNS)
+          ?(result.scopeId==='local'
+            ?'uid,title,content,createtime,location,UpdateTime,url,source_id,target_id,ref_id,site,media_link,able'
+            :GALAXY_EDITOR_COLUMNS)
           :MEDIA_EDITOR_COLUMNS,
         {authenticated:result.resourceType==='galaxy'}
       );
@@ -986,7 +988,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     const target=selectedPlaceArticles.slice();
     setBulkBusy(true);setBulkNotice('');
     try{
-      const {data,error}=await dbAuthClient.schema('silver').rpc('batch_fill_galaxy_location',{
+      const {data,error}=await dbAuthClient.schema('silver').managedAction('batch_fill_galaxy_location',{
         p_scope_id:target[0].scopeId,p_uids:target.map(row=>row.uid),p_place:bulkPlace.trim(),
         p_apply:apply,p_expected_count:apply?Number(selectedPreview.eligible):null
       });
@@ -1356,8 +1358,8 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           editOnCardClick={false}
           managerMode={managementMode}
           uid={editTarget.editResourceId}
-          title={!managementMode&&row.resourceType==='galaxy'&&row.able?.list===false?'（使用者隱藏）':row.title}
-          articleHref={row.resourceType==='galaxy'&&(managementMode||row.able?.list!==false)
+          title={!managementMode&&row.resourceType==='galaxy'&&row.list===false?'（使用者隱藏）':row.title}
+          articleHref={row.resourceType==='galaxy'&&(managementMode||row.list!==false)
             ?(managementMode?scopeHref(scopeId,'search/manage')+'?identity='+encodeURIComponent(row.resourceId)+'&scope='+encodeURIComponent(row.scopeId):galaxyIdentityHref(row.scopeId,row.resourceId))
             :''}
           detailReading={identityReader||expandedReader}
@@ -1409,7 +1411,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
             <button type="button" className="loc-button scope-work-edit-button" onClick={()=>startEditing(editTarget)}>
               {row.resourceType==='galaxy'?'展開內文並編輯':'編輯媒體連結'}
             </button>
-          </div>:!managementMode&&row.resourceType==='galaxy'&&row.able?.list!==false&&editingKey!==row.key?<div className="scope-work-fulltext-row">
+          </div>:!managementMode&&row.resourceType==='galaxy'&&row.list!==false&&editingKey!==row.key?<div className="scope-work-fulltext-row">
             <WorkFullText
               open={fullTextKey===row.key}
               loading={fullTextLoading&&fullTextKey===row.key}

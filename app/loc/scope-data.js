@@ -3,7 +3,7 @@
 
 import {DB_QUERY_BATCH_SIZE,selectRows} from './db-query.mjs';
 import {scopeConfigColumns,scopeFeatureEnabled} from './scope-config-fields.mjs';
-import {dbPublicClient} from './db-client.mjs';
+import {dbPublicClient,dbConfiguredPublicClient} from './db-client.mjs';
 import {Capacitor} from '@capacitor/core';
 import {SCOPE_ROUTE_INDEX} from '../modular/scope-route-index.js';
 import {PUBLISHED_SITE_BOOTSTRAP} from '../modular/published-site-bootstrap.js';
@@ -144,7 +144,7 @@ export function selectPublicSiteBootstrap(){
   // Normal visitor path is a JS module, no fetch, JSON parsing, Worker or SQL.
   // After an authorized editor change, the current editor sees live data until publication.
   publicSiteBootstrapRequest=(editedPublicMetadata
-    ?dbPublicClient.schema('silver').rpc('read_app_bootstrap',{p_scope_id:'loc',p_page_name:'index'})
+    ?dbPublicClient.schema('silver').publicAction('read_app_bootstrap',{p_scope_id:'loc',p_page_name:'index'})
       .then(({data,error})=>{if(error)throw error;return {...(data||{}),blocks:[]};})
     :Promise.resolve({...PUBLISHED_SITE_BOOTSTRAP,
       config:SCOPE_ROUTE_INDEX.find(row=>row.scope_id==='loc')?.config||null}
@@ -171,11 +171,7 @@ export async function selectScopeRegistry({parentScopeId=null,scopeKind=null}={}
 // are independent of an article's searchable flag.
 export async function selectLocSearchScopes(){
   // LOC Group membership is owned by silver.manage, not by front-end routes.
-  const {data,error}=await dbPublicClient.schema('silver').rpc('scope_group',{
-    p_group_id:'loc',p_type:'search'
-  });
-  if(error)throw error;
-  const members=new Set((data?.scopes||[]).map(row=>String(row.scope_id||'').trim()));
+  const members=await selectScopeGroupMemberIds('loc','search');
   const registry=await selectScopeRegistry({scopeKind:'scope'});
   const scopes=await Promise.all(registry
     .filter(row=>row.active&&members.has(row.scope_id))
@@ -194,13 +190,21 @@ const groupMembershipRequests=new Map();
 export function selectScopeGroupMemberIds(groupId='loc',type='culture'){
   const key=groupId+':'+type;
   if(groupMembershipRequests.has(key))return groupMembershipRequests.get(key);
-  const request=dbPublicClient.schema('silver').rpc('scope_group',{
-    p_group_id:groupId,p_type:type
-  }).then(({data,error})=>{
+  const request=(async()=>{
+    const group=String(groupId||'').trim().toLowerCase();
+    if(!SCOPE_ID_PATTERN.test(group)||!['search','culture','trace','statistics'].includes(type))
+      throw new Error('Invalid Scope Group request');
+    const client=dbConfiguredPublicClient||dbPublicClient;
+    const {data:parent,error:parentError}=await client.schema('silver').from('manage')
+      .select('id').eq('id',group).eq('manage_role','group').eq('active',true).limit(1);
+    if(parentError||!parent?.length)throw new Error(parentError?.message||'Unknown or inactive Scope Group');
+    const {data,error}=await client.schema('silver').from('manage')
+      .select('id,display_name').eq('parent_scope_id',group)
+      .eq('manage_role','scope').eq('active',true)
+      .order('sort_order').order('id').range(0,9999);
     if(error)throw error;
-    if(!Array.isArray(data?.scopes))throw new Error('Invalid Scope Group membership');
-    return new Set(data.scopes.map(row=>String(row.scope_id||'').trim()).filter(Boolean));
-  }).catch(error=>{groupMembershipRequests.delete(key);throw error;});
+    return new Set((data||[]).map(row=>String(row.id||'').trim()).filter(Boolean));
+  })().catch(error=>{groupMembershipRequests.delete(key);throw error;});
   groupMembershipRequests.set(key,request);
   return request;
 }

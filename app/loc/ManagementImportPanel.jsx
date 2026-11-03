@@ -151,13 +151,18 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t){
       ...(importPlaceName?{__importPlaceName:importPlaceName}:{}),
       ...(importPlaceAddress?{__importPlaceAddress:importPlaceAddress}:{}),
       ...(importPlaceUrl?{__importPlaceUrl:importPlaceUrl}:{})}:{}),
-    able:row?.able&&typeof row.able==='object'&&!Array.isArray(row.able)
-      ?galaxyAble({able:row.able})
-      :(()=>{
-      const statistics=value('statistics_able')!==false&&String(value('statistics_able')).toLowerCase()!=='false'&&searchable&&!isPureUrlContent(content);
-      return {statics:statistics,culture:statistics,search:searchable,trace:searchable&&statistics,
-        list:searchable,keyword:searchable&&statistics,others:true,extract:true};
-    })(),
+    ...galaxyAble({
+      searchable,
+      statistics_able:value('statistics_able')!==false&&
+        String(value('statistics_able')).toLowerCase()!=='false'&&
+        searchable&&!isPureUrlContent(content),
+      // Old ZIP archives may contain an able object, which is expanded only
+      // on import; all new article writes use eight separate boolean columns.
+      ...(row?.able&&typeof row.able==='object'&&!Array.isArray(row.able)
+        ?{able:row.able}:{}),
+      ...Object.fromEntries(['statics','culture','search','trace','list','keyword','extract','others']
+        .map(key=>[key,value(key)]).filter(([,v])=>v!==undefined&&v!==null&&v!==''))
+    }),
     source_id:String(value('source_id')||'').trim()||null,
     target_id:normalizeRelationIds(value('target_id')),
     site_id:String(originalSiteId||'').trim()||null,

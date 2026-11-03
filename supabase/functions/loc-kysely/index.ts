@@ -1,13 +1,17 @@
-import { createClient } from "npm:@supabase/supabase-js@2.117.2";
-import { sql } from "npm:kysely@0.29.6";
+import { sql } from "npm:kysely@0.29.8";
 import {createRemoteJWKSet,jwtVerify} from "npm:jose@5.9.6";
 import {clerkSqlClaims} from "../../../app/loc/auth/clerk-sql-claims.mjs";
 import {databaseForTarget,resolveConnectionProfile} from "./drivers.ts";
 import {makeConnectionProfile,readVaultConnection,saveVaultConnection} from "./database-connections.ts";
 import {normalizeDatabaseLocation} from "../../../app/loc/providers/database-link.mjs";
-import { executeAllowlistedRpc, executeKyselyQuery, isKyselyClientError } from "../../../app/loc/providers/kysely-runtime.mjs";
+import { executeKyselyQuery, isKyselyClientError } from "../../../app/loc/providers/kysely-runtime.mjs";
+import {executeManagedKyselyWrite,executeManagedKyselyAction} from "../../../app/loc/providers/kysely-management.mjs";
+import {executeKyselyAnchor} from "../../../app/loc/providers/kysely-anchor.mjs";
+import {executeKyselyAnalytics} from "../../../app/loc/providers/kysely-analytics.mjs";
+import {executeKyselyPublicAction} from "../../../app/loc/providers/kysely-public.mjs";
+import {executeKyselyScopeAdmin} from "../../../app/loc/providers/kysely-scope-admin.mjs";
 import { selectedDatabaseTarget } from "../../../app/loc/providers/selected-database-target.mjs";
-import {resolveSqlExecutionPort,assertCrossEnginePublicRead} from "../../../app/loc/providers/sql-engine-ports.mjs";
+import {resolveSqlExecutionPort,assertCrossEnginePublicRead,authorizeCrossEngineQuery,executeCrossEngineManagedWrite} from "../../../app/loc/providers/sql-engine-ports.mjs";
 import {resolveDatabaseRouting} from "../../../app/loc/providers/routing-config.mjs";
 
 const corsHeaders = {
@@ -102,6 +106,9 @@ async function profileForTarget(target:Record<string,unknown>){
   // connection URL in Edge secrets. Do not open a second connection or read
   // Vault on every ordinary public request.
   if(isSupabaseControlTarget(target))return resolveConnectionProfile(controlTarget);
+  // A custom SQL primary must not depend on Supabase being reachable simply
+  // to find its own driver credentials. This alias resolves only server secrets.
+  if(target.provider==="custom")return resolveConnectionProfile(target);
   const control=await databaseForTarget(controlTarget);
   const secret=await readVaultConnection(control,target);
   if(secret)return secret;
@@ -180,9 +187,14 @@ async function saveDatabaseTarget(input:Record<string,unknown>,role:string,claim
 async function executeRequest(trx: any, target: Record<string,any>, role: string, claims: Record<string, unknown>, body: Record<string, unknown>) {
   const executionPort=resolveSqlExecutionPort(target);
   if(executionPort.session!=="postgres-rls"){
-    // No PostgreSQL RLS or set-local-role on other engines. Until the target's
-    // authorization adapter exists, permit only the public LOC read surface.
-    assertCrossEnginePublicRead(body);
+    // No PostgreSQL RLS on other engines. Authorize each request against
+    // the target Scope Registry using the already verified Clerk identity.
+    if(body.kind==="managed-write"){
+      if(role!=="authenticated")
+        throw Object.assign(new Error("Management requires verified Clerk identity"),{httpStatus:403});
+      return await executeCrossEngineManagedWrite(trx,body,{role,claims,engine:executionPort.engine});
+    }
+    await authorizeCrossEngineQuery(trx,body,{role,claims});
     return await executeKyselyQuery(trx,body,{dialect:executionPort.engine});
   }
   if (role === "authenticated") await sql`set local role authenticated`.execute(trx);
@@ -192,7 +204,18 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
   await sql`select set_config('request.jwt.claim.sub', ${String(claims.sub || "")}, true)`.execute(trx);
   await sql`select set_config('request.jwt.claim.role', ${role}, true)`.execute(trx);
   if(body.kind==="query")return await executeKyselyQuery(trx,body);
-  return await executeAllowlistedRpc(trx,body);
+  if(body.kind==="anchor")return await executeKyselyAnchor(trx,body,{role,claims});
+  if(body.kind==="analytics")return await executeKyselyAnalytics(trx,body,{role});
+  if(body.kind==="public-action")return await executeKyselyPublicAction(trx,body);
+  if(body.kind==="managed-write"||body.kind==="managed-action"){
+    if(role!=="authenticated")throw Object.assign(new Error("Management requires a verified session"),{httpStatus:403});
+    return body.kind==="managed-write"
+      ?await executeManagedKyselyWrite(trx,body)
+      :["manage_scope_registry","delete_scope","provision_scope"].includes(String(body.name))
+        ?await executeKyselyScopeAdmin(trx,body)
+        :await executeManagedKyselyAction(trx,body,claims);
+  }
+  throw Object.assign(new Error("Unsupported SQL operation: legacy RPC dispatch has been retired"),{httpStatus:400});
 }
 
 function json(body: unknown, status = 200, extraHeaders: Record<string, string> = {}) {
@@ -268,12 +291,10 @@ Deno.serve(async (request) => {
         }
       }
     }else{
-      const authClient = createClient(supabaseUrl, apiKey, { auth: { persistSession: false, autoRefreshToken: false } });
-      const { data, error } = await authClient.auth.getUser(token);
-      if (error || !data.user) return json({ error: { message: "Invalid or expired session" } }, 401);
-      claims = untrusted;
-      if (claims.sub !== data.user.id) return json({ error: { message: "Session subject mismatch" } }, 401);
-      claims.role = "authenticated";
+      // LOC sessions are exclusively Clerk-issued and verified using the
+      // existing LOC Authority. Database-provider OAuth never authenticates
+      // a LOC management request, regardless of selected SQL Dialect.
+      return json({error:{message:"LOC requires a verified Clerk session"}},401);
     }
     role = "authenticated";
   }
@@ -330,17 +351,15 @@ Deno.serve(async (request) => {
       if(!verifiedMcp||role!=="authenticated")
         return json({error:{message:"Verified MCP write permission required"}},403);
       const scope=String(body.scopeid||"");
-      // MCP sync is a private conversation source, regardless of the caller's
-      // legacy site/able payload. Never inherit Galaxy's all-true defaults.
+      // A signed MCP conversation is private irrespective of supplied flags.
       const incomingRow=body.row as Record<string,unknown>;
+      const flags=["statics","culture","search","trace","list","keyword","extract","others"];
+      const base=["uid","title","content","site","site_id","createtime","UpdateTime"];
       const row=incomingRow&&typeof incomingRow==="object"&&!Array.isArray(incomingRow)
-        ? {...incomingRow,site:"mcp",
-            statics:false,culture:false,search:false,trace:false,
-            list:false,keyword:false,others:false,extract:false}
+        ? Object.fromEntries([...base.map(key=>[key,key==="site"?"mcp":incomingRow[key]]),
+            ...flags.map(key=>[key,false])])
         :incomingRow;
-      const expected=["uid","title","content","site","site_id",
-        "statics","culture","search","trace","list","keyword","others","extract",
-        "createtime","UpdateTime"];
+      const expected=[...base,...flags];
       if(!["lo3rwang","lrunes"].includes(scope)||!row||typeof row!=="object"||
         Array.isArray(row)||Object.keys(row).length!==expected.length||
         Object.keys(row).some(k=>!expected.includes(k))||
@@ -350,7 +369,8 @@ Deno.serve(async (request) => {
         row.content.length>125000||row.site!=="mcp"||
         typeof row.site_id!=="string"||row.site_id.length<3||
         row.site_id.length>150||
-        ["statics","culture","search","trace","list","keyword","others","extract"].some(k=>row[k]!==false)||
+        !incomingRow||Object.keys(incomingRow).some(k=>!expected.includes(k))||
+        flags.some(k=>row[k]!==false)||
         typeof row.createtime!=="string"||typeof row.UpdateTime!=="string"||
         typeof body.update_existing!=="boolean")
         return json({error:{message:"Invalid managed conversation payload"}},400);
@@ -360,18 +380,20 @@ Deno.serve(async (request) => {
         if(body.update_existing){
           const values={...row};
           delete values.uid;
-          const update=await executeRequest(trx,controlTarget,"authenticated",claims,{
-            kind:"rpc",schema:"silver",name:"management_write",
-            args:{p_table:table,p_operation:"update",p_values:values,
-              p_filters:[{column:"uid",operator:"eq",value:row.uid},
-                {column:"site_id",operator:"eq",value:row.site_id}]}
-          });
-          if(update?.data?.count===1)return update;
-          if(update?.data?.count!==0)throw new Error("Unexpected managed sync update count");
+          const update=await executeRequest(trx,controlTarget,"authenticated",claims,
+            scope==="lo3rwang"
+              ?{kind:"query",schema:"silver",table:scope+"_galaxy",operation:"update",
+                values,filters:[{column:"uid",operator:"eq",value:row.uid},
+                  {column:"site_id",operator:"eq",value:row.site_id}]}
+              :{kind:"managed-write",payload:{p_table:table,p_operation:"update",p_values:values,
+                  p_filters:[{column:"uid",operator:"eq",value:row.uid},
+                    {column:"site_id",operator:"eq",value:row.site_id}]}});
+          const updatedCount=update?.count??update?.data?.count;
+          if(updatedCount===1)return {data:{count:1},count:1};
+          if(updatedCount!==0)throw new Error("Unexpected managed sync update count");
         }
         return executeRequest(trx,controlTarget,"authenticated",claims,{
-          kind:"rpc",schema:"silver",name:"management_write",
-          args:{p_table:table,p_operation:"insert",p_rows:[row]}
+          kind:"managed-write",payload:{p_table:table,p_operation:"insert",p_rows:[row]}
         });
       });
       return json(result);
@@ -413,16 +435,21 @@ Deno.serve(async (request) => {
         const prMarker=new RegExp("(?:^|[^0-9])PR\\s*#"+Number(prNumber)+"(?:[^0-9]|$)");
         if(!prMarker.test(row.title))
           throw Object.assign(new Error("PR number does not match this article's title"),{httpStatus:403});
-        return executeRequest(trx,controlTarget,"authenticated",claims,{
-          kind:"rpc",schema:"silver",name:"management_write",
-          args:{p_table:table,p_operation:"update",
-            p_values:{title:body.title,content:body.content,UpdateTime:body.updated_at},
-            p_filters:[{column:"uid",operator:"eq",value:uid}]}
-        });
+        const values={title:body.title,content:body.content,UpdateTime:body.updated_at};
+        const updated=await executeRequest(trx,controlTarget,"authenticated",claims,
+          scope==="lo3rwang"
+            ?{kind:"query",schema:"silver",table:scope+"_galaxy",operation:"update",
+              values,filters:[{column:"uid",operator:"eq",value:uid}]}
+            :{kind:"managed-write",payload:{p_table:table,p_operation:"update",p_values:values,
+                p_filters:[{column:"uid",operator:"eq",value:uid}]}});
+        const count=updated?.count??updated?.data?.count;
+        if(count!==1)throw new Error("Managed PR update affected an unexpected number of rows");
+        return {data:{count:1},count:1};
+
       });
       return json(result);
     }
-    if(body.kind==="rpc"&&body.schema==="silver"&&body.name==="check_backup_readiness"){
+    if(body.kind==="managed-action"&&body.name==="check_backup_readiness"){
       if(requestedTarget!=="configured")return json({error:{message:"Invalid health target"}},400);
       if(role!=="authenticated")return json({error:{message:"Administrator permission required"}},403);
       const control=await checkAdminRole(claims);
@@ -475,6 +502,11 @@ Deno.serve(async (request) => {
       return json({error:{message:"Database routing is set in app/loc/providers/routing-config.mjs and requires deployment"}},409);
 
     let target=controlTarget as Record<string,any>;
+    if(requestedTarget==="configured"&&routing.provider==="custom"){
+      target=selectedDatabaseTarget([{provider:"custom",
+        engine:routing.engine,connection_alias:routing.connectionAlias,
+        connection_mode:"direct",selected:true}]);
+    }
     if(requestedTarget==="neon"){
       if(routing.backupId!=="neon-current"||routing.backupProvider!=="neon")
         return json({error:{message:"Neon target is not enabled by repository routing"}},403);
@@ -496,8 +528,9 @@ Deno.serve(async (request) => {
       if(target.provider!==routing.backupProvider)return json({error:{message:"Backup provider differs from repository config"}},503);
       resolvingTarget=false;
     }
-    // configured and supabase always execute on the trusted Supabase control target.
-    // No per-request database_targets lookup, even for RPCs and authenticated writes.
+    // Supabase remains the explicit control target; "configured" can route to
+    // an opt-in custom Kysely primary using only trusted repository settings.
+    // No untrusted per-request connection alias selection.
     if(target.provider==="neon"&&(body.kind!=="query"||body.operation!=="select"))
       return json({error:{message:"Neon LOC mirror is read-only"}},403);
     // PostgreSQL mirrors enforce per-row access through RLS, not table-name
@@ -506,10 +539,14 @@ Deno.serve(async (request) => {
     if(target.provider==="neon"&&(body.schema!=="silver"||typeof body.table!=="string"))
       return json({error:{message:"Neon LOC mirror table is not enabled"}},403);
     if(target.provider==="neon"&&role==="anon"){role="anonymous";claims.role=role;}
-    // Non-PostgreSQL engines have no equivalent to PostgreSQL RLS yet.
-    // Enforce the same small public reference whitelist BEFORE opening a
-    // database connection; executeRequest repeats the gate defensively.
-    if(target.engine!=="postgres")assertCrossEnginePublicRead(body);
+    // Reject public or unsupported cross-engine actions before opening a
+    // connection; private CRUD receives a second, row-owner ACL gate in
+    // executeRequest after verified Clerk claims have been established.
+    if(target.engine!=="postgres"){
+      if(role!=="authenticated")assertCrossEnginePublicRead(body);
+      else if(body.kind!=="query"&&body.kind!=="managed-write")return json({
+        error:{message:"Cross-engine actions must use the Kysely query contract"}},403);
+    }
     const db=isSupabaseControlTarget(target)
       ?await databaseForTarget(controlTarget)
       :await databaseForTarget(target,{profileLookup:profileForTarget});

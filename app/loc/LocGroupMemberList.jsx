@@ -21,7 +21,7 @@ export default function LocGroupMemberList({groupId='loc'}){
   const [notice,setNotice]=useState('');
   const query=useAsyncResource(['loc-group-member-list',groupId],async()=>{
     const {data,error}=await dbAuthClient.schema('silver')
-      .rpc('read_group_members',{p_group_id:groupId});
+      .managedAction('read_group_members',{p_group_id:groupId});
     if(error)throw new Error(error.message||'群組人員讀取失敗。');
     return Array.isArray(data)?data:[];
   },{enabled:allowed});
@@ -35,7 +35,7 @@ export default function LocGroupMemberList({groupId='loc'}){
       for(const row of edited){
         const name=String(draft[row.id]||'').trim();
         if(!name||name.length>120)throw new Error('人員名稱須為 1–120 字。');
-        const {data,error}=await dbAuthClient.schema('silver').rpc('update_group_member_name',{
+        const {data,error}=await dbAuthClient.schema('silver').managedAction('update_group_member_name',{
           p_group_id:groupId,p_member_id:row.id,p_display_name:name
         });
         if(error||data!==true)throw new Error(error?.message||row.id+' 無法儲存。');

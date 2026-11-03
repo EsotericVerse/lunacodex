@@ -21,7 +21,7 @@ export default function AdminEmailBlocklist(){
   const load=useCallback(async()=>{
     setLoading(true);
     try{
-      const {data,error}=await dbAuthClient.schema('silver').rpc('loc_admin_settings',
+      const {data,error}=await dbAuthClient.schema('silver').managedAction('loc_admin_settings',
         {p_section:'email',p_operation:'read'});
       if(error)throw new Error(error.message||'系統黑名單讀取失敗');
       setEmails((data||[]).sort((a,b)=>a.email.localeCompare(b.email)));
@@ -38,7 +38,7 @@ export default function AdminEmailBlocklist(){
     }
     setBusy(true);setMessage('');
     try{
-      const {error}=await dbAuthClient.schema('silver').rpc('loc_admin_settings',
+      const {error}=await dbAuthClient.schema('silver').managedAction('loc_admin_settings',
         {p_section:'email',p_operation:'add',p_key:value});
       if(error)throw new Error(error.message||'新增黑名單失敗');
       setEmail('');setMessage(value+' 已加入系統黑名單。');
@@ -56,7 +56,7 @@ export default function AdminEmailBlocklist(){
     if(!window.confirm('確認將 '+value+' 移出系統黑名單？'))return;
     setBusy(true);setMessage('');
     try{
-      const {error}=await dbAuthClient.schema('silver').rpc('loc_admin_settings',
+      const {error}=await dbAuthClient.schema('silver').managedAction('loc_admin_settings',
         {p_section:'email',p_operation:'remove',p_key:value});
       if(error)throw new Error(error.message||'移出黑名單失敗');
       setMessage(value+' 已移出黑名單。');

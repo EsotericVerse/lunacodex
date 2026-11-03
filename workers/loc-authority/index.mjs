@@ -504,12 +504,11 @@ export class LocAuthorityState extends DurableObject {
     // Idempotent upsert by the existing case-sensitive UID; no table scans.
     const row={uid,title:input.title,content:input.content,
       site:'mcp',site_id:conversation_id,
-      statics:false,culture:false,search:false,trace:false,list:false,keyword:false,others:false,extract:false,
+      statics:false,culture:false,search:false,trace:false,list:false,keyword:false,extract:false,others:false,
       createtime:validTimestamp(input.created_at||requestedTime),
       UpdateTime:requestedTime};
     if(profile){
-      // Externally hosted Scopes own their schema; preserve the original
-      // eight-key representation unless that Scope explicitly migrates.
+      // Third-party Scope providers manage their own schema independently.
       const legacy={...row,able:{
         statics:false,culture:false,search:false,trace:false,list:false,
         keywords:false,game:false,extract:false

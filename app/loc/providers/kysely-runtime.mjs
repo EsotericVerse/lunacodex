@@ -1,58 +1,13 @@
-import {sql} from 'npm:kysely@0.29.6';
+import {sql} from 'npm:kysely@0.29.8';
 import {DB_QUERY_BATCH_SIZE} from '../query-batch-size.mjs';
+import {serializePortableJsonFields} from './sql-engine-ports.mjs';
 
 const identifier=/^[a-z][a-z0-9_]*$/i;
 const schemas=new Set(['silver','api']);
 const operators={eq:'=',neq:'!=',gt:'>',gte:'>=',lt:'<',lte:'<=',like:'like',ilike:'ilike',is:'is',in:'in'};
 function checkedFilterColumn(value){
-  if(identifier.test(String(value||'')))return value;
-  throw new Error('Invalid filter column');
+  return checkedIdentifier(value,'filter column');
 }
-
-// Existing application RPCs only. Keep SQL identifiers fixed and bind all values.
-export const RPC_ALLOWLIST={
-  'silver.management_write':['p_table','p_operation','p_rows','p_values','p_filters'],
-  'silver.read_scope_analytics':['p_scope_id','p_view','p_start','p_end','p_options'],
-  // Management is authorized through the unified silver.manage(type,id) RPC.
-  // Public Search reads only the persisted summary; it cannot call this RPC.
-  'silver.refresh_scope_search_summary':['p_scope_id'],
-  'silver.manage':['p_type','p_id'],
-  'silver.loc_admin_settings':['p_section','p_operation','p_key','p_value'],
-  // These existing scope procedures perform database-side permission checks,
-  // atomic multi-row writes, or bounded indexed lookups. Do not recreate
-  // transactions as multiple browser requests.
-  'silver.import_shared_keyword_class':['p_target_scope','p_source_scope','p_class_uid'],
-  'silver.merge_scope_trace_place_names':['p_scope_id','p_keep_uid','p_remove_uids'],
-  'silver.save_scope_trace_place_names':['p_scope_id','p_uid','p_names'],
-  'silver.scope_type_attr':['p_scope_id','p_type','p_attr'],
-  'silver.scope_group':['p_group_id','p_type'],
-  'silver.search_scope_trace_place_names':['p_scope_id','p_term','p_limit'],
-  'silver.is_current_email_blocklisted':[],
-  'silver.move_scope_block':['p_scope_id','p_page_name','p_uid','p_direction'],
-  'silver.delete_scope':['p_scope_id'],
-  'silver.provision_scope':['p_scope_id','p_display_name','p_email','p_birthday','p_domain','p_directory','p_parent_scope_id','p_theme','p_copy_keywords'],
-  'silver.manage_scope_registry':['p_operation','p_scope_id','p_values'],
-  'silver.log_search_keyword':['p_scope_id','p_query_text'],
-  'silver.read_scope_page_copy':['p_scope_id'],
-};
-const RPC_REQUIRED_ARGUMENTS={
-  'silver.management_write':['p_table','p_operation'],
-  'silver.read_scope_analytics':['p_scope_id','p_view'],
-  'silver.refresh_scope_search_summary':['p_scope_id'],
-  'silver.loc_admin_settings':['p_section'],
-  'silver.import_shared_keyword_class':['p_target_scope','p_source_scope','p_class_uid'],
-  'silver.save_scope_trace_place_names':['p_scope_id','p_uid','p_names'],
-  'silver.scope_type_attr':['p_scope_id','p_type','p_attr'],
-  'silver.scope_group':['p_group_id','p_type'],
-  'silver.manage':['p_type'],
-  'silver.search_scope_trace_place_names':['p_scope_id','p_term'],
-  'silver.move_scope_block':['p_scope_id','p_page_name','p_uid','p_direction'],
-  'silver.delete_scope':['p_scope_id'],
-  'silver.provision_scope':['p_scope_id','p_display_name','p_email'],
-  'silver.manage_scope_registry':['p_operation','p_scope_id'],
-  'silver.log_search_keyword':['p_scope_id','p_query_text'],
-  'silver.read_scope_page_copy':['p_scope_id'],
-};
 
 function checkedIdentifier(value,label){
   if(typeof value!=='string'||!identifier.test(value))throw new Error('Invalid '+label);
@@ -130,13 +85,17 @@ function validateQuery(input){
   return {...input,schema,table,filters,columns,orders,limit,offset,orFilters};
 }
 
+const GALAXY_BOOLEAN_COLUMNS=new Set(['statics','culture','search','trace','list','keyword','extract','others']);
 function applyFilters(query,filters){
   for(const filter of filters){
     const op=operators[filter.operator],column=checkedFilterColumn(filter.column);
-    if(filter.operator==='in')query=filter.negate?query.where(eb=>eb.not(eb(column,'in',filter.value))):query.where(column,'in',filter.value);
-    else if(filter.operator==='ilike')query=query.where(sql`lower(${typeof column==='string'?sql.ref(column):column})`,filter.negate?'not like':'like',String(filter.value).toLowerCase());
-    else if(filter.operator==='is')query=query.where(column,filter.value===null?(filter.negate?'is not':'is'):(filter.negate?'!=':'='),filter.value);
-    else query=filter.negate?query.where(eb=>eb.not(eb(column,op,filter.value))):query.where(column,op,filter.value);
+    const value=GALAXY_BOOLEAN_COLUMNS.has(filter.column)&&
+      (filter.value==='true'||filter.value==='false')
+      ?filter.value==='true':filter.value;
+    if(filter.operator==='in')query=filter.negate?query.where(eb=>eb.not(eb(column,'in',value))):query.where(column,'in',value);
+    else if(filter.operator==='ilike')query=query.where(sql`lower(${typeof column==='string'?sql.ref(column):column})`,filter.negate?'not like':'like',String(value).toLowerCase());
+    else if(filter.operator==='is')query=query.where(column,value===null?(filter.negate?'is not':'is'):(filter.negate?'!=':'='),value);
+    else query=filter.negate?query.where(eb=>eb.not(eb(column,op,value))):query.where(column,op,value);
   }
   return query;
 }
@@ -173,26 +132,35 @@ export function buildKyselyUpsertQuery(trx,req,dialect='postgres'){
   const rows=Array.isArray(req.values)?req.values:[req.values];
   if(!sameKeys(rows))throw new Error('Upsert rows must have the same columns');
   const table=`${req.schema}.${req.table}`;
-  const updates=Object.fromEntries(Object.keys(rows[0]||{}).filter(col=>!req.onConflict.includes(col)).map(col=>[col,rows[0][col]]));
+  const updateColumns=Object.keys(rows[0]||{}).filter(col=>!req.onConflict.includes(col));
   if(dialect==='mysql'){
-    const duplicateUpdates=req.ignoreDuplicates||!Object.keys(updates).length
+    const duplicateUpdates=req.ignoreDuplicates||!updateColumns.length
       ?Object.fromEntries(req.onConflict.map(col=>[col,sql.ref(col)]))
-      :Object.fromEntries(Object.keys(updates).map(col=>[col,sql`values(${sql.ref(col)})`]));
+      :Object.fromEntries(updateColumns.map(col=>[col,sql`values(${sql.ref(col)})`]));
     return trx.insertInto(table).values(req.values).onDuplicateKeyUpdate(duplicateUpdates);
   }
   if(dialect==='mssql'){
-    let source=trx.selectNoFrom(Object.keys(rows[0]).map(col=>sql`${sql.val(rows[0][col])}`.as(col)));
-    for(const row of rows.slice(1))source=source.unionAll(trx.selectNoFrom(Object.keys(rows[0]).map(col=>sql`${sql.val(row[col])}`.as(col))));
+    const columns=Object.keys(rows[0]);
+    let source=trx.selectNoFrom(columns.map(col=>sql`${sql.val(rows[0][col])}`.as(col)));
+    for(const row of rows.slice(1))
+      source=source.unionAll(trx.selectNoFrom(columns.map(col=>sql`${sql.val(row[col])}`.as(col))));
     let query=trx.mergeInto(table).using(source.as('source'),join=>{
       let condition=join.onRef(`${table}.${req.onConflict[0]}`,'=','source.'+req.onConflict[0]);
       for(const col of req.onConflict.slice(1))condition=condition.onRef(`${table}.${col}`,'=','source.'+col);
       return condition;
     });
-    if(!req.ignoreDuplicates&&Object.keys(updates).length)query=query.whenMatched().thenUpdateSet(eb=>Object.fromEntries(Object.keys(updates).map(col=>[col,eb.ref('source.'+col)])));
-    return query.whenNotMatched().thenInsertValues(req.values);
+    if(!req.ignoreDuplicates&&updateColumns.length)
+      query=query.whenMatched().thenUpdateSet(eb=>Object.fromEntries(
+        updateColumns.map(col=>[col,eb.ref('source.'+col)])));
+    return query.whenNotMatched().thenInsertValues(eb=>Object.fromEntries(
+      columns.map(col=>[col,eb.ref('source.'+col)])));
   }
-  return trx.insertInto(table).values(req.values).onConflict(oc=>Object.keys(updates).length&&!req.ignoreDuplicates
-    ?oc.columns(req.onConflict).doUpdateSet(updates)
+  // PostgreSQL and SQLite: excluded.<column> represents EACH incoming row.
+  // Reusing rows[0] here silently overwrote multi-row upserts with the
+  // first row's values. Kysely supports the native excluded reference.
+  return trx.insertInto(table).values(req.values).onConflict(oc=>updateColumns.length&&!req.ignoreDuplicates
+    ?oc.columns(req.onConflict).doUpdateSet(eb=>Object.fromEntries(
+      updateColumns.map(col=>[col,eb.ref('excluded.'+col)])))
     :oc.columns(req.onConflict).doNothing());
 }
 
@@ -207,7 +175,9 @@ function applyMutationReturning(query,req,dialect){
 }
 
 export function buildKyselyMutationQuery(trx,input,{dialect='postgres'}={}){
-  const req=validateQuery(input);const fullTable=`${req.schema}.${req.table}`;
+  const validated=validateQuery(input);
+  const req={...validated,values:serializePortableJsonFields(validated.values,dialect)};
+  const fullTable=`${req.schema}.${req.table}`;
   if(!['insert','update','delete','upsert'].includes(req.operation))throw new Error('Unsupported mutation');
   let query;
   if(req.operation==='insert')query=trx.insertInto(fullTable).values(req.values);
@@ -281,7 +251,7 @@ export async function executeKyselyQuery(trx,input,{dialect='postgres'}={}){
     if(built.query)data=await built.query.execute();
   }else{
     const built=buildKyselyMutationQuery(trx,input,{dialect});
-    if(dialect==='mysql'&&req.returning)data=await executeMysqlReturningMutation(trx,req,built.query);
+    if(dialect==='mysql'&&req.returning)data=await executeMysqlReturningMutation(trx,built.request,built.query);
     else {
       const result=await built.query.execute();
       if(req.returning)data=result;
@@ -292,41 +262,6 @@ export async function executeKyselyQuery(trx,input,{dialect='postgres'}={}){
   return {data,count};
 }
 
-export function buildAllowlistedRpcQuery(input){
-  if(!input||input.kind!=='rpc')throw new Error('Invalid request kind');
-  const schema=checkedIdentifier(input.schema,'RPC schema');const name=checkedIdentifier(input.name,'RPC name');
-  const key=`${schema}.${name}`;const names=RPC_ALLOWLIST[key];if(!names)throw new Error('RPC is not enabled');
-  const args=input.args&&typeof input.args==='object'&&!Array.isArray(input.args)?input.args:{};
-  if(Object.keys(args).some(arg=>!names.includes(arg)))throw new Error('Unexpected RPC argument');
-  if((RPC_REQUIRED_ARGUMENTS[key]||[]).some(arg=>!Object.hasOwn(args,arg)))throw new Error('Missing required RPC argument');
-  const supplied=names.filter(name=>Object.hasOwn(args,name));const id=sql.id(schema,name);
-  // management_write accepts JSONB payloads. pg encodes native JS arrays
-  // as PostgreSQL array literals, which are invalid JSONB (SQLSTATE 22P02).
-  // Serialize only these declared JSONB arguments; other RPCs can legitimately
-  // accept PostgreSQL arrays. Keep null as SQL NULL, not JSONB 'null'.
-  // A JS array is a PostgreSQL array by default. These existing procedures
-  // accept JSONB arrays, whereas name lists and place UID lists are SQL arrays.
-  const jsonbArgsByRpc={
-    'silver.management_write':new Set(['p_rows','p_values','p_filters']),
-    'silver.loc_admin_settings':new Set(['p_value']),
-    'silver.read_scope_analytics':new Set(['p_options']),
-    'silver.scope_type_attr':new Set(['p_attr']),
-  };
-  const jsonbArgs=jsonbArgsByRpc[key];
-  const params=supplied.map(name=>{
-    const value=args[name];
-    const parameter=jsonbArgs?.has(name)
-      ?sql`${sql.val(value==null?null:JSON.stringify(value))}::jsonb`
-      :sql.val(value);
-    return sql`${sql.id(name)} => ${parameter}`;
-  });
-  const returnsRows=key==='silver.read_scope_page_copy'||key==='silver.manage';
-  return {query:returnsRows?sql`select * from ${id}(${sql.join(params)})`:sql`select ${id}(${sql.join(params)}) as result`,returnsRows};
-}
-
-export async function executeAllowlistedRpc(trx,input){
-  const {query,returnsRows}=buildAllowlistedRpcQuery(input);const result=await query.execute(trx);
-  return {data:returnsRows?result.rows:result.rows[0]?.result??null,count:null};
-}
-
+// SQL operations have no stored-procedure dispatch. All calls now use
+// Kysely query, Anchor, Analytics or vetted management action executors.
 export function isKyselyClientError(error){return error instanceof Error&&['Invalid','Unsupported','Unfiltered','Write','Update','Unexpected','RPC','Schema','Too many','Malformed','Filters','OR filters','Neon theme','MySQL returning','Missing'].some(prefix=>error.message.startsWith(prefix))}

@@ -196,8 +196,8 @@ export async function parseGalaxyMarkdownFile(file,{importLocale='zh-Hant'}={}){
     uid,title,content,createtime:date,
     ...(fields.site?{site:String(fields.site)}:{}),
     ...(fields.location?{location:String(fields.location)}:{}),
-    able:{statics:statistics,culture:statistics,search:searchable,trace:searchable&&statistics,
-      list:searchable,keyword:searchable&&statistics,others:true,extract:true}
+    statics:statistics,culture:statistics,search:searchable,trace:searchable&&statistics,
+      list:searchable,keyword:searchable&&statistics,others:true,extract:true
   }];
 }
 

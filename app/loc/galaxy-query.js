@@ -20,7 +20,10 @@ import {isUnifiedAnchorScope} from './unified-anchor-compat.mjs';
 import {GALAXY_ABLE_KEYS,galaxyAble} from './galaxy-able.mjs';
 const localArticle=scope=>String(scope?.galaxy||'')==='silver.local_galaxy';
 const articlePermissionColumns=scope=>localArticle(scope)?['able']:GALAXY_ABLE_KEYS;
-const articlePermissionFilter=(scope,name)=>({column:localArticle(scope)?'able->>'+name:name,operator:'eq',value:localArticle(scope)?'true':true});
+const articlePermissionFilter=(scope,name)=>({
+  column:localArticle(scope)?'able->>'+name:name,
+  operator:'eq',value:localArticle(scope)?'true':true
+});
 
 function unique(values=[]){
   return [...new Set(values.map(value=>String(value||'').trim()).filter(Boolean))];
@@ -473,7 +476,7 @@ export async function selectGalaxyIdentity(scope,uid,{includeHidden=false}={}){
   const {rows:articleRows}=await selectRows(current.galaxy,{
     columns:local
       ?'uid,title,createtime,content,site,url,source_id,target_id,ref_id,media_link,location,able'
-       :'uid,title,date,createtime,content,site,url,source_id,target_id,ref_id,media_link,place_id,location,statics,culture,search,trace,list,keyword,others,extract',
+      :'uid,title,date,createtime,content,site,url,source_id,target_id,ref_id,media_link,place_id,location,statics,culture,search,trace,list,keyword,others,extract',
     filters:[{column:'uid',operator:'eq',value:id}],
     orFilter:'',
     limit:1,authenticated:includeHidden
