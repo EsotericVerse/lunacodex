@@ -78,7 +78,7 @@ export default function SunoImportPanel({scopeId,dockScopeId=scopeId,globalAdmin
           title,content:lyrics,createtime,
           source_id:sourceId,target_id:normalizeRelationIds(draft.target_id),ref_id:styleUid||draft.ref_id.trim()||null,
           url:draft.url.trim()||null,site:'suno',media_link:[mediaUid],
-          able:{statics:true,culture:true,search:true,trace:true,list:true,keywords:true,game:true,extract:true}
+          statics:true,culture:true,search:true,trace:true,list:true,keyword:true,others:true,extract:true
         }]);
       }
       if(styleUid){
@@ -86,7 +86,7 @@ export default function SunoImportPanel({scopeId,dockScopeId=scopeId,globalAdmin
           uid:styleUid,
           title:title+'｜Suno Style',content:stylePrompt,createtime,
           target_id:[lyricsUid],site:'suno',
-          able:{statics:false,culture:false,search:false,trace:false,list:false,keywords:false,game:true,extract:true}
+          statics:false,culture:false,search:false,trace:false,list:false,keyword:false,others:true,extract:true
         }]);
       }
       await insertRows(galaxyMedia,[{
