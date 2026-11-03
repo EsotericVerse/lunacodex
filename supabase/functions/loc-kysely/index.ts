@@ -10,7 +10,7 @@ import {executeKyselyAnchor,executePortableKyselyAnchor} from "../../../app/loc/
 import {executeKyselyAnalytics,executePortableKyselyAnalytics} from "../../../app/loc/providers/kysely-analytics.mjs";
 import {executeKyselyPublicAction} from "../../../app/loc/providers/kysely-public.mjs";
 import {executeKyselyScopeAdmin} from "../../../app/loc/providers/kysely-scope-admin.mjs";
-import {ensurePortableScopeSchema} from "../../../app/loc/providers/kysely-schema.mjs";
+import {ensurePortableScopeSchema,validatePortableScopeSchema} from "../../../app/loc/providers/kysely-schema.mjs";
 import { selectedDatabaseTarget } from "../../../app/loc/providers/selected-database-target.mjs";
 import {resolveSqlExecutionPort,assertCrossEnginePublicRead,authorizeCrossEngineQuery,executeCrossEngineManagedWrite} from "../../../app/loc/providers/sql-engine-ports.mjs";
 import {resolveDatabaseRouting} from "../../../app/loc/providers/routing-config.mjs";
@@ -190,10 +190,7 @@ async function saveDatabaseTarget(input:Record<string,unknown>,role:string,claim
       engine,namespace:schemaName,scopeId:requestedScope
     });
     const verified=await candidate.introspection.getTables();
-    if(!['galaxy','anchor'].every(suffix=>verified.some((table:any)=>
-      table.name===requestedScope+'_'+suffix&&
-        (engine==='mysql'||!table.schema||table.schema===schemaName))))
-      throw Object.assign(new Error('LOC two-table initialization failed'),{httpStatus:409});
+    validatePortableScopeSchema(verified,{engine,namespace:schemaName,scopeId:requestedScope});
     input.schema_name=schemaName;
   }
   if(!profile)await profileForTarget({...target,project_url:location.link});
