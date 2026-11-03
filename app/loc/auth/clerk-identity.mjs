@@ -46,10 +46,16 @@ export function createIndependentClerkIdentity({loadClerk,authorityOrigin,
   // signed identity simultaneously. One in-flight Authority verification per
   // exact Clerk JWT avoids redundant remote calls without caching any grant.
   let pendingIdentity=null,pendingIdentityToken='';
+  // UX-only identity reuse; no management grants are cached. SQL RLS checks
+  // every protected operation. Never persist the JWT or verified identity.
+  const IDENTITY_REUSE_MS=10000;
+  let recentIdentity=null;
   async function verifiedIdentity(){
     const clerk=await client();
     const jwt=await token();
-    if(!jwt)return null;
+    if(!jwt){recentIdentity=null;return null;}
+    if(recentIdentity?.token===jwt&&recentIdentity.subject===clerk.user?.id&&
+      Date.now()<recentIdentity.expires)return recentIdentity.identity;
     if(pendingIdentity&&pendingIdentityToken===jwt)return pendingIdentity;
     const pending=(async()=>{
       // Retry a dropped network request once; HTTP 401/403 is never retried.
@@ -88,8 +94,15 @@ export function createIndependentClerkIdentity({loadClerk,authorityOrigin,
     })();
     pendingIdentityToken=jwt;
     pendingIdentity=pending;
-    try{return await pending;}
-    finally{
+    try{
+      const identity=await pending;
+      recentIdentity={token:jwt,subject:identity.subject,identity,
+        expires:Date.now()+IDENTITY_REUSE_MS};
+      return identity;
+    }catch(error){
+      recentIdentity=null;
+      throw error;
+    }finally{
       if(pendingIdentity===pending){
         pendingIdentity=null;
         pendingIdentityToken='';
@@ -108,13 +121,18 @@ export function createIndependentClerkIdentity({loadClerk,authorityOrigin,
     navigate(destination);
   }
   async function signOut(){
+    recentIdentity=null;
     const clerk=await client();
     await clerk.signOut();
   }
   async function onChange(callback){
     if(typeof callback!=='function')throw new Error('Auth listener must be a function');
     const clerk=await client();
-    return clerk.addListener(()=>callback(Boolean(clerk.session&&clerk.user)));
+    return clerk.addListener(()=>{
+      const signedIn=Boolean(clerk.session&&clerk.user);
+      if(!signedIn)recentIdentity=null;
+      callback(signedIn);
+    });
   }
   return Object.freeze({verifiedIdentity,getAccessToken,signIn,signOut,onChange});
 }
