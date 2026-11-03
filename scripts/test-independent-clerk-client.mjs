@@ -124,3 +124,29 @@ test('Settings exposes account recheck and reconnect only on actual network fail
   assert.match(account,/document\.addEventListener\('visibilitychange',onVisible\)/);
   assert.ok(account.includes('Failed to fetch|連線失敗|NetworkError|Load failed'));
 });
+
+test('one signed-in Clerk JWT reuses only the verified identity for sequential calls',async()=>{
+  const {adapter,requests,clerk}=fixture();
+  const one=await adapter.verifiedIdentity();
+  const two=await adapter.verifiedIdentity();
+  assert.strictEqual(one,two);
+  assert.equal(requests.length,1,'two sequential UI reads must not hit Authority twice');
+  await adapter.signOut();
+  assert.equal(await adapter.verifiedIdentity(),null);
+  assert.equal(requests.length,1,'sign-out must not reuse cached identity');
+});
+test('Clerk token rotation and account change always trigger fresh verification',async()=>{
+  let token='jwt.one',id='user_one',requests=0;
+  const clerk={user:{id},session:{getToken:async()=>token}};
+  const adapter=createIndependentClerkIdentity({
+    siteOrigin,authorityOrigin,loadClerk:async()=>clerk,
+    fetchImpl:async()=>{requests++;return {ok:true,status:200,json:async()=>({
+      provider:'clerk',subject:clerk.user.id,session:'sess_verified',email:'owner@example.com'
+    })};}
+  });
+  await adapter.verifiedIdentity();await adapter.verifiedIdentity();
+  assert.equal(requests,1);
+  token='jwt.two';await adapter.verifiedIdentity();assert.equal(requests,2);
+  clerk.user={id:'user_two'};await adapter.verifiedIdentity();
+  assert.equal(requests,3,'same token cannot reuse a different user identity');
+});
