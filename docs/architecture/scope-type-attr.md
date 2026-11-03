@@ -63,7 +63,7 @@ const updated=await scopeTypeAttr('lo3rwang','date',{
 - **PR #936**：統一關鍵詞 Class 分享／目錄、摘要、共享匯入、空間密度、多媒體 EXIF 與分析 RPC 的 Anchor Scope 分流。
 - **PR #937**：統一文章地點補寫／預覽、Timeline 預覽、搜尋摘要、關鍵詞建議、點位別名讀寫、點位合併、LOC 聚合統計。點位合併在單一資料庫交易內修正文章 `place_id` 及 `path/trace attr.point`。
 - **本批**：`new_keyword_tree_uid(scope)` 僅使用 `{scope}_anchor.uid` 的 Base62 UID8，不再讀四碼舊 Keywords 或 staging 表。
-- 不屬於同質 Anchor CRUD 的 `api.provision_scope`／`api.delete_scope`（Scope 生命週期）、`read_music_style_tree`（作者音樂分類）暫保留領域用途。前者的建表 LIKE 樣板仍參考現有實表，不表示執行時 Scope 讀寫有兩套邏輯。
+- 不屬於同質 Anchor CRUD 的 `api.provision_scope`／`api.delete_scope`（Scope 生命週期）保留領域用途；已無執行期呼叫者的 `read_music_style_tree` 已退役。前者的建表 LIKE 樣板仍參考現有實表，不表示執行時 Scope 讀寫有兩套邏輯。
 - SQL RPC 通用化**不表示所有前端呼叫端已切換到 `scope_type_attr`**；舊入口的安全刪除仍須完成相依檢查。
 - 正式資料庫的 `lrunes_time/trace/keywords/galaxy_media` 四表已不存在，全部已存入 Anchor；不可再依歷史四表寫入。
 
@@ -84,3 +84,9 @@ Cloudflare Pages `loc` production 部署 commit `54844ebf19ce8d88b52c1c4534a76e4
 ### Timeline Point 補寫寫入整合
 
 `scope_type_attr` 的 `type='point'` 支援 `op='link'`、`updates` 與 `mode`，在資料庫同一交易內委派既有 `apply_scope_point_links`，回傳 `{count}`。只有 Scope 管理者能寫入，整批 UID 和 Point 仍受原子驗證；不增加表或索引。前端 Timeline 補寫不再直接呼叫專用 RPC。正式部署新客戶端後，才能移除內部委派函式並將驗證與更新直接放進通用函式。
+
+### Scope 建議讀取入口整併（2026-11-03）
+
+- `scope_type_attr(scopeid,'item',{op:'suggestions'})`：僅限 Scope 管理者取得既有關鍵詞建議暫存（維持原本 text[] 內容，回傳 JSON 陣列）。
+- `scope_type_attr(scopeid,'point',{op:'suggestions',limit:60})`：僅限已核驗身分與 Scope 管理者，從文章地點欄位讀取批次建議（仍以單次 SQL 聚合）。
+- 對應前端已改用統一入口；退役 `read_scope_keyword_suggestions`、`trace_place_suggestions` 和無執行期需求的 `read_music_style_tree`。公開地點名稱搜尋與需原子更新的地點合併仍保留自身交易／RLS 邊界。
