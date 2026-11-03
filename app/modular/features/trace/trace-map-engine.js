@@ -125,7 +125,7 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
   let pickedMarker=null;
   let pickedPosition=null;
   let savedAnchors=anchors;
-  let activeStemKey='';
+  let stemsVisible=false;
   let selectedSavedRoute=null;
   let selectedSavedGraph=null;
   let lastGraphFocusKey='';
@@ -137,37 +137,34 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     refreshTimelineStems();
     // Updating GeoJSON never resets the viewport. Only explicit navigation may.
   }
-  function anchorKey(anchor){
-    return String(anchor?.uid||'')+':'+String(anchor?.source_scope||'');
-  }
-  // Only the one just-clicked anchor grows its "day stem" -- not every
-  // anchor on the map at once. Clicking it again hides it. This is
-  // deliberately a single on-demand lookup, not a standing comparison
-  // across every place currently shown.
+  // Day stems are gated by one explicit checkbox in the map's own corner
+  // control, off by default: not a standing display for every anchor,
+  // and not something a plain click half-shows and half-hides. Checked,
+  // every currently valid/titled anchor on the map grows its stem at
+  // once; unchecked, none do.
   function refreshTimelineStems(){
     timelineMarkers.forEach(marker=>marker.remove());
     timelineMarkers=[];
-    if(!loaded||!timelineRows.length||!activeStemKey)return;
-    const anchor=savedAnchors.filter(isValidSavedAnchor)
-      .find(row=>anchorKey(row)===activeStemKey);
-    if(!anchor)return;
-    const title=String(anchor.title||'').trim();
-    if(!title)return;
-    const byTitle=placeDayStems(timelineRows,new Set([title]));
-    const days=byTitle.get(title);
-    if(!days?.length)return;
-    const element=buildStemElement(days);
-    timelineMarkers.push(new Marker({element,anchor:'bottom',offset:[0,0]})
-      .setLngLat(spaceCoordinates(anchor)).addTo(map));
+    if(!loaded||!timelineRows.length||!stemsVisible)return;
+    const validAnchors=savedAnchors.filter(isValidSavedAnchor);
+    const allowedTitles=new Set(validAnchors.map(a=>String(a.title||'').trim()).filter(Boolean));
+    if(!allowedTitles.size)return;
+    const byTitle=placeDayStems(timelineRows,allowedTitles);
+    for(const anchor of validAnchors){
+      const title=String(anchor.title||'').trim();
+      const days=byTitle.get(title);
+      if(!days?.length)continue;
+      const element=buildStemElement(days);
+      timelineMarkers.push(new Marker({element,anchor:'bottom',offset:[0,0]})
+        .setLngLat(spaceCoordinates(anchor)).addTo(map));
+    }
   }
   function setPlaceTimelines(rows){
     timelineRows=Array.isArray(rows)?rows:[];
     refreshTimelineStems();
   }
-  // Toggle: clicking the same anchor again hides its stem.
-  function toggleStem(anchor){
-    const key=anchorKey(anchor);
-    activeStemKey=activeStemKey===key?'':key;
+  function setStemsVisible(visible){
+    stemsVisible=Boolean(visible);
     refreshTimelineStems();
   }
   function savedRoutePoints(route=selectedSavedRoute){
@@ -387,7 +384,6 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
           &&String(row.source_scope||'')===String(props.source_scope||''));
         if(anchor){
           if(showAnchorPopup)centerIfFar(...spaceCoordinates(anchor));
-          toggleStem(anchor);
           onAnchorSelect(anchor);
           if(showAnchorPopup)new Popup({closeButton:true,offset:18})
             .setLngLat(spaceCoordinates(anchor))
@@ -426,7 +422,6 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
           &&String(row.source_scope||'')===String(props?.source_scope||''));
         if(!anchor)return;
         if(showAnchorPopup)centerIfFar(...spaceCoordinates(anchor));
-        toggleStem(anchor);
         onAnchorSelect(anchor);
       };
       for(const layer of ['loc-trace-user-route-stops','loc-trace-user-route-order']){
@@ -508,6 +503,6 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     pickedMarker=null;
     map.remove();
   }
-  return {focus,focusCoordinates,centerIfFar,goOrigin,setAnchors,setPlaceTimelines,setSavedRoute,setSavedGraph,overview,showRoadRoute,
+  return {focus,focusCoordinates,centerIfFar,goOrigin,setAnchors,setPlaceTimelines,setStemsVisible,setSavedRoute,setSavedGraph,overview,showRoadRoute,
     resize:()=>{if(!removed)map.resize();},destroy};
 }
