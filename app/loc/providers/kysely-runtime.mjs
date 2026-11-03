@@ -1,5 +1,6 @@
 import {sql} from 'npm:kysely@0.29.6';
 import {DB_QUERY_BATCH_SIZE} from '../query-batch-size.mjs';
+import {serializePortableJsonFields} from './sql-engine-ports.mjs';
 
 const identifier=/^[a-z][a-z0-9_]*$/i;
 const schemas=new Set(['silver','api']);
@@ -174,7 +175,9 @@ function applyMutationReturning(query,req,dialect){
 }
 
 export function buildKyselyMutationQuery(trx,input,{dialect='postgres'}={}){
-  const req=validateQuery(input);const fullTable=`${req.schema}.${req.table}`;
+  const validated=validateQuery(input);
+  const req={...validated,values:serializePortableJsonFields(validated.values,dialect)};
+  const fullTable=`${req.schema}.${req.table}`;
   if(!['insert','update','delete','upsert'].includes(req.operation))throw new Error('Unsupported mutation');
   let query;
   if(req.operation==='insert')query=trx.insertInto(fullTable).values(req.values);
@@ -248,7 +251,7 @@ export async function executeKyselyQuery(trx,input,{dialect='postgres'}={}){
     if(built.query)data=await built.query.execute();
   }else{
     const built=buildKyselyMutationQuery(trx,input,{dialect});
-    if(dialect==='mysql'&&req.returning)data=await executeMysqlReturningMutation(trx,req,built.query);
+    if(dialect==='mysql'&&req.returning)data=await executeMysqlReturningMutation(trx,built.request,built.query);
     else {
       const result=await built.query.execute();
       if(req.returning)data=result;
