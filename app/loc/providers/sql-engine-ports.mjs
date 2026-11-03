@@ -85,9 +85,28 @@ export async function authorizeCrossEngineQuery(db,request,{role='anon',claims={
   const table=request.table;
   if(CROSS_ENGINE_PUBLIC_READ_TABLES.includes(table)&&request.operation==='select')
     return;
+  // Match the existing LOC Authority semantics on every SQL dialect:
+  // globally blocked identities may not gain Scope grants. External
+  // databases must carry the same LOC blacklist and managed Registry.
+  const config=await db.selectFrom('silver.loc').select('blacklist')
+    .where('id','=','loc').executeTakeFirst();
+  let blacklist=config?.blacklist;
+  if(typeof blacklist==='string'){
+    try{blacklist=JSON.parse(blacklist)}catch{blacklist=null}
+  }
+  if(!blacklist||typeof blacklist!=='object'||Array.isArray(blacklist)||
+     blacklist.email!==undefined&&!Array.isArray(blacklist.email)){
+    const error=new Error('LOC authorization configuration unavailable');
+    error.httpStatus=403;throw error;
+  }
+  if((blacklist.email||[]).some(row=>
+    String(row?.email||'').trim().toLowerCase()===email)){
+    const error=new Error('LOC identity is blocked');
+    error.httpStatus=403;throw error;
+  }
   const permissions=await db.selectFrom('silver.manage')
     .select(['id','email','manage_role','active'])
-    .where('email','=',email).execute();
+    .where(db.fn('lower',['email']),'=',email).execute();
   const global=permissions.some(row=>row.id==='admin'&&row.manage_role==='admin');
   if(global)return;
   const match=table.match(PRIVATE_RELATION);
