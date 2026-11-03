@@ -60,10 +60,15 @@ export async function executeKyselyPublicAction(trx,body){
       'title_tw','desc_tw','domain','directory','parent_scope_id'])
     .orderBy('sort_order','asc').orderBy('id','asc').execute();
   const enabled=members.filter(m=>m.active===true&&scopePattern.test(m.id));
+  const relationAvailable=async name=>{
+    const rows=await sql`select to_regclass(${name}) is not null as present`.execute(trx);
+    return rows.rows[0]?.present===true;
+  };
   const registry=[];
   for(const m of enabled){
-    const config=await trx.selectFrom('silver.'+m.id)
-      .select(['id','display_name']).where('id','=',m.id).executeTakeFirst();
+    const config=await relationAvailable('silver.'+m.id)
+      ?await trx.selectFrom('silver.'+m.id)
+        .select(['id','display_name']).where('id','=',m.id).executeTakeFirst():null;
     registry.push({scope_id:m.id,display_name:config?.display_name||m.id,
       scope_kind:m.manage_role==='group'?'group':'scope',
       domain:m.domain,directory:m.directory,
@@ -73,15 +78,17 @@ export async function executeKyselyPublicAction(trx,body){
     .map(m=>({scope_id:m.id,Title_TW:m.title_tw,Desc_TW:m.desc_tw}));
   let config=null,blocks=[];
   const active=enabled.some(m=>m.id===scope);
-  if(active){
+  if(active&&await relationAvailable('silver.'+scope)){
     const full=await trx.selectFrom('silver.'+scope)
       .selectAll().where('id','=',scope).executeTakeFirst();
     if(full){const {id:ignore,...rest}=full;config=rest;}
-    const result=await trx.selectFrom('silver.'+scope+'_blocks')
-      .select(['uid','page_name','block_eyebrow','block_title','block_subtitle',
-        'block_text','block_order','block_entity','block_image'])
-      .where('page_name','=',page).orderBy('block_order','asc').execute();
-    blocks=result;
+    if(await relationAvailable('silver.'+scope+'_blocks')){
+      const result=await trx.selectFrom('silver.'+scope+'_blocks')
+        .select(['uid','page_name','block_eyebrow','block_title','block_subtitle',
+          'block_text','block_order','block_entity','block_image'])
+        .where('page_name','=',page).orderBy('block_order','asc').execute();
+      blocks=result;
+    }
   }
   const root=await trx.selectFrom('silver.loc').select('theme')
     .where('id','=','loc').executeTakeFirst();
