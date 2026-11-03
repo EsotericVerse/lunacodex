@@ -414,24 +414,7 @@ async function articleSpaceContext(scope,placeId,{authenticated=false}={}){
     )).map(({uid,title})=>({uid,title})).slice(0,100);
     return {place:{uid:place.uid,title:place.title},routes,traces};
   }
-  // lrunes is not yet physically consolidated. Keep its legacy relation.
-  const table='silver.'+scope.id+'_trace';
-  const [anchor,routesPage]=await Promise.all([
-    selectRows(table,{columns:'uid,title',filters:[
-      {column:'uid',operator:'eq',value:placeId},
-      {column:'trace_type',operator:'eq',value:'space_anchor'}
-    ],limit:1,authenticated}),
-    selectRows(table,{columns:'uid,title',filters:[
-      {column:'trace_type',operator:'eq',value:'path'},
-      {column:'anchor_list',operator:'contains',value:[placeId]}
-    ],limit:100,maxLimit:100,authenticated})
-  ]);
-  const routes=routesPage.rows||[],routeIds=routes.map(row=>String(row.uid)).filter(Boolean);
-  const clauses=['anchor_list.cs.{'+placeId+'}',...routeIds.map(uid=>'route_list.cs.'+JSON.stringify({routes:[uid]}))];
-  const traces=await selectRows(table,{columns:'uid,title',filters:[
-    {column:'trace_type',operator:'eq',value:'trace'}
-  ],orFilter:clauses.join(','),limit:100,maxLimit:100,authenticated});
-  return {place:anchor.rows[0]||null,routes,traces:traces.rows||[]};
+  return {place:null,routes:[],traces:[]};
 }
 function articleStatisticsContext(scope,day){
   if(!day)return null;
