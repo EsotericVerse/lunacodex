@@ -1,7 +1,8 @@
-import {Kysely,PostgresDialect,MysqlDialect,MssqlDialect} from "npm:kysely@0.29.6";
+import {Kysely,PostgresDialect,MysqlDialect,MssqlDialect,ParseJSONResultsPlugin} from "npm:kysely@0.29.6";
 import pg from "npm:pg@8.16.3";
 import {normalizeDatabaseTarget} from "../../../app/loc/providers/selected-database-target.mjs";
 import {mysqlLdapOptions,mssqlAuthentication} from "../../../app/loc/providers/sql-driver-auth.mjs";
+import {PORTABLE_JSON_COLUMNS} from "../../../app/loc/providers/sql-engine-ports.mjs";
 
 // All credentials stay in Edge secrets. Admin stores ONLY the connection alias.
 // LOC_DB_CONNECTIONS_JSON example:
@@ -78,7 +79,18 @@ export async function databaseForTarget(input:Record<string,unknown>,options:{pr
       })}
     });
   }else throw new Error("Selected database engine has no trusted server driver");
-  const db=new Kysely({dialect});
+  const jsonColumns=new Set(PORTABLE_JSON_COLUMNS);
+  const db=new Kysely({dialect,
+    // MS SQL Server returns JSON values as text. Use Kysely's official
+    // result plugin, restricted to known JSON fields so lyrics/content
+    // that happen to look like JSON are never parsed into objects.
+    plugins:target.engine==="mssql"?[new ParseJSONResultsPlugin({
+      shouldParse:(_value,path)=>{
+        const column=path.split(/[.\[\]"]/).filter(Boolean).pop();
+        return jsonColumns.has(column||"");
+      }
+    })]:[]
+  });
   instances.set(key,db);
   return db;
 }
