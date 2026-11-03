@@ -6,18 +6,31 @@ import {authorizeCrossEngineQuery,assertCrossEnginePublicRead,executeCrossEngine
 const identity={role:'authenticated',
   claims:{sub:'user_AbC123',provider:'clerk',email:'owner@example.test'}};
 const query=(table,operation='select')=>({kind:'query',schema:'silver',table,operation});
-function registry(rows){
-  return {selectFrom(table){
-    assert.equal(table,'silver.manage');
-    return {select(fields){
-      assert.deepEqual(fields,['id','email','manage_role','active']);
-      return {where(column,op,value){
-        assert.equal(column,'email');assert.equal(op,'=');
-        assert.equal(value,'owner@example.test');
-        return {execute:async()=>rows};
+function registry(rows,{blacklist={email:[]}}={}){
+  return {
+    fn(name,columns){
+      assert.equal(name,'lower');assert.deepEqual(columns,['email']);
+      return 'lower(email)';
+    },
+    selectFrom(table){
+      if(table==='silver.loc')return {select(field){
+        assert.equal(field,'blacklist');
+        return {where(column,op,value){
+          assert.equal(column,'id');assert.equal(value,'loc');
+          return {executeTakeFirst:async()=>({blacklist})};
+        }};
       }};
-    }};
-  }};
+      assert.equal(table,'silver.manage');
+      return {select(fields){
+        assert.deepEqual(fields,['id','email','manage_role','active']);
+        return {where(column,op,value){
+          assert.equal(column,'lower(email)');assert.equal(op,'=');
+          assert.equal(value,'owner@example.test');
+          return {execute:async()=>rows};
+        }};
+      }};
+    }
+  };
 }
 
 test('public engine reads only reference tables; private Galaxy remains private',async()=>{
@@ -67,9 +80,8 @@ test('cross-engine ACL has no RPC or raw SQL bypass',async()=>{
 test('portable managed inserts are 50-row Kysely batches; Scope ACL still applies',async()=>{
   const sizes=[];
   const db={
-    selectFrom:()=>({select:()=>({where:()=>({execute:async()=>[
-      {id:'lo3rwang',email:'owner@example.test',manage_role:'scope',active:true}
-    ]})})}),
+    ...registry([{id:'lo3rwang',email:'owner@example.test',
+      manage_role:'scope',active:true}]),
     insertInto:()=>({values(rows){return {executeTakeFirst:async()=>{
       sizes.push(rows.length);
       return {numInsertedOrUpdatedRows:BigInt(rows.length)};
@@ -94,4 +106,17 @@ test('portable JSON values are serialized without touching lyrics or PostgreSQL 
   assert.equal(converted.media_link,'["Ab12Cd34"]');
   assert.equal(converted.content,row.content);
   assert.deepEqual(serializePortableJsonFields(row,'postgres'),row);
+});
+
+test('blacklisted Clerk identities cannot access external SQL even with admin rights',async()=>{
+  const db=registry([{id:'admin',email:'owner@example.test',
+    manage_role:'admin',active:false}],{blacklist:{email:[{email:'OWNER@example.test'}]}});
+  await assert.rejects(authorizeCrossEngineQuery(db,query('lo3rwang_galaxy'),identity),
+    /identity is blocked/);
+});
+test('cross-engine authorization fails closed without readable LOC policy',async()=>{
+  const db=registry([{id:'admin',email:'owner@example.test',
+    manage_role:'admin',active:false}],{blacklist:null});
+  await assert.rejects(authorizeCrossEngineQuery(db,query('lo3rwang_galaxy'),identity),
+    /authorization configuration unavailable/);
 });
