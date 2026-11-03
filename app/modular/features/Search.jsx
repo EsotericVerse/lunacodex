@@ -54,17 +54,17 @@ const MEDIA_EDITOR_COLUMNS='uid,location,type,title,url,meta_tags,createtime';
 const MEDIA_ATTR_ORDER=['uid','location','type','url','meta_tags','createtime'];
 const MEDIA_ATTR_FIELDS=MEDIA_ATTR_ORDER.map(key=>({key,readOnly:key==='uid',kind:key==='createtime'?'date':'text'}));
 
-const GALAXY_EDITOR_COLUMNS='uid,title,content,createtime,location,place_id,UpdateTime,url,source_id,target_id,ref_id,site,media_link,able';
+const GALAXY_EDITOR_COLUMNS='uid,title,content,createtime,location,place_id,UpdateTime,url,source_id,target_id,ref_id,site,media_link,statics,culture,search,trace,list,keyword,extract,others';
 
 const GALAXY_ATTR_ORDER=Object.freeze([
   'uid','title','content','createtime','location','place_id',
   'UpdateTime','url','source_id','target_id','ref_id','site',
-  'media_link',...['statics','culture','search','trace','list','keywords','game','extract'].map(k=>'able_'+k)
+  'media_link','statics','culture','search','trace','list','keyword','extract','others'
 ]);
 const GALAXY_ATTR_FIELDS=Object.freeze(GALAXY_ATTR_ORDER.map(key=>({
   key,
   readOnly:['uid','title','content','UpdateTime'].includes(key),
-  kind:key.startsWith('able_')?'boolean':
+  kind:['statics','culture','search','trace','list','keyword','extract','others'].includes(key)?'boolean':
     ['target_id','media_link'].includes(key)?'array':
     key==='createtime'?'date':'text'
 })));
@@ -179,7 +179,7 @@ async function loadPageSearchExcerpts(rows,query,scopeById,{authenticated=false,
     if(!scope?.galaxy)continue;
     try{
       const {rows:articles=[]}=await selectRows(scope.galaxy,{
-        columns:'uid,content,able',
+        columns:'uid,content,search,extract',
         filters:[{column:'uid',operator:'in',value:[...ids]}],
         limit:ids.size,authenticated,signal
       });
