@@ -175,9 +175,19 @@ export async function executeCrossEngineManagedWrite(db,body,context){
          seen.has(row.uid)||Object.keys(row).some(k=>!ARTICLE_BATCH_FIELDS.has(k)))
         invalidWrite('Invalid Galaxy batch row');
       seen.add(row.uid);
-      const existing=await db.selectFrom(name)
+    }
+    // One bounded Kysely SELECT per 1,000 articles, not one SELECT per
+    // article followed by a second write query for every changed row.
+    const existingRows=new Map();
+    for(let i=0;i<p.p_rows.length;i+=1000){
+      const uids=p.p_rows.slice(i,i+1000).map(row=>row.uid);
+      const found=await db.selectFrom(name)
         .select(['uid','title','content','place_id','url','media_link'])
-        .where('uid','=',row.uid).executeTakeFirst();
+        .where('uid','in',uids).execute();
+      for(const row of found)existingRows.set(String(row.uid),row);
+    }
+    for(const row of p.p_rows){
+      const existing=existingRows.get(row.uid);
       if(!existing)continue;
       const patch={};
       for(const key of ['title','content','url','media_link']){
