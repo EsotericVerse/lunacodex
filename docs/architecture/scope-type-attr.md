@@ -4,6 +4,22 @@
 
 **求同存異**：所有一般 Scope（包含 `lo3rwang`、`lrunes`）共用同一套 Anchor 資料讀寫規則。Scope 名稱不決定邏輯分支，`scopeid` 決定資料歸屬，`type` 決定資料類別，`attr jsonb` 承載類別特有的結構。符文首頁、每日符文行事曆、遊戲可維持專用功能；符文內容、一般文章、時間、空間、關鍵詞、媒體及一般統計仍應與其他 Scope 通用。
 
+
+### 現行 Kysely 主入口（2026-11-04）
+
+前述 `silver.scope_type_attr`、`silver.read_scope_analytics` 與各領域 RPC 為**歷史 SQL 函式契約**。改寫後，網站現行 PostgreSQL 路徑改走 Clerk JWT 驗證的 Kysely Gateway：
+
+- `anchor(scopeid,type,attr)`：直接存取 `{scopeid}_anchor` 的讀取、寫入、局部更新、關鍵詞目錄／建議，以及 Point 連結補寫。
+- `analytics(args)`：時間、地點、文章、關鍵詞、共享 Class 與公開搜尋摘要，使用 Kysely 查詢與參數化聚合。
+- `managedWrite(payload)` 與 `managedAction(name,args)`：文章批次、搜尋摘要更新、群組與權限設定、空間合併、關鍵詞分享匯入與 Scope 建立／刪除。權限先由現有 Clerk claims 與 `silver.manage(type,id)` 判斷；沿用 LOC Authority，無第二套身分系統。
+- `publicAction(name,args)`：公開 Bootstrap、頁面簡介與地點名稱搜尋。
+
+`silver.manage(type,id)` 與 UID 配號函式仍屬資料庫內部的**身分驗證／配號輔助**，不是前端呼叫的 SQL RPC；網站的通用 SQL RPC 執行路由已退役。裝置本機 `local` Scope 使用獨立 SQLite 介面，不屬於遠端 RPC 清理範圍。
+
+Galaxy 文章權限改採八個獨立 boolean 欄位，順序為 `statics`、`culture`、`search`、`trace`、`list`、`keyword`、`extract`、`others`。所有新讀寫都直接使用欄位；舊 `galaxy.able` 只在歷史匯入資料解析或既有本機 SQLite 資料一次性轉換時讀取，不得重新寫入伺服器。**正式資料庫的舊欄位須待新版經部署驗收及相依檢查後另行移除**，不能把程式端切換誤稱為已刪欄位。
+
+**驗證與版本狀態**：本段描述目標分支 `refactor/kysely-clerk-rpc-removal` 的改動，不代表部署、正式合併或資料庫舊欄位已刪除。須以該分支實際回歸測試、PR 合併與 Cloudflare 部署結果分別核對。
+
 ### 主入口
 
 ```sql
