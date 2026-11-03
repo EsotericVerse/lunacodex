@@ -198,3 +198,14 @@ test('time date predicates and media date windows stay on SQL JSON paths',async(
   assert.equal(media.data[1].createtime,'2026-11-02');
   assert.equal(media.data[1].date,'2026-11-02');
 });
+
+
+test('Search editor uses eight-character Point UIDs and only persisted media attrs',()=>{
+  const draft=readFileSync(new URL('../app/modular/features/search-edit-draft.js',import.meta.url),'utf8');
+  const ui=readFileSync(new URL('../app/modular/features/Search.jsx',import.meta.url),'utf8');
+  assert.match(draft,/定錨點 ID 必須為八碼/);
+  assert.match(draft,/for\(const key of \['type','url','meta_tags'\]\)/);
+  assert.match(draft,/changed\.date=/);
+  assert.match(ui,/const MEDIA_EDITOR_COLUMNS='uid,type,title,url,meta_tags,date'/);
+  assert.doesNotMatch(ui,/const MEDIA_EDITOR_COLUMNS='uid,location/);
+});
