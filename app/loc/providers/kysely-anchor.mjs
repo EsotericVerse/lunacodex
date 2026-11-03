@@ -1,3 +1,4 @@
+import {canManageLoc} from './loc-authorization.mjs';
 import {sql} from 'npm:kysely@0.29.8';
 
 const scopePattern=/^[a-z][a-z0-9]{0,14}$/;
@@ -10,9 +11,7 @@ function reject(message,status=400){
   const error=new Error(message);error.httpStatus=status;throw error;
 }
 async function isOwner(trx,scope,role){
-  if(role!=='authenticated')return false;
-  const check=await sql`select coalesce((select allowed from silver.manage('scope',${scope})),false) as allowed`.execute(trx);
-  return check.rows[0]?.allowed===true;
+  return role==='authenticated'&&await canManageLoc(trx,'scope',scope);
 }
 function asPositiveInteger(value,fallback,max){
   const number=value===undefined?fallback:Number(value);
