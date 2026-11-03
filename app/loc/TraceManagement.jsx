@@ -178,7 +178,15 @@ function AnchorEditor({scopeId,spatial,reload}){
       ].filter(Boolean).join('；')+'。'+
         (refreshFailed?'重新讀取未完成，請勿重複提交。':''));
       return true;
-    }catch(e){setIsError(true);setNotice(String(e.message||e));return false;}
+    }catch(e){
+      // The edit dock owns the visible Save/Save-and-switch result. Returning
+      // false hides the actual RPC/permission/validation failure behind a
+      // generic warning and traps the user in its open switch dialog.
+      const message=String(e?.message||e||'空間定錨儲存失敗');
+      setIsError(true);
+      setNotice(message);
+      throw new Error(message,{cause:e});
+    }
     finally{setBusy(false);}
   };
   const quickRename=group=>{
