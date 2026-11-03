@@ -4,6 +4,7 @@ import {useEffect} from 'react';
 import dynamic from 'next/dynamic';
 import {useSearchParams} from 'next/navigation';
 import {FeaturePage} from '../modular/ui';
+import ManagementWorkspaceFrame from './ManagementWorkspaceFrame';
 import {useScopeRuntime} from '../modular/use-scope-runtime';
 import {useEditDock} from '../modular/edit-dock';
 import {useAccount} from './use-account';
@@ -75,7 +76,7 @@ export default function SearchManagement(){
   const currentSection=options.find(option=>option.value===activeSection)||options[0];
 
   return <FeaturePage featureId="search">
-    <div className="management-workspace">
+    <ManagementWorkspaceFrame level={isLocAdmin?'group':'scope'} title="文章管理">
       <ManagementSectionNav id="management-search-sections" title="文章管理"
         panelId="management-search-panel" items={options}
         value={activeSection} onChange={next=>{
@@ -128,6 +129,6 @@ export default function SearchManagement(){
           className="loc-grid two trace-grid trace-grid-loc"
           headingLevel={2} allowDelete authorizedByParent startInEditMode explicitEditButton/>:null}
       </div>
-    </div>
+    </ManagementWorkspaceFrame>
   </FeaturePage>;
 }
