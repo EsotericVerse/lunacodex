@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {authorizeCrossEngineQuery,assertCrossEnginePublicRead,executeCrossEngineManagedWrite} from '../app/loc/providers/sql-engine-ports.mjs';
+import {authorizeCrossEngineQuery,assertCrossEnginePublicRead,executeCrossEngineManagedWrite,
+  serializePortableJsonFields} from '../app/loc/providers/sql-engine-ports.mjs';
 
 const identity={role:'authenticated',
   claims:{sub:'user_AbC123',provider:'clerk',email:'owner@example.test'}};
@@ -83,4 +84,14 @@ test('portable managed inserts are 50-row Kysely batches; Scope ACL still applie
   await assert.rejects(executeCrossEngineManagedWrite(db,{
     payload:{p_table:'silver.lrunes_galaxy',p_operation:'insert',p_rows:rows.slice(0,1)}
   },identity),/permission denied/);
+});
+
+test('portable JSON values are serialized without touching lyrics or PostgreSQL arrays',()=>{
+  const row={attr:{date:'2026-11-04'},media_link:['Ab12Cd34'],
+    content:'{"not":"a database object"}',title:'hello'};
+  const converted=serializePortableJsonFields(row,'mssql');
+  assert.equal(converted.attr,'{"date":"2026-11-04"}');
+  assert.equal(converted.media_link,'["Ab12Cd34"]');
+  assert.equal(converted.content,row.content);
+  assert.deepEqual(serializePortableJsonFields(row,'postgres'),row);
 });
