@@ -56,7 +56,7 @@ export default function DatabaseTarget(){
   useEffect(()=>{
     let active=true;
     (async()=>{
-      const {data,error}=await dbAuthClient.schema('silver').rpc('loc_admin_settings',
+      const {data,error}=await dbAuthClient.schema('silver').managedAction('loc_admin_settings',
         {p_section:'database',p_operation:'read'});
       if(!active)return;
       if(error){setStatus(error.message||'資料庫目標讀取失敗。');return;}
@@ -117,7 +117,7 @@ export default function DatabaseTarget(){
     }
     setSaving(true);setStatus('');
     try{
-      const {data,error}=await dbAuthClient.schema('silver').rpc('loc_admin_settings',
+      const {data,error}=await dbAuthClient.schema('silver').managedAction('loc_admin_settings',
         {p_section:'database',p_operation:'delete',p_key:row.target_id});
       if(error||data?.some(item=>item.target_id===row.target_id))
         throw new Error(error?.message||'刪除資料庫目標失敗，未確認刪除。');
@@ -149,7 +149,7 @@ export default function DatabaseTarget(){
         region:row.region||'',
         updated_at:new Date().toISOString()
       };
-      const {data,error}=await dbAuthClient.schema('silver').rpc('loc_admin_settings',{
+      const {data,error}=await dbAuthClient.schema('silver').managedAction('loc_admin_settings',{
         p_section:'database',p_operation:'upsert',p_key:row.target_id,
         p_value:payload
       });
