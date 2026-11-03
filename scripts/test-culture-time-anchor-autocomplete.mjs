@@ -28,7 +28,7 @@ test('anchor pairs reuse an existing period by anchor-id set instead of duplicat
 
 test('new periods created from connected pairs use the canonical allocator and segment encoder',()=>{
   assert.ok(editor.includes("allocateTimeUid} from '../../loc/time-anchor-ranges.mjs'"));
-  assert.match(editor,/const uid=allocateTimeUid\(\[\.\.\.all,\.\.\.extraPeriodRows\]\)/);
+  assert.match(editor,/const uid=allocateTimeUid\(\[\.{3}all,\.{3}globalUids,\.{3}extraPeriodRows\]\)/);
   assert.match(editor,/anchor_ids:encodeTimeSegment\(a,b\)/);
   assert.match(editor,/if\(extraPeriodRows\.length\)await insertRows\(timeTable,extraPeriodRows\)/);
 });
