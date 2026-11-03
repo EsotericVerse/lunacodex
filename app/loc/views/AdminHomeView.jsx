@@ -10,6 +10,7 @@ import dynamic from 'next/dynamic';
 import {useAccount} from '../use-account';
 import {useEditDock} from '../../modular/edit-dock';
 import {FeaturePage} from '../../modular/ui';
+import ManagementWorkspaceFrame from '../ManagementWorkspaceFrame';
 import ManagementSectionNav,{useManagementSection} from '../../modular/ManagementSectionNav';
 import PanelLoading from '../PanelLoading';
 // Registry editing and source catalogs are independent admin capabilities.
@@ -73,7 +74,7 @@ export default function AdminHomeView({scopeGroup}){
   if(!account.canManageGlobalSync())return <FeaturePage featureId="admin"><section className="loc-card scope-feature-card"><p>{UI_COPY.admin.denied}</p></section></FeaturePage>;
 
   return <FeaturePage featureId="admin">
-    <div className="management-workspace">
+    <ManagementWorkspaceFrame level="admin" title="系統管理">
       <ManagementSectionNav id="admin-sections" title="系統管理" panelId="admin-management-panel"
         items={ADMIN_OPTIONS} value={section} onChange={switchSection}/>
       <div className="management-workspace-panel" id="admin-management-panel" role="region"
@@ -93,6 +94,6 @@ export default function AdminHomeView({scopeGroup}){
         {section==='themes'?<ThemeEditor/>:null}
 
       </div>
-    </div>
+    </ManagementWorkspaceFrame>
   </FeaturePage>;
 }

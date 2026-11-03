@@ -1,6 +1,7 @@
 'use client';
 
 import {FeaturePage} from '../modular/ui';
+import ManagementWorkspaceFrame from './ManagementWorkspaceFrame';
 import ManagementSectionNav from '../modular/ManagementSectionNav';
 
 // Shared workspace layout and access boundary; each management capability
@@ -10,13 +11,13 @@ export default function LocManagementWorkspace({featureId,navId,item,children,st
 
   const panelId=navId+'-panel';
   return <FeaturePage featureId={featureId}>
-    <div className="management-workspace">
+    <ManagementWorkspaceFrame level="group" title={item.label}>
       <ManagementSectionNav id={navId} title={item.label} panelId={panelId}
         items={[item]} value={item.value} onChange={()=>{}}/>
       <div className="management-workspace-panel" id={panelId} role="region"
         aria-labelledby={navId+'-option-'+item.value}>
         {children}
       </div>
-    </div>
+    </ManagementWorkspaceFrame>
   </FeaturePage>;
 }

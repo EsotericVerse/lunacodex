@@ -100,7 +100,7 @@ export default function LocKeywordManagement(){
   }
 
   return <section className="loc-card admin-workspace">
-    <h2>關鍵詞管理</h2>
+    <h3>大群組設定</h3>
     {isPending?<p role="status">正在讀取關鍵詞大群組…</p>:null}
     {error?<p className="scope-status scope-error" role="alert">{String(error.message||error)}</p>:null}
     <div className="scope-stat-controls">

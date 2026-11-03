@@ -45,6 +45,7 @@ import {mediaDay} from '../../loc/statistics-facets';
 import {useAccount} from '../../loc/use-account';
 import {useScopeRuntime} from '../use-scope-runtime';
 import {ArticleSortSelect,FeaturePage,IncrementalList,WorkFullText} from '../ui';
+import ManagementWorkspaceFrame from '../../loc/ManagementWorkspaceFrame';
 // Article cards/editing are requested only when results actually render.
 const Article=dynamic(()=>import('../Article'),{loading:()=>null});
 const CultureTimelineEditor=dynamic(()=>import('./CultureTimelineEditor'),{loading:()=>null});
@@ -1270,14 +1271,14 @@ export default function Culture(){
     const permissionPending=account.loading||account.permissionLoading;
     const editorAuthorized=Boolean(account.user&&account.canManageScopeSync(scopeId));
     return <FeaturePage featureId="culture">
-      <section className='loc-card scope-feature-card scope-feature-card-wide'>
-        <h2>時間編輯</h2>
+      <ManagementWorkspaceFrame level="scope" title="時間定錨管理">
+        <section className="management-workspace-panel scope-time-edit-root">
         {!editorAvailable?<p className='scope-status'>此區沒有個別 Scope 的時間編輯資料。</p>:null}
         {editorAvailable&&permissionPending?<p className='scope-status' role='status'>正在確認此 Scope 的編輯權限…</p>:null}
         {editorAvailable&&!permissionPending&&!editorAuthorized?<p className='scope-status scope-error' role='alert'>
           {account.error?String(account.error):account.user?'目前登入帳號沒有此 Scope 的管理權限。':'請先至設定首頁登入，才能編輯時間定錨。'}
         </p>:null}
-        {editorAvailable&&!permissionPending&&editorAuthorized?<div className='management-workspace scope-time-edit-workspace'>
+        {editorAvailable&&!permissionPending&&editorAuthorized?<div className='scope-time-edit-workspace'>
           <div className='management-workspace-panel' id='time-editor-panel' role='region'
             aria-label='時間編輯'>
             <div className='scope-culture-timeline-tools'>
@@ -1324,7 +1325,8 @@ export default function Culture(){
             {editError?<p className='scope-status scope-error' role='alert'>{editError}</p>:null}
           </div>
         </div>:null}
-      </section>
+        </section>
+      </ManagementWorkspaceFrame>
     </FeaturePage>;
   }
 

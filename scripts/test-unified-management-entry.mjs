@@ -112,3 +112,46 @@ test('Group authorization registers its own UI locale independent of Settings ta
     }
   }
 });
+
+
+test('nine management screens share the same theme-driven responsive frame',()=>{
+  const frame=read('app/loc/ManagementWorkspaceFrame.jsx');
+  const css=read('app/styles/settings-select.css');
+  const sources={
+    time:read('app/modular/features/Culture.jsx'),
+    keyword:read('app/modular/features/KeywordSettings.jsx'),
+    place:read('app/loc/ScopeManagement.jsx'),
+    article:read('app/loc/SearchManagement.jsx'),
+    groupPeople:read('app/loc/LocSourceManagement.jsx'),
+    groupKeyword:read('app/loc/LocManagementWorkspace.jsx'),
+    admin:read('app/loc/views/AdminHomeView.jsx')
+  };
+  const screens=[
+    ['Scope / 時間',sources.time,/ManagementWorkspaceFrame level="scope" title="時間定錨管理"/],
+    ['Scope / 關鍵詞',sources.keyword,/ManagementWorkspaceFrame level="scope" title="關鍵詞管理"/],
+    ['Scope / 空間',sources.place,/ManagementWorkspaceFrame level=\{isLoc\?'group':'scope'\}/],
+    ['Scope / 文章',sources.article,/ManagementWorkspaceFrame level=\{isLocAdmin\?'group':'scope'\}/],
+    ['Scope Group / 人員作品',sources.groupPeople,/ManagementWorkspaceFrame level="group" title="人員作品管理"/],
+    ['Scope Group / 關鍵詞',sources.groupKeyword,/ManagementWorkspaceFrame level="group" title=\{item.label\}/],
+    ['Scope Group / 痕跡',sources.place,/title=\{traceOnly\?'痕跡圖管理':'空間定錨管理'\}/],
+    ['Scope Group / 文章',sources.article,/level=\{isLocAdmin\?'group':'scope'\}/],
+    ['Admin / 系統',sources.admin,/ManagementWorkspaceFrame level="admin" title="系統管理"/]
+  ];
+  assert.equal(screens.length,9);
+  for(const [name,source,marker] of screens)assert.match(source,marker,name);
+  for(const name of ['scope','group','admin'])assert.match(frame,new RegExp(name+':'));
+  assert.match(frame,/data-management-level=\{resolved\}/);
+  assert.match(frame,/management-workspace__heading/);
+  assert.match(css,/\.management-workspace--unified\{/);
+  assert.match(css,/grid-template-columns:minmax\(0,1fr\)/);
+  assert.match(css,/\.management-workspace--unified>.management-section-nav/);
+  assert.match(css,/overflow-x:auto/);
+  assert.match(css,/min-height:44px/);
+  assert.match(css,/@media\(max-width:680px\)/);
+  assert.match(css,/--loc-accent/);
+  assert.match(css,/--loc-ui-panel/);
+  assert.match(css,/@media\(prefers-reduced-motion:reduce\)/);
+  assert.match(sources.article,/activeSection==='groupAccess'/);
+  assert.match(sources.admin,/account\.canManageGlobalSync\(\)/);
+  assert.match(sources.place,/editDock\.switchSection\(next,setSection\)/);
+});
