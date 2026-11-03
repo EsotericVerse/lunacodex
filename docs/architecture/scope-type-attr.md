@@ -1,3 +1,11 @@
+### 官方 Kysely 版本與 Agent 文件（2026-11-04）
+
+- 官方目前最新穩定版本為 **Kysely 0.29.8**（2026-11-01）；PR #995 已同步 `package.json`、`package-lock.json`、所有 Deno `npm:kysely@...` 版本引用。0.29.7 修正 controlled transaction 的競態／連線與 MSSQL JSON；0.29.8 修正 PostgreSQL rollback／aborted-commit。
+- Kysely 官方推薦 AI 文件：[llms.txt](https://kysely.dev/llms.txt)、[llms-full.txt](https://kysely.dev/llms-full.txt)；專案本機使用 `.github/skills/kysely-portable-loc/SKILL.md` 指向官方文件及版本，不依賴第三方過時 Skill。
+- 官方有 `Dialect`、`SchemaBuilder`、`Migrator`、`transaction`、`withPlugin`、`withSchema`，可以實作無 RPC 的 CRUD、Schema 與資料異動；但**沒有可取代 Clerk 驗證／LOC Authority 的內建登入系統**。官方的 `$pickTables`／`$omitTables` 只縮小 TypeScript 型別視野，不能當執行期權限檢查。
+- 使用 Kysely **取代可替換的 SQL RPC** 是正確的可攜性方向；PostgreSQL RLS／Policy 與其他引擎的授權、JSON 資料型別和 DDL 差異，仍需要可信 Gateway 依既有語義處理，才能真的達到「連線與最小必要資料表」即可運作。
+- 本次是原分支 PR 變更，尚未通過完整 `npm run check:syntax`、真實 Dialect／Clerk 整合與部署驗收；不得誤稱正式資料庫已同步或 RPC 已刪完。
+
 ### 身分驗證與 SQL 可攜性修正（2026-11-04）
 
 - LOC 網站身份固定為 **Clerk + LOC Authority**，不再允許 Supabase Auth JWT 取代 Clerk 登入。PostgreSQL 以既有 `silver.manage()` 保持權限判定；非 PostgreSQL 透過 Kysely 讀取目標庫既有 `silver.manage` Registry 與 `silver.loc.blacklist`，比對經驗證的 Clerk email/subject，拒絕已封鎖帳號與未授權 Scope。
