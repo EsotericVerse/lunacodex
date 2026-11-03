@@ -334,6 +334,10 @@ class UnifiedQuery{
         physical=applyFilter(physical,{...filter,column:'attr->>date',value});
         continue;
       }
+      if(spec.kind==='media'&&filter.column==='url'){
+        physical=applyFilter(physical,{...filter,column:'attr->>url'});
+        continue;
+      }
       if(mapped==='attr'){jsonFilters.push(filter);continue}
       // A timestamp filter cannot be silently converted into a UID filter.
       if(spec.kind==='media'&&filter.column==='location')
