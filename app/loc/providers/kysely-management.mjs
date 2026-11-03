@@ -183,7 +183,7 @@ const ACTIONS=new Set(['read_group_members','update_group_member_name',
   'update_group_default_article_class','is_current_email_blocklisted','move_scope_block',
   'preview_or_fill_galaxy_place','batch_fill_galaxy_location',
   'rename_scope_site_batch','save_scope_trace_place_names','loc_admin_settings',
-  'refresh_scope_search_summary','merge_scope_trace_place_names','import_shared_keyword_class','manage','find_galaxy_duplicates']);
+  'refresh_scope_search_summary','merge_scope_trace_place_names','import_shared_keyword_class','manage','find_galaxy_duplicates','read_scope_registry_admin']);
 function validScope(value){
   const id=String(value||'').trim().toLowerCase();
   if(!/^[a-z][a-z0-9]{0,14}$/.test(id))reject('Invalid Scope ID');
@@ -214,9 +214,20 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     merge_scope_trace_place_names:['p_scope_id','p_keep_uid','p_remove_uids'],
     import_shared_keyword_class:['p_target_scope','p_source_scope','p_class_uid'],
     manage:['p_type','p_id'],
-    find_galaxy_duplicates:['p_scope_id']
+    find_galaxy_duplicates:['p_scope_id'],
+    read_scope_registry_admin:[]
   }[name];
   if(Object.keys(args).some(key=>!keys.includes(key)))reject('Unexpected Kysely action argument');
+  if(name==='read_scope_registry_admin'){
+    if(!await canManage(trx,'global'))reject('Global administrator required',403);
+    await sql`reset role`.execute(trx);
+    const rows=await trx.selectFrom('silver.manage')
+      .select(['id','display_name','email','manage_role','domain','directory',
+        'parent_scope_id','active','sort_order','galaxy_table','anchor_table',
+        'birthday','title_tw','desc_tw'])
+      .orderBy('sort_order','asc').orderBy('id','asc').execute();
+    return {data:rows,count:null};
+  }
   if(name==='find_galaxy_duplicates')return {data:await findGalaxyDuplicates(trx,args),count:null};
   if(name==='manage'){
     const type=String(args.p_type||'').toLowerCase();
