@@ -54,7 +54,7 @@ export async function databaseForTarget(input:Record<string,unknown>,options:{pr
     dialect=new PostgresDialect({pool:new Pool({connectionString:profile.url,max:1,idleTimeoutMillis:15000,connectionTimeoutMillis:7000})});
   }else if(target.engine==="mysql"){
     if(uri.protocol!=="mysql:")throw new Error("MySQL needs a mysql URL");
-    const mysql=await import("npm:mysql2@3.15.0");
+    const mysql=await import("npm:mysql2@3.22.0");
     const createPool=mysql.createPool||mysql.default?.createPool;
     if(typeof createPool!=="function")throw new Error("mysql2 driver is unavailable");
     dialect=new MysqlDialect({pool:createPool({
