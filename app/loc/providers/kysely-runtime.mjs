@@ -27,6 +27,7 @@ export const RPC_ALLOWLIST={
   // atomic multi-row writes, or bounded indexed lookups. Do not recreate
   // transactions as multiple browser requests.
   'silver.import_shared_keyword_class':['p_target_scope','p_source_scope','p_class_uid'],
+  'silver.merge_scope_trace_place_names':['p_scope_id','p_keep_uid','p_remove_uids'],
   'silver.save_scope_trace_place_names':['p_scope_id','p_uid','p_names'],
   'silver.scope_type_attr':['p_scope_id','p_type','p_attr'],
   'silver.scope_group':['p_group_id','p_type'],
