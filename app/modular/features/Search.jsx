@@ -36,7 +36,6 @@ import {scopeHref} from '../scope-registry';
 import {featureNavigationHref,galaxyIdentityHref,galaxyRelationLinks} from '../feature-navigation';
 import {featureDataErrorMessage} from '../feature-data-state';
 import {parseSearchQuery} from '../../loc/search-query.mjs';
-import {galaxyAble} from '../../loc/galaxy-able.mjs';
 import {extractSearchContext} from '../../loc/search-extract.mjs';
 import {searchGalaxyRows,selectGalaxyContent,selectGalaxyIdentity,selectStyleKeywordMatches,selectSourceTaxonomy} from '../../loc/galaxy-query';
 import {defaultScopeData,selectLocSearchScopes,selectScopeRegistry,revalidateServerMetadata} from '../../loc/scope-data';
@@ -130,7 +129,7 @@ function toResult(row,source,scopeId,copy=UI_COPY){
     source:displaySource,title:String(title),
     checkInPlace:'',
     date:row.date||row.createtime||row.address||row.record_date||row.UpdateTime||row.updated_at||'',
-    snippet:'',able:isGalaxy?galaxyAble(row):null,
+    snippet:'',...(isGalaxy?{statics:row.statics,culture:row.culture,search:row.search,trace:row.trace,list:row.list,keyword:row.keyword,others:row.others,extract:row.extract}:{}),
     scopeId:scope,resourceType,resourceId,
     relatedMedia:Array.isArray(row.related_media)?row.related_media:[],
     relatedTime:row.related_time||null,
@@ -169,7 +168,7 @@ async function loadPageSearchExcerpts(rows,query,scopeById,{authenticated=false,
   const groups=new Map();
   for(const row of rows){
     if(row.resourceType!=='galaxy'||!row.resourceId||
-      row.able?.search===false||row.able?.extract===false)continue;
+      row.search===false||row.extract===false)continue;
     if(!groups.has(row.scopeId))groups.set(row.scopeId,new Set());
     groups.get(row.scopeId).add(row.resourceId);
   }
@@ -185,7 +184,7 @@ async function loadPageSearchExcerpts(rows,query,scopeById,{authenticated=false,
         limit:ids.size,authenticated,signal
       });
       for(const article of articles){
-        if(article?.able?.search===false||article?.able?.extract===false)continue;
+        if(article?.search===false||article?.extract===false)continue;
         const excerpt=extractSearchContext(article.content,query,10);
         if(excerpt)snippets.set(scopeId+':'+article.uid,excerpt);
       }
@@ -395,7 +394,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   },[results,scopeId,availableScopes,articleSort]);
   // Suggestions come from loaded results only; do not imply a database-wide ranking.
   const suggestedTitles=useMemo(()=>[...new Set(results
-    .filter(row=>row.resourceType==='galaxy'&&row.able?.list!==false)
+    .filter(row=>row.resourceType==='galaxy'&&row.list!==false)
     .map(row=>String(row.title||'').trim())
     .filter(title=>title&&title.length<=80))].slice(0,8),[results]);
   const advancedRef=useRef(null);
@@ -541,7 +540,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           if(id!==searchId.current||signal.aborted||!previews.size)return;
           setResults(current=>current.map(item=>{
             const excerpt=previews.get(item.scopeId+':'+item.resourceId);
-            return excerpt&&item.able?.extract!==false?{...item,snippet:excerpt}:item;
+            return excerpt&&item.extract!==false?{...item,snippet:excerpt}:item;
           }));
         }).catch(()=>{});
       }
@@ -1349,8 +1348,8 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           editOnCardClick={false}
           managerMode={managementMode}
           uid={editTarget.editResourceId}
-          title={!managementMode&&row.resourceType==='galaxy'&&row.able?.list===false?'（使用者隱藏）':row.title}
-          articleHref={row.resourceType==='galaxy'&&(managementMode||row.able?.list!==false)
+          title={!managementMode&&row.resourceType==='galaxy'&&row.list===false?'（使用者隱藏）':row.title}
+          articleHref={row.resourceType==='galaxy'&&(managementMode||row.list!==false)
             ?(managementMode?scopeHref(scopeId,'search/manage')+'?identity='+encodeURIComponent(row.resourceId)+'&scope='+encodeURIComponent(row.scopeId):galaxyIdentityHref(row.scopeId,row.resourceId))
             :''}
           detailReading={identityReader||expandedReader}
@@ -1402,7 +1401,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
             <button type="button" className="loc-button scope-work-edit-button" onClick={()=>startEditing(editTarget)}>
               {row.resourceType==='galaxy'?'展開內文並編輯':'編輯媒體連結'}
             </button>
-          </div>:!managementMode&&row.resourceType==='galaxy'&&row.able?.list!==false&&editingKey!==row.key?<div className="scope-work-fulltext-row">
+          </div>:!managementMode&&row.resourceType==='galaxy'&&row.list!==false&&editingKey!==row.key?<div className="scope-work-fulltext-row">
             <WorkFullText
               open={fullTextKey===row.key}
               loading={fullTextLoading&&fullTextKey===row.key}
