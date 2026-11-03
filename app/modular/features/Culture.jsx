@@ -1165,7 +1165,7 @@ export default function Culture(){
       setAuthorizedWorkKey(key);
       if(!scopeData)throw new Error(l.sourceUnresolved);
       const {rows=[]}=await selectRows(scopeData.galaxy,{
-        columns:'uid,title,content,statics,culture,search,trace,list,keyword,others,extract',
+        columns:scopeId==='local'?'uid,title,content,able':'uid,title,content,statics,culture,search,trace,list,keyword,others,extract',
         filters:[{column:'uid',operator:'eq',value:uid}],
         limit:1
       });
