@@ -10,7 +10,7 @@ const legacy=[
  {record_id:'uuid-6',record_type:'event',resource_id:'multi',label:'三錨舊事件',anchor_ids:['birthday','start','end']},
  {record_id:'uuid-7',record_type:'style_comment',resource_id:'style1',style_description:'歷史風格'}
 ];
-test('unique four-character UIDs and backed-up old records',()=>{
+test('unique eight-character Anchor UIDs and backed-up old records',()=>{
  const {rows,archive}=convertLegacyTimeRows(legacy);
  assert.equal(archive.length,7);
  assert.equal(rows.length,9,'original 6 active rows plus 2 boundary events plus 1 extra legacy segment');
