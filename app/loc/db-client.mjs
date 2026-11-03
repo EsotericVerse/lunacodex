@@ -56,6 +56,11 @@ function routedSchema(schemaName,cloudSchema){
     },
     managedAction(name,args={}){
       return cloudSchema.managedAction(name,args);
+    },
+    anchor(scopeId,type,attr={}){
+      return scopeId==='local'
+        ?localSchema.rpc('scope_type_attr',{p_scope_id:scopeId,p_type:type,p_attr:attr})
+        :cloudSchema.anchor(scopeId,type,attr);
     }
   };
 }
@@ -136,9 +141,8 @@ export async function scopeTypeAttr(scopeId,type,attr={}, {write=false}={}){
       }
     }
   }
-  const {data,error}=await client.schema('silver').rpc('scope_type_attr',{
-    p_scope_id:id,p_type:kind,p_attr:attr
-  });
+  const transport=write?adapter.authClient:(adapter.configuredPublicClient||adapter.publicClient);
+  const {data,error}=await transport.schema('silver').anchor(id,kind,attr);
   if(error)throw new Error(error.message||'Anchor request failed');
   return data;
 }
