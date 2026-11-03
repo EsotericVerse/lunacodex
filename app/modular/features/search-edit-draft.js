@@ -33,7 +33,7 @@ function galaxyDraftFromRow(row={},fallbackTitle='',plainTextToBlocks){
     createtime:datetimeLocalValue(row.createtime),
     location:String(row.location||''),
     place_id:String(row.place_id||'').trim(),
-    ...Object.fromEntries(['statics','culture','search','trace','list','keyword','others','extract'].map(k=>['able_'+k,row[k]!==false])), 
+    ...Object.fromEntries(['statics','culture','search','trace','list','keyword','extract','others'].map(k=>[k,row[k]!==false])), 
     UpdateTime:String(row.UpdateTime||''),
     url:String(row.url||''),
     source_id:String(row.source_id||'').trim(),
@@ -80,12 +80,12 @@ function changedGalaxyAttributes(draft,t){
   const current=draft?.attrs||{},initial=draft?.originalAttrs||{};
   const changed={};
   const differs=key=>JSON.stringify(current[key])!==JSON.stringify(initial[key]);
-  const features=['statics','culture','search','trace','list','keyword','others','extract'];
-  for(const key of features)if(differs('able_'+key))changed[key]=current['able_'+key]!==false;
+  const features=['statics','culture','search','trace','list','keyword','extract','others'];
+  for(const key of features)if(differs(key))changed[key]=current[key]!==false;
   if(differs('createtime'))changed.createtime=isoOrNull(current.createtime,t);
   if(differs('place_id')){
     const next=String(current.place_id||'').trim();
-    if(next&&!/^[A-Za-z0-9]{4}$/.test(next))throw new Error('定錨點 ID 必須為四碼');
+    if(next&&!/^[A-Za-z0-9]{8}$/.test(next))throw new Error('定錨點 ID 必須為八碼');
     changed.place_id=next||null;
   }
   for(const key of ['location','url','source_id','ref_id','site']){
