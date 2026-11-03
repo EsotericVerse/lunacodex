@@ -34,6 +34,7 @@ export default function DatabaseTarget(){
   const [connectionUrl,setConnectionUrl]=useState('');
   const [controlToken,setControlToken]=useState('');
   const [authType,setAuthType]=useState('default');
+  const [authDomain,setAuthDomain]=useState('');
   const [backupHealth,setBackupHealth]=useState({state:'idle'});
   const [authOverview,setAuthOverview]=useState(()=>readonlyAuthStatus({
     identityProvider:process.env.NEXT_PUBLIC_LOC_IDENTITY_PROVIDER||'',
@@ -102,14 +103,14 @@ export default function DatabaseTarget(){
     if(id===selectedId||saving)return;
     if(!discardCurrent())return;
     setSelectedId(id);setStatus('');
-    setConnectionUrl('');setControlToken('');setAuthType('default');
+    setConnectionUrl('');setControlToken('');setAuthType('default');setAuthDomain('');
   };
   const add=()=>{
     if(saving||!discardCurrent())return;
     const id='target_'+crypto.randomUUID().replaceAll('-','').slice(0,20);
     setRows(current=>[...current,{target_id:id,provider:'custom',engine:'postgres',connection_alias:id,connection_mode:'direct',label:'新資料庫',project_id:'',project_url:'',region:'',selected:false,_new:true}]);
     setSelectedId(id);setStatus('');
-    setConnectionUrl('');setControlToken('');setAuthType('default');
+    setConnectionUrl('');setControlToken('');setAuthType('default');setAuthDomain('');
   };
   async function remove(){
     if(!row||saving)return;
@@ -139,9 +140,11 @@ export default function DatabaseTarget(){
       const name=String(row.label||'').trim();
       if(!name||name.length>120)throw new Error('請輸入 1–120 字的資料庫名稱。');
       const previous=savedRow(row);
-      const location=!row._new&&previous?.project_url===row.project_url&&previous?.provider===row.provider
-        ?{link:row.project_url}
-        :normalizeDatabaseLocation(row.provider,row.project_url);
+      const inputHost=row.project_url||(
+        connectionUrl?new URL(connectionUrl).host:'');
+      const location=!row._new&&previous?.project_url===inputHost&&previous?.provider===row.provider
+        ?{link:inputHost}
+        :normalizeDatabaseLocation(row.provider,inputHost);
       // Only non-sensitive target metadata belongs here. The former
       // save_database_target endpoint is absent; admin RLS secures writes.
       const payload={
@@ -160,7 +163,7 @@ export default function DatabaseTarget(){
       const action=connectionUrl&&controlToken?'connect_database_target':'loc_admin_settings';
       const args=action==='connect_database_target'
         ?{p_target:{...payload,target_id:row.target_id,connection_url:connectionUrl,
-          control_token:controlToken,auth_type:authType,activate:true}}
+          control_token:controlToken,auth_type:authType,domain:authDomain,activate:true}}
         :{p_section:'database',p_operation:'upsert',p_key:row.target_id,p_value:payload};
       const {data,error}=await dbAuthClient.schema('silver').managedAction(action,args);
       if(error||(action==='connect_database_target'
@@ -188,7 +191,7 @@ export default function DatabaseTarget(){
   });
   return <section className="loc-card admin-workspace">
     <h2><UiText id="uiExtra.adminView.databaseRouting"/></h2>
-    <p className="scope-status">主要：{STATIC_ROUTING.primaryId}｜備援資料庫：{configuredBackup?.label||'未設定（選配）'}</p>
+    <p className="scope-status">主要：{rows.find(item=>item.selected)?.label||STATIC_ROUTING.primaryId}｜備援資料庫：{configuredBackup?.label||'未設定（選配）'}</p>
     <p className="scope-status" role="status">
       {backupHealth.state==='absent'?'備援：未設定（選配，不需檢查）':
         backupHealth.state==='idle'||backupHealth.state==='checking'
@@ -270,6 +273,10 @@ export default function DatabaseTarget(){
             </>:null}
           </select>
         </label>
+        {authType==='ntlm'?<label>Windows／AD 網域
+          <input value={authDomain} autoComplete="off"
+            onChange={event=>setAuthDomain(event.target.value)} placeholder="CORP"/>
+        </label>:null}
         <label>Database Control Token／Password
           <input type="password" value={controlToken} autoComplete="new-password"
             onChange={event=>setControlToken(event.target.value)}
@@ -282,7 +289,7 @@ export default function DatabaseTarget(){
           title={protectedTarget?'主要或備援資料庫使用中，不可刪除':undefined}><UiText id="uiExtra.adminView.delete"/></button>
       </div>
     </div>:null}
-    <p className="scope-status">只需要一個主要資料庫即可完整使用；備援資料庫不是安裝條件，平常不會連線或同步。這裡管理資料庫連線清單；正式主／備援路由由部署設定決定，新增清單項目不會自動切換。未配置備援時可將 NEXT_PUBLIC_LOC_BACKUP_ID 設為空值，重新部署後生效。</p>
+    <p className="scope-status">只需要一個主要資料庫。輸入 SQL 連線 URL 和 Control Token 後，由可信任 Gateway 驗證並儲存於 Vault；成功的連線可直接成為主要資料來源。備援資料庫為選配。</p>
     {status?<p className="scope-status" role="status">{status}</p>:null}
   </section>;
 }
