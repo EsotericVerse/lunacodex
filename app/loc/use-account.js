@@ -60,7 +60,7 @@ async function fetchManagementAccount(mutate){
     // between Authority identity and the protected Scope permissions RPC.
     const [sessionRead,permissionRead]=await Promise.allSettled([
       getAccountSession(),
-      dbAuthClient.schema('silver').rpc('manage',{p_type:'self'})
+      dbAuthClient.schema('silver').managedAction('manage',{p_type:'self'})
     ]);
     if(sessionRead.status==='rejected')throw sessionRead.reason;
     const session=sessionRead.value;
