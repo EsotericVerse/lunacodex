@@ -8,7 +8,7 @@ import {sourceTaxonomyFromArrays} from './source-classification.mjs';
 import {DEFAULT_LIST_BATCH_SIZE} from './db-contract.mjs';
 import {parseSearchQuery} from './search-query.mjs';
 import {normalizeRelationIds,publicContentFilters} from './content-policy';
-import {storedTimeRange,timePeriodContainsDate} from './time-anchor-ranges.mjs';
+import {timePeriodContainsDate} from './time-anchor-ranges.mjs';
 import {anniversarySuggestionsForDate} from './anniversary.mjs';
 import {DB_QUERY_BATCH_SIZE,applyFilters,applyOrders,executePublicRead,selectCount,selectRows} from './db-query.mjs';
 import {readLocStatistics,readScopeCategoryTotals,readScopeEarliest,readScopeOverview,readScopeStatistics} from './db-client.mjs';
@@ -353,24 +353,9 @@ async function articleTimeRows(scope){
   const cached=articleTimeCache.get(key);
   if(cached&&cached.expires>now)return cached.promise;
   const promise=(async()=>{
-    const projected=[];
-    const pageSize=200;
-    for(let offset=0;;offset+=pageSize){
-      const result=await selectRows(scope.time,{
-        columns:'uid,type,title,range',
-        filters:[{column:'type',operator:'in',value:['period','era']}],
-        orders:[{column:'uid',ascending:true}],limit:pageSize,offset
-      });
-      projected.push(...result.rows);
-      if(result.rows.length<pageSize)break;
-    }
-    if(projected.some(row=>!storedTimeRange(row.range))){
-      const {selectCultureTimeRows}=await import('./culture-query');
-      return (await selectCultureTimeRows(scope)).filter(row=>
-        row.entry_type==='period'||row.entry_type==='era');
-    }
-    return projected.map(row=>({...row,entry_type:row.type,
-      ranges:storedTimeRange(row.range)?.ranges||[]}));
+    const {selectCultureTimeRows}=await import('./culture-query');
+    return (await selectCultureTimeRows(scope)).filter(row=>
+      row.entry_type==='period'||row.entry_type==='era');
   })();
   articleTimeCache.set(key,{expires:now+60_000,promise});
   promise.catch(()=>{if(articleTimeCache.get(key)?.promise===promise)articleTimeCache.delete(key);});
