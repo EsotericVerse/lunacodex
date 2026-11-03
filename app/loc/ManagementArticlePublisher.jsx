@@ -100,7 +100,7 @@ export default function ManagementArticlePublisher({scopeId}){
       if(!galaxy)throw new Error(t('uiExtra.publisher.scopeUnavailable'));
       // Exact, authenticated UID lookup: no public-search index or searchable filter.
       const {rows}=await selectRows(galaxy,{
-        columns:'uid,title,content,site,createtime,able,url,source_id,target_id,ref_id',
+        columns:'uid,title,content,site,createtime,statics,culture,search,trace,list,keyword,others,extract,url,source_id,target_id,ref_id',
         filters:[{column:'uid',operator:'eq',value:uid}],limit:1,authenticated:true
       });
       if(!rows?.length)throw new Error(t('uiExtra.publisher.uidNotFound'));
