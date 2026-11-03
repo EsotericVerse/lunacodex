@@ -23,7 +23,9 @@ function previousDay(value){
 }
 export async function selectCultureTimeRows(scope,birthday=''){
   const scopeId=scopeIdOf(scope?.id);
-  const table=scope?.time;
+  // Read the legacy Time projection, not native *_anchor columns. The adapter
+  // maps address/anchor_ids to attr.date/attr.uid/attr.period.
+  const table=String(scope?.time||'').replace(/_anchor$/,'_time');
   if(!scopeId||!table)throw new Error('Scope data 未解析');
   const {rows}=await selectRows(table,{
     columns:TIME_COLUMNS,
