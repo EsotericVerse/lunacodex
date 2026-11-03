@@ -337,17 +337,15 @@ Deno.serve(async (request) => {
       if(!verifiedMcp||role!=="authenticated")
         return json({error:{message:"Verified MCP write permission required"}},403);
       const scope=String(body.scopeid||"");
-      // MCP sync is a private conversation source, regardless of the caller's
-      // legacy site/able payload. Never inherit Galaxy's all-true defaults.
+      // A signed MCP conversation is private irrespective of supplied flags.
       const incomingRow=body.row as Record<string,unknown>;
+      const flags=["statics","culture","search","trace","list","keyword","others","extract"];
+      const base=["uid","title","content","site","site_id","createtime","UpdateTime"];
       const row=incomingRow&&typeof incomingRow==="object"&&!Array.isArray(incomingRow)
-        ? {...incomingRow,site:"mcp",able:{
-            statics:false,culture:false,search:false,trace:false,
-            list:false,keywords:false,game:false,extract:false
-          }}
+        ? Object.fromEntries([...base.map(key=>[key,key==="site"?"mcp":incomingRow[key]]),
+            ...flags.map(key=>[key,false])])
         :incomingRow;
-      const expected=["uid","title","content","site","site_id","able",
-        "createtime","UpdateTime"];
+      const expected=[...base,...flags];
       if(!["lo3rwang","lrunes"].includes(scope)||!row||typeof row!=="object"||
         Array.isArray(row)||Object.keys(row).length!==expected.length||
         Object.keys(row).some(k=>!expected.includes(k))||
@@ -356,9 +354,9 @@ Deno.serve(async (request) => {
         typeof row.content!=="string"||!row.content.trim()||
         row.content.length>125000||row.site!=="mcp"||
         typeof row.site_id!=="string"||row.site_id.length<3||
-        row.site_id.length>150||!row.able||typeof row.able!=="object"||
-        Object.keys(row.able as Record<string,unknown>).length!==8||
-        ["statics","culture","search","trace","list","keywords","game","extract"].some(k=>(row.able as Record<string,unknown>)[k]!==false)||
+        row.site_id.length>150||
+        !incomingRow||Object.keys(incomingRow).some(k=>![...expected,"able"].includes(k))||
+        flags.some(k=>row[k]!==false)||
         typeof row.createtime!=="string"||typeof row.UpdateTime!=="string"||
         typeof body.update_existing!=="boolean")
         return json({error:{message:"Invalid managed conversation payload"}},400);
