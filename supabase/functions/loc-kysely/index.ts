@@ -6,7 +6,7 @@ import {databaseForTarget,resolveConnectionProfile} from "./drivers.ts";
 import {makeConnectionProfile,readVaultConnection,saveVaultConnection} from "./database-connections.ts";
 import {normalizeDatabaseLocation} from "../../../app/loc/providers/database-link.mjs";
 import { executeAllowlistedRpc, executeKyselyQuery, isKyselyClientError } from "../../../app/loc/providers/kysely-runtime.mjs";
-import {executeManagedKyselyWrite} from "../../../app/loc/providers/kysely-management.mjs";
+import {executeManagedKyselyWrite,executeManagedKyselyAction} from "../../../app/loc/providers/kysely-management.mjs";
 import { selectedDatabaseTarget } from "../../../app/loc/providers/selected-database-target.mjs";
 import {resolveSqlExecutionPort,assertCrossEnginePublicRead} from "../../../app/loc/providers/sql-engine-ports.mjs";
 import {resolveDatabaseRouting} from "../../../app/loc/providers/routing-config.mjs";
@@ -193,9 +193,11 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
   await sql`select set_config('request.jwt.claim.sub', ${String(claims.sub || "")}, true)`.execute(trx);
   await sql`select set_config('request.jwt.claim.role', ${role}, true)`.execute(trx);
   if(body.kind==="query")return await executeKyselyQuery(trx,body);
-  if(body.kind==="managed-write"){
+  if(body.kind==="managed-write"||body.kind==="managed-action"){
     if(role!=="authenticated")throw Object.assign(new Error("Management requires a verified session"),{httpStatus:403});
-    return await executeManagedKyselyWrite(trx,body);
+    return body.kind==="managed-write"
+      ?await executeManagedKyselyWrite(trx,body)
+      :await executeManagedKyselyAction(trx,body,claims);
   }
   return await executeAllowlistedRpc(trx,body);
 }
