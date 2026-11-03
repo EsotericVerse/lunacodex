@@ -5,8 +5,13 @@ const identifier=/^[a-z][a-z0-9_]*$/i;
 const schemas=new Set(['silver','api']);
 const operators={eq:'=',neq:'!=',gt:'>',gte:'>=',lt:'<',lte:'<=',like:'like',ilike:'ilike',is:'is',in:'in'};
 const GALAXY_ABLE_FILTER_KEYS=new Set(['statics','culture','search','trace','list','keywords','game','extract']);
-function checkedFilterColumn(value){
+const ANCHOR_TEXT_PATHS=new Set(['date','url']);
+function checkedFilterColumn(value,table=''){
   if(identifier.test(String(value||'')))return value;
+  const anchor=String(value||'').match(/^attr->>([a-z]+)$/);
+  if(anchor&&ANCHOR_TEXT_PATHS.has(anchor[1])&&
+    /^silver\.[a-z][a-z0-9]{0,14}_anchor$/.test(table))
+    return sql`(${sql.ref('attr')} ->> ${anchor[1]})`;
   const match=String(value||'').match(/^able->>([a-z]+)$/);
   if(!match||!GALAXY_ABLE_FILTER_KEYS.has(match[1]))throw new Error('Invalid filter column');
   return sql`(${sql.ref('able')} ->> ${match[1]})`;
@@ -79,20 +84,21 @@ function splitExpression(expression){
   return parts;
 }
 
-function parseExpressionTerm(raw,depth=0){
+function parseExpressionTerm(raw,depth=0,table=''){
   if(depth>8)throw new Error('OR filter nesting is too deep');
   const part=raw.trim();
   const group=part.match(/^(and|or)\(([\s\S]*)\)$/i);
-  if(group)return {type:group[1].toLowerCase(),items:splitExpression(group[2]).map(item=>parseExpressionTerm(item,depth+1))};
-  const match=part.match(/^([a-z][a-z0-9_]*)\.(eq|neq|gt|gte|lt|lte|like|ilike|is)\.(?:"((?:\\.|[^"])*)"|([^,]*))$/i);
+  if(group)return {type:group[1].toLowerCase(),items:splitExpression(group[2]).map(item=>parseExpressionTerm(item,depth+1,table))};
+  const match=part.match(/^([a-z][a-z0-9_]*(?:->>[a-z]+)?)\.(eq|neq|gt|gte|lt|lte|like|ilike|is)\.(?:"((?:\\.|[^"])*)"|([^,]*))$/i);
   if(!match)throw new Error('Unsupported OR filter');
   const rawValue=match[3]!==undefined?match[3].replace(/\\(["\\])/g,'$1'):match[4];
   const value=rawValue==='true'?true:rawValue==='false'?false:rawValue==='null'?null:/^-?\d+(?:\.\d+)?$/.test(rawValue)?Number(rawValue):rawValue;
-  return {type:'predicate',column:checkedIdentifier(match[1],'OR filter column'),operator:match[2].toLowerCase(),value};
+  checkedFilterColumn(match[1],table);
+  return {type:'predicate',column:match[1],operator:match[2].toLowerCase(),value};
 }
 
-function parseOrExpression(expression){
-  return {type:'or',items:splitExpression(expression).map(parseExpressionTerm)};
+function parseOrExpression(expression,table){
+  return {type:'or',items:splitExpression(expression).map(item=>parseExpressionTerm(item,0,table))};
 }
 
 function validateQuery(input){
@@ -105,7 +111,7 @@ function validateQuery(input){
   const filters=input.filters||[];
   for(const filter of filters){
     if(!filter||typeof filter!=='object'||Array.isArray(filter))throw new Error('Invalid filter');
-    checkedFilterColumn(filter.column);
+    checkedFilterColumn(filter.column,schema+'.'+table);
     if(!operators[filter.operator]||(filter.operator==='in'&&!Array.isArray(filter.value)))throw new Error('Invalid filter');
   }
   if(['update','delete'].includes(input.operation)&&!filters.length)throw new Error('Unfiltered writes are forbidden');
@@ -115,7 +121,10 @@ function validateQuery(input){
   if(columns.some(col=>typeof col!=='string'||(col!=='*'&&!identifier.test(col))))throw new Error('Invalid selected column');
   if(input.orders!==undefined&&!Array.isArray(input.orders))throw new Error('Invalid order');
   const orders=input.orders||[];
-  if(orders.some(order=>!order||typeof order.column!=='string'||!identifier.test(order.column)))throw new Error('Invalid order column');
+  if(orders.some(order=>{
+    try{checkedFilterColumn(order?.column,schema+'.'+table);return false;}
+    catch{return true;}
+  }))throw new Error('Invalid order column');
   if(['insert','update','upsert'].includes(input.operation)){
     const rows=Array.isArray(input.values)?input.values:[input.values];
     if(!input.values||typeof input.values!=='object'||!rows.length||rows.some(row=>!row||typeof row!=='object'||Array.isArray(row)))throw new Error('Write values are required');
@@ -127,15 +136,15 @@ function validateQuery(input){
   const offset=Math.max(0,Math.min(10_000_000,Math.floor(Number(input.offset)||0)));
   if(input.or!==undefined&&!Array.isArray(input.or))throw new Error('Invalid OR filter');
   if(['insert','upsert'].includes(input.operation)&&(input.or||[]).length)throw new Error('OR filters are not supported for insert or upsert');
-  const orFilters=(input.or||[]).map(expr=>{if(typeof expr!=='string')throw new Error('Invalid OR filter');return parseOrExpression(expr)});
+  const orFilters=(input.or||[]).map(expr=>{if(typeof expr!=='string')throw new Error('Invalid OR filter');return parseOrExpression(expr,schema+'.'+table)});
   if(orFilters.length>10)throw new Error('Too many OR filters');
   if(input.single!==undefined&&!['single','maybeSingle'].includes(input.single))throw new Error('Invalid row cardinality');
   return {...input,schema,table,filters,columns,orders,limit,offset,orFilters};
 }
 
-function applyFilters(query,filters){
+function applyFilters(query,filters,table=''){
   for(const filter of filters){
-    const op=operators[filter.operator],column=checkedFilterColumn(filter.column);
+    const op=operators[filter.operator],column=checkedFilterColumn(filter.column,table);
     if(filter.operator==='in')query=filter.negate?query.where(eb=>eb.not(eb(column,'in',filter.value))):query.where(column,'in',filter.value);
     else if(filter.operator==='ilike')query=query.where(sql`lower(${typeof column==='string'?sql.ref(column):column})`,filter.negate?'not like':'like',String(filter.value).toLowerCase());
     else if(filter.operator==='is')query=query.where(column,filter.value===null?(filter.negate?'is not':'is'):(filter.negate?'!=':'='),filter.value);
@@ -144,13 +153,14 @@ function applyFilters(query,filters){
   return query;
 }
 
-function applyOrFilters(query,groups){
+function applyOrFilters(query,groups,table=''){
   const predicate=(eb,node)=>{
     if(node.type==='and')return eb.and(node.items.map(item=>predicate(eb,item)));
     if(node.type==='or')return eb.or(node.items.map(item=>predicate(eb,item)));
-    if(node.operator==='ilike')return eb(sql`lower(${sql.ref(node.column)})`,'like',String(node.value).toLowerCase());
-    if(node.operator==='is'&&node.value!==null)return eb(node.column,'=',node.value);
-    return eb(node.column,operators[node.operator],node.value);
+    const column=checkedFilterColumn(node.column,table);
+    if(node.operator==='ilike')return eb(sql`lower(${typeof column==='string'?sql.ref(column):column})`,'like',String(node.value).toLowerCase());
+    if(node.operator==='is'&&node.value!==null)return eb(column,'=',node.value);
+    return eb(column,operators[node.operator],node.value);
   };
   for(const group of groups)query=query.where(eb=>predicate(eb,group));
   return query;
@@ -160,10 +170,10 @@ export function buildKyselySelectQuery(trx,input){
   const req=validateQuery(input);
   if(req.operation!=='select')throw new Error('Unsupported operation for SELECT builder');
   const table=`${req.schema}.${req.table}`;
-  let query=applyOrFilters(applyFilters(trx.selectFrom(table).select(req.columns),req.filters),req.orFilters);
-  for(const order of req.orders)query=query.orderBy(order.column,order.ascending===false?'desc':'asc');
+  let query=applyOrFilters(applyFilters(trx.selectFrom(table).select(req.columns),req.filters,table),req.orFilters,table);
+  for(const order of req.orders)query=query.orderBy(checkedFilterColumn(order.column,table),order.ascending===false?'desc':'asc');
   query=query.limit(req.limit).offset(req.offset);
-  const countQuery=req.count?applyOrFilters(applyFilters(trx.selectFrom(table).select(trx.fn.countAll().as('count')),req.filters),req.orFilters):null;
+  const countQuery=req.count?applyOrFilters(applyFilters(trx.selectFrom(table).select(trx.fn.countAll().as('count')),req.filters,table),req.orFilters,table):null;
   return {request:req,query:req.head?null:query,countQuery};
 }
 
@@ -217,7 +227,7 @@ export function buildKyselyMutationQuery(trx,input,{dialect='postgres'}={}){
   if(req.operation==='upsert')query=buildKyselyUpsertQuery(trx,req,dialect);
   if(req.operation==='update')query=trx.updateTable(fullTable).set(req.values);
   if(req.operation==='delete')query=trx.deleteFrom(fullTable);
-  query=applyOrFilters(applyFilters(query,req.filters),req.orFilters);
+  query=applyOrFilters(applyFilters(query,req.filters,table),req.orFilters,table);
   return {request:req,query:applyMutationReturning(query,req,dialect)};
 }
 
@@ -245,14 +255,14 @@ async function mysqlPrimaryKeyColumns(trx,req){
 async function executeMysqlReturningMutation(trx,req,query){
   const fullTable=`${req.schema}.${req.table}`;
   if(req.operation==='delete'){
-    const before=await applyOrFilters(applyFilters(trx.selectFrom(fullTable).select(req.columns),req.filters),req.orFilters).execute();
+    const before=await applyOrFilters(applyFilters(trx.selectFrom(fullTable).select(req.columns),req.filters,fullTable),req.orFilters,fullTable).execute();
     await query.execute();
     return before;
   }
   let keys=[];let keyColumns=[];
   if(req.operation==='update'){
     keyColumns=await mysqlPrimaryKeyColumns(trx,req);
-    const existing=await applyOrFilters(applyFilters(trx.selectFrom(fullTable).select(keyColumns),req.filters),req.orFilters).execute();
+    const existing=await applyOrFilters(applyFilters(trx.selectFrom(fullTable).select(keyColumns),req.filters,fullTable),req.orFilters,fullTable).execute();
     keys=existing;
     await query.execute();
   }else{
