@@ -79,12 +79,10 @@ export function createDatabaseClient({publicClient,authClient,auth}){
 
   async function managementWriteUnchecked(payload){
     preflightWrite(payload?.p_table);
-    // Every standard insert/import goes through this boundary; newer builds
-    // dual-write Galaxy.able while legacy columns remain for older deployments.
+    // Persist the eight Galaxy permission booleans, never the removed JSONB column.
     if(isScopedGalaxy(payload?.p_table)&&payload?.p_operation==='insert')
       payload={...payload,p_rows:prepareGalaxyInsertRows(payload.p_table,payload.p_rows||[])};
-    if(isScopedGalaxy(payload?.p_table)&&payload?.p_operation==='update'&&
-      Object.hasOwn(payload.p_values||{},'able'))
+    if(isScopedGalaxy(payload?.p_table)&&payload?.p_operation==='update')
       payload={...payload,p_values:prepareGalaxyUpdateValues(payload.p_table,payload.p_values)};
     // The unified anchor store is already governed by the Clerk-verified
     // authenticated Kysely client and its database RLS. Legacy management
