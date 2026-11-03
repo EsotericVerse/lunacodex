@@ -23,7 +23,7 @@
 - **資料庫**：Supabase 仍是目前主資料庫；Neon 備援不在本次切換範圍內。
 - **iOS**：仍提供**手動**產生未簽署 IPA 的流程，預計檔名 `LOC-1.1.0-rc.2.1-device-unsigned.ipa`。**沒有成功的 iOS workflow 與上傳資產之前，不可宣稱 RC2.1 IPA 已存在或可直接安裝。**
 
-## 四大公開版面整合（待驗收變更）
+## 四大公開版面整合（已部署；互動驗收持續）
 
 > 2026-11-03，PR #968。公開 UI 的程式與功能契約紀錄；GitHub 合併、Cloudflare 正式部署及使用者驗收須分別以實際狀態判斷。
 
@@ -35,6 +35,12 @@
 - 管理選單、管理搜尋及其他編輯介面不在這次視覺修改範圍，資料庫結構與 RPC 不變。
 
 **程式驗證（2026-11-03，PR #968）**：在完整 LOC 專案 workspace 執行 `npm run check:syntax`，826 檔、0 語法錯誤；`postcss.parse` 驗證 45 條 CSS 規則；`test:bootstrap` 執行 482 項，429 通過、53 失敗。同步以 `main` 同條件執行 482 項、429 通過、53 失敗，失敗項目完全相同，**PR 新增失敗為 0**。目前 package scripts 未設定專屬 `lint` 指令，不宣稱已通過 lint；前端實際互動與 Cloudflare 正式部署仍須獨立驗收。
+
+### 痕跡公開訪客讀取修正（2026-11-03）
+
+- 以訪客開啟公開痕跡地圖時，Point／Path／Trace 的列表和點位明細改由匿名唯讀連線取得；不再因缺少 Clerk Token 導致地圖資料讀取失敗。
+- 仍由既有 Supabase RLS 僅顯示 invisible=false 的公開地點；明確要求 includeHidden 的管理讀取維持經 Clerk 驗證的通道。不涉及 Schema、RPC 或 RLS 修改。
+- 驗證：npm run check:syntax 828 檔案零錯誤；新增測試先失敗再修復通過；Bootstrap 483 項、430 通過、53 項為基線既存失敗，與更新前 Main 的 482 項／429 通過／53 失敗比較，新失敗 0。正式訪客地圖實測與 Cloudflare 部署需於合併後另行確認。
 
 ## 已知待驗收項目
 
