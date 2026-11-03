@@ -106,7 +106,7 @@ test('rejects existing incompatible Galaxy/Anchor before selecting a new SQL tar
   ];
   assert.deepEqual(check(entries,{engine:'mssql',namespace:'dbo',scopeId:'writer'}),
     {scopeId:'writer',galaxy:'dbo.writer_galaxy',anchor:'dbo.writer_anchor'});
-  const broken=structuredClone(entries);
+  const broken=JSON.parse(JSON.stringify(entries));
   broken[0].columns=broken[0].columns.filter(row=>row.name!=='search');
   assert.throws(()=>check(broken,{engine:'mssql',namespace:'dbo',scopeId:'writer'}),/search/);
 });
