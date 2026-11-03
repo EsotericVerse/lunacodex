@@ -16,11 +16,13 @@ export async function executeKyselyPublicAction(trx,body,{engine='postgres',name
   const table=name=>portable?portableRelation(name,engine,namespace):'silver.'+name;
   const metadata=await trx.introspection.getTables();
   const available=new Set(metadata.map(row=>String(row.schema||'')+'.'+row.name));
-  const has=name=>available.has((portable?namespace:'silver')+'.'+name)||
+  const mysqlNames=new Set(metadata.map(row=>row.name));
+  const has=name=>engine==='mysql'?mysqlNames.has(name):
+    available.has((portable?namespace:'silver')+'.'+name)||
     portable&&available.has('.'+name);
   const scopedGalaxies=[...new Set(metadata
     .filter(row=>row.name.endsWith('_galaxy')&&
-      (!portable||!row.schema||row.schema===namespace))
+      (engine==='mysql'||!portable||!row.schema||row.schema===namespace))
     .map(row=>row.name.slice(0,-'_galaxy'.length)))]
     .filter(value=>scopePattern.test(value)&&has(value+'_anchor'));
   const name=String(body?.name||'');
