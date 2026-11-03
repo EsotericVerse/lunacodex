@@ -375,6 +375,35 @@ export async function executePortableKyselyAnalytics(db,body,{engine,namespace='
   if(start&&end&&start>end||!options||typeof options!=='object'||Array.isArray(options))
     reject('Invalid statistics range');
   if(!MODES.has(mode))reject('Unknown LOC statistics view');
+  if(mode==='search_summary'){
+    if(scope!=='loc'||start||end)reject('Invalid Search summary request');
+    const ids=options.scopeIds;
+    if(!Array.isArray(ids)||ids.length>100||
+      ids.some(id=>typeof id!=='string'||!SCOPE.test(id)))
+      reject('Invalid Search summary Scope list');
+    const tables=await db.introspection.getTables();
+    const present=new Set(tables
+      .filter(t=>!t.schema||t.schema===namespace)
+      .map(t=>t.name));
+    const rows=[];
+    for(const id of [...new Set(ids)].sort()){
+      if(!present.has(id+'_galaxy'))continue;
+      const relation=portableRelation(id+'_galaxy',engine,namespace);
+      const count=await db.selectFrom(relation).select(eb=>[
+        eb.fn.countAll().as('article_count'),
+        eb.fn.sum(eb.fn(engine==='mssql'?'len':'char_length',['content']))
+          .as('word_count'),
+        eb.fn.min('date').as('first_date'),
+        eb.fn.max('date').as('last_date')
+      ]).executeTakeFirst();
+      rows.push({scope_id:id,article_count:Number(count?.article_count||0),
+        word_count:Number(count?.word_count||0),
+        first_date:portableDay(count?.first_date)||null,
+        last_date:portableDay(count?.last_date)||null,
+        refreshed_at:null});
+    }
+    return {data:{rows},count:null};
+  }
   const galaxy=portableRelation(scope+'_galaxy',engine,namespace);
   const anchor=portableRelation(scope+'_anchor',engine,namespace);
   const grouped=async(flag,fields,opts={})=>{
