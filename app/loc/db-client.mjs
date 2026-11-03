@@ -67,6 +67,11 @@ function routedSchema(schemaName,cloudSchema){
       const source=cloudSchema.analytics?cloudSchema:
         (adapter.configuredPublicClient||adapter.publicClient).schema(schemaName);
       return source.analytics(args);
+    },
+    publicAction(name,args={}){
+      const source=cloudSchema.publicAction?cloudSchema:
+        (adapter.configuredPublicClient||adapter.publicClient).schema(schemaName);
+      return source.publicAction(name,args);
     }
   };
 }
