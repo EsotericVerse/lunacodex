@@ -34,5 +34,3 @@ jobs:
             scripts/test-archive-import-pipeline.mjs \
             scripts/test-archive-media-evidence.mjs \
             scripts/test-private-archive-safety.mjs
-      - name: Full app bootstrap and admin regressions
-        run: npm run test:bootstrap

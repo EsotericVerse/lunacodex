@@ -19,7 +19,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Cheap, fast, deterministic gate on a normal Linux runner: catches an
+  # obviously broken commit before any minute is spent on the much more
+  # expensive macOS runner below. This intentionally does NOT re-run
+  # audit:security / test:game / test:bootstrap - those already run in
+  # full on deploy-pages.yml / next-architecture.yml, and duplicating them
+  # here just burns the same checks three times. If this guard passes,
+  # the native build proceeds; it never blocks on anything other than a
+  # real syntax break, so it can't get stuck or loop.
+  guard:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.4'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Parse JavaScript and JSX before paying for the macOS build
+        run: npm run check:syntax
+
   build-device-ipa:
+    needs: guard
     runs-on: macos-26-intel
     timeout-minutes: 60
     steps:
@@ -38,12 +60,6 @@ jobs:
           xcrun --find swift
       - name: Install dependency lockfile
         run: npm ci --no-audit --no-fund
-      - name: Release security audit
-        run: npm run audit:security
-      - name: Game regression tests
-        run: npm run test:game
-      - name: Bootstrap performance and Admin regression tests
-        run: npm run test:bootstrap
       - name: Build LOC static export for the native shell
         run: |
           npm run build:static
