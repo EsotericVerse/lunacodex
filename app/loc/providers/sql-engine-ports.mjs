@@ -100,3 +100,103 @@ export async function authorizeCrossEngineQuery(db,request,{role='anon',claims={
     error.httpStatus=403;throw error;
   }
 }
+
+const SAFE_FIELD=/^[a-z][a-z0-9_]*$/i;
+const ARTICLE_BATCH_FIELDS=new Set(['uid','title','content','place_id','url','media_link']);
+function invalidWrite(message){
+  const error=new Error(message);error.httpStatus=400;throw error;
+}
+function safeFilters(value){
+  if(!Array.isArray(value)||value.length<1||value.length>20)
+    invalidWrite('Managed write requires bounded filters');
+  for(const item of value){
+    if(!item||typeof item!=='object'||!SAFE_FIELD.test(item.column)||
+       (item.operator||'eq')!=='eq')invalidWrite('Invalid managed write filter');
+  }
+  return value;
+}
+function applyKyselyFilters(query,filters){
+  for(const f of filters)query=query.where(f.column,f.value===null?'is':'=',f.value);
+  return query;
+}
+function managedAffected(result){
+  return Number(result?.numInsertedOrUpdatedRows??result?.numUpdatedRows??
+    result?.numDeletedRows??result?.numAffectedRows??0);
+}
+/**
+ * Portable counterpart to the PostgreSQL management write procedure.
+ * Reuses the verified cross-engine Registry gate and Kysely-native builders.
+ * No PostgreSQL JSONB, regclass, stored procedure, RESET ROLE or DDL.
+ */
+export async function executeCrossEngineManagedWrite(db,body,context){
+  const p=body?.payload;
+  if(!p||typeof p!=='object'||Array.isArray(p))invalidWrite('Invalid managed payload');
+  const matched=String(p.p_table||'').match(/^silver\.([a-z][a-z0-9_]*)$/);
+  if(!matched)invalidWrite('Invalid managed relation');
+  const table=matched[1],operation=String(p.p_operation||'');
+  if(!['insert','update','delete','update_batch'].includes(operation))
+    invalidWrite('Invalid managed operation');
+  await authorizeCrossEngineQuery(db,{kind:'query',schema:'silver',table,
+    operation:operation==='update_batch'?'update':operation},context);
+  const name='silver.'+table;
+  let count=0;
+  if(operation==='insert'){
+    const rows=p.p_rows;
+    if(!Array.isArray(rows)||rows.length<1||rows.length>10000)
+      invalidWrite('Invalid managed insert rows');
+    for(const row of rows){
+      if(!row||typeof row!=='object'||Array.isArray(row)||!Object.keys(row).length||
+         Object.keys(row).some(key=>!SAFE_FIELD.test(key)||key==='able'))
+        invalidWrite('Invalid managed insert columns');
+    }
+    // Insert individually: heterogeneous row shapes keep database defaults.
+    // The outer Gateway transaction guarantees all-or-nothing semantics.
+    for(const row of rows){
+      const result=await db.insertInto(name).values(row).executeTakeFirst();
+      count+=managedAffected(result);
+    }
+  }else if(operation==='update_batch'){
+    if(!table.endsWith('_galaxy')||!Array.isArray(p.p_rows)||
+       p.p_rows.length>10000)invalidWrite('Invalid Galaxy update batch');
+    const seen=new Set();
+    for(const row of p.p_rows){
+      if(!row||typeof row!=='object'||Array.isArray(row)||
+         !/^[A-Za-z0-9]{8}$/.test(String(row.uid||''))||
+         seen.has(row.uid)||Object.keys(row).some(k=>!ARTICLE_BATCH_FIELDS.has(k)))
+        invalidWrite('Invalid Galaxy batch row');
+      seen.add(row.uid);
+      const existing=await db.selectFrom(name)
+        .select(['uid','title','content','place_id','url','media_link'])
+        .where('uid','=',row.uid).executeTakeFirst();
+      if(!existing)continue;
+      const patch={};
+      for(const key of ['title','content','url','media_link']){
+        if(Object.hasOwn(row,key)&&JSON.stringify(row[key])!==JSON.stringify(existing[key]))
+          patch[key]=row[key];
+      }
+      if(Object.hasOwn(row,'place_id')&&
+         !String(existing.place_id||'').trim()&&String(row.place_id||'').trim())
+        patch.place_id=String(row.place_id).trim();
+      if(!Object.keys(patch).length)continue;
+      patch.UpdateTime=new Date();
+      const result=await db.updateTable(name).set(patch)
+        .where('uid','=',row.uid).executeTakeFirst();
+      count+=managedAffected(result);
+    }
+  }else{
+    const filters=safeFilters(p.p_filters);
+    if(operation==='update'){
+      const values=p.p_values;
+      if(!values||typeof values!=='object'||Array.isArray(values)||
+         !Object.keys(values).length||
+         Object.keys(values).some(key=>!SAFE_FIELD.test(key)||
+           ['id','uid','able'].includes(key)))invalidWrite('Invalid update values');
+      count=managedAffected(await applyKyselyFilters(db.updateTable(name).set(values),
+        filters).executeTakeFirst());
+    }else{
+      count=managedAffected(await applyKyselyFilters(db.deleteFrom(name),
+        filters).executeTakeFirst());
+    }
+  }
+  return {data:{count},count:null};
+}
