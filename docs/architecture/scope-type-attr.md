@@ -1,3 +1,11 @@
+### 身分驗證與 SQL 可攜性修正（2026-11-04）
+
+- LOC 網站身份固定為 **Clerk + LOC Authority**，不再允許 Supabase Auth JWT 取代 Clerk 登入。PostgreSQL 以既有 `silver.manage()` 保持權限判定；非 PostgreSQL 透過 Kysely 讀取目標庫既有 `silver.manage` Registry 與 `silver.loc.blacklist`，比對經驗證的 Clerk email/subject，拒絕已封鎖帳號與未授權 Scope。
+- 資料庫連線使用該資料庫自己的連線 Driver／認證（MySQL 可選 LDAP simple + TLS，SQL Server 可選 NTLM／Entra）；**資料庫驗證不等於 LOC 使用者登入**。MySQL Driver 更新至已修補的 `mysql2@3.22.0`。
+- 原生 Kysely CRUD／UPSERT／transaction 優先使用 Dialect，不因 MySQL／SQL Server 缺少 PostgreSQL RLS 而一概拒絕；但對外公開文章的 `search/list/extract` 隱藏規則、Anchor 複合 JSON 查詢／關聯寫入、文化／統計與 Scope DDL 尚待逐引擎等價驗收。未證明安全等價前仍拒絕這些操作，不可繞過授權。
+- 歷史的獨立 `neon-primary.mjs`／Neon Data API 備援仍含 Neon Auth token 流程，**不在目前預設 Clerk 登入路徑中**；若要求 Neon 備援完全不依賴 Neon Auth，必須先配置獨立可信任 Kysely Gateway 及其資料庫權限，再切換該備援傳輸。當前不能宣稱備援已完全解耦。
+- 回歸檢查：`scripts/test-kysely-clerk-only-auth.mjs`、`scripts/test-kysely-portable-access.mjs`；正式 `npm run check:syntax` 與完整 Dialect/Clerk 整合測試仍需執行，不得以獨立模擬取代。
+
 
 ### Kysely 跨 SQL 引擎可攜性（PR #995，尚未正式部署）
 
