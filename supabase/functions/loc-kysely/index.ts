@@ -10,6 +10,7 @@ import {executeKyselyAnchor,executePortableKyselyAnchor} from "../../../app/loc/
 import {executeKyselyAnalytics,executePortableKyselyAnalytics} from "../../../app/loc/providers/kysely-analytics.mjs";
 import {executeKyselyPublicAction} from "../../../app/loc/providers/kysely-public.mjs";
 import {executeKyselyScopeAdmin} from "../../../app/loc/providers/kysely-scope-admin.mjs";
+import {ensurePortableScopeSchema} from "../../../app/loc/providers/kysely-schema.mjs";
 import { selectedDatabaseTarget } from "../../../app/loc/providers/selected-database-target.mjs";
 import {resolveSqlExecutionPort,assertCrossEnginePublicRead,authorizeCrossEngineQuery,executeCrossEngineManagedWrite} from "../../../app/loc/providers/sql-engine-ports.mjs";
 import {resolveDatabaseRouting} from "../../../app/loc/providers/routing-config.mjs";
@@ -172,16 +173,25 @@ async function saveDatabaseTarget(input:Record<string,unknown>,role:string,claim
   if(profile){
     // Probe the selected driver before accepting it as the running LOC database.
     const candidate=await databaseForTarget(target,{profileLookup:async()=>profile});
-    const tables=await candidate.introspection.getTables();
-    if(!tables.length)throw Object.assign(new Error(
-      "No SQL tables found. LOC needs Galaxy/Anchor tables before activation"),{httpStatus:409});
-    // The relation namespace belongs to the SQL engine, not the old Silver RPC.
+    // A valid control token owns its target SQL database. Provision only
+    // Galaxy and Anchor with Kysely Schema Builder; no RPC or LOC ACL tables.
     const requestedScope=String(input.scopeid||'lo3rwang');
-    const matches=tables.filter((table:any)=>
+    if(!/^[a-z][a-z0-9]{0,14}$/.test(requestedScope))
+      throw Object.assign(new Error('Invalid LOC Scope ID'),{httpStatus:400});
+    const tables=await candidate.introspection.getTables();
+    const matched=tables.find((table:any)=>
       table.name===requestedScope+'_galaxy'||table.name===requestedScope+'_anchor');
-    if(matches.length!==2)throw Object.assign(new Error(
-      "LOC requires "+requestedScope+"_galaxy and "+requestedScope+"_anchor"),{httpStatus:409});
-    input.schema_name=engine==='mysql'?'':String(matches[0].schema||'public');
+    const schemaName=engine==='mysql'?'':String(
+      matched?.schema||input.schema_name||(engine==='mssql'?'dbo':'public'));
+    await ensurePortableScopeSchema(candidate,{
+      engine,namespace:schemaName,scopeId:requestedScope
+    });
+    const verified=await candidate.introspection.getTables();
+    if(!['galaxy','anchor'].every(suffix=>verified.some((table:any)=>
+      table.name===requestedScope+'_'+suffix&&
+        (engine==='mysql'||!table.schema||table.schema===schemaName))))
+      throw Object.assign(new Error('LOC two-table initialization failed'),{httpStatus:409});
+    input.schema_name=schemaName;
   }
   const control=await checkAdminRole(claims);
   if(!profile)await profileForTarget({...target,project_url:location.link});
