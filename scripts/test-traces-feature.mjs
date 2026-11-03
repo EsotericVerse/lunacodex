@@ -9,6 +9,14 @@ import {
 const pathOf=path=>new URL('../'+path,import.meta.url);
 const read=path=>readFileSync(pathOf(path),'utf8');
 
+test('Trace guest read path never requires Clerk token',()=>{
+  const code=read('app/modular/features/trace/trace-data.js');
+  assert.equal((code.match(/const readClient=includeHidden\?dbAuthClient:dbPublicClient;/g)||[]).length,2,
+    'both list and selected-point public readers must choose anonymous transport');
+  assert.match(code,/readClient\.schema\('silver'\)\.from\(id\+'_anchor'\)/);
+  assert.match(code,/readClient\.schema\('silver'\)\.from\(id\+'_trace'\)/);
+});
+
 test('bulk Trace saving keeps the reloaded anchor query instead of clearing it',()=>{
   const ui=read('app/loc/TraceManagement.jsx');
   assert.match(ui,/const refreshed=await reload\(\)/);

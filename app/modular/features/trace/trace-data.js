@@ -106,10 +106,11 @@ async function readPages(id,{columns=CORE_COLUMNS,filter=null,nativeOnly=false,i
   // The LOC materialized union was deliberately dropped. Never query it
   // until the owner Scope place data has been reviewed and a new union built.
   if(id==='loc')return [];
+  const readClient=includeHidden?dbAuthClient:dbPublicClient;
   if(isUnified(id)){
     const rows=[],size=750,types=filter?[filter==='space_anchor'?'point':filter]:['point','path','trace'];
     for(let offset=0;;offset+=size){
-      const result=checked(await dbAuthClient.schema('silver').from(id+'_anchor')
+      const result=checked(await readClient.schema('silver').from(id+'_anchor')
         .select(ANCHOR_COLUMNS).in('type',types).order('title',{ascending:true})
         .range(offset,offset+size-1),'空間 Anchor 讀取')||[];
       rows.push(...result.map(row=>projectUnified(row,id)));
@@ -119,9 +120,8 @@ async function readPages(id,{columns=CORE_COLUMNS,filter=null,nativeOnly=false,i
   }
   const union=false,rows=[],size=750;
   for(let offset=0;;offset+=size){
-    // Authenticated reads use the viewer's session and preserve Scope RLS;
-    // public guests still see only records allowed by the public policy.
-    let query=dbAuthClient.schema('silver').from(id+'_trace')
+    // Public lists use anonymous RLS; only includeHidden manager reads use Clerk.
+    let query=readClient.schema('silver').from(id+'_trace')
       .select(columns+(union?',scope_id':'')).order('uid',{ascending:true})
       .range(offset,offset+size-1);
     if(filter)query=query.eq('trace_type',filter);
@@ -154,7 +154,8 @@ export async function readCurrentTraceAnchors(scopeId,anchorUids=[],{nativeOnly=
     .map(uid=>String(uid||'').trim()).filter(uid=>VALID_ID.test(uid)))];
   if(!ids.length)return [];
   if(ids.length>800)throw Error('地點數量超過上限');
-  let query=dbAuthClient.schema('silver').from(isUnified(id)?id+'_anchor':id+'_trace')
+  const readClient=includeHidden?dbAuthClient:dbPublicClient;
+  let query=readClient.schema('silver').from(isUnified(id)?id+'_anchor':id+'_trace')
     .select(isUnified(id)?ANCHOR_COLUMNS:CORE_COLUMNS+(id==='loc'?',scope_id':''))
     .eq(isUnified(id)?'type':'trace_type',isUnified(id)?'point':'space_anchor').in('uid',ids).limit(900);
   if(id==='loc'&&nativeOnly)query=query.eq('scope_id','loc');
