@@ -24,8 +24,8 @@ export default {
     "able_search": "公開搜尋",
     "able_trace": "痕跡顯示",
     "able_list": "文章列表",
-    "able_keywords": "關鍵詞統計",
-    "able_game": "遊戲密度",
+    "able_keyword": "關鍵詞統計",
+    "able_others": "其他功能",
     "able_extract": "搜尋摘錄",
     "type": "多媒體類型",
     "meta_tags": "媒體標籤"
