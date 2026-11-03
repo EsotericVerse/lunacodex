@@ -161,3 +161,40 @@ test('unified source code does not project or persist the removed label column',
   assert.doesNotMatch(code,/\bout\.label\s*=/);
   assert.doesNotMatch(code,/\brow\.label\b/);
 });
+
+
+test('scope time readers use the virtual Time projection, not physical Anchor columns',()=>{
+  const scope=readFileSync(new URL('../app/loc/scope-data.js',import.meta.url),'utf8');
+  assert.match(scope,/time:\x60silver\.\${id}_time\x60/);
+  assert.match(scope,/anchor:\x60silver\.\${id}_\${anchorSuffix}\x60/);
+});
+
+test('time date predicates and media date windows stay on SQL JSON paths',async()=>{
+  const calls=[];
+  const rows=[
+    {uid:'A1234567',type:'date',title:'時間',attr:{date:'2026-11-02'}},
+    {uid:'M1234567',type:'suno',title:'歌曲',attr:{url:'https://suno.com/song/1',date:'2026-11-02'}}
+  ];
+  const schema={from:()=>{const q={
+    select:()=>q,
+    eq:(col,value)=>{calls.push(['eq',col,value]);return q},
+    in:(col,value)=>{calls.push(['in',col,value]);return q},
+    gte:(col,value)=>{calls.push(['gte',col,value]);return q},
+    lte:(col,value)=>{calls.push(['lte',col,value]);return q},
+    order:(col)=>{calls.push(['order',col]);return q},
+    range:async()=>({data:rows,error:null})
+  };return q;}};
+  const time=await unifiedAnchorRelation(schema,spec('time'))
+    .select('uid,title,address').eq('type','anchor').eq('address','2026-11-02').limit(10);
+  assert.ok(calls.some(([op,col,value])=>op==='eq'&&col==='attr->>date'&&value==='2026-11-02'));
+  assert.equal(time.data[0].address,'2026-11-02');
+  calls.length=0;
+  const media=await unifiedAnchorRelation(schema,spec('galaxy_media'))
+    .select('uid,date,createtime,url').gte('date','2026-11-01').lte('date','2026-11-30')
+    .order('date',{ascending:true}).limit(10);
+  assert.ok(calls.some(([op,col,value])=>op==='gte'&&col==='attr->>date'&&value==='2026-11-01'));
+  assert.ok(calls.some(([op,col,value])=>op==='lte'&&col==='attr->>date'&&value==='2026-11-30'));
+  assert.ok(calls.some(([op,col])=>op==='order'&&col==='attr->>date'));
+  assert.equal(media.data[1].createtime,'2026-11-02');
+  assert.equal(media.data[1].date,'2026-11-02');
+});
