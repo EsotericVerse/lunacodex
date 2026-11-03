@@ -26,7 +26,7 @@ BEGIN
     NEW.search:=false;
     NEW.list:=false;
   END IF;
-  IF pg_catalog.lower(pg_catalog.btrim(pg_catalog.coalesce(NEW.site,'')))='mcp' THEN
+  IF pg_catalog.lower(pg_catalog.btrim(coalesce(NEW.site,'')))='mcp' THEN
     NEW.list:=false;
   END IF;
   RETURN NEW;
