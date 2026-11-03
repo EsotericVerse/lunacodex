@@ -63,7 +63,7 @@ export default function ScopeGroupAccessPanel({groupId}){
         if(error)throw error;
         setPublicClasses((Array.isArray(rows)?rows:[])
           .filter(row=>row.scopeId===scope&&/^[A-Za-z0-9]{4}$/.test(row.classUid)));
-      }).catch(error=>{if(active){setPublicClasses([]);setClassesError('目前無法查詢已公開的群組科目，請稍後再試。');}})
+      }).catch(()=>{if(active){setPublicClasses([]);setClassesError('目前無法查詢已公開的群組科目，請稍後再試。');}})
       .finally(()=>{if(active)setClassesLoading(false);});
     return()=>{active=false;};
   },[data?.members?.join(','),scope,groupId]);
@@ -71,7 +71,7 @@ export default function ScopeGroupAccessPanel({groupId}){
     if(busy)return;
     setBusy(true);setStatus('');
     try{await call(kind,values);await reload();setStatus(t(success));}
-    catch(error){setStatus(t('groupSaveFailed'));}
+    catch{setStatus(t('groupSaveFailed'));}
     finally{setBusy(false);}
   };
   const toggle=action=>setSelected(previous=>previous.includes(action)?
@@ -90,7 +90,7 @@ export default function ScopeGroupAccessPanel({groupId}){
       await reload();
       if(kind==='categoryAdd')setCategoryUid('');
       setStatus(kind==='categoryAdd'?'已將群組科目加入目錄。':'已從目錄移除群組科目。');
-    }catch(error){setStatus('目前無法更新群組關鍵字目錄，請稍後再試。');}
+    }catch{setStatus('目前無法更新群組關鍵字目錄，請稍後再試。');}
     finally{setBusy(false);}
   };
   return <section className="loc-card scope-feature-card" aria-label={t('groupTitle')}>
