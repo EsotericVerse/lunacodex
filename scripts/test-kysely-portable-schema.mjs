@@ -6,7 +6,7 @@ const source=fs.readFileSync('app/loc/providers/kysely-schema.mjs','utf8');
 const create=new Function('sql','portableRelation',source
   .replace(/^import .*$/gm,'').replace(/^export /gm,'')+
   ';return ensurePortableScopeSchema;')(
-  (strings,...values)=>({strings,values}),
+  Object.assign((strings,...values)=>({strings,values}),{raw:value=>value}),
   (table,engine,ns)=>engine==='mysql'?table:ns+'.'+table
 );
 
