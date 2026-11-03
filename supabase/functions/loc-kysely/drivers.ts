@@ -1,6 +1,7 @@
 import {Kysely,PostgresDialect,MysqlDialect,MssqlDialect} from "npm:kysely@0.29.6";
 import pg from "npm:pg@8.16.3";
 import {normalizeDatabaseTarget} from "../../../app/loc/providers/selected-database-target.mjs";
+import {mysqlLdapOptions,mssqlAuthentication} from "../../../app/loc/providers/sql-driver-auth.mjs";
 
 // All credentials stay in Edge secrets. Admin stores ONLY the connection alias.
 // LOC_DB_CONNECTIONS_JSON example:
@@ -8,7 +9,9 @@ import {normalizeDatabaseTarget} from "../../../app/loc/providers/selected-datab
 //  "office_mssql":{"engine":"mssql","url":"mssql://user:pass@db.example:1433/loc","tls":true}}
 const instances=new Map<string, Kysely<Record<string,Record<string,unknown>>>>();
 const {Pool}=pg;
-type ConnectionProfile={engine:string,url:string,tls?:boolean};
+type ConnectionProfile={engine:string,url:string,tls?:boolean,
+  authentication?:{type?:string,domain?:string,clientId?:string,
+    clientSecret?:string,tenantId?:string}};
 function connectionProfiles():Record<string,ConnectionProfile>{
   const raw=Deno.env.get("LOC_DB_CONNECTIONS_JSON")||"{}";
   let json:unknown;
@@ -58,7 +61,8 @@ export async function databaseForTarget(input:Record<string,unknown>,options:{pr
       user:decodeURIComponent(uri.username),password:decodeURIComponent(uri.password),
       database:decodeURIComponent(uri.pathname.slice(1)),
       waitForConnections:true,connectionLimit:1,queueLimit:10,
-      ...(profile.tls===false?{}:{ssl:{rejectUnauthorized:true}})
+      ...(profile.tls===false?{}:{ssl:{rejectUnauthorized:true}}),
+      ...mysqlLdapOptions(profile)
     })});
   }else if(target.engine==="mssql"){
     if(!["mssql:","sqlserver:"].includes(uri.protocol))throw new Error("SQL Server needs a mssql URL");
@@ -68,7 +72,8 @@ export async function databaseForTarget(input:Record<string,unknown>,options:{pr
       tarn:{...Tarn,options:{min:0,max:1}},
       tedious:{...Tedious,connectionFactory:()=>new Tedious.Connection({
         server:uri.hostname,
-        authentication:{type:"default",options:{userName:decodeURIComponent(uri.username),password:decodeURIComponent(uri.password)}},
+        authentication:mssqlAuthentication(profile,
+          decodeURIComponent(uri.username),decodeURIComponent(uri.password)),
         options:{database:decodeURIComponent(uri.pathname.slice(1)),port:Number(uri.port)||1433,encrypt:profile.tls!==false,trustServerCertificate:false,connectTimeout:5000}
       })}
     });
