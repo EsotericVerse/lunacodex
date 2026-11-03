@@ -89,3 +89,12 @@ test('two-table SQL installation boots without manage, loc or any RPC',async()=>
   assert.deepEqual(queries,[]);
   assert.equal(metadataReads,1);
 });
+
+
+test('configured public bootstrap reaches selected SQL target, not Supabase control',()=>{
+  const control=gateway.slice(gateway.indexOf('// LOC registry, user settings'),
+    gateway.indexOf('let target=controlTarget',gateway.indexOf('// LOC registry, user settings')));
+  assert.doesNotMatch(control,/controlPublic\.has\(/);
+  const publicGate=gateway.slice(gateway.indexOf('if(target.provider==="custom"||target.engine!=="postgres")'));
+  assert.match(publicGate,/body\.kind==="public-action"/);
+});
