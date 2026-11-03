@@ -38,6 +38,13 @@ silver.scope_type_attr(p_scope_id text, p_type text, p_attr jsonb)
 - `lrunes_daily` 獨立保留，僅在設定顯示行事曆，不進一般統計。
 - `loc` 是 Group 設定與統合功能，**不是**一般 Scope Anchor；`_scope_group(groupid,type)` 尚未授權進行，不在本次實作範圍。
 
+### Galaxy 權限實體欄位（2026-11-03）
+
+- `silver.{scopeid}_galaxy` 的文章層開關為八個獨立 Boolean 欄位：`statics`、`culture`、`search`、`trace`、`list`、`keyword`、`others`、`extract`。不要再向 PostgreSQL 寫 `galaxy.able` JSONB，亦不要用 `able->>` 過濾。歷史 JSON 名稱 `keywords/game` 對應 `keyword/others`，只在舊檔匯入或裝置本機 SQLite 相容層轉換。
+- `silver.lo3rwang.able` 是 **Scope 設定**，不是 Galaxy 文章權限；不得隨文章欄位退役刪除。
+- 本次先補齊 `lo3rwang_galaxy`、`lrunes_galaxy` 的八欄並讓既有 RPC 直接查布林欄位；舊客戶端仍存在時保留相容觸發器及原 RLS。新客戶端、Clerk Edge Function、LOC Authority 真正部署且讀寫／隱私檢查通過後，才執行最後的 RLS／觸發器切換與 `DROP COLUMN able`，避免資料公開或連線中斷。
+- 用既有 UID 保留文章隱藏狀態；公開 `search`／`list`、搜尋 `extract`、統計與文化視圖不可因遷移而放寬。第三方 Scope 未遷移其儲存結構前，保留其獨立相容入口。
+
 ### 遷移現況與退役規則
 
 - 已建立資料庫主 RPC；客戶端統一入口：`scopeTypeAttr(scopeId,type,attr,{write})`，在 `app/loc/db-client.mjs`。
