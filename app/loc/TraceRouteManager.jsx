@@ -55,9 +55,12 @@ export default function TraceRouteManager({scopeId}){
   const [savedReceipt,setSavedReceipt]=useState(null);
   const openedFromUrl=useRef('');
   const own=owner!=='loc'&&account.canManageScopeSync(owner);
+  // A LOC Group manager can inspect member maps, but edits still require
+  // permission on the actual owner Scope.
+  const canRead=own||(scopeId==='loc'&&account.canManageGroupSync('loc'));
   const index=useAsyncResource({
     queryKey:traceMapIndexKey(owner,{includeHidden:own}),
-    enabled:TRACE_SCOPES.includes(owner)&&own,
+    enabled:TRACE_SCOPES.includes(owner)&&canRead,
     queryFn:()=>readTraceMapIndex(owner,{includeHidden:own}),
     revalidateIfStale:false,revalidateOnFocus:false,revalidateOnReconnect:false
   });
@@ -261,7 +264,7 @@ export default function TraceRouteManager({scopeId}){
     <details className="scope-card"><summary>大量隱藏／公開路線圖與痕跡圖</summary>
       <p className="scope-status">可只更新所選紀錄，或在這次批次操作中連動所屬路線圖與定錨點；每筆只保存自己的顯示狀態。</p>
       <div className="scope-stat-controls">
-        <button type="button" className="loc-button" disabled={busy} onClick={()=>setBulkSelected(visibleRecords.map(row=>row.uid))}>全選目前列表</button>
+        <button type="button" className="loc-button" disabled={busy||!own} onClick={()=>setBulkSelected(visibleRecords.map(row=>row.uid))}>全選目前列表</button>
         <button type="button" className="loc-button" disabled={busy} onClick={()=>setBulkSelected([])}>清除勾選</button>
         <label>連動範圍
           <select className="scope-select" aria-label="批次顯示連動範圍" value={bulkVisibilityMode}
@@ -271,8 +274,8 @@ export default function TraceRouteManager({scopeId}){
             <option value="all">連動路線圖及定錨點</option>
           </select>
         </label>
-        <button className="loc-button" type="button" disabled={busy||!bulkSelected.length} onClick={()=>applyBulkVisibility(true)}>大量隱藏</button>
-        <button className="loc-button" type="button" disabled={busy||!bulkSelected.length} onClick={()=>applyBulkVisibility(false)}>大量公開</button>
+        <button className="loc-button" type="button" disabled={busy||!own||!bulkSelected.length} onClick={()=>applyBulkVisibility(true)}>大量隱藏</button>
+        <button className="loc-button" type="button" disabled={busy||!own||!bulkSelected.length} onClick={()=>applyBulkVisibility(false)}>大量公開</button>
       </div>
     </details>
     <div className="loc-trace-saved-maps">
