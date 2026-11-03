@@ -1,15 +1,9 @@
 #!/bin/sh
-# Local safety guard: a verified complete edit may skip the standalone syntax pass.
-# Default stays conservative because interruption/recovery cannot be inferred from Git.
+# A local push must carry real syntax evidence; env flags cannot bypass it.
 # Enable once per clone: git config core.hooksPath .githooks
-
+# Server-side PR syntax verification is in workflow-guard.yml.
 set -e
-if [ "${LOC_EDIT_STATE:-}" = "complete" ]; then
-  echo "pre-push: complete edit confirmed by agent; skipping redundant syntax parse."
-else
-  echo "pre-push: edit/recovery completeness unconfirmed; checking syntax."
-  node scripts/check-js-syntax.mjs
-fi
-
+echo "pre-push: verifying syntax (no bypass)..."
+node scripts/check-js-syntax.mjs
 echo "pre-push: checking mass deletion/rename safety..."
 node scripts/check-bulk-delete.mjs
