@@ -5,7 +5,7 @@ import {clerkSqlClaims} from "../../../app/loc/auth/clerk-sql-claims.mjs";
 import {databaseForTarget,resolveConnectionProfile} from "./drivers.ts";
 import {makeConnectionProfile,readVaultConnection,saveVaultConnection} from "./database-connections.ts";
 import {normalizeDatabaseLocation} from "../../../app/loc/providers/database-link.mjs";
-import { executeAllowlistedRpc, executeKyselyQuery, isKyselyClientError } from "../../../app/loc/providers/kysely-runtime.mjs";
+import { executeKyselyQuery, isKyselyClientError } from "../../../app/loc/providers/kysely-runtime.mjs";
 import {executeManagedKyselyWrite,executeManagedKyselyAction} from "../../../app/loc/providers/kysely-management.mjs";
 import {executeKyselyAnchor} from "../../../app/loc/providers/kysely-anchor.mjs";
 import {executeKyselyAnalytics} from "../../../app/loc/providers/kysely-analytics.mjs";
@@ -208,7 +208,7 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
         ?await executeKyselyScopeAdmin(trx,body)
         :await executeManagedKyselyAction(trx,body,claims);
   }
-  return await executeAllowlistedRpc(trx,body);
+  throw Object.assign(new Error("Unsupported SQL operation: legacy RPC dispatch has been retired"),{httpStatus:400});
 }
 
 function json(body: unknown, status = 200, extraHeaders: Record<string, string> = {}) {
