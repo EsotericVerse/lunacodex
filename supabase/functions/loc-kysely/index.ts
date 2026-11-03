@@ -233,6 +233,10 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
     if(body.kind==="analytics")return await executePortableKyselyAnalytics(trx,body,{
       role,engine:executionPort.engine,namespace:target.schema_name
     });
+    if(body.kind==="public-action")return await executeKyselyPublicAction(trx,body,{
+      engine:executionPort.engine,namespace:String(target.schema_name||
+        (executionPort.engine==="mssql"?"dbo":"silver"))
+    });
     const access=await authorizeCrossEngineQuery(trx,body,{role,claims});
     return await executeKyselyQuery(trx,body,{dialect:executionPort.engine,
       namespace:String(target.schema_name||(
