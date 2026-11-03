@@ -53,7 +53,7 @@ for(const [engine,namespace,lengthFunction] of [
 
 test('two-table external LOC statistics uses discovered Scope instead of loc_galaxy',async()=>{
   const readTables=[];
-  const eb={fn:{countAll:()=>({as:key=>({key})})}};
+  const eb={fn:{countAll:()=>({as:key=>({key})}),min:()=>({as:key=>({key})})}};
   const db={
     introspection:{getTables:async()=>[
       {schema:'dbo',name:'writer_galaxy'},
@@ -63,7 +63,7 @@ test('two-table external LOC statistics uses discovered Scope instead of loc_gal
       readTables.push(table);
       const q={select(value){if(typeof value==='function')value(eb);return this},
         where(){return this},groupBy(){return this},orderBy(){return this},
-        execute:async()=>[{date:'2026-01-01',n:'3'}]};
+        execute:async()=>[{date:'2026-01-01',n:'3'}],executeTakeFirst:async()=>({day:'2026-01-01'})};
       return q;
     }
   };
