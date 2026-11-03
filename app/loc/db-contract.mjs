@@ -307,7 +307,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
 
   async function analyticsRead(scope,view,{startDate='',endDate='',options={}}={},client=publicClient){
     const day=value=>/^\d{4}-\d{2}-\d{2}/.test(String(value||''))?String(value).slice(0,10):null;
-    const {data,error}=await client.schema('silver').rpc('read_scope_analytics',{
+    const {data,error}=await client.schema('silver').analytics({
       p_scope_id:scope,p_view:view,p_start:day(startDate),p_end:day(endDate),p_options:options
     });
     if(error){const failure=new Error(error.message||'Scope analytics unavailable');failure.code=error.code;throw failure;}
