@@ -33,7 +33,7 @@ function galaxyDraftFromRow(row={},fallbackTitle='',plainTextToBlocks){
     createtime:datetimeLocalValue(row.createtime),
     location:String(row.location||''),
     place_id:String(row.place_id||'').trim(),
-    ...Object.fromEntries(['statics','culture','search','trace','list','keywords','game','extract'].map(k=>['able_'+k,row.able?.[k]!==false])), 
+    ...Object.fromEntries(['statics','culture','search','trace','list','keyword','others','extract'].map(k=>['able_'+k,row.able?.[k]!==false])), 
     UpdateTime:String(row.UpdateTime||''),
     url:String(row.url||''),
     source_id:String(row.source_id||'').trim(),
@@ -80,7 +80,7 @@ function changedGalaxyAttributes(draft,t){
   const current=draft?.attrs||{},initial=draft?.originalAttrs||{};
   const changed={};
   const differs=key=>JSON.stringify(current[key])!==JSON.stringify(initial[key]);
-  const features=['statics','culture','search','trace','list','keywords','game','extract'];
+  const features=['statics','culture','search','trace','list','keyword','others','extract'];
   if(features.some(key=>differs('able_'+key)))changed.able=Object.fromEntries(features.map(key=>[key,current['able_'+key]!==false]));
   if(differs('createtime'))changed.createtime=isoOrNull(current.createtime,t);
   if(differs('place_id')){
