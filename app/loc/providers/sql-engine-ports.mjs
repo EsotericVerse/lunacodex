@@ -161,7 +161,7 @@ export async function executeCrossEngineManagedWrite(db,body,context){
     for(const group of groups.values()){
       for(let i=0;i<group.length;i+=50){
         const batch=group.slice(i,i+50);
-        const result=await db.insertInto(name).values(batch).executeTakeFirst();
+        const result=await db.insertInto(name).values(serializePortableJsonFields(batch,context.engine)).executeTakeFirst();
         count+=managedAffected(result);
       }
     }
@@ -189,7 +189,7 @@ export async function executeCrossEngineManagedWrite(db,body,context){
         patch.place_id=String(row.place_id).trim();
       if(!Object.keys(patch).length)continue;
       patch.UpdateTime=new Date();
-      const result=await db.updateTable(name).set(patch)
+      const result=await db.updateTable(name).set(serializePortableJsonFields(patch,context.engine))
         .where('uid','=',row.uid).executeTakeFirst();
       count+=managedAffected(result);
     }
@@ -201,7 +201,7 @@ export async function executeCrossEngineManagedWrite(db,body,context){
          !Object.keys(values).length||
          Object.keys(values).some(key=>!SAFE_FIELD.test(key)||
            ['id','uid','able'].includes(key)))invalidWrite('Invalid update values');
-      count=managedAffected(await applyKyselyFilters(db.updateTable(name).set(values),
+      count=managedAffected(await applyKyselyFilters(db.updateTable(name).set(serializePortableJsonFields(values,context.engine)),
         filters).executeTakeFirst());
     }else{
       count=managedAffected(await applyKyselyFilters(db.deleteFrom(name),
@@ -209,4 +209,17 @@ export async function executeCrossEngineManagedWrite(db,body,context){
     }
   }
   return {data:{count},count:null};
+}
+
+export const PORTABLE_JSON_COLUMNS=Object.freeze([
+  'attr','status','media_link','blacklist','theme','keywords','database',
+  'keyword_meta','DefaultArticleClass','search_aliases','target_id'
+]);
+const portableJsonFields=new Set(PORTABLE_JSON_COLUMNS);
+export function serializePortableJsonFields(values,engine){
+  if(engine==='postgres'||!values||typeof values!=='object')return values;
+  if(Array.isArray(values))return values.map(row=>serializePortableJsonFields(row,engine));
+  return Object.fromEntries(Object.entries(values).map(([key,value])=>
+    [key,portableJsonFields.has(key)&&value!==null&&typeof value==='object'
+      ?JSON.stringify(value):value]));
 }
