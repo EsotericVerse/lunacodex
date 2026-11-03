@@ -43,7 +43,7 @@
     "immer": "11.1.18",
     "jsonpath-plus": "^11.2.2",
     "karaul": "0.1.0",
-    "kysely": "0.29.6",
+    "kysely": "0.29.8",
     "maplibre-gl": "^6.15.0",
     "motion": "13.4.4",
     "next": "16.4.2",
