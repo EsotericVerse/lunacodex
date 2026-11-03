@@ -1,4 +1,3 @@
-import { createClient } from "npm:@supabase/supabase-js@2.117.2";
 import { sql } from "npm:kysely@0.29.6";
 import {createRemoteJWKSet,jwtVerify} from "npm:jose@5.9.6";
 import {clerkSqlClaims} from "../../../app/loc/auth/clerk-sql-claims.mjs";
@@ -292,12 +291,10 @@ Deno.serve(async (request) => {
         }
       }
     }else{
-      const authClient = createClient(supabaseUrl, apiKey, { auth: { persistSession: false, autoRefreshToken: false } });
-      const { data, error } = await authClient.auth.getUser(token);
-      if (error || !data.user) return json({ error: { message: "Invalid or expired session" } }, 401);
-      claims = untrusted;
-      if (claims.sub !== data.user.id) return json({ error: { message: "Session subject mismatch" } }, 401);
-      claims.role = "authenticated";
+      // LOC sessions are exclusively Clerk-issued and verified using the
+      // existing LOC Authority. Database-provider OAuth never authenticates
+      // a LOC management request, regardless of selected SQL Dialect.
+      return json({error:{message:"LOC requires a verified Clerk session"}},401);
     }
     role = "authenticated";
   }
