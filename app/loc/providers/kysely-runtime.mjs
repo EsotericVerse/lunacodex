@@ -129,7 +129,7 @@ function validateQuery(input){
   return {...input,schema,table,filters,columns,orders,limit,offset,orFilters};
 }
 
-const GALAXY_BOOLEAN_COLUMNS=new Set(['statics','culture','search','trace','list','keyword','others','extract']);
+const GALAXY_BOOLEAN_COLUMNS=new Set(['statics','culture','search','trace','list','keyword','extract','others']);
 function applyFilters(query,filters){
   for(const filter of filters){
     const op=operators[filter.operator],column=checkedFilterColumn(filter.column);
