@@ -46,7 +46,7 @@ test('unified Anchor operations expose only remaining domain transaction gateway
   }
   assert.doesNotMatch(gateway,/'silver\\.preview_timeline_place_page_json':/);
   assert.doesNotMatch(gateway,/'silver\\.apply_scope_point_links':/);
-  assert.match(gateway,/'silver\\.scope_type_attr':new Set\\(\\['p_attr'\\]\\)/);
+  assert.ok(gateway.includes("'silver.scope_type_attr':new Set(['p_attr'])"));
   assert.ok(gateway.includes("jsonbArgs?.has(name)"));
 });
 
