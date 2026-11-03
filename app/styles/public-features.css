@@ -112,7 +112,7 @@
   font-size:var(--loc-type-ui);
   color:var(--loc-muted);
 }
-[data-public-feature] .scope-article-sort-control .scope-select{
+[data-public-feature] .scope-article-sort-control select{
   min-height:2.5rem;
   width:auto;
   max-width:100%;
@@ -211,7 +211,7 @@
     width:100%;
     justify-content:space-between;
   }
-  [data-public-feature] .scope-article-sort-control .scope-select{
+  [data-public-feature] .scope-article-sort-control select{
     max-width:min(100%,16rem);
   }
 }
