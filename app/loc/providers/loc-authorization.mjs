@@ -7,13 +7,16 @@ const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 function deny(message='LOC management permission denied'){
   throw Object.assign(new Error(message),{httpStatus:403});
 }
-export function bindLocAuthorization(db,{role='anon',claims={}}={}){
+export function bindLocAuthorization(db,{role='anon',claims={},snapshot=null}={}){
   if(!db||typeof db.selectFrom!=='function')throw new Error('Invalid Kysely transaction');
   if(role==='authenticated'&&(
     claims?.provider!=='clerk'||!USER.test(String(claims?.sub||''))||
     !EMAIL.test(String(claims?.email||'').trim().toLowerCase())))
     deny('Verified Clerk identity required');
-  sessions.set(db,{role,claims,email:String(claims?.email||'').trim().toLowerCase(),pending:null});
+  // External Scope DBs hold only their own tables. The trusted Gateway
+  // may reuse a verified permission snapshot from the LOC control DB.
+  sessions.set(db,{role,claims,email:String(claims?.email||'').trim().toLowerCase(),
+    pending:snapshot?Promise.resolve(snapshot):null});
 }
 export async function locPermissions(db){
   const state=sessions.get(db);
