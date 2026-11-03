@@ -560,15 +560,13 @@ Deno.serve(async (request) => {
 
     // LOC registry, user settings and public presentation are control-plane
     // actions. A user-managed SQL target only needs its own data tables.
-    const controlPublic=new Set(["read_app_bootstrap","read_scope_page_copy"]);
     const controlManage=new Set(["manage","read_group_members",
       "update_group_member_name","update_group_default_article_class",
       "loc_admin_settings","is_current_email_blocklisted",
       "read_scope_registry_admin","manage_scope_registry",
       "provision_scope","delete_scope"]);
-    if(requestedTarget==="configured"&&(
-      body.kind==="public-action"&&controlPublic.has(String(body.name))||
-      body.kind==="managed-action"&&controlManage.has(String(body.name)))){
+    if(requestedTarget==="configured"&&
+      body.kind==="managed-action"&&controlManage.has(String(body.name))){
       const control=await databaseForTarget(controlTarget);
       const result=await control.transaction().execute(trx=>
         executeRequest(trx,controlTarget,role,claims,body));
@@ -617,8 +615,10 @@ Deno.serve(async (request) => {
         const publicAnchor=body.kind==="anchor"&&
           (body.attr?.op===undefined||body.attr?.op==="read"||body.attr?.op==="catalog");
         const publicAnalytics=body.kind==="analytics";
-        if(!publicAnchor&&!publicAnalytics)assertCrossEnginePublicRead(body);
-      }else if(!["query","managed-write","anchor","analytics"].includes(String(body.kind)))
+        const publicAction=body.kind==="public-action"&&
+          ["read_app_bootstrap","read_scope_page_copy","search_scope_trace_place_names"].includes(String(body.name));
+        if(!publicAnchor&&!publicAnalytics&&!publicAction)assertCrossEnginePublicRead(body);
+      }else if(!["query","managed-write","anchor","analytics","public-action"].includes(String(body.kind)))
         return json({error:{message:"Unsupported SQL target action"}},403);
     }
     const db=isSupabaseControlTarget(target)
