@@ -12,7 +12,7 @@ import {executeKyselyAnalytics} from "../../../app/loc/providers/kysely-analytic
 import {executeKyselyPublicAction} from "../../../app/loc/providers/kysely-public.mjs";
 import {executeKyselyScopeAdmin} from "../../../app/loc/providers/kysely-scope-admin.mjs";
 import { selectedDatabaseTarget } from "../../../app/loc/providers/selected-database-target.mjs";
-import {resolveSqlExecutionPort,assertCrossEnginePublicRead,authorizeCrossEngineQuery} from "../../../app/loc/providers/sql-engine-ports.mjs";
+import {resolveSqlExecutionPort,assertCrossEnginePublicRead,authorizeCrossEngineQuery,executeCrossEngineManagedWrite} from "../../../app/loc/providers/sql-engine-ports.mjs";
 import {resolveDatabaseRouting} from "../../../app/loc/providers/routing-config.mjs";
 
 const corsHeaders = {
@@ -187,6 +187,11 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
   if(executionPort.session!=="postgres-rls"){
     // No PostgreSQL RLS on other engines. Authorize each request against
     // the target Scope Registry using the already verified Clerk identity.
+    if(body.kind==="managed-write"){
+      if(role!=="authenticated")
+        throw Object.assign(new Error("Management requires verified Clerk identity"),{httpStatus:403});
+      return await executeCrossEngineManagedWrite(trx,body,{role,claims});
+    }
     await authorizeCrossEngineQuery(trx,body,{role,claims});
     return await executeKyselyQuery(trx,body,{dialect:executionPort.engine});
   }
@@ -533,7 +538,7 @@ Deno.serve(async (request) => {
     // executeRequest after verified Clerk claims have been established.
     if(target.engine!=="postgres"){
       if(role!=="authenticated")assertCrossEnginePublicRead(body);
-      else if(body.kind!=="query")return json({
+      else if(body.kind!=="query"&&body.kind!=="managed-write")return json({
         error:{message:"Cross-engine actions must use the Kysely query contract"}},403);
     }
     const db=isSupabaseControlTarget(target)
