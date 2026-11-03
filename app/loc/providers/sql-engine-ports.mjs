@@ -1,3 +1,4 @@
+import {canManageLoc} from './loc-authorization.mjs';
 // Single source of truth for the LOC SQL engine plug-in points.
 // Kysely provides dialect-specific SQL generation; connection and security
 // adapters remain on the trusted runtime (never in the browser).
@@ -43,15 +44,23 @@ export const CROSS_ENGINE_PUBLIC_READ_TABLES=Object.freeze([
   'runes','runes_etc','runes_group'
 ]);
 const externalPublicReads=new Set(CROSS_ENGINE_PUBLIC_READ_TABLES);
+const publicScopeData=/^[a-z][a-z0-9]{0,14}_(galaxy|anchor)$/;
+export function portableRelation(table,engine,namespace=''){
+  if(!/^[a-z][a-z0-9_]*$/i.test(table))throw new Error('Invalid SQL relation');
+  if(engine==='mysql')return table;
+  const schema=String(namespace|| (engine==='mssql'?'dbo':'public'));
+  if(!/^[a-z][a-z0-9_]*$/i.test(schema))throw new Error('Invalid SQL namespace');
+  return schema+'.'+table;
+}
 export function assertCrossEnginePublicRead(request){
   if(request?.kind!=='query'||request.operation!=='select'||
       request.schema!=='silver'||typeof request.table!=='string'||
-      !externalPublicReads.has(request.table)){
-    const error=new Error('Cross-engine private data requires an authorization adapter');
+      !(externalPublicReads.has(request.table)||publicScopeData.test(request.table))){
+    const error=new Error('External SQL public read requires a published LOC relation');
     error.httpStatus=403;
     throw error;
   }
-  return request;
+  return {publicOnly:publicScopeData.test(request.table)};
 }
 
 const SCOPE_ID=/^[a-z][a-z0-9]{0,14}$/;
@@ -67,57 +76,29 @@ const VERIFIED_EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  * the same ACL; PostgreSQL-specific actions are not dispatched here.
  */
 export async function authorizeCrossEngineQuery(db,request,{role='anon',claims={}}={}){
-  if(role!=='authenticated'){
-    assertCrossEnginePublicRead(request);
-    return;
-  }
+  if(role!=='authenticated')
+    return assertCrossEnginePublicRead(request);
   if(request?.kind!=='query'||request.schema!=='silver'||
      typeof request.table!=='string'){
     const error=new Error('Unsupported cross-engine LOC request');
     error.httpStatus=403;throw error;
   }
-  const email=String(claims.email||'').trim().toLowerCase();
-  if(!VERIFIED_EMAIL.test(email)||claims.provider!=='clerk'||
-     !/^user_[A-Za-z0-9]+$/.test(String(claims.sub||''))){
-    const error=new Error('Verified Clerk identity required for cross-engine SQL');
-    error.httpStatus=403;throw error;
-  }
   const table=request.table;
   if(CROSS_ENGINE_PUBLIC_READ_TABLES.includes(table)&&request.operation==='select')
-    return;
-  // Match the existing LOC Authority semantics on every SQL dialect:
-  // globally blocked identities may not gain Scope grants. External
-  // databases must carry the same LOC blacklist and managed Registry.
-  const config=await db.selectFrom('silver.loc').select('blacklist')
-    .where('id','=','loc').executeTakeFirst();
-  let blacklist=config?.blacklist;
-  if(typeof blacklist==='string'){
-    try{blacklist=JSON.parse(blacklist)}catch{blacklist=null}
+    return {publicOnly:false};
+  if(table==='loc'||table==='manage'){
+    if(!await canManageLoc(db,'global'))throw Object.assign(
+      new Error('Global LOC permission denied'),{httpStatus:403});
+    return {publicOnly:false};
   }
-  if(!blacklist||typeof blacklist!=='object'||Array.isArray(blacklist)||
-     blacklist.email!==undefined&&!Array.isArray(blacklist.email)){
-    const error=new Error('LOC authorization configuration unavailable');
-    error.httpStatus=403;throw error;
-  }
-  if((blacklist.email||[]).some(row=>
-    String(row?.email||'').trim().toLowerCase()===email)){
-    const error=new Error('LOC identity is blocked');
-    error.httpStatus=403;throw error;
-  }
-  const permissions=await db.selectFrom('silver.manage')
-    .select(['id','email','manage_role','active'])
-    .where(db.fn('lower',['email']),'=',email).execute();
-  const global=permissions.some(row=>row.id==='admin'&&row.manage_role==='admin');
-  if(global)return;
-  const match=table.match(PRIVATE_RELATION);
-  const scope=match?.[1];
-  const owner=scope&&SCOPE_ID.test(scope)&&permissions.some(row=>
-    row.id===scope&&(row.active===true||row.active===1)&&
-    (row.manage_role==='scope'||row.manage_role==='group'));
-  if(!owner||table==='manage'||table==='loc'){
-    const error=new Error('LOC Scope permission denied for selected SQL target');
-    error.httpStatus=403;throw error;
-  }
+  const scope=table.match(PRIVATE_RELATION)?.[1];
+  const permitted=await canManageLoc(db,'global')||
+    scope&&SCOPE_ID.test(scope)&&await canManageLoc(db,'scope',scope);
+  if(permitted)return {publicOnly:false};
+  if(request.operation==='select'&&publicScopeData.test(table))
+    return {publicOnly:true};
+  throw Object.assign(
+    new Error('LOC Scope permission denied for selected SQL target'),{httpStatus:403});
 }
 
 const SAFE_FIELD=/^[a-z][a-z0-9_]*$/i;
@@ -157,7 +138,7 @@ export async function executeCrossEngineManagedWrite(db,body,context){
     invalidWrite('Invalid managed operation');
   await authorizeCrossEngineQuery(db,{kind:'query',schema:'silver',table,
     operation:operation==='update_batch'?'update':operation},context);
-  const name='silver.'+table;
+  const name=portableRelation(table,context.engine,context.namespace);
   let count=0;
   if(operation==='insert'){
     const rows=p.p_rows;
@@ -194,9 +175,19 @@ export async function executeCrossEngineManagedWrite(db,body,context){
          seen.has(row.uid)||Object.keys(row).some(k=>!ARTICLE_BATCH_FIELDS.has(k)))
         invalidWrite('Invalid Galaxy batch row');
       seen.add(row.uid);
-      const existing=await db.selectFrom(name)
+    }
+    // One bounded Kysely SELECT per 1,000 articles, not one SELECT per
+    // article followed by a second write query for every changed row.
+    const existingRows=new Map();
+    for(let i=0;i<p.p_rows.length;i+=1000){
+      const uids=p.p_rows.slice(i,i+1000).map(row=>row.uid);
+      const found=await db.selectFrom(name)
         .select(['uid','title','content','place_id','url','media_link'])
-        .where('uid','=',row.uid).executeTakeFirst();
+        .where('uid','in',uids).execute();
+      for(const row of found)existingRows.set(String(row.uid),row);
+    }
+    for(const row of p.p_rows){
+      const existing=existingRows.get(row.uid);
       if(!existing)continue;
       const patch={};
       for(const key of ['title','content','url','media_link']){

@@ -1,8 +1,7 @@
 name: Publish LOC Release Candidate
 run-name: Publish LOC RC from ${{ github.ref_name }} · ${{ github.sha }}
 
-# Only an intentional manual action may create the GitHub tag / prerelease.
-# Cloudflare Pages separately auto-deploys main; this is not a website build.
+# Explicitly manual only. Cloudflare Pages separately deploys main.
 on:
   workflow_dispatch:
 
@@ -17,27 +16,37 @@ jobs:
   publish-rc:
     if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - name: Checkout main at the requested commit
         uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Validate release identity and package metadata
+      - name: Validate version, lockfile and release notes
+        id: release
         shell: bash
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = 'refs/heads/main'
-          test "$(node -p 'require("./package.json").version')" = '1.1.0-rc.2.1'
-          test "$(node -p 'require("./package-lock.json").version')" = '1.1.0-rc.2.1'
-          test "$(node -p 'require("./package-lock.json").packages[""].version')" = '1.1.0-rc.2.1'
-          test -s docs/releases/LOC-1.1.0-rc.2.1.md
+          version="$(node -p "require('./package.json').version")"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+(\.[0-9]+)*$ ]]; then
+            echo "::error::Refusing to publish a non-RC version: $version"
+            exit 1
+          fi
+          test "$(node -p "require('./package-lock.json').version")" = "$version"
+          test "$(node -p "require('./package-lock.json').packages[''].version")" = "$version"
+          notes="docs/releases/LOC-$version.md"
+          test -s "$notes"
+          printf 'version=%s\nnotes=%s\n' "$version" "$notes" >> "$GITHUB_OUTPUT"
       - name: Publish a new GitHub prerelease and immutable tag target
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          LOC_VERSION: ${{ steps.release.outputs.version }}
+          LOC_NOTES: ${{ steps.release.outputs.notes }}
         run: |
           set -euo pipefail
-          tag='v1.1.0-rc.2.1'
+          tag="v$LOC_VERSION"
           if gh release view "$tag" >/dev/null 2>&1; then
             echo "::error::Release $tag already exists. Never silently overwrite a published RC."
             exit 1
@@ -48,7 +57,7 @@ jobs:
           fi
           gh release create "$tag" \
             --target "$GITHUB_SHA" \
-            --title 'LOC 1.1 RC2.1 — Release Candidate' \
-            --notes-file docs/releases/LOC-1.1.0-rc.2.1.md \
+            --title "LOC $LOC_VERSION — Release Candidate" \
+            --notes-file "$LOC_NOTES" \
             --prerelease
           gh release view "$tag" --json name,tagName,isPrerelease,htmlUrl
