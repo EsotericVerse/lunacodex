@@ -31,3 +31,23 @@ test('switching active Class never revives invalidated Class from global complet
  assert.equal(keywordClassState(config,'ClA1'),null);
  assert.equal(keywordClassState(config,'ClB1').matchedDocuments,5);
 });
+
+test('native eight-character Anchor Class UID supports reanalysis and preserves other results',()=>{
+ const first=completeKeywordClass({},'ZCBXGIGR',{matchedDocuments:67},'2026-11-03T00:00:00Z');
+ const both=completeKeywordClass(first,'ETKCQBAQ',{matchedDocuments:66},'2026-11-03T00:01:00Z');
+ assert.equal(keywordClassState({keyword_meta:both},'ZCBXGIGR').matchedDocuments,67);
+ assert.equal(keywordClassState({keyword_meta:both},'ETKCQBAQ').matchedDocuments,66);
+ const stale=invalidateKeywordClass(both,'ZCBXGIGR');
+ assert.equal(keywordClassState({keyword_meta:stale},'ZCBXGIGR'),null);
+ assert.equal(keywordClassState({keyword_meta:stale},'ETKCQBAQ').matchedDocuments,66);
+ assert.equal(activeKeywordMeta({keyword_meta:both},'ZCBXGIGR').matchedDocuments,67);
+});
+test('Class state rejects malformed UID without losing mixed-case Base62 IDs',()=>{
+ const meta=completeKeywordClass({},'aB12cD34',{matchedDocuments:1},'2026-11-03T00:00:00Z');
+ assert.equal(keywordClassState({keyword_meta:meta},'aB12cD34').matchedDocuments,1);
+ assert.equal(keywordClassState({keyword_meta:meta},'AB12CD34'),null);
+ for(const uid of ['','ABCDE','ABCDEFG','ABCDEFGHI','AB_CDE12']){
+   assert.equal(keywordClassState({keyword_meta:meta},uid),null);
+   assert.throws(()=>invalidateKeywordClass(meta,uid),/Invalid Keywords Class UID/);
+ }
+});
