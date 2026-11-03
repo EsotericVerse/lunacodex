@@ -24,7 +24,7 @@ jobs:
       - name: Install locked dependencies
         run: npm ci --no-audit --no-fund
       - name: Build Next.js app without ISR deployment
-        if: success() || failure()
+        # Run only after checkout, setup, and install succeed.
         shell: bash
         run: |
           set -o pipefail
