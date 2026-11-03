@@ -4,7 +4,7 @@ import ScopeLink from '../../modular/ScopeLink';
 
 function AuthorPage({eyebrow,title,subtitle,intro,sections=[]}){
   // Detailed subpages only. The public homepage uses shared LOC DB blocks.
-  return <section className="loc-view scope-home-composition">
+  return <main className="loc-view scope-home-composition">
     <ContextReturnNav scopeId="lo3rwang" label="回作者首頁"/>
     <header className="loc-hero loc-hero-feature" id="top">
       {eyebrow?<p className="loc-eyebrow">{eyebrow}</p>:null}
@@ -16,7 +16,7 @@ function AuthorPage({eyebrow,title,subtitle,intro,sections=[]}){
       {section.title?<h2>{section.title}</h2>:null}
       {section.content}
     </section>)}
-  </section>;
+  </main>;
 }
 
 const PROFESSIONAL_ROLES=Object.freeze([

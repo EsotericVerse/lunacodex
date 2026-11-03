@@ -1115,7 +1115,6 @@ export default function Search({managementMode:legacyManagementRoute=false}){
         <input id="scope-search-query" list={!searchPopularOpen&&suggestedTitles.length?'scope-search-loaded-titles':undefined}
           value={query} onDoubleClick={()=>setSearchPopularOpen(true)}
           onChange={event=>{setQuery(event.target.value);setSearchPopularOpen(false);}}
-          aria-expanded={searchPopularOpen}
           placeholder={managementMode?'':UI_COPY.search.textPlaceholder} aria-label={UI_COPY.search.textPromptLabel}/>
         {suggestedTitles.length?<datalist id="scope-search-loaded-titles">
           {suggestedTitles.map(title=><option key={title} value={title}/>)}
@@ -1131,14 +1130,20 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           }}>瀏覽文章列表（不需輸入關鍵詞）</button>:null}
         <button type="button" className="loc-button" onClick={clearSearchFilters}>{t('uiExtra.searchUI.clearAll')}</button>
       </form>
-      {searchPopularOpen?<div className="scope-search-suggestions" role="group" aria-label="雙擊建議搜尋前10項">
+      <button type="button" className="loc-button scope-search-popular-toggle"
+        aria-expanded={searchPopularOpen} aria-controls="scope-search-suggestions"
+        onClick={()=>setSearchPopularOpen(open=>!open)}>
+        {searchPopularOpen?'收起建議搜尋':'顯示建議搜尋'}
+      </button>
+      <div id="scope-search-suggestions" className="scope-search-suggestions"
+        role="group" aria-label="建議搜尋前10項" hidden={!searchPopularOpen}>
         <span className="scope-status">建議搜尋（最多 10 項）</span>
         <div className="scope-search-active-filters">
           {suggestedTerms.map(term=><button key={term} type="button" className="loc-button"
             onClick={()=>{setQuery(term);setSearchPopularOpen(false);followSearchSuggestion(term);}}>{term}</button>)}
           {!suggestedTerms.length?<span className="scope-status">目前沒有已發布的搜尋建議。</span>:null}
         </div>
-      </div>:null}
+      </div>
       {!managementMode&&results.length>0&&matchedQueryRef.current?<div className="scope-search-suggestions" aria-label="延伸搜尋">
         <span className="scope-status">延伸搜尋（保留原本的時間與來源條件）</span>
         <div className="scope-search-active-filters">
