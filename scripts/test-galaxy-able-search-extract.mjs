@@ -5,7 +5,7 @@ import {GALAXY_ABLE_KEYS,galaxyAble,prepareGalaxyInsertRows} from '../app/loc/ga
 import {extractSearchContext} from '../app/loc/search-extract.mjs';
 
 test('Galaxy stores eight independent feature flags, even when an article is hidden',()=>{
-  assert.deepEqual(GALAXY_ABLE_KEYS,['statics','culture','search','trace','list','keyword','others','extract']);
+  assert.deepEqual(GALAXY_ABLE_KEYS,['statics','culture','search','trace','list','keyword','extract','others']);
   const features=galaxyAble({searchable:false,statistics_able:false,
     able:{statics:true,culture:false,search:true,trace:false,list:false,keywords:true,game:true,extract:true}});
   assert.equal(features.statics,true);
@@ -30,6 +30,8 @@ test('search is primary, excerpt is optional and never loads in regular browse',
   const ui=readFileSync(new URL('../app/modular/features/Search.jsx',import.meta.url),'utf8');
   const query=readFileSync(new URL('../app/loc/galaxy-query.js',import.meta.url),'utf8');
   assert.match(query,/column:'search'/);
+  assert.doesNotMatch(ui,/media_link,able/);
+  assert.match(ui,/columns:'uid,content,search,extract'/);
   assert.match(ui,/row\.search===false\|\|row\.extract===false/);
   assert.match(ui,/if\(q&&!options\.browse&&!options\.placeOnly&&!options\.mediaOnly/);
   assert.match(ui,/extractSearchContext\(article\.content,query,10\)/);
