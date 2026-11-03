@@ -71,3 +71,29 @@ export async function ensurePortableScopeSchema(db,{engine,namespace='',scopeId}
   }
   return {created};
 }
+
+
+// A matching table name is not enough: validate once at onboarding instead
+// of letting every feature fail independently on a missing SQL column.
+export function validatePortableScopeSchema(tables,{engine,namespace='',scopeId}={}){
+  if(!SCOPE.test(String(scopeId||''))||!['postgres','mysql','mssql'].includes(engine))
+    throw new Error('Invalid portable LOC Scope');
+  const expected={
+    galaxy:['uid','title','content','createtime','location','UpdateTime','url',
+      'source_id','target_id','ref_id','site','place_id','media_link','date','site_id',
+      ...FLAGS],
+    anchor:['uid','type','title','description','invisible','attr']
+  };
+  const names={scopeId};
+  for(const [kind,columns] of Object.entries(expected)){
+    const name=scopeId+'_'+kind;
+    const table=tables.find(t=>t.name===name&&
+      (engine==='mysql'||!t.schema||t.schema===namespace));
+    if(!table)throw new Error('Missing LOC table: '+name);
+    const present=new Set((table.columns||[]).map(c=>c.name));
+    const missing=columns.filter(col=>!present.has(col));
+    if(missing.length)throw new Error('LOC table '+name+' has missing columns: '+missing.join(', '));
+    names[kind]=portableRelation(name,engine,namespace);
+  }
+  return names;
+}
