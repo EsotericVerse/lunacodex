@@ -577,7 +577,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     const scope=normalizeScopeId(scopeId);
     if(!scope)throw new Error('Scope ID 格式不正確。');
     preflightWrite('silver.manage');
-    const {data,error}=await authClient.schema('silver').rpc('delete_scope',{p_scope_id:scope});
+    const {data,error}=await authClient.schema('silver').managedAction('delete_scope',{p_scope_id:scope});
     if(error)throw new Error(error.message||'Scope 刪除失敗。');
     invalidateRelevantAuthorization(scope);
     return data||{};
@@ -597,7 +597,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
       p_theme:String(values.theme||'system-default').trim()||'system-default',
       p_copy_keywords:values.copy_keywords!==false
     };
-    const {data,error}=await authClient.schema('silver').rpc('provision_scope',payload);
+    const {data,error}=await authClient.schema('silver').managedAction('provision_scope',payload);
     if(error)throw new Error(error.message||'Scope provisioning failed');
     invalidateRelevantAuthorization(scopeId,values.email);
     return data||{};
@@ -608,7 +608,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     const op=String(operation||'').trim().toLowerCase();
     if(!['create_group','update'].includes(op))throw new Error('Unsupported Scope Registry operation');
     preflightWrite('silver.manage');
-    const {data,error}=await authClient.schema('silver').rpc('manage_scope_registry',{
+    const {data,error}=await authClient.schema('silver').managedAction('manage_scope_registry',{
       p_operation:op,
       p_scope_id:scope,
       p_values:values&&typeof values==='object'?values:{}
