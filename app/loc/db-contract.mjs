@@ -315,11 +315,12 @@ export function createDatabaseClient({publicClient,authClient,auth}){
   }
 
   async function keywordRead(name,args,{isEmpty=data=>!data}={}){
-    const publicResult=await publicClient.schema('silver').rpc(name,args);
+    if(name!=='read_scope_analytics')throw Error('Unsupported keyword aggregate');
+    const publicResult=await publicClient.schema('silver').analytics(args);
     if(publicResult.error)throw new Error(publicResult.error.message||('Keyword RPC '+name+' failed'));
     if(!isEmpty(publicResult.data))return publicResult.data;
     if(!await verifiedKeywordOwner())return publicResult.data;
-    const privateResult=await authClient.schema('silver').rpc(name,args);
+    const privateResult=await authClient.schema('silver').analytics(args);
     if(privateResult.error)throw new Error(privateResult.error.message||('Private Keyword RPC '+name+' failed'));
     return privateResult.data;
   }
