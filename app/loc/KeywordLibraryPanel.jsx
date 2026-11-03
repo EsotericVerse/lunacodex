@@ -364,7 +364,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
     setImportBusy(true);
     try{
       // Anonymous reader returns only publicly shared Class rows, no Group/Item.
-      const {data,error}=await dbPublicClient.schema('silver').rpc('read_scope_analytics',{
+      const {data,error}=await dbPublicClient.schema('silver').analytics({
         p_scope_id:from,p_view:'shared_classes',p_start:null,p_end:null,p_options:{}
       });
       if(error)throw new Error(error.message||'查詢公開群組科目失敗');
