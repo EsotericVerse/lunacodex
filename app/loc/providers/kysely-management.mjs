@@ -182,7 +182,8 @@ export async function executeManagedKyselyWrite(trx,body){
 const ACTIONS=new Set(['read_group_members','update_group_member_name',
   'update_group_default_article_class','is_current_email_blocklisted','move_scope_block',
   'preview_or_fill_galaxy_place','batch_fill_galaxy_location',
-  'rename_scope_site_batch','save_scope_trace_place_names','loc_admin_settings']);
+  'rename_scope_site_batch','save_scope_trace_place_names','loc_admin_settings',
+  'refresh_scope_search_summary']);
 function validScope(value){
   const id=String(value||'').trim().toLowerCase();
   if(!/^[a-z][a-z0-9]{0,14}$/.test(id))reject('Invalid Scope ID');
@@ -208,9 +209,11 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     batch_fill_galaxy_location:['p_scope_id','p_uids','p_place','p_apply','p_expected_count'],
     rename_scope_site_batch:['p_scope_id','p_before','p_after','p_batch_size'],
     save_scope_trace_place_names:['p_scope_id','p_uid','p_names'],
-    loc_admin_settings:['p_section','p_operation','p_key','p_value']
+    loc_admin_settings:['p_section','p_operation','p_key','p_value'],
+    refresh_scope_search_summary:['p_scope_id']
   }[name];
   if(Object.keys(args).some(key=>!keys.includes(key)))reject('Unexpected Kysely action argument');
+  if(name==='refresh_scope_search_summary')return {data:await refreshScopeSearchSummary(trx,args),count:null};
   if(name==='loc_admin_settings')return {data:await managedLocSettings(trx,args,claims),count:null};
   if(name==='preview_or_fill_galaxy_place')return {data:await previewOrFillGalaxyPlace(trx,args),count:null};
   if(name==='batch_fill_galaxy_location')return {data:await batchFillGalaxyLocation(trx,args),count:null};
@@ -549,4 +552,30 @@ async function managedLocSettings(trx,args,claims){
     }).where('id','=','loc').executeTakeFirst();
   }
   return returnValue;
+}
+
+async function refreshScopeSearchSummary(trx,args){
+  const scope=await scopedWrite(trx,args.p_scope_id);
+  const galaxy=sql.ref('silver.'+scope+'_galaxy');
+  const response=await sql`select count(*)::integer as article_count,
+      coalesce(sum(char_length(regexp_replace(
+        regexp_replace(content,'<[^>]*>','','g'),
+        '[[:space:]　]+','','g'))),0)::bigint as word_count,
+      min(coalesce(date,(createtime at time zone 'Asia/Taipei')::date))::text as first_date,
+      max(coalesce(date,(createtime at time zone 'Asia/Taipei')::date))::text as last_date
+    from ${galaxy}
+    where search is true and nullif(btrim(content),'') is not null`.execute(trx);
+  const row=response.rows[0]||{};
+  const snapshot={article_count:Number(row.article_count||0),
+    word_count:Number(row.word_count||0),
+    first_date:row.first_date||null,last_date:row.last_date||null,
+    refreshed_at:new Date().toISOString()};
+  if(!Number.isSafeInteger(snapshot.word_count))reject('Search word count exceeds safe integer limit');
+  const result=await trx.updateTable('silver.'+scope)
+    .set({status:sql`jsonb_set(coalesce(status,'{}'::jsonb),
+      '{search}',${JSON.stringify(snapshot)}::jsonb,true)`})
+    .where('id','=',scope).executeTakeFirst();
+  if(Number(result?.numUpdatedRows||0)!==1)
+    reject('Scope search summary was not saved');
+  return {scope_id:scope,...snapshot};
 }
