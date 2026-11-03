@@ -46,7 +46,9 @@ export default function CultureTimelineEditor({
   const routeAnchorDate=String(searchParams?.get?.('anchorDate')||'').slice(0,10);
   const effectiveAnchorDate=day(suggestedAnchorDate||(!selectedRecordId?routeAnchorDate:''));
   const dataScope=String(scopeId||'').trim();
-  const timeTable=String(providedTimeTable||'').trim();
+  // Timeline editor expects legacy Time fields projected from unified Anchor.
+  // Direct *_anchor reads cannot select the removed address/anchor_ids columns.
+  const timeTable=String(providedTimeTable||'').trim().replace(/_anchor$/,'_time');
   const editable=Boolean(dataScope&&dataScope!=='loc'&&timeTable);
   const defaultType=TYPES.includes(normalizeType(defaultRecordType))?normalizeType(defaultRecordType):'anchor';
   const [draft,setDraft]=useState(()=>blank(defaultType));
