@@ -71,7 +71,7 @@ export default function PlaceBatchFill({scopeId,anchors=[]}){
     const token=++revision.current;
     setBusy(true);setNotice('');setPreview(null);
     try{
-      const response=await dbAuthClient.schema('silver').rpc('preview_or_fill_galaxy_place',{
+      const response=await dbAuthClient.schema('silver').managedAction('preview_or_fill_galaxy_place',{
         p_scope_id:scopeId,p_start_date:startDate,p_end_date:endDate,p_place:place.trim(),
         p_apply:false
       });
@@ -90,7 +90,7 @@ export default function PlaceBatchFill({scopeId,anchors=[]}){
     const token=++revision.current;
     setBusy(true);setNotice('');
     try{
-      const result=await dbAuthClient.schema('silver').rpc('preview_or_fill_galaxy_place',{
+      const result=await dbAuthClient.schema('silver').managedAction('preview_or_fill_galaxy_place',{
         p_scope_id:scopeId,p_start_date:startDate,p_end_date:endDate,p_place:place.trim(),
         p_apply:true,p_expected_count:count
       });
