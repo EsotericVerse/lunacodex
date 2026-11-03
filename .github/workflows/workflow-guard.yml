@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: workflow-guard-${{ github.event.pull_request.number || github.ref }}
@@ -15,7 +16,7 @@ concurrency:
 jobs:
   guard:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
       - name: Reject unauthorized workflow triggers (parsed YAML)
@@ -30,3 +31,18 @@ jobs:
         shell: bash
         run: |
           NODE_PATH="$RUNNER_TEMP/loc-syntax/node_modules" node scripts/check-js-syntax.mjs
+      - name: Identify import code changes
+        id: import_changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" --jq '.[].filename' > "$RUNNER_TEMP/loc-pr-files"
+          if grep -Eq '^(app/loc/(import-|ManagementImportPanel)|scripts/test-import-createdat-reimport\.mjs)' "$RUNNER_TEMP/loc-pr-files"; then
+            echo 'run=true' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Run reimport regression only when import files changed
+        if: ${{ steps.import_changes.outputs.run == 'true' }}
+        run: node --test scripts/test-import-createdat-reimport.mjs
