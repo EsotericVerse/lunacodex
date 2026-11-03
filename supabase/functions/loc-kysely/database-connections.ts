@@ -1,4 +1,4 @@
-import {sql} from "npm:kysely@0.29.6";
+import {sql} from "npm:kysely@0.29.8";
 import {normalizeDatabaseLocation} from "../../../app/loc/providers/database-link.mjs";
 
 const ALIAS=/^[a-z][a-z0-9_]{0,63}$/;
