@@ -18,7 +18,7 @@ export default function AdminReservedScopeIds(){
   const [message,setMessage]=useState('');
   const allowed=Boolean(account.user&&!account.loading&&!account.permissionLoading&&account.canManageGlobalSync());
   const query=useAsyncResource(['admin-reserved-scope-ids'],async()=>{
-    const {data,error}=await dbAuthClient.schema('silver').rpc('loc_admin_settings',
+    const {data,error}=await dbAuthClient.schema('silver').managedAction('loc_admin_settings',
       {p_section:'scopeid',p_operation:'read'});
     if(error)throw new Error(error.message||'保留名稱讀取失敗。');
     return (data||[]).sort((a,b)=>a.id.localeCompare(b.id));
@@ -33,7 +33,7 @@ export default function AdminReservedScopeIds(){
     try{
       for(const row of changed){
         const note=String(notes[row.id]??row.note??'').trim();
-        const {error}=await dbAuthClient.schema('silver').rpc('loc_admin_settings',
+        const {error}=await dbAuthClient.schema('silver').managedAction('loc_admin_settings',
           {p_section:'scopeid',p_operation:'note',p_key:row.id,p_value:note||''});
         if(error)throw new Error(error?.message||'備註未儲存。');
       }
