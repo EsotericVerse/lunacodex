@@ -191,7 +191,7 @@ async function provisionScope(trx,args){
   const email=String(args.p_email||'').trim().toLowerCase();
   const theme=String(args.p_theme||'system-default').trim().toLowerCase();
   const parent=scope(args.p_parent_scope_id??'loc');
-  const {domain,directory}=route(args);
+  const {domain,directory}=route({domain:args.p_domain,directory:args.p_directory});
   if(!display||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||
      theme!=='system-default'&&!/^theme-[1-8]$/.test(theme))
     fail('Invalid Scope owner, name, or theme');
