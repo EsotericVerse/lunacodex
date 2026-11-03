@@ -4,6 +4,8 @@ name: Workflow guard
 # No Next build, database, deployment, browser, or macOS runner.
 on:
   pull_request:
+    paths:
+      - '.github/workflows/**'
 
 permissions:
   contents: read
