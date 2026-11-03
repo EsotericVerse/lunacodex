@@ -38,6 +38,14 @@ export async function authorityAction(name,args,token,env={},fetchImpl=globalThi
         throw bad('conversation_id, updated_at and content required');
       body={conversation_id:a.conversation_id,updated_at:a.updated_at,
         created_at:a.created_at,title:a.title||'',content:a.content};break;
+    case 'update_scope_pr':
+      path='update-pr/'+id(a.scopeid);method='POST';
+      if(!UID.test(String(a.uid||'')))throw bad('Invalid case-sensitive UID');
+      if(!Number.isInteger(a.pr_number)||a.pr_number<1)throw bad('pr_number must be a positive integer');
+      if(typeof a.title!=='string'||!a.title.trim())throw bad('title required');
+      if(typeof a.content!=='string'||!a.content.trim())throw bad('content required');
+      if(!a.updated_at)throw bad('updated_at required');
+      body={uid:a.uid,pr_number:a.pr_number,title:a.title,content:a.content,updated_at:a.updated_at};break;
     case 'search_scope':
       path='search/'+id(a.scopeid);method='POST';
       if(!a.query)throw bad('query required');

@@ -158,6 +158,104 @@ test('managed Scope rejects missing OAuth token and does not mark saved',async()
   assert.equal(status.saved_at,null);
 });
 
+const prUpdate={uid:'561DFE49',pr_number:968,title:'PR #968 release notes',
+  content:'Updated body',updated_at:'2026-11-03T01:00:00Z'};
+
+test('update_scope_pr sends a dedicated kind and never the mcp-sync shape',async()=>{
+  const {do:authority}=state();
+  const calls=[];
+  globalThis.fetch=async(url,options)=>{
+    calls.push({url:String(url),body:JSON.parse(options.body)});
+    return Response.json({data:{count:1}});
+  };
+  const result=await authority.mcpUpdatePr('lo3rwang',prUpdate,'eyJ.authorized.mcp');
+  assert.equal(result.updated,true);
+  assert.equal(result.uid,'561DFE49');
+  assert.equal(calls.length,1);
+  assert.equal(calls[0].body.kind,'mcp-update-pr');
+  assert.equal(calls[0].body.uid,'561DFE49');
+  assert.equal(calls[0].body.pr_number,968);
+  assert.equal(calls[0].body.title,prUpdate.title);
+  assert.equal(calls[0].body.content,prUpdate.content);
+});
+
+test('update_scope_pr rejects missing OAuth token without any network call',async()=>{
+  const {do:authority}=state();
+  let requests=0;
+  globalThis.fetch=async()=>{requests++;throw Error('Unexpected anonymous fetch');};
+  await assert.rejects(authority.mcpUpdatePr('lo3rwang',prUpdate),/MCP OAuth authorization required/);
+  assert.equal(requests,0);
+});
+
+test('update_scope_pr surfaces the backend refusal reason (not GitHub-origin / PR mismatch)',async()=>{
+  const {do:authority}=state();
+  globalThis.fetch=async()=>Response.json(
+    {error:{message:"PR number does not match this article's title"}},{status:403});
+  await assert.rejects(authority.mcpUpdatePr('lo3rwang',prUpdate,'eyJ.authorized.mcp'),
+    /PR number does not match this article's title/);
+});
+
+test('update_scope_pr rejects an invalid uid, pr_number or oversized content before any network call',async()=>{
+  const {do:authority}=state();
+  let requests=0;
+  globalThis.fetch=async()=>{requests++;throw Error('Unexpected fetch');};
+  await assert.rejects(authority.mcpUpdatePr('lo3rwang',{...prUpdate,uid:'too-short'},'eyJ.x'),/Invalid case-sensitive UID/);
+  await assert.rejects(authority.mcpUpdatePr('lo3rwang',{...prUpdate,pr_number:0},'eyJ.x'),/Invalid PR number/);
+  await assert.rejects(authority.mcpUpdatePr('lo3rwang',{...prUpdate,pr_number:1.5},'eyJ.x'),/Invalid PR number/);
+  await assert.rejects(authority.mcpUpdatePr('lo3rwang',{...prUpdate,content:''},'eyJ.x'),/Invalid article title or content/);
+  assert.equal(requests,0);
+});
+
+test('self-hosted Scope profile: update_scope_pr reads before writing and refuses a non-GitHub article',async()=>{
+  const {do:authority}=state();
+  authority.mcpPrivateProfile=async()=>profile;
+  const calls=[];
+  globalThis.fetch=async(url,options={})=>{
+    calls.push({url:String(url),method:options.method||'GET'});
+    if((options.method||'GET')==='GET')
+      return Response.json([{uid:'561DFE49',title:'PR #968 release notes',site:'mcp'}]);
+    return new Response(null,{status:204});
+  };
+  await assert.rejects(authority.mcpUpdatePr('lo3rwang',prUpdate,'eyJ.x'),
+    /Only GitHub PR-origin articles can be updated/);
+  assert.equal(calls.length,1);
+  assert.equal(calls[0].method,'GET');
+});
+
+test('self-hosted Scope profile: update_scope_pr refuses a PR-number/title mismatch and never PATCHes',async()=>{
+  const {do:authority}=state();
+  authority.mcpPrivateProfile=async()=>profile;
+  const calls=[];
+  globalThis.fetch=async(url,options={})=>{
+    calls.push({url:String(url),method:options.method||'GET'});
+    if((options.method||'GET')==='GET')
+      return Response.json([{uid:'561DFE49',title:'PR #1 unrelated article',site:'github'}]);
+    return new Response(null,{status:204});
+  };
+  await assert.rejects(authority.mcpUpdatePr('lo3rwang',prUpdate,'eyJ.x'),
+    /PR number does not match this article's title/);
+  assert.equal(calls.length,1);
+});
+
+test('self-hosted Scope profile: update_scope_pr PATCHes by uid once the GitHub PR match is confirmed',async()=>{
+  const {do:authority}=state();
+  authority.mcpPrivateProfile=async()=>profile;
+  const calls=[];
+  globalThis.fetch=async(url,options={})=>{
+    calls.push({url:String(url),method:options.method||'GET',body:options.body?JSON.parse(options.body):null});
+    if((options.method||'GET')==='GET')
+      return Response.json([{uid:'561DFE49',title:'PR #968 release notes',site:'github'}]);
+    return new Response(null,{status:204});
+  };
+  const result=await authority.mcpUpdatePr('lo3rwang',prUpdate,'eyJ.x');
+  assert.equal(result.updated,true);
+  assert.equal(calls.length,2);
+  assert.equal(calls[1].method,'PATCH');
+  assert.match(calls[1].url,/uid=eq\.561DFE49/);
+  assert.equal(calls[1].body.title,prUpdate.title);
+  assert.equal(calls[1].body.content,prUpdate.content);
+});
+
 test('100 concurrent matching searches make one provider request per Scope',async()=>{
   const {do:authority}=state();
   authority.mcpPrivateProfile=async()=>profile;

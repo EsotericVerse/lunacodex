@@ -75,6 +75,11 @@ test('Valid Clerk JWT can initialize, discover read/write tools, and ping',async
   const sync=tools.find(tool=>tool.name==='sync_conversation');
   assert.equal(sync.inputSchema.required.includes('content'),true);
   assert.notEqual(sync.annotations?.readOnlyHint,true);
+  assert.ok(status.availableTools.includes('update_scope_pr'));
+  const updatePr=tools.find(tool=>tool.name==='update_scope_pr');
+  assert.deepEqual(updatePr.inputSchema.required,
+    ['scopeid','uid','pr_number','title','content','updated_at']);
+  assert.notEqual(updatePr.annotations?.readOnlyHint,true);
   r=await handleMcp(req('POST',jwt,rpc('ping')));
   assert.deepEqual((await r.json()).result,{});
   assert.ok(jwksQueries>=1);

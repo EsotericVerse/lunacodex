@@ -295,6 +295,56 @@ async function managedMcpInsert(scopeid,row,hasCheckpointUid,oauthToken){
 }
 
 
+async function managedMcpUpdatePr(scopeid,uid,prNumber,title,content,updatedAt,oauthToken){
+  if(!Object.hasOwn(MANAGED_SCOPE_TABLES,scopeid))throw fail('Scope database is not configured',409);
+  if(typeof oauthToken!=='string'||!oauthToken.startsWith('eyJ'))throw fail('MCP OAuth authorization required',401);
+  const response=await fetch(MANAGED_SUPABASE_EDGE,{
+    method:'POST',headers:{apikey:MANAGED_PUBLISHABLE_KEY,
+      authorization:'Bearer '+oauthToken,'content-type':'application/json'},
+    body:JSON.stringify({kind:'mcp-update-pr',scopeid,uid,pr_number:prNumber,title,content,updated_at:updatedAt}),
+    signal:AbortSignal.timeout(12000),redirect:'manual'
+  });
+  if(!response.ok){
+    let message='Managed Scope write rejected (HTTP '+response.status+')';
+    if(response.status>=400&&response.status<500){
+      const data=await response.json().catch(()=>null);
+      if(typeof data?.error?.message==='string')message=data.error.message.slice(0,200);
+    }
+    throw fail(message,[401,403,404].includes(response.status)?response.status:502);
+  }
+  const data=await response.json();
+  if(data?.data?.count!==1)throw fail('Managed Scope write was not confirmed',502);
+}
+
+// Direct PostgREST path for self-hosted Scope databases. Reads the existing
+// row first so an UPDATE can never be used to create a new article, and
+// refuses unless the article is already GitHub PR-origin and its current
+// title names the same PR number the caller supplied.
+async function postgrestUpdatePr(profile,uid,prNumber,title,content,updatedAt){
+  const headers={accept:'application/json','accept-profile':profile.schema,
+    'content-profile':profile.schema,
+    apikey:profile.api_key,authorization:'Bearer '+profile.api_key};
+  const getUrl=new URL(profile.endpoint+'/'+profile.table);
+  getUrl.searchParams.set('select','uid,title,site');
+  getUrl.searchParams.set('uid','eq.'+uid);
+  getUrl.searchParams.set('limit','1');
+  const getRes=await fetch(getUrl.href,{method:'GET',headers,redirect:'manual',signal:AbortSignal.timeout(9500)});
+  if(!getRes.ok)throw fail('Scope database rejected operation (HTTP '+getRes.status+')',502);
+  const rows=await getRes.json();
+  if(!Array.isArray(rows)||!rows.length)throw fail('Scope article not found',403);
+  const row=rows[0];
+  if(row.site!=='github')throw fail('Only GitHub PR-origin articles can be updated through this tool',403);
+  const prMarker=new RegExp('(?:^|[^0-9])PR\\s*#'+prNumber+'(?:[^0-9]|$)');
+  if(!prMarker.test(String(row.title||'')))throw fail("PR number does not match this article's title",403);
+  const patchUrl=new URL(profile.endpoint+'/'+profile.table);
+  patchUrl.searchParams.set('uid','eq.'+uid);
+  const patchRes=await fetch(patchUrl.href,{method:'PATCH',
+    headers:{...headers,'content-type':'application/json',prefer:'return=minimal'},
+    body:JSON.stringify({title,content,UpdateTime:updatedAt}),
+    redirect:'manual',signal:AbortSignal.timeout(9500)});
+  if(!patchRes.ok)throw fail('Scope database rejected operation (HTTP '+patchRes.status+')',502);
+}
+
 async function managedMcpRead(scopeid,kind,args,oauthToken){
   if(!Object.hasOwn(MANAGED_SCOPE_TABLES,scopeid))throw fail('Managed Scope is not supported',409);
   if(typeof oauthToken!=='string'||!oauthToken.startsWith('eyJ'))
@@ -463,6 +513,30 @@ export class LocAuthorityState extends DurableObject {
     this.mcpSearchCache?.clear();
     await this.ctx.storage.put(checkpointKey,{updated_at:requestedTime,saved_at,uid});
     return {scopeid,conversation_id,updated_at:requestedTime,saved_at,uid,saved:true};
+  }
+  // Rewrites an EXISTING article by its stable uid. Unlike mcpSave (which
+  // upserts private conversations keyed by conversation_id), this never
+  // creates a row: the scoped backend verifies the article is already
+  // GitHub PR-origin and that its current title names the same PR number
+  // before any write happens.
+  async mcpUpdatePr(scopeid,input,oauthToken=''){
+    validScope(scopeid);
+    if(!input||typeof input!=='object'||Array.isArray(input))throw fail('Invalid PR update request',400);
+    const uid=String(input.uid||'');
+    if(!UID.test(uid))throw fail('Invalid case-sensitive UID',400);
+    const prNumber=Number(input.pr_number);
+    if(!Number.isInteger(prNumber)||prNumber<1||prNumber>9999999)throw fail('Invalid PR number',400);
+    if(typeof input.title!=='string'||!input.title.trim()||input.title.length>350||
+      typeof input.content!=='string'||!input.content.trim()||input.content.length>125000)
+      throw fail('Invalid article title or content',400);
+    const requestedTime=validTimestamp(input.updated_at);
+    const profile=await this.mcpPrivateProfile(scopeid);
+    if(profile)await postgrestUpdatePr(profile,uid,prNumber,input.title,input.content,requestedTime);
+    else if(Object.hasOwn(MANAGED_SCOPE_TABLES,scopeid))
+      await managedMcpUpdatePr(scopeid,uid,prNumber,input.title,input.content,requestedTime,oauthToken);
+    else throw fail('Scope database is not configured',409);
+    this.mcpSearchCache?.clear();
+    return {scopeid,uid,pr_number:prNumber,updated_at:requestedTime,updated:true};
   }
   async mcpSearch(scopeid,query,limit=10,oauthToken=''){
     validScope(scopeid);
@@ -653,6 +727,12 @@ async function handleMcpAuthority(request,env,url,origin){
     const scopeid=validScope(parts[1]);
     if(!await allowed(scopeid,'write'))throw fail('Scope sync denied',403);
     return json(await scoped(scopeid).mcpSave(scopeid,await mcpJsonBody(request),
+      (request.headers.get('authorization')||'').replace(/^Bearer /,'')),200,origin);
+  }
+  if(parts[0]==='update-pr'&&parts.length===2&&request.method==='POST'){
+    const scopeid=validScope(parts[1]);
+    if(!await allowed(scopeid,'write'))throw fail('Scope update denied',403);
+    return json(await scoped(scopeid).mcpUpdatePr(scopeid,await mcpJsonBody(request),
       (request.headers.get('authorization')||'').replace(/^Bearer /,'')),200,origin);
   }
   if(parts[0]==='search'&&parts.length===2&&request.method==='POST'){
