@@ -1,3 +1,4 @@
+import {canManageLoc,locManageRows} from './loc-authorization.mjs';
 import {sql} from 'npm:kysely@0.29.8';
 
 const ID=/^[a-z][a-z0-9_]*$/i;
@@ -36,12 +37,6 @@ function withFilters(query,filters){
   }
   return query;
 }
-async function canManage(trx,type,scope=''){
-  const response=type==='global'
-    ?await sql`select coalesce((select allowed from silver.manage('global')),false) as allowed`.execute(trx)
-    :await sql`select coalesce((select allowed from silver.manage(${type},${scope})),false) as allowed`.execute(trx);
-  return response.rows[0]?.allowed===true;
-}
 function scopeFromTable(table){
   for(const suffix of SCOPED_SUFFIXES){
     if(table.endsWith(suffix))return table.slice(0,-suffix.length);
@@ -50,13 +45,13 @@ function scopeFromTable(table){
 }
 async function authorizeRelation(trx,table,operation,values,filters,rows){
   if(table==='manage'||table==='loc'){
-    if(!await canManage(trx,'global'))reject('Global management permission required',403);
+    if(!await canManageLoc(trx,'global'))reject('Global management permission required',403);
     return;
   }
   if(table==='loc_blocks'){
-    const global=await canManage(trx,'global');
+    const global=await canManageLoc(trx,'global');
     if(global)return;
-    if(!await canManage(trx,'group','loc'))reject('LOC Group management permission required',403);
+    if(!await canManageLoc(trx,'group','loc'))reject('LOC Group management permission required',403);
     if(operation==='insert'){
       if(rows.some(row=>row.page_name!=='index'))reject('Group may insert homepage blocks only',403);
     }else if(operation==='update'||operation==='delete'){
@@ -70,13 +65,13 @@ async function authorizeRelation(trx,table,operation,values,filters,rows){
     return;
   }
   const scope=scopeFromTable(table);
-  if(!/^[a-z][a-z0-9]{0,14}$/.test(scope)||!await canManage(trx,'scope',scope))
+  if(!/^[a-z][a-z0-9]{0,14}$/.test(scope)||!await canManageLoc(trx,'scope',scope))
     reject('Scope management permission required',403);
   // Verify the dynamic registry mapping before escalating to the trusted
   // server connection. Caller input can never pick an arbitrary table.
-  const registry=await sql`select id,manage_role,galaxy_table,anchor_table
-    from silver.manage where id=${scope} limit 1`.execute(trx);
-  const record=registry.rows[0];
+  const record=await trx.selectFrom('silver.manage')
+    .select(['id','manage_role','galaxy_table','anchor_table'])
+    .where('id','=',scope).executeTakeFirst();
   if(!record||record.manage_role!=='scope')reject('Scope is not registered',403);
   const galaxy=String(record.galaxy_table||'galaxy');
   const anchor=String(record.anchor_table||'anchor');
@@ -219,7 +214,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
   }[name];
   if(Object.keys(args).some(key=>!keys.includes(key)))reject('Unexpected Kysely action argument');
   if(name==='read_scope_registry_admin'){
-    if(!await canManage(trx,'global'))reject('Global administrator required',403);
+    if(!await canManageLoc(trx,'global'))reject('Global administrator required',403);
     await sql`reset role`.execute(trx);
     const rows=await trx.selectFrom('silver.manage')
       .select(['id','display_name','email','manage_role','domain','directory',
@@ -235,10 +230,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     const id=type==='self'?null:args.p_id??null;
     if(['group','scope'].includes(type)&&!/^[a-z][a-z0-9]{0,14}$/.test(String(id||'')))
       reject('Invalid management Scope');
-    // Do not migrate permission semantics yet. Existing manage(type,id)
-    // remains the security authority, executed through Kysely SQL only.
-    const result=await sql`select * from silver.manage(${type},${id})`.execute(trx);
-    return {data:result.rows,count:null};
+    return {data:await locManageRows(trx,type,id),count:null};
   }
   if(name==='merge_scope_trace_place_names')return {data:await mergeScopePoints(trx,args),count:null};
   if(name==='import_shared_keyword_class')return {data:await importSharedKeywordClass(trx,args),count:null};
@@ -260,7 +252,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
   }
   if(name==='read_group_members'){
     const group=validScope(args.p_group_id);
-    if(!await canManage(trx,'group',group))reject('Group management permission required',403);
+    if(!await canManageLoc(trx,'group',group))reject('Group management permission required',403);
     await sql`reset role`.execute(trx);
     const rows=await trx.selectFrom('silver.manage')
       .select(['id','display_name','parent_scope_id','active','sort_order'])
@@ -273,7 +265,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     const member=validScope(args.p_member_id);
     const title=String(args.p_display_name||'').trim();
     if(!title||title.length>120)reject('Group member name must contain 1–120 characters');
-    if(!await canManage(trx,'group',group))reject('Group management permission required',403);
+    if(!await canManageLoc(trx,'group',group))reject('Group management permission required',403);
     await sql`reset role`.execute(trx);
     const parent=await trx.selectFrom('silver.manage').select('id')
       .where('id','=',member).where('parent_scope_id','=',group)
@@ -297,7 +289,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
       names.some(n=>typeof n!=='string'||n.trim().length<1||n.trim().length>80)||
       new Set(names.map(n=>n.trim().toLowerCase())).size!==names.length)
       reject('Invalid Group article classifications');
-    if(!await canManage(trx,'group',group))reject('Group management permission required',403);
+    if(!await canManageLoc(trx,'group',group))reject('Group management permission required',403);
     await sql`reset role`.execute(trx);
     const exists=await trx.selectFrom('silver.loc').select('id')
       .where('id','=',group).forUpdate().executeTakeFirst();
@@ -315,8 +307,8 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
   if(!page||page.length>80||![-1,1].includes(direction))
     reject('Invalid block move');
   const authorized=scope==='loc'
-    ?(await canManage(trx,'global')||(page==='index'&&await canManage(trx,'group','loc')))
-    :await canManage(trx,'scope',scope);
+    ?(await canManageLoc(trx,'global')||(page==='index'&&await canManageLoc(trx,'group','loc')))
+    :await canManageLoc(trx,'scope',scope);
   if(!authorized)reject('Block management permission required',403);
   await sql`reset role`.execute(trx);
   const relation='silver.'+scope+'_blocks';
@@ -342,7 +334,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
 
 async function scopedWrite(trx,input){
   const scope=validScope(input);
-  if(!await canManage(trx,'scope',scope))reject('Scope write permission required',403);
+  if(!await canManageLoc(trx,'scope',scope))reject('Scope write permission required',403);
   const registry=await trx.selectFrom('silver.manage').select(['id','manage_role','active'])
     .where('id','=',scope).executeTakeFirst();
   if(!registry||registry.manage_role!=='scope'||registry.active!==true)
@@ -458,7 +450,7 @@ function catalogObject(value){
   return value&&typeof value==='object'&&!Array.isArray(value);
 }
 async function managedLocSettings(trx,args,claims){
-  if(!await canManage(trx,'global'))reject('Global administrator required',403);
+  if(!await canManageLoc(trx,'global'))reject('Global administrator required',403);
   const section=String(args.p_section||'');
   const operation=String(args.p_operation||'read');
   const key=String(args.p_key??'').trim();
