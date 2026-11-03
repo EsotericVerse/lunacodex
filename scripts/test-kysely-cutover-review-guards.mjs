@@ -44,3 +44,25 @@ test('Search, editing and MCP sync reference eight separate Galaxy booleans',()=
   assert.match(draft,/const features=\['statics','culture','search','trace','list','keyword','extract','others'\]/);
   assert.match(gateway,/const flags=\["statics","culture","search","trace","list","keyword","extract","others"\]/);
 });
+
+test('Kysely 0.29.8 is synchronized across package lock and all Edge imports',()=>{
+  const manifest=JSON.parse(source('package.json'));
+  const lock=JSON.parse(source('package-lock.json'));
+  assert.equal(manifest.dependencies.kysely,'0.29.8');
+  assert.equal(lock.packages[''].dependencies.kysely,'0.29.8');
+  assert.equal(lock.packages['node_modules/kysely'].version,'0.29.8');
+  assert.match(lock.packages['node_modules/kysely'].resolved,/\/kysely-0\.29\.8\.tgz$/);
+  for(const path of [
+    'app/loc/providers/kysely-runtime.mjs',
+    'app/loc/providers/kysely-anchor.mjs',
+    'app/loc/providers/kysely-analytics.mjs',
+    'app/loc/providers/kysely-management.mjs',
+    'app/loc/providers/kysely-public.mjs',
+    'app/loc/providers/kysely-scope-admin.mjs',
+    'supabase/functions/loc-kysely/index.ts',
+    'supabase/functions/loc-kysely/drivers.ts'
+  ]){
+    assert.match(source(path),/npm:kysely@0\.29\.8/,path);
+    assert.doesNotMatch(source(path),/npm:kysely@0\.29\.6/,path);
+  }
+});
