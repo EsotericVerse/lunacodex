@@ -430,6 +430,47 @@ export async function executePortableKyselyAnalytics(db,body,{engine,namespace='
     }
     return {data:{earliest,scopes,rows},count:null};
   }
+  if(mode==='shared_classes'||mode==='keyword_catalog'){
+    // The external SQL installation has Galaxy and Anchor, not the
+    // historical scope configuration/RPC tables. Private classifications
+    // must remain private until the verified owner authorizes them.
+    const owner=role==='authenticated'&&await canManageLoc(db,'scope',scope);
+    if(!owner)return {data:mode==='shared_classes'?[]:{},count:null};
+    const table=portableRelation(scope+'_anchor',engine,namespace);
+    const parse=row=>({...row,attr:typeof row.attr==='string'
+      ?JSON.parse(row.attr):row.attr||{}});
+    const classes=(await db.selectFrom(table)
+      .select(['uid','type','title','description','attr'])
+      .where('type','=','class').orderBy('uid','asc').execute()).map(parse);
+    if(mode==='shared_classes')return {data:classes.map(row=>({
+      scopeId:scope,classUid:row.uid,name:row.title,category:row.uid
+    })),count:null};
+    const uid=String(options.classUid||classes[0]?.uid||'');
+    if(!UID.test(uid))return {data:{},count:null};
+    const root=classes.find(row=>row.uid===uid);
+    if(!root)return {data:{class_uid:uid,rows:[]},count:null};
+    const references=row=>{
+      const values=row?.attr?.uid??row?.attr?.groups??row?.attr?.items;
+      return Array.isArray(values)?values.filter(value=>UID.test(String(value))):[];
+    };
+    const groupsIds=references(root);
+    const groups=groupsIds.length?(await db.selectFrom(table)
+      .select(['uid','type','title','description','attr'])
+      .where('type','=','group').where('uid','in',groupsIds).execute()).map(parse):[];
+    const byGroup=new Map(groups.map(row=>[row.uid,row]));
+    const ordered=groupsIds.map(uid=>byGroup.get(uid)).filter(Boolean);
+    const itemIds=[...new Set(ordered.flatMap(references))];
+    const items=itemIds.length?(await db.selectFrom(table)
+      .select(['uid','type','title','description','attr'])
+      .where('type','=','item').where('uid','in',itemIds).execute()).map(parse):[];
+    const byItem=new Map(items.map(row=>[row.uid,row]));
+    const view=row=>({uid:row.uid,type:row.type,name:row.title,
+      desc:row.type==='item'?'':row.description,
+      lists:row.type==='item'?[]:references(row),uid_lists:[]});
+    return {data:{class_uid:uid,rows:[view(root),...ordered.map(view),
+      ...ordered.flatMap(group=>references(group).map(uid=>byItem.get(uid))
+        .filter(Boolean).map(view))]},count:null};
+  }
   const galaxy=portableRelation(scope+'_galaxy',engine,namespace);
   const anchor=portableRelation(scope+'_anchor',engine,namespace);
   const grouped=async(flag,fields,opts={})=>{
