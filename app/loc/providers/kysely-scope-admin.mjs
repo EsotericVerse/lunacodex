@@ -1,3 +1,4 @@
+import {canManageLoc} from './loc-authorization.mjs';
 import {sql} from 'npm:kysely@0.29.8';
 
 const ID=/^[a-z][a-z0-9]{0,14}$/;
@@ -8,8 +9,7 @@ function fail(message,status=400){throw Object.assign(new Error(message),{httpSt
 function scope(value){const id=String(value??'').trim().toLowerCase();
   if(!ID.test(id))fail('Invalid Scope ID');return id;}
 async function allowedGlobal(trx){
-  const check=await sql`select coalesce((select allowed from silver.manage('global')),false) as allowed`.execute(trx);
-  if(check.rows[0]?.allowed!==true)fail('Global administrator permission required',403);
+  if(!await canManageLoc(trx,'global'))fail('Global administrator permission required',403);
 }
 function route(values,existing={}){
   const domain=String(values.domain??existing.domain??'').trim().toLowerCase();
