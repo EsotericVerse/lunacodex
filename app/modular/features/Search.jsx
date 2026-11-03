@@ -744,7 +744,9 @@ export default function Search({managementMode:legacyManagementRoute=false}){
         result.editableTable,
         result.editableIdColumn,
         result.editResourceId||result.resourceId,
-        result.resourceType==='galaxy'?GALAXY_EDITOR_COLUMNS:MEDIA_EDITOR_COLUMNS,
+        result.resourceType==='galaxy'
+          ?(result.scopeId==='local'?'uid,title,content,createtime,location,UpdateTime,url,source_id,target_id,ref_id,site,media_link,able':GALAXY_EDITOR_COLUMNS)
+          :MEDIA_EDITOR_COLUMNS,
         {authenticated:result.resourceType==='galaxy'}
       );
       if(!fullRow)throw new Error(UI_COPY.search.editNotFound);
