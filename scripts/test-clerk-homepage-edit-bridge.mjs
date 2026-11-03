@@ -139,8 +139,8 @@ test('managed MCP SQL sync is restricted to verified OAuth Scope writes',()=>{
 test('managed MCP sync accepts only an eight-flag private article without generated date',()=>{
   const edge=readFileSync(new URL('../supabase/functions/loc-kysely/index.ts',import.meta.url),'utf8');
   const worker=readFileSync(new URL('../workers/loc-authority/index.mjs',import.meta.url),'utf8');
-  assert.match(edge,/const expected=\["uid","title","content","site","site_id","able"/);
-  assert.match(worker,/able:\{statics:false,culture:false,search:false/);
+  assert.match(edge,/const flags=\["statics","culture","search","trace","list","keyword","others","extract"\]/);
+  assert.match(worker,/statics:false,culture:false,search:false/);
   assert.doesNotMatch(worker,/date:requestedTime\.slice/);
   assert.doesNotMatch(edge,/row\.statistics_able/);
 });
