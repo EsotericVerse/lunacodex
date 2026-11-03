@@ -183,7 +183,7 @@ const ACTIONS=new Set(['read_group_members','update_group_member_name',
   'update_group_default_article_class','is_current_email_blocklisted','move_scope_block',
   'preview_or_fill_galaxy_place','batch_fill_galaxy_location',
   'rename_scope_site_batch','save_scope_trace_place_names','loc_admin_settings',
-  'refresh_scope_search_summary']);
+  'refresh_scope_search_summary','merge_scope_trace_place_names','import_shared_keyword_class']);
 function validScope(value){
   const id=String(value||'').trim().toLowerCase();
   if(!/^[a-z][a-z0-9]{0,14}$/.test(id))reject('Invalid Scope ID');
@@ -210,9 +210,13 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     rename_scope_site_batch:['p_scope_id','p_before','p_after','p_batch_size'],
     save_scope_trace_place_names:['p_scope_id','p_uid','p_names'],
     loc_admin_settings:['p_section','p_operation','p_key','p_value'],
-    refresh_scope_search_summary:['p_scope_id']
+    refresh_scope_search_summary:['p_scope_id'],
+    merge_scope_trace_place_names:['p_scope_id','p_keep_uid','p_remove_uids'],
+    import_shared_keyword_class:['p_target_scope','p_source_scope','p_class_uid']
   }[name];
   if(Object.keys(args).some(key=>!keys.includes(key)))reject('Unexpected Kysely action argument');
+  if(name==='merge_scope_trace_place_names')return {data:await mergeScopePoints(trx,args),count:null};
+  if(name==='import_shared_keyword_class')return {data:await importSharedKeywordClass(trx,args),count:null};
   if(name==='refresh_scope_search_summary')return {data:await refreshScopeSearchSummary(trx,args),count:null};
   if(name==='loc_admin_settings')return {data:await managedLocSettings(trx,args,claims),count:null};
   if(name==='preview_or_fill_galaxy_place')return {data:await previewOrFillGalaxyPlace(trx,args),count:null};
@@ -578,4 +582,113 @@ async function refreshScopeSearchSummary(trx,args){
   if(Number(result?.numUpdatedRows||0)!==1)
     reject('Scope search summary was not saved');
   return {scope_id:scope,...snapshot};
+}
+
+async function mergeScopePoints(trx,args){
+  const keep=validUid(args.p_keep_uid),removed=args.p_remove_uids;
+  if(!Array.isArray(removed)||removed.length<1||removed.length>100||
+     removed.some(id=>!UID.test(String(id))||id===keep)||
+     new Set(removed).size!==removed.length)reject('Invalid Point merge UIDs');
+  const scope=await scopedWrite(trx,args.p_scope_id);
+  const anchor='silver.'+scope+'_anchor',galaxy='silver.'+scope+'_galaxy';
+  const points=await trx.selectFrom(anchor).select(['uid','title','attr'])
+    .where('type','=','point').where('uid','in',[keep,...removed]).forUpdate().execute();
+  if(points.length!==removed.length+1)reject('Missing or cross-Scope Points');
+  const ref=sql.ref(anchor);
+  const overlap=await sql`select exists(
+    select 1 from ${ref} a where a.type in ('path','trace')
+      and jsonb_typeof(a.attr->'point')='array'
+      and (a.attr->'point') ? ${keep}
+      and (a.attr->'point') ?| ${removed}::text[]
+    ) as conflict`.execute(trx);
+  if(overlap.rows[0]?.conflict===true)
+    reject('Route already contains kept and removed Points');
+  const aliases=[...new Set(points.flatMap(p=>{
+    const raw=p.attr?.location,stored=Array.isArray(raw)?raw:
+      typeof raw==='string'?[raw]:[];
+    return [p.title,...stored];
+  }).filter(t=>typeof t==='string'&&t.trim()).map(t=>t.trim()))].sort();
+  // Both route and article links must move before source points are deleted.
+  await sql`update ${ref} a set attr=jsonb_set(a.attr,'{point}',
+    (select coalesce(jsonb_agg(case when x.value=any(${removed}::text[])
+      then to_jsonb(${keep}::text) else to_jsonb(x.value) end
+      order by x.ord),'[]'::jsonb)
+      from jsonb_array_elements_text(a.attr->'point')
+      with ordinality x(value,ord)),true)
+    where a.type in ('path','trace') and jsonb_typeof(a.attr->'point')='array'
+      and (a.attr->'point') ?| ${removed}::text[]`.execute(trx);
+  const galaxyResult=await trx.updateTable(galaxy)
+    .set({place_id:keep}).where('place_id','in',removed).executeTakeFirst();
+  const keepResult=await trx.updateTable(anchor)
+    .set({attr:sql`jsonb_set(attr,'{location}',${JSON.stringify(aliases)}::jsonb,true)`})
+    .where('uid','=',keep).where('type','=','point').executeTakeFirst();
+  if(Number(keepResult?.numUpdatedRows||0)!==1)reject('Kept Point not updated');
+  const deleted=await trx.deleteFrom(anchor)
+    .where('type','=','point').where('uid','in',removed).executeTakeFirst();
+  const count=Number(deleted?.numDeletedRows||0);
+  if(count!==removed.length)reject('Point merge was not complete',409);
+  return count;
+}
+async function importSharedKeywordClass(trx,args){
+  const from=validScope(args.p_source_scope),to=validScope(args.p_target_scope);
+  const classUid=validUid(args.p_class_uid);
+  if(from===to)reject('Source and target Scopes must differ');
+  // Authorization on target is inherited from the established Clerk session.
+  await scopedWrite(trx,to);
+  const sourceRegistry=await trx.selectFrom('silver.manage')
+    .select('id').where('id','=',from).where('manage_role','=','scope')
+    .where('active','=',true).executeTakeFirst();
+  if(!sourceRegistry)reject('Source Scope unavailable');
+  const sourceConfig=await trx.selectFrom('silver.'+from).select('keyword_meta')
+    .where('id','=',from).executeTakeFirst();
+  if(sourceConfig?.keyword_meta?.class_shares?.[classUid]!==true)
+    reject('Source Keyword Class is not public',403);
+  const source='silver.'+from+'_anchor',target='silver.'+to+'_anchor';
+  const root=await trx.selectFrom(source)
+    .select(['uid','title','description','invisible','attr'])
+    .where('uid','=',classUid).where('type','=','class').executeTakeFirst();
+  if(!root)reject('Source Class not found');
+  await sql`select pg_advisory_xact_lock(hashtext(${to}),17148)`.execute(trx);
+  const nextUid=async()=>{
+    const r=await sql`select silver.new_keyword_tree_uid(${to}) as uid`.execute(trx);
+    const id=String(r.rows[0]?.uid||'');
+    if(!UID.test(id))reject('Keyword UID allocation failed');
+    return id;
+  };
+  const readChild=async(uid,type)=>{
+    const row=await trx.selectFrom(source)
+      .select(['uid','title','description','invisible','attr'])
+      .where('uid','=',uid).where('type','=',type).executeTakeFirst();
+    if(!row)reject('Source Keyword '+type+' reference not found');
+    return row;
+  };
+  const links=node=>Array.isArray(node?.attr?.uid)?node.attr.uid:[];
+  const groupIds=[];
+  let items=0;
+  for(const groupId of links(root)){
+    if(!UID.test(String(groupId)))reject('Invalid source Group UID');
+    const group=await readChild(groupId,'group');
+    const mapped=[];
+    for(const itemId of links(group)){
+      if(!UID.test(String(itemId)))reject('Invalid source Item UID');
+      const item=await readChild(itemId,'item');
+      const uid=await nextUid();
+      const terms=Array.isArray(item.attr?.keyword)?item.attr.keyword:[];
+      await trx.insertInto(target).values({uid,type:'item',title:item.title,
+        description:item.description,invisible:item.invisible,
+        attr:{keyword:terms,total:0,uidlists:[]}}).executeTakeFirst();
+      mapped.push(uid);items++;
+    }
+    const uid=await nextUid();
+    await trx.insertInto(target).values({uid,type:'group',title:group.title,
+      description:group.description,invisible:group.invisible,
+      attr:{uid:mapped,total:0,uidlists:[]}}).executeTakeFirst();
+    groupIds.push(uid);
+  }
+  const newClass=await nextUid();
+  await trx.insertInto(target).values({uid:newClass,type:'class',title:root.title,
+    description:root.description,invisible:root.invisible,
+    attr:{uid:groupIds}}).executeTakeFirst();
+  return {scopeid:to,uid:newClass,source_scopeid:from,
+    source_uid:classUid,group_count:groupIds.length,item_count:items};
 }
