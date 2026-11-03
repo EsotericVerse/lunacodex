@@ -65,3 +65,20 @@ test('Culture, Keywords, Trace and ISR share one parameterized statistics RPC',(
   assert.ok(!trace.includes("rpc('read_trace_place_density'"));
   assert.ok(!trace.includes("rpc('read_trace_keyword_group_totals'"));
 });
+
+test('owner-only Point and Item suggestions use one Scope type/attr entry',()=>{
+  const code=readFileSync(new URL('../app/loc/providers/kysely-runtime.mjs',import.meta.url),'utf8');
+  const keywords=readFileSync(new URL('../app/loc/keyword-discovery-cache.mjs',import.meta.url),'utf8');
+  const points=readFileSync(new URL('../app/loc/PlaceBatchFill.jsx',import.meta.url),'utf8');
+  const sql=readFileSync(new URL('../supabase/migrations/20261103173000_scope_suggestions_consolidation.sql',import.meta.url),'utf8');
+  assert.match(keywords,/p_type:'item',p_attr:\{op:'suggestions'\}/);
+  assert.match(points,/p_type:'point',p_attr:\{op:'suggestions',limit:60\}/);
+  assert.doesNotMatch(keywords,/rpc\('read_scope_keyword_suggestions'/);
+  assert.doesNotMatch(points,/rpc\('trace_place_suggestions'/);
+  assert.doesNotMatch(code,/'silver.read_music_style_tree':\[\]/);
+  assert.match(sql,/IF v_op='suggestions' THEN/);
+  assert.match(sql,/IF NOT v_owner THEN/);
+  assert.match(sql,/request.jwt.claim.sub/);
+  assert.match(sql,/DROP FUNCTION silver.read_scope_keyword_suggestions\(text\) RESTRICT/);
+  assert.match(sql,/DROP FUNCTION silver.trace_place_suggestions\(text,integer\) RESTRICT/);
+});
