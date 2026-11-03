@@ -59,7 +59,7 @@ function ScopeSourceCorrectionEditor({scopeId}){
     let changed=0;
     try{
       for(let batch=0;batch<1000;batch++){
-        const {data,error}=await dbAuthClient.schema('silver').rpc('rename_scope_site_batch',{
+        const {data,error}=await dbAuthClient.schema('silver').managedAction('rename_scope_site_batch',{
           p_scope_id:scopeId,p_before:before.trim(),p_after:canonicalAfter,p_batch_size:1000
         });
         if(error)throw new Error(error.message);
