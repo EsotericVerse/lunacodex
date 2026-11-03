@@ -154,14 +154,23 @@ async function saveDatabaseTarget(input:Record<string,unknown>,role:string,claim
   const provider=String(input.provider||"custom");
   const alias=String(input.connection_alias||targetId.replaceAll("-","_"));
   const target=selectedDatabaseTarget([{provider,engine,connection_alias:alias,connection_mode:String(input.connection_mode||"direct"),selected:true}]);
-  const location=normalizeDatabaseLocation(provider,input.project_url);
+  const connectionUrl=String(input.connection_url||'').trim();
+  const inferredHost=connectionUrl?new URL(connectionUrl).host:'';
+  const location=normalizeDatabaseLocation(provider,input.project_url||inferredHost);
   const region=String(input.region||"").trim();
   if(region.length>64||!/^([a-z0-9-]+)?$/.test(region))throw Object.assign(new Error("Invalid Region"),{httpStatus:400});
   const label=String(input.label||targetId).trim();
   if(!label||label.length>160)throw Object.assign(new Error("Invalid target label"),{httpStatus:400});
-  const password=typeof input.password==="string"?input.password:"";
-  if(input.activate===true)throw Object.assign(new Error("Database routing is managed in the repository config, not in SQL"),{httpStatus:409});
-  const profile=password?makeConnectionProfile({...target,...input,project_url:location.link},password):null;
+  const token=typeof input.control_token==='string'?input.control_token:
+    typeof input.password==='string'?input.password:'';
+  const profile=token?makeConnectionProfile({...target,...input,project_url:location.link},token):null;
+  if(input.activate===true&&!profile)
+    throw Object.assign(new Error("A database URL and control token are required to connect"),{httpStatus:400});
+  if(profile){
+    // Probe the selected driver before accepting it as the running LOC database.
+    const candidate=await databaseForTarget(target,{profileLookup:async()=>profile});
+    await candidate.introspection.getTables();
+  }
   const control=await checkAdminRole(claims);
   if(!profile)await profileForTarget({...target,project_url:location.link});
   const record={
@@ -179,9 +188,13 @@ async function saveDatabaseTarget(input:Record<string,unknown>,role:string,claim
       item.target_id===targetId?{...item,...record}:item):
       [...current.database,{...record,target_id:targetId,selected:false,
         backup_selected:false,routing_mode:"single"}];
+    if(input.activate===true){
+      for(const item of next)item.selected=item.target_id===targetId;
+    }
     await trx.updateTable("silver.loc").set({database:sql`${JSON.stringify(next)}::jsonb`})
       .where("id","=","loc").execute();
-    return {target_id:targetId,provider,engine,selected:targetId===routing.primaryId};
+    return {target_id:targetId,provider,engine,selected:input.activate===true||
+      targetId===routing.primaryId};
   });
 }
 
@@ -492,9 +505,11 @@ Deno.serve(async (request) => {
         mode:routing.mode
       }});
     }
-    if(body.kind==="rpc"&&body.schema==="silver"&&body.name==="save_database_target"){
-      if(!body.args||typeof body.args!=="object"||Array.isArray(body.args)||Object.keys(body.args).some(key=>key!=="p_target"))
-        return json({error:{message:"Invalid target settings"}},400);
+    // LOC management action, not a database RPC.
+    if(body.kind==="managed-action"&&body.name==="connect_database_target"){
+      if(!body.args||typeof body.args!=="object"||Array.isArray(body.args)||
+        Object.keys(body.args).some(key=>key!=="p_target"))
+        return json({error:{message:"Invalid connection settings"}},400);
       const result=await saveDatabaseTarget((body.args as Record<string,any>).p_target,role,claims);
       return json({data:result,count:null});
     }
