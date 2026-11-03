@@ -1,6 +1,6 @@
 import {sql} from 'npm:kysely@0.29.8';
 import {DB_QUERY_BATCH_SIZE} from '../query-batch-size.mjs';
-import {serializePortableJsonFields} from './sql-engine-ports.mjs';
+import {serializePortableJsonFields,portableRelation} from './sql-engine-ports.mjs';
 
 const identifier=/^[a-z][a-z0-9_]*$/i;
 const schemas=new Set(['silver','api']);
@@ -112,14 +112,35 @@ function applyOrFilters(query,groups){
   return query;
 }
 
-export function buildKyselySelectQuery(trx,input){
+const PRIVATE_SITES=['messenger','chatgpt','claude','gemini','msn','whatsapp',
+  'telegram','discord','line','wechat','teams','copilot','grok','perplexity','meta ai','meta-ai'];
+const PUBLIC_ANCHOR_TYPES=['date','period','era','point','path','trace','image','video','rune','suno'];
+function databaseTable(req,dialect,namespace){
+  return namespace===undefined?req.schema+'.'+req.table:
+    portableRelation(req.table,dialect,namespace);
+}
+function publishedOnly(query,table,enabled){
+  if(!enabled)return query;
+  if(table.endsWith('_galaxy'))
+    return query.where('search','=',true)
+      .where(eb=>eb.or([eb('site','is',null),
+        eb(eb.fn('lower',['site']),'not in',PRIVATE_SITES)]));
+  if(table.endsWith('_anchor'))
+    return query.where('invisible','=',false)
+      .where('type','in',PUBLIC_ANCHOR_TYPES);
+  throw new Error('Unpublished external relation');
+}
+export function buildKyselySelectQuery(trx,input,{dialect='postgres',namespace,publicOnly=false}={}){
   const req=validateQuery(input);
   if(req.operation!=='select')throw new Error('Unsupported operation for SELECT builder');
-  const table=`${req.schema}.${req.table}`;
-  let query=applyOrFilters(applyFilters(trx.selectFrom(table).select(req.columns),req.filters),req.orFilters);
+  const table=databaseTable(req,dialect,namespace);
+  let query=publishedOnly(applyOrFilters(applyFilters(
+    trx.selectFrom(table).select(req.columns),req.filters),req.orFilters),req.table,publicOnly);
   for(const order of req.orders)query=query.orderBy(order.column,order.ascending===false?'desc':'asc');
   query=query.limit(req.limit).offset(req.offset);
-  const countQuery=req.count?applyOrFilters(applyFilters(trx.selectFrom(table).select(trx.fn.countAll().as('count')),req.filters),req.orFilters):null;
+  const countQuery=req.count?publishedOnly(applyOrFilters(applyFilters(
+    trx.selectFrom(table).select(trx.fn.countAll().as('count')),req.filters),req.orFilters),
+      req.table,publicOnly):null;
   return {request:req,query:req.head?null:query,countQuery};
 }
 
@@ -128,10 +149,10 @@ function sameKeys(rows){
   return rows.every(row=>Object.keys(row).sort().join('\0')===keys);
 }
 
-export function buildKyselyUpsertQuery(trx,req,dialect='postgres'){
+export function buildKyselyUpsertQuery(trx,req,dialect='postgres',namespace){
   const rows=Array.isArray(req.values)?req.values:[req.values];
   if(!sameKeys(rows))throw new Error('Upsert rows must have the same columns');
-  const table=`${req.schema}.${req.table}`;
+  const table=databaseTable(req,dialect,namespace);
   const updateColumns=Object.keys(rows[0]||{}).filter(col=>!req.onConflict.includes(col));
   if(dialect==='mysql'){
     const duplicateUpdates=req.ignoreDuplicates||!updateColumns.length
@@ -174,14 +195,14 @@ function applyMutationReturning(query,req,dialect){
   return query.returning(req.columns);
 }
 
-export function buildKyselyMutationQuery(trx,input,{dialect='postgres'}={}){
+export function buildKyselyMutationQuery(trx,input,{dialect='postgres',namespace}={}){
   const validated=validateQuery(input);
   const req={...validated,values:serializePortableJsonFields(validated.values,dialect)};
-  const fullTable=`${req.schema}.${req.table}`;
+  const fullTable=databaseTable(req,dialect,namespace);
   if(!['insert','update','delete','upsert'].includes(req.operation))throw new Error('Unsupported mutation');
   let query;
   if(req.operation==='insert')query=trx.insertInto(fullTable).values(req.values);
-  if(req.operation==='upsert')query=buildKyselyUpsertQuery(trx,req,dialect);
+  if(req.operation==='upsert')query=buildKyselyUpsertQuery(trx,req,dialect,namespace);
   if(req.operation==='update')query=trx.updateTable(fullTable).set(req.values);
   if(req.operation==='delete')query=trx.deleteFrom(fullTable);
   query=applyOrFilters(applyFilters(query,req.filters),req.orFilters);
@@ -199,7 +220,7 @@ async function mysqlPrimaryKeyColumns(trx,req){
   const result=await sql`
     select COLUMN_NAME as column_name
     from information_schema.KEY_COLUMN_USAGE
-    where TABLE_SCHEMA = ${req.schema}
+    where TABLE_SCHEMA = database()
       and TABLE_NAME = ${req.table}
       and CONSTRAINT_NAME = 'PRIMARY'
     order by ORDINAL_POSITION
@@ -209,8 +230,8 @@ async function mysqlPrimaryKeyColumns(trx,req){
   return columns;
 }
 
-async function executeMysqlReturningMutation(trx,req,query){
-  const fullTable=`${req.schema}.${req.table}`;
+async function executeMysqlReturningMutation(trx,req,query,namespace){
+  const fullTable=databaseTable(req,'mysql',namespace);
   if(req.operation==='delete'){
     const before=await applyOrFilters(applyFilters(trx.selectFrom(fullTable).select(req.columns),req.filters),req.orFilters).execute();
     await query.execute();
@@ -243,15 +264,15 @@ async function executeMysqlReturningMutation(trx,req,query){
   return whereKeys(trx.selectFrom(fullTable).select(req.columns),keyColumns,keys).execute();
 }
 
-export async function executeKyselyQuery(trx,input,{dialect='postgres'}={}){
+export async function executeKyselyQuery(trx,input,{dialect='postgres',namespace,publicOnly=false}={}){
   const req=validateQuery(input);let data=null,count=null;
   if(req.operation==='select'){
-    const built=buildKyselySelectQuery(trx,input);
+    const built=buildKyselySelectQuery(trx,input,{dialect,namespace,publicOnly});
     if(built.countQuery){const row=await built.countQuery.executeTakeFirstOrThrow();count=Number(row.count)}
     if(built.query)data=await built.query.execute();
   }else{
-    const built=buildKyselyMutationQuery(trx,input,{dialect});
-    if(dialect==='mysql'&&req.returning)data=await executeMysqlReturningMutation(trx,built.request,built.query);
+    const built=buildKyselyMutationQuery(trx,input,{dialect,namespace});
+    if(dialect==='mysql'&&req.returning)data=await executeMysqlReturningMutation(trx,built.request,built.query,namespace);
     else {
       const result=await built.query.execute();
       if(req.returning)data=result;
