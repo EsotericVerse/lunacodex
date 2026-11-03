@@ -542,6 +542,22 @@ Deno.serve(async (request) => {
        (body.name==="set_database_target"||body.name==="set_database_routing"))
       return json({error:{message:"Database routing is set in app/loc/providers/routing-config.mjs and requires deployment"}},409);
 
+    // LOC registry, user settings and public presentation are control-plane
+    // actions. A user-managed SQL target only needs its own data tables.
+    const controlPublic=new Set(["read_app_bootstrap","read_scope_page_copy"]);
+    const controlManage=new Set(["manage","read_group_members",
+      "update_group_member_name","update_group_default_article_class",
+      "loc_admin_settings","is_current_email_blocklisted",
+      "read_scope_registry_admin","manage_scope_registry",
+      "provision_scope","delete_scope"]);
+    if(requestedTarget==="configured"&&(
+      body.kind==="public-action"&&controlPublic.has(String(body.name))||
+      body.kind==="managed-action"&&controlManage.has(String(body.name)))){
+      const control=await databaseForTarget(controlTarget);
+      const result=await control.transaction().execute(trx=>
+        executeRequest(trx,controlTarget,role,claims,body));
+      return json(result);
+    }
     let target=controlTarget as Record<string,any>;
     if(requestedTarget==="configured")
       target=await liveConfiguredTarget() as Record<string,any>;
