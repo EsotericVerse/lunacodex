@@ -8,51 +8,6 @@ function checkedFilterColumn(value){
   return checkedIdentifier(value,'filter column');
 }
 
-// Existing application RPCs only. Keep SQL identifiers fixed and bind all values.
-export const RPC_ALLOWLIST={
-  'silver.management_write':['p_table','p_operation','p_rows','p_values','p_filters'],
-  'silver.read_scope_analytics':['p_scope_id','p_view','p_start','p_end','p_options'],
-  // Management is authorized through the unified silver.manage(type,id) RPC.
-  // Public Search reads only the persisted summary; it cannot call this RPC.
-  'silver.refresh_scope_search_summary':['p_scope_id'],
-  'silver.manage':['p_type','p_id'],
-  'silver.loc_admin_settings':['p_section','p_operation','p_key','p_value'],
-  // These existing scope procedures perform database-side permission checks,
-  // atomic multi-row writes, or bounded indexed lookups. Do not recreate
-  // transactions as multiple browser requests.
-  'silver.import_shared_keyword_class':['p_target_scope','p_source_scope','p_class_uid'],
-  'silver.merge_scope_trace_place_names':['p_scope_id','p_keep_uid','p_remove_uids'],
-  'silver.save_scope_trace_place_names':['p_scope_id','p_uid','p_names'],
-  'silver.scope_type_attr':['p_scope_id','p_type','p_attr'],
-  'silver.scope_group':['p_group_id','p_type'],
-  'silver.search_scope_trace_place_names':['p_scope_id','p_term','p_limit'],
-  'silver.is_current_email_blocklisted':[],
-  'silver.move_scope_block':['p_scope_id','p_page_name','p_uid','p_direction'],
-  'silver.delete_scope':['p_scope_id'],
-  'silver.provision_scope':['p_scope_id','p_display_name','p_email','p_birthday','p_domain','p_directory','p_parent_scope_id','p_theme','p_copy_keywords'],
-  'silver.manage_scope_registry':['p_operation','p_scope_id','p_values'],
-  'silver.log_search_keyword':['p_scope_id','p_query_text'],
-  'silver.read_scope_page_copy':['p_scope_id'],
-};
-const RPC_REQUIRED_ARGUMENTS={
-  'silver.management_write':['p_table','p_operation'],
-  'silver.read_scope_analytics':['p_scope_id','p_view'],
-  'silver.refresh_scope_search_summary':['p_scope_id'],
-  'silver.loc_admin_settings':['p_section'],
-  'silver.import_shared_keyword_class':['p_target_scope','p_source_scope','p_class_uid'],
-  'silver.save_scope_trace_place_names':['p_scope_id','p_uid','p_names'],
-  'silver.scope_type_attr':['p_scope_id','p_type','p_attr'],
-  'silver.scope_group':['p_group_id','p_type'],
-  'silver.manage':['p_type'],
-  'silver.search_scope_trace_place_names':['p_scope_id','p_term'],
-  'silver.move_scope_block':['p_scope_id','p_page_name','p_uid','p_direction'],
-  'silver.delete_scope':['p_scope_id'],
-  'silver.provision_scope':['p_scope_id','p_display_name','p_email'],
-  'silver.manage_scope_registry':['p_operation','p_scope_id'],
-  'silver.log_search_keyword':['p_scope_id','p_query_text'],
-  'silver.read_scope_page_copy':['p_scope_id'],
-};
-
 function checkedIdentifier(value,label){
   if(typeof value!=='string'||!identifier.test(value))throw new Error('Invalid '+label);
   return value;
@@ -295,41 +250,6 @@ export async function executeKyselyQuery(trx,input,{dialect='postgres'}={}){
   return {data,count};
 }
 
-export function buildAllowlistedRpcQuery(input){
-  if(!input||input.kind!=='rpc')throw new Error('Invalid request kind');
-  const schema=checkedIdentifier(input.schema,'RPC schema');const name=checkedIdentifier(input.name,'RPC name');
-  const key=`${schema}.${name}`;const names=RPC_ALLOWLIST[key];if(!names)throw new Error('RPC is not enabled');
-  const args=input.args&&typeof input.args==='object'&&!Array.isArray(input.args)?input.args:{};
-  if(Object.keys(args).some(arg=>!names.includes(arg)))throw new Error('Unexpected RPC argument');
-  if((RPC_REQUIRED_ARGUMENTS[key]||[]).some(arg=>!Object.hasOwn(args,arg)))throw new Error('Missing required RPC argument');
-  const supplied=names.filter(name=>Object.hasOwn(args,name));const id=sql.id(schema,name);
-  // management_write accepts JSONB payloads. pg encodes native JS arrays
-  // as PostgreSQL array literals, which are invalid JSONB (SQLSTATE 22P02).
-  // Serialize only these declared JSONB arguments; other RPCs can legitimately
-  // accept PostgreSQL arrays. Keep null as SQL NULL, not JSONB 'null'.
-  // A JS array is a PostgreSQL array by default. These existing procedures
-  // accept JSONB arrays, whereas name lists and place UID lists are SQL arrays.
-  const jsonbArgsByRpc={
-    'silver.management_write':new Set(['p_rows','p_values','p_filters']),
-    'silver.loc_admin_settings':new Set(['p_value']),
-    'silver.read_scope_analytics':new Set(['p_options']),
-    'silver.scope_type_attr':new Set(['p_attr']),
-  };
-  const jsonbArgs=jsonbArgsByRpc[key];
-  const params=supplied.map(name=>{
-    const value=args[name];
-    const parameter=jsonbArgs?.has(name)
-      ?sql`${sql.val(value==null?null:JSON.stringify(value))}::jsonb`
-      :sql.val(value);
-    return sql`${sql.id(name)} => ${parameter}`;
-  });
-  const returnsRows=key==='silver.read_scope_page_copy'||key==='silver.manage';
-  return {query:returnsRows?sql`select * from ${id}(${sql.join(params)})`:sql`select ${id}(${sql.join(params)}) as result`,returnsRows};
-}
-
-export async function executeAllowlistedRpc(trx,input){
-  const {query,returnsRows}=buildAllowlistedRpcQuery(input);const result=await query.execute(trx);
-  return {data:returnsRows?result.rows:result.rows[0]?.result??null,count:null};
-}
-
+// SQL operations have no stored-procedure dispatch. All calls now use
+// Kysely query, Anchor, Analytics or vetted management action executors.
 export function isKyselyClientError(error){return error instanceof Error&&['Invalid','Unsupported','Unfiltered','Write','Update','Unexpected','RPC','Schema','Too many','Malformed','Filters','OR filters','Neon theme','MySQL returning','Missing'].some(prefix=>error.message.startsWith(prefix))}
