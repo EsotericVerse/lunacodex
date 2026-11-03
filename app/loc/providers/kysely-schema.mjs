@@ -14,7 +14,8 @@ export async function ensurePortableScopeSchema(db,{engine,namespace='',scopeId}
     throw new Error('Invalid portable LOC Scope or SQL engine');
   const scope=scopeId;
   const meta=await db.introspection.getTables();
-  const existing=new Set(meta.filter(row=>!row.schema||row.schema===namespace)
+  const existing=new Set(meta.filter(row=>
+    engine==='mysql'||!row.schema||row.schema===namespace)
     .map(row=>row.name));
   const textType=engine==='mssql'?sql.raw('nvarchar(max)'):'text';
   const jsonType=engine==='postgres'?'jsonb':engine==='mysql'?'json':sql.raw('nvarchar(max)');
