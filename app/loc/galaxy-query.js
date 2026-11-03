@@ -293,7 +293,7 @@ async function relatedArticleTitlesFor(scope,row,{includeHidden=false}={}){
     const {rows=[]}=await selectRows(scope.galaxy,{
       columns:'uid,title',
       filters:[{column:'uid',operator:'in',value:batch},
-        ...(!includeHidden?[{column:'able->>list',operator:'eq',value:'true'}]:[])],
+        ...(!includeHidden?[{column:'list',operator:'eq',value:'true'}]:[])],
       orFilter:'',
       limit:batch.length,
       authenticated:includeHidden
@@ -468,14 +468,14 @@ export async function selectGalaxyIdentity(scope,uid,{includeHidden=false}={}){
   const local=current.id==='local';
   const {rows:articleRows}=await selectRows(current.galaxy,{
     columns:local
-      ?'uid,title,createtime,content,site,url,source_id,target_id,ref_id,media_link,location,able'
-      :'uid,title,date,createtime,content,site,url,source_id,target_id,ref_id,media_link,place_id,location,able',
+      ?'uid,title,createtime,content,site,url,source_id,target_id,ref_id,media_link,location,statics,culture,search,trace,list,keyword,others,extract'
+      :'uid,title,date,createtime,content,site,url,source_id,target_id,ref_id,media_link,place_id,location,statics,culture,search,trace,list,keyword,others,extract',
     filters:[{column:'uid',operator:'eq',value:id}],
     orFilter:'',
     limit:1,authenticated:includeHidden
   });
   const row=articleRows[0]||null;
-  if(!row||(!includeHidden&&row.able?.list===false))return null;
+  if(!row||(!includeHidden&&row.list===false))return null;
   const mediaIds=mediaIdsOf(row.media_link);
   const placeId=String(row.place_id||'').trim();
   const day=local?localArticleDate(row.createtime):articleDate(row.date);
@@ -638,7 +638,7 @@ function managementArticleProviders(scope,{contentType='',sourceFilter='',source
   ];
   const base={
     table:current.galaxy,source:current.id+' 文章',scope:current,idColumn:'uid',
-    columns:['uid','title','createtime','able'],dateColumn:dayColumn(current.galaxy),filters,sourceClause:sourceNameClause(selection),
+    columns:['uid','title','createtime','list','search','extract','statics','culture','trace','keyword','others'],dateColumn:dayColumn(current.galaxy),filters,sourceClause:sourceNameClause(selection),
     authenticated:true
   };
   if(placeOnly)return [makeProvider({
@@ -669,11 +669,11 @@ function genericScopeProviders(scope,{mediaOnly=false,includeHiddenText=false,co
   const current=scopeOf(scope);
   const textFilters=includeHiddenText
     ?textKindFilters
-    :publicContentFilters([{column:'able->>search',operator:'eq',value:'true'},...textKindFilters]);
+    :publicContentFilters([{column:'search',operator:'eq',value:'true'},...textKindFilters]);
   // Article content is a search predicate, not a list payload. Fetch it only
   // when the result is explicitly opened or edited.
   // Match with narrow, bounded UID-only pages; hydrate display fields later.
-  const textColumns=['uid','title','createtime','able'];
+  const textColumns=['uid','title','createtime','list','search','extract','statics','culture','trace','keyword','others'];
   // Existing LOC search provider, narrowed to Galaxy's check-in field only.
   // No article body is fetched by this search stage.
   if(placeOnly)return [makeProvider({
@@ -986,7 +986,7 @@ export async function selectFirstScopeStatisticsDate(scope){
   const current=scopeOf(scope);
   const text=await selectRows(current.galaxy,{
     columns:dayColumn(current.galaxy),
-    filters:publicContentFilters([{column:'able->>culture',operator:'eq',value:'true'}]),
+    filters:publicContentFilters([{column:'culture',operator:'eq',value:'true'}]),
     orders:[{column:dayColumn(current.galaxy),ascending:true,nullsFirst:false}],
     limit:1
   });
