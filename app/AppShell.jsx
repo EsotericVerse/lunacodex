@@ -505,7 +505,7 @@ function AppShellInner({children}){
     {id:'traceMap',icon:'trace',label:translateUiField(activeLocale,'痕跡圖管理'),
       href:editTabHref('trace/manage','section','traceMap')+'&edit=1'},
     {id:'suggestions',icon:'search',label:translateUiField(activeLocale,'文章管理'),
-      href:editTabHref('search/manage','section','search')+'&edit=1'}
+      href:editTabHref('search/manage','section','media')+'&edit=1'}
   ]:[
     {id:'time',icon:'culture',label:translateUiField(activeLocale,'時間定錨'),
       href:editScopeAvailable?editTabHref('culture/manage','edit','1'):''},

@@ -9,10 +9,6 @@ import {useEditDock} from '../modular/edit-dock';
 import {useAccount} from './use-account';
 import ManagementSectionNav,{useManagementSection} from '../modular/ManagementSectionNav';
 
-const ManagementSearchWorkspace=dynamic(
-  ()=>import('../modular/features/Search'),
-  {loading:()=> <p className="scope-status" role="status">載入管理搜尋…</p>}
-);
 const ScopeEditableBlocks=dynamic(()=>import('./ScopeEditableBlocks'),{loading:()=>null});
 const ManagementArticlePublisher=dynamic(()=>import('./ManagementArticlePublisher'),{loading:()=>null});
 const ManagementMediaWorkspace=dynamic(()=>import('./ManagementMediaWorkspace'),{loading:()=>null});
@@ -32,12 +28,13 @@ export const ARTICLE_CONTROL_SECTIONS=Object.freeze([
 // LOC's global management has its own permissions and existing destinations.
 // It must not gain an arbitrary Scope's article or classification editor.
 const LOC_OPTIONS=Object.freeze([
-  {value:'search',label:'管理搜尋',shortLabel:'管理搜尋'},
   {value:'media',label:'發表多媒體',shortLabel:'媒體'},
   {value:'trace',label:'治理原則',shortLabel:'治理原則'}
 ]);
 const SETTINGS_OPTION={value:'settings',label:'主題／資料庫',shortLabel:'設定'};
 const GROUP_OPTION={value:'groupAccess',label:'群組權限',shortLabel:'授權'};
+// LOC no longer has a separate management search. Keep old links functional.
+const OLD_LOC_SECTION_ALIASES=Object.freeze({search:'media'});
 const OLD_SCOPE_SECTION_ALIASES=Object.freeze({
   search:'publish',media:'publish',suggestions:'blocks',trace:'blocks',source:'import'
 });
@@ -54,13 +51,21 @@ export default function SearchManagement(){
     if(isLocAdmin||searchParams?.get('section')!=='others')return;
     window.location.replace('/local/settings/?section=features');
   },[isLocAdmin,searchParams]);
+  // Old /search/manage/?section=search URLs must not point at a removed tab.
+  // Update only the bookmark state, without reloading the authenticated editor.
+  useEffect(()=>{
+    if(!isLocAdmin||searchParams?.get('section')!=='search')return;
+    const url=new URL(window.location.href);
+    url.searchParams.set('section','media');
+    window.history.replaceState(window.history.state,'',url.pathname+url.search+url.hash);
+  },[isLocAdmin,searchParams]);
   const groupAuthorized=isLocAdmin||account.canManageGroupSync(scopeId);
   const options=isLocAdmin?[...LOC_OPTIONS,GROUP_OPTION]
     :groupAuthorized
       ?[...ARTICLE_CONTROL_SECTIONS,SETTINGS_OPTION,GROUP_OPTION]
       :[...ARTICLE_CONTROL_SECTIONS,SETTINGS_OPTION];
-  const [activeSection,setSection]=useManagementSection(options,isLocAdmin?'search':'publish',
-    isLocAdmin?{}:OLD_SCOPE_SECTION_ALIASES);
+  const [activeSection,setSection]=useManagementSection(options,isLocAdmin?'media':'publish',
+    isLocAdmin?OLD_LOC_SECTION_ALIASES:OLD_SCOPE_SECTION_ALIASES);
   // Clerk authorization can arrive after the section query is first read.
   // Restore a bookmarked Group Access tab once its permission is available.
   useEffect(()=>{
@@ -80,8 +85,6 @@ export default function SearchManagement(){
         }}/>
       <div id="management-search-panel" className="management-workspace-panel" role="region"
         aria-labelledby={'management-search-sections-option-'+currentSection.value}>
-        {activeSection==='search'?<ManagementSearchWorkspace managementMode/>:null}
-
         {!isLocAdmin&&activeSection==='publish'?<div className="article-control-stacked">
           <section aria-labelledby="article-control-article-heading">
             <h3 id="article-control-article-heading">發表／編輯文章</h3>
