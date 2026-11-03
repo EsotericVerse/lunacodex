@@ -334,12 +334,12 @@ Deno.serve(async (request) => {
       // legacy site/able payload. Never inherit Galaxy's all-true defaults.
       const incomingRow=body.row as Record<string,unknown>;
       const row=incomingRow&&typeof incomingRow==="object"&&!Array.isArray(incomingRow)
-        ? {...incomingRow,site:"mcp",able:{
+        ? {...incomingRow,site:"mcp",
             statics:false,culture:false,search:false,trace:false,
-            list:false,keywords:false,game:false,extract:false
-          }}
+            list:false,keyword:false,others:false,extract:false}
         :incomingRow;
-      const expected=["uid","title","content","site","site_id","able",
+      const expected=["uid","title","content","site","site_id",
+        "statics","culture","search","trace","list","keyword","others","extract",
         "createtime","UpdateTime"];
       if(!["lo3rwang","lrunes"].includes(scope)||!row||typeof row!=="object"||
         Array.isArray(row)||Object.keys(row).length!==expected.length||
@@ -349,9 +349,8 @@ Deno.serve(async (request) => {
         typeof row.content!=="string"||!row.content.trim()||
         row.content.length>125000||row.site!=="mcp"||
         typeof row.site_id!=="string"||row.site_id.length<3||
-        row.site_id.length>150||!row.able||typeof row.able!=="object"||
-        Object.keys(row.able as Record<string,unknown>).length!==8||
-        ["statics","culture","search","trace","list","keywords","game","extract"].some(k=>(row.able as Record<string,unknown>)[k]!==false)||
+        row.site_id.length>150||
+        ["statics","culture","search","trace","list","keyword","others","extract"].some(k=>row[k]!==false)||
         typeof row.createtime!=="string"||typeof row.UpdateTime!=="string"||
         typeof body.update_existing!=="boolean")
         return json({error:{message:"Invalid managed conversation payload"}},400);

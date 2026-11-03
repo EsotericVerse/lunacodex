@@ -60,7 +60,7 @@ export async function searchMemory(args={},env={},fetchImpl=globalThis.fetch){
   const rows=await galaxyRows({
     select:'uid,title,date,createtime',
     or:'(title.ilike.'+pattern+',content.ilike.'+pattern+')',
-    'able->>search':'eq.true',order:'date.desc.nullslast,createtime.desc.nullslast',
+    search:'eq.true',order:'date.desc.nullslast,createtime.desc.nullslast',
     limit,offset
   },scopeid,env,fetchImpl);
   return {scopeid,visibility:'public',query:term,limit,offset,
@@ -79,7 +79,7 @@ export async function readMemory(args={},env={},fetchImpl=globalThis.fetch){
     throw clientError('max_chars must be 1–40000');
   const rows=await galaxyRows({
     select:'uid,title,content,date,createtime,site,url',uid:'eq.'+uid,
-    'able->>list':'eq.true',limit:1
+    list:'eq.true',limit:1
   },scopeid,env,fetchImpl);
   if(!rows.length)return {found:false,scopeid,uid,visibility:'public'};
   const row=rows[0],content=String(row.content||'');

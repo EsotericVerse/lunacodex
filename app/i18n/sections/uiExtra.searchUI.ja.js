@@ -24,8 +24,8 @@ export default {
     "able_search": "公開検索",
     "able_trace": "痕跡表示",
     "able_list": "記事一覧",
-    "able_keywords": "キーワード統計",
-    "able_game": "ゲーム密度",
+    "able_keyword": "キーワード統計",
+    "able_others": "その他の機能",
     "able_extract": "検索抜粋",
     "type": "メディアの種類",
     "meta_tags": "メディアタグ"

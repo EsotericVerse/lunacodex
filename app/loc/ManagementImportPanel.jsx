@@ -156,7 +156,7 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t){
       :(()=>{
       const statistics=value('statistics_able')!==false&&String(value('statistics_able')).toLowerCase()!=='false'&&searchable&&!isPureUrlContent(content);
       return {statics:statistics,culture:statistics,search:searchable,trace:searchable&&statistics,
-        list:searchable,keywords:searchable&&statistics,game:true,extract:true};
+        list:searchable,keyword:searchable&&statistics,others:true,extract:true};
     })(),
     source_id:String(value('source_id')||'').trim()||null,
     target_id:normalizeRelationIds(value('target_id')),

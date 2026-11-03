@@ -1,4 +1,5 @@
 'use client';
+import {galaxyAble} from '../../loc/galaxy-able.mjs';
 import UiText from '../../i18n/UiText';
 import FieldText from '../../i18n/FieldText';
 
@@ -1164,7 +1165,7 @@ export default function Culture(){
       setAuthorizedWorkKey(key);
       if(!scopeData)throw new Error(l.sourceUnresolved);
       const {rows=[]}=await selectRows(scopeData.galaxy,{
-        columns:'uid,title,content,able',
+        columns:scopeId==='local'?'uid,title,content,able':'uid,title,content,statics,culture,search,trace,list,keyword,others,extract',
         filters:[{column:'uid',operator:'eq',value:uid}],
         limit:1
       });
@@ -1177,9 +1178,9 @@ export default function Culture(){
         bodyHtml:String(row.content||''),
         bodyBlocks:plainTextToBlocks(String(row.content||'')),
         editorKey:uid,
-        hidden:row.able?.list===false,
-        originalHidden:row.able?.list===false,
-        able:row.able||null
+        hidden:galaxyAble(row).list===false,
+        originalHidden:galaxyAble(row).list===false,
+        able:galaxyAble(row)
       });
     }catch(exception){
       setEditingWorkKey('');setAuthorizedWorkKey('');

@@ -21,6 +21,7 @@ import {createUid8} from './uid';
 import {normalizeRelationIds,requireGalaxyContent,resolveGalaxyTitle} from './content-policy';
 import {ObjectEditor} from './BlockNoteEditor';
 import {blocksToPlainText,plainTextToBlocks} from './blocknote-content.mjs';
+import {galaxyAble} from './galaxy-able.mjs';
 
 const datetimeLocal=value=>{
   if(!value)return '';
@@ -34,7 +35,7 @@ const recordDraft=row=>({
   editorKey:createUid8(),source:String(row.site||''),url:String(row.url||''),
   source_id:String(row.source_id||''),
   target_id:Array.isArray(row.target_id)?row.target_id.join(', '):String(row.target_id||''),
-  ref_id:String(row.ref_id||''),createtime:datetimeLocal(row.createtime),hidden:row.able?.list===false,able:row.able||null
+  ref_id:String(row.ref_id||''),createtime:datetimeLocal(row.createtime),hidden:galaxyAble(row).list===false,able:galaxyAble(row)
 });
 
 const blank=()=>({
@@ -100,7 +101,7 @@ export default function ManagementArticlePublisher({scopeId}){
       if(!galaxy)throw new Error(t('uiExtra.publisher.scopeUnavailable'));
       // Exact, authenticated UID lookup: no public-search index or searchable filter.
       const {rows}=await selectRows(galaxy,{
-        columns:'uid,title,content,site,createtime,able,url,source_id,target_id,ref_id',
+        columns:scopeId==='local'?'uid,title,content,site,createtime,able,url,source_id,target_id,ref_id':'uid,title,content,site,createtime,statics,culture,search,trace,list,keyword,others,extract,url,source_id,target_id,ref_id',
         filters:[{column:'uid',operator:'eq',value:uid}],limit:1,authenticated:true
       });
       if(!rows?.length)throw new Error(t('uiExtra.publisher.uidNotFound'));
@@ -130,7 +131,7 @@ export default function ManagementArticlePublisher({scopeId}){
         target_id:normalizeRelationIds(draft.target_id),
         ref_id:draft.ref_id.trim()||null,
         url:draft.url.trim()||null,
-        able:{statics:true,culture:true,search:!draft.hidden,trace:true,list:!draft.hidden,keywords:true,game:true,extract:true},
+        able:{statics:true,culture:true,search:!draft.hidden,trace:true,list:!draft.hidden,keyword:true,others:true,extract:true},
         createtime:draft.createtime?new Date(draft.createtime).toISOString():now,
         site:draft.source.trim()
       };

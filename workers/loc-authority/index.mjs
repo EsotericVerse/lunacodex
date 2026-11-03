@@ -504,11 +504,20 @@ export class LocAuthorityState extends DurableObject {
     // Idempotent upsert by the existing case-sensitive UID; no table scans.
     const row={uid,title:input.title,content:input.content,
       site:'mcp',site_id:conversation_id,
-      able:{statics:false,culture:false,search:false,trace:false,list:false,keywords:false,game:false,extract:false},
+      statics:false,culture:false,search:false,trace:false,list:false,keyword:false,others:false,extract:false,
       createtime:validTimestamp(input.created_at||requestedTime),
       UpdateTime:requestedTime};
-    if(profile)await postgrest(profile,{body:row,params:{on_conflict:'uid'}});
-    else await managedMcpInsert(scopeid,row,Boolean(status.uid),oauthToken);
+    if(profile){
+      // Externally hosted Scopes own their schema; preserve the original
+      // eight-key representation unless that Scope explicitly migrates.
+      const legacy={...row,able:{
+        statics:false,culture:false,search:false,trace:false,list:false,
+        keywords:false,game:false,extract:false
+      }};
+      for(const key of ['statics','culture','search','trace','list','keyword','others','extract'])
+        delete legacy[key];
+      await postgrest(profile,{body:legacy,params:{on_conflict:'uid'}});
+    }else await managedMcpInsert(scopeid,row,Boolean(status.uid),oauthToken);
     const saved_at=new Date().toISOString();
     this.mcpSearchCache?.clear();
     await this.ctx.storage.put(checkpointKey,{updated_at:requestedTime,saved_at,uid});
@@ -656,7 +665,7 @@ export class LocAuthorityState extends DurableObject {
       if(!['lo3rwang','lrunes'].includes(scopeid))return [];
       const url=new URL('https://qlouywsdiiyiyzpoxyqy.supabase.co/rest/v1/'+scopeid+'_galaxy');
       for(const [key,val] of Object.entries({select:'uid,title,date,createtime',
-        'able->>search':'eq.true',or:'(title.ilike.'+likePattern(query)+',content.ilike.'+likePattern(query)+')',
+        search:'eq.true',or:'(title.ilike.'+likePattern(query)+',content.ilike.'+likePattern(query)+')',
         order:'date.desc.nullslast',limit}))url.searchParams.set(key,String(val));
       const res=await fetch(url.href,{headers:{apikey:'sb_publishable_qPn0vAzozVyXKllRuEKf2Q_fvG-pLVV',
         'accept-profile':'silver'},signal:AbortSignal.timeout(8500),redirect:'manual'});

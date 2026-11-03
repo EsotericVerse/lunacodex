@@ -55,12 +55,12 @@ const MEDIA_EDITOR_COLUMNS='uid,location,type,title,url,meta_tags,createtime';
 const MEDIA_ATTR_ORDER=['uid','location','type','url','meta_tags','createtime'];
 const MEDIA_ATTR_FIELDS=MEDIA_ATTR_ORDER.map(key=>({key,readOnly:key==='uid',kind:key==='createtime'?'date':'text'}));
 
-const GALAXY_EDITOR_COLUMNS='uid,title,content,createtime,location,place_id,UpdateTime,url,source_id,target_id,ref_id,site,media_link,able';
+const GALAXY_EDITOR_COLUMNS='uid,title,content,createtime,location,place_id,UpdateTime,url,source_id,target_id,ref_id,site,media_link,statics,culture,search,trace,list,keyword,others,extract';
 
 const GALAXY_ATTR_ORDER=Object.freeze([
   'uid','title','content','createtime','location','place_id',
   'UpdateTime','url','source_id','target_id','ref_id','site',
-  'media_link',...['statics','culture','search','trace','list','keywords','game','extract'].map(k=>'able_'+k)
+  'media_link',...['statics','culture','search','trace','list','keyword','others','extract'].map(k=>'able_'+k)
 ]);
 const GALAXY_ATTR_FIELDS=Object.freeze(GALAXY_ATTR_ORDER.map(key=>({
   key,
@@ -180,12 +180,12 @@ async function loadPageSearchExcerpts(rows,query,scopeById,{authenticated=false,
     if(!scope?.galaxy)continue;
     try{
       const {rows:articles=[]}=await selectRows(scope.galaxy,{
-        columns:'uid,content,able',
+        columns:scopeId==='local'?'uid,content,able':'uid,content,search,extract',
         filters:[{column:'uid',operator:'in',value:[...ids]}],
         limit:ids.size,authenticated,signal
       });
       for(const article of articles){
-        if(article?.able?.search===false||article?.able?.extract===false)continue;
+        if(galaxyAble(article).search===false||galaxyAble(article).extract===false)continue;
         const excerpt=extractSearchContext(article.content,query,10);
         if(excerpt)snippets.set(scopeId+':'+article.uid,excerpt);
       }
@@ -744,7 +744,9 @@ export default function Search({managementMode:legacyManagementRoute=false}){
         result.editableTable,
         result.editableIdColumn,
         result.editResourceId||result.resourceId,
-        result.resourceType==='galaxy'?GALAXY_EDITOR_COLUMNS:MEDIA_EDITOR_COLUMNS,
+        result.resourceType==='galaxy'
+          ?(result.scopeId==='local'?'uid,title,content,createtime,location,UpdateTime,url,source_id,target_id,ref_id,site,media_link,able':GALAXY_EDITOR_COLUMNS)
+          :MEDIA_EDITOR_COLUMNS,
         {authenticated:result.resourceType==='galaxy'}
       );
       if(!fullRow)throw new Error(UI_COPY.search.editNotFound);
