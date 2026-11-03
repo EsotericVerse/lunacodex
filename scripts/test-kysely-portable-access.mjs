@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {authorizeCrossEngineQuery,assertCrossEnginePublicRead} from '../app/loc/providers/sql-engine-ports.mjs';
+import {authorizeCrossEngineQuery,assertCrossEnginePublicRead,executeCrossEngineManagedWrite} from '../app/loc/providers/sql-engine-ports.mjs';
 
 const identity={role:'authenticated',
   claims:{sub:'user_AbC123',provider:'clerk',email:'owner@example.test'}};
@@ -61,4 +61,26 @@ test('signed root administration can update all LOC Scope relations',async()=>{
 test('cross-engine ACL has no RPC or raw SQL bypass',async()=>{
   await assert.rejects(authorizeCrossEngineQuery(registry([]),{
     kind:'rpc',schema:'silver',name:'management_write'},identity),/Unsupported cross-engine/);
+});
+
+test('portable managed inserts are 50-row Kysely batches; Scope ACL still applies',async()=>{
+  const sizes=[];
+  const db={
+    selectFrom:()=>({select:()=>({where:()=>({execute:async()=>[
+      {id:'lo3rwang',email:'owner@example.test',manage_role:'scope',active:true}
+    ]})})}),
+    insertInto:()=>({values(rows){return {executeTakeFirst:async()=>{
+      sizes.push(rows.length);
+      return {numInsertedOrUpdatedRows:BigInt(rows.length)};
+    }};}})
+  };
+  const rows=Array.from({length:120},(_,i)=>({uid:String(i).padStart(8,'0'),title:'row'}));
+  const result=await executeCrossEngineManagedWrite(db,{
+    payload:{p_table:'silver.lo3rwang_galaxy',p_operation:'insert',p_rows:rows}
+  },identity);
+  assert.deepEqual(sizes,[50,50,20]);
+  assert.equal(result.data.count,120);
+  await assert.rejects(executeCrossEngineManagedWrite(db,{
+    payload:{p_table:'silver.lrunes_galaxy',p_operation:'insert',p_rows:rows.slice(0,1)}
+  },identity),/permission denied/);
 });
