@@ -33,28 +33,6 @@ jobs:
         run: npm run audit:security
       - name: Game regression tests
         run: npm run test:game
-      # Retain broad historical regression evidence. These unrelated
-      # assertions are diagnostic, not blockers for the GitHub Pages export.
-      # The actual release gates below still fail the job on build/route errors.
-      - name: Bootstrap performance and Admin regression diagnostics
-        id: bootstrap_diagnostics
-        continue-on-error: true
-        shell: bash
-        run: npm run test:bootstrap 2>&1 | tee /tmp/bootstrap-test.log
-      - name: Report Bootstrap diagnostics without hiding failures
-        if: steps.bootstrap_diagnostics.outcome == 'failure'
-        shell: bash
-        run: |
-          echo "::warning title=Bootstrap regressions::Historical Bootstrap/Admin assertions failed. The GitHub Pages export still has to pass its own build and route checks."
-          {
-            echo '## Bootstrap / Admin diagnostics (non-blocking)'
-            echo 'The full suite was executed but some assertions failed. This is **not** a passing test result.'
-            echo 'The separate security, syntax, game, static-export and artifact checks remain mandatory.'
-            echo '```text'
-            grep -E '^# (tests|pass|fail) ' /tmp/bootstrap-test.log || true
-            grep '^not ok ' /tmp/bootstrap-test.log | head -n 30 || true
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
       - name: Build Next static export for GitHub Pages
         # shell: bash enables pipefail; without it `| tee` hides a failed build.
         shell: bash
