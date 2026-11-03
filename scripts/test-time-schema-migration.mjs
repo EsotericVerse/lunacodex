@@ -15,7 +15,7 @@ test('unique four-character UIDs and backed-up old records',()=>{
  assert.equal(archive.length,7);
  assert.equal(rows.length,9,'original 6 active rows plus 2 boundary events plus 1 extra legacy segment');
  assert.equal(new Set(rows.map(row=>row.uid)).size,9);
- assert.ok(rows.every(row=>/^[0-9A-F]{4}$/.test(row.uid)));
+ assert.ok(rows.every(row=>/^[A-Za-z0-9]{8}$/.test(row.uid)));
  assert.ok(rows.every(row=>!('resource_id' in row)&&!('record_id' in row)));
 });
 test('old periods become traces collecting events with real one/two anchor arrays',()=>{
