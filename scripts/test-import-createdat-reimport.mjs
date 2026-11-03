@@ -378,10 +378,11 @@ test('two saved rows at one requested second are skipped, not inserted as new an
 test('only genuinely indistinguishable records are held for review without blocking others',()=>{
   const panel=readFileSync(new URL('../app/loc/ManagementImportPanel.jsx',import.meta.url),'utf8');
   const match=panel.indexOf('await matchExistingImportByCreatedAt(remaining,');
-  const exclude=panel.indexOf('const ambiguousGroups=existingByTime.ambiguous||[];');
+  const exclude=panel.indexOf('const ambiguousByTime=existingByTime.ambiguous||[];');
+  const groups=panel.indexOf('const ambiguousGroups=[...ambiguousById,...ambiguousByTime];');
   const unique=panel.indexOf('unique=unique.filter(record=>!ambiguousUids.has(String(record.uid)));');
-  const summary=panel.indexOf("ambiguousGroups.length?'；同一網站同一發文時間有多篇文章");
-  assert.ok(match>0&&match<exclude&&exclude<unique&&unique<summary);
+  const summary=panel.indexOf("ambiguousGroups.length?'；來源文章 ID 或發文時間對應多篇既有文章");
+  assert.ok(match>0&&match<exclude&&exclude<groups&&groups<unique&&unique<summary);
   assert.doesNotMatch(panel,/throw Error\('同一網站、同一發文時間有多篇文章/);
 });
 
@@ -395,7 +396,9 @@ test('all ID and time comparisons finish before writing any article',()=>{
   assert.equal(panel.split('await matchExistingImportBySiteId(').length-1,1);
   assert.equal(panel.split('await matchExistingImportByCreatedAt(').length-1,1);
   assert.equal(panel.split('readSiteSpan(').length-1,1);
-  assert.equal(panel.split('readRowsByUid(').length-1,0);
+  // A single extra read verifies a reported UID primary-key conflict before retrying.
+  assert.equal(panel.split('readRowsByUid(').length-1,1);
+  assert.match(panel,/verifyUidConflict:async uid=>\(await readRowsByUid\(\[uid\]\)\)/);
 });
 test('comparison reports progress after every time window, not only at the end',async()=>{
   const rows=Array.from({length:5},(_,i)=>({uid:'IN00000'+i,site:'Facebook',site_id:null,
