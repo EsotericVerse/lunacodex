@@ -37,8 +37,8 @@ export default function PlaceBatchFill({scopeId,anchors=[]}){
   const revision=useRef(0);
   const scope=useMemo(()=>defaultScopeData(scopeId),[scopeId]);
   const suggestions=useAsyncResource(['place-batch-suggestions',scopeId],async()=>{
-    const result=await dbAuthClient.schema('silver').rpc('trace_place_suggestions',{
-      p_scope_id:scopeId,p_limit:60
+    const result=await dbAuthClient.schema('silver').rpc('scope_type_attr',{
+      p_scope_id:scopeId,p_type:'point',p_attr:{op:'suggestions',limit:60}
     });
     return verified(result)||[];
   },{revalidateOnFocus:false,revalidateOnReconnect:false});
