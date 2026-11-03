@@ -96,3 +96,9 @@ Cloudflare Pages `loc` production 部署 commit `54844ebf19ce8d88b52c1c4534a76e4
 - 仍由搜尋／地點批次與來源修正頁使用的三項原子操作保留原先 Scope 管理權限、預覽防呆與批次寫入流程；只將 Supabase Auth 專用的 UUID 身分判斷改用既有 `api.current_user_id()`（取經簽章 JWT 的文字型 sub，Kysely PostgreSQL 交易會設定相同的 claims）。因此 Clerk 及其他 PostgreSQL 供應者不需為此建立 Supabase Auth 帳號。
 - 無程式、SQL、View、Trigger 相依的舊路由函式 `loc_public_routing_state` 已透過 `DROP ... RESTRICT` 退役，去掉資料庫中寫死的 Supabase 專案網址；連線位置與供應者核驗仍由可信任的 SQL Gateway 負責。
 - 這是 **PostgreSQL 提供者可攜**，不代表 MySQL／SQLite 自動支援 PostgreSQL RLS 或儲存函式；後者仍須實作等效授權適配層。沒有複製資料到 Neon，也沒有增加欄位、表、索引或 RPC。
+
+### 四表合一後的舊痕跡函式退役（2026-11-03）
+
+- 已確認 `trace_normalize_place_name`、`trace_prevent_identity_change`、`validate_scoped_trace_map` 沒有程式呼叫，且沒有 SQL、Trigger、View、RLS 或其他物件相依；其歷史實作仍使用已淘汰的 `trace_type`、`route_list`、`anchor_list` 和四字元 UID，不屬於統一 Anchor 的 `(scopeid,type,attr)` 架構。已用 `DROP FUNCTION ... RESTRICT` 退役，未重建任何相同功能的 RPC。
+- `domain_has_repeated_labels` 雖無前端呼叫，仍有正式資料庫約束依賴，因此**保留**；`manage_id_not_blocked` 是身份／Scope 管理相關檢查，不隨四表清理逕刪。
+- 本批只移除真正無相依的舊 SQL，不變動路線、痕跡與文章定錨資料，亦不更動 PostgreSQL／非 PostgreSQL 的授權與交易介面。
