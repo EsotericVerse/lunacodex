@@ -93,7 +93,7 @@ export async function authorizeCrossEngineQuery(db,request,{role='anon',claims={
   const match=table.match(PRIVATE_RELATION);
   const scope=match?.[1];
   const owner=scope&&SCOPE_ID.test(scope)&&permissions.some(row=>
-    row.id===scope&&row.active===true&&
+    row.id===scope&&(row.active===true||row.active===1)&&
     (row.manage_role==='scope'||row.manage_role==='group'));
   if(!owner||table==='manage'||table==='loc'){
     const error=new Error('LOC Scope permission denied for selected SQL target');
