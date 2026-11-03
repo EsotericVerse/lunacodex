@@ -1,5 +1,6 @@
 import {createClient} from '@supabase/supabase-js';
 import {createBackupPublicAdapter} from '../../loc/providers/neon-public.mjs';
+import {createKyselyEdgeClient} from '../../loc/providers/kysely-edge.mjs';
 
 const SUPABASE_URL=process.env.NEXT_PUBLIC_SUPABASE_URL||'https://qlouywsdiiyiyzpoxyqy.supabase.co';
 const SUPABASE_KEY=process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY||'sb_publishable_qPn0vAzozVyXKllRuEKf2Q_fvG-pLVV';
@@ -30,7 +31,13 @@ export function publicNumericSources({fetchImpl=globalThis.fetch}={}){
     global:{fetch:timedFetch},
     auth:{persistSession:false,autoRefreshToken:false}
   });
-  const candidates=[{id:'supabase',schema:()=>primary.schema('silver')}];
+  const gateway=createKyselyEdgeClient({url:SUPABASE_URL,publishableKey:SUPABASE_KEY,
+    target:'configured',role:'anon',fetch:timedFetch});
+  const candidates=[{id:'supabase',schema:()=>({
+    from:table=>primary.schema('silver').from(table),
+    analytics:args=>gateway.schema('silver').analytics(args),
+    publicAction:(name,args)=>gateway.schema('silver').publicAction(name,args)
+  })}];
   if(process.env.NEXT_PUBLIC_LOC_NEON_DATA_API_URL&&process.env.NEXT_PUBLIC_LOC_NEON_AUTH_URL){
     let neon=null;
     candidates.push({id:'neon',schema:()=>{
