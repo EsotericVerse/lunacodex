@@ -24,8 +24,8 @@ export default {
     "able_search": "公开搜索",
     "able_trace": "痕迹显示",
     "able_list": "文章列表",
-    "able_keywords": "关键词统计",
-    "able_game": "游戏密度",
+    "able_keyword": "关键词统计",
+    "able_others": "其他功能",
     "able_extract": "搜索摘录",
     "type": "媒体类型",
     "meta_tags": "媒体标签"
