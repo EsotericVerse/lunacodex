@@ -51,9 +51,9 @@ const ScopeEditableBlocks=dynamic(()=>import('../../loc/ScopeEditableBlocks'),{l
 const TraceBlocks=dynamic(()=>import('./TraceBlocks'),{loading:()=>null});
 
 
-const MEDIA_EDITOR_COLUMNS='uid,location,type,title,url,meta_tags,createtime';
-const MEDIA_ATTR_ORDER=['uid','location','type','url','meta_tags','createtime'];
-const MEDIA_ATTR_FIELDS=MEDIA_ATTR_ORDER.map(key=>({key,readOnly:key==='uid',kind:key==='createtime'?'date':'text'}));
+const MEDIA_EDITOR_COLUMNS='uid,type,title,url,meta_tags,date';
+const MEDIA_ATTR_ORDER=['uid','type','url','meta_tags','date'];
+const MEDIA_ATTR_FIELDS=MEDIA_ATTR_ORDER.map(key=>({key,readOnly:key==='uid',kind:key==='date'?'date':'text'}));
 
 const GALAXY_EDITOR_COLUMNS='uid,title,content,createtime,location,place_id,UpdateTime,url,source_id,target_id,ref_id,site,media_link,able';
 
