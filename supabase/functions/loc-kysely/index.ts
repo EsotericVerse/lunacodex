@@ -341,7 +341,7 @@ Deno.serve(async (request) => {
       const scope=String(body.scopeid||"");
       // A signed MCP conversation is private irrespective of supplied flags.
       const incomingRow=body.row as Record<string,unknown>;
-      const flags=["statics","culture","search","trace","list","keyword","others","extract"];
+      const flags=["statics","culture","search","trace","list","keyword","extract","others"];
       const base=["uid","title","content","site","site_id","createtime","UpdateTime"];
       const row=incomingRow&&typeof incomingRow==="object"&&!Array.isArray(incomingRow)
         ? Object.fromEntries([...base.map(key=>[key,key==="site"?"mcp":incomingRow[key]]),
@@ -357,7 +357,7 @@ Deno.serve(async (request) => {
         row.content.length>125000||row.site!=="mcp"||
         typeof row.site_id!=="string"||row.site_id.length<3||
         row.site_id.length>150||
-        !incomingRow||Object.keys(incomingRow).some(k=>![...expected,"able"].includes(k))||
+        !incomingRow||Object.keys(incomingRow).some(k=>!expected.includes(k))||
         flags.some(k=>row[k]!==false)||
         typeof row.createtime!=="string"||typeof row.UpdateTime!=="string"||
         typeof body.update_existing!=="boolean")
