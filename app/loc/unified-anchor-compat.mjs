@@ -449,7 +449,9 @@ class UnifiedQuery{
         }
         if(spec.kind==='media'&&hasOwn(this.values,'url')&&!this.values.url)
           delete merged.url;
-        if(hasOwn(mapped,'attr')||Object.keys(merged).length)
+        if(spec.kind==='media'&&hasOwn(this.values,'date')&&!this.values.date)
+          delete merged.date;
+        if(hasOwn(mapped,'attr')||hasOwn(this.values,'date')||Object.keys(merged).length)
           mapped.attr=compactAttr(read.data.type,merged);
         let q=this.schema.from(spec.table).update(mapped);
         const {physical}=this.build(q,false);
