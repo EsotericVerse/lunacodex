@@ -438,10 +438,11 @@ function IncrementalLoad({
 }
 
 export function ArticleSortSelect({value='desc',onChange,disabled=false}){
-  return <label className="scope-article-sort-control">
+  return <label className="scope-article-sort-control" style={{display:'inline-flex',alignItems:'center',gap:'.4rem',fontSize:'.875rem'}}>
     排序
-    <select className="scope-select" aria-label="文章列表排序" value={value} disabled={disabled}
-      onChange={event=>onChange(event.target.value)}>
+    <select aria-label="文章列表排序" value={value} disabled={disabled}
+      onChange={event=>onChange(event.target.value)}
+      style={{maxWidth:'100%',padding:'.25rem .45rem',fontSize:'inherit',borderRadius:'.4rem'}}>
       <option value="desc">最新優先</option>
       <option value="asc">最舊優先</option>
     </select>
