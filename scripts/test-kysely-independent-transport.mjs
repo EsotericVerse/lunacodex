@@ -48,6 +48,15 @@ test('Clerk managed writes use Kysely instead of the management SQL RPC',async()
   assert.equal(spy[0].init.headers.authorization,'Bearer trusted.jwt.token');
   assert.equal(spy[0].init.credentials,'omit');
 });
+test('Clerk actions route through the Kysely executor without database RPCs',async()=>{
+  const spy=[];
+  const client=createKyselyEdgeClient({gatewayUrl:'https://db-gateway.example/v1/sql',
+    role:'authenticated',getAccessToken:async()=> 'trusted.jwt.token',fetch:fakeFetch(spy)});
+  await client.schema('silver').managedAction('read_group_members',{p_group_id:'loc'});
+  assert.deepEqual(JSON.parse(spy[0].init.body),{kind:'managed-action',
+    name:'read_group_members',args:{p_group_id:'loc'},target:'configured'});
+  assert.equal(spy[0].init.headers.authorization,'Bearer trusted.jwt.token');
+});
 test('SQL Gateway never sends unauthenticated private requests',async()=>{
   const spy=[];
   const client=createKyselyEdgeClient({
