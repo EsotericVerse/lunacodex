@@ -7,7 +7,7 @@ import {normalizeDatabaseLocation} from "../../../app/loc/providers/database-lin
 import { executeKyselyQuery, isKyselyClientError } from "../../../app/loc/providers/kysely-runtime.mjs";
 import {executeManagedKyselyWrite,executeManagedKyselyAction} from "../../../app/loc/providers/kysely-management.mjs";
 import {executeKyselyAnchor,executePortableKyselyAnchor} from "../../../app/loc/providers/kysely-anchor.mjs";
-import {executeKyselyAnalytics} from "../../../app/loc/providers/kysely-analytics.mjs";
+import {executeKyselyAnalytics,executePortableKyselyAnalytics} from "../../../app/loc/providers/kysely-analytics.mjs";
 import {executeKyselyPublicAction} from "../../../app/loc/providers/kysely-public.mjs";
 import {executeKyselyScopeAdmin} from "../../../app/loc/providers/kysely-scope-admin.mjs";
 import { selectedDatabaseTarget } from "../../../app/loc/providers/selected-database-target.mjs";
@@ -228,6 +228,9 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
         engine:executionPort.engine,namespace:target.schema_name});
     }
     if(body.kind==="anchor")return await executePortableKyselyAnchor(trx,body,{
+      role,engine:executionPort.engine,namespace:target.schema_name
+    });
+    if(body.kind==="analytics")return await executePortableKyselyAnalytics(trx,body,{
       role,engine:executionPort.engine,namespace:target.schema_name
     });
     const access=await authorizeCrossEngineQuery(trx,body,{role,claims});
@@ -600,8 +603,9 @@ Deno.serve(async (request) => {
       if(role!=="authenticated"){
         const publicAnchor=body.kind==="anchor"&&
           (body.attr?.op===undefined||body.attr?.op==="read"||body.attr?.op==="catalog");
-        if(!publicAnchor)assertCrossEnginePublicRead(body);
-      }else if(!["query","managed-write","anchor"].includes(String(body.kind)))
+        const publicAnalytics=body.kind==="analytics";
+        if(!publicAnchor&&!publicAnalytics)assertCrossEnginePublicRead(body);
+      }else if(!["query","managed-write","anchor","analytics"].includes(String(body.kind)))
         return json({error:{message:"Unsupported SQL target action"}},403);
     }
     const db=isSupabaseControlTarget(target)
