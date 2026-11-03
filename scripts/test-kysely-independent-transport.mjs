@@ -57,6 +57,14 @@ test('Clerk actions route through the Kysely executor without database RPCs',asy
     name:'read_group_members',args:{p_group_id:'loc'},target:'configured'});
   assert.equal(spy[0].init.headers.authorization,'Bearer trusted.jwt.token');
 });
+test('Canonical Anchor requests use typed Kysely operations',async()=>{
+  const spy=[];
+  const client=createKyselyEdgeClient({gatewayUrl:'https://db-gateway.example/v1/sql',
+    role:'authenticated',getAccessToken:async()=> 'trusted.jwt.token',fetch:fakeFetch(spy)});
+  await client.schema('silver').anchor('lo3rwang','point',{op:'link',mode:'place_id',updates:[]});
+  assert.deepEqual(JSON.parse(spy[0].init.body),{kind:'anchor',scopeid:'lo3rwang',type:'point',
+    attr:{op:'link',mode:'place_id',updates:[]},target:'configured'});
+});
 test('SQL Gateway never sends unauthenticated private requests',async()=>{
   const spy=[];
   const client=createKyselyEdgeClient({
