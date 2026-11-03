@@ -1,4 +1,5 @@
 import test from 'node:test';
+import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import {bindLocAuthorization,canManageLoc,locManageRows} from '../app/loc/providers/loc-authorization.mjs';
 
@@ -56,4 +57,36 @@ test('Unverified or non-Clerk identity cannot acquire manager rights',async()=>{
   assert.equal(await canManageLoc(db,'global'),false);
   bindLocAuthorization(db,{role:'anon'});
   assert.equal(await canManageLoc(db,'scope','lrunes'),false);
+});
+
+
+test('portable Galaxy batch reads existing rows once, not once per article',async()=>{
+  const provider=fs.readFileSync('app/loc/providers/sql-engine-ports.mjs','utf8');
+  const execute=new Function('canManageLoc',
+    provider.replace(/^import .*$/gm,'').replace(/^export /gm,'')+
+    ';return executeCrossEngineManagedWrite;')(async()=>true);
+  const original=[
+    {uid:'ABCD1234',title:'old',content:'x',place_id:null,url:null,media_link:null},
+    {uid:'EFGH5678',title:'old',content:'y',place_id:null,url:null,media_link:null}
+  ];
+  let reads=0,writes=0;
+  const db={
+    selectFrom:()=>({
+      select(){return this},where(){return this},
+      async execute(){reads++;return original},
+      async executeTakeFirst(){reads++;return original[reads-1]||null}
+    }),
+    updateTable:()=>({
+      set(){return this},where(){return this},
+      async executeTakeFirst(){writes++;return {numUpdatedRows:1n}}
+    })
+  };
+  const result=await execute(db,{payload:{p_table:'silver.writer_galaxy',
+    p_operation:'update_batch',p_rows:[
+      {uid:'ABCD1234',title:'new1'},{uid:'EFGH5678',title:'new2'}
+    ]}},{role:'authenticated',claims:{provider:'clerk',sub:'user_123456',
+      email:'owner@example.org'},engine:'mysql',namespace:''});
+  assert.equal(result.data.count,2);
+  assert.equal(writes,2);
+  assert.equal(reads,1);
 });
