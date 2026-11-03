@@ -721,6 +721,8 @@ function toSqlValue(value){
 // -- PostgREST-like filter compiler (eq/neq/gt/gte/lt/lte/like/ilike/is/in/not) --
 function compileFilter(column,op,value){
   const col=quoteIdent(column);
+  if(['statics','culture','search','trace','list','keyword','others','extract'].includes(column)&&
+     (value==='true'||value==='false'))value=value==='true';
   switch(op){
     case 'eq':return value===null?{sql:col+' IS NULL',params:[]}:{sql:col+'=?',params:[toSqlValue(value)]};
     case 'neq':return value===null?{sql:col+' IS NOT NULL',params:[]}:{sql:col+'<>?',params:[toSqlValue(value)]};
