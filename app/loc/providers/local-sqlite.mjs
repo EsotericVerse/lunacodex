@@ -55,7 +55,14 @@ CREATE TABLE IF NOT EXISTS local_galaxy (
   content TEXT,
   createtime TEXT,
   location TEXT,
-  able TEXT NOT NULL DEFAULT '{"statics":true,"culture":true,"search":true,"trace":true,"list":true,"keywords":true,"game":true,"extract":true}',
+  statics INTEGER NOT NULL DEFAULT 1,
+  culture INTEGER NOT NULL DEFAULT 1,
+  search INTEGER NOT NULL DEFAULT 1,
+  trace INTEGER NOT NULL DEFAULT 1,
+  list INTEGER NOT NULL DEFAULT 1,
+  keyword INTEGER NOT NULL DEFAULT 1,
+  others INTEGER NOT NULL DEFAULT 1,
+  extract INTEGER NOT NULL DEFAULT 1,
   "UpdateTime" TEXT NOT NULL,
   url TEXT,
   source_id TEXT,
@@ -552,29 +559,29 @@ async function upgradeNativeLocalGalaxySiteId(conn){
     await conn.execute('ALTER TABLE local_galaxy ADD COLUMN site_id TEXT');
 }
 
-// Upgrade pre-able device databases in place, retaining their article data.
-// Old device schemas may keep unused legacy columns until SQLite can remove
-// them; all reads and writes use the same eight-key `able` field immediately.
-const LOCAL_GALAXY_DEFAULT_ABLE='{"statics":true,"culture":true,"search":true,"trace":true,"list":true,"keywords":true,"game":true,"extract":true}';
+// Preserve device-local Galaxy data while migrating JSONB feature flags to
+// independently queryable boolean columns (no new table or temp table).
+const LOCAL_GALAXY_COLUMNS=['statics','culture','search','trace','list','keyword','others','extract'];
 function localGalaxyAbleMigration(columns){
-  if(columns.some(column=>column.name==='able'))return [];
-  const searchable=columns.some(column=>column.name==='searchable')?'searchable':'1';
-  const statistics=columns.some(column=>column.name==='statistics_able')?'statistics_able':'1';
-  const boolean=expr=>"CASE WHEN ("+expr+")=0 THEN json('false') ELSE json('true') END";
-  const values=[
-    "'statics',"+boolean(statistics),"'culture',"+boolean(statistics),
-    "'search',"+boolean(searchable),"'trace',"+boolean(searchable+' AND '+statistics),
-    "'list',"+boolean(searchable),"'keywords',"+boolean(searchable+' AND '+statistics),
-    "'game',json('true')","'extract',json('true')"
-  ];
-  return [
-    "ALTER TABLE local_galaxy ADD COLUMN able TEXT NOT NULL DEFAULT '"+LOCAL_GALAXY_DEFAULT_ABLE+"'",
-    "UPDATE local_galaxy SET able=json_object("+values.join(',')+")"
-  ];
+  const existing=new Set(columns.map(column=>column.name));
+  const legacy=existing.has('able');
+  const searchable=existing.has('searchable')?'searchable':'1';
+  const statistics=existing.has('statistics_able')?'statistics_able':'1';
+  const defaults={statics:statistics,culture:statistics,search:searchable,
+    trace:searchable+' AND '+statistics,list:searchable,
+    keyword:searchable+' AND '+statistics,others:'1',extract:'1'};
+  const migrated=[];
+  for(const column of LOCAL_GALAXY_COLUMNS){
+    if(existing.has(column))continue;
+    migrated.push('ALTER TABLE local_galaxy ADD COLUMN '+column+' INTEGER NOT NULL DEFAULT 1');
+    const oldName=column==='keyword'?'keywords':column==='others'?'game':column;
+    const source=legacy?"CASE WHEN json_valid(able) THEN json_extract(able,'$."+oldName+"') END":'NULL';
+    migrated.push('UPDATE local_galaxy SET '+column+'=CASE WHEN COALESCE('+source+','+defaults[column]+')=0 THEN 0 ELSE 1 END');
+  }
+  return migrated;
 }
 function upgradeWebLocalGalaxyAble(db){
-  const columns=rowsOf(db,'PRAGMA table_info(local_galaxy)');
-  for(const sql of localGalaxyAbleMigration(columns))db.run(sql);
+  for(const sql of localGalaxyAbleMigration(rowsOf(db,'PRAGMA table_info(local_galaxy)')))db.run(sql);
 }
 async function upgradeNativeLocalGalaxyAble(conn){
   const columns=(await conn.query('PRAGMA table_info(local_galaxy)')).values||[];
@@ -713,8 +720,7 @@ function toSqlValue(value){
 
 // -- PostgREST-like filter compiler (eq/neq/gt/gte/lt/lte/like/ilike/is/in/not) --
 function compileFilter(column,op,value){
-  const match=String(column||'').match(/^able->>(statics|culture|search|trace|list|keywords|game|extract)$/);
-  const col=match?"(CASE json_extract(\"able\", '$."+match[1]+"') WHEN 1 THEN 'true' WHEN 0 THEN 'false' ELSE NULL END)":quoteIdent(column);
+  const col=quoteIdent(column);
   switch(op){
     case 'eq':return value===null?{sql:col+' IS NULL',params:[]}:{sql:col+'=?',params:[toSqlValue(value)]};
     case 'neq':return value===null?{sql:col+' IS NOT NULL',params:[]}:{sql:col+'<>?',params:[toSqlValue(value)]};
@@ -836,9 +842,9 @@ function queryBuilder(table){
 // JSON/boolean columns round-trip through TEXT/INTEGER in SQLite; decode the
 // handful of columns that are arrays/objects/booleans in the real Postgres
 // schema so callers see the same shapes they'd get from Supabase.
-const JSON_COLUMNS=new Set(['able','DefaultArticleClass','keyword_meta','search_aliases','block_entity','block_image',
+const JSON_COLUMNS=new Set(['DefaultArticleClass','keyword_meta','search_aliases','block_entity','block_image',
   'target_id','media_link','anchor_ids','range','lists','uid_lists','runeslist']);
-const BOOL_COLUMNS=new Set(['search_able','statistics_able','culture_able','keyword_class_share_enabled',
+const BOOL_COLUMNS=new Set(['statics','culture','search','trace','list','keyword','others','extract','search_able','statistics_able','culture_able','keyword_class_share_enabled',
   'searchable','class_enable']);
 function decodeRow(row){
   const out={...row};
@@ -919,7 +925,7 @@ async function readScopeStatisticsLocal({p_start,p_end,p_include_undated}) {
   if(p_start){where.push("date(createtime, '+8 hours')>=?");params.push(p_start);}
   if(p_end){where.push("date(createtime, '+8 hours')<=?");params.push(p_end);}
   if(!p_include_undated)where.push('createtime IS NOT NULL');
-  const articleWhere=["json_extract(able,'$.statics')=1",...where].join(' AND ');
+  const articleWhere=["statics=1",...where].join(' AND ');
   const text=await selectLocal(`SELECT date(createtime, '+8 hours') AS day,
     'source' AS kind, coalesce(site,'') AS category, count(*) AS item_count
     FROM local_galaxy WHERE ${articleWhere} GROUP BY day,category ORDER BY day`,params);
@@ -941,7 +947,7 @@ async function readScopeCategoryTotalsLocal({p_start,p_end}={}){
   const range=clauses.length?' AND '+clauses.join(' AND '):'';
   const articles=await selectLocal(`SELECT 'source' AS kind, trim(coalesce(site,'')) AS category,
     count(*) AS item_count FROM local_galaxy
-    WHERE json_extract(able,'$.culture')=1 AND content<>''${range} GROUP BY category`,params);
+    WHERE culture=1 AND content<>''${range} GROUP BY category`,params);
   return {data:articles.map(row=>({...row,item_count:Number(row.item_count)||0})),error:null};
 }
 async function readScopeEarliestLocal(){
@@ -1020,7 +1026,7 @@ async function readKeywordTreeSummaryLocal({p_class_uid=null,p_start=null,p_end=
       FROM groups g JOIN json_each(CASE WHEN json_type(g.uid_lists)='array' THEN g.uid_lists ELSE json_extract(g.uid_lists,'$.articles') END) hit
       JOIN local_galaxy article ON article.uid=hit.value
       JOIN settings s
-      WHERE json_extract(article.able,'$.keywords')=1
+      WHERE article.keyword=1
         AND (s.start_day IS NULL OR date(article.createtime,'+8 hours')>=s.start_day)
         AND (s.end_day IS NULL OR date(article.createtime,'+8 hours')<=s.end_day)
         AND (s.source IS NULL OR article.site=s.source)
