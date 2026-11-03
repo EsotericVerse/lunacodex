@@ -2,6 +2,7 @@
 // an article or media entry for editing (dynamic import in Search.jsx), so the
 // plain search page never ships this code.
 import {plainTextToBlocks} from '../../loc/blocknote-content.mjs';
+import {galaxyAble} from '../../loc/galaxy-able.mjs';
 
 function nullableText(value){
   const text=String(value??'').trim();
@@ -28,12 +29,13 @@ function isoOrNull(value,t){
   return date.toISOString();
 }
 function galaxyDraftFromRow(row={},fallbackTitle='',plainTextToBlocks){
+  const permissions=galaxyAble(row);
   const attrs={
     uid:String(row.uid||'').trim(),
     createtime:datetimeLocalValue(row.createtime),
     location:String(row.location||''),
     place_id:String(row.place_id||'').trim(),
-    ...Object.fromEntries(['statics','culture','search','trace','list','keyword','others','extract'].map(k=>['able_'+k,row.able?.[k]!==false])), 
+    ...Object.fromEntries(['statics','culture','search','trace','list','keyword','others','extract'].map(k=>['able_'+k,permissions[k]!==false])), 
     UpdateTime:String(row.UpdateTime||''),
     url:String(row.url||''),
     source_id:String(row.source_id||'').trim(),
@@ -50,7 +52,7 @@ function galaxyDraftFromRow(row={},fallbackTitle='',plainTextToBlocks){
     bodyHtml:body,
     bodyBlocks:plainTextToBlocks(body),
     editorKey:String(row.uid||''),
-    hidden:row.able?.list===false,
+    hidden:permissions.list===false,
     attrs,
     originalAttrs:{...attrs}
   };
