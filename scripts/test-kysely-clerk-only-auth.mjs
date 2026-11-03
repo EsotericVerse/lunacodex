@@ -27,3 +27,10 @@ test('non-Postgres SQL paths re-check LOC blacklist and Registry ownership',()=>
   assert.match(port,/db\.fn\('lower',\['email'\]\)/);
   assert.match(port,/LOC identity is blocked/);
 });
+
+test('public database requests use the configured Kysely primary, not pinned Supabase Data API',()=>{
+  const gateway=source('app/loc/providers/clerk-gateway.mjs');
+  assert.match(gateway,/publicClient:publicSql/);
+  assert.match(gateway,/configuredPublicClient:publicSql/);
+  assert.match(gateway,/realtimeClient:publicSdk/);
+});
