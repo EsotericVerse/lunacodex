@@ -1389,6 +1389,14 @@
   min-height:44px;max-width:calc(100% - 1.3rem);
   box-shadow:0 2px 12px rgba(0,0,0,.2);
 }
+.loc-trace-timeline-toggle{
+  position:absolute;bottom:.65rem;right:.65rem;z-index:5;
+  display:flex;align-items:center;gap:.4rem;
+  padding:.35rem .6rem;border-radius:999px;
+  background:rgba(20,14,38,.82);color:#ebfff8;font-size:.85rem;
+  box-shadow:0 2px 12px rgba(0,0,0,.2);cursor:pointer;user-select:none;
+}
+.loc-trace-timeline-toggle input{margin:0}
 .loc-trace-map-frame.is-mobile-expanded{height:min(88svh,980px)}
 @media(max-width:680px){
   .loc-trace-report-settings>label,

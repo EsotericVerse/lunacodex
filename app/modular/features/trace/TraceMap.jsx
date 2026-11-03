@@ -123,6 +123,7 @@ export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRout
   const [selected,setSelected]=useState('');
   const [expandedMap,setExpandedMap]=useState(false);
   const [status,setStatus]=useState('loading');
+  const [stemsVisible,setStemsVisible]=useState(false);
 
   // TraceMap itself is a client-only, lazily loaded feature chunk: MapLibre is
   // initialized exactly once per mount and cleaned up on navigation/unmount.
@@ -166,6 +167,10 @@ export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRout
   useEffect(()=>{
     mapRef.current?.setPlaceTimelines(placeDayRows||[]);
   },[placeDayRows]);
+
+  useEffect(()=>{
+    mapRef.current?.setStemsVisible(stemsVisible);
+  },[ready,stemsVisible]);
 
   useEffect(()=>{
     mapRef.current?.setAnchors(spatialData?.anchors||[]);
@@ -327,6 +332,11 @@ export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRout
       </button>:null}
       <div className={'loc-trace-map-frame'+(expandedMap?' is-mobile-expanded':'')} ref={containerRef}
         role="application" aria-label={selectingLocation?copy.map:'空間定錨點與已儲存痕跡圖地圖'}/>
+      {!selectingLocation&&placeDayRows?.length?<label className="loc-trace-timeline-toggle">
+        <input type="checkbox" checked={stemsVisible}
+          onChange={event=>setStemsVisible(event.target.checked)}/>
+        時間線
+      </label>:null}
       {publicTrace&&children?<div className="loc-trace-floating-content">{children}</div>:null}
       {publicTrace&&status!=='ready'?<p className="loc-trace-float-map-status" role="status">{copy.status[status]||copy.status.loading}</p>:null}
     </div>
