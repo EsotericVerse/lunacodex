@@ -13,75 +13,38 @@ test('six-column migration preserves Scope delete and music tree readers',()=>{
   assert.doesNotMatch(sql,/\bCASCADE\b\s*;/i);
 });
 
-test('portable Postgres/Kysely RPC allowlist follows the six-column cutover',()=>{
-  const code=readFileSync(new URL('../app/loc/providers/kysely-runtime.mjs',import.meta.url),'utf8');
-  assert.doesNotMatch(code,/'silver\.read_keyword_tree_catalog':\[/);
-  assert.doesNotMatch(code,/'silver\.read_keyword_tree_summary':\[/);
-  assert.doesNotMatch(code,/'silver\.read_trace_keyword_group_totals':\[/);
-  assert.doesNotMatch(code,/'silver\.read_music_style_tree':\[\]/);
-  const migration=readFileSync(new URL('../supabase/migrations/20261103173000_scope_suggestions_consolidation.sql',import.meta.url),'utf8');
-  assert.match(migration,/DROP FUNCTION silver\.read_music_style_tree\(\) RESTRICT/);
-  assert.match(migration,/DROP FUNCTION silver\.trace_place_suggestions\(text,integer\) RESTRICT/);
-  assert.match(migration,/DROP FUNCTION silver\.read_scope_keyword_suggestions\(text\) RESTRICT/);
-  assert.ok(code.includes("'silver.read_scope_analytics':['p_scope_id','p_view','p_start','p_end','p_options']"));
-  for(const name of [
-    'apply_keyword_classification','read_keyword_class_by_uid',
-    'read_keyword_uidlist_summary','read_keyword_item_catalog',
-    'copy_rune66_keyword_class'
-  ])assert.doesNotMatch(code,new RegExp("'silver\."+name+"'"));
-});
-
-test('unified Anchor operations expose only remaining domain transaction gateways',()=>{
-  const gateway=readFileSync(new URL('../app/loc/providers/kysely-runtime.mjs',import.meta.url),'utf8');
-  const expected={
-    import_shared_keyword_class:['p_target_scope','p_source_scope','p_class_uid'],
-    save_scope_trace_place_names:['p_scope_id','p_uid','p_names'],
-    merge_scope_trace_place_names:['p_scope_id','p_keep_uid','p_remove_uids'],
-    scope_type_attr:['p_scope_id','p_type','p_attr'],
-    search_scope_trace_place_names:['p_scope_id','p_term','p_limit']
-  };
-  for(const [name,args] of Object.entries(expected)){
-    assert.ok(gateway.includes("'silver."+name+"':["+args.map(a=>"'"+a+"'").join(',')+"]"),
-      'Missing active RPC gateway entry: '+name);
+test('Scope and Keywords cutover uses native Kysely services rather than SQL RPCs',()=>{
+  const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
+  const backend=read('supabase/functions/loc-kysely/index.ts');
+  const anchor=read('app/loc/providers/kysely-anchor.mjs');
+  const analytics=read('app/loc/providers/kysely-analytics.mjs');
+  const management=read('app/loc/providers/kysely-management.mjs');
+  const contract=read('app/loc/db-contract.mjs');
+  const trace=read('app/modular/features/trace/TracePlaceResults.jsx');
+  const keywords=read('app/loc/keyword-discovery-cache.mjs');
+  const points=read('app/loc/PlaceBatchFill.jsx');
+  assert.match(backend,/executeKyselyAnchor/);
+  assert.match(backend,/executeKyselyAnalytics/);
+  assert.match(backend,/executeManagedKyselyAction/);
+  assert.match(anchor,/executeKyselyAnchor/);
+  assert.match(analytics,/executeKyselyAnalytics/);
+  assert.match(management,/importSharedKeywordClass/);
+  assert.match(management,/mergeScopePoints/);
+  assert.match(keywords,/\.anchor\(scopeId,'item',\{op:'suggestions'\}\)/);
+  assert.match(points,/\.anchor\(scopeId,'point',\{op:'suggestions',limit:60\}\)/);
+  assert.ok(contract.includes("analytics({"));
+  assert.match(trace,/\.analytics\(/);
+  for(const legacy of ['read_scope_analytics','scope_type_attr','import_shared_keyword_class']){
+    assert.doesNotMatch(contract,new RegExp("\\.rpc\\('"+legacy+"'"));
   }
-  assert.doesNotMatch(gateway,/'silver\\.preview_timeline_place_page_json':/);
-  assert.doesNotMatch(gateway,/'silver\\.apply_scope_point_links':/);
-  assert.ok(gateway.includes("'silver.scope_type_attr':new Set(['p_attr'])"));
-  assert.ok(gateway.includes("jsonbArgs?.has(name)"));
-});
-
-test('Culture, Keywords, Trace and ISR share one parameterized statistics RPC',()=>{
-  const contract=readFileSync(new URL('../app/loc/db-contract.mjs',import.meta.url),'utf8');
-  const trace=readFileSync(new URL('../app/modular/features/trace/TracePlaceResults.jsx',import.meta.url),'utf8');
-  const isr=readFileSync(new URL('../app/api/loc/scopes/[scopeId]/numeric/[kind]/route.js',import.meta.url),'utf8');
-  const local=readFileSync(new URL('../app/loc/providers/local-sqlite.mjs',import.meta.url),'utf8');
-  assert.ok(contract.includes("rpc('read_scope_analytics'"));
-  assert.ok(trace.includes("rpc('read_scope_analytics'"));
-  assert.ok(isr.includes("name='read_scope_analytics'"));
-  assert.ok(local.includes("case 'read_scope_analytics'"));
-  for(const name of ['read_scope_category_totals','read_scope_statistics','read_scope_overview','read_scope_earliest','read_loc_statistics','read_keyword_tree_summary','read_keyword_tree_catalog'])
-    assert.ok(!contract.includes("rpc('"+name+"'"),'Old domain RPC still used: '+name);
-  assert.ok(!trace.includes("rpc('read_trace_place_density'"));
-  assert.ok(!trace.includes("rpc('read_trace_keyword_group_totals'"));
-});
-
-test('owner-only Point and Item suggestions use one Scope type/attr entry',()=>{
-  const code=readFileSync(new URL('../app/loc/providers/kysely-runtime.mjs',import.meta.url),'utf8');
-  const keywords=readFileSync(new URL('../app/loc/keyword-discovery-cache.mjs',import.meta.url),'utf8');
-  const points=readFileSync(new URL('../app/loc/PlaceBatchFill.jsx',import.meta.url),'utf8');
-  const sql=readFileSync(new URL('../supabase/migrations/20261103173000_scope_suggestions_consolidation.sql',import.meta.url),'utf8');
-  assert.match(keywords,/p_type:'item',p_attr:\{op:'suggestions'\}/);
-  assert.match(points,/p_type:'point',p_attr:\{op:'suggestions',limit:60\}/);
-  assert.doesNotMatch(keywords,/rpc\('read_scope_keyword_suggestions'/);
-  assert.doesNotMatch(points,/rpc\('trace_place_suggestions'/);
-  assert.doesNotMatch(code,/'silver.read_music_style_tree':\[\]/);
-  assert.match(sql,/IF v_op='suggestions' THEN/);
-  assert.match(sql,/IF NOT v_owner THEN/);
-  assert.match(sql,/request.jwt.claim.sub/);
+  const isr=read('app/api/loc/scopes/[scopeId]/numeric/[kind]/route.js');
+  const local=read('app/loc/providers/local-sqlite.mjs');
+  assert.match(isr,/name='read_scope_analytics'/);
+  assert.match(local,/case 'read_scope_analytics'/);
+  const sql=read('supabase/migrations/20261103173000_scope_suggestions_consolidation.sql');
   assert.match(sql,/DROP FUNCTION silver.read_scope_keyword_suggestions\(text\) RESTRICT/);
   assert.match(sql,/DROP FUNCTION silver.trace_place_suggestions\(text,integer\) RESTRICT/);
 });
-
 test('retired pre-Anchor Trace helpers cannot be reintroduced as independent RPCs',()=>{
   const migration=readFileSync(new URL('../supabase/migrations/20261103183000_retire_pre_anchor_trace_utilities.sql',import.meta.url),'utf8');
   for(const [name,signature] of [
