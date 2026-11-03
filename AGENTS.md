@@ -144,7 +144,7 @@ GitHub 與 Cloudflare 可能因版本部署時間差，造成 LOC MCP 一邊有�
 
 【Galaxy 來源、可見性與搜尋備存】
 `site` 標示**內容真實來源**，不是寫入工具名稱：GitHub PR／commit 紀錄用 `github`；由 MCP 本身產生的紀錄用 `mcp`；ChatGPT 對話逐字內容及其存檔用 `chatgpt`。即使使用 MCP 傳送 GitHub PR 或 ChatGPT 對話，`site` 仍須依真實來源分別是 `github`、`chatgpt`，不得一律改成 `mcp`。
-透過 MCP 儲存的一般文件、對話存檔，`Galaxy.able` JSONB 的 `list` **預設為 `false`（0）**，資料照常保存；其他開關按當次紀錄授權／用途設定，不得因預設隱藏就刪除資料或改變搜尋權限。**GitHub PR 追溯文章是明確例外**：依既定 PR 搜尋規範設定 `able.search=true`、`able.list=true`，其餘六鍵為 `false`；一個 PR 一篇，可從搜尋找到且可開啟。對話長度及搜尋視窗可能只覆蓋後段，MCP 保存的目的是讓前段工作紀錄與原文未來仍可透過正式資料來源取回；不能把截斷的聊天摘要當成已完整保存。
+透過 MCP 儲存的一般文件、對話存檔，Galaxy 的獨立 boolean 欄位 `list` **預設為 `false`**，資料照常保存；八個欄位依序為 `statics`、`culture`、`search`、`trace`、`list`、`keyword`、`extract`、`others`，不再讀寫 `galaxy.able` JSONB。其他開關按當次紀錄授權／用途設定，不得因預設隱藏就刪除資料或改變搜尋權限。**GitHub PR 追溯文章是明確例外**：依既定 PR 搜尋規範設定 `search=true`、`list=true`，其餘六個 boolean 欄位 `statics`、`culture`、`trace`、`keyword`、`extract`、`others` 均為 `false`；一個 PR 一篇，可從搜尋找到且可開啟。對話長度及搜尋視窗可能只覆蓋後段，MCP 保存的目的是讓前段工作紀錄與原文未來仍可透過正式資料來源取回；不能把截斷的聊天摘要當成已完整保存。
 
 【儲存入口與資料庫可攜性】
 原則上先使用 LOC MCP 作為唯一**對外標準操作入口**，由其目前配置判斷實際資料庫，不把供應商名稱寫死在業務流程。MCP 不可用時，可在已具備授權、目標 Scope 明確及現有表結構核實的前提下，改用可用的 Supabase 直接寫入；未來若正式環境已設定 Neon、Google Cloud SQL 或其他資料庫，才依當時**已啟用的權威資料來源與有效授權**使用相應入口。不得因此擅自切換備援為主庫、雙寫、越過權限、跨 Scope、加表或改 Schema；失敗時明白標註未儲存。完成後需按原 UID／來源鍵冪等比對並實際讀回，防止重複及丟失細節。
