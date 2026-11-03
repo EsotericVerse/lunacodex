@@ -6,7 +6,7 @@ import {makeConnectionProfile,readVaultConnection,saveVaultConnection} from "./d
 import {normalizeDatabaseLocation} from "../../../app/loc/providers/database-link.mjs";
 import { executeKyselyQuery, isKyselyClientError } from "../../../app/loc/providers/kysely-runtime.mjs";
 import {executeManagedKyselyWrite,executeManagedKyselyAction} from "../../../app/loc/providers/kysely-management.mjs";
-import {executeKyselyAnchor} from "../../../app/loc/providers/kysely-anchor.mjs";
+import {executeKyselyAnchor,executePortableKyselyAnchor} from "../../../app/loc/providers/kysely-anchor.mjs";
 import {executeKyselyAnalytics} from "../../../app/loc/providers/kysely-analytics.mjs";
 import {executeKyselyPublicAction} from "../../../app/loc/providers/kysely-public.mjs";
 import {executeKyselyScopeAdmin} from "../../../app/loc/providers/kysely-scope-admin.mjs";
@@ -227,6 +227,9 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
       return await executeCrossEngineManagedWrite(trx,body,{role,claims,
         engine:executionPort.engine,namespace:target.schema_name});
     }
+    if(body.kind==="anchor")return await executePortableKyselyAnchor(trx,body,{
+      role,engine:executionPort.engine,namespace:target.schema_name
+    });
     const access=await authorizeCrossEngineQuery(trx,body,{role,claims});
     return await executeKyselyQuery(trx,body,{dialect:executionPort.engine,
       namespace:String(target.schema_name||(
@@ -578,9 +581,12 @@ Deno.serve(async (request) => {
     // connection; private CRUD receives a second, row-owner ACL gate in
     // executeRequest after verified Clerk claims have been established.
     if(target.provider==="custom"||target.engine!=="postgres"){
-      if(role!=="authenticated")assertCrossEnginePublicRead(body);
-      else if(body.kind!=="query"&&body.kind!=="managed-write")return json({
-        error:{message:"Cross-engine actions must use the Kysely query contract"}},403);
+      if(role!=="authenticated"){
+        const publicAnchor=body.kind==="anchor"&&
+          (body.attr?.op===undefined||body.attr?.op==="read"||body.attr?.op==="catalog");
+        if(!publicAnchor)assertCrossEnginePublicRead(body);
+      }else if(!["query","managed-write","anchor"].includes(String(body.kind)))
+        return json({error:{message:"Unsupported SQL target action"}},403);
     }
     const db=isSupabaseControlTarget(target)
       ?await databaseForTarget(controlTarget)
