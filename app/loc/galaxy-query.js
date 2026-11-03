@@ -404,7 +404,7 @@ async function articleTimeContext(scope,day){
   };
 }
 async function articleSpaceContext(scope,placeId,{authenticated=false}={}){
-  if(!/^[A-Za-z0-9]{4}$/.test(placeId)||!scope?.id||scope.id==='loc')
+  if(!/^[A-Za-z0-9]{8}$/.test(placeId)||!scope?.id||scope.id==='loc')
     return {place:null,routes:[],traces:[]};
   if(isUnifiedAnchorScope(scope.id)){
     // LOC's four legacy relations were consolidated into _anchor. The shared
@@ -543,7 +543,7 @@ function makeProvider({id,table,source,scope,idColumn,columns,searchFields,filte
       // Exact-match stages only apply to a plain keyword or a single "quoted phrase".
       if(!browse&&exactColumn&&!parsed.exact)return {rows:[],hasMore:false,nextCursor:null,totalCount:null,dataSource:source||'auto'};
       const activeFilters=[...frozenFilters,...dateSearchFilters(dateColumn,startDate,endDate)];
-      if(uidFastPath&&!browse&&/^[A-Z0-9]{8}$/.test(String(query||'').trim())){
+      if(uidFastPath&&!browse&&/^[A-Za-z0-9]{8}$/.test(String(query||'').trim())){
         // Authenticated UID primary-key lookup, independent of public search flags.
         const {rows=[],dataSource}=await selectRows(table,{
           columns:outputColumns.join(','),
@@ -701,14 +701,14 @@ function genericScopeProviders(scope,{mediaOnly=false,includeHiddenText=false,co
   });
   const media=makeProvider({
     id:current.id+':media',table:current.galaxyMedia,source:current.id+' 多媒體',scope:current,idColumn:'uid',
-    columns:['uid','type','title','url','meta_tags','createtime'],
-    searchFields:['title','meta_tags','type','url'],dateColumn:'createtime'
+    columns:['uid','type','title','url','meta_tags','date'],
+    searchFields:['title','meta_tags','type','url'],dateColumn:'date'
   });
   if(mediaOnly||contentType==='multimedia')return [media];
   const timeline=makeProvider({
     id:current.id+':timeline',table:current.time,source:current.id+' 時期',scope:current,idColumn:'uid',
-    columns:['uid','type','title','description','address','anchor_ids','status'],
-    searchFields:['title','description','status'],dateColumn:'address',
+    columns:['uid','type','title','description','address','anchor_ids'],
+    searchFields:['title','description'],dateColumn:'address',
     filters:[{column:'type',operator:'in',value:['anchor','period','era']}]
   });
   // The basic public/guest search is intentionally limited to title/content.
@@ -845,7 +845,7 @@ async function selectMediaStatisticsFacetRowsRaw(scope,dimension,{startDate='',e
     try{return await readNumericIsr(current.id,'facet',{startDate,endDate,dimension});}
     catch{ /* Optional ISR failure: aggregate existing metadata. */ }
   }
-  const filters=timeFilters('createtime',startDate,endDate);
+  const filters=timeFilters('date',startDate,endDate);
   const columns='uid,type,url,meta_tags,createtime';
   const orders=[{column:'uid',ascending:true}];
   const aggregates=new Map();
@@ -875,7 +875,7 @@ async function selectMediaStatisticsFacetRowsRaw(scope,dimension,{startDate='',e
 // Daily facet aggregates cannot reconstruct which tags belonged to the same item.
 export async function selectMediaCrossTagRows(scope,{startDate='',endDate=''}={}){
   const current=scopeOf(scope);
-  const filters=timeFilters('createtime',startDate,endDate);
+  const filters=timeFilters('date',startDate,endDate);
   const orders=[{column:'uid',ascending:true}];
   const rows=[];
   let offset=0,total=null,source='auto';
@@ -904,7 +904,7 @@ export async function selectMediaCrossPairWorks(scope,pair,{
   const batchSize=Math.max(20,safeLimit*2);
   const escapeLike=value=>String(value).replace(/[\\%_]/g,'\\$&');
   const filters=[
-    ...timeFilters('createtime',startDate,endDate),
+    ...timeFilters('date',startDate,endDate),
     {column:'meta_tags',operator:'ilike',value:'%'+escapeLike(pair.leftLabel)+'%'},
     {column:'meta_tags',operator:'ilike',value:'%'+escapeLike(pair.rightLabel)+'%'}
   ];
