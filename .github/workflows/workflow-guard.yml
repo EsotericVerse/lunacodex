@@ -1,55 +1,63 @@
 name: Workflow guard
 
-# The only pre-authorized auto-triggered workflow in this repo (see AGENTS.md
-# section 11). It installs no dependencies and runs in seconds, so it adds no
-# meaningful billing risk. Its sole purpose is to catch, at PR time, any other
-# workflow file that has been given an auto-trigger (push / pull_request /
-# schedule / etc.) without the owner's explicit approval, since every other
-# workflow in this repo is required to be workflow_dispatch-only to avoid
-# uncontrolled CI/CD spend.
+# Sole automatic PR workflow: structural YAML trigger guard and syntax evidence.
+# No Next build, database, deployment, browser, or macOS runner.
 on:
   pull_request:
-    paths:
-      - '.github/workflows/**'
 
 permissions:
   contents: read
+  pull-requests: read
+
+concurrency:
+  group: workflow-guard-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   guard:
     runs-on: ubuntu-24.04
-    timeout-minutes: 2
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Only workflow_dispatch is allowed outside this guard
+      - name: Sparse blobless checkout (only files the guard needs)
+        shell: bash
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          git init -q .
+          git remote add origin "https://github.com/$GITHUB_REPOSITORY.git"
+          git sparse-checkout init --no-cone
+          git sparse-checkout set \
+            '/.github/workflows/**' '/app/**' '/scripts/**' \
+            '/package.json' '/package-lock.json' '/next.config.mjs' \
+            '/open-next.config.ts' '/public/sw.js'
+          git -c protocol.version=2 fetch --quiet --depth=1 --filter=blob:none origin "refs/pull/$PR_NUMBER/merge"
+          git checkout --quiet --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - name: Reject unauthorized workflow triggers (parsed YAML)
+        run: |
+          ruby scripts/check-workflow-triggers.rb
+          ruby scripts/test-workflow-triggers.rb
+      - name: Install a single pinned parser, without project dependencies
+        shell: bash
+        run: |
+          npm install --prefix "$RUNNER_TEMP/loc-syntax" --no-save --no-package-lock --ignore-scripts --no-audit --no-fund '@babel/parser@7.29.9'
+      - name: Verify application syntax for this PR
+        shell: bash
+        run: |
+          NODE_PATH="$RUNNER_TEMP/loc-syntax/node_modules" node scripts/check-js-syntax.mjs
+      - name: Identify import code changes
+        id: import_changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         shell: bash
         run: |
           set -euo pipefail
-          # Any of these keys appearing as a top-level trigger (2-space
-          # indented, directly under `on:`) in another workflow file means
-          # that workflow can run without explicit, per-run human approval.
-          forbidden='^[[:space:]]{2}(push|pull_request|pull_request_target|schedule|workflow_run|repository_dispatch|issues|issue_comment|workflow_call|check_run|check_suite|create|delete|release|discussion|discussion_comment):'
-
-          fail=0
-          shopt -s nullglob
-          for f in .github/workflows/*.yml .github/workflows/*.yaml; do
-            base="$(basename "$f")"
-            if [ "$base" = "workflow-guard.yml" ]; then
-              continue
-            fi
-            if grep -En "$forbidden" "$f" > /tmp/guard-hit.txt; then
-              echo "::error file=$f::Disallowed auto-trigger(s) found. Only 'workflow_dispatch' is pre-approved (AGENTS.md section 11)."
-              cat /tmp/guard-hit.txt
-              fail=1
-            fi
-          done
-
-          if [ "$fail" -ne 0 ]; then
-            echo ""
-            echo "One or more workflow files declare an auto-trigger without explicit owner approval."
-            echo "If this is intentional, get the owner's explicit sign-off first, then add the file to this guard's allowlist."
-            exit 1
+          gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" --jq '.[].filename' > "$RUNNER_TEMP/loc-pr-files"
+          if grep -Eq '^(app/loc/(import-|ManagementImportPanel)|scripts/test-import-createdat-reimport\.mjs)' "$RUNNER_TEMP/loc-pr-files"; then
+            echo 'run=true' >> "$GITHUB_OUTPUT"
           fi
-
-          echo "OK: every workflow file other than this guard uses workflow_dispatch only."
+      - name: Run reimport regression only when import files changed
+        if: ${{ steps.import_changes.outputs.run == 'true' }}
+        run: node --test scripts/test-import-createdat-reimport.mjs
