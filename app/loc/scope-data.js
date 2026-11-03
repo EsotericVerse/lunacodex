@@ -144,7 +144,7 @@ export function selectPublicSiteBootstrap(){
   // Normal visitor path is a JS module, no fetch, JSON parsing, Worker or SQL.
   // After an authorized editor change, the current editor sees live data until publication.
   publicSiteBootstrapRequest=(editedPublicMetadata
-    ?dbPublicClient.schema('silver').rpc('read_app_bootstrap',{p_scope_id:'loc',p_page_name:'index'})
+    ?dbPublicClient.schema('silver').publicAction('read_app_bootstrap',{p_scope_id:'loc',p_page_name:'index'})
       .then(({data,error})=>{if(error)throw error;return {...(data||{}),blocks:[]};})
     :Promise.resolve({...PUBLISHED_SITE_BOOTSTRAP,
       config:SCOPE_ROUTE_INDEX.find(row=>row.scope_id==='loc')?.config||null}
