@@ -227,7 +227,7 @@ export function buildKyselyMutationQuery(trx,input,{dialect='postgres'}={}){
   if(req.operation==='upsert')query=buildKyselyUpsertQuery(trx,req,dialect);
   if(req.operation==='update')query=trx.updateTable(fullTable).set(req.values);
   if(req.operation==='delete')query=trx.deleteFrom(fullTable);
-  query=applyOrFilters(applyFilters(query,req.filters,table),req.orFilters,table);
+  query=applyOrFilters(applyFilters(query,req.filters,fullTable),req.orFilters,fullTable);
   return {request:req,query:applyMutationReturning(query,req,dialect)};
 }
 
