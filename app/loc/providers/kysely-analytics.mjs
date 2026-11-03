@@ -316,6 +316,9 @@ export async function executeKyselyAnalytics(trx,body,{role='anon'}={}){
       const suffix=safeName(group.anchor_table,'anchor');
       const galaxy=safeName(group.galaxy_table,'galaxy');
       if(galaxy!=='galaxy')continue;
+      const relations=await sql`select to_regclass(${'silver.'+group.id+'_'+galaxy}) is not null as galaxy_exists,
+        to_regclass(${'silver.'+group.id+'_'+suffix}) is not null as anchor_exists`.execute(trx);
+      if(!relations.rows[0]?.galaxy_exists||!relations.rows[0]?.anchor_exists)continue;
       scopes.push({scope_id:group.id,display_name:group.display_name});
       const day=await dailyStats(trx,group.id,start,end);
       rows.push(...day.filter(r=>r.kind==='total').map(r=>({scope_id:group.id,
