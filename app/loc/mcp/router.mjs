@@ -118,6 +118,13 @@ const TOOLS=[
       updated_at:{type:'string'},created_at:{type:'string'},title:{type:'string'},
       content:{type:'string',maxLength:125000}},required:['scopeid','conversation_id','updated_at','content'],
       additionalProperties:false}},
+  {name:'update_scope_pr',description:'Rewrite an EXISTING Galaxy article by exact uid. Never creates a new article: the article must already be GitHub PR-origin (site=github) and its current title must name the same pr_number, or the update is refused.',
+    inputSchema:{type:'object',properties:{
+      scopeid:{type:'string'},uid:{type:'string',pattern:'^[A-Za-z0-9]{8}$',description:'Exact Galaxy article UID to rewrite'},
+      pr_number:{type:'integer',minimum:1,description:'Must match a "PR #<pr_number>" marker already present in the article title'},
+      title:{type:'string',maxLength:350},content:{type:'string',maxLength:125000},
+      updated_at:{type:'string'}
+    },required:['scopeid','uid','pr_number','title','content','updated_at'],additionalProperties:false}},
   {name:'search_scope',description:'Search the authenticated Scope’s OWN private title/content; uses its configured database.',
     inputSchema:{type:'object',properties:{scopeid:{type:'string'},query:{type:'string'},
       limit:{type:'integer',minimum:1,maximum:20}},required:['scopeid','query'],additionalProperties:false},

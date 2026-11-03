@@ -247,7 +247,7 @@ Deno.serve(async (request) => {
     if(untrusted.iss===clerkIssuer){
       // MCP OAuth JWTs and interactive Clerk sessions have different audiences
       // and permissions. Never let an MCP token execute general SQL requests.
-      if(["mcp-sync","mcp-search","mcp-read"].includes(String(body.kind))){
+      if(["mcp-sync","mcp-search","mcp-read","mcp-update-pr"].includes(String(body.kind))){
         try{
           claims=await verifyMcpForSql(token,String(body.scopeid||""));
           verifiedMcp=true;
@@ -373,6 +373,52 @@ Deno.serve(async (request) => {
         return executeRequest(trx,controlTarget,"authenticated",claims,{
           kind:"rpc",schema:"silver",name:"management_write",
           args:{p_table:table,p_operation:"insert",p_rows:[row]}
+        });
+      });
+      return json(result);
+    }
+    if(body.kind==="mcp-update-pr"){
+      // Updates an EXISTING Galaxy article in place. Unlike mcp-sync (which
+      // upserts private conversations), this never creates a new row: it only
+      // rewrites an article that is already tagged as GitHub PR origin and
+      // whose current title names the same PR number the caller supplied.
+      if(!verifiedMcp||role!=="authenticated")
+        return json({error:{message:"Verified MCP write permission required"}},403);
+      const scope=String(body.scopeid||"");
+      const expected=["kind","scopeid","uid","pr_number","title","content","updated_at"];
+      const prNumber=body.pr_number;
+      if(!["lo3rwang","lrunes"].includes(scope)||
+        Object.keys(body).length!==expected.length||
+        Object.keys(body).some(key=>!expected.includes(key))||
+        !/^[A-Za-z0-9]{8}$/.test(String(body.uid||""))||
+        !Number.isInteger(prNumber)||Number(prNumber)<1||Number(prNumber)>9999999||
+        typeof body.title!=="string"||!body.title.trim()||body.title.length>350||
+        typeof body.content!=="string"||!body.content.trim()||body.content.length>125000||
+        typeof body.updated_at!=="string"||!body.updated_at)
+        return json({error:{message:"Invalid PR update payload"}},400);
+      const uid=String(body.uid);
+      const table="silver."+scope+"_galaxy";
+      const tableRef=sql.ref(table);
+      const db=await databaseForTarget(controlTarget);
+      const result=await db.transaction().execute(async trx=>{
+        await sql`set local role authenticated`.execute(trx);
+        await sql`select set_config('request.jwt.claims',${JSON.stringify(claims)},true)`.execute(trx);
+        await sql`select set_config('request.jwt.claim.sub',${String(claims.sub||"")},true)`.execute(trx);
+        await sql`select set_config('request.jwt.claim.role','authenticated',true)`.execute(trx);
+        const existing=await sql<{uid:string;title:string;site:string}>`
+          select uid,title,site from ${tableRef} where uid=${uid} limit 1`.execute(trx);
+        const row=existing.rows[0];
+        if(!row)throw Object.assign(new Error("Scope article not found"),{httpStatus:403});
+        if(row.site!=="github")
+          throw Object.assign(new Error("Only GitHub PR-origin articles can be updated through this tool"),{httpStatus:403});
+        const prMarker=new RegExp("(?:^|[^0-9])PR\\s*#"+Number(prNumber)+"(?:[^0-9]|$)");
+        if(!prMarker.test(row.title))
+          throw Object.assign(new Error("PR number does not match this article's title"),{httpStatus:403});
+        return executeRequest(trx,controlTarget,"authenticated",claims,{
+          kind:"rpc",schema:"silver",name:"management_write",
+          args:{p_table:table,p_operation:"update",
+            p_values:{title:body.title,content:body.content,UpdateTime:body.updated_at},
+            p_filters:[{column:"uid",operator:"eq",value:uid}]}
         });
       });
       return json(result);
