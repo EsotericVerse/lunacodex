@@ -1,12 +1,12 @@
 // Galaxy article feature permissions use eight independent boolean columns.
 // The retired JSONB payload remains accepted only as a legacy import input.
-export const GALAXY_ABLE_KEYS=Object.freeze(['statics','culture','search','trace','list','keyword','others','extract']);
+export const GALAXY_ABLE_KEYS=Object.freeze(['statics','culture','search','trace','list','keyword','extract','others']);
 const legacyKeys={keyword:'keywords',others:'game'};
 export function legacyGalaxyAble(row={}){
   const searchable=row.searchable!==false;
   const statistics=row.statistics_able!==false;
   return {statics:statistics,culture:statistics,search:searchable,trace:searchable&&statistics,
-    list:searchable,keyword:searchable&&statistics,others:true,extract:true};
+    list:searchable,keyword:searchable&&statistics,extract:true,others:true};
 }
 export function galaxyAble(row={}){
   const fallback=legacyGalaxyAble(row);
