@@ -35,7 +35,7 @@ test('search is primary, excerpt is optional and never loads in regular browse',
   const query=readFileSync(new URL('../app/loc/galaxy-query.js',import.meta.url),'utf8');
   assert.match(query,/column:'search'/);
   assert.doesNotMatch(ui,/media_link,able/);
-  assert.match(ui,/scopeId==='local'\?'uid,content,able':'uid,content,search,extract'/);
+  assert.match(ui,/scopeId==='local'\?'uid,content,able':'uid,content,attr,search,extract'/);
   assert.match(ui,/galaxyAble\(article\)\.search===false\|\|galaxyAble\(article\)\.extract===false/);
   assert.match(ui,/if\(q&&!options\.browse&&!options\.placeOnly&&!options\.mediaOnly/);
   assert.match(ui,/extractSearchContext\(article\.content,query,10\)/);
