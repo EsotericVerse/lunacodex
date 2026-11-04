@@ -5,7 +5,7 @@
 - **原因之三：舊版快取鍵殘留。** Culture 編輯成功後仍無效化 `v2/v6`，但 UI 使用 `v4/v8`，導致顯示不同步；已改為對應資源前綴無效化。時間定錨表單不再因按 Enter 隱性儲存。
 - **原因之四：搜尋故意壓掉日期。** 搜尋列表原先只在 Identity 詳細頁傳遞日期；現在 Galaxy 查詢同時回傳 `date`（本機資料維持 `createtime`），每張搜尋結果顯示日期。相同搜尋頁只更新 URL Query，不透過 Next Router 重新載入整個頁面，真正搜尋仍使用既有 `Galaxy.content` 與 `Anchor.description`。
 - **其他多餘儲存入口。** 分類與路線編輯頁在固定 Dock 啟用時隱藏各自的 Save/Cancel；切換提示不再有「儲存並切換」第二寫入路徑。必要的新增／批次寫入工具維持其明確用途，不當成一般 Save。
-- **權限與效能邊界。** Clerk OAuth 繼續驗證身分；LOC Authority 判斷 Scope；Kysely 寫入仍由後端授權。沒有引入新憑證、Cron 或權限放寬。曾用 `silver.lo3rwang.count` 測到 189 次 `silver.manage()` RPC 呼叫，但不代表 189 次獨立 HTTP/SQL Request；診斷用會寫入的函式已從 `silver.manage()` 移除並恢復 `STABLE`，既有觀測記錄保留。不可拿這組舊數字驗收新版本。
+- **權限與效能邊界。** Clerk OAuth 繼續驗證身分；LOC Authority 判斷 Scope；Kysely 寫入仍由後端授權。已驗證且未過期的 Clerk OAuth JWT，在同一受信任 SQL Gateway isolate 中，最多重用 30 秒 LOC 權限快照；不簽發新憑證、不使用 Cron、無背景查詢，下一個實際請求才按需刷新。任何請求仍需通過 JWT 驗簽及 exp，快照亦不得超過 exp；更改角色／黑名單時，其他執行個體可能最多延遲 30 秒感知變更，嚴格即時撤權須另行採用服務端 revocation 訊號，不能聲稱現有 30 秒快取達到即時撤權。曾用 `silver.lo3rwang.count` 測到 189 次 `silver.manage()` RPC 呼叫，但不代表 189 次獨立 HTTP/SQL Request；診斷用會寫入的函式已從 `silver.manage()` 移除並恢復 `STABLE`，既有觀測記錄保留。不可拿這組舊數字驗收新版本。
 - **發布驗收：** 需在已登入管理員、未登入訪客各測一次；檢查首頁小修改按固定 Save 後內容留在畫面且可重載，切換四功能並無額外 Save，文化存檔後時間線更新，搜尋有日期且不重複導頁／讀取，失敗時不得顯示假成功。此修復不保證未量測的搜尋 SQL 一定低於任何指定秒數。
 
 ## 2026-11-05 公開訪客資料庫路由隔離
