@@ -314,13 +314,13 @@ function AnchorEditor({scopeId,spatial,reload}){
 
 // Embedded under the existing /manage (Scope) or /admin (LOC) routes.
 // The parent manager owns authorization, edit mode and tab navigation.
-export default function TraceManagementPanel({scopeId,mode='anchor'}){
+export default function TraceManagementPanel({scopeId,mode='anchor',routeMode='all'}){
   const enabled=TRACE_SCOPES.includes(scopeId);
   const query=useAsyncResource(traceKey(scopeId,{includeHidden:true}),()=>readTraceData(scopeId,{includeHidden:true}),{
     enabled:enabled&&mode!=='map',revalidateOnFocus:false,revalidateOnReconnect:false
   });
   if(!enabled)return <p className="scope-status">此 Scope 尚未配置痕跡資料表。</p>;
-  if(mode==='map')return <TraceRouteManager key={scopeId+'-map'} scopeId={scopeId}/>;
+  if(mode==='map')return <TraceRouteManager key={scopeId+'-'+routeMode} scopeId={scopeId} mode={routeMode}/>;
   if(query.error)return <p role="alert" className="scope-status scope-error">{String(query.error.message||query.error)}</p>;
   if(query.isPending||query.data===undefined)
     return <p className="scope-status" role="status">正在載入空間定錨點…</p>;

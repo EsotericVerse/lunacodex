@@ -14,8 +14,10 @@ import {PLACE_OPTIONS} from './PlaceManagement';
 const TraceManagementPanel=dynamic(()=>import('./TraceManagement'),{loading:PanelLoading});
 const PlaceManagement=dynamic(()=>import('./PlaceManagement').catch(recoverChunkOnce),{loading:PanelLoading});
 
-const TRACE_OPTION={value:'traceMap',label:'痕跡圖管理',shortLabel:'痕跡圖',
-  description:'從已有地點自動完成選點，組合有序 Frame。'};
+const SPATIAL_OPTIONS=[
+  {value:'path',label:'路線',description:'依序連接空間定錨點'},
+  {value:'trace',label:'痕跡',description:'組合路線與痕跡線段'}
+];
 const PLACE_KEYS=new Set(PLACE_OPTIONS.map(item=>item.value));
 
 export default function ScopeManagement({scopeId:routeScopeId='loc',section:entrySection=''}){
@@ -24,9 +26,7 @@ export default function ScopeManagement({scopeId:routeScopeId='loc',section:entr
   const isLoc=routeScopeId==='loc';
   const traceOnly=entrySection==='traceMap';
   // Spatial tasks are the first-level navigation. No extra "地點管理" layer.
-  const options=traceOnly?[TRACE_OPTION]
-    :isLoc?[...PLACE_OPTIONS.filter(item=>item.value==='anchor'||item.value==='names'),TRACE_OPTION]
-      :PLACE_OPTIONS;
+  const options=isLoc?[]:[...PLACE_OPTIONS.slice(0,1),...SPATIAL_OPTIONS,...PLACE_OPTIONS.slice(1)];
   const requestedSection=searchParams?.get('section');
 
   // Preserve bookmarks into the old second-level Settings / Group Access
@@ -43,9 +43,10 @@ export default function ScopeManagement({scopeId:routeScopeId='loc',section:entr
     window.location.replace(url.href);
   },[isLoc,requestedSection]);
 
-  const [section,setSection]=useManagementSection(options,traceOnly?'traceMap':isLoc?'traceMap':'anchor',
-    {traceAnchor:'anchor',placeManage:'anchor'});
+  const [section,setSection]=useManagementSection(options,'anchor',
+    {traceAnchor:'anchor',placeManage:'anchor',traceMap:'trace'});
   const selectedOption=options.find(option=>option.value===section)||options[0];
+  if(isLoc)return <FeaturePage featureId="trace"><p className="scope-status">LOC 不管理空間定錨；請進入各 Scope 的空間定錨管理頁。</p></FeaturePage>;
   return <FeaturePage featureId={isLoc||traceOnly?'trace':'manage'}>
     <div className={PLACE_KEYS.has(section)
       ?'scope-management-layout scope-management-layout--anchor':'scope-management-layout'}>
@@ -60,7 +61,7 @@ export default function ScopeManagement({scopeId:routeScopeId='loc',section:entr
         <div className="management-workspace-panel" id="scope-management-panel" role="region"
           aria-labelledby={'scope-sections-option-'+selectedOption.value}>
           {PLACE_KEYS.has(section)?<PlaceManagement scopeId={routeScopeId} section={section}/>:null}
-          {section==='traceMap'?<TraceManagementPanel scopeId={routeScopeId} mode="map"/>:null}
+          {section==='path'||section==='trace'?<TraceManagementPanel key={section} scopeId={routeScopeId} mode="map" routeMode={section}/>:null}
         </div>
       </ManagementWorkspaceFrame>
     </div>
