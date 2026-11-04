@@ -29,5 +29,8 @@ BEGIN
   END IF;
 END;
 $scope$;
+-- The four physical booleans are now canonical; never retain an old
+-- Scope-level numeric flag envelope after verified values are copied.
+ALTER TABLE silver.lo3rwang DROP COLUMN IF EXISTS able RESTRICT;
 -- lrunes has no legacy scope.able field; retain its existing/default booleans.
 COMMIT;
