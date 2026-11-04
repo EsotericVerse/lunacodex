@@ -23,15 +23,15 @@ function quota(){
   return new LocAuthorityState({storage},{});
 }
 const who='clerk:user_QoSTest';
-test('MCP QoS reserves 16 calls for writes, without reducing global 64 slots',async()=>{
+test('MCP QoS reserves 4 calls for writes within global 16 slots',async()=>{
   const authority=quota(),tickets=[];
-  for(let i=0;i<48;i++)tickets.push(await authority.mcpQuotaAcquire('read',who));
+  for(let i=0;i<12;i++)tickets.push(await authority.mcpQuotaAcquire('read',who));
   await assert.rejects(authority.mcpQuotaAcquire('read',who),
     error=>error.status===429);
-  for(let i=0;i<16;i++)tickets.push(await authority.mcpQuotaAcquire('write',who));
+  for(let i=0;i<4;i++)tickets.push(await authority.mcpQuotaAcquire('write',who));
   await assert.rejects(authority.mcpQuotaAcquire('write',who),
     error=>error.status===429);
-  assert.equal(tickets.length,64);
+  assert.equal(tickets.length,16);
   assert.equal(new Set(tickets.map(item=>item.lease)).size,64);
   await assert.rejects(authority.mcpQuotaAcquire('write','clerk:user_Other'),
     error=>error.status===429);
