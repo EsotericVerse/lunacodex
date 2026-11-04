@@ -154,9 +154,9 @@ test('portable daily includeUndated retains NULL date groups using Kysely',async
 });
 
 for(const [engine,namespace,expectedExpansion] of [
-  ['mysql','',/json_table\\(docs\\.media_link/],
-  ['mssql','dbo',/openjson\\(docs\\.media_link/],
-  ['postgres','silver',/jsonb_array_elements_text\\(docs\\.media_link/]
+  ['mysql','',/json_table\(docs\.media_link/],
+  ['mssql','dbo',/openjson\(docs\.media_link/],
+  ['postgres','silver',/jsonb_array_elements_text\(docs\.media_link/]
 ]){
   test(engine+' portable Overview counts only media linked from eligible Galaxy rows',async()=>{
     const filters=[],statements=[],refs=[];
@@ -178,7 +178,7 @@ for(const [engine,namespace,expectedExpansion] of [
     assert.equal(actual,7);
     assert.equal(refs[0],namespace?namespace+'.writer_anchor':'writer_anchor');
     assert.match(statements[0],expectedExpansion);
-    assert.match(statements[0],/count\\(distinct linked/);
+    assert.match(statements[0],/count\(distinct linked/);
     assert.ok(filters.some(([field,op,value])=>
       field==='statics'&&op==='='&&value===true));
     assert.ok(filters.some(([field,op,value])=>
