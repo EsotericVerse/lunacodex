@@ -30,7 +30,6 @@ export async function selectCultureTimeRows(scope,birthday=''){
   const {rows}=await selectRows(table,{
     columns:TIME_COLUMNS,
     filters:[{column:'type',operator:'in',value:['anchor','period','era']}],
-    orders:[{column:'uid',ascending:true}],
     limit:DB_QUERY_BATCH_SIZE,offset:0
   });
   const anchors=rows.filter(row=>row.type==='anchor');
@@ -642,7 +641,7 @@ export async function selectScopePeriodWorkIndex(scope,{startDate='',endDate=nul
     includeGalaxy?selectRows(scope.galaxy,{
       columns:'uid,title,createtime',
       filters:galaxyFilters,
-      orders:[...(scope.id==='local'?[]:[{column:'date',ascending}]),{column:'createtime',ascending},{column:'uid',ascending}],
+      orders:[...(scope.id==='local'?[]:[{column:'date',ascending}]),{column:'createtime',ascending}],
       limit:pageSize,
       offset:galaxyOffset,
       maxLimit:pageSize,
@@ -651,7 +650,7 @@ export async function selectScopePeriodWorkIndex(scope,{startDate='',endDate=nul
     includeMedia?selectRows(scope.galaxyMedia,{
       columns:'uid,createtime',
       filters:mediaFilters,
-      orders:[{column:'createtime',ascending},{column:'uid',ascending}],
+      orders:[{column:'createtime',ascending}],
       limit:pageSize,
       offset:mediaOffset,
       maxLimit:pageSize,

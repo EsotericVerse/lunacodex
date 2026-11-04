@@ -11,7 +11,6 @@ import {revalidateServerMetadata} from '../../loc/scope-data';
 import {DB_QUERY_BATCH_SIZE,selectRows} from '../../loc/db-query.mjs';
 import {decodeTimeSegments,encodeTimeSegment,resolveTimeSegments,isTimeUid,allocateTimeUid} from '../../loc/time-anchor-ranges.mjs';
 import {anniversarySuggestionsForDate} from '../../loc/anniversary.mjs';
-import {readUnifiedAnchorUids} from '../../loc/unified-anchor-uids.mjs';
 import ManagementSectionNav from '../ManagementSectionNav';
 
 const TIME_COLUMNS='uid,type,title,description,address,anchor_ids,range,invisible';
@@ -21,14 +20,6 @@ const normalizeType=value=>({event:'period'}[value]||value);
 const displayType={anchor:'定錨點',period:'期間',era:'時代'};
 const blank=(type='anchor')=>({uid:'',type:normalizeType(type),title:'',description:'',address:'',anchor_ids:[],invisible:false});
 const day=value=>value?String(value).slice(0,10):'';
-function nextTimeUid(rows){
-  const taken=new Set(rows.map(row=>String(row.uid||'')));
-  for(let i=1;i<=65535;i++){
-    const candidate=i.toString(16).toUpperCase().padStart(4,'0');
-    if(!taken.has(candidate))return candidate;
-  }
-  throw new Error('本 Scope 的四碼時間 UID 已用盡');
-}
 function normalizeDraft(row){
   if(!row)return blank();
   return {...blank(row.type),...row,address:day(row.address),
@@ -73,7 +64,7 @@ export default function CultureTimelineEditor({
     queryFn:async()=>{
       const {rows}=await selectRows(timeTable,{
         columns:TIME_COLUMNS,filters:[{column:'type',operator:'in',value:TYPES}],
-        orders:[{column:'uid',ascending:true}],limit:DB_QUERY_BATCH_SIZE,offset:0,authenticated:true
+        limit:DB_QUERY_BATCH_SIZE,offset:0,authenticated:true
       });
       return rows;
     }
@@ -262,17 +253,14 @@ export default function CultureTimelineEditor({
             day(anchors.get(segment.end)?.address)<=day(anchors.get(segment.start)?.address))
             throw new Error('結束定錨點必須晚於起始定錨點');
         }
-        const globalUids=await readUnifiedAnchorUids(timeTable);
         let pairPeriodUids=[];
         if(draft.type==='era'&&tracePairs.length){
           if(tracePairs.some(pair=>!anchors.has(pair[0])||!anchors.has(pair[1])))
             throw new Error('連線的定錨點有已失效的，請移除');
-          const taken=new Set(all.map(row=>String(row.uid)));
           for(const pair of tracePairs){
             const existingUid=existingPeriodByPair.get(periodKeyOf(pair));
             if(existingUid){pairPeriodUids.push(existingUid);continue;}
-            const uid=allocateTimeUid([...all,...globalUids,...extraPeriodRows]);
-            taken.add(uid);
+            const uid=allocateTimeUid([...all,...extraPeriodRows]);
             const [a,b]=pair;
             const titleA=anchors.get(a)?.title||a,titleB=anchors.get(b)?.title||b;
             extraPeriodRows.push({uid,type:'period',title:titleA+' → '+titleB,
@@ -288,7 +276,7 @@ export default function CultureTimelineEditor({
       if(selectedId){
         await updateRows(timeTable,payload,{filters:[{column:'uid',operator:'eq',value:selectedId}]});
       }else{
-        await insertRows(timeTable,[{uid:nextTimeUid([...all,...globalUids,...extraPeriodRows]),...payload}]);
+        await insertRows(timeTable,[{uid:allocateTimeUid([...all,...extraPeriodRows]),...payload}]);
       }
       refresh();reset();setMessage('已儲存。');return true;
     }catch(error){setMessage(error?.message||'儲存失敗');editDock?.setNotice?.(error?.message||'儲存失敗');return false;}

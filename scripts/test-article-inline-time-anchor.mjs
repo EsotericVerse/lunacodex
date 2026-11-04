@@ -26,8 +26,8 @@ test('action verifies Clerk Scope management on click and preserves guest readin
 test('new Time anchor uses article date, checks duplicates, saves description, and returns to reading',()=>{
   assert.match(action,/filters:\[\{column:'type',operator:'eq',value:'anchor'\},\{column:'address',operator:'eq',value:date\}\]/);
   assert.match(action,/const details=description\.trim\(\)/);
-  assert.match(action,/allocateTimeUid\(\[\.\.\.occupied,\.\.\.shared\]\)/);
-  assert.match(action,/readUnifiedAnchorUids\(table\)/);
+  assert.match(action,/const uid=allocateTimeUid\(\)/);
+  assert.doesNotMatch(action,/readUnifiedAnchorUids|selectAllRowsBounded/);
   assert.match(action,/const record=\{uid,type:'anchor',title:chosen\?\.title\|\|date,description:details,/);
   assert.match(action,/address:date,anchor_ids:null,invisible:false/);
   assert.match(action,/await insertRows\(table,\[record\]\)/);

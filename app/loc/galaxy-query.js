@@ -8,7 +8,7 @@ import {sourceTaxonomyFromArrays} from './source-classification.mjs';
 import {DEFAULT_LIST_BATCH_SIZE} from './db-contract.mjs';
 import {parseSearchQuery} from './search-query.mjs';
 import {normalizeRelationIds,publicContentFilters} from './content-policy';
-import {storedTimeRange,timePeriodContainsDate} from './time-anchor-ranges.mjs';
+import {timePeriodContainsDate} from './time-anchor-ranges.mjs';
 import {anniversarySuggestionsForDate} from './anniversary.mjs';
 import {DB_QUERY_BATCH_SIZE,applyFilters,applyOrders,executePublicRead,selectCount,selectRows} from './db-query.mjs';
 import {readLocStatistics,readScopeCategoryTotals,readScopeEarliest,readScopeOverview,readScopeStatistics} from './db-client.mjs';
@@ -327,86 +327,34 @@ function shiftedDay(day,shift){
 // A selected article only needs the lightweight Time graph. Share the
 // canonical Culture range resolution among article reads for a short TTL.
 const articleTimeCache=new Map();
-const articleAnniversaryCache=new Map();
-// A single lightweight date/title catalog per Scope serves article suggestions.
-// No article content scans and no query per candidate calendar year.
-async function articleAnniversarySources(scope){
-  const key=String(scope.id)+'|'+String(scope.time),now=Date.now();
-  const cached=articleAnniversaryCache.get(key);
-  if(cached&&cached.expires>now)return cached.promise;
-  const promise=(async()=>{
-    const items=[],batchSize=500;
-    for(let offset=0;;offset+=batchSize){
-      const result=await selectRows(scope.time,{
-        columns:'uid,type,title,address',
-        filters:[{column:'type',operator:'eq',value:'anchor'}],
-        orders:[{column:'uid',ascending:true}],limit:batchSize,offset
-      });
-      items.push(...result.rows);
-      if(result.rows.length<batchSize)break;
-    }
-    return items;
-  })();
-  articleAnniversaryCache.set(key,{expires:now+120_000,promise});
-  promise.catch(()=>{
-    if(articleAnniversaryCache.get(key)?.promise===promise)articleAnniversaryCache.delete(key);
-  });
-  if(articleAnniversaryCache.size>20)
-    articleAnniversaryCache.delete(articleAnniversaryCache.keys().next().value);
-  return promise;
-}
+// Date, period, era and anniversary data share a single Time graph request.
 async function articleTimeRows(scope){
   const key=String(scope.id)+'|'+String(scope.time),now=Date.now();
   const cached=articleTimeCache.get(key);
   if(cached&&cached.expires>now)return cached.promise;
-  const promise=(async()=>{
-    const projected=[];
-    const pageSize=200;
-    for(let offset=0;;offset+=pageSize){
-      const result=await selectRows(scope.time,{
-        columns:'uid,type,title,range',
-        filters:[{column:'type',operator:'in',value:['period','era']}],
-        orders:[{column:'uid',ascending:true}],limit:pageSize,offset
-      });
-      projected.push(...result.rows);
-      if(result.rows.length<pageSize)break;
-    }
-    if(projected.some(row=>!storedTimeRange(row.range))){
-      const {selectCultureTimeRows}=await import('./culture-query');
-      return (await selectCultureTimeRows(scope)).filter(row=>
-        row.entry_type==='period'||row.entry_type==='era');
-    }
-    return projected.map(row=>({...row,entry_type:row.type,
-      ranges:storedTimeRange(row.range)?.ranges||[]}));
-  })();
+  const promise=import('./culture-query')
+    .then(({selectCultureTimeRows})=>selectCultureTimeRows(scope));
   articleTimeCache.set(key,{expires:now+60_000,promise});
   promise.catch(()=>{if(articleTimeCache.get(key)?.promise===promise)articleTimeCache.delete(key);});
+  if(articleTimeCache.size>20)articleTimeCache.delete(articleTimeCache.keys().next().value);
   return promise;
 }
 async function articleTimeContext(scope,day){
   if(!day||!scope.time)return {anchors:[],periods:[],eras:[]};
-  const [selectedDay,ranges]=await Promise.all([
-    selectRows(scope.time,{
-      columns:'uid,title,address',
-      filters:[{column:'type',operator:'eq',value:'anchor'},
-        {column:'address',operator:'eq',value:day}],
-      limit:100,maxLimit:100
-    }),
-    articleTimeRows(scope)
-  ]);
+  const rows=await articleTimeRows(scope);
   const matches=row=>timePeriodContainsDate(row,day);
-  const labels=rows=>rows.map(item=>({uid:String(item.uid),title:String(item.title||'')}));
-  const anchors=labels(selectedDay.rows||[]);
-  // A fixed year/date suggestion is relevant only if this article does not
-  // already have an exact Time anchor. The candidate is not persisted.
-  const anniversarySuggestions=anchors.length?[]:await articleAnniversarySources(scope)
-    .then(sources=>anniversarySuggestionsForDate(day,sources,{birthday:scope.birthday}))
-    .catch(()=>[]);
-  // An optional hint failure must never hide the actual Time/Trace data.
+  const labels=items=>items.map(item=>({uid:String(item.uid),title:String(item.title||'')}));
+  const dateAnchors=rows.filter(row=>row.entry_type==='anchor');
+  const anchors=dateAnchors.filter(row=>String(row.address||'').slice(0,10)===day);
+  let anniversarySuggestions=[];
+  if(!anchors.length){
+    try{anniversarySuggestions=anniversarySuggestionsForDate(day,dateAnchors,{birthday:scope.birthday});}
+    catch{/* Anniversary hints must not hide the article Time context. */}
+  }
   return {
-    anchors,
-    periods:labels(ranges.filter(row=>row.entry_type==='period'&&matches(row))),
-    eras:labels(ranges.filter(row=>row.entry_type==='era'&&matches(row))),
+    anchors:labels(anchors),
+    periods:labels(rows.filter(row=>row.entry_type==='period'&&matches(row))),
+    eras:labels(rows.filter(row=>row.entry_type==='era'&&matches(row))),
     anniversarySuggestions
   };
 }
@@ -854,7 +802,7 @@ async function selectMediaStatisticsFacetRowsRaw(scope,dimension,{startDate='',e
   }
   const filters=timeFilters('createtime',startDate,endDate);
   const columns='uid,type,url,meta_tags,createtime';
-  const orders=[{column:'uid',ascending:true}];
+  const orders=[{column:'type',ascending:true}];
   const aggregates=new Map();
   let offset=0,total=null,source='auto';
   while(total===null||offset<total){
@@ -883,7 +831,7 @@ async function selectMediaStatisticsFacetRowsRaw(scope,dimension,{startDate='',e
 export async function selectMediaCrossTagRows(scope,{startDate='',endDate=''}={}){
   const current=scopeOf(scope);
   const filters=timeFilters('createtime',startDate,endDate);
-  const orders=[{column:'uid',ascending:true}];
+  const orders=[{column:'type',ascending:true}];
   const rows=[];
   let offset=0,total=null,source='auto';
   while(total===null||offset<total){
@@ -923,7 +871,7 @@ export async function selectMediaCrossPairWorks(scope,pair,{
   while(true){
     const page=await selectRows(current.galaxyMedia,{
       columns:'uid,title,url,meta_tags,createtime',
-      filters,orders:[{column:'uid',ascending:true}],
+      filters,orders:[{column:'type',ascending:true}],
       limit:batchSize,offset:cursor,source
     });
     source=page.dataSource||source;
