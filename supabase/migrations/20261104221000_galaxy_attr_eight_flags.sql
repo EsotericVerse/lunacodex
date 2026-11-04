@@ -33,14 +33,6 @@ BEGIN
     NEW.extract := COALESCE((incoming->>'extract')::boolean,NEW.extract);
     NEW.others := COALESCE((incoming->>'others')::boolean,NEW.others);
   END IF;
-  -- Preserve existing public-search/MCP invariants in either write path.
-  IF NEW.content IS NULL OR pg_catalog.btrim(NEW.content)='' THEN
-    NEW.search := false;
-    NEW."list" := false;
-  END IF;
-  IF pg_catalog.lower(pg_catalog.btrim(COALESCE(NEW.site,'')))='mcp' THEN
-    NEW."list" := false;
-  END IF;
   NEW.attr := pg_catalog.jsonb_build_object(
     'statics',NEW.statics,'culture',NEW.culture,'search',NEW.search,
     'trace',NEW.trace,'list',NEW."list",'keyword',NEW.keyword,
