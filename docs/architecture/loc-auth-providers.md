@@ -9,6 +9,7 @@ LOC `/admin/?section=enterpriseAuth` 的「認證來源設定」使用現有 Adm
 - GitHub OAuth：Client ID、Client Secret、Callback URL。
 - OIDC：Issuer URL、Client ID、Client Secret、Callback URL。
 - Microsoft Entra ID：Tenant ID、Client ID、Client Secret、Callback URL。
+- Neon Auth：Auth URL（/auth）、Data API URL（/rest/v1）、LOC Callback URL；不要求另外提供 Client Secret，Neon 端自行管理第三方登入憑證。
 - LDAP / AD DS：經由企業自行管理的 **OIDC bridge**，填寫 bridge issuer、client ID / secret、Callback URL；瀏覽器不接受網域帳密或 Bind Password。
 
 ## API 與憑證保存
@@ -33,3 +34,13 @@ LOC `/admin/?section=enterpriseAuth` 的「認證來源設定」使用現有 Adm
 `node --test scripts/test-loc-auth-provider-settings.mjs`
 
 這份測試覆蓋來源欄位契約、Secret 脫敏、保留既有 Secret、拒絕外部 callback、拒絕偽造 active 欄位與 LDAP/AD OIDC bridge 規則。不得把欄位測試結果當成 OAuth 已完成端到端登入驗證。
+
+## 與 Supabase Auth、資料庫路由的界線
+
+- **LOC 登入不使用 Supabase Auth**：現行可用認證保持 Clerk → LOC Authority；資料庫仍可用 Supabase、Neon 或其他目標。
+- `db-contract.mjs` 不再把資料庫 Auth SDK（包括舊 Supabase Auth 或尚未掛上 Authority 的 Neon Auth）視為可登入 LOC 的回退來源。
+- 既有獨立 Neon Auth Adapter 保留作為後續整合基礎，尚未掛入 LOC 正式登入，避免繞過 Authority 或 SQL RLS。
+- LOC Authority 的授權不是「讀到 JSON 就允許操作」：Recovery root 的簽章驗證、Durable Object 的 JSON grants、Scope SQL 的管理權限與 RLS 各自具有獨立驗證責任。管理員修改設定 JSON 不應直接獲得 Scope 權限。
+- **所有 Auth 的切換只能由授權管理員明確手動啟用**，禁止根據服務失聯自動切換，也禁止儲存連線資訊就自動變更現行 Session。
+- 初次發布新的 Admin／Authority 設定程式需要部署包含此 API 的網站及獨立 Authority Worker。其後設定資料保存在運行時 Durable Object，可以即時讀回而不需每次改設定都重新建置；但只有真正接上運行時切換的 Provider 才能在不部署的情況下改變登入行為。
+- `NEXT_PUBLIC_*` 建置環境變數和 Cloudflare Worker secrets 不能當成可立即反映的 JSON：變更後應按相關部署機制重新發布。網站的可攜 DB 連線亦應走受信任 runtime 設定而不是前端配置。
