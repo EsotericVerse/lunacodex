@@ -203,3 +203,60 @@ test('portable media expansion stays inside the helper; no duplicated analytics 
     source.replace(/^import .*$/gm,'').replace(/^export /gm,'')+
     ';return executePortableKyselyAnalytics'));
 });
+
+const anchorSource=readFileSync('app/loc/providers/kysely-anchor.mjs','utf8');
+const portableAnchor=new Function('canManageLoc','portableRelation',
+  'serializePortableJsonFields','sql',
+  anchorSource.replace(/^import .*$/gm,'').replace(/^export /gm,'')+
+  ';return executePortableKyselyAnchor')(
+  async()=>true,(table,engine,namespace)=>engine==='mysql'?table:namespace+'.'+table,
+  fields=>fields,{});
+
+function pointLinkDb(underCount=false){
+  const updates=[];
+  const db={
+    selectFrom:()=>({
+      select(){return this;},
+      where(){return this;},
+      execute:async()=>[{uid:'AAAAAAAA',title:'Point A'}]
+    }),
+    updateTable:table=>({
+      set(values){this.values=values;return this;},
+      where(...args){
+        if(args[0]==='uid'&&args[1]==='in')this.ids=args[2];
+        if(typeof args[0]==='function'){
+          const eb=(column,operator,value)=>({column,operator,value});
+          eb.or=conditions=>conditions;
+          args[0](eb);
+        }
+        return this;
+      },
+      executeTakeFirst:async function(){
+        updates.push({table,ids:this.ids,values:this.values});
+        return {numUpdatedRows:BigInt(this.ids.length-(underCount?1:0))};
+      }
+    })
+  };
+  return {db,updates};
+}
+test('portable Point link uses bounded grouped Kysely UPDATE, not N queries',async()=>{
+  const {db,updates}=pointLinkDb();
+  const assignments=Array.from({length:405},(_,n)=>({
+    uid:String(n).padStart(8,'0'),place_id:'AAAAAAAA'
+  }));
+  const result=await portableAnchor(db,{scopeid:'writer',type:'point',
+    attr:{op:'link',mode:'place_id',updates:assignments}},
+    {role:'authenticated',engine:'mysql',namespace:''});
+  assert.equal(result.data.count,405);
+  assert.deepEqual(updates.map(update=>update.ids.length),[200,200,5]);
+  assert.ok(updates.every(update=>update.table==='writer_galaxy'));
+  assert.ok(updates.every(update=>update.values.place_id==='AAAAAAAA'));
+});
+test('portable Point link rejects a concurrent partial batch',async()=>{
+  const {db}=pointLinkDb(true);
+  await assert.rejects(portableAnchor(db,{scopeid:'writer',type:'point',
+    attr:{op:'link',mode:'place_id',updates:[{
+      uid:'00000001',place_id:'AAAAAAAA'
+    }]}},{role:'authenticated',engine:'mysql',namespace:''}),
+    /Concurrent Point link changes/);
+});

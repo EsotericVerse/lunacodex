@@ -286,15 +286,27 @@ export async function executePortableKyselyAnchor(db,body,{role='anon',engine,na
         [...new Set(data.updates.map(row=>row.place_id))]).execute();
     const names=new Map(points.map(row=>[row.uid,String(row.title||'').trim()]));
     const galaxy=portableRelation(scope+'_galaxy',engine,namespace);
-    let count=0;
+    // One Kysely UPDATE per Point and chunk, not one UPDATE per article.
+    // The gateway's transaction makes a partial batch fail atomically.
+    const byPoint=new Map();
     for(const row of data.updates){
       if(!names.has(row.place_id))reject('Missing Point');
-      let query=db.updateTable(galaxy).where('uid','=',row.uid);
-      if(mode==='place_id')query=query.set({place_id:row.place_id})
-        .where(eb=>eb.or([eb('place_id','is',null),eb('place_id','=','')]));
-      else query=query.set({place_id:row.place_id,location:names.get(row.place_id)})
-        .where(eb=>eb.or([eb('location','is',null),eb('location','=','')]));
-      count+=modified(await query.executeTakeFirst());
+      if(!byPoint.has(row.place_id))byPoint.set(row.place_id,[]);
+      byPoint.get(row.place_id).push(row.uid);
+    }
+    let count=0;
+    for(const [pointId,articleIds] of byPoint){
+      for(let index=0;index<articleIds.length;index+=200){
+        const chunk=articleIds.slice(index,index+200);
+        const values=mode==='place_id'?{place_id:pointId}:
+          {place_id:pointId,location:names.get(pointId)};
+        let query=db.updateTable(galaxy).set(values)
+          .where('uid','in',chunk);
+        query=mode==='place_id'
+          ?query.where(eb=>eb.or([eb('place_id','is',null),eb('place_id','=','')]))
+          :query.where(eb=>eb.or([eb('location','is',null),eb('location','=','')]));
+        count+=modified(await query.executeTakeFirst());
+      }
     }
     if(count!==data.updates.length)reject('Concurrent Point link changes',409);
     return {data:{count},count:null};

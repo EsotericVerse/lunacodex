@@ -1,3 +1,10 @@
+### Kysely Portable：Point 文章關聯批次寫入（2026-11-05）
+
+- `executePortableKyselyAnchor` 的 `type=point / op=link` 原先逐篇 Galaxy 文章執行 Kysely `UPDATE`，上限 10,000 筆可能造成大量往返；現改為先驗證 Point 與文章 UID，依 Point 分組、每 200 篇合成一個 Kysely `WHERE uid IN (...)` 批次更新。
+- 支援原有 `place_id`／`missing_location` 模式、保留只更新原本空白欄位的保護條件，並核對實際更新筆數；不符時傳回 409，交由既有 Gateway Transaction 回滾。
+- 不新增表／欄／Index／Trigger／RPC、不重建文章 UID 清單；UID 僅作當次寫入參數。這是功能性 Kysely 性能改善，不涉及公開 Search 或 Auth／Authority 變更。
+- 已核對 405 筆同 Point 文章由 405 次 UPDATE 降到 3 次 UPDATE 的模擬測試，以及筆數不符的衝突拒絕；真實 MySQL／MSSQL／PostgreSQL 整合測試仍須另行驗證。
+
 ### Kysely Portable 分析檔修復（2026-11-05）
 
 - 檢查 `main` 發現 `kysely-analytics.mjs` 在 MySQL `JSON_TABLE(... PATH '$')` 字串內誤插入完整第二份 Portable Analytics executor，導致 Kysely SQL 模板與檔案結構毀損。
