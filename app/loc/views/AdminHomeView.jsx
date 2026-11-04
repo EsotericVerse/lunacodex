@@ -18,8 +18,7 @@ import PanelLoading from '../PanelLoading';
 const ADMIN_OPTIONS=Object.freeze([
   {value:'registry',label:'人員',shortLabel:'人員',description:'系統人員、Email、Table 對應及群組部署。'},
   {value:'lists',label:'名單管理',shortLabel:'名單',description:'保留名稱備註及 Email 系統黑名單。'},
-  {value:'enterpriseAuth',label:'企業認證（預備）',shortLabel:'企業認證',description:'AD／LDAP 企業登入模組預留設定；目前不啟用。'},
-  {value:'network',label:'網路設定',shortLabel:'網路',description:'資料庫連線、備援及快取／ISR 平台。'},
+  {value:'network',label:'網路設定',shortLabel:'網路',description:'資料庫連線、ISR 快取與認證來源設定。'},
   {value:'io',label:'系統設定',shortLabel:'系統設定',description:'系統匯入、匯出及批次限制。'},
   {value:'featureHero',label:'功能區塊設定',shortLabel:'區塊',description:'編輯功能頁 Hero 與展示資源。'},
   {value:'themes',label:'主題顏色設定',shortLabel:'配色',description:'調整網站主題和色彩。'}
@@ -52,7 +51,7 @@ export default function AdminHomeView({scopeGroup}){
   const canManage=Boolean(account.user&&!account.loading&&!account.permissionLoading&&account.canManageGlobalSync());
   // Preserve deep links created before the Admin sections were consolidated.
   const [section,setSection]=useManagementSection(ADMIN_OPTIONS,'registry',{
-    database:'network',isr:'network',system:'network',
+    database:'network',isr:'network',enterpriseAuth:'network',auth:'network',system:'network',
     reserved:'lists',blocklist:'lists',
     traceAnchor:'network',traceMap:'network'
   });
@@ -87,8 +86,8 @@ export default function AdminHomeView({scopeGroup}){
         {section==='network'?<>
           <DatabaseTarget scopeGroup={scopeGroup}/>
           <IsrDomainTarget/>
+          <EnterpriseAuthReserved/>
         </>:null}
-        {section==='enterpriseAuth'?<EnterpriseAuthReserved/>:null}
         {section==='io'?<RuntimeIoSettings/>:null}
         {section==='featureHero'?<FeatureHeroImages/>:null}
         {section==='themes'?<ThemeEditor/>:null}

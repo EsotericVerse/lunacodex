@@ -1,5 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import {validateKeywordCategoryEntry,hashKeywordCategory,assertPublicKeywordClass} from './keyword-categories.mjs';
+import {AUTH_PROVIDER_TYPES,validateAuthProviderSettings,publicAuthProviderSettings}
+  from '../../app/loc/auth/auth-provider-settings.mjs';
 // LOC independent recovery control plane. Never imports a database client or Supabase Auth.
 // The separate Worker is provisioned only when Clerk + root identity + encryption secrets exist.
 const JSON_HEADERS={'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'};
@@ -378,6 +380,35 @@ export class LocAuthorityState extends DurableObject {
     }
     targets.sort((a,b)=>a.id.localeCompare(b.id));
     return {primary_id:await this.ctx.storage.get('primary_id')||'supabase-current',targets};
+  }
+  // Root-only Auth connections. Store full credentials encrypted in the
+  // existing Durable Object; GET returns metadata, never plaintext secrets.
+  async listAuthProviders(){
+    const providers=[];
+    for(const type of AUTH_PROVIDER_TYPES){
+      const item=await this.ctx.storage.get('auth-provider:'+type);
+      providers.push(item?{...item.public,active:false,runtime_connected:false}:
+        {type,configured:false,secret_configured:false,active:false,runtime_connected:false});
+    }
+    // Runtime currently verifies only the deployed Clerk Session for SQL.
+    // This value is intentionally NOT writable via these configuration endpoints.
+    return {active:'clerk',providers};
+  }
+  async putAuthProvider(type,values){
+    const previous=await this.ctx.storage.get('auth-provider:'+type);
+    const former=previous
+      ?await decryptProfile(previous.encrypted,this.env.LOC_CONTROL_ENCRYPTION_KEY):null;
+    let profile;
+    try{
+      profile=validateAuthProviderSettings(type,values,
+        {previous:former,siteOrigin:this.env.LOC_CONTROL_ORIGIN});
+    }catch(error){throw fail(error.message||'Invalid auth provider settings',400)}
+    const publicView=publicAuthProviderSettings(profile);
+    await this.ctx.storage.put('auth-provider:'+type,{
+      public:publicView,
+      encrypted:await encryptProfile(profile,this.env.LOC_CONTROL_ENCRYPTION_KEY)
+    });
+    return publicView;
   }
   async putTarget(id,input){
     const validated=validateTarget(input,id);
@@ -841,6 +872,15 @@ export default {
       const stub=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName('loc-authority-control-v1'));
       if(request.method==='GET'&&url.pathname==='/v1/me')return json(principal,200,origin);
       if(request.method==='GET'&&url.pathname==='/v1/state')return json(await stub.listState(),200,origin);
+      if(request.method==='GET'&&url.pathname==='/v1/auth/providers')
+        return json(await stub.listAuthProviders(),200,origin);
+      const authMatch=new RegExp('^/v1/auth/providers/(github|oidc|entra|ldap|ad|neon)$').exec(url.pathname);
+      if(request.method==='PUT'&&authMatch){
+        const raw=await request.text();
+        if(raw.length>12000)throw fail('Request too large',413);
+        let input;try{input=JSON.parse(raw)}catch{throw fail('Invalid JSON')}
+        return json(await stub.putAuthProvider(authMatch[1],input),200,origin);
+      }
       if(request.method==='GET'&&url.pathname==='/v1/grants')return json({grants:await stub.listGrants()},200,origin);
       if(request.method==='PUT'&&url.pathname==='/v1/grants'){
         const raw=await request.text();if(raw.length>3000)throw fail('Request too large',413);

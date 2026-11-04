@@ -1,23 +1,162 @@
 'use client';
+import {useEffect,useState} from 'react';
+import Select from 'react-select';
+import {useEditDockForm} from '../../../modular/edit-dock';
+import {AUTH_PROVIDER_FIELDS,AUTH_PROVIDER_LABELS,AUTH_PROVIDER_TYPES}
+  from '../../auth/auth-provider-settings.mjs';
+import {authProviderSettingsRequest} from '../../mcp/auth-provider-client.mjs';
 
-// Reserved interface only: never collects LDAP passwords or enables a login flow.
+// The Admin shell owns the page width, tablet breakpoints and Save / Discard
+// buttons. Reuse the same selector and two-column fields as the other panels.
+const PROVIDER_OPTIONS=Object.freeze([
+  {value:'clerk',label:'Clerk（目前登入）'},
+  ...AUTH_PROVIDER_TYPES.map(type=>({value:type,label:AUTH_PROVIDER_LABELS[type]}))
+]);
+function publicFields(profile){
+  const result={};
+  for(const field of AUTH_PROVIDER_FIELDS[profile?.type]||[]){
+    if(field.kind!=='secret')result[field.key]=profile[field.key]||'';
+  }
+  return result;
+}
 export default function EnterpriseAuthReserved(){
-  return <section className="loc-card admin-workspace" aria-labelledby="enterprise-auth-heading">
-    <h2 id="enterprise-auth-heading">企業認證（預備功能）</h2>
-    <p>預留 Microsoft AD／Entra ID、LDAP 身分橋接服務與企業 SSO 的設定入口。目前尚未啟用，也不影響現行 Clerk 登入。</p>
-    <div className="scope-status" role="status">未啟用 · 尚未設定企業連線</div>
-    <fieldset disabled>
-      <legend>未來連線設定</legend>
-      <label>身分來源
-        <select defaultValue="entra"><option value="entra">Microsoft AD／Entra ID</option><option value="ldap">LDAP（透過 SAML／OIDC 橋接）</option><option value="other">其他企業身分服務</option></select>
-      </label>
-      <label>連線協定
-        <select defaultValue="oidc"><option value="oidc">OIDC</option><option value="saml">SAML</option></select>
-      </label>
-      <label>企業網域
-        <input type="text" placeholder="company.example" autoComplete="off"/>
-      </label>
-    </fieldset>
-    <p className="scope-status">正式啟用時由 Clerk 管理企業連線與機密，LOC Authority 保留授權控管。此頁不儲存憑證，也不修改 OAuth 設定。</p>
+  const [selected,setSelected]=useState('clerk');
+  const [saved,setSaved]=useState({});
+  const [draft,setDraft]=useState({});
+  const [secret,setSecret]=useState('');
+  const [loading,setLoading]=useState(true);
+  const [busy,setBusy]=useState(false);
+  const [status,setStatus]=useState('');
+  const [active,setActive]=useState('clerk');
+  useEffect(()=>{
+    let live=true;
+    authProviderSettingsRequest().then(data=>{
+      if(!live)return;
+      const profiles={};
+      for(const provider of data.providers||[]){
+        if(AUTH_PROVIDER_TYPES.includes(provider.type))profiles[provider.type]=provider;
+      }
+      setSaved(profiles);
+      setActive(data.active||'clerk');
+    }).catch(error=>{
+      if(live)setStatus(error.message||'認證設定讀取失敗。');
+    }).finally(()=>{if(live)setLoading(false)});
+    return()=>{live=false};
+  },[]);
+
+  const profile=saved[selected]||null;
+  const fields=AUTH_PROVIDER_FIELDS[selected]||[];
+  const hasSecret=fields.some(field=>field.kind==='secret');
+  const current={...publicFields(profile),...draft};
+  const dirty=selected!=='clerk'&&(Boolean(secret)||fields.some(field=>
+    field.kind!=='secret'&&String(current[field.key]||'')!==String(profile?.[field.key]||'')));
+
+  const discard=()=>{
+    setDraft({});
+    setSecret('');
+    setStatus('');
+  };
+  const selectProvider=next=>{
+    if(next===selected||busy)return;
+    if(dirty&&!window.confirm('認證來源欄位尚未儲存，確定放棄修改？'))return;
+    discard();
+    setSelected(next);
+  };
+  async function save(){
+    if(busy||loading)return false;
+    if(!dirty)return true;
+    setBusy(true);
+    setStatus('');
+    try{
+      const values=Object.fromEntries(fields.map(field=>[
+        field.key,field.kind==='secret'?secret:String(current[field.key]||'')
+      ]));
+      const updated=await authProviderSettingsRequest({type:selected,values});
+      if(updated?.type!==selected||updated.active!==false||updated.runtime_connected!==false)
+        throw new Error('認證設定未取得安全確認，請核對後再操作。');
+      // Confirm persistence through Authority's public metadata endpoint.
+      const checked=await authProviderSettingsRequest();
+      const persisted=(checked.providers||[]).find(item=>item.type===selected);
+      if(!persisted?.configured||fields.some(field=>field.kind!=='secret'&&
+        String(persisted[field.key]||'')!==String(updated[field.key]||'')))
+        throw new Error('已提交設定，但讀回內容不一致；請重新整理確認。');
+      setSaved(previous=>({...previous,[selected]:persisted}));
+      setDraft({});
+      setSecret('');
+      setStatus('設定已儲存並讀回確認；正式登入仍為 Clerk。');
+      return true;
+    }catch(error){
+      setStatus(String(error?.message||'認證設定儲存失敗，登入來源未變更。'));
+      return false;
+    }finally{setBusy(false)}
+  }
+  useEditDockForm({save,discard,isDirty:()=>Boolean(dirty),isBusy:()=>busy||loading});
+
+  return <section className="loc-card admin-workspace" aria-labelledby="admin-auth-heading">
+    <h2 id="admin-auth-heading">認證來源設定</h2>
+    <p className="scope-status">設定不同身分服務的連線參數，驗證後仍由 LOC Authority 管理 Scope 權限。
+      選擇來源只是編輯設定，<strong>不會立即切換登入</strong>。</p>
+    <p className="scope-status" role="status">
+      正式登入：{active==='clerk'?'Clerk':active}。未完成登入與權限驗證的來源一律不可啟用。
+    </p>
+
+    <div className="admin-inline-select">
+      <label htmlFor="admin-auth-provider-select">設定認證來源</label>
+      <Select
+        inputId="admin-auth-provider-select" instanceId="admin-auth-provider-select"
+        unstyled className="loc-settings-select" classNamePrefix="loc-settings-select"
+        isSearchable={false} isClearable={false} isDisabled={loading||busy}
+        options={PROVIDER_OPTIONS}
+        value={PROVIDER_OPTIONS.find(option=>option.value===selected)}
+        onChange={option=>{if(option)selectProvider(option.value)}}
+      />
+    </div>
+
+    {selected==='clerk'?<p className="scope-status">
+      Clerk 是目前正式啟用的登入來源，設定及機密由部署環境管理；
+      此處不讀取或覆寫 Clerk 金鑰，也不影響現有 Session。
+    </p>:<>
+      <h3 className="admin-workspace-section-heading">{AUTH_PROVIDER_LABELS[selected]} 連線設定</h3>
+      <p className="scope-status">{profile?.configured?'已儲存連線參數':'尚未設定連線參數'}。
+        {hasSecret
+          ?(profile?.secret_configured?' Secret 已保存；留空可沿用既有 Secret。':' 初次設定需提供 Client Secret。')
+          :' 此來源不需要在 LOC 另存 Client Secret。'}
+      </p>
+      {selected==='neon'?<p className="scope-status">
+        Neon Auth 與 Neon 資料庫是獨立設定；填寫端點不會改變主要資料庫或正式登入來源。
+      </p>:null}
+      {(selected==='ldap'||selected==='ad')?<p className="scope-status">
+        LDAP／AD 使用企業自行管理的 OIDC 橋接服務；不在網站收集 Bind Password 或網域帳密。
+      </p>:null}
+
+      <div className="scope-management-fields">
+        {fields.map(field=>{
+          const longField=field.kind==='url'||field.kind==='secret';
+          const id='admin-auth-'+selected+'-'+field.key;
+          return <label key={field.key} htmlFor={id}
+            className={longField?'scope-management-wide-field':undefined}>
+            <span>{field.label}</span>
+            <input id={id}
+              type={field.kind==='secret'?'password':field.kind==='url'?'url':'text'}
+              className="scope-search-input"
+              autoComplete={field.kind==='secret'?'new-password':'off'}
+              spellCheck={false}
+              maxLength={field.kind==='secret'?4096:512}
+              value={field.kind==='secret'?secret:String(current[field.key]||'')}
+              placeholder={field.kind==='secret'&&profile?.secret_configured?'留空保留既有 Secret':undefined}
+              disabled={loading||busy}
+              onChange={event=>{
+                if(field.kind==='secret')setSecret(event.target.value);
+                else setDraft(previous=>({...previous,[field.key]:event.target.value}));
+              }}
+            />
+          </label>;
+        })}
+      </div>
+      <p className="scope-status">Secret 僅經由 LOC Authority 加密保存，重新讀取只顯示是否已設定。
+        完成欄位後使用管理頁既有的「儲存」；儲存不代表 OAuth 已接通。</p>
+    </>}
+    {status?<p role="status" className="scope-status">{status}</p>:null}
+    {loading&&!status?<p role="status" className="scope-status">正在讀取認證設定…</p>:null}
   </section>;
 }

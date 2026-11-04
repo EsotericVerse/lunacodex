@@ -57,9 +57,14 @@ test('Neon OAuth identity, management RPC and article reads never call Supabase'
   const original=globalThis.window;
   try{
     globalThis.window={location:{origin:'https://loc.lo3rwang.cc'}};
-    const account=await db.getAccountSession();
-    assert.equal(account.oauth.provider,'google');
-    assert.equal(account.oauth.email,'owner@example.com');
+    // Neon Auth may work as an external provider, but cannot be promoted
+    // into LOC permissions until a verified Authority adapter is enabled.
+    await assert.rejects(db.getAccountSession(),/verified identity provider is required/);
+    const login=await adapter.auth.getSession();
+    assert.equal(login.data.session.user.email,'owner@example.com');
+    const identity=await adapter.auth.getUser(login.data.session.access_token);
+    assert.ifError(identity.error);
+    assert.equal(identity.data.user.email,'owner@example.com');
     const {data:permissions,error}=await adapter.authClient.schema('silver').rpc('manage',{p_type:'self'});
     assert.ifError(error);
     assert.equal(permissions[0].id,'lo3rwang');
@@ -74,21 +79,29 @@ test('Neon OAuth identity, management RPC and article reads never call Supabase'
 });
 test('Neon rejects non-Google linked account rather than granting management rights',async()=>{
   const {fetchImpl}=simulatedNetwork({google:false});
-  const db=createDatabaseClient(createNeonPrimaryAdapter({url:api,authUrl:auth,fetchImpl}));
-  await assert.rejects(db.getAccountSession(),/Google OAuth identity is not verified/);
+  const adapter=createNeonPrimaryAdapter({url:api,authUrl:auth,fetchImpl});
+  const login=await adapter.auth.getSession();
+  const identity=await adapter.auth.getUser(login.data.session.access_token);
+  assert.match(identity.error.message,/Google OAuth identity is not verified/);
+  await assert.rejects(createDatabaseClient(adapter).getAccountSession(),
+    /verified identity provider is required/);
 });
 test('Neon lacks a session: no verified user may be granted',async()=>{
   const {fetchImpl}=simulatedNetwork({loggedIn:false});
-  const db=createDatabaseClient(createNeonPrimaryAdapter({url:api,authUrl:auth,fetchImpl}));
-  assert.equal(await db.getAccountSession(),null);
+  const adapter=createNeonPrimaryAdapter({url:api,authUrl:auth,fetchImpl});
+  const login=await adapter.auth.getSession();
+  assert.ifError(login.error);
+  assert.equal(login.data.session,null);
+  await assert.rejects(createDatabaseClient(adapter).getAccountSession(),
+    /verified identity provider is required/);
 });
 
 test('LOC uses Clerk identity while the independent Neon adapter remains deferred',()=>{
   const source=readFileSync(new URL('../app/loc/providers/configured.mjs',import.meta.url),'utf8');
   assert.match(source,/return createClerkGatewayAdapter\(\)/);
   assert.doesNotMatch(source,/createNeonPrimaryAdapter|loc-auth-provider|createSupabaseAdapter/);
-  // Neon adapter tests remain available for schema consolidation; production
-  // Clerk account selection does not depend on those incomplete schemas.
+  // Neon Schema is prepared; outstanding RPC parity remains separate from
+  // LOC's identity selection. Keep Clerk until Authority verifies Neon Auth.
   const emergency=readFileSync(new URL('../app/AppShell.jsx',import.meta.url),'utf8');
   assert.match(emergency,/setEmergencyDatabasePrimary\(target\)/);
 });
