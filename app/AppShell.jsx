@@ -494,15 +494,16 @@ function AppShellInner({children}){
     :null;
   const isFeatureEditMode=Boolean(editingDockVisible&&featureEditReturn);
   // Each editing level has exactly four destinations + Save + Discard.
-  // Global System Management (/admin) is a distinct admin workspace, not a
-  // fifth Group destination in the six-button feature dock.
+  // Group edit dock: System Admin replaces the old first slot, and
+  // People/Works replaces Trace Map. Admin access is still checked by
+  // ManagementAccess at /admin/; the dock grants no privileges.
   const editDestinations=locAdminEdit?[
-    {id:'time',icon:'culture',label:translateUiField(activeLocale,'人員作品管理'),
-      href:editTabHref('culture/manage','edit','1')},
+    {id:'system',icon:'settings',label:translateUiField(activeLocale,'系統管理'),
+      href:'/admin/'},
     {id:'keywords',icon:'keywords',label:translateUiField(activeLocale,'關鍵詞'),
       href:editTabHref('statics/manage','edit','1')},
-    {id:'traceMap',icon:'trace',label:translateUiField(activeLocale,'痕跡圖管理'),
-      href:editTabHref('trace/manage','section','traceMap')+'&edit=1'},
+    {id:'members',icon:'culture',label:translateUiField(activeLocale,'人員作品管理'),
+      href:editTabHref('culture/manage','edit','1')},
     {id:'suggestions',icon:'search',label:translateUiField(activeLocale,'文章管理'),
       href:editTabHref('search/manage','section','media')+'&edit=1'}
   ]:[
@@ -569,13 +570,6 @@ function AppShellInner({children}){
           className="scope-nav-loc-home" aria-current={scopeId==='loc'&&pathname==='/'?'page':undefined}>
           {copy.nav.home}
         </ScopeLink>
-        {/* Keep System Administration outside public Scope favorites. The protected
-            /admin/ route performs the actual Clerk + LOC permission check; the
-            shortcut uses the existing passive session and performs no SQL lookup. */}
-        {!native&&preferences.account.user?<ScopeLink href="/admin/" native={false}
-          className="scope-nav-admin" aria-current={scopeId==='admin'?'page':undefined}>
-          {translateUiField(activeLocale,'系統管理')}
-        </ScopeLink>:null}
       </nav>
       {openFolder?<div id="scope-nav-folder-contents" className="scope-nav-subrow" aria-label={openFolder.label+' '+translateUiField(activeLocale,'目錄')}>
         <ScrollableScopeNav label={openFolder.label+' '+translateUiField(activeLocale,'目錄內容')} resetKey={openFolder.id+'|'+openFolder.links.map(item=>item.id).join(',')}>
