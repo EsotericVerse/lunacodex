@@ -46,7 +46,9 @@ Kysely **不是 PostgreSQL RPC 的包裝器**。LOC 共用資料操作應採 Kys
 
 `silver.manage(type,id)` 與 UID 配號函式仍屬資料庫內部的**身分驗證／配號輔助**，不是前端呼叫的 SQL RPC；網站的通用 SQL RPC 執行路由已退役。裝置本機 `local` Scope 使用獨立 SQLite 介面，不屬於遠端 RPC 清理範圍。
 
-Galaxy 文章權限改採八個獨立 boolean 欄位，順序為 `statics`、`culture`、`search`、`trace`、`list`、`keyword`、`extract`、`others`。所有新讀寫都直接使用欄位；舊 `galaxy.able` 只在歷史匯入資料解析或既有本機 SQLite 資料一次性轉換時讀取，不得重新寫入伺服器。**正式資料庫的舊欄位須待新版經部署驗收及相依檢查後另行移除**，不能把程式端切換誤稱為已刪欄位。
+Galaxy 文章權限現在改為 **`attr jsonb`**，固定含八個 boolean（`statics`、`culture`、`search`、`trace`、`list`、`keyword`、`extract`、`others`），不包含文章本體、UID、日期、地點或任意自訂鍵。使用者的前端讀取與新匯入先讀／寫 `attr`；原有的八個獨立 boolean 欄位由 `silver.sync_galaxy_capability_attr` 相容同步（支援舊 SQL、RPC 與部分尚未轉接的新介面），直到逐一驗證退役後才刪除。沒有重新引入 `galaxy.able`。裝置本機 SQLite 仍沿用本地既定 `able` 轉接；**不視為遠端正式 Galaxy 的結構**。遷移 `20261104221000_galaxy_attr_eight_flags.sql` 同時適用 Supabase、Neon，保留每篇文章已設定的八項數值，不新建表／索引。
+
+**切換階段／驗收界線：** 此次先新增 `attr`、完整回填、同步 Trigger，並將文章單篇及搜尋編輯入口優先讀取 `attr`。其他統計與資料庫舊函式在相容期仍可讀八個布林鏡像；**尚未移除八個舊欄位，不能宣稱已完成最終刪欄**。外部自選 DB 須在 Schema 中具備 `attr`，若尚未遷移則健康檢查應明確指出缺欄，不可靜默回退。
 
 **驗證與版本狀態**：本段描述目標分支 `refactor/kysely-clerk-rpc-removal` 的改動，不代表部署、正式合併或資料庫舊欄位已刪除。須以該分支實際回歸測試、PR 合併與 Cloudflare 部署結果分別核對。
 
