@@ -20,7 +20,6 @@ import {appBootstrapPageCopy,useAppBootstrap} from './loc/app-bootstrap';
 import {getDbSourceStatus,subscribeDbSourceStatus} from './loc/db-source-status.mjs';
 import {preferredDatabasePrimary,setEmergencyDatabasePrimary} from './loc/providers/emergency-primary.mjs';
 import {useNavigationPreferences} from './loc/use-navigation-preferences';
-import LocUserBootstrap from './loc/LocUserBootstrap';
 import {NavigationPreferences} from './modular/navigation-preferences';
 import {navigationHref} from './modular/scope-registry.js';
 import {recoverChunkOnce} from './loc/chunk-recovery.mjs';
@@ -550,7 +549,6 @@ function AppShellInner({children}){
 
 
   return <UiLocaleProvider locale={activeLocale}>
-    <LocUserBootstrap/>
     <ScopePageCopy scopeId={scopeId} display_name={configRow?.display_name||registryRow?.display_name} pageName={pageName}/>
     <ScrollProgress/>
     <header className="scope-global" data-native={native?'ios':'web'}>

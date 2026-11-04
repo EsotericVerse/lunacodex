@@ -104,9 +104,18 @@ async function fetchManagementAccount(mutate){
   }
 }
 
-// Deduplicate live requests while they are in flight; completed grants are
-// checked through readVerifiedManagementEntry on route changes.
-function loadManagementAccount(mutate){
+// Passive management consumers reuse the grant already verified for this
+// identity. An explicit editor entry still forces a live Clerk + Scope check.
+// Server RLS / RPC authorization independently protects every write.
+function loadManagementAccount(mutate,{force=false}={}){
+  if(!force){
+    const verified=readVerifiedManagementEntry();
+    if(verified)return Promise.resolve({
+      ...signedOutState,user:verified.user,email:authEmail,
+      role:verified.authorizer.role,authorizer:verified.authorizer,
+      scopes:scopeMetadata
+    });
+  }
   if(pendingManagementVerification)return pendingManagementVerification;
   const current=fetchManagementAccount(mutate);
   pendingManagementVerification=current;
@@ -162,9 +171,11 @@ export function useAccount({enabled=true,sessionOnly=false}={}){
     };
   },[sessionOnly,enabled,state.error,query.mutate]);
 
-  // One live verified decision per explicit entry; no TTL or cache shortcut.
+  // Explicit edit entry must re-verify; normal component mounts reuse
+  // the in-memory grant and never send another manage(self) query.
   const refresh=useCallback(async()=>{
-    const result=await mutate(queryKey,queryFn,{revalidate:false});
+    const fetcher=sessionOnly?queryFn:()=>loadManagementAccount(mutate,{force:true});
+    const result=await mutate(queryKey,fetcher,{revalidate:false});
     if(result?.error)throw new Error(result.error);
     if(sessionOnly)return result?.user||null;
     return result?.user&&result.authorizer

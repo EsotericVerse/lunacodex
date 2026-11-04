@@ -52,3 +52,13 @@ test('UI gate only enters the editor after checked Scope authorization',()=>{
   assert.match(gate,/dbAuthEvents\.onAuthStateChange/);
   assert.match(gate,/event==='SIGNED_OUT'/);
 });
+
+test('passive consumers do not refetch an already verified management grant',()=>{
+  const account=read('app/loc/use-account.js');
+  assert.match(account,/function loadManagementAccount\(mutate,\{force=false\}=\{\}\)/);
+  assert.match(account,/if\(!force\)\{\s*const verified=readVerifiedManagementEntry\(\)/);
+  assert.match(account,/return Promise\.resolve\(\{[\s\S]*authorizer:verified\.authorizer/);
+  assert.match(account,/sessionOnly\?queryFn:\(\)=>loadManagementAccount\(mutate,\{force:true\}\)/);
+  const home=read('app/loc/ScopeHomeEditEntry.jsx');
+  assert.match(home,/const result=await account\.refresh\(\)/);
+});
