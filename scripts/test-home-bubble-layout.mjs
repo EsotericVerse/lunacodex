@@ -41,3 +41,15 @@ test('home, inline edit, and public displays retain the same bubble layout contr
   assert.match(read('app/loc/LocHomeBlockDisplay.jsx'),/--loc-bubble-columns/);
   assert.match(read('app/styles/loc-about-original.css'),/--loc-bubble-columns/);
 });
+
+test('Kysely managed writes bind homepage JSONB arrays as JSON rather than PG arrays',()=>{
+  const management=read('app/loc/providers/kysely-management.mjs');
+  assert.match(management,/['"]block_entity['"]/);
+  assert.match(management,/JSON\.stringify\(value\)}::jsonb/);
+  assert.match(management,/\.set\(postgresManagedJsonbValues\(values\)\)/);
+  // Both editor variants continue providing the original [columns,...entities]
+  // structure, with no UI-side JSON stringify or schema alteration.
+  for(const path of ['app/loc/ScopeBlockDraftList.jsx','app/loc/ScopeBlockEditorSession.jsx']){
+    assert.match(read(path),/block_entity:HomeBlock\.serializeBubbleEntities/);
+  }
+});
