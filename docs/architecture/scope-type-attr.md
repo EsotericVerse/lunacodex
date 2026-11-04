@@ -1,8 +1,15 @@
+### Portable Overview 媒體數量等價修正（2026-11-05）
+
+- Portable Overview 現在透過 Kysely QueryBuilder 篩選 statics=true、有內容、日期區間內的 Galaxy 文章，再用各 Dialect 的 JSON 陣列展開運算計算 media_link 關聯的 **不同媒體 UID 數**；再與 Anchor 可見的 image/video/rune/suno 類型交集。原本只計算整張 Anchor 媒體存量，並不等於連結統計，已更正。
+- MySQL 8 的 JSON_TABLE、SQL Server 的 OPENJSON、可攜 PostgreSQL JSONB 的 jsonb_array_elements_text 是各資料庫原生 JSON 展開函式；Kysely 負責共同 query builder 與編譯，只有這段 SQL 表達式依引擎分流。MySQL/MariaDB 與 SQL Server 所需的 JSON 函式支援／相容層級須由實際環境驗證；未知引擎直接拒絕而不回傳誤導數值。
+- 不抓取文章全文到應用程式、不逐篇發 SQL、不排序 UID、不新建 RPC、表、Trigger、Index，也不改動 UI、Clerk、Authority、Galaxy 八 Boolean、Scope 四 Boolean 或 Anchor.attr。
+- 已新增 portable SQL 路徑的針對性測試；正式跨引擎查詢及部署成功尚待獨立證據，不能把測試替身視為資料庫整合測試。
+
 ### Portable RPC → Kysely 執行現況（2026-11-05）
 
 - **已改寫**：通用 Galaxy/Anchor CRUD、管理寫入、公開查詢與 Bootstrap、一般每日／來源統計、總覽、最早日期、痕跡地點與期間密度、部分關鍵詞 Class 目錄，透過可信 Gateway 的 Kysely Dialect 執行；舊 RPC 名稱仍可能出現在相容客戶端與歷史 Migration，不能視為實際使用證據。
 - **本次修正**：跨引擎 LOC 總覽的最早日期不再被顯示時間區間誤縮小；portable daily 的 includeUndated 不再因分組過濾掉 NULL 日期。兩者沿用 Boolean 欄位，無新表、索引、RPC 或 Schema 變更。
-- **尚未完成的等價功能**：portable keyword_summary、trace_keywords 的複合關聯，以及部分需以 PostgreSQL JSON / 陣列函式計算的媒體連結統計；overview.media_count portable 路徑目前以公開 Anchor 媒體存量計算，尚非 PostgreSQL 的「文章已連結媒體去重數」，不得宣稱數值完全相同。
+- **尚未完成的等價功能**：portable keyword_summary、trace_keywords 的複合關聯及授權等價；跨 SQL 引擎真實測試仍待驗證。
 - **不得直接刪除**：Clerk／LOC Authority 授權所依賴的資料庫輔助函式、仍被 RLS／Trigger／既有相容端呼叫的 RPC。須逐一驗證服務端呼叫與 SQL dependency，才能安排清除。Kysely 的 query builder、transaction、Dialect 不是權限系統，無法替代 DB 層級的授權語義。
 - **驗收邊界**：這次新增 portable 統計針對性回歸測試；跨 MySQL / MSSQL 真實連線整合、公開權限等價與已部署行為尚未證明，不能把程式碼編譯或 PR Merge 當成 portable 全功能完成。
 
