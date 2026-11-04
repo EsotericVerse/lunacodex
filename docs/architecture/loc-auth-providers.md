@@ -44,3 +44,9 @@ LOC `/admin/?section=enterpriseAuth` 的「認證來源設定」使用現有 Adm
 - **所有 Auth 的切換只能由授權管理員明確手動啟用**，禁止根據服務失聯自動切換，也禁止儲存連線資訊就自動變更現行 Session。
 - 初次發布新的 Admin／Authority 設定程式需要部署包含此 API 的網站及獨立 Authority Worker。其後設定資料保存在運行時 Durable Object，可以即時讀回而不需每次改設定都重新建置；但只有真正接上運行時切換的 Provider 才能在不部署的情況下改變登入行為。
 - `NEXT_PUBLIC_*` 建置環境變數和 Cloudflare Worker secrets 不能當成可立即反映的 JSON：變更後應按相關部署機制重新發布。網站的可攜 DB 連線亦應走受信任 runtime 設定而不是前端配置。
+
+## Neon 進度：Schema 與 RPC 分開驗收（2026-11-04）
+
+- Neon `silver` 目前可讀到 **17 張基礎資料表**，其中 Galaxy 2 張、Anchor 2 張；現有 `silver` routine 75 筆。這只證實資料庫中已有結構和函式，**不代表 RPC 與 Supabase 完全相容**。
+- 使用者確認 Neon Schema 已完成；待處理的是 RPC 的功能契約、參數、權限及 Kysely 呼叫路徑。不得再以「Neon Schema 尚未同步」為 Auth 設定功能的前置阻礙。
+- Neon Auth 的「設定欄位已預留」與「登入來源可安全切換」仍是不同驗收項目。完成 RPC 也不會自動啟用 Neon Auth，依然需要 Authority 驗簽、Session 綁定及手動切換。
