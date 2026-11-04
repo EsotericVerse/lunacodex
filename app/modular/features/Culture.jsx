@@ -30,7 +30,6 @@ import {useRiverDensityAnalysis} from '../modules/culture-timeline/use-river-den
 import {structurePeriodPreference} from '../../loc/culture-period-navigation.mjs';
 import {buildEraRiver} from '../../loc/culture-time-trace-river.mjs';
 import {allocateTimeUid,timePeriodContainsDate,timePeriodSortDate} from '../../loc/time-anchor-ranges.mjs';
-import {readUnifiedAnchorUids} from '../../loc/unified-anchor-uids.mjs';
 
 import {selectGalaxyIdentity,selectScopeDailyCounts} from '../../loc/galaxy-query';
 import {revalidateServerMetadata} from '../../loc/scope-data';
@@ -216,6 +215,7 @@ export default function Culture(){
   const {settings:userSettings,active:userActive}=useLocFeatureSettings('culture');
   // A list editor is offered only after the user opts in; authorization stays on Edit.
   const adminListRequested=Boolean(userActive&&userSettings.list===true);
+  const [worksOpen,setWorksOpen]=useState(false);
   const searchParams=useSearchParams();
   const editDock=useEditDock();
   const canUseScopeEditor=Boolean(editDock?.active&&editDock.scopeId===scopeId);
@@ -223,7 +223,7 @@ export default function Culture(){
   const isTimeEditingView=canUseScopeEditor&&(pathname.endsWith('/culture/manage')||
     pathname.endsWith('/culture/manage/')||searchParams?.get('edit')==='1');
   // Public Culture does not load management grants; editing must verify them.
-  const account=useAccount({enabled:isTimeEditingView||canUseScopeEditor||adminListRequested});
+  const account=useAccount({enabled:isTimeEditingView||canUseScopeEditor||(adminListRequested&&worksOpen)});
   const [lrunesView,setLrunesView]=useState('daily');
   const [locCultureView,setLocCultureView]=useState('period');
   const [locDensityOpen,setLocDensityOpen]=useState(false);
@@ -245,7 +245,6 @@ export default function Culture(){
   const [expandedEraIds,setExpandedEraIds]=useState([]);
   const periodSelectionScopeRef=useRef('');
   const [selectedCategory,setSelectedCategory]=useState('');
-  const [worksOpen,setWorksOpen]=useState(false);
   const [articleSort,setArticleSort]=useState('desc');
   useEffect(()=>setArticleSort(userActive?userSettings.sort:'desc'),[userActive,userSettings.sort]);
   // Keyword Class is optional; ordinary Time River views must not scan the whole article corpus.
@@ -338,11 +337,10 @@ export default function Culture(){
   const allTimePeriod=useMemo(()=>{
     if(primaryPeriods.length)return periodRange(primaryPeriods,classificationScope,UI_COPY.culture.allTime);
     const endDate=new Date().toISOString().slice(0,10);
-    const oneYearAgo=new Date(endDate+'T00:00:00Z');
-    oneYearAgo.setUTCFullYear(oneYearAgo.getUTCFullYear()-1);
+    const yearStart=endDate.slice(0,4)+'-01-01';
     return {
-      period:'all',title:'未設定時代（最近一年）',display_label:'未設定時代（最近一年）',
-      start_date:oneYearAgo.toISOString().slice(0,10),end_date:endDate,scope_id:classificationScope
+      period:'all',title:'未設定時代（本年度）',display_label:'未設定時代（本年度）',
+      start_date:yearStart,end_date:endDate,scope_id:classificationScope
     };
   },[primaryPeriods,classificationScope,UI_COPY.culture.allTime]);
   useEffect(()=>{
@@ -1136,8 +1134,6 @@ export default function Culture(){
       const verified=await account.refresh();
       if(!verified?.authorizer?.canManageScopeSync(scopeId))throw new Error('請先登入具備此 Scope 權限的帳號。');
       const used=new Set((query.data?.timelineItems||[]).filter(row=>row?.entry_type==='anchor').map(row=>String(row.uid||'')));
-      const globalUids=await readUnifiedAnchorUids(scopeData.time);
-      for(const row of globalUids)used.add(row.uid);
       const payload=dates.map(date=>{
         const uid=allocateTimeUid([...used].map(uid=>({uid})));
         used.add(uid);
@@ -1462,8 +1458,8 @@ export default function Culture(){
                             setKeywordPeriodKey(next);
 
                           }}>
-                          <option value='latest'>{primaryPeriods.length?l.recentTimeTrace:'未設定時代（最近一年）'}</option>
-                           <option value='all'>{primaryPeriods.length?l.allTimeTraces:'最近一年（未設定時代）'}</option>
+                          <option value='latest'>{primaryPeriods.length?l.recentTimeTrace:'未設定時代（本年度）'}</option>
+                           <option value='all'>{primaryPeriods.length?l.allTimeTraces:'本年度（未設定時代）'}</option>
                            {primaryPeriods.map(item=><option key={periodKey(item)} value={periodKey(item)}>{localizedLabelOf(item,0)}</option>)}
                            <option value='custom'>{l.customPeriod}</option>
                         </select>
