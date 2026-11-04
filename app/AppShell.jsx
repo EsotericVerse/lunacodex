@@ -569,6 +569,13 @@ function AppShellInner({children}){
           className="scope-nav-loc-home" aria-current={scopeId==='loc'&&pathname==='/'?'page':undefined}>
           {copy.nav.home}
         </ScopeLink>
+        {/* Keep System Administration outside public Scope favorites. The protected
+            /admin/ route performs the actual Clerk + LOC permission check; the
+            shortcut uses the existing passive session and performs no SQL lookup. */}
+        {!native&&preferences.account.user?<ScopeLink href="/admin/" native={false}
+          className="scope-nav-admin" aria-current={scopeId==='admin'?'page':undefined}>
+          {translateUiField(activeLocale,'系統管理')}
+        </ScopeLink>:null}
       </nav>
       {openFolder?<div id="scope-nav-folder-contents" className="scope-nav-subrow" aria-label={openFolder.label+' '+translateUiField(activeLocale,'目錄')}>
         <ScrollableScopeNav label={openFolder.label+' '+translateUiField(activeLocale,'目錄內容')} resetKey={openFolder.id+'|'+openFolder.links.map(item=>item.id).join(',')}>
