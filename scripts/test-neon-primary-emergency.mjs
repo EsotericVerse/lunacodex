@@ -100,8 +100,8 @@ test('LOC uses Clerk identity while the independent Neon adapter remains deferre
   const source=readFileSync(new URL('../app/loc/providers/configured.mjs',import.meta.url),'utf8');
   assert.match(source,/return createClerkGatewayAdapter\(\)/);
   assert.doesNotMatch(source,/createNeonPrimaryAdapter|loc-auth-provider|createSupabaseAdapter/);
-  // Neon adapter tests remain available for schema consolidation; production
-  // Clerk account selection does not depend on those incomplete schemas.
+  // Neon Schema is prepared; outstanding RPC parity remains separate from
+  // LOC's identity selection. Keep Clerk until Authority verifies Neon Auth.
   const emergency=readFileSync(new URL('../app/AppShell.jsx',import.meta.url),'utf8');
   assert.match(emergency,/setEmergencyDatabasePrimary\(target\)/);
 });
