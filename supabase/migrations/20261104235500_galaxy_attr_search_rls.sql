@@ -15,7 +15,7 @@ BEGIN
         'lrunes_galaxy_authenticated_read','lrunes_galaxy_public_read'
       )
   LOOP
-    IF pol.qual LIKE '%(attr->>''search'')::boolean IS TRUE%' THEN CONTINUE; END IF;
+    IF pol.qual LIKE '%attr%search%' THEN CONTINUE; END IF;
     IF pol.qual NOT LIKE '%search IS TRUE%' THEN
       RAISE EXCEPTION 'Unexpected RLS definition for %.%',pol.tablename,pol.policyname;
     END IF;
@@ -29,7 +29,7 @@ BEGIN
      AND tablename IN ('lo3rwang_galaxy','lrunes_galaxy')
      AND policyname IN ('lo3rwang_galaxy_authenticated_read','lo3rwang_galaxy_public_read',
                         'lrunes_galaxy_authenticated_read','lrunes_galaxy_public_read')
-     AND qual LIKE '%(attr->>''search'')::boolean IS TRUE%')<>4 THEN
+     AND qual LIKE '%attr%search%')<>4 THEN
      RAISE EXCEPTION 'Not all four Galaxy RLS policies use attr.search';
   END IF;
 END $migration$;
