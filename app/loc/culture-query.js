@@ -551,7 +551,7 @@ export async function selectScopePeriodSourceSnapshot(scope,{startDate='',endDat
 }
 
 function mediaMetadataDescription(row){
-  const fields=[['標題',row.title],['類型',row.type],['Meta Tag',row.meta_tags]];
+  const fields=[['標題',row.title],['類型',row.type],['內容',row.description]];
   return fields.map(([label,value])=>{const text=CultureTimelineModel.decodeCultureText(value||'').trim();return text?`${label}：${text}`:'';}).filter(Boolean).join(' · ')||'沒有可讀的 metadata 文字';
 }
 

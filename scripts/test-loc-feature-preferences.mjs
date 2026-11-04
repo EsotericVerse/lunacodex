@@ -95,3 +95,33 @@ test('all four article-list settings are opt-in, saved per feature, and do not a
  assert.ok(culture.includes('fullTextKey===workKey&&adminListRequested?<button'));
  assert.ok(culture.includes('const verified=await account.refresh()'));
 });
+
+
+test('Search inspects only article content and all Anchor descriptions',()=>{
+ const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
+ const providers=read('app/loc/galaxy-query.js');
+ const ui=read('app/modular/features/Search.jsx');
+ assert.match(providers,/table:current\.anchor/);
+ assert.match(providers,/searchFields:\['description'\]/);
+ assert.match(providers,/searchFields:\['content'\]/);
+ assert.doesNotMatch(providers,/searchFields:\['title'\]/);
+ assert.match(ui,/anchorType==='date'\?\{anchor:row\.uid\}/);
+ assert.match(ui,/anchorType==='point'\?\{place:row\.uid\}/);
+ assert.match(ui,/statTab:'keywords'/);
+ assert.match(ui,/statTab:'media'/);
+ assert.doesNotMatch(ui,/meta_tags/);
+ assert.doesNotMatch(ui,/搜尋多媒體<\/button>/);
+});
+test('multimedia content is Anchor.description and no longer a media tag alias',()=>{
+ const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
+ const compat=read('app/loc/unified-anchor-compat.mjs');
+ const publisher=read('app/loc/ManagementMediaPublisher.jsx');
+ const importer=read('app/loc/ManagementImportPanel.jsx');
+ const stats=read('app/loc/statistics-facets.js');
+ assert.doesNotMatch(compat,/meta_tags/);
+ assert.doesNotMatch(publisher,/meta_tags/);
+ assert.doesNotMatch(importer,/meta_tags/);
+ assert.match(publisher,/description:mediaDescription/);
+ assert.match(importer,/description:runeResultText/);
+ assert.match(stats,/mediaStyleTags\(row\.description\)/);
+});

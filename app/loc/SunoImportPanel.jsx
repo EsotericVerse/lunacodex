@@ -27,7 +27,7 @@ export default function SunoImportPanel({scopeId,dockScopeId=scopeId,globalAdmin
   const activateDock=useRef(()=>{});
   const dockActions=useRef({save:null,discard:null});
   const inDock=Boolean(editDock?.active&&editDock.scopeId===dockScopeId);
-  const freshSunoDraft=()=>({title:'',lyrics:'',lyricsBlocks:plainTextToBlocks(''),stylePrompt:'',stylePromptBlocks:plainTextToBlocks(''),stylePromptPlain:'',editorKey:createUid8(),url:'',createdDate:'',metaTags:'',metaTagsEdited:false,source_id:'',target_id:'',ref_id:''});
+  const freshSunoDraft=()=>({title:'',lyrics:'',lyricsBlocks:plainTextToBlocks(''),stylePrompt:'',stylePromptBlocks:plainTextToBlocks(''),stylePromptPlain:'',editorKey:createUid8(),url:'',createdDate:'',description:'',descriptionEdited:false,source_id:'',target_id:'',ref_id:''});
   const [draft,setDraft]=useState(freshSunoDraft);
   const [status,setStatus]=useState('');const [busy,setBusy]=useState(false);
   useEffect(()=>{
@@ -46,11 +46,11 @@ export default function SunoImportPanel({scopeId,dockScopeId=scopeId,globalAdmin
     return <p className="scope-status scope-error" role="alert">目前沒有 Suno 音樂寫入權限。</p>;
   const change=(key,value)=>setDraft(current=>({
     ...current,[key]:value,
-    ...(key==='stylePromptPlain'&&!current.metaTagsEdited?{metaTags:refreshSunoStyleMetaTags(value,current.metaTags)}:{}),
-    ...(key==='metaTags'?{metaTagsEdited:true}:{})
+    ...(key==='stylePromptPlain'&&!current.descriptionEdited?{description:refreshSunoStyleMetaTags(value,current.description)}:{}),
+    ...(key==='description'?{descriptionEdited:true}:{})
   }));
   function regenerateStyleTags(){
-    setDraft(current=>({...current,metaTags:refreshSunoStyleMetaTags(current.stylePromptPlain,current.metaTags),metaTagsEdited:false}));
+    setDraft(current=>({...current,description:refreshSunoStyleMetaTags(current.stylePromptPlain,current.description),descriptionEdited:false}));
   }
   async function save(event){
     event?.preventDefault?.();
@@ -60,10 +60,9 @@ export default function SunoImportPanel({scopeId,dockScopeId=scopeId,globalAdmin
       const title=repairMojibakeText(draft.title).trim();
       const lyrics=normalizeGalaxyContent(draft.lyrics||blocksToPlainText(draft.lyricsBlocks));
       const stylePrompt=normalizeGalaxyContent(draft.stylePrompt||blocksToPlainText(draft.stylePromptBlocks));
-      const metaTags=repairMojibakeText(draft.metaTags).trim();
-      if([title,lyrics,stylePrompt,metaTags].some(hasIrrecoverableEncoding))throw new Error(t('uiExtra.importUI.sunoEncoding'));
+      const description=repairMojibakeText(draft.description).trim();
+      if([title,lyrics,stylePrompt,description].some(hasIrrecoverableEncoding))throw new Error(t('uiExtra.importUI.sunoEncoding'));
       if(!title)throw new Error(t('uiExtra.importUI.sunoTitleRequired'));
-      if(!metaTags)throw new Error(t('uiExtra.importUI.sunoTagsRequired'));
       const createtime=draft.createdDate?new Date(draft.createdDate+'T00:00:00+08:00').toISOString():new Date().toISOString();
       const lyricsUid=hasBlockNoteContent(lyrics)?createUid8():null;
       const styleUid=lyricsUid&&hasBlockNoteContent(stylePrompt)?createUid8():null;
@@ -93,7 +92,7 @@ export default function SunoImportPanel({scopeId,dockScopeId=scopeId,globalAdmin
         uid:mediaUid,
         type:'suno',
         title,url:draft.url.trim()||null,
-        meta_tags:metaTags||null,createtime
+        description:description||null,createtime
       }]);
       setStatus(t('uiExtra.importUI.sunoSaved'));setDraft(freshSunoDraft());
       return true;
@@ -113,7 +112,7 @@ export default function SunoImportPanel({scopeId,dockScopeId=scopeId,globalAdmin
       blocksToPlainText(draft.lyricsBlocks).trim()||
       blocksToPlainText(draft.stylePromptBlocks).trim()||
       draft.stylePromptPlain.trim()||draft.url.trim()||draft.createdDate||
-      draft.metaTags.trim()||draft.source_id.trim()||draft.target_id.trim()||draft.ref_id.trim()
+      draft.description.trim()||draft.source_id.trim()||draft.target_id.trim()||draft.ref_id.trim()
     ),
     isBusy:()=>busy
   };
@@ -140,12 +139,12 @@ export default function SunoImportPanel({scopeId,dockScopeId=scopeId,globalAdmin
             onBlocksChange={blocks=>setDraft(current=>current.editorKey!==draft.editorKey?current:{
               ...current,stylePromptBlocks:blocks,
               stylePromptPlain:blocksToPlainText(blocks),
-              ...(!current.metaTagsEdited?{metaTags:refreshSunoStyleMetaTags(blocksToPlainText(blocks),current.metaTags)}:{})
+              ...(!current.descriptionEdited?{description:refreshSunoStyleMetaTags(blocksToPlainText(blocks),current.description)}:{})
             })}
             onHtmlChange={html=>setDraft(current=>current.editorKey===draft.editorKey
               ?{...current,stylePrompt:html}:current)}/>
         </div>
-        <label>Meta Tags<input value={draft.metaTags} onChange={e=>change('metaTags',e.target.value)} placeholder={t('uiExtra.importUI.sunoStyleTagHint')} required/></label>
+        <label>內容／描述<input value={draft.description} onChange={e=>change('description',e.target.value)} placeholder={t('uiExtra.importUI.sunoStyleTagHint')}/></label>
         <button type="button" className="loc-button" onClick={regenerateStyleTags}><UiText id="uiExtra.importUI.sunoRegenerate"/></button>
       </div>
       <div className="scope-stat-controls">

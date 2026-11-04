@@ -60,7 +60,7 @@ function mediaDraftFromRow(row={},fallbackTitle='',plainTextToBlocks){
   const attrs={
     uid:String(row.uid||''), title:String(row.title||''),
     location:String(row.location||''),type:String(row.type||''),
-    url:String(row.url||''),meta_tags:String(row.meta_tags||''),
+    url:String(row.url||''),description:String(row.description||''),
     createtime:datetimeLocalValue(row.createtime)
   };
   return {title:String(row.title??fallbackTitle??''),originalTitle:String(row.title??fallbackTitle??''),
@@ -69,7 +69,7 @@ function mediaDraftFromRow(row={},fallbackTitle='',plainTextToBlocks){
 }
 function changedMediaAttributes(draft,t){
   const current=draft?.attrs||{},initial=draft?.originalAttrs||{},changed={};
-  for(const key of ['location','type','url','meta_tags']){
+  for(const key of ['location','type','url','description']){
     if(current[key]!==initial[key])changed[key]=nullableText(current[key]);
   }
   if(Object.hasOwn(changed,'type')&&!changed.type)throw new Error(t('uiExtra.searchUI.mediaTypeRequired'));
