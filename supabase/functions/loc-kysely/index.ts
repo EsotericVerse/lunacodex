@@ -14,6 +14,7 @@ import {ensurePortableScopeSchema,validatePortableScopeSchema} from "../../../ap
 import { selectedDatabaseTarget } from "../../../app/loc/providers/selected-database-target.mjs";
 import {resolveSqlExecutionPort,assertCrossEnginePublicRead,authorizeCrossEngineQuery,executeCrossEngineManagedWrite} from "../../../app/loc/providers/sql-engine-ports.mjs";
 import {resolveDatabaseRouting} from "../../../app/loc/providers/routing-config.mjs";
+import {isTextSearchQuery,checkSearchQos} from "../../../app/loc/providers/search-qos.mjs";
 import {bindLocAuthorization,canManageLoc,locPermissions} from "../../../app/loc/providers/loc-authorization.mjs";
 
 const corsHeaders = {
@@ -272,7 +273,12 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
   await sql`select set_config('request.jwt.claims', ${JSON.stringify(claims)}, true)`.execute(trx);
   await sql`select set_config('request.jwt.claim.sub', ${String(claims.sub || "")}, true)`.execute(trx);
   await sql`select set_config('request.jwt.claim.role', ${role}, true)`.execute(trx);
-  if(body.kind==="query")return await executeKyselyQuery(trx,body);
+  if(body.kind==="query"){
+    // PostgreSQL must stop work even when browser aborts its 25s timeout.
+    if(isTextSearchQuery(body))
+      await sql`set local statement_timeout = '8000ms'`.execute(trx);
+    return await executeKyselyQuery(trx,body);
+  }
   if(body.kind==="anchor")return await executeKyselyAnchor(trx,body,{role,claims});
   if(body.kind==="analytics")return await executeKyselyAnalytics(trx,body,{role});
   if(body.kind==="public-action")return await executeKyselyPublicAction(trx,body);
@@ -368,6 +374,24 @@ Deno.serve(async (request) => {
     role = "authenticated";
   }
 
+  const textSearch=isTextSearchQuery(body);
+  if(textSearch){
+    // Uses Clerk subject when verified; otherwise provider-forwarded client
+    // IP. Each warm isolate bounds abuse without adding database writes.
+    const source=role==="authenticated"&&typeof claims.sub==="string"
+      ?"clerk:"+claims.sub
+      :"ip:"+(request.headers.get("cf-connecting-ip")||
+        request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()||
+        "unknown");
+    const verdict=checkSearchQos(source);
+    if(!verdict.allowed){
+      const seconds=Math.max(1,Math.ceil(verdict.retryAfterMs/1000));
+      return json({error:{message:verdict.blocked
+        ?"搜尋過於頻繁，已暫時限制，請稍後再試"
+        :"搜尋操作太快，請稍後重試",code:"SEARCH_RATE_LIMIT",
+        retry_after:seconds}},429,{"retry-after":String(seconds)});
+    }
+  }
   let resolvingTarget = false;
   try {
     if(body.kind==="mcp-search")
@@ -657,6 +681,8 @@ Deno.serve(async (request) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
+    if(code==="57014"&&textSearch)
+      return json({error:{message:"搜尋執行逾時，請縮小查詢範圍",code:"SEARCH_TIMEOUT"}},408);
     const transientConnectionFailure = code === "53300" || code.startsWith("08") || /connection (?:terminated|timeout)|remaining connection slots/i.test(message);
     const status = (error && typeof error === 'object' && 'httpStatus' in error) ? Number(error.httpStatus) : resolvingTarget || transientConnectionFailure ? 503 : isKyselyClientError(error) ? 400 : 500;
     if (status >= 500) console.error("[loc-kysely] Database request failed", error);
