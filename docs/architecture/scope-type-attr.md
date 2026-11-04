@@ -1,3 +1,11 @@
+### Scope 開關與 Galaxy.attr 的明確分界（2026-11-04）
+
+- **Scope 設定表** `silver.lo3rwang`、`silver.lrunes`：`trace/search/culture/statics` 四個獨立 Boolean 欄位；各 Scope 管理介面直接讀寫這四欄。它們與個別文章的權限是不同層級，不得混入 `galaxy.attr`。
+- **Galaxy 文章表** `silver.lo3rwang_galaxy`、`silver.lrunes_galaxy`：以 `attr jsonb` 存八個文章權限開關（`statics/culture/search/trace/list/keyword/extract/others`），過渡期由 Trigger 同步舊 Boolean，直到所有 SQL／RPC 依賴退役後才移除。
+- **Neon** 已驗證 Scope 四欄存在，`silver.lo3rwang.able` 在資料值一致後以 `DROP COLUMN ... RESTRICT` 刪除；`silver.lrunes` 原本沒有此舊欄。Neon 全 `silver` Schema 不再有 `able` 或 `*_able`。
+- **Supabase** 四個 Scope Boolean 已存在，`lo3rwang.able` 先前已移除；遷移腳本需能處理兩庫先後不一致（條件式複製舊資料、再以 `RESTRICT` 安全移除），不得因資料庫已有新欄而中止。
+- **Neon RPC**：保留現有函式，不為四個開關額外新增 RPC。經 `DROP ... RESTRICT` 確認沒有 DB 物件阻擋舊欄位移除；仍應以 Clerk/Kysely Gateway 為管理寫入入口。RPC 名稱存在不代表正式站已成功完成備援連線驗證。
+
 ### 官方 Kysely 版本與 Agent 文件（2026-11-04）
 
 - 官方目前最新穩定版本為 **Kysely 0.29.8**（2026-11-01）；PR #995 已同步 `package.json`、`package-lock.json`、所有 Deno `npm:kysely@...` 版本引用。0.29.7 修正 controlled transaction 的競態／連線與 MSSQL JSON；0.29.8 修正 PostgreSQL rollback／aborted-commit。
