@@ -66,11 +66,11 @@ test('aliases use point attr.location and edit controls are apart from managemen
   assert.match(organizer,/unified\?'_anchor':'_place'/);
   assert.match(organizer,/\.rpc\('save_scope_trace_place_names'/);
   assert.match(organizer,/\.from\(scopeId\+'_anchor'\)\.select\('attr'\)/);
-  assert.match(shell,/className="scope-feature-dock__navigation" role="group"/);
-  assert.match(shell,/className="scope-feature-dock__actions" role="group"/);
-  assert.match(css,/\.scope-feature-dock__groups\{/);
-  assert.match(css,/grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/);
-  assert.match(css,/grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+  assert.match(shell,/<nav className="scope-feature-dock"/);
+  assert.match(shell, /editingDockVisible\?editTabs\.map/);
+  assert.match(css,/\.scope-feature-dock/);
+  assert.match(css,/grid-template-columns:repeat\(6,minmax\(0,1fr\)\)/);
+  assert.match(shell,/const editTabs=\[/);
 });
 
 
