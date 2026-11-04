@@ -1,3 +1,10 @@
+### Kysely Portable 分析檔修復（2026-11-05）
+
+- 檢查 `main` 發現 `kysely-analytics.mjs` 在 MySQL `JSON_TABLE(... PATH '$')` 字串內誤插入完整第二份 Portable Analytics executor，導致 Kysely SQL 模板與檔案結構毀損。
+- 清除錯誤拼接區段，保留單一 Portable executor 與原來的媒體關聯去重計數邏輯；不變更任何 UI、Auth、LOC Authority、SQL Schema、RPC、八個 Galaxy Boolean 或四個 Scope Boolean。
+- 回歸測試包含完整模組解析、SQL 展開片段、函式唯一性、三種方言模板及查詢篩選條件；模擬測試不等同真實 MySQL／MSSQL／PostgreSQL 整合測試。
+- 後續 Portable 關鍵詞分析不可依賴已淘汰的逐文章 `uidlists` / `hits`：現行 Anchor 關鍵詞實體主要保存結構與彙總計數；期間、日別、地點交叉分析需要另行核對實際可用資訊，不能把全期總量冒充細分結果。
+
 ### Portable Overview 媒體數量等價修正（2026-11-05）
 
 - Portable Overview 現在透過 Kysely QueryBuilder 篩選 statics=true、有內容、日期區間內的 Galaxy 文章，再用各 Dialect 的 JSON 陣列展開運算計算 media_link 關聯的 **不同媒體 UID 數**；再與 Anchor 可見的 image/video/rune/suno 類型交集。原本只計算整張 Anchor 媒體存量，並不等於連結統計，已更正。
