@@ -43,9 +43,9 @@ test('one search can fan out across Galaxy and Anchor without artificial SQL spa
 });
 test('Search QoS errors never trigger backup reads or mark primary unavailable',()=>{
   const source=readFileSync(new URL('../app/loc/db-query.mjs',import.meta.url),'utf8');
-  assert.match(source,/code==='SEARCH_RATE_LIMIT'\\|\\|code==='SEARCH_TIMEOUT'/);
-  assert.match(source,/markPrimaryReadFailed\\(table,error\\)/);
-  assert.match(source,/!\\['SEARCH_RATE_LIMIT','SEARCH_TIMEOUT'\\]\\.includes/);
+  assert.ok(source.includes("code==='SEARCH_RATE_LIMIT'||code==='SEARCH_TIMEOUT'"));
+  assert.ok(source.includes('markPrimaryReadFailed(table,error)'));
+  assert.ok(source.includes("!['SEARCH_RATE_LIMIT','SEARCH_TIMEOUT'].includes"));
 });
 test('different clients are independent; expired windows clear',()=>{
   let now=100000;
