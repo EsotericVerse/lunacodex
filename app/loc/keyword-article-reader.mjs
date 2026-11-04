@@ -61,14 +61,22 @@ export function createIndexedDateKeywordReader({
   let lastDate=null,datedDone=false,undatedDone=false;
   const pending=[];
   const validDay=value=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value);
-  // PostgreSQL DATE is text in some adapters and a UTC-midnight ISO timestamp
-  // in others. Canonicalize at this boundary, never use timestamp sorting.
+  // SQL DATE may be returned by drivers as midnight UTC or as midnight
+  // Asia/Taipei (previous day 16:00 UTC). Neither representation is an
+  // article timestamp: recover the calendar day without changing its meaning.
   const canonicalDay=value=>{
     if(validDay(value))return value;
     const serialized=value instanceof Date?value.toISOString():value;
-    if(typeof serialized==='string'&&
-      /^\d{4}-\d{2}-\d{2}T00:00:00(?:\.\d+)?(?:Z|\+00:00)$/.test(serialized))
-      return serialized.slice(0,10);
+    if(typeof serialized!=='string'||
+      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(serialized))
+      return null;
+    const instant=new Date(serialized);
+    if(!Number.isFinite(instant.getTime()))return null;
+    const midnight=instant.getUTCMinutes()===0&&instant.getUTCSeconds()===0&&
+      instant.getUTCMilliseconds()===0;
+    if(!midnight)return null;
+    if(instant.getUTCHours()===0)return instant.toISOString().slice(0,10);
+    if(instant.getUTCHours()===16)return dateTime.format(instant);
     return null;
   };
   const normalized=rows=>rows.map(row=>({...row,date:canonicalDay(row?.date)}));
@@ -100,7 +108,11 @@ export function createIndexedDateKeywordReader({
         if(!validDay(boundary)||lastDate!==null&&boundary<=lastDate||
           page.some(row=>!validDay(row?.date)||
             row.date>boundary||(lastDate!==null&&row.date<=lastDate)))
-          throw new Error('Galaxy 日期游標排序不完整，未寫入分析結果');
+          throw new Error('Galaxy 日期游標排序不完整，未寫入分析結果'+
+            '（前次日期 '+String(lastDate??'起點')+
+            '，本頁首日 '+String(page[0]?.date??'無效')+
+            '，末日 '+String(boundary??'無效')+
+            '，原始末日 '+String(rawPage.at(-1)?.date??'空')+'）');
         const peers=normalized(completeRows(await readDatePeers({date:boundary,maximumRows}),
           'Galaxy 同日文章'));
         if(!peers.length||peers.some(row=>row.date!==boundary))

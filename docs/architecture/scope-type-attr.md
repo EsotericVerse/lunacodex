@@ -157,6 +157,12 @@ Cloudflare Pages `loc` production 部署 commit `54844ebf19ce8d88b52c1c4534a76e4
 - 用既有 UID 保留文章隱藏狀態；公開 `search`／`list`、搜尋 `extract`、統計與文化視圖不可因遷移而放寬。第三方 Scope 未遷移其儲存結構前，保留其獨立相容入口。
 
 
+### 關鍵詞重新分析的 Galaxy DATE 游標（2026-11-04）
+
+- 關鍵詞重新分析以 Galaxy `date` 既有 B-tree 遞增分頁，跨同日頁尾先讀齊該日，再依 `createtime` 與 UID 在記憶體中排序；不能改成 `ORDER BY uid` 或為此新增索引。
+- PostgreSQL 的 DATE 經不同 SQL Driver 可能輸出 `YYYY-MM-DD`、UTC 午夜 ISO，或台北午夜轉換為前一天 `16:00Z`。讀取器先恢復 DATE 的原始日曆日，再核對每筆文章 `createtime` 的台北日期。日期錯誤或分頁不完整時不寫入統計結果。
+- SQL Gateway 若仍傳入不合法 DATE 或非遞增游標，錯誤會附上前次日期、本頁首末日期與原始末日格式，以便直接定位；不記錄文章內容、身分或私密憑證。
+
 ### Kysely Edge 連線壓力（2026-11-04）
 
 LOC 的 Supabase `loc-kysely` Edge Function 使用 pg Pool `max:1`（每個 Edge isolate 各有自己的 pool）。正式環境的 `SUPABASE_DB_URL` 應直接填入 Supabase Dashboard → Connect → **Transaction pooler** 提供的完整連線網址，使用 port `6543`、其原有使用者名稱及密碼；不要從 Region 猜測 pooler 主機名稱，也不要將密碼寫入儲存庫。

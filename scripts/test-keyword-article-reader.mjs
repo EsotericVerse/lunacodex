@@ -148,3 +148,28 @@ test('indexed reader still rejects non-midnight datetime in DATE column',async()
   });
   await assert.rejects(reader({limit:1}),/日期游標排序不完整/);
 });
+
+
+test('indexed reader restores SQL DATE serialized at Taipei midnight',async()=>{
+  const records=[
+    {uid:'Ab000001',date:'2025-12-31T16:00:00.000Z',createtime:'2026-01-01T02:00:00Z'},
+    {uid:'Ab000002',date:'2026-01-01T16:00:00.000Z',createtime:'2026-01-02T02:00:00Z'}
+  ];
+  const calls=[];
+  const reader=createIndexedDateKeywordReader({
+    readDatePage:async({after,limit})=>{
+      calls.push(after);
+      return records.filter(row=>!after||new Date(row.date).toISOString().slice(0,10)>=after)
+        .slice(0,limit);
+    },
+    readDatePeers:async({date})=>{
+      const rows=records.filter(row=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(row.date))===date);
+      return {rows,count:rows.length};
+    },
+    readUndated:async()=>({rows:[],count:0})
+  });
+  assert.deepEqual((await reader({limit:1})).map(row=>row.date),['2026-01-01']);
+  assert.deepEqual((await reader({limit:1})).map(row=>row.date),['2026-01-02']);
+  assert.deepEqual(await reader({limit:1}),[]);
+  assert.deepEqual(calls,[null,'2026-01-01','2026-01-02']);
+});
