@@ -8,10 +8,11 @@ const sample={client_id:'OAuthClient_123',client_secret:'loc-super-secret-123',
   callback_url:'https://loc.lo3rwang.cc/auth/callback/github'};
 
 test('each supported provider has its own field contract',()=>{
-  assert.deepEqual(AUTH_PROVIDER_TYPES,['github','oidc','entra','ldap','ad']);
-  for(const type of AUTH_PROVIDER_TYPES){
+  assert.deepEqual(AUTH_PROVIDER_TYPES,['github','oidc','entra','ldap','ad','neon']);
+  for(const type of AUTH_PROVIDER_TYPES.filter(type=>type!=='neon')){
     assert.ok(AUTH_PROVIDER_FIELDS[type].some(field=>field.kind==='secret'));
   }
+  assert.equal(AUTH_PROVIDER_FIELDS.neon.some(field=>field.kind==='secret'),false);
 });
 
 test('GitHub OAuth configuration never exposes its credential',()=>{
@@ -59,4 +60,27 @@ test('LDAP and AD use a dedicated OIDC bridge, not raw passwords in the browser'
   }
   assert.throws(()=>validateAuthProviderSettings('ldap',
     {...config,bind_password:'danger'},{siteOrigin}),/Unexpected/);
+});
+
+
+test('Neon Auth URLs can be saved without a separate OAuth client secret',()=>{
+  const config={auth_url:'https://ep-test.neonauth.c-4.ap-southeast-1.aws.neon.tech/neondb/auth',
+    data_api_url:'https://ep-test.apirest.c-4.ap-southeast-1.aws.neon.tech/neondb/rest/v1',
+    callback_url:'https://loc.lo3rwang.cc/auth/callback/neon'};
+  const validated=validateAuthProviderSettings('neon',config,{siteOrigin});
+  assert.equal(validated.type,'neon');
+  assert.equal(Object.hasOwn(validated,'client_secret'),false);
+  const view=publicAuthProviderSettings(validated);
+  assert.equal(view.secret_configured,false);
+  assert.equal(view.active,false);
+  assert.equal(view.runtime_connected,false);
+  assert.throws(()=>validateAuthProviderSettings('neon',
+    {...config,auth_url:'https://ep-test.neonauth.c-4.ap-southeast-1.aws.neon.tech/neondb'},
+    {siteOrigin}),/\u002fauth/);
+  assert.throws(()=>validateAuthProviderSettings('neon',
+    {...config,data_api_url:'https://ep-test.apirest.c-4.ap-southeast-1.aws.neon.tech/neondb/auth'},
+    {siteOrigin}),/rest\/v1/);
+  assert.throws(()=>validateAuthProviderSettings('neon',
+    {...config,callback_url:'https://elsewhere.example/callback'},
+    {siteOrigin}),/LOC origin/);
 });
