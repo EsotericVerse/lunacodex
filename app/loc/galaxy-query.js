@@ -359,7 +359,7 @@ async function articleTimeContext(scope,day){
   };
 }
 async function articleSpaceContext(scope,placeId,{authenticated=false}={}){
-  if(!/^[A-Za-z0-9]{4}$/.test(placeId)||!scope?.id||scope.id==='loc')
+  if(!/^[A-Za-z0-9]{8}$/.test(placeId)||!scope?.id||scope.id==='loc')
     return {place:null,routes:[],traces:[]};
   if(isUnifiedAnchorScope(scope.id)){
     // LOC's four legacy relations were consolidated into _anchor. The shared
@@ -498,7 +498,7 @@ function makeProvider({id,table,source,scope,idColumn,columns,searchFields,filte
       // Exact-match stages only apply to a plain keyword or a single "quoted phrase".
       if(!browse&&exactColumn&&!parsed.exact)return {rows:[],hasMore:false,nextCursor:null,totalCount:null,dataSource:source||'auto'};
       const activeFilters=[...frozenFilters,...dateSearchFilters(dateColumn,startDate,endDate)];
-      if(uidFastPath&&!browse&&/^[A-Z0-9]{8}$/.test(String(query||'').trim())){
+      if(uidFastPath&&!browse&&/^[A-Za-z0-9]{8}$/.test(String(query||'').trim())){
         // Authenticated UID primary-key lookup, independent of public search flags.
         const {rows=[],dataSource}=await selectRows(table,{
           columns:outputColumns.join(','),

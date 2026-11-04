@@ -211,7 +211,7 @@ export function fromAnchorRow(spec,row){
    out.uid_lists=attr.total!=null?{total:attr.total,uidlists:[]}:null;
  }else if(spec.kind==='media'){
    out.url=attr.url??null;out.meta_tags=row.description??null;
-   out.createtime=null;out.location=null;
+   out.createtime=attr.date??null;out.location=null;
    if(row.type==='suno'&&String(attr.url||'').includes('/playlist/'))out.type='播放清單';
  }
  return out;

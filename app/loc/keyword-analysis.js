@@ -153,7 +153,7 @@ export async function runKeywordAnalysisBatch(scopeId,{classUid:requestedClassUi
   // checked against their Taipei publication-date components before this
   // cutover; the reader also validates every returned row before writing.
   // Within each day articles stay in createtime + UID order.
-  const articleColumns='uid,date,createtime,content,able';
+  const articleColumns='uid,date,createtime,content,keyword';
   const readArticles=createIndexedDateKeywordReader({
     readDatePage:async ({after,limit})=>{
       let query=dbAuthRelation(scope.galaxy)
