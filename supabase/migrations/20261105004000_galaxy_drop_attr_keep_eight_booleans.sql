@@ -2,23 +2,23 @@
 -- This migration removes ONLY Galaxy.attr and its compatibility sync layer.
 -- Anchor.attr is the canonical Anchor payload and is never touched.
 DO $guard$
-DECLARE scope_name text; cols integer; dependencies integer;
+DECLARE v_scope text; cols integer; dependencies integer;
 BEGIN
-  FOREACH scope_name IN ARRAY ARRAY['lo3rwang','lrunes'] LOOP
+  FOREACH v_scope IN ARRAY ARRAY['lo3rwang','lrunes'] LOOP
     SELECT count(*) INTO cols FROM information_schema.columns
-    WHERE table_schema='silver' AND table_name=scope_name||'_galaxy'
+    WHERE table_schema='silver' AND table_name=v_scope||'_galaxy'
       AND column_name IN ('statics','culture','search','trace','list','keyword','extract','others');
-    IF cols<>8 THEN RAISE EXCEPTION 'Cannot drop %.attr: expected eight Boolean columns, found %',scope_name,cols; END IF;
+    IF cols<>8 THEN RAISE EXCEPTION 'Cannot drop %.attr: expected eight Boolean columns, found %',v_scope,cols; END IF;
     IF EXISTS (
       SELECT 1 FROM information_schema.columns WHERE table_schema='silver'
-        AND table_name=scope_name||'_galaxy'
+        AND table_name=v_scope||'_galaxy'
         AND column_name IN ('statics','culture','search','trace','list','keyword','extract','others')
         AND data_type<>'boolean'
-    ) THEN RAISE EXCEPTION 'Non-Boolean permission column in %',scope_name; END IF;
+    ) THEN RAISE EXCEPTION 'Non-Boolean permission column in %',v_scope; END IF;
     IF EXISTS (
       SELECT 1 FROM pg_policies WHERE schemaname='silver'
-        AND tablename=scope_name||'_galaxy' AND qual ILIKE '%attr%'
-    ) THEN RAISE EXCEPTION 'RLS still references Galaxy attr in %',scope_name; END IF;
+        AND tablename=v_scope||'_galaxy' AND qual ILIKE '%attr%'
+    ) THEN RAISE EXCEPTION 'RLS still references Galaxy attr in %',v_scope; END IF;
   END LOOP;
 END $guard$;
 
