@@ -599,80 +599,52 @@ function managementArticleProviders(scope,{contentType='',sourceFilter='',source
   if(placeOnly)return [makeProvider({
     ...base,id:current.id+':management-place',searchFields:['location']
   })];
-  // Only management can look up a UID. Return title matches before searching
-  // the article body; neither site nor public visibility is a search term.
-  return [
-    makeProvider({...base,id:current.id+':management-title',searchFields:['title'],uidFastPath:true}),
-    makeProvider({...base,id:current.id+':management-content',searchFields:['content']})
-  ];
+  // Management searches article body content only. Exact UID remains an
+  // explicit identity lookup, not a title-search mode.
+  return [makeProvider({
+    ...base,id:current.id+':management-content',searchFields:['content'],uidFastPath:true
+  })];
 }
 
-function genericScopeProviders(scope,{mediaOnly=false,includeHiddenText=false,contentType='',sourceFilter='',sourceTaxonomy=null,placeOnly=false,searchField=''}={}){
-  // These filters are applied by the existing Supabase provider, not to a
-  // truncated page of client-side search results.
-  const sourceSelection=resolveSourceSelection(sourceFilter,sourceTaxonomy||{});
-  if(sourceSelection.kind==='none')return [];
-  // The admin taxonomy classifies Galaxy site, not Galaxy Media
-  // type or external URL; do not mislabel media as article sources.
-  if(sourceFilter&&(mediaOnly||contentType==='multimedia'||contentType==='timeline'))return [];
-  const sourceClause=sourceNameClause(sourceSelection);
-  const textKindFilters=[
+function genericScopeProviders(scope,{includeHiddenText=false,contentType='',sourceFilter='',sourceTaxonomy=null,placeOnly=false}={}){
+  const selection=resolveSourceSelection(sourceFilter,sourceTaxonomy||{});
+  if(selection.kind==='none')return [];
+  const current=scopeOf(scope);
+  const kindFilters=[
     ...(contentType==='lyrics_work'?[{column:'site',operator:'ilike',value:'suno'}]:[]),
     ...(contentType==='text_work'?[{column:'site',operator:'neq',value:'suno'}]:[])
   ];
-
-  const current=scopeOf(scope);
   const textFilters=includeHiddenText
-    ?textKindFilters
-    :publicContentFilters([articlePermissionFilter(current,'search'),...textKindFilters]);
-  // Article content is a search predicate, not a list payload. Fetch it only
-  // when the result is explicitly opened or edited.
-  // Match with narrow, bounded UID-only pages; hydrate display fields later.
+    ?kindFilters
+    :publicContentFilters([articlePermissionFilter(current,'search'),...kindFilters]);
   const textColumns=['uid','title','createtime',...articlePermissionColumns(current)];
-  // Existing LOC search provider, narrowed to Galaxy's check-in field only.
-  // No article body is fetched by this search stage.
   if(placeOnly)return [makeProvider({
-    id:current.id+':source-place',table:current.galaxy,source:current.id+' 打卡地點',scope:current,idColumn:'uid',
+    id:current.id+':source-place',table:current.galaxy,
+    source:current.id+' 打卡地點',scope:current,idColumn:'uid',
     columns:textColumns,searchFields:['location'],dateColumn:dayColumn(current.galaxy),
-    sortTitle:false,filters:textFilters,authenticated:includeHiddenText
+    filters:textFilters,authenticated:includeHiddenText
   })];
-  const titleExact=makeProvider({
-    id:current.id+':text-title-exact',table:current.galaxy,source:current.id+' 文字',scope:current,idColumn:'uid',
-    columns:textColumns,searchFields:['title'],dateColumn:dayColumn(current.galaxy),sortTitle:true,filters:textFilters,sourceClause,authenticated:includeHiddenText,exactColumn:'title'
+  // One article content search. Neither title, site, nor URL is searched.
+  const article=makeProvider({
+    id:current.id+':article-content',table:current.galaxy,
+    source:current.id+' 文章',scope:current,idColumn:'uid',
+    columns:textColumns,searchFields:['content'],dateColumn:dayColumn(current.galaxy),
+    filters:textFilters,sourceClause:sourceNameClause(selection),authenticated:includeHiddenText
   });
-  const title=makeProvider({
-    id:current.id+':text-title',table:current.galaxy,source:current.id+' 文字',scope:current,idColumn:'uid',
-    columns:textColumns,
-    searchFields:['title'],dateColumn:dayColumn(current.galaxy),sortTitle:true,filters:textFilters,sourceClause,authenticated:includeHiddenText
+  // The FOUR families of Time/Trace/Keywords/Media share one physical Anchor.
+  // Search its description exactly once per Scope, not four separate providers.
+  // Source and lyric filters belong to Galaxy articles, not Anchor records.
+  if(sourceFilter||['lyrics_work','text_work'].includes(contentType)||
+      current.id==='local'||!current.anchor)return [article];
+  const anchor=makeProvider({
+    id:current.id+':anchor-content',table:current.anchor,
+    source:current.id+' 定錨內容',scope:current,idColumn:'uid',
+    columns:['uid','type','title','description','attr'],
+    searchFields:['description'],filters:[
+      {column:'invisible',operator:'eq',value:false}
+    ]
   });
-  const contentExact=makeProvider({
-    id:current.id+':text-content-exact',table:current.galaxy,source:current.id+' 文字',scope:current,idColumn:'uid',
-    columns:textColumns,searchFields:['content'],dateColumn:dayColumn(current.galaxy),sortTitle:true,filters:textFilters,sourceClause,authenticated:includeHiddenText,exactColumn:'content'
-  });
-  const content=makeProvider({
-    id:current.id+':text-content',table:current.galaxy,source:current.id+' 文字',scope:current,idColumn:'uid',
-    columns:textColumns,
-    searchFields:['content'],dateColumn:dayColumn(current.galaxy),sortTitle:true,filters:textFilters,sourceClause,authenticated:includeHiddenText
-  });
-  const media=makeProvider({
-    id:current.id+':media',table:current.galaxyMedia,source:current.id+' 多媒體',scope:current,idColumn:'uid',
-    columns:['uid','type','title','url','meta_tags','createtime'],
-    searchFields:['title','meta_tags','type','url'],dateColumn:'createtime'
-  });
-  if(mediaOnly||contentType==='multimedia')return [media];
-  const timeline=makeProvider({
-    id:current.id+':timeline',table:current.time,source:current.id+' 時期',scope:current,idColumn:'uid',
-    columns:['uid','type','title','description','address','anchor_ids','status'],
-    searchFields:['title','description','status'],dateColumn:'address',
-    filters:[{column:'type',operator:'in',value:['anchor','period','era']}]
-  });
-  // The basic public/guest search is intentionally limited to title/content.
-  // Advanced media and timeline searches keep their explicit providers.
-  if(contentType==='timeline')return [timeline];
-  // OAuth personal search mode narrows the query at the database, not after pagination.
-  if(searchField==='title')return [titleExact,title];
-  if(searchField==='content')return [contentExact,content];
-  return [titleExact,title,contentExact,content];
+  return [article,anchor];
 }
 
 function normalizeSearch(value){
@@ -686,7 +658,7 @@ function normalizeSearch(value){
 export async function selectStyleKeywordMatches(){return [];}
 
 export async function searchGalaxyRows(scopes,query,{
-  limit=DEFAULT_LIST_BATCH_SIZE,cursor=null,startDate='',endDate='',and=[],nor=[],mediaOnly=false,hiddenScopeIds=[],contentType='',sourceFilter='',sourceTaxonomy=null,placeOnly=false,browse=false,signal=null,sortDirection='asc',managementOnly=false,searchField=''
+  limit=DEFAULT_LIST_BATCH_SIZE,cursor=null,startDate='',endDate='',and=[],nor=[],hiddenScopeIds=[],contentType='',sourceFilter='',sourceTaxonomy=null,placeOnly=false,browse=false,signal=null,sortDirection='asc',managementOnly=false
 }={}){
   const q=String(query||'').trim();
   if(!q&&!browse)return {rows:[],failures:[],hasMore:false,nextCursor:null};
@@ -695,20 +667,14 @@ export async function searchGalaxyRows(scopes,query,{
   const hiddenScopes=new Set((Array.isArray(hiddenScopeIds)?hiddenScopeIds:[]).map(value=>String(value||'').trim()).filter(Boolean));
   const scopeProviders=scopeList.map(scope=>managementOnly
     ?managementArticleProviders(scope,{contentType,sourceFilter,sourceTaxonomy,placeOnly})
-    :genericScopeProviders(scope,{mediaOnly,includeHiddenText:hiddenScopes.has(scope.id),contentType,sourceFilter,sourceTaxonomy,placeOnly,searchField}));
-  // Every Scope's title hits are paged before any body matches.
-  const providers=managementOnly
-    ?browse
-      ?scopeProviders.map(group=>group[0]).filter(Boolean)
-      :Array.from({length:2},(_,index)=>scopeProviders.map(group=>group[index]).filter(Boolean)).flat()
-    :browse
-      ?scopeProviders.flatMap(group=>
-        mediaOnly||contentType==='multimedia'||contentType==='timeline'
-          ?group
-          :[group[1]].filter(Boolean))
-      :mediaOnly||contentType==='multimedia'||contentType==='timeline'
-        ?scopeProviders.flat()
-        :Array.from({length:searchField==='title'||searchField==='content'?2:4},(_,index)=>scopeProviders.map(group=>group[index]).filter(Boolean)).flat();
+    :genericScopeProviders(scope,{includeHiddenText:hiddenScopes.has(scope.id),contentType,sourceFilter,sourceTaxonomy,placeOnly}));
+  // Every query searches Galaxy.content, then all Anchor.description
+  // regardless of its Time/Trace/Keyword/Media type. Browsing keeps an
+  // article-only list so empty searches cannot accidentally scan every Anchor.
+  const providers=browse
+    ?scopeProviders.map(group=>group[0]).filter(Boolean)
+    :Array.from({length:managementOnly?1:2},(_,index)=>
+        scopeProviders.map(group=>group[index]).filter(Boolean)).flat();
   const failures=[];
 
   let stage=Number.isInteger(cursor?.stage)?cursor.stage:1;

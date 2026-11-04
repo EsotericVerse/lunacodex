@@ -169,3 +169,8 @@ LOC 的 Supabase `loc-kysely` Edge Function 使用 pg Pool `max:1`（每個 Edge
 Kysely Edge `KyselyQuery.abortSignal(signal)` 現在把呼叫端取消訊號送到實際 `fetch`；在公開讀取佇列中已取消的查詢不再發送 HTTP。獨立逾時仍為 9 秒；讀取管線原有 8 秒逾時可更早中止，取消不視為資料庫故障。Culture 的 Scope 群組、每日密度與不連續 Period 分頁改為上限 2 路並行，保留原輸入順序、時間交集及各窗口游標；Galaxy 跨 Scope 密度同樣限為 2 路。
 
 控制資料庫的 LOC 路由設定仍採既有的 5 秒快取；同一 Edge isolate 內的並發請求共用一筆進行中的路由查詢，正式管理變更會撤銷快取及舊查詢的快取寫回資格。不修改 Supabase 表、Schema、RPC、RLS 或權限。
+
+
+### 統一內文搜尋（2026-11-04）
+
+一般 Search 僅查 Galaxy `content` 與相同 Scope 唯一實體 Anchor `description`（時間 date/period/era、空間 point/path/trace、關鍵詞 category/class/group/item、媒體 image/video/rune/suno），**不搜尋標題、URL 或媒體專屬標籤欄位**。結果依 Anchor `type` 連到文化 `anchor/period`、痕跡 `place/map`、關鍵詞統計頁，或媒體自身公開 URL；文章繼續連其 Galaxy UID 頁。文章管理的打卡地點工具是獨立管理功能，不視為一般文字搜尋。Anchor 公開讀取仍受 `invisible=false` 和既有 RLS 控制。

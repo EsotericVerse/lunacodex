@@ -51,8 +51,8 @@ const ScopeEditableBlocks=dynamic(()=>import('../../loc/ScopeEditableBlocks'),{l
 const TraceBlocks=dynamic(()=>import('./TraceBlocks'),{loading:()=>null});
 
 
-const MEDIA_EDITOR_COLUMNS='uid,location,type,title,url,meta_tags,createtime';
-const MEDIA_ATTR_ORDER=['uid','location','type','url','meta_tags','createtime'];
+const MEDIA_EDITOR_COLUMNS='uid,location,type,title,url,description,createtime';
+const MEDIA_ATTR_ORDER=['uid','location','type','url','description','createtime'];
 const MEDIA_ATTR_FIELDS=MEDIA_ATTR_ORDER.map(key=>({key,readOnly:key==='uid',kind:key==='createtime'?'date':'text'}));
 
 const GALAXY_EDITOR_COLUMNS='uid,title,content,createtime,location,place_id,UpdateTime,url,source_id,target_id,ref_id,site,media_link,statics,culture,search,trace,list,keyword,extract,others';
@@ -103,10 +103,29 @@ function highlightSearchText(text='',query=''){
 
 
 function toResult(row,source,scopeId,copy=UI_COPY){
-  const isMedia=Boolean(row.uid&&(row.record_type==='galaxy_media'||
-    String(row.__table||'').endsWith('_media')||
-    Object.prototype.hasOwnProperty.call(row,'meta_tags')));
-  const isGalaxy=Boolean(row.uid)&&!isMedia&&!['anchor','period','era'].includes(String(row.type||''));
+  const anchorType=String(row.type||'').toLowerCase();
+  const isAnchor=Boolean(row.uid&&String(row.__table||'').endsWith('_anchor'));
+  const isMedia=Boolean(row.uid&&!isAnchor&&(row.record_type==='galaxy_media'||
+    String(row.__table||'').endsWith('_media')));
+  const isGalaxy=Boolean(row.uid)&&!isMedia&&!isAnchor;
+  const timeTypes=['date','period','era'];
+  const placeTypes=['point','path','trace'];
+  const keywordTypes=['category','class','group','item'];
+  const mediaTypes=['image','video','rune','suno'];
+  const url=typeof row.attr==='string'?(()=>{try{return JSON.parse(row.attr)?.url}catch{return ''}})():row.attr?.url;
+  const anchorHref=!isAnchor?''
+    :timeTypes.includes(anchorType)
+      ?featureNavigationHref(row.scope_id||scopeId,'culture',
+        anchorType==='date'?{anchor:row.uid}:{period:row.uid})
+      :placeTypes.includes(anchorType)
+        ?featureNavigationHref(row.scope_id||scopeId,'trace',
+          anchorType==='point'?{place:row.uid}:{map:row.uid})
+        :keywordTypes.includes(anchorType)
+          ?featureNavigationHref(row.scope_id||scopeId,'statics',{statTab:'keywords'})
+          :mediaTypes.includes(anchorType)
+            ?(/^https?:\/\//i.test(String(url||''))?String(url):
+              featureNavigationHref(row.scope_id||scopeId,'statics',{statTab:'media'}))
+            :'';
   const explicitTitle=workDisplayText(row.title||row.name||row.display_title||row.label||row.rune_name||row.song_id||row.id||'').trim();
   const fallbackTitle=isMedia?MEDIA_FALLBACK_TITLE:WORK_FALLBACK_TITLE;
   const title=(isGalaxy||isMedia)
@@ -115,16 +134,16 @@ function toResult(row,source,scopeId,copy=UI_COPY){
   const displaySource=isGalaxy&&row.site?String(row.site):source;
   const identity=row.uid||row.song_id||row.rune_id||row.record_id||row.resource_id||row.id;
   const scope=String(row.scope_id||scopeId||'').trim();
-  const resourceType=isGalaxy?'galaxy':isMedia?'galaxy_media':'';
+  const resourceType=isAnchor?'anchor':isGalaxy?'galaxy':isMedia?'galaxy_media':'';
   const resourceId=row.uid||'';
   const editableTable=resourceType?String(row.__table||''):'';
   const editableIdColumn=resourceType
     ?(resourceType==='galaxy'?'uid':'uid')
     :'';
   const editResourceId=resourceId;
-  const editableField=resourceType==='galaxy'?'content':resourceType==='galaxy_media'?'meta_tags':'';
+  const editableField=resourceType==='galaxy'?'content':resourceType==='galaxy_media'?'description':'';
   const isScopeCard=Boolean(row.scope_card);
-  const href=isScopeCard?scopeHref(scope):(row.url||row.href||row.suno_url||'');
+  const href=isAnchor?anchorHref:isScopeCard?scopeHref(scope):(row.url||row.href||row.suno_url||'');
   return {
     key:identity?[scope,source,identity].join(':'):[source,scope,title].join('-'),
     source:displaySource,title:String(title),
@@ -156,7 +175,9 @@ function toResult(row,source,scopeId,copy=UI_COPY){
       ?'style-tag:'+String(title).normalize('NFKC').trim().toLocaleLowerCase('zh-Hant')
       :(resourceType==='galaxy'&&resourceId
       ?'galaxy:'+scope+':'+resourceId
-      :(resourceType==='galaxy_media'&&resourceId?'media:'+scope+':'+resourceId:'result:'+scope+':'+(identity||title))),
+      :(resourceType==='galaxy_media'&&resourceId?'media:'+scope+':'+resourceId:
+        resourceType==='anchor'&&resourceId?'anchor:'+scope+':'+resourceId:
+        'result:'+scope+':'+(identity||title))),
     links:uniqueExternalLinks([...(href?[{id:resourceType||'primary',href,label:resourceType==='galaxy_media'?copy.search.mediaLink:copy.search.externalLink}]:[]),...(Array.isArray(row.resolved_links)?row.resolved_links:[])]),
     destinations:[]
   };
@@ -426,7 +447,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     const q=String(rawQuery||'').trim();
     const options=append&&activeSearchOptionsRef.current
       ?activeSearchOptionsRef.current
-      :(overrideOptions||{contentType,sourceFilter,startDate,endDate,scopeFilter:managementMode?scopeFilter:'',mediaOnly:false,placeOnly,browse,sortDirection:articleSort});
+      :(overrideOptions||{contentType,sourceFilter,startDate,endDate,scopeFilter:managementMode?scopeFilter:'',placeOnly,browse,sortDirection:articleSort});
     if(!q&&!options.browse)return;
     const searchScopes=scopeId==='loc'&&managementMode&&options.scopeFilter
       ?availableScopes.filter(item=>item.id===options.scopeFilter)
@@ -490,7 +511,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
         })
         :null;
       if(id!==searchId.current)return;
-      const wantsStyleTags=!options.placeOnly&&!managementMode&&!append&&!options.browse&&!options.mediaOnly&&!options.contentType&&!options.sourceFilter&&!options.startDate&&!options.endDate;
+      const wantsStyleTags=!options.placeOnly&&!managementMode&&!append&&!options.browse&&!options.contentType&&!options.sourceFilter&&!options.startDate&&!options.endDate;
       // Start the primary search first so it takes the first connection slot, then
       // run the cross-Scope style-tag lookup alongside it instead of in front of it.
       const searchPromise=searchGalaxyRows(searchScopes,q,{
@@ -498,11 +519,11 @@ export default function Search({managementMode:legacyManagementRoute=false}){
         // Always search article providers, including when the same keyword
         // exactly matches a style tag.
         cursor,
-        mediaOnly:options.mediaOnly,hiddenScopeIds:managementMode?searchScopes.map(item=>item.id):[],
+        hiddenScopeIds:managementMode?searchScopes.map(item=>item.id):[],
         contentType:options.contentType,sourceFilter:options.sourceFilter,sourceTaxonomy,placeOnly:managementMode&&Boolean(options.placeOnly),
         startDate:options.startDate,endDate:options.endDate,browse:options.browse,
         managementOnly:managementMode,sortDirection:options.sortDirection,
-        searchField:!managementMode&&userActive?userSettings.field:'',signal
+        signal
       });
       // Style tags enhance results, but their optional request must never
       // discard valid text/media hits when its own service fails.
@@ -530,11 +551,12 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       for(const {row,source} of [...styleTagMatches,...searchRows]){
         const result=toResult(row,source,scopeId,UI_COPY);
         if(!result||seen.has(result.key))continue;
+        if(result.resourceType==='anchor')result.snippet=extractSearchContext(row.description,q,10);
         seen.add(result.key);converted.push(result);
       }
       const pageResults=prioritizeStyleTagResults(mergeSummaryResults(converted,UI_COPY));
       setResults(current=>append?mergeSummaryResults([...current,...pageResults],UI_COPY):pageResults);
-      if(q&&!options.browse&&!options.placeOnly&&!options.mediaOnly&&pageResults.length){
+      if(q&&!options.browse&&!options.placeOnly&&pageResults.length){
         void loadPageSearchExcerpts(pageResults,q,scopeById,{
           authenticated:managementMode,signal
         }).then(previews=>{
@@ -689,7 +711,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     if(managementMode)setScopeFilter(filters.scopeFilter);
     const term=place||value;
     setPlaceOnly(Boolean(place));
-    if(term){setQuery(term);executeSearch(term,null,{overrideOptions:{...filters,placeOnly:managementMode&&Boolean(place),mediaOnly:false,browse:false}});}
+    if(term){setQuery(term);executeSearch(term,null,{overrideOptions:{...filters,placeOnly:managementMode&&Boolean(place),browse:false}});}
   },[searchParams,scopeId,scopesQuery.isSuccess,scopesQuery.data,managementMode,managementAuthorized]);
 
 
@@ -867,7 +889,6 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     ['',t('uiExtra.searchUI.allTypes')],
     ['lyrics_work',t('uiExtra.searchUI.lyricsType')],
     ['text_work',t('uiExtra.searchUI.textType')],
-    ['multimedia',t('uiExtra.searchUI.mediaType')],
     ['timeline',t('uiExtra.searchUI.timelineType')]
   ];
   const sourceCategories=(sourceTaxonomyQuery.data?.categories||[])
@@ -915,7 +936,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     if(managementMode){
       setQuery(term);
       void executeSearch(term,null,{overrideOptions:{
-        ...filters,mediaOnly:false,browse:false,sortDirection:articleSort
+        ...filters,browse:false,sortDirection:articleSort
       }});
       return;
     }
@@ -931,7 +952,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     }
     // Next.js does not remount for an identical URL; repeated suggestions must still search.
     setQuery(term);
-    void executeSearch(term,null,{overrideOptions:{...filters,mediaOnly:false,browse:false,sortDirection:articleSort}});
+    void executeSearch(term,null,{overrideOptions:{...filters,browse:false,sortDirection:articleSort}});
   }
   function runSearch(event){
     event.preventDefault();
@@ -940,7 +961,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       // SearchManagement, and loses the user's query before results arrive.
       void executeSearch(query,null,{overrideOptions:{
         contentType:'',sourceFilter:'',startDate,endDate,scopeFilter,
-        mediaOnly:false,placeOnly,browse:false,sortDirection:articleSort
+        placeOnly,browse:false,sortDirection:articleSort
       }});
       return;
     }
@@ -1031,7 +1052,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   // Suggested terms are curated examples, not unverified live popularity rankings.
   // Reuse URL-driven search so history, filters and the existing provider stay authoritative.
   const suggestedTerms=useMemo(()=>{
-    const key=contentType==='multimedia'?'suggestionsMedia'
+    const key=contentType==='never-media-search'?'suggestionsMedia'
       :contentType==='lyrics_work'?'suggestionsLyrics'
       :contentType==='text_work'?'suggestionsText':'suggestionsAll';
     return String(t('uiExtra.searchUI.'+key)||'').split('\n')
@@ -1047,7 +1068,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     if(managementMode){
       setQuery(text);
       void executeSearch(text,null,{overrideOptions:{
-        ...next,mediaOnly:false,browse:false,sortDirection:articleSort
+        ...next,browse:false,sortDirection:articleSort
       }});
       return;
     }
@@ -1079,7 +1100,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           disabled={scopeId==='loc'&&!scopesQuery.isSuccess}
           onClick={()=>executeSearch('',null,{browse:true,overrideOptions:{
             contentType:'',sourceFilter:'',startDate,endDate,
-            scopeFilter,placeOnly:false,mediaOnly:false,browse:true,sortDirection:articleSort
+            scopeFilter,placeOnly:false,browse:true,sortDirection:articleSort
           }})}>瀏覽文章</button>
         <button type="button" className="loc-button" onClick={clearSearchFilters}>清除</button>
       </form>
@@ -1127,7 +1148,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
             setPlaceOnly(false);
             executeSearch('',null,{browse:true,overrideOptions:{
               contentType,sourceFilter,startDate,endDate,scopeFilter:managementMode?scopeFilter:'',
-              placeOnly:false,mediaOnly:false,browse:true,sortDirection:articleSort
+              placeOnly:false,browse:true,sortDirection:articleSort
             }});
           }}>瀏覽文章列表（不需輸入關鍵詞）</button>:null}
         <button type="button" className="loc-button" onClick={clearSearchFilters}>{t('uiExtra.searchUI.clearAll')}</button>
@@ -1149,8 +1170,6 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       {!managementMode&&results.length>0&&matchedQueryRef.current?<div className="scope-search-suggestions" aria-label="延伸搜尋">
         <span className="scope-status">延伸搜尋（保留原本的時間與來源條件）</span>
         <div className="scope-search-active-filters">
-          {contentType!=='multimedia'?<button type="button" className="loc-button"
-            onClick={()=>followSearchSuggestion(matchedQueryRef.current,{contentType:'multimedia',placeOnly:false,sourceFilter:''})}>搜尋多媒體</button>:null}
           {contentType!=='text_work'?<button type="button" className="loc-button"
             onClick={()=>followSearchSuggestion(matchedQueryRef.current,{contentType:'text_work',placeOnly:false})}>搜尋文字作品</button>:null}
           <button type="button" className="loc-button"
@@ -1171,7 +1190,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           setBulkPlace(query.trim());
           void executeSearch(query,null,{overrideOptions:{
             contentType:'',sourceFilter:'',startDate,endDate,scopeFilter,
-            placeOnly:true,mediaOnly:false,browse:false,sortDirection:articleSort
+            placeOnly:true,browse:false,sortDirection:articleSort
           }});
         }}>下一步：從文章列表批次補寫地點（需管理權限）</button>
       </div>:null}
@@ -1323,7 +1342,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           editableTable,
           editableIdColumn:row.editableIdColumn||(row.resourceType==='galaxy'?'uid':row.resourceType==='galaxy_media'?'uid':''),
           editResourceId:row.editResourceId||row.resourceId,
-          editableField:row.editableField||(row.resourceType==='galaxy'?'content':row.resourceType==='galaxy_media'?'meta_tags':'')
+          editableField:row.editableField||(row.resourceType==='galaxy'?'content':row.resourceType==='galaxy_media'?'description':'')
         };
         // Page blocks have no Galaxy attributes. Article editing and typed
         // metadata are available only to authorized Scope managers; guest
@@ -1359,13 +1378,14 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           managerMode={managementMode}
           uid={editTarget.editResourceId}
           title={!managementMode&&row.resourceType==='galaxy'&&row.list===false?'（使用者隱藏）':row.title}
-          articleHref={row.resourceType==='galaxy'&&(managementMode||row.list!==false)
+          articleHref={row.resourceType==='anchor'?row.href:
+            row.resourceType==='galaxy'&&(managementMode||row.list!==false)
             ?(managementMode?scopeHref(scopeId,'search/manage')+'?identity='+encodeURIComponent(row.resourceId)+'&scope='+encodeURIComponent(row.scopeId):galaxyIdentityHref(row.scopeId,row.resourceId))
             :''}
           detailReading={identityReader||expandedReader}
           source={searchParams?.get('identity')?row.styleTagMatch?'':row.source:''}
           date={searchParams?.get('identity')?row.date:''}
-          body={row.resourceType==='galaxy'&&row.snippet&&matchedQueryRef.current&&!browseResults
+          body={(row.resourceType==='galaxy'||row.resourceType==='anchor')&&row.snippet&&matchedQueryRef.current&&!browseResults
             ?highlightSearchText(row.snippet,matchedQueryRef.current):''}
           hidden={false}
           relationLinks={identityReader||expandedReader?readingLinks:[]}

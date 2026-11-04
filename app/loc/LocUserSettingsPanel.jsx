@@ -30,7 +30,6 @@ const FIELDS=Object.freeze([
     {key:'list',title:'featureListTitle',checkbox:true}
   ]},
   {key:'search',title:'searchSettings',fields:[
-    {key:'field',title:'searchField',options:[['content','prefContentDefault'],['title','prefTitle']]},
     {key:'sort',title:'searchSort',options:[['asc','prefOldestDefault'],['desc','prefLatest']]},
     {key:'list',title:'featureListTitle',checkbox:true}
   ]}

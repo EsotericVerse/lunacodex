@@ -58,11 +58,11 @@ test('each feature consumes the same OAuth setting and applies all of its contro
  assert.ok(traceWorks.includes('selectScopeCultureData(targetScope)'));
  const search=read('app/modular/features/Search.jsx');
  assert.ok(search.includes("useLocFeatureSettings('search')"));
- assert.ok(search.includes("searchField:!managementMode&&userActive?userSettings.field:''"));
+ assert.ok(!search.includes("searchField:!managementMode&&userActive?userSettings.field:''"));
  assert.ok(search.includes("userActive?userSettings.sort:'desc'"));
  const providers=read('app/loc/galaxy-query.js');
- assert.ok(providers.includes("if(searchField==='title')return [titleExact,title]"));
- assert.ok(providers.includes("if(searchField==='content')return [contentExact,content]"));
+ assert.ok(!providers.includes("if(searchField==='title')return [titleExact,title]"));
+ assert.ok(providers.includes("searchFields:['content']"));
 });
 test('Trace UID sorting is case-sensitive and supports eight-character identity',()=>{
  const read=p=>readFileSync(new URL('../'+p,import.meta.url),'utf8');
