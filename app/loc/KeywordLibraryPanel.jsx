@@ -479,6 +479,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
         {draft.type==='item'?<label className="scope-management-wide-field">
           <span>判斷詞列表（一行一個）</span>
           <textarea rows={9} value={keywordText} onChange={e=>setKeywordText(e.target.value)}/>
+          <small className="scope-status">規則範例：家園AND音樂（連結兩個 Item，音樂加 1 筆）；水土TO地（指定計入地）；家園NOR旅館（家園旅館不計入家園，其他詞照常計算）。每行一筆。</small>
         </label>:null}
         <div className="scope-preview-links">
           <button type="button" className="loc-button primary" disabled={busy||!draft.name.trim()} onClick={saveNode}>{busy?'儲存中…':'儲存'}</button>

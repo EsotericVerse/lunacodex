@@ -28,7 +28,7 @@ function normalizeDraft(row){
 }
 export default function CultureTimelineEditor({
   scopeId='',timeTable:providedTimeTable='',birthday='',selectedRecordId='',suggestedAnchorDate='',
-  suggestedRecordType='anchor',suggestedRequestNonce=0,defaultRecordType='anchor',onClose=null
+  suggestedRecordType='anchor',suggestedRequestNonce=0,defaultRecordType='anchor',onClose=null,onDataChanged=null
 }){
   useUiSection('uiExtra.dataErrors');
   const copy=useUiCopy();
@@ -248,6 +248,9 @@ export default function CultureTimelineEditor({
         setOrganizedDates(found);
         setMessage('已整理 '+matching.length+' 個期間、'+found.length+' 個真實日期定錨。請按「儲存修改」確認時代關聯。');
       }
+      // Reload the river's current database view after each bulk inspection;
+      // proposed Era links remain a draft until the existing Save action.
+      await onDataChanged?.();
     }catch(error){setMessage(error?.message||'整理失敗');}
     finally{setBusy(false);}
   };
@@ -274,6 +277,7 @@ export default function CultureTimelineEditor({
       for(let i=0;i<additions.length;i+=100)
         await insertRows(timeTable,additions.slice(i,i+100));
       refresh();
+      await onDataChanged?.();
       setAnnualOpen(false);startNew('anchor');
       setMessage('已建立 '+additions.length+' 個紀念日定錨，跳過 '+
         (plans.length-additions.length)+' 個既有日期。');
@@ -357,7 +361,9 @@ export default function CultureTimelineEditor({
       }else{
         await insertRows(timeTable,[{uid:allocateTimeUid([...all,...extraPeriodRows]),...payload}]);
       }
-      refresh();reset();setMessage('已儲存。');return true;
+      refresh();reset();
+      await onDataChanged?.();
+      setMessage('已儲存，時間長河已更新。');return true;
     }catch(error){setMessage(error?.message||'儲存失敗');editDock?.setNotice?.(error?.message||'儲存失敗');return false;}
     finally{setBusy(false);}
   };
@@ -367,7 +373,9 @@ export default function CultureTimelineEditor({
     try{
       // Periods survive anchor deletion; only their affected UID links become invalid.
       await deleteRows(timeTable,{filters:[{column:'uid',operator:'eq',value:selectedId}]});
-      refresh();reset();setMessage('已刪除。');
+      refresh();reset();
+      await onDataChanged?.();
+      setMessage('已刪除，時間長河已更新。');
     }catch(error){setMessage(error?.message||'刪除失敗');}
     finally{setBusy(false);}
   };
@@ -386,6 +394,7 @@ export default function CultureTimelineEditor({
         count+=data.length;
       }
       void query.mutate();refresh();
+      await onDataChanged?.();
       setVisibilitySelection([]);setMessage('已更新 '+count+' 筆時間隱藏設定。');
     }catch(e){setMessage(String(e.message||e));}finally{setVisibilityBusy(false);}
   };
@@ -554,13 +563,9 @@ export default function CultureTimelineEditor({
           onChange={event=>change('description',event.target.value)}/>
       </label>
       {message?<p className="scope-status" role="status" aria-live="polite">{message}</p>:null}
-      <div className="scope-culture-quick-actions">
-        <button type="submit" className="loc-button" disabled={busy||query.isPending||Boolean(query.error)}>
-          {busy?'儲存中…':selectedId?'儲存修改':'儲存'}
-        </button>
-        <button type="button" className="loc-button" onClick={reset} disabled={busy}>取消</button>
-        {selectedId?<button type="button" className="loc-button" onClick={remove} disabled={busy}>刪除</button>:null}
-      </div>
+      {selectedId?<div className="scope-culture-quick-actions">
+        <button type="button" className="loc-button" onClick={remove} disabled={busy}>刪除</button>
+      </div>:null}
     </form>
   </section>;
 }

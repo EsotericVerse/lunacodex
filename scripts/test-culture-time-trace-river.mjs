@@ -171,3 +171,18 @@ test('expanding one trace never pre-opens another trace',()=>{
  const collapsed=buildEraRiver(source);
  assert.equal(collapsed.items.length,0);
 });
+
+test('time editor shows Era rows and expands only directly linked Period rows',()=>{
+  const collapsed=buildEraRiver(source,[],{editorOnly:true});
+  assert.deepEqual(collapsed.groups.map(group=>group.label),['時間痕跡甲','時間痕跡乙']);
+  assert.ok(collapsed.groups.every(group=>group.collapsible&&!group.expanded));
+  assert.deepEqual(collapsed.items,[]);
+  const opened=buildEraRiver(source,['trace:example:T001'],{editorOnly:true});
+  assert.deepEqual(opened.groups.map(group=>group.label),[
+    '時間痕跡甲','期間｜二錨事件','期間｜單日事件','期間｜失效連線 GONE','時間痕跡乙'
+  ]);
+  assert.ok(opened.items.every(item=>item.entry_type==='period'));
+  assert.deepEqual(opened.items.map(item=>item.uid),['E002','E001']);
+  assert.ok(!opened.groups.some(group=>group.id.startsWith('trace-anchors:')));
+  assert.ok(!opened.groups.some(group=>group.id.startsWith('time-anchors:')));
+});
