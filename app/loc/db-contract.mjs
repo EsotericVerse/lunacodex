@@ -2,7 +2,6 @@ import {flashMessage} from './flash-message.js';
 import {isUnifiedAnchorScope} from './unified-anchor-compat.mjs';
 import {assertPlainGalaxyAttributes} from './content-policy.js';
 import {DB_QUERY_BATCH_SIZE,MAX_ROWS} from './query-batch-size.mjs';
-import {parseVerifiedGoogleOAuthUser} from './oauth-identity.mjs';
 import {assertAuthorizationForTable,clearAuthorization,readAuthorization} from './authorization-runtime.mjs';
 import {assertEditorSession} from './edit-session-ttl.mjs';
 import {unifiedAnchorSpec} from './unified-anchor-compat.mjs';
@@ -290,19 +289,13 @@ export function createDatabaseClient({publicClient,authClient,auth}){
   }
 
   async function verifiedKeywordOwner(){
-    // Clerk already returns an Authority-verified identity. Calling getUser()
-    // after getSession() would reverify the same JWT a second time.
-    if(typeof auth.getVerifiedSession==='function'){
-      const verified=await auth.getVerifiedSession();
-      return Boolean(verified?.user?.id&&verified?.oauth?.email&&
-        String(verified.user.email||'').toLowerCase()===String(verified.oauth.email).toLowerCase());
-    }
-    const current=await auth.getSession();
-    if(current.error)throw new Error(current.error.message||'Keyword session unavailable');
-    const session=current.data?.session;
-    if(!session?.access_token||!session.user?.id)return false;
-    const verified=await auth.getUser(session.access_token);
-    return !verified.error&&String(verified.data?.user?.id||'')===String(session.user.id);
+    // No database-auth fallback: only an independently Authority-verified
+    // identity may access owner-only keyword functions.
+    if(typeof auth.getVerifiedSession!=='function')
+      throw new Error('LOC verified identity provider is required');
+    const verified=await auth.getVerifiedSession();
+    return Boolean(verified?.user?.id&&verified?.oauth?.email&&
+      String(verified.user.email||'').toLowerCase()===String(verified.oauth.email).toLowerCase());
   }
 
   async function analyticsRead(scope,view,{startDate='',endDate='',options={}}={},client=publicClient){
@@ -622,29 +615,18 @@ export function createDatabaseClient({publicClient,authClient,auth}){
   }
 
   async function getAccountSession(){
-    // Independent Clerk Authority supplies a cryptographically verified user.
-    // Never treat a database SDK session as valid in independent mode.
-    if(typeof auth.getVerifiedSession==='function')return auth.getVerifiedSession();
-    const {data,error}=await auth.getSession();
-    if(error)throw new Error(error.message||'Account session failed');
-    const session=data?.session||null;
-    if(!session?.user)return null;
-    // A persisted session's user/email are local data, not verified OAuth claims.
-    // Ask Supabase Auth to validate the access token and return current identities.
-    const {data:verified,error:verifyError}=await auth.getUser(session.access_token);
-    if(verifyError)throw new Error(verifyError.message||'Google OAuth verification failed');
-    const user=verified?.user;
-    if(!user?.id||String(user.id)!==String(session.user.id))
-      throw new Error('OAuth 使用者與目前 Session 不一致，已拒絕授權。');
-    const oauth=parseVerifiedGoogleOAuthUser(user);
-    return {session,user:{...user,email:oauth.email},oauth};
+    // A configured identity provider must prove its identity through LOC
+    // Authority. Supabase/Neon/database SDK sessions are never a fallback.
+    if(typeof auth.getVerifiedSession!=='function')
+      throw new Error('LOC verified identity provider is required');
+    return auth.getVerifiedSession();
   }
 
   async function signInWithGoogle(callbackURL){
     const target=String(callbackURL||'').trim();
     if(!target)throw new Error('Google sign-in callback URL is required');
-    // The active adapter owns its own OAuth. Legacy deployments keep their
-    // existing route; Clerk-enabled deployments never contact DB Auth.
+    // Interactive sign-in uses the configured independent identity adapter.
+    // The database provider must never own the LOC login session.
     const {error}=await auth.signInWithOAuth({
       provider:'google',options:{redirectTo:target,queryParams:{prompt:'select_account'}}
     });
