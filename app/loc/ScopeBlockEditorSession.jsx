@@ -239,6 +239,7 @@ export default function ScopeBlockEditorSession({
             {key:'cancel',disabled:busy,onClick:cancel,label:<UiText id="uiExtra.editBlocks.cancel"/>}
           ]} status={message}
             statusClassName={message.startsWith(t('uiExtra.editBlocks.saveFailedPrefix'))?'scope-error':''}/>
+          <div className="scope-editor-stage"><h3 className="scope-editor-stage__title">文字內容</h3>
           <ObjectEditor mode="scope" fields={[
             ...(editEyebrow?[{
               key:'eyebrow',label:<UiText id="uiExtra.editBlocks.englishEyebrow"/>,
@@ -260,7 +261,8 @@ export default function ScopeBlockEditorSession({
               canInsertImage:allowImages&&!isHomeFrame&&canInsertImageIn(draft.text)
             }
           ]}/>
-          {isHomeFrame?<HeroImageFieldset draft={draft} image={image} allowImageOnly={pageName==='index'} onChange={configureImage}/>:null}
-          {allowEntities?renderEditableEntities(draft.entities):null}
+          </div>
+          {isHomeFrame?<div className="scope-editor-stage"><h3 className="scope-editor-stage__title">主視覺圖片</h3><HeroImageFieldset draft={draft} image={image} allowImageOnly={pageName==='index'} onChange={configureImage}/></div>:null}
+          {allowEntities?<div className="scope-editor-stage"><h3 className="scope-editor-stage__title">附屬內容</h3>{renderEditableEntities(draft.entities)}</div>:null}
   </>;
 }

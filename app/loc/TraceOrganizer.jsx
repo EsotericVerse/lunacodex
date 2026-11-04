@@ -149,13 +149,40 @@ export default function TraceOrganizer({scopeId,spatial,reload}){
   },[anchors,placeName]);
   return <section className="loc-card scope-feature-card" aria-label="地點管理及名稱整理">
     <h3>地點管理 · 名稱整理</h3>
+    <p className="scope-status">先搜尋並選擇要維護的地點；下方的自動候選可批次整理同座標的名稱。只修改名稱，不會合併或刪除文章、UID 與路線。</p>
     <div className="scope-stat-controls" role="status">
       <span>目前地點：{anchors.length}</span>
       <span>完整名稱排列候選：{automatic.length} 組</span>
       <span>需要確認：{uncertain.length} 組</span>
     </div>
     <section className="scope-card">
-      <h4>名稱排列候選 · 依筆數排序</h4>
+      <h4>1. 搜尋並管理既有地點</h4>
+      <p className="scope-status">選取一筆地點後，可查看既有別名並新增名稱變體。</p>
+      <label>搜尋既有地點
+        <input type="search" value={placeName} placeholder="輸入名稱，不限縣市"
+          onChange={event=>setPlaceName(event.target.value)}/>
+      </label>
+      {placeName.trim()&&!matches.length?<p className="scope-status" role="status">沒有符合搜尋條件的地點。</p>:null}
+      {matches.length?<div className="loc-trace-route-suggestions" role="group" aria-label="既有地點">
+        {matches.map(item=><button className="loc-button" type="button" key={item.uid}
+          onClick={()=>{setSelectedUid(item.uid);setNewAlias('');}}>
+          {item.title} · UID {item.uid}
+        </button>)}
+      </div>:null}
+      {place?<div className="scope-management-fields">
+        <p><strong>目前選擇：</strong>{place.title} · UID {place.uid}</p>
+        <p>已確認別名：{aliases.length?aliases.join('、'):'無'}</p>
+        <label>新增名稱變體
+          <input value={newAlias} maxLength={200} onChange={event=>setNewAlias(event.target.value)}
+            placeholder="例如：WorldGym 新北永和店"/>
+        </label>
+        <button className="loc-button primary" type="button" disabled={busy||!ownPlaces||!newAlias.trim()}
+          onClick={saveNames}>儲存名稱對照</button>
+      </div>:null}
+    </section>
+    <section className="scope-card">
+      <h4>2. 批次整理名稱排列候選</h4>
+      <p className="scope-status">先展開候選組、選擇要保留的標準名稱，再勾選要更新的地點。候選依筆數排序。</p>
       <div className="scope-stat-controls">
         <button type="button" className="loc-button" disabled={busy||!ownPlaces||!visibleGroups.length}
           onClick={()=>selectAllGroups(true)}>全部勾選（所有 {reviewGroups.length} 組）</button>
@@ -206,29 +233,6 @@ export default function TraceOrganizer({scopeId,spatial,reload}){
         </details>;
       })}
       {reviewGroups.length>80?<p className="scope-status">目前展開前 80 組；「全部勾選」涵蓋所有 {reviewGroups.length} 組，批次套用前請確認。</p>:null}
-    </section>
-    <section className="scope-card">
-      <h4>管理已確認的地點名稱</h4>
-      <label>搜尋既有地點
-        <input type="search" value={placeName} placeholder="輸入名稱，不限縣市"
-          onChange={event=>setPlaceName(event.target.value)}/>
-      </label>
-      {matches.length?<div className="loc-trace-route-suggestions" role="group" aria-label="既有地點">
-        {matches.map(item=><button className="loc-button" type="button" key={item.uid}
-          onClick={()=>{setSelectedUid(item.uid);setNewAlias('');}}>
-          {item.title} · UID {item.uid}
-        </button>)}
-      </div>:null}
-      {place?<div className="scope-management-fields">
-        <p>主要名稱：{place.title} · UID {place.uid}</p>
-        <p>已確認別名：{aliases.length?aliases.join('、'):'無'}</p>
-        <label>新增名稱變體
-          <input value={newAlias} maxLength={200} onChange={event=>setNewAlias(event.target.value)}
-            placeholder="例如：WorldGym 新北永和店"/>
-        </label>
-        <button className="loc-button primary" type="button" disabled={busy||!ownPlaces||!newAlias.trim()}
-          onClick={saveNames}>儲存名稱對照</button>
-      </div>:null}
     </section>
     {notice?<p role={error?'alert':'status'} className={'scope-status'+(error?' scope-error':'')}>{notice}</p>:null}
   </section>;
