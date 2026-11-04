@@ -43,7 +43,6 @@ import {defaultScopeData,selectLocSearchScopes,selectScopeRegistry,revalidateSer
 
 import {MEDIA_FALLBACK_TITLE,WORK_FALLBACK_TITLE,workDisplayHeading,workDisplayText} from '../work-display-model';
 import {requireGalaxyContent,resolveGalaxyTitle,assertPlainGalaxyAttributes} from '../../loc/content-policy';
-import {galaxyAble} from '../../loc/galaxy-able.mjs';
 import {DEFAULT_LIST_BATCH_SIZE} from '../../loc/db-contract.mjs';
 import {applyFilters,isAbortError,selectRows} from '../../loc/db-query.mjs';
 const ScopeGroupOverview=dynamic(()=>import('../../loc/ScopeGroupOverview'),{loading:()=>null});
