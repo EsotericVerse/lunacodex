@@ -464,7 +464,7 @@ export default function CultureTimelineEditor({
         </label>)}
       </div>
     </details>
-    <form className="scope-culture-quick-form" onSubmit={save}>
+    <form className="scope-culture-quick-form" onSubmit={event=>event.preventDefault()}>
       <div className="scope-culture-quick-primary">
         <label className="scope-culture-quick-name">名稱
           <input ref={inputRef} className="scope-search-input" value={draft.title} required
