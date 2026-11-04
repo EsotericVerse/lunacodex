@@ -571,10 +571,11 @@ test('Scope editor uses time/spatial anchor labels and preserves LOC group label
   assert.match(shell,/locAdminEdit\?translateUiField\(activeLocale,'人員作品管理'\):translateUiField\(activeLocale,'時間定錨'\)/);
   assert.match(shell,/locAdminEdit\?'痕跡製作':'空間定錨'/);
   assert.match(shell,/translateUiField\(activeLocale,'關鍵詞'\)/);
-  assert.match(shell,/translateUiField\(activeLocale,'暫存'\)/);
+  assert.match(shell,/translateUiField\(activeLocale,'儲存'\)/);
   assert.doesNotMatch(shell,/translateUiField\(activeLocale,'設立定錨'\)/);
   assert.doesNotMatch(shell,/translateUiField\(activeLocale,'痕跡管理'\)/);
-  assert.match(dock,/已暫存，可繼續編輯/);
+  assert.match(dock,/目前修改已儲存。/);
+  assert.doesNotMatch(dock,/已暫存/);
   assert.doesNotMatch(dock,/已分段儲存/);
 });
 
@@ -647,4 +648,58 @@ test('one device default time unit changes presentation, never article URLs or S
   assert.match(trace,/start_date:startDate,end_date:endExclusive/);
   // Zero new API endpoints, migrations, automatic search filters or URL changes.
   assert.doesNotMatch(settings,/dbAuthRelation\(.*DEFAULT_TIME_UNIT_KEY/);
+});
+
+
+// 2026-11-05 targeted regression: no duplicate hot-path Save or post-save reads.
+test('Edit Dock provides one explicit Save and never saves an unchanged editor',()=>{
+  const dock=read('app/modular/edit-dock.jsx');
+  const shell=read('app/AppShell.jsx');
+  assert.match(dock,/const editors=dirty;/);
+  assert.match(dock,/if\(!editors\.length\)\{\s*setNotice\('目前沒有待儲存的變更。'\)/);
+  assert.doesNotMatch(dock,/saveAndSwitch|stayInEditMode|已暫存|儲存並切換/);
+  assert.match(shell,/editDock\.save\(\)/);
+  assert.doesNotMatch(shell,/editDock\.save\(\{stayInEditMode/);
+});
+
+test('Homepage real Save avoids repeated SELECT and a forced page navigation',()=>{
+  const drafts=read('app/loc/ScopeBlockDraftList.jsx');
+  const blocks=read('app/loc/ScopeEditableBlocks.jsx');
+  assert.match(drafts,/async function publishSavedBlocks\(rows\)/);
+  assert.match(drafts,/mutate\(appBootstrapKey\(scopeId,pageName\)/);
+  assert.match(drafts,/\{revalidate:false\}/);
+  assert.doesNotMatch(drafts,/refreshBlockQueries|await mutate\(bootstrapKey\)|await mutate\(displayKey\)/);
+  assert.match(blocks,/if\(editDock\?\.active&&editDock\.scopeId===scopeId\)\{[\s\S]*?return;/);
+});
+
+test('Inline block, classification, route and time editors reuse fixed Dock Save',()=>{
+  const single=read('app/loc/ScopeBlockEditorSession.jsx');
+  const classes=read('app/loc/FlatClassificationEditor.jsx');
+  const trace=read('app/loc/TraceRouteManager.jsx');
+  const culture=read('app/modular/features/CultureTimelineEditor.jsx');
+  assert.match(single,/useEditDockForm\(\{save,isDirty:/);
+  assert.match(single,/\.\.\.\(inDock\?\[\]:\[\{key:'save'/);
+  assert.match(classes,/!inDock\?<button className="loc-button primary"/);
+  assert.match(trace,/!inDock\?<button className="loc-button primary"/);
+  assert.match(culture,/onSubmit=\{event=>event\.preventDefault\(\)\}/);
+});
+
+test('Culture refreshes active source-window keys, not retired v2/v6 keys',()=>{
+  const culture=read('app/modular/features/Culture.jsx');
+  assert.match(culture,/resourceCache\.invalidate\(\{queryKey:\['culture-period-roots'\]\}\)/);
+  assert.match(culture,/resourceCache\.invalidate\(\{queryKey:\['culture-period-source-snapshot'\]\}\)/);
+});
+
+test('Search shows Galaxy date and updates same-page URL without a route remount',()=>{
+  const search=read('app/modular/features/Search.jsx');
+  const providers=read('app/loc/galaxy-query.js');
+  assert.match(search,/date=\{row\.date\}/);
+  assert.match(search,/window\.history\.pushState\(null,'',url\)/);
+  assert.match(providers,/\.\.\.\(!localArticle\(current\)\?\['date'\]:\[\]\)/);
+});
+
+test('LOC permission snapshot does one Kysely query rather than two per request',()=>{
+  const auth=readFileSync(new URL('../app/loc/providers/loc-authorization.mjs',import.meta.url),'utf8');
+  assert.match(auth,/crossJoin\('silver\.loc as l'\)/);
+  assert.doesNotMatch(auth,/const config=await db\.selectFrom\('silver\.loc'\)/);
 });
