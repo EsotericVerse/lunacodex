@@ -535,7 +535,7 @@ Deno.serve(async (request) => {
         const tables=await backup.introspection.getTables();
         const required:Record<string,string[]>={
           manage:["id","manage_role","parent_scope_id"],
-          loc:["id","theme","statistics_able","culture_able"],
+          loc:["id","theme","database","blacklist"],
           loc_blocks:["uid","page_name","block_order","block_text"]
         };
         const valid=Object.entries(required).every(([name,columns])=>{
