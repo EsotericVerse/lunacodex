@@ -122,9 +122,9 @@ test('indexed reader accepts PostgreSQL DATE serialized as UTC midnight',async()
   ];
   const calls=[];
   const reader=createIndexedDateKeywordReader({
-    readDatePage:async({after})=>{
+    readDatePage:async({after,limit})=>{
       calls.push(after);
-      return records.filter(row=>!after||row.date.slice(0,10)>after);
+      return records.filter(row=>!after||row.date.slice(0,10)>after).slice(0,limit);
     },
     readDatePeers:async({date})=>{
       const rows=records.filter(row=>row.date.slice(0,10)===date);
