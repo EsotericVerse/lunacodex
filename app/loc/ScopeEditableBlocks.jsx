@@ -26,7 +26,7 @@ function pageNameOf(value='index'){
   return page==='home'?'index':page;
 }
 
-function normalizeRow(row,order){
+function normalizeRow(row,order,pageName='index'){
   return {
     uid:String(row?.uid||''),
     stored:Boolean(row?.uid),
@@ -36,6 +36,7 @@ function normalizeRow(row,order){
     subtitle:String(row?.block_subtitle||''),
     text:HomeBlock.removeDuplicatedLegacySubtitle(row?.block_text,row?.block_subtitle),
     image:parseBlockImage(row?.block_image),
+    bubbleColumns:HomeBlock.bubbleColumns(row?.block_entity,pageName),
     entities:HomeBlock.normalizeEntities(row?.block_entity)
   };
 }
@@ -106,21 +107,21 @@ export default function ScopeEditableBlocks({
     const rows=Array.isArray(blocks)?blocks:[];
     if(normalizedOrders.length){
       const byOrder=new Map(rows.map(row=>[Number(row.block_order),row]));
-      return normalizedOrders.map(order=>normalizeRow(byOrder.get(order),order));
+      return normalizedOrders.map(order=>normalizeRow(byOrder.get(order),order,pageName));
     }
     if(Number.isInteger(maxBlocks)&&maxBlocks>0){
-      const displayed=HomeBlock.rows(rows,pageName,maxBlocks).map(row=>normalizeRow(row,row.block_order));
+      const displayed=HomeBlock.rows(rows,pageName,maxBlocks).map(row=>normalizeRow(row,row.block_order,pageName));
       if(editingSlot&&!editingSlot.stored&&!displayed.some(slot=>slot.order===editingSlot.order)&&editingSlot.order<=maxBlocks){
         displayed.push({...editingSlot});
       }
       if(Number.isInteger(placeholderFirstOrder)&&placeholderFirstOrder>0&&placeholderFirstOrder<=maxBlocks
           &&!displayed.some(slot=>slot.order===placeholderFirstOrder)){
-        displayed.push(normalizeRow(null,placeholderFirstOrder));
+        displayed.push(normalizeRow(null,placeholderFirstOrder,pageName));
       }
       displayed.sort((a,b)=>a.order-b.order);
       return displayed;
     }
-    const displayed=rows.map(row=>normalizeRow(row,row.block_order));
+    const displayed=rows.map(row=>normalizeRow(row,row.block_order,pageName));
     // Unbounded pages must render the unsaved editingSlot, or the Add Block button appears inert.
     if(editingSlot&&!editingSlot.stored&&!displayed.some(slot=>slot.order===editingSlot.order)){
       displayed.push({...editingSlot});
@@ -160,7 +161,7 @@ export default function ScopeEditableBlocks({
       if(term)onSuggestionClick(term);
     }
   }
-  function renderEntities(entities){
+  function renderEntities(entities,bubbleColumns){
     // In suggestion mode, a viewer who cannot edit should only ever see
     // entities that actually have a clickable term; editors still see every
     // entity (including empty ones) so they can fill them in.
@@ -168,7 +169,7 @@ export default function ScopeEditableBlocks({
       ?entities.filter(entity=>recommendationTerm(entity.text))
       :entities;
     if(!visibleEntities.length)return null;
-    return <div className="scope-block-entity-grid">
+    return <div className="scope-block-entity-grid" style={{'--loc-bubble-columns':HomeBlock.bubbleColumns([bubbleColumns],pageName)}}>
       {visibleEntities.map(entity=><article
         className={HomeBlock.childPresentation(entity.title)==='card'?'scope-block-entity':'loc-bubble scope-block-text-bubble'}
         key={entity.uid}
@@ -260,7 +261,7 @@ export default function ScopeEditableBlocks({
               {slot.title?<Heading>{slot.title}</Heading>:null}
               {slot.subtitle?<p className="loc-subtitle scope-block-subtitle">{HomeBlock.plainBlockLine(slot.subtitle)}</p>:null}
               {slot.text?<div className="scope-rich-surface" dangerouslySetInnerHTML={{__html:slot.text}}/>:null}
-              {renderEntities(slot.entities)}
+              {renderEntities(slot.entities,slot.bubbleColumns)}
             </>}
         </SlotTag>;
         return heroSlotOrder&&slot.order===heroSlotOrder?[node,toggleButton]:[node];
@@ -318,7 +319,7 @@ export default function ScopeEditableBlocks({
               {slot.title?<Heading>{slot.title}</Heading>:null}
               {slot.subtitle?<p className="loc-subtitle scope-block-subtitle">{HomeBlock.plainBlockLine(slot.subtitle)}</p>:null}
               {slot.text?<div className="scope-rich-surface" dangerouslySetInnerHTML={{__html:slot.text}}/>:null}
-              {renderEntities(slot.entities)}
+              {renderEntities(slot.entities,slot.bubbleColumns)}
             </>}
           {canEdit&&allowEntities&&allowInlineChildAdd&&slot.entities.length<HomeBlock.entityLimit?<button
             type="button"
@@ -333,7 +334,7 @@ export default function ScopeEditableBlocks({
     {canEdit&&!normalizedOrders.length&&(!maxBlocks||nextOrder<=maxBlocks)?<button
       type="button"
       className="loc-button scope-add-page-block"
-      onClick={()=>begin(normalizeRow(null,nextOrder))}
+      onClick={()=>begin(normalizeRow(null,nextOrder,pageName))}
       disabled={Boolean(editingSlot)}
     ><UiText id="uiExtra.editBlocks.addBlock"/></button>:null}
     {message?<p className="scope-status" role="status">{message}</p>:null}
