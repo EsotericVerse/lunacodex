@@ -802,7 +802,7 @@ async function selectMediaStatisticsFacetRowsRaw(scope,dimension,{startDate='',e
   }
   const filters=timeFilters('createtime',startDate,endDate);
   const columns='uid,type,url,meta_tags,createtime';
-  const orders=[{column:'uid',ascending:true}];
+  const orders=[{column:'type',ascending:true}];
   const aggregates=new Map();
   let offset=0,total=null,source='auto';
   while(total===null||offset<total){
@@ -831,7 +831,7 @@ async function selectMediaStatisticsFacetRowsRaw(scope,dimension,{startDate='',e
 export async function selectMediaCrossTagRows(scope,{startDate='',endDate=''}={}){
   const current=scopeOf(scope);
   const filters=timeFilters('createtime',startDate,endDate);
-  const orders=[{column:'uid',ascending:true}];
+  const orders=[{column:'type',ascending:true}];
   const rows=[];
   let offset=0,total=null,source='auto';
   while(total===null||offset<total){
@@ -871,7 +871,7 @@ export async function selectMediaCrossPairWorks(scope,pair,{
   while(true){
     const page=await selectRows(current.galaxyMedia,{
       columns:'uid,title,url,meta_tags,createtime',
-      filters,orders:[{column:'uid',ascending:true}],
+      filters,orders:[{column:'type',ascending:true}],
       limit:batchSize,offset:cursor,source
     });
     source=page.dataSource||source;

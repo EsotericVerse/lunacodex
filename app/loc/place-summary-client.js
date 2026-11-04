@@ -25,7 +25,7 @@ export async function readPlaceSummary(scopeId,{startDate='',endDate=''}={}){
       for(let offset=0;;offset+=pageSize){
         const {rows}=await selectRows('silver.'+scopeId+'_trace',{
           columns:'uid,title',filters:[{column:'trace_type',operator:'eq',value:'space_anchor'}],
-          orders:[{column:'title',ascending:true},{column:'uid',ascending:true}],
+          orders:[{column:'title',ascending:true}],
           limit:pageSize,offset
         });
         anchors.push(...rows.map(row=>({uid:row.uid,title:row.title})));

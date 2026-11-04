@@ -1,5 +1,4 @@
 import {parseImportCreatedTime} from './import-batch.mjs';
-import {readUnifiedAnchorUids} from './unified-anchor-uids.mjs';
 import {allocateAnchorUid} from './unified-anchor-compat.mjs';
 
 // Importing a known check-in creates its calendar-day Time anchor independently
@@ -84,7 +83,7 @@ export async function prepareImportTimeAnchors(records,{
   onProgress?.({phase:'核對既有日期定錨',completed:0,total:0});
   for(let offset=0;;offset+=pageSize){
     const {data,error}=await relation(table).select('uid,type,title,description,attr')
-      .eq('type','date').order('uid',{ascending:true})
+      .eq('type','date').order('title',{ascending:true})
       .range(offset,offset+pageSize-1);
     if(error)throw Error('讀取日期定錨失敗：'+(error.message||error));
     const rows=data||[];
@@ -96,16 +95,9 @@ export async function prepareImportTimeAnchors(records,{
     onProgress?.({phase:'核對既有日期定錨',completed:offset+rows.length,total:0});
     if(rows.length<pageSize)break;
   }
-  // Shared primary key: Time cannot allocate a UID already held by Point,
-  // Keyword or Media. Never allocate four-character UIDs in *_anchor.
+  // Existing Anchor PK constraints and the 23505 retry below protect against
+  // improbable secure Base62 UID collisions without preloading all Anchor UIDs.
   const occupied=new Set();
-  const shared=await readUnifiedAnchorUids(table,async(anchor,offset,limit)=>{
-    const {data,error}=await relation(anchor).select('uid')
-      .order('uid',{ascending:true}).range(offset,offset+limit-1);
-    if(error)throw Error('核對統一定錨 UID 失敗：'+(error.message||error));
-    return data||[];
-  },{pageSize:1000});
-  for(const row of shared)occupied.add(row.uid);
   const dates=[...entryByDate.keys()].sort();
   const missing=dates.filter(day=>!existingDays.has(day));
   let reused=dates.length-missing.length,created=0,repaired=0;
