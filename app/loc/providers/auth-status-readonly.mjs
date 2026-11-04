@@ -11,8 +11,8 @@ export function readonlyAuthStatus({primaryId='supabase-current',
   identityProvider='',neonAuthUrl='',neonDataApiUrl=''}={}){
   return Object.freeze({
     primaryOAuth:'Clerk',
-    // Supabase Auth SDK is bundled in the current LOC adapter.
-    supabaseSupported:true,
+    // LOC login is independent of the database. Supabase Auth is not used.
+    supabaseSupported:false,
     // Neon Auth adapter requires both independently configured endpoints.
     neonSupported:validEndpoint(neonAuthUrl,'/auth')&&
       validEndpoint(neonDataApiUrl,'/rest/v1')
