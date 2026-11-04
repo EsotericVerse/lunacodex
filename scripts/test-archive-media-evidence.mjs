@@ -195,7 +195,7 @@ test('ZIP-imported media uses linked article caption and does not manufacture a 
     new Map([['ART00001','真實文章標題']]),new Map([['ART00001','真實文章內文']]));
   assert.equal(plan.media.length,1);
   assert.equal(plan.media[0].title,'真實文章標題');
-  assert.equal(plan.media[0].meta_tags,'真實文章內文');
+  assert.equal(plan.media[0].description,'真實文章內文');
   assert.doesNotMatch(plan.media[0].title,/strange-name/);
   assert.equal(plan.media[0].url,'https://cdn.example.test/real.mp4');
 });
@@ -220,7 +220,7 @@ test('4,243 ZIP files yield exactly the uniquely article-linked records without 
   assert.equal(plan.media.length,linked);
   assert.equal(plan.mediaLinks.length,linked);
   assert.equal(new Set(plan.media.map(row=>row.uid)).size,linked);
-  assert.ok(plan.media.every(row=>row.url===null&&row.meta_tags==='真正的文字內容'));
+  assert.ok(plan.media.every(row=>row.url===null&&row.description==='真正的文字內容'));
   assert.ok(plan.media.every(row=>row.title==='作品照片'));
   assert.ok(plan.mediaLinks.every(row=>row.uid==='ARTICLE01'));
   assert.equal(prepareArchiveMedia(eligible,new Set(['ARTICLE01'])).media[0].uid,plan.media[0].uid);
