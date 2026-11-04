@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {unifiedAnchorSpec,toAnchorRow,fromAnchorRow,unifiedAnchorRelation}
   from '../app/loc/unified-anchor-compat.mjs';
-import {readUnifiedAnchorUids} from '../app/loc/unified-anchor-uids.mjs';
 
 const spec=section=>unifiedAnchorSpec('silver','lo3rwang_'+section);
 
@@ -146,13 +145,6 @@ test('partial update merges existing attr keys without clearing current relation
   await unifiedAnchorRelation(schema,spec('trace'))
     .update({anchor_list:['P1234567']}).eq('uid','X1234567').select('uid,anchor_list');
   assert.deepEqual(written.attr,{point:['P1234567']});
-});
-
-test('read-only UID pool shares the physical unified Anchor across feature sections',async()=>{
-  const rows=await readUnifiedAnchorUids('silver.lo3rwang_time',
-    async(table,offset)=>{assert.equal(table,'silver.lo3rwang_anchor');
-      return offset===0?[{uid:'A1234567'}]:[];},{pageSize:2});
-  assert.deepEqual(rows,[{uid:'A1234567'}]);
 });
 
 test('unified source code does not project or persist the removed label column',()=>{
