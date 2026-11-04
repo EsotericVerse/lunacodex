@@ -188,3 +188,18 @@ for(const [engine,namespace,expectedExpansion] of [
     assert.ok(!filters.some(([field])=>field==='uid'));
   });
 }
+
+test('portable media expansion stays inside the helper; no duplicated analytics executor',()=>{
+  // Regression for a bad string-based edit that spliced an entire executor
+  // into a JSON_TABLE SQL template while still passing a superficial grep.
+  assert.equal((source.match(/export async function executePortableKyselyAnalytics/g)||[]).length,1);
+  assert.equal((source.match(/async function portableLinkedMediaCount/g)||[]).length,1);
+  assert.match(source,/columns\(uid varchar\(8\) path '\$'\)\) as linked/);
+  assert.match(source,/cross apply openjson\(docs\.media_link\)/);
+  assert.match(source,/jsonb_array_elements_text\(docs\.media_link\)/);
+  assert.doesNotMatch(source,/path '\(db,body,/);
+  // Parse all executable code, not only the helper substring.
+  assert.doesNotThrow(()=>new Function('sql','canManageLoc','portableRelation',
+    source.replace(/^import .*$/gm,'').replace(/^export /gm,'')+
+    ';return executePortableKyselyAnalytics'));
+});
