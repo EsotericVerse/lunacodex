@@ -50,3 +50,11 @@ LOC `/admin/?section=enterpriseAuth` 的「認證來源設定」使用現有 Adm
 - Neon `silver` 目前可讀到 **17 張基礎資料表**，其中 Galaxy 2 張、Anchor 2 張；現有 `silver` routine 75 筆。這只證實資料庫中已有結構和函式，**不代表 RPC 與 Supabase 完全相容**。
 - 使用者確認 Neon Schema 已完成；待處理的是 RPC 的功能契約、參數、權限及 Kysely 呼叫路徑。不得再以「Neon Schema 尚未同步」為 Auth 設定功能的前置阻礙。
 - Neon Auth 的「設定欄位已預留」與「登入來源可安全切換」仍是不同驗收項目。完成 RPC 也不會自動啟用 Neon Auth，依然需要 Authority 驗簽、Session 綁定及手動切換。
+
+## Admin 版型與操作
+
+- 認證設定沿用 `ManagementWorkspaceFrame`、`ManagementSectionNav`，不另開全寬版型或獨立 CSS 規則。
+- Provider 下拉沿用其他 Admin 編輯器的 `admin-inline-select` + `loc-settings-select`，響應式長寬交由 `settings-select.css` 管理。
+- 欄位使用既有 `scope-management-fields` 雙欄網格；網址與 Secret 使用 `scope-management-wide-field` 跨欄，在手機斷點自動改為單欄，避免長 URL 導致橫向捲動。
+- 與其他管理頁一致，由原有 `useEditDockForm` 的「儲存／取消」流程管理草稿。不另外顯示重複儲存按鈕；跨來源切換時若有未儲存輸入須先確認放棄。
+- 儲存時不只檢查寫入回傳，還重新讀取 Authority 的已遮蔽設定並核對非機密欄位；未成功不得顯示已儲存。讀取／儲存不會啟動新的登入來源。
