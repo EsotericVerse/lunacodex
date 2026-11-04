@@ -2,7 +2,7 @@
 
 ## 管理入口
 
-LOC `/admin/?section=enterpriseAuth` 的「認證來源設定」使用現有 Admin 工作區、Clerk Session、LOC Authority root 授權與加密 Durable Object，不新增 SQL 表或欄位。
+LOC `/admin/?section=network` 的「網路設定」下整合「資料庫連線 → ISR 快取 → 認證來源設定」三個區塊，沿用既有 Admin 工作區、Clerk Session、LOC Authority root 授權與加密 Durable Object，不新增 SQL 表或欄位。舊連結 `/admin/?section=enterpriseAuth` 透過別名轉往 `network`，不再顯示獨立認證選單。
 
 目前正式登入來源維持 **Clerk**。管理介面可保存以下來源的連線參數：
 
@@ -53,7 +53,7 @@ LOC `/admin/?section=enterpriseAuth` 的「認證來源設定」使用現有 Adm
 
 ## Admin 版型與操作
 
-- 認證設定沿用 `ManagementWorkspaceFrame`、`ManagementSectionNav`，不另開全寬版型或獨立 CSS 規則。
+- 認證設定直接呈現在 Admin `network` 分頁內，與 `DatabaseTarget`、`IsrDomainTarget` 同級，沿用 `ManagementWorkspaceFrame`、`ManagementSectionNav`，不另開全寬版型或獨立 CSS 規則。
 - Provider 下拉沿用其他 Admin 編輯器的 `admin-inline-select` + `loc-settings-select`，響應式長寬交由 `settings-select.css` 管理。
 - 欄位使用既有 `scope-management-fields` 雙欄網格；網址與 Secret 使用 `scope-management-wide-field` 跨欄，在手機斷點自動改為單欄，避免長 URL 導致橫向捲動。
 - 與其他管理頁一致，由原有 `useEditDockForm` 的「儲存／取消」流程管理草稿。不另外顯示重複儲存按鈕；跨來源切換時若有未儲存輸入須先確認放棄。
