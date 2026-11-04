@@ -14,7 +14,7 @@ let publicApiRequests=[];
 let quotaRequests=[];
 let quotaBlocked=false;
 globalThis.fetch=async (url,options)=>{
-  if(String(url)==='https://loc-authority-control.sopa2306.workers.dev/v1/mcp/quota'){
+  if(String(url)==='https://auth.lo3rwang.cc/v1/mcp/quota'){
     const body=JSON.parse(options.body);
     quotaRequests.push(body);
     return quotaBlocked&&body.action==='acquire'
