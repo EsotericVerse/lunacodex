@@ -204,7 +204,7 @@ async function loadPageSearchExcerpts(rows,query,scopeById,{authenticated=false,
     if(!scope?.galaxy)continue;
     try{
       const {rows:articles=[]}=await selectRows(scope.galaxy,{
-        columns:scopeId==='local'?'uid,content,able':'uid,content,search,extract',
+        columns:scopeId==='local'?'uid,content,able':'uid,content,attr,search,extract',
         filters:[{column:'uid',operator:'in',value:[...ids]}],
         limit:ids.size,authenticated,signal
       });
