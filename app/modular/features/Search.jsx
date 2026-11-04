@@ -43,6 +43,7 @@ import {defaultScopeData,selectLocSearchScopes,selectScopeRegistry,revalidateSer
 
 import {MEDIA_FALLBACK_TITLE,WORK_FALLBACK_TITLE,workDisplayHeading,workDisplayText} from '../work-display-model';
 import {requireGalaxyContent,resolveGalaxyTitle,assertPlainGalaxyAttributes} from '../../loc/content-policy';
+import {galaxyAble} from '../../loc/galaxy-able.mjs';
 import {DEFAULT_LIST_BATCH_SIZE} from '../../loc/db-contract.mjs';
 import {applyFilters,isAbortError,selectRows} from '../../loc/db-query.mjs';
 const ScopeGroupOverview=dynamic(()=>import('../../loc/ScopeGroupOverview'),{loading:()=>null});
@@ -55,7 +56,7 @@ const MEDIA_EDITOR_COLUMNS='uid,location,type,title,url,description,createtime';
 const MEDIA_ATTR_ORDER=['uid','location','type','url','description','createtime'];
 const MEDIA_ATTR_FIELDS=MEDIA_ATTR_ORDER.map(key=>({key,readOnly:key==='uid',kind:key==='createtime'?'date':'text'}));
 
-const GALAXY_EDITOR_COLUMNS='uid,title,content,createtime,location,place_id,UpdateTime,url,source_id,target_id,ref_id,site,media_link,statics,culture,search,trace,list,keyword,extract,others';
+const GALAXY_EDITOR_COLUMNS='uid,title,content,createtime,location,place_id,UpdateTime,url,source_id,target_id,ref_id,site,media_link,attr,statics,culture,search,trace,list,keyword,extract,others';
 
 const GALAXY_ATTR_ORDER=Object.freeze([
   'uid','title','content','createtime','location','place_id',
@@ -152,7 +153,7 @@ function toResult(row,source,scopeId,copy=UI_COPY){
     source:displaySource,title:String(title),
     checkInPlace:'',
     date:row.date||row.createtime||row.address||row.record_date||row.UpdateTime||row.updated_at||'',
-    snippet:'',...(isGalaxy?{statics:row.statics,culture:row.culture,search:row.search,trace:row.trace,list:row.list,keyword:row.keyword,others:row.others,extract:row.extract}:{}),
+    snippet:'',...(isGalaxy?galaxyAble(row):{}),
     scopeId:scope,resourceType,resourceId,
     relatedMedia:Array.isArray(row.related_media)?row.related_media:[],
     relatedTime:row.related_time||null,
