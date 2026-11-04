@@ -192,3 +192,11 @@ Search 的全文比對**僅**作用於 Galaxy 的 `content` 與 Anchor 的 `desc
 `MAX_MULTIPARA=10` 是 `mapBounded` 和本地匿名 Gateway 讀取佇列的硬上限；要求 100 路時也最多啟動 10 路。公開查詢仍預設 3 路、文化群組 2 路。不同瀏覽器、MCP 與不同 Edge Function isolate **不共用** JavaScript 變數，因此這不是全域 10 條 PostgreSQL 連線限制。正式 DB 連線容量仍應由 Transaction Pooler 與伺服器端流控管理。
 
 `loc-kysely` 的 MCP 搜尋改為僅匹配 Galaxy `content`，排序採既有 Galaxy `date`。MCP 依 UID 讀取完整文章不變。Supabase Data API 的 Max Rows 管的是單次回傳的資料列數，並非總資料筆數、SQL 查詢累計次數或連線上限。大量 content 的 payload 成本另計。
+
+
+### 時間定錨整理與虛擬紀念日批次工具（2026-11-04）
+
+- 文化管理的「自動整理」只讀取實際已存在的 `date`、`period`、`era`，不推算任何週年。期間以既有起訖 Date UID 表達區間，區間內的 Date 只做即時計算與列示，不新增其他資料或改寫 Schema；時代從已選期間的實際日期窗口找出完全落在窗口內的既有期間，加入同一份編輯草稿，使用者仍須按「儲存修改」才寫回。
+- 「建議紀念日」不是持久化 `aniversary` 類型：名稱、原始日期、年份範圍、週年範圍只用於編輯器的單次批次計畫。使用者按「建立週年時間」並確認後，僅補建缺少日期的正式 `date` Anchor；同日期已有任何 Date 就跳過，不覆寫，不變更 Galaxy、匯入器、統計或原有期間與時代連線。閏日僅在合法的 2 月 29 日建立。
+- 兩種操作都在明確點擊後才分頁讀取全量時間紀錄；一般文章清單與 Culture 瀏覽不新增背景 SQL 或 Scope 管理權限預讀。使用既有 Clerk／Scope 寫入路徑、UID8 Base62 配號，沒有新表、索引或 RPC。
+- 純邏輯回歸：`node --test scripts/test-culture-anchor-bulk.mjs`；此處不宣稱連接器已執行此測試。
