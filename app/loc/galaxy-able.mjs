@@ -39,7 +39,7 @@ function toLocalFields(row={}){
   const {keyword,others,...rest}=flags;
   // Device-local SQLite has only the legacy packed permission field.
   // Never pass physical Galaxy booleans through its column adapter.
-  const omit=new Set([...GALAXY_ABLE_KEYS,'able','searchable','statistics_able','keywords','game']);
+  const omit=new Set([...GALAXY_ABLE_KEYS,'able','attr','searchable','statistics_able','keywords','game']);
   const fields=Object.fromEntries(Object.entries(row).filter(([key])=>!omit.has(key)));
   return {...fields,able:{...rest,keywords:keyword,game:others}};
 }
@@ -56,7 +56,7 @@ export function prepareGalaxyUpdateValues(table,values){
   if(!isScopedGalaxy(table))return values;
   if(localGalaxy(table)){
     const fields=values||{};
-    const hasFlags=Object.hasOwn(fields,'able')||
+    const hasFlags=Object.hasOwn(fields,'able')||Object.hasOwn(fields,'attr')||
       GALAXY_ABLE_KEYS.some(key=>Object.hasOwn(fields,key))||
       Object.hasOwn(fields,'keywords')||Object.hasOwn(fields,'game');
     return hasFlags?toLocalFields(fields):fields;
