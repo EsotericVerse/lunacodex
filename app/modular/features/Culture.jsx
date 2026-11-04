@@ -1283,14 +1283,7 @@ export default function Culture(){
               <h3>時代／期間／時間定錨點</h3>
             </div>
             {query.isPending?<p className='scope-status' role='status'>正在載入時間紀錄…</p>:null}
-            {query.error?<p className='scope-status scope-error' role='alert'>{featureDataErrorMessage(query.error,UI_COPY)}
-              {/* Temporary diagnostic: surface the raw underlying message so the
-                  next reproduction shows what actually failed, instead of only
-                  the generic fallback copy. Remove once the cause is found. */}
-              <span style={{opacity:0.6,fontSize:'0.85em',display:'block',marginTop:'4px'}}>
-                {String(query.error?.message||query.error?.cause?.message||'').slice(0,300)}
-              </span>
-            </p>:null}
+            {query.error?<p className='scope-status scope-error' role='alert'>{featureDataErrorMessage(query.error,UI_COPY)}</p>:null}
             {!query.isPending&&!query.error&&!timelineItems.length
               ?<p className='scope-status'>目前尚未建立此類時間紀錄，可直接在下方新增。</p>:null}
             {!query.isPending&&!query.error&&timelineItems.length>0?<CultureTimeline
