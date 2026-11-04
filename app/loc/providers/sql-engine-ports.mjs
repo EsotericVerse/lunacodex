@@ -1,4 +1,6 @@
+import {sql} from 'npm:kysely@0.29.8';
 import {canManageLoc} from './loc-authorization.mjs';
+import {prepareGalaxyInsertRows} from '../galaxy-able.mjs';
 // Single source of truth for the LOC SQL engine plug-in points.
 // Kysely provides dialect-specific SQL generation; connection and security
 // adapters remain on the trusted runtime (never in the browser).
@@ -128,6 +130,34 @@ function managedAffected(result){
  * Reuses the verified cross-engine Registry gate and Kysely-native builders.
  * No PostgreSQL JSONB, regclass, stored procedure, RESET ROLE or DDL.
  */
+const PERMISSIONS=new Set(['statics','culture','search','trace','list','keyword','extract','others']);
+function portableGalaxyPermissionUpdate(values,engine){
+  const fields={...values},patch={};
+  for(const key of PERMISSIONS)if(Object.hasOwn(fields,key)){
+    if(typeof fields[key]!=='boolean')invalidWrite('Invalid Galaxy flag '+key);
+    patch[key]=fields[key];delete fields[key];
+  }
+  if(Object.hasOwn(fields,'attr')){
+    if(!fields.attr||typeof fields.attr!=='object'||Array.isArray(fields.attr)||
+       Object.entries(fields.attr).some(([k,v])=>!PERMISSIONS.has(k)||typeof v!=='boolean'))
+      invalidWrite('Invalid Galaxy attr');
+    Object.assign(patch,fields.attr);delete fields.attr;
+  }
+  const output=serializePortableJsonFields(fields,engine);
+  if(Object.keys(patch).length){
+    if(engine==='postgres')
+      output.attr=sql`coalesce(${sql.ref('attr')},'{}'::jsonb) || ${JSON.stringify(patch)}::jsonb`;
+    else if(engine==='mysql')
+      output.attr=sql`json_merge_patch(coalesce(${sql.ref('attr')},json_object()),${JSON.stringify(patch)})`;
+    else if(engine==='mssql'){
+      let expr=sql`coalesce(${sql.ref('attr')},'{}')`;
+      for(const [key,value] of Object.entries(patch))
+        expr=sql`json_modify(${expr},${'$.'+key},cast(${value?1:0} as bit))`;
+      output.attr=expr;
+    }
+  }
+  return output;
+}
 export async function executeCrossEngineManagedWrite(db,body,context){
   const p=body?.payload;
   if(!p||typeof p!=='object'||Array.isArray(p))invalidWrite('Invalid managed payload');
@@ -153,7 +183,8 @@ export async function executeCrossEngineManagedWrite(db,body,context){
     // 50 rows bounds SQL Server's 2,100-parameter ceiling while avoiding
     // one round trip per imported article.
     const groups=new Map();
-    for(const row of rows){
+    const prepared=table.endsWith('_galaxy')?prepareGalaxyInsertRows('silver.'+table,rows):rows;
+    for(const row of prepared){
       const shape=Object.keys(row).sort().join('|');
       const group=groups.get(shape)||[];
       group.push(row);groups.set(shape,group);
@@ -211,7 +242,10 @@ export async function executeCrossEngineManagedWrite(db,body,context){
          !Object.keys(values).length||
          Object.keys(values).some(key=>!SAFE_FIELD.test(key)||
            ['id','uid','able'].includes(key)))invalidWrite('Invalid update values');
-      count=managedAffected(await applyKyselyFilters(db.updateTable(name).set(serializePortableJsonFields(values,context.engine)),
+      const prepared=table.endsWith('_galaxy')
+        ?portableGalaxyPermissionUpdate(values,context.engine)
+        :serializePortableJsonFields(values,context.engine);
+      count=managedAffected(await applyKyselyFilters(db.updateTable(name).set(prepared),
         filters).executeTakeFirst());
     }else{
       count=managedAffected(await applyKyselyFilters(db.deleteFrom(name),
