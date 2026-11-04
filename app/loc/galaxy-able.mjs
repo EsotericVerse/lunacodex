@@ -1,10 +1,10 @@
-// Canonical eight independent Galaxy permission columns, ordered as in the schema.
-// A legacy input payload can be converted when importing an old archive, but
-// no database query or write ever references Galaxy.able.
+// Canonical Galaxy.attr JSONB contains exactly eight capability booleans.
+// During the compatibility cutover, legacy physical boolean columns remain
+// synchronized in PostgreSQL so existing public SQL/RPC readers still work.
 export const GALAXY_ABLE_KEYS=Object.freeze([
   'statics','culture','search','trace','list','keyword','extract','others'
 ]);
-export const GALAXY_ABLE_COLUMNS=GALAXY_ABLE_KEYS.join(',');
+export const GALAXY_ABLE_COLUMNS='attr,'+GALAXY_ABLE_KEYS.join(',');
 const legacyKeys={keyword:'keywords',others:'game'};
 function booleanOrUndefined(raw){
   if(typeof raw==='boolean')return raw;
@@ -21,12 +21,13 @@ export function legacyGalaxyAble(row={}){
 }
 export function galaxyAble(row={}){
   const fallback=legacyGalaxyAble(row);
-  // Legacy archive input only. This object is always expanded to columns.
+  const attr=row.attr&&typeof row.attr==='object'&&!Array.isArray(row.attr)?row.attr:{};
   const packed=row.able&&typeof row.able==='object'&&!Array.isArray(row.able)?row.able:{};
   return Object.fromEntries(GALAXY_ABLE_KEYS.map(key=>{
+    const canonical=booleanOrUndefined(attr[key]);
     const direct=booleanOrUndefined(row[key]);
     const imported=booleanOrUndefined(packed[key]??packed[legacyKeys[key]]);
-    return [key,direct??imported??fallback[key]];
+    return [key,canonical??direct??imported??fallback[key]];
   }));
 }
 export function isScopedGalaxy(table){
@@ -47,7 +48,8 @@ export function prepareGalaxyInsertRows(table,rows=[]){
   if(localGalaxy(table))return rows.map(toLocalFields);
   return rows.map(row=>{
     const {able,searchable,statistics_able,keywords,game,...fields}=row;
-    return {...fields,...galaxyAble(row)};
+    const attr=galaxyAble(row);
+    return {...fields,...attr,attr};
   });
 }
 export function prepareGalaxyUpdateValues(table,values){
@@ -61,8 +63,15 @@ export function prepareGalaxyUpdateValues(table,values){
   }
   const {able,searchable,statistics_able,keywords,game,...fields}=values||{};
   // A partial edit must only touch flags explicitly provided. Never reset
-  // other columns or rebuild the old packed "able" payload.
+  // other columns. The DB sync trigger mirrors legacy boolean edits to attr.
   const updated={...fields};
+  if(Object.hasOwn(updated,'attr')){
+    const canonical=updated.attr;
+    if(!canonical||typeof canonical!=='object'||Array.isArray(canonical)||
+      Object.keys(canonical).some(key=>!GALAXY_ABLE_KEYS.includes(key))||
+      Object.values(canonical).some(value=>typeof value!=='boolean'))
+      throw new Error('Invalid Galaxy attr payload');
+  }
   if(booleanOrUndefined(keywords)!==undefined&&updated.keyword===undefined)
     updated.keyword=booleanOrUndefined(keywords);
   if(booleanOrUndefined(game)!==undefined&&updated.others===undefined)
