@@ -186,11 +186,18 @@ export default function ScopeBlockEditorSession({
       try{
         const key=appBootstrapKey(scopeId,pageName);
         const existing=(await mutate(key,current=>current,{revalidate:false}))||{};
-        const committed={uid:draft.uid,...values};
-        const rows=[...(existing.blocks||[])].filter(row=>row.uid!==draft.uid);
-        rows.push(committed);
-        rows.sort((a,b)=>(Number(a.block_order)||0)-(Number(b.block_order)||0));
-        await updateBlockCaches(rows);
+        if(!Array.isArray(existing.blocks)){
+          // A concurrent metadata invalidation may have cleared this page.
+          // Only then read once; never replace sibling blocks with one row.
+          await refreshBlockQueries();
+        }else{
+          const previous=existing.blocks.find(row=>row.uid===draft.uid)||{};
+          const committed={...previous,uid:draft.uid,...values};
+          const rows=existing.blocks.filter(row=>row.uid!==draft.uid);
+          rows.push(committed);
+          rows.sort((a,b)=>(Number(a.block_order)||0)-(Number(b.block_order)||0));
+          await updateBlockCaches(rows);
+        }
       }catch{displayWarning='（顯示快取尚未更新，重新載入頁面即可）';}
       initialSnapshot.current=JSON.stringify(draft);
       onDone(t('uiExtra.editBlocks.saved')+displayWarning);
