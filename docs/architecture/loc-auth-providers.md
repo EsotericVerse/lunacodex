@@ -1,3 +1,10 @@
+## 2026-11-05 公開訪客資料庫路由隔離
+
+- 公開 AppShell 移除資料庫切換按鈕和資料庫拓樸資訊；一般使用者只能看到不含連線來源的故障提示。
+- 客戶端路由不再讀取 browser localStorage 的緊急主庫覆寫值，阻止未登入訪客選擇另一個 LOC 主資料庫。
+- 系統 Admin 的 DatabaseTarget 管理頁和 Gateway `checkAdminRole` 保留；資料庫權限驗證不能由公開 UI 取代。
+- 此修復不更動資料庫 Schema、RLS、管理權限或既有連線設定。
+
 # LOC Admin 認證來源連線設定
 
 ## 管理入口

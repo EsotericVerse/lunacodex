@@ -18,7 +18,6 @@ import {useScopeRuntime} from './modular/use-scope-runtime';
 import {faviconForScope} from './site-favicons';
 import {appBootstrapPageCopy,useAppBootstrap} from './loc/app-bootstrap';
 import {getDbSourceStatus,subscribeDbSourceStatus} from './loc/db-source-status.mjs';
-import {preferredDatabasePrimary,setEmergencyDatabasePrimary} from './loc/providers/emergency-primary.mjs';
 import {useNavigationPreferences} from './loc/use-navigation-preferences';
 import {NavigationPreferences} from './modular/navigation-preferences';
 import {navigationHref} from './modular/scope-registry.js';
@@ -48,46 +47,12 @@ function DataSourceStatus({local=false}){
   useUiSection('uiExtra.dataSourceStatus');
   const section=copy.uiExtra.dataSourceStatus||{};
   const status=useSyncExternalStore(subscribeDbSourceStatus,getDbSourceStatus,getDbSourceStatus);
-  const [neonPrimary,setNeonPrimary]=useState(false);
-  useEffect(()=>{setNeonPrimary(preferredDatabasePrimary()==='neon-current')},[]);
-  const neonAvailable=Boolean(process.env.NEXT_PUBLIC_LOC_NEON_DATA_API_URL&&process.env.NEXT_PUBLIC_LOC_NEON_AUTH_URL);
-  const switchPrimary=()=>{
-    const target=neonPrimary?'supabase-current':'neon-current';
-    if(target==='neon-current'&&!window.confirm(
-      '確定將本裝置主庫切換為 Neon？請先確認同步進度，備援資料可能較舊；切換後的寫入只會寫往 Neon。'
-    ))return;
-    try{
-      setEmergencyDatabasePrimary(target);
-      window.location.reload();
-    }catch(error){window.alert(error.message||'無法切換資料庫')}
-  };
-  if(local)return <div className="scope-data-source-global">
-    <details className="scope-data-source-details">
-      <summary>{section.localTitle||UI_COPY.uiExtra.dataSourceStatus.localTitle}</summary>
-      <div className="scope-data-source-values"><span>{section.localActive||UI_COPY.uiExtra.dataSourceStatus.localActive}</span></div>
-    </details>
-  </div>;
-  const current=status.unavailable
-    ?`${section.unavailable||''}`
-    :status.degraded
-      ?`${section.backup||''}（${status.backupLabel}）`
-      :`${section.primary||''}（${status.primaryLabel}）`;
-  return <div className={'scope-data-source-global'+(status.unavailable?' is-unavailable':status.degraded?' is-backup':'')}>
-    <details className="scope-data-source-details" open={status.degraded||undefined}>
-      <summary>{section.detailsTitle}</summary>
-      <div className="scope-data-source-values">
-        <span><FieldText text="主要資料來源："/>{status.primaryLabel}</span>
-        <span><FieldText text="備用資料來源："/>{status.backupLabel||'未設定（選配）'}</span>
-        <span><FieldText text="目前使用："/>{current}</span>
-        {neonAvailable?<button type="button" className="loc-button" onClick={switchPrimary}>
-          {neonPrimary?'切回 Supabase 主庫':'切換 Neon 獨立主庫'}
-        </button>:null}
-        {neonPrimary?<span role="status">目前已將 Neon 設為本裝置主庫；登入、權限與資料請求不經過 Supabase。切回前請確認兩端資料同步。</span>:null}
-      </div>
-    </details>
-    {status.unavailable
-      ?<span role="status"><FieldText text={status.backupLabel?"主要與備援資料來源目前皆無法讀取，部分內容可能暫時無法顯示。":"主要資料來源暫時無法讀取，且未設定備援資料庫。部分內容可能暫時無法顯示。"}/></span>
-      :status.degraded?<span role="status"><FieldText text="備援資料可能有同步時間差。"/></span>:null}
+  // The public shell must never expose database topology or routing controls.
+  if(local||(!status.unavailable&&!status.degraded))return null;
+  return <div className="scope-data-source-global" role="status">
+    <FieldText text={status.unavailable
+      ?'資料暫時無法讀取，請稍後重試。'
+      :'部分資料可能暫時無法顯示。'}/>
   </div>;
 }
 

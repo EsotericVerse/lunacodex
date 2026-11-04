@@ -103,7 +103,14 @@ test('LOC uses Clerk identity while the independent Neon adapter remains deferre
   // Neon Schema is prepared; outstanding RPC parity remains separate from
   // LOC's identity selection. Keep Clerk until Authority verifies Neon Auth.
   const emergency=readFileSync(new URL('../app/AppShell.jsx',import.meta.url),'utf8');
-  assert.match(emergency,/setEmergencyDatabasePrimary\(target\)/);
+  assert.doesNotMatch(emergency,/setEmergencyDatabasePrimary\(target\)|切換 Neon 獨立主庫/);
+  const routing=readFileSync(new URL('../app/loc/providers/routing-state.mjs',import.meta.url),'utf8');
+  assert.doesNotMatch(routing,/preferredDatabasePrimary|localStorage|EMERGENCY_PRIMARY_KEY/);
+  assert.match(routing,/resolveDatabaseRouting\(DATABASE_ROUTING_CONFIG\)/);
+  const admin=readFileSync(new URL('../app/loc/views/AdminHomeView.jsx',import.meta.url),'utf8');
+  assert.match(admin,/<DatabaseTarget/);
+  const gateway=readFileSync(new URL('../supabase/functions/loc-kysely/index.ts',import.meta.url),'utf8');
+  assert.match(gateway,/const control=await checkAdminRole\(claims\)/);
 });
 
 test('Neon does not reuse a JWT from a previous OAuth session',async()=>{
