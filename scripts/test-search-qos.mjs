@@ -34,6 +34,19 @@ test('rapid searches are denied, repeated abuse is blacklisted temporarily',()=>
   now+=121000;
   assert.equal(check('client').allowed,true);
 });
+test('one search can fan out across Galaxy and Anchor without artificial SQL spacing',()=>{
+  let now=100000;
+  const check=createSearchQos({now:()=>now});
+  for(let i=0;i<4;i++)assert.equal(check('reader').allowed,true);
+  now+=3000;
+  assert.equal(check('reader').allowed,true);
+});
+test('Search QoS errors never trigger backup reads or mark primary unavailable',()=>{
+  const source=readFileSync(new URL('../app/loc/db-query.mjs',import.meta.url),'utf8');
+  assert.match(source,/code==='SEARCH_RATE_LIMIT'\\|\\|code==='SEARCH_TIMEOUT'/);
+  assert.match(source,/markPrimaryReadFailed\\(table,error\\)/);
+  assert.match(source,/!\\['SEARCH_RATE_LIMIT','SEARCH_TIMEOUT'\\]\\.includes/);
+});
 test('different clients are independent; expired windows clear',()=>{
   let now=100000;
   const check=createSearchQos({now:()=>now,max:2,minIntervalMs:1000,windowMs:3000,blockMs:10000});
