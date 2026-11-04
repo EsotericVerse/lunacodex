@@ -130,6 +130,46 @@ async function writeBatch(trx,table,rows){
   `.execute(trx);
   return Number(result.numAffectedRows||0);
 }
+const GALAXY_PERMISSION_FLAGS=new Set(['statics','culture','search','trace','list','keyword','extract','others']);
+function galaxyFlagPatch(value){
+  if(!value||typeof value!=='object'||Array.isArray(value))reject('Invalid Galaxy flags');
+  const patch={};
+  for(const [key,flag] of Object.entries(value)){
+    if(!GALAXY_PERMISSION_FLAGS.has(key)||typeof flag!=='boolean')
+      reject('Invalid Galaxy permission '+key);
+    patch[key]=flag;
+  }
+  return patch;
+}
+function galaxyInsertWithAttr(row){
+  const {attr, ...fields}=row;
+  const patch={};
+  for(const key of GALAXY_PERMISSION_FLAGS){
+    if(Object.hasOwn(fields,key)){patch[key]=fields[key];delete fields[key];}
+  }
+  const canonical={...Object.fromEntries([...GALAXY_PERMISSION_FLAGS].map(key=>[key,true])),
+    ...galaxyFlagPatch(attr||{}),...galaxyFlagPatch(patch)};
+  if(String(row.site||'').toLowerCase()==='mcp'&&
+     !Object.hasOwn(patch,'list')&&!Object.hasOwn(attr||{},'list'))
+    canonical.list=false;
+  return {...fields,attr:canonical};
+}
+function galaxyUpdateWithAttr(values){
+  const fields={...values},patch={};
+  for(const key of GALAXY_PERMISSION_FLAGS){
+    if(Object.hasOwn(fields,key)){patch[key]=fields[key];delete fields[key];}
+  }
+  if(Object.hasOwn(fields,'attr')){
+    Object.assign(patch,galaxyFlagPatch(fields.attr));delete fields.attr;
+  }
+  const normalized=postgresManagedJsonbValues(fields);
+  if(Object.keys(patch).length){
+    galaxyFlagPatch(patch);
+    // Patch only explicitly changed flags, never reset other permissions.
+    normalized.attr=sql`coalesce(attr,'{}'::jsonb) || ${JSON.stringify(patch)}::jsonb`;
+  }
+  return normalized;
+}
 export async function executeManagedKyselyWrite(trx,body){
   const payload=body?.payload;
   if(!payload||typeof payload!=='object'||Array.isArray(payload))
@@ -163,7 +203,7 @@ export async function executeManagedKyselyWrite(trx,body){
   if(operation==='update_batch')count=await writeBatch(trx,table,payload.p_rows);
   else if(operation==='insert'){
     const groups=[];
-    for(const row of rows){
+    for(const row of (table.endsWith('_galaxy')?rows.map(galaxyInsertWithAttr):rows)){
       const keys=Object.keys(row).sort().join('\0');
       const last=groups[groups.length-1];
       if(last?.keys===keys)last.rows.push(row);
@@ -182,7 +222,7 @@ export async function executeManagedKyselyWrite(trx,body){
       count+=Number(result.numAffectedRows||0);
     }
   }else{
-    const base=operation==='update'?trx.updateTable(name).set(postgresManagedJsonbValues(values)):trx.deleteFrom(name);
+    const base=operation==='update'?trx.updateTable(name).set(table.endsWith('_galaxy')?galaxyUpdateWithAttr(values):postgresManagedJsonbValues(values)):trx.deleteFrom(name);
     const result=await withFilters(base,filters).execute();
     count=Number(result[0]?.numUpdatedRows??result[0]?.numDeletedRows??result[0]?.numAffectedRows??0);
   }
