@@ -3,22 +3,21 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {scopeConfigColumns,scopeFeatureColumns,scopeFeatureEnabled,scopeFeaturePatch,scopeFeatureName,scopeTagColumn,scopeTagNames} from '../app/loc/scope-config-fields.mjs';
 
-test('lo3rwang uses one able JSONB with short keys and 0/1 flags',()=>{
-  assert.equal(scopeFeatureColumns('lo3rwang'),'able');
-  assert.equal(scopeFeatureColumns('lrunes'),'');
-  assert.equal(scopeConfigColumns('lrunes'),'id,display_name,search_intro,search_aliases,theme,locale');
-  assert.deepEqual(scopeFeaturePatch('lrunes',{search_able:false}),{});
-  assert.equal(scopeFeatureEnabled({id:'lrunes'},'search_able'),true);
+test('Scope feature switches are four independent boolean columns',()=>{
+  assert.equal(scopeFeatureColumns('lo3rwang'),'search,statics,culture,trace');
+  assert.equal(scopeFeatureColumns('lrunes'),'search,statics,culture,trace');
+  assert.equal(scopeConfigColumns('lrunes'),'id,display_name,search_intro,search_aliases,theme,locale,search,statics,culture,trace');
   assert.equal(scopeFeatureName('statistics_able'),'statics');
-  const settings={able:{culture:0,statics:1,search:0,trace:1}};
+  const settings={culture:false,statics:true,search:false,trace:true};
   assert.equal(scopeFeatureEnabled(settings,'culture_able'),false);
   assert.equal(scopeFeatureEnabled(settings,'statistics_able'),true);
   assert.equal(scopeFeatureEnabled(settings,'search_able'),false);
   assert.equal(scopeFeatureEnabled(settings,'trace'),true);
-  assert.deepEqual(scopeFeaturePatch('lo3rwang',settings),{able:{search:0,statics:1,culture:0,trace:1}});
+  assert.deepEqual(scopeFeaturePatch('lo3rwang',settings),{search:false,statics:true,culture:false,trace:true});
+  assert.deepEqual(scopeFeaturePatch('lrunes',settings),{search:false,statics:true,culture:false,trace:true});
   assert.equal(scopeFeatureColumns('loc'),'');
   assert.equal(scopeConfigColumns('loc'),'id,display_name,locale');
-  assert.deepEqual(scopeFeaturePatch('loc',{search_able:false}),{});
+  assert.deepEqual(scopeFeaturePatch('loc',settings),{});
 });
 test('ArticleTag JSONB stays independent of compact feature switches',()=>{
   const tags=['suno','kkcity','其他'];
@@ -28,13 +27,13 @@ test('ArticleTag JSONB stays independent of compact feature switches',()=>{
   assert.deepEqual(scopeTagNames('lo3rwang',{ArticleTag:tags}),tags);
   assert.deepEqual(scopeTagNames('loc',{DefaultArticleClass:tags}),tags);
 });
-test('feature gates and the admin UI use only the single numeric able map for lo3rwang',()=>{
+test('feature gates and admin UI use native boolean flags',()=>{
   const read=p=>readFileSync(new URL('../'+p,import.meta.url),'utf8');
   const app=read('app/loc/LocApp.jsx'),admin=read('app/loc/views/admin-panels/AdminRegistry.jsx');
   const ui=read('app/modular/ui.jsx'),scope=read('app/loc/scope-data.js');
   assert.match(scope,/scopeConfigColumns\(scope\.id\)/);
   assert.match(admin,/scopeFeaturePatch\(current\.scope_id,currentConfig\)/);
-  assert.match(admin,/\[scopeFeatureName\(key\)\]:value\?1:0/);
+  assert.match(admin,/\[scopeFeatureName\(key\)\|\|key\]:Boolean\(value\)/);
   assert.match(app,/trace:'trace'/);
   assert.match(app,/search:'search_able'/);
   assert.match(ui,/scopeId==='lo3rwang'/);
