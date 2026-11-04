@@ -51,8 +51,8 @@ const ScopeEditableBlocks=dynamic(()=>import('../../loc/ScopeEditableBlocks'),{l
 const TraceBlocks=dynamic(()=>import('./TraceBlocks'),{loading:()=>null});
 
 
-const MEDIA_EDITOR_COLUMNS='uid,location,type,title,url,meta_tags,createtime';
-const MEDIA_ATTR_ORDER=['uid','location','type','url','meta_tags','createtime'];
+const MEDIA_EDITOR_COLUMNS='uid,location,type,title,url,description,createtime';
+const MEDIA_ATTR_ORDER=['uid','location','type','url','description','createtime'];
 const MEDIA_ATTR_FIELDS=MEDIA_ATTR_ORDER.map(key=>({key,readOnly:key==='uid',kind:key==='createtime'?'date':'text'}));
 
 const GALAXY_EDITOR_COLUMNS='uid,title,content,createtime,location,place_id,UpdateTime,url,source_id,target_id,ref_id,site,media_link,statics,culture,search,trace,list,keyword,extract,others';
@@ -103,28 +103,50 @@ function highlightSearchText(text='',query=''){
 
 
 function toResult(row,source,scopeId,copy=UI_COPY){
-  const isMedia=Boolean(row.uid&&(row.record_type==='galaxy_media'||
-    String(row.__table||'').endsWith('_media')||
-    Object.prototype.hasOwnProperty.call(row,'meta_tags')));
-  const isGalaxy=Boolean(row.uid)&&!isMedia&&!['anchor','period','era'].includes(String(row.type||''));
+  const anchorType=String(row.type||'').toLowerCase();
+  const isAnchor=Boolean(row.uid&&String(row.__table||'').endsWith('_anchor'));
+  const isMedia=Boolean(row.uid&&!isAnchor&&(row.record_type==='galaxy_media'||
+    String(row.__table||'').endsWith('_media')));
+  const isGalaxy=Boolean(row.uid)&&!isMedia&&!isAnchor;
+  const timeTypes=['date','period','era'];
+  const placeTypes=['point','path','trace'];
+  const keywordTypes=['category','class','group','item'];
+  const mediaTypes=['image','video','rune','suno'];
+  const anchorHref=!isAnchor?''
+    :timeTypes.includes(anchorType)
+      ?featureNavigationHref(row.scope_id||scopeId,'culture',
+        anchorType==='date'?{anchor:row.uid}:{period:row.uid})
+      :placeTypes.includes(anchorType)
+        ?featureNavigationHref(row.scope_id||scopeId,'trace',
+          anchorType==='point'?{place:row.uid}:{map:row.uid})
+        :keywordTypes.includes(anchorType)
+          ?featureNavigationHref(row.scope_id||scopeId,'statics',{statTab:'keywords'})
+          :mediaTypes.includes(anchorType)
+            ?featureNavigationHref(row.scope_id||scopeId,'statics',{statTab:'media'})
+            :'';
   const explicitTitle=workDisplayText(row.title||row.name||row.display_title||row.label||row.rune_name||row.song_id||row.id||'').trim();
   const fallbackTitle=isMedia?MEDIA_FALLBACK_TITLE:WORK_FALLBACK_TITLE;
-  const title=(isGalaxy||isMedia)
-    ?workDisplayHeading(row,{media:isMedia,fallback:fallbackTitle,limit:80})
-    :(explicitTitle||fallbackTitle);
+  const title=isAnchor
+    ?({date:'時間定錨',period:'期間',era:'時代',point:'空間定錨',
+      path:'路線',trace:'痕跡',category:'關鍵詞目錄',class:'關鍵詞科目',
+      group:'關鍵詞群組',item:'關鍵詞',image:'圖片',video:'影片',
+      rune:'符文',suno:'音樂'}[anchorType]||'定錨內容')+' · '+row.uid
+    :(isGalaxy||isMedia)
+      ?workDisplayHeading(row,{media:isMedia,fallback:fallbackTitle,limit:80})
+      :(explicitTitle||fallbackTitle);
   const displaySource=isGalaxy&&row.site?String(row.site):source;
   const identity=row.uid||row.song_id||row.rune_id||row.record_id||row.resource_id||row.id;
   const scope=String(row.scope_id||scopeId||'').trim();
-  const resourceType=isGalaxy?'galaxy':isMedia?'galaxy_media':'';
+  const resourceType=isAnchor?'anchor':isGalaxy?'galaxy':isMedia?'galaxy_media':'';
   const resourceId=row.uid||'';
   const editableTable=resourceType?String(row.__table||''):'';
   const editableIdColumn=resourceType
     ?(resourceType==='galaxy'?'uid':'uid')
     :'';
   const editResourceId=resourceId;
-  const editableField=resourceType==='galaxy'?'content':resourceType==='galaxy_media'?'meta_tags':'';
+  const editableField=resourceType==='galaxy'?'content':resourceType==='galaxy_media'?'description':'';
   const isScopeCard=Boolean(row.scope_card);
-  const href=isScopeCard?scopeHref(scope):(row.url||row.href||row.suno_url||'');
+  const href=isAnchor?anchorHref:isScopeCard?scopeHref(scope):(row.url||row.href||row.suno_url||'');
   return {
     key:identity?[scope,source,identity].join(':'):[source,scope,title].join('-'),
     source:displaySource,title:String(title),
@@ -156,7 +178,9 @@ function toResult(row,source,scopeId,copy=UI_COPY){
       ?'style-tag:'+String(title).normalize('NFKC').trim().toLocaleLowerCase('zh-Hant')
       :(resourceType==='galaxy'&&resourceId
       ?'galaxy:'+scope+':'+resourceId
-      :(resourceType==='galaxy_media'&&resourceId?'media:'+scope+':'+resourceId:'result:'+scope+':'+(identity||title))),
+      :(resourceType==='galaxy_media'&&resourceId?'media:'+scope+':'+resourceId:
+        resourceType==='anchor'&&resourceId?'anchor:'+scope+':'+resourceId:
+        'result:'+scope+':'+(identity||title))),
     links:uniqueExternalLinks([...(href?[{id:resourceType||'primary',href,label:resourceType==='galaxy_media'?copy.search.mediaLink:copy.search.externalLink}]:[]),...(Array.isArray(row.resolved_links)?row.resolved_links:[])]),
     destinations:[]
   };
@@ -238,7 +262,7 @@ function searchHref(scopeId,query,filters={}){
   const params=new URLSearchParams();
   for(const [key,value] of Object.entries({
     type:filters.contentType,source:filters.sourceFilter,
-    from:filters.startDate,to:filters.endDate,period:filters.selectedPeriod,scope:filters.scopeFilter
+    from:filters.startDate,to:filters.endDate,scope:filters.scopeFilter
   })){
     if(value)params.set(key,value);
   }
@@ -292,7 +316,6 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   const [scopeFilter,setScopeFilter]=useState('');
   const [startDate,setStartDate]=useState('');
   const [endDate,setEndDate]=useState('');
-  const [selectedPeriod,setSelectedPeriod]=useState('');
   const [browseResults,setBrowseResults]=useState(false);
   const activeSearchOptionsRef=useRef(null);
   const [results,setResults]=useState([]);
@@ -393,27 +416,8 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       return date?(articleSort==='desc'?-date:date):a.index-b.index;
     }).map(item=>item.row);
   },[results,scopeId,availableScopes,articleSort]);
-  // Suggestions come from loaded results only; do not imply a database-wide ranking.
-  const suggestedTitles=useMemo(()=>[...new Set(results
-    .filter(row=>row.resourceType==='galaxy'&&row.list!==false)
-    .map(row=>String(row.title||'').trim())
-    .filter(title=>title&&title.length<=80))].slice(0,8),[results]);
   const advancedRef=useRef(null);
   const collectionLabel=scopeId==='loc'?UI_COPY.search.allContent:String(scope?.label||scopeId);
-  const periodScope=scopeId==='loc'
-    ?targetScopes.find(item=>item.id==='lo3rwang')||targetScopes[0]
-    :targetScopes[0];
-  const periodsQuery=useAsyncResource({
-    queryKey:['search-period-options',periodScope?.id],
-    enabled:advancedOpen&&advancedTab==='time'&&!aggregateScopes&&Boolean(periodScope?.time),
-    queryFn:async()=>{
-      // The Culture/Time query module is needed only when advanced time filtering opens.
-      const {selectCultureTimeRows}=await import('../../loc/culture-query');
-      const rows=await selectCultureTimeRows(periodScope,periodScope?.birthday);
-      return rows.filter(row=>row.entry_type==='era'&&row.start_date)
-        .map(row=>({id:row.entry_key,title:row.title,startDate:row.start_date,endDate:row.end_date||''}));
-    },
-  });
 
   async function loadGalaxyDetail(result){
     const scopeData=scopeById.get(result.scopeId);
@@ -426,7 +430,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     const q=String(rawQuery||'').trim();
     const options=append&&activeSearchOptionsRef.current
       ?activeSearchOptionsRef.current
-      :(overrideOptions||{contentType,sourceFilter,startDate,endDate,scopeFilter:managementMode?scopeFilter:'',mediaOnly:false,placeOnly,browse,sortDirection:articleSort});
+      :(overrideOptions||{contentType,sourceFilter,startDate,endDate,scopeFilter:managementMode?scopeFilter:'',placeOnly,browse,sortDirection:articleSort});
     if(!q&&!options.browse)return;
     const searchScopes=scopeId==='loc'&&managementMode&&options.scopeFilter
       ?availableScopes.filter(item=>item.id===options.scopeFilter)
@@ -490,7 +494,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
         })
         :null;
       if(id!==searchId.current)return;
-      const wantsStyleTags=!options.placeOnly&&!managementMode&&!append&&!options.browse&&!options.mediaOnly&&!options.contentType&&!options.sourceFilter&&!options.startDate&&!options.endDate;
+      const wantsStyleTags=!options.placeOnly&&!managementMode&&!append&&!options.browse&&!options.contentType&&!options.sourceFilter&&!options.startDate&&!options.endDate;
       // Start the primary search first so it takes the first connection slot, then
       // run the cross-Scope style-tag lookup alongside it instead of in front of it.
       const searchPromise=searchGalaxyRows(searchScopes,q,{
@@ -498,11 +502,11 @@ export default function Search({managementMode:legacyManagementRoute=false}){
         // Always search article providers, including when the same keyword
         // exactly matches a style tag.
         cursor,
-        mediaOnly:options.mediaOnly,hiddenScopeIds:managementMode?searchScopes.map(item=>item.id):[],
+        hiddenScopeIds:managementMode?searchScopes.map(item=>item.id):[],
         contentType:options.contentType,sourceFilter:options.sourceFilter,sourceTaxonomy,placeOnly:managementMode&&Boolean(options.placeOnly),
         startDate:options.startDate,endDate:options.endDate,browse:options.browse,
         managementOnly:managementMode,sortDirection:options.sortDirection,
-        searchField:!managementMode&&userActive?userSettings.field:'',signal
+        signal
       });
       // Style tags enhance results, but their optional request must never
       // discard valid text/media hits when its own service fails.
@@ -530,11 +534,12 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       for(const {row,source} of [...styleTagMatches,...searchRows]){
         const result=toResult(row,source,scopeId,UI_COPY);
         if(!result||seen.has(result.key))continue;
+        if(result.resourceType==='anchor')result.snippet=extractSearchContext(row.description,q,10);
         seen.add(result.key);converted.push(result);
       }
       const pageResults=prioritizeStyleTagResults(mergeSummaryResults(converted,UI_COPY));
       setResults(current=>append?mergeSummaryResults([...current,...pageResults],UI_COPY):pageResults);
-      if(q&&!options.browse&&!options.placeOnly&&!options.mediaOnly&&pageResults.length){
+      if(q&&!options.browse&&!options.placeOnly&&pageResults.length){
         void loadPageSearchExcerpts(pageResults,q,scopeById,{
           authenticated:managementMode,signal
         }).then(previews=>{
@@ -681,15 +686,14 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       sourceFilter:String(searchParams?.get('source')||''),
       startDate:String(searchParams?.get('from')||''),
       endDate:String(searchParams?.get('to')||''),
-      selectedPeriod:String(searchParams?.get('period')||''),
       scopeFilter:managementMode?String(searchParams?.get('scope')||''):''
     };
     setContentType(filters.contentType);setSourceFilter(filters.sourceFilter);
-    setStartDate(filters.startDate);setEndDate(filters.endDate);setSelectedPeriod(filters.selectedPeriod);
+    setStartDate(filters.startDate);setEndDate(filters.endDate);
     if(managementMode)setScopeFilter(filters.scopeFilter);
     const term=place||value;
     setPlaceOnly(Boolean(place));
-    if(term){setQuery(term);executeSearch(term,null,{overrideOptions:{...filters,placeOnly:managementMode&&Boolean(place),mediaOnly:false,browse:false}});}
+    if(term){setQuery(term);executeSearch(term,null,{overrideOptions:{...filters,placeOnly:managementMode&&Boolean(place),browse:false}});}
   },[searchParams,scopeId,scopesQuery.isSuccess,scopesQuery.data,managementMode,managementAuthorized]);
 
 
@@ -857,18 +861,23 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   }
   function clearSearchFilters(){
     setQuery('');setPlaceOnly(false);setBulkPlace('');setContentType('');setSourceFilter('');setScopeFilter('');
-    setStartDate('');setEndDate('');setSelectedPeriod('');setAdvancedOpen(false);
+    setStartDate('');setEndDate('');setAdvancedOpen(false);
     resetSearchState();
     // Management queries stay in the authorized workspace. Only a public
     // search reset changes the public URL.
     if(!managementMode)router.replace(featureNavigationHref(scopeId,'search'));
   }
+  // Type is an exact advanced-filter selection. Never search the type name.
   const filterTypes=[
     ['',t('uiExtra.searchUI.allTypes')],
+    ['galaxy','文章'],
     ['lyrics_work',t('uiExtra.searchUI.lyricsType')],
     ['text_work',t('uiExtra.searchUI.textType')],
-    ['multimedia',t('uiExtra.searchUI.mediaType')],
-    ['timeline',t('uiExtra.searchUI.timelineType')]
+    ['date','時間定錨'],['period','期間'],['era','時代'],
+    ['point','空間定錨'],['path','路線'],['trace','痕跡'],
+    ['category','關鍵詞目錄'],['class','關鍵詞科目'],
+    ['group','關鍵詞群組'],['item','關鍵詞'],
+    ['image','圖片'],['video','影片'],['rune','符文'],['suno','音樂']
   ];
   const sourceCategories=(sourceTaxonomyQuery.data?.categories||[])
     .filter(row=>row.enabled!==false);
@@ -892,7 +901,6 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     sourceFilter&&filterSources.find(([value])=>value===sourceFilter)?.[1],
     startDate&&t('uiExtra.searchUI.startDate')+': '+startDate,
     endDate&&t('uiExtra.searchUI.endDate')+': '+endDate,
-    selectedPeriod&&periodsQuery.data?.find(item=>item.id===selectedPeriod)?.title
   ].filter(Boolean);
   function workspaceSearchHref(term,filters={}){
     const href=searchHref(scopeId,term,filters);
@@ -909,20 +917,20 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     const term=String(raw||'').trim();
     if(!term)return;
     const filters={
-      contentType,sourceFilter,startDate,endDate,selectedPeriod,
+      contentType,sourceFilter,startDate,endDate,
       scopeFilter:managementMode?scopeFilter:'',placeOnly,...overrides
     };
     if(managementMode){
       setQuery(term);
       void executeSearch(term,null,{overrideOptions:{
-        ...filters,mediaOnly:false,browse:false,sortDirection:articleSort
+        ...filters,browse:false,sortDirection:articleSort
       }});
       return;
     }
     const url=workspaceSearchHref(term,filters);
     const current=workspaceSearchHref(String(searchParams?.get('place')||searchParams?.get('q')||'').trim(),{
       contentType:searchParams?.get('type'),sourceFilter:searchParams?.get('source'),
-      startDate:searchParams?.get('from'),endDate:searchParams?.get('to'),selectedPeriod:searchParams?.get('period'),
+      startDate:searchParams?.get('from'),endDate:searchParams?.get('to'),
       scopeFilter:managementMode?searchParams?.get('scope'):'',placeOnly:Boolean(searchParams?.get('place'))
     });
     if(url!==current||searchParams?.get('identity')){
@@ -931,7 +939,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     }
     // Next.js does not remount for an identical URL; repeated suggestions must still search.
     setQuery(term);
-    void executeSearch(term,null,{overrideOptions:{...filters,mediaOnly:false,browse:false,sortDirection:articleSort}});
+    void executeSearch(term,null,{overrideOptions:{...filters,browse:false,sortDirection:articleSort}});
   }
   function runSearch(event){
     event.preventDefault();
@@ -940,7 +948,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       // SearchManagement, and loses the user's query before results arrive.
       void executeSearch(query,null,{overrideOptions:{
         contentType:'',sourceFilter:'',startDate,endDate,scopeFilter,
-        mediaOnly:false,placeOnly,browse:false,sortDirection:articleSort
+        placeOnly,browse:false,sortDirection:articleSort
       }});
       return;
     }
@@ -1031,8 +1039,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   // Suggested terms are curated examples, not unverified live popularity rankings.
   // Reuse URL-driven search so history, filters and the existing provider stay authoritative.
   const suggestedTerms=useMemo(()=>{
-    const key=contentType==='multimedia'?'suggestionsMedia'
-      :contentType==='lyrics_work'?'suggestionsLyrics'
+    const key=contentType==='lyrics_work'?'suggestionsLyrics'
       :contentType==='text_work'?'suggestionsText':'suggestionsAll';
     return String(t('uiExtra.searchUI.'+key)||'').split('\n')
       .map(line=>line.split('|')[0].trim()).filter(Boolean).slice(0,10);
@@ -1041,13 +1048,13 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     const text=String(term||'').trim();
     if(!text)return;
     const next={
-      contentType,sourceFilter,startDate,endDate,selectedPeriod,
+      contentType,sourceFilter,startDate,endDate,
       scopeFilter:managementMode?scopeFilter:'',placeOnly,...patch
     };
     if(managementMode){
       setQuery(text);
       void executeSearch(text,null,{overrideOptions:{
-        ...next,mediaOnly:false,browse:false,sortDirection:articleSort
+        ...next,browse:false,sortDirection:articleSort
       }});
       return;
     }
@@ -1058,7 +1065,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   function applyDefaultTimeWindow(){
     const range=timeUnitBucket(localTodayKey(),defaultTimeUnit==='auto'?'day':defaultTimeUnit);
     if(!range)return;
-    setSelectedPeriod('');
+    
     setStartDate(range.startDate);
     setEndDate(range.endDate);
     resetSearchState();
@@ -1070,16 +1077,16 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       <h2>管理搜尋</h2>
       <SearchSummary scopeIds={summaryScopeIds}/>
       <form className="scope-search-form" onSubmit={runSearch}>
-        <label htmlFor="scope-management-search-query">文章 UID、標題、正文或來源</label>
+        <label htmlFor="scope-management-search-query">文章內文</label>
         <input id="scope-management-search-query" value={query}
           onChange={event=>setQuery(event.target.value)}
-          placeholder="輸入 UID 或文章內容關鍵字"/>
+          placeholder="輸入文章內文關鍵字"/>
         <button type="submit" disabled={scopeId==='loc'&&!scopesQuery.isSuccess}>查詢文章</button>
         <button type="button" className="loc-button"
           disabled={scopeId==='loc'&&!scopesQuery.isSuccess}
           onClick={()=>executeSearch('',null,{browse:true,overrideOptions:{
             contentType:'',sourceFilter:'',startDate,endDate,
-            scopeFilter,placeOnly:false,mediaOnly:false,browse:true,sortDirection:articleSort
+            scopeFilter,placeOnly:false,browse:true,sortDirection:articleSort
           }})}>瀏覽文章</button>
         <button type="button" className="loc-button" onClick={clearSearchFilters}>清除</button>
       </form>
@@ -1114,20 +1121,17 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     {!managementMode?<section className="scope-search-workspace" aria-label={t('uiExtra.searchUI.searchWorkspace')}>
       <form className="scope-search-form" onSubmit={runSearch}>
         {!managementMode?<label htmlFor="scope-search-query">{UI_COPY.search.textPromptLabel}</label>:null}
-        <input id="scope-search-query" list={!searchPopularOpen&&suggestedTitles.length?'scope-search-loaded-titles':undefined}
+        <input id="scope-search-query" 
           value={query} onDoubleClick={()=>setSearchPopularOpen(true)}
           onChange={event=>{setQuery(event.target.value);setSearchPopularOpen(false);}}
           placeholder={managementMode?'':UI_COPY.search.textPlaceholder} aria-label={UI_COPY.search.textPromptLabel}/>
-        {suggestedTitles.length?<datalist id="scope-search-loaded-titles">
-          {suggestedTitles.map(title=><option key={title} value={title}/>)}
-        </datalist>:null}
         <button type="submit" disabled={scopeId==='loc'&&!scopesQuery.isSuccess}>{UI_COPY.nav.search}</button>
         {managementMode?<button type="button" className="loc-button" disabled={scopeId==='loc'&&!scopesQuery.isSuccess}
           onClick={()=>{
             setPlaceOnly(false);
             executeSearch('',null,{browse:true,overrideOptions:{
               contentType,sourceFilter,startDate,endDate,scopeFilter:managementMode?scopeFilter:'',
-              placeOnly:false,mediaOnly:false,browse:true,sortDirection:articleSort
+              placeOnly:false,browse:true,sortDirection:articleSort
             }});
           }}>瀏覽文章列表（不需輸入關鍵詞）</button>:null}
         <button type="button" className="loc-button" onClick={clearSearchFilters}>{t('uiExtra.searchUI.clearAll')}</button>
@@ -1149,8 +1153,6 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       {!managementMode&&results.length>0&&matchedQueryRef.current?<div className="scope-search-suggestions" aria-label="延伸搜尋">
         <span className="scope-status">延伸搜尋（保留原本的時間與來源條件）</span>
         <div className="scope-search-active-filters">
-          {contentType!=='multimedia'?<button type="button" className="loc-button"
-            onClick={()=>followSearchSuggestion(matchedQueryRef.current,{contentType:'multimedia',placeOnly:false,sourceFilter:''})}>搜尋多媒體</button>:null}
           {contentType!=='text_work'?<button type="button" className="loc-button"
             onClick={()=>followSearchSuggestion(matchedQueryRef.current,{contentType:'text_work',placeOnly:false})}>搜尋文字作品</button>:null}
           <button type="button" className="loc-button"
@@ -1171,7 +1173,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           setBulkPlace(query.trim());
           void executeSearch(query,null,{overrideOptions:{
             contentType:'',sourceFilter:'',startDate,endDate,scopeFilter,
-            placeOnly:true,mediaOnly:false,browse:false,sortDirection:articleSort
+            placeOnly:true,browse:false,sortDirection:articleSort
           }});
         }}>下一步：從文章列表批次補寫地點（需管理權限）</button>
       </div>:null}
@@ -1179,7 +1181,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
         <label htmlFor="scope-search-scope">{t('uiExtra.searchUI.scopeFilter')}</label>
         <select id="scope-search-scope" value={scopeFilter}
           disabled={!scopesQuery.isSuccess}
-          onChange={event=>{setSelectedPeriod('');updateSearchFilter(setScopeFilter,event.target.value);}}>
+          onChange={event=>{updateSearchFilter(setScopeFilter,event.target.value);}}>
           <option value="">{t('uiExtra.searchUI.allScopes')}</option>
           {availableScopes.map(item=><option key={item.id} value={item.id}>{scopeLabel(item.id)}</option>)}
         </select>
@@ -1221,7 +1223,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
               {filterSources.filter(([value])=>value&&!value.startsWith('category:')&&!value.startsWith('source:'))
                 .map(([value,label])=><option key={value} value={value}>{label}</option>)}
             </select>
-            <p className="scope-status">來源分類依管理設定篩選文字作品；多媒體請使用「類型」篩選。</p>
+            <p className="scope-status">來源分類僅篩選 Galaxy 文章；Anchor 可在類型中指定。</p>
             {sourceTaxonomyQuery.isPending?<p className="scope-status" role="status">載入來源分類…</p>:null}
             {sourceTaxonomyQuery.isError?<p className="scope-status scope-error" role="alert">來源分類載入失敗。
               <button type="button" className="loc-button" onClick={()=>sourceTaxonomyQuery.refetch()}>重試</button>
@@ -1232,21 +1234,9 @@ export default function Search({managementMode:legacyManagementRoute=false}){
               {t('uiExtra.searchUI.applyDefaultTimeWindow',{unit:defaultTimeName})}
             </button>
             <label htmlFor="scope-search-start-date">{t('uiExtra.searchUI.startDate')}
-              <input id="scope-search-start-date" type="date" value={startDate} onChange={event=>{setSelectedPeriod('');updateSearchFilter(setStartDate,event.target.value);}}/></label>
+              <input id="scope-search-start-date" type="date" value={startDate} onChange={event=>{updateSearchFilter(setStartDate,event.target.value);}}/></label>
             <label htmlFor="scope-search-end-date">{t('uiExtra.searchUI.endDate')}
-              <input id="scope-search-end-date" type="date" min={startDate||undefined} value={endDate} onChange={event=>{setSelectedPeriod('');updateSearchFilter(setEndDate,event.target.value);}}/></label>
-            <label className="scope-search-period-field" htmlFor="scope-search-period">{t('uiExtra.searchUI.periodLabel')}
-              <select id="scope-search-period" value={selectedPeriod} onChange={event=>{
-                const id=event.target.value;
-                const period=periodsQuery.data?.find(row=>row.id===id);
-                setSelectedPeriod(id);setStartDate(period?.startDate||'');
-                setEndDate(period?.endDate||'');resetSearchState();
-              }}>
-                <option value="">{t('uiExtra.searchUI.allPeriods')}</option>
-                {(periodsQuery.data||[]).map(period=><option key={period.id} value={period.id}>{period.title}</option>)}
-              </select>
-            </label>
-            {periodsQuery.isError?<span className="scope-status">{t('uiExtra.searchUI.periodUnavailable')}</span>:null}
+              <input id="scope-search-end-date" type="date" min={startDate||undefined} value={endDate} onChange={event=>{updateSearchFilter(setEndDate,event.target.value);}}/></label>
           </div>:null}
         </div>:null}
       </div>
@@ -1323,7 +1313,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           editableTable,
           editableIdColumn:row.editableIdColumn||(row.resourceType==='galaxy'?'uid':row.resourceType==='galaxy_media'?'uid':''),
           editResourceId:row.editResourceId||row.resourceId,
-          editableField:row.editableField||(row.resourceType==='galaxy'?'content':row.resourceType==='galaxy_media'?'meta_tags':'')
+          editableField:row.editableField||(row.resourceType==='galaxy'?'content':row.resourceType==='galaxy_media'?'description':'')
         };
         // Page blocks have no Galaxy attributes. Article editing and typed
         // metadata are available only to authorized Scope managers; guest
@@ -1359,13 +1349,14 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           managerMode={managementMode}
           uid={editTarget.editResourceId}
           title={!managementMode&&row.resourceType==='galaxy'&&row.list===false?'（使用者隱藏）':row.title}
-          articleHref={row.resourceType==='galaxy'&&(managementMode||row.list!==false)
+          articleHref={row.resourceType==='anchor'?row.href:
+            row.resourceType==='galaxy'&&(managementMode||row.list!==false)
             ?(managementMode?scopeHref(scopeId,'search/manage')+'?identity='+encodeURIComponent(row.resourceId)+'&scope='+encodeURIComponent(row.scopeId):galaxyIdentityHref(row.scopeId,row.resourceId))
             :''}
           detailReading={identityReader||expandedReader}
           source={searchParams?.get('identity')?row.styleTagMatch?'':row.source:''}
           date={searchParams?.get('identity')?row.date:''}
-          body={row.resourceType==='galaxy'&&row.snippet&&matchedQueryRef.current&&!browseResults
+          body={(row.resourceType==='galaxy'||row.resourceType==='anchor')&&row.snippet&&matchedQueryRef.current&&!browseResults
             ?highlightSearchText(row.snippet,matchedQueryRef.current):''}
           hidden={false}
           relationLinks={identityReader||expandedReader?readingLinks:[]}

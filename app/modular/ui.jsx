@@ -220,7 +220,7 @@ function ArticleRelationNavigation({
     const isRunes=String(item.type||'').toLowerCase()==='rune';
     const label=String(item.title||'').trim()||(isRunes?'抽牌結果':'媒體 '+(index+1));
     const href=externalLink({href:item.url});
-    const description=String(item.meta_tags||'').trim();
+    const description=String(item.description||'').trim();
     let cards=[],spread='',spreadLayout='';
     if(isRunes&&description.startsWith('{')){
       try{

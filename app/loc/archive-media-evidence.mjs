@@ -245,7 +245,7 @@ export function prepareArchiveMedia(evidence=[],knownUids=new Set(),articleTimes
       uid:id,type,url:publicUrl(entry.url),
       title:owners.map(uid=>String(articleTitles.get(uid)||'').trim()).find(Boolean)||
         ({image:'圖片',video:'影片',audio:'音訊'}[type]||'媒體'),
-      meta_tags:owners.map(uid=>String(articleContents.get(uid)||'').trim()).find(Boolean)||null,
+      description:owners.map(uid=>String(articleContents.get(uid)||'').trim()).find(Boolean)||null,
       createtime:articleTime,location:null
     };
     const hasUrl=Boolean(row.url);

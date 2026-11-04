@@ -93,27 +93,27 @@ test('full importer passes article dates to ZIP and linked media-only records',(
 });
 
 
-test('rune draw is a Galaxy media subtype with meta_tags text, not a separate article',()=>{
+test('rune draw is a Galaxy media subtype with description text, not a separate article',()=>{
   const result=normalizeImportMedia([{
     media_type:'runes',title:'抽牌結果',
-    meta_tags:'{"cards":[{"rune":"月","direction":"正位","position":1}]}'
+    description:'{"cards":[{"rune":"月","direction":"正位","position":1}]}'
   }],{article_uid:'ART00001'});
   assert.equal(result.records.length,1);
   assert.equal(result.records[0].media_type,'runes');
   assert.equal(result.records[0].title,'抽牌結果');
   assert.equal(result.records[0].url,null);
-  assert.equal(result.records[0].meta_tags,'月 正位');
+  assert.equal(result.records[0].description,'月 正位');
   assert.equal(result.records[0].__article_uid,'ART00001');
   assert.equal(result.references.length,0);
 });
 
-test('image description stays on galaxy_media.meta_tags and preserves its own URL',()=>{
+test('image description stays on galaxy_media.description and preserves its own URL',()=>{
   const result=normalizeImportMedia([{
     media_type:'image',title:'旅行照片',url:'https://example.test/image.jpg',
     description:'傍晚的橋面'
   }],{article_uid:'ART00001'});
   assert.equal(result.records.length,1);
-  assert.equal(result.records[0].meta_tags,'傍晚的橋面');
+  assert.equal(result.records[0].description,'傍晚的橋面');
   assert.equal(result.records[0].url,'https://example.test/image.jpg');
   assert.equal(result.records[0].__article_uid,'ART00001');
 });
@@ -146,11 +146,11 @@ test('top-level rune references attach to existing text articles or stand alone 
 
 test('nested media descriptions preserve JSON rather than object-to-string corruption',()=>{
   const tags={alt:'台北夜景',camera:'mobile'};
-  const image=normalizeImportMedia([{media_type:'image',url:'https://example.test/night.jpg',meta_tags:tags}],{article_uid:'ART00001'});
-  assert.equal(image.records[0].meta_tags,JSON.stringify(tags));
+  const image=normalizeImportMedia([{media_type:'image',url:'https://example.test/night.jpg',description:tags}],{article_uid:'ART00001'});
+  assert.equal(image.records[0].description,JSON.stringify(tags));
   const spread={cards:[{rune:'月',direction:'正位'}]};
-  const rune=normalizeImportMedia([{media_type:'runes',meta_tags:spread}],{article_uid:'ART00001'});
-  assert.equal(rune.records[0].meta_tags,'月 正位');
+  const rune=normalizeImportMedia([{media_type:'runes',description:spread}],{article_uid:'ART00001'});
+  assert.equal(rune.records[0].description,'月 正位');
   assert.equal(rune.records.length,1);
 });
 
@@ -160,7 +160,7 @@ test('production archive import uses JSON URLs only; EXIF never enters media or 
   assert.doesNotMatch(panel,/onMediaMetadata\s*:/);
   assert.match(panel,/onMediaEntry:\s*entry=>collector\.onMediaEntry\(entry\)/);
   assert.doesNotMatch(panel,/\.rpc\('save_archive_media_exif'/);
-  assert.doesNotMatch(panel,/meta_tags:.*archivePlan\.exif/);
+  assert.doesNotMatch(panel,/description:.*archivePlan\.exif/);
   assert.match(panel,/prepareArchiveMedia\(/);
   assert.match(panel,/syncImportedMedia\(/);
 });
@@ -239,7 +239,7 @@ test('Confirmed ZIP media with an article owner gets a UID and link, without fak
   assert.equal(plan.media.length,1);
   assert.equal(plan.media[0].url,null);
   assert.equal(plan.media[0].title,'照片說明');
-  assert.equal(plan.media[0].meta_tags,'這是文章原文');
+  assert.equal(plan.media[0].description,'這是文章原文');
   assert.equal(plan.mediaLinks.length,1);
 });
 

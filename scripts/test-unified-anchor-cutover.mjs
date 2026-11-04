@@ -68,7 +68,7 @@ test('media URL goes to attr.url, not to the article body or a separate label',(
   const media=spec('galaxy_media');
   const saved=toAnchorRow(media,{
     uid:'M1234567',type:'音樂',url:'https://suno.com/song/abc',
-    meta_tags:'song metadata',createtime:'2026-11-02'
+    description:'song metadata',createtime:'2026-11-02'
   });
   assert.deepEqual(saved,{
     uid:'M1234567',type:'suno',attr:{url:'https://suno.com/song/abc'},
@@ -76,7 +76,7 @@ test('media URL goes to attr.url, not to the article body or a separate label',(
   });
   const decoded=fromAnchorRow(media,saved);
   assert.equal(decoded.url,'https://suno.com/song/abc');
-  assert.equal(decoded.meta_tags,'song metadata');
+  assert.equal(decoded.description,'song metadata');
   assert.equal(decoded.createtime,null);
 });
 

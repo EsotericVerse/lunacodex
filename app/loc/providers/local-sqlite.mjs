@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS local_galaxy_media (
   type TEXT NOT NULL,
   title TEXT,
   url TEXT,
-  meta_tags TEXT,
+  description TEXT,
   createtime TEXT,
   location TEXT
 );
@@ -221,7 +221,7 @@ async function upgradeNativeLocalArchiveExif(conn){
 
 
 const LOCAL_MEDIA_TABLE_CREATE=SCHEMA.match(/CREATE TABLE IF NOT EXISTS local_galaxy_media \([\s\S]*?\);/)[0];
-const LOCAL_MEDIA_COLUMNS=['uid','type','title','url','meta_tags','createtime','location'];
+const LOCAL_MEDIA_COLUMNS=['uid','type','title','url','description','createtime','location'];
 function legacyMediaUid(value){
   const raw=String(value||'').trim();
   if(/^[A-Za-z0-9]{8}$/.test(raw))return raw;
@@ -269,7 +269,7 @@ function localMediaMigrationStatements(mediaRows,articles,exifRows){
     ...mediaRows.filter(row=>runeUidBySource.has(oldId(row))).map(row=>({
       sql:'INSERT INTO local_galaxy_media ('+LOCAL_MEDIA_COLUMNS.join(',')+') VALUES ('+LOCAL_MEDIA_COLUMNS.map(()=>'?').join(',')+')',
       values:LOCAL_MEDIA_COLUMNS.map(c=>toSqlValue(({uid:runeUidBySource.get(oldId(row)),
-        type:'rune',title:'抽牌結果',url:null,meta_tags:runeRefContent(row),createtime:row.createtime,
+        type:'rune',title:'抽牌結果',url:null,description:runeRefContent(row),createtime:row.createtime,
         location:row.location})[c]))
     }))
   ];
@@ -533,7 +533,9 @@ async function writeWebBytes(bytes){
 const LOCAL_GALAXY_RENAME=[
   ['local_galaxy','location','source_'+'place'],
   ['local_galaxy','site','source_'+'name'],
-  ['local_galaxy_media','location','source_'+'place']
+  ['local_galaxy_media','location','source_'+'place'],
+  // One-time local SQLite data-preserving rename; cloud Anchor already uses description.
+  ['local_galaxy_media','description','meta_tags']
 ];
 function upgradeWebLocalGalaxyNames(db){
   for(const [table,current,previous] of LOCAL_GALAXY_RENAME){

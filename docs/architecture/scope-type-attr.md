@@ -162,3 +162,27 @@ Cloudflare Pages `loc` production 部署 commit `54844ebf19ce8d88b52c1c4534a76e4
 LOC 的 Supabase `loc-kysely` Edge Function 使用 pg Pool `max:1`（每個 Edge isolate 各有自己的 pool）。正式環境的 `SUPABASE_DB_URL` 應直接填入 Supabase Dashboard → Connect → **Transaction pooler** 提供的完整連線網址，使用 port `6543`、其原有使用者名稱及密碼；不要從 Region 猜測 pooler 主機名稱，也不要將密碼寫入儲存庫。
 
 在正式 Secrets 切換前，若仍使用 direct/session port `5432`，程式會釋放閒置連線（1 秒），降低連線佔用，但**不能取代 Transaction pooler**。瀏覽器匿名 Kysely 讀取同時最多 3 筆，503 不在同一呼叫內立即重試；Clerk 管理權限檢查與寫入不受這個排隊限制。這是 Code 層限流，沒有新增／變更資料庫表、RPC、權限或索引。
+
+
+### 取消過時查詢與多 Scope 查詢壓力
+
+Kysely Edge `KyselyQuery.abortSignal(signal)` 現在把呼叫端取消訊號送到實際 `fetch`；在公開讀取佇列中已取消的查詢不再發送 HTTP。獨立逾時仍為 9 秒；讀取管線原有 8 秒逾時可更早中止，取消不視為資料庫故障。Culture 的 Scope 群組、每日密度與不連續 Period 分頁改為上限 2 路並行，保留原輸入順序、時間交集及各窗口游標；Galaxy 跨 Scope 密度同樣限為 2 路。
+
+控制資料庫的 LOC 路由設定仍採既有的 5 秒快取；同一 Edge isolate 內的並發請求共用一筆進行中的路由查詢，正式管理變更會撤銷快取及舊查詢的快取寫回資格。不修改 Supabase 表、Schema、RPC、RLS 或權限。
+
+
+### 統一內文搜尋（2026-11-04）
+
+一般 Search 僅查 Galaxy `content` 與相同 Scope 唯一實體 Anchor `description`（時間 date/period/era、空間 point/path/trace、關鍵詞 category/class/group/item、媒體 image/video/rune/suno），**不搜尋標題、URL 或媒體專屬標籤欄位**。結果依 Anchor `type` 連到文化 `anchor/period`、痕跡 `place/map`、關鍵詞統計頁，或媒體自身公開 URL；文章繼續連其 Galaxy UID 頁。文章管理的打卡地點工具是獨立管理功能，不視為一般文字搜尋。Anchor 公開讀取仍受 `invisible=false` 和既有 RLS 控制。
+
+
+### 搜尋的最小資料投影與進階指定（2026-11-04）
+
+Search 的全文比對**僅**作用於 Galaxy 的 `content` 與 Anchor 的 `description`；不搜尋 `title`、`type`、`uid`、`attr`。公開 Anchor 搜尋 SELECT 只投影 `uid,type,description`，另以 `invisible=false` 做公開篩選；`type` 只在進階搜尋選定時，以資料庫精確 `=` 比對。Anchor 沒有日期欄，搜尋不讀 `attr.date`，進階時間範圍僅限定 Galaxy `date`（既有 B-tree）；搜尋頁不再另讀文化時間定錨／時代選單。Anchor 預覽連回各功能頁，媒體跳媒體統計頁，不暴露 Anchor.attr。
+
+
+### Max MultiPara 與 MCP 內容搜尋（2026-11-04）
+
+`MAX_MULTIPARA=10` 是 `mapBounded` 和本地匿名 Gateway 讀取佇列的硬上限；要求 100 路時也最多啟動 10 路。公開查詢仍預設 3 路、文化群組 2 路。不同瀏覽器、MCP 與不同 Edge Function isolate **不共用** JavaScript 變數，因此這不是全域 10 條 PostgreSQL 連線限制。正式 DB 連線容量仍應由 Transaction Pooler 與伺服器端流控管理。
+
+`loc-kysely` 的 MCP 搜尋改為僅匹配 Galaxy `content`，排序採既有 Galaxy `date`。MCP 依 UID 讀取完整文章不變。Supabase Data API 的 Max Rows 管的是單次回傳的資料列數，並非總資料筆數、SQL 查詢累計次數或連線上限。大量 content 的 payload 成本另計。
