@@ -11,6 +11,7 @@ import {revalidateServerMetadata} from '../../loc/scope-data';
 import {DB_QUERY_BATCH_SIZE,selectRows} from '../../loc/db-query.mjs';
 import {decodeTimeSegments,encodeTimeSegment,resolveTimeSegments,isTimeUid,allocateTimeUid} from '../../loc/time-anchor-ranges.mjs';
 import {anniversarySuggestionsForDate} from '../../loc/anniversary.mjs';
+import {planAnniversaryDates,collectTimeDates,collectEraPeriods} from '../../loc/culture-anchor-bulk.mjs';
 import ManagementSectionNav from '../ManagementSectionNav';
 
 const TIME_COLUMNS='uid,type,title,description,address,anchor_ids,range,invisible';
@@ -49,6 +50,9 @@ export default function CultureTimelineEditor({
   const [visibilitySelection,setVisibilitySelection]=useState([]);
   const [visibilityBusy,setVisibilityBusy]=useState(false);
   const [message,setMessage]=useState('');
+  const [organizedDates,setOrganizedDates]=useState([]);
+  const [annual,setAnnual]=useState({title:'',originDate:'',startYear:'',endYear:'',firstAnniversary:'1',lastAnniversary:'5'});
+  const [annualOpen,setAnnualOpen]=useState(false);
   const [tracePairs,setTracePairs]=useState([]);
   const [pairFrom,setPairFrom]=useState(null);
   const [pairTo,setPairTo]=useState(null);
@@ -162,7 +166,7 @@ export default function CultureTimelineEditor({
   const startNew=type=>{
     const fresh=blank(type);
     original.current=fresh;setDraft(fresh);setSelectedId('');setBrowseType(type);setMessage('');
-    setTracePairs([]);setPairFrom(null);setPairTo(null);
+    setTracePairs([]);setPairFrom(null);setPairTo(null);setOrganizedDates([]);
   };
   const reset=()=>{startNew(browseType);onClose?.();};
   const switchBrowseType=type=>{
@@ -201,6 +205,81 @@ export default function CultureTimelineEditor({
     setTracePairs(items=>[...items,[from,to]]);setPairFrom(null);setPairTo(null);
   };
   const removePair=index=>setTracePairs(items=>items.filter((_,i)=>i!==index));
+  // A complete scoped read is only issued after pressing an explicit bulk tool.
+  const loadTimeRecords=async()=>{
+    const gathered=[];
+    for(let offset=0;offset<100000;offset+=DB_QUERY_BATCH_SIZE){
+      const {rows=[]}=await selectRows(timeTable,{
+        columns:TIME_COLUMNS,filters:[{column:'type',operator:'in',value:TYPES}],
+        limit:DB_QUERY_BATCH_SIZE,offset,authenticated:true
+      });
+      gathered.push(...rows);
+      if(rows.length<DB_QUERY_BATCH_SIZE)return gathered;
+    }
+    throw Error('時間紀錄過多，無法確認完整性；已停止寫入。');
+  };
+  const autoOrganize=async()=>{
+    if(busy||!['period','era'].includes(draft.type))return;
+    setBusy(true);setMessage('');setOrganizedDates([]);
+    try{
+      const complete=await loadTimeRecords();
+      const points=complete.filter(x=>x.type==='anchor');
+      const periods=complete.filter(x=>x.type==='period');
+      const datesByUid=new Map(points.map(x=>[x.uid,x]));
+      const datesForPeriod=period=>{
+        const endpoints=(period.anchor_ids||[]).map(uid=>datesByUid.get(uid)?.address)
+          .filter(Boolean).sort();
+        return endpoints.length?collectTimeDates(endpoints[0],endpoints.at(-1),points):[];
+      };
+      if(draft.type==='period'){
+        const ids=Array.isArray(draft.anchor_ids)?draft.anchor_ids:[];
+        const window={anchor_ids:ids};
+        const found=datesForPeriod(window);
+        setOrganizedDates(found);
+        setMessage('區間內已有 '+found.length+' 個真實日期定錨。期間仍以起迄 UID 表示，沒有新增或改動任何紀錄。');
+      }else{
+        const ids=(draft.anchor_ids||[]).filter(uid=>periods.some(p=>p.uid===uid));
+        if(!ids.length)throw Error('請先選擇時代包含的期間，以決定整理區間。');
+        const matching=collectEraPeriods(ids,periods,points);
+        const found=[...new Map(matching.flatMap(datesForPeriod).map(x=>[x.uid,x])).values()]
+          .sort((a,b)=>String(a.address).localeCompare(String(b.address)));
+        // Era stores period UIDs only. Date members are derived, never appended to this list.
+        change('anchor_ids',matching.map(x=>x.uid));
+        setOrganizedDates(found);
+        setMessage('已整理 '+matching.length+' 個期間、'+found.length+' 個真實日期定錨。請按「儲存修改」確認時代關聯。');
+      }
+    }catch(error){setMessage(error?.message||'整理失敗');}
+    finally{setBusy(false);}
+  };
+  const createAnnualBatch=async()=>{
+    if(busy)return;
+    setBusy(true);setMessage('');
+    try{
+      const plans=planAnniversaryDates(annual);
+      if(!plans.length)throw Error('選擇的範圍內沒有符合的週年日期。');
+      const complete=await loadTimeRecords();
+      const knownDays=new Set(complete.filter(x=>x.type==='anchor').map(x=>day(x.address)));
+      const occupied=[...complete];
+      const additions=[];
+      for(const item of plans){
+        if(knownDays.has(item.date))continue;
+        const uid=allocateTimeUid(occupied);
+        const record={uid,type:'anchor',title:item.title,description:null,
+          address:item.date,anchor_ids:null,invisible:false};
+        additions.push(record);occupied.push(record);knownDays.add(item.date);
+      }
+      if(additions.length&&!window.confirm('將新增 '+additions.length+' 個日期定錨，另有 '+
+        (plans.length-additions.length)+' 個日期已存在而跳過。確定建立？'))return;
+      // Keep the same managed Scope write path and never touch Galaxy.
+      for(let i=0;i<additions.length;i+=100)
+        await insertRows(timeTable,additions.slice(i,i+100));
+      refresh();
+      setAnnualOpen(false);startNew('anchor');
+      setMessage('已建立 '+additions.length+' 個紀念日定錨，跳過 '+
+        (plans.length-additions.length)+' 個既有日期。');
+    }catch(error){setMessage(error?.message||'批次建立失敗');}
+    finally{setBusy(false);}
+  };
   const refresh=()=>{
     if(dataScope!=='local')void revalidateServerMetadata();
     // Never hold the Save lock while refetching UI data.
@@ -339,8 +418,25 @@ export default function CultureTimelineEditor({
         </div>
         <button type="button" className="loc-button"
           disabled={busy} onClick={beginNew}>＋ 新增{displayType[browseType]}</button>
+        {browseType==='anchor'?<button type="button" className="loc-button" disabled={busy}
+          onClick={()=>setAnnualOpen(v=>!v)}>＋ 建議紀念日</button>:null}
       </div>
     </div>
+    {annualOpen&&browseType==='anchor'?<div className="scope-card" role="group" aria-label="建議紀念日批次建立">
+      <h5>建議紀念日｜批次建立真實日期定錨</h5>
+      <p className="scope-status">僅在按下建立後寫入 date。相同日期已存在就略過，不修改文章或期間。</p>
+      <div className="scope-culture-quick-primary">
+        <label>紀念日名稱<input className="scope-search-input" value={annual.title}
+          onChange={e=>setAnnual(v=>({...v,title:e.target.value}))}/></label>
+        <label>原始日期<input type="date" className="scope-select" value={annual.originDate}
+          onChange={e=>setAnnual(v=>({...v,originDate:e.target.value}))}/></label>
+        {[['startYear','起始年份'],['endYear','結束年份'],['firstAnniversary','起始週年'],['lastAnniversary','結束週年']].map(([key,label])=>
+          <label key={key}>{label}<input type="number" className="scope-search-input" value={annual[key]}
+            onChange={e=>setAnnual(v=>({...v,[key]:e.target.value}))}/></label>)}
+        <button type="button" className="loc-button" disabled={busy} onClick={createAnnualBatch}>建立週年時間</button>
+        <button type="button" className="loc-button" disabled={busy} onClick={()=>setAnnualOpen(false)}>取消</button>
+      </div>
+    </div>:null}
     {query.isPending?<p className="scope-status" role="status">{copy.uiExtra.dataErrors.loading}</p>:null}
     <details className="scope-card">
       <summary>大量隱藏／公開{displayType[browseType]}（已選 {visibilitySelection.length} 筆）</summary>
@@ -385,6 +481,14 @@ export default function CultureTimelineEditor({
           </div>)}
         </div>:null}
       {draft.type!=='anchor'?<div className="scope-culture-quick-anchors">
+        <button type="button" className="loc-button" disabled={busy||query.isPending}
+          onClick={autoOrganize}>自動整理</button>
+        {organizedDates.length?<details className="scope-card">
+          <summary>區間內真實日期定錨（{organizedDates.length}）</summary>
+          <div style={{maxHeight:'14rem',overflow:'auto'}}>
+            {organizedDates.map(point=><div key={point.uid}>{day(point.address)}｜{point.title}</div>)}
+          </div>
+        </details>:null}
         {draft.type==='period'&&!anchorChoices.length
           ?<p className="scope-status scope-error">請先建立時間定錨點，才能新增期間。</p>:null}
         {segments.map((segment,index)=><div key={index} className="scope-culture-quick-primary">
