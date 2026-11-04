@@ -14,8 +14,8 @@ export function isTextSearchQuery(body){
 
 // A warm Edge isolate's bounded memory map avoids a DB write per search.
 // This is defense-in-depth, not a globally shared IP blacklist.
-export function createSearchQos({now=()=>Date.now(),max=6,windowMs=60000,
-  minIntervalMs=3000,blockMs=120000,maxEntries=4096}={}){
+export function createSearchQos({now=()=>Date.now(),max=24,windowMs=60000,
+  minIntervalMs=0,blockMs=120000,maxEntries=4096}={}){
   const entries=new Map();
   return function check(key){
     const identity=String(key||'').slice(0,256)||'anonymous-unknown';
@@ -25,6 +25,10 @@ export function createSearchQos({now=()=>Date.now(),max=6,windowMs=60000,
     if(entry.blockedUntil>time)return {allowed:false,retryAfterMs:entry.blockedUntil-time,blocked:true};
     entry.blockedUntil=0;
     entry.times=entry.times.filter(t=>time-t<windowMs);
+    // Count individual SQL search requests, not browser search actions. A
+    // single user query may legitimately fan out across multiple Scopes and
+    // the Galaxy/Anchor providers. Do not impose per-request spacing here;
+    // the UI enforces search-action spacing separately.
     // Count attempts even when spacing is denied, so repeated spam
     // eventually enters a temporary blacklist.
     entry.times.push(time);
