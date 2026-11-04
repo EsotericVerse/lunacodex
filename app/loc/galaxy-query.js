@@ -19,7 +19,7 @@ import {readTraceMapIndex} from '../modular/features/trace/trace-data.js';
 import {isUnifiedAnchorScope} from './unified-anchor-compat.mjs';
 import {GALAXY_ABLE_KEYS,galaxyAble} from './galaxy-able.mjs';
 const localArticle=scope=>String(scope?.galaxy||'')==='silver.local_galaxy';
-const articlePermissionColumns=scope=>localArticle(scope)?['able']:GALAXY_ABLE_KEYS;
+const articlePermissionColumns=scope=>localArticle(scope)?['able']:['attr',...GALAXY_ABLE_KEYS];
 const articlePermissionFilter=(scope,name)=>({
   column:localArticle(scope)?'able->>'+name:name,
   operator:'eq',value:localArticle(scope)?'true':true
