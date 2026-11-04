@@ -98,3 +98,16 @@ test('Admin authentication editor reuses existing responsive workspace geometry'
   assert.doesNotMatch(source,/setEmergencyDatabasePrimary|setActiveProvider|activateProvider|onClick=\{.*activate/);
   assert.match(source,/authProviderSettingsRequest\(\)/);
 });
+
+test('Admin groups Auth with Database and ISR under Network, including legacy deep links',()=>{
+  const source=readFileSync(new URL('../app/loc/views/AdminHomeView.jsx',import.meta.url),'utf8');
+  const options=source.slice(source.indexOf('const ADMIN_OPTIONS='),source.indexOf('function Login('));
+  assert.doesNotMatch(options,/value:'enterpriseAuth'/);
+  assert.match(options,/value:'network'/);
+  assert.match(source,/enterpriseAuth:'network'/);
+  const network=source.match(/\{section==='network'\?<\>[\s\S]*?<\/>:null\}/)?.[0]||'';
+  assert.match(network,/<DatabaseTarget scopeGroup=\{scopeGroup\}\/>/);
+  assert.match(network,/<IsrDomainTarget\/>/);
+  assert.match(network,/<EnterpriseAuthReserved\/>/);
+  assert.equal((source.match(/<EnterpriseAuthReserved\/>/g)||[]).length,1);
+});
