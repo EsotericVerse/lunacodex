@@ -736,12 +736,16 @@ export class LocAuthorityState extends DurableObject {
       return {lease};
     });
   }
-  async mcpQuotaRelease(lease){
+  async mcpQuotaRelease(lease,subject){
+    if(!/^clerk:user_[A-Za-z0-9]+$/.test(String(subject||'')))throw fail('Invalid MCP principal',401);
     if(typeof lease!=='string'||!/^[a-f0-9-]{36}$/i.test(lease))
       throw fail('Invalid MCP lease',400);
     await this.ctx.storage.transaction(async tx=>{
       const now=Date.now();
-      await tx.put('mcp-quota-leases',(await tx.get('mcp-quota-leases')||[])
+      const records=(await tx.get('mcp-quota-leases')||[]);
+      if(records.some(item=>item.lease===lease&&item.subject!==subject))
+        throw fail('MCP lease belongs to another subject',403);
+      await tx.put('mcp-quota-leases',records
         .filter(item=>item.expires>now&&item.lease!==lease));
     });
     return {released:true};
@@ -766,7 +770,7 @@ async function handleMcpAuthority(request,env,url,origin){
     if(principal.provider!=='clerk')throw fail('MCP OAuth required',401);
     const args=await mcpJsonBody(request,400);
     if(args?.action==='acquire')return json(await quota.mcpQuotaAcquire(args.kind,'clerk:'+principal.subject),200,origin);
-    if(args?.action==='release')return json(await quota.mcpQuotaRelease(args.lease),200,origin);
+    if(args?.action==='release')return json(await quota.mcpQuotaRelease(args.lease,'clerk:'+principal.subject),200,origin);
     throw fail('Invalid MCP quota operation',400);
   }
   // No DB work and no quota spend on retired search endpoints.
@@ -774,7 +778,7 @@ async function handleMcpAuthority(request,env,url,origin){
     throw fail('MCP search is disabled',403);
   const ticket=await quota.mcpQuotaAcquire(request.method==='GET'?'read':'write','clerk:'+principal.subject);
   try{return await handleMcpAuthorityInner(request,env,url,origin,principal);}
-  finally{await quota.mcpQuotaRelease(ticket.lease);}
+  finally{await quota.mcpQuotaRelease(ticket.lease,'clerk:'+principal.subject);}
 }
 async function handleMcpAuthorityInner(request,env,url,origin,principal){
   const roots=String(env.LOC_RECOVERY_ROOT_CLERK_IDS||'').split(/[\s,;]+/).filter(Boolean);
