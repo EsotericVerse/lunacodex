@@ -152,3 +152,39 @@ test('portable daily includeUndated retains NULL date groups using Kysely',async
   assert.equal(result.data.find(x=>x.kind==='total').item_count,2);
   assert.equal(result.data.find(x=>x.kind==='source').day,'');
 });
+
+for(const [engine,namespace,expectedExpansion] of [
+  ['mysql','',/json_table\(docs\.media_link/],
+  ['mssql','dbo',/openjson\(docs\.media_link/],
+  ['postgres','silver',/jsonb_array_elements_text\(docs\.media_link/]
+]){
+  test(engine+' portable Overview counts only media linked from eligible Galaxy rows',async()=>{
+    const filters=[],statements=[],refs=[];
+    const mockSql=(parts,...args)=>({
+      parts,args,execute:async()=>{statements.push(parts.join(''));return {rows:[{n:'7'}]};}
+    });
+    mockSql.ref=name=>{refs.push(name);return {ref:name};};
+    const mediaCount=new Function('sql','canManageLoc','portableRelation',
+      source.replace(/^import .*$/gm,'').replace(/^export /gm,'')+
+      ';return portableLinkedMediaCount')(mockSql,async()=>false,()=>{});
+    const db={selectFrom:table=>({
+      select(field){assert.equal(field,'media_link');return this;},
+      where(...condition){filters.push(condition);return this;}
+    })};
+    const actual=await mediaCount(db,
+      namespace?namespace+'.writer_galaxy':'writer_galaxy',
+      namespace?namespace+'.writer_anchor':'writer_anchor',
+      engine,'2026-01-01','2026-12-31');
+    assert.equal(actual,7);
+    assert.equal(refs[0],namespace?namespace+'.writer_anchor':'writer_anchor');
+    assert.match(statements[0],expectedExpansion);
+    assert.match(statements[0],/count\(distinct linked/);
+    assert.ok(filters.some(([field,op,value])=>
+      field==='statics'&&op==='='&&value===true));
+    assert.ok(filters.some(([field,op,value])=>
+      field==='date'&&op==='>='&&value==='2026-01-01'));
+    assert.ok(filters.some(([field,op,value])=>
+      field==='date'&&op==='<='&&value==='2026-12-31'));
+    assert.ok(!filters.some(([field])=>field==='uid'));
+  });
+}
