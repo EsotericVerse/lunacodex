@@ -86,12 +86,29 @@ function validateQuery(input){
 }
 
 const GALAXY_BOOLEAN_COLUMNS=new Set(['statics','culture','search','trace','list','keyword','extract','others']);
-function applyFilters(query,filters){
+const galaxyTable=name=>String(name||'').endsWith('_galaxy');
+function galaxyBooleanSql(key,dialect){
+  if(!GALAXY_BOOLEAN_COLUMNS.has(key))throw new Error('Invalid Galaxy capability');
+  if(dialect==='postgres')return sql`(${sql.ref('attr')}->>${key})::boolean`;
+  if(dialect==='mysql')return sql`json_unquote(json_extract(${sql.ref('attr')},${'$.'+key}))`;
+  if(dialect==='mssql')return sql`json_value(${sql.ref('attr')},${'$.'+key})`;
+  throw new Error('Unsupported Galaxy JSON dialect');
+}
+function galaxyPredicateColumn(column,table,dialect){
+  return galaxyTable(table)&&GALAXY_BOOLEAN_COLUMNS.has(column)
+    ?galaxyBooleanSql(column,dialect):column;
+}
+function galaxyBooleanValue(value,dialect){
+  return dialect==='postgres'?value:typeof value==='boolean'?String(value):value;
+}
+function applyFilters(query,filters,table='',dialect='postgres'){
   for(const filter of filters){
-    const op=operators[filter.operator],column=checkedFilterColumn(filter.column);
-    const value=GALAXY_BOOLEAN_COLUMNS.has(filter.column)&&
+    const op=operators[filter.operator],column=galaxyPredicateColumn(checkedFilterColumn(filter.column),table,dialect);
+    const raw=GALAXY_BOOLEAN_COLUMNS.has(filter.column)&&
       (filter.value==='true'||filter.value==='false')
       ?filter.value==='true':filter.value;
+    const value=galaxyTable(table)&&GALAXY_BOOLEAN_COLUMNS.has(filter.column)
+      ?galaxyBooleanValue(raw,dialect):raw;
     if(filter.operator==='in')query=filter.negate?query.where(eb=>eb.not(eb(column,'in',value))):query.where(column,'in',value);
     else if(filter.operator==='ilike')query=query.where(sql`lower(${typeof column==='string'?sql.ref(column):column})`,filter.negate?'not like':'like',String(value).toLowerCase());
     else if(filter.operator==='is')query=query.where(column,value===null?(filter.negate?'is not':'is'):(filter.negate?'!=':'='),value);
@@ -100,13 +117,16 @@ function applyFilters(query,filters){
   return query;
 }
 
-function applyOrFilters(query,groups){
+function applyOrFilters(query,groups,table='',dialect='postgres'){
   const predicate=(eb,node)=>{
     if(node.type==='and')return eb.and(node.items.map(item=>predicate(eb,item)));
     if(node.type==='or')return eb.or(node.items.map(item=>predicate(eb,item)));
-    if(node.operator==='ilike')return eb(sql`lower(${sql.ref(node.column)})`,'like',String(node.value).toLowerCase());
-    if(node.operator==='is'&&node.value!==null)return eb(node.column,'=',node.value);
-    return eb(node.column,operators[node.operator],node.value);
+    const column=galaxyPredicateColumn(node.column,table,dialect);
+    const value=galaxyTable(table)&&GALAXY_BOOLEAN_COLUMNS.has(node.column)
+      ?galaxyBooleanValue(node.value,dialect):node.value;
+    if(node.operator==='ilike')return eb(sql`lower(${typeof column==='string'?sql.ref(column):column})`,'like',String(value).toLowerCase());
+    if(node.operator==='is'&&value!==null)return eb(column,'=',value);
+    return eb(column,operators[node.operator],value);
   };
   for(const group of groups)query=query.where(eb=>predicate(eb,group));
   return query;
@@ -119,10 +139,10 @@ function databaseTable(req,dialect,namespace){
   return namespace===undefined?req.schema+'.'+req.table:
     portableRelation(req.table,dialect,namespace);
 }
-function publishedOnly(query,table,enabled){
+function publishedOnly(query,table,enabled,dialect='postgres'){
   if(!enabled)return query;
   if(table.endsWith('_galaxy'))
-    return query.where('search','=',true)
+    return query.where(galaxyBooleanSql('search',dialect),'=',galaxyBooleanValue(true,dialect))
       .where(eb=>eb.or([eb('site','is',null),
         eb(eb.fn('lower',['site']),'not in',PRIVATE_SITES)]));
   if(table.endsWith('_anchor'))
@@ -134,13 +154,16 @@ export function buildKyselySelectQuery(trx,input,{dialect='postgres',namespace,p
   const req=validateQuery(input);
   if(req.operation!=='select')throw new Error('Unsupported operation for SELECT builder');
   const table=databaseTable(req,dialect,namespace);
+  const columns=galaxyTable(req.table)?req.columns.map(column=>
+    GALAXY_BOOLEAN_COLUMNS.has(column)?galaxyBooleanSql(column,dialect).as(column):column):req.columns;
   let query=publishedOnly(applyOrFilters(applyFilters(
-    trx.selectFrom(table).select(req.columns),req.filters),req.orFilters),req.table,publicOnly);
+    trx.selectFrom(table).select(columns),req.filters,req.table,dialect),req.orFilters,req.table,dialect),
+    req.table,publicOnly,dialect);
   for(const order of req.orders)query=query.orderBy(order.column,order.ascending===false?'desc':'asc');
   query=query.limit(req.limit).offset(req.offset);
   const countQuery=req.count?publishedOnly(applyOrFilters(applyFilters(
-    trx.selectFrom(table).select(trx.fn.countAll().as('count')),req.filters),req.orFilters),
-      req.table,publicOnly):null;
+    trx.selectFrom(table).select(trx.fn.countAll().as('count')),req.filters,req.table,dialect),
+      req.orFilters,req.table,dialect),req.table,publicOnly,dialect):null;
   return {request:req,query:req.head?null:query,countQuery};
 }
 
@@ -205,7 +228,7 @@ export function buildKyselyMutationQuery(trx,input,{dialect='postgres',namespace
   if(req.operation==='upsert')query=buildKyselyUpsertQuery(trx,req,dialect,namespace);
   if(req.operation==='update')query=trx.updateTable(fullTable).set(req.values);
   if(req.operation==='delete')query=trx.deleteFrom(fullTable);
-  query=applyOrFilters(applyFilters(query,req.filters),req.orFilters);
+  query=applyOrFilters(applyFilters(query,req.filters,req.table,dialect),req.orFilters,req.table,dialect);
   return {request:req,query:applyMutationReturning(query,req,dialect)};
 }
 
@@ -233,14 +256,14 @@ async function mysqlPrimaryKeyColumns(trx,req){
 async function executeMysqlReturningMutation(trx,req,query,namespace){
   const fullTable=databaseTable(req,'mysql',namespace);
   if(req.operation==='delete'){
-    const before=await applyOrFilters(applyFilters(trx.selectFrom(fullTable).select(req.columns),req.filters),req.orFilters).execute();
+    const before=await applyOrFilters(applyFilters(trx.selectFrom(fullTable).select(req.columns),req.filters,req.table,'mysql'),req.orFilters,req.table,'mysql').execute();
     await query.execute();
     return before;
   }
   let keys=[];let keyColumns=[];
   if(req.operation==='update'){
     keyColumns=await mysqlPrimaryKeyColumns(trx,req);
-    const existing=await applyOrFilters(applyFilters(trx.selectFrom(fullTable).select(keyColumns),req.filters),req.orFilters).execute();
+    const existing=await applyOrFilters(applyFilters(trx.selectFrom(fullTable).select(keyColumns),req.filters,req.table,'mysql'),req.orFilters,req.table,'mysql').execute();
     keys=existing;
     await query.execute();
   }else{
