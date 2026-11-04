@@ -1,7 +1,7 @@
 'use client';
 import {useFeatureCopy,useUiLocale} from '../../i18n/ui-locale';
 import {translateUiField} from '../../i18n/ui-copy';
-import featureZh from '../../i18n/features.zh_tw.js';
+import featureZh from '../../i18n/feature-sections/itemConfluence.zh_tw.js';
 
 import {useEffect,useMemo,useState} from 'react';
 import {useAsyncResource} from '../../loc/use-async-resource';
@@ -40,7 +40,7 @@ function laneColumnLabel(lane,l){
 }
 function defaultLane(scopeId,source){return {scopeId,source,exact:''};}
 function LanePicker({label,lane,scopes,onChange}){
-  const l=useFeatureCopy('itemConfluence',featureZh.itemConfluence);
+  const l=useFeatureCopy('itemConfluence',featureZh);
   const scopeOptions=scopes.filter(scope=>scope.id!=='loc');
   const sourceOptions=ITEM_LANE_OPTIONS.filter(option=>option.value!=='daily:rune'||lane.scopeId==='lrunes');
   return <fieldset className="scope-card" style={{minWidth:0,flex:'1 1 250px'}}>
@@ -69,7 +69,7 @@ function LanePicker({label,lane,scopes,onChange}){
   </fieldset>;
 }
 export default function LocItemConfluence(){
-  const l=useFeatureCopy('itemConfluence',featureZh.itemConfluence);
+  const l=useFeatureCopy('itemConfluence',featureZh);
   const {locale}=useUiLocale();
   const today=useMemo(nowInTaipei,[]);
   const [startDate,setStartDate]=useState(()=>itemConfluenceShiftMonth(nowInTaipei(),-3));
