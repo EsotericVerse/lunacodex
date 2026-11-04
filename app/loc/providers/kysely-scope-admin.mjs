@@ -265,7 +265,7 @@ async function provisionScope(trx,args){
   const cloned=args.p_copy_keywords===false?null:await copyDefaultKeywordClass(trx,id,'silver.'+id+'_anchor');
   await trx.insertInto('silver.'+id).values({
     id,email,display_name:display,search_intro:'',search_aliases:[id,display],
-    theme,locale:'zh-Hant',search_able:true,statistics_able:true,culture_able:true,
+    theme,locale:'zh-Hant',search:true,statics:true,culture:true,trace:true,
     keyword_min_chars:32,keyword_min_documents:100,
     current_keyword_class_uid:cloned?.uid||null,keyword_class_share_enabled:false,
     keyword_meta:sql`'{}'::jsonb`,staticstime:null,updated_at:sql`now()`
