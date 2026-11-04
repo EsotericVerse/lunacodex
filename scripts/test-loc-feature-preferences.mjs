@@ -136,3 +136,21 @@ test('media statistics query reads Anchor.description consistently with the shar
  assert.match(query,/column:'description',operator:'ilike'/);
  assert.match(facets,/mediaStyleTags\(row\.description\)/);
 });
+
+
+test('advanced type is equality-only and anchor content is a minimal public projection',()=>{
+ const read=p=>readFileSync(new URL('../'+p,import.meta.url),'utf8');
+ const provider=read('app/loc/galaxy-query.js');
+ const ui=read('app/modular/features/Search.jsx');
+ assert.match(provider,/columns:\['uid','type','description'\]/);
+ assert.match(provider,/searchFields:\['description'\]/);
+ assert.match(provider,/searchFields:\['content'\]/);
+ assert.match(provider,/column:'type',operator:'eq',value:anchorType/);
+ assert.doesNotMatch(provider,/searchFields:\['title'\]/);
+ assert.doesNotMatch(provider,/searchFields:\['type'\]/);
+ assert.doesNotMatch(provider,/uidFastPath:true/);
+ assert.doesNotMatch(ui,/row\.attr/);
+ assert.doesNotMatch(ui,/periodsQuery/);
+ assert.doesNotMatch(ui,/suggestedTitles/);
+ assert.match(ui,/\['rune','符文'\]/);
+});

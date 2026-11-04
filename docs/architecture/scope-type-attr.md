@@ -174,3 +174,8 @@ Kysely Edge `KyselyQuery.abortSignal(signal)` 現在把呼叫端取消訊號送�
 ### 統一內文搜尋（2026-11-04）
 
 一般 Search 僅查 Galaxy `content` 與相同 Scope 唯一實體 Anchor `description`（時間 date/period/era、空間 point/path/trace、關鍵詞 category/class/group/item、媒體 image/video/rune/suno），**不搜尋標題、URL 或媒體專屬標籤欄位**。結果依 Anchor `type` 連到文化 `anchor/period`、痕跡 `place/map`、關鍵詞統計頁，或媒體自身公開 URL；文章繼續連其 Galaxy UID 頁。文章管理的打卡地點工具是獨立管理功能，不視為一般文字搜尋。Anchor 公開讀取仍受 `invisible=false` 和既有 RLS 控制。
+
+
+### 搜尋的最小資料投影與進階指定（2026-11-04）
+
+Search 的全文比對**僅**作用於 Galaxy 的 `content` 與 Anchor 的 `description`；不搜尋 `title`、`type`、`uid`、`attr`。公開 Anchor 搜尋 SELECT 只投影 `uid,type,description`，另以 `invisible=false` 做公開篩選；`type` 只在進階搜尋選定時，以資料庫精確 `=` 比對。Anchor 沒有日期欄，搜尋不讀 `attr.date`，進階時間範圍僅限定 Galaxy `date`（既有 B-tree）；搜尋頁不再另讀文化時間定錨／時代選單。Anchor 預覽連回各功能頁，媒體跳媒體統計頁，不暴露 Anchor.attr。

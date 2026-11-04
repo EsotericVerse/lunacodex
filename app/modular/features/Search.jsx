@@ -112,7 +112,6 @@ function toResult(row,source,scopeId,copy=UI_COPY){
   const placeTypes=['point','path','trace'];
   const keywordTypes=['category','class','group','item'];
   const mediaTypes=['image','video','rune','suno'];
-  const url=typeof row.attr==='string'?(()=>{try{return JSON.parse(row.attr)?.url}catch{return ''}})():row.attr?.url;
   const anchorHref=!isAnchor?''
     :timeTypes.includes(anchorType)
       ?featureNavigationHref(row.scope_id||scopeId,'culture',
@@ -123,14 +122,18 @@ function toResult(row,source,scopeId,copy=UI_COPY){
         :keywordTypes.includes(anchorType)
           ?featureNavigationHref(row.scope_id||scopeId,'statics',{statTab:'keywords'})
           :mediaTypes.includes(anchorType)
-            ?(/^https?:\/\//i.test(String(url||''))?String(url):
-              featureNavigationHref(row.scope_id||scopeId,'statics',{statTab:'media'}))
+            ?featureNavigationHref(row.scope_id||scopeId,'statics',{statTab:'media'})
             :'';
   const explicitTitle=workDisplayText(row.title||row.name||row.display_title||row.label||row.rune_name||row.song_id||row.id||'').trim();
   const fallbackTitle=isMedia?MEDIA_FALLBACK_TITLE:WORK_FALLBACK_TITLE;
-  const title=(isGalaxy||isMedia)
-    ?workDisplayHeading(row,{media:isMedia,fallback:fallbackTitle,limit:80})
-    :(explicitTitle||fallbackTitle);
+  const title=isAnchor
+    ?({date:'時間定錨',period:'期間',era:'時代',point:'空間定錨',
+      path:'路線',trace:'痕跡',category:'關鍵詞目錄',class:'關鍵詞科目',
+      group:'關鍵詞群組',item:'關鍵詞',image:'圖片',video:'影片',
+      rune:'符文',suno:'音樂'}[anchorType]||'定錨內容')+' · '+row.uid
+    :(isGalaxy||isMedia)
+      ?workDisplayHeading(row,{media:isMedia,fallback:fallbackTitle,limit:80})
+      :(explicitTitle||fallbackTitle);
   const displaySource=isGalaxy&&row.site?String(row.site):source;
   const identity=row.uid||row.song_id||row.rune_id||row.record_id||row.resource_id||row.id;
   const scope=String(row.scope_id||scopeId||'').trim();
@@ -259,7 +262,7 @@ function searchHref(scopeId,query,filters={}){
   const params=new URLSearchParams();
   for(const [key,value] of Object.entries({
     type:filters.contentType,source:filters.sourceFilter,
-    from:filters.startDate,to:filters.endDate,period:filters.selectedPeriod,scope:filters.scopeFilter
+    from:filters.startDate,to:filters.endDate,scope:filters.scopeFilter
   })){
     if(value)params.set(key,value);
   }
@@ -313,7 +316,6 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   const [scopeFilter,setScopeFilter]=useState('');
   const [startDate,setStartDate]=useState('');
   const [endDate,setEndDate]=useState('');
-  const [selectedPeriod,setSelectedPeriod]=useState('');
   const [browseResults,setBrowseResults]=useState(false);
   const activeSearchOptionsRef=useRef(null);
   const [results,setResults]=useState([]);
@@ -414,27 +416,8 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       return date?(articleSort==='desc'?-date:date):a.index-b.index;
     }).map(item=>item.row);
   },[results,scopeId,availableScopes,articleSort]);
-  // Suggestions come from loaded results only; do not imply a database-wide ranking.
-  const suggestedTitles=useMemo(()=>[...new Set(results
-    .filter(row=>row.resourceType==='galaxy'&&row.list!==false)
-    .map(row=>String(row.title||'').trim())
-    .filter(title=>title&&title.length<=80))].slice(0,8),[results]);
   const advancedRef=useRef(null);
   const collectionLabel=scopeId==='loc'?UI_COPY.search.allContent:String(scope?.label||scopeId);
-  const periodScope=scopeId==='loc'
-    ?targetScopes.find(item=>item.id==='lo3rwang')||targetScopes[0]
-    :targetScopes[0];
-  const periodsQuery=useAsyncResource({
-    queryKey:['search-period-options',periodScope?.id],
-    enabled:advancedOpen&&advancedTab==='time'&&!aggregateScopes&&Boolean(periodScope?.time),
-    queryFn:async()=>{
-      // The Culture/Time query module is needed only when advanced time filtering opens.
-      const {selectCultureTimeRows}=await import('../../loc/culture-query');
-      const rows=await selectCultureTimeRows(periodScope,periodScope?.birthday);
-      return rows.filter(row=>row.entry_type==='era'&&row.start_date)
-        .map(row=>({id:row.entry_key,title:row.title,startDate:row.start_date,endDate:row.end_date||''}));
-    },
-  });
 
   async function loadGalaxyDetail(result){
     const scopeData=scopeById.get(result.scopeId);
@@ -703,11 +686,10 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       sourceFilter:String(searchParams?.get('source')||''),
       startDate:String(searchParams?.get('from')||''),
       endDate:String(searchParams?.get('to')||''),
-      selectedPeriod:String(searchParams?.get('period')||''),
       scopeFilter:managementMode?String(searchParams?.get('scope')||''):''
     };
     setContentType(filters.contentType);setSourceFilter(filters.sourceFilter);
-    setStartDate(filters.startDate);setEndDate(filters.endDate);setSelectedPeriod(filters.selectedPeriod);
+    setStartDate(filters.startDate);setEndDate(filters.endDate);
     if(managementMode)setScopeFilter(filters.scopeFilter);
     const term=place||value;
     setPlaceOnly(Boolean(place));
@@ -879,16 +861,23 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   }
   function clearSearchFilters(){
     setQuery('');setPlaceOnly(false);setBulkPlace('');setContentType('');setSourceFilter('');setScopeFilter('');
-    setStartDate('');setEndDate('');setSelectedPeriod('');setAdvancedOpen(false);
+    setStartDate('');setEndDate('');setAdvancedOpen(false);
     resetSearchState();
     // Management queries stay in the authorized workspace. Only a public
     // search reset changes the public URL.
     if(!managementMode)router.replace(featureNavigationHref(scopeId,'search'));
   }
+  // Type is an exact advanced-filter selection. Never search the type name.
   const filterTypes=[
     ['',t('uiExtra.searchUI.allTypes')],
+    ['galaxy','文章'],
     ['lyrics_work',t('uiExtra.searchUI.lyricsType')],
-    ['text_work',t('uiExtra.searchUI.textType')]
+    ['text_work',t('uiExtra.searchUI.textType')],
+    ['date','時間定錨'],['period','期間'],['era','時代'],
+    ['point','空間定錨'],['path','路線'],['trace','痕跡'],
+    ['category','關鍵詞目錄'],['class','關鍵詞科目'],
+    ['group','關鍵詞群組'],['item','關鍵詞'],
+    ['image','圖片'],['video','影片'],['rune','符文'],['suno','音樂']
   ];
   const sourceCategories=(sourceTaxonomyQuery.data?.categories||[])
     .filter(row=>row.enabled!==false);
@@ -912,7 +901,6 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     sourceFilter&&filterSources.find(([value])=>value===sourceFilter)?.[1],
     startDate&&t('uiExtra.searchUI.startDate')+': '+startDate,
     endDate&&t('uiExtra.searchUI.endDate')+': '+endDate,
-    selectedPeriod&&periodsQuery.data?.find(item=>item.id===selectedPeriod)?.title
   ].filter(Boolean);
   function workspaceSearchHref(term,filters={}){
     const href=searchHref(scopeId,term,filters);
@@ -929,7 +917,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     const term=String(raw||'').trim();
     if(!term)return;
     const filters={
-      contentType,sourceFilter,startDate,endDate,selectedPeriod,
+      contentType,sourceFilter,startDate,endDate,
       scopeFilter:managementMode?scopeFilter:'',placeOnly,...overrides
     };
     if(managementMode){
@@ -942,7 +930,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     const url=workspaceSearchHref(term,filters);
     const current=workspaceSearchHref(String(searchParams?.get('place')||searchParams?.get('q')||'').trim(),{
       contentType:searchParams?.get('type'),sourceFilter:searchParams?.get('source'),
-      startDate:searchParams?.get('from'),endDate:searchParams?.get('to'),selectedPeriod:searchParams?.get('period'),
+      startDate:searchParams?.get('from'),endDate:searchParams?.get('to'),
       scopeFilter:managementMode?searchParams?.get('scope'):'',placeOnly:Boolean(searchParams?.get('place'))
     });
     if(url!==current||searchParams?.get('identity')){
@@ -1060,7 +1048,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     const text=String(term||'').trim();
     if(!text)return;
     const next={
-      contentType,sourceFilter,startDate,endDate,selectedPeriod,
+      contentType,sourceFilter,startDate,endDate,
       scopeFilter:managementMode?scopeFilter:'',placeOnly,...patch
     };
     if(managementMode){
@@ -1077,7 +1065,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   function applyDefaultTimeWindow(){
     const range=timeUnitBucket(localTodayKey(),defaultTimeUnit==='auto'?'day':defaultTimeUnit);
     if(!range)return;
-    setSelectedPeriod('');
+    
     setStartDate(range.startDate);
     setEndDate(range.endDate);
     resetSearchState();
@@ -1089,10 +1077,10 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       <h2>管理搜尋</h2>
       <SearchSummary scopeIds={summaryScopeIds}/>
       <form className="scope-search-form" onSubmit={runSearch}>
-        <label htmlFor="scope-management-search-query">文章 UID、標題、正文或來源</label>
+        <label htmlFor="scope-management-search-query">文章內文</label>
         <input id="scope-management-search-query" value={query}
           onChange={event=>setQuery(event.target.value)}
-          placeholder="輸入 UID 或文章內容關鍵字"/>
+          placeholder="輸入文章內文關鍵字"/>
         <button type="submit" disabled={scopeId==='loc'&&!scopesQuery.isSuccess}>查詢文章</button>
         <button type="button" className="loc-button"
           disabled={scopeId==='loc'&&!scopesQuery.isSuccess}
@@ -1133,13 +1121,10 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     {!managementMode?<section className="scope-search-workspace" aria-label={t('uiExtra.searchUI.searchWorkspace')}>
       <form className="scope-search-form" onSubmit={runSearch}>
         {!managementMode?<label htmlFor="scope-search-query">{UI_COPY.search.textPromptLabel}</label>:null}
-        <input id="scope-search-query" list={!searchPopularOpen&&suggestedTitles.length?'scope-search-loaded-titles':undefined}
+        <input id="scope-search-query" 
           value={query} onDoubleClick={()=>setSearchPopularOpen(true)}
           onChange={event=>{setQuery(event.target.value);setSearchPopularOpen(false);}}
           placeholder={managementMode?'':UI_COPY.search.textPlaceholder} aria-label={UI_COPY.search.textPromptLabel}/>
-        {suggestedTitles.length?<datalist id="scope-search-loaded-titles">
-          {suggestedTitles.map(title=><option key={title} value={title}/>)}
-        </datalist>:null}
         <button type="submit" disabled={scopeId==='loc'&&!scopesQuery.isSuccess}>{UI_COPY.nav.search}</button>
         {managementMode?<button type="button" className="loc-button" disabled={scopeId==='loc'&&!scopesQuery.isSuccess}
           onClick={()=>{
@@ -1196,7 +1181,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
         <label htmlFor="scope-search-scope">{t('uiExtra.searchUI.scopeFilter')}</label>
         <select id="scope-search-scope" value={scopeFilter}
           disabled={!scopesQuery.isSuccess}
-          onChange={event=>{setSelectedPeriod('');updateSearchFilter(setScopeFilter,event.target.value);}}>
+          onChange={event=>{updateSearchFilter(setScopeFilter,event.target.value);}}>
           <option value="">{t('uiExtra.searchUI.allScopes')}</option>
           {availableScopes.map(item=><option key={item.id} value={item.id}>{scopeLabel(item.id)}</option>)}
         </select>
@@ -1238,7 +1223,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
               {filterSources.filter(([value])=>value&&!value.startsWith('category:')&&!value.startsWith('source:'))
                 .map(([value,label])=><option key={value} value={value}>{label}</option>)}
             </select>
-            <p className="scope-status">來源分類依管理設定篩選文字作品；多媒體請使用「類型」篩選。</p>
+            <p className="scope-status">來源分類僅篩選 Galaxy 文章；Anchor 可在類型中指定。</p>
             {sourceTaxonomyQuery.isPending?<p className="scope-status" role="status">載入來源分類…</p>:null}
             {sourceTaxonomyQuery.isError?<p className="scope-status scope-error" role="alert">來源分類載入失敗。
               <button type="button" className="loc-button" onClick={()=>sourceTaxonomyQuery.refetch()}>重試</button>
@@ -1249,21 +1234,9 @@ export default function Search({managementMode:legacyManagementRoute=false}){
               {t('uiExtra.searchUI.applyDefaultTimeWindow',{unit:defaultTimeName})}
             </button>
             <label htmlFor="scope-search-start-date">{t('uiExtra.searchUI.startDate')}
-              <input id="scope-search-start-date" type="date" value={startDate} onChange={event=>{setSelectedPeriod('');updateSearchFilter(setStartDate,event.target.value);}}/></label>
+              <input id="scope-search-start-date" type="date" value={startDate} onChange={event=>{updateSearchFilter(setStartDate,event.target.value);}}/></label>
             <label htmlFor="scope-search-end-date">{t('uiExtra.searchUI.endDate')}
-              <input id="scope-search-end-date" type="date" min={startDate||undefined} value={endDate} onChange={event=>{setSelectedPeriod('');updateSearchFilter(setEndDate,event.target.value);}}/></label>
-            <label className="scope-search-period-field" htmlFor="scope-search-period">{t('uiExtra.searchUI.periodLabel')}
-              <select id="scope-search-period" value={selectedPeriod} onChange={event=>{
-                const id=event.target.value;
-                const period=periodsQuery.data?.find(row=>row.id===id);
-                setSelectedPeriod(id);setStartDate(period?.startDate||'');
-                setEndDate(period?.endDate||'');resetSearchState();
-              }}>
-                <option value="">{t('uiExtra.searchUI.allPeriods')}</option>
-                {(periodsQuery.data||[]).map(period=><option key={period.id} value={period.id}>{period.title}</option>)}
-              </select>
-            </label>
-            {periodsQuery.isError?<span className="scope-status">{t('uiExtra.searchUI.periodUnavailable')}</span>:null}
+              <input id="scope-search-end-date" type="date" min={startDate||undefined} value={endDate} onChange={event=>{updateSearchFilter(setEndDate,event.target.value);}}/></label>
           </div>:null}
         </div>:null}
       </div>

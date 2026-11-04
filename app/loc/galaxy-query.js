@@ -484,7 +484,7 @@ function recordFor(row,source,providerId,scope,table){
   return {row:{...row,scope_id:row?.scope_id||scope.id,__table:table,__galaxy_media_table:scope.galaxyMedia},source,providerId};
 }
 
-function makeProvider({id,table,source,scope,idColumn,columns,searchFields,filters=[],dateColumn='',exactColumn='',sortTitle=false,batchSize=DEFAULT_LIST_BATCH_SIZE,sourceClause='',authenticated=false,uidFastPath=false}){
+function makeProvider({id,table,source,scope,idColumn,columns,searchFields,filters=[],dateColumn='',exactColumn='',batchSize=DEFAULT_LIST_BATCH_SIZE,sourceClause='',authenticated=false,uidFastPath=false}){
   const outputColumns=Object.freeze(unique(columns));
   const frozenFields=Object.freeze(unique(searchFields));
   const frozenFilters=Object.freeze(filters.map(item=>Object.freeze({...item})));
@@ -511,7 +511,6 @@ function makeProvider({id,table,source,scope,idColumn,columns,searchFields,filte
       const ascending=sortDirection!=='desc';
       const orders=[
         ...(dateColumn?[{column:dateColumn,ascending}]:[]),
-        ...((sortTitle||outputColumns.includes('title'))?[{column:'title',ascending}]:[]),
         ...(idColumn?[{column:idColumn,ascending}]:[])
       ];
 
@@ -602,10 +601,16 @@ function managementArticleProviders(scope,{contentType='',sourceFilter='',source
   // Management searches article body content only. Exact UID remains an
   // explicit identity lookup, not a title-search mode.
   return [makeProvider({
-    ...base,id:current.id+':management-content',searchFields:['content'],uidFastPath:true
+    ...base,id:current.id+':management-content',searchFields:['content']
   })];
 }
 
+// The advanced Type selector is an exact Anchor type filter, not a
+// keyword field. Galaxy and Anchor content remain separate predicates.
+const ANCHOR_SEARCH_TYPES=new Set([
+  'date','period','era','point','path','trace','category','class','group','item',
+  'image','video','rune','suno'
+]);
 function genericScopeProviders(scope,{includeHiddenText=false,contentType='',sourceFilter='',sourceTaxonomy=null,placeOnly=false}={}){
   const selection=resolveSourceSelection(sourceFilter,sourceTaxonomy||{});
   if(selection.kind==='none')return [];
@@ -624,27 +629,28 @@ function genericScopeProviders(scope,{includeHiddenText=false,contentType='',sou
     columns:textColumns,searchFields:['location'],dateColumn:dayColumn(current.galaxy),
     filters:textFilters,authenticated:includeHiddenText
   })];
-  // One article content search. Neither title, site, nor URL is searched.
+  // Date (indexed on Galaxy) and Source are article-only filters.
+  // Never use them for Anchor rows: Anchor has no independent date column.
+  const anchorType=ANCHOR_SEARCH_TYPES.has(contentType)?contentType:'';
   const article=makeProvider({
     id:current.id+':article-content',table:current.galaxy,
     source:current.id+' 文章',scope:current,idColumn:'uid',
     columns:textColumns,searchFields:['content'],dateColumn:dayColumn(current.galaxy),
     filters:textFilters,sourceClause:sourceNameClause(selection),authenticated:includeHiddenText
   });
-  // The FOUR families of Time/Trace/Keywords/Media share one physical Anchor.
-  // Search its description exactly once per Scope, not four separate providers.
-  // Source and lyric filters belong to Galaxy articles, not Anchor records.
-  if(sourceFilter||['lyrics_work','text_work'].includes(contentType)||
-      current.id==='local'||!current.anchor)return [article];
-  const anchor=makeProvider({
+  if(contentType==='galaxy'||['lyrics_work','text_work'].includes(contentType))return [article];
+  // One search of description across the four Anchor families.
+  // Deliberately do NOT project title, attr or any date from Anchor.
+  const anchor=current.id==='local'||!current.anchor||sourceFilter?null:makeProvider({
     id:current.id+':anchor-content',table:current.anchor,
     source:current.id+' 定錨內容',scope:current,idColumn:'uid',
-    columns:['uid','type','title','description','attr'],
+    columns:['uid','type','description'],
     searchFields:['description'],filters:[
-      {column:'invisible',operator:'eq',value:false}
+      {column:'invisible',operator:'eq',value:false},
+      ...(anchorType?[{column:'type',operator:'eq',value:anchorType}]:[])
     ]
   });
-  return [article,anchor];
+  return anchorType?(anchor?[anchor]:[]):[article,...(anchor?[anchor]:[])];
 }
 
 function normalizeSearch(value){
