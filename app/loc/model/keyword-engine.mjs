@@ -225,8 +225,20 @@ function classifyKeywordDocumentsWithCompiled(documents=[],prepared){
   const unsupportedRules=[];
 
   for(const rune of runes){
-    const keywordTexts=specialRuneKeywordTexts(normalizedTexts,runes,rune);
-    const ruleTexts=normalizedTexts.slice();
+    // NOR excludes the exact combined expression for this Item, across all
+    // of its matching words. Other independent occurrences remain countable.
+    const blockedPhrases=[...new Set(rune.rules
+      .filter(rule=>rule.operator==='NOR')
+      .map(rule=>normalizeText(rule.source)+normalizeText(rule.target))
+      .filter(Boolean))].sort((a,b)=>b.length-a.length);
+    const withoutBlockedPhrases=source=>{
+      let value=source;
+      for(const phrase of blockedPhrases)value=replaceAllLiteral(value,phrase,' ');
+      return value;
+    };
+    const keywordTexts=specialRuneKeywordTexts(normalizedTexts,runes,rune)
+      .map(withoutBlockedPhrases);
+    const ruleTexts=normalizedTexts.map(withoutBlockedPhrases);
     const orderedRules=[...rune.rules].sort((a,b)=>
       normalizeText(b.source).length-normalizeText(a.source).length
       ||String(a.token||'').localeCompare(String(b.token||''))
@@ -254,10 +266,7 @@ function classifyKeywordDocumentsWithCompiled(documents=[],prepared){
     }
 
     for(const rule of orderedRules){
-      if(rule.operator==='NOR'){
-        unsupportedRules.push({rune_id:rune.runeId,rune:rune.label,rule:rule.token});
-        continue;
-      }
+      if(rule.operator==='NOR')continue; // applied before Item and rule matching
       const ruleSource=normalizeText(rule.source);
       if(!ruleSource)continue;
       const targetId=rule.operator==='NAME'?null:nameToRune.get(String(rule.target||'').trim());
