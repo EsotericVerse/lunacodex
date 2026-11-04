@@ -97,7 +97,7 @@ function SharedHomeBlockDisplay(slot,scopeId='loc'){
       style={{'--loc-home-media-max':image.width+'px'}}>
       <img src={image.src} alt={image.alt} loading="lazy" decoding="async"/>
     </div>:body}
-    {children.length?<div className="loc-home-block__children">
+    {children.length?<div className="loc-home-block__children" style={{'--loc-bubble-columns':HomeBlock.bubbleColumns([slot.bubbleColumns],slot.pageName||'index')}}>
       {children.map((entity,index)=>{
         const card=HomeBlock.childPresentation(entity.title)==='card';
         return <article className={'loc-home-block__child '+(card?'loc-home-block__child--card':'loc-home-block__child--bubble')}
