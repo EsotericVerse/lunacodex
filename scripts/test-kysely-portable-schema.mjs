@@ -47,7 +47,7 @@ for(const [engine,namespace] of [['postgres','public'],['mysql','silver'],['mssq
       ?['writer_galaxy','writer_anchor']
       :[namespace+'.writer_galaxy',namespace+'.writer_anchor']);
     const galaxy=tables[0].columns,anchor=tables[1].columns;
-    assert.ok(galaxy.includes('uid')&&galaxy.includes('content')&&galaxy.includes('date'));
+    assert.ok(galaxy.includes('uid')&&galaxy.includes('content')&&galaxy.includes('date')&&galaxy.includes('attr'));
     for(const column of ['statics','culture','search','trace','list','keyword','extract','others'])
       assert.ok(galaxy.includes(column));
     assert.ok(anchor.includes('uid')&&anchor.includes('type')&&anchor.includes('attr'));
@@ -97,7 +97,7 @@ test('rejects existing incompatible Galaxy/Anchor before selecting a new SQL tar
     (table,engine,ns)=>engine==='mysql'?table:ns+'.'+table);
   const names=['uid','title','content','createtime','location','UpdateTime',
     'url','source_id','target_id','ref_id','site','place_id','media_link',
-    'date','site_id','statics','culture','search','trace','list','keyword',
+    'date','site_id','attr','statics','culture','search','trace','list','keyword',
     'extract','others'];
   const entries=[
     {name:'writer_galaxy',schema:'dbo',columns:names.map(name=>({name}))},
