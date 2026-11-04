@@ -60,14 +60,14 @@ export function createIndexedDateKeywordReader({
   });
   let lastDate=null,datedDone=false,undatedDone=false;
   const pending=[];
-  const validDay=value=>typeof value==='string'&&/^\\d{4}-\\d{2}-\\d{2}$/.test(value);
+  const validDay=value=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value);
   // PostgreSQL DATE is text in some adapters and a UTC-midnight ISO timestamp
   // in others. Canonicalize at this boundary, never use timestamp sorting.
   const canonicalDay=value=>{
     if(validDay(value))return value;
     const serialized=value instanceof Date?value.toISOString():value;
     if(typeof serialized==='string'&&
-      /^\\d{4}-\\d{2}-\\d{2}T00:00:00(?:\\.\\d+)?(?:Z|\\+00:00)$/.test(serialized))
+      /^\d{4}-\d{2}-\d{2}T00:00:00(?:\.\d+)?(?:Z|\+00:00)$/.test(serialized))
       return serialized.slice(0,10);
     return null;
   };
