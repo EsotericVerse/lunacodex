@@ -59,13 +59,16 @@ export default function ScopeBlockDraftList({
   const [message,setMessage]=useState('');
   const table=`silver.${scopeId}_blocks`;
 
-  async function refreshBlockQueries(){
-    const bootstrapKey=appBootstrapKey(scopeId,pageName);
-    const displayKey=['scope-blocks',scopeId,pageName];
-    // The edited browser reads back its latest write; static public snapshots
-    // are updated at the next published build, without any ISR request.
+  async function publishSavedBlocks(rows){
+    // The rows were committed by SQL. Update the active viewer from those exact
+    // saved values: do not start two independent SELECTs on every Dock Save.
+    // Future visits to this edited page read the live provider, not published JS.
     invalidateScopeBlockPage(scopeId,pageName);
-    await Promise.all([mutate(bootstrapKey),mutate(displayKey)]);
+    await Promise.all([
+      mutate(appBootstrapKey(scopeId,pageName),
+        current=>current?{...current,blocks:rows}:current,{revalidate:false}),
+      mutate(['scope-blocks',scopeId,pageName],rows,{revalidate:false})
+    ]);
   }
 
   function patchDraft(uid,patch){
@@ -192,11 +195,8 @@ export default function ScopeBlockDraftList({
         await deleteRows(table,{filters:[{column:'uid',operator:'eq',value:draft.uid}]});
       }
       const savedDrafts=[];
+      const committedRows=[];
       for(const {index,draft,modified,order} of changed){
-        if(!modified){
-          savedDrafts.push(draft);
-          continue;
-        }
         const isHomeFrame=isHomeFrameFor(scopeId,pageName,draft.order);
         const values={
           page_name:pageName,
@@ -214,16 +214,19 @@ export default function ScopeBlockDraftList({
           })),pageName)
         };
         const uid=draft.stored?draft.uid:/^[A-Za-z0-9]{8}$/.test(String(draft.uid||''))?draft.uid:HomeBlock.createUid();
-        if(draft.stored)await updateRows(table,values,{filters:[{column:'uid',operator:'eq',value:uid}]});
-        else await insertRows(table,[{uid,...values}]);
+        if(modified){
+          if(draft.stored)await updateRows(table,values,{filters:[{column:'uid',operator:'eq',value:uid}]});
+          else await insertRows(table,[{uid,...values}]);
+        }
         savedDrafts.push({...draft,uid,stored:true,order:values.block_order,_deleted:false});
+        committedRows.push({uid,...values});
       }
-      // SQL writes have already succeeded. Failure to refresh SWR must never
-      // be presented as an unsuccessful write (which invites duplicate retries).
+      // A successful SQL write is final, not a temporary save. Cache updates
+      // are local only; failure to update SWR does not undo the database write.
       let refreshWarning='';
       if(plan.hasWrites){
-        try{await refreshBlockQueries();}
-        catch{refreshWarning='資料已儲存，但畫面重新載入失敗，重新整理頁面即可。';}
+        try{await publishSavedBlocks(committedRows);}
+        catch{refreshWarning='資料已儲存，但畫面同步失敗，重新整理頁面即可。';}
       }
       setDrafts(savedDrafts);
       initialDrafts.current=JSON.stringify(savedDrafts);
