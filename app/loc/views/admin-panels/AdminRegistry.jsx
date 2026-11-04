@@ -326,9 +326,12 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
   const patchConfig=(key,value)=>setEditDraft(draft=>{
     const base=draft?.scopeId===selectedId?draft:draftFromSelected();
     const previous=base.config||config;
-    return {...base,config:isJsonbScope(selectedId)&&scopeFeatureKeys.includes(key)
-      ?{...previous,able:{...(previous?.able||{}),[scopeFeatureName(key)]:value?1:0}}
-      :{...previous,[key]:value}};
+    const fourBooleans=['lo3rwang','lrunes'].includes(selectedId);
+    return {...base,config:fourBooleans&&scopeFeatureKeys.includes(key)
+      ?{...previous,id:selectedId,[scopeFeatureName(key)]:Boolean(value)}
+      :isJsonbScope(selectedId)&&scopeFeatureKeys.includes(key)
+        ?{...previous,able:{...(previous?.able||{}),[scopeFeatureName(key)]:value?1:0}}
+        :{...previous,[key]:value}};
   });
   const patchPageCopy=(key,value)=>setEditDraft(draft=>{
     const base=draft?.scopeId===selectedId?draft:draftFromSelected();
