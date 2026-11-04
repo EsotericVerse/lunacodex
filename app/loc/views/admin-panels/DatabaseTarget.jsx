@@ -210,7 +210,7 @@ export default function DatabaseTarget(){
       <p className="scope-status">LOC 登入：{authOverview.primaryOAuth}</p>
       <p className="scope-status">Clerk 環境：{recoveryOAuth}</p>
       <div className="scope-status" style={{display:'flex',gap:16,flexWrap:'wrap'}}>
-        <AuthStatusLight label="Supabase Auth" enabled={authOverview.supabaseSupported}/>
+        <span className="scope-status">Supabase Auth：不使用（LOC 已改由獨立認證處理）</span>
         <AuthStatusLight label="Neon Auth" enabled={authOverview.neonSupported}/>
       </div>
       <p className="scope-status">燈號只表示程式有對應 Auth 支援且必要設定已提供，不代表服務在線、已啟用或已通過實際登入。此處不能編輯認證，也不會修改 Database Link 或切換路由。</p>
