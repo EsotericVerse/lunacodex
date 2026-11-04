@@ -60,7 +60,18 @@ export function createIndexedDateKeywordReader({
   });
   let lastDate=null,datedDone=false,undatedDone=false;
   const pending=[];
-  const validDay=value=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value);
+  const validDay=value=>typeof value==='string'&&/^\\d{4}-\\d{2}-\\d{2}$/.test(value);
+  // PostgreSQL DATE is text in some adapters and a UTC-midnight ISO timestamp
+  // in others. Canonicalize at this boundary, never use timestamp sorting.
+  const canonicalDay=value=>{
+    if(validDay(value))return value;
+    const serialized=value instanceof Date?value.toISOString():value;
+    if(typeof serialized==='string'&&
+      /^\\d{4}-\\d{2}-\\d{2}T00:00:00(?:\\.\\d+)?(?:Z|\\+00:00)$/.test(serialized))
+      return serialized.slice(0,10);
+    return null;
+  };
+  const normalized=rows=>rows.map(row=>({...row,date:canonicalDay(row?.date)}));
   const verifyDated=row=>{
     if(!row||!validDay(row.date)||!row.createtime)
       throw new Error('Galaxy 日期與發表時間不一致，未寫入分析結果');
@@ -80,17 +91,18 @@ export function createIndexedDateKeywordReader({
       throw new TypeError('Invalid article page size');
     while(pending.length<limit&&(!datedDone||!undatedDone)){
       if(!datedDone){
-        const page=await readDatePage({after:lastDate,limit});
-        if(!Array.isArray(page)||page.length>limit)
+        const rawPage=await readDatePage({after:lastDate,limit});
+        if(!Array.isArray(rawPage)||rawPage.length>limit)
           throw new Error('Galaxy 日期分頁格式無效');
-        if(!page.length){datedDone=true;continue;}
+        if(!rawPage.length){datedDone=true;continue;}
+        const page=normalized(rawPage);
         const boundary=page.at(-1)?.date;
         if(!validDay(boundary)||lastDate!==null&&boundary<=lastDate||
           page.some(row=>!validDay(row?.date)||
             row.date>boundary||(lastDate!==null&&row.date<=lastDate)))
           throw new Error('Galaxy 日期游標排序不完整，未寫入分析結果');
-        const peers=completeRows(await readDatePeers({date:boundary,maximumRows}),
-          'Galaxy 同日文章');
+        const peers=normalized(completeRows(await readDatePeers({date:boundary,maximumRows}),
+          'Galaxy 同日文章'));
         if(!peers.length||peers.some(row=>row.date!==boundary))
           throw new Error('Galaxy 同日文章不完整，未寫入分析結果');
         const complete=[...page.filter(row=>row.date!==boundary),...peers];
