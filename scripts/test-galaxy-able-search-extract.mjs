@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {GALAXY_ABLE_KEYS,galaxyAble,prepareGalaxyInsertRows} from '../app/loc/galaxy-able.mjs';
 import {extractSearchContext} from '../app/loc/search-extract.mjs';
 
-test('Galaxy stores eight independent feature flags, even when an article is hidden',()=>{
+test('Galaxy stores canonical eight attr booleans, even when an article is hidden',()=>{
   assert.deepEqual(GALAXY_ABLE_KEYS,['statics','culture','search','trace','list','keyword','extract','others']);
   const features=galaxyAble({searchable:false,statistics_able:false,
     able:{statics:true,culture:false,search:true,trace:false,list:false,keywords:true,game:true,extract:true}});
@@ -14,6 +14,10 @@ test('Galaxy stores eight independent feature flags, even when an article is hid
   assert.equal(features.extract,true);
   const saved=prepareGalaxyInsertRows('silver.lo3rwang_galaxy',[{uid:'0123aBCD'}])[0];
   assert.equal(saved.others,true);
+  assert.deepEqual(saved.attr,galaxyAble(saved));
+  assert.deepEqual(Object.keys(saved.attr),GALAXY_ABLE_KEYS);
+  assert.equal(galaxyAble({attr:{list:false,extract:false},list:true,extract:true}).list,false);
+  assert.equal(galaxyAble({attr:{list:false,extract:false},list:true,extract:true}).extract,false);
   assert.equal(Object.hasOwn(saved,'able'),false);
 });
 test('search excerpt shows exactly the hit with approximately ten surrounding characters',()=>{
@@ -45,4 +49,13 @@ test('device-local SQLite continues storing the archived able payload',()=>{
   assert.equal(Object.hasOwn(local,'list'),false);
   assert.equal(local.able.keywords,true);
   assert.equal(local.able.game,true);
+});
+
+// Preserve legacy boolean columns only while SQL/RPC readers finish the attr cutover.
+test('Galaxy attr migration contains both live Scope tables and a non-destructive sync trigger',()=>{
+  const sql=readFileSync(new URL('../supabase/migrations/20261104221000_galaxy_attr_eight_flags.sql',import.meta.url),'utf8');
+  for(const scope of ['lo3rwang','lrunes'])assert.match(sql,new RegExp('silver\\.'+scope+'_galaxy'));
+  assert.match(sql,/CREATE OR REPLACE FUNCTION silver\\.sync_galaxy_capability_attr/);
+  assert.match(sql,/NEW\\.attr := pg_catalog\\.jsonb_build_object/);
+  assert.doesNotMatch(sql,/DROP COLUMN|DROP TABLE/);
 });
