@@ -243,6 +243,7 @@ export default function Culture(){
   const [selectedPeriodKey,setSelectedPeriodKey]=useState('');
   const [structureWindowKey,setStructureWindowKey]=useState('');
   const [expandedEraIds,setExpandedEraIds]=useState([]);
+  const [expandedEditorEraIds,setExpandedEditorEraIds]=useState([]);
   const periodSelectionScopeRef=useRef('');
   const [selectedCategory,setSelectedCategory]=useState('');
   const [articleSort,setArticleSort]=useState('desc');
@@ -692,6 +693,11 @@ export default function Culture(){
       ?simpleTimeRiver(timelineItems,userSettings.time)
       :buildEraRiver(timelineItems,expandedEraIds),
     [timelineItems,expandedEraIds,userActive,userSettings.time]);
+  const editorEraRiver=useMemo(()=>
+    buildEraRiver(timelineItems,expandedEditorEraIds,{editorOnly:true}),
+    [timelineItems,expandedEditorEraIds]);
+  const toggleEditorEra=groupId=>setExpandedEditorEraIds(current=>
+    current.includes(groupId)?current.filter(id=>id!==groupId):[...current,groupId]);
   const toggleTimeTrace=groupId=>{
     const open=!expandedEraIds.includes(groupId);
     setExpandedEraIds(current=>
@@ -1284,23 +1290,16 @@ export default function Culture(){
             {query.error?<p className='scope-status scope-error' role='alert'>{featureDataErrorMessage(query.error,UI_COPY)}</p>:null}
             {!query.isPending&&!query.error&&!timelineItems.length
               ?<p className='scope-status'>目前尚未建立此類時間紀錄，可直接在下方新增。</p>:null}
-            {!query.isPending&&!query.error&&timelineItems.length>0?<CultureTimeline
-              key={'time-editor-unified'}
-              items={timelineItems}
+            {!query.isPending&&!query.error&&editorEraRiver.groups.length>0?<CultureTimeline
+              key={'time-editor-era-period'}
+              items={editorEraRiver.items}
+              extraGroups={editorEraRiver.groups}
               labelOf={localizedLabelOf}
               focus={EMPTY_RIVER_FOCUS}
-              mode='overview'
-              windowStart={currentStructureStart}
-              windowEnd={currentStructureEnd}
-              onTimeClick={date=>beginTimelineCreation('anchor',date)}
+              mode='trace'
+              onGroupToggle={toggleEditorEra}
               onSelect={item=>beginTimelineRecordEdit(item)}
-              editable
-              onMove={moveTimelineRecord}
-              onUpdate={(item,row)=>{
-                beginTimelineRecordEdit(item,row?.recordId);
-                return null;
-              }}
-              onRemove={removeTimelineRecord}
+              editable={false}
             />:null}
             {selectedTimelineInfo?<div className='scope-card scope-culture-timeline-selection' role='status'>
               <strong>{selectedTimelineInfo.content||selectedTimelineInfo.title||'時間紀錄'}</strong>
