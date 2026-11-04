@@ -273,6 +273,7 @@ export default function ScopeBlockDraftList({
         {visibleDrafts.length>1&&!pinnedHero?<button type="button" className="loc-button" disabled={busy||!HomeBlock.canSwapHomeBlockPositions(pageName,visibleDrafts,index,index+1)} onClick={()=>moveBlock(draft.uid,1)}><UiText id="uiExtra.editBlocks.moveDown"/></button>:null}
         {allowDelete?<button type="button" className="loc-button scope-danger-button" disabled={busy} onClick={()=>toggleDelete(draft.uid)}><UiText id="uiExtra.editBlocks.remove"/></button>:null}
       </div>
+      <div className="scope-editor-stage"><h3 className="scope-editor-stage__title">文字內容</h3><p className="scope-editor-stage__help">依序設定標題、副標題與正文；下方另行設定圖片及附屬內容。</p>
       <ObjectEditor mode="scope" fields={[
         ...(editEyebrow?[{
           key:'eyebrow',label:<UiText id="uiExtra.editBlocks.englishEyebrow"/>,
@@ -294,8 +295,9 @@ export default function ScopeBlockDraftList({
           canInsertImage:allowImages&&!isHomeFrame&&canInsertImageIn(draft,draft.text)
         }
       ]}/>
-      {isHomeFrame?<HeroImageFieldset draft={draft} image={image} allowImageOnly={pageName==='index'} onChange={(changes,removeEmbedded)=>patchImage(draft.uid,changes,removeEmbedded)}/>:null}
-      {allowEntities?renderDraftEntities(draft):null}
+      </div>
+      {isHomeFrame?<div className="scope-editor-stage"><h3 className="scope-editor-stage__title">主視覺圖片</h3><HeroImageFieldset draft={draft} image={image} allowImageOnly={pageName==='index'} onChange={(changes,removeEmbedded)=>patchImage(draft.uid,changes,removeEmbedded)}/></div>:null}
+      {allowEntities?<div className="scope-editor-stage"><h3 className="scope-editor-stage__title">附屬內容</h3>{renderDraftEntities(draft)}</div>:null}
     </section>;
   }
 
