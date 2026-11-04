@@ -1,5 +1,5 @@
 import {authorityAction} from './authority-client.mjs';
-import {searchMemory,readMemory} from './galaxy-read.mjs';
+import {readMemory} from './galaxy-read.mjs';
 import {SCOPE_ROUTE_INDEX} from '../../modular/scope-route-index.js';
 const PUBLIC_SCOPE_IDS=Object.freeze(SCOPE_ROUTE_INDEX.filter(row=>row.active&&row.scope_id!=='loc')
   .map(row=>row.scope_id).filter(id=>/^[a-z][a-z0-9]{0,14}$/.test(id)));
@@ -86,14 +86,6 @@ const TOOLS=[
   {name:'loc_connection_status',description:'Check LOC MCP and Clerk OAuth connectivity (read only).',
     inputSchema:{type:'object',properties:{},additionalProperties:false},
     annotations:{readOnlyHint:true,destructiveHint:false}},
-  {name:'search_memory',description:'Search PUBLIC LOC Galaxy articles in title or content, e.g. LP26. No private messages or administrator-only results. Returns article UIDs for read_memory.',
-    inputSchema:{type:'object',properties:{
-      query:{type:'string',minLength:2,maxLength:100,description:'Text to search in title and content'},
-      scopeid:{type:'string',enum:PUBLIC_SCOPE_IDS,description:'Select one public LOC Scope; group aggregation requires separate authorization'},
-      limit:{type:'integer',minimum:1,maximum:20},
-      offset:{type:'integer',minimum:0,maximum:500}
-    },required:['query'],additionalProperties:false},
-    annotations:{readOnlyHint:true,destructiveHint:false}},
   {name:'read_memory',description:'Read a PUBLIC LOC Galaxy article by exact, case-sensitive UID; supports content paging with offset/max_chars.',
     inputSchema:{type:'object',properties:{
       uid:{type:'string',pattern:'^[A-Za-z0-9]{8}$',description:'Exact Galaxy article UID'},
@@ -125,18 +117,10 @@ const TOOLS=[
       title:{type:'string',maxLength:350},content:{type:'string',maxLength:125000},
       updated_at:{type:'string'}
     },required:['scopeid','uid','pr_number','title','content','updated_at'],additionalProperties:false}},
-  {name:'search_scope',description:'Search the authenticated Scope’s OWN private title/content; uses its configured database.',
-    inputSchema:{type:'object',properties:{scopeid:{type:'string'},query:{type:'string'},
-      limit:{type:'integer',minimum:1,maximum:20}},required:['scopeid','query'],additionalProperties:false},
-    annotations:{readOnlyHint:true,destructiveHint:false}},
   {name:'read_scope',description:'Read an authorized Scope article by exact UID; groupid permits group-authorized reads.',
     inputSchema:{type:'object',properties:{scopeid:{type:'string'},uid:{type:'string'},
       groupid:{type:'string'},offset:{type:'integer'},max_chars:{type:'integer'}},
       required:['scopeid','uid'],additionalProperties:false},
-    annotations:{readOnlyHint:true,destructiveHint:false}},
-  {name:'search_group',description:'Search multiple member Scopes only after Scope Group read authorization; labels each result with scopeid.',
-    inputSchema:{type:'object',properties:{groupid:{type:'string'},query:{type:'string'},
-      limit:{type:'integer',minimum:1,maximum:20}},required:['groupid','query'],additionalProperties:false},
     annotations:{readOnlyHint:true,destructiveHint:false}},
   {name:'join_scope_group',description:'Group manager attaches an existing Scope; does not move or copy data.',
     inputSchema:{type:'object',properties:{groupid:{type:'string'},scopeid:{type:'string'}},
@@ -190,9 +174,8 @@ export async function handleMcp(request,env={}){
         galaxyWriteSupported:true,writeRequiresScopeAuthorization:true,
         availableTools:TOOLS.map(tool=>tool.name)});
       try{
-        const value=(name==='search_memory'||name==='read_memory')?
-          (name==='search_memory'?await searchMemory(args,env):await readMemory(args,env)):
-          await authorityAction(name,args,match[1],env);
+        const value=name==='read_memory'?
+          await readMemory(args,env):await authorityAction(name,args,match[1],env);
         return toolResponse(payload.id,value);
       }catch(error){
         const validation=error?.code==='INVALID_ARGUMENT';
