@@ -668,15 +668,45 @@ export async function searchGalaxyRows(scopes,query,{
 }={}){
   const q=String(query||'').trim();
   if(!q&&!browse)return {rows:[],failures:[],hasMore:false,nextCursor:null};
+  // Emergency cost/safety policy: searchable inputs can only be exact UID or PR.
+  // Never execute content/title/Anchor.description ILIKE from public Search.
+  if(!browse){
+    const uid=/^[0-9A-Za-z]{8}$/.test(q)?q:'';
+    const pr=/^PR\\s*#?\\s*(\\d{1,7})$/i.exec(q);
+    if(!uid&&!pr)return {rows:[],failures:[],hasMore:false,nextCursor:null};
+    const scopeList=(Array.isArray(scopes)?scopes:[]).filter(scope=>scope?.id&&scope.galaxy);
+    const hidden=new Set((Array.isArray(hiddenScopeIds)?hiddenScopeIds:[]).map(String));
+    const failures=[];
+    for(const scope of scopeList){
+      if(signal?.aborted){const error=new Error('Request cancelled');error.name='AbortError';throw error;}
+      const authenticated=Boolean(managementOnly||hidden.has(scope.id));
+      const local=localArticle(scope);
+      const filters=uid?[{column:'uid',operator:'eq',value:uid}]:[
+        {column:'site',operator:'eq',value:'github'},
+        {column:'site_id',operator:'eq',value:'EsotericVerse/moon-runes-pwa#'+pr[1]}
+      ];
+      if(!authenticated)filters.push(articlePermissionFilter(scope,'search'));
+      try{
+        const {rows=[]}=await selectRows(scope.galaxy,{
+          columns:['uid','title','createtime',...(local?['able']:['attr'])].join(','),
+          filters,limit:1,authenticated,signal
+        });
+        if(rows.length)return {rows:rows.map(row=>recordFor(row,scope.id+' 文章',scope.id+':exact-id',scope,scope.galaxy)),
+          failures,hasMore:false,nextCursor:null};
+      }catch(error){if(error?.name==='AbortError'||signal?.aborted)throw error;
+        failures.push(new Error(scope.id+': '+String(error?.message||error)));
+      }
+    }
+    return {rows:[],failures,hasMore:false,nextCursor:null};
+  }
   const safeLimit=Math.max(1,Math.min(DEFAULT_LIST_BATCH_SIZE,Math.floor(Number(limit)||DEFAULT_LIST_BATCH_SIZE)));
   const scopeList=(Array.isArray(scopes)?scopes:[]).filter(scope=>scope?.id);
   const hiddenScopes=new Set((Array.isArray(hiddenScopeIds)?hiddenScopeIds:[]).map(value=>String(value||'').trim()).filter(Boolean));
   const scopeProviders=scopeList.map(scope=>managementOnly
     ?managementArticleProviders(scope,{contentType,sourceFilter,sourceTaxonomy,placeOnly})
     :genericScopeProviders(scope,{includeHiddenText:hiddenScopes.has(scope.id),contentType,sourceFilter,sourceTaxonomy,placeOnly}));
-  // Every query searches Galaxy.content, then all Anchor.description
-  // regardless of its Time/Trace/Keyword/Media type. Browsing keeps an
-  // article-only list so empty searches cannot accidentally scan every Anchor.
+  // Browse mode is an article list only. Nonempty searches above are
+  // short-circuited into exact lookups; no content/description search executes.
   const providers=browse
     ?scopeProviders.map(group=>group[0]).filter(Boolean)
     :Array.from({length:managementOnly?1:2},(_,index)=>
