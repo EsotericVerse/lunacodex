@@ -1367,7 +1367,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
             :''}
           detailReading={identityReader||expandedReader}
           source={searchParams?.get('identity')?row.styleTagMatch?'':row.source:''}
-          date={searchParams?.get('identity')?row.date:''}
+          date={row.date}
           body={(row.resourceType==='galaxy'||row.resourceType==='anchor')&&row.snippet&&matchedQueryRef.current&&!browseResults
             ?highlightSearchText(row.snippet,matchedQueryRef.current):''}
           hidden={false}
