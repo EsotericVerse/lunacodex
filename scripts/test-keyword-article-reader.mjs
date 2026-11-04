@@ -114,3 +114,37 @@ test('indexed reader rejects truncated same-day groups',async()=>{
   });
   await assert.rejects(reader({limit:1}),/分頁不完整/);
 });
+
+test('indexed reader accepts PostgreSQL DATE serialized as UTC midnight',async()=>{
+  const records=[
+    {uid:'Ab000001',date:'2026-01-01T00:00:00.000Z',createtime:'2026-01-01T02:00:00Z'},
+    {uid:'Ab000002',date:'2026-01-02T00:00:00.000Z',createtime:'2026-01-02T02:00:00Z'}
+  ];
+  const calls=[];
+  const reader=createIndexedDateKeywordReader({
+    readDatePage:async({after,limit})=>{
+      calls.push(after);
+      return records.filter(row=>!after||row.date.slice(0,10)>after).slice(0,limit);
+    },
+    readDatePeers:async({date})=>{
+      const rows=records.filter(row=>row.date.slice(0,10)===date);
+      return {rows,count:rows.length};
+    },
+    readUndated:async()=>({rows:[],count:0})
+  });
+  const first=await reader({limit:1});
+  const second=await reader({limit:1});
+  const third=await reader({limit:1});
+  assert.deepEqual([first[0].date,second[0].date],['2026-01-01','2026-01-02']);
+  assert.equal(third.length,0);
+  assert.deepEqual(calls,[null,'2026-01-01','2026-01-02']);
+});
+
+test('indexed reader still rejects non-midnight datetime in DATE column',async()=>{
+  const reader=createIndexedDateKeywordReader({
+    readDatePage:async()=>[{uid:'Ab000001',date:'2026-01-01T12:00:00Z',createtime:'2026-01-01T12:00:00Z'}],
+    readDatePeers:async()=>({rows:[],count:0}),
+    readUndated:async()=>({rows:[],count:0})
+  });
+  await assert.rejects(reader({limit:1}),/日期游標排序不完整/);
+});
