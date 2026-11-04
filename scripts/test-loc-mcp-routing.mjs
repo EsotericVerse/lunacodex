@@ -11,7 +11,16 @@ const publicKey={...await webcrypto.subtle.exportKey('jwk',pair.publicKey),kid:'
 const originalFetch=globalThis.fetch;
 let jwksQueries=0;
 let publicApiRequests=[];
+let quotaRequests=[];
+let quotaBlocked=false;
 globalThis.fetch=async (url,options)=>{
+  if(String(url)==='https://loc-authority-control.sopa2306.workers.dev/v1/mcp/quota'){
+    const body=JSON.parse(options.body);
+    quotaRequests.push(body);
+    return quotaBlocked&&body.action==='acquire'
+      ?Response.json({error:'MCP request limit exceeded'},{status:429})
+      :Response.json(body.action==='acquire'?{lease:'7e84c5a7-f95d-414d-82e8-e84542ee60ab'}:{released:true});
+  }
   if(String(url)===CLERK_ISSUER+'/.well-known/jwks.json'){
     jwksQueries++;return Response.json({keys:[publicKey]});
   }
@@ -109,5 +118,21 @@ test('MCP tool invalid input returns an error without database access',async()=>
   const result=(await response.json()).result;
   assert.equal(result.isError,true);
   assert.equal(publicApiRequests.length,0);
+});
+test('Public UID read is metered; 429 never reaches Supabase',async()=>{
+  const jwt=await token();
+  publicApiRequests=[];quotaRequests=[];
+  const ok=await handleMcp(req('POST',jwt,rpc('tools/call',
+    {name:'read_memory',arguments:{uid:'30D7AFD7'}})));
+  assert.equal((await ok.json()).result.structuredContent.content,'Galaxy real article');
+  assert.deepEqual(quotaRequests.map(x=>x.action),['acquire','release']);
+  assert.equal(quotaRequests[0].kind,'read');
+  assert.equal(publicApiRequests.length,1);
+  quotaBlocked=true;
+  const blocked=await handleMcp(req('POST',jwt,rpc('tools/call',
+    {name:'read_memory',arguments:{uid:'30D7AFD7'}})));
+  assert.equal((await blocked.json()).result.isError,true);
+  assert.equal(publicApiRequests.length,1);
+  quotaBlocked=false;
 });
 test.after(()=>{globalThis.fetch=originalFetch;});
