@@ -167,6 +167,49 @@ export function buildKyselySelectQuery(trx,input,{dialect='postgres',namespace,p
   return {request:req,query:req.head?null:query,countQuery};
 }
 
+function normalizedGalaxyMutationRow(row,operation,dialect){
+  const fields={...row},patch={};
+  for(const flag of GALAXY_BOOLEAN_COLUMNS){
+    if(Object.hasOwn(fields,flag)){
+      if(typeof fields[flag]!=='boolean')throw new Error('Invalid Galaxy boolean '+flag);
+      patch[flag]=fields[flag];delete fields[flag];
+    }
+  }
+  const packed=Object.hasOwn(fields,'attr')?fields.attr:null;
+  if(packed!==null){
+    if(typeof packed!=='object'||Array.isArray(packed)||
+       Object.entries(packed).some(([key,v])=>!GALAXY_BOOLEAN_COLUMNS.has(key)||typeof v!=='boolean'))
+      throw new Error('Invalid Galaxy attr');
+    Object.assign(patch,packed);delete fields.attr;
+  }
+  if(operation==='update'){
+    if(Object.keys(patch).length){
+      if(dialect==='postgres')
+        fields.attr=sql`coalesce(${sql.ref('attr')},'{}'::jsonb) || ${JSON.stringify(patch)}::jsonb`;
+      else if(dialect==='mysql')
+        fields.attr=sql`json_merge_patch(coalesce(${sql.ref('attr')},json_object()),${JSON.stringify(patch)})`;
+      else if(dialect==='mssql'){
+        let expr=sql`coalesce(${sql.ref('attr')},'{}')`;
+        for(const [key,value] of Object.entries(patch))
+          expr=sql`json_modify(${expr},${'$.'+key},cast(${value?1:0} as bit))`;
+        fields.attr=expr;
+      }
+    }
+    return fields;
+  }
+  const attr={...Object.fromEntries([...GALAXY_BOOLEAN_COLUMNS].map(key=>[key,true])),...patch};
+  if(String(row.site||'').toLowerCase()==='mcp'&&
+     !Object.hasOwn(patch,'list'))attr.list=false;
+  fields.attr=dialect==='postgres'?attr:JSON.stringify(attr);
+  return fields;
+}
+function normalizedGalaxyMutationValues(values,operation,dialect,table){
+  if(!galaxyTable(table)||operation==='delete')return values;
+  return Array.isArray(values)
+    ?values.map(row=>normalizedGalaxyMutationRow(row,operation,dialect))
+    :normalizedGalaxyMutationRow(values,operation,dialect);
+}
+
 function sameKeys(rows){
   const keys=Object.keys(rows[0]||{}).sort().join('\0');
   return rows.every(row=>Object.keys(row).sort().join('\0')===keys);
@@ -220,7 +263,8 @@ function applyMutationReturning(query,req,dialect){
 
 export function buildKyselyMutationQuery(trx,input,{dialect='postgres',namespace}={}){
   const validated=validateQuery(input);
-  const req={...validated,values:serializePortableJsonFields(validated.values,dialect)};
+  const req={...validated,values:normalizedGalaxyMutationValues(
+    serializePortableJsonFields(validated.values,dialect),validated.operation,dialect,validated.table)};
   const fullTable=databaseTable(req,dialect,namespace);
   if(!['insert','update','delete','upsert'].includes(req.operation))throw new Error('Unsupported mutation');
   let query;
