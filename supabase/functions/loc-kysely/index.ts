@@ -410,8 +410,8 @@ Deno.serve(async (request) => {
         }
         const pattern="%"+String(query).trim().replace(/[\\%_]/g,"\\$&")+"%";
         const result=await sql`select uid,title,date,createtime from ${table}
-          where (title ilike ${pattern} or content ilike ${pattern})
-          order by createtime desc nulls last limit ${Number(limit)}`.execute(trx);
+          where content ilike ${pattern}
+          order by date desc nulls last limit ${Number(limit)}`.execute(trx);
         return result.rows;
       });
       return json({data:rows});

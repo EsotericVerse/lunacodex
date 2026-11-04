@@ -96,3 +96,24 @@ test('time-window and group readers use bounded independent lanes',()=>{
   assert.match(gateway,/if\(selectedRouteInFlight\)return selectedRouteInFlight;/);
   assert.match(gateway,/if\(revision===selectedRouteRevision\)/);
 });
+
+
+test('gateway public queue cannot exceed 10 concurrent slots',async()=>{
+  const {createPublicReadBudget}=await import('../app/loc/providers/kysely-read-budget.mjs');
+  let active=0,maximum=0;
+  const budget=createPublicReadBudget(500);
+  const items=await Promise.all(Array.from({length:40},(_,i)=>budget(async()=>{
+    active++;maximum=Math.max(maximum,active);
+    await new Promise(resolve=>setImmediate(resolve));
+    active--;return i;
+  })));
+  assert.equal(maximum,10);
+  assert.equal(items.length,40);
+});
+
+test('MCP search is content-only and ordered by indexed Galaxy date',()=>{
+  const gateway=readFileSync(new URL('../supabase/functions/loc-kysely/index.ts',import.meta.url),'utf8');
+  assert.ok(gateway.includes('where content ilike '));
+  assert.ok(gateway.includes('order by date desc nulls last limit'));
+  assert.ok(!gateway.includes('where (title ilike '));
+});

@@ -179,3 +179,10 @@ Kysely Edge `KyselyQuery.abortSignal(signal)` 現在把呼叫端取消訊號送�
 ### 搜尋的最小資料投影與進階指定（2026-11-04）
 
 Search 的全文比對**僅**作用於 Galaxy 的 `content` 與 Anchor 的 `description`；不搜尋 `title`、`type`、`uid`、`attr`。公開 Anchor 搜尋 SELECT 只投影 `uid,type,description`，另以 `invisible=false` 做公開篩選；`type` 只在進階搜尋選定時，以資料庫精確 `=` 比對。Anchor 沒有日期欄，搜尋不讀 `attr.date`，進階時間範圍僅限定 Galaxy `date`（既有 B-tree）；搜尋頁不再另讀文化時間定錨／時代選單。Anchor 預覽連回各功能頁，媒體跳媒體統計頁，不暴露 Anchor.attr。
+
+
+### Max MultiPara 與 MCP 內容搜尋（2026-11-04）
+
+`MAX_MULTIPARA=10` 是 `mapBounded` 和本地匿名 Gateway 讀取佇列的硬上限；要求 100 路時也最多啟動 10 路。公開查詢仍預設 3 路、文化群組 2 路。不同瀏覽器、MCP 與不同 Edge Function isolate **不共用** JavaScript 變數，因此這不是全域 10 條 PostgreSQL 連線限制。正式 DB 連線容量仍應由 Transaction Pooler 與伺服器端流控管理。
+
+`loc-kysely` 的 MCP 搜尋改為僅匹配 Galaxy `content`，排序採既有 Galaxy `date`。MCP 依 UID 讀取完整文章不變。Supabase Data API 的 Max Rows 管的是單次回傳的資料列數，並非總資料筆數、SQL 查詢累計次數或連線上限。大量 content 的 payload 成本另計。
