@@ -32,7 +32,7 @@ test('MCP QoS reserves 4 calls for writes within global 16 slots',async()=>{
   await assert.rejects(authority.mcpQuotaAcquire('write',who),
     error=>error.status===429);
   assert.equal(tickets.length,16);
-  assert.equal(new Set(tickets.map(item=>item.lease)).size,64);
+  assert.equal(new Set(tickets.map(item=>item.lease)).size,16);
   await assert.rejects(authority.mcpQuotaAcquire('write','clerk:user_Other'),
     error=>error.status===429);
   for(const ticket of tickets)await authority.mcpQuotaRelease(ticket.lease,who);
