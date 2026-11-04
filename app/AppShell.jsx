@@ -47,12 +47,29 @@ function DataSourceStatus({local=false}){
   useUiSection('uiExtra.dataSourceStatus');
   const section=copy.uiExtra.dataSourceStatus||{};
   const status=useSyncExternalStore(subscribeDbSourceStatus,getDbSourceStatus,getDbSourceStatus);
-  // The public shell must never expose database topology or routing controls.
-  if(local||(!status.unavailable&&!status.degraded))return null;
-  return <div className="scope-data-source-global" role="status">
-    <FieldText text={status.unavailable
-      ?'資料暫時無法讀取，請稍後重試。'
-      :'部分資料可能暫時無法顯示。'}/>
+  if(local)return <div className="scope-data-source-global">
+    <details className="scope-data-source-details">
+      <summary>{section.localTitle||UI_COPY.uiExtra.dataSourceStatus.localTitle}</summary>
+      <div className="scope-data-source-values"><span>{section.localActive||UI_COPY.uiExtra.dataSourceStatus.localActive}</span></div>
+    </details>
+  </div>;
+  const current=status.unavailable
+    ?section.unavailable||''
+    :status.degraded
+      ?`${section.backup||''}（${status.backupLabel}）`
+      :`${section.primary||''}（${status.primaryLabel}）`;
+  return <div className={'scope-data-source-global'+(status.unavailable?' is-unavailable':status.degraded?' is-backup':'')}>
+    <details className="scope-data-source-details" open={status.degraded||undefined}>
+      <summary>{section.detailsTitle}</summary>
+      <div className="scope-data-source-values">
+        <span><FieldText text="主要資料來源："/>{status.primaryLabel}</span>
+        <span><FieldText text="備用資料來源："/>{status.backupLabel||'未設定（選配）'}</span>
+        <span><FieldText text="目前使用："/>{current}</span>
+      </div>
+    </details>
+    {status.unavailable
+      ?<span role="status"><FieldText text={status.backupLabel?"主要與備援資料來源目前皆無法讀取，部分內容可能暫時無法顯示。":"主要資料來源暫時無法讀取，且未設定備援資料庫。部分內容可能暫時無法顯示。"}/></span>
+      :status.degraded?<span role="status"><FieldText text="備援資料可能有同步時間差。"/></span>:null}
   </div>;
 }
 
