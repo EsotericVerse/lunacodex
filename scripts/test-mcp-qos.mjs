@@ -38,6 +38,11 @@ test('MCP QoS reserves 4 calls for writes within global 16 slots',async()=>{
   for(const ticket of tickets)await authority.mcpQuotaRelease(ticket.lease,who);
   await assert.rejects(authority.mcpQuotaAcquire('read',who),
     error=>error.status===429);
+  // A second request is still blocked after leases have been released:
+  // saturation writes a durable 3-minute cooldown, not an in-memory flag.
+  const suspended=await authority.ctx.storage.get('mcp-qos-cooldown:'+who);
+  assert.ok(suspended>Date.now()+170000);
+  assert.ok(suspended<=Date.now()+180000);
   const next=await authority.mcpQuotaAcquire('read','clerk:user_Other');
   await authority.mcpQuotaRelease(next.lease,'clerk:user_Other');
 });
