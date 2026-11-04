@@ -37,6 +37,21 @@ function withFilters(query,filters){
   }
   return query;
 }
+
+// node-postgres serializes a JS array as a PostgreSQL array literal ("{3,...}"),
+// which is invalid for a jsonb column. Keep JSONB values as one explicitly
+// typed JSON document instead; never rewrite the stored bubble structure.
+// Only known JSONB fields are encoded, leaving SQL array columns untouched.
+const MANAGED_JSONB_COLUMNS=new Set([
+  'block_entity','attr','media_link','status','blacklist','theme','keywords',
+  'database','keyword_meta','DefaultArticleClass','search_aliases','caches'
+]);
+export function postgresManagedJsonbValues(values){
+  return Object.fromEntries(Object.entries(values).map(([key,value])=>[
+    key,MANAGED_JSONB_COLUMNS.has(key)&&value!==null&&typeof value==='object'
+      ?sql`${JSON.stringify(value)}::jsonb`:value
+  ]));
+}
 function scopeFromTable(table){
   for(const suffix of SCOPED_SUFFIXES){
     if(table.endsWith(suffix))return table.slice(0,-suffix.length);
@@ -167,7 +182,7 @@ export async function executeManagedKyselyWrite(trx,body){
       count+=Number(result.numAffectedRows||0);
     }
   }else{
-    const base=operation==='update'?trx.updateTable(name).set(values):trx.deleteFrom(name);
+    const base=operation==='update'?trx.updateTable(name).set(postgresManagedJsonbValues(values)):trx.deleteFrom(name);
     const result=await withFilters(base,filters).execute();
     count=Number(result[0]?.numUpdatedRows??result[0]?.numDeletedRows??result[0]?.numAffectedRows??0);
   }
