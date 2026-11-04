@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
+import {readFileSync} from 'node:fs';
 import {AUTH_PROVIDER_TYPES,AUTH_PROVIDER_FIELDS,validateAuthProviderSettings,
   publicAuthProviderSettings} from '../app/loc/auth/auth-provider-settings.mjs';
 
@@ -83,4 +84,17 @@ test('Neon Auth URLs can be saved without a separate OAuth client secret',()=>{
   assert.throws(()=>validateAuthProviderSettings('neon',
     {...config,callback_url:'https://elsewhere.example/callback'},
     {siteOrigin}),/LOC origin/);
+});
+
+test('Admin authentication editor reuses existing responsive workspace geometry',()=>{
+  const source=readFileSync(new URL('../app/loc/views/admin-panels/EnterpriseAuthReserved.jsx',import.meta.url),'utf8');
+  assert.match(source,/className="admin-inline-select"/);
+  assert.match(source,/className="loc-settings-select"/);
+  assert.match(source,/className="scope-management-fields"/);
+  assert.match(source,/longField\?'scope-management-wide-field'/);
+  assert.match(source,/useEditDockForm\(\{save,discard,/);
+  assert.doesNotMatch(source,/style=\{\{.*(?:width|maxWidth)/);
+  assert.doesNotMatch(source,/localStorage|sessionStorage/);
+  assert.doesNotMatch(source,/onClick=\{.*enable|setActive\(/);
+  assert.match(source,/authProviderSettingsRequest\(\)/);
 });
