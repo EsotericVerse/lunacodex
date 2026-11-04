@@ -101,7 +101,7 @@
 .loc-home-block__child-copy a{color:var(--loc-accent);text-decoration:underline}
 .loc-home-block__children{
   display:grid;
-  grid-template-columns:repeat(3,minmax(0,1fr));
+  grid-template-columns:repeat(var(--loc-bubble-columns,3),minmax(0,1fr));
   gap:.75rem;
   margin-top:1rem;
 }
@@ -471,3 +471,8 @@
 }
 
 .loc-home-block--hero>.loc-home-block__header{max-width:100%}
+
+/* Preserve the requested desktop density without squashing phone-sized bubbles. */
+@media(max-width:1000px){.loc-home-block__children{grid-template-columns:repeat(min(3,var(--loc-bubble-columns,3)),minmax(0,1fr));}}
+@media(max-width:680px){.loc-home-block__children{grid-template-columns:repeat(min(2,var(--loc-bubble-columns,3)),minmax(0,1fr));}}
+@media(max-width:420px){.loc-home-block__children{grid-template-columns:minmax(0,1fr);}}
