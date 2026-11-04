@@ -190,3 +190,40 @@ test('unified Anchor analysis emits aggregate total and deduplicated UID strings
  assert.equal(stats.matchedDocuments,2);
  assert.equal(JSON.stringify(saved).includes('"times"'),false);
 });
+
+
+const ruleTree=[
+  {uid:'CAT1',type:'category',name:'文字',lists:['CL01']},
+  {uid:'CL01',type:'class',name:'測試',lists:['GR01']},
+  {uid:'GR01',type:'group',name:'字詞',lists:['IT01','IT02','IT03']},
+  {uid:'IT01',type:'item',name:'家園',lists:['家園','故鄉','家園AND音樂','家園NOR旅館']},
+  {uid:'IT02',type:'item',name:'音樂',lists:['旋律']},
+  {uid:'IT03',type:'item',name:'地',lists:['土地','水土TO地']}
+];
+const classifyRule=content=>classifyKeywordDocumentsByUid(
+  [{uid:'Ab12Cd34',content}],ruleTree,'CL01'
+).classifications[0];
+
+test('AND adds a target Item hit when source occurs and keeps source classification',()=>{
+  const row=classifyRule('回到家園');
+  const hits=new Map(row.hits.map(hit=>[hit.uid,hit.times]));
+  assert.equal(hits.get('IT02'),1);
+  assert.ok(hits.get('IT01')>=1);
+});
+test('TO routes a source token to only the named target Item',()=>{
+  const row=classifyRule('水土');
+  assert.deepEqual(row.hits,[{uid:'IT03',times:1}]);
+});
+test('NOR ignores the exact combined phrase for its Item, not independent matches',()=>{
+  const excluded=classifyRule('家園旅館');
+  assert.equal(excluded.hits.some(hit=>hit.uid==='IT01'),false);
+  const independent=classifyRule('家園旅館之外，我仍懷念故鄉');
+  assert.equal(independent.hits.some(hit=>hit.uid==='IT01'),true);
+  const ordinary=classifyRule('家園與旅館分開討論');
+  assert.equal(ordinary.hits.some(hit=>hit.uid==='IT01'),true);
+});
+test('NOR leaves other Items unrelated to its exclusion untouched',()=>{
+  const row=classifyRule('家園旅館與旋律');
+  assert.equal(row.hits.some(hit=>hit.uid==='IT01'),false);
+  assert.equal(row.hits.some(hit=>hit.uid==='IT02'),true);
+});
