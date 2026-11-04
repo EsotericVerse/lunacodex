@@ -39,7 +39,7 @@ function mockDb(existing=[]){
 }
 
 for(const [engine,namespace] of [['postgres','public'],['mysql','silver'],['mssql','dbo']]){
-  test(engine+' initializes exactly Galaxy and Anchor with UID and eight permissions',async()=>{
+  test(engine+' initializes Galaxy and Anchor with canonical attr and no physical permissions',async()=>{
     const {db,tables,indexes}=mockDb();
     const out=await create(db,{engine,namespace,scopeId:'writer'});
     assert.equal(tables.length,2);
@@ -49,7 +49,7 @@ for(const [engine,namespace] of [['postgres','public'],['mysql','silver'],['mssq
     const galaxy=tables[0].columns,anchor=tables[1].columns;
     assert.ok(galaxy.includes('uid')&&galaxy.includes('content')&&galaxy.includes('date')&&galaxy.includes('attr'));
     for(const column of ['statics','culture','search','trace','list','keyword','extract','others'])
-      assert.ok(galaxy.includes(column));
+      assert.ok(!galaxy.includes(column));
     assert.ok(anchor.includes('uid')&&anchor.includes('type')&&anchor.includes('attr'));
     assert.ok(!galaxy.includes('able'));
     assert.equal(indexes.length,2);
@@ -97,8 +97,7 @@ test('rejects existing incompatible Galaxy/Anchor before selecting a new SQL tar
     (table,engine,ns)=>engine==='mysql'?table:ns+'.'+table);
   const names=['uid','title','content','createtime','location','UpdateTime',
     'url','source_id','target_id','ref_id','site','place_id','media_link',
-    'date','site_id','attr','statics','culture','search','trace','list','keyword',
-    'extract','others'];
+    'date','site_id','attr'];
   const entries=[
     {name:'writer_galaxy',schema:'dbo',columns:names.map(name=>({name}))},
     {name:'writer_anchor',schema:'dbo',columns:['uid','type','title',
@@ -107,6 +106,6 @@ test('rejects existing incompatible Galaxy/Anchor before selecting a new SQL tar
   assert.deepEqual(check(entries,{engine:'mssql',namespace:'dbo',scopeId:'writer'}),
     {scopeId:'writer',galaxy:'dbo.writer_galaxy',anchor:'dbo.writer_anchor'});
   const broken=JSON.parse(JSON.stringify(entries));
-  broken[0].columns=broken[0].columns.filter(row=>row.name!=='search');
-  assert.throws(()=>check(broken,{engine:'mssql',namespace:'dbo',scopeId:'writer'}),/search/);
+  broken[0].columns=broken[0].columns.filter(row=>row.name!=='attr');
+  assert.throws(()=>check(broken,{engine:'mssql',namespace:'dbo',scopeId:'writer'}),/attr/);
 });
