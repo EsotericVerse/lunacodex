@@ -67,14 +67,14 @@ export default function FeatureSettingsPage({embedded=false}){
           <p className="scope-status">{t(KEY+'timeFilterHint')}</p>
           {timeError?<p role="alert" className="scope-status scope-error">{t(KEY+'timeFilterSaveFailed')}</p>:null}
         </section>:null}
-        {account.loading?<p className="scope-status" role="status">{t(KEY+'featureLoading')}</p>
-          :account.user?<LocUserSettingsPanel verifiedSubject={account.user.id} section={section}/>
-            :<section className="loc-card">
-              <h2>{t(KEY+'featureSettingsSignIn')}</h2>
-              <p className="scope-status">{t(KEY+'featureSettingsSignInHint')}</p>
-              <button type="button" className="loc-button primary" onClick={login}>{t(KEY+'login')}</button>
-              {account.error||loginError?<p role="alert" className="scope-status scope-error">{loginError||account.error}</p>:null}
-            </section>}
+        {account.user?<LocUserSettingsPanel verifiedSubject={account.user.id} section={section}/>
+          :<section className="loc-card">
+            <h2>{t(KEY+'featureSettingsSignIn')}</h2>
+            <p className="scope-status">{t(KEY+'featureSettingsSignInHint')}</p>
+            {account.loading?<p className="scope-status" role="status">{t(KEY+'featureLoading')}</p>:null}
+            <button type="button" className="loc-button primary" onClick={login}>{t(KEY+'login')}</button>
+            {account.error||loginError?<p role="alert" className="scope-status scope-error">{loginError||account.error}</p>:null}
+          </section>}
       </div>
     </div>;
   return embedded?content:<FeaturePage featureId="setting">{content}</FeaturePage>;
