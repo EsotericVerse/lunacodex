@@ -7,7 +7,7 @@ import {planTraceVisibilityUids} from './trace-visibility-plan.mjs';
 import {useSearchParams} from 'next/navigation';
 import {useAccount} from './use-account';
 import {SCOPE_ROUTE_INDEX} from '../modular/scope-route-index.js';
-import {useEditDockForm} from '../modular/edit-dock';
+import {useEditDock,useEditDockForm} from '../modular/edit-dock';
 import {useAsyncResource,useResourceCache} from './use-async-resource';
 import {
   TRACE_SCOPES,traceMapIndexKey,traceCurrentKey,traceAllAnchorsKey,
@@ -28,6 +28,8 @@ const validPair=pair=>Array.isArray(pair)&&pair.length===2&&pair[0]&&pair[1]&&pa
 
 export default function TraceRouteManager({scopeId,mode='all'}){
   const account=useAccount(),cache=useResourceCache(),params=useSearchParams();
+  const dock=useEditDock();
+  const inDock=Boolean(dock?.active&&dock.scopeId===scopeId);
   const [owner,setOwner]=useState(scopeId==='loc'?(TRACE_SOURCE_ROWS[0]?.scope_id||''):scopeId);
   const [selectedUid,setSelectedUid]=useState('');
   const [editorOpen,setEditorOpen]=useState(false);
@@ -299,7 +301,7 @@ export default function TraceRouteManager({scopeId,mode='all'}){
         </div>:null}
       </div>)}
     </div>
-    {editorOpen?<form className="loc-trace-route-composer" onSubmit={save}>
+    {editorOpen?<form className="loc-trace-route-composer" onSubmit={event=>{if(inDock)event.preventDefault();else void save(event);}}>
       <h4>{editingUid?'編輯':'新增'}{type==='path'?'路線圖':'痕跡圖'}</h4>
       <div className="scope-management-fields">
         <label>名稱<input required maxLength={120} value={title} onChange={e=>setTitle(e.target.value)} disabled={busy}/></label>
@@ -392,12 +394,12 @@ export default function TraceRouteManager({scopeId,mode='all'}){
         </div>)}</div>
       </>}
       <div className="scope-stat-controls">
-        <button className="loc-button primary" type="submit" disabled={busy||!own||anchorIndex.isPending||Boolean(anchorIndex.error)||!title.trim()||
+        {!inDock?<button className="loc-button primary" type="submit" disabled={busy||!own||anchorIndex.isPending||Boolean(anchorIndex.error)||!title.trim()||
           (type==='path'?queue.length<2:!(pairs.length||routeUids.length))}>
           {busy?'儲存中…':'儲存'+(type==='path'?'路線圖':'痕跡圖')}
-        </button>
-        <button type="button" className="loc-button" disabled={busy}
-          onClick={()=>{if(allowLeave()){clear();setEditorOpen(false);}}}>取消</button>
+        </button>:null}
+        {!inDock?<button type="button" className="loc-button" disabled={busy}
+          onClick={()=>{if(allowLeave()){clear();setEditorOpen(false);}}}>取消</button>:null}
       </div>
     </form>:null}
     {!editorOpen&&showMap&&preview?<TraceMap spatialData={{anchors:previewAnchors,maps:[preview,...currentRouteMembers]}}
