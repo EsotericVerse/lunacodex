@@ -17,8 +17,8 @@ test('already-cancelled anonymous query never opens HTTP',async()=>{
     fetch:async()=>{fetches++;return ok()}
   });
   await assert.rejects(
-    db.schema('silver').from('lo3rwang_galaxy').select('uid')
-      .abortSignal(controller.signal),
+    Promise.resolve(db.schema('silver').from('lo3rwang_galaxy').select('uid')
+      .abortSignal(controller.signal)),
     error=>error?.name==='AbortError'
   );
   assert.equal(fetches,0);
