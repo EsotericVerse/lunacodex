@@ -14,7 +14,7 @@ const uniqueByUid=rows=>{
   }
   return [...byUid.values()];
 };
-export function buildEraRiver(source=[],expandedEraIds=[]){
+export function buildEraRiver(source=[],expandedEraIds=[],{editorOnly=false}={}){
   const traces=uniqueByUid(source.filter(row=>row?.entry_type==='era'));
   const events=new Map(uniqueByUid(source.filter(row=>row?.entry_type==='period'))
     .map(row=>[text(row.scope_id)+':'+text(row.uid),row]));
@@ -46,7 +46,7 @@ export function buildEraRiver(source=[],expandedEraIds=[]){
     groups.push({id:groupId,label:text(trace.title)||'時代 '+id,
       collapsible:true,expanded:isExpanded,order:traceIndex*10000,
       className:'scope-time-trace-parent'});
-    const traceAnchors=datedAnchors.filter(anchor=>withinTrace(anchor,trace));
+    const traceAnchors=editorOnly?[]:datedAnchors.filter(anchor=>withinTrace(anchor,trace));
     for(const anchor of traceAnchors)assigned.add(scope+':'+text(anchor.uid));
     if(!isExpanded)continue;
     const anchorGroup='trace-anchors:'+scope+':'+id;
@@ -74,7 +74,7 @@ export function buildEraRiver(source=[],expandedEraIds=[]){
         label:'期間｜'+(event?.title||'失效連線 '+eventId),
         className:'scope-time-trace-child'});
       if(!event)continue;
-      const slices=list(event.ranges);
+      const slices=list(event.ranges).length?event.ranges:[event];
       for(const [segment,range] of slices.entries()){
         const from=text(range?.start_date).slice(0,10);
         if(!validDate(from))continue;
@@ -92,7 +92,7 @@ export function buildEraRiver(source=[],expandedEraIds=[]){
           invalid_anchor_links:range.missing_anchor_ids||[],
           group_order:traceIndex*10000+position+2,
           ...(range.invalid?{class_name:'scope-time-trace-broken'}:{})});
-        const references=[range.start_anchor_id,range.end_anchor_id]
+        const references=editorOnly?[]:[range.start_anchor_id,range.end_anchor_id]
           .filter(Boolean).map(text);
         const seenAnchors=new Set();
         for(const anchorId of references){
@@ -113,7 +113,7 @@ export function buildEraRiver(source=[],expandedEraIds=[]){
       }
     }
   }
-  const unassigned=datedAnchors.filter(anchor=>
+  const unassigned=editorOnly?[]:datedAnchors.filter(anchor=>
     !assigned.has(text(anchor.scope_id)+':'+text(anchor.uid)));
   const scopes=[...new Set(unassigned.map(anchor=>text(anchor.scope_id)))];
   for(const [index,scope] of scopes.entries()){
