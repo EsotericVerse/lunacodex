@@ -705,3 +705,43 @@ test('LOC permission snapshot does one Kysely query rather than two per request'
   assert.match(auth,/crossJoin\('silver\.loc as l'\)/);
   assert.doesNotMatch(auth,/const config=await db\.selectFrom\('silver\.loc'\)/);
 });
+
+
+test('Verified Clerk OAuth expiry bounds lazy LOC authorization cache across requests',async()=>{
+  // Execute the actual pure authorization module with a fake Kysely SELECT.
+  // No Supabase connection, RLS or user credential is involved.
+  const source=read('app/loc/providers/loc-authorization.mjs')
+    .replace(/^export /gm,'');
+  const {bindLocAuthorization,locPermissions}=vm.runInNewContext(
+    source+'\n;({bindLocAuthorization,locPermissions})',{Date,Promise});
+  let selects=0;
+  const db=()=>({
+    fn:()=>'(lower email)',
+    selectFrom(){selects+=1;return{
+      crossJoin(){return this;},select(){return this;},where(){return this;},
+      async execute(){return[{
+        id:'lo3rwang',email:'editor@example.org',manage_role:'scope',active:true,
+        galaxy_table:'galaxy',anchor_table:'anchor',birthday:null,
+        blacklist:{email:[]}
+      }];}
+    }}
+  });
+  const claims={provider:'clerk',sub:'user_Abc123',email:'editor@example.org',
+    sid:'session-1',exp:Math.floor(Date.now()/1000)+120};
+  const first=db(),second=db();
+  bindLocAuthorization(first,{role:'authenticated',claims});
+  bindLocAuthorization(second,{role:'authenticated',claims});
+  const [one,two]=await Promise.all([locPermissions(first),locPermissions(second)]);
+  assert.equal(selects,1,'same unexpired OAuth session reuses one SQL permission check');
+  assert.equal(one.rows[0].id,'lo3rwang');
+  assert.equal(two.rows[0].id,'lo3rwang');
+  const another=db();
+  bindLocAuthorization(another,{role:'authenticated',claims:{...claims,sid:'session-2'}});
+  await locPermissions(another);
+  assert.equal(selects,2,'different Clerk session never reuses prior authorization');
+  const expired=db();
+  bindLocAuthorization(expired,{role:'authenticated',
+    claims:{...claims,exp:Math.floor(Date.now()/1000)-1}});
+  await locPermissions(expired);
+  assert.equal(selects,3,'expired OAuth credentials cannot reuse the cache');
+});
