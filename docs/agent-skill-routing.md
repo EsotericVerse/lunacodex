@@ -2,6 +2,16 @@
 
 > 2026-11-01；依使用者本次明確授權整理。本文按需讀取，`AGENTS.md` 不全文預載路由表。Claude 與 Codex 共享最高判別原則「審時度勢」，不得用某一個 Plugin 的通用流程取代。
 
+## 現行補充入口（2026-11-04）
+
+| 任務 | 優先讀取 |
+|---|---|
+| LOC 需求持續完成與跨對話續作 | 已安裝的 `loc-finish-request`；未提供時依 AGENTS.md 與本表繼續 |
+| SQL、查詢、資料存取與 portable 整合 | [Kysely](../.agents/skills/kysely/SKILL.md) |
+| Auth、登入、Session | [Clerk](../.agents/skills/clerk/SKILL.md)，依任務選同目錄下 clerk-nextjs-patterns、clerk-backend-api、clerk-webhooks、clerk-testing 等相關子技能 |
+
+先檢查當前入口實際存在且可讀；下方歷史路由與清理紀錄不是目前每項能力都存在的保證。按需選一份指引，詳細流程不搬回 AGENTS.md。資料庫授權、部署及中斷恢復語法檢查均以現行 AGENTS.md 與最新使用者指示為準；本索引不擴大授權。Clerk 處理身分驗證，LOC Authority 權責沿用現況；SQL 經既有 Kysely 整合路徑。
+
 ## 清理執行範圍
 
 - 移除 `.agents/skills/tdd/` 與 `.claude/skills/tdd/` 共 **8 個檔案**（兩邊各有 `SKILL.md`、`tests.md`、`mocking.md`、`agents/openai.yaml`）。兩個 Agent 都已安裝 Superpowers，TDD、驗證及除錯改由已安裝的 Superpowers 工作流程提供；不另外維護較舊的 TDD 副本，也不要求使用者逐項核准測試 seam。
