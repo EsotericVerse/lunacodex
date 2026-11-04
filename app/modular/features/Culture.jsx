@@ -310,7 +310,7 @@ export default function Culture(){
   const locDensityQuery=useAsyncResource({
     queryKey:['loc-culture-density',scopeId,query.data?.intersectionStart,query.data?.intersectionEnd,
       JSON.stringify(query.data?.intersectionWindows||[])],
-    enabled:isAggregateScope&&scopeId==='loc'&&!isLocItemView&&locDensityOpen
+    enabled:!isTimeEditingView&&isAggregateScope&&scopeId==='loc'&&!isLocItemView&&locDensityOpen
       &&Boolean(query.data?.intersectionWindows?.length),
     queryFn:async()=>{
       const {selectLocCultureDensity}=await import('../../loc/culture-query');
@@ -422,7 +422,7 @@ export default function Culture(){
   const publishedTaxonomy=useMemo(()=>publishedSourceTaxonomy(scopeId),[scopeId]);
   const sourceTaxonomyQuery=useAsyncResource({
     queryKey:['culture-source-classification',scopeId],
-    enabled:!publishedTaxonomy&&!isAggregateScope&&!isLrunesDaily&&!isLocItemView
+    enabled:!isTimeEditingView&&!publishedTaxonomy&&!isAggregateScope&&!isLrunesDaily&&!isLocItemView
       &&scopeId!=='local'&&Boolean(scopeData),
     queryFn:async()=>{
       const scopes=scopeId==='loc'?['loc']:['loc',scopeId];
@@ -442,7 +442,7 @@ export default function Culture(){
   // expanding a group, so a UI interaction never starts a second SQL job.
   const sourceRootQuery=useAsyncResource({
     queryKey:['culture-period-roots','v4-staged-numeric',classificationScope,classificationWindowStart,classificationWindowEnd,periodRangeSignature],
-    enabled:stagedSourceRiver&&styleFilter!=='trace'&&!isLrunesDaily&&!isLocItemView
+    enabled:!isTimeEditingView&&stagedSourceRiver&&styleFilter!=='trace'&&!isLrunesDaily&&!isLocItemView
       &&Boolean(scopeData)&&classificationWindowValid,
     queryFn:async()=>{
       const {text,media}=await selectScopeDailyCounts(scopeData,{
@@ -466,7 +466,7 @@ export default function Culture(){
   // In a published scope expanding a lane only transforms cached numeric rows.
   const sourceSnapshotQuery=useAsyncResource({
     queryKey:['culture-period-source-snapshot','v8-reused-numeric',classificationScope,classificationWindowStart,classificationWindowEnd,periodRangeSignature,stagedSourceRiver?expandedSourceRootsKey:'all'],
-    enabled:styleFilter!=='trace'&&!isLrunesDaily&&!isLocItemView&&!isAggregateScope&&Boolean(scopeData)&&classificationWindowValid
+    enabled:!isTimeEditingView&&styleFilter!=='trace'&&!isLrunesDaily&&!isLocItemView&&!isAggregateScope&&Boolean(scopeData)&&classificationWindowValid
       &&(!stagedSourceRiver||expandedSourceReady),
     queryFn:async()=>{
       const {selectScopePeriodSourceSnapshot}=await import('../../loc/culture-query');
@@ -482,7 +482,7 @@ export default function Culture(){
     queryKey:['scope-active-keyword-class-name',scopeId],
     // Opening/focusing the style selector is the first reason to look up
     // the active Class. Ordinary Time River viewing performs no keyword SQL.
-    enabled:(keywordOptionsScope===scopeId||styleFilter==='rune66')&&!isAggregateScope&&!isLrunesDaily&&!isLocItemView,
+    enabled:!isTimeEditingView&&(keywordOptionsScope===scopeId||styleFilter==='rune66')&&!isAggregateScope&&!isLrunesDaily&&!isLocItemView,
     queryFn:async()=>{
       const {selectAvailableKeywordClasses}=await import('../../loc/keyword-analysis');
       return selectAvailableKeywordClasses(scopeId);
@@ -501,7 +501,7 @@ export default function Culture(){
       const {selectKeywordAnalysisSummary}=await import('../../loc/keyword-analysis');
       return selectKeywordAnalysisSummary({scopeId,classUid:resolvedKeywordClassUid,startDate:keywordWindowStart,endDate:keywordWindowEnd});
     },
-    enabled:!isAggregateScope&&!isLrunesDaily&&styleFilter==='rune66'&&Boolean(resolvedKeywordClassUid)&&keywordWindowValid,
+    enabled:!isTimeEditingView&&!isAggregateScope&&!isLrunesDaily&&styleFilter==='rune66'&&Boolean(resolvedKeywordClassUid)&&keywordWindowValid,
   });
   // The original source-classification river must not wait for (or disappear
   // when) a separate keyword-density query runs.
@@ -514,7 +514,7 @@ export default function Culture(){
   const keywordDetailRequested=Boolean(keywordDrillSource);
   const keywordDensityQuery=useAsyncResource({
     queryKey:['culture-keyword-attributes',scopeId,resolvedKeywordClassUid,keywordWindowStart,keywordWindowEnd,keywordDrillSource,keywordDrillGroup],
-    enabled:styleFilter==='rune66'&&keywordDetailRequested&&!isAggregateScope&&!isLrunesDaily&&!isLocItemView
+    enabled:!isTimeEditingView&&styleFilter==='rune66'&&keywordDetailRequested&&!isAggregateScope&&!isLrunesDaily&&!isLocItemView
       &&Boolean(scopeData)&&keywordWindowValid&&Boolean(styleQuery.data?.statisticsEnabled),
     queryFn:async()=>{
       const {readKeywordTreeSummary}=await import('../../loc/db-client.mjs');
@@ -548,7 +548,7 @@ export default function Culture(){
   // The initial Class-density river never downloads the Group catalog.
   const keywordGroupCatalogQuery=useAsyncResource({
     queryKey:['culture-keyword-group-catalog',scopeId,styleQuery.data?.keywordMeta?.class_uid||'',keywordDrillGroup],
-    enabled:styleFilter==='rune66'&&Boolean(keywordDrillGroup)
+    enabled:!isTimeEditingView&&styleFilter==='rune66'&&Boolean(keywordDrillGroup)
       &&Boolean(styleQuery.data?.keywordMeta?.class_uid)&&Boolean(scopeData?.keywords),
     queryFn:async()=>{
       const {readKeywordTreeCatalog}=await import('../../loc/db-client.mjs');
@@ -612,7 +612,7 @@ export default function Culture(){
     queryKey:['culture-period-works',classificationScope,classificationWindowStart,classificationWindowEnd,periodRangeSignature,effectiveCategoryKey||'all',articleSort],
     initialPageParam:null,
     getNextPageParam:lastPage=>lastPage.hasMore?lastPage.nextCursor:undefined,
-    enabled:worksOpen&&styleFilter!=='trace'&&!isLrunesDaily&&!isAggregateScope&&Boolean(scopeData)&&Boolean(selectedWorkPeriod)&&classificationWindowValid,
+    enabled:!isTimeEditingView&&worksOpen&&styleFilter!=='trace'&&!isLrunesDaily&&!isAggregateScope&&Boolean(scopeData)&&Boolean(selectedWorkPeriod)&&classificationWindowValid,
     queryFn:async({pageParam})=>{
       const {selectScopePeriodWorkIndex,selectScopePeriodWorkDetails}=await import('../../loc/culture-query');
       const indexPage=await selectScopePeriodWorkIndex(scopeData,{
