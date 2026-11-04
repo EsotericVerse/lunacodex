@@ -2,7 +2,7 @@ import {sql} from 'npm:kysely@0.29.8';
 import {portableRelation} from './sql-engine-ports.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
-const FLAGS=['statics','culture','search','trace','list','keyword','extract','others'];
+// Galaxy permissions belong exclusively to attr JSONB / JSON payload.
 
 /**
  * The only required per-Scope SQL relations. No stored procedures, DB auth
@@ -58,10 +58,6 @@ export async function ensurePortableScopeSchema(db,{engine,namespace='',scopeId}
       .addColumn('attr',jsonType,c=>engine==='postgres'
         ?c.notNull().defaultTo(sql.raw("'{}'::jsonb"))
         :c.notNull());
-    // Transitional physical booleans support older query/RPC readers.
-    // The canonical eight flags are stored together in Galaxy.attr.
-    for(const flag of FLAGS)
-      q=q.addColumn(flag,boolType,c=>c.notNull().defaultTo(true));
     await finalize(q,scope+'_galaxy','date');
   }
   if(!existing.has(scope+'_anchor')){
@@ -86,7 +82,7 @@ export function validatePortableScopeSchema(tables,{engine,namespace='',scopeId}
   const expected={
     galaxy:['uid','title','content','createtime','location','UpdateTime','url',
       'source_id','target_id','ref_id','site','place_id','media_link','date','site_id',
-      'attr',...FLAGS],
+      'attr'],
     anchor:['uid','type','title','description','invisible','attr']
   };
   const names={scopeId};
