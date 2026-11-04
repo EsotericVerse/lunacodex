@@ -568,8 +568,9 @@ test('Culture second river waits for its first source snapshot and avoids lazy d
 test('Scope editor uses time/spatial anchor labels and preserves LOC group labels',()=>{
   const shell=readFileSync(new URL('../app/AppShell.jsx',import.meta.url),'utf8');
   const dock=readFileSync(new URL('../app/modular/edit-dock.jsx',import.meta.url),'utf8');
-  assert.match(shell,/locAdminEdit\?translateUiField\(activeLocale,'人員作品管理'\):translateUiField\(activeLocale,'時間定錨'\)/);
-  assert.match(shell,/locAdminEdit\?'痕跡製作':'空間定錨'/);
+  assert.match(shell, /\{id:'members',icon:'culture',label:translateUiField\(activeLocale,'人員作品管理'\)/);
+  assert.match(shell, /\{id:'time',icon:'culture',label:translateUiField\(activeLocale,'時間定錨'\)/);
+  assert.match(shell,/\{id:'manage',icon:'trace',label:navScopeId==='local'\?'管理':translateUiField\(activeLocale,'空間定錨'\)/);
   assert.match(shell,/translateUiField\(activeLocale,'關鍵詞'\)/);
   assert.match(shell,/translateUiField\(activeLocale,'儲存'\)/);
   assert.doesNotMatch(shell,/translateUiField\(activeLocale,'設立定錨'\)/);
