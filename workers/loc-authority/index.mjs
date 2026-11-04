@@ -744,20 +744,25 @@ export class LocAuthorityState extends DurableObject {
     if(!/^clerk:user_[A-Za-z0-9]+$/.test(String(subject||'')))throw fail('Invalid MCP principal',401);
     if(!['read','write'].includes(kind))throw fail('Invalid MCP quota kind',400);
     const now=Date.now(),period=60_000,leaseTtl=25_000;
-    const maximum=64;
-    return this.ctx.storage.transaction(async tx=>{
+    const maximum=16;
+    const outcome=await this.ctx.storage.transaction(async tx=>{
+      const cooldownKey='mcp-qos-cooldown:'+subject;
+      const blockedUntil=Number(await tx.get(cooldownKey)||0);
+      if(blockedUntil>now)return {rejected:'cooldown'};
       const key='mcp-quota-window:'+subject;
       const prior=await tx.get(key);
       const bucket=prior&&now>=prior.started&&now-prior.started<period
         ?prior:{started:now,count:0,reads:0};
       const leases=(await tx.get('mcp-quota-leases')||[]).filter(item=>item.expires>now);
       const activeReads=leases.filter(item=>item.kind==='read').length;
-      // QoS: reserve 16 of 64 per-minute and concurrent slots for writes.
-      // Reads get at most 48; writes can use all 64 if capacity is available.
-      if(bucket.count>=maximum||(kind==='read'&&(bucket.reads||0)>=48))
-        throw fail('MCP request limit exceeded',429);
-      if(leases.length>=64||(kind==='read'&&activeReads>=48))
-        throw fail('MCP concurrency limit exceeded',429);
+      // QoS: 16 total, with 12 read slots and four write reserves.
+      if(bucket.count>=maximum||(kind==='read'&&(bucket.reads||0)>=12))
+        return {rejected:'rate'};
+      if(leases.length>=16||(kind==='read'&&activeReads>=12)){
+        // Persist before returning: throwing inside a DO transaction rolls it back.
+        await tx.put(cooldownKey,now+180_000);
+        return {rejected:'concurrency'};
+      }
       const lease=crypto.randomUUID();
       leases.push({lease,subject,kind,expires:now+leaseTtl});
       await tx.put(key,{started:bucket.started,count:bucket.count+1,
@@ -765,6 +770,10 @@ export class LocAuthorityState extends DurableObject {
       await tx.put('mcp-quota-leases',leases);
       return {lease};
     });
+    if(outcome.rejected==='cooldown'||outcome.rejected==='concurrency')
+      throw fail('MCP concurrent request cooldown (3 minutes)',429);
+    if(outcome.rejected==='rate')throw fail('MCP request limit exceeded',429);
+    return outcome;
   }
   async mcpQuotaRelease(lease,subject){
     if(!/^clerk:user_[A-Za-z0-9]+$/.test(String(subject||'')))throw fail('Invalid MCP principal',401);

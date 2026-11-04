@@ -23,23 +23,25 @@ function quota(){
   return new LocAuthorityState({storage},{});
 }
 const who='clerk:user_QoSTest';
-test('MCP QoS reserves 16 calls for writes, without reducing global 64 slots',async()=>{
+test('MCP QoS reserves four slots for writes and enforces 16 total',async()=>{
   const authority=quota(),tickets=[];
-  for(let i=0;i<48;i++)tickets.push(await authority.mcpQuotaAcquire('read',who));
+  for(let i=0;i<12;i++)tickets.push(await authority.mcpQuotaAcquire('read',who));
   await assert.rejects(authority.mcpQuotaAcquire('read',who),
     error=>error.status===429);
-  for(let i=0;i<16;i++)tickets.push(await authority.mcpQuotaAcquire('write',who));
-  await assert.rejects(authority.mcpQuotaAcquire('write',who),
-    error=>error.status===429);
-  assert.equal(tickets.length,64);
-  assert.equal(new Set(tickets.map(item=>item.lease)).size,64);
-  await assert.rejects(authority.mcpQuotaAcquire('write','clerk:user_Other'),
-    error=>error.status===429);
+  for(let i=0;i<4;i++)tickets.push(await authority.mcpQuotaAcquire('write',who));
+  assert.equal(tickets.length,16);
+  assert.equal(new Set(tickets.map(item=>item.lease)).size,16);
+  // Other account reaches global concurrency cap without exhausting its own rate quota.
+  const other='clerk:user_Other';
+  await assert.rejects(authority.mcpQuotaAcquire('write',other),error=>error.status===429);
+  const suspended=await authority.ctx.storage.get('mcp-qos-cooldown:'+other);
+  assert.ok(suspended>Date.now()+170000);
   for(const ticket of tickets)await authority.mcpQuotaRelease(ticket.lease,who);
-  await assert.rejects(authority.mcpQuotaAcquire('read',who),
-    error=>error.status===429);
-  const next=await authority.mcpQuotaAcquire('read','clerk:user_Other');
-  await authority.mcpQuotaRelease(next.lease,'clerk:user_Other');
+  // The durable cooldown persists even after active leases are released.
+  await assert.rejects(authority.mcpQuotaAcquire('write',other),error=>error.status===429);
+  await assert.rejects(authority.mcpQuotaAcquire('read',who),error=>error.status===429);
+  const next=await authority.mcpQuotaAcquire('read','clerk:user_Third');
+  await authority.mcpQuotaRelease(next.lease,'clerk:user_Third');
 });
 test('MCP QoS refuses cross-account release and invalid principal',async()=>{
   const authority=quota(),ticket=await authority.mcpQuotaAcquire('write',who);
