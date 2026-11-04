@@ -720,7 +720,7 @@ export class LocAuthorityState extends DurableObject {
     if(!/^clerk:user_[A-Za-z0-9]+$/.test(String(subject||'')))throw fail('Invalid MCP principal',401);
     if(!['read','write'].includes(kind))throw fail('Invalid MCP quota kind',400);
     const now=Date.now(),period=60_000,leaseTtl=25_000;
-    const maximum=1000;
+    const maximum=64;
     return this.ctx.storage.transaction(async tx=>{
       const key='mcp-quota-window:'+subject;
       const prior=await tx.get(key);
