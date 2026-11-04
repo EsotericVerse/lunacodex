@@ -43,39 +43,21 @@ test('Google identity without optional provider ID remains verified',()=>{
   assert.equal(parseVerifiedGoogleOAuthUser(u).email,'owner@example.com');
 });
 
-// Run the real production database client with simulated Auth API responses.
-const makeSessionReader=(auth)=>createDatabaseClient({
-  publicClient:{schema:()=>({})},
-  authClient:{schema:()=>({})},
-  auth:{...auth,signInWithOAuth:async()=>({error:null}),signOut:async()=>({error:null})}
-}).getAccountSession;
-const session={user:{id:'supabase-user-1',email:'owner@example.com'},access_token:'oauth-jwt'};
-const fakeAuth=(user=validUser(),getUserError=null)=>({
-  getSession:async()=>({data:{session},error:null}),
-  getUser:async token=>{
-    assert.equal(token,'oauth-jwt');
-    return {data:{user},error:getUserError};
-  }
+// A database SDK is no longer a LOC identity provider, even if it returns
+// its own signed-in Google user. Only an Authority-verified adapter is accepted.
+test('LOC account contract refuses the deprecated Supabase Auth fallback',async()=>{
+  const auth={
+    getSession:async()=>({data:{session:{user:{id:'legacy-user'},access_token:'legacy-jwt'}},error:null}),
+    getUser:async()=>({data:{user:validUser()},error:null}),
+    signInWithOAuth:async()=>({error:null}),
+    signOut:async()=>({error:null})
+  };
+  const read=createDatabaseClient({
+    publicClient:{schema:()=>({})},authClient:{schema:()=>({})},auth
+  }).getAccountSession;
+  await assert.rejects(read(),/verified identity provider is required/);
 });
-test('production contract verifies JWT with Auth.getUser and returns parsed OAuth email',async()=>{
-  const read=makeSessionReader(fakeAuth());
-  const result=await read();
-  assert.equal(result.oauth.provider,'google');
-  assert.equal(result.oauth.email,'owner@example.com');
-  assert.equal(result.user.email,result.oauth.email);
-});
-test('production contract denies user.email if Auth.getUser fails',async()=>{
-  const read=makeSessionReader(fakeAuth(null,{message:'invalid JWT'}));
-  await assert.rejects(read(),/invalid JWT/);
-});
-test('production contract denies mismatching OAuth user ID',async()=>{
-  const read=makeSessionReader(fakeAuth({...validUser(),id:'other-user'}));
-  await assert.rejects(read(),/Session 不一致/);
-});
-test('production contract denies missing Google identity from verified user',async()=>{
-  const read=makeSessionReader(fakeAuth({...validUser(),identities:[]}));
-  await assert.rejects(read(),/Google OAuth/);
-});
+
 test('Settings home owns the sole OAuth login action and verifies session',()=>{
   const account=readFileSync(new URL('../app/loc/use-account.js',import.meta.url),'utf8');
   const settings=readFileSync(new URL('../app/loc/GlobalSettings.jsx',import.meta.url),'utf8');
