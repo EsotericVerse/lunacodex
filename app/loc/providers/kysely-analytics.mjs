@@ -366,6 +366,229 @@ function portableStatBase(db,table,start,end,flag='statics',includeUndated=false
   if(end)query=query.where('date','<=',end);
   return query;
 }
+// Count only visible media referenced by eligible articles, without
+// loading article content/media links into application memory. The shared
+// row filtering is a Kysely query; the JSON expansion is dialect-specific.
+async function portableLinkedMediaCount(db,galaxy,anchor,engine,start,end){
+  let docs=db.selectFrom(galaxy).select('media_link')
+    .where('statics','=',true).where('content','!=','')
+    .where('media_link','is not',null);
+  if(start)docs=docs.where('date','>=',start);
+  if(end)docs=docs.where('date','<=',end);
+  const media=sql.ref(anchor);
+  let query;
+  if(engine==='mysql'){
+    query=sql`select count(distinct linked.uid) as n
+      from (${docs}) as docs
+      cross join json_table(docs.media_link,'$[*]'
+        columns(uid varchar(8) path '(db,body,{engine,namespace='',role='anon'}={}){
+  const args=body?.args??body;
+  const scope=scopeId(args.p_scope_id),mode=String(args.p_view||'').trim().toLowerCase();
+  const start=dateOnly(args.p_start),end=dateOnly(args.p_end);
+  const options=args.p_options??{};
+  if(start&&end&&start>end||!options||typeof options!=='object'||Array.isArray(options))
+    reject('Invalid statistics range');
+  if(!MODES.has(mode))reject('Unknown LOC statistics view');
+  if(mode==='search_summary'){
+    if(scope!=='loc'||start||end)reject('Invalid Search summary request');
+    const ids=options.scopeIds;
+    if(!Array.isArray(ids)||ids.length>100||
+      ids.some(id=>typeof id!=='string'||!SCOPE.test(id)))
+      reject('Invalid Search summary Scope list');
+    const tables=await db.introspection.getTables();
+    const present=new Set(tables
+      .filter(t=>engine==='mysql'||!t.schema||t.schema===namespace)
+      .map(t=>t.name));
+    const rows=[];
+    for(const id of [...new Set(ids)].sort()){
+      if(!present.has(id+'_galaxy'))continue;
+      const relation=portableRelation(id+'_galaxy',engine,namespace);
+      const count=await db.selectFrom(relation).select(eb=>[
+        eb.fn.countAll().as('article_count'),
+        eb.fn.sum(eb.fn(engine==='mssql'?'len':'char_length',['content']))
+          .as('word_count'),
+        eb.fn.min('date').as('first_date'),
+        eb.fn.max('date').as('last_date')
+      ]).executeTakeFirst();
+      rows.push({scope_id:id,article_count:Number(count?.article_count||0),
+        word_count:Number(count?.word_count||0),
+        first_date:portableDay(count?.first_date)||null,
+        last_date:portableDay(count?.last_date)||null,
+        refreshed_at:null});
+    }
+    return {data:{rows},count:null};
+  }
+  if(mode==='loc'&&scope==='loc'){
+    // A self-hosted LOC database only needs Galaxy + Anchor per Scope.
+    // Kysely introspection replaces the old LOC registry RPC.
+    const tables=await db.introspection.getTables();
+    const present=new Set(tables
+      .filter(t=>engine==='mysql'||!t.schema||t.schema===namespace)
+      .map(t=>t.name));
+    const ids=[...present].filter(name=>name.endsWith('_galaxy'))
+      .map(name=>name.slice(0,-'_galaxy'.length))
+      .filter(id=>SCOPE.test(id)&&present.has(id+'_anchor')).sort();
+    const scopes=[],rows=[];let earliest=null;
+    for(const id of ids){
+      const relation=portableRelation(id+'_galaxy',engine,namespace);
+      let q=portableStatBase(db,relation,start,end,'statics');
+      q=q.select('date').select(eb=>eb.fn.countAll().as('n'))
+        .groupBy('date').orderBy('date','asc');
+      const counts=await q.execute();
+      // The requested window limits displayed counts, not the Scope's
+      // absolute earliest qualifying date (same contract as PostgreSQL).
+      const oldest=await db.selectFrom(relation)
+        .select(eb=>eb.fn.min('date').as('day'))
+        .where('statics','=',true).where('content','!=','')
+        .executeTakeFirst();
+      const firstDay=portableDay(oldest?.day);
+      if(firstDay&&(!earliest||firstDay<earliest))earliest=firstDay;
+      scopes.push({scope_id:id,display_name:id});
+      for(const row of counts){
+        const day=portableDay(row.date);
+        rows.push({scope_id:id,day,item_count:Number(row.n||0)});
+
+      }
+    }
+    return {data:{earliest,scopes,rows},count:null};
+  }
+  if(mode==='shared_classes'||mode==='keyword_catalog'){
+    // The external SQL installation has Galaxy and Anchor, not the
+    // historical scope configuration/RPC tables. Private classifications
+    // must remain private until the verified owner authorizes them.
+    const owner=role==='authenticated'&&await canManageLoc(db,'scope',scope);
+    if(!owner)return {data:mode==='shared_classes'?[]:{},count:null};
+    const table=portableRelation(scope+'_anchor',engine,namespace);
+    const parse=row=>({...row,attr:typeof row.attr==='string'
+      ?JSON.parse(row.attr):row.attr||{}});
+    const classes=(await db.selectFrom(table)
+      .select(['uid','type','title','description','attr'])
+      .where('type','=','class').orderBy('uid','asc').execute()).map(parse);
+    if(mode==='shared_classes')return {data:classes.map(row=>({
+      scopeId:scope,classUid:row.uid,name:row.title,category:row.uid
+    })),count:null};
+    const uid=String(options.classUid||classes[0]?.uid||'');
+    if(!UID.test(uid))return {data:{},count:null};
+    const root=classes.find(row=>row.uid===uid);
+    if(!root)return {data:{class_uid:uid,rows:[]},count:null};
+    const references=row=>{
+      const values=row?.attr?.uid??row?.attr?.groups??row?.attr?.items;
+      return Array.isArray(values)?values.filter(value=>UID.test(String(value))):[];
+    };
+    const groupsIds=references(root);
+    const groups=groupsIds.length?(await db.selectFrom(table)
+      .select(['uid','type','title','description','attr'])
+      .where('type','=','group').where('uid','in',groupsIds).execute()).map(parse):[];
+    const byGroup=new Map(groups.map(row=>[row.uid,row]));
+    const ordered=groupsIds.map(uid=>byGroup.get(uid)).filter(Boolean);
+    const itemIds=[...new Set(ordered.flatMap(references))];
+    const items=itemIds.length?(await db.selectFrom(table)
+      .select(['uid','type','title','description','attr'])
+      .where('type','=','item').where('uid','in',itemIds).execute()).map(parse):[];
+    const byItem=new Map(items.map(row=>[row.uid,row]));
+    const view=row=>({uid:row.uid,type:row.type,name:row.title,
+      desc:row.type==='item'?'':row.description,
+      lists:row.type==='item'?[]:references(row),uid_lists:[]});
+    return {data:{class_uid:uid,rows:[view(root),...ordered.map(view),
+      ...ordered.flatMap(group=>references(group).map(uid=>byItem.get(uid))
+        .filter(Boolean).map(view))]},count:null};
+  }
+  const galaxy=portableRelation(scope+'_galaxy',engine,namespace);
+  const anchor=portableRelation(scope+'_anchor',engine,namespace);
+  const grouped=async(flag,fields,opts={})=>{
+    let query=portableStatBase(db,galaxy,start,end,flag,opts.includeUndated);
+    for(const field of fields){
+      // Daily's includeUndated option must retain NULL dates. Other
+      // dimensions remain non-null to preserve existing grouping contract.
+      if(field==='date'&&opts.includeUndated===true)continue;
+      query=query.where(field,'is not',null);
+    }
+    return query.select(fields)
+      .select(eb=>eb.fn.countAll().as('n'))
+      .groupBy(fields).orderBy(fields[0],'asc').execute();
+  };
+  const first=async()=>{
+    const row=await db.selectFrom(galaxy)
+      .select(eb=>eb.fn.min('date').as('day'))
+      .where('statics','=',true).where('content','!=','').executeTakeFirst();
+    return row?.day??null;
+  };
+  let data;
+  if(mode==='earliest')data=await first();
+  else if(mode==='daily'||mode==='overview'||mode==='loc'){
+    const rows=await grouped('statics',['date','site'],
+      {includeUndated:options.includeUndated===true});
+    const source=rows.map(row=>({day:portableDay(row.date),kind:'source',
+      category:String(row.site||'').trim(),item_count:Number(row.n)}));
+    const totals=new Map();
+    for(const row of source)totals.set(row.day,(totals.get(row.day)||0)+row.item_count);
+    const summary=[...source,...[...totals].map(([day,n])=>({
+      day,kind:'total',category:'文字作品',item_count:n
+    }))].sort((a,b)=>a.day.localeCompare(b.day)||a.kind.localeCompare(b.kind));
+    if(mode==='daily')data=summary;
+    else if(mode==='overview'){
+      const linked=await portableLinkedMediaCount(db,galaxy,anchor,engine,start,end);
+      data={earliest:await first(),media_count:linked,
+        rows:summary,categories:[],aliases:[]};
+    }else data={earliest:await first(),scopes:[{
+      scope_id:scope,display_name:scope
+    }],rows:summary.filter(x=>x.kind==='total').map(x=>({
+      scope_id:scope,day:x.day,item_count:x.item_count
+    }))};
+  }else if(mode==='totals'){
+    const rows=await grouped('statics',['site'],{includeUndated:true});
+    data=rows.map(row=>({kind:'source',category:String(row.site||'').trim(),
+      item_count:Number(row.n)}));
+  }else if(mode==='trace_places'){
+    const rows=await grouped('trace',['date','location']);
+    data=rows.filter(row=>String(row.location||'').trim()).map(row=>({
+      day:portableDay(row.date),category:String(row.location).trim(),
+      item_count:Number(row.n)
+    }));
+  }else if(mode==='trace_daily'){
+    const ids=options.placeIds;
+    if(!Array.isArray(ids)||ids.length<1||ids.length>80||
+       ids.some(id=>!UID.test(String(id||''))))reject('Invalid Point IDs');
+    let query=portableStatBase(db,galaxy,start,end,'trace')
+      .where('place_id','in',ids);
+    if(options.source)query=query.where('site','=',String(options.source));
+    const rows=await query.select(['date','place_id'])
+      .select(eb=>eb.fn.countAll().as('n'))
+      .groupBy(['date','place_id']).orderBy('date','asc').execute();
+    data=rows.map(row=>({day:portableDay(row.date),category:row.place_id,
+      item_count:Number(row.n)}));
+  }else{
+    // Advanced private keyword/trace joins require a matching portable
+    // summary contract. Never silently substitute legacy Supabase totals.
+    reject('Unsupported portable LOC analytics mode');
+  }
+  return {data,count:null};
+}
+)) as linked
+      join ${media} as a on a.uid=linked.uid
+        and a.type in ('image','video','rune','suno')
+        and a.invisible=false`;
+  }else if(engine==='mssql'){
+    query=sql`select count(distinct linked.[value]) as n
+      from (${docs}) as docs
+      cross apply openjson(docs.media_link) as linked
+      join ${media} as a on a.uid=linked.[value]
+        and a.type in ('image','video','rune','suno')
+        and a.invisible=0`;
+  }else if(engine==='postgres'){
+    // Portable PostgreSQL has JSONB media_link, unlike the built-in
+    // legacy PostgreSQL Galaxy which retains a SQL text array.
+    query=sql`select count(distinct linked.uid) as n
+      from (${docs}) as docs
+      cross join lateral jsonb_array_elements_text(docs.media_link) as linked(uid)
+      join ${media} as a on a.uid=linked.uid
+        and a.type in ('image','video','rune','suno')
+        and a.invisible=false`;
+  }else reject('Unsupported portable media-count dialect');
+  const result=await query.execute(db);
+  return Number(result.rows[0]?.n||0);
+}
+
 // Common LOC statistics, implemented with dialect-native Kysely builders.
 export async function executePortableKyselyAnalytics(db,body,{engine,namespace='',role='anon'}={}){
   const args=body?.args??body;
