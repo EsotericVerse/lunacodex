@@ -248,7 +248,7 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
       for(let offset=0;offset<mediaRows.length;offset+=80){
         const batch=mediaRows.slice(offset,offset+80).map(row=>String(row.uid));
         const {rows}=await selectRows(scope.galaxy,{
-          columns:'uid,date,place_id,able',
+          columns:'uid,date,place_id,trace',
           filters:[{column:'uid',operator:'in',value:batch}],
           limit:batch.length,maxLimit:batch.length
         });
