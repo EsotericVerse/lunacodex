@@ -36,7 +36,7 @@ test('feature gates and admin UI use native boolean flags',()=>{
   assert.match(admin,/\[scopeFeatureName\(key\)\|\|key\]:Boolean\(value\)/);
   assert.match(app,/trace:'trace'/);
   assert.match(app,/search:'search_able'/);
-  assert.match(ui,/scopeId==='lo3rwang'/);
+  assert.match(ui,/isUnifiedAnchorScope\(scopeId\)/);
   assert.match(read('scripts/generate-public-blocks.mjs'),/scopeConfigColumns\(id\)/);
 });
 
