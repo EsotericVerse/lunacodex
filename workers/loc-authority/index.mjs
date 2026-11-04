@@ -874,7 +874,7 @@ export default {
       if(request.method==='GET'&&url.pathname==='/v1/state')return json(await stub.listState(),200,origin);
       if(request.method==='GET'&&url.pathname==='/v1/auth/providers')
         return json(await stub.listAuthProviders(),200,origin);
-      const authMatch=new RegExp('^/v1/auth/providers/(github|oidc|entra|ldap|ad)$').exec(url.pathname);
+      const authMatch=new RegExp('^/v1/auth/providers/(github|oidc|entra|ldap|ad|neon)$').exec(url.pathname);
       if(request.method==='PUT'&&authMatch){
         const raw=await request.text();
         if(raw.length>12000)throw fail('Request too large',413);
