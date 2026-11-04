@@ -1,6 +1,6 @@
 'use client';
 import {useFeatureCopy,useUiLocale} from '../i18n/ui-locale';
-import featureZh from '../i18n/features.zh_tw.js';
+import featureZh from '../i18n/feature-sections/privateFiles.zh_tw.js';
 
 import {useEffect,useRef,useState} from 'react';
 import {Capacitor} from '@capacitor/core';
@@ -16,7 +16,7 @@ const privateNative=()=>Capacitor.isNativePlatform()&&Capacitor.getPlatform()===
 const readableDate=(value,locale,l)=>value?new Date(value).toLocaleString(locale):l.unknownDate;
 
 export default function PrivateLocalFiles(){
-  const l=useFeatureCopy('privateFiles',featureZh.privateFiles);
+  const l=useFeatureCopy('privateFiles',featureZh);
   const {locale}=useUiLocale();
   const picker=useRef(null);
   const [native,setNative]=useState(false);

@@ -9,7 +9,7 @@ import {usePathname} from 'next/navigation';
 import {useEditDock} from './edit-dock';
 import {useAsyncResource} from '../loc/use-async-resource';
 import {UI_COPY} from '../i18n/ui-copy';
-import {useUiCopy} from '../i18n/ui-locale';
+import {useUiCopy,useUiLocale} from '../i18n/ui-locale';
 import {DEFAULT_LIST_BATCH_SIZE,LIST_LOAD_COOLDOWN_MS} from '../loc/db-contract.mjs';
 import {useScopeRuntime} from './use-scope-runtime';
 import {selectScopeBlocks,selectLiveScopeBlocks} from '../loc/scope-data';
@@ -42,6 +42,7 @@ function FeatureHeroContent({eyebrow='',title,subtitle='',description='',rich=fa
 export function FeaturePage({featureId,children,titleOverride=null,subtitle=null,description=null}){
   const {scope,scopeId}=useScopeRuntime();
   const copy=useUiCopy();
+  const {locale}=useUiLocale();
   const profile=copy.features?.[featureId]||UI_COPY.features?.[featureId]||{title:featureId,subtitle:'',description:''};
   const scopeCopyKey=scope?.id==='lo3rwang'?'author':scope?.id;
   const localizedScope=copy.scope?.[scopeCopyKey]||null;
@@ -104,7 +105,12 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
           rich={Boolean(shared)&&!managementMode}
         />
       </header>
-      <div className={"scope-content"+(publicFeature?" loc-public-content":"")}>{children}</div>
+      <div className={"scope-content"+(publicFeature?" loc-public-content":"")}>
+        {publicFeature?<p className="scope-status" style={{fontSize:'.8rem',margin:'0 0 .65rem'}}>
+          {({'zh-Hant':'日期基準','zh-Hans':'日期基准',en:'Date basis',ja:'日付基準'}[locale]||'日期基準')+'：Asia/Taipei (UTC+08:00)'}
+        </p>:null}
+        {children}
+      </div>
     </section>
   </main>;
 }

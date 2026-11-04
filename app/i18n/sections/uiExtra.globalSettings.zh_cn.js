@@ -114,4 +114,14 @@ export default {
   "prefTitle": "标题文字",
   "prefOldestDefault": "最旧的优先（默认）",
   "prefLatest": "最新的优先",
+  "mcpTab": "数据来源",
+  "mcpSelfServiceTitle": "我的数据来源与群组授权",
+  "mcpSelfServiceIntro": "登录后，可以查看自己的数据来源及所属群组。群组管理员可以授予访问权限；系统只会连接已存在的数据表。",
+  "mcpClerkId": "我的授权标识码（提供给群组管理员）",
+  "mcpSignInNeeded": "请先登录，才能管理数据来源。",
+  "mcpInvalidScope": "请输入有效的数据来源或群组代码。",
+  "mcpScopeId": "我的数据来源代码",
+  "mcpGroupId": "我的群组代码",
+  "mcpOpenScope": "设置我的数据库",
+  "mcpOpenGroup": "管理群组成员授权"
 };

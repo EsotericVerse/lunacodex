@@ -55,11 +55,11 @@ export function useFeatureCopy(section,defaults){
   const {locale}=useUiLocale();
   const [,refresh]=useState(0);
   useEffect(()=>{
-    if(isFeatureCopyLoaded(locale))return undefined;
+    if(isFeatureCopyLoaded(locale,section))return undefined;
     let active=true;
-    loadFeatureCopy(locale).then(()=>{if(active)refresh(n=>n+1);}).catch(()=>{});
+    loadFeatureCopy(locale,section).then(()=>{if(active)refresh(n=>n+1);}).catch(()=>{});
     return ()=>{active=false;};
-  },[locale]);
+  },[locale,section]);
   return featureSection(locale,section,defaults);
 }
 
