@@ -12,6 +12,9 @@ import {selectedDatabaseRouting} from './providers/routing-state.mjs';
 const recoverableReadError=error=>{
   const code=String(error?.code||'');
   const status=Number(error?.status||error?.cause?.status||0);
+  // Search QoS responses are intentional, not a failed primary connection.
+  // Never trigger another full-text query against backup on 429/408.
+  if(code==='SEARCH_RATE_LIMIT'||code==='SEARCH_TIMEOUT')return false;
   if(status===429||status>=500)return true;
   if(error?.name==='TimeoutError'||error?.cause?.name==='TimeoutError')return true;
   if(code.startsWith('08')||code==='53300')return true;
@@ -127,7 +130,8 @@ export async function executePublicRead(table,buildQuery,{source='auto',authenti
       return value;
     }catch(error){
       if(cancel?.aborted||isAbortError(error))throw abortError();
-      markPrimaryReadFailed(table,error);
+      if(!['SEARCH_RATE_LIMIT','SEARCH_TIMEOUT'].includes(String(error?.code||'')))
+        markPrimaryReadFailed(table,error);
       throw error;
     }
   };
