@@ -224,10 +224,11 @@ function pointLinkDb(underCount=false){
       set(values){this.values=values;return this;},
       where(...args){
         if(args[0]==='uid'&&args[1]==='in')this.ids=args[2];
-        if(typeof args[0]==='function')args[0]({
-          or:conditions=>conditions,
-          // Executed only by the predicate builder, not by a database.
-        });
+        if(typeof args[0]==='function'){
+          const eb=(column,operator,value)=>({column,operator,value});
+          eb.or=conditions=>conditions;
+          args[0](eb);
+        }
         return this;
       },
       executeTakeFirst:async function(){
