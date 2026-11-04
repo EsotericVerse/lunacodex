@@ -672,6 +672,34 @@ export async function searchGalaxyRows(scopes,query,{
   // Any other free text must return locally, before creating SQL providers.
   if(!browse&&!/^[A-Za-z0-9]{8}$/.test(q)&&!/^PR\\s*#?\\s*\\d{1,7}$/i.test(q))
     return {rows:[],failures:[],hasMore:false,nextCursor:null};
+  if(!browse){
+    const uid=/^[A-Za-z0-9]{8}$/.test(q)?q:null;
+    const pr=q.match(/^PR\\s*#?\\s*(\\d{1,7})$/i);
+    const available=(Array.isArray(scopes)?scopes:[]).filter(scope=>scope?.galaxy);
+    const hidden=new Set((Array.isArray(hiddenScopeIds)?hiddenScopeIds:[]).map(String));
+    const failures=[];
+    for(const scope of available){
+      if(signal?.aborted){const error=new Error('Request cancelled');error.name='AbortError';throw error;}
+      const authenticated=managementOnly||hidden.has(scope.id);
+      const filters=uid?[{column:'uid',operator:'eq',value:uid}]:[
+        {column:'site',operator:'eq',value:'github'},
+        {column:'site_id',operator:'eq',value:'EsotericVerse/moon-runes-pwa#'+pr[1]}
+      ];
+      if(!authenticated)filters.push(articlePermissionFilter(scope,'search'));
+      try{
+        const {rows=[]}=await selectRows(scope.galaxy,{
+          columns:['uid','title','createtime',...articlePermissionColumns(scope)].join(','),
+          filters,limit:1,authenticated,signal
+        });
+        if(rows.length)return {rows:rows.map(row=>recordFor(row,scope.id+' 文章',scope.id+':exact',scope,scope.galaxy)),
+          failures,hasMore:false,nextCursor:null};
+      }catch(error){
+        if(error?.name==='AbortError'||signal?.aborted)throw error;
+        failures.push(new Error(scope.id+': '+String(error?.message||error)));
+      }
+    }
+    return {rows:[],failures,hasMore:false,nextCursor:null};
+  }
   const safeLimit=Math.max(1,Math.min(DEFAULT_LIST_BATCH_SIZE,Math.floor(Number(limit)||DEFAULT_LIST_BATCH_SIZE)));
   const scopeList=(Array.isArray(scopes)?scopes:[]).filter(scope=>scope?.id);
   const hiddenScopes=new Set((Array.isArray(hiddenScopeIds)?hiddenScopeIds:[]).map(value=>String(value||'').trim()).filter(Boolean));
