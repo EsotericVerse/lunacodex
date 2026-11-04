@@ -36,6 +36,7 @@ export default function EnterpriseAuthReserved(){
     return()=>{live=false;};
   },[]);
   const profile=saved[selected]||null;
+  const hasSecret=Boolean(AUTH_PROVIDER_FIELDS[selected]?.some(field=>field.kind==='secret'));
   const current={...publicFields(profile),...draft};
   const dirty=selected!=='clerk'&&(
     Boolean(secret)||AUTH_PROVIDER_FIELDS[selected]?.some(field=>
@@ -83,7 +84,8 @@ export default function EnterpriseAuthReserved(){
       此頁不顯示或覆寫它們，也不會影響正在使用的 Session。</p>:<>
       <h3 className="admin-workspace-section-heading">{AUTH_PROVIDER_LABELS[selected]} 連線參數</h3>
       <p className="scope-status">{profile?.configured?'參數已儲存':'尚未設定'}。
-        {profile?.secret_configured?' Secret 已安全保存；留空即保留原值。':' 第一次儲存需要 Client Secret。'}</p>
+        {hasSecret?(profile?.secret_configured?' Secret 已安全保存；留空即保留原值。':' 第一次儲存需要 Client Secret。'):' Neon Auth 憑證由 Neon 服務管理，LOC 只保存連線端點。'}</p>
+      {selected==='neon'?<p className="scope-status">Neon Auth 必須由管理員手動設定及測試連線；此處不切換登入來源，也不修改主要／備援資料庫連線。</p>:null}
       {(selected==='ldap'||selected==='ad')?<p className="scope-status">
         企業內部 LDAP／AD 透過組織管理的 OIDC 身分橋接服務連線；
         不在瀏覽器收集網域帳密、Bind Password 或直接連線至內部目錄。</p>:null}
