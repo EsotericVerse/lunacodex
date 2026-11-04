@@ -45,7 +45,7 @@ export function collectEraPeriods(periodIds,periods=[],anchors=[]){
  const windows=target.map(bounds).filter(Boolean);
  const matches=periods.filter(row=>{
    const interval=bounds(row);
-   return interval&&windows.some(([from,to])=>interval[0]<=to&&interval[1]>=from);
+   return interval&&windows.some(([from,to])=>interval[0]>=from&&interval[1]<=to);
  });
  const seen=new Set();
  return matches.filter(row=>!seen.has(row.uid)&&seen.add(row.uid));
