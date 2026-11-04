@@ -5,7 +5,7 @@ import {createClerkAccountAdapter} from '../auth/clerk-browser.mjs';
 import {createKyselyEdgeClient} from './kysely-edge.mjs';
 import {createClient} from '@supabase/supabase-js';
 
-const FALLBACK_AUTHORITY='https://loc-authority-control.sopa2306.workers.dev';
+const FALLBACK_AUTHORITY='https://auth.lo3rwang.cc';
 const DEFAULT_SUPABASE_URL='https://qlouywsdiiyiyzpoxyqy.supabase.co';
 const DEFAULT_PUBLISHABLE_KEY='sb_publishable_qPn0vAzozVyXKllRuEKf2Q_fvG-pLVV';
 

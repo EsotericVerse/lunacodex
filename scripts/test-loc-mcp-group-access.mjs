@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {scopeGroupRequest} from '../app/loc/mcp/scope-group-client.mjs';
-const root='https://loc-authority-control.sopa2306.workers.dev';
+const root='https://auth.lo3rwang.cc';
 function service(response={groupid:'loc',members:['lo3rwang','lrunes'],grants:[]}){
   const requests=[];
   const fetchImpl=async (url,opts)=>{

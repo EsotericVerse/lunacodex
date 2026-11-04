@@ -36,18 +36,42 @@ function isClerkIssuer(value){
   }catch{return false;}
 }
 const jwksCache=new Map();
+const jwksPending=new Map();
 async function clerkPublicKey(issuer,kid){
   if(!isClerkIssuer(issuer))throw fail('Clerk issuer is not trusted',503);
   if(!/^[A-Za-z0-9._-]{1,256}$/.test(String(kid||'')))throw fail('Invalid signing key ID',401);
   const key=issuer+'#'+kid;
   const cached=jwksCache.get(key);
   if(cached&&cached.expires>Date.now())return cached.key;
-  const response=await fetch((String(issuer).endsWith('/')?String(issuer).slice(0,-1):String(issuer))+'/.well-known/jwks.json',{
-    // Cloudflare Workers does not implement Fetch redirect:'manual'; it throws
-    // a TypeError before issuing the JWKS request. Default follow is supported.
-    method:'GET',redirect:'follow',signal:AbortSignal.timeout(6000),
-    headers:{accept:'application/json'}
-  });
+  // One promise per issuer/key per isolate prevents duplicate Clerk calls
+  // during concurrent requests (including MCP acquire/release).
+  let pending=jwksPending.get(key);
+  if(pending)return pending;
+  pending=fetchClerkPublicKey(issuer,kid,key);
+  jwksPending.set(key,pending);
+  try{return await pending;}
+  finally{if(jwksPending.get(key)===pending)jwksPending.delete(key);}
+}
+async function fetchClerkPublicKey(issuer,kid,key){
+  const jwksUrl=(String(issuer).endsWith('/')?String(issuer).slice(0,-1):String(issuer))+'/.well-known/jwks.json';
+  const edge=globalThis.caches?.default;
+  const request=new Request(jwksUrl,{headers:{accept:'application/json'}});
+  let response=edge?await edge.match(request).catch(()=>null):null;
+  if(!response){
+    response=await fetch(jwksUrl,{
+      method:'GET',redirect:'follow',signal:AbortSignal.timeout(6000),
+      headers:{accept:'application/json'}
+    });
+    if(!response.ok)throw fail('Clerk signing keys are unavailable',503);
+    // JWKS is public signing-key metadata; store only successful responses
+    // at the edge, at most five minutes, never tokens or private identities.
+    if(edge){
+      const copy=response.clone();
+      const cachedHeaders=new Headers(copy.headers);
+      cachedHeaders.set('Cache-Control','public, max-age=300');
+      await edge.put(request,new Response(copy.body,{status:200,headers:cachedHeaders})).catch(()=>{});
+    }
+  }
   if(!response.ok)throw fail('Clerk signing keys are unavailable',503);
   const body=await response.text();
   if(body.length>120000)throw fail('Clerk signing key response too large',503);
@@ -725,13 +749,19 @@ export class LocAuthorityState extends DurableObject {
       const key='mcp-quota-window:'+subject;
       const prior=await tx.get(key);
       const bucket=prior&&now>=prior.started&&now-prior.started<period
-        ?prior:{started:now,count:0};
+        ?prior:{started:now,count:0,reads:0};
       const leases=(await tx.get('mcp-quota-leases')||[]).filter(item=>item.expires>now);
-      if(bucket.count>=maximum)throw fail('MCP request limit exceeded',429);
-      if(leases.length>=64)throw fail('MCP concurrency limit exceeded',429);
+      const activeReads=leases.filter(item=>item.kind==='read').length;
+      // QoS: reserve 16 of 64 per-minute and concurrent slots for writes.
+      // Reads get at most 48; writes can use all 64 if capacity is available.
+      if(bucket.count>=maximum||(kind==='read'&&(bucket.reads||0)>=48))
+        throw fail('MCP request limit exceeded',429);
+      if(leases.length>=64||(kind==='read'&&activeReads>=48))
+        throw fail('MCP concurrency limit exceeded',429);
       const lease=crypto.randomUUID();
-      leases.push({lease,subject,expires:now+leaseTtl});
-      await tx.put(key,{started:bucket.started,count:bucket.count+1});
+      leases.push({lease,subject,kind,expires:now+leaseTtl});
+      await tx.put(key,{started:bucket.started,count:bucket.count+1,
+        reads:(bucket.reads||0)+(kind==='read'?1:0)});
       await tx.put('mcp-quota-leases',leases);
       return {lease};
     });

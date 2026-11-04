@@ -43,7 +43,7 @@ async function verifyClerkForSql(token:string){
   // single, preconfigured root management identity.
   let trustedEmail='';
   if(payload.email_verified!==true||typeof payload.email!=='string'){
-    const reply=await fetch('https://loc-authority-control.sopa2306.workers.dev/v1/identity',{
+    const reply=await fetch('https://auth.lo3rwang.cc/v1/identity',{
       method:'GET',headers:{authorization:'Bearer '+token,origin:clerkOrigin,accept:'application/json'},
       signal:AbortSignal.timeout(8000)
     });
@@ -66,7 +66,7 @@ async function verifyMcpForSql(token:string,scopeid:string){
   // Independent Authority verifies the same OAuth JWT and its exact Scope
   // WRITE permission. Only the existing LOC root may use managed SQL writes.
   const result=await fetch(
-    "https://loc-authority-control.sopa2306.workers.dev/v1/mcp/authorize-write/"+scopeid,{
+    "https://auth.lo3rwang.cc/v1/mcp/authorize-write/"+scopeid,{
     method:"GET",headers:{authorization:"Bearer "+token,accept:"application/json"},
     redirect:"error",signal:AbortSignal.timeout(8000)
   });
