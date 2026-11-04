@@ -63,7 +63,7 @@ test('check-in dates are daily and deduplicated; missing names and dates are ign
   ]),['2024-02-01','2024-02-02','2024-02-03','2024-02-04']);
 });
 
-test('Time import reuses existing dates, respects all occupied UIDs, and is idempotent',async()=>{
+test('Time import reuses existing dates, generates secure Base62 UIDs, and is idempotent',async()=>{
   const db=memoryTime([
     {uid:'00000001',type:'anchor',address:'2024-02-01'},
     {uid:'00000002',type:'time_period',address:null}
@@ -190,7 +190,7 @@ test('Scope Time registry stays validated while Date is stored in native Anchor'
   await prepareImportTimeAnchors(inputs,{
     scopeId:'lo3rwang',timeTable:'silver.lo3rwang_time_archive',relation
   });
-  assert.deepEqual(calls,['silver.lo3rwang_anchor','silver.lo3rwang_anchor','silver.lo3rwang_anchor']);
+  assert.deepEqual(calls,['silver.lo3rwang_anchor','silver.lo3rwang_anchor']);
   await assert.rejects(()=>prepareImportTimeAnchors(inputs,{
     scopeId:'lo3rwang',relation
   }),/尚未解析正確的 Scope Time 資料表/);
