@@ -113,6 +113,14 @@ test('LOC uses Clerk identity while the independent Neon adapter remains deferre
   assert.match(gateway,/const control=await checkAdminRole\(claims\)/);
 });
 
+test('Kysely gateway rejects anonymous explicit SQL target selection and hides topology',()=>{
+  const source=readFileSync(new URL('../supabase/functions/loc-kysely/index.ts',import.meta.url),'utf8');
+  assert.match(source,/if\(requestedTarget!=="configured"\)\{\s*if\(role!=="authenticated"\)/);
+  assert.match(source,/if\(requestedTarget!=="configured"\)\{[\s\S]*?await checkAdminRole\(claims\)/);
+  assert.match(source,/body\.name==="active_public_target"[\s\S]*?if\(role!=="authenticated"\)/);
+  assert.match(source,/body\.name==="active_public_target"[\s\S]*?await checkAdminRole\(claims\)/);
+});
+
 test('Neon does not reuse a JWT from a previous OAuth session',async()=>{
   let sessionId='session-one',jwt='a1.b1.c1';
   const fetchImpl=async(input,init={})=>{
