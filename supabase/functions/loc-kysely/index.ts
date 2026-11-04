@@ -374,6 +374,15 @@ Deno.serve(async (request) => {
     role = "authenticated";
   }
 
+  // Explicit database-target selection is never a public capability.
+  // Ordinary visitors use the server-selected configured target only.
+  if(requestedTarget!=="configured"){
+    if(role!=="authenticated")
+      return json({error:{message:"Administrator permission required"}},403);
+    try{await checkAdminRole(claims);}
+    catch{return json({error:{message:"Administrator permission required"}},403);}
+  }
+
   const textSearch=isTextSearchQuery(body);
   if(textSearch){
     // Uses Clerk subject when verified; otherwise provider-forwarded client
@@ -576,6 +585,9 @@ Deno.serve(async (request) => {
     // Status is a pure repository-config lookup, never a SELECT.
     if(body.kind==="status"&&body.name==="active_public_target"){
       if(requestedTarget!=="configured")return json({error:{message:"Invalid status target"}},400);
+      if(role!=="authenticated")return json({error:{message:"Administrator permission required"}},403);
+      try{await checkAdminRole(claims);}
+      catch{return json({error:{message:"Administrator permission required"}},403);}
       return json({data:{
         provider:routing.provider,
         primary_id:routing.primaryId,
