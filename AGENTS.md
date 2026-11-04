@@ -40,7 +40,7 @@
 - 如使用 superpowers、ponytail 等已安裝技能，必須實際執行相應流程，不可只宣稱已使用。除必要決策或真正缺權限外，Agent 自行解決技術問題；卡關只提出使用者能操作的具體配合事項。
 
 ## 跨對話／插件一致性
-- LOC 任務每次開始先讀取目前儲存庫的 `AGENTS.md` 與相關任務狀態，再按需求調用已可用的適當技能（例如 ZzzOps、Superpowers、Ponytail、Product Design、UI UX Designer、Awesome Maintainer Defense）；不要求使用者每回合重新貼 Plugin 名單。不因某技能在新對話未啟用就降低連續交付、驗證、PR、Galaxy 或 Merge 標準。
+- **Plugins／Skills 主動發現、實讀、執行**：LOC 任務每次開始先讀取目前儲存庫的 `AGENTS.md` 與相關任務狀態；主動檢索本次可用且與需求相關的已安裝 Plugins／Skills，實際讀取所選 Plugin 的入口 Skill、所需關聯 Skill 與必要參考文件，再依內容執行。**不能只看 Plugin 名稱、僅宣稱有使用、或等使用者逐一點名才讀取**；不得要求使用者每回合重新貼 Plugins／Skills 名單。不因某工具在新對話未啟用就降低連續交付、驗證、PR、Galaxy 或 Merge 標準。
 - **實際能力邊界**：已安裝不等於本次工具可用；技能指示不能代替工具實際執行，也不能保證跨對話自動載入。技能不可用時沿用本文件可執行的標準工作流程，不假稱已調用；不為了插件的內部流程而製造額外 Branch、PR、Workflow、文件或人工確認點。介面／UX 類技能只在相關需求適用，不強制所有純技術任務跑設計流程。
 
 ## 工作流程與費用
