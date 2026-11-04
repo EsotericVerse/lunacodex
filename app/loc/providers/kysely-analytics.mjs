@@ -70,7 +70,7 @@ async function linkedMediaCount(trx,scope,anchorSuffix,start,end){
   const galaxy=relation(scope,'galaxy'),anchor=relation(scope,anchorSuffix);
   const response=await sql`select count(*)::integer as n from (
       select distinct unnest(g.media_link)::text as uid from ${galaxy} as g
-      where g.statics is true and coalesce(g.content,'')<>''
+      where (g.attr->>'statics')::boolean is true and coalesce(g.content,'')<>''
         and (${start}::date is null or g.date>=${start}::date)
         and (${end}::date is null or g.date<=${end}::date)
     ) refs where exists(select 1 from ${anchor} m where m.uid=refs.uid
@@ -190,7 +190,7 @@ async function traceDaily(trx,scope,places,start,end,source){
   const result=await sql`select (g.createtime at time zone 'Asia/Taipei')::date as day,
       g.place_id::text as category,count(*)::bigint as item_count
     from ${galaxy} g where g.place_id=any(${places}::text[])
-      and g.trace is true and g.createtime is not null
+      and (g.attr->>'trace')::boolean is true and g.createtime is not null
       and (${start}::date is null or g.createtime>=
         (${start}::date::timestamp at time zone 'Asia/Taipei'))
       and (${end}::date is null or g.createtime<
@@ -212,7 +212,7 @@ async function traceKeywordGroups(trx,scope,anchor,places,start,end,source,reque
       join ${a} g on g.uid=child.uid and g.type='group'
     ),articles as materialized(
       select g.uid::text as uid from ${galaxy} g
-      where g.place_id=any(${places}::text[]) and g.keyword is true
+      where g.place_id=any(${places}::text[]) and (g.attr->>'keyword')::boolean is true
         and (${start}::date is null or g.date>=${start}::date)
         and (${end}::date is null or g.date<=${end}::date)
         and (${source}::text is null or g.site=${source})
@@ -483,7 +483,7 @@ export async function executePortableKyselyAnalytics(db,body,{engine,namespace='
   const first=async()=>{
     const row=await db.selectFrom(galaxy)
       .select(eb=>eb.fn.min('date').as('day'))
-      .where('statics','=',true).where('content','!=','').executeTakeFirst();
+      .where(sql`(attr->>'statics')::boolean`,'=',true).where('content','!=','').executeTakeFirst();
     return row?.day??null;
   };
   let data;
