@@ -4,6 +4,7 @@ import {test} from 'node:test';
 import vm from 'node:vm';
 import {administrativeSourceTrend} from '../app/loc/statistics-admin-source.mjs';
 import {MAX_ROWS} from '../app/loc/query-batch-size.mjs';
+const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
 // Test the real public bootstrap entry without loading browser-only SDKs.
 // Mock only its database seams; assert the publicly observable requests and
