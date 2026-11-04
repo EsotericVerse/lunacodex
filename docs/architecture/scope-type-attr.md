@@ -152,7 +152,7 @@ Cloudflare Pages `loc` production 部署 commit `54844ebf19ce8d88b52c1c4534a76e4
 ### Galaxy 權限實體欄位（2026-11-03）
 
 - `silver.{scopeid}_galaxy` 的文章層開關為八個獨立 Boolean 欄位：`statics`、`culture`、`search`、`trace`、`list`、`keyword`、`others`、`extract`。不要再向 PostgreSQL 寫 `galaxy.able` JSONB，亦不要用 `able->>` 過濾。歷史 JSON 名稱 `keywords/game` 對應 `keyword/others`，只在舊檔匯入或裝置本機 SQLite 相容層轉換。
-- `silver.lo3rwang.able` 是 **Scope 設定**，不是 Galaxy 文章權限；不得隨文章欄位退役刪除。
+- Scope 主設定的功能開關已統一為 `silver.lo3rwang` 與 `silver.lrunes` 的四個獨立 Boolean 欄位：`trace`、`search`、`culture`、`statics`。舊 `silver.lo3rwang.able` 已退役，禁止在 Code／RPC 繼續使用；如備援庫仍有該舊欄，不代表仍須讀取。
 - 本次先補齊 `lo3rwang_galaxy`、`lrunes_galaxy` 的八欄並讓既有 RPC 直接查布林欄位；舊客戶端仍存在時保留相容觸發器及原 RLS。新客戶端、Clerk Edge Function、LOC Authority 真正部署且讀寫／隱私檢查通過後，才執行最後的 RLS／觸發器切換與 `DROP COLUMN able`，避免資料公開或連線中斷。
 - 用既有 UID 保留文章隱藏狀態；公開 `search`／`list`、搜尋 `extract`、統計與文化視圖不可因遷移而放寬。第三方 Scope 未遷移其儲存結構前，保留其獨立相容入口。
 
