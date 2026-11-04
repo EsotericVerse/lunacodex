@@ -18,7 +18,12 @@ import {loadPublishedBlocks} from '../modular/published-blocks/index.js';
 // 以下只對非機密欄位使用 PostgREST alias，
 // buildScopeData/scopeDataFromManageRows 完全不需要改動。
 export const MANAGE_TABLE='silver.manage';
-const MANAGE_COLUMNS='id,role:manage_role,galaxy:galaxy_table,anchor:anchor_table,birthday';
+// No PostgREST-style "alias:column" renaming here -- the Kysely edge
+// function's column validator (kysely-runtime.mjs validateQuery) only
+// accepts plain identifiers and rejects anything containing ':' with
+// "Invalid selected column". Select the real column names and rename
+// them in buildScopeData() below instead.
+const MANAGE_COLUMNS='id,manage_role,galaxy_table,anchor_table,birthday';
 const MANAGE_ROLE_COLUMN='manage_role';
 
 const SCOPE_ID_PATTERN=/^[a-z][a-z0-9]{0,14}$/;
@@ -35,13 +40,13 @@ function requiredToken(value,label){
 }
 
 function buildScopeData(row,id){
-  const galaxySuffix=requiredToken(row?.galaxy,'galaxy');
-  const anchorSuffix=requiredToken(row?.anchor,'anchor');
+  const galaxySuffix=requiredToken(row?.galaxy_table,'galaxy');
+  const anchorSuffix=requiredToken(row?.anchor_table,'anchor');
   const galaxy=`silver.${id}_${galaxySuffix}`;
   return {
     id,
     config:`silver.${id}`,
-    role:String(row?.role||'').trim(),
+    role:String(row?.manage_role||'').trim(),
     birthday:String(row?.birthday||'').slice(0,10)||null,
     galaxy,
     // One physical store for Time, Trace, Keywords and Media.
