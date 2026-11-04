@@ -59,6 +59,7 @@
 .scope-timeline span,.scope-timeline small{color:var(--scope-muted)}
 .scope-footer{margin:0 auto;}
 .scope-footer-row{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+.scope-footer-date-basis{font-size:.72rem;font-weight:400;color:var(--scope-muted);white-space:nowrap;line-height:1.4}
 .scope-theme-control{display:inline-flex;align-items:center;gap:.45rem}
 .scope-theme-control select{padding:.35rem .55rem;border:var(--scope-border);border-radius:999px;background:var(--loc-panel);color:var(--scope-text)}
 @media(max-width:720px){

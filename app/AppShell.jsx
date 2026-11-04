@@ -618,6 +618,9 @@ function AppShellInner({children}){
           copy={copy}
           onChange={locale=>setManualLocale({scopeId,locale:normalizeUiLocale(locale)})}
         />
+        <small className="scope-footer-date-basis" aria-label={({'zh-Hant':'日期基準','zh-Hans':'日期基准',en:'Date basis',ja:'日付基準'}[activeLocale]||'日期基準')+'：Asia/Taipei (UTC+08:00)'}>
+          {({'zh-Hant':'日期基準','zh-Hans':'日期基准',en:'Date basis',ja:'日付基準'}[activeLocale]||'日期基準')+'：Asia/Taipei (UTC+08:00)'}
+        </small>
       </div>
       <DataSourceStatus local={localWorkspace}/>
       <FlashMessage/>
