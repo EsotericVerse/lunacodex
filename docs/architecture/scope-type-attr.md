@@ -221,7 +221,7 @@ Search 的全文比對**僅**作用於 Galaxy 的 `content` 與 Anchor 的 `desc
 
 - 唯一允許使用者主動對 Galaxy `content`／Anchor `description` 送出模糊比對的入口是**搜尋主功能**；Culture 只以 `date` 與時間定錨、Trace 以 `place_id` 與空間定錨、Statistics 以結構化欄位及既有分析結果取得文章，不額外搜尋全文。搜尋主頁全文搜尋**不得取消**。
 - 搜尋 UI 於新文字搜尋之間強制 **3 秒冷卻**（瀏覽、分頁載入、依 UID 展開全文不適用），先在前端阻擋快速重複點擊；伺服器只針對 Galaxy `content` 與 Anchor `description` 的 `ILIKE/LIKE` SELECT 作搜尋 QoS，其他管理寫入、文章列表、日期與地點查詢不受影響。
-- Gateway：同一個識別來源 **每分鐘最多 6 次嘗試**、搜尋請求最少間隔 3 秒。超限後暫時封鎖 **120 秒**、回傳 HTTP 429 與 `Retry-After`；搜尋用 PostgreSQL 交易設定 `statement_timeout=8000ms`，SQL 超時回傳 `SEARCH_TIMEOUT`，不執行自動重試。
+- Gateway：同一個識別來源 **每分鐘最多 24 次文字搜尋 SQL 請求**（一次搜尋動作可能涉及多個 Scope／Provider）；新搜尋動作的最少 3 秒間隔由 UI 實施。伺服器不對同一動作的各個 SQL 子查詢額外套用 3 秒間隔，以免誤擋合法的跨 Scope 搜尋。超限後暫時封鎖 **120 秒**、回傳 HTTP 429 與 `Retry-After`；搜尋用 PostgreSQL 交易設定 `statement_timeout=8000ms`，SQL 超時回傳 `SEARCH_TIMEOUT`，不執行自動重試。
 - 限流目前使用 Edge Function **單個 warm isolate 的有上限記憶體**，不查詢或寫入額外資料表、不新增 RPC、Trigger、Index、不變更既定 QoS 16。**這不是跨所有 Edge instances 的全球共享黑名單**；跨實例、跨區域的強制防護將來須由部署層的共享限流能力承擔，不能把本版本宣稱成分散式全域封鎖。
 - 已設有搜尋使用者端 25 秒 abort 與 Kysely HTTP 9 秒 deadline；SQL 8 秒設定是另外在資料庫端阻止長時間掃描。僅對 PostgreSQL 實際施加 `SET LOCAL statement_timeout`；其他 SQL 引擎不應宣稱享有相同的伺服器端保證。
 - 驗收：`node --test scripts/test-search-qos.mjs`，另須核對部署中的 HTTP 429、`Retry-After` 和 SQL timeout，以及搜尋主功能正常找到包含指定詞的文章。測試與部署結果各自記錄，不得以本文件代替驗證。
