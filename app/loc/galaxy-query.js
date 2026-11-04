@@ -668,6 +668,10 @@ export async function searchGalaxyRows(scopes,query,{
 }={}){
   const q=String(query||'').trim();
   if(!q&&!browse)return {rows:[],failures:[],hasMore:false,nextCursor:null};
+  // Only exact article UID or PR identifiers may initiate a text search.
+  // Any other free text must return locally, before creating SQL providers.
+  if(!browse&&!/^[A-Za-z0-9]{8}$/.test(q)&&!/^PR\\s*#?\\s*\\d{1,7}$/i.test(q))
+    return {rows:[],failures:[],hasMore:false,nextCursor:null};
   const safeLimit=Math.max(1,Math.min(DEFAULT_LIST_BATCH_SIZE,Math.floor(Number(limit)||DEFAULT_LIST_BATCH_SIZE)));
   const scopeList=(Array.isArray(scopes)?scopes:[]).filter(scope=>scope?.id);
   const hiddenScopes=new Set((Array.isArray(hiddenScopeIds)?hiddenScopeIds:[]).map(value=>String(value||'').trim()).filter(Boolean));
