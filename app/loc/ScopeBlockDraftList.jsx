@@ -149,7 +149,7 @@ export default function ScopeBlockDraftList({
       const nextOrder=Math.max(0,...current.map(draft=>Number(draft.order)||0))+1;
       return [...current,{
         uid:HomeBlock.createUid(),stored:false,order:nextOrder,
-        eyebrow:'',title:'',subtitle:'',text:'',image:null,entities:[],_deleted:false
+        eyebrow:'',title:'',subtitle:'',text:'',image:null,entities:[],bubbleColumns:HomeBlock.defaultBubbleColumns(pageName),_deleted:false
       }];
     });
   }
@@ -206,12 +206,12 @@ export default function ScopeBlockDraftList({
           ...(isHomeFrame?{block_image:draft.image?.source==='custom'&&!String(draft.image.url||'').trim()?{...draft.image,source:'default',url:''}:(draft.image||null)}:{}),
           block_text:normalizeSavedHtml(draft.text),
           block_order:order,
-          block_entity:HomeBlock.normalizeEntities(draft.entities).map(({uid,title,text,image_mode},entityIndex)=>({
+          block_entity:HomeBlock.serializeBubbleEntities(draft.bubbleColumns,HomeBlock.normalizeEntities(draft.entities).map(({uid,title,text,image_mode},entityIndex)=>({
             uid,
             title:String(title||'').trim(),
             text:normalizeSavedHtml(text),
             ...(pageName==='index'&&draft.order===1&&entityIndex===0&&image_mode==='side'?{image_mode:'side'}:{})
-          }))
+          })),pageName)
         };
         const uid=draft.stored?draft.uid:/^[A-Za-z0-9]{8}$/.test(String(draft.uid||''))?draft.uid:HomeBlock.createUid();
         if(draft.stored)await updateRows(table,values,{filters:[{column:'uid',operator:'eq',value:uid}]});
@@ -238,7 +238,7 @@ export default function ScopeBlockDraftList({
   }
 
   function renderDraftEntities(draft){
-    return <div className="scope-block-entity-grid">
+    return <div className="scope-block-entity-grid" style={{'--loc-bubble-columns':HomeBlock.bubbleColumns([draft.bubbleColumns],pageName)}}>
       {draft.entities.map((entity,index)=><article className={HomeBlock.childPresentation(entity.title)==='card'?'scope-block-entity':'loc-bubble scope-block-text-bubble'} key={entity.uid}>
         <div className="scope-block-entity-actions">
           <button type="button" className="loc-button" disabled={index===0||busy} onClick={()=>moveEntity(draft.uid,index,-1)}>←</button>
@@ -273,6 +273,7 @@ export default function ScopeBlockDraftList({
         {visibleDrafts.length>1&&!pinnedHero?<button type="button" className="loc-button" disabled={busy||!HomeBlock.canSwapHomeBlockPositions(pageName,visibleDrafts,index,index+1)} onClick={()=>moveBlock(draft.uid,1)}><UiText id="uiExtra.editBlocks.moveDown"/></button>:null}
         {allowDelete?<button type="button" className="loc-button scope-danger-button" disabled={busy} onClick={()=>toggleDelete(draft.uid)}><UiText id="uiExtra.editBlocks.remove"/></button>:null}
       </div>
+      <div className="scope-editor-stage"><h3 className="scope-editor-stage__title">文字內容</h3><p className="scope-editor-stage__help">依序設定標題、副標題與正文；下方另行設定圖片及附屬內容。</p>
       <ObjectEditor mode="scope" fields={[
         ...(editEyebrow?[{
           key:'eyebrow',label:<UiText id="uiExtra.editBlocks.englishEyebrow"/>,
@@ -294,8 +295,17 @@ export default function ScopeBlockDraftList({
           canInsertImage:allowImages&&!isHomeFrame&&canInsertImageIn(draft,draft.text)
         }
       ]}/>
-      {isHomeFrame?<HeroImageFieldset draft={draft} image={image} allowImageOnly={pageName==='index'} onChange={(changes,removeEmbedded)=>patchImage(draft.uid,changes,removeEmbedded)}/>:null}
-      {allowEntities?renderDraftEntities(draft):null}
+      </div>
+      {isHomeFrame?<div className="scope-editor-stage"><h3 className="scope-editor-stage__title">主視覺圖片</h3><HeroImageFieldset draft={draft} image={image} allowImageOnly={pageName==='index'} onChange={(changes,removeEmbedded)=>patchImage(draft.uid,changes,removeEmbedded)}/></div>:null}
+      {allowEntities?<div className="scope-editor-stage">
+        <h3 className="scope-editor-stage__title">附屬內容</h3>
+        <label className="scope-bubble-layout-control">文字泡泡排列（每列）
+          <select className="scope-select" value={draft.bubbleColumns} onChange={e=>patchDraft(draft.uid,{bubbleColumns:Number(e.target.value)})}>
+            {[2,3,6].map(n=><option key={n} value={n}>{n} 個</option>)}
+          </select>
+        </label>
+        {renderDraftEntities(draft)}
+      </div>:null}
     </section>;
   }
 

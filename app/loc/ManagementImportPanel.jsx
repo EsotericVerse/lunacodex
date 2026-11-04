@@ -114,7 +114,7 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t){
     // did not provide a nested media array. Attach one media record to its UID.
     if(content&&runeResultText)mediaRecords.push({
       __article_uid:uid,media_type:'rune',title:'抽牌結果',
-      url:null,meta_tags:runeResultText,createtime:createdAt,location:sourcePlace||null
+      url:null,description:runeResultText,createtime:createdAt,location:sourcePlace||null
     });
   }catch(error){return {record:null,error:String(error.message||error)}}
   if(!content){
@@ -128,7 +128,7 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t){
         __article_uid:String(value('galaxy_link')||'').trim()||null,
         location:sourcePlace||null,
         media_type:type,title:rawTitle||(type==='rune'?'抽牌結果':null),url:url||null,
-        meta_tags:type==='rune'?(runeDrawText(value('meta_tags'))||runeResultText):String(value('meta_tags')||'').trim(),
+        description:type==='rune'?(runeDrawText(value('description'))||runeResultText):String(value('description')||'').trim(),
         createtime:createdAt,
         ...(type!=='rune'&&runeResultText?{rune_references:importedRuneReferences}:{})
       }};
@@ -177,7 +177,7 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t){
 const IMPORT_FORMAT_FIELDS=Object.freeze([
   'uid','site_id','content','title','createtime','location',
   'url','source_id','target_id','ref_id','searchable','statistics_able',
-  'media_link','media','media_type','galaxy_link','meta_tags','rune_references'
+  'media_link','media','media_type','galaxy_link','description','rune_references'
 ]);
 
 // Preview text shows each web address as a short link instead of the raw URL.
@@ -260,12 +260,12 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
           return [record];
         const content=runeDrawText(rune_references);
         if(record.type==='rune'){
-          return [{...record,title:record.title||'抽牌結果',meta_tags:runeDrawText(record.meta_tags)||content}];
+          return [{...record,title:record.title||'抽牌結果',description:runeDrawText(record.description)||content}];
         }
         if(!record.__article_uid)throw new Error('抽牌結果必須對應 Galaxy 文章 UID');
         return [record,{
           __article_uid:record.__article_uid,type:'rune',title:'抽牌結果',
-          url:null,meta_tags:content,createtime:record.createtime,location:record.location
+          url:null,description:content,createtime:record.createtime,location:record.location
         }];
       });
       onProgress?.({stage:'核對既有媒體',completed:0,total:0});
@@ -286,7 +286,7 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
       // with a complete, matching source evidence identity.
       const mediaEvidenceKey=(item,owner)=>{
         const type=String(item?.type||'').trim();
-        const metadata=String(item?.meta_tags||'').trim();
+        const metadata=String(item?.description||'').trim();
         const title=String(item?.title||'').trim();
         const stamp=Date.parse(String(item?.createtime||''));
         if(!owner||!type||!metadata||!title||!Number.isFinite(stamp))return '';
@@ -295,7 +295,7 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
       };
       const pendingOwners=[...new Set(plans.filter(item=>
         !item.uid&&!item.url&&item.__article_uid&&
-        (item.type==='rune'&&item.meta_tags||
+        (item.type==='rune'&&item.description||
           mediaEvidenceKey(item,String(item.__article_uid))))
         .map(item=>String(item.__article_uid)))];
       const existingRuneByArticle=new Map(),existingOwnerMediaByKey=new Map();
@@ -304,7 +304,7 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
           t('uiExtra.importUI.mediaLinkReadFailed'));
         const linkedUids=[...new Set(ownerRows.flatMap(row=>Array.isArray(row.media_link)?row.media_link:[]))];
         const linkedMedia=linkedUids.length?await readExistingByIds(
-          galaxyMedia,'uid,type,meta_tags,title,createtime,location,url','uid',linkedUids,
+          galaxyMedia,'uid,type,description,title,createtime,location,url','uid',linkedUids,
           t('uiExtra.importUI.mediaIdCompareFailed')):[];
         const savedMediaByUid=new Map(linkedMedia.map(row=>[String(row.uid),row]));
         for(const article of ownerRows){
@@ -312,8 +312,8 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
             const stored=savedMediaByUid.get(String(mediaUid));
             if(!stored)continue;
             const owner=String(article.uid),uid=String(mediaUid);
-            if(stored.type==='rune'&&stored.meta_tags)
-              existingRuneByArticle.set(JSON.stringify([owner,String(stored.meta_tags)]),uid);
+            if(stored.type==='rune'&&stored.description)
+              existingRuneByArticle.set(JSON.stringify([owner,String(stored.description)]),uid);
             if(!stored.url){
               const key=mediaEvidenceKey(stored,owner);
               if(key&&!existingOwnerMediaByKey.has(key))existingOwnerMediaByKey.set(key,uid);
@@ -351,8 +351,8 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
       for(const raw of plans){
         const owner=String(raw.__article_uid||'').trim();
         const record={...raw};delete record.__article_uid;
-        const runeDedupKey=record.type==='rune'&&!record.uid&&!record.url&&owner&&record.meta_tags
-          ?JSON.stringify([owner,String(record.meta_tags)]):'';
+        const runeDedupKey=record.type==='rune'&&!record.uid&&!record.url&&owner&&record.description
+          ?JSON.stringify([owner,String(record.description)]):'';
         const existingRuneUid=runeDedupKey?existingRuneByArticle.get(runeDedupKey):null;
         if(existingRuneUid){attach(owner,existingRuneUid);continue;}
         const evidenceKey=!record.uid&&!record.url?mediaEvidenceKey(record,owner):'';

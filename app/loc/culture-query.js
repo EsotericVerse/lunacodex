@@ -6,6 +6,7 @@ import {CultureTimelineModel} from '../modular/modules/culture-timeline/culture-
 import {workDisplayText} from '../modular/work-display-model';
 import {selectScopeDailyCounts} from './galaxy-query';
 import {DB_QUERY_BATCH_SIZE,selectAllRows,selectCount,selectRows} from './db-query.mjs';
+import {mapBounded} from './bounded-parallel.mjs';
 import {publicContentFilters} from './content-policy';
 import {selectManagedScope,selectManagedScopes,selectScopeGroupMemberIds} from './scope-data';
 import {resolveTimeSegments,resolveTimeTrace,timePeriodSortDate,timeDateWindows,timePeriodContainsDate,intersectTimeDateWindows,storedTimeRange} from './time-anchor-ranges.mjs';
@@ -30,7 +31,6 @@ export async function selectCultureTimeRows(scope,birthday=''){
   const {rows}=await selectRows(table,{
     columns:TIME_COLUMNS,
     filters:[{column:'type',operator:'in',value:['anchor','period','era']}],
-    orders:[{column:'uid',ascending:true}],
     limit:DB_QUERY_BATCH_SIZE,offset:0
   });
   const anchors=rows.filter(row=>row.type==='anchor');
@@ -273,7 +273,7 @@ export async function selectLocCultureDensity({scopes=[],intersectionWindows=[],
     const day=String(row.day||'').slice(0,10);
     return intersectionWindows.some(shared=>day>=shared.startDate&&day<=shared.endDate);
   };
-  const aggregateRows=(await Promise.all(scopes.map(async scope=>{
+  const aggregateRows=(await mapBounded(scopes,2,async scope=>{
     const {text:textDaily,media:mediaDaily}=await selectScopeDailyCounts(scope,{
       startDate:intersectionStart,endDate:intersectionEnd,
       includeEmptyMedia:true,requireAggregate:true
@@ -282,7 +282,7 @@ export async function selectLocCultureDensity({scopes=[],intersectionWindows=[],
       ...textDaily.filter(validDate).map(row=>({...row,scope_id:scope.id})),
       ...mediaDaily.filter(validDate).map(row=>({...row,scope_id:scope.id}))
     ];
-  }))).flat();
+  })).flat();
   const built=buildLocSourceRiver(aggregateRows);
   return {
     scopeRanges:buildLocScopeDistribution(aggregateRows),
@@ -306,10 +306,11 @@ export async function selectScopeCultureData(scopeId){
       };
     }
 
-    const bundles=await Promise.all(managedScopes.map(async scope=>{
+    // A Scope Group may contain many sites; don't open all Time readers together.
+    const bundles=await mapBounded(managedScopes,2,async scope=>{
       const context=await selectCultureTimeRows(scope,scope.birthday);
       return {scope,runtimeId:scope.id,context};
-    }));
+    });
 
     // Every saved era contributes its actual period intervals.
     // Merge within each Scope, then intersect the resulting sets across all
@@ -550,7 +551,7 @@ export async function selectScopePeriodSourceSnapshot(scope,{startDate='',endDat
 }
 
 function mediaMetadataDescription(row){
-  const fields=[['標題',row.title],['類型',row.type],['Meta Tag',row.meta_tags]];
+  const fields=[['標題',row.title],['類型',row.type],['內容',row.description]];
   return fields.map(([label,value])=>{const text=CultureTimelineModel.decodeCultureText(value||'').trim();return text?`${label}：${text}`:'';}).filter(Boolean).join(' · ')||'沒有可讀的 metadata 文字';
 }
 
@@ -566,10 +567,12 @@ export async function selectScopePeriodWorkIndex(scope,{startDate='',endDate=nul
       ...common,...windows[0],cursor,periodRanges:null
     });
     const oldCursors=cursor?.intervalCursors||[];
-    const pages=await Promise.all(windows.map((window,i)=>
+    // Preserve one cursor per disjoint window, but bound simultaneous COUNT
+    // and page queries when a saved era contains many independent periods.
+    const pages=await mapBounded(windows,2,(window,i)=>
       selectScopePeriodWorkIndex(scope,{
         ...common,...window,cursor:oldCursors[i]||null,periodRanges:null
-      })));
+      }));
     const positions=pages.map(()=>0),out=[];
     const ascending=sortDirection!=='desc';
     const consumed=pages.map(()=>({galaxy:0,media:0}));
@@ -642,7 +645,7 @@ export async function selectScopePeriodWorkIndex(scope,{startDate='',endDate=nul
     includeGalaxy?selectRows(scope.galaxy,{
       columns:'uid,title,createtime',
       filters:galaxyFilters,
-      orders:[...(scope.id==='local'?[]:[{column:'date',ascending}]),{column:'createtime',ascending},{column:'uid',ascending}],
+      orders:[...(scope.id==='local'?[]:[{column:'date',ascending}]),{column:'createtime',ascending}],
       limit:pageSize,
       offset:galaxyOffset,
       maxLimit:pageSize,
@@ -651,7 +654,7 @@ export async function selectScopePeriodWorkIndex(scope,{startDate='',endDate=nul
     includeMedia?selectRows(scope.galaxyMedia,{
       columns:'uid,createtime',
       filters:mediaFilters,
-      orders:[{column:'createtime',ascending},{column:'uid',ascending}],
+      orders:[{column:'createtime',ascending}],
       limit:pageSize,
       offset:mediaOffset,
       maxLimit:pageSize,

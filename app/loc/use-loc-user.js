@@ -4,8 +4,8 @@ import {usePassiveSessionAccount} from './use-account';
 import {useAsyncResource} from './use-async-resource';
 import {loadOrCreateLocUser,saveLocUserField} from './loc-user-store.mjs';
 
-// Shared per-OAuth SWR resource. No guest request; OAuth/session verification
-// precedes first READ/INSERT. Every later feature view reuses the same row.
+// Shared per-OAuth SWR resource. Guests make no request; a verified login
+// supplies the account ID. No automatic INSERT and no second email check.
 export default function useLocUser({verifiedSubject=''}={}){
   const account=usePassiveSessionAccount();
   // Settings can already have a server-verified OAuth identity even before
@@ -19,9 +19,9 @@ export default function useLocUser({verifiedSubject=''}={}){
   });
   const queue=useRef(Promise.resolve());
   const update=useCallback((field,value)=>{
-    if(!enabled||!query.data?.uid)
+    if(!enabled||!query.isSuccess||!query.data)
       return Promise.reject(new Error('OAuth 個人設定尚未載入'));
-    const uid=query.data.uid;
+    const uid=query.data.uid||'';
     // A fast series of choices must be committed in order. No mutation is
     // sent under another user's cache key if OAuth changes mid-flight.
     const request=queue.current.catch(()=>{}).then(async()=>{
@@ -31,7 +31,7 @@ export default function useLocUser({verifiedSubject=''}={}){
     });
     queue.current=request;
     return request;
-  },[enabled,query.data?.uid,query.mutate]);
+  },[enabled,query.isSuccess,query.data?.uid,query.mutate]);
   return {
     data:enabled?query.data:null,
     ready:enabled&&query.isSuccess,

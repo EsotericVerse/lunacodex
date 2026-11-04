@@ -68,3 +68,14 @@ test('Timeline opens with the configured Auth SDK rather than the query-only dat
   assert.match(provider,/auth:authenticatedSdk\.auth/);
   assert.match(place,/section==='timeline'\?<TimelinePlaceManager/);
 });
+
+test('Place-name editor puts the direct search task before bulk cleanup',()=>{
+  const source=read('app/loc/TraceOrganizer.jsx');
+  const search=source.indexOf('1. 搜尋並管理既有地點');
+  const bulk=source.indexOf('2. 批次整理名稱排列候選');
+  assert.ok(search>=0&&bulk>search,'search and direct edits precede bulk operations');
+  assert.match(source,/沒有符合搜尋條件的地點/);
+  assert.match(source,/只修改名稱，不會合併或刪除文章、UID 與路線/);
+  assert.match(source,/onClick=\{saveNames\}/);
+  assert.match(source,/onClick=\{saveAllChecked\}/);
+});

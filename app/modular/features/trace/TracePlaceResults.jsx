@@ -120,7 +120,7 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
         const filters=traceArticleIdFilters(selectedIds,{startDate,endDate,sourceName:sourceFilter});
         const result=await selectRows(scope.galaxy,{
           columns:'uid,title,createtime,date,place_id',
-          filters,orders:[{column:'date',ascending:sort==='asc'},{column:'uid',ascending:true}],
+          filters,orders:[{column:'date',ascending:sort==='asc'},{column:'createtime',ascending:sort==='asc'}],
           limit:PAGE_SIZE,offset,count:offset===0?'exact':null
         });
         const rows=result.rows||[];
@@ -156,7 +156,7 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
       const {rows:mediaPage}=await selectRows(scope.galaxyMedia,{
         columns:'uid',
         filters:[{column:'type',operator:'eq',value:selectedMediaType}],
-        orders:[{column:'uid',ascending:true}],
+        orders:[{column:'type',ascending:true}],
         limit:mediaLimit,maxLimit:mediaLimit,offset:mediaOffset
       });
       const mediaIds=mediaPage.map(row=>String(row.uid||'').trim()).filter(Boolean);
@@ -167,7 +167,7 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
           ...traceArticleIdFilters(placeIds,{startDate,endDate,sourceName:sourceFilter}),
           {column:'media_link',operator:'overlaps',value:mediaIds}
         ],
-        orders:[{column:'date',ascending:sort==='asc'},{column:'uid',ascending:true}],
+        orders:[{column:'date',ascending:sort==='asc'},{column:'createtime',ascending:sort==='asc'}],
         limit:PAGE_SIZE,maxLimit:PAGE_SIZE,offset:articleOffset
       });
       const moreInMediaPage=rows.length===PAGE_SIZE;
@@ -248,7 +248,7 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
       for(let offset=0;offset<mediaRows.length;offset+=80){
         const batch=mediaRows.slice(offset,offset+80).map(row=>String(row.uid));
         const {rows}=await selectRows(scope.galaxy,{
-          columns:'uid,date,place_id,able',
+          columns:'uid,date,place_id,trace',
           filters:[{column:'uid',operator:'in',value:batch}],
           limit:batch.length,maxLimit:batch.length
         });

@@ -3,22 +3,23 @@
 ## 核心邊界
 - 使用者決定「需求」及「需自行觸發的計費／正式發布時機」；Agent 自行負責程式、驗證、衝突、PR、Galaxy 與清理。不要要求使用者看 code、diff、commit log 或解決技術問題。
 - **預設持續執行直到完成**。已授權的需求不重問、不重新腦力激盪、不停下等待「繼續」。一般錯誤、工具失敗、驗證、衝突、PR、Galaxy 更新與收尾自行排除並續作；只在使用者明確叫停、真正需要新的業務／Schema 授權、或本人保留的高計費正式操作時停下對應動作，其他部分繼續。**執行過程預設不逐步印字、不逐 PR 解說、不反覆發進度通知；只有真正需要使用者配合、重大不可逆風險、實際阻礙或最後交付結果，才以最少必要文字回報。**不把技能（superpowers／ponytail）的內部流程或日誌轉貼給使用者；需要執行技能時由 Agent 自行在工具中處理，不因插件流程要求使用者反覆回覆。
-- GitHub Pages 的正式部署、公開發布與明顯高計費的手動工作流程，由使用者決定觸發；Agent 不自行觸發。Cloudflare Pages 的 `main` 自動部署照既有設定運作，不能混同兩者。
+- **使用者已授權 GitHub Pages 在 `main` push 後自動部署**；正式部署由單次完整合併觸發，Agent 不額外手動執行 `workflow_dispatch`。公開 RC／iOS 打包與其他高計費手動工作流程仍由使用者決定。Cloudflare Pages 的 `main` 自動部署照既有設定運作，兩者須分開確認。
+- **GitHub 管理權限硬邊界**：分支清理、PR 或程式修復的授權不包含進入 GitHub Settings（包含 Branches／Rulesets／Branch protection／Required checks／Actions 管理權限）或嘗試更動儲存庫權限、所有權、部署設定；未獲使用者針對該管理操作明確授權，連進入相關設定介面執行管理工作都禁止。不得要求使用者盲目通過手機雙重認證。必要時只提供要修改的具體項目與風險，由使用者決定是否親自操作。
 
 ## 唯一正常工作流程
 **需求 → 沿用／建立一個工作 Branch → 修改完成 → 開一個 PR → 寫入同一筆 Galaxy PR 紀錄 → PR 確認可合併 → Merge → 更新原 Galaxy 紀錄 → 刪除已合併 Branch。**
 
-1. 同一需求原則上一個 Branch、一個 PR；優先沿用既有工作分支。不為了分批回報、測試或中斷而增加分支／PR。只有真正互不依賴的需求才分開。改完才開 PR，不用草稿 PR 佔位。
+1. **同一批相關需求只用一個 Branch、一個 PR**；同模組小修正、文件補正與驗收修復優先追加到既有工作分支，不得每回合或每個小錯誤新開 PR。原則上單一 PR 不超過 20 個檔案；必要時以完整功能邊界分批，不用瑣碎分批製造更多 PR。完整驗收後再合併，不為報進度而頻繁 Merge；Cloudflare 的 `main` 自動部署會隨合併觸發，應讓每次合併具有完整交付價值。只有互不依賴、無法合理合批的需求才分開。改完才開 PR，不用草稿 PR 佔位。
 2. 修改只在隔離工作區與工作分支進行；動工前留可取回的 Git SHA／checkpoint，重要且完整的階段再留還原點。不碰別人的未提交修改，不直接推半成品到 `main`。
 3. 多 Agent 避免同時修改相同檔案／模組；遇到範圍重疊，先協調順序並繼續不衝突的部分，不無期限被動等待。工作期間有 `main` 更新就適時同步；**開 PR 前先確認工作完整、必要的功能／回歸驗證、及與最新 `main` 的衝突**。不要等 Merge 失敗才補救。開 PR 後若 `main` 又變動，合併前再核對一次；技術衝突由 Agent 解決。
 4. PR 送出後，為該 PR 在正確 Scope 的 Galaxy 建立／補齊**唯一一篇** `site=github` 的紀錄，包含原需求、實際內容、PR 號／連結、測試與部署狀態。真正 Merge 成功後，**更新原 UID** 為已合併（保留合併 SHA），確認讀回，然後刪除來源 Branch。分支刪除失敗不得宣稱結案。受影響的必要技術／使用／版本文件在同一工作內更新；不另立進度流水帳。
-5. Merge、GitHub Actions 通過、Cloudflare 實際部署是不同狀態，分別記錄。Cloudflare Pages `main` 自動建置，preview branch 保持停用；獨立 Workers／Edge Functions 須個別確認。GitHub Pages 等手動正式部署不隨 PR 自動觸發。
+5. Merge、GitHub Actions 通過、GitHub Pages／Cloudflare 實際部署是不同狀態，分別記錄。GitHub Pages 與 Cloudflare Pages 均在 `main` push 後按各自機制自動部署，preview branch 保持停用；獨立 Workers／Edge Functions 須個別確認。除非使用者另有明確指示，不得因 PR 建立、測試或重跑而手動觸發正式部署。
 
 ## 唯一異常處理
 - **只有使用者明確中斷、要求暫停或否定方向**：停止該方向的修改 → 可逆地回到最近一個「正確且完整」的 checkpoint → 保留恢復依據 → 等待新的方向。此例外不適用於 Agent 自己發現的錯誤：自行修復並繼續，不得把偵測到異常解讀為使用者要求中斷。不碰其他 Agent 的修改；若同檔案混合他人工作，只精準撤銷自己的部分。
 - **無法證實中斷後已完整還原**：只暫停將不確定的程式送進 PR／`main`，由 Agent 自行核對還原點、必要時執行獨立語法檢查並排除殘缺；恢復完整就依原任務繼續，除非使用者先前明確要求停等。不能把「有 checkpoint」當成「一定已還原」。
-- **正常執行且能確認未中斷，或已完整回復且有依據**：不額外安排重複的獨立語法檢查；但本機 pre-push 與 PR Workflow guard 的必要驗證仍須執行且通過。功能變動仍做必要、針對性的功能／回歸驗證；純文件變動不執行完整功能測試。語法錯誤與 Git Merge 衝突分開處理，兩者都應在 Merge 前排除。
-- `.githooks/pre-push` 對每次本機推送執行低成本語法檢查與大量刪除檢查，不接受 `LOC_EDIT_STATE=complete` 等未驗證環境旗標略過。GitHub `workflow-guard.yml` 對所有 PR 提供輕量的伺服器端語法驗證與 Workflow 觸發政策檢查；正式、昂貴的功能測試與部署仍必須手動執行。已執行的驗證須記錄真實結果，不另增加同一套昂貴測試。要形成強制合併門檻，還須由 GitHub Branch Protection/Ruleset 把守門 Check 設為 Required。
+- **正常完成、可證實沒有中斷，或已完整還原並有證據**：不為了防中斷而額外執行全專案語法掃描；對功能改動仍做必要、針對性的功能／回歸驗證；純文件變動不跑完整功能測試。不能把語法檢查通過當成功能完整的證據。語法錯誤與 Git Merge 衝突分開處理，兩者都應在 Merge 前排除。
+- `.githooks/pre-push` 正常推送只執行大量刪除／重新命名安全檢查，不再每次掃全專案語法。**僅在意外中斷、修改殘缺、還原不確定或實際出現語法錯誤時**，由 Agent 核對 checkpoint 並執行 `npm run check:syntax`；若 Connector 沒有 npm 環境，可使用 GitHub Actions 的 **Workflow guard → Run workflow** 手動執行一次恢復檢查，不能宣稱未執行的檢查已通過。不得僅憑 `LOC_EDIT_STATE=complete` 旗標認定修復完成。GitHub `workflow-guard.yml` 自動執行只限變更 `.github/workflows/**` 的 PR，僅檢查 Workflow 觸發政策；其他 PR 不自動跑全專案語法或匯入測試。正式發布仍保留必要的發布驗證，不能用本規則繞過發布安全檢查；不在 Settings 新增 Required Check。
 - 同一測試已有可信的未受影響結果就不重複付費跑；必要檢查需有實際執行結果，不靠文字宣稱通過。測試／合併失敗即自行排查，不重複無效操作；同一 workflow 連續失敗三次僅停止該 workflow 的重試，改查原因或用其他合法途徑完成任務，不得把整項工作轉成被動等待。
 
 ## Galaxy 與文件
@@ -34,6 +35,6 @@
 - 如使用 superpowers、ponytail 等已安裝技能，必須實際執行相應流程，不可只宣稱已使用。除必要決策或真正缺權限外，Agent 自行解決技術問題；卡關只提出使用者能操作的具體配合事項。
 
 ## 工作流程與費用
-- `.github/workflows/workflow-guard.yml` 是唯一預先授權由 PR 自動觸發的守門流程；其他工作流程預設僅能 `workflow_dispatch`，未獲同意不能加入自動觸發。保留這項守門，不用它作為增加自動付費測試的藉口。
-- 不在多個 workflow 重複執行同一組昂貴測試；正式、昂貴步驟的必要前置驗證以最低成本處理。不要自行觸發正式 GitHub Pages 部署、公開 release 或高計費打包。
+- `.github/workflows/workflow-guard.yml` 只在 Workflow 檔案修改的 PR 自動檢查觸發政策，亦可手動執行中斷恢復語法檢查；**唯一正式自動部署例外**是使用者已授權 `.github/workflows/deploy-pages.yml` 在 `main` push 後執行。其他 Workflow 預設只能 `workflow_dispatch`，不可自行加入自動觸發。Guard 不得變成額外的全專案自動語法檢查。
+- 不在多個 workflow 重複執行同一組昂貴測試；正式、昂貴步驟的必要前置驗證以最低成本處理。GitHub Pages 已由 `main` 自動部署，不要另行手動觸發相同部署；公開 RC release 或高計費打包仍需使用者明確要求。
 - 完成後只用白話交付：**需求是否達成、原功能是否正常、真正需要使用者配合的事項（如有）**；已完成的工作不持續重複回報。

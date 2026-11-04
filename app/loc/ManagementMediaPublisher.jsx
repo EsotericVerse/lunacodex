@@ -16,7 +16,7 @@ import {hasIrrecoverableEncoding,repairMojibakeText} from './content-policy';
 
 const blankMedia=()=>({
   galaxy_link:'',location:'',type:'',title:'',
-  url:'',meta_tags:'',createtime:''
+  url:'',description:'',createtime:''
 });
 
 function mediaIso(value){
@@ -64,11 +64,10 @@ export default function ManagementMediaPublisher({scopeId,dockScopeId=scopeId,gl
       if(galaxyLink&&galaxyLink.length!==8)throw new Error(t('uiExtra.importUI.linkUidInvalid'));
       const mediaType=repairMojibakeText(draft.type).trim();
       if(!mediaType)throw new Error(t('uiExtra.importUI.mediaTypeRequired'));
-      const metaTags=repairMojibakeText(draft.meta_tags).trim();
+      const mediaDescription=repairMojibakeText(draft.description).trim();
       const mediaTitle=repairMojibakeText(draft.title).trim();
       const sourcePlace=repairMojibakeText(draft.location).trim();
-      if([mediaType,metaTags,mediaTitle,sourcePlace].some(hasIrrecoverableEncoding))throw new Error(t('uiExtra.importUI.mediaEncoding'));
-      if(!metaTags)throw new Error(t('uiExtra.importUI.tagsRequired'));
+      if([mediaType,mediaDescription,mediaTitle,sourcePlace].some(hasIrrecoverableEncoding))throw new Error(t('uiExtra.importUI.mediaEncoding'));
       const scope=account.scopeDataFor(scopeId);
       const article=galaxyLink?(await selectRows(scope?.galaxy,{
         columns:'uid,media_link',filters:[{column:'uid',operator:'eq',value:galaxyLink}],
@@ -82,7 +81,7 @@ export default function ManagementMediaPublisher({scopeId,dockScopeId=scopeId,gl
         type:mediaType,
         title:mediaTitle||null,
         url:String(draft.url||'').trim()||null,
-        meta_tags:metaTags,
+        description:mediaDescription,
         createtime:mediaIso(draft.createtime)
       };
       const galaxyMedia=scope?.galaxyMedia;
@@ -123,7 +122,7 @@ export default function ManagementMediaPublisher({scopeId,dockScopeId=scopeId,gl
       </div>
       <label><span><UiText id="uiExtra.importUI.mediaTitle"/></span><input value={draft.title} onChange={e=>change('title',e.target.value)}/></label>
       <label><span><UiText id="uiExtra.importUI.mediaExternalUrlLabel"/></span><input value={draft.url} onChange={e=>change('url',e.target.value)} placeholder={t('uiExtra.importUI.externalUrlHint')}/></label>
-      <label><span><UiText id="uiExtra.importUI.mediaTagsLabel"/></span><input value={draft.meta_tags} onChange={e=>change('meta_tags',e.target.value)} placeholder={t('uiExtra.importUI.tagHint')} required/></label>
+      <label><span><UiText id="uiExtra.importUI.mediaTagsLabel"/></span><input value={draft.description} onChange={e=>change('description',e.target.value)} placeholder={t('uiExtra.importUI.tagHint')}/></label>
       {!inDock?<button type="submit" disabled={busy}>{busy?UI_COPY.common.saving:UI_COPY.management.addMedia}</button>:null}
       {status?<p className="scope-status">{status}</p>:null}
     </form>

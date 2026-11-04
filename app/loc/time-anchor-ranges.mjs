@@ -1,8 +1,9 @@
+import {allocateAnchorUid} from './unified-anchor-compat.mjs';
 // Canonical three-level Time graph:
 // anchor.address DATE -> period.anchor_ids [startUID, optional endUID]
 // -> era.anchor_ids [period UID, ...].
 // A missing endpoint leaves a genuine surviving point; no '0' or now() anchor.
-const UID=/^[0-9A-F]{4}$/;
+const UID=/^[A-Za-z0-9]{8}$/;
 const dateOf=value=>{
   const date=String(value||'').slice(0,10);
   return /^\d{4}-\d{2}-\d{2}$/.test(date)?date:'';
@@ -19,14 +20,10 @@ export function storedTimeRange(value){
 export function isTimeUid(value){return UID.test(String(value||''));}
 export function allocateTimeUid(rows=[]){
   const occupied=new Set((Array.isArray(rows)?rows:[]).map(row=>String(row?.uid||'')));
-  for(let i=1;i<=65535;i++){
-    const uid=i.toString(16).toUpperCase().padStart(4,'0');
-    if(!occupied.has(uid))return uid;
-  }
-  throw new Error('四碼時間 UID 已用盡');
+  return allocateAnchorUid(occupied);
 }
 export function encodeTimeSegment(start,end=''){
-  const a=String(start||'').toUpperCase(),b=String(end||'').toUpperCase();
+  const a=String(start||'').trim(),b=String(end||'').trim();
   if(!isTimeUid(a)||b&&!isTimeUid(b)||a===b)
     throw new Error('事件只能引用一個或兩個不同的定錨點 UID');
   return b?[a,b]:[a];

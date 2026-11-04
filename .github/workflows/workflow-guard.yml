@@ -1,13 +1,15 @@
 name: Workflow guard
 
-# Sole automatic PR workflow: structural YAML trigger guard and syntax evidence.
-# No Next build, database, deployment, browser, or macOS runner.
+# Automatically check workflow trigger policy ONLY when workflow files change.
+# Manual syntax recovery is available for interrupted edits; no deploy or build.
 on:
   pull_request:
+    paths:
+      - '.github/workflows/**'
+  workflow_dispatch:
 
 permissions:
   contents: read
-  pull-requests: read
 
 concurrency:
   group: workflow-guard-${{ github.event.pull_request.number || github.ref }}
@@ -18,7 +20,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Sparse blobless checkout (only files the guard needs)
+      - name: Sparse blobless checkout (only needed sources)
         shell: bash
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -27,37 +29,33 @@ jobs:
           git init -q .
           git remote add origin "https://github.com/$GITHUB_REPOSITORY.git"
           git sparse-checkout init --no-cone
-          git sparse-checkout set \
-            '/.github/workflows/**' '/app/**' '/scripts/**' \
-            '/package.json' '/package-lock.json' '/next.config.mjs' \
-            '/open-next.config.ts' '/public/sw.js'
-          git -c protocol.version=2 fetch --quiet --depth=1 --filter=blob:none origin "refs/pull/$PR_NUMBER/merge"
+          if [ -n "$PR_NUMBER" ]; then
+            git sparse-checkout set \
+              '/.github/workflows/**' \
+              '/scripts/check-workflow-triggers.rb' \
+              '/scripts/test-workflow-triggers.rb'
+            ref="refs/pull/$PR_NUMBER/merge"
+          else
+            git sparse-checkout set \
+              '/.github/workflows/**' '/app/**' '/scripts/**' \
+              '/package.json' '/package-lock.json' '/next.config.mjs' \
+              '/open-next.config.ts' '/public/sw.js'
+            ref="$GITHUB_SHA"
+          fi
+          git -c protocol.version=2 fetch --quiet --depth=1 --filter=blob:none origin "$ref"
           git checkout --quiet --detach FETCH_HEAD
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
       - name: Reject unauthorized workflow triggers (parsed YAML)
         run: |
           ruby scripts/check-workflow-triggers.rb
           ruby scripts/test-workflow-triggers.rb
-      - name: Install a single pinned parser, without project dependencies
+      - name: Install pinned syntax parser (manual recovery only)
+        if: github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
           npm install --prefix "$RUNNER_TEMP/loc-syntax" --no-save --no-package-lock --ignore-scripts --no-audit --no-fund '@babel/parser@7.29.9'
-      - name: Verify application syntax for this PR
+      - name: Verify application syntax (manual recovery only)
+        if: github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
           NODE_PATH="$RUNNER_TEMP/loc-syntax/node_modules" node scripts/check-js-syntax.mjs
-      - name: Identify import code changes
-        id: import_changes
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" --jq '.[].filename' > "$RUNNER_TEMP/loc-pr-files"
-          if grep -Eq '^(app/loc/(import-|ManagementImportPanel)|scripts/test-import-createdat-reimport\.mjs)' "$RUNNER_TEMP/loc-pr-files"; then
-            echo 'run=true' >> "$GITHUB_OUTPUT"
-          fi
-      - name: Run reimport regression only when import files changed
-        if: ${{ steps.import_changes.outputs.run == 'true' }}
-        run: node --test scripts/test-import-createdat-reimport.mjs

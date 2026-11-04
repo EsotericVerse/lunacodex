@@ -15,7 +15,7 @@ const aliases={
  time:{address:'attr',anchor_ids:'attr',range:'attr'},
  trace:{trace_type:'type',anchor_list:'attr',address:'attr',times:'attr',route_list:'attr'},
  keywords:{name:'title',desc:'description',lists:'attr',uid_lists:'attr'},
- galaxy_media:{url:'attr',meta_tags:'description'}
+ galaxy_media:{url:'attr'}
 };
 
 const realTypes={anchor:'date',space_anchor:'point','音樂':'suno','播放清單':'suno',runes:'rune'};
@@ -163,7 +163,6 @@ export function toAnchorRow(spec,row){
    }
  }else if(spec.kind==='media'){
    if(hasOwn(data,'url'))attributes.url=data.url;
-   if(hasOwn(data,'meta_tags'))out.description=data.meta_tags;
  }
  if(hasOwn(data,'attrs')&&data.attrs&&typeof data.attrs==='object')
    Object.assign(attributes,data.attrs);
@@ -175,7 +174,7 @@ export function toAnchorRow(spec,row){
  for(const key of Object.keys(data)){
    if(['uid','type','trace_type','title','name','invisible','description','desc',
      'address','anchor_ids','range','anchor_list','times','route_list','lists',
-     'uid_lists','url','meta_tags','createtime','location','attr','attrs'].includes(key))continue;
+     'uid_lists','url','createtime','location','attr','attrs'].includes(key))continue;
    throw Error('Unsupported legacy anchor column: '+key);
  }
  return out;
@@ -210,8 +209,8 @@ export function fromAnchorRow(spec,row){
    out.lists=listOf(row.type==='item'?attr.keyword:attr.uid);
    out.uid_lists=attr.total!=null?{total:attr.total,uidlists:[]}:null;
  }else if(spec.kind==='media'){
-   out.url=attr.url??null;out.meta_tags=row.description??null;
-   out.createtime=null;out.location=null;
+   out.url=attr.url??null;
+   out.createtime=attr.date??null;out.location=null;
    if(row.type==='suno'&&String(attr.url||'').includes('/playlist/'))out.type='播放清單';
  }
  return out;

@@ -23,7 +23,7 @@ export function workDisplayHeading(row={},{
   media=null,
   fallback=''
 }={}){
-  const isMedia=media===null?Boolean(row?.uid&&row?.type&&('url' in row||'meta_tags' in row)):Boolean(media);
+  const isMedia=media===null?Boolean(row?.uid&&row?.type&&('url' in row||Boolean(row?.attr?.url))):Boolean(media);
   const explicitTitle=
     row?.title||
     row?.display_title||

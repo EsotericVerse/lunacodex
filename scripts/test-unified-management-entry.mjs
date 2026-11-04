@@ -155,3 +155,17 @@ test('nine management screens share the same theme-driven responsive frame',()=>
   assert.match(sources.admin,/account\.canManageGlobalSync\(\)/);
   assert.match(sources.place,/editDock\.switchSection\(next,setSection\)/);
 });
+
+
+test('Unified management forms and homepage block editors show task-specific hierarchy',()=>{
+  const css=read('app/styles/settings-select.css');
+  const list=read('app/loc/ScopeBlockDraftList.jsx');
+  const single=read('app/loc/ScopeBlockEditorSession.jsx');
+  assert.match(css,/\.scope-editor-stage\{/);
+  assert.match(css,/management-workspace--unified>\.management-workspace-panel/);
+  for(const source of [list,single]){
+    assert.match(source,/scope-editor-stage__title">文字內容/);
+    assert.match(source,/scope-editor-stage__title">主視覺圖片/);
+    assert.match(source,/scope-editor-stage__title">附屬內容/);
+  }
+});

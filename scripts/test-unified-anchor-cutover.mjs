@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {unifiedAnchorSpec,toAnchorRow,fromAnchorRow,unifiedAnchorRelation}
   from '../app/loc/unified-anchor-compat.mjs';
-import {readUnifiedAnchorUids} from '../app/loc/unified-anchor-uids.mjs';
 
 const spec=section=>unifiedAnchorSpec('silver','lo3rwang_'+section);
 
@@ -69,7 +68,7 @@ test('media URL goes to attr.url, not to the article body or a separate label',(
   const media=spec('galaxy_media');
   const saved=toAnchorRow(media,{
     uid:'M1234567',type:'音樂',url:'https://suno.com/song/abc',
-    meta_tags:'song metadata',createtime:'2026-11-02'
+    description:'song metadata',createtime:'2026-11-02'
   });
   assert.deepEqual(saved,{
     uid:'M1234567',type:'suno',attr:{url:'https://suno.com/song/abc'},
@@ -77,7 +76,7 @@ test('media URL goes to attr.url, not to the article body or a separate label',(
   });
   const decoded=fromAnchorRow(media,saved);
   assert.equal(decoded.url,'https://suno.com/song/abc');
-  assert.equal(decoded.meta_tags,'song metadata');
+  assert.equal(decoded.description,'song metadata');
   assert.equal(decoded.createtime,null);
 });
 
@@ -146,13 +145,6 @@ test('partial update merges existing attr keys without clearing current relation
   await unifiedAnchorRelation(schema,spec('trace'))
     .update({anchor_list:['P1234567']}).eq('uid','X1234567').select('uid,anchor_list');
   assert.deepEqual(written.attr,{point:['P1234567']});
-});
-
-test('read-only UID pool shares the physical unified Anchor across feature sections',async()=>{
-  const rows=await readUnifiedAnchorUids('silver.lo3rwang_time',
-    async(table,offset)=>{assert.equal(table,'silver.lo3rwang_anchor');
-      return offset===0?[{uid:'A1234567'}]:[];},{pageSize:2});
-  assert.deepEqual(rows,[{uid:'A1234567'}]);
 });
 
 test('unified source code does not project or persist the removed label column',()=>{

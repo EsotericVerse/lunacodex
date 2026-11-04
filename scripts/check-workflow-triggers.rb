@@ -29,7 +29,29 @@ files.sort.each do |file|
     else
       []
     end
-    raise 'only workflow_dispatch is permitted' unless events == ['workflow_dispatch']
+    # The owner explicitly approved GitHub Pages auto-deploys on main.
+    # No other workflow may gain an automatic trigger.
+    approved_main_push = false
+    if File.basename(file) == 'deploy-pages.yml' && events.sort == ['push', 'workflow_dispatch']
+      on_node = triggers.first
+      if on_node.is_a?(Psych::Nodes::Mapping)
+        on_entries = on_node.children.each_slice(2).to_a
+        push_node = on_entries.find { |key, _| key.is_a?(Psych::Nodes::Scalar) && key.value == 'push' }&.last
+        if push_node.is_a?(Psych::Nodes::Mapping)
+          push_entries = push_node.children.each_slice(2).to_a
+          if push_entries.size == 1
+            key, branches = push_entries.first
+            approved_main_push = key.is_a?(Psych::Nodes::Scalar) &&
+              key.value == 'branches' &&
+              branches.is_a?(Psych::Nodes::Sequence) &&
+              branches.children.size == 1 &&
+              branches.children.first.is_a?(Psych::Nodes::Scalar) &&
+              branches.children.first.value == 'main'
+          end
+        end
+      end
+    end
+    raise 'only workflow_dispatch is permitted (except deploy-pages.yml push to main)' unless events == ['workflow_dispatch'] || approved_main_push
   rescue Psych::Exception, StandardError => e
     errors << "#{file}: #{e.message}"
   end
@@ -38,4 +60,4 @@ if errors.any?
   errors.each { |error| warn "::error::#{error}" }
   exit 1
 end
-puts "Workflow guard: #{files.length} workflow files verified (manual-only except guard)."
+puts "Workflow guard: #{files.length} workflows verified (only deploy-pages.yml may auto-run on main)."

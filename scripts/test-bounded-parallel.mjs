@@ -39,3 +39,17 @@ test('empty and bounded inputs do not spin up excess lanes',async()=>{
   assert.deepEqual(await mapBounded([1,2],3,async value=>{calls++;return value;}),[1,2]);
   assert.equal(calls,2);
 });
+
+
+test('Max MultiPara hard ceiling limits a burst to 10 parallel workers',async()=>{
+  const {MAX_MULTIPARA}=await import('../app/loc/bounded-parallel.mjs');
+  assert.equal(MAX_MULTIPARA,10);
+  let active=0,maximum=0;
+  const data=await mapBounded(Array.from({length:60},(_,i)=>i),100,async value=>{
+    active++;maximum=Math.max(active,maximum);
+    await new Promise(resolve=>setImmediate(resolve));
+    active--;return value;
+  });
+  assert.equal(maximum,10);
+  assert.deepEqual(data,Array.from({length:60},(_,i)=>i));
+});

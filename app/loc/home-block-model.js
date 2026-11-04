@@ -24,8 +24,26 @@ export function createHomeBlockUid(){
 }
 
 
+// The first JSONB array item is an optional presentation column count.
+export const HOME_BUBBLE_COLUMNS=Object.freeze([2,3,6]);
+export function defaultHomeBubbleColumns(pageName='index'){
+  const page=String(pageName||'index').toLowerCase();
+  return page==='search'?6:page==='trace'?2:3;
+}
+export function homeBubbleColumns(value,pageName='index'){
+  const first=Array.isArray(value)?value[0]:null;
+  return HOME_BUBBLE_COLUMNS.includes(first)?first:defaultHomeBubbleColumns(pageName);
+}
+export function homeBubbleEntities(value){
+  return Array.isArray(value)?(typeof value[0]==='number'?value.slice(1):value):[];
+}
+export function serializeHomeBubbleEntities(columns,entities,pageName='index'){
+  const count=HOME_BUBBLE_COLUMNS.includes(columns)?columns:defaultHomeBubbleColumns(pageName);
+  return [count,...entities];
+}
+
 export function normalizeHomeBlockEntities(value){
-  const rows=Array.isArray(value)?value:[];
+  const rows=homeBubbleEntities(value);
   return rows.slice(0,HOME_BLOCK_ENTITY_LIMIT).map((entity,index)=>({
     uid:/^[A-Za-z0-9]{8}$/.test(String(entity?.uid||''))?String(entity.uid):createHomeBlockUid(),
     title:String(entity?.title||''),
@@ -262,6 +280,9 @@ export const HomeBlock=Object.freeze({
   entityLimit:HOME_BLOCK_ENTITY_LIMIT,
   createUid:createHomeBlockUid,
   normalizeEntities:normalizeHomeBlockEntities,
+  bubbleColumns:homeBubbleColumns,
+  defaultBubbleColumns:defaultHomeBubbleColumns,
+  serializeBubbleEntities:serializeHomeBubbleEntities,
   limit:HOME_BLOCK_LIMIT,
   isPinnedHomeHero,
   canSwapHomeBlockPositions,

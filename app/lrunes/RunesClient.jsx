@@ -43,7 +43,7 @@ function renderRuneHero(slot,native){
         {subtitle?<div className="loc-subtitle" dangerouslySetInnerHTML={{__html:subtitle}}/>:null}
       </div>
       {text?<div className="runes-home-body scope-rich-surface" dangerouslySetInnerHTML={{__html:text}}/>:null}
-      {children.length?<div className="loc-home-block__children runes-home-children">
+      {children.length?<div className="loc-home-block__children runes-home-children" style={{'--loc-bubble-columns':HomeBlock.bubbleColumns([slot.bubbleColumns],'hero')}}>
         {children.map((entity,index)=>{
           const card=HomeBlock.childPresentation(entity.title)==='card';
           return <article className={'loc-home-block__child '+(card?'loc-home-block__child--card':'loc-home-block__child--bubble')} key={entity.uid||'child-'+index}>

@@ -876,3 +876,66 @@
 @media(prefers-reduced-motion:reduce){
   .management-workspace--unified .management-section-nav__item{transition:none;}
 }
+
+
+/* Management inputs: hierarchy follows the task, not a wall of identical fields. */
+.management-workspace--unified>.management-workspace-panel :is(
+  .scope-management-fields,.admin-page-copy-fields
+){
+  align-items:start;
+  border-color:var(--loc-ui-hairline,var(--loc-line));
+}
+.management-workspace--unified>.management-workspace-panel :is(
+  .scope-management-fields,.admin-page-copy-fields
+)>:is(p,h2,h3,h4,.scope-status,.scope-management-wide-field,fieldset){
+  grid-column:1/-1;
+  min-width:0;
+}
+.management-workspace--unified>.management-workspace-panel :is(
+  .scope-management-fields,.admin-page-copy-fields
+)>label:focus-within{
+  color:var(--loc-heading);
+}
+.management-workspace--unified>.management-workspace-panel :is(
+  input:not([type="checkbox"]):not([type="radio"]),select,textarea
+):focus-visible{
+  outline:2px solid var(--loc-accent);
+  outline-offset:2px;
+}
+.management-workspace--unified>.management-workspace-panel :is(
+  .scope-management-fields,.admin-page-copy-fields
+) :is(textarea,input[type="url"],input[type="search"]){
+  grid-column:1/-1;
+}
+.scope-editor-stage{
+  min-width:0;
+  display:grid;
+  gap:.75rem;
+  padding:clamp(.85rem,1.6vw,1.25rem);
+  border:1px solid var(--loc-ui-hairline,var(--loc-line));
+  border-radius:var(--loc-ui-radius-lg,18px);
+  background:var(--loc-ui-panel,var(--loc-panel));
+}
+.scope-editor-stage__title{
+  margin:0;
+  color:var(--loc-heading);
+  font-size:1.04rem;
+  line-height:1.4;
+  font-weight:750;
+}
+.scope-editor-stage__help{
+  margin:0;
+  color:var(--loc-muted);
+  font-size:.9rem;
+  line-height:1.55;
+}
+.scope-editor-stage :is(.scope-management-fields,.scope-block-entity-grid){
+  margin:0;
+  min-width:0;
+}
+@media(max-width:680px){
+  .management-workspace--unified>.management-workspace-panel :is(
+    .scope-management-fields,.admin-page-copy-fields
+  ){grid-template-columns:minmax(0,1fr);}
+  .scope-editor-stage{padding:.85rem;}
+}

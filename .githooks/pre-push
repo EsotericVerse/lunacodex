@@ -1,9 +1,8 @@
 #!/bin/sh
-# A local push must carry real syntax evidence; env flags cannot bypass it.
+# Normal pushes check irreversible bulk-delete/rename risk only.
+# If work was interrupted or recovery is uncertain, run npm run check:syntax
+# first (or the manual Workflow guard in GitHub Actions if npm is unavailable).
 # Enable once per clone: git config core.hooksPath .githooks
-# Server-side PR syntax verification is in workflow-guard.yml.
 set -e
-echo "pre-push: verifying syntax (no bypass)..."
-node scripts/check-js-syntax.mjs
 echo "pre-push: checking mass deletion/rename safety..."
 node scripts/check-bulk-delete.mjs

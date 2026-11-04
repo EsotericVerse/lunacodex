@@ -62,10 +62,10 @@ export function mediaFacetDaily(rows=[],dimension='media_platform'){
     if(!day)continue;
     let categories=[];
     if(dimension==='media_type')categories=[plainText(row.type)||'未分類'];
-    else if(dimension==='media_style')categories=mediaStyleTags(row.meta_tags);
+    else if(dimension==='media_style')categories=mediaStyleTags(row.description);
     else if(dimension==='media_platform')categories=[mediaPlatform(row)];
     else throw new Error('Unsupported media statistics dimension: '+dimension);
-    if(dimension==='media_style'&&!categories.length)categories=['未標記 Meta Tag'];
+    if(dimension==='media_style'&&!categories.length)categories=['沒有內容描述'];
     for(const category of categories){
       const key=day+'\u0000'+tagKey(category);
       const existing=entries.get(key);
@@ -88,7 +88,7 @@ export function mediaCrossTagCatalog(rows=[]){
   for(const row of Array.isArray(rows)?rows:[]){
     const id=String(row?.uid||'').trim();
     if(!id)continue;
-    const tags=mediaStyleTags(row.meta_tags);
+    const tags=mediaStyleTags(row.description);
     if(!tags.length)continue;
     let entry=media.get(id);
     if(!entry){
@@ -161,7 +161,7 @@ export function mediaStyleTreeDaily(mediaRows=[],treeRows=[],level='class',class
   for(const media of Array.isArray(mediaRows)?mediaRows:[]){
     const day=mediaDay(media?.createtime);
     if(!day)continue;
-    const tags=new Set(mediaStyleTags(media?.meta_tags).map(normalize));
+    const tags=new Set(mediaStyleTags(media?.description).map(normalize));
     if(!tags.size)continue;
     const labels=new Set();
     for(const row of catalog){

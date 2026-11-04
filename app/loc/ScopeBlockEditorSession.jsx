@@ -156,12 +156,12 @@ export default function ScopeBlockEditorSession({
         ...(isHomeFrame?{block_image:draft.image?.source==='custom'&&!String(draft.image.url||'').trim()?{...draft.image,source:'default',url:''}:(draft.image||null)}:{}),
         block_text:normalizeSavedHtml(draft.text),
         block_order:Number(draft.order)||1,
-        block_entity:HomeBlock.normalizeEntities(draft.entities).map(({uid,title,text,image_mode},index)=>({
+        block_entity:HomeBlock.serializeBubbleEntities(draft.bubbleColumns,HomeBlock.normalizeEntities(draft.entities).map(({uid,title,text,image_mode},index)=>({
           uid,
           title:String(title||'').trim(),
           text:normalizeSavedHtml(text),
           ...(pageName==='index'&&draft.order===1&&index===0&&image_mode==='side'?{image_mode:'side'}:{})
-        }))
+        })),pageName)
       };
       const {updateRows,insertRows}=await import('./db-client.mjs');
       if(draft.stored){
@@ -198,7 +198,7 @@ export default function ScopeBlockEditorSession({
   }
 
   function renderEditableEntities(entities){
-    return <div className="scope-block-entity-grid">
+    return <div className="scope-block-entity-grid" style={{'--loc-bubble-columns':HomeBlock.bubbleColumns([draft.bubbleColumns],pageName)}}>
       {entities.map((entity,index)=><article className={HomeBlock.childPresentation(entity.title)==='card'?'scope-block-entity':'loc-bubble scope-block-text-bubble'} key={entity.uid}>
 
           <div className="scope-block-entity-actions">
@@ -239,6 +239,7 @@ export default function ScopeBlockEditorSession({
             {key:'cancel',disabled:busy,onClick:cancel,label:<UiText id="uiExtra.editBlocks.cancel"/>}
           ]} status={message}
             statusClassName={message.startsWith(t('uiExtra.editBlocks.saveFailedPrefix'))?'scope-error':''}/>
+          <div className="scope-editor-stage"><h3 className="scope-editor-stage__title">文字內容</h3>
           <ObjectEditor mode="scope" fields={[
             ...(editEyebrow?[{
               key:'eyebrow',label:<UiText id="uiExtra.editBlocks.englishEyebrow"/>,
@@ -260,7 +261,16 @@ export default function ScopeBlockEditorSession({
               canInsertImage:allowImages&&!isHomeFrame&&canInsertImageIn(draft.text)
             }
           ]}/>
-          {isHomeFrame?<HeroImageFieldset draft={draft} image={image} allowImageOnly={pageName==='index'} onChange={configureImage}/>:null}
-          {allowEntities?renderEditableEntities(draft.entities):null}
+          </div>
+          {isHomeFrame?<div className="scope-editor-stage"><h3 className="scope-editor-stage__title">主視覺圖片</h3><HeroImageFieldset draft={draft} image={image} allowImageOnly={pageName==='index'} onChange={configureImage}/></div>:null}
+          {allowEntities?<div className="scope-editor-stage">
+            <h3 className="scope-editor-stage__title">附屬內容</h3>
+            <label className="scope-bubble-layout-control">文字泡泡排列（每列）
+              <select className="scope-select" value={draft.bubbleColumns} onChange={e=>setDraft(current=>({...current,bubbleColumns:Number(e.target.value)}))}>
+                {[2,3,6].map(n=><option key={n} value={n}>{n} 個</option>)}
+              </select>
+            </label>
+            {renderEditableEntities(draft.entities)}
+          </div>:null}
   </>;
 }

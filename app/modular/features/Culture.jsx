@@ -30,7 +30,6 @@ import {useRiverDensityAnalysis} from '../modules/culture-timeline/use-river-den
 import {structurePeriodPreference} from '../../loc/culture-period-navigation.mjs';
 import {buildEraRiver} from '../../loc/culture-time-trace-river.mjs';
 import {allocateTimeUid,timePeriodContainsDate,timePeriodSortDate} from '../../loc/time-anchor-ranges.mjs';
-import {readUnifiedAnchorUids} from '../../loc/unified-anchor-uids.mjs';
 
 import {selectGalaxyIdentity,selectScopeDailyCounts} from '../../loc/galaxy-query';
 import {revalidateServerMetadata} from '../../loc/scope-data';
@@ -216,6 +215,7 @@ export default function Culture(){
   const {settings:userSettings,active:userActive}=useLocFeatureSettings('culture');
   // A list editor is offered only after the user opts in; authorization stays on Edit.
   const adminListRequested=Boolean(userActive&&userSettings.list===true);
+  const [worksOpen,setWorksOpen]=useState(false);
   const searchParams=useSearchParams();
   const editDock=useEditDock();
   const canUseScopeEditor=Boolean(editDock?.active&&editDock.scopeId===scopeId);
@@ -223,7 +223,7 @@ export default function Culture(){
   const isTimeEditingView=canUseScopeEditor&&(pathname.endsWith('/culture/manage')||
     pathname.endsWith('/culture/manage/')||searchParams?.get('edit')==='1');
   // Public Culture does not load management grants; editing must verify them.
-  const account=useAccount({enabled:isTimeEditingView||canUseScopeEditor||adminListRequested});
+  const account=useAccount({enabled:isTimeEditingView||canUseScopeEditor||(adminListRequested&&worksOpen)});
   const [lrunesView,setLrunesView]=useState('daily');
   const [locCultureView,setLocCultureView]=useState('period');
   const [locDensityOpen,setLocDensityOpen]=useState(false);
@@ -245,7 +245,6 @@ export default function Culture(){
   const [expandedEraIds,setExpandedEraIds]=useState([]);
   const periodSelectionScopeRef=useRef('');
   const [selectedCategory,setSelectedCategory]=useState('');
-  const [worksOpen,setWorksOpen]=useState(false);
   const [articleSort,setArticleSort]=useState('desc');
   useEffect(()=>setArticleSort(userActive?userSettings.sort:'desc'),[userActive,userSettings.sort]);
   // Keyword Class is optional; ordinary Time River views must not scan the whole article corpus.
@@ -310,7 +309,7 @@ export default function Culture(){
   const locDensityQuery=useAsyncResource({
     queryKey:['loc-culture-density',scopeId,query.data?.intersectionStart,query.data?.intersectionEnd,
       JSON.stringify(query.data?.intersectionWindows||[])],
-    enabled:isAggregateScope&&scopeId==='loc'&&!isLocItemView&&locDensityOpen
+    enabled:!isTimeEditingView&&isAggregateScope&&scopeId==='loc'&&!isLocItemView&&locDensityOpen
       &&Boolean(query.data?.intersectionWindows?.length),
     queryFn:async()=>{
       const {selectLocCultureDensity}=await import('../../loc/culture-query');
@@ -338,11 +337,10 @@ export default function Culture(){
   const allTimePeriod=useMemo(()=>{
     if(primaryPeriods.length)return periodRange(primaryPeriods,classificationScope,UI_COPY.culture.allTime);
     const endDate=new Date().toISOString().slice(0,10);
-    const oneYearAgo=new Date(endDate+'T00:00:00Z');
-    oneYearAgo.setUTCFullYear(oneYearAgo.getUTCFullYear()-1);
+    const yearStart=endDate.slice(0,4)+'-01-01';
     return {
-      period:'all',title:'未設定時代（最近一年）',display_label:'未設定時代（最近一年）',
-      start_date:oneYearAgo.toISOString().slice(0,10),end_date:endDate,scope_id:classificationScope
+      period:'all',title:'未設定時代（本年度）',display_label:'未設定時代（本年度）',
+      start_date:yearStart,end_date:endDate,scope_id:classificationScope
     };
   },[primaryPeriods,classificationScope,UI_COPY.culture.allTime]);
   useEffect(()=>{
@@ -422,7 +420,7 @@ export default function Culture(){
   const publishedTaxonomy=useMemo(()=>publishedSourceTaxonomy(scopeId),[scopeId]);
   const sourceTaxonomyQuery=useAsyncResource({
     queryKey:['culture-source-classification',scopeId],
-    enabled:!publishedTaxonomy&&!isAggregateScope&&!isLrunesDaily&&!isLocItemView
+    enabled:!isTimeEditingView&&!publishedTaxonomy&&!isAggregateScope&&!isLrunesDaily&&!isLocItemView
       &&scopeId!=='local'&&Boolean(scopeData),
     queryFn:async()=>{
       const scopes=scopeId==='loc'?['loc']:['loc',scopeId];
@@ -442,7 +440,7 @@ export default function Culture(){
   // expanding a group, so a UI interaction never starts a second SQL job.
   const sourceRootQuery=useAsyncResource({
     queryKey:['culture-period-roots','v4-staged-numeric',classificationScope,classificationWindowStart,classificationWindowEnd,periodRangeSignature],
-    enabled:stagedSourceRiver&&styleFilter!=='trace'&&!isLrunesDaily&&!isLocItemView
+    enabled:!isTimeEditingView&&stagedSourceRiver&&styleFilter!=='trace'&&!isLrunesDaily&&!isLocItemView
       &&Boolean(scopeData)&&classificationWindowValid,
     queryFn:async()=>{
       const {text,media}=await selectScopeDailyCounts(scopeData,{
@@ -466,7 +464,7 @@ export default function Culture(){
   // In a published scope expanding a lane only transforms cached numeric rows.
   const sourceSnapshotQuery=useAsyncResource({
     queryKey:['culture-period-source-snapshot','v8-reused-numeric',classificationScope,classificationWindowStart,classificationWindowEnd,periodRangeSignature,stagedSourceRiver?expandedSourceRootsKey:'all'],
-    enabled:styleFilter!=='trace'&&!isLrunesDaily&&!isLocItemView&&!isAggregateScope&&Boolean(scopeData)&&classificationWindowValid
+    enabled:!isTimeEditingView&&styleFilter!=='trace'&&!isLrunesDaily&&!isLocItemView&&!isAggregateScope&&Boolean(scopeData)&&classificationWindowValid
       &&(!stagedSourceRiver||expandedSourceReady),
     queryFn:async()=>{
       const {selectScopePeriodSourceSnapshot}=await import('../../loc/culture-query');
@@ -482,7 +480,7 @@ export default function Culture(){
     queryKey:['scope-active-keyword-class-name',scopeId],
     // Opening/focusing the style selector is the first reason to look up
     // the active Class. Ordinary Time River viewing performs no keyword SQL.
-    enabled:(keywordOptionsScope===scopeId||styleFilter==='rune66')&&!isAggregateScope&&!isLrunesDaily&&!isLocItemView,
+    enabled:!isTimeEditingView&&(keywordOptionsScope===scopeId||styleFilter==='rune66')&&!isAggregateScope&&!isLrunesDaily&&!isLocItemView,
     queryFn:async()=>{
       const {selectAvailableKeywordClasses}=await import('../../loc/keyword-analysis');
       return selectAvailableKeywordClasses(scopeId);
@@ -501,7 +499,7 @@ export default function Culture(){
       const {selectKeywordAnalysisSummary}=await import('../../loc/keyword-analysis');
       return selectKeywordAnalysisSummary({scopeId,classUid:resolvedKeywordClassUid,startDate:keywordWindowStart,endDate:keywordWindowEnd});
     },
-    enabled:!isAggregateScope&&!isLrunesDaily&&styleFilter==='rune66'&&Boolean(resolvedKeywordClassUid)&&keywordWindowValid,
+    enabled:!isTimeEditingView&&!isAggregateScope&&!isLrunesDaily&&styleFilter==='rune66'&&Boolean(resolvedKeywordClassUid)&&keywordWindowValid,
   });
   // The original source-classification river must not wait for (or disappear
   // when) a separate keyword-density query runs.
@@ -514,7 +512,7 @@ export default function Culture(){
   const keywordDetailRequested=Boolean(keywordDrillSource);
   const keywordDensityQuery=useAsyncResource({
     queryKey:['culture-keyword-attributes',scopeId,resolvedKeywordClassUid,keywordWindowStart,keywordWindowEnd,keywordDrillSource,keywordDrillGroup],
-    enabled:styleFilter==='rune66'&&keywordDetailRequested&&!isAggregateScope&&!isLrunesDaily&&!isLocItemView
+    enabled:!isTimeEditingView&&styleFilter==='rune66'&&keywordDetailRequested&&!isAggregateScope&&!isLrunesDaily&&!isLocItemView
       &&Boolean(scopeData)&&keywordWindowValid&&Boolean(styleQuery.data?.statisticsEnabled),
     queryFn:async()=>{
       const {readKeywordTreeSummary}=await import('../../loc/db-client.mjs');
@@ -548,7 +546,7 @@ export default function Culture(){
   // The initial Class-density river never downloads the Group catalog.
   const keywordGroupCatalogQuery=useAsyncResource({
     queryKey:['culture-keyword-group-catalog',scopeId,styleQuery.data?.keywordMeta?.class_uid||'',keywordDrillGroup],
-    enabled:styleFilter==='rune66'&&Boolean(keywordDrillGroup)
+    enabled:!isTimeEditingView&&styleFilter==='rune66'&&Boolean(keywordDrillGroup)
       &&Boolean(styleQuery.data?.keywordMeta?.class_uid)&&Boolean(scopeData?.keywords),
     queryFn:async()=>{
       const {readKeywordTreeCatalog}=await import('../../loc/db-client.mjs');
@@ -612,7 +610,7 @@ export default function Culture(){
     queryKey:['culture-period-works',classificationScope,classificationWindowStart,classificationWindowEnd,periodRangeSignature,effectiveCategoryKey||'all',articleSort],
     initialPageParam:null,
     getNextPageParam:lastPage=>lastPage.hasMore?lastPage.nextCursor:undefined,
-    enabled:worksOpen&&styleFilter!=='trace'&&!isLrunesDaily&&!isAggregateScope&&Boolean(scopeData)&&Boolean(selectedWorkPeriod)&&classificationWindowValid,
+    enabled:!isTimeEditingView&&worksOpen&&styleFilter!=='trace'&&!isLrunesDaily&&!isAggregateScope&&Boolean(scopeData)&&Boolean(selectedWorkPeriod)&&classificationWindowValid,
     queryFn:async({pageParam})=>{
       const {selectScopePeriodWorkIndex,selectScopePeriodWorkDetails}=await import('../../loc/culture-query');
       const indexPage=await selectScopePeriodWorkIndex(scopeData,{
@@ -1136,8 +1134,6 @@ export default function Culture(){
       const verified=await account.refresh();
       if(!verified?.authorizer?.canManageScopeSync(scopeId))throw new Error('請先登入具備此 Scope 權限的帳號。');
       const used=new Set((query.data?.timelineItems||[]).filter(row=>row?.entry_type==='anchor').map(row=>String(row.uid||'')));
-      const globalUids=await readUnifiedAnchorUids(scopeData.time);
-      for(const row of globalUids)used.add(row.uid);
       const payload=dates.map(date=>{
         const uid=allocateTimeUid([...used].map(uid=>({uid})));
         used.add(uid);
@@ -1462,8 +1458,8 @@ export default function Culture(){
                             setKeywordPeriodKey(next);
 
                           }}>
-                          <option value='latest'>{primaryPeriods.length?l.recentTimeTrace:'未設定時代（最近一年）'}</option>
-                           <option value='all'>{primaryPeriods.length?l.allTimeTraces:'最近一年（未設定時代）'}</option>
+                          <option value='latest'>{primaryPeriods.length?l.recentTimeTrace:'未設定時代（本年度）'}</option>
+                           <option value='all'>{primaryPeriods.length?l.allTimeTraces:'本年度（未設定時代）'}</option>
                            {primaryPeriods.map(item=><option key={periodKey(item)} value={periodKey(item)}>{localizedLabelOf(item,0)}</option>)}
                            <option value='custom'>{l.customPeriod}</option>
                         </select>
