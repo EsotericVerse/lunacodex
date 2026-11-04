@@ -63,24 +63,47 @@ export function loadUiLocale(locale){
 // Strings that belong to lazily loaded features (keyword library, private
 // files, timeline editor, item confluence, daily-rune analytics). They live in
 // features.<language>.js and are fetched on demand, not bundled into the shell.
+// Feature copy is split by language AND feature; never load all features for one page.
 const FEATURE_LOADERS={
-  'zh-Hans':()=>import('./features.zh_cn.js'),
-  en:()=>import('./features.en.js'),
-  ja:()=>import('./features.ja.js')
+  "zh-Hant":{
+    dailyRune:()=>import('./feature-sections/dailyRune.zh_tw.js'),
+    privateFiles:()=>import('./feature-sections/privateFiles.zh_tw.js'),
+    itemConfluence:()=>import('./feature-sections/itemConfluence.zh_tw.js')
+  },
+  "zh-Hans":{
+    dailyRune:()=>import('./feature-sections/dailyRune.zh_cn.js'),
+    privateFiles:()=>import('./feature-sections/privateFiles.zh_cn.js'),
+    itemConfluence:()=>import('./feature-sections/itemConfluence.zh_cn.js')
+  },
+  "en":{
+    dailyRune:()=>import('./feature-sections/dailyRune.en.js'),
+    privateFiles:()=>import('./feature-sections/privateFiles.en.js'),
+    itemConfluence:()=>import('./feature-sections/itemConfluence.en.js')
+  },
+  "ja":{
+    dailyRune:()=>import('./feature-sections/dailyRune.ja.js'),
+    privateFiles:()=>import('./feature-sections/privateFiles.ja.js'),
+    itemConfluence:()=>import('./feature-sections/itemConfluence.ja.js')
+  }
 };
 const featureCopy={};
 const featurePending={};
-export function isFeatureCopyLoaded(locale){return Boolean(featureCopy[locale]);}
-export function loadFeatureCopy(locale){
-  const value=String(locale||'').trim();
-  if(featureCopy[value]||!Object.hasOwn(FEATURE_LOADERS,value))return Promise.resolve(featureCopy[value]||null);
-  featurePending[value]??=FEATURE_LOADERS[value]().then(mod=>(featureCopy[value]=mod.default)).catch(error=>{
-    delete featurePending[value];
-    throw error;
-  });
-  return featurePending[value];
+export function isFeatureCopyLoaded(locale,section){
+  return Object.hasOwn(featureCopy[locale]||{},section);
 }
-// defaults = the Traditional Chinese section, imported by the calling feature.
+export function loadFeatureCopy(locale,section){
+  const loader=FEATURE_LOADERS[locale]?.[section];
+  if(!loader)return Promise.resolve(null);
+  featureCopy[locale]??={};
+  if(isFeatureCopyLoaded(locale,section))return Promise.resolve(featureCopy[locale][section]);
+  const key=locale+'::'+section;
+  featurePending[key]??=loader().then(mod=>{
+    featureCopy[locale][section]=mod.default;
+    delete featurePending[key];
+    return mod.default;
+  }).catch(error=>{delete featurePending[key];throw error;});
+  return featurePending[key];
+}
 export function featureSection(locale,section,defaults){
   return featureCopy[locale]?.[section]||defaults;
 }
