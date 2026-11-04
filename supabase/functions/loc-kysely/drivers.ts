@@ -50,8 +50,12 @@ export async function databaseForTarget(input:Record<string,unknown>,options:{pr
   let dialect;
   if(target.engine==="postgres"){
     if(!["postgres:","postgresql:"].includes(uri.protocol))throw new Error("PostgreSQL needs a postgres URL");
-    if(target.provider==="supabase"&&uri.port!=="6543")console.warn("[loc-kysely] Supabase should use its transaction pooler");
-    dialect=new PostgresDialect({pool:new Pool({connectionString:profile.url,max:1,idleTimeoutMillis:15000,connectionTimeoutMillis:7000})});
+    const directSupabase=target.provider==="supabase"&&uri.port!=="6543";
+    if(directSupabase)console.warn("[loc-kysely] Supabase is not using its transaction pooler (:6543); configure SUPABASE_DB_URL with the exact dashboard Transaction pooler URL");
+    // While an old secret still points at port 5432, release idle direct
+    // connections quickly: each warm Edge isolate owns an independent pool.
+    dialect=new PostgresDialect({pool:new Pool({connectionString:profile.url,
+      max:1,idleTimeoutMillis:directSupabase?1000:15000,connectionTimeoutMillis:7000})});
   }else if(target.engine==="mysql"){
     if(uri.protocol!=="mysql:")throw new Error("MySQL needs a mysql URL");
     const mysql=await import("npm:mysql2@3.22.0");
