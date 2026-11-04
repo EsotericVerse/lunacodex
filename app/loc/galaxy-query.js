@@ -424,7 +424,7 @@ export async function selectGalaxyIdentity(scope,uid,{includeHidden=false}={}){
   const {rows:articleRows}=await selectRows(current.galaxy,{
     columns:local
       ?'uid,title,createtime,content,site,url,source_id,target_id,ref_id,media_link,location,able'
-      :'uid,title,date,createtime,content,site,url,source_id,target_id,ref_id,media_link,place_id,location,statics,culture,search,trace,list,keyword,others,extract',
+      :'uid,title,date,createtime,content,site,url,source_id,target_id,ref_id,media_link,place_id,location,attr,statics,culture,search,trace,list,keyword,others,extract',
     filters:[{column:'uid',operator:'eq',value:id}],
     orFilter:'',
     limit:1,authenticated:includeHidden
