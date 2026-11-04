@@ -19,7 +19,7 @@
 - **只有使用者針對目前任務明確中斷、要求暫停或否定方向**：停止該方向的修改 → 可逆地回到最近一個「正確且完整」的 checkpoint → 保留恢復依據 → 等待新的方向。此例外不適用於 Agent 自己發現的錯誤：自行修復並繼續，不得把偵測到異常解讀為使用者要求中斷。不碰其他 Agent 的修改；若同檔案混合他人工作，只精準撤銷自己的部分。
 - **無法證實中斷後已完整還原**：只暫停將不確定的程式送進 PR／`main`，由 Agent 自行核對還原點、必要時執行獨立語法檢查並排除殘缺；恢復完整就依原任務繼續，除非使用者先前明確要求停等。不能把「有 checkpoint」當成「一定已還原」。
 - **正常完成、可證實沒有中斷，或已完整還原並有證據**：不為了防中斷而額外執行全專案語法掃描；對功能改動仍做必要、針對性的功能／回歸驗證；純文件變動不跑完整功能測試。不能把語法檢查通過當成功能完整的證據。語法錯誤與 Git Merge 衝突分開處理，兩者都應在 Merge 前排除。
-- `.githooks/pre-push` 正常推送只執行大量刪除／重新命名安全檢查，不再每次掃全專案語法。**僅在意外中斷、修改殘缺、還原不確定或實際出現語法錯誤時**，由 Agent 核對 checkpoint 並執行 `npm run check:syntax`；若 Connector 沒有 npm 環境，可使用 GitHub Actions 的 **Workflow guard → Run workflow** 手動執行一次恢復檢查，不能宣稱未執行的檢查已通過。不得僅憑 `LOC_EDIT_STATE=complete` 旗標認定修復完成。GitHub `workflow-guard.yml` 自動執行只限變更 `.github/workflows/**` 的 PR，僅檢查 Workflow 觸發政策；其他 PR 不自動跑全專案語法或匯入測試。正式發布仍保留必要的發布驗證，不能用本規則繞過發布安全檢查；不在 Settings 新增 Required Check。
+- `.githooks/pre-push` 正常推送只執行大量刪除／重新命名安全檢查，不再每次掃全專案語法。**僅在意外中斷、修改殘缺、還原不確定或實際出現語法錯誤時**，由 Agent 核對 checkpoint 並執行 `npm run check:syntax`；若 Connector 沒有 npm 環境，可使用 GitHub Actions 的 **Workflow guard → Run workflow** 手動執行一次恢復檢查，不能宣稱未執行的檢查已通過。不得僅憑 `LOC_EDIT_STATE=complete` 旗標認定修復完成。GitHub `workflow-guard.yml` 自動執行只限變更 `.github/workflows/**` 的 PR，僅檢查 Workflow 觸發政策；其他 PR 不自動跑全專案語法或匯入測試。GitHub Pages 自動部署只依賴必要的安全稽核、遊戲回歸、Next.js build 與靜態輸出驗證；**不額外跑獨立的全專案 `check:syntax`**，因為 build 本身會解析其編譯範圍；這不表示未被 build 涵蓋的全部檔案已通過語法掃描。中斷恢復的手動 `Workflow guard → Run workflow` 才做額外全專案語法檢查，需核對實際 Actions 執行結果，不可只以 workflow 存在當作驗收成功。不能用本規則繞過發布安全檢查；不在 Settings 新增 Required Check。
 - 同一測試已有可信的未受影響結果就不重複付費跑；必要檢查需有實際執行結果，不靠文字宣稱通過。測試／合併失敗即自行排查，不重複無效操作；同一 workflow 連續失敗三次僅停止該 workflow 的重試，改查原因或用其他合法途徑完成任務，不得把整項工作轉成被動等待。
 
 ## Galaxy 與文件
