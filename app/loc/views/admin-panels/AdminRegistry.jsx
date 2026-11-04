@@ -11,7 +11,7 @@ import {duplicateDomainLabelError} from '../../../modular/scope-registry';
 import {THEME_SLOTS} from '../../../modular/theme-registry';
 const ObjectEditor=dynamic(()=>import('../../BlockNoteEditor').then(mod=>mod.ObjectEditor),{loading:()=>null});
 import {ScopeFeatureToggles} from '../../../modular/ui';
-import {isJsonbScope,scopeConfigColumns,scopeFeaturePatch,scopeFeatureKeys,scopeFeatureName} from '../../scope-config-fields.mjs';
+import {scopeConfigColumns,scopeFeaturePatch,scopeFeatureName} from '../../scope-config-fields.mjs';
 import {
   deleteScope,dbAuthClient,dbAuthRelation,manageScopeRegistry,provisionScope,updateRows
 } from '../../db-client.mjs';
@@ -326,9 +326,7 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
   const patchConfig=(key,value)=>setEditDraft(draft=>{
     const base=draft?.scopeId===selectedId?draft:draftFromSelected();
     const previous=base.config||config;
-    return {...base,config:isJsonbScope(selectedId)&&scopeFeatureKeys.includes(key)
-      ?{...previous,able:{...(previous?.able||{}),[scopeFeatureName(key)]:value?1:0}}
-      :{...previous,[key]:value}};
+    return {...base,config:{...previous,[scopeFeatureName(key)||key]:Boolean(value)}};
   });
   const patchPageCopy=(key,value)=>setEditDraft(draft=>{
     const base=draft?.scopeId===selectedId?draft:draftFromSelected();
