@@ -43,6 +43,13 @@
 - **Plugins／Skills 主動發現、實讀、執行**：LOC 任務每次開始先讀取目前儲存庫的 `AGENTS.md` 與相關任務狀態；主動檢索本次可用且與需求相關的已安裝 Plugins／Skills，實際讀取所選 Plugin 的入口 Skill、所需關聯 Skill 與必要參考文件，再依內容執行。**不能只看 Plugin 名稱、僅宣稱有使用、或等使用者逐一點名才讀取**；不得要求使用者每回合重新貼 Plugins／Skills 名單。不因某工具在新對話未啟用就降低連續交付、驗證、PR、Galaxy 或 Merge 標準。
 - **實際能力邊界**：已安裝不等於本次工具可用；技能指示不能代替工具實際執行，也不能保證跨對話自動載入。技能不可用時沿用本文件可執行的標準工作流程，不假稱已調用；不為了插件的內部流程而製造額外 Branch、PR、Workflow、文件或人工確認點。介面／UX 類技能只在相關需求適用，不強制所有純技術任務跑設計流程。
 
+## Skill 路由入口
+- 從任務目的主動選用已安裝 Plugin／Skill，讀取指引後實際執行；同一能力選一份，不等待使用者點名。
+- 詳細任務對照見 [docs/agent-skill-routing.md](docs/agent-skill-routing.md)，只讀本次相關段落，避免每次預載整張表。
+- SQL／資料存取 → [Kysely](.agents/skills/kysely/SKILL.md)；Auth／登入／Session → [Clerk](.agents/skills/clerk/SKILL.md)，再依框架與功能讀相關子技能。SQL 沿用 Kysely 統合路徑。
+- LOC 需求完成流程優先查用已安裝的 `loc-finish-request`；不可用時依本文件及 repo 路由繼續，不把私人技能當成所有 Agent 都有的 repo 檔案。
+- Codex／Claude 分別使用可讀取的 `.agents/skills/`、`.claude/skills/` 或已安裝 Plugins；保留其他 Agent 需要的發現入口。
+
 ## 工作流程與費用
 - `.github/workflows/workflow-guard.yml` 只在 Workflow 檔案修改的 PR 自動檢查觸發政策，亦可手動執行中斷恢復語法檢查；**唯一正式自動部署例外**是使用者已授權 `.github/workflows/deploy-pages.yml` 在 `main` push 後執行。其他 Workflow 預設只能 `workflow_dispatch`，不可自行加入自動觸發。Guard 不得變成額外的全專案自動語法檢查。
 - 不在多個 workflow 重複執行同一組昂貴測試；正式、昂貴步驟的必要前置驗證以最低成本處理。GitHub Pages 已由 `main` 自動部署，不要另行手動觸發相同部署；公開 RC release 或高計費打包仍需使用者明確要求。
