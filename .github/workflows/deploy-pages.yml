@@ -30,8 +30,9 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
-      - name: Parse JavaScript and JSX before expensive build
-        run: npm run check:syntax
+      # The full Next.js build below parses source files. An independent
+      # full-repository syntax sweep is reserved for interruption recovery
+      # via the manual Workflow guard; do not run it on every main push.
       - name: Security release gate (moderate, high and critical)
         run: npm run audit:security
       - name: Game regression tests
