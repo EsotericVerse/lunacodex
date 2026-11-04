@@ -72,7 +72,7 @@ test('two-table external LOC statistics uses discovered Scope instead of loc_gal
     {engine:'mssql',namespace:'dbo',role:'anon'});
   assert.deepEqual(result.data.scopes,[{scope_id:'writer',display_name:'writer'}]);
   assert.deepEqual(result.data.rows,[{scope_id:'writer',day:'2026-01-01',item_count:3}]);
-  assert.deepEqual(readTables,['dbo.writer_galaxy']);
+  assert.deepEqual(readTables,['dbo.writer_galaxy','dbo.writer_galaxy']);
 });
 
 
@@ -111,4 +111,44 @@ test('portable owner can read keyword classes and class/group/item catalog',asyn
   const hidden=await executor(db,{args:{p_scope_id:'writer',p_view:'keyword_catalog',
     p_options:{classUid}}},{engine:'mssql',namespace:'dbo',role:'anon'});
   assert.deepEqual(hidden.data,{});
+});
+
+test('portable LOC earliest uses all dates even when displayed daily rows are date-filtered',async()=>{
+  const eb={fn:{countAll:()=>({as:key=>({key})}),min:()=>({as:key=>({key})})}};
+  const calls=[];
+  const db={
+    introspection:{getTables:async()=>[
+      {schema:'dbo',name:'writer_galaxy'},{schema:'dbo',name:'writer_anchor'}]},
+    selectFrom:table=>{
+      const filters=[];calls.push(filters);
+      return {where(column,op,value){filters.push([column,op,value]);return this;},
+        select(value){if(typeof value==='function')value(eb);return this;},
+        groupBy(){return this;},orderBy(){return this;},
+        execute:async()=>[{date:'2026-11-01',n:'3'}],
+        executeTakeFirst:async()=>({day:'2018-04-01'})};
+    }
+  };
+  const result=await executor(db,{args:{p_scope_id:'loc',p_view:'loc',
+    p_start:'2026-01-01',p_end:'2026-12-31'}},
+    {engine:'mssql',namespace:'dbo',role:'anon'});
+  assert.equal(result.data.earliest,'2018-04-01');
+  assert.equal(calls.length,2);
+  assert.ok(calls[0].some(x=>x[0]==='date'&&x[1]==='>='));
+  assert.ok(!calls[1].some(x=>x[0]==='date'&&['>=','<='].includes(x[1])));
+});
+
+test('portable daily includeUndated retains NULL date groups using Kysely',async()=>{
+  const filters=[];
+  const eb={fn:{countAll:()=>({as:key=>({key})})}};
+  const db={selectFrom:()=>({
+    where(column,operator,value){filters.push([column,operator,value]);return this;},
+    select(value){if(typeof value==='function')value(eb);return this;},
+    groupBy(){return this;},orderBy(){return this;},
+    execute:async()=>[{date:null,site:'source',n:'2'}]
+  })};
+  const result=await executor(db,{args:{p_scope_id:'writer',p_view:'daily',
+    p_options:{includeUndated:true}}},{engine:'mysql',namespace:'',role:'anon'});
+  assert.ok(!filters.some(x=>x[0]==='date'&&x[1]==='is not'));
+  assert.equal(result.data.find(x=>x.kind==='total').item_count,2);
+  assert.equal(result.data.find(x=>x.kind==='source').day,'');
 });
