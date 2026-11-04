@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {scopeConfigRequest} from '../app/loc/mcp/scope-config-client.mjs';
 
-const root='https://loc-authority-control.sopa2306.workers.dev';
+const root='https://auth.lo3rwang.cc';
 function mockFetch(result={scopeid:'lrunes',configured:true,endpoint:'https://db.example.org/rest/v1',schema:'public',table:'lrunes_galaxy'}) {
   const calls=[];
   const fetchImpl=async (url,init={})=>{
