@@ -26,7 +26,14 @@ class KyselyQuery {
   range(from,to){this.request.offset=from;this.request.limit=Math.max(0,to-from+1);return this}
   single(){this.request.single='single';return this}
   maybeSingle(){this.request.single='maybeSingle';return this}
-  then(resolve,reject){return this.executeRequest(this.request).then(resolve,reject)}
+  abortSignal(signal){this.signal=signal;return this}
+  then(resolve,reject){return this.executeRequest(this.request,this.signal).then(resolve,reject)}
+}
+
+function abortedRequest(){
+  const error=new Error('Request cancelled');
+  error.name='AbortError';
+  return error;
 }
 
 function parseContentRange(value){const match=String(value||'').match(/\/(\d+)$/);return match?Number(match[1]):null}
@@ -46,7 +53,9 @@ export function createKyselyEdgeClient({url,publishableKey,auth,role='authentica
   }
   const endpoint=external?external.replace(/\/+$/,''):
     String(url).replace(/\/+$/,'')+'/functions/v1/loc-kysely';
-  async function performRequest(body){
+  async function performRequest(body,signal=null){
+    // A queued query can be cancelled before it ever reaches the Edge Function.
+    if(signal?.aborted)throw abortedRequest();
     let token='';
     if(typeof getAccessToken==='function'){
       token=String(await getAccessToken()||'');
@@ -69,23 +78,26 @@ export function createKyselyEdgeClient({url,publishableKey,auth,role='authentica
     if(token)headers.authorization='Bearer '+token;
     const request={method:'POST',headers,credentials:'omit',
       body:JSON.stringify({...body,target})};
-    // SWR owns explicit user refresh. Do not multiply 503 requests when
-    // connection slots are already exhausted or a gateway is recovering.
-    const response=await fetchImpl(endpoint,{...request,signal:AbortSignal.timeout(9000)});
+    // Preserve the caller's cancellation while enforcing the transport deadline.
+    // A stale Search/Culture request must stop its HTTP work, not just hide its result.
+    if(signal?.aborted)throw abortedRequest();
+    const deadline=AbortSignal.timeout(9000);
+    const requestSignal=signal?AbortSignal.any([signal,deadline]):deadline;
+    const response=await fetchImpl(endpoint,{...request,signal:requestSignal});
     let payload=null;try{payload=await response.json()}catch{}
     if(!response.ok){const error=new Error(payload?.error?.message||payload?.message||`Kysely request failed (HTTP ${response.status})`);error.status=response.status;error.code=payload?.error?.code;error.details=payload?.error?.details;throw error}
     if(body.kind==='rpc'||body.kind==='managed-write'||body.kind==='managed-action'||body.kind==='anchor'||body.kind==='analytics'||body.kind==='public-action')return {data:payload?.data??null,error:null,status:response.status};
     const count=payload?.count??parseContentRange(response.headers.get('content-range'));
     return {data:payload?.data??null,error:null,count,status:response.status};
   }
-  function execute(body){
+  function execute(body,signal=null){
     // All public readers on this browser tab share a small queue. Private
     // writes and management verification must never wait behind it.
     const publicRead=role==='anon'&&(
       body.kind==='analytics'||body.kind==='public-action'||body.kind==='anchor'||
       body.kind==='query'&&body.operation==='select'
     );
-    return publicRead?withPublicReadBudget(()=>performRequest(body)):performRequest(body);
+    return publicRead?withPublicReadBudget(()=>performRequest(body,signal)):performRequest(body,signal);
   }
   const client={
     schema(schema){return {from(table){return new KyselyQuery(execute,schema,table)},rpc(name,args={}){return execute({kind:'rpc',schema,name,args,target})},managedWrite(payload){return execute({kind:'managed-write',payload,target})},managedAction(name,args={}){return execute({kind:'managed-action',name,args,target})},anchor(scopeid,type,attr={}){return execute({kind:'anchor',scopeid,type,attr,target})},analytics(args){return execute({kind:'analytics',args,target})},publicAction(name,args={}){return execute({kind:'public-action',name,args,target})}}},

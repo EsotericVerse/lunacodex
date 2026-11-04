@@ -930,7 +930,7 @@ async function scopeDensityRows(scope,{startDate='',endDate=''}={}){
 
 async function selectScopeDensityRowsRaw(scopes,{startDate='',endDate=''}={}){
   const range={startDate:dateOnly(startDate),endDate:dateOnly(endDate)};
-  return (await Promise.all((Array.isArray(scopes)?scopes:[]).map(scope=>scopeDensityRows(scope,range))))
+  return (await mapBounded(Array.isArray(scopes)?scopes:[],2,scope=>scopeDensityRows(scope,range)))
     .flat()
     .sort((a,b)=>a.day.localeCompare(b.day)||a.scope_id.localeCompare(b.scope_id));
 }

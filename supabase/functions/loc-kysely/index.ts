@@ -136,18 +136,30 @@ async function databaseListForControl(control:any):Promise<Record<string,any>[]>
 }
 // The live selection is stored in LOC metadata; no redeploy is required.
 let selectedRouteCache:{until:number,target:Record<string,unknown>|null}={until:0,target:null};
+let selectedRouteInFlight:Promise<Record<string,unknown>>|null=null;
+let selectedRouteRevision=0;
 async function liveConfiguredTarget():Promise<Record<string,unknown>>{
   if(selectedRouteCache.target&&Date.now()<selectedRouteCache.until)
     return selectedRouteCache.target;
-  const control=await databaseForTarget(controlTarget);
-  const entries=await databaseListForControl(control);
-  const selected=entries.filter(row=>row.selected===true);
-  if(selected.length!==1)throw new Error("LOC needs exactly one selected SQL target");
-  const target=selected[0].provider==="supabase"&&
-    selected[0].connection_alias==="supabase_current"
-      ?controlTarget:selectedDatabaseTarget([{...selected[0],selected:true}]);
-  selectedRouteCache={until:Date.now()+5000,target};
-  return target;
+  // Multiple requests in one warm Edge isolate must share the same one-row
+  // control-plane lookup. Retain the existing 5-second freshness contract.
+  if(selectedRouteInFlight)return selectedRouteInFlight;
+  const revision=selectedRouteRevision;
+  const pending=(async()=>{
+    const control=await databaseForTarget(controlTarget);
+    const entries=await databaseListForControl(control);
+    const selected=entries.filter(row=>row.selected===true);
+    if(selected.length!==1)throw new Error("LOC needs exactly one selected SQL target");
+    const target=selected[0].provider==="supabase"&&
+      selected[0].connection_alias==="supabase_current"
+        ?controlTarget:selectedDatabaseTarget([{...selected[0],selected:true}]);
+    if(revision===selectedRouteRevision)
+      selectedRouteCache={until:Date.now()+5000,target};
+    return target;
+  })();
+  selectedRouteInFlight=pending;
+  try{return await pending;}
+  finally{if(selectedRouteInFlight===pending)selectedRouteInFlight=null;}
 }
 async function saveDatabaseTarget(input:Record<string,unknown>,role:string,claims:Record<string,unknown>){
   if(role!=="authenticated")throw Object.assign(new Error("Sign in as administrator"),{httpStatus:403});
@@ -215,7 +227,9 @@ async function saveDatabaseTarget(input:Record<string,unknown>,role:string,claim
     }
     await trx.updateTable("silver.loc").set({database:sql`${JSON.stringify(next)}::jsonb`})
       .where("id","=","loc").execute();
-    selectedRouteCache.until=0;
+    selectedRouteRevision++;
+    selectedRouteCache={until:0,target:null};
+    selectedRouteInFlight=null;
     profileCache.delete(alias+':'+location.link);
     return {target_id:targetId,provider,engine,selected:input.activate===true||
       targetId===routing.primaryId};

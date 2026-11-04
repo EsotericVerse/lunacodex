@@ -162,3 +162,10 @@ Cloudflare Pages `loc` production 部署 commit `54844ebf19ce8d88b52c1c4534a76e4
 LOC 的 Supabase `loc-kysely` Edge Function 使用 pg Pool `max:1`（每個 Edge isolate 各有自己的 pool）。正式環境的 `SUPABASE_DB_URL` 應直接填入 Supabase Dashboard → Connect → **Transaction pooler** 提供的完整連線網址，使用 port `6543`、其原有使用者名稱及密碼；不要從 Region 猜測 pooler 主機名稱，也不要將密碼寫入儲存庫。
 
 在正式 Secrets 切換前，若仍使用 direct/session port `5432`，程式會釋放閒置連線（1 秒），降低連線佔用，但**不能取代 Transaction pooler**。瀏覽器匿名 Kysely 讀取同時最多 3 筆，503 不在同一呼叫內立即重試；Clerk 管理權限檢查與寫入不受這個排隊限制。這是 Code 層限流，沒有新增／變更資料庫表、RPC、權限或索引。
+
+
+### 取消過時查詢與多 Scope 查詢壓力
+
+Kysely Edge `KyselyQuery.abortSignal(signal)` 現在把呼叫端取消訊號送到實際 `fetch`；在公開讀取佇列中已取消的查詢不再發送 HTTP。獨立逾時仍為 9 秒；讀取管線原有 8 秒逾時可更早中止，取消不視為資料庫故障。Culture 的 Scope 群組、每日密度與不連續 Period 分頁改為上限 2 路並行，保留原輸入順序、時間交集及各窗口游標；Galaxy 跨 Scope 密度同樣限為 2 路。
+
+控制資料庫的 LOC 路由設定仍採既有的 5 秒快取；同一 Edge isolate 內的並發請求共用一筆進行中的路由查詢，正式管理變更會撤銷快取及舊查詢的快取寫回資格。不修改 Supabase 表、Schema、RPC、RLS 或權限。
