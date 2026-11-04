@@ -26,7 +26,7 @@ const MAX_ROAD=80,MAX_LINES=400;
 const unique=items=>[...new Set(items)];
 const validPair=pair=>Array.isArray(pair)&&pair.length===2&&pair[0]&&pair[1]&&pair[0]!==pair[1];
 
-export default function TraceRouteManager({scopeId}){
+export default function TraceRouteManager({scopeId,mode='all'}){
   const account=useAccount(),cache=useResourceCache(),params=useSearchParams();
   const [owner,setOwner]=useState(scopeId==='loc'?(TRACE_SOURCE_ROWS[0]?.scope_id||''):scopeId);
   const [selectedUid,setSelectedUid]=useState('');
@@ -65,9 +65,10 @@ export default function TraceRouteManager({scopeId}){
     revalidateIfStale:false,revalidateOnFocus:false,revalidateOnReconnect:false
   });
   const records=(index.data||[]).filter(row=>row.source_scope===owner);
-  const visibleRecords=records.filter(row=>row.title.toLocaleLowerCase().includes(filter.trim().toLocaleLowerCase()));
-  const current=records.find(row=>row.uid===selectedUid)
-    ||chooseDefaultTraceRoute(records,owner,readDefaultTraceRoute(owner));
+  const typedRecords=records.filter(row=>mode==='all'||row.trace_type===mode);
+  const visibleRecords=typedRecords.filter(row=>row.title.toLocaleLowerCase().includes(filter.trim().toLocaleLowerCase()));
+  const current=typedRecords.find(row=>row.uid===selectedUid)
+    ||chooseDefaultTraceRoute(typedRecords,owner,readDefaultTraceRoute(owner));
   const currentRouteMembers=current?.trace_type==='trace'
     ?records.filter(row=>row.trace_type==='path'&&(current.route_list?.routes||[]).includes(row.uid))
     :[];
@@ -129,7 +130,7 @@ export default function TraceRouteManager({scopeId}){
     const token=owner+':'+requested;
     if(openedFromUrl.current===token)return;
     const row=records.find(item=>item.uid===requested);
-    if(row){openedFromUrl.current=token;openEdit(row);}
+    if(row&&(mode==='all'||row.trace_type===mode)){openedFromUrl.current=token;openEdit(row);}
   },[params,index.data,owner,own]);
   const addToSpool=()=>{
     const uid=selectedAnchor?.value;
@@ -244,11 +245,11 @@ export default function TraceRouteManager({scopeId}){
   useEditDockForm({save,isDirty:()=>incomplete,isBusy:()=>busy});
   return <section className="loc-card scope-feature-card loc-trace-map-manager" aria-label="路線與痕跡圖管理">
     <header className="loc-trace-map-manager-heading">
-      <div><h3>路線圖／痕跡圖管理</h3>
+      <div><h3>{mode==='path'?'路線管理':mode==='trace'?'痕跡管理':'路線圖／痕跡圖管理'}</h3>
       </div>
       <div className="scope-stat-controls">
-        <button type="button" className="loc-button" disabled={busy||!own} onClick={()=>openNew('path')}>新增路線圖</button>
-        <button type="button" className="loc-button" disabled={busy||!own} onClick={()=>openNew('trace')}>新增痕跡圖</button>
+        {mode!=='trace'?<button type="button" className="loc-button" disabled={busy||!own} onClick={()=>openNew('path')}>新增路線圖</button>:null}
+        {mode!=='path'?<button type="button" className="loc-button" disabled={busy||!own} onClick={()=>openNew('trace')}>新增痕跡圖</button>:null}
       </div>
     </header>
     {scopeId==='loc'?<label>作品範圍
