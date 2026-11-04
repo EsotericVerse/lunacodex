@@ -7,3 +7,12 @@ LOC MCP 是 UID 定址的文章讀寫介面，**不提供任何搜尋工具或�
 - 精確讀取：`read_memory` / `read_scope` 依已知 UID 讀取；`check_conversation` 只檢查 checkpoint，不掃描 Galaxy。
 - 禁止：`search_memory`、`search_scope`、`search_group`；Cloudflare Authority 的 `/v1/mcp/search/*` 和 `/v1/mcp/group-search/*` 一律拒絕；Kysely Edge 的 `mcp-search` 一律拒絕。
 - 對外部署：MCP Router 屬 Pages Functions，Authority Worker 與 Supabase Edge Function 是分開的部署目標；三者須各自核對版本，不能把 main merge 當作全部已上線。
+
+## MCP 請求上限
+
+- Cloudflare Authority 使用現有 `LOC_AUTHORITY_STATE` Durable Object 計數；不增加資料表、索引或 Worker。
+- 每位已驗證 Clerk 使用者最多 64 個 MCP 資料操作／分鐘，跨 Scope 共用額度；全體使用者同時執行最多 64 個 MCP 請求。超額回傳 HTTP 429，不進入 Supabase。
+- 公開 UID 讀取也先透過 Authority 取得額度；私有讀寫在 Authority 執行前檢查。未授權及已停用的搜尋端點不進資料庫。
+- 額度使用短期租約，正常完成即釋放，意外中斷最多保留 25 秒。計數採原子交易，不能靠 Worker 本機記憶體。
+- **Supabase Data API Max Rows=1000 是單次 SQL REST 回傳的列數限制，不是每分鐘請求數或 MCP 並發數。** 此項為 Supabase 控制台設定，須獨立設定及驗證，不能靠修改 MCP 配額代替。
+- 部署必須核對 Cloudflare Pages MCP route、Authority Worker 兩邊版本；GitHub merge 不表示兩邊都已上線。

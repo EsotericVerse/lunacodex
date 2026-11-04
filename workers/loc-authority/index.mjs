@@ -715,6 +715,41 @@ export class LocAuthorityState extends DurableObject {
   }
   // Cloudflare DO RPC: only a separately bound trusted SQL gateway can call this.
   // No HTTP handler exposes the credential or returns decrypted profiles to a browser.
+  // Shared, durable quotas for each verified Clerk MCP subject.
+  async mcpQuotaAcquire(kind,subject){
+    if(!/^clerk:user_[A-Za-z0-9]+$/.test(String(subject||'')))throw fail('Invalid MCP principal',401);
+    if(!['read','write'].includes(kind))throw fail('Invalid MCP quota kind',400);
+    const now=Date.now(),period=60_000,leaseTtl=25_000;
+    const maximum=64;
+    return this.ctx.storage.transaction(async tx=>{
+      const key='mcp-quota-window:'+subject;
+      const prior=await tx.get(key);
+      const bucket=prior&&now>=prior.started&&now-prior.started<period
+        ?prior:{started:now,count:0};
+      const leases=(await tx.get('mcp-quota-leases')||[]).filter(item=>item.expires>now);
+      if(bucket.count>=maximum)throw fail('MCP request limit exceeded',429);
+      if(leases.length>=64)throw fail('MCP concurrency limit exceeded',429);
+      const lease=crypto.randomUUID();
+      leases.push({lease,subject,expires:now+leaseTtl});
+      await tx.put(key,{started:bucket.started,count:bucket.count+1});
+      await tx.put('mcp-quota-leases',leases);
+      return {lease};
+    });
+  }
+  async mcpQuotaRelease(lease,subject){
+    if(!/^clerk:user_[A-Za-z0-9]+$/.test(String(subject||'')))throw fail('Invalid MCP principal',401);
+    if(typeof lease!=='string'||!/^[a-f0-9-]{36}$/i.test(lease))
+      throw fail('Invalid MCP lease',400);
+    await this.ctx.storage.transaction(async tx=>{
+      const now=Date.now();
+      const records=(await tx.get('mcp-quota-leases')||[]);
+      if(records.some(item=>item.lease===lease&&item.subject!==subject))
+        throw fail('MCP lease belongs to another subject',403);
+      await tx.put('mcp-quota-leases',records
+        .filter(item=>item.expires>now&&item.lease!==lease));
+    });
+    return {released:true};
+  }
   async getProfileForGateway(id){
     const stored=await this.ctx.storage.get('target:'+id);
     return stored?decryptProfile(stored.encrypted,this.env.LOC_CONTROL_ENCRYPTION_KEY):null;
@@ -722,14 +757,30 @@ export class LocAuthorityState extends DurableObject {
 }
 
 async function handleMcpAuthority(request,env,url,origin){
-  // Browser Scope settings use Clerk session JWT; MCP tools use audience-bound
-  // OAuth JWT. Both paths independently verify Clerk signatures.
+  // Authentication precedes all quotas and any downstream SQL access.
   let principal;
   try{principal=await verifyMcpOAuth(request,env);}
   catch(error){
     if(error.status!==401)throw error;
     principal=await verifyIdentityToken(request,env);
   }
+  const quota=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName(
+    'mcp-quota-global-v1'));
+  if(url.pathname==='/v1/mcp/quota'&&request.method==='POST'){
+    if(principal.provider!=='clerk')throw fail('MCP OAuth required',401);
+    const args=await mcpJsonBody(request,400);
+    if(args?.action==='acquire')return json(await quota.mcpQuotaAcquire(args.kind,'clerk:'+principal.subject),200,origin);
+    if(args?.action==='release')return json(await quota.mcpQuotaRelease(args.lease,'clerk:'+principal.subject),200,origin);
+    throw fail('Invalid MCP quota operation',400);
+  }
+  // No DB work and no quota spend on retired search endpoints.
+  if(/^\/v1\/mcp\/(?:search|group-search)\//.test(url.pathname))
+    throw fail('MCP search is disabled',403);
+  const ticket=await quota.mcpQuotaAcquire(request.method==='GET'?'read':'write','clerk:'+principal.subject);
+  try{return await handleMcpAuthorityInner(request,env,url,origin,principal);}
+  finally{await quota.mcpQuotaRelease(ticket.lease,'clerk:'+principal.subject);}
+}
+async function handleMcpAuthorityInner(request,env,url,origin,principal){
   const roots=String(env.LOC_RECOVERY_ROOT_CLERK_IDS||'').split(/[\s,;]+/).filter(Boolean);
   const isRoot=roots.includes(principal.subject);
   const stub=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName('loc-authority-control-v1'));

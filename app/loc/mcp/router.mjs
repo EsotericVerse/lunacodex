@@ -137,6 +137,31 @@ const TOOLS=[
       required:['groupid','scopeid','subject'],additionalProperties:false}},
 ];
 function toolResponse(id,value){return result(id,{content:[{type:'text',text:JSON.stringify(value)}],structuredContent:value});}
+// The public UID reader also uses the global Authority Durable Object quota.
+async function withMcpQuota(token,env,action){
+  const authority=new URL(String(env.LOC_MCP_AUTHORITY_URL||
+    'https://loc-authority-control.sopa2306.workers.dev'));
+  if(authority.protocol!=='https:'||authority.username||authority.password||
+    authority.search||authority.hash||!['','/'].includes(authority.pathname))
+    throw Error('Invalid LOC Authority origin');
+  const endpoint=new URL('/v1/mcp/quota',authority.origin);
+  const request=async payload=>{
+    const res=await fetch(endpoint.href,{
+      method:'POST',headers:{authorization:'Bearer '+token,
+        origin:'https://loc.lo3rwang.cc','content-type':'application/json'},
+      body:JSON.stringify(payload),signal:AbortSignal.timeout(12000),
+      redirect:'error',cache:'no-store'
+    });
+    if(!res.ok){
+      const err=new Error(res.status===429?'MCP request limit exceeded':'MCP quota unavailable');
+      err.httpStatus=res.status;throw err;
+    }
+    return res.json();
+  };
+  const permit=await request({action:'acquire',kind:'read'});
+  try{return await action();}
+  finally{await request({action:'release',lease:permit.lease});}
+}
 export async function handleMcp(request,env={}){
   const config=mcpConfig(env);
   if(request.method==='OPTIONS')return preflight();
@@ -175,7 +200,8 @@ export async function handleMcp(request,env={}){
         availableTools:TOOLS.map(tool=>tool.name)});
       try{
         const value=name==='read_memory'?
-          await readMemory(args,env):await authorityAction(name,args,match[1],env);
+          await withMcpQuota(match[1],env,()=>readMemory(args,env)):
+          await authorityAction(name,args,match[1],env);
         return toolResponse(payload.id,value);
       }catch(error){
         const validation=error?.code==='INVALID_ARGUMENT';
