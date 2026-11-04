@@ -66,7 +66,7 @@ export default function LocUserSettingsPanel({verifiedSubject='',section='filter
   const {data,loading,error,ready,update}=useLocUser({verifiedSubject});
   const [draft,setDraft]=useState(null);
   const draftRef=useRef(null);
-  const activeUid=useRef('');
+  const activeSubject=useRef('');
   const choiceVersion=useRef(0);
   const [saving,setSaving]=useState(false);
   const [status,setStatus]=useState('');
@@ -75,8 +75,8 @@ export default function LocUserSettingsPanel({verifiedSubject='',section='filter
   const [keywordError,setKeywordError]=useState('');
 
   useEffect(()=>{
-    const uid=String(data?.uid||'');
-    if(!uid||activeUid.current===uid)return;
+    const subject=String(verifiedSubject||data?.owner_id||'');
+    if(!subject||activeSubject.current===subject)return;
     const next={
       culture:{...LOC_USER_DEFAULTS.culture,...data.culture},
       statics:{...LOC_USER_DEFAULTS.statics,...data.statics},
@@ -84,17 +84,17 @@ export default function LocUserSettingsPanel({verifiedSubject='',section='filter
       search:{...LOC_USER_DEFAULTS.search,...data.search},
       keyword:data.keyword||'none'
     };
-    activeUid.current=uid;
+    activeSubject.current=subject;
     draftRef.current=next;
     setDraft(next);
     setStatus('');
     setSaveError('');
-  },[data]);
+  },[data,verifiedSubject]);
 
   // Only the Filter section loads Keyword Class options. The other two tabs
   // never issue taxonomy requests simply because the user opened Settings.
   useEffect(()=>{
-    if(section!=='filter'||!ready||!data?.uid)return undefined;
+    if(section!=='filter'||!ready||!verifiedSubject)return undefined;
     let live=true;
     (async()=>{
       const {selectAvailableKeywordClasses}=await import('./keyword-analysis');
@@ -118,7 +118,7 @@ export default function LocUserSettingsPanel({verifiedSubject='',section='filter
       if(live)setKeywordError(t(PATH+'featureKeywordError'));
     });
     return()=>{live=false;};
-  },[section,ready,data?.uid,t(PATH+'featureAuthor'),t(PATH+'featureRunes'),t(PATH+'featureKeywordError')]);
+  },[section,ready,verifiedSubject,t(PATH+'featureAuthor'),t(PATH+'featureRunes'),t(PATH+'featureKeywordError')]);
 
   const change=(group,key,value)=>{
     const current=draftRef.current;
@@ -129,12 +129,12 @@ export default function LocUserSettingsPanel({verifiedSubject='',section='filter
     setSaving(true);
     setStatus('');
     setSaveError('');
-    const uid=activeUid.current,version=++choiceVersion.current;
+    const uid=activeSubject.current,version=++choiceVersion.current;
     void update(group,next[group]).then(()=>{
-      if(activeUid.current!==uid||version!==choiceVersion.current)return;
+      if(activeSubject.current!==uid||version!==choiceVersion.current)return;
       setSaving(false);setStatus(t(PATH+'featureSaved'));
     }).catch(reason=>{
-      if(activeUid.current!==uid||version!==choiceVersion.current)return;
+      if(activeSubject.current!==uid||version!==choiceVersion.current)return;
       setSaving(false);
       setSaveError(t(PATH+'featureSaveError',{error:String(reason?.message||reason)}));
     });
