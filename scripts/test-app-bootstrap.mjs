@@ -4,6 +4,7 @@ import {test} from 'node:test';
 import vm from 'node:vm';
 import {administrativeSourceTrend} from '../app/loc/statistics-admin-source.mjs';
 import {MAX_ROWS} from '../app/loc/query-batch-size.mjs';
+const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
 // Test the real public bootstrap entry without loading browser-only SDKs.
 // Mock only its database seams; assert the publicly observable requests and
@@ -568,13 +569,15 @@ test('Culture second river waits for its first source snapshot and avoids lazy d
 test('Scope editor uses time/spatial anchor labels and preserves LOC group labels',()=>{
   const shell=readFileSync(new URL('../app/AppShell.jsx',import.meta.url),'utf8');
   const dock=readFileSync(new URL('../app/modular/edit-dock.jsx',import.meta.url),'utf8');
-  assert.match(shell,/locAdminEdit\?translateUiField\(activeLocale,'人員作品管理'\):translateUiField\(activeLocale,'時間定錨'\)/);
-  assert.match(shell,/locAdminEdit\?'痕跡製作':'空間定錨'/);
+  assert.match(shell, /\{id:'members',icon:'culture',label:translateUiField\(activeLocale,'人員作品管理'\)/);
+  assert.match(shell, /\{id:'time',icon:'culture',label:translateUiField\(activeLocale,'時間定錨'\)/);
+  assert.match(shell,/\{id:'manage',icon:'trace',label:navScopeId==='local'\?'管理':translateUiField\(activeLocale,'空間定錨'\)/);
   assert.match(shell,/translateUiField\(activeLocale,'關鍵詞'\)/);
-  assert.match(shell,/translateUiField\(activeLocale,'暫存'\)/);
+  assert.match(shell,/translateUiField\(activeLocale,'儲存'\)/);
   assert.doesNotMatch(shell,/translateUiField\(activeLocale,'設立定錨'\)/);
   assert.doesNotMatch(shell,/translateUiField\(activeLocale,'痕跡管理'\)/);
-  assert.match(dock,/已暫存，可繼續編輯/);
+  assert.match(dock,/目前修改已儲存。/);
+  assert.doesNotMatch(dock,/已暫存/);
   assert.doesNotMatch(dock,/已分段儲存/);
 });
 
@@ -647,4 +650,98 @@ test('one device default time unit changes presentation, never article URLs or S
   assert.match(trace,/start_date:startDate,end_date:endExclusive/);
   // Zero new API endpoints, migrations, automatic search filters or URL changes.
   assert.doesNotMatch(settings,/dbAuthRelation\(.*DEFAULT_TIME_UNIT_KEY/);
+});
+
+
+// 2026-11-05 targeted regression: no duplicate hot-path Save or post-save reads.
+test('Edit Dock provides one explicit Save and never saves an unchanged editor',()=>{
+  const dock=read('app/modular/edit-dock.jsx');
+  const shell=read('app/AppShell.jsx');
+  assert.match(dock,/const editors=dirty;/);
+  assert.match(dock,/if\(!editors\.length\)\{\s*setNotice\('目前沒有待儲存的變更。'\)/);
+  assert.doesNotMatch(dock,/saveAndSwitch|stayInEditMode|已暫存|儲存並切換/);
+  assert.match(shell,/editDock\.save\(\)/);
+  assert.doesNotMatch(shell,/editDock\.save\(\{stayInEditMode/);
+});
+
+test('Homepage real Save avoids repeated SELECT and a forced page navigation',()=>{
+  const drafts=read('app/loc/ScopeBlockDraftList.jsx');
+  const blocks=read('app/loc/ScopeEditableBlocks.jsx');
+  assert.match(drafts,/async function publishSavedBlocks\(rows\)/);
+  assert.match(drafts,/mutate\(appBootstrapKey\(scopeId,pageName\)/);
+  assert.match(drafts,/\{revalidate:false\}/);
+  assert.doesNotMatch(drafts,/refreshBlockQueries|await mutate\(bootstrapKey\)|await mutate\(displayKey\)/);
+  assert.match(blocks,/if\(editDock\?\.active&&editDock\.scopeId===scopeId\)\{[\s\S]*?return;/);
+});
+
+test('Inline block, classification, route and time editors reuse fixed Dock Save',()=>{
+  const single=read('app/loc/ScopeBlockEditorSession.jsx');
+  const classes=read('app/loc/FlatClassificationEditor.jsx');
+  const trace=read('app/loc/TraceRouteManager.jsx');
+  const culture=read('app/modular/features/CultureTimelineEditor.jsx');
+  assert.match(single,/useEditDockForm\(\{save,isDirty:/);
+  assert.match(single,/\.\.\.\(inDock\?\[\]:\[\{key:'save'/);
+  assert.match(classes,/!inDock\?<button className="loc-button primary"/);
+  assert.match(trace,/!inDock\?<button className="loc-button primary"/);
+  assert.match(culture,/onSubmit=\{event=>event\.preventDefault\(\)\}/);
+});
+
+test('Culture refreshes active source-window keys, not retired v2/v6 keys',()=>{
+  const culture=read('app/modular/features/Culture.jsx');
+  assert.match(culture,/resourceCache\.invalidate\(\{queryKey:\['culture-period-roots'\]\}\)/);
+  assert.match(culture,/resourceCache\.invalidate\(\{queryKey:\['culture-period-source-snapshot'\]\}\)/);
+});
+
+test('Search shows Galaxy date and updates same-page URL without a route remount',()=>{
+  const search=read('app/modular/features/Search.jsx');
+  const providers=read('app/loc/galaxy-query.js');
+  assert.match(search,/date=\{row\.date\}/);
+  assert.match(search,/window\.history\.pushState\(null,'',url\)/);
+  assert.match(providers,/\.\.\.\(!localArticle\(current\)\?\['date'\]:\[\]\)/);
+});
+
+test('LOC permission snapshot does one Kysely query rather than two per request',()=>{
+  const auth=readFileSync(new URL('../app/loc/providers/loc-authorization.mjs',import.meta.url),'utf8');
+  assert.match(auth,/crossJoin\('silver\.loc as l'\)/);
+  assert.doesNotMatch(auth,/const config=await db\.selectFrom\('silver\.loc'\)/);
+});
+
+
+test('Verified Clerk OAuth expiry bounds lazy LOC authorization cache across requests',async()=>{
+  // Execute the actual pure authorization module with a fake Kysely SELECT.
+  // No Supabase connection, RLS or user credential is involved.
+  const source=read('app/loc/providers/loc-authorization.mjs')
+    .replace(/^export /gm,'');
+  const {bindLocAuthorization,locPermissions}=vm.runInNewContext(
+    source+'\n;({bindLocAuthorization,locPermissions})',{Date,Promise});
+  let selects=0;
+  const db=()=>({
+    fn:()=>'(lower email)',
+    selectFrom(){selects+=1;return{
+      crossJoin(){return this;},select(){return this;},where(){return this;},
+      async execute(){return[{
+        id:'lo3rwang',email:'editor@example.org',manage_role:'scope',active:true,
+        galaxy_table:'galaxy',anchor_table:'anchor',birthday:null,
+        blacklist:{email:[]}
+      }];}
+    }}
+  });
+  const claims={provider:'clerk',sub:'user_Abc123',email:'editor@example.org',
+    sid:'session-1',exp:Math.floor(Date.now()/1000)+120};
+  const first=db(),second=db();
+  bindLocAuthorization(first,{role:'authenticated',claims});
+  bindLocAuthorization(second,{role:'authenticated',claims});
+  const [one,two]=await Promise.all([locPermissions(first),locPermissions(second)]);
+  assert.equal(selects,1,'same unexpired OAuth session reuses one SQL permission check');
+  assert.equal(one.rows[0].id,'lo3rwang');
+  assert.equal(two.rows[0].id,'lo3rwang');
+  const another=db();
+  bindLocAuthorization(another,{role:'authenticated',claims:{...claims,sid:'session-2'}});
+  await locPermissions(another);
+  assert.equal(selects,2,'different Clerk session never reuses prior authorization');
+  const expired=db();
+  bindLocAuthorization(expired,{role:'authenticated',
+    claims:{...claims,exp:Math.floor(Date.now()/1000)-1}});
+  await locPermissions(expired);
+  assert.equal(selects,3,'expired OAuth credentials cannot reuse the cache');
 });

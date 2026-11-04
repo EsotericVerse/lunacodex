@@ -7,7 +7,7 @@ import {useScopeSourceCategoryRow} from './scope-source-category-row.mjs';
 import {dbAuthRelation,dbAuthClient} from './db-client.mjs';
 import {useAccount} from './use-account';
 import {useUiLocale} from '../i18n/ui-locale';
-import {useEditDockForm} from '../modular/edit-dock';
+import {useEditDock,useEditDockForm} from '../modular/edit-dock';
 
 const LABELS={
   'zh-Hant':{work:'作品分類',personal:'個人分類',help:'每一項都是來源名稱字串，不設 ID、群組或目錄。',reading:'正在讀取',readError:'分類讀取失敗',notFound:'找不到 Scope 設定',noChanges:'沒有待儲存的修改。',invalid:'每個分類名稱須為 1–80 字。',duplicate:'分類名稱不能重複。',noPermission:'沒有寫入權限，分類未儲存。',saved:'已儲存。公開分類快照會於下次手動發布時同步。',denied:'沒有編輯權限。',retry:'重新讀取',item:'分類',remove:'刪除',add:'新增分類',save:'儲存',saving:'儲存中…',revert:'還原',moveUp:'上移一列',moveDown:'下移一列',moveBack:'往前',moveForward:'往後'},
@@ -19,6 +19,8 @@ const LABELS={
 // Each editable entry is a string; one text[] per Scope, without an item ID.
 export default function FlatClassificationEditor({scopeId='loc'}){
   const account=useAccount();
+  const dock=useEditDock();
+  const inDock=Boolean(dock?.active&&dock.scopeId===scopeId);
   const {locale}=useUiLocale();
   const l=LABELS[locale]||LABELS['zh-Hant'];
   const {mutate}=useSWRConfig();
@@ -103,7 +105,7 @@ export default function FlatClassificationEditor({scopeId='loc'}){
     {query.error?<p role="alert" className="scope-status scope-error">{String(query.error.message||query.error)}
       <button type="button" className="loc-button" onClick={()=>query.refetch()}>{l.retry}</button>
     </p>:null}
-    {!query.isPending&&!query.error?<form onSubmit={event=>{event.preventDefault();void save();}}>
+    {!query.isPending&&!query.error?<form onSubmit={event=>{event.preventDefault();if(!inDock)void save();}}>
       <div className="classification-inline__list" ref={listRef}>
         {rows.map((name,index)=>{
           const up=index-columns();
@@ -134,7 +136,7 @@ export default function FlatClassificationEditor({scopeId='loc'}){
       <div className="classification-inline__actions">
         <button type="button" className="loc-button" disabled={busy}
           onClick={()=>{setDraft([...rows,'']);setNotice('');}}>{l.add}</button>
-        <button className="loc-button primary" type="submit" disabled={busy||!changed}>{busy?l.saving:l.save+' '+title}</button>
+        {!inDock?<button className="loc-button primary" type="submit" disabled={busy||!changed}>{busy?l.saving:l.save+' '+title}</button>:null}
       </div>
     </form>:null}
     {notice?<p className="scope-status" role="status">{notice}</p>:null}

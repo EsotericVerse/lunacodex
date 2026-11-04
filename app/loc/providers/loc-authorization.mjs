@@ -1,6 +1,37 @@
 // One verified LOC authorization decision per SQL request, regardless of dialect.
 // Only the trusted gateway may bind claims. No database RPC and no DB Auth login.
 const sessions=new WeakMap();
+// Reuse the existing Clerk OAuth session's verified permission snapshot for
+// 30 seconds at most. This is lazy (no polling, Cron, or new credential).
+// Every HTTP request still needs a verified, unexpired Clerk JWT.
+const PERMISSION_REUSE_MS=30_000;
+const MAX_PERMISSION_SESSIONS=96;
+const permissionSnapshots=new Map();
+function reuseKey(state){
+  const exp=Number(state.claims?.exp);
+  if(!Number.isFinite(exp)||exp*1000<=Date.now())return null;
+  return JSON.stringify([String(state.claims.sub),state.email,exp,
+    String(state.claims.sid||''),String(state.claims.jti||'')]);
+}
+function cachedSnapshot(state){
+  const key=reuseKey(state);
+  if(!key)return {key:null,pending:null};
+  const entry=permissionSnapshots.get(key);
+  if(entry&&entry.until>Date.now())return {key,pending:entry.pending};
+  if(entry)permissionSnapshots.delete(key);
+  return {key,pending:null};
+}
+function rememberSnapshot(key,state,pending){
+  if(!key)return;
+  const until=Math.min(Date.now()+PERMISSION_REUSE_MS,Number(state.claims.exp)*1000);
+  permissionSnapshots.set(key,{until,pending});
+  // An expired promise never causes background work; it is removed on demand.
+  while(permissionSnapshots.size>MAX_PERMISSION_SESSIONS)
+    permissionSnapshots.delete(permissionSnapshots.keys().next().value);
+  void pending.catch(()=>{
+    if(permissionSnapshots.get(key)?.pending===pending)permissionSnapshots.delete(key);
+  });
+}
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const USER=/^user_[A-Za-z0-9]+$/;
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
@@ -21,12 +52,22 @@ export function bindLocAuthorization(db,{role='anon',claims={},snapshot=null}={}
 export async function locPermissions(db){
   const state=sessions.get(db);
   if(!state||state.role!=='authenticated')return {blocked:true,rows:[]};
-  if(!state.pending)state.pending=(async()=>{
-    // Both reads are Kysely-native. The source of truth is the active
-    // registry and blacklist, not an old silver.manage() stored function.
-    const config=await db.selectFrom('silver.loc').select('blacklist')
-      .where('id','=','loc').executeTakeFirst();
-    let blacklist=config?.blacklist;
+  if(!state.pending){
+    const {key,pending}=cachedSnapshot(state);
+    if(pending){state.pending=pending;return pending;}
+    state.pending=(async()=>{
+    // Read the blacklist and this principal's LOC membership in ONE
+    // parameterized SQL statement. No extra request or new permission cache.
+    // The transaction still carries verified Clerk claims; authorization
+    // and revocation remain evaluated against the live LOC control database.
+    const joined=await db.selectFrom('silver.manage as m')
+      .crossJoin('silver.loc as l')
+      .select(['m.id','m.email','m.manage_role','m.active','m.galaxy_table',
+        'm.anchor_table','m.birthday','l.blacklist'])
+      .where('l.id','=','loc')
+      .where(db.fn('lower',['m.email']),'=',state.email).execute();
+    if(!joined.length)return {blocked:false,rows:[]};
+    let blacklist=joined[0].blacklist;
     if(typeof blacklist==='string'){
       try{blacklist=JSON.parse(blacklist)}catch{deny('Invalid LOC blacklist')}
     }
@@ -36,11 +77,10 @@ export async function locPermissions(db){
     if((blacklist.email||[]).some(item=>
       String(item?.email||'').trim().toLowerCase()===state.email))
       return {blocked:true,rows:[]};
-    const rows=await db.selectFrom('silver.manage')
-      .select(['id','email','manage_role','active','galaxy_table','anchor_table','birthday'])
-      .where(db.fn('lower',['email']),'=',state.email).execute();
-    return {blocked:false,rows};
-  })();
+    return {blocked:false,rows:joined.map(({blacklist:ignored,...row})=>row)};
+    })();
+    rememberSnapshot(key,state,state.pending);
+  }
   return state.pending;
 }
 export async function canManageLoc(db,type,id=''){

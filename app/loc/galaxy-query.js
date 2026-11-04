@@ -592,7 +592,7 @@ function managementArticleProviders(scope,{contentType='',sourceFilter='',source
   ];
   const base={
     table:current.galaxy,source:current.id+' 文章',scope:current,idColumn:'uid',
-    columns:['uid','title','createtime',...articlePermissionColumns(current)],dateColumn:dayColumn(current.galaxy),filters,sourceClause:sourceNameClause(selection),
+    columns:['uid','title','createtime',...(!localArticle(current)?['date']:[]),...articlePermissionColumns(current)],dateColumn:dayColumn(current.galaxy),filters,sourceClause:sourceNameClause(selection),
     authenticated:true
   };
   if(placeOnly)return [makeProvider({
@@ -622,7 +622,7 @@ function genericScopeProviders(scope,{includeHiddenText=false,contentType='',sou
   const textFilters=includeHiddenText
     ?kindFilters
     :publicContentFilters([articlePermissionFilter(current,'search'),...kindFilters]);
-  const textColumns=['uid','title','createtime',...articlePermissionColumns(current)];
+  const textColumns=['uid','title','createtime',...(!localArticle(current)?['date']:[]),...articlePermissionColumns(current)];
   if(placeOnly)return [makeProvider({
     id:current.id+':source-place',table:current.galaxy,
     source:current.id+' 打卡地點',scope:current,idColumn:'uid',

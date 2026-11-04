@@ -946,7 +946,12 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       scopeFilter:managementMode?searchParams?.get('scope'):'',placeOnly:Boolean(searchParams?.get('place'))
     });
     if(url!==current||searchParams?.get('identity')){
-      router.push(url,{scroll:false});
+      // Query-only changes must not remount Search and its Scope/Auth loaders.
+      // Next.js integrates native History API updates with useSearchParams;
+      // the existing URL-driven effect then runs the search exactly once.
+      if(new URL(url).pathname===window.location.pathname)
+        window.history.pushState(null,'',url);
+      else router.push(url,{scroll:false});
       return;
     }
     // Next.js does not remount for an identical URL; repeated suggestions must still search.
@@ -1367,7 +1372,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
             :''}
           detailReading={identityReader||expandedReader}
           source={searchParams?.get('identity')?row.styleTagMatch?'':row.source:''}
-          date={searchParams?.get('identity')?row.date:''}
+          date={row.date}
           body={(row.resourceType==='galaxy'||row.resourceType==='anchor')&&row.snippet&&matchedQueryRef.current&&!browseResults
             ?highlightSearchText(row.snippet,matchedQueryRef.current):''}
           hidden={false}

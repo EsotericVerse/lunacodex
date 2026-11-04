@@ -838,8 +838,10 @@ export default function Culture(){
 
   async function refreshCultureSourceSummary(){
     await Promise.all([
-      resourceCache.invalidate({queryKey:['culture-period-roots','v2',scopeId]}),
-      resourceCache.invalidate({queryKey:['culture-period-source-snapshot','v6',scopeId]})
+      // Active keys use v4-staged-numeric / v8-reused-numeric and include
+      // date windows. Invalidate by prefix, not retired exact versions.
+      resourceCache.invalidate({queryKey:['culture-period-roots']}),
+      resourceCache.invalidate({queryKey:['culture-period-source-snapshot']})
     ]);
   }
   async function refreshTimelineData(){

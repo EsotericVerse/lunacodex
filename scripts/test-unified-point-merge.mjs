@@ -66,15 +66,15 @@ test('aliases use point attr.location and edit controls are apart from managemen
   assert.match(organizer,/unified\?'_anchor':'_place'/);
   assert.match(organizer,/\.rpc\('save_scope_trace_place_names'/);
   assert.match(organizer,/\.from\(scopeId\+'_anchor'\)\.select\('attr'\)/);
-  assert.match(shell,/className="scope-feature-dock__navigation" role="group"/);
-  assert.match(shell,/className="scope-feature-dock__actions" role="group"/);
-  assert.match(css,/\.scope-feature-dock__groups\{/);
-  assert.match(css,/grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/);
-  assert.match(css,/grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+  assert.match(shell,/<nav className="scope-feature-dock"/);
+  assert.match(shell, /editingDockVisible\?editTabs\.map/);
+  assert.match(css,/\.scope-feature-dock/);
+  assert.match(css,/grid-template-columns:repeat\(6,minmax\(0,1fr\)\)/);
+  assert.match(shell,/const editTabs=\[/);
 });
 
 
-test('Save-and-switch confirms spatial UID merge once and shows the original RPC error',()=>{
+test('Fixed Edit Dock Save protects spatial UID merge and preserves visible RPC errors',()=>{
   const form=read('app/loc/TraceManagement.jsx');
   const dock=read('app/modular/edit-dock.jsx');
   assert.match(form,/const save=async\(\{switching=false\}=\{\}\)=>\{/);
@@ -87,6 +87,7 @@ test('Save-and-switch confirms spatial UID merge once and shows the original RPC
   assert.match(form,/isDestructive:\(\)=>mergeUids\.length>0\|\|Boolean\(pendingVisibility\)/);
   assert.match(dock,/isDestructive:actions\.isDestructive/);
   assert.match(dock,/editor\.isDirty\?\.\(\)&&editor\.isDestructive\?\.\(\)/);
-  assert.match(dock,/按「儲存並切換」即確認執行/);
-  assert.match(dock,/saved!==true\)throw new Error\('儲存尚未完成/);
+  assert.match(dock,/請使用固定六鍵的「儲存」確認執行/);
+  assert.doesNotMatch(dock,/儲存並切換|saveAndSwitch/);
+  assert.match(dock,/saved!==true\)throw new Error\('部分設定未儲存/);
 });

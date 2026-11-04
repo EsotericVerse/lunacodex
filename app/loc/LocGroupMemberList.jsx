@@ -5,7 +5,7 @@ import {useSWRConfig} from 'swr';
 import {useAccount} from './use-account';
 import {useAsyncResource} from './use-async-resource';
 import {dbAuthClient} from './db-client.mjs';
-import {useEditDockForm} from '../modular/edit-dock';
+import {useEditDock,useEditDockForm} from '../modular/edit-dock';
 import {invalidateAppBootstrapMetadata} from './app-bootstrap';
 
 // Group administration only: enumerate existing members, rename display titles.
@@ -13,6 +13,8 @@ import {invalidateAppBootstrapMetadata} from './app-bootstrap';
 // this component. The RPC enforces the same boundary server-side.
 export default function LocGroupMemberList({groupId='loc'}){
   const account=useAccount();
+  const dock=useEditDock();
+  const inDock=Boolean(dock?.active&&dock.scopeId===groupId);
   const {mutate}=useSWRConfig();
   const allowed=Boolean(account.user&&!account.loading&&!account.permissionLoading&&
     account.canManageGroupSync(groupId));
@@ -66,7 +68,7 @@ export default function LocGroupMemberList({groupId='loc'}){
       </article>)}
       {!rows.length?<p className="scope-status">目前沒有可修改的人員。</p>:null}
       <div className="scope-tabs">
-        <button type="button" className="loc-button primary" disabled={busy||!edited.length} onClick={save}>儲存修改</button>
+        {!inDock?<button type="button" className="loc-button primary" disabled={busy||!edited.length} onClick={save}>儲存修改</button>:null}
         <button type="button" className="loc-button" disabled={busy||!edited.length}
           onClick={()=>{setDraft({});setNotice('');}}>還原</button>
       </div>

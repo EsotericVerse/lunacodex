@@ -37,8 +37,8 @@ export function EditDockProvider({children}){
     operationTimer.current=setTimeout(()=>{
       if(operationEpoch.current!==epoch)return;
       releaseOperation();
-      setNotice('暫存超過 5 分鐘，操作鎖已解除。請先確認資料是否寫入。');
-      setSwitchError('暫存逾時，尚未確認寫入狀態；可以取消返回。');
+      setNotice('儲存操作超過 5 分鐘，操作鎖已解除。請確認資料是否成功寫入。');
+      setSwitchError('儲存操作逾時，尚未確認寫入狀態；可以取消返回。');
     },EDIT_OPERATION_TTL_MS);
     return epoch;
   },[releaseOperation]);
@@ -177,14 +177,18 @@ export function EditDockProvider({children}){
     end();
     navigate(target);
   },[end,navigate]);
-  const save=useCallback(async({stayInEditMode=false}={})=>{
+  const save=useCallback(async()=>{
     if(busy||committing.current)return;
     // A management section can mount independent Database / ISR / Email
     // editors simultaneously. Save every dirty editor through the existing
     // six-feature Save action; never silently save just the first mounted one.
     const dirty=[...registeredEditors.current].filter(editor=>editor.isDirty?.());
-    const editors=dirty.length?dirty:(currentEditor.current?[currentEditor.current]:[]);
-    if(!editors.length||editors.some(editor=>typeof editor.save!=='function')){
+    const editors=dirty;
+    if(!editors.length){
+      setNotice('目前沒有待儲存的變更。');
+      return;
+    }
+    if(editors.some(editor=>typeof editor.save!=='function')){
       setNotice('這個頁面尚未載入可儲存的編輯內容。');
       return;
     }
@@ -202,7 +206,7 @@ export function EditDockProvider({children}){
         if(saved!==true)throw new Error('部分設定未儲存，已保留編輯內容。請檢查各區塊提示。');
       }
       if(epoch===operationEpoch.current&&dirty.length)
-        setNotice(stayInEditMode?'已暫存，可繼續編輯。':'目前修改已儲存。');
+        setNotice('目前修改已儲存。');
     }catch(error){
       if(epoch===operationEpoch.current)setNotice(String(error?.message||'儲存失敗，請檢查內容。'));
     }finally{
@@ -276,31 +280,6 @@ export function EditDockProvider({children}){
     if(action)action();
     else navigate(target,switchHistory.current,switchScroll.current);
   },[busy,switchTarget,clearEditor,navigate]);
-  const saveAndSwitch=useCallback(async()=>{
-    if(busy||committing.current||!switchTarget)return;
-    const target=switchTarget;
-    const editors=dirtyEditors();
-    const epoch=beginOperation();setSwitchError('');
-    try{
-      if(scopeId!=='local')assertEditorSession(window.sessionStorage);
-      for(const editor of editors){
-        if(typeof editor.save!=='function')throw new Error('目前編輯內容無法儲存，已取消切換。');
-        // A successful save must return true; false/undefined must never
-        // be interpreted as a successful write.
-        const saved=await editor.save({switching:true});
-        if(epoch!==operationEpoch.current)return;
-        if(saved!==true)throw new Error('儲存尚未完成，已保留目前頁面與編輯內容。');
-      }
-      const action=pendingSectionAction.current;
-      pendingSectionAction.current=null;
-      setSwitchTarget('');
-      clearEditor();setNotice('');
-      if(action)action();
-      else navigate(target,switchHistory.current,switchScroll.current);
-    }catch(error){
-      if(epoch===operationEpoch.current)setSwitchError(String(error?.message||'儲存失敗，已取消切換。'));
-    }finally{finishOperation(epoch);}
-  },[busy,scopeId,switchTarget,dirtyEditors,clearEditor,navigate,beginOperation,finishOperation]);
   const value=useMemo(()=>({
     active:Boolean(scopeId),scopeId,hasSave,busy,notice,begin,end,
     register,save,discard,complete,switchTo,switchSection,setNotice
@@ -311,12 +290,11 @@ export function EditDockProvider({children}){
       aria-describedby="scope-edit-switch-description"
       onCancel={event=>{event.preventDefault();cancelSwitch();}}>
       <h2 id="scope-edit-switch-title">有未儲存的編輯內容</h2>
-      <p id="scope-edit-switch-description">切換頁面前，要如何處理目前的變更？</p>
+      <p id="scope-edit-switch-description">有未儲存的變更；請先使用固定六鍵的「儲存」，或選擇放棄變更。</p>
       {[...registeredEditors.current].some(editor=>editor.isDirty?.()&&editor.isDestructive?.())
-        ?<p className="scope-status" role="status">此儲存包含合併地點或大量可見性更新；合併會將來源地點的文章、路線關聯轉至主要 UID，並刪除來源 UID。按「儲存並切換」即確認執行。</p>:null}
+        ?<p className="scope-status" role="status">此儲存包含合併地點或大量可見性更新；合併會將來源地點的文章、路線關聯轉至主要 UID，並刪除來源 UID。請使用固定六鍵的「儲存」確認執行。</p>:null}
       {switchError?<p role="alert" className="scope-status scope-error">{switchError}</p>:null}
       <div className="scope-edit-switch-actions">
-        <button type="button" className="loc-button primary" disabled={busy} onClick={saveAndSwitch}>儲存並切換</button>
         <button type="button" className="loc-button" disabled={busy} onClick={discardAndSwitch}>放棄變更</button>
         <button type="button" className="loc-button" onClick={cancelSwitch}>取消</button>
       </div>

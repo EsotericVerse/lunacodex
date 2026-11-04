@@ -2,7 +2,8 @@
 
 // One autonomous editing session for every Scope home, feature hero and
 // search suggestion block. Mounted only after an authorized edit action.
-import {useState} from 'react';
+import {useRef,useState} from 'react';
+import {useEditDock,useEditDockForm} from '../modular/edit-dock';
 import dynamic from 'next/dynamic';
 import {useSWRConfig} from 'swr';
 import UiText,{useUiText} from '../i18n/UiText';
@@ -18,7 +19,7 @@ import {resolveHomeImage} from './LocHomeBlockDisplay';
 import {isHomeFrameFor} from './hero-image.mjs';
 import {HeroImageFieldset} from './HeroImageFields';
 import {appBootstrapKey} from './app-bootstrap';
-import {invalidateScopeBlockPage} from './scope-data';
+import {invalidateScopeBlockPage,selectLiveScopeBlocks} from './scope-data';
 
 const BlockNoteEditor=dynamic(()=>import('./BlockNoteEditor'),{loading:()=>null});
 const ObjectEditor=dynamic(()=>import('./BlockNoteEditor').then(mod=>mod.ObjectEditor),{loading:()=>null});
@@ -32,16 +33,26 @@ export default function ScopeBlockEditorSession({
   useUiSection('uiExtra.frameEditor');
   const t=useUiText();
   const {mutate}=useSWRConfig();
+  const editDock=useEditDock();
+  const inDock=Boolean(editDock?.active&&editDock.scopeId===scopeId);
+  const initialSnapshot=useRef(JSON.stringify({...initial,entities:HomeBlock.normalizeEntities(initial.entities)}));
   const [draft,setDraft]=useState(()=>({...initial,entities:HomeBlock.normalizeEntities(initial.entities)}));
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState('');
   const table=`silver.${scopeId}_blocks`;
 
-  async function refreshBlockQueries(){
-    const bootstrapKey=appBootstrapKey(scopeId,pageName);
-    const displayKey=['scope-blocks',scopeId,pageName];
+  async function updateBlockCaches(rows){
     invalidateScopeBlockPage(scopeId,pageName);
-    await Promise.all([mutate(bootstrapKey),mutate(displayKey)]);
+    await Promise.all([
+      mutate(appBootstrapKey(scopeId,pageName),
+        current=>current?{...current,blocks:rows}:current,{revalidate:false}),
+      mutate(['scope-blocks',scopeId,pageName],rows,{revalidate:false})
+    ]);
+  }
+  async function refreshBlockQueries(){
+    // Reordering changes another row's order; read one committed page, not two.
+    const rows=await selectLiveScopeBlocks(scopeId,pageName);
+    await updateBlockCaches(rows);
   }
   const cancel=()=>onClose();
   const isHomeFrame=isHomeFrameFor(scopeId,pageName,draft.order);
@@ -133,7 +144,7 @@ export default function ScopeBlockEditorSession({
   }
 
   async function save(){
-    if(!draft)return;
+    if(!draft||busy)return false;
     setBusy(true);setMessage(t('uiExtra.editBlocks.saving'));
     try{
       if(!BlockNoteContent.text.hasBlockNoteFrameContent(draft))throw new Error(t('uiExtra.editBlocks.emptyContent'));
@@ -169,10 +180,31 @@ export default function ScopeBlockEditorSession({
       }else{
         await insertRows(table,[{uid:draft.uid,...values}]);
       }
-      await refreshBlockQueries();
-      onDone(t('uiExtra.editBlocks.saved'));
+      // A successful SQL write is final. Update the two client views from the
+      // committed values instead of issuing parallel post-save SELECTs.
+      let displayWarning='';
+      try{
+        const key=appBootstrapKey(scopeId,pageName);
+        const existing=(await mutate(key,current=>current,{revalidate:false}))||{};
+        if(!Array.isArray(existing.blocks)){
+          // A concurrent metadata invalidation may have cleared this page.
+          // Only then read once; never replace sibling blocks with one row.
+          await refreshBlockQueries();
+        }else{
+          const previous=existing.blocks.find(row=>row.uid===draft.uid)||{};
+          const committed={...previous,uid:draft.uid,...values};
+          const rows=existing.blocks.filter(row=>row.uid!==draft.uid);
+          rows.push(committed);
+          rows.sort((a,b)=>(Number(a.block_order)||0)-(Number(b.block_order)||0));
+          await updateBlockCaches(rows);
+        }
+      }catch{displayWarning='（顯示快取尚未更新，重新載入頁面即可）';}
+      initialSnapshot.current=JSON.stringify(draft);
+      onDone(t('uiExtra.editBlocks.saved')+displayWarning);
+      return true;
     }catch(error){
       setMessage(t('uiExtra.editBlocks.saveFailedPrefix')+String(error?.message||error||t('uiExtra.editBlocks.unknown')));
+      return false;
     }finally{
       setBusy(false);
     }
@@ -228,15 +260,16 @@ export default function ScopeBlockEditorSession({
       </button>:null}
     </div>;
   }
+  useEditDockForm({save,isDirty:()=>JSON.stringify(draft)!==initialSnapshot.current,isBusy:()=>busy});
   return <>
           <ObjectEditor mode="actions" actionClassName="scope-inline-editbar" actions={[
-            {key:'save',primary:true,disabled:busy,onClick:save,label:busy?t('uiExtra.editBlocks.saving'):t('uiExtra.editBlocks.save')},
+            ...(inDock?[]:[{key:'save',primary:true,disabled:busy,onClick:save,label:busy?t('uiExtra.editBlocks.saving'):t('uiExtra.editBlocks.save')}]),
             ...(slot.stored&&movableSlots.length>1&&!HomeBlock.isPinnedHomeHero(pageName,slot)?[
               {key:'up',disabled:busy||!HomeBlock.canSwapHomeBlockPositions(pageName,movableSlots,movableIndex,movableIndex-1),onClick:()=>moveBlock(-1),label:<UiText id="uiExtra.editBlocks.moveUp"/>},
               {key:'down',disabled:busy||!HomeBlock.canSwapHomeBlockPositions(pageName,movableSlots,movableIndex,movableIndex+1),onClick:()=>moveBlock(1),label:<UiText id="uiExtra.editBlocks.moveDown"/>}
             ]:[]),
             ...(allowDelete?[{key:'delete',danger:true,disabled:busy,onClick:remove,label:<UiText id="uiExtra.editBlocks.remove"/>}]:[]),
-            {key:'cancel',disabled:busy,onClick:cancel,label:<UiText id="uiExtra.editBlocks.cancel"/>}
+            ...(inDock?[]:[{key:'cancel',disabled:busy,onClick:cancel,label:<UiText id="uiExtra.editBlocks.cancel"/>}])
           ]} status={message}
             statusClassName={message.startsWith(t('uiExtra.editBlocks.saveFailedPrefix'))?'scope-error':''}/>
           <div className="scope-editor-stage"><h3 className="scope-editor-stage__title">文字內容</h3>

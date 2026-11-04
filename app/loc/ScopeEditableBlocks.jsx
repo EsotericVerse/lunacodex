@@ -226,6 +226,12 @@ export default function ScopeEditableBlocks({
         }}
         onDone={(notice,{switching=false}={})=>{
           setMessage(notice);
+          // Real Save never tears down an active Edit Dock or reloads the homepage.
+          // Page switching/canceling remains the Dock's explicit responsibility.
+          if(editDock?.active&&editDock.scopeId===scopeId){
+            if(keepEditorOpen&&!switching)onEditorExit?.(notice);
+            return;
+          }
           if(keepEditorOpen){if(!switching)onEditorExit?.(notice);return;}
           if(['search','trace'].includes(pageName)&&!switching)return;
           setEditMode(false);

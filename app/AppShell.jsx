@@ -571,7 +571,7 @@ function AppShellInner({children}){
         ?<button type="button" key={tab.id} className="scope-edit-dock-action"
           disabled={editDock.busy&&tab.action!=='cancel'}
           onClick={()=>tab.action==='save'
-            ?editDock.save({stayInEditMode:isFeatureEditMode})
+            ?editDock.save()
             :editDock.discard(navigationHref(navScopeId,isFeatureEditMode?featureEditReturn:'',native),
               {confirmOnlyWhenDirty:isFeatureEditMode})}>
           <BottomNavIcon name={tab.icon}/><span>{tab.label}</span>

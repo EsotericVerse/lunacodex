@@ -24,6 +24,7 @@ export default function LocKeywordManagement(){
   const {mutate}=useSWRConfig();
   const {data=[],isPending,error,refetch}=useAsyncResource(['loc-keywords-admin'],readRegistry);
   const editDock=useEditDock();
+  const inDock=Boolean(editDock?.active&&editDock.scopeId==='loc');
   const [original,setOriginal]=useState(null);
   const [draft,setDraft]=useState({...EMPTY});
   const [busy,setBusy]=useState(false);
@@ -130,9 +131,9 @@ export default function LocKeywordManagement(){
       </label>
     </div>
     <div className="scope-stat-controls">
-      <button type="button" className="loc-button primary" disabled={busy} onClick={save}>
+      {!inDock?<button type="button" className="loc-button primary" disabled={busy} onClick={save}>
         {busy?'正在處理…':'儲存'}
-      </button>
+      </button>:null}
       <button type="button" className="loc-button" disabled={busy} onClick={()=>choose(null)}>取消／新增</button>
       {original?<button type="button" className="loc-button" disabled={busy} onClick={remove}>刪除管理紀錄</button>:null}
     </div>
