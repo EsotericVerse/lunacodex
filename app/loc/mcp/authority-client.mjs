@@ -1,6 +1,6 @@
 // One server for independent Scopes. The Group Authority verifies the Clerk
 // OAuth token and permissions on EVERY call; credentials never reach MCP replies.
-const DEFAULT_AUTHORITY='https://loc-authority-control.sopa2306.workers.dev';
+const DEFAULT_AUTHORITY='https://auth.lo3rwang.cc';
 const ORIGIN='https://loc.lo3rwang.cc';
 const ID=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
