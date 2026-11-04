@@ -175,7 +175,11 @@ function normalizedGalaxyMutationRow(row,operation,dialect){
       patch[flag]=fields[flag];delete fields[flag];
     }
   }
-  const packed=Object.hasOwn(fields,'attr')?fields.attr:null;
+  const rawPacked=Object.hasOwn(fields,'attr')?fields.attr:null;
+  let packed=rawPacked;
+  if(typeof packed==='string'){
+    try{packed=JSON.parse(packed)}catch{throw new Error('Invalid Galaxy attr JSON')}
+  }
   if(packed!==null){
     if(typeof packed!=='object'||Array.isArray(packed)||
        Object.entries(packed).some(([key,v])=>!GALAXY_BOOLEAN_COLUMNS.has(key)||typeof v!=='boolean'))
