@@ -554,13 +554,9 @@ export default function CultureTimelineEditor({
           onChange={event=>change('description',event.target.value)}/>
       </label>
       {message?<p className="scope-status" role="status" aria-live="polite">{message}</p>:null}
-      <div className="scope-culture-quick-actions">
-        <button type="submit" className="loc-button" disabled={busy||query.isPending||Boolean(query.error)}>
-          {busy?'儲存中…':selectedId?'儲存修改':'儲存'}
-        </button>
-        <button type="button" className="loc-button" onClick={reset} disabled={busy}>取消</button>
-        {selectedId?<button type="button" className="loc-button" onClick={remove} disabled={busy}>刪除</button>:null}
-      </div>
+      {selectedId?<div className="scope-culture-quick-actions">
+        <button type="button" className="loc-button" onClick={remove} disabled={busy}>刪除</button>
+      </div>:null}
     </form>
   </section>;
 }
