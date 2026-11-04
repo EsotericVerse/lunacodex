@@ -54,7 +54,12 @@ export async function ensurePortableScopeSchema(db,{engine,namespace='',scopeId}
       .addColumn('place_id',uidType)
       .addColumn('media_link',jsonType)
       .addColumn('date','date')
-      .addColumn('site_id',textType);
+      .addColumn('site_id',textType)
+      .addColumn('attr',jsonType,c=>engine==='postgres'
+        ?c.notNull().defaultTo(sql.raw("'{}'::jsonb"))
+        :c.notNull());
+    // Transitional physical booleans support older query/RPC readers.
+    // The canonical eight flags are stored together in Galaxy.attr.
     for(const flag of FLAGS)
       q=q.addColumn(flag,boolType,c=>c.notNull().defaultTo(true));
     await finalize(q,scope+'_galaxy','date');
@@ -81,7 +86,7 @@ export function validatePortableScopeSchema(tables,{engine,namespace='',scopeId}
   const expected={
     galaxy:['uid','title','content','createtime','location','UpdateTime','url',
       'source_id','target_id','ref_id','site','place_id','media_link','date','site_id',
-      ...FLAGS],
+      'attr',...FLAGS],
     anchor:['uid','type','title','description','invisible','attr']
   };
   const names={scopeId};
