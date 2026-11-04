@@ -95,6 +95,6 @@ test('Admin authentication editor reuses existing responsive workspace geometry'
   assert.match(source,/useEditDockForm\(\{save,discard,/);
   assert.doesNotMatch(source,/style=\{\{.*(?:width|maxWidth)/);
   assert.doesNotMatch(source,/localStorage|sessionStorage/);
-  assert.doesNotMatch(source,/onClick=\{.*enable|setActive\(/);
+  assert.doesNotMatch(source,/setEmergencyDatabasePrimary|setActiveProvider|activateProvider|onClick=\{.*activate/);
   assert.match(source,/authProviderSettingsRequest\(\)/);
 });
