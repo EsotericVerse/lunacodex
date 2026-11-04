@@ -284,7 +284,11 @@ function classifyKeywordDocumentsWithCompiled(documents=[],prepared){
 
         if(rule.operator==='NAME')continue;
         if(rule.operator==='AND'){
-          increment(states[index],rune,'rule:'+rule.token+':source',signalLength(ruleSource));
+          // The source is already counted by its Item's literal keywords
+          // when applicable; AND adds one target association, not a
+          // duplicate source hit.
+          if(!states[index].runeCounts.has(rune.runeId))
+            increment(states[index],rune,'rule:'+rule.token+':source',signalLength(ruleSource));
           increment(states[index],target,'rule:'+rule.token+':target',signalLength(ruleSource));
         }else if(rule.operator==='TO'){
           increment(states[index],target,'rule:'+rule.token+':target',signalLength(ruleSource));
