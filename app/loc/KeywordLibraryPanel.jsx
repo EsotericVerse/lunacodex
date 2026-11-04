@@ -37,6 +37,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
   const configTable=scope?.config||'';
   const canEdit=account.canManageScopeSync(scopeId)&&Boolean(table&&configTable);
   const dock=useEditDock(),dockActions=useRef(null);
+  const inDock=Boolean(dock?.active&&dock.scopeId===scopeId);
   const {mutate}=useSWRConfig();
   const [rows,setRows]=useState([]);
   const [config,setConfig]=useState({});
@@ -482,9 +483,9 @@ export default function KeywordLibraryPanel({scopeId,account}){
           <small className="scope-status">規則範例：家園AND音樂（連結兩個 Item，音樂加 1 筆）；水土TO地（指定計入地）；家園NOR旅館（家園旅館不計入家園，其他詞照常計算）。每行一筆。</small>
         </label>:null}
         <div className="scope-preview-links">
-          <button type="button" className="loc-button primary" disabled={busy||!draft.name.trim()} onClick={saveNode}>{busy?'儲存中…':'儲存'}</button>
+          {!inDock?<button type="button" className="loc-button primary" disabled={busy||!draft.name.trim()} onClick={saveNode}>{busy?'儲存中…':'儲存'}</button>:null}
           {tree.index.has(draft.uid)?<button type="button" className="loc-button scope-danger-button" disabled={busy} onClick={()=>removeNode(draft)}>刪除</button>:null}
-          <button type="button" className="loc-button" onClick={()=>setEditor(null)} disabled={busy}>取消</button>
+          {!inDock?<button type="button" className="loc-button" onClick={()=>setEditor(null)} disabled={busy}>取消</button>:null}
         </div>
       </div>:null}
       {activeClass?<div className="scope-stat-controls">
@@ -543,7 +544,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
         <label><span>統計最低文章數</span><input type="number" min="0" value={config.keyword_min_documents??100}
           onChange={e=>setConfig(v=>({...v,keyword_min_documents:e.target.value}))}/></label>
       </div>
-      <button type="button" className="loc-button primary" disabled={busy} onClick={saveConfig}>儲存設定</button>
+      {!inDock?<button type="button" className="loc-button primary" disabled={busy} onClick={saveConfig}>儲存設定</button>:null}
     </section>:null}
     {!loading&&workspace==='run'?<section className="loc-card scope-feature-card">
       <h2>重新分析</h2>
