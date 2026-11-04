@@ -74,6 +74,18 @@ test('Scope settings and Group authorization are hosted by Article Management',(
   assert.match(spatial,/\['settings','groupAccess','import','others'\]/);
 });
 
+test('LOC Group edit dock has system, keywords, people, articles in that order',()=>{
+  const shell=read('app/AppShell.jsx');
+  const groupDock=shell.split('const editDestinations=locAdminEdit?[')[1]?.split(']:[')[0]||'';
+  assert.deepEqual([...groupDock.matchAll(/\\{id:'([^']+)',icon:/g)].map(match=>match[1]),
+    ['system','keywords','members','suggestions']);
+  assert.match(groupDock,/href:'\\/admin\\/'/);
+  assert.match(groupDock,/label:translateUiField\\(activeLocale,'系統管理'\\)/);
+  assert.match(groupDock,/label:translateUiField\\(activeLocale,'人員作品管理'\\)/);
+  assert.doesNotMatch(groupDock,/痕跡圖管理|traceMap/);
+  assert.doesNotMatch(shell,/className="scope-nav-admin"/);
+});
+
 test('Shared six-button edit dock keeps Save at left and Discard at right',()=>{
   const shell=read('app/AppShell.jsx');
   const css=read('app/styles/bottom-navigation.css');
