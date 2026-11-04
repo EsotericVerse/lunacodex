@@ -4,6 +4,12 @@ import {useEffect,useMemo,useState} from 'react';
 import {useSearchParams} from 'next/navigation';
 import dynamic from 'next/dynamic';
 import {FeaturePage} from '../ui';
+import UiText,{useUiText} from '../../i18n/UiText';
+import {useUiSection} from '../../i18n/ui-locale';
+import {registerDefaultSection} from '../../i18n/ui-copy';
+import traceZh from '../../i18n/sections/uiExtra.traceUI.zh_tw.js';
+registerDefaultSection('uiExtra.traceUI',traceZh);
+const TEXT='uiExtra.traceUI.';
 import {useAsyncResource} from '../../loc/use-async-resource';
 import useLocFeatureSettings from '../../loc/use-loc-feature-settings';
 import {traceHomeMapChoices} from '../../loc/loc-feature-preferences.mjs';
@@ -23,13 +29,16 @@ import {
 // Scope's saved anchors automatically.
 const TraceMap=dynamic(()=>import('./trace/TraceMap'),{
   ssr:false,
-  loading:()=> <p className="scope-status" role="status">正在載入痕跡地圖…</p>
+  loading:()=> <p className="scope-status" role="status"><UiText id="uiExtra.traceUI.loadingMap"/></p>
 });
 const TracePlaceResults=dynamic(()=>import('./trace/TracePlaceResults'),{
-  loading:()=> <p className="scope-status">正在準備地點作品列表…</p>
+  loading:()=> <p className="scope-status"><UiText id="uiExtra.traceUI.loadingPlaceResults"/></p>
 });
 
 export default function Trace({scopeId='loc'}){
+  useUiSection('uiExtra.traceUI');
+  const translate=useUiText();
+  const t=key=>translate(TEXT+key);
   const supported=TRACE_SCOPES.includes(scopeId);
   const {settings:userSettings,active:userActive}=useLocFeatureSettings('trace');
   const [selectedPlace,setSelectedPlace]=useState(null);
@@ -171,53 +180,53 @@ export default function Trace({scopeId='loc'}){
   const floatingControls=<>
     <div className="loc-trace-float-choices">
       {supported&&routeListOpen?<label>
-        <span>目前顯示（痕跡圖聯集）</span>
+        <span>{t("currentMaps")}</span>
         <select className="scope-select"
           value={showingAll?'all':currentMap?mapChoiceKey(currentMap):''}
           onChange={event=>chooseCurrentTrace(event.target.value)}
           disabled={traceIndex.isPending||Boolean(traceIndex.error)||!maps.length}>
           {isLoc
             ?(maps.length?maps.map(map=><option key={mapChoiceKey(map)} value={mapChoiceKey(map)}>
-              {map.source_scope==='lrunes'?'月之符文':'作者作品'} · {map.title}
-            </option>):<option value="">目前沒有可顯示的痕跡圖</option>)
+              {map.source_scope==='lrunes'?t('runes'):t('author')} · {map.title}
+            </option>):<option value="">{t("noMaps")}</option>)
             :maps.map(map=><option key={mapChoiceKey(map)} value={mapChoiceKey(map)}>
-              {map.title}（{map.trace_type==='trace'?'痕跡圖':'路線圖'}）
+              {map.title}（{map.trace_type==='trace'?t('traceMap'):t('routeMap')}）
             </option>)}
 
         </select>
       </label>:null}
       {!isLoc?<details className="loc-trace-more-controls">
-        <summary>更多操作</summary>
+        <summary>{t("more")}</summary>
         <div className="loc-trace-more-actions">
       {supported?<button type="button" className="loc-button" aria-pressed={twoPointDemo}
         onClick={()=>{setTwoPointDemo(value=>!value);setDemoStopIds([]);setSelectedPlace(null);}}>
-        {twoPointDemo?'結束兩點試玩':'兩點路線試玩（不儲存）'}
+        {twoPointDemo?t('endDemo'):t('startDemo')}
       </button>:null}
         </div>
       </details>:null}
     </div>
-    {supported&&traceIndex.isPending?<p className="scope-status" role="status">正在載入痕跡列表…</p>:null}
+    {supported&&traceIndex.isPending?<p className="scope-status" role="status">{t("loadingMaps")}</p>:null}
     {supported&&traceIndex.error?<p className="scope-status scope-error" role="alert">
-      痕跡列表讀取失敗：{String(traceIndex.error.message||traceIndex.error)}
+      {t("mapsError")}{String(traceIndex.error.message||traceIndex.error)}
     </p>:null}
-    {supported&&anchorsQuery.isPending?<p className="scope-status" role="status">正在載入目前痕跡的地點…</p>:null}
+    {supported&&anchorsQuery.isPending?<p className="scope-status" role="status">{t("loadingAnchors")}</p>:null}
     {supported&&anchorsQuery.error?<p className="scope-status scope-error" role="alert">
-      痕跡錨點讀取失敗：{String(anchorsQuery.error.message||anchorsQuery.error)}
+      {t("anchorsError")}{String(anchorsQuery.error.message||anchorsQuery.error)}
     </p>:null}
     {supported&&!traceIndex.isPending&&!traceIndex.error&&!maps.length&&anchorsQuery.isSuccess?<p className="scope-status">
       {anchorsQuery.data?.length
-        ?'尚未建立路線圖或痕跡圖，目前自動顯示全部 '+anchorsQuery.data.length+' 個空間定錨點。'
-        :'尚未建立路線圖或痕跡圖，也沒有已儲存的空間定錨點。'}
+        ?t('noMapsWithAnchorsStart')+anchorsQuery.data.length+t('noMapsWithAnchorsEnd')
+        :t('noMapsOrAnchors')}
     </p>:null}
 
-    {twoPointDemo?<div className="loc-trace-demo-message" role="group" aria-label="兩點路線試玩">
+    {twoPointDemo?<div className="loc-trace-demo-message" role="group" aria-label={t("demoTitle")}>
       <p className="scope-status" role="status" aria-live="polite">
-        {demoRoute?'已選兩點：'+demoStopIds.map(uid=>spatialData?.anchors.find(row=>row.uid===uid)?.title||uid).join(' → ')+'。僅供預覽，不會儲存。':
-          demoStopIds.length===1?'已選起點：'+(spatialData?.anchors.find(row=>row.uid===demoStopIds[0])?.title||demoStopIds[0])+'。請再點地圖上的第二個定錨點。':
-          '點地圖上兩個已有座標的定錨點，即可預覽兩點連線。一般訪客不能儲存。'}
+        {demoRoute?t('selectedTwo')+demoStopIds.map(uid=>spatialData?.anchors.find(row=>row.uid===uid)?.title||uid).join(' → ')+t('demoPreviewOnly'):
+          demoStopIds.length===1?t('selectedStart')+(spatialData?.anchors.find(row=>row.uid===demoStopIds[0])?.title||demoStopIds[0])+t('selectSecond'):
+          t('demoHelp')}
       </p>
       <button className="loc-button" type="button" onClick={()=>setDemoStopIds([])} disabled={!demoStopIds.length}>
-        清除並重新選兩點
+        {t("clearDemo")}
       </button>
     </div>:null}
   </>;
@@ -226,53 +235,53 @@ export default function Trace({scopeId='loc'}){
       selectedRouteUid={twoPointDemo?(demoRoute?.uid||''):(currentMap?.uid||'')}
       showAnchorSearch={!isLoc} onAnchorSelect={chooseMapAnchor}>
       {reportPlace?<div className="loc-trace-float-report" role="dialog" aria-modal="false"
-        aria-label={'地點內容：'+reportPlace.title}>
+        aria-label={t('placeContent')+reportPlace.title}>
         <div className="loc-trace-float-heading">
           <strong>{reportPlace.title}</strong>
-          <button type="button" className="loc-button" aria-label="關閉地點內容"
+          <button type="button" className="loc-button" aria-label={t("closePlace")}
             onClick={()=>{setSelectedPlace(null);setReportTab(null);}}>×</button>
         </div>
-        <div className="loc-trace-float-tabs" role="group" aria-label="地點呈現模式">
-          {[{value:'articles',label:'文章列表'},{value:'timeline',label:'時間長河'},{value:'statistics',label:'統計圖'}].map(item=>
+        <div className="loc-trace-float-tabs" role="group" aria-label={t("placeMode")}>
+          {[{value:'articles',label:t('articles')},{value:'timeline',label:t('timeline')},{value:'statistics',label:t('charts')}].map(item=>
             <button type="button" key={item.value} className="loc-button"
               aria-pressed={reportTab===item.value}
               onClick={()=>setReportTab(item.value)}>{item.label}</button>)}
         </div>
         {reportTab?<details className="loc-trace-float-settings">
-          <summary>文章與圖表設定</summary>
+          <summary>{t("reportSettings")}</summary>
       <div className="loc-trace-report-settings">
-        <label>時間
+        <label>{t("time")}
           <select className="scope-select" value={timeWindow} onChange={event=>setTimeWindow(event.target.value)}>
-            <option value="3m">最近三個月</option>
-            <option value="12m">最近一年</option>
-            <option value="all">全部時間（預設）</option>
-            <option value="custom">自訂日期</option>
+            <option value="3m">{t("lastThreeMonths")}</option>
+            <option value="12m">{t("lastYear")}</option>
+            <option value="all">{t("allTime")}</option>
+            <option value="custom">{t("custom")}</option>
           </select>
         </label>
         {timeWindow==='custom'?<>
-          <label>開始日期<input type="date" value={customStart} onChange={event=>setCustomStart(event.target.value)}/></label>
-          <label>結束日期<input type="date" value={customEnd} onChange={event=>setCustomEnd(event.target.value)}/></label>
+          <label>{t("startDate")}<input type="date" value={customStart} onChange={event=>setCustomStart(event.target.value)}/></label>
+          <label>{t("endDate")}<input type="date" value={customEnd} onChange={event=>setCustomEnd(event.target.value)}/></label>
         </>:null}
         <form onSubmit={event=>{event.preventDefault();setSourceName(sourceDraft.trim());}}>
-          <label>作品來源／分類
+          <label>{t("sourceCategory")}
             <input type="search" value={sourceDraft} onChange={event=>setSourceDraft(event.target.value)}
-              placeholder="例如 Threads（留空＝全部）"/>
+              placeholder={t("sourcePlaceholder")}/>
           </label>
-          <button type="submit" className="loc-button">套用來源</button>
+          <button type="submit" className="loc-button">{t("applySource")}</button>
           {sourceName?<button type="button" className="loc-button"
-            onClick={()=>{setSourceName('');setSourceDraft('');}}>清除來源</button>:null}
+            onClick={()=>{setSourceName('');setSourceDraft('');}}>{t("clearSource")}</button>:null}
         </form>
-        <label>媒體類型
+        <label>{t("mediaType")}
           <select className="scope-select" value={mediaType}
             onChange={event=>setMediaType(event.target.value)}>
-            <option value="">全部媒體</option>
-            <option value="音樂">音樂</option>
-            <option value="圖片">圖片</option>
-            <option value="影片">影片</option>
-            <option value="rune">抽牌結果（runes）</option>
+            <option value="">{t("allMedia")}</option>
+            <option value="音樂">{t("music")}</option>
+            <option value="圖片">{t("image")}</option>
+            <option value="影片">{t("video")}</option>
+            <option value="rune">{t("runeDraw")}</option>
           </select>
         </label>
-        <p className="scope-status">來源對應作品的 site（例如 Threads）；媒體類型對應 galaxy_media.type。兩者可交叉篩選，三種模式共用 {timeWindow==='3m'?'最近三個月':timeWindow==='all'?'全部時間':'目前設定時間'}。</p>
+        <p className="scope-status">{t("settingsIntro")} {timeWindow==='3m'?t('lastThreeMonths'):timeWindow==='all'?t('allTime'):t('currentTime')}。</p>
         </div>
         </details>:null}
         {reportTab?<TracePlaceResults key={reportPlace.source_scope+':'+reportPlace.uid} place={reportPlace}
