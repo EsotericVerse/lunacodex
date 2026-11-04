@@ -341,6 +341,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   const [fullTextError,setFullTextError]=useState('');
   const [fullTextLoading,setFullTextLoading]=useState(false);
   const searchId=useRef(0);
+  const lastTextSearchAt=useRef(0);
   // Anchors the status/results block so a fresh search can scroll the
   // results into view instead of leaving the viewport on the search form.
   const resultsRef=useRef(null);
@@ -432,6 +433,17 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       ?activeSearchOptionsRef.current
       :(overrideOptions||{contentType,sourceFilter,startDate,endDate,scopeFilter:managementMode?scopeFilter:'',placeOnly,browse,sortDirection:articleSort});
     if(!q&&!options.browse)return;
+    // Avoid sending rapid repeated full-text requests at all; pagination and
+    // explicit article lists remain unaffected by search cooldown.
+    if(!append&&!options.browse&&q){
+      const now=Date.now();
+      const remaining=3000-(now-lastTextSearchAt.current);
+      if(lastTextSearchAt.current&&remaining>0){
+        setError('搜尋操作太快，請於 '+Math.ceil(remaining/1000)+' 秒後重試');
+        return;
+      }
+      lastTextSearchAt.current=now;
+    }
     const searchScopes=scopeId==='loc'&&managementMode&&options.scopeFilter
       ?availableScopes.filter(item=>item.id===options.scopeFilter)
       :availableScopes;
