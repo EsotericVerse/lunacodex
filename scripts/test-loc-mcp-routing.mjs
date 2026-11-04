@@ -67,7 +67,9 @@ test('Valid Clerk JWT can initialize, discover read/write tools, and ping',async
   const status=JSON.parse(contents[0].text);
   assert.equal(status.galaxyWriteSupported,true);
   assert.equal(status.writeRequiresScopeAuthorization,true);
-  assert.ok(status.availableTools.includes('search_memory'));
+  assert.equal(status.availableTools.includes('search_memory'),false);
+  assert.equal(status.availableTools.includes('search_scope'),false);
+  assert.equal(status.availableTools.includes('search_group'),false);
   assert.ok(status.availableTools.includes('read_scope'));
   assert.ok(status.availableTools.includes('sync_conversation'));
   assert.ok(status.availableTools.includes('grant_scope_access'));
@@ -85,28 +87,25 @@ test('Valid Clerk JWT can initialize, discover read/write tools, and ping',async
   assert.ok(jwksQueries>=1);
 });
 
-test('Clerk OAuth can call Galaxy public search and read without forwarding bearer token',async()=>{
+test('MCP permits exact-UID reads but rejects all search tools',async()=>{
   const jwt=await token();
   publicApiRequests=[];
   let r=await handleMcp(req('POST',jwt,rpc('tools/list')));
   const list=(await r.json()).result.tools;
-  assert.ok(list.some(t=>t.name==='search_memory'));
-  assert.ok(list.some(t=>t.name==='read_memory'));
-  r=await handleMcp(req('POST',jwt,rpc('tools/call',{name:'search_memory',arguments:{query:'LP26'}})));
-  const search=(await r.json()).result;
-  assert.equal(search.structuredContent.results[0].uid,'30D7AFD7');
+  for(const name of ['search_memory','search_scope','search_group']){
+    assert.equal(list.some(t=>t.name===name),false);
+    const rejected=await handleMcp(req('POST',jwt,rpc('tools/call',{name,arguments:{query:'LP26'}})));
+    assert.equal((await rejected.json()).error.code,-32602);
+  }
   r=await handleMcp(req('POST',jwt,rpc('tools/call',{name:'read_memory',arguments:{uid:'30D7AFD7'}})));
-  const article=(await r.json()).result;
-  assert.equal(article.structuredContent.content,'Galaxy real article');
-  assert.equal(publicApiRequests.length,2);
-  assert.ok(publicApiRequests.every(x=>!x.options.headers.authorization));
-  assert.ok(publicApiRequests.every(x=>x.options.headers.apikey==='sb_publishable_qPn0vAzozVyXKllRuEKf2Q_fvG-pLVV'));
+  assert.equal((await r.json()).result.structuredContent.content,'Galaxy real article');
+  assert.equal(publicApiRequests.length,1);
 });
 test('MCP tool invalid input returns an error without database access',async()=>{
   const jwt=await token();
   publicApiRequests=[];
   const response=await handleMcp(req('POST',jwt,rpc('tools/call',
-    {name:'search_memory',arguments:{query:'A'}})));
+    {name:'read_memory',arguments:{uid:'invalid'}})));
   const result=(await response.json()).result;
   assert.equal(result.isError,true);
   assert.equal(publicApiRequests.length,0);

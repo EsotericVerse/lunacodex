@@ -736,6 +736,9 @@ async function handleMcpAuthority(request,env,url,origin){
   const scoped=scope=>env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName('mcp-scope:'+scope));
   const allowed=async(scope,action)=>isRoot||await stub.mayAccess({...principal,scope,action});
   const parts=url.pathname.split('/').filter(Boolean).slice(2);
+  // MCP is UID-addressed read/write only; search was never authorized.
+  if((parts[0]==='search'||parts[0]==='group-search')&&request.method==='POST')
+    throw fail('MCP search is disabled',403);
   if(parts[0]==='scope'&&parts.length===2){
     const scopeid=validScope(parts[1]);
     if(request.method==='GET'){
