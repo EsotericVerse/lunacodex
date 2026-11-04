@@ -370,7 +370,9 @@ Deno.serve(async (request) => {
 
   let resolvingTarget = false;
   try {
-    if(body.kind==="mcp-read"||body.kind==="mcp-search"){
+    if(body.kind==="mcp-search")
+      return json({error:{message:"MCP search is disabled"}},403);
+    if(body.kind==="mcp-read"){
       // A Clerk OAuth token is separately verified by the LOC Authority.
       // This owner-only route accepts fixed read shapes, not arbitrary SQL.
       if(!verifiedMcp||role!=="authenticated")
