@@ -1,6 +1,37 @@
 // One verified LOC authorization decision per SQL request, regardless of dialect.
 // Only the trusted gateway may bind claims. No database RPC and no DB Auth login.
 const sessions=new WeakMap();
+// Reuse the existing Clerk OAuth session's verified permission snapshot for
+// 30 seconds at most. This is lazy (no polling, Cron, or new credential).
+// Every HTTP request still needs a verified, unexpired Clerk JWT.
+const PERMISSION_REUSE_MS=30_000;
+const MAX_PERMISSION_SESSIONS=96;
+const permissionSnapshots=new Map();
+function reuseKey(state){
+  const exp=Number(state.claims?.exp);
+  if(!Number.isFinite(exp)||exp*1000<=Date.now())return null;
+  return JSON.stringify([String(state.claims.sub),state.email,exp,
+    String(state.claims.sid||''),String(state.claims.jti||'')]);
+}
+function cachedSnapshot(state){
+  const key=reuseKey(state);
+  if(!key)return {key:null,pending:null};
+  const entry=permissionSnapshots.get(key);
+  if(entry&&entry.until>Date.now())return {key,pending:entry.pending};
+  if(entry)permissionSnapshots.delete(key);
+  return {key,pending:null};
+}
+function rememberSnapshot(key,state,pending){
+  if(!key)return;
+  const until=Math.min(Date.now()+PERMISSION_REUSE_MS,Number(state.claims.exp)*1000);
+  permissionSnapshots.set(key,{until,pending});
+  // An expired promise never causes background work; it is removed on demand.
+  while(permissionSnapshots.size>MAX_PERMISSION_SESSIONS)
+    permissionSnapshots.delete(permissionSnapshots.keys().next().value);
+  void pending.catch(()=>{
+    if(permissionSnapshots.get(key)?.pending===pending)permissionSnapshots.delete(key);
+  });
+}
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const USER=/^user_[A-Za-z0-9]+$/;
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
@@ -21,7 +52,10 @@ export function bindLocAuthorization(db,{role='anon',claims={},snapshot=null}={}
 export async function locPermissions(db){
   const state=sessions.get(db);
   if(!state||state.role!=='authenticated')return {blocked:true,rows:[]};
-  if(!state.pending)state.pending=(async()=>{
+  if(!state.pending){
+    const {key,pending}=cachedSnapshot(state);
+    if(pending){state.pending=pending;return pending;}
+    state.pending=(async()=>{
     // Read the blacklist and this principal's LOC membership in ONE
     // parameterized SQL statement. No extra request or new permission cache.
     // The transaction still carries verified Clerk claims; authorization
@@ -44,7 +78,9 @@ export async function locPermissions(db){
       String(item?.email||'').trim().toLowerCase()===state.email))
       return {blocked:true,rows:[]};
     return {blocked:false,rows:joined.map(({blacklist:ignored,...row})=>row)};
-  })();
+    })();
+    rememberSnapshot(key,state,state.pending);
+  }
   return state.pending;
 }
 export async function canManageLoc(db,type,id=''){
