@@ -1277,6 +1277,8 @@ export default function Culture(){
             aria-label='時間編輯'>
             <div className='scope-culture-timeline-tools'>
               <h3>時代／期間／時間定錨點</h3>
+              <button type='button' className='loc-button' disabled={query.isPending}
+                onClick={()=>void refreshTimelineData().catch(error=>setEditError(error?.message||'時間長河更新失敗'))}>更新時間長河</button>
             </div>
             {query.isPending?<p className='scope-status' role='status'>正在載入時間紀錄…</p>:null}
             {query.error?<p className='scope-status scope-error' role='alert'>{featureDataErrorMessage(query.error,UI_COPY)}</p>:null}
@@ -1314,6 +1316,7 @@ export default function Culture(){
                 suggestedRecordType={suggestedRecordType}
                 defaultRecordType='anchor'
                 suggestedRequestNonce={suggestedRequestNonce}
+                onDataChanged={refreshTimelineData}
                 onClose={()=>{setSelectedTimelineRecordId('');setSelectedTimelineDate('');setSelectedTimelineInfo(null);setSuggestedRequestNonce(0)}}/>
             </div>
             {editError?<p className='scope-status scope-error' role='alert'>{editError}</p>:null}
