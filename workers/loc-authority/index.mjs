@@ -36,18 +36,42 @@ function isClerkIssuer(value){
   }catch{return false;}
 }
 const jwksCache=new Map();
+const jwksPending=new Map();
 async function clerkPublicKey(issuer,kid){
   if(!isClerkIssuer(issuer))throw fail('Clerk issuer is not trusted',503);
   if(!/^[A-Za-z0-9._-]{1,256}$/.test(String(kid||'')))throw fail('Invalid signing key ID',401);
   const key=issuer+'#'+kid;
   const cached=jwksCache.get(key);
   if(cached&&cached.expires>Date.now())return cached.key;
-  const response=await fetch((String(issuer).endsWith('/')?String(issuer).slice(0,-1):String(issuer))+'/.well-known/jwks.json',{
-    // Cloudflare Workers does not implement Fetch redirect:'manual'; it throws
-    // a TypeError before issuing the JWKS request. Default follow is supported.
-    method:'GET',redirect:'follow',signal:AbortSignal.timeout(6000),
-    headers:{accept:'application/json'}
-  });
+  // One promise per issuer/key per isolate prevents duplicate Clerk calls
+  // during concurrent requests (including MCP acquire/release).
+  let pending=jwksPending.get(key);
+  if(pending)return pending;
+  pending=fetchClerkPublicKey(issuer,kid,key);
+  jwksPending.set(key,pending);
+  try{return await pending;}
+  finally{if(jwksPending.get(key)===pending)jwksPending.delete(key);}
+}
+async function fetchClerkPublicKey(issuer,kid,key){
+  const jwksUrl=(String(issuer).endsWith('/')?String(issuer).slice(0,-1):String(issuer))+'/.well-known/jwks.json';
+  const edge=globalThis.caches?.default;
+  const request=new Request(jwksUrl,{headers:{accept:'application/json'}});
+  let response=edge?await edge.match(request).catch(()=>null):null;
+  if(!response){
+    response=await fetch(jwksUrl,{
+      method:'GET',redirect:'follow',signal:AbortSignal.timeout(6000),
+      headers:{accept:'application/json'}
+    });
+    if(!response.ok)throw fail('Clerk signing keys are unavailable',503);
+    // JWKS is public signing-key metadata; store only successful responses
+    // at the edge, at most five minutes, never tokens or private identities.
+    if(edge){
+      const copy=response.clone();
+      const cachedHeaders=new Headers(copy.headers);
+      cachedHeaders.set('Cache-Control','public, max-age=300');
+      await edge.put(request,new Response(copy.body,{status:200,headers:cachedHeaders})).catch(()=>{});
+    }
+  }
   if(!response.ok)throw fail('Clerk signing keys are unavailable',503);
   const body=await response.text();
   if(body.length>120000)throw fail('Clerk signing key response too large',503);
