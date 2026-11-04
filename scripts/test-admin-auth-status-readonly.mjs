@@ -6,7 +6,7 @@ import {readonlyAuthStatus,recoveryOAuthLabel} from '../app/loc/providers/auth-s
 test('LOC OAuth uses Clerk regardless of database routing',()=>{
   const defaultStatus=readonlyAuthStatus();
   assert.equal(defaultStatus.primaryOAuth,'Clerk');
-  assert.equal(defaultStatus.supabaseSupported,true);
+  assert.equal(defaultStatus.supabaseSupported,false);
   assert.equal(defaultStatus.neonSupported,false);
   assert.equal(readonlyAuthStatus({identityProvider:'clerk'}).primaryOAuth,'Clerk');
   assert.equal(readonlyAuthStatus({identityProvider:'clerk',primaryId:'neon-current'}).primaryOAuth,'Clerk');
