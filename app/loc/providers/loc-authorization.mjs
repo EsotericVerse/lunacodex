@@ -22,11 +22,18 @@ export async function locPermissions(db){
   const state=sessions.get(db);
   if(!state||state.role!=='authenticated')return {blocked:true,rows:[]};
   if(!state.pending)state.pending=(async()=>{
-    // Both reads are Kysely-native. The source of truth is the active
-    // registry and blacklist, not an old silver.manage() stored function.
-    const config=await db.selectFrom('silver.loc').select('blacklist')
-      .where('id','=','loc').executeTakeFirst();
-    let blacklist=config?.blacklist;
+    // Read the blacklist and this principal's LOC membership in ONE
+    // parameterized SQL statement. No extra request or new permission cache.
+    // The transaction still carries verified Clerk claims; authorization
+    // and revocation remain evaluated against the live LOC control database.
+    const joined=await db.selectFrom('silver.manage as m')
+      .crossJoin('silver.loc as l')
+      .select(['m.id','m.email','m.manage_role','m.active','m.galaxy_table',
+        'm.anchor_table','m.birthday','l.blacklist'])
+      .where('l.id','=','loc')
+      .where(db.fn('lower',['m.email']),'=',state.email).execute();
+    if(!joined.length)return {blocked:false,rows:[]};
+    let blacklist=joined[0].blacklist;
     if(typeof blacklist==='string'){
       try{blacklist=JSON.parse(blacklist)}catch{deny('Invalid LOC blacklist')}
     }
@@ -36,10 +43,7 @@ export async function locPermissions(db){
     if((blacklist.email||[]).some(item=>
       String(item?.email||'').trim().toLowerCase()===state.email))
       return {blocked:true,rows:[]};
-    const rows=await db.selectFrom('silver.manage')
-      .select(['id','email','manage_role','active','galaxy_table','anchor_table','birthday'])
-      .where(db.fn('lower',['email']),'=',state.email).execute();
-    return {blocked:false,rows};
+    return {blocked:false,rows:joined.map(({blacklist:ignored,...row})=>row)};
   })();
   return state.pending;
 }
