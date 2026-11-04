@@ -5,7 +5,7 @@ import {normalizeUiLocale,UI_LOCALE_OPTIONS} from '../../../i18n/ui-copy';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {useSWRConfig} from 'swr';
 import {invalidateAppBootstrapMetadata} from '../../app-bootstrap';
-import {useEditDockForm} from '../../../modular/edit-dock';
+import {useEditDock,useEditDockForm} from '../../../modular/edit-dock';
 import dynamic from 'next/dynamic';
 import {duplicateDomainLabelError} from '../../../modular/scope-registry';
 import {THEME_SLOTS} from '../../../modular/theme-registry';
@@ -295,6 +295,8 @@ function DeploymentTree({registry=[],configs={},selectedId='',onSelect,onMovePar
 }
 
 function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
+  const dock=useEditDock();
+  const inDock=Boolean(dock?.active&&dock.scopeId==='loc');
   const {registry,mappings,setMappings,originalMappings,configs,status,setStatus,refresh}=data;
   const selected=registry.find(row=>row.scope_id===selectedId)||null;
   const config=configs[selectedId]||null;
@@ -509,8 +511,10 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
       {current.scope_id!=='loc'?<label><span><UiText id="uiExtra.adminView.parentGroup"/></span><select className="admin-native-select" value={String(current.parent_scope_id||'')} onChange={e=>patchRegistry('parent_scope_id',e.target.value||'')}>{parentOptions.map(option=><option value={option.value} key={option.value||'root'}><FieldText text={option.label}/></option>)}</select></label>:null}
       {current.scope_kind==='scope'?<label className="scope-setting-toggle"><input type="checkbox" checked={current.active!==false} onChange={e=>patchRegistry('active',e.target.checked)}/> <UiText id="uiExtra.adminView.publiclyEnabled"/></label>:null}
       <ObjectEditor mode="actions" actionClassName="scope-tabs admin-edit-actions" actions={[
-        {key:'save',primary:true,onClick:saveRegistryAndConfig,label:<UiText id="uiExtra.adminView.save"/>},
-        {key:'cancel',onClick:cancelEdit,label:<UiText id="uiExtra.adminView.cancel"/>},
+        ...(inDock?[]:[
+          {key:'save',primary:true,onClick:saveRegistryAndConfig,label:<UiText id="uiExtra.adminView.save"/>},
+          {key:'cancel',onClick:cancelEdit,label:<UiText id="uiExtra.adminView.cancel"/>}
+        ]),
         ...(current.scope_kind==='scope'?[{key:'delete',danger:true,disabled:routeLocked,
           onClick:()=>onDeleteNode?.(current.scope_id),label:<UiText id="uiExtra.adminView.delete"/>}]:[])
       ]}/>
@@ -524,7 +528,7 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
           <label><span>Anchor</span><input value={row.anchor||'anchor'} onChange={e=>patchMapping(row.id,'anchor',e.target.value)}/></label>
           <label><span><UiText id="uiExtra.adminView.birthdayMapping"/></span><input type="date" value={row.birthday||''} onChange={e=>patchMapping(row.id,'birthday',e.target.value)}/></label>
         </div>
-        <div className="scope-tabs"><button type="button" onClick={()=>saveMapping(row)}><UiText id="uiExtra.adminView.saveMapping"/></button><button type="button" disabled={['admin','loc'].includes(row.id)} onClick={()=>removeMapping(row)}><UiText id="uiExtra.adminView.remove"/></button></div>
+        <div className="scope-tabs">{!inDock?<button type="button" onClick={()=>saveMapping(row)}><UiText id="uiExtra.adminView.saveMapping"/></button>:null}<button type="button" disabled={['admin','loc'].includes(row.id)} onClick={()=>removeMapping(row)}><UiText id="uiExtra.adminView.remove"/></button></div>
       </article>)}
       {selected.scope_kind==='scope'?<details>
         <summary><UiText id="uiExtra.adminView.addAdministrator"/></summary>
