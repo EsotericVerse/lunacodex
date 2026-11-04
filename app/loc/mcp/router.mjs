@@ -140,7 +140,7 @@ function toolResponse(id,value){return result(id,{content:[{type:'text',text:JSO
 // The public UID reader also uses the global Authority Durable Object quota.
 async function withMcpQuota(token,env,action){
   const authority=new URL(String(env.LOC_MCP_AUTHORITY_URL||
-    'https://loc-authority-control.sopa2306.workers.dev'));
+    'https://auth.lo3rwang.cc'));
   if(authority.protocol!=='https:'||authority.username||authority.password||
     authority.search||authority.hash||!['','/'].includes(authority.pathname))
     throw Error('Invalid LOC Authority origin');
