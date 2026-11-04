@@ -1,10 +1,10 @@
 // Canonical Galaxy.attr JSONB contains exactly eight capability booleans.
-// During the compatibility cutover, legacy physical boolean columns remain
-// synchronized in PostgreSQL so existing public SQL/RPC readers still work.
+// Existing UI flags are normalized at the transport boundary; no physical
+// permission columns are required by the canonical Galaxy table.
 export const GALAXY_ABLE_KEYS=Object.freeze([
   'statics','culture','search','trace','list','keyword','extract','others'
 ]);
-export const GALAXY_ABLE_COLUMNS='attr,'+GALAXY_ABLE_KEYS.join(',');
+export const GALAXY_ABLE_COLUMNS='attr';
 const legacyKeys={keyword:'keywords',others:'game'};
 function booleanOrUndefined(raw){
   if(typeof raw==='boolean')return raw;
@@ -49,7 +49,9 @@ export function prepareGalaxyInsertRows(table,rows=[]){
   return rows.map(row=>{
     const {able,searchable,statistics_able,keywords,game,...fields}=row;
     const attr=galaxyAble(row);
-    return {...fields,...attr,attr};
+    // Keep flags out of SQL INSERT: only the canonical JSON payload is stored.
+    for(const key of GALAXY_ABLE_KEYS)delete fields[key];
+    return {...fields,attr};
   });
 }
 export function prepareGalaxyUpdateValues(table,values){
@@ -62,8 +64,8 @@ export function prepareGalaxyUpdateValues(table,values){
     return hasFlags?toLocalFields(fields):fields;
   }
   const {able,searchable,statistics_able,keywords,game,...fields}=values||{};
-  // A partial edit must only touch flags explicitly provided. Never reset
-  // other columns. The DB sync trigger mirrors legacy boolean edits to attr.
+  // A partial edit must only touch explicit flags. Kysely merges the
+  // selected keys into Galaxy.attr atomically without resetting siblings.
   const updated={...fields};
   if(Object.hasOwn(updated,'attr')){
     const canonical=updated.attr;
