@@ -421,11 +421,19 @@ export async function executePortableKyselyAnalytics(db,body,{engine,namespace='
       q=q.select('date').select(eb=>eb.fn.countAll().as('n'))
         .groupBy('date').orderBy('date','asc');
       const counts=await q.execute();
+      // The requested window limits displayed counts, not the Scope's
+      // absolute earliest qualifying date (same contract as PostgreSQL).
+      const oldest=await db.selectFrom(relation)
+        .select(eb=>eb.fn.min('date').as('day'))
+        .where('statics','=',true).where('content','!=','')
+        .executeTakeFirst();
+      const firstDay=portableDay(oldest?.day);
+      if(firstDay&&(!earliest||firstDay<earliest))earliest=firstDay;
       scopes.push({scope_id:id,display_name:id});
       for(const row of counts){
         const day=portableDay(row.date);
         rows.push({scope_id:id,day,item_count:Number(row.n||0)});
-        if(day&&(!earliest||day<earliest))earliest=day;
+
       }
     }
     return {data:{earliest,scopes,rows},count:null};
@@ -475,7 +483,12 @@ export async function executePortableKyselyAnalytics(db,body,{engine,namespace='
   const anchor=portableRelation(scope+'_anchor',engine,namespace);
   const grouped=async(flag,fields,opts={})=>{
     let query=portableStatBase(db,galaxy,start,end,flag,opts.includeUndated);
-    for(const field of fields)query=query.where(field,'is not',null);
+    for(const field of fields){
+      // Daily's includeUndated option must retain NULL dates. Other
+      // dimensions remain non-null to preserve existing grouping contract.
+      if(field==='date'&&opts.includeUndated===true)continue;
+      query=query.where(field,'is not',null);
+    }
     return query.select(fields)
       .select(eb=>eb.fn.countAll().as('n'))
       .groupBy(fields).orderBy(fields[0],'asc').execute();
