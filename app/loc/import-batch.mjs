@@ -58,12 +58,12 @@ export function normalizeImportMedia(value,{title='',createtime=null,location=''
     const explicitId=String(source.uid||'').trim();
     const rawUrl=String(source.media_url||source.mediaUrl||source.image_url||source.video_url||source.download_url||source.downloadUrl||source.url||source.uri||source.href||source.link||'').trim();
     if(explicitId&&!IMPORT_MEDIA_UID.test(explicitId))throw new Error('媒體 uid 必須為 8 碼英數字。');
-    if((typeof item==='string'&&IMPORT_MEDIA_UID.test(item))||(explicitId&&!rawUrl&&!source.media_type&&!source.type&&!source.title&&!source.name&&!source.description&&!source.description)){
+    if((typeof item==='string'&&IMPORT_MEDIA_UID.test(item))||(explicitId&&!rawUrl&&!source.media_type&&!source.type&&!source.title&&!source.name&&!source.description)){
       references.push(typeof item==='string'?item:explicitId);
       continue;
     }
     const external=/^https?:\/\//i.test(rawUrl)?rawUrl:null;
-    if(!external&&!rawUrl&&!source.media_type&&!source.type&&!source.mime_type&&!source.title&&!source.name&&!source.description&&!source.description&&source.rune_references==null)continue;
+    if(!external&&!rawUrl&&!source.media_type&&!source.type&&!source.mime_type&&!source.title&&!source.name&&!source.description&&source.rune_references==null)continue;
     const media_type=importMediaType(rawUrl,source.media_type||source.type||source.mime_type||
       (source.image_url?'image':source.video_url?'video':source.rune_references!=null?'runes':''));
     const record={
@@ -74,7 +74,7 @@ export function normalizeImportMedia(value,{title='',createtime=null,location=''
       title:String(source.title||source.name||title||'').trim()||null,
       url:external,
       description:(()=>{
-        const description=source.description??source.description;
+        const description=source.description;
         if(description===undefined||description===null)return null;
         const normalized=['rune','runes'].includes(media_type)
           ?runeDrawText(description)

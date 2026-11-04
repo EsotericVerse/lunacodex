@@ -253,7 +253,7 @@ async function mediaRowsFor(scope,mediaIds=[],{signal=null,includeLegacyRuneRefs
   for(let i=0;i<ids.length;i+=40){
     const batch=ids.slice(i,i+40);
     const page=await selectRows(current.galaxyMedia,{
-      columns:'uid,title,url,type,meta_tags',
+      columns:'uid,title,url,type,description',
       filters:[{column:'uid',operator:'in',value:batch}],
       limit:batch.length,maxLimit:batch.length,signal
     });
@@ -767,7 +767,7 @@ async function selectMediaStatisticsFacetRowsRaw(scope,dimension,{startDate='',e
     catch{ /* Optional ISR failure: aggregate existing metadata. */ }
   }
   const filters=timeFilters('createtime',startDate,endDate);
-  const columns='uid,type,url,meta_tags,createtime';
+  const columns='uid,type,url,description,createtime';
   const orders=[{column:'type',ascending:true}];
   const aggregates=new Map();
   let offset=0,total=null,source='auto';
@@ -802,7 +802,7 @@ export async function selectMediaCrossTagRows(scope,{startDate='',endDate=''}={}
   let offset=0,total=null,source='auto';
   while(total===null||offset<total){
     const page=await selectRows(current.galaxyMedia,{
-      columns:'uid,meta_tags,createtime',
+      columns:'uid,description,createtime',
       filters,orders,limit:DB_QUERY_BATCH_SIZE,offset,
       count:offset===0?'exact':null,source
     });
@@ -826,8 +826,8 @@ export async function selectMediaCrossPairWorks(scope,pair,{
   const escapeLike=value=>String(value).replace(/[\\%_]/g,'\\$&');
   const filters=[
     ...timeFilters('createtime',startDate,endDate),
-    {column:'meta_tags',operator:'ilike',value:'%'+escapeLike(pair.leftLabel)+'%'},
-    {column:'meta_tags',operator:'ilike',value:'%'+escapeLike(pair.rightLabel)+'%'}
+    {column:'description',operator:'ilike',value:'%'+escapeLike(pair.leftLabel)+'%'},
+    {column:'description',operator:'ilike',value:'%'+escapeLike(pair.rightLabel)+'%'}
   ];
   const left=String(pair.left||'').normalize('NFKC').toLocaleLowerCase();
   const right=String(pair.right||'').normalize('NFKC').toLocaleLowerCase();
@@ -836,7 +836,7 @@ export async function selectMediaCrossPairWorks(scope,pair,{
   let source='auto';
   while(true){
     const page=await selectRows(current.galaxyMedia,{
-      columns:'uid,title,url,meta_tags,createtime',
+      columns:'uid,title,url,description,createtime',
       filters,orders:[{column:'type',ascending:true}],
       limit:batchSize,offset:cursor,source
     });
@@ -844,7 +844,7 @@ export async function selectMediaCrossPairWorks(scope,pair,{
     if(!page.rows.length)return {rows,nextOffset:cursor,hasMore:false};
     for(const row of page.rows){
       const rowOffset=cursor++;
-      const tags=new Set(StatisticsFacets.base.mediaStyleTags(row.meta_tags).map(tag=>tag.normalize('NFKC').toLocaleLowerCase()));
+      const tags=new Set(StatisticsFacets.base.mediaStyleTags(row.description).map(tag=>tag.normalize('NFKC').toLocaleLowerCase()));
       if(!tags.has(left)||!tags.has(right))continue;
       rows.push({id:String(row.uid),title:String(row.title||''),url:String(row.url||''),day:StatisticsFacets.base.mediaDay(row.createtime)});
       if(rows.length>safeLimit){

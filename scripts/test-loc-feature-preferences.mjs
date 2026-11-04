@@ -125,3 +125,14 @@ test('multimedia content is Anchor.description and no longer a media tag alias',
  assert.match(importer,/description:runeResultText/);
  assert.match(stats,/mediaStyleTags\(row\.description\)/);
 });
+
+
+test('media statistics query reads Anchor.description consistently with the shared search',()=>{
+ const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
+ const query=read('app/loc/galaxy-query.js');
+ const facets=read('app/loc/statistics-facets.js');
+ assert.doesNotMatch(query,/meta_tags/);
+ assert.match(query,/columns:'uid,description,createtime'/);
+ assert.match(query,/column:'description',operator:'ilike'/);
+ assert.match(facets,/mediaStyleTags\(row\.description\)/);
+});

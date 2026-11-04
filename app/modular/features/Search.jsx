@@ -888,8 +888,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   const filterTypes=[
     ['',t('uiExtra.searchUI.allTypes')],
     ['lyrics_work',t('uiExtra.searchUI.lyricsType')],
-    ['text_work',t('uiExtra.searchUI.textType')],
-    ['timeline',t('uiExtra.searchUI.timelineType')]
+    ['text_work',t('uiExtra.searchUI.textType')]
   ];
   const sourceCategories=(sourceTaxonomyQuery.data?.categories||[])
     .filter(row=>row.enabled!==false);
@@ -1052,8 +1051,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   // Suggested terms are curated examples, not unverified live popularity rankings.
   // Reuse URL-driven search so history, filters and the existing provider stay authoritative.
   const suggestedTerms=useMemo(()=>{
-    const key=contentType==='never-media-search'?'suggestionsMedia'
-      :contentType==='lyrics_work'?'suggestionsLyrics'
+    const key=contentType==='lyrics_work'?'suggestionsLyrics'
       :contentType==='text_work'?'suggestionsText':'suggestionsAll';
     return String(t('uiExtra.searchUI.'+key)||'').split('\n')
       .map(line=>line.split('|')[0].trim()).filter(Boolean).slice(0,10);
