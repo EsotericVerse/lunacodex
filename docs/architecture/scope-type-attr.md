@@ -228,7 +228,7 @@ Kysely Edge `KyselyQuery.abortSignal(signal)` 現在把呼叫端取消訊號送�
 - 從文章匯入／建立的 Media、Date 與 Point Anchor，建立時使用來源 Galaxy `createtime`。沒有文章時間的全新手動 Anchor 使用資料庫的 `CURRENT_TIMESTAMP`。相同文章的多張圖片可同時刻；不可單靠 `createtime` 判定唯一媒體。
 - 歷史回填僅對有 `Galaxy.media_link` 且能確認**單一來源文章時間**的媒體 UID 寫入。被不同時間文章共用或缺來源證據的 Anchor 留 `NULL`；不捏造時間、不覆蓋 UID、不合併或刪除資料。
 - 媒體匯入既有 UID／URL 比對保持不變；沒有 URL 的文章媒體採「文章 UID + media type + title + description + `createtime` + location」比對，並由物理 Anchor.createtime 提供時間，不能再錯用 `attr.date`。
-- Portable SQL 的新建 Scope Schema 包含同名欄位；既有 Neon／其他外部庫必須另行核准遷移，不能在未遷移前把它當成必填以阻斷使用者連線。查詢／寫入前需核對目標庫 Schema；本次沒有擅自改動 Neon。
+- Portable SQL 的新建 Scope Schema 包含同名欄位，連線前會驗證它。Supabase 與 Neon 的 `lo3rwang_anchor`／`lrunes_anchor` 都已套用相同的新增欄位及保守回填；未升級的外部 PostgreSQL／MySQL／SQL Server 資料庫仍需採用其各自非破壞性加欄遷移後才可使用新版。
 - 搜尋主功能仍然只搜尋 Galaxy `content`；本次**不**更改搜尋或文章列表的排序決議。
 
 ### 統一內文搜尋（2026-11-04）
