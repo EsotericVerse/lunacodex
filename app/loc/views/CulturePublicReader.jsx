@@ -41,7 +41,6 @@ function anchorModel(rows,start,end,expanded){
   const dates=all.filter(row=>row.type==='date').map(row=>({
     ...row,date:datePart(attributes(row).date)
   })).filter(row=>row.date);
-  const periods=all.filter(row=>row.type==='period');
   const eras=all.filter(row=>row.type==='era');
   const periodRange=row=>{
     const attr=attributes(row);
