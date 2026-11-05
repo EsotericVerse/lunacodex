@@ -359,28 +359,39 @@ test('Galaxy Link search only queries site=mcp in its authorized Scope',async()=
   await assert.rejects(authority.mcpLinkSearch('another','a',3),/Invalid Galaxy Link search/);
 });
 
-test('Galaxy Link appends only newer batches to the existing UID',async()=>{
-  const {do:authority}=state();
+test('Galaxy Link append is idempotent after lost checkpoint acknowledgment',async()=>{
+  const {do:authority,saved}=state();
   authority.mcpPrivateProfile=async()=>profile;
-  const calls=[];
-  globalThis.fetch=async(url,options)=>{
-    calls.push({method:options.method,body:options.body?JSON.parse(options.body):null});
+  const batch='a'.repeat(64);
+  const newContent='[[GalaxyLinkBatch:'+batch+']]\ncorrected statement';
+  let current='earlier statement',patches=0;
+  globalThis.fetch=async (_url,options)=>{
     if(options.method==='GET')return Response.json([{
-      uid:'Ab12Cd34',site:'mcp',content:'earlier statement',
+      uid:'Ab12Cd34',site:'mcp',content:current,
       title:'Galaxy Link topic',createtime:'2026-11-05T00:00:00Z'}]);
-    if(options.method==='PATCH')return Response.json([{uid:'Ab12Cd34'}]);
+    if(options.method==='PATCH'){
+      patches++;
+      current=JSON.parse(options.body).content;
+      return Response.json([{uid:'Ab12Cd34'}]);
+    }
     return new Response(null,{status:204});
   };
-  const a=await authority.mcpSave('thirdscope',{
-    conversation_id:'chat-A',uid:'Ab12Cd34',updated_at:'2026-11-05T01:00:00Z',
-    title:'',content:'corrected statement',append:true});
-  assert.equal(a.uid,'Ab12Cd34');
-  assert.equal(a.appended,true);
-  assert.equal(calls.filter(x=>x.method==='PATCH').length,1);
-  assert.equal(calls.find(x=>x.method==='PATCH').body.content,'earlier statement\\ncorrected statement');
-  const again=await authority.mcpSave('thirdscope',{
-    conversation_id:'chat-A',uid:'Ab12Cd34',updated_at:'2026-11-05T01:00:00Z',
-    title:'',content:'corrected statement',append:true});
-  assert.equal(again.saved,false);
-  assert.equal(calls.filter(x=>x.method==='PATCH').length,1);
+  const payload={conversation_id:'chat-A',uid:'Ab12Cd34',
+    updated_at:'2026-11-05T01:00:00Z',title:'',
+    content:newContent,batch_id:batch,append:true};
+  const first=await authority.mcpSave('thirdscope',payload);
+  assert.equal(first.appended,true);
+  assert.equal(current,'earlier statement\n'+newContent);
+  assert.equal(patches,1);
+  // Database committed, but Durable Object acknowledgement was lost.
+  await authority.ctx.storage.put('mcp-sync:thirdscope:chat-A',
+    {uid:'Ab12Cd34',updated_at:null,saved_at:null});
+  const repeated=await authority.mcpSave('thirdscope',payload);
+  assert.equal(repeated.saved,true);
+  assert.equal(patches,1);
+  assert.equal(current,'earlier statement\n'+newContent);
+  const skipped=await authority.mcpSave('thirdscope',payload);
+  assert.equal(skipped.saved,false);
+  assert.equal(patches,1);
 });
+
