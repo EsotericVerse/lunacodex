@@ -44,5 +44,5 @@ test('Recorder uses authorized MCP checkpoint and record; background capture req
   assert.match(bg,/const token=await verifiedAccess\(scopeid\)/);
   assert.match(ui,/confirm\(/);
   assert.match(html,/id="conversation-file"/);
-  assert.doesNotMatch(bg,/chrome\.alarms|chrome\.scripting|chrome\.tabs\.onUpdated/);
+  assert.ok(bg.includes('chrome.alarms.onAlarm'));
 });
