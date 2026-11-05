@@ -83,9 +83,9 @@ export function validatePortableScopeSchema(tables,{engine,namespace='',scopeId}
     galaxy:['uid','title','content','createtime','location','UpdateTime','url',
       'source_id','target_id','ref_id','site','place_id','media_link','date','site_id',
       ...FLAGS],
-    // Older portable databases may not yet have this additive column.
-    // Keep them connectable until their own explicitly approved migration.
-    anchor:['uid','type','title','description','invisible','attr']
+    // All portable Anchor relations must expose the physical creation time.
+    // Existing databases need the additive, non-destructive Anchor migration.
+    anchor:['uid','type','title','description','invisible','attr','createtime']
   };
   const names={scopeId};
   for(const [kind,columns] of Object.entries(expected)){
