@@ -322,12 +322,12 @@ async function managedMcpInsert(scopeid,row,hasCheckpointUid,oauthToken){
 
 
 // Append is separate from full sync: existing Galaxy metadata must never be overwritten.
-async function managedMcpAppend(scopeid,uid,content,updatedAt,oauthToken){
+async function managedMcpAppend(scopeid,uid,content,batchId,updatedAt,oauthToken){
   if(!Object.hasOwn(MANAGED_SCOPE_TABLES,scopeid))throw fail('Scope database is not configured',409);
   const response=await fetch(MANAGED_SUPABASE_EDGE,{
     method:'POST',headers:{apikey:MANAGED_PUBLISHABLE_KEY,
       authorization:'Bearer '+oauthToken,'content-type':'application/json'},
-    body:JSON.stringify({kind:'mcp-append',scopeid,uid,content,updated_at:updatedAt}),
+    body:JSON.stringify({kind:'mcp-append',scopeid,uid,content,batch_id:batchId,updated_at:updatedAt}),
     signal:AbortSignal.timeout(12000),redirect:'manual'
   });
   if(!response.ok)throw fail('Managed Scope append rejected (HTTP '+response.status+')',
@@ -336,11 +336,13 @@ async function managedMcpAppend(scopeid,uid,content,updatedAt,oauthToken){
   if(result?.data?.count!==1)throw fail('Managed Scope append was not confirmed',502);
   return result.data;
 }
-async function portableMcpAppend(profile,uid,content,updatedAt){
+async function portableMcpAppend(profile,uid,content,batchId,updatedAt){
   const rows=await postgrest(profile,{params:{select:'uid,content,site,title,createtime',
     uid:'eq.'+uid,site:'eq.mcp',limit:1}});
   if(!Array.isArray(rows)||rows.length!==1)throw fail('MCP topic not found',404);
   const original=String(rows[0].content||'');
+  const marker='[[GalaxyLinkBatch:'+batchId+']]';
+  if(original.includes(marker))return {uid,title:rows[0].title,createtime:rows[0].createtime,duplicate:true};
   const next=original+(original?'\n':'')+content;
   const url=new URL(profile.endpoint+'/'+profile.table);
   url.searchParams.set('uid','eq.'+uid);
@@ -589,6 +591,9 @@ export class LocAuthorityState extends DurableObject {
       typeof input.title!=='string'||input.title.length>350)
       throw fail('Invalid conversation content or title',400);
     const append=input.append===true;
+    if(append&&(!/^[0-9a-f]{64}$/.test(String(input.batch_id||''))||
+      !input.content.startsWith('[[GalaxyLinkBatch:'+input.batch_id+']]\\n'.replace('\\n','\n'))))
+      throw fail('Invalid Galaxy Link batch marker',400);
     if(input.uid!==undefined&&!UID.test(String(input.uid)))throw fail('Invalid topic UID',400);
     if(status.uid&&input.uid&&status.uid!==input.uid)throw fail('Conversation checkpoint UID conflict',409);
     const uid=status.uid||input.uid||newUid();
@@ -601,8 +606,8 @@ export class LocAuthorityState extends DurableObject {
     const useAppend=append&&Boolean(status.saved_at||input.uid);
     if(useAppend){
       const result=profile?
-        await portableMcpAppend(profile,uid,input.content,requestedTime):
-        await managedMcpAppend(scopeid,uid,input.content,requestedTime,oauthToken);
+        await portableMcpAppend(profile,uid,input.content,input.batch_id,requestedTime):
+        await managedMcpAppend(scopeid,uid,input.content,input.batch_id,requestedTime,oauthToken);
       const saved_at=new Date().toISOString();
       await this.ctx.storage.put(checkpointKey,{updated_at:requestedTime,saved_at,uid});
       return {scopeid,conversation_id,uid,title:result.title||null,
