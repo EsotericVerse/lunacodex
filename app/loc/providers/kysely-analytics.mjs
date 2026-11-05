@@ -172,21 +172,37 @@ async function keywordCatalog(trx,scope,anchor,requested,role){
   const root=await trx.selectFrom(anchor).select(['uid','type','title','description','attr'])
     .where('uid','=',info.uid).where('type','=','class').executeTakeFirst();
   if(!root)return {class_uid:info.uid,rows:[]};
-  const groupIds=uidList(root);
+  // Current Anchor uses class.attr.groups / group.attr.items / item.attr.total.
+  // Keep legacy attr.uid as read-only compatibility, never materialize article UID lists.
+  const children=(node,key)=>{
+    const values=node?.attr?.[key]??node?.attr?.uid;
+    return Array.isArray(values)?values.filter(value=>UID.test(String(value))):[];
+  };
+  const groupIds=children(root,'groups');
   const groups=groupIds.length?await trx.selectFrom(anchor)
     .select(['uid','type','title','description','attr'])
     .where('type','=','group').where('uid','in',groupIds).execute():[];
   const byGroup=new Map(groups.map(g=>[g.uid,g]));
   const ordered=groupIds.map(uid=>byGroup.get(uid)).filter(Boolean);
-  const itemIds=[...new Set(ordered.flatMap(uidList))];
+  const itemIds=[...new Set(ordered.flatMap(g=>children(g,'items')))];
   const items=itemIds.length?await trx.selectFrom(anchor)
     .select(['uid','type','title','description','attr'])
     .where('type','=','item').where('uid','in',itemIds).execute():[];
   const byItem=new Map(items.map(i=>[i.uid,i]));
+  const total=node=>Math.max(0,Number(node?.attr?.total)||0);
+  const groupWeight=group=>{
+    const own=total(group);
+    if(own>0)return own;
+    return children(group,'items').reduce((sum,id)=>sum+total(byItem.get(id)),0);
+  };
   const model=node=>({uid:node.uid,type:node.type,name:node.title,
-    desc:node.type==='item'?'':node.description,lists:node.type==='item'?[]:uidList(node),uid_lists:[]});
+    desc:node.type==='item'?'':node.description,
+    lists:node.type==='class'?groupIds:node.type==='group'?children(node,'items'):[],
+    total:node.type==='group'?groupWeight(node):node.type==='item'?total(node):0,
+    uid_lists:[]});
   return {class_uid:info.uid,rows:[model(root),...ordered.map(model),
-    ...ordered.flatMap(group=>uidList(group).map(id=>byItem.get(id)).filter(Boolean).map(model))]};
+    ...ordered.flatMap(group=>children(group,'items').map(id=>byItem.get(id))
+      .filter(Boolean).map(model))]};
 }
 async function traceDaily(trx,scope,places,start,end,source){
   const galaxy=relation(scope,'galaxy');

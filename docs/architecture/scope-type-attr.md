@@ -304,3 +304,10 @@ Search 只對 Galaxy `content` 執行模糊比對；進階內容類型只保留�
 - 日期定錨點（date）顯示在所屬時代的河道上；依 era 引用的 period 真正日期區間或 era 自身日期判斷，不以包含空隙的最大外包範圍錯誤歸屬。沒有對應 era 的定錨點不另外建立左側河道。
 - 首頁預設視窗為台北時區的今天往前一個日曆年；保留既有河道縮放與展開後不重置視野的行為。
 - 專項模型測試：`scripts/test-culture-era-first-river.mjs`。
+
+## 2026-11-06｜文化首頁第二條河道的篩選控制
+
+- 第二條「文章密度」河道保留獨立的時期選擇（預設近一年／各 era／自訂起訖日），不改動第一條時間定錨河道的預設近一年與左側 era 階層。
+- 分類顯示允許「文章來源」或「關鍵詞」。關鍵詞科目從既有 `shared_classes` 查詢公開項目，選擇後只讀 `keyword_catalog` 的群組名稱，並依現有 Anchor group/item `attr.total` 的總量比例，將既有 `culture_density` 每日密度做**比例展示**（若沒有統計總量才退回等份）；不使用舊版 `keyword_summary` 逐篇 UID 清單演算法，圖示不代表實際關鍵詞命中筆數。沒有公開科目時顯示明確提示，不額外擴大 SQL 權限。
+- 變更時期或分類會清除舊文章列表與展開狀態；文章列表只在來源模式明確點擊才載入。不重建 RPC 或 SQL Schema。
+- 回歸測試：`scripts/test-culture-second-river-controls.mjs`。
