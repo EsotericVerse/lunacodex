@@ -11,6 +11,7 @@ const SCOPE_KEY='locGalaxy.scopeid';
 const OAUTH_KEY='locGalaxy.oauth';
 const ACCESS_KEY='locGalaxy.access';
 const BRIDGE_KEY='locGalaxy.websitePending';
+const BRIDGE_ACTIVE_KEY='locGalaxy.websiteActive';
 const SCENIC_LOGIN=LOC_ORIGIN+'/login/index.html?return_to=%2Flocal%2Fsettings%2F';
 let inProgress=false;
 const linkSearchStarted=new Map();
@@ -36,7 +37,7 @@ async function readAll(){
 }
 async function clearCredentials(){
   await Promise.all([
-    chrome.storage.local.remove(OAUTH_KEY),
+    chrome.storage.local.remove([OAUTH_KEY,BRIDGE_ACTIVE_KEY]),
     chrome.storage.session.remove([ACCESS_KEY,BRIDGE_KEY])
   ]);
 }
@@ -247,9 +248,14 @@ chrome.runtime.onMessageExternal.addListener((message,sender,sendResponse)=>{
      !sender.tab?.id)return false;
   void (async()=>{
     const pending=(await chrome.storage.session.get(BRIDGE_KEY))[BRIDGE_KEY];
-    if(!pending||pending.tabId!==sender.tab.id||
-      pending.scopeid!==message.scopeid||pending.nonce!==message.nonce||
-      Date.now()-pending.created>5*60000)
+    const active=(await chrome.storage.local.get(BRIDGE_ACTIVE_KEY))[BRIDGE_ACTIVE_KEY];
+    const isFirst=Boolean(pending&&pending.tabId===sender.tab.id&&
+      pending.scopeid===message.scopeid&&pending.nonce===message.nonce&&
+      Date.now()-pending.created<5*60000);
+    const isRenewal=Boolean(active&&active.tabId===sender.tab.id&&
+      active.scopeid===message.scopeid&&active.nonce===message.nonce&&
+      Date.now()-active.created<24*3600000);
+    if(!isFirst&&!isRenewal)
       throw Error('網站授權已過期或來源不符，請從 Extension 重新操作');
     const scopeid=checkedScope(message.scopeid);
     const token=String(message.access_token||'');
@@ -267,7 +273,9 @@ chrome.runtime.onMessageExternal.addListener((message,sender,sendResponse)=>{
     const old=(await chrome.storage.local.get(OAUTH_KEY))[OAUTH_KEY];
     if(old?.scopeid!==scopeid||old.subject!==checked.subject)
       throw Error('網站授權狀態不一致');
-    await chrome.storage.local.set({[OAUTH_KEY]:{...old,mode:'website'}});
+    await chrome.storage.local.set({[OAUTH_KEY]:{...old,mode:'website'},
+      [BRIDGE_ACTIVE_KEY]:isFirst?{scopeid,nonce:message.nonce,
+        tabId:sender.tab.id,created:Date.now()}:active});
     await chrome.storage.session.remove(BRIDGE_KEY);
     return {ready:true,scopeid,subject:checked.subject};
   })().then(data=>sendResponse({ok:true,data}))
