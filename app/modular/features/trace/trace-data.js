@@ -102,19 +102,19 @@ function readRow(row,scope){
     longitude:coordinates?.[0]??null,latitude:coordinates?.[1]??null,
     source_scope:row.scope_id||scope,anchor_list:Array.isArray(row.anchor_list)?row.anchor_list.flat(Infinity):[],route_list:relations};
 }
-async function readPages(id,{columns=CORE_COLUMNS,filter=null,nativeOnly=false,includeHidden=false}={}){
+async function readPages(id,{columns=CORE_COLUMNS,filter=null,types=null,limit=null,nativeOnly=false,includeHidden=false}={}){
   // The LOC materialized union was deliberately dropped. Never query it
   // until the owner Scope place data has been reviewed and a new union built.
   if(id==='loc')return [];
   const readClient=includeHidden?dbAuthClient:dbPublicClient;
   if(isUnified(id)){
-    const rows=[],size=750,types=filter?[filter==='space_anchor'?'point':filter]:['point','path','trace'];
+    const rows=[],size=750,selectedTypes=types|| (filter?[filter==='space_anchor'?'point':filter]:['point','path','trace']);
     for(let offset=0;;offset+=size){
       const result=checked(await readClient.schema('silver').from(id+'_anchor')
-        .select(ANCHOR_COLUMNS).in('type',types).order('title',{ascending:true})
-        .range(offset,offset+size-1),'空間 Anchor 讀取')||[];
+        .select(ANCHOR_COLUMNS).in('type',selectedTypes).order('title',{ascending:true})
+        .range(offset,offset+Math.min(size,limit===null?size:limit-offset)-1),'空間 Anchor 讀取')||[];
       rows.push(...result.map(row=>projectUnified(row,id)));
-      if(result.length<size)break;
+      if(result.length<size||limit!==null&&rows.length>=limit)break;
     }
     return rows;
   }
@@ -123,13 +123,14 @@ async function readPages(id,{columns=CORE_COLUMNS,filter=null,nativeOnly=false,i
     // Public lists use anonymous RLS; only includeHidden manager reads use Clerk.
     let query=readClient.schema('silver').from(id+'_trace')
       .select(columns+(union?',scope_id':'')).order('title',{ascending:true})
-      .range(offset,offset+size-1);
-    if(filter)query=query.eq('trace_type',filter);
+      .range(offset,offset+Math.min(size,limit===null?size:limit-offset)-1);
+    if(types)query=query.in('trace_type',types);
+    else if(filter)query=query.eq('trace_type',filter);
     if(union&&nativeOnly)query=query.eq('scope_id','loc');
     if(union)query=query.order('scope_id',{ascending:true});
     const batch=checked(await query,'空間資料讀取')||[];
     rows.push(...batch.map(row=>readRow(row,id)));
-    if(batch.length<size)break;
+    if(batch.length<size||limit!==null&&rows.length>=limit)break;
   }
   return rows;
 }
@@ -142,7 +143,7 @@ export async function readTraceMapIndex(scopeId,{nativeOnly=false,includeHidden=
   const id=idScope(scopeId);
   if(id==='loc')return Promise.all((await groupTraceSources()).map(source=>readTraceMapIndex(source,{includeHidden})))
     .then(groups=>groups.flat());
-  return readPages(id,{columns:'uid,trace_type,title,description,anchor_list,route_list,invisible',nativeOnly,includeHidden})
+  return readPages(id,{columns:'uid,trace_type,title,description,anchor_list,route_list,invisible',types:['path','trace'],nativeOnly,includeHidden})
     .then(rows=>rows.filter(row=>row.trace_type==='path'||row.trace_type==='trace'));
 }
 export const traceMemberUids=record=>[...new Set((record?.anchor_list||[])
@@ -194,7 +195,16 @@ export async function readTraceAnchorSuggestions(scopeId,term,limit=8){
   return data.filter(row=>visible.has(row.uid)).map(row=>readRow({...row,trace_type:'space_anchor'},id));
 }
 export async function readTracePopularAnchors(scopeId){
-  return (await readAllTraceAnchors(scopeId,{nativeOnly:scopeId==='loc'})).slice(0,10);
+  const id=idScope(scopeId);
+  if(id==='loc'){
+    const members=await groupTraceSources();
+    for(const member of members){
+      const result=await readPages(member,{filter:'space_anchor',limit:10});
+      if(result.length)return result;
+    }
+    return [];
+  }
+  return readPages(id,{filter:'space_anchor',limit:10});
 }
 // Cross-Scope reference suggestions remain disabled while LOC union is absent.
 export async function readTraceAddressReferences(_scopeId,_term,_limit=8){
