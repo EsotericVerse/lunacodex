@@ -181,9 +181,12 @@ export default function CulturePublicReader(){
   const [densityMode,setDensityMode]=useState('source');
   const [keywordClass,setKeywordClass]=useState('');
   const [keywordClasses,setKeywordClasses]=useState(NO_ITEMS);
+  const [keywordGroupNames,setKeywordGroupNames]=useState({});
+  const [keywordLoading,setKeywordLoading]=useState(false);
   const [customStart,setCustomStart]=useState('');
   const [customEnd,setCustomEnd]=useState('');
   const [keywordError,setKeywordError]=useState('');
+  const [classesLoading,setClassesLoading]=useState(false);
   const [daily,setDaily]=useState(NO_ITEMS);
   const [keywordDaily,setKeywordDaily]=useState(NO_ITEMS);
   const [catalog,setCatalog]=useState({system:[],personal:[]});
@@ -223,35 +226,50 @@ export default function CulturePublicReader(){
   },[scopeId]);
   useEffect(()=>{
     let active=true;
-    setDaily([]);setKeywordDaily([]);setKeywordError('');
+    setDaily([]);setKeywordDaily([]);setKeywordError('');setKeywordLoading(false);
     if(!validRange)return undefined;
     if(densityMode==='source'){
       analytics(scopeId,'culture_density',rangeStart,rangeEnd)
         .then(rows=>{if(active)setDaily(rows);})
         .catch(error=>{if(active)setKeywordError(String(error?.message||error));});
     }else if(keywordClass){
-      analytics(scopeId,'keyword_summary',rangeStart,rangeEnd,{classUid:keywordClass})
-        .then(rows=>{if(active)setKeywordDaily(rows.filter(row=>row.kind==='class_day').map(row=>({
+      setKeywordLoading(true);
+      Promise.all([
+        analytics(scopeId,'keyword_summary',rangeStart,rangeEnd,{classUid:keywordClass}),
+        dbPublicClient.schema('silver').analytics({p_scope_id:scopeId,p_view:'keyword_catalog',
+          p_start:null,p_end:null,p_options:{classUid:keywordClass}})
+      ]).then(([rows,catalogResult])=>{
+        if(!active)return;
+        const names=Object.fromEntries((catalogResult?.data?.rows||[])
+          .filter(row=>row.type==='group').map(row=>[String(row.uid),String(row.name||row.uid)]));
+        setKeywordGroupNames(names);
+        setKeywordDaily(rows.filter(row=>row.kind==='class_day').map(row=>({
           day:datePart(row.day),site:String(row.group_uid||''),item_count:Number(row.hit_count||0)
-        })));})
-        .catch(error=>{if(active)setKeywordError(String(error?.message||error));});
+        })));
+      }).catch(error=>{if(active)setKeywordError(String(error?.message||error));})
+        .finally(()=>{if(active)setKeywordLoading(false);});
     }
     return()=>{active=false;};
   },[scopeId,densityMode,keywordClass,rangeStart,rangeEnd,validRange]);
   useEffect(()=>{
     if(densityMode!=='keyword')return undefined;
     let active=true;
+    setClassesLoading(true);
     analytics(scopeId,'shared_classes',null,null)
       .then(rows=>{if(active)setKeywordClasses(rows);})
-      .catch(error=>{if(active)setKeywordError(String(error?.message||error));});
+      .catch(error=>{if(active)setKeywordError(String(error?.message||error));})
+      .finally(()=>{if(active)setClassesLoading(false);});
     return()=>{active=false;};
   },[scopeId,densityMode]);
   const anchorRiver=useMemo(()=>anchorModel(anchors,start,today,expandedEras),
     [anchors,start,today,expandedEras]);
+  const keywordDisplayRows=useMemo(()=>keywordDaily.map(row=>({
+    ...row,site:keywordGroupNames[row.site]||row.site
+  })),[keywordDaily,keywordGroupNames]);
   const densityRiver=useMemo(()=>densityMode==='keyword'
-    ?sourceModel(keywordDaily,[],[],expandedSources,rangeStart,rangeEnd)
+    ?sourceModel(keywordDisplayRows,[],[],expandedSources,rangeStart,rangeEnd)
     :sourceModel(daily,catalog.system,catalog.personal,expandedSources,rangeStart,rangeEnd),
-    [densityMode,keywordDaily,daily,catalog,expandedSources,rangeStart,rangeEnd]);
+    [densityMode,keywordDisplayRows,daily,catalog,expandedSources,rangeStart,rangeEnd]);
   const resetArticles=site=>{
     sequence.current+=1;setSelectedSite(site);setArticlesOpen(false);
     setArticleRows([]);setArticleOffset(0);setArticleVisible(20);
@@ -358,8 +376,10 @@ export default function CulturePublicReader(){
             const name=String(group);
             if(name.startsWith('site:'))resetArticles(name.slice(5).split(':').slice(1).join(':'));
           }}/>
-        {densityMode==='keyword'&&!keywordClasses.length?<p className='scope-status'>目前沒有可使用的公開關鍵詞科目。</p>:null}
-        {densityMode==='keyword'&&keywordClass&&!keywordDaily.length?<p className='scope-status'>此範圍沒有可顯示的關鍵詞統計。</p>:null}
+        {densityMode==='keyword'&&classesLoading?<p className='scope-status'>正在載入關鍵詞科目…</p>:null}
+        {densityMode==='keyword'&&keywordLoading?<p className='scope-status'>正在載入關鍵詞統計…</p>:null}
+        {densityMode==='keyword'&&!classesLoading&&!keywordClasses.length?<p className='scope-status'>目前沒有可使用的公開關鍵詞科目。</p>:null}
+        {densityMode==='keyword'&&keywordClass&&!keywordLoading&&!keywordError&&!keywordDaily.length?<p className='scope-status'>此範圍沒有可顯示的關鍵詞統計。</p>:null}
         {densityMode==='source'&&densityRiver.sites.length?<div className='scope-culture-source-detail'>
           {densityRiver.sites.map(item=><div key={item.key} className='scope-culture-source-list-entry'>
             <span>{item.site}（{item.count}）</span>
