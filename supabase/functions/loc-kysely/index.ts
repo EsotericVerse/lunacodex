@@ -345,7 +345,7 @@ Deno.serve(async (request) => {
     if(untrusted.iss===clerkIssuer){
       // MCP OAuth JWTs and interactive Clerk sessions have different audiences
       // and permissions. Never let an MCP token execute general SQL requests.
-      if(["mcp-sync","mcp-search","mcp-read","mcp-update-pr"].includes(String(body.kind))){
+      if(["mcp-sync","mcp-search","mcp-read","mcp-append","mcp-update-pr"].includes(String(body.kind))){
         try{
           claims=await verifyMcpForSql(token,String(body.scopeid||""));
           verifiedMcp=true;
@@ -449,6 +449,29 @@ Deno.serve(async (request) => {
         return result.rows;
       });
       return json({data:rows});
+    }
+    if(body.kind==="mcp-append"){
+      if(!verifiedMcp||role!=="authenticated") return json({error:{message:"MCP authorization required"}},403);
+      const scope=String(body.scopeid||"");
+      const uid=String(body.uid||"");
+      const content=body.content;
+      const stamp=String(body.updated_at||"");
+      if(!["lo3rwang","lrunes"].includes(scope)||!/^[A-Za-z0-9]{8}$/.test(uid)||
+         typeof content!=="string"||!content.trim()||content.length>125000||
+         !Number.isFinite(Date.parse(stamp))) return json({error:{message:"Invalid append request"}},400);
+      const db=await databaseForTarget(controlTarget);
+      const table=sql.ref("silver."+scope+"_galaxy");
+      const result=await db.transaction().execute(async trx=>{
+        await sql`set local role authenticated`.execute(trx);
+        await sql`select set_config('request.jwt.claims',${JSON.stringify(claims)},true)`.execute(trx);
+        await sql`select set_config('request.jwt.claim.sub',${String(claims.sub||"")},true)`.execute(trx);
+        await sql`select set_config('request.jwt.claim.role','authenticated',true)`.execute(trx);
+        const next=await sql`update ${table} set content=concat_ws(chr(10),nullif(content,''),${content}),
+          "UpdateTime"=${stamp} where uid=${uid} and site='mcp' returning uid,title,createtime`.execute(trx);
+        if(next.rows.length!==1)throw Error("MCP topic unavailable");
+        return {data:{count:1,title:next.rows[0].title,createtime:next.rows[0].createtime}};
+      });
+      return json(result);
     }
     if(body.kind==="mcp-sync"){
       if(!verifiedMcp||role!=="authenticated")
