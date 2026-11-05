@@ -4,7 +4,7 @@ body{margin:0;width:370px;min-height:515px;background:radial-gradient(circle at 
 .shell{padding:23px 23px 17px}
 .brand{display:flex;align-items:center;gap:10px;font-size:17px;letter-spacing:.24em;font-weight:700}
 .brand small{font-size:10px;color:#d8b778;margin-left:2px}
-.moon{font-size:27px;color:#e1c584}
+.brand-icon{display:block;width:28px;height:28px;object-fit:contain;flex-shrink:0}
 .eyebrow{font-size:10px;color:#d4b477;letter-spacing:.22em;margin-top:38px}
 h1{font-family:Georgia,"Noto Serif TC",serif;font-size:31px;line-height:1.32;font-weight:500;letter-spacing:.035em;margin:13px 0}
 h1 em{font-style:normal;color:#e9c995}
