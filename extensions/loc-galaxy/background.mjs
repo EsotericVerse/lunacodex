@@ -1,5 +1,5 @@
 import {
-  LOC_ORIGIN,interactiveAuthorization,refreshAuthorization,
+  LOC_ORIGIN,randomUrlSafe,refreshAuthorization,
   verifyScopeAuthorization,mcpTool
 } from './oauth.mjs';
 import {scopeManagementUrl} from './workspace-routes.mjs';
@@ -10,6 +10,8 @@ const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const SCOPE_KEY='locGalaxy.scopeid';
 const OAUTH_KEY='locGalaxy.oauth';
 const ACCESS_KEY='locGalaxy.access';
+const BRIDGE_KEY='locGalaxy.websitePending';
+const BRIDGE_ACTIVE_KEY='locGalaxy.websiteActive';
 const SCENIC_LOGIN=LOC_ORIGIN+'/login/index.html?return_to=%2Flocal%2Fsettings%2F';
 let inProgress=false;
 const linkSearchStarted=new Map();
@@ -35,8 +37,8 @@ async function readAll(){
 }
 async function clearCredentials(){
   await Promise.all([
-    chrome.storage.local.remove(OAUTH_KEY),
-    chrome.storage.session.remove(ACCESS_KEY)
+    chrome.storage.local.remove([OAUTH_KEY,BRIDGE_ACTIVE_KEY]),
+    chrome.storage.session.remove([ACCESS_KEY,BRIDGE_KEY])
   ]);
 }
 async function selectScope(scopeid){
@@ -82,6 +84,8 @@ async function checkAuthorizedStatus(){
     if(access?.scopeid===scopeid&&Number(access.expires_at)>Date.now()+60_000)
       issued={...access,client_id:auth.client_id,
         refresh_token:auth.refresh_token};
+    else if(auth.mode==='website')
+      return {ready:false,scopeid,subject:'',website_session_expired:true};
     else issued=await refreshAuthorization(auth);
     const checked=await verifyScopeAuthorization(issued.access_token,scopeid);
     await commitAuthorization(scopeid,issued,checked.subject);
@@ -207,14 +211,22 @@ async function handle(message,sender){
       return {scopeid,opened:true};
     }
     case 'locGalaxy.authorize':{
-      if(inProgress)throw Error('另一個 LOC OAuth 驗證正在進行');
+      if(inProgress)throw Error('另一個網站授權正在進行');
       inProgress=true;
       try{
         const scopeid=await selectScope(message.scopeid);
-        const issued=await interactiveAuthorization();
-        const checked=await verifyScopeAuthorization(issued.access_token,scopeid);
-        await commitAuthorization(scopeid,issued,checked.subject);
-        return {ready:true,scopeid,subject:checked.subject};
+        const nonce=randomUrlSafe(32);
+        const tab=await chrome.tabs.create({url:'about:blank',active:true});
+        const pending={scopeid,nonce,tabId:tab.id,created:Date.now()};
+        await chrome.storage.session.set({[BRIDGE_KEY]:pending});
+        const url=LOC_ORIGIN+'/extension/auth-bridge.html?scopeid='+
+          encodeURIComponent(scopeid)+'&nonce='+encodeURIComponent(nonce);
+        try{await chrome.tabs.update(tab.id,{url});}
+        catch(error){
+          await chrome.storage.session.remove(BRIDGE_KEY);
+          throw error;
+        }
+        return {ready:false,scopeid,pending:true};
       }finally{inProgress=false;}
     }
     case 'locGalaxy.disconnect':{
@@ -226,6 +238,63 @@ async function handle(message,sender){
     default:throw Error('不支援的 LOC Galaxy 操作');
   }
 }
+// Only LOC's fixed website origin may answer an explicitly initiated bridge request.
+// The website delivers an MCP-audience JWT, never its default Clerk Session token.
+chrome.runtime.onMessageExternal.addListener((message,sender,sendResponse)=>{
+  let url;
+  try{url=new URL(sender.url||'');}catch{return false;}
+  if(message?.type!=='locGalaxy.websiteGrant'||
+     url.origin!==LOC_ORIGIN||url.pathname!=='/extension/auth-bridge.html'||
+     !sender.tab?.id)return false;
+  void (async()=>{
+    const pending=(await chrome.storage.session.get(BRIDGE_KEY))[BRIDGE_KEY];
+    const active=(await chrome.storage.local.get(BRIDGE_ACTIVE_KEY))[BRIDGE_ACTIVE_KEY];
+    const isFirst=Boolean(pending&&pending.tabId===sender.tab.id&&
+      pending.scopeid===message.scopeid&&pending.nonce===message.nonce&&
+      Date.now()-pending.created<5*60000);
+    const isRenewal=Boolean(active&&active.tabId===sender.tab.id&&
+      active.scopeid===message.scopeid&&active.nonce===message.nonce&&
+      Date.now()-active.created<24*3600000);
+    if(!isFirst&&!isRenewal)
+      throw Error('網站授權已過期或來源不符，請從 Extension 重新操作');
+    const scopeid=checkedScope(message.scopeid);
+    const token=String(message.access_token||'');
+    const expires=Number(message.expires_at);
+    if(!/^eyJ[A-Za-z0-9_-]+\./.test(token)||token.length>8192||
+      !Number.isFinite(expires)||expires<Date.now()+15000||
+      expires>Date.now()+3600000)
+      throw Error('網站授權憑證格式不符');
+    // Only the initial grant needs a Scope write checkpoint. Renewal verifies
+    // the fresh JWT's signature/subject with MCP status (no quota acquisition).
+    // Every subsequent Galaxy read/write still checks current Scope grants.
+    const checked=isFirst
+      ?await verifyScopeAuthorization(token,scopeid)
+      :await mcpTool(token,'loc_connection_status');
+    if(checked.provider&&checked.provider!=='clerk')
+      throw Error('網站授權 Clerk Provider 不一致');
+    if(isRenewal){
+      const oldAuth=(await readAll()).auth;
+      if(oldAuth?.scopeid!==scopeid||oldAuth.subject!==checked.subject)
+        throw Error('網站續期使用者與原授權不同');
+    }
+    if(message.subject!==checked.subject)
+      throw Error('網站與 LOC MCP 回報的 Clerk 身分不一致');
+    await commitAuthorization(scopeid,{
+      access_token:token,expires_at:expires,client_id:'website-clerk',refresh_token:''
+    },checked.subject);
+    const old=(await chrome.storage.local.get(OAUTH_KEY))[OAUTH_KEY];
+    if(old?.scopeid!==scopeid||old.subject!==checked.subject)
+      throw Error('網站授權狀態不一致');
+    await chrome.storage.local.set({[OAUTH_KEY]:{...old,mode:'website'},
+      [BRIDGE_ACTIVE_KEY]:isFirst?{scopeid,nonce:message.nonce,
+        tabId:sender.tab.id,created:Date.now()}:active});
+    await chrome.storage.session.remove(BRIDGE_KEY);
+    return {ready:true,scopeid,subject:checked.subject};
+  })().then(data=>sendResponse({ok:true,data}))
+    .catch(error=>sendResponse({ok:false,error:String(error?.message||error).slice(0,180)}));
+  return true;
+});
+
 chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
   if(sender.id!==chrome.runtime.id)return false;
   void handle(message,sender).then(data=>sendResponse({ok:true,data}))

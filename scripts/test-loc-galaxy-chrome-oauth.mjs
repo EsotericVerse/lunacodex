@@ -35,13 +35,15 @@ test('extension exposes only Scope ID for auth and preserves scenic login',()=>{
   assert.ok(popup.includes('回到你的'));
   assert.ok(worker.includes('/login/index.html?return_to='));
   assert.ok(worker.includes("chrome.storage.local.setAccessLevel({accessLevel:'TRUSTED_CONTEXTS'})"));
-  assert.ok(worker.includes("verifyScopeAuthorization(issued.access_token,scopeid)"));
+  assert.ok(worker.includes('verifyScopeAuthorization(token,scopeid)'));
+  assert.ok(worker.includes("const BRIDGE_KEY='locGalaxy.websitePending'"));
   assert.ok(oauth.includes("action:'check',scopeid"));
   assert.ok(oauth.includes('chrome.identity.launchWebAuthFlow'));
   assert.ok(!oauth.includes('client_secret'));
-  assert.ok(!worker.includes('chrome.runtime.onMessageExternal'));
+  assert.ok(worker.includes('chrome.runtime.onMessageExternal'));
+  assert.ok(worker.includes("url.pathname!=='/extension/auth-bridge.html'"));
   assert.ok(worker.includes('chrome.alarms.onAlarm'));
-  assert.ok(!worker.includes('chrome.runtime.onMessageExternal'));
+  assert.ok(worker.includes('chrome.runtime.onMessageExternal'));
 });
 test('OAuth S256 follows the RFC 7636 known verifier example',async()=>{
   const verifier='dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk';
@@ -120,4 +122,24 @@ test('OAuth fails before navigation for a mismatched installed Extension ID',asy
     globalThis.fetch=previousFetch;
     globalThis.chrome=previousChrome;
   }
+});
+
+test('website session bridge does not transfer default Clerk Session Token',()=>{
+  const worker=read('extensions/loc-galaxy/background.mjs');
+  const source=read('public/extension/website-bridge.mjs');
+  const manifest=JSON.parse(read('extensions/loc-galaxy/manifest.json'));
+  const html=read('public/extension/auth-bridge.html');
+  assert.equal(manifest.version,'0.6.0');
+  assert.deepEqual(manifest.externally_connectable.matches,['https://loc.lo3rwang.cc/*']);
+  assert.match(worker,/chrome\.runtime\.onMessageExternal/);
+  assert.match(worker,/url\.origin!==LOC_ORIGIN/);
+  assert.match(worker,/pending\.nonce===message\.nonce/);
+  assert.match(worker,/verifyScopeAuthorization\(token,scopeid\)/);
+  assert.match(worker,/auth\.mode==='website'/);
+  assert.match(source,/getToken\(\{template:TEMPLATE,skipCache:true\}\)/);
+  assert.match(source,/loc-mcp/);
+  assert.match(source,/claims\.aud/);
+  assert.match(source,/chrome\.runtime\.sendMessage\(EXTENSION_ID/);
+  assert.doesNotMatch(source,/document\.cookie|localStorage/);
+  assert.match(html,/no-referrer/);
 });

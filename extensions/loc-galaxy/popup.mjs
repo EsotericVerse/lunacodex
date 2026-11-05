@@ -37,18 +37,20 @@ function render(data){
   connected.hidden=!(data.ready&&same);
   if(data.ready&&same){
     account.textContent='Scope: '+data.scopeid+' · Clerk: '+data.subject;
-    show('Scope 已授權，可使用 Galaxy 工作台及既有網站的資料匯入／大量更新。');
+    show('網站 Clerk Session 已授權，可使用 Galaxy 工作台及 Scope 管理。');
   }else if(data.temporary_unavailable)
     show('暫時無法確認連線；已保留授權狀態，網路恢復後再試。',{error:true});
-  else show('先使用 LOC 完整登入畫面，再完成專用 OAuth 授權。');
+  else if(data.website_session_expired)show('網站專用憑證已到期，請重新點「使用 LOC 網站 Session 連線」。');
+  else show('請使用現有 LOC 網站 Clerk Session 完成授權。');
 }
 async function operation(type){
   if(busy)return;
   try{
     const id=validScope();setBusy(true);
-    show(type==='login'?'正在開啟 LOC 登入畫面…':'正在以 Clerk OAuth 驗證 Scope…');
+    show(type==='login'?'正在開啟 LOC 登入畫面…':'正在開啟網站 Session 授權頁…');
     const next=await call(type,id);
-    if(type==='login')show('請在開啟的 LOC 頁面登入，再回來按「驗證 OAuth 並連線」。');
+    if(type==='login')show('請先在 LOC 登入頁登入，再按「使用 LOC 網站 Session 連線」。');
+    else if(next.pending)show('已開啟 LOC 網站 Session 授權頁；完成後重新開啟 Extension。');
     else render(next);
   }catch(error){show(String(error.message||error),{error:true});}
   finally{setBusy(false);}
