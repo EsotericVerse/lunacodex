@@ -152,9 +152,9 @@ function sourceModel(rows,systemNames,personalNames,expanded,start,end){
   }
   return {items,groups,sites};
 }
-async function analytics(scope,view,start,end){
+async function analytics(scope,view,start,end,options={}){
   const {data,error}=await dbPublicClient.schema('silver').analytics({
-    p_scope_id:scope,p_view:view,p_start:start,p_end:end,p_options:{}
+    p_scope_id:scope,p_view:view,p_start:start,p_end:end,p_options:options
   });
   if(error)throw new Error(error.message||'文化資料讀取失敗');
   return Array.isArray(data)?data:[];
@@ -177,7 +177,15 @@ export default function CulturePublicReader(){
   const today=useMemo(todayInTaipei,[]);
   const start=useMemo(()=>previousYear(today),[today]);
   const [anchors,setAnchors]=useState(NO_ITEMS);
+  const [densityPeriod,setDensityPeriod]=useState('recent');
+  const [densityMode,setDensityMode]=useState('source');
+  const [keywordClass,setKeywordClass]=useState('');
+  const [keywordClasses,setKeywordClasses]=useState(NO_ITEMS);
+  const [customStart,setCustomStart]=useState('');
+  const [customEnd,setCustomEnd]=useState('');
+  const [keywordError,setKeywordError]=useState('');
   const [daily,setDaily]=useState(NO_ITEMS);
+  const [keywordDaily,setKeywordDaily]=useState(NO_ITEMS);
   const [catalog,setCatalog]=useState({system:[],personal:[]});
   const [error,setError]=useState('');
   const [loading,setLoading]=useState(true);
@@ -194,23 +202,56 @@ export default function CulturePublicReader(){
   const [fullUid,setFullUid]=useState('');
   const [fullText,setFullText]=useState('');
   const [fullError,setFullError]=useState('');
+  const eraChoices=useMemo(()=>anchorModel(anchors,'0001-01-01','9999-12-31',[]).items
+    .filter(item=>item.entry_type==='era'&&item.start_date&&item.end_date),[anchors]);
+  const selectedEra=eraChoices.find(item=>item.uid===densityPeriod)||null;
+  const rangeStart=densityPeriod==='custom'?customStart:selectedEra?.start_date||start;
+  const rangeEnd=densityPeriod==='custom'?customEnd:selectedEra?.end_date||today;
+  const validRange=/^\d{4}-\d{2}-\d{2}$/.test(rangeStart)&&
+    /^\d{4}-\d{2}-\d{2}$/.test(rangeEnd)&&rangeStart<=rangeEnd;
   const sequence=useRef(0);
   const fullSequence=useRef(0);
   useEffect(()=>{
     let cancelled=false;
-    setLoading(true);setError('');setAnchors([]);setDaily([]);
+    setLoading(true);setError('');setAnchors([]);
     Promise.all([analytics(scopeId,'culture_anchors',null,null),
-      analytics(scopeId,'culture_density',start,today),
-      sourceCatalog(scopeId)]).then(([time,counts,types])=>{
+      sourceCatalog(scopeId)]).then(([time,types])=>{
       if(cancelled)return;
-      setAnchors(time);setDaily(counts);setCatalog(types);setLoading(false);
+      setAnchors(time);setCatalog(types);setLoading(false);
     }).catch(reason=>{if(!cancelled){setError(String(reason?.message||reason));setLoading(false);}});
     return()=>{cancelled=true};
-  },[scopeId,start,today]);
+  },[scopeId]);
+  useEffect(()=>{
+    let active=true;
+    setDaily([]);setKeywordDaily([]);setKeywordError('');
+    if(!validRange)return undefined;
+    if(densityMode==='source'){
+      analytics(scopeId,'culture_density',rangeStart,rangeEnd)
+        .then(rows=>{if(active)setDaily(rows);})
+        .catch(error=>{if(active)setKeywordError(String(error?.message||error));});
+    }else if(keywordClass){
+      analytics(scopeId,'keyword_summary',rangeStart,rangeEnd,{classUid:keywordClass})
+        .then(rows=>{if(active)setKeywordDaily(rows.filter(row=>row.kind==='class_day').map(row=>({
+          day:datePart(row.day),site:String(row.group_uid||''),item_count:Number(row.hit_count||0)
+        })));})
+        .catch(error=>{if(active)setKeywordError(String(error?.message||error));});
+    }
+    return()=>{active=false;};
+  },[scopeId,densityMode,keywordClass,rangeStart,rangeEnd,validRange]);
+  useEffect(()=>{
+    if(densityMode!=='keyword')return undefined;
+    let active=true;
+    analytics(scopeId,'shared_classes',null,null)
+      .then(rows=>{if(active)setKeywordClasses(rows);})
+      .catch(error=>{if(active)setKeywordError(String(error?.message||error));});
+    return()=>{active=false;};
+  },[scopeId,densityMode]);
   const anchorRiver=useMemo(()=>anchorModel(anchors,start,today,expandedEras),
     [anchors,start,today,expandedEras]);
-  const densityRiver=useMemo(()=>sourceModel(daily,catalog.system,catalog.personal,
-    expandedSources,start,today),[daily,catalog,expandedSources,start,today]);
+  const densityRiver=useMemo(()=>densityMode==='keyword'
+    ?sourceModel(keywordDaily,[],[],expandedSources,rangeStart,rangeEnd)
+    :sourceModel(daily,catalog.system,catalog.personal,expandedSources,rangeStart,rangeEnd),
+    [densityMode,keywordDaily,daily,catalog,expandedSources,rangeStart,rangeEnd]);
   const resetArticles=site=>{
     sequence.current+=1;setSelectedSite(site);setArticlesOpen(false);
     setArticleRows([]);setArticleOffset(0);setArticleVisible(20);
@@ -223,7 +264,7 @@ export default function CulturePublicReader(){
     setArticlesLoading(true);setArticleError('');
     try{
       const page=await selectCultureArticleListPage(scope,{
-        startDate:start,endDate:today,site,offset,sortDirection:'desc'
+        startDate:rangeStart,endDate:rangeEnd,site,offset,sortDirection:'desc'
       });
       if(request!==sequence.current)return;
       setArticleRows(old=>append?[...old,...page.rows]:page.rows);
@@ -275,9 +316,35 @@ export default function CulturePublicReader(){
       </section>
       <section className='scope-card scope-culture-classification-river'>
         <div className='scope-culture-river-toolbar'><h3>文章密度</h3></div>
+        <div className='scope-culture-river-selectors'>
+          <label>時代／時期範圍
+            <select className='scope-select' value={densityPeriod} onChange={event=>{setDensityPeriod(event.target.value);resetArticles('');}}>
+              <option value='recent'>近一年（預設）</option>
+              {eraChoices.map(row=><option key={row.uid} value={row.uid}>{row.title}</option>)}
+              <option value='custom'>自訂日期</option>
+            </select>
+          </label>
+          {densityPeriod==='custom'?<>
+            <label>起始日 <input type='date' className='scope-select' value={customStart} onChange={event=>setCustomStart(event.target.value)}/></label>
+            <label>結束日 <input type='date' className='scope-select' value={customEnd} onChange={event=>setCustomEnd(event.target.value)}/></label>
+          </>:null}
+          <label>分類顯示
+            <select className='scope-select' value={densityMode} onChange={event=>{setDensityMode(event.target.value);setExpandedSources([]);resetArticles('');}}>
+              <option value='source'>文章來源</option><option value='keyword'>關鍵詞</option>
+            </select>
+          </label>
+          {densityMode==='keyword'?<label>關鍵詞科目
+            <select className='scope-select' value={keywordClass} onChange={event=>{setKeywordClass(event.target.value);setExpandedSources([]);}}>
+              <option value=''>請選擇公開的關鍵詞科目</option>
+              {keywordClasses.map(row=><option key={row.classUid} value={row.classUid}>{row.name||row.classUid}</option>)}
+            </select>
+          </label>:null}
+        </div>
+        {!validRange?<p className='scope-status scope-error' role='alert'>請選擇有效的起訖日期。</p>:null}
+        {keywordError?<p className='scope-status scope-error' role='alert'>{keywordError}</p>:null}
         <CultureTimeline items={densityRiver.items} extraGroups={densityRiver.groups}
           focus={NO_FOCUS} mode='source' heightVariant='double'
-          windowStart={start} windowEnd={today} fixedMin={start} fixedMax={today}
+          windowStart={rangeStart} windowEnd={rangeEnd} fixedMin={rangeStart} fixedMax={rangeEnd}
           onGroupToggle={group=>{
             const name=String(group);
             if(name.startsWith('root:')){
@@ -291,7 +358,9 @@ export default function CulturePublicReader(){
             const name=String(group);
             if(name.startsWith('site:'))resetArticles(name.slice(5).split(':').slice(1).join(':'));
           }}/>
-        {densityRiver.sites.length?<div className='scope-culture-source-detail'>
+        {densityMode==='keyword'&&!keywordClasses.length?<p className='scope-status'>目前沒有可使用的公開關鍵詞科目。</p>:null}
+        {densityMode==='keyword'&&keywordClass&&!keywordDaily.length?<p className='scope-status'>此範圍沒有可顯示的關鍵詞統計。</p>:null}
+        {densityMode==='source'&&densityRiver.sites.length?<div className='scope-culture-source-detail'>
           {densityRiver.sites.map(item=><div key={item.key} className='scope-culture-source-list-entry'>
             <span>{item.site}（{item.count}）</span>
             <button className='loc-button' type='button'
