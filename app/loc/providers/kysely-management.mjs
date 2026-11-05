@@ -1,5 +1,6 @@
 import {canManageLoc,locManageRows} from './loc-authorization.mjs';
 import {sql} from 'npm:kysely@0.29.8';
+import {saveBlocksKysely} from './kysely-blocks.mjs';
 
 const ID=/^[a-z][a-z0-9_]*$/i;
 const UID=/^[A-Za-z0-9]{8}$/;
@@ -192,7 +193,7 @@ export async function executeManagedKyselyWrite(trx,body){
 const ACTIONS=new Set(['read_group_members','update_group_member_name',
   'update_group_default_article_class','is_current_email_blocklisted','move_scope_block',
   'preview_or_fill_galaxy_place','batch_fill_galaxy_location',
-  'rename_scope_site_batch','save_scope_trace_place_names','loc_admin_settings',
+  'rename_scope_site_batch','save_scope_trace_place_names','save_blocks','loc_admin_settings',
   'refresh_scope_search_summary','merge_scope_trace_place_names','import_shared_keyword_class','manage','find_galaxy_duplicates','read_scope_registry_admin']);
 function validScope(value){
   const id=String(value||'').trim().toLowerCase();
@@ -215,6 +216,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     update_group_default_article_class:['p_group_id','p_names'],
     is_current_email_blocklisted:[],
     move_scope_block:['p_scope_id','p_page_name','p_uid','p_direction'],
+    save_blocks:['p_scope_id','p_type','p_rows'],
     preview_or_fill_galaxy_place:['p_scope_id','p_start_date','p_end_date','p_place','p_apply','p_expected_count'],
     batch_fill_galaxy_location:['p_scope_id','p_uids','p_place','p_apply','p_expected_count'],
     rename_scope_site_batch:['p_scope_id','p_before','p_after','p_batch_size'],
@@ -228,6 +230,15 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     read_scope_registry_admin:[]
   }[name];
   if(Object.keys(args).some(key=>!keys.includes(key)))reject('Unexpected Kysely action argument');
+  if(name==='save_blocks'){
+    const scope=validScope(args.p_scope_id);
+    const page=String(args.p_type||'').trim();
+    const authType=scope==='loc'&&page!=='index'?'global':'scope';
+    if(!await canManageLoc(trx,authType,scope))reject('Block write permission denied',403);
+    // One verification for the entire page, followed by a transactional batch.
+    await sql`reset role`.execute(trx);
+    return {data:await saveBlocksKysely(trx,args),count:null};
+  }
   if(name==='read_scope_registry_admin'){
     if(!await canManageLoc(trx,'global'))reject('Global administrator required',403);
     await sql`reset role`.execute(trx);
