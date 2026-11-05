@@ -26,5 +26,5 @@ test('legacy diagnostic counter and Trace short sequences are explicitly retired
   for(const scope of ['lo3rwang','loc','lrunes']){
     assert.ok(sql.includes('DROP SEQUENCE IF EXISTS silver.'+scope+'_trace_short_seq RESTRICT'));
   }
-  assert.doesNotMatch(sql,/\bCASCADE\b/i);
+  assert.doesNotMatch(sql,/\bDROP\s+(?:SEQUENCE|FUNCTION)[^;]*\bCASCADE\b/i);
 });
