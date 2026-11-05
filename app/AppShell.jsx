@@ -591,7 +591,7 @@ function AppShellInner({children}){
     </header>
     {children}
     {restoreHomeEdit?<HomeEditModeRestore scopeId={scopeId}/>:null}
-    {editingDockVisible||editDockPending?<nav className="scope-feature-dock" aria-label={translateUiField(activeLocale,'編輯功能選單')} data-scope={localWorkspace?'local':scopeId}>
+    {editingDockVisible||editDockPending?<div className="scope-feature-dock scope-floating-edit-buttons" role="toolbar" aria-label={translateUiField(activeLocale,'編輯功能選單')} data-scope={localWorkspace?'local':scopeId}>
       {editingDockVisible?editTabs.map(tab=>tab.action
         ?<button type="button" key={tab.id} className="scope-edit-dock-action"
           disabled={editDock.busy&&tab.action!=='cancel'}
@@ -611,7 +611,7 @@ function AppShellInner({children}){
       :editDockPending?<span role="status" className="scope-edit-dock-pending">正在確認編輯介面…</span>
       :null}
       {editingDockVisible&&editDock.notice?<p className="scope-edit-dock-notice" role="status" aria-live="polite">{editDock.notice}</p>:null}
-    </nav>:null}
+    </div>:null}
     {showHomeEditEntry?<ScopeHomeEditEntry key={scopeId}/>:null}
     <footer className="scope-footer" data-scope={scopeId}>
       <div className="scope-footer-row">
