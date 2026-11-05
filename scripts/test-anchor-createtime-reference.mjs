@@ -48,6 +48,8 @@ test('Time import uses cultural date for attr.date but original article instant 
   assert.equal(entries.length,1);
   assert.equal(entries[0].date,'1980-06-23');
   assert.equal(entries[0].createtime,'2026-11-05T03:04:05.000Z');
+  const dateOnly=importCheckinDayEntries([{location:'Sample place',date:'1980-06-23'}]);
+  assert.equal(dateOnly[0].createtime,null,'a cultural day is not a creation timestamp');
 });
 
 test('Schema is additive and comparison reads true physical Anchor createtime',()=>{
