@@ -19,7 +19,7 @@ LOC MCP 對外以 `galaxy_link` 統一執行私人對話 `search/read/check/reco
 - Galaxy Link 的 `site=mcp` 與私人 `source=github` 搜尋共用獨立限制：每位 Clerk 使用者每分鐘最多 2 次、全域最多 2 次同時搜尋；它同時消耗既有讀取及總請求額度。搜尋逾時 4 秒（管理型 SQL）或 4.5 秒（指定 Scope PostgREST）。
 - 公開 UID 讀取也先透過 Authority 取得額度；私有讀寫在 Authority 執行前檢查。未授權及 Group Search 不進資料庫；Galaxy Link 搜尋另需固定來源限制；GitHub 來源必須有 Scope `manage` 授權。
 - 額度使用短期租約，正常完成即釋放，意外中斷最多保留 25 秒。計數採原子交易，不能靠 Worker 本機記憶體。
-- 如果全域 16 個併發槽位已滿，或 12 個讀取槽位已滿，新增請求立即拒絕，該呼叫者進入 Durable Object 紀錄的 **3 分鐘冷卻期**；冷卻期內持續回 429，不排隊、不重試。單純每分鐘配額耗盡只回 429、不觸發 3 分鐘冷卻；正常 Clerk 登入仍可使用。
+- 如果全域 16 個併發槽位已滿，或 12 個讀取槽位已滿，新增請求立即拒絕，該呼叫者進入 Durable Object 紀錄的 **3 分鐘冷卻期**。每分鐘配額超限（含 Galaxy Link 搜尋每分鐘 2 次）第一次與第二次只回 429；**同一使用者、同一 60 秒窗口內第三次反覆超限**則啟動 3 分鐘冷卻。讀取／搜尋／寫入超限次數合併計算，不分 Scope；冷卻期間全部 MCP 資料操作回 429，不排隊、不重試。正常 Clerk 登入不受 MCP QoS 影響。拒絕次數與冷卻時間保存在 Durable Object 交易內，不因 Worker 重啟消失。
 - **Supabase Data API Max Rows=1000 是單次 SQL REST 回傳的列數限制，不是每分鐘請求數或 MCP 並發數。** 此項為 Supabase 控制台設定，須獨立設定及驗證，不能靠修改 MCP 配額代替。
 - 部署必須核對 Cloudflare Pages MCP route、Authority Worker 兩邊版本；GitHub merge 不表示兩邊都已上線。
 
