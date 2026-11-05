@@ -187,16 +187,16 @@ async function keywordCatalog(trx,scope,anchor,requested,role){
 }
 async function traceDaily(trx,scope,places,start,end,source){
   const galaxy=relation(scope,'galaxy');
-  const result=await sql`select (g.createtime at time zone 'Asia/Taipei')::date as day,
+  // Galaxy.date is the indexed calendar-day source of truth. Grouping by
+  // derived createtime caused an unnecessary expression per matching article.
+  const result=await sql`select g.date::text as day,
       g.place_id::text as category,count(*)::bigint as item_count
     from ${galaxy} g where g.place_id=any(${places}::text[])
-      and g.trace is true and g.createtime is not null
-      and (${start}::date is null or g.createtime>=
-        (${start}::date::timestamp at time zone 'Asia/Taipei'))
-      and (${end}::date is null or g.createtime<
-        ((${end}::date+1)::timestamp at time zone 'Asia/Taipei'))
+      and g.trace is true and g.date is not null
+      and (${start}::date is null or g.date>=${start}::date)
+      and (${end}::date is null or g.date<=${end}::date)
       and (${source}::text is null or g.site ilike ${source})
-    group by 1,2 order by 1,2`.execute(trx);
+    group by g.date,g.place_id order by g.date,g.place_id`.execute(trx);
   return result.rows.map(row=>({...row,item_count:Number(row.item_count||0)}));
 }
 async function traceKeywordGroups(trx,scope,anchor,places,start,end,source,requested,role){
