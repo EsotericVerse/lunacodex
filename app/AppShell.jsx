@@ -319,7 +319,7 @@ function AppShellInner({children}){
       window.removeEventListener('loc-cache-policy-changed',change);
       navigator.serviceWorker.removeEventListener('controllerchange',sync);
     };
-  },[pathname]);
+  },[]);
   const editDock=useEditDock();
   const [restoreHomeEdit,setRestoreHomeEdit]=useState(false);
   const [managementDenied,setManagementDenied]=useState(false);
