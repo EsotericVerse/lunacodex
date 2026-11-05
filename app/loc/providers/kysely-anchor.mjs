@@ -163,7 +163,7 @@ export async function executeKyselyAnchor(trx,body,{role='anon'}={}){
     if(uid)query=query.where('uid','=',uid);
     if(!owner)query=query.where('invisible','=',false);
     if(attr.where)query=query.where(sql`attr @> ${JSON.stringify(attr.where)}::jsonb`);
-    const rows=await query.orderBy('uid','asc').limit(limit).offset(offset).execute();
+    const rows=await query.orderBy('createtime','desc').orderBy('title','asc').limit(limit).offset(offset).execute();
     return {data:rows,count:null};
   }
   if(!owner)reject('Scope management permission required',403);
@@ -249,7 +249,7 @@ export async function executePortableKyselyAnchor(db,body,{role='anon',engine,na
     if(!owner)return {data:{},count:null};
     const query=db.selectFrom(table).select(columns).where('type','=','class');
     const node=await (data.classUid?query.where('uid','=',String(data.classUid)):
-      query.orderBy('uid','asc')).executeTakeFirst();
+      query.orderBy('title','asc')).executeTakeFirst();
     if(!node)return {data:{},count:null};
     const root=portableRow(node);
     const groups=(namesFrom(root).length?await db.selectFrom(table).select(columns)
