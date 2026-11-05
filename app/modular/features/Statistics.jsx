@@ -472,7 +472,8 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
         scopeId,classUid:resolvedKeywordClassUid,...styleRange
       });
     },
-    enabled:keywordDimension&&Boolean(resolvedKeywordClassUid)&&Boolean(styleRange.startDate&&styleRange.endDate),
+    enabled:keywordDimension&&periodNavigationReady&&Boolean(resolvedKeywordClassUid)
+      &&Boolean(styleRange.startDate&&styleRange.endDate),
   });
 
   return <section className="scope-stat-section">
