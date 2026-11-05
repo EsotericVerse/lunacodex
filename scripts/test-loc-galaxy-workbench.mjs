@@ -26,7 +26,8 @@ test('Extension owns only LOC issuer host permissions and hides Access Tokens fr
   const manifest=JSON.parse(read('extensions/loc-galaxy/manifest.json'));
   const bg=read('extensions/loc-galaxy/background.mjs');
   const view=read('extensions/loc-galaxy/workbench.mjs');
-  assert.deepEqual(manifest.permissions,['identity','storage']);
+  assert.deepEqual(manifest.permissions,['identity','storage','scripting','alarms']);
+  assert.deepEqual(manifest.optional_host_permissions,['https://chatgpt.com/*']);
   assert.deepEqual(manifest.host_permissions,[
     'https://loc.lo3rwang.cc/*','https://precise-grackle-3371.clerk.accounts.dev/*'
   ]);
@@ -36,7 +37,7 @@ test('Extension owns only LOC issuer host permissions and hides Access Tokens fr
   assert.match(bg,/mcpTool\(token,'galaxy_link'/);
   assert.doesNotMatch(view,/refresh_token|access_token|client_secret/);
   assert.doesNotMatch(bg,/chrome.runtime.onMessageExternal/);
-  assert.doesNotMatch(bg,/chrome.alarms/);
+  assert.match(bg,/chrome\\.alarms\\.onAlarm/);
   assert.match(bg,/Date\.now\(\)-last<30000/);
   assert.match(read('extensions/loc-galaxy/workbench.html'),/Content-Security-Policy/);
 });
@@ -52,4 +53,29 @@ test('Stage 2 workbench shares the original white Theme 7 login identity',()=>{
   assert.match(view,/id="search-form"/);
   assert.match(css,/color-scheme:light/);
   assert.match(read('app/loc/BulkGalaxyVisibility.jsx'),/id="bulk-galaxy-visibility"/);
+});
+
+
+test('Stage 4 opt-in capture requires exact ChatGPT origin and preserves retry queue',()=>{
+  const manifest=JSON.parse(read('extensions/loc-galaxy/manifest.json'));
+  const bg=read('extensions/loc-galaxy/background.mjs');
+  const source=read('extensions/loc-galaxy/chatgpt-capture.js');
+  const manager=read('extensions/loc-galaxy/capture-manager.mjs');
+  const view=read('extensions/loc-galaxy/workbench.mjs');
+  const html=read('extensions/loc-galaxy/workbench.html');
+  assert.equal(manifest.version,'0.4.0');
+  assert.equal(manifest.content_scripts,undefined);
+  assert.match(view,/chrome\.permissions\.request/);
+  assert.match(manager,/chrome\.permissions\.contains/);
+  assert.match(manager,/persistAcrossSessions:true/);
+  assert.match(manager,/periodInMinutes:60/);
+  assert.match(manager,/chrome\.storage\.local/);
+  assert.match(manager,/sendBatch/);
+  assert.match(manager,/await record\(\{scopeid,conversation\}\)/);
+  assert.match(source,/data-message-id/);
+  assert.match(source,/role!=='user'/);
+  assert.match(source,/observed\.add\(mid\)/);
+  assert.doesNotMatch(source,/fetch\(/);
+  assert.match(bg,/capture\.accept\(message,sender\)/);
+  assert.match(html,/id="capture-enable"/);
 });
