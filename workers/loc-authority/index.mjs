@@ -365,7 +365,7 @@ async function managedMcpUpdatePr(scopeid,uid,prNumber,title,content,updatedAt,o
   const response=await fetch(MANAGED_SUPABASE_EDGE,{
     method:'POST',headers:{apikey:MANAGED_PUBLISHABLE_KEY,
       authorization:'Bearer '+oauthToken,'content-type':'application/json'},
-    body:JSON.stringify({kind:'mcp-update-pr',scopeid,uid,pr_number:prNumber,title,content,updated_at:updatedAt}),
+    body:JSON.stringify({kind:'mcp-update-pr',scopeid,...(uid?{uid}:{}),pr_number:prNumber,title,content,updated_at:updatedAt}),
     signal:AbortSignal.timeout(12000),redirect:'manual'
   });
   if(!response.ok){
