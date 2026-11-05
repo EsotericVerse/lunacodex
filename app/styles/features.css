@@ -117,6 +117,25 @@
 .scope-management-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(var(--management-min),1fr));gap:.7rem;margin:.8rem 0}
 .scope-management-fields label,.scope-management-wide-field{display:grid;gap:.35rem}
 .scope-management-wide-field{margin:.8rem 0}
+
+/* Keyword classification editor is a full-height form, not a sticky sidebar.
+   Sticky positioning made its long term textarea overlap sharing/import controls. */
+.scope-keyword-management .scope-management-editor{
+  position:static;
+  top:auto;
+  min-width:0;
+}
+.scope-keyword-management .scope-management-editor .scope-management-fields>label,
+.scope-keyword-management .scope-management-editor .scope-management-wide-field{
+  min-width:0;
+}
+.scope-keyword-management .scope-management-editor textarea{
+  display:block;
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  box-sizing:border-box;
+}
 .scope-management-preview{margin-top:1rem;min-height:62vh;border:1px solid var(--loc-ui-hairline);border-radius:var(--loc-ui-radius-lg);overflow:hidden;background:var(--loc-bg)}
 .scope-management-preview iframe{display:block;width:100%;height:70vh;border:0;background:var(--loc-bg)}
 .scope-preview-links{display:flex;flex-wrap:wrap;gap:.55rem;align-items:center}
