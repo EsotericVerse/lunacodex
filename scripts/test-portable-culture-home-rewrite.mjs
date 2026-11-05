@@ -35,7 +35,7 @@ test('only explicit article-list request uses bounded 100-row UID query',()=>{
   assert.match(sql,/\.orderBy\('createtime','desc'\)\.limit\(100\)/);
   assert.match(sql,/row\.list===false[\s\S]*?hidden:true/);
   const view=file('app/loc/views/CulturePublicReader.jsx');
-  assert.match(view,/onClick=\{\(\)=>openArticles\(selectedSite\)\}/);
+  assert.match(view,/onClick=\{\(\)=>openArticles\(item\.site\)\}/);
   assert.match(view,/setArticleVisible\(20\)/);
   assert.match(view,/Math\.min\(n\+20,articleRows.length\)/);
 });
