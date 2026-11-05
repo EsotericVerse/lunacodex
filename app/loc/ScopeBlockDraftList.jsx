@@ -199,10 +199,9 @@ export default function ScopeBlockDraftList({
           block_eyebrow:HomeBlock.plainBlockLine(draft.eyebrow),
           block_title:HomeBlock.plainBlockLine(draft.title),
           block_subtitle:HomeBlock.plainBlockLine(draft.subtitle),
-          block_image:isHomeFrame
-            ?(draft.image?.source==='custom'&&!String(draft.image.url||'').trim()
-              ?JSON.stringify({...draft.image,source:'default',url:''})
-              :draft.image?JSON.stringify(draft.image):null):null,
+          block_image:draft.image?.source==='custom'&&!String(draft.image.url||'').trim()
+            ?JSON.stringify({...draft.image,source:'default',url:''})
+            :draft.image?JSON.stringify(draft.image):null,
           block_text:normalizeSavedHtml(draft.text),
           block_order:order,
           block_entity:HomeBlock.serializeBubbleEntities(draft.bubbleColumns,
