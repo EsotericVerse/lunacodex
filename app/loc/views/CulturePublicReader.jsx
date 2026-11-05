@@ -244,7 +244,7 @@ export default function CulturePublicReader(){
       .then(({data,error})=>{
         if(error)throw error;
         if(active)setKeywordGroups((data?.rows||[]).filter(row=>row.type==='group')
-          .map(row=>({id:String(row.uid),name:String(row.name||row.uid)})));
+          .map(row=>({id:String(row.uid),name:String(row.name||row.uid),weight:Math.max(0,Number(row.total)||0)})));
       }).catch(error=>{if(active)setKeywordError(String(error?.message||error));})
       .finally(()=>{if(active)setKeywordLoading(false);});
     return()=>{active=false;};
@@ -269,14 +269,19 @@ export default function CulturePublicReader(){
       if(!day)continue;
       dailyTotals.set(day,(dailyTotals.get(day)||0)+Number(row.item_count||0));
     }
-    // Distribute each day's existing culture count evenly between configured
-    // groups. This is a proportional visualization, not an actual hit count.
+    // Preserve stored Anchor total ratios across each day's culture density.
+    // When no group has a saved total, show an equal-share fallback.
+    const totalWeight=keywordGroups.reduce((sum,group)=>sum+group.weight,0);
+    const weights=keywordGroups.map(group=>totalWeight?group.weight:1);
+    const denominator=weights.reduce((sum,n)=>sum+n,0);
     return [...dailyTotals].flatMap(([day,total])=>{
-      const base=Math.floor(total/keywordGroups.length);
-      const remainder=total%keywordGroups.length;
-      return keywordGroups.map((group,index)=>({
-        day,site:group.name,item_count:base+(index<remainder?1:0)
-      }));
+      let allotted=0;
+      return keywordGroups.map((group,index)=>{
+        const count=index===keywordGroups.length-1?total-allotted:
+          Math.floor(total*weights[index]/denominator);
+        allotted+=count;
+        return {day,site:group.name,item_count:count};
+      });
     });
   },[daily,densityMode,keywordClass,keywordGroups]);
   const densityRiver=useMemo(()=>densityMode==='keyword'
@@ -389,7 +394,7 @@ export default function CulturePublicReader(){
             const name=String(group);
             if(name.startsWith('site:'))resetArticles(name.slice(5).split(':').slice(1).join(':'));
           }}/>
-        {densityMode==='keyword'&&keywordClass?<p className='scope-status'>關鍵詞河道為每日文章密度等比例分配示意，非實際命中筆數。</p>:null}
+        {densityMode==='keyword'&&keywordClass?<p className='scope-status'>關鍵詞河道依 Anchor 已存總量比例分配每日文化密度，非當日實際命中筆數。</p>:null}
         {densityMode==='keyword'&&classesLoading?<p className='scope-status'>正在載入關鍵詞科目…</p>:null}
         {densityMode==='keyword'&&keywordLoading?<p className='scope-status'>正在載入關鍵詞統計…</p>:null}
         {densityMode==='keyword'&&!classesLoading&&!keywordClasses.length?<p className='scope-status'>目前沒有可使用的公開關鍵詞科目。</p>:null}
