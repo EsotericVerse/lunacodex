@@ -69,22 +69,10 @@ async function sourceTotals(trx,scope,start,end){
     group by 1,2 order by 1,2`.execute(trx);
   return response.rows;
 }
-async function linkedMediaCount(trx,scope,anchorSuffix,start,end){
-  const galaxy=relation(scope,'galaxy'),anchor=relation(scope,anchorSuffix);
-  const response=await sql`select count(*)::integer as n from (
-      select distinct unnest(g.media_link)::text as uid from ${galaxy} as g
-      where g.statics is true and coalesce(g.content,'')<>''
-        and (${start}::date is null or g.date>=${start}::date)
-        and (${end}::date is null or g.date<=${end}::date)
-    ) refs where exists(select 1 from ${anchor} m where m.uid=refs.uid
-       and m.type in ('image','video','rune','suno') and m.invisible is false)`.execute(trx);
-  return Number(response.rows[0]?.n||0);
-}
-async function scopeOverview(trx,scope,suffix,start,end){
-  const [rows,first,media,loc]=await Promise.all([
+async function scopeOverview(trx,scope,start,end){
+  const [rows,first,loc]=await Promise.all([
     dailyStats(trx,scope,start,end),
     earliest(trx,scope),
-    linkedMediaCount(trx,scope,suffix,start,end),
     trx.selectFrom('silver.loc').select('DefaultArticleClass')
       .where('id','=','loc').executeTakeFirst()
   ]);
@@ -93,7 +81,7 @@ async function scopeOverview(trx,scope,suffix,start,end){
     display_name:String(name).trim(),enabled:true}));
   const aliases=list.map(name=>({source_key:String(name).trim().toLowerCase(),
     category_code:String(name).trim().toLowerCase()}));
-  return {earliest:first,media_count:media,rows,categories,aliases};
+  return {earliest:first,rows,categories,aliases};
 }
 async function searchSummary(trx,options){
   const scopes=options.scopeIds;
@@ -415,7 +403,7 @@ export async function executeKyselyAnalytics(trx,body,{role='anon'}={}){
   if(mode==='daily')data=await dailyStats(trx,scope,start,end,options.includeUndated===true);
   else if(mode==='earliest')data=await earliest(trx,scope);
   else if(mode==='totals')data=await sourceTotals(trx,scope,start,end);
-  else if(mode==='overview')data=await scopeOverview(trx,scope,anchorSuffix,start,end);
+  else if(mode==='overview')data=await scopeOverview(trx,scope,start,end);
   else if(mode==='trace_places')data=await tracePlaces(trx,scope,start,end);
   else if(mode==='shared_classes')data=await sharedClasses(trx,scope,
     'silver.'+scope+'_'+anchorSuffix,role);
@@ -446,44 +434,6 @@ function portableStatBase(db,table,start,end,flag='statics',includeUndated=false
   if(start)query=query.where('date','>=',start);
   if(end)query=query.where('date','<=',end);
   return query;
-}
-// Count only visible media referenced by eligible articles.
-// The Kysely subquery supplies bounded article rows; dialect-specific SQL
-// only expands media_link and joins it to visible Anchor media.
-async function portableLinkedMediaCount(db,galaxy,anchor,engine,start,end){
-  let docs=db.selectFrom(galaxy).select('media_link')
-    .where('statics','=',true).where('content','!=','')
-    .where('media_link','is not',null);
-  if(start)docs=docs.where('date','>=',start);
-  if(end)docs=docs.where('date','<=',end);
-  const media=sql.ref(anchor);
-  let query;
-  if(engine==='mysql'){
-    query=sql`select count(distinct linked.uid) as n
-      from (${docs}) as docs
-      cross join json_table(docs.media_link,'$[*]'
-        columns(uid varchar(8) path '$')) as linked
-      join ${media} as a on a.uid=linked.uid
-        and a.type in ('image','video','rune','suno')
-        and a.invisible=false`;
-  }else if(engine==='mssql'){
-    query=sql`select count(distinct linked.[value]) as n
-      from (${docs}) as docs
-      cross apply openjson(docs.media_link) as linked
-      join ${media} as a on a.uid=linked.[value]
-        and a.type in ('image','video','rune','suno')
-        and a.invisible=0`;
-  }else if(engine==='postgres'){
-    // PostgreSQL Portable Galaxy uses native SQL arrays, like the primary Galaxy.
-    query=sql`select count(distinct linked.uid) as n
-      from (${docs}) as docs
-      cross join lateral unnest(docs.media_link) as linked(uid)
-      join ${media} as a on a.uid=linked.uid
-        and a.type in ('image','video','rune','suno')
-        and a.invisible=false`;
-  }else reject('Unsupported portable media-count dialect');
-  const result=await query.execute(db);
-  return Number(result.rows[0]?.n||0);
 }
 // Common LOC statistics, implemented with dialect-native Kysely builders.
 export async function executePortableKyselyAnalytics(db,body,{engine,namespace='',role='anon'}={}){
@@ -636,13 +586,9 @@ export async function executePortableKyselyAnalytics(db,body,{engine,namespace='
     }))].sort((a,b)=>a.day.localeCompare(b.day)||a.kind.localeCompare(b.kind));
     if(mode==='daily')data=summary;
     else if(mode==='overview'){
-      // Count public media in Anchor as the portable media inventory.
-      const count=await db.selectFrom(anchor)
-        .select(eb=>eb.fn.countAll().as('n'))
-        .where('type','in',['image','video','rune','suno'])
-        .where('invisible','=',false).executeTakeFirst();
-      data={earliest:await first(),media_count:Number(count?.n||0),
-        rows:summary,categories:[],aliases:[]};
+      // Overview only summarizes visible Galaxy source/date rows.
+      // Retired multimedia counts must not touch Anchor or media_link.
+      data={earliest:await first(),rows:summary,categories:[],aliases:[]};
     }else data={earliest:await first(),scopes:[{
       scope_id:scope,display_name:scope
     }],rows:summary.filter(x=>x.kind==='total').map(x=>({
