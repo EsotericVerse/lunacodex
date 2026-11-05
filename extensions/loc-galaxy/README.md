@@ -1,6 +1,6 @@
 # LOC Galaxy — Chrome Extension (0.6.0: LOC website Session bridge)
 
-This Manifest V3 extension connects only to LOC MCP via Clerk OAuth. The user enters only Scope ID. The full-page workbench adds private Galaxy Link search/read and buttons for the existing LOC website import, bulk-update, and article management pages.
+This Manifest V3 extension connects to LOC MCP using a dedicated audience-bound JWT obtained from the existing LOC website Clerk Session. The user enters only Scope ID. The full-page workbench adds private Galaxy Link search/read and buttons for the existing LOC website import, bulk-update, and article management pages.
 
 ## Identity and authorization
 
@@ -8,18 +8,18 @@ This Manifest V3 extension connects only to LOC MCP via Clerk OAuth. The user en
 2. **Open LOC login**: opens the **original scenic LOC Clerk page** `https://loc.lo3rwang.cc/login/index.html` in a normal Chrome tab. This retains the full-screen “回到你的文字世界。” experience and uses the existing Clerk Google login.
 3. After Clerk website login, choose **使用 LOC 網站 Session 連線**. Extension opens `https://loc.lo3rwang.cc/extension/auth-bridge.html`, where the website's existing Clerk Session obtains a separate `loc-mcp` JWT-template token bound exclusively to the LOC MCP resource. This avoids `chrome.identity.launchWebAuthFlow` for the primary login path.
 4. Extension validates both `loc_connection_status` and `galaxy_link(action=check,scopeid=...)` with the **dedicated MCP-audience JWT intended for `https://loc.lo3rwang.cc/mcp`**. If Scope write authorization fails, the Extension remains disconnected. Identity alone is not a write grant.
-5. Only after verification are credentials persisted. `chrome.storage.session` holds the short-lived dedicated access token; `chrome.storage.local` holds the nonsecret website bridge binding and Scope. The default Clerk website session JWT, cookies and refresh tokens are never transferred to the Extension. Both are restricted to **trusted extension contexts**, not content scripts, and never synced to the user's Chrome account. The password and client secret are never collected. Treat local refresh-token storage as sensitive; Chrome storage is not a hardware vault.
+5. Only after verification are credentials persisted. `chrome.storage.session` holds the short-lived dedicated access token; `chrome.storage.local` holds the nonsecret website bridge binding and Scope. The default Clerk website session JWT, cookies and refresh tokens are never transferred to the Extension. Both are restricted to **trusted extension contexts**, not content scripts, and never synced to the user's Chrome account. The password and client secret are never collected. The old OAuth refresh-token code remains for backward compatibility but is not used by the website bridge. Chrome storage is not a hardware vault.
 6. Changing Scope immediately clears the old credentials. Disconnect clears Extension credentials **without** pretending to revoke the website's Clerk sign-in; server-side token revocation is a separate action.
 
-ChatGPT web capture is optional and disabled by default. Only after the user's explicit Chrome site-access approval does a narrowly scoped content script observe future visible user messages. No chat-history scraping, unrelated websites, arbitrary external MCP forwarding or extension-side bulk import parser is included. Data import and bulk edits run in the existing LOC site after its independent Clerk and Scope authorization. The extension never forwards the OAuth token to those pages.
+ChatGPT web capture is optional and disabled by default. Only after the user's explicit Chrome site-access approval does a narrowly scoped content script observe future visible user messages. On-demand historical archiving is available only after an explicit click; unrelated websites, arbitrary external MCP forwarding or extension-side bulk import parser are excluded. Data import and bulk edits run in the existing LOC site after its independent Clerk and Scope authorization. The extension never forwards the OAuth token to those pages.
 
-## Operator OAuth registration — required before first login
+## Legacy OAuth Client registration — not required for website bridge
 
 The Extension has a deterministic development ID **`hiaeafonocnjaclcfgjmdopbcgnafnna`**, pinned by the **public** key in the manifest. Its redirect URI is:
 
 `https://hiaeafonocnjaclcfgjmdopbcgnafnna.chromiumapp.org/loc-galaxy`
 
-The operator must configure **one** public OAuth client with the active LOC Clerk instance. End users do *not* enter a Client ID or Token.
+Only the **legacy** Chrome OAuth mode depends on this Public OAuth Client. Extension 0.6.0 website bridge instead requires the `loc-mcp` JWT template described below. End users do not enter Client ID or Token.
 
 Preferred if Clerk has **Client ID Metadata Documents (CIMD)** enabled:
 - Explicitly register/allow `https://loc.lo3rwang.cc/extension/oauth/client.json` as a CIMD client in Clerk's OAuth applications. Allow `profile`, `email`, and `offline_access`; retain PKCE S256 and consent. Ensure the metadata file is publicly accessible by Clerk.
@@ -42,11 +42,11 @@ When published on the Chrome Web Store, confirm whether its assigned ID matches 
 4. Once Scope verification is successful, choose **3 · 開啟 Galaxy 工作台**. The full tab offers MCP topic search/read and buttons to open the existing Scope import/bulk-edit/article-management pages.
 5. To use the web panels opened from the extension, maintain a valid **website** Clerk session and enter the website edit mode as normal. OAuth in the extension does **not** bypass the site's management permissions.
 
-No other parameter is required of the end user. A missing operator registration or denied Scope permission is a deliberate connection blocker, not an alternate credential prompt.
+No other parameter is required of the end user. An absent Clerk JWT template or denied Scope permission is a connection blocker and must be reported explicitly.
 
 ## Verification
 
-Run `node --test scripts/test-loc-galaxy-chrome-oauth.mjs scripts/test-loc-galaxy-workbench.mjs` for isolated manifest, deterministic redirect, PKCE and callback tests. Actual Clerk authorization, token issuance, browser store visibility and end-to-end Scope authorization still require a configured Clerk OAuth app and an installed Chrome Extension.
+Run `node --test scripts/test-loc-galaxy-chrome-oauth.mjs scripts/test-loc-galaxy-workbench.mjs` for the website bridge contract, legacy PKCE callback, and manifest tests. The website JWT template, Clerk issuance, Chrome external messaging and end-to-end Scope verification still need live testing.
 
 Read also: `docs/architecture/galaxy-link.md`. Stage 3 supports explicit JSON Recorder, and Stage 4 adds opt-in ChatGPT browser capture. Other apps/platforms and archive upload remain separate work.
 
@@ -67,7 +67,7 @@ In the white workbench, select a JSON file with `conversation_id`, timezone-qual
 
 The trusted service worker checks `galaxy_link.check` and calls `galaxy_link.record` only when `needs_save=true`; the backend owns checkpoint persistence and batch deduplication. Failed/ambiguous writes must not be marked complete. Each file is limited to 200 KB and a batch to 100 records / 120000 JSON characters. Larger exports require separately sourced batches and stable IDs. Note that a source-side `updated_at` must progress with new batches; the Extension does not manufacture timestamps or automatically scrape conversations. Current UI accepts one explicit source batch at a time.
 
-This does **not** capture ChatGPT desktop/mobile conversations. Stage 4 adds a site-scoped optional content script and Chrome alarm; it is disabled by default. Test with `node --test scripts/test-loc-galaxy-chrome-oauth.mjs scripts/test-loc-galaxy-workbench.mjs scripts/test-loc-galaxy-recorder.mjs`, followed by actual OAuth/Scope/record/read browser verification. Version 0.4.0 is source code only until installed/reloaded in Chrome.
+This does **not** capture ChatGPT desktop/mobile conversations. Stage 4 adds a site-scoped optional content script and Chrome alarm; it is disabled by default. Test with `node --test scripts/test-loc-galaxy-chrome-oauth.mjs scripts/test-loc-galaxy-workbench.mjs scripts/test-loc-galaxy-recorder.mjs`, followed by actual OAuth/Scope/record/read browser verification. Version 0.6.0 must be installed/reloaded in Chrome, and the corresponding LOC website must be deployed.
 
 ## Stage 4: ChatGPT 網頁擷取（使用者自願啟用）
 
