@@ -35,3 +35,5 @@ input{font:inherit;border:1px solid #ccc;border-radius:12px;background:#fafafa;c
 #more{margin-top:8px}footer{border-top:1px solid #eee;margin-top:40px;padding-top:16px;color:#888;font-size:11px}
 @media(max-width:600px){.shell{padding:25px 16px}.panel{padding:18px}.searchrow button{min-width:80px}.article-head{align-items:flex-start;flex-direction:column}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+
+#conversation-file{display:block;width:100%;margin:10px 0 12px}#record-conversation{background:#242424;color:#fff;border-color:#242424}.recorder-example{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6;font-size:12px;background:#fafafa;border:1px solid #eee;border-radius:12px;padding:15px}details{margin-top:16px;color:#555;font-size:13px}summary{cursor:pointer}
