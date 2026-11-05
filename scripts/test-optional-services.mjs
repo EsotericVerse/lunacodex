@@ -24,7 +24,8 @@ test('a configured backup remains lazy and optional',()=>{
   assert.match(source,/let backupPublicClient=null/);
   assert.match(source,/routing.backupId&&neonConfigured/);
   assert.match(source,/backupPublicClient\?\?=createBackupPublicAdapter\(\)\.publicClient/);
-  assert.match(read('app/loc/providers/routing-config.mjs'),/NEXT_PUBLIC_LOC_BACKUP_ID/);
+  assert.match(read('app/loc/providers/routing-config.mjs'),/DATABASE_ACCESS_LIST/);
+  assert.match(read('app/loc/providers/access.js'),/backup_selected:true/);
   const neon=read('app/loc/providers/neon-public.mjs');
   assert.doesNotMatch(neon,/createKyselyEdgeClient|supabase\.co|functions\/v1\/loc-kysely/);
   assert.match(neon,/token\/anonymous/);
