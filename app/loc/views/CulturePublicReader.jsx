@@ -1,7 +1,7 @@
 'use client';
 import {useEffect,useMemo,useRef,useState} from 'react';
 import dynamic from 'next/dynamic';
-import {useScopeRuntime} from '../use-scope-runtime';
+import {useScopeRuntime} from '../../modular/use-scope-runtime';
 import {FeaturePage} from '../../modular/ui';
 import {selectRows} from '../db-query.mjs';
 import {dbPublicClient} from '../db-client.mjs';

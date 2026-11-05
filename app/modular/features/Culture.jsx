@@ -1698,6 +1698,7 @@ export default function Culture(){
                           onToggle={()=>toggleWorkContent(work)}
                         />
                       </div>;
+                    }}
                   />
                   {!periodWorksPage.loading&&!periodWorksPage.error&&!visibleWorkRows.length?<p className='scope-status'>{UI_COPY.uiExtra.dataErrors.empty}</p>:null}
                   </>:null}
