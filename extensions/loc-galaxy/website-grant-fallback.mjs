@@ -53,7 +53,7 @@ async function grant(message,sender){
 // Existing background handler processes senders that include sender.tab.
 // This fallback only handles web-origin senders without sender.tab.
 chrome.runtime.onMessageExternal.addListener((message,sender,sendResponse)=>{
-  if(sender.tab?.id||message?.type!=='locGalaxy.websiteGrant')return false;
+  if(message?.type!=='locGalaxy.websiteGrant')return false;
   if(!page(sender.url,String(message.nonce||''),String(message.scopeid||'')))return false;
   void grant(message,sender).then(data=>sendResponse({ok:true,data}))
     .catch(error=>sendResponse({ok:false,error:String(error?.message||error).slice(0,180)}));

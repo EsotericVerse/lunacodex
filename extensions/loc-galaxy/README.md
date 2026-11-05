@@ -101,3 +101,7 @@ This does **not** capture ChatGPT desktop/mobile conversations. Stage 4 adds a s
 ## 0.6.1 — Chrome website message compatibility
 
 Chrome's `runtime.onMessageExternal` for messages originating from a website may omit `sender.tab`. The trusted bridge now has a dedicated fallback listener for this case. It rejects any request unless the sender URL matches the exact LOC bridge origin/path/query and the Extension can independently retrieve the **original tab opened by its own authorization request**, bound to a random nonce and Scope. It still verifies the token and Scope with LOC MCP. The original listener continues handling cases where `sender.tab` is supplied. No Admin privileges are inferred from the browser; LOC Authority validates Root Clerk IDs and Scope grants server-side. Refresh the unpacked Extension in `chrome://extensions` after updating files.
+
+## 0.6.2：網站授權單一訊息入口
+
+0.6.1 將 `onMessageExternal` 註冊在原始 `background.mjs` 與 fallback 兩處，可能造成 Chrome 網站訊息回覆競爭。0.6.2 的 `background-entry.mjs` 改為載入只處理 Extension 內部訊息的 `background-core.mjs`，並只在 `website-grant-fallback.mjs` 註冊一次 `onMessageExternal`。網站驗證仍需檢查固定來源、原 Extension 開啟的分頁、nonce、Scope、短效 JWT 與 MCP 權限。Chrome 已安裝的 0.6.1 不會因 GitHub merge 自動變成 0.6.2。

@@ -1,4 +1,3 @@
-// Preserve the existing LOC Galaxy service worker and add the website-origin
-// callback for Chrome builds that omit sender.tab on external web messages.
-import './background.mjs';
+// Exactly one website external-message listener; the core only handles extension-internal messages.
+import './background-core.mjs';
 import './website-grant-fallback.mjs';
