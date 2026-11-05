@@ -13,6 +13,8 @@
   box-shadow:none;
   pointer-events:none;
 }
+/* Group managers without global Admin authority see five actions, without an empty sixth cell. */
+.scope-feature-dock[data-action-count="5"]{grid-template-columns:repeat(5,minmax(0,1fr));}
 /* Independent floating buttons; leftmost Save and rightmost Cancel never reorder. */
 .scope-feature-dock .scope-edit-dock-action{border-color:var(--loc-accent-border);}
 .scope-feature-dock a,.scope-feature-dock button{
