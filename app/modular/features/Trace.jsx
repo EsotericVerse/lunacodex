@@ -212,11 +212,10 @@ export default function Trace({scopeId='loc'}){
         </div>
       </details>:null}
     </div>
-    {supported&&traceIndex.isPending?<p className="scope-status" role="status">{t("loadingMaps")}</p>:null}
+    {supported&&(traceIndex.isPending||(isLoc?locPointsQuery.isPending:anchorsQuery.isPending))?<p className="scope-status" role="status" aria-live="polite">找尋痕跡中請稍後</p>:null}
     {supported&&traceIndex.error?<p className="scope-status scope-error" role="alert">
       {t("mapsError")}{String(traceIndex.error.message||traceIndex.error)}
     </p>:null}
-    {supported&&(isLoc?locPointsQuery.isPending:anchorsQuery.isPending)?<p className="scope-status" role="status">{t("loadingAnchors")}</p>:null}
     {supported&&(isLoc?locPointsQuery.error:anchorsQuery.error)?<p className="scope-status scope-error" role="alert">
       {t("anchorsError")}{String((isLoc?locPointsQuery.error:anchorsQuery.error)?.message||'')}
     </p>:null}
