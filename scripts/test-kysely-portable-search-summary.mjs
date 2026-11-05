@@ -156,7 +156,7 @@ test('portable daily includeUndated retains NULL date groups using Kysely',async
 for(const [engine,namespace,expectedExpansion] of [
   ['mysql','',/json_table\(docs\.media_link/],
   ['mssql','dbo',/openjson\(docs\.media_link/],
-  ['postgres','silver',/jsonb_array_elements_text\(docs\.media_link/]
+  ['postgres','silver',/unnest\(docs\.media_link/]
 ]){
   test(engine+' portable Overview counts only media linked from eligible Galaxy rows',async()=>{
     const filters=[],statements=[],refs=[];
@@ -196,7 +196,7 @@ test('portable media expansion stays inside the helper; no duplicated analytics 
   assert.equal((source.match(/async function portableLinkedMediaCount/g)||[]).length,1);
   assert.match(source,/columns\(uid varchar\(8\) path '\$'\)\) as linked/);
   assert.match(source,/cross apply openjson\(docs\.media_link\)/);
-  assert.match(source,/jsonb_array_elements_text\(docs\.media_link\)/);
+  assert.match(source,/unnest\(docs\.media_link\)/);
   assert.doesNotMatch(source,/path '\(db,body,/);
   // Parse all executable code, not only the helper substring.
   assert.doesNotThrow(()=>new Function('sql','canManageLoc','portableRelation',
