@@ -76,10 +76,11 @@ function ScopeSourceCorrectionEditor({scopeId}){
     }catch(e){setPreview(null);setNotice('已處理 '+changed.toLocaleString()+' 篇；其餘尚未更正：'+String(e.message||e));return false;}
     finally{setBusy(false);}
   }
-  useEditDockForm({save,isDirty:()=>dirty,isBusy:()=>busy,
+  const activateEditor=useEditDockForm({save,isDirty:()=>dirty,isBusy:()=>busy,
     discard:()=>{setBefore('');setAfter('');setPreview(null);setNotice('');setCompleted(0);}});
   if(!allowed)return <p className="scope-status scope-error" role="alert">{l.denied}</p>;
-  return <section className="loc-card scope-feature-card">
+  return <section className="loc-card scope-feature-card"
+    onFocusCapture={activateEditor} onPointerDownCapture={activateEditor}>
     <h2>{l.title}</h2>
     {sourceLists.error?<div className="scope-status scope-error" role="alert">
       無法載入來源建議：{String(sourceLists.error.message||sourceLists.error)}。
