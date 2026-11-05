@@ -438,7 +438,7 @@ export default function CulturePublicReader(){
               </div>:null}
             </div>:null}
           </div>)}
-        {articlesLoading?<p className='scope-status'>正在載入文章…</p>:null}
+        {articlesLoading?<p className='scope-status' role='status' aria-live='polite'>載入中請稍後</p>:null}
         {!articlesLoading&&(articleVisible<articleRows.length||articleMore)
           ?<button type='button' className='loc-button' onClick={loadMore}>
             點擊繼續顯示

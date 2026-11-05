@@ -147,7 +147,7 @@ function SourceArticleList({scope,startDate,endDate,sourceNames=null,defaultSort
       <p className="scope-status">{group?'此來源的文章列表':'全部文章列表'} · {startDate} ～ {endDate}</p>
       <ArticleSortSelect value={articleSort} onChange={setArticleSort}/>
     </div>
-    {worksQuery.isPending?<p className="scope-status" role="status">Loading...</p>:null}
+    {worksQuery.isPending?<p className="scope-status" role="status">統計中請稍後</p>:null}
     {worksQuery.error?<p className="scope-status scope-error">
       {featureDataErrorMessage(worksQuery.error)} <button type="button" className="loc-button" onClick={()=>worksQuery.refetch()}>重新讀取</button>
     </p>:null}
@@ -536,7 +536,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     <>
     {rankingType==='place'?<PlaceStatisticsPanel scopeId={scopeId} range={queryRange}/>:null}
     {(sourceChart&&!sourceRows.error&&!sourceCatalog.error&&(sourceRows.isPending||sourceCatalog.isPending||!adminSourceReady))?<div className="scope-stat-data-pending">
-      <p className="scope-status" role="status"><UiText id="uiExtra.statisticsUI.loading"/></p>
+      <p className="scope-status" role="status">統計中請稍後</p>
       <div className="scope-feature-loading__body" aria-hidden="true"><span/><span/><span/><span/></div>
     </div>:null}
     {sourceChart&&(sourceRows.error||sourceCatalog.error)?<p className="scope-status scope-error">{featureDataErrorMessage(sourceRows.error||sourceCatalog.error,UI_COPY)}</p>:null}

@@ -472,7 +472,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       setNextCursor(null);
       setResults([]);
       setSelectedPlaceArticles([]);setBulkPreview(null);setBulkNotice('');
-      setStatus(UI_COPY.format.searchScope(searchCollectionLabel));
+      setStatus('搜尋中請稍後');
     }
     try{
       // The category is a semantic database filter, not a literal
@@ -1217,7 +1217,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     </section>:null}
     </section>:null}
     <div ref={resultsRef} className="scope-search-results">
-    {status&&(!managementMode||status!==UI_COPY.search.start)?<p className="scope-status">{status}</p>:null}
+    {status&&(!managementMode||status!==UI_COPY.search.start)?<p className="scope-status" role="status" aria-live="polite">{status}</p>:null}
     {!managementMode&&results.length>0&&!browseResults&&matchedQueryRef.current?<section className="scope-search-next-step"
       aria-label={t('uiExtra.searchUI.followupSearch')}>
       <p className="scope-status">{t('uiExtra.searchUI.followupSearch')}</p>
