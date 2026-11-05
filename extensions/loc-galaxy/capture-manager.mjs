@@ -135,7 +135,9 @@ export function captureController({record,authorized}){
       const ready=await authorized();
       if(!ready.ready)throw Error('OAuth／Scope 授權尚未通過');
       const state=await chrome.storage.local.get([ENABLED,PENDING,SCOPE]);
-      if(state[ENABLED]!==true)return {completed:0,disabled:true};
+      // Explicit archival imports can sync without enabling continuous capture.
+      if(state[ENABLED]!==true&&!(Array.isArray(state[PENDING])&&state[PENDING].length))
+        return {completed:0,disabled:true};
       const scopeid=state[SCOPE];
       const items=(Array.isArray(state[PENDING])?state[PENDING]:[])
         .filter(row=>row.scopeid===scopeid);
