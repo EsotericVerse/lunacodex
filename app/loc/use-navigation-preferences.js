@@ -18,7 +18,7 @@ export function useNavigationPreferences(){
     let live=true;
     setPreferences(current=>({...current,loading:true,error:''}));
     const keys=[accountNavigation.HOME_SETTING_KEY,accountNavigation.FAVORITES_SETTING_KEY,accountNavigation.folders.FOLDERS_SETTING_KEY];
-    getSettings(keys).then(settings=>{if(live)setPreferences({
+    getSettings(keys,identity).then(settings=>{if(live)setPreferences({
         home:accountNavigation.validScopeId(settings[keys[0]])||'loc',
         favorites:accountNavigation.parseFavorites(settings[keys[1]]),
         folders:accountNavigation.folders.parseFavoriteFolders(settings[keys[2]]),
