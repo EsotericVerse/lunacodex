@@ -73,10 +73,12 @@ async function authorizedStatus(){
     const checked=await verifyScopeAuthorization(issued.access_token,scopeid);
     await commitAuthorization(scopeid,issued,checked.subject);
     return {ready:true,scopeid,subject:checked.subject};
-  }catch{
-    // A denied/expired Scope is never displayed as authorized.
-    await clearCredentials();
-    return {ready:false,scopeid,subject:''};
+  }catch(error){
+    const detail=String(error?.message||'');
+    const denied=/HTTP 401|HTTP 403|OAuth Session 需重新登入|Scope 核驗失敗|Clerk OAuth 身分/.test(detail);
+    // Do not discard a valid refresh grant because Wi-Fi or the server is down.
+    if(denied)await clearCredentials();
+    return {ready:false,scopeid,subject:'',temporary_unavailable:!denied};
   }
 }
 async function handle(message){
