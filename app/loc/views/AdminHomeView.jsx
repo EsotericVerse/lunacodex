@@ -5,7 +5,7 @@ import adminZh from '../../i18n/sections/admin.zh_tw.js';
 import adminViewZh from '../../i18n/sections/uiExtra.adminView.zh_tw.js';
 registerDefaultSection('admin',adminZh);
 registerDefaultSection('uiExtra.adminView',adminViewZh);
-import {useEffect} from 'react';
+import {useEffect,useState} from 'react';
 import dynamic from 'next/dynamic';
 import {useAccount} from '../use-account';
 import {useEditDock} from '../../modular/edit-dock';
@@ -40,6 +40,7 @@ export default function AdminHomeView({scopeGroup}){
   const UI_COPY=useUiCopy();
   const account=useAccount();
   const editDock=useEditDock();
+  const [entryVerified,setEntryVerified]=useState(false);
   const canManage=Boolean(account.user&&!account.loading&&!account.permissionLoading&&account.canManageGlobalSync());
   // Preserve deep links created before the Admin sections were consolidated.
   const [section,setSection]=useManagementSection(ADMIN_OPTIONS,'registry',{
@@ -62,6 +63,7 @@ export default function AdminHomeView({scopeGroup}){
     const fromLogin=window.sessionStorage.getItem('loc-management-login-return-v1')===target;
     if(fromLogin)window.sessionStorage.removeItem('loc-management-login-return-v1');
     if(!canManage||!fromLogin&&editorSessionStatus(window.sessionStorage).expired){
+      setEntryVerified(false);
       window.dispatchEvent(new CustomEvent('loc-management-entry-denied',{detail:{scopeId:'loc'}}));
       window.location.replace('/login/index.html?return_to='+encodeURIComponent(target));
       return;
@@ -70,12 +72,13 @@ export default function AdminHomeView({scopeGroup}){
       clearEditorSession(window.sessionStorage);
       if(!touchEditorSession(window.sessionStorage))return;
     }
+    setEntryVerified(true);
     editDock?.begin('loc');
   },[account.loading,account.permissionLoading,canManage,editDock?.begin]);
   const selectedOption=ADMIN_OPTIONS.find(option=>option.value===section)||ADMIN_OPTIONS[0];
 
   if(account.loading||account.permissionLoading)return <section className="loc-view"><div className="loc-card">{UI_COPY.admin.checking}</div></section>;
-  if(!canManage)return <FeaturePage featureId="admin">
+  if(!canManage||!entryVerified)return <FeaturePage featureId="admin">
     <section className="loc-card scope-feature-card"><p role="status">正在開啟 LOC 身分驗證…</p></section>
   </FeaturePage>;
 
