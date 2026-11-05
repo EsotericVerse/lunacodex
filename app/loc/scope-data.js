@@ -123,12 +123,6 @@ function normalizeRegistryRow(row){
 // Registry, theme catalogue and page-copy are shared by all Scope pages.
 let publicSiteBootstrapRequest=null;
 let editedPublicMetadata=false;
-// Theme writes invalidate only the site snapshot, not Scope metadata or
-// runtime Registry caches. Ordinary Guest navigation is unaffected.
-export function invalidatePublicThemeSnapshot(){
-  editedPublicMetadata=true;
-  publicSiteBootstrapRequest=null;
-}
 // Only explicit admin metadata refreshes invalidate the public client snapshot.
 // Guest navigation shares the same promise and never preflights authorization.
 export function invalidatePublicScopeMetadata(){

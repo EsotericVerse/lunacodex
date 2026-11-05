@@ -1,10 +1,11 @@
 'use client';
 
-import {selectRows} from './db-query.mjs';
+import publishedThemeCatalog from '../modular/published-theme-catalog.json';
 import {getThemeSlot,THEME_TOKEN_KEYS} from '../modular/theme-registry';
 
 // CSS custom-property names are a fixed renderer contract.
-// Theme values are persisted as rows in the public silver.loc.theme JSONB array.
+// Public theme data comes from published JSON. silver.loc.theme is Admin-only
+// authoring data and is never queried to render visitor or Scope pages.
 export function themeColumnForToken(key){
   if(!THEME_TOKEN_KEYS.includes(key))throw new Error('Unknown Theme token: '+key);
   return key.slice(2).replaceAll('-','_');
@@ -27,15 +28,9 @@ export function themeNumber(value){
 }
 
 export async function selectThemeRegistry(){
-  const {rows}=await selectRows('silver.loc',{
-    columns:'theme',
-    filters:[{column:'id',operator:'eq',value:'loc'}],
-    limit:1,offset:0
-  });
-  const themes=rows?.[0]?.theme;
-  if(!Array.isArray(themes)||themes.length!==8)
-    throw Error('LOC Theme catalog must contain eight entries');
-  return themes.slice().sort((a,b)=>Number(a.theme_order)-Number(b.theme_order))
+  if(!Array.isArray(publishedThemeCatalog)||publishedThemeCatalog.length!==8)
+    throw Error('Published LOC Theme catalog must contain eight entries');
+  return publishedThemeCatalog.slice().sort((a,b)=>Number(a.theme_order)-Number(b.theme_order))
     .map(row=>({...row,theme_id:themeUiId(row.theme_id)}));
 }
 

@@ -1,8 +1,6 @@
 'use client';
 import {useEffect,useState} from 'react';
 import Select from 'react-select';
-import {useSWRConfig} from 'swr';
-import {invalidateAppBootstrapThemes} from '../../app-bootstrap';
 import UiText from '../../../i18n/UiText';
 import FieldText from '../../../i18n/FieldText';
 import {registerDefaultSection} from '../../../i18n/ui-copy';
@@ -16,7 +14,6 @@ registerDefaultSection('uiExtra.adminView',adminViewZh);
 
 export default function ThemeEditor(){
   useUiSection('uiExtra.adminView');
-  const {mutate}=useSWRConfig();
   const [rows,setRows]=useState([]);
   const [themeId,setThemeId]=useState(()=>{
     const current=typeof document==='undefined'?'':String(document.documentElement.dataset.themeId||'');
@@ -24,7 +21,6 @@ export default function ThemeEditor(){
   });
   const [draft,setDraft]=useState(null);
   const [status,setStatus]=useState('');
-  const [revision,setRevision]=useState(0);
 
   useEffect(()=>{
     let active=true;
@@ -39,7 +35,7 @@ export default function ThemeEditor(){
       })));
     })();
     return()=>{active=false};
-  },[revision]);
+  },[]);
 
   useEffect(()=>{
     const override=rows.find(row=>row.theme_id===themeId)||null;
@@ -101,11 +97,12 @@ export default function ThemeEditor(){
         p_section:'theme',p_operation:'upsert',p_key:String(themeNumber(themeId)),p_value:payload
       });
       if(error)throw new Error(error.message||'Theme 儲存失敗。');
-      // A successful Admin theme save deliberately refreshes the site palette;
-      // browsing Guest pages never refreshes this snapshot.
-      invalidateAppBootstrapThemes();
-      await mutate(key=>Array.isArray(key)&&key[0]==='app-bootstrap');
-      setStatus((draft.label||'主題')+' 已更新。');setRevision(v=>v+1);
+      // Keep the just-saved Admin draft available without fetching LOC
+      // again. Public Theme JSON/CSS is refreshed only by sync:public.
+      setRows(current=>current.map(row=>row.theme_id===themeId
+        ?{...payload,theme_id:themeId,theme_db_numeric:existing?.theme_db_numeric===true}
+        :row));
+      setStatus((draft.label||'主題')+' 已儲存。公開主題於下次 sync:public 發布後更新。');
       return true;
     }catch(error){setStatus(error?.message||'Theme 儲存失敗。');return false;}
   }

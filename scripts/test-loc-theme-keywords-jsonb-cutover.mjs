@@ -3,17 +3,21 @@ import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 
 const file=name=>readFileSync(new URL('../'+name,import.meta.url),'utf8');
-test('public Theme uses LOC JSONB and Admin editor updates a single slot via authorized RPC',()=>{
+test('public Theme reads published JSON; authorized editor alone uses LOC JSONB',()=>{
   const theme=file('app/loc/theme-data.js');
   const editor=file('app/loc/views/admin-panels/ThemeEditor.jsx');
   const publisher=file('scripts/generate-public-blocks.mjs');
-  assert.match(theme,/selectRows\('silver\.loc'/);
-  assert.match(theme,/columns:'theme'/);
+  const bootstrap=file('app/loc/app-bootstrap.js');
+  assert.match(theme,/published-theme-catalog\.json/);
+  assert.doesNotMatch(theme,/selectRows\('silver\.loc'/);
   assert.doesNotMatch(theme,/silver\.loc_theme/);
   assert.match(editor,/dbAuthRelation\('silver\.loc'\)\.select\('theme'\)/);
   assert.match(editor,/p_section:'theme',p_operation:'upsert'/);
+  assert.doesNotMatch(editor,/invalidateAppBootstrapThemes|mutate\(key=>Array\.isArray\(key\).*app-bootstrap/);
+  assert.match(bootstrap,/themes:publishedThemes/);
   assert.match(publisher,/db\.from\('loc'\)/);
   assert.match(publisher,/\.select\('theme'\)/);
+  assert.match(publisher,/published-theme-catalog\.json/);
   assert.doesNotMatch(publisher,/db\.from\('loc_theme'\)/);
 });
 test('LOC Keyword registry reads and writes through authorized JSONB RPC',()=>{
