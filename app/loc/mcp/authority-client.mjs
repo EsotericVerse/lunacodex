@@ -46,7 +46,7 @@ export async function authorityAction(name,args,token,env={},fetchImpl=globalThi
           typeof row.sent_at!=='string'||!Number.isFinite(Date.parse(row.sent_at))))
         throw bad('Only timestamped original user messages or real assistant advice may be recorded');
       const content=records.map(row=>'['+new Date(row.sent_at).toISOString()+'] '+
-        (row.role==='user'?'user':'assistant:advice')+' #'+row.message_id+'\\n'+row.text).join('\\n\\n');
+        (row.role==='user'?'user':'assistant:advice')+' #'+row.message_id+'\n'+row.text).join('\n\n');
       if(content.length>125000)throw bad('Source batch too large');
       path='sync/'+id(a.scopeid);method='POST';
       body={conversation_id:a.conversation_id,updated_at:a.updated_at,
