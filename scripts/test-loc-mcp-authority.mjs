@@ -342,3 +342,46 @@ test('Group grant listing exposes only active Clerk grants of that Group members
   assert.deepEqual(result.grants.map(x=>x.subject).sort(),['user_A','user_GroupAdmin']);
   assert.equal((await authority.mcpGroupGrants('othergroup')).grants.length,0);
 });
+
+test('Galaxy Link search only queries site=mcp in its authorized Scope',async()=>{
+  const {do:authority}=state();
+  authority.mcpPrivateProfile=async()=>profile;
+  let requested='';
+  globalThis.fetch=async url=>{
+    requested=String(url);
+    return Response.json([{uid:'Ab12Cd34',title:'One topic',createtime:'2026-11-05T00:00:00Z'}]);
+  };
+  const value=await authority.mcpLinkSearch('another', 'access rights', 3);
+  assert.equal(value.results.length,1);
+  const url=new URL(requested);
+  assert.equal(url.searchParams.get('site'),'eq.mcp');
+  assert.equal(url.searchParams.get('limit'),'3');
+  assert.equal(url.searchParams.has('uid'),false);
+  await assert.rejects(authority.mcpLinkSearch('another','ab',3),/Invalid Galaxy Link search/);
+});
+
+test('Galaxy Link appends only newer batches to the existing UID',async()=>{
+  const {do:authority}=state();
+  authority.mcpPrivateProfile=async()=>profile;
+  const calls=[];
+  globalThis.fetch=async(url,options)=>{
+    calls.push({method:options.method,body:options.body?JSON.parse(options.body):null});
+    if(options.method==='GET')return Response.json([{
+      uid:'Ab12Cd34',site:'mcp',content:'earlier statement',
+      title:'Galaxy Link topic',createtime:'2026-11-05T00:00:00Z'}]);
+    if(options.method==='PATCH')return Response.json([{uid:'Ab12Cd34'}]);
+    return new Response(null,{status:204});
+  };
+  const a=await authority.mcpSave('thirdscope',{
+    conversation_id:'chat-A',uid:'Ab12Cd34',updated_at:'2026-11-05T01:00:00Z',
+    title:'',content:'corrected statement',append:true});
+  assert.equal(a.uid,'Ab12Cd34');
+  assert.equal(a.appended,true);
+  assert.equal(calls.filter(x=>x.method==='PATCH').length,1);
+  assert.equal(calls.find(x=>x.method==='PATCH').body.content,'earlier statement\\ncorrected statement');
+  const again=await authority.mcpSave('thirdscope',{
+    conversation_id:'chat-A',uid:'Ab12Cd34',updated_at:'2026-11-05T01:00:00Z',
+    title:'',content:'corrected statement',append:true});
+  assert.equal(again.saved,false);
+  assert.equal(calls.filter(x=>x.method==='PATCH').length,1);
+});
