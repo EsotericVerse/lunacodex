@@ -66,7 +66,8 @@ export async function ensurePortableScopeSchema(db,{engine,namespace='',scopeId}
       .addColumn('title',textType)
       .addColumn('description',textType)
       .addColumn('invisible',boolType,c=>c.notNull().defaultTo(false))
-      .addColumn('attr',jsonType,c=>c.notNull());
+      .addColumn('attr',jsonType,c=>c.notNull())
+      .addColumn('createtime',dateTimeType,c=>c.defaultTo(sql.raw('CURRENT_TIMESTAMP')));
     await finalize(q,scope+'_anchor','type');
   }
   return {created};
@@ -82,7 +83,7 @@ export function validatePortableScopeSchema(tables,{engine,namespace='',scopeId}
     galaxy:['uid','title','content','createtime','location','UpdateTime','url',
       'source_id','target_id','ref_id','site','place_id','media_link','date','site_id',
       ...FLAGS],
-    anchor:['uid','type','title','description','invisible','attr']
+    anchor:['uid','type','title','description','invisible','attr','createtime']
   };
   const names={scopeId};
   for(const [kind,columns] of Object.entries(expected)){
