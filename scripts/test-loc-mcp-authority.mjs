@@ -357,7 +357,7 @@ test('Galaxy Link search only queries site=mcp in its authorized Scope',async()=
   assert.equal(url.searchParams.get('site'),'eq.mcp');
   assert.equal(url.searchParams.get('limit'),'3');
   assert.equal(url.searchParams.has('uid'),false);
-  await assert.rejects(authority.mcpLinkSearch('another','ab',3),/Invalid Galaxy Link search/);
+  await assert.rejects(authority.mcpLinkSearch('another','a',3),/Invalid Galaxy Link search/);
 });
 
 test('Galaxy Link appends only newer batches to the existing UID',async()=>{
