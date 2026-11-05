@@ -129,6 +129,11 @@ export async function mcpTool(token,name,args={}){
     body:JSON.stringify({jsonrpc:'2.0',id,method:'tools/call',
       params:{name,arguments:args}})
   });
+  if(response.status===429){
+    const after=Number(response.headers.get('retry-after'));
+    throw Error('LOC MCP QoS 冷卻中（HTTP 429）'+
+      (Number.isFinite(after)&&after>0?'，請於 '+Math.ceil(after)+' 秒後再試':'；請勿連續重試'));
+  }
   if(!response.ok)throw Error('LOC MCP 拒絕授權（HTTP '+response.status+'）');
   const data=await response.json();
   if(data?.id!==id||data?.error||data?.result?.isError)
