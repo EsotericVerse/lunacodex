@@ -162,3 +162,25 @@ test('Clerk token rotation and account change always trigger fresh verification'
   clerk.user={id:'user_two'};await adapter.verifiedIdentity();
   assert.equal(requests,3,'same token cannot reuse a different user identity');
 });
+
+test('two independently constructed adapters share one verified Clerk Session request',async()=>{
+  let calls=0;
+  const clerk={user:{id:'user_shared'},session:{id:'sess_shared_unique',getToken:async()=> 'signed.same.jwt'}};
+  const fetchImpl=async()=>{
+    calls++;
+    await Promise.resolve();
+    return {ok:true,status:200,json:async()=>({
+      provider:'clerk',subject:'user_shared',session:'sess_shared_unique',email:'shared@example.com'
+    })};
+  };
+  const options={siteOrigin,authorityOrigin,loadClerk:async()=>clerk,fetchImpl};
+  const first=createIndependentClerkIdentity(options);
+  const second=createIndependentClerkIdentity(options);
+  const [a,b]=await Promise.all([first.verifiedIdentity(),second.verifiedIdentity()]);
+  assert.equal(a.subject,'user_shared');
+  assert.equal(b.subject,'user_shared');
+  assert.equal(calls,1);
+  const third=createIndependentClerkIdentity(options);
+  await third.verifiedIdentity();
+  assert.equal(calls,1);
+});
