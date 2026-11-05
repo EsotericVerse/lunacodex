@@ -143,3 +143,15 @@ test('website session bridge does not transfer default Clerk Session Token',()=>
   assert.doesNotMatch(source,/document\.cookie|localStorage/);
   assert.match(html,/no-referrer/);
 });
+
+test('one-minute website template tokens and missing external replies are differentiated',()=>{
+  const worker=read('extensions/loc-galaxy/background.mjs');
+  const bridge=read('public/extension/website-bridge.mjs');
+  const oauth=read('extensions/loc-galaxy/oauth.mjs');
+  assert.match(worker,/Number\(access\.expires_at\)>Date\.now\(\)\+15_000/);
+  assert.doesNotMatch(worker,/Number\(access\.expires_at\)>Date\.now\(\)\+60_000/);
+  assert.match(bridge,/Extension 未回覆網站授權要求/);
+  assert.match(bridge,/Chrome 無法送達 LOC Galaxy Extension/);
+  assert.match(oauth,/LOC MCP '\+name\+' 失敗/);
+  assert.match(oauth,/data\.result\.content/);
+});
