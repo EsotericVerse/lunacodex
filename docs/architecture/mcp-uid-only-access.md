@@ -6,7 +6,7 @@ LOC MCP 對外以 `galaxy_link` 統一執行私人對話 `search/read/check/reco
 - `galaxy_link.read`：預設只對指定 Scope 的 MCP 話題按 UID 分頁讀取；`source=github` 僅 Scope 管理者可讀。
 - `galaxy_link.check`：依來源 `conversation_id` 與 `updated_at` 核對 Durable Object checkpoint，不讀 Galaxy。
 - `galaxy_link.record`：只接受提供的來源文字，首次建立隨機八碼 Base62 UID；後續依已知 UID 增量 Append，成功後才更新 checkpoint。
-- `read_memory` 保留既有公開文章 UID 讀取；獨立 `update_scope_pr` 工具併入 `galaxy_link(action=update_pr)`，既有後端仍需核對 GitHub 原始來源與標題 PR 編號。
+- `read_memory` 保留既有公開文章 UID 讀取；獨立 `update_scope_pr` 工具併入 `galaxy_link(action=update_pr)`，既有後端仍需核對 GitHub 原始來源、原標題 PR 編號或 canonical site_id；`uid` 非必要輸入，由後端在 Scope 授權下依 PR 號尋找唯一既有紀錄，未找到或歧義就拒絕。
 - MCP／GitHub PR 八個 Boolean 預設 false；即使日後有錯誤匯入旗標，資料庫 RLS 仍排除匿名讀取，完整八欄可在 Scope 編輯頁個別設定，匯入頁有授權預覽及批次更新。
 - Group Search 仍停用；LOC 網站本身的搜尋頁是獨立功能，不受這項變更影響。
 - 來源端（瀏覽器／支援的 Agent Client）才有能力取得對話原文；MCP 不會擅自爬取 ChatGPT。每小時排程與瀏覽器補登尚須來源端實作、驗證。

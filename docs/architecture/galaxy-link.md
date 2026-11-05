@@ -17,7 +17,7 @@ Galaxy Link 是跨 Agent、跨對話的 Scope 記錄與接續介面，不是另�
 - `action=search`：`scopeid`、`query`（至少兩字）、選填 `limit`（至多五筆）、`source=mcp|github`（預設 MCP）。
 - `action=read`：`scopeid`、`uid`；選填 `offset`、`max_chars`、`source=mcp|github`。
 - `action=check`：`scopeid`、來源 `conversation_id`、`updated_at`。
-- `action=update_pr`：`scopeid`、既有 `uid`、`pr_number`、`title`、`content`、`updated_at`；禁止修改 `site` 與 `site_id`。
+- `action=update_pr`：`scopeid`、`pr_number`、`title`、`content`、`updated_at`；**`uid` 選填**（已知時用於精確限制，使用者不需要記）。後端優先由 `site_id=EsotericVerse/moon-runes-pwa#編號` 定位，舊紀錄依原標題 PR 編號核對，發現多筆或無結果拒絕；禁止修改 `site`、`site_id` 或新建文章。
 - `action=record`：`scopeid`、`conversation_id`、`updated_at`、`records`，接續舊話題時可帶入從 `search` 找到的 `uid`。每批至多一百筆，正文批次最多 125000 字元。
 - `records[]` 必須具備 `role`、`kind`、`sent_at`、`text`、`message_id`；`user/original` 全量保存，`assistant/advice` 僅紀錄來源端選定的實際建議，其他類型拒絕。正文只增加時間／來源標記，不改寫每則文字。
 - Recorder 對每批來源紀錄計算 SHA-256 `batch_id`，將對應的內部標記寫入正文。管理型 PostgreSQL 以 `UID + site=mcp + batch_id` 的單筆條件 UPDATE 防止重複追加；其他 Scope 用既有 Scope Durable Object 讀取／PATCH，先檢查同一批是否已存在。資料庫成功但 checkpoint 確認遺失時，重送不會再追加同一批。

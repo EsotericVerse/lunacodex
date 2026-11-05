@@ -104,7 +104,7 @@ const TOOLS=[
     inputSchema:{type:'object',properties:{
       action:{type:'string',enum:['search','read','check','record','update_pr']},
       source:{type:'string',enum:['mcp','github'],description:'Optional search/read source; GitHub PR requires Scope manage permission'},
-      scopeid:{type:'string'},uid:{type:'string',pattern:'^[A-Za-z0-9]{8}$'},
+      scopeid:{type:'string'},uid:{type:'string',pattern:'^[A-Za-z0-9]{8}$',description:'Optional for update_pr: omit to locate existing GitHub PR by pr_number; never needed from the user'},
       query:{type:'string',minLength:2,maxLength:100},limit:{type:'integer',minimum:1,maximum:5},
       conversation_id:{type:'string'},updated_at:{type:'string'},created_at:{type:'string'},
       records:{type:'array',minItems:1,maxItems:100,items:{type:'object',properties:{
@@ -112,7 +112,7 @@ const TOOLS=[
         sent_at:{type:'string'},text:{type:'string'},message_id:{type:'string'}
       },required:['role','kind','sent_at','text','message_id'],additionalProperties:false}},
       title:{type:'string',maxLength:350},content:{type:'string',maxLength:125000},
-      pr_number:{type:'integer',minimum:1},
+      pr_number:{type:'integer',minimum:1,description:'Existing GitHub PR number; update_pr resolves unique Galaxy UID after Scope manage authorization'},
       offset:{type:'integer',minimum:0},max_chars:{type:'integer',minimum:1,maximum:40000}
     },required:['action','scopeid'],additionalProperties:false}},
   {name:'join_scope_group',description:'Group manager attaches an existing Scope; does not move or copy data.',
