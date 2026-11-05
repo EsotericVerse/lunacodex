@@ -43,7 +43,7 @@ export function reviewReorderedCoordinateNames(anchors=[]){
   return [...byKey.values()].filter(group=>group.items.length>1&&
     new Set(group.items.map(row=>String(row.title||''))).size>1)
     .map(group=>({...group,items:group.items.sort((a,b)=>
-      String(a.uid||'').localeCompare(String(b.uid||'')))}))
+      String(a.createtime||a.created_at||'').localeCompare(String(b.createtime||b.created_at||'')))}))
     .sort((a,b)=>b.items.length-a.items.length||a.key.localeCompare(b.key));
 }
 
@@ -60,8 +60,7 @@ export function samePlaceFloor(a,b){
 }
 export function initialPlaceOf(group){
   return [...group].sort((a,b)=>
-    String(a.created_at||'').localeCompare(String(b.created_at||''))||
-    String(a.uid||'').localeCompare(String(b.uid||'')))[0];
+    String(a.createtime||a.created_at||'').localeCompare(String(b.createtime||b.created_at||'')))[0];
 }
 function tokens(value){
   const s=compactPlaceName(value).replace(/店$/u,'');
@@ -91,8 +90,7 @@ export function reviewPlaceNameGroups(anchors=[]){
   for(const [key,rows] of byKey){
     if(rows.length<2||new Set(rows.map(row=>String(row.title||''))).size<2)continue;
     const ordered=[...rows].sort((a,b)=>
-      String(a.created_at||'').localeCompare(String(b.created_at||''))||
-      String(a.uid||'').localeCompare(String(b.uid||'')));
+      String(a.createtime||a.created_at||'').localeCompare(String(b.createtime||b.created_at||'')));
     const group={key,canonical:ordered[0],items:ordered,
       reason:'同座標、完整名稱字元相同'};
     if(ordered.every(row=>samePlaceFloor(ordered[0],row)))automatic.push(group);
