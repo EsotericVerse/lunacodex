@@ -192,6 +192,19 @@ function settingValue(row,key){
   return row.integer_value??row.text_value??null;
 }
 
+// Account navigation reads the three preferences in a single SQL request.
+// Other setting consumers can continue using getSetting(key) individually.
+export async function getSettings(keys=[]){
+  const names=[...new Set((Array.isArray(keys)?keys:[]).map(key=>String(key||'').trim()).filter(Boolean))];
+  if(!names.length)return {};
+  const {data,error}=await apiRelation('user_settings')
+    .select('setting_key,text_value,integer_value,updated_at')
+    .in('setting_key',names);
+  if(error)throw new Error(error.message||'個人設定讀取失敗');
+  const rows=new Map((data||[]).map(row=>[String(row.setting_key),row]));
+  return Object.fromEntries(names.map(key=>[key,settingValue(rows.get(key)||null,key)]));
+}
+
 export async function getSetting(key){
   // Auth identity was already resolved by the on-demand personal-settings flow;
   // the target relation's RLS limits each reader to their own rows.
