@@ -300,7 +300,17 @@ export async function heroBlocks(scopeId,type){
     p_scope_id:id,p_type:name
   });
   if(error)throw new Error(error.message||'Hero Blocks SELECT failed');
-  return (Array.isArray(data)?data:[]).sort((a,b)=>Number(a.block_order||0)-Number(b.block_order||0));
+  const rows=Array.isArray(data)?data:[];
+  if(!rows.length){
+    // The published artwork is a bundled default when a new Scope has not
+    // populated its Blocks table yet; this is not an ISR/database cache.
+    const names=['group_'+name,'scope_'+name];
+    const defaults=await Promise.all(names.map(page=>loadPublishedBlocks('loc',page)));
+    return defaults.flatMap((items,index)=>(items||[]).map(row=>({
+      ...row,page_name:names[index]
+    })));
+  }
+  return rows.sort((a,b)=>Number(a.block_order||0)-Number(b.block_order||0));
 }
 export async function selectScopeBlocks(scopeId,page='index'){
   const id=String(scopeId||'').trim().toLowerCase();
