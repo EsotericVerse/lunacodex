@@ -19,6 +19,20 @@ const backupFailures=new Map();
 const listeners=new Set();
 let manualReadLabel='';
 
+// Footer indicates whether a data source is reachable, not whether every
+// individual SQL query is permitted or correctly shaped.
+export function isDatabaseConnectivityFailure(error){
+  const code=String(error?.code||error?.cause?.code||'');
+  const status=Number(error?.status||error?.cause?.status||0);
+  if(['SEARCH_RATE_LIMIT','SEARCH_TIMEOUT'].includes(code)||status===429)return false;
+  if(status>=400&&status<500)return false;
+  if(code.startsWith('08')||code==='53300')return true;
+  if(error?.name==='TimeoutError'||error?.cause?.name==='TimeoutError')return true;
+  if([502,503,504].includes(status))return true;
+  return status===0&&(error instanceof TypeError||
+    /networkerror|failed to fetch|fetch failed|econn|socket|timed? out|disconnect|network unavailable/i.test(String(error?.message||'')));
+}
+
 function snapshot(){
   const failingResources=[...failures.keys()].sort();
   const unavailableResources=failingResources.filter(key=>backupFailures.has(key));
@@ -68,12 +82,12 @@ export function markPrimaryReadFailed(resource,error){
   emit();
 }
 export function markPrimaryReadSucceeded(resource){
-  const key=String(resource||'public-read');
-  // A healthy primary read means any stale backup-failure record for this
-  // same resource is no longer relevant to the overall status.
-  const hadPrimary=failures.delete(key);
-  const hadBackup=backupFailures.delete(key);
-  if(!hadPrimary&&!hadBackup)return;
+  // This is a source-wide connectivity indicator. A successful primary
+  // SELECT disproves a stale "whole source unavailable" state even if it
+  // was recorded while reading a different table.
+  if(!failures.size&&!backupFailures.size)return;
+  failures.clear();
+  backupFailures.clear();
   emit();
 }
 export function markBackupReadFailed(resource,error){
