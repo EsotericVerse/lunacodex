@@ -1,4 +1,4 @@
-# LOC Galaxy — Chrome Extension (Stage 2: Galaxy workbench)
+# LOC Galaxy — Chrome Extension (Stage 3: explicit source Recorder)
 
 This Manifest V3 extension connects only to LOC MCP via Clerk OAuth. The user enters only Scope ID. The full-page workbench adds private Galaxy Link search/read and buttons for the existing LOC website import, bulk-update, and article management pages.
 
@@ -11,7 +11,7 @@ This Manifest V3 extension connects only to LOC MCP via Clerk OAuth. The user en
 5. Only after verification are credentials persisted. `chrome.storage.session` holds the short-lived access token; `chrome.storage.local` holds the refresh token and Scope. Both are restricted to **trusted extension contexts**, not content scripts, and never synced to the user's Chrome account. The password and client secret are never collected. Treat local refresh-token storage as sensitive; Chrome storage is not a hardware vault.
 6. Changing Scope immediately clears the old credentials. Disconnect clears Extension credentials **without** pretending to revoke the website's Clerk sign-in; server-side token revocation is a separate action.
 
-No automatic Recorder, content scripts, chat monitoring, arbitrary external MCP forwarding, unattended database writes or extension-side bulk import parser is included. Data import and bulk edits run in the existing LOC site after its independent Clerk and Scope authorization. The extension never forwards the OAuth token to those pages.
+No automatic chat capture, content scripts, chat monitoring, arbitrary external MCP forwarding, unattended database writes or extension-side bulk import parser is included. Data import and bulk edits run in the existing LOC site after its independent Clerk and Scope authorization. The extension never forwards the OAuth token to those pages.
 
 ## Operator OAuth registration — required before first login
 
@@ -48,7 +48,7 @@ No other parameter is required of the end user. A missing operator registration 
 
 Run `node --test scripts/test-loc-galaxy-chrome-oauth.mjs scripts/test-loc-galaxy-workbench.mjs` for isolated manifest, deterministic redirect, PKCE and callback tests. Actual Clerk authorization, token issuance, browser store visibility and end-to-end Scope authorization still require a configured Clerk OAuth app and an installed Chrome Extension.
 
-Read also: `docs/architecture/galaxy-link.md`. The durable Recorder and extension-native archive upload remain later stages; this release reuses the published LOC import engine rather than duplicating it in the extension.
+Read also: `docs/architecture/galaxy-link.md`. An explicit user-selected JSON Recorder is implemented in Stage 3; automated cross-app capture and extension-native ZIP archive upload remain later stages; this release reuses the published LOC import engine rather than duplicating it in the extension.
 
 ## Unified LOC favicon
 
@@ -60,3 +60,11 @@ The Extension toolbar, action and popup reuse the exact existing `assets/site/ic
 - Search uses `galaxy_link(action=search,source=mcp)` only, at most five results; it uses the existing Authority QoS and an additional 30-second client-side cooldown. Article content is fetched only when the user chooses a result and is paged via `galaxy_link(action=read)`.
 - The management launch links point to the canonical `/lo3rwang/search/manage/?section=import` (or equivalent Scope path); file parsing/writing and bulk edit permission are still owned by the LOC website. A disconnected Extension refuses to open these links.
 - GitHub PR writing from an Agent goes through the server-side `galaxy_link.update_pr` action, not through the Extension. This Extension release does not copy or publish PR content.
+
+## Stage 3: explicit source Recorder
+
+In the white workbench, select a JSON file with `conversation_id`, timezone-qualified `updated_at`, and 1–100 authentic `records` (`role`, `kind`, `sent_at`, `message_id`, `text`). `user` messages must be `original`, `assistant` messages must be explicitly selected `advice`. Optional `uid` points to an existing authorized topic. Preview source ID, count and timestamp, then click **確認追加至 Galaxy**. No file is sent until this action is confirmed.
+
+The trusted service worker checks `galaxy_link.check` and calls `galaxy_link.record` only when `needs_save=true`; the backend owns checkpoint persistence and batch deduplication. Failed/ambiguous writes must not be marked complete. Each file is limited to 200 KB and a batch to 100 records / 120000 JSON characters. Larger exports require separately sourced batches and stable IDs. Note that a source-side `updated_at` must progress with new batches; the Extension does not manufacture timestamps or automatically scrape conversations. Current UI accepts one explicit source batch at a time.
+
+This does **not** capture ChatGPT desktop/mobile conversations or run hourly automatic jobs. Those require platform-provided exports or a separately authorized source adapter; no Chrome content-script, tabs-history, or background scanning capability is granted. Test with `node --test scripts/test-loc-galaxy-chrome-oauth.mjs scripts/test-loc-galaxy-workbench.mjs scripts/test-loc-galaxy-recorder.mjs`, followed by actual OAuth/Scope/record/read browser verification. Version 0.3.0 is source code only until installed/reloaded in Chrome.

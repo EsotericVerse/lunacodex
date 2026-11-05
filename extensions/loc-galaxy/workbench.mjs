@@ -1,3 +1,4 @@
+import {validateConversation} from './recorder.mjs';
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const scopeid=new URL(location.href).searchParams.get('scopeid')||'';
 const byId=id=>document.getElementById(id);
@@ -7,6 +8,9 @@ const article=byId('article'),title=byId('article-title'),meta=byId('article-met
 const body=byId('article-content'),more=byId('more');
 const actions=['open-import','open-bulk','open-article'];
 let ready=false,busy=false,current=null,nextOffset=null;
+let stagedConversation=null;
+const fileInput=byId('conversation-file'),recordButton=byId('record-conversation');
+const recorderPreview=byId('recorder-preview'),recorderStatus=byId('recorder-status');
 
 async function send(type,params={}){
   const answer=await chrome.runtime.sendMessage({type,scopeid,...params});
@@ -22,6 +26,8 @@ function setBusy(value){
   searchButton.disabled=!ready||value;
   queryInput.disabled=!ready||value;
   for(const id of actions)byId(id).disabled=!ready||value;
+  fileInput.disabled=!ready||value;
+  recordButton.disabled=!ready||value||!stagedConversation;
   more.disabled=!ready||value;
 }
 function closeArticle(){
@@ -89,6 +95,45 @@ async function navigate(mode){
     notice('已在新分頁開啟 '+(mode==='import'?'資料匯入':mode==='bulk'?'大量更新':'文章管理')+'。');
   }catch(error){notice(String(error.message||error),true);}
 }
+fileInput.addEventListener('change',async()=>{
+  stagedConversation=null;
+  recordButton.disabled=true;
+  const file=fileInput.files?.[0];
+  recorderPreview.textContent='尚未載入來源紀錄。';
+  recorderStatus.textContent='';
+  if(!file)return;
+  if(file.size>200000){
+    recorderStatus.textContent='檔案超過 200 KB，請由來源拆成較小批次。';return;
+  }
+  try{
+    const data=JSON.parse(await file.text());
+    const batch=validateConversation(data);
+    stagedConversation=batch;
+    recorderPreview.textContent='來源 '+batch.conversation_id+' · '+batch.records.length+
+      ' 則 · 更新時間 '+batch.updated_at+'。檔案沒有自動送出。';
+    recordButton.disabled=!ready||busy;
+  }catch(error){
+    recorderStatus.textContent=String(error.message||error);
+  }
+});
+recordButton.addEventListener('click',async()=>{
+  if(!ready||busy||!stagedConversation)return;
+  if(!confirm('確定要將 '+stagedConversation.records.length+' 則來源紀錄追加至 '+scopeid+' 的私人 Galaxy？'))return;
+  setBusy(true);
+  recorderStatus.textContent='正在核對 checkpoint 並追加來源紀錄…';
+  try{
+    const answer=await send('locGalaxy.record',{conversation:stagedConversation});
+    recorderStatus.textContent=answer.unchanged
+      ?'來源時間戳已記錄，沒有重複追加。'
+      :'Galaxy 已確認寫入'+(answer.uid?' · UID '+answer.uid:'')+'。';
+    stagedConversation=null;
+    fileInput.value='';
+    recorderPreview.textContent='已完成本批操作；下一批需重新選擇來源檔。';
+  }catch(error){
+    recorderStatus.textContent='未確認寫入：'+String(error.message||error)+
+      '。原始檔案仍在本機，可重新核對；請勿假設已完成。';
+  }finally{setBusy(false);}
+});
 searchForm.addEventListener('submit',runSearch);
 byId('close-article').addEventListener('click',closeArticle);
 more.addEventListener('click',()=>{if(current&&nextOffset!==null)void loadArticle(current,nextOffset);});

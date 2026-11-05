@@ -3,6 +3,7 @@ import {
   verifyScopeAuthorization,mcpTool
 } from './oauth.mjs';
 import {scopeManagementUrl} from './workspace-routes.mjs';
+import {validateConversation} from './recorder.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const SCOPE_KEY='locGalaxy.scopeid';
@@ -122,6 +123,27 @@ async function galaxyRequest(message){
     action:'read',scopeid,source,uid:message.uid,offset,max_chars:20000
   });
 }
+async function recorderRequest(message){
+  const scopeid=checkedScope(message.scopeid);
+  const token=await verifiedAccess(scopeid);
+  const input=validateConversation(message.conversation);
+  // Server checkpoint and append are authoritative. No client-side cursor advances.
+  const status=await mcpTool(token,'galaxy_link',{
+    action:'check',scopeid,conversation_id:input.conversation_id,
+    updated_at:input.updated_at
+  });
+  if(status.scopeid!==scopeid||status.conversation_id!==input.conversation_id)
+    throw Error('Galaxy Recorder checkpoint 來源不一致');
+  if(status.needs_save===false)return {saved:false,unchanged:true,uid:status.uid||null};
+  const uid=input.uid||status.uid||undefined;
+  const result=await mcpTool(token,'galaxy_link',{
+    action:'record',scopeid,...input,...(uid?{uid}:{})
+  });
+  if(result.scopeid&&result.scopeid!==scopeid)
+    throw Error('Galaxy Recorder 回應 Scope 不符');
+  return {saved:true,uid:result.uid||uid||null,result};
+}
+
 async function openWorkspace(message){
   const scopeid=checkedScope(message.scopeid);
   await verifiedAccess(scopeid);
@@ -143,6 +165,7 @@ async function handle(message){
     case 'locGalaxy.openWorkbench':
     case 'locGalaxy.openWorkspace':return openWorkspace(message);
     case 'locGalaxy.galaxy':return galaxyRequest(message);
+    case 'locGalaxy.record':return recorderRequest(message);
     case 'locGalaxy.openLogin':{
       const scopeid=await selectScope(message.scopeid);
       await chrome.tabs.create({url:SCENIC_LOGIN,active:true});

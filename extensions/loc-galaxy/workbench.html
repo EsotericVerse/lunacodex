@@ -45,6 +45,28 @@
       <button id="more" type="button" hidden>繼續讀取後續內容</button>
     </article>
   </section>
+  <section class="panel" aria-labelledby="recorder-heading">
+    <div class="section-header"><h2 id="recorder-heading">Galaxy Recorder</h2><small>Stage 3 · 明確來源匯入</small></div>
+    <p class="muted">選擇你自行取得的 JSON 對話來源檔案，預覽後由你明確決定是否追加至私人 <code>site=mcp</code>。不自動監控分頁、不讀取瀏覽器歷史，也不會將訊息傳往非 LOC 服務。</p>
+    <label for="conversation-file">來源對話 JSON（最多 100 則／批）</label>
+    <input id="conversation-file" type="file" accept=".json,application/json" disabled>
+    <p id="recorder-preview" class="muted" role="status">尚未載入來源紀錄。</p>
+    <button id="record-conversation" type="button" disabled>確認追加至 Galaxy</button>
+    <p id="recorder-status" class="message" role="status" aria-live="polite"></p>
+    <details><summary>JSON 來源格式</summary><pre class="recorder-example">{
+  "conversation_id": "來源平台的穩定對話 ID",
+  "updated_at": "2026-11-06T04:00:00+08:00",
+  "records": [
+    {
+      "role": "user",
+      "kind": "original",
+      "sent_at": "2026-11-06T03:59:00+08:00",
+      "message_id": "來源訊息的穩定 ID",
+      "text": "來源原文"
+    }
+  ]
+}</pre></details>
+  </section>
   <footer>LOC Galaxy · 僅使用官方 LOC OAuth · Token 保留在 Extension 背景安全儲存區</footer>
 </main>
 </body>

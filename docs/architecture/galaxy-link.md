@@ -52,3 +52,9 @@ MCP Server 不是 ChatGPT／Claude／其他 App 的聊天歷史 API，無法自�
 - Extension 在記錄連線成功之前，以該 OAuth Token 對 `loc_connection_status` 及 `galaxy_link(action=check,scopeid)` 做身分與 Scope 寫入授權核驗；未授權不可啟用後續 Recorder。不同 Scope 不共用已授權 Token 狀態，切換 Scope 會清除舊憑證。
 - 客戶端 ID 由 LOC 網站的公開 OAuth 設定提供，而非使用者輸入；正式 Clerk 須由管理者一次性註冊公開客戶端（可用 CIMD 或手動 Public Client），並核對 Chrome 回呼 URI。不啟用匿名 DCR、不在 Extension 放 Client Secret。
 - 這一階段**沒有**裝入對話擷取或定時寫入，目的是先驗證登入、Scope 權限、Token 隔離與可用性；詳情見 `extensions/loc-galaxy/README.md`。OAuth 客戶端尚未在正式 Clerk 實例驗證時不得宣稱可登入。
+
+## Chrome Extension Stage 3：來源檔案明確追加
+
+Extension 0.3.0 增加白色工作台的本機 JSON 檔案預覽與按鈕確認，再透過受信任的 service worker 使用既有 OAuth Scope Token 呼叫 `galaxy_link.check` / `galaxy_link.record`。來源 `conversation_id`、`updated_at` 與原始訊息 ID、時間及文字由使用者提供，不推測內容、不寫入獨立資料庫。只在後端成功回報時顯示寫入成功；前端不持有 Token。
+
+**不代表自動擷取已完成**：沒有 ChatGPT/Claude 來源介接、每小時背景排程、未傳送訊息擷取，也未完成 Chrome 實機 OAuth／寫入／重試驗證。這個版本是可審查的明確來源匯入路徑，不宣稱零漏記。
