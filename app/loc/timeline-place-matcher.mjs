@@ -83,7 +83,7 @@ export function matchTimelineWindows(windows,anchors,radius=TIMELINE_RADIUS_METE
   const selected=[];
   for(const window of windows){
     const candidates=locations.map(anchor=>({...anchor,distance:distanceInMeters(window,anchor)}))
-      .filter(anchor=>anchor.distance<=radius).sort((a,b)=>a.distance-b.distance||a.uid.localeCompare(b.uid));
+      .filter(anchor=>anchor.distance<=radius).sort((a,b)=>a.distance-b.distance);
     if(!candidates.length){omitted++;continue;}
     if(candidates.length>1||window.uncertain)ambiguous++;
     selected.push({...window,index:selected.length,candidates:candidates.map(({uid,title,distance})=>({
@@ -111,7 +111,7 @@ export function accumulateTimelineArticles(matches){
   const ready=[],disputes=[],unchanged=[];
   for(const item of byUid.values()){
     if(item.existingPlaceId)continue; // Already anchored; never review twice.
-    const candidates=[...item.candidates.values()].sort((a,b)=>a.meters-b.meters||a.uid.localeCompare(b.uid));
+    const candidates=[...item.candidates.values()].sort((a,b)=>a.meters-b.meters);
     const unique=candidates.length===1&&!item.disputed;
     const coordinates=[...item.coordinates].sort();
     // A GPS reading is evidence, not a location identity. The closest
@@ -127,7 +127,7 @@ export function accumulateTimelineArticles(matches){
       item.existingPlaceId?'既有 place_id 與候選位置不同':
       '附近多個定錨點／來源信心不足'});
   }
-  const byDate=(a,b)=>String(a.createtime||'').localeCompare(String(b.createtime||''))||a.uid.localeCompare(b.uid);
+  const byDate=(a,b)=>String(a.createtime||'').localeCompare(String(b.createtime||''));
   ready.sort(byDate);disputes.sort(byDate);
   return {ready,disputes,unchanged};
 }
@@ -153,7 +153,7 @@ export function groupTimelineMissingPlaces(analysis){
       const previous=candidateSet.get(candidate.uid);
       if(!previous||candidate.meters<previous.meters)candidateSet.set(candidate.uid,candidate);
     }
-    const available=[...candidateSet.values()].sort((a,b)=>a.uid===anchorId?-1:b.uid===anchorId?1:a.meters-b.meters||a.uid.localeCompare(b.uid));
+    const available=[...candidateSet.values()].sort((a,b)=>a.uid===anchorId?-1:b.uid===anchorId?1:a.meters-b.meters);
     return {...group,candidates:available,defaultPlaceId:unanimous?anchorId:'',
       suggestedPlaceId:anchorId,disputed:!unanimous};
   }).sort((a,b)=>b.rows.length-a.rows.length||a.key.localeCompare(b.key));
