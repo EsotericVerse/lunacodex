@@ -81,7 +81,7 @@ const FEATURE_FLAGS=Object.freeze({
   statics:'statistics_able',
   keywords:'statistics_able',
   culture:'culture_able',
-  search:'search_able',
+  search:'search',
   trace:'trace'
 });
 
