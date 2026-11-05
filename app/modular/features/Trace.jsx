@@ -12,7 +12,6 @@ registerDefaultSection('uiExtra.traceUI',traceZh);
 const TEXT='uiExtra.traceUI.';
 import {useAsyncResource} from '../../loc/use-async-resource';
 import useLocFeatureSettings from '../../loc/use-loc-feature-settings';
-import {traceHomeMapChoices} from '../../loc/loc-feature-preferences.mjs';
 import {traceWindow} from './trace/trace-panel-filters.mjs';
 import {publicTraceMapChoices} from './trace/trace-map-choices.mjs';
 import {pickTraceDemoStop,traceDemoRoute} from './trace/trace-demo-route.mjs';
@@ -21,8 +20,8 @@ import {
   TRACE_DEFAULT_ROUTE_CHANGED
 } from './trace/trace-route-preference.mjs';
 import {
-  TRACE_SCOPES,traceMapIndexKey,traceCurrentKey,traceAllAnchorsKey,traceMemberUids,
-  readTraceMapIndex,readCurrentTraceAnchors,readAllTraceAnchors
+  TRACE_SCOPES,traceMapIndexKey,traceCurrentKey,traceMemberUids,
+  readTraceMapIndex,readCurrentTraceAnchors
 } from './trace/trace-data';
 
 // A Current route loads only its members. Without a saved route, show the
@@ -78,11 +77,13 @@ export default function Trace({scopeId='loc'}){
   });
   const allMaps=traceIndex.data||[];
   const allMapChoices=publicTraceMapChoices(allMaps,scopeId);
-  const maps=userActive&&!selectedMapUid
-    ?traceHomeMapChoices(allMapChoices,userSettings.display):allMapChoices;
+  // A display preference must never turn the homepage into an unbounded
+  // point scan. The selector starts with saved path/trace definitions only.
+  const maps=allMapChoices;
   const mapChoiceKey=row=>isLoc?row.source_scope+':'+row.uid:row.uid;
   const currentMap=useMemo(()=>isLoc
-    ?maps.find(row=>row.source_scope+':'+row.uid===currentTraceChoice)||maps.find(row=>row.trace_type==='trace')||maps[0]||null
+    ?maps.find(row=>row.source_scope+':'+row.uid===currentTraceChoice)
+      ||maps.find(row=>row.trace_type==='path')||null
     :chooseDefaultTraceRoute(maps,scopeId,currentTraceChoice),
     [allMaps,scopeId,currentTraceChoice,isLoc]);
   const periodScopeId=isLoc?(currentMap?.source_scope||'loc'):scopeId;
@@ -113,17 +114,13 @@ export default function Trace({scopeId='loc'}){
     const found=maps.find(row=>String(row.uid)===selectedMapUid);
     if(found)setCurrentTraceChoice(isLoc?found.source_scope+':'+found.uid:found.uid);
   },[selectedMapUid,allMaps,scopeId,isLoc]);
-  useEffect(()=>{
-    if(userActive&&!selectedMapUid)
-      setCurrentTraceChoice(userSettings.display==='anchor'?'all':'auto');
-  },[scopeId,userActive,userSettings.display,selectedMapUid]);
+  // Never auto-select the legacy All Anchors mode from stored preferences.
+  // The initial viewport is only the selected saved route.
   const chooseCurrentTrace=value=>{
     setSelectedPlace(null);
     if(isLoc){setCurrentTraceChoice(value);return;}
-    if(value==='all'){setCurrentTraceChoice('all');return;}
     if(setDefaultTraceRoute(scopeId,value))setCurrentTraceChoice(value);
   };
-  const showingAll=currentTraceChoice==='all'||(!currentMap&&!maps.length);
   const linkedRoutes=useMemo(()=>currentMap?.trace_type==='trace'
     ?allMaps.filter(row=>row.source_scope===currentMap.source_scope&&row.trace_type==='path'
       &&(currentMap.route_list?.routes||[]).includes(row.uid))
@@ -131,7 +128,7 @@ export default function Trace({scopeId='loc'}){
   const members=useMemo(()=>currentMap
     ?[...new Set([...traceMemberUids(currentMap),...linkedRoutes.flatMap(traceMemberUids)])]:[],
     [currentMap,linkedRoutes]);
-  useEffect(()=>{setDemoStopIds([]);},[periodScopeId,currentMap?.uid,showingAll]);
+  useEffect(()=>{setDemoStopIds([]);},[periodScopeId,currentMap?.uid]);
 
   // Phase 2: cache the current route's 2–80 sites by its membership revision.
   // Repeated visits have their own timestamps; a multi-day trip does not imply
@@ -139,21 +136,18 @@ export default function Trace({scopeId='loc'}){
   const anchorsQuery=useAsyncResource({
     queryKey:currentMap
       ?traceCurrentKey(periodScopeId,{...currentMap,anchor_list:members},{nativeOnly:periodScopeId==='loc'})
-      :traceAllAnchorsKey(periodScopeId,{nativeOnly:periodScopeId==='loc'}),
-    enabled:supported&&routeListOpen&&traceIndex.data!==undefined&&(Boolean(currentMap)||showingAll),
-    queryFn:()=>currentMap
-      ?readCurrentTraceAnchors(periodScopeId,members,
-          {nativeOnly:periodScopeId==='loc'})
-      :readAllTraceAnchors(periodScopeId,{nativeOnly:periodScopeId==='loc'}),
+      :['trace-no-selected-route',periodScopeId],
+    enabled:supported&&routeListOpen&&traceIndex.data!==undefined&&Boolean(currentMap),
+    queryFn:()=>readCurrentTraceAnchors(periodScopeId,members,
+      {nativeOnly:periodScopeId==='loc'}),
     revalidateIfStale:false,revalidateOnFocus:false,revalidateOnReconnect:false
   });
   const spatialData=useMemo(()=>{
     if(!routeListOpen||traceIndex.data===undefined)return null;
-    if(!showingAll&&!currentMap)return {anchors:[],maps:[]};
+    if(!currentMap)return {anchors:[],maps:[]};
     if(anchorsQuery.data===undefined)return null;
-    return {anchors:anchorsQuery.data,
-      maps:showingAll?maps:[currentMap,...linkedRoutes]};
-  },[routeListOpen,traceIndex.data,anchorsQuery.data,currentMap,showingAll,linkedRoutes]);
+    return {anchors:anchorsQuery.data,maps:[currentMap,...linkedRoutes]};
+  },[routeListOpen,traceIndex.data,anchorsQuery.data,currentMap,linkedRoutes]);
 
   const demoRoute=useMemo(()=>traceDemoRoute(demoStopIds,spatialData?.anchors||[],periodScopeId),
     [demoStopIds,spatialData?.anchors,periodScopeId]);
@@ -182,7 +176,7 @@ export default function Trace({scopeId='loc'}){
       {supported&&routeListOpen?<label>
         <span>{t("currentMaps")}</span>
         <select className="scope-select"
-          value={showingAll?'all':currentMap?mapChoiceKey(currentMap):''}
+          value={currentMap?mapChoiceKey(currentMap):''}
           onChange={event=>chooseCurrentTrace(event.target.value)}
           disabled={traceIndex.isPending||Boolean(traceIndex.error)||!maps.length}>
           {isLoc
@@ -213,10 +207,8 @@ export default function Trace({scopeId='loc'}){
     {supported&&anchorsQuery.error?<p className="scope-status scope-error" role="alert">
       {t("anchorsError")}{String(anchorsQuery.error.message||anchorsQuery.error)}
     </p>:null}
-    {supported&&!traceIndex.isPending&&!traceIndex.error&&!maps.length&&anchorsQuery.isSuccess?<p className="scope-status">
-      {anchorsQuery.data?.length
-        ?t('noMapsWithAnchorsStart')+anchorsQuery.data.length+t('noMapsWithAnchorsEnd')
-        :t('noMapsOrAnchors')}
+    {supported&&!traceIndex.isPending&&!traceIndex.error&&!maps.length?<p className="scope-status">
+      {t('noMapsOrAnchors')}
     </p>:null}
 
     {twoPointDemo?<div className="loc-trace-demo-message" role="group" aria-label={t("demoTitle")}>
