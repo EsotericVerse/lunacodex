@@ -19,12 +19,11 @@ export async function readPlaceSummary(scopeId,{startDate='',endDate=''}={}){
     if(!Array.isArray(data))throw new Error('Invalid place summary RPC result');
     let anchors=[];
     if(['lo3rwang','lrunes'].includes(scopeId)){
-      // The Trace adapter maps space_anchor to native Anchor.type='point'
-      // for lo3rwang; 'anchor' means a Time/date node, not a place.
+      // Query the physical Anchor directly. Legacy *_trace views are retired.
       const pageSize=500;
       for(let offset=0;;offset+=pageSize){
-        const {rows}=await selectRows('silver.'+scopeId+'_trace',{
-          columns:'uid,title',filters:[{column:'trace_type',operator:'eq',value:'space_anchor'}],
+        const {rows}=await selectRows(scope.anchor,{
+          columns:'uid,title',filters:[{column:'type',operator:'eq',value:'point'}],
           orders:[{column:'title',ascending:true}],
           limit:pageSize,offset
         });

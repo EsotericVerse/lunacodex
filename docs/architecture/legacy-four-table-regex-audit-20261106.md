@@ -44,3 +44,14 @@
 4. 最後執行文化、統計、搜尋、痕跡／關鍵詞跨 Scope 的回歸驗收與 Portable 驗收。
 
 **本文件是盤點記錄，不代表全部命中都該刪，也不宣稱已掃過 GitHub 搜尋上限之外的所有檔案。**
+
+## 2026-11-06｜第二輪：實作完成／新增舊欄位 Regex
+
+- `app/loc/place-summary-client.js`：改為直接 `selectRows(scope.anchor)`，僅篩選 `type=point`、投影 UID/title，不再走 `_trace` 虛擬表名。
+- `app/modular/features/trace/trace-spatial-reference-data.js`：兩個讀取入口直接查 `scope+'_anchor'` 的 `type=point`，使用 `attr.longitude/latitude`；保留原本名稱搜尋、跨 Scope 篩選、候選數上限，無路線與地圖資料變更。
+- 已透過 `20261106235000_retire_legacy_trace_sequences_and_permission_counter.sql` 清理：`silver.record_permission_check(text)`、三個 `silver.{lo3rwang,loc,lrunes}_trace_short_seq`。正式資料庫驗證四項全部不存在且 Anchor 的 `attr` 欄位保留；事前 `pg_depend` 查詢各為零，且搜尋不到直接呼叫。沒有 `CASCADE`。
+- 請留意：資料庫 SDK 的 `unifiedAnchorRelation` 曾把 `_trace`/`_keywords` 的虛擬表名導到 `_anchor`，因此舊字串不必然等同實際 SQL 查詢舊實體表。本次直接改實體 `_anchor`，是減少隱性依賴並使 SQL 層清晰。
+- 新增 Regex：`search_able` (11 個命中檔案)、`statics_able` (0)、`space_trace` (3)、`time_trace` (2)、`source_place` (1)、`event`/`road`（正常事件與路線詞過多，依 SQL 識別字細分）。
+- 正式 `information_schema.columns` 查詢未見 `search_able`/`statics_able`/`space_trace`/`time_trace`/`source_place` 或欄位 `event`/`road`。`silver.game.event_*` 六項屬遊戲正常資料。
+- `search_able` 現用於前端 Scope feature 設定相容映射與本機 SQLite，不可直接刪鍵；`SPACE_TRACE` 是有效的空間 Trace 類別常數，不是已退役欄位；`road` 常為地圖道路圖層，不可整批取代。
+- 待下一次有依賴驗證的程式清理：`db-contract.mjs` 的關鍵詞虛擬欄位投影和 `scope-data.js` 相容別名；正式 `silver` 關鍵詞 RPC 的舊 `_keywords` 後備查詢；`api.lo3rwang_keywords_manage` View。勿直接字串替換不同 `attr` 格式。
