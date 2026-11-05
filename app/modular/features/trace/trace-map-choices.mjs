@@ -31,3 +31,47 @@ export function publicTraceMapChoices(rows=[],scopeId='loc'){
   // The legacy LOC union remains available only as an explicit selection.
   return [...individual,...unions];
 }
+
+/**
+ * LOC public pin preview: at most 50 distinct point UIDs per contributing
+ * Scope, referenced by its saved paths or traces. Never enumerate point rows.
+ */
+export function locReferencedPointGroups(rows=[],maxPerScope=50){
+  const eligible=(Array.isArray(rows)?rows:[]).filter(row=>
+    ['path','trace'].includes(row?.trace_type)&&row.source_scope);
+  const byScope=new Map();
+  for(const row of eligible){
+    if(!byScope.has(row.source_scope))byScope.set(row.source_scope,[]);
+    byScope.get(row.source_scope).push(row);
+  }
+  const uid=value=>String(value||'').trim();
+  const isUid=value=>/^(?:[A-Za-z0-9]{4}|[A-Za-z0-9]{8})$/.test(value);
+  return [...byScope].map(([scope,records])=>{
+    const paths=new Map(records.filter(row=>row.trace_type==='path')
+      .map(row=>[uid(row.uid),row]));
+    const seen=new Set();
+    const ids=[];
+    const add=value=>{
+      const key=uid(value);
+      if(isUid(key)&&!seen.has(key)&&ids.length<maxPerScope){
+        seen.add(key);ids.push(key);
+      }
+    };
+    // Route and trace references are the only source of candidates.
+    // Do not invent references from standalone point rows.
+    for(const record of records){
+      const refs=record.anchor_list||[];
+      for(const value of refs.flat(Infinity))add(value);
+      if(record.trace_type==='trace'){
+        for(const pair of record.route_list?.segments||[]){
+          for(const value of (Array.isArray(pair)?pair:[]))add(value);
+        }
+        for(const pathId of record.route_list?.routes||[]){
+          const path=paths.get(uid(pathId));
+          for(const value of (path?.anchor_list||[]).flat(Infinity))add(value);
+        }
+      }
+    }
+    return {scope,ids};
+  }).filter(group=>group.ids.length);
+}
