@@ -1,7 +1,6 @@
 import { sql } from "npm:kysely@0.29.8";
 import {createRemoteJWKSet,jwtVerify} from "npm:jose@5.9.6";
 import {clerkSqlClaims} from "../../../app/loc/auth/clerk-sql-claims.mjs";
-import {createVerifiedSessionEmailCache} from "../../../app/loc/auth/verified-session-email-cache.mjs";
 import {databaseForTarget,resolveConnectionProfile} from "./drivers.ts";
 import {readVaultConnection} from "./database-connections.ts";
 import { executeKyselyQuery, isKyselyClientError } from "../../../app/loc/providers/kysely-runtime.mjs";
@@ -37,9 +36,6 @@ if(new URL(clerkIssuer).protocol!=="https:"||
   throw new Error("Clerk issuer and LOC origin must be HTTPS origins");
 const clerkKeys=createRemoteJWKSet(new URL(clerkIssuer+"/.well-known/jwks.json"));
 const mcpResource="https://loc.lo3rwang.cc/mcp";
-// Reuse only the Authority-confirmed email for the SAME signed Clerk Session.
-// Never cache the JWT, skip jwtVerify, or cache SQL management grants.
-const sessionEmailCache=createVerifiedSessionEmailCache();
 async function verifyClerkForSql(token:string){
   const {payload}=await jwtVerify(token,clerkKeys,{
     issuer:clerkIssuer,algorithms:["RS256"]
@@ -49,17 +45,16 @@ async function verifyClerkForSql(token:string){
   // single, preconfigured root management identity.
   let trustedEmail='';
   if(payload.email_verified!==true||typeof payload.email!=='string'){
-    trustedEmail=await sessionEmailCache({issuer:payload.iss,subject:payload.sub,session:payload.sid},async()=>{
-      const reply=await fetch('https://auth.lo3rwang.cc/v1/identity',{
-        method:'GET',headers:{authorization:'Bearer '+token,origin:clerkOrigin,accept:'application/json'},
-        signal:AbortSignal.timeout(8000)
-      });
-      if(!reply.ok)throw new Error('LOC Authority could not verify Clerk root identity');
-      const identity=await reply.json();
-      if(identity?.provider!=='clerk'||identity.subject!==payload.sub||
-          identity.session!==payload.sid)throw new Error('LOC Authority Clerk identity mismatch');
-      return identity.email;
+    const reply=await fetch('https://auth.lo3rwang.cc/v1/identity',{
+      method:'GET',headers:{authorization:'Bearer '+token,origin:clerkOrigin,accept:'application/json'},
+      signal:AbortSignal.timeout(8000)
     });
+    if(!reply.ok)throw new Error('LOC Authority could not verify Clerk root identity');
+    const identity=await reply.json();
+    if(identity?.provider!=='clerk'||identity.subject!==payload.sub||
+        identity.session!==payload.sid)
+      throw new Error('LOC Authority Clerk identity mismatch');
+    trustedEmail=String(identity.email||'');
   }
   return clerkSqlClaims(payload,{issuer:clerkIssuer,origin:clerkOrigin,trustedEmail});
 }
