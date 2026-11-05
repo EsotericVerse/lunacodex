@@ -1,3 +1,8 @@
+## 2026-11-06｜管理權限 30 秒快照的 Session Key 修正
+
+- 網站 Clerk 身分的管理權限快照改用**已驗證**的 `issuer + sub + sid + email` 作快取 Key，JWT 在同一 Session 內更新 `exp`／`jti` 不會重讀 `manage`；仍每次由 Gateway 驗 JWT，並且快照最多 30 秒、不得超過目前 Token 的有效期限。這裡**沒有**將管理權限延長到兩小時，權限撤銷最多仍受 30 秒短期快取限制。
+- MCP OAuth Token 沒有 Clerk 互動式 `sid` 時保留原本 token-bound 權限快取 Key，不能混入網站 Session Key。此修正只更新 `app/loc/providers/loc-authorization.mjs` 的快取辨識，不更動 Authority Worker、Kysely 授權分層或六鍵 UI。
+
 ## 2026-11-06｜Kysely Session 與 MCP Authority 去重
 
 - Website Kysely 每次受保護請求仍呼叫 `jwtVerify`，不快取 JWT、不略過簽章或過期檢查；同一 Clerk `iss + sub + sid` 的 Authority 已驗證 Email 在同一 Edge isolate 中最多重用 **2 小時**。同一 Session JWT 旋轉可重用，換 Session 必須再驗證；並行相同 Session 首次驗證合併一個請求，失敗立刻失效。
