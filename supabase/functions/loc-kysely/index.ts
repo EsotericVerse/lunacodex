@@ -6,6 +6,7 @@ import {makeConnectionProfile,readVaultConnection,saveVaultConnection} from "./d
 import {normalizeDatabaseLocation} from "../../../app/loc/providers/database-link.mjs";
 import { executeKyselyQuery, isKyselyClientError } from "../../../app/loc/providers/kysely-runtime.mjs";
 import {executeManagedKyselyWrite,executeManagedKyselyAction} from "../../../app/loc/providers/kysely-management.mjs";
+import {saveBlocksKysely} from "../../../app/loc/providers/kysely-blocks.mjs";
 import {executeKyselyAnchor,executePortableKyselyAnchor} from "../../../app/loc/providers/kysely-anchor.mjs";
 import {executeKyselyAnalytics,executePortableKyselyAnalytics} from "../../../app/loc/providers/kysely-analytics.mjs";
 import {executeKyselyPublicAction} from "../../../app/loc/providers/kysely-public.mjs";
@@ -250,6 +251,20 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
         throw Object.assign(new Error("Management requires verified Clerk identity"),{httpStatus:403});
       return await executeCrossEngineManagedWrite(trx,body,{role,claims,
         engine:executionPort.engine,namespace:target.schema_name});
+    }
+    if(body.kind==="managed-action"&&body.name==="save_blocks"){
+      if(role!=="authenticated")
+        throw Object.assign(new Error("Verified editor required"),{httpStatus:403});
+      const args=body.args as Record<string,unknown>||{};
+      const scope=String(args.p_scope_id||"").trim().toLowerCase();
+      const type=String(args.p_type||"").trim();
+      const level=scope==="loc"&&type!=="index"?"global":"scope";
+      if(!await canManageLoc(trx,level,scope))
+        throw Object.assign(new Error("Block write permission denied"),{httpStatus:403});
+      return {data:await saveBlocksKysely(trx,args,{
+        engine:executionPort.engine,namespace:String(target.schema_name||
+          (executionPort.engine==="mssql"?"dbo":"silver"))
+      }),count:null};
     }
     if(body.kind==="anchor")return await executePortableKyselyAnchor(trx,body,{
       role,engine:executionPort.engine,namespace:target.schema_name
