@@ -24,5 +24,6 @@ export function chooseDefaultTraceRoute(rows,scope,preferredUid=''){
   const matches=(Array.isArray(rows)?rows:[]).filter(row=>
     ['path','trace'].includes(row?.trace_type)
     &&row.source_scope===scope&&validUid(row.uid));
-  return matches.find(row=>row.uid===preferredUid)||matches[0]||null;
+  return matches.find(row=>row.uid===preferredUid)
+    ||matches.find(row=>row.trace_type==='path')||matches[0]||null;
 }
