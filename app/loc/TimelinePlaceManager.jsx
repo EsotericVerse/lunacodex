@@ -189,7 +189,7 @@ export default function TimelinePlaceManager({scopeId}){
         const result=await dbAuthClient.schema('silver').from(scopeId+'_galaxy')
           .select('uid,title,date,createtime,place_id')
           .gte('date',startDate).lt('date',nextDate)
-          .order('date',{ascending:true}).order('uid',{ascending:true})
+          .order('date',{ascending:true}).order('createtime',{ascending:true})
           .range(offset,offset+RESULT_PAGE-1);
         const rows=checked(result,'查詢年度文章');
         if(!Array.isArray(rows))throw Error('年度文章查詢結果無效');
