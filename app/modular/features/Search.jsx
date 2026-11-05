@@ -151,7 +151,9 @@ function toResult(row,source,scopeId,copy=UI_COPY){
     key:identity?[scope,source,identity].join(':'):[source,scope,title].join('-'),
     source:displaySource,title:String(title),
     checkInPlace:'',
-    date:row.date||row.createtime||row.address||row.record_date||row.UpdateTime||row.updated_at||'',
+    // date is the displayed calendar day; createtime controls article order.
+    date:row.date||row.createtime||row.record_date||row.UpdateTime||row.updated_at||'',
+    createtime:row.createtime||'',
     snippet:'',...(isGalaxy?{statics:row.statics,culture:row.culture,search:row.search,trace:row.trace,list:row.list,keyword:row.keyword,others:row.others,extract:row.extract}:{}),
     scopeId:scope,resourceType,resourceId,
     relatedMedia:Array.isArray(row.related_media)?row.related_media:[],
@@ -400,23 +402,16 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     }
     return item?`${item.display_name||id}(${id})`:id;
   };
-  // Keep LOC's per-Scope sections and style suggestions, then order the
-  // loaded article pages by their publication date.
-  const orderedResults=useMemo(()=>{
-    const scopes=new Map(availableScopes.map((item,index)=>[item.id,index]));
-    return results.map((row,index)=>({row,index})).sort((a,b)=>{
-      const group=scopeId==='loc'
-        ?(scopes.get(a.row.scopeId)??Infinity)-(scopes.get(b.row.scopeId)??Infinity):0;
-      if(group)return group;
-      const style=Number(Boolean(b.row.styleTagMatch))-Number(Boolean(a.row.styleTagMatch));
-      if(style)return style;
-      const left=String(a.row.date||'').slice(0,19);
-      const right=String(b.row.date||'').slice(0,19);
-      if(!left||!right)return left? -1:right?1:a.index-b.index;
-      const date=left.localeCompare(right);
-      return date?(articleSort==='desc'?-date:date):a.index-b.index;
-    }).map(item=>item.row);
-  },[results,scopeId,availableScopes,articleSort]);
+  // The article list always orders by createtime, not by DATE buckets,
+  // Scope heading, Anchor type, or random eight-character UID.
+  const orderedResults=useMemo(()=>results.map((row,index)=>({row,index}))
+    .sort((a,b)=>{
+      const left=String(a.row.createtime||'');
+      const right=String(b.row.createtime||'');
+      if(!left||!right)return left?-1:right?1:a.index-b.index;
+      const order=left.localeCompare(right);
+      return order?(articleSort==='desc'?-order:order):a.index-b.index;
+    }).map(item=>item.row),[results,articleSort]);
   const advancedRef=useRef(null);
   const collectionLabel=scopeId==='loc'?UI_COPY.search.allContent:String(scope?.label||scopeId);
 
@@ -546,7 +541,6 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       for(const {row,source} of [...styleTagMatches,...searchRows]){
         const result=toResult(row,source,scopeId,UI_COPY);
         if(!result||seen.has(result.key))continue;
-        if(result.resourceType==='anchor')result.snippet=extractSearchContext(row.description,q,10);
         seen.add(result.key);converted.push(result);
       }
       const pageResults=prioritizeStyleTagResults(mergeSummaryResults(converted,UI_COPY));
@@ -884,12 +878,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     ['',t('uiExtra.searchUI.allTypes')],
     ['galaxy','文章'],
     ['lyrics_work',t('uiExtra.searchUI.lyricsType')],
-    ['text_work',t('uiExtra.searchUI.textType')],
-    ['date','時間定錨'],['period','期間'],['era','時代'],
-    ['point','空間定錨'],['path','路線'],['trace','痕跡'],
-    ['category','關鍵詞目錄'],['class','關鍵詞科目'],
-    ['group','關鍵詞群組'],['item','關鍵詞'],
-    ['image','圖片'],['video','影片'],['rune','符文'],['suno','音樂']
+    ['text_work',t('uiExtra.searchUI.textType')]
   ];
   const sourceCategories=(sourceTaxonomyQuery.data?.categories||[])
     .filter(row=>row.enabled!==false);
@@ -1240,7 +1229,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
               {filterSources.filter(([value])=>value&&!value.startsWith('category:')&&!value.startsWith('source:'))
                 .map(([value,label])=><option key={value} value={value}>{label}</option>)}
             </select>
-            <p className="scope-status">來源分類僅篩選 Galaxy 文章；Anchor 可在類型中指定。</p>
+            <p className="scope-status">搜尋僅比對文章內文；時間、空間及關鍵詞定錨由文章關聯開啟。</p>
             {sourceTaxonomyQuery.isPending?<p className="scope-status" role="status">載入來源分類…</p>:null}
             {sourceTaxonomyQuery.isError?<p className="scope-status scope-error" role="alert">來源分類載入失敗。
               <button type="button" className="loc-button" onClick={()=>sourceTaxonomyQuery.refetch()}>重試</button>
