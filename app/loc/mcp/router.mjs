@@ -100,16 +100,15 @@ const TOOLS=[
       scopeid:{type:'string'},endpoint:{type:'string',description:'HTTPS PostgREST URL ending /rest/v1; omit to view'},
       schema:{type:'string'},table:{type:'string',description:'Existing Galaxy-compatible table; LOC never creates tables'}
     },required:['scopeid'],additionalProperties:false}},
-  {name:'check_conversation',description:'Compare source updated_at to last successfully saved_at (no database scan or write).',
-    inputSchema:{type:'object',properties:{scopeid:{type:'string'},conversation_id:{type:'string'},
-      updated_at:{type:'string',description:'Actual source last-updated ISO time'}},
-      required:['scopeid','conversation_id','updated_at'],additionalProperties:false},
-    annotations:{readOnlyHint:true,destructiveHint:false}},
-  {name:'sync_conversation',description:'Save a supplied updated conversation into its authorized Scope table; unchanged versions are skipped. Requires real source transcript.',
-    inputSchema:{type:'object',properties:{scopeid:{type:'string'},conversation_id:{type:'string'},
-      updated_at:{type:'string'},created_at:{type:'string'},title:{type:'string'},
-      content:{type:'string',maxLength:125000}},required:['scopeid','conversation_id','updated_at','content'],
-      additionalProperties:false}},
+  {name:'galaxy_link',description:'Scope-authorized Galaxy Link: find MCP topic, resume by UID, inspect source checkpoint, or record supplied source text. No background scan or source capture.',
+    inputSchema:{type:'object',properties:{
+      action:{type:'string',enum:['search','read','check','record']},
+      scopeid:{type:'string'},uid:{type:'string',pattern:'^[A-Za-z0-9]{8}$'},
+      query:{type:'string',minLength:3,maxLength:100},limit:{type:'integer',minimum:1,maximum:5},
+      conversation_id:{type:'string'},updated_at:{type:'string'},created_at:{type:'string'},
+      content:{type:'string',maxLength:125000},title:{type:'string',maxLength:350},
+      offset:{type:'integer',minimum:0},max_chars:{type:'integer',minimum:1,maximum:40000}
+    },required:['action','scopeid'],additionalProperties:false}},
   {name:'update_scope_pr',description:'Rewrite an EXISTING Galaxy article by exact uid. Never creates a new article: the article must already be GitHub PR-origin (site=github) and its current title must name the same pr_number, or the update is refused.',
     inputSchema:{type:'object',properties:{
       scopeid:{type:'string'},uid:{type:'string',pattern:'^[A-Za-z0-9]{8}$',description:'Exact Galaxy article UID to rewrite'},
@@ -117,11 +116,6 @@ const TOOLS=[
       title:{type:'string',maxLength:350},content:{type:'string',maxLength:125000},
       updated_at:{type:'string'}
     },required:['scopeid','uid','pr_number','title','content','updated_at'],additionalProperties:false}},
-  {name:'read_scope',description:'Read an authorized Scope article by exact UID; groupid permits group-authorized reads.',
-    inputSchema:{type:'object',properties:{scopeid:{type:'string'},uid:{type:'string'},
-      groupid:{type:'string'},offset:{type:'integer'},max_chars:{type:'integer'}},
-      required:['scopeid','uid'],additionalProperties:false},
-    annotations:{readOnlyHint:true,destructiveHint:false}},
   {name:'join_scope_group',description:'Group manager attaches an existing Scope; does not move or copy data.',
     inputSchema:{type:'object',properties:{groupid:{type:'string'},scopeid:{type:'string'}},
       required:['groupid','scopeid'],additionalProperties:false}},
@@ -183,7 +177,7 @@ export async function handleMcp(request,env={}){
       return result(payload.id,{protocolVersion:SUPPORTED_PROTOCOLS.has(proposed)?proposed:DEFAULT_PROTOCOL,
         capabilities:{tools:{listChanged:false}},serverInfo:{name:'loc-mcp',version:'0.2.0',
            ...(proposed==='2025-11-25'?{icons:[{src:'https://loc.lo3rwang.cc/assets/site/icons/loc-favicon.png',mimeType:'image/png'}]}:{})},
-        instructions:'Public search/read use existing Galaxy RLS. Private Scope read, write and Group search are independently authorized by Clerk + LOC Authority. sync_conversation only processes supplied source content.'});
+        instructions:'Public search/read use existing Galaxy RLS. Private Scope read, write and Group search are independently authorized by Clerk + LOC Authority. galaxy_link operates on authorized MCP-origin topics; recording requires supplied source text.'});
     }
     case 'ping':return result(payload.id,{});
     case 'tools/list':return result(payload.id,{tools:TOOLS});
