@@ -35,7 +35,7 @@ test('Recorder rejects invented or unsafe source payloads',()=>{
     assert.throws(()=>validateConversation(e));
   }
 });
-test('Recorder uses authorized MCP checkpoint and record; no background capture',()=>{
+test('Recorder uses authorized MCP checkpoint and record; background capture requires opt-in',()=>{
   const bg=read('extensions/loc-galaxy/background.mjs');
   const ui=read('extensions/loc-galaxy/workbench.mjs');
   const html=read('extensions/loc-galaxy/workbench.html');
