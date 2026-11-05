@@ -84,8 +84,8 @@ export default function ManagementAccess({scopeId,level='scope',featureId='manag
     if(!allowed||entered)return;
     if(editorSessionStatus(window.sessionStorage).expired){setLocked(true);return;}
     setLocked(false);
-    dock?.begin(scopeId);
-  },[allowed,entered,scopeId,dock?.begin]);
+    dock?.begin(scopeId,{globalManage:Boolean(verification.authorizer?.canManageGlobalSync())});
+  },[allowed,entered,scopeId,dock?.begin,verification.authorizer]);
 
   if(!ready||!allowed||!entered)return <FeaturePage featureId={featureId}>
     <section className="loc-card scope-feature-card">
