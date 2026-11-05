@@ -178,6 +178,14 @@ async function handle(message,sender){
     case 'locGalaxy.captureEnable':return capture.enable();
     case 'locGalaxy.captureDisable':return capture.disable();
     case 'locGalaxy.captureStatus':return capture.status();
+    case 'locGalaxy.archiveCurrent':{
+      const snapshot=await capture.archiveActive();
+      if(snapshot.queued>0){
+        try{return {...snapshot,sync:await capture.sync()};}
+        catch(error){return {...snapshot,syncError:String(error?.message||error)};}
+      }
+      return snapshot;
+    }
     case 'locGalaxy.captureSync':return capture.sync();
     case 'locGalaxy.openLogin':{
       const scopeid=await selectScope(message.scopeid);
