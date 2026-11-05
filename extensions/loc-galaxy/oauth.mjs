@@ -136,8 +136,16 @@ export async function mcpTool(token,name,args={}){
   }
   if(!response.ok)throw Error('LOC MCP 拒絕授權（HTTP '+response.status+'）');
   const data=await response.json();
-  if(data?.id!==id||data?.error||data?.result?.isError)
-    throw Error('LOC MCP 權限或 Scope 核驗失敗');
+  if(data?.id!==id)throw Error('LOC MCP 回應識別碼不符');
+  if(data?.error)throw Error('LOC MCP RPC 錯誤（'+String(data.error.code||'unknown')+'）');
+  if(data?.result?.isError){
+    const raw=String(data.result.content?.find(row=>row?.type==='text')?.text||'');
+    // Backend diagnostic only: strip credentials and limit the message.
+    const reason=raw.replace(/Bearer\\s+[A-Za-z0-9_.-]+/gi,'Bearer [hidden]')
+      .replace(/eyJ[A-Za-z0-9_-]+\\.eyJ[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+/g,'[JWT hidden]')
+      .slice(0,160);
+    throw Error('LOC MCP '+name+' 失敗'+(reason?'：'+reason:'（未提供原因）'));
+  }
   const value=data?.result?.structuredContent;
   if(!value||typeof value!=='object')throw Error('LOC MCP 未回傳有效驗證資料');
   return value;
