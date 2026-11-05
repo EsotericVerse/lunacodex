@@ -37,7 +37,7 @@ export async function readSharedSpatialReferencesByNames(names=[]){
   const requests=referenceScopes.map(async scope=>{
     const result=await dbPublicClient.schema('silver').from(scope+'_trace')
       .select('uid,title,address').eq('trace_type','space_anchor')
-      .in('title',spellings).order('uid',{ascending:true}).limit(201);
+      .in('title',spellings).order('title',{ascending:true}).limit(201);
     if(result.error)throw Error('已有定錨點批次查詢失敗：'+result.error.message);
     if((result.data||[]).length>200)throw Error('同名地點候選過多，請改用逐筆地址搜尋。');
     return referenceRows(scope,result.data);
