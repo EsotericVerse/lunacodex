@@ -70,12 +70,22 @@ async function connectOnce(){
     throw Error('Clerk 專用 Token 的 issuer、audience、使用者或有效期限不符');
   // Only a narrowly audience-bound token is handed to the trusted extension.
   // The extension independently verifies the token and Scope with LOC MCP.
-  const reply=await chrome.runtime.sendMessage(EXTENSION_ID,{
-    type:'locGalaxy.websiteGrant',nonce,scopeid,
-    access_token:token,expires_at:claims.exp*1000,subject:claims.sub
-  });
-  if(!reply?.ok||reply?.data?.ready!==true)
-    throw Error(reply?.error||'Extension 尚未通過 LOC MCP Scope 核驗');
+  if(!globalThis.chrome?.runtime?.sendMessage)
+    throw Error('Chrome 找不到 LOC Galaxy Extension 的網站通訊介面，請在 chrome://extensions 重新載入 Extension');
+  let reply;
+  try{
+    reply=await chrome.runtime.sendMessage(EXTENSION_ID,{
+      type:'locGalaxy.websiteGrant',nonce,scopeid,
+      access_token:token,expires_at:claims.exp*1000,subject:claims.sub
+    });
+  }catch(error){
+    throw Error('Chrome 無法送達 LOC Galaxy Extension：'+String(error?.message||error).slice(0,160));
+  }
+  if(!reply||typeof reply!=='object')
+    throw Error('Extension 未回覆網站授權要求，請確認已 Reload 至 0.6.0 版本且 Extension ID 正確');
+  if(!reply.ok)throw Error(reply.error||'Extension 拒絕網站授權訊息（未提供原因）');
+  if(reply.data?.ready!==true)
+    throw Error('Extension 已收到授權，但 Scope 核驗未完成');
   approved=true;
   status('已由 LOC 網站 Session 完成 Galaxy 授權。請保留此分頁以自動續期；可切換回 ChatGPT。');
 }
