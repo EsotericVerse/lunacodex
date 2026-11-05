@@ -426,7 +426,7 @@ Deno.serve(async (request) => {
       }else if(typeof query!=="string"||query.trim().length<2||query.length>100||
           /[\u0000-\u001f\u007f]/.test(query)||!Number.isInteger(limit)||
           Number(limit)<1||Number(limit)>5){
-        return json({error:{message:"Invalid managed MCP search parameters"},400);
+        return json({error:{message:"Invalid managed MCP search parameters"}},400);
       }
       const db=await databaseForTarget(controlTarget);
       // The scope has already been allowlisted; the identifier is not caller-supplied.
