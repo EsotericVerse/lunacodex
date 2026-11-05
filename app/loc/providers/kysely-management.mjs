@@ -334,8 +334,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
   let neighbor=trx.selectFrom(relation).select(['uid','block_order'])
     .where('page_name','=',page)
     .where('block_order',direction===-1?'<':'>',original.block_order);
-  neighbor=neighbor.orderBy('block_order',direction===-1?'desc':'asc')
-;
+  neighbor=neighbor.orderBy('block_order',direction===-1?'desc':'asc');
   const next=await neighbor.limit(1).executeTakeFirst();
   if(!next)reject('Block is already at the page boundary');
   const ref=sql.ref(relation);
