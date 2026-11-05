@@ -809,7 +809,7 @@ export class LocAuthorityState extends DurableObject {
   // Shared, durable quotas for each verified Clerk MCP subject.
   async mcpQuotaAcquire(kind,subject){
     if(!/^clerk:user_[A-Za-z0-9]+$/.test(String(subject||'')))throw fail('Invalid MCP principal',401);
-    if(!['read','write'].includes(kind))throw fail('Invalid MCP quota kind',400);
+    if(!['read','write','search'].includes(kind))throw fail('Invalid MCP quota kind',400);
     const now=Date.now(),period=60_000,leaseTtl=25_000;
     const maximum=16;
     const outcome=await this.ctx.storage.transaction(async tx=>{
@@ -821,11 +821,14 @@ export class LocAuthorityState extends DurableObject {
       const bucket=prior&&now>=prior.started&&now-prior.started<period
         ?prior:{started:now,count:0,reads:0};
       const leases=(await tx.get('mcp-quota-leases')||[]).filter(item=>item.expires>now);
-      const activeReads=leases.filter(item=>item.kind==='read').length;
+      const activeReads=leases.filter(item=>item.kind==='read'||item.kind==='search').length;
+      const activeSearches=leases.filter(item=>item.kind==='search').length;
       // QoS: 16 total, with 12 read slots and four write reserves.
-      if(bucket.count>=maximum||(kind==='read'&&(bucket.reads||0)>=12))
+      if(bucket.count>=maximum||(kind!=='write'&&(bucket.reads||0)>=12)||
+          (kind==='search'&&(bucket.searches||0)>=2))
         return {rejected:'rate'};
-      if(leases.length>=16||(kind==='read'&&activeReads>=12)){
+      if(leases.length>=16||(kind!=='write'&&activeReads>=12)||
+          (kind==='search'&&activeSearches>=2)){
         // Persist before returning: throwing inside a DO transaction rolls it back.
         await tx.put(cooldownKey,now+180_000);
         return {rejected:'concurrency'};
@@ -833,7 +836,8 @@ export class LocAuthorityState extends DurableObject {
       const lease=crypto.randomUUID();
       leases.push({lease,subject,kind,expires:now+leaseTtl});
       await tx.put(key,{started:bucket.started,count:bucket.count+1,
-        reads:(bucket.reads||0)+(kind==='read'?1:0)});
+        reads:(bucket.reads||0)+(kind==='write'?0:1),
+        searches:(bucket.searches||0)+(kind==='search'?1:0)});
       await tx.put('mcp-quota-leases',leases);
       return {lease};
     });
@@ -882,7 +886,9 @@ async function handleMcpAuthority(request,env,url,origin){
   // No DB work and no quota spend on retired search endpoints.
   if(/^\/v1\/mcp\/group-search\//.test(url.pathname))
     throw fail('MCP search is disabled',403);
-  const ticket=await quota.mcpQuotaAcquire(request.method==='GET'?'read':'write','clerk:'+principal.subject);
+  const kind=/^\/v1\/mcp\/search\//.test(url.pathname)?'search':
+    request.method==='GET'?'read':'write';
+  const ticket=await quota.mcpQuotaAcquire(kind,'clerk:'+principal.subject);
   try{return await handleMcpAuthorityInner(request,env,url,origin,principal);}
   finally{await quota.mcpQuotaRelease(ticket.lease,'clerk:'+principal.subject);}
 }
