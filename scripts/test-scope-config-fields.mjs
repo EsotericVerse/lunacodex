@@ -45,11 +45,8 @@ test('LOC theme follows Taipei day/night; the saved Scope theme must not overrid
   assert.match(source,/const configEnabled=!fixedDefaultThemeId&&scope\.id!=='loc'&&/);
 });
 
-test('legacy API provision_scope migration uses four native boolean switches',()=>{
-  const migration=readFileSync(new URL('../supabase/migrations/20261104223500_scope_boolean_provision_legacy_rpc.sql',import.meta.url),'utf8');
+test('Kysely Scope provisioning uses native four feature booleans',()=>{
   const kysely=readFileSync(new URL('../app/loc/providers/kysely-scope-admin.mjs',import.meta.url),'utf8');
-  assert.match(migration,/statics,culture,trace/);
-  assert.match(migration,/true,true,true,true,32,100/);
   assert.match(kysely,/search:true,statics:true,culture:true,trace:true/);
   assert.doesNotMatch(kysely,/theme,locale:'zh-Hant',search_able:/);
 });

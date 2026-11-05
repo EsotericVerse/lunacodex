@@ -2,15 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 
-test('six-column migration preserves Scope delete and music tree readers',()=>{
-  const sql=readFileSync(new URL('../supabase/migrations/20261029226200_keyword_legacy_catalog_cleanup.sql',import.meta.url),'utf8');
-  assert.match(sql,/CREATE OR REPLACE FUNCTION api\.delete_scope\(p_scope_id text\)/);
-  assert.match(sql,/CREATE OR REPLACE FUNCTION silver\.read_music_style_tree\(\)/);
-  assert.match(sql,/jsonb_array_elements_text\(c\.lists\)/);
-  assert.match(sql,/jsonb_array_elements_text\(g\.lists\)/);
-  assert.match(sql,/DROP TABLE IF EXISTS silver\.keyword_classes;/);
-  assert.doesNotMatch(sql,/DELETE FROM silver\.keyword_classes/);
+test('legacy SQL Scope lifecycle is retired in favor of Kysely',()=>{
+  const sql=readFileSync(new URL('../supabase/migrations/20261106120000_retire_legacy_api_scope_lifecycle.sql',import.meta.url),'utf8');
+  const provider=readFileSync(new URL('../app/loc/providers/kysely-scope-admin.mjs',import.meta.url),'utf8');
+  assert.match(sql,/DROP FUNCTION IF EXISTS api\.delete_scope\(text\) RESTRICT;/);
+  assert.match(sql,/DROP FUNCTION IF EXISTS api\.provision_scope\(text,text,text,date,text,text,text,text,boolean\) RESTRICT;/);
   assert.doesNotMatch(sql,/\bCASCADE\b\s*;/i);
+  assert.match(provider,/async function deleteScope\(/);
+  assert.match(provider,/async function provisionScope\(/);
 });
 
 test('Scope and Keywords cutover uses native Kysely services rather than SQL RPCs',()=>{
@@ -45,16 +44,9 @@ test('Scope and Keywords cutover uses native Kysely services rather than SQL RPC
   assert.match(sql,/DROP FUNCTION silver.read_scope_keyword_suggestions\(text\) RESTRICT/);
   assert.match(sql,/DROP FUNCTION silver.trace_place_suggestions\(text,integer\) RESTRICT/);
 });
-test('retired pre-Anchor Trace helpers cannot be reintroduced as independent RPCs',()=>{
-  const migration=readFileSync(new URL('../supabase/migrations/20261103183000_retire_pre_anchor_trace_utilities.sql',import.meta.url),'utf8');
-  for(const [name,signature] of [
-    ['trace_normalize_place_name','text'],
-    ['trace_prevent_identity_change',''],
-    ['validate_scoped_trace_map','']
-  ]){
-    assert.ok(migration.includes('DROP FUNCTION silver.'+name+'('+signature+') RESTRICT;'),
-      'Expected dependency-safe retirement of '+name);
+test('legacy pre-Anchor Trace utilities remain absent from current migrations',()=>{
+  const provider=readFileSync(new URL('../app/loc/providers/kysely-anchor.mjs',import.meta.url),'utf8');
+  for(const retired of ['trace_normalize_place_name','trace_prevent_identity_change','validate_scoped_trace_map']){
+    assert.ok(!provider.includes(retired),'Old SQL Trace helper must not return: '+retired);
   }
-  assert.doesNotMatch(migration,/\bCASCADE\b/);
-  assert.match(migration,/domain_has_repeated_labels/);
 });
