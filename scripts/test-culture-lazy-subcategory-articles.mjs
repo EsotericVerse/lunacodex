@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 
 const source=readFileSync(new URL('../app/loc/views/CulturePublicReader.jsx',import.meta.url),'utf8');
-const ui=source.slice(source.indexOf("onGroupToggle={group=>{",source.indexOf("className='scope-culture-classification-river'")));
+const ui=source.slice(source.indexOf("onGroupToggle={group=>{",source.indexOf("className='scope-card scope-culture-classification-river'")));
 const reset=source.slice(source.indexOf('  const resetArticles='),source.indexOf('  const toggleFull='));
 
 test('expanding a big category only reveals child labels, never requests articles',()=>{
