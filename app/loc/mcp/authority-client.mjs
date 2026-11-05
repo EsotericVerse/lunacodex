@@ -53,6 +53,8 @@ export async function authorityAction(name,args,token,env={},fetchImpl=globalThi
         created_at:a.created_at,title:a.title||'',content,
         ...(a.uid?{uid:a.uid}:{}),append:true};
     }
+    // A dedicated versioned route fails closed against old Authority deployments.
+    path='galaxy-link/'+path;
   }else switch(name){
     case 'scope_storage':
       path='scope/'+id(a.scopeid);
