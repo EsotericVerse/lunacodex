@@ -151,9 +151,7 @@ function toResult(row,source,scopeId,copy=UI_COPY){
     key:identity?[scope,source,identity].join(':'):[source,scope,title].join('-'),
     source:displaySource,title:String(title),
     checkInPlace:'',
-    // date is the displayed calendar day; createtime controls article order.
-    date:row.date||row.createtime||row.record_date||row.UpdateTime||row.updated_at||'',
-    createtime:row.createtime||'',
+    date:row.date||row.createtime||row.address||row.record_date||row.UpdateTime||row.updated_at||'',
     snippet:'',...(isGalaxy?{statics:row.statics,culture:row.culture,search:row.search,trace:row.trace,list:row.list,keyword:row.keyword,others:row.others,extract:row.extract}:{}),
     scopeId:scope,resourceType,resourceId,
     relatedMedia:Array.isArray(row.related_media)?row.related_media:[],
@@ -402,16 +400,23 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     }
     return item?`${item.display_name||id}(${id})`:id;
   };
-  // The article list always orders by createtime, not by DATE buckets,
-  // Scope heading, Anchor type, or random eight-character UID.
-  const orderedResults=useMemo(()=>results.map((row,index)=>({row,index}))
-    .sort((a,b)=>{
-      const left=String(a.row.createtime||'');
-      const right=String(b.row.createtime||'');
-      if(!left||!right)return left?-1:right?1:a.index-b.index;
-      const order=left.localeCompare(right);
-      return order?(articleSort==='desc'?-order:order):a.index-b.index;
-    }).map(item=>item.row),[results,articleSort]);
+  // Keep LOC's per-Scope sections and style suggestions, then order the
+  // loaded article pages by their publication date.
+  const orderedResults=useMemo(()=>{
+    const scopes=new Map(availableScopes.map((item,index)=>[item.id,index]));
+    return results.map((row,index)=>({row,index})).sort((a,b)=>{
+      const group=scopeId==='loc'
+        ?(scopes.get(a.row.scopeId)??Infinity)-(scopes.get(b.row.scopeId)??Infinity):0;
+      if(group)return group;
+      const style=Number(Boolean(b.row.styleTagMatch))-Number(Boolean(a.row.styleTagMatch));
+      if(style)return style;
+      const left=String(a.row.date||'').slice(0,19);
+      const right=String(b.row.date||'').slice(0,19);
+      if(!left||!right)return left? -1:right?1:a.index-b.index;
+      const date=left.localeCompare(right);
+      return date?(articleSort==='desc'?-date:date):a.index-b.index;
+    }).map(item=>item.row);
+  },[results,scopeId,availableScopes,articleSort]);
   const advancedRef=useRef(null);
   const collectionLabel=scopeId==='loc'?UI_COPY.search.allContent:String(scope?.label||scopeId);
 
