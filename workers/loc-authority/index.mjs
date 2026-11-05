@@ -825,6 +825,17 @@ export class LocAuthorityState extends DurableObject {
       const cooldownKey='mcp-qos-cooldown:'+subject;
       const blockedUntil=Number(await tx.get(cooldownKey)||0);
       if(blockedUntil>now)return {rejected:'cooldown'};
+      // Escalate *new* abuse incidents, not every request made while blocked.
+      // After 24 quiet hours start again at three minutes; max one hour.
+      const escalate=async()=>{
+        const strikesKey='mcp-qos-strikes:'+subject;
+        const last=await tx.get(strikesKey);
+        const recent=last&&Number(last.at)<=now&&now-Number(last.at)<86_400_000;
+        const strikes=recent?Math.min(6,Number(last.strikes||0)+1):1;
+        const duration=Math.min(3_600_000,180_000*2**(strikes-1));
+        await tx.put(strikesKey,{strikes,at:now});
+        await tx.put(cooldownKey,now+duration);
+      };
       const key='mcp-quota-window:'+subject;
       const prior=await tx.get(key);
       const bucket=prior&&now>=prior.started&&now-prior.started<period
@@ -841,7 +852,7 @@ export class LocAuthorityState extends DurableObject {
         await tx.put(key,{...bucket,rateRejects});
         if(rateRejects>=3){
           // Durable Object transaction must commit before the caller throws.
-          await tx.put(cooldownKey,now+180_000);
+          await escalate();
           return {rejected:'rate-cooldown'};
         }
         return {rejected:'rate'};
@@ -849,7 +860,7 @@ export class LocAuthorityState extends DurableObject {
       if(leases.length>=16||(kind!=='write'&&activeReads>=12)||
           (kind==='search'&&activeSearches>=2)){
         // Persist before returning: throwing inside a DO transaction rolls it back.
-        await tx.put(cooldownKey,now+180_000);
+        await escalate();
         return {rejected:'concurrency'};
       }
       const lease=crypto.randomUUID();
@@ -862,7 +873,7 @@ export class LocAuthorityState extends DurableObject {
     });
     if(outcome.rejected==='cooldown'||outcome.rejected==='concurrency'||
        outcome.rejected==='rate-cooldown')
-      throw fail('MCP request cooldown (3 minutes)',429);
+      throw fail('MCP request cooldown active',429);
     if(outcome.rejected==='rate')throw fail('MCP request limit exceeded',429);
     return outcome;
   }

@@ -19,7 +19,7 @@ LOC MCP 對外以 `galaxy_link` 統一執行私人對話 `search/read/check/reco
 - Galaxy Link 的 `site=mcp` 與私人 `source=github` 搜尋共用獨立限制：每位 Clerk 使用者每分鐘最多 2 次、全域最多 2 次同時搜尋；它同時消耗既有讀取及總請求額度。搜尋逾時 4 秒（管理型 SQL）或 4.5 秒（指定 Scope PostgREST）。
 - 公開 UID 讀取也先透過 Authority 取得額度；私有讀寫在 Authority 執行前檢查。未授權及 Group Search 不進資料庫；Galaxy Link 搜尋另需固定來源限制；GitHub 來源必須有 Scope `manage` 授權。
 - 額度使用短期租約，正常完成即釋放，意外中斷最多保留 25 秒。計數採原子交易，不能靠 Worker 本機記憶體。
-- 如果全域 16 個併發槽位已滿，或 12 個讀取槽位已滿，新增請求立即拒絕，該呼叫者進入 Durable Object 紀錄的 **3 分鐘冷卻期**。每分鐘配額超限（含 Galaxy Link 搜尋每分鐘 2 次）第一次與第二次只回 429；**同一使用者、同一 60 秒窗口內第三次反覆超限**則啟動 3 分鐘冷卻。讀取／搜尋／寫入超限次數合併計算，不分 Scope；冷卻期間全部 MCP 資料操作回 429，不排隊、不重試。正常 Clerk 登入不受 MCP QoS 影響。拒絕次數與冷卻時間保存在 Durable Object 交易內，不因 Worker 重啟消失。
+- 如果全域 16 個併發槽位已滿，或 12 個讀取槽位已滿，新增請求立即拒絕，該呼叫者進入 Durable Object 紀錄的冷卻期。每分鐘配額超限（含 Galaxy Link 搜尋每分鐘 2 次）第一次與第二次只回 429；**同一使用者、同一 60 秒窗口內第三次反覆超限**則啟動冷卻。讀取／搜尋／寫入超限次數合併計算，不分 Scope。首次冷卻 3 分鐘；若同一身分在接下來 24 小時內再度觸發，依序延長為 **6、12、24、48、60 分鐘（上限一小時）**；超過 24 小時無新違規事件才重置級數。冷卻期間的重試不延長封鎖，所有 MCP 資料操作回 429，不排隊、不重試。正常 Clerk 登入不受 MCP QoS 影響。拒絕次數、違規級數與冷卻時間均由 Durable Object 交易保存，不因 Worker 重啟消失；**未經驗證的 DDoS 仍需獨立的 Cloudflare WAF／入口限流**。
 - **Supabase Data API Max Rows=1000 是單次 SQL REST 回傳的列數限制，不是每分鐘請求數或 MCP 並發數。** 此項為 Supabase 控制台設定，須獨立設定及驗證，不能靠修改 MCP 配額代替。
 - 部署必須核對 Cloudflare Pages MCP route、Authority Worker 兩邊版本；GitHub merge 不表示兩邊都已上線。
 
@@ -32,6 +32,12 @@ LOC MCP 對外以 `galaxy_link` 統一執行私人對話 `search/read/check/reco
 - 驗收比對 Clerk 子請求增量、MCP 429、正常登入與寫入，以及 Cloudflare Worker 正式部署狀態；累計流量不代表即時流量。
 - 測試涵蓋 `scripts/test-mcp-qos.mjs`、`scripts/test-loc-mcp-routing.mjs`；未在連接器中執行 Node 測試時不得宣稱通過。
 
+
+## MCP 入口 JWKS 去重與 Extension 連線（2026-11-06）
+
+- `app/loc/mcp/router.mjs` 原本只快取單一 isolate 的 Clerk JWKS（並強制 `cache: no-store`）；已改為同 issuer 的 Promise single-flight + 本地最多五分鐘 + Cloudflare Cache API 公開金鑰快取最多五分鐘。只有公開 JWKS 可快取，**每個 MCP 請求仍驗證 JWT 簽章、audience、issuer 與期限**，不快取 JWT 或管理授權。
+- Extension 的一次 Scope OAuth 連線核驗依序執行 `loc_connection_status` 和 `galaxy_link.check`；本身不是循環呼叫。Cloudflare 的其他 `identity`、PR 更新、Durable Object RPC 不可全歸因於一次按鍵。
+- 增加同一批並行 MCP request 對 Clerk JWKS 的讀取去重測試。正式上線仍需核對 Pages Functions 的部署版本；GitHub 合併不是 Pages 發布證據。
 
 ## MCP Session／讀取負載（2026-11-06）
 

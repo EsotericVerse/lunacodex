@@ -40,17 +40,45 @@ function base64url(text){
   return Uint8Array.from(bin,c=>c.charCodeAt(0));
 }
 function decodeJson(text){return JSON.parse(new TextDecoder().decode(base64url(text)));}
+// JWKS is PUBLIC verification metadata, never a user Session or OAuth grant.
+// Share in-flight fetch per issuer and reuse public keys up to five minutes
+// across isolates when the Cloudflare edge Cache API is available.
 const jwksCache=new Map();
+const jwksPending=new Map();
+async function loadKeys(issuer){
+  const url=issuer+'/.well-known/jwks.json';
+  const edge=globalThis.caches?.default;
+  const cacheRequest=new Request(url,{headers:{accept:'application/json'}});
+  let response=edge?await edge.match(cacheRequest).catch(()=>null):null;
+  const fromEdge=Boolean(response);
+  if(!response){
+    response=await fetch(url,{headers:{accept:'application/json'},
+      signal:AbortSignal.timeout(6500)});
+  }
+  if(!response.ok)throw new Error('Clerk JWKS unavailable');
+  const text=await response.text();
+  if(text.length>120000)throw new Error('Clerk JWKS response too large');
+  let data;
+  try{data=JSON.parse(text);}catch{throw new Error('Invalid Clerk JWKS');}
+  if(!Array.isArray(data?.keys))throw new Error('Invalid Clerk JWKS');
+  if(!fromEdge&&edge){
+    const headers=new Headers({'content-type':'application/json',
+      'cache-control':'public, max-age=300'});
+    await edge.put(cacheRequest,new Response(text,{status:200,headers})).catch(()=>{});
+  }
+  jwksCache.set(issuer,{keys:data.keys,expiry:Date.now()+300000});
+  if(jwksCache.size>16)jwksCache.delete(jwksCache.keys().next().value);
+  return data.keys;
+}
 async function getKeys(issuer){
   const cached=jwksCache.get(issuer);
   if(cached&&cached.expiry>Date.now())return cached.keys;
-  const r=await fetch(issuer+'/.well-known/jwks.json',
-    {headers:{accept:'application/json'},cache:'no-store',signal:AbortSignal.timeout(6500)});
-  if(!r.ok)throw new Error('Clerk JWKS unavailable');
-  const data=await r.json();
-  if(!Array.isArray(data?.keys))throw new Error('Invalid Clerk JWKS');
-  jwksCache.set(issuer,{keys:data.keys,expiry:Date.now()+300000});
-  return data.keys;
+  const ongoing=jwksPending.get(issuer);
+  if(ongoing)return ongoing;
+  const pending=loadKeys(issuer);
+  jwksPending.set(issuer,pending);
+  try{return await pending;}
+  finally{if(jwksPending.get(issuer)===pending)jwksPending.delete(issuer);}
 }
 // Only signed, non-expired OAuth JWTs explicitly bound to this MCP resource are accepted.
 // Session JWTs, arbitrary bearer strings and tokens for other audiences are never accepted.
