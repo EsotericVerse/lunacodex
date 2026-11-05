@@ -38,12 +38,14 @@ export async function authorityAction(name,args,token,env={},fetchImpl=globalThi
       path='checkpoint/'+id(a.scopeid)+'/'+encodeURIComponent(String(a.conversation_id));
       query={updated_at:a.updated_at};
     }else if(a.action==='update_pr'){
-      if(!UID.test(String(a.uid||''))||!Number.isInteger(a.pr_number)||a.pr_number<1||
+      if(a.uid!==undefined&&!UID.test(String(a.uid||''))||
+         !Number.isInteger(a.pr_number)||a.pr_number<1||
          typeof a.title!=='string'||!a.title.trim()||
          typeof a.content!=='string'||!a.content.trim()||!a.updated_at)
-        throw bad('Valid existing PR UID, number, title, content and update timestamp required');
+        throw bad('PR number, title, content and update timestamp required; UID optional');
       path='update-pr/'+id(a.scopeid);method='POST';
-      body={uid:a.uid,pr_number:a.pr_number,title:a.title,content:a.content,updated_at:a.updated_at};
+      body={...(a.uid?{uid:a.uid}:{}),pr_number:a.pr_number,title:a.title,
+        content:a.content,updated_at:a.updated_at};
     }else{
       if(!a.conversation_id||!a.updated_at||!Array.isArray(a.records)||
         !a.records.length||a.records.length>100)throw bad('Source records required');
