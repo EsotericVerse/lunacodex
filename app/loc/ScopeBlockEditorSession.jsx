@@ -174,12 +174,23 @@ export default function ScopeBlockEditorSession({
           ...(pageName==='index'&&draft.order===1&&index===0&&image_mode==='side'?{image_mode:'side'}:{})
         })),pageName)
       };
-      const {updateRows,insertRows}=await import('./db-client.mjs');
-      if(draft.stored){
-        await updateRows(table,values,{filters:[{column:'uid',operator:'eq',value:draft.uid}]});
-      }else{
-        await insertRows(table,[{uid:draft.uid,...values}]);
-      }
+      // Single-item editor uses the very same page-level save boundary.
+      // Existing sibling Blocks stay in the snapshot instead of being removed.
+      const {dbAuthClient}=await import('./db-client.mjs');
+      const before=await selectLiveScopeBlocks(scopeId,pageName);
+      const existingRows=before.filter(row=>row.uid!==draft.uid);
+      const normalized={
+        uid:draft.uid,...values,
+        block_image:values.block_image===undefined
+          ?before.find(row=>row.uid===draft.uid)?.block_image??null
+          :values.block_image==null?null:typeof values.block_image==='string'
+            ?values.block_image:JSON.stringify(values.block_image)
+      };
+      const snapshot=[...existingRows,normalized];
+      const {error}=await dbAuthClient.schema('silver').managedAction('save_blocks',{
+        p_scope_id:scopeId,p_type:pageName,p_rows:snapshot
+      });
+      if(error)throw new Error(error.message||'Blocks 儲存失敗');
       // A successful SQL write is final. Update the two client views from the
       // committed values instead of issuing parallel post-save SELECTs.
       let displayWarning='';
@@ -218,8 +229,12 @@ export default function ScopeBlockEditorSession({
     }
     setBusy(true);setMessage('');
     try{
-      const {deleteRows}=await import('./db-client.mjs');
-      await deleteRows(table,{filters:[{column:'uid',operator:'eq',value:draft.uid}]});
+      const {dbAuthClient}=await import('./db-client.mjs');
+      const current=await selectLiveScopeBlocks(scopeId,pageName);
+      const {error}=await dbAuthClient.schema('silver').managedAction('save_blocks',{
+        p_scope_id:scopeId,p_type:pageName,p_rows:current.filter(row=>row.uid!==draft.uid)
+      });
+      if(error)throw new Error(error.message||'Blocks 刪除失敗');
       await refreshBlockQueries();
       onDone(t('uiExtra.editBlocks.deleted'));
     }catch(error){
