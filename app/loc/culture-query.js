@@ -573,7 +573,7 @@ export async function selectCultureArticleListPage(scope,{
   ];
   const pageOffset=Math.max(0,Math.floor(Number(offset)||0));
   const {rows=[]}=await selectRows(scope.galaxy,{
-    columns:scopeId==='local'?'uid,title,createtime,site,able':'uid,date,title,list,createtime',
+    columns:scopeId==='local'?'uid,title,createtime,site,able':'uid,date,title,list',
     filters,orders:[{column:'createtime',ascending:sortDirection==='asc'}],
     limit:pageSize,offset:pageOffset,maxLimit:pageSize
   });
