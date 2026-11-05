@@ -62,15 +62,17 @@ test('Culture and Statistics use optional SQL place summaries without ISR or req
   assert.match(statPlace,/!model.places.length/);
 });
 
-test('Statistics displays independent precomputed Keyword Class results instead of a Media facet',()=>{
+test('Statistics displays per-Class precomputed results without Media facet queries',()=>{
   const stats=read('app/modular/features/Statistics.jsx');
-  assert.match(stats,/const STAT_TYPES=\\['total','source','place','keywords'\\]/);
-  assert.match(stats,/const sourceChart=\\['total','source'\\]\\.includes\\(rankingType\\)/);
-  assert.match(stats,/const keywordDimension=rankingType==='keywords'/);
-  assert.match(stats,/classUid:resolvedKeywordClassUid/);
+  assert.ok(stats.includes("const STAT_TYPES=['total','source','place','keywords'];"));
+  assert.ok(stats.includes("const sourceChart=['total','source'].includes(rankingType)"));
+  assert.ok(stats.includes("const keywordDimension=rankingType==='keywords'"));
+  assert.ok(stats.includes('classUid:resolvedKeywordClassUid'));
+  assert.ok(stats.includes('key={resolvedKeywordClassUid}')||stats.includes("scopeId,resolvedKeywordClassUid,styleRange.startDate"));
   assert.doesNotMatch(stats,/selectMediaStatisticsFacetRows|MediaFacetStatistics|mediaDimension/);
-  assert.match(stats,/keywordDimension\\?<Rune66Summary/);
+  assert.ok(stats.includes('{keywordDimension?<>'));
+  assert.ok(stats.includes('<Rune66Summary analysis={runeQuery.data}'));
   const culture=read('app/modular/features/Culture.jsx');
-  assert.match(culture,/setSelectedKeywordClassUid\\(event\\.target\\.value\\)/);
-  assert.match(culture,/queryKey:\\['culture-style-filter','rune66',classificationScope,resolvedKeywordClassUid/);
+  assert.ok(culture.includes('setSelectedKeywordClassUid(event.target.value)'));
+  assert.ok(culture.includes("['culture-style-filter','rune66',classificationScope,resolvedKeywordClassUid"));
 });
