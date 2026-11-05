@@ -57,8 +57,8 @@ function anchorModel(rows,start,end,expanded){
     const refs=list(attr.period||attr.periods).map(id=>byUid.get(String(id)))
       .filter(item=>item?.type==='period');
     const expandedEra=expanded.includes(uid);
-    groups.push({id:'era:'+uid,label:(expandedEra?'− ':'+ ')+(era.title||'時代'),
-      order:groups.length});
+    groups.push({id:'era:'+uid,label:era.title||'時代',
+      collapsible:true,expanded:expandedEra,order:groups.length});
     const ranges=refs.map(periodRange);
     const eraDates=list(attr.date||attr.dates).map(datePart).filter(Boolean).sort();
     const begins=[...ranges.map(r=>r.start),...eraDates].filter(Boolean).sort();
@@ -125,8 +125,8 @@ function sourceModel(rows,systemNames,personalNames,expanded,start,end){
     const total=rows.filter(row=>root.sites.includes(row.site))
       .reduce((sum,row)=>sum+Number(row.item_count||0),0);
     const opened=expanded.includes(root.id);
-    groups.push({id:'root:'+root.id,label:(opened?'− ':'+ ')+root.label+' ('+total+')',
-      order:groups.length});
+    groups.push({id:'root:'+root.id,label:root.label+' ('+total+')',
+      collapsible:true,expanded:opened,order:groups.length});
     if(!opened){
       const daily=new Map();
       for(const row of rows){
@@ -145,7 +145,8 @@ function sourceModel(rows,systemNames,personalNames,expanded,start,end){
       const key=root.id+':'+site;
       const count=rows.filter(row=>String(row.site)===site)
         .reduce((sum,row)=>sum+Number(row.item_count||0),0);
-      groups.push({id:'site:'+key,label:'　'+site+' ('+count+')',order:groups.length});
+      groups.push({id:'site:'+key,label:'　'+site+' ('+count+')',
+        selectable:true,order:groups.length});
       sites.push({key,site,root:root.id,count});
       for(const row of rows){
         if(String(row.site)!==site||row.day<start||row.day>end)continue;
