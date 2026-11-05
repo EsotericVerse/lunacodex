@@ -591,8 +591,9 @@ export class LocAuthorityState extends DurableObject {
       typeof input.title!=='string'||input.title.length>350)
       throw fail('Invalid conversation content or title',400);
     const append=input.append===true;
+    const marker='[[GalaxyLinkBatch:'+input.batch_id+']]';
     if(append&&(!/^[0-9a-f]{64}$/.test(String(input.batch_id||''))||
-      !input.content.startsWith('[[GalaxyLinkBatch:'+input.batch_id+']]\\n'.replace('\\n','\n'))))
+      !input.content.startsWith(marker+'\n')))
       throw fail('Invalid Galaxy Link batch marker',400);
     if(input.uid!==undefined&&!UID.test(String(input.uid)))throw fail('Invalid topic UID',400);
     if(status.uid&&input.uid&&status.uid!==input.uid)throw fail('Conversation checkpoint UID conflict',409);
