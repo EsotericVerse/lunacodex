@@ -128,14 +128,14 @@ async function checkAdminRole(claims:Record<string,unknown>){
   if(!valid)throw Object.assign(new Error("Administrator permission required"),{httpStatus:403});
   return control;
 }
-// LOC owns the database target list; only its private JSONB column is read.
+// System database targets belong to manage, not the LOC Group.
 async function databaseListForControl(control:any):Promise<Record<string,any>[]>{
-  const row=await control.selectFrom("silver.loc").select("database")
-    .where("id","=","loc").executeTakeFirst();
-  if(!Array.isArray(row?.database))throw new Error("LOC database routing list is missing");
+  const row=await control.selectFrom("silver.manage").select("database")
+    .where("id","=","admin").executeTakeFirst();
+  if(!Array.isArray(row?.database))throw new Error("System database routing list is missing");
   return row.database;
 }
-// The live selection is stored in LOC metadata; no redeploy is required.
+// The live selection is stored in system metadata; no redeploy is required.
 let selectedRouteCache:{until:number,target:Record<string,unknown>|null}={until:0,target:null};
 let selectedRouteInFlight:Promise<Record<string,unknown>>|null=null;
 let selectedRouteRevision=0;
@@ -602,7 +602,7 @@ Deno.serve(async (request) => {
         const tables=await backup.introspection.getTables();
         const required:Record<string,string[]>={
           manage:["id","manage_role","parent_scope_id"],
-          loc:["id","theme","database","blacklist"],
+          loc:["id","theme"],
           loc_blocks:["uid","page_name","block_order","block_text"]
         };
         const valid=Object.entries(required).every(([name,columns])=>{
