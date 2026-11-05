@@ -1,7 +1,7 @@
 'use client';
 
 import {useAsyncResource} from './use-async-resource';
-import {invalidatePublicScopeMetadata,invalidatePublicThemeSnapshot,selectPublicSiteBootstrap,selectScopeBlocks,selectScopeConfig,selectScopeRegistry} from './scope-data';
+import {invalidatePublicScopeMetadata,selectPublicSiteBootstrap,selectScopeBlocks,selectScopeConfig,selectScopeRegistry} from './scope-data';
 import {selectThemeRegistry,themeUiId} from './theme-data';
 
 // Shared public site snapshot (Registry/Theme/page copy) is fetched once per
@@ -13,9 +13,6 @@ let bootstrapRpcInstalled=true;
 // The public snapshot is long-lived until an explicit Admin Registry refresh.
 export function invalidateAppBootstrapMetadata(){
   invalidatePublicScopeMetadata();
-}
-export function invalidateAppBootstrapThemes(){
-  invalidatePublicThemeSnapshot();
 }
 const missingRpc=error=>['PGRST202','42883'].includes(String(error?.code||''));
 
