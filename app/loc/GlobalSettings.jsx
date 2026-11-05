@@ -29,6 +29,8 @@ import {getScope} from '../modular/scope-registry';
 const {account:accountNavigation,device:deviceNavigation}=NavigationPreferences;
 
 const option=(value,label,description,shortLabel)=>({value,label,description,shortLabel});
+// Always show LOC's full-screen Clerk gateway, not a provider-specific login UI.
+const LOC_LOGIN_GATEWAY='/login/index.html?return_to=%2Flocal%2Fsettings%2F';
 export default function GlobalSettings({initialSection='home'}={}){
   useUiSection('uiExtra.globalSettings');
   const uiT=useUiText();
@@ -127,10 +129,14 @@ export default function GlobalSettings({initialSection='home'}={}){
   }
   async function logout(){
     setBusy(true);setStatus('');
-    try{await account.signOut();window.location.reload();}
-    catch(error){setStatus(String(error?.message||error));setBusy(false);}
+    try{
+      await account.signOut();
+      if(native)window.location.reload();
+      else window.location.assign(LOC_LOGIN_GATEWAY);
+    }catch(error){setStatus(String(error?.message||error));setBusy(false);}
   }
   function login(){
+    if(!native){window.location.assign(LOC_LOGIN_GATEWAY);return;}
     void account.signIn(new URL('/local/settings/',window.location.href).href)
       .catch(error=>setStatus(String(error?.message||error)));
   }
