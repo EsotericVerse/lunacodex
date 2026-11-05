@@ -29,7 +29,7 @@ test('Recorder rejects invented or unsafe source payloads',()=>{
     e=>{e.records[0].role='system';},
     e=>{e.updated_at='2026-11-06T03:00:00+08:00';},
     e=>{e.records=Array.from({length:101},(_,i)=>({...e.records[0],message_id:String(i)}));},
-    e=>{e.uid='LOCoMVP1';}
+    e=>{e.uid='invalid-length-uid';}
   ]){
     const e=example(); mutate(e);
     assert.throws(()=>validateConversation(e));
