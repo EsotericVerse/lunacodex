@@ -13,7 +13,7 @@
   <header class="brand"><img class="brand-icon" src="icons/loc-favicon.png" alt="" width="28" height="28"><span>LOC <small>GALAXY</small></span></header>
   <div class="eyebrow">LANGUAGE · TIME · TRACE</div>
   <h1>回到你的<br><em>文字世界。</em></h1>
-  <p class="intro">只連線 LOC MCP。先選擇 Scope，再使用 Clerk OAuth 驗證。</p>
+  <p class="intro">連線你的 LOC Galaxy。授權後可開啟工作台、資料匯入與大量更新。</p>
   <form id="connect" autocomplete="off">
     <label for="scopeid">Scope ID</label>
     <input id="scopeid" name="scopeid" required maxlength="15" pattern="[a-z][a-z0-9]{0,14}" placeholder="例如 lo3rwang" spellcheck="false" autocapitalize="none" autocomplete="off">
@@ -25,6 +25,11 @@
   <section id="connected" hidden>
     <span class="connected-mark">●</span> <strong>LOC MCP 已授權</strong>
     <p id="account"></p>
+    <div class="actions" aria-label="Galaxy 工作功能">
+      <button id="workbench" type="button" class="primary">3 · 開啟 Galaxy 工作台</button>
+      <button id="import" type="button">開啟 Scope 資料匯入</button>
+      <button id="bulk" type="button">開啟 Scope 大量更新</button>
+    </div>
     <button type="button" id="disconnect" class="quiet">中斷 Extension 連線</button>
   </section>
   <p id="status" role="status" aria-live="polite">正在檢查連線狀態…</p>
