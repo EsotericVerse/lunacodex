@@ -92,7 +92,7 @@ export function clusterLocSharedPoints(points=[],maxPins=50,radiusMeters=75){
   }
   // Round-robin preserves representation across people under a global cap.
   const queues=[...sources.values()];
-  const selected=[],clusters=[];
+  const clusters=[];
   const radians=Math.PI/180;
   const distance=(a,b)=>{
     const latA=Number(a.latitude)*radians,latB=Number(b.latitude)*radians;
