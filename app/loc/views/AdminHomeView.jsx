@@ -66,6 +66,12 @@ export default function AdminHomeView({scopeGroup}){
   useEffect(()=>{
     if(canManage)editDock?.begin('loc');
   },[canManage,editDock?.begin]);
+  // The protected Admin route must not flash public navigation while the
+  // live role check is pending; release it if the login/role check is denied.
+  useEffect(()=>{
+    if(!account.loading&&!account.permissionLoading&&!canManage)
+      window.dispatchEvent(new CustomEvent('loc-management-entry-denied',{detail:{scopeId:'loc'}}));
+  },[account.loading,account.permissionLoading,canManage]);
   const selectedOption=ADMIN_OPTIONS.find(option=>option.value===section)||ADMIN_OPTIONS[0];
 
   if(account.loading||account.permissionLoading)return <section className="loc-view"><div className="loc-card">{UI_COPY.admin.checking}</div></section>;

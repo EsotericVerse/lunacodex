@@ -66,6 +66,11 @@ export default function ManagementAccess({scopeId,level='scope',featureId='manag
   const allowed=Boolean(ready&&verification.user&&
     granted(verification.authorizer,scopeId,level));
   const entered=Boolean(dock?.active&&dock.scopeId===scopeId);
+  // On denied or expired management entry restore ordinary navigation.
+  useEffect(()=>{
+    if(ready&&(!allowed||locked))
+      window.dispatchEvent(new CustomEvent('loc-management-entry-denied',{detail:{scopeId}}));
+  },[ready,allowed,locked,scopeId]);
   useEffect(()=>{
     if(!allowed||entered)return;
     if(editorSessionStatus(window.sessionStorage).expired){setLocked(true);return;}
