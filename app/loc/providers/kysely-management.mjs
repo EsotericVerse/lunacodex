@@ -231,11 +231,16 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
   if(name==='read_scope_registry_admin'){
     if(!await canManageLoc(trx,'global'))reject('Global administrator required',403);
     await sql`reset role`.execute(trx);
-    const rows=await trx.selectFrom('silver.manage')
-      .select(['id','display_name','email','manage_role','domain','directory',
-        'parent_scope_id','active','sort_order','galaxy_table','anchor_table',
-        'birthday','title_tw','desc_tw'])
-      .orderBy('sort_order','asc').orderBy('id','asc').execute();
+    const rows=await trx.selectFrom('silver.manage as m')
+      .leftJoin('silver.loc as l','l.id','m.id')
+      .select(['m.id as id','l.display_name as display_name','m.email as email',
+        'm.manage_role as manage_role','m.domain as domain','m.directory as directory',
+        'm.parent_scope_id as parent_scope_id','m.active as active',
+        'm.sort_order as sort_order','m.galaxy_table as galaxy_table',
+        'm.anchor_table as anchor_table','l.birthday as birthday',
+        'l.title_tw as title_tw','l.desc_tw as desc_tw'])
+      .where('m.manage_role','!=','reserve')
+      .orderBy('m.sort_order','asc').orderBy('m.id','asc').execute();
     return {data:rows,count:null};
   }
   if(name==='find_galaxy_duplicates')return {data:await findGalaxyDuplicates(trx,args),count:null};
@@ -269,10 +274,13 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     const group=validScope(args.p_group_id);
     if(!await canManageLoc(trx,'group',group))reject('Group management permission required',403);
     await sql`reset role`.execute(trx);
-    const rows=await trx.selectFrom('silver.manage')
-      .select(['id','display_name','parent_scope_id','active','sort_order'])
-      .where('parent_scope_id','=',group).where('manage_role','=','scope')
-      .orderBy('sort_order','asc').orderBy('id','asc').execute();
+    const rows=await trx.selectFrom('silver.manage as m')
+      .innerJoin('silver.loc as l','l.id','m.id')
+      .select(['m.id as id','l.display_name as display_name',
+        'm.parent_scope_id as parent_scope_id','m.active as active',
+        'm.sort_order as sort_order'])
+      .where('m.parent_scope_id','=',group).where('m.manage_role','=','scope')
+      .orderBy('m.sort_order','asc').orderBy('m.id','asc').execute();
     return {data:rows,count:null};
   }
   if(name==='update_group_member_name'){
@@ -290,11 +298,9 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
       .set({display_name:title,updated_at:sql`now()`})
       .where('id','=',member).executeTakeFirst();
     if(Number(updated?.numUpdatedRows||0)!==1)reject('Group member configuration was not updated');
-    const registry=await trx.updateTable('silver.manage')
-      .set({display_name:title,updated_at:sql`now()`})
-      .where('id','=',member).where('parent_scope_id','=',group)
-      .where('manage_role','=','scope').executeTakeFirst();
-    if(Number(registry?.numUpdatedRows||0)!==1)reject('Group member registry was not updated');
+    const named=await trx.updateTable('silver.loc')
+      .set({display_name:title}).where('id','=',member).executeTakeFirst();
+    if(Number(named?.numUpdatedRows||0)!==1)reject('Group member LOC Scope List was not updated');
     return {data:true,count:null};
   }
   if(name==='update_group_default_article_class'){
@@ -475,10 +481,13 @@ async function managedLocSettings(trx,args,claims){
   // table is addressable through this route.
   await sql`reset role`.execute(trx);
   const row=await trx.selectFrom('silver.loc')
-    .select(['theme','keywords','database','blacklist'])
+    .select(['theme','keywords','blacklist'])
     .where('id','=','loc').forUpdate().executeTakeFirst();
-  if(!row)reject('LOC settings unavailable');
-  const saved=validCatalog(section==='database'?row.database:
+  const system=section==='database'
+    ?await trx.selectFrom('silver.manage').select('database')
+      .where('id','=','admin').forUpdate().executeTakeFirst():null;
+  if(!row||(section==='database'&&!system))reject('LOC/system settings unavailable');
+  const saved=validCatalog(section==='database'?system.database:
     section==='theme'?row.theme:section==='keywords'?row.keywords:row.blacklist?.[section],section);
   if(operation==='read')return saved;
   let updated=[],column='blacklist',returnValue;
@@ -576,7 +585,11 @@ async function managedLocSettings(trx,args,claims){
     if(!found)reject('Reserved Scope ID not found');
     returnValue=updated;
   }
-  if(column==='blacklist'){
+  if(column==='database'){
+    await trx.updateTable('silver.manage').set({
+      database:sql`${JSON.stringify(updated)}::jsonb`
+    }).where('id','=','admin').executeTakeFirst();
+  }else if(column==='blacklist'){
     await trx.updateTable('silver.loc').set({
       blacklist:sql`jsonb_set(blacklist,ARRAY[${section}]::text[],
         ${JSON.stringify(updated)}::jsonb,true)`
