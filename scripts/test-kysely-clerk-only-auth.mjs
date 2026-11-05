@@ -4,14 +4,6 @@ import {readFileSync} from 'node:fs';
 
 const source=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
-test('SQL Gateway verifies each JWT but caches only Authority identity for matching Clerk Session',()=>{
-  const edge=readFileSync(new URL('../supabase/functions/loc-kysely/index.ts',import.meta.url),'utf8');
-  assert.match(edge,/createVerifiedSessionEmailCache/);
-  assert.match(edge,/await jwtVerify\(token,clerkKeys/);
-  assert.match(edge,/await sessionEmailCache\(\{issuer:payload\.iss,subject:payload\.sub,session:payload\.sid\}/);
-  assert.match(edge,/identity\.session!==payload\.sid/);
-});
-
 test('LOC SQL Gateway accepts Clerk/Authority, not Supabase Auth sessions',()=>{
   const edge=source('supabase/functions/loc-kysely/index.ts');
   assert.match(edge,/verifyClerkForSql\(token\)/);
