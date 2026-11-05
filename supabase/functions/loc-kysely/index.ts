@@ -412,7 +412,7 @@ Deno.serve(async (request) => {
         return json({error:{message:"Managed MCP reads use the control database only"}},400);
       const scope=String(body.scopeid||"");
       const isRead=body.kind==="mcp-read";
-      const expectedKeys=isRead?["kind","scopeid","uid"]:["kind","scopeid","query","limit"];
+      const expectedKeys=isRead?["kind","scopeid","uid",...(body.site===undefined?[]:["site"])]:["kind","scopeid","query","limit"];
       if(!["lo3rwang","lrunes"].includes(scope)||
          Object.keys(body).length!==expectedKeys.length||
          Object.keys(body).some(key=>!expectedKeys.includes(key)))
@@ -421,7 +421,7 @@ Deno.serve(async (request) => {
       const query=body.query;
       const limit=body.limit;
       if(isRead){
-        if(!/^[A-Za-z0-9]{8}$/.test(uid))
+        if(!/^[A-Za-z0-9]{8}$/.test(uid)||body.site!==undefined&&body.site!=="mcp")
           return json({error:{message:"Invalid managed MCP article UID"}},400);
       }else if(typeof query!=="string"||query.trim().length<2||query.length>100||
           /[\u0000-\u001f\u007f]/.test(query)||!Number.isInteger(limit)||
@@ -438,7 +438,7 @@ Deno.serve(async (request) => {
         await sql`select set_config('request.jwt.claim.role','authenticated',true)`.execute(trx);
         if(isRead){
           const result=await sql`select uid,title,content,date,createtime,site,url
-            from ${table} where uid=${uid} limit 1`.execute(trx);
+            from ${table} where uid=${uid} and (${body.site===undefined} or site='mcp') limit 1`.execute(trx);
           return result.rows;
         }
         const pattern="%"+String(query).trim().replace(/[\\%_]/g,"\\$&")+"%";
