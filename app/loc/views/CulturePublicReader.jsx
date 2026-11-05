@@ -8,7 +8,8 @@ import {dbPublicClient} from '../db-client.mjs';
 import {defaultScopeData} from '../scope-data';
 import {selectCultureArticleListPage} from '../culture-query';
 import {selectGalaxyIdentity} from '../galaxy-query';
-import {WorkFullText} from '../../modular/ui';
+import ScopeLink from '../../modular/ScopeLink';
+import {scopeHref} from '../../modular/scope-registry';
 
 const CultureTimeline=dynamic(()=>import('../../modular/modules/culture-timeline/CultureTimeline'),{loading:()=>null});
 const NO_ITEMS=Object.freeze([]);
@@ -295,7 +296,14 @@ export default function CulturePublicReader(){
               onClick={()=>toggleFull(row)}>全文展開</button>
             {fullUid===row.uid?<div>
               {fullError?<p className='scope-status scope-error'>{fullError}</p>:null}
-              <p className='scope-status'>{fullText}</p>
+              {fullText?<div>
+                <p className='scope-status'>{fullText}</p>
+                <ScopeLink className='loc-button' href={(()=>{
+                  const base=scopeHref(scopeId,'search/manage');
+                  return base+(base.includes('?')?'&':'?')+
+                    'identity='+encodeURIComponent(row.uid);
+                })()}>編輯</ScopeLink>
+              </div>:null}
             </div>:null}
           </div>)}
         {articlesLoading?<p className='scope-status'>正在載入文章…</p>:null}
