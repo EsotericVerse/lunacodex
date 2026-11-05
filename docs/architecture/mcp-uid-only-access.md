@@ -15,6 +15,7 @@ LOC MCP 對外以 `galaxy_link` 統一執行跨對話話題的 `search/read/chec
 
 - Cloudflare Authority 使用現有 `LOC_AUTHORITY_STATE` Durable Object 計數；不增加資料表、索引或 Worker。
 - 每位已驗證 Clerk 使用者最多 16 個 MCP 資料操作／分鐘，跨 Scope 共用額度；全體使用者同時執行最多 16 個 MCP 請求。QoS 限制每位使用者每分鐘最多 12 次讀取、全域最多 12 個同時讀取，保留 4 個名額供寫入使用；寫入可使用其他空閒容量。超額回傳 HTTP 429，不進入 Supabase。
+- Galaxy Link 的 `site=mcp` 搜尋有獨立限制：每位 Clerk 使用者每分鐘最多 2 次、全域最多 2 次同時搜尋；它同時消耗既有讀取及總請求額度。搜尋逾時 4 秒（管理型 SQL）或 4.5 秒（指定 Scope PostgREST）。
 - 公開 UID 讀取也先透過 Authority 取得額度；私有讀寫在 Authority 執行前檢查。未授權及 Group Search 不進資料庫；Galaxy Link 搜尋另需 site=mcp 限定。
 - 額度使用短期租約，正常完成即釋放，意外中斷最多保留 25 秒。計數採原子交易，不能靠 Worker 本機記憶體。
 - 如果全域 16 個併發槽位已滿，或 12 個讀取槽位已滿，新增請求立即拒絕，該呼叫者進入 Durable Object 紀錄的 **3 分鐘冷卻期**；冷卻期內持續回 429，不排隊、不重試。單純每分鐘配額耗盡只回 429、不觸發 3 分鐘冷卻；正常 Clerk 登入仍可使用。
