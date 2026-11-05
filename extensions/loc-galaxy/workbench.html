@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="script-src 'self'; object-src 'none'; base-uri 'none';">
+<title>LOC Galaxy｜工作台</title>
+<link rel="icon" type="image/png" href="icons/loc-favicon.png">
+<link rel="stylesheet" href="workbench.css">
+<script type="module" src="workbench.mjs"></script>
+</head>
+<body>
+<main class="shell">
+  <header class="masthead">
+    <div class="brand"><img src="icons/loc-favicon.png" width="44" height="44" alt=""><span>LOC <small>GALAXY</small></span></div>
+    <p class="eyebrow">LANGUAGE · TIME · TRACE</p>
+    <h1>你的 Galaxy。<br><em>由你掌握。</em></h1>
+    <p class="lead">沿用 LOC Clerk 與 Scope 權限，整合工作入口與私密對話查詢。</p>
+    <p id="connection" class="connection" role="status">正在驗證 Scope 連線…</p>
+  </header>
+
+  <section class="panel" aria-labelledby="work-heading">
+    <div class="section-header"><h2 id="work-heading">文章工作區</h2><small>既有網站管理功能</small></div>
+    <p class="muted">由 Extension 開啟已驗證的 Scope 管理頁。ZIP／JSON／CSV 等匯入、去重及大量權限更新，仍由網站端執行；不把 OAuth Token 傳給網頁。</p>
+    <div class="workgrid">
+      <button id="open-import" type="button" disabled><strong>資料匯入</strong><span>完整檔案匯入、來源比對與定錨</span></button>
+      <button id="open-bulk" type="button" disabled><strong>大量更新</strong><span>八項 Boolean 批次設定與預覽</span></button>
+      <button id="open-article" type="button" disabled><strong>文章管理</strong><span>單篇文章編輯與權限設定</span></button>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="link-heading">
+    <div class="section-header"><h2 id="link-heading">Galaxy Link</h2><small>Extension 內查詢</small></div>
+    <p class="muted">搜尋已授權 Scope 的 <code>site=mcp</code> 對話紀錄，選取後才分段讀取正文。查詢受 LOC Authority QoS 保護，不進行背景掃描。</p>
+    <form id="search-form" class="searchbar">
+      <label for="query">搜尋話題</label>
+      <div class="searchrow"><input id="query" type="search" minlength="2" maxlength="100" required placeholder="輸入 2–100 字…" disabled><button id="search" type="submit" disabled>搜尋</button></div>
+    </form>
+    <p id="message" class="message" role="status" aria-live="polite"></p>
+    <div id="results" class="results" aria-label="搜尋結果"></div>
+    <article id="article" class="article" hidden aria-labelledby="article-title">
+      <div class="article-head"><h3 id="article-title"></h3><button id="close-article" type="button">關閉全文</button></div>
+      <p id="article-meta" class="muted"></p>
+      <pre id="article-content"></pre>
+      <button id="more" type="button" hidden>繼續讀取後續內容</button>
+    </article>
+  </section>
+  <footer>LOC Galaxy · 僅使用官方 LOC OAuth · Token 保留在 Extension 背景安全儲存區</footer>
+</main>
+</body>
+</html>
