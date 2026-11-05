@@ -21,7 +21,7 @@ async function findDateAnchor(table,date){
 }
 
 export default function ArticleTimeAnchorAction({
-  scopeId='',date='',onCreated=null,suggestions=[],label='新增時間定錨'
+  scopeId='',date='',articleCreateTime='',onCreated=null,suggestions=[],label='新增時間定錨'
 }){
   const account=useAccount({enabled:false});
   const dialogRef=useRef(null);
@@ -130,8 +130,10 @@ export default function ArticleTimeAnchorAction({
       }else{
         const uid=allocateTimeUid();
         const chosen=annualSuggestions.find(item=>item.title===details);
+        const original=Date.parse(String(articleCreateTime||''));
         const record={uid,type:'anchor',title:chosen?.title||date,description:details,
-          address:date,anchor_ids:null,invisible:false};
+          address:date,anchor_ids:null,invisible:false,
+          ...(Number.isFinite(original)?{createtime:new Date(original).toISOString()}:{})};
         const result=await insertRows(table,[record]);
         if(result?.count!==1)throw new Error('新增時間定錨未確認成功。');
         onCreated?.(record);
