@@ -172,6 +172,7 @@ function SourceArticleList({scope,startDate,endDate,sourceNames=null,defaultSort
         relatedSpace={selectedUid===String(work.uid)?bodyQuery.data?.related_space:null}
         relatedStatistics={selectedUid===String(work.uid)?bodyQuery.data?.related_statistics:null}
         articleScopeId={work.scope_id||scope.id}
+        date={work.date||work.createtime||work.start_date||''}
         articleDate={selectedUid===String(work.uid)?bodyQuery.data?.article_day||bodyQuery.data?.date:''}
         tracePlace={selectedUid===String(work.uid)?bodyQuery.data?.trace_place:null}
         traceHref={selectedUid===String(work.uid)&&bodyQuery.data?.trace_place
