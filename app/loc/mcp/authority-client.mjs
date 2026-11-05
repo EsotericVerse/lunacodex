@@ -45,12 +45,16 @@ export async function authorityAction(name,args,token,env={},fetchImpl=globalThi
           typeof row.message_id!=='string'||!row.message_id||
           typeof row.sent_at!=='string'||!Number.isFinite(Date.parse(row.sent_at))))
         throw bad('Only timestamped original user messages or real assistant advice may be recorded');
-      const content=records.map(row=>'['+new Date(row.sent_at).toISOString()+'] '+
+      const digestInput=new TextEncoder().encode(JSON.stringify([a.conversation_id,...records]));
+      const digest=new Uint8Array(await crypto.subtle.digest('SHA-256',digestInput));
+      const batchId=[...digest].map(n=>n.toString(16).padStart(2,'0')).join('');
+      const marker='[[GalaxyLinkBatch:'+batchId+']]';
+      const content=marker+'\n'+records.map(row=>'['+new Date(row.sent_at).toISOString()+'] '+
         (row.role==='user'?'user':'assistant:advice')+' #'+row.message_id+'\n'+row.text).join('\n\n');
       if(content.length>125000)throw bad('Source batch too large');
       path='sync/'+id(a.scopeid);method='POST';
       body={conversation_id:a.conversation_id,updated_at:a.updated_at,
-        created_at:a.created_at,title:a.title||'',content,
+        created_at:a.created_at,title:a.title||'',content,batch_id:batchId,
         ...(a.uid?{uid:a.uid}:{}),append:true};
     }
     // A dedicated versioned route fails closed against old Authority deployments.
