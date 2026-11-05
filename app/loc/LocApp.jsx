@@ -101,6 +101,7 @@ function FeatureGate({scopeId,scopeMeta=null,view,children}){
       <p className="scope-status" role="status"><UiText id="uiExtra.feature.settingsLoading"/></p>
     </section>
   </FeaturePage>;
+  if(query.error||!query.data)return <main className="scope-main"><section className="scope-page"><section className="loc-card"><p className="scope-status scope-error">Scope 設定無法讀取，暫時無法開啟功能。</p></section></section></main>;
   if(!scopeFeatureEnabled(query.data,flag))return <main className="scope-main"><section className="scope-page"><section className="loc-card"><p className="scope-status"><UiText id="uiExtra.feature.unpublished"/></p></section></section></main>;
   return children;
 }
