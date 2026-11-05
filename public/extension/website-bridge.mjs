@@ -9,6 +9,7 @@ const params=new URLSearchParams(location.search);
 const nonce=params.get('nonce')||'';
 const scopeid=params.get('scopeid')||'';
 const valid=/^[a-z][a-z0-9]{0,14}$/.test(scopeid)&&/^[A-Za-z0-9_-]{32,128}$/.test(nonce);
+let currentClerk=null,connectFlight=null,approved=false;
 function status(message){byId('status').textContent=message;}
 function decodeClaims(token){
   const part=token.split('.')[1];
@@ -25,6 +26,7 @@ async function loadScript(src,attributes={}){
   });
 }
 async function loadClerk(){
+  if(currentClerk)return currentClerk;
   const res=await fetch('/recovery/config.json',{cache:'no-store'});
   if(!res.ok)throw Error('LOC 網站登入設定無法讀取');
   const config=await res.json();
@@ -36,9 +38,17 @@ async function loadClerk(){
   const clerk=window.Clerk;
   if(!clerk)throw Error('LOC 網站 Clerk 未初始化');
   await clerk.load({ui:{ClerkUI:window.__internal_ClerkUICtor}});
+  currentClerk=clerk;
   return clerk;
 }
 async function connect(){
+  if(connectFlight)return connectFlight;
+  const flight=connectOnce();
+  connectFlight=flight;
+  try{return await flight;}
+  finally{if(connectFlight===flight)connectFlight=null;}
+}
+async function connectOnce(){
   if(!valid)throw Error('Extension 授權請求無效，請從 Extension 重新連線');
   status('正在確認已登入的 LOC Session…');
   const clerk=await loadClerk();
@@ -66,7 +76,12 @@ async function connect(){
   });
   if(!reply?.ok||reply?.data?.ready!==true)
     throw Error(reply?.error||'Extension 尚未通過 LOC MCP Scope 核驗');
-  status('已由 LOC 網站 Session 完成 Galaxy 授權。可以返回 Extension 工作台。');
+  approved=true;
+  status('已由 LOC 網站 Session 完成 Galaxy 授權。請保留此分頁以自動續期；可切換回 ChatGPT。');
 }
 byId('retry').addEventListener('click',()=>{void connect().catch(error=>status(String(error.message||error)));});
 void connect().catch(error=>status(String(error.message||error)));
+
+// Clerk template tokens are short-lived. While this trusted site tab remains open,
+// renew the dedicated audience-bound grant without asking for interactive OAuth.
+setInterval(()=>{if(approved)void connect().catch(error=>status('授權續期失敗：'+String(error.message||error)));},45000);
