@@ -308,6 +308,6 @@ Search 只對 Galaxy `content` 執行模糊比對；進階內容類型只保留�
 ## 2026-11-06｜文化首頁第二條河道的篩選控制
 
 - 第二條「文章密度」河道保留獨立的時期選擇（預設近一年／各 era／自訂起訖日），不改動第一條時間定錨河道的預設近一年與左側 era 階層。
-- 分類顯示允許「文章來源」或「關鍵詞」。關鍵詞科目從既有 `shared_classes` 查詢公開項目，選擇後只讀 `keyword_catalog` 的群組名稱，並以既有 `culture_density` 每日密度做**等比例展示**；不使用舊版 `keyword_summary` 逐篇 UID 清單演算法，圖示不代表實際關鍵詞命中筆數。沒有公開科目時顯示明確提示，不額外擴大 SQL 權限。
+- 分類顯示允許「文章來源」或「關鍵詞」。關鍵詞科目從既有 `shared_classes` 查詢公開項目，選擇後只讀 `keyword_catalog` 的群組名稱，並依現有 Anchor group/item `attr.total` 的總量比例，將既有 `culture_density` 每日密度做**比例展示**（若沒有統計總量才退回等份）；不使用舊版 `keyword_summary` 逐篇 UID 清單演算法，圖示不代表實際關鍵詞命中筆數。沒有公開科目時顯示明確提示，不額外擴大 SQL 權限。
 - 變更時期或分類會清除舊文章列表與展開狀態；文章列表只在來源模式明確點擊才載入。不重建 RPC 或 SQL Schema。
 - 回歸測試：`scripts/test-culture-second-river-controls.mjs`。
