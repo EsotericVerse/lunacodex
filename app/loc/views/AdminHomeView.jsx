@@ -5,10 +5,11 @@ import adminZh from '../../i18n/sections/admin.zh_tw.js';
 import adminViewZh from '../../i18n/sections/uiExtra.adminView.zh_tw.js';
 registerDefaultSection('admin',adminZh);
 registerDefaultSection('uiExtra.adminView',adminViewZh);
-import {useEffect} from 'react';
+import {useEffect,useState} from 'react';
 import dynamic from 'next/dynamic';
 import {useAccount} from '../use-account';
 import {useEditDock} from '../../modular/edit-dock';
+import {editorSessionStatus,clearEditorSession,touchEditorSession} from '../edit-session-ttl.mjs';
 import {FeaturePage} from '../../modular/ui';
 import ManagementWorkspaceFrame from '../ManagementWorkspaceFrame';
 import ManagementSectionNav,{useManagementSection} from '../../modular/ManagementSectionNav';
@@ -23,15 +24,6 @@ const ADMIN_OPTIONS=Object.freeze([
   {value:'featureHero',label:'功能區塊設定',shortLabel:'區塊',description:'編輯功能頁 Hero 與展示資源。'},
   {value:'themes',label:'主題顏色設定',shortLabel:'配色',description:'調整網站主題和色彩。'}
 ]);
-function Login({account}){
-  return <FeaturePage featureId="admin">
-    <section className="loc-card scope-feature-card">
-      <p>請先至設定首頁登入。</p>
-      {account.error?<p className="scope-status scope-error">{account.error}</p>:null}
-    </section>
-  </FeaturePage>;
-}
-
 const EnterpriseAuthReserved=dynamic(()=>import('./admin-panels/EnterpriseAuthReserved'),{loading:PanelLoading});
 const DatabaseTarget=dynamic(()=>import('./admin-panels/DatabaseTarget'),{loading:PanelLoading});
 const IsrDomainTarget=dynamic(()=>import('./admin-panels/IsrDomainTarget'),{loading:PanelLoading});
@@ -48,6 +40,7 @@ export default function AdminHomeView({scopeGroup}){
   const UI_COPY=useUiCopy();
   const account=useAccount();
   const editDock=useEditDock();
+  const [entryVerified,setEntryVerified]=useState(false);
   const canManage=Boolean(account.user&&!account.loading&&!account.permissionLoading&&account.canManageGlobalSync());
   // Preserve deep links created before the Admin sections were consolidated.
   const [section,setSection]=useManagementSection(ADMIN_OPTIONS,'registry',{
@@ -62,21 +55,32 @@ export default function AdminHomeView({scopeGroup}){
     if(editDock?.active)editDock.switchSection(next,setSection);
     else setSection(next);
   };
-  // Admin edit mode remains guarded by the global management permission.
+  // Global Admin is an independent protected route. Its authorization must
+  // pass before the edit dock becomes available.
   useEffect(()=>{
-    if(canManage)editDock?.begin('loc');
-  },[canManage,editDock?.begin]);
-  // The protected Admin route must not flash public navigation while the
-  // live role check is pending; release it if the login/role check is denied.
-  useEffect(()=>{
-    if(!account.loading&&!account.permissionLoading&&!canManage)
+    if(account.loading||account.permissionLoading)return;
+    const target=window.location.pathname+window.location.search+window.location.hash;
+    const fromLogin=window.sessionStorage.getItem('loc-management-login-return-v1')===target;
+    if(fromLogin)window.sessionStorage.removeItem('loc-management-login-return-v1');
+    if(!canManage||!fromLogin&&editorSessionStatus(window.sessionStorage).expired){
+      setEntryVerified(false);
       window.dispatchEvent(new CustomEvent('loc-management-entry-denied',{detail:{scopeId:'loc'}}));
-  },[account.loading,account.permissionLoading,canManage]);
+      window.location.replace('/login/index.html?return_to='+encodeURIComponent(target));
+      return;
+    }
+    if(fromLogin){
+      clearEditorSession(window.sessionStorage);
+      if(!touchEditorSession(window.sessionStorage))return;
+    }
+    setEntryVerified(true);
+    editDock?.begin('loc');
+  },[account.loading,account.permissionLoading,canManage,editDock?.begin]);
   const selectedOption=ADMIN_OPTIONS.find(option=>option.value===section)||ADMIN_OPTIONS[0];
 
   if(account.loading||account.permissionLoading)return <section className="loc-view"><div className="loc-card">{UI_COPY.admin.checking}</div></section>;
-  if(!account.user)return <Login account={account}/>;
-  if(!account.canManageGlobalSync())return <FeaturePage featureId="admin"><section className="loc-card scope-feature-card"><p>{UI_COPY.admin.denied}</p></section></FeaturePage>;
+  if(!canManage||!entryVerified)return <FeaturePage featureId="admin">
+    <section className="loc-card scope-feature-card"><p role="status">正在開啟 LOC 身分驗證…</p></section>
+  </FeaturePage>;
 
   return <FeaturePage featureId="admin">
     <ManagementWorkspaceFrame level="admin" title="系統管理">
