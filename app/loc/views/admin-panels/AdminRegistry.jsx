@@ -374,7 +374,7 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
         if(!String(currentCopy.Title_TW||'').trim())throw new Error('NAV 中文名稱不可空白。');
         if(String(currentCopy.Title_TW||'')!==String(pageCopy?.Title_TW||'')||
           String(currentCopy.Desc_TW||'')!==String(pageCopy?.Desc_TW||'')){
-          await updateRows('silver.manage',{
+          await updateRows('silver.loc',{
             title_tw:String(currentCopy.Title_TW||'').trim(),
             desc_tw:String(currentCopy.Desc_TW||'').trim()
           },{filters:[{column:'id',operator:'eq',value:current.scope_id}]});
@@ -406,9 +406,10 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
       await updateRows('silver.manage',{
         email,
         galaxy_table:String(row.galaxy||'galaxy').trim()||'galaxy',
-        anchor_table:String(row.anchor||'anchor').trim()||'anchor',
-        birthday:row.birthday||null
+        anchor_table:String(row.anchor||'anchor').trim()||'anchor'
       },{filters:[{column:'id',operator:'eq',value:row.id}]});
+      if(row.id!=='admin')await updateRows('silver.loc',{birthday:row.birthday||null},
+        {filters:[{column:'id',operator:'eq',value:row.id}]});
       setStatus('Mapping 已更新。');refresh();return true;
     }catch(error){setStatus(error?.message||'Mapping 更新失敗。');return false;}
   }
@@ -435,9 +436,10 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
       await updateRows('silver.manage',{
         email:email,manage_role:'scope',
         galaxy_table:String(newMapping.galaxy||'galaxy').trim()||'galaxy',
-        anchor_table:String(newMapping.anchor||'anchor').trim()||'anchor',
-        birthday:newMapping.birthday||null
+        anchor_table:String(newMapping.anchor||'anchor').trim()||'anchor'
       },{filters:[{column:'id',operator:'eq',value:selected.scope_id}]});
+      await updateRows('silver.loc',{birthday:newMapping.birthday||null},
+        {filters:[{column:'id',operator:'eq',value:selected.scope_id}]});
       setNewMapping({...EMPTY_MAPPING});setStatus('Mapping 已新增。');refresh();return true;
     }catch(error){setStatus(error?.message||'Mapping 新增失敗。');return false;}
   }
