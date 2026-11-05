@@ -64,16 +64,6 @@ export async function authorityAction(name,args,token,env={},fetchImpl=globalThi
         if(!body.table||!body.endpoint)throw bad('Database endpoint and existing table are required');
       }
       break;
-    case 'check_conversation':
-      path='checkpoint/'+id(a.scopeid)+'/'+encodeURIComponent(String(a.conversation_id||''));
-      if(!a.conversation_id)throw bad('conversation_id required');
-      query={updated_at:a.updated_at};break;
-    case 'sync_conversation':
-      path='sync/'+id(a.scopeid);method='POST';
-      if(!a.conversation_id||!a.updated_at||typeof a.content!=='string'||!a.content.trim())
-        throw bad('conversation_id, updated_at and content required');
-      body={conversation_id:a.conversation_id,updated_at:a.updated_at,
-        created_at:a.created_at,title:a.title||'',content:a.content};break;
     case 'update_scope_pr':
       path='update-pr/'+id(a.scopeid);method='POST';
       if(!UID.test(String(a.uid||'')))throw bad('Invalid case-sensitive UID');
@@ -82,19 +72,6 @@ export async function authorityAction(name,args,token,env={},fetchImpl=globalThi
       if(typeof a.content!=='string'||!a.content.trim())throw bad('content required');
       if(!a.updated_at)throw bad('updated_at required');
       body={uid:a.uid,pr_number:a.pr_number,title:a.title,content:a.content,updated_at:a.updated_at};break;
-    case 'search_scope':
-      path='search/'+id(a.scopeid);method='POST';
-      if(!a.query)throw bad('query required');
-      body={query:a.query,limit:a.limit||10};break;
-    case 'read_scope':
-      if(!UID.test(String(a.uid||'')))throw bad('Invalid case-sensitive UID');
-      path='read/'+id(a.scopeid)+'/'+a.uid;
-      query={offset:a.offset||0,max_chars:a.max_chars||20000,
-        ...(a.groupid?{groupid:id(a.groupid)}:{})};break;
-    case 'search_group':
-      path='group-search/'+id(a.groupid);method='POST';
-      if(!a.query)throw bad('query required');
-      body={query:a.query,limit:a.limit||10};break;
     case 'join_scope_group':
       path='group/'+id(a.groupid)+'/scope/'+id(a.scopeid);method='PUT';
       body={};break;
