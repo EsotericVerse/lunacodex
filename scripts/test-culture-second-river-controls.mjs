@@ -15,9 +15,11 @@ test('second river offers era selection and custom range independent of first ri
 test('keyword filter uses existing bounded public analytics, not a new SQL table',()=>{
   assert.match(source,/<option value='keyword'>關鍵詞<\/option>/);
   assert.match(source,/analytics\(scopeId,'shared_classes',null,null\)/);
-  assert.match(source,/analytics\(scopeId,'keyword_summary',rangeStart,rangeEnd,\{classUid:keywordClass\}\)/);
+  assert.doesNotMatch(source,/analytics\(scopeId,'keyword_summary'/);
+  assert.match(source,/analytics\(scopeId,'culture_density',rangeStart,rangeEnd\)/);
+  assert.match(source,/base=Math\.floor\(total\/keywordGroups\.length\)/);
   assert.match(source,/p_view:'keyword_catalog'/);
-  assert.match(source,/row\.kind==='class_day'/);
+  assert.match(source,/每日文章密度等比例分配示意/);
 });
 test('selecting another filter resets stale article lists and source expansion',()=>{
   assert.match(source,/setDensityMode\(event\.target\.value\);setExpandedSources\(\[\]\);resetArticles\(''\)/);
