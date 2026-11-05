@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-Hant">
+<html lang="zh-Hant" data-theme-id="theme-7" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -7,17 +7,7 @@
 <meta name="referrer" content="no-referrer">
 <title>LOC · 登入</title>
 <link rel="stylesheet" href="/login/appearance.css">
-<script>
-(()=>{try{
-  const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Taipei',hour:'2-digit',hourCycle:'h23'}).formatToParts(new Date());
-  const hour=Number(parts.find(part=>part.type==='hour')?.value);
-  const daytime=hour>=6&&hour<18;
-  const root=document.documentElement;
-  root.dataset.themeId=daytime?'theme-7':'theme-1';
-  root.dataset.theme=daytime?'light':'dark';
-  root.style.colorScheme=daytime?'light':'dark';
-}catch{}})();
-</script>
+
 </head>
 <body>
 <div class="login-shell">
