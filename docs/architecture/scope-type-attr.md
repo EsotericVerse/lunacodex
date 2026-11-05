@@ -334,3 +334,10 @@ Search 只對 Galaxy `content` 執行模糊比對；進階內容類型只保留�
 - 各 Scope 優先顯示單一已儲存 path（保留 4 碼舊 UID 與正式 Base62 8 碼 UID 相容）；LOC 彙整頁優先顯示實際單一路線，既有跨路線聯集為**明確選擇**才讀取，而非預設。
 - 點選地圖上的單一地點、再進入文章頁籤才讀有界 Galaxy 文章列表；明確 `?place=` 深連結可例外進入該地點文章，無關一般首頁載入。
 - 只變更痕跡首頁的資料讀取時機與路線選擇，不變更資料表、權限、RPC、MCP 或全量管理工具；更新 `scripts/test-traces-feature.mjs` 與 `scripts/test-trace-loc-route-options.mjs` 回歸測試。
+
+## 2026-11-06｜LOC 痕跡圖：動態共點、全圖 50 個
+
+- 僅 LOC 彙整頁：**不畫 path/trace 路線、痕跡線段**；先以 Scope 的 `trace=true` 篩掉未開放成員，再查其公開 path/trace 索引，從每位成員引用的 point UID 去重、各取前 50 個候選，再有界讀取 point；未被 path/trace 引用的 point 不參與。
+- 客戶端依 GPS 距離 75 公尺內動態合併近似位置，同一共點保留原始各成員紀錄，圖釘標籤可同時列出 `lo3rwang:板橋車站 / lrunes:板橋車站` 等獨立來源，不回寫或合併 UID。
+- 多個 Scope 每人最多 50 個候選，**先全部完成近似座標比對，只保留至少兩個不同 Scope 的共點交集，再依共點成員數優先排序，最後最多顯示 50 個位置**；共點少於 50 就照實顯示，不用單人獨有地點補足。不可在每個 Scope 處理完就截取全域 50，否則將遺漏後續成員的共點；無有效座標的點不顯示。地圖仍可點選記錄，但預設不查文章。
+- 其他 Scope 的 path/trace 地圖保留原行為；無 Schema、SQL、RPC 或 MCP 變動。回歸測試：`scripts/test-loc-trace-top50-points.mjs`。
