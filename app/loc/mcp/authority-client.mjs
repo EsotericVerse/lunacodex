@@ -20,7 +20,7 @@ export async function authorityAction(name,args,token,env={},fetchImpl=globalThi
   if(name==='galaxy_link'){
     if(!['search','read','check','record'].includes(a.action))throw bad('Invalid Galaxy Link action');
     if(a.action==='search'){
-      if(typeof a.query!=='string'||a.query.trim().length<3||a.query.length>100||
+      if(typeof a.query!=='string'||a.query.trim().length<2||a.query.length>100||
         !Number.isInteger(a.limit??5)||(a.limit??5)<1||(a.limit??5)>5)
         throw bad('Invalid Galaxy Link search');
       path='search/'+id(a.scopeid);method='POST';
