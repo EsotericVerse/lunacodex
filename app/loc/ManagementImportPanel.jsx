@@ -152,6 +152,9 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t){
       ...(importPlaceAddress?{__importPlaceAddress:importPlaceAddress}:{}),
       ...(importPlaceUrl?{__importPlaceUrl:importPlaceUrl}:{})}:{}),
     ...galaxyAble({
+      site:String(source||'').trim(),
+      site_id:String(originalSiteId||'').trim(),
+      title:rawTitle,
       searchable,
       statistics_able:value('statistics_able')!==false&&
         String(value('statistics_able')).toLowerCase()!=='false'&&
