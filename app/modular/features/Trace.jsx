@@ -13,7 +13,7 @@ const TEXT='uiExtra.traceUI.';
 import {useAsyncResource} from '../../loc/use-async-resource';
 import useLocFeatureSettings from '../../loc/use-loc-feature-settings';
 import {traceWindow} from './trace/trace-panel-filters.mjs';
-import {publicTraceMapChoices,locReferencedPointGroups} from './trace/trace-map-choices.mjs';
+import {publicTraceMapChoices,locReferencedPointGroups,clusterLocSharedPoints} from './trace/trace-map-choices.mjs';
 import {pickTraceDemoStop,traceDemoRoute} from './trace/trace-demo-route.mjs';
 import {
   readDefaultTraceRoute,setDefaultTraceRoute,chooseDefaultTraceRoute,
@@ -85,6 +85,7 @@ export default function Trace({scopeId='loc'}){
       readCurrentTraceAnchors(group.scope,group.ids)))).flat(),
     revalidateIfStale:false,revalidateOnFocus:false,revalidateOnReconnect:false
   });
+  const locSharedPoints=useMemo(()=>clusterLocSharedPoints(locPointsQuery.data||[],50),[locPointsQuery.data]);
   // A display preference must never turn the homepage into an unbounded
   // point scan. The selector starts with saved path/trace definitions only.
   const maps=allMapChoices;
@@ -152,11 +153,11 @@ export default function Trace({scopeId='loc'}){
   });
   const spatialData=useMemo(()=>{
     if(!routeListOpen||traceIndex.data===undefined)return null;
-    if(isLoc)return locPointsQuery.data===undefined?null:{anchors:locPointsQuery.data,maps:[]};
+    if(isLoc)return locPointsQuery.data===undefined?null:{anchors:locSharedPoints,maps:[]};
     if(!currentMap)return {anchors:[],maps:[]};
     if(anchorsQuery.data===undefined)return null;
     return {anchors:anchorsQuery.data,maps:[currentMap,...linkedRoutes]};
-  },[routeListOpen,traceIndex.data,anchorsQuery.data,currentMap,linkedRoutes,isLoc,locPointsQuery.data]);
+  },[routeListOpen,traceIndex.data,anchorsQuery.data,currentMap,linkedRoutes,isLoc,locPointsQuery.data,locSharedPoints]);
 
   const demoRoute=useMemo(()=>traceDemoRoute(demoStopIds,spatialData?.anchors||[],periodScopeId),
     [demoStopIds,spatialData?.anchors,periodScopeId]);
