@@ -84,7 +84,14 @@ test('music genres belong to selectable Keyword Classes, not fixed Statistics di
   const match=stats.match(/const STAT_TYPES=\[([^\]]+)\]/);
   assert.ok(match,'Statistics dimensions must be present');
   assert.doesNotMatch(match[1],/media_style/);
-  assert.match(stats,/value:'keywords',textKey:'uiExtra\.statisticsUI\.keywordClass'/);
+  assert.ok(stats.includes("const STAT_TYPES=['total','source','place','keywords'];"));
+  assert.ok(stats.includes("keywords:'uiExtra.statisticsUI.keywordClass'"));
+  assert.ok(stats.includes("const keywordDimension=rankingType==='keywords'"));
+  assert.ok(!stats.includes('MediaFacetStatistics'));
+  assert.ok(!stats.includes('statistics-media-facet'));
+  assert.ok(!stats.includes('STYLE_FILTERS'));
+  assert.ok(stats.includes("scopeId,resolvedKeywordClassUid,styleRange.startDate"));
+  assert.ok(stats.includes("enabled:keywordDimension&&periodNavigationReady&&Boolean(resolvedKeywordClassUid)"));
   assert.match(stats,/availableKeywordClasses\.map\(item=><option/);
   assert.match(stats,/\[item\.categoryName,item\.name\]/);
   assert.match(stats,/setSelectedKeywordClassUid\(event\.target\.value\)/);
