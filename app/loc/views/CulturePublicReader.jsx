@@ -298,9 +298,12 @@ export default function CulturePublicReader(){
             const name=String(group);
             if(name.startsWith('site:'))resetArticles(name.slice(5).split(':').slice(1).join(':'));
           }}/>
-        {selectedSite?<div className='scope-culture-source-detail'>
-          <button className='loc-button' type='button'
-            onClick={()=>openArticles(selectedSite)}>顯示相關文章列表｜{selectedSite}</button>
+        {densityRiver.sites.length?<div className='scope-culture-source-detail'>
+          {densityRiver.sites.map(item=><div key={item.key} className='scope-culture-source-list-entry'>
+            <span>{item.site}（{item.count}）</span>
+            <button className='loc-button' type='button'
+              onClick={()=>openArticles(item.site)}>顯示相關文章列表</button>
+          </div>)}
         </div>:null}
       </section>
       {articlesOpen?<section className='scope-card scope-culture-source-detail'>

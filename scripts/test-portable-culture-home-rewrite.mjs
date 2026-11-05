@@ -35,7 +35,7 @@ test('only explicit article-list request uses bounded 100-row UID query',()=>{
   assert.match(sql,/\.orderBy\('createtime','desc'\)\.limit\(100\)/);
   assert.match(sql,/row\.list===false[\s\S]*?hidden:true/);
   const view=file('app/loc/views/CulturePublicReader.jsx');
-  assert.match(view,/onClick=\{\(\)=>openArticles\(selectedSite\)\}/);
+  assert.match(view,/onClick=\{\(\)=>openArticles\(item\.site\)\}/);
   assert.match(view,/setArticleVisible\(20\)/);
   assert.match(view,/Math\.min\(n\+20,articleRows.length\)/);
 });
@@ -55,4 +55,19 @@ test('user preferences key by verified OAuth email; Header/Footer remain availab
   assert.match(store,/\.eq\('email',verified\)/);
   assert.match(shell,/scope-top-feature-nav/);
   assert.match(shell,/<DataSourceStatus local=\{localWorkspace\}/);
+});
+
+
+test('Culture reuses one FeaturePage Hero and one portable list reader',()=>{
+  const view=file('app/loc/views/CulturePublicReader.jsx');
+  const ui=file('app/modular/ui.jsx');
+  const query=file('app/loc/culture-query.js');
+  assert.match(ui,/heroBlocks\(scopeId,featureId\)/);
+  assert.doesNotMatch(view,/heroBlocks\(scopeId/);
+  assert.match(view,/selectCultureArticleListPage\(scope,/);
+  assert.match(query,/p_view:'culture_list'/);
+  assert.match(view,/onClick=\{\(\)=>openArticles\(item\.site\)\}/);
+  assert.match(view,/resetArticles=site=>/);
+  assert.match(view,/setArticleRows\(\[\]\)/);
+  assert.match(view,/articleRows\.slice\(0,articleVisible\)/);
 });
