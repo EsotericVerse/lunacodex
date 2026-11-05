@@ -241,7 +241,7 @@ export async function executePortableKyselyAnchor(db,body,{role='anon',engine,na
           value===null?'is':'=',value===null?null:String(value));
       }
     }
-    return {data:(await query.orderBy('uid','asc').limit(limit).offset(offset)
+    return {data:(await query.orderBy('createtime','desc').orderBy('title','asc').limit(limit).offset(offset)
       .execute()).map(portableRow),count:null};
   }
   if(op==='catalog'){
