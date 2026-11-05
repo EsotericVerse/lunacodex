@@ -339,7 +339,7 @@ Deno.serve(async (request) => {
         try{
           claims=await verifyMcpForSql(token,String(body.scopeid||""),String(body.kind),
              String(body.kind)==="mcp-read"?String(body.site||"mcp"):
-             String(body.kind)==="mcp-search"?String(body.source||"mcp"):"mcp");
+             "mcp");
           verifiedMcp=true;
         }catch{
           return json({error:{message:"MCP Scope write authorization rejected"}},403);
@@ -404,7 +404,7 @@ Deno.serve(async (request) => {
         return json({error:{message:"Managed MCP reads use the control database only"}},400);
       const scope=String(body.scopeid||"");
       const isRead=body.kind==="mcp-read";
-      const expectedKeys=isRead?["kind","scopeid","uid",...(body.site===undefined?[]:["site"])]:["kind","scopeid","query","limit",...(body.source===undefined?[]:["source"])];
+      const expectedKeys=isRead?["kind","scopeid","uid",...(body.site===undefined?[]:["site"])]:["kind","scopeid","query","limit"];
       if(!["lo3rwang","lrunes"].includes(scope)||
          Object.keys(body).length!==expectedKeys.length||
          Object.keys(body).some(key=>!expectedKeys.includes(key)))
@@ -417,7 +417,7 @@ Deno.serve(async (request) => {
           return json({error:{message:"Invalid managed MCP article UID"}},400);
       }else if(typeof query!=="string"||query.trim().length<2||query.length>100||
           /[\u0000-\u001f\u007f]/.test(query)||!Number.isInteger(limit)||
-          Number(limit)<1||Number(limit)>5||!["mcp","github"].includes(body.source??"mcp")){
+          Number(limit)<1||Number(limit)>5){
         return json({error:{message:"Invalid managed MCP search parameters"}},400);
       }
       const db=await databaseForTarget(controlTarget);
@@ -436,7 +436,7 @@ Deno.serve(async (request) => {
         const pattern="%"+String(query).trim().replace(/[\\%_]/g,"\\$&")+"%";
         await sql`set local statement_timeout = '4000ms'`.execute(trx);
         const result=await sql`select uid,title,createtime from ${table}
-          where site = ${body.source??'mcp'} and (title ilike ${pattern} or content ilike ${pattern})
+          where site = 'mcp' and (title ilike ${pattern} or content ilike ${pattern})
           order by createtime desc nulls last limit ${Number(limit)}`.execute(trx);
         return result.rows;
       });
@@ -570,12 +570,12 @@ Deno.serve(async (request) => {
         }else{
           const exact=await sql<{uid:string;title:string;site:string;site_id:string|null}>`
             select uid,title,site,site_id from ${tableRef}
-            where site='github' and site_id=${repoSiteId} limit 2`.execute(trx);
+            where site='mcp' and site_id=${repoSiteId} limit 2`.execute(trx);
           rows=exact.rows;
           if(rows.length===0){
             const fallback=await sql<{uid:string;title:string;site:string;site_id:string|null}>`
               select uid,title,site,site_id from ${tableRef}
-              where site='github' and title ilike ${'%PR #'+prNumber+'%'}
+              where site='mcp' and title ilike ${'%PR #'+prNumber+'%'}
               order by createtime desc nulls last limit 40`.execute(trx);
             rows=fallback.rows.filter(row=>prMarker.test(String(row.title||'')));
           }
@@ -586,7 +586,7 @@ Deno.serve(async (request) => {
         }
         const row=rows[0];
         if(!row)throw Object.assign(new Error("Scope article not found"),{httpStatus:404});
-        if(row.site!=="github")
+        if(row.site!=="mcp")
           throw Object.assign(new Error("Only GitHub PR-origin articles can be updated through this tool"),{httpStatus:403});
         if(row.site_id!==repoSiteId&&!prMarker.test(String(row.title||'')))
           throw Object.assign(new Error("PR number does not match article provenance"),{httpStatus:403});
