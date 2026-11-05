@@ -106,7 +106,11 @@ const TOOLS=[
       scopeid:{type:'string'},uid:{type:'string',pattern:'^[A-Za-z0-9]{8}$'},
       query:{type:'string',minLength:3,maxLength:100},limit:{type:'integer',minimum:1,maximum:5},
       conversation_id:{type:'string'},updated_at:{type:'string'},created_at:{type:'string'},
-      content:{type:'string',maxLength:125000},title:{type:'string',maxLength:350},
+      records:{type:'array',minItems:1,maxItems:100,items:{type:'object',properties:{
+        role:{type:'string',enum:['user','assistant']},kind:{type:'string',enum:['original','advice']},
+        sent_at:{type:'string'},text:{type:'string'},message_id:{type:'string'}
+      },required:['role','kind','sent_at','text','message_id'],additionalProperties:false}},
+      title:{type:'string',maxLength:350},
       offset:{type:'integer',minimum:0},max_chars:{type:'integer',minimum:1,maximum:40000}
     },required:['action','scopeid'],additionalProperties:false}},
   {name:'update_scope_pr',description:'Rewrite an EXISTING Galaxy article by exact uid. Never creates a new article: the article must already be GitHub PR-origin (site=github) and its current title must name the same pr_number, or the update is refused.',
