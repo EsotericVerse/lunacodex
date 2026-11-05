@@ -264,7 +264,19 @@ chrome.runtime.onMessageExternal.addListener((message,sender,sendResponse)=>{
       !Number.isFinite(expires)||expires<Date.now()+15000||
       expires>Date.now()+3600000)
       throw Error('網站授權憑證格式不符');
-    const checked=await verifyScopeAuthorization(token,scopeid);
+    // Only the initial grant needs a Scope write checkpoint. Renewal verifies
+    // the fresh JWT's signature/subject with MCP status (no quota acquisition).
+    // Every subsequent Galaxy read/write still checks current Scope grants.
+    const checked=isFirst
+      ?await verifyScopeAuthorization(token,scopeid)
+      :await mcpTool(token,'loc_connection_status');
+    if(checked.provider&&checked.provider!=='clerk')
+      throw Error('網站授權 Clerk Provider 不一致');
+    if(isRenewal){
+      const oldAuth=(await readAll()).auth;
+      if(oldAuth?.scopeid!==scopeid||oldAuth.subject!==checked.subject)
+        throw Error('網站續期使用者與原授權不同');
+    }
     if(message.subject!==checked.subject)
       throw Error('網站與 LOC MCP 回報的 Clerk 身分不一致');
     await commitAuthorization(scopeid,{
