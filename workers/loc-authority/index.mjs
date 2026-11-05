@@ -653,7 +653,7 @@ export class LocAuthorityState extends DurableObject {
   async mcpLinkSearch(scopeid,query,limit=5,oauthToken=''){
     validScope(scopeid);
     if(typeof query!=='string'||query.trim().length<3||query.length>100||
-      /[\\u0000-\\u001f\\u007f]/.test(query)||!Number.isInteger(limit)||limit<1||limit>5)
+      /[\u0000-\u001f\u007f]/.test(query)||!Number.isInteger(limit)||limit<1||limit>5)
       throw fail('Invalid Galaxy Link search',400);
     const profile=await this.mcpPrivateProfile(scopeid);
     let rows;
