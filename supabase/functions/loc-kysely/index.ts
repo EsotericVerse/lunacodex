@@ -403,8 +403,6 @@ Deno.serve(async (request) => {
   }
   let resolvingTarget = false;
   try {
-    if(body.kind==="mcp-search")
-      return json({error:{message:"MCP search is disabled"}},403);
     if(body.kind==="mcp-read"){
       // A Clerk OAuth token is separately verified by the LOC Authority.
       // This owner-only route accepts fixed read shapes, not arbitrary SQL.
@@ -427,8 +425,8 @@ Deno.serve(async (request) => {
           return json({error:{message:"Invalid managed MCP article UID"}},400);
       }else if(typeof query!=="string"||query.trim().length<2||query.length>100||
           /[\u0000-\u001f\u007f]/.test(query)||!Number.isInteger(limit)||
-          Number(limit)<1||Number(limit)>20){
-        return json({error:{message:"Invalid managed MCP search parameters"}},400);
+          Number(limit)<1||Number(limit)>5){
+        return json({error:{message:"Invalid managed MCP search parameters"},400);
       }
       const db=await databaseForTarget(controlTarget);
       // The scope has already been allowlisted; the identifier is not caller-supplied.
@@ -444,9 +442,10 @@ Deno.serve(async (request) => {
           return result.rows;
         }
         const pattern="%"+String(query).trim().replace(/[\\%_]/g,"\\$&")+"%";
-        const result=await sql`select uid,title,date,createtime from ${table}
-          where content ilike ${pattern}
-          order by date desc nulls last limit ${Number(limit)}`.execute(trx);
+        await sql`set local statement_timeout = '4000ms'`.execute(trx);
+        const result=await sql`select uid,title,createtime from ${table}
+          where site = 'mcp' and (title ilike ${pattern} or content ilike ${pattern})
+          order by createtime desc nulls last limit ${Number(limit)}`.execute(trx);
         return result.rows;
       });
       return json({data:rows});
