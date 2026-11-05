@@ -605,7 +605,7 @@ function managementArticleProviders(scope,{contentType='',sourceFilter='',source
   })];
 }
 
-function genericScopeProviders(scope,{includeHiddenText=false,contentType='',sourceFilter='',sourceTaxonomy=null,placeOnly=false}={}){
+function genericScopeProviders(scope,{includeHiddenText=false,contentType='',sourceFilter='',sourceTaxonomy=null}={}){
   const selection=resolveSourceSelection(sourceFilter,sourceTaxonomy||{});
   if(selection.kind==='none')return [];
   const current=scopeOf(scope);
@@ -617,12 +617,6 @@ function genericScopeProviders(scope,{includeHiddenText=false,contentType='',sou
     ?kindFilters
     :publicContentFilters([articlePermissionFilter(current,'search'),...kindFilters]);
   const textColumns=['uid','title','createtime',...(!localArticle(current)?['date']:[]),...articlePermissionColumns(current)];
-  if(placeOnly)return [makeProvider({
-    id:current.id+':source-place',table:current.galaxy,
-    source:current.id+' 打卡地點',scope:current,idColumn:'uid',
-    columns:textColumns,searchFields:['location'],dateColumn:dayColumn(current.galaxy),
-    filters:textFilters,authenticated:includeHiddenText
-  })];
   // Search uses only the article service: Galaxy.content. Anchor is
   // resolved through article relationships, never queried as a reverse index.
   if(contentType&&!['galaxy','lyrics_work','text_work'].includes(contentType))
@@ -656,7 +650,7 @@ export async function searchGalaxyRows(scopes,query,{
   const hiddenScopes=new Set((Array.isArray(hiddenScopeIds)?hiddenScopeIds:[]).map(value=>String(value||'').trim()).filter(Boolean));
   const scopeProviders=scopeList.map(scope=>managementOnly
     ?managementArticleProviders(scope,{contentType,sourceFilter,sourceTaxonomy,placeOnly})
-    :genericScopeProviders(scope,{includeHiddenText:hiddenScopes.has(scope.id),contentType,sourceFilter,sourceTaxonomy,placeOnly}));
+    :genericScopeProviders(scope,{includeHiddenText:hiddenScopes.has(scope.id),contentType,sourceFilter,sourceTaxonomy}));
   // Search is article-led: one Galaxy.content provider per Scope, with
   // Anchor relationships available only after choosing an article.
   const providers=scopeProviders.flat();
