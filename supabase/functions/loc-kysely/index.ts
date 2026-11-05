@@ -2,8 +2,7 @@ import { sql } from "npm:kysely@0.29.8";
 import {createRemoteJWKSet,jwtVerify} from "npm:jose@5.9.6";
 import {clerkSqlClaims} from "../../../app/loc/auth/clerk-sql-claims.mjs";
 import {databaseForTarget,resolveConnectionProfile} from "./drivers.ts";
-import {makeConnectionProfile,readVaultConnection,saveVaultConnection} from "./database-connections.ts";
-import {normalizeDatabaseLocation} from "../../../app/loc/providers/database-link.mjs";
+import {readVaultConnection} from "./database-connections.ts";
 import { executeKyselyQuery, isKyselyClientError } from "../../../app/loc/providers/kysely-runtime.mjs";
 import {executeManagedKyselyWrite,executeManagedKyselyAction} from "../../../app/loc/providers/kysely-management.mjs";
 import {saveBlocksKysely} from "../../../app/loc/providers/kysely-blocks.mjs";
@@ -15,6 +14,7 @@ import {ensurePortableScopeSchema,validatePortableScopeSchema} from "../../../ap
 import { selectedDatabaseTarget } from "../../../app/loc/providers/selected-database-target.mjs";
 import {resolveSqlExecutionPort,assertCrossEnginePublicRead,authorizeCrossEngineQuery,executeCrossEngineManagedWrite} from "../../../app/loc/providers/sql-engine-ports.mjs";
 import {resolveDatabaseRouting} from "../../../app/loc/providers/routing-config.mjs";
+import {databaseAccessTargets} from "../../../app/loc/providers/access.js";
 import {isTextSearchQuery,checkSearchQos} from "../../../app/loc/providers/search-qos.mjs";
 import {bindLocAuthorization,canManageLoc,locPermissions} from "../../../app/loc/providers/loc-authorization.mjs";
 
@@ -129,113 +129,24 @@ async function checkAdminRole(claims:Record<string,unknown>){
   if(!valid)throw Object.assign(new Error("Administrator permission required"),{httpStatus:403});
   return control;
 }
-// System database targets belong to manage, not the LOC Group.
-async function databaseListForControl(control:any):Promise<Record<string,any>[]>{
-  const row=await control.selectFrom("silver.manage").select("database")
-    .where("id","=","admin").executeTakeFirst();
-  if(!Array.isArray(row?.database))throw new Error("System database routing list is missing");
-  return row.database;
+// Database access metadata is loaded once from the deployment JS file.
+// This must never SELECT silver.manage.database (or LOC) on requests.
+function databaseListForControl(_control?:any):Record<string,any>[] {
+  return databaseAccessTargets();
 }
-// The live selection is stored in system metadata; no redeploy is required.
-let selectedRouteCache:{until:number,target:Record<string,unknown>|null}={until:0,target:null};
-let selectedRouteInFlight:Promise<Record<string,unknown>>|null=null;
-let selectedRouteRevision=0;
-async function liveConfiguredTarget():Promise<Record<string,unknown>>{
-  if(selectedRouteCache.target&&Date.now()<selectedRouteCache.until)
-    return selectedRouteCache.target;
-  // Multiple requests in one warm Edge isolate must share the same one-row
-  // control-plane lookup. Retain the existing 5-second freshness contract.
-  if(selectedRouteInFlight)return selectedRouteInFlight;
-  const revision=selectedRouteRevision;
-  const pending=(async()=>{
-    const control=await databaseForTarget(controlTarget);
-    const entries=await databaseListForControl(control);
-    const selected=entries.filter(row=>row.selected===true);
-    if(selected.length!==1)throw new Error("LOC needs exactly one selected SQL target");
-    const target=selected[0].provider==="supabase"&&
-      selected[0].connection_alias==="supabase_current"
-        ?controlTarget:selectedDatabaseTarget([{...selected[0],selected:true}]);
-    if(revision===selectedRouteRevision)
-      selectedRouteCache={until:Date.now()+5000,target};
-    return target;
-  })();
-  selectedRouteInFlight=pending;
-  try{return await pending;}
-  finally{if(selectedRouteInFlight===pending)selectedRouteInFlight=null;}
-}
-async function saveDatabaseTarget(input:Record<string,unknown>,role:string,claims:Record<string,unknown>){
-  if(role!=="authenticated")throw Object.assign(new Error("Sign in as administrator"),{httpStatus:403});
-  if(!input||typeof input!=="object"||Array.isArray(input))throw Object.assign(new Error("Invalid target payload"),{httpStatus:400});
-  const targetId=String(input.target_id||"");
-  if(!/^[a-z][a-z0-9_-]{0,80}$/i.test(targetId))throw Object.assign(new Error("Invalid target ID"),{httpStatus:400});
-  const engine=String(input.engine||"postgres");
-  const provider=String(input.provider||"custom");
-  const alias=String(input.connection_alias||targetId.replaceAll("-","_"));
-  const target=selectedDatabaseTarget([{provider,engine,connection_alias:alias,connection_mode:String(input.connection_mode||"direct"),selected:true}]);
-  const connectionUrl=String(input.connection_url||'').trim();
-  const inferredHost=connectionUrl?new URL(connectionUrl).host:'';
-  const location=normalizeDatabaseLocation(provider,input.project_url||inferredHost);
-  const region=String(input.region||"").trim();
-  if(region.length>64||!/^([a-z0-9-]+)?$/.test(region))throw Object.assign(new Error("Invalid Region"),{httpStatus:400});
-  const label=String(input.label||targetId).trim();
-  if(!label||label.length>160)throw Object.assign(new Error("Invalid target label"),{httpStatus:400});
-  const token=typeof input.control_token==='string'?input.control_token:
-    typeof input.password==='string'?input.password:'';
-  // Reject requests that cannot manage LOC before probing user-supplied
-  // database hosts or issuing Kysely CREATE TABLE statements.
-  const control=await checkAdminRole(claims);
-  const profile=token?makeConnectionProfile({...target,...input,project_url:location.link},token):null;
-  if(input.activate===true&&!profile)
-    throw Object.assign(new Error("A database URL and control token are required to connect"),{httpStatus:400});
-  if(profile){
-    // Probe the selected driver before accepting it as the running LOC database.
-    const candidate=await databaseForTarget(target,{profileLookup:async()=>profile});
-    // A valid control token owns its target SQL database. Provision only
-    // Galaxy and Anchor with Kysely Schema Builder; no RPC or LOC ACL tables.
-    const requestedScope=String(input.scopeid||'lo3rwang');
-    if(!/^[a-z][a-z0-9]{0,14}$/.test(requestedScope))
-      throw Object.assign(new Error('Invalid LOC Scope ID'),{httpStatus:400});
-    const tables=await candidate.introspection.getTables();
-    const matched=tables.find((table:any)=>
-      table.name===requestedScope+'_galaxy'||table.name===requestedScope+'_anchor');
-    const schemaName=engine==='mysql'?'':String(
-      matched?.schema||input.schema_name||(engine==='mssql'?'dbo':'public'));
-    await ensurePortableScopeSchema(candidate,{
-      engine,namespace:schemaName,scopeId:requestedScope
-    });
-    const verified=await candidate.introspection.getTables();
-    validatePortableScopeSchema(verified,{engine,namespace:schemaName,scopeId:requestedScope});
-    input.schema_name=schemaName;
+async function liveConfiguredTarget():Promise<Record<string,unknown>> {
+  const selected=databaseAccessTargets().find(item=>item.target_id===routing.primaryId);
+  if(!selected){
+    // Preserve opt-in portable SQL adapters; connections still require the
+    // server-side alias in LOC_DB_CONNECTIONS_JSON, never a public password.
+    if(routing.provider==='custom')return {
+      provider:'custom',engine:routing.engine,
+      connection_alias:routing.connectionAlias,connection_mode:'direct'
+    };
+    throw new Error('Configured database target is missing from access.js');
   }
-  if(!profile)await profileForTarget({...target,project_url:location.link});
-  const record={
-    provider,engine,connection_alias:alias,connection_mode:target.connection_mode,
-    label,project_id:provider==="supabase"?location.projectId:String(input.project_id||"")||null,
-    project_url:location.link,region,
-    schema_name:String(input.schema_name||''),updated_at:new Date()
-  };
-  return control.transaction().execute(async trx=>{
-    if(profile)await saveVaultConnection(trx,alias,profile);
-    const current=await trx.selectFrom("silver.manage").select("database")
-      .where("id","=","admin").forUpdate().executeTakeFirst();
-    if(!Array.isArray(current?.database))throw new Error("System database list is unavailable");
-    const exists=current.database.find((item:Record<string,any>)=>item.target_id===targetId);
-    const next=exists?current.database.map((item:Record<string,any>)=>
-      item.target_id===targetId?{...item,...record}:item):
-      [...current.database,{...record,target_id:targetId,selected:false,
-        backup_selected:false,routing_mode:"single"}];
-    if(input.activate===true){
-      for(const item of next)item.selected=item.target_id===targetId;
-    }
-    await trx.updateTable("silver.manage").set({database:sql`${JSON.stringify(next)}::jsonb`})
-      .where("id","=","admin").execute();
-    selectedRouteRevision++;
-    selectedRouteCache={until:0,target:null};
-    selectedRouteInFlight=null;
-    profileCache.delete(alias+':'+location.link);
-    return {target_id:targetId,provider,engine,selected:input.activate===true||
-      targetId===routing.primaryId};
-  });
+  return selected.provider==='supabase'&&selected.connection_alias==='supabase_current'
+    ?controlTarget:selectedDatabaseTarget([{...selected,selected:true}]);
 }
 
 async function executeRequest(trx: any, target: Record<string,any>, role: string,
@@ -648,11 +559,10 @@ Deno.serve(async (request) => {
     }
     // LOC management action, not a database RPC.
     if(body.kind==="managed-action"&&body.name==="connect_database_target"){
-      if(!body.args||typeof body.args!=="object"||Array.isArray(body.args)||
-        Object.keys(body.args).some(key=>key!=="p_target"))
-        return json({error:{message:"Invalid connection settings"}},400);
-      const result=await saveDatabaseTarget((body.args as Record<string,any>).p_target,role,claims);
-      return json({data:result,count:null});
+      if(role!=="authenticated")return json({error:{message:"Administrator permission required"}},403);
+      try{await checkAdminRole(claims);}
+      catch{return json({error:{message:"Administrator permission required"}},403);}
+      return json({error:{message:"Database targets live in access.js; update source and redeploy"}},409);
     }
     // The old admin RPCs must not pretend to switch an immutable, deployed route.
     if(body.kind==="rpc"&&body.schema==="silver"&&
