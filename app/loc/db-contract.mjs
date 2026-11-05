@@ -504,17 +504,9 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     const category=categoryUid?tree.index.get(categoryUid):null;
     const descendants=descendantsOfKeyword(data,original.uid);
     const occupied=[...tree.index.keys()],mapping=new Map();
-    if(isUnifiedAnchorScope(scope)){
-      // Shared PK means 4-character class UIDs must not collide with
-      // Time or Trace nodes. Read only UIDs, and only during copy.
-      for(let offset=0;;offset+=500){
-        const {data,error}=await dbAuthRelation('silver.'+scope+'_anchor')
-          .select('uid').order('createtime',{ascending:true}).range(offset,offset+499);
-        if(error)throw Error('無法核對統一定錨 UID：'+(error.message||error));
-        for(const row of data||[])occupied.push(String(row.uid));
-        if((data||[]).length<500)break;
-      }
-    }
+    // Native Anchor UIDs are cryptographically random Base62. Do not scan
+    // and sort every Anchor just to allocate new UIDs; the database PK is the
+    // authoritative collision check and this batch owns its allocated set.
     for(const node of descendants){
       const uid=isUnifiedAnchorScope(scope)?allocateAnchorUid(new Set(occupied)):
         generateKeywordClassUid(occupied);
