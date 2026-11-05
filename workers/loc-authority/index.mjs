@@ -706,7 +706,7 @@ export class LocAuthorityState extends DurableObject {
       rows=await postgrest(profile,{params:{select:'uid,title,content,date,createtime,site,url',
         uid:'eq.'+uid,...(onlyMcp?{site:'eq.mcp'}:{}),limit:1}});
     }else if(Object.hasOwn(MANAGED_SCOPE_TABLES,scopeid)){
-      rows=await managedMcpRead(scopeid,'mcp-read',{uid},oauthToken);
+      rows=await managedMcpRead(scopeid,'mcp-read',{uid,...(onlyMcp?{site:'mcp'}:{})},oauthToken);
     }else throw fail('Scope database is not configured',409);
     if(!Array.isArray(rows))throw fail('Invalid database response',502);
     if(!rows.length||onlyMcp&&rows[0].site!=='mcp')return {found:false,scopeid,uid};
