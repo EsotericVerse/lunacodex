@@ -299,7 +299,7 @@ async function postgrest(profile,options){
     headers.prefer='resolution=merge-duplicates,return=minimal';}
   const res=await fetch(url.href,{method:options.body?'POST':'GET',headers,
     ...(options.body?{body:JSON.stringify(options.body)}:{}),
-    redirect:'manual',signal:AbortSignal.timeout(9500)});
+    redirect:'manual',signal:AbortSignal.timeout(options.timeout||9500)});
   if(!res.ok)throw fail('Scope database rejected operation (HTTP '+res.status+')',502);
   return options.body?null:res.json();
 }
@@ -600,6 +600,24 @@ export class LocAuthorityState extends DurableObject {
     else throw fail('Scope database is not configured',409);
     this.mcpSearchCache?.clear();
     return {scopeid,uid,pr_number:prNumber,updated_at:requestedTime,updated:true};
+  }
+  async mcpLinkSearch(scopeid,query,limit=5,oauthToken=''){
+    validScope(scopeid);
+    if(typeof query!=='string'||query.trim().length<3||query.length>100||
+      /[\\u0000-\\u001f\\u007f]/.test(query)||!Number.isInteger(limit)||limit<1||limit>5)
+      throw fail('Invalid Galaxy Link search',400);
+    const profile=await this.mcpPrivateProfile(scopeid);
+    let rows;
+    if(profile){
+      const pattern=likePattern(query);
+      rows=await postgrest(profile,{params:{select:'uid,title,createtime',
+        site:'eq.mcp',or:'(title.ilike.'+pattern+',content.ilike.'+pattern+')',
+        order:'createtime.desc',limit},timeout:4500});
+    }else if(Object.hasOwn(MANAGED_SCOPE_TABLES,scopeid)){
+      rows=await managedMcpRead(scopeid,'mcp-search',{query,limit},oauthToken);
+    }else throw fail('Scope database is not configured',409);
+    if(!Array.isArray(rows))throw fail('Invalid Galaxy Link search response',502);
+    return {scopeid,results:rows.map(r=>({uid:r.uid,title:r.title,createtime:r.createtime}))};
   }
   async mcpSearch(scopeid,query,limit=10,oauthToken=''){
     validScope(scopeid);
