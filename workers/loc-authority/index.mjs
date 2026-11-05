@@ -646,7 +646,7 @@ export class LocAuthorityState extends DurableObject {
     try{return await task;}
     catch(error){this.mcpSearchCache.delete(key);throw error;}
   }
-  async mcpRead(scopeid,uid,offset=0,max_chars=20000,oauthToken=''){ 
+  async mcpRead(scopeid,uid,offset=0,max_chars=20000,oauthToken='',onlyMcp=false){ 
     validScope(scopeid);
     if(!UID.test(uid)||!Number.isInteger(offset)||offset<0||offset>1000000||
       !Number.isInteger(max_chars)||max_chars<1||max_chars>40000)
@@ -655,12 +655,12 @@ export class LocAuthorityState extends DurableObject {
     let rows;
     if(profile){
       rows=await postgrest(profile,{params:{select:'uid,title,content,date,createtime,site,url',
-        uid:'eq.'+uid,limit:1}});
+        uid:'eq.'+uid,...(onlyMcp?{site:'eq.mcp'}:{}),limit:1}});
     }else if(Object.hasOwn(MANAGED_SCOPE_TABLES,scopeid)){
       rows=await managedMcpRead(scopeid,'mcp-read',{uid},oauthToken);
     }else throw fail('Scope database is not configured',409);
     if(!Array.isArray(rows))throw fail('Invalid database response',502);
-    if(!rows.length)return {found:false,scopeid,uid};
+    if(!rows.length||onlyMcp&&rows[0].site!=='mcp')return {found:false,scopeid,uid};
     const row=rows[0],content=String(row.content||'');
     return {found:true,scopeid,uid:row.uid,title:row.title,date:row.date,
       createtime:row.createtime,site:row.site,url:row.url,
@@ -831,7 +831,7 @@ async function handleMcpAuthority(request,env,url,origin){
     throw fail('Invalid MCP quota operation',400);
   }
   // No DB work and no quota spend on retired search endpoints.
-  if(/^\/v1\/mcp\/(?:search|group-search)\//.test(url.pathname))
+  if(/^\/v1\/mcp\/group-search\//.test(url.pathname))
     throw fail('MCP search is disabled',403);
   const ticket=await quota.mcpQuotaAcquire(request.method==='GET'?'read':'write','clerk:'+principal.subject);
   try{return await handleMcpAuthorityInner(request,env,url,origin,principal);}
@@ -845,7 +845,7 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
   const allowed=async(scope,action)=>isRoot||await stub.mayAccess({...principal,scope,action});
   const parts=url.pathname.split('/').filter(Boolean).slice(2);
   // MCP is UID-addressed read/write only; search was never authorized.
-  if((parts[0]==='search'||parts[0]==='group-search')&&request.method==='POST')
+  if(parts[0]==='group-search'&&request.method==='POST')
     throw fail('MCP search is disabled',403);
   if(parts[0]==='scope'&&parts.length===2){
     const scopeid=validScope(parts[1]);
@@ -889,7 +889,7 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
     const scopeid=validScope(parts[1]);
     if(!await allowed(scopeid,'read'))throw fail('Scope read denied',403);
     const args=await mcpJsonBody(request,1600);
-    return json(await scoped(scopeid).mcpSearch(scopeid,args.query,args.limit||10,
+    return json(await scoped(scopeid).mcpLinkSearch(scopeid,args.query,args.limit??5,
       (request.headers.get('authorization')||'').replace(/^Bearer /,'')),200,origin);
   }
   if(parts[0]==='read'&&parts.length===3&&request.method==='GET'){
@@ -903,7 +903,8 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
     const offset=Number(url.searchParams.get('offset')||'0');
     const max_chars=Number(url.searchParams.get('max_chars')||'20000');
     return json(await scoped(scopeid).mcpRead(scopeid,parts[2],offset,max_chars,
-      (request.headers.get('authorization')||'').replace(/^Bearer /,'')),200,origin);
+      (request.headers.get('authorization')||'').replace(/^Bearer /,''),
+      url.searchParams.get('site')==='mcp'),200,origin);
   }
   if(parts[0]==='group-search'&&parts.length===2&&request.method==='POST'){
     const groupid=validScope(parts[1]);
