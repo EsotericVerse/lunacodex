@@ -10,8 +10,18 @@ const permissionSnapshots=new Map();
 function reuseKey(state){
   const exp=Number(state.claims?.exp);
   if(!Number.isFinite(exp)||exp*1000<=Date.now())return null;
-  return JSON.stringify([String(state.claims.sub),state.email,exp,
-    String(state.claims.sid||''),String(state.claims.jti||'')]);
+  const issuer=String(state.claims.iss||'');
+  const sub=String(state.claims.sub||'');
+  const sid=String(state.claims.sid||'');
+  // An interactive Clerk Session keeps the same signed sub + sid when the
+  // short-lived JWT rotates. Reuse its *30-second* management snapshot instead
+  // of SELECTing manage again for every fresh exp/jti.
+  if(/^user_[A-Za-z0-9]+$/.test(sub)&&/^sess_[A-Za-z0-9]+$/.test(sid))
+    return JSON.stringify(['clerk-session',issuer,sub,state.email,sid]);
+  // MCP OAuth has a different audience and may have no session ID.
+  // Keep its previous token-bound key; never share it with a browser Session.
+  return JSON.stringify(['oauth-token',issuer,sub,state.email,exp,
+    sid,String(state.claims.jti||'')]);
 }
 function cachedSnapshot(state){
   const key=reuseKey(state);
