@@ -8,8 +8,9 @@ import {useEditDock} from '../modular/edit-dock';
 import {useAccount} from './use-account';
 import PanelLoading from './PanelLoading';
 
-// Group members and work classifications are editable here without system
-// privileges. System accounts, reserved IDs and Email belong to /admin.
+// Group managers edit work classifications and member names here.
+// System Admin can open the same entry's protected personnel configuration tab;
+// reserved IDs and the global Email blacklist remain in /admin.
 const WorkClassificationPage=dynamic(()=>import('./WorkClassificationPage'),{loading:PanelLoading});
 const LocGroupMemberList=dynamic(()=>import('./LocGroupMemberList'),{loading:PanelLoading});
 const AdminRegistry=dynamic(()=>import('./views/admin-panels/AdminRegistry'),{loading:PanelLoading});
