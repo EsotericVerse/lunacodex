@@ -553,6 +553,47 @@ function mediaMetadataDescription(row){
   return fields.map(([label,value])=>{const text=CultureTimelineModel.decodeCultureText(value||'').trim();return text?`${label}：${text}`:'';}).filter(Boolean).join(' · ')||'沒有可讀的 metadata 文字';
 }
 
+// Culture article lists are requested only after the visitor explicitly opens
+// "顯示文章列表". The time/density rivers never ask for Galaxy UIDs.
+export async function selectCultureArticleListPage(scope,{
+  startDate='',endDate='',site='',sites=[],offset=0,sortDirection='desc'
+}={}){
+  const scopeId=scopeIdOf(scope?.id);
+  if(!scopeId)throw new Error('scopeId is required');
+  const pageSize=100;
+  const start=String(startDate||'').slice(0,10);
+  const end=String(endDate||'').slice(0,10);
+  if(!start||!end||start>end)return {rows:[],hasMore:false,nextCursor:null};
+  const sourceNames=[...new Set((sites||[]).map(value=>String(value??'').trim()))];
+  const selectedSources=sourceNames.length?sourceNames:site?[String(site).trim()]:[];
+  const filters=[
+    {column:'culture',operator:'eq',value:'true'},
+    ...dateFilters(start,end,scopeId==='local'?'createtime':'date'),
+    ...(selectedSources.length?[{column:'site',operator:'in',value:selectedSources}]:[])
+  ];
+  const pageOffset=Math.max(0,Math.floor(Number(offset)||0));
+  const {rows=[]}=await selectRows(scope.galaxy,{
+    columns:scopeId==='local'?'uid,title,createtime,site,able':'uid,date,title,list,createtime',
+    filters,orders:[{column:'createtime',ascending:sortDirection==='asc'}],
+    limit:pageSize,offset:pageOffset,maxLimit:pageSize
+  });
+  const normalized=rows.map(row=>{
+    const hidden=scopeId==='local'?row.able?.list===false:row.list===false;
+    return {
+      key:'galaxy:'+row.uid,entry_id:String(row.uid||''),uid:String(row.uid||''),
+      entry_type:'work',scope_id:scopeId,
+      title:hidden?'本文已隱藏':String(row.title||''),
+      date:hidden?'':String(row.date||row.createtime||'').slice(0,10),
+      createtime:hidden?'':row.createtime,
+      hidden,list:!hidden
+    };
+  });
+  return {
+    rows:normalized,hasMore:rows.length===pageSize,
+    nextCursor:rows.length===pageSize?{offset:pageOffset+rows.length}:null
+  };
+}
+
 export async function selectScopePeriodWorkIndex(scope,{startDate='',endDate=null,sourceName='',sourceNames=[],mediaTypes=[],limit=10,offset=0,cursor=null,sortDirection='asc',periodRanges=null}={}){
   // A named period may contain several DISJOINT ranges. Fetch each bounded
   // range independently and merge pages by date; the gaps are never queried
