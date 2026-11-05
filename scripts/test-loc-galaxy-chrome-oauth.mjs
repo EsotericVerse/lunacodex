@@ -7,6 +7,7 @@ import {
 } from '../extensions/loc-galaxy/oauth.mjs';
 
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
+if(!globalThis.crypto)globalThis.crypto=webcrypto;
 
 test('LOC Galaxy manifest limits host access to LOC and its known Clerk issuer',()=>{
   const manifest=JSON.parse(read('extensions/loc-galaxy/manifest.json'));
