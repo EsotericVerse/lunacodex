@@ -2,9 +2,9 @@
 // Culture, Statistics, Trace and normal article lists must never be throttled.
 export function isTextSearchQuery(body){
   if(body?.kind!=='query'||body.operation!=='select'||
-     !/_(galaxy|anchor)$/.test(String(body.table||'')))return false;
-  const fields=new Set(body.table.endsWith('_galaxy')
-    ?['content']:['description']);
+     !/_galaxy$/.test(String(body.table||'')))return false;
+  // LOC text search is exclusively Galaxy.content, never Anchor.description.
+  const fields=new Set(['content']);
   const filters=Array.isArray(body.filters)?body.filters:[];
   if(filters.some(f=>fields.has(f?.column)&&['ilike','like'].includes(f.operator)))return true;
   const expressions=Array.isArray(body.or)?body.or:[];
@@ -27,7 +27,7 @@ export function createSearchQos({now=()=>Date.now(),max=24,windowMs=60000,
     entry.times=entry.times.filter(t=>time-t<windowMs);
     // Count individual SQL search requests, not browser search actions. A
     // single user query may legitimately fan out across multiple Scopes and
-    // the Galaxy/Anchor providers. Do not impose per-request spacing here;
+    // the Galaxy providers. Do not impose per-request spacing here;
     // the UI enforces search-action spacing separately.
     // Count attempts even when spacing is denied, so repeated spam
     // eventually enters a temporary blacklist.
