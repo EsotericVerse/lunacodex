@@ -1,3 +1,12 @@
+### UID 只作識別，不參與 SQL 排列（2026-11-05）
+
+- LOC 的八碼 Base62 `uid` 為隨機身分鍵，用於 `WHERE`／`JOIN`／關聯，**不得作 `ORDER BY uid`，也不得放在日期、名稱、Block 順序後當第二排序鍵**。這次未重新指定搜尋、文化、痕跡的主要時間排序政策；已存在的 Galaxy `date`、`createtime` 與 Anchor `createtime` 保留各自語意。
+- 已修正 Kysely、可攜 SQL、舊式相容讀取、匯入、關鍵詞、空間管理與搜尋查詢：文章可按既定日期／建立時間；Anchor 需要排列則取 `createtime`、名稱或 `block_order`，同時間的前後順序不作 UID 人為強制。
+- 需完整比對歷史匯入的跨頁時間戳，現在以 **時間游標＋分頁末筆同時刻全集** 前進，遇到同時刻筆數超過安全上限即停止，不允許因取消 UID 排序造成重複或漏讀。UID 配號不再為了避免碰撞而掃描／排序整張 Anchor；由安全亂數與既有資料庫主鍵約束保護。
+- SQL 修正寫入新 migration `20261105204000_remove_uid_ordering_active_rpcs.sql`，**不覆寫歷史 migration**。以 Supabase 與 Neon 當前 `pg_get_functiondef` 檢查真正有效的函式，覆蓋地點預覽、關鍵詞公開目錄、痕跡關鍵詞統計、網站來源改名、`scope_group` 與地點名稱搜尋。舊 migration 內出現的排序語句為歷史紀錄，無權重新成為最新 RPC 定義。
+- `scope_group` 文化／痕跡 Anchor 原本按 UID 用 `OFFSET 500` 重複抓取；改每類一次完整讀取以避免同時間跨頁遺漏，仍保留原有輸出數量上限與權限。其他單次小型列表在同時間排序相同時允許自然順序。
+- 回歸防護：`node --test scripts/test-no-uid-ordering.mjs` 對正在運作的 app／Edge／Worker 程式和最新修正 migration 掃描 UID 排序，避免後續改版重新引入；已套用的舊 migration 保持不變。驗收還須分開確認真正生效 SQL 函式和部署版本。
+
 ### PostgreSQL Portable Galaxy 陣列欄位一致性（2026-11-05）
 
 - Galaxy 不包含 JSONB 欄位，八個權限旗標均為獨立 Boolean。`target_id` 使用 PostgreSQL `text[]`；`media_link` 使用 `varchar[]`，與正式 Galaxy 相容。
@@ -235,7 +244,7 @@ Kysely Edge `KyselyQuery.abortSignal(signal)` 現在把呼叫端取消訊號送�
 - 歷史回填僅對有 `Galaxy.media_link` 且能確認**單一來源文章時間**的媒體 UID 寫入。被不同時間文章共用或缺來源證據的 Anchor 留 `NULL`；不捏造時間、不覆蓋 UID、不合併或刪除資料。
 - 媒體匯入既有 UID／URL 比對保持不變；沒有 URL 的文章媒體採「文章 UID + media type + title + description + `createtime` + location」比對，並由物理 Anchor.createtime 提供時間，不能再錯用 `attr.date`。
 - Portable SQL 的新建 Scope Schema 包含同名欄位，連線前會驗證它。Supabase 與 Neon 的 `lo3rwang_anchor`／`lrunes_anchor` 都已套用相同的新增欄位及保守回填；未升級的外部 PostgreSQL／MySQL／SQL Server 資料庫仍需採用其各自非破壞性加欄遷移後才可使用新版。
-- 搜尋主功能仍然只搜尋 Galaxy `content`；本次**不**更改搜尋或文章列表的排序決議。
+- 搜尋主功能仍然只搜尋 Galaxy `content`；本次保留原本的主要排序政策，但依後續需求移除所有 UID 次要排序。
 
 ### 統一內文搜尋（2026-11-04）
 

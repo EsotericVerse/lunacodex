@@ -149,7 +149,7 @@ async function sharedClasses(trx,scope,anchor,role){
   const cfg=await trx.selectFrom('silver.'+scope).select('keyword_meta')
     .where('id','=',scope).executeTakeFirst();
   const classes=await trx.selectFrom(anchor).select(['uid','title'])
-    .where('type','=','class').orderBy('uid','asc').execute();
+    .where('type','=','class').orderBy('title','asc').execute();
   const result=[];
   for(const item of classes){
     if(!owner&&!published(cfg,item.uid))continue;
@@ -221,7 +221,7 @@ async function traceKeywordGroups(trx,scope,anchor,places,start,end,source,reque
       count(distinct article.uid)::bigint as document_count from groups k
       left join articles article on (coalesce(k.attr->'uidlists',
         k.attr->'articles','[]'::jsonb)) ? article.uid
-      group by k.uid,k.title order by k.title,k.uid`.execute(trx);
+      group by k.uid,k.title order by k.title`.execute(trx);
   return result.rows.map(row=>({...row,document_count:Number(row.document_count||0)}));
 }
 async function keywordSummary(trx,scope,anchor,start,end,source,requested,role){
@@ -487,7 +487,7 @@ export async function executePortableKyselyAnalytics(db,body,{engine,namespace='
       ?JSON.parse(row.attr):row.attr||{}});
     const classes=(await db.selectFrom(table)
       .select(['uid','type','title','description','attr'])
-      .where('type','=','class').orderBy('uid','asc').execute()).map(parse);
+      .where('type','=','class').orderBy('title','asc').execute()).map(parse);
     if(mode==='shared_classes')return {data:classes.map(row=>({
       scopeId:scope,classUid:row.uid,name:row.title,category:row.uid
     })),count:null};

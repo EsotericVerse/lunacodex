@@ -511,7 +511,7 @@ function makeProvider({id,table,source,scope,idColumn,columns,searchFields,filte
       const ascending=sortDirection!=='desc';
       const orders=[
         ...(dateColumn?[{column:dateColumn,ascending}]:[]),
-        ...(idColumn?[{column:idColumn,ascending}]:[])
+        // UID is an opaque identity, never a tie-break ordering key.
       ];
 
       // The exact COUNT(*) query can time out on ILIKE against article content.

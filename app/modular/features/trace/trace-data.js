@@ -122,7 +122,7 @@ async function readPages(id,{columns=CORE_COLUMNS,filter=null,nativeOnly=false,i
   for(let offset=0;;offset+=size){
     // Public lists use anonymous RLS; only includeHidden manager reads use Clerk.
     let query=readClient.schema('silver').from(id+'_trace')
-      .select(columns+(union?',scope_id':'')).order('uid',{ascending:true})
+      .select(columns+(union?',scope_id':'')).order('title',{ascending:true})
       .range(offset,offset+size-1);
     if(filter)query=query.eq('trace_type',filter);
     if(union&&nativeOnly)query=query.eq('scope_id','loc');

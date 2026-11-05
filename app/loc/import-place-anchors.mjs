@@ -61,7 +61,7 @@ export async function prepareImportPlaceAnchors(records,{
   for(let offset=0;;offset+=pageSize){
     const {data,error}=await relation(table)
       .select('uid,type,title,attr').eq('type','point')
-      .order('uid',{ascending:true}).range(offset,offset+pageSize-1);
+      .order('title',{ascending:true}).range(offset,offset+pageSize-1);
     if(error){
       if(allowMissing&&!createMissing&&['42P01','PGRST205'].includes(String(error.code||'')))
         return unavailable();

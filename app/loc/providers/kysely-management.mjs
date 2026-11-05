@@ -334,8 +334,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
   let neighbor=trx.selectFrom(relation).select(['uid','block_order'])
     .where('page_name','=',page)
     .where('block_order',direction===-1?'<':'>',original.block_order);
-  neighbor=neighbor.orderBy('block_order',direction===-1?'desc':'asc')
-    .orderBy('uid',direction===-1?'desc':'asc');
+  neighbor=neighbor.orderBy('block_order',direction===-1?'desc':'asc');
   const next=await neighbor.limit(1).executeTakeFirst();
   if(!next)reject('Block is already at the page boundary');
   const ref=sql.ref(relation);
@@ -388,11 +387,11 @@ async function previewOrFillGalaxyPlace(trx,args){
   const first=await sql`select btrim(uid::text) as uid,coalesce(title,'') as title,
       to_char(createtime at time zone 'Asia/Taipei','YYYY-MM-DD') as date
     from ${rel} where ${condition}
-    order by createtime asc,uid asc limit 3`.execute(trx);
+    order by createtime asc limit 3`.execute(trx);
   const last=await sql`select btrim(uid::text) as uid,coalesce(title,'') as title,
       to_char(createtime at time zone 'Asia/Taipei','YYYY-MM-DD') as date
     from ${rel} where ${condition}
-    order by createtime desc,uid desc limit 3`.execute(trx);
+    order by createtime desc limit 3`.execute(trx);
   return {count,first:first.rows,last:last.rows,applied:false};
 }
 async function batchFillGalaxyLocation(trx,args){
@@ -427,7 +426,7 @@ async function renameScopeSiteBatch(trx,args){
     reject('Invalid source correction');
   const table='silver.'+scope+'_galaxy';
   const targets=await trx.selectFrom(table).select('uid')
-    .where('site','=',before).orderBy('uid','asc')
+    .where('site','=',before).orderBy('createtime','asc')
     .limit(limit).forUpdate().skipLocked().execute();
   if(!targets.length)return 0;
   const result=await trx.updateTable(table).set({site:after})

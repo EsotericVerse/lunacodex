@@ -122,7 +122,7 @@ export async function runKeywordAnalysisBatch(scopeId,{classUid:requestedClassUi
   for(let offset=0;;offset+=500){
     const {data,error}=await dbAuthRelation(scope.keywords)
       .select('uid,type,name,desc,lists')
-      .order('uid',{ascending:true}).range(offset,offset+499);
+      .order('name',{ascending:true}).range(offset,offset+499);
     if(error)throw new Error(error.message||'Keywords 規則讀取失敗');
     treeRows.push(...(data||[]));
     if((data||[]).length<500)break;
