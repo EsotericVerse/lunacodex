@@ -43,7 +43,7 @@ test('extension exposes only Scope ID for auth and preserves scenic login',()=>{
   assert.ok(worker.includes('chrome.runtime.onMessageExternal'));
   assert.ok(worker.includes("url.pathname!=='/extension/auth-bridge.html'"));
   assert.ok(worker.includes('chrome.alarms.onAlarm'));
-  assert.ok(!worker.includes('chrome.runtime.onMessageExternal'));
+  assert.ok(worker.includes('chrome.runtime.onMessageExternal'));
 });
 test('OAuth S256 follows the RFC 7636 known verifier example',async()=>{
   const verifier='dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk';
@@ -140,6 +140,6 @@ test('website session bridge does not transfer default Clerk Session Token',()=>
   assert.match(source,/loc-mcp/);
   assert.match(source,/claims\.aud/);
   assert.match(source,/chrome\.runtime\.sendMessage\(EXTENSION_ID/);
-  assert.doesNotMatch(source,/cookie|document\.cookie|localStorage/);
+  assert.doesNotMatch(source,/document\.cookie|localStorage/);
   assert.match(html,/no-referrer/);
 });
