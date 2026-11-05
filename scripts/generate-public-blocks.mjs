@@ -67,7 +67,9 @@ const palettes=themes.map(theme=>{
   return ':root[data-theme-id="theme-'+id+'"],.game-shell[data-game-theme="theme-'+id+'"]{\n  color-scheme:'+(theme.scheme==='dark'?'dark':'light')+';\n'+declarations.join('\n')+'\n}';
 });
 const themeMeta=themes.map(t=>({theme_id:t.theme_id,theme_name:t.theme_name,theme_order:t.theme_order}));
-const bootstrap={scope_id:'loc',page_name:'index',registry:site.registry,page_copy:site.page_copy||[],theme_list:themeMeta,themes:[],blocks:[]};
+const bootstrap={scope_id:'loc',page_name:'index',registry:site.registry,
+  page_copy:site.page_copy||[],scope_birthdays:site.scope_birthdays||{},
+  theme_list:themeMeta,themes:[],blocks:[]};
 const entries=[
   ['app/modular/scope-route-index.js','// PUBLIC Scope routing + Config; explicit publication only.\nexport const SCOPE_ROUTE_INDEX=Object.freeze('+encode(routeConfigs)+');\n'],
   ['app/modular/published-source-taxonomy.js',"// Flat public source classification, published with Scope Config.\nimport {sourceTaxonomyFromArrays} from '../loc/source-classification.mjs';\nexport const PUBLISHED_SOURCE_LISTS=Object.freeze("+encode(publishedSourceLists)+");\nexport const PUBLISHED_SOURCE_TAXONOMY=Object.freeze(Object.fromEntries(Object.entries(PUBLISHED_SOURCE_LISTS).map(([id,lists])=>[id,sourceTaxonomyFromArrays(lists.system,lists.personal)])));\nexport function publishedSourceTaxonomy(scopeId){return Object.prototype.hasOwnProperty.call(PUBLISHED_SOURCE_TAXONOMY,scopeId)?PUBLISHED_SOURCE_TAXONOMY[scopeId]:null;}\n"],

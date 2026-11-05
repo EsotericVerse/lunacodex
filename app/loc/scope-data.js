@@ -12,8 +12,9 @@ import {loadPublishedBlocks} from '../modular/published-blocks/index.js';
 // Public page copy (Title_TW/Desc_TW) now travels inside the shared
 // app-bootstrap request (see app/loc/app-bootstrap.js); there is no
 // standalone per-page RPC call for it any more.
-// silver.manage 為最高權限與 Registry 主表，silver.loc 為 LOC 本身設定；管理授權由
-// email/manage_role/galaxy_table/anchor_table/birthday 欄位提供，
+// silver.manage owns system authorization and routing; silver.loc is the
+// Group Scope List and owns display_name/title_tw/desc_tw/birthday.
+// Public birthday metadata is explicitly published, never read from manage.
 // 公開查詢絕不包含 email；權限驗證由受保護的管理 RPC 提供。
 // 以下只對非機密欄位使用 PostgREST alias，
 // buildScopeData/scopeDataFromManageRows 完全不需要改動。
@@ -23,7 +24,7 @@ export const MANAGE_TABLE='silver.manage';
 // accepts plain identifiers and rejects anything containing ':' with
 // "Invalid selected column". Select the real column names and rename
 // them in buildScopeData() below instead.
-const MANAGE_COLUMNS='id,manage_role,galaxy_table,anchor_table,birthday';
+const MANAGE_COLUMNS='id,manage_role,galaxy_table,anchor_table';
 const MANAGE_ROLE_COLUMN='manage_role';
 
 const SCOPE_ID_PATTERN=/^[a-z][a-z0-9]{0,14}$/;
@@ -47,7 +48,7 @@ function buildScopeData(row,id){
     id,
     config:`silver.${id}`,
     role:String(row?.manage_role||'').trim(),
-    birthday:String(row?.birthday||'').slice(0,10)||null,
+    birthday:String(row?.birthday||PUBLISHED_SITE_BOOTSTRAP.scope_birthdays?.[id]||'').slice(0,10)||null,
     galaxy,
     // One physical store for Time, Trace, Keywords and Media.
     anchor:`silver.${id}_${anchorSuffix}`,
@@ -183,7 +184,7 @@ export async function selectLocSearchScopes(){
   return scopes.filter(Boolean);
 }
 
-// Group membership is resolved by silver.manage inside scope_group. Keep the
+// Group reads use explicitly published membership on ordinary pages; keep the
 // caller's exact Culture/Trace range, pagination and visibility queries intact.
 const groupMembershipRequests=new Map();
 export function selectScopeGroupMemberIds(groupId='loc',type='culture'){
@@ -193,16 +194,14 @@ export function selectScopeGroupMemberIds(groupId='loc',type='culture'){
     const group=String(groupId||'').trim().toLowerCase();
     if(!SCOPE_ID_PATTERN.test(group)||!['search','culture','trace','statistics'].includes(type))
       throw new Error('Invalid Scope Group request');
-    const client=dbConfiguredPublicClient||dbPublicClient;
-    const {data:parent,error:parentError}=await client.schema('silver').from('manage')
-      .select('id').eq('id',group).eq('manage_role','group').eq('active',true).limit(1);
-    if(parentError||!parent?.length)throw new Error(parentError?.message||'Unknown or inactive Scope Group');
-    const {data,error}=await client.schema('silver').from('manage')
-      .select('id,display_name').eq('parent_scope_id',group)
-      .eq('manage_role','scope').eq('active',true)
-      .order('sort_order').order('id').range(0,9999);
-    if(error)throw error;
-    return new Set((data||[]).map(row=>String(row.id||'').trim()).filter(Boolean));
+    // Public Group membership is published at release time; do not issue
+    // two SELECTs against the system routing table for each Group feature.
+    const registry=PUBLISHED_SITE_BOOTSTRAP.registry||[];
+    if(!registry.some(row=>row.scope_id===group&&row.scope_kind==='group'&&row.active!==false))
+      throw new Error('Unknown or inactive Scope Group');
+    return new Set(registry.filter(row=>row.parent_scope_id===group&&
+      row.scope_kind==='scope'&&row.active!==false)
+      .map(row=>String(row.scope_id||'').trim()).filter(Boolean));
   })().catch(error=>{groupMembershipRequests.delete(key);throw error;});
   groupMembershipRequests.set(key,request);
   return request;
