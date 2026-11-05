@@ -21,6 +21,28 @@ test('each published Block is page-split into an actual lazy JS module',()=>{
   for(const p of paths)assert.ok(existsSync(path.join(root,'app/modular/published-blocks',p)),p);
   assert.doesNotMatch(read('app/loc/scope-data.js'),/site-bootstrap\.json|\/blocks\/.*\.json/);
 });
+test('published Theme JSON contains eight complete palettes matching the CSS',async()=>{
+  const catalog=JSON.parse(read('app/modular/published-theme-catalog.json'));
+  const css=read('app/styles/published-themes.css');
+  const {THEME_TOKEN_KEYS}=await import('../app/modular/theme-registry.js');
+  assert.equal(catalog.length,8);
+  for(const [index,row] of catalog.entries()){
+    assert.equal(Number(row.theme_id),index+1);
+    const start=css.indexOf(':root[data-theme-id="theme-'+row.theme_id+'"]');
+    assert.ok(start>=0);
+    const end=css.indexOf(':root[data-theme-id="theme-',start+1);
+    const cssBlock=css.slice(start,end<0?undefined:end);
+    for(const key of THEME_TOKEN_KEYS){
+      const value=String(row[key.slice(2).replaceAll('-','_')]||'').trim();
+      assert.ok(value,'missing '+row.theme_id+' '+key);
+      assert.ok(cssBlock.includes('  '+key+':'+value+';'),'JSON and CSS differ for '+row.theme_id+' '+key);
+    }
+  }
+  const bootstrap=read('app/modular/published-site-bootstrap.js');
+  assert.match(bootstrap,/import publishedThemes from '\.\/published-theme-catalog\.json'/);
+  assert.match(bootstrap,/themes:publishedThemes/);
+});
+
 test('CSS contains eight published Theme palettes',()=>{
   const css=read('app/styles/published-themes.css');
   for(let id=1;id<=8;id++){
