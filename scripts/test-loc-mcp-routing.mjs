@@ -94,7 +94,7 @@ test('Valid Clerk JWT can initialize, discover read/write tools, and ping',async
   const link=tools.find(tool=>tool.name==='galaxy_link');
   assert.deepEqual(link.inputSchema.required,['action','scopeid']);
   assert.deepEqual(link.inputSchema.properties.action.enum,['search','read','check','record','update_pr']);
-  assert.deepEqual(link.inputSchema.properties.source.enum,['mcp','github']);
+  assert.equal(Object.hasOwn(link.inputSchema.properties,'source'),false);
   assert.equal(status.availableTools.includes('update_scope_pr'),false);
   for(const field of ['uid','pr_number','title','content','updated_at'])
     assert.ok(Object.hasOwn(link.inputSchema.properties,field));

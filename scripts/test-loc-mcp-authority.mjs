@@ -215,7 +215,7 @@ test('self-hosted Scope profile: update_scope_pr reads before writing and refuse
     return new Response(null,{status:204});
   };
   await assert.rejects(authority.mcpUpdatePr('lo3rwang',prUpdate,'eyJ.x'),
-    /Only GitHub PR-origin articles can be updated/);
+    /Only MCP PR-origin articles can be updated/);
   assert.equal(calls.length,1);
   assert.equal(calls[0].method,'GET');
 });
@@ -227,7 +227,7 @@ test('self-hosted Scope profile: update_scope_pr refuses a PR-number/title misma
   globalThis.fetch=async(url,options={})=>{
     calls.push({url:String(url),method:options.method||'GET'});
     if((options.method||'GET')==='GET')
-      return Response.json([{uid:'561DFE49',title:'PR #1 unrelated article',site:'github'}]);
+      return Response.json([{uid:'561DFE49',title:'PR #1 unrelated article',site:'mcp'}]);
     return new Response(null,{status:204});
   };
   await assert.rejects(authority.mcpUpdatePr('lo3rwang',prUpdate,'eyJ.x'),
@@ -242,7 +242,7 @@ test('self-hosted Scope profile: update_scope_pr PATCHes by uid once the GitHub 
   globalThis.fetch=async(url,options={})=>{
     calls.push({url:String(url),method:options.method||'GET',body:options.body?JSON.parse(options.body):null});
     if((options.method||'GET')==='GET')
-      return Response.json([{uid:'561DFE49',title:'PR #968 release notes',site:'github'}]);
+      return Response.json([{uid:'561DFE49',title:'PR #968 release notes',site:'mcp'}]);
     return new Response(null,{status:204});
   };
   const result=await authority.mcpUpdatePr('lo3rwang',prUpdate,'eyJ.x');
@@ -424,10 +424,10 @@ test('portable Scope finds only one original GitHub PR by canonical site_id',asy
       uid:target.searchParams.get('uid')});
     if(target.searchParams.get('site_id'))
       return Response.json([{uid:'Ab12Cd34',title:'LOC｜PR #968｜紀錄',
-        site:'github',site_id:'EsotericVerse/moon-runes-pwa#968'}]);
+        site:'mcp',site_id:'EsotericVerse/moon-runes-pwa#968'}]);
     if((options.method||'GET')==='GET')
       return Response.json([{uid:'Ab12Cd34',title:'LOC｜PR #968｜紀錄',
-        site:'github',site_id:'EsotericVerse/moon-runes-pwa#968'}]);
+        site:'mcp',site_id:'EsotericVerse/moon-runes-pwa#968'}]);
     return new Response(null,{status:204});
   };
   const input={...prUpdate};delete input.uid;
@@ -446,11 +446,28 @@ test('portable PR update refuses ambiguous source identity without modifying any
   globalThis.fetch=async(_url,options={})=>{
     if(options.method==='PATCH')writes++;
     return Response.json([
-      {uid:'Ab12Cd34',site:'github',title:'PR #968',site_id:'EsotericVerse/moon-runes-pwa#968'},
-      {uid:'Ba21Dc43',site:'github',title:'PR #968',site_id:'EsotericVerse/moon-runes-pwa#968'}
+      {uid:'Ab12Cd34',site:'mcp',title:'PR #968',site_id:'EsotericVerse/moon-runes-pwa#968'},
+      {uid:'Ba21Dc43',site:'mcp',title:'PR #968',site_id:'EsotericVerse/moon-runes-pwa#968'}
     ]);
   };
   const input={...prUpdate};delete input.uid;
   await assert.rejects(authority.mcpUpdatePr('external',input,'eyJ.authorized.mcp'),/Multiple PR records/);
   assert.equal(writes,0);
+});
+
+test('Galaxy Link search is fixed to site=mcp without caller-selectable site parameter',async()=>{
+  const source=readFileSync(new URL('../workers/loc-authority/index.mjs',import.meta.url),'utf8');
+  assert.match(source,/site:'eq\.mcp'/);
+  assert.match(source,/mcp-search',\{query,limit\}/);
+  assert.doesNotMatch(source,/site:'eq\.'\+source/);
+  assert.match(source,/Object\.keys\(args\)\.some\(key=>!\['query','limit'\]\.includes\(key\)\)/);
+});
+
+test('managed MCP text search uses a literal site and cannot accept caller source',()=>{
+  const edge=readFileSync(new URL('../supabase/functions/loc-kysely/index.ts',import.meta.url),'utf8');
+  assert.match(edge,/where site = 'mcp' and \(title ilike/);
+  assert.match(edge,/\["kind","scopeid","query","limit"\]/);
+  assert.doesNotMatch(edge,/where site = \$\{body\.source/);
+  assert.match(edge,/where site='mcp' and site_id=\$\{repoSiteId\}/);
+  assert.doesNotMatch(edge,/where site='github' and site_id=/);
 });

@@ -42,7 +42,7 @@ async function loadArticle(uid,offset=0){
   if(busy)return;
   setBusy(true);
   try{
-    const data=await send('locGalaxy.galaxy',{action:'read',source:'mcp',uid,offset});
+    const data=await send('locGalaxy.galaxy',{action:'read',uid,offset});
     if(data.found!==true)throw Error('文章不存在或沒有讀取權限');
     if(offset===0){
       article.hidden=false;
@@ -85,7 +85,7 @@ async function runSearch(event){
   setBusy(true);closeArticle();results.replaceChildren();
   notice('正在查詢已授權的 MCP 話題…');
   try{
-    const data=await send('locGalaxy.galaxy',{action:'search',source:'mcp',query});
+    const data=await send('locGalaxy.galaxy',{action:'search',query});
     drawResults(data);
   }catch(error){notice(String(error.message||error),true);}
   finally{setBusy(false);}

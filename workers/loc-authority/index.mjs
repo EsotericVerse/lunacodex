@@ -396,11 +396,11 @@ async function postgrestUpdatePr(profile,uid,prNumber,title,content,updatedAt){
   if(!uid){
     // Resolve by source identity; never guess a UID or update multiple rows.
     const exact=await postgrest(profile,{params:{select:'uid,title,site,site_id',
-      site:'eq.github',site_id:'eq.'+canonical,limit:2}});
+      site:'eq.mcp',site_id:'eq.'+canonical,limit:2}});
     let matches=exact;
     if(!matches.length){
       const candidates=await postgrest(profile,{params:{select:'uid,title,site,site_id',
-        site:'eq.github',title:'ilike.*PR #'+prNumber+'*',
+        site:'eq.mcp',title:'ilike.*PR #'+prNumber+'*',
         order:'createtime.desc',limit:40}});
       matches=candidates.filter(row=>prMarker.test(String(row.title||'')));
     }
@@ -418,7 +418,7 @@ async function postgrestUpdatePr(profile,uid,prNumber,title,content,updatedAt){
   const rows=await getRes.json();
   if(!Array.isArray(rows)||!rows.length)throw fail('Scope article not found',403);
   const row=rows[0];
-  if(row.site!=='github')throw fail('Only GitHub PR-origin articles can be updated through this tool',403);
+  if(row.site!=='mcp')throw fail('Only MCP PR-origin articles can be updated through this tool',403);
   if(row.site_id!==canonical&&!prMarker.test(String(row.title||'')))
     throw fail('PR number does not match article provenance',403);
   const patchUrl=new URL(profile.endpoint+'/'+profile.table);
@@ -679,8 +679,7 @@ export class LocAuthorityState extends DurableObject {
     this.mcpSearchCache?.clear();
     return {scopeid,uid:resolvedUid,pr_number:prNumber,updated_at:requestedTime,updated:true};
   }
-  async mcpLinkSearch(scopeid,query,limit=5,oauthToken='',source='mcp'){
-    if(!['mcp','github'].includes(source))throw fail('Invalid Galaxy source',400);
+  async mcpLinkSearch(scopeid,query,limit=5,oauthToken=''){
     validScope(scopeid);
     if(typeof query!=='string'||query.trim().length<2||query.length>100||
       /[\u0000-\u001f\u007f]/.test(query)||!Number.isInteger(limit)||limit<1||limit>5)
@@ -690,10 +689,10 @@ export class LocAuthorityState extends DurableObject {
     if(profile){
       const pattern=likePattern(query);
       rows=await postgrest(profile,{params:{select:'uid,title,createtime',
-        site:'eq.'+source,or:'(title.ilike.'+pattern+',content.ilike.'+pattern+')',
+        site:'eq.mcp',or:'(title.ilike.'+pattern+',content.ilike.'+pattern+')',
         order:'createtime.desc',limit},timeout:4500});
     }else if(Object.hasOwn(MANAGED_SCOPE_TABLES,scopeid)){
-      rows=await managedMcpRead(scopeid,'mcp-search',{query,limit,source},oauthToken);
+      rows=await managedMcpRead(scopeid,'mcp-search',{query,limit},oauthToken);
     }else throw fail('Scope database is not configured',409);
     if(!Array.isArray(rows))throw fail('Invalid Galaxy Link search response',502);
     return {scopeid,results:rows.map(r=>({uid:r.uid,title:r.title,createtime:r.createtime}))};
@@ -989,14 +988,12 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
     const scopeid=validScope(parts[1]);
     const args=await mcpJsonBody(request,1600);
     if(!args||typeof args!=='object'||Array.isArray(args)||
-      Object.keys(args).some(key=>!['query','limit','source'].includes(key)))
+      Object.keys(args).some(key=>!['query','limit'].includes(key)))
       throw fail('Invalid Galaxy Link search payload',400);
-    const source=args.source??'mcp';
-    if(!['mcp','github'].includes(source))throw fail('Invalid Galaxy source',400);
-    if(!await allowed(scopeid,source==='github'?'manage':'read'))
+    if(!await allowed(scopeid,'read'))
       throw fail('Scope source search denied',403);
     return json(await scoped(scopeid).mcpLinkSearch(scopeid,args.query,args.limit??5,
-      (request.headers.get('authorization')||'').replace(/^Bearer /,''),source),200,origin);
+      (request.headers.get('authorization')||'').replace(/^Bearer /,'')),200,origin);
   }
   if(parts[0]==='read'&&parts.length===3&&request.method==='GET'){
     const scopeid=validScope(parts[1]);
