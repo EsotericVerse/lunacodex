@@ -455,9 +455,12 @@ Deno.serve(async (request) => {
       const scope=String(body.scopeid||"");
       const uid=String(body.uid||"");
       const content=body.content;
+      const batchId=String(body.batch_id||"");
+      const marker="[[GalaxyLinkBatch:"+batchId+"]]";
       const stamp=String(body.updated_at||"");
       if(!["lo3rwang","lrunes"].includes(scope)||!/^[A-Za-z0-9]{8}$/.test(uid)||
          typeof content!=="string"||!content.trim()||content.length>125000||
+         !/^[0-9a-f]{64}$/.test(batchId)||!content.startsWith(marker+"\\n".replace("\\n","\n"))||
          !Number.isFinite(Date.parse(stamp))) return json({error:{message:"Invalid append request"}},400);
       const db=await databaseForTarget(controlTarget);
       const table=sql.ref("silver."+scope+"_galaxy");
@@ -466,10 +469,19 @@ Deno.serve(async (request) => {
         await sql`select set_config('request.jwt.claims',${JSON.stringify(claims)},true)`.execute(trx);
         await sql`select set_config('request.jwt.claim.sub',${String(claims.sub||"")},true)`.execute(trx);
         await sql`select set_config('request.jwt.claim.role','authenticated',true)`.execute(trx);
+        await sql`set local statement_timeout = '5000ms'`.execute(trx);
         const next=await sql`update ${table} set content=concat_ws(chr(10),nullif(content,''),${content}),
-          "UpdateTime"=${stamp} where uid=${uid} and site='mcp' returning uid,title,createtime`.execute(trx);
-        if(next.rows.length!==1)throw Error("MCP topic unavailable");
-        return {data:{count:1,title:next.rows[0].title,createtime:next.rows[0].createtime}};
+          "UpdateTime"=${stamp} where uid=${uid} and site='mcp'
+          and position(${marker} in coalesce(content,''))=0
+          returning uid,title,createtime`.execute(trx);
+        if(next.rows.length===1)
+          return {data:{count:1,title:next.rows[0].title,createtime:next.rows[0].createtime}};
+        const duplicate=await sql`select uid,title,createtime from ${table}
+          where uid=${uid} and site='mcp' and position(${marker} in coalesce(content,''))>0
+          limit 1`.execute(trx);
+        if(duplicate.rows.length===1)
+          return {data:{count:1,duplicate:true,title:duplicate.rows[0].title,createtime:duplicate.rows[0].createtime}};
+        throw Error("MCP topic unavailable");
       });
       return json(result);
     }
