@@ -103,7 +103,7 @@ export function captureController({record,authorized}){
       const key=scopeid+':'+snapshot.conversation_id;
       const seen=new Set(Array.isArray(archived[key])?archived[key]:[]);
       for(const row of queue)if(row.scopeid===scopeid&&row.conversation_id===snapshot.conversation_id)seen.add(row.message_id);
-      let queued=0,bytes=0;
+      let queued=0,bytes=0,truncated=false;
       const start=Date.now()-snapshot.records.length-100;
       for(let i=0;i<snapshot.records.length;i++){
         const row=snapshot.records[i];
@@ -111,7 +111,7 @@ export function captureController({record,authorized}){
           !['user','assistant'].includes(row.role)||typeof row.text!=='string'||
           !row.text.trim()||row.text.length>80000||seen.has(row.message_id))continue;
         const size=row.text.length;
-        if(queue.length>=500||bytes+size>1800000)break;
+        if(queue.length>=500||bytes+size>1800000){truncated=true;break;}
         queue.push({scopeid,conversation_id:snapshot.conversation_id,
           message_id:row.message_id,text:row.text,role:row.role,
           observed_at:new Date(start+i).toISOString()});
@@ -119,7 +119,7 @@ export function captureController({record,authorized}){
       }
       await chrome.storage.local.set({[PENDING]:queue});
       return {captured:snapshot.records.length,queued,pending:queue.length,
-        partial:snapshot.partial||queued<snapshot.records.filter(row=>!Array.isArray(archived[key])||!archived[key].includes(row.message_id)).length};
+        partial:snapshot.partial||truncated};
     });
   }
   async function status(){
