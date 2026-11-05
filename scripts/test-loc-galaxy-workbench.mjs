@@ -36,7 +36,7 @@ test('Extension owns only LOC issuer host permissions and hides Access Tokens fr
   assert.match(bg,/const token=await verifiedAccess\(scopeid\)/);
   assert.match(bg,/mcpTool\(token,'galaxy_link'/);
   assert.doesNotMatch(view,/refresh_token|access_token|client_secret/);
-  assert.match(bg,/chrome\\.runtime\\.onMessageExternal/);
+  assert.ok(bg.includes('chrome.runtime.onMessageExternal'));
   assert.match(bg,/sender\\.tab\\?\\.id/);
   assert.ok(bg.includes('chrome.alarms.onAlarm'));
   assert.match(bg,/Date\.now\(\)-last<30000/);
