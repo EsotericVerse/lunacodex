@@ -393,10 +393,10 @@ async function portableLinkedMediaCount(db,galaxy,anchor,engine,start,end){
         and a.type in ('image','video','rune','suno')
         and a.invisible=0`;
   }else if(engine==='postgres'){
-    // Portable PostgreSQL JSONB differs from built-in SQL-array Galaxy.
+    // PostgreSQL Portable Galaxy uses native SQL arrays, like the primary Galaxy.
     query=sql`select count(distinct linked.uid) as n
       from (${docs}) as docs
-      cross join lateral jsonb_array_elements_text(docs.media_link) as linked(uid)
+      cross join lateral unnest(docs.media_link) as linked(uid)
       join ${media} as a on a.uid=linked.uid
         and a.type in ('image','video','rune','suno')
         and a.invisible=false`;
