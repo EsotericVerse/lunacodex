@@ -1705,6 +1705,7 @@ export default function Culture(){
                       relatedStatistics={fullTextKey===workKey&&fullDetail?.uid===work.uid?fullDetail.related_statistics:null}
                       articleScopeId={work.scope_id||classificationScope}
                       articleDate={fullTextKey===workKey&&fullDetail?.uid===work.uid?fullDetail.article_day||fullDetail.date:''}
+                      articleCreateTime={fullTextKey===workKey&&fullDetail?.uid===work.uid?fullDetail.createtime||work.createtime:work.createtime}
                       tracePlace={fullTextKey===workKey&&fullDetail?.uid===work.uid?fullDetail.trace_place:null}
                       traceHref={fullTextKey===workKey&&fullDetail?.trace_place
                         ?featureNavigationHref(work.scope_id||classificationScope,'trace',{place:fullDetail.trace_place.uid}):''}
