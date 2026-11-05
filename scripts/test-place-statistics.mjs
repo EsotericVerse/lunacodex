@@ -61,3 +61,16 @@ test('Culture and Statistics use optional SQL place summaries without ISR or req
   assert.match(cultPlace,/!model.items.length/);
   assert.match(statPlace,/!model.places.length/);
 });
+
+test('Statistics displays independent precomputed Keyword Class results instead of a Media facet',()=>{
+  const stats=read('app/modular/features/Statistics.jsx');
+  assert.match(stats,/const STAT_TYPES=\\['total','source','place','keywords'\\]/);
+  assert.match(stats,/const sourceChart=\\['total','source'\\]\\.includes\\(rankingType\\)/);
+  assert.match(stats,/const keywordDimension=rankingType==='keywords'/);
+  assert.match(stats,/classUid:resolvedKeywordClassUid/);
+  assert.doesNotMatch(stats,/selectMediaStatisticsFacetRows|MediaFacetStatistics|mediaDimension/);
+  assert.match(stats,/keywordDimension\\?<Rune66Summary/);
+  const culture=read('app/modular/features/Culture.jsx');
+  assert.match(culture,/setSelectedKeywordClassUid\\(event\\.target\\.value\\)/);
+  assert.match(culture,/queryKey:\\['culture-style-filter','rune66',classificationScope,resolvedKeywordClassUid/);
+});
