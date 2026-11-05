@@ -80,8 +80,7 @@ export function homeBlockRows(rows,page='index',limit=HOME_BLOCK_LIMIT){
   return (Array.isArray(rows)?rows:[])
     .filter(row=>String(row?.page_name||'index').toLowerCase()===target)
     .filter(row=>Number.isInteger(Number(row?.block_order))&&Number(row.block_order)>=1&&Number(row.block_order)<=limit)
-    .sort((a,b)=>Number(a.block_order)-Number(b.block_order)||
-      String(a.uid||'').localeCompare(String(b.uid||'')))
+    .sort((a,b)=>Number(a.block_order)-Number(b.block_order))
     .slice(0,limit);
 }
 
