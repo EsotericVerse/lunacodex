@@ -104,7 +104,7 @@ const TOOLS=[
     inputSchema:{type:'object',properties:{
       action:{type:'string',enum:['search','read','check','record','update_pr']},
       source:{type:'string',enum:['mcp','github'],description:'Optional search/read source; GitHub PR requires Scope manage permission'},
-      scopeid:{type:'string'},uid:{type:'string',pattern:'^[A-Za-z0-9]{8}
+      scopeid:{type:'string'},uid:{type:'string',pattern:'^[A-Za-z0-9]{8}$',description:'Optional for update_pr: omit to locate existing GitHub PR by pr_number; never needed from the user'},
       query:{type:'string',minLength:2,maxLength:100},limit:{type:'integer',minimum:1,maximum:5},
       conversation_id:{type:'string'},updated_at:{type:'string'},created_at:{type:'string'},
       records:{type:'array',minItems:1,maxItems:100,items:{type:'object',properties:{
@@ -113,109 +113,6 @@ const TOOLS=[
       },required:['role','kind','sent_at','text','message_id'],additionalProperties:false}},
       title:{type:'string',maxLength:350},content:{type:'string',maxLength:125000},
       pr_number:{type:'integer',minimum:1,description:'Existing GitHub PR number; update_pr resolves unique Galaxy UID after Scope manage authorization'},
-      offset:{type:'integer',minimum:0},max_chars:{type:'integer',minimum:1,maximum:40000}
-    },required:['action','scopeid'],additionalProperties:false}},
-  {name:'join_scope_group',description:'Group manager attaches an existing Scope; does not move or copy data.',
-    inputSchema:{type:'object',properties:{groupid:{type:'string'},scopeid:{type:'string'}},
-      required:['groupid','scopeid'],additionalProperties:false}},
-  {name:'grant_scope_access',description:'Only a Scope Group manager may grant Clerk subjects read/write/configure/manage rights to the Group or a member Scope.',
-    inputSchema:{type:'object',properties:{groupid:{type:'string'},scopeid:{type:'string'},
-      subject:{type:'string',description:'Verified Clerk user_... identifier'},
-      actions:{type:'array',items:{type:'string',enum:['read','write','manage','configure']}},
-      days:{type:'integer',minimum:1,maximum:365}},
-      required:['groupid','scopeid','subject','actions'],additionalProperties:false}},
-  {name:'revoke_scope_access',description:'Scope Group manager immediately revokes one member’s Clerk access to a Group or member Scope.',
-    inputSchema:{type:'object',properties:{groupid:{type:'string'},scopeid:{type:'string'},
-      subject:{type:'string',description:'Clerk user_... identifier'}},
-      required:['groupid','scopeid','subject'],additionalProperties:false}},
-];
-function toolResponse(id,value){return result(id,{content:[{type:'text',text:JSON.stringify(value)}],structuredContent:value});}
-// The public UID reader also uses the global Authority Durable Object quota.
-async function withMcpQuota(token,env,action){
-  const authority=new URL(String(env.LOC_MCP_AUTHORITY_URL||
-    'https://auth.lo3rwang.cc'));
-  if(authority.protocol!=='https:'||authority.username||authority.password||
-    authority.search||authority.hash||!['','/'].includes(authority.pathname))
-    throw Error('Invalid LOC Authority origin');
-  const endpoint=new URL('/v1/mcp/quota',authority.origin);
-  const request=async payload=>{
-    const res=await fetch(endpoint.href,{
-      method:'POST',headers:{authorization:'Bearer '+token,
-        origin:'https://loc.lo3rwang.cc','content-type':'application/json'},
-      body:JSON.stringify(payload),signal:AbortSignal.timeout(12000),
-      redirect:'error',cache:'no-store'
-    });
-    if(!res.ok){
-      const err=new Error(res.status===429?'MCP request limit exceeded':'MCP quota unavailable');
-      err.httpStatus=res.status;throw err;
-    }
-    return res.json();
-  };
-  const permit=await request({action:'acquire',kind:'read'});
-  try{return await action();}
-  finally{await request({action:'release',lease:permit.lease});}
-}
-export async function handleMcp(request,env={}){
-  const config=mcpConfig(env);
-  if(request.method==='OPTIONS')return preflight();
-  if(!['GET','POST'].includes(request.method))return response({error:'method_not_allowed'},405,{Allow:'GET, POST, OPTIONS'});
-  const match=/^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization')||'');
-  if(!match)return unauthorized(config);
-  let identity=null;
-  try{identity=await verifyOAuthToken(match[1],config);}catch{return unauthorized(config);}
-  if(!identity)return unauthorized(config);
-  if(request.method==='GET')return response({error:'SSE_not_supported',message:'Use Streamable HTTP POST'},405,{Allow:'POST, OPTIONS'});
-  let payload;
-  try{payload=await request.json();}catch{return rpcError(null,-32700,'Invalid JSON',400);}
-  if(!payload||Array.isArray(payload)||payload.jsonrpc!=='2.0'||typeof payload.method!=='string')
-    return rpcError(payload?.id??null,-32600,'Invalid JSON-RPC request',400);
-  if(payload.id==null)return response(null,202); // JSON-RPC notifications have no reply.
-  switch(payload.method){
-    case 'initialize':{
-      const proposed=payload.params?.protocolVersion;
-      return result(payload.id,{protocolVersion:SUPPORTED_PROTOCOLS.has(proposed)?proposed:DEFAULT_PROTOCOL,
-        capabilities:{tools:{listChanged:false}},serverInfo:{name:'loc-mcp',version:'0.2.0',
-           ...(proposed==='2025-11-25'?{icons:[{src:'https://loc.lo3rwang.cc/assets/site/icons/loc-favicon.png',mimeType:'image/png'}]}:{})},
-        instructions:'Public search/read use existing Galaxy RLS. Private Scope read, write and Group search are independently authorized by Clerk + LOC Authority. galaxy_link separates private MCP conversations from manager-only GitHub PR records; recording requires supplied source text.'});
-    }
-    case 'ping':return result(payload.id,{});
-    case 'tools/list':return result(payload.id,{tools:TOOLS});
-    case 'tools/call':{
-      const name=payload.params?.name;
-      const args=payload.params?.arguments??{};
-      if(!TOOLS.some(tool=>tool.name===name))return rpcError(payload.id,-32602,'Unknown tool');
-      if(!args||typeof args!=='object'||Array.isArray(args))
-        return rpcError(payload.id,-32602,'Tool arguments must be an object');
-      if(name==='loc_connection_status')return toolResponse(payload.id,{
-        connected:true,provider:'clerk',subject:identity.subject,
-        resource:config.resource,galaxyPublicReadEnabled:true,
-        galaxyWriteSupported:true,writeRequiresScopeAuthorization:true,
-        availableTools:TOOLS.map(tool=>tool.name)});
-      try{
-        const value=name==='read_memory'?
-          await withMcpQuota(match[1],env,()=>readMemory(args,env)):
-          await authorityAction(name,args,match[1],env);
-        return toolResponse(payload.id,value);
-      }catch(error){
-        const validation=error?.code==='INVALID_ARGUMENT';
-        return result(payload.id,{isError:true,content:[{type:'text',
-          text:validation?error.message:
-            error?.httpStatus&&error.httpStatus<500?error.message:
-            'LOC data service unavailable; please retry later.'}]});
-      }
-    }
-    default:return rpcError(payload.id,-32601,'Method not found');
-  }
-}
-,description:'Optional for update_pr: omit to locate existing GitHub PR by pr_number; never needed from the user'},
-      query:{type:'string',minLength:2,maxLength:100},limit:{type:'integer',minimum:1,maximum:5},
-      conversation_id:{type:'string'},updated_at:{type:'string'},created_at:{type:'string'},
-      records:{type:'array',minItems:1,maxItems:100,items:{type:'object',properties:{
-        role:{type:'string',enum:['user','assistant']},kind:{type:'string',enum:['original','advice']},
-        sent_at:{type:'string'},text:{type:'string'},message_id:{type:'string'}
-      },required:['role','kind','sent_at','text','message_id'],additionalProperties:false}},
-      title:{type:'string',maxLength:350},content:{type:'string',maxLength:125000},
-      pr_number:{type:'integer',minimum:1},
       offset:{type:'integer',minimum:0},max_chars:{type:'integer',minimum:1,maximum:40000}
     },required:['action','scopeid'],additionalProperties:false}},
   {name:'join_scope_group',description:'Group manager attaches an existing Scope; does not move or copy data.',
