@@ -31,10 +31,16 @@ function incomingLocations(records){
     try{const uri=new URL(rawUrl);if(['https:','http:'].includes(uri.protocol))placeUrl=uri.href;}
     catch{}
     const previous=names.get(key);
+    // One place may be referenced by many articles. The first actual source
+    // article instant is a stable creation reference, not a cultural date.
+    const parsed=Date.parse(String(record?.createtime||''));
+    const created=Number.isFinite(parsed)?parsed:null;
     if(!previous)names.set(key,{name,title,postal,placeUrl,coordinates,
-      address:coordinates?JSON.parse(coordinates):null});
+      createtime:created,address:coordinates?JSON.parse(coordinates):null});
     else if(previous){if(!previous.postal&&postal)previous.postal=postal;
-      if(!previous.placeUrl&&placeUrl)previous.placeUrl=placeUrl;}
+      if(!previous.placeUrl&&placeUrl)previous.placeUrl=placeUrl;
+      if(created!==null&&(previous.createtime===null||created<previous.createtime))
+        previous.createtime=created;}
   }
   return {names,missing};
 }
@@ -128,6 +134,7 @@ export async function prepareImportPlaceAnchors(records,{
           ...(place.placeUrl?{url:place.placeUrl}:{})}),
         attr:place.coordinates
           ?{longitude:place.address[0],latitude:place.address[1]}:{},
+        ...(place.createtime!==null?{createtime:new Date(place.createtime).toISOString()}:{}),
         invisible:false
       };});
       ({data,error}=await relation(table).insert(rows).select('uid,type,title,attr'));

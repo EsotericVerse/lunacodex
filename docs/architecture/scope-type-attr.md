@@ -227,14 +227,24 @@ Kysely Edge `KyselyQuery.abortSignal(signal)` 現在把呼叫端取消訊號送�
 控制資料庫的 LOC 路由設定仍採既有的 5 秒快取；同一 Edge isolate 內的並發請求共用一筆進行中的路由查詢，正式管理變更會撤銷快取及舊查詢的快取寫回資格。不修改 Supabase 表、Schema、RPC、RLS 或權限。
 
 
+### Anchor 建立時間參照（2026-11-05）
+
+- `{scopeid}_anchor` 保留既有八碼 Base62 `uid` 主鍵，另外新增實體 `createtime timestamptz`（非唯一、可為 NULL）；**不**以 timestamp 作主鍵，也**不新增索引、Trigger、RPC**。兩表 `lo3rwang_anchor` 和 `lrunes_anchor` 均已套用相同欄位。
+- `createtime` 是 Anchor 的建立／來源文章精確時間，用於媒體重建、同一時間比對及日後需要的 Anchor 排列；文化 `type=date` 的 `attr.date` 只代表事件日期，兩者絕不互換、也不由 `attr.date` 推導建立時間。
+- 從文章匯入／建立的 Media、Date 與 Point Anchor，建立時使用來源 Galaxy `createtime`。沒有文章時間的全新手動 Anchor 使用資料庫的 `CURRENT_TIMESTAMP`。相同文章的多張圖片可同時刻；不可單靠 `createtime` 判定唯一媒體。
+- 歷史回填僅對有 `Galaxy.media_link` 且能確認**單一來源文章時間**的媒體 UID 寫入。被不同時間文章共用或缺來源證據的 Anchor 留 `NULL`；不捏造時間、不覆蓋 UID、不合併或刪除資料。
+- 媒體匯入既有 UID／URL 比對保持不變；沒有 URL 的文章媒體採「文章 UID + media type + title + description + `createtime` + location」比對，並由物理 Anchor.createtime 提供時間，不能再錯用 `attr.date`。
+- Portable SQL 的新建 Scope Schema 包含同名欄位，連線前會驗證它。Supabase 與 Neon 的 `lo3rwang_anchor`／`lrunes_anchor` 都已套用相同的新增欄位及保守回填；未升級的外部 PostgreSQL／MySQL／SQL Server 資料庫仍需採用其各自非破壞性加欄遷移後才可使用新版。
+- 搜尋主功能仍然只搜尋 Galaxy `content`；本次**不**更改搜尋或文章列表的排序決議。
+
 ### 統一內文搜尋（2026-11-04）
 
-一般 Search 僅查 Galaxy `content` 與相同 Scope 唯一實體 Anchor `description`（時間 date/period/era、空間 point/path/trace、關鍵詞 category/class/group/item、媒體 image/video/rune/suno），**不搜尋標題、URL 或媒體專屬標籤欄位**。結果依 Anchor `type` 連到文化 `anchor/period`、痕跡 `place/map`、關鍵詞統計頁，或媒體自身公開 URL；文章繼續連其 Galaxy UID 頁。文章管理的打卡地點工具是獨立管理功能，不視為一般文字搜尋。Anchor 公開讀取仍受 `invisible=false` 和既有 RLS 控制。
+一般 Search **僅搜尋 Galaxy `content`**，不搜尋 Anchor `description`、文章標題、URL 或 UID。搜尋結果僅顯示文章；定錨內容由文章的既有時間／空間／關鍵詞／媒體關聯連入，禁止讓 Anchor 反過來主導文章搜尋。文章管理的打卡地點是獨立管理工具，不是公開文字搜尋；原有文化、痕跡、統計 Anchor 讀取功能不受影響。
 
 
 ### 搜尋的最小資料投影與進階指定（2026-11-04）
 
-Search 的全文比對**僅**作用於 Galaxy 的 `content` 與 Anchor 的 `description`；不搜尋 `title`、`type`、`uid`、`attr`。公開 Anchor 搜尋 SELECT 只投影 `uid,type,description`，另以 `invisible=false` 做公開篩選；`type` 只在進階搜尋選定時，以資料庫精確 `=` 比對。Anchor 沒有日期欄，搜尋不讀 `attr.date`，進階時間範圍僅限定 Galaxy `date`（既有 B-tree）；搜尋頁不再另讀文化時間定錨／時代選單。Anchor 預覽連回各功能頁，媒體跳媒體統計頁，不暴露 Anchor.attr。
+Search 只對 Galaxy `content` 執行模糊比對；進階內容類型只保留「文章／歌詞／文字作品」。搜尋結果可讀 Galaxy 的標題與 `date` 作展示，但不拿標題或 Anchor 執行全文搜尋。進階日期範圍用 Galaxy `date`；搜尋排序政策沿用現行行為，本次先不修改。
 
 
 ### Max MultiPara 與 MCP 內容搜尋（2026-11-04）
@@ -254,8 +264,8 @@ Search 的全文比對**僅**作用於 Galaxy 的 `content` 與 Anchor 的 `desc
 
 ### 搜尋 QoS 與功能邊界（2026-11-04）
 
-- 唯一允許使用者主動對 Galaxy `content`／Anchor `description` 送出模糊比對的入口是**搜尋主功能**；Culture 只以 `date` 與時間定錨、Trace 以 `place_id` 與空間定錨、Statistics 以結構化欄位及既有分析結果取得文章，不額外搜尋全文。搜尋主頁全文搜尋**不得取消**。
-- 搜尋 UI 於新文字搜尋之間強制 **3 秒冷卻**（瀏覽、分頁載入、依 UID 展開全文不適用），先在前端阻擋快速重複點擊；伺服器只針對 Galaxy `content` 與 Anchor `description` 的 `ILIKE/LIKE` SELECT 作搜尋 QoS，其他管理寫入、文章列表、日期與地點查詢不受影響。
+- 唯一允許使用者主動對 Galaxy `content` 送出模糊比對的入口是**搜尋主功能**；Anchor `description` 不接受全文搜尋。Culture 只以 `date` 與時間定錨、Trace 以 `place_id` 與空間定錨、Statistics 以結構化欄位及既有分析結果取得文章，不額外搜尋全文。搜尋主頁的 Galaxy 全文搜尋保留。
+- 搜尋 UI 於新文字搜尋之間強制 **3 秒冷卻**（瀏覽、分頁載入、依 UID 展開全文不適用）；伺服器只針對 Galaxy `content` 的 `ILIKE/LIKE` SELECT 作搜尋 QoS，其他管理寫入、文章列表、日期與地點查詢不受影響。
 - Gateway：同一個識別來源 **每分鐘最多 24 次文字搜尋 SQL 請求**（一次搜尋動作可能涉及多個 Scope／Provider）；新搜尋動作的最少 3 秒間隔由 UI 實施。伺服器不對同一動作的各個 SQL 子查詢額外套用 3 秒間隔，以免誤擋合法的跨 Scope 搜尋。超限後暫時封鎖 **120 秒**、回傳 HTTP 429 與 `Retry-After`；搜尋用 PostgreSQL 交易設定 `statement_timeout=8000ms`，SQL 超時回傳 `SEARCH_TIMEOUT`，不執行自動重試。
 - 限流目前使用 Edge Function **單個 warm isolate 的有上限記憶體**，不查詢或寫入額外資料表、不新增 RPC、Trigger、Index、不變更既定 QoS 16。**這不是跨所有 Edge instances 的全球共享黑名單**；跨實例、跨區域的強制防護將來須由部署層的共享限流能力承擔，不能把本版本宣稱成分散式全域封鎖。
 - 已設有搜尋使用者端 25 秒 abort 與 Kysely HTTP 9 秒 deadline；SQL 8 秒設定是另外在資料庫端阻止長時間掃描。僅對 PostgreSQL 實際施加 `SET LOCAL statement_timeout`；其他 SQL 引擎不應宣稱享有相同的伺服器端保證。

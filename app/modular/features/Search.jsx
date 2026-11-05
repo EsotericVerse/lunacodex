@@ -36,7 +36,6 @@ import {scopeHref} from '../scope-registry';
 import {featureNavigationHref,galaxyIdentityHref,galaxyRelationLinks} from '../feature-navigation';
 import {featureDataErrorMessage} from '../feature-data-state';
 import {parseSearchQuery} from '../../loc/search-query.mjs';
-import {extractSearchContext} from '../../loc/search-extract.mjs';
 import {galaxyAble} from '../../loc/galaxy-able.mjs';
 import {searchGalaxyRows,selectGalaxyContent,selectGalaxyIdentity,selectStyleKeywordMatches,selectSourceTaxonomy} from '../../loc/galaxy-query';
 import {defaultScopeData,selectLocSearchScopes,selectScopeRegistry,revalidateServerMetadata} from '../../loc/scope-data';
@@ -103,41 +102,20 @@ function highlightSearchText(text='',query=''){
 
 
 function toResult(row,source,scopeId,copy=UI_COPY){
-  const anchorType=String(row.type||'').toLowerCase();
-  const isAnchor=Boolean(row.uid&&String(row.__table||'').endsWith('_anchor'));
-  const isMedia=Boolean(row.uid&&!isAnchor&&(row.record_type==='galaxy_media'||
+  // Results are Galaxy articles. Anchor data is only available via a
+  // selected article's existing time/space/keyword/media relationships.
+  const isMedia=Boolean(row.uid&&(row.record_type==='galaxy_media'||
     String(row.__table||'').endsWith('_media')));
-  const isGalaxy=Boolean(row.uid)&&!isMedia&&!isAnchor;
-  const timeTypes=['date','period','era'];
-  const placeTypes=['point','path','trace'];
-  const keywordTypes=['category','class','group','item'];
-  const mediaTypes=['image','video','rune','suno'];
-  const anchorHref=!isAnchor?''
-    :timeTypes.includes(anchorType)
-      ?featureNavigationHref(row.scope_id||scopeId,'culture',
-        anchorType==='date'?{anchor:row.uid}:{period:row.uid})
-      :placeTypes.includes(anchorType)
-        ?featureNavigationHref(row.scope_id||scopeId,'trace',
-          anchorType==='point'?{place:row.uid}:{map:row.uid})
-        :keywordTypes.includes(anchorType)
-          ?featureNavigationHref(row.scope_id||scopeId,'statics',{statTab:'keywords'})
-          :mediaTypes.includes(anchorType)
-            ?featureNavigationHref(row.scope_id||scopeId,'statics',{statTab:'media'})
-            :'';
+  const isGalaxy=Boolean(row.uid)&&!isMedia;
   const explicitTitle=workDisplayText(row.title||row.name||row.display_title||row.label||row.rune_name||row.song_id||row.id||'').trim();
   const fallbackTitle=isMedia?MEDIA_FALLBACK_TITLE:WORK_FALLBACK_TITLE;
-  const title=isAnchor
-    ?({date:'時間定錨',period:'期間',era:'時代',point:'空間定錨',
-      path:'路線',trace:'痕跡',category:'關鍵詞目錄',class:'關鍵詞科目',
-      group:'關鍵詞群組',item:'關鍵詞',image:'圖片',video:'影片',
-      rune:'符文',suno:'音樂'}[anchorType]||'定錨內容')+' · '+row.uid
-    :(isGalaxy||isMedia)
-      ?workDisplayHeading(row,{media:isMedia,fallback:fallbackTitle,limit:80})
-      :(explicitTitle||fallbackTitle);
+  const title=(isGalaxy||isMedia)
+    ?workDisplayHeading(row,{media:isMedia,fallback:fallbackTitle,limit:80})
+    :(explicitTitle||fallbackTitle);
   const displaySource=isGalaxy&&row.site?String(row.site):source;
   const identity=row.uid||row.song_id||row.rune_id||row.record_id||row.resource_id||row.id;
   const scope=String(row.scope_id||scopeId||'').trim();
-  const resourceType=isAnchor?'anchor':isGalaxy?'galaxy':isMedia?'galaxy_media':'';
+  const resourceType=isGalaxy?'galaxy':isMedia?'galaxy_media':'';
   const resourceId=row.uid||'';
   const editableTable=resourceType?String(row.__table||''):'';
   const editableIdColumn=resourceType
@@ -146,12 +124,13 @@ function toResult(row,source,scopeId,copy=UI_COPY){
   const editResourceId=resourceId;
   const editableField=resourceType==='galaxy'?'content':resourceType==='galaxy_media'?'description':'';
   const isScopeCard=Boolean(row.scope_card);
-  const href=isAnchor?anchorHref:isScopeCard?scopeHref(scope):(row.url||row.href||row.suno_url||'');
+  const href=isScopeCard?scopeHref(scope):(row.url||row.href||row.suno_url||'');
   return {
     key:identity?[scope,source,identity].join(':'):[source,scope,title].join('-'),
     source:displaySource,title:String(title),
     checkInPlace:'',
     date:row.date||row.createtime||row.address||row.record_date||row.UpdateTime||row.updated_at||'',
+    createtime:row.createtime||'',
     snippet:'',...(isGalaxy?{statics:row.statics,culture:row.culture,search:row.search,trace:row.trace,list:row.list,keyword:row.keyword,others:row.others,extract:row.extract}:{}),
     scopeId:scope,resourceType,resourceId,
     relatedMedia:Array.isArray(row.related_media)?row.related_media:[],
@@ -179,7 +158,6 @@ function toResult(row,source,scopeId,copy=UI_COPY){
       :(resourceType==='galaxy'&&resourceId
       ?'galaxy:'+scope+':'+resourceId
       :(resourceType==='galaxy_media'&&resourceId?'media:'+scope+':'+resourceId:
-        resourceType==='anchor'&&resourceId?'anchor:'+scope+':'+resourceId:
         'result:'+scope+':'+(identity||title))),
     links:uniqueExternalLinks([...(href?[{id:resourceType||'primary',href,label:resourceType==='galaxy_media'?copy.search.mediaLink:copy.search.externalLink}]:[]),...(Array.isArray(row.resolved_links)?row.resolved_links:[])]),
     destinations:[]
@@ -546,7 +524,6 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       for(const {row,source} of [...styleTagMatches,...searchRows]){
         const result=toResult(row,source,scopeId,UI_COPY);
         if(!result||seen.has(result.key))continue;
-        if(result.resourceType==='anchor')result.snippet=extractSearchContext(row.description,q,10);
         seen.add(result.key);converted.push(result);
       }
       const pageResults=prioritizeStyleTagResults(mergeSummaryResults(converted,UI_COPY));
@@ -884,12 +861,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     ['',t('uiExtra.searchUI.allTypes')],
     ['galaxy','文章'],
     ['lyrics_work',t('uiExtra.searchUI.lyricsType')],
-    ['text_work',t('uiExtra.searchUI.textType')],
-    ['date','時間定錨'],['period','期間'],['era','時代'],
-    ['point','空間定錨'],['path','路線'],['trace','痕跡'],
-    ['category','關鍵詞目錄'],['class','關鍵詞科目'],
-    ['group','關鍵詞群組'],['item','關鍵詞'],
-    ['image','圖片'],['video','影片'],['rune','符文'],['suno','音樂']
+    ['text_work',t('uiExtra.searchUI.textType')]
   ];
   const sourceCategories=(sourceTaxonomyQuery.data?.categories||[])
     .filter(row=>row.enabled!==false);
@@ -1240,7 +1212,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
               {filterSources.filter(([value])=>value&&!value.startsWith('category:')&&!value.startsWith('source:'))
                 .map(([value,label])=><option key={value} value={value}>{label}</option>)}
             </select>
-            <p className="scope-status">來源分類僅篩選 Galaxy 文章；Anchor 可在類型中指定。</p>
+            <p className="scope-status">搜尋僅比對文章內文；時間、空間及關鍵詞定錨由文章關聯開啟。</p>
             {sourceTaxonomyQuery.isPending?<p className="scope-status" role="status">載入來源分類…</p>:null}
             {sourceTaxonomyQuery.isError?<p className="scope-status scope-error" role="alert">來源分類載入失敗。
               <button type="button" className="loc-button" onClick={()=>sourceTaxonomyQuery.refetch()}>重試</button>
@@ -1366,14 +1338,13 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           managerMode={managementMode}
           uid={editTarget.editResourceId}
           title={!managementMode&&row.resourceType==='galaxy'&&row.list===false?'（使用者隱藏）':row.title}
-          articleHref={row.resourceType==='anchor'?row.href:
-            row.resourceType==='galaxy'&&(managementMode||row.list!==false)
+          articleHref={row.resourceType==='galaxy'&&(managementMode||row.list!==false)
             ?(managementMode?scopeHref(scopeId,'search/manage')+'?identity='+encodeURIComponent(row.resourceId)+'&scope='+encodeURIComponent(row.scopeId):galaxyIdentityHref(row.scopeId,row.resourceId))
             :''}
           detailReading={identityReader||expandedReader}
           source={searchParams?.get('identity')?row.styleTagMatch?'':row.source:''}
           date={row.date}
-          body={(row.resourceType==='galaxy'||row.resourceType==='anchor')&&row.snippet&&matchedQueryRef.current&&!browseResults
+          body={row.resourceType==='galaxy'&&row.snippet&&matchedQueryRef.current&&!browseResults
             ?highlightSearchText(row.snippet,matchedQueryRef.current):''}
           hidden={false}
           relationLinks={identityReader||expandedReader?readingLinks:[]}
@@ -1383,6 +1354,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           relatedStatistics={identityReader||expandedReader?readerRow?.related_statistics||row.relatedStatistics:null}
           articleScopeId={row.scopeId}
           articleDate={identityReader||expandedReader?readerRow?.article_day||readerRow?.date||row.articleDay||row.date:''}
+          articleCreateTime={identityReader||expandedReader?readerRow?.createtime||row.createtime:row.createtime}
           tracePlace={identityReader||expandedReader?tracePlace:null}
           traceHref={tracePlace?featureNavigationHref(row.scopeId,'trace',{place:tracePlace.uid}):''}
           locationName={identityReader||expandedReader?locationName:''}

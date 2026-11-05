@@ -196,7 +196,7 @@ function ArticleStatisticsPreview({scopeId='',statistics=null}){
 function ArticleRelationNavigation({
   links=[],externalLinks=[],relatedMedia=[],relatedTime=null,
   relatedSpace=null,relatedStatistics=null,tracePlace=null,traceHref='',
-  locationName='',articleScopeId='',articleDate=''
+  locationName='',articleScopeId='',articleDate='',articleCreateTime=''
 }){
   const refs=links.filter(link=>String(link.id||'').startsWith('reference:'));
   const above=links.filter(link=>String(link.id||'').startsWith('source:'));
@@ -307,7 +307,7 @@ function ArticleRelationNavigation({
           此日期符合週年／生日：{anniversarySuggestions[0].title}，可新增週年定錨。
         </span>:null}
         {dateValid&&scope!=='loc'&&scope!=='local'?<ArticleTimeAnchorAction
-          scopeId={scope} date={day} suggestions={anniversarySuggestions}
+          scopeId={scope} date={day} articleCreateTime={articleCreateTime} suggestions={anniversarySuggestions}
           label={anniversarySuggestions.length?'新增週年定錨':'新增時間定錨'}
           onCreated={anchor=>setAddedAnchor({scope,day,anchor})}/>:null}
       </>)}
@@ -358,6 +358,7 @@ export function WorkSummaryCard({
   relatedStatistics=null,
   articleScopeId='',
   articleDate='',
+  articleCreateTime='',
   tracePlace=null,
   traceHref='',
   locationName='',
@@ -401,6 +402,7 @@ export function WorkSummaryCard({
     {detailReading?<ArticleRelationNavigation links={safeRelations} externalLinks={showLinks?safeLinks:[]}
       relatedMedia={relatedMedia} relatedTime={relatedTime} relatedSpace={relatedSpace}
       relatedStatistics={relatedStatistics} articleScopeId={articleScopeId} articleDate={articleDate}
+      articleCreateTime={articleCreateTime}
       tracePlace={tracePlace} traceHref={traceHref} locationName={locationName}/>:null}
   </article>;
 }

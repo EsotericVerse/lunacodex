@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {isTextSearchQuery,createSearchQos} from '../app/loc/providers/search-qos.mjs';
 
-test('only explicit Galaxy / Anchor text predicates trigger QoS',()=>{
+test('only Galaxy.content text predicates trigger QoS',()=>{
   const base={kind:'query',operation:'select',table:'lo3rwang_galaxy'};
   assert.equal(isTextSearchQuery({...base,or:['content.ilike."%混沌%"']}),true);
   assert.equal(isTextSearchQuery({...base,filters:[{column:'content',operator:'ilike',value:'%a%'}]}),true);
@@ -12,7 +12,7 @@ test('only explicit Galaxy / Anchor text predicates trigger QoS',()=>{
   assert.equal(isTextSearchQuery({...base,filters:[{column:'place_id',operator:'eq',value:'a'}]}),false);
   assert.equal(isTextSearchQuery({...base,operation:'update',or:['content.ilike."%混沌%"']}),false);
   assert.equal(isTextSearchQuery({kind:'query',operation:'select',table:'lrunes_anchor',
-    or:['description.ilike."%詞%"']}),true);
+    or:['description.ilike."%詞%"']}),false);
   assert.equal(isTextSearchQuery({kind:'analytics',operation:'select',table:'lo3rwang_galaxy'}),false);
 });
 test('rapid searches are denied, repeated abuse is blacklisted temporarily',()=>{
@@ -34,7 +34,7 @@ test('rapid searches are denied, repeated abuse is blacklisted temporarily',()=>
   now+=121000;
   assert.equal(check('client').allowed,true);
 });
-test('one search can fan out across Galaxy and Anchor without artificial SQL spacing',()=>{
+test('cross-Scope Galaxy search requests have no artificial SQL spacing',()=>{
   let now=100000;
   const check=createSearchQos({now:()=>now});
   for(let i=0;i<4;i++)assert.equal(check('reader').allowed,true);

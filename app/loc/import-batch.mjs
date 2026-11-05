@@ -81,10 +81,11 @@ export function normalizeImportMedia(value,{title='',createtime=null,location=''
           :(typeof description==='string'?description.trim():JSON.stringify(description));
         return normalized||null;
       })(),
-      // Prefer the media's own timestamp; use its article time only as a fallback.
-      createtime:parseImportCreatedTime(source.createtime??source.created_at??
-        source.creation_timestamp??source.taken_at??source.timestamp)||
-        parseImportCreatedTime(createtime)||null
+      // Article-led LOC: media Anchor creation reference follows the source
+      // article's exact createtime. A media-only import uses its own stamp.
+      createtime:parseImportCreatedTime(createtime)||
+        parseImportCreatedTime(source.createtime??source.created_at??
+          source.creation_timestamp??source.taken_at??source.timestamp)||null
     };
     if(source.rune_references!==undefined)record.rune_references=source.rune_references;
     const key=explicitId?'id:'+explicitId:(external?JSON.stringify([external,media_type]):'item:'+index);

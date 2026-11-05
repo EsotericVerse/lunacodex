@@ -37,7 +37,10 @@ export function importCheckinDayEntries(records=[]){
       const day=calendarDay(moment);
       if(!day)continue;
       if(!grouped.has(day))grouped.set(day,[]);
-      const millis=Date.parse(String(record?.createtime||moment||''));
+      // A cultural date (moment / attr.date) must never impersonate the
+      // article's original creation timestamp.
+      const sourceTime=parseImportCreatedTime(record?.createtime??record?.timestamp);
+      const millis=sourceTime?Date.parse(sourceTime):NaN;
       grouped.get(day).push({title:articleTitle||fallback,
         article:Boolean(articleTitle),position:index,
         at:Number.isFinite(millis)?millis:Number.MAX_SAFE_INTEGER});
@@ -55,7 +58,11 @@ export function importCheckinDayEntries(records=[]){
       if(description.length+addition.length>DESCRIPTION_LIMIT)break;
       description+=addition;
     }
-    return {date,title:titles[0]||date,description};
+    // Cultural attr.date is the represented day. createtime is the exact
+    // source article instant, not that day's midnight.
+    const first=items.find(item=>Number.isFinite(item.at)&&item.at<Number.MAX_SAFE_INTEGER);
+    return {date,title:titles[0]||date,description,
+      createtime:first?new Date(first.at).toISOString():null};
   });
 }
 
@@ -126,6 +133,7 @@ export async function prepareImportTimeAnchors(records,{
         return {uid,type:'date',
         title:entryByDate.get(date).title,
         description:entryByDate.get(date).description,
+        ...(entryByDate.get(date).createtime?{createtime:entryByDate.get(date).createtime}:{}),
         attr:{date},invisible:false
       };});
       ({data,error}=await relation(table).insert(rows).select('uid,type,attr'));

@@ -70,7 +70,7 @@ export default function ManagementMediaPublisher({scopeId,dockScopeId=scopeId,gl
       if([mediaType,mediaDescription,mediaTitle,sourcePlace].some(hasIrrecoverableEncoding))throw new Error(t('uiExtra.importUI.mediaEncoding'));
       const scope=account.scopeDataFor(scopeId);
       const article=galaxyLink?(await selectRows(scope?.galaxy,{
-        columns:'uid,media_link',filters:[{column:'uid',operator:'eq',value:galaxyLink}],
+        columns:'uid,media_link,createtime',filters:[{column:'uid',operator:'eq',value:galaxyLink}],
         limit:1,authenticated:true
       })).rows?.[0]:null;
       if(galaxyLink&&!article)throw new Error('找不到指定的文章 UID。');
@@ -82,7 +82,8 @@ export default function ManagementMediaPublisher({scopeId,dockScopeId=scopeId,gl
         title:mediaTitle||null,
         url:String(draft.url||'').trim()||null,
         description:mediaDescription,
-        createtime:mediaIso(draft.createtime)
+        createtime:article?.createtime?new Date(article.createtime).toISOString():
+          mediaIso(draft.createtime)||new Date().toISOString()
       };
       const galaxyMedia=scope?.galaxyMedia;
       if(!galaxyMedia)throw new Error(t('uiExtra.importUI.scopeUnresolved'));
