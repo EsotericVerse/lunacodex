@@ -49,11 +49,10 @@ test('nearby points from different people become one dynamically labelled locati
     {uid:'C1234567',source_scope:'lrunes',title:'其他地點',latitude:25.0201,longitude:121.4700,trace_type:'space_anchor'}
   ];
   const result=clusterLocSharedPoints(points,50);
-  assert.equal(result.length,2);
+  assert.equal(result.length,1);
   assert.equal(result[0].member_count,2);
   assert.deepEqual(result[0].display_names,['lo3rwang:板橋車站','lrunes:板橋車站']);
   assert.equal(result[0].title,'lo3rwang:板橋車站 / lrunes:板橋車站');
-  assert.equal(result[1].member_count,1);
   assert.equal(points[0].title,'板橋車站','source objects remain unchanged');
 });
 
@@ -65,10 +64,7 @@ test('LOC caps shared positions globally at 50 and shares the limit across peopl
       title:'乙'+i,latitude:24+i*.02,longitude:122}))
   ];
   const result=clusterLocSharedPoints(points,50);
-  assert.equal(result.length,50);
-  assert.ok(result.some(row=>row.source_scope==='lo3rwang'));
-  assert.ok(result.some(row=>row.source_scope==='lrunes'));
-  assert.ok(result.every(row=>row.display_names.length>=1));
+  assert.equal(result.length,0,'no common coordinates across scopes means no LOC pins');
 });
 
 test('late member shared locations must be found before the final 50-pin limit',()=>{
@@ -86,7 +82,37 @@ test('late member shared locations must be found before the final 50-pin limit',
   const third=[{uid:'C1234567',source_scope:'scopethree',title:'新共點',
     latitude:24.0002,longitude:122.0002}];
   const result=clusterLocSharedPoints([...first,...second,...third],50);
-  assert.equal(result.length,50);
-  assert.equal(result[0].share_count,2,'shared point ranks ahead of singleton entries');
+  assert.equal(result.length,1);
+  assert.equal(result[0].share_count,2,'only the cross-scope common point remains');
   assert.deepEqual(result[0].display_names,['scopetwo:新共點','scopethree:新共點']);
+});
+
+test('repeated places within only one Scope do not qualify as a shared intersection',()=>{
+  const pins=clusterLocSharedPoints([
+    {uid:'A1234567',source_scope:'lo3rwang',title:'板橋甲',latitude:25.0143,longitude:121.4638},
+    {uid:'A7654321',source_scope:'lo3rwang',title:'板橋乙',latitude:25.0144,longitude:121.4639},
+    {uid:'B1234567',source_scope:'lrunes',title:'台北其他地點',latitude:25.08,longitude:121.52}
+  ]);
+  assert.equal(pins.length,0);
+});
+
+test('when 60 common positions exist only first 50 appear, not unrelated points',()=>{
+  const rows=[];
+  for(let i=0;i<60;i++){
+    const latitude=21+i*.05,longitude=121;
+    rows.push({uid:'A'+String(i).padStart(7,'0'),source_scope:'lo3rwang',
+      title:'共同'+i,latitude,longitude});
+    rows.push({uid:'B'+String(i).padStart(7,'0'),source_scope:'lrunes',
+      title:'共同'+i,latitude:latitude+.0001,longitude:longitude+.0001});
+  }
+  const result=clusterLocSharedPoints(rows,50);
+  assert.equal(result.length,50);
+  assert.ok(result.every(pin=>pin.share_count===2));
+  assert.ok(result.every(pin=>pin.display_names.length===2));
+});
+
+test('only scopes with trace enabled are consulted for LOC route index',()=>{
+  const code=readFileSync(new URL('../app/modular/features/trace/trace-data.js',import.meta.url),'utf8');
+  assert.match(code,/selectScopeConfig\(id\)/);
+  assert.match(code,/scopeFeatureEnabled\(config,'trace'\)/);
 });
