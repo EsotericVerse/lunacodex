@@ -44,8 +44,8 @@ function anchorModel(rows,start,end,expanded){
   const eras=all.filter(row=>row.type==='era');
   const periodRange=row=>{
     const attr=attributes(row);
-    const from=list(attr.dates).map(datePart).filter(Boolean);
-    const links=list(attr.anchors).map(uid=>byUid.get(String(uid)))
+    const from=list(attr.date||attr.dates).map(datePart).filter(Boolean);
+    const links=list(attr.uid||attr.anchors).map(uid=>byUid.get(String(uid)))
       .filter(Boolean).map(item=>datePart(attributes(item).date)).filter(Boolean);
     const allDates=[...from,...links].sort();
     return {start:allDates[0]||'',end:allDates[allDates.length-1]||''};
@@ -53,13 +53,13 @@ function anchorModel(rows,start,end,expanded){
   const groups=[],items=[],used=new Set();
   for(const era of eras){
     const uid=String(era.uid),attr=attributes(era);
-    const refs=list(attr.periods).map(id=>byUid.get(String(id)))
+    const refs=list(attr.period||attr.periods).map(id=>byUid.get(String(id)))
       .filter(item=>item?.type==='period');
     const expandedEra=expanded.includes(uid);
     groups.push({id:'era:'+uid,label:(expandedEra?'− ':'+ ')+(era.title||'時代'),
       order:groups.length});
     const ranges=refs.map(periodRange);
-    const eraDates=list(attr.dates).map(datePart).filter(Boolean).sort();
+    const eraDates=list(attr.date||attr.dates).map(datePart).filter(Boolean).sort();
     const begins=[...ranges.map(r=>r.start),...eraDates].filter(Boolean).sort();
     const ends=[...ranges.map(r=>r.end),...eraDates].filter(Boolean).sort();
     if(begins.length&&ends.length&&ends[ends.length-1]>=start&&begins[0]<=end){
