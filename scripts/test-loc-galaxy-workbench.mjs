@@ -63,7 +63,7 @@ test('Stage 4 opt-in capture requires exact ChatGPT origin and preserves retry q
   const manager=read('extensions/loc-galaxy/capture-manager.mjs');
   const view=read('extensions/loc-galaxy/workbench.mjs');
   const html=read('extensions/loc-galaxy/workbench.html');
-  assert.equal(manifest.version,'0.4.0');
+  assert.equal(manifest.version,'0.5.0');
   assert.equal(manifest.content_scripts,undefined);
   assert.match(view,/chrome\.permissions\.request/);
   assert.match(manager,/chrome\.permissions\.contains/);
@@ -78,4 +78,22 @@ test('Stage 4 opt-in capture requires exact ChatGPT origin and preserves retry q
   assert.doesNotMatch(source,/fetch\(/);
   assert.match(bg,/capture\.accept\(message,sender\)/);
   assert.match(html,/id="capture-enable"/);
+});
+
+test('historical archiving is explicit and only reads the open ChatGPT conversation',()=>{
+  const html=read('extensions/loc-galaxy/popup.html');
+  const popup=read('extensions/loc-galaxy/popup.mjs');
+  const bg=read('extensions/loc-galaxy/background.mjs');
+  const manager=read('extensions/loc-galaxy/capture-manager.mjs');
+  const extractor=read('extensions/loc-galaxy/history-extract.mjs');
+  assert.match(html,/id="archive-current"/);
+  assert.match(popup,/chrome\.permissions\.request/);
+  assert.match(bg,/capture\.archiveActive\(\)/);
+  assert.match(manager,/func:extractOpenConversation/);
+  assert.match(manager,/chrome\.scripting\.executeScript/);
+  assert.match(manager,/ARCHIVED/);
+  assert.match(extractor,/data-message-id/);
+  assert.match(extractor,/data-message-author-role/);
+  assert.match(extractor,/partial:/);
+  assert.doesNotMatch(extractor,/fetch\(|XMLHttpRequest/);
 });

@@ -1,4 +1,4 @@
-# LOC Galaxy — Chrome Extension (Stage 4: opt-in ChatGPT web capture)
+# LOC Galaxy — Chrome Extension (Stage 5: direct old-conversation archive + opt-in live capture)
 
 This Manifest V3 extension connects only to LOC MCP via Clerk OAuth. The user enters only Scope ID. The full-page workbench adds private Galaxy Link search/read and buttons for the existing LOC website import, bulk-update, and article management pages.
 
@@ -78,3 +78,14 @@ This does **not** capture ChatGPT desktop/mobile conversations. Stage 4 adds a s
 5. 點 **停止擷取** 解除動態 Content Script 與每小時 Alarm，待同步佇列保留以便之後重新啟用；換 Scope 或中斷 Extension 會清除待同步內容，防止跨 Scope 洩漏。
 
 限制：ChatGPT 網站 DOM 並非穩定公開來源 API，網站改版可能使擷取停止；只處理有穩定 `data-message-id`、`data-message-author-role=user` 的**新**訊息。不能宣稱完整擷取、零漏記，亦不會使用私有 ChatGPT API 或繞過存取管制。正式 Chrome 實機的訊息擷取、OAuth、回寫、失敗續傳仍需要驗證。沒有新增資料表、RLS、SQL、外部服務或長期 token 曝露。
+
+## Stage 5：不使用 ZIP，直接封存已到上限的 ChatGPT 舊對話
+
+1. 在 Chrome 打開 `https://chatgpt.com/c/...` 既有對話（即使已經不能再發送新訊息也可以嘗試）。
+2. 點瀏覽器工具列的 LOC Galaxy Extension，完成原有 Scope OAuth 後，選擇 **封存目前 ChatGPT 舊對話**。首次使用會由 Chrome 詢問 `chatgpt.com` 網站權限。**這個功能不要求啟用持續擷取，也不要求 ChatGPT 資料匯出或 ZIP。**
+3. Extension 在使用者明確操作時，對**目前分頁**執行本機內容擷取。嘗試透過頁面捲動收集載入的 user／assistant 原文和穩定訊息 ID，最多掃描 150 個捲動步驟或 2500 則可見訊息，結束時恢復原捲動位置。
+4. 使用者文字存為 `user/original`；使用者按「封存目前對話」即選定當前已載入的助手回答為 `assistant/advice`。保留文字內容，不概括摘要。對話訊息的歷史發送時間不一定由公開 DOM 提供，因此 `sent_at` 僅採**此次擷取觀察時間**，**不得宣稱是 ChatGPT 原始發送時間**。
+5. 將新訊息放入 Scope 綁定的可信任本機佇列，交由既有 `galaxy_link.check/record` 分批寫入；後端成功才解除暫存，並保存已確認的原始訊息 ID，重複按封存不會將相同已記錄 ID 重複排隊。失敗時保留以供重試。佇列容量、執行緒與 Connector 仍遵守原本的 QoS。
+6. UI 顯示「掃描／新增暫存／確認寫入」數字；網頁缺少訊息、停止載入或虛擬化 DOM 時可能漏掉舊訊息，**沒有辦法僅靠當前 DOM 保證得到 ChatGPT 官方完整記錄**。對於沒有載入在網頁上的內容，Extension 不能憑空補寫。若需要完整歷史與準確發送時間，官方匯出仍是補救方案，而不是此功能的必經步驟。
+
+安全：不使用 ChatGPT 私有 API，不繞過存取權限，不傳 Clerk OAuth Token 到頁面，也不在沒有明確按鈕操作時回溯歷史。不會修改 LOC SQL Schema、Authority 或 RLS。Chrome 實機 DOM 擷取與正式 OAuth→Galaxy 寫入仍需驗收。

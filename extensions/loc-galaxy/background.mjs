@@ -136,7 +136,10 @@ async function recorderRequest(message){
   });
   if(status.scopeid!==scopeid||status.conversation_id!==input.conversation_id)
     throw Error('Galaxy Recorder checkpoint 來源不一致');
-  if(status.needs_save===false)return {saved:false,unchanged:true,uid:status.uid||null};
+  // New source message IDs may be older than the last conversation checkpoint.
+  // In capture mode let the server's immutable batch dedup decide, not timestamp alone.
+  if(status.needs_save===false&&!message.forceAppend)
+    return {saved:false,unchanged:true,uid:status.uid||null};
   const uid=input.uid||status.uid||undefined;
   const result=await mcpTool(token,'galaxy_link',{
     action:'record',scopeid,...input,...(uid?{uid}:{})
@@ -160,7 +163,10 @@ async function openWorkspace(message){
   return {scopeid,mode,opened:true};
 }
 
-const capture=captureController({record:recorderRequest,authorized:authorizedStatus});
+const capture=captureController({
+  record:payload=>recorderRequest({...payload,forceAppend:true}),
+  authorized:authorizedStatus
+});
 chrome.alarms.onAlarm.addListener(alarm=>{
   if(alarm.name===capture.ALARM)void capture.sync().catch(()=>{});
 });
@@ -178,6 +184,14 @@ async function handle(message,sender){
     case 'locGalaxy.captureEnable':return capture.enable();
     case 'locGalaxy.captureDisable':return capture.disable();
     case 'locGalaxy.captureStatus':return capture.status();
+    case 'locGalaxy.archiveCurrent':{
+      const snapshot=await capture.archiveActive();
+      if(snapshot.queued>0){
+        try{return {...snapshot,sync:await capture.sync()};}
+        catch(error){return {...snapshot,syncError:String(error?.message||error)};}
+      }
+      return snapshot;
+    }
     case 'locGalaxy.captureSync':return capture.sync();
     case 'locGalaxy.openLogin':{
       const scopeid=await selectScope(message.scopeid);
