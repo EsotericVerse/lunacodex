@@ -606,32 +606,23 @@ export default function Culture(){
     ||categoryGroups.find(item=>item.category_key===(keywordDrillSource?'source:'+keywordDrillSource:selectedCategory))
     ||null;
   const effectiveCategoryKey=selectedGroup?.category_key||selectedGroup?.key||'';
+  // Density and Site expansion never load Galaxy IDs. The explicit
+  // "顯示文章列表" click is the sole entry to this bounded reader.
   const periodWorksQuery=useAsyncInfiniteResource({
-    queryKey:['culture-period-works',classificationScope,classificationWindowStart,classificationWindowEnd,periodRangeSignature,effectiveCategoryKey||'all',articleSort],
+    queryKey:['culture-article-list',classificationScope,classificationWindowStart,
+      classificationWindowEnd,effectiveCategoryKey||'',articleSort],
     initialPageParam:null,
     getNextPageParam:lastPage=>lastPage.hasMore?lastPage.nextCursor:undefined,
-    enabled:!isTimeEditingView&&worksOpen&&styleFilter!=='trace'&&!isLrunesDaily&&!isAggregateScope&&Boolean(scopeData)&&Boolean(selectedWorkPeriod)&&classificationWindowValid,
+    enabled:!isTimeEditingView&&worksOpen&&styleFilter==='none'&&!isLrunesDaily
+      &&!isAggregateScope&&Boolean(scopeData)&&Boolean(selectedGroup)
+      &&classificationWindowValid,
     queryFn:async({pageParam})=>{
-      const {selectScopePeriodWorkIndex,selectScopePeriodWorkDetails}=await import('../../loc/culture-query');
-      const indexPage=await selectScopePeriodWorkIndex(scopeData,{
-        startDate:classificationWindowStart,
-        endDate:classificationWindowEnd,
-        periodRanges:classificationPeriodRanges,
-        sourceName:selectedGroup?.site||'',
-        sourceNames:selectedGroup?.sites||[],
-        mediaTypes:selectedGroup?.media_types||[],
-        limit:DEFAULT_LIST_BATCH_SIZE,
-        sortDirection:articleSort,
-        cursor:pageParam&&typeof pageParam==='object'?pageParam:null
+      const {selectCultureArticleListPage}=await import('../../loc/culture-query');
+      return selectCultureArticleListPage(scopeData,{
+        startDate:classificationWindowStart,endDate:classificationWindowEnd,
+        site:selectedGroup?.site||'',sites:selectedGroup?.sites||[],
+        sortDirection:articleSort,offset:pageParam?.offset||0
       });
-      const details=await selectScopePeriodWorkDetails(scopeData,{items:indexPage.rows||[]});
-      return {
-        rows:details.rows||[],
-        totalCount:Number(indexPage.totalCount)||0,
-        hasMore:typeof indexPage.hasMore==='boolean'?indexPage.hasMore:
-          Number(indexPage.nextCursor?.galaxyOffset||0)+Number(indexPage.nextCursor?.mediaOffset||0)<Number(indexPage.totalCount||0),
-        nextCursor:indexPage.nextCursor
-      };
     }
   });
   const periodWorksPages=periodWorksQuery.data?.pages||[];
@@ -648,7 +639,7 @@ export default function Culture(){
   },[periodWorksPages]);
   const periodWorksPage={
     rows:visibleWorkRows,
-    totalCount:periodWorksPages[0]?.totalCount,
+    totalCount:undefined,
     loading:periodWorksQuery.isLoading||periodWorksQuery.isFetchingNextPage,
     error:periodWorksQuery.error,
     hasMore:Boolean(periodWorksQuery.hasNextPage),
@@ -1635,7 +1626,7 @@ export default function Culture(){
                       if(item?.entryType==='source_group'){
                         setSelectedRiverGroup(String(item.raw?.source_group_code||''));
                         setSelectedCategory('');
-                        setWorksOpen(true);
+                        setWorksOpen(false);
                         return;
                       }
                       if(item?.entryType!=='source')return;
@@ -1668,9 +1659,14 @@ export default function Culture(){
                       ?<p className='scope-status'>此群組目前沒有符文項目。</p>:null}
                   </section>:null}
                 </div>:null}
+                {styleFilter==='none'&&selectedGroup&&!worksOpen?<button
+                  type='button' className='loc-button scope-culture-show-articles'
+                  onClick={()=>setWorksOpen(true)}>
+                  {selectedGroup.label||selectedGroup.site||'來源'}｜顯示相關文章列表
+                </button>:null}
                 {styleFilter!=='trace'&&(!(stagedSourceRiver?sourceRootQuery.error:sourceSnapshotQuery.error)
                   &&(stagedSourceRiver?sourceRootQuery.data:sourceSnapshotQuery.data)&&cultureRiver.hasSourceData)?<details className='scope-culture-source-detail' open={worksOpen} onToggle={event=>setWorksOpen(event.currentTarget.open)}>
-                  <summary>點開文章列表</summary>
+                  <summary>顯示相關文章列表</summary>
                   {worksOpen?<><header className="loc-public-list-header">
                     {selectedGroup?<button type='button' className='scope-pagination-button' onClick={()=>setSelectedCategory('')}>{UI_COPY.culture.showAllWorks}</button>:<span/>}
                     <ArticleSortSelect value={articleSort} onChange={setArticleSort} disabled={Boolean(editingWorkKey)}/>
@@ -1679,7 +1675,7 @@ export default function Culture(){
                   {periodWorksPage.loading&&!visibleWorkRows.length?<p role='status' className='scope-status'>{l.loadingPeriodWorks}</p>:null}
                   <IncrementalList
                     items={visibleWorkRows}
-                    batchSize={DEFAULT_LIST_BATCH_SIZE}
+                    batchSize={20}
                     resetKey={classificationWindowStart+'|'+classificationWindowEnd+'|'+selectedCategory+'|'+selectedRiverGroup+'|source|'+articleSort}
                     className='scope-culture-source-work-scroll loc-public-article-list'
                     externalHasMore={periodWorksPage.hasMore}
@@ -1689,41 +1685,11 @@ export default function Culture(){
                     scrollRootRef={workScrollRef}
                     renderItem={(work,index)=>{
                       const workKey=String(work.key||('galaxy:'+work.uid));
-                      const canEditWork=adminListRequested&&authorizedWorkKey===workKey;
-                      return <Article
-                      key={work.key||work.uid||work.entry_id||String(work.createtime||work.created_at)+'-'+index}
-                      uid={work.uid}
-                      title={workDisplayHeading(work,{media:false,limit:80})}
-                      articleHref={work.entry_type==='work'?galaxyIdentityHref(work.scope_id||classificationScope,work.uid):''}
-                      detailReading={work.entry_type==='work'&&fullTextKey===workKey&&fullDetail?.uid===work.uid}
-                      relationLinks={work.entry_type==='work'&&fullTextKey===workKey&&fullDetail?.uid===work.uid
-                        ?galaxyRelationLinks(work.scope_id||classificationScope,fullDetail):[]}
-                      relatedMedia={fullTextKey===workKey&&fullDetail?.uid===work.uid?fullDetail.related_media||[]:[]}
-                      relatedTime={fullTextKey===workKey&&fullDetail?.uid===work.uid?fullDetail.related_time:null}
-                      relatedSpace={fullTextKey===workKey&&fullDetail?.uid===work.uid?fullDetail.related_space:null}
-                      relatedStatistics={fullTextKey===workKey&&fullDetail?.uid===work.uid?fullDetail.related_statistics:null}
-                      articleScopeId={work.scope_id||classificationScope}
-                      articleDate={fullTextKey===workKey&&fullDetail?.uid===work.uid?fullDetail.article_day||fullDetail.date:''}
-                      articleCreateTime={fullTextKey===workKey&&fullDetail?.uid===work.uid?fullDetail.createtime||work.createtime:work.createtime}
-                      tracePlace={fullTextKey===workKey&&fullDetail?.uid===work.uid?fullDetail.trace_place:null}
-                      traceHref={fullTextKey===workKey&&fullDetail?.trace_place
-                        ?featureNavigationHref(work.scope_id||classificationScope,'trace',{place:fullDetail.trace_place.uid}):''}
-                      locationName={fullTextKey===workKey&&fullDetail?.uid===work.uid?fullDetail.location||'':''}
-                      links={work.entry_type==='media_metadata'?work.links||[]:
-                        fullTextKey===workKey&&fullDetail?.uid===work.uid?fullDetail.links||[]:[]}
-                      editable={canEditWork}
-                      editing={editingWorkKey===workKey}
-                      onEdit={uid=>startEditingWork({...work,uid})}
-                      editorDraft={editingWorkKey===workKey?editDraft:null}
-                      onDraftChange={setEditDraft}
-                      onSave={()=>saveEditingWork(work)}
-                      onDelete={()=>deleteEditingWork(work)}
-                      onCancel={()=>{setEditingWorkKey('');setAuthorizedWorkKey('');setEditDraft(null);setEditError('')}}
-                      editBusy={editBusy}
-                      editError={editError}
-                      showHidden
-                    >
-                      {work.entry_type==='work'&&work.uid&&editingWorkKey!==workKey?<div className="scope-work-fulltext-row">
+                      if(work.hidden)return <div key={workKey+'-'+index}
+                        className='scope-work-list-row scope-status'>本文已隱藏</div>;
+                      return <div className='scope-work-list-row' key={workKey+'-'+index}>
+                        <span>標題：{work.title}</span>
+                        <span> 日期：{work.date}</span>
                         <WorkFullText
                           open={fullTextKey===workKey}
                           loading={fullTextLoading&&fullTextKey===workKey}
@@ -1731,12 +1697,7 @@ export default function Culture(){
                           content={fullTextKey===workKey?fullText:''}
                           onToggle={()=>toggleWorkContent(work)}
                         />
-                        {fullTextKey===workKey&&adminListRequested?<button type='button' className='loc-button scope-work-edit-button'
-                          onClick={()=>startEditingWork(work)}>編輯</button>:null}
-                        
-                      </div>:null}
-                    </Article>;
-                    }}
+                      </div>;
                   />
                   {!periodWorksPage.loading&&!periodWorksPage.error&&!visibleWorkRows.length?<p className='scope-status'>{UI_COPY.uiExtra.dataErrors.empty}</p>:null}
                   </>:null}

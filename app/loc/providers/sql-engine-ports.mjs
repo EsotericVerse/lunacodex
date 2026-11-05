@@ -222,7 +222,7 @@ export async function executeCrossEngineManagedWrite(db,body,context){
 }
 
 export const PORTABLE_JSON_COLUMNS=Object.freeze([
-  'attr','status','media_link','blacklist','theme','keywords','database',
+  'attr','block_entity','status','media_link','blacklist','theme','keywords','database',
   'keyword_meta','DefaultArticleClass','search_aliases','target_id'
 ]);
 const portableJsonFields=new Set(PORTABLE_JSON_COLUMNS);

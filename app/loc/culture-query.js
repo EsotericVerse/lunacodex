@@ -6,6 +6,7 @@ import {CultureTimelineModel} from '../modular/modules/culture-timeline/culture-
 import {workDisplayText} from '../modular/work-display-model';
 import {selectScopeDailyCounts} from './galaxy-query';
 import {DB_QUERY_BATCH_SIZE,selectAllRows,selectCount,selectRows} from './db-query.mjs';
+import {dbPublicClient} from './db-client.mjs';
 import {mapBounded} from './bounded-parallel.mjs';
 import {publicContentFilters} from './content-policy';
 import {selectManagedScope,selectManagedScopes,selectScopeGroupMemberIds} from './scope-data';
@@ -551,6 +552,65 @@ export async function selectScopePeriodSourceSnapshot(scope,{startDate='',endDat
 function mediaMetadataDescription(row){
   const fields=[['標題',row.title],['類型',row.type],['內容',row.description]];
   return fields.map(([label,value])=>{const text=CultureTimelineModel.decodeCultureText(value||'').trim();return text?`${label}：${text}`:'';}).filter(Boolean).join(' · ')||'沒有可讀的 metadata 文字';
+}
+
+// Culture article lists are requested only after the visitor explicitly opens
+// "顯示文章列表". The time/density rivers never ask for Galaxy UIDs.
+export async function selectCultureArticleListPage(scope,{
+  startDate='',endDate='',site='',sites=[],offset=0,sortDirection='desc'
+}={}){
+  const scopeId=scopeIdOf(scope?.id);
+  if(!scopeId)throw new Error('scopeId is required');
+  const pageSize=100;
+  const start=String(startDate||'').slice(0,10);
+  const end=String(endDate||'').slice(0,10);
+  if(!start||!end||start>end)return {rows:[],hasMore:false,nextCursor:null};
+  if(scopeId!=='local'&&site){
+    const pageOffset=Math.max(0,Math.floor(Number(offset)||0));
+    const {data,error}=await dbPublicClient.schema('silver').analytics({
+      p_scope_id:scopeId,p_view:'culture_list',
+      p_start:start,p_end:end,p_options:{site,offset:pageOffset}
+    });
+    if(error)throw new Error(error.message||'文化文章列表讀取失敗');
+    if(!data||!Array.isArray(data.rows))throw new Error('文章列表回傳格式錯誤');
+    return {...data,rows:data.rows.map((row,index)=>({
+      key:row.hidden?'hidden:'+String(pageOffset+index):'galaxy:'+row.uid,
+      entry_id:row.hidden?'':String(row.uid||''),
+      uid:row.hidden?'':String(row.uid||''),
+      entry_type:row.hidden?'hidden':'work',scope_id:scopeId,
+      title:row.hidden?'本文已隱藏':String(row.title||''),
+      date:row.hidden?'':String(row.date||'').slice(0,10),
+      hidden:row.hidden===true,list:!row.hidden
+    }))};
+  }
+  const sourceNames=[...new Set((sites||[]).map(value=>String(value??'').trim()))];
+  const selectedSources=sourceNames.length?sourceNames:site?[String(site).trim()]:[];
+  const filters=[
+    {column:'culture',operator:'eq',value:'true'},
+    ...dateFilters(start,end,scopeId==='local'?'createtime':'date'),
+    ...(selectedSources.length?[{column:'site',operator:'in',value:selectedSources}]:[])
+  ];
+  const pageOffset=Math.max(0,Math.floor(Number(offset)||0));
+  const {rows=[]}=await selectRows(scope.galaxy,{
+    columns:scopeId==='local'?'uid,title,createtime,site,able':'uid,date,title,list',
+    filters,orders:[{column:'createtime',ascending:sortDirection==='asc'}],
+    limit:pageSize,offset:pageOffset,maxLimit:pageSize
+  });
+  const normalized=rows.map(row=>{
+    const hidden=scopeId==='local'?row.able?.list===false:row.list===false;
+    return {
+      key:'galaxy:'+row.uid,entry_id:String(row.uid||''),uid:String(row.uid||''),
+      entry_type:'work',scope_id:scopeId,
+      title:hidden?'本文已隱藏':String(row.title||''),
+      date:hidden?'':String(row.date||row.createtime||'').slice(0,10),
+      createtime:hidden?'':row.createtime,
+      hidden,list:!hidden
+    };
+  });
+  return {
+    rows:normalized,hasMore:rows.length===pageSize,
+    nextCursor:rows.length===pageSize?{offset:pageOffset+rows.length}:null
+  };
 }
 
 export async function selectScopePeriodWorkIndex(scope,{startDate='',endDate=null,sourceName='',sourceNames=[],mediaTypes=[],limit=10,offset=0,cursor=null,sortDirection='asc',periodRanges=null}={}){

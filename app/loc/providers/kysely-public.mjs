@@ -9,11 +9,35 @@ function id(value){
 const ACTION_ARGS={
   read_app_bootstrap:['p_scope_id','p_page_name'],
   read_scope_page_copy:['p_scope_id'],
+  page_blocks:['p_scope_id','p_type'],
+  hero_blocks:['p_scope_id','p_type'],
   search_scope_trace_place_names:['p_scope_id','p_term','p_limit']
 };
 export async function executeKyselyPublicAction(trx,body,{engine='postgres',namespace='silver'}={}){
   const portable=engine!=='postgres';
   const table=name=>portable?portableRelation(name,engine,namespace):'silver.'+name;
+  const action=String(body?.name||'');
+  if(action==='page_blocks'||action==='hero_blocks'){
+    const args=body?.args||{};
+    if(Object.keys(args).some(key=>!['p_scope_id','p_type'].includes(key)))
+      throw Object.assign(new Error('Invalid Block arguments'),{httpStatus:400});
+    const scope=id(args.p_scope_id),kind=String(args.p_type||'').trim();
+    if(!/^[a-z][a-z0-9_-]{0,40}$/.test(kind)||
+       action==='page_blocks'&&kind!=='index'||
+       action==='hero_blocks'&&!['culture','statics','trace','search'].includes(kind))
+      throw Object.assign(new Error('Invalid public Block type'),{httpStatus:400});
+    const tableName=action==='hero_blocks'?'loc_blocks':
+      scope==='loc'?'loc_blocks':scope+'_blocks';
+    const names=action==='hero_blocks'?['group_'+kind,'scope_'+kind]:[kind];
+    // No registry query, table-introspection query, RLS prerequisite, or
+    // SQL ORDER BY: one bounded presentation query, then client-side sorting.
+    if(!portable)await sql`reset role`.execute(trx);
+    const rows=await trx.selectFrom(table(tableName))
+      .select(['uid','page_name','block_eyebrow','block_title','block_subtitle',
+        'block_text','block_order','block_entity','block_image'])
+      .where('page_name','in',names).execute();
+    return {data:rows,count:null};
+  }
   const metadata=await trx.introspection.getTables();
   const available=new Set(metadata.map(row=>String(row.schema||'')+'.'+row.name));
   const mysqlNames=new Set(metadata.map(row=>row.name));

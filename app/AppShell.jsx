@@ -530,7 +530,7 @@ function AppShellInner({children}){
         label:localWorkspace&&id==='trace'?'管理':(copy.features?.[id]?.title||feature.label),
         href:navigationHref(navScopeId,localWorkspace&&id==='trace'?'manage':feature.path,native)};
     }),
-    {id:'settings',icon:'settings',label:copy.common.settings||'設定',href:native?'/local/settings/index.html':'/local/settings/'}
+    {id:'settings',icon:'settings',label:copy.common.settings||'設定',href:native?'/local/settings/index.html':'/settings/'}
   ];
 
   useEffect(()=>{
@@ -570,6 +570,14 @@ function AppShellInner({children}){
           {copy.nav.home}
         </ScopeLink>
       </nav>
+      {!editingDockVisible&&!editDockPending?<nav className="scope-top-feature-nav"
+        aria-label={translateUiField(activeLocale,'Scope 功能選單')}>
+        {featureTabs.map(tab=><ScopeLink key={tab.id} href={tab.href} native={native}
+          aria-current={tab.id==='settings'?isSettings?'page':undefined:
+            !isSettings&&(tab.id==='home'?(localWorkspace?(isMyPhone||isScopeHomepage):isScopeHomepage):currentFeature===tab.id)?'page':undefined}>
+          <BottomNavIcon name={tab.icon}/><span>{tab.label}</span>
+        </ScopeLink>)}
+      </nav>:null}
       {openFolder?<div id="scope-nav-folder-contents" className="scope-nav-subrow" aria-label={openFolder.label+' '+translateUiField(activeLocale,'目錄')}>
         <ScrollableScopeNav label={openFolder.label+' '+translateUiField(activeLocale,'目錄內容')} resetKey={openFolder.id+'|'+openFolder.links.map(item=>item.id).join(',')}>
           {openFolder.links.map(item=>{
@@ -583,7 +591,7 @@ function AppShellInner({children}){
     </header>
     {children}
     {restoreHomeEdit?<HomeEditModeRestore scopeId={scopeId}/>:null}
-    <nav className="scope-feature-dock" aria-label={translateUiField(activeLocale,'固定功能選單')} data-scope={localWorkspace?'local':scopeId}>
+    {editingDockVisible||editDockPending?<nav className="scope-feature-dock" aria-label={translateUiField(activeLocale,'編輯功能選單')} data-scope={localWorkspace?'local':scopeId}>
       {editingDockVisible?editTabs.map(tab=>tab.action
         ?<button type="button" key={tab.id} className="scope-edit-dock-action"
           disabled={editDock.busy&&tab.action!=='cancel'}
@@ -601,14 +609,9 @@ function AppShellInner({children}){
             <BottomNavIcon name={tab.icon}/><span>{tab.label}</span>
           </button>)
       :editDockPending?<span role="status" className="scope-edit-dock-pending">正在確認編輯介面…</span>
-      :featureTabs.map(tab=><ScopeLink key={tab.id} href={tab.href} native={native}
-        aria-current={tab.id==='settings'?isSettings?'page':undefined:
-          !isSettings&&(tab.id==='home'?(localWorkspace?(isMyPhone||isScopeHomepage):isScopeHomepage):currentFeature===tab.id)?'page':undefined}>
-        <BottomNavIcon name={tab.icon}/>
-        <span>{tab.label}</span>
-      </ScopeLink>)}
+      :null}
       {editingDockVisible&&editDock.notice?<p className="scope-edit-dock-notice" role="status" aria-live="polite">{editDock.notice}</p>:null}
-    </nav>
+    </nav>:null}
     {showHomeEditEntry?<ScopeHomeEditEntry key={scopeId}/>:null}
     <footer className="scope-footer" data-scope={scopeId}>
       <div className="scope-footer-row">

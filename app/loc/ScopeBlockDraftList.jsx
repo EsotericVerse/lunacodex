@@ -187,39 +187,41 @@ export default function ScopeBlockDraftList({
       if(embeddedImages===1&&!BlockNoteContent.image.firstFrameImageUrl(draft)){setBusy(false);report(t('uiExtra.editBlocks.invalidImage'));return false;}
     }
     try{
-      const {updateRows,insertRows,deleteRows}=await import('./db-client.mjs');
+      const {dbAuthClient}=await import('./db-client.mjs');
       const normalizeSavedHtml=value=>scopeId==='loc'&&pageName==='index'
-        ?HomeBlock.stripLocHomeEditorPlaceholders(value)
-        :String(value??'');
-      for(const draft of plan.deleted){
-        await deleteRows(table,{filters:[{column:'uid',operator:'eq',value:draft.uid}]});
-      }
+        ?HomeBlock.stripLocHomeEditorPlaceholders(value):String(value??'');
       const savedDrafts=[];
       const committedRows=[];
-      for(const {index,draft,modified,order} of changed){
+      for(const {index,draft,order} of changed){
         const isHomeFrame=isHomeFrameFor(scopeId,pageName,draft.order);
         const values={
           page_name:pageName,
           block_eyebrow:HomeBlock.plainBlockLine(draft.eyebrow),
           block_title:HomeBlock.plainBlockLine(draft.title),
           block_subtitle:HomeBlock.plainBlockLine(draft.subtitle),
-          ...(isHomeFrame?{block_image:draft.image?.source==='custom'&&!String(draft.image.url||'').trim()?{...draft.image,source:'default',url:''}:(draft.image||null)}:{}),
+          block_image:draft.image?.source==='custom'&&!String(draft.image.url||'').trim()
+            ?JSON.stringify({...draft.image,source:'default',url:''})
+            :draft.image?JSON.stringify(draft.image):null,
           block_text:normalizeSavedHtml(draft.text),
           block_order:order,
-          block_entity:HomeBlock.serializeBubbleEntities(draft.bubbleColumns,HomeBlock.normalizeEntities(draft.entities).map(({uid,title,text,image_mode},entityIndex)=>({
-            uid,
-            title:String(title||'').trim(),
-            text:normalizeSavedHtml(text),
-            ...(pageName==='index'&&draft.order===1&&entityIndex===0&&image_mode==='side'?{image_mode:'side'}:{})
-          })),pageName)
+          block_entity:HomeBlock.serializeBubbleEntities(draft.bubbleColumns,
+            HomeBlock.normalizeEntities(draft.entities).map(({uid,title,text,image_mode},entityIndex)=>({
+              uid,title:String(title||'').trim(),text:normalizeSavedHtml(text),
+              ...(pageName==='index'&&draft.order===1&&entityIndex===0&&image_mode==='side'?{image_mode:'side'}:{})
+            })),pageName)
         };
-        const uid=draft.stored?draft.uid:/^[A-Za-z0-9]{8}$/.test(String(draft.uid||''))?draft.uid:HomeBlock.createUid();
-        if(modified){
-          if(draft.stored)await updateRows(table,values,{filters:[{column:'uid',operator:'eq',value:uid}]});
-          else await insertRows(table,[{uid,...values}]);
-        }
+        const uid=draft.stored?draft.uid:
+          /^[A-Za-z0-9]{8}$/.test(String(draft.uid||''))?draft.uid:HomeBlock.createUid();
         savedDrafts.push({...draft,uid,stored:true,order:values.block_order,_deleted:false});
         committedRows.push({uid,...values});
+      }
+      if(plan.hasWrites){
+        // Exactly one managed request. Authority is checked once by the server;
+        // the entire page commits or rolls back in one transaction.
+        const {error}=await dbAuthClient.schema('silver').managedAction('save_blocks',{
+          p_scope_id:scopeId,p_type:pageName,p_rows:committedRows
+        });
+        if(error)throw new Error(error.message||'Blocks 批次儲存失敗');
       }
       // A successful SQL write is final, not a temporary save. Cache updates
       // are local only; failure to update SWR does not undo the database write.

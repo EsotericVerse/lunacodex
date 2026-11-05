@@ -14,7 +14,8 @@ import {Capacitor} from '@capacitor/core';
 import {useScopeRuntime} from '../modular/use-scope-runtime';
 import {getScope} from '../modular/scope-registry';
 import ManagementAccess from './ManagementAccess';
-import {useAppBootstrap} from './app-bootstrap';
+import {useAsyncResource} from './use-async-resource';
+import {selectScopeConfig} from './scope-data';
 import {scopeFeatureEnabled} from './scope-config-fields.mjs';
 import {FeaturePage} from '../modular/ui';
 const loading=()=> <div className="loc-loading"><UiText id="uiExtra.feature.moduleLoading"/></div>;
@@ -28,6 +29,7 @@ const ScopeGroupOverview=dynamic(()=>import('./ScopeGroupOverview'),{loading});
 const Statistics=dynamic(()=>import('../modular/features/Statistics'),{loading});
 const KeywordSettings=dynamic(()=>import('../modular/features/KeywordSettings'),{loading});
 const Culture=dynamic(()=>import('../modular/features/Culture'),{loading});
+const CulturePublic=dynamic(()=>import('./views/CulturePublicReader'),{loading});
 const Search=dynamic(()=>import('../modular/features/Search'),{loading});
 const SearchManagement=dynamic(()=>import('./SearchManagement'),{loading});
 const Trace=dynamic(()=>import('../modular/features/Trace'),{loading});
@@ -87,9 +89,10 @@ function FeatureGate({scopeId,scopeMeta=null,view,children}){
   const flag=FEATURE_FLAGS[view]||'';
   const scope=scopeMeta||getScope(scopeId);
   const enabled=Boolean(flag)&&!scope.aggregateChildren&&scope.id!=='admin';
-  // Shares the shell's bootstrap request for this same page; no second config read.
-  const bootstrap=useAppBootstrap(scopeId,view==='home'?'index':view,{enabled});
-  const query={isPending:enabled&&bootstrap.isPending,data:bootstrap.data?.config};
+  // Public feature gating reads only the Scope's four switches.
+  // Do not fetch unrelated page Blocks or management permissions.
+  const query=useAsyncResource(['public-feature-flags',scopeId],
+    ()=>selectScopeConfig(scopeId),{enabled});
   if(!enabled)return children;
   if(query.isPending)return <FeaturePage featureId={view==='keywords'?'statics':view}>
     <section className="loc-card scope-feature-card scope-feature-loading">
@@ -98,6 +101,7 @@ function FeatureGate({scopeId,scopeMeta=null,view,children}){
       <p className="scope-status" role="status"><UiText id="uiExtra.feature.settingsLoading"/></p>
     </section>
   </FeaturePage>;
+  if(query.error||!query.data)return <main className="scope-main"><section className="scope-page"><section className="loc-card"><p className="scope-status scope-error">Scope 設定無法讀取，暫時無法開啟功能。</p></section></section></main>;
   if(!scopeFeatureEnabled(query.data,flag))return <main className="scope-main"><section className="scope-page"><section className="loc-card"><p className="scope-status"><UiText id="uiExtra.feature.unpublished"/></p></section></section></main>;
   return children;
 }
@@ -120,7 +124,9 @@ export default function LocApp({forcedView='home',forcedSection=null,forcedScope
     // /local/* feature pages do not. A bookmark must not bypass the menu.
     router.replace('/local/settings/');
   },[scopeMeta?.nativeOnly,router]);
-  const ActiveView=forcedView==='home'
+  const publicCulture=forcedView==='culture'&&scopeId!=='loc'&&scopeId!=='lrunes'
+    &&scopeId!=='local'&&!runtime.pathname.includes('/culture/manage');
+  const ActiveView=publicCulture?CulturePublic:forcedView==='home'
     ?HOME_VIEWS[scopeId]||GenericScopeHomeView
     :VIEWS[forcedView]||AboutView;
   // LOC retains its bespoke aggregate pages. Every other DB Scope Group is
@@ -130,12 +136,13 @@ export default function LocApp({forcedView='home',forcedSection=null,forcedScope
 
   useEffect(()=>{
     if(scopeMeta?.nativeOnly&&!nativeOnlyReady)return;
-    const preload=forcedView==='home'
-      ?HOME_PRELOADERS[scopeId]||(()=>import('./views/GenericScopeHomeView'))
-      :VIEW_PRELOADERS[forcedView]||HOME_PRELOADERS.loc;
+    const preload=publicCulture?()=>import('./views/CulturePublicReader'):
+      forcedView==='home'
+        ?HOME_PRELOADERS[scopeId]||(()=>import('./views/GenericScopeHomeView'))
+        :VIEW_PRELOADERS[forcedView]||HOME_PRELOADERS.loc;
     preload().catch(()=>{});
     if(groupOverviewView)import('./ScopeGroupOverview').catch(()=>{});
-  },[forcedView,scopeId,groupOverviewView,scopeMeta?.nativeOnly,nativeOnlyReady]);
+  },[forcedView,scopeId,groupOverviewView,scopeMeta?.nativeOnly,nativeOnlyReady,publicCulture]);
 
   if(scopeMeta?.nativeOnly&&!nativeOnlyReady){
     return <main className="scope-main"><section className="scope-page">
