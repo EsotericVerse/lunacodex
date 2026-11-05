@@ -480,6 +480,22 @@ async function managedLocSettings(trx,args,claims){
   // Permission was established with the signed Clerk identity; no arbitrary
   // table is addressable through this route.
   await sql`reset role`.execute(trx);
+  if(section==='scopeid'){
+    // Routing-reserved names are system records. The real Admin ID remains
+    // role=admin, but its protected-route note is editable alongside reserves.
+    const rows=await trx.selectFrom('silver.manage')
+      .select(['id','note','manage_role'])
+      .where('manage_role','in',['reserve','admin'])
+      .orderBy('id','asc').execute();
+    if(operation==='read')return rows.map(({id,note})=>({id,note}));
+    if(operation!=='note'||!key)reject('Reserved Scope notes only');
+    const target=rows.find(item=>item.id===key);
+    if(!target)reject('Reserved Scope ID not found');
+    const note=String(value??'').trim()||null;
+    await trx.updateTable('silver.manage').set({note})
+      .where('id','=',key).executeTakeFirst();
+    return rows.map(item=>({id:item.id,note:item.id===key?note:item.note}));
+  }
   const row=await trx.selectFrom('silver.loc')
     .select(['theme','keywords','blacklist'])
     .where('id','=','loc').forUpdate().executeTakeFirst();
