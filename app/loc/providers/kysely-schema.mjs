@@ -48,11 +48,11 @@ export async function ensurePortableScopeSchema(db,{engine,namespace='',scopeId}
       .addColumn('UpdateTime',dateTimeType,c=>c.notNull().defaultTo(sql.raw('CURRENT_TIMESTAMP')))
       .addColumn('url',textType)
       .addColumn('source_id',uidType)
-      .addColumn('target_id',jsonType)
+      .addColumn('target_id',engine==='postgres'?sql.raw('text[]'):jsonType)
       .addColumn('ref_id',uidType)
       .addColumn('site',textType)
       .addColumn('place_id',uidType)
-      .addColumn('media_link',jsonType)
+      .addColumn('media_link',engine==='postgres'?sql.raw('varchar[]'):jsonType)
       .addColumn('date','date')
       .addColumn('site_id',textType);
     for(const flag of FLAGS)
