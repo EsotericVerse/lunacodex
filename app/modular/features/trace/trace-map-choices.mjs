@@ -90,8 +90,8 @@ export function clusterLocSharedPoints(points=[],maxPins=50,radiusMeters=75){
     if(!sources.has(scope))sources.set(scope,[]);
     sources.get(scope).push(point);
   }
-  // Round-robin preserves representation across people under a global cap.
-  const queues=[...sources.values()];
+  // Build a bounded union (<= 50 * contributing scopes) before the *final*
+  // 50-pin cap. Truncating after each member would hide later shared locations.
   const clusters=[];
   const radians=Math.PI/180;
   const distance=(a,b)=>{
@@ -100,10 +100,8 @@ export function clusterLocSharedPoints(points=[],maxPins=50,radiusMeters=75){
     const h=Math.sin(dLat/2)**2+Math.cos(latA)*Math.cos(latB)*Math.sin(dLon/2)**2;
     return 12742000*Math.asin(Math.min(1,Math.sqrt(h)));
   };
-  for(let index=0;queues.some(queue=>index<queue.length);index++){
-    for(const queue of queues){
-      const point=queue[index];
-      if(!point)continue;
+  for(const queue of sources.values()){
+    for(const point of queue){
       const lat=Number(point.latitude),lng=Number(point.longitude);
       if(point.latitude==null||point.longitude==null||
         !Number.isFinite(lat)||!Number.isFinite(lng)||Math.abs(lat)>90||Math.abs(lng)>180)continue;
@@ -111,14 +109,20 @@ export function clusterLocSharedPoints(points=[],maxPins=50,radiusMeters=75){
       if(match){
         if(!match.members.some(member=>member.source_scope===point.source_scope&&member.uid===point.uid))
           match.members.push(point);
-      }else if(clusters.length<maxPins){
+      }else{
         clusters.push({...point,latitude:lat,longitude:lng,members:[point]});
       }
     }
   }
-  return clusters.map(cluster=>{
+  // Shared positions (more distinct contributing members) appear first.
+  // Stable input order breaks ties; original UID and coordinate data stay intact.
+  const ranked=clusters.map((cluster,index)=>({
+    cluster,index,shareCount:new Set(cluster.members.map(member=>member.source_scope)).size
+  })).sort((a,b)=>b.shareCount-a.shareCount||a.index-b.index)
+    .slice(0,Math.max(0,Math.floor(maxPins)));
+  return ranked.map(({cluster,shareCount})=>{
     const lines=cluster.members.map(member=>
       String(member.source_scope)+':'+String(member.title||member.uid||'定錨點'));
-    return {...cluster,title:lines.join(' / '),display_names:lines,member_count:cluster.members.length};
+    return {...cluster,title:lines.join(' / '),display_names:lines,member_count:cluster.members.length,share_count:shareCount};
   });
 }
