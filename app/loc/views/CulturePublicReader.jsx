@@ -202,6 +202,7 @@ export default function CulturePublicReader(){
   const [fullText,setFullText]=useState('');
   const [fullError,setFullError]=useState('');
   const sequence=useRef(0);
+  const fullSequence=useRef(0);
   useEffect(()=>{
     let cancelled=false;
     setLoading(true);setError('');setAnchors([]);setDaily([]);
@@ -220,7 +221,8 @@ export default function CulturePublicReader(){
   const resetArticles=site=>{
     sequence.current+=1;setSelectedSite(site);setArticlesOpen(false);
     setArticleRows([]);setArticleOffset(0);setArticleVisible(20);
-    setArticleMore(false);setArticleError('');setFullUid('');setFullText('');setFullError('');
+    setArticleMore(false);setArticleError('');fullSequence.current+=1;
+    setFullUid('');setFullText('');setFullError('');
   };
   const fetchArticles=async({append=false,offset=0,site=selectedSite}={})=>{
     if(!scope||!site)return;
@@ -247,13 +249,17 @@ export default function CulturePublicReader(){
     if(articleMore&&!articlesLoading)fetchArticles({append:true,offset:articleOffset});
   };
   const toggleFull=async row=>{
+    const request=++fullSequence.current;
     if(fullUid===row.uid){setFullUid('');setFullText('');return;}
     setFullUid(row.uid);setFullText('');setFullError('');
     try{
       const detail=await selectGalaxyIdentity(scope,row.uid);
+      if(request!==fullSequence.current)return;
       if(!detail)throw new Error('本文已隱藏');
       setFullText(String(detail.content||''));
-    }catch(reason){setFullError(String(reason?.message||reason));}
+    }catch(reason){
+      if(request===fullSequence.current)setFullError(String(reason?.message||reason));
+    }
   };
   return <FeaturePage featureId='culture'>
     <section className='loc-card scope-feature-card scope-feature-card-wide'>
