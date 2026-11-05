@@ -17,7 +17,31 @@ export async function authorityAction(name,args,token,env={},fetchImpl=globalThi
     throw bad('Authenticated Clerk OAuth required');
   const a=args||{};
   let path='',method='GET',body=null,query=null;
-  switch(name){
+  if(name==='galaxy_link'){
+    if(!['search','read','check','record'].includes(a.action))throw bad('Invalid Galaxy Link action');
+    if(a.action==='search'){
+      if(typeof a.query!=='string'||a.query.trim().length<3||a.query.length>100||
+        !Number.isInteger(a.limit??5)||(a.limit??5)<1||(a.limit??5)>5)
+        throw bad('Invalid Galaxy Link search');
+      path='search/'+id(a.scopeid);method='POST';
+      body={query:a.query,limit:a.limit??5};
+    }else if(a.action==='read'){
+      if(!UID.test(String(a.uid||'')))throw bad('Invalid case-sensitive UID');
+      path='read/'+id(a.scopeid)+'/'+a.uid;
+      query={offset:a.offset??0,max_chars:a.max_chars??20000,site:'mcp'};
+    }else if(a.action==='check'){
+      if(!a.conversation_id||!a.updated_at)throw bad('conversation_id and updated_at required');
+      path='checkpoint/'+id(a.scopeid)+'/'+encodeURIComponent(String(a.conversation_id));
+      query={updated_at:a.updated_at};
+    }else{
+      if(!a.conversation_id||!a.updated_at||typeof a.content!=='string'||!a.content.trim())
+        throw bad('conversation_id, updated_at and content required');
+      path='sync/'+id(a.scopeid);method='POST';
+      body={conversation_id:a.conversation_id,updated_at:a.updated_at,
+        created_at:a.created_at,title:a.title||'',content:a.content,
+        ...(a.uid?{uid:a.uid}:{}),append:true};
+    }
+  }else switch(name){
     case 'scope_storage':
       path='scope/'+id(a.scopeid);
       if(a.endpoint!==undefined){
