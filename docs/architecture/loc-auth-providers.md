@@ -75,3 +75,10 @@ LOC `/admin/?section=network` 的「網路設定」下整合「資料庫連線 �
 - 欄位使用既有 `scope-management-fields` 雙欄網格；網址與 Secret 使用 `scope-management-wide-field` 跨欄，在手機斷點自動改為單欄，避免長 URL 導致橫向捲動。
 - 與其他管理頁一致，由原有 `useEditDockForm` 的「儲存／取消」流程管理草稿。不另外顯示重複儲存按鈕；跨來源切換時若有未儲存輸入須先確認放棄。
 - 儲存時不只檢查寫入回傳，還重新讀取 Authority 的已遮蔽設定並核對非機密欄位；未成功不得顯示已儲存。讀取／儲存不會啟動新的登入來源。
+
+## 2026-11-06｜管理權限失敗統一回 LOC Clerk 登入頁
+
+- 網站設定（桌面版）的「登入／登出後再登入」固定使用既有 `/login/index.html` 的完整視覺；沒有新增第二套簡化的登入 UI。Capacitor Native 保留原有登入流程。
+- Scope／Group 的 `ManagementAccess` 與系統 `AdminHomeView`，對未登入、Scope 管理權限不足、核驗失敗或編輯 Session 逾期的入口，一律導回完整 Clerk 登入頁，並透過同源 `return_to` 保留原來管理頁的網址。禁止顯示「權限過期」或重新驗證對話框；保護中的編輯內容未通過權限之前不掛載。
+- Clerk 登入頁只做**身分**核驗，不能把身分核驗誤當作 Scope／Group／Admin 管理權限；從頁面返回時會以 sessionStorage 的**非憑證**標記辨識本次流程，必須在目標管理頁重新執行現有 `useAccount.refresh` 及權限檢查。通過才重建編輯 Session 並進入編輯；拒絕仍返回登入頁，不修改 RLS 或提供隱藏的後門。
+- Scope 首頁「進入編輯模式」按鈕的點擊流程由原本的獨立功能維護；本次只修正管理頁的授權失敗出口與登入頁返回流程，避免重複修改。
