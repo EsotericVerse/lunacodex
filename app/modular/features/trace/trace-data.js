@@ -196,7 +196,14 @@ export async function readTraceAnchorSuggestions(scopeId,term,limit=8){
 }
 export async function readTracePopularAnchors(scopeId){
   const id=idScope(scopeId);
-  if(id==='loc')return (await readAllTraceAnchors(id,{nativeOnly:true})).slice(0,10);
+  if(id==='loc'){
+    const members=await groupTraceSources();
+    for(const member of members){
+      const result=await readPages(member,{filter:'space_anchor',limit:10});
+      if(result.length)return result;
+    }
+    return [];
+  }
   return readPages(id,{filter:'space_anchor',limit:10});
 }
 // Cross-Scope reference suggestions remain disabled while LOC union is absent.
