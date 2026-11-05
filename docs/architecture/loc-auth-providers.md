@@ -1,7 +1,7 @@
 ## 2026-11-06｜網站 Clerk Session 身分驗證重用（不改 MCP）
 
 - 網站同一個已驗證 `Clerk sub + sid` 在兩小時的編輯 Session 期間，可重用 LOC Authority 確認的身分 Email；前端在 Clerk SDK 有正式 Session ID 時依 `sid` 辨識，不以短期輪替的 JWT 字串誤當新登入。沒有 SDK Session ID 時保守維持 exact-token 對比。
-- Kysely 每個受保護請求**仍獨立驗證 JWT 簽章、issuer、exp**，只有 Authority 回傳的身分 Email 按 `(iss,sub,sid)` 在單一 isolate 記憶體最多重用兩小時；不儲存 JWT、不放寬 MCP、也不快取 DB 寫入准許。不同 Session、過期 Session、失敗驗證不得共用；併發同 Session 合併驗證。多 isolate 不共享，故不保證全域只發一次 Authority 請求。
+- 本 PR 僅修改網站瀏覽器端的 Clerk Session 身分結果重用。Kysely 每個受保護請求仍獨立驗證 JWT，Gateway → Authority 的驗證仍維持現況；不修改 MCP、Authority Worker、SQL 或 Kysely。前端不儲存 JWT、不以身分快取取代後端管理權限核對；此 PR 不宣稱已降低 Gateway → Authority 的請求量。
 - `silver.manage` 的 Admin/Group/Scope 與黑名單仍走獨立授權（短期 30 秒快照、各次 SQL/RLS 持續執行）；編輯 Session 過期仍拒絕寫入。本修正不是將管理權限或撤銷狀態無條件快取兩小時。
 - 原本 `silver.lo3rwang.count` 測得 189 次 `silver.manage()` 是資料庫內部函式觸發次數，不可當作 Authority HTTP 次數，診斷計數已於 11/05 移除；本修正不重啟 SQL 熱路徑計數器。
 
