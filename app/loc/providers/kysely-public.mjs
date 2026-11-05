@@ -37,9 +37,12 @@ export async function executeKyselyPublicAction(trx,body,{engine='postgres',name
   if(!portable)await sql`reset role`.execute(trx);
   if(name==='read_scope_page_copy'){
     if(!has('manage'))return {data:[],count:null};
-    const record=await trx.selectFrom(table('manage'))
-      .select(['title_tw','desc_tw']).where('id','=',scope)
+    const allowed=await trx.selectFrom(table('manage'))
+      .select('id').where('id','=',scope)
       .where('manage_role','=','scope').where('active','=',true).executeTakeFirst();
+    const record=allowed&&has('loc')
+      ?await trx.selectFrom(table('loc')).select(['title_tw','desc_tw'])
+        .where('id','=',scope).executeTakeFirst():null;
     const trimmed=s=>String(s||'').trim()||null;
     return {data:record?[{Title_TW:trimmed(record.title_tw),
       Desc_TW:trimmed(record.desc_tw)}]:[],count:null};
@@ -105,9 +108,12 @@ export async function executeKyselyPublicAction(trx,body,{engine='postgres',name
       registry,page_copy:[],theme_list:[],themes:[]},count:null};
   }
   const members=await trx.selectFrom(table('manage'))
-    .select(['id','manage_role','active','sort_order','display_name',
-      'title_tw','desc_tw','domain','directory','parent_scope_id'])
+    .select(['id','manage_role','active','sort_order',
+      'domain','directory','parent_scope_id'])
     .orderBy('sort_order','asc').orderBy('id','asc').execute();
+  const groupRows=has('loc')?await trx.selectFrom(table('loc'))
+    .select(['id','display_name','title_tw','desc_tw']).execute():[];
+  const groupMap=new Map(groupRows.map(row=>[row.id,row]));
   const enabled=members.filter(m=>m.active===true&&scopePattern.test(m.id));
   const relationAvailable=async name=>has(name.split('.')[1]);
   const registry=[];
@@ -115,13 +121,14 @@ export async function executeKyselyPublicAction(trx,body,{engine='postgres',name
     const config=await relationAvailable('silver.'+m.id)
       ?await trx.selectFrom(table(m.id))
         .select(['id','display_name']).where('id','=',m.id).executeTakeFirst():null;
-    registry.push({scope_id:m.id,display_name:config?.display_name||m.id,
+    registry.push({scope_id:m.id,display_name:groupMap.get(m.id)?.display_name||config?.display_name||m.id,
       scope_kind:m.manage_role==='group'?'group':'scope',
       domain:m.domain,directory:m.directory,
       parent_scope_id:m.parent_scope_id,active:m.active,sort_order:m.sort_order});
   }
-  const copy=enabled.filter(m=>['admin','scope'].includes(m.manage_role))
-    .map(m=>({scope_id:m.id,Title_TW:m.title_tw,Desc_TW:m.desc_tw}));
+  const copy=enabled.filter(m=>['group','scope'].includes(m.manage_role))
+    .map(m=>({scope_id:m.id,Title_TW:groupMap.get(m.id)?.title_tw||null,
+      Desc_TW:groupMap.get(m.id)?.desc_tw||null}));
   let config=null,blocks=[];
   const active=enabled.some(m=>m.id===scope);
   if(active&&await relationAvailable('silver.'+scope)){
