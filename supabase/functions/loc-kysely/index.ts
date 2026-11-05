@@ -403,7 +403,7 @@ Deno.serve(async (request) => {
   }
   let resolvingTarget = false;
   try {
-    if(body.kind==="mcp-read"){
+    if(body.kind==="mcp-read"||body.kind==="mcp-search"){
       // A Clerk OAuth token is separately verified by the LOC Authority.
       // This owner-only route accepts fixed read shapes, not arbitrary SQL.
       if(!verifiedMcp||role!=="authenticated")
