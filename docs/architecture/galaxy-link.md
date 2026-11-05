@@ -65,3 +65,13 @@ Extension 0.3.0 增加白色工作台的本機 JSON 檔案預覽與按鈕確認�
 - 瀏覽器來源 Adapter 僅處理目前網頁可見、帶穩定 `data-message-id` 的**新**使用者訊息；不讀取啟用前歷史、不包含助手回應、不抓取所有瀏覽器分頁。時間記錄為 Extension 首次觀察（`observed_at`），不是平台來源的精確 `sent_at`；不應被誤當歷史時間定錨。
 - 本機佇列以 Scope 分隔，最多 500 則；每 60 分鐘 Chrome Alarm 或用戶手動按鍵呼叫既有 `galaxy_link.check` 及 `record`。寫入成功才清除隊列；錯誤保留待重試。登出或切換 Scope 清除待寫內容以避免跨身分流通。
 - Chrome 關閉或沒有對話頁面時，無法取得新訊息。因為 ChatGPT DOM 非正式來源 API，UI 更新後可能無法擷取；沒有任何零漏記承諾。正式瀏覽器與 Authority MCP 實機驗證仍是驗收條件。
+
+## Chrome Extension Stage 5：已到上限的舊對話封存
+
+使用者直接打開 ChatGPT 的舊對話網頁，再於 LOC Galaxy Extension Popup 明確點擊「封存目前 ChatGPT 舊對話」，不必等待 ZIP 匯出。採用目前登入頁面的已渲染 DOM 資料，不呼叫非公開 ChatGPT API、不抓取其他對話、不繞過瀏覽器權限。
+
+擷取 user／assistant 真實文字與頁面提供的穩定 message ID；頁面未提供原始訊息時間時，只記錄本次觀察時間（不可視為歷史發送時間）。掃描捲動有限制，並以頁面已載入內容為準；若虛擬化、網路載入失敗或網站改版，必須明示不能保證完整。
+
+將擷取紀錄送至現有 Scope 隔離的佇列，沿用 `galaxy_link.check/record`，並記錄完成的訊息 ID 以防再封存時重複排隊；確認寫入後才移除待同步紀錄。歷史訊息與持續擷取使用不同的選擇權：封存一次不代表啟用持續監視。對話 checkpoint 的更新時間並不能代表是否已寫入過所有舊訊息，故新增歷史訊息仍需交由後端批次雜湊去重判定，不能僅以較新的 checkpoint 略過。
+
+Chrome 正式安裝／DOM 測試與 Galaxy 真實寫入仍未驗收，不能宣稱對所有達上限對話都可完整匯出。若來源網頁從未提供某段訊息，Extension 無法還原。
