@@ -58,13 +58,15 @@ test('user preferences key by verified OAuth email; Header/Footer remain availab
 });
 
 
-test('culture Hero uses the existing rich Block renderer without separate article fetch',()=>{
+test('Culture reuses one FeaturePage Hero and one portable list reader',()=>{
   const view=file('app/loc/views/CulturePublicReader.jsx');
-  assert.match(view,/heroBlocks\(scopeId,'culture'\)/);
-  assert.match(view,/LocHomeBlockDisplay/);
-  assert.match(view,/HomeBlock\.normalizeEntities/);
+  const ui=file('app/modular/ui.jsx');
+  const query=file('app/loc/culture-query.js');
+  assert.match(ui,/heroBlocks\(scopeId,featureId\)/);
+  assert.doesNotMatch(view,/heroBlocks\(scopeId/);
   assert.match(view,/selectCultureArticleListPage\(scope,/);
-  assert.doesNotMatch(view,/p_view:'culture_list'/);
+  assert.match(query,/p_view:'culture_list'/);
+  assert.match(view,/onClick=\{\(\)=>openArticles\(item\.site\)\}/);
   assert.match(view,/resetArticles=site=>/);
   assert.match(view,/setArticleRows\(\[\]\)/);
   assert.match(view,/articleRows\.slice\(0,articleVisible\)/);
