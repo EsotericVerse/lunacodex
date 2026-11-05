@@ -1,0 +1,31 @@
+# LOC MCP：Galaxy Link
+
+## 目的與安全邊界
+
+Galaxy Link 是跨 Agent、跨對話的 Scope 記錄與接續介面，不是另一個記憶資料庫。
+每個 Scope 使用自己已授權的資料庫與 Galaxy 相容表；Scope 由 Clerk／LOC Authority 驗證，不可推測其他 Scope 的表名、憑證或內容。
+
+對外以單一 MCP 工具 `galaxy_link`，透過 `action` 區分：
+- `search`：只有使用者要求接續或尋找舊話題時使用。限定已授權 Scope 的 `site=mcp`；回傳最多五筆 UID／標題／建立時間，不回傳正文。既有總 QoS 限制照常生效；資料查詢設逾時，禁止定時搜尋。
+- `read`：已知 UID 才執行精確讀取，必須同時屬於指定 Scope、`site=mcp`；以 `offset`／`max_chars` 分段恢復。
+- `check`：只比對 `scopeid + conversation_id + updated_at` 的 Durable Object checkpoint；不掃描資料庫內容。
+- `record`：呼叫端提供來源原文與更新時間；僅在變動後批次紀錄。新話題產生安全亂數八碼 Base62 UID；續寫沿用既有 UID，只追加、不可覆蓋。首次建立使用 `site=mcp`，`createtime` 與「Galaxy Link｜Scope 在建立時間開始的原始文字紀錄」標題；後續不改建立時間及標題。
+
+管理工具（Scope 設定、權限與 GitHub PR 寫入）維持獨立，不應混入 Galaxy Link 的讀寫權限。
+
+## Recorder 來源與跨 Agent
+
+MCP Server 不是 ChatGPT／Claude／其他 App 的聊天歷史 API，無法自行讀取來源訊息。已授權的來源端負責提供完整、真實的使用者發言時間、原文，以及需要保存的 AI 真實建議；不得把 Agent 操作日誌當成原話。接入任何瀏覽器擷取模組前，需驗證隱私、相容性、完整歷史擷取及裝置切換行為。
+
+定時每小時刷新應由具備來源存取權的獨立客戶端排程，不由 MCP 背景掃描 Galaxy。若客戶端關閉或來源無法讀取，應顯示「未補登」，恢復後重試，不得聲稱完整。
+
+對話突然達上限時，使用者可在新 Agent 說「接續之前權限的討論」；搜尋只觸發一次且僅在 `site=mcp` 內，Agent 由結果找到內部 UID 後讀取及延續。多筆相似話題時由使用者確認；不要假裝模型記得 UID。
+
+## 防遺失、防重複與私密
+
+每個來源對話的最後成功寫入時間保存在既有 Durable Object；只有資料庫確認寫入才推進。
+同一 UID 的同時寫入由 Scope Durable Object 佇列序列化；管理型 PostgreSQL 執行原子追加，額外 Scope 的 PostgREST 目標採 UID 精確定位的讀取／更新。沒有附加的全文索引、關鍵詞表或週期性內容掃描。
+額外 Scope 應提供相容的 Galaxy 八個 boolean 欄位；不使用已退役 `able` JSONB。
+來自不同平台的對話來源 ID 與首次話題 UID 的關係由來源端／checkpoint 保持，不依全文反查。
+
+**目前未完成**：外部跨平台 Recorder 的安裝與每小時排程；手機、桌面版的未傳送訊息自動擷取；正式執行環境的部署與端到端驗收。沒有這些來源端能力，不得保證零漏記。
