@@ -5,7 +5,10 @@ export function publicTraceMapChoices(rows=[],scopeId='loc'){
     (row?.trace_type==='path'||row?.trace_type==='trace')&&
     (scopeId==='loc'||row?.source_scope===scopeId));
   if(scopeId!=='loc')return saved;
-  return [...new Set(saved.map(row=>row.source_scope).filter(Boolean))].flatMap(source=>{
+  // Surface individual saved routes first: the homepage renders only one
+  // selected path, never the union of every Scope's points on startup.
+  const individual=saved.filter(row=>row.trace_type==='path');
+  const unions=[...new Set(saved.map(row=>row.source_scope).filter(Boolean))].flatMap(source=>{
     const own=saved.filter(row=>row.source_scope===source);
     const routes=own.filter(row=>row.trace_type==='path');
     const routeById=new Map(routes.map(row=>[row.uid,row]));
@@ -25,4 +28,6 @@ export function publicTraceMapChoices(rows=[],scopeId='loc'){
       title:'痕跡圖聯集',description:'',anchor_list:[...new Set(pairs.flat())],route_list:{routes:[...routeIds],segments:pairs},
       read_only:true}];
   });
+  // The legacy LOC union remains available only as an explicit selection.
+  return [...individual,...unions];
 }
