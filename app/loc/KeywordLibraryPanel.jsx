@@ -107,7 +107,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
           for(let offset=0;;offset+=size){
             const {data,error}=await dbAuthRelation(table)
               .select('uid,type,name,desc,lists')
-              .order('uid',{ascending:true}).range(offset,offset+size-1);
+              .order('name',{ascending:true}).range(offset,offset+size-1);
             if(error)throw new Error(error.message||'Keywords 讀取失敗');
             owned.push(...(data||[]));
             if((data||[]).length<size)break;
