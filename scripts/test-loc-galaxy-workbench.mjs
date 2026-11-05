@@ -97,3 +97,14 @@ test('historical archiving is explicit and only reads the open ChatGPT conversat
   assert.match(extractor,/partial:/);
   assert.doesNotMatch(extractor,/fetch\(|XMLHttpRequest/);
 });
+
+test('Extension shares overlapping Session verification and distinguishes MCP 429 cooldown',()=>{
+  const bg=read('extensions/loc-galaxy/background.mjs');
+  const oauth=read('extensions/loc-galaxy/oauth.mjs');
+  assert.match(bg,/let statusFlight=null/);
+  assert.match(bg,/if\(statusFlight\)return statusFlight/);
+  assert.match(bg,/async function checkAuthorizedStatus\(/);
+  assert.match(oauth,/response\.status===429/);
+  assert.match(oauth,/retry-after/);
+  assert.doesNotMatch(bg,/denied=.*HTTP 429/);
+});
