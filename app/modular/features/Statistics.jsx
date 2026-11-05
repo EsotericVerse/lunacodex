@@ -127,7 +127,7 @@ function SourceArticleList({scope,startDate,endDate,sourceNames=null,defaultSort
       const index=await selectScopePeriodWorkIndex(scope,{
         startDate,endDate,
         sourceName:group?'statistics-source':'',
-        sourceNames:sourceNames||[],
+        sourceNames:sourceNames||[],articlePermission:'statics',
         limit:DEFAULT_LIST_BATCH_SIZE,cursor:pageParam,sortDirection:articleSort
       });
       const {rows}=await selectScopePeriodWorkDetails(scope,{items:index.rows});
