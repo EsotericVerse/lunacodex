@@ -12,7 +12,7 @@ import {UI_COPY} from '../i18n/ui-copy';
 import {useUiCopy,useUiLocale} from '../i18n/ui-locale';
 import {DEFAULT_LIST_BATCH_SIZE,LIST_LOAD_COOLDOWN_MS} from '../loc/db-contract.mjs';
 import {useScopeRuntime} from './use-scope-runtime';
-import {selectScopeBlocks,selectLiveScopeBlocks} from '../loc/scope-data';
+import {selectScopeBlocks,selectLiveScopeBlocks,heroBlocks} from '../loc/scope-data';
 import {heroImageUrl as heroImageUrlOf} from '../loc/hero-image.mjs';
 
 import {HomeBlock} from '../loc/home-block-model';
@@ -65,13 +65,22 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
   // until the owner deliberately republishes; no ISR/deployment is triggered.
   const adminHero=featureId==='admin'||featureId==='setting';
   const groupHeroPage=HomeBlock.featureHeroPageFor(featureId);
-  const groupHeroQuery=useAsyncResource([adminHero?'scope-blocks-live':'scope-blocks','loc',groupHeroPage],
-    ()=>(adminHero?selectLiveScopeBlocks:selectScopeBlocks)('loc',groupHeroPage),
-    {enabled:!managementMode&&(sharedEnabled||hasFeatureHero)});
   const scopeHeroPage='scope_'+featureId;
-  const scopeHeroImageQuery=useAsyncResource([adminHero?'scope-blocks-live':'scope-blocks','loc',scopeHeroPage],
-    ()=>(adminHero?selectLiveScopeBlocks:selectScopeBlocks)('loc',scopeHeroPage),
-    {enabled:!managementMode&&hasFeatureHero&&(scopeId!=='loc'||HomeBlock.shouldUseSingleFeatureHeroImage(featureId))});
+  // One direct Hero SELECT for the public feature (both group and scope
+  // artwork slots). Public page rendering never looks up Manage permissions.
+  const publicHeroQuery=useAsyncResource(['feature-hero-blocks',scopeId,featureId],
+    ()=>heroBlocks(scopeId,featureId),{
+      enabled:!managementMode&&!adminHero&&(sharedEnabled||hasFeatureHero)
+    });
+  const adminHeroQuery=useAsyncResource(['scope-blocks-live','loc',groupHeroPage],
+    ()=>selectLiveScopeBlocks('loc',groupHeroPage),{
+      enabled:!managementMode&&adminHero
+    });
+  const groupHeroRows=adminHero
+    ?adminHeroQuery.data||[]
+    :(publicHeroQuery.data||[]).filter(row=>row.page_name===groupHeroPage);
+  const scopeHeroRows=adminHero
+    ?[]:(publicHeroQuery.data||[]).filter(row=>row.page_name===scopeHeroPage);
   const managementTextPage=managementSlot?.page||'';
   const managementImagePage=HomeBlock.managementHeroImagePage(managementSlot);
   const managementTextQuery=useAsyncResource(['scope-blocks-live','loc',managementTextPage],
@@ -81,11 +90,11 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
   const heroImageRow=managementMode
     ?managementImageQuery.data?.find(row=>Number(row.block_order)===1)
     :((scopeId==='loc'&&!HomeBlock.shouldUseSingleFeatureHeroImage(featureId))
-      ?groupHeroQuery.data:scopeHeroImageQuery.data)?.find(row=>Number(row.block_order)===1);
+      ?groupHeroRows:scopeHeroRows).find(row=>Number(row.block_order)===1);
   const heroImageOverride=heroImageUrlOf(heroImageRow)||(managementMode?HomeBlock.managementHeroDefaultImage(managementSlot):'');
   const heroStyle=heroImageOverride?{'--scope-feature-hero-image':`url("${heroImageOverride}")`}:undefined;
   const shared=managementMode?HomeBlock.managementHeroCopy(managementTextQuery.data,managementSlot)
-    :sharedEnabled?HomeBlock.featureHeroFor(groupHeroQuery.data):null;
+    :sharedEnabled?HomeBlock.featureHeroFor(groupHeroRows):null;
   const fallbackCopy={
     title:profile.title,
     subtitle:finalSubtitle,
