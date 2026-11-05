@@ -292,6 +292,7 @@ function AppShellInner({children}){
     };
   },[mutate]);
   const {scopeId,scope,host,pathname,registryRow,configRow}=useScopeRuntime();
+  const protectedEditorRoute=isManagementHref(pathname)||/^\/admin(?:\/|$)/i.test(String(pathname||''));
   // Reconcile the public three-mode policy on initial load and route changes.
   // SW remains installed; messages control only its optional response caches.
   useEffect(()=>{
@@ -327,7 +328,7 @@ function AppShellInner({children}){
   useLayoutEffect(()=>{
     try{
       const marker=readHomeEditorAccess(window.sessionStorage);
-      setRestoreHomeEdit(!isManagementHref(pathname)&&marker?.scopeId===scopeId);
+      setRestoreHomeEdit(!protectedEditorRoute&&marker?.scopeId===scopeId);
     }catch{setRestoreHomeEdit(false);}
   },[pathname,scopeId]);
   useEffect(()=>{
@@ -336,7 +337,9 @@ function AppShellInner({children}){
   useEffect(()=>{
     setManagementDenied(false);
     const denied=event=>{
-      if(event?.detail?.scopeId===scopeId)setManagementDenied(true);
+      if(event?.detail?.scopeId===scopeId||
+        (/^\/admin(?:\/|$)/i.test(String(pathname||''))&&event?.detail?.scopeId==='loc'))
+        setManagementDenied(true);
     };
     window.addEventListener('loc-management-entry-denied',denied);
     return()=>window.removeEventListener('loc-management-entry-denied',denied);
@@ -478,7 +481,7 @@ function AppShellInner({children}){
   };
   const editingDockVisible=Boolean(editDock?.active&&editDock.scopeId===navScopeId);
   const editDockPending=!editingDockVisible&&((restoreHomeEdit&&!editDock?.active)||
-    (isManagementHref(pathname)&&!managementDenied));
+    (protectedEditorRoute&&!managementDenied));
   const locAdminEdit=navScopeId==='loc';
   const editSegments=String(pathname||'').split('/').filter(Boolean);
   const editSection=typeof window!=='undefined'
