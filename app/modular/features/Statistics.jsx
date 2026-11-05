@@ -291,12 +291,9 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   const [zoomLevel,setZoomLevel]=useState(0);
   const [foldBlank,setFoldBlank]=useState(true);
   // Leave potentially expensive keyword aggregation OFF until explicitly chosen.
-  const styleFilter=keywordDimension?'keywords':'none';
-  const [keywordSource,setKeywordSource]=useState('');
   const [selectedKeywordClassUid,setSelectedKeywordClassUid]=useState('');
   const [sourceGroup,setSourceGroup]=useState('');
     useEffect(()=>{
-    setKeywordSource('');
     setSelectedKeywordClassUid('');
     setSourceGroup('');
   },[scopeId,navigation.statTab,requested]);
@@ -354,7 +351,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
       fullHistory:false,canZoomOut:false,canZoomIn:false};
   },[selectedPeriod,customQueryRange,queryEndDate,hasRequestedWindow,requestedStart,requestedEnd,defaultTimeUnit]);
   // Both editors store flat names. Show one direct source choice, not a group tree.
-  const activeSourceSelection=styleFilter==='keywords'?keywordSource:rankingType==='source'?sourceGroup:'';
+  const activeSourceSelection=rankingType==='source'?sourceGroup:'';
   const sourceChart=['total','source'].includes(rankingType)&&Boolean(targetScopes.length);
   // ONE request per source chart: earliest date + exact daily counts + source taxonomy.
   const overview=useAsyncResource({
@@ -380,7 +377,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   const publishedCatalog=useMemo(()=>publishedSourceCategoryCatalog(scopeId),[scopeId]);
   const othersConfig=useAsyncResource({
     queryKey:['scope-others-source-summary',scopeId],
-    enabled:(sourceChart||keywordDimension)&&Boolean(scopeId)&&!publishedCatalog,
+    enabled:sourceChart&&Boolean(scopeId)&&!publishedCatalog,
     queryFn:async()=>readPersonalSourceClasses(scopeId),
     revalidateOnFocus:false,revalidateOnReconnect:false
   });
@@ -388,10 +385,10 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     const ready=Boolean(publishedCatalog||othersConfig.isSuccess);
     const dynamic=othersConfig.data;
     return {
-      isPending:((sourceChart&&overview.isPending)||!ready)&&(sourceChart||keywordDimension),
-      isSuccess:(keywordDimension||overview.isSuccess)&&ready,
+      isPending:(overview.isPending||!ready)&&sourceChart,
+      isSuccess:overview.isSuccess&&ready,
       error:publishedCatalog?null:othersConfig.error,
-      data:(overview.data||keywordDimension)?(publishedCatalog||{
+      data:overview.data?(publishedCatalog||{
         categories:[...(overview.data?.categories||[]),
           ...(dynamic?.groups||[]).map(group=>({
             category_code:group.group_code,display_name:group.display_name,enabled:true
@@ -404,7 +401,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
       dataUpdatedAt:Math.max(overview.dataUpdatedAt||0,publishedCatalog?0:othersConfig.dataUpdatedAt||0)
     };
   },[publishedCatalog,overview.isPending,overview.isSuccess,overview.data,overview.dataUpdatedAt,
-    othersConfig.isSuccess,othersConfig.data,othersConfig.error,othersConfig.dataUpdatedAt,sourceChart,keywordDimension]);
+    othersConfig.isSuccess,othersConfig.data,othersConfig.error,othersConfig.dataUpdatedAt,sourceChart]);
   const selectedRawNames=null;
   // Numeric counts come from ISR. Category bucketing is tiny synchronous
   // presentation work, not an independent remote resource: avoid a second SWR
@@ -467,37 +464,23 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     ||availableKeywordClasses.find(item=>item.classUid===keywordClassQuery.data?.currentClassUid)
     ||availableKeywordClasses[0];
   const resolvedKeywordClassUid=String(selectedKeywordClass?.classUid||'');
-  const keywordSourcesQuery=sourceCatalog;
-  const configuredSources=useMemo(()=>
-    (keywordSourcesQuery.data?.categories||[]).filter(row=>row.enabled!==false),
-    [keywordSourcesQuery.data]
-  );
-  useEffect(()=>{
-    if(keywordSourcesQuery.data&&keywordSource&&keywordSource!=='unclassified'&&!configuredSources.some(row=>row.category_code===keywordSource)){
-      setKeywordSource('');
-    }
-  },[keywordSource,keywordSourcesQuery.data,configuredSources]);
   const runeQuery=useAsyncResource({
-    queryKey:['statistics-style-filter','keywords',scopeId,resolvedKeywordClassUid,styleRange.startDate,styleRange.endDate,
-      keywordSource,othersConfig.dataUpdatedAt,keywordSource?keywordSourcesQuery.dataUpdatedAt:0],
+    queryKey:['statistics-keyword-class',scopeId,resolvedKeywordClassUid,styleRange.startDate,styleRange.endDate],
     queryFn:async()=>{
       const {selectKeywordAnalysisSummary}=await import('../../loc/keyword-analysis');
       return selectKeywordAnalysisSummary({
-        scopeId,classUid:resolvedKeywordClassUid,...styleRange,sourceCategory:keywordSource,
-        sourceCategories:keywordSourcesQuery.data?.categories||[],
-        sourceAliases:keywordSourcesQuery.data?.aliases||[],sourceNames:selectedRawNames
+        scopeId,classUid:resolvedKeywordClassUid,...styleRange
       });
     },
-    enabled:keywordDimension&&Boolean(resolvedKeywordClassUid)&&Boolean(styleRange.startDate&&styleRange.endDate)
-      &&(!keywordSource||keywordSourcesQuery.isSuccess),
+    enabled:keywordDimension&&Boolean(resolvedKeywordClassUid)&&Boolean(styleRange.startDate&&styleRange.endDate),
   });
 
   return <section className="scope-stat-section">
     <header className="scope-stat-domain-heading"><div><h2>{UI_COPY.statistics.result}</h2></div></header>
     <div className="scope-stat-controls">
       <StatisticTypeSelect scopeId={scopeId} navigation={navigation} types={types}/>
-      {styleFilter==='keywords'?<label>
-        <span>關鍵字群組</span>
+      {keywordDimension?<label>
+        <span>關鍵詞組（Class）</span>
         <select className="scope-select" aria-label="關鍵字群組" value={resolvedKeywordClassUid}
           disabled={keywordClassQuery.isPending||!availableKeywordClasses.length}
           onChange={event=>setSelectedKeywordClassUid(event.target.value)}>
@@ -522,15 +505,12 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
           </option>)}
         </select>
       </label>
-      {(rankingType==='source'||keywordDimension)?<label>
+      {rankingType==='source'?<label>
         <span>作品／個人分類</span>
         <select className="scope-select" aria-label="作品／個人分類" value={activeSourceSelection}
-          onChange={event=>{
-            if(styleFilter==='keywords')setKeywordSource(event.target.value);
-            else setSourceGroup(event.target.value);
-          }}>
+          onChange={event=>setSourceGroup(event.target.value)}>
           <option value="">全部來源</option>
-          {(styleFilter==='keywords'?configuredSources:(sourceCatalog.data?.categories||[]).filter(row=>row.enabled!==false))
+          {(sourceCatalog.data?.categories||[]).filter(row=>row.enabled!==false)
             .map(source=><option key={source.category_code} value={source.category_code}>{source.display_name}</option>)}
           <option value="unclassified">未分類</option>
         </select>
@@ -576,7 +556,6 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
         defaultSort={userActive?userSettings.sort:'desc'}/>}</StatisticsDetails>
     </>:null}
     {keywordDimension?<>
-      {keywordSourcesQuery.error?<p className="scope-status scope-error">{featureDataErrorMessage(keywordSourcesQuery.error,UI_COPY)}</p>:null}
       {keywordClassQuery.isPending?<p className="scope-status">正在讀取關鍵詞組設定…</p>:null}
       {!keywordClassQuery.isPending&&!keywordClassQuery.error&&!availableKeywordClasses.length?<p className="scope-status">目前沒有可查看的關鍵詞組；未公開的分類須由具備此 Scope 管理權限的帳號讀取。</p>:null}
       {runeQuery.isPending?<p className="scope-status"><UiText id="uiExtra.statisticsUI.loadingKeywordAttrs"/></p>:null}
