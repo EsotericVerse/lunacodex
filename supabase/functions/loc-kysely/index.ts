@@ -470,18 +470,19 @@ Deno.serve(async (request) => {
       if(!verifiedMcp||role!=="authenticated")
         return json({error:{message:"Verified MCP write permission required"}},403);
       const scope=String(body.scopeid||"");
-      const expected=["kind","scopeid","uid","pr_number","title","content","updated_at"];
+      const expected=["kind","scopeid","pr_number","title","content","updated_at"];
+      const allowed=[...expected,"uid"];
       const prNumber=body.pr_number;
       if(!["lo3rwang","lrunes"].includes(scope)||
-        Object.keys(body).length!==expected.length||
-        Object.keys(body).some(key=>!expected.includes(key))||
-        !/^[A-Za-z0-9]{8}$/.test(String(body.uid||""))||
+        Object.keys(body).length!==expected.length+(body.uid===undefined?0:1)||
+        Object.keys(body).some(key=>!allowed.includes(key))||
+        (body.uid!==undefined&&!/^[A-Za-z0-9]{8}$/.test(String(body.uid)))||
         !Number.isInteger(prNumber)||Number(prNumber)<1||Number(prNumber)>9999999||
         typeof body.title!=="string"||!body.title.trim()||body.title.length>350||
         typeof body.content!=="string"||!body.content.trim()||body.content.length>125000||
         typeof body.updated_at!=="string"||!body.updated_at)
         return json({error:{message:"Invalid PR update payload"}},400);
-      const uid=String(body.uid);
+      let uid=String(body.uid||"");
       const table="silver."+scope+"_galaxy";
       const tableRef=sql.ref(table);
       const db=await databaseForTarget(controlTarget);
@@ -490,15 +491,39 @@ Deno.serve(async (request) => {
         await sql`select set_config('request.jwt.claims',${JSON.stringify(claims)},true)`.execute(trx);
         await sql`select set_config('request.jwt.claim.sub',${String(claims.sub||"")},true)`.execute(trx);
         await sql`select set_config('request.jwt.claim.role','authenticated',true)`.execute(trx);
-        const existing=await sql<{uid:string;title:string;site:string}>`
-          select uid,title,site from ${tableRef} where uid=${uid} limit 1`.execute(trx);
-        const row=existing.rows[0];
-        if(!row)throw Object.assign(new Error("Scope article not found"),{httpStatus:403});
+        // The user knows their GitHub PR number, not its random Galaxy UID.
+        // Locate by stable source identity first. Do not search private content,
+        // infer an arbitrary UID, or write when multiple candidates exist.
+        const repoSiteId="EsotericVerse/moon-runes-pwa#"+prNumber;
+        const prMarker=new RegExp("(?:^|[^0-9])PR\\s*#"+Number(prNumber)+"(?:[^0-9]|$)");
+        let rows:{uid:string;title:string;site:string;site_id:string|null}[];
+        if(uid){
+          const existing=await sql<{uid:string;title:string;site:string;site_id:string|null}>`
+            select uid,title,site,site_id from ${tableRef} where uid=${uid} limit 1`.execute(trx);
+          rows=existing.rows;
+        }else{
+          const exact=await sql<{uid:string;title:string;site:string;site_id:string|null}>`
+            select uid,title,site,site_id from ${tableRef}
+            where site='github' and site_id=${repoSiteId} limit 2`.execute(trx);
+          rows=exact.rows;
+          if(rows.length===0){
+            const fallback=await sql<{uid:string;title:string;site:string;site_id:string|null}>`
+              select uid,title,site,site_id from ${tableRef}
+              where site='github' and title ilike ${'%PR #'+prNumber+'%'}
+              order by createtime desc nulls last limit 40`.execute(trx);
+            rows=fallback.rows.filter(row=>prMarker.test(String(row.title||'')));
+          }
+          if(rows.length!==1)
+            throw Object.assign(new Error(rows.length?'Multiple PR articles match; refusing ambiguous update':
+              'Existing GitHub PR record not found'),{httpStatus:409});
+          uid=rows[0].uid;
+        }
+        const row=rows[0];
+        if(!row)throw Object.assign(new Error("Scope article not found"),{httpStatus:404});
         if(row.site!=="github")
           throw Object.assign(new Error("Only GitHub PR-origin articles can be updated through this tool"),{httpStatus:403});
-        const prMarker=new RegExp("(?:^|[^0-9])PR\\s*#"+Number(prNumber)+"(?:[^0-9]|$)");
-        if(!prMarker.test(row.title))
-          throw Object.assign(new Error("PR number does not match this article's title"),{httpStatus:403});
+        if(row.site_id!==repoSiteId&&!prMarker.test(String(row.title||'')))
+          throw Object.assign(new Error("PR number does not match article provenance"),{httpStatus:403});
         const values={title:body.title,content:body.content,UpdateTime:body.updated_at};
         const updated=await executeRequest(trx,controlTarget,"authenticated",claims,
           scope==="lo3rwang"
@@ -508,7 +533,7 @@ Deno.serve(async (request) => {
                 p_filters:[{column:"uid",operator:"eq",value:uid}]}});
         const count=updated?.count??updated?.data?.count;
         if(count!==1)throw new Error("Managed PR update affected an unexpected number of rows");
-        return {data:{count:1},count:1};
+        return {data:{count:1,uid},count:1};
 
       });
       return json(result);
