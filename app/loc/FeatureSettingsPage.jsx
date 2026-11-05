@@ -2,7 +2,6 @@
 import {useMemo,useState} from 'react';
 import {usePathname} from 'next/navigation';
 import Link from 'next/link';
-import dynamic from 'next/dynamic';
 import {FeaturePage} from '../modular/ui';
 import ManagementSectionNav from '../modular/ManagementSectionNav';
 import {useUiSection} from '../i18n/ui-locale';
@@ -12,11 +11,9 @@ import globalSettingsZh from '../i18n/sections/uiExtra.globalSettings.zh_tw.js';
 import {useAccount} from './use-account';
 import useDefaultTimeUnit from './use-default-time-unit';
 import {saveDefaultTimeUnit,DEFAULT_TIME_UNITS} from './default-time-unit.mjs';
-import PanelLoading from './PanelLoading';
-import {recoverChunkOnce} from './chunk-recovery.mjs';
 registerDefaultSection('uiExtra.globalSettings',globalSettingsZh);
 
-const LocUserSettingsPanel=dynamic(()=>import('./LocUserSettingsPanel').catch(recoverChunkOnce),{loading:PanelLoading});
+import LocUserSettingsPanel from './LocUserSettingsPanel';
 const KEY='uiExtra.globalSettings.';
 
 export default function FeatureSettingsPage({embedded=false}){
