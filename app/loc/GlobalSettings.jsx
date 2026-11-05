@@ -14,7 +14,6 @@ import {useAccount} from './use-account';
 import {FeaturePage} from '../modular/ui';
 import ManagementSectionNav,{useManagementSection} from '../modular/ManagementSectionNav';
 import PanelLoading from './PanelLoading';
-import {recoverChunkOnce} from './chunk-recovery.mjs';
 // The home/account Settings screens never download import or management editors.
 const PrivateLocalFiles=dynamic(()=>import('./PrivateLocalFiles'),{loading:PanelLoading});
 const ClerkScopeConnections=dynamic(()=>import('./ClerkScopeConnections'),{loading:PanelLoading});
