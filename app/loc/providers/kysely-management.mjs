@@ -190,11 +190,64 @@ export async function executeManagedKyselyWrite(trx,body){
   return {data:{count},count:null};
 }
 
+
+const GALAXY_BULK_FLAGS=new Set(['statics','culture','search','trace','list','keyword','extract','others']);
+async function bulkUpdateGalaxyFlags(trx,args){
+  const scope=String(args.p_scope_id||'').trim().toLowerCase();
+  const site=String(args.p_site||'').trim().toLowerCase();
+  if(!/^[a-z][a-z0-9]{0,14}$/.test(scope)||!/^[a-z][a-z0-9_. -]{0,63}$/.test(site))
+    reject('Invalid Scope or source');
+  const flags=args.p_flags;
+  if(!flags||typeof flags!=='object'||Array.isArray(flags)||
+     Object.keys(flags).length===0||
+     Object.keys(flags).some(key=>!GALAXY_BULK_FLAGS.has(key)||typeof flags[key]!=='boolean'))
+    reject('Bulk update requires explicit Galaxy Boolean values');
+  if(['mcp','github'].includes(site)&&Object.values(flags).some(Boolean))
+    reject('Private MCP and GitHub sources cannot be publicly enabled',403);
+  if(!await canManageLoc(trx,'scope',scope))reject('Scope management permission required',403);
+  // Reuse the Scope Registry. Do not trust user-supplied SQL relation names.
+  const registry=await trx.selectFrom('silver.manage').select(['manage_role','galaxy_table'])
+    .where('id','=',scope).executeTakeFirst();
+  if(registry?.manage_role!=='scope'||registry.galaxy_table!=='galaxy')
+    reject('Scope Galaxy mapping unavailable',403);
+  const table=sql.ref('silver.'+scope+'_galaxy');
+  const values=Object.entries(flags);
+  const different=sql.join(values.map(([name,value])=>
+    sql`${sql.ref('g.'+name)} is distinct from ${value}`),sql` or `);
+  await sql`set local statement_timeout = '12000ms'`.execute(trx);
+  const totalQuery=await sql`select count(*)::int as n from ${table} as g
+    where lower(coalesce(g.site,''))=${site} and (${different})`.execute(trx);
+  const matching=Number(totalQuery.rows[0]?.n||0);
+  if(args.p_apply!==true)return {matching,updated:0,remaining:matching};
+  if(!Number.isInteger(args.p_expected_count)||args.p_expected_count!==matching)
+    reject('Bulk preview is stale; preview again before writing',409);
+  const limit=args.p_batch_size===undefined?250:Number(args.p_batch_size);
+  if(!Number.isInteger(limit)||limit<1||limit>500)reject('Invalid bulk batch size');
+  if(!matching)return {matching:0,updated:0,remaining:0};
+  // Only trusted Kysely code, with server-side Scope permission already verified,
+  // may run this bounded mutation. Each row is changed once, no UID ordering.
+  await sql`reset role`.execute(trx);
+  const assignments=sql.join(values.map(([name,value])=>
+    sql`${sql.ref(name)}=${value}`),sql`, `);
+  const result=await sql`
+    with targets as (
+      select g.uid from ${table} as g
+      where lower(coalesce(g.site,''))=${site} and (${different})
+      order by g.createtime asc nulls last
+      limit ${limit} for update skip locked
+    )
+    update ${table} as g set ${assignments}, "UpdateTime"=now()
+    from targets as t where g.uid=t.uid
+  `.execute(trx);
+  const updated=Number(result.numAffectedRows||0);
+  return {matching,updated,remaining:matching-updated};
+}
+
 const ACTIONS=new Set(['read_group_members','update_group_member_name',
   'update_group_default_article_class','is_current_email_blocklisted','move_scope_block',
   'preview_or_fill_galaxy_place','batch_fill_galaxy_location',
   'rename_scope_site_batch','save_scope_trace_place_names','save_blocks','loc_admin_settings',
-  'refresh_scope_search_summary','merge_scope_trace_place_names','import_shared_keyword_class','manage','find_galaxy_duplicates','read_scope_registry_admin']);
+  'refresh_scope_search_summary','merge_scope_trace_place_names','import_shared_keyword_class','manage','find_galaxy_duplicates','read_scope_registry_admin','bulk_update_galaxy_able']);
 function validScope(value){
   const id=String(value||'').trim().toLowerCase();
   if(!/^[a-z][a-z0-9]{0,14}$/.test(id))reject('Invalid Scope ID');
@@ -223,6 +276,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     save_scope_trace_place_names:['p_scope_id','p_uid','p_names'],
     loc_admin_settings:['p_section','p_operation','p_key','p_value'],
     refresh_scope_search_summary:['p_scope_id'],
+    bulk_update_galaxy_able:['p_scope_id','p_site','p_flags','p_apply','p_expected_count','p_batch_size'],
     merge_scope_trace_place_names:['p_scope_id','p_keep_uid','p_remove_uids'],
     import_shared_keyword_class:['p_target_scope','p_source_scope','p_class_uid'],
     manage:['p_type','p_id'],
@@ -253,6 +307,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
       .orderBy('m.sort_order','asc').orderBy('m.id','asc').execute();
     return {data:rows.filter(row=>row.manage_role!=='reserve'),count:null};
   }
+  if(name==='bulk_update_galaxy_able')return {data:await bulkUpdateGalaxyFlags(trx,args),count:null};
   if(name==='find_galaxy_duplicates')return {data:await findGalaxyDuplicates(trx,args),count:null};
   if(name==='manage'){
     const type=String(args.p_type||'').toLowerCase();

@@ -19,7 +19,17 @@ export function legacyGalaxyAble(row={}){
     trace:searchable&&statistics,list:searchable,keyword:searchable&&statistics,
     extract:true,others:true};
 }
+export function privateGalaxySource(row={}){
+  const site=String(row.site||'').trim().toLowerCase();
+  if(site==='mcp')return true;
+  if(site!=='github')return false;
+  return /#[0-9]+$/.test(String(row.site_id||''))||
+    /(?:^|[^0-9])PR\s*#[0-9]+(?:[^0-9]|$)/i.test(String(row.title||''));
+}
 export function galaxyAble(row={}){
+  // A source labelled MCP or GitHub PR must never inherit an old public flag,
+  // even when imported archives explicitly contain legacy `able` values.
+  if(privateGalaxySource(row))return Object.fromEntries(GALAXY_ABLE_KEYS.map(key=>[key,false]));
   const fallback=legacyGalaxyAble(row);
   // Legacy archive input only. This object is always expanded to columns.
   const packed=row.able&&typeof row.able==='object'&&!Array.isArray(row.able)?row.able:{};

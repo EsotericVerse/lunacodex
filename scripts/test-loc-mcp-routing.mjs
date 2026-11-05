@@ -85,12 +85,11 @@ test('Valid Clerk JWT can initialize, discover read/write tools, and ping',async
   assert.deepEqual(status.availableTools,tools.map(tool=>tool.name));
   const link=tools.find(tool=>tool.name==='galaxy_link');
   assert.deepEqual(link.inputSchema.required,['action','scopeid']);
-  assert.deepEqual(link.inputSchema.properties.action.enum,['search','read','check','record']);
-  assert.ok(status.availableTools.includes('update_scope_pr'));
-  const updatePr=tools.find(tool=>tool.name==='update_scope_pr');
-  assert.deepEqual(updatePr.inputSchema.required,
-    ['scopeid','uid','pr_number','title','content','updated_at']);
-  assert.notEqual(updatePr.annotations?.readOnlyHint,true);
+  assert.deepEqual(link.inputSchema.properties.action.enum,['search','read','check','record','update_pr']);
+  assert.deepEqual(link.inputSchema.properties.source.enum,['mcp','github']);
+  assert.equal(status.availableTools.includes('update_scope_pr'),false);
+  for(const field of ['uid','pr_number','title','content','updated_at'])
+    assert.ok(Object.hasOwn(link.inputSchema.properties,field));
   r=await handleMcp(req('POST',jwt,rpc('ping')));
   assert.deepEqual((await r.json()).result,{});
   assert.ok(jwksQueries>=1);

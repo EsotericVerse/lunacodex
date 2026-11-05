@@ -36,6 +36,7 @@ import {ARCHIVE_MAX_BYTES,IMPORT_FIELD_ALIASES,UNIVERSAL_IMPORT_ACCEPT,mappedImp
 import {MAX_ROWS,urlSafeInBatches} from './query-batch-size.mjs';
 import {hasIrrecoverableEncoding,isPureUrlContent,normalizeGalaxyContent,normalizeRelationIds,repairMojibakeText,resolveGalaxyTitle} from './content-policy';
 import {galaxyAble} from './galaxy-able.mjs';
+import BulkGalaxyVisibility from './BulkGalaxyVisibility';
 import {touchEditorSession} from './edit-session-ttl.mjs';
 import {scopeTagNames} from './scope-config-fields.mjs';
 import {runeDrawText} from './rune-draw-text.mjs';
@@ -152,6 +153,9 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t){
       ...(importPlaceAddress?{__importPlaceAddress:importPlaceAddress}:{}),
       ...(importPlaceUrl?{__importPlaceUrl:importPlaceUrl}:{})}:{}),
     ...galaxyAble({
+      site:String(source||'').trim(),
+      site_id:String(originalSiteId||'').trim(),
+      title:rawTitle,
       searchable,
       statistics_able:value('statistics_able')!==false&&
         String(value('statistics_able')).toLowerCase()!=='false'&&
@@ -1322,5 +1326,6 @@ export default function ManagementImportPanel({scopeId}){
       <UniversalImport scopeId={scopeId} format={format} onFormatChange={setFormat}/>
     </section>
     <ScopeSourceCorrection scopeId={scopeId}/>
+    <BulkGalaxyVisibility scopeId={scopeId}/>
   </div>;
 }

@@ -18,21 +18,32 @@ export async function authorityAction(name,args,token,env={},fetchImpl=globalThi
   const a=args||{};
   let path='',method='GET',body=null,query=null;
   if(name==='galaxy_link'){
-    if(!['search','read','check','record'].includes(a.action))throw bad('Invalid Galaxy Link action');
+    if(!['search','read','check','record','update_pr'].includes(a.action))throw bad('Invalid Galaxy Link action');
+    const source=a.source??'mcp';
+    if(!['mcp','github'].includes(source))throw bad('Invalid Galaxy source');
+    if(!['search','read'].includes(a.action)&&source!=='mcp'&&a.action!=='update_pr')
+      throw bad('Only search and read can select a source');
     if(a.action==='search'){
       if(typeof a.query!=='string'||a.query.trim().length<2||a.query.length>100||
         !Number.isInteger(a.limit??5)||(a.limit??5)<1||(a.limit??5)>5)
         throw bad('Invalid Galaxy Link search');
       path='search/'+id(a.scopeid);method='POST';
-      body={query:a.query,limit:a.limit??5};
+      body={query:a.query,limit:a.limit??5,source};
     }else if(a.action==='read'){
       if(!UID.test(String(a.uid||'')))throw bad('Invalid case-sensitive UID');
       path='read/'+id(a.scopeid)+'/'+a.uid;
-      query={offset:a.offset??0,max_chars:a.max_chars??20000,site:'mcp'};
+      query={offset:a.offset??0,max_chars:a.max_chars??20000,site:source};
     }else if(a.action==='check'){
       if(!a.conversation_id||!a.updated_at)throw bad('conversation_id and updated_at required');
       path='checkpoint/'+id(a.scopeid)+'/'+encodeURIComponent(String(a.conversation_id));
       query={updated_at:a.updated_at};
+    }else if(a.action==='update_pr'){
+      if(!UID.test(String(a.uid||''))||!Number.isInteger(a.pr_number)||a.pr_number<1||
+         typeof a.title!=='string'||!a.title.trim()||
+         typeof a.content!=='string'||!a.content.trim()||!a.updated_at)
+        throw bad('Valid existing PR UID, number, title, content and update timestamp required');
+      path='update-pr/'+id(a.scopeid);method='POST';
+      body={uid:a.uid,pr_number:a.pr_number,title:a.title,content:a.content,updated_at:a.updated_at};
     }else{
       if(!a.conversation_id||!a.updated_at||!Array.isArray(a.records)||
         !a.records.length||a.records.length>100)throw bad('Source records required');
@@ -58,7 +69,7 @@ export async function authorityAction(name,args,token,env={},fetchImpl=globalThi
         ...(a.uid?{uid:a.uid}:{}),append:true};
     }
     // A dedicated versioned route fails closed against old Authority deployments.
-    path='galaxy-link/'+path;
+    if(a.action!=='update_pr')path='galaxy-link/'+path;
   }else switch(name){
     case 'scope_storage':
       path='scope/'+id(a.scopeid);
@@ -70,14 +81,6 @@ export async function authorityAction(name,args,token,env={},fetchImpl=globalThi
         if(!body.table||!body.endpoint)throw bad('Database endpoint and existing table are required');
       }
       break;
-    case 'update_scope_pr':
-      path='update-pr/'+id(a.scopeid);method='POST';
-      if(!UID.test(String(a.uid||'')))throw bad('Invalid case-sensitive UID');
-      if(!Number.isInteger(a.pr_number)||a.pr_number<1)throw bad('pr_number must be a positive integer');
-      if(typeof a.title!=='string'||!a.title.trim())throw bad('title required');
-      if(typeof a.content!=='string'||!a.content.trim())throw bad('content required');
-      if(!a.updated_at)throw bad('updated_at required');
-      body={uid:a.uid,pr_number:a.pr_number,title:a.title,content:a.content,updated_at:a.updated_at};break;
     case 'join_scope_group':
       path='group/'+id(a.groupid)+'/scope/'+id(a.scopeid);method='PUT';
       body={};break;

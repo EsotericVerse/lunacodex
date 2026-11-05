@@ -21,7 +21,12 @@ import {createUid8} from './uid';
 import {normalizeRelationIds,requireGalaxyContent,resolveGalaxyTitle} from './content-policy';
 import {ObjectEditor} from './BlockNoteEditor';
 import {blocksToPlainText,plainTextToBlocks} from './blocknote-content.mjs';
-import {galaxyAble} from './galaxy-able.mjs';
+import {GALAXY_ABLE_KEYS,galaxyAble,privateGalaxySource} from './galaxy-able.mjs';
+
+const GALAXY_PERMISSION_LABELS=Object.freeze({
+  statics:'統計',culture:'文化',search:'搜尋',trace:'痕跡',list:'文章列表',
+  keyword:'關鍵詞',extract:'搜尋片段',others:'其他'
+});
 
 const datetimeLocal=value=>{
   if(!value)return '';
@@ -32,15 +37,15 @@ const datetimeLocal=value=>{
 
 const recordDraft=row=>({
   title:String(row.title||''),bodyBlocks:plainTextToBlocks(''),bodyHtml:String(row.content||''),
-  editorKey:createUid8(),source:String(row.site||''),url:String(row.url||''),
+  editorKey:createUid8(),source:String(row.site||''),site_id:String(row.site_id||''),url:String(row.url||''),
   source_id:String(row.source_id||''),
   target_id:Array.isArray(row.target_id)?row.target_id.join(', '):String(row.target_id||''),
-  ref_id:String(row.ref_id||''),createtime:datetimeLocal(row.createtime),hidden:galaxyAble(row).list===false,search:galaxyAble(row).search!==false
+  ref_id:String(row.ref_id||''),createtime:datetimeLocal(row.createtime),permissions:galaxyAble(row)
 });
 
 const blank=()=>({
-  title:'',bodyBlocks:plainTextToBlocks(''),bodyHtml:'',editorKey:createUid8(),source:'',url:'',source_id:'',target_id:'',ref_id:'',createtime:'',
-  hidden:false
+  title:'',bodyBlocks:plainTextToBlocks(''),bodyHtml:'',editorKey:createUid8(),source:'',site_id:'',url:'',source_id:'',target_id:'',ref_id:'',createtime:'',
+  permissions:galaxyAble({})
 });
 
 export default function ManagementArticlePublisher({scopeId}){
@@ -77,12 +82,13 @@ export default function ManagementArticlePublisher({scopeId}){
   const isDirty=()=>{
     if(editingUid&&loadedBaseline.current){
       const original=loadedBaseline.current;
-      return ['title','bodyHtml','source','url','source_id','target_id','ref_id','createtime','hidden']
-        .some(key=>draft[key]!==original[key]);
+      return ['title','bodyHtml','source','url','source_id','target_id','ref_id','createtime']
+        .some(key=>draft[key]!==original[key])||GALAXY_ABLE_KEYS.some(key=>
+          draft.permissions?.[key]!==original.permissions?.[key]);
     }
     return Boolean(draft.title.trim()||draft.source.trim()||draft.url.trim()||
       draft.source_id.trim()||draft.target_id.trim()||draft.ref_id.trim()||
-      draft.createtime||draft.hidden||blocksToPlainText(draft.bodyHtml||draft.bodyBlocks).trim());
+      draft.createtime||blocksToPlainText(draft.bodyHtml||draft.bodyBlocks).trim());
   };
   const resetDraft=()=>{
     setDraft(blank());setEditingUid('');setLookupUid('');
@@ -102,8 +108,8 @@ export default function ManagementArticlePublisher({scopeId}){
       // Exact, authenticated UID lookup: no public-search index or searchable filter.
       const {rows}=await selectRows(galaxy,{
         columns:scopeId==='local'
-          ?'uid,title,content,site,createtime,able,url,source_id,target_id,ref_id'
-          :'uid,title,content,site,createtime,statics,culture,search,trace,list,keyword,others,extract,url,source_id,target_id,ref_id',
+          ?'uid,title,content,site,site_id,createtime,able,url,source_id,target_id,ref_id'
+          :'uid,title,content,site,site_id,createtime,statics,culture,search,trace,list,keyword,others,extract,url,source_id,target_id,ref_id',
         filters:[{column:'uid',operator:'eq',value:uid}],limit:1,authenticated:true
       });
       if(!rows?.length)throw new Error(t('uiExtra.publisher.uidNotFound'));
@@ -133,7 +139,7 @@ export default function ManagementArticlePublisher({scopeId}){
         target_id:normalizeRelationIds(draft.target_id),
         ref_id:draft.ref_id.trim()||null,
         url:draft.url.trim()||null,
-        statics:true,culture:true,search:!draft.hidden,trace:true,list:!draft.hidden,keyword:true,others:true,extract:true,
+        ...galaxyAble({...draft.permissions,site:draft.source,site_id:draft.site_id,title:draft.title}),
         createtime:draft.createtime?new Date(draft.createtime).toISOString():now,
         site:draft.source.trim()
       };
@@ -151,7 +157,9 @@ export default function ManagementArticlePublisher({scopeId}){
         if(draft.target_id!==original.target_id)changed.target_id=values.target_id;
         if(draft.ref_id!==original.ref_id)changed.ref_id=values.ref_id;
         if(draft.createtime!==original.createtime)changed.createtime=values.createtime;
-        if(draft.hidden!==original.hidden)Object.assign(changed,{search:!draft.hidden,list:!draft.hidden});
+        for(const key of GALAXY_ABLE_KEYS){
+          if(values[key]!==original.permissions?.[key])changed[key]=values[key];
+        }
         if(Object.keys(changed).length){
           await updateRows(galaxy,{...changed,UpdateTime:now},{
             filters:[{column:'uid',operator:'eq',value:editingUid}]
@@ -227,10 +235,17 @@ export default function ManagementArticlePublisher({scopeId}){
             <span>{UI_COPY.management.articleTime}</span>
             <input type="datetime-local" value={draft.createtime} onChange={event=>change('createtime',event.target.value)}/>
           </label>
-          <label className="scope-setting-toggle">
-            <input type="checkbox" checked={draft.hidden===true} onChange={event=>change('hidden',event.target.checked)}/>
-            <UiText id="uiExtra.publisher.excludeSearch"/>
-          </label>
+          <fieldset className="scope-publisher-panel" style={{border:0,padding:0}}>
+            <legend>文章八項權限</legend>
+            {privateGalaxySource({site:draft.source,site_id:draft.site_id,title:draft.title})
+              ?<p className="scope-status">MCP 與 PR 開發紀錄保持私人，不可啟用公開旗標。</p>:null}
+            {GALAXY_ABLE_KEYS.map(key=><label className="scope-setting-toggle" key={key}>
+              <input type="checkbox" checked={draft.permissions?.[key]===true}
+                disabled={privateGalaxySource({site:draft.source,site_id:draft.site_id,title:draft.title})}
+                onChange={event=>change('permissions',{...draft.permissions,[key]:event.target.checked})}/>
+              {GALAXY_PERMISSION_LABELS[key]} ({key})
+            </label>)}
+          </fieldset>
           {!inDock?<button className="loc-button primary" type="submit" disabled={busy||loadingUid}><UiText id={busy?'uiExtra.publisher.publishing':editingUid?'uiExtra.publisher.saveChanges':'uiExtra.publisher.publishArticle'}/></button>:null}
         </section>
 

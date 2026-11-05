@@ -28,7 +28,7 @@
 
 ## Galaxy 與文件
 - Galaxy 是需求、TODO、架構決策、工作與 PR 的正式紀錄來源；GitHub 保存程式碼、必要技術文件、AGENTS.md 及版本說明，不另外建立重複進度表。寫入後核對回傳，能讀回時讀回；失敗明確標「未儲存成功」，不得冒稱已寫入。
-- `site` 代表真正來源（PR 用 `github`、ChatGPT 對話用 `chatgpt`、MCP 自身活動用 `mcp`），不是寫入工具。PR `site_id` 可使用 `owner/repo#number`；**所有新建八碼 UID 必須由正式產生器以安全亂數生成 8 碼 Base62（`0-9A-Za-z`、大小寫保留），不可人工編造、使用有語意代碼或固定模板（例如 `LOCoMVP1`）。**寫入前遵守實際唯一性約束，碰撞時重新產生；修改既有資料沿用原 UID，不擅自重編歷史資料。PR 紀錄可搜尋／列表可見，其他權限依實際用途，不擅自公開私有架構或對話。
+- `site` 代表真正來源（PR 用 `github`、ChatGPT 對話用 `chatgpt`、MCP 自身活動用 `mcp`），不是寫入工具。PR `site_id` 可使用 `owner/repo#number`；**所有新建八碼 UID 必須由正式產生器以安全亂數生成 8 碼 Base62（`0-9A-Za-z`、大小寫保留），不可人工編造、使用有語意代碼或固定模板（例如 `LOCoMVP1`）。**寫入前遵守實際唯一性約束，碰撞時重新產生；修改既有資料沿用原 UID，不擅自重編歷史資料。PR 與 MCP 對話紀錄預設私人：八個 Galaxy Boolean 欄位皆為 false；網站匿名 SELECT 不可取得 `site=mcp` 或 `site=github` 的 PR 開發紀錄。MCP `galaxy_link` 的 GitHub 來源查詢／更新只能在 Clerk＋Scope manage 授權後使用，其他資料仍依既有用途與權限。不得將 `site` 偽改為 `mcp` 來方便搜尋。。
 - 優先用 LOC MCP；必要且有授權時使用現行主庫的可用正式入口，不雙寫、不擅自切換備援。更新既有 PR 使用 `update_scope_pr(scopeid, uid, pr_number, title, content, updated_at)`：只能改 `site=github` 且原標題已有相同 `PR #number` 的既有文章，不能用此工具新建或繞過校驗。
 - Galaxy 文章公開權限採八個獨立 boolean 欄位：`statics`、`culture`、`search`、`trace`、`list`、`keyword`、`extract`、`others`。Galaxy 禁止新增任何 JSONB 欄位；PostgreSQL（含 Portable）的 `target_id`、`media_link` 分別採 `text[]`、`varchar[]`，僅 Anchor 的 `attr` 使用 JSONB。不得再讀寫已退役的 `galaxy.able`；一般私有紀錄 `list=false`，正式 PR 紀錄 `search=true`、`list=true`，其餘六欄 `false`。歷史匯入轉換不算直接讀寫資料庫舊欄。
 - PR 紀錄需在本次工作流程內完成，不等待提醒。工具失敗先嘗試已授權的備援入口；若暫不可寫，明確標記未存成功並完成其他可執行的收尾，不能為此停住整項工作或以假紀錄取代。合併後更新已合併與部署狀態，不能把未驗證部署寫成已上線。歌曲與專輯等作品紀錄須保存實際全文，不能用摘要冒充全文。

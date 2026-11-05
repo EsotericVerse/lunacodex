@@ -338,7 +338,7 @@ Deno.serve(async (request) => {
         return json({error:{message:"Managed MCP reads use the control database only"}},400);
       const scope=String(body.scopeid||"");
       const isRead=body.kind==="mcp-read";
-      const expectedKeys=isRead?["kind","scopeid","uid",...(body.site===undefined?[]:["site"])]:["kind","scopeid","query","limit"];
+      const expectedKeys=isRead?["kind","scopeid","uid",...(body.site===undefined?[]:["site"])]:["kind","scopeid","query","limit",...(body.source===undefined?[]:["source"])];
       if(!["lo3rwang","lrunes"].includes(scope)||
          Object.keys(body).length!==expectedKeys.length||
          Object.keys(body).some(key=>!expectedKeys.includes(key)))
@@ -347,11 +347,11 @@ Deno.serve(async (request) => {
       const query=body.query;
       const limit=body.limit;
       if(isRead){
-        if(!/^[A-Za-z0-9]{8}$/.test(uid)||body.site!==undefined&&body.site!=="mcp")
+        if(!/^[A-Za-z0-9]{8}$/.test(uid)||body.site!==undefined&&!["mcp","github"].includes(body.site))
           return json({error:{message:"Invalid managed MCP article UID"}},400);
       }else if(typeof query!=="string"||query.trim().length<2||query.length>100||
           /[\u0000-\u001f\u007f]/.test(query)||!Number.isInteger(limit)||
-          Number(limit)<1||Number(limit)>5){
+          Number(limit)<1||Number(limit)>5||!["mcp","github"].includes(body.source??"mcp")){
         return json({error:{message:"Invalid managed MCP search parameters"}},400);
       }
       const db=await databaseForTarget(controlTarget);
@@ -364,13 +364,13 @@ Deno.serve(async (request) => {
         await sql`select set_config('request.jwt.claim.role','authenticated',true)`.execute(trx);
         if(isRead){
           const result=await sql`select uid,title,content,date,createtime,site,url
-            from ${table} where uid=${uid} and (${body.site===undefined} or site='mcp') limit 1`.execute(trx);
+            from ${table} where uid=${uid} and (${body.site===undefined} or site=${body.site||""}) limit 1`.execute(trx);
           return result.rows;
         }
         const pattern="%"+String(query).trim().replace(/[\\%_]/g,"\\$&")+"%";
         await sql`set local statement_timeout = '4000ms'`.execute(trx);
         const result=await sql`select uid,title,createtime from ${table}
-          where site = 'mcp' and (title ilike ${pattern} or content ilike ${pattern})
+          where site = ${body.source??'mcp'} and (title ilike ${pattern} or content ilike ${pattern})
           order by createtime desc nulls last limit ${Number(limit)}`.execute(trx);
         return result.rows;
       });
