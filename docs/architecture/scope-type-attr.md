@@ -287,3 +287,16 @@ Search 只對 Galaxy `content` 執行模糊比對；進階內容類型只保留�
 - 限流目前使用 Edge Function **單個 warm isolate 的有上限記憶體**，不查詢或寫入額外資料表、不新增 RPC、Trigger、Index、不變更既定 QoS 16。**這不是跨所有 Edge instances 的全球共享黑名單**；跨實例、跨區域的強制防護將來須由部署層的共享限流能力承擔，不能把本版本宣稱成分散式全域封鎖。
 - 已設有搜尋使用者端 25 秒 abort 與 Kysely HTTP 9 秒 deadline；SQL 8 秒設定是另外在資料庫端阻止長時間掃描。僅對 PostgreSQL 實際施加 `SET LOCAL statement_timeout`；其他 SQL 引擎不應宣稱享有相同的伺服器端保證。
 - 驗收：`node --test scripts/test-search-qos.mjs`，另須核對部署中的 HTTP 429、`Retry-After` 和 SQL timeout，以及搜尋主功能正常找到包含指定詞的文章。測試與部署結果各自記錄，不得以本文件代替驗證。
+
+
+### 首頁與文化時間密度：Portable 讀取契約（2026-11-06）
+
+- **首頁**：使用所屬 Scope 的設定與 `*_blocks`（或 LOC 的 `loc/loc_blocks`）；`page_blocks(type=index)` 一次取回 `page_name=index` 的 Blocks，前端記憶體排序。展示與編輯使用同一份來源；僅點入管理模式才檢查 `silver.manage`，`save_blocks(type)` 在伺服端一次驗證、同一交易批次寫入。沒有 `edit_block` 讀取入口，也不在首頁預查管理權限或 Galaxy/Anchor。
+- **Hero**：`hero_blocks(type)` 針對 `culture/statics/trace/search` 各頁一次讀取必要 Hero，沿用既有 Block 豐富文字／圖片／排版渲染，不需每個 Block 另設 RPC。
+- **四功能入口**：只依 Scope 自身四個功能開關決定是否顯示「未開放」，不以 Admin 身分繞過。一般公開讀取不查管理權限。使用者個人設定以 OAuth 驗證身分後，依已驗證 Email 讀 `loc_user`；未登入保留登入入口。每日符文讀 `lrunes_daily`。
+- **文化第一條河道**：公開資料入口一次讀取 `*_anchor` 的 `uid/type/title/attr`，限定 `type in (date,period,era)` 與 `invisible=false`，記憶體整理 Era/Period/Date，僅顯示今天往前一年；沒有定錨仍顯示空白河道。Anchor UID 不等於 Galaxy UID。
+- **文化第二條河道**：只以 `galaxy.createtime` 限定最近一年、`culture=true`，透過 `GROUP BY(date,site)` 和 `COUNT(*)` 一次取得日別 Site 密度；根本不讀 `galaxy.uid`，系統／個人分類、每日數字、比例、左右河道的展開全部用記憶體資料。
+- **列表**：只有使用者明確點「顯示相關文章列表」，才在指定日期範圍及 Site 下讀 `uid/date/title/list`、`culture=true`、`ORDER BY createtime DESC`、`LIMIT 100`。前端先顯示 20 筆，之後每次再顯示 20 筆；100 筆用盡且使用者繼續才查下一批。換 Site 清理前一份列表。後端對 `list=false` 預先遮蔽，瀏覽器只收到「本文已隱藏」佔位，不含 UID、標題與日期。
+- **全文**：使用者再次點擊才以所選文章 UID 讀取正文及關聯；沿用既有全文／管理授權處理。列表／密度不負責寫入。
+- **Portable 與安全邊界**：SQL 的 WHERE、COUNT、GROUP BY、ORDER BY、LIMIT/OFFSET 透過 Kysely 方言實作；LOC 的公開展示不以 PostgreSQL RLS、ISR 或任何特定快取作為業務前提。外部資料庫本身的憑證及權限策略由部署者負責；框架的管理寫入、遮蔽與跨 Scope 資料隔離仍需在可信的資料入口成立。搜尋主功能保留專屬 QoS。
+- **驗收**：以 `node --test scripts/test-culture-public-flow.mjs` 檢查資料讀取契約，並在部署／實體資料庫確認未登入可讀、首頁與雙河道顯示、只有列表點擊才出現 Galaxy UID 查詢、100/20 分頁與隱藏佔位；此處不宣稱尚未執行的測試已通過。
