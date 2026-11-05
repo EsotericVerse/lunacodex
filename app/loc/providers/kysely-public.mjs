@@ -9,6 +9,8 @@ function id(value){
 const ACTION_ARGS={
   read_app_bootstrap:['p_scope_id','p_page_name'],
   read_scope_page_copy:['p_scope_id'],
+  page_blocks:['p_scope_id','p_type'],
+  hero_blocks:['p_scope_id','p_type'],
   search_scope_trace_place_names:['p_scope_id','p_term','p_limit']
 };
 export async function executeKyselyPublicAction(trx,body,{engine='postgres',namespace='silver'}={}){
@@ -35,6 +37,22 @@ export async function executeKyselyPublicAction(trx,body,{engine='postgres',name
   // The old public RPCs were SECURITY DEFINER. We return only their
   // pre-approved public result shape; callers cannot choose relations/SQL.
   if(!portable)await sql`reset role`.execute(trx);
+  // Only two public Block reads: index pages and feature Heroes. Sorting and
+  // composition are front-end responsibilities, never server-side RPC chains.
+  if(name==='page_blocks'||name==='hero_blocks'){
+    const kind=String(args.p_type||'').trim();
+    if(!/^[a-z][a-z0-9_-]{0,40}$/.test(kind))
+      throw Object.assign(new Error('Invalid Block type'),{httpStatus:400});
+    const blocksName=name==='page_blocks'
+      ?(scope==='loc'?'loc_blocks':scope+'_blocks'):'loc_blocks';
+    if(!has(blocksName))return {data:[],count:null};
+    const names=name==='page_blocks'?[kind]:['group_'+kind,'scope_'+kind];
+    const rows=await trx.selectFrom(table(blocksName))
+      .select(['uid','page_name','block_eyebrow','block_title','block_subtitle',
+        'block_text','block_order','block_entity','block_image'])
+      .where('page_name','in',names).execute();
+    return {data:rows,count:null};
+  }
   if(name==='read_scope_page_copy'){
     if(!has('manage'))return {data:[],count:null};
     const allowed=await trx.selectFrom(table('manage'))
