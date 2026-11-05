@@ -17,6 +17,16 @@ test('Kysely reuses verified identity for same Clerk session, never skips JWT va
   assert.doesNotMatch(edge,/sessionIdentityCache\.set\(token/);
 });
 
+test('LOC management snapshot uses signed Clerk Session, not JWT rotation, and stays 30 seconds',()=>{
+  const auth=source('app/loc/providers/loc-authorization.mjs');
+  assert.match(auth,/\['clerk-session',issuer,sub,state\.email,sid\]/);
+  assert.match(auth,/\['oauth-token',issuer,sub,state\.email,exp,/);
+  assert.match(auth,/PERMISSION_REUSE_MS=30_000/);
+  assert.match(auth,/Math\.min\(Date\.now\(\)\+PERMISSION_REUSE_MS,Number\(state\.claims\.exp\)\*1000\)/);
+  assert.match(auth,/Number\.isFinite\(exp\)\|\|exp\*1000<=Date\.now\(\)/);
+  assert.match(auth,/const \{blocked,rows\}=await locPermissions\(db\)/);
+});
+
 test('LOC SQL Gateway accepts Clerk/Authority, not Supabase Auth sessions',()=>{
   const edge=source('supabase/functions/loc-kysely/index.ts');
   assert.match(edge,/verifyClerkForSql\(token\)/);
