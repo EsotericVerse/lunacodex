@@ -14,11 +14,11 @@ import {FeaturePage} from '../../modular/ui';
 import ManagementWorkspaceFrame from '../ManagementWorkspaceFrame';
 import ManagementSectionNav,{useManagementSection} from '../../modular/ManagementSectionNav';
 import PanelLoading from '../PanelLoading';
-// Registry editing and source catalogs are independent admin capabilities.
+// Group member display-name editing lives in the Group People/Works page.
+// Admin keeps only privileged registry provisioning and system configuration.
 
 const ADMIN_OPTIONS=Object.freeze([
-  {value:'registry',label:'人員',shortLabel:'人員',description:'系統人員、Email、Table 對應及群組部署。'},
-  {value:'lists',label:'名單管理',shortLabel:'名單',description:'保留名稱備註及 Email 系統黑名單。'},
+  {value:'lists',label:'系統名單與配置',shortLabel:'名單',description:'管理員專屬的人員建立／刪除、資料表對應、保留名稱及 Email 黑名單。'}, 
   {value:'network',label:'網路設定',shortLabel:'網路',description:'資料庫連線、ISR 快取與認證來源設定。'},
   {value:'io',label:'系統設定',shortLabel:'系統設定',description:'系統匯入、匯出及批次限制。'},
   {value:'featureHero',label:'功能區塊設定',shortLabel:'區塊',description:'編輯功能頁 Hero 與展示資源。'},
@@ -43,7 +43,8 @@ export default function AdminHomeView({scopeGroup}){
   const [entryVerified,setEntryVerified]=useState(false);
   const canManage=Boolean(account.user&&!account.loading&&!account.permissionLoading&&account.canManageGlobalSync());
   // Preserve deep links created before the Admin sections were consolidated.
-  const [section,setSection]=useManagementSection(ADMIN_OPTIONS,'registry',{
+  const [section,setSection]=useManagementSection(ADMIN_OPTIONS,'lists',{ 
+    registry:'lists',members:'lists',
     database:'network',isr:'network',enterpriseAuth:'network',auth:'network',system:'network',
     reserved:'lists',blocklist:'lists',
     traceAnchor:'network',traceMap:'network'
@@ -88,8 +89,8 @@ export default function AdminHomeView({scopeGroup}){
         items={ADMIN_OPTIONS} value={section} onChange={switchSection}/>
       <div className="management-workspace-panel" id="admin-management-panel" role="region"
         aria-labelledby={'admin-sections-option-'+selectedOption.value}>
-        {section==='registry'?<AdminRegistry/>:null}
         {section==='lists'?<>
+          <AdminRegistry/>
           <AdminReservedScopeIds/>
           <AdminEmailBlocklist/>
         </>:null}
