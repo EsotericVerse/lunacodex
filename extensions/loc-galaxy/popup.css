@@ -1,24 +1,48 @@
-:root{color-scheme:dark;font-family:system-ui,-apple-system,"Noto Sans TC",sans-serif;background:#080c15;color:#f6f3eb}
+/* Same bright Theme 7 identity as the original full-screen LOC Clerk login.
+   The extension remains a compact launch/control surface; sign-in opens that page. */
+:root{
+  color-scheme:light;
+  --loc-bg:#ffffff;--loc-panel:#ffffff;--loc-panel-2:#f7f7f7;
+  --loc-text:#202020;--loc-muted:#666666;--loc-heading:#111111;
+  --loc-accent:#555555;--loc-gold:#666666;--loc-line:rgba(30,30,30,.18);
+  --loc-surface:rgba(255,255,255,.96);--loc-accent-surface:rgba(0,0,0,.06);
+  --loc-font-family:Inter,"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  font-family:var(--loc-font-family);
+  background:var(--loc-bg);color:var(--loc-text);
+}
 *{box-sizing:border-box}
-body{margin:0;width:370px;min-height:515px;background:radial-gradient(circle at 81% 15%,#293f6a 0%,transparent 33%),linear-gradient(143deg,#101b30,#080a13 68%);font-size:14px}
+body{
+  margin:0;width:370px;min-height:515px;
+  background:radial-gradient(ellipse 75% 65% at 16% 35%,rgba(85,85,85,.06),transparent 72%),
+    radial-gradient(ellipse 50% 60% at 95% 85%,rgba(0,0,0,.035),transparent 75%),var(--loc-bg);
+  font-size:14px;
+}
 .shell{padding:23px 23px 17px}
-.brand{display:flex;align-items:center;gap:10px;font-size:17px;letter-spacing:.24em;font-weight:700}
-.brand small{font-size:10px;color:#d8b778;margin-left:2px}
+.brand{display:flex;align-items:center;gap:10px;font-size:17px;letter-spacing:.17em;font-weight:700}
+.brand small{font-size:10px;color:var(--loc-muted);margin-left:2px}
 .brand-icon{display:block;width:28px;height:28px;object-fit:contain;flex-shrink:0}
-.eyebrow{font-size:10px;color:#d4b477;letter-spacing:.22em;margin-top:38px}
-h1{font-family:Georgia,"Noto Serif TC",serif;font-size:31px;line-height:1.32;font-weight:500;letter-spacing:.035em;margin:13px 0}
-h1 em{font-style:normal;color:#e9c995}
-.intro{line-height:1.6;color:#b9c4d5;margin:0 0 26px;font-size:12px}
-label{display:block;font-size:12px;color:#e3d7bb;margin-bottom:8px}
-input{height:42px;width:100%;font-size:15px;letter-spacing:.04em;background:#0d1425;color:#fff;border:1px solid #5b6881;border-radius:11px;padding:0 12px;outline-offset:3px}
-input:focus-visible,button:focus-visible{outline:2px solid #e5c68d}
+.eyebrow{font-size:10px;color:var(--loc-gold);letter-spacing:.17em;font-weight:700;margin-top:38px}
+h1{font-family:var(--loc-font-family);font-size:31px;line-height:1.24;font-weight:650;letter-spacing:-.04em;margin:13px 0;color:var(--loc-heading)}
+h1 em{font-style:normal;color:var(--loc-accent)}
+.intro{line-height:1.7;color:var(--loc-muted);margin:0 0 26px;font-size:12px}
+label{display:block;font-size:12px;color:var(--loc-text);margin-bottom:8px}
+input{
+  height:42px;width:100%;font-size:15px;letter-spacing:.04em;
+  background:var(--loc-panel-2);color:var(--loc-text);
+  border:1px solid var(--loc-line);border-radius:13px;padding:0 12px;outline-offset:3px;
+}
+input:focus-visible,button:focus-visible{outline:2px solid var(--loc-accent);outline-offset:3px}
 .actions{display:grid;gap:10px;margin-top:14px}
-button{width:100%;font:inherit;border-radius:11px;padding:12px 10px;cursor:pointer;border:1px solid #91794f;background:#15253b;color:#f5ead5;font-weight:600}
-button.primary{background:linear-gradient(115deg,#f1d79b,#d6a862);color:#172037;border-color:transparent}
+button{
+  width:100%;font:inherit;border-radius:13px;padding:12px 10px;cursor:pointer;
+  border:1px solid var(--loc-line);background:var(--loc-panel-2);color:var(--loc-text);font-weight:600;
+}
+button.primary{background:#242424;color:#ffffff;border-color:#242424}
 button.quiet{background:transparent;padding:8px;margin-top:8px}
 button:disabled{opacity:.52;cursor:default}
-#connected{border:1px solid #436f5e;border-radius:12px;padding:12px;margin-top:14px;background:#0d231f}
-.connected-mark{color:#92deba}
-#account{overflow-wrap:anywhere;font-size:11px;color:#bfd2cd}
-#status{min-height:18px;margin:16px 0 4px;font-size:12px;line-height:1.6;color:#c3d6ed;overflow-wrap:anywhere}
-footer{border-top:1px solid #3d4759;padding-top:11px;margin-top:16px;font-size:10px;line-height:1.6;color:#8895a8}
+#connected{border:1px solid var(--loc-line);border-radius:14px;padding:12px;margin-top:14px;background:var(--loc-accent-surface)}
+.connected-mark{color:#386f50}
+#account{overflow-wrap:anywhere;font-size:11px;color:var(--loc-muted)}
+#status{min-height:18px;margin:16px 0 4px;font-size:12px;line-height:1.6;color:var(--loc-muted);overflow-wrap:anywhere}
+footer{border-top:1px solid var(--loc-line);padding-top:11px;margin-top:16px;font-size:10px;line-height:1.6;color:var(--loc-muted)}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
