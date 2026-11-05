@@ -6,7 +6,7 @@ import {mapBounded} from './bounded-parallel.mjs';
 export {DB_QUERY_BATCH_SIZE,queryBatchSize} from './db-contract.mjs';
 
 import {dbAuthClient,dbBackupPublicClient,dbConfiguredPublicClient,dbPublicClient} from './db-client.mjs';
-import {markPrimaryReadFailed,markPrimaryReadSucceeded,markBackupReadFailed,markBackupReadSucceeded} from './db-source-status.mjs';
+import {isDatabaseConnectivityFailure,markPrimaryReadFailed,markPrimaryReadSucceeded,markBackupReadFailed,markBackupReadSucceeded} from './db-source-status.mjs';
 
 import {selectedDatabaseRouting} from './providers/routing-state.mjs';
 const recoverableReadError=error=>{
@@ -130,8 +130,8 @@ export async function executePublicRead(table,buildQuery,{source='auto',authenti
       return value;
     }catch(error){
       if(cancel?.aborted||isAbortError(error))throw abortError();
-      if(!['SEARCH_RATE_LIMIT','SEARCH_TIMEOUT'].includes(String(error?.code||'')))
-        markPrimaryReadFailed(table,error);
+      if(isDatabaseConnectivityFailure(error))markPrimaryReadFailed(table,error);
+      else markPrimaryReadSucceeded(table); // SQL/application errors are not connectivity outages.
       throw error;
     }
   };
