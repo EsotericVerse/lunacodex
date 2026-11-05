@@ -1,4 +1,5 @@
-/* One shared feature dock for browser, PWA and Capacitor. */
+/* Floating editor action buttons for browser, PWA and Capacitor.
+   The six controls are independent buttons, not a NAV or a dock panel. */
 .scope-feature-dock{
   position:fixed;z-index:140;left:50%;
   bottom:calc(.55rem + env(safe-area-inset-bottom,0px));
@@ -6,26 +7,23 @@
   width:min(700px,calc(100vw - 1rem - env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px)));
   display:grid;grid-template-columns:repeat(6,minmax(0,1fr));
   gap:clamp(.25rem,.75vw,.6rem);
-  padding:.4rem;
-  border:1px solid color-mix(in srgb,var(--loc-line) 78%,transparent);
-  border-radius:22px;
-  background:color-mix(in srgb,var(--loc-bg) 84%,transparent);
-  box-shadow:0 12px 35px rgb(0 0 0 / .24);
-  -webkit-backdrop-filter:blur(16px);
-  backdrop-filter:blur(16px);
+  padding:.15rem;
+  border:0;
+  background:transparent;
+  box-shadow:none;
   pointer-events:none;
 }
-/* Six controls share one DOM row and one grid so layout cannot reorder them.
-   Leftmost Save and rightmost Discard are fixed across all editor pages. */
+/* Independent floating buttons; leftmost Save and rightmost Cancel never reorder. */
 .scope-feature-dock .scope-edit-dock-action{border-color:var(--loc-accent-border);}
 .scope-feature-dock a,.scope-feature-dock button{
   display:flex;flex-direction:column;align-items:center;justify-content:center;
   gap:.3rem;min-width:0;min-height:60px;padding:.45rem .2rem;
   border:1px solid color-mix(in srgb,var(--loc-accent) 27%,var(--loc-line));
-  border-radius:clamp(12px,1.6vw,18px);
+  border-radius:clamp(14px,1.7vw,20px);
   background:color-mix(in srgb,var(--loc-accent) 23%,var(--loc-panel) 77%);
   color:var(--loc-text);
-  box-shadow:0 3px 9px rgb(0 0 0 / .16),0 1px 4px color-mix(in srgb,var(--loc-accent) 13%,transparent);
+  box-shadow:0 6px 18px rgb(0 0 0 / .24),0 1px 5px color-mix(in srgb,var(--loc-accent) 18%,transparent);
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
   text-decoration:none;font-size:.77rem;font-weight:650;line-height:1.2;
   -webkit-tap-highlight-color:transparent;pointer-events:auto;
   transition:background .16s ease,box-shadow .16s ease,transform .16s ease;
@@ -92,7 +90,7 @@ body:has(.scope-feature-dock .scope-edit-dock-notice){
 .scope-settings-options legend{font-weight:650;margin-bottom:.6rem;}
 .scope-settings-note{color:var(--loc-muted);font-size:.85rem;}
 @media(max-width:560px){
-  .scope-feature-dock{gap:4px;padding:.32rem;border-radius:18px;}
+  .scope-feature-dock{gap:4px;padding:.15rem;}
   .scope-feature-dock a,.scope-feature-dock button{min-height:56px;font-size:.75rem;border-radius:12px;padding:.36rem .03rem;}
   .scope-feature-dock:has(.scope-edit-system-button) a,
   .scope-feature-dock:has(.scope-edit-system-button) button{font-size:.7rem;}
