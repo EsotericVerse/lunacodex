@@ -5,8 +5,7 @@ import {webcrypto} from 'node:crypto';
 
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
 const source=readFileSync(new URL('../workers/loc-authority/index.mjs',import.meta.url),'utf8')
-  .replace("import { DurableObject } from 'cloudflare:workers';",'')
-  .replace("import {validateKeywordCategoryEntry,hashKeywordCategory,assertPublicKeywordClass} from './keyword-categories.mjs';",'')
+  .replace(/^import[\\s\\S]*?;\\s*$/gm,'')
   .replace('export class LocAuthorityState','class LocAuthorityState')
   .replace('export default {','const worker={');
 const {LocAuthorityState}=new Function('DurableObject',
