@@ -509,10 +509,10 @@ function makeProvider({id,table,source,scope,idColumn,columns,searchFields,filte
           hasMore:false,nextCursor:null,totalCount:null,dataSource};
       }
       const ascending=sortDirection!=='desc';
-      const orders=[
-        ...(dateColumn?[{column:dateColumn,ascending}]:[]),
-        ...(idColumn?[{column:idColumn,ascending}]:[])
-      ];
+      // date is for WHERE/grouped daily aggregates; full article lists
+      // are always ordered by their actual publication timestamp.
+      // Anchor has no time sorting and is not a Search provider.
+      const orders=dateColumn?[{column:'createtime',ascending}]:[];
 
       // The exact COUNT(*) query can time out on ILIKE against article content.
       // Fetch one extra row instead; ordinary searching never needs a total count.
@@ -605,12 +605,6 @@ function managementArticleProviders(scope,{contentType='',sourceFilter='',source
   })];
 }
 
-// The advanced Type selector is an exact Anchor type filter, not a
-// keyword field. Galaxy and Anchor content remain separate predicates.
-const ANCHOR_SEARCH_TYPES=new Set([
-  'date','period','era','point','path','trace','category','class','group','item',
-  'image','video','rune','suno'
-]);
 function genericScopeProviders(scope,{includeHiddenText=false,contentType='',sourceFilter='',sourceTaxonomy=null,placeOnly=false}={}){
   const selection=resolveSourceSelection(sourceFilter,sourceTaxonomy||{});
   if(selection.kind==='none')return [];
@@ -629,28 +623,17 @@ function genericScopeProviders(scope,{includeHiddenText=false,contentType='',sou
     columns:textColumns,searchFields:['location'],dateColumn:dayColumn(current.galaxy),
     filters:textFilters,authenticated:includeHiddenText
   })];
-  // Date (indexed on Galaxy) and Source are article-only filters.
-  // Never use them for Anchor rows: Anchor has no independent date column.
-  const anchorType=ANCHOR_SEARCH_TYPES.has(contentType)?contentType:'';
+  // Search uses only the article service: Galaxy.content. Anchor is
+  // resolved through article relationships, never queried as a reverse index.
+  if(contentType&&!['galaxy','lyrics_work','text_work'].includes(contentType))
+    return [];
   const article=makeProvider({
     id:current.id+':article-content',table:current.galaxy,
     source:current.id+' 文章',scope:current,idColumn:'uid',
     columns:textColumns,searchFields:['content'],dateColumn:dayColumn(current.galaxy),
     filters:textFilters,sourceClause:sourceNameClause(selection),authenticated:includeHiddenText
   });
-  if(contentType==='galaxy'||['lyrics_work','text_work'].includes(contentType))return [article];
-  // One search of description across the four Anchor families.
-  // Deliberately do NOT project title, attr or any date from Anchor.
-  const anchor=current.id==='local'||!current.anchor||sourceFilter?null:makeProvider({
-    id:current.id+':anchor-content',table:current.anchor,
-    source:current.id+' 定錨內容',scope:current,idColumn:'uid',
-    columns:['uid','type','description'],
-    searchFields:['description'],filters:[
-      {column:'invisible',operator:'eq',value:false},
-      ...(anchorType?[{column:'type',operator:'eq',value:anchorType}]:[])
-    ]
-  });
-  return anchorType?(anchor?[anchor]:[]):[article,...(anchor?[anchor]:[])];
+  return [article];
 }
 
 function normalizeSearch(value){
@@ -674,13 +657,9 @@ export async function searchGalaxyRows(scopes,query,{
   const scopeProviders=scopeList.map(scope=>managementOnly
     ?managementArticleProviders(scope,{contentType,sourceFilter,sourceTaxonomy,placeOnly})
     :genericScopeProviders(scope,{includeHiddenText:hiddenScopes.has(scope.id),contentType,sourceFilter,sourceTaxonomy,placeOnly}));
-  // Every query searches Galaxy.content, then all Anchor.description
-  // regardless of its Time/Trace/Keyword/Media type. Browsing keeps an
-  // article-only list so empty searches cannot accidentally scan every Anchor.
-  const providers=browse
-    ?scopeProviders.map(group=>group[0]).filter(Boolean)
-    :Array.from({length:managementOnly?1:2},(_,index)=>
-        scopeProviders.map(group=>group[index]).filter(Boolean)).flat();
+  // Search is article-led: one Galaxy.content provider per Scope, with
+  // Anchor relationships available only after choosing an article.
+  const providers=scopeProviders.flat();
   const failures=[];
 
   let stage=Number.isInteger(cursor?.stage)?cursor.stage:1;
