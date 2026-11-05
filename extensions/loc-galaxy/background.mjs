@@ -77,7 +77,7 @@ async function checkAuthorizedStatus(){
     return {ready:false,scopeid,subject:''};
   try{
     if(access?.scopeid===scopeid&&
-      Number(access.expires_at)>Date.now()+60_000&&
+      Number(access.expires_at)>Date.now()+15_000&&
       Number(access.verified_until)>Date.now())
       return {ready:true,scopeid,subject:access.subject};
     let issued;
