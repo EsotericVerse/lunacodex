@@ -3,19 +3,22 @@ const status=document.getElementById('status');
 const loginButton=document.getElementById('login');
 const authorizeButton=document.getElementById('authorize');
 const disconnectButton=document.getElementById('disconnect');
+const workbenchButton=document.getElementById('workbench');
+const importButton=document.getElementById('import');
+const bulkButton=document.getElementById('bulk');
 const connected=document.getElementById('connected');
 const account=document.getElementById('account');
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 let busy=false;
 
-async function call(type,scopeid){
-  const reply=await chrome.runtime.sendMessage({type,scopeid});
+async function call(type,scopeid,params={}){
+  const reply=await chrome.runtime.sendMessage({type,scopeid,...params});
   if(!reply||reply.ok!==true)throw Error(reply?.error||'LOC Galaxy 連線失敗');
   return reply.data||{};
 }
 function setBusy(on){
   busy=on;
-  for(const button of [loginButton,authorizeButton,disconnectButton])button.disabled=on;
+  for(const button of [loginButton,authorizeButton,disconnectButton,workbenchButton,importButton,bulkButton])button.disabled=on;
   scopeInput.disabled=on;
 }
 function validScope(){
@@ -25,7 +28,7 @@ function validScope(){
 }
 function show(message,{error=false}={}){
   status.textContent=message;
-  status.style.color=error?'#ffc1b7':'#c3d6ed';
+  status.style.color=error?'#9a2d2d':'#555';
 }
 function render(data){
   if(data.scopeid&&!scopeInput.value)scopeInput.value=data.scopeid;
@@ -33,7 +36,7 @@ function render(data){
   connected.hidden=!(data.ready&&same);
   if(data.ready&&same){
     account.textContent='Scope: '+data.scopeid+' · Clerk: '+data.subject;
-    show('授權已通過。下一階段的 Recorder 功能尚未啟用。');
+    show('Scope 已授權，可使用 Galaxy 工作台及既有網站的資料匯入／大量更新。');
   }else if(data.temporary_unavailable)
     show('暫時無法確認連線；已保留授權狀態，網路恢復後再試。',{error:true});
   else show('先使用 LOC 完整登入畫面，再完成專用 OAuth 授權。');
@@ -49,6 +52,19 @@ async function operation(type){
   }catch(error){show(String(error.message||error),{error:true});}
   finally{setBusy(false);}
 }
+async function openWork(type,mode){
+  if(busy)return;
+  try{
+    const id=validScope();
+    setBusy(true);
+    await call(type,id,mode?{mode}:{});
+    show('工作頁面已在新分頁開啟。');
+  }catch(error){show(String(error.message||error),{error:true});}
+  finally{setBusy(false);}
+}
+workbenchButton.addEventListener('click',()=>openWork('locGalaxy.openWorkbench'));
+importButton.addEventListener('click',()=>openWork('locGalaxy.openWorkspace','import'));
+bulkButton.addEventListener('click',()=>openWork('locGalaxy.openWorkspace','bulk'));
 loginButton.addEventListener('click',()=>operation('locGalaxy.openLogin'));
 authorizeButton.addEventListener('click',()=>operation('locGalaxy.authorize'));
 disconnectButton.addEventListener('click',async()=>{

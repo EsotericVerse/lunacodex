@@ -1,7 +1,8 @@
 import {
   LOC_ORIGIN,interactiveAuthorization,refreshAuthorization,
-  verifyScopeAuthorization
+  verifyScopeAuthorization,mcpTool
 } from './oauth.mjs';
+import {scopeManagementUrl} from './workspace-routes.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const SCOPE_KEY='locGalaxy.scopeid';
@@ -9,6 +10,7 @@ const OAUTH_KEY='locGalaxy.oauth';
 const ACCESS_KEY='locGalaxy.access';
 const SCENIC_LOGIN=LOC_ORIGIN+'/login/index.html?return_to=%2Flocal%2Fsettings%2F';
 let inProgress=false;
+const linkSearchStarted=new Map();
 
 async function protectStorage(){
   // Tokens may only be read from extension's trusted contexts.
@@ -81,10 +83,66 @@ async function authorizedStatus(){
     return {ready:false,scopeid,subject:'',temporary_unavailable:!denied};
   }
 }
+
+// The workbench never receives OAuth tokens. Only the trusted service worker
+// sends approved, validated MCP calls with the verified Scope's credential.
+async function verifiedAccess(scopeid){
+  checkedScope(scopeid);
+  const state=await authorizedStatus();
+  if(!state.ready||state.scopeid!==scopeid)throw Error('請先完成 LOC Galaxy 的 Scope OAuth 授權');
+  const access=(await readAll()).access;
+  if(access?.scopeid!==scopeid||!access.access_token||
+     Number(access.expires_at)<Date.now()+15000)
+    throw Error('LOC MCP Access Token 已過期，請重新驗證 OAuth');
+  return access.access_token;
+}
+async function galaxyRequest(message){
+  const scopeid=checkedScope(message.scopeid);
+  const action=String(message.action||'');
+  const source=message.source??'mcp';
+  if(!['search','read'].includes(action)||!['mcp','github'].includes(source))
+    throw Error('不支援的 Galaxy Link 查詢');
+  const token=await verifiedAccess(scopeid);
+  if(action==='search'){
+    const query=String(message.query||'').trim();
+    if(query.length<2||query.length>100||/[\u0000-\u001f\u007f]/.test(query))
+      throw Error('請輸入 2–100 字的搜尋詞');
+    const key=scopeid+':'+source;
+    const last=linkSearchStarted.get(key)||0;
+    if(Date.now()-last<30000)throw Error('Galaxy Link 搜尋有 QoS 限制，請稍後再查詢');
+    linkSearchStarted.set(key,Date.now());
+    return mcpTool(token,'galaxy_link',{action:'search',scopeid,source,query,limit:5});
+  }
+  if(!/^[A-Za-z0-9]{8}$/.test(String(message.uid||'')))
+    throw Error('Galaxy UID 必須是八碼大小寫相符的英數字');
+  const offset=Number(message.offset??0);
+  if(!Number.isInteger(offset)||offset<0||offset>1000000)
+    throw Error('文章讀取位置無效');
+  return mcpTool(token,'galaxy_link',{
+    action:'read',scopeid,source,uid:message.uid,offset,max_chars:20000
+  });
+}
+async function openWorkspace(message){
+  const scopeid=checkedScope(message.scopeid);
+  await verifiedAccess(scopeid);
+  if(message.type==='locGalaxy.openWorkbench'){
+    const page=chrome.runtime.getURL('workbench.html?scopeid='+encodeURIComponent(scopeid));
+    await chrome.tabs.create({url:page,active:true});
+    return {scopeid,opened:true};
+  }
+  const mode=String(message.mode||'');
+  const url=scopeManagementUrl(scopeid,mode);
+  await chrome.tabs.create({url,active:true});
+  return {scopeid,mode,opened:true};
+}
+
 async function handle(message){
   await protectStorage();
   switch(message?.type){
     case 'locGalaxy.status':return authorizedStatus();
+    case 'locGalaxy.openWorkbench':
+    case 'locGalaxy.openWorkspace':return openWorkspace(message);
+    case 'locGalaxy.galaxy':return galaxyRequest(message);
     case 'locGalaxy.openLogin':{
       const scopeid=await selectScope(message.scopeid);
       await chrome.tabs.create({url:SCENIC_LOGIN,active:true});
@@ -102,6 +160,7 @@ async function handle(message){
       }finally{inProgress=false;}
     }
     case 'locGalaxy.disconnect':{
+      linkSearchStarted.clear();
       await clearCredentials();
       return {ready:false};
     }

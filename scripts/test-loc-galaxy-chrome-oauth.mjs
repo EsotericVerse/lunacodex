@@ -19,14 +19,14 @@ test('LOC Galaxy manifest limits host access to LOC and its known Clerk issuer',
   assert.equal(manifest.content_scripts,undefined);
   assert.equal(config.issuer,ISSUER);
   assert.equal(config.resource,MCP_URL);
-  assert.equal(config.client_id,''); // operator must register public client
+  assert.match(config.client_id,/^[A-Za-z0-9_-]{8,128}$/); // registered Public OAuth client, never a secret
   const hash=createHash('sha256').update(Buffer.from(manifest.key,'base64')).digest().subarray(0,16);
   const id=[...hash].map(n=>String.fromCharCode(97+(n>>4),97+(n&15))).join('');
   assert.equal(id,'hiaeafonocnjaclcfgjmdopbcgnafnna');
   assert.deepEqual(metadata.redirect_uris,['https://'+id+'.chromiumapp.org/loc-galaxy']);
   assert.equal(metadata.token_endpoint_auth_method,'none');
 });
-test('extension exposes only Scope ID and original LOC scenic login',()=>{
+test('extension exposes only Scope ID for auth and preserves scenic login',()=>{
   const popup=read('extensions/loc-galaxy/popup.html');
   const worker=read('extensions/loc-galaxy/background.mjs');
   const oauth=read('extensions/loc-galaxy/oauth.mjs');
