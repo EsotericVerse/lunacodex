@@ -609,7 +609,7 @@ function AppShellInner({children}){
             <BottomNavIcon name={tab.icon}/><span>{tab.label}</span>
           </button>)
       :editDockPending?<span role="status" className="scope-edit-dock-pending">正在確認編輯介面…</span>
-:null
+      :null}
       {editingDockVisible&&editDock.notice?<p className="scope-edit-dock-notice" role="status" aria-live="polite">{editDock.notice}</p>:null}
     </nav>:null}
     {showHomeEditEntry?<ScopeHomeEditEntry key={scopeId}/>:null}
