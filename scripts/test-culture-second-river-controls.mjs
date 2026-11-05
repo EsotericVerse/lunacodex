@@ -17,12 +17,22 @@ test('keyword filter uses existing bounded public analytics, not a new SQL table
   assert.match(source,/analytics\(scopeId,'shared_classes',null,null\)/);
   assert.doesNotMatch(source,/analytics\(scopeId,'keyword_summary'/);
   assert.match(source,/analytics\(scopeId,'culture_density',rangeStart,rangeEnd\)/);
-  assert.match(source,/base=Math\.floor\(total\/keywordGroups\.length\)/);
+  assert.match(source,/totalWeight=keywordGroups\.reduce/);
+  assert.match(source,/Math\.floor\(total\*weights\[index\]\/denominator\)/);
   assert.match(source,/p_view:'keyword_catalog'/);
-  assert.match(source,/每日文章密度等比例分配示意/);
+  assert.match(source,/依 Anchor 已存總量比例分配每日文化密度/);
 });
 test('selecting another filter resets stale article lists and source expansion',()=>{
   assert.match(source,/setDensityMode\(event\.target\.value\);setExpandedSources\(\[\]\);resetArticles\(''\)/);
   assert.match(source,/setDensityPeriod\(event\.target\.value\);resetArticles\(''\)/);
   assert.match(source,/densityMode==='source'&&densityRiver\.sites\.length/);
+});
+
+test('current Anchor keyword catalog uses groups, items and total instead of article UID lists',()=>{
+  const backend=readFileSync(new URL('../app/loc/providers/kysely-analytics.mjs',import.meta.url),'utf8');
+  const catalog=backend.slice(backend.indexOf('async function keywordCatalog('),backend.indexOf('async function traceDaily(',backend.indexOf('async function keywordCatalog(')));
+  assert.match(catalog,/children\(root,'groups'\)/);
+  assert.match(catalog,/children\(group,'items'\)/);
+  assert.match(catalog,/node\?\.attr\?\.total/);
+  assert.doesNotMatch(catalog,/uidlists|article\.uid/);
 });
