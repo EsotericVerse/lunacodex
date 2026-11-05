@@ -395,3 +395,62 @@ test('Galaxy Link append is idempotent after lost checkpoint acknowledgment',asy
   assert.equal(patches,1);
 });
 
+
+test('Galaxy Link update_pr locates managed GitHub PR without a user-supplied UID',async()=>{
+  const {do:authority}=state();
+  const calls=[];
+  globalThis.fetch=async(_url,options)=>{
+    calls.push(JSON.parse(options.body));
+    return Response.json({data:{count:1,uid:'Ab12Cd34'}});
+  };
+  const input={...prUpdate};
+  delete input.uid;
+  const result=await authority.mcpUpdatePr('lo3rwang',input,'eyJ.authorized.mcp');
+  assert.equal(result.uid,'Ab12Cd34');
+  assert.equal(result.pr_number,968);
+  assert.equal(calls.length,1);
+  assert.equal(Object.hasOwn(calls[0],'uid'),false);
+  assert.equal(calls[0].kind,'mcp-update-pr');
+  assert.equal(calls[0].pr_number,968);
+});
+
+test('portable Scope finds only one original GitHub PR by canonical site_id',async()=>{
+  const {do:authority}=state();
+  authority.mcpPrivateProfile=async()=>profile;
+  const events=[];
+  globalThis.fetch=async(url,options={})=>{
+    const target=new URL(url);
+    events.push({method:options.method||'GET',siteid:target.searchParams.get('site_id'),
+      uid:target.searchParams.get('uid')});
+    if(target.searchParams.get('site_id'))
+      return Response.json([{uid:'Ab12Cd34',title:'LOC｜PR #968｜紀錄',
+        site:'github',site_id:'EsotericVerse/moon-runes-pwa#968'}]);
+    if((options.method||'GET')==='GET')
+      return Response.json([{uid:'Ab12Cd34',title:'LOC｜PR #968｜紀錄',
+        site:'github',site_id:'EsotericVerse/moon-runes-pwa#968'}]);
+    return new Response(null,{status:204});
+  };
+  const input={...prUpdate};delete input.uid;
+  const result=await authority.mcpUpdatePr('external',input,'eyJ.authorized.mcp');
+  assert.equal(result.uid,'Ab12Cd34');
+  assert.equal(events.length,3);
+  assert.equal(events[0].siteid,'eq.EsotericVerse/moon-runes-pwa#968');
+  assert.equal(events[1].uid,'eq.Ab12Cd34');
+  assert.equal(events[2].method,'PATCH');
+});
+
+test('portable PR update refuses ambiguous source identity without modifying anything',async()=>{
+  const {do:authority}=state();
+  authority.mcpPrivateProfile=async()=>profile;
+  let writes=0;
+  globalThis.fetch=async(_url,options={})=>{
+    if(options.method==='PATCH')writes++;
+    return Response.json([
+      {uid:'Ab12Cd34',site:'github',title:'PR #968',site_id:'EsotericVerse/moon-runes-pwa#968'},
+      {uid:'Ba21Dc43',site:'github',title:'PR #968',site_id:'EsotericVerse/moon-runes-pwa#968'}
+    ]);
+  };
+  const input={...prUpdate};delete input.uid;
+  await assert.rejects(authority.mcpUpdatePr('external',input,'eyJ.authorized.mcp'),/Multiple PR records/);
+  assert.equal(writes,0);
+});
