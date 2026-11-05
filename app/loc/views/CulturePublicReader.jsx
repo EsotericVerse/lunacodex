@@ -104,10 +104,21 @@ function anchorModel(rows,start,end,expanded){
 }
 function sourceModel(rows,systemNames,personalNames,expanded,start,end){
   const names=[...new Set(list(rows).map(row=>String(row.site||'')))];
-  const system=new Set(systemNames.length?systemNames:names);
-  const personal=new Set(personalNames);
-  const roots=[{id:'system',label:'系統分類',sites:names.filter(site=>system.has(site))},
-    {id:'personal',label:'個人分類',sites:names.filter(site=>personal.has(site))}];
+  // Source names may include the owner's human-readable label
+  // (e.g. 方格子vocus) while Galaxy.site stores the short canonical key.
+  const matches=(site,configured)=>configured.some(value=>{
+    const label=String(value||'').trim().toLowerCase();
+    const key=String(site||'').trim().toLowerCase();
+    return label===key||Boolean(key&&label.includes(key))||
+      key==='others'&&label==='其他';
+  });
+  const roots=[{
+    id:'system',label:'系統分類',
+    sites:names.filter(site=>!systemNames.length||matches(site,systemNames))
+  },{
+    id:'personal',label:'個人分類',
+    sites:names.filter(site=>matches(site,personalNames))
+  }];
   const groups=[],items=[],sites=[];
   const max=Math.max(1,...rows.map(row=>Number(row.item_count)||0));
   for(const root of roots){
