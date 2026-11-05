@@ -1,8 +1,7 @@
 // Read complete timestamp groups so pagination never depends on the arbitrary
-// order of articles sharing a publication time. UID breaks ties only in memory.
+// order of articles sharing a publication time. UID is not an ordering key.
 const text=value=>String(value??'');
-const timeOrder=(a,b)=>text(a.createtime).localeCompare(text(b.createtime))
-  ||text(a.uid).localeCompare(text(b.uid));
+const timeOrder=(a,b)=>text(a.createtime).localeCompare(text(b.createtime));
 
 export function createChronologicalKeywordReader({readTimePage,readTimePeers,readUndated,maximumRows=10000}={}){
   if([readTimePage,readTimePeers,readUndated].some(read=>typeof read!=='function'))
@@ -35,7 +34,7 @@ export function createChronologicalKeywordReader({readTimePage,readTimePeers,rea
         const rows=await readUndated({maximumRows});
         if(!Array.isArray(rows)||rows.length>=maximumRows||rows.some(row=>row?.createtime!=null))
           throw new Error('Incomplete undated article group; no analysis results were written');
-        pending.push(...rows.sort((a,b)=>text(a.uid).localeCompare(text(b.uid))));
+        pending.push(...rows);
         undatedDone=true;
       }
     }
@@ -127,7 +126,7 @@ export function createIndexedDateKeywordReader({
           'Galaxy 無日期文章');
         if(undated.some(row=>row?.date!=null||row?.createtime!=null))
           throw new Error('Galaxy 無日期文章不完整，未寫入分析結果');
-        pending.push(...undated.sort((a,b)=>text(a.uid).localeCompare(text(b.uid))));
+        pending.push(...undated);
         undatedDone=true;
       }
     }
