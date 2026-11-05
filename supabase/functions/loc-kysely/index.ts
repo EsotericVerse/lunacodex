@@ -215,9 +215,9 @@ async function saveDatabaseTarget(input:Record<string,unknown>,role:string,claim
   };
   return control.transaction().execute(async trx=>{
     if(profile)await saveVaultConnection(trx,alias,profile);
-    const current=await trx.selectFrom("silver.loc").select("database")
-      .where("id","=","loc").forUpdate().executeTakeFirst();
-    if(!Array.isArray(current?.database))throw new Error("LOC database list is unavailable");
+    const current=await trx.selectFrom("silver.manage").select("database")
+      .where("id","=","admin").forUpdate().executeTakeFirst();
+    if(!Array.isArray(current?.database))throw new Error("System database list is unavailable");
     const exists=current.database.find((item:Record<string,any>)=>item.target_id===targetId);
     const next=exists?current.database.map((item:Record<string,any>)=>
       item.target_id===targetId?{...item,...record}:item):
@@ -226,8 +226,8 @@ async function saveDatabaseTarget(input:Record<string,unknown>,role:string,claim
     if(input.activate===true){
       for(const item of next)item.selected=item.target_id===targetId;
     }
-    await trx.updateTable("silver.loc").set({database:sql`${JSON.stringify(next)}::jsonb`})
-      .where("id","=","loc").execute();
+    await trx.updateTable("silver.manage").set({database:sql`${JSON.stringify(next)}::jsonb`})
+      .where("id","=","admin").execute();
     selectedRouteRevision++;
     selectedRouteCache={until:0,target:null};
     selectedRouteInFlight=null;
