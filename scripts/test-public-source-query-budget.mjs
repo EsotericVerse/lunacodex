@@ -40,6 +40,20 @@ test('ordinary authenticated navigation batches three preferences into one SELEC
   assert.match(storage,/\.in\('setting_key',names\)/);
 });
 
+test('Service Worker policy and navigation settings reuse this browser session',()=>{
+  const shell=read('app/AppShell.jsx');
+  const cache=read('app/loc/cache-mode-client.mjs');
+  const storage=read('app/loc/user-storage.js');
+  const nav=read('app/loc/use-navigation-preferences.js');
+  assert.match(cache,/SESSION_POLICY_KEY='loc-public-cache-policy-v1'/);
+  assert.match(cache,/const cached=readSessionPolicy\(\)/);
+  assert.match(cache,/if\(policyRequest\)return policyRequest/);
+  assert.match(storage,/NAV_SETTINGS_CACHE_KEY='loc-navigation-setting-snapshot-v1'/);
+  assert.match(storage,/cached\?\.identity===identity/);
+  assert.match(nav,/getSettings\(keys,identity\)/);
+  assert.match(shell,/\},\[\]\);\n  const editDock=useEditDock\(\)/);
+});
+
 test('protected management does not flash ordinary dock and never alters RLS',()=>{
   const shell=read('app/AppShell.jsx');
   const gate=read('app/loc/ManagementAccess.jsx');
