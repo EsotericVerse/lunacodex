@@ -853,13 +853,13 @@ function UniversalImport({scopeId,format,onFormatChange}) {
             // Every tied row is consumed together, never split by OFFSET.
             const beforeBoundary=page.filter(row=>String(row.createtime)!==boundary);
             append(beforeBoundary);
-            const {data:tied,error:tieError}=await dbAuthRelation(galaxy)
-              .select('uid,createtime,site_id')
+            const {data:tied,error:tieError,count:tieCount}=await dbAuthRelation(galaxy)
+              .select('uid,createtime,site_id',{count:'exact'})
               .ilike('site',site).eq('createtime',boundary)
               .range(0,MAX_ROWS);
             if(tieError)throw Error('相同建立時間的文章比對失敗：'+tieError.message);
-            if((tied||[]).length>MAX_ROWS)
-              throw Error('同一建立時間的文章超過安全批次上限，已停止匯入避免漏資料');
+            if(!Number.isInteger(tieCount)||tieCount>MAX_ROWS)
+              throw Error('無法完整確認同時文章筆數，已停止匯入避免漏資料');
             append(tied||[]);
           }else append(page);
           after=boundary;
