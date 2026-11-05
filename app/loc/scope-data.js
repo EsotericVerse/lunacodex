@@ -167,7 +167,7 @@ export async function selectScopeRegistry({parentScopeId=null,scopeKind=null}={}
     .sort((a,b)=>a.sort_order-b.sort_order||a.scope_id.localeCompare(b.scope_id));
 }
 
-// LOC's public search registry: registry membership and each tree's search_able
+// LOC's public search registry: membership and the Scope-level search switch
 // are independent of an article's searchable flag.
 export async function selectLocSearchScopes(){
   // LOC Group membership is owned by silver.manage, not by front-end routes.
@@ -177,7 +177,7 @@ export async function selectLocSearchScopes(){
     .filter(row=>row.active&&members.has(row.scope_id))
     .map(async row=>{
       const config=await selectScopeConfig(row.scope_id);
-      if(!config||!scopeFeatureEnabled(config,'search_able'))return null;
+      if(!config||!scopeFeatureEnabled(config,'search'))return null;
       const scope=defaultScopeData(row.scope_id);
       return scope?{...scope,display_name:String(config.display_name||row.display_name||row.scope_id).trim()}:null;
     }));
