@@ -2,7 +2,8 @@ export const SPACE_ANCHOR='space_anchor';
 export const SPACE_PERIOD='path';
 export const SPACE_ROAD=SPACE_PERIOD; // Historical JS alias only; no space_road database writes.
 export const SPACE_TRACE='trace';
-export const BASE62_FOUR=/^[A-Za-z0-9]{4}$/;
+export const BASE62_FOUR=/^[A-Za-z0-9]{4}$/; // Legacy diagnostic/export only.
+export const BASE62_UID=/^(?:[A-Za-z0-9]{4}|[A-Za-z0-9]{8})$/; // Current anchors use eight characters.
 export function spaceType(row){
   const type=String(row?.type||row?.trace_type||'');
   return type==='anchor'?SPACE_ANCHOR:type==='map'||type==='space_road'?SPACE_PERIOD:type;
@@ -22,9 +23,9 @@ export function spaceRouteIds(selection,records=[]){
   const routes=new Map((records||[]).filter(row=>(!owner||spaceScope(row)===owner)
     &&spaceType(row)===SPACE_PERIOD).map(row=>[spaceId(row),row]));
   return [...new Set(spaceMembers(selection).flat(Infinity)
-    .filter(uid=>typeof uid==='string'&&BASE62_FOUR.test(uid))
+    .filter(uid=>typeof uid==='string'&&BASE62_UID.test(uid))
     .flatMap(uid=>routes.has(uid)?spaceMembers(routes.get(uid))
-      .filter(id=>typeof id==='string'&&BASE62_FOUR.test(id)):[uid]))];
+      .filter(id=>typeof id==='string'&&BASE62_UID.test(id)):[uid]))];
 }
 export function resolveSpaceGraph(selection,records=[],{scopeId}={}){
   const owner=scopeId||(!Array.isArray(selection)?spaceScope(selection):'');
@@ -42,7 +43,7 @@ export function resolveSpaceGraph(selection,records=[],{scopeId}={}){
     if(first&&second)lines.push({from,to,routeId,order});
   };
   if(Array.isArray(selection)){
-    selection.filter(uid=>BASE62_FOUR.test(String(uid))).forEach(addPoint);
+    selection.filter(uid=>BASE62_UID.test(String(uid))).forEach(addPoint);
   }else if(spaceType(selection)===SPACE_ANCHOR){
     addPoint(spaceId(selection));
   }else if(spaceType(selection)===SPACE_ROAD){
@@ -52,7 +53,7 @@ export function resolveSpaceGraph(selection,records=[],{scopeId}={}){
     for(let i=1;i<nodes.length;i++)addLine(nodes[i-1],nodes[i],spaceId(selection),i-1);
   }else if(spaceType(selection)===SPACE_TRACE){
     [...(selection.route_list?.routes||[]),...(selection.route_list?.segments||[])].forEach((part,index)=>{
-      if(typeof part==='string'&&BASE62_FOUR.test(part)){
+      if(typeof part==='string'&&BASE62_UID.test(part)){
         const route=byId.get(part);
         if(!route||spaceType(route)!==SPACE_PERIOD){missing.add(part);return;}
         const nodes=spaceMembers(route);
@@ -63,7 +64,7 @@ export function resolveSpaceGraph(selection,records=[],{scopeId}={}){
       }
       if(!Array.isArray(part)||part.length!==2){missing.add('invalid-pair:'+index);return;}
       const [from,to]=part.map(uid=>String(uid||'').trim());
-      if(!BASE62_FOUR.test(from)||!BASE62_FOUR.test(to)||from===to){
+      if(!BASE62_UID.test(from)||!BASE62_UID.test(to)||from===to){
         missing.add('invalid-pair:'+index);return;
       }
       addLine(from,to,spaceId(selection),index);
