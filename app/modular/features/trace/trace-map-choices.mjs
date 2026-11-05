@@ -78,7 +78,8 @@ export function locReferencedPointGroups(rows=[],maxPerScope=50){
 
 /**
  * Dynamically combine almost-coincident public point pins. Inputs are already
- * limited to path/trace references. The final LOC map has at most 50 pins.
+ * limited to path/trace references. Show only geographic intersections of
+ * two or more distinct Scopes, with at most 50 shared pins on the LOC map.
  * A 75-metre radius allows small GPS/check-in differences without conflating
  * separate neighborhoods. Original point records are never changed.
  */
@@ -118,7 +119,8 @@ export function clusterLocSharedPoints(points=[],maxPins=50,radiusMeters=75){
   // Stable input order breaks ties; original UID and coordinate data stay intact.
   const ranked=clusters.map((cluster,index)=>({
     cluster,index,shareCount:new Set(cluster.members.map(member=>member.source_scope)).size
-  })).sort((a,b)=>b.shareCount-a.shareCount||a.index-b.index)
+  })).filter(item=>item.shareCount>=2)
+    .sort((a,b)=>b.shareCount-a.shareCount||a.index-b.index)
     .slice(0,Math.max(0,Math.floor(maxPins)));
   return ranked.map(({cluster,shareCount})=>{
     const lines=cluster.members.map(member=>
