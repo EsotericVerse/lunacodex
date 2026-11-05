@@ -20,8 +20,8 @@ function route(values,existing={}){
     if(!DIR.test(directory.slice(1)))fail('Invalid route directory');}
   return {domain:domain||null,directory:directory||null};
 }
-function resultRow(row){return {
-  scope_id:row.id,display_name:row.display_name,
+function resultRow(row,name=''){return {
+  scope_id:row.id,display_name:name||row.display_name||row.id,
   scope_kind:row.manage_role==='group'?'group':row.manage_role==='system'?'system':'scope',
   domain:row.domain,directory:row.directory,parent_scope_id:row.parent_scope_id,
   active:row.active,sort_order:row.sort_order
@@ -57,16 +57,19 @@ async function managedRegistry(trx,args){
     const sort=Object.hasOwn(values,'sort_order')
       ?Number(values.sort_order)||0:await nextSort(trx,parent);
     const inserted=await trx.insertInto('silver.manage').values({
-      id,display_name,domain,directory,parent_scope_id:parent,
+      id,domain,directory,parent_scope_id:parent,
       active,sort_order:sort,manage_role:'group'
-    }).returning(['id','display_name','domain','directory','parent_scope_id',
+    }).returning(['id','domain','directory','parent_scope_id',
       'active','sort_order','manage_role']).executeTakeFirst();
     if(!inserted)fail('Scope Group was not created');
-    return resultRow(inserted);
+    await trx.insertInto('silver.loc').values({id,display_name,locale:'zh-Hant'}).executeTakeFirst();
+    return resultRow(inserted,display_name);
   }
   if(operation!=='update'||!existing)fail('Scope Registry row missing or unsupported operation');
   if(existing.manage_role==='system')fail('System Registry is immutable');
-  const display_name=String(values.display_name??existing.display_name??'').trim();
+  const nameRow=await trx.selectFrom('silver.loc').select('display_name')
+    .where('id','=',id).executeTakeFirst();
+  const display_name=String(values.display_name??nameRow?.display_name??id).trim();
   if(!display_name)fail('Scope display name is required');
   const {domain,directory}=route(values,existing);
   const parentText=values.parent_scope_id===undefined
@@ -98,13 +101,14 @@ async function managedRegistry(trx,args){
     if(child)fail('Disable or move active Scope Group children first');
   }
   const updated=await trx.updateTable('silver.manage')
-    .set({display_name,domain,directory,parent_scope_id:parent,
-      active,sort_order:sort,updated_at:sql`now()`})
+    .set({domain,directory,parent_scope_id:parent,active,sort_order:sort})
     .where('id','=',id)
-    .returning(['id','display_name','domain','directory','parent_scope_id',
+    .returning(['id','domain','directory','parent_scope_id',
       'active','sort_order','manage_role']).executeTakeFirst();
   if(!updated)fail('Scope Registry update failed');
-  return resultRow(updated);
+  const named=await trx.updateTable('silver.loc').set({display_name}).where('id','=',id).executeTakeFirst();
+  if(Number(named?.numUpdatedRows||0)!==1)fail('Group / Scope list name missing');
+  return resultRow(updated,display_name);
 }
 async function existsRelation(trx,relation){
   const r=await sql`select to_regclass(${relation}) is not null as present`.execute(trx);
@@ -132,6 +136,7 @@ async function deleteScope(trx,args){
     }
   }
   await trx.deleteFrom('silver.manage').where('id','=',id).executeTakeFirst();
+  await trx.deleteFrom('silver.loc').where('id','=',id).executeTakeFirst();
   await sql`notify pgrst,'reload schema'`.execute(trx);
   return {scope_id:id,deleted:true};
 }
@@ -259,8 +264,8 @@ async function provisionScope(trx,args){
     await sql`grant insert,update,delete on ${table} to authenticated`.execute(trx);
   const sort=await nextSort(trx,parent);
   await trx.insertInto('silver.manage').values({
-    id,display_name:display,email,domain,directory,parent_scope_id:parent,
-    active:true,sort_order:sort,manage_role:'scope',birthday:args.p_birthday||null
+    id,email,domain,directory,parent_scope_id:parent,
+    active:true,sort_order:sort,manage_role:'scope'
   }).executeTakeFirst();
   const cloned=args.p_copy_keywords===false?null:await copyDefaultKeywordClass(trx,id,'silver.'+id+'_anchor');
   await trx.insertInto('silver.'+id).values({
@@ -269,6 +274,9 @@ async function provisionScope(trx,args){
     keyword_min_chars:32,keyword_min_documents:100,
     current_keyword_class_uid:cloned?.uid||null,keyword_class_share_enabled:false,
     keyword_meta:sql`'{}'::jsonb`,staticstime:null,updated_at:sql`now()`
+  }).executeTakeFirst();
+  await trx.insertInto('silver.loc').values({
+    id,display_name:display,locale:'zh-Hant',birthday:args.p_birthday||null
   }).executeTakeFirst();
   await sql`notify pgrst,'reload schema'`.execute(trx);
   return {scope_id:id,display_name:display,parent_scope_id:parent,
