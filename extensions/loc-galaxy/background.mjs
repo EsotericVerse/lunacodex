@@ -60,7 +60,15 @@ async function commitAuthorization(scopeid,issued,subject){
     expires_at:issued.expires_at,verified_until:Date.now()+5*60000
   }});
 }
+let statusFlight=null;
 async function authorizedStatus(){
+  if(statusFlight)return statusFlight;
+  const flight=checkAuthorizedStatus();
+  statusFlight=flight;
+  try{return await flight;}
+  finally{if(statusFlight===flight)statusFlight=null;}
+}
+async function checkAuthorizedStatus(){
   const {scopeid,auth,access}=await readAll();
   if(!scopeid)return {ready:false,scopeid:'',subject:''};
   if(!auth||auth.scopeid!==scopeid)
