@@ -257,60 +257,61 @@ export function selectScopeConfig(scopeId){
     columns:scopeConfigColumns(scope.id),
     filters:[{column:'id',operator:'eq',value:scope.id}],limit:1,offset:0
   }).then(({rows})=>rows[0]||null);
-  const request=scope.id==='local'||editedPublicMetadata?live():
-    Promise.resolve(SCOPE_ROUTE_INDEX.find(row=>row.scope_id===scope.id)?.config||null);
+  // Availability flags come from the Scope itself; no management permission
+  // or Galaxy/Anchor query is needed to render public features.
+  const request=live();
   if(scope.id!=='local')scopeConfigInFlight.set(scope.id,request);
   return request;
 }
 
 
 const scopeBlocksRequests=new Map();
-const locallyEditedBlocks=new Set();
 export function invalidateScopeBlockPage(scopeId,page='index'){
   const id=String(scopeId||'').trim().toLowerCase();
-  const pageName=String(page||'index').trim().toLowerCase().replace(/^home$/,'index');
-  const key=id+':'+pageName;
-  scopeBlocksRequests.delete(key);
-  locallyEditedBlocks.add(key);
+  scopeBlocksRequests.delete(id+':'+String(page||'index').trim().toLowerCase());
 }
-// Admin editing must read committed rows, not an immutable build-time JS snapshot.
-// Read-after-write calls use this path too, so an RLS no-op cannot appear saved.
+const BLOCK_COLUMNS='uid,page_name,block_eyebrow,block_title,block_subtitle,block_text,block_order,block_entity,block_image';
 export async function selectLiveScopeBlocks(scopeId,page='index'){
   const id=String(scopeId||'').trim().toLowerCase();
-  if(!SCOPE_ID_PATTERN.test(id))return [];
-  // Management page_name is a case-sensitive document key in PostgreSQL.
-  // Preserve named keys such as TimeAnchor and GalaxyManage exactly.
   const name=String(page||'index').trim();
-  if(!/^[A-Za-z0-9_-]+$/.test(name))throw new Error('Page name 無效');
+  if(!SCOPE_ID_PATTERN.test(id)||! /^[A-Za-z0-9_-]+$/.test(name))return [];
   const {rows}=await selectRows(`silver.${id}_blocks`,{
-    columns:'uid,page_name,block_eyebrow,block_title,block_subtitle,block_text,block_order,block_entity,block_image',
-    filters:[{column:'page_name',operator:'eq',value:name}],
-    orders:[{column:'block_order',ascending:true}],limit:DB_QUERY_BATCH_SIZE,offset:0
+    columns:BLOCK_COLUMNS,filters:[{column:'page_name',operator:'eq',value:name}],
+    limit:DB_QUERY_BATCH_SIZE,offset:0
   });
-  return rows||[];
+  return (rows||[]).sort((a,b)=>Number(a.block_order||0)-Number(b.block_order||0));
+}
+export async function pageBlocks(scopeId,type='index'){
+  const id=String(scopeId||'').trim().toLowerCase();
+  const name=String(type||'index').trim().toLowerCase().replace(/^home$/,'index');
+  if(!SCOPE_ID_PATTERN.test(id)||! /^[a-z0-9_-]+$/.test(name))return [];
+  if(id==='local')return selectLiveScopeBlocks(id,name);
+  const {data,error}=await dbPublicClient.schema('silver').publicAction('page_blocks',{
+    p_scope_id:id,p_type:name
+  });
+  if(error)throw new Error(error.message||'Page Blocks SELECT failed');
+  return (Array.isArray(data)?data:[]).sort((a,b)=>Number(a.block_order||0)-Number(b.block_order||0));
+}
+export async function heroBlocks(scopeId,type){
+  const id=String(scopeId||'').trim().toLowerCase();
+  const name=String(type||'').trim().toLowerCase();
+  if(!SCOPE_ID_PATTERN.test(id)||! /^[a-z][a-z0-9_-]*$/.test(name))return [];
+  const {data,error}=await dbPublicClient.schema('silver').publicAction('hero_blocks',{
+    p_scope_id:id,p_type:name
+  });
+  if(error)throw new Error(error.message||'Hero Blocks SELECT failed');
+  return (Array.isArray(data)?data:[]).sort((a,b)=>Number(a.block_order||0)-Number(b.block_order||0));
 }
 export async function selectScopeBlocks(scopeId,page='index'){
   const id=String(scopeId||'').trim().toLowerCase();
-  if(!SCOPE_ID_PATTERN.test(id))return [];
-  const requested=String(page||'index').trim().toLowerCase();
-  const pageName=requested==='home'?'index':requested;
-  if(!/^[a-z0-9_-]+$/.test(pageName))throw new Error('Page name 無效');
-  const key=id+':'+pageName;
-  if(id!=='local'&&scopeBlocksRequests.has(key))return scopeBlocksRequests.get(key);
-  const request=(async()=>{
-    if(id!=='local'&&!locallyEditedBlocks.has(key)){
-      // Literal dynamic imports are split into immutable, content-hashed JS chunks.
-      // Missing published pages are empty; never silently scan the database.
-      return loadPublishedBlocks(id,pageName);
-    }
-    // Device-local data and authorized in-session edits still use the active provider.
-    const {rows}=await selectRows(`silver.${id}_blocks`,{
-      columns:'uid,page_name,block_eyebrow,block_title,block_subtitle,block_text,block_order,block_entity,block_image',
-      filters:[{column:'page_name',operator:'eq',value:pageName}],
-      orders:[{column:'block_order',ascending:true}],limit:DB_QUERY_BATCH_SIZE,offset:0
-    });
-    return rows||[];
-  })().catch(error=>{scopeBlocksRequests.delete(key);throw error;});
-  if(id!=='local')scopeBlocksRequests.set(key,request);
-  return request;
+  const name=String(page||'index').trim().toLowerCase().replace(/^home$/,'index');
+  if(!SCOPE_ID_PATTERN.test(id)||! /^[a-z0-9_-]+$/.test(name))return [];
+  const key=id+':'+name;
+  const existing=scopeBlocksRequests.get(key);
+  if(existing)return existing;
+  const promise=(name==='index'?pageBlocks(id,name):selectLiveScopeBlocks(id,name))
+    .then(async rows=>rows.length?rows:loadPublishedBlocks(id,name))
+    .catch(error=>{scopeBlocksRequests.delete(key);throw error});
+  scopeBlocksRequests.set(key,promise);
+  return promise;
 }
