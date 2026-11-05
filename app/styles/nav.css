@@ -187,3 +187,27 @@
 
 @media(prefers-reduced-motion:reduce){.scope-nav-viewport{scroll-behavior:auto;}}
 @media print{.scope-global{display:none!important;}}
+
+
+/* Public Scope navigation lives in Header; only the editor keeps a bottom dock. */
+.scope-top-feature-nav{
+  display:flex;align-items:center;gap:clamp(.3rem,.9vw,.75rem);
+  overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:thin;
+  margin-top:.4rem;padding:.15rem 0 .35rem;
+}
+.scope-top-feature-nav>a{
+  flex:1 0 auto;display:inline-flex;align-items:center;justify-content:center;
+  gap:.35rem;min-height:36px;padding:.35rem .65rem;
+  border:1px solid var(--loc-line);border-radius:.75rem;
+  color:var(--loc-text);text-decoration:none;
+  background:var(--loc-panel);
+  font-size:clamp(.76rem,.92vw,.9rem);
+}
+.scope-top-feature-nav>a[aria-current="page"]{
+  border-color:var(--loc-accent);
+  color:var(--loc-accent);
+}
+.scope-top-feature-nav>a:focus-visible{outline:2px solid var(--loc-accent);outline-offset:2px;}
+@media(max-width:760px){
+  .scope-top-feature-nav>a{min-height:44px;padding:.42rem .58rem;}
+}
