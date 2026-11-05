@@ -378,6 +378,8 @@ async function managedMcpUpdatePr(scopeid,uid,prNumber,title,content,updatedAt,o
   }
   const data=await response.json();
   if(data?.data?.count!==1)throw fail('Managed Scope write was not confirmed',502);
+  if(!UID.test(String(data.data.uid||'')))throw fail('PR update did not return a valid Galaxy UID',502);
+  return data.data.uid;
 }
 
 // Direct PostgREST path for self-hosted Scope databases. Reads the existing
@@ -388,8 +390,26 @@ async function postgrestUpdatePr(profile,uid,prNumber,title,content,updatedAt){
   const headers={accept:'application/json','accept-profile':profile.schema,
     'content-profile':profile.schema,
     apikey:profile.api_key,authorization:'Bearer '+profile.api_key};
+  const canonical='EsotericVerse/moon-runes-pwa#'+prNumber;
+  const prMarker=new RegExp('(?:^|[^0-9])PR\\\\s*#'+prNumber+'(?:[^0-9]|$)');
+  if(!uid){
+    // Resolve by source identity; never guess a UID or update multiple rows.
+    const exact=await postgrest(profile,{params:{select:'uid,title,site,site_id',
+      site:'eq.github',site_id:'eq.'+canonical,limit:2}});
+    let matches=exact;
+    if(!matches.length){
+      const candidates=await postgrest(profile,{params:{select:'uid,title,site,site_id',
+        site:'eq.github',title:'ilike.*PR #'+prNumber+'*',
+        order:'createtime.desc',limit:40}});
+      matches=candidates.filter(row=>prMarker.test(String(row.title||'')));
+    }
+    if(matches.length!==1)throw fail(matches.length?
+      'Multiple PR records found; refusing ambiguous update':'Existing GitHub PR record not found',409);
+    uid=matches[0].uid;
+    if(!UID.test(uid))throw fail('Invalid saved PR UID',502);
+  }
   const getUrl=new URL(profile.endpoint+'/'+profile.table);
-  getUrl.searchParams.set('select','uid,title,site');
+  getUrl.searchParams.set('select','uid,title,site,site_id');
   getUrl.searchParams.set('uid','eq.'+uid);
   getUrl.searchParams.set('limit','1');
   const getRes=await fetch(getUrl.href,{method:'GET',headers,redirect:'manual',signal:AbortSignal.timeout(9500)});
@@ -398,8 +418,8 @@ async function postgrestUpdatePr(profile,uid,prNumber,title,content,updatedAt){
   if(!Array.isArray(rows)||!rows.length)throw fail('Scope article not found',403);
   const row=rows[0];
   if(row.site!=='github')throw fail('Only GitHub PR-origin articles can be updated through this tool',403);
-  const prMarker=new RegExp('(?:^|[^0-9])PR\\s*#'+prNumber+'(?:[^0-9]|$)');
-  if(!prMarker.test(String(row.title||'')))throw fail("PR number does not match this article's title",403);
+  if(row.site_id!==canonical&&!prMarker.test(String(row.title||'')))
+    throw fail('PR number does not match article provenance',403);
   const patchUrl=new URL(profile.endpoint+'/'+profile.table);
   patchUrl.searchParams.set('uid','eq.'+uid);
   const patchRes=await fetch(patchUrl.href,{method:'PATCH',
@@ -407,6 +427,7 @@ async function postgrestUpdatePr(profile,uid,prNumber,title,content,updatedAt){
     body:JSON.stringify({title,content,UpdateTime:updatedAt}),
     redirect:'manual',signal:AbortSignal.timeout(9500)});
   if(!patchRes.ok)throw fail('Scope database rejected operation (HTTP '+patchRes.status+')',502);
+  return uid;
 }
 
 async function managedMcpRead(scopeid,kind,args,oauthToken){
@@ -641,7 +662,7 @@ export class LocAuthorityState extends DurableObject {
     validScope(scopeid);
     if(!input||typeof input!=='object'||Array.isArray(input))throw fail('Invalid PR update request',400);
     const uid=String(input.uid||'');
-    if(!UID.test(uid))throw fail('Invalid case-sensitive UID',400);
+    if(uid&&!UID.test(uid))throw fail('Invalid case-sensitive UID',400);
     const prNumber=Number(input.pr_number);
     if(!Number.isInteger(prNumber)||prNumber<1||prNumber>9999999)throw fail('Invalid PR number',400);
     if(typeof input.title!=='string'||!input.title.trim()||input.title.length>350||
@@ -649,12 +670,13 @@ export class LocAuthorityState extends DurableObject {
       throw fail('Invalid article title or content',400);
     const requestedTime=validTimestamp(input.updated_at);
     const profile=await this.mcpPrivateProfile(scopeid);
-    if(profile)await postgrestUpdatePr(profile,uid,prNumber,input.title,input.content,requestedTime);
+    let resolvedUid=uid;
+    if(profile)resolvedUid=await postgrestUpdatePr(profile,uid,prNumber,input.title,input.content,requestedTime);
     else if(Object.hasOwn(MANAGED_SCOPE_TABLES,scopeid))
-      await managedMcpUpdatePr(scopeid,uid,prNumber,input.title,input.content,requestedTime,oauthToken);
+      resolvedUid=await managedMcpUpdatePr(scopeid,uid,prNumber,input.title,input.content,requestedTime,oauthToken);
     else throw fail('Scope database is not configured',409);
     this.mcpSearchCache?.clear();
-    return {scopeid,uid,pr_number:prNumber,updated_at:requestedTime,updated:true};
+    return {scopeid,uid:resolvedUid,pr_number:prNumber,updated_at:requestedTime,updated:true};
   }
   async mcpLinkSearch(scopeid,query,limit=5,oauthToken='',source='mcp'){
     if(!['mcp','github'].includes(source))throw fail('Invalid Galaxy source',400);
