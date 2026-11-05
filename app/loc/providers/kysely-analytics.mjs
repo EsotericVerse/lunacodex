@@ -18,10 +18,12 @@ function scopeId(value){const id=String(value||'').trim().toLowerCase();
   if(!SCOPE.test(id))reject('Invalid statistics Scope');return id;
 }
 async function registry(trx,scope){
-  const row=await trx.selectFrom('silver.manage')
-    .select(['id','manage_role','active','display_name','anchor_table',
-      'galaxy_table','sort_order'])
-    .where('id','=',scope).executeTakeFirst();
+  const row=await trx.selectFrom('silver.manage as m')
+    .innerJoin('silver.loc as l','l.id','m.id')
+    .select(['m.id as id','m.manage_role as manage_role','m.active as active',
+      'l.display_name as display_name','m.anchor_table as anchor_table',
+      'm.galaxy_table as galaxy_table','m.sort_order as sort_order'])
+    .where('m.id','=',scope).executeTakeFirst();
   if(!row||row.manage_role!=='scope'||row.active!==true)reject('Unknown statistics Scope');
   return row;
 }
@@ -305,10 +307,12 @@ export async function executeKyselyAnalytics(trx,body,{role='anon'}={}){
   }
   if(mode==='loc'){
     if(scope!=='loc')reject('Invalid LOC statistics Scope');
-    const groups=await trx.selectFrom('silver.manage')
-      .select(['id','display_name','galaxy_table','anchor_table'])
-      .where('manage_role','=','scope').where('active','=',true)
-      .orderBy('sort_order','asc').orderBy('id','asc').execute();
+    const groups=await trx.selectFrom('silver.manage as m')
+      .innerJoin('silver.loc as l','l.id','m.id')
+      .select(['m.id as id','l.display_name as display_name',
+        'm.galaxy_table as galaxy_table','m.anchor_table as anchor_table'])
+      .where('m.manage_role','=','scope').where('m.active','=',true)
+      .orderBy('m.sort_order','asc').orderBy('m.id','asc').execute();
     const scopes=[],rows=[];let first=null;
     for(const group of groups){
       if(!SCOPE.test(group.id))continue;
