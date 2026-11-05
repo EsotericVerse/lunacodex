@@ -926,9 +926,17 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
       return json(await scoped(scopeid).putMcpScope(scopeid,await mcpJsonBody(request,9000)),200,origin);
     }
   }
-  if(parts[0]==='authorize-write'&&parts.length===2&&request.method==='GET'){
-    const scopeid=validScope(parts[1]);
-    if(!isRoot||!await allowed(scopeid,'write'))throw fail('Managed Scope write denied',403);
+  if(['authorize-read','authorize-write'].includes(parts[0])&&
+     parts.length===2&&request.method==='GET'){
+    const scopeid=validScope(parts[1]),isRead=parts[0]==='authorize-read';
+    const source=url.searchParams.get('source')||'mcp';
+    if(!['mcp','github'].includes(source)||(source==='github'&&!isRead))
+      throw fail('Invalid managed MCP source',400);
+    const action=isRead?(source==='github'?'manage':'read'):'write';
+    // Managed Kysely uses a trusted root email mapping. Never issue its
+    // credentials to a non-root even if that subject can read another Scope.
+    if(!isRoot||!await allowed(scopeid,action))
+      throw fail('Managed Scope '+action+' denied',403);
     if(!Object.hasOwn(MANAGED_SCOPE_TABLES,scopeid))throw fail('Managed Scope is not supported',404);
     const email=String(env.LOC_ROOT_MANAGEMENT_EMAIL||'').trim().toLowerCase();
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))

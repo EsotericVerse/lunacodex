@@ -58,28 +58,52 @@ async function verifyClerkForSql(token:string){
   }
   return clerkSqlClaims(payload,{issuer:clerkIssuer,origin:clerkOrigin,trustedEmail});
 }
-async function verifyMcpForSql(token:string,scopeid:string){
+// OAuth tokens are reused for their signed lifetime. Cache only a SHA-256
+// fingerprint of recently verified, Scope-specific Authority grants for 30s;
+// never cache the raw token, do not cache refusals, and always verify JWT first.
+// Revoked grants are rechecked within 30 seconds, even on a warm isolate.
+const mcpGrantCache=new Map<string,{until:number,sub:string,email:string}>();
+async function verifyMcpForSql(token:string,scopeid:string,kind:string,source='mcp'){
   const {payload}=await jwtVerify(token,clerkKeys,{
     issuer:clerkIssuer,audience:mcpResource,algorithms:["RS256"]
   });
   if(!/^user_[A-Za-z0-9]+$/.test(String(payload.sub||""))||
-    !["lo3rwang","lrunes"].includes(scopeid))
-    throw new Error("MCP identity or Scope invalid");
-  // Independent Authority verifies the same OAuth JWT and its exact Scope
-  // WRITE permission. Only the existing LOC root may use managed SQL writes.
-  const result=await fetch(
-    "https://auth.lo3rwang.cc/v1/mcp/authorize-write/"+scopeid,{
+    !["lo3rwang","lrunes"].includes(scopeid)||
+    !["mcp","github"].includes(source)||
+    !Number.isFinite(payload.exp))
+    throw new Error("MCP identity, Scope or token lifetime invalid");
+  const reading=kind==="mcp-read"||kind==="mcp-search";
+  if(!reading&&source!=="mcp")throw new Error("GitHub source cannot use MCP write authorization");
+  const action=reading?(source==="github"?"manage":"read"):"write";
+  const digest=new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(token)));
+  const fingerprint=Array.from(digest,b=>b.toString(16).padStart(2,"0")).join("");
+  const key=scopeid+":"+action+":"+fingerprint;
+  const now=Date.now();
+  const cached=mcpGrantCache.get(key);
+  if(cached&&cached.until>now&&cached.sub===payload.sub)
+    return {role:"authenticated",sub:payload.sub,iss:payload.iss,
+      email:cached.email,provider:"clerk"};
+  // Independent Authority checks the verified OAuth principal against the
+  // exact Scope capability. A read can never reuse a write-only authorization.
+  const endpoint=new URL("https://auth.lo3rwang.cc/v1/mcp/authorize-"+(reading?"read":"write")+"/"+scopeid);
+  if(reading&&source==="github")endpoint.searchParams.set("source","github");
+  const response=await fetch(endpoint.href,{
     method:"GET",headers:{authorization:"Bearer "+token,accept:"application/json"},
     redirect:"error",signal:AbortSignal.timeout(8000)
   });
-  if(!result.ok)throw new Error("MCP Scope write permission denied");
-  const identity=await result.json();
+  if(!response.ok)throw new Error("MCP Scope "+action+" authorization denied");
+  const identity=await response.json();
   if(identity?.provider!=="clerk"||identity.authorized!==true||
     identity.subject!==payload.sub||identity.scopeid!==scopeid||
     !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(identity.email||"")))
     throw new Error("Verified MCP identity does not match Scope owner");
-  return {role:"authenticated",sub:payload.sub,iss:payload.iss,
-    email:String(identity.email).toLowerCase(),provider:"clerk"};
+  const email=String(identity.email).toLowerCase();
+  const until=Math.min(now+30000,Number(payload.exp)*1000);
+  if(until>now){
+    mcpGrantCache.set(key,{until,sub:String(payload.sub),email});
+    if(mcpGrantCache.size>64)mcpGrantCache.delete(mcpGrantCache.keys().next().value);
+  }
+  return {role:"authenticated",sub:payload.sub,iss:payload.iss,email,provider:"clerk"};
 }
 function configuredPublishableKeys() {
   const keys = [Deno.env.get("LOC_KYSELY_PUBLISHABLE_KEY"), Deno.env.get("SUPABASE_PUBLISHABLE_KEY"), Deno.env.get("SUPABASE_ANON_KEY")].filter((value): value is string => Boolean(value));
@@ -273,7 +297,9 @@ Deno.serve(async (request) => {
       // and permissions. Never let an MCP token execute general SQL requests.
       if(["mcp-sync","mcp-search","mcp-read","mcp-append","mcp-update-pr"].includes(String(body.kind))){
         try{
-          claims=await verifyMcpForSql(token,String(body.scopeid||""));
+          claims=await verifyMcpForSql(token,String(body.scopeid||""),String(body.kind),
+             String(body.kind)==="mcp-read"?String(body.site||"mcp"):
+             String(body.kind)==="mcp-search"?String(body.source||"mcp"):"mcp");
           verifiedMcp=true;
         }catch{
           return json({error:{message:"MCP Scope write authorization rejected"}},403);
