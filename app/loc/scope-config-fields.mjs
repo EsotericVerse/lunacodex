@@ -1,6 +1,6 @@
 // Scope-level availability flags are native PostgreSQL boolean columns.
 const authorFeatureNames=Object.freeze({
-  search_able:'search',statistics_able:'statics',culture_able:'culture',trace:'trace'
+  search:'search',statistics_able:'statics',culture_able:'culture',trace:'trace'
 });
 export const scopeFeatureKeys=Object.freeze(Object.keys(authorFeatureNames));
 export const scopeFeatureName=key=>authorFeatureNames[key]||'';
