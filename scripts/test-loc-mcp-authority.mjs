@@ -462,3 +462,12 @@ test('Galaxy Link search is fixed to site=mcp without caller-selectable site par
   assert.doesNotMatch(source,/site:'eq\.'\+source/);
   assert.match(source,/Object\.keys\(args\)\.some\(key=>!\['query','limit'\]\.includes\(key\)\)/);
 });
+
+test('managed MCP text search uses a literal site and cannot accept caller source',()=>{
+  const edge=readFileSync(new URL('../supabase/functions/loc-kysely/index.ts',import.meta.url),'utf8');
+  assert.match(edge,/where site = 'mcp' and \(title ilike/);
+  assert.match(edge,/\["kind","scopeid","query","limit"\]/);
+  assert.doesNotMatch(edge,/where site = \$\{body\.source/);
+  assert.match(edge,/where site='mcp' and site_id=\$\{repoSiteId\}/);
+  assert.doesNotMatch(edge,/where site='github' and site_id=/);
+});
