@@ -1,18 +1,21 @@
-# LOC MCP 權限邊界（2026-11-04）
+# LOC MCP 權限邊界（Galaxy Link 更新）
 
-LOC MCP 是 UID 定址的文章讀寫介面，**不提供任何搜尋工具或搜尋 API**；網站的搜尋頁是獨立功能，不受此限制。
+LOC MCP 對外以 `galaxy_link` 統一執行跨對話話題的 `search/read/check/record`；與 PR 更新、Scope 設定、權限管理等行政工具分離。
 
-- 新增對話：`sync_conversation` 以 `scopeid + conversation_id` 作為 Durable Object checkpoint 鍵，保存已生成的 **8 碼隨機 Base62 UID**，後續更新沿用同一 UID，不以文章標題或內容反查。
-- 更新 PR：`update_scope_pr` 必須由呼叫者提供已知 UID 及 PR number；只允許更新符合原來源與標題校驗的既有文章。
-- 精確讀取：`read_memory` / `read_scope` 依已知 UID 讀取；`check_conversation` 只檢查 checkpoint，不掃描 Galaxy。
-- 禁止：`search_memory`、`search_scope`、`search_group`；Cloudflare Authority 的 `/v1/mcp/search/*` 和 `/v1/mcp/group-search/*` 一律拒絕；Kysely Edge 的 `mcp-search` 一律拒絕。
-- 對外部署：MCP Router 屬 Pages Functions，Authority Worker 與 Supabase Edge Function 是分開的部署目標；三者須各自核對版本，不能把 main merge 當作全部已上線。
+- `galaxy_link.search`：僅使用者／Agent 明確提出接續時才執行；僅搜尋**已授權 Scope 的 `site=mcp`**，最多 5 筆，具逾時與既有 Authority QoS。此入口不允許其他 site；不做背景搜尋、全 Scope 跨表搜尋。
+- `galaxy_link.read`：只對指定 Scope 的 MCP 話題以 UID 分頁讀取；不讀取其他 site。
+- `galaxy_link.check`：依來源 `conversation_id` 與 `updated_at` 核對 Durable Object checkpoint，不讀 Galaxy。
+- `galaxy_link.record`：只接受提供的來源文字，首次建立隨機八碼 Base62 UID；後續依已知 UID 增量 Append，成功後才更新 checkpoint。
+- `read_memory` 保留為既有公開文章 UID 讀取；`update_scope_pr` 保留 GitHub PR 定點更新，兩者不屬於 Galaxy Link。
+- Group Search 仍停用；LOC 網站本身的搜尋頁是獨立功能，不受這項變更影響。
+- 來源端（瀏覽器／支援的 Agent Client）才有能力取得對話原文；MCP 不會擅自爬取 ChatGPT。每小時排程與瀏覽器補登尚須來源端實作、驗證。
+- 部署：Pages Functions、Authority Worker、Kysely Edge 是獨立部署目標；不能因 GitHub 合併就認定正式環境生效。
 
 ## MCP 請求上限
 
 - Cloudflare Authority 使用現有 `LOC_AUTHORITY_STATE` Durable Object 計數；不增加資料表、索引或 Worker。
 - 每位已驗證 Clerk 使用者最多 16 個 MCP 資料操作／分鐘，跨 Scope 共用額度；全體使用者同時執行最多 16 個 MCP 請求。QoS 限制每位使用者每分鐘最多 12 次讀取、全域最多 12 個同時讀取，保留 4 個名額供寫入使用；寫入可使用其他空閒容量。超額回傳 HTTP 429，不進入 Supabase。
-- 公開 UID 讀取也先透過 Authority 取得額度；私有讀寫在 Authority 執行前檢查。未授權及已停用的搜尋端點不進資料庫。
+- 公開 UID 讀取也先透過 Authority 取得額度；私有讀寫在 Authority 執行前檢查。未授權及 Group Search 不進資料庫；Galaxy Link 搜尋另需 site=mcp 限定。
 - 額度使用短期租約，正常完成即釋放，意外中斷最多保留 25 秒。計數採原子交易，不能靠 Worker 本機記憶體。
 - 如果全域 16 個併發槽位已滿，或 12 個讀取槽位已滿，新增請求立即拒絕，該呼叫者進入 Durable Object 紀錄的 **3 分鐘冷卻期**；冷卻期內持續回 429，不排隊、不重試。單純每分鐘配額耗盡只回 429、不觸發 3 分鐘冷卻；正常 Clerk 登入仍可使用。
 - **Supabase Data API Max Rows=1000 是單次 SQL REST 回傳的列數限制，不是每分鐘請求數或 MCP 並發數。** 此項為 Supabase 控制台設定，須獨立設定及驗證，不能靠修改 MCP 配額代替。
