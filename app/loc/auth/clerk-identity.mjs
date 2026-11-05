@@ -21,6 +21,17 @@ export function clerkReturnPath(value,origin){
     return parsed.origin===site.origin?parsed.pathname+parsed.search+parsed.hash:'/local/settings/';
   }catch{return '/local/settings/';}
 }
+// Page-local, UX-only dedup across independently constructed adapters. All SQL/Authority
+// operations still verify their own signed token and access rights; no grant is cached.
+const sharedIdentity=new Map();
+const sharedPending=new Map();
+const SHARED_IDENTITY_MS=5*60*1000;
+function sharedKey(authority,clerk){
+  const session=String(clerk?.session?.id||'');
+  const subject=String(clerk?.user?.id||'');
+  return session.startsWith('sess_')&&/^user_[A-Za-z0-9]+$/.test(subject)
+    ?authority+'|'+session+'|'+subject:'';
+}
 export function createIndependentClerkIdentity({loadClerk,authorityOrigin,
   fetchImpl=globalThis.fetch,navigate=path=>globalThis.location.assign(path),
   siteOrigin=globalThis.location?.origin}={}){
@@ -61,6 +72,16 @@ export function createIndependentClerkIdentity({loadClerk,authorityOrigin,
       (sessionId?sessionId===recentIdentity.identity.session:jwt===recentIdentity.token));
     if(sameSession&&Date.now()<recentIdentity.expires)return recentIdentity.identity;
     if(recentIdentity&&!sameSession)recentIdentity=null;
+    const key=sharedKey(authority,clerk);
+    const shared=key&&sharedIdentity.get(key);
+    if(shared&&shared.expires>Date.now()){
+      recentIdentity={token:jwt,subject:shared.identity.subject,identity:shared.identity,
+        expires:Date.now()+IDENTITY_REUSE_MS};
+      return shared.identity;
+    }
+    if(shared&&key)sharedIdentity.delete(key);
+    const inFlight=key&&sharedPending.get(key);
+    if(inFlight)return inFlight;
     if(pendingIdentity&&pendingIdentityToken===jwt)return pendingIdentity;
     const pending=(async()=>{
       // Retry a dropped network request once; HTTP 401/403 is never retried.
@@ -99,15 +120,21 @@ export function createIndependentClerkIdentity({loadClerk,authorityOrigin,
     })();
     pendingIdentityToken=jwt;
     pendingIdentity=pending;
+    if(key)sharedPending.set(key,pending);
     try{
       const identity=await pending;
       recentIdentity={token:jwt,subject:identity.subject,identity,
         expires:Date.now()+IDENTITY_REUSE_MS};
+      if(key){
+        sharedIdentity.set(key,{identity,expires:Date.now()+SHARED_IDENTITY_MS});
+        while(sharedIdentity.size>16)sharedIdentity.delete(sharedIdentity.keys().next().value);
+      }
       return identity;
     }catch(error){
       recentIdentity=null;
       throw error;
     }finally{
+      if(key&&sharedPending.get(key)===pending)sharedPending.delete(key);
       if(pendingIdentity===pending){
         pendingIdentity=null;
         pendingIdentityToken='';
