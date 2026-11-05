@@ -44,8 +44,9 @@ export async function getOAuthConfiguration(){
   if(!Array.isArray(metadata.code_challenge_methods_supported)||
     !metadata.code_challenge_methods_supported.includes('S256'))
     throw Error('Clerk OAuth 未啟用必要的 PKCE S256');
-  const clientId=metadata.client_id_metadata_document_supported===true
-    ?CLIENT_METADATA_URL:String(cfg.client_id||'').trim();
+  // An explicitly registered public client takes precedence over CIMD.
+  const clientId=String(cfg.client_id||'').trim()||
+    (metadata.client_id_metadata_document_supported===true?CLIENT_METADATA_URL:'');
   if(!clientId||clientId.length>300||/\s/.test(clientId))
     throw Error('LOC Galaxy 尚未註冊公開 OAuth Client；請由管理者設定 Clerk。');
   return {clientId,authorizationEndpoint,tokenEndpoint};
