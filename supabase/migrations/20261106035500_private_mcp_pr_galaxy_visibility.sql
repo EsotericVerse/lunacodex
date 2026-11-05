@@ -33,6 +33,8 @@ BEGIN
       AND policyname IN ('lo3rwang_galaxy_public_read','lo3rwang_galaxy_authenticated_read')
   LOOP
     IF rec.qual IS NULL THEN RAISE EXCEPTION 'Missing Galaxy read policy predicate'; END IF;
+    -- Reapplying from CI must not wrap the same source restrictions repeatedly.
+    IF position('PR[[:space:]]*#[0-9]+' in rec.qual)>0 THEN CONTINUE; END IF;
     expr := '('||rec.qual||') AND (NOT '||$priv$(lower(coalesce(site,''))='mcp' OR (lower(coalesce(site,''))='github' AND (coalesce(site_id,'') ~ '^EsotericVerse/moon-runes-pwa#[0-9]+$' OR coalesce(title,'') ~* 'PR[[:space:]]*#[0-9]+')))$priv$||
       CASE WHEN rec.policyname='lo3rwang_galaxy_authenticated_read' THEN
         ' OR coalesce((select allowed from silver.manage(''scope'',''lo3rwang'')),false)'
@@ -74,6 +76,8 @@ BEGIN
       AND policyname IN ('lrunes_galaxy_public_read','lrunes_galaxy_authenticated_read')
   LOOP
     IF rec.qual IS NULL THEN RAISE EXCEPTION 'Missing Galaxy read policy predicate'; END IF;
+    -- Reapplying from CI must not wrap the same source restrictions repeatedly.
+    IF position('PR[[:space:]]*#[0-9]+' in rec.qual)>0 THEN CONTINUE; END IF;
     expr := '('||rec.qual||') AND (NOT '||$priv$(lower(coalesce(site,''))='mcp' OR (lower(coalesce(site,''))='github' AND (coalesce(site_id,'') ~ '^EsotericVerse/moon-runes-pwa#[0-9]+$' OR coalesce(title,'') ~* 'PR[[:space:]]*#[0-9]+')))$priv$||
       CASE WHEN rec.policyname='lrunes_galaxy_authenticated_read' THEN
         ' OR coalesce((select allowed from silver.manage(''scope'',''lrunes'')),false)'
