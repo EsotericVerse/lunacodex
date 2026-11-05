@@ -2,7 +2,7 @@
 
 import {useEffect,useState} from 'react';
 import {usePassiveSessionAccount} from './use-account';
-import {getSetting} from './user-storage';
+import {getSettings} from './user-storage';
 import {NavigationPreferences} from '../modular/navigation-preferences';
 const accountNavigation=NavigationPreferences.account;
 
@@ -17,9 +17,12 @@ export function useNavigationPreferences(){
     if(!identity){setPreferences({...INITIAL,loading:false});return;}
     let live=true;
     setPreferences(current=>({...current,loading:true,error:''}));
-    Promise.all([getSetting(accountNavigation.HOME_SETTING_KEY),getSetting(accountNavigation.FAVORITES_SETTING_KEY),getSetting(accountNavigation.folders.FOLDERS_SETTING_KEY)])
-      .then(([home,favorites,folders])=>{if(live)setPreferences({
-        home:accountNavigation.validScopeId(home)||'loc',favorites:accountNavigation.parseFavorites(favorites),folders:accountNavigation.folders.parseFavoriteFolders(folders),loading:false,error:''
+    const keys=[accountNavigation.HOME_SETTING_KEY,accountNavigation.FAVORITES_SETTING_KEY,accountNavigation.folders.FOLDERS_SETTING_KEY];
+    getSettings(keys).then(settings=>{if(live)setPreferences({
+        home:accountNavigation.validScopeId(settings[keys[0]])||'loc',
+        favorites:accountNavigation.parseFavorites(settings[keys[1]]),
+        folders:accountNavigation.folders.parseFavoriteFolders(settings[keys[2]]),
+        loading:false,error:''
       });})
       .catch(error=>{if(live)setPreferences({...INITIAL,loading:false,error:String(error?.message||error)});});
     return()=>{live=false;};
