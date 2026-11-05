@@ -164,7 +164,7 @@ export default function TraceOrganizer({scopeId,spatial,reload}){
           onChange={event=>setPlaceName(event.target.value)}/>
       </label>
       {placeName.trim()&&!matches.length?<p className="scope-status" role="status">沒有符合搜尋條件的地點。</p>:null}
-      {matches.length?<div className="loc-trace-route-suggestions" role="group" aria-label="既有地點">
+      {matches.length?<div className="loc-trace-name-results" role="group" aria-label="既有地點">
         {matches.map(item=><button className="loc-button" type="button" key={item.uid}
           onClick={()=>{setSelectedUid(item.uid);setNewAlias('');}}>
           {item.title} · UID {item.uid}

@@ -37,6 +37,66 @@ export function buildEraRiver(source=[],expandedEraIds=[],{editorOnly=false}={})
         &&end>=start&&(!range?.invalid||range?.point);
     });
   };
+  if(editorOnly){
+    // Match the public Culture first river: one era lane (with actual date
+    // anchors), nested period lanes only after the era's (+) is opened.
+    // Keep the original record UID for selecting an item to edit.
+    for(const [traceIndex,trace] of traces.entries()){
+      const scope=text(trace.scope_id),uid=text(trace.uid);
+      const groupId='trace:'+scope+':'+uid;
+      const isExpanded=expanded.has(groupId);
+      const order=traceIndex*10000;
+      groups.push({id:groupId,label:text(trace.title)||'時代 '+uid,
+        collapsible:true,expanded:isExpanded,order,
+        className:'scope-time-trace-parent'});
+      const spans=list(trace.ranges).length?trace.ranges:[trace];
+      for(const [segment,range] of spans.entries()){
+        const from=text(range?.start_date).slice(0,10);
+        const until=text(range?.end_date||range?.start_date).slice(0,10);
+        if(!validDate(from)||range?.invalid)continue;
+        items.push({id:groupId+':era:'+segment,uid,scope_id:scope,
+          entry_type:'era',group_key:groupId,group_label:trace.title||'時代',
+          group_order:order,start_date:from,
+          ...(validDate(until)&&until>from?{end_date:until}:{}),
+          title:trace.title||'時代',display_label:trace.title||'時代'});
+      }
+      const points=datedAnchors.filter(anchor=>withinTrace(anchor,trace));
+      for(const anchor of points){
+        const pointUid=text(anchor.uid);
+        items.push({id:groupId+':date:'+pointUid,uid:pointUid,scope_id:scope,
+          entry_type:'anchor',group_key:groupId,group_label:trace.title||'時代',
+          group_order:order,start_date:text(anchor.start_date).slice(0,10),
+          title:anchor.title||pointUid,display_label:'●',
+          class_name:'scope-time-original-anchor'});
+      }
+      if(!isExpanded)continue;
+      const seen=new Set();
+      for(const [position,eventId] of list(trace.anchor_ids).map(text).entries()){
+        if(!eventId||seen.has(eventId))continue;
+        seen.add(eventId);
+        const event=events.get(scope+':'+eventId);
+        const periodGroup=groupId+':period:'+eventId;
+        groups.push({id:periodGroup,order:order+position+1,
+          label:'　'+(event?.title||'期間 '+eventId),
+          className:'scope-time-trace-child'});
+        if(!event)continue;
+        const ranges=list(event.ranges).length?event.ranges:[event];
+        for(const [segment,range] of ranges.entries()){
+          const from=text(range?.start_date).slice(0,10);
+          const until=text(range?.end_date||range?.start_date).slice(0,10);
+          if(!validDate(from)||range?.invalid)continue;
+          items.push({id:periodGroup+':'+segment,uid:eventId,scope_id:scope,
+            entry_type:'period',group_key:periodGroup,
+            group_label:event.title||'期間',group_order:order+position+1,
+            start_date:from,
+            ...(validDate(until)&&until>from?{end_date:until}:{}),
+            title:event.title||'期間',display_label:event.title||'期間',
+            era_uid:uid,period_uid:eventId});
+        }
+      }
+    }
+    return {items,groups};
+  }
   for(const [traceIndex,trace] of traces.entries()){
     const scope=text(trace.scope_id),id=text(trace.uid);
     const groupId='trace:'+scope+':'+id;
