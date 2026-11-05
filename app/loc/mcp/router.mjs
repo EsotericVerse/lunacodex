@@ -100,9 +100,10 @@ const TOOLS=[
       scopeid:{type:'string'},endpoint:{type:'string',description:'HTTPS PostgREST URL ending /rest/v1; omit to view'},
       schema:{type:'string'},table:{type:'string',description:'Existing Galaxy-compatible table; LOC never creates tables'}
     },required:['scopeid'],additionalProperties:false}},
-  {name:'galaxy_link',description:'Scope-authorized Galaxy Link: find MCP topic, resume by UID, inspect source checkpoint, or record supplied source text. No background scan or source capture.',
+  {name:'galaxy_link',description:'Scope-authorized Galaxy Link: MCP conversation resume plus private GitHub PR records. GitHub source requires Scope manage permission; source text is never scraped.',
     inputSchema:{type:'object',properties:{
-      action:{type:'string',enum:['search','read','check','record']},
+      action:{type:'string',enum:['search','read','check','record','update_pr']},
+      source:{type:'string',enum:['mcp','github'],description:'Optional search/read source; GitHub PR requires Scope manage permission'},
       scopeid:{type:'string'},uid:{type:'string',pattern:'^[A-Za-z0-9]{8}$'},
       query:{type:'string',minLength:2,maxLength:100},limit:{type:'integer',minimum:1,maximum:5},
       conversation_id:{type:'string'},updated_at:{type:'string'},created_at:{type:'string'},
@@ -110,16 +111,10 @@ const TOOLS=[
         role:{type:'string',enum:['user','assistant']},kind:{type:'string',enum:['original','advice']},
         sent_at:{type:'string'},text:{type:'string'},message_id:{type:'string'}
       },required:['role','kind','sent_at','text','message_id'],additionalProperties:false}},
-      title:{type:'string',maxLength:350},
+      title:{type:'string',maxLength:350},content:{type:'string',maxLength:125000},
+      pr_number:{type:'integer',minimum:1},
       offset:{type:'integer',minimum:0},max_chars:{type:'integer',minimum:1,maximum:40000}
     },required:['action','scopeid'],additionalProperties:false}},
-  {name:'update_scope_pr',description:'Rewrite an EXISTING Galaxy article by exact uid. Never creates a new article: the article must already be GitHub PR-origin (site=github) and its current title must name the same pr_number, or the update is refused.',
-    inputSchema:{type:'object',properties:{
-      scopeid:{type:'string'},uid:{type:'string',pattern:'^[A-Za-z0-9]{8}$',description:'Exact Galaxy article UID to rewrite'},
-      pr_number:{type:'integer',minimum:1,description:'Must match a "PR #<pr_number>" marker already present in the article title'},
-      title:{type:'string',maxLength:350},content:{type:'string',maxLength:125000},
-      updated_at:{type:'string'}
-    },required:['scopeid','uid','pr_number','title','content','updated_at'],additionalProperties:false}},
   {name:'join_scope_group',description:'Group manager attaches an existing Scope; does not move or copy data.',
     inputSchema:{type:'object',properties:{groupid:{type:'string'},scopeid:{type:'string'}},
       required:['groupid','scopeid'],additionalProperties:false}},
@@ -181,7 +176,7 @@ export async function handleMcp(request,env={}){
       return result(payload.id,{protocolVersion:SUPPORTED_PROTOCOLS.has(proposed)?proposed:DEFAULT_PROTOCOL,
         capabilities:{tools:{listChanged:false}},serverInfo:{name:'loc-mcp',version:'0.2.0',
            ...(proposed==='2025-11-25'?{icons:[{src:'https://loc.lo3rwang.cc/assets/site/icons/loc-favicon.png',mimeType:'image/png'}]}:{})},
-        instructions:'Public search/read use existing Galaxy RLS. Private Scope read, write and Group search are independently authorized by Clerk + LOC Authority. galaxy_link operates on authorized MCP-origin topics; recording requires supplied source text.'});
+        instructions:'Public search/read use existing Galaxy RLS. Private Scope read, write and Group search are independently authorized by Clerk + LOC Authority. galaxy_link separates private MCP conversations from manager-only GitHub PR records; recording requires supplied source text.'});
     }
     case 'ping':return result(payload.id,{});
     case 'tools/list':return result(payload.id,{tools:TOOLS});
