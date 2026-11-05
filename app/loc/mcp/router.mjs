@@ -104,7 +104,7 @@ const TOOLS=[
     inputSchema:{type:'object',properties:{
       action:{type:'string',enum:['search','read','check','record']},
       scopeid:{type:'string'},uid:{type:'string',pattern:'^[A-Za-z0-9]{8}$'},
-      query:{type:'string',minLength:3,maxLength:100},limit:{type:'integer',minimum:1,maximum:5},
+      query:{type:'string',minLength:2,maxLength:100},limit:{type:'integer',minimum:1,maximum:5},
       conversation_id:{type:'string'},updated_at:{type:'string'},created_at:{type:'string'},
       records:{type:'array',minItems:1,maxItems:100,items:{type:'object',properties:{
         role:{type:'string',enum:['user','assistant']},kind:{type:'string',enum:['original','advice']},
