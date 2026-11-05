@@ -358,7 +358,7 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
     if(!draftDirty)return true;
     setStatus('');
     try{
-      if(current.scope_kind!=='system'){
+      if(current.scope_kind!=='system'&&JSON.stringify(current)!==JSON.stringify(selected)){
         const hasDomain=Boolean(String(current.domain||'').trim());
         const hasDirectory=Boolean(String(current.directory||'').trim());
         if(hasDomain===hasDirectory)throw new Error('Domain / Directory 必須二選一。');
