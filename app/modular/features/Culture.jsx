@@ -1664,7 +1664,7 @@ export default function Culture(){
                   onClick={()=>setWorksOpen(true)}>
                   {selectedGroup.label||selectedGroup.site||'來源'}｜顯示相關文章列表
                 </button>:null}
-                {styleFilter!=='trace'&&(!(stagedSourceRiver?sourceRootQuery.error:sourceSnapshotQuery.error)
+                {styleFilter==='none'&&(!(stagedSourceRiver?sourceRootQuery.error:sourceSnapshotQuery.error)
                   &&(stagedSourceRiver?sourceRootQuery.data:sourceSnapshotQuery.data)&&cultureRiver.hasSourceData)?<details className='scope-culture-source-detail' open={worksOpen} onToggle={event=>setWorksOpen(event.currentTarget.open)}>
                   <summary>顯示相關文章列表</summary>
                   {worksOpen?<><header className="loc-public-list-header">
