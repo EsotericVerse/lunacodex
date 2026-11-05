@@ -190,7 +190,7 @@ test('update_scope_pr surfaces the backend refusal reason (not GitHub-origin / P
   globalThis.fetch=async()=>Response.json(
     {error:{message:"PR number does not match this article's title"}},{status:403});
   await assert.rejects(authority.mcpUpdatePr('lo3rwang',prUpdate,'eyJ.authorized.mcp'),
-    /PR number does not match this article's title/);
+    /PR number does not match article provenance/);
 });
 
 test('update_scope_pr rejects an invalid uid, pr_number or oversized content before any network call',async()=>{
@@ -231,7 +231,7 @@ test('self-hosted Scope profile: update_scope_pr refuses a PR-number/title misma
     return new Response(null,{status:204});
   };
   await assert.rejects(authority.mcpUpdatePr('lo3rwang',prUpdate,'eyJ.x'),
-    /PR number does not match this article's title/);
+    /PR number does not match article provenance/);
   assert.equal(calls.length,1);
 });
 
