@@ -861,9 +861,9 @@ async function handleMcpAuthority(request,env,url,origin){
     throw fail('Invalid MCP quota operation',400);
   }
   // No DB work and no quota spend on retired search endpoints.
-  if(/^\/v1\/mcp\/group-search\//.test(url.pathname))
+  if(/^\/v1\/mcp\/(?:search|group-search)\//.test(url.pathname))
     throw fail('MCP search is disabled',403);
-  const kind=/^\/v1\/mcp\/search\//.test(url.pathname)?'search':
+  const kind=/^\/v1\/mcp\/galaxy-link\/search\//.test(url.pathname)?'search':
     request.method==='GET'?'read':'write';
   const ticket=await quota.mcpQuotaAcquire(kind,'clerk:'+principal.subject);
   try{return await handleMcpAuthorityInner(request,env,url,origin,principal);}
@@ -876,8 +876,12 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
   const scoped=scope=>env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName('mcp-scope:'+scope));
   const allowed=async(scope,action)=>isRoot||await stub.mayAccess({...principal,scope,action});
   const parts=url.pathname.split('/').filter(Boolean).slice(2);
-  // MCP is UID-addressed read/write only; search was never authorized.
-  if(parts[0]==='group-search'&&request.method==='POST')
+  const galaxyLink=parts[0]==='galaxy-link';
+  if(galaxyLink)parts.shift();
+  if(galaxyLink&&!['search','read','checkpoint','sync'].includes(parts[0]))
+    throw fail('Invalid Galaxy Link action',404);
+  // Legacy MCP searches remain disabled; only the new versioned Link may search.
+  if((parts[0]==='group-search'||parts[0]==='search'&&!galaxyLink)&&request.method==='POST')
     throw fail('MCP search is disabled',403);
   if(parts[0]==='scope'&&parts.length===2){
     const scopeid=validScope(parts[1]);
@@ -908,7 +912,9 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
   if(parts[0]==='sync'&&parts.length===2&&request.method==='POST'){
     const scopeid=validScope(parts[1]);
     if(!await allowed(scopeid,'write'))throw fail('Scope sync denied',403);
-    return json(await scoped(scopeid).mcpSave(scopeid,await mcpJsonBody(request),
+    const input=await mcpJsonBody(request);
+    if(galaxyLink)input.append=true;
+    return json(await scoped(scopeid).mcpSave(scopeid,input,
       (request.headers.get('authorization')||'').replace(/^Bearer /,'')),200,origin);
   }
   if(parts[0]==='update-pr'&&parts.length===2&&request.method==='POST'){
@@ -936,7 +942,7 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
     const max_chars=Number(url.searchParams.get('max_chars')||'20000');
     return json(await scoped(scopeid).mcpRead(scopeid,parts[2],offset,max_chars,
       (request.headers.get('authorization')||'').replace(/^Bearer /,''),
-      url.searchParams.get('site')==='mcp'),200,origin);
+      (galaxyLink||url.searchParams.get('site')==='mcp')),200,origin);
   }
   if(parts[0]==='group-search'&&parts.length===2&&request.method==='POST'){
     const groupid=validScope(parts[1]);
