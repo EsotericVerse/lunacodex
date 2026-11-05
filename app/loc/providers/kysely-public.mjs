@@ -55,15 +55,14 @@ export async function executeKyselyPublicAction(trx,body,{engine='postgres',name
     if(!term||!registered||!has(scope+'_anchor'))return {data:[],count:null};
     if(portable){
       // Bounded Kysely pages preserve alias search without vendor-specific JSON RPC.
-      const found=[],needle=term.toLocaleLowerCase(),batch=500;
-      let after='';
-      while(found.length<limit){
-        let q=trx.selectFrom(table(scope+'_anchor'))
-          .select(['uid','title','attr']).where('type','=','point')
-          .where('invisible','=',false).orderBy('uid','asc').limit(batch);
-        if(after)q=q.where('uid','>',after);
-        const rows=await q.execute();
-        for(const row of rows){
+      const found=[],needle=term.toLocaleLowerCase();
+      // A bounded Scope Point scan removes the old UID keyset cursor. UID
+      // remains an identifier but never controls visit or display order.
+      const rows=await trx.selectFrom(table(scope+'_anchor'))
+        .select(['uid','title','attr']).where('type','=','point')
+        .where('invisible','=',false).limit(10001).execute();
+      if(rows.length>10000)throw new Error('Point lookup exceeds bounded Scope scan');
+      for(const row of rows){
           const attr=typeof row.attr==='string'?JSON.parse(row.attr||'{}'):row.attr||{};
           const aliases=Array.isArray(attr.location)?attr.location:
             typeof attr.location==='string'?[attr.location]:[];
@@ -73,9 +72,6 @@ export async function executeKyselyPublicAction(trx,body,{engine='postgres',name
               address:Number.isFinite(lng)&&Number.isFinite(lat)?[lng,lat]:null});
           }
         }
-        if(rows.length<batch)break;
-        after=String(rows[rows.length-1].uid);
-      }
       return {data:found.sort((a,b)=>String(a.title).localeCompare(String(b.title)))
         .slice(0,limit),count:null};
     }
@@ -93,7 +89,7 @@ export async function executeKyselyPublicAction(trx,body,{engine='postgres',name
             when 'string' then jsonb_build_array(a.attr->>'location')
             else '[]'::jsonb end) alias(name)
           where alias.name ilike ${pattern}))
-      order by a.title,a.uid limit ${limit}`.execute(trx);
+      order by a.title limit ${limit}`.execute(trx);
     return {data:result.rows,count:null};
   }
   let page=String(args.p_page_name||'index').trim().toLowerCase();
