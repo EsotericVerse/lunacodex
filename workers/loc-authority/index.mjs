@@ -378,8 +378,9 @@ async function managedMcpUpdatePr(scopeid,uid,prNumber,title,content,updatedAt,o
   }
   const data=await response.json();
   if(data?.data?.count!==1)throw fail('Managed Scope write was not confirmed',502);
-  if(!UID.test(String(data.data.uid||'')))throw fail('PR update did not return a valid Galaxy UID',502);
-  return data.data.uid;
+  const confirmedUid=String(data.data.uid||uid||'');
+  if(!UID.test(confirmedUid))throw fail('PR update did not return a valid Galaxy UID',502);
+  return confirmedUid;
 }
 
 // Direct PostgREST path for self-hosted Scope databases. Reads the existing
