@@ -392,11 +392,11 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
       isSuccess:(keywordDimension||overview.isSuccess)&&ready,
       error:publishedCatalog?null:othersConfig.error,
       data:(overview.data||keywordDimension)?(publishedCatalog||{
-        categories:[...(overview.data.categories||[]),
+        categories:[...(overview.data?.categories||[]),
           ...(dynamic?.groups||[]).map(group=>({
             category_code:group.group_code,display_name:group.display_name,enabled:true
           }))],
-        aliases:[...(overview.data.aliases||[]),
+        aliases:[...(overview.data?.aliases||[]),
           ...(dynamic?.aliases||[]).map(item=>({
             source_key:item.source_key,category_code:item.group_code
           }))]
@@ -581,7 +581,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
       {!keywordClassQuery.isPending&&!keywordClassQuery.error&&!availableKeywordClasses.length?<p className="scope-status">目前沒有可查看的關鍵詞組；未公開的分類須由具備此 Scope 管理權限的帳號讀取。</p>:null}
       {runeQuery.isPending?<p className="scope-status"><UiText id="uiExtra.statisticsUI.loadingKeywordAttrs"/></p>:null}
       {runeQuery.error?<p className="scope-status scope-error">{featureDataErrorMessage(runeQuery.error)}</p>:null}
-      {!runeQuery.isPending&&!runeQuery.error&&runeQuery.data?<Rune66Summary analysis={runeQuery.data} range={queryRange} scopeId={scopeId}/>:null}
+      {!runeQuery.isPending&&!runeQuery.error&&runeQuery.data?<Rune66Summary key={resolvedKeywordClassUid} analysis={runeQuery.data} range={queryRange} scopeId={scopeId}/>:null}
       {!runeQuery.isPending&&!runeQuery.error&&runeQuery.data&&!runeQuery.data.staticstime?<p className="scope-status">此關鍵詞組尚無已完成的分析結果；請先在關鍵詞管理執行分析，不以其他詞組數據代替。</p>:null}
     </>:null}
     {sourceChart&&Boolean(targetScopes[0])?<StatisticsDetails
