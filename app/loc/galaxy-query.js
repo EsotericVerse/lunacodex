@@ -509,10 +509,10 @@ function makeProvider({id,table,source,scope,idColumn,columns,searchFields,filte
           hasMore:false,nextCursor:null,totalCount:null,dataSource};
       }
       const ascending=sortDirection!=='desc';
-      // date is for WHERE/grouped daily aggregates; full article lists
-      // are always ordered by their actual publication timestamp.
-      // Anchor has no time sorting and is not a Search provider.
-      const orders=dateColumn?[{column:'createtime',ascending}]:[];
+      const orders=[
+        ...(dateColumn?[{column:dateColumn,ascending}]:[]),
+        ...(idColumn?[{column:idColumn,ascending}]:[])
+      ];
 
       // The exact COUNT(*) query can time out on ILIKE against article content.
       // Fetch one extra row instead; ordinary searching never needs a total count.
