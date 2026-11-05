@@ -22,14 +22,12 @@ function validSource(sender){
 async function enable(){
   if(!await chrome.permissions.contains({origins:[ORIGIN]}))
     throw Error('請先在 Extension 工作台授權 ChatGPT 網站存取');
+  // Replace an earlier registered version after an Extension update.
+  await chrome.scripting.unregisterContentScripts({ids:[SCRIPT]}).catch(()=>{});
   await chrome.scripting.registerContentScripts([{
     id:SCRIPT,matches:[ORIGIN],js:['chatgpt-capture.js'],
     runAt:'document_idle',persistAcrossSessions:true
-  }]).catch(async error=>{
-    // Re-activation after Chrome restart may find the same registered script.
-    const existing=await chrome.scripting.getRegisteredContentScripts({ids:[SCRIPT]});
-    if(!existing.length)throw error;
-  });
+  }]);
   await chrome.storage.local.set({[ENABLED]:true});
   await chrome.alarms.create(ALARM,{periodInMinutes:60});
   const tabs=await chrome.tabs.query({url:[ORIGIN]});
