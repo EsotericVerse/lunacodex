@@ -41,6 +41,7 @@ function TraceWork({row,scope,timeLabel=''}){
     articleScopeId={scope?.id||''}
     articleDate={article?.article_day||article?.date||''}
     articleCreateTime={article?.createtime||row.createtime||''}
+    date={row.date||row.createtime||''}
     tracePlace={article?.trace_place||null}
     traceHref={article?.trace_place?featureNavigationHref(scope?.id,'trace',{place:article.trace_place.uid}):''}
     locationName={article?.location||''}
@@ -163,7 +164,7 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
       const mediaIds=mediaPage.map(row=>String(row.uid||'').trim()).filter(Boolean);
       if(!mediaIds.length)return {rows:[],nextCursor:null};
       const {rows}=await selectRows(scope.galaxy,{
-        columns:'uid,title,createtime',
+        columns:'uid,title,createtime,date',
         filters:[
           ...traceArticleIdFilters(placeIds,{startDate,endDate,sourceName:sourceFilter}),
           {column:'media_link',operator:'overlaps',value:mediaIds}

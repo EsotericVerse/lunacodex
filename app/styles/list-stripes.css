@@ -65,3 +65,19 @@
 :is(.loc-table,.scope-stat-table) > tbody > tr:nth-child(even){background:var(--loc-list-row-even)}
 
 /* Preserve text contrast and keyboard focus from the existing theme styles. */
+
+/* Shared themed zebra surface for the four public article readers.
+   Culture renders div rows, while Search / Statistics / Trace render article cards.
+   Scope headings and infinite-scroll loaders are not record rows. */
+.loc-public-article-list > :is(.scope-work-list-row,.loc-shared-work-card):nth-child(odd){
+  background:var(--loc-list-row-odd);
+}
+.loc-public-article-list > :is(.scope-work-list-row,.loc-shared-work-card):nth-child(even){
+  background:var(--loc-list-row-even);
+}
+.loc-public-article-list > .scope-work-list-row{
+  border:1px solid var(--loc-line);
+  border-radius:var(--loc-ui-radius-sm);
+  padding:.65rem .8rem;
+  min-width:0;
+}

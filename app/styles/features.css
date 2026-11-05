@@ -1610,8 +1610,11 @@
 .loc-trace-float-search .loc-trace-quick-results{max-height:11rem;overflow-y:auto}
 .loc-trace-floating-content{
   position:absolute;z-index:11;left:.8rem;bottom:.8rem;
-  width:min(560px,calc(100% - 1.6rem));max-height:min(72dvh,760px);
-  overflow-y:auto;overscroll-behavior:contain;
+  width:min(560px,calc(100% - 1.6rem));
+  /* Respect the route picker above and the lower map boundary below. */
+  top:clamp(9rem,28%,12rem);max-height:none;min-height:0;
+  overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;
+  box-sizing:border-box;
   border:1px solid var(--loc-line);border-radius:var(--loc-radius);
   background:var(--loc-panel-strong);box-shadow:var(--loc-shadow-card)
 }
@@ -1619,7 +1622,8 @@
 .loc-trace-float-heading{display:flex;align-items:center;justify-content:space-between;gap:.5rem}
 .loc-trace-float-heading strong{font-size:1.05rem;color:var(--loc-heading);overflow-wrap:anywhere}
 .loc-trace-float-heading .loc-button{min-width:44px;min-height:44px}
-.loc-trace-float-tabs{display:flex;gap:.35rem;flex-wrap:wrap}
+.loc-trace-float-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.35rem;min-width:0}
+.loc-trace-float-tabs>.loc-button{min-width:0;width:100%;white-space:nowrap;padding-inline:.3rem;font-size:clamp(.74rem,1.1vw,.95rem)}
 .loc-trace-float-tabs .loc-button[aria-pressed="true"]{background:var(--loc-ui-accent-soft);border-color:var(--loc-accent-border)}
 .loc-trace-floating-content .loc-trace-works{padding:0;border:0;box-shadow:none;background:transparent}
 .loc-trace-floating-content .loc-trace-works-title h2{font-size:1rem}
