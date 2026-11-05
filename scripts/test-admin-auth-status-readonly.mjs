@@ -34,16 +34,13 @@ test('public Clerk environment is displayed without a second recovery login',()=
     frontendApiUrl:'https://accounts.example.org'}),'Clerk（Production）');
 });
 
-test('Admin OAuth status block is display-only and never rewrites database Link',()=>{
+test('Admin OAuth status is read-only and DB access is edited only through GitHub source',()=>{
   const panel=readFileSync(new URL('../app/loc/views/admin-panels/DatabaseTarget.jsx',import.meta.url),'utf8');
-  const start=panel.indexOf('{/* Authentication status: display only');
-  const stop=panel.indexOf('<h3><UiText id="uiExtra.adminView.savedDatabaseConnections"',start);
-  assert.ok(start>=0&&stop>start);
-  const section=panel.slice(start,stop);
-  assert.match(section,/OAuth 來源（唯讀）/);
-  assert.match(section,/Supabase Auth/);
-  assert.match(section,/Neon Auth/);
-  assert.match(section,/recoveryOAuth/);
-  assert.doesNotMatch(section,/onClick|onChange|<input|<select|password|secret/i);
-  assert.match(panel,/onChange=\{event=>patch\('project_url',event.target.value\)\}/);
+  assert.match(panel,/OAuth 來源（唯讀）/);
+  assert.match(panel,/Supabase Auth/);
+  assert.match(panel,/Neon Auth/);
+  assert.match(panel,/recoveryOAuth/);
+  assert.match(panel,/FILE_URL/);
+  assert.match(panel,/DATABASE_ACCESS_LIST/);
+  assert.doesNotMatch(panel,/onChange|controlToken|connectionUrl|loc_admin_settings/);
 });

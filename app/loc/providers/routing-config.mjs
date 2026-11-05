@@ -1,14 +1,28 @@
-// One deployment-time config for database SOURCE routing only.
+// Database source routing is read directly from access.js, never SQL.
 // No secrets, login grants, or database calls are stored here.
 // The existing LOC deployment keeps its optional Neon mirror by default;
 // NEXT_PUBLIC_LOC_BACKUP_ID='' explicitly runs with ONE database. No backup
 // connection, health check or synchronization is required for normal operation.
+import {DATABASE_ACCESS_LIST} from './access.js';
+
+const sourceTargets=Object.freeze(Object.fromEntries(
+  DATABASE_ACCESS_LIST.map(item=>[item.target_id,Object.freeze({
+    provider:item.provider,
+    primaryControl:true,
+    ...(item.provider==='custom'?{
+      engine:item.engine,connection_alias:item.connection_alias
+    }: {})
+  })])
+));
+const active=DATABASE_ACCESS_LIST.find(item=>item.selected===true);
+const backup=DATABASE_ACCESS_LIST.find(item=>item.backup_selected===true);
+if(!active||DATABASE_ACCESS_LIST.filter(item=>item.selected===true).length!==1)
+  throw new Error('access.js must select exactly one database');
+
 export const DATABASE_ROUTING_CONFIG=Object.freeze({
   targets:Object.freeze({
-    'supabase-current':Object.freeze({provider:'supabase',primaryControl:true}),
-    'neon-current':Object.freeze({provider:'neon',primaryControl:true}),
-    // Opt-in portable primary: profile credentials stay in the trusted
-    // Gateway's LOC_DB_CONNECTIONS_JSON, never in browser/LOC settings.
+    ...sourceTargets,
+    // Generic portable targets remain opt-in. Credentials are server secrets.
     'custom-current':Object.freeze({
       provider:'custom',
       engine:(typeof process!=='undefined'&&process.env.NEXT_PUBLIC_LOC_SQL_ENGINE)||'mysql',
@@ -16,12 +30,9 @@ export const DATABASE_ROUTING_CONFIG=Object.freeze({
       primaryControl:true
     })
   }),
-  // Optional fallback. An empty build setting disables it without code edits.
   blacklist:Object.freeze([]),
-  primaryId:(typeof process!=='undefined'&&process.env.NEXT_PUBLIC_LOC_PRIMARY_ID)||'supabase-current',
-  backupId:(typeof process!=='undefined'&&process.env.NEXT_PUBLIC_LOC_BACKUP_ID!==undefined)
-    ?(process.env.NEXT_PUBLIC_LOC_BACKUP_ID.trim()||null)
-    :'neon-current',
+  primaryId:active.target_id,
+  backupId:backup?.target_id||null,
   mode:'single'
 });
 
