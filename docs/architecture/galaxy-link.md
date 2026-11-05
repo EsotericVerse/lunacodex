@@ -22,6 +22,10 @@ Galaxy Link 是跨 Agent、跨對話的 Scope 記錄與接續介面，不是另�
 
 管理工具（Scope 設定、權限與 GitHub PR 寫入）維持獨立，不應混入 Galaxy Link 的讀寫權限。
 
+## 部署相容性
+
+所有 Galaxy Link 動作使用版本化的 `/v1/mcp/galaxy-link/*` Authority 路由。舊 Authority 未部署時直接拒絕新呼叫，絕不回退到舊 `sync` 整篇覆寫。部署順序應為 Kysely Edge → Authority Worker → Pages MCP Router；三者分別核對版本與功能。舊 `/v1/mcp/search/*` 繼續禁用。
+
 ## Recorder 來源與跨 Agent
 
 MCP Server 不是 ChatGPT／Claude／其他 App 的聊天歷史 API，無法自行讀取來源訊息。已授權的來源端負責提供完整、真實的使用者發言時間、原文，以及需要保存的 AI 真實建議；不得把 Agent 操作日誌當成原話。接入任何瀏覽器擷取模組前，需驗證隱私、相容性、完整歷史擷取及裝置切換行為。
