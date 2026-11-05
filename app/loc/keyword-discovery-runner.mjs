@@ -74,6 +74,20 @@ export async function suggestNewKeywords({galaxy,existingRows=[],onProgress=()=>
       }
     };
     onProgress({completed:0,total,lanes:1});
+    // Drivers may serialize SQL DATE as midnight UTC / Taipei ISO timestamps.
+    // Normalize the calendar day before validating or advancing the cursor.
+    const normalizeDay=value=>{
+      if(typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value))return value;
+      const raw=value instanceof Date?value.toISOString():value;
+      if(typeof raw!=='string')return null;
+      const match=raw.match(/^(\d{4}-\d{2}-\d{2})T(00:00:00(?:\.0+)?Z|00:00:00(?:\.0+)?\+00:00|00:00:00(?:\.0+)?\+08:00|16:00:00(?:\.0+)?Z)$/);
+      if(!match)return null;
+      if(raw.includes('16:00:00')){
+        const instant=new Date(raw);
+        return Number.isFinite(instant.getTime())?new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).format(instant):null;
+      }
+      return match[1];
+    };
     let after=null;
     for(;;){
       if(signal?.aborted)throw aborted();
@@ -85,21 +99,25 @@ export async function suggestNewKeywords({galaxy,existingRows=[],onProgress=()=>
       });
       const page=Array.isArray(data)?data:[];
       if(!page.length)break;
-      const boundary=page[page.length-1]?.date;
-      if(!/^\d{4}-\d{2}-\d{2}$/.test(String(boundary||''))||
-        page.some(row=>!row?.date||String(row.date)>String(boundary)))
-        throw new Error('Galaxy 日期分頁資料不完整');
+      const normalizedPage=page.map(row=>({...row,date:normalizeDay(row?.date)}));
+      const boundary=normalizedPage[normalizedPage.length-1]?.date;
+      if(!boundary||normalizedPage.some((row,index)=>!row.date||
+        (after!==null&&row.date<=after)||row.date>boundary||
+        (index>0&&row.date<normalizedPage[index-1].date)))
+        throw new Error('Galaxy 日期分頁資料不完整（日期游標或格式異常）');
       // Always fetch the entire last-day peer group: PostgreSQL may return
       // pages smaller than LIMIT, and date alone is not a unique cursor.
-      const prefix=page.filter(row=>String(row.date)!==String(boundary));
+      const prefix=normalizedPage.filter(row=>row.date!==boundary);
       const {data:peers,count}=await readPage(relation=>relation
         .select(ARTICLE_COLUMNS,{count:'exact'}).eq('date',boundary)
         .limit(MAX_SAME_DAY_ROWS));
-      if(!Array.isArray(peers)||(count==null||!Number.isSafeInteger(Number(count)))||
-        Number(count)>=MAX_SAME_DAY_ROWS||peers.length!==Number(count))
+      const normalizedPeers=Array.isArray(peers)?peers.map(row=>({...row,date:normalizeDay(row?.date)})):null;
+      if(!normalizedPeers||(count==null||!Number.isSafeInteger(Number(count)))||
+        Number(count)>=MAX_SAME_DAY_ROWS||normalizedPeers.length!==Number(count)||
+        normalizedPeers.some(row=>row.date!==boundary))
         throw new Error('Galaxy 同日文章超過掃描上限或資料不完整，未覆寫先前暫存');
       await consumePage(prefix);
-      await consumePage(peers);
+      await consumePage(normalizedPeers);
       after=String(boundary);
     }
     const {data:undated,count:undatedCount}=await readPage(relation=>relation
