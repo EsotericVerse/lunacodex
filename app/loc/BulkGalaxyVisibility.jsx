@@ -1,6 +1,6 @@
 'use client';
 
-import {useMemo,useState} from 'react';
+import {useEffect,useMemo,useState} from 'react';
 import {dbAuthClient} from './db-client.mjs';
 import {useAccount} from './use-account';
 import {useEditDock,useEditDockForm} from '../modular/edit-dock';
@@ -72,8 +72,14 @@ export default function BulkGalaxyVisibility({scopeId}){
     }finally{setBusy(false);}
   }
   const activateEditor=useEditDockForm({save,isDirty:()=>dirty,isBusy:()=>busy,discard:reset});
+  // Extension deep-link: this panel mounts only after Scope authorization and
+  // the management/import section is selected in the React UI.
+  useEffect(()=>{
+    if(!permitted||window.location.hash!=='#bulk-galaxy-visibility')return;
+    document.getElementById('bulk-galaxy-visibility')?.scrollIntoView({block:'start'});
+  },[permitted]);
   if(!permitted)return null;
-  return <section className="loc-card scope-feature-card" aria-label="Galaxy 八項權限大量更新"
+  return <section id="bulk-galaxy-visibility" className="loc-card scope-feature-card" aria-label="Galaxy 八項權限大量更新"
     onFocusCapture={activateEditor} onPointerDownCapture={activateEditor}>
     <h2>Galaxy 八項權限・大量更新</h2>
     <p className="scope-status">先指定來源與欄位，預覽後使用上方編輯工具列的「儲存」執行；不逐篇輸入 UID。MCP 文字與 GitHub 開發紀錄只能設為停用。</p>
