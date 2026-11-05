@@ -14,6 +14,7 @@ import {useAccount} from './use-account';
 import {FeaturePage} from '../modular/ui';
 import ManagementSectionNav,{useManagementSection} from '../modular/ManagementSectionNav';
 import PanelLoading from './PanelLoading';
+import {recoverChunkOnce} from './chunk-recovery.mjs';
 // The home/account Settings screens never download import or management editors.
 const PrivateLocalFiles=dynamic(()=>import('./PrivateLocalFiles'),{loading:PanelLoading});
 const ClerkScopeConnections=dynamic(()=>import('./ClerkScopeConnections'),{loading:PanelLoading});
@@ -21,7 +22,7 @@ const LocalDatabaseImport=dynamic(()=>import('./LocalDatabaseImport'),{loading:P
 // 每日符文紀錄：沿用既有的獨立頁面元件（/daily/log/），同一份邏輯透過它自己
 // 既有的 embedded 模式嵌入這裡，不複製任何讀寫邏輯。
 const DailyRuneCalendarSettings=dynamic(()=>import('../lrunes/DailyRuneCalendarSettings'),{loading:PanelLoading});
-const FeatureSettingsPage=dynamic(()=>import('./FeatureSettingsPage'),{loading:PanelLoading});
+const FeatureSettingsPage=dynamic(()=>import('./FeatureSettingsPage').catch(recoverChunkOnce),{loading:PanelLoading});
 import {selectScopeRegistry} from './scope-data';
 import {putSetting} from './user-storage';
 import {NavigationPreferences} from '../modular/navigation-preferences';
