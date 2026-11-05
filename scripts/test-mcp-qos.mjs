@@ -51,3 +51,16 @@ test('MCP QoS refuses cross-account release and invalid principal',async()=>{
     error=>error.status===401);
   assert.deepEqual(await authority.mcpQuotaRelease(ticket.lease,who),{released:true});
 });
+
+test('Galaxy Link searches have a separate low-rate budget',async()=>{
+  const authority=quota();
+  const subject='clerk:user_Search';
+  const one=await authority.mcpQuotaAcquire('search',subject);
+  const two=await authority.mcpQuotaAcquire('search',subject);
+  await assert.rejects(authority.mcpQuotaAcquire('search',subject),error=>error.status===429);
+  await authority.mcpQuotaRelease(one.lease,subject);
+  await authority.mcpQuotaRelease(two.lease,subject);
+  await assert.rejects(authority.mcpQuotaAcquire('search',subject),error=>error.status===429);
+  const read=await authority.mcpQuotaAcquire('read',subject);
+  await authority.mcpQuotaRelease(read.lease,subject);
+});
