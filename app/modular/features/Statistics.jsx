@@ -54,13 +54,12 @@ import StatisticsDetails from '../modules/statistics/StatisticsDetails';
 import {statisticsZoomWindow} from '../modules/statistics/statistics-time-zoom.mjs';
 
 const CHART_TYPES=STAT_VISUAL_TYPES;
-const STAT_TYPES=['total','source','place','media_type','media_platform'];
+const STAT_TYPES=['total','source','place','keywords'];
 const STAT_TYPE_KEYS=Object.freeze({
   total:'statistics.totalSource',
   source:'uiExtra.statisticsUI.sourceGroup',
   place:'uiExtra.statisticsUI.place',
-  media_type:'uiExtra.statisticsUI.mediaType',
-  media_platform:'uiExtra.statisticsUI.mediaPlatform'
+  keywords:'uiExtra.statisticsUI.keywordClass'
 });
 const MEDIA_STAT_TYPES=new Set(['media_type','media_platform']);
 const STYLE_FILTERS=Object.freeze([{value:'none',textKey:'uiExtra.statisticsUI.notApplied'},{value:'keywords',textKey:'uiExtra.statisticsUI.keywordClass'}]);
@@ -287,8 +286,10 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   const UI_COPY=useUiCopy();
   const t=useUiText();
   const requested=String(navigation.rankingType||'');
-  const rankingType=types.includes(requested)?requested:(types[0]||'');
-  const mediaDimension=MEDIA_STAT_TYPES.has(rankingType);
+  const rankingType=types.includes(requested)?requested:
+    (['media_type','media_platform','media_style'].includes(requested)||['keywords','styles'].includes(navigation.statTab)?'keywords':types[0]||'');
+  const keywordDimension=rankingType==='keywords';
+  const mediaDimension=false; // Legacy media facet remains disabled.
   const deviceTimeUnit=useDefaultTimeUnit();
   const {settings:userSettings,active:userActive}=useLocFeatureSettings('statics');
   const defaultTimeUnit=userActive?userSettings.unit:deviceTimeUnit;
@@ -296,12 +297,11 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   const [zoomLevel,setZoomLevel]=useState(0);
   const [foldBlank,setFoldBlank]=useState(true);
   // Leave potentially expensive keyword aggregation OFF until explicitly chosen.
-  const [styleFilter,setStyleFilter]=useState(navigation.statTab==='keywords'||navigation.statTab==='styles'||requested==='media_style'?'keywords':'none');
+  const styleFilter=keywordDimension?'keywords':'none';
   const [keywordSource,setKeywordSource]=useState('');
   const [selectedKeywordClassUid,setSelectedKeywordClassUid]=useState('');
   const [sourceGroup,setSourceGroup]=useState('');
     useEffect(()=>{
-    setStyleFilter(navigation.statTab==='keywords'||navigation.statTab==='styles'||requested==='media_style'?'keywords':'none');
     setKeywordSource('');
     setSelectedKeywordClassUid('');
     setSourceGroup('');
@@ -361,7 +361,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   },[selectedPeriod,customQueryRange,queryEndDate,hasRequestedWindow,requestedStart,requestedEnd,defaultTimeUnit]);
   // Both editors store flat names. Show one direct source choice, not a group tree.
   const activeSourceSelection=styleFilter==='keywords'?keywordSource:rankingType==='source'?sourceGroup:'';
-  const sourceChart=!mediaDimension&&rankingType!=='place'&&Boolean(targetScopes.length)&&Boolean(rankingType);
+  const sourceChart=['total','source'].includes(rankingType)&&Boolean(targetScopes.length);
   // ONE request per source chart: earliest date + exact daily counts + source taxonomy.
   const overview=useAsyncResource({
     queryKey:['scope-overview',scopeId,queryRange.startDate,queryRange.endDate],
@@ -404,7 +404,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   const publishedCatalog=useMemo(()=>publishedSourceCategoryCatalog(scopeId),[scopeId]);
   const othersConfig=useAsyncResource({
     queryKey:['scope-others-source-summary',scopeId],
-    enabled:sourceChart&&Boolean(scopeId)&&!publishedCatalog,
+    enabled:(sourceChart||keywordDimension)&&Boolean(scopeId)&&!publishedCatalog,
     queryFn:async()=>readPersonalSourceClasses(scopeId),
     revalidateOnFocus:false,revalidateOnReconnect:false
   });
@@ -412,10 +412,10 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     const ready=Boolean(publishedCatalog||othersConfig.isSuccess);
     const dynamic=othersConfig.data;
     return {
-      isPending:(overview.isPending||!ready)&&sourceChart,
-      isSuccess:overview.isSuccess&&ready,
+      isPending:((sourceChart&&overview.isPending)||!ready)&&(sourceChart||keywordDimension),
+      isSuccess:(keywordDimension||overview.isSuccess)&&ready,
       error:publishedCatalog?null:othersConfig.error,
-      data:overview.data?(publishedCatalog||{
+      data:(overview.data||keywordDimension)?(publishedCatalog||{
         categories:[...(overview.data.categories||[]),
           ...(dynamic?.groups||[]).map(group=>({
             category_code:group.group_code,display_name:group.display_name,enabled:true
@@ -428,18 +428,18 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
       dataUpdatedAt:Math.max(overview.dataUpdatedAt||0,publishedCatalog?0:othersConfig.dataUpdatedAt||0)
     };
   },[publishedCatalog,overview.isPending,overview.isSuccess,overview.data,overview.dataUpdatedAt,
-    othersConfig.isSuccess,othersConfig.data,othersConfig.error,othersConfig.dataUpdatedAt,sourceChart]);
+    othersConfig.isSuccess,othersConfig.data,othersConfig.error,othersConfig.dataUpdatedAt,sourceChart,keywordDimension]);
   const selectedRawNames=null;
   // Numeric counts come from ISR. Category bucketing is tiny synchronous
   // presentation work, not an independent remote resource: avoid a second SWR
   // suspense/loading cycle after the cached numeric response arrives.
   const adminSource=useMemo(()=>{
-    if(mediaDimension||!sourceCatalog.isSuccess)return null;
+    if(!sourceChart||!sourceCatalog.isSuccess)return null;
     return administrativeSourceTrend(overview.data?.rows||[],sourceCatalog.data||{},{
       startDate:queryRange.startDate,endDate:queryRange.endDate,
       unit:queryRange.bucket,sourceCategory:activeSourceSelection,sourceNames:selectedRawNames
     });
-  },[mediaDimension,sourceCatalog.isSuccess,sourceCatalog.data,overview.data,
+  },[sourceChart,sourceCatalog.isSuccess,sourceCatalog.data,overview.data,
     queryRange.startDate,queryRange.endDate,queryRange.bucket,activeSourceSelection]);
   const adminSourceReady=Boolean(adminSource);
   const resolvedAdminSource=adminSource||{rows:[],series:[],distribution:[],total:0};
@@ -486,11 +486,11 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   }),[queryRange.startDate,queryRange.endDate]);
   // Separate the guest/shared directory from the owner's private catalog.
   // Never reuse a one-Class anonymous cache after an authorized sign-in.
-  const keywordAccount=useAccount({enabled:styleFilter==='keywords'});
+  const keywordAccount=useAccount({enabled:keywordDimension});
   const keywordClassQuery=useAsyncResource({
     queryKey:['scope-active-keyword-class-name',scopeId,keywordAccount.user?.id||'guest'],
     // The keyword class is optional; the ordinary Statistics view never queries it.
-    enabled:styleFilter==='keywords',
+    enabled:keywordDimension,
     queryFn:async()=>{
       const {selectAvailableKeywordClasses}=await import('../../loc/keyword-analysis');
       return selectAvailableKeywordClasses(scopeId);
@@ -524,7 +524,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
         sourceAliases:keywordSourcesQuery.data?.aliases||[],sourceNames:selectedRawNames
       });
     },
-    enabled:styleFilter==='keywords'&&Boolean(resolvedKeywordClassUid)&&Boolean(styleRange.startDate&&styleRange.endDate)
+    enabled:keywordDimension&&Boolean(resolvedKeywordClassUid)&&Boolean(styleRange.startDate&&styleRange.endDate)
       &&(!keywordSource||keywordSourcesQuery.isSuccess),
   });
 
@@ -532,14 +532,6 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     <header className="scope-stat-domain-heading"><div><h2>{UI_COPY.statistics.result}</h2></div></header>
     <div className="scope-stat-controls">
       <StatisticTypeSelect scopeId={scopeId} navigation={navigation} types={types}/>
-      {rankingType!=='place'?<label>
-        <span>顯示關鍵字</span>
-        <select className="scope-select" value={styleFilter} onChange={event=>setStyleFilter(event.target.value)}>
-          {STYLE_FILTERS.map(item=><option key={item.value} value={item.value}>
-            {t(item.textKey)}
-          </option>)}
-        </select>
-      </label>:null}
       {styleFilter==='keywords'?<label>
         <span>關鍵字群組</span>
         <select className="scope-select" aria-label="關鍵字群組" value={resolvedKeywordClassUid}
@@ -604,9 +596,8 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     {earliestQuery.error?<p className="scope-status scope-error">{featureDataErrorMessage(earliestQuery.error,UI_COPY)}</p>:null}
     {rankingType!=='place'&&!mediaDimension&&(sourceRows.error||sourceCatalog.error)?<p className="scope-status scope-error">{featureDataErrorMessage(sourceRows.error||sourceCatalog.error,UI_COPY)}</p>:null}
     {mediaDimension&&mediaError?<p className="scope-status scope-error">{featureDataErrorMessage(mediaError,UI_COPY)}</p>:null}
-    {rankingType!=='place'&&!mediaDimension&&!sourceRows.isPending&&!sourceCatalog.isPending&&adminSourceReady&&!sourceRows.error&&!sourceCatalog.error?<>
+    {sourceChart&&!sourceRows.isPending&&!sourceCatalog.isPending&&adminSourceReady&&!sourceRows.error&&!sourceCatalog.error?<>
       <p className="scope-status">{sourceSummary.startDate&&sourceSummary.endDate?sourceSummary.startDate+' ～ '+sourceSummary.endDate:''}</p>
-      <p className="scope-status">關聯多媒體總數：{overview.data?.mediaCount==null?'—':Number(overview.data.mediaCount).toLocaleString()}</p>
       <StatisticsChartFrame level={zoomLevel} onChange={setZoomLevel} range={queryRange} idPrefix="scope-stat">
         <StatisticsMultiChart
           type={effectiveChartType}
@@ -643,7 +634,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
       facetTotals={facetTotals}
       facetTrend={facetTrend}
     />:null}
-    {rankingType!=='place'&&styleFilter==='keywords'?<>
+    {keywordDimension?<>
       {keywordSourcesQuery.error?<p className="scope-status scope-error">{featureDataErrorMessage(keywordSourcesQuery.error,UI_COPY)}</p>:null}
       {keywordClassQuery.isPending?<p className="scope-status">正在讀取關鍵詞組設定…</p>:null}
       {!keywordClassQuery.isPending&&!keywordClassQuery.error&&!availableKeywordClasses.length?<p className="scope-status">目前沒有可查看的關鍵詞組；未公開的分類須由具備此 Scope 管理權限的帳號讀取。</p>:null}
@@ -652,7 +643,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
       {!runeQuery.isPending&&!runeQuery.error&&runeQuery.data?<Rune66Summary analysis={runeQuery.data} range={queryRange} scopeId={scopeId}/>:null}
       {!runeQuery.isPending&&!runeQuery.error&&runeQuery.data&&!runeQuery.data.staticstime?<p className="scope-status">此關鍵詞組尚無已完成的分析結果；請先在關鍵詞管理執行分析，不以其他詞組數據代替。</p>:null}
     </>:null}
-    {rankingType!=='place'&&Boolean(targetScopes[0])?<StatisticsDetails
+    {sourceChart&&Boolean(targetScopes[0])?<StatisticsDetails
       summary={<UiText id="uiExtra.statisticsView.selfIntersectionTitle"/>}>
       {()=> <ScopeSelfIntersection
         key={scopeId}
