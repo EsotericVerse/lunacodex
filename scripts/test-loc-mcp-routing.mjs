@@ -64,6 +64,14 @@ test('Missing/invalid token is rejected',async()=>{
   assert.equal((await handleMcp(req('POST',await token({aud:'https://other.site/mcp'}),rpc('initialize')))).status,401);
   assert.equal((await handleMcp(req('POST',await token({exp:0}),rpc('initialize')))).status,401);
 });
+test('concurrent valid MCP calls share public JWKS and do not trigger one Clerk fetch per request',async()=>{
+  const jwt=await token();
+  const before=jwksQueries;
+  const replies=await Promise.all(Array.from({length:12},()=>handleMcp(req('POST',jwt,rpc('initialize')))));
+  assert.ok(replies.every(r=>r.status===200));
+  assert.ok(jwksQueries-before<=1,'concurrent MCP calls must share one JWKS fetch');
+});
+
 test('Valid Clerk JWT can initialize, discover read/write tools, and ping',async()=>{
   const jwt=await token();
   let r=await handleMcp(req('POST',jwt,rpc('initialize',{protocolVersion:'2025-06-18'})));
