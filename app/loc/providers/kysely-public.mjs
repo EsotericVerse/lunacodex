@@ -22,8 +22,10 @@ export async function executeKyselyPublicAction(trx,body,{engine='postgres',name
     if(Object.keys(args).some(key=>!['p_scope_id','p_type'].includes(key)))
       throw Object.assign(new Error('Invalid Block arguments'),{httpStatus:400});
     const scope=id(args.p_scope_id),kind=String(args.p_type||'').trim();
-    if(!/^[a-z][a-z0-9_-]{0,40}$/.test(kind))
-      throw Object.assign(new Error('Invalid Block type'),{httpStatus:400});
+    if(!/^[a-z][a-z0-9_-]{0,40}$/.test(kind)||
+       action==='page_blocks'&&kind!=='index'||
+       action==='hero_blocks'&&!['culture','statics','trace','search'].includes(kind))
+      throw Object.assign(new Error('Invalid public Block type'),{httpStatus:400});
     const tableName=action==='hero_blocks'?'loc_blocks':
       scope==='loc'?'loc_blocks':scope+'_blocks';
     const names=action==='hero_blocks'?['group_'+kind,'scope_'+kind]:[kind];
