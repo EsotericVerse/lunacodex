@@ -74,7 +74,9 @@ export default function Article({uid,title,articleHref='',detailReading=false,re
     .filter(link=>link.href):[];
   const visibleLinks=mediaEditLinks.length?links.filter(link=>!String(link?.id||'').startsWith('media:')):links;
   const visibleRelations=mediaEditLinks.length?[...relationLinks,...mediaEditLinks]:relationLinks;
-  return <WorkSummaryCard title={title} titleHref={articleHref} titleEditor={titleEditor} kicker={styleTag?styleTagKicker:null} source={source} scopeId={scopeId} date={editingReady?'':date} actions={editorActions}
+  // Use the existing list row date without fetching its article body.
+  const displayDate=String(date||articleDate||articleCreateTime||'').slice(0,10);
+  return <WorkSummaryCard title={title} titleHref={articleHref} titleEditor={titleEditor} kicker={styleTag?styleTagKicker:null} source={source} scopeId={scopeId} date={editingReady?'':displayDate} actions={editorActions}
     body={editingReady||richBody||styleTag?'':body} hidden={hidden} relationLinks={visibleRelations} detailReading={detailReading} relatedMedia={relatedMedia} relatedTime={relatedTime} relatedSpace={relatedSpace} relatedStatistics={relatedStatistics} articleScopeId={articleScopeId} articleDate={articleDate} articleCreateTime={articleCreateTime} tracePlace={tracePlace} traceHref={traceHref} locationName={locationName} links={visibleLinks}
     destinations={destinations} className={['loc-shared-work-card',styleTag?'scope-article-style-tag-hit':'',detailReading?'scope-article-detail':''].filter(Boolean).join(' ')} onClickCapture={onClickCapture}>
     {styleTag&&!editingReady&&styleIntroText?<div className="scope-style-tag-search-intro">{styleIntroText}</div>:null}
