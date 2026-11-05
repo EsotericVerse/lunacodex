@@ -39,7 +39,8 @@ test('extension exposes only Scope ID for auth and preserves scenic login',()=>{
   assert.ok(oauth.includes("action:'check',scopeid"));
   assert.ok(oauth.includes('chrome.identity.launchWebAuthFlow'));
   assert.ok(!oauth.includes('client_secret'));
-  assert.ok(!worker.includes('chrome.runtime.onMessageExternal'));
+  assert.ok(worker.includes('chrome.runtime.onMessageExternal'));
+  assert.ok(worker.includes("url.pathname!=='/extension/auth-bridge.html'"));
   assert.ok(worker.includes('chrome.alarms.onAlarm'));
   assert.ok(!worker.includes('chrome.runtime.onMessageExternal'));
 });
