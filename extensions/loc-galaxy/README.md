@@ -1,4 +1,4 @@
-# LOC Galaxy — Chrome Extension (Stage 5: direct old-conversation archive + opt-in live capture)
+# LOC Galaxy — Chrome Extension (0.6.0: LOC website Session bridge)
 
 This Manifest V3 extension connects only to LOC MCP via Clerk OAuth. The user enters only Scope ID. The full-page workbench adds private Galaxy Link search/read and buttons for the existing LOC website import, bulk-update, and article management pages.
 
@@ -6,9 +6,9 @@ This Manifest V3 extension connects only to LOC MCP via Clerk OAuth. The user en
 
 1. Choose an existing Scope ID (`^[a-z][a-z0-9]{0,14}$`).
 2. **Open LOC login**: opens the **original scenic LOC Clerk page** `https://loc.lo3rwang.cc/login/index.html` in a normal Chrome tab. This retains the full-screen “回到你的文字世界。” experience and uses the existing Clerk Google login.
-3. After Clerk website login, return to Extension and click **Verify OAuth**. Chrome's `identity.launchWebAuthFlow` uses Authorization Code + PKCE S256 and the already signed-in Clerk account. The Clerk OAuth consent screen may still appear.
-4. Extension validates both `loc_connection_status` and `galaxy_link(action=check,scopeid=...)` with the **OAuth access token intended for `https://loc.lo3rwang.cc/mcp`**. If Scope write authorization fails, the Extension remains disconnected. Identity alone is not a write grant.
-5. Only after verification are credentials persisted. `chrome.storage.session` holds the short-lived access token; `chrome.storage.local` holds the refresh token and Scope. Both are restricted to **trusted extension contexts**, not content scripts, and never synced to the user's Chrome account. The password and client secret are never collected. Treat local refresh-token storage as sensitive; Chrome storage is not a hardware vault.
+3. After Clerk website login, choose **使用 LOC 網站 Session 連線**. Extension opens `https://loc.lo3rwang.cc/extension/auth-bridge.html`, where the website's existing Clerk Session obtains a separate `loc-mcp` JWT-template token bound exclusively to the LOC MCP resource. This avoids `chrome.identity.launchWebAuthFlow` for the primary login path.
+4. Extension validates both `loc_connection_status` and `galaxy_link(action=check,scopeid=...)` with the **dedicated MCP-audience JWT intended for `https://loc.lo3rwang.cc/mcp`**. If Scope write authorization fails, the Extension remains disconnected. Identity alone is not a write grant.
+5. Only after verification are credentials persisted. `chrome.storage.session` holds the short-lived dedicated access token; `chrome.storage.local` holds the nonsecret website bridge binding and Scope. The default Clerk website session JWT, cookies and refresh tokens are never transferred to the Extension. Both are restricted to **trusted extension contexts**, not content scripts, and never synced to the user's Chrome account. The password and client secret are never collected. Treat local refresh-token storage as sensitive; Chrome storage is not a hardware vault.
 6. Changing Scope immediately clears the old credentials. Disconnect clears Extension credentials **without** pretending to revoke the website's Clerk sign-in; server-side token revocation is a separate action.
 
 ChatGPT web capture is optional and disabled by default. Only after the user's explicit Chrome site-access approval does a narrowly scoped content script observe future visible user messages. No chat-history scraping, unrelated websites, arbitrary external MCP forwarding or extension-side bulk import parser is included. Data import and bulk edits run in the existing LOC site after its independent Clerk and Scope authorization. The extension never forwards the OAuth token to those pages.
@@ -30,7 +30,7 @@ If CIMD is unavailable:
 - Put that application's **public** `client_id` (never the Client Secret) in `public/extension/oauth/config.json`, then let the existing Pages `main` pipeline publish it. The Extension fetches the value; users never enter it.
 - The fixed issuer in the configuration must match `https://precise-grackle-3371.clerk.accounts.dev`, which is the current MCP issuer in code. If the production Clerk issuer changes, update the specific HTTPS host permission, issuer validation and server configuration together.
 
-The LOC Galaxy Public Client is registered and its public client_id is present in `public/extension/oauth/config.json`; actual user/browser consent still requires live verification. Never put an OAuth Client Secret in the extension.
+The legacy OAuth Public Client remains configured for compatibility but is no longer the primary Extension sign-in path. The new website bridge needs a Clerk **JWT template**, not another OAuth Public Client. Never put an OAuth Client Secret in the extension.
 
 When published on the Chrome Web Store, confirm whether its assigned ID matches the pinned unpacked ID. If not, update redirect URI/metadata and OAuth registration before shipping. Never put a `client_secret` in an extension.
 
@@ -38,7 +38,7 @@ When published on the Chrome Web Store, confirm whether its assigned ID matches 
 
 1. Open `chrome://extensions`, enable **Developer mode**.
 2. Click **Load unpacked**, select `extensions/loc-galaxy/`.
-3. Click LOC Galaxy, enter `scopeid`, then follow the two login/authorization buttons.
+3. Click LOC Galaxy, enter `scopeid`, then click **使用 LOC 網站 Session 連線**; the new LOC web tab uses your existing Clerk website sign-in. If needed, use **開啟 LOC 登入** first.
 4. Once Scope verification is successful, choose **3 · 開啟 Galaxy 工作台**. The full tab offers MCP topic search/read and buttons to open the existing Scope import/bulk-edit/article-management pages.
 5. To use the web panels opened from the extension, maintain a valid **website** Clerk session and enter the website edit mode as normal. OAuth in the extension does **not** bypass the site's management permissions.
 
@@ -89,3 +89,11 @@ This does **not** capture ChatGPT desktop/mobile conversations. Stage 4 adds a s
 6. UI 顯示「掃描／新增暫存／確認寫入」數字；網頁缺少訊息、停止載入或虛擬化 DOM 時可能漏掉舊訊息，**沒有辦法僅靠當前 DOM 保證得到 ChatGPT 官方完整記錄**。對於沒有載入在網頁上的內容，Extension 不能憑空補寫。若需要完整歷史與準確發送時間，官方匯出仍是補救方案，而不是此功能的必經步驟。
 
 安全：不使用 ChatGPT 私有 API，不繞過存取權限，不傳 Clerk OAuth Token 到頁面，也不在沒有明確按鈕操作時回溯歷史。不會修改 LOC SQL Schema、Authority 或 RLS。Chrome 實機 DOM 擷取與正式 OAuth→Galaxy 寫入仍需驗收。
+
+## Website Session bridge (0.6.0) — operator configuration required
+
+- In the **same Clerk instance** currently used by LOC website, create a JWT template named exactly **`loc-mcp`** with a static audience claim `"aud": "https://loc.lo3rwang.cc/mcp"`. Keep the built-in `iss`, `sub`, `exp`, `iat` and cryptographic Clerk signing; use RS256 and a short expiration (up to one hour). **Do not put a Clerk secret or website session token into the Extension or repository.**
+- The Extension ID stays pinned to `hiaeafonocnjaclcfgjmdopbcgnafnna`. The manifest permits **external messages only from `https://loc.lo3rwang.cc/*`**. A randomly generated nonce, fixed bridge path, originating tab ID, Scope ID, and server-side token/Scope validation must all match before the Extension accepts a grant. The bridge never reads cookies directly.
+- The normal LOC site Clerk login is sufficient; users are **not asked to complete another Chrome OAuth Authorization page**. The page automatically refreshes the separate audience-bound grant while the bridge tab stays open. **Keep the bridge tab open for long-running hourly sync**, or click the website-session connection button again when it closes/expires. The original site Session cannot silently refresh the Extension from a closed website tab in this architecture.
+- Website login alone does not grant Galaxy read or write access: `loc_connection_status` + `galaxy_link.check` independently verify the JWT and Scope. Normal MCP tools continue using MCP QoS; the website login page itself is not charged against MCP request counts. This change does not split different MCP clients' per-subject QoS budgets.
+- Actual Clerk template issuance, Chrome external messaging, and managed Scope recording must be verified in a live browser after the site deploys. If the template is absent, the bridge explicitly shows **Clerk 未核發 loc-mcp JWT Template** rather than pretending the connection succeeded.
