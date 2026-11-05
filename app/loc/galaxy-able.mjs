@@ -24,7 +24,7 @@ export function privateGalaxySource(row={}){
   if(site==='mcp')return true;
   if(site!=='github')return false;
   return /#[0-9]+$/.test(String(row.site_id||''))||
-    /(?:^|[^0-9])PR\\s*#[0-9]+(?:[^0-9]|$)/i.test(String(row.title||''));
+    /(?:^|[^0-9])PR\s*#[0-9]+(?:[^0-9]|$)/i.test(String(row.title||''));
 }
 export function galaxyAble(row={}){
   // A source labelled MCP or GitHub PR must never inherit an old public flag,
