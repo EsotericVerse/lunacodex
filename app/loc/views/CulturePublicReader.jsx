@@ -51,7 +51,9 @@ function anchorModel(rows,start,end,expanded){
     const allDates=[...from,...links].sort();
     return {start:allDates[0]||'',end:allDates[allDates.length-1]||''};
   };
-  const groups=[],items=[],used=new Set();
+  // The first river is an era tree: collapsed rows contain only eras.
+  // Date anchors belong to their eras, never to a separate sidebar lane.
+  const groups=[],items=[];
   for(const era of eras){
     const uid=String(era.uid),attr=attributes(era);
     const refs=list(attr.period||attr.periods).map(id=>byUid.get(String(id)))
@@ -68,38 +70,30 @@ function anchorModel(rows,start,end,expanded){
         group_key:'era:'+uid,group_label:era.title||'時代',
         start_date:begins[0],end_date:ends[ends.length-1]});
     }
+    // Match real date points against each era's own periods. Do not use
+    // the era's overall first/last date for matching: eras may have gaps.
+    const windows=[...ranges.filter(range=>range.start&&range.end),
+      ...eraDates.map(day=>({start:day,end:day}))];
+    for(const row of dates){
+      if(row.date<start||row.date>end||
+        !windows.some(range=>row.date>=range.start&&row.date<=range.end))continue;
+      const pointUid=String(row.uid);
+      items.push({id:'era:'+uid+':date:'+pointUid,uid:pointUid,entry_type:'anchor',
+        start_date:row.date,title:row.title||row.date,display_label:'',
+        group_key:'era:'+uid,group_label:era.title||'時代'});
+    }
     if(!expandedEra)continue;
     refs.forEach(period=>{
       const id=String(period.uid),range=periodRange(period);
-      used.add(id);
-      groups.push({id:'period:'+id,label:'　'+(period.title||'期間'),order:groups.length});
+      groups.push({id:'period:'+uid+':'+id,label:'　'+(period.title||'期間'),order:groups.length});
       if(range.start&&range.end&&range.end>=start&&range.start<=end){
-        items.push({id:'period:'+id,entry_type:'period',uid:id,
-          title:period.title||'期間',group_key:'period:'+id,
+        items.push({id:'era:'+uid+':period:'+id,entry_type:'period',uid:id,
+          title:period.title||'期間',group_key:'period:'+uid+':'+id,
           group_label:period.title||'期間',
           start_date:range.start,end_date:range.end});
       }
     });
   }
-  for(const period of periods){
-    const uid=String(period.uid);
-    if(used.has(uid))continue;
-    const range=periodRange(period);
-    groups.push({id:'period:'+uid,label:period.title||'期間',order:groups.length});
-    if(range.start&&range.end&&range.end>=start&&range.start<=end)
-      items.push({id:'period:'+uid,uid,entry_type:'period',
-        title:period.title||'期間',group_key:'period:'+uid,
-        group_label:period.title||'期間',start_date:range.start,end_date:range.end});
-  }
-  // Date points are display anchors, not Galaxy article IDs.
-  for(const row of dates){
-    if(row.date<start||row.date>end)continue;
-    const uid=String(row.uid);
-    items.push({id:'date:'+uid,uid,entry_type:'anchor',start_date:row.date,
-      title:row.title||row.date,display_label:'',group_key:'dates',
-      group_label:'時間定錨點'});
-  }
-  groups.push({id:'dates',label:'時間定錨點',order:groups.length});
   return {items,groups};
 }
 function sourceModel(rows,systemNames,personalNames,expanded,start,end){
