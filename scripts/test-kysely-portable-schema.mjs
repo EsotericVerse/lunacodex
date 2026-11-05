@@ -16,10 +16,10 @@ function mockDb(existing=[]){
     introspection:{getTables:async()=>existing},
     schema:{
       createTable(table){
-        const entry={table,columns:[]};tables.push(entry);
+        const entry={table,columns:[],columnTypes:{}};tables.push(entry);
         const chain={ifNotExists(){return this},
           addColumn(name,type,callback){
-            entry.columns.push(name);
+            entry.columns.push(name);entry.columnTypes[name]=type;
             const column={notNull(){return this},primaryKey(){return this},
               defaultTo(){return this}};
             if(callback)callback(column);
@@ -56,6 +56,15 @@ for(const [engine,namespace] of [['postgres','public'],['mysql','silver'],['mssq
     assert.equal(out.created.length,2);
   });
 }
+test('PostgreSQL Galaxy uses native SQL arrays, with JSONB confined to Anchor',async()=>{
+  const {db,tables}=mockDb();
+  await create(db,{engine:'postgres',namespace:'silver',scopeId:'writer'});
+  assert.equal(tables[0].columnTypes.target_id,'text[]');
+  assert.equal(tables[0].columnTypes.media_link,'varchar[]');
+  assert.ok(!Object.values(tables[0].columnTypes).includes('jsonb'));
+  assert.equal(tables[1].columnTypes.attr,'jsonb');
+});
+
 test('already present Scope tables are never replaced',async()=>{
   const {db,tables}=mockDb([{schema:'dbo',name:'writer_galaxy'},
     {schema:'dbo',name:'writer_anchor'}]);
