@@ -497,8 +497,10 @@ test('LOC group member editing and system Admin panels are disjoint; media targe
   const zh=readFileSync(new URL('../app/i18n/zh_tw.js',import.meta.url),'utf8');
   assert.match(page,/人員作品管理/);
   assert.match(page,/LocGroupMemberList/);
-  assert.doesNotMatch(page,/admin-panels\/AdminRegistry|AdminReservedScopeIds/);
-  assert.match(admin,/section==='registry'/);
+  assert.match(page,/section==='systemPersonnel'&&isSystemAdmin\?<AdminRegistry\/>:null/);
+  assert.match(page,/const sections=isSystemAdmin\?\[\.\.\.OPTIONS,SYSTEM_PERSONNEL_OPTION\]:OPTIONS/);
+  assert.doesNotMatch(page,/AdminReservedScopeIds/);
+  assert.doesNotMatch(admin,/section==='registry'/);
   assert.match(admin,/section==='lists'/);
   assert.match(admin,/section==='network'/);
   assert.match(admin,/<AdminReservedScopeIds\/>/);
@@ -529,10 +531,10 @@ test('Admin first tab is People; lists and network consolidate existing secure e
   const menu=admin.match(/const ADMIN_OPTIONS=Object\.freeze\(\[([\s\S]*?)\]\);/);
   assert.ok(menu,'Admin options are missing');
   assert.deepEqual([...menu[1].matchAll(/value:'([^']+)'/g)].map(x=>x[1]),
-    ['registry','lists','network','io','featureHero','themes']);
+    ['lists','network','io','featureHero','themes']);
    assert.match(admin,/section==='io'\?<RuntimeIoSettings\/>/);
    assert.match(read('app/loc/views/admin-panels/RuntimeIoSettings.jsx'),/key:'maxRows'/);
-  assert.match(admin,/useManagementSection\(ADMIN_OPTIONS,'registry'/);
+  assert.match(admin,/useManagementSection\(ADMIN_OPTIONS,'lists'/);
   for(const [oldId,newId] of Object.entries({
     database:'network',isr:'network',reserved:'lists',blocklist:'lists'
   }))assert.ok(admin.includes(oldId+":'"+newId+"'"),'legacy section '+oldId+' not mapped');

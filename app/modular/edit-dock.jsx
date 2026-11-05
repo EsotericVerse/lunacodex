@@ -16,6 +16,7 @@ export function EditDockProvider({children}){
   const router=useRouter();
   const pathname=usePathname();
   const [scopeId,setScopeId]=useState('');
+  const [canManageGlobal,setCanManageGlobal]=useState(false);
   const [hasSave,setHasSave]=useState(false);
   const [busy,setBusy]=useState(false);
   const committing=useRef(false);
@@ -70,11 +71,12 @@ export function EditDockProvider({children}){
     currentEditor.current=null;
     setHasSave(false);
   },[]);
-  const begin=useCallback(id=>{
+  const begin=useCallback((id,{globalManage=false}={})=>{
     const idText=String(id||'').trim();
     if(!idText)return;
     if(idText!=='local')try{touchEditorSession(window.sessionStorage);}catch{}
     setScopeId(idText);
+    setCanManageGlobal(Boolean(globalManage));
     setNotice('');
   },[]);
   const end=useCallback(()=>{
@@ -85,6 +87,7 @@ export function EditDockProvider({children}){
     setSwitchTarget('');
     setSwitchError('');
     setScopeId('');
+    setCanManageGlobal(false);
     setNotice('');
   },[clearEditor,releaseOperation]);
   useEffect(()=>{
@@ -281,9 +284,9 @@ export function EditDockProvider({children}){
     else navigate(target,switchHistory.current,switchScroll.current);
   },[busy,switchTarget,clearEditor,navigate]);
   const value=useMemo(()=>({
-    active:Boolean(scopeId),scopeId,hasSave,busy,notice,begin,end,
+    active:Boolean(scopeId),scopeId,canManageGlobal,hasSave,busy,notice,begin,end,
     register,save,discard,complete,switchTo,switchSection,setNotice
-  }),[scopeId,hasSave,busy,notice,begin,end,register,save,discard,complete,switchTo,switchSection]);
+  }),[scopeId,canManageGlobal,hasSave,busy,notice,begin,end,register,save,discard,complete,switchTo,switchSection]);
   return <EditDockContext.Provider value={value}>
     {children}
     <dialog ref={switchDialog} className="scope-edit-switch-dialog" aria-labelledby="scope-edit-switch-title"

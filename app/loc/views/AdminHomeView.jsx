@@ -14,11 +14,11 @@ import {FeaturePage} from '../../modular/ui';
 import ManagementWorkspaceFrame from '../ManagementWorkspaceFrame';
 import ManagementSectionNav,{useManagementSection} from '../../modular/ManagementSectionNav';
 import PanelLoading from '../PanelLoading';
-// Registry editing and source catalogs are independent admin capabilities.
+// Group member display-name editing lives in the Group People/Works page.
+// Admin keeps only privileged registry provisioning and system configuration.
 
 const ADMIN_OPTIONS=Object.freeze([
-  {value:'registry',label:'人員',shortLabel:'人員',description:'系統人員、Email、Table 對應及群組部署。'},
-  {value:'lists',label:'名單管理',shortLabel:'名單',description:'保留名稱備註及 Email 系統黑名單。'},
+  {value:'lists',label:'系統名單',shortLabel:'名單',description:'管理員專屬的保留名稱及 Email 黑名單。'}, 
   {value:'network',label:'網路設定',shortLabel:'網路',description:'資料庫連線、ISR 快取與認證來源設定。'},
   {value:'io',label:'系統設定',shortLabel:'系統設定',description:'系統匯入、匯出及批次限制。'},
   {value:'featureHero',label:'功能區塊設定',shortLabel:'區塊',description:'編輯功能頁 Hero 與展示資源。'},
@@ -31,7 +31,6 @@ const RuntimeIoSettings=dynamic(()=>import('./admin-panels/RuntimeIoSettings'),{
 const ThemeEditor=dynamic(()=>import('./admin-panels/ThemeEditor'),{loading:PanelLoading});
 const AdminEmailBlocklist=dynamic(()=>import('./admin-panels/AdminEmailBlocklist'),{loading:PanelLoading});
 const FeatureHeroImages=dynamic(()=>import('./admin-panels/FeatureHeroImages'),{loading:PanelLoading});
-const AdminRegistry=dynamic(()=>import('./admin-panels/AdminRegistry'),{loading:PanelLoading});
 const AdminReservedScopeIds=dynamic(()=>import('./admin-panels/AdminReservedScopeIds'),{loading:PanelLoading});
 
 export default function AdminHomeView({scopeGroup}){
@@ -43,7 +42,8 @@ export default function AdminHomeView({scopeGroup}){
   const [entryVerified,setEntryVerified]=useState(false);
   const canManage=Boolean(account.user&&!account.loading&&!account.permissionLoading&&account.canManageGlobalSync());
   // Preserve deep links created before the Admin sections were consolidated.
-  const [section,setSection]=useManagementSection(ADMIN_OPTIONS,'registry',{
+  const [section,setSection]=useManagementSection(ADMIN_OPTIONS,'lists',{ 
+    registry:'lists',members:'lists',
     database:'network',isr:'network',enterpriseAuth:'network',auth:'network',system:'network',
     reserved:'lists',blocklist:'lists',
     traceAnchor:'network',traceMap:'network'
@@ -73,7 +73,7 @@ export default function AdminHomeView({scopeGroup}){
       if(!touchEditorSession(window.sessionStorage))return;
     }
     setEntryVerified(true);
-    editDock?.begin('loc');
+    editDock?.begin('loc',{globalManage:true});
   },[account.loading,account.permissionLoading,canManage,editDock?.begin]);
   const selectedOption=ADMIN_OPTIONS.find(option=>option.value===section)||ADMIN_OPTIONS[0];
 
@@ -88,7 +88,6 @@ export default function AdminHomeView({scopeGroup}){
         items={ADMIN_OPTIONS} value={section} onChange={switchSection}/>
       <div className="management-workspace-panel" id="admin-management-panel" role="region"
         aria-labelledby={'admin-sections-option-'+selectedOption.value}>
-        {section==='registry'?<AdminRegistry/>:null}
         {section==='lists'?<>
           <AdminReservedScopeIds/>
           <AdminEmailBlocklist/>
