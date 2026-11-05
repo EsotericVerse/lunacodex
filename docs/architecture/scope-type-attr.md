@@ -1,3 +1,9 @@
+### PostgreSQL Portable Galaxy 陣列欄位一致性（2026-11-05）
+
+- Galaxy 不包含 JSONB 欄位，八個權限旗標均為獨立 Boolean。`target_id` 使用 PostgreSQL `text[]`；`media_link` 使用 `varchar[]`，與正式 Galaxy 相容。
+- Portable PostgreSQL 的 Anchor `attr` 才使用 JSONB；MySQL/MSSQL 的陣列欄位各使用引擎支援的資料型別，不得混同為 PostgreSQL Galaxy JSONB。
+- PostgreSQL 媒體數量以 `unnest(media_link)` 解析文章關聯；管理寫入不可將 Galaxy `media_link` 序列化為 JSONB。本次只修 Portable Code，不動既有資料庫。
+
 ### Kysely Portable：Point 文章關聯批次寫入（2026-11-05）
 
 - `executePortableKyselyAnchor` 的 `type=point / op=link` 原先逐篇 Galaxy 文章執行 Kysely `UPDATE`，上限 10,000 筆可能造成大量往返；現改為先驗證 Point 與文章 UID，依 Point 分組、每 200 篇合成一個 Kysely `WHERE uid IN (...)` 批次更新。
@@ -15,7 +21,7 @@
 ### Portable Overview 媒體數量等價修正（2026-11-05）
 
 - Portable Overview 現在透過 Kysely QueryBuilder 篩選 statics=true、有內容、日期區間內的 Galaxy 文章，再用各 Dialect 的 JSON 陣列展開運算計算 media_link 關聯的 **不同媒體 UID 數**；再與 Anchor 可見的 image/video/rune/suno 類型交集。原本只計算整張 Anchor 媒體存量，並不等於連結統計，已更正。
-- MySQL 8 的 JSON_TABLE、SQL Server 的 OPENJSON、可攜 PostgreSQL JSONB 的 jsonb_array_elements_text 是各資料庫原生 JSON 展開函式；Kysely 負責共同 query builder 與編譯，只有這段 SQL 表達式依引擎分流。MySQL/MariaDB 與 SQL Server 所需的 JSON 函式支援／相容層級須由實際環境驗證；未知引擎直接拒絕而不回傳誤導數值。
+- MySQL 8 的 JSON_TABLE、SQL Server 的 OPENJSON、可攜 PostgreSQL 原生 SQL 陣列的 UNNEST 是各資料庫原生陣列展開函式；Kysely 負責共同 query builder 與編譯，只有這段 SQL 表達式依引擎分流。MySQL/MariaDB 與 SQL Server 所需的 JSON 函式支援／相容層級須由實際環境驗證；未知引擎直接拒絕而不回傳誤導數值。
 - 不抓取文章全文到應用程式、不逐篇發 SQL、不排序 UID、不新建 RPC、表、Trigger、Index，也不改動 UI、Clerk、Authority、Galaxy 八 Boolean、Scope 四 Boolean 或 Anchor.attr。
 - 已新增 portable SQL 路徑的針對性測試；正式跨引擎查詢及部署成功尚待獨立證據，不能把測試替身視為資料庫整合測試。
 
