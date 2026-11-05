@@ -53,6 +53,10 @@
 <script type="module">
 const byId=id=>document.getElementById(id);
 let clerk=null,controlUrl='',checkGeneration=0,verifiedForEditor=false;
+const LOGIN_RETURN_KEY='loc-management-login-return-v1';
+function isProtectedReturn(path){
+  return /\/(?:manage|admin)(?:\/|$)/.test(new URL(path,location.origin).pathname);
+}
 function validReturnPath(){
   const value=new URLSearchParams(location.search).get('return_to')||'/local/settings/';
   if(!value.startsWith('/')||value.startsWith('//')||value.includes('\\')||value.includes('\\r')||value.includes('\\n'))return '/local/settings/';
@@ -97,7 +101,9 @@ async function verify(){
     verifiedForEditor=Boolean(identity.email);
     byId('return').disabled=!verifiedForEditor;
     byId('status').textContent=verifiedForEditor
-      ?'Clerk 身分已核驗。進入 LOC 後將再檢查管理權限。'
+      ?(isProtectedReturn(validReturnPath())
+        ?'Clerk 身分已核驗。返回後將確認編輯權限。'
+        :'Clerk 身分已核驗。進入 LOC 後將再檢查管理權限。')
       :'Clerk Session 尚未提供已驗證的 Email 宣告，無法進入編輯。';
   }catch(error){
     if(generation===checkGeneration&&clerk?.isSignedIn)
@@ -113,7 +119,15 @@ function update(){
   byId('status').textContent=signedIn?'Clerk Session 已建立；尚未通過 LOC Authority 核驗。':'請使用 Google 等已啟用的方式登入 LOC。';
   if(signedIn)void verify();
 }
-byId('return').onclick=()=>{if(verifiedForEditor)location.assign(validReturnPath());};
+byId('return').onclick=()=>{
+  if(!verifiedForEditor)return;
+  const path=validReturnPath();
+  if(isProtectedReturn(path)){
+    try{sessionStorage.setItem(LOGIN_RETURN_KEY,path);}catch{}
+  }
+  // The real edit permission is verified on the protected destination.
+  location.assign(path);
+};
 byId('signout').onclick=async()=>{
   await clerk?.signOut();
   location.reload();
