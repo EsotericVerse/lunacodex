@@ -484,7 +484,7 @@ async function managedLocSettings(trx,args,claims){
   const operation=String(args.p_operation||'read');
   const key=String(args.p_key??'').trim();
   const value=args.p_value;
-  if(!['theme','keywords','database','email','scopeid'].includes(section))
+  if(!['theme','keywords','email','scopeid'].includes(section))
     reject('Invalid LOC settings section');
   // Permission was established with the signed Clerk identity; no arbitrary
   // table is addressable through this route.
@@ -505,14 +505,11 @@ async function managedLocSettings(trx,args,claims){
       .where('id','=',key).executeTakeFirst();
     return rows.map(item=>({id:item.id,note:item.id===key?note:item.note}));
   }
-  const row=section==='database'?null:await trx.selectFrom('silver.loc')
+  const row=await trx.selectFrom('silver.loc')
     .select(['theme','keywords','blacklist'])
     .where('id','=','loc').forUpdate().executeTakeFirst();
-  const system=section==='database'
-    ?await trx.selectFrom('silver.manage').select('database')
-      .where('id','=','admin').forUpdate().executeTakeFirst():null;
-  if(section==='database'?!system:!row)reject('LOC/system settings unavailable');
-  const saved=validCatalog(section==='database'?system.database:
+  if(!row)reject('LOC Group settings unavailable');
+  const saved=validCatalog(
     section==='theme'?row.theme:section==='keywords'?row.keywords:row.blacklist?.[section],section);
   if(operation==='read')return saved;
   let updated=[],column='blacklist',returnValue;
@@ -563,31 +560,6 @@ async function managedLocSettings(trx,args,claims){
       seen.add(signature);
     }
     column='keywords';returnValue=operation==='delete'?{deleted:true}:next;
-  }else if(section==='database'){
-    if(!['upsert','delete'].includes(operation)||!/^[A-Za-z][A-Za-z0-9_-]{0,80}$/.test(key))
-      reject('Invalid database target operation');
-    if(operation==='upsert'&&(!catalogObject(value)||
-       !['supabase','neon','custom'].includes(value.provider)||!String(value.label||'').trim()))
-      reject('Invalid database metadata');
-    let found=false;
-    for(const item of saved){
-      if(item?.target_id!==key){updated.push(item);continue;}
-      found=true;
-      if(operation==='delete'){
-        if(item.selected===true||item.backup_selected===true)
-          reject('Active routing target cannot be deleted');
-      }else{
-        const {target_id,selected,backup_selected,routing_mode,...fields}=value;
-        updated.push({...item,...fields,updated_at:new Date().toISOString()});
-      }
-    }
-    if(operation==='delete'&&!found)reject('Unknown database target');
-    if(operation==='upsert'&&!found){
-      const {target_id,selected,backup_selected,routing_mode,...fields}=value;
-      updated.push({...fields,target_id:key,selected:false,
-        backup_selected:false,routing_mode:'single',updated_at:new Date().toISOString()});
-    }
-    column='database';returnValue=updated;
   }else if(section==='email'){
     const email=key.toLowerCase();
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||!['add','remove'].includes(operation))
@@ -610,11 +582,7 @@ async function managedLocSettings(trx,args,claims){
     if(!found)reject('Reserved Scope ID not found');
     returnValue=updated;
   }
-  if(column==='database'){
-    await trx.updateTable('silver.manage').set({
-      database:sql`${JSON.stringify(updated)}::jsonb`
-    }).where('id','=','admin').executeTakeFirst();
-  }else if(column==='blacklist'){
+  if(column==='blacklist'){
     await trx.updateTable('silver.loc').set({
       blacklist:sql`jsonb_set(blacklist,ARRAY[${section}]::text[],
         ${JSON.stringify(updated)}::jsonb,true)`
