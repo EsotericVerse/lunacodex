@@ -48,14 +48,19 @@ export function createIndependentClerkIdentity({loadClerk,authorityOrigin,
   let pendingIdentity=null,pendingIdentityToken='';
   // UX-only identity reuse; no management grants are cached. SQL RLS checks
   // every protected operation. Never persist the JWT or verified identity.
-  const IDENTITY_REUSE_MS=10000;
+  const IDENTITY_REUSE_MS=2*60*60*1000;
   let recentIdentity=null;
   async function verifiedIdentity(){
     const clerk=await client();
     const jwt=await token();
     if(!jwt){recentIdentity=null;return null;}
-    if(recentIdentity?.token===jwt&&recentIdentity.subject===clerk.user?.id&&
-      Date.now()<recentIdentity.expires)return recentIdentity.identity;
+    // Session ID, not a short-lived JWT string, identifies a continuing login.
+    // If a mocked/older SDK exposes no Session ID, fail closed to exact-token reuse.
+    const sessionId=String(clerk.session?.id||'');
+    const sameSession=Boolean(recentIdentity&&recentIdentity.subject===clerk.user?.id&&
+      (sessionId?sessionId===recentIdentity.identity.session:jwt===recentIdentity.token));
+    if(sameSession&&Date.now()<recentIdentity.expires)return recentIdentity.identity;
+    if(recentIdentity&&!sameSession)recentIdentity=null;
     if(pendingIdentity&&pendingIdentityToken===jwt)return pendingIdentity;
     const pending=(async()=>{
       // Retry a dropped network request once; HTTP 401/403 is never retried.
@@ -130,7 +135,9 @@ export function createIndependentClerkIdentity({loadClerk,authorityOrigin,
     const clerk=await client();
     return clerk.addListener(()=>{
       const signedIn=Boolean(clerk.session&&clerk.user);
-      if(!signedIn)recentIdentity=null;
+      if(!signedIn||recentIdentity&&(
+        recentIdentity.subject!==clerk.user?.id||
+        clerk.session?.id&&recentIdentity.identity.session!==clerk.session.id))recentIdentity=null;
       callback(signedIn);
     });
   }

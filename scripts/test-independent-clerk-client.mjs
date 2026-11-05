@@ -66,6 +66,18 @@ test('logout and listener are Clerk-only',async()=>{
   unsubscribe();
   assert.deepEqual(snapshots,[true,false]);
 });
+test('same Clerk session reuses verified identity across JWT rotation without extra Authority calls',async()=>{
+  let token='jwt.one',calls=0;
+  const clerk={user:{id:'user_test'},session:{id:'sess_verified',getToken:async()=>token}};
+  const adapter=createIndependentClerkIdentity({siteOrigin,authorityOrigin,loadClerk:async()=>clerk,
+    fetchImpl:async()=>{calls++;return {ok:true,status:200,json:async()=>({provider:'clerk',subject:'user_test',session:'sess_verified',email:'owner@example.com'})};}});
+  await adapter.verifiedIdentity();token='jwt.two';await adapter.verifiedIdentity();
+  assert.equal(calls,1);
+  clerk.session={id:'sess_replaced',getToken:async()=>token};
+  await assert.rejects(adapter.verifiedIdentity(),/mismatch/);
+  assert.equal(calls,2);
+});
+
 test('no database adapter or legacy OAuth is imported by independent identity',()=>{
   const source=readFileSync(new URL('../app/loc/auth/clerk-identity.mjs',import.meta.url),'utf8');
   assert.doesNotMatch(source,/supabase-js|neon-primary|get_my_scope_management|signInWithOAuth|auth\/v1/);

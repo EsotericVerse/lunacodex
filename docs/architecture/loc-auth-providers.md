@@ -1,3 +1,10 @@
+## 2026-11-06｜網站 Clerk Session 身分驗證重用（不改 MCP）
+
+- 網站同一個已驗證 `Clerk sub + sid` 在兩小時的編輯 Session 期間，可重用 LOC Authority 確認的身分 Email；前端在 Clerk SDK 有正式 Session ID 時依 `sid` 辨識，不以短期輪替的 JWT 字串誤當新登入。沒有 SDK Session ID 時保守維持 exact-token 對比。
+- 本 PR 僅修改網站瀏覽器端的 Clerk Session 身分結果重用。Kysely 每個受保護請求仍獨立驗證 JWT，Gateway → Authority 的驗證仍維持現況；不修改 MCP、Authority Worker、SQL 或 Kysely。前端不儲存 JWT、不以身分快取取代後端管理權限核對；此 PR 不宣稱已降低 Gateway → Authority 的請求量。
+- `silver.manage` 的 Admin/Group/Scope 與黑名單仍走獨立授權（短期 30 秒快照、各次 SQL/RLS 持續執行）；編輯 Session 過期仍拒絕寫入。本修正不是將管理權限或撤銷狀態無條件快取兩小時。
+- 原本 `silver.lo3rwang.count` 測得 189 次 `silver.manage()` 是資料庫內部函式觸發次數，不可當作 Authority HTTP 次數，診斷計數已於 11/05 移除；本修正不重啟 SQL 熱路徑計數器。
+
 ## 2026-11-05 編輯模式／首頁儲存與搜尋回歸檢討
 
 - **原因之一：暫存流程並非暫存。** 固定六鍵的 Save 在部分功能頁被標成「已暫存」，實際卻執行完整 SQL 寫入；首頁寫入成功後還會呼叫 `editDock.complete()` 強制導頁，重新掛載管理元件。現改回單一路徑「儲存」，成功後維持編輯頁。
