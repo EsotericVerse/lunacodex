@@ -34,7 +34,9 @@ function render(data){
   if(data.ready&&same){
     account.textContent='Scope: '+data.scopeid+' · Clerk: '+data.subject;
     show('授權已通過。下一階段的 Recorder 功能尚未啟用。');
-  }else show('先使用 LOC 完整登入畫面，再完成專用 OAuth 授權。');
+  }else if(data.temporary_unavailable)
+    show('暫時無法確認連線；已保留授權狀態，網路恢復後再試。',{error:true});
+  else show('先使用 LOC 完整登入畫面，再完成專用 OAuth 授權。');
 }
 async function operation(type){
   if(busy)return;
