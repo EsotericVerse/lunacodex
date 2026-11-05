@@ -47,7 +47,7 @@ function DeferredArticleBody({html}){
 }
 
 // Shared article(uid) list module for Search and Culture.
-export default function Article({uid,title,articleHref='',detailReading=false,relatedMedia=[],relatedTime=null,relatedSpace=null,relatedStatistics=null,articleScopeId='',articleDate='',tracePlace=null,traceHref='',locationName='',source='',scopeId='',date='',checkInPlace='',body='',hidden=false,relationLinks=[],links=[],destinations=[],editable=false,editing=false,onEdit,editorDraft=null,onDraftChange,onSave,onDelete,onCancel,editBusy=false,editError='',showHidden=false,attributeFields=null,styleTag=false,styleTagKicker=null,styleIntroText='',children=null,showBodyEditor=true,attributeTitle='',mediaScopeId='',editOnCardClick=true,managerMode=false,showInlineEditorActions=true}){
+export default function Article({uid,title,articleHref='',detailReading=false,relatedMedia=[],relatedTime=null,relatedSpace=null,relatedStatistics=null,articleScopeId='',articleDate='',articleCreateTime='',tracePlace=null,traceHref='',locationName='',source='',scopeId='',date='',checkInPlace='',body='',hidden=false,relationLinks=[],links=[],destinations=[],editable=false,editing=false,onEdit,editorDraft=null,onDraftChange,onSave,onDelete,onCancel,editBusy=false,editError='',showHidden=false,attributeFields=null,styleTag=false,styleTagKicker=null,styleIntroText='',children=null,showBodyEditor=true,attributeTitle='',mediaScopeId='',editOnCardClick=true,managerMode=false,showInlineEditorActions=true}){
   useUiSection('uiExtra.searchUI');
   useUiSection('uiExtra.editBlocks');
   const t=useUiText();
@@ -75,7 +75,7 @@ export default function Article({uid,title,articleHref='',detailReading=false,re
   const visibleLinks=mediaEditLinks.length?links.filter(link=>!String(link?.id||'').startsWith('media:')):links;
   const visibleRelations=mediaEditLinks.length?[...relationLinks,...mediaEditLinks]:relationLinks;
   return <WorkSummaryCard title={title} titleHref={articleHref} titleEditor={titleEditor} kicker={styleTag?styleTagKicker:null} source={source} scopeId={scopeId} date={editingReady?'':date} actions={editorActions}
-    body={editingReady||richBody||styleTag?'':body} hidden={hidden} relationLinks={visibleRelations} detailReading={detailReading} relatedMedia={relatedMedia} relatedTime={relatedTime} relatedSpace={relatedSpace} relatedStatistics={relatedStatistics} articleScopeId={articleScopeId} articleDate={articleDate} tracePlace={tracePlace} traceHref={traceHref} locationName={locationName} links={visibleLinks}
+    body={editingReady||richBody||styleTag?'':body} hidden={hidden} relationLinks={visibleRelations} detailReading={detailReading} relatedMedia={relatedMedia} relatedTime={relatedTime} relatedSpace={relatedSpace} relatedStatistics={relatedStatistics} articleScopeId={articleScopeId} articleDate={articleDate} articleCreateTime={articleCreateTime} tracePlace={tracePlace} traceHref={traceHref} locationName={locationName} links={visibleLinks}
     destinations={destinations} className={['loc-shared-work-card',styleTag?'scope-article-style-tag-hit':'',detailReading?'scope-article-detail':''].filter(Boolean).join(' ')} onClickCapture={onClickCapture}>
     {styleTag&&!editingReady&&styleIntroText?<div className="scope-style-tag-search-intro">{styleIntroText}</div>:null}
     {richBody&&!editingReady?<DeferredArticleBody html={body}/>:null}
