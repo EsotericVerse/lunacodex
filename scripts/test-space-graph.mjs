@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {SPACE_ANCHOR,SPACE_PERIOD,SPACE_TRACE,BASE62_FOUR,spaceType,
+import {SPACE_ANCHOR,SPACE_PERIOD,SPACE_TRACE,BASE62_FOUR,BASE62_UID,spaceType,
   spaceCoordinates,spaceRouteIds,resolveSpaceGraph} from '../app/modular/features/trace/space-graph.mjs';
 
 const scope='lo3rwang';
@@ -92,4 +92,34 @@ test('mixed old and new member fields do not bridge missing route stops',()=>{
   assert.deepEqual(graph.routes[0].nodes,['a001','MISSING','A001']);
   assert.deepEqual(graph.lines,[]);
   assert.deepEqual(graph.missing,['MISSING']);
+});
+
+test('eight-character anchor UIDs render saved route and Trace collections',async()=>{
+  const p1=point('aa11BB22',[121.48,25.04]);
+  const p2=point('Cc33Dd44',[121.50,25.05]);
+  const p3=point('Ee55Ff66',[121.52,25.06]);
+  const r=route('Gg77Hh88',[p1.id,p2.id,p3.id]);
+  const collection={id:'Ii99Jj00',source_scope:scope,type:SPACE_TRACE,
+    title:'saved',anchor_list:[],route_list:{routes:[r.id],segments:[]}};
+  assert.equal(BASE62_UID.test(p1.id),true);
+  assert.deepEqual(spaceRouteIds(r),[p1.id,p2.id,p3.id]);
+  const routes=resolveSpaceGraph(r,[p1,p2,p3,r],{scopeId:scope});
+  assert.equal(routes.points.length,3);
+  assert.deepEqual(routes.lines.map(line=>[line.from,line.to]),[[p1.id,p2.id],[p2.id,p3.id]]);
+  const composed=resolveSpaceGraph(collection,[p1,p2,p3,r,collection],{scopeId:scope});
+  assert.equal(composed.routes.length,1);
+  assert.equal(composed.lines.length,2);
+  assert.deepEqual(composed.missing,[]);
+  const {spaceGraphGeojson}=await import('../app/modular/features/trace/space-graph-geojson.mjs');
+  const geo=spaceGraphGeojson(collection,[p1,p2,p3,r,collection],{scopeId:scope});
+  assert.equal(geo.features.filter(f=>f.geometry.type==='LineString').length,2);
+});
+
+test('LOC published collection preserves eight-character trace pair references',async()=>{
+  const {publicTraceMapChoices}=await import('../app/modular/features/trace/trace-map-choices.mjs');
+  const item={uid:'Rr88Ss99',source_scope:scope,trace_type:'trace',
+    route_list:{routes:[],segments:[['Aa11Bb22','Cc33Dd44']]}};
+  const options=publicTraceMapChoices([item],'loc');
+  assert.equal(options.length,1);
+  assert.deepEqual(options[0].route_list.segments,[['Aa11Bb22','Cc33Dd44']]);
 });
