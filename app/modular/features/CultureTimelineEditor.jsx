@@ -78,8 +78,7 @@ export default function CultureTimelineEditor({
   const eventChoices=useMemo(()=>[...all].filter(row=>row.type==='period'),[all]);
   const eventByUid=useMemo(()=>new Map(eventChoices.map(row=>[String(row.uid),row])),[eventChoices]);
   const anchorChoices=useMemo(()=>[...anchors.values()]
-    .sort((a,b)=>day(a.address).localeCompare(day(b.address))||
-      String(a.uid).localeCompare(String(b.uid))),[anchors]);
+    .sort((a,b)=>day(a.address).localeCompare(day(b.address))),[anchors]);
   const anniversarySuggestions=useMemo(()=>
     !selectedId&&draft.type==='anchor'
       ?anniversarySuggestionsForDate(day(draft.address),anchorChoices,{birthday})
@@ -107,8 +106,7 @@ export default function CultureTimelineEditor({
         :resolveTimeSegments(row.anchor_ids,anchors,{period:false})
           .map(range=>range.start_date).filter(Boolean).sort()[0]||'9999-12-31';
     };
-    return position(a).localeCompare(position(b))||
-      String(a.uid).localeCompare(String(b.uid));
+    return position(a).localeCompare(position(b));
   }),[all,anchors,eventChoices]);
   const recordOptions=useMemo(()=>rows.filter(row=>row.type===browseType).map(row=>({
     value:String(row.uid),
