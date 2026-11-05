@@ -70,3 +70,23 @@ test('LOC caps shared positions globally at 50 and shares the limit across peopl
   assert.ok(result.some(row=>row.source_scope==='lrunes'));
   assert.ok(result.every(row=>row.display_names.length>=1));
 });
+
+test('late member shared locations must be found before the final 50-pin limit',()=>{
+  const first=Array.from({length:50},(_,i)=>({
+    uid:'A'+String(i).padStart(7,'0'),source_scope:'scopeone',title:'單點'+i,
+    latitude:20+i*.01,longitude:120
+  }));
+  const second=[
+    {uid:'B1234567',source_scope:'scopetwo',title:'新共點',latitude:24,longitude:122},
+    ...Array.from({length:49},(_,i)=>({
+      uid:'B'+String(i).padStart(7,'0'),source_scope:'scopetwo',title:'其他'+i,
+      latitude:26+i*.01,longitude:123
+    }))
+  ];
+  const third=[{uid:'C1234567',source_scope:'scopethree',title:'新共點',
+    latitude:24.0002,longitude:122.0002}];
+  const result=clusterLocSharedPoints([...first,...second,...third],50);
+  assert.equal(result.length,50);
+  assert.equal(result[0].share_count,2,'shared point ranks ahead of singleton entries');
+  assert.deepEqual(result[0].display_names,['scopetwo:新共點','scopethree:新共點']);
+});
