@@ -321,6 +321,42 @@ async function managedMcpInsert(scopeid,row,hasCheckpointUid,oauthToken){
 }
 
 
+// Append is separate from full sync: existing Galaxy metadata must never be overwritten.
+async function managedMcpAppend(scopeid,uid,content,updatedAt,oauthToken){
+  if(!Object.hasOwn(MANAGED_SCOPE_TABLES,scopeid))throw fail('Scope database is not configured',409);
+  const response=await fetch(MANAGED_SUPABASE_EDGE,{
+    method:'POST',headers:{apikey:MANAGED_PUBLISHABLE_KEY,
+      authorization:'Bearer '+oauthToken,'content-type':'application/json'},
+    body:JSON.stringify({kind:'mcp-append',scopeid,uid,content,updated_at:updatedAt}),
+    signal:AbortSignal.timeout(12000),redirect:'manual'
+  });
+  if(!response.ok)throw fail('Managed Scope append rejected (HTTP '+response.status+')',
+    response.status===401||response.status===403?response.status:502);
+  const result=await response.json();
+  if(result?.data?.count!==1)throw fail('Managed Scope append was not confirmed',502);
+  return result.data;
+}
+async function portableMcpAppend(profile,uid,content,updatedAt){
+  const rows=await postgrest(profile,{params:{select:'uid,content,site,title,createtime',
+    uid:'eq.'+uid,site:'eq.mcp',limit:1}});
+  if(!Array.isArray(rows)||rows.length!==1)throw fail('MCP topic not found',404);
+  const original=String(rows[0].content||'');
+  const next=original+(original?'\\n':'')+content;
+  const url=new URL(profile.endpoint+'/'+profile.table);
+  url.searchParams.set('uid','eq.'+uid);
+  url.searchParams.set('site','eq.mcp');
+  const response=await fetch(url.href,{method:'PATCH',headers:{
+    'content-type':'application/json','accept-profile':profile.schema,
+    'content-profile':profile.schema,apikey:profile.api_key,
+    authorization:'Bearer '+profile.api_key,prefer:'return=representation'},
+    body:JSON.stringify({content:next,UpdateTime:updatedAt}),
+    redirect:'manual',signal:AbortSignal.timeout(9500)});
+  if(!response.ok)throw fail('Scope append rejected (HTTP '+response.status+')',502);
+  const updated=await response.json();
+  if(!Array.isArray(updated)||updated.length!==1)throw fail('Scope append was not confirmed',502);
+  return {uid,title:rows[0].title,createtime:rows[0].createtime};
+}
+
 async function managedMcpUpdatePr(scopeid,uid,prNumber,title,content,updatedAt,oauthToken){
   if(!Object.hasOwn(MANAGED_SCOPE_TABLES,scopeid))throw fail('Scope database is not configured',409);
   if(typeof oauthToken!=='string'||!oauthToken.startsWith('eyJ'))throw fail('MCP OAuth authorization required',401);
@@ -530,7 +566,9 @@ export class LocAuthorityState extends DurableObject {
     validScope(scopeid);
     if(!input||typeof input.conversation_id!=='string')throw fail('Conversation ID required',400);
     // Serialize saves for one conversation within the existing Durable Object.
-    const key=scopeid+':'+input.conversation_id;
+    // One Scope Durable Object owns the record lock, shared by all Agents.
+    const checkpoint=await this.mcpCheckpoint(scopeid,input.conversation_id);
+    const key=scopeid+':'+(input.uid||checkpoint.uid||input.conversation_id);
     this.mcpInflight??=new Map();
     const previous=this.mcpInflight.get(key)||Promise.resolve();
     const next=previous.catch(()=>{}).then(()=>this.mcpSaveUnlocked(scopeid,input,oauthToken));
@@ -550,17 +588,34 @@ export class LocAuthorityState extends DurableObject {
     if(typeof input.content!=='string'||!input.content.trim()||input.content.length>125000||
       typeof input.title!=='string'||input.title.length>350)
       throw fail('Invalid conversation content or title',400);
-    const uid=status.uid||newUid();
+    const append=input.append===true;
+    if(input.uid!==undefined&&!UID.test(String(input.uid)))throw fail('Invalid topic UID',400);
+    if(status.uid&&input.uid&&status.uid!==input.uid)throw fail('Conversation checkpoint UID conflict',409);
+    const uid=status.uid||input.uid||newUid();
     const checkpointKey='mcp-sync:'+scopeid+':'+conversation_id;
     // Persist the stable UID before the HTTP write so a timeout or failed ack
     // never creates a second article on the next attempt.
     if(!status.uid)await this.ctx.storage.put(checkpointKey,
       {uid,updated_at:status.updated_at,saved_at:status.saved_at});
-    // Idempotent upsert by the existing case-sensitive UID; no table scans.
-    const row={uid,title:input.title,content:input.content,
+    // Append only the new source batch; never rewrite an older conversation.
+    const useAppend=append&&Boolean(status.saved_at||input.uid);
+    if(useAppend){
+      const result=profile?
+        await portableMcpAppend(profile,uid,input.content,requestedTime):
+        await managedMcpAppend(scopeid,uid,input.content,requestedTime,oauthToken);
+      const saved_at=new Date().toISOString();
+      await this.ctx.storage.put(checkpointKey,{updated_at:requestedTime,saved_at,uid});
+      return {scopeid,conversation_id,uid,title:result.title||null,
+        createtime:result.createtime||null,updated_at:requestedTime,saved_at,saved:true,appended:true};
+    }
+    if(input.uid&&append)throw fail('Existing MCP topic could not be resumed',409);
+    const created=validTimestamp(input.created_at||requestedTime);
+    const title=append?'Galaxy Link｜'+scopeid+' 在 '+created+' 開始的原始文字紀錄':input.title;
+    // Idempotent first insert by the existing case-sensitive UID; no table scans.
+    const row={uid,title,content:input.content,
       site:'mcp',site_id:conversation_id,
       statics:false,culture:false,search:false,trace:false,list:false,keyword:false,extract:false,others:false,
-      createtime:validTimestamp(input.created_at||requestedTime),
+      createtime:created,
       UpdateTime:requestedTime};
     if(profile){
       // Third-party Scope providers manage their own schema independently.
@@ -575,7 +630,7 @@ export class LocAuthorityState extends DurableObject {
     const saved_at=new Date().toISOString();
     this.mcpSearchCache?.clear();
     await this.ctx.storage.put(checkpointKey,{updated_at:requestedTime,saved_at,uid});
-    return {scopeid,conversation_id,updated_at:requestedTime,saved_at,uid,saved:true};
+    return {scopeid,conversation_id,updated_at:requestedTime,saved_at,uid,title,createtime:created,saved:true,appended:false};
   }
   // Rewrites an EXISTING article by its stable uid. Unlike mcpSave (which
   // upserts private conversations keyed by conversation_id), this never
