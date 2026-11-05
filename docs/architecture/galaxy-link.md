@@ -75,3 +75,13 @@ Extension 0.3.0 增加白色工作台的本機 JSON 檔案預覽與按鈕確認�
 將擷取紀錄送至現有 Scope 隔離的佇列，沿用 `galaxy_link.check/record`，並記錄完成的訊息 ID 以防再封存時重複排隊；確認寫入後才移除待同步紀錄。歷史訊息與持續擷取使用不同的選擇權：封存一次不代表啟用持續監視。對話 checkpoint 的更新時間並不能代表是否已寫入過所有舊訊息，故新增歷史訊息仍需交由後端批次雜湊去重判定，不能僅以較新的 checkpoint 略過。
 
 Chrome 正式安裝／DOM 測試與 Galaxy 真實寫入仍未驗收，不能宣稱對所有達上限對話都可完整匯出。若來源網頁從未提供某段訊息，Extension 無法還原。
+
+## Extension 0.6.0：LOC 網站 Session 授權橋接
+
+Chrome Extension 的主要登入不再透過 `chrome.identity.launchWebAuthFlow` 另開 Clerk OAuth Consent URL。Extension 開啟同源、受信任的 `/extension/auth-bridge.html`；網站先由現有 Clerk Session 認證，然後透過 Clerk `loc-mcp` JWT Template 取得**單獨的 MCP audience 短效 Token**（`aud=https://loc.lo3rwang.cc/mcp`）。網站預設 Session JWT、Cookie、Refresh Token 不傳給 Extension。
+
+網站只能透過 Manifest `externally_connectable` 所列 LOC 原始來源回覆。Service Worker 逐項核對網域、固定頁面、Chrome 分頁 ID、Scope、隨機 nonce、有效期，並由 MCP 後端驗證簽章與 Scope 寫入授權後才接受。刷新時只進行 MCP 身分確認，讀／寫操作仍由 Authority 每次檢查 Scope 權限，避免每次刷新都扣掉一次 Scope checkpoint 額度。
+
+既有 `/mcp` 入口**仍使用 MCP 權限與 QoS**；這是網站 Session 的安全重用，不是將 MCP 工具變成不設限的網站 API。後台須在同一 Clerk Instance 建立 `loc-mcp` JWT Template；若未配置，應拒絕授權，不可回退到未驗證的網站 Session JWT。短效 Token 只有在授權頁分頁保留開啟時才自動續期，關閉後需要重新開啟橋接。Extension 仍不能繞過 Google/Clerk 登入或 Scope 管理權限。
+
+驗收範圍：已寫入程式與測試；Clerk JWT Template、Chrome web→extension 外部訊息、正式 LOC Scope 讀寫尚需真實環境驗證。
