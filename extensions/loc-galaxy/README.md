@@ -47,3 +47,7 @@ No other parameter is required of the end user. A missing operator registration 
 Run `node --test scripts/test-loc-galaxy-chrome-oauth.mjs` for isolated manifest, deterministic redirect, PKCE and callback tests. Actual Clerk authorization, token issuance, browser store visibility and end-to-end Scope authorization still require a configured Clerk OAuth app and an installed Chrome Extension.
 
 Read also: `docs/architecture/galaxy-link.md`. The durable Recorder is a **later** stage, not silently enabled during OAuth onboarding.
+
+## Unified LOC favicon
+
+The Extension toolbar, action and popup reuse the exact existing `assets/site/icons/loc-favicon.png` image. The same binary is published at `public/assets/site/icons/loc-favicon.png` for the LOC site, MCP `serverInfo.icons`, and Clerk OAuth `logo_uri`. Refresh the extension in `chrome://extensions` after pulling a newer version; hosted MCP icon caching is client-controlled.
