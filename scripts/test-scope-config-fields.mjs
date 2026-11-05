@@ -11,7 +11,7 @@ test('Scope feature switches are four independent boolean columns',()=>{
   const settings={culture:false,statics:true,search:false,trace:true};
   assert.equal(scopeFeatureEnabled(settings,'culture_able'),false);
   assert.equal(scopeFeatureEnabled(settings,'statistics_able'),true);
-  assert.equal(scopeFeatureEnabled(settings,'search_able'),false);
+  assert.equal(scopeFeatureEnabled(settings,'search'),false);
   assert.equal(scopeFeatureEnabled(settings,'trace'),true);
   assert.deepEqual(scopeFeaturePatch('lo3rwang',settings),{search:false,statics:true,culture:false,trace:true});
   assert.deepEqual(scopeFeaturePatch('lrunes',settings),{search:false,statics:true,culture:false,trace:true});
@@ -35,7 +35,7 @@ test('feature gates and admin UI use native boolean flags',()=>{
   assert.match(admin,/scopeFeaturePatch\(current\.scope_id,currentConfig\)/);
   assert.match(admin,/\[scopeFeatureName\(key\)\|\|key\]:Boolean\(value\)/);
   assert.match(app,/trace:'trace'/);
-  assert.match(app,/search:'search_able'/);
+  assert.match(app,/search:'search'/);
   assert.match(ui,/isUnifiedAnchorScope\(scopeId\)/);
   assert.match(read('scripts/generate-public-blocks.mjs'),/scopeConfigColumns\(id\)/);
 });
