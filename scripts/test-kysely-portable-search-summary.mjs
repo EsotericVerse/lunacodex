@@ -153,110 +153,21 @@ test('portable daily includeUndated retains NULL date groups using Kysely',async
   assert.equal(result.data.find(x=>x.kind==='source').day,'');
 });
 
-for(const [engine,namespace,expectedExpansion] of [
-  ['mysql','',/json_table\(docs\.media_link/],
-  ['mssql','dbo',/openjson\(docs\.media_link/],
-  ['postgres','silver',/unnest\(docs\.media_link/]
-]){
-  test(engine+' portable Overview counts only media linked from eligible Galaxy rows',async()=>{
-    const filters=[],statements=[],refs=[];
-    const mockSql=(parts,...args)=>({
-      parts,args,execute:async()=>{statements.push(parts.join(''));return {rows:[{n:'7'}]};}
-    });
-    mockSql.ref=name=>{refs.push(name);return {ref:name};};
-    const mediaCount=new Function('sql','canManageLoc','portableRelation',
-      source.replace(/^import .*$/gm,'').replace(/^export /gm,'')+
-      ';return portableLinkedMediaCount')(mockSql,async()=>false,()=>{});
-    const db={selectFrom:table=>({
-      select(field){assert.equal(field,'media_link');return this;},
-      where(...condition){filters.push(condition);return this;}
-    })};
-    const actual=await mediaCount(db,
-      namespace?namespace+'.writer_galaxy':'writer_galaxy',
-      namespace?namespace+'.writer_anchor':'writer_anchor',
-      engine,'2026-01-01','2026-12-31');
-    assert.equal(actual,7);
-    assert.equal(refs[0],namespace?namespace+'.writer_anchor':'writer_anchor');
-    assert.match(statements[0],expectedExpansion);
-    assert.match(statements[0],/count\(distinct linked/);
-    assert.ok(filters.some(([field,op,value])=>
-      field==='statics'&&op==='='&&value===true));
-    assert.ok(filters.some(([field,op,value])=>
-      field==='date'&&op==='>='&&value==='2026-01-01'));
-    assert.ok(filters.some(([field,op,value])=>
-      field==='date'&&op==='<='&&value==='2026-12-31'));
-    assert.ok(!filters.some(([field])=>field==='uid'));
-  });
-}
+test('retired multimedia overview does not request Anchor inventory or media_link',()=>{
+  assert.doesNotMatch(source,/async function linkedMediaCount/);
+  assert.doesNotMatch(source,/async function portableLinkedMediaCount/);
+  assert.doesNotMatch(source,/media_count\s*:/);
+  const nativeOverview=source.slice(source.indexOf('async function scopeOverview('),
+    source.indexOf('async function searchSummary('));
+  assert.doesNotMatch(nativeOverview,/media_link|anchor|linkedMedia/);
+  const portableOverview=source.slice(source.indexOf("else if(mode==='overview'){",
+    source.indexOf('export async function executePortableKyselyAnalytics'));
+  assert.doesNotMatch(portableOverview,/db\.selectFrom\(anchor\)|media_link|media_count/);
+});
 
-test('portable media expansion stays inside the helper; no duplicated analytics executor',()=>{
-  // Regression for a bad string-based edit that spliced an entire executor
-  // into a JSON_TABLE SQL template while still passing a superficial grep.
+test('portable analytics executor remains syntactically well-formed after removing media',()=>{
   assert.equal((source.match(/export async function executePortableKyselyAnalytics/g)||[]).length,1);
-  assert.equal((source.match(/async function portableLinkedMediaCount/g)||[]).length,1);
-  assert.match(source,/columns\(uid varchar\(8\) path '\$'\)\) as linked/);
-  assert.match(source,/cross apply openjson\(docs\.media_link\)/);
-  assert.match(source,/unnest\(docs\.media_link\)/);
-  assert.doesNotMatch(source,/path '\(db,body,/);
-  // Parse all executable code, not only the helper substring.
   assert.doesNotThrow(()=>new Function('sql','canManageLoc','portableRelation',
     source.replace(/^import .*$/gm,'').replace(/^export /gm,'')+
     ';return executePortableKyselyAnalytics'));
-});
-
-const anchorSource=readFileSync('app/loc/providers/kysely-anchor.mjs','utf8');
-const portableAnchor=new Function('canManageLoc','portableRelation',
-  'serializePortableJsonFields','sql',
-  anchorSource.replace(/^import .*$/gm,'').replace(/^export /gm,'')+
-  ';return executePortableKyselyAnchor')(
-  async()=>true,(table,engine,namespace)=>engine==='mysql'?table:namespace+'.'+table,
-  fields=>fields,{});
-
-function pointLinkDb(underCount=false){
-  const updates=[];
-  const db={
-    selectFrom:()=>({
-      select(){return this;},
-      where(){return this;},
-      execute:async()=>[{uid:'AAAAAAAA',title:'Point A'}]
-    }),
-    updateTable:table=>({
-      set(values){this.values=values;return this;},
-      where(...args){
-        if(args[0]==='uid'&&args[1]==='in')this.ids=args[2];
-        if(typeof args[0]==='function'){
-          const eb=(column,operator,value)=>({column,operator,value});
-          eb.or=conditions=>conditions;
-          args[0](eb);
-        }
-        return this;
-      },
-      executeTakeFirst:async function(){
-        updates.push({table,ids:this.ids,values:this.values});
-        return {numUpdatedRows:BigInt(this.ids.length-(underCount?1:0))};
-      }
-    })
-  };
-  return {db,updates};
-}
-test('portable Point link uses bounded grouped Kysely UPDATE, not N queries',async()=>{
-  const {db,updates}=pointLinkDb();
-  const assignments=Array.from({length:405},(_,n)=>({
-    uid:String(n).padStart(8,'0'),place_id:'AAAAAAAA'
-  }));
-  const result=await portableAnchor(db,{scopeid:'writer',type:'point',
-    attr:{op:'link',mode:'place_id',updates:assignments}},
-    {role:'authenticated',engine:'mysql',namespace:''});
-  assert.equal(result.data.count,405);
-  assert.deepEqual(updates.map(update=>update.ids.length),[200,200,5]);
-  assert.ok(updates.every(update=>update.table==='writer_galaxy'));
-  assert.ok(updates.every(update=>update.values.place_id==='AAAAAAAA'));
-});
-test('portable Point link rejects a concurrent partial batch',async()=>{
-  const {db}=pointLinkDb(true);
-  await assert.rejects(portableAnchor(db,{scopeid:'writer',type:'point',
-    attr:{op:'link',mode:'place_id',updates:[{
-      uid:'00000001',place_id:'AAAAAAAA'
-    }]}},{role:'authenticated',engine:'mysql',namespace:''}),
-    /Concurrent Point link changes/);
 });
