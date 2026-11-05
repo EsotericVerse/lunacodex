@@ -33,6 +33,12 @@ LOC MCP 對外以 `galaxy_link` 統一執行私人對話 `search/read/check/reco
 - 測試涵蓋 `scripts/test-mcp-qos.mjs`、`scripts/test-loc-mcp-routing.mjs`；未在連接器中執行 Node 測試時不得宣稱通過。
 
 
+## MCP 入口 JWKS 去重與 Extension 連線（2026-11-06）
+
+- `app/loc/mcp/router.mjs` 原本只快取單一 isolate 的 Clerk JWKS（並強制 `cache: no-store`）；已改為同 issuer 的 Promise single-flight + 本地最多五分鐘 + Cloudflare Cache API 公開金鑰快取最多五分鐘。只有公開 JWKS 可快取，**每個 MCP 請求仍驗證 JWT 簽章、audience、issuer 與期限**，不快取 JWT 或管理授權。
+- Extension 的一次 Scope OAuth 連線核驗依序執行 `loc_connection_status` 和 `galaxy_link.check`；本身不是循環呼叫。Cloudflare 的其他 `identity`、PR 更新、Durable Object RPC 不可全歸因於一次按鍵。
+- 增加同一批並行 MCP request 對 Clerk JWKS 的讀取去重測試。正式上線仍需核對 Pages Functions 的部署版本；GitHub 合併不是 Pages 發布證據。
+
 ## MCP Session／讀取負載（2026-11-06）
 
 - Clerk OAuth Access Token 是可重複使用的短效憑證。每次呼叫仍需在本地做簽章及期限檢查，但**不必每次呼叫 Clerk 取得公鑰**。Pages 與 Authority Worker 都有短時 JWKS 快取（跨 isolate 的邊緣快取依 Workers Cache 可用性而定）。
