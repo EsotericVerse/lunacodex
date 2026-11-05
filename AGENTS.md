@@ -34,6 +34,7 @@
 - PR 紀錄需在本次工作流程內完成，不等待提醒。工具失敗先嘗試已授權的備援入口；若暫不可寫，明確標記未存成功並完成其他可執行的收尾，不能為此停住整項工作或以假紀錄取代。合併後更新已合併與部署狀態，不能把未驗證部署寫成已上線。歌曲與專輯等作品紀錄須保存實際全文，不能用摘要冒充全文。
 
 ## 資料庫／安全硬邊界
+- **System／Group／Scope 分工（2026-11-05）**：`silver.manage` 是 System Routing、管理角色與 `manage_role=reserve` 名稱保留表；系統 `caches`／`database` 放 `manage(id=admin)`。`silver.loc` 是 Group 自己的 Scope List，`id=loc/lo3rwang/lrunes`（新增成員同規）各存自己的 `display_name`、`title_tw`、`desc_tw`、`birthday`。任何前台一般換頁不得為此額外 SELECT `loc`；公開名冊與生日依 `sync:public` 明確發布。不要在 `manage` 重建姓名／生日欄位，不得恢復 `order by uid`。**禁止修改 loc/manage 的 RLS、GRANT 或 Policy。** 既有 `manage.email` 可被匿名 SELECT；因此 Email 黑名單的明文不得作為 reserve 紀錄寫入該表，舊 Email 黑名單在確立私密儲存路徑前保持原狀。
 - **公開 Theme 不查資料庫**：`silver.loc.theme` 僅供已授權 Admin 管理；公開前台固定使用 `app/modular/published-theme-catalog.json` 與 `published-themes.css`。管理員儲存後須明確執行 `sync:public`、提交發布產物再由既有流程部署；不可在頁面載入或 Theme 儲存後自動重新 SELECT `silver.loc.theme`，也不可為此更動 RLS。
 - **公開讀取與權限不可擅改**：使用者已明確要求 LOC 公開頁面資料可正常 SELECT。未經針對本次任務的明確授權，禁止修改 RLS Policy、GRANT／REVOKE 或以「安全考量」阻擋既有公開讀取；修復查詢頻率、Footer、Session 與 UI 不構成修改資料庫權限的授權。公開功能必須驗證未登入、沒有既有 Service Worker 快取的新訪客可載入；開發者本機快取成功不等於公開功能驗收成功。既有 Service Worker 不得因快取問題被擅自停用。
 - **UID 硬性規格**：涉及 Galaxy、Anchor 及其他既定八碼 UID 的新增流程，一律使用現有標準 Base62 安全亂數產生器；不得用標題、日期、PR 號、Scope 名稱或人造字串湊八碼。若尚無共用產生器，先查現有寫入入口，於其最小共用位置補齊，不另外新增資料表或索引。
