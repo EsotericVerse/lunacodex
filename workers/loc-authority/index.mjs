@@ -656,7 +656,8 @@ export class LocAuthorityState extends DurableObject {
     this.mcpSearchCache?.clear();
     return {scopeid,uid,pr_number:prNumber,updated_at:requestedTime,updated:true};
   }
-  async mcpLinkSearch(scopeid,query,limit=5,oauthToken=''){
+  async mcpLinkSearch(scopeid,query,limit=5,oauthToken='',source='mcp'){
+    if(!['mcp','github'].includes(source))throw fail('Invalid Galaxy source',400);
     validScope(scopeid);
     if(typeof query!=='string'||query.trim().length<2||query.length>100||
       /[\u0000-\u001f\u007f]/.test(query)||!Number.isInteger(limit)||limit<1||limit>5)
@@ -666,10 +667,10 @@ export class LocAuthorityState extends DurableObject {
     if(profile){
       const pattern=likePattern(query);
       rows=await postgrest(profile,{params:{select:'uid,title,createtime',
-        site:'eq.mcp',or:'(title.ilike.'+pattern+',content.ilike.'+pattern+')',
+        site:'eq.'+source,or:'(title.ilike.'+pattern+',content.ilike.'+pattern+')',
         order:'createtime.desc',limit},timeout:4500});
     }else if(Object.hasOwn(MANAGED_SCOPE_TABLES,scopeid)){
-      rows=await managedMcpRead(scopeid,'mcp-search',{query,limit},oauthToken);
+      rows=await managedMcpRead(scopeid,'mcp-search',{query,limit,source},oauthToken);
     }else throw fail('Scope database is not configured',409);
     if(!Array.isArray(rows))throw fail('Invalid Galaxy Link search response',502);
     return {scopeid,results:rows.map(r=>({uid:r.uid,title:r.title,createtime:r.createtime}))};
@@ -678,7 +679,9 @@ export class LocAuthorityState extends DurableObject {
     // Retained internal caller; no unrestricted MCP content search remains.
     return this.mcpLinkSearch(scopeid,query,Math.min(limit,5),oauthToken);
   }
-  async mcpRead(scopeid,uid,offset=0,max_chars=20000,oauthToken='',onlyMcp=false){ 
+  async mcpRead(scopeid,uid,offset=0,max_chars=20000,oauthToken='',siteFilter=''){
+    const onlySite=siteFilter===true?'mcp':(siteFilter||'');
+    if(onlySite&&!['mcp','github'].includes(onlySite))throw fail('Invalid article source',400); 
     validScope(scopeid);
     if(!UID.test(uid)||!Number.isInteger(offset)||offset<0||offset>1000000||
       !Number.isInteger(max_chars)||max_chars<1||max_chars>40000)
@@ -687,12 +690,12 @@ export class LocAuthorityState extends DurableObject {
     let rows;
     if(profile){
       rows=await postgrest(profile,{params:{select:'uid,title,content,date,createtime,site,url',
-        uid:'eq.'+uid,...(onlyMcp?{site:'eq.mcp'}:{}),limit:1}});
+        uid:'eq.'+uid,...(onlySite?{site:'eq.'+onlySite}:{}),limit:1}});
     }else if(Object.hasOwn(MANAGED_SCOPE_TABLES,scopeid)){
-      rows=await managedMcpRead(scopeid,'mcp-read',{uid,...(onlyMcp?{site:'mcp'}:{})},oauthToken);
+      rows=await managedMcpRead(scopeid,'mcp-read',{uid,...(onlySite?{site:onlySite}:{})},oauthToken);
     }else throw fail('Scope database is not configured',409);
     if(!Array.isArray(rows))throw fail('Invalid database response',502);
-    if(!rows.length||onlyMcp&&rows[0].site!=='mcp')return {found:false,scopeid,uid};
+    if(!rows.length||onlySite&&rows[0].site!==onlySite)return {found:false,scopeid,uid};
     const row=rows[0],content=String(row.content||'');
     return {found:true,scopeid,uid:row.uid,title:row.title,date:row.date,
       createtime:row.createtime,site:row.site,url:row.url,
@@ -925,30 +928,43 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
   }
   if(parts[0]==='update-pr'&&parts.length===2&&request.method==='POST'){
     const scopeid=validScope(parts[1]);
-    if(!await allowed(scopeid,'write'))throw fail('Scope update denied',403);
+    if(!await allowed(scopeid,'manage'))throw fail('PR update requires Scope manager',403);
     return json(await scoped(scopeid).mcpUpdatePr(scopeid,await mcpJsonBody(request),
       (request.headers.get('authorization')||'').replace(/^Bearer /,'')),200,origin);
   }
   if(parts[0]==='search'&&parts.length===2&&request.method==='POST'){
     const scopeid=validScope(parts[1]);
-    if(!await allowed(scopeid,'read'))throw fail('Scope read denied',403);
     const args=await mcpJsonBody(request,1600);
+    if(!args||typeof args!=='object'||Array.isArray(args)||
+      Object.keys(args).some(key=>!['query','limit','source'].includes(key)))
+      throw fail('Invalid Galaxy Link search payload',400);
+    const source=args.source??'mcp';
+    if(!['mcp','github'].includes(source))throw fail('Invalid Galaxy source',400);
+    if(!await allowed(scopeid,source==='github'?'manage':'read'))
+      throw fail('Scope source search denied',403);
     return json(await scoped(scopeid).mcpLinkSearch(scopeid,args.query,args.limit??5,
-      (request.headers.get('authorization')||'').replace(/^Bearer /,'')),200,origin);
+      (request.headers.get('authorization')||'').replace(/^Bearer /,''),source),200,origin);
   }
   if(parts[0]==='read'&&parts.length===3&&request.method==='GET'){
     const scopeid=validScope(parts[1]);
     const groupid=url.searchParams.get('groupid')||'';
-    let permitted=await allowed(scopeid,'read');
-    if(!permitted&&groupid&&await allowed(validScope(groupid),'read')){
+    const requestedSite=galaxyLink?(url.searchParams.get('site')||'mcp'):
+      (url.searchParams.get('site')==='mcp'?'mcp':'');
+    if(galaxyLink&&!['mcp','github'].includes(requestedSite))
+      throw fail('Invalid Galaxy Link read source',400);
+    let permitted=await allowed(scopeid,requestedSite==='github'?'manage':'read');
+    if(!permitted&&requestedSite!=='github'&&groupid&&await allowed(validScope(groupid),'read')){
       permitted=(await stub.mcpGroupMembers(groupid)).includes(scopeid);
     }
     if(!permitted)throw fail('Scope article read denied',403);
     const offset=Number(url.searchParams.get('offset')||'0');
     const max_chars=Number(url.searchParams.get('max_chars')||'20000');
-    return json(await scoped(scopeid).mcpRead(scopeid,parts[2],offset,max_chars,
-      (request.headers.get('authorization')||'').replace(/^Bearer /,''),
-      (galaxyLink||url.searchParams.get('site')==='mcp')),200,origin);
+    const result=await scoped(scopeid).mcpRead(scopeid,parts[2],offset,max_chars,
+      (request.headers.get('authorization')||'').replace(/^Bearer /,''),requestedSite);
+    // Legacy UID reads must not let a normal read grant disclose private PRs.
+    if(result.found&&result.site==='github'&&!await allowed(scopeid,'manage'))
+      throw fail('GitHub development record requires Scope manager',403);
+    return json(result,200,origin);
   }
   if(parts[0]==='group-search'&&parts.length===2&&request.method==='POST'){
     const groupid=validScope(parts[1]);
