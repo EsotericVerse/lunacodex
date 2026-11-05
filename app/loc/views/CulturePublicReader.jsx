@@ -6,9 +6,12 @@ import {FeaturePage} from '../../modular/ui';
 import {selectRows} from '../db-query.mjs';
 import {dbPublicClient} from '../db-client.mjs';
 import {defaultScopeData} from '../scope-data';
-import {selectCultureArticleListPage} from '../culture-query';
+import {heroBlocks} from '../scope-data';
 import {selectGalaxyIdentity} from '../galaxy-query';
 import ScopeLink from '../../modular/ScopeLink';
+import LocHomeBlockDisplay,{locHomeBlockClass,homeBlockMediaStyle} from '../LocHomeBlockDisplay';
+import {HomeBlock} from '../home-block-model';
+import {parseBlockImage} from '../hero-image.mjs';
 import {scopeHref} from '../../modular/scope-registry';
 
 const CultureTimeline=dynamic(()=>import('../../modular/modules/culture-timeline/CultureTimeline'),{loading:()=>null});
@@ -183,6 +186,7 @@ export default function CulturePublicReader(){
   const scope=useMemo(()=>defaultScopeData(scopeId),[scopeId]);
   const today=useMemo(todayInTaipei,[]);
   const start=useMemo(()=>previousYear(today),[today]);
+  const [hero,setHero]=useState(NO_ITEMS);
   const [anchors,setAnchors]=useState(NO_ITEMS);
   const [daily,setDaily]=useState(NO_ITEMS);
   const [catalog,setCatalog]=useState({system:[],personal:[]});
@@ -205,13 +209,27 @@ export default function CulturePublicReader(){
   const fullSequence=useRef(0);
   useEffect(()=>{
     let cancelled=false;
-    setLoading(true);setError('');setAnchors([]);setDaily([]);
-    Promise.all([analytics(scopeId,'culture_anchors',null,null),
-      analytics(scopeId,'culture_density',start,today),
-      sourceCatalog(scopeId)]).then(([time,counts,types])=>{
-      if(cancelled)return;
-      setAnchors(time);setDaily(counts);setCatalog(types);setLoading(false);
-    }).catch(reason=>{if(!cancelled){setError(String(reason?.message||reason));setLoading(false);}});
+    setLoading(true);setError('');setHero([]);setAnchors([]);setDaily([]);
+    // Display Hero first. The two rivers only load after its one Block query.
+    (async()=>{
+      try{
+        const heroRows=await heroBlocks(scopeId,'culture');
+        if(cancelled)return;
+        setHero(heroRows);
+      }catch(reason){
+        if(cancelled)return;
+        setError(String(reason?.message||reason));
+      }
+      try{
+        const [time,counts,types]=await Promise.all([
+          analytics(scopeId,'culture_anchors',null,null),
+          analytics(scopeId,'culture_density',start,today),
+          sourceCatalog(scopeId)
+        ]);
+        if(cancelled)return;
+        setAnchors(time);setDaily(counts);setCatalog(types);setLoading(false);
+      }catch(reason){if(!cancelled){setError(String(reason?.message||reason));setLoading(false);}}
+    })();
     return()=>{cancelled=true};
   },[scopeId,start,today]);
   const anchorRiver=useMemo(()=>anchorModel(anchors,start,today,expandedEras),
@@ -229,14 +247,17 @@ export default function CulturePublicReader(){
     const request=++sequence.current;
     setArticlesLoading(true);setArticleError('');
     try{
-      const page=await selectCultureArticleListPage(scope,{
-        startDate:start,endDate:today,site,offset,sortDirection:'desc'
+      const page=await dbPublicClient.schema('silver').analytics({
+        p_scope_id:scopeId,p_view:'culture_list',p_start:start,p_end:today,
+        p_options:{site,offset}
       });
+      if(page.error)throw new Error(page.error.message||'文章列表查詢失敗');
+      const result=page.data||{};
       if(request!==sequence.current)return;
-      setArticleRows(old=>append?[...old,...page.rows]:page.rows);
-      setArticleOffset(page.nextCursor?.offset||offset+page.rows.length);
+      setArticleRows(old=>append?[...old,...(result.rows||[])]:result.rows||[]);
+      setArticleOffset(result.nextCursor?.offset||offset+(result.rows||[]).length);
       setArticleVisible(old=>append?old+20:20);
-      setArticleMore(page.hasMore);
+      setArticleMore(Boolean(result.hasMore));
     }catch(reason){if(request===sequence.current)setArticleError(String(reason?.message||reason));}
     finally{if(request===sequence.current)setArticlesLoading(false);}
   };
@@ -262,6 +283,22 @@ export default function CulturePublicReader(){
     }
   };
   return <FeaturePage featureId='culture'>
+    {hero.length?<div className='scope-culture-hero-blocks'>
+      {hero.map((row,index)=>{
+        const slot={uid:row.uid,pageName:row.page_name,
+          order:Number(row.block_order)||index+1,
+          eyebrow:String(row.block_eyebrow||''),title:String(row.block_title||''),
+          subtitle:String(row.block_subtitle||''),text:String(row.block_text||''),
+          image:parseBlockImage(row.block_image),
+          bubbleColumns:HomeBlock.bubbleColumns(row.block_entity,row.page_name),
+          entities:HomeBlock.normalizeEntities(row.block_entity)};
+        return <section key={row.uid||row.page_name+':'+index}
+          className={locHomeBlockClass(slot,'loc')}
+          style={homeBlockMediaStyle(slot,'loc')}>
+          <LocHomeBlockDisplay {...slot}/>
+        </section>;
+      })}
+    </div>:null}
     <section className='loc-card scope-feature-card scope-feature-card-wide'>
       <p className='loc-eyebrow'>文化｜時間密度</p>
       <h2>時間長河</h2>
@@ -278,7 +315,7 @@ export default function CulturePublicReader(){
             if(!String(group).startsWith('era:'))return;
             setExpandedEras(old=>old.includes(uid)?old.filter(x=>x!==uid):[...old,uid]);
           }}/>
-        {!anchors.length?<p className='scope-status'>此區間沒有時間定錨。</p>:null}
+        {!anchorRiver.items.length?<p className='scope-status'>此區間沒有時間定錨。</p>:null}
       </section>
       <section className='scope-card scope-culture-classification-river'>
         <div className='scope-culture-river-toolbar'><h3>文章密度</h3></div>
@@ -298,16 +335,19 @@ export default function CulturePublicReader(){
             const name=String(group);
             if(name.startsWith('site:'))resetArticles(name.slice(5).split(':').slice(1).join(':'));
           }}/>
-        {selectedSite?<div className='scope-culture-source-detail'>
-          <button className='loc-button' type='button'
-            onClick={()=>openArticles(selectedSite)}>顯示相關文章列表｜{selectedSite}</button>
+        {densityRiver.sites.length?<div className='scope-culture-source-detail'>
+          {densityRiver.sites.map(item=><div key={item.key} className='scope-culture-source-list-entry'>
+            <span>{item.site}（{item.count}）</span>
+            <button className='loc-button' type='button'
+              onClick={()=>openArticles(item.site)}>顯示相關文章列表</button>
+          </div>)}
         </div>:null}
       </section>
       {articlesOpen?<section className='scope-card scope-culture-source-detail'>
         <h3>{selectedSite}｜相關文章列表</h3>
         {articleError?<p role='alert' className='scope-status scope-error'>{articleError}</p>:null}
         {articleRows.slice(0,articleVisible).map((row,index)=>row.hidden
-          ?<p className='scope-status' key={row.key||index}>本文已隱藏</p>
+          ?<p className='scope-status' key={'hidden:'+index}>本文已隱藏</p>
           :<div className='scope-work-list-row' key={row.key||index}>
             <span>標題：{row.title}　日期：{row.date}　</span>
             <button type='button' className='loc-button'
