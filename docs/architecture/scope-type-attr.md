@@ -287,3 +287,12 @@ Search 只對 Galaxy `content` 執行模糊比對；進階內容類型只保留�
 - 限流目前使用 Edge Function **單個 warm isolate 的有上限記憶體**，不查詢或寫入額外資料表、不新增 RPC、Trigger、Index、不變更既定 QoS 16。**這不是跨所有 Edge instances 的全球共享黑名單**；跨實例、跨區域的強制防護將來須由部署層的共享限流能力承擔，不能把本版本宣稱成分散式全域封鎖。
 - 已設有搜尋使用者端 25 秒 abort 與 Kysely HTTP 9 秒 deadline；SQL 8 秒設定是另外在資料庫端阻止長時間掃描。僅對 PostgreSQL 實際施加 `SET LOCAL statement_timeout`；其他 SQL 引擎不應宣稱享有相同的伺服器端保證。
 - 驗收：`node --test scripts/test-search-qos.mjs`，另須核對部署中的 HTTP 429、`Retry-After` 和 SQL timeout，以及搜尋主功能正常找到包含指定詞的文章。測試與部署結果各自記錄，不得以本文件代替驗證。
+
+
+### 文化公開頁 Site 清單補齊（2026-11-06）
+
+- 文化公開頁使用既有 `FeaturePage` 執行一次 `hero_blocks(scopeId, culture)`；**不可在 `CulturePublicReader` 再查、再畫第二個 Hero**。
+- 來源分類維持既有 `ArticleTag`，不可誤改為 `ArticleClass`；系統分類讀 `loc.DefaultArticleClass`。
+- 兩條河道讀取維持 `culture_anchors`、`culture_density`：時間分布與密度分布不查 Galaxy UID；點擊來源分類或 (+) 只在記憶體排列。
+- 每一個已展開的 Site 顯示各自的「顯示相關文章列表」按鍵。只有按此鍵才呼叫現有 `selectCultureArticleListPage`（已使用 portable Kysely `culture_list`），按指定 Site 和一年日期窗口取得最多 100 筆，先展示 20 筆。下一組 20 筆從記憶體顯示，超過該 100 筆才查下一頁；換 Site 清理原列表。
+- `list=false` 須在後端遮蔽 UID、標題與日期，前端僅顯示「本文已隱藏」。全文按 UID 展開仍是獨立使用者動作。此次不修改任何 Table/Column、RLS、編輯寫入或搜尋 QoS。
