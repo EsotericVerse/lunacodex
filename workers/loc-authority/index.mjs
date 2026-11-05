@@ -391,7 +391,7 @@ async function postgrestUpdatePr(profile,uid,prNumber,title,content,updatedAt){
     'content-profile':profile.schema,
     apikey:profile.api_key,authorization:'Bearer '+profile.api_key};
   const canonical='EsotericVerse/moon-runes-pwa#'+prNumber;
-  const prMarker=new RegExp('(?:^|[^0-9])PR\\\\s*#'+prNumber+'(?:[^0-9]|$)');
+  const prMarker=new RegExp('(?:^|[^0-9])PR\\s*#'+prNumber+'(?:[^0-9]|$)');
   if(!uid){
     // Resolve by source identity; never guess a UID or update multiple rows.
     const exact=await postgrest(profile,{params:{select:'uid,title,site,site_id',
