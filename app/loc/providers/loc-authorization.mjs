@@ -62,10 +62,12 @@ export async function locPermissions(db){
     // and revocation remain evaluated against the live LOC control database.
     const joined=await db.selectFrom('silver.manage as m')
       .crossJoin('silver.loc as l')
+      .leftJoin('silver.loc as s','s.id','m.id')
       .select(['m.id','m.email','m.manage_role','m.active','m.galaxy_table',
-        'm.anchor_table','m.birthday','l.blacklist'])
+        'm.anchor_table','s.birthday as birthday','l.blacklist'])
       .where('l.id','=','loc')
-      .where(db.fn('lower',['m.email']),'=',state.email).execute();
+      .where(db.fn('lower',['m.email']),'=',state.email)
+      .where('m.manage_role','in',['admin','group','scope']).execute();
     if(!joined.length)return {blocked:false,rows:[]};
     let blacklist=joined[0].blacklist;
     if(typeof blacklist==='string'){
