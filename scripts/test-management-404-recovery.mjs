@@ -111,3 +111,16 @@ test('cancel exits management to the real public document after clearing editor 
   assert.match(cancel,/end\(\);\s*window\.location\.assign\(destination\.href\)/);
   assert.doesNotMatch(cancel,/navigate\(target\)/);
 });
+
+test('Settings Feature tab recovers only missing deployment chunks, not API 404s',()=>{
+  const settings=read('app/loc/GlobalSettings.jsx');
+  const feature=read('app/loc/FeatureSettingsPage.jsx');
+  const route=read('app/settings/features/page.jsx');
+  const inline=read('app/modular/ManagementSectionNav.jsx');
+  assert.match(settings,/import\('\.\/FeatureSettingsPage'\)\.catch\(recoverChunkOnce\)/);
+  assert.match(feature,/import\('\.\/LocUserSettingsPanel'\)\.catch\(recoverChunkOnce\)/);
+  assert.match(settings,/activeSection==='features'\?<FeatureSettingsPage embedded\/>/);
+  assert.match(inline,/onClick=\{\(\)=>\{if\(!selected\)onChange\(item\.value\);\}\}/);
+  assert.match(route,/export default function SettingsFeaturesPage/);
+  assert.equal(isChunkLoadFailure(Error('HTTP 404: function endpoint not found')),false);
+});

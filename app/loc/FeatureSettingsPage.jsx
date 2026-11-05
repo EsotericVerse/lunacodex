@@ -13,9 +13,10 @@ import {useAccount} from './use-account';
 import useDefaultTimeUnit from './use-default-time-unit';
 import {saveDefaultTimeUnit,DEFAULT_TIME_UNITS} from './default-time-unit.mjs';
 import PanelLoading from './PanelLoading';
+import {recoverChunkOnce} from './chunk-recovery.mjs';
 registerDefaultSection('uiExtra.globalSettings',globalSettingsZh);
 
-const LocUserSettingsPanel=dynamic(()=>import('./LocUserSettingsPanel'),{loading:PanelLoading});
+const LocUserSettingsPanel=dynamic(()=>import('./LocUserSettingsPanel').catch(recoverChunkOnce),{loading:PanelLoading});
 const KEY='uiExtra.globalSettings.';
 
 export default function FeatureSettingsPage({embedded=false}){
