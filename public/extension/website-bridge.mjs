@@ -74,12 +74,22 @@ async function connectOnce(){
     throw Error('Chrome 找不到 LOC Galaxy Extension 的網站通訊介面，請在 chrome://extensions 重新載入 Extension');
   let reply;
   try{
-    reply=await chrome.runtime.sendMessage(EXTENSION_ID,{
-      type:'locGalaxy.websiteGrant',nonce,scopeid,
-      access_token:token,expires_at:claims.exp*1000,subject:claims.sub
+    // External webpages cannot infer whether the installed extension has
+    // reloaded from a merged GitHub commit. The callback exposes Chrome's
+    // concrete delivery failure instead of turning it into "Scope denied".
+    reply=await new Promise((resolve,reject)=>{
+      chrome.runtime.sendMessage(EXTENSION_ID,{
+        type:'locGalaxy.websiteGrant',nonce,scopeid,
+        access_token:token,expires_at:claims.exp*1000,subject:claims.sub
+      },answer=>{
+        const failure=chrome.runtime.lastError?.message;
+        if(failure)reject(Error(failure));
+        else resolve(answer);
+      });
     });
   }catch(error){
-    throw Error('Chrome 無法送達 LOC Galaxy Extension：'+String(error?.message||error).slice(0,160));
+    throw Error('Chrome Extension 通訊失敗：'+String(error?.message||error).slice(0,180)+
+      '。請確認已更新本機擴充功能檔案並重新載入，而非僅重新整理網站');
   }
   if(!reply||typeof reply!=='object')
     throw Error('Extension 未回覆網站授權要求，請確認已 Reload 至 0.6.0 版本且 Extension ID 正確');
