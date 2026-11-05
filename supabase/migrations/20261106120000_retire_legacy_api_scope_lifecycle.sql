@@ -13,25 +13,37 @@ BEGIN
     SELECT 1 FROM pg_depend d
     WHERE d.refobjid IN (
       coalesce(to_regprocedure('api.delete_scope(text)'),0::oid),
-      coalesce(to_regprocedure('api.provision_scope(text,text,text,date,text,text,text,text,boolean)'),0::oid)
+      coalesce(to_regprocedure('api.provision_scope(text,text,text,date,text,text,text,text,boolean)'),0::oid),
+      coalesce(to_regprocedure('silver.delete_scope(text)'),0::oid),
+      coalesce(to_regprocedure('silver.provision_scope(text,text,text,date,text,text,text,text,boolean)'),0::oid)
     )
       AND d.deptype NOT IN ('i','e')
   ) THEN
     RAISE EXCEPTION 'Legacy API Scope functions still have SQL dependencies';
   END IF;
+  -- The installed silver.* functions are *only* compatibility shims that
+  -- forward to api.*. They must be retired first, not treated as active
+  -- callers that permanently block this migration.
   IF EXISTS (
     SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
     WHERE n.nspname IN ('api','silver')
       AND p.oid NOT IN (
         coalesce(to_regprocedure('api.delete_scope(text)'),0::oid),
-        coalesce(to_regprocedure('api.provision_scope(text,text,text,date,text,text,text,text,boolean)'),0::oid)
+        coalesce(to_regprocedure('api.provision_scope(text,text,text,date,text,text,text,text,boolean)'),0::oid),
+        coalesce(to_regprocedure('silver.delete_scope(text)'),0::oid),
+        coalesce(to_regprocedure('silver.provision_scope(text,text,text,date,text,text,text,text,boolean)'),0::oid)
       )
-      AND (p.prosrc ILIKE '%api.delete_scope%' OR p.prosrc ILIKE '%api.provision_scope%')
+      AND (p.prosrc ILIKE '%api.delete_scope%' OR p.prosrc ILIKE '%api.provision_scope%'
+        OR p.prosrc ILIKE '%silver.delete_scope%' OR p.prosrc ILIKE '%silver.provision_scope%')
   ) THEN
-    RAISE EXCEPTION 'Legacy API Scope functions are still called from installed SQL';
+    RAISE EXCEPTION 'Legacy Scope functions are still called from installed SQL';
   END IF;
 END $guard$;
 
+-- Retire compatibility wrappers before their old API implementations.
+-- RESTRICT also stops this step if a view, trigger or SQL object depends on them.
+DROP FUNCTION IF EXISTS silver.delete_scope(text) RESTRICT;
+DROP FUNCTION IF EXISTS silver.provision_scope(text,text,text,date,text,text,text,text,boolean) RESTRICT;
 DROP FUNCTION IF EXISTS api.delete_scope(text) RESTRICT;
 DROP FUNCTION IF EXISTS api.provision_scope(text,text,text,date,text,text,text,text,boolean) RESTRICT;
 NOTIFY pgrst,'reload schema';
