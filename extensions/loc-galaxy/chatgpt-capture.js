@@ -4,7 +4,7 @@
   if(globalThis.__locGalaxyCaptureInstalled)return;
   globalThis.__locGalaxyCaptureInstalled=true;
   const CHAT=/^\/((g\/[^/]+\/)?c\/)([a-zA-Z0-9-]{8,})/;
-  let stopped=false,observed=new Set(),conversation='',observer=null;
+  let stopped=false,observed=new Set(),inflight=new Set(),conversation='',observer=null;
   function current(){
     if(location.origin!=='https://chatgpt.com')return null;
     const match=location.pathname.match(CHAT);
@@ -13,10 +13,10 @@
   function scan(){
     if(stopped)return;
     const id=current();
-    if(!id){conversation='';observed=new Set();return;}
+    if(!id){conversation='';observed=new Set();inflight=new Set();return;}
     if(id!==conversation){
       conversation=id;
-      observed=new Set();
+      observed=new Set();inflight=new Set();
       // Baseline: never pretend old DOM messages have trustworthy send timestamps.
       for(const el of document.querySelectorAll('[data-message-id]')){
         const mid=el.getAttribute('data-message-id');
@@ -26,19 +26,21 @@
     }
     for(const el of document.querySelectorAll('[data-message-id]')){
       const mid=el.getAttribute('data-message-id');
-      if(!mid||observed.has(mid))continue;
+      if(!mid||observed.has(mid)||inflight.has(mid))continue;
       const role=el.getAttribute('data-message-author-role')||
         el.closest('[data-message-author-role]')?.getAttribute('data-message-author-role');
       // Only user-authored sent messages; assistant output requires explicit selection.
       if(role!=='user')continue;
       const text=(el.querySelector('.whitespace-pre-wrap')||el).innerText?.trim()||'';
       if(!text||text.length>20000)continue;
-      observed.add(mid);
+      inflight.add(mid);
       chrome.runtime.sendMessage({
         type:'locGalaxy.captureObserved',
         conversation_id:id,message_id:mid,text,
         observed_at:new Date().toISOString()
-      }).catch(()=>{ /* The background's pending queue is authoritative, not this page. */ });
+      }).then(reply=>{
+        if(reply?.ok===true)observed.add(mid);
+      }).catch(()=>{}).finally(()=>inflight.delete(mid));
     }
   }
   chrome.runtime.onMessage.addListener(message=>{
@@ -52,4 +54,6 @@
   observer.observe(document.documentElement,{subtree:true,childList:true});
   // SPA history transitions may not mutate an observed message subtree immediately.
   document.addEventListener('visibilitychange',scan);
+  // Retry pending delivery on transient service-worker wake or storage failures.
+  const retry=setInterval(()=>{if(stopped)clearInterval(retry);else scan();},30000);
 })();
