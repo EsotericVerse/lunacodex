@@ -71,7 +71,15 @@ export function checkLocScopeBoundary(migrations=[]){
     ['20261103003000_loc_jsonb_drop_legacy.sql',
       /^ALTER\s+TABLE\s+silver\.loc\s+DROP\s+COLUMN\s+cache\s*$/i],
     ['20261103040000_loc_theme_keywords_jsonb_cutover.sql',
-      /^ALTER\s+TABLE\s+silver\.loc\s+ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+(?:theme|keywords)\s+jsonb\b/i]
+      /^ALTER\s+TABLE\s+silver\.loc\s+ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+(?:theme|keywords)\s+jsonb\b/i],
+    // Authorized 2026-11-05 System/Group split; only these exact columns/
+    // Group membership inserts. No RLS, policy or grant is allowlisted.
+    ['20261105223000_split_manage_system_and_loc_scope_stage.sql',
+      /\b(?:ALTER\s+TABLE\s+silver\.loc\s+(?:DROP\s+CONSTRAINT\s+IF\s+EXISTS\s+loc_config_singleton|ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+(?:title_tw|desc_tw|birthday))|INSERT\s+INTO\s+silver\.loc\s*\(id\b)/i],
+    ['20261105230000_api_scope_registry_loc_group_writes.sql',
+      /\bINSERT\s+INTO\s+silver\.loc\s*\(id\b/i],
+    ['20261105231000_finish_manage_system_loc_group_cutover.sql',
+      /\bALTER\s+TABLE\s+silver\.loc\s+DROP\s+COLUMN\s+IF\s+EXISTS\s+(?:caches|database)\b/i]
   ]);
   for(const [name,sql] of migrations){
     const allow=approved.get(name);
