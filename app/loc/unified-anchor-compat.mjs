@@ -5,7 +5,7 @@
 const legacyName=/^([a-z][a-z0-9]{0,14})_(time|trace|keywords|galaxy_media)$/;
 const pendingAnchorScopes=new Set(['loc']);
 export const isUnifiedAnchorScope=scopeId=>/^[a-z][a-z0-9]{0,14}$/.test(String(scopeId||''))&&!pendingAnchorScopes.has(String(scopeId));
-const physicalColumns=['uid','type','title','description','invisible','attr'];
+const physicalColumns=['uid','type','title','description','invisible','attr','createtime'];
 const legacyKinds={time:'time',trace:'trace',keywords:'keywords',galaxy_media:'media'};
 const scopeTypes={
  time:['date','period','era'],trace:['point','path','trace'],
@@ -123,6 +123,8 @@ export function toAnchorRow(spec,row){
  if(hasOwn(data,'title'))out.title=data.title;
  if(hasOwn(data,'name'))out.title=data.name;
  if(hasOwn(data,'invisible'))out.invisible=data.invisible;
+ // Provenance timestamp is physical, never cultural attr.date.
+ if(hasOwn(data,'createtime'))out.createtime=data.createtime;
  if(hasOwn(data,'description'))out.description=
    spec.kind==='trace'&&data.description&&typeof data.description==='object'
      ?JSON.stringify(data.description):data.description;
@@ -182,7 +184,7 @@ export function toAnchorRow(spec,row){
 export function fromAnchorRow(spec,row){
  if(!row)return row;
  const out={},attr=row.attr||{};
- for(const key of ['uid','title','invisible','description'])
+ for(const key of ['uid','title','invisible','description','createtime'])
    if(hasOwn(row,key))out[key]=row[key];
  if(hasOwn(row,'type'))out.type=legacyType(row.type);
  if(spec.kind==='time'){
@@ -210,7 +212,7 @@ export function fromAnchorRow(spec,row){
    out.uid_lists=attr.total!=null?{total:attr.total,uidlists:[]}:null;
  }else if(spec.kind==='media'){
    out.url=attr.url??null;
-   out.createtime=attr.date??null;out.location=null;
+   out.location=null;
    if(row.type==='suno'&&String(attr.url||'').includes('/playlist/'))out.type='播放清單';
  }
  return out;
@@ -223,7 +225,7 @@ function fieldsForSelect(spec,columns){
    const name=raw.trim().split(':').at(-1).trim(),mapped=readColumn(spec,name);
    // A few old media readers still request these removed fields. They are
    // nullable compatibility projections, not aliases to UID or other data.
-   if(spec.kind==='media'&&['createtime','location'].includes(name))continue;
+   if(spec.kind==='media'&&name==='location')continue;
    if(spec.kind==='time'&&name==='range')continue;
    if(!physicalColumns.includes(mapped))throw Error('Unknown unified anchor column: '+name);
    fields.add(mapped);
@@ -325,7 +327,7 @@ class UnifiedQuery{
       const mapped=readColumn(spec,filter.column);
       if(mapped==='attr'){jsonFilters.push(filter);continue}
       // A timestamp filter cannot be silently converted into a UID filter.
-      if(spec.kind==='media'&&['createtime','location'].includes(filter.column))
+      if(spec.kind==='media'&&filter.column==='location')
         throw Error('Media '+filter.column+' filtering requires article Galaxy.date/media_link');
       if(!physicalColumns.includes(mapped))throw Error('Unmapped anchor filter: '+filter.column);
       physical=applyFilter(physical,{...filter,column:mapped,
@@ -343,9 +345,8 @@ class UnifiedQuery{
       physical=physical.or(rewritten);
     }
     for(const order of this.orders){
-      // Media has no creation timestamp by design. Sort its legacy lists by
-      // title instead of the unrelated UID (which is not a time key).
-      const mapped=spec.kind==='media'&&order.column==='createtime'?'title':readColumn(spec,order.column);
+      // Media creation time is a real physical column, not attr.date or UID.
+      const mapped=readColumn(spec,order.column);
       if(mapped==='attr')throw Error('JSONB sort requires a native unified query');
       physical=physical.order(mapped,{ascending:order.ascending,nullsFirst:order.nullsFirst});
     }
