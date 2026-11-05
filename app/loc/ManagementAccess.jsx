@@ -7,33 +7,38 @@ import {editorSessionStatus,clearEditorSession,touchEditorSession} from './edit-
 import {dbAuthEvents} from './db-client.mjs';
 import {verifyManagementEntry} from './auth/management-entry-verification.mjs';
 
+const LOGIN_RETURN_KEY='loc-management-login-return-v1';
 const granted=(grants,id,level)=>level==='global'
   ?Boolean(grants?.canManageGlobalSync())
   :level==='group'?Boolean(grants?.canManageGroupSync(id))
   :Boolean(grants?.canManageScopeSync(id));
 const pending=()=>({loading:true,user:null,authorizer:null,error:''});
 
-// The first management entry verifies Clerk and Scope together. Subsequent
-// transitions within the same document reuse that identity's verified grant.
-// Server RLS still validates writes; expired editor sessions reverify.
+// Each protected management entry verifies Scope permission before rendering
+// editing controls. A Clerk sign-in alone never grants management access.
 export default function ManagementAccess({scopeId,level='scope',featureId='manage',children}){
   const account=useAccount({enabled:false}),dock=useEditDock();
   const [verification,setVerification]=useState(pending);
-  const [retry,setRetry]=useState(0);
   const [locked,setLocked]=useState(false);
-  const [renewing,setRenewing]=useState(false);
-  const [error,setError]=useState('');
-  // One role fetch per verified identity. Explicit expired-session renewal
-  // always performs a fresh network verification.
   const check=useCallback(()=>editorSessionStatus(window.sessionStorage).expired
     ?account.refresh()
     :(readVerifiedManagementEntry()||account.refresh()),[account.refresh]);
 
   useEffect(()=>{
     let active=true;
+    const path=window.location.pathname+window.location.search+window.location.hash;
+    // This is only a UX return marker. The Scope permission must still be
+    // verified live; it never acts as an authorization credential.
+    const fromLogin=window.sessionStorage.getItem(LOGIN_RETURN_KEY)===path;
+    if(fromLogin)window.sessionStorage.removeItem(LOGIN_RETURN_KEY);
     setVerification(pending());
-    void verifyManagementEntry(check).then(result=>{
+    void verifyManagementEntry(fromLogin?account.refresh:check).then(result=>{
       if(!active)return;
+      if(fromLogin&&result?.user&&granted(result.authorizer,scopeId,level)){
+        clearEditorSession(window.sessionStorage);
+        if(!touchEditorSession(window.sessionStorage))
+          throw Error('無法重新啟用編輯 Session');
+      }
       setVerification({loading:false,user:result?.user||null,
         authorizer:result?.authorizer||null,error:''});
     }).catch(cause=>{
@@ -42,10 +47,10 @@ export default function ManagementAccess({scopeId,level='scope',featureId='manag
         error:String(cause?.message||cause||'管理權限查詢失敗')});
     });
     return ()=>{active=false;};
-  },[check,scopeId,level,retry]);
+  },[check,account.refresh,scopeId,level]);
 
-  // An actual sign-out/account change must revoke this independently-held
-  // UI grant; a first empty Clerk hydration event is not a real sign-out.
+  // A verified account change revokes editing; an initial empty SDK event
+  // is not an actual sign-out.
   useEffect(()=>{
     if(!verification.user)return undefined;
     let active=true;
@@ -54,8 +59,7 @@ export default function ManagementAccess({scopeId,level='scope',featureId='manag
       if(!active)return;
       const otherId=String(session?.user?.id||'');
       if(event==='SIGNED_OUT'||(otherId&&otherId!==currentId)){
-        setVerification({loading:false,user:null,authorizer:null,
-          error:'Clerk 登入身分已變更，管理權限已解除。'});
+        setVerification({loading:false,user:null,authorizer:null,error:'身分已變更'});
         dock?.end();
       }
     });
@@ -66,11 +70,16 @@ export default function ManagementAccess({scopeId,level='scope',featureId='manag
   const allowed=Boolean(ready&&verification.user&&
     granted(verification.authorizer,scopeId,level));
   const entered=Boolean(dock?.active&&dock.scopeId===scopeId);
-  // On denied or expired management entry restore ordinary navigation.
+
+  // Access failure or expired edit session returns to the full-screen Clerk
+  // gateway; never expose a stale/denied editor or show an expiry text panel.
   useEffect(()=>{
-    if(ready&&(!allowed||locked))
-      window.dispatchEvent(new CustomEvent('loc-management-entry-denied',{detail:{scopeId}}));
+    if(!ready||allowed&&!locked)return;
+    window.dispatchEvent(new CustomEvent('loc-management-entry-denied',{detail:{scopeId}}));
+    const target=window.location.pathname+window.location.search+window.location.hash;
+    window.location.replace('/login/index.html?return_to='+encodeURIComponent(target));
   },[ready,allowed,locked,scopeId]);
+
   useEffect(()=>{
     if(!allowed||entered)return;
     if(editorSessionStatus(window.sessionStorage).expired){setLocked(true);return;}
@@ -78,42 +87,9 @@ export default function ManagementAccess({scopeId,level='scope',featureId='manag
     dock?.begin(scopeId);
   },[allowed,entered,scopeId,dock?.begin]);
 
-  async function renew(){
-    if(renewing||!allowed||entered||!locked)return;
-    setRenewing(true);setError('');
-    try{
-      // Exactly the same live authorization path as initial edit entry.
-      // Do not re-implement Clerk/permission checks or consult a TTL cache.
-      const verified=await verifyManagementEntry(check);
-      if(!verified?.user||String(verified.user.id)!==String(verification.user.id)||
-        String(verified.user.email||'').toLowerCase()!==
-          String(verification.user.email||'').toLowerCase())
-        throw Error('登入身分已變更，請重新驗證管理權限。');
-      if(!granted(verified.authorizer,scopeId,level))
-        throw Error('重新驗證後，沒有此管理範圍的權限。');
-      setVerification({loading:false,user:verified.user,
-        authorizer:verified.authorizer,error:''});
-      clearEditorSession(window.sessionStorage);
-      if(!touchEditorSession(window.sessionStorage))throw Error('無法重建編輯 Session。');
-      setLocked(false);
-      dock?.begin(scopeId);
-    }catch(cause){setError(String(cause?.message||cause));}
-    finally{setRenewing(false);}
-  }
-  if(!ready||!verification.user||!allowed||!entered)return <FeaturePage featureId={featureId}>
+  if(!ready||!allowed||!entered)return <FeaturePage featureId={featureId}>
     <section className="loc-card scope-feature-card">
-      {!ready?<p role="status">正在確認管理權限…</p>
-        :verification.error?<p role="alert">管理權限核驗失敗，暫時無法編輯。</p>
-        :!verification.user?<p>請先使用 Clerk 登入才能進入管理。</p>
-        :!allowed?<p role="alert">沒有此 {level==='group'?'Scope Group':level==='global'?'系統':'Scope'} 的管理權限。</p>
-        :locked?<><p role="status">編輯 Session 已鎖定，請重新驗證後進入管理。</p>
-          <button className="loc-button" type="button" disabled={renewing} onClick={renew}>
-            {renewing?'正在重新驗證…':'重新驗證並進入管理'}
-          </button></>:<p role="status">正在啟用管理介面…</p>}
-      {verification.error?<p className="scope-status scope-error" role="alert">{verification.error}</p>:null}
-      {ready&&!allowed?<button className="loc-button" type="button"
-        onClick={()=>{setError('');setRetry(value=>value+1);}}>重新確認管理權限</button>:null}
-      {error?<p className="scope-status scope-error" role="alert">{error}</p>:null}
+      <p role="status">正在開啟 LOC 身分驗證…</p>
     </section>
   </FeaturePage>;
   return children;
