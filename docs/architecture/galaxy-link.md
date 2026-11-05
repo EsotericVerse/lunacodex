@@ -58,3 +58,10 @@ MCP Server 不是 ChatGPT／Claude／其他 App 的聊天歷史 API，無法自�
 Extension 0.3.0 增加白色工作台的本機 JSON 檔案預覽與按鈕確認，再透過受信任的 service worker 使用既有 OAuth Scope Token 呼叫 `galaxy_link.check` / `galaxy_link.record`。來源 `conversation_id`、`updated_at` 與原始訊息 ID、時間及文字由使用者提供，不推測內容、不寫入獨立資料庫。只在後端成功回報時顯示寫入成功；前端不持有 Token。
 
 **不代表自動擷取已完成**：沒有 ChatGPT/Claude 來源介接、每小時背景排程、未傳送訊息擷取，也未完成 Chrome 實機 OAuth／寫入／重試驗證。這個版本是可審查的明確來源匯入路徑，不宣稱零漏記。
+
+## Chrome Extension Stage 4：自願啟用的 ChatGPT 網頁擷取
+
+- Extension `0.4.0` 增加 `chatgpt.com` 的**選配**網站權限（Chrome 使用者手動批准）；預設沒有 content script。啟用後以 `chrome.scripting.registerContentScripts` 動態註冊，關閉後取消註冊。永遠不向 ChatGPT 網頁傳遞 Clerk OAuth Token。
+- 瀏覽器來源 Adapter 僅處理目前網頁可見、帶穩定 `data-message-id` 的**新**使用者訊息；不讀取啟用前歷史、不包含助手回應、不抓取所有瀏覽器分頁。時間記錄為 Extension 首次觀察（`observed_at`），不是平台來源的精確 `sent_at`；不應被誤當歷史時間定錨。
+- 本機佇列以 Scope 分隔，最多 500 則；每 60 分鐘 Chrome Alarm 或用戶手動按鍵呼叫既有 `galaxy_link.check` 及 `record`。寫入成功才清除隊列；錯誤保留待重試。登出或切換 Scope 清除待寫內容以避免跨身分流通。
+- Chrome 關閉或沒有對話頁面時，無法取得新訊息。因為 ChatGPT DOM 非正式來源 API，UI 更新後可能無法擷取；沒有任何零漏記承諾。正式瀏覽器與 Authority MCP 實機驗證仍是驗收條件。
