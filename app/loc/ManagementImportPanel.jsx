@@ -824,14 +824,12 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       // read for the span; full rows are read by UID for real timestamp matches.
       const readSiteSpan=async(site,start,end)=>{
         const pageSize=MAX_ROWS,rows=[],seenUids=new Set();
-        // Timestamp alone is not a unique sort key. Use the UID as the
-        // stable tie-breaker so equal-second posts span pages without loss.
-        // The database can use a sequential scan and bounded sort; this is
-        // cheaper here than an unselective UID-index scan.
+        // Order the import comparison pool by actual article creation time.
+        // The UID is only used to detect duplicated results, not to sort them.
         for(let offset=0;;){
           const {data,error}=await dbAuthRelation(galaxy).select('uid,createtime,site_id')
             .ilike('site',site).gte('createtime',start).lte('createtime',end)
-            .order('createtime',{ascending:true}).order('uid',{ascending:true})
+            .order('createtime',{ascending:true})
             .range(offset,offset+pageSize-1);
           if(error)throw Error('createtime 比對失敗：'+error.message);
           const page=data||[];
