@@ -37,6 +37,7 @@ LOC MCP 對外以 `galaxy_link` 統一執行私人對話 `search/read/check/reco
 
 - Clerk OAuth Access Token 是可重複使用的短效憑證。每次呼叫仍需在本地做簽章及期限檢查，但**不必每次呼叫 Clerk 取得公鑰**。Pages 與 Authority Worker 都有短時 JWKS 快取（跨 isolate 的邊緣快取依 Workers Cache 可用性而定）。
 - `mcp-read`／`mcp-search` 不再借用 `authorize-write`；Kysely Edge 使用 Authority 的 `authorize-read`。GitHub 來源額外要求 `manage`，MCP 來源要求 `read`；寫入繼續走 `authorize-write`。
+- 同一 Edge isolate 的並行 MCP Token／Scope／動作授權共用一個尚未完成的 Authority 驗證，拒絕時立即失效；不同 Scope 與 read/manage/write 不可共用，不延長 30 秒撤權窗口。
 - Kysely Edge 將已驗證的 Scope 授權短時快取 **最多 30 秒**，快取索引是 Token SHA-256 指紋＋Scope＋動作，**不儲存原始 Token**，不快取授權失敗，每次仍透過 Clerk JWKS 本地驗證 JWT。授權撤銷最多可能延遲 30 秒生效。
 - Supabase 管理 Edge 沿用既有 root identity 對映；普通 `read` 授權不會被升格成系統管理者寫入憑證。MCP 工具配額／QoS 仍適用。
 - Cloudflare Dashboard 的 Clerk host 子請求量代表外連 JWKS 次數（與各時段部署／冷啟動有關），不等於使用者主動打開管理模式，也不等於建立 Session 的次數。要判定實際請求來源需查同時間 Worker trace／request logs。

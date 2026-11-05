@@ -4,6 +4,19 @@ import {readFileSync} from 'node:fs';
 
 const source=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
+test('Kysely reuses verified identity for same Clerk session, never skips JWT validation',()=>{
+  const edge=source('supabase/functions/loc-kysely/index.ts');
+  assert.match(edge,/SESSION_IDENTITY_TTL_MS=2\*60\*60\*1000/);
+  assert.match(edge,/JSON\.stringify\(\[payload\.iss,subject,sid\]\)/);
+  assert.match(edge,/if\(cached&&cached\.until>now\)return cached\.pending/);
+  assert.match(edge,/sessionIdentityCache\.get\(key\)\?\.pending===pending/);
+  assert.match(edge,/const \{payload\}=await jwtVerify\(token,clerkKeys/);
+  assert.match(edge,/identity\.subject!==payload\.sub/);
+  assert.match(edge,/identity\.session!==payload\.sid/);
+  assert.match(edge,/return clerkSqlClaims\(payload/);
+  assert.doesNotMatch(edge,/sessionIdentityCache\.set\(token/);
+});
+
 test('LOC SQL Gateway accepts Clerk/Authority, not Supabase Auth sessions',()=>{
   const edge=source('supabase/functions/loc-kysely/index.ts');
   assert.match(edge,/verifyClerkForSql\(token\)/);

@@ -1,3 +1,9 @@
+## 2026-11-06｜Kysely Session 與 MCP Authority 去重
+
+- Website Kysely 每次受保護請求仍呼叫 `jwtVerify`，不快取 JWT、不略過簽章或過期檢查；同一 Clerk `iss + sub + sid` 的 Authority 已驗證 Email 在同一 Edge isolate 中最多重用 **2 小時**。同一 Session JWT 旋轉可重用，換 Session 必須再驗證；並行相同 Session 首次驗證合併一個請求，失敗立刻失效。
+- MCP 保留原本 JWT 驗簽、`token SHA-256 + Scope + action` 獨立授權與 **30 秒快取上限**，增加並行 single-flight：同時抵達的相同授權要求只問 Authority 一次，失敗立刻清除；read、manage、write 不共用。
+- 未修改 OAuth Token、Authority Worker、資料庫 Schema／RLS 或 `silver.manage`；這些程序記憶體快取不跨 isolate，且不等於撤銷管理權限。管理權限仍另行短期檢查。這個 PR 不代表完整消除所有獨立的 Authority HTTP 請求，需以正式執行指標驗收。
+
 ## 2026-11-06｜網站 Clerk Session 身分驗證重用（不改 MCP）
 
 - 網站同一個已驗證 `Clerk sub + sid` 在兩小時的編輯 Session 期間，可重用 LOC Authority 確認的身分 Email；前端在 Clerk SDK 有正式 Session ID 時依 `sid` 辨識，不以短期輪替的 JWT 字串誤當新登入。沒有 SDK Session ID 時保守維持 exact-token 對比。
