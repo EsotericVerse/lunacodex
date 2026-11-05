@@ -7,7 +7,14 @@ const uidPattern=/^[A-Za-z0-9]{8}$/;
 const publicTypes=new Set(['date','period','era','point','path','trace','image','video','rune','suno']);
 const keywordTypes=new Set(['category','class','group','item']);
 const allowedFields=new Set(['op','uid','title','description','invisible','data','where',
-  'limit','offset','updates','mode','classUid']);
+  'limit','offset','updates','mode','classUid','createtime']);
+const anchorTime=value=>{
+  if(value===null)return null;
+  if(typeof value!=='string'||!/\d{4}-\d\d-\d\dT\d\d:\d\d/.test(value)||
+     !/(Z|[+-]\d\d:\d\d)$/.test(value)||!Number.isFinite(Date.parse(value)))
+    reject('Anchor createtime must be a full timestamp with timezone');
+  return new Date(value).toISOString();
+};
 function reject(message,status=400){
   const error=new Error(message);error.httpStatus=status;throw error;
 }
@@ -151,7 +158,7 @@ export async function executeKyselyAnchor(trx,body,{role='anon'}={}){
     if(attr.where!==undefined&&(!attr.where||typeof attr.where!=='object'||Array.isArray(attr.where)))
       reject('Invalid JSONB Anchor filter');
     let query=trx.selectFrom(anchor)
-      .select(['uid','type','title','description','invisible','attr'])
+      .select(['uid','type','title','description','invisible','attr','createtime'])
       .where('type','=',type);
     if(uid)query=query.where('uid','=',uid);
     if(!owner)query=query.where('invisible','=',false);
@@ -174,9 +181,10 @@ export async function executeKyselyAnchor(trx,body,{role='anon'}={}){
   if(op==='insert'){
     if(attr.data===undefined)reject('Anchor data required');
     const row={uid,type,title:attr.title??null,description:attr.description??null,
-      invisible:attr.invisible??false,attr:attr.data};
+      invisible:attr.invisible??false,attr:attr.data,
+      ...(Object.hasOwn(attr,'createtime')?{createtime:anchorTime(attr.createtime)}:{})};
     const inserted=await trx.insertInto(anchor).values(row)
-      .returning(['uid','type','title','description','invisible','attr']).executeTakeFirst();
+      .returning(['uid','type','title','description','invisible','attr','createtime']).executeTakeFirst();
     if(!inserted)reject('Anchor insert failed');
     return {data:inserted,count:null};
   }
@@ -190,7 +198,7 @@ export async function executeKyselyAnchor(trx,body,{role='anon'}={}){
   if(!Object.keys(values).length)reject('Empty Anchor update');
   const updated=await trx.updateTable(anchor).set(values)
     .where('uid','=',uid).where('type','=',type)
-    .returning(['uid','type','title','description','invisible','attr']).executeTakeFirst();
+    .returning(['uid','type','title','description','invisible','attr','createtime']).executeTakeFirst();
   if(!updated)reject('Anchor row not found');
   return {data:updated,count:null};
 }
@@ -212,7 +220,7 @@ export async function executePortableKyselyAnchor(db,body,{role='anon',engine,na
   if(uid&&!uidPattern.test(uid))reject('Invalid UID');
   const table=portableRelation(scope+'_anchor',engine,namespace);
   const owner=await isOwner(db,scope,role);
-  const columns=['uid','type','title','description','invisible','attr'];
+  const columns=['uid','type','title','description','invisible','attr','createtime'];
   if(op==='read'){
     if(!owner&&!publicTypes.has(type))return {data:[],count:null};
     const limit=asPositiveInteger(data.limit,100,500);
@@ -327,7 +335,8 @@ export async function executePortableKyselyAnchor(db,body,{role='anon',engine,na
   if(op==='insert'){
     await db.insertInto(table).values(serializePortableJsonFields({
       uid,type,title:data.title??null,description:data.description??null,
-      invisible:data.invisible??false,attr:data.data
+      invisible:data.invisible??false,attr:data.data,
+      ...(Object.hasOwn(data,'createtime')?{createtime:anchorTime(data.createtime)}:{})
     },engine)).execute();
   }else{
     if(!Object.keys(changes).length)reject('Empty update');
