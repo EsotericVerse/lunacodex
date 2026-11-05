@@ -6,6 +6,7 @@ export const ISSUER='https://precise-grackle-3371.clerk.accounts.dev';
 const CONFIG_URL=LOC_ORIGIN+'/extension/oauth/config.json';
 const CLIENT_METADATA_URL=LOC_ORIGIN+'/extension/oauth/client.json';
 const SCOPE='profile email offline_access';
+const REGISTERED_REDIRECT='https://hiaeafonocnjaclcfgjmdopbcgnafnna.chromiumapp.org/loc-galaxy';
 
 export function toBase64url(bytes){
   const data=Array.from(bytes,x=>String.fromCharCode(x)).join('');
@@ -67,6 +68,8 @@ async function tokenExchange(endpoint,form){
 export async function interactiveAuthorization(){
   const {clientId,authorizationEndpoint,tokenEndpoint}=await getOAuthConfiguration();
   const redirectUri=chrome.identity.getRedirectURL('loc-galaxy');
+  if(redirectUri!==REGISTERED_REDIRECT)
+    throw Error('Chrome Extension ID 與 Clerk 註冊回呼網址不符。請確認從正確的 extensions/loc-galaxy 資料夾安裝；目前回呼：'+redirectUri);
   const verifier=randomUrlSafe(48),state=randomUrlSafe(32);
   const url=new URL(authorizationEndpoint);
   for(const [key,value] of Object.entries({
@@ -74,9 +77,19 @@ export async function interactiveAuthorization(){
     resource:MCP_URL,scope:SCOPE,state,
     code_challenge:await pkceChallenge(verifier),code_challenge_method:'S256'
   }))url.searchParams.set(key,value);
-  const responseUrl=await chrome.identity.launchWebAuthFlow({
-    url:url.toString(),interactive:true
-  });
+  let responseUrl;
+  try{
+    responseUrl=await chrome.identity.launchWebAuthFlow({
+      url:url.toString(),interactive:true
+    });
+  }catch(error){
+    const detail=String(error?.message||error);
+    if(/Authorization page could not be loaded/i.test(detail))
+      throw Error('Clerk 授權頁載入失敗：請檢查此 Client ID 是否註冊在 '+ISSUER+
+        '，且 Public OAuth Client 的 Redirect URI 完全等於 '+redirectUri+
+        '；也請檢查 Clerk OAuth 應用的 Scope／同意畫面是否可用。Chrome 無法顯示原始 HTTP 錯誤。');
+    throw error;
+  }
   if(typeof responseUrl!=='string')throw Error('登入流程已取消');
   const callback=new URL(responseUrl),expected=new URL(redirectUri);
   if(callback.origin!==expected.origin||callback.pathname!==expected.pathname||

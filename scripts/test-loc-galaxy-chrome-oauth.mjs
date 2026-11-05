@@ -94,3 +94,30 @@ test('OAuth callback requires state and PKCE code verifier before token exchange
     globalThis.fetch=beforeFetch;globalThis.chrome=beforeChrome;
   }
 });
+
+test('OAuth fails before navigation for a mismatched installed Extension ID',async()=>{
+  const previousFetch=globalThis.fetch, previousChrome=globalThis.chrome;
+  const {getOAuthConfiguration}=await import('../extensions/loc-galaxy/oauth.mjs');
+  globalThis.fetch=async url=>{
+    const uri=String(url);
+    if(uri.endsWith('/config.json'))return Response.json({issuer:ISSUER,resource:MCP_URL,client_id:'public_client_123'});
+    if(uri.endsWith('/.well-known/oauth-authorization-server'))return Response.json({
+      issuer:ISSUER,authorization_endpoint:ISSUER+'/oauth/authorize',
+      token_endpoint:ISSUER+'/oauth/token',code_challenge_methods_supported:['S256']
+    });
+    throw Error('unexpected URL');
+  };
+  let launched=false;
+  globalThis.chrome={identity:{
+    getRedirectURL:()=> 'https://differentid.chromiumapp.org/loc-galaxy',
+    launchWebAuthFlow:async()=>{launched=true;return '';}
+  }};
+  try{
+    await getOAuthConfiguration();
+    await assert.rejects(interactiveAuthorization(),/Extension ID.*回呼網址/);
+    assert.equal(launched,false);
+  }finally{
+    globalThis.fetch=previousFetch;
+    globalThis.chrome=previousChrome;
+  }
+});
