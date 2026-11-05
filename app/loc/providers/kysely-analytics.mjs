@@ -6,7 +6,7 @@ const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
 const MODES=new Set(['loc','daily','overview','earliest','totals','search_summary',
   'trace_places','keyword_summary','keyword_catalog','shared_classes','trace_daily','trace_keywords',
-  'culture_density','culture_anchors']);
+  'culture_density','culture_anchors','culture_list']);
 function reject(message,status=400){
   const error=new Error(message);error.httpStatus=status;throw error;
 }
@@ -320,6 +320,29 @@ async function simpleCultureData(db,scope,mode,start,end,{engine='postgres',name
     item_count:Number(row.item_count||0)}));
 }
 
+
+// One exact bounded Culture article page. This is never called by the rivers
+// or category expansion, and does not depend on the Search visibility flag.
+async function cultureListPage(db,scope,start,end,options,{engine='postgres',namespace='silver'}={}){
+  if(!start||!end||start>end)reject('Invalid Culture list dates');
+  const site=String(options?.site||'').trim();
+  const offset=Number(options?.offset||0);
+  if(!site||site.length>120||!Number.isSafeInteger(offset)||offset<0||offset>100000)
+    reject('Invalid Culture list selection');
+  const table=engine==='postgres'?'silver.'+scope+'_galaxy':
+    portableRelation(scope+'_galaxy',engine,namespace);
+  const raw=await db.selectFrom(table).select(['uid','date','title','list'])
+    .where('date','>=',start).where('date','<=',end)
+    .where('site','=',site).where('culture','=',true)
+    .orderBy('createtime','desc').limit(100).offset(offset).execute();
+  const rows=raw.map(row=>row.list===false
+    ?{hidden:true,title:'本文已隱藏',list:false}
+    :{uid:String(row.uid),date:portableDay(row.date),
+      title:String(row.title||''),list:true,hidden:false});
+  return {rows,hasMore:raw.length===100,
+    nextCursor:raw.length===100?{offset:offset+raw.length}:null};
+}
+
 export async function executeKyselyAnalytics(trx,body,{role='anon'}={}){
   const args=body?.args??body;
   const mode=String(args.p_view||'').trim().toLowerCase();
@@ -328,11 +351,13 @@ export async function executeKyselyAnalytics(trx,body,{role='anon'}={}){
   const options=args.p_options??{};
   if(!MODES.has(mode)||!options||typeof options!=='object'||Array.isArray(options)||
      start&&end&&start>end)reject('Invalid statistics parameters');
-  if(mode==='culture_density'||mode==='culture_anchors'){
-    // Aggregate/visible Anchor data is public even when the hosting database
-    // uses a restrictive RLS policy. No article UID or content is returned.
+  if(mode==='culture_density'||mode==='culture_anchors'||mode==='culture_list'){
+    // Culture list is only a bounded UID/date/title/list projection; hidden
+    // rows are redacted before the browser receives the numeric/list payload.
     await sql`reset role`.execute(trx);
-    return {data:await simpleCultureData(trx,scope,mode,start,end),count:null};
+    return {data:mode==='culture_list'
+      ?await cultureListPage(trx,scope,start,end,options)
+      :await simpleCultureData(trx,scope,mode,start,end),count:null};
   }
   // Legacy summaries were SECURITY DEFINER aggregates. Keep the same public
   // totals without exposing private article text or private keyword metadata.
@@ -453,9 +478,10 @@ export async function executePortableKyselyAnalytics(db,body,{engine,namespace='
   if(start&&end&&start>end||!options||typeof options!=='object'||Array.isArray(options))
     reject('Invalid statistics range');
   if(!MODES.has(mode))reject('Unknown LOC statistics view');
-  if(mode==='culture_density'||mode==='culture_anchors')return {
-    data:await simpleCultureData(db,scope,mode,start,end,{engine,namespace}),count:null
-  };
+  if(mode==='culture_density'||mode==='culture_anchors'||mode==='culture_list')
+    return {data:mode==='culture_list'
+      ?await cultureListPage(db,scope,start,end,options,{engine,namespace})
+      :await simpleCultureData(db,scope,mode,start,end,{engine,namespace}),count:null};
   if(mode==='search_summary'){
     if(scope!=='loc'||start||end)reject('Invalid Search summary request');
     const ids=options.scopeIds;
