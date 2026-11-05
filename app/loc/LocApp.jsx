@@ -28,6 +28,7 @@ const ScopeGroupOverview=dynamic(()=>import('./ScopeGroupOverview'),{loading});
 const Statistics=dynamic(()=>import('../modular/features/Statistics'),{loading});
 const KeywordSettings=dynamic(()=>import('../modular/features/KeywordSettings'),{loading});
 const Culture=dynamic(()=>import('../modular/features/Culture'),{loading});
+const CulturePublic=dynamic(()=>import('./views/CulturePublicReader'),{loading});
 const Search=dynamic(()=>import('../modular/features/Search'),{loading});
 const SearchManagement=dynamic(()=>import('./SearchManagement'),{loading});
 const Trace=dynamic(()=>import('../modular/features/Trace'),{loading});
@@ -120,7 +121,9 @@ export default function LocApp({forcedView='home',forcedSection=null,forcedScope
     // /local/* feature pages do not. A bookmark must not bypass the menu.
     router.replace('/local/settings/');
   },[scopeMeta?.nativeOnly,router]);
-  const ActiveView=forcedView==='home'
+  const publicCulture=forcedView==='culture'&&scopeId!=='loc'&&scopeId!=='lrunes'
+    &&scopeId!=='local'&&!runtime.pathname.includes('/culture/manage');
+  const ActiveView=publicCulture?CulturePublic:forcedView==='home'
     ?HOME_VIEWS[scopeId]||GenericScopeHomeView
     :VIEWS[forcedView]||AboutView;
   // LOC retains its bespoke aggregate pages. Every other DB Scope Group is
@@ -130,12 +133,13 @@ export default function LocApp({forcedView='home',forcedSection=null,forcedScope
 
   useEffect(()=>{
     if(scopeMeta?.nativeOnly&&!nativeOnlyReady)return;
-    const preload=forcedView==='home'
-      ?HOME_PRELOADERS[scopeId]||(()=>import('./views/GenericScopeHomeView'))
-      :VIEW_PRELOADERS[forcedView]||HOME_PRELOADERS.loc;
+    const preload=publicCulture?()=>import('./views/CulturePublicReader'):
+      forcedView==='home'
+        ?HOME_PRELOADERS[scopeId]||(()=>import('./views/GenericScopeHomeView'))
+        :VIEW_PRELOADERS[forcedView]||HOME_PRELOADERS.loc;
     preload().catch(()=>{});
     if(groupOverviewView)import('./ScopeGroupOverview').catch(()=>{});
-  },[forcedView,scopeId,groupOverviewView,scopeMeta?.nativeOnly,nativeOnlyReady]);
+  },[forcedView,scopeId,groupOverviewView,scopeMeta?.nativeOnly,nativeOnlyReady,publicCulture]);
 
   if(scopeMeta?.nativeOnly&&!nativeOnlyReady){
     return <main className="scope-main"><section className="scope-page">
