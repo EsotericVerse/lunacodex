@@ -63,3 +63,32 @@ test('Galaxy Link searches have a separate low-rate budget',async()=>{
   const read=await authority.mcpQuotaAcquire('read',subject);
   await authority.mcpQuotaRelease(read.lease,subject);
 });
+
+test('three repeated minute-limit refusals cause a durable three-minute cooldown',async()=>{
+  const authority=quota(),subject='clerk:user_RepeatRate',leases=[];
+  for(let i=0;i<16;i++)leases.push(await authority.mcpQuotaAcquire('write',subject));
+  await assert.rejects(authority.mcpQuotaAcquire('write',subject),error=>error.status===429);
+  assert.equal(await authority.ctx.storage.get('mcp-qos-cooldown:'+subject),undefined);
+  await assert.rejects(authority.mcpQuotaAcquire('write',subject),error=>error.status===429);
+  assert.equal(await authority.ctx.storage.get('mcp-qos-cooldown:'+subject),undefined);
+  await assert.rejects(authority.mcpQuotaAcquire('write',subject),error=>error.status===429);
+  assert.ok((await authority.ctx.storage.get('mcp-qos-cooldown:'+subject))>Date.now()+170000);
+  for(const lease of leases)await authority.mcpQuotaRelease(lease.lease,subject);
+  await assert.rejects(authority.mcpQuotaAcquire('read',subject),error=>error.status===429);
+  const unaffected=await authority.mcpQuotaAcquire('read','clerk:user_OtherRate');
+  await authority.mcpQuotaRelease(unaffected.lease,'clerk:user_OtherRate');
+});
+
+test('three repeated Galaxy Link search violations trigger three-minute cooldown',async()=>{
+  const authority=quota(),subject='clerk:user_SearchBurst',leases=[];
+  leases.push(await authority.mcpQuotaAcquire('search',subject));
+  leases.push(await authority.mcpQuotaAcquire('search',subject));
+  for(let i=0;i<2;i++){
+    await assert.rejects(authority.mcpQuotaAcquire('search',subject),error=>error.status===429);
+    assert.equal(await authority.ctx.storage.get('mcp-qos-cooldown:'+subject),undefined);
+  }
+  await assert.rejects(authority.mcpQuotaAcquire('search',subject),error=>error.status===429);
+  assert.ok((await authority.ctx.storage.get('mcp-qos-cooldown:'+subject))>Date.now()+170000);
+  for(const lease of leases)await authority.mcpQuotaRelease(lease.lease,subject);
+  await assert.rejects(authority.mcpQuotaAcquire('write',subject),error=>error.status===429);
+});
