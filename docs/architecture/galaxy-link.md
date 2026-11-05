@@ -11,6 +11,15 @@ Galaxy Link 是跨 Agent、跨對話的 Scope 記錄與接續介面，不是另�
 - `check`：只比對 `scopeid + conversation_id + updated_at` 的 Durable Object checkpoint；不掃描資料庫內容。
 - `record`：呼叫端提供來源原文與更新時間；僅在變動後批次紀錄。新話題產生安全亂數八碼 Base62 UID；續寫沿用既有 UID，只追加、不可覆蓋。首次建立使用 `site=mcp`，`createtime` 與「Galaxy Link｜Scope 在建立時間開始的原始文字紀錄」標題；後續不改建立時間及標題。
 
+## 呼叫契約
+
+- `action=search`：`scopeid`、`query`（至少兩字）、選填 `limit`（至多五筆）。
+- `action=read`：`scopeid`、`uid`；選填 `offset`、`max_chars`。
+- `action=check`：`scopeid`、來源 `conversation_id`、`updated_at`。
+- `action=record`：`scopeid`、`conversation_id`、`updated_at`、`records`，接續舊話題時可帶入從 `search` 找到的 `uid`。每批至多一百筆，正文批次最多 125000 字元。
+- `records[]` 必須具備 `role`、`kind`、`sent_at`、`text`、`message_id`；`user/original` 全量保存，`assistant/advice` 僅紀錄來源端選定的實際建議，其他類型拒絕。正文只增加時間／來源標記，不改寫每則文字。
+- 無法取得來源對話全文或更新時間，不得以模型記憶假造 `records`，亦不得聲稱已完整補登。
+
 管理工具（Scope 設定、權限與 GitHub PR 寫入）維持獨立，不應混入 Galaxy Link 的讀寫權限。
 
 ## Recorder 來源與跨 Agent
