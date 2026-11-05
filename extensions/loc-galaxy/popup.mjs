@@ -4,6 +4,7 @@ const loginButton=document.getElementById('login');
 const authorizeButton=document.getElementById('authorize');
 const disconnectButton=document.getElementById('disconnect');
 const workbenchButton=document.getElementById('workbench');
+const archiveButton=document.getElementById('archive-current');
 const importButton=document.getElementById('import');
 const bulkButton=document.getElementById('bulk');
 const connected=document.getElementById('connected');
@@ -18,7 +19,7 @@ async function call(type,scopeid,params={}){
 }
 function setBusy(on){
   busy=on;
-  for(const button of [loginButton,authorizeButton,disconnectButton,workbenchButton,importButton,bulkButton])button.disabled=on;
+  for(const button of [loginButton,authorizeButton,disconnectButton,workbenchButton,archiveButton,importButton,bulkButton])button.disabled=on;
   scopeInput.disabled=on;
 }
 function validScope(){
@@ -62,6 +63,23 @@ async function openWork(type,mode){
   }catch(error){show(String(error.message||error),{error:true});}
   finally{setBusy(false);}
 }
+archiveButton.addEventListener('click',async()=>{
+  if(busy)return;
+  try{
+    validScope();
+    const grant=await chrome.permissions.request({origins:['https://chatgpt.com/*']});
+    if(!grant){show('尚未授權 ChatGPT 網站，沒有擷取任何內容。',{error:true});return;}
+    setBusy(true);
+    show('正在讀取目前 ChatGPT 對話的可見歷史，並準備寫入 Galaxy…');
+    const result=await call('locGalaxy.archiveCurrent',validScope());
+    const count=Number(result.captured||0),queued=Number(result.queued||0);
+    const completed=Number(result.sync?.completed||0);
+    show('已掃描 '+count+' 則，新增暫存 '+queued+' 則，確認寫入 '+completed+
+      ' 則。'+(result.partial?' 網站歷史可能未全部載入。':' 已完成頁面範圍掃描（不保證來源歷史完整）。')+
+      (result.syncError?' 同步待重試：'+result.syncError:''));
+  }catch(error){show('封存未完成：'+String(error.message||error),{error:true});}
+  finally{setBusy(false);}
+});
 workbenchButton.addEventListener('click',()=>openWork('locGalaxy.openWorkbench'));
 importButton.addEventListener('click',()=>openWork('locGalaxy.openWorkspace','import'));
 bulkButton.addEventListener('click',()=>openWork('locGalaxy.openWorkspace','bulk'));
