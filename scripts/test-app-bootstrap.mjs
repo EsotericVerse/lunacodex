@@ -497,7 +497,8 @@ test('LOC group member editing and system Admin panels are disjoint; media targe
   const zh=readFileSync(new URL('../app/i18n/zh_tw.js',import.meta.url),'utf8');
   assert.match(page,/人員作品管理/);
   assert.match(page,/LocGroupMemberList/);
-  assert.doesNotMatch(page,/admin-panels\/AdminRegistry|AdminReservedScopeIds/);
+  assert.match(page,/isSystemAdmin\?<AdminRegistry\/>:null/);
+  assert.doesNotMatch(page,/AdminReservedScopeIds/);
   assert.doesNotMatch(admin,/section==='registry'/);
   assert.match(admin,/section==='lists'/);
   assert.match(admin,/section==='network'/);
@@ -536,7 +537,7 @@ test('Admin first tab is People; lists and network consolidate existing secure e
   for(const [oldId,newId] of Object.entries({
     database:'network',isr:'network',reserved:'lists',blocklist:'lists'
   }))assert.ok(admin.includes(oldId+":'"+newId+"'"),'legacy section '+oldId+' not mapped');
-  assert.match(admin,/section==='lists'\?<\>[\s\S]*?<AdminRegistry\/>[\s\S]*?<AdminReservedScopeIds\/>[\s\S]*?<AdminEmailBlocklist\/>[\s\S]*?<\/\>/);
+  assert.match(admin,/section==='lists'\?<\>[\s\S]*?<AdminReservedScopeIds\/>[\s\S]*?<AdminEmailBlocklist\/>[\s\S]*?<\/\>/);
   assert.match(admin,/section==='network'\?<\>[\s\S]*?<DatabaseTarget scopeGroup=\{scopeGroup\}\/>[\s\S]*?<IsrDomainTarget\/>[\s\S]*?<\/\>/);
   assert.match(cache,/<h2>快取／ISR<\/h2>/);
   assert.match(cache,/CACHE_POLICY/);
