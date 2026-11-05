@@ -133,7 +133,7 @@ test('website session bridge does not transfer default Clerk Session Token',()=>
   assert.deepEqual(manifest.externally_connectable.matches,['https://loc.lo3rwang.cc/*']);
   assert.match(worker,/chrome\.runtime\.onMessageExternal/);
   assert.match(worker,/url\.origin!==LOC_ORIGIN/);
-  assert.match(worker,/pending\.nonce!==message\.nonce/);
+  assert.match(worker,/pending\.nonce===message\.nonce/);
   assert.match(worker,/verifyScopeAuthorization\(token,scopeid\)/);
   assert.match(worker,/auth\.mode==='website'/);
   assert.match(source,/getToken\(\{template:TEMPLATE,skipCache:true\}\)/);
