@@ -328,9 +328,12 @@ export async function executeKyselyAnalytics(trx,body,{role='anon'}={}){
   const options=args.p_options??{};
   if(!MODES.has(mode)||!options||typeof options!=='object'||Array.isArray(options)||
      start&&end&&start>end)reject('Invalid statistics parameters');
-  if(mode==='culture_density'||mode==='culture_anchors')return {
-    data:await simpleCultureData(trx,scope,mode,start,end),count:null
-  };
+  if(mode==='culture_density'||mode==='culture_anchors'){
+    // Aggregate/visible Anchor data is public even when the hosting database
+    // uses a restrictive RLS policy. No article UID or content is returned.
+    await sql`reset role`.execute(trx);
+    return {data:await simpleCultureData(trx,scope,mode,start,end),count:null};
+  }
   // Legacy summaries were SECURITY DEFINER aggregates. Keep the same public
   // totals without exposing private article text or private keyword metadata.
   await sql`reset role`.execute(trx);
