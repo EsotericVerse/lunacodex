@@ -828,14 +828,24 @@ export class LocAuthorityState extends DurableObject {
       const key='mcp-quota-window:'+subject;
       const prior=await tx.get(key);
       const bucket=prior&&now>=prior.started&&now-prior.started<period
-        ?prior:{started:now,count:0,reads:0};
+        ?prior:{started:now,count:0,reads:0,searches:0,rateRejects:0};
       const leases=(await tx.get('mcp-quota-leases')||[]).filter(item=>item.expires>now);
       const activeReads=leases.filter(item=>item.kind==='read'||item.kind==='search').length;
       const activeSearches=leases.filter(item=>item.kind==='search').length;
       // QoS: 16 total, with 12 read slots and four write reserves.
       if(bucket.count>=maximum||(kind!=='write'&&(bucket.reads||0)>=12)||
-          (kind==='search'&&(bucket.searches||0)>=2))
+          (kind==='search'&&(bucket.searches||0)>=2)){
+        // One over-limit request gets 429; repeated attempts in the same
+        // minute activate the 3-minute cooldown (including search).
+        const rateRejects=(bucket.rateRejects||0)+1;
+        await tx.put(key,{...bucket,rateRejects});
+        if(rateRejects>=3){
+          // Durable Object transaction must commit before the caller throws.
+          await tx.put(cooldownKey,now+180_000);
+          return {rejected:'rate-cooldown'};
+        }
         return {rejected:'rate'};
+      }
       if(leases.length>=16||(kind!=='write'&&activeReads>=12)||
           (kind==='search'&&activeSearches>=2)){
         // Persist before returning: throwing inside a DO transaction rolls it back.
@@ -850,8 +860,9 @@ export class LocAuthorityState extends DurableObject {
       await tx.put('mcp-quota-leases',leases);
       return {lease};
     });
-    if(outcome.rejected==='cooldown'||outcome.rejected==='concurrency')
-      throw fail('MCP concurrent request cooldown (3 minutes)',429);
+    if(outcome.rejected==='cooldown'||outcome.rejected==='concurrency'||
+       outcome.rejected==='rate-cooldown')
+      throw fail('MCP request cooldown (3 minutes)',429);
     if(outcome.rejected==='rate')throw fail('MCP request limit exceeded',429);
     return outcome;
   }
