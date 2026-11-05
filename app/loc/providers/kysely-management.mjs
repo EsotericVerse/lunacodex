@@ -43,7 +43,7 @@ function withFilters(query,filters){
 // typed JSON document instead; never rewrite the stored bubble structure.
 // Only known JSONB fields are encoded, leaving SQL array columns untouched.
 const MANAGED_JSONB_COLUMNS=new Set([
-  'block_entity','attr','media_link','status','blacklist','theme','keywords',
+  'block_entity','attr','status','blacklist','theme','keywords',
   'database','keyword_meta','DefaultArticleClass','search_aliases','caches'
 ]);
 export function postgresManagedJsonbValues(values){
