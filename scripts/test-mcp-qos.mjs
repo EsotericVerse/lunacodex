@@ -5,8 +5,7 @@ import {webcrypto} from 'node:crypto';
 
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
 const source=readFileSync(new URL('../workers/loc-authority/index.mjs',import.meta.url),'utf8')
-  .replace("import { DurableObject } from 'cloudflare:workers';",'')
-  .replace("import {validateKeywordCategoryEntry,hashKeywordCategory,assertPublicKeywordClass} from './keyword-categories.mjs';",'')
+  .replace(/^import[\\s\\S]*?;\\s*$/gm,'')
   .replace('export class LocAuthorityState','class LocAuthorityState')
   .replace('export default {','const worker={');
 const {LocAuthorityState}=new Function('DurableObject',
@@ -50,4 +49,17 @@ test('MCP QoS refuses cross-account release and invalid principal',async()=>{
   await assert.rejects(authority.mcpQuotaAcquire('read','not-clerk'),
     error=>error.status===401);
   assert.deepEqual(await authority.mcpQuotaRelease(ticket.lease,who),{released:true});
+});
+
+test('Galaxy Link searches have a separate low-rate budget',async()=>{
+  const authority=quota();
+  const subject='clerk:user_Search';
+  const one=await authority.mcpQuotaAcquire('search',subject);
+  const two=await authority.mcpQuotaAcquire('search',subject);
+  await assert.rejects(authority.mcpQuotaAcquire('search',subject),error=>error.status===429);
+  await authority.mcpQuotaRelease(one.lease,subject);
+  await authority.mcpQuotaRelease(two.lease,subject);
+  await assert.rejects(authority.mcpQuotaAcquire('search',subject),error=>error.status===429);
+  const read=await authority.mcpQuotaAcquire('read',subject);
+  await authority.mcpQuotaRelease(read.lease,subject);
 });

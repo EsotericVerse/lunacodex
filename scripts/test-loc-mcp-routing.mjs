@@ -79,13 +79,13 @@ test('Valid Clerk JWT can initialize, discover read/write tools, and ping',async
   assert.equal(status.availableTools.includes('search_memory'),false);
   assert.equal(status.availableTools.includes('search_scope'),false);
   assert.equal(status.availableTools.includes('search_group'),false);
-  assert.ok(status.availableTools.includes('read_scope'));
-  assert.ok(status.availableTools.includes('sync_conversation'));
+  assert.ok(status.availableTools.includes('galaxy_link'));
+  assert.equal(status.availableTools.includes('sync_conversation'),false);
   assert.ok(status.availableTools.includes('grant_scope_access'));
   assert.deepEqual(status.availableTools,tools.map(tool=>tool.name));
-  const sync=tools.find(tool=>tool.name==='sync_conversation');
-  assert.equal(sync.inputSchema.required.includes('content'),true);
-  assert.notEqual(sync.annotations?.readOnlyHint,true);
+  const link=tools.find(tool=>tool.name==='galaxy_link');
+  assert.deepEqual(link.inputSchema.required,['action','scopeid']);
+  assert.deepEqual(link.inputSchema.properties.action.enum,['search','read','check','record']);
   assert.ok(status.availableTools.includes('update_scope_pr'));
   const updatePr=tools.find(tool=>tool.name==='update_scope_pr');
   assert.deepEqual(updatePr.inputSchema.required,

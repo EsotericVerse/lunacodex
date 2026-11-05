@@ -299,7 +299,7 @@ async function postgrest(profile,options){
     headers.prefer='resolution=merge-duplicates,return=minimal';}
   const res=await fetch(url.href,{method:options.body?'POST':'GET',headers,
     ...(options.body?{body:JSON.stringify(options.body)}:{}),
-    redirect:'manual',signal:AbortSignal.timeout(9500)});
+    redirect:'manual',signal:AbortSignal.timeout(options.timeout||9500)});
   if(!res.ok)throw fail('Scope database rejected operation (HTTP '+res.status+')',502);
   return options.body?null:res.json();
 }
@@ -320,6 +320,44 @@ async function managedMcpInsert(scopeid,row,hasCheckpointUid,oauthToken){
   if(data?.data?.count!==1)throw fail('Managed Scope write was not confirmed',502);
 }
 
+
+// Append is separate from full sync: existing Galaxy metadata must never be overwritten.
+async function managedMcpAppend(scopeid,uid,content,batchId,updatedAt,oauthToken){
+  if(!Object.hasOwn(MANAGED_SCOPE_TABLES,scopeid))throw fail('Scope database is not configured',409);
+  const response=await fetch(MANAGED_SUPABASE_EDGE,{
+    method:'POST',headers:{apikey:MANAGED_PUBLISHABLE_KEY,
+      authorization:'Bearer '+oauthToken,'content-type':'application/json'},
+    body:JSON.stringify({kind:'mcp-append',scopeid,uid,content,batch_id:batchId,updated_at:updatedAt}),
+    signal:AbortSignal.timeout(12000),redirect:'manual'
+  });
+  if(!response.ok)throw fail('Managed Scope append rejected (HTTP '+response.status+')',
+    response.status===401||response.status===403?response.status:502);
+  const result=await response.json();
+  if(result?.data?.count!==1)throw fail('Managed Scope append was not confirmed',502);
+  return result.data;
+}
+async function portableMcpAppend(profile,uid,content,batchId,updatedAt){
+  const rows=await postgrest(profile,{params:{select:'uid,content,site,title,createtime',
+    uid:'eq.'+uid,site:'eq.mcp',limit:1}});
+  if(!Array.isArray(rows)||rows.length!==1)throw fail('MCP topic not found',404);
+  const original=String(rows[0].content||'');
+  const marker='[[GalaxyLinkBatch:'+batchId+']]';
+  if(original.includes(marker))return {uid,title:rows[0].title,createtime:rows[0].createtime,duplicate:true};
+  const next=original+(original?'\n':'')+content;
+  const url=new URL(profile.endpoint+'/'+profile.table);
+  url.searchParams.set('uid','eq.'+uid);
+  url.searchParams.set('site','eq.mcp');
+  const response=await fetch(url.href,{method:'PATCH',headers:{
+    'content-type':'application/json','accept-profile':profile.schema,
+    'content-profile':profile.schema,apikey:profile.api_key,
+    authorization:'Bearer '+profile.api_key,prefer:'return=representation'},
+    body:JSON.stringify({content:next,UpdateTime:updatedAt}),
+    redirect:'manual',signal:AbortSignal.timeout(9500)});
+  if(!response.ok)throw fail('Scope append rejected (HTTP '+response.status+')',502);
+  const updated=await response.json();
+  if(!Array.isArray(updated)||updated.length!==1)throw fail('Scope append was not confirmed',502);
+  return {uid,title:rows[0].title,createtime:rows[0].createtime};
+}
 
 async function managedMcpUpdatePr(scopeid,uid,prNumber,title,content,updatedAt,oauthToken){
   if(!Object.hasOwn(MANAGED_SCOPE_TABLES,scopeid))throw fail('Scope database is not configured',409);
@@ -530,7 +568,9 @@ export class LocAuthorityState extends DurableObject {
     validScope(scopeid);
     if(!input||typeof input.conversation_id!=='string')throw fail('Conversation ID required',400);
     // Serialize saves for one conversation within the existing Durable Object.
-    const key=scopeid+':'+input.conversation_id;
+    // One Scope Durable Object owns the record lock, shared by all Agents.
+    const checkpoint=await this.mcpCheckpoint(scopeid,input.conversation_id);
+    const key=scopeid+':'+(input.uid||checkpoint.uid||input.conversation_id);
     this.mcpInflight??=new Map();
     const previous=this.mcpInflight.get(key)||Promise.resolve();
     const next=previous.catch(()=>{}).then(()=>this.mcpSaveUnlocked(scopeid,input,oauthToken));
@@ -550,32 +590,47 @@ export class LocAuthorityState extends DurableObject {
     if(typeof input.content!=='string'||!input.content.trim()||input.content.length>125000||
       typeof input.title!=='string'||input.title.length>350)
       throw fail('Invalid conversation content or title',400);
-    const uid=status.uid||newUid();
+    const append=input.append===true;
+    const marker='[[GalaxyLinkBatch:'+input.batch_id+']]';
+    if(append&&(!/^[0-9a-f]{64}$/.test(String(input.batch_id||''))||
+      !input.content.startsWith(marker+'\n')))
+      throw fail('Invalid Galaxy Link batch marker',400);
+    if(input.uid!==undefined&&!UID.test(String(input.uid)))throw fail('Invalid topic UID',400);
+    if(status.uid&&input.uid&&status.uid!==input.uid)throw fail('Conversation checkpoint UID conflict',409);
+    const uid=status.uid||input.uid||newUid();
     const checkpointKey='mcp-sync:'+scopeid+':'+conversation_id;
     // Persist the stable UID before the HTTP write so a timeout or failed ack
     // never creates a second article on the next attempt.
     if(!status.uid)await this.ctx.storage.put(checkpointKey,
       {uid,updated_at:status.updated_at,saved_at:status.saved_at});
-    // Idempotent upsert by the existing case-sensitive UID; no table scans.
-    const row={uid,title:input.title,content:input.content,
+    // Append only the new source batch; never rewrite an older conversation.
+    const useAppend=append&&Boolean(status.saved_at||input.uid);
+    if(useAppend){
+      const result=profile?
+        await portableMcpAppend(profile,uid,input.content,input.batch_id,requestedTime):
+        await managedMcpAppend(scopeid,uid,input.content,input.batch_id,requestedTime,oauthToken);
+      const saved_at=new Date().toISOString();
+      await this.ctx.storage.put(checkpointKey,{updated_at:requestedTime,saved_at,uid});
+      return {scopeid,conversation_id,uid,title:result.title||null,
+        createtime:result.createtime||null,updated_at:requestedTime,saved_at,saved:true,appended:true};
+    }
+    if(input.uid&&append)throw fail('Existing MCP topic could not be resumed',409);
+    const created=append?new Date().toISOString():validTimestamp(input.created_at||requestedTime);
+    const title=append?'Galaxy Link｜'+scopeid+' 在 '+created+' 開始的原始文字紀錄':input.title;
+    // Idempotent first insert by the existing case-sensitive UID; no table scans.
+    const row={uid,title,content:input.content,
       site:'mcp',site_id:conversation_id,
       statics:false,culture:false,search:false,trace:false,list:false,keyword:false,extract:false,others:false,
-      createtime:validTimestamp(input.created_at||requestedTime),
+      createtime:created,
       UpdateTime:requestedTime};
     if(profile){
       // Third-party Scope providers manage their own schema independently.
-      const legacy={...row,able:{
-        statics:false,culture:false,search:false,trace:false,list:false,
-        keywords:false,game:false,extract:false
-      }};
-      for(const key of ['statics','culture','search','trace','list','keyword','others','extract'])
-        delete legacy[key];
-      await postgrest(profile,{body:legacy,params:{on_conflict:'uid'}});
+      await postgrest(profile,{body:row,params:{on_conflict:'uid'}});
     }else await managedMcpInsert(scopeid,row,Boolean(status.uid),oauthToken);
     const saved_at=new Date().toISOString();
     this.mcpSearchCache?.clear();
     await this.ctx.storage.put(checkpointKey,{updated_at:requestedTime,saved_at,uid});
-    return {scopeid,conversation_id,updated_at:requestedTime,saved_at,uid,saved:true};
+    return {scopeid,conversation_id,updated_at:requestedTime,saved_at,uid,title,createtime:created,saved:true,appended:false};
   }
   // Rewrites an EXISTING article by its stable uid. Unlike mcpSave (which
   // upserts private conversations keyed by conversation_id), this never
@@ -601,34 +656,29 @@ export class LocAuthorityState extends DurableObject {
     this.mcpSearchCache?.clear();
     return {scopeid,uid,pr_number:prNumber,updated_at:requestedTime,updated:true};
   }
-  async mcpSearch(scopeid,query,limit=10,oauthToken=''){
+  async mcpLinkSearch(scopeid,query,limit=5,oauthToken=''){
     validScope(scopeid);
-    if(!Number.isInteger(limit)||limit<1||limit>20)throw fail('Invalid search limit',400);
-    const pattern=likePattern(query);
+    if(typeof query!=='string'||query.trim().length<2||query.length>100||
+      /[\u0000-\u001f\u007f]/.test(query)||!Number.isInteger(limit)||limit<1||limit>5)
+      throw fail('Invalid Galaxy Link search',400);
     const profile=await this.mcpPrivateProfile(scopeid);
-    const mapRows=rows=>{
-      if(!Array.isArray(rows))throw fail('Invalid database search results',502);
-      return {scopeid,results:rows.map(r=>({scopeid,uid:r.uid,title:r.title,
-        date:r.date,createtime:r.createtime}))};
-    };
-    if(!profile){
-      // Managed private reads depend on the specific OAuth principal.
-      // Never share a private result cache across independently authorized callers.
-      return mapRows(await managedMcpRead(scopeid,'mcp-search',{query,limit},oauthToken));
-    }
-    const key=scopeid+':'+limit+':'+pattern;
-    this.mcpSearchCache??=new Map();
-    const cached=this.mcpSearchCache.get(key);
-    if(cached&&cached.expires>Date.now())return cached.value;
-    const task=postgrest(profile,{params:{select:'uid,title,date,createtime',
-      or:'(title.ilike.'+pattern+',content.ilike.'+pattern+')',
-      order:'date.desc.nullslast',limit}}).then(mapRows);
-    this.mcpSearchCache.set(key,{value:task,expires:Date.now()+20000});
-    if(this.mcpSearchCache.size>100)this.mcpSearchCache.delete(this.mcpSearchCache.keys().next().value);
-    try{return await task;}
-    catch(error){this.mcpSearchCache.delete(key);throw error;}
+    let rows;
+    if(profile){
+      const pattern=likePattern(query);
+      rows=await postgrest(profile,{params:{select:'uid,title,createtime',
+        site:'eq.mcp',or:'(title.ilike.'+pattern+',content.ilike.'+pattern+')',
+        order:'createtime.desc',limit},timeout:4500});
+    }else if(Object.hasOwn(MANAGED_SCOPE_TABLES,scopeid)){
+      rows=await managedMcpRead(scopeid,'mcp-search',{query,limit},oauthToken);
+    }else throw fail('Scope database is not configured',409);
+    if(!Array.isArray(rows))throw fail('Invalid Galaxy Link search response',502);
+    return {scopeid,results:rows.map(r=>({uid:r.uid,title:r.title,createtime:r.createtime}))};
   }
-  async mcpRead(scopeid,uid,offset=0,max_chars=20000,oauthToken=''){ 
+  async mcpSearch(scopeid,query,limit=5,oauthToken=''){
+    // Retained internal caller; no unrestricted MCP content search remains.
+    return this.mcpLinkSearch(scopeid,query,Math.min(limit,5),oauthToken);
+  }
+  async mcpRead(scopeid,uid,offset=0,max_chars=20000,oauthToken='',onlyMcp=false){ 
     validScope(scopeid);
     if(!UID.test(uid)||!Number.isInteger(offset)||offset<0||offset>1000000||
       !Number.isInteger(max_chars)||max_chars<1||max_chars>40000)
@@ -637,12 +687,12 @@ export class LocAuthorityState extends DurableObject {
     let rows;
     if(profile){
       rows=await postgrest(profile,{params:{select:'uid,title,content,date,createtime,site,url',
-        uid:'eq.'+uid,limit:1}});
+        uid:'eq.'+uid,...(onlyMcp?{site:'eq.mcp'}:{}),limit:1}});
     }else if(Object.hasOwn(MANAGED_SCOPE_TABLES,scopeid)){
-      rows=await managedMcpRead(scopeid,'mcp-read',{uid},oauthToken);
+      rows=await managedMcpRead(scopeid,'mcp-read',{uid,...(onlyMcp?{site:'mcp'}:{})},oauthToken);
     }else throw fail('Scope database is not configured',409);
     if(!Array.isArray(rows))throw fail('Invalid database response',502);
-    if(!rows.length)return {found:false,scopeid,uid};
+    if(!rows.length||onlyMcp&&rows[0].site!=='mcp')return {found:false,scopeid,uid};
     const row=rows[0],content=String(row.content||'');
     return {found:true,scopeid,uid:row.uid,title:row.title,date:row.date,
       createtime:row.createtime,site:row.site,url:row.url,
@@ -742,7 +792,7 @@ export class LocAuthorityState extends DurableObject {
   // Shared, durable quotas for each verified Clerk MCP subject.
   async mcpQuotaAcquire(kind,subject){
     if(!/^clerk:user_[A-Za-z0-9]+$/.test(String(subject||'')))throw fail('Invalid MCP principal',401);
-    if(!['read','write'].includes(kind))throw fail('Invalid MCP quota kind',400);
+    if(!['read','write','search'].includes(kind))throw fail('Invalid MCP quota kind',400);
     const now=Date.now(),period=60_000,leaseTtl=25_000;
     const maximum=16;
     const outcome=await this.ctx.storage.transaction(async tx=>{
@@ -754,11 +804,14 @@ export class LocAuthorityState extends DurableObject {
       const bucket=prior&&now>=prior.started&&now-prior.started<period
         ?prior:{started:now,count:0,reads:0};
       const leases=(await tx.get('mcp-quota-leases')||[]).filter(item=>item.expires>now);
-      const activeReads=leases.filter(item=>item.kind==='read').length;
+      const activeReads=leases.filter(item=>item.kind==='read'||item.kind==='search').length;
+      const activeSearches=leases.filter(item=>item.kind==='search').length;
       // QoS: 16 total, with 12 read slots and four write reserves.
-      if(bucket.count>=maximum||(kind==='read'&&(bucket.reads||0)>=12))
+      if(bucket.count>=maximum||(kind!=='write'&&(bucket.reads||0)>=12)||
+          (kind==='search'&&(bucket.searches||0)>=2))
         return {rejected:'rate'};
-      if(leases.length>=16||(kind==='read'&&activeReads>=12)){
+      if(leases.length>=16||(kind!=='write'&&activeReads>=12)||
+          (kind==='search'&&activeSearches>=2)){
         // Persist before returning: throwing inside a DO transaction rolls it back.
         await tx.put(cooldownKey,now+180_000);
         return {rejected:'concurrency'};
@@ -766,7 +819,8 @@ export class LocAuthorityState extends DurableObject {
       const lease=crypto.randomUUID();
       leases.push({lease,subject,kind,expires:now+leaseTtl});
       await tx.put(key,{started:bucket.started,count:bucket.count+1,
-        reads:(bucket.reads||0)+(kind==='read'?1:0)});
+        reads:(bucket.reads||0)+(kind==='write'?0:1),
+        searches:(bucket.searches||0)+(kind==='search'?1:0)});
       await tx.put('mcp-quota-leases',leases);
       return {lease};
     });
@@ -815,7 +869,9 @@ async function handleMcpAuthority(request,env,url,origin){
   // No DB work and no quota spend on retired search endpoints.
   if(/^\/v1\/mcp\/(?:search|group-search)\//.test(url.pathname))
     throw fail('MCP search is disabled',403);
-  const ticket=await quota.mcpQuotaAcquire(request.method==='GET'?'read':'write','clerk:'+principal.subject);
+  const kind=/^\/v1\/mcp\/galaxy-link\/search\//.test(url.pathname)?'search':
+    request.method==='GET'?'read':'write';
+  const ticket=await quota.mcpQuotaAcquire(kind,'clerk:'+principal.subject);
   try{return await handleMcpAuthorityInner(request,env,url,origin,principal);}
   finally{await quota.mcpQuotaRelease(ticket.lease,'clerk:'+principal.subject);}
 }
@@ -826,8 +882,12 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
   const scoped=scope=>env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName('mcp-scope:'+scope));
   const allowed=async(scope,action)=>isRoot||await stub.mayAccess({...principal,scope,action});
   const parts=url.pathname.split('/').filter(Boolean).slice(2);
-  // MCP is UID-addressed read/write only; search was never authorized.
-  if((parts[0]==='search'||parts[0]==='group-search')&&request.method==='POST')
+  const galaxyLink=parts[0]==='galaxy-link';
+  if(galaxyLink)parts.shift();
+  if(galaxyLink&&!['search','read','checkpoint','sync'].includes(parts[0]))
+    throw fail('Invalid Galaxy Link action',404);
+  // Legacy MCP searches remain disabled; only the new versioned Link may search.
+  if((parts[0]==='group-search'||parts[0]==='search'&&!galaxyLink)&&request.method==='POST')
     throw fail('MCP search is disabled',403);
   if(parts[0]==='scope'&&parts.length===2){
     const scopeid=validScope(parts[1]);
@@ -858,7 +918,9 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
   if(parts[0]==='sync'&&parts.length===2&&request.method==='POST'){
     const scopeid=validScope(parts[1]);
     if(!await allowed(scopeid,'write'))throw fail('Scope sync denied',403);
-    return json(await scoped(scopeid).mcpSave(scopeid,await mcpJsonBody(request),
+    const input=await mcpJsonBody(request);
+    if(galaxyLink)input.append=true;
+    return json(await scoped(scopeid).mcpSave(scopeid,input,
       (request.headers.get('authorization')||'').replace(/^Bearer /,'')),200,origin);
   }
   if(parts[0]==='update-pr'&&parts.length===2&&request.method==='POST'){
@@ -871,7 +933,7 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
     const scopeid=validScope(parts[1]);
     if(!await allowed(scopeid,'read'))throw fail('Scope read denied',403);
     const args=await mcpJsonBody(request,1600);
-    return json(await scoped(scopeid).mcpSearch(scopeid,args.query,args.limit||10,
+    return json(await scoped(scopeid).mcpLinkSearch(scopeid,args.query,args.limit??5,
       (request.headers.get('authorization')||'').replace(/^Bearer /,'')),200,origin);
   }
   if(parts[0]==='read'&&parts.length===3&&request.method==='GET'){
@@ -885,7 +947,8 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
     const offset=Number(url.searchParams.get('offset')||'0');
     const max_chars=Number(url.searchParams.get('max_chars')||'20000');
     return json(await scoped(scopeid).mcpRead(scopeid,parts[2],offset,max_chars,
-      (request.headers.get('authorization')||'').replace(/^Bearer /,'')),200,origin);
+      (request.headers.get('authorization')||'').replace(/^Bearer /,''),
+      (galaxyLink||url.searchParams.get('site')==='mcp')),200,origin);
   }
   if(parts[0]==='group-search'&&parts.length===2&&request.method==='POST'){
     const groupid=validScope(parts[1]);

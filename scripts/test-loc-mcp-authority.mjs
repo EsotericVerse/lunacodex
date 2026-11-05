@@ -5,8 +5,7 @@ import {webcrypto} from 'node:crypto';
 
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
 const source=readFileSync(new URL('../workers/loc-authority/index.mjs',import.meta.url),'utf8')
-  .replace("import { DurableObject } from 'cloudflare:workers';",'')
-  .replace("import {validateKeywordCategoryEntry,hashKeywordCategory,assertPublicKeywordClass} from './keyword-categories.mjs';",'')
+  .replace(/^import[\\s\\S]*?;\\s*$/gm,'')
   .replace('export class LocAuthorityState','class LocAuthorityState')
   .replace('export default {','const worker={');
 const {LocAuthorityState}=new Function('DurableObject',
@@ -342,3 +341,57 @@ test('Group grant listing exposes only active Clerk grants of that Group members
   assert.deepEqual(result.grants.map(x=>x.subject).sort(),['user_A','user_GroupAdmin']);
   assert.equal((await authority.mcpGroupGrants('othergroup')).grants.length,0);
 });
+
+test('Galaxy Link search only queries site=mcp in its authorized Scope',async()=>{
+  const {do:authority}=state();
+  authority.mcpPrivateProfile=async()=>profile;
+  let requested='';
+  globalThis.fetch=async url=>{
+    requested=String(url);
+    return Response.json([{uid:'Ab12Cd34',title:'One topic',createtime:'2026-11-05T00:00:00Z'}]);
+  };
+  const value=await authority.mcpLinkSearch('another', 'access rights', 3);
+  assert.equal(value.results.length,1);
+  const url=new URL(requested);
+  assert.equal(url.searchParams.get('site'),'eq.mcp');
+  assert.equal(url.searchParams.get('limit'),'3');
+  assert.equal(url.searchParams.has('uid'),false);
+  await assert.rejects(authority.mcpLinkSearch('another','a',3),/Invalid Galaxy Link search/);
+});
+
+test('Galaxy Link append is idempotent after lost checkpoint acknowledgment',async()=>{
+  const {do:authority,saved}=state();
+  authority.mcpPrivateProfile=async()=>profile;
+  const batch='a'.repeat(64);
+  const newContent='[[GalaxyLinkBatch:'+batch+']]\ncorrected statement';
+  let current='earlier statement',patches=0;
+  globalThis.fetch=async (_url,options)=>{
+    if(options.method==='GET')return Response.json([{
+      uid:'Ab12Cd34',site:'mcp',content:current,
+      title:'Galaxy Link topic',createtime:'2026-11-05T00:00:00Z'}]);
+    if(options.method==='PATCH'){
+      patches++;
+      current=JSON.parse(options.body).content;
+      return Response.json([{uid:'Ab12Cd34'}]);
+    }
+    return new Response(null,{status:204});
+  };
+  const payload={conversation_id:'chat-A',uid:'Ab12Cd34',
+    updated_at:'2026-11-05T01:00:00Z',title:'',
+    content:newContent,batch_id:batch,append:true};
+  const first=await authority.mcpSave('thirdscope',payload);
+  assert.equal(first.appended,true);
+  assert.equal(current,'earlier statement\n'+newContent);
+  assert.equal(patches,1);
+  // Database committed, but Durable Object acknowledgement was lost.
+  await authority.ctx.storage.put('mcp-sync:thirdscope:chat-A',
+    {uid:'Ab12Cd34',updated_at:null,saved_at:null});
+  const repeated=await authority.mcpSave('thirdscope',payload);
+  assert.equal(repeated.saved,true);
+  assert.equal(patches,1);
+  assert.equal(current,'earlier statement\n'+newContent);
+  const skipped=await authority.mcpSave('thirdscope',payload);
+  assert.equal(skipped.saved,false);
+  assert.equal(patches,1);
+});
+

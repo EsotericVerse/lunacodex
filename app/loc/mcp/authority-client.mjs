@@ -17,7 +17,49 @@ export async function authorityAction(name,args,token,env={},fetchImpl=globalThi
     throw bad('Authenticated Clerk OAuth required');
   const a=args||{};
   let path='',method='GET',body=null,query=null;
-  switch(name){
+  if(name==='galaxy_link'){
+    if(!['search','read','check','record'].includes(a.action))throw bad('Invalid Galaxy Link action');
+    if(a.action==='search'){
+      if(typeof a.query!=='string'||a.query.trim().length<2||a.query.length>100||
+        !Number.isInteger(a.limit??5)||(a.limit??5)<1||(a.limit??5)>5)
+        throw bad('Invalid Galaxy Link search');
+      path='search/'+id(a.scopeid);method='POST';
+      body={query:a.query,limit:a.limit??5};
+    }else if(a.action==='read'){
+      if(!UID.test(String(a.uid||'')))throw bad('Invalid case-sensitive UID');
+      path='read/'+id(a.scopeid)+'/'+a.uid;
+      query={offset:a.offset??0,max_chars:a.max_chars??20000,site:'mcp'};
+    }else if(a.action==='check'){
+      if(!a.conversation_id||!a.updated_at)throw bad('conversation_id and updated_at required');
+      path='checkpoint/'+id(a.scopeid)+'/'+encodeURIComponent(String(a.conversation_id));
+      query={updated_at:a.updated_at};
+    }else{
+      if(!a.conversation_id||!a.updated_at||!Array.isArray(a.records)||
+        !a.records.length||a.records.length>100)throw bad('Source records required');
+      const records=a.records;
+      if(records.some(row=>!row||typeof row!=='object'||
+          !['user','assistant'].includes(row.role)||
+          row.role==='user'&&row.kind!=='original'||
+          row.role==='assistant'&&row.kind!=='advice'||
+          typeof row.text!=='string'||!row.text.length||
+          typeof row.message_id!=='string'||!row.message_id||
+          typeof row.sent_at!=='string'||!Number.isFinite(Date.parse(row.sent_at))))
+        throw bad('Only timestamped original user messages or real assistant advice may be recorded');
+      const digestInput=new TextEncoder().encode(JSON.stringify([a.conversation_id,...records]));
+      const digest=new Uint8Array(await crypto.subtle.digest('SHA-256',digestInput));
+      const batchId=[...digest].map(n=>n.toString(16).padStart(2,'0')).join('');
+      const marker='[[GalaxyLinkBatch:'+batchId+']]';
+      const content=marker+'\n'+records.map(row=>'['+new Date(row.sent_at).toISOString()+'] '+
+        (row.role==='user'?'user':'assistant:advice')+' #'+row.message_id+'\n'+row.text).join('\n\n');
+      if(content.length>125000)throw bad('Source batch too large');
+      path='sync/'+id(a.scopeid);method='POST';
+      body={conversation_id:a.conversation_id,updated_at:a.updated_at,
+        created_at:a.created_at,title:a.title||'',content,batch_id:batchId,
+        ...(a.uid?{uid:a.uid}:{}),append:true};
+    }
+    // A dedicated versioned route fails closed against old Authority deployments.
+    path='galaxy-link/'+path;
+  }else switch(name){
     case 'scope_storage':
       path='scope/'+id(a.scopeid);
       if(a.endpoint!==undefined){
@@ -28,16 +70,6 @@ export async function authorityAction(name,args,token,env={},fetchImpl=globalThi
         if(!body.table||!body.endpoint)throw bad('Database endpoint and existing table are required');
       }
       break;
-    case 'check_conversation':
-      path='checkpoint/'+id(a.scopeid)+'/'+encodeURIComponent(String(a.conversation_id||''));
-      if(!a.conversation_id)throw bad('conversation_id required');
-      query={updated_at:a.updated_at};break;
-    case 'sync_conversation':
-      path='sync/'+id(a.scopeid);method='POST';
-      if(!a.conversation_id||!a.updated_at||typeof a.content!=='string'||!a.content.trim())
-        throw bad('conversation_id, updated_at and content required');
-      body={conversation_id:a.conversation_id,updated_at:a.updated_at,
-        created_at:a.created_at,title:a.title||'',content:a.content};break;
     case 'update_scope_pr':
       path='update-pr/'+id(a.scopeid);method='POST';
       if(!UID.test(String(a.uid||'')))throw bad('Invalid case-sensitive UID');
@@ -46,19 +78,6 @@ export async function authorityAction(name,args,token,env={},fetchImpl=globalThi
       if(typeof a.content!=='string'||!a.content.trim())throw bad('content required');
       if(!a.updated_at)throw bad('updated_at required');
       body={uid:a.uid,pr_number:a.pr_number,title:a.title,content:a.content,updated_at:a.updated_at};break;
-    case 'search_scope':
-      path='search/'+id(a.scopeid);method='POST';
-      if(!a.query)throw bad('query required');
-      body={query:a.query,limit:a.limit||10};break;
-    case 'read_scope':
-      if(!UID.test(String(a.uid||'')))throw bad('Invalid case-sensitive UID');
-      path='read/'+id(a.scopeid)+'/'+a.uid;
-      query={offset:a.offset||0,max_chars:a.max_chars||20000,
-        ...(a.groupid?{groupid:id(a.groupid)}:{})};break;
-    case 'search_group':
-      path='group-search/'+id(a.groupid);method='POST';
-      if(!a.query)throw bad('query required');
-      body={query:a.query,limit:a.limit||10};break;
     case 'join_scope_group':
       path='group/'+id(a.groupid)+'/scope/'+id(a.scopeid);method='PUT';
       body={};break;

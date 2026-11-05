@@ -345,7 +345,7 @@ Deno.serve(async (request) => {
     if(untrusted.iss===clerkIssuer){
       // MCP OAuth JWTs and interactive Clerk sessions have different audiences
       // and permissions. Never let an MCP token execute general SQL requests.
-      if(["mcp-sync","mcp-search","mcp-read","mcp-update-pr"].includes(String(body.kind))){
+      if(["mcp-sync","mcp-search","mcp-read","mcp-append","mcp-update-pr"].includes(String(body.kind))){
         try{
           claims=await verifyMcpForSql(token,String(body.scopeid||""));
           verifiedMcp=true;
@@ -403,9 +403,7 @@ Deno.serve(async (request) => {
   }
   let resolvingTarget = false;
   try {
-    if(body.kind==="mcp-search")
-      return json({error:{message:"MCP search is disabled"}},403);
-    if(body.kind==="mcp-read"){
+    if(body.kind==="mcp-read"||body.kind==="mcp-search"){
       // A Clerk OAuth token is separately verified by the LOC Authority.
       // This owner-only route accepts fixed read shapes, not arbitrary SQL.
       if(!verifiedMcp||role!=="authenticated")
@@ -414,7 +412,7 @@ Deno.serve(async (request) => {
         return json({error:{message:"Managed MCP reads use the control database only"}},400);
       const scope=String(body.scopeid||"");
       const isRead=body.kind==="mcp-read";
-      const expectedKeys=isRead?["kind","scopeid","uid"]:["kind","scopeid","query","limit"];
+      const expectedKeys=isRead?["kind","scopeid","uid",...(body.site===undefined?[]:["site"])]:["kind","scopeid","query","limit"];
       if(!["lo3rwang","lrunes"].includes(scope)||
          Object.keys(body).length!==expectedKeys.length||
          Object.keys(body).some(key=>!expectedKeys.includes(key)))
@@ -423,11 +421,11 @@ Deno.serve(async (request) => {
       const query=body.query;
       const limit=body.limit;
       if(isRead){
-        if(!/^[A-Za-z0-9]{8}$/.test(uid))
+        if(!/^[A-Za-z0-9]{8}$/.test(uid)||body.site!==undefined&&body.site!=="mcp")
           return json({error:{message:"Invalid managed MCP article UID"}},400);
       }else if(typeof query!=="string"||query.trim().length<2||query.length>100||
           /[\u0000-\u001f\u007f]/.test(query)||!Number.isInteger(limit)||
-          Number(limit)<1||Number(limit)>20){
+          Number(limit)<1||Number(limit)>5){
         return json({error:{message:"Invalid managed MCP search parameters"}},400);
       }
       const db=await databaseForTarget(controlTarget);
@@ -440,16 +438,52 @@ Deno.serve(async (request) => {
         await sql`select set_config('request.jwt.claim.role','authenticated',true)`.execute(trx);
         if(isRead){
           const result=await sql`select uid,title,content,date,createtime,site,url
-            from ${table} where uid=${uid} limit 1`.execute(trx);
+            from ${table} where uid=${uid} and (${body.site===undefined} or site='mcp') limit 1`.execute(trx);
           return result.rows;
         }
         const pattern="%"+String(query).trim().replace(/[\\%_]/g,"\\$&")+"%";
-        const result=await sql`select uid,title,date,createtime from ${table}
-          where content ilike ${pattern}
-          order by date desc nulls last limit ${Number(limit)}`.execute(trx);
+        await sql`set local statement_timeout = '4000ms'`.execute(trx);
+        const result=await sql`select uid,title,createtime from ${table}
+          where site = 'mcp' and (title ilike ${pattern} or content ilike ${pattern})
+          order by createtime desc nulls last limit ${Number(limit)}`.execute(trx);
         return result.rows;
       });
       return json({data:rows});
+    }
+    if(body.kind==="mcp-append"){
+      if(!verifiedMcp||role!=="authenticated") return json({error:{message:"MCP authorization required"}},403);
+      const scope=String(body.scopeid||"");
+      const uid=String(body.uid||"");
+      const content=body.content;
+      const batchId=String(body.batch_id||"");
+      const marker="[[GalaxyLinkBatch:"+batchId+"]]";
+      const stamp=String(body.updated_at||"");
+      if(!["lo3rwang","lrunes"].includes(scope)||!/^[A-Za-z0-9]{8}$/.test(uid)||
+         typeof content!=="string"||!content.trim()||content.length>125000||
+         !/^[0-9a-f]{64}$/.test(batchId)||!content.startsWith(marker+"\n")||
+         !Number.isFinite(Date.parse(stamp))) return json({error:{message:"Invalid append request"}},400);
+      const db=await databaseForTarget(controlTarget);
+      const table=sql.ref("silver."+scope+"_galaxy");
+      const result=await db.transaction().execute(async trx=>{
+        await sql`set local role authenticated`.execute(trx);
+        await sql`select set_config('request.jwt.claims',${JSON.stringify(claims)},true)`.execute(trx);
+        await sql`select set_config('request.jwt.claim.sub',${String(claims.sub||"")},true)`.execute(trx);
+        await sql`select set_config('request.jwt.claim.role','authenticated',true)`.execute(trx);
+        await sql`set local statement_timeout = '5000ms'`.execute(trx);
+        const next=await sql`update ${table} set content=concat_ws(chr(10),nullif(content,''),${content}),
+          "UpdateTime"=${stamp} where uid=${uid} and site='mcp'
+          and position(${marker} in coalesce(content,''))=0
+          returning uid,title,createtime`.execute(trx);
+        if(next.rows.length===1)
+          return {data:{count:1,title:next.rows[0].title,createtime:next.rows[0].createtime}};
+        const duplicate=await sql`select uid,title,createtime from ${table}
+          where uid=${uid} and site='mcp' and position(${marker} in coalesce(content,''))>0
+          limit 1`.execute(trx);
+        if(duplicate.rows.length===1)
+          return {data:{count:1,duplicate:true,title:duplicate.rows[0].title,createtime:duplicate.rows[0].createtime}};
+        throw Error("MCP topic unavailable");
+      });
+      return json(result);
     }
     if(body.kind==="mcp-sync"){
       if(!verifiedMcp||role!=="authenticated")
