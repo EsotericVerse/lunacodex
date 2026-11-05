@@ -164,14 +164,14 @@ export function captureController({record,authorized}){
     const last=rows[rows.length-1].observed_at;
     // Observed time, not a claim of historical platform send time.
     const conversation={conversation_id:id,updated_at:last,
-      records:rows.map(row=>({role:'user',kind:'original',
-        message_id:row.message_id,sent_at:row.observed_at,text:row.text,
-        role:row.role||'user',kind:row.role==='assistant'?'advice':'original'}))};
+      records:rows.map(row=>({role:row.role||'user',
+        kind:row.role==='assistant'?'advice':'original',
+        message_id:row.message_id,sent_at:row.observed_at,text:row.text}))};
     const result=await record({scopeid,conversation});
     if(result.saved!==true&&result.unchanged!==true)
       throw Error('LOC 尚未確認寫入');
     await serial(async()=>{
-      const saved=await chrome.storage.local.get(PENDING);
+      const saved=await chrome.storage.local.get([PENDING,ARCHIVED]);
       const queue=Array.isArray(saved[PENDING])?saved[PENDING]:[];
       const sent=new Set(rows.map(row=>row.message_id));
       const archived=saved[ARCHIVED]&&typeof saved[ARCHIVED]==='object'?saved[ARCHIVED]:{};
