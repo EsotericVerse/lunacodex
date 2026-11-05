@@ -71,7 +71,8 @@ const bootstrap={scope_id:'loc',page_name:'index',registry:site.registry,page_co
 const entries=[
   ['app/modular/scope-route-index.js','// PUBLIC Scope routing + Config; explicit publication only.\nexport const SCOPE_ROUTE_INDEX=Object.freeze('+encode(routeConfigs)+');\n'],
   ['app/modular/published-source-taxonomy.js',"// Flat public source classification, published with Scope Config.\nimport {sourceTaxonomyFromArrays} from '../loc/source-classification.mjs';\nexport const PUBLISHED_SOURCE_LISTS=Object.freeze("+encode(publishedSourceLists)+");\nexport const PUBLISHED_SOURCE_TAXONOMY=Object.freeze(Object.fromEntries(Object.entries(PUBLISHED_SOURCE_LISTS).map(([id,lists])=>[id,sourceTaxonomyFromArrays(lists.system,lists.personal)])));\nexport function publishedSourceTaxonomy(scopeId){return Object.prototype.hasOwnProperty.call(PUBLISHED_SOURCE_TAXONOMY,scopeId)?PUBLISHED_SOURCE_TAXONOMY[scopeId]:null;}\n"],
-  ['app/modular/published-site-bootstrap.js','// PUBLIC navigation metadata; Theme values live in CSS.\nexport const PUBLISHED_SITE_BOOTSTRAP=Object.freeze('+encode(bootstrap)+');\n'],
+  ['app/modular/published-theme-catalog.json',JSON.stringify(themes,null,2)+'\n'],
+  ['app/modular/published-site-bootstrap.js','// PUBLIC navigation metadata and published Theme JSON; no visit-time SQL.\nimport publishedThemes from \'./published-theme-catalog.json\';\nexport const PUBLISHED_SITE_BOOTSTRAP=Object.freeze({...'+encode(bootstrap)+',themes:publishedThemes});\n'],
   ['app/modular/published-theme-meta.js','// Published Theme metadata (palettes are CSS).\nexport const PUBLISHED_THEME_META='+encode(themes.map(t=>['theme-'+t.theme_id,t.theme_name,t.scheme,t.style_key]))+';\n'],
   ['app/styles/published-themes.css','/* Published Theme palette; explicit publication only. */\n'+palettes.join('\n\n')+'\n']
 ];
