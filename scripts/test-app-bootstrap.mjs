@@ -497,7 +497,8 @@ test('LOC group member editing and system Admin panels are disjoint; media targe
   const zh=readFileSync(new URL('../app/i18n/zh_tw.js',import.meta.url),'utf8');
   assert.match(page,/人員作品管理/);
   assert.match(page,/LocGroupMemberList/);
-  assert.match(page,/isSystemAdmin\?<AdminRegistry\/>:null/);
+  assert.match(page,/section==='systemPersonnel'&&isSystemAdmin\?<AdminRegistry\/>:null/);
+  assert.match(page,/const sections=isSystemAdmin\?\[\.\.\.OPTIONS,SYSTEM_PERSONNEL_OPTION\]:OPTIONS/);
   assert.doesNotMatch(page,/AdminReservedScopeIds/);
   assert.doesNotMatch(admin,/section==='registry'/);
   assert.match(admin,/section==='lists'/);
