@@ -497,8 +497,8 @@ function AppShellInner({children}){
   // People/Works replaces Trace Map. Admin access is still checked by
   // ManagementAccess at /admin/; the dock grants no privileges.
   const editDestinations=locAdminEdit?[
-    {id:'system',icon:'settings',label:translateUiField(activeLocale,'系統管理'),
-      href:'/admin/'},
+    ...(editDock?.canManageGlobal?[{id:'system',icon:'settings',label:translateUiField(activeLocale,'系統管理'),
+      href:'/admin/'}]:[]),
     {id:'keywords',icon:'keywords',label:translateUiField(activeLocale,'關鍵詞'),
       href:editTabHref('statics/manage','edit','1')},
     {id:'members',icon:'culture',label:translateUiField(activeLocale,'人員作品管理'),
@@ -585,7 +585,7 @@ function AppShellInner({children}){
     {restoreHomeEdit?<HomeEditModeRestore scopeId={scopeId}/>:null}
     <div className="scope-feature-dock scope-floating-edit-buttons" role="toolbar"
       aria-label={translateUiField(activeLocale,editingDockVisible||editDockPending?'編輯功能選單':'Scope 功能選單')}
-      data-scope={localWorkspace?'local':scopeId}>
+      data-scope={localWorkspace?'local':scopeId} data-action-count={editingDockVisible?editTabs.length:6}>
       {editingDockVisible?editTabs.map(tab=>tab.action
         ?<button type="button" key={tab.id} className="scope-edit-dock-action"
           disabled={editDock.busy&&tab.action!=='cancel'}
