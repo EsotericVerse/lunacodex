@@ -341,3 +341,10 @@ Search 只對 Galaxy `content` 執行模糊比對；進階內容類型只保留�
 - 客戶端依 GPS 距離 75 公尺內動態合併近似位置，同一共點保留原始各成員紀錄，圖釘標籤可同時列出 `lo3rwang:板橋車站 / lrunes:板橋車站` 等獨立來源，不回寫或合併 UID。
 - 多個 Scope 每人最多 50 個候選，**先全部完成近似座標比對，只保留至少兩個不同 Scope 的共點交集，再依共點成員數優先排序，最後最多顯示 50 個位置**；共點少於 50 就照實顯示，不用單人獨有地點補足。不可在每個 Scope 處理完就截取全域 50，否則將遺漏後續成員的共點；無有效座標的點不顯示。地圖仍可點選記錄，但預設不查文章。
 - 其他 Scope 的 path/trace 地圖保留原行為；無 Schema、SQL、RPC 或 MCP 變動。回歸測試：`scripts/test-loc-trace-top50-points.mjs`。
+
+## 2026-11-06｜移除已退役的統計多媒體計數
+
+- Statistics 來源與日期 `overview` 只查有權顯示的 Galaxy 文章密度、最早日期及來源分類；移除 native `linkedMediaCount`（`media_link` 對 Anchor）與 portable `Anchor.type in image/video/rune/suno` 全量計數，也不再回傳 `media_count`。其他媒體展示、匯入及管理功能不受影響。
+- Supabase Query Performance 曾有頂層 `postgres` 診斷查詢（`WITH m AS ... LEFT JOIN galaxy ON a.uid = any(g.media_link)`，包含 `different_times` 和 `orphan`），單次約 62.3 秒；不是網站 overview 所產生的同一段 SQL。查詢只呼叫一次，呼叫者來源未能由 pg_stat_statements 確認。
+- 此診斷的 `LEFT JOIN + count(*)` 無法辨識無文章連結的 Anchor（無匹配也至少一列）；診斷不應加入常態統計載入。過去用於補寫 `anchor.createtime` 的 Migration 保留歷史紀錄，不重跑或改寫。
+- 測試：`scripts/test-kysely-portable-search-summary.mjs` 改驗證不存在多媒體計數 Helper、`overview` 不從 Anchor 或 `media_link` 取數。
