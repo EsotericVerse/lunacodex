@@ -131,7 +131,6 @@ const TOOLS=[
   {name:'galaxy_link',description:'Scope-authorized Galaxy Link: MCP conversation resume plus private GitHub PR records. GitHub source requires Scope manage permission; source text is never scraped.',
     inputSchema:{type:'object',properties:{
       action:{type:'string',enum:['search','read','check','record','update_pr']},
-      source:{type:'string',enum:['mcp','github'],description:'Optional search/read source; GitHub PR requires Scope manage permission'},
       scopeid:{type:'string'},uid:{type:'string',pattern:'^[A-Za-z0-9]{8}$',description:'Optional for update_pr: omit to locate existing GitHub PR by pr_number; never needed from the user'},
       query:{type:'string',minLength:2,maxLength:100},limit:{type:'integer',minimum:1,maximum:5},
       conversation_id:{type:'string'},updated_at:{type:'string'},created_at:{type:'string'},
