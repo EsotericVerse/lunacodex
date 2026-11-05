@@ -73,7 +73,7 @@ export default function AdminHomeView({scopeGroup}){
       if(!touchEditorSession(window.sessionStorage))return;
     }
     setEntryVerified(true);
-    editDock?.begin('loc');
+    editDock?.begin('loc',{globalManage:true});
   },[account.loading,account.permissionLoading,canManage,editDock?.begin]);
   const selectedOption=ADMIN_OPTIONS.find(option=>option.value===section)||ADMIN_OPTIONS[0];
 
