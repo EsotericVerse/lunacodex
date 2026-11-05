@@ -159,7 +159,7 @@ export function captureController({record,authorized}){
         if(batch.length)completed+=await sendBatch(id,batch,scopeid);
       }
       const stateAfter=await status();
-      return {completed,pending:stateAfter.pending,enabled:true,syncing:false};
+      return {completed,pending:stateAfter.pending,enabled:stateAfter.enabled,syncing:false};
     }finally{syncing=false;}
   }
   async function sendBatch(id,rows,scopeid){
