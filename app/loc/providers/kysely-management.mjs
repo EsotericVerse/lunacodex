@@ -239,9 +239,8 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
         'm.sort_order as sort_order','m.galaxy_table as galaxy_table',
         'm.anchor_table as anchor_table','l.birthday as birthday',
         'l.title_tw as title_tw','l.desc_tw as desc_tw'])
-      .where('m.manage_role','!=','reserve')
       .orderBy('m.sort_order','asc').orderBy('m.id','asc').execute();
-    return {data:rows,count:null};
+    return {data:rows.filter(row=>row.manage_role!=='reserve'),count:null};
   }
   if(name==='find_galaxy_duplicates')return {data:await findGalaxyDuplicates(trx,args),count:null};
   if(name==='manage'){
