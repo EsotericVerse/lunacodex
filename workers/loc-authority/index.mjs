@@ -341,7 +341,7 @@ async function portableMcpAppend(profile,uid,content,updatedAt){
     uid:'eq.'+uid,site:'eq.mcp',limit:1}});
   if(!Array.isArray(rows)||rows.length!==1)throw fail('MCP topic not found',404);
   const original=String(rows[0].content||'');
-  const next=original+(original?'\\n':'')+content;
+  const next=original+(original?'\n':'')+content;
   const url=new URL(profile.endpoint+'/'+profile.table);
   url.searchParams.set('uid','eq.'+uid);
   url.searchParams.set('site','eq.mcp');
@@ -619,13 +619,7 @@ export class LocAuthorityState extends DurableObject {
       UpdateTime:requestedTime};
     if(profile){
       // Third-party Scope providers manage their own schema independently.
-      const legacy={...row,able:{
-        statics:false,culture:false,search:false,trace:false,list:false,
-        keywords:false,game:false,extract:false
-      }};
-      for(const key of ['statics','culture','search','trace','list','keyword','others','extract'])
-        delete legacy[key];
-      await postgrest(profile,{body:legacy,params:{on_conflict:'uid'}});
+      await postgrest(profile,{body:row,params:{on_conflict:'uid'}});
     }else await managedMcpInsert(scopeid,row,Boolean(status.uid),oauthToken);
     const saved_at=new Date().toISOString();
     this.mcpSearchCache?.clear();
