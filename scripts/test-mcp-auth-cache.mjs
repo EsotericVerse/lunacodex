@@ -13,6 +13,16 @@ test('MCP read and search use read authorization, not write authorization',()=>{
   assert.match(edge,/reading&&source==="github"/);
   assert.match(edge,/jwtVerify\(token,clerkKeys/);
 });
+test('parallel MCP requests coalesce only the same token, Scope and permission',()=>{
+  const edge=read('supabase/functions/loc-kysely/index.ts');
+  assert.match(edge,/pending:Promise<string>/);
+  assert.match(edge,/const email=await cached\.pending/);
+  assert.match(edge,/const key=scopeid\+":"\+action\+":"\+fingerprint/);
+  assert.match(edge,/mcpGrantCache\.get\(key\)\?\.pending===pending/);
+  assert.match(edge,/Math\.min\(now\+30000,Number\(payload\.exp\)\*1000\)/);
+  assert.match(edge,/if\(!response\.ok\)throw/);
+});
+
 test('only short-lived verified per-Scope grants are cached; raw tokens never retained',()=>{
   const edge=read('supabase/functions/loc-kysely/index.ts');
   assert.match(edge,/crypto\.subtle\.digest\("SHA-256"/);
