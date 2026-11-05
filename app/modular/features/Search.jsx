@@ -484,64 +484,32 @@ export default function Search({managementMode:legacyManagementRoute=false}){
         })
         :null;
       if(id!==searchId.current)return;
-      const wantsStyleTags=!options.placeOnly&&!managementMode&&!append&&!options.browse&&!options.contentType&&!options.sourceFilter&&!options.startDate&&!options.endDate;
-      // Start the primary search first so it takes the first connection slot, then
-      // run the cross-Scope style-tag lookup alongside it instead of in front of it.
-      const searchPromise=searchGalaxyRows(searchScopes,q,{
-        limit:pageSize,
-        // Always search article providers, including when the same keyword
-        // exactly matches a style tag.
-        cursor,
+      // Search is one request: return title and date only. Article details load on entry.
+      const search=await searchGalaxyRows(searchScopes,q,{
+        limit:pageSize,cursor,
         hiddenScopeIds:managementMode?searchScopes.map(item=>item.id):[],
-        contentType:options.contentType,sourceFilter:options.sourceFilter,sourceTaxonomy,placeOnly:managementMode&&Boolean(options.placeOnly),
+        contentType:options.contentType,sourceFilter:options.sourceFilter,sourceTaxonomy,
+        placeOnly:managementMode&&Boolean(options.placeOnly),
         startDate:options.startDate,endDate:options.endDate,browse:options.browse,
-        managementOnly:managementMode,sortDirection:options.sortDirection,
-        signal
+        managementOnly:managementMode,sortDirection:options.sortDirection,signal
       });
-      // Style tags enhance results, but their optional request must never
-      // discard valid text/media hits when its own service fails.
-      const stylePromise=wantsStyleTags
-        ?resourceCache.getOrLoad({
-          queryKey:['search-style-keyword',searchScopes.map(scope=>scope.id).join('|'),q.normalize('NFKC').trim()],
-          queryFn:()=>selectStyleKeywordMatches(searchScopes,q,{signal}),
-        }).then(rows=>({rows,failed:false}),error=>({
-          rows:[],failed:!isAbortError(error)&&!signal.aborted
-        }))
-        :Promise.resolve({rows:[],failed:false});
-      // Main article results must not wait for optional style-tag matching.
-      let styleResult=null;
-      void stylePromise.then(value=>{styleResult=value;});
-      const search=await searchPromise;
-      const styleTagMatches=styleResult?.rows||[];
       if(id!==searchId.current)return;
-
       const searchRows=search.rows||[];
       if(id!==searchId.current)return;
 
 
       if(!append)matchedQueryRef.current=q;
       const converted=[];const seen=new Set();
-      for(const {row,source} of [...styleTagMatches,...searchRows]){
+      for(const {row,source} of searchRows){
         const result=toResult(row,source,scopeId,UI_COPY);
         if(!result||seen.has(result.key))continue;
         seen.add(result.key);converted.push(result);
       }
       const pageResults=prioritizeStyleTagResults(mergeSummaryResults(converted,UI_COPY));
       setResults(current=>append?mergeSummaryResults([...current,...pageResults],UI_COPY):pageResults);
-      if(q&&!options.browse&&!options.placeOnly&&pageResults.length){
-        void loadPageSearchExcerpts(pageResults,q,scopeById,{
-          authenticated:managementMode,signal
-        }).then(previews=>{
-          if(id!==searchId.current||signal.aborted||!previews.size)return;
-          setResults(current=>current.map(item=>{
-            const excerpt=previews.get(item.scopeId+':'+item.resourceId);
-            return excerpt&&item.extract!==false?{...item,snippet:excerpt}:item;
-          }));
-        }).catch(()=>{});
-      }
-            setHasMore(Boolean(search.hasMore));
+      setHasMore(Boolean(search.hasMore));
       setNextCursor(search.nextCursor??null);
-      const partial=(search.failures?.length||styleResult?.failed)?t('uiExtra.searchUI.partialExtendedData'):'';
+      const partial=(search.failures?.length)?t('uiExtra.searchUI.partialExtendedData'):'';
       if(!append){
         setStatus(!pageResults.length&&!search.hasMore
           ?search.failures?.length?UI_COPY.search.failed:UI_COPY.search.empty
@@ -1344,8 +1312,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           detailReading={identityReader||expandedReader}
           source={searchParams?.get('identity')?row.styleTagMatch?'':row.source:''}
           date={row.date}
-          body={row.resourceType==='galaxy'&&row.snippet&&matchedQueryRef.current&&!browseResults
-            ?highlightSearchText(row.snippet,matchedQueryRef.current):''}
+          body={''}
           hidden={false}
           relationLinks={identityReader||expandedReader?readingLinks:[]}
           relatedMedia={identityReader||expandedReader?relatedMedia:[]}
