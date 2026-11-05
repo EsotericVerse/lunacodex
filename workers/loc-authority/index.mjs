@@ -609,7 +609,7 @@ export class LocAuthorityState extends DurableObject {
         createtime:result.createtime||null,updated_at:requestedTime,saved_at,saved:true,appended:true};
     }
     if(input.uid&&append)throw fail('Existing MCP topic could not be resumed',409);
-    const created=validTimestamp(input.created_at||requestedTime);
+    const created=append?new Date().toISOString():validTimestamp(input.created_at||requestedTime);
     const title=append?'Galaxy Link｜'+scopeid+' 在 '+created+' 開始的原始文字紀錄':input.title;
     // Idempotent first insert by the existing case-sensitive UID; no table scans.
     const row={uid,title,content:input.content,
