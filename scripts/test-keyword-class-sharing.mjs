@@ -91,7 +91,7 @@ test('music genres belong to selectable Keyword Classes, not fixed Statistics di
   assert.ok(!stats.includes('statistics-media-facet'));
   assert.ok(!stats.includes('STYLE_FILTERS'));
   assert.ok(stats.includes("scopeId,resolvedKeywordClassUid,styleRange.startDate"));
-  assert.ok(stats.includes("enabled:keywordDimension&&Boolean(resolvedKeywordClassUid)"));
+  assert.ok(stats.includes("enabled:keywordDimension&&periodNavigationReady&&Boolean(resolvedKeywordClassUid)"));
   assert.match(stats,/availableKeywordClasses\.map\(item=><option/);
   assert.match(stats,/\[item\.categoryName,item\.name\]/);
   assert.match(stats,/setSelectedKeywordClassUid\(event\.target\.value\)/);
