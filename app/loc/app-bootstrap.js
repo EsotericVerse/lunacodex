@@ -56,14 +56,15 @@ export async function selectAppBootstrap(scopeId,pageName='index',{configHint=nu
     try{
       // Blocks are independent static JSON snapshots, never read from the site
       // metadata RPC or its former ISR endpoint. Start both reads together.
-      const [site,[scopeConfig,blocks]]=await Promise.all([
+      const [site,[scopeConfig,blocks],publishedThemes]=await Promise.all([
         selectPublicSiteBootstrap(),
         Promise.all([
           id&&id!=='loc'&&id!=='admin'
             ?(configHint?Promise.resolve(configHint):selectScopeConfig(id))
             :Promise.resolve(null),
           id&&id!=='admin'?selectScopeBlocks(id,page):Promise.resolve([])
-        ])
+        ]),
+        selectThemeRegistry() // Published JSON, never SELECT silver.loc.theme.
       ]);
       const config=id==='loc'?site.config||null:scopeConfig;
       return {
@@ -75,7 +76,7 @@ export async function selectAppBootstrap(scopeId,pageName='index',{configHint=nu
         page_copy:Array.isArray(site.page_copy)?site.page_copy:[],
         // Site Themes use numeric IDs in PostgreSQL and theme-N in the UI.
         theme_list:(Array.isArray(site.theme_list)?site.theme_list:[]).map(row=>({...row,theme_id:themeUiId(row.theme_id)})),
-        themes:(Array.isArray(site.themes)?site.themes:[]).map(row=>({...row,theme_id:themeUiId(row.theme_id)}))
+        themes:publishedThemes
       };
     }catch(error){
       if(!missingRpc(error))throw error;
