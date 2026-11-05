@@ -92,6 +92,10 @@ test('Shared six-button edit dock keeps Save at left and Discard at right',()=>{
   assert.match(shell,/const editTabs=\[\s*\{id:'save'/);
   assert.match(shell,/\.\.\.editDestinations,\s*\{id:'cancel'/);
   assert.match(shell,/editingDockVisible\?editTabs\.map\(tab=>tab\.action/);
+  assert.match(shell,/<div className="scope-feature-dock scope-floating-edit-buttons" role="toolbar"/);
+  assert.doesNotMatch(shell,/<nav className="scope-feature-dock"/);
+  assert.match(css,/\.scope-feature-dock\{[\s\S]*?background:transparent;[\s\S]*?box-shadow:none;/);
+  assert.match(css,/\.scope-feature-dock a,\.scope-feature-dock button\{[\s\S]*?box-shadow:0 6px 18px/);
   assert.doesNotMatch(shell,/editTabs\.filter\(/);
   assert.match(css,/grid-template-columns:repeat\(6,minmax\(0,1fr\)\)/);
   assert.doesNotMatch(css,/scope-feature-dock__groups|scope-feature-dock__navigation|scope-feature-dock__actions/);
