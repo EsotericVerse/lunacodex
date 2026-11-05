@@ -83,7 +83,9 @@ export function validatePortableScopeSchema(tables,{engine,namespace='',scopeId}
     galaxy:['uid','title','content','createtime','location','UpdateTime','url',
       'source_id','target_id','ref_id','site','place_id','media_link','date','site_id',
       ...FLAGS],
-    anchor:['uid','type','title','description','invisible','attr','createtime']
+    // Older portable databases may not yet have this additive column.
+    // Keep them connectable until their own explicitly approved migration.
+    anchor:['uid','type','title','description','invisible','attr']
   };
   const names={scopeId};
   for(const [kind,columns] of Object.entries(expected)){
