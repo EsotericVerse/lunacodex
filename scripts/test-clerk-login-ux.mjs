@@ -19,3 +19,10 @@ test('standalone Clerk login follows LOC Theme and remains mobile-safe',()=>{
   assert.ok(loginScript);
   assert.doesNotThrow(()=>new Function(loginScript));
 });
+
+test('desktop settings sign-in and sign-out show the same scenic Clerk gateway',()=>{
+  const settings=readFileSync(new URL('../app/loc/GlobalSettings.jsx',import.meta.url),'utf8');
+  assert.match(settings,/LOC_LOGIN_GATEWAY='\\/login\\/index\\.html\\?return_to=/);
+  assert.match(settings,/await account\\.signOut\\(\\);[\\s\\S]*window\\.location\\.assign\\(LOC_LOGIN_GATEWAY\\)/);
+  assert.match(settings,/function login\\(\\)[\\s\\S]*window\\.location\\.assign\\(LOC_LOGIN_GATEWAY\\)/);
+});
