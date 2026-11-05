@@ -34,11 +34,23 @@ export async function authorityAction(name,args,token,env={},fetchImpl=globalThi
       path='checkpoint/'+id(a.scopeid)+'/'+encodeURIComponent(String(a.conversation_id));
       query={updated_at:a.updated_at};
     }else{
-      if(!a.conversation_id||!a.updated_at||typeof a.content!=='string'||!a.content.trim())
-        throw bad('conversation_id, updated_at and content required');
+      if(!a.conversation_id||!a.updated_at||!Array.isArray(a.records)||
+        !a.records.length||a.records.length>100)throw bad('Source records required');
+      const records=a.records;
+      if(records.some(row=>!row||typeof row!=='object'||
+          !['user','assistant'].includes(row.role)||
+          row.role==='user'&&row.kind!=='original'||
+          row.role==='assistant'&&row.kind!=='advice'||
+          typeof row.text!=='string'||!row.text.length||
+          typeof row.message_id!=='string'||!row.message_id||
+          typeof row.sent_at!=='string'||!Number.isFinite(Date.parse(row.sent_at))))
+        throw bad('Only timestamped original user messages or real assistant advice may be recorded');
+      const content=records.map(row=>'['+new Date(row.sent_at).toISOString()+'] '+
+        (row.role==='user'?'user':'assistant:advice')+' #'+row.message_id+'\\n'+row.text).join('\\n\\n');
+      if(content.length>125000)throw bad('Source batch too large');
       path='sync/'+id(a.scopeid);method='POST';
       body={conversation_id:a.conversation_id,updated_at:a.updated_at,
-        created_at:a.created_at,title:a.title||'',content:a.content,
+        created_at:a.created_at,title:a.title||'',content,
         ...(a.uid?{uid:a.uid}:{}),append:true};
     }
   }else switch(name){
