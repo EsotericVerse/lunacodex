@@ -114,19 +114,18 @@ async function verifiedAccess(scopeid){
 async function galaxyRequest(message){
   const scopeid=checkedScope(message.scopeid);
   const action=String(message.action||'');
-  const source=message.source??'mcp';
-  if(!['search','read'].includes(action)||!['mcp','github'].includes(source))
-    throw Error('不支援的 Galaxy Link 查詢');
+  if(!['search','read'].includes(action)||message.source!==undefined)
+    throw Error('Galaxy Link 僅支援固定 MCP 來源');
   const token=await verifiedAccess(scopeid);
   if(action==='search'){
     const query=String(message.query||'').trim();
     if(query.length<2||query.length>100||/[\u0000-\u001f\u007f]/.test(query))
       throw Error('請輸入 2–100 字的搜尋詞');
-    const key=scopeid+':'+source;
+    const key=scopeid;
     const last=linkSearchStarted.get(key)||0;
     if(Date.now()-last<30000)throw Error('Galaxy Link 搜尋有 QoS 限制，請稍後再查詢');
     linkSearchStarted.set(key,Date.now());
-    return mcpTool(token,'galaxy_link',{action:'search',scopeid,source,query,limit:5});
+    return mcpTool(token,'galaxy_link',{action:'search',scopeid,query,limit:5});
   }
   if(!/^[A-Za-z0-9]{8}$/.test(String(message.uid||'')))
     throw Error('Galaxy UID 必須是八碼大小寫相符的英數字');
@@ -134,7 +133,7 @@ async function galaxyRequest(message){
   if(!Number.isInteger(offset)||offset<0||offset>1000000)
     throw Error('文章讀取位置無效');
   return mcpTool(token,'galaxy_link',{
-    action:'read',scopeid,source,uid:message.uid,offset,max_chars:20000
+    action:'read',scopeid,uid:message.uid,offset,max_chars:20000
   });
 }
 async function recorderRequest(message){
