@@ -14,7 +14,8 @@ import {Capacitor} from '@capacitor/core';
 import {useScopeRuntime} from '../modular/use-scope-runtime';
 import {getScope} from '../modular/scope-registry';
 import ManagementAccess from './ManagementAccess';
-import {useAppBootstrap} from './app-bootstrap';
+import {useAsyncResource} from './use-async-resource';
+import {selectScopeConfig} from './scope-data';
 import {scopeFeatureEnabled} from './scope-config-fields.mjs';
 import {FeaturePage} from '../modular/ui';
 const loading=()=> <div className="loc-loading"><UiText id="uiExtra.feature.moduleLoading"/></div>;
@@ -88,9 +89,10 @@ function FeatureGate({scopeId,scopeMeta=null,view,children}){
   const flag=FEATURE_FLAGS[view]||'';
   const scope=scopeMeta||getScope(scopeId);
   const enabled=Boolean(flag)&&!scope.aggregateChildren&&scope.id!=='admin';
-  // Shares the shell's bootstrap request for this same page; no second config read.
-  const bootstrap=useAppBootstrap(scopeId,view==='home'?'index':view,{enabled});
-  const query={isPending:enabled&&bootstrap.isPending,data:bootstrap.data?.config};
+  // Public feature gating reads only the Scope's four switches.
+  // Do not fetch unrelated page Blocks or management permissions.
+  const query=useAsyncResource(['public-feature-flags',scopeId],
+    ()=>selectScopeConfig(scopeId),{enabled});
   if(!enabled)return children;
   if(query.isPending)return <FeaturePage featureId={view==='keywords'?'statics':view}>
     <section className="loc-card scope-feature-card scope-feature-loading">
