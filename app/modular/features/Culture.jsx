@@ -222,7 +222,7 @@ export default function Culture(){
   const isTimeEditingView=canUseScopeEditor&&(pathname.endsWith('/culture/manage')||
     pathname.endsWith('/culture/manage/')||searchParams?.get('edit')==='1');
   // Public Culture does not load management grants; editing must verify them.
-  const account=useAccount({enabled:isTimeEditingView||canUseScopeEditor||(adminListRequested&&worksOpen)});
+  const account=useAccount({enabled:isTimeEditingView||canUseScopeEditor});
   const [lrunesView,setLrunesView]=useState('daily');
   const [locCultureView,setLocCultureView]=useState('period');
   const [locDensityOpen,setLocDensityOpen]=useState(false);

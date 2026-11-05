@@ -425,7 +425,8 @@ export async function selectGalaxyIdentity(scope,uid,{includeHidden=false}={}){
     columns:local
       ?'uid,title,createtime,content,site,url,source_id,target_id,ref_id,media_link,location,able'
       :'uid,title,date,createtime,content,site,url,source_id,target_id,ref_id,media_link,place_id,location,statics,culture,search,trace,list,keyword,others,extract',
-    filters:[{column:'uid',operator:'eq',value:id}],
+    filters:[{column:'uid',operator:'eq',value:id},
+      ...(!includeHidden?[articlePermissionFilter(current,'list')]:[])],
     orFilter:'',
     limit:1,authenticated:includeHidden
   });

@@ -39,6 +39,16 @@ test('only explicit article-list request uses bounded 100-row UID query',()=>{
   assert.match(view,/setArticleVisible\(20\)/);
   assert.match(view,/Math\.min\(n\+20,articleRows.length\)/);
 });
+test('opening Culture lists does not preflight management grants; full text enforces list permission on UID SELECT',()=>{
+  const culture=file('app/modular/features/Culture.jsx');
+  const galaxy=file('app/loc/galaxy-query.js');
+  assert.match(culture,/useAccount\(\{enabled:isTimeEditingView\|\|canUseScopeEditor\}\)/);
+  assert.match(culture,/const row=await selectGalaxyIdentity\(scopeData,uid\)/);
+  assert.match(culture,/const verified=await account\.refresh\(\)/);
+  assert.match(galaxy,/filters:\[\{column:'uid',operator:'eq',value:id\},\s*\.\.\.\(!includeHidden\?\[articlePermissionFilter\(current,'list'\)\]:\[\]\)\]/);
+  assert.match(galaxy,/if\(!row\|\|\(!includeHidden&&galaxyAble\(row\)\.list===false\)\)return null/);
+});
+
 test('Block interfaces are two reads and one transactional save',()=>{
   const publicReader=file('app/loc/providers/kysely-public.mjs');
   const manager=file('app/loc/providers/kysely-management.mjs');
