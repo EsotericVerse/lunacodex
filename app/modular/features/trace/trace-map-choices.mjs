@@ -75,3 +75,50 @@ export function locReferencedPointGroups(rows=[],maxPerScope=50){
     return {scope,ids};
   }).filter(group=>group.ids.length);
 }
+
+/**
+ * Dynamically combine almost-coincident public point pins. Inputs are already
+ * limited to path/trace references. The final LOC map has at most 50 pins.
+ * A 75-metre radius allows small GPS/check-in differences without conflating
+ * separate neighborhoods. Original point records are never changed.
+ */
+export function clusterLocSharedPoints(points=[],maxPins=50,radiusMeters=75){
+  const sources=new Map();
+  for(const point of Array.isArray(points)?points:[]){
+    const scope=String(point?.source_scope||'');
+    if(!scope)continue;
+    if(!sources.has(scope))sources.set(scope,[]);
+    sources.get(scope).push(point);
+  }
+  // Round-robin preserves representation across people under a global cap.
+  const queues=[...sources.values()];
+  const selected=[],clusters=[];
+  const radians=Math.PI/180;
+  const distance=(a,b)=>{
+    const latA=Number(a.latitude)*radians,latB=Number(b.latitude)*radians;
+    const dLat=latB-latA,dLon=(Number(b.longitude)-Number(a.longitude))*radians;
+    const h=Math.sin(dLat/2)**2+Math.cos(latA)*Math.cos(latB)*Math.sin(dLon/2)**2;
+    return 12742000*Math.asin(Math.min(1,Math.sqrt(h)));
+  };
+  for(let index=0;queues.some(queue=>index<queue.length);index++){
+    for(const queue of queues){
+      const point=queue[index];
+      if(!point)continue;
+      const lat=Number(point.latitude),lng=Number(point.longitude);
+      if(point.latitude==null||point.longitude==null||
+        !Number.isFinite(lat)||!Number.isFinite(lng)||Math.abs(lat)>90||Math.abs(lng)>180)continue;
+      const match=clusters.find(cluster=>distance(cluster,point)<=radiusMeters);
+      if(match){
+        if(!match.members.some(member=>member.source_scope===point.source_scope&&member.uid===point.uid))
+          match.members.push(point);
+      }else if(clusters.length<maxPins){
+        clusters.push({...point,latitude:lat,longitude:lng,members:[point]});
+      }
+    }
+  }
+  return clusters.map(cluster=>{
+    const lines=cluster.members.map(member=>
+      String(member.source_scope)+':'+String(member.title||member.uid||'定錨點'));
+    return {...cluster,title:lines.join(' / '),display_names:lines,member_count:cluster.members.length};
+  });
+}
