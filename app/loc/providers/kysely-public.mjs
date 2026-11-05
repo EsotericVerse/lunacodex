@@ -118,10 +118,13 @@ export async function executeKyselyPublicAction(trx,body,{engine='postgres',name
   const relationAvailable=async name=>has(name.split('.')[1]);
   const registry=[];
   for(const m of enabled){
-    const config=await relationAvailable('silver.'+m.id)
+    // LOC Group rows are the authoritative name index. Only older portable
+    // installs without an entry need a legacy per-Scope name lookup.
+    const groupName=groupMap.get(m.id)?.display_name;
+    const config=!groupName&&await relationAvailable('silver.'+m.id)
       ?await trx.selectFrom(table(m.id))
         .select(['id','display_name']).where('id','=',m.id).executeTakeFirst():null;
-    registry.push({scope_id:m.id,display_name:groupMap.get(m.id)?.display_name||config?.display_name||m.id,
+    registry.push({scope_id:m.id,display_name:groupName||config?.display_name||m.id,
       scope_kind:m.manage_role==='group'?'group':'scope',
       domain:m.domain,directory:m.directory,
       parent_scope_id:m.parent_scope_id,active:m.active,sort_order:m.sort_order});
