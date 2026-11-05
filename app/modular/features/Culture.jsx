@@ -55,6 +55,16 @@ import {publicContentFilters,requireGalaxyContent,resolveGalaxyTitle} from '../.
 const LrunesDailyCulturePanel=dynamic(()=>import('../../lrunes/DailyRuneAnalytics').then(m=>m.LrunesDailyCulturePanel),{loading:()=>null});
 const LocItemConfluence=dynamic(()=>import('./LocItemConfluence'),{loading:()=>null});
 
+function editorRiverYearWindow(){
+  // Same Taipei-calendar one-year default as CulturePublicReader.
+  const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Taipei',
+    year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
+  const part=key=>parts.find(item=>item.type===key)?.value||'';
+  const end=part('year')+'-'+part('month')+'-'+part('day');
+  const date=new Date(end+'T00:00:00Z');
+  date.setUTCFullYear(date.getUTCFullYear()-1);
+  return {start:date.toISOString().slice(0,10),end};
+}
 function isInteractiveTarget(target){
   return Boolean(target?.closest?.('a,button,input,select,textarea,summary,[role="button"],[contenteditable="true"]'));
 }
@@ -686,6 +696,7 @@ export default function Culture(){
   const editorEraRiver=useMemo(()=>
     buildEraRiver(timelineItems,expandedEditorEraIds,{editorOnly:true}),
     [timelineItems,expandedEditorEraIds]);
+  const editorRiverWindow=useMemo(editorRiverYearWindow,[]);
   const toggleEditorEra=groupId=>setExpandedEditorEraIds(current=>
     current.includes(groupId)?current.filter(id=>id!==groupId):[...current,groupId]);
   const toggleTimeTrace=groupId=>{
@@ -1290,6 +1301,8 @@ export default function Culture(){
               focus={EMPTY_RIVER_FOCUS}
               mode='trace'
               onGroupToggle={toggleEditorEra}
+              windowStart={editorRiverWindow.start}
+              windowEnd={editorRiverWindow.end}
               onSelect={item=>beginTimelineRecordEdit(item)}
               editable={false}
             />:null}
