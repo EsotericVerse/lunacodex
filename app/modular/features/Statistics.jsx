@@ -18,7 +18,6 @@ import useLocFeatureSettings from '../../loc/use-loc-feature-settings';
 import dynamic from 'next/dynamic';
 import {useRouter,useSearchParams} from 'next/navigation';
 import {useAsyncResource,useAsyncInfiniteResource,useResourceCache} from '../../loc/use-async-resource';
-import StatsFreshness,{useRefreshCooldown} from './StatsFreshness';
 
 // Defer Galaxy's data/query engine until the selected statistics mode needs it.
 const loadGalaxyStatistics=()=>import('../../loc/galaxy-query');
@@ -37,7 +36,6 @@ import {assignedSource} from '../../loc/member-intersection-model.mjs';
 import {publishedSourceCategoryCatalog} from '../published-source-taxonomy.js';
 import {administrativeSourceTrend} from '../../loc/statistics-admin-source.mjs';
 import {useAccount} from '../../loc/use-account';
-import {StatisticsFacets} from '../../loc/statistics-facets';
 import {scopeHref} from '../scope-registry';
 import ScopeLink from '../ScopeLink';
 import {STAT_VISUAL_TYPES,availableStatisticChartTypes,chartTypeGroups} from '../modules/statistics/statistics-time-zoom.mjs';
@@ -45,7 +43,6 @@ const StatisticsMultiChart=dynamic(()=>import('../modules/statistics/StatisticsM
 const PlaceStatisticsPanel=dynamic(()=>import('./trace/PlaceStatisticsPanel'),{loading:()=>null});
 const Rune66Summary=dynamic(()=>import('../modules/statistics/StatisticsMultiChart').then(m=>m.Rune66Summary),{loading:()=>null});
 const ScopeSelfIntersection=dynamic(()=>import('../modules/statistics/ScopeSelfIntersection'),{loading:()=>null});
-const MediaFacetStatistics=dynamic(()=>import('../modules/statistics/MediaFacetStatistics'),{loading:()=>null});
 const ScopeGroupStatistics=dynamic(()=>import('../modules/statistics/ScopeGroupStatistics'),{loading:()=>null});
 const ScopeGroupOverview=dynamic(()=>import('../../loc/ScopeGroupOverview'),{loading:()=>null});
 const Article=dynamic(()=>import('../Article'),{loading:()=>null});
@@ -61,8 +58,6 @@ const STAT_TYPE_KEYS=Object.freeze({
   place:'uiExtra.statisticsUI.place',
   keywords:'uiExtra.statisticsUI.keywordClass'
 });
-const MEDIA_STAT_TYPES=new Set(['media_type','media_platform']);
-const STYLE_FILTERS=Object.freeze([{value:'none',textKey:'uiExtra.statisticsUI.notApplied'},{value:'keywords',textKey:'uiExtra.statisticsUI.keywordClass'}]);
 function dateKey(value){
   const key=String(value||'').slice(0,10);
   return /^\d{4}-\d{2}-\d{2}$/.test(key)?key:'';
@@ -289,7 +284,6 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   const rankingType=types.includes(requested)?requested:
     (['media_type','media_platform','media_style'].includes(requested)||['keywords','styles'].includes(navigation.statTab)?'keywords':types[0]||'');
   const keywordDimension=rankingType==='keywords';
-  const mediaDimension=false; // Legacy media facet remains disabled.
   const deviceTimeUnit=useDefaultTimeUnit();
   const {settings:userSettings,active:userActive}=useLocFeatureSettings('statics');
   const defaultTimeUnit=userActive?userSettings.unit:deviceTimeUnit;
@@ -374,28 +368,10 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
       return data;
     },
   });
-  // Media charts carry their own facet rows; the earliest date is one small request.
-  const earliestQuery=useAsyncResource({
-    queryKey:['statistics-history-start',scopeId],
-    enabled:mediaDimension&&periodNavigationReady&&!selectedPeriod&&!knownEarliest&&Boolean(targetScopes[0]),
-    queryFn:async()=>{
-      const {selectScopeEarliest}=await loadGalaxyStatistics();
-      return selectScopeEarliest(targetScopes[0]);
-    },
-  });
   useEffect(()=>{
-    const found=overview.data?.earliest||earliestQuery.data||'';
-    if(found&&found!==knownEarliest)setKnownEarliest(found);
-  },[overview.data,earliestQuery.data,knownEarliest]);
-  const mediaQuery=useAsyncResource({
-    queryKey:['statistics-media-facet',scopeId,rankingType,queryRange.startDate,queryRange.endDate],
-    queryFn:async()=>{
-      const {selectMediaStatisticsFacetRows}=await loadGalaxyStatistics();
-      return selectMediaStatisticsFacetRows(targetScopes[0],rankingType,queryRange);
-    },
-    enabled:mediaDimension&&periodNavigationReady&&Boolean(targetScopes.length)&&Boolean(queryRange.startDate&&queryRange.endDate),
-  });
-  const refreshGate=useRefreshCooldown(mediaQuery.dataUpdatedAt);
+    const first=overview.data?.earliest||'';
+    if(first&&first!==knownEarliest)setKnownEarliest(first);
+  },[overview.data,knownEarliest]);
   const sourceRows={isPending:overview.isPending&&sourceChart,isSuccess:overview.isSuccess,error:overview.error,
     data:overview.data?.rows,dataUpdatedAt:overview.dataUpdatedAt};
   // Public Scopes have a published JS category snapshot. Reuse it in Culture
@@ -463,20 +439,10 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     rawRows:selectedRawNames?(sourceRows.data||[]).filter(row=>row.kind!=='source'||selectedRawNames.includes(String(row.category||'').trim().toLowerCase())):sourceRows.data||[],
     catalog:sourceCatalog.data||{}
   };
-  // The common chart reads the numeric ISR. Advanced cross-tags retain the
-  // original row-level semantics but load only after the user requests them.
-  const mediaRows=mediaQuery.data||[];
-  const mediaLoading=mediaQuery.isPending;
-  const mediaFetching=mediaQuery.isFetching;
-  const mediaError=mediaQuery.error;
-  const facetRange=rowsInWindow(mediaRows,queryRange);
-  const facetTotalsForOptions=facetTotals(facetRange.rows);
-  const facetNames=facetTotalsForOptions.slice(0,6).map(row=>row.term);
-  const facetData=facetTrend(facetRange.rows,facetRange,facetNames);
-  const facetDistribution=facetTotalsForOptions.slice(0,15).map(row=>({name:row.term,value:row.item_count}));
-  const optionsForCurrent=availableStatisticChartTypes(mediaDimension
-    ?{rows:facetData,series:facetNames.map(name=>({key:name,label:name})),distribution:facetDistribution}
-    :{rows:basicTrend,series:basicSeries,distribution:basicDistribution,totalKey:rankingType==='total'?'total':''});
+  const optionsForCurrent=availableStatisticChartTypes({
+    rows:basicTrend,series:basicSeries,distribution:basicDistribution,
+    totalKey:rankingType==='total'?'total':''
+  });
   const effectiveChartType=optionsForCurrent.some(([value])=>value===chartType)?chartType:(optionsForCurrent[0]?.[0]||'line');
   const chartGroups=chartTypeGroups(optionsForCurrent,rankingType==='total'
     ?['line','composed','bar']:['line','stacked','pie']);
@@ -498,8 +464,6 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   });
   const availableKeywordClasses=keywordClassQuery.data?.classes||[];
   const selectedKeywordClass=availableKeywordClasses.find(item=>item.classUid===selectedKeywordClassUid)
-    ||((requested==='media_style'||navigation.statTab==='styles')
-      ?availableKeywordClasses.find(item=>item.categoryName==='音樂'):null)
     ||availableKeywordClasses.find(item=>item.classUid===keywordClassQuery.data?.currentClassUid)
     ||availableKeywordClasses[0];
   const resolvedKeywordClassUid=String(selectedKeywordClass?.classUid||'');
@@ -558,7 +522,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
           </option>)}
         </select>
       </label>
-      {!mediaDimension&&rankingType!=='place'&&(rankingType==='source'||styleFilter==='keywords')?<label>
+      {(rankingType==='source'||keywordDimension)?<label>
         <span>作品／個人分類</span>
         <select className="scope-select" aria-label="作品／個人分類" value={activeSourceSelection}
           onChange={event=>{
@@ -574,14 +538,14 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
       {periodQuery.error?<span className="scope-status scope-error">
         時期範圍無法載入，仍可使用自選時間：{featureDataErrorMessage(periodQuery.error,UI_COPY)}
       </span>:null}
-      {rankingType!=='place'?<>{!mediaDimension?<label><span>{UI_COPY.statistics.chart}</span><select className="scope-select" value={effectiveChartType} onChange={event=>setChartType(event.target.value)}>
+      {sourceChart?<><label><span>{UI_COPY.statistics.chart}</span><select className="scope-select" value={effectiveChartType} onChange={event=>setChartType(event.target.value)}>
         {chartGroups.primary.length?<optgroup label={t('uiExtra.statisticsView.chartPrimary')}>
   {chartGroups.primary.map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}
 </optgroup>:null}
 {chartGroups.advanced.length?<optgroup label={t('uiExtra.statisticsView.chartAdvanced')}>
   {chartGroups.advanced.map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}
 </optgroup>:null}{!optionsForCurrent.length?<option value="line"><UiText id="uiExtra.statisticsView.noVisual"/></option>:null}
-      </select></label>:null}
+      </select></label>
       {!['pie','radar','radial','treemap','scatter'].includes(effectiveChartType)?<label className="scope-setting-toggle">
         <input type="checkbox" checked={foldBlank} onChange={event=>setFoldBlank(event.target.checked)}/> <UiText id="uiExtra.statisticsView.foldBlank"/>
       </label>:null}
@@ -589,13 +553,11 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     </div>
     <>
     {rankingType==='place'?<PlaceStatisticsPanel scopeId={scopeId} range={queryRange}/>:null}
-    {((mediaDimension&&mediaLoading)||(rankingType!=='place'&&!mediaDimension&&!sourceRows.error&&!sourceCatalog.error&&(sourceRows.isPending||sourceCatalog.isPending||!adminSourceReady)))?<div className="scope-stat-data-pending">
+    {(sourceChart&&!sourceRows.error&&!sourceCatalog.error&&(sourceRows.isPending||sourceCatalog.isPending||!adminSourceReady))?<div className="scope-stat-data-pending">
       <p className="scope-status" role="status"><UiText id="uiExtra.statisticsUI.loading"/></p>
       <div className="scope-feature-loading__body" aria-hidden="true"><span/><span/><span/><span/></div>
     </div>:null}
-    {earliestQuery.error?<p className="scope-status scope-error">{featureDataErrorMessage(earliestQuery.error,UI_COPY)}</p>:null}
-    {rankingType!=='place'&&!mediaDimension&&(sourceRows.error||sourceCatalog.error)?<p className="scope-status scope-error">{featureDataErrorMessage(sourceRows.error||sourceCatalog.error,UI_COPY)}</p>:null}
-    {mediaDimension&&mediaError?<p className="scope-status scope-error">{featureDataErrorMessage(mediaError,UI_COPY)}</p>:null}
+    {sourceChart&&(sourceRows.error||sourceCatalog.error)?<p className="scope-status scope-error">{featureDataErrorMessage(sourceRows.error||sourceCatalog.error,UI_COPY)}</p>:null}
     {sourceChart&&!sourceRows.isPending&&!sourceCatalog.isPending&&adminSourceReady&&!sourceRows.error&&!sourceCatalog.error?<>
       <p className="scope-status">{sourceSummary.startDate&&sourceSummary.endDate?sourceSummary.startDate+' ～ '+sourceSummary.endDate:''}</p>
       <StatisticsChartFrame level={zoomLevel} onChange={setZoomLevel} range={queryRange} idPrefix="scope-stat">
@@ -613,27 +575,6 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
         scope={targetScopes[0]} range={queryRange} filteredSource={Boolean(activeSourceSelection)}
         defaultSort={userActive?userSettings.sort:'desc'}/>}</StatisticsDetails>
     </>:null}
-    {mediaDimension&&Boolean(targetScopes.length)&&Boolean(queryRange.startDate&&queryRange.endDate)?<div className="scope-stat-controls">
-      <button type="button" className="loc-button" onClick={()=>mediaQuery.refetch()} disabled={mediaFetching||refreshGate.cooling}>
-        {mediaFetching?t('uiExtra.statisticsUI.refreshing'):t('uiExtra.statisticsUI.refresh')}
-      </button>
-      <StatsFreshness updatedAt={mediaQuery.dataUpdatedAt} remainingMs={refreshGate.remainingMs}/>
-    </div>:null}
-    {mediaDimension&&!mediaLoading&&!mediaError?<MediaFacetStatistics
-      key={rankingType}
-      rankingType={rankingType}
-      rows={mediaRows}
-      chartType={chartType}
-      onChartTypeChange={setChartType}
-      range={queryRange}
-      foldBlank={foldBlank}
-      zoomLevel={zoomLevel}
-      onZoomLevelChange={setZoomLevel}
-      scopeId={scopeId}
-      rowsInWindow={rowsInWindow}
-      facetTotals={facetTotals}
-      facetTrend={facetTrend}
-    />:null}
     {keywordDimension?<>
       {keywordSourcesQuery.error?<p className="scope-status scope-error">{featureDataErrorMessage(keywordSourcesQuery.error,UI_COPY)}</p>:null}
       {keywordClassQuery.isPending?<p className="scope-status">正在讀取關鍵詞組設定…</p>:null}
@@ -652,7 +593,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
         classUid={resolvedKeywordClassUid}
         zoomLevel={zoomLevel}
         onZoomLevelChange={setZoomLevel}
-        sharedCatalog={mediaDimension?null:sourceCatalog}
+        sharedCatalog={sourceCatalog}
       />}
     </StatisticsDetails>:null}
     </>
