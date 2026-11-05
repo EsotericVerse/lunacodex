@@ -5,7 +5,8 @@ import {sql} from 'npm:kysely@0.29.8';
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
 const MODES=new Set(['loc','daily','overview','earliest','totals','search_summary',
-  'trace_places','keyword_summary','keyword_catalog','shared_classes','trace_daily','trace_keywords']);
+  'trace_places','keyword_summary','keyword_catalog','shared_classes','trace_daily','trace_keywords',
+  'culture_density','culture_anchors']);
 function reject(message,status=400){
   const error=new Error(message);error.httpStatus=status;throw error;
 }
@@ -290,6 +291,35 @@ async function keywordSummary(trx,scope,anchor,start,end,source,requested,role){
   return result.rows.map(row=>({...row,hit_count:Number(row.hit_count||0),
     document_count:Number(row.document_count||0)}));
 }
+
+// Culture reads are ordinary portable Kysely operations: no stored RPC,
+// no management-permission lookup, and no Galaxy UID in density results.
+async function simpleCultureData(db,scope,mode,start,end,{engine='postgres',namespace='silver'}={}){
+  const table=name=>engine==='postgres'?'silver.'+name:portableRelation(name,engine,namespace);
+  if(mode==='culture_anchors'){
+    const rows=await db.selectFrom(table(scope+'_anchor'))
+      .select(['uid','type','title','attr'])
+      .where('type','in',['date','period','era'])
+      .where('invisible','=',false).execute();
+    return rows.map(row=>({...row,attr:typeof row.attr==='string'
+      ?JSON.parse(row.attr||'{}'):row.attr||{}}));
+  }
+  if(!start||!end)reject('Culture density requires a bounded date range');
+  const from=start+'T00:00:00';
+  const until=new Date(Date.parse(end+'T00:00:00Z')+86400000)
+    .toISOString().slice(0,10)+'T00:00:00';
+  const rows=await db.selectFrom(table(scope+'_galaxy'))
+    .select(['date','site'])
+    .select(eb=>eb.fn.countAll().as('item_count'))
+    .where('culture','=',true)
+    .where('createtime','>=',from)
+    .where('createtime','<',until)
+    .where('date','is not',null)
+    .groupBy(['date','site']).orderBy('date','asc').execute();
+  return rows.map(row=>({day:portableDay(row.date),site:String(row.site||''),
+    item_count:Number(row.item_count||0)}));
+}
+
 export async function executeKyselyAnalytics(trx,body,{role='anon'}={}){
   const args=body?.args??body;
   const mode=String(args.p_view||'').trim().toLowerCase();
@@ -298,6 +328,9 @@ export async function executeKyselyAnalytics(trx,body,{role='anon'}={}){
   const options=args.p_options??{};
   if(!MODES.has(mode)||!options||typeof options!=='object'||Array.isArray(options)||
      start&&end&&start>end)reject('Invalid statistics parameters');
+  if(mode==='culture_density'||mode==='culture_anchors')return {
+    data:await simpleCultureData(trx,scope,mode,start,end),count:null
+  };
   // Legacy summaries were SECURITY DEFINER aggregates. Keep the same public
   // totals without exposing private article text or private keyword metadata.
   await sql`reset role`.execute(trx);
@@ -417,6 +450,9 @@ export async function executePortableKyselyAnalytics(db,body,{engine,namespace='
   if(start&&end&&start>end||!options||typeof options!=='object'||Array.isArray(options))
     reject('Invalid statistics range');
   if(!MODES.has(mode))reject('Unknown LOC statistics view');
+  if(mode==='culture_density'||mode==='culture_anchors')return {
+    data:await simpleCultureData(db,scope,mode,start,end,{engine,namespace}),count:null
+  };
   if(mode==='search_summary'){
     if(scope!=='loc'||start||end)reject('Invalid Search summary request');
     const ids=options.scopeIds;
