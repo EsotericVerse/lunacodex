@@ -645,7 +645,7 @@ export async function selectScopePeriodWorkIndex(scope,{startDate='',endDate=nul
     includeGalaxy?selectRows(scope.galaxy,{
       columns:'uid,title,createtime',
       filters:galaxyFilters,
-      orders:[...(scope.id==='local'?[]:[{column:'date',ascending}]),{column:'createtime',ascending}],
+      orders:[{column:'createtime',ascending}],
       limit:pageSize,
       offset:galaxyOffset,
       maxLimit:pageSize,
