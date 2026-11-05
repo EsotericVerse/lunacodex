@@ -49,6 +49,21 @@ test('opening Culture lists does not preflight management grants; full text enfo
   assert.match(galaxy,/if\(!row\|\|\(!includeHidden&&galaxyAble\(row\)\.list===false\)\)return null/);
 });
 
+test('Statistics, Trace and Search article lists respect independent feature permissions',()=>{
+  const culture=file('app/loc/culture-query.js');
+  const stats=file('app/modular/features/Statistics.jsx');
+  const trace=file('app/modular/features/trace/trace-panel-filters.mjs');
+  const traceView=file('app/modular/features/trace/TracePlaceResults.jsx');
+  const search=file('app/loc/galaxy-query.js');
+  assert.match(stats,/articlePermission:'statics'/);
+  assert.match(culture,/\{column:articlePermission,operator:'eq',value:'true'\}/);
+  assert.match(culture,/const common=\{sourceName,sourceNames,mediaTypes,limit,offset,sortDirection,articlePermission\}/);
+  assert.match(trace,/\{column:'trace',operator:'eq',value:'true'\}/);
+  assert.match(traceView,/traceArticleIdFilters\(selectedIds/);
+  assert.match(search,/articlePermissionFilter\(current,'search'\)/);
+  assert.match(search,/articlePermissionFilter\(current,'list'\)/);
+});
+
 test('Block interfaces are two reads and one transactional save',()=>{
   const publicReader=file('app/loc/providers/kysely-public.mjs');
   const manager=file('app/loc/providers/kysely-management.mjs');
