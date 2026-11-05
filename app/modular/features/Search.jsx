@@ -130,6 +130,7 @@ function toResult(row,source,scopeId,copy=UI_COPY){
     source:displaySource,title:String(title),
     checkInPlace:'',
     date:row.date||row.createtime||row.address||row.record_date||row.UpdateTime||row.updated_at||'',
+    createtime:row.createtime||'',
     snippet:'',...(isGalaxy?{statics:row.statics,culture:row.culture,search:row.search,trace:row.trace,list:row.list,keyword:row.keyword,others:row.others,extract:row.extract}:{}),
     scopeId:scope,resourceType,resourceId,
     relatedMedia:Array.isArray(row.related_media)?row.related_media:[],
@@ -1353,6 +1354,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           relatedStatistics={identityReader||expandedReader?readerRow?.related_statistics||row.relatedStatistics:null}
           articleScopeId={row.scopeId}
           articleDate={identityReader||expandedReader?readerRow?.article_day||readerRow?.date||row.articleDay||row.date:''}
+          articleCreateTime={identityReader||expandedReader?readerRow?.createtime||row.createtime:row.createtime}
           tracePlace={identityReader||expandedReader?tracePlace:null}
           traceHref={tracePlace?featureNavigationHref(row.scopeId,'trace',{place:tracePlace.uid}):''}
           locationName={identityReader||expandedReader?locationName:''}
