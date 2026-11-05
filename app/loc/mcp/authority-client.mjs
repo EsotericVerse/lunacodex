@@ -19,20 +19,17 @@ export async function authorityAction(name,args,token,env={},fetchImpl=globalThi
   let path='',method='GET',body=null,query=null;
   if(name==='galaxy_link'){
     if(!['search','read','check','record','update_pr'].includes(a.action))throw bad('Invalid Galaxy Link action');
-    const source=a.source??'mcp';
-    if(!['mcp','github'].includes(source))throw bad('Invalid Galaxy source');
-    if(!['search','read'].includes(a.action)&&source!=='mcp'&&a.action!=='update_pr')
-      throw bad('Only search and read can select a source');
+    if(a.source!==undefined)throw bad('Galaxy Link source is fixed to mcp');
     if(a.action==='search'){
       if(typeof a.query!=='string'||a.query.trim().length<2||a.query.length>100||
         !Number.isInteger(a.limit??5)||(a.limit??5)<1||(a.limit??5)>5)
         throw bad('Invalid Galaxy Link search');
       path='search/'+id(a.scopeid);method='POST';
-      body={query:a.query,limit:a.limit??5,source};
+      body={query:a.query,limit:a.limit??5};
     }else if(a.action==='read'){
       if(!UID.test(String(a.uid||'')))throw bad('Invalid case-sensitive UID');
       path='read/'+id(a.scopeid)+'/'+a.uid;
-      query={offset:a.offset??0,max_chars:a.max_chars??20000,site:source};
+      query={offset:a.offset??0,max_chars:a.max_chars??20000,site:'mcp'};
     }else if(a.action==='check'){
       if(!a.conversation_id||!a.updated_at)throw bad('conversation_id and updated_at required');
       path='checkpoint/'+id(a.scopeid)+'/'+encodeURIComponent(String(a.conversation_id));
