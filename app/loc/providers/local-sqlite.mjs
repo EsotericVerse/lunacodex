@@ -988,7 +988,7 @@ async function readKeywordTreeCatalogLocal({p_class_uid=null}={}){
 }
 async function readSharedKeywordClassesLocal(){
   // Local SQLite owns its own Scope: category identity is the Class UID.
-  const nodes=await selectLocal("SELECT uid,name FROM local_keywords WHERE type='class' ORDER BY uid");
+  const nodes=await selectLocal("SELECT uid,name FROM local_keywords WHERE type='class' ORDER BY name");
   return {data:nodes.map(node=>({
     scopeId:'local',classUid:String(node.uid),name:String(node.name),category:String(node.uid)
   })),error:null};
