@@ -477,7 +477,7 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
         <label><span><UiText id="uiExtra.adminView.birthdayMapping"/></span>
           <input type="date" value={current.birthday||''} onChange={e=>patchRegistry('birthday',e.target.value)}/></label>
       </section>:null}
-      {current.scope_kind==='scope'&&currentConfig<>
+      {current.scope_kind==='scope'&&currentConfig?<>
         <label><span><UiText id="uiExtra.adminView.displayName"/></span><input value={currentConfig.display_name||''} onChange={e=>patchConfig('display_name',e.target.value)}/></label>
         <ObjectEditor mode="fields" fields={[
           {key:'search_intro',kind:'rich',label:<UiText id="uiExtra.adminView.searchIntroduction"/>,
