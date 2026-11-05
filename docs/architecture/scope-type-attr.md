@@ -311,3 +311,10 @@ Search 只對 Galaxy `content` 執行模糊比對；進階內容類型只保留�
 - 分類顯示允許「文章來源」或「關鍵詞」。關鍵詞科目從既有 `shared_classes` 查詢公開項目，選擇後只讀 `keyword_catalog` 的群組名稱，並依現有 Anchor group/item `attr.total` 的總量比例，將既有 `culture_density` 每日密度做**比例展示**（若沒有統計總量才退回等份）；不使用舊版 `keyword_summary` 逐篇 UID 清單演算法，圖示不代表實際關鍵詞命中筆數。沒有公開科目時顯示明確提示，不額外擴大 SQL 權限。
 - 變更時期或分類會清除舊文章列表與展開狀態；文章列表只在來源模式明確點擊才載入。不重建 RPC 或 SQL Schema。
 - 回歸測試：`scripts/test-culture-second-river-controls.mjs`。
+
+## 2026-11-06｜空間名稱清單定位與時間編輯河道一致性
+
+- 「空間定錨 → 地點管理 → 名稱整理」搜尋結果為正常文件流內、最大高度受限的捲動清單；不再套用路線欄位的 `position:absolute` 自動完成選單，避免覆蓋下方批次整理與浮空六鍵。
+- 「時間定錨 → 編輯」第一條河道與文化公開第一河道採同一層級：初始僅時代（era）與展開（＋），時間定錨點顯示於 era 河道，展開後才加入 period 子河道；不另列未歸屬定錨點／定錨點子列表。
+- 編輯頁預設台北時間近一個日曆年，保留日期或期間項目點選後進入現有編輯流程，沒有變更資料庫／MCP／RPC。
+- 回歸：`scripts/test-spatial-name-and-editor-era-river.mjs`。
