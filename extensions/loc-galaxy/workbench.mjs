@@ -7,6 +7,8 @@ const searchForm=byId('search-form'),queryInput=byId('query'),searchButton=byId(
 const article=byId('article'),title=byId('article-title'),meta=byId('article-meta');
 const body=byId('article-content'),more=byId('more');
 const actions=['open-import','open-bulk','open-article'];
+const captureEnable=byId('capture-enable'),captureDisable=byId('capture-disable');
+const captureSync=byId('capture-sync'),captureState=byId('capture-state');
 let ready=false,busy=false,current=null,nextOffset=null;
 let stagedConversation=null;
 const fileInput=byId('conversation-file'),recordButton=byId('record-conversation');
@@ -26,6 +28,7 @@ function setBusy(value){
   searchButton.disabled=!ready||value;
   queryInput.disabled=!ready||value;
   for(const id of actions)byId(id).disabled=!ready||value;
+  for(const control of [captureEnable,captureDisable,captureSync])control.disabled=!ready||value;
   fileInput.disabled=!ready||value;
   recordButton.disabled=!ready||value||!stagedConversation;
   more.disabled=!ready||value;
@@ -134,6 +137,45 @@ recordButton.addEventListener('click',async()=>{
       '。原始檔案仍在本機，可重新核對；請勿假設已完成。';
   }finally{setBusy(false);}
 });
+async function refreshCapture(){
+  const status=await send('locGalaxy.captureStatus');
+  captureState.textContent=(status.enabled?'擷取已啟用':'擷取已停止')+
+    ' · 待同步 '+status.pending+' 則'+(status.syncing?' · 正在同步':'');
+}
+captureEnable.addEventListener('click',async()=>{
+  if(!ready||busy)return;
+  // Chrome's origin permission prompt is tied directly to this user gesture.
+  const granted=await chrome.permissions.request({origins:['https://chatgpt.com/*']});
+  if(!granted){captureState.textContent='沒有獲得 ChatGPT 網站授權；未擷取。';return;}
+  setBusy(true);
+  try{
+    await send('locGalaxy.captureEnable');
+    await refreshCapture();
+  }catch(error){captureState.textContent='無法啟用：'+String(error.message||error);}
+  finally{setBusy(false);}
+});
+captureDisable.addEventListener('click',async()=>{
+  if(!ready||busy)return;
+  setBusy(true);
+  try{
+    await send('locGalaxy.captureDisable');
+    await refreshCapture();
+  }catch(error){captureState.textContent='無法停止：'+String(error.message||error);}
+  finally{setBusy(false);}
+});
+captureSync.addEventListener('click',async()=>{
+  if(!ready||busy)return;
+  setBusy(true);
+  captureState.textContent='正在核對 Galaxy checkpoint 並同步…';
+  try{
+    const result=await send('locGalaxy.captureSync');
+    await refreshCapture();
+    captureState.textContent+=' · 本次確認 '+(result.completed||0)+' 則';
+  }catch(error){
+    captureState.textContent='未確認同步：'+String(error.message||error)+
+      '。待同步資料會保留以便重試。';
+  }finally{setBusy(false);}
+});
 searchForm.addEventListener('submit',runSearch);
 byId('close-article').addEventListener('click',closeArticle);
 more.addEventListener('click',()=>{if(current&&nextOffset!==null)void loadArticle(current,nextOffset);});
@@ -151,6 +193,7 @@ async function start(){
     ready=true;
     connection.textContent='已授權 · Scope '+scopeid+' · Clerk '+String(state.subject||'');
     setBusy(false);
+    await refreshCapture();
     notice('可查詢已授權的 MCP 對話，或開啟文章工作區。');
   }catch(error){
     connection.textContent=String(error.message||error);

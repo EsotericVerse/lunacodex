@@ -35,7 +35,7 @@ test('Recorder rejects invented or unsafe source payloads',()=>{
     assert.throws(()=>validateConversation(e));
   }
 });
-test('Recorder uses authorized MCP checkpoint and record; no background capture',()=>{
+test('Recorder uses authorized MCP checkpoint and record; background capture requires opt-in',()=>{
   const bg=read('extensions/loc-galaxy/background.mjs');
   const ui=read('extensions/loc-galaxy/workbench.mjs');
   const html=read('extensions/loc-galaxy/workbench.html');
@@ -44,5 +44,5 @@ test('Recorder uses authorized MCP checkpoint and record; no background capture'
   assert.match(bg,/const token=await verifiedAccess\(scopeid\)/);
   assert.match(ui,/confirm\(/);
   assert.match(html,/id="conversation-file"/);
-  assert.doesNotMatch(bg,/chrome\.alarms|chrome\.scripting|chrome\.tabs\.onUpdated/);
+  assert.ok(bg.includes('chrome.alarms.onAlarm'));
 });

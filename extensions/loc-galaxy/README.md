@@ -1,4 +1,4 @@
-# LOC Galaxy — Chrome Extension (Stage 3: explicit source Recorder)
+# LOC Galaxy — Chrome Extension (Stage 4: opt-in ChatGPT web capture)
 
 This Manifest V3 extension connects only to LOC MCP via Clerk OAuth. The user enters only Scope ID. The full-page workbench adds private Galaxy Link search/read and buttons for the existing LOC website import, bulk-update, and article management pages.
 
@@ -11,7 +11,7 @@ This Manifest V3 extension connects only to LOC MCP via Clerk OAuth. The user en
 5. Only after verification are credentials persisted. `chrome.storage.session` holds the short-lived access token; `chrome.storage.local` holds the refresh token and Scope. Both are restricted to **trusted extension contexts**, not content scripts, and never synced to the user's Chrome account. The password and client secret are never collected. Treat local refresh-token storage as sensitive; Chrome storage is not a hardware vault.
 6. Changing Scope immediately clears the old credentials. Disconnect clears Extension credentials **without** pretending to revoke the website's Clerk sign-in; server-side token revocation is a separate action.
 
-No automatic chat capture, content scripts, chat monitoring, arbitrary external MCP forwarding, unattended database writes or extension-side bulk import parser is included. Data import and bulk edits run in the existing LOC site after its independent Clerk and Scope authorization. The extension never forwards the OAuth token to those pages.
+ChatGPT web capture is optional and disabled by default. Only after the user's explicit Chrome site-access approval does a narrowly scoped content script observe future visible user messages. No chat-history scraping, unrelated websites, arbitrary external MCP forwarding or extension-side bulk import parser is included. Data import and bulk edits run in the existing LOC site after its independent Clerk and Scope authorization. The extension never forwards the OAuth token to those pages.
 
 ## Operator OAuth registration — required before first login
 
@@ -48,7 +48,7 @@ No other parameter is required of the end user. A missing operator registration 
 
 Run `node --test scripts/test-loc-galaxy-chrome-oauth.mjs scripts/test-loc-galaxy-workbench.mjs` for isolated manifest, deterministic redirect, PKCE and callback tests. Actual Clerk authorization, token issuance, browser store visibility and end-to-end Scope authorization still require a configured Clerk OAuth app and an installed Chrome Extension.
 
-Read also: `docs/architecture/galaxy-link.md`. An explicit user-selected JSON Recorder is implemented in Stage 3; automated cross-app capture and extension-native ZIP archive upload remain later stages; this release reuses the published LOC import engine rather than duplicating it in the extension.
+Read also: `docs/architecture/galaxy-link.md`. Stage 3 supports explicit JSON Recorder, and Stage 4 adds opt-in ChatGPT browser capture. Other apps/platforms and archive upload remain separate work.
 
 ## Unified LOC favicon
 
@@ -67,4 +67,14 @@ In the white workbench, select a JSON file with `conversation_id`, timezone-qual
 
 The trusted service worker checks `galaxy_link.check` and calls `galaxy_link.record` only when `needs_save=true`; the backend owns checkpoint persistence and batch deduplication. Failed/ambiguous writes must not be marked complete. Each file is limited to 200 KB and a batch to 100 records / 120000 JSON characters. Larger exports require separately sourced batches and stable IDs. Note that a source-side `updated_at` must progress with new batches; the Extension does not manufacture timestamps or automatically scrape conversations. Current UI accepts one explicit source batch at a time.
 
-This does **not** capture ChatGPT desktop/mobile conversations or run hourly automatic jobs. Those require platform-provided exports or a separately authorized source adapter; no Chrome content-script, tabs-history, or background scanning capability is granted. Test with `node --test scripts/test-loc-galaxy-chrome-oauth.mjs scripts/test-loc-galaxy-workbench.mjs scripts/test-loc-galaxy-recorder.mjs`, followed by actual OAuth/Scope/record/read browser verification. Version 0.3.0 is source code only until installed/reloaded in Chrome.
+This does **not** capture ChatGPT desktop/mobile conversations. Stage 4 adds a site-scoped optional content script and Chrome alarm; it is disabled by default. Test with `node --test scripts/test-loc-galaxy-chrome-oauth.mjs scripts/test-loc-galaxy-workbench.mjs scripts/test-loc-galaxy-recorder.mjs`, followed by actual OAuth/Scope/record/read browser verification. Version 0.4.0 is source code only until installed/reloaded in Chrome.
+
+## Stage 4: ChatGPT 網頁擷取（使用者自願啟用）
+
+1. Pull 最新 `main`，到 `chrome://extensions` 對 LOC Galaxy 點 **Reload**，開啟白色工作台。
+2. 點 **啟用 ChatGPT 擷取**；Chrome 只詢問 `https://chatgpt.com/*` 網站存取權，不授權其他頁面。登入 LOC 並完成 Scope OAuth 仍是前提。
+3. 在 `chatgpt.com` 已開啟的對話中發送**新**使用者訊息；Extension 不會擷取啟用前的歷史內容，也不擷取 AI 回答。從啟用後首次觀察的時間（`observed_at`）產生 MCP 所需的 `sent_at`，**不是 ChatGPT 伺服器記錄的原始發送時間**。對於必須有原始時間戳的精確歷史資料，請使用來源 JSON 流程。
+4. 訊息先進 Extension 的可信任本機佇列，最長 500 則；每小時 Chrome Alarm 嘗試 `galaxy_link.check` → `galaxy_link.record`，或按 **立即同步**。僅在後端確認寫入後才從待同步佇列移除；失敗保留重試。每批最多 30 則及約 70 KB。Chrome 未執行時不會自動同步，瀏覽器頁面未開啟時不能擷取。
+5. 點 **停止擷取** 解除動態 Content Script 與每小時 Alarm，待同步佇列保留以便之後重新啟用；換 Scope 或中斷 Extension 會清除待同步內容，防止跨 Scope 洩漏。
+
+限制：ChatGPT 網站 DOM 並非穩定公開來源 API，網站改版可能使擷取停止；只處理有穩定 `data-message-id`、`data-message-author-role=user` 的**新**訊息。不能宣稱完整擷取、零漏記，亦不會使用私有 ChatGPT API 或繞過存取管制。正式 Chrome 實機的訊息擷取、OAuth、回寫、失敗續傳仍需要驗證。沒有新增資料表、RLS、SQL、外部服務或長期 token 曝露。

@@ -4,6 +4,7 @@ import {
 } from './oauth.mjs';
 import {scopeManagementUrl} from './workspace-routes.mjs';
 import {validateConversation} from './recorder.mjs';
+import {captureController} from './capture-manager.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const SCOPE_KEY='locGalaxy.scopeid';
@@ -42,6 +43,7 @@ async function selectScope(scopeid){
   const next=checkedScope(scopeid);
   const state=await readAll();
   if(state.scopeid!==next){
+    await capture.clearOnScopeChange();
     await clearCredentials();
     await chrome.storage.local.set({[SCOPE_KEY]:next});
   }
@@ -158,7 +160,13 @@ async function openWorkspace(message){
   return {scopeid,mode,opened:true};
 }
 
-async function handle(message){
+const capture=captureController({record:recorderRequest,authorized:authorizedStatus});
+chrome.alarms.onAlarm.addListener(alarm=>{
+  if(alarm.name===capture.ALARM)void capture.sync().catch(()=>{});
+});
+chrome.runtime.onStartup.addListener(()=>{void capture.resume().catch(()=>{});});
+
+async function handle(message,sender){
   await protectStorage();
   switch(message?.type){
     case 'locGalaxy.status':return authorizedStatus();
@@ -166,6 +174,11 @@ async function handle(message){
     case 'locGalaxy.openWorkspace':return openWorkspace(message);
     case 'locGalaxy.galaxy':return galaxyRequest(message);
     case 'locGalaxy.record':return recorderRequest(message);
+    case 'locGalaxy.captureObserved':return capture.accept(message,sender);
+    case 'locGalaxy.captureEnable':return capture.enable();
+    case 'locGalaxy.captureDisable':return capture.disable();
+    case 'locGalaxy.captureStatus':return capture.status();
+    case 'locGalaxy.captureSync':return capture.sync();
     case 'locGalaxy.openLogin':{
       const scopeid=await selectScope(message.scopeid);
       await chrome.tabs.create({url:SCENIC_LOGIN,active:true});
@@ -184,6 +197,7 @@ async function handle(message){
     }
     case 'locGalaxy.disconnect':{
       linkSearchStarted.clear();
+      await capture.clearOnScopeChange();
       await clearCredentials();
       return {ready:false};
     }
@@ -192,7 +206,7 @@ async function handle(message){
 }
 chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
   if(sender.id!==chrome.runtime.id)return false;
-  void handle(message).then(data=>sendResponse({ok:true,data}))
+  void handle(message,sender).then(data=>sendResponse({ok:true,data}))
     .catch(error=>sendResponse({ok:false,error:String(error?.message||'LOC Galaxy 連線失敗').slice(0,180)}));
   return true;
 });

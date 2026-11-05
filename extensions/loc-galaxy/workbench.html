@@ -45,6 +45,16 @@
       <button id="more" type="button" hidden>繼續讀取後續內容</button>
     </article>
   </section>
+  <section class="panel" aria-labelledby="live-heading">
+    <div class="section-header"><h2 id="live-heading">ChatGPT 對話同步</h2><small>Stage 4 · 自願啟用</small></div>
+    <p class="muted">只在你明確授權 <code>chatgpt.com</code> 後，擷取已開啟分頁中「啟用後新增」的使用者發言。記錄的是首次觀察時間，不是平台原始發送時間；不讀取舊訊息、不擷取 AI 回覆、不支援手機或桌面 App。Chrome 執行時每小時嘗試同步到私人 Galaxy。</p>
+    <div class="workgrid">
+      <button id="capture-enable" type="button" disabled><strong>啟用 ChatGPT 擷取</strong><span>僅限 chatgpt.com，首次啟用會由 Chrome 詢問權限</span></button>
+      <button id="capture-sync" type="button" disabled><strong>立即同步</strong><span>將已暫存來源文字追加至 Galaxy</span></button>
+      <button id="capture-disable" type="button" disabled><strong>停止擷取</strong><span>不再讀取新的頁面訊息</span></button>
+    </div>
+    <p id="capture-state" role="status" aria-live="polite" class="message">尚未啟用對話擷取。</p>
+  </section>
   <section class="panel" aria-labelledby="recorder-heading">
     <div class="section-header"><h2 id="recorder-heading">Galaxy Recorder</h2><small>Stage 3 · 明確來源匯入</small></div>
     <p class="muted">選擇你自行取得的 JSON 對話來源檔案，預覽後由你明確決定是否追加至私人 <code>site=mcp</code>。不自動監控分頁、不讀取瀏覽器歷史，也不會將訊息傳往非 LOC 服務。</p>
