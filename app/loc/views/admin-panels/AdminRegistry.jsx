@@ -18,7 +18,7 @@ import {
 
 const EMPTY_SCOPE_CREATE={scope_id:'',email:'',locale:'zh-Hant',route_mode:'directory'};
 const EMPTY_GROUP_CREATE={scope_id:'',display_name:'',route_mode:'directory',parent_scope_id:'loc'};
-const EMPTY_MAPPING={email:'',galaxy:'galaxy',anchor:'anchor',birthday:''};
+const EMPTY_MAPPING={email:'',galaxy:'galaxy',anchor:'anchor'};
 
 function normalizeAliases(value){
   return [...new Set((Array.isArray(value)?value:String(value||'').split(/[\n,，]/g))
@@ -71,21 +71,20 @@ function useAdminScopeData(){
           display_name:row.display_name,
           scope_kind:scopeKindOf(row.manage_role),
           domain:row.domain,directory:row.directory,parent_scope_id:row.parent_scope_id,
-          active:row.active,sort_order:row.sort_order
+          active:row.active,sort_order:row.sort_order,
+          title_tw:String(row.title_tw||''),desc_tw:String(row.desc_tw||''),
+          birthday:String(row.birthday||'').slice(0,10)
         }));
         const mappingRows=locRows.filter(row=>row.email).map(row=>({
           id:row.id,email:row.email,role:row.manage_role,
-          galaxy:row.galaxy_table,anchor:row.anchor_table,
-          birthday:row.birthday,
-          Title_TW:row.title_tw,Desc_TW:row.desc_tw
+          galaxy:row.galaxy_table,anchor:row.anchor_table
         }));
         // The graph needs only the registry: show it immediately instead of
         // waiting for every independent Scope configuration request.
         if(!active)return;
         setRegistry(registryRows);
-        const mapped=mappingRows.map(row=>({...row,birthday:String(row.birthday||'').slice(0,10)}));
-        setMappings(mapped);
-        setOriginalMappings(mapped);
+        setMappings(mappingRows);
+        setOriginalMappings(mappingRows);
         const configRows={};
         const configFailures=[];
         await Promise.all(registryRows.filter(row=>row.scope_kind==='scope').map(async row=>{
@@ -302,19 +301,15 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
   const config=configs[selectedId]||null;
   const scopeMappings=mappings.filter(row=>row.id===selectedId);
   const [newMapping,setNewMapping]=useState({...EMPTY_MAPPING});
-  const pageCopy=scopeMappings[0]||null;
-  // Only persist after explicit Save. Clicking another node or Cancel discards this draft.
+  // Names, page copy and birthday belong to the Group Scope row, not the
+  // management email / Routing Mapping.
   const [editDraft,setEditDraft]=useState(null);
   const draftFromSelected=()=>({
-    scopeId:selectedId,
-    registry:{...selected},
-    config:config?{...config}:null,
-    pageCopy:pageCopy?{Title_TW:pageCopy.Title_TW||'',Desc_TW:pageCopy.Desc_TW||''}:null
+    scopeId:selectedId,registry:{...selected},config:config?{...config}:null
   });
   const currentDraft=editDraft?.scopeId===selectedId?editDraft:null;
   const current=currentDraft?.registry||selected;
   const currentConfig=currentDraft?.config||config;
-  const currentCopy=currentDraft?.pageCopy||pageCopy;
   const cancelEdit=()=>{
     setEditDraft(null);
     setMappings(rows=>rows.map(row=>row.id!==selectedId?row:
@@ -330,11 +325,6 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
     const previous=base.config||config;
     return {...base,config:{...previous,[scopeFeatureName(key)||key]:Boolean(value)}};
   });
-  const patchPageCopy=(key,value)=>setEditDraft(draft=>{
-    const base=draft?.scopeId===selectedId?draft:draftFromSelected();
-    return {...base,pageCopy:{...(base.pageCopy||pageCopy),[key]:value}};
-  });
-
   const groups=registry.filter(row=>row.scope_kind==='group'&&row.active!==false&&row.scope_id!==selectedId);
   const parentOptions=[{value:'',label:'—'},...groups.map(row=>({value:row.scope_id,label:(row.display_name||row.scope_id)+' · '+row.scope_id}))];
   const themeOptions=[{value:'system-default',label:'系統預設（日／夜自動）'},...THEME_SLOTS.map(theme=>({value:theme.id,label:theme.label}))];
@@ -358,7 +348,9 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
     if(!draftDirty)return true;
     setStatus('');
     try{
-      if(current.scope_kind!=='system'&&JSON.stringify(current)!==JSON.stringify(selected)){
+      const routingFields=['display_name','domain','directory','parent_scope_id','active','sort_order'];
+      const routingDirty=routingFields.some(key=>current[key]!==selected[key]);
+      if(current.scope_kind!=='system'&&routingDirty){
         const hasDomain=Boolean(String(current.domain||'').trim());
         const hasDirectory=Boolean(String(current.directory||'').trim());
         if(hasDomain===hasDirectory)throw new Error('Domain / Directory 必須二選一。');
@@ -367,20 +359,23 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
           domain:String(current.domain||'').trim()||null,
           directory:String(current.directory||'').trim()||null,
           parent_scope_id:current.scope_id==='loc'?null:(String(current.parent_scope_id||'').trim()||null),
-          active:current.scope_id==='loc'?true:current.active!==false
+          active:current.scope_id==='loc'?true:current.active!==false,
+          sort_order:Number(current.sort_order)||0
         });
       }
-      if(current.scope_kind==='scope'&&currentCopy){
-        if(!String(currentCopy.Title_TW||'').trim())throw new Error('NAV 中文名稱不可空白。');
-        if(String(currentCopy.Title_TW||'')!==String(pageCopy?.Title_TW||'')||
-          String(currentCopy.Desc_TW||'')!==String(pageCopy?.Desc_TW||'')){
-          await updateRows('silver.loc',{
-            title_tw:String(currentCopy.Title_TW||'').trim(),
-            desc_tw:String(currentCopy.Desc_TW||'').trim()
-          },{filters:[{column:'id',operator:'eq',value:current.scope_id}]});
+      // Independent of owner email and role. One LOC UPDATE per changed
+      // Group/Scope metadata instead of a Routing update for each field.
+      if(current.scope_kind!=='system'){
+        const locPatch={};
+        for(const key of ['title_tw','desc_tw','birthday']){
+          if(current[key]!==selected[key])
+            locPatch[key]=key==='birthday'?(current[key]||null):String(current[key]||'').trim();
         }
+        if(Object.keys(locPatch).length)
+          await updateRows('silver.loc',locPatch,
+            {filters:[{column:'id',operator:'eq',value:current.scope_id}]});
       }
-      if(current.scope_kind==='scope'&&currentConfig){
+      if(current.scope_kind==='scope'&&currentConfig&&JSON.stringify(currentConfig)!==JSON.stringify(config)){
         await updateRows('silver.'+current.scope_id,{
           display_name:String(currentConfig.display_name||current.scope_id).trim(),
           search_intro:String(currentConfig.search_intro||'').trim(),
@@ -408,8 +403,6 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
         galaxy_table:String(row.galaxy||'galaxy').trim()||'galaxy',
         anchor_table:String(row.anchor||'anchor').trim()||'anchor'
       },{filters:[{column:'id',operator:'eq',value:row.id}]});
-      if(row.id!=='admin')await updateRows('silver.loc',{birthday:row.birthday||null},
-        {filters:[{column:'id',operator:'eq',value:row.id}]});
       setStatus('Mapping 已更新。');refresh();return true;
     }catch(error){setStatus(error?.message||'Mapping 更新失敗。');return false;}
   }
@@ -438,8 +431,6 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
         galaxy_table:String(newMapping.galaxy||'galaxy').trim()||'galaxy',
         anchor_table:String(newMapping.anchor||'anchor').trim()||'anchor'
       },{filters:[{column:'id',operator:'eq',value:selected.scope_id}]});
-      await updateRows('silver.loc',{birthday:newMapping.birthday||null},
-        {filters:[{column:'id',operator:'eq',value:selected.scope_id}]});
       setNewMapping({...EMPTY_MAPPING});setStatus('Mapping 已新增。');refresh();return true;
     }catch(error){setStatus(error?.message||'Mapping 新增失敗。');return false;}
   }
@@ -448,9 +439,7 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
     JSON.stringify(originalMappings.find(old=>old.id===row.id)));
   const draftDirty=Boolean(currentDraft&&(
     JSON.stringify(currentDraft.registry)!==JSON.stringify(selected)||
-    (currentDraft.config!==null&&JSON.stringify(currentDraft.config)!==JSON.stringify(config))||
-    (currentDraft.pageCopy!==null&&JSON.stringify(currentDraft.pageCopy)!==JSON.stringify(
-      pageCopy?{Title_TW:pageCopy.Title_TW||'',Desc_TW:pageCopy.Desc_TW||''}:null))
+    (currentDraft.config!==null&&JSON.stringify(currentDraft.config)!==JSON.stringify(config))
   ));
   const newMappingDirty=JSON.stringify(newMapping)!==JSON.stringify(EMPTY_MAPPING);
   useEffect(()=>{
@@ -477,15 +466,18 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
       {draftDirty?<span className="scope-status">有尚未儲存的修改</span>:null}
     </div>
       {current.scope_kind==='group'?<label><span><UiText id="uiExtra.adminView.groupName"/></span><input value={current.display_name||''} onChange={e=>patchRegistry('display_name',e.target.value)}/></label>:null}
-      {current.scope_kind==='scope'&&currentConfig?<>
-        {currentCopy?<section className="admin-page-copy-fields" aria-label="公開頁面名稱設定">
-          <label><span><UiText id="uiExtra.adminView.navigationTitle"/></span><input required value={currentCopy.Title_TW||''} onChange={e=>patchPageCopy('Title_TW',e.target.value)}/></label>
-          <ObjectEditor mode="fields" fields={[
-            {key:'Desc_TW',kind:'rich',label:<UiText id="uiExtra.adminView.pageDescription"/>,
-              editorKey:'admin-page-description:'+selectedId,content:currentCopy.Desc_TW||'',
-              canInsertImage:false,onPlainTextChange:value=>patchPageCopy('Desc_TW',value)}
-          ]}/>
-        </section>:null}
+      {current.scope_kind!=='system'?<section className="admin-page-copy-fields" aria-label="群組與 Scope 設定">
+        <label><span><UiText id="uiExtra.adminView.navigationTitle"/></span>
+          <input required value={current.title_tw||''} onChange={e=>patchRegistry('title_tw',e.target.value)}/></label>
+        <ObjectEditor mode="fields" fields={[
+          {key:'desc_tw',kind:'rich',label:<UiText id="uiExtra.adminView.pageDescription"/>,
+            editorKey:'admin-page-description:'+selectedId,content:current.desc_tw||'',
+            canInsertImage:false,onPlainTextChange:value=>patchRegistry('desc_tw',value)}
+        ]}/>
+        <label><span><UiText id="uiExtra.adminView.birthdayMapping"/></span>
+          <input type="date" value={current.birthday||''} onChange={e=>patchRegistry('birthday',e.target.value)}/></label>
+      </section>:null}
+      {current.scope_kind==='scope'&&currentConfig<>
         <label><span><UiText id="uiExtra.adminView.displayName"/></span><input value={currentConfig.display_name||''} onChange={e=>patchConfig('display_name',e.target.value)}/></label>
         <ObjectEditor mode="fields" fields={[
           {key:'search_intro',kind:'rich',label:<UiText id="uiExtra.adminView.searchIntroduction"/>,
@@ -528,7 +520,6 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
         <div className="scope-management-fields">
           <label><span><UiText id="uiExtra.adminView.galaxyTable"/></span><input value={row.galaxy||'galaxy'} onChange={e=>patchMapping(row.id,'galaxy',e.target.value)}/></label>
           <label><span>Anchor</span><input value={row.anchor||'anchor'} onChange={e=>patchMapping(row.id,'anchor',e.target.value)}/></label>
-          <label><span><UiText id="uiExtra.adminView.birthdayMapping"/></span><input type="date" value={row.birthday||''} onChange={e=>patchMapping(row.id,'birthday',e.target.value)}/></label>
         </div>
         <div className="scope-tabs">{!inDock?<button type="button" onClick={()=>saveMapping(row)}><UiText id="uiExtra.adminView.saveMapping"/></button>:null}<button type="button" disabled={['admin','loc'].includes(row.id)} onClick={()=>removeMapping(row)}><UiText id="uiExtra.adminView.remove"/></button></div>
       </article>)}
