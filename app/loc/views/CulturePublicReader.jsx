@@ -194,6 +194,7 @@ export default function CulturePublicReader(){
   const [expandedEras,setExpandedEras]=useState([]);
   const [expandedSources,setExpandedSources]=useState([]);
   const [selectedSite,setSelectedSite]=useState('');
+  const [selectedCategoryKey,setSelectedCategoryKey]=useState('');
   const [articleRows,setArticleRows]=useState([]);
   const [articleOffset,setArticleOffset]=useState(0);
   const [articleVisible,setArticleVisible]=useState(20);
@@ -288,14 +289,14 @@ export default function CulturePublicReader(){
     ?sourceModel(keywordDaily,[],[],expandedSources,rangeStart,rangeEnd)
     :sourceModel(daily,catalog.system,catalog.personal,expandedSources,rangeStart,rangeEnd),
     [densityMode,keywordDaily,daily,catalog,expandedSources,rangeStart,rangeEnd]);
-  const resetArticles=site=>{
-    sequence.current+=1;setSelectedSite(site);setArticlesOpen(false);
+  const resetArticles=(site='',categoryKey='')=>{
+    sequence.current+=1;setSelectedSite(site);setSelectedCategoryKey(categoryKey);setArticlesOpen(false);
     setArticleRows([]);setArticleOffset(0);setArticleVisible(20);
     setArticleMore(false);setArticleError('');fullSequence.current+=1;
     setFullUid('');setFullText('');setFullError('');
   };
   const fetchArticles=async({append=false,offset=0,site=selectedSite}={})=>{
-    if(!scope||!site)return;
+    if(!scope||!site||densityMode!=='source'||!validRange)return;
     const request=++sequence.current;
     setArticlesLoading(true);setArticleError('');
     try{
@@ -310,11 +311,24 @@ export default function CulturePublicReader(){
     }catch(reason){if(request===sequence.current)setArticleError(String(reason?.message||reason));}
     finally{if(request===sequence.current)setArticlesLoading(false);}
   };
-  const openArticles=site=>{
-    resetArticles(site);setArticlesOpen(true);
+  const openArticles=(site,categoryKey)=>{
+    if(densityMode!=='source')return;
+    // Clear the previous category before the new bounded page is fetched.
+    // The request sequence invalidates late responses from the old category.
+    resetArticles(site,categoryKey);
+    setArticlesOpen(true);
     fetchArticles({site,offset:0});
   };
+  useEffect(()=>{
+    // Any date/filter change invalidates the currently visible list.
+    sequence.current+=1;fullSequence.current+=1;
+    setArticlesOpen(false);setArticleRows([]);setArticleOffset(0);
+    setArticleVisible(20);setArticleMore(false);setArticleError('');
+    setSelectedSite('');setSelectedCategoryKey('');
+    setFullUid('');setFullText('');setFullError('');
+  },[scopeId,rangeStart,rangeEnd,densityMode,keywordClass]);
   const loadMore=()=>{
+    if(!articlesOpen||!selectedSite)return;
     if(articleVisible<articleRows.length){setArticleVisible(n=>Math.min(n+20,articleRows.length));return;}
     if(articleMore&&!articlesLoading)fetchArticles({append:true,offset:articleOffset});
   };
@@ -384,30 +398,26 @@ export default function CulturePublicReader(){
           onGroupToggle={group=>{
             const name=String(group);
             if(name.startsWith('root:')){
+              // Open/close child labels without requesting article rows.
               const id=name.slice(5);
               setExpandedSources(old=>old.includes(id)?old.filter(x=>x!==id):[...old,id]);
-            }else if(name.startsWith('site:')){
-              resetArticles(name.slice(5).split(':').slice(1).join(':'));
             }
           }}
           onGroupSelect={group=>{
             const name=String(group);
-            if(name.startsWith('site:'))resetArticles(name.slice(5).split(':').slice(1).join(':'));
+            if(!name.startsWith('site:')||densityMode!=='source')return;
+            const category=densityRiver.sites.find(item=>'site:'+item.key===name);
+            if(category)openArticles(category.site,category.key);
           }}/>
         {densityMode==='keyword'&&keywordClass?<p className='scope-status'>關鍵詞河道依 Anchor 已存總量比例分配每日文化密度，非當日實際命中筆數。</p>:null}
         {densityMode==='keyword'&&classesLoading?<p className='scope-status'>正在載入關鍵詞科目…</p>:null}
         {densityMode==='keyword'&&keywordLoading?<p className='scope-status'>正在載入關鍵詞統計…</p>:null}
         {densityMode==='keyword'&&!classesLoading&&!keywordClasses.length?<p className='scope-status'>目前沒有可使用的公開關鍵詞科目。</p>:null}
         {densityMode==='keyword'&&keywordClass&&!keywordLoading&&!keywordError&&!keywordGroups.length?<p className='scope-status'>此範圍沒有可顯示的關鍵詞統計。</p>:null}
-        {densityMode==='source'&&densityRiver.sites.length?<div className='scope-culture-source-detail'>
-          {densityRiver.sites.map(item=><div key={item.key} className='scope-culture-source-list-entry'>
-            <span>{item.site}（{item.count}）</span>
-            <button className='loc-button' type='button'
-              onClick={()=>openArticles(item.site)}>顯示相關文章列表</button>
-          </div>)}
-        </div>:null}
+        {densityMode==='source'&&expandedSources.length>0&&!articlesOpen?
+          <p className='scope-status'>點選左側小分類，才會載入該分類文章。</p>:null}
       </section>
-      {articlesOpen?<section className='scope-card scope-culture-source-detail'>
+      {articlesOpen&&densityMode==='source'&&selectedSite?<section className='scope-card scope-culture-source-detail' data-selected-category={selectedCategoryKey}>
         <h3>{selectedSite}｜相關文章列表</h3>
         {articleError?<p role='alert' className='scope-status scope-error'>{articleError}</p>:null}
         {articleRows.slice(0,articleVisible).map((row,index)=>row.hidden
