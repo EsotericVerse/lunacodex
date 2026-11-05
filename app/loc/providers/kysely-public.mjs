@@ -16,6 +16,26 @@ const ACTION_ARGS={
 export async function executeKyselyPublicAction(trx,body,{engine='postgres',namespace='silver'}={}){
   const portable=engine!=='postgres';
   const table=name=>portable?portableRelation(name,engine,namespace):'silver.'+name;
+  const action=String(body?.name||'');
+  if(action==='page_blocks'||action==='hero_blocks'){
+    const args=body?.args||{};
+    if(Object.keys(args).some(key=>!['p_scope_id','p_type'].includes(key)))
+      throw Object.assign(new Error('Invalid Block arguments'),{httpStatus:400});
+    const scope=id(args.p_scope_id),kind=String(args.p_type||'').trim();
+    if(!/^[a-z][a-z0-9_-]{0,40}$/.test(kind))
+      throw Object.assign(new Error('Invalid Block type'),{httpStatus:400});
+    const tableName=action==='hero_blocks'?'loc_blocks':
+      scope==='loc'?'loc_blocks':scope+'_blocks';
+    const names=action==='hero_blocks'?['group_'+kind,'scope_'+kind]:[kind];
+    // No registry query, table-introspection query, RLS prerequisite, or
+    // SQL ORDER BY: one bounded presentation query, then client-side sorting.
+    if(!portable)await sql`reset role`.execute(trx);
+    const rows=await trx.selectFrom(table(tableName))
+      .select(['uid','page_name','block_eyebrow','block_title','block_subtitle',
+        'block_text','block_order','block_entity','block_image'])
+      .where('page_name','in',names).execute();
+    return {data:rows,count:null};
+  }
   const metadata=await trx.introspection.getTables();
   const available=new Set(metadata.map(row=>String(row.schema||'')+'.'+row.name));
   const mysqlNames=new Set(metadata.map(row=>row.name));
@@ -37,22 +57,6 @@ export async function executeKyselyPublicAction(trx,body,{engine='postgres',name
   // The old public RPCs were SECURITY DEFINER. We return only their
   // pre-approved public result shape; callers cannot choose relations/SQL.
   if(!portable)await sql`reset role`.execute(trx);
-  // Only two public Block reads: index pages and feature Heroes. Sorting and
-  // composition are front-end responsibilities, never server-side RPC chains.
-  if(name==='page_blocks'||name==='hero_blocks'){
-    const kind=String(args.p_type||'').trim();
-    if(!/^[a-z][a-z0-9_-]{0,40}$/.test(kind))
-      throw Object.assign(new Error('Invalid Block type'),{httpStatus:400});
-    const blocksName=name==='page_blocks'
-      ?(scope==='loc'?'loc_blocks':scope+'_blocks'):'loc_blocks';
-    if(!has(blocksName))return {data:[],count:null};
-    const names=name==='page_blocks'?[kind]:['group_'+kind,'scope_'+kind];
-    const rows=await trx.selectFrom(table(blocksName))
-      .select(['uid','page_name','block_eyebrow','block_title','block_subtitle',
-        'block_text','block_order','block_entity','block_image'])
-      .where('page_name','in',names).execute();
-    return {data:rows,count:null};
-  }
   if(name==='read_scope_page_copy'){
     if(!has('manage'))return {data:[],count:null};
     const allowed=await trx.selectFrom(table('manage'))
