@@ -326,3 +326,11 @@ Search 只對 Galaxy `content` 執行模糊比對；進階內容類型只保留�
 - 異步請求採 sequence 防止前一個小分類的晚到回應覆寫新結果。日期區間、來源／關鍵詞顯示切換同樣清掉舊列表。
 - 分頁追加只限明確點選「點擊繼續顯示」，不預先載入其他小分類。關鍵詞比例河道不把群組名稱冒充 Galaxy.site 進行錯誤文章查詢。
 - 回歸測試 `scripts/test-culture-lazy-subcategory-articles.mjs`。
+
+## 2026-11-06｜痕跡首頁空間資料按需載入
+
+- 痕跡首頁只讀 Anchor `type in ('path','trace')` 以取得路線索引；選中路線後才以其成員 UID 查 `type='point'`，不預先讀取整個 `*_anchor`，也不查 Galaxy 文章。
+- 沒有已存路線時顯示空地圖與提示，不再觸發 `readAllTraceAnchors` 的全量掃描；使用者設定 `display=anchor` 不得造成首頁載入全部 point。
+- 各 Scope 優先顯示單一已儲存 path（保留 4 碼舊 UID 與正式 Base62 8 碼 UID 相容）；LOC 彙整頁優先顯示實際單一路線，既有跨路線聯集為**明確選擇**才讀取，而非預設。
+- 點選地圖上的單一地點、再進入文章頁籤才讀有界 Galaxy 文章列表；明確 `?place=` 深連結可例外進入該地點文章，無關一般首頁載入。
+- 只變更痕跡首頁的資料讀取時機與路線選擇，不變更資料表、權限、RPC、MCP 或全量管理工具；更新 `scripts/test-traces-feature.mjs` 與 `scripts/test-trace-loc-route-options.mjs` 回歸測試。

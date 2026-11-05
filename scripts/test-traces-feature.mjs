@@ -287,22 +287,17 @@ test('Trace map resizes with mouse or keyboard while remaining inside the deskto
   assert.match(map,/selectingLocation\?copy\.examples:copy\.all/);
 });
 
-test('Trace automatically loads all Scope anchors only when no saved route exists',()=>{
+test('Trace homepage only reads selected saved route points and never all points',()=>{
   const trace=read('app/modular/features/Trace.jsx');
+  const data=read('app/modular/features/trace/trace-data.js');
+  assert.match(trace,/enabled:supported&&routeListOpen&&traceIndex\.data!==undefined&&Boolean\(currentMap\)/);
+  assert.match(trace,/queryFn:\(\)=>readCurrentTraceAnchors\(periodScopeId,members,/);
+  assert.doesNotMatch(trace,/readAllTraceAnchors\(/);
+  assert.doesNotMatch(trace,/traceAllAnchorsKey\(/);
+  assert.match(trace,/if\(!currentMap\)return \{anchors:\[\],maps:\[\]\}/);
+  assert.match(data,/types:\['path','trace'\]/);
   const map=read('app/modular/features/trace/TraceMap.jsx');
-  const expression=trace.match(/const showingAll=([^;]+);/)?.[1];
-  assert.ok(expression,'Trace must derive its all-anchors fallback');
-  const evaluate=(currentTraceChoice,currentMap,maps,isLoc=false)=>
-    runInNewContext(expression,{currentTraceChoice,currentMap,maps,isLoc});
-  assert.equal(evaluate('auto',null,[]),true,'no route loads all anchors automatically');
-  assert.equal(evaluate('auto',{uid:'A123'},[{uid:'A123'}]),false,'saved Current route stays lazy');
-  assert.equal(evaluate('all',null,[{uid:'A123'}]),true,'manual all-anchors choice is preserved');
-  assert.match(trace,/enabled:supported&&routeListOpen&&traceIndex\.data!==undefined&&\(Boolean\(currentMap\)\|\|showingAll\)/);
-  assert.match(trace,/if\(!routeListOpen\|\|traceIndex\.data===undefined\)return null/);
-  assert.match(trace,/anchorsQuery\.isSuccess&&periodScopeId!=='loc'/);
   assert.match(map,/autoOverviewScopeRef\.current===scope/);
-  assert.match(map,/mapRef\.current\?\.overview\(\)/);
-  assert.match(map,/spatialData===null\?'正在取得空間定錨點資料/);
 });
 
 test('public guest can preview exactly two map points without any mutation API',async()=>{
