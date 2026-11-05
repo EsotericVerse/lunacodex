@@ -112,7 +112,7 @@ export async function executeKyselyPublicAction(trx,body,{engine='postgres',name
       'domain','directory','parent_scope_id'])
     .orderBy('sort_order','asc').orderBy('id','asc').execute();
   const groupRows=has('loc')?await trx.selectFrom(table('loc'))
-    .select(['id','display_name','title_tw','desc_tw']).execute():[];
+    .select(['id','display_name','title_tw','desc_tw','birthday']).execute():[];
   const groupMap=new Map(groupRows.map(row=>[row.id,row]));
   const enabled=members.filter(m=>m.active===true&&scopePattern.test(m.id));
   const relationAvailable=async name=>has(name.split('.')[1]);
@@ -149,6 +149,8 @@ export async function executeKyselyPublicAction(trx,body,{engine='postgres',name
   const themes=Array.isArray(rawTheme)?rawTheme:[];
   const themeList=themes.map(x=>({theme_id:x.theme_id,theme_name:x.theme_name,
     theme_order:x.theme_order})).sort((a,b)=>Number(a.theme_order)-Number(b.theme_order));
+  const scopeBirthdays=Object.fromEntries(groupRows.filter(row=>row.birthday)
+    .map(row=>[row.id,String(row.birthday).slice(0,10)]));
   return {data:{scope_id:scope,page_name:page,config,blocks,registry,page_copy:copy,
-    theme_list:themeList,themes},count:null};
+    scope_birthdays:scopeBirthdays,theme_list:themeList,themes},count:null};
 }
