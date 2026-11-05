@@ -309,15 +309,20 @@ export function useEditDock(){return useContext(EditDockContext);}
 export function useEditDockForm(actions){
   const dock=useEditDock();
   const latest=useRef(actions);
+  const activation=useRef(null);
   latest.current=actions;
   useEffect(()=>{
     if(!dock?.register)return;
-    return dock.register({
+    const unregister=dock.register({
       save:options=>latest.current.save?.(options),
       discard:()=>latest.current.discard?.(),
       isDirty:()=>Boolean(latest.current.isDirty?.()),
       isBusy:()=>Boolean(latest.current.isBusy?.()),
       isDestructive:()=>Boolean(latest.current.isDestructive?.())
     });
+    activation.current=unregister.activate;
+    return ()=>{activation.current=null;unregister();};
   },[dock?.register]);
+  // Optional: forms sharing a management page can activate the right Save target.
+  return useCallback(()=>activation.current?.(),[]);
 }
