@@ -19,9 +19,12 @@ const executable=s=>s.split('\n')
 const failSorts=[
   /\.(?:order|orderBy)\(\s*['"`](?:[a-z_]+\.)?uid['"`]/gi,
   /\bORDER\s+BY\b[^;\n]{0,150}\b(?:[a-z_]+\.)?uid\b/gi,
-  /\b(?:orders|sort)\s*[:=][^;\n]{0,150}\bcolumn:\s*['"`]uid['"`]/gi
+  /\b(?:orders|sort)\s*[:=][^;\n]{0,150}\bcolumn:\s*['"`]uid['"`]/gi,
+  // UI/result rankings must not choose a random Base62 UID as a tie-breaker.
+  /\b[a-z]\.uid\.localeCompare\(\s*[a-z]\.uid\s*\)/gi,
+  /\b(?:String|text)\(\s*a\.uid[^)]*\)\.localeCompare\(\s*(?:String|text)\(\s*b\.uid[^)]*\)\)/gi
 ];
-test('No UID-based order appears in active application/Edge/Worker query paths',()=>{
+test('No UID query or result tie ordering in active app/Edge/Worker paths',()=>{
   const violations=[];
   for(const path of roots.flatMap(list)){
     const source=executable(readFileSync(resolve(root,path),'utf8'));

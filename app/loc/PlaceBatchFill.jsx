@@ -23,7 +23,7 @@ function sampleRows(preview){
   return rows.filter(row=>{
     if(seen.has(row.uid))return false;
     seen.add(row.uid);return true;
-  }).sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.uid).localeCompare(String(b.uid)));
+  }).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
 }
 export default function PlaceBatchFill({scopeId,anchors=[]}){
   const cache=useResourceCache();

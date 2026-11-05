@@ -1,3 +1,11 @@
+### UID 顯示排序與批次排序清理（2026-11-05，第二階段）
+
+- 在資料庫 SQL / Kysely UID 排序修復之後，續清除純 JavaScript `uid.localeCompare` 與 `String(a.uid).localeCompare(String(b.uid))` 排列：文化時間軸、時代／期間、痕跡地點清單、批次補地點、經緯度自動比對、時間長河、首頁 Block、關鍵詞文章分析都不再使用隨機 UID 決定先後。
+- 每個清單只沿用其真實優先規則：事件日期、`createtime`、地點距離、地名、`block_order` 或編輯者已選的主要地點。時間或標題相同時保留資料原本順序。沒有時間的歷史 Anchor 不用 `attr.date` 假裝建立時間。
+- **UID 作身分與關聯的用途不變**。例如使用者指定的主要 Anchor UID、`new Map([uid,row])` 查找、`WHERE uid` 過濾、以及路線兩端 UID 組合成對稱的關聯鍵，都是身分對應，不是按 UID 排列文章或 Anchor 清單；不可盲目刪除這類引用。
+- 關鍵詞讀取器仍以完整的同時間群組確保不漏讀，但不再用 UID 排列同秒／無日期文章；測試改比對集合完整性與時間序列，而非隨機 UID 排列。對應回歸守衛已擴充 JS `localeCompare` 模式，後續不能再用 UID 當 tie-breaker。
+- 此第二階段與前一批 SQL 變更是同一個使用者需求；因每個 PR 不超過 20 檔，分為互相獨立的兩組交付，無新增 Schema、索引、RPC 或權限更動。
+
 ### UID 只作識別，不參與 SQL 排列（2026-11-05）
 
 - LOC 的八碼 Base62 `uid` 為隨機身分鍵，用於 `WHERE`／`JOIN`／關聯，**不得作 `ORDER BY uid`，也不得放在日期、名稱、Block 順序後當第二排序鍵**。這次未重新指定搜尋、文化、痕跡的主要時間排序政策；已存在的 Galaxy `date`、`createtime` 與 Anchor `createtime` 保留各自語意。

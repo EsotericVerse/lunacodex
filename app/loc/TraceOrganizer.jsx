@@ -7,7 +7,8 @@ import {renameTraceAnchorTitles} from '../modular/features/trace/trace-data';
 import {isUnifiedAnchorScope} from './unified-anchor-compat.mjs';
 
 const canonical=items=>[...items].sort((a,b)=>
-  String(a.uid||'').localeCompare(String(b.uid||'')))[0];
+  String(a.createtime||a.created_at||'9999').localeCompare(String(b.createtime||b.created_at||'9999'))||
+  String(a.title||'').localeCompare(String(b.title||''),'zh-Hant'))[0];
 
 export default function TraceOrganizer({scopeId,spatial,reload}){
   const anchors=useMemo(()=>(spatial.anchors||[]).filter(item=>

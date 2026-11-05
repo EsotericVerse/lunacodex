@@ -24,8 +24,7 @@ export function buildEraRiver(source=[],expandedEraIds=[],{editorOnly=false}={})
   const items=[],groups=[];
   const datedAnchors=[...anchors.values()]
     .filter(anchor=>validDate(anchor.start_date))
-    .sort((a,b)=>text(a.start_date).localeCompare(text(b.start_date))||
-      text(a.uid).localeCompare(text(b.uid)));
+    .sort((a,b)=>text(a.start_date).localeCompare(text(b.start_date)));
   const assigned=new Set();
   const withinTrace=(anchor,trace)=>{
     if(text(anchor.scope_id)!==text(trace.scope_id))return false;

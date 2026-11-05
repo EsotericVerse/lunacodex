@@ -23,8 +23,7 @@ export function classifyTraceAnchors(anchors=[],countyForCoordinates=null){
     regions.get(region).push(anchor);
   }
   for(const entries of regions.values())entries.sort((a,b)=>
-    String(a.title||'').localeCompare(String(b.title||''),'zh-Hant')
-    ||String(a.uid||'').localeCompare(String(b.uid||'')));
+    String(a.title||'').localeCompare(String(b.title||''),'zh-Hant'));
   return new Map([...regions].sort(([a],[b])=>
     a===TRACE_OTHER_REGION?1:b===TRACE_OTHER_REGION?-1:a.localeCompare(b,'zh-Hant')));
 }
@@ -41,8 +40,7 @@ export function groupTraceAnchorsByCountyId(anchors=[]){
     regions.get(code).push(anchor);
   }
   for(const entries of regions.values())entries.sort((a,b)=>
-    String(a.title||'').localeCompare(String(b.title||''),'zh-Hant')
-    ||String(a.uid||'').localeCompare(String(b.uid||'')));
+    String(a.title||'').localeCompare(String(b.title||''),'zh-Hant'));
   return new Map([...regions].sort(([a],[b])=>
     a===TRACE_OTHER_COUNTY_ID?1:b===TRACE_OTHER_COUNTY_ID?-1:a.localeCompare(b)));
 }

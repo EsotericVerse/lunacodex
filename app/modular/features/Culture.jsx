@@ -73,8 +73,7 @@ function labelOf(item,index,periodName=UI_COPY.format.period(index+1)){
 }
 function sortPeriods(rows=[]){
   return [...rows].filter(item=>item?.start_date||item?.end_date).sort((a,b)=>
-    String(a.start_date||a.end_date||'').localeCompare(String(b.start_date||b.end_date||''))||
-    String(a.uid||'').localeCompare(String(b.uid||''))
+    String(a.start_date||a.end_date||'').localeCompare(String(b.start_date||b.end_date||''))
   );
 }
 function periodRange(rows=[],scope='',allTime=UI_COPY.culture.allTime){

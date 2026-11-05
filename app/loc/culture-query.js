@@ -194,8 +194,7 @@ function periodRows(rows){
     open_start:Boolean(row.open_start),open_end:Boolean(row.open_end),
     invalid_anchor_links:row.invalid_anchor_links||[]
   })).sort((a,b)=>
-    timePeriodSortDate(a).localeCompare(timePeriodSortDate(b))||
-    String(a.uid||'').localeCompare(String(b.uid||'')));
+    timePeriodSortDate(a).localeCompare(timePeriodSortDate(b)));
 }
 function timelineItems(rows,{includeScope=false}={}){
   const all=Array.isArray(rows)?rows:[];
@@ -221,7 +220,6 @@ function timelineItems(rows,{includeScope=false}={}){
       });
     }).filter(row=>row.start_date||row.entry_type==='era')
     .sort((a,b)=>String(a.start_date||'9999-12-31').localeCompare(String(b.start_date||'9999-12-31'))||
-      String(a.uid||'').localeCompare(String(b.uid||''))||
       a.segment_index-b.segment_index);
 }
 function dateFilters(startDate,endDate,column='createtime'){
