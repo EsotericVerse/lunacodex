@@ -37,7 +37,10 @@ export function importCheckinDayEntries(records=[]){
       const day=calendarDay(moment);
       if(!day)continue;
       if(!grouped.has(day))grouped.set(day,[]);
-      const millis=Date.parse(String(record?.createtime||moment||''));
+      // A cultural date (moment / attr.date) must never impersonate the
+      // article's original creation timestamp.
+      const sourceTime=parseImportCreatedTime(record?.createtime??record?.timestamp);
+      const millis=sourceTime?Date.parse(sourceTime):NaN;
       grouped.get(day).push({title:articleTitle||fallback,
         article:Boolean(articleTitle),position:index,
         at:Number.isFinite(millis)?millis:Number.MAX_SAFE_INTEGER});
