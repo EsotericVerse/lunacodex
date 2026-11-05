@@ -613,13 +613,13 @@ export async function selectCultureArticleListPage(scope,{
   };
 }
 
-export async function selectScopePeriodWorkIndex(scope,{startDate='',endDate=null,sourceName='',sourceNames=[],mediaTypes=[],limit=10,offset=0,cursor=null,sortDirection='asc',periodRanges=null}={}){
+export async function selectScopePeriodWorkIndex(scope,{startDate='',endDate=null,sourceName='',sourceNames=[],mediaTypes=[],limit=10,offset=0,cursor=null,sortDirection='asc',periodRanges=null,articlePermission='culture'}={}){
   // A named period may contain several DISJOINT ranges. Fetch each bounded
   // range independently and merge pages by date; the gaps are never queried
   // or counted as part of the period.
   if(Array.isArray(periodRanges)&&periodRanges.length){
     const windows=timeDateWindows(periodRanges,endDate||new Date().toISOString().slice(0,10));
-    const common={sourceName,sourceNames,mediaTypes,limit,offset,sortDirection};
+    const common={sourceName,sourceNames,mediaTypes,limit,offset,sortDirection,articlePermission};
     if(!windows.length)return {rows:[],totalCount:0,hasMore:false,nextCursor:null};
     if(windows.length===1)return selectScopePeriodWorkIndex(scope,{
       ...common,...windows[0],cursor,periodRanges:null
@@ -682,8 +682,11 @@ export async function selectScopePeriodWorkIndex(scope,{startDate='',endDate=nul
     ?Math.max(0,Math.floor(cursorMediaOffset))
     :baseOffset;
 
+  // Statistics and Culture each use their own independent Galaxy permission.
+  // Never substitute Culture eligibility for a Statistics article list.
+  if(!['culture','statics'].includes(articlePermission))throw new Error('Invalid article list permission');
   const galaxyFilters=publicContentFilters([
-    {column:'culture',operator:'eq',value:'true'},
+    {column:articlePermission,operator:'eq',value:'true'},
     ...dateFilters(startDate,endDate,scope.id==='local'?'createtime':'date'),
     ...(rawSources.length?[{column:'site',operator:'in',value:rawSources}]:[])
   ]);
