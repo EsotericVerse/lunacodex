@@ -298,9 +298,8 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
       .set({display_name:title,updated_at:sql`now()`})
       .where('id','=',member).executeTakeFirst();
     if(Number(updated?.numUpdatedRows||0)!==1)reject('Group member configuration was not updated');
-    const named=await trx.updateTable('silver.loc')
-      .set({display_name:title}).where('id','=',member).executeTakeFirst();
-    if(Number(named?.numUpdatedRows||0)!==1)reject('Group member LOC Scope List was not updated');
+    // The existing Scope config trigger synchronizes LOC Group's name in the
+    // same transaction. A second explicit LOC UPDATE would be redundant.
     return {data:true,count:null};
   }
   if(name==='update_group_default_article_class'){
@@ -496,13 +495,13 @@ async function managedLocSettings(trx,args,claims){
       .where('id','=',key).executeTakeFirst();
     return rows.map(item=>({id:item.id,note:item.id===key?note:item.note}));
   }
-  const row=await trx.selectFrom('silver.loc')
+  const row=section==='database'?null:await trx.selectFrom('silver.loc')
     .select(['theme','keywords','blacklist'])
     .where('id','=','loc').forUpdate().executeTakeFirst();
   const system=section==='database'
     ?await trx.selectFrom('silver.manage').select('database')
       .where('id','=','admin').forUpdate().executeTakeFirst():null;
-  if(!row||(section==='database'&&!system))reject('LOC/system settings unavailable');
+  if(section==='database'?!system:!row)reject('LOC/system settings unavailable');
   const saved=validCatalog(section==='database'?system.database:
     section==='theme'?row.theme:section==='keywords'?row.keywords:row.blacklist?.[section],section);
   if(operation==='read')return saved;
