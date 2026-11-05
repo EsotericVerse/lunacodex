@@ -36,15 +36,23 @@ if(new URL(clerkIssuer).protocol!=="https:"||
   throw new Error("Clerk issuer and LOC origin must be HTTPS origins");
 const clerkKeys=createRemoteJWKSet(new URL(clerkIssuer+"/.well-known/jwks.json"));
 const mcpResource="https://loc.lo3rwang.cc/mcp";
-async function verifyClerkForSql(token:string){
-  const {payload}=await jwtVerify(token,clerkKeys,{
-    issuer:clerkIssuer,algorithms:["RS256"]
-  });
-  // Normal Clerk session tokens do not promise signed email claims.
-  // Only the independent Authority may bind this signed sub/sid to its
-  // single, preconfigured root management identity.
-  let trustedEmail='';
-  if(payload.email_verified!==true||typeof payload.email!=='string'){
+// A verified Clerk Session can rotate its JWT without changing its sub/sid.
+// Cache ONLY the Authority-confirmed email, never the JWT or SQL permissions.
+// Every request independently verifies the JWT signature, issuer and expiry.
+const SESSION_IDENTITY_TTL_MS=2*60*60*1000;
+const sessionIdentityCache=new Map<string,{until:number,pending:Promise<string>}>();
+async function verifiedClerkSessionEmail(token:string,payload:Record<string,unknown>){
+  const subject=String(payload.sub||''),sid=String(payload.sid||'');
+  const exp=Number(payload.exp),now=Date.now();
+  // Invalid identities never enter the cache; clerkSqlClaims still enforces
+  // all the existing authorization-claim checks.
+  const cacheable=/^user_[A-Za-z0-9]+$/.test(subject)&&
+    /^sess_[A-Za-z0-9]+$/.test(sid)&&Number.isFinite(exp)&&exp*1000>now;
+  const key=cacheable?JSON.stringify([payload.iss,subject,sid]):'';
+  const cached=key?sessionIdentityCache.get(key):null;
+  if(cached&&cached.until>now)return cached.pending;
+  if(cached)sessionIdentityCache.delete(key);
+  const pending=(async()=>{
     const reply=await fetch('https://auth.lo3rwang.cc/v1/identity',{
       method:'GET',headers:{authorization:'Bearer '+token,origin:clerkOrigin,accept:'application/json'},
       signal:AbortSignal.timeout(8000)
@@ -54,15 +62,36 @@ async function verifyClerkForSql(token:string){
     if(identity?.provider!=='clerk'||identity.subject!==payload.sub||
         identity.session!==payload.sid)
       throw new Error('LOC Authority Clerk identity mismatch');
-    trustedEmail=String(identity.email||'');
+    const email=String(identity.email||'').trim().toLowerCase();
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      throw new Error('Verified Clerk email claim is missing');
+    return email;
+  })();
+  if(key){
+    sessionIdentityCache.set(key,{until:now+SESSION_IDENTITY_TTL_MS,pending});
+    while(sessionIdentityCache.size>96)
+      sessionIdentityCache.delete(sessionIdentityCache.keys().next().value);
   }
+  try{return await pending;}
+  catch(error){
+    if(key&&sessionIdentityCache.get(key)?.pending===pending)
+      sessionIdentityCache.delete(key);
+    throw error;
+  }
+}
+async function verifyClerkForSql(token:string){
+  const {payload}=await jwtVerify(token,clerkKeys,{
+    issuer:clerkIssuer,algorithms:["RS256"]
+  });
+  const trustedEmail=payload.email_verified===true&&typeof payload.email==='string'
+    ?'':await verifiedClerkSessionEmail(token,payload);
   return clerkSqlClaims(payload,{issuer:clerkIssuer,origin:clerkOrigin,trustedEmail});
 }
 // OAuth tokens are reused for their signed lifetime. Cache only a SHA-256
 // fingerprint of recently verified, Scope-specific Authority grants for 30s;
 // never cache the raw token, do not cache refusals, and always verify JWT first.
 // Revoked grants are rechecked within 30 seconds, even on a warm isolate.
-const mcpGrantCache=new Map<string,{until:number,sub:string,email:string}>();
+const mcpGrantCache=new Map<string,{until:number,sub:string,pending:Promise<string>}>();
 async function verifyMcpForSql(token:string,scopeid:string,kind:string,source='mcp'){
   const {payload}=await jwtVerify(token,clerkKeys,{
     issuer:clerkIssuer,audience:mcpResource,algorithms:["RS256"]
@@ -80,30 +109,41 @@ async function verifyMcpForSql(token:string,scopeid:string,kind:string,source='m
   const key=scopeid+":"+action+":"+fingerprint;
   const now=Date.now();
   const cached=mcpGrantCache.get(key);
-  if(cached&&cached.until>now&&cached.sub===payload.sub)
+  if(cached&&cached.until>now&&cached.sub===payload.sub){
+    const email=await cached.pending;
     return {role:"authenticated",sub:payload.sub,iss:payload.iss,
-      email:cached.email,provider:"clerk"};
-  // Independent Authority checks the verified OAuth principal against the
-  // exact Scope capability. A read can never reuse a write-only authorization.
-  const endpoint=new URL("https://auth.lo3rwang.cc/v1/mcp/authorize-"+(reading?"read":"write")+"/"+scopeid);
-  if(reading&&source==="github")endpoint.searchParams.set("source","github");
-  const response=await fetch(endpoint.href,{
-    method:"GET",headers:{authorization:"Bearer "+token,accept:"application/json"},
-    redirect:"error",signal:AbortSignal.timeout(8000)
-  });
-  if(!response.ok)throw new Error("MCP Scope "+action+" authorization denied");
-  const identity=await response.json();
-  if(identity?.provider!=="clerk"||identity.authorized!==true||
-    identity.subject!==payload.sub||identity.scopeid!==scopeid||
-    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(identity.email||"")))
-    throw new Error("Verified MCP identity does not match Scope owner");
-  const email=String(identity.email).toLowerCase();
+      email,provider:"clerk"};
+  }
+  if(cached)mcpGrantCache.delete(key);
+  // Per-Token/Scope/action single-flight. Read, manage and write grants
+  // remain distinct; failures are never retained in the cache.
+  const pending=(async()=>{
+    const endpoint=new URL("https://auth.lo3rwang.cc/v1/mcp/authorize-"+(reading?"read":"write")+"/"+scopeid);
+    if(reading&&source==="github")endpoint.searchParams.set("source","github");
+    const response=await fetch(endpoint.href,{
+      method:"GET",headers:{authorization:"Bearer "+token,accept:"application/json"},
+      redirect:"error",signal:AbortSignal.timeout(8000)
+    });
+    if(!response.ok)throw new Error("MCP Scope "+action+" authorization denied");
+    const identity=await response.json();
+    if(identity?.provider!=="clerk"||identity.authorized!==true||
+      identity.subject!==payload.sub||identity.scopeid!==scopeid||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(identity.email||"")))
+      throw new Error("Verified MCP identity does not match Scope owner");
+    return String(identity.email).toLowerCase();
+  })();
   const until=Math.min(now+30000,Number(payload.exp)*1000);
   if(until>now){
-    mcpGrantCache.set(key,{until,sub:String(payload.sub),email});
+    mcpGrantCache.set(key,{until,sub:String(payload.sub),pending});
     if(mcpGrantCache.size>64)mcpGrantCache.delete(mcpGrantCache.keys().next().value);
   }
-  return {role:"authenticated",sub:payload.sub,iss:payload.iss,email,provider:"clerk"};
+  try{
+    const email=await pending;
+    return {role:"authenticated",sub:payload.sub,iss:payload.iss,email,provider:"clerk"};
+  }catch(error){
+    if(mcpGrantCache.get(key)?.pending===pending)mcpGrantCache.delete(key);
+    throw error;
+  }
 }
 function configuredPublishableKeys() {
   const keys = [Deno.env.get("LOC_KYSELY_PUBLISHABLE_KEY"), Deno.env.get("SUPABASE_PUBLISHABLE_KEY"), Deno.env.get("SUPABASE_ANON_KEY")].filter((value): value is string => Boolean(value));
