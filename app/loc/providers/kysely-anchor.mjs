@@ -220,9 +220,7 @@ export async function executePortableKyselyAnchor(db,body,{role='anon',engine,na
   if(uid&&!uidPattern.test(uid))reject('Invalid UID');
   const table=portableRelation(scope+'_anchor',engine,namespace);
   const owner=await isOwner(db,scope,role);
-  // Older portable databases require a separately approved schema migration.
-  // Native Supabase reads above already expose physical createtime.
-  const columns=['uid','type','title','description','invisible','attr'];
+  const columns=['uid','type','title','description','invisible','attr','createtime'];
   if(op==='read'){
     if(!owner&&!publicTypes.has(type))return {data:[],count:null};
     const limit=asPositiveInteger(data.limit,100,500);
@@ -337,7 +335,8 @@ export async function executePortableKyselyAnchor(db,body,{role='anon',engine,na
   if(op==='insert'){
     await db.insertInto(table).values(serializePortableJsonFields({
       uid,type,title:data.title??null,description:data.description??null,
-      invisible:data.invisible??false,attr:data.data
+      invisible:data.invisible??false,attr:data.data,
+      ...(Object.hasOwn(data,'createtime')?{createtime:anchorTime(data.createtime)}:{})
     },engine)).execute();
   }else{
     if(!Object.keys(changes).length)reject('Empty update');
