@@ -1,6 +1,6 @@
 'use client';
 
-import {useEffect,useMemo,useRef,useState,useSyncExternalStore} from 'react';
+import {useEffect,useLayoutEffect,useMemo,useRef,useState,useSyncExternalStore} from 'react';
 import dynamic from 'next/dynamic';
 import {Capacitor} from '@capacitor/core';
 import {SWRConfig,useSWRConfig} from 'swr';
@@ -18,6 +18,7 @@ import {useScopeRuntime} from './modular/use-scope-runtime';
 import {faviconForScope} from './site-favicons';
 import {appBootstrapPageCopy,useAppBootstrap} from './loc/app-bootstrap';
 import {getDbSourceStatus,subscribeDbSourceStatus} from './loc/db-source-status.mjs';
+import {readHomeEditorAccess} from './loc/home-edit-access.mjs';
 import {useNavigationPreferences} from './loc/use-navigation-preferences';
 import {NavigationPreferences} from './modular/navigation-preferences';
 import {navigationHref} from './modular/scope-registry.js';
@@ -320,14 +321,25 @@ function AppShellInner({children}){
   },[pathname]);
   const editDock=useEditDock();
   const [restoreHomeEdit,setRestoreHomeEdit]=useState(false);
-  useEffect(()=>{
+  const [managementDenied,setManagementDenied]=useState(false);
+  // Check the existing edit marker before paint. Protected management routes
+  // verify via ManagementAccess instead; public pages never preflight roles.
+  useLayoutEffect(()=>{
     try{
-      // Protected management routes already verify Clerk + Scope once via
-      // ManagementAccess. Running HomeEditModeRestore there concurrently
-      // repeats the RPC and can overwrite the live SWR management snapshot.
-      setRestoreHomeEdit(!isManagementHref(pathname)&&
-        Boolean(window.sessionStorage.getItem('loc-home-edit-entry-v1')));
+      const marker=readHomeEditorAccess(window.sessionStorage);
+      setRestoreHomeEdit(!isManagementHref(pathname)&&marker?.scopeId===scopeId);
     }catch{setRestoreHomeEdit(false);}
+  },[pathname,scopeId]);
+  useEffect(()=>{
+    if(editDock?.active&&restoreHomeEdit)setRestoreHomeEdit(false);
+  },[editDock?.active,restoreHomeEdit]);
+  useEffect(()=>{
+    setManagementDenied(false);
+    const denied=event=>{
+      if(event?.detail?.scopeId===scopeId)setManagementDenied(true);
+    };
+    window.addEventListener('loc-management-entry-denied',denied);
+    return()=>window.removeEventListener('loc-management-entry-denied',denied);
   },[pathname,scopeId]);
   useEffect(()=>{
     // Next can catch a failed lazy import before React reports the error.
@@ -465,6 +477,8 @@ function AppShellInner({children}){
       encodeURIComponent(key)+'='+encodeURIComponent(value);
   };
   const editingDockVisible=Boolean(editDock?.active&&editDock.scopeId===navScopeId);
+  const editDockPending=!editingDockVisible&&((restoreHomeEdit&&!editDock?.active)||
+    (isManagementHref(pathname)&&!managementDenied));
   const locAdminEdit=navScopeId==='loc';
   const editSegments=String(pathname||'').split('/').filter(Boolean);
   const editSection=typeof window!=='undefined'
@@ -583,6 +597,7 @@ function AppShellInner({children}){
           :<button type="button" key={tab.id} disabled>
             <BottomNavIcon name={tab.icon}/><span>{tab.label}</span>
           </button>)
+      :editDockPending?<span role="status" className="scope-edit-dock-pending">正在確認編輯介面…</span>
       :featureTabs.map(tab=><ScopeLink key={tab.id} href={tab.href} native={native}
         aria-current={tab.id==='settings'?isSettings?'page':undefined:
           !isSettings&&(tab.id==='home'?(localWorkspace?(isMyPhone||isScopeHomepage):isScopeHomepage):currentFeature===tab.id)?'page':undefined}>
