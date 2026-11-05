@@ -92,3 +92,39 @@ test('three repeated Galaxy Link search violations trigger three-minute cooldown
   for(const lease of leases)await authority.mcpQuotaRelease(lease.lease,subject);
   await assert.rejects(authority.mcpQuotaAcquire('write',subject),error=>error.status===429);
 });
+
+test('repeated cooldown incidents escalate 3/6/12/24/48/60 minutes, then cap',async()=>{
+  const authority=quota(),subject='clerk:user_Escalation';
+  const base=Date.now(),duration=[3,6,12,24,48,60,60];
+  // Seed a full search quota so each three refused search attempts is a new incident.
+  const tickets=[await authority.mcpQuotaAcquire('search',subject),
+    await authority.mcpQuotaAcquire('search',subject)];
+  for(let i=0;i<duration.length;i++){
+    // Simulate a cooled-off client and fresh minute window, without changing
+    // the global Date clock or weakening the production implementation.
+    await authority.ctx.storage.put('mcp-qos-cooldown:'+subject,base-1);
+    await authority.ctx.storage.put('mcp-quota-window:'+subject,
+      {started:base,count:2,reads:2,searches:2,rateRejects:0});
+    for(let j=0;j<3;j++)
+      await assert.rejects(authority.mcpQuotaAcquire('search',subject),error=>error.status===429);
+    const until=await authority.ctx.storage.get('mcp-qos-cooldown:'+subject);
+    const minutes=(until-Date.now())/60000;
+    assert.ok(minutes<=duration[i]&&minutes>duration[i]-0.1,
+      'incident '+(i+1)+' must cooldown for '+duration[i]+' minutes');
+    const before=await authority.ctx.storage.get('mcp-qos-strikes:'+subject);
+    await assert.rejects(authority.mcpQuotaAcquire('search',subject),error=>error.status===429);
+    const after=await authority.ctx.storage.get('mcp-qos-strikes:'+subject);
+    assert.deepEqual(after,before,'blocked retries must not extend cooldown');
+  }
+  const prior=await authority.ctx.storage.get('mcp-qos-strikes:'+subject);
+  await authority.ctx.storage.put('mcp-qos-strikes:'+subject,
+    {...prior,at:Date.now()-86_400_001});
+  await authority.ctx.storage.put('mcp-qos-cooldown:'+subject,base-1);
+  await authority.ctx.storage.put('mcp-quota-window:'+subject,
+    {started:base,count:2,reads:2,searches:2,rateRejects:0});
+  for(let j=0;j<3;j++)
+    await assert.rejects(authority.mcpQuotaAcquire('search',subject),error=>error.status===429);
+  const reset=(await authority.ctx.storage.get('mcp-qos-cooldown:'+subject)-Date.now())/60000;
+  assert.ok(reset<=3&&reset>2.9,'24 hours without incidents resets escalation');
+  for(const t of tickets)await authority.mcpQuotaRelease(t.lease,subject);
+});
