@@ -14,7 +14,8 @@ test('LOC Galaxy manifest limits host access to LOC and its known Clerk issuer',
   const metadata=JSON.parse(read('public/extension/oauth/client.json'));
   const config=JSON.parse(read('public/extension/oauth/config.json'));
   assert.equal(manifest.manifest_version,3);
-  assert.deepEqual(manifest.permissions,['identity','storage']);
+  assert.deepEqual(manifest.permissions,['identity','storage','scripting','alarms']);
+  assert.deepEqual(manifest.optional_host_permissions,['https://chatgpt.com/*']);
   assert.deepEqual(manifest.host_permissions,[LOC_ORIGIN+'/*',ISSUER+'/*']);
   assert.equal(manifest.content_scripts,undefined);
   assert.equal(config.issuer,ISSUER);
@@ -39,7 +40,8 @@ test('extension exposes only Scope ID for auth and preserves scenic login',()=>{
   assert.ok(oauth.includes('chrome.identity.launchWebAuthFlow'));
   assert.ok(!oauth.includes('client_secret'));
   assert.ok(!worker.includes('chrome.runtime.onMessageExternal'));
-  assert.ok(!worker.includes('chrome.alarms'));
+  assert.ok(worker.includes('chrome.alarms.onAlarm'));
+  assert.ok(!worker.includes('chrome.runtime.onMessageExternal'));
 });
 test('OAuth S256 follows the RFC 7636 known verifier example',async()=>{
   const verifier='dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk';
