@@ -159,8 +159,9 @@
     overscroll-behavior:contain;
   }
   .loc-trace-map-shell.is-public-trace .loc-trace-floating-content{
+    top:clamp(10rem,35%,14rem);
     bottom:calc(3.65rem + env(safe-area-inset-bottom,0px));
-    max-height:min(36dvh,calc(100% - 15rem));
+    max-height:none;
   }
   .loc-trace-map-shell.is-public-trace .loc-trace-origin-button{
     right:.4rem;
