@@ -347,8 +347,32 @@ test('mobile Trace keeps selected-place report clear of the map return button',(
   const css=read('app/styles/responsive.css');
   assert.match(css,/\.loc-trace-map-shell\.is-public-trace \.loc-trace-floating-content\{/);
   assert.match(css,/bottom:calc\(3\.65rem \+ env\(safe-area-inset-bottom,0px\)\)/);
-  assert.match(css,/max-height:min\(36dvh,calc\(100% - 15rem\)\)/);
+  assert.match(css,/top:clamp\(10rem,35%,14rem\)/);
+  assert.match(css,/max-height:none/);
   assert.match(css,/\.loc-trace-map-shell\.is-public-trace \.loc-trace-origin-button\{/);
   assert.match(css,/min-height:44px/);
   assert.match(css,/max-height:min\(42dvh,280px\)/);
+});
+
+test('all four article lists show saved dates and shared theme-alternating rows',()=>{
+  const article=read('app/modular/Article.jsx');
+  const statistics=read('app/modular/features/Statistics.jsx');
+  const culture=read('app/modular/features/Culture.jsx');
+  const search=read('app/modular/features/Search.jsx');
+  const trace=read('app/modular/features/trace/TracePlaceResults.jsx');
+  const stripes=read('app/styles/list-stripes.css');
+  assert.ok(article.includes("String(date||articleDate||articleCreateTime||'').slice(0,10)"));
+  assert.ok(statistics.includes('date={work.date||work.createtime||work.start_date||'));
+  assert.ok(culture.includes('日期：{work.date}'));
+  assert.ok(search.includes('date={row.date}'));
+  assert.ok(trace.includes('date={row.date||row.createtime||'));
+  assert.ok(trace.includes("columns:'uid,title,createtime,date'"));
+  assert.ok(stripes.includes('.loc-public-article-list > :is(.scope-work-list-row,.loc-shared-work-card):nth-child(odd)'));
+  assert.ok(stripes.includes('background:var(--loc-list-row-even)'));
+});
+
+test('public Trace report fits the map and keeps its three mode buttons in one row',()=>{
+  const styles=read('app/styles/features.css');
+  assert.ok(styles.includes('.loc-trace-float-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))'));
+  assert.ok(styles.includes('top:clamp(9rem,28%,12rem);max-height:none;min-height:0;'));
 });
