@@ -460,7 +460,7 @@ Deno.serve(async (request) => {
       const stamp=String(body.updated_at||"");
       if(!["lo3rwang","lrunes"].includes(scope)||!/^[A-Za-z0-9]{8}$/.test(uid)||
          typeof content!=="string"||!content.trim()||content.length>125000||
-         !/^[0-9a-f]{64}$/.test(batchId)||!content.startsWith(marker+"\\n".replace("\\n","\n"))||
+         !/^[0-9a-f]{64}$/.test(batchId)||!content.startsWith(marker+"\n")||
          !Number.isFinite(Date.parse(stamp))) return json({error:{message:"Invalid append request"}},400);
       const db=await databaseForTarget(controlTarget);
       const table=sql.ref("silver."+scope+"_galaxy");
