@@ -85,20 +85,19 @@ test('all management pages restore editor access through one verified entry',()=
   assert.match(entry,/granted\(verification\.authorizer,scopeId,level\)/);
   assert.doesNotMatch(manager,/renewEditorSession|sessionExpired|get_my_scope_management/);
 });
-test('expired unified entry verifies identity and fresh scope grant before clearing the lock',()=>{
+test('expired management entry must pass scenic Clerk re-entry and live Scope grant',()=>{
   const entry=read('app/loc/ManagementAccess.jsx');
+  const login=read('public/login/index.html');
   const ttl=read('app/loc/edit-session-ttl.mjs');
-  const auth=read('app/loc/db-contract.mjs');
-  assert.match(entry,/async function renew\(\)/);
-  assert.match(entry,/const verified=await verifyManagementEntry\(check\)/);
-  assert.match(entry,/granted\(verified.authorizer,scopeId,level\)/);
-  assert.ok(entry.indexOf('if(!granted(verified.authorizer')<entry.indexOf('clearEditorSession(window.sessionStorage)'));
-  assert.doesNotMatch(entry,/get_my_scope_management|setAuthorization|createScopeAuthorizer/);
-  assert.match(entry,/touchEditorSession\(window.sessionStorage\)/);
-  assert.match(ttl,/EDIT_IDLE_TTL_MS=30\*60\*1000/);
-  assert.match(ttl,/EDIT_SESSION_TTL_MS=2\*60\*60\*1000/);
-  assert.match(ttl,/value\.locked/);
-  assert.match(auth,/auth\.getUser\(session\.access_token\)/);
+  assert.match(entry,/const fromLogin=window\\.sessionStorage\\.getItem\\(LOGIN_RETURN_KEY\\)===path/);
+  assert.match(entry,/verifyManagementEntry\\(fromLogin\\?account\\.refresh:check\\)/);
+  assert.match(entry,/if\\(fromLogin&&result\\?\\.user&&granted\\(result\\.authorizer,scopeId,level\\)\\)/);
+  assert.ok(entry.indexOf('granted(result.authorizer,scopeId,level)')<entry.indexOf('clearEditorSession(window.sessionStorage)'));
+  assert.match(entry,/touchEditorSession\\(window\\.sessionStorage\\)/);
+  assert.match(entry,/window\\.location\\.replace\\('\/login\/index\\.html\\?return_to='/);
+  assert.match(login,/sessionStorage\\.setItem\\(LOGIN_RETURN_KEY,path\\)/);
+  assert.match(ttl,/EDIT_IDLE_TTL_MS=30\\*60\\*1000/);
+  assert.match(ttl,/EDIT_SESSION_TTL_MS=2\\*60\\*60\\*1000/);
 });
 
 test('cancel exits management to the real public document after clearing editor state',()=>{
