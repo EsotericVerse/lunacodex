@@ -37,7 +37,7 @@ test('Extension owns only LOC issuer host permissions and hides Access Tokens fr
   assert.match(bg,/mcpTool\(token,'galaxy_link'/);
   assert.doesNotMatch(view,/refresh_token|access_token|client_secret/);
   assert.doesNotMatch(bg,/chrome.runtime.onMessageExternal/);
-  assert.match(bg,/chrome\\.alarms\\.onAlarm/);
+  assert.ok(bg.includes('chrome.alarms.onAlarm'));
   assert.match(bg,/Date\.now\(\)-last<30000/);
   assert.match(read('extensions/loc-galaxy/workbench.html'),/Content-Security-Policy/);
 });
