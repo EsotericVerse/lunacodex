@@ -658,7 +658,7 @@ Deno.serve(async (request) => {
 
     // LOC registry, user settings and public presentation are control-plane
     // actions. A user-managed SQL target only needs its own data tables.
-    const controlManage=new Set(["manage","read_group_members",
+    const controlManage=new Set(["manage","read_source_catalog","save_scope_sources","read_group_members",
       "update_group_member_name","update_group_default_article_class",
       "loc_admin_settings","is_current_email_blocklisted",
       "read_scope_registry_admin","manage_scope_registry",
