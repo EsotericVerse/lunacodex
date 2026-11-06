@@ -11,6 +11,7 @@ import {selectGalaxyIdentity} from '../galaxy-query';
 import ScopeLink from '../../modular/ScopeLink';
 import {scopeHref} from '../../modular/scope-registry';
 import {sourceLabelMatchesSite} from '../source-classification.mjs';
+import {PUBLISHED_SOURCE_LISTS,PUBLISHED_SOURCE_ENTRIES} from '../../modular/published-source-taxonomy.js';
 
 const CultureTimeline=dynamic(()=>import('../../modular/modules/culture-timeline/CultureTimeline'),{loading:()=>null});
 const NO_ITEMS=Object.freeze([]);
@@ -156,16 +157,14 @@ async function analytics(scope,view,start,end,options={}){
   return Array.isArray(data)?data:[];
 }
 async function sourceCatalog(scope){
-  const [global,personal]=await Promise.all([
-    selectRows('silver.loc',{columns:'DefaultArticleClass',
-      filters:[{column:'id',operator:'eq',value:'loc'}],limit:1}),
-    selectRows('silver.'+scope,{columns:scope==='lrunes'?'txt_class':'ArticleTag',
-      filters:[{column:'id',operator:'eq',value:scope}],limit:1})
-  ]);
-  return {
-    system:list(global.rows?.[0]?.DefaultArticleClass).map(String),
-    personal:list(personal.rows?.[0]?.[scope==='lrunes'?'txt_class':'ArticleTag']).map(String)
-  };
+  const published=PUBLISHED_SOURCE_LISTS[scope];
+  if(published){
+    // A published site never reads private Scope Anchor data on page load.
+    // From.name, not the editable display label, identifies Galaxy.site.
+    return {system:published.system||[],
+      personal:(PUBLISHED_SOURCE_ENTRIES[scope]||[]).map(item=>item.name)};
+  }
+  throw new Error('來源分類尚未發布');
 }
 export default function CulturePublicReader(){
   const {scopeId}=useScopeRuntime();
