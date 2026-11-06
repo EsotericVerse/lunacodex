@@ -129,14 +129,13 @@ function published(cfg,uid){
 }
 async function keywordClassInfo(trx,scope,anchor,requested,role){
   const config=await trx.selectFrom('silver.'+scope)
-    .select(['current_keyword_class_uid','keyword_meta','staticstime'])
+    .select(['current_keyword_class_uid','keyword_meta'])
     .where('id','=',scope).executeTakeFirst();
   const uid=String(requested||config?.current_keyword_class_uid||'');
   if(!UID.test(uid))return null;
   const allowed=await owns(trx,scope,role)||published(config,uid);
   const meta=config?.keyword_meta??{};
-  const done=meta.by_class?.[uid]?.completedAt||
-    (uid===config?.current_keyword_class_uid&&meta.class_uid===uid&&config?.staticstime);
+  const done=meta.by_class?.[uid]?.completedAt;
   return {uid,allowed,ready:Boolean(done),config};
 }
 async function sharedClasses(trx,scope,anchor,role){

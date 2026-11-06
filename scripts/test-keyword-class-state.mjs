@@ -11,10 +11,10 @@ test('second Class reanalysis never deletes first Class metadata',()=>{
  assert.equal(keywordClassState({keyword_meta:stale},'ClB1'),null);
  assert.equal(keywordClassState({keyword_meta:stale},'ClA1').matchedDocuments,5);
 });
-test('legacy single-Class metadata accepted only for its original Class',()=>{
+test('scope-wide legacy completion date is never assigned to a Class',()=>{
  const config={keyword_meta:{class_uid:'ClA1',matchedDocuments:3},
   staticstime:'2026-10-30T00:00:00Z'};
- assert.equal(keywordClassState(config,'ClA1').matchedDocuments,3);
+ assert.equal(keywordClassState(config,'ClA1'),null);
  assert.equal(keywordClassState(config,'ClB1'),null);
 });
 test('Class selection is a view, not deletion of stored results',()=>{
@@ -50,4 +50,16 @@ test('Class UIDs remain case-sensitive and only four or eight Base62 characters'
    assert.throws(()=>invalidateKeywordClass({},invalid),/Invalid Keywords Class UID/);
    assert.throws(()=>completeKeywordClass({},invalid,{},date),/Invalid analysis completion/);
  }
+});
+
+test('switching Classes shows their own last parsed date, never the shared date',()=>{
+ const first='2026-11-01T11:00:00Z',second='2026-11-06T17:00:00Z';
+ let meta=completeKeywordClass({},'ClassA01',{matchedDocuments:12},first);
+ meta=completeKeywordClass(meta,'ClassB02',{matchedDocuments:48},second);
+ const config={keyword_meta:meta,staticstime:'2099-01-01T00:00:00Z'};
+ assert.equal(keywordClassState(config,'ClassA01')?.completedAt,first);
+ assert.equal(keywordClassState(config,'ClassB02')?.completedAt,second);
+ const reset=invalidateKeywordClass(meta,'ClassB02');
+ assert.equal(keywordClassState({keyword_meta:reset,staticstime:second},'ClassB02'),null);
+ assert.equal(keywordClassState({keyword_meta:reset},'ClassA01')?.completedAt,first);
 });

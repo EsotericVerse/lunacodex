@@ -171,9 +171,8 @@ export default function KeywordLibraryPanel({scopeId,account}){
     const cl=classOf(tree,uid);
     if(!cl)return;
     const keyword_meta=invalidateKeywordClass(config.keyword_meta,cl.uid);
-    const current=String(config.current_keyword_class_uid||'')===cl.uid;
     const {error:staleError}=await dbAuthRelation(configTable)
-      .update({keyword_meta,...(current?{staticstime:null}:{})}).eq('id',scopeId);
+      .update({keyword_meta,staticstime:null}).eq('id',scopeId);
     if(staleError)throw staleError;
   };
   const saveNode=async()=>{
@@ -231,10 +230,9 @@ export default function KeywordLibraryPanel({scopeId,account}){
         const surviving=[...tree.index.values()].find(record=>
           record.type==='class'&&!removedIds.has(record.uid));
         const nextUid=activeRemoved?surviving?.uid||null:config.current_keyword_class_uid;
-        const remainingState=keywordClassState({...config,keyword_meta},nextUid);
         const {error:settingsError}=await dbAuthRelation(configTable)
           .update({current_keyword_class_uid:nextUid,
-            staticstime:remainingState?.completedAt||null,keyword_meta})
+            staticstime:null,keyword_meta})
           .eq('id',scopeId);
         if(settingsError)throw settingsError;
       }
@@ -269,14 +267,13 @@ export default function KeywordLibraryPanel({scopeId,account}){
     try{
       const rulesChanged=['keyword_min_chars','keyword_min_documents'].some(key=>Number(config[key])!==Number(savedConfig[key]));
       const targetUid=String(config.current_keyword_class_uid||'');
-      const targetState=keywordClassState(config,targetUid);
       const payload={
         current_keyword_class_uid:targetUid||null,
         keyword_min_chars:Number(config.keyword_min_chars)||0,
         keyword_min_documents:Number(config.keyword_min_documents)||0,
-        ...(rulesChanged
-          ?{staticstime:null,keyword_meta:{...(config.keyword_meta||{}),by_class:{}}}
-          :{staticstime:targetState?.completedAt||null})
+        // Legacy scope-wide date is not an analysis completion date.
+        staticstime:null,
+        ...(rulesChanged?{keyword_meta:{...(config.keyword_meta||{}),by_class:{}}}:{})
       };
       const {data,error:writeError}=await dbAuthRelation(configTable).update(payload)
         .eq('id',scopeId).select('id');
@@ -558,10 +555,14 @@ export default function KeywordLibraryPanel({scopeId,account}){
         <select className="scope-select" value={activeClass?.uid||''}
           disabled={busy} onChange={event=>choose('class',event.target.value)}>
           <option value="">請選擇科目</option>
-          {allClassNodes.map(node=><option key={node.uid} value={node.uid}>{node.name}</option>)}
+          {allClassNodes.map(node=><option key={node.uid} value={node.uid}>
+            {node.name} · {keywordClassState(config,node.uid)?.completedAt
+              ?new Date(keywordClassState(config,node.uid).completedAt).toLocaleDateString('zh-TW')
+              :'未解析'}
+          </option>)}
         </select>
       </label>
-      <p className="scope-status">關鍵字群組科目：{activeClass?.name||'尚未選擇'} · 上次完成：{keywordClassState(config,activeClass?.uid)?.completedAt?new Date(keywordClassState(config,activeClass.uid).completedAt).toLocaleString('zh-TW'):'尚未分析'}</p>
+      <p className="scope-status">所選科目：{activeClass?.name||'尚未選擇'} · 該科目上次解析：{keywordClassState(config,activeClass?.uid)?.completedAt?new Date(keywordClassState(config,activeClass.uid).completedAt).toLocaleString('zh-TW'):'尚未解析'}</p>
       <p className="scope-status">有效分類文章：{Number(keywordClassState(config,activeClass?.uid)?.matchedDocuments||0).toLocaleString()} 篇</p>
       <div className="scope-preview-links">
         <button type="button" className="loc-button primary" disabled={busy||!activeClass?.uid}

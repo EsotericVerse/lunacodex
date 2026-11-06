@@ -35,3 +35,11 @@ Multimedia, locations and other future categories are configured by the owner **
 The Keywords management **reanalysis** tab has an explicit Class selector; it passes that exact Class UID to the unchanged classifier and writes results only for that Class. Its completion metadata is keyed under the existing `keyword_meta.by_class[Class UID]`; counts now include `matchedDocuments`, `analyzedDocuments`, `itemMatches` and `occurrences`, alongside `completedAt`. A different Class is neither cleared nor implicitly reanalyzed. This is the existing JSON metadata field, not a new Schema/Anchor attribute. The single `current_keyword_class_uid` remains the default selection, not a limit on how many Classes can be analyzed or viewed.
 
 Existing Keyword Group and Item summaries remain governed by their actual Class UID and the existing authorization. No new RPC, table, index, Article content search or additional independent media/place aggregation is introduced. Counts must come from an actual completed analysis; a Class not yet analyzed has no result.
+
+## Class-scoped last analysis date (2026-11-06)
+
+The Keywords **重新分析** dropdown enumerates all editable Classes, including each Class's own last completion date or `未解析`. Selecting a Class changes the visible last-run date and count; clicking Analyze runs exactly that Class with the existing classifier.
+
+`keyword_meta.by_class[Class UID].completedAt` is the **only** authoritative completion date. Its sibling count fields are scoped to the same UID. The historical Scope-level `staticstime` is not a shared completion date and is no longer used for Class readiness in the frontend or Kysely analytics. Existing update paths clear the old mirror instead of writing the selected Class's timestamp into a Scope-global value. Legacy records with only a Scope-wide date are treated as `未解析` until that Class is analyzed again; dates must not be guessed or copied between Classes.
+
+No new columns, tables, RPC, indexes or changes to keyword matching rules.

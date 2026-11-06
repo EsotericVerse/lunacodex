@@ -80,3 +80,16 @@ test('all Class UIDs are selectable independently in analysis, Culture, Statisti
   assert.match(statistics,/const scopedKeywordClasses=availableKeywordClasses/);
   assert.doesNotMatch(statistics,/categoryNames\.some\(/);
 });
+
+test('analysis selector exposes per-Class dates, and Kysely ignores shared staticstime',()=>{
+  const panel=read('app/loc/KeywordLibraryPanel.jsx');
+  const analytics=read('app/loc/providers/kysely-analytics.mjs');
+  const analysis=read('app/loc/keyword-analysis.js');
+  assert.match(panel,/選擇要解析的關鍵詞科目（Class）/);
+  assert.match(panel,/allClassNodes\.map\(node=><option/);
+  assert.match(panel,/keywordClassState\(config,node\.uid\)\?\.completedAt/);
+  assert.match(panel,/keywordClassState\(config,activeClass\?\.uid\)\?\.completedAt/);
+  assert.match(analysis,/completeKeywordClass\(latest\[0\]\.keyword_meta,classUid,meta,now\)/);
+  assert.match(analytics,/const done=meta\.by_class\?\.\[uid\]\?\.completedAt/);
+  assert.doesNotMatch(analytics,/meta\.class_uid===uid&&config\?\.staticstime/);
+});
