@@ -40,7 +40,6 @@ import {scopeHref} from '../scope-registry';
 import ScopeLink from '../ScopeLink';
 import {STAT_VISUAL_TYPES,semanticStatisticChartTypes,chartTypeGroups,preferredStatisticChartType} from '../modules/statistics/statistics-time-zoom.mjs';
 const StatisticsMultiChart=dynamic(()=>import('../modules/statistics/StatisticsMultiChart'),{loading:()=>null});
-const PlaceStatisticsPanel=dynamic(()=>import('./trace/PlaceStatisticsPanel'),{loading:()=>null});
 const Rune66Summary=dynamic(()=>import('../modules/statistics/StatisticsMultiChart').then(m=>m.Rune66Summary),{loading:()=>null});
 const ScopeSelfIntersection=dynamic(()=>import('../modules/statistics/ScopeSelfIntersection'),{loading:()=>null});
 const ScopeGroupStatistics=dynamic(()=>import('../modules/statistics/ScopeGroupStatistics'),{loading:()=>null});
@@ -51,11 +50,12 @@ import StatisticsDetails from '../modules/statistics/StatisticsDetails';
 import {statisticsZoomWindow} from '../modules/statistics/statistics-time-zoom.mjs';
 
 const CHART_TYPES=STAT_VISUAL_TYPES;
-const STAT_TYPES=['total','source','place','keywords'];
+const STAT_TYPES=['total','source','keywords','media','place'];
 const STAT_TYPE_KEYS=Object.freeze({
   total:'statistics.totalSource',
   source:'uiExtra.statisticsUI.sourceGroup',
-  place:'uiExtra.statisticsUI.place',
+  place:'uiExtra.statisticsUI.placeKeyword',
+  media:'uiExtra.statisticsUI.mediaKeyword',
   keywords:'uiExtra.statisticsUI.keywordClass'
 });
 function dateKey(value){
@@ -284,7 +284,8 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   const requested=String(navigation.rankingType||'');
   const rankingType=types.includes(requested)?requested:
     (['media_type','media_platform','media_style'].includes(requested)||['keywords','styles'].includes(navigation.statTab)?'keywords':types[0]||'');
-  const keywordDimension=rankingType==='keywords';
+  // Media and place are keyword Categories, not separate data pipelines.
+  const keywordDimension=['keywords','media','place'].includes(rankingType);
   const deviceTimeUnit=useDefaultTimeUnit();
   const {settings:userSettings,active:userActive}=useLocFeatureSettings('statics');
   const defaultTimeUnit=userActive?userSettings.unit:deviceTimeUnit;
@@ -462,9 +463,17 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     },
   });
   const availableKeywordClasses=keywordClassQuery.data?.classes||[];
-  const selectedKeywordClass=availableKeywordClasses.find(item=>item.classUid===selectedKeywordClassUid)
-    ||availableKeywordClasses.find(item=>item.classUid===keywordClassQuery.data?.currentClassUid)
-    ||availableKeywordClasses[0];
+  const categoryNames=rankingType==='media'?['多媒體','媒體','media','multimedia']
+    :rankingType==='place'?['地點','空間','place','location']:[];
+  // Only select Classes under their actual Category. No inferred tags,
+  // media_link joins, place_id scans or synthetic keyword counts.
+  const scopedKeywordClasses=categoryNames.length
+    ?availableKeywordClasses.filter(item=>categoryNames.some(name=>
+      String(item.categoryName||item.name||'').trim().toLocaleLowerCase()===name.toLocaleLowerCase()))
+    :availableKeywordClasses;
+  const selectedKeywordClass=scopedKeywordClasses.find(item=>item.classUid===selectedKeywordClassUid)
+    ||scopedKeywordClasses.find(item=>item.classUid===keywordClassQuery.data?.currentClassUid)
+    ||scopedKeywordClasses[0];
   const resolvedKeywordClassUid=String(selectedKeywordClass?.classUid||'');
   const runeQuery=useAsyncResource({
     queryKey:['statistics-keyword-class',scopeId,resolvedKeywordClassUid,styleRange.startDate,styleRange.endDate],
@@ -485,10 +494,10 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
       {keywordDimension?<label>
         <span>關鍵詞組（Class）</span>
         <select className="scope-select" aria-label="關鍵字群組" value={resolvedKeywordClassUid}
-          disabled={keywordClassQuery.isPending||!availableKeywordClasses.length}
+          disabled={keywordClassQuery.isPending||!scopedKeywordClasses.length}
           onChange={event=>setSelectedKeywordClassUid(event.target.value)}>
-          {!availableKeywordClasses.length?<option value="">沒有可存取的關鍵字詞組</option>:null}
-          {availableKeywordClasses.map(item=><option key={item.classUid} value={item.classUid}>
+          {!scopedKeywordClasses.length?<option value="">沒有可存取的對應關鍵詞分類</option>:null}
+          {scopedKeywordClasses.map(item=><option key={item.classUid} value={item.classUid}>
             {[item.categoryName,item.name].filter(Boolean).join('／')}
           </option>)}
         </select>
@@ -535,7 +544,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
       </>:null}
     </div>
     <>
-    {rankingType==='place'?<PlaceStatisticsPanel scopeId={scopeId} range={queryRange}/>:null}
+    {/* Place is a Keyword Category. Do not issue a second place_id/anchor aggregation. */}
     {(sourceChart&&!sourceRows.error&&!sourceCatalog.error&&(sourceRows.isPending||sourceCatalog.isPending||!adminSourceReady))?<div className="scope-stat-data-pending">
       <p className="scope-status" role="status">統計中請稍後</p>
       <div className="scope-feature-loading__body" aria-hidden="true"><span/><span/><span/><span/></div>
@@ -560,7 +569,10 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     </>:null}
     {keywordDimension?<>
       {keywordClassQuery.isPending?<p className="scope-status">正在讀取關鍵詞組設定…</p>:null}
-      {!keywordClassQuery.isPending&&!keywordClassQuery.error&&!availableKeywordClasses.length?<p className="scope-status">目前沒有可查看的關鍵詞組；未公開的分類須由具備此 Scope 管理權限的帳號讀取。</p>:null}
+      {!keywordClassQuery.isPending&&!keywordClassQuery.error&&!scopedKeywordClasses.length?<p className="scope-status">
+        {categoryNames.length?'此 Scope 尚無可讀取的「'+(rankingType==='media'?'多媒體':'地點')+'」關鍵詞 Category／Class；請先在關鍵詞管理建立或公開該分類。':
+          '目前沒有可查看的關鍵詞組；未公開的分類須由具備此 Scope 管理權限的帳號讀取。'}
+      </p>:null}
       {runeQuery.isPending?<p className="scope-status"><UiText id="uiExtra.statisticsUI.loadingKeywordAttrs"/></p>:null}
       {runeQuery.error?<p className="scope-status scope-error">{featureDataErrorMessage(runeQuery.error)}</p>:null}
       {!runeQuery.isPending&&!runeQuery.error&&runeQuery.data?<Rune66Summary key={resolvedKeywordClassUid} analysis={runeQuery.data} range={queryRange} scopeId={scopeId}/>:null}

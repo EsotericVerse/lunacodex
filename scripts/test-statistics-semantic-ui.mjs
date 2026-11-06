@@ -69,3 +69,15 @@ test('overlapping counts are never portrayed as additive stacked areas',()=>{
   }
   assert.equal(ids(semanticStatisticChartTypes({purpose:'source',rows,series,distribution:two})).includes('stacked'),true);
 });
+
+test('media and place statistic tabs use existing Keyword Category/Class analysis',()=>{
+  const page=readFileSync(new URL('../app/modular/features/Statistics.jsx',import.meta.url),'utf8');
+  assert.match(page,/STAT_TYPES=\['total','source','keywords','media','place'\]/);
+  assert.match(page,/keywordDimension=\['keywords','media','place'\]\.includes\(rankingType\)/);
+  assert.match(page,/const scopedKeywordClasses=categoryNames\.length/);
+  assert.match(page,/String\(item\.categoryName\|\|item\.name\|\|''\)/);
+  assert.match(page,/selectKeywordAnalysisSummary\(/);
+  assert.doesNotMatch(page,/<PlaceStatisticsPanel/);
+  assert.doesNotMatch(page,/import\('\.\/trace\/PlaceStatisticsPanel'\)/);
+  assert.doesNotMatch(page,/<MediaFacetStatistics/);
+});
