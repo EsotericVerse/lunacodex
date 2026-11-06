@@ -85,7 +85,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
       return {keyword_id:node.uid,item_name:node.name,keywords:node.lists,
         group_uid:group?.uid||'',class_group:group?.name||'',class_name:activeClass.name};
     }):[],[rows,tree,activeClass]);
-  const groups=childrenOf(tree,activeClass?.uid);
+  const groups=useMemo(()=>childrenOf(tree,activeClass?.uid),[tree,activeClass?.uid]);
   const activeGroup=tree.index.get(chosen.group);
   const items=childrenOf(tree,activeGroup?.uid);
   const selected=tree.index.get(chosen.item)||activeGroup||activeClass||null;
@@ -614,7 +614,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
     {!loading&&workspace==='network'?<section className="loc-card scope-feature-card">
       <h2>關聯圖</h2>
       <div className="scope-keyword-network-layout">
-        {selectedClass?<KeywordNetworkEditor items={graphItems} className={selectedClass.name}
+        {selectedClass?<KeywordNetworkEditor items={graphItems} groups={groups} className={selectedClass.name}
           classId={selectedClass.uid} selectedId={chosen.item}
           onSelectGroup={uid=>{
             const node=tree.index.get(String(uid));
@@ -645,6 +645,12 @@ export default function KeywordLibraryPanel({scopeId,account}){
         />:<p className="scope-status">請先選擇關鍵字群組科目。</p>}
         <aside className="scope-keyword-network-inspector" aria-label="關聯圖節點編輯">
           <h3>節點編輯</h3>
+          <div className="scope-preview-links">
+            <button type="button" className="loc-button" disabled={busy||!selectedClass}
+              onClick={()=>create('group',selectedClass.uid)}>＋分類群組</button>
+            {activeGroup?<button type="button" className="loc-button" disabled={busy}
+              onClick={()=>create('item',activeGroup.uid)}>＋關鍵詞分類</button>:null}
+          </div>
           {draft?<div className="scope-keyword-network-fields">
             <p className="scope-status">{tree.index.has(draft.uid)?'編輯':'新增'} {LABEL[draft.type]}</p>
             <label><span>名稱</span><input value={draft.name}
