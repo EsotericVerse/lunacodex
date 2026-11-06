@@ -466,13 +466,6 @@
           "generated": false
         },
         {
-          "name": "ArticleTag",
-          "format": "jsonb",
-          "nullable": false,
-          "hasDefault": true,
-          "generated": false
-        },
-        {
           "name": "status",
           "format": "jsonb",
           "nullable": false,
@@ -1019,13 +1012,6 @@
         {
           "name": "locale",
           "format": "text",
-          "nullable": false,
-          "hasDefault": true,
-          "generated": false
-        },
-        {
-          "name": "txt_class",
-          "format": "_text",
           "nullable": false,
           "hasDefault": true,
           "generated": false
