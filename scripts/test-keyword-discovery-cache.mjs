@@ -52,3 +52,27 @@ test('Serialized HTML fragments never enter or survive TEXT[] cache',()=>{
   const loaded=decodeKeywordSuggestionCache(['<div','</div>','div','都市牢籠']);
   assert.deepEqual(loaded.candidates.map(row=>row.word),['都市牢籠']);
 });
+
+test('unified Scope can persist keyword suggestions without an undefined cache constant',async()=>{
+  const writes=[];
+  const writeKeywordSuggestionCache=runInNewContext(source+';writeKeywordSuggestionCache',{
+    isUnifiedAnchorScope:scope=>scope==='lo3rwang',
+    dbAuthRelation:table=>({
+      update(value){writes.push({table,value});return this},
+      eq(column,value){writes.push({column,value});return this},
+      async select(){return {data:[{id:'lo3rwang'}],error:null}}
+    })
+  });
+  const result=await writeKeywordSuggestionCache('lo3rwang','silver.lo3rwang',{
+    candidates:[{word:'星辰共鳴'}]
+  });
+  assert.deepEqual(result.candidates.map(row=>row.word),['星辰共鳴']);
+  assert.equal(writes[0].table,'silver.lo3rwang');
+  assert.deepEqual([...writes[0].value.keyword_suggestions],['星辰共鳴']);
+  assert.equal(await writeKeywordSuggestionCache('unsupported','silver.unsupported',{
+    candidates:[{word:'隱藏'}]
+  }),null);
+  assert.equal(writes.length,2);
+  await assert.rejects(writeKeywordSuggestionCache('lo3rwang','silver.lrunes',{
+    candidates:[]}),/Scope 不一致/);
+});
