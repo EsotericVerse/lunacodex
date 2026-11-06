@@ -1,24 +1,10 @@
 import {canManageLoc,locManageRows} from './loc-authorization.mjs';
 import {sql} from 'npm:kysely@0.29.8';
 import {saveBlocksKysely} from './kysely-blocks.mjs';
+import {allocateAnchorUid} from '../unified-anchor-compat.mjs';
 
 const ID=/^[a-z][a-z0-9_]*$/i;
 const UID=/^[A-Za-z0-9]{8}$/;
-const KEYWORD_UID_ALPHABET='0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
-// Cryptographic Base62 identity, matching the existing eight-character Anchor UID.
-// Rejection sampling (248 = 62*4) avoids bias; no database function is needed.
-function randomKeywordUid(){
-  for(let attempt=0;attempt<4;attempt++){
-    const bytes=crypto.getRandomValues(new Uint8Array(16));
-    let uid='';
-    for(const byte of bytes){
-      if(byte>=248)continue;
-      uid+=KEYWORD_UID_ALPHABET[byte%62];
-      if(uid.length===8)return uid;
-    }
-  }
-  reject('Keyword UID allocation failed');
-}
 const SCOPED_SUFFIXES=['_galaxy','_anchor','_blocks'];
 
 function reject(message,status=400){
@@ -760,7 +746,7 @@ async function importSharedKeywordClass(trx,args){
   const reserved=new Set();
   const nextUid=async()=>{
     for(let attempt=0;attempt<32;attempt++){
-      const uid=randomKeywordUid();
+      const uid=allocateAnchorUid(reserved);
       if(reserved.has(uid))continue;
       const existing=await trx.selectFrom(target).select('uid')
         .where('uid','=',uid).executeTakeFirst();
