@@ -79,6 +79,20 @@ test('source URL and event UID remain stable on retry; a source becomes one arti
  assert.match(first[0].id,/^[a-f0-9]{8}-[a-f0-9]{4}-5[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/);
 });
 
+test('identical capture to different galaxies is not suppressed by acknowledgements',async()=>{
+ const {context}=isolatedBackground();
+ const input="[{key:'same-post',url:'https://example.org/p/1',source_key:'https://example.org/p/1',title:'Post',content:'same words'}]";
+ const a=await runInContext("toEvents("+input+",'lo3rwang')",context);
+ const b=await runInContext("toEvents("+input+",'lrunes')",context);
+ assert.equal(a[0].scopeid,'lo3rwang');
+ assert.equal(b[0].scopeid,'lrunes');
+ assert.notEqual(a[0].id,b[0].id);
+ assert.notEqual(a[0].group_id,b[0].group_id);
+ const background=text('background.js');
+ assert.match(background,/rows\.filter\(r=>\(r\.scopeid\|\|'lo3rwang'\)===scopeid\)/);
+ assert.match(background,/records:batchRows\.map\(\(\{scopeid:localScope,\.\.\.record\}\)=>record\)/);
+});
+
 test('queue threshold is 10 captures or 600 KB, not each individual request',()=>{
  const {context}=isolatedBackground();
  assert.equal(runInContext("ready([])",context),0);
