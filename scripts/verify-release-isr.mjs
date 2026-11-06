@@ -36,10 +36,10 @@ if(!numericSource.includes('readIsrSummary(')||
   throw Error('ISR must remain admin-gated; revalidation writes remain disabled');
 if(/service_role|SUPABASE_SERVICE_ROLE_KEY|unstable_cache|revalidateTag/.test(numericSource+guards+publicServer))
   throw Error('Optional numeric endpoint must use public RPC and standard HTTP caching');
-if(!publicServer.includes('createBackupPublicAdapter')||
+if(!publicServer.includes('LOC_BACKUP_SQL_GATEWAY_URL')||
    !publicServer.includes('AbortSignal.timeout(6500)')||
    !guards.includes('isAvailabilityFailure('))
-  throw Error('ISR must retain independent bounded Neon fallback');
+  throw Error('ISR must retain independent bounded portable SQL backup');
 const openNext=read('open-next.config.ts'),wrangler=readJson('wrangler.jsonc');
 if(!openNext.includes('static-assets-incremental-cache')||
   /r2-incremental-cache|do-queue|do-sharded-tag-cache/.test(openNext))
