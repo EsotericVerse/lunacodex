@@ -224,8 +224,13 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
    case 'items.captured':
     // Never trust web-page provided URLs other than those from the actual sender tab.
     if(sender.id!==chrome.runtime.id||!sender.tab?.url)throw Error('Invalid capture sender');
-    if(new URL(sender.tab.url).origin!==new URL(message.items?.[0]?.url||'').origin)
-     throw Error('Source origin mismatch');
+    if(!Array.isArray(message.items)||!message.items.length||message.items.length>100)
+     throw Error('Invalid capture items');
+    const origin=new URL(sender.tab.url).origin;
+    if(message.items.some(item=>{
+      try{return new URL(item?.url).origin!==origin || new URL(item?.source_key).origin!==origin;}
+      catch{return true;}
+    }))throw Error('Source origin mismatch');
     return acceptItems(message.items);
    case 'capture':return capture(await currentTab());
    case 'select':return selectOrRecord('page.select');
