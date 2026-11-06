@@ -40,8 +40,13 @@ function parseExpressionTerm(raw,depth=0){
   const match=part.match(/^([a-z][a-z0-9_]*)\.(eq|neq|gt|gte|lt|lte|like|ilike|contains|is)\.(?:"((?:\\.|[^"])*)"|([^,]*))$/i);
   if(!match)throw new Error('Unsupported OR filter');
   const rawValue=match[3]!==undefined?match[3].replace(/\\(["\\])/g,'$1'):match[4];
-  const value=rawValue==='true'?true:rawValue==='false'?false:rawValue==='null'?null:/^-?\d+(?:\.\d+)?$/.test(rawValue)?Number(rawValue):rawValue;
-  return {type:'predicate',column:checkedIdentifier(match[1],'OR filter column'),operator:match[2].toLowerCase(),value};
+  const operator=match[2].toLowerCase();
+  // Contains searches quoted text LITERALLY. "null", "true", and "0001"
+  // must not be silently coerced to SQL NULL, booleans, or numbers.
+  const value=operator==='contains'?String(rawValue):
+    rawValue==='true'?true:rawValue==='false'?false:rawValue==='null'?null:
+    /^-?\d+(?:\.\d+)?$/.test(rawValue)?Number(rawValue):rawValue;
+  return {type:'predicate',column:checkedIdentifier(match[1],'OR filter column'),operator,value};
 }
 
 function parseOrExpression(expression){
