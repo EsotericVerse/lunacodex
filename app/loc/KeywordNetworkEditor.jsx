@@ -205,8 +205,9 @@ export default function KeywordNetworkEditor({
     }
   },[selectedId,graph]);
 
-  const selectedMeta=graph.meta.get(selectedNodeRef.current);
   const addChild=()=>{
+    const liveSelection=String(networkRef.current?.getSelectedNodes()?.[0]||selectedNodeRef.current||'');
+    const selectedMeta=graphRef.current.meta.get(liveSelection);
     if(selectedMeta?.kind==='class')handlersRef.current.onNewGroup?.();
     else if(selectedMeta?.kind==='group')handlersRef.current.onNewItem?.(selectedMeta.groupUid);
     else handlersRef.current.onMessage?.('請先選擇科目或分類群組，再新增下層。');
