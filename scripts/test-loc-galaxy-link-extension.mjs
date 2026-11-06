@@ -36,9 +36,9 @@ test('batch packing limits number and encoded bytes',()=>{
 });
 test('Unicode-safe splitting never truncates long webpages',async()=>{
  const written=[];let seq=0;
- const fn=new Function('MAX_TEXT_CHARS','crypto','enqueue','sourceKey',
+ const fn=new Function('MAX_TEXT_CHARS','crypto','enqueueMany','sourceKey',
   between('async function enqueuePage(record){','function batches(records){')+'return enqueuePage;')(
-   140000,{randomUUID:()=>String(++seq)},async item=>written.push(item),u=>u);
+   140000,{randomUUID:()=>String(++seq)},async items=>written.push(...items),u=>u);
  const content='漢'.repeat(140000)+'😀'+'字'.repeat(140000);
  assert.equal(await fn({content,title:'test'}),3);
  assert.equal(written.map(x=>x.content).join(''),content);
@@ -201,5 +201,24 @@ test('Batch acknowledgement uses one IndexedDB transaction',async()=>{
  await acknowledge([{id:'one'},{id:'two'}]);
  assert.equal(transactions,1);
  assert.deepEqual(deleted,['one','two']);
+ assert.equal(closes,1);
+});
+
+test('One capture with many chunks enters IndexedDB in one transaction',async()=>{
+ const source=between('async function enqueueMany(records){','const allPending=');
+ const written=[],transactions=[];
+ let closes=0;
+ const db={transaction:(_store,mode)=>{
+  assert.equal(mode,'readwrite');
+  const tx={objectStore:()=>({put:record=>written.push(record)})};
+  transactions.push(tx);
+  Promise.resolve().then(()=>tx.oncomplete());
+  return tx;
+ },close:()=>{closes++;}};
+ const enqueueMany=new Function('dbOpen','STORE',source+'return enqueueMany;')(
+  async()=>db,'pending');
+ await enqueueMany([{id:'a'},{id:'b'},{id:'c'}]);
+ assert.equal(transactions.length,1);
+ assert.deepEqual(written.map(r=>r.id),['a','b','c']);
  assert.equal(closes,1);
 });
