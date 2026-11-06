@@ -12,9 +12,9 @@ const fn=new Function('reject','SCOPE',source.slice(start,end)+'\nreturn searchS
 
 function fixture(){
   const calls=[],tables={
-    'silver.manage':[{id:'alpha'},{id:'beta'}],
-    'silver.alpha':[{status:{search:{article_count:2,word_count:33}}}],
-    'silver.beta':[{status:{search:{article_count:4,word_count:55}}}]
+    'silver.manage':[{id:'alpha',manage_role:'scope',active:true},{id:'beta',manage_role:'scope',active:true}],
+    'silver.alpha':[{id:'alpha',status:{search:{article_count:2,word_count:33}}}],
+    'silver.beta':[{id:'beta',status:{search:{article_count:4,word_count:55}}}]
   };
   const trx={selectFrom(name){
     const conditions=[];
