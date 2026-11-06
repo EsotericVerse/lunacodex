@@ -858,8 +858,7 @@
 }
 
 
-// The canvas and inspector follow the published LOC Theme tokens, not a
-// hard-coded dark palette. Touch controls remain usable in mobile webviews.
+/* The canvas and inspector follow LOC Theme tokens, including mobile webviews. */
 .scope-keyword-network .scope-keyword-network-controls{display:flex;flex-wrap:wrap;gap:.45rem;align-items:center}
 .scope-keyword-network-controls .loc-button{min-height:44px;min-width:64px;touch-action:manipulation}
 .scope-keyword-network-canvas{background:var(--loc-panel);border-color:var(--loc-line)}
