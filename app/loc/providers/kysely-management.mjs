@@ -1,4 +1,5 @@
 import {canManageLoc,locManageRows} from './loc-authorization.mjs';
+import {validateLocRegistryDomain} from './loc-domain.mjs';
 import {sql} from 'npm:kysely@0.29.8';
 import {saveBlocksKysely} from './kysely-blocks.mjs';
 import {allocateAnchorUid} from '../unified-anchor-compat.mjs';
@@ -149,6 +150,12 @@ export async function executeManagedKyselyWrite(trx,body){
     reject('Invalid managed update values');
   if(operation==='update_batch'&&table.endsWith('_galaxy')===false)
     reject('Article batches must target a Galaxy table');
+  if(table==='manage'){
+    if(operation==='insert')for(let i=0;i<rows.length;i++)
+      rows[i]=validateLocRegistryDomain(rows[i]);
+    if(operation==='update'&&Object.hasOwn(values,'domain'))
+      Object.assign(values,validateLocRegistryDomain(values));
+  }
   await authorizeRelation(trx,table,operation,values,filters,rows);
   // Above checks execute as the verified Clerk principal. Only after Scope
   // authorization is proved do trusted server-side Kysely mutations run
@@ -188,6 +195,25 @@ export async function executeManagedKyselyWrite(trx,body){
     const base=operation==='update'?trx.updateTable(name).set(postgresManagedJsonbValues(values)):trx.deleteFrom(name);
     const result=await withFilters(base,filters).execute();
     count=Number(result[0]?.numUpdatedRows??result[0]?.numDeletedRows??result[0]?.numAffectedRows??0);
+  }
+  // The Scope configuration and LOC directory name are one logical write.
+  // This is the Kysely replacement for the old database sync trigger.
+  if(count>0&&/^[a-z][a-z0-9]{0,14}$/.test(table)&&table!=='loc'&&
+      operation==='update'&&Object.hasOwn(values,'display_name')){
+    const title=String(values.display_name??'').trim();
+    if(!title)reject('Scope display name cannot be empty');
+    await trx.updateTable('silver.loc').set({display_name:title})
+      .where('id','=',table).execute();
+  }
+  if(count>0&&/^[a-z][a-z0-9]{0,14}$/.test(table)&&table!=='loc'&&
+      operation==='insert'){
+    for(const row of rows){
+      if(String(row.id||'')!==table||!Object.hasOwn(row,'display_name'))continue;
+      const title=String(row.display_name??'').trim();
+      if(!title)reject('Scope display name cannot be empty');
+      await trx.updateTable('silver.loc').set({display_name:title})
+        .where('id','=',table).execute();
+    }
   }
   return {data:{count},count:null};
 }
@@ -479,8 +505,12 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
       .set({display_name:title,updated_at:sql`now()`})
       .where('id','=',member).executeTakeFirst();
     if(Number(updated?.numUpdatedRows||0)!==1)reject('Group member configuration was not updated');
-    // The existing Scope config trigger synchronizes LOC Group's name in the
-    // same transaction. A second explicit LOC UPDATE would be redundant.
+    // LOC and its Scope config are updated atomically by Kysely, without a
+    // PostgreSQL sync trigger or another SQL round trip to a stored function.
+    const synced=await trx.updateTable('silver.loc').set({display_name:title})
+      .where('id','=',member).executeTakeFirst();
+    if(Number(synced?.numUpdatedRows||0)!==1)
+      reject('Group / Scope list name missing');
     return {data:true,count:null};
   }
   if(name==='update_group_default_article_class'){
