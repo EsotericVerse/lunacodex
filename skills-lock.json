@@ -1,6 +1,12 @@
 {
   "version": 1,
   "skills": {
+    "chrome-extensions": {
+      "source": "GoogleChrome/modern-web-guidance",
+      "sourceType": "github",
+      "skillPath": "skills/chrome-extensions/SKILL.md",
+      "computedHash": "4b7e7beb7711c75ba267dcd5e3483d56aaa49d4670db88fd8619afea970cbccc"
+    },
     "clerk": {
       "source": "clerk/skills",
       "sourceType": "github",
@@ -138,6 +144,12 @@
       "sourceType": "github",
       "skillPath": "skills/maplibre-v6-migration/SKILL.md",
       "computedHash": "26a51f5b7d42ce465548a459099ccfe593913f35ea4081f3d680b26e70470f99"
+    },
+    "modern-web-guidance": {
+      "source": "GoogleChrome/modern-web-guidance",
+      "sourceType": "github",
+      "skillPath": "skills/modern-web-guidance/SKILL.md",
+      "computedHash": "8a1fb35aba1f5ba871130f8502decc37223abb7b49fef35b3f260acf03bf3cf1"
     },
     "next-dev-loop": {
       "source": "vercel/next.js",
