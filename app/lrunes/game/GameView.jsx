@@ -5,7 +5,7 @@ import {runeImage} from '../rune-directory.mjs';
 import {useAsyncResource} from '../../loc/use-async-resource';
 import Select from 'react-select';
 import {AnimatePresence,motion} from 'motion/react';
-import {CartesianGrid,Legend,Line,LineChart,ReferenceLine,ResponsiveContainer,Tooltip,XAxis,YAxis} from 'recharts';
+import {CartesianGrid,Legend,Line,LineChart,ReferenceLine,Tooltip,XAxis,YAxis} from 'recharts';
 import {
   applyDe,draw,evaluateAlphaEvent,finishOpening,freshPlayer,loadGameData,shuffle
 } from './game-data';
@@ -49,8 +49,7 @@ function MatchTrend({history=[],players=[],focusPlayer=null,focusStep=''}) {
   return <section className="loc-card game-trend-card">
     <h2>De 軌跡</h2>
     <div className="game-trend-chart">
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={history} margin={{top:10,right:20,bottom:8,left:0}}>
+      <LineChart responsive style={{width:"100%",height:"100%"}} data={history} margin={{top:10,right:20,bottom:8,left:0}}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--loc-line)"/>
           <XAxis dataKey="step" tick={{fill:'var(--loc-text)'}} stroke="var(--loc-line)"/>
           <YAxis allowDecimals={false} tick={{fill:'var(--loc-text)'}} stroke="var(--loc-line)"/>
@@ -59,7 +58,6 @@ function MatchTrend({history=[],players=[],focusPlayer=null,focusStep=''}) {
           {focusStep?<ReferenceLine x={focusStep} stroke="var(--loc-gold)" strokeDasharray="4 4"/>:null}
           {players.map((player,index)=><Line key={player.name} type="monotone" dataKey={NAMES[index]} name={player.name} stroke={CHART_STROKES[index%CHART_STROKES.length]} strokeWidth={focusPlayer===null||focusPlayer===index?3:1.5} strokeOpacity={focusPlayer===null||focusPlayer===index?1:.28} dot={{r:focusPlayer===index?5:3}} isAnimationActive/>)}
         </LineChart>
-      </ResponsiveContainer>
     </div>
   </section>;
 }
