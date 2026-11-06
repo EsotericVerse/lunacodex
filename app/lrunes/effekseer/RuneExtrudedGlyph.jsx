@@ -129,6 +129,9 @@ export default function RuneExtrudedGlyph({word,profile}){
       geometry?.dispose();
       materials.forEach(material=>material.dispose());
       renderer?.dispose();
+      // Match the Effekseer stage: releasing GPU resources does not release
+      // the browser's WebGL context on repeatedly mounted glyph canvases.
+      renderer?.forceContextLoss();
     };
   },[word,profile.font,profile.ink,profile.finish]);
 

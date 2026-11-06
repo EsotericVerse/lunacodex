@@ -127,3 +127,13 @@ test('soft forms do not lurch while heavy forms land without rubber-like rebound
   assert.ok(stage.includes('ease:letterMotion.ease'));
   assert.ok(stage.includes('4.2*(letterMotion.durationFactor||1)'));
 });
+
+test('extruded glyph releases the renderer and its browser WebGL context on unmount',()=>{
+  const source=readFileSync(new URL('../app/lrunes/effekseer/RuneExtrudedGlyph.jsx',import.meta.url),'utf8');
+  const cleanup=source.slice(source.lastIndexOf('return ()=>{'));
+  assert.match(cleanup,/observer\?\.disconnect\(\)/);
+  assert.match(cleanup,/geometry\?\.dispose\(\)/);
+  assert.match(cleanup,/renderer\?\.dispose\(\)/);
+  assert.match(cleanup,/renderer\?\.forceContextLoss\(\)/);
+  assert.ok(cleanup.indexOf('renderer?.dispose()')<cleanup.indexOf('renderer?.forceContextLoss()'));
+});
