@@ -26,7 +26,12 @@
       const u=normalizeUrl(a.href);
       return u && (/instagram\.com\/p\/|instagram\.com\/reel\/|threads\.(?:net|com)\/@[^/]+\/post\//i.test(u));
     });
-    return normalizeUrl(match?.href||location.href);
+    if(match)return normalizeUrl(match.href);
+    // Never merge unrelated social-feed posts into the profile/feed URL
+    // when a stable individual post permalink is not present.
+    if(/(?:instagram\.com|threads\.(?:net|com))$/.test(location.hostname.toLowerCase()))
+      return null;
+    return normalizeUrl(location.href);
   };
   function conversationTurns(scope){
     const nodes=[...scope.querySelectorAll('[data-message-id], [data-testid^="conversation-turn-"], [data-message-author-role]')];
