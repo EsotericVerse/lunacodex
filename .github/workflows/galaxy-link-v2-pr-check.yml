@@ -1,15 +1,6 @@
-name: LOC galaxy-link v2 (read-only PR checks)
+name: LOC galaxy-link v2 (manual read-only checks)
 
 on:
-  pull_request:
-    paths:
-      - 'extensions/loc-web-capture-v2/**'
-      - 'app/extension/bridge/**'
-      - 'app/loc/providers/loc-gateway.mjs'
-      - 'app/loc/providers/kysely-edge.mjs'
-      - 'app/loc/db-client.mjs'
-      - 'scripts/test-loc-web-capture-v2.mjs'
-      - '.github/workflows/galaxy-link-v2-pr-check.yml'
   workflow_dispatch:
 
 permissions:
