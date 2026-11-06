@@ -55,10 +55,10 @@ export default function FlatClassificationEditor({scopeId='loc'}){
   const catalog=query.data||{};
   const own=(catalog.scopes||[]).find(row=>row.scopeid===scopeId);
   const anchored=Boolean(own?.domain);
-  const fallback=own?.legacy?.map(name=>({name:sourceName(name)}))||[];
+  const fallback=own?.legacy?.map(name=>({name:sourceName(name),label:name}))||[];
   const initial=global?(catalog.system||[]).map(name=>({name})):
     (own?.sources?.length?own.sources:anchored?[]:fallback);
-  const original=useMemo(()=>initial.map(row=>({uid:row.uid,name:row.name})),
+  const original=useMemo(()=>initial.map(row=>({uid:row.uid,name:row.name,label:row.label||row.name})),
     // SWR values are immutable after a completed request.
     [query.data,scopeId]);
   const rows=draft??original;
@@ -66,17 +66,18 @@ export default function FlatClassificationEditor({scopeId='loc'}){
   const legacyPending=!global&&!anchored&&fallback.length>0;
   const graph=useMemo(()=>query.data?sourceNodes(catalog,scopeId,rows):[],
     [query.data,scopeId,rows]);
-  const update=(index,name)=>{setDraft(list=>{
+  const update=(index,name,field='name')=>{setDraft(list=>{
     const next=(list??original).map(item=>({...item}));
-    next[index].name=name;return next;
+    next[index][field]=name;return next;
   });setNotice('');};
-  const add=()=>{setDraft(list=>[...(list??original),{name:''}]);setNotice('');};
+  const add=()=>{setDraft(list=>[...(list??original),{name:'',label:''}]);setNotice('');};
   const remove=index=>{setDraft(list=>(list??original).filter((_,i)=>i!==index));setNotice('');};
   async function save(force=false){
     if(!allowed||busy||query.isPending||query.error)return false;
     if(!changed&&!force)return true;
-    const items=rows.map(row=>({...(row.uid?{uid:row.uid}:{}),name:normalized(row.name)}));
-    if(items.some(item=>!item.name||item.name.length>80)){
+    const items=rows.map(row=>({...(row.uid?{uid:row.uid}:{}),name:normalized(row.name),
+      ...(!global?{label:normalized(row.label)||normalized(row.name)}:{})}));
+    if(items.some(item=>!item.name||item.name.length>80||item.label?.length>80)){
       setNotice('每個來源名稱須為 1–80 字。');return false;
     }
     const ids=items.map(item=>item.name.normalize('NFKC').toLowerCase());
@@ -135,8 +136,12 @@ export default function FlatClassificationEditor({scopeId='loc'}){
           <label className="classification-inline__field">
             <span>{i+1}.</span>
             <input type="text" value={item.name} maxLength={80}
-              aria-label={'來源 '+(i+1)} disabled={busy}
+              aria-label={'來源代碼 '+(i+1)} disabled={busy||!global&&Boolean(item.uid)}
+              title={!global&&item.uid?'來源代碼保留比對 Galaxy.site，需更名請用來源更正工具。':undefined}
               onChange={e=>update(i,e.target.value)}/>
+            {!global?<input type="text" value={item.label??item.name} maxLength={80}
+              aria-label={'顯示名稱 '+(i+1)} disabled={busy}
+              onChange={e=>update(i,e.target.value,'label')}/>:null}
           </label>
           <div className="classification-inline__controls">
             <button type="button" disabled={busy} onClick={()=>remove(i)}
