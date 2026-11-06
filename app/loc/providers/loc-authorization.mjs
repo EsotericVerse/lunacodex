@@ -70,7 +70,7 @@ export async function locPermissions(db){
     // parameterized SQL statement. No extra request or new permission cache.
     // The transaction still carries verified Clerk claims; authorization
     // and revocation remain evaluated against the live LOC control database.
-    const joined=await db.selectFrom('silver.manage as m')
+    const joined=await db.selectFrom('api.manage as m')
       .crossJoin('silver.loc as l')
       .leftJoin('silver.loc as s','s.id','m.id')
       .select(['m.id','m.email','m.manage_role','m.active','m.galaxy_table',
