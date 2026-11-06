@@ -292,7 +292,9 @@ async function sourceCatalogAction(trx,args,save=false){
     const oldFrom=new Map(existing.filter(row=>row.type==='from'&&owned.has(row.uid))
       .map(row=>[row.uid,row]));
     if(owned.size!==oldFrom.size)reject('Broken source hierarchy references');
-    const assigned=new Set((await trx.selectFrom(anchor).select('uid').execute()).map(row=>row.uid));
+    // Keep source edits bounded: never scan the full Anchor table for a new UID.
+    // The physical UID primary key remains the final collision guard.
+    const assigned=new Set(existing.map(row=>row.uid));
     const next=[];
     for(const item of entries){
       const name=item.name.trim();
