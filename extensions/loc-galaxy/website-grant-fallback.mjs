@@ -3,8 +3,15 @@ const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const PENDING='locGalaxy.websitePending',ACTIVE='locGalaxy.websiteActive';
 const SCOPE_KEY='locGalaxy.scopeid',AUTH='locGalaxy.oauth',ACCESS='locGalaxy.access';
 function page(url,nonce,scopeid){
-  try{const u=new URL(url);return u.origin===LOC_ORIGIN&&u.pathname==='/extension/auth-bridge.html'&&
+  try{const u=new URL(url);return u.origin===LOC_ORIGIN&&
+    /^\\/extension\\/auth-bridge\\.html\\/?$/.test(u.pathname)&&
     u.searchParams.get('nonce')===nonce&&u.searchParams.get('scopeid')===scopeid;}catch{return false;}
+}
+// Chrome's sender URL is not an authentication URL contract. Validate the
+// browser-provided origin and independently verify the extension-created tab.
+function trustedSender(sender){
+  if(sender?.origin!==undefined)return sender.origin===LOC_ORIGIN;
+  try{return new URL(sender?.url||'').origin===LOC_ORIGIN;}catch{return false;}
 }
 async function knownTab(record,nonce,scopeid){
   if(!record||record.nonce!==nonce||record.scopeid!==scopeid||
@@ -15,7 +22,7 @@ async function knownTab(record,nonce,scopeid){
 async function grant(message,sender){
   const scopeid=String(message.scopeid||''),nonce=String(message.nonce||'');
   if(!SCOPE.test(scopeid)||!/^[A-Za-z0-9_-]{32,128}$/.test(nonce)||
-     !page(sender.url,nonce,scopeid))throw Error('LOC 網站來源與授權識別不符');
+     !trustedSender(sender))throw Error('LOC 網站來源或授權識別不符');
   const session=await chrome.storage.session.get(PENDING);
   const local=await chrome.storage.local.get([ACTIVE,SCOPE_KEY,AUTH]);
   const now=Date.now(),pending=session[PENDING],active=local[ACTIVE];
@@ -58,8 +65,12 @@ chrome.runtime.onMessageExternal.addListener((message,sender,sendResponse)=>{
   // Report an explicit diagnostic for each LOC-initiated bridge request.
   // No credential or Session data is returned by the probe.
   const scopeid=String(message.scopeid||''),nonce=String(message.nonce||'');
-  if(!page(sender.url,nonce,scopeid)){
-    sendResponse({ok:false,error:'Extension 已收到訊息，但授權頁 URL／nonce／Scope 不一致'});
+  if(!trustedSender(sender)){
+    sendResponse({ok:false,error:'Extension 收到訊息，但來源不是 LOC 官方網站'});
+    return false;
+  }
+  if(!SCOPE.test(scopeid)||!/^[A-Za-z0-9_-]{32,128}$/.test(nonce)){
+    sendResponse({ok:false,error:'授權 nonce 或 Scope 格式無效'});
     return false;
   }
   if(message.type==='locGalaxy.bridgeProbe'){
