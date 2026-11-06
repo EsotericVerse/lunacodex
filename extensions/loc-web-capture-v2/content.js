@@ -19,7 +19,7 @@
   const cleanText = el => String(el?.innerText||el?.textContent||'')
     .replace(/\u00a0/g,' ').replace(/[ \t]+\n/g,'\n').trim().slice(0,1400000);
   const links = el => [...el.querySelectorAll('a[href]')]
-    .filter(visible).slice(0,120).map(a=>({text:cleanText(a).slice(0,120),url:normalizeUrl(a.href)}))
+    .filter(visible).slice(0,120).map(a=>({text:cleanText(a).slice(0,120),url:normalizeUrl(a.getAttribute('href'))}))
     .filter(x=>x.url);
   const stableSource = el => {
     const match=[...el.querySelectorAll('a[href]')].find(a=>{
