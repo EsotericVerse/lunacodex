@@ -66,9 +66,14 @@ export function verifyDelegationBoundary(payload,request,{
     const scope=String(request?.scopeid||'');
     const kind=String(request?.kind||'');
     const site=kind==='mcp-read'?String(request?.site||'mcp'):'mcp';
-    if(!['lo3rwang','lrunes'].includes(scope)||site!=='mcp')
+    if(!['lo3rwang','lrunes'].includes(scope)||
+      !['mcp','github'].includes(site)||
+      (site==='github'&&kind!=='mcp-read'))
       reject('Invalid delegated MCP resource');
-    const needed=kind==='mcp-read'||kind==='mcp-search'?'read':'write';
+    // Known GitHub-origin UID reads require a Scope management delegation.
+    // PR search, creation and update remain unavailable through LOC MCP.
+    const needed=site==='github'?'manage':
+      kind==='mcp-read'||kind==='mcp-search'?'read':'write';
     if(!grants.includes(scope+':'+needed))
       reject('MCP delegation does not cover this operation');
     // Internal managed write uses the existing Scope-management branch.
