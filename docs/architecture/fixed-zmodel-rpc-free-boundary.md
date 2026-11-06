@@ -50,3 +50,25 @@ query budgets are verified. Do not rewrite or delete applied migration history.
 The fixed ZModel/SchemaDef and browser/local transport simplifications are
 implemented in the work branch; complete application RPC replacement and
 end-to-end verification are **not yet claimed**.
+
+## Cross-dialect Galaxy content search
+
+The active website Search provider now uses a parameterized `contains` filter
+instead of encoding unrestricted `ILIKE` expressions. The implementation is
+at `app/loc/providers/portable-search.mjs` and the trusted
+`kysely-runtime.mjs`. SQL `LIKE ... ESCAPE '!'` treats `%`, `_`, and `!`
+literally. CJK/case-free terms avoid `LOWER(content)` while mixed Latin terms
+retain case-insensitive matching. Quoted `null`, `true` and numeric-looking
+terms remain strings. Advanced AND/OR/NOT uses the same operator.
+
+This is a portable SQL semantic improvement, **not** an indexed full-text
+search engine. Search QoS/statement timeout and page limits remain active.
+No database indexes, tables, columns, Anchor.attr changes or RPC are required.
+Existing other `ILIKE` callers remain available pending their independent
+feature parity checks.
+
+Query planning on the live PostgreSQL schema was checked using **EXPLAIN
+without ANALYZE**, so neither statement was executed. Both the original
+LOWER/LIKE and the CJK-native LIKE plan can scan many rows; comparative latency
+and all four SQL-dialect runtime results are not yet verified. Do not promise a
+guaranteed speedup until measured.
