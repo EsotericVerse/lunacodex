@@ -66,9 +66,9 @@ test('public class aliases use one native Kysely projection, not one query per C
   });
   sql.ref=name=>({reference:name});
   const classes=[
-    {uid:'Ab12Cd34',title:'Primary'},
-    {uid:'Ef56Gh78',title:'Private'},
-    {uid:'Ij90Kl12',title:'Secondary'}
+    {uid:'Ab12Cd34',type:'class',title:'Primary'},
+    {uid:'Ef56Gh78',type:'class',title:'Private'},
+    {uid:'Ij90Kl12',type:'class',title:'Secondary'}
   ];
   const hash=uid=>createHash('sha256').update('writer:'+uid).digest('hex');
   const fake=(owner)=>{
