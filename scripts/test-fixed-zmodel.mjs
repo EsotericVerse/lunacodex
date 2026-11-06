@@ -29,7 +29,8 @@ const physical=new Map();
 for(const [,name,body] of blocks){
   const table=body.match(/^\s+@@map\("([^"]+)"\)\s*$/m)?.[1];
   assert.ok(table,'missing physical table mapping for '+name);
-  assert.match(body,new RegExp('^\\s+@@schema\\("'+(table==='manage'?'api':'silver')+'"\\)\\s*
+  assert.ok(body.includes('@@schema("'+(table==='manage'?'api':'silver')+'")'),
+    'Unexpected namespace for '+table);
   assert.equal(name,modelName(table),'unexpected model name');
   assert.ok(!physical.has(table),'duplicate physical model: '+table);
   const fields=new Map();
