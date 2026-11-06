@@ -37,7 +37,7 @@ function parsePage(){
  let node;
  while((node=walker.nextNode())){
   const parent=node.parentElement;
-  if(!parent||parent.closest(deny))continue;
+  if(!parent||parent.closest(deny)||parent.closest('[hidden],[inert]'))continue;
   const css=getComputedStyle(parent);
   if(css.display==='none'||css.visibility==='hidden')continue;
   const line=node.textContent.replace(/\s+/g,' ').trim();
@@ -58,12 +58,15 @@ async function capture(tabId){
 async function enqueuePage(record){
  const content=record.content, group_id=crypto.randomUUID();
  const parts=Math.ceil(content.length/MAX_TEXT_CHARS);
- for(let i=0;i<parts;i++){
-  const item={...record,id:crypto.randomUUID(),group_id,
-   part_index:i,part_count:parts,content:content.slice(i*MAX_TEXT_CHARS,(i+1)*MAX_TEXT_CHARS)};
-  await enqueue(item);
+ const chunks=[];let offset=0;
+ while(offset<content.length){
+  let end=Math.min(offset+MAX_TEXT_CHARS,content.length);
+  if(end<content.length&&end>offset&&/^[\uD800-\uDBFF]$/.test(content[end-1]))end--;
+  chunks.push(content.slice(offset,end));offset=end;
  }
- return parts;
+ for(let i=0;i<chunks.length;i++)await enqueue({...record,id:crypto.randomUUID(),group_id,
+  part_index:i,part_count:chunks.length,content:chunks[i]});
+ return chunks.length;
 }
 function batches(records){
  const encoder=new TextEncoder();const sets=[];let current=[],bytes=80;
@@ -78,6 +81,13 @@ function batches(records){
  if(current.length)sets.push(current);
  return sets;
 }
+async function stableBatchId(records){
+ const data=new TextEncoder().encode(records.map(r=>r.id).join(':'));
+ const bits=new Uint8Array(await crypto.subtle.digest('SHA-256',data)).slice(0,16);
+ bits[6]=(bits[6]&15)|64;bits[8]=(bits[8]&63)|128;
+ const h=Array.from(bits,b=>b.toString(16).padStart(2,'0')).join('');
+ return h.slice(0,8)+'-'+h.slice(8,12)+'-'+h.slice(12,16)+'-'+h.slice(16,20)+'-'+h.slice(20);
+}
 async function flush(){
  if(processing)return processing;
  processing=(async()=>{
@@ -85,7 +95,7 @@ async function flush(){
   if(!endpoint||!token)throw Error('尚未設定 KV Worker URL 與寫入 Token');
   const pending=(await allPending()).sort((a,b)=>a.captured_at.localeCompare(b.captured_at));
   for(const records of batches(pending)){
-   const batch={id:crypto.randomUUID(),records};
+   const batch={id:await stableBatchId(records),records};
    const reply=await fetch(endpoint.replace(/\/$/,'')+'/v1/batch',{
     method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+token},
     body:JSON.stringify(batch)
@@ -102,6 +112,7 @@ async function flush(){
 chrome.runtime.onInstalled.addListener(async()=>{
  await chrome.contextMenus.removeAll();
  chrome.contextMenus.create({id:MENU,title:'LOC：解析並儲存此頁',contexts:['page']});
+ await chrome.storage.local.setAccessLevel({accessLevel:'TRUSTED_CONTEXTS'});
  await chrome.alarms.create('loc-channel1-retry',{periodInMinutes:5});
 });
 chrome.action.onClicked.addListener(()=>chrome.runtime.openOptionsPage());
@@ -112,10 +123,12 @@ chrome.contextMenus.onClicked.addListener((info,tab)=>{
   const count=await enqueuePage(record);
   // Local queue is durable before any network request.
   await badge(true,'已加入本機佇列：'+count+' 筆');
-  await flush();
-  await badge(true,'已送達 KV');
+  await chrome.alarms.create('loc-channel1-drain',{delayInMinutes:0.5});
  })().catch(async e=>{console.error('[LOC Channel 1]',e);await badge(false,e.message);});
 });
 chrome.alarms.onAlarm.addListener(e=>{
- if(e.name==='loc-channel1-retry')flush().catch(err=>console.warn('[LOC Queue retry]',err.message));
+ if(e.name==='loc-channel1-retry'||e.name==='loc-channel1-drain')
+  flush().then(count=>{if(count)badge(true,'已送達 KV：'+count+' 筆');}).catch(err=>{
+   console.warn('[LOC Queue retry]',err.message);badge(false,err.message);
+  });
 });
