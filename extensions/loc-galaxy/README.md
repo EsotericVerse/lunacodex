@@ -111,3 +111,7 @@ Chrome's `runtime.onMessageExternal` for messages originating from a website may
 在呼叫 Clerk `getToken({template:'loc-mcp'})` 之前，網站先以 `locGalaxy.bridgeProbe` 檢查 Chrome 外部訊息通道是否能回應、Extension 是否有當次自己開啟的授權分頁、nonce/Scope 是否正確。探測不傳 Token、不呼叫 MCP、不計入 MCP 搜尋 QoS。探測失敗直接顯示具體錯誤，成功才執行專用 JWT 與原有 Scope 驗證。Extension 回應協定版號 `protocol:1`，不是將網站鎖死在單一 Extension 版本。
 
 官方 Clerk Sync Host 另需 `@clerk/chrome-extension` SDK/bundle、Clerk allowed_origins 與 Sync Host 網域設定；目前公開站使用 development issuer，不應在缺少對應設定時直接切換登入來源。這版保留現有權限邊界，不變更 Root/Admin。
+
+## 0.6.4 — Chrome 外部訊息來源驗證
+
+0.6.3 的網站授權探測錯把 `sender.url` 當成一定含授權頁完整路徑及 query 的依據，結果 Extension 已接收網站訊息卻直接拒絕。0.6.4 改為檢查 Chrome 可信的 `sender.origin`（舊環境沒有時以 `sender.url` 的 **origin** 作兼容核對），並且另外透過 `chrome.tabs.get(pending.tabId)` 驗證由 Extension 主動開啟的真實授權頁、完整 nonce 和 Scope。原有 5 分鐘初次授權／24 小時續期、JWT 和 MCP Scope 權限檢查維持。只修正傳訊來源的判斷，不增權限、不新增對 Clerk 的請求。
