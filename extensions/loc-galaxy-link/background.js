@@ -188,6 +188,7 @@ async function connectLoc(){
  await chrome.storage.local.set({locOAuth:{
   access_token:tokens.access_token,refresh_token:tokens.refresh_token||null,
   expires_at:Date.now()+Math.max(0,Number(tokens.expires_in||300)-60)*1000}});
+ await chrome.storage.local.remove('locQueuePaused');
  return {connected:true};
 }
 let refreshFlight=null;
@@ -218,9 +219,9 @@ chrome.runtime.onMessage.addListener((message,_sender,respond)=>{
   return true;
  }
  if(message?.action==='loc-status'){
-  Promise.all([chrome.storage.local.get(AUTH_KEYS),allPending()]).then(([s,pending])=>respond({
+  Promise.all([chrome.storage.local.get([...AUTH_KEYS,'locQueuePaused']),allPending()]).then(([s,pending])=>respond({
     connected:Boolean(s.locOAuth?.refresh_token||s.locOAuth?.expires_at>Date.now()),
-    configured:Boolean(s.locConfig),pending:pending.length,
+    configured:Boolean(s.locConfig),paused:s.locQueuePaused===true,pending:pending.length,
     pendingCaptures:new Set(pending.map(r=>r.group_id||r.id)).size
   })).catch(e=>respond({error:e.message}));
   return true;
@@ -231,26 +232,36 @@ chrome.runtime.onMessage.addListener((message,_sender,respond)=>{
  }
 });
 
+function importContractError(message){
+ return Object.assign(new Error(message),{code:'LOC_IMPORT_CONTRACT'});
+}
 function validateArticleReceipts(receipts,records){
- if(!Array.isArray(receipts))throw Error('LOC 尚未回傳來源文章 UID，Queue 保留');
+ if(!Array.isArray(receipts))throw importContractError('LOC 尚未回傳來源文章 UID，Queue 保留');
  const entries=new Map();
  for(const item of receipts){
   if(typeof item?.source_key==='string'&&/^[0-9A-Za-z]{8}$/.test(String(item.uid||'')))
    entries.set(item.source_key,item.uid);
  }
  for(const key of new Set(records.map(r=>r.source_key)))
-  if(!entries.has(key))throw Error('LOC 未確認文章 UID：'+key);
+  if(!entries.has(key))throw importContractError('LOC 未確認文章 UID：'+key);
 }
 async function flush(force=false){
  if(processing)return processing;
  processing=(async()=>{
   const pending=orderedPending(await allPending());
   if(!pending.length)return 0;
-  const state=await chrome.storage.local.get(['locQueueRetry','locQueueRetryAfter']);
+  const state=await chrome.storage.local.get(['locQueueRetry','locQueueRetryAfter','locQueuePaused']);
+  if(state.locQueuePaused&&!force)return 0;
   if(Number(state.locQueueRetryAfter||0)>Date.now())return 0;
   if(!force&&!state.locQueueRetry&&!queueReady(pending))return 0;
   // One OAuth lookup per ready flush, not per capture or individual article.
-  const token=await activeToken();
+  let token;
+  try{token=await activeToken();}
+  catch(error){
+   // Do not retry unavailable or invalid OAuth every five minutes.
+   await chrome.storage.local.set({locQueuePaused:true});
+   throw error;
+  }
   const {locConfig:config}=await chrome.storage.local.get('locConfig');
   if(!config?.import_url)throw oauthError('未設定 LOC 短匯入 API');
   let sent=0;
@@ -267,6 +278,8 @@ async function flush(force=false){
      body:JSON.stringify(batch)
     });
     if(!reply.ok){
+     if(reply.status===401||reply.status===403)
+      await chrome.storage.local.set({locQueuePaused:true});
      if(reply.status===429){
       const header=reply.headers?.get?.('retry-after');
       const value=String(header||'').trim();
@@ -285,7 +298,10 @@ async function flush(force=false){
    }
    await chrome.storage.local.remove(['locQueueRetry','locQueueRetryAfter']);
   }catch(error){
-   await chrome.storage.local.set({locQueueRetry:true});
+   if(error.code==='LOC_IMPORT_CONTRACT'){
+    // Server may have written already; never blindly retry an unconfirmed append.
+    await chrome.storage.local.set({locQueuePaused:true});
+   }else await chrome.storage.local.set({locQueueRetry:true});
    throw error;
   }
   return sent;
