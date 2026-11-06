@@ -55,7 +55,7 @@ const STAT_TYPE_KEYS=Object.freeze({
   total:'statistics.totalSource',
   source:'uiExtra.statisticsUI.sourceGroup',
   place:'uiExtra.statisticsUI.place',
-  media:'多媒體（關鍵詞）',
+  media:'uiExtra.statisticsUI.mediaKeyword',
   keywords:'uiExtra.statisticsUI.keywordClass'
 });
 function dateKey(value){
