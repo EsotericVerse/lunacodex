@@ -61,8 +61,22 @@ test('Culture and Statistics offer only authorized Class choices and bind querie
   for(const code of [culture,read('app/modular/features/Statistics.jsx')]){
     assert.match(code,/selectAvailableKeywordClasses/);
     assert.match(code,/resolvedKeywordClassUid/);
-    assert.match(code,/availableKeywordClasses\.map\(item=>/);
+    assert.match(code,/(?:availableKeywordClasses|scopedKeywordClasses)\.map\(item=>/);
   }
   assert.match(read('app/loc/keyword-analysis.js'),/selectAvailableKeywordClasses/);
   assert.match(intersection,/classUid:keywords\.data\?\.keywordMeta\?\.class_uid\|\|classUid/);
+});
+
+test('all Class UIDs are selectable independently in analysis, Culture, Statistics',()=>{
+  const panel=read('app/loc/KeywordLibraryPanel.jsx');
+  const statistics=read('app/modular/features/Statistics.jsx');
+  const analysis=read('app/loc/keyword-analysis.js');
+  assert.match(panel,/選擇要解析的關鍵詞科目（Class）/);
+  assert.match(panel,/onChange=\{event=>choose\('class',event\.target\.value\)\}/);
+  assert.match(panel,/runKeywordAnalysisBatch\(scopeId,\{classUid:runClassUid/);
+  assert.match(analysis,/completeKeywordClass\(latest\[0\]\.keyword_meta,classUid,meta,now\)/);
+  assert.match(analysis,/matchedDocuments:counts\.matchedDocuments/);
+  assert.match(culture,/availableKeywordClasses\.length>0/);
+  assert.match(statistics,/const scopedKeywordClasses=availableKeywordClasses/);
+  assert.doesNotMatch(statistics,/categoryNames\.some\(/);
 });

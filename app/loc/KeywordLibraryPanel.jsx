@@ -286,7 +286,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
     finally{setBusy(false);}
   };
   const run=async(reset=false)=>{
-    const runClassUid=activeClass?.uid||config.current_keyword_class_uid;
+    const runClassUid=activeClass?.uid;
     if(busy||!runClassUid)return;
     setBusy(true);setProgress({phase:'reading',percent:0});setError('');
     try{
@@ -554,12 +554,19 @@ export default function KeywordLibraryPanel({scopeId,account}){
     </section>:null}
     {!loading&&workspace==='run'?<section className="loc-card scope-feature-card">
       <h2>重新分析</h2>
+      <label>選擇要解析的關鍵詞科目（Class）
+        <select className="scope-select" value={activeClass?.uid||''}
+          disabled={busy} onChange={event=>choose('class',event.target.value)}>
+          <option value="">請選擇科目</option>
+          {allClassNodes.map(node=><option key={node.uid} value={node.uid}>{node.name}</option>)}
+        </select>
+      </label>
       <p className="scope-status">關鍵字群組科目：{activeClass?.name||'尚未選擇'} · 上次完成：{keywordClassState(config,activeClass?.uid)?.completedAt?new Date(keywordClassState(config,activeClass.uid).completedAt).toLocaleString('zh-TW'):'尚未分析'}</p>
       <p className="scope-status">有效分類文章：{Number(keywordClassState(config,activeClass?.uid)?.matchedDocuments||0).toLocaleString()} 篇</p>
       <div className="scope-preview-links">
-        <button type="button" className="loc-button primary" disabled={busy||!(activeClass?.uid||config.current_keyword_class_uid)}
+        <button type="button" className="loc-button primary" disabled={busy||!activeClass?.uid}
           onClick={()=>run(false)}>重新分析</button>
-        <button type="button" className="loc-button" disabled={busy||!(activeClass?.uid||config.current_keyword_class_uid)}
+        <button type="button" className="loc-button" disabled={busy||!activeClass?.uid}
           onClick={()=>run(true)}>清空本群組的分析結果</button>
       </div>
       {progress?<p role="status" className="scope-status">{progress.label||progress.phase}
