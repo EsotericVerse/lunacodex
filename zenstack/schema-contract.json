@@ -351,7 +351,8 @@
           "hasDefault": false,
           "generated": false
         }
-      ]
+      ],
+      "uniques": []
     },
     {
       "table": "lo3rwang",
@@ -506,7 +507,8 @@
           "hasDefault": true,
           "generated": false
         }
-      ]
+      ],
+      "uniques": []
     },
     {
       "table": "lo3rwang_anchor",
@@ -563,7 +565,8 @@
           "hasDefault": true,
           "generated": false
         }
-      ]
+      ],
+      "uniques": []
     },
     {
       "table": "lo3rwang_blocks",
@@ -634,7 +637,8 @@
           "hasDefault": false,
           "generated": false
         }
-      ]
+      ],
+      "uniques": []
     },
     {
       "table": "lo3rwang_galaxy",
@@ -803,7 +807,8 @@
           "hasDefault": true,
           "generated": false
         }
-      ]
+      ],
+      "uniques": []
     },
     {
       "table": "loc",
@@ -881,7 +886,8 @@
           "hasDefault": false,
           "generated": false
         }
-      ]
+      ],
+      "uniques": []
     },
     {
       "table": "loc_blocks",
@@ -952,7 +958,8 @@
           "hasDefault": false,
           "generated": false
         }
-      ]
+      ],
+      "uniques": []
     },
     {
       "table": "lrunes",
@@ -1100,7 +1107,8 @@
           "hasDefault": true,
           "generated": false
         }
-      ]
+      ],
+      "uniques": []
     },
     {
       "table": "lrunes_anchor",
@@ -1157,7 +1165,8 @@
           "hasDefault": true,
           "generated": false
         }
-      ]
+      ],
+      "uniques": []
     },
     {
       "table": "lrunes_blocks",
@@ -1228,7 +1237,8 @@
           "hasDefault": false,
           "generated": false
         }
-      ]
+      ],
+      "uniques": []
     },
     {
       "table": "lrunes_daily",
@@ -1285,6 +1295,12 @@
           "hasDefault": false,
           "generated": false
         }
+      ],
+      "uniques": [
+        [
+          "record_date",
+          "draw_kind"
+        ]
       ]
     },
     {
@@ -1454,7 +1470,8 @@
           "hasDefault": true,
           "generated": false
         }
-      ]
+      ],
+      "uniques": []
     },
     {
       "table": "manage",
@@ -1546,7 +1563,8 @@
           "hasDefault": false,
           "generated": false
         }
-      ]
+      ],
+      "uniques": []
     },
     {
       "table": "runes",
@@ -1729,7 +1747,8 @@
           "hasDefault": true,
           "generated": false
         }
-      ]
+      ],
+      "uniques": []
     },
     {
       "table": "runes_etc",
@@ -1775,7 +1794,8 @@
           "hasDefault": true,
           "generated": false
         }
-      ]
+      ],
+      "uniques": []
     },
     {
       "table": "runes_group",
@@ -1825,7 +1845,8 @@
           "hasDefault": false,
           "generated": false
         }
-      ]
+      ],
+      "uniques": []
     },
     {
       "table": "VisualNovel",
@@ -2050,7 +2071,8 @@
           "hasDefault": true,
           "generated": false
         }
-      ]
+      ],
+      "uniques": []
     }
   ]
 }
