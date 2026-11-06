@@ -33,6 +33,7 @@
       return u&&socialPostUrl(u);
     });
     if(match)return normalizeUrl(match.href);
+    if(socialPostUrl(location.href))return normalizeUrl(location.href);
     // Never merge unrelated social-feed posts into the profile/feed URL
     // when a stable individual post permalink is not present.
     if(/(?:instagram\.com|threads\.(?:net|com))$/.test(location.hostname.toLowerCase()))
