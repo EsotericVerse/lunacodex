@@ -111,11 +111,67 @@ test('rejects existing incompatible Galaxy/Anchor before selecting a new SQL tar
   const entries=[
     {name:'writer_galaxy',schema:'dbo',columns:names.map(name=>({name}))},
     {name:'writer_anchor',schema:'dbo',columns:['uid','type','title',
-      'description','invisible','attr'].map(name=>({name}))}
+      'description','invisible','attr','createtime'].map(name=>({name}))}
   ];
   assert.deepEqual(check(entries,{engine:'mssql',namespace:'dbo',scopeId:'writer'}),
     {scopeId:'writer',galaxy:'dbo.writer_galaxy',anchor:'dbo.writer_anchor'});
   const broken=JSON.parse(JSON.stringify(entries));
   broken[0].columns=broken[0].columns.filter(row=>row.name!=='search');
   assert.throws(()=>check(broken,{engine:'mssql',namespace:'dbo',scopeId:'writer'}),/search/);
+});
+
+test('default PostgreSQL public namespace recognizes already installed tables',async()=>{
+  const {db,tables,indexes}=mockDb([
+    {schema:'public',name:'writer_galaxy'},
+    {schema:'public',name:'writer_anchor'}
+  ]);
+  assert.deepEqual(await create(db,{engine:'postgres',scopeId:'writer'}),{created:[]});
+  assert.equal(tables.length,0);
+  assert.equal(indexes.length,0);
+});
+
+test('default SQL Server dbo namespace recognizes already installed tables',async()=>{
+  const {db,tables,indexes}=mockDb([
+    {schema:'dbo',name:'writer_galaxy'},
+    {schema:'dbo',name:'writer_anchor'}
+  ]);
+  assert.deepEqual(await create(db,{engine:'mssql',scopeId:'writer'}),{created:[]});
+  assert.equal(tables.length,0);
+  assert.equal(indexes.length,0);
+});
+
+test('a matching relation in another SQL schema must not suppress installation',async()=>{
+  const {db,tables}=mockDb([
+    {schema:'other',name:'writer_galaxy'},
+    {schema:'other',name:'writer_anchor'}
+  ]);
+  const result=await create(db,{engine:'postgres',scopeId:'writer'});
+  assert.deepEqual(result.created,['writer_galaxy','writer_anchor']);
+  assert.deepEqual(tables.map(row=>row.table),['public.writer_galaxy','public.writer_anchor']);
+});
+
+test('portable schema validator honors native default namespaces and rejects shadow tables',()=>{
+  const validate=new Function('sql','portableRelation',source
+    .replace(/^import .*$/gm,'').replace(/^export /gm,'')+
+    ';return validatePortableScopeSchema;')(
+    Object.assign((strings,...values)=>({strings,values}),{raw:value=>value}),
+    (table,engine,ns)=>engine==='mysql'?table:(ns|| (engine==='mssql'?'dbo':'public'))+'.'+table);
+  const galaxy=['uid','title','content','createtime','location','UpdateTime',
+    'url','source_id','target_id','ref_id','site','place_id','media_link',
+    'date','site_id','statics','culture','search','trace','list','keyword',
+    'extract','others'];
+  const anchor=['uid','type','title','description','invisible','attr','createtime'];
+  for(const [engine,namespace] of [['postgres','public'],['mssql','dbo']]){
+    const tables=[
+      {schema:namespace,name:'writer_galaxy',columns:galaxy.map(name=>({name}))},
+      {schema:namespace,name:'writer_anchor',columns:anchor.map(name=>({name}))}
+    ];
+    assert.deepEqual(validate(tables,{engine,scopeId:'writer'}),{
+      scopeId:'writer',
+      galaxy:namespace+'.writer_galaxy',
+      anchor:namespace+'.writer_anchor'
+    });
+    const wrong=tables.map(table=>({...table,schema:'shadow'}));
+    assert.throws(()=>validate(wrong,{engine,scopeId:'writer'}),/Missing LOC table/);
+  }
 });
