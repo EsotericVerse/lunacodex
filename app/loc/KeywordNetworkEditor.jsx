@@ -6,7 +6,7 @@ function graphOriginGroup(items=[]){
   return String(items.find(row=>row.group_uid)?.group_uid||'');
 }
 
-function buildGraph(items=[],className='',classId='',expandedGroup='',expandedItemId=''){
+function buildGraph(items=[],groups=[],className='',classId='',expandedGroup='',expandedItemId=''){
   const rows=Array.isArray(items)?items:[];
   const nodes=[];
   const edges=[];
@@ -15,8 +15,11 @@ function buildGraph(items=[],className='',classId='',expandedGroup='',expandedIt
   nodes.push({id:rootId,label:className?'關鍵字群組科目：'+className:'關鍵字群組科目',level:0,kind:'class',shape:'ellipse'});
   meta.set(rootId,{kind:'class',className,classId});
 
-  const groups=new Map(rows.filter(row=>row.group_uid).map(row=>[String(row.group_uid),String(row.class_group||'')]));
-  for(const [groupUid,groupName] of groups){
+  const namedGroups=new Map(groups.map(row=>[String(row.uid),String(row.name||'')]));
+  // Preserve empty Groups: an editor must be able to add its first Item.
+  for(const row of rows)if(row.group_uid&&!namedGroups.has(String(row.group_uid)))
+    namedGroups.set(String(row.group_uid),String(row.class_group||''));
+  for(const [groupUid,groupName] of namedGroups){
     const id='group:'+groupUid;
     nodes.push({id,label:groupName||'未命名分類群組',level:1,kind:'group',shape:'box'});
     edges.push({id:rootId+'>'+id,from:rootId,to:id});
@@ -52,6 +55,7 @@ function buildGraph(items=[],className='',classId='',expandedGroup='',expandedIt
 
 export default function KeywordNetworkEditor({
   items=[],
+  groups=[],
   className='',
   classId='',
   selectedId='',
@@ -88,7 +92,7 @@ export default function KeywordNetworkEditor({
     window.addEventListener('keydown',onKeyDown);
     return ()=>window.removeEventListener('keydown',onKeyDown);
   },[fullscreen]);
-  const graph=useMemo(()=>buildGraph(items,className,classId,expandedGroup,expandedItemId),[items,className,classId,expandedGroup,expandedItemId]);
+  const graph=useMemo(()=>buildGraph(items,groups,className,classId,expandedGroup,expandedItemId),[items,groups,className,classId,expandedGroup,expandedItemId]);
   useEffect(()=>{
     const row=items.find(item=>String(item.keyword_id)===String(selectedId));
     if(row){
@@ -140,7 +144,9 @@ export default function KeywordNetworkEditor({
           edgeDescription:'拖曳建立關係。',editEdgeDescription:'拖曳調整關係。',
           createEdgeError:'無法建立此關係。',deleteClusterError:'無法刪除群集。',editClusterError:'無法編輯群集。'
         }},
-        layout:{hierarchical:{enabled:true,direction:'LR',sortMethod:'directed',levelSeparation:190,nodeSpacing:110,treeSpacing:170}},
+        layout:{hierarchical:{enabled:true,
+          direction:window.matchMedia('(max-width: 760px)').matches?'UD':'LR',
+          sortMethod:'directed',levelSeparation:170,nodeSpacing:110,treeSpacing:145}},
         interaction:{hover:true,navigationButtons:false,keyboard:{enabled:true,bindToWindow:false},dragNodes:false,dragView:true,zoomView:true,tooltipDelay:500},
         manipulation:{
           enabled:false,
@@ -180,6 +186,7 @@ export default function KeywordNetworkEditor({
         edges:{selectionWidth:2,hoverWidth:1.5}
       });
       networkRef.current=network;
+      const retainedSelection=selectedNodeRef.current;
       const previousView=viewportRef.current;
       if(previousView?.classId===classId){
         network.moveTo({position:previousView.position,scale:previousView.scale,animation:false});
@@ -214,6 +221,9 @@ export default function KeywordNetworkEditor({
         network.editNode();
       });
 
+      if(retainedSelection&&graph.meta.has(retainedSelection)){
+        network.selectNodes([retainedSelection]);
+      }
       if(selectedId){
         const itemNode='item:'+String(selectedId);
         if(graph.meta.has(itemNode)){
@@ -238,7 +248,6 @@ export default function KeywordNetworkEditor({
     }
   },[selectedId,graph]);
 
-  const chosenNode=graph.meta.get(selectedNodeRef.current);
   return <section className={'scope-keyword-network'+(fullscreen?' is-fullscreen':'')} aria-label="關鍵詞階層圖">
     <div className="scope-keyword-network-help">
       <strong>關鍵字群組科目 → 關鍵字分類群組 → 關鍵詞分類 → 判斷詞列表</strong>
