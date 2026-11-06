@@ -24,7 +24,19 @@ async function dbOperation(mode,run){
   try{const request=run(store);request.onsuccess=()=>{value=request.result;};request.onerror=()=>reject(request.error);}catch(e){tx.abort();reject(e);}
  });}finally{db.close();}
 }
-const enqueue=record=>dbOperation('readwrite',store=>store.put(record));
+// A split capture must enter the one queue atomically: either all parts exist
+// or no part is eligible for import.
+async function enqueueMany(records){
+ const db=await dbOpen();
+ try{await new Promise((resolve,reject)=>{
+  const tx=db.transaction(STORE,'readwrite'),store=tx.objectStore(STORE);
+  tx.oncomplete=()=>resolve();
+  tx.onerror=()=>reject(tx.error);
+  tx.onabort=()=>reject(tx.error||Error('Capture enqueue aborted'));
+  try{for(const record of records)store.put(record);}
+  catch(error){tx.abort();reject(error);}
+ });}finally{db.close();}
+}
 const allPending=()=>dbOperation('readonly',store=>store.getAll());
 // Remove an acknowledged batch in one IndexedDB transaction. Partial local
 // deletion would change the retry batch ID after a crash and risk duplicates.
@@ -98,9 +110,10 @@ async function enqueuePage(record){
   if(end<content.length&&end>offset&&/^[\uD800-\uDBFF]$/.test(content[end-1]))end--;
   chunks.push(content.slice(offset,end));offset=end;
  }
- for(let i=0;i<chunks.length;i++)await enqueue({...record,id:crypto.randomUUID(),group_id,
+ const events=chunks.map((chunk,i)=>({...record,id:crypto.randomUUID(),group_id,
   source_key,write_mode:'append',kind:'capture',
-  part_index:i,part_count:chunks.length,content:chunks[i]});
+  part_index:i,part_count:chunks.length,content:chunk}));
+ await enqueueMany(events);
  return chunks.length;
 }
 function batches(records){
