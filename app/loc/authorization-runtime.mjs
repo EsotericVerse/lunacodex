@@ -75,10 +75,14 @@ export function assertAuthorizationForTable(table){
   // The hidden device-only SQLite scope has its own independent local write path.
   const name=String(table||'').trim().toLowerCase();
   if(name==='silver.local'||name.startsWith('silver.local_'))return;
+  if(name==='api.manage'){
+    if(canAuthorizeGlobal())return;
+    throw new Error('目前登入帳號沒有全域管理權限。');
+  }
   if(!name.startsWith('silver.'))throw new Error('未知的資料寫入目標。');
   const suffix=name.slice(7);
   // Rune reference tables are managed by the LunaRunes scope.
   const scopeid=suffix==='runes'||suffix.startsWith('runes_')?'lrunes':suffix.split('_')[0];
-  if(name==='silver.manage'?canAuthorizeGlobal():scopeid==='loc'?canAuthorizeGroup('loc'):canAuthorizeScope(scopeid))return;
+  if(name==='api.manage'?canAuthorizeGlobal():scopeid==='loc'?canAuthorizeGroup('loc'):canAuthorizeScope(scopeid))return;
   throw new Error('目前登入帳號沒有此 Scope 的寫入權限。');
 }
