@@ -6,6 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {Script,createContext,runInContext} from 'node:vm';
 import {webcrypto} from 'node:crypto';
 import {TextEncoder} from 'node:util';
+import {createLocGatewayAdapter} from '../app/loc/providers/loc-gateway.mjs';
 const root=join(dirname(fileURLToPath(import.meta.url)),'../extensions/loc-web-capture-v2');
 const text=name=>readFileSync(join(root,name),'utf8');
 const manifest=JSON.parse(text('manifest.json'));
@@ -112,4 +113,41 @@ test('existing website gateway requests a signed write delegation, not manage, f
  assert.match(edge,/shortImport\(scopeid,batch\)/);
  assert.match(page,/dbAuthClient\.shortImport\(scope,batch\)/);
  assert.match(page,/__locGalaxyLinkImport/);
+});
+
+test('website signed delegation reaches short-import gateway without extra target or a second login',async()=>{
+ let siteAccessChecks=0,authorityCalls=0,edgeCalls=0,issued=null,sent=null;
+ const batch={id:'00000000-0000-4000-8000-000000000001',write_mode:'append',records:[]};
+ const gateway=createLocGatewayAdapter({
+  authorityUrl:'https://auth.loc.test',
+  gatewayUrl:'https://sql.loc.test/kysely',
+  accountAdapter:{
+   auth:{},
+   getAccessToken:async()=>{siteAccessChecks++;return 'existing-website-session-token'}
+  },
+  fetchImpl:async(url,options)=>{
+   if(String(url).includes('/v1/delegation')){
+    authorityCalls++;
+    issued=JSON.parse(options.body);
+    return {ok:true,status:200,json:async()=>({
+     access_token:'signed.loc.delegation',expires_at:Math.ceil(Date.now()/1000)+300
+    })};
+   }
+   edgeCalls++;
+   sent=JSON.parse(options.body);
+   assert.equal(options.headers.authorization,'Bearer signed.loc.delegation');
+   return {ok:true,status:200,json:async()=>({
+    accepted:true,id:batch.id,articles:[]
+   })};
+  }
+ });
+ const response=await gateway.authClient.shortImport('lo3rwang',batch);
+ assert.equal(response.accepted,true);
+ assert.deepEqual(issued,{audience:'sql',scopeid:'lo3rwang',actions:['write']});
+ assert.deepEqual(Object.keys(sent).sort(),['batch','kind','scopeid']);
+ assert.equal(sent.target,undefined);
+ assert.equal(sent.scopeid,'lo3rwang');
+ assert.equal(siteAccessChecks,1);
+ assert.equal(authorityCalls,1);
+ assert.equal(edgeCalls,1);
 });
