@@ -11,8 +11,8 @@ export async function readMcpGalaxyWithKysely(trx,request,{engine='postgres',nam
   if(request.kind==='mcp-read'){
     let query=trx.selectFrom(table)
       .select(['uid','title','content','date','createtime','site','url'])
-      .where('uid','=',request.uid);
-    if(request.site!==undefined)query=query.where('site','=',request.site);
+      .where('uid','=',request.uid)
+      .where('site','=',request.site||'mcp');
     return query.limit(1).execute();
   }
   if(request.kind!=='mcp-search')throw Object.assign(
