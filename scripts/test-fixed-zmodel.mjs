@@ -172,25 +172,31 @@ test('both Kysely keyword imports reuse the existing Anchor UID generator withou
     assert.match(source,/import \{allocateAnchorUid\} from '\.\.\/unified-anchor-compat\.mjs';/);
     assert.doesNotMatch(source,/silver\.new_keyword_tree_uid|KEYWORD_UID_ALPHABET|randomKeywordUid/);
   }
-  // Existing Scope: a point lookup checks each candidate against the UID PK,
-  // while the tiny per-transaction set rejects duplicate candidates locally.
-  const begin=management.indexOf('  const reserved=new Set();');
+  // Existing Scope: INSERT with ON CONFLICT retries only after a rare PK
+  // collision; the normal path requires no SELECT or large comparison.
+  const begin=management.indexOf('  const assigned=new Set();');
   const stop=management.indexOf('  const readChild=',begin);
   assert.ok(begin>=0&&stop>begin);
-  let queryCount=0,index=0;
-  const proposed=['AAAA1111','BBBB2222','BBBB2222','CCCC3333'];
-  const trx={selectFrom(){return {
-    select(){return this;},where(){return this;},
-    async executeTakeFirst(){queryCount++;return queryCount===1?{uid:'AAAA1111'}:null;}
+  assert.doesNotMatch(management.slice(begin,stop),/\.selectFrom\(/);
+  let inserts=0,index=0;
+  const proposed=['AAAA1111','BBBB2222','CCCC3333'];
+  const trx={insertInto(){return {
+    values(row){this.row=row;return this;},
+    onConflict(fn){fn({column(){return {doNothing(){return null;}}}});return this;},
+    returning(){return this;},
+    async executeTakeFirst(){
+      inserts++;
+      return inserts===1?undefined:{uid:this.row.uid};
+    }
   }}};
-  const nextExisting=new Function('trx','target','allocateAnchorUid','reject',
-    management.slice(begin,stop)+'\nreturn nextUid;')(
+  const insertCopy=new Function('trx','target','allocateAnchorUid','reject',
+    management.slice(begin,stop)+'\nreturn insertCopy;')(
       trx,'silver.lo3rwang_anchor',()=>proposed[index++],
       message=>{throw Error(message)});
-  assert.equal(await nextExisting(),'BBBB2222');
-  assert.equal(await nextExisting(),'CCCC3333');
-  assert.equal(queryCount,3);
-
+  const row={title:'Keyword',description:'',invisible:false};
+  assert.equal(await insertCopy('item',row,{keyword:['foo']}),'BBBB2222');
+  assert.equal(await insertCopy('group',row,{uid:[]}),'CCCC3333');
+  assert.equal(inserts,3);
   // New Scope: provisionScope has just created an empty Anchor table.
   // The same canonical generator needs only the in-memory reserved IDs.
   const scopeStart=admin.indexOf('  const assigned=new Set();');
