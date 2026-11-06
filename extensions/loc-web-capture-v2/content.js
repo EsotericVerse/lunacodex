@@ -53,6 +53,23 @@
       const turns=conversationTurns(doc);
       if(turns.length)return turns;
     }
+    // Readability is invoked only for a full-page single capture; avoid destroying
+    // the live DOM or re-parsing every MutationObserver notification during recording.
+    if(mode==='capture'&&doc===document.body&&typeof Readability==='function'&&
+      !/(?:instagram\.com|threads\.(?:net|com)|chatgpt\.com|claude\.ai|chat\.openai\.com)$/.test(hostname)){
+      try{
+        const parsed=new Readability(document.cloneNode(true)).parse();
+        if(parsed?.textContent?.trim()?.length>100){
+          const documentFragment=new DOMParser().parseFromString(parsed.content||'','text/html');
+          const hrefs=[...documentFragment.querySelectorAll('a[href]')].slice(0,120)
+            .map(a=>({text:a.textContent?.trim()||'',url:normalizeUrl(a.href)}))
+            .filter(x=>x.url).map(x=>x.text+' <'+x.url+'>').join('\n');
+          const url=normalizeUrl(location.href);
+          return [{key:url,source_key:url,url,title:parsed.title||document.title,
+            content:parsed.textContent.trim()+(hrefs?'\n[連結]\n'+hrefs:'')}];
+        }
+      }catch{ /* Unsupported or dynamic page: use bounded DOM fallback below. */ }
+    }
     const articles=[...doc.querySelectorAll('article,[role="article"]')]
       .filter(el=>visible(el)&&cleanText(el).length>=25);
     const cards=(articles.length?articles:[doc]).slice(0,100);
