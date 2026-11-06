@@ -7,7 +7,7 @@ test('website bridge fallback is loaded, without broadening external origins',()
   const manifest=JSON.parse(read('extensions/loc-galaxy/manifest.json'));
   const entry=read('extensions/loc-galaxy/background-entry.mjs');
   const fallback=read('extensions/loc-galaxy/website-grant-fallback.mjs');
-  assert.equal(manifest.version,'0.6.2');
+  assert.equal(manifest.version,'0.6.3');
   assert.equal(manifest.background.service_worker,'background-entry.mjs');
   assert.deepEqual(manifest.externally_connectable.matches,['https://loc.lo3rwang.cc/*']);
   assert.match(entry,/import '\.\/background-core\.mjs'/);
@@ -29,4 +29,17 @@ test('0.6.2 has exactly one active website external grant listener',()=>{
  assert.doesNotMatch(core,/onMessageExternal\.addListener/);
  assert.equal((site.match(/onMessageExternal\.addListener/g)||[]).length,1);
  assert.doesNotMatch(site,/if\(sender\.tab\?\.id\|\|/);
+});
+
+test('Clerk token acquisition waits for a verified Extension communication probe',()=>{
+ const bridge=read('public/extension/website-bridge.mjs');
+ const listener=read('extensions/loc-galaxy/website-grant-fallback.mjs');
+ assert.match(bridge,/type:'locGalaxy\.bridgeProbe'/);
+ assert.match(bridge,/if\(!probe\.ok\)throw Error/);
+ assert.match(bridge,/probe\.data\?\.version!=='0\.6\.3'/);
+ assert.ok(bridge.indexOf("type:'locGalaxy.bridgeProbe'")<bridge.indexOf("const clerk=await loadClerk()"));
+ assert.match(listener,/message\?\.type!=='locGalaxy\.bridgeProbe'/);
+ assert.match(listener,/version:chrome\.runtime\.getManifest\(\)\.version/);
+ assert.match(listener,/await knownTab\(pending,nonce,scopeid\)/);
+ assert.match(listener,/await knownTab\(active,nonce,scopeid\)/);
 });
