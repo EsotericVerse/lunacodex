@@ -29,7 +29,188 @@ const physical=new Map();
 for(const [,name,body] of blocks){
   const table=body.match(/^\s+@@map\("([^"]+)"\)\s*$/m)?.[1];
   assert.ok(table,'missing physical table mapping for '+name);
-  assert.match(body,/^\s+@@schema\("silver"\)\s*$/m);
+  assert.match(body,new RegExp('^\\s+@@schema\\("'+(table==='manage'?'api':'silver')+'"\\)\\s*
+  assert.equal(name,modelName(table),'unexpected model name');
+  assert.ok(!physical.has(table),'duplicate physical model: '+table);
+  const fields=new Map();
+  for(const line of body.split('\n')){
+    const m=line.match(/^\s{4}([A-Za-z_]\w*)\s+((?:String|Boolean|Int|BigInt|Float|Decimal|DateTime|Json|Bytes)(?:\[\]|\?)?)(?:\s+(.*))?$/);
+    if(m){
+      assert.ok(!fields.has(m[1]),'duplicate field: '+table+'.'+m[1]);
+      fields.set(m[1],{type:m[2],attributes:m[3]||''});
+    }
+  }
+  physical.set(table,{body,fields});
+}
+
+test('ZModel maps exactly to the frozen silver physical table and column contract',()=>{
+  assert.equal(snapshot.schema,'silver');
+  assert.equal(snapshot.tables.length,17);
+  assert.equal(physical.size,snapshot.tables.length);
+  let total=0;
+  for(const t of snapshot.tables){
+    const model=physical.get(t.table);
+    assert.ok(model,'missing table: '+t.table);
+    assert.equal(model.fields.size,t.columns.length,'column count drift for '+t.table);
+    assert.deepEqual([...model.fields.keys()].sort(),t.columns.map(x=>x.name).sort(),
+      'column name drift for '+t.table);
+    const ids=t.pk;
+    if(ids.length===1)assert.match(model.fields.get(ids[0]).attributes,/(?:^|\s)@id(?:\s|$)/);
+    else assert.ok(model.body.includes('@@id(['+ids.join(', ')+'])'));
+    for(const keys of t.uniques||[])assert.ok(model.body.includes('@@unique(['+keys.join(', ')+'])'),
+      'missing existing unique constraint on '+t.table);
+    for(const col of t.columns){
+      total++;
+      const field=model.fields.get(col.name);
+      assert.ok(field,'missing '+t.table+'.'+col.name);
+      assert.ok(native[col.format],'unexpected source type '+col.format);
+      const [kind,dbType]=native[col.format];
+      // ZModel cannot express nullable SQL scalar lists (String[]?, Int[]?).
+      // Those nullable arrays stay on Kysely's SQL/driver path.
+      const optional=col.nullable&&!kind.endsWith('[]')?'?':'';
+      assert.equal(field.type,kind+optional,t.table+'.'+col.name+' scalar type changed');
+      if(dbType)assert.ok(field.attributes.includes(dbType),
+        t.table+'.'+col.name+' native database type changed');
+      if(col.generated)assert.ok(!field.attributes.includes('@default('),
+        t.table+'.'+col.name+' is a stored generated column');
+    }
+  }
+  assert.equal(total,273);
+});
+
+test('Anchor remains the extension point; model does not declare migrations or bypass authorization',()=>{
+  for(const table of ['lo3rwang_anchor','lrunes_anchor']){
+    const anchor=physical.get(table);
+    assert.ok(anchor);
+    assert.equal(anchor.fields.get('uid').type,'String');
+    assert.equal(anchor.fields.get('type').type,'String');
+    assert.equal(anchor.fields.get('attr').type,'Json');
+    assert.match(anchor.fields.get('attr').attributes,/@db\.JsonB/);
+    assert.equal(anchor.fields.size,7);
+  }
+  assert.doesNotMatch(source,/^\s*generator\s+/m);
+  assert.doesNotMatch(source,/^\s*@@allow\s*\(/m);
+  assert.doesNotMatch(source,/^\s*@@deny\s*\(/m);
+});
+
+test('ZenStack V3 runtime schema bridge stays in sync with the frozen contract',async()=>{
+  const {schema}=await import('../zenstack/schema.mjs');
+  assert.equal(schema.provider.type,'postgresql');
+  assert.equal(schema.provider.defaultSchema,'silver');
+  assert.equal(Object.keys(schema.models).length,snapshot.tables.length);
+  for(const table of snapshot.tables){
+    const model=schema.models[modelName(table.table)];
+    assert.ok(model,'missing generated model '+table.table);
+    assert.deepEqual(model.idFields,table.pk);
+    for(const keys of table.uniques||[])
+      assert.deepEqual(Object.keys(model.uniqueFields[keys.join('_')]).sort(),[...keys].sort());
+    assert.equal(Object.keys(model.fields).length,table.columns.length);
+    for(const col of table.columns){
+      const field=model.fields[col.name];
+      assert.ok(field,'missing generated field '+table.table+'.'+col.name);
+      assert.equal(field.type,native[col.format][0].replace('[]',''));
+      assert.equal(Boolean(field.array),col.format.startsWith('_'));
+      assert.equal(Boolean(field.optional),col.nullable&&!col.format.startsWith('_'));
+      assert.equal(Boolean(field.default),col.hasDefault&&!col.generated,
+        'physical default metadata drift on '+table.table+'.'+col.name);
+    }
+    assert.equal(model.attributes.find(a=>a.name==='@@map')?.args?.[0]?.value?.value,table.table);
+    assert.equal(model.attributes.find(a=>a.name==='@@schema')?.args?.[0]?.value?.value,table.schema||'silver');
+  }
+});
+
+test('ZenStack V3 compiles fixed-model Kysely reads without a database or stored procedure',async()=>{
+  const {createFixedLocClient}=await import('../zenstack/client.mjs');
+  const {DummyDriver,PostgresAdapter,PostgresIntrospector,PostgresQueryCompiler}=await import('kysely');
+  const dialect={
+    createDriver:()=>new DummyDriver(),
+    createAdapter:()=>new PostgresAdapter(),
+    createIntrospector:db=>new PostgresIntrospector(db),
+    createQueryCompiler:()=>new PostgresQueryCompiler()
+  };
+  const client=createFixedLocClient({dialect});
+  const compiled=client.$qb.selectFrom('Lo3rwangAnchor')
+    .select(['uid','type'])
+    .where('type','=','date')
+    .limit(5).compile();
+  assert.match(compiled.sql,/"silver"\."lo3rwang_anchor"/);
+  assert.deepEqual(compiled.parameters,['date',5]);
+});
+
+test('active LOC browser and local providers have no SQL RPC transport',()=>{
+  const active=[
+    '../app/loc/providers/clerk-gateway.mjs',
+    '../app/loc/providers/kysely-edge.mjs',
+    '../app/loc/providers/local-sqlite.mjs',
+    '../app/loc/db-client.mjs'
+  ];
+  for(const path of active){
+    const code=readFileSync(new URL(path,import.meta.url),'utf8');
+    assert.doesNotMatch(code,/\.rpc\s*\(/,path+' must not invoke a database RPC');
+    assert.doesNotMatch(code,/kind:\s*['"]rpc['"]/,path+' must not send an RPC request');
+  }
+  const bridge=readFileSync(new URL('../app/loc/providers/configured.mjs',import.meta.url),'utf8');
+  assert.match(bridge,/createClerkGatewayAdapter/);
+});
+
+test('direct Kysely action routing replaces the local and public RPC facade',()=>{
+  const local=readFileSync(new URL('../app/loc/providers/local-sqlite.mjs',import.meta.url),'utf8');
+  const browser=readFileSync(new URL('../app/loc/db-client.mjs',import.meta.url),'utf8');
+  const edge=readFileSync(new URL('../app/loc/providers/kysely-edge.mjs',import.meta.url),'utf8');
+  assert.match(local,/analytics\(args\)\{return localAnalytics\(args\);\}/);
+  assert.match(local,/managedWrite\(payload\)\{return managementWriteLocal\(payload\);\}/);
+  assert.match(browser,/localSchema\.analytics\(args\)/);
+  assert.match(browser,/localSchema\.managedWrite\(payload\)/);
+  for(const method of ['analytics','managedWrite','managedAction','publicAction','anchor'])
+    assert.ok(edge.includes(method+'('),'missing SQL action '+method);
+});
+
+test('both Kysely keyword imports reuse the existing Anchor UID generator without SQL RPC',async()=>{
+  const management=readFileSync(new URL('../app/loc/providers/kysely-management.mjs',import.meta.url),'utf8');
+  const admin=readFileSync(new URL('../app/loc/providers/kysely-scope-admin.mjs',import.meta.url),'utf8');
+  for(const source of [management,admin]){
+    assert.match(source,/import \{allocateAnchorUid\} from '\.\.\/unified-anchor-compat\.mjs';/);
+    assert.doesNotMatch(source,/silver\.new_keyword_tree_uid|KEYWORD_UID_ALPHABET|randomKeywordUid/);
+  }
+  // Existing Scope: INSERT with ON CONFLICT retries only after a rare PK
+  // collision; the normal path requires no SELECT or large comparison.
+  const begin=management.indexOf('  const assigned=new Set();');
+  const stop=management.indexOf('  const readChild=',begin);
+  assert.ok(begin>=0&&stop>begin);
+  assert.doesNotMatch(management.slice(begin,stop),/\.selectFrom\(/);
+  let inserts=0,index=0;
+  const proposed=['AAAA1111','BBBB2222','CCCC3333'];
+  const trx={insertInto(){return {
+    values(row){this.row=row;return this;},
+    onConflict(fn){fn({column(){return {doNothing(){return null;}}}});return this;},
+    returning(){return this;},
+    async executeTakeFirst(){
+      inserts++;
+      return inserts===1?undefined:{uid:this.row.uid};
+    }
+  }}};
+  const insertCopy=new Function('trx','target','allocateAnchorUid','reject',
+    management.slice(begin,stop)+'\nreturn insertCopy;')(
+      trx,'silver.lo3rwang_anchor',()=>proposed[index++],
+      message=>{throw Error(message)});
+  const row={title:'Keyword',description:'',invisible:false};
+  assert.equal(await insertCopy('item',row,{keyword:['foo']}),'BBBB2222');
+  assert.equal(await insertCopy('group',row,{uid:[]}),'CCCC3333');
+  assert.equal(inserts,3);
+  // New Scope: provisionScope has just created an empty Anchor table.
+  // The same canonical generator needs only the in-memory reserved IDs.
+  const scopeStart=admin.indexOf('  const assigned=new Set();');
+  const scopeEnd=admin.indexOf("  const source='silver.lo3rwang_anchor';",scopeStart);
+  assert.ok(scopeStart>=0&&scopeEnd>scopeStart);
+  let serial=0;
+  const nextFresh=new Function('allocateAnchorUid',
+    admin.slice(scopeStart,scopeEnd)+'\nreturn nextUid;')(
+      assigned=>{let uid;do{uid='New'+String(++serial).padStart(5,'0');}while(assigned.has(uid));return uid;});
+  assert.equal(nextFresh(),'New00001');
+  assert.equal(nextFresh(),'New00002');
+  assert.equal(serial,2);
+});
+,'m'));
   assert.equal(name,modelName(table),'unexpected model name');
   assert.ok(!physical.has(table),'duplicate physical model: '+table);
   const fields=new Map();
