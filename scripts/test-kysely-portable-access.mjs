@@ -165,3 +165,68 @@ test('MySQL retains 50-row batches regardless of the SQL Server width limit',asy
   assert.deepEqual(sizes,[50,20]);
   assert.equal(result.data.count,70);
 });
+
+test('portable repeated media_link imports do not update unchanged JSON arrays',async()=>{
+  const stored={uid:'Ab12Cd34',title:'same',content:'same',place_id:null,
+    url:null,media_link:'["Aa00Bb11","Cc22Dd33"]'};
+  const patches=[];
+  const acl=registry([{id:'lo3rwang',email:'owner@example.test',
+    manage_role:'scope',active:true}]);
+  const db={
+    ...acl,
+    selectFrom(table){
+      if(table==='dbo.lo3rwang_galaxy')return {
+        select(){return this},
+        where(){return this},
+        execute:async()=>[stored]
+      };
+      return acl.selectFrom(table);
+    },
+    updateTable(){return {
+      set(patch){patches.push(patch);return this},
+      where(){return this},
+      executeTakeFirst:async()=>({numUpdatedRows:1n})
+    }}
+  };
+  const request=media=>executeCrossEngineManagedWrite(db,{
+    payload:{p_table:'silver.lo3rwang_galaxy',p_operation:'update_batch',
+      p_rows:[{uid:'Ab12Cd34',media_link:media}]}
+  },{...identity,engine:'mssql',namespace:'dbo'});
+  const repeated=await request(['Aa00Bb11','Cc22Dd33']);
+  assert.equal(repeated.data.count,0);
+  assert.equal(patches.length,0);
+  const changed=await request(['Aa00Bb11','Cc22Dd33','Ee44Ff55']);
+  assert.equal(changed.data.count,1);
+  assert.equal(patches.length,1);
+  assert.equal(patches[0].media_link,
+    '["Aa00Bb11","Cc22Dd33","Ee44Ff55"]');
+});
+
+test('portable update comparison does not parse ordinary article strings as JSON',async()=>{
+  const stored={uid:'Ab12Cd34',title:'{"key":"value"}',content:'same',
+    place_id:null,url:null,media_link:'["Aa00Bb11"]'};
+  const patches=[];
+  const acl=registry([{id:'lo3rwang',email:'owner@example.test',
+    manage_role:'scope',active:true}]);
+  const db={
+    ...acl,
+    selectFrom(table){
+      if(table==='lo3rwang_galaxy')return {
+        select(){return this},where(){return this},
+        execute:async()=>[stored]
+      };
+      return acl.selectFrom(table);
+    },
+    updateTable(){return {
+      set(value){patches.push(value);return this},
+      where(){return this},
+      executeTakeFirst:async()=>({numUpdatedRows:1n})
+    }}
+  };
+  const response=await executeCrossEngineManagedWrite(db,{
+    payload:{p_table:'silver.lo3rwang_galaxy',p_operation:'update_batch',
+      p_rows:[{uid:'Ab12Cd34',title:'{"key":"value"}',media_link:['Aa00Bb11']}]}
+  },{...identity,engine:'mysql',namespace:''});
+  assert.equal(response.data.count,0);
+  assert.deepEqual(patches,[]);
+});

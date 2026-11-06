@@ -40,3 +40,9 @@ No new queue, retry, background job, dependency, or authorization path was added
 Cross-engine managed `insert` keeps batching by identical column shape and retains a maximum of 50 rows per insert. SQL Server now additionally restricts each batch to `Math.floor(2000 / numberOfColumns)` rows to stay below its 2,100-bound-parameter limit. MySQL and PostgreSQL retain their existing 50-row batch size. The implementation validates the width of each batch shape before starting insert statements; it introduces no new dependency, table, RPC, or migration.
 
 The existing portable authorization/managed-write regression suite is now included in `test:bootstrap`, with additional wide-row MSSQL and MySQL cases. This is a parameter-budget correction rather than a transaction or atomicity change; full Node tests and live dialect checks remain necessary.
+
+## Portable media_link update idempotency
+
+Cross-engine `update_batch` now compares `media_link` arrays by their JSON array value when a MySQL/SQL Server driver returns the stored JSON as a string. Without this, repeated imports with the same links triggered unnecessary SQL `UPDATE` and `UpdateTime` writes merely due to the driver representation. PostgreSQL retains its native array comparison behavior. Other fields (title, content, url) continue using the existing literal comparison, and malformed JSON text is not silently reinterpreted.
+
+The existing `scripts/test-kysely-portable-access.mjs` bootstrap regression tests now cover unchanged and changed media arrays on MSSQL, unchanged arrays on MySQL, and ordinary article text. No schema, RPC, authorization or dependency change is required.
