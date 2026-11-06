@@ -34,6 +34,10 @@ export default function FlatClassificationEditor({scopeId='loc'}){
   const [busy,setBusy]=useState(false);
   const [notice,setNotice]=useState('');
   const row=useScopeSourceCategoryRow(scopeId,{enabled:allowed});
+  // A Scope can view LOC-owned source names, but it cannot mutate their records.
+  // Only the LOC management entry may save the system catalogue.
+  const systemRow=useScopeSourceCategoryRow('loc',{enabled:allowed&&!global});
+  const systemNames=systemRow.data?scopeTagNames('loc',systemRow.data):[];
   const query={
     ...row,
     data:row.data?scopeTagNames(scopeId,row.data):undefined,
@@ -101,6 +105,13 @@ export default function FlatClassificationEditor({scopeId='loc'}){
   if(!allowed)return <section className="loc-card scope-status scope-error" role="alert">{title}：{l.denied}</section>;
   return <section className="loc-card classification-inline">
     <h2>{title}</h2>
+    {!global?<section className="scope-source-system-readonly" aria-label="系統來源分類（唯讀）">
+      <h3>系統來源分類（唯讀）</h3>
+      <p className="scope-status">由 LOC 統一管理；目前 Scope 只能查看，不能在此修改。</p>
+      {systemRow.isPending?<p role="status">正在讀取系統來源…</p>:null}
+      {systemRow.error?<p role="alert" className="scope-status scope-error">系統來源讀取失敗：{String(systemRow.error.message||systemRow.error)}</p>:null}
+      {!systemRow.isPending&&!systemRow.error?<div className="classification-inline__list">{systemNames.map((name,index)=><span key={index} className="classification-inline__row">{name}</span>)}</div>:null}
+    </section>:null}
     {query.isPending?<p role="status" className="scope-status">{l.reading} {title}…</p>:null}
     {query.error?<p role="alert" className="scope-status scope-error">{String(query.error.message||query.error)}
       <button type="button" className="loc-button" onClick={()=>query.refetch()}>{l.retry}</button>
