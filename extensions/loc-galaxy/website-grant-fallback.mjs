@@ -4,7 +4,7 @@ const PENDING='locGalaxy.websitePending',ACTIVE='locGalaxy.websiteActive';
 const SCOPE_KEY='locGalaxy.scopeid',AUTH='locGalaxy.oauth',ACCESS='locGalaxy.access';
 function page(url,nonce,scopeid){
   try{const u=new URL(url);return u.origin===LOC_ORIGIN&&
-    /^\\/extension\\/auth-bridge\\.html\\/?$/.test(u.pathname)&&
+    (u.pathname==='/extension/auth-bridge.html'||u.pathname==='/extension/auth-bridge.html/')&&
     u.searchParams.get('nonce')===nonce&&u.searchParams.get('scopeid')===scopeid;}catch{return false;}
 }
 // Chrome's sender URL is not an authentication URL contract. Validate the
