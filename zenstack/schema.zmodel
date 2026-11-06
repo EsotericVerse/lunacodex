@@ -2,6 +2,8 @@
 // No migrations are generated/applied from this file. No SQL procedures are required.
 // Additional product features reuse the existing Anchor.attr JSON payload.
 // Portable MySQL / SQL Server / SQLite query construction remains in Kysely adapters.
+// SQL-nullable array columns cannot be modeled as nullable lists in ZModel V3;
+// their null-preserving read/write behavior must stay on the Kysely path.
 // The existing Clerk + LOC Authority security boundary must run before server DB access.
 // This model does not define or replace database RLS or runtime authorization rules.
 
