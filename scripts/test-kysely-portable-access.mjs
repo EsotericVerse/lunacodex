@@ -296,7 +296,26 @@ test('portable update_batch skips unchanged data and protects nonblank place_id'
     updateTable(){
       const call={};
       return {
-        set(values){call.values=values;return this},
+        set(values){
+          if(typeof values==='function'){
+            const fn=Object.assign((name,args)=>({name,args}),{
+              coalesce:(...args)=>({name:'coalesce',args})
+            });
+            const eb={fn,val:value=>({literal:value}),case:()=>({
+              when(lhs,op,rhs){
+                assert.equal(lhs.name,'trim');
+                assert.equal(lhs.args[0].name,'coalesce');
+                assert.equal(op,'=');assert.equal(rhs,'');
+                return this;
+              },
+              then(value){this.value=value;return this},
+              elseRef(column){this.column=column;return this},
+              end(){return {kind:'case',then:this.value,elseRef:this.column}}
+            })};
+            call.values=values(eb);
+          }else call.values=values;
+          return this;
+        },
         where(column,operator,uids){
           call.column=column;call.operator=operator;call.uids=uids;return this;
         },
@@ -316,7 +335,9 @@ test('portable update_batch skips unchanged data and protects nonblank place_id'
   assert.deepEqual(projections,[['uid','place_id','media_link']]);
   assert.equal(updates.length,1);
   assert.deepEqual(updates[0].uids,['Ab12Cd34','Ij90Kl12']);
-  assert.equal(updates[0].values.place_id,'P0000001');
+  assert.deepEqual(updates[0].values.place_id,{
+    kind:'case',then:'P0000001',elseRef:'place_id'
+  });
   assert.ok(!Object.hasOwn(updates[0].values,'media_link'));
   assert.equal(result.data.count,2);
 });
