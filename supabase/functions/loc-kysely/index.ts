@@ -655,10 +655,6 @@ Deno.serve(async (request) => {
       catch{return json({error:{message:"Administrator permission required"}},403);}
       return json({error:{message:"Database targets live in access.js; update source and redeploy"}},409);
     }
-    // The old admin RPCs must not pretend to switch an immutable, deployed route.
-    if(body.kind==="rpc"&&body.schema==="silver"&&
-       (body.name==="set_database_target"||body.name==="set_database_routing"))
-      return json({error:{message:"Database routing is set in app/loc/providers/routing-config.mjs and requires deployment"}},409);
 
     // LOC registry, user settings and public presentation are control-plane
     // actions. A user-managed SQL target only needs its own data tables.
