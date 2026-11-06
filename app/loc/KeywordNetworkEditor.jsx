@@ -56,6 +56,7 @@ export default function KeywordNetworkEditor({
   classId='',
   selectedId='',
   onSelectItem=null,
+  onSelectGroup=null,
   onNewItem=null,
   onDeleteItem=null,
   onDeleteKeyword=null,
@@ -68,8 +69,25 @@ export default function KeywordNetworkEditor({
   const selectedNodeRef=useRef('');
   const [expandedGroup,setExpandedGroup]=useState(()=>graphOriginGroup(items));
   const [expandedItemId,setExpandedItemId]=useState('');
-  const handlersRef=useRef({onSelectItem,onNewItem,onDeleteItem,onDeleteKeyword,onDeleteGroup,onMessage});
+  const handlersRef=useRef({onSelectItem,onSelectGroup,onNewItem,onDeleteItem,onDeleteKeyword,onDeleteGroup,onMessage});
   const [error,setError]=useState('');
+  const [fullscreen,setFullscreen]=useState(false);
+  const [themeRevision,setThemeRevision]=useState(0);
+  // Recreate colors only when the application's actual theme changes.
+  // Ordinary graph interactions must not watch the entire document subtree.
+  useEffect(()=>{
+    const observer=new MutationObserver(()=>setThemeRevision(value=>value+1));
+    const options={attributes:true,attributeFilter:['class','style','data-theme','data-loc-theme']};
+    observer.observe(document.documentElement,options);
+    if(document.body)observer.observe(document.body,options);
+    return ()=>observer.disconnect();
+  },[]);
+  useEffect(()=>{
+    if(!fullscreen)return undefined;
+    const onKeyDown=event=>{if(event.key==='Escape')setFullscreen(false);};
+    window.addEventListener('keydown',onKeyDown);
+    return ()=>window.removeEventListener('keydown',onKeyDown);
+  },[fullscreen]);
   const graph=useMemo(()=>buildGraph(items,className,classId,expandedGroup,expandedItemId),[items,className,classId,expandedGroup,expandedItemId]);
   useEffect(()=>{
     const row=items.find(item=>String(item.keyword_id)===String(selectedId));
@@ -79,7 +97,7 @@ export default function KeywordNetworkEditor({
     }
   },[selectedId,items]);
 
-  useEffect(()=>{handlersRef.current={onSelectItem,onNewItem,onDeleteItem,onDeleteKeyword,onDeleteGroup,onMessage}},[onSelectItem,onNewItem,onDeleteItem,onDeleteKeyword,onDeleteGroup,onMessage]);
+  useEffect(()=>{handlersRef.current={onSelectItem,onSelectGroup,onNewItem,onDeleteItem,onDeleteKeyword,onDeleteGroup,onMessage}},[onSelectItem,onSelectGroup,onNewItem,onDeleteItem,onDeleteKeyword,onDeleteGroup,onMessage]);
 
   useEffect(()=>{
     let cancelled=false;
@@ -123,10 +141,10 @@ export default function KeywordNetworkEditor({
           createEdgeError:'無法建立此關係。',deleteClusterError:'無法刪除群集。',editClusterError:'無法編輯群集。'
         }},
         layout:{hierarchical:{enabled:true,direction:'LR',sortMethod:'directed',levelSeparation:190,nodeSpacing:110,treeSpacing:170}},
-        interaction:{hover:true,navigationButtons:true,keyboard:true,dragNodes:true,dragView:true,zoomView:true},
+        interaction:{hover:true,navigationButtons:false,keyboard:{enabled:true,bindToWindow:false},dragNodes:false,dragView:true,zoomView:true,tooltipDelay:500},
         manipulation:{
-          enabled:true,
-          initiallyActive:true,
+          enabled:false,
+          initiallyActive:false,
           addEdge:false,
           editEdge:false,
           addNode:(nodeData,callback)=>{
@@ -180,6 +198,7 @@ export default function KeywordNetworkEditor({
         if(meta?.kind==='group'){
           setExpandedGroup(meta.groupUid);
           setExpandedItemId('');
+          handlersRef.current.onSelectGroup?.(meta.groupUid);
         }else if(meta?.kind==='item'){
           setExpandedGroup(String(meta.row?.group_uid||''));
           setExpandedItemId(String(meta.row?.keyword_id||''));
@@ -211,7 +230,7 @@ export default function KeywordNetworkEditor({
         network.destroy();
       }
     };
-  },[graph,classId]);
+  },[graph,classId,themeRevision]);
   useEffect(()=>{
     const itemNode='item:'+String(selectedId||'');
     if(selectedId&&graph.meta.has(itemNode)&&networkRef.current){
@@ -219,17 +238,32 @@ export default function KeywordNetworkEditor({
     }
   },[selectedId,graph]);
 
-  return <section className="scope-keyword-network" aria-label="關鍵詞階層圖">
+  const chosenNode=graph.meta.get(selectedNodeRef.current);
+  return <section className={'scope-keyword-network'+(fullscreen?' is-fullscreen':'')} aria-label="關鍵詞階層圖">
     <div className="scope-keyword-network-help">
       <strong>關鍵字群組科目 → 關鍵字分類群組 → 關鍵詞分類 → 判斷詞列表</strong>
-      <span>選擇分類群組展開關鍵詞分類，再選擇分類檢視判斷詞列表。可拖曳、縮放與編輯。</span>
+      <span>點選節點即可在圖旁編輯。拖曳空白處移動畫布，雙指縮放；按 Esc 退出全螢幕。</span>
     </div>
     <div className="scope-stat-controls" role="group" aria-label="關鍵詞圖譜觸控操作">
       <button type="button" className="loc-button" onClick={()=>{
         const network=networkRef.current;
-        if(network?.getSelectedNodes()?.length)network.editNode();
-      }}>編輯選取項目</button>
+        const selected=network?.getSelectedNodes()?.[0];
+        const meta=graph.meta.get(String(selected||''));
+        if(meta?.kind==='group')handlersRef.current.onSelectGroup?.(meta.groupUid);
+        else if(meta?.kind==='item'||meta?.kind==='keyword')handlersRef.current.onSelectItem?.(meta.row);
+        else handlersRef.current.onMessage?.('先點選分類群組或關鍵詞節點。');
+      }}>編輯選取</button>
+      <button type="button" className="loc-button" onClick={()=>{
+        const selected=networkRef.current?.getSelectedNodes()?.[0];
+        const meta=graph.meta.get(String(selected||''));
+        const groupUid=meta?.kind==='group'?meta.groupUid:
+          (meta?.kind==='item'||meta?.kind==='keyword')?String(meta.row?.group_uid||''):'';
+        if(groupUid)handlersRef.current.onNewItem?.(groupUid);
+        else handlersRef.current.onMessage?.('請先選擇分類群組，再新增關鍵詞分類。');
+      }}>＋新增關鍵詞</button>
       <button type="button" className="loc-button" onClick={()=>networkRef.current?.fit({animation:false})}>重置視野</button>
+      <button type="button" className="loc-button" aria-pressed={fullscreen}
+        onClick={()=>setFullscreen(value=>!value)}>{fullscreen?'退出全螢幕':'全螢幕'}</button>
     </div>
     {error?<p className="scope-status scope-error">{error}</p>:null}
     <div ref={containerRef} className="scope-graph-canvas scope-keyword-network-canvas" role="application" aria-label={className+' 關鍵詞 vis-network 編輯器'}/>
