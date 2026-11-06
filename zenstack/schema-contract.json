@@ -1564,7 +1564,8 @@
           "generated": false
         }
       ],
-      "uniques": []
+      "uniques": [],
+      "schema": "api"
     },
     {
       "table": "runes",
