@@ -98,3 +98,15 @@ test('configured public bootstrap reaches selected SQL target, not Supabase cont
   const publicGate=gateway.slice(gateway.indexOf('if(target.provider==="custom"||target.engine!=="postgres")'));
   assert.match(publicGate,/body\.kind==="public-action"/);
 });
+
+test('point search returns canonical lng/lat coordinates and supports legacy keys',()=>{
+  const locationSql=publicProvider.slice(publicProvider.indexOf('const anchor=sql.ref('),
+    publicProvider.indexOf('return {data:result.rows,count:null};'));
+  assert.match(locationSql,/coalesce\(a\.attr->>'lng',a\.attr->>'longitude'\)/);
+  assert.match(locationSql,/coalesce\(a\.attr->>'lat',a\.attr->>'latitude'\)/);
+  assert.match(locationSql,/order by a\.title limit/);
+  const portableBranch=publicProvider.slice(publicProvider.indexOf('if(portable){',
+    publicProvider.indexOf('if(name===\'search_scope_trace_place_names\')'));
+  assert.match(portableBranch,/attr\.lng\?\?attr\.longitude/);
+  assert.match(portableBranch,/attr\.lat\?\?attr\.latitude/);
+});
