@@ -6,6 +6,9 @@ const scopePattern=/^[a-z][a-z0-9]{0,14}$/;
 const uidPattern=/^[A-Za-z0-9]{8}$/;
 const publicTypes=new Set(['date','period','era','point','path','trace','image','video','rune','suno']);
 const keywordTypes=new Set(['category','class','group','item']);
+// Source classification reuses the existing Anchor tree store and operations.
+// galaxy -> domain -> from; do not create a second source table or RPC.
+const sourceTypes=new Set(['from','domain','galaxy']);
 const allowedFields=new Set(['op','uid','title','description','invisible','data','where',
   'limit','offset','updates','mode','classUid','createtime']);
 const anchorTime=value=>{
@@ -127,7 +130,7 @@ export async function executeKyselyAnchor(trx,body,{role='anon'}={}){
   const scope=String(body?.scopeid||'').trim().toLowerCase();
   const type=String(body?.type||'').trim();
   const attr=body?.attr??{};
-  if(!scopePattern.test(scope)||!(publicTypes.has(type)||keywordTypes.has(type))||
+  if(!scopePattern.test(scope)||!(publicTypes.has(type)||keywordTypes.has(type)||sourceTypes.has(type))||
     !attr||typeof attr!=='object'||Array.isArray(attr)||
     Object.keys(attr).some(field=>!allowedFields.has(field)))
     reject('Invalid Scope/Anchor request');
@@ -212,7 +215,7 @@ const modified=result=>Number(result?.numUpdatedRows??result?.numAffectedRows??0
 export async function executePortableKyselyAnchor(db,body,{role='anon',engine,namespace=''}={}){
   const scope=String(body?.scopeid||'').trim().toLowerCase();
   const type=String(body?.type||'').trim(),data=body?.attr??{};
-  if(!scopePattern.test(scope)||!(publicTypes.has(type)||keywordTypes.has(type))||
+  if(!scopePattern.test(scope)||!(publicTypes.has(type)||keywordTypes.has(type)||sourceTypes.has(type))||
      !data||typeof data!=='object'||Array.isArray(data)||
      Object.keys(data).some(key=>!allowedFields.has(key)))
     reject('Invalid portable Anchor request');
