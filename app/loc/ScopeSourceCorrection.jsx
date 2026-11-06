@@ -1,6 +1,6 @@
 'use client';
 import {useState} from 'react';
-import {scopeTagNames} from './scope-config-fields.mjs';
+import {scopeSourceNames} from './scope-config-fields.mjs';
 import {useAsyncResource} from './use-async-resource';
 import {useScopeSourceCategoryRow} from './scope-source-category-row.mjs';
 import {dbAuthClient,dbAuthRelation,readScopeCategoryTotals} from './db-client.mjs';
@@ -29,8 +29,8 @@ function ScopeSourceCorrectionEditor({scopeId}){
     ()=>readScopeCategoryTotals(scopeId),{enabled:allowed});
   const sourceLists={
     data:systemRow.data!==undefined&&personalRow.data!==undefined&&totalsQuery.data!==undefined?{
-      system:scopeTagNames('loc',systemRow.data),
-      personal:scopeTagNames(scopeId,personalRow.data),
+      system:scopeSourceNames(systemRow.data),
+      personal:scopeSourceNames(personalRow.data),
       observed:(totalsQuery.data||[]).filter(row=>row.kind==='source').map(row=>row.category)
     }:undefined,
     error:systemRow.error||personalRow.error||totalsQuery.error,
