@@ -105,9 +105,9 @@ without a catalog dependency.
   writes with `INSERT ... ON CONFLICT (uid) DO NOTHING RETURNING uid` and
   retries only when the primary key reports a collision. No per-UID SELECT,
   full Anchor scan, separate UID RPC, duplicate generator, or advisory lock.
-  The legacy SQL `silver.import_shared_keyword_class` still calls
-  `silver.new_keyword_tree_uid(text)`, so **do not DROP either** before
-  confirming deployment and legacy caller retirement.
+  The previously deployed SQL importer and UID helper have been replaced
+  by the mainline Kysely implementation. Both Edge variants now include
+  the canonical Base62 allocator and no longer invoke the SQL UID function.
 
 - Public ISR summary and public Bootstrap now use the established
   `analytics` and `publicAction` methods directly. The obsolete `.rpc()`
@@ -128,12 +128,11 @@ without a catalog dependency.
   require separate live caller, role and transaction verification before
   deletion. Lack of a direct import in one client is not proof of no use.
 
-**No DROP was executed and no cleanup migration has been applied.** The
-client-to-Kysely cutover, function-free UID allocation and read-only
-dependency audit are the first retirement steps. After the existing PR has
-passed Node/Next/permission checks and been deployed, refresh the deployed
-caller audit, perform a narrow `RESTRICT` retirement, and re-check public
-Search, Culture, Statistics, Trace, import, and management behavior.
+**Retirement status:** the first sixteen read-only SQL functions were removed
+by the verified migration `20261106173000_retire_unused_read_business_rpcs.sql`.
+The final nineteen business functions are handled by the later migration
+`20261106200000_retire_final_19_business_rpcs.sql`. Only the authorized,
+RLS/constraint/trigger-related helpers remain after the second migration.
 
 
 ## SQL read-only RPC retirement batch (2026-11-06)
@@ -149,12 +148,40 @@ Kysely actions such as `read_app_bootstrap` are unaffected.
 
 This batch **does not** drop `silver.new_keyword_tree_uid`,
 `silver.import_shared_keyword_class`, authorization, RLS, policy, or
-trigger helpers. The two deployed Edge bundles still contain the old
-`silver.new_keyword_tree_uid` call, so that allocator must remain until
-the newer Edge code is independently deployed and verified.
+trigger helpers. The first batch intentionally left the SQL UID allocator available until
+both Edge deployments received the direct Base62 UID implementation.
+That second deployment was completed before the final RPC retirement.
 
 The migration uses exact function signatures and `RESTRICT` only.
 It does not add or change any table, column, index, permission or
 Anchor `attr`, and never scans Galaxy articles or anchor rows.
 After application, verify these sixteen SQL functions are absent and
 the direct Kysely `analytics` and `publicAction` paths remain available.
+
+
+## Final SQL business RPC retirement (2026-11-06)
+
+`supabase/migrations/20261106200000_retire_final_19_business_rpcs.sql`
+retires the **remaining 19 business functions** in `api` and `silver`.
+Exact current PostgreSQL signatures and zero catalog dependency counts were
+verified before the SQL migration. PL/pgSQL source was checked for callers
+outside the retirement set; no such SQL callers remain.
+
+The independent `loc-kysely` and `loc-kysely-clerk` deployments were
+updated first to include the existing `allocateAnchorUid` Base62 routine
+and verified to contain no call to `silver.new_keyword_tree_uid(text)`.
+Their routing and authorization mechanism remains unchanged. No new
+fallbacks, duplicated authorization logic, or full-corpus comparisons
+were added.
+
+Only `DROP FUNCTION ... RESTRICT` is used; **no table, column, index,
+RLS policy, permission, Anchor attr, or Galaxy field is changed**.
+The existing `api.manage()` permission function and helper functions
+used by identity, database constraints and triggers are explicitly
+excluded. SQL routine names previously exposed as public-action or
+managed-action operations remain available in their **Kysely** form;
+those JavaScript actions are not SQL stored functions.
+
+Retirement is verified by checking `pg_proc` for the 19 function
+signatures after applying the migration and separately checking
+that the retained seven helper routines still exist.
