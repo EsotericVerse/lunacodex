@@ -32,7 +32,7 @@ test('home editor re-entry requires the verified entry marker and expires',()=>{
   const source=read('app/loc/HomeEditModeRestore.jsx');
   // The marker's own TTL (edit-session-ttl.mjs) is the trust window now:
   // restoring edit mode across a static-export page reload must NOT repeat
-  // the live silver.manage RPC that ScopeHomeEditEntry.jsx already ran once
+  // the live api.manage RPC that ScopeHomeEditEntry.jsx already ran once
   // at the single unified entry point. A live re-check here on every page
   // mount was what made entering edit mode trigger a fresh DB query on
   // every subsequent page within the same still-valid editing session.

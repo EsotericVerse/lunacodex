@@ -7,14 +7,14 @@
 
 - Website Kysely 每次受保護請求仍呼叫 `jwtVerify`，不快取 JWT、不略過簽章或過期檢查；同一 Clerk `iss + sub + sid` 的 Authority 已驗證 Email 在同一 Edge isolate 中最多重用 **2 小時**。同一 Session JWT 旋轉可重用，換 Session 必須再驗證；並行相同 Session 首次驗證合併一個請求，失敗立刻失效。
 - MCP 保留原本 JWT 驗簽、`token SHA-256 + Scope + action` 獨立授權與 **30 秒快取上限**，增加並行 single-flight：同時抵達的相同授權要求只問 Authority 一次，失敗立刻清除；read、manage、write 不共用。
-- 未修改 OAuth Token、Authority Worker、資料庫 Schema／RLS 或 `silver.manage`；這些程序記憶體快取不跨 isolate，且不等於撤銷管理權限。管理權限仍另行短期檢查。這個 PR 不代表完整消除所有獨立的 Authority HTTP 請求，需以正式執行指標驗收。
+- 未修改 OAuth Token、Authority Worker、資料庫 Schema／RLS 或 `api.manage`；這些程序記憶體快取不跨 isolate，且不等於撤銷管理權限。管理權限仍另行短期檢查。這個 PR 不代表完整消除所有獨立的 Authority HTTP 請求，需以正式執行指標驗收。
 
 ## 2026-11-06｜網站 Clerk Session 身分驗證重用（不改 MCP）
 
 - 網站同一個已驗證 `Clerk sub + sid` 在兩小時的編輯 Session 期間，可重用 LOC Authority 確認的身分 Email；前端在 Clerk SDK 有正式 Session ID 時依 `sid` 辨識，不以短期輪替的 JWT 字串誤當新登入。沒有 SDK Session ID 時保守維持 exact-token 對比。
 - 本 PR 僅修改網站瀏覽器端的 Clerk Session 身分結果重用。Kysely 每個受保護請求仍獨立驗證 JWT，Gateway → Authority 的驗證仍維持現況；不修改 MCP、Authority Worker、SQL 或 Kysely。前端不儲存 JWT、不以身分快取取代後端管理權限核對；此 PR 不宣稱已降低 Gateway → Authority 的請求量。
-- `silver.manage` 的 Admin/Group/Scope 與黑名單仍走獨立授權（短期 30 秒快照、各次 SQL/RLS 持續執行）；編輯 Session 過期仍拒絕寫入。本修正不是將管理權限或撤銷狀態無條件快取兩小時。
-- 原本 `silver.lo3rwang.count` 測得 189 次 `silver.manage()` 是資料庫內部函式觸發次數，不可當作 Authority HTTP 次數，診斷計數已於 11/05 移除；本修正不重啟 SQL 熱路徑計數器。
+- `api.manage` 的 Admin/Group/Scope 與黑名單仍走獨立授權（短期 30 秒快照、各次 SQL/RLS 持續執行）；編輯 Session 過期仍拒絕寫入。本修正不是將管理權限或撤銷狀態無條件快取兩小時。
+- 原本 `silver.lo3rwang.count` 測得 189 次 `api.manage()` 是資料庫內部函式觸發次數，不可當作 Authority HTTP 次數，診斷計數已於 11/05 移除；本修正不重啟 SQL 熱路徑計數器。
 
 ## 2026-11-05 編輯模式／首頁儲存與搜尋回歸檢討
 
@@ -23,7 +23,7 @@
 - **原因之三：舊版快取鍵殘留。** Culture 編輯成功後仍無效化 `v2/v6`，但 UI 使用 `v4/v8`，導致顯示不同步；已改為對應資源前綴無效化。時間定錨表單不再因按 Enter 隱性儲存。
 - **原因之四：搜尋故意壓掉日期。** 搜尋列表原先只在 Identity 詳細頁傳遞日期；現在 Galaxy 查詢同時回傳 `date`（本機資料維持 `createtime`），每張搜尋結果顯示日期。相同搜尋頁只更新 URL Query，不透過 Next Router 重新載入整個頁面，真正搜尋仍使用既有 `Galaxy.content` 與 `Anchor.description`。
 - **其他多餘儲存入口。** 分類與路線編輯頁在固定 Dock 啟用時隱藏各自的 Save/Cancel；切換提示不再有「儲存並切換」第二寫入路徑。必要的新增／批次寫入工具維持其明確用途，不當成一般 Save。
-- **權限與效能邊界。** Clerk OAuth 繼續驗證身分；LOC Authority 判斷 Scope；Kysely 寫入仍由後端授權。已驗證且未過期的 Clerk OAuth JWT，在同一受信任 SQL Gateway isolate 中，最多重用 30 秒 LOC 權限快照；不簽發新憑證、不使用 Cron、無背景查詢，下一個實際請求才按需刷新。任何請求仍需通過 JWT 驗簽及 exp，快照亦不得超過 exp；更改角色／黑名單時，其他執行個體可能最多延遲 30 秒感知變更，嚴格即時撤權須另行採用服務端 revocation 訊號，不能聲稱現有 30 秒快取達到即時撤權。曾用 `silver.lo3rwang.count` 測到 189 次 `silver.manage()` RPC 呼叫，但不代表 189 次獨立 HTTP/SQL Request；診斷用會寫入的函式已從 `silver.manage()` 移除並恢復 `STABLE`，既有觀測記錄保留。不可拿這組舊數字驗收新版本。
+- **權限與效能邊界。** Clerk OAuth 繼續驗證身分；LOC Authority 判斷 Scope；Kysely 寫入仍由後端授權。已驗證且未過期的 Clerk OAuth JWT，在同一受信任 SQL Gateway isolate 中，最多重用 30 秒 LOC 權限快照；不簽發新憑證、不使用 Cron、無背景查詢，下一個實際請求才按需刷新。任何請求仍需通過 JWT 驗簽及 exp，快照亦不得超過 exp；更改角色／黑名單時，其他執行個體可能最多延遲 30 秒感知變更，嚴格即時撤權須另行採用服務端 revocation 訊號，不能聲稱現有 30 秒快取達到即時撤權。曾用 `silver.lo3rwang.count` 測到 189 次 `api.manage()` RPC 呼叫，但不代表 189 次獨立 HTTP/SQL Request；診斷用會寫入的函式已從 `api.manage()` 移除並恢復 `STABLE`，既有觀測記錄保留。不可拿這組舊數字驗收新版本。
 - **發布驗收：** 需在已登入管理員、未登入訪客各測一次；檢查首頁小修改按固定 Save 後內容留在畫面且可重載，切換四功能並無額外 Save，文化存檔後時間線更新，搜尋有日期且不重複導頁／讀取，失敗時不得顯示假成功。此修復不保證未量測的搜尋 SQL 一定低於任何指定秒數。
 
 ## 2026-11-05 公開訪客資料庫路由隔離

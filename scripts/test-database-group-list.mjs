@@ -15,8 +15,8 @@ test('two database targets are read from access.js, not manage.database',()=>{
   const panel=read('app/loc/views/admin-panels/DatabaseTarget.jsx');
   const manager=read('app/loc/providers/kysely-management.mjs');
   assert.match(gateway,/databaseAccessTargets\(\)/);
-  assert.doesNotMatch(gateway,/selectFrom\("silver.manage"\)\.select\("database"\)/);
-  assert.doesNotMatch(gateway,/updateTable\("silver.manage"\)\.set\(\{database/);
+  assert.doesNotMatch(gateway,/selectFrom\("api.manage"\)\.select\("database"\)/);
+  assert.doesNotMatch(gateway,/updateTable\("api.manage"\)\.set\(\{database/);
   assert.match(panel,/DATABASE_ACCESS_LIST/);
   assert.match(panel,/GitHub.*access\.js/);
   assert.doesNotMatch(panel,/p_section:'database'|connect_database_target/);

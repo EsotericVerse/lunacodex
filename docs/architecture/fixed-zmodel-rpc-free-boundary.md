@@ -118,7 +118,7 @@ without a catalog dependency.
   detection and the large multi-Scope, full-article comparison fallback.
   Optional ISR remains a cache, not an alternate database algorithm.
 - Never conflate policy/trigger helper functions with public RPCs:
-  `api.current_user_id`, `silver.manage`,
+  `api.current_user_id`, `api.manage`,
   `silver.domain_has_repeated_labels`,
   `silver.sync_scope_config_display_name`, and
   `silver.touch_visual_novel_updated_at` currently have catalog dependents.

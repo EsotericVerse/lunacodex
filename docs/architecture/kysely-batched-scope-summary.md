@@ -1,6 +1,6 @@
 # Kysely search summary: batched Scope membership
 
-The PostgreSQL `search_summary` view previously performed one `silver.manage` SELECT for each requested Scope, followed by one Scope status SELECT. This made the membership portion cost **N database round trips** for N scopes.
+The PostgreSQL `search_summary` view previously performed one `api.manage` SELECT for each requested Scope, followed by one Scope status SELECT. This made the membership portion cost **N database round trips** for N scopes.
 
 `searchSummary` now obtains all active `manage_role='scope'` IDs through **one native Kysely `where('id','in',requested)` query**, then reads only permitted Scope status documents. For N non-empty, allowed scopes, this reduces query count from approximately `2N` to `1+N`; empty requests issue no queries. Scope validation, existing status fields, alphabetical result ordering, and public membership restrictions remain unchanged.
 
