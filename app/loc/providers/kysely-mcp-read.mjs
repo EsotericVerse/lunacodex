@@ -24,5 +24,6 @@ export async function readMcpGalaxyWithKysely(trx,request,{engine='postgres',nam
   return trx.selectFrom(table).select(['uid','title','createtime'])
     .where('site','=','mcp')
     .where(sql`lower(${sql.ref('content')}) like ${pattern} escape '!'`)
+    .orderBy(sql`case when ${sql.ref('createtime')} is null then 1 else 0 end`,'asc')
     .orderBy('createtime','desc').limit(limit).execute();
 }
