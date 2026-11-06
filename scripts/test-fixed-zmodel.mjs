@@ -57,6 +57,8 @@ test('ZModel maps exactly to the frozen silver physical table and column contrac
     const ids=t.pk;
     if(ids.length===1)assert.match(model.fields.get(ids[0]).attributes,/(?:^|\s)@id(?:\s|$)/);
     else assert.ok(model.body.includes('@@id(['+ids.join(', ')+'])'));
+    for(const keys of t.uniques||[])assert.ok(model.body.includes('@@unique(['+keys.join(', ')+'])'),
+      'missing existing unique constraint on '+t.table);
     for(const col of t.columns){
       total++;
       const field=model.fields.get(col.name);
@@ -100,6 +102,8 @@ test('ZenStack V3 runtime schema bridge stays in sync with the frozen contract',
     const model=schema.models[modelName(table.table)];
     assert.ok(model,'missing generated model '+table.table);
     assert.deepEqual(model.idFields,table.pk);
+    for(const keys of table.uniques||[])
+      assert.deepEqual(Object.keys(model.uniqueFields[keys.join('_')]).sort(),[...keys].sort());
     assert.equal(Object.keys(model.fields).length,table.columns.length);
     for(const col of table.columns){
       const field=model.fields[col.name];
@@ -107,6 +111,8 @@ test('ZenStack V3 runtime schema bridge stays in sync with the frozen contract',
       assert.equal(field.type,native[col.format][0].replace('[]',''));
       assert.equal(Boolean(field.array),col.format.startsWith('_'));
       assert.equal(Boolean(field.optional),col.nullable&&!col.format.startsWith('_'));
+      assert.equal(Boolean(field.default),col.hasDefault&&!col.generated,
+        'physical default metadata drift on '+table.table+'.'+col.name);
     }
     assert.equal(model.attributes.find(a=>a.name==='@@map')?.args?.[0]?.value?.value,table.table);
     assert.equal(model.attributes.find(a=>a.name==='@@schema')?.args?.[0]?.value?.value,'silver');
