@@ -103,7 +103,7 @@ export function captureController({record,authorized}){
     // Verify the current tab after extraction, not a stale pre-scan URL.
     const current=await chrome.tabs.get(tab.id);
     const currentUrl=new URL(current.url||tab.url);
-    const currentId=/^\\/(?:g\\/[^/]+\\/)?c\\/([A-Za-z0-9-]{8,})(?:\\/|$)/.exec(currentUrl.pathname)?.[1];
+    const currentId=new RegExp('^/(?:g/[^/]+/)?c/([A-Za-z0-9-]{8,})(?:/|$)').exec(currentUrl.pathname)?.[1];
     if(currentUrl.origin!=='https://chatgpt.com'||currentId!==source.slice(8))
       throw Error('掃描期間 ChatGPT 分頁已切換對話，為避免匯入錯誤來源已停止');
     if(!snapshot.records.length)return {captured:0,queued:0,pending:(await status()).pending,partial:true};
