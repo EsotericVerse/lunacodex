@@ -180,7 +180,7 @@ async function flush(force){
  return inFlight;
 }
 async function inject(tabId){
- await chrome.scripting.executeScript({target:{tabId},files:['content.js']});
+ await chrome.scripting.executeScript({target:{tabId},files:['vendor/Readability.js','content.js']});
 }
 async function currentTab(){
  const tabs=await chrome.tabs.query({active:true,currentWindow:true});
