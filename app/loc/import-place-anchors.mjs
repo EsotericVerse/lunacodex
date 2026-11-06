@@ -45,13 +45,13 @@ function incomingLocations(records){
   return {names,missing};
 }
 export async function prepareImportPlaceAnchors(records,{
-  scopeId,relation,pageSize=750,allowMissing=false,createMissing=true,onProgress
+  scopeId,relation,pageSize=750,allowMissing=false,createMissing=true,scanExistingOnEmpty=false,onProgress
 }={}){
   const {names,missing}=incomingLocations(records);
   const byCoordinate=new Map(),byName=new Map();
   const unavailable=()=>({byCoordinate,byName,created:0,reused:0,
     skipped:missing+names.size,unmatchedCoordinates:names.size});
-  if(!names.size||scopeId==='local'||scopeId==='loc'||!scopeId)
+  if((!names.size&&!scanExistingOnEmpty)||scopeId==='local'||scopeId==='loc'||!scopeId)
     return unavailable();
   if(!/^[a-z][a-z0-9]{0,14}$/.test(scopeId))throw Error('空間定錨 Scope 無效');
   if(typeof relation!=='function')throw Error('空間定錨資料庫不存在');
