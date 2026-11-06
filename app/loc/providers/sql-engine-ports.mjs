@@ -235,8 +235,19 @@ export async function executeCrossEngineManagedWrite(db,body,context){
         const batch=uids.slice(i,i+50);
         const values=serializePortableJsonFields(
           {...patch,UpdateTime:new Date()},context.engine);
-        const result=await db.updateTable(name).set(values)
-          .where('uid','in',batch).executeTakeFirst();
+        // A parallel import cannot overwrite an already-filled place_id.
+        // Use Kysely's native CASE expression instead of relying on an
+        // earlier SELECT snapshot for this fill-only field.
+        const update=db.updateTable(name);
+        const query=Object.hasOwn(patch,'place_id')
+          ?update.set(eb=>({
+            ...values,
+            place_id:eb.case().when(
+              eb.fn('trim',[eb.fn.coalesce('place_id',eb.val(''))]),'=', ''
+            ).then(patch.place_id).elseRef('place_id').end()
+          }))
+          :update.set(values);
+        const result=await query.where('uid','in',batch).executeTakeFirst();
         count+=managedAffected(result);
       }
     }
