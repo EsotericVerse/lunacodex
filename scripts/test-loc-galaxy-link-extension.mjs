@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 
-const text=readFileSync(new URL('../extensions/loc-channel1/background.js',import.meta.url),'utf8');
+const text=readFileSync(new URL('../extensions/loc-galaxy-link/background.js',import.meta.url),'utf8');
 const between=(a,b)=>{
  const from=text.indexOf(a),to=text.indexOf(b);
  assert.ok(from>=0&&to>from,'missing extension function '+a);
@@ -47,8 +47,8 @@ test('Unicode-safe splitting never truncates long webpages',async()=>{
 });
 
 test('LOC native OAuth replaces all Clerk bridge and KV upload wiring',()=>{
- const manifest=JSON.parse(readFileSync(new URL('../extensions/loc-channel1/manifest.json',import.meta.url),'utf8'));
- const options=readFileSync(new URL('../extensions/loc-channel1/options.html',import.meta.url),'utf8');
+ const manifest=JSON.parse(readFileSync(new URL('../extensions/loc-galaxy-link/manifest.json',import.meta.url),'utf8'));
+ const options=readFileSync(new URL('../extensions/loc-galaxy-link/options.html',import.meta.url),'utf8');
  assert.ok(manifest.permissions.includes('identity'));
  assert.ok(text.includes('chrome.identity.launchWebAuthFlow'));
  assert.ok(text.includes("code_challenge_method:'S256'"));
@@ -67,4 +67,13 @@ test('stale Clerk config fails closed instead of opening a Clerk login',async()=
   URL,{storage:{local:{set:async()=>{throw Error('must not persist Clerk config');}}}},
   'https://loc.lo3rwang.cc/extension/oauth/config.json');
  await assert.rejects(getConfig(),/LOC 自有認證尚未啟用/);
+});
+
+test('LOC 彩虹橋品牌版本與網站 favicon 綁定',()=>{
+ const manifest=JSON.parse(readFileSync(new URL('../extensions/loc-galaxy-link/manifest.json',import.meta.url),'utf8'));
+ assert.equal(manifest.name,'LOC galaxy-link｜LOC 彩虹橋');
+ assert.equal(manifest.version,'0.1.0');
+ assert.equal(manifest.icons['128'],'icons/loc-favicon.png');
+ assert.ok(manifest.action.default_icon['16']);
+ assert.ok(text.includes("const DB_NAME='loc-channel1-queue'"),'preserve unsent IndexedDB items');
 });

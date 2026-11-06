@@ -1,0 +1,37 @@
+{
+  "manifest_version": 3,
+  "name": "LOC galaxy-link｜LOC 彩虹橋",
+  "version": "0.1.0",
+  "description": "LOC 彩虹橋：以 LOC 自有認證擷取網頁並短匯入 Galaxy；不經 Clerk 或 KV",
+  "permissions": [
+    "contextMenus",
+    "activeTab",
+    "scripting",
+    "storage",
+    "alarms",
+    "identity"
+  ],
+  "host_permissions": [
+    "https://loc.lo3rwang.cc/*",
+    "https://mcp.lo3rwang.cc/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "options_page": "options.html",
+  "action": {
+    "default_title": "LOC galaxy-link｜LOC 彩虹橋",
+    "default_icon": {
+      "16": "icons/loc-favicon.png",
+      "48": "icons/loc-favicon.png",
+      "128": "icons/loc-favicon.png"
+    }
+  },
+  "short_name": "LOC 彩虹橋",
+  "icons": {
+    "16": "icons/loc-favicon.png",
+    "48": "icons/loc-favicon.png",
+    "128": "icons/loc-favicon.png"
+  }
+}
