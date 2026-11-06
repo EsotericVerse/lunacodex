@@ -72,7 +72,7 @@ test('public class aliases use one native Kysely projection, not one query per C
   ];
   const hash=uid=>createHash('sha256').update('writer:'+uid).digest('hex');
   const fake=(owner)=>{
-    const calls=[];
+    const calls=[],filters=[];
     const trx={selectFrom(table){
       calls.push(table);
       let projected=false;
@@ -85,12 +85,13 @@ test('public class aliases use one native Kysely projection, not one query per C
           }
           return this;
         },
-        where(){return this},
+        where(column,op,value){filters.push([column,op,value]);return this},
         orderBy(){return this},
         async executeTakeFirst(){return {
           keyword_meta:{class_shares:{Ab12Cd34:true,Ij90Kl12:true}}
         }},
-        async execute(){return classes.map(row=>({
+        async execute(){return classes.filter(row=>filters.every(([column,op,value])=>
+          op==='in'?value.includes(row[column]):row[column]===value)).map(row=>({
           ...row,...(projected?{share_hash:hash(row.uid)}:{})
         }))}
       };
@@ -98,15 +99,18 @@ test('public class aliases use one native Kysely projection, not one query per C
     const fn=new Function('owns','published','sql',source.slice(start,end)+
       '\nreturn sharedClasses;')(
       async()=>owner,(cfg,uid)=>cfg?.keyword_meta?.class_shares?.[uid]===true,sql);
-    return {calls,run:()=>fn(trx,'writer','silver.writer_anchor','anon')};
+    return {calls,filters,run:()=>fn(trx,'writer','silver.writer_anchor','anon')};
   };
   const publicRun=fake(false);
   const publicResult=await publicRun.run();
   assert.deepEqual(publicRun.calls,['silver.writer','silver.writer_anchor']);
+  assert.ok(publicRun.filters.some(([col,op,value])=>col==='uid'&&op==='in'&&
+    value.length===2&&value.includes('Ab12Cd34')&&value.includes('Ij90Kl12')));
   assert.deepEqual(publicResult.map(row=>row.category),
     [hash('Ab12Cd34'),hash('Ij90Kl12')]);
   const ownerRun=fake(true);
   const ownerResult=await ownerRun.run();
   assert.deepEqual(ownerRun.calls,['silver.writer','silver.writer_anchor']);
+  assert.ok(!ownerRun.filters.some(([col])=>col==='uid'));
   assert.deepEqual(ownerResult.map(row=>row.category),classes.map(c=>c.uid));
 });
