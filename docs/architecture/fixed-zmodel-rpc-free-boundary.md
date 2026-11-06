@@ -113,6 +113,10 @@ without a catalog dependency.
   `analytics` and `publicAction` methods directly. The obsolete `.rpc()`
   fallback and the unused SQL gateway `kind='rpc'` dispatch branch were
   removed. No new conversion layer, schema field, index or JSONB payload.
+- Galaxy Culture, Statistics, Earliest and LOC summaries now call one
+  bounded Kysely aggregate when ISR is unavailable. Removed missing-RPC
+  detection and the large multi-Scope, full-article comparison fallback.
+  Optional ISR remains a cache, not an alternate database algorithm.
 - Never conflate policy/trigger helper functions with public RPCs:
   `api.current_user_id`, `silver.manage`,
   `silver.domain_has_repeated_labels`,
