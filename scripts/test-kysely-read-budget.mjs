@@ -65,3 +65,62 @@ test('authenticated managed operations bypass the anonymous read budget',async()
   release();
   await held;
 });
+
+test('a waiting cancelled read rejects immediately and never runs',async()=>{
+  const budget=createPublicReadBudget(1);
+  let release;
+  const gate=new Promise(resolve=>{release=resolve});
+  const occupied=budget(async()=>gate);
+  const controller=new AbortController();
+  let ran=false;
+  const queued=budget(async()=>{ran=true;},controller.signal);
+  const rejection=assert.rejects(queued,error=>error?.name==='AbortError');
+  controller.abort();
+  // This must settle while the first request still owns the slot.
+  await rejection;
+  assert.equal(ran,false);
+  const following=budget(async()=>42);
+  release();
+  await occupied;
+  assert.equal(await following,42);
+  assert.equal(ran,false);
+});
+
+test('already aborted requests never consume a free read slot',async()=>{
+  const budget=createPublicReadBudget(1);
+  const controller=new AbortController();
+  controller.abort();
+  await assert.rejects(
+    budget(async()=>{throw Error('should not run')},controller.signal),
+    error=>error?.name==='AbortError'
+  );
+  assert.equal(await budget(async()=>7),7);
+});
+
+test('cancelled queued gateway query settles before active requests release',async()=>{
+  let fetches=0,release;
+  const gate=new Promise(resolve=>{release=resolve});
+  const client=createKyselyEdgeClient({
+    url:'https://demo.supabase.co',publishableKey:'public-key',role:'anon',
+    fetch:async()=>{
+      fetches++;
+      await gate;
+      return new Response(JSON.stringify({data:[]}),{
+        status:200,headers:{'content-type':'application/json'}
+      });
+    }
+  });
+  const active=Array.from({length:3},()=>Promise.resolve(
+    client.schema('silver').from('lo3rwang_galaxy').select('uid')));
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(fetches,3);
+  const signal=new AbortController();
+  const queued=Promise.resolve(client.schema('silver').from('lo3rwang_galaxy')
+    .select('uid').abortSignal(signal.signal));
+  const rejection=assert.rejects(queued,error=>error?.name==='AbortError');
+  signal.abort();
+  await rejection;
+  assert.equal(fetches,3);
+  release();
+  await Promise.all(active);
+});
