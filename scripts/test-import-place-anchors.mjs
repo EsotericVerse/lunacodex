@@ -451,3 +451,17 @@ test('Point merge unions saved times and Galaxy timestamps before deleting sourc
   assert.match(merge,/jsonb_set\(attr,'\{location\}'/);
   assert.ok(merge.indexOf('const sources=await sql')<merge.indexOf("set({place_id:keep})"));
 });
+
+test('repair scans existing Point UIDs when all articles already have place_id',async()=>{
+  const db=memoryTrace([{uid:'AB12abcd',title:'主地點',address:[121.49,25.05]}]);
+  const scan=await prepareImportPlaceAnchors([],{scopeId:'lo3rwang',
+    relation:db.relation,scanExistingOnEmpty:true});
+  assert.equal(scan.created,0);
+  assert.equal(db.inserts,0);
+  assert.ok(scan.timesByUid.has('AB12abcd'));
+  assert.deepEqual(scan.attrsByUid.get('AB12abcd'),
+    {longitude:121.49,latitude:25.05});
+  const reconcile=readFileSync(new URL('../app/loc/reconcile-import-anchors.mjs',import.meta.url),'utf8');
+  assert.match(reconcile,/const needingPlace=candidates\.filter\(row=>!String\(row\.place_id/);
+  assert.match(reconcile,/scanExistingOnEmpty:true/);
+});
