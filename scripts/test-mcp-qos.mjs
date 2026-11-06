@@ -8,8 +8,8 @@ const source=readFileSync(new URL('../workers/loc-authority/index.mjs',import.me
   .replace(/^import[\\s\\S]*?;\\s*$/gm,'')
   .replace('export class LocAuthorityState','class LocAuthorityState')
   .replace('export default {','const worker={');
-const {LocAuthorityState}=new Function('DurableObject',
-  source+';return {LocAuthorityState};')(class {
+const {LocAuthorityState,mcpPrLookup}=new Function('DurableObject',
+  source+';return {LocAuthorityState,mcpPrLookup};')(class {
     constructor(ctx,env){this.ctx=ctx;this.env=env;}
   });
 function quota(){
@@ -159,4 +159,11 @@ test('One search becomes eligible again after five minutes without resetting his
   assert.ok(next.at>=old.at);
   await authority.mcpQuotaRelease(first.lease,subject);
   await authority.mcpQuotaRelease(second.lease,subject);
+});
+
+test('PR classifier routes Github lookups away from Galaxy',()=>{
+  for(const term of ['PR','PR #1172','請找PR紀錄','pull request #1172','github commit','拉取請求'])
+    assert.equal(mcpPrLookup(term),true,term);
+  for(const term of ['時間定錨','對話摘要','跨 Agent 紀錄'])
+    assert.equal(mcpPrLookup(term),false,term);
 });
