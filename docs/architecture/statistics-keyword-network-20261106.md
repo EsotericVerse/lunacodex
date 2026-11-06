@@ -27,3 +27,9 @@ A display is chosen by the question and the data, not by listing ten Recharts co
 The legacy multimedia facet component remains unmounted: the active Statistics page deliberately uses totals, source, location and keywords. Do not reactivate deprecated media statistics merely to make a module appear utilized. Overlapping keyword/media counts and cross-comparison lanes never masquerade as additive stacked areas or exclusive slices.
 
 Automatic defaults use the existing shared selector. The data queries, time windows, Kysely, authorization, database Schema, RPC and export logic are unchanged. Browser/Node verification must still be recorded separately from source inspection.
+
+## Multimedia and locations are Keyword Categories (2026-11-06)
+
+The Statistics navigation includes **Multimedia (Keywords)** and **Place**, but neither is an independent statistics data source. They invoke exactly the same authorized Keyword Class directory, stored analysis summary and Recharts Group/Item ranking as the Keywords view. A category name selects the matching visible Classes (media: 多媒體／媒體／media／multimedia; place: 地點／空間／place／location); a public Class without a category name may match its exact Class name. Changing Class reuses the existing keyed summary reader; it does not scan `galaxy.media_link`, parse media metadata, join anchors or fetch a second place summary.
+
+If no matching visible Category/Class has been configured or analyzed, the UI says so; it **does not invent** media or geographic keyword counts. The old standalone media facet and place summary are not mounted from this statistics page. Neither legacy data nor a second statistical hierarchy is restored. All classifications remain Category → Class → Group → Item, with the existing ownership/share visibility. This is frontend routing only; no Schema, RPC, additional database round trips per chosen Class, or changes to Portable.
