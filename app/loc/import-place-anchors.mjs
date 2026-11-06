@@ -212,7 +212,11 @@ export async function recordImportPlaceVisits(visits,{relation,table,timesByUid,
       .filter(Number.isFinite))].sort((a,b)=>a-b).map(t=>new Date(t).toISOString());
     const pending=[];
     for(const [uid,stamps] of byUid){
-      const original=attrsByUid?.get(uid)||{};
+      // Never send a whole-attr replacement without the original Point state:
+      // that would erase saved coordinate and location aliases.
+      if(!attrsByUid?.has(uid))
+        throw Error('Point 原始 attr 不存在；停止補寫以避免覆蓋地點與座標');
+      const original=attrsByUid.get(uid)||{};
       const existing=toTimes(timesByUid?.get(uid)||original.times);
       const merged=toTimes([...existing,...stamps]);
       const before=String(createtimeByUid?.get(uid)||'');
