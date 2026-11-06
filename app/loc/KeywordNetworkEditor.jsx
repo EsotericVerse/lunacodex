@@ -218,7 +218,9 @@ export default function KeywordNetworkEditor({
         if(!id)return;
         selectedNodeRef.current=id;
         network.selectNodes([id]);
-        network.editNode();
+        const meta=metaOf(id);
+        if(meta?.kind==='group')handlersRef.current.onSelectGroup?.(meta.groupUid);
+        else selectMeta(meta);
       });
 
       if(retainedSelection&&graph.meta.has(retainedSelection)){
