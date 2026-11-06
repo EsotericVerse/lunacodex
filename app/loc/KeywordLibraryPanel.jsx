@@ -72,6 +72,11 @@ export default function KeywordLibraryPanel({scopeId,account}){
     if(!rows.length)return emptyTree;
     return indexKeywordTree(rows);
   },[rows]);
+  const category=tree.index.get(chosen.category);
+  // Category identity is maintained by Scope Group, not editable here.
+  const classes=[...tree.index.values()].filter(row=>row.type==='class')
+    .sort((a,b)=>a.name.localeCompare(b.name,'zh-Hant'));
+  const activeClass=tree.index.get(chosen.class);
   // A stable graph dataset prevents vis-network from being destroyed every time
   // the inspector draft changes. Only the actual keyword tree/class rebuilds it.
   const graphItems=useMemo(()=>activeClass
@@ -80,11 +85,6 @@ export default function KeywordLibraryPanel({scopeId,account}){
       return {keyword_id:node.uid,item_name:node.name,keywords:node.lists,
         group_uid:group?.uid||'',class_group:group?.name||'',class_name:activeClass.name};
     }):[],[rows,tree,activeClass]);
-  const category=tree.index.get(chosen.category);
-  // Category identity is maintained by Scope Group, not editable here.
-  const classes=[...tree.index.values()].filter(row=>row.type==='class')
-    .sort((a,b)=>a.name.localeCompare(b.name,'zh-Hant'));
-  const activeClass=tree.index.get(chosen.class);
   const groups=childrenOf(tree,activeClass?.uid);
   const activeGroup=tree.index.get(chosen.group);
   const items=childrenOf(tree,activeGroup?.uid);
