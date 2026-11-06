@@ -12,3 +12,14 @@ Open the extension toolbar button once to configure the private Worker HTTPS URL
 - `LOC_GALAXY_SYNC_URL` and `LOC_GALAXY_SYNC_SECRET` are private Worker variables; Galaxy must de-duplicate by stable record id.
 - One read and one write globally **are not guaranteed by KV alone**. Additional coordination is required before claiming that concurrency invariant.
 - The earlier `extensions/loc-galaxy` implementation depended on Clerk / MCP and remains in Git history; this Channel 1 directory intentionally does not invoke them.
+
+## Existing LOC_KV format and compatibility
+
+The existing Cloudflare KV namespace is **not empty**. Seven legacy keys use the `loc:*` prefix and schema `kv-1`, including `loc:context:events` and `loc:context:relations` migrated from Google Sheets. Their payloads are JSON documents containing collections; they must not be overwritten, converted in place, or deleted as a side effect of Channel 1 deployment.
+
+Channel 1 deliberately uses disjoint keys:
+- `pending/<UUID>`: one incoming record per key
+- `archive/<UUID>`: one retained record after Galaxy acknowledgement
+- `loc:*`: untouched legacy collections
+
+The hourly handler only lists `pending/`, never `loc:*`. It requires an idempotent Galaxy ingestion endpoint before deployment. Changing the logical record format does **not** require a new namespace or Galaxy schema migration. Do not turn existing Google Sheets events into new Galaxy articles without separate authorization.
