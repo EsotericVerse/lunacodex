@@ -78,3 +78,47 @@ without ANALYZE**, so neither statement was executed. Both the original
 LOWER/LIKE and the CJK-native LIKE plan can scan many rows; comparative latency
 and all four SQL-dialect runtime results are not yet verified. Do not promise a
 guaranteed speedup until measured.
+
+
+## Business RPC retirement — verified dependencies (2026-11-06)
+
+Read-only `pg_proc` and `pg_depend` inspection of the existing Supabase
+`silver` / `api` schemas found more than a dozen legacy analytics and
+management functions. A `pg_depend` count of zero **is not sufficient**
+to drop PL/pgSQL functions: runtime function bodies can refer to one another
+without a catalog dependency.
+
+- The legacy `silver.read_scope_analytics` dispatcher still references
+  `read_scope_statistics`, `read_scope_category_totals`,
+  `read_scope_earliest`, `read_scope_overview`,
+  `read_scope_search_summary`, `read_scope_place_statistics`,
+  `read_keyword_tree_summary`, `read_shared_keyword_classes`,
+  `read_trace_place_density`, `read_trace_keyword_group_totals`,
+  `scope_keyword_catalog`, and `read_loc_statistics`. Retire dispatcher
+  first **after active consumers and ISR fallback paths are proved independent**;
+  only then retire its former helper functions using `DROP FUNCTION ... RESTRICT`
+  with exact PostgreSQL signatures.
+- `silver.new_keyword_tree_uid(text)` was used by the Kysely keyword-class
+  importer. The importer now uses a cryptographic Base62 eight-character
+  generator, checks current database UIDs and reserves generated UIDs within
+  the transaction; it no longer calls the SQL function or takes a
+  PostgreSQL-specific advisory lock. **Do not DROP this function yet**:
+  `app/loc/providers/kysely-scope-admin.mjs` and the older SQL
+  `silver.import_shared_keyword_class` still call it.
+- Never conflate policy/trigger helper functions with public RPCs:
+  `api.current_user_id`, `silver.manage`,
+  `silver.domain_has_repeated_labels`,
+  `silver.sync_scope_config_display_name`, and
+  `silver.touch_visual_novel_updated_at` currently have catalog dependents.
+  They must not be removed without explicit policy, check constraint or
+  trigger rewrites (which are outside this PR).
+- `api.management_write` and other `SECURITY DEFINER` management functions
+  require separate live caller, role and transaction verification before
+  deletion. Lack of a direct import in one client is not proof of no use.
+
+**No DROP was executed and no cleanup migration has been applied.** The
+client-to-Kysely cutover, function-free UID allocation and read-only
+dependency audit are the first retirement steps. After the existing PR has
+passed Node/Next/permission checks and been deployed, refresh the deployed
+caller audit, perform a narrow `RESTRICT` retirement, and re-check public
+Search, Culture, Statistics, Trace, import, and management behavior.
