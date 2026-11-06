@@ -398,7 +398,7 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
     try{
       const email=String(row.email||'').trim().toLowerCase();
       if(!/^\S+@\S+\.\S+$/.test(email))throw new Error('Email 格式不正確。');
-      await updateRows('silver.manage',{
+      await updateRows('api.manage',{
         email,
         galaxy_table:String(row.galaxy||'galaxy').trim()||'galaxy',
         anchor_table:String(row.anchor||'anchor').trim()||'anchor'
@@ -413,7 +413,7 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
     }
     if(!window.confirm('移除 '+row.email+'？'))return;
     try{
-      await updateRows('silver.manage',{
+      await updateRows('api.manage',{
         email:null,manage_role:null
       },{filters:[{column:'id',operator:'eq',value:row.id}]});
       setStatus('Mapping 已移除。');refresh();
@@ -426,7 +426,7 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
     try{
       const email=String(newMapping.email||'').trim().toLowerCase();
       if(!/^\S+@\S+\.\S+$/.test(email))throw new Error('Email 格式不正確。');
-      await updateRows('silver.manage',{
+      await updateRows('api.manage',{
         email:email,manage_role:'scope',
         galaxy_table:String(newMapping.galaxy||'galaxy').trim()||'galaxy',
         anchor_table:String(newMapping.anchor||'anchor').trim()||'anchor'
@@ -721,7 +721,7 @@ export default function AdminRegistry(){
       if(result?.deleted!==true||result?.scope_id!==id){
         throw new Error('刪除 RPC 未回傳正確的完成確認。');
       }
-      const {data:remaining,error:verifyError}=await dbAuthRelation('silver.manage')
+      const {data:remaining,error:verifyError}=await dbAuthRelation('api.manage')
         .select('id').eq('id',id).limit(1);
       if(verifyError)throw new Error('刪除已執行，但 Registry 驗證失敗：'+verifyError.message);
       if(remaining?.length)throw new Error('資料庫仍存在 '+id+'，已取消前端成功提示。');

@@ -13,6 +13,7 @@ function reject(message,status=400){
   throw error;
 }
 function tableName(value){
+  if(value==='api.manage')return 'manage';
   const match=String(value||'').match(/^silver\.([a-z][a-z0-9_]*)$/i);
   if(!match)reject('Invalid managed relation');
   return match[1];
@@ -86,7 +87,7 @@ async function authorizeRelation(trx,table,operation,values,filters,rows){
     reject('Scope management permission required',403);
   // Verify the dynamic registry mapping before escalating to the trusted
   // server connection. Caller input can never pick an arbitrary table.
-  const record=await trx.selectFrom('silver.manage')
+  const record=await trx.selectFrom('api.manage')
     .select(['id','manage_role','galaxy_table','anchor_table'])
     .where('id','=',scope).executeTakeFirst();
   if(!record||record.manage_role!=='scope')reject('Scope is not registered',403);
@@ -153,7 +154,7 @@ export async function executeManagedKyselyWrite(trx,body){
   // authorization is proved do trusted server-side Kysely mutations run
   // with the connection's original role (same privilege as old definer RPC).
   await sql`reset role`.execute(trx);
-  const name='silver.'+table;
+  const name=table==='manage'?'api.manage':'silver.'+table;
   if(operation==='update'){
     const pk=await sql`select a.attname as name from pg_index i
       join pg_attribute a on a.attrelid=i.indrelid and a.attnum=any(i.indkey)
@@ -207,7 +208,7 @@ async function bulkUpdateGalaxyFlags(trx,args){
     reject('Private MCP and GitHub sources cannot be publicly enabled',403);
   if(!await canManageLoc(trx,'scope',scope))reject('Scope management permission required',403);
   // Reuse the Scope Registry. Do not trust user-supplied SQL relation names.
-  const registry=await trx.selectFrom('silver.manage').select(['manage_role','galaxy_table'])
+  const registry=await trx.selectFrom('api.manage').select(['manage_role','galaxy_table'])
     .where('id','=',scope).executeTakeFirst();
   if(registry?.manage_role!=='scope'||registry.galaxy_table!=='galaxy')
     reject('Scope Galaxy mapping unavailable',403);
@@ -297,7 +298,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
   if(name==='read_scope_registry_admin'){
     if(!await canManageLoc(trx,'global'))reject('Global administrator required',403);
     await sql`reset role`.execute(trx);
-    const rows=await trx.selectFrom('silver.manage as m')
+    const rows=await trx.selectFrom('api.manage as m')
       .leftJoin('silver.loc as l','l.id','m.id')
       .select(['m.id as id','l.display_name as display_name','m.email as email',
         'm.manage_role as manage_role','m.domain as domain','m.directory as directory',
@@ -340,7 +341,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     const group=validScope(args.p_group_id);
     if(!await canManageLoc(trx,'group',group))reject('Group management permission required',403);
     await sql`reset role`.execute(trx);
-    const rows=await trx.selectFrom('silver.manage as m')
+    const rows=await trx.selectFrom('api.manage as m')
       .innerJoin('silver.loc as l','l.id','m.id')
       .select(['m.id as id','l.display_name as display_name',
         'm.parent_scope_id as parent_scope_id','m.active as active',
@@ -356,7 +357,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     if(!title||title.length>120)reject('Group member name must contain 1–120 characters');
     if(!await canManageLoc(trx,'group',group))reject('Group management permission required',403);
     await sql`reset role`.execute(trx);
-    const parent=await trx.selectFrom('silver.manage').select('id')
+    const parent=await trx.selectFrom('api.manage').select('id')
       .where('id','=',member).where('parent_scope_id','=',group)
       .where('manage_role','=','scope').executeTakeFirst();
     if(!parent)reject('Scope is outside this Group',403);
@@ -420,7 +421,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
 async function scopedWrite(trx,input){
   const scope=validScope(input);
   if(!await canManageLoc(trx,'scope',scope))reject('Scope write permission required',403);
-  const registry=await trx.selectFrom('silver.manage').select(['id','manage_role','active'])
+  const registry=await trx.selectFrom('api.manage').select(['id','manage_role','active'])
     .where('id','=',scope).executeTakeFirst();
   if(!registry||registry.manage_role!=='scope'||registry.active!==true)
     reject('Unknown or inactive Scope',403);
@@ -548,7 +549,7 @@ async function managedLocSettings(trx,args,claims){
   if(section==='scopeid'){
     // Routing-reserved names are system records. The real Admin ID remains
     // role=admin, but its protected-route note is editable alongside reserves.
-    const rows=await trx.selectFrom('silver.manage')
+    const rows=await trx.selectFrom('api.manage')
       .select(['id','note','manage_role'])
       .where('manage_role','in',['reserve','admin'])
       .orderBy('id','asc').execute();
@@ -557,7 +558,7 @@ async function managedLocSettings(trx,args,claims){
     const target=rows.find(item=>item.id===key);
     if(!target)reject('Reserved Scope ID not found');
     const note=String(value??'').trim()||null;
-    await trx.updateTable('silver.manage').set({note})
+    await trx.updateTable('api.manage').set({note})
       .where('id','=',key).executeTakeFirst();
     return rows.map(item=>({id:item.id,note:item.id===key?note:item.note}));
   }
@@ -728,7 +729,7 @@ async function importSharedKeywordClass(trx,args){
   if(from===to)reject('Source and target Scopes must differ');
   // Authorization on target is inherited from the established Clerk session.
   await scopedWrite(trx,to);
-  const sourceRegistry=await trx.selectFrom('silver.manage')
+  const sourceRegistry=await trx.selectFrom('api.manage')
     .select('id').where('id','=',from).where('manage_role','=','scope')
     .where('active','=',true).executeTakeFirst();
   if(!sourceRegistry)reject('Source Scope unavailable');

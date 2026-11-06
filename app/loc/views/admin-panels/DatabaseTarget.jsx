@@ -49,7 +49,7 @@ export default function DatabaseTarget(){
   return <section className="loc-card admin-workspace">
     <h2>資料庫連線與部署設定</h2>
     <p className="scope-status">資料庫目標由 <code>{ACCESS_FILE}</code> 決定。這是部署設定，不讀寫
-      <code>silver.manage.database</code>。修改 JS 並提交 GitHub 後，重新部署才會生效；此頁不提供假的即時儲存。</p>
+      <code>api.manage.database</code>。修改 JS 並提交 GitHub 後，重新部署才會生效；此頁不提供假的即時儲存。</p>
     <p className="scope-status">主要：{ready.find(item=>item.target_id===routing.primaryId)?.label||routing.primaryId}
       ｜備援：{ready.find(item=>item.target_id===routing.backupId)?.label||'未啟用'}</p>
     <div className="scope-management-fields">

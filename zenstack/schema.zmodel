@@ -1,4 +1,4 @@
-// LOC fixed physical schema — read-only model snapshot of PostgreSQL silver tables.
+// LOC fixed physical schema — read-only model snapshot of PostgreSQL silver + api tables.
 // No migrations are generated/applied from this file. No SQL procedures are required.
 // Additional product features reuse the existing Anchor.attr JSON payload.
 // Portable MySQL / SQL Server / SQLite query construction remains in Kysely adapters.
@@ -10,7 +10,7 @@
 datasource db {
     provider = "postgresql"
     url = env("LOC_DATABASE_URL")
-    schemas = ["silver"]
+    schemas = ["silver", "api"]
 }
 
 model Game {
@@ -282,7 +282,7 @@ model Manage {
     caches                       Json        @db.JsonB @default(dbgenerated())
     note                         String?     @db.Text
     @@map("manage")
-    @@schema("silver")
+    @@schema("api")
 }
 
 model Runes {

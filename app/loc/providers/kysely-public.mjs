@@ -15,7 +15,8 @@ const ACTION_ARGS={
 };
 export async function executeKyselyPublicAction(trx,body,{engine='postgres',namespace='silver'}={}){
   const portable=engine!=='postgres';
-  const table=name=>portable?portableRelation(name,engine,namespace):'silver.'+name;
+  const table=name=>portable?portableRelation(name,engine,namespace):
+    name==='manage'?'api.manage':'silver.'+name;
   const action=String(body?.name||'');
   if(action==='page_blocks'||action==='hero_blocks'){
     const args=body?.args||{};

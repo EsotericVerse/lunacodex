@@ -19,7 +19,7 @@ function scopeId(value){const id=String(value||'').trim().toLowerCase();
   if(!SCOPE.test(id))reject('Invalid statistics Scope');return id;
 }
 async function registry(trx,scope){
-  const row=await trx.selectFrom('silver.manage as m')
+  const row=await trx.selectFrom('api.manage as m')
     .innerJoin('silver.loc as l','l.id','m.id')
     .select(['m.id as id','m.manage_role as manage_role','m.active as active',
       'l.display_name as display_name','m.anchor_table as anchor_table',
@@ -92,7 +92,7 @@ async function searchSummary(trx,options){
   if(!requested.length)return {rows:[]};
   // One Kysely membership read, rather than one SQL round trip per Scope.
   // Keep per-Scope configuration queries bounded and sequential.
-  const members=await trx.selectFrom('silver.manage')
+  const members=await trx.selectFrom('api.manage')
     .select('id').where('id','in',requested)
     .where('manage_role','=','scope').where('active','=',true).execute();
   const allowed=new Set(members.map(row=>row.id));
@@ -381,7 +381,7 @@ export async function executeKyselyAnalytics(trx,body,{role='anon'}={}){
   }
   if(mode==='loc'){
     if(scope!=='loc')reject('Invalid LOC statistics Scope');
-    const groups=await trx.selectFrom('silver.manage as m')
+    const groups=await trx.selectFrom('api.manage as m')
       .innerJoin('silver.loc as l','l.id','m.id')
       .select(['m.id as id','l.display_name as display_name',
         'm.galaxy_table as galaxy_table','m.anchor_table as anchor_table'])

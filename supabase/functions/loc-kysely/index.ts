@@ -194,7 +194,7 @@ async function checkAdminRole(claims:Record<string,unknown>){
   return control;
 }
 // Database access metadata is loaded once from the deployment JS file.
-// This must never SELECT silver.manage.database (or LOC) on requests.
+// This must never SELECT api.manage.database (or LOC) on requests.
 function databaseListForControl(_control?:any):Record<string,any>[] {
   return databaseAccessTargets();
 }

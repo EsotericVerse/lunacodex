@@ -117,7 +117,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     }
     const {data,error}=await authClient.schema('silver').managedWrite(payload);
     if(error)throw new Error(error.message||'Management write failed');
-    if(payload?.p_table==='silver.manage'){
+    if(payload?.p_table==='api.manage'){
       const values=payload.p_values||{};
       const isAuthorityChange=payload.p_operation!=='update'||
         ['id','email','manage_role'].some(key=>Object.hasOwn(values,key));
@@ -561,7 +561,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
   async function deleteScopeUnchecked(scopeId){
     const scope=normalizeScopeId(scopeId);
     if(!scope)throw new Error('Scope ID 格式不正確。');
-    preflightWrite('silver.manage');
+    preflightWrite('api.manage');
     const {data,error}=await authClient.schema('silver').managedAction('delete_scope',{p_scope_id:scope});
     if(error)throw new Error(error.message||'Scope 刪除失敗。');
     invalidateRelevantAuthorization(scope);
@@ -570,7 +570,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
 
   async function provisionScopeUnchecked(values={}){
     const scopeId=normalizeScopeId(values.scope_id);
-    preflightWrite('silver.manage');
+    preflightWrite('api.manage');
     const payload={
       p_scope_id:scopeId,
       p_display_name:String(values.display_name||'').trim(),
@@ -592,7 +592,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     const scope=normalizeScopeId(scopeId);
     const op=String(operation||'').trim().toLowerCase();
     if(!['create_group','update'].includes(op))throw new Error('Unsupported Scope Registry operation');
-    preflightWrite('silver.manage');
+    preflightWrite('api.manage');
     const {data,error}=await authClient.schema('silver').managedAction('manage_scope_registry',{
       p_operation:op,
       p_scope_id:scope,

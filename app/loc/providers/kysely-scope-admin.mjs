@@ -28,14 +28,14 @@ function resultRow(row,name=''){return {
   active:row.active,sort_order:row.sort_order
 };}
 async function group(trx,id){
-  const row=await trx.selectFrom('silver.manage').select(['id','manage_role','active'])
+  const row=await trx.selectFrom('api.manage').select(['id','manage_role','active'])
     .where('id','=',id).executeTakeFirst();
   if(row?.manage_role!=='group'||row.active!==true)
     fail('Parent Scope Group does not exist or is inactive');
   return row;
 }
 async function nextSort(trx,parent){
-  const r=await trx.selectFrom('silver.manage')
+  const r=await trx.selectFrom('api.manage')
     .select(sql`coalesce(max(sort_order),0)+10`.as('next'))
     .where('parent_scope_id','=',parent).executeTakeFirst();
   return Number(r?.next||10);
@@ -45,7 +45,7 @@ async function managedRegistry(trx,args){
   const id=scope(args.p_scope_id),values=args.p_values??{};
   if(!values||typeof values!=='object'||Array.isArray(values))
     fail('Invalid Registry values');
-  const existing=await trx.selectFrom('silver.manage').selectAll()
+  const existing=await trx.selectFrom('api.manage').selectAll()
     .where('id','=',id).forUpdate().executeTakeFirst();
   if(operation==='create_group'){
     if(existing)fail('Scope Registry ID already exists');
@@ -57,7 +57,7 @@ async function managedRegistry(trx,args){
     const active=values.active===undefined?true:values.active===true;
     const sort=Object.hasOwn(values,'sort_order')
       ?Number(values.sort_order)||0:await nextSort(trx,parent);
-    const inserted=await trx.insertInto('silver.manage').values({
+    const inserted=await trx.insertInto('api.manage').values({
       id,domain,directory,parent_scope_id:parent,
       active,sort_order:sort,manage_role:'group'
     }).returning(['id','domain','directory','parent_scope_id',
@@ -91,17 +91,17 @@ async function managedRegistry(trx,args){
     while(current){
       if(current===id||visited.has(current))fail('Scope Group hierarchy cycle');
       visited.add(current);
-      const row=await trx.selectFrom('silver.manage').select('parent_scope_id')
+      const row=await trx.selectFrom('api.manage').select('parent_scope_id')
         .where('id','=',current).executeTakeFirst();
       current=row?.parent_scope_id||null;
     }
   }
   if(existing.manage_role==='group'&&!active){
-    const child=await trx.selectFrom('silver.manage').select('id')
+    const child=await trx.selectFrom('api.manage').select('id')
       .where('parent_scope_id','=',id).where('active','=',true).executeTakeFirst();
     if(child)fail('Disable or move active Scope Group children first');
   }
-  const updated=await trx.updateTable('silver.manage')
+  const updated=await trx.updateTable('api.manage')
     .set({domain,directory,parent_scope_id:parent,active,sort_order:sort})
     .where('id','=',id)
     .returning(['id','domain','directory','parent_scope_id',
@@ -118,10 +118,10 @@ async function existsRelation(trx,relation){
 async function deleteScope(trx,args){
   const id=scope(args.p_scope_id);
   if(['loc','lrunes','lo3rwang','admin'].includes(id))fail('Built-in Scopes cannot be deleted');
-  const row=await trx.selectFrom('silver.manage').select('manage_role')
+  const row=await trx.selectFrom('api.manage').select('manage_role')
     .where('id','=',id).forUpdate().executeTakeFirst();
   if(row?.manage_role!=='scope')fail('Only existing non-system Scopes may be deleted');
-  const child=await trx.selectFrom('silver.manage').select('id')
+  const child=await trx.selectFrom('api.manage').select('id')
     .where('parent_scope_id','=',id).executeTakeFirst();
   if(child)fail('Scope has child Registry entries');
   const anchor=await existsRelation(trx,'silver.'+id+'_anchor');
@@ -136,7 +136,7 @@ async function deleteScope(trx,args){
       fail('Required Scope relation missing: '+relation);
     }
   }
-  await trx.deleteFrom('silver.manage').where('id','=',id).executeTakeFirst();
+  await trx.deleteFrom('api.manage').where('id','=',id).executeTakeFirst();
   await trx.deleteFrom('silver.loc').where('id','=',id).executeTakeFirst();
   await sql`notify pgrst,'reload schema'`.execute(trx);
   return {scope_id:id,deleted:true};
@@ -204,11 +204,11 @@ async function provisionScope(trx,args){
      theme!=='system-default'&&!/^theme-[1-8]$/.test(theme))
     fail('Invalid Scope owner, name, or theme');
   await group(trx,parent);
-  if(await trx.selectFrom('silver.manage').select('id').where('id','=',id).executeTakeFirst())
+  if(await trx.selectFrom('api.manage').select('id').where('id','=',id).executeTakeFirst())
     fail('Scope already exists');
-  if(domain&&await trx.selectFrom('silver.manage').select('id')
+  if(domain&&await trx.selectFrom('api.manage').select('id')
     .where(sql`lower(domain)=${domain}`).executeTakeFirst())fail('Domain already allocated');
-  if(directory&&await trx.selectFrom('silver.manage').select('id')
+  if(directory&&await trx.selectFrom('api.manage').select('id')
     .where(sql`lower(directory)=${directory}`).executeTakeFirst())fail('Directory already allocated');
   const variants=[id,id+'_galaxy',id+'_galaxy_media',id+'_time',
     id+'_keywords',id+'_blocks',id+'_anchor'];
@@ -233,7 +233,7 @@ async function provisionScope(trx,args){
     await sql`alter table ${table} enable row level security`.execute(trx);
   // CREATE POLICY does not accept bind placeholders. sql.lit is safe here
   // because Scope IDs were validated by the strict ^[a-z][a-z0-9]{0,14}$ rule.
-  const can=sql`coalesce((select allowed from silver.manage('scope',${sql.lit(id)})),false)`;
+  const can=sql`coalesce((select allowed from api.manage('scope',${sql.lit(id)})),false)`;
   await sql`create policy ${sql.ref(id+'_config_public_read')} on ${config}
     for select to anonymous,authenticated using (true)`.execute(trx);
   await sql`create policy ${sql.ref(id+'_config_scope_update')} on ${config}
@@ -266,7 +266,7 @@ async function provisionScope(trx,args){
   for(const table of [anchor,blocks])
     await sql`grant insert,update,delete on ${table} to authenticated`.execute(trx);
   const sort=await nextSort(trx,parent);
-  await trx.insertInto('silver.manage').values({
+  await trx.insertInto('api.manage').values({
     id,email,domain,directory,parent_scope_id:parent,
     active:true,sort_order:sort,manage_role:'scope'
   }).executeTakeFirst();
