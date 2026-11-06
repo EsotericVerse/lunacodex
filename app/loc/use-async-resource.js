@@ -46,7 +46,8 @@ export function useAsyncInfiniteResource({queryKey,queryFn,enabled=true,initialP
   const getPageKey=(pageIndex,previousPage)=>{
     if(!enabled)return null;
     const pageParam=pageIndex===0?initialPageParam:getNextPageParam?.(previousPage);
-    if(pageIndex>0&&pageParam===undefined)return null;
+    // SWR Infinite uses null to end pagination; accept both null and undefined.
+    if(pageIndex>0&&pageParam==null)return null;
     return [...queryKey,{__locPage:true,index:pageIndex,param:pageParam}];
   };
   const serializedKey=serializeInfinite(getPageKey);
@@ -82,7 +83,7 @@ export function useAsyncInfiniteResource({queryKey,queryFn,enabled=true,initialP
     isFetchingNextPage:resource.isValidating&&resource.size>pages.length,
     isSuccess:resource.data!==undefined&&!resource.error,
     isError:Boolean(resource.error),
-    hasNextPage:Boolean(lastPage&&getNextPageParam?.(lastPage)!==undefined),
+    hasNextPage:Boolean(lastPage&&getNextPageParam?.(lastPage)!=null),
     fetchNextPage:()=>resource.setSize(size=>size+1),
     refetch:()=>resource.mutate()
   };
