@@ -54,3 +54,59 @@ test('invalid scope names reject before any SQL is executed',async()=>{
   await assert.rejects(fn(trx,{scopeIds:['alpha','bad.scope']}),/Invalid Scope/);
   assert.deepEqual(calls,[]);
 });
+
+test('public class aliases use one native Kysely projection, not one query per Class',async()=>{
+  const {createHash}=await import('node:crypto');
+  const start=source.indexOf('async function sharedClasses(');
+  const end=source.indexOf('\nasync function keywordCatalog(',start);
+  assert.ok(start>=0&&end>start);
+  const sql=(strings,...values)=>({
+    strings:[...strings],values,
+    as(name){return {alias:name,strings:[...strings],values}}
+  });
+  sql.ref=name=>({reference:name});
+  const classes=[
+    {uid:'Ab12Cd34',title:'Primary'},
+    {uid:'Ef56Gh78',title:'Private'},
+    {uid:'Ij90Kl12',title:'Secondary'}
+  ];
+  const hash=uid=>createHash('sha256').update('writer:'+uid).digest('hex');
+  const fake=(owner)=>{
+    const calls=[];
+    const trx={selectFrom(table){
+      calls.push(table);
+      let projected=false;
+      return {
+        select(fields){
+          if(fields?.alias==='share_hash'){
+            projected=true;
+            assert.deepEqual(fields.values[1],{reference:'uid'});
+            assert.match(fields.strings.join(''),/encode\(sha256\(convert_to\(/);
+          }
+          return this;
+        },
+        where(){return this},
+        orderBy(){return this},
+        async executeTakeFirst(){return {
+          keyword_meta:{class_shares:{Ab12Cd34:true,Ij90Kl12:true}}
+        }},
+        async execute(){return classes.map(row=>({
+          ...row,...(projected?{share_hash:hash(row.uid)}:{})
+        }))}
+      };
+    }};
+    const fn=new Function('owns','published','sql',source.slice(start,end)+
+      '\nreturn sharedClasses;')(
+      async()=>owner,(cfg,uid)=>cfg?.keyword_meta?.class_shares?.[uid]===true,sql);
+    return {calls,run:()=>fn(trx,'writer','silver.writer_anchor','anon')};
+  };
+  const publicRun=fake(false);
+  const publicResult=await publicRun.run();
+  assert.deepEqual(publicRun.calls,['silver.writer','silver.writer_anchor']);
+  assert.deepEqual(publicResult.map(row=>row.category),
+    [hash('Ab12Cd34'),hash('Ij90Kl12')]);
+  const ownerRun=fake(true);
+  const ownerResult=await ownerRun.run();
+  assert.deepEqual(ownerRun.calls,['silver.writer','silver.writer_anchor']);
+  assert.deepEqual(ownerResult.map(row=>row.category),classes.map(c=>c.uid));
+});
