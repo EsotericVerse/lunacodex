@@ -1,7 +1,7 @@
 const $=id=>document.getElementById(id);
 async function call(type){
  try{
-  const result=await chrome.runtime.sendMessage({type,includeAssistant:$('includeAI').checked});
+  const result=await chrome.runtime.sendMessage({type:type==='queue.scope.change'?'queue.scope':type,scopeid:$('scope').value,includeAssistant:$('includeAI').checked});
   if(result?.error)throw Error(result.error);
   $('status').textContent=result?.message||'完成';
  }catch(error){$('status').textContent=String(error.message||error);}
@@ -15,4 +15,6 @@ for(const [id,type] of Object.entries({capture:'capture',select:'select',record:
  $(id).addEventListener('click',()=>call(type));
 chrome.storage.local.get('locIncludeAssistant').then(v=>{$('includeAI').checked=Boolean(v.locIncludeAssistant);}).catch(()=>{});
 $('includeAI').addEventListener('change',()=>chrome.storage.local.set({locIncludeAssistant:$('includeAI').checked}));
+chrome.storage.local.get('locTargetScope').then(v=>{$('scope').value=v.locTargetScope||'lo3rwang';}).catch(()=>{});
+$('scope').addEventListener('change',()=>call('queue.scope.change'));
 void stats();
