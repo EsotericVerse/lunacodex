@@ -460,6 +460,8 @@ test('LOC and Scope source editors share vis-network but keep separate write bou
   assert.match(network,/onSelectNode=null/);
   assert.match(management,/Source catalog permission denied/);
   assert.match(management,/LOC cannot edit child Scope sources/);
+  assert.match(management,/Source site key is immutable/);
+  assert.match(editor,/來源代碼保留比對 Galaxy.site/);
   assert.match(management,/\.where\('parent_scope_id','=', 'loc'\)/);
   assert.doesNotMatch(editor,/scopeTagColumn|scopeTagNames|\.update\(\{\[scopeTagColumn/);
 });
