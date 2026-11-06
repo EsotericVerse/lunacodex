@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
 import vm from 'node:vm';
+import {canManageDelegation} from '../app/loc/auth/delegation-contract.mjs';
 import {administrativeSourceTrend} from '../app/loc/statistics-admin-source.mjs';
 import {MAX_ROWS} from '../app/loc/query-batch-size.mjs';
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
@@ -706,18 +707,19 @@ test('LOC permission snapshot does one Kysely query rather than two per request'
 });
 
 
-test('Verified Clerk OAuth expiry bounds lazy LOC authorization cache across requests',async()=>{
+test('Verified LOC delegation expiry bounds lazy authorization cache across requests',async()=>{
   // Execute the actual pure authorization module with a fake Kysely SELECT.
   // No Supabase connection, RLS or user credential is involved.
   const source=read('app/loc/providers/loc-authorization.mjs')
-    .replace(/^export /gm,'');
+    .replace(/^import .*$/gm,'').replace(/^export /gm,'');
   const {bindLocAuthorization,locPermissions}=vm.runInNewContext(
-    source+'\n;({bindLocAuthorization,locPermissions})',{Date,Promise});
+    source+'\n;({bindLocAuthorization,locPermissions})',
+    {Date,Promise,canManageDelegation});
   let selects=0;
   const db=()=>({
     fn:()=>'(lower email)',
     selectFrom(){selects+=1;return{
-      crossJoin(){return this;},select(){return this;},where(){return this;},
+      crossJoin(){return this;},leftJoin(){return this;},select(){return this;},where(){return this;},
       async execute(){return[{
         id:'lo3rwang',email:'editor@example.org',manage_role:'scope',active:true,
         galaxy_table:'galaxy',anchor_table:'anchor',birthday:null,
@@ -725,7 +727,7 @@ test('Verified Clerk OAuth expiry bounds lazy LOC authorization cache across req
       }];}
     }}
   });
-  const claims={provider:'clerk',sub:'user_Abc123',email:'editor@example.org',
+  const claims={provider:'loc',me:true,sub:'user_Abc123',email:'editor@example.org',
     sid:'session-1',exp:Math.floor(Date.now()/1000)+120};
   const first=db(),second=db();
   bindLocAuthorization(first,{role:'authenticated',claims});
@@ -737,7 +739,7 @@ test('Verified Clerk OAuth expiry bounds lazy LOC authorization cache across req
   const another=db();
   bindLocAuthorization(another,{role:'authenticated',claims:{...claims,sid:'session-2'}});
   await locPermissions(another);
-  assert.equal(selects,2,'different Clerk session never reuses prior authorization');
+  assert.equal(selects,2,'different LOC session never reuses prior authorization');
   const expired=db();
   bindLocAuthorization(expired,{role:'authenticated',
     claims:{...claims,exp:Math.floor(Date.now()/1000)-1}});
