@@ -428,6 +428,9 @@ export default function KeywordLibraryPanel({scopeId,account}){
   ]).map(value=>String(value||'').normalize('NFKC').trim().toLocaleLowerCase()));
   const suggestedCandidates=(discovery?.candidates||[]).filter(item=>
     !knownTerms.has(String(item.word||'').normalize('NFKC').trim().toLocaleLowerCase()));
+  // This is an in-memory review list from the same on-demand scan.
+  // Existing Anchor items and attr are never rewritten or deleted.
+  const infrequentKeywords=discovery?.cachedOnly?[]:(discovery?.infrequentKeywords||[]);
   const suggestionPageSize=20;
   const suggestionPages=Math.max(1,Math.ceil(suggestedCandidates.length/suggestionPageSize));
   const currentSuggestionPage=Math.min(discoveryPage,suggestionPages);
@@ -604,6 +607,17 @@ export default function KeywordLibraryPanel({scopeId,account}){
               onClick={()=>setDiscoveryPage(page=>Math.min(suggestionPages,page+1))}>下一頁</button>
           </div>:null}
         </div>:<p className="scope-status">沒有符合基本出現篇數門檻、且尚未收錄的新詞。</p>}
+        {infrequentKeywords.length>0?<div>
+          <h3>已收錄但低使用的關鍵詞</h3>
+          <p className="scope-status">以下詞語在本次掃描中出現於不超過 1% 的文章；僅供整理參考，不會自動刪除、變更分類或修改 Anchor。</p>
+          <ol className="scope-keyword-discovery-results">
+            {infrequentKeywords.map(term=><li key={term.word}>
+              <strong>{term.word}</strong>
+              <span className="scope-status"> · {Number(term.documents||0).toLocaleString()} 篇文章
+                · 涵蓋率 {(Number(term.coverage||0)*100).toFixed(2)}%</span>
+            </li>)}
+          </ol>
+        </div>:null}
       </div>:null}
       {!discoveryBusy&&discovery?<button type="button" className="loc-button" onClick={discoverNewTerms}>重新掃描內文</button>:null}
     </section>:null}
