@@ -52,3 +52,29 @@ test('Bridge trusts browser sender.origin; nonce and Scope remain bound to creat
   assert.match(listener,/u\.searchParams\.get\('nonce'\)===nonce/);
   assert.match(listener,/u\.searchParams\.get\('scopeid'\)===scopeid/);
 });
+
+test('External website origin-only sender passes when extension-created tab binds nonce and Scope',async()=>{
+  const source=read('extensions/loc-galaxy/website-grant-fallback.mjs')
+    .replace(/^import[^\n]*\n/,'');
+  let listener;
+  const nonce='x'.repeat(43),scopeid='lo3rwang';
+  const url='https://loc.lo3rwang.cc/extension/auth-bridge.html?scopeid='+scopeid+'&nonce='+nonce;
+  const chrome={
+    runtime:{onMessageExternal:{addListener:fn=>{listener=fn;}},
+      getManifest:()=>({version:'0.6.4'})},
+    storage:{session:{get:async()=>({'locGalaxy.websitePending':{nonce,scopeid,tabId:7,created:Date.now()}})},
+      local:{get:async()=>({'locGalaxy.scopeid':scopeid})}},
+    tabs:{get:async()=>({url})}
+  };
+  new Function('chrome','LOC_ORIGIN','verifyScopeAuthorization','mcpTool',source)(
+    chrome,'https://loc.lo3rwang.cc',async()=>({subject:'user_test'}),async()=>({subject:'user_test'}));
+  const send=(sender)=>new Promise(resolve=>{
+    listener({type:'locGalaxy.bridgeProbe',nonce,scopeid},sender,resolve);
+  });
+  assert.deepEqual(await send({origin:'https://loc.lo3rwang.cc'}),{
+    ok:true,data:{bridge:true,protocol:1,version:'0.6.4'}
+  });
+  const rejected=await send({origin:'https://other.example'});
+  assert.equal(rejected.ok,false);
+  assert.match(rejected.error,/不是 LOC 官方網站/);
+});
