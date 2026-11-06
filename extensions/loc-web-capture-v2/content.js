@@ -62,7 +62,7 @@
       if(!source||!text)return null;
       const hrefs=links(el).map(x=>x.text+' <'+x.url+'>').join('\n');
       const date=el.querySelector('time[datetime]')?.getAttribute('datetime');
-      return {key:source+'#'+index,source_key:source,url:source,
+      return {key:source,source_key:source,url:source,
         title:el.querySelector('h1,h2,h3')?.textContent?.trim()||document.title,
         content:(date?'[時間] '+date+'\n':'')+text+(hrefs?'\n[連結]\n'+hrefs:'')};
     }).filter(Boolean);
@@ -103,7 +103,10 @@
   function choose(event){
     if(state.mode!=='select'&&state.mode!=='pick-record')return;
     event.preventDefault();event.stopImmediatePropagation();
-    const root=event.target.closest('article,[role="article"],main,section')||event.target;
+    const target=event.target;
+    const root=state.mode==='pick-record'?
+      (target.closest('[role="feed"],main,section')||target.closest('article,[role="article"]')?.parentElement||target):
+      (target.closest('article,[role="article"],main,section')||target);
     if(!(root instanceof Element))return;
     const recording=state.mode==='pick-record';
     stop();state.root=root;state.seen.clear();
