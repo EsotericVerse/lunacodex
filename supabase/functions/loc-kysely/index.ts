@@ -1,5 +1,5 @@
 import { sql } from "npm:kysely@0.29.8";
-import {jwtVerify} from "npm:jose@5.9.6";
+import {jwtVerify,createRemoteJWKSet} from "npm:jose@5.9.6";
 import {processShortImport,postgresShortImportStore} from "../../../app/loc/import/short-append-service.mjs";
 import {authorizeDelegatedShortImport} from "../../../app/loc/import/short-edge-authorization.mjs";
 import {delegationAudience,verifyDelegationBoundary,canManageDelegation} from "../../../app/loc/auth/delegation-contract.mjs";
@@ -27,13 +27,24 @@ const corsHeaders = {
   "access-control-max-age": "86400",
 };
 const supabaseUrl = Deno.env.get("SUPABASE_URL")||"";
-// Edge accepts only LOC-issued delegations. External OAuth/LDAP/AD remains
-// an optional adapter at issuance, never a per-request dependency here.
+// The Authority signs RS256 LOC delegations; the Gateway fetches only its
+// public signing keys. No Clerk/Neon/Supabase Auth and no shared signing secret.
+// An alternate deployment may pin its own trusted HTTPS Authority origin.
+const locAuthorityOrigin=(()=>{
+  const input=Deno.env.get("LOC_AUTHORITY_ORIGIN")||"https://auth.lo3rwang.cc";
+  const url=new URL(input);
+  if(url.protocol!=="https:"||url.username||url.password||url.search||
+     url.hash||!["","/"].includes(url.pathname))
+    throw new Error("Invalid LOC Authority origin");
+  return url.origin;
+})();
+const locDelegationJwks=createRemoteJWKSet(
+  new URL("/.well-known/jwks.json",locAuthorityOrigin),
+  {timeoutDuration:5000,cooldownDuration:30000,cacheMaxAge:300000}
+);
 async function verifyLocDelegation(token:string,body:Record<string,unknown>){
-  const secret=Deno.env.get("LOC_DELEGATION_SECRET")||"";
-  if(secret.length<32)throw new Error("LOC delegation signing secret is not configured");
-  const {payload}=await jwtVerify(token,new TextEncoder().encode(secret),{
-    issuer:"loc",audience:delegationAudience(body),algorithms:["HS256"]
+  const {payload}=await jwtVerify(token,locDelegationJwks,{
+    issuer:"loc",audience:delegationAudience(body),algorithms:["RS256"]
   });
   return verifyDelegationBoundary(payload,body,{
     notBefore:Deno.env.get("LOC_DELEGATION_NOT_BEFORE")||"0",

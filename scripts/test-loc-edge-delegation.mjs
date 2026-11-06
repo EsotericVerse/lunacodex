@@ -1,8 +1,5 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {execFileSync} from 'node:child_process';
-import {fileURLToPath} from 'node:url';
-import {createHmac} from 'node:crypto';
 import {test} from 'node:test';
 import {delegationAudience,verifyDelegationBoundary,issueDelegation,
   canManageDelegation} from '../app/loc/auth/delegation-contract.mjs';
@@ -12,19 +9,19 @@ const start=source.indexOf('async function verifyLocDelegation(');
 const end=source.indexOf('// The deployed function and browser',start);
 assert.ok(start>0&&end>start,'LOC verifier exists in the active Edge entry');
 const code=source.slice(start,end).replace('token:string,body:Record<string,unknown>','token,body');
-function verifier(payload,{secret='x'.repeat(64),audience='loc-delegation',
+function verifier(payload,{audience='loc-delegation',
   revoked='',cutoff='0'}={}){
   let calls=0;
   const jwtVerify=async(_token,_key,options)=>{
     calls++;
-    assert.deepEqual(options,{issuer:'loc',audience,algorithms:['HS256']});
-    return {payload};
+    assert.deepEqual(options,{issuer:'loc',audience,algorithms:['RS256']});
+    return {payload:{...payload,aud:audience}};
   };
-  const factory=new Function('Deno','jwtVerify','TextEncoder','delegationAudience',
-    'verifyDelegationBoundary',code+';return verifyLocDelegation;');
-  return {verify:factory({env:{get:key=>({LOC_DELEGATION_SECRET:secret,
+  const factory=new Function('Deno','jwtVerify','locDelegationJwks',
+    'delegationAudience','verifyDelegationBoundary',code+';return verifyLocDelegation;');
+  return {verify:factory({env:{get:key=>({
     LOC_DELEGATION_NOT_BEFORE:cutoff,LOC_DELEGATION_REVOKED_SIDS:revoked})[key]}},
-    jwtVerify,TextEncoder,delegationAudience,verifyDelegationBoundary),calls:()=>calls};
+    jwtVerify,()=>{},delegationAudience,verifyDelegationBoundary),calls:()=>calls};
 }
 const base=()=>({iss:'loc',aud:'loc-delegation',me:true,sub:'principal1',
   email:'owner@example.org',sid:'delegation-123',
@@ -43,29 +40,14 @@ test('one shared delegation contract validates issuance and Scope management',()
     grants:['global:admin'],audience:'sql',sid:'s2',
     now:Math.floor(Date.now()/1000),seconds:600}),/grants/);
 });
-test('trusted operator can manually map any verified external identity into LOC delegation',()=>{
-  // This is a manual operator handoff: neither database auth nor an OAuth
-  // provider is required after the operator has verified the identity.
-  const secret='s'.repeat(64);
-  const token=execFileSync(process.execPath,[
-    fileURLToPath(new URL('./loc-delegation-mint-token.mjs',import.meta.url))
-  ],{encoding:'utf8',env:{...process.env,LOC_DELEGATION_SECRET:secret,
-    LOC_DELEGATION_SUB:'external_123',LOC_DELEGATION_EMAIL:'delegate@example.org',
-    LOC_DELEGATION_GRANTS:'lo3rwang:manage',
-    LOC_DELEGATION_AUDIENCE:'sql'}}).trim();
-  const [header,payload,signature]=token.split('.');
-  assert.equal(createHmac('sha256',secret).update(header+'.'+payload)
-    .digest('base64url'),signature,'operator issuer signs the translation');
-  const normalized=JSON.parse(Buffer.from(payload,'base64url').toString());
-  assert.equal(normalized.me,true);
-  assert.equal(normalized.sub,'external_123');
-  assert.equal(normalized.email,'delegate@example.org');
-  assert.deepEqual(normalized.grants,['lo3rwang:manage']);
-  assert.equal(normalized.aud,'loc-delegation');
-  assert.ok(normalized.exp>normalized.iat);
+test('LOC signs delegations only via Authority and a pinned public JWKS',()=>{
+  assert.match(source,/createRemoteJWKSet/);
+  assert.match(source,/\.well-known\/jwks\.json/);
+  assert.match(source,/algorithms:\["RS256"\]/);
+  assert.doesNotMatch(source,/LOC_DELEGATION_SECRET|algorithms:\["HS256"\]/);
 });
 test('the Edge no longer requires any external identity provider or publishable API key',()=>{
-  assert.doesNotMatch(source,/clerk|createRemoteJWKSet|\/v1\/identity|publishableKeys/i);
+  assert.doesNotMatch(source,/clerkSqlClaims|verifyClerkForSql|\/v1\/identity|publishableKeys/i);
   assert.match(source,/verifyLocDelegation\(match\[1\],body\)/);
   assert.match(source,/if\(role!==["']authenticated["']\)/);
   assert.match(source,/checkSearchQos\(source\)/);
@@ -118,11 +100,10 @@ test('LOC can transfer or revoke delegation without calling a provider or databa
   assert.equal((await verifier(transferred,{revoked:'delegation-123'})
     .verify('signed',{kind:'query'})).claims.sub,'principal2');
 });
-test('LOC delegation fails closed for missing scope grant, false ME and missing secret',async()=>{
+test('LOC delegation fails closed for missing Scope grants, false ME and invalid email',async()=>{
   await assert.rejects(verifier(base(),{audience:'loc-mcp'}).verify('token',{kind:'mcp-read',scopeid:'lrunes'}));
   await assert.rejects(verifier({...base(),me:false}).verify('token',{kind:'query'}));
   await assert.rejects(verifier({...base(),email:'not-email'}).verify('token',{kind:'query'}));
-  await assert.rejects(verifier(base(),{secret:''}).verify('token',{kind:'query'}));
   await assert.rejects(verifier({...base(),grants:['lo3rwang:read']},{audience:'loc-mcp'}).verify('token',
     {kind:'mcp-update-pr',scopeid:'lo3rwang'}));
 });

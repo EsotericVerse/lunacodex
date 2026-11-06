@@ -102,7 +102,7 @@ GitHub 的 `loc-kysely` SQL Gateway 已新增內部 `kind=short-import` 路由�
 
 **正式入口** `/v1/import/short` 仍須由 LOC 自有 OAuth/Authority 掛載：驗證 Extension Bearer Access Token、發出限 Scope 的短期 SQL Delegation、以內部請求轉交 `loc-kysely` 的 `{kind:"short-import",scopeid,batch}`。前端一次 Flush 不需要自己呼叫 Delegation 或尋找 UID。
 
-**正式部署尚缺**：LOC Authority 的 `LOC_DELEGATION_SECRET` 與 SQL Gateway 同步設定；原生 OAuth `issuer`、client_id／callback、公開匯入入口。不可把目前仍以舊 Clerk 運作的 Edge 當作新式 Auth 已上線，也不能直接用 Supabase 專案金鑰充當委託憑證。此階段後端只是已完成程式接線，未通過真實 Chrome→SQL 入庫的端到端驗收。
+**正式部署驗收尚缺**：LOC Authority 已能自行簽發 RS256 委託 Token，SQL Gateway 透過公開 JWKS 驗簽，雙方不共用簽章 Secret。原生 LOC Auth 的 OAuth `issuer`、client_id／callback，以及 Extension 公開匯入入口仍需完成與實測。不能用現有 Clerk 上游登入冒充原生 LOC Auth 完工；Chrome→SQL 端到端寫入尚未驗證。
 
 ## 邊界與驗收
 

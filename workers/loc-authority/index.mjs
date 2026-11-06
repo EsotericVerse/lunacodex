@@ -4,7 +4,7 @@ import {validateKeywordCategoryEntry,hashKeywordCategory,assertPublicKeywordClas
 import {AUTH_PROVIDER_TYPES,validateAuthProviderSettings,publicAuthProviderSettings}
   from '../../app/loc/auth/auth-provider-settings.mjs';
 // LOC independent recovery control plane. Never imports a database client or Supabase Auth.
-// The separate Worker is provisioned only when Clerk + root identity + encryption secrets exist.
+// LOC Authority retains existing external identity adapters while signing its own SQL delegations.
 const JSON_HEADERS={'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'};
 const ID=/^[a-z][a-z0-9_-]{0,63}$/;
 const ENGINES=new Set(['postgres','mysql','mssql']);
@@ -465,6 +465,57 @@ export class LocAuthorityState extends DurableObject {
     }
     targets.sort((a,b)=>a.id.localeCompare(b.id));
     return {primary_id:await this.ctx.storage.get('primary_id')||'supabase-current',targets};
+  }
+  // LOC delegates access with a self-managed asymmetric key. The private JWK
+  // remains AES-GCM encrypted in this existing Authority Durable Object.
+  // SQL Gateways fetch only the public JWKS; no shared cloud-provider secret.
+  async delegationKeyRecord(){
+    const name='loc-auth:delegation-rs256:v1';
+    const existing=await this.ctx.storage.get(name);
+    if(existing)return existing;
+    return this.ctx.blockConcurrencyWhile(async()=>{
+      const current=await this.ctx.storage.get(name);
+      if(current)return current;
+      const keys=await crypto.subtle.generateKey({
+        name:'RSASSA-PKCS1-v1_5',modulusLength:3072,
+        publicExponent:new Uint8Array([1,0,1]),hash:'SHA-256'
+      },true,['sign','verify']);
+      const exported=await Promise.all([
+        crypto.subtle.exportKey('jwk',keys.privateKey),
+        crypto.subtle.exportKey('jwk',keys.publicKey)
+      ]);
+      const thumb=await crypto.subtle.digest('SHA-256',
+        new TextEncoder().encode(exported[1].n+'.'+exported[1].e));
+      const kid='loc-'+Array.from(new Uint8Array(thumb)).slice(0,12)
+        .map(b=>b.toString(16).padStart(2,'0')).join('');
+      const item={kid,
+        public:{kty:'RSA',n:exported[1].n,e:exported[1].e,
+          kid,alg:'RS256',use:'sig'},
+        encrypted:await encryptProfile({privateJwk:exported[0]},
+          this.env.LOC_CONTROL_ENCRYPTION_KEY)};
+      await this.ctx.storage.put(name,item);
+      return item;
+    });
+  }
+  async delegationJwks(){
+    const record=await this.delegationKeyRecord();
+    return {keys:[record.public]};
+  }
+  async signLocDelegation(claims){
+    // Called only after the Worker authenticates the caller and checks Scope
+    // grants. No endpoint returns the private signing key.
+    const record=await this.delegationKeyRecord();
+    const {privateJwk}=await decryptProfile(record.encrypted,
+      this.env.LOC_CONTROL_ENCRYPTION_KEY);
+    const key=await crypto.subtle.importKey('jwk',privateJwk,
+      {name:'RSASSA-PKCS1-v1_5',hash:'SHA-256'},false,['sign']);
+    const encode=value=>fromBytes(new TextEncoder().encode(JSON.stringify(value)))
+      .replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+    const input=encode({alg:'RS256',typ:'JWT',kid:record.kid})+'.'+encode(claims);
+    const sig=await crypto.subtle.sign('RSASSA-PKCS1-v1_5',key,
+      new TextEncoder().encode(input));
+    return input+'.'+fromBytes(new Uint8Array(sig))
+      .replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
   }
   // Root-only Auth connections. Store full credentials encrypted in the
   // existing Durable Object; GET returns metadata, never plaintext secrets.
@@ -984,6 +1035,22 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
   const stub=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName('loc-authority-control-v1'));
   const scoped=scope=>env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName('mcp-scope:'+scope));
   const allowed=async(scope,action)=>isRoot||await stub.mayAccess({...principal,scope,action});
+  // Managed MCP SQL consumes the SAME LOC-issued delegation as website SQL.
+  // It is created only after OAuth signature, Scope grant and root validation;
+  // external OAuth bearer credentials are never forwarded to Kysely Edge.
+  const managedToken=async(scope,action)=>{
+    if(!Object.hasOwn(MANAGED_SCOPE_TABLES,scope))
+      return (request.headers.get('authorization')||'').replace(/^Bearer /,'');
+    if(!isRoot)throw fail('Managed Scope requires verified LOC root',403);
+    const email=String(env.LOC_ROOT_MANAGEMENT_EMAIL||'').trim().toLowerCase();
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      throw fail('Verified root identity mapping unavailable',503);
+    const claims=issueDelegation({
+      sub:principal.subject,email,grants:[scope+':'+action],audience:'mcp',
+      sid:crypto.randomUUID(),now:Math.floor(Date.now()/1000),seconds:300
+    });
+    return stub.signLocDelegation(claims);
+  };
   const parts=url.pathname.split('/').filter(Boolean).slice(2);
   const galaxyLink=parts[0]==='galaxy-link';
   if(galaxyLink)parts.shift();
@@ -1038,13 +1105,13 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
     const input=await mcpJsonBody(request);
     if(galaxyLink)input.append=true;
     return json(await scoped(scopeid).mcpSave(scopeid,input,
-      (request.headers.get('authorization')||'').replace(/^Bearer /,'')),200,origin);
+      await managedToken(scopeid,'write')),200,origin);
   }
   if(parts[0]==='update-pr'&&parts.length===2&&request.method==='POST'){
     const scopeid=validScope(parts[1]);
     if(!await allowed(scopeid,'manage'))throw fail('PR update requires Scope manager',403);
     return json(await scoped(scopeid).mcpUpdatePr(scopeid,await mcpJsonBody(request),
-      (request.headers.get('authorization')||'').replace(/^Bearer /,'')),200,origin);
+      await managedToken(scopeid,'manage')),200,origin);
   }
   if(parts[0]==='search'&&parts.length===2&&request.method==='POST'){
     const scopeid=validScope(parts[1]);
@@ -1055,7 +1122,7 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
     if(!await allowed(scopeid,'read'))
       throw fail('Scope source search denied',403);
     return json(await scoped(scopeid).mcpLinkSearch(scopeid,args.query,args.limit??5,
-      (request.headers.get('authorization')||'').replace(/^Bearer /,'')),200,origin);
+      await managedToken(scopeid,'read')),200,origin);
   }
   if(parts[0]==='read'&&parts.length===3&&request.method==='GET'){
     const scopeid=validScope(parts[1]);
@@ -1072,7 +1139,7 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
     const offset=Number(url.searchParams.get('offset')||'0');
     const max_chars=Number(url.searchParams.get('max_chars')||'20000');
     const result=await scoped(scopeid).mcpRead(scopeid,parts[2],offset,max_chars,
-      (request.headers.get('authorization')||'').replace(/^Bearer /,''),requestedSite);
+      await managedToken(scopeid,requestedSite==='github'?'manage':'read'),requestedSite);
     // Legacy UID reads must not let a normal read grant disclose private PRs.
     if(result.found&&result.site==='github'&&!await allowed(scopeid,'manage'))
       throw fail('GitHub development record requires Scope manager',403);
@@ -1130,8 +1197,6 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
 // One exchange from a verified external identity to a narrowly scoped LOC
 // delegation. Reuses Authority's existing grants; does not create an Auth RPC.
 async function exchangeLocDelegation(request,env,principal,origin){
-  const secret=String(env.LOC_DELEGATION_SECRET||'');
-  if(secret.length<32)throw fail('LOC delegation issuer is not configured',503);
   const raw=await request.text();
   if(raw.length>1200)throw fail('Delegation request is too large',413);
   let input;
@@ -1197,14 +1262,7 @@ async function exchangeLocDelegation(request,env,principal,origin){
   const sub=principal.provider==='clerk'?principal.subject:'loc_'+digest.slice(0,40);
   const claims=issueDelegation({sub,email,
     grants,audience,sid:crypto.randomUUID(),now,seconds:300});
-  const encode=value=>fromBytes(new TextEncoder().encode(JSON.stringify(value)))
-    .replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
-  const signingInput=encode({alg:'HS256',typ:'JWT'})+'.'+encode(claims);
-  const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(secret),
-    {name:'HMAC',hash:'SHA-256'},false,['sign']);
-  const signature=await crypto.subtle.sign('HMAC',key,new TextEncoder().encode(signingInput));
-  const token=signingInput+'.'+fromBytes(new Uint8Array(signature))
-    .replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  const token=await stub.signLocDelegation(claims);
   return json({access_token:token,token_type:'Bearer',expires_at:claims.exp,
     audience:claims.aud,scopeid:global||identity||self?null:scope,grants:claims.grants},200,origin);
 }
@@ -1227,6 +1285,14 @@ export default {
       if(!['GET','PUT','POST'].includes(request.method))throw fail('Method not allowed',405);
       const url=new URL(request.url);
       if(url.pathname.startsWith('/v1/mcp/'))return handleMcpAuthority(request,env,url,origin);
+      if(request.method==='GET'&&url.pathname==='/.well-known/jwks.json'){
+        const state=env.LOC_AUTHORITY_STATE.get(
+          env.LOC_AUTHORITY_STATE.idFromName('loc-authority-control-v1'));
+        return new Response(JSON.stringify(await state.delegationJwks()),{
+          status:200,headers:{'content-type':'application/json; charset=utf-8',
+            'cache-control':'public, max-age=300','x-content-type-options':'nosniff'}
+        });
+      }
       const principal=await verifyIdentityToken(request,env);
       if(!url.pathname.startsWith('/v1/'))throw fail('Not found',404);
       // Identity endpoint is only a verified principal lookup. It grants no
