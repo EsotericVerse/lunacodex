@@ -12,7 +12,7 @@ const fn=new Function('reject','SCOPE',source.slice(start,end)+'\nreturn searchS
 
 function fixture(){
   const calls=[],tables={
-    'silver.manage':[{id:'alpha',manage_role:'scope',active:true},{id:'beta',manage_role:'scope',active:true}],
+    'api.manage':[{id:'alpha',manage_role:'scope',active:true},{id:'beta',manage_role:'scope',active:true}],
     'silver.alpha':[{id:'alpha',status:{search:{article_count:2,word_count:33}}}],
     'silver.beta':[{id:'beta',status:{search:{article_count:4,word_count:55}}}]
   };
@@ -36,8 +36,8 @@ test('active Scope validation uses one native Kysely IN query',async()=>{
   const {trx,calls}=fixture();
   const result=await fn(trx,{scopeIds:['beta','alpha','beta','missing']});
   assert.deepEqual(result.rows.map(row=>row.scope_id),['alpha','beta']);
-  assert.equal(calls.filter(c=>c.name==='silver.manage').length,1);
-  assert.deepEqual(calls.map(c=>c.name),['silver.manage','silver.alpha','silver.beta']);
+  assert.equal(calls.filter(c=>c.name==='api.manage').length,1);
+  assert.deepEqual(calls.map(c=>c.name),['api.manage','silver.alpha','silver.beta']);
   assert.deepEqual(calls[0].conditions[0],['id','in',['alpha','beta','missing']]);
   assert.equal(result.rows[0].article_count,2);
   assert.equal(result.rows[1].word_count,55);
