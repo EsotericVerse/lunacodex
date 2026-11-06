@@ -195,6 +195,8 @@ async function start(){
     setBusy(false);
     await refreshCapture();
     notice('可查詢已授權的 MCP 對話，或開啟文章工作區。');
+    const archiveStatus=new URL(location.href).searchParams.get('archive_status');
+    if(archiveStatus)notice(archiveStatus.slice(0,220),/未完成|待同步/.test(archiveStatus));
   }catch(error){
     connection.textContent=String(error.message||error);
     notice('未獲得授權；所有寫入與讀取功能已停用。',true);
