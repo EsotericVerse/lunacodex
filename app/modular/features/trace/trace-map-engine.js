@@ -119,6 +119,7 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
   let removed=false;
   let loaded=false;
   let routeActive=false;
+  let routeLoading=false;
   let markers=[];
   let timelineMarkers=[];
   let timelineRows=[];
@@ -462,13 +463,14 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
   });
 
   async function showRoadRoute(){
-    if(removed||!loaded||!canPickLocation)return false;
+    if(removed||!loaded||!canPickLocation||routeLoading)return false;
     if(routeActive){
       map.getSource('loc-trace-route')?.setData(emptyRoute());
       routeActive=false;
       status('routeHidden');
       return false;
     }
+    routeLoading=true;
     status('routeLoading');
     try{
       // The public OSRM demo is used only after an explicit route click. It
@@ -489,6 +491,8 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     }catch(error){
       if(!removed&&error?.name!=='AbortError')status('routeError');
       return false;
+    }finally{
+      routeLoading=false;
     }
   }
   function destroy(){
