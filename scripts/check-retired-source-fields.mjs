@@ -1,5 +1,4 @@
-// One regex pass over executable source. Historical SQL migrations and docs
-// are preserved for reproducibility and excluded from active dependencies.
+// One regex pass over executable source. Only active source files count.
 import {readdirSync,readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
