@@ -187,142 +187,48 @@ signatures after applying the migration and separately checking
 that the retained seven helper routines still exist.
 
 
-## Portable delegation Edge boundary — staged, not deployed (2026-11-06)
+## LOC Auth / SQL Gateway live integration (2026-11-07)
 
-- The Edge gateway accepts a **LOC-signed delegation** (`iss=loc`,
-  `aud=loc-delegation`, `me=true`, verified email and subject), rather than
-  verifying a Clerk, database-vendor or Google token per SQL request.
-  The signing secret `LOC_DELEGATION_SECRET` remains server-side and must be
-  configured before this Edge implementation can accept private operations.
-- **Auth Portable delegation boundary:** an externally verified OAuth,
-  AD, LDAP or other principal can be mapped manually by the trusted LOC operator
-  to a LOC subject, email and allowed Scope grants. The existing
-  `scripts/loc-delegation-mint-token.mjs` supports this manual conversion
-  with `LOC_DELEGATION_SUB`, `LOC_DELEGATION_EMAIL` and
-  `LOC_DELEGATION_GRANTS`; it is not an external identity verifier.
-  Optional provider adapters may automate the same conversion. Neither
-  the external provider nor its original token is required on subsequent
-  LOC Edge calls. The database driver's own connection authentication is
-  independent and remains the DB operator's responsibility.
-- Public reads no longer require a vendor publishable-key check; existing SQL
-  allowlists, public data rules, query bounds and search QoS remain. Private
-  writes require signed LOC grants (`global:manage` or a matching
-  `scope:manage`); no per-operation LOC-control-DB permission SELECT is
-  performed for delegated SQL. A portable external database requires only
-  its own Galaxy and Anchor tables.
-- MCP uses the separate signed audience `loc-mcp` (ordinary SQL uses
-  `loc-delegation`). MCP reads/writes require a matching signed Scope grant;
-  a narrow MCP `scope:write` is accepted by its fixed managed write action
-  but cannot be reused as a general SQL management credential.
-- For private operator bootstrap only, `scripts/loc-delegation-mint-token.mjs`
-  can issue an expiring LOC delegation for either SQL (default) or MCP
-  (`LOC_DELEGATION_AUDIENCE=mcp`) using the same protected secret. It is
-  **not** an OAuth callback or a public token-issuance API. Never place this
-  signing secret in browser code, public metadata or Git.
-- This branch changes no schema, RLS, SQL roles, DB account, or production
-  secrets. **Do not deploy these Edge changes** until the LOC issuer/adapter,
-  browser and MCP callers provide matching LOC delegations and their live
-  write/read paths pass regression testing. An old Clerk token will now be
-  rejected by this candidate Edge: that is the intentional provider removal,
-  not a completed client cutover. No live replacement is claimed.
-
-
-### LOC-owned delegation transfer and revocation
-
-- The gateway validates the signed LOC identity and grants locally; no
-  database-side RLS, provider session lookup or SQL permission SELECT is
-  needed merely to evaluate the delegation.
-- Manual conversion uses a trusted operator, **after** independently verifying
-  the originating principal. Set `LOC_DELEGATION_SUB` to the LOC-owned stable
-  principal, `LOC_DELEGATION_EMAIL` to its verified email,
-  `LOC_DELEGATION_GRANTS` to explicit scope grants, and
-  `LOC_DELEGATION_AUDIENCE` to `sql` or `mcp`. Switching Google to another
-  identity provider must not automatically authorize that principal: the LOC
-  operator or a trusted adapter confirms the new identity-to-LOC mapping.
-- Each delegated token carries a unique `sid`, an `iat` and an `exp` (max
-  24 hours). The gateway rejects expired or overlong tokens even when their
-  signature is valid; the operator issuer defaults to one hour.
-- To revoke **one** issued delegation, configure
-  `LOC_DELEGATION_REVOKED_SIDS` as a comma/space/semicolon-separated list of
-  `sid` values. To invalidate all old delegations, set
-  `LOC_DELEGATION_NOT_BEFORE` to a Unix timestamp in seconds. Either operation
-  must be propagated to every running Edge instance: this environment-backed
-  mechanism does **not** claim instant global revocation before propagation.
-  Rotation of `LOC_DELEGATION_SECRET` invalidates all previous signatures.
-- Revoking a token is not deleting or migrating Galaxy / Anchor. Database
-  selection remains a separately configured trusted connection alias; external
-  DBs supply their two data tables. No new LOC authorization table or SQL RPC.
-- Existing Clerk/other OAuth client tokens **cannot** call this candidate Edge
-  directly. The trusted LOC issuer/adapter and live clients still need to
-  finish the exchange handoff before this branch can be deployed.
-
-
-### One shared delegation contract (2026-11-07)
-
-The pure module `app/loc/auth/delegation-contract.mjs` now owns **one**
-implementation of issuance claims, allowed audiences, signed Scope grants,
-MCP-only permissions, TTL, not-before cutoff and revoked-session matching.
-`loc-kysely` only verifies the cryptographic signature and invokes this
-contract; the offline operator issuer calls the same contract to construct
-claims; Kysely's `loc-authorization.mjs` reuses its `canManageDelegation`
-decision. No Auth-provider SDK, database connection, network call, new RPC,
-RLS requirement or extra table is added to the shared policy module.
-
-PostgreSQL session claim injection now has one Edge helper shared by SQL and
-three managed MCP write/read routes, instead of four copies. This does not
-force roles or PostgreSQL session settings on custom MySQL / SQL Server /
-portable PostgreSQL targets. Existing RLS, when configured by the DB owner,
-remains an independent database-side decision.
-
-The source branch remains **non-deployable as a complete client cutover** until
-trusted external OAuth-to-LOC exchange, browser and MCP caller updates,
-revocation configuration rollout, and actual integration tests are complete.
-
-
-### Auth SQL RPC inventory and verified OAuth exchange (2026-11-07)
-
-Read-only inspection of the live PostgreSQL catalog found `api.manage(text,text)`
-(47 catalog dependents) and `api.current_user_id()` (11 dependents).
-They are required by current RLS policies and must **not** be dropped as
-obsolete business RPCs. `api.request_claims()` and
-`silver.current_auth_email()` are still called inside the SQL authorization
-helpers even though their direct `pg_depend` counts are zero.
-`auth.jwt()` and `auth.role()` belong to the database auth system.
-The current app's remaining `.rpc('manage')` use is in a deferred Neon
-PostgREST adapter/test, not the active Kysely authorization hot path.
-
-The existing LOC Authority Worker now supports `POST /v1/delegation`:
-verified external Clerk or configured secondary OIDC identity is checked
-against the already stored Scope grants; it then signs a short-lived
-`loc-delegation` (SQL) or `loc-mcp` (MCP) token using the common
-`issueDelegation` contract. Only an established recovery root may request
-`{\"global\":true}`. Normal callers must request one valid `scopeid` and a
-subset of previously granted `read/write/manage` actions. The body cannot
-supply its own subject, email, signing claims or connection credentials.
-
-The Worker and the SQL Edge both require the same server-side
-`LOC_DELEGATION_SECRET` (never in client code). These tokens last **five
-minutes** and are not issued when identity verification, signed email,
-Scope authorization or issuer configuration is missing. No additional SQL,
-RLS, table, index or stored procedure is introduced.
-
-**Cutover is still incomplete:** the branch's Clerk-backed Kysely browser
-adapter now requests an identity-only or Scope-specific token from Authority
-before contacting Edge. `kysely-edge.mjs` passes the operation to the
-provider adapter, and the browser caches exchanges by exact external token
-and grant request to avoid per-SQL OAuth network requests. Changing external
-OAuth token or Scope cannot reuse a previous delegated grant. This is a
-candidate browser integration, **not** an activated production path.
-
-The currently deployed website and existing MCP/Extension clients still use
-their old credential paths. Authority's MCP handlers still expect their
-existing OAuth token; they have not been cut over to `loc-mcp` yet.
-The signing secret must be provisioned to both trusted Authority and Edge,
-and existing Authority grants must cover the requested Scope management
-operations. These are not automatically derived from database RLS membership.
-Complete relevant Node tests, client/Extension cutover, revocation rollout and
-live read/write verification before deploying or merging this branch.
-
+- **LOC Auth** remains the sole authority for SQL permissions. External OAuth
+  can establish a verified identity, but SQL Gateway never requires Clerk,
+  Supabase Auth, Neon Auth or a database-vendor JWT.
+- `loc-authority-control` issues signed five-minute **RS256** LOC delegations
+  using the unchanged `issueDelegation` contract: `iss=loc`, SQL audience
+  `loc-delegation`, MCP audience `loc-mcp`, verified subject and email,
+  explicit Scope grants, a unique `sid`, and a bounded expiry.
+- The Authority maintains a 3072-bit RSA signing key in its existing Durable
+  Object. The **private JWK stays encrypted** with the existing control-plane
+  AES-GCM key. The public JWK alone is published at
+  `https://auth.lo3rwang.cc/.well-known/jwks.json` (five-minute cache).
+  Kysely Edge validates this pinned public JWKS, issuer, audience, signature,
+  expiry and permission boundary on each protected request. There is **no
+  shared `LOC_DELEGATION_SECRET` between Worker and Edge**.
+- Public SQL remains separately bounded and anonymous; private writes first
+  require LOC grants. Existing PostgreSQL RLS can still apply independently.
+  MySQL and SQL Server use LOC permission checks without pretending to have
+  PostgreSQL RLS.
+- MCP retains its existing login and per-user QoS ingress. For managed Scope
+  data calls, LOC Authority verifies the upstream token, checks its Scope
+  grant, and converts it to a **separate `loc-mcp` delegation** before passing
+  it to Kysely Edge. The original OAuth bearer is not forwarded to SQL Edge.
+  A narrow MCP read/write grant never becomes an ordinary SQL management token.
+- Revocation and time cutoffs are interpreted by
+  `verifyDelegationBoundary`; independently deployed Edges receive
+  `LOC_DELEGATION_NOT_BEFORE` / `LOC_DELEGATION_REVOKED_SIDS` through their
+  own trusted runtime settings. They cannot claim instant global revocation
+  before propagation. Key rotation must preserve already issued sessions
+  within their short TTL or intentionally invalidate them.
+- The former offline shared-secret mint helper is retired; signing happens
+  only inside the trusted LOC Authority. No extra database table, migration,
+  business RPC, or new Cloudflare Worker is introduced.
+- The 2026-11-07 release deployed the existing Authority Worker and both
+  Edge function slugs. **Public JWKS end-to-end HTTP and browser sign-in tests
+  remain separately required**; an ACTIVE Edge version is not proof of a
+  successful authenticated application request.
+- The **interactive website upstream still uses Clerk during migration**.
+  Full native LOC Auth Session and OAuth Authorization Server endpoints remain
+  pending; do not claim that third-party browser login is already removed.
+  The SQL authorization layer itself no longer requires that upstream SDK.
 
 ### Website Auth/RPC compatibility fixes — 2026-11-07
 
