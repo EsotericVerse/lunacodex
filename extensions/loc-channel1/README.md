@@ -13,13 +13,12 @@ Open the extension toolbar button once to configure the private Worker HTTPS URL
 - One read and one write globally **are not guaranteed by KV alone**. Additional coordination is required before claiming that concurrency invariant.
 - The earlier `extensions/loc-galaxy` implementation depended on Clerk / MCP and remains in Git history; this Channel 1 directory intentionally does not invoke them.
 
-## Existing LOC_KV format and compatibility
+## LOC_KV reset and identity boundaries
 
-The existing Cloudflare KV namespace is **not empty**. Seven legacy keys use the `loc:*` prefix and schema `kv-1`, including `loc:context:events` and `loc:context:relations` migrated from Google Sheets. Their payloads are JSON documents containing collections; they must not be overwritten, converted in place, or deleted as a side effect of Channel 1 deployment.
+On 2026-11-06, the seven historical `loc:*` keys were removed from the existing `LOC_KV` namespace at the owner's explicit request; a subsequent namespace key listing returned empty. The old Google Sheets era data and its previous authorizations are **not** part of Channel 1.
 
-Channel 1 deliberately uses disjoint keys:
-- `pending/<UUID>`: one incoming record per key
-- `archive/<UUID>`: one retained record after Galaxy acknowledgement
-- `loc:*`: untouched legacy collections
-
-The hourly handler only lists `pending/`, never `loc:*`. It requires an idempotent Galaxy ingestion endpoint before deployment. Changing the logical record format does **not** require a new namespace or Galaxy schema migration. Do not turn existing Google Sheets events into new Galaxy articles without separate authorization.
+- New records: `pending/<UUID>`, then `archive/<UUID>` after confirmed Galaxy ingestion.
+- Channel 1 ingestion uses only signed, write-scoped JWT verification locally in the Worker. **No Google OAuth, Google Sheets authorization, or Clerk OAuth**, and no `scopeid` requirement.
+- The existing LOC website's separate Google/Clerk login is outside the scope of this Channel 1 change; do not inadvertently disable unrelated website login.
+- The hourly scheduled sync must be authenticated server-to-server and cannot be user/CLI-triggered.
+- Global single-reader / single-writer guarantees remain unimplemented; do not claim they are enforced.
