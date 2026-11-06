@@ -196,7 +196,9 @@ export async function runKeywordAnalysisBatch(scopeId,{classUid:requestedClassUi
     finalize:async counts=>{
       // Per-Class completion is the only public-config state. Labels, hit counts
       // and matching details are read from Class-authorized tree RPCs instead.
-      const meta={class_uid:classUid,matchedDocuments:counts.matchedDocuments,\n        analyzedDocuments:counts.analyzedDocuments,itemMatches:counts.itemMatches,\n        occurrences:counts.occurrences};
+      const meta={class_uid:classUid,matchedDocuments:counts.matchedDocuments,
+        analyzedDocuments:counts.analyzedDocuments,itemMatches:counts.itemMatches,
+        occurrences:counts.occurrences};
       const now=new Date().toISOString();
       const {data:latest,error:readError}=await dbAuthRelation(scope.config)
         .select('keyword_meta,current_keyword_class_uid').eq('id',id).limit(1);
