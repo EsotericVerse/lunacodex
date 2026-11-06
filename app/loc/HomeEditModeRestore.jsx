@@ -4,7 +4,7 @@ import {Capacitor} from '@capacitor/core';
 import {useEditDock} from '../modular/edit-dock';
 import {readHomeEditorAccess,clearHomeEditorAccess} from './home-edit-access.mjs';
 // Single unified permission entry point: ScopeHomeEditEntry.jsx is the only
-// place that performs a live account check (the silver.manage RPC) to
+// place that performs a live account check (the api.manage RPC) to
 // grant edit mode, and it writes HOME_EDIT_ENTRY_KEY with its own TTL
 // (edit-session-ttl.mjs: 30-minute idle / 2-hour absolute). This component
 // restores that already-granted state across the full page reloads a static
