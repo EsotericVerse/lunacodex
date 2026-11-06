@@ -208,7 +208,8 @@ export async function recordImportPlaceVisits(visits,{relation,table,timesByUid,
     // Every linked Galaxy article contributes its exact source timestamp,
     // even when location strings differ but place_id points to the same UID.
     // No per-article UID list is stored in Point.
-    const toTimes=values=>[...new Set((values||[]).map(value=>Date.parse(String(value??'')))
+    const toTimes=values=>[...new Set((values||[]).map(value=>
+      typeof value==='number'?value:Date.parse(String(value??'')))
       .filter(Number.isFinite))].sort((a,b)=>a-b).map(t=>new Date(t).toISOString());
     const pending=[];
     for(const [uid,stamps] of byUid){
