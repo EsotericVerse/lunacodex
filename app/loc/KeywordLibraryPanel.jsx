@@ -230,7 +230,6 @@ export default function KeywordLibraryPanel({scopeId,account}){
         const surviving=[...tree.index.values()].find(record=>
           record.type==='class'&&!removedIds.has(record.uid));
         const nextUid=activeRemoved?surviving?.uid||null:config.current_keyword_class_uid;
-        const remainingState=keywordClassState({...config,keyword_meta},nextUid);
         const {error:settingsError}=await dbAuthRelation(configTable)
           .update({current_keyword_class_uid:nextUid,
             staticstime:null,keyword_meta})
@@ -556,7 +555,11 @@ export default function KeywordLibraryPanel({scopeId,account}){
         <select className="scope-select" value={activeClass?.uid||''}
           disabled={busy} onChange={event=>choose('class',event.target.value)}>
           <option value="">請選擇科目</option>
-          {allClassNodes.map(node=><option key={node.uid} value={node.uid}>{node.name}</option>)}
+          {allClassNodes.map(node=><option key={node.uid} value={node.uid}>
+            {node.name} · {keywordClassState(config,node.uid)?.completedAt
+              ?new Date(keywordClassState(config,node.uid).completedAt).toLocaleDateString('zh-TW')
+              :'未解析'}
+          </option>)}
         </select>
       </label>
       <p className="scope-status">所選科目：{activeClass?.name||'尚未選擇'} · 該科目上次解析：{keywordClassState(config,activeClass?.uid)?.completedAt?new Date(keywordClassState(config,activeClass.uid).completedAt).toLocaleString('zh-TW'):'尚未解析'}</p>
