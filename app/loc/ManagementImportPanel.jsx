@@ -29,6 +29,7 @@ import {importTimeRangeWindow,filterImportAnalysisByTime} from './import-time-ra
 import {prepareImportPlaceAnchors,importedPlaceId,recordImportPlaceVisits} from './import-place-anchors.mjs';
 import {prepareImportTimeAnchors} from './import-time-anchors.mjs';
 import {reconcileExistingImportAnchors} from './reconcile-import-anchors.mjs';
+import {isUnifiedAnchorScope} from './unified-anchor-compat.mjs';
 import {extractImportCoordinates,importGeoKey,importMapUrlCoordinates} from './import-geocoordinates.mjs';
 import {isPublicArchiveRecord,filterStandalonePublicRows,assertStandaloneImportDestination} from './archive-import-safety.mjs';
 import {createArchiveEvidenceCollector,prepareArchiveMedia,isArchiveMediaUrl,auditArchiveUrlAttributes} from './archive-media-evidence.mjs';
@@ -735,14 +736,14 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       setStatus('獨立 Facebook 打卡已匯入：空間定錨新增 '+result.created.toLocaleString()+
         '、沿用 '+result.reused.toLocaleString()+'；日期定錨新增 '+
         dates.created.toLocaleString()+'、沿用 '+dates.reused.toLocaleString()+
-        '；地點打卡時間新增 '+saved.added.toLocaleString()+
+        '；'+(isUnifiedAnchorScope(scopeId)?'Point 來源時間補齊 ':'地點打卡時間新增 ')+saved.added.toLocaleString()+
         '。沒有新增 Galaxy 文章；缺少原始座標的地點不會捏造座標。');
     }catch(error){setStatus('Trace 地點儲存失敗：'+String(error?.message||error));}
     finally{setBusy(false);setProgress(null);}
   }
   async function restoreExistingAnchors(){
     if(busy||nativeLocal||scopeId==='loc')return;
-    if(!window.confirm('補齊目前資料庫內已有地點文章的空間定錨、日期定錨與文章地點關聯；不新增或刪除文章，也不覆寫既有地點。確定執行？'))return;
+    if(!window.confirm('補齊既有文章的空間定錨、日期定錨與地點關聯，並為 createtime 為空的 Point 補入可確認的最早來源時間；不新增或刪除文章，也不覆寫已有 Point 時間。確定執行？'))return;
     setBusy(true);setStatus('');
     const show=p=>{
       try{touchEditorSession(window.sessionStorage);}catch{}
@@ -760,7 +761,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         result.places.created.toLocaleString()+'、沿用 '+result.places.reused.toLocaleString()+
         '；日期定錨新增 '+result.dates.created.toLocaleString()+'、沿用 '+
         result.dates.reused.toLocaleString()+'；文章地點關聯補齊 '+
-        result.linked.toLocaleString()+'，打卡時間補入 '+result.visits.toLocaleString()+
+        result.linked.toLocaleString()+'，'+(isUnifiedAnchorScope(scopeId)?'Point 來源時間補齊 ':'打卡時間補入 ')+result.visits.toLocaleString()+
         '，未能確定地點 '+result.unmatched.toLocaleString()+' 筆。');
     }catch(error){
       setStatus('既有打卡定錨修復失敗；已完成的部分可能已寫入，重新執行會沿用既有資料。原始錯誤：'+String(error?.message||error));
@@ -1074,7 +1075,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       ];
       let recordedVisits=0;
       if(savedVisits.length){
-        showProgress('記錄定錨打卡時間');
+        showProgress(isUnifiedAnchorScope(scopeId)?'核對 Point 來源時間':'記錄定錨打卡時間');
         const visitResult=await recordImportPlaceVisits(savedVisits,{
           relation:dbAuthRelation,table:placeAnchors.table,timesByUid:placeAnchors.timesByUid
         });
@@ -1120,7 +1121,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       showProgress('匯入完成',1,1);
       setStatus(t('uiExtra.importUI.importLinkedComplete',{articles:result.inserted,media:mediaSummary.created,linked:mediaSummary.connected,skipped})+
         (result.conflicts?'；UID 衝突未建立文章／媒體關聯 '+result.conflicts.toLocaleString()+' 筆。':'')+
-        '；已更新既有文章 '+updated.toLocaleString()+' 筆，沿用空間定錨點 '+placeAnchors.reused.toLocaleString()+' 筆，新增空間定錨點 '+placeAnchors.created.toLocaleString()+' 筆，新增日期定錨 '+timeAnchors.created.toLocaleString()+' 筆，沿用日期定錨 '+timeAnchors.reused.toLocaleString()+' 筆，補入打卡時間 '+recordedVisits.toLocaleString()+' 筆，未匹配地點 '+placeAnchors.unmatchedCoordinates.toLocaleString()+' 組。'+
+        '；已更新既有文章 '+updated.toLocaleString()+' 筆，沿用空間定錨點 '+placeAnchors.reused.toLocaleString()+' 筆，新增空間定錨點 '+placeAnchors.created.toLocaleString()+' 筆，新增日期定錨 '+timeAnchors.created.toLocaleString()+' 筆，沿用日期定錨 '+timeAnchors.reused.toLocaleString()+' 筆，'+(isUnifiedAnchorScope(scopeId)?'Point 來源時間補齊 ':'補入打卡時間 ')+recordedVisits.toLocaleString()+' 筆，未匹配地點 '+placeAnchors.unmatchedCoordinates.toLocaleString()+' 組。'+
         (ambiguousGroups.length?'；來源文章 ID 或發文時間對應多篇既有文章，無法唯一比對而暫不匯入 '+
           ambiguousGroups.length.toLocaleString()+' 筆（其他文章繼續處理）。待確認：'+
           ambiguousGroups.slice(0,5).map(group=>group.site+' / '+
@@ -1220,7 +1221,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     {!nativeLocal&&scopeId!=='loc'?<details className="scope-import-maintenance">
       <summary>既有地點與日期定錨修復</summary>
       <div className="scope-import-maintenance-content">
-        <p className="scope-status">已匯入文章若有地點、但尚未建立空間或日期定錨，可直接補齊；以文章 date 為準，保留原有打卡時間，不重新匯入或新增文章。</p>
+        <p className="scope-status">已匯入文章若有地點，可補齊空間與日期定錨、文章地點關聯，並為尚無 createtime 的 Point 補寫最早可確認的來源文章時間。完整造訪時間仍保留在 Galaxy；不新增文章或更動既有 Point 時間。</p>
         <button type="button" className="loc-button" disabled={busy} onClick={restoreExistingAnchors}>
           {busy?'正在檢查地點關聯…':'補齊既有文章的地點與日期定錨'}
         </button>
