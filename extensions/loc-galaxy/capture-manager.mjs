@@ -78,7 +78,7 @@ export function captureController({record,authorized}){
       return {queued:true,count:queue.length};
     });
   }
-  async function archiveActive(){
+  async function archiveActive(requestedTabId=null){
     const state=await chrome.storage.local.get([SCOPE,ENABLED]);
     const scopeid=state[SCOPE];
     if(!scopeid)throw Error('請先選擇 LOC Scope');
@@ -86,7 +86,8 @@ export function captureController({record,authorized}){
     if(!auth.ready||auth.scopeid!==scopeid)throw Error('Scope OAuth 尚未授權');
     if(!await chrome.permissions.contains({origins:[ORIGIN]}))
       throw Error('請先允許 ChatGPT 網站存取權');
-    const [tab]=await chrome.tabs.query({active:true,currentWindow:true});
+    const tab=Number.isInteger(requestedTabId)?await chrome.tabs.get(requestedTabId):
+      (await chrome.tabs.query({active:true,currentWindow:true}))[0];
     if(!tab?.id||!/^https:\/\/chatgpt\.com\/(?:g\/[^/]+\/)?c\/[A-Za-z0-9-]{8,}/.test(tab.url||''))
       throw Error('請先切換至欲封存的 ChatGPT 對話分頁');
     const outcome=await chrome.scripting.executeScript({target:{tabId:tab.id},func:extractOpenConversation});
