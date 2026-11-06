@@ -1,43 +1,35 @@
-import {createClient} from '@supabase/supabase-js';
 import {createBackupPublicAdapter} from '../../loc/providers/neon-public.mjs';
 import {createKyselyEdgeClient} from '../../loc/providers/kysely-edge.mjs';
 
-const SUPABASE_URL=process.env.NEXT_PUBLIC_SUPABASE_URL||'https://qlouywsdiiyiyzpoxyqy.supabase.co';
-const SUPABASE_KEY=process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY||'sb_publishable_qPn0vAzozVyXKllRuEKf2Q_fvG-pLVV';
+const SQL_PROVIDER_URL=process.env.NEXT_PUBLIC_SUPABASE_URL||
+  'https://qlouywsdiiyiyzpoxyqy.supabase.co';
+const PUBLIC_KEY=process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY||
+  'sb_publishable_qPn0vAzozVyXKllRuEKf2Q_fvG-pLVV';
 
-// Only anonymous/public SQL-backed numeric summaries use this server client.
-// Public Blocks, registry/config and site metadata are build-produced assets.
-export function createPublicSupabaseClient(){
-  return createClient(SUPABASE_URL,SUPABASE_KEY,{
-    db:{schema:'silver'},
-    auth:{persistSession:false,autoRefreshToken:false}
-  });
-}
+// This is a transport URL, not a database provider or an Auth issuer.
+// Without an independent gateway, preserve the existing production Edge target.
+const SQL_GATEWAY_URL=process.env.LOC_SQL_GATEWAY_URL||
+  process.env.NEXT_PUBLIC_LOC_KYSELY_GATEWAY_URL||'';
 
 export function validScopeId(value){
   return /^[a-z][a-z0-9]{0,14}$/.test(String(value||''));
 }
 
-// Only the optional ISR service uses this public, non-privileged failover.
-// A configured Neon replica is reached directly, never via Supabase Functions.
+// Optional ISR does not instantiate a Supabase Auth or Data API SDK.
+// Both public numeric reads and analytics use the same bounded Kysely transport.
+// Neon remains an independently hosted fallback until its direct Kysely target
+// has been deployed and checked; never tunnel a backup through primary.
 export function publicNumericSources({fetchImpl=globalThis.fetch}={}){
   const timedFetch=(input,init={})=>{
     const timeout=AbortSignal.timeout(6500);
     const signal=init.signal?AbortSignal.any([init.signal,timeout]):timeout;
     return fetchImpl(input,{...init,signal});
   };
-  const primary=createClient(SUPABASE_URL,SUPABASE_KEY,{
-    db:{schema:'silver'},
-    global:{fetch:timedFetch},
-    auth:{persistSession:false,autoRefreshToken:false}
+  const primary=createKyselyEdgeClient({
+    url:SQL_PROVIDER_URL,publishableKey:PUBLIC_KEY,
+    gatewayUrl:SQL_GATEWAY_URL,target:'configured',role:'anon',fetch:timedFetch
   });
-  const gateway=createKyselyEdgeClient({url:SUPABASE_URL,publishableKey:SUPABASE_KEY,
-    target:'configured',role:'anon',fetch:timedFetch});
-  const candidates=[{id:'supabase',schema:()=>({
-    from:table=>primary.schema('silver').from(table),
-    analytics:args=>gateway.schema('silver').analytics(args),
-    publicAction:(name,args)=>gateway.schema('silver').publicAction(name,args)
-  })}];
+  const candidates=[{id:'supabase',schema:()=>primary.schema('silver')}];
   if(process.env.NEXT_PUBLIC_LOC_NEON_DATA_API_URL&&process.env.NEXT_PUBLIC_LOC_NEON_AUTH_URL){
     let neon=null;
     candidates.push({id:'neon',schema:()=>{
