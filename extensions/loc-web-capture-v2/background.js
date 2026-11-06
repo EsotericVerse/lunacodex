@@ -1,4 +1,5 @@
 // Independent Chrome MV3 capture pipeline; no Clerk, MCP or extension OAuth session.
+// Internal storage key remains independent of MCP and product-facing name.
 const DB_NAME='loc-web-capture-v2';
 const STORE='events';
 const MAX_BATCH=50, MAX_BYTES=600000, AUTO_CAPTURE_COUNT=10;
