@@ -18,3 +18,9 @@ The npm installation and local tests were run by the project owner; this connect
 ## Boundaries
 
 No changes to Clerk, LOC Authority, database policies, `galaxy.media_link`, MCP, or the source-of-truth database schema. Do not automatically infer runtime compatibility from package metadata alone. This is not a claim of total custom-code elimination; further replacement requires proven functional parity and independent performance checks.
+
+## Follow-up: bounded member comparisons
+
+The LOC cross-member statistics view now uses the existing `mapBounded` helper rather than unbounded `Promise.all` when loading the selected Scope datasets. The concurrency ceiling is **three** per comparison request, matching the public Kysely read budget. It does not introduce a new cache, queue, dependency, RPC, or scheduled read. The output order and existing SWR cache keys remain unchanged. `scripts/test-bounded-parallel.mjs` checks both the integration and ordering/maximum lane behavior.
+
+This is a preventative request-fan-out cap, not a claim of measured latency improvement. No authentication, database schema, media-link or Cloudflare deployment setting is changed.
