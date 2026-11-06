@@ -40,6 +40,9 @@ test('recording uses explicit user selection and only observes selected visible 
  const source=text('content.js');
  assert.match(source,/pick-record/);
  assert.match(source,/MutationObserver/);
+ assert.match(source,/msg\.type==='page\.pause'/);
+ assert.match(source,/msg\.type==='page\.resume'/);
+ assert.match(source,/window\.removeEventListener\('scroll',scan\)/);
  assert.match(source,/IntersectionObserver/);
  assert.match(source,/state\.observer\?\.disconnect\(\)/);
  assert.match(source,/new Readability\(document\.cloneNode\(true\)\)/);
