@@ -14,7 +14,6 @@ registerDefaultSection('uiExtra.dataErrors',dataErrorsZh);
 registerDefaultSection('uiExtra.pagination',paginationZh);
 
 import {useEffect,useMemo,useRef,useState} from 'react';
-import {scopeTagColumn,scopeTagNames} from '../../loc/scope-config-fields.mjs';
 import useLocFeatureSettings from '../../loc/use-loc-feature-settings';
 import {cultureDensityByUnit,simpleTimeRiver} from '../../loc/loc-feature-preferences.mjs';
 import dynamic from 'next/dynamic';
@@ -37,7 +36,6 @@ import {revalidateServerMetadata} from '../../loc/scope-data';
 import {deleteRows,insertRows,updateRows} from '../../loc/db-client.mjs';
 import {selectAllRows,selectRows} from '../../loc/db-query.mjs';
 import {assignedSource} from '../../loc/member-intersection-model.mjs';
-import {sourceTaxonomyFromArrays} from '../../loc/source-classification.mjs';
 import {publishedSourceTaxonomy} from '../published-source-taxonomy.js';
 import {buildCultureRiverRootPayload,selectCultureRiverChildren} from '../../loc/culture-river-roots.mjs';
 import {mediaDay} from '../../loc/statistics-facets';
@@ -433,12 +431,8 @@ export default function Culture(){
     enabled:!isTimeEditingView&&!publishedTaxonomy&&!isAggregateScope&&!isLrunesDaily&&!isLocItemView
       &&scopeId!=='local'&&Boolean(scopeData),
     queryFn:async()=>{
-      const scopes=scopeId==='loc'?['loc']:['loc',scopeId];
-      const [global,personal]=await Promise.all(scopes.map(id=>selectRows('silver.'+id,{
-        columns:scopeTagColumn(id),filters:[{column:'id',operator:'eq',value:id}],limit:1,source:'primary'
-      })));
-      return sourceTaxonomyFromArrays(scopeTagNames('loc',global.rows?.[0]),
-        scopeId==='loc'?[]:scopeTagNames(scopeId,personal?.rows?.[0]));
+      const {readPublicSourceTaxonomy}=await import('../../loc/source-catalog-public.mjs');
+      return readPublicSourceTaxonomy(scopeId);
     },
     revalidateOnFocus:false,revalidateOnReconnect:false
   });
