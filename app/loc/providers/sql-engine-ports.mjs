@@ -195,20 +195,23 @@ export async function executeCrossEngineManagedWrite(db,body,context){
     for(const row of p.p_rows){
       if(!row||typeof row!=='object'||Array.isArray(row)||
          !/^[A-Za-z0-9]{8}$/.test(String(row.uid||''))||
-         seen.has(row.uid)||Object.keys(row).some(k=>!ARTICLE_BATCH_FIELDS.has(k)))
+         seen.has(row.uid)||!Object.keys(row).some(k=>k!=='uid')||
+         Object.keys(row).some(k=>!ARTICLE_BATCH_FIELDS.has(k)))
         invalidWrite('Invalid Galaxy batch row');
       seen.add(row.uid);
     }
-    // One bounded Kysely SELECT per 1,000 articles, not one SELECT per
-    // article followed by a second write query for every changed row.
+    // Read only fields supplied by the import. Full Galaxy content can be
+    // large and is not needed when updating media links or locations.
+    const fields=['title','content','place_id','url','media_link']
+      .filter(field=>p.p_rows.some(row=>Object.hasOwn(row,field)));
     const existingRows=new Map();
     for(let i=0;i<p.p_rows.length;i+=1000){
       const uids=p.p_rows.slice(i,i+1000).map(row=>row.uid);
       const found=await db.selectFrom(name)
-        .select(['uid','title','content','place_id','url','media_link'])
-        .where('uid','in',uids).execute();
+        .select(['uid',...fields]).where('uid','in',uids).execute();
       for(const row of found)existingRows.set(String(row.uid),row);
     }
+    const groups=new Map();
     for(const row of p.p_rows){
       const existing=existingRows.get(row.uid);
       if(!existing)continue;
@@ -221,10 +224,21 @@ export async function executeCrossEngineManagedWrite(db,body,context){
          !String(existing.place_id||'').trim()&&String(row.place_id||'').trim())
         patch.place_id=String(row.place_id).trim();
       if(!Object.keys(patch).length)continue;
-      patch.UpdateTime=new Date();
-      const result=await db.updateTable(name).set(serializePortableJsonFields(patch,context.engine))
-        .where('uid','=',row.uid).executeTakeFirst();
-      count+=managedAffected(result);
+      // Identical patches share a native Kysely UPDATE ... WHERE uid IN (...).
+      // Independent article values remain separate and preserve their semantics.
+      const key=JSON.stringify(patch);
+      if(!groups.has(key))groups.set(key,{patch,uids:[]});
+      groups.get(key).uids.push(row.uid);
+    }
+    for(const {patch,uids} of groups.values()){
+      for(let i=0;i<uids.length;i+=50){
+        const batch=uids.slice(i,i+50);
+        const values=serializePortableJsonFields(
+          {...patch,UpdateTime:new Date()},context.engine);
+        const result=await db.updateTable(name).set(values)
+          .where('uid','in',batch).executeTakeFirst();
+        count+=managedAffected(result);
+      }
     }
   }else{
     const filters=safeFilters(p.p_filters);
