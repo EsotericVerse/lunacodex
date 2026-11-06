@@ -150,17 +150,24 @@ export async function executeCrossEngineManagedWrite(db,body,context){
         invalidWrite('Invalid managed insert columns');
     }
     // Batch by column shape to preserve omitted database defaults.
-    // 50 rows bounds SQL Server's 2,100-parameter ceiling while avoiding
-    // one round trip per imported article.
+    // SQL Server limits one statement to 2,100 bound parameters. Derive
+    // batch size from its row width rather than assuming 50 rows always fit.
     const groups=new Map();
     for(const row of rows){
       const shape=Object.keys(row).sort().join('|');
       const group=groups.get(shape)||[];
       group.push(row);groups.set(shape,group);
     }
-    for(const group of groups.values()){
-      for(let i=0;i<group.length;i+=50){
-        const batch=group.slice(i,i+50);
+    const batches=[...groups.values()].map(group=>{
+      const columns=Object.keys(group[0]).length;
+      // Reserve capacity below SQL Server's 2,100 parameter maximum.
+      const size=context.engine==='mssql'?Math.min(50,Math.floor(2000/columns)):50;
+      if(size<1)invalidWrite('Managed insert row exceeds SQL Server parameter limit');
+      return {group,size};
+    });
+    for(const {group,size} of batches){
+      for(let i=0;i<group.length;i+=size){
+        const batch=group.slice(i,i+size);
         const result=await db.insertInto(name).values(serializePortableJsonFields(batch,context.engine)).executeTakeFirst();
         count+=managedAffected(result);
       }
