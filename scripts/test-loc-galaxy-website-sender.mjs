@@ -36,10 +36,10 @@ test('Clerk token acquisition waits for a verified Extension communication probe
  const listener=read('extensions/loc-galaxy/website-grant-fallback.mjs');
  assert.match(bridge,/type:'locGalaxy\.bridgeProbe'/);
  assert.match(bridge,/if\(!probe\.ok\)throw Error/);
- assert.match(bridge,/probe\.data\?\.version!=='0\.6\.3'/);
+ assert.match(bridge,/probe\.data\?\.protocol!==1/);
  assert.ok(bridge.indexOf("type:'locGalaxy.bridgeProbe'")<bridge.indexOf("const clerk=await loadClerk()"));
  assert.match(listener,/message\?\.type!=='locGalaxy\.bridgeProbe'/);
- assert.match(listener,/version:chrome\.runtime\.getManifest\(\)\.version/);
+ assert.match(listener,/protocol:1,version:chrome\.runtime\.getManifest\(\)\.version/);
  assert.match(listener,/await knownTab\(pending,nonce,scopeid\)/);
  assert.match(listener,/await knownTab\(active,nonce,scopeid\)/);
 });
