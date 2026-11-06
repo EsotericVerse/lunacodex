@@ -5,6 +5,7 @@ import {useUiLocale} from '../../../i18n/ui-locale';
 import {createTraceMap} from './trace-map-engine';
 import {spaceGraphGeojson} from './space-graph-geojson.mjs';
 import {spaceCoordinates} from './space-graph.mjs';
+import {traceTimeEvents,traceTimeBounds,traceTimeAt,traceTimeActiveKeys} from './trace-time-axis.mjs';
 import 'maplibre-gl/dist/maplibre-gl.css';
 // Coordinates stay in the browser-only example module. These labels identify
 // the same public sample anchors in each language; not Galaxy places.
@@ -124,6 +125,17 @@ export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRout
   const [expandedMap,setExpandedMap]=useState(false);
   const [status,setStatus]=useState('loading');
   const [stemsVisible,setStemsVisible]=useState(false);
+  const [timeProgress,setTimeProgress]=useState(0);
+  const [timePlaying,setTimePlaying]=useState(false);
+  const timeEvents=useMemo(()=>traceTimeEvents(spatialData?.anchors||[]),[spatialData?.anchors]);
+  const timeBounds=useMemo(()=>traceTimeBounds(timeEvents),[timeEvents]);
+  const cursorTime=traceTimeAt(timeBounds,timeProgress/1000);
+  const timeActiveKeys=useMemo(()=>traceTimeActiveKeys(timeEvents,cursorTime),[timeEvents,cursorTime]);
+  const timeVisits=useMemo(()=>timeEvents.filter(event=>event.time<=cursorTime).length,
+    [timeEvents,cursorTime]);
+  const timeLabel=timestamp=>new Intl.DateTimeFormat(locale,{
+    timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'
+  }).format(timestamp);
 
   // TraceMap itself is a client-only, lazily loaded feature chunk: MapLibre is
   // initialized exactly once per mount and cleaned up on navigation/unmount.
@@ -171,6 +183,20 @@ export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRout
   useEffect(()=>{
     mapRef.current?.setStemsVisible(stemsVisible);
   },[ready,stemsVisible]);
+  useEffect(()=>{
+    setTimePlaying(false);
+    setTimeProgress(0);
+  },[spatialData?.anchors,selectedRouteUid]);
+  useEffect(()=>{
+    if(!timePlaying||!timeBounds)return;
+    const timer=window.setInterval(()=>{
+      setTimeProgress(value=>value>=1000?0:Math.min(1000,value+5));
+    },80);
+    return()=>window.clearInterval(timer);
+  },[timePlaying,timeBounds]);
+  useEffect(()=>{
+    mapRef.current?.setTimeCursor(timeActiveKeys);
+  },[ready,timeActiveKeys]);
 
   useEffect(()=>{
     mapRef.current?.setAnchors(spatialData?.anchors||[]);
@@ -340,6 +366,30 @@ export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRout
       {publicTrace&&children?<div className="loc-trace-floating-content">{children}</div>:null}
       {publicTrace&&status!=='ready'?<p className="loc-trace-float-map-status" role="status">{copy.status[status]||copy.status.loading}</p>:null}
     </div>
+    {!selectingLocation&&spatialData&&<div className="loc-trace-time-axis" role="group"
+      aria-label="等比例時間線">
+      <div className="loc-trace-time-axis-heading">
+        <strong>等比例時間線</strong>
+        {timeBounds?<span>{timeVisits} / {timeBounds.count} 次造訪</span>:
+          <span>目前顯示的定錨點沒有造訪時間</span>}
+      </div>
+      {timeBounds?<>
+        <div className="loc-trace-time-axis-controls">
+          <button type="button" className="loc-button" aria-pressed={timePlaying}
+            onClick={()=>{if(timeProgress>=1000)setTimeProgress(0);setTimePlaying(value=>!value);}}
+            disabled={!ready}>{timePlaying?'暫停':'播放'}</button>
+          <input type="range" min="0" max="1000" step="1"
+            aria-label="等比例時間位置" value={timeProgress}
+            onChange={event=>{setTimePlaying(false);setTimeProgress(Number(event.target.value));}}
+            disabled={!ready}/>
+          <time dateTime={new Date(cursorTime).toISOString()}>{timeLabel(cursorTime)}</time>
+        </div>
+        <div className="loc-trace-time-axis-ends">
+          <time dateTime={new Date(timeBounds.start).toISOString()}>{timeLabel(timeBounds.start)}</time>
+          <time dateTime={new Date(timeBounds.end).toISOString()}>{timeLabel(timeBounds.end)}</time>
+        </div>
+      </>:null}
+    </div>}
     {!publicTrace?<div className="loc-trace-mobile-map-tools">
       <button type="button" className="loc-button" aria-pressed={expandedMap}
         onClick={()=>setExpandedMap(value=>!value)}>
