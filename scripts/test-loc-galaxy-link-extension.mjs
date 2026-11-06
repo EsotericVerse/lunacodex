@@ -160,6 +160,18 @@ test('Missing article UID receipts preserve Queue and do not acknowledge',async(
  assert.equal(await h.flush(),0);
  assert.equal(h.metrics.requests.length,1);
 });
+test('Mismatched batch acknowledgement pauses repeat append attempts',async()=>{
+ const records=Array.from({length:10},(_,i)=>({id:'id-'+i,group_id:'cap-'+i,
+  url:'https://example.org/a',captured_at:'2026-11-07T00:00:00Z'}));
+ const h=flushHarness({records,fetchReply:async()=>({ok:true,
+  json:async()=>({accepted:true,id:'wrong-batch',articles:[
+   {source_key:'https://example.org/a',uid:'Ab12Cd34'}]})})});
+ await assert.rejects(h.flush(),/未確認匯入批次/);
+ assert.equal(h.state.locQueuePaused,true);
+ assert.deepEqual(h.metrics.acknowledged,[]);
+ assert.equal(await h.flush(),0);
+ assert.equal(h.metrics.requests.length,1);
+});
 test('Failed import keeps same event IDs and next attempt appends only once',async()=>{
  const records=Array.from({length:10},(_,i)=>({id:'event-'+i,group_id:'c-'+i,
   url:'https://example.org/a',captured_at:'2026-11-07T00:00:00Z'}));
