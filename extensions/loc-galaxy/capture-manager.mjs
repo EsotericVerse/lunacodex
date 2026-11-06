@@ -92,9 +92,20 @@ export function captureController({record,authorized}){
       throw Error('請先切換至欲封存的 ChatGPT 對話分頁');
     const outcome=await chrome.scripting.executeScript({target:{tabId:tab.id},func:extractOpenConversation});
     const snapshot=outcome?.[0]?.result;
-    if(!snapshot||!/^chatgpt:[A-Za-z0-9-]{8,}$/.test(snapshot.conversation_id)||
-       !tab.url.includes(snapshot.conversation_id.slice(8))||!Array.isArray(snapshot.records))
-      throw Error('對話擷取結果無法核對來源');
+    if(!snapshot||typeof snapshot!=='object')
+      throw Error('ChatGPT 頁面沒有回傳擷取結果，請確認對話已完整載入');
+    if(!Array.isArray(snapshot.records))
+      throw Error('ChatGPT 擷取結果缺少訊息列表，已拒絕匯入');
+    const source=String(snapshot.conversation_id||'');
+    if(!/^chatgpt:[A-Za-z0-9-]{8,}$/.test(source))
+      throw Error('ChatGPT 擷取結果沒有有效的對話 ID，已拒絕匯入');
+    // The active SPA URL can change while a long conversation is scanned.
+    // Verify the current tab after extraction, not a stale pre-scan URL.
+    const current=await chrome.tabs.get(tab.id);
+    const currentUrl=new URL(current.url||tab.url);
+    const currentId=new RegExp('^/(?:g/[^/]+/)?c/([A-Za-z0-9-]{8,})(?:/|$)').exec(currentUrl.pathname)?.[1];
+    if(currentUrl.origin!=='https://chatgpt.com'||currentId!==source.slice(8))
+      throw Error('掃描期間 ChatGPT 分頁已切換對話，為避免匯入錯誤來源已停止');
     if(!snapshot.records.length)return {captured:0,queued:0,pending:(await status()).pending,partial:true};
     return serial(async()=>{
       const saved=await chrome.storage.local.get([PENDING,ARCHIVED,SCOPE]);
