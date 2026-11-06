@@ -1,7 +1,7 @@
 import {sql} from 'npm:kysely@0.29.8';
 import {DB_QUERY_BATCH_SIZE} from '../query-batch-size.mjs';
 import {serializePortableJsonFields,portableRelation} from './sql-engine-ports.mjs';
-import {portableContainsSpec} from './portable-search.mjs';
+import {portableContainsSpec,parsePortableOrExpression} from './portable-search.mjs';
 
 const identifier=/^[a-z][a-z0-9_]*$/i;
 const schemas=new Set(['silver','api']);
@@ -13,44 +13,6 @@ function checkedFilterColumn(value){
 function checkedIdentifier(value,label){
   if(typeof value!=='string'||!identifier.test(value))throw new Error('Invalid '+label);
   return value;
-}
-
-function splitExpression(expression){
-  const parts=[];let start=0,quoted=false,escaped=false,depth=0;
-  for(let i=0;i<expression.length;i++){
-    const char=expression[i];
-    if(escaped){escaped=false;continue;}
-    if(char==='\\'&&quoted){escaped=true;continue;}
-    if(char==='"')quoted=!quoted;
-    else if(!quoted&&char==='(')depth++;
-    else if(!quoted&&char===')'){if(--depth<0)throw new Error('Malformed OR filter');}
-    else if(!quoted&&depth===0&&char===','){parts.push(expression.slice(start,i));start=i+1;}
-  }
-  if(quoted||escaped||depth!==0)throw new Error('Malformed OR filter');
-  parts.push(expression.slice(start));
-  if(!parts.length||parts.length>30||parts.some(part=>!part.trim()))throw new Error('Invalid OR filter size');
-  return parts;
-}
-
-function parseExpressionTerm(raw,depth=0){
-  if(depth>8)throw new Error('OR filter nesting is too deep');
-  const part=raw.trim();
-  const group=part.match(/^(and|or)\(([\s\S]*)\)$/i);
-  if(group)return {type:group[1].toLowerCase(),items:splitExpression(group[2]).map(item=>parseExpressionTerm(item,depth+1))};
-  const match=part.match(/^([a-z][a-z0-9_]*)\.(eq|neq|gt|gte|lt|lte|like|ilike|contains|is)\.(?:"((?:\\.|[^"])*)"|([^,]*))$/i);
-  if(!match)throw new Error('Unsupported OR filter');
-  const rawValue=match[3]!==undefined?match[3].replace(/\\(["\\])/g,'$1'):match[4];
-  const operator=match[2].toLowerCase();
-  // Contains searches quoted text LITERALLY. "null", "true", and "0001"
-  // must not be silently coerced to SQL NULL, booleans, or numbers.
-  const value=operator==='contains'?String(rawValue):
-    rawValue==='true'?true:rawValue==='false'?false:rawValue==='null'?null:
-    /^-?\d+(?:\.\d+)?$/.test(rawValue)?Number(rawValue):rawValue;
-  return {type:'predicate',column:checkedIdentifier(match[1],'OR filter column'),operator,value};
-}
-
-function parseOrExpression(expression){
-  return {type:'or',items:splitExpression(expression).map(parseExpressionTerm)};
 }
 
 function validateQuery(input){
@@ -85,7 +47,7 @@ function validateQuery(input){
   const offset=Math.max(0,Math.min(10_000_000,Math.floor(Number(input.offset)||0)));
   if(input.or!==undefined&&!Array.isArray(input.or))throw new Error('Invalid OR filter');
   if(['insert','upsert'].includes(input.operation)&&(input.or||[]).length)throw new Error('OR filters are not supported for insert or upsert');
-  const orFilters=(input.or||[]).map(expr=>{if(typeof expr!=='string')throw new Error('Invalid OR filter');return parseOrExpression(expr)});
+  const orFilters=(input.or||[]).map(expr=>{if(typeof expr!=='string')throw new Error('Invalid OR filter');return parsePortableOrExpression(expr)});
   if(orFilters.length>10)throw new Error('Too many OR filters');
   if(input.single!==undefined&&!['single','maybeSingle'].includes(input.single))throw new Error('Invalid row cardinality');
   return {...input,schema,table,filters,columns,orders,limit,offset,orFilters};
