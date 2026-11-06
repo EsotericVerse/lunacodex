@@ -30,9 +30,11 @@ test('only one IndexedDB queue; no OAuth token storage or Auth retries',()=>{
  assert.match(background,/const STORE='events'/);
  assert.match(background,/AUTO_CAPTURE_COUNT=10/);
  assert.match(background,/MAX_BYTES=600000/);
- assert.match(background,/credentials:'same-origin'/);
+ assert.match(background,/__locGalaxyLinkImport/);
  assert.match(background,/world:'MAIN'/);
  assert.match(background,/locImportPaused/);
+ assert.match(background,/ACK_STORE='acknowledged'/);
+ assert.match(background,/indexedDB\.open\(DB_NAME,2\)/);
  assert.doesNotMatch(background,/launchWebAuthFlow|getToken\(|refresh_token|access_token|locOAuth|loc-mcp|mcp\.lo3rwang\.cc/);
 });
 
@@ -99,4 +101,15 @@ test('background rejects cross-origin injection before any Queue write',async()=
  {id:'test-extension',tab:{url:'https://example.org/post/1'}},x=>{result=x;});
  for(let i=0;i<20&&result===null;i++)await new Promise(resolve=>setImmediate(resolve));
  assert.match(result?.error||'',/Source origin mismatch/);
+});
+
+test('existing website gateway requests a signed write delegation, not manage, for short imports',()=>{
+ const gateway=readFileSync(join(root,'../../app/loc/providers/loc-gateway.mjs'),'utf8');
+ const edge=readFileSync(join(root,'../../app/loc/providers/kysely-edge.mjs'),'utf8');
+ const page=readFileSync(join(root,'../../app/extension/bridge/GalaxyLinkBridge.jsx'),'utf8');
+ assert.match(gateway,/kind==='short-import'/);
+ assert.match(gateway,/actions:\['write'\]/);
+ assert.match(edge,/shortImport\(scopeid,batch\)/);
+ assert.match(page,/dbAuthClient\.shortImport\(scope,batch\)/);
+ assert.match(page,/__locGalaxyLinkImport/);
 });
