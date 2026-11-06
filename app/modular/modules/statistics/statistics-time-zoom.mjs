@@ -176,6 +176,24 @@ export const STATISTIC_CHART_PURPOSES=Object.freeze({
   comparison:Object.freeze(['line','stacked','bar','scatter'])
 });
 
+// Decide the default by the question the statistic answers, not by the
+// last chart selected on a different dimension. Manual choices remain valid.
+export const STATISTIC_DEFAULT_CHART=Object.freeze({
+  total:'line',
+  source:'line',
+  place:'bar',
+  keyword:'bar',
+  media:'bar',
+  comparison:'line'
+});
+
+export function preferredStatisticChartType({purpose='total',available=[],requested='auto'}={}){
+  const ids=new Set(available.map(([id])=>id));
+  if(requested!=='auto'&&ids.has(requested))return requested;
+  const preferred=STATISTIC_DEFAULT_CHART[purpose]||'line';
+  return ids.has(preferred)?preferred:(available[0]?.[0]||'');
+}
+
 export function semanticStatisticChartTypes({
   purpose='total',rows=[],series=[],distribution=[],totalKey=''
 }={}){
