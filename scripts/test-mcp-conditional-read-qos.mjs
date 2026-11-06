@@ -35,6 +35,6 @@ test('MCP keeps the full QoS, warning, cooldown and conditional known-UID read',
     "const onlySite=siteFilter===true?'mcp':(siteFilter||'mcp')"
   ])assert.ok(worker.includes(expr),expr);
   assert.match(worker,/mcpPrLookup\(input\?\.query\)/);
-  assert.match(worker,/update-pr.*use GitHub/i);
+  assert.ok(worker.includes('PR records belong to GitHub; use GitHub PR tools'));
   assert.doesNotMatch(worker,/async mcpUpdatePr\s*\(/);
 });
