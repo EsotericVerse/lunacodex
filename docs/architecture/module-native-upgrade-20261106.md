@@ -34,3 +34,9 @@ No new queue, retry, background job, dependency, or authorization path was added
 ## Portable public-action request preflight
 
 `executeKyselyPublicAction` now checks the existing action allowlist, argument names and Scope ID before invoking Kysely `introspection.getTables()`. Invalid requests no longer touch external SQL metadata, eliminating avoidable round trips and unnecessary schema inspection. The valid action paths, SQL statements, authorization model and return payloads remain unchanged. Regression coverage is in `scripts/test-kysely-public-portable.mjs`.
+
+## Portable MSSQL bulk insert parameter budget
+
+Cross-engine managed `insert` keeps batching by identical column shape and retains a maximum of 50 rows per insert. SQL Server now additionally restricts each batch to `Math.floor(2000 / numberOfColumns)` rows to stay below its 2,100-bound-parameter limit. MySQL and PostgreSQL retain their existing 50-row batch size. The implementation validates the width of each batch shape before starting insert statements; it introduces no new dependency, table, RPC, or migration.
+
+The existing portable authorization/managed-write regression suite is now included in `test:bootstrap`, with additional wide-row MSSQL and MySQL cases. This is a parameter-budget correction rather than a transaction or atomicity change; full Node tests and live dialect checks remain necessary.
