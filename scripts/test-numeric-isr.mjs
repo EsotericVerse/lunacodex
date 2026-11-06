@@ -43,13 +43,12 @@ test('ISR server route checks global mode, validates scope and is safe for disab
   assert.match(guard,/decodeLocCache/);
   assert.match(guard,/db\.from\('loc'\)/);
   assert.match(guard,/isAvailabilityFailure/);
-  assert.match(source,/readIsrSummary\(db,\{origin:url\.origin,name,args\}\)/);
+  assert.match(source,/readIsrSummary\(db,\{origin:url\.origin,args\}\)/);
   assert.match(source,/tryPublicSources\(publicNumericSources\(\)/);
   assert.match(publicServer,/createBackupPublicAdapter/);
   assert.match(source,/status===200\?CACHE_HEADERS:NO_CACHE/);
-  assert.match(source,/read_scope_analytics/);
-  assert.match(source,/read_scope_analytics/);
-  assert.match(source,/read_scope_analytics/);
+  assert.match(source,/p_view:view/);
+  assert.doesNotMatch(source,/read_scope_analytics|\.rpc\(/);
   assert.match(source,/no-store/);
   assert.doesNotMatch(source,/service_role|SUPABASE_SERVICE_ROLE_KEY|createClient\([^,]+,[^,]+\s*\)/);
 });
@@ -70,7 +69,7 @@ test('Culture, Statistics, Periods, Daily Runes and Trace have direct data provi
   const daily=read('app/lrunes/DailyRuneAnalytics.jsx');
   const traces=read('app/modular/features/trace/TracePlaceResults.jsx');
   const places=read('app/loc/place-summary-client.js');
-  // scopeStatisticsRows calls the direct RPC provider through a short-TTL
+  // scopeStatisticsRows calls the direct analytics provider through a short-TTL
   // dedupe wrapper (cachedReadScopeStatistics) so two charts for the same
   // Scope/range in one render share one request; the wrapper itself still
   // calls readScopeStatistics(id,args) directly, so both are checked here.
@@ -82,7 +81,7 @@ test('Culture, Statistics, Periods, Daily Runes and Trace have direct data provi
   assert.match(culture,/selectScopePeriodSourceSnapshot/);
   assert.match(stats,/selectScopeCultureData\(scopeId\)/);
   assert.match(daily,/selectDailyRuneRange\(range\)/);
-  assert.ok(traces.includes("rpc('read_scope_analytics'"));
+  assert.match(traces,/\.analytics\(/);
   assert.match(places,/read_scope_place_statistics/);
   assert.match(places,/Capacitor\.isNativePlatform/);
 });
