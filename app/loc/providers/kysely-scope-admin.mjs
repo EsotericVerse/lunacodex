@@ -1,11 +1,25 @@
 import {canManageLoc} from './loc-authorization.mjs';
 import {allocateAnchorUid} from '../unified-anchor-compat.mjs';
 import {sql} from 'npm:kysely@0.29.8';
+import {schema as fixedSchema} from '../../../zenstack/schema.mjs';
 
 const ID=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
 const DOMAIN=/^[a-z0-9][a-z0-9.-]*[a-z0-9]$/;
 const DIR=/^[a-z0-9][a-z0-9/_-]*$/;
+
+// Fixed LOC Registry models come from the same ZModel-backed schema contract as
+// the ZenStack client. Dynamic Scope relations remain trusted Kysely paths.
+const FIXED_MODELS=Object.freeze({manage:fixedSchema.models.Manage,loc:fixedSchema.models.Loc});
+function modelFields(model,fields){
+  if(!model||fields.some(field=>!Object.hasOwn(model.fields,field)))
+    throw new Error('LOC fixed ZModel / Kysely field contract mismatch');
+  return fields;
+}
+const MANAGE_ROUTE_FIELDS=modelFields(FIXED_MODELS.manage,
+  ['id','domain','directory','parent_scope_id','active','sort_order','manage_role']);
+const LOC_NAME_FIELDS=modelFields(FIXED_MODELS.loc,['id','display_name','locale','birthday']);
+void LOC_NAME_FIELDS;
 function fail(message,status=400){throw Object.assign(new Error(message),{httpStatus:status});}
 function scope(value){const id=String(value??'').trim().toLowerCase();
   if(!ID.test(id))fail('Invalid Scope ID');return id;}
@@ -60,8 +74,7 @@ async function managedRegistry(trx,args){
     const inserted=await trx.insertInto('api.manage').values({
       id,domain,directory,parent_scope_id:parent,
       active,sort_order:sort,manage_role:'group'
-    }).returning(['id','domain','directory','parent_scope_id',
-      'active','sort_order','manage_role']).executeTakeFirst();
+    }).returning(MANAGE_ROUTE_FIELDS).executeTakeFirst();
     if(!inserted)fail('Scope Group was not created');
     await trx.insertInto('silver.loc').values({id,display_name,locale:'zh-Hant'}).executeTakeFirst();
     return resultRow(inserted,display_name);
@@ -104,8 +117,7 @@ async function managedRegistry(trx,args){
   const updated=await trx.updateTable('api.manage')
     .set({domain,directory,parent_scope_id:parent,active,sort_order:sort})
     .where('id','=',id)
-    .returning(['id','domain','directory','parent_scope_id',
-      'active','sort_order','manage_role']).executeTakeFirst();
+    .returning(MANAGE_ROUTE_FIELDS).executeTakeFirst();
   if(!updated)fail('Scope Registry update failed');
   const named=await trx.updateTable('silver.loc').set({display_name}).where('id','=',id).executeTakeFirst();
   if(Number(named?.numUpdatedRows||0)!==1)fail('Group / Scope list name missing');
