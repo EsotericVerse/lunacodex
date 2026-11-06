@@ -4,7 +4,7 @@ import {SCOPE_ROUTE_INDEX} from '../../modular/scope-route-index.js';
 const PUBLIC_SCOPE_IDS=Object.freeze(SCOPE_ROUTE_INDEX.filter(row=>row.active&&row.scope_id!=='loc')
   .map(row=>row.scope_id).filter(id=>/^[a-z][a-z0-9]{0,14}$/.test(id)));
 // LOC MCP HTTP entry point. No database write is granted by an OAuth login.
-export const MCP_RESOURCE=(globalThis.process?.env?.LOC_MCP_RESOURCE_URL||'https://loc.lo3rwang.cc/mcp').replace(/\/+$/,'');
+export const MCP_RESOURCE=(globalThis.process?.env?.LOC_MCP_RESOURCE_URL||'https://mcp.lo3rwang.cc').replace(/\/+$/,'');
 export const CLERK_ISSUER=(globalThis.process?.env?.LOC_CLERK_ISSUER||'https://precise-grackle-3371.clerk.accounts.dev').replace(/\/+$/,'');
 export function mcpConfig(env={}){
   return {resource:String(env.LOC_MCP_RESOURCE_URL||MCP_RESOURCE).replace(/\/+$/,''),
@@ -29,7 +29,7 @@ export function protectedResourceMetadata(env={}){
     bearer_methods_supported:['header'],scopes_supported:SCOPES});
 }
 function unauthorized(config){
-  const resourceMetadata=config.resource.replace(/\/mcp$/,'')+'/.well-known/oauth-protected-resource/mcp';
+  const resourceMetadata=config.resource+'/.well-known/oauth-protected-resource';
   return response({error:'unauthorized',error_description:'Clerk OAuth access token required'},401,{
     'WWW-Authenticate':'Bearer resource_metadata="'+resourceMetadata+'", scope="'+SCOPES.join(' ')+'"'
   });
