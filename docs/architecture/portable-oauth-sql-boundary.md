@@ -27,3 +27,27 @@ Neon PostgreSQL 的存取功能仍由 Kysely PostgreSQL 方言與資料庫連線
 4. SQL Gateway 驗證 LOC delegation 的主線及部署同版驗收；不同資料庫、不同 Scope、匿名讀取、跨 Scope 拒絕均通過。
 
 **以上驗收未完成時不得刪掉現役登入而讓正式網站鎖死，也不得宣稱全站已不依賴 Clerk。**
+
+## MCP managed SQL transport (2026-11-07)
+
+The existing LOC Authority Worker can now route the four managed MCP SQL
+operations to an independent Kysely Gateway using the **server-only**
+`LOC_MANAGED_SQL_GATEWAY_URL` Worker environment variable. A configured HTTPS
+URL must include a non-root path and contain no URL credentials, query or
+fragment. Local and direct IPv4 endpoints are rejected. The independent node
+receives the Authority-issued audience-bound LOC MCP delegation only; it does
+**not** receive a Supabase project `apikey`.
+
+The previous Supabase Edge endpoint remains the **compatibility default** only
+when that variable is absent. Thus this code change does not itself migrate
+the live MCP endpoint or remove the old hosted Edge. The new Gateway must
+implement the same `mcp-sync`, `mcp-append`, `mcp-search` and `mcp-read`
+contracts and verify the signed MCP delegation, Scope grant, expiration and
+revocation rules before a cutover. `mcp-update-pr` is retained as a legacy
+handler but is not a public Galaxy Link feature.
+
+Required cutover verification: configure the independent node, deploy the
+Authority Worker with `LOC_MANAGED_SQL_GATEWAY_URL`, test MCP search/read,
+atomic append and idempotent update, confirm failure/retry behavior, and only
+then retire the original vendor endpoint. No database schema, RPC, RLS or
+permission change is implied by this transport change.
