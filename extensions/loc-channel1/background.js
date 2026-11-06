@@ -19,10 +19,10 @@ async function snapshot(tabId){
    if(!parent||parent.closest(excluded))continue;
    const style=getComputedStyle(parent);
    if(style.display==='none'||style.visibility==='hidden')continue;
-   const s=node.textContent.replace(/\\s+/g,' ').trim();
+   const s=node.textContent.replace(/\s+/g,' ').trim();
    if(s)parts.push(s);
   }
-  const content=parts.join('\\n').trim();
+  const content=parts.join('\n').trim();
   if(!content)return {error:'頁面主要內容尚未載入或沒有可解析文字'};
   if(content.length>600000)return {error:'頁面內容超過單筆限制，請勿截斷保存；需改走批次模式'};
   return {url:location.href,title:document.title,content,captured_at:new Date().toISOString(),
