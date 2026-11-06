@@ -60,7 +60,7 @@
 
 ### 身分驗證與 SQL 可攜性修正（2026-11-04）
 
-- LOC 網站身份固定為 **Clerk + LOC Authority**，不再允許 Supabase Auth JWT 取代 Clerk 登入。PostgreSQL 以既有 `silver.manage()` 保持權限判定；非 PostgreSQL 透過 Kysely 讀取目標庫既有 `silver.manage` Registry 與 `silver.loc.blacklist`，比對經驗證的 Clerk email/subject，拒絕已封鎖帳號與未授權 Scope。
+- LOC 網站身份固定為 **Clerk + LOC Authority**，不再允許 Supabase Auth JWT 取代 Clerk 登入。PostgreSQL 以既有 `api.manage()` 保持權限判定；非 PostgreSQL 透過 Kysely 讀取目標庫既有 `api.manage` Registry 與 `silver.loc.blacklist`，比對經驗證的 Clerk email/subject，拒絕已封鎖帳號與未授權 Scope。
 - 資料庫連線使用該資料庫自己的連線 Driver／認證（MySQL 可選 LDAP simple + TLS，SQL Server 可選 NTLM／Entra）；**資料庫驗證不等於 LOC 使用者登入**。MySQL Driver 更新至已修補的 `mysql2@3.22.0`。
 - 原生 Kysely CRUD／UPSERT／transaction 優先使用 Dialect，不因 MySQL／SQL Server 缺少 PostgreSQL RLS 而一概拒絕；但對外公開文章的 `search/list/extract` 隱藏規則、Anchor 複合 JSON 查詢／關聯寫入、文化／統計與 Scope DDL 尚待逐引擎等價驗收。未證明安全等價前仍拒絕這些操作，不可繞過授權。
 - 歷史的獨立 `neon-primary.mjs`／Neon Data API 備援仍含 Neon Auth token 流程，**不在目前預設 Clerk 登入路徑中**；若要求 Neon 備援完全不依賴 Neon Auth，必須先配置獨立可信任 Kysely Gateway 及其資料庫權限，再切換該備援傳輸。當前不能宣稱備援已完全解耦。
@@ -71,7 +71,7 @@
 
 Kysely **不是 PostgreSQL RPC 的包裝器**。LOC 共用資料操作應採 Kysely query builder／transaction／schema builder，由 Dialect 配合既有資料庫 Driver；資料庫憑證驗證與 LOC Clerk／Authority Scope 授權是兩個獨立責任。
 
-- PostgreSQL（Supabase、Neon、Cloud SQL 等）：`PostgresDialect`，現行 RLS 和 `silver.manage(type,id)` 權限保持既有機制。
+- PostgreSQL（Supabase、Neon、Cloud SQL 等）：`PostgresDialect`，現行 RLS 和 `api.manage(type,id)` 權限保持既有機制。
 - MySQL／MariaDB：`MysqlDialect`；已加入原生通用 CRUD、Scope 所有權檢查、文章分批寫入。選配簡易 LDAP（`mysql_clear_password`）僅允許 TLS；LDAP SASL 仍取決於可用的 Driver Plugin，**不宣稱已支援**。
 - SQL Server：`MssqlDialect`；已加入原生 CRUD、Scope 所有權檢查，以及獨立 NTLM／Microsoft Entra Driver 驗證模式。MSSQL Upsert 以 Kysely MERGE 建立來源資料、逐列引用欄位。
 - SQLite：目前保留裝置／常駐 Gateway 模式；尚未將整套 LOC 遠端功能經 Kysely SQLite 驗證。
@@ -93,10 +93,10 @@ Kysely **不是 PostgreSQL RPC 的包裝器**。LOC 共用資料操作應採 Kys
 
 - `anchor(scopeid,type,attr)`：直接存取 `{scopeid}_anchor` 的讀取、寫入、局部更新、關鍵詞目錄／建議，以及 Point 連結補寫。
 - `analytics(args)`：時間、地點、文章、關鍵詞、共享 Class 與公開搜尋摘要，使用 Kysely 查詢與參數化聚合。
-- `managedWrite(payload)` 與 `managedAction(name,args)`：文章批次、搜尋摘要更新、群組與權限設定、空間合併、關鍵詞分享匯入與 Scope 建立／刪除。權限先由現有 Clerk claims 與 `silver.manage(type,id)` 判斷；沿用 LOC Authority，無第二套身分系統。
+- `managedWrite(payload)` 與 `managedAction(name,args)`：文章批次、搜尋摘要更新、群組與權限設定、空間合併、關鍵詞分享匯入與 Scope 建立／刪除。權限先由現有 Clerk claims 與 `api.manage(type,id)` 判斷；沿用 LOC Authority，無第二套身分系統。
 - `publicAction(name,args)`：公開 Bootstrap、頁面簡介與地點名稱搜尋。
 
-`silver.manage(type,id)` 與 UID 配號函式仍屬資料庫內部的**身分驗證／配號輔助**，不是前端呼叫的 SQL RPC；網站的通用 SQL RPC 執行路由已退役。裝置本機 `local` Scope 使用獨立 SQLite 介面，不屬於遠端 RPC 清理範圍。
+`api.manage(type,id)` 與 UID 配號函式仍屬資料庫內部的**身分驗證／配號輔助**，不是前端呼叫的 SQL RPC；網站的通用 SQL RPC 執行路由已退役。裝置本機 `local` Scope 使用獨立 SQLite 介面，不屬於遠端 RPC 清理範圍。
 
 Galaxy 文章權限改採八個獨立 boolean 欄位，順序為 `statics`、`culture`、`search`、`trace`、`list`、`keyword`、`extract`、`others`。所有新讀寫都直接使用欄位；舊 `galaxy.able` 只在歷史匯入資料解析或既有本機 SQLite 資料一次性轉換時讀取，不得重新寫入伺服器。**正式資料庫的舊欄位須待新版經部署驗收及相依檢查後另行移除**，不能把程式端切換誤稱為已刪欄位。
 
@@ -108,7 +108,7 @@ Galaxy 文章權限改採八個獨立 boolean 欄位，順序為 `statics`、`cu
 silver.scope_type_attr(p_scope_id text, p_type text, p_attr jsonb)
 ```
 
-`p_scope_id` 以 `silver.manage.anchor_table` 查找 `silver.{scopeid}_{anchor_table}`，驗證該 Scope 的權限。`p_type` 使用統一類型集合：
+`p_scope_id` 以 `api.manage.anchor_table` 查找 `silver.{scopeid}_{anchor_table}`，驗證該 Scope 的權限。`p_type` 使用統一類型集合：
 `date, period, era, point, path, trace, image, video, rune, suno, category, class, group, item`。
 
 `p_attr` 是 **RPC 請求封套**，不是原封不動的資料列 `attr`：
