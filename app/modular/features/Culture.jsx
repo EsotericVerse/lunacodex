@@ -1498,7 +1498,7 @@ export default function Culture(){
                 </div>
                 {styleFilter==='rune66'?<section className='scope-culture-style-filter'>
                   <p className='loc-eyebrow'>下半河道｜關鍵詞：{String(styleQuery.data?.keywordMeta?.class_name||selectedKeywordClass?.name||'尚未設定')}</p>
-                  {availableKeywordClasses.length>1?<label className='scope-culture-keyword-class-picker'>
+                  {availableKeywordClasses.length>0?<label className='scope-culture-keyword-class-picker'>
                     <span>關鍵字群組</span>
                     <select className='scope-select' aria-label='關鍵字群組'
                       value={resolvedKeywordClassUid} onChange={event=>{
@@ -1506,7 +1506,7 @@ export default function Culture(){
                         setKeywordDrillSource('');
                         setKeywordDrillGroup('');
                       }}>
-                      {availableKeywordClasses.map(item=><option key={item.classUid} value={item.classUid}>{item.name}</option>)}
+                      {availableKeywordClasses.map(item=><option key={item.classUid} value={item.classUid}>{[item.categoryName,item.name].filter(Boolean).join('／')}</option>)}
                     </select>
                   </label>:null}
                   <div className='scope-stat-controls'>
