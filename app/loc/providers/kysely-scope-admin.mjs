@@ -1,4 +1,5 @@
 import {canManageLoc} from './loc-authorization.mjs';
+import {allocateAnchorUid} from '../unified-anchor-compat.mjs';
 import {sql} from 'npm:kysely@0.29.8';
 
 const ID=/^[a-z][a-z0-9]{0,14}$/;
@@ -140,17 +141,19 @@ async function deleteScope(trx,args){
   await sql`notify pgrst,'reload schema'`.execute(trx);
   return {scope_id:id,deleted:true};
 }
-async function nextUid(trx,scopeId){
-  const response=await sql`select silver.new_keyword_tree_uid(${scopeId}) as uid`.execute(trx);
-  const id=String(response.rows[0]?.uid||'');
-  if(!UID.test(id))fail('Keyword UID allocator failed');
-  return id;
-}
 async function copyDefaultKeywordClass(trx,id,target){
   const config=await trx.selectFrom('silver.lo3rwang')
     .select('current_keyword_class_uid').where('id','=','lo3rwang').executeTakeFirst();
   const src=String(config?.current_keyword_class_uid||'');
   if(!UID.test(src))fail('Default Keyword Class unavailable');
+  // The target Anchor was just created by provisionScope, so there are no
+  // existing target UIDs to fetch. Reserve only this copy's generated UIDs.
+  const assigned=new Set();
+  const nextUid=()=>{
+    const uid=allocateAnchorUid(assigned);
+    assigned.add(uid);
+    return uid;
+  };
   const source='silver.lo3rwang_anchor';
   const root=await trx.selectFrom(source).select(['uid','title','description','attr'])
     .where('uid','=',src).where('type','=','class').executeTakeFirst();
@@ -164,7 +167,7 @@ async function copyDefaultKeywordClass(trx,id,target){
       description:row.description,attr:sql`${JSON.stringify(attr)}::jsonb`})
       .executeTakeFirst();
   };
-  const categoryId=await nextUid(trx,id),newClass=await nextUid(trx,id);
+  const categoryId=nextUid(),newClass=nextUid();
   await insert(categoryId,'category',category,{uid:[newClass]});
   const groupUids=[];let itemCount=0;
   for(const groupId of Array.isArray(root.attr?.uid)?root.attr.uid:[]){
@@ -173,13 +176,13 @@ async function copyDefaultKeywordClass(trx,id,target){
       .select(['uid','title','description','attr'])
       .where('uid','=',groupId).where('type','=','group').executeTakeFirst();
     if(!groupRow)fail('Source Group missing');
-    const mapped=[],newGroup=await nextUid(trx,id);
+    const mapped=[],newGroup=nextUid();
     for(const itemId of Array.isArray(groupRow.attr?.uid)?groupRow.attr.uid:[]){
       const item=await trx.selectFrom(source)
         .select(['uid','title','description','attr'])
         .where('uid','=',itemId).where('type','=','item').executeTakeFirst();
       if(!item)fail('Source Keyword Item missing');
-      const newItem=await nextUid(trx,id);
+      const newItem=nextUid();
       await insert(newItem,'item',item,{keyword:Array.isArray(item.attr?.keyword)
         ?item.attr.keyword:[],total:0});
       mapped.push(newItem);itemCount++;
