@@ -7,7 +7,7 @@ test('website bridge fallback is loaded, without broadening external origins',()
   const manifest=JSON.parse(read('extensions/loc-galaxy/manifest.json'));
   const entry=read('extensions/loc-galaxy/background-entry.mjs');
   const fallback=read('extensions/loc-galaxy/website-grant-fallback.mjs');
-  assert.equal(manifest.version,'0.6.3');
+  assert.equal(manifest.version,'0.6.4');
   assert.equal(manifest.background.service_worker,'background-entry.mjs');
   assert.deepEqual(manifest.externally_connectable.matches,['https://loc.lo3rwang.cc/*']);
   assert.match(entry,/import '\.\/background-core\.mjs'/);
