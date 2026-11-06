@@ -18,6 +18,7 @@ import {selectFirstDailyRuneDate} from './daily-runes';
 import {readTraceMapIndex} from '../modular/features/trace/trace-data.js';
 import {isUnifiedAnchorScope} from './unified-anchor-compat.mjs';
 import {GALAXY_ABLE_KEYS,galaxyAble} from './galaxy-able.mjs';
+import {portableContainsTerm} from './providers/portable-search.mjs';
 const localArticle=scope=>String(scope?.galaxy||'')==='silver.local_galaxy';
 const articlePermissionColumns=scope=>localArticle(scope)?['able']:GALAXY_ABLE_KEYS;
 const articlePermissionFilter=(scope,name)=>({
@@ -454,8 +455,6 @@ export async function selectGalaxyIdentity(scope,uid,{includeHidden=false}={}){
     related_space:space,related_time:time,related_statistics:statistics,
     article_day:day};
 }
-
-import {portableContainsTerm} from './providers/portable-search.mjs';
 
 function literalPattern(value){
   return '%'+String(value||'').trim().replace(/\\/g,'\\\\').replace(/%/g,'\\%').replace(/_/g,'\\_')+'%';
