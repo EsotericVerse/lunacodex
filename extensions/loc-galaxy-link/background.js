@@ -1,6 +1,7 @@
 const MENU='loc-galaxy-link-save';
 const DB_NAME='loc-channel1-queue',STORE='pending';
 const MAX_BATCH_BYTES=600000, MAX_TEXT_CHARS=140000;
+const AUTO_BATCH_CAPTURES=10; // local captures, not individual article chunks
 const CONFIG_URL='https://loc.lo3rwang.cc/extension/oauth/config.json';
 const AUTH_KEYS=['locOAuth','locConfig'];
 let processing=null;
@@ -23,7 +24,19 @@ async function dbOperation(mode,run){
   try{const request=run(store);request.onsuccess=()=>{value=request.result;};request.onerror=()=>reject(request.error);}catch(e){tx.abort();reject(e);}
  });}finally{db.close();}
 }
-const enqueue=record=>dbOperation('readwrite',store=>store.put(record));
+// A split capture must enter the one queue atomically: either all parts exist
+// or no part is eligible for import.
+async function enqueueMany(records){
+ const db=await dbOpen();
+ try{await new Promise((resolve,reject)=>{
+  const tx=db.transaction(STORE,'readwrite'),store=tx.objectStore(STORE);
+  tx.oncomplete=()=>resolve();
+  tx.onerror=()=>reject(tx.error);
+  tx.onabort=()=>reject(tx.error||Error('Capture enqueue aborted'));
+  try{for(const record of records)store.put(record);}
+  catch(error){tx.abort();reject(error);}
+ });}finally{db.close();}
+}
 const allPending=()=>dbOperation('readonly',store=>store.getAll());
 // Remove an acknowledged batch in one IndexedDB transaction. Partial local
 // deletion would change the retry batch ID after a crash and risk duplicates.
@@ -71,8 +84,25 @@ async function capture(tabId){
  if(!data||data.error)throw Error(data?.error||'讀取頁面失敗');
  return data;
 }
+function sourceKey(url){
+ const parsed=new URL(url);
+ if(!['https:','http:'].includes(parsed.protocol))throw Error('不支援的文章來源網址');
+ // Do not strip the hash: many single-page sites use it as the article ID.
+ return parsed.href;
+}
+function orderedPending(records){
+ return records.sort((a,b)=>String(a.captured_at||'').localeCompare(String(b.captured_at||''))||
+  String(a.group_id||a.id).localeCompare(String(b.group_id||b.id))||
+  (a.part_index||0)-(b.part_index||0));
+}
+function queueReady(records){
+ const captures=new Set(records.map(r=>r.group_id||r.id));
+ if(captures.size>=AUTO_BATCH_CAPTURES)return true;
+ // Full byte budget also triggers transmission even for a single large page.
+ return new TextEncoder().encode(JSON.stringify(records)).length>=MAX_BATCH_BYTES;
+}
 async function enqueuePage(record){
- const content=record.content, group_id=crypto.randomUUID();
+ const content=record.content, group_id=crypto.randomUUID(),source_key=sourceKey(record.url);
  const parts=Math.ceil(content.length/MAX_TEXT_CHARS);
  const chunks=[];let offset=0;
  while(offset<content.length){
@@ -80,8 +110,10 @@ async function enqueuePage(record){
   if(end<content.length&&end>offset&&/^[\uD800-\uDBFF]$/.test(content[end-1]))end--;
   chunks.push(content.slice(offset,end));offset=end;
  }
- for(let i=0;i<chunks.length;i++)await enqueue({...record,id:crypto.randomUUID(),group_id,
-  part_index:i,part_count:chunks.length,content:chunks[i]});
+ const events=chunks.map((chunk,i)=>({...record,id:crypto.randomUUID(),group_id,
+  source_key,write_mode:'append',kind:'capture',
+  part_index:i,part_count:chunks.length,content:chunk}));
+ await enqueueMany(events);
  return chunks.length;
 }
 function batches(records){
@@ -169,6 +201,7 @@ async function connectLoc(){
  await chrome.storage.local.set({locOAuth:{
   access_token:tokens.access_token,refresh_token:tokens.refresh_token||null,
   expires_at:Date.now()+Math.max(0,Number(tokens.expires_in||300)-60)*1000}});
+ await chrome.storage.local.remove('locQueuePaused');
  return {connected:true};
 }
 let refreshFlight=null;
@@ -199,34 +232,97 @@ chrome.runtime.onMessage.addListener((message,_sender,respond)=>{
   return true;
  }
  if(message?.action==='loc-status'){
-  chrome.storage.local.get(AUTH_KEYS).then(s=>respond({
+  Promise.all([chrome.storage.local.get([...AUTH_KEYS,'locQueuePaused']),allPending()]).then(([s,pending])=>respond({
     connected:Boolean(s.locOAuth?.refresh_token||s.locOAuth?.expires_at>Date.now()),
-    configured:Boolean(s.locConfig)})).catch(e=>respond({error:e.message}));
+    configured:Boolean(s.locConfig),paused:s.locQueuePaused===true,pending:pending.length,
+    pendingCaptures:new Set(pending.map(r=>r.group_id||r.id)).size
+  })).catch(e=>respond({error:e.message}));
+  return true;
+ }
+ if(message?.action==='loc-flush'){
+  flush(true).then(count=>respond({sent:count})).catch(e=>respond({error:e.message}));
   return true;
  }
 });
 
-async function flush(){
+function importContractError(message){
+ return Object.assign(new Error(message),{code:'LOC_IMPORT_CONTRACT'});
+}
+function validateArticleReceipts(receipts,records){
+ if(!Array.isArray(receipts))throw importContractError('LOC 尚未回傳來源文章 UID，Queue 保留');
+ const entries=new Map();
+ for(const item of receipts){
+  if(typeof item?.source_key==='string'&&/^[0-9A-Za-z]{8}$/.test(String(item.uid||'')))
+   entries.set(item.source_key,item.uid);
+ }
+ for(const key of new Set(records.map(r=>r.source_key)))
+  if(!entries.has(key))throw importContractError('LOC 未確認文章 UID：'+key);
+}
+async function flush(force=false){
  if(processing)return processing;
  processing=(async()=>{
-  // Do not refresh or request authentication when no page has been queued.
-  const pending=(await allPending()).sort((a,b)=>a.captured_at.localeCompare(b.captured_at));
+  const pending=orderedPending(await allPending());
   if(!pending.length)return 0;
-  const token=await activeToken();
-  const {locConfig:config}=await chrome.storage.local.get('locConfig');
-  if(!config?.import_url)throw oauthError('未設定 LOC 短匯入 API');
-  for(const records of batches(pending)){
-   const batch={id:await stableBatchId(records),records};
-   const reply=await fetch(config.import_url,{
-    method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+token},
-    body:JSON.stringify(batch)
-   });
-   if(!reply.ok)throw Error('LOC 匯入失敗：HTTP '+reply.status);
-   const result=await reply.json();
-   if(!result.accepted||result.id!==batch.id)throw Error('LOC 未確認匯入批次');
-   await acknowledgeBatch(records);
+  const state=await chrome.storage.local.get(['locQueueRetry','locQueueRetryAfter','locQueuePaused']);
+  if(state.locQueuePaused&&!force)return 0;
+  if(Number(state.locQueueRetryAfter||0)>Date.now())return 0;
+  if(!force&&!state.locQueueRetry&&!queueReady(pending))return 0;
+  // One OAuth lookup per ready flush, not per capture or individual article.
+  let token;
+  try{token=await activeToken();}
+  catch(error){
+   // Do not retry unavailable or invalid OAuth every five minutes.
+   await chrome.storage.local.set({locQueuePaused:true});
+   throw error;
   }
-  return pending.length;
+  const {locConfig:config}=await chrome.storage.local.get('locConfig');
+  if(!config?.import_url){
+   await chrome.storage.local.set({locQueuePaused:true});
+   throw oauthError('未設定 LOC 短匯入 API');
+  }
+  let sent=0;
+  try{
+   const events=pending.map(r=>({...r,source_key:r.source_key||sourceKey(r.url),
+    write_mode:'append',kind:r.kind||'capture'}));
+   for(const records of batches(events)){
+    // One request carries multiple independent article append events.
+    // The backend must deduplicate each record.id even when batch membership
+    // changes after a lost acknowledgement or another capture.
+    const batch={id:await stableBatchId(records),write_mode:'append',records};
+    const reply=await fetch(config.import_url,{
+     method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+token},
+     body:JSON.stringify(batch)
+    });
+    if(!reply.ok){
+     if(reply.status===401||reply.status===403)
+      await chrome.storage.local.set({locQueuePaused:true});
+     if(reply.status===429){
+      const header=reply.headers?.get?.('retry-after');
+      const value=String(header||'').trim();
+      const ms=/^\d+$/.test(value)?Number(value)*1000:
+       (Date.parse(value)||0)-Date.now();
+      await chrome.storage.local.set({locQueueRetryAfter:Date.now()+
+       (Number.isFinite(ms)&&ms>0?Math.min(ms,3600000):900000)});
+     }
+     throw Error('LOC 匯入失敗：HTTP '+reply.status);
+    }
+    let result;
+    try{result=await reply.json();}
+    catch{throw importContractError('LOC 匯入回執格式錯誤，Queue 保留');}
+    if(!result?.accepted||result.id!==batch.id)throw importContractError('LOC 未確認匯入批次');
+    validateArticleReceipts(result.articles,records);
+    await acknowledgeBatch(records);
+    sent+=records.length;
+   }
+   await chrome.storage.local.remove(['locQueueRetry','locQueueRetryAfter','locQueuePaused']);
+  }catch(error){
+   if(error.code==='LOC_IMPORT_CONTRACT'){
+    // Server may have written already; never blindly retry an unconfirmed append.
+    await chrome.storage.local.set({locQueuePaused:true});
+   }else await chrome.storage.local.set({locQueueRetry:true});
+   throw error;
+  }
+  return sent;
  })().finally(()=>{processing=null;});
  return processing;
 }
@@ -243,8 +339,12 @@ chrome.contextMenus.onClicked.addListener((info,tab)=>{
   const record=await capture(tab.id);
   const count=await enqueuePage(record);
   // Local queue is durable before any network request.
-  await badge(true,'已加入本機佇列：'+count+' 筆');
-  await chrome.alarms.create('loc-channel1-drain',{delayInMinutes:0.5});
+  const pending=await allPending();
+  const ready=queueReady(pending);
+  await badge(true,ready?'Queue 已達門檻，準備批次送出':'已累積 Queue：'+
+   new Set(pending.map(r=>r.group_id||r.id)).size+'/'+AUTO_BATCH_CAPTURES+' 次擷取');
+  if(ready&&!await chrome.alarms.get('loc-channel1-drain'))
+   await chrome.alarms.create('loc-channel1-drain',{delayInMinutes:0.5});
  })().catch(async e=>{console.error('[LOC galaxy-link]',e);await badge(false,e.message);});
 });
 chrome.alarms.onAlarm.addListener(e=>{
