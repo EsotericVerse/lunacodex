@@ -6,10 +6,10 @@ export function isTextSearchQuery(body){
   // LOC text search is exclusively Galaxy.content, never Anchor.description.
   const fields=new Set(['content']);
   const filters=Array.isArray(body.filters)?body.filters:[];
-  if(filters.some(f=>fields.has(f?.column)&&['ilike','like'].includes(f.operator)))return true;
+  if(filters.some(f=>fields.has(f?.column)&&['ilike','like','contains'].includes(f.operator)))return true;
   const expressions=Array.isArray(body.or)?body.or:[];
   return expressions.some(expr=>typeof expr==='string'&&
-    [...fields].some(field=>new RegExp('(?:^|[^a-z_])'+field+'\\.(?:ilike|like)\\.','i').test(expr)));
+    [...fields].some(field=>new RegExp('(?:^|[^a-z_])'+field+'\\.(?:ilike|like|contains)\\.','i').test(expr)));
 }
 
 // A warm Edge isolate's bounded memory map avoids a DB write per search.
