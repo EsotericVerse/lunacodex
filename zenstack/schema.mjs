@@ -21,6 +21,7 @@ const nativeAttributes=Object.freeze({
   _int2:'@db.SmallInt',_int4:'@db.Integer'
 });
 const literal=(name,key,value)=>({name,args:[{name:key,value:{kind:'literal',value}}]});
+const databaseDefault=Object.freeze({kind:'call',function:'dbgenerated',args:[]});
 const modelName=table=>table.split('_').map(w=>w[0].toUpperCase()+w.slice(1)).join('');
 function compileFixedSchema({schema:namespace,tables}){
   if(namespace!=='silver'||tables.length!==17)
@@ -38,12 +39,17 @@ function compileFixedSchema({schema:namespace,tables}){
         ...(pk.has(col.name)?{id:true}:{}),
         ...(col.format.startsWith('_')?{array:true}:{}),
         ...(col.nullable&&!col.format.startsWith('_')?{optional:true}:{}),
-        ...(native?{attributes:[{name:native}]}:{})
+        ...(col.hasDefault&&!col.generated?{default:databaseDefault}:{}),
+        attributes:[...(native?[{name:native}]:[]),
+          ...(col.hasDefault&&!col.generated?[{name:'@default',args:[{name:'value',value:databaseDefault}]}]:[])]
       };
     }
     const uniqueFields=table.pk.length===1
       ?{[table.pk[0]]:{type:fields[table.pk[0]].type}}
       :{[table.pk.join('_')]:Object.fromEntries(table.pk.map(key=>[key,{type:fields[key].type}]))};
+    for(const keys of table.uniques||[]){
+      uniqueFields[keys.join('_')]=Object.fromEntries(keys.map(key=>[key,{type:fields[key].type}]));
+    }
     models[name]={
       name,fields,idFields:[...table.pk],uniqueFields,
       attributes:[
