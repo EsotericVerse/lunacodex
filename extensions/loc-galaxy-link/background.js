@@ -306,8 +306,10 @@ async function flush(force=false){
      }
      throw Error('LOC 匯入失敗：HTTP '+reply.status);
     }
-    const result=await reply.json();
-    if(!result.accepted||result.id!==batch.id)throw importContractError('LOC 未確認匯入批次');
+    let result;
+    try{result=await reply.json();}
+    catch{throw importContractError('LOC 匯入回執格式錯誤，Queue 保留');}
+    if(!result?.accepted||result.id!==batch.id)throw importContractError('LOC 未確認匯入批次');
     validateArticleReceipts(result.articles,records);
     await acknowledgeBatch(records);
     sent+=records.length;
