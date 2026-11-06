@@ -1,29 +1,22 @@
 // Flat public source classification, published with Scope Config.
-import {sourceTaxonomyFromArrays} from '../loc/source-classification.mjs';
+import {sourceTaxonomyFromArrays,sourceTreeFromArrays,sourceSiteKeyForLabel} from '../loc/source-classification.mjs';
 export const PUBLISHED_SOURCE_LISTS=Object.freeze({
   loc:{system:['Facebook','Threads','Instagram'],personal:[]},
   lo3rwang:{system:['Facebook','Threads','Instagram'],personal:['suno','kkcity','其他','方格子vocus','ptt','無名wretch','pixnet']},
   lrunes:{system:['Facebook','Threads','Instagram'],personal:['vocus','others','suno']}
 });
-// A few display names were renamed without rewriting site in Galaxy.
-// Preserve their literal stored strings as read-only aliases, not new tables.
-const SOURCE_DISPLAY_ALIASES=Object.freeze({
-  lo3rwang:{'其他':'others','方格子vocus':'vocus','無名wretch':'wretch'}
-});
+// Galaxy.site stays literal. Canonical short keys are inferred from existing
+// From labels (e.g. 方格子vocus -> vocus), not maintained in another alias map.
 export const PUBLISHED_SOURCE_TAXONOMY=Object.freeze(Object.fromEntries(
   Object.entries(PUBLISHED_SOURCE_LISTS).map(([id,lists])=>{
     const taxonomy=sourceTaxonomyFromArrays(lists.system,lists.personal);
-    const displayAliases=SOURCE_DISPLAY_ALIASES[id]||{};
-    return [id,{
-      ...taxonomy,
-      groupAliases:[
-        ...taxonomy.groupAliases,
-        ...taxonomy.groups.flatMap(group=>{
-          const sourceKey=displayAliases[group.display_name];
-          return sourceKey?[{source_key:sourceKey,group_code:group.group_code}]:[];
-        })
-      ]
-    }];
+    const tree=sourceTreeFromArrays(lists.system,lists.personal,{universe:'loc',galaxy:id});
+    const aliases=tree.filter(node=>node.type==='from'&&node.parent.endsWith(':personal'))
+      .map(node=>({source_key:sourceSiteKeyForLabel(node.name),
+        group_code:node.name.normalize('NFKC').toLocaleLowerCase()}))
+      .filter(item=>!taxonomy.groupAliases.some(existing=>
+        existing.source_key===item.source_key&&existing.group_code===item.group_code));
+    return [id,{...taxonomy,tree,groupAliases:[...taxonomy.groupAliases,...aliases]}];
   })
 ));
 export function publishedSourceTaxonomy(scopeId){

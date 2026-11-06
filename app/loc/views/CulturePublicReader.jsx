@@ -10,6 +10,7 @@ import {selectCultureArticleListPage} from '../culture-query';
 import {selectGalaxyIdentity} from '../galaxy-query';
 import ScopeLink from '../../modular/ScopeLink';
 import {scopeHref} from '../../modular/scope-registry';
+import {sourceLabelMatchesSite} from '../source-classification.mjs';
 
 const CultureTimeline=dynamic(()=>import('../../modular/modules/culture-timeline/CultureTimeline'),{loading:()=>null});
 const NO_ITEMS=Object.freeze([]);
@@ -99,12 +100,7 @@ function sourceModel(rows,systemNames,personalNames,expanded,start,end){
   const names=[...new Set(list(rows).map(row=>String(row.site||'')))];
   // Source names may include the owner's human-readable label
   // (e.g. 方格子vocus) while Galaxy.site stores the short canonical key.
-  const matches=(site,configured)=>configured.some(value=>{
-    const label=String(value||'').trim().toLowerCase();
-    const key=String(site||'').trim().toLowerCase();
-    return label===key||Boolean(key&&label.includes(key))||
-      key==='others'&&label==='其他';
-  });
+  const matches=(site,configured)=>configured.some(label=>sourceLabelMatchesSite(site,label));
   const roots=[{
     id:'system',label:'系統分類',
     sites:names.filter(site=>!systemNames.length||matches(site,systemNames))
