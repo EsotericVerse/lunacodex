@@ -1035,6 +1035,22 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
   const stub=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName('loc-authority-control-v1'));
   const scoped=scope=>env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName('mcp-scope:'+scope));
   const allowed=async(scope,action)=>isRoot||await stub.mayAccess({...principal,scope,action});
+  // Managed MCP SQL consumes the SAME LOC-issued delegation as website SQL.
+  // It is created only after OAuth signature, Scope grant and root validation;
+  // external OAuth bearer credentials are never forwarded to Kysely Edge.
+  const managedToken=async(scope,action)=>{
+    if(!Object.hasOwn(MANAGED_SCOPE_TABLES,scope))
+      return (request.headers.get('authorization')||'').replace(/^Bearer /,'');
+    if(!isRoot)throw fail('Managed Scope requires verified LOC root',403);
+    const email=String(env.LOC_ROOT_MANAGEMENT_EMAIL||'').trim().toLowerCase();
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      throw fail('Verified root identity mapping unavailable',503);
+    const claims=issueDelegation({
+      sub:principal.subject,email,grants:[scope+':'+action],audience:'mcp',
+      sid:crypto.randomUUID(),now:Math.floor(Date.now()/1000),seconds:300
+    });
+    return stub.signLocDelegation(claims);
+  };
   const parts=url.pathname.split('/').filter(Boolean).slice(2);
   const galaxyLink=parts[0]==='galaxy-link';
   if(galaxyLink)parts.shift();
@@ -1089,13 +1105,13 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
     const input=await mcpJsonBody(request);
     if(galaxyLink)input.append=true;
     return json(await scoped(scopeid).mcpSave(scopeid,input,
-      (request.headers.get('authorization')||'').replace(/^Bearer /,'')),200,origin);
+      await managedToken(scopeid,'write')),200,origin);
   }
   if(parts[0]==='update-pr'&&parts.length===2&&request.method==='POST'){
     const scopeid=validScope(parts[1]);
     if(!await allowed(scopeid,'manage'))throw fail('PR update requires Scope manager',403);
     return json(await scoped(scopeid).mcpUpdatePr(scopeid,await mcpJsonBody(request),
-      (request.headers.get('authorization')||'').replace(/^Bearer /,'')),200,origin);
+      await managedToken(scopeid,'manage')),200,origin);
   }
   if(parts[0]==='search'&&parts.length===2&&request.method==='POST'){
     const scopeid=validScope(parts[1]);
@@ -1106,7 +1122,7 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
     if(!await allowed(scopeid,'read'))
       throw fail('Scope source search denied',403);
     return json(await scoped(scopeid).mcpLinkSearch(scopeid,args.query,args.limit??5,
-      (request.headers.get('authorization')||'').replace(/^Bearer /,'')),200,origin);
+      await managedToken(scopeid,'read')),200,origin);
   }
   if(parts[0]==='read'&&parts.length===3&&request.method==='GET'){
     const scopeid=validScope(parts[1]);
@@ -1123,7 +1139,7 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
     const offset=Number(url.searchParams.get('offset')||'0');
     const max_chars=Number(url.searchParams.get('max_chars')||'20000');
     const result=await scoped(scopeid).mcpRead(scopeid,parts[2],offset,max_chars,
-      (request.headers.get('authorization')||'').replace(/^Bearer /,''),requestedSite);
+      await managedToken(scopeid,requestedSite==='github'?'manage':'read'),requestedSite);
     // Legacy UID reads must not let a normal read grant disclose private PRs.
     if(result.found&&result.site==='github'&&!await allowed(scopeid,'manage'))
       throw fail('GitHub development record requires Scope manager',403);
