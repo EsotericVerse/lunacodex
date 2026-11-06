@@ -151,3 +151,78 @@ test('website signed delegation reaches short-import gateway without extra targe
  assert.equal(authorityCalls,1);
  assert.equal(edgeCalls,1);
 });
+
+
+class FakeElement{
+ constructor(text='',tagName='DIV',role='',href=''){
+  this.innerText=text;this.textContent=text;this.tagName=tagName;
+  this.role=role;this.href=href;this.children=[];this.parentElement=null;
+ }
+ getClientRects(){return [1]}
+ getBoundingClientRect(){return {top:10,bottom:100,left:0,width:200,height:90}}
+ closest(q){return q.includes('article')&&this.parentElement?.tagName==='ARTICLE'?this.parentElement:null}
+ matches(q){return q==='[data-message-author-role]'&&Boolean(this.role)}
+ getAttribute(key){return key==='data-message-author-role'?this.role:null}
+ querySelector(){return null}
+ querySelectorAll(selector){
+  if(selector.startsWith('[data-message-id]'))return this.children.filter(x=>x.role);
+  if(selector.startsWith('article,'))return this.children.filter(x=>x.tagName==='ARTICLE');
+  if(selector==='a[href]')return this.tagName==='ARTICLE'?
+   this.children.filter(x=>x.tagName==='A'):
+   this.children.flatMap(x=>x.querySelectorAll(selector));
+  return [];
+ }
+}
+function contentFixture({href,feed}){
+ let handler=null;
+ const url=new URL(href);
+ const document={
+  title:'Captured browser document',body:feed,
+  addEventListener(){},removeEventListener(){}
+ };
+ const chrome={runtime:{onMessage:{addListener(fn){handler=fn;}}}};
+ const context=createContext({
+  chrome,document,location:{href:url.href,hostname:url.hostname},
+  Element:FakeElement,URL,Readability:null,
+  window:{addEventListener(){},removeEventListener(){}},
+  innerHeight:900,globalThis:{},
+  getComputedStyle:()=>({display:'block',visibility:'visible'}),
+  MutationObserver:class{},IntersectionObserver:class{},
+ });
+ runInContext(text('content.js'),context,{filename:'content.js'});
+ return payload=>{
+  let response=null;
+  handler({type:'page.capture',...payload},null,result=>{response=result});
+  return response?.items||[];
+ };
+}
+test('Threads feed records distinct permalink articles, not a single merged profile',()=>{
+ const feed=new FakeElement('','MAIN');
+ for(const [id,body] of [
+  ['123','First Threads post with more than 25 characters'],
+  ['456','Second Threads post with more than 25 characters']
+ ]){
+  const post=new FakeElement(body,'ARTICLE');
+  const link=new FakeElement('permalink','A','',
+   'https://www.threads.net/@alex/post/'+id);
+  link.parentElement=post;post.children=[link];feed.children.push(post);
+ }
+ const items=contentFixture({href:'https://www.threads.net/@alex',feed})();
+ assert.equal(items.length,2);
+ assert.equal(new Set(items.map(x=>x.source_key)).size,2);
+ assert.ok(items.every(x=>x.source_key.includes('/post/')));
+});
+
+test('history capture includes full original user text and AI text only when opted in',()=>{
+ const feed=new FakeElement();
+ const user=new FakeElement('The complete original user message','DIV','user');
+ const ai=new FakeElement('Assistant response available only by choice','DIV','assistant');
+ feed.children=[user,ai];
+ const capture=contentFixture({href:'https://chatgpt.com/c/example',feed});
+ const defaultItems=capture();
+ const withAssistant=capture({includeAssistant:true});
+ assert.equal(defaultItems.length,1);
+ assert.match(defaultItems[0].content,/complete original user message/);
+ assert.equal(withAssistant.length,2);
+ assert.ok(withAssistant.some(x=>x.content.startsWith('[assistant]')));
+});
