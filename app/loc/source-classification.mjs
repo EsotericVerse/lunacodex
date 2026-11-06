@@ -100,3 +100,21 @@ export function sourceTreeFromAnchors(rows=[]){
     ...(node.type==='from'?{site:node.name}:{})
   }));
 }
+
+// Public and statistics projections use the From Anchor's immutable source
+// key (title) for matching and its independently editable label for display.
+// Never infer Galaxy.site from the display label once an Anchor exists.
+export function sourceTaxonomyFromCatalog(systemNames=[],entries=[]){
+  if(!Array.isArray(entries))throw new Error('Source catalog entries must be an array');
+  const base=sourceTaxonomyFromArrays(systemNames,[]);
+  const seen=new Set();
+  for(const entry of entries){
+    const site=key(entry?.name??entry?.site);
+    const label=String(entry?.label??entry?.name??entry?.site??'').trim();
+    if(!site||!label||seen.has(site))throw new Error('Invalid or duplicate From source');
+    seen.add(site);
+    base.groups.push({group_code:site,display_name:label,enabled:true});
+    base.groupAliases.push({source_key:site,group_code:site});
+  }
+  return base;
+}
