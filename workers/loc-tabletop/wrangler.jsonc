@@ -1,0 +1,26 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "loc-tabletop",
+  "main": "./index.mjs",
+  "compatibility_date": "2026-11-06",
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "TABLETOP_ROOMS",
+        "class_name": "TabletopRoom"
+      }
+    ]
+  },
+  "vars": {
+    "LOC_GAME_ORIGINS": "https://loc.lo3rwang.cc,capacitor://localhost,http://localhost"
+  },
+  "observability": {
+    "enabled": true
+  },
+  "exports": {
+    "TabletopRoom": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
+  }
+}

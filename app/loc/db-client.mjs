@@ -81,8 +81,7 @@ const routedAdapter={
 };
 const client=createDatabaseClient(routedAdapter);
 
-// Use the existing public Supabase SDK socket for browser/iOS game rooms.
-export const dbRealtimeClient=adapter.realtimeClient;
+// Online tabletop uses a dedicated LOC room Worker; database routing owns no sockets.
 export const dbBackupPublicClient=adapter.backupPublicClient||null;
 export const dbConfiguredPublicClient=adapter.configuredPublicClient
   ?{schema:name=>routedSchema(name,adapter.configuredPublicClient.schema(name))}:null;
