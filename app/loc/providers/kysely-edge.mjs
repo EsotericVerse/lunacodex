@@ -17,6 +17,7 @@ class KyselyQuery {
   lte(column,value){return this._filter(column,'lte',value)}
   like(column,value){return this._filter(column,'like',value)}
   ilike(column,value){return this._filter(column,'ilike',value)}
+  contains(column,value){return this._filter(column,'contains',value)}
   is(column,value){return this._filter(column,'is',value)}
   in(column,value){return this._filter(column,'in',value)}
   not(column,operator,value){return this._filter(column,operator,value,true)}
