@@ -11,6 +11,7 @@ import {saveBlocksKysely} from "../../../app/loc/providers/kysely-blocks.mjs";
 import {executeKyselyAnchor,executePortableKyselyAnchor} from "../../../app/loc/providers/kysely-anchor.mjs";
 import {executeKyselyAnalytics,executePortableKyselyAnalytics} from "../../../app/loc/providers/kysely-analytics.mjs";
 import {executeKyselyPublicAction} from "../../../app/loc/providers/kysely-public.mjs";
+import {readMcpGalaxyWithKysely} from "../../../app/loc/providers/kysely-mcp-read.mjs";
 import {executeKyselyScopeAdmin} from "../../../app/loc/providers/kysely-scope-admin.mjs";
 import {ensurePortableScopeSchema,validatePortableScopeSchema} from "../../../app/loc/providers/kysely-schema.mjs";
 import { selectedDatabaseTarget } from "../../../app/loc/providers/selected-database-target.mjs";
@@ -321,25 +322,19 @@ Deno.serve(async (request) => {
           return json({error:{message:"Invalid managed MCP article UID"}},400);
       }else if(typeof query!=="string"||query.trim().length<2||query.length>100||
           /[\u0000-\u001f\u007f]/.test(query)||!Number.isInteger(limit)||
-          Number(limit)<1||Number(limit)>5){
+          Number(limit)<1||Number(limit)>20){
         return json({error:{message:"Invalid managed MCP search parameters"}},400);
       }
       const db=await databaseForTarget(controlTarget);
-      // The scope has already been allowlisted; the identifier is not caller-supplied.
-      const table=sql.ref("silver."+scope+"_galaxy");
       const rows=await db.transaction().execute(async trx=>{
-        await bindPostgresSession(trx,"authenticated",claims);
-        if(isRead){
-          const result=await sql`select uid,title,content,date,createtime,site,url
-            from ${table} where uid=${uid} and (${body.site===undefined} or site=${body.site||""}) limit 1`.execute(trx);
-          return result.rows;
+        if(controlTarget.engine==='postgres'&&controlTarget.provider!=='custom'){
+          await bindPostgresSession(trx,'authenticated',claims);
+          await sql`set local statement_timeout = '4000ms'`.execute(trx);
         }
-        const pattern="%"+String(query).trim().replace(/[\\%_]/g,"\\$&")+"%";
-        await sql`set local statement_timeout = '4000ms'`.execute(trx);
-        const result=await sql`select uid,title,createtime from ${table}
-          where site = 'mcp' and (title ilike ${pattern} or content ilike ${pattern})
-          order by createtime desc nulls last limit ${Number(limit)}`.execute(trx);
-        return result.rows;
+        return readMcpGalaxyWithKysely(trx,body,{
+          engine:String(controlTarget.engine),
+          namespace:controlTarget.engine==='mssql'?'dbo':'silver'
+        });
       });
       return json({data:rows});
     }
