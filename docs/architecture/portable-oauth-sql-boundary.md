@@ -2,7 +2,7 @@
 
 ## 不可違反的契約
 
-- LOC 的資料庫存取權限由 **LOC OAuth / LOC Authority** 核發、驗證與委託。Clerk Auth、Supabase Auth、Neon Auth **均不得是 SQL、Kysely、公開讀取或跨庫切換的必要相依**。
+- LOC 的資料庫存取權限由 **LOC Auth / LOC Authority** 核發、驗證與委託。Clerk Auth、Supabase Auth、Neon Auth **均不得是 SQL、Kysely、公開讀取或跨庫切換的必要相依**。
 - 使用者的 OAuth access token 是身分與權限證明，**不是資料庫密碼**。SQL Gateway 在伺服器端，以受控資料庫憑證連接 PostgreSQL／MySQL／SQL Server；不讓瀏覽器直接持有資料庫憑證。
 - 不管是哪家資料庫託管商，LOC 授權契約、Scope 管理及 Kysely 查詢操作一致。
 - 匿名公開讀取不依賴個人登入；管理寫入必須驗證 LOC Authority 所核發、具有正確 Scope／action／有效期限的委託。不得以使用者提供的 Email／Scope 欄位自行授權。
@@ -21,8 +21,8 @@ Neon PostgreSQL 的存取功能仍由 Kysely PostgreSQL 方言與資料庫連線
 **2026-11-07 的主站 `app/loc/providers/configured.mjs` 仍預設 `createClerkGatewayAdapter()`**，用 Clerk 驗證上游使用者後再向 LOC Authority 兌換委託。這是「網站登入的上游」而非 SQL 資料庫的必要驗證，但**網站端原生 LOC OAuth 登入尚未驗收完成**。
 
 正式移除此過渡入口之前，需先具備並驗證：
-1. LOC 自有 OAuth Authorization Server（正確 issuer、Authorization Code + PKCE S256、Token endpoint、回呼與續期、撤銷／逾期）。
-2. LOC Authority 對該 LOC OAuth token 的獨立驗簽與 subject／session／Scope 授權，不使用 Clerk 取代驗簽。
+1. LOC Auth 對外的 OAuth Authorization Server（正確 issuer、Authorization Code + PKCE S256、Token endpoint、回呼與續期、撤銷／逾期）。
+2. LOC Authority 對該 LOC Auth 所簽發的 OAuth token 的獨立驗簽與 subject／session／Scope 授權，不使用 Clerk 取代驗簽。
 3. 網站 browser account adapter 的登入、恢復 Session、登出與 Google/GitHub 可選身份來源，不再呼叫 Clerk SDK。
 4. SQL Gateway 驗證 LOC delegation 的主線及部署同版驗收；不同資料庫、不同 Scope、匿名讀取、跨 Scope 拒絕均通過。
 
