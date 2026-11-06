@@ -39,7 +39,7 @@ import {hasIrrecoverableEncoding,isPureUrlContent,normalizeGalaxyContent,normali
 import {galaxyAble} from './galaxy-able.mjs';
 import BulkGalaxyVisibility from './BulkGalaxyVisibility';
 import {touchEditorSession} from './edit-session-ttl.mjs';
-import {scopeTagNames} from './scope-config-fields.mjs';
+import {scopeSourceNames} from './scope-config-fields.mjs';
 import {runeDrawText} from './rune-draw-text.mjs';
 const ZIP_LAYOUT_KEYS=Object.freeze({
   'conversation-tree':'conversationTree','message-list':'messageList','post-list':'postList',
@@ -448,7 +448,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   const sourceCategoriesPersonalRow=useScopeSourceCategoryRow(scopeId,{enabled:sourceCategoriesEnabled});
   const sourceCategories={
     data:sourceCategoriesSystemRow.data!==undefined&&sourceCategoriesPersonalRow.data!==undefined
-      ?{system:scopeTagNames('loc',sourceCategoriesSystemRow.data),personal:scopeTagNames(scopeId,sourceCategoriesPersonalRow.data)}
+      ?{system:scopeSourceNames(sourceCategoriesSystemRow.data),personal:scopeSourceNames(sourceCategoriesPersonalRow.data)}
       :undefined
   };
   const sourceOptions=[...new Set([...(sourceCategories.data?.system||[]),...(sourceCategories.data?.personal||[])])];

@@ -83,7 +83,6 @@ model Lo3rwang {
     locale                       String      @db.Text @default(dbgenerated())
     current_keyword_class_uid    String?     @db.VarChar(8)
     keyword_suggestions          String[]    @db.Text
-    ArticleTag                   Json        @db.JsonB @default(dbgenerated())
     status                       Json        @db.JsonB @default(dbgenerated())
     trace                        Boolean      @default(true)
     search                       Boolean      @default(true)
@@ -185,7 +184,6 @@ model Lrunes {
     search_intro                 String      @db.Text @default(dbgenerated())
     search_aliases               String[]    @db.Text @default(dbgenerated())
     locale                       String      @db.Text @default(dbgenerated())
-    txt_class                    String[]    @db.Text @default(dbgenerated())
     keyword_min_chars            Int         @db.Integer @default(32)
     keyword_min_documents        Int         @db.Integer @default(100)
     keyword_class_share_enabled  Boolean      @default(false)

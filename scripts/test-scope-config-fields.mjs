@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {scopeConfigColumns,scopeFeatureColumns,scopeFeatureEnabled,scopeFeaturePatch,scopeFeatureName,scopeTagColumn,scopeTagNames} from '../app/loc/scope-config-fields.mjs';
+import {scopeConfigColumns,scopeFeatureColumns,scopeFeatureEnabled,scopeFeaturePatch,scopeFeatureName,scopeSourceNames} from '../app/loc/scope-config-fields.mjs';
 
 test('Scope feature switches are four independent boolean columns',()=>{
   assert.equal(scopeFeatureColumns('lo3rwang'),'search,statics,culture,trace');
@@ -19,14 +19,16 @@ test('Scope feature switches are four independent boolean columns',()=>{
   assert.equal(scopeConfigColumns('loc'),'id,display_name,locale');
   assert.deepEqual(scopeFeaturePatch('loc',settings),{});
 });
-test('ArticleTag JSONB stays independent of compact feature switches',()=>{
-  const tags=['suno','kkcity','其他'];
-  assert.equal(scopeTagColumn('lo3rwang'),'ArticleTag');
-  assert.equal(scopeTagColumn('loc'),'DefaultArticleClass');
-  assert.equal(scopeTagColumn('lrunes'),'txt_class');
-  assert.deepEqual(scopeTagNames('lo3rwang',{ArticleTag:tags}),tags);
-  assert.deepEqual(scopeTagNames('loc',{DefaultArticleClass:tags}),tags);
+test('Scope source catalogue uses Anchor projection and LOC system names',()=>{
+  const tags=['suno','kkcity','others'];
+  assert.deepEqual(scopeSourceNames({sourceNames:tags}),tags);
+  assert.deepEqual(scopeSourceNames({DefaultArticleClass:['Facebook']}),['Facebook']);
+  assert.deepEqual(scopeSourceNames({}),[]);
+  const hook=readFileSync(new URL('../app/loc/scope-source-category-row.mjs',import.meta.url),'utf8');
+  assert.match(hook,/read_source_catalog/);
+  assert.doesNotMatch(hook,/ArticleTag|txt_class|scopeTagColumn/);
 });
+
 test('feature gates and admin UI use native boolean flags',()=>{
   const read=p=>readFileSync(new URL('../'+p,import.meta.url),'utf8');
   const app=read('app/loc/LocApp.jsx'),admin=read('app/loc/views/admin-panels/AdminRegistry.jsx');

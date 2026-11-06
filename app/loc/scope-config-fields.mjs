@@ -20,8 +20,9 @@ export function scopeFeaturePatch(id,config){
     scopeFeatureName(key),scopeFeatureEnabled(config,key)
   ]));
 }
-export const scopeTagColumn=id=>String(id)==='loc'?'DefaultArticleClass':String(id)==='lrunes'?'txt_class':'ArticleTag';
-export function scopeTagNames(id,row){
-  const value=row?.[scopeTagColumn(id)];
+// Source names now come from Scope Anchor From nodes. LOC's system entries
+// remain the explicitly managed group-level DefaultArticleClass catalogue.
+export function scopeSourceNames(row){
+  const value=row?.sourceNames??row?.DefaultArticleClass;
   return Array.isArray(value)?value:[];
 }

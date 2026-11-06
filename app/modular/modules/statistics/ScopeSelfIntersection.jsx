@@ -7,7 +7,6 @@ import selfIntersectionZh from '../../../i18n/sections/uiExtra.selfIntersection.
 registerDefaultSection('uiExtra.selfIntersection',selfIntersectionZh);
 
 import {useMemo,useState} from 'react';
-import {scopeTagColumn,scopeTagNames} from '../../../loc/scope-config-fields.mjs';
 import {useAsyncResource} from '../../../loc/use-async-resource';
 import {selectScopeSourceBreakdownRows} from '../../../loc/galaxy-query';
 import {assignedSource} from '../../../loc/member-intersection-model.mjs';
@@ -103,13 +102,9 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
       const {publishedSourceTaxonomy}=await import('../../published-source-taxonomy.js');
       const published=publishedSourceTaxonomy(scope.id);
       if(published)return {groups:published.groups||[],aliases:published.groupAliases||[]};
-      const {selectRows}=await import('../../../loc/db-query.mjs');
-      const {sourceTaxonomyFromArrays}=await import('../../../loc/source-classification.mjs');
-      const {rows}=await selectRows('silver.'+scope.id,{
-        columns:scopeTagColumn(scope.id),filters:[{column:'id',operator:'eq',value:scope.id}],limit:1
-      });
-      const list=sourceTaxonomyFromArrays([],scopeTagNames(scope.id,rows[0]));
-      return {groups:list.groups,aliases:list.groupAliases};
+      const {readPublicSourceTaxonomy}=await import('../../../loc/source-catalog-public.mjs');
+      const list=await readPublicSourceTaxonomy(scope.id);
+      return {groups:list.groups||[],aliases:list.groupAliases||[]};
     }
   });
   const othersActive=useMemo(()=>new Map((othersConfig.data?.groups||[])

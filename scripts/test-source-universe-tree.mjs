@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   SOURCE_KEYWORD_LEVELS,sourceTreeFromArrays,sourceTreeFromAnchors,sourceTaxonomyFromArrays,
-  sourceSiteKeyForLabel,sourceLabelMatchesSite
+  sourceSiteKeyForLabel,sourceLabelMatchesSite,sourceTaxonomyFromCatalog
 } from '../app/loc/source-classification.mjs';
 import {publishedSourceTaxonomy,publishedSourceCategoryCatalog}
   from '../app/modular/published-source-taxonomy.js';
@@ -36,13 +36,13 @@ test('site is never replaced with display label and aliases come from one rule',
   assert.equal(sourceLabelMatchesSite('facebook','Facebook'),true);
   const published=publishedSourceTaxonomy('lo3rwang');
   assert.ok(published.tree.find(row=>row.type==='universe'));
-  assert.ok(published.tree.find(row=>row.type==='galaxy'&&row.name==='lo3rwang'));
+  assert.ok(published.tree.find(row=>row.type==='galaxy'&&row.name==='LOC'));
   assert.ok(published.groupAliases.some(row=>row.source_key==='vocus'));
   assert.ok(published.groupAliases.some(row=>row.source_key==='wretch'));
   assert.ok(published.groupAliases.some(row=>row.source_key==='others'));
   assert.ok(publishedSourceCategoryCatalog('lo3rwang').aliases.some(row=>row.source_key==='vocus'));
 });
-test('legacy consumers get unchanged empty and flat taxonomy shapes',()=>{
+test('flat presentation compatibility remains stable for old published sites',()=>{
   assert.deepEqual(sourceTaxonomyFromArrays([],[]),
     {categories:[],aliases:[],groups:[],groupAliases:[]});
   assert.deepEqual(sourceTaxonomyFromArrays(['Facebook'],['suno','FACEBOOK']).groups,
@@ -77,4 +77,16 @@ test('Scope sees LOC ancestors and its own source branch, never sibling Scopes',
  assert.throws(()=>assertSourceNodeWritePermission({
    viewerScopeId:'loc',nodeType:'from',nodeScopeId:'lo3rwang',canManageLoc:true
  }),/denied/);
+});
+
+test('physical From site key is independent from the user-facing label',()=>{
+  const taxonomy=sourceTaxonomyFromCatalog(['Facebook'],[
+    {uid:'abcd1234',name:'vocus',label:'我的方格子'},
+    {uid:'abcd1235',name:'others',label:'其他'}
+  ]);
+  assert.deepEqual(taxonomy.groups.map(row=>[row.group_code,row.display_name]),
+    [['vocus','我的方格子'],['others','其他']]);
+  assert.deepEqual(taxonomy.groupAliases.map(row=>row.source_key),['vocus','others']);
+  assert.deepEqual(sourceTaxonomyFromCatalog([],[]),
+    {categories:[],aliases:[],groups:[],groupAliases:[]});
 });

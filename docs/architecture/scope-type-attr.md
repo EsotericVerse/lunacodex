@@ -400,3 +400,12 @@ Search 只對 Galaxy `content` 執行模糊比對；進階內容類型只保留�
 - 現有 `anchor_type_check` 與 `anchor_attr_keys_minimal_chk` 會拒絕新型別。單一既有 migration 僅增加四種 source `type` 的允許值及對應 `attr` 結構檢查，完全不新增表、欄位、索引、RPC。**正式儲存前必須先套用 Migration**。
 - 驗證：於既有資料庫的單一 PostgreSQL 交易內臨時更新約束，成功插入 `domain → from` 並確認 UID 關聯；另於 lo3rwang、lrunes 兩個 Scope 都成功插入 `universe → galaxy → domain → from` 完整四層，再執行 `ROLLBACK`；再次查核約束未持久化、測試資料為 0 筆。前端實際登入／寫入、Portable 外部資料庫與部署尚未驗收。
 - 舊 `silver.loc.DefaultArticleClass` 與 Scope `ArticleTag/txt_class` 在所有公開 Culture / Statistics 使用者都切到正式來源快照前不可刪除；本次 Scope 管理／匯入入口已優先讀 Anchor。後續若未完成公開讀取切換，不可標示「完全移除舊來源分類」。
+
+### 2026-11-07｜ArticleTag / txt_class 退役的雙階段驗收
+
+- 來源分類真實資料現已存在 `lo3rwang_anchor`（Domain 1、From 7）與 `lrunes_anchor`（Domain 1、From 3）。原標籤順序、顯示名稱已與舊欄位逐項比對一致；From.title 是不可隨顯示名稱變動的 Galaxy.site 比對鍵。
+- 管理來源、匯入與來源更正的讀取統一經過受授權的 `read_source_catalog`；Scope 只讀自己和 LOC 上層，不讀同層其他 Scope。寫入 `save_scope_sources` 只能修改自己的 Domain / From。
+- Cloudflare 讀取公開 `PUBLISHED_SOURCE_ENTRIES`，文化與統計使用已發布資料，不每次進站查 Anchor。靜態 `sync:public` 不以匿名權限查私有 Anchor；須先以授權程序更新已審核的分類快照，再執行既有發布流程。不能為了發布改寬 RLS 或新增匿名資料出口。
+- 原正式 Supabase Edge 程式未包含來源目錄動作，已對當前已部署程式做最小補丁：`loc-kysely` v33、`loc-kysely-clerk` v27，其他模組和驗證設定維持不變。兩支函式的實體檔案已核對包含相同動作；後端尚須進行以真實使用者身分的讀寫驗證。
+- 程式與 ZenStack 契約清除 `ArticleTag`、`txt_class` 依賴，**實際資料庫欄位不能與此變更同時盲刪**；應在前端已部署、真實登入讀寫與公開文化／統計驗證後，再獨立進行包含資料一致性檢查的實體 Drop Column。
+- `silver.loc.DefaultArticleClass` 是 LOC 上層系統分類，未包含在此次刪欄位的授權範圍；本次不改它、不增 Schema、新 RPC 或公開 RLS。
