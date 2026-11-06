@@ -7,8 +7,9 @@ const uidPattern=/^[A-Za-z0-9]{8}$/;
 const publicTypes=new Set(['date','period','era','point','path','trace','image','video','rune','suno']);
 const keywordTypes=new Set(['category','class','group','item']);
 // Source classification reuses the existing Anchor tree store and operations.
-// galaxy -> domain -> from; do not create a second source table or RPC.
-const sourceTypes=new Set(['from','domain','galaxy']);
+// universe -> galaxy -> domain -> from. Names may repeat across levels.
+// Galaxy.site and Galaxy.site_id are unchanged for source matching/import dedupe.
+const sourceTypes=new Set(['from','domain','galaxy','universe']);
 const allowedFields=new Set(['op','uid','title','description','invisible','data','where',
   'limit','offset','updates','mode','classUid','createtime']);
 const anchorTime=value=>{
