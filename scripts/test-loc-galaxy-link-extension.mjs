@@ -77,3 +77,56 @@ test('LOC 彩虹橋品牌版本與網站 favicon 綁定',()=>{
  assert.ok(manifest.action.default_icon['16']);
  assert.ok(text.includes("const DB_NAME='loc-channel1-queue'"),'preserve unsent IndexedDB items');
 });
+
+test('Idle retry never reads LOC auth or requests a token',async()=>{
+ const flushSource=between('async function flush(){','chrome.runtime.onInstalled');
+ let tokenCalls=0,networkCalls=0;
+ const flush=new Function('activeToken','allPending','chrome','batches','stableBatchId',
+  'fetch','acknowledgeBatch','oauthError',
+  'let processing=null;'+flushSource+'return flush;')(
+  async()=>{tokenCalls++;throw Error('Idle token access must not happen');},
+  async()=>[],{storage:{local:{get:async()=>{throw Error('Idle config fetch must not happen');}}}},
+  ()=>[],async()=>'',async()=>{networkCalls++;throw Error('Idle network must not happen');},
+  async()=>{throw Error('Idle acknowledgement must not happen');},Error);
+ assert.equal(await flush(),0);
+ assert.equal(tokenCalls,0);
+ assert.equal(networkCalls,0);
+});
+test('Confirmed batch is acknowledged once, failed import preserves queue',async()=>{
+ const flushSource=between('async function flush(){','chrome.runtime.onInstalled');
+ const records=[{id:'one',captured_at:'2026-11-06T01:00:00Z'},{id:'two',captured_at:'2026-11-06T02:00:00Z'}];
+ const confirmations=[];
+ let accepted=true,requestCount=0;
+ const flush=new Function('activeToken','allPending','chrome','batches','stableBatchId',
+  'fetch','acknowledgeBatch','oauthError',
+  'let processing=null;'+flushSource+'return flush;')(
+  async()=> 'access',
+  async()=>[...records],{storage:{local:{get:async()=>({locConfig:{import_url:'https://loc.lo3rwang.cc/v1/import/short'}})}}},
+  data=>[data],async()=> 'batch-1',
+  async(_url,options)=>{requestCount++;assert.match(options.headers.authorization,/Bearer access/);
+    return {ok:accepted,status:503,json:async()=>({accepted:true,id:'batch-1'})};},
+  async data=>{confirmations.push(data.map(x=>x.id));},Error);
+ accepted=false;
+ await assert.rejects(flush(),/503/);
+ assert.equal(confirmations.length,0);
+ accepted=true;
+ assert.equal(await flush(),2);
+ assert.equal(requestCount,2);
+ assert.deepEqual(confirmations,[['one','two']]);
+});
+test('Batch acknowledgement uses one IndexedDB transaction',async()=>{
+ const batchSource=between('async function acknowledgeBatch(records){','async function badge(');
+ const deleted=[];let transactions=0,closes=0;
+ const db={transaction:()=>{
+  transactions++;
+  const tx={objectStore:()=>({delete:id=>deleted.push(id)})};
+  queueMicrotask(()=>tx.oncomplete());
+  return tx;
+ },close:()=>{closes++;}};
+ const acknowledge=new Function('dbOpen','STORE',batchSource+'return acknowledgeBatch;')(
+  async()=>db,'pending');
+ await acknowledge([{id:'one'},{id:'two'}]);
+ assert.equal(transactions,1);
+ assert.deepEqual(deleted,['one','two']);
+ assert.equal(closes,1);
+});
