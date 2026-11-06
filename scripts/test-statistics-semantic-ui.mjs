@@ -13,9 +13,9 @@ test('keyword and multimedia hits do not offer exclusive-composition pies',()=>{
   assert.deepEqual(ids(semanticStatisticChartTypes({purpose:'keyword',distribution:two})),['bar']);
   assert.deepEqual(ids(semanticStatisticChartTypes({purpose:'media',distribution:two})),['bar']);
 });
-test('source and location categories retain meaningful distribution charts',()=>{
+test('only exclusive sources may use composition pies',()=>{
   assert.deepEqual(ids(semanticStatisticChartTypes({purpose:'source',distribution:two})),['bar','pie','treemap']);
-  assert.deepEqual(ids(semanticStatisticChartTypes({purpose:'place',distribution:two})),['bar','pie']);
+  assert.deepEqual(ids(semanticStatisticChartTypes({purpose:'place',distribution:two})),['bar']);
 });
 test('dense categorical pies are omitted in favor of readable rankings',()=>{
   const distribution=Array.from({length:8},(_,i)=>({name:'source-'+i,value:i+1}));
@@ -57,4 +57,15 @@ test('multimedia ranking actually renders ranked categories, not temporal bars',
   assert.match(facet,/barLayout=\{chosenChartType==='bar'\?'vertical':'horizontal'\}/);
   assert.match(shared,/actual==='bar'&&barLayout==='vertical'&&categories\.length/);
   assert.match(facet,/preferredStatisticChartType\(\{purpose:'media'/);
+});
+
+test('overlapping counts are never portrayed as additive stacked areas',()=>{
+  const rows=[{period:'01',a:4,b:3},{period:'02',a:2,b:5},{period:'03',a:6,b:4}];
+  const series=[{key:'a',label:'A'},{key:'b',label:'B'}];
+  for(const purpose of ['place','keyword','media','comparison']){
+    const types=ids(semanticStatisticChartTypes({purpose,rows,series,distribution:two}));
+    assert.equal(types.includes('stacked'),false,purpose);
+    assert.equal(types.includes('pie'),false,purpose);
+  }
+  assert.equal(ids(semanticStatisticChartTypes({purpose:'source',rows,series,distribution:two})).includes('stacked'),true);
 });
