@@ -40,6 +40,8 @@
     "@streamparser/json": "0.0.26",
     "@supabase/postgrest-js": "2.79.0",
     "@supabase/supabase-js": "2.117.2",
+    "@zenstackhq/orm": "^3.10.1",
+    "@zenstackhq/schema": "^3.10.1",
     "fflate": "0.8.3",
     "immer": "11.1.18",
     "jsonpath-plus": "^11.2.2",
