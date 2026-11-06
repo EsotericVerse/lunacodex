@@ -54,7 +54,7 @@ function compileFixedSchema({schema:namespace,tables}){
       name,fields,idFields:[...table.pk],uniqueFields,
       attributes:[
         literal('@@map','name',table.table),
-        literal('@@schema','map',namespace)
+        literal('@@schema','map',table.schema||namespace)
       ]
     };
   }
