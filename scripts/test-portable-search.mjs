@@ -80,7 +80,7 @@ test('local SQLite compiles the same parameterized contains and nested OR logic'
   const compound=api.compileLocalOr(parsePortableOrExpression(
     'and(or(content.contains."黑刃",content.contains."混沌"),date.gte.2026-01-01)'
   ));
-  assert.equal(compound.sql,'(("content" LIKE ? ESCAPE \'!\' OR "content" LIKE ? ESCAPE \'!\') AND "date">=?)');
+  assert.equal(compound.sql,'((("content" LIKE ? ESCAPE \'!\' OR "content" LIKE ? ESCAPE \'!\') AND "date">=?))');
   assert.deepEqual([...compound.params],['%黑刃%','%混沌%','2026-01-01']);
   assert.throws(()=>api.compileFilter('content;drop','contains','x'),/Invalid column/);
   assert.match(source,/or\(expr\)\{state\.orFilters\.push\(parsePortableOrExpression\(expr\)\)/);
