@@ -20,8 +20,12 @@ const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function checkedRecord(r){
  return r&&typeof r==='object'&&!Array.isArray(r)&&UUID.test(r.id)&&
  typeof r.content==='string'&&r.content.length>0&&r.content.length<=140000&&
- typeof r.source==='string'&&r.source.length<=250&&typeof r.title==='string'&&
- typeof r.url==='string'&&r.url.length<=4096&&typeof r.captured_at==='string';
+ typeof r.source==='string'&&r.source.length>0&&r.source.length<=250&&
+ typeof r.title==='string'&&r.title.length<=350&&
+ typeof r.url==='string'&&r.url.length<=4096&&typeof r.captured_at==='string'&&
+ UUID.test(r.group_id)&&Number.isInteger(r.part_count)&&r.part_count>=1&&
+ r.part_count<=10000&&Number.isInteger(r.part_index)&&
+ r.part_index>=0&&r.part_index<r.part_count;
 }
 async function accept(request,env){
  const token=(request.headers.get('authorization')||'').replace(/^Bearer\s+/i,'');
