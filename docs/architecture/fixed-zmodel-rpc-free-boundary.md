@@ -98,13 +98,21 @@ without a catalog dependency.
   first **after active consumers and ISR fallback paths are proved independent**;
   only then retire its former helper functions using `DROP FUNCTION ... RESTRICT`
   with exact PostgreSQL signatures.
-- `silver.new_keyword_tree_uid(text)` was used by the Kysely keyword-class
-  importer. The importer now uses a cryptographic Base62 eight-character
-  generator, checks current database UIDs and reserves generated UIDs within
-  the transaction; it no longer calls the SQL function or takes a
-  PostgreSQL-specific advisory lock. **Do not DROP this function yet**:
-  `app/loc/providers/kysely-scope-admin.mjs` and the older SQL
-  `silver.import_shared_keyword_class` still call it.
+- Both Kysely Keyword importers now call the **existing**
+  `allocateAnchorUid` eight-character Base62 generator. New Scope provisioning
+  copies into its just-created empty Anchor and only reserves new IDs in a local
+  `Set`; it does not compare against the database. Existing Scope class import
+  writes with `INSERT ... ON CONFLICT (uid) DO NOTHING RETURNING uid` and
+  retries only when the primary key reports a collision. No per-UID SELECT,
+  full Anchor scan, separate UID RPC, duplicate generator, or advisory lock.
+  The legacy SQL `silver.import_shared_keyword_class` still calls
+  `silver.new_keyword_tree_uid(text)`, so **do not DROP either** before
+  confirming deployment and legacy caller retirement.
+
+- Public ISR summary and public Bootstrap now use the established
+  `analytics` and `publicAction` methods directly. The obsolete `.rpc()`
+  fallback and the unused SQL gateway `kind='rpc'` dispatch branch were
+  removed. No new conversion layer, schema field, index or JSONB payload.
 - Never conflate policy/trigger helper functions with public RPCs:
   `api.current_user_id`, `silver.manage`,
   `silver.domain_has_repeated_labels`,
