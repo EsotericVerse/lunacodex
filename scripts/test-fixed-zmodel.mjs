@@ -130,3 +130,19 @@ test('ZenStack V3 compiles fixed-model Kysely reads without a database or stored
   assert.match(compiled.sql,/"silver"\."lo3rwang_anchor"/);
   assert.deepEqual(compiled.parameters,['date',5]);
 });
+
+test('active LOC browser and local providers have no SQL RPC transport',()=>{
+  const active=[
+    '../app/loc/providers/clerk-gateway.mjs',
+    '../app/loc/providers/kysely-edge.mjs',
+    '../app/loc/providers/local-sqlite.mjs',
+    '../app/loc/db-client.mjs'
+  ];
+  for(const path of active){
+    const code=readFileSync(new URL(path,import.meta.url),'utf8');
+    assert.doesNotMatch(code,/\.rpc\s*\(/,path+' must not invoke a database RPC');
+    assert.doesNotMatch(code,/kind:\s*['"]rpc['"]/,path+' must not send an RPC request');
+  }
+  const bridge=readFileSync(new URL('../app/loc/providers/configured.mjs',import.meta.url),'utf8');
+  assert.match(bridge,/createClerkGatewayAdapter/);
+});
