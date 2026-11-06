@@ -7,6 +7,7 @@ registerDefaultSection('uiExtra.statisticsView',statisticsViewZh);
 
 import {useMemo} from 'react';
 import {useAsyncResource,useResourceCache} from '../../../loc/use-async-resource';
+import {mapBounded} from '../../../loc/bounded-parallel.mjs';
 import {defaultScopeData} from '../../../loc/scope-data';
 import {selectDailyRuneRange} from '../../../loc/daily-runes';
 import {normalizeDailyDraws} from '../../../lrunes/daily-analytics-model.mjs';
@@ -53,7 +54,7 @@ export default function LocMemberIntersection({
     queryKey:['loc-member-cross',startDate,endDate,chosenIds.join('|'),lanes.some(x=>x.metric.startsWith('daily'))],
     enabled:Boolean(loadGalaxyStatistics&&startDate&&endDate&&chosenIds.length),
     queryFn:async()=>{
-      const pairs=await Promise.all(chosenIds.map(async id=>{
+      const pairs=await mapBounded(chosenIds,3,async id=>{
         // Only the Scopes chosen in the lanes are read, and only now that the panel is open.
         const scope=scopes.find(item=>item.id===id);
         const rows=scope
@@ -72,7 +73,7 @@ export default function LocMemberIntersection({
           ?normalizeDailyDraws(daily,date=>realMoonPhase(new Date(date+'T12:00:00+08:00')))
           :[];
         return [id,{rows,daily:draws}];
-      }));
+      });
       return {rangeKey,datasets:new Map(pairs)};
     },
   });
