@@ -54,7 +54,7 @@ const STAT_TYPES=['total','source','keywords','media','place'];
 const STAT_TYPE_KEYS=Object.freeze({
   total:'statistics.totalSource',
   source:'uiExtra.statisticsUI.sourceGroup',
-  place:'uiExtra.statisticsUI.place',
+  place:'uiExtra.statisticsUI.placeKeyword',
   media:'uiExtra.statisticsUI.mediaKeyword',
   keywords:'uiExtra.statisticsUI.keywordClass'
 });
