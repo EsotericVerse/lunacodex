@@ -45,3 +45,26 @@ test('Unicode-safe splitting never truncates long webpages',async()=>{
  assert.deepEqual(written.map(x=>x.part_index),[0,1,2]);
  assert.ok(written.every(x=>x.part_count===3));
 });
+
+test('LOC native OAuth replaces all Clerk bridge and KV upload wiring',()=>{
+ const manifest=JSON.parse(readFileSync(new URL('../extensions/loc-channel1/manifest.json',import.meta.url),'utf8'));
+ const options=readFileSync(new URL('../extensions/loc-channel1/options.html',import.meta.url),'utf8');
+ assert.ok(manifest.permissions.includes('identity'));
+ assert.ok(text.includes('chrome.identity.launchWebAuthFlow'));
+ assert.ok(text.includes("code_challenge_method:'S256'"));
+ assert.ok(text.includes("grant_type:'refresh_token'"));
+ assert.ok(text.includes("config.import_url"));
+ assert.ok(!text.includes("+'/v1/batch'"));
+ assert.ok(!text.includes("KV Worker URL"));
+ assert.ok(!options.includes('clerk.accounts.dev'));
+ assert.ok(!options.includes('id="token"'));
+});
+test('stale Clerk config fails closed instead of opening a Clerk login',async()=>{
+ const source=text.slice(text.indexOf('function oauthError('),text.indexOf('async function exchange('));
+ const getConfig=new Function('fetch','URL','chrome','CONFIG_URL',source+'return getConfig;')(
+  async()=>({ok:true,json:async()=>({issuer:'https://legacy.clerk.accounts.dev',
+    client_id:'old-id',import_url:'https://loc.lo3rwang.cc/import'})}),
+  URL,{storage:{local:{set:async()=>{throw Error('must not persist Clerk config');}}}},
+  'https://loc.lo3rwang.cc/extension/oauth/config.json');
+ await assert.rejects(getConfig(),/LOC 自有認證尚未啟用/);
+});
