@@ -245,7 +245,115 @@ async function bulkUpdateGalaxyFlags(trx,args){
   return {matching,updated,remaining:matching-updated};
 }
 
-const ACTIONS=new Set(['read_group_members','update_group_member_name',
+
+// Source-list control uses the existing per-Scope Anchor table, not Galaxy
+// article scans or a new SQL schema. Privileged reads happen only after
+// verifying LOC Group or the requested Scope, never across sibling Scopes.
+const sourceUidList=row=>Array.isArray(row?.attr?.uid)?row.attr.uid:[];
+const sourceNames=value=>{
+  if(typeof value==='string'){try{value=JSON.parse(value)}catch{return []}}
+  return Array.isArray(value)?value.filter(x=>typeof x==='string'&&x.trim()).map(x=>x.trim()):[];
+};
+async function sourceMemberScopes(trx,viewer){
+  if(viewer!=='loc')return [viewer];
+  const records=await trx.selectFrom('api.manage').select('id')
+    .where('parent_scope_id','=','loc').where('manage_role','=','scope')
+    .where('active','=',true).orderBy('sort_order','asc').orderBy('id','asc').execute();
+  return records.map(row=>row.id).filter(id=>/^[a-z][a-z0-9]{0,14}$/.test(id));
+}
+async function sourceCatalogAction(trx,args,save=false){
+  const viewer=validScope(args.p_scope_id);
+  const group=viewer==='loc';
+  if(!(await canManageLoc(trx,group?'group':'scope',viewer)))
+    reject('Source catalog permission denied',403);
+  // The caller never provides a target sibling Scope. Even LOC has no
+  // permission to save a member's Domain/From catalogue through this action.
+  if(save&&group)reject('LOC cannot edit child Scope sources',403);
+  const scopes=await sourceMemberScopes(trx,viewer);
+  await sql`reset role`.execute(trx);
+  if(save){
+    const entries=args.p_sources;
+    if(!Array.isArray(entries)||entries.length>400||
+       entries.some(v=>!v||typeof v!=='object'||Array.isArray(v)||
+         Object.keys(v).some(k=>!['uid','name'].includes(k))||
+         typeof v.name!=='string'||!v.name.trim()||v.name.trim().length>80||
+         v.uid!==undefined&&!UID.test(String(v.uid))))
+      reject('Invalid source names');
+    const names=entries.map(item=>item.name.trim());
+    if(new Set(names.map(n=>n.normalize('NFKC').toLowerCase())).size!==names.length)
+      reject('Duplicate source names');
+    const anchor='silver.'+viewer+'_anchor';
+    await sql`select pg_advisory_xact_lock(hashtext(${viewer}),hashtext('source-anchor'))`.execute(trx);
+    const existing=await trx.selectFrom(anchor).select(['uid','type','title','attr'])
+      .where('type','in',['domain','from']).execute();
+    const domains=existing.filter(row=>row.type==='domain'&&row.title===viewer);
+    if(domains.length>1)reject('Duplicate Scope source Domain');
+    const current=domains[0]||null,owned=new Set(sourceUidList(current));
+    const oldFrom=new Map(existing.filter(row=>row.type==='from'&&owned.has(row.uid))
+      .map(row=>[row.uid,row]));
+    if(owned.size!==oldFrom.size)reject('Broken source hierarchy references');
+    const assigned=new Set((await trx.selectFrom(anchor).select('uid').execute()).map(row=>row.uid));
+    const next=[];
+    for(const item of entries){
+      const name=item.name.trim();
+      let uid=item.uid;
+      if(uid&&!owned.has(uid))reject('Cannot edit a foreign source UID',403);
+      if(uid&&!oldFrom.has(uid))reject('Source UID does not belong to Domain');
+      if(uid){
+        if(oldFrom.get(uid).title!==name)
+          await trx.updateTable(anchor).set({title:name}).where('uid','=',uid)
+            .where('type','=','from').execute();
+      }else{
+        uid=allocateAnchorUid(assigned);assigned.add(uid);
+        await trx.insertInto(anchor).values({uid,type:'from',title:name,
+          description:null,invisible:false,attr:sql`'{}'::jsonb`}).execute();
+      }
+      next.push(uid);
+    }
+    if(new Set(next).size!==next.length)reject('Duplicate source UID');
+    if(!current){
+      const uid=allocateAnchorUid(assigned);
+      await trx.insertInto(anchor).values({uid,type:'domain',title:viewer,
+        description:null,invisible:false,attr:sql`${JSON.stringify({uid:next})}::jsonb`}).execute();
+    }else{
+      await trx.updateTable(anchor).set({attr:sql`${JSON.stringify({uid:next})}::jsonb`})
+        .where('uid','=',current.uid).where('type','=','domain').execute();
+    }
+    const removed=[...owned].filter(uid=>!next.includes(uid));
+    if(removed.length)await trx.deleteFrom(anchor).where('type','=','from')
+      .where('uid','in',removed).execute();
+    return {count:next.length,removed:removed.length};
+  }
+  const global=await trx.selectFrom('silver.loc').select('DefaultArticleClass')
+    .where('id','=','loc').executeTakeFirst();
+  const system=sourceNames(global?.DefaultArticleClass);
+  const records=[];
+  for(const id of scopes){
+    const registry=await trx.selectFrom('api.manage').select(['id','manage_role','anchor_table'])
+      .where('id','=',id).where('manage_role','=','scope').where('active','=',true)
+      .executeTakeFirst();
+    if(!registry)continue;
+    const suffix=String(registry.anchor_table||'anchor');
+    if(!/^[a-z][a-z0-9_]*$/.test(suffix))reject('Invalid source Anchor mapping');
+    const anchor='silver.'+id+'_'+suffix;
+    const rows=await trx.selectFrom(anchor).select(['uid','type','title','description','attr'])
+      .where('type','in',['domain','from']).execute();
+    const domains=rows.filter(row=>row.type==='domain'&&row.title===id);
+    if(domains.length>1)reject('Duplicate source Domain');
+    const domain=domains[0]||null,linked=sourceUidList(domain);
+    const byUid=new Map(rows.filter(row=>row.type==='from').map(row=>[row.uid,row]));
+    const sources=linked.map(uid=>byUid.get(uid));
+    if(sources.some(item=>!item))reject('Source Domain references missing From');
+    const config=await trx.selectFrom('silver.'+id).select(id==='lrunes'?'txt_class':'DefaultArticleClass')
+      .where('id','=',id).executeTakeFirst();
+    records.push({scopeid:id,domain:domain?{uid:domain.uid,title:domain.title}:null,
+      sources:sources.map(row=>({uid:row.uid,name:row.title})),
+      legacy:sourceNames(config?.[id==='lrunes'?'txt_class':'DefaultArticleClass'])});
+  }
+  return {universe:'Eosteric',galaxy:'LOC',system,scopes:records};
+}
+
+const ACTIONS=new Set(['read_source_catalog','save_scope_sources','read_group_members','update_group_member_name',
   'update_group_default_article_class','is_current_email_blocklisted','move_scope_block',
   'preview_or_fill_galaxy_place','batch_fill_galaxy_location',
   'rename_scope_site_batch','save_scope_trace_place_names','save_blocks','loc_admin_settings',
@@ -266,6 +374,8 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     Array.isArray(body.args))reject('Unknown Kysely action');
   const args=body.args;
   const keys={
+    read_source_catalog:['p_scope_id'],
+    save_scope_sources:['p_scope_id','p_sources'],
     read_group_members:['p_group_id'],
     update_group_member_name:['p_group_id','p_member_id','p_display_name'],
     update_group_default_article_class:['p_group_id','p_names'],
@@ -286,6 +396,8 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     read_scope_registry_admin:[]
   }[name];
   if(Object.keys(args).some(key=>!keys.includes(key)))reject('Unexpected Kysely action argument');
+  if(name==='read_source_catalog')return {data:await sourceCatalogAction(trx,args),count:null};
+  if(name==='save_scope_sources')return {data:await sourceCatalogAction(trx,args,true),count:null};
   if(name==='save_blocks'){
     const scope=validScope(args.p_scope_id);
     const page=String(args.p_type||'').trim();
