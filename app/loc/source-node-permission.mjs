@@ -9,7 +9,7 @@ export function sourceNodePermission({viewerScopeId,nodeType,nodeScopeId,canMana
   const owner=String(nodeScopeId||'').toLowerCase();
   if(!viewer||!owner)return {read:false,edit:false};
   // LOC sees the entire source tree. A Scope sees only its own branch and LOC ancestors.
-  const read=viewer==='loc'||(level<=1?owner==='loc':owner===viewer);
+  const read=viewer==='loc'||owner==='loc'||owner===viewer;
   const edit=read&&(level<=1
     ?viewer==='loc'&&owner==='loc'&&canManageLoc===true
     :viewer!=='loc'&&viewer===owner&&canManageScope===true);
