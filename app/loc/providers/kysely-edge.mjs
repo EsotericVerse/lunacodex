@@ -97,7 +97,7 @@ export function createKyselyEdgeClient({url,publishableKey,auth,role='authentica
       body.kind==='analytics'||body.kind==='public-action'||body.kind==='anchor'||
       body.kind==='query'&&body.operation==='select'
     );
-    return publicRead?withPublicReadBudget(()=>performRequest(body,signal)):performRequest(body,signal);
+    return publicRead?withPublicReadBudget(()=>performRequest(body,signal),signal):performRequest(body,signal);
   }
   const client={
     schema(schema){return {from(table){return new KyselyQuery(execute,schema,table)},rpc(name,args={}){return execute({kind:'rpc',schema,name,args,target})},managedWrite(payload){return execute({kind:'managed-write',payload,target})},managedAction(name,args={}){return execute({kind:'managed-action',name,args,target})},anchor(scopeid,type,attr={}){return execute({kind:'anchor',scopeid,type,attr,target})},analytics(args){return execute({kind:'analytics',args,target})},publicAction(name,args={}){return execute({kind:'public-action',name,args,target})}}},
