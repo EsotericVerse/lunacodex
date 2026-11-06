@@ -18,7 +18,7 @@ document.querySelector('#disconnect').addEventListener('click',async()=>{
 document.querySelector('#flush').addEventListener('click',async()=>{
  status.textContent='正在送出累積的 Queue…';
  const result=await call('loc-flush');
- status.textContent=result.error||('已確認送達：'+result.sent+' 筆');
  await show();
+ status.textContent=result.error||('已確認送達：'+result.sent+' 筆');
 });
 show().catch(error=>status.textContent=error.message);
