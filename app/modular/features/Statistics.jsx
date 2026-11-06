@@ -32,7 +32,8 @@ import {ArticleSortSelect,FeaturePage,IncrementalList,WorkFullText} from '../ui'
 import {workDisplayHeading,workDisplayText} from '../work-display-model';
 import {DEFAULT_LIST_BATCH_SIZE} from '../../loc/db-contract.mjs';
 import {assignedSource} from '../../loc/member-intersection-model.mjs';
-import {publishedSourceCategoryCatalog} from '../published-source-taxonomy.js';
+import {publishedSourceCategoryCatalog,publishedSourceTaxonomy} from '../published-source-taxonomy.js';
+import {sourceKeywordOptions} from '../../loc/source-keyword-options.mjs';
 import {administrativeSourceTrend} from '../../loc/statistics-admin-source.mjs';
 import {useAccount} from '../../loc/use-account';
 import {scopeHref} from '../scope-registry';
@@ -253,21 +254,40 @@ function facetTrend(rows=[],window={},selectedCategories=[]){
   });
 }
 
-function StatisticTypeSelect({scopeId,navigation,types}){
+function StatisticTypeSelect({scopeId,navigation,types,selectedSource=''}) {
   const UI_COPY=useUiCopy();
   const t=useUiText();
   const router=useRouter();
+  // The Source group is a second selector family; it reuses the existing
+  // Source chart and the same published Anchor labels as Culture.
+  const sourceOptions=sourceKeywordOptions(publishedSourceTaxonomy(scopeId));
   const requested=String(navigation.rankingType||'');
-  const active=types.includes(requested)?requested:(types[0]||'');
+  const selected=sourceOptions.find(item=>item.code===selectedSource);
+  const active=types.includes(requested)
+    ?requested==='source'&&selected?'source:'+selected.code:requested
+    :(types[0]||'');
   if(!types.length)return null;
   return <label>
     <span>{UI_COPY.statistics.item}</span>
     <select id="statistics-ranking-type" className="scope-select" value={active} onChange={event=>{
       const value=event.target.value;
       if(!value||value===active)return;
-      router.push(featureNavigationHref(scopeId,'statics',{...navigation,rankingType:value}));
+      const choice=sourceOptions.find(item=>'source:'+item.code===value);
+      const rankingType=choice?'source':value;
+      router.push(featureNavigationHref(scopeId,'statics',{
+        ...navigation,rankingType,source:choice?.code
+      }));
     }}>
-      {types.map(value=><option key={value} value={value}>{t(STAT_TYPE_KEYS[value]||value)}</option>)}
+      {types.includes('total')?<option value='total'>{t(STAT_TYPE_KEYS.total)}</option>:null}
+      {types.includes('keywords')?<optgroup label="關鍵詞">
+        <option value="keywords">{t(STAT_TYPE_KEYS.keywords)}</option>
+      </optgroup>:null}
+      {types.includes('source')?<optgroup label="來源">
+        <option value="source">全部來源</option>
+        {sourceOptions.map(item=><option key={item.key} value={'source:'+item.code}>
+          {item.label}
+        </option>)}
+      </optgroup>:null}
     </select>
   </label>;
 }
@@ -288,11 +308,11 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   const [foldBlank,setFoldBlank]=useState(true);
   // Leave potentially expensive keyword aggregation OFF until explicitly chosen.
   const [selectedKeywordClassUid,setSelectedKeywordClassUid]=useState('');
-  const [sourceGroup,setSourceGroup]=useState('');
-    useEffect(()=>{
+  const [sourceGroup,setSourceGroup]=useState(String(navigation.source||''));
+  useEffect(()=>{
     setSelectedKeywordClassUid('');
-    setSourceGroup('');
-  },[scopeId,navigation.statTab,requested]);
+    setSourceGroup(requested==='source'?String(navigation.source||''):'');
+  },[scopeId,navigation.statTab,requested,navigation.source]);
   // Period is the primary Statistics navigation. Default to the latest
   // saved Period, not an unnecessary preliminary one-year statistics fetch.
   const [selectedPeriodKey,setSelectedPeriodKey]=useState('latest');
@@ -478,7 +498,8 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   return <section className="scope-stat-section">
     <header className="scope-stat-domain-heading"><div><h2>{UI_COPY.statistics.result}</h2></div></header>
     <div className="scope-stat-controls">
-      <StatisticTypeSelect scopeId={scopeId} navigation={navigation} types={types}/>
+      <StatisticTypeSelect scopeId={scopeId} navigation={navigation} types={types}
+        selectedSource={activeSourceSelection}/>
       {keywordDimension?<label>
         <span>關鍵詞組（Class）</span>
         <select className="scope-select" aria-label="關鍵字群組" value={resolvedKeywordClassUid}
