@@ -130,7 +130,7 @@ test('website session bridge does not transfer default Clerk Session Token',()=>
   const source=read('public/extension/website-bridge.mjs');
   const manifest=JSON.parse(read('extensions/loc-galaxy/manifest.json'));
   const html=read('public/extension/auth-bridge.html');
-  assert.equal(manifest.version,'0.6.7');
+  assert.equal(manifest.version,'0.6.8');
   assert.deepEqual(manifest.externally_connectable.matches,['https://loc.lo3rwang.cc/*']);
   assert.match(grant,/chrome\.runtime\.onMessageExternal/);
   assert.match(grant,/trustedSender\(sender\)/);

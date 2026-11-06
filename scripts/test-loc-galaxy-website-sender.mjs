@@ -7,7 +7,7 @@ test('website bridge fallback is loaded, without broadening external origins',()
   const manifest=JSON.parse(read('extensions/loc-galaxy/manifest.json'));
   const entry=read('extensions/loc-galaxy/background-entry.mjs');
   const fallback=read('extensions/loc-galaxy/website-grant-fallback.mjs');
-  assert.equal(manifest.version,'0.6.7');
+  assert.equal(manifest.version,'0.6.8');
   assert.equal(manifest.background.service_worker,'background-entry.mjs');
   assert.deepEqual(manifest.externally_connectable.matches,['https://loc.lo3rwang.cc/*']);
   assert.match(entry,/import '\.\/background-core\.mjs'/);
@@ -61,7 +61,7 @@ test('External website origin-only sender passes when extension-created tab bind
   const url='https://loc.lo3rwang.cc/extension/auth-bridge.html?scopeid='+scopeid+'&nonce='+nonce;
   const chrome={
     runtime:{onMessageExternal:{addListener:fn=>{listener=fn;}},
-      getManifest:()=>({version:'0.6.7'})},
+      getManifest:()=>({version:'0.6.8'})},
     storage:{session:{get:async()=>({'locGalaxy.websitePending':{nonce,scopeid,tabId:7,created:Date.now()}})},
       local:{get:async()=>({'locGalaxy.scopeid':scopeid})}},
     tabs:{get:async()=>({url})}
@@ -72,7 +72,7 @@ test('External website origin-only sender passes when extension-created tab bind
     listener({type:'locGalaxy.bridgeProbe',nonce,scopeid},sender,resolve);
   });
   assert.deepEqual(await send({origin:'https://loc.lo3rwang.cc'}),{
-    ok:true,data:{bridge:true,protocol:1,version:'0.6.7'}
+    ok:true,data:{bridge:true,protocol:1,version:'0.6.8'}
   });
   const rejected=await send({origin:'https://other.example'});
   assert.equal(rejected.ok,false);
@@ -83,7 +83,7 @@ test('bridge probe rejects expired and absent pending grants before Clerk JWT',a
  const source=read('extensions/loc-galaxy/website-grant-fallback.mjs').replace(/^import[^\n]*\n/,'');
  const nonce='y'.repeat(43),scopeid='lo3rwang';
  let listener,stored={nonce,scopeid,tabId:10,created:Date.now()-300001};
- const chrome={runtime:{onMessageExternal:{addListener:fn=>{listener=fn;}},getManifest:()=>({version:'0.6.7'})},
+ const chrome={runtime:{onMessageExternal:{addListener:fn=>{listener=fn;}},getManifest:()=>({version:'0.6.8'})},
    storage:{session:{get:async()=>({'locGalaxy.websitePending':stored})},local:{get:async()=>({'locGalaxy.scopeid':scopeid})}}};
  new Function('chrome','LOC_ORIGIN','verifyScopeAuthorization','mcpTool',source)(chrome,'https://loc.lo3rwang.cc',()=>{},()=>{});
  const send=()=>new Promise(resolve=>listener({type:'locGalaxy.bridgeProbe',nonce,scopeid},{origin:'https://loc.lo3rwang.cc'},resolve));

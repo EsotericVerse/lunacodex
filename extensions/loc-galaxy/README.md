@@ -136,3 +136,7 @@ Chrome's `runtime.onMessageExternal` for messages originating from a website may
 取消 0.6.6 的 8 秒計時檢查、30 秒 Chrome Alarm 續期與到期前 35 秒自動核發。網站授權頁初次授權時仍會核發一次短效 MCP 專用 JWT；此後只有**使用者實際操作** Galaxy 搜尋、讀取、工作區或匯入同步，且目前 Token 剩餘效期不足 30 秒，Extension 才使用原先綁定的 LOC Clerk 網站授權頁取得新 JWT。閒置期間不會反覆呼叫 Clerk。
 
 Extension 對並行操作共用同一個續期（single-flight），失敗冷卻 10 秒，等待新 Token 最長 15 秒；授權頁已關閉或變更時會要求重新開啟。原本的 Clerk/Scope 權限檢查、MCP QoS、nonce 與網址來源校驗完全保留。網站 Session Cookie 和預設 Session Token 不傳給 Extension。0.6.6 留下的定期警報會在安裝或啟動時清理。
+
+## 0.6.8 — 修復 ChatGPT 對話掃描 0 則
+
+在使用者明確點選「封存目前 ChatGPT 對話」或右鍵匯入時，擷取器現在同時辨識 `[data-testid^="conversation-turn-"]` 和 `[data-message-id]`，支援作者角色位於祖先或子孫 DOM 的結構；避免巢狀 turn 重複讀取。同一對話內對缺少原生訊息 ID 的 turn 採用穩定 turn index 辨識。若完全無法擷取，回傳可辨識節點數與錯誤，不再將「已掃描 0 則」當作成功。使用者仍需明確授權 ChatGPT 頁面讀取；不調整 Clerk、LOC Authority、MCP QoS 或資料庫。
