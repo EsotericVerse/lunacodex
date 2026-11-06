@@ -1,4 +1,4 @@
-const MENU='loc-channel1-save';
+const MENU='loc-galaxy-link-save';
 const DB_NAME='loc-channel1-queue',STORE='pending';
 const MAX_BATCH_BYTES=600000, MAX_TEXT_CHARS=140000;
 const CONFIG_URL='https://loc.lo3rwang.cc/extension/oauth/config.json';
@@ -29,7 +29,7 @@ const acknowledge=id=>dbOperation('readwrite',store=>store.delete(id));
 async function badge(ok,message){
  await chrome.action.setBadgeBackgroundColor({color:ok?'#177245':'#a13b3b'});
  await chrome.action.setBadgeText({text:ok?'OK':'!'});
- if(message)console.info('[LOC Channel 1]',message);
+ if(message)console.info('[LOC galaxy-link]',message);
 }
 function parsePage(){
  const main=document.querySelector('main, [role="main"], article, [itemprop="articleBody"]')||document.body;
@@ -218,7 +218,7 @@ async function flush(){
 }
 chrome.runtime.onInstalled.addListener(async()=>{
  await chrome.contextMenus.removeAll();
- chrome.contextMenus.create({id:MENU,title:'LOC：解析並儲存此頁',contexts:['page']});
+ chrome.contextMenus.create({id:MENU,title:'LOC 彩虹橋：擷取並儲存此頁',contexts:['page']});
  await chrome.storage.local.setAccessLevel({accessLevel:'TRUSTED_CONTEXTS'});
  await chrome.alarms.create('loc-channel1-retry',{periodInMinutes:5});
 });
@@ -231,11 +231,11 @@ chrome.contextMenus.onClicked.addListener((info,tab)=>{
   // Local queue is durable before any network request.
   await badge(true,'已加入本機佇列：'+count+' 筆');
   await chrome.alarms.create('loc-channel1-drain',{delayInMinutes:0.5});
- })().catch(async e=>{console.error('[LOC Channel 1]',e);await badge(false,e.message);});
+ })().catch(async e=>{console.error('[LOC galaxy-link]',e);await badge(false,e.message);});
 });
 chrome.alarms.onAlarm.addListener(e=>{
  if(e.name==='loc-channel1-retry'||e.name==='loc-channel1-drain')
   flush().then(count=>{if(count)badge(true,'已送達 LOC：'+count+' 筆');}).catch(err=>{
-   console.warn('[LOC Queue retry]',err.message);badge(false,err.message);
+   console.warn('[LOC galaxy-link Queue]',err.message);badge(false,err.message);
   });
 });
