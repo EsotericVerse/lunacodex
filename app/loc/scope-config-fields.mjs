@@ -20,7 +20,7 @@ export function scopeFeaturePatch(id,config){
     scopeFeatureName(key),scopeFeatureEnabled(config,key)
   ]));
 }
-export const scopeTagColumn=id=>isJsonbScope(id)?'ArticleTag':String(id)==='lrunes'?'txt_class':'DefaultArticleClass';
+export const scopeTagColumn=id=>String(id)==='loc'?'DefaultArticleClass':String(id)==='lrunes'?'txt_class':'ArticleTag';
 export function scopeTagNames(id,row){
   const value=row?.[scopeTagColumn(id)];
   return Array.isArray(value)?value:[];
