@@ -59,7 +59,7 @@ export function createKyselyEdgeClient({url,publishableKey,auth,role='authentica
     if(signal?.aborted)throw abortedRequest();
     let token='';
     if(typeof getAccessToken==='function'){
-      token=String(await getAccessToken()||'');
+      token=String(await getAccessToken(body)||'');
       if(role==='authenticated'&&!token)
         throw new Error('Authenticated SQL Gateway request requires an active session');
     }else if(auth){
