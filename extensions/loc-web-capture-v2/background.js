@@ -83,7 +83,8 @@ async function stableUuid(input){
  return hex.slice(0,8)+'-'+hex.slice(8,12)+'-5'+hex.slice(13,16)+'-'+
   ((parseInt(hex[16],16)&3)|8).toString(16)+hex.slice(17,20)+'-'+hex.slice(20,32);
 }
-async function toEvents(items){
+async function toEvents(items,scopeid='lo3rwang'){
+ if(!['lo3rwang','lrunes'].includes(scopeid))throw Error('不支援的銀河 Scope');
  if(!Array.isArray(items)||!items.length||items.length>100)throw Error('擷取項目數量超出限制');
  const rows=[];
  for(const item of items){
@@ -94,13 +95,13 @@ async function toEvents(items){
   const title=String(item.title||'未命名網頁').slice(0,350);
   const content=item.content.trim();
   // Use per-item capture groups, not one group for unrelated posts.
-  const group_id=await stableUuid(source_key+'\u0000'+(item.key||'')+'\u0000'+content);
+  const group_id=await stableUuid(scopeid+'\u0000'+source_key+'\u0000'+(item.key||'')+'\u0000'+content);
   const partSize=85000,part_count=Math.ceil(content.length/partSize);
   if(part_count>10000)throw Error('文章過長');
   for(let index=0;index<part_count;index++){
    const part=content.slice(index*partSize,(index+1)*partSize);
-   const id=await stableUuid(source_key+'\u0000'+(item.key||'')+'\u0000'+part+'\u0000'+index);
-   rows.push({id,group_id,source_key,url,title,kind:'capture',write_mode:'append',
+   const id=await stableUuid(scopeid+'\u0000'+source_key+'\u0000'+(item.key||'')+'\u0000'+part+'\u0000'+index);
+   rows.push({id,group_id,scopeid,source_key,url,title,kind:'capture',write_mode:'append',
     part_index:index,part_count,captured_at:new Date().toISOString(),content:part});
   }
  }
@@ -111,7 +112,8 @@ function ready(rows){
   sizeOf(rows)>=MAX_BYTES);
 }
 async function acceptItems(items){
- const events=await toEvents(items);
+ const {locTargetScope='lo3rwang'}=await chrome.storage.local.get('locTargetScope');
+ const events=await toEvents(items,locTargetScope);
  if(!events.length)return {message:'沒有可擷取的內容'};
  const inserted=await putEvents(events);
  const all=await allEvents();
@@ -141,7 +143,8 @@ async function locTab(){
 // Use LOC's EXISTING website auth adapter / delegated SQL gateway, not a
 // second Extension OAuth or a fictitious same-origin cookie API.
 // Only an explicitly opened, hydrated LOC bridge page can receive batches.
-async function sendViaWebsite(batch){
+async function sendViaWebsite(envelope){
+ const {scopeid,batch}=envelope;
  const tab=await locTab();
  if(!tab)throw Error('請先開啟 LOC 彩虹橋網站頁面；Queue 已保留');
  const result=await chrome.scripting.executeScript({
@@ -153,10 +156,10 @@ async function sendViaWebsite(batch){
    if(typeof window.__locGalaxyLinkImport!=='function')
     return {ok:false,error:'LOC 彩虹橋網站尚未完成載入'};
    try{
-    const body=await window.__locGalaxyLinkImport(payload);
+    const body=await window.__locGalaxyLinkImport(payload.batch,payload.scopeid);
     return {ok:true,body};
    }catch(error){return {ok:false,error:String(error?.message||error)};}
-  },args:[batch]
+  },args:[envelope]
  });
  const reply=result?.[0]?.result;
  if(!reply?.ok)throw Error(String(reply?.error||'LOC 銀河寫入失敗')+'；Queue 保留');
@@ -181,12 +184,16 @@ async function flush(force){
    return {message:'自動傳送暫停；請手動檢查'};
   let count=0;
   try{
-   for(const batchRows of packet(rows)){
-    const batch={id:await stableUuid(batchRows.map(r=>r.id).sort().join('|')),
-     write_mode:'append',records:batchRows};
-    await sendViaWebsite(batch);
-    await removeEvents(batchRows);
-    count+=batchRows.length;
+   // Each network batch has exactly one destination Scope. One Queue,
+   // but records acknowledged for one galaxy must not suppress another.
+   for(const scopeid of [...new Set(rows.map(r=>r.scopeid||'lo3rwang'))]){
+    for(const batchRows of packet(rows.filter(r=>(r.scopeid||'lo3rwang')===scopeid))){
+     const batch={id:await stableUuid(batchRows.map(r=>r.id).sort().join('|')),
+      write_mode:'append',records:batchRows.map(({scopeid:localScope,...record})=>record)};
+     await sendViaWebsite({scopeid,batch});
+     await removeEvents(batchRows);
+     count+=batchRows.length;
+    }
    }
    await chrome.storage.local.remove('locImportPaused');
    return {message:'已確認寫入 '+count+' 筆'};
@@ -277,6 +284,12 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
     const rows=await allEvents();
     return {count:rows.length,bytes:sizeOf(rows),
      paused:Boolean((await chrome.storage.local.get('locImportPaused')).locImportPaused)};
+   }
+   case 'queue.scope':{
+    const scopeid=String(message.scopeid||'');
+    if(!['lo3rwang','lrunes'].includes(scopeid))throw Error('不支援的銀河 Scope');
+    await chrome.storage.local.set({locTargetScope:scopeid});
+    return {message:'目的銀河：'+scopeid};
    }
    case 'queue.flush':return flush(true);
    case 'loc.open':
