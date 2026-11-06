@@ -545,7 +545,7 @@ export function IncrementalList({
 export function ScopeFeatureToggles({value={},onChange,className='scope-editor-options',scopeId=''}){
   return <div className={className}>
     {[
-      ['search_able','features.search.title'],
+      ['search','features.search.title'],
       ['statistics_able','features.statics.title'],
       ['culture_able','features.culture.title'],
       ...(isUnifiedAnchorScope(scopeId)?[['trace','features.trace.title']]:[])
