@@ -123,6 +123,22 @@ function managedAffected(result){
   return Number(result?.numInsertedOrUpdatedRows??result?.numUpdatedRows??
     result?.numDeletedRows??result?.numAffectedRows??0);
 }
+function matchingPortableField(key,incoming,stored,engine){
+  // SQL Server returns JSON stored in nvarchar as text; MySQL drivers may
+  // return native JSON or text. Compare media_link by its array value so a
+  // repeat import does not issue an UPDATE only because the read type differs.
+  if(key==='media_link'&&engine!=='postgres'){
+    const decode=value=>{
+      if(typeof value!=='string')return value;
+      try{
+        const parsed=JSON.parse(value);
+        return Array.isArray(parsed)?parsed:value;
+      }catch{return value;}
+    };
+    return JSON.stringify(decode(incoming))===JSON.stringify(decode(stored));
+  }
+  return JSON.stringify(incoming)===JSON.stringify(stored);
+}
 /**
  * Portable counterpart to the PostgreSQL management write procedure.
  * Reuses the verified cross-engine Registry gate and Kysely-native builders.
@@ -198,7 +214,7 @@ export async function executeCrossEngineManagedWrite(db,body,context){
       if(!existing)continue;
       const patch={};
       for(const key of ['title','content','url','media_link']){
-        if(Object.hasOwn(row,key)&&JSON.stringify(row[key])!==JSON.stringify(existing[key]))
+        if(Object.hasOwn(row,key)&&!matchingPortableField(key,row[key],existing[key],context.engine))
           patch[key]=row[key];
       }
       if(Object.hasOwn(row,'place_id')&&
