@@ -105,9 +105,10 @@ export async function executeKyselyPublicAction(trx,body,{engine='postgres',name
     const anchor=sql.ref('silver.'+scope+'_anchor');
     const pattern='%'+term.replace(/[\\%_]/g,'\\$&')+'%';
     const result=await sql`select a.uid::varchar as uid,a.title,
-        case when a.attr ? 'longitude' and a.attr ? 'latitude'
-          then array[(a.attr->>'longitude')::double precision,
-            (a.attr->>'latitude')::double precision]::double precision[]
+        case when coalesce(a.attr->>'lng',a.attr->>'longitude') is not null
+            and coalesce(a.attr->>'lat',a.attr->>'latitude') is not null
+          then array[coalesce(a.attr->>'lng',a.attr->>'longitude')::double precision,
+            coalesce(a.attr->>'lat',a.attr->>'latitude')::double precision]::double precision[]
           else null::double precision[] end as address
       from ${anchor} as a where a.type='point' and a.invisible is false
         and (a.title ilike ${pattern} or exists(
