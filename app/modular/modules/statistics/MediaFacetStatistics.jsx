@@ -12,13 +12,13 @@ import {StatisticsFacets} from '../../../loc/statistics-facets';
 registerDefaultSection('uiExtra.statisticsView',statisticsViewZh);
 registerDefaultSection('uiExtra.dataErrors',dataErrorsZh);
 registerDefaultSection('uiExtra.statisticsUI',statisticsUIZh);
-import {semanticStatisticChartTypes,chartTypeGroups,RUNE_RANKING_PAGE_SIZE,OTHER_RANKING_PAGE_SIZE} from './statistics-time-zoom.mjs';
+import {semanticStatisticChartTypes,chartTypeGroups,preferredStatisticChartType,RUNE_RANKING_PAGE_SIZE,OTHER_RANKING_PAGE_SIZE} from './statistics-time-zoom.mjs';
 import StatisticsChartFrame from './StatisticsChartFrame';
 import StatisticsDetails from './StatisticsDetails';
 
 const StatisticsMultiChart=dynamic(()=>import('./StatisticsMultiChart'),{loading:()=>null});
 
-export default function MediaFacetStatistics({rankingType,rows=[],mediaRows=[],treeRows=[],onRequestRawStyles=null,rawStyleLoading=false,rawStyleError=null,chartType='line',onChartTypeChange,range={},scopeId,foldBlank=false,zoomLevel=0,onZoomLevelChange,rowsInWindow,facetTotals,facetTrend}){
+export default function MediaFacetStatistics({rankingType,rows=[],mediaRows=[],treeRows=[],onRequestRawStyles=null,rawStyleLoading=false,rawStyleError=null,chartType='auto',onChartTypeChange,range={},scopeId,foldBlank=false,zoomLevel=0,onZoomLevelChange,rowsInWindow,facetTotals,facetTrend}){
   useUiSection('uiExtra.statisticsView');
   useUiSection('uiExtra.dataErrors');
   useUiSection('uiExtra.statisticsUI');
@@ -48,8 +48,8 @@ export default function MediaFacetStatistics({rankingType,rows=[],mediaRows=[],t
     purpose:'media',rows:chartRows,series:chartCategories.map(category=>({key:category,label:category})),
     distribution:bars.map(row=>({name:row.term,value:row.value}))
   });
-  const chosenChartType=supported.some(([value])=>value===chartType)?chartType:(supported[0]?.[0]||'line');
-  const chartGroups=chartTypeGroups(supported,['line','pie','bar']);
+  const chosenChartType=preferredStatisticChartType({purpose:'media',available:supported,requested:chartType});
+  const chartGroups=chartTypeGroups(supported,['bar','line','stacked']);
   return <>
     {rankingType==='media_style'&&scopeId==='lo3rwang'&&classes.length?<div className="scope-stat-controls">
       <label><span><UiText id="uiExtra.statisticsUI.mediaStyle"/></span><select className="scope-select" value={styleLevel} onChange={event=>{const next=event.target.value;setStyleLevel(next);setSelectedTag('all');setRankingPage(1);if(next!=='tags')onRequestRawStyles?.();}}>
@@ -95,7 +95,8 @@ export default function MediaFacetStatistics({rankingType,rows=[],mediaRows=[],t
           series={chartCategories.map(category=>({key:category,label:category}))}
           distribution={bars.map(row=>({name:row.term,value:row.value}))}
           foldBlank={foldBlank}
-          height={420}
+          barLayout={chosenChartType==='bar'?'vertical':'horizontal'}
+          height={chosenChartType==='bar'?Math.max(340,Math.min(15,bars.length)*38+75):420}
         />
       </StatisticsChartFrame>
       <StatisticsDetails>{()=><>
