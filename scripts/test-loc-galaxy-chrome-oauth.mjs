@@ -125,16 +125,17 @@ test('OAuth fails before navigation for a mismatched installed Extension ID',asy
 });
 
 test('website session bridge does not transfer default Clerk Session Token',()=>{
-  const worker=read('extensions/loc-galaxy/background.mjs');
+  const worker=read('extensions/loc-galaxy/background-core.mjs');
+  const grant=read('extensions/loc-galaxy/website-grant-fallback.mjs');
   const source=read('public/extension/website-bridge.mjs');
   const manifest=JSON.parse(read('extensions/loc-galaxy/manifest.json'));
   const html=read('public/extension/auth-bridge.html');
-  assert.equal(manifest.version,'0.6.0');
+  assert.equal(manifest.version,'0.6.6');
   assert.deepEqual(manifest.externally_connectable.matches,['https://loc.lo3rwang.cc/*']);
-  assert.match(worker,/chrome\.runtime\.onMessageExternal/);
-  assert.match(worker,/url\.origin!==LOC_ORIGIN/);
-  assert.match(worker,/pending\.nonce===message\.nonce/);
-  assert.match(worker,/verifyScopeAuthorization\(token,scopeid\)/);
+  assert.match(grant,/chrome\.runtime\.onMessageExternal/);
+  assert.match(grant,/trustedSender\(sender\)/);
+  assert.match(grant,/validGrant\(pending,nonce,scopeid/);
+  assert.match(grant,/verifyScopeAuthorization\(token,scopeid\)/);
   assert.match(worker,/auth\.mode==='website'/);
   assert.match(source,/getToken\(\{template:TEMPLATE,skipCache:true\}\)/);
   assert.match(source,/loc-mcp/);
@@ -144,14 +145,15 @@ test('website session bridge does not transfer default Clerk Session Token',()=>
   assert.match(html,/no-referrer/);
 });
 
-test('one-minute website template tokens and missing external replies are differentiated',()=>{
-  const worker=read('extensions/loc-galaxy/background.mjs');
+test('one-minute website JWT renewal and Chrome messaging are diagnosed',()=>{
+  const worker=read('extensions/loc-galaxy/background-core.mjs');
   const bridge=read('public/extension/website-bridge.mjs');
   const oauth=read('extensions/loc-galaxy/oauth.mjs');
   assert.match(worker,/Number\(access\.expires_at\)>Date\.now\(\)\+15_000/);
   assert.doesNotMatch(worker,/Number\(access\.expires_at\)>Date\.now\(\)\+60_000/);
-  assert.match(bridge,/Extension 未回覆網站授權要求/);
-  assert.match(bridge,/Chrome 無法送達 LOC Galaxy Extension/);
+  assert.match(bridge,/Extension 收到前置探測/);
+  assert.match(bridge,/Chrome Extension 通訊失敗/);
+  assert.match(bridge,/nextRenewAt=claims\.exp\*1000-35000/);
   assert.match(oauth,/LOC MCP '\+name\+' 失敗/);
   assert.match(oauth,/data\.result\.content/);
 });
