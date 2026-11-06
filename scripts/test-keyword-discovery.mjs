@@ -216,3 +216,47 @@ test('new-term discovery reads dated Galaxy via date cursor, peers and undated e
   assert.ok(queries.every(query=>!query.orders.includes('uid')));
   assert.ok(queries.every(query=>query.limit===Infinity||query.limit<=10000));
 });
+
+test('same scan reports rare existing Keywords without writing any Anchor fields',()=>{
+  const rows=[{uid:'Key1',type:'item',name:'銀河',lists:['黑刃','靜謐夜']}];
+  const before=JSON.stringify(rows);
+  const scan=createNewKeywordDiscovery(rows);
+  for(let i=0;i<20;i++)scan.consume([{
+    content:i<18?'銀河銀河，宇宙的星光。':i===18?'黑刃，自心而來。':'今日平靜。',
+    createtime:'2026-01-01'
+  }]);
+  const result=scan.finish();
+  const rarelyUsed=new Map(result.infrequentKeywords.map(item=>[item.word,item]));
+  assert.ok(!rarelyUsed.has('銀河'),'frequently seen existing keyword is not rare');
+  assert.equal(rarelyUsed.get('黑刃')?.documents,1);
+  assert.equal(rarelyUsed.get('黑刃')?.coverage,1/20);
+  assert.equal(rarelyUsed.get('靜謐夜')?.documents,0);
+  assert.ok(!result.candidates.some(item=>['銀河','黑刃','靜謐夜'].includes(item.word)));
+  assert.equal(JSON.stringify(rows),before,'original Anchor rows are unchanged');
+});
+
+test('existing overlapping literal keywords are each counted once per article',()=>{
+  const scan=createNewKeywordDiscovery([
+    {type:'item',name:'夜色',lists:['夜色海']}
+  ]);
+  scan.consume([{content:'夜色海，夜色海。',createtime:'2026-01-01'}]);
+  const seen=new Map(scan.finish().infrequentKeywords.map(x=>[x.word,x.documents]));
+  assert.equal(seen.get('夜色'),1);
+  assert.equal(seen.get('夜色海'),1);
+});
+
+test('PELT worker retains infrequent-known review results without persistence',()=>{
+  const code=readFileSync(new URL('../app/loc/keyword-discovery-worker.mjs',import.meta.url),'utf8')
+    .replace(/^import .*$/gm,'');
+  const messages=[];
+  const fakeDiscovery={consume:()=>({read:1,withContent:1}),finish:()=>({
+    read:1,withContent:1,candidates:[],infrequentKeywords:[{word:'靜謐夜',documents:0,coverage:0}],
+    monthCoverage:[{month:'2026-01',documents:1,existingCovered:0}]
+  })};
+  const self={postMessage:message=>messages.push(message)};
+  runInNewContext(code,{self,createNewKeywordDiscovery:()=>fakeDiscovery,
+    detectChangepoints:()=>[],PoissonCost:class{}});
+  self.onmessage({data:{type:'start',existingRows:[]}});
+  self.onmessage({data:{type:'finish'}});
+  assert.equal(messages.at(-1).result.infrequentKeywords[0].word,'靜謐夜');
+});
