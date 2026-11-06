@@ -39,9 +39,19 @@ for(const row of routes){
     .select(scopeTagColumn(id)).eq('id',id).maybeSingle();
   if(scopeListError||!scopeList)throw Error('Cannot publish DefaultArticleClass for '+id);
   publishedSourceLists[id]={system:systemNames,personal:id==='loc'?[]:classNames(scopeTagNames(id,scopeList))};
-  const {data:blocks,error:blocksError}=await db.from(id+'_blocks').select(cols).order('block_order').range(0,65534);
-  if(blocksError)throw Error('Blocks unavailable for '+id+': '+blocksError.message);
-  for(const block of blocks||[]){
+  // The shared Kysely gateway enforces a bounded SELECT; explicit publishing
+  // must paginate instead of silently truncating the old 65,535-row request.
+  const blocks=[];
+  const pageSize=1000;
+  for(let start=0;start<65535;start+=pageSize){
+    const end=Math.min(65534,start+pageSize-1);
+    const {data:page,error:blocksError}=await db.from(id+'_blocks')
+      .select(cols).order('block_order').order('uid').range(start,end);
+    if(blocksError)throw Error('Blocks unavailable for '+id+': '+blocksError.message);
+    blocks.push(...(page||[]));
+    if(!page||page.length<end-start+1)break;
+  }
+  for(const block of blocks){
     const page=String(block.page_name||'').trim().toLowerCase();
     if(!validPage.test(page))throw Error('Invalid published page '+id+': '+page);
     const key=id+'/'+page;

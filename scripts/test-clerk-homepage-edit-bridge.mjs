@@ -66,10 +66,12 @@ test('SQL Edge verifies LOC delegation rather than provider-specific session RPC
   assert.doesNotMatch(code,/verifyClerkForSql|clerkSqlClaims|authClient\.auth\.getUser\(token\)/);
 });
 test('Clerk browser adapter exchanges OAuth into LOC delegation before Edge',()=>{
-  const source=readFileSync(new URL('../app/loc/providers/clerk-gateway.mjs',import.meta.url),'utf8');
-  assert.match(source,/getAccessToken:getLocAccessToken/);
-  assert.match(source,/\/v1\/delegation/);
-  assert.match(source,/loc-kysely-clerk/);
+  const legacy=readFileSync(new URL('../app/loc/providers/clerk-gateway.mjs',import.meta.url),'utf8');
+  const core=readFileSync(new URL('../app/loc/providers/loc-gateway.mjs',import.meta.url),'utf8');
+  assert.match(legacy,/createLocGatewayAdapter/);
+  assert.match(core,/getAccessToken:getLocAccessToken/);
+  assert.match(core,/\/v1\/delegation/);
+  assert.match(legacy,/loc-kysely-clerk/);
   assert.doesNotMatch(source,/createNeonPrimaryAdapter|createBackupPublicAdapter/);
 });
 test('production LOC routes every account login via Clerk, with no per-device toggle',()=>{
@@ -133,18 +135,16 @@ test('Kysely management actions replace retired business RPCs while database pol
   assert.match(themeEditor,/\.managedAction\('loc_admin_settings'/);
 });
 test('SQL browser reuses LOC delegation for same OAuth token and cannot inherit it after account switch',async()=>{
-  const source=readFileSync(new URL('../app/loc/providers/clerk-gateway.mjs',import.meta.url),'utf8')
+  const source=readFileSync(new URL('../app/loc/providers/loc-gateway.mjs',import.meta.url),'utf8')
     .replace(/^import .*$/gm,'').replace(/^export /gm,'');
   let oauth='first.signed.token',calls=[];
-  const create=new Function('createClerkAccountAdapter','createKyselyEdgeClient',
-    'createClient','URL','AbortSignal','process',
-    source+'\n;return createClerkGatewayAdapter;')(
-    ()=>({auth:{},getAccessToken:async()=>oauth}),
-    options=>options,
-    ()=>({}),URL,AbortSignal,process
+  const create=new Function('createKyselyEdgeClient','URL','AbortSignal','process',
+    source+'\n;return createLocGatewayAdapter;')(
+    options=>options,URL,AbortSignal,process
   );
   const adapter=create({authorityUrl:'https://authority.example.org',
-    url:'https://database.example.org',publishableKey:'public-key',
+    gatewayUrl:'https://sql.example.org/v1/query',
+    accountAdapter:{auth:{},getAccessToken:async()=>oauth},
     fetchImpl:async(url,init)=>{
       calls.push({url,source:JSON.parse(init.body),bearer:init.headers.authorization});
       return {ok:true,json:async()=>({

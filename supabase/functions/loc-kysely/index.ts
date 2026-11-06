@@ -26,7 +26,7 @@ const corsHeaders = {
   "access-control-allow-methods": "POST, OPTIONS",
   "access-control-max-age": "86400",
 };
-const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+const supabaseUrl = Deno.env.get("SUPABASE_URL")||"";
 // Edge accepts only LOC-issued delegations. External OAuth/LDAP/AD remains
 // an optional adapter at issuance, never a per-request dependency here.
 async function verifyLocDelegation(token:string,body:Record<string,unknown>){
@@ -45,18 +45,37 @@ async function verifyLocDelegation(token:string,body:Record<string,unknown>){
 const routing = resolveDatabaseRouting();
 // Cross-engine publicly readable tables are centrally enforced by sql-engine-ports.mjs.
 
-const controlTarget={provider:"supabase",engine:"postgres",connection_alias:"supabase_current",connection_mode:"pooler"};
+// The LOC control database is a trusted server-side connection alias.
+// Existing deployments keep their legacy default. Standalone LOC SQL nodes
+// can use any provisioned PostgreSQL/MySQL/MSSQL control profile without
+// a Supabase project URL, Data API, or Vault.
+const controlTarget=(()=>{
+  const alias=String(Deno.env.get("LOC_CONTROL_DB_ALIAS")||"");
+  if(!alias)return {provider:"supabase",engine:"postgres",
+    connection_alias:"supabase_current",connection_mode:"pooler"};
+  return selectedDatabaseTarget([{
+    provider:"custom",engine:Deno.env.get("LOC_CONTROL_DB_ENGINE")||"postgres",
+    connection_alias:alias,connection_mode:"direct",selected:true
+  }]);
+})();
 
-function isSupabaseControlTarget(target:Record<string,unknown>){
-  if(target.provider!=="supabase"||target.engine!=="postgres"||target.connection_alias!=="supabase_current")return false;
+function isControlTarget(target:Record<string,unknown>){
+  if(target.engine!==controlTarget.engine||
+     target.connection_alias!==controlTarget.connection_alias||
+     target.provider!==controlTarget.provider)return false;
+  if(target.provider!=="supabase")return true;
   const link=String(target.project_url||"").replace(/\/$/,"");
-  return !link||link===supabaseUrl.replace(/\/$/,"");
+  return !link||Boolean(supabaseUrl)&&link===supabaseUrl.replace(/\/$/,"");
 }
 
 
 const profileCache=new Map<string,{until:number,profile:any}>();
 async function profileForTarget(target:Record<string,unknown>){
-  if(isSupabaseControlTarget(target))return resolveConnectionProfile(controlTarget);
+  if(isControlTarget(target))return resolveConnectionProfile(controlTarget);
+  // Vault is a compatibility path for the original Supabase control DB only.
+  // Independent SQL deployments use trusted LOC_DB_CONNECTIONS_JSON aliases
+  // and must not query provider-specific metadata tables.
+  if(controlTarget.provider!=="supabase")return resolveConnectionProfile(target);
   const key=String(target.connection_alias||'')+':'+String(target.project_url||'');
   const cached=profileCache.get(key);
   if(cached&&Date.now()<cached.until)return cached.profile;
@@ -87,7 +106,7 @@ async function liveConfiguredTarget():Promise<Record<string,unknown>> {
     };
     throw new Error('Configured database target is missing from access.js');
   }
-  return selected.provider==='supabase'&&selected.connection_alias==='supabase_current'
+  return isControlTarget(selected)
     ?controlTarget:selectedDatabaseTarget([{...selected,selected:true}]);
 }
 
@@ -583,7 +602,7 @@ Deno.serve(async (request) => {
       }else if(!["query","managed-write","anchor","analytics","public-action"].includes(String(body.kind)))
         return json({error:{message:"Unsupported SQL target action"}},403);
     }
-    const db=isSupabaseControlTarget(target)
+    const db=isControlTarget(target)
       ?await databaseForTarget(controlTarget)
       :await databaseForTarget(target,{profileLookup:profileForTarget});
     // A portable Scope database holds only Galaxy/Anchor. The LOC-signed
