@@ -99,12 +99,28 @@
     if(state.timer)clearTimeout(state.timer);
     state.timer=setTimeout(()=>publish(extract(state.root,'record')),350);
   }
-  function stop(){
+  function stopWatching(){
     state.observer?.disconnect();state.intersection?.disconnect();
     state.observer=null;state.intersection=null;
     window.removeEventListener('scroll',scan);
     if(state.timer)clearTimeout(state.timer);
-    state.timer=null;state.mode='idle';
+    state.timer=null;
+  }
+  function watch(){
+    if(!state.root)return false;
+    stopWatching();
+    state.mode='record';
+    state.observer=new MutationObserver(scan);
+    state.observer.observe(state.root,{childList:true,subtree:true,characterData:true,attributes:false});
+    state.intersection=new IntersectionObserver(scan,{threshold:0});
+    for(const node of state.root.querySelectorAll('article,[role="article"]'))
+      state.intersection.observe(node);
+    window.addEventListener('scroll',scan,{passive:true});
+    scan();
+    return true;
+  }
+  function stop(){
+    stopWatching();state.mode='idle';
     state.hover?.remove();state.hover=null;
     document.removeEventListener('mousemove',move,true);
     document.removeEventListener('click',choose,true);
@@ -131,13 +147,8 @@
     const recording=state.mode==='pick-record';
     stop();state.root=root;state.seen.clear();
     if(recording){
-      state.mode='record';
       publish(extract(root));
-      state.observer=new MutationObserver(scan);
-      state.observer.observe(root,{childList:true,subtree:true,characterData:true,attributes:false});
-      state.intersection=new IntersectionObserver(scan,{threshold:0});
-      for(const node of root.querySelectorAll('article,[role="article"]'))state.intersection.observe(node);
-      window.addEventListener('scroll',scan,{passive:true});
+      watch();
     }else publish(extract(root));
   }
   chrome.runtime.onMessage.addListener((msg,_sender,reply)=>{
@@ -153,6 +164,15 @@
       document.addEventListener('click',choose,true);
       reply({ok:true});return;
     }
+    if(msg.type==='page.pause'){
+      if(state.mode!=='record'){reply({ok:false,mode:state.mode});return;}
+      stopWatching();state.mode='paused';reply({ok:true,mode:'paused'});return;
+    }
+    if(msg.type==='page.resume'){
+      const ok=state.mode==='paused'&&watch();
+      reply({ok:Boolean(ok),mode:state.mode});return;
+    }
+    if(msg.type==='page.status'){reply({ok:true,mode:state.mode,count:state.seen.size});return;}
     if(msg.type==='page.stop'){const count=state.seen.size;stop();reply({ok:true,count});return;}
   });
   globalThis.__locCaptureV2=true;
