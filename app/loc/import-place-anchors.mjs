@@ -56,11 +56,11 @@ export async function prepareImportPlaceAnchors(records,{
   if(!/^[a-z][a-z0-9]{0,14}$/.test(scopeId))throw Error('空間定錨 Scope 無效');
   if(typeof relation!=='function')throw Error('空間定錨資料庫不存在');
   const table='silver.'+scopeId+'_anchor';
-  const existingByCoordinate=new Map(),existingByName=new Map(),timesByUid=new Map();
+  const existingByCoordinate=new Map(),existingByName=new Map(),timesByUid=new Map(),createtimeByUid=new Map();
   onProgress?.({phase:'讀取現有空間定錨',completed:0,total:0});
   for(let offset=0;;offset+=pageSize){
     const {data,error}=await relation(table)
-      .select('uid,type,title,attr').eq('type','point')
+      .select('uid,type,title,attr,createtime').eq('type','point')
       .order('title',{ascending:true}).range(offset,offset+pageSize-1);
     if(error){
       if(allowMissing&&!createMissing&&['42P01','PGRST205'].includes(String(error.code||'')))
@@ -78,6 +78,7 @@ export async function prepareImportPlaceAnchors(records,{
       if(coordinates&&!existingByCoordinate.has(coordinates))
         existingByCoordinate.set(coordinates,saved);
       timesByUid.set(uid,[]);
+      createtimeByUid.set(uid,String(anchor.createtime||'')||null);
     }
     onProgress?.({phase:'讀取現有空間定錨',completed:offset+(data||[]).length,total:0});
     if((data||[]).length<pageSize)break;
@@ -155,6 +156,7 @@ export async function prepareImportPlaceAnchors(records,{
       seen.add(uid);
       register(place,uid);
       timesByUid.set(uid,[]);
+      createtimeByUid.set(uid,place.createtime===null?null:new Date(place.createtime).toISOString());
       created++;
     }
     if(seen.size!==chunk.length)throw Error('新增空間定錨回傳缺少部分座標');
@@ -165,7 +167,7 @@ export async function prepareImportPlaceAnchors(records,{
     if(uid){register(alias,uid);reused++;}
   }
   const unmatchedCoordinates=names.size-reused-created;
-  return {byCoordinate,byName,created,reused,timesByUid,table,
+  return {byCoordinate,byName,created,reused,timesByUid,createtimeByUid,table,
     skipped:missing+unmatchedCoordinates,unmatchedCoordinates};
 }
 export function importedPlaceId({incoming,existing,byName,byCoordinate}={}){
@@ -183,7 +185,7 @@ export function importedPlaceId({incoming,existing,byName,byCoordinate}={}){
 // Bound each UID's independent write with limited concurrency.
 const PLACE_VISIT_WRITE_CONCURRENCY=6;
 const PLACE_VISIT_WRITE_TIMEOUT_MS=45000;
-export async function recordImportPlaceVisits(visits,{relation,table,timesByUid,onProgress}={}){
+export async function recordImportPlaceVisits(visits,{relation,table,timesByUid,createtimeByUid,onProgress}={}){
   if(!Array.isArray(visits)||!visits.length){
     onProgress?.({phase:'補齊定錨打卡時間',completed:0,total:0});
     return {updated:0,added:0};
@@ -202,7 +204,7 @@ export async function recordImportPlaceVisits(visits,{relation,table,timesByUid,
     byUid.get(uid).add(stamp);
   }
   if(unified){
-    const pending=[...byUid].map(([uid,stamps])=>({
+    const pending=[...byUid].filter(([uid])=>!createtimeByUid?.get(uid)).map(([uid,stamps])=>({
       uid,createtime:new Date([...stamps].reduce((minimum,stamp)=>Math.min(minimum,stamp),Infinity)).toISOString()
     }));
     const phase='補齊 Point 來源時間',total=pending.length;
@@ -224,6 +226,7 @@ export async function recordImportPlaceVisits(visits,{relation,table,timesByUid,
           if(error)throw Error(error.message||String(error));
           if(!Array.isArray(data))throw Error('Point 來源時間更新缺少回傳資料');
           updated+=data.length;
+          if(data.length)createtimeByUid?.set(uid,createtime);
           completed++;
           if(completed%progressStep===0||completed===total)
             onProgress?.({phase,completed,total});
