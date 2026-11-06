@@ -83,6 +83,6 @@ export function assertAuthorizationForTable(table){
   const suffix=name.slice(7);
   // Rune reference tables are managed by the LunaRunes scope.
   const scopeid=suffix==='runes'||suffix.startsWith('runes_')?'lrunes':suffix.split('_')[0];
-  if(name==='api.manage'?canAuthorizeGlobal():scopeid==='loc'?canAuthorizeGroup('loc'):canAuthorizeScope(scopeid))return;
+  if(scopeid==='loc'?canAuthorizeGroup('loc'):canAuthorizeScope(scopeid))return;
   throw new Error('目前登入帳號沒有此 Scope 的寫入權限。');
 }
