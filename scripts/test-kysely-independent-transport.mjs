@@ -1,3 +1,4 @@
+import {readFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {createKyselyEdgeClient} from '../app/loc/providers/kysely-edge.mjs';
@@ -78,4 +79,58 @@ test('gateway URL rejects non-TLS and embedded credentials',()=>{
     'https://db-gateway.example/v1?apikey=exposed','https://db-gateway.example/v1#secret']){
     assert.throws(()=>createKyselyEdgeClient({gatewayUrl:url,fetch:fakeFetch([])}),/HTTPS URL/);
   }
+});
+
+
+test('ISR numeric readers use Kysely without a Supabase SDK or Auth client',()=>{
+  const source=readFileSync(new URL('../app/api/loc/_server.js',import.meta.url),'utf8');
+  assert.doesNotMatch(source,/@supabase\/supabase-js|createClient\(/);
+  assert.match(source,/const primary=createKyselyEdgeClient\(/);
+  assert.match(source,/gatewayUrl:SQL_GATEWAY_URL/);
+  assert.match(source,/createBackupPublicAdapter/);
+});
+test('verified external identity can delegate to an independent SQL Gateway',async()=>{
+  const source=readFileSync(new URL('../app/loc/providers/loc-gateway.mjs',import.meta.url),'utf8')
+    .replace(/^import .*$/gm,'').replace(/^export /gm,'');
+  const calls=[];
+  const build=new Function('createKyselyEdgeClient',
+    'URL','AbortSignal','process',
+    source+'\n;return createLocGatewayAdapter;')(
+    options=>options,URL,AbortSignal,process
+  );
+  const gateway=build({
+    authorityUrl:'https://authority.example.org',
+    gatewayUrl:'https://sql.example.org/v1/query',
+    url:'',publishableKey:'',
+    accountAdapter:{auth:{getSession:async()=>({data:{session:null}})},
+      getAccessToken:async()=> 'verified.external.jwt'},
+    fetchImpl:async(url,init)=>{
+      calls.push({url,init});
+      return {ok:true,json:async()=>({access_token:'loc.signed.jwt',
+        expires_at:Math.floor(Date.now()/1000)+300})};
+    }
+  });
+  assert.equal(gateway.realtimeClient,null);
+  assert.equal(gateway.publicClient.gatewayUrl,'https://sql.example.org/v1/query');
+  assert.equal(gateway.authClient.gatewayUrl,'https://sql.example.org/v1/query');
+  assert.equal(gateway.authClient.publishableKey,'');
+  assert.equal(await gateway.authClient.getAccessToken({kind:'query',operation:'select',
+    schema:'api',table:'loc_user'}),'loc.signed.jwt');
+  assert.equal(calls[0].url,'https://authority.example.org/v1/delegation');
+  assert.equal(calls[0].init.headers.authorization,'Bearer verified.external.jwt');
+  assert.deepEqual(JSON.parse(calls[0].init.body),{audience:'sql',identity:true});
+});
+
+test('explicit public publishing pages through the bounded Kysely query port',()=>{
+  const source=readFileSync(new URL('../scripts/generate-public-blocks.mjs',import.meta.url),'utf8');
+  assert.match(source,/const pageSize=1000/);
+  assert.match(source,/\.order\('block_order'\)\.order\('uid'\)\.range\(start,end\)/);
+  assert.doesNotMatch(source,/\.range\(0,65534\)/);
+});
+
+test('LOC core has no direct vendor SDK or provider imports',()=>{
+  const source=readFileSync(new URL('../app/loc/providers/loc-gateway.mjs',import.meta.url),'utf8');
+  assert.doesNotMatch(source,/@supabase|clerk-browser|neon-(?:primary|public)|createClient\(/);
+  assert.match(source,/createKyselyEdgeClient/);
+  assert.match(source,/createLocGatewayAdapter/);
 });
