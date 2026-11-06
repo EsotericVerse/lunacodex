@@ -6,7 +6,6 @@ import {tabletopSocketUrl} from './tabletop-socket.mjs';
 import {createLunaRunesGame} from './boardgame-rules.js';
 import {validState,packTabletopState,unpackTabletopState} from './tabletop-state.mjs';
 
-const topic=code=>'lrunes:tabletop:'+code;
 function actionEffect(state,move,args,rules){
   if(move==='resonance'){
     const card=rules.cards.find(c=>c.englishName==='Resonance');
@@ -31,7 +30,7 @@ function actionEffect(state,move,args,rules){
 /**
  * Ephemeral, shared tabletop. One room creator serializes valid moves.
  * Everyone with the invitation code may operate any player; no referee or accounts.
- * No DB writes or permanent save; the creator must remain online.
+ * No Galaxy writes or permanent match save; room snapshots expire automatically.
  */
 export function useOnlineTabletop({data,count,code,host,hostKey=''}){
   const game=useMemo(()=>createLunaRunesGame(data,count),[data,count]);
