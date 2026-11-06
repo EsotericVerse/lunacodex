@@ -307,14 +307,13 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     return data;
   }
 
-  async function keywordRead(name,args,{isEmpty=data=>!data}={}){
-    if(name!=='read_scope_analytics')throw Error('Unsupported keyword aggregate');
+  async function keywordRead(args,{isEmpty=data=>!data}={}){
     const publicResult=await publicClient.schema('silver').analytics(args);
-    if(publicResult.error)throw new Error(publicResult.error.message||('Keyword RPC '+name+' failed'));
+    if(publicResult.error)throw new Error(publicResult.error.message||'Keyword analytics unavailable');
     if(!isEmpty(publicResult.data))return publicResult.data;
     if(!await verifiedKeywordOwner())return publicResult.data;
     const privateResult=await authClient.schema('silver').analytics(args);
-    if(privateResult.error)throw new Error(privateResult.error.message||('Private Keyword RPC '+name+' failed'));
+    if(privateResult.error)throw new Error(privateResult.error.message||'Private keyword analytics unavailable');
     return privateResult.data;
   }
 
@@ -360,7 +359,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     if(!/^[A-Za-z0-9]{4}(?:[A-Za-z0-9]{4})?$/.test(uid))return null;
     const direct=await readUnifiedKeywordCatalog(scope,uid);
     if(direct)return direct;
-    const data=await keywordRead('read_scope_analytics',{p_scope_id:scope,p_view:'keyword_catalog',p_options:{classUid:uid}},{
+    const data=await keywordRead({p_scope_id:scope,p_view:'keyword_catalog',p_options:{classUid:uid}},{
       isEmpty:result=>!result?.class_uid||!Array.isArray(result.rows)||result.rows.length===0
     });
     return data?.class_uid===uid?data:null;
@@ -369,7 +368,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
   async function readKeywordTreeSummary(scopeId,{classUid='',startDate='',endDate='',source=''}={}){
     const scope=normalizeScopeId(scopeId);
     const day=value=>/^\d{4}-\d{2}-\d{2}/.test(String(value||''))?String(value).slice(0,10):null;
-    const data=await keywordRead('read_scope_analytics',{
+    const data=await keywordRead({
       p_scope_id:scope,p_view:'keyword_summary',p_start:day(startDate),p_end:day(endDate),
       p_options:{classUid:classUid||null,source:String(source||'').trim()||null}
     },{isEmpty:value=>!Array.isArray(value)||value.length===0});
@@ -380,7 +379,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     const scope=normalizeScopeId(scopeId);
     const direct=await readUnifiedKeywordCatalog(scope,classUid);
     if(direct)return direct;
-    const data=await keywordRead('read_scope_analytics',{
+    const data=await keywordRead({
       p_scope_id:scope,p_view:'keyword_catalog',p_options:{classUid:classUid||null}
     },{
       isEmpty:value=>!value?.class_uid||!Array.isArray(value.rows)||value.rows.length===0

@@ -12,9 +12,7 @@ import {timePeriodContainsDate} from './time-anchor-ranges.mjs';
 import {anniversarySuggestionsForDate} from './anniversary.mjs';
 import {DB_QUERY_BATCH_SIZE,applyFilters,applyOrders,executePublicRead,selectCount,selectRows} from './db-query.mjs';
 import {readLocStatistics,readScopeCategoryTotals,readScopeEarliest,readScopeOverview,readScopeStatistics} from './db-client.mjs';
-import {defaultScopeData,selectScopeRegistry} from './scope-data';
 import {readNumericIsr,usesNumericIsr} from './numeric-isr-client';
-import {selectFirstDailyRuneDate} from './daily-runes';
 import {readTraceMapIndex} from '../modular/features/trace/trace-data.js';
 import {isUnifiedAnchorScope} from './unified-anchor-compat.mjs';
 import {GALAXY_ABLE_KEYS,galaxyAble} from './galaxy-able.mjs';
@@ -83,16 +81,8 @@ function dailyRowsFromCounts(counts){
 }
 
 // A Statistics/Culture page view commonly renders more than one chart for the
-// same Scope + date range in one render pass (e.g. trend + density, or
-// category totals + source catalog); each used to issue its own RPC round
-// trip for the identical aggregate. This is the same short-TTL in-flight-
-// promise cache pattern already used above for articleTimeRows/
-// articleAnniversarySources, applied to the two RPC-backed statistics reads
-// so concurrent/near-concurrent calls with the same args share one request.
-// A plain .select() read already gets this via coalescePendingPublicRead in
-// db-query.mjs; these RPC calls (readScopeStatistics/readScopeCategoryTotals)
-// go through a different path (db-contract.mjs's analyticsRead) that bypasses
-// it, so they need their own cache here.
+// same Scope + date range in one render pass. Share one short-lived
+// Kysely aggregate request across concurrent charts instead of duplicating SQL.
 function cachedByKey(cache,key,ttlMs,factory){
   const now=Date.now();
   const cached=cache.get(key);
@@ -115,25 +105,17 @@ function cachedReadScopeCategoryTotals(id,args){
   return cachedByKey(scopeCategoryTotalsCache,key,STATISTICS_CACHE_TTL_MS,()=>readScopeCategoryTotals(id,args));
 }
 
-// Database-side statistics (silver.read_scope_statistics). Returns the exact
-// {day,kind,category,item_count} rows, or null when the function is not installed
-// yet so callers keep using the row-level path until it is.
-const missingStatisticsRpc=error=>['PGRST202','42883'].includes(String(error?.code||''));
-let statisticsRpcInstalled=true;
+// Native Kysely aggregation only. No RPC-existence probe or article-level
+// fallback: SQL returns bounded daily totals, not the full Galaxy corpus.
 async function scopeStatisticsRows(scope,{startDate='',endDate='',includeUndated=false}={}){
   const current=scopeOf(scope);
-  // The browser only receives the cached numeric payload; repeat views do not rerun SQL.
   if(usesNumericIsr(current.id)){
     try{return await readNumericIsr(current.id,'culture',{startDate,endDate,includeUndated});}
-    catch{ /* Optional ISR failure: use existing DB RPC. */ }
+    catch{ /* Optional ISR cache failure: query the primary Kysely aggregate. */ }
   }
-  if(!statisticsRpcInstalled)return null;
-  try{
-    return await cachedReadScopeStatistics(current.id,{startDate:dateOnly(startDate),endDate:dateOnly(endDate),includeUndated});
-  }catch(error){
-    if(missingStatisticsRpc(error)){statisticsRpcInstalled=false;return null;}
-    throw error;
-  }
+  return cachedReadScopeStatistics(current.id,{
+    startDate:dateOnly(startDate),endDate:dateOnly(endDate),includeUndated
+  });
 }
 // Indexed Galaxy.date drives daily article-source statistics. Media is counted
 // only as distinct article-linked UIDs in the overview, never by media date.
@@ -904,66 +886,26 @@ async function selectScopeOverviewRaw(scope,{startDate='',endDate=''}={}){
   if(usesNumericIsr(current.id)){
     try{
       const snapshot=await readNumericIsr(current.id,'statistics',{startDate,endDate});
-      // Older ISR snapshots have no linked-media total. Do not display a false zero.
+      // An older snapshot may omit linked media. Query Kysely instead.
       if(snapshot?.mediaCount!=null&&Number.isFinite(Number(snapshot.mediaCount)))return snapshot;
-    }catch{ /* Optional ISR failure: existing overview RPC. */ }
+    }catch{ /* Optional ISR cache failure: query Kysely. */ }
   }
-  try{
-    return await readScopeOverview(current.id,{startDate,endDate});
-  }catch(error){
-    if(!missingStatisticsRpc(error))throw error;
-  }
-  const [earliest,rows,catalog]=await Promise.all([
-    selectFirstScopeStatisticsDate(current),
-    selectScopeSourceBreakdownRows(current,{startDate,endDate}),
-    selectSourceTaxonomy()
-  ]);
-  return {earliest,rows,categories:catalog.categories,aliases:catalog.aliases,mediaCount:null};
+  return readScopeOverview(current.id,{startDate,endDate});
 }
 async function selectScopeEarliestRaw(scope){
   const current=scopeOf(scope);
   if(usesNumericIsr(current.id)){
     try{return await readNumericIsr(current.id,'earliest');}
-    catch{ /* Optional ISR failure: existing earliest RPC. */ }
+    catch{ /* Optional ISR cache failure: query Kysely. */ }
   }
-  try{
-    return await readScopeEarliest(current.id);
-  }catch(error){
-    if(!missingStatisticsRpc(error))throw error;
-  }
-  return selectFirstScopeStatisticsDate(current);
+  return readScopeEarliest(current.id);
 }
-// LOC is a set: one call returns each Scope's daily totals and the earliest date of the set.
 async function selectLocStatisticsRaw({startDate='',endDate=''}={}){
   if(usesNumericIsr('loc')){
     try{return await readNumericIsr('loc','loc-statistics',{startDate,endDate});}
-    catch{ /* Optional ISR failure: existing LOC statistics RPC. */ }
+    catch{ /* Optional ISR cache failure: query Kysely. */ }
   }
-  try{
-    return await readLocStatistics({startDate,endDate});
-  }catch(error){
-    if(!missingStatisticsRpc(error))throw error;
-  }
-  const registry=await selectScopeRegistry({scopeKind:'scope'});
-  const scopes=registry.map(row=>({scope_id:row.scope_id,display_name:row.display_name,data:defaultScopeData(row.scope_id)}))
-    .filter(item=>item.data?.galaxy&&item.data?.galaxyMedia);
-  const [perScope,dailyStart]=await Promise.all([
-    mapBounded(scopes,3,async item=>{
-      const [start,rows]=await Promise.all([
-        selectFirstScopeStatisticsDate(item.data),
-        selectScopeSourceBreakdownRows(item.data,{startDate,endDate})
-      ]);
-      const daily=new Map();
-      for(const row of rows)if(row.kind==='total')daily.set(row.day,(daily.get(row.day)||0)+(Number(row.item_count)||0));
-      return {start,rows:[...daily].map(([day,item_count])=>({scope_id:item.scope_id,day,item_count}))};
-    }),
-    selectFirstDailyRuneDate()
-  ]);
-  return {
-    earliest:[...perScope.map(item=>item.start),dailyStart].filter(Boolean).sort()[0]||'',
-    scopes:scopes.map(({scope_id,display_name})=>({scope_id,display_name})),
-    rows:perScope.flatMap(item=>item.rows)
-  };
+  return readLocStatistics({startDate,endDate});
 }
 
 // Separate source and media breakdowns. These are independently

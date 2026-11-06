@@ -341,7 +341,7 @@ test('Culture and Statistics Period data read directly when remote ISR is disabl
   assert.ok(route.includes("from('loc')"));
   assert.ok(route.includes("mode!=='isr'"));
   assert.ok(route.includes('no-store'));
-  assert.ok(route.includes("name='read_scope_analytics'"));
+  assert.ok(route.includes('p_view:view'));
   assert.ok(!route.includes('revalidateTag'));
   assert.ok(adapter.includes("mode==='isr'"));
   assert.ok(adapter.includes('credentials:\'omit\''));
