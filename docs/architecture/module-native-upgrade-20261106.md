@@ -2,13 +2,13 @@
 
 ## Scope
 
-This update keeps the existing LOC architecture and replaces redundant Recharts sizing wrappers with the Recharts 3 native `responsive` prop where compatible. The statistics Treemap keeps its existing `ResponsiveContainer` compatibility path. Kysely, SWR, `fflate`, `@streamparser/json`, and existing native MapLibre `setData` behavior remain unchanged because they are already used directly. ZenStack is not installed.
+This update keeps the existing LOC architecture and replaces redundant Recharts sizing wrappers with the Recharts 3 native `responsive` prop where compatible. The statistics Treemap keeps its existing `ResponsiveContainer` compatibility path. Kysely, SWR, `fflate`, `@streamparser/json`, and existing native MapLibre `setData` behavior remain unchanged because they are already used directly. ZenStack V3 adoption is approved for the fixed LOC Schema; dependency installation and runtime integration are separate from this earlier module upgrade.
 
 The version bump is bundled once in `package.json` and `package-lock.json` for Next.js, Three.js, MapLibre GL JS, React Three Fiber, React Three Drei, OpenNext Cloudflare, and Wrangler.
 
 ## Verification
 
-- `npm run test:module-native`: checks manifest/lockfile parity, ZenStack absence and native responsive usage.
+- `npm run test:module-native`: checks manifest/lockfile parity, optional ZenStack V3 ORM/schema parity without CLI, and native responsive usage.
 - `npm run test:bootstrap`: broad UI, data, and portability regression.
 - `npm run test:game`: game regressions.
 - `npm run build` and `npm run build:cloudflare`: validate Next.js / OpenNext compilation and deployment output where the environment supports it.
@@ -65,4 +65,4 @@ The seven pinned upgrades from PR #1130 remain the installed versions. This pass
 - **Recharts 3:** the current Rune charts and the statistics visualizations already use the native chart `responsive` prop, with `ResponsiveContainer` retained only for the Treemap compatibility case.
 - **Kysely / SWR:** portable SQL already uses the built-in dialect/query APIs. SWR remains the single browser data cache. One real SWR Infinite mismatch was corrected: a `null` next-page cursor now stops loading just like `undefined`, while page zero may still have a null initial cursor and `0` remains a valid next-page offset. The shared infinite resource reports `hasNextPage=false` for either terminal value, preventing phantom follow-up pages.
 
-`npm run test:module-native` now also includes the existing SWR resource/cache lifecycle suite and its additional null/zero-cursor regressions. These are module-integration checks, not proof of a full browser render or deployed Cloudflare worker test. No changes were made to the paused GitHub Auth branch, Clerk, Authority, MCP, SQL Schema/RLS or ZenStack.
+`npm run test:module-native` now also includes the existing SWR resource/cache lifecycle suite and its additional null/zero-cursor regressions. These are module-integration checks, not proof of a full browser render or deployed Cloudflare worker test. No changes were made to the paused GitHub Auth branch, Clerk, Authority, MCP, or SQL Schema/RLS. The earlier ZenStack non-installation assumption is superseded by the approved V3 ORM/schema dependency adoption; it does not authorize schema migrations or imply runtime integration is complete.
