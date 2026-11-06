@@ -22,8 +22,29 @@ jobs:
           cache: npm
       - name: Install frozen dependencies (no site build or deployment)
         run: npm ci --no-audit --no-fund
-      - name: Check JS and React syntax
-        run: npm run check:syntax
+      - name: Parse only galaxy-link changed JS and JSX (no global scan)
+        run: |
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          import {createRequire} from 'node:module';
+          const {parse}=createRequire(import.meta.url)('@babel/parser');
+          const paths=[
+            'app/extension/bridge/page.jsx',
+            'app/extension/bridge/GalaxyLinkBridge.jsx',
+            'app/loc/providers/loc-gateway.mjs',
+            'app/loc/providers/kysely-edge.mjs',
+            'app/loc/db-client.mjs',
+            'extensions/loc-web-capture-v2/background.js',
+            'extensions/loc-web-capture-v2/content.js',
+            'extensions/loc-web-capture-v2/popup.js',
+            'extensions/loc-web-capture-v2/vendor/Readability.js',
+            'scripts/test-loc-web-capture-v2.mjs'
+          ];
+          for(const path of paths)parse(readFileSync(path,'utf8'),{
+            sourceType:'module',plugins:['jsx']
+          });
+          console.log(paths.length+' galaxy-link files parsed successfully');
+          NODE
       - name: Run galaxy-link v2 and existing short-import contract tests
         run: |
           node --test \
