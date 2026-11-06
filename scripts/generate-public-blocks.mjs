@@ -20,7 +20,7 @@ console.log('[public] Source: '+publication.source);
 const routes=site.registry.filter(x=>x.active!==false&&x.scope_kind!=='system');
 if(!routes.length||routes.some(x=>!validScope.test(x.scope_id)))throw Error('Invalid public Scope list');
 // Public source classifications are flat text[] in each Scope's config;
-// management identity and group routing reside only in api.manage.
+// management identity and group routing reside only in silver.manage.
 const {data:globalList,error:globalError}=await db.from('loc')
   .select('DefaultArticleClass').eq('id','loc').maybeSingle();
 if(globalError||!globalList)throw Error('Cannot publish LOC DefaultArticleClass');
