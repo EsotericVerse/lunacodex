@@ -51,12 +51,12 @@ test('each statistic chooses a chart for its meaning, not the picker list order'
   assert.equal(preferredStatisticChartType({purpose:'media',available:[['line','trend']]}), 'line');
 });
 
-test('multimedia ranking actually renders ranked categories, not temporal bars',()=>{
-  const facet=readFileSync(new URL('../app/modular/modules/statistics/MediaFacetStatistics.jsx',import.meta.url),'utf8');
-  const shared=readFileSync(new URL('../app/modular/modules/statistics/StatisticsMultiChart.jsx',import.meta.url),'utf8');
-  assert.match(facet,/barLayout=\{chosenChartType==='bar'\?'vertical':'horizontal'\}/);
-  assert.match(shared,/actual==='bar'&&barLayout==='vertical'&&categories\.length/);
-  assert.match(facet,/preferredStatisticChartType\(\{purpose:'media'/);
+test('active keyword and location ranking use categorical horizontal bars',()=>{
+  const keyword=readFileSync(new URL('../app/modular/modules/statistics/StatisticsMultiChart.jsx',import.meta.url),'utf8');
+  const place=readFileSync(new URL('../app/modular/features/trace/PlaceStatisticsPanel.jsx',import.meta.url),'utf8');
+  assert.match(keyword,/barLayout="vertical"/);
+  assert.match(place,/barLayout=\{activeChart==='bar'\?'vertical':'horizontal'\}/);
+  assert.match(keyword,/actual==='bar'&&barLayout==='vertical'&&categories\.length/);
 });
 
 test('overlapping counts are never portrayed as additive stacked areas',()=>{
