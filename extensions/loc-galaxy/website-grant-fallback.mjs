@@ -55,7 +55,7 @@ async function grant(message,sender){
     expires_at:expires,verified_until:now+300000
   }});
   if(initial)await chrome.storage.session.remove(PENDING);
-  await chrome.alarms.create('locGalaxy.websiteRenew',{periodInMinutes:0.5});
+  // No repeating alarm: website JWTs are minted only for real MCP requests.
   return {ready:true,scopeid,subject:checked.subject};
 }
 // Existing background handler processes senders that include sender.tab.
