@@ -202,6 +202,12 @@ async function selectOrRecord(type){
  await chrome.tabs.sendMessage(tab.id,{type});
  return {message:type==='page.record'?'請點選錄製區域，開始追蹤動態貼文':'請點選要擷取的區域'};
 }
+async function controlRecording(type){
+ const tab=await currentTab();
+ const reply=await chrome.tabs.sendMessage(tab.id,{type}).catch(()=>null);
+ if(!reply?.ok)throw Error('目前頁面沒有可操作的錄製');
+ return {message:type==='page.pause'?'已暫停錄製':type==='page.resume'?'已繼續錄製':'已停止錄製'};
+}
 async function stopRecording(){
  const tab=await currentTab();
  const reply=await chrome.tabs.sendMessage(tab.id,{type:'page.stop'}).catch(()=>null);
@@ -236,6 +242,8 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
    case 'capture':return capture(await currentTab());
    case 'select':return selectOrRecord('page.select');
    case 'record.start':return selectOrRecord('page.record');
+   case 'record.pause':return controlRecording('page.pause');
+   case 'record.resume':return controlRecording('page.resume');
    case 'record.stop':return stopRecording();
    case 'queue.status':{
     const rows=await allEvents();
