@@ -8,7 +8,7 @@ const engine=readFileSync(new URL('../app/modular/features/trace/trace-map-engin
   .replace(/setWorkerUrl\(new URL\([\s\S]*?\.toString\(\)\);/,'')
   .replace(/^export /gm,'');
 
-function setup({anchors=[],onAnchorSelect=()=>{},load=true}={}){
+function setup({anchors=[],onAnchorSelect=()=>{},load=true,onLocationPick=null,fetchImpl=globalThis.fetch}={}){
   const maps=[];
   class Bounds{
     constructor(){this.points=[];}
@@ -45,10 +45,10 @@ function setup({anchors=[],onAnchorSelect=()=>{},load=true}={}){
     addTo(map){this.map=map;return this;}
     remove(){return this;}
   }
-  const make=new Function('Map','Marker','Popup','NavigationControl','LngLatBounds','setWorkerUrl','spaceCoordinates',
+  const make=new Function('Map','Marker','Popup','NavigationControl','LngLatBounds','setWorkerUrl','spaceCoordinates','fetch',
     engine+'\nreturn createTraceMap');
-  const createTraceMap=make(FakeMap,Noop,FakePopup,Noop,Bounds,()=>{},spaceCoordinates);
-  const instance=createTraceMap({},{anchors,onAnchorSelect});
+  const createTraceMap=make(FakeMap,Noop,FakePopup,Noop,Bounds,()=>{},spaceCoordinates,fetchImpl);
+  const instance=createTraceMap({},{anchors,onAnchorSelect,onLocationPick});
   const map=maps[0];
   if(load)map.callbacks.load();
   return {instance,map};
@@ -146,5 +146,44 @@ test('trace-only union keeps its saved lines on initial map load and frames all 
   const before=map.bounds.length;
   instance.setSavedGraph(graph);
   assert.equal(map.bounds.length,before,'same render must not reset user viewport');
+  instance.destroy();
+});
+
+test('rapid route clicks issue only one OSRM request until it settles',async()=>{
+  let requests=0,finish;
+  const pending=new Promise(resolve=>{finish=resolve;});
+  const {instance,map}=setup({
+    anchors, onLocationPick:()=>{},
+    fetchImpl:async()=>{requests++;return pending;}
+  });
+  const first=instance.showRoadRoute();
+  const duplicate=instance.showRoadRoute();
+  assert.equal(await duplicate,false);
+  assert.equal(requests,1,'concurrent route clicks must share one HTTP request');
+  finish({ok:true,json:async()=>({routes:[{geometry:{
+    coordinates:[[121.4638,25.0143],[121.4592,25.0085]]
+  }}]})});
+  assert.equal(await first,true);
+  assert.equal(map.sources['loc-trace-route'].data.features.length,1);
+  assert.equal(await instance.showRoadRoute(),false,'next click hides route');
+  assert.equal(requests,1,'hiding a route must not fetch again');
+  instance.destroy();
+});
+
+test('failed route fetch clears in-flight guard to permit explicit retry',async()=>{
+  let requests=0;
+  const {instance}=setup({
+    anchors,onLocationPick:()=>{},
+    fetchImpl:async()=>{
+      requests++;
+      if(requests===1)throw Error('OSRM unavailable');
+      return {ok:true,json:async()=>({routes:[{geometry:{
+        coordinates:[[121.4638,25.0143],[121.4592,25.0085]]
+      }}]})};
+    }
+  });
+  assert.equal(await instance.showRoadRoute(),false);
+  assert.equal(await instance.showRoadRoute(),true);
+  assert.equal(requests,2);
   instance.destroy();
 });
