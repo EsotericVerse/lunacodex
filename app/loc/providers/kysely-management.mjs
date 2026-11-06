@@ -344,11 +344,11 @@ async function sourceCatalogAction(trx,args,save=false){
     const byUid=new Map(rows.filter(row=>row.type==='from').map(row=>[row.uid,row]));
     const sources=linked.map(uid=>byUid.get(uid));
     if(sources.some(item=>!item))reject('Source Domain references missing From');
-    const config=await trx.selectFrom('silver.'+id).select(id==='lrunes'?'txt_class':'DefaultArticleClass')
+    const config=await trx.selectFrom('silver.'+id).select(id==='lrunes'?'txt_class':'ArticleTag')
       .where('id','=',id).executeTakeFirst();
     records.push({scopeid:id,domain:domain?{uid:domain.uid,title:domain.title}:null,
       sources:sources.map(row=>({uid:row.uid,name:row.title})),
-      legacy:sourceNames(config?.[id==='lrunes'?'txt_class':'DefaultArticleClass'])});
+      legacy:sourceNames(config?.[id==='lrunes'?'txt_class':'ArticleTag'])});
   }
   return {universe:'Eosteric',galaxy:'LOC',system,scopes:records};
 }
