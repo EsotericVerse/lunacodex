@@ -398,5 +398,5 @@ Search 只對 Galaxy `content` 執行模糊比對；進階內容類型只保留�
 - `save_scope_sources` 僅 Scope 寫入既有 `silver.<scope>_anchor` 的 Domain / From UID 階層，於同一交易更新與刪除；LOC 入口無權呼叫此寫入。原本 `Galaxy.site/site_id` 永遠不在此修改。未轉換的舊來源名稱會先唯讀顯示，明確選擇「導入 Anchor」後才寫入。
 - **實際資料庫沒有 `silver.loc_anchor`**；現階段 Universe / Galaxy 上層呈現由 LOC 控制資料投影，尚未宣稱已持久化成實體 Anchor 節點。不得把這個 UI 投影當成資料庫已完成四層實體儲存。
 - 現有 `anchor_type_check` 與 `anchor_attr_keys_minimal_chk` 會拒絕新型別。單一既有 migration 僅增加四種 source `type` 的允許值及對應 `attr` 結構檢查，完全不新增表、欄位、索引、RPC。**正式儲存前必須先套用 Migration**。
-- 驗證：於既有資料庫的單一 PostgreSQL 交易內臨時更新約束，成功插入 `domain → from` 並確認 UID 關聯後 `ROLLBACK`；再次查核約束未持久化、測試資料為 0 筆。前端實際登入／寫入、Portable 外部資料庫與部署尚未驗收。
+- 驗證：於既有資料庫的單一 PostgreSQL 交易內臨時更新約束，成功插入 `domain → from` 並確認 UID 關聯；另於 lo3rwang、lrunes 兩個 Scope 都成功插入 `universe → galaxy → domain → from` 完整四層，再執行 `ROLLBACK`；再次查核約束未持久化、測試資料為 0 筆。前端實際登入／寫入、Portable 外部資料庫與部署尚未驗收。
 - 舊 `silver.loc.DefaultArticleClass` 與 Scope `ArticleTag/txt_class` 在所有公開 Culture / Statistics 使用者都切到正式來源快照前不可刪除；本次 Scope 管理／匯入入口已優先讀 Anchor。後續若未完成公開讀取切換，不可標示「完全移除舊來源分類」。
