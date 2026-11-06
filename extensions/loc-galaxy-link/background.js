@@ -296,7 +296,7 @@ async function flush(force=false){
     await acknowledgeBatch(records);
     sent+=records.length;
    }
-   await chrome.storage.local.remove(['locQueueRetry','locQueueRetryAfter']);
+   await chrome.storage.local.remove(['locQueueRetry','locQueueRetryAfter','locQueuePaused']);
   }catch(error){
    if(error.code==='LOC_IMPORT_CONTRACT'){
     // Server may have written already; never blindly retry an unconfirmed append.
