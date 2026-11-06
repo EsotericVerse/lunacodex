@@ -43,19 +43,11 @@ async function accept(request,env){
  await env.LOC_KV.put(key,JSON.stringify({id:input.id,records:input.records,received_at:new Date().toISOString()}));
  return json({accepted:true,id:input.id});
 }
-async function signBatch(raw,secret){
- const jwk=JSON.parse(secret);
- const key=await crypto.subtle.importKey('jwk',jwk,{name:'ECDSA',namedCurve:'P-256'},false,['sign']);
- const stamp=String(Math.floor(Date.now()/1000));
- const signature=new Uint8Array(await crypto.subtle.sign({name:'ECDSA',hash:'SHA-256'},key,encoder.encode(stamp+'.'+raw)));
- const sig=btoa(String.fromCharCode(...signature)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
- return {stamp,sig};
-}
 async function sync(env){
  // Must not contact Galaxy when KV is empty.
  const page=await env.LOC_KV.list({prefix:'pending/',limit:100});
  if(!page.keys.length)return;
- if(!env.LOC_GALAXY_SYNC_URL||!env.LOC_CHANNEL1_SIGNER_PRIVATE_JWK){
+ if(!env.LOC_GALAXY_SYNC_URL||!env.LOC_GALAXY_SYNC_SECRET){
   console.error('LOC Galaxy receiver is not configured; preserving KV pending records');
   return;
  }
@@ -64,12 +56,10 @@ async function sync(env){
   if(!raw)continue;
   const batch=JSON.parse(raw);
   try{
-   const body=JSON.stringify(batch);
-   const {stamp,sig}=await signBatch(body,env.LOC_CHANNEL1_SIGNER_PRIVATE_JWK);
    const response=await fetch(env.LOC_GALAXY_SYNC_URL,{
     method:'POST',headers:{'content-type':'application/json',
-     'x-loc-ts':stamp,'x-loc-sig':sig},
-    body,redirect:'error',signal:AbortSignal.timeout(20000)
+     authorization:'Bearer '+env.LOC_GALAXY_SYNC_SECRET},
+    body:JSON.stringify(batch),redirect:'error',signal:AbortSignal.timeout(20000)
    });
    if(!response.ok)throw Error('Galaxy HTTP '+response.status);
    const result=await response.json();
