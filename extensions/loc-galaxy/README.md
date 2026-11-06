@@ -130,3 +130,9 @@ Chrome's `runtime.onMessageExternal` for messages originating from a website may
 - 在 `https://chatgpt.com/c/*` 或 `/g/*/c/*` 對話頁面右鍵，可選「匯入此 ChatGPT 對話至 LOC Galaxy」。第一次會由 Chrome 要求 ChatGPT 網域授權。操作使用原有 `capture.archiveActive(tabId)`、`capture.sync()`，按來源訊息 ID 去重、保留未確認寫入的佇列。完畢開啟 Galaxy 工作台顯示暫存和確認寫入筆數；沒有隱藏的背景匯入或無條件重送。
 - 不擴大 `externally_connectable`、不改 MCP QoS 或 LOC Authority 授權；新增的 Chrome 權限只有 `contextMenus`，ChatGPT 仍為選配網站權限。半分鐘警報要求 Chrome 120 以上。
 - `site=mcp` 是 Galaxy Link 唯一搜尋來源；GitHub PR 的來源透過 `site_id` 辨認。查詢詞仍須符合現有 substring 搜尋規則，沒有模糊字詞比對。
+
+## 0.6.7 — Clerk Token 用量保護與按需續期
+
+取消 0.6.6 的 8 秒計時檢查、30 秒 Chrome Alarm 續期與到期前 35 秒自動核發。網站授權頁初次授權時仍會核發一次短效 MCP 專用 JWT；此後只有**使用者實際操作** Galaxy 搜尋、讀取、工作區或匯入同步，且目前 Token 剩餘效期不足 30 秒，Extension 才使用原先綁定的 LOC Clerk 網站授權頁取得新 JWT。閒置期間不會反覆呼叫 Clerk。
+
+Extension 對並行操作共用同一個續期（single-flight），失敗冷卻 10 秒，等待新 Token 最長 15 秒；授權頁已關閉或變更時會要求重新開啟。原本的 Clerk/Scope 權限檢查、MCP QoS、nonce 與網址來源校驗完全保留。網站 Session Cookie 和預設 Session Token 不傳給 Extension。0.6.6 留下的定期警報會在安裝或啟動時清理。

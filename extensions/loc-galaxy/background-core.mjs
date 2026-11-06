@@ -77,17 +77,19 @@ async function checkAuthorizedStatus(){
   if(!scopeid)return {ready:false,scopeid:'',subject:''};
   if(!auth||auth.scopeid!==scopeid)
     return {ready:false,scopeid,subject:''};
+  if(auth.mode==='website'){
+    const binding=(await chrome.storage.local.get(BRIDGE_ACTIVE_KEY))[BRIDGE_ACTIVE_KEY];
+    return binding?.scopeid===scopeid&&typeof binding.nonce==='string'&&
+      Number.isInteger(binding.tabId)
+      ?{ready:true,scopeid,subject:auth.subject,renew_on_demand:true}
+      :{ready:false,scopeid,subject:'',website_session_expired:true};
+  }
   try{
     if(access?.scopeid===scopeid&&
       Number(access.expires_at)>Date.now()+15_000&&
       Number(access.verified_until)>Date.now())
       return {ready:true,scopeid,subject:access.subject};
     let issued;
-    // Website-minted JWTs cannot be renewed using an OAuth refresh token.
-    // Do not mistake a still-valid 60-second JWT for a stale grant.
-    if(auth.mode==='website')
-      return {ready:false,scopeid,subject:'',website_session_expired:true,
-        expires_at:Number(access?.expires_at)||null};
     if(access?.scopeid===scopeid&&Number(access.expires_at)>Date.now()+15_000)
       issued={...access,client_id:auth.client_id,
         refresh_token:auth.refresh_token};
@@ -105,36 +107,59 @@ async function checkAuthorizedStatus(){
 }
 
 
-// A Manifest V3 alarm continues running even when the website tab's timers
-// are throttled. It only signals the trusted page to use its own Clerk Session.
-async function ensureWebsiteRenewAlarm(){
-  const state=await chrome.storage.local.get(BRIDGE_ACTIVE_KEY);
-  if(state[BRIDGE_ACTIVE_KEY])
-    await chrome.alarms.create(WEBSITE_RENEW_ALARM,{periodInMinutes:0.5});
-}
-chrome.runtime.onInstalled.addListener(()=>{void ensureWebsiteRenewAlarm();});
-chrome.runtime.onStartup.addListener(()=>{void ensureWebsiteRenewAlarm();});
-chrome.alarms.onAlarm.addListener(alarm=>{
-  if(alarm.name!==WEBSITE_RENEW_ALARM)return;
-  void (async()=>{
-    const [local,session]=await Promise.all([
-      chrome.storage.local.get([BRIDGE_ACTIVE_KEY,SCOPE_KEY,OAUTH_KEY]),
-      chrome.storage.session.get(ACCESS_KEY)
-    ]);
+// On-demand Clerk grants: no periodic wakeup, token mint or reauthorization.
+let renewalFlight=null,renewalBlockedUntil=0;
+async function renewWebsiteAccess(scopeid){
+  if(renewalFlight)return renewalFlight;
+  if(Date.now()<renewalBlockedUntil)
+    throw Error('Clerk 授權暫時冷卻中；請稍後再操作');
+  const flight=(async()=>{
+    const local=await chrome.storage.local.get([BRIDGE_ACTIVE_KEY,OAUTH_KEY,SCOPE_KEY]);
     const binding=local[BRIDGE_ACTIVE_KEY],auth=local[OAUTH_KEY];
-    const access=session[ACCESS_KEY];
-    if(!binding||auth?.mode!=='website'||binding.scopeid!==local[SCOPE_KEY]||
-       !Number.isInteger(binding.tabId)){
-      await chrome.alarms.clear(WEBSITE_RENEW_ALARM);return;
-    }
-    if(access?.scopeid===binding.scopeid&&
-       Number(access.expires_at)>Date.now()+45000)return;
-    await chrome.scripting.executeScript({
-      target:{tabId:binding.tabId},world:'MAIN',
-      func:()=>window.dispatchEvent(new Event('locGalaxy.websiteRenew'))
+    if(auth?.mode!=='website'||binding?.scopeid!==scopeid||
+       local[SCOPE_KEY]!==scopeid||!Number.isInteger(binding.tabId))
+      throw Error('LOC 網站授權頁不存在，請從 Extension 重新連線');
+    const token=await new Promise((resolve,reject)=>{
+      let timeout,finished=false;
+      const done=(error,value)=>{
+        if(finished)return;
+        finished=true;
+        chrome.storage.onChanged.removeListener(onChange);
+        clearTimeout(timeout);
+        error?reject(error):resolve(value);
+      };
+      const onChange=(changes,area)=>{
+        const next=changes[ACCESS_KEY]?.newValue;
+        if(area==='session'&&next?.scopeid===scopeid&&
+           Number(next.expires_at)>Date.now()+30000)done(null,next.access_token);
+      };
+      chrome.storage.onChanged.addListener(onChange);
+      timeout=setTimeout(()=>done(Error('LOC 網站未完成短效憑證更新；請確認授權分頁仍開啟')),15000);
+      void (async()=>{
+        const outcome=await chrome.scripting.executeScript({
+          target:{tabId:binding.tabId},world:'MAIN',
+          args:[scopeid,binding.nonce],
+          func:(scope,nonce)=>{
+            const u=new URL(location.href);
+            if(u.origin!=='https://loc.lo3rwang.cc'||
+               u.pathname!=='/extension/auth-bridge.html'||
+               u.searchParams.get('scopeid')!==scope||
+               u.searchParams.get('nonce')!==nonce)return false;
+            window.dispatchEvent(new Event('locGalaxy.websiteRenew'));
+            return true;
+          }
+        });
+        if(outcome?.[0]?.result!==true)
+          throw Error('原本的 LOC 網站授權分頁已變更');
+      })().catch(()=>done(Error('LOC 網站授權頁無法喚醒，請保留該分頁')));
     });
-  })().catch(()=>{}); // Closed or navigated tab: status stays expired, never expose token.
-});
+    return token;
+  })();
+  renewalFlight=flight;
+  try{return await flight;}
+  catch(error){renewalBlockedUntil=Date.now()+10000;throw error;}
+  finally{if(renewalFlight===flight)renewalFlight=null;}
+}
 
 // The workbench never receives OAuth tokens. Only the trusted service worker
 // sends approved, validated MCP calls with the verified Scope's credential.
@@ -148,18 +173,19 @@ async function verifiedAccess(scopeid){
       throw Error('LOC Authority 暫時無法驗證授權；目前授權資料已保留');
     throw Error('請先完成 LOC Galaxy 的 Scope OAuth 授權');
   }
-  const access=(await readAll()).access;
-  if(access?.scopeid!==scopeid||!access.access_token||
-     Number(access.expires_at)<Date.now()+15000)
-    throw Error('LOC MCP Access Token 已過期，請重新驗證 OAuth');
-  return access.access_token;
+  const {auth,access}=await readAll();
+  if(access?.scopeid===scopeid&&access.access_token&&
+     Number(access.expires_at)>Date.now()+30000)return access.access_token;
+  if(auth?.mode==='website')return renewWebsiteAccess(scopeid);
+  if(access?.scopeid===scopeid&&access.access_token&&
+     Number(access.expires_at)>Date.now()+15000)return access.access_token;
+  throw Error('LOC MCP Access Token 已過期，請重新驗證 OAuth');
 }
 async function galaxyRequest(message){
   const scopeid=checkedScope(message.scopeid);
   const action=String(message.action||'');
   if(!['search','read'].includes(action)||message.source!==undefined)
     throw Error('Galaxy Link 僅支援固定 MCP 來源');
-  const token=await verifiedAccess(scopeid);
   if(action==='search'){
     const query=String(message.query||'').trim();
     if(query.length<2||query.length>100||/[\u0000-\u001f\u007f]/.test(query))
@@ -167,6 +193,7 @@ async function galaxyRequest(message){
     const key=scopeid;
     const last=linkSearchStarted.get(key)||0;
     if(Date.now()-last<30000)throw Error('Galaxy Link 搜尋有 QoS 限制，請稍後再查詢');
+    const token=await verifiedAccess(scopeid);
     linkSearchStarted.set(key,Date.now());
     return mcpTool(token,'galaxy_link',{action:'search',scopeid,query,limit:5});
   }
@@ -175,6 +202,7 @@ async function galaxyRequest(message){
   const offset=Number(message.offset??0);
   if(!Number.isInteger(offset)||offset<0||offset>1000000)
     throw Error('文章讀取位置無效');
+  const token=await verifiedAccess(scopeid);
   return mcpTool(token,'galaxy_link',{
     action:'read',scopeid,uid:message.uid,offset,max_chars:20000
   });
@@ -225,6 +253,8 @@ chrome.alarms.onAlarm.addListener(alarm=>{
   if(alarm.name===capture.ALARM)void capture.sync().catch(()=>{});
 });
 chrome.runtime.onStartup.addListener(()=>{void capture.resume().catch(()=>{});});
+chrome.runtime.onInstalled.addListener(()=>{void chrome.alarms.clear(WEBSITE_RENEW_ALARM);});
+chrome.runtime.onStartup.addListener(()=>{void chrome.alarms.clear(WEBSITE_RENEW_ALARM);});
 
 const MENU_ARCHIVE='loc-galaxy-archive-conversation';
 function registerArchiveMenu(){
