@@ -20,7 +20,7 @@ function registry(rows,{blacklist={email:[]}}={}){
           return {executeTakeFirst:async()=>({blacklist})};
         }};
       }};
-      assert.equal(table,'silver.manage');
+      assert.equal(table,'api.manage');
       return {select(fields){
         assert.deepEqual(fields,['id','email','manage_role','active']);
         return {where(column,op,value){
