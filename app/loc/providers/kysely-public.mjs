@@ -38,6 +38,15 @@ export async function executeKyselyPublicAction(trx,body,{engine='postgres',name
       .where('page_name','in',names).execute();
     return {data:rows,count:null};
   }
+  // Reject unsupported actions, arguments and Scope IDs before Kysely
+  // introspects the external database. Malformed public requests cost no SQL.
+  const name=String(body?.name||'');
+  const keys=ACTION_ARGS[name];
+  const args=body?.args||{};
+  if(!keys||!args||typeof args!=='object'||Array.isArray(args)||
+     Object.keys(args).some(k=>!keys.includes(k)))
+    throw Object.assign(new Error('Invalid public action'),{httpStatus:400});
+  const scope=id(args.p_scope_id);
   const metadata=await trx.introspection.getTables();
   const available=new Set(metadata.map(row=>String(row.schema||'')+'.'+row.name));
   const mysqlNames=new Set(metadata.map(row=>row.name));
@@ -49,13 +58,6 @@ export async function executeKyselyPublicAction(trx,body,{engine='postgres',name
       (engine==='mysql'||!portable||!row.schema||row.schema===namespace))
     .map(row=>row.name.slice(0,-'_galaxy'.length)))]
     .filter(value=>scopePattern.test(value)&&has(value+'_anchor'));
-  const name=String(body?.name||'');
-  const keys=ACTION_ARGS[name];
-  const args=body?.args||{};
-  if(!keys||!args||typeof args!=='object'||Array.isArray(args)||
-     Object.keys(args).some(k=>!keys.includes(k)))
-    throw Object.assign(new Error('Invalid public action'),{httpStatus:400});
-  const scope=id(args.p_scope_id);
   // The old public RPCs were SECURITY DEFINER. We return only their
   // pre-approved public result shape; callers cannot choose relations/SQL.
   if(!portable)await sql`reset role`.execute(trx);
