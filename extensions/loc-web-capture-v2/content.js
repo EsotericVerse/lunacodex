@@ -117,10 +117,23 @@
           (mediaText?'\n[媒體來源]\n'+mediaText:'')};
     }).filter(Boolean);
   }
+  function fingerprint(value){
+    const text=String(value||'');
+    let a=2166136261,b=16777619;
+    for(let i=0;i<text.length;i++){
+      const code=text.charCodeAt(i);
+      a=Math.imul(a^code,16777619);
+      b=Math.imul(b+code,2246822519);
+    }
+    return text.length+':'+(a>>>0).toString(16)+':'+(b>>>0).toString(16);
+  }
   function publish(items){
     const fresh=items.filter(x=>{
-      const k=x.key+'\u0000'+x.content;
+      // Keep only compact transient fingerprints, never multi-MB article
+      // strings in a long-lived in-page Set during infinite scrolling.
+      const k=x.source_key+':'+fingerprint(x.content);
       if(state.seen.has(k))return false;
+      if(state.seen.size>=5000)state.seen.clear();
       state.seen.add(k);return true;
     });
     if(fresh.length)chrome.runtime.sendMessage({type:'items.captured',items:fresh}).catch(()=>{});
