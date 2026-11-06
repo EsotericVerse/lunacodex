@@ -66,6 +66,15 @@ export function sourceTaxonomyFromArrays(systemNames=[],personalNames=[]){
   return {categories,aliases,groups,groupAliases};
 }
 
+// Keep short actual Galaxy.site codes distinct from presentation names.
+// This is an ordinary string normalization, not a new source alias registry.
+export function sourceSiteKeyForLabel(label){
+  const display=key(label);
+  if(display==='其他')return 'others';
+  const suffix=display.match(/[a-z][a-z0-9_-]{2,}$/)?.[0]||'';
+  return suffix||display;
+}
+
 // Match existing short site keys to a configured label without accidentally
 // grouping unrelated sources (e.g. 'art' within 'smart'). An explicit label
 // or its distinct suffix is accepted; historic '其他' maps to 'others'.
@@ -76,6 +85,5 @@ export function sourceLabelMatchesSite(site,label){
   if(raw==='others'&&display==='其他')return true;
   // Existing source display labels use a human name followed by its actual
   // ASCII site code, e.g. 方格子vocus and 無名wretch.
-  const suffix=display.match(/[a-z][a-z0-9_-]{2,}$/)?.[0]||'';
-  return suffix===raw;
+  return sourceSiteKeyForLabel(display)===raw;
 }
