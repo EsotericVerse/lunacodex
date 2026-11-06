@@ -72,18 +72,26 @@
         }
       }catch{ /* Unsupported or dynamic page: use bounded DOM fallback below. */ }
     }
-    const articles=[...doc.querySelectorAll('article,[role="article"]')]
+    const articles=[...doc.querySelectorAll('article,[role="article"],[data-testid="post-container"]')]
       .filter(el=>visible(el)&&cleanText(el).length>=25);
-    const cards=(articles.length?articles:[doc]).slice(0,100);
+    // During a feed recording, never append an entire changing timeline
+    // as one giant article; only independent, identifiable post elements.
+    const cards=(articles.length?articles:(mode==='record'?[]:[doc])).slice(0,100);
     return cards.map((el,index)=>{
       const source=stableSource(el);
       const text=cleanText(el);
       if(!source||!text)return null;
       const hrefs=links(el).map(x=>x.text+' <'+x.url+'>').join('\n');
+      const media=[...el.querySelectorAll('img[src],video[src],video[poster],source[src]')]
+        .filter(visible).slice(0,24).map(node=>
+          normalizeUrl(node.currentSrc||node.src||node.getAttribute('poster')||''))
+        .filter(Boolean);
+      const mediaText=[...new Set(media)].map(u=>'<'+u+'>').join('\n');
       const date=el.querySelector('time[datetime]')?.getAttribute('datetime');
       return {key:source,source_key:source,url:source,
         title:el.querySelector('h1,h2,h3')?.textContent?.trim()||document.title,
-        content:(date?'[時間] '+date+'\n':'')+text+(hrefs?'\n[連結]\n'+hrefs:'')};
+        content:(date?'[時間] '+date+'\n':'')+text+(hrefs?'\n[連結]\n'+hrefs:'')+
+          (mediaText?'\n[媒體來源]\n'+mediaText:'')};
     }).filter(Boolean);
   }
   function publish(items){
