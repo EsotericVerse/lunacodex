@@ -1,5 +1,7 @@
 import { sql } from "npm:kysely@0.29.8";
 import {jwtVerify} from "npm:jose@5.9.6";
+import {processShortImport,postgresShortImportStore} from "../../../app/loc/import/short-append-service.mjs";
+import {authorizeDelegatedShortImport} from "../../../app/loc/import/short-edge-authorization.mjs";
 import {delegationAudience,verifyDelegationBoundary,canManageDelegation} from "../../../app/loc/auth/delegation-contract.mjs";
 import {databaseForTarget,resolveConnectionProfile} from "./drivers.ts";
 import {readVaultConnection} from "./database-connections.ts";
@@ -219,6 +221,32 @@ Deno.serve(async (request) => {
       return json({error:{message:"Administrator permission required"}},403);
     try{await checkAdminRole(claims);}
     catch{return json({error:{message:"Administrator permission required"}},403);}
+  }
+
+  // LOC's independent OAuth/Authority gateway must first mint a signed SQL
+  // delegation. This internal entry cannot accept a browser OAuth token,
+  // a user-provided actor, or an arbitrary SQL table/target.
+  if(body.kind==="short-import"){
+    try{
+      if(requestedTarget!=="configured")
+        return json({error:{message:"Managed short import uses the LOC control database only"}},403);
+      const actor=authorizeDelegatedShortImport(body,claims);
+      // Only the two managed Galaxy tables are reachable. Use the trusted
+      // database connection/DBM here, not a new INSERT RLS policy or RPC.
+      // PostgreSQL has no authenticated INSERT policy on these tables;
+      // signed Scope authorization is checked above before any DB request.
+      const db=await databaseForTarget(controlTarget);
+      const response=await processShortImport(body.batch,actor,{
+        store:postgresShortImportStore(db,sql)
+      });
+      return json(response);
+    }catch(error){
+      const status=Number((error as {httpStatus?:number})?.httpStatus)||500;
+      if(status>=500)console.error("[LOC short-import] delegated write failed",error);
+      return json({error:{message:status>=500?"Short import unavailable":
+        String(error instanceof Error?error.message:"Invalid short import payload")}},
+        status>=400&&status<=599?status:500);
+    }
   }
 
   const textSearch=isTextSearchQuery(body);
