@@ -206,7 +206,7 @@ export async function recordImportPlaceVisits(visits,{relation,table,timesByUid,
   }
   if(unified){
     const pending=[...byUid].map(([uid,stamps])=>({
-      uid,createtime:new Date(Math.min(...stamps)).toISOString()
+      uid,createtime:new Date([...stamps].reduce((minimum,stamp)=>Math.min(minimum,stamp),Infinity)).toISOString()
     }));
     const phase='補齊 Point 來源時間',total=pending.length;
     onProgress?.({phase,completed:0,total});
