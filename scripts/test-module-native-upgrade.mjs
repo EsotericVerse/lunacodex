@@ -17,9 +17,22 @@ test('upgraded dependency specs match npm lockfile root',()=>{
   }
 });
 
-test('ZenStack is not a runtime or development dependency',()=>{
+test('ZenStack V3 dependencies are lockfile-consistent when installed',()=>{
+  const packages=['@zenstackhq/orm','@zenstackhq/schema'];
+  const declared=packages.map(name=>manifest.dependencies?.[name]??manifest.devDependencies?.[name]);
+  assert.ok(declared.every(Boolean)||declared.every(version=>!version),
+    'ZenStack ORM and schema must be installed together');
+  for(let i=0;i<packages.length;i++){
+    if(!declared[i])continue;
+    const name=packages[i];
+    assert.match(declared[i],/^3\\./,name+' must use ZenStack V3');
+    assert.equal(root.dependencies?.[name]??root.devDependencies?.[name],declared[i],
+      name+' must match the npm lockfile root');
+    assert.ok(lock.packages['node_modules/'+name],name+' must have a resolved lockfile entry');
+  }
   for(const section of ['dependencies','devDependencies']){
-    assert.ok(!Object.keys(manifest[section]||{}).some(name=>/zenstack/i.test(name)));
+    assert.ok(!manifest[section]?.['@zenstackhq/cli'],
+      'ZenStack CLI is intentionally excluded from the dependency set');
   }
 });
 
