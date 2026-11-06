@@ -6,30 +6,24 @@ import {normalizeIsrDomains} from '../app/loc/providers/isr-domains.mjs';
 
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
-test('single-database installs have no mandatory backup target',()=>{
+test('single-database installs have no mandatory backup SQL Gateway',()=>{
   const route=resolveDatabaseRouting({...DATABASE_ROUTING_CONFIG,backupId:null});
-  assert.equal(route.primaryId,'supabase-current');
   assert.equal(route.backupId,null);
-  assert.equal(route.backupProvider,null);
   assert.equal(route.verified,true);
-  assert.match(read('app/loc/providers/configured.mjs'),/const backup=routing\.backupId\?/);
-  assert.match(read('app/loc/providers/configured.mjs'),/backupSourceLabel:backup\?'Neon':''/);
+  const server=read('app/api/loc/_server.js');
+  assert.match(server,/const candidates=\[\{id:'primary'/);
+  assert.match(server,/if\(backupGatewayUrl\)/);
+  assert.doesNotMatch(server,/NEON_AUTH_URL|PostgrestClient|createBackupPublicAdapter/);
 });
 
-test('a configured backup remains lazy and optional',()=>{
-  const route=resolveDatabaseRouting({...DATABASE_ROUTING_CONFIG,backupId:'neon-current'});
-  assert.equal(route.backupId,'neon-current');
-  assert.equal(route.backupProvider,'neon');
-  const source=read('app/loc/providers/configured.mjs');
-  assert.match(source,/let backupPublicClient=null/);
-  assert.match(source,/routing.backupId&&neonConfigured/);
-  assert.match(source,/backupPublicClient\?\?=createBackupPublicAdapter\(\)\.publicClient/);
+test('configured backup requires an independent Kysely Gateway, not Neon Auth',()=>{
+  const source=read('app/api/loc/_server.js');
+  assert.match(source,/LOC_BACKUP_SQL_GATEWAY_URL/);
+  assert.match(source,/gatewayUrl:backupGatewayUrl/);
+  assert.match(source,/id:'backup'/);
+  assert.match(source,/createKyselyEdgeClient/);
   assert.match(read('app/loc/providers/routing-config.mjs'),/DATABASE_ACCESS_LIST/);
   assert.match(read('app/loc/providers/access.js'),/backup_selected:true/);
-  const neon=read('app/loc/providers/neon-public.mjs');
-  assert.doesNotMatch(neon,/createKyselyEdgeClient|supabase\.co|functions\/v1\/loc-kysely/);
-  assert.match(neon,/token\/anonymous/);
-  assert.match(neon,/new PostgrestClient/);
 });
 
 test('zero remote ISR services is supported on a fresh installation',()=>{

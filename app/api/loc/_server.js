@@ -1,4 +1,3 @@
-import {createBackupPublicAdapter} from '../../loc/providers/neon-public.mjs';
 import {createKyselyEdgeClient} from '../../loc/providers/kysely-edge.mjs';
 
 const SQL_PROVIDER_URL=process.env.NEXT_PUBLIC_SUPABASE_URL||
@@ -10,6 +9,7 @@ const PUBLIC_KEY=process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY||
 // Without an independent gateway, preserve the existing production Edge target.
 const SQL_GATEWAY_URL=process.env.LOC_SQL_GATEWAY_URL||
   process.env.NEXT_PUBLIC_LOC_KYSELY_GATEWAY_URL||'';
+const BACKUP_SQL_GATEWAY_URL=process.env.LOC_BACKUP_SQL_GATEWAY_URL||'';
 
 export function validScopeId(value){
   return /^[a-z][a-z0-9]{0,14}$/.test(String(value||''));
@@ -17,9 +17,10 @@ export function validScopeId(value){
 
 // Optional ISR does not instantiate a Supabase Auth or Data API SDK.
 // Both public numeric reads and analytics use the same bounded Kysely transport.
-// Neon remains an independently hosted fallback until its direct Kysely target
-// has been deployed and checked; never tunnel a backup through primary.
-export function publicNumericSources({fetchImpl=globalThis.fetch}={}){
+// Optional backup uses a second independently hosted Kysely SQL Gateway.
+// No database vendor Auth or PostgREST token service participates.
+export function publicNumericSources({fetchImpl=globalThis.fetch,
+  backupGatewayUrl=BACKUP_SQL_GATEWAY_URL}={}){
   const timedFetch=(input,init={})=>{
     const timeout=AbortSignal.timeout(6500);
     const signal=init.signal?AbortSignal.any([init.signal,timeout]):timeout;
@@ -29,13 +30,17 @@ export function publicNumericSources({fetchImpl=globalThis.fetch}={}){
     url:SQL_PROVIDER_URL,publishableKey:PUBLIC_KEY,
     gatewayUrl:SQL_GATEWAY_URL,target:'configured',role:'anon',fetch:timedFetch
   });
-  const candidates=[{id:'supabase',schema:()=>primary.schema('silver')}];
-  if(process.env.NEXT_PUBLIC_LOC_NEON_DATA_API_URL&&process.env.NEXT_PUBLIC_LOC_NEON_AUTH_URL){
-    let neon=null;
-    candidates.push({id:'neon',schema:()=>{
-      neon??=createBackupPublicAdapter({fetchImpl:timedFetch}).publicClient;
-      return neon.schema('silver');
-    }});
+  const candidates=[{id:'primary',schema:()=>primary.schema('silver')}];
+  if(backupGatewayUrl){
+    // Independent backup must not share the primary Gateway origin.
+    const primaryOrigin=new URL(SQL_GATEWAY_URL||SQL_PROVIDER_URL).origin;
+    const backupOrigin=new URL(backupGatewayUrl).origin;
+    if(primaryOrigin===backupOrigin)
+      throw new Error('Backup SQL Gateway must use an independent origin');
+    const backup=createKyselyEdgeClient({
+      gatewayUrl:backupGatewayUrl,target:'configured',role:'anon',fetch:timedFetch
+    });
+    candidates.push({id:'backup',schema:()=>backup.schema('silver')});
   }
   return candidates;
 }

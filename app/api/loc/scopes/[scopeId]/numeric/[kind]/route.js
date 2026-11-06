@@ -44,7 +44,7 @@ export async function GET(request,{params}){
   if(outcome.error)return reply(request,{error:outcome.error},503);
   const data=outcome.data;
   // Do not give a potentially lagging replica the primary's hour-long CDN TTL.
-  const sourceHeaders={...(outcome.source==='neon'
+  const sourceHeaders={...(outcome.source==='backup'
     ?{'Cache-Control':'public, s-maxage=120, stale-while-revalidate=180',
       'Cloudflare-CDN-Cache-Control':'public, s-maxage=120'}
     :CACHE_HEADERS),'X-LOC-Data-Source':outcome.source};
