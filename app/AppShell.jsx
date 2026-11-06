@@ -523,7 +523,7 @@ function AppShellInner({children}){
     {id:'cancel',icon:'cancel',label:translateUiField(activeLocale,'取消'),action:'cancel'}
   ];
   const featureTabs=[
-    {id:'home',icon:localWorkspace?'phone':'home',label:translateUiField(activeLocale,'首頁'),href:localWorkspace?deviceNavigation.mobileHomeHref(true):navigationHref(navScopeId,'',native)+(native&&navScopeId==='loc'?'?loc_direct=1':'')},
+    {id:'home',icon:localWorkspace?'phone':'home',label:localWorkspace?'使用說明':translateUiField(activeLocale,'首頁'),href:localWorkspace?deviceNavigation.mobileHomeHref(true):navigationHref(navScopeId,'',native)+(native&&navScopeId==='loc'?'?loc_direct=1':'')},
     ...['culture','statics','trace','search'].map(id=>{
       const feature=FEATURES.find(item=>item.id===id);
       return {id,icon:id==='trace'?(localWorkspace?'settings':'trace'):id,

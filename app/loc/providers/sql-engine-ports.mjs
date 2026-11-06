@@ -29,11 +29,17 @@ export function getSqlRuntimeCapabilities(engine){
   });
 }
 // Runtime hook boundary: the core Kysely CRUD remains common to all SQL engines.
-// PostgreSQL uses existing RLS; other engines require a trusted permission
-// adapter before private reads or mutations can be enabled.
+// LOC-signed delegations authorize private operations regardless of database
+// dialect; PostgreSQL's existing RLS is an independent database-side layer.
 export function resolveSqlExecutionPort(target){
   const port=getSqlEnginePort(target.engine);
-  return Object.freeze({engine:port.id,session:port.session,namespace:port.namespace,runtime:port.runtime});
+  // PostgreSQL is portable with or without provider-managed RLS roles.
+  // Only the existing provider-specific gateways opt into session impersonation.
+  const managedRls=port.id==='postgres'&&
+    ['supabase','neon'].includes(String(target.provider||''))&&
+    target.rls_enabled!==false;
+  const session=port.id==='postgres'&&!managedRls?'external-acl':port.session;
+  return Object.freeze({engine:port.id,session,namespace:port.namespace,runtime:port.runtime});
 }
 
 // An external Kysely dialect does not inherit PostgreSQL RLS. Whitelisting
@@ -67,13 +73,12 @@ const SCOPE_ID=/^[a-z][a-z0-9]{0,14}$/;
 const PRIVATE_RELATION=/^([a-z][a-z0-9]{0,14})(?:_(galaxy|anchor|blocks|keywords|trace|time|galaxy_media))?$/;
 const VERIFIED_EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 /**
- * LOC ownership must be established independently of database login.
- * MySQL/MSSQL don't inherit PostgreSQL RLS, so never "reset role" and assume
- * writes became safe. Validate the verified Clerk identity against the
- * target database's own Scope Registry using only Kysely queries.
+ * LOC delegation is verified by the trusted Edge before any database call.
+ * The local signed Scope grant, not the database's identity provider or
+ * a second Scope Registry query, controls portable private operations.
  *
- * This is the generic CRUD gate. Higher-level features must use Kysely and
- * the same ACL; PostgreSQL-specific actions are not dispatched here.
+ * This is the generic CRUD gate. Higher-level features reuse the same
+ * LOC-managed authority. PostgreSQL-specific actions are not dispatched here.
  */
 export async function authorizeCrossEngineQuery(db,request,{role='anon',claims={}}={}){
   if(role!=='authenticated')

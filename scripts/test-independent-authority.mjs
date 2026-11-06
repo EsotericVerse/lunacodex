@@ -1,11 +1,19 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
-// Node has no cloudflare:workers runtime. Substitute only the DO base constructor;
-// the actual Worker source, crypto, URL validation and fetch handler are tested.
+import {createHmac} from 'node:crypto';
+import {verifyDelegationBoundary} from '../app/loc/auth/delegation-contract.mjs';
+// Node has no cloudflare:workers runtime. Substitute only the DO base constructor,
+// and resolve relative imports before loading the actual Worker in a data URL.
 const source=readFileSync(new URL('../workers/loc-authority/index.mjs',import.meta.url),'utf8')
   .replace("import { DurableObject } from 'cloudflare:workers';",
-    "class DurableObject { constructor(ctx,env){this.ctx=ctx;this.env=env;} }");
+    "class DurableObject { constructor(ctx,env){this.ctx=ctx;this.env=env;} }")
+  .replace("'./keyword-categories.mjs'",
+    JSON.stringify(new URL('../workers/loc-authority/keyword-categories.mjs',import.meta.url).href))
+  .replace("'../../app/loc/auth/auth-provider-settings.mjs'",
+    JSON.stringify(new URL('../app/loc/auth/auth-provider-settings.mjs',import.meta.url).href))
+  .replace("'../../app/loc/auth/delegation-contract.mjs'",
+    JSON.stringify(new URL('../app/loc/auth/delegation-contract.mjs',import.meta.url).href));
 const {LocAuthorityState,default:worker}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
 
 function fakeStorage(){
@@ -144,6 +152,125 @@ test('optional secondary OIDC recovers admin access without Clerk being configur
   const bad=await bearer(pair,{iss:'https://oidc.example.test',sub:'operator_1',aud:'untrusted'});
   assert.equal((await worker.fetch(request('/v1/me',bad),env)).status,401);
 });
+test('verified OAuth identity exchanges into one short LOC delegation without a SQL Auth RPC',async()=>{
+  const {pair,pem}=await makeKeys(),env=envFor(pem);
+  env.LOC_DELEGATION_SECRET='k'.repeat(64);
+  env.LOC_ROOT_MANAGEMENT_EMAIL='owner@example.org';
+  makeControl(env);
+  const root=await bearer(pair);
+  const reply=await worker.fetch(request('/v1/delegation',root,'POST',{global:true}),env);
+  assert.equal(reply.status,200);
+  const item=await reply.json();
+  assert.equal(item.audience,'loc-delegation');
+  assert.deepEqual(item.grants,['global:manage']);
+  const [header,payload,signature]=item.access_token.split('.');
+  assert.equal(createHmac('sha256',env.LOC_DELEGATION_SECRET)
+    .update(header+'.'+payload).digest('base64url'),signature);
+  const claims=JSON.parse(Buffer.from(payload,'base64url').toString());
+  assert.equal(claims.sub,'user_ABC123','legacy Clerk owner_id must be preserved');
+  assert.equal(claims.email,'owner@example.org');
+  assert.equal(claims.exp-claims.iat,300);
+  assert.equal(verifyDelegationBoundary(claims,{kind:'query'}).claims.me,true);
+});
+
+test('non-root OAuth cannot convert ungranted Scope or arbitrary identity into LOC authority',async()=>{
+  const {pair,pem}=await makeKeys(),env=envFor(pem),control=makeControl(env);
+  env.LOC_DELEGATION_SECRET='k'.repeat(64);
+  const client=await bearer(pair,{sub:'user_READER',email:'reader@example.org',email_verified:true});
+  const rejected=await worker.fetch(request('/v1/delegation',client,'POST',
+    {audience:'mcp',scopeid:'lrunes',actions:['write']}),env);
+  assert.equal(rejected.status,403);
+  const identityOnly=await worker.fetch(request('/v1/delegation',client,'POST',
+    {audience:'sql',identity:true}),env);
+  assert.equal(identityOnly.status,200);
+  const minimal=await identityOnly.json();
+  const basicClaims=JSON.parse(Buffer.from(minimal.access_token.split('.')[1],'base64url').toString());
+  assert.deepEqual(basicClaims.grants,[]);
+  assert.equal(verifyDelegationBoundary(basicClaims,{kind:'query'}).claims.me,true);
+  assert.equal((await worker.fetch(request('/v1/delegation',client,'POST',
+    {audience:'sql',identity:true,scopeid:'lo3rwang'}),env)).status,400);
+  const myDelegations=await worker.fetch(request('/v1/delegation',client,'POST',
+    {audience:'sql',self:true}),env);
+  assert.equal(myDelegations.status,200);
+  assert.deepEqual((await myDelegations.json()).grants,[]);
+  const rootDenied=await worker.fetch(request('/v1/delegation',client,'POST',{global:true}),env);
+  assert.equal(rootDenied.status,403);
+  await control.putGrant({provider:'clerk',subject:'user_READER',scope:'lo3rwang',
+    actions:['read'],expires_at:Date.now()+3600000});
+  const accepted=await worker.fetch(request('/v1/delegation',client,'POST',
+    {audience:'mcp',scopeid:'lo3rwang',actions:['read']}),env);
+  assert.equal(accepted.status,200);
+  const selfRead=await worker.fetch(request('/v1/delegation',client,'POST',
+    {audience:'sql',self:true}),env);
+  assert.equal(selfRead.status,200);
+  assert.deepEqual((await selfRead.json()).grants,[]);
+  const item=await accepted.json();
+  assert.deepEqual(item.grants,['lo3rwang:read']);
+  const claims=JSON.parse(Buffer.from(item.access_token.split('.')[1],'base64url').toString());
+  assert.equal(verifyDelegationBoundary(claims,{kind:'mcp-read',scopeid:'lo3rwang'}).verifiedMcp,true);
+  assert.throws(()=>verifyDelegationBoundary(claims,{kind:'query'}),/Invalid/);
+  await control.revokeGrant('clerk:user_READER:lo3rwang');
+  const after=await worker.fetch(request('/v1/delegation',client,'POST',
+    {audience:'mcp',scopeid:'lo3rwang',actions:['read']}),env);
+  assert.equal(after.status,403);
+  const forged=await worker.fetch(request('/v1/delegation',client,'POST',
+    {audience:'sql',scopeid:'lo3rwang',actions:['read'],sub:'user_root'}),env);
+  assert.equal(forged.status,400);
+});
+
+test('manage-self exchanges only existing verified Scope management grants',async()=>{
+  const {pair,pem}=await makeKeys(),env=envFor(pem),control=makeControl(env);
+  env.LOC_DELEGATION_SECRET='k'.repeat(64);
+  const client=await bearer(pair,{sub:'user_EDITOR',
+    email:'editor@example.org',email_verified:true});
+  await control.putGrant({provider:'clerk',subject:'user_EDITOR',scope:'lrunes',
+    actions:['manage'],expires_at:Date.now()+3600000});
+  const result=await worker.fetch(request('/v1/delegation',client,'POST',
+    {audience:'sql',self:true}),env);
+  assert.equal(result.status,200);
+  const item=await result.json();
+  assert.deepEqual(item.grants,['lrunes:manage']);
+  const claims=JSON.parse(Buffer.from(item.access_token.split('.')[1],'base64url').toString());
+  assert.equal(claims.sub,'user_EDITOR');
+  assert.equal(verifyDelegationBoundary(claims,{kind:'query'}).claims.me,true);
+  await control.revokeGrant('clerk:user_EDITOR:lrunes');
+  const revoked=await worker.fetch(request('/v1/delegation',client,'POST',
+    {audience:'sql',self:true}),env);
+  assert.equal(revoked.status,200);
+  assert.deepEqual((await revoked.json()).grants,[]);
+});
+test('trusted manual email mapping enables delegated Scope on default Clerk JWT',async()=>{
+  const {pair,pem}=await makeKeys(),env=envFor(pem),control=makeControl(env);
+  env.LOC_DELEGATION_SECRET='k'.repeat(64);
+  const token=await bearer(pair,{sub:'user_MANUAL'});
+  await control.putGrant({provider:'clerk',subject:'user_MANUAL',scope:'lo3rwang',
+    actions:['manage'],email:'manual@example.org',expires_at:Date.now()+3600000});
+  const result=await worker.fetch(request('/v1/delegation',token,'POST',
+    {audience:'sql',scopeid:'lo3rwang',actions:['manage']}),env);
+  assert.equal(result.status,200);
+  const claims=JSON.parse(Buffer.from((await result.json()).access_token.split('.')[1],
+    'base64url').toString());
+  assert.equal(claims.sub,'user_MANUAL');
+  assert.equal(claims.email,'manual@example.org');
+  const self=await worker.fetch(request('/v1/delegation',token,'POST',
+    {audience:'sql',self:true}),env);
+  assert.equal(self.status,200);
+  assert.deepEqual((await self.json()).grants,['lo3rwang:manage']);
+  assert.equal((await worker.fetch(request('/v1/delegation',token,'POST',
+    {audience:'sql',scopeid:'lrunes',actions:['manage']}),env)).status,403);
+  await control.revokeGrant('clerk:user_MANUAL:lo3rwang');
+  assert.equal((await worker.fetch(request('/v1/delegation',token,'POST',
+    {audience:'sql',scopeid:'lo3rwang',actions:['manage']}),env)).status,403);
+});
+test('LOC delegation exchange fails if signing secret or verified email is unavailable',async()=>{
+  const {pair,pem}=await makeKeys(),env=envFor(pem);
+  makeControl(env);
+  const token=await bearer(pair);
+  assert.equal((await worker.fetch(request('/v1/delegation',token,'POST',{global:true}),env)).status,503);
+  env.LOC_DELEGATION_SECRET='k'.repeat(64);
+  assert.equal((await worker.fetch(request('/v1/delegation',token,'POST',{global:true}),env)).status,403);
+});
+
 test('public sign-in is Clerk-only and the recovery console is no longer offered',()=>{
   const page=readFileSync(new URL('../public/login/index.html',import.meta.url),'utf8');
   const settings=JSON.parse(readFileSync(new URL('../public/recovery/config.json',import.meta.url),'utf8'));

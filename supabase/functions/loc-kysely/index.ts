@@ -1,6 +1,6 @@
 import { sql } from "npm:kysely@0.29.8";
-import {createRemoteJWKSet,jwtVerify} from "npm:jose@5.9.6";
-import {clerkSqlClaims} from "../../../app/loc/auth/clerk-sql-claims.mjs";
+import {jwtVerify} from "npm:jose@5.9.6";
+import {delegationAudience,verifyDelegationBoundary,canManageDelegation} from "../../../app/loc/auth/delegation-contract.mjs";
 import {databaseForTarget,resolveConnectionProfile} from "./drivers.ts";
 import {readVaultConnection} from "./database-connections.ts";
 import { executeKyselyQuery, isKyselyClientError } from "../../../app/loc/providers/kysely-runtime.mjs";
@@ -16,7 +16,7 @@ import {resolveSqlExecutionPort,assertCrossEnginePublicRead,authorizeCrossEngine
 import {resolveDatabaseRouting} from "../../../app/loc/providers/routing-config.mjs";
 import {databaseAccessTargets} from "../../../app/loc/providers/access.js";
 import {isTextSearchQuery,checkSearchQos} from "../../../app/loc/providers/search-qos.mjs";
-import {bindLocAuthorization,canManageLoc,locPermissions} from "../../../app/loc/providers/loc-authorization.mjs";
+import {bindLocAuthorization,canManageLoc} from "../../../app/loc/providers/loc-authorization.mjs";
 
 const corsHeaders = {
   "access-control-allow-origin": "*",
@@ -25,137 +25,20 @@ const corsHeaders = {
   "access-control-max-age": "86400",
 };
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-const clerkIssuer=(Deno.env.get("LOC_CLERK_ISSUER")||
-  "https://precise-grackle-3371.clerk.accounts.dev").replace(/\/$/,"");
-const clerkOrigin=(Deno.env.get("LOC_CONTROL_ORIGIN")||
-  "https://loc.lo3rwang.cc").replace(/\/$/,"");
-if(new URL(clerkIssuer).protocol!=="https:"||
-  new URL(clerkIssuer).pathname!=="/"||
-  new URL(clerkOrigin).protocol!=="https:"||
-  new URL(clerkOrigin).pathname!=="/")
-  throw new Error("Clerk issuer and LOC origin must be HTTPS origins");
-const clerkKeys=createRemoteJWKSet(new URL(clerkIssuer+"/.well-known/jwks.json"));
-const mcpResource="https://loc.lo3rwang.cc/mcp";
-// A verified Clerk Session can rotate its JWT without changing its sub/sid.
-// Cache ONLY the Authority-confirmed email, never the JWT or SQL permissions.
-// Every request independently verifies the JWT signature, issuer and expiry.
-const SESSION_IDENTITY_TTL_MS=2*60*60*1000;
-const sessionIdentityCache=new Map<string,{until:number,pending:Promise<string>}>();
-async function verifiedClerkSessionEmail(token:string,payload:Record<string,unknown>){
-  const subject=String(payload.sub||''),sid=String(payload.sid||'');
-  const exp=Number(payload.exp),now=Date.now();
-  // Invalid identities never enter the cache; clerkSqlClaims still enforces
-  // all the existing authorization-claim checks.
-  const cacheable=/^user_[A-Za-z0-9]+$/.test(subject)&&
-    /^sess_[A-Za-z0-9]+$/.test(sid)&&Number.isFinite(exp)&&exp*1000>now;
-  const key=cacheable?JSON.stringify([payload.iss,subject,sid]):'';
-  const cached=key?sessionIdentityCache.get(key):null;
-  if(cached&&cached.until>now)return cached.pending;
-  if(cached)sessionIdentityCache.delete(key);
-  const pending=(async()=>{
-    const reply=await fetch('https://auth.lo3rwang.cc/v1/identity',{
-      method:'GET',headers:{authorization:'Bearer '+token,origin:clerkOrigin,accept:'application/json'},
-      signal:AbortSignal.timeout(8000)
-    });
-    if(!reply.ok)throw new Error('LOC Authority could not verify Clerk root identity');
-    const identity=await reply.json();
-    if(identity?.provider!=='clerk'||identity.subject!==payload.sub||
-        identity.session!==payload.sid)
-      throw new Error('LOC Authority Clerk identity mismatch');
-    const email=String(identity.email||'').trim().toLowerCase();
-    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-      throw new Error('Verified Clerk email claim is missing');
-    return email;
-  })();
-  if(key){
-    sessionIdentityCache.set(key,{until:now+SESSION_IDENTITY_TTL_MS,pending});
-    while(sessionIdentityCache.size>96)
-      sessionIdentityCache.delete(sessionIdentityCache.keys().next().value);
-  }
-  try{return await pending;}
-  catch(error){
-    if(key&&sessionIdentityCache.get(key)?.pending===pending)
-      sessionIdentityCache.delete(key);
-    throw error;
-  }
-}
-async function verifyClerkForSql(token:string){
-  const {payload}=await jwtVerify(token,clerkKeys,{
-    issuer:clerkIssuer,algorithms:["RS256"]
+// Edge accepts only LOC-issued delegations. External OAuth/LDAP/AD remains
+// an optional adapter at issuance, never a per-request dependency here.
+async function verifyLocDelegation(token:string,body:Record<string,unknown>){
+  const secret=Deno.env.get("LOC_DELEGATION_SECRET")||"";
+  if(secret.length<32)throw new Error("LOC delegation signing secret is not configured");
+  const {payload}=await jwtVerify(token,new TextEncoder().encode(secret),{
+    issuer:"loc",audience:delegationAudience(body),algorithms:["HS256"]
   });
-  const trustedEmail=payload.email_verified===true&&typeof payload.email==='string'
-    ?'':await verifiedClerkSessionEmail(token,payload);
-  return clerkSqlClaims(payload,{issuer:clerkIssuer,origin:clerkOrigin,trustedEmail});
-}
-// OAuth tokens are reused for their signed lifetime. Cache only a SHA-256
-// fingerprint of recently verified, Scope-specific Authority grants for 30s;
-// never cache the raw token, do not cache refusals, and always verify JWT first.
-// Revoked grants are rechecked within 30 seconds, even on a warm isolate.
-const mcpGrantCache=new Map<string,{until:number,sub:string,pending:Promise<string>}>();
-async function verifyMcpForSql(token:string,scopeid:string,kind:string,source='mcp'){
-  const {payload}=await jwtVerify(token,clerkKeys,{
-    issuer:clerkIssuer,audience:mcpResource,algorithms:["RS256"]
+  return verifyDelegationBoundary(payload,body,{
+    notBefore:Deno.env.get("LOC_DELEGATION_NOT_BEFORE")||"0",
+    revokedSids:Deno.env.get("LOC_DELEGATION_REVOKED_SIDS")||""
   });
-  if(!/^user_[A-Za-z0-9]+$/.test(String(payload.sub||""))||
-    !["lo3rwang","lrunes"].includes(scopeid)||
-    !["mcp","github"].includes(source)||
-    !Number.isFinite(payload.exp))
-    throw new Error("MCP identity, Scope or token lifetime invalid");
-  const reading=kind==="mcp-read"||kind==="mcp-search";
-  if(!reading&&source!=="mcp")throw new Error("GitHub source cannot use MCP write authorization");
-  const action=reading?(source==="github"?"manage":"read"):"write";
-  const digest=new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(token)));
-  const fingerprint=Array.from(digest,b=>b.toString(16).padStart(2,"0")).join("");
-  const key=scopeid+":"+action+":"+fingerprint;
-  const now=Date.now();
-  const cached=mcpGrantCache.get(key);
-  if(cached&&cached.until>now&&cached.sub===payload.sub){
-    const email=await cached.pending;
-    return {role:"authenticated",sub:payload.sub,iss:payload.iss,
-      email,provider:"clerk"};
-  }
-  if(cached)mcpGrantCache.delete(key);
-  // Per-Token/Scope/action single-flight. Read, manage and write grants
-  // remain distinct; failures are never retained in the cache.
-  const pending=(async()=>{
-    const endpoint=new URL("https://auth.lo3rwang.cc/v1/mcp/authorize-"+(reading?"read":"write")+"/"+scopeid);
-    if(reading&&source==="github")endpoint.searchParams.set("source","github");
-    const response=await fetch(endpoint.href,{
-      method:"GET",headers:{authorization:"Bearer "+token,accept:"application/json"},
-      redirect:"error",signal:AbortSignal.timeout(8000)
-    });
-    if(!response.ok)throw new Error("MCP Scope "+action+" authorization denied");
-    const identity=await response.json();
-    if(identity?.provider!=="clerk"||identity.authorized!==true||
-      identity.subject!==payload.sub||identity.scopeid!==scopeid||
-      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(identity.email||"")))
-      throw new Error("Verified MCP identity does not match Scope owner");
-    return String(identity.email).toLowerCase();
-  })();
-  const until=Math.min(now+30000,Number(payload.exp)*1000);
-  if(until>now){
-    mcpGrantCache.set(key,{until,sub:String(payload.sub),pending});
-    if(mcpGrantCache.size>64)mcpGrantCache.delete(mcpGrantCache.keys().next().value);
-  }
-  try{
-    const email=await pending;
-    return {role:"authenticated",sub:payload.sub,iss:payload.iss,email,provider:"clerk"};
-  }catch(error){
-    if(mcpGrantCache.get(key)?.pending===pending)mcpGrantCache.delete(key);
-    throw error;
-  }
 }
-function configuredPublishableKeys() {
-  const keys = [Deno.env.get("LOC_KYSELY_PUBLISHABLE_KEY"), Deno.env.get("SUPABASE_PUBLISHABLE_KEY"), Deno.env.get("SUPABASE_ANON_KEY")].filter((value): value is string => Boolean(value));
-  try {
-    const keyMap = JSON.parse(Deno.env.get("SUPABASE_PUBLISHABLE_KEYS") || "{}");
-    if (keyMap && typeof keyMap === "object" && !Array.isArray(keyMap)) keys.push(...Object.values(keyMap).filter((value): value is string => typeof value === "string"));
-  } catch {
-    console.error("[loc-kysely] SUPABASE_PUBLISHABLE_KEYS is not valid JSON");
-  }
-  return new Set(keys);
-}
-const publishableKeys = configuredPublishableKeys();
+
 // The deployed function and browser use the same source-controlled routing contract.
 const routing = resolveDatabaseRouting();
 // Cross-engine publicly readable tables are centrally enforced by sql-engine-ports.mjs.
@@ -182,16 +65,9 @@ async function profileForTarget(target:Record<string,unknown>){
   return profile;
 }
 async function checkAdminRole(claims:Record<string,unknown>){
-  const control=await databaseForTarget(controlTarget);
-  const valid=await control.transaction().execute(async trx=>{
-    await sql`set local role authenticated`.execute(trx);
-    await sql`select set_config('request.jwt.claims',${JSON.stringify(claims)},true)`.execute(trx);
-    await sql`select set_config('request.jwt.claim.sub',${String(claims.sub||"")},true)`.execute(trx);
-    bindLocAuthorization(trx,{role:'authenticated',claims});
-    return await canManageLoc(trx,'global');
-  });
-  if(!valid)throw Object.assign(new Error("Administrator permission required"),{httpStatus:403});
-  return control;
+  if(!canManageDelegation(claims,"global"))
+    throw Object.assign(new Error("Administrator delegation required"),{httpStatus:403});
+  return null;
 }
 // Database access metadata is loaded once from the deployment JS file.
 // This must never SELECT api.manage.database (or LOC) on requests.
@@ -213,17 +89,27 @@ async function liveConfiguredTarget():Promise<Record<string,unknown>> {
     ?controlTarget:selectedDatabaseTarget([{...selected,selected:true}]);
 }
 
+// One PostgreSQL session bridge for both ordinary SQL and managed MCP.
+// PostgreSQL may apply its own RLS; other engines never depend on it.
+async function bindPostgresSession(trx:any,role:string,claims:Record<string,unknown>,provider="supabase"){
+  if(role==="authenticated")await sql`set local role authenticated`.execute(trx);
+  else if(provider==="neon")await sql`set local role anonymous`.execute(trx);
+  else await sql`set local role anon`.execute(trx);
+  await sql`select set_config('request.jwt.claims',${JSON.stringify(claims)},true)`.execute(trx);
+  await sql`select set_config('request.jwt.claim.sub',${String(claims.sub||"")},true)`.execute(trx);
+  await sql`select set_config('request.jwt.claim.role',${role},true)`.execute(trx);
+}
+
 async function executeRequest(trx: any, target: Record<string,any>, role: string,
-  claims: Record<string, unknown>, body: Record<string, unknown>,
-  snapshot:any=null) {
+  claims: Record<string, unknown>, body: Record<string, unknown>) {
   const executionPort=resolveSqlExecutionPort(target);
-  bindLocAuthorization(trx,{role,claims,snapshot});
+  bindLocAuthorization(trx,{role,claims});
   if(target.provider==="custom"||executionPort.session!=="postgres-rls"){
-    // No PostgreSQL RLS on other engines. Authorize each request against
-    // the target Scope Registry using the already verified Clerk identity.
+    // Non-PostgreSQL engines use the LOC authorization boundary,
+    // never a database provider's authentication model.
     if(body.kind==="managed-write"){
       if(role!=="authenticated")
-        throw Object.assign(new Error("Management requires verified Clerk identity"),{httpStatus:403});
+        throw Object.assign(new Error("Management requires verified LOC delegation"),{httpStatus:403});
       return await executeCrossEngineManagedWrite(trx,body,{role,claims,
         engine:executionPort.engine,namespace:target.schema_name});
     }
@@ -257,13 +143,13 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
         executionPort.engine==='mssql'?'dbo':'public')),
       publicOnly:access?.publicOnly===true});
   }
-  if (role === "authenticated") await sql`set local role authenticated`.execute(trx);
-  else if (target.provider === "neon") await sql`set local role anonymous`.execute(trx);
-  else await sql`set local role anon`.execute(trx);
-  await sql`select set_config('request.jwt.claims', ${JSON.stringify(claims)}, true)`.execute(trx);
-  await sql`select set_config('request.jwt.claim.sub', ${String(claims.sub || "")}, true)`.execute(trx);
-  await sql`select set_config('request.jwt.claim.role', ${role}, true)`.execute(trx);
+  await bindPostgresSession(trx,role,claims,String(target.provider||"supabase"));
   if(body.kind==="query"){
+    // A database RLS policy may be more permissive than the delegated Scope.
+    // Require the already signed LOC grant for every non-public SQL mutation,
+    // then let PostgreSQL apply its own independent RLS/DB privileges.
+    if(body.operation!=="select"&&body.schema==="silver")
+      await authorizeCrossEngineQuery(trx,body,{role,claims});
     // PostgreSQL must stop work even when browser aborts its 25s timeout.
     if(isTextSearchQuery(body))
       await sql`set local statement_timeout = '8000ms'`.execute(trx);
@@ -290,21 +176,9 @@ function json(body: unknown, status = 200, extraHeaders: Record<string, string> 
   });
 }
 
-function tokenPayload(token: string) {
-  const part = token.split(".")[1];
-  if (!part) throw new Error("Malformed access token");
-  const normalized = part.replace(/-/g, "+").replace(/_/g, "/");
-  return JSON.parse(atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=")));
-}
-
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
   if (request.method !== "POST") return json({ error: { message: "Method not allowed" } }, 405);
-  const apiKey = request.headers.get("apikey") || "";
-  if (!apiKey || !publishableKeys.has(apiKey)) {
-    return json({ error: { message: "Invalid API key" } }, 401);
-  }
-
   const contentLength = Number(request.headers.get("content-length") || 0);
   if (contentLength > 1_048_576) return json({ error: { message: "Request body is too large" } }, 413);
   let body: Record<string, unknown>;
@@ -322,48 +196,20 @@ Deno.serve(async (request) => {
   }
 
   let role = "anon";
-  let claims: Record<string, unknown> = { role };
+  let claims: Record<string, unknown> = {role};
   let verifiedMcp=false;
-  const authorization = request.headers.get("authorization") || "";
-  if (authorization) {
-    const match = authorization.match(/^Bearer\s+(.+)$/i);
-    if (!match) return json({ error: { message: "Invalid authorization header" } }, 401);
-    const token = match[1];
-    let untrusted:Record<string,unknown>;
-    try{untrusted=tokenPayload(token);}
-    catch{return json({error:{message:"Invalid session token"}},401);}
-    if(untrusted.iss===clerkIssuer){
-      // MCP OAuth JWTs and interactive Clerk sessions have different audiences
-      // and permissions. Never let an MCP token execute general SQL requests.
-      if(["mcp-sync","mcp-search","mcp-read","mcp-append","mcp-update-pr"].includes(String(body.kind))){
-        try{
-          claims=await verifyMcpForSql(token,String(body.scopeid||""),String(body.kind),
-             String(body.kind)==="mcp-read"?String(body.site||"mcp"):
-             "mcp");
-          verifiedMcp=true;
-        }catch{
-          return json({error:{message:"MCP Scope write authorization rejected"}},403);
-        }
-      }else{
-        if(Array.isArray(untrusted.aud)?untrusted.aud.includes(mcpResource):untrusted.aud===mcpResource)
-          return json({error:{message:"MCP tokens cannot execute general database requests"}},403);
-        try{
-          claims=await verifyClerkForSql(token);
-        }catch(error){
-          const missingEmail=error instanceof Error&&
-            error.message.startsWith("Verified Clerk email claim");
-          return json({error:{message:missingEmail
-            ?"Clerk session is missing verified email claims"
-            :"Invalid or expired Clerk session"}},missingEmail?403:401);
-        }
-      }
-    }else{
-      // LOC sessions are exclusively Clerk-issued and verified using the
-      // existing LOC Authority. Database-provider OAuth never authenticates
-      // a LOC management request, regardless of selected SQL Dialect.
-      return json({error:{message:"LOC requires a verified Clerk session"}},401);
+  const authorization=request.headers.get("authorization")||"";
+  if(authorization){
+    const match=authorization.match(/^Bearer\s+(.+)$/i);
+    if(!match)return json({error:{message:"Invalid authorization header"}},401);
+    try{
+      const delegation=await verifyLocDelegation(match[1],body);
+      claims=delegation.claims;
+      verifiedMcp=delegation.verifiedMcp;
+      role="authenticated";
+    }catch{
+      return json({error:{message:"Invalid or unauthorized LOC delegation"}},401);
     }
-    role = "authenticated";
   }
 
   // Explicit database-target selection is never a public capability.
@@ -377,10 +223,10 @@ Deno.serve(async (request) => {
 
   const textSearch=isTextSearchQuery(body);
   if(textSearch){
-    // Uses Clerk subject when verified; otherwise provider-forwarded client
+    // Uses the LOC delegation subject when verified; otherwise client
     // IP. Each warm isolate bounds abuse without adding database writes.
     const source=role==="authenticated"&&typeof claims.sub==="string"
-      ?"clerk:"+claims.sub
+      ?"loc:"+claims.sub
       :"ip:"+(request.headers.get("cf-connecting-ip")||
         request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()||
         "unknown");
@@ -396,7 +242,7 @@ Deno.serve(async (request) => {
   let resolvingTarget = false;
   try {
     if(body.kind==="mcp-read"||body.kind==="mcp-search"){
-      // A Clerk OAuth token is separately verified by the LOC Authority.
+      // A signed LOC delegation already specifies the MCP resource boundary.
       // This owner-only route accepts fixed read shapes, not arbitrary SQL.
       if(!verifiedMcp||role!=="authenticated")
         return json({error:{message:"Verified MCP Scope permission required"}},403);
@@ -424,10 +270,7 @@ Deno.serve(async (request) => {
       // The scope has already been allowlisted; the identifier is not caller-supplied.
       const table=sql.ref("silver."+scope+"_galaxy");
       const rows=await db.transaction().execute(async trx=>{
-        await sql`set local role authenticated`.execute(trx);
-        await sql`select set_config('request.jwt.claims',${JSON.stringify(claims)},true)`.execute(trx);
-        await sql`select set_config('request.jwt.claim.sub',${String(claims.sub||"")},true)`.execute(trx);
-        await sql`select set_config('request.jwt.claim.role','authenticated',true)`.execute(trx);
+        await bindPostgresSession(trx,"authenticated",claims);
         if(isRead){
           const result=await sql`select uid,title,content,date,createtime,site,url
             from ${table} where uid=${uid} and (${body.site===undefined} or site=${body.site||""}) limit 1`.execute(trx);
@@ -457,10 +300,7 @@ Deno.serve(async (request) => {
       const db=await databaseForTarget(controlTarget);
       const table=sql.ref("silver."+scope+"_galaxy");
       const result=await db.transaction().execute(async trx=>{
-        await sql`set local role authenticated`.execute(trx);
-        await sql`select set_config('request.jwt.claims',${JSON.stringify(claims)},true)`.execute(trx);
-        await sql`select set_config('request.jwt.claim.sub',${String(claims.sub||"")},true)`.execute(trx);
-        await sql`select set_config('request.jwt.claim.role','authenticated',true)`.execute(trx);
+        await bindPostgresSession(trx,"authenticated",claims);
         await sql`set local statement_timeout = '5000ms'`.execute(trx);
         const next=await sql`update ${table} set content=concat_ws(chr(10),nullif(content,''),${content}),
           "UpdateTime"=${stamp} where uid=${uid} and site='mcp'
@@ -553,10 +393,7 @@ Deno.serve(async (request) => {
       const tableRef=sql.ref(table);
       const db=await databaseForTarget(controlTarget);
       const result=await db.transaction().execute(async trx=>{
-        await sql`set local role authenticated`.execute(trx);
-        await sql`select set_config('request.jwt.claims',${JSON.stringify(claims)},true)`.execute(trx);
-        await sql`select set_config('request.jwt.claim.sub',${String(claims.sub||"")},true)`.execute(trx);
-        await sql`select set_config('request.jwt.claim.role','authenticated',true)`.execute(trx);
+        await bindPostgresSession(trx,"authenticated",claims);
         // The user knows their GitHub PR number, not its random Galaxy UID.
         // Locate by stable source identity first. Do not search private content,
         // infer an arbitrary UID, or write when multiple candidates exist.
@@ -706,8 +543,7 @@ Deno.serve(async (request) => {
       return json({error:{message:"Neon LOC mirror table is not enabled"}},403);
     if(target.provider==="neon"&&role==="anon"){role="anonymous";claims.role=role;}
     // Reject public or unsupported cross-engine actions before opening a
-    // connection; private CRUD receives a second, row-owner ACL gate in
-    // executeRequest after verified Clerk claims have been established.
+    // connection; private CRUD retains its LOC-managed authorization gate.
     if(target.provider==="custom"||target.engine!=="postgres"){
       if(role!=="authenticated"){
         const publicAnchor=body.kind==="anchor"&&
@@ -722,19 +558,10 @@ Deno.serve(async (request) => {
     const db=isSupabaseControlTarget(target)
       ?await databaseForTarget(controlTarget)
       :await databaseForTarget(target,{profileLookup:profileForTarget});
-    // The LOC control database supplies authorization; a user's external
-    // database needs its own Galaxy/Anchor data tables, not LOC RPC/ACL tables.
-    let permissionSnapshot=null;
-    if(target.provider==="custom"&&role==="authenticated"){
-      const control=await databaseForTarget(controlTarget);
-      permissionSnapshot=await control.transaction().execute(async trx=>{
-        await sql`set local role authenticated`.execute(trx);
-        bindLocAuthorization(trx,{role,claims});
-        return await locPermissions(trx);
-      });
-    }
+    // A portable Scope database holds only Galaxy/Anchor. The LOC-signed
+    // delegation contains its permission boundary: no control DB round trip.
     const result=await db.transaction().execute(trx=>
-      executeRequest(trx,target,role,claims,body,permissionSnapshot));
+      executeRequest(trx,target,role,claims,body));
     return json(result,200,result.count===null?{}:{"content-range":`0-${Math.max(0,(Array.isArray(result.data)?result.data.length:0)-1)}/${result.count}`});
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
