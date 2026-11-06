@@ -16,7 +16,7 @@
 **需求 → 沿用／建立一個工作 Branch → 修改與必要文件完成 → 功能驗證 → 開一個 GitHub PR → 確認可合併 → Merge → 分別核對 Merge、部署與實際功能 → 刪除已合併 Branch。**
 
 - **連續交付、無人為等待點**：需求已明確且獲授權時，解說完就直接動工；每階段的結果經實際確認後，自行推進下一階段，不需要使用者重複輸入「做、PR、Merge、補文件、繼續」。不可將說明、改完程式、開 PR、測試通過、Merge 或部署觸發任一單項視為全部完成。文件必須和相關程式一起完成；PR 可合併且必要驗證通過時立即合併。遇權限或安全阻礙，記錄可驗證原因並繼續其他合法且不受影響工作；只有確實需要使用者的決策／操作時，才提出具體需配合點。**等待不是預設工作狀態；等待必須有外部阻礙與證據。**
-- **結案證據**：依工作性質確認需求效果、必要功能／回歸測試、PR 號與合併 SHA、實際部署（如適用）、Galaxy 原 UID 的讀回更新、文件與 Branch 收尾。若外部部署尚未完成或不能驗證，誠實標為待驗證，不可宣稱已上線；無須為純文件 PR 虛構功能測試。
+- **結案證據**：依工作性質確認需求效果、必要功能／回歸測試、PR 號與合併 SHA、實際部署（如適用）、必要文件與 Branch 收尾。若外部部署尚未完成或不能驗證，誠實標為待驗證，不可宣稱已上線；無須為純文件 PR 虛構功能測試。
 
 1. **一項完整功能修改只開一次 PR，不得改一片、開一個 PR**；先把相關程式、UI、測試、文件及修復集中完成，再送單一 PR。**同一功能的既有進行中 Branch 能沿用就沿用**，在其上追加相關修改；已合併的舊 Branch 不強求重用。不要為每個檔案、步驟、小錯誤或回合另開 Branch／PR。原則上單一 PR 不超過 20 個檔案；若完整功能確需更多檔案，先精簡範圍並依實際合併限制處理，不為湊檔案數而把同一功能拆成多次部署。完成必要驗收後即送出 PR 並及時 Merge；尚未完成者留在工作 Branch 繼續修，不開半成品 PR，也不為等待其他工作或累積進度而扣住已完成的 PR；`main` 自動部署已恢復，合併會觸發部署，須避免瑣碎 PR，但不得因此拖延已完成工作。只有互不依賴、無法合理合批的需求才分開。改完才開 PR，不用草稿 PR 佔位。
 2. 修改只在隔離工作區與工作分支進行；動工前留可取回的 Git SHA／checkpoint，重要且完整的階段再留還原點。不碰別人的未提交修改，不直接推半成品到 `main`。
@@ -33,11 +33,11 @@
 - 同一測試已有可信的未受影響結果就不重複付費跑；必要檢查需有實際執行結果，不靠文字宣稱通過。測試／合併失敗即自行排查，不重複無效操作；同一 workflow 連續失敗三次僅停止該 workflow 的重試，改查原因或用其他合法途徑完成任務，不得把整項工作轉成被動等待。
 
 ## Galaxy 與文件
-- Galaxy 是需求、TODO、架構決策、工作與 PR 的正式紀錄來源；GitHub 保存程式碼、必要技術文件、AGENTS.md 及版本說明，不另外建立重複進度表。寫入後核對回傳，能讀回時讀回；失敗明確標「未儲存成功」，不得冒稱已寫入。
-- `site` 代表真正來源（PR 用 `github`、ChatGPT 對話用 `chatgpt`、MCP 自身活動用 `mcp`），不是寫入工具。PR `site_id` 可使用 `owner/repo#number`；**所有新建八碼 UID 必須由正式產生器以安全亂數生成 8 碼 Base62（`0-9A-Za-z`、大小寫保留），不可人工編造、使用有語意代碼或固定模板（例如 `LOCoMVP1`）。**寫入前遵守實際唯一性約束，碰撞時重新產生；修改既有資料沿用原 UID，不擅自重編歷史資料。PR 與 MCP 對話紀錄預設私人：八個 Galaxy Boolean 欄位皆為 false；網站匿名 SELECT 不可取得 `site=mcp` 或 `site=github` 的 PR 開發紀錄。MCP `galaxy_link` 的 GitHub 來源查詢／更新只能在 Clerk＋Scope manage 授權後使用，其他資料仍依既有用途與權限。不得將 `site` 偽改為 `mcp` 來方便搜尋。。
-- 優先用 LOC MCP；必要且有授權時使用現行主庫的可用正式入口，不雙寫、不擅自切換備援。更新既有 PR 使用 `galaxy_link(action=update_pr, scopeid, pr_number, title, content, updated_at)`，**不需要使用者記 UID**；可選填 UID 作嚴格精確核對。後端依 `site_id=EsotericVerse/moon-runes-pwa#PR號` 優先定位，必要時以原標題的 `PR #號` 精確核對；只允許 `site=github`，要通過 Scope `manage` 權限，發現重複或不存在就拒絕，絕不新建或猜 UID。
-- Galaxy 文章公開權限採八個獨立 boolean 欄位：`statics`、`culture`、`search`、`trace`、`list`、`keyword`、`extract`、`others`。Galaxy 禁止新增任何 JSONB 欄位；PostgreSQL（含 Portable）的 `target_id`、`media_link` 分別採 `text[]`、`varchar[]`，僅 Anchor 的 `attr` 使用 JSONB。不得再讀寫已退役的 `galaxy.able`；一般私有紀錄 `list=false`，正式 PR 紀錄 `search=true`、`list=true`，其餘六欄 `false`。歷史匯入轉換不算直接讀寫資料庫舊欄。
-- PR 紀錄需在本次工作流程內完成，不等待提醒。工具失敗先嘗試已授權的備援入口；若暫不可寫，明確標記未存成功並完成其他可執行的收尾，不能為此停住整項工作或以假紀錄取代。合併後更新已合併與部署狀態，不能把未驗證部署寫成已上線。歌曲與專輯等作品紀錄須保存實際全文，不能用摘要冒充全文。
+- Galaxy 保留確有必要的對話、作品與架構內容；GitHub 原生保存 PR、Commit、Diff 與版本交接，禁止為此另建 Galaxy PR 副本。寫入 Galaxy 後核對回傳；失敗明確標「未儲存成功」。
+- `site` 表示真實內容來源，禁止為便於搜尋而偽改；歷史 `site=github` PR 資料只保留既有紀錄，不再新增、搜尋或更新。新建 Galaxy 八碼 UID 由標準安全亂數 Base62 產生器提供，不得猜測或自行編造。只有使用者明確要求搜尋歷史對話時，才可呼叫 `galaxy_link.search`。
+- LOC MCP 只用於已授權的對話 `check/read/record` 與明確要求的歷史對話 `search`；PR 相關操作請直接使用 GitHub。
+- Galaxy 文章公開權限採八個獨立 boolean 欄位：`statics`、`culture`、`search`、`trace`、`list`、`keyword`、`extract`、`others`。Galaxy 禁止新增任何 JSONB 欄位；PostgreSQL（含 Portable）的 `target_id`、`media_link` 分別採 `text[]`、`varchar[]`，僅 Anchor 的 `attr` 使用 JSONB。不得再讀寫已退役的 `galaxy.able`；一般私有紀錄 `list=false`，既存 PR 歷史資料不再透過 MCP 更動。歷史匯入轉換不算直接讀寫資料庫舊欄。
+- 歌曲與專輯等作品紀錄須保存來源實際全文，不能用摘要冒充全文。
 
 ## 資料庫／安全硬邊界
 - **公開 Theme 不查資料庫**：`silver.loc.theme` 僅供已授權 Admin 管理；公開前台固定使用 `app/modular/published-theme-catalog.json` 與 `published-themes.css`。管理員儲存後須明確執行 `sync:public`、提交發布產物再由既有流程部署；不可在頁面載入或 Theme 儲存後自動重新 SELECT `silver.loc.theme`，也不可為此更動 RLS。
@@ -48,8 +48,8 @@
 - 如使用 superpowers、ponytail 等已安裝技能，必須實際執行相應流程，不可只宣稱已使用。除必要決策或真正缺權限外，Agent 自行解決技術問題；卡關只提出使用者能操作的具體配合事項。
 
 ## 接手與完成
-- 先讀授權的 Galaxy 架構圖定位功能，再核對相關近期 PR 與目前 main；架構快照不代替最新程式。私人架構由使用者在授權 Galaxy 中指定，不將其內容、私有識別或路徑複製到公開 repo／PR。
-- 話題轉移、補充或未回覆時保留原需求；將分支、已推送 commit、已完成／未完成、驗證及下一步存入同篇 Galaxy，新對話先核對並接續。使用者有空再查看，不以等待使用者 code review 或驗收作為技術工作推進條件。
+- 先核對目前 GitHub main 與相關 PR；使用者提供已知 Galaxy UID 時才依授權精確讀取。不得自行搜尋 Galaxy 找架構圖或 PR UID；私人架構不得複製至公開 repo／PR。
+- 話題轉移仍保留原需求；由 GitHub Branch、Commit 與 PR 承接工作進度。新對話核對 GitHub，不為了交接而自行搜尋 Galaxy 或建立 UID。
 - 合併前後按原需求核對成果，整合雙方修改；保留已完成功能與依賴升級，不以退回舊程式換取 merge 成功。需要使用者的新授權只暫停對應部分，其餘繼續。
 
 ## 跨對話／插件一致性
