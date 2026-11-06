@@ -39,7 +39,7 @@ export async function readKeywordSuggestionCache(scopeId){
   return decodeKeywordSuggestionCache(data);
 }
 export async function writeKeywordSuggestionCache(scopeId,table,result){
-  if(scopeId!==CACHE_SCOPE)return null;
+  if(!isUnifiedAnchorScope(scopeId))return null;
   if(table!=='silver.'+scopeId)throw new Error('關鍵詞暫存 Scope 不一致');
   const payload=encodeKeywordSuggestionCache(result);
   const {data,error}=await dbAuthRelation(table)
