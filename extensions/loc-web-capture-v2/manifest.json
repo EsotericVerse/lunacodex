@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "LOC 網頁擷取與錄製",
+  "name": "LOC galaxy-link｜彩虹橋",
   "version": "0.1.0",
-  "description": "擷取網站與舊對話、動態頁面局部錄製、單一佇列批次寫入 LOC Galaxy；不接觸 MCP 或 Clerk",
+  "description": "連接屬於你的文字銀河。擷取網頁、動態內容與舊對話，批次存入 LOC 銀河。",
   "permissions": [
     "activeTab",
     "scripting",
@@ -17,7 +17,7 @@
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "LOC 網頁擷取",
+    "default_title": "LOC galaxy-link｜彩虹橋",
     "default_popup": "popup.html"
   }
 }
