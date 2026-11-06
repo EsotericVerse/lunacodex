@@ -18,6 +18,8 @@ DECLARE
   node_exists boolean;
   attempts integer;
   old_nodes integer;
+  existing_domains integer;
+  broken_links integer;
 BEGIN
   FOR r IN
     SELECT id,coalesce(nullif(anchor_table,''),'anchor') AS anchor_suffix
@@ -42,7 +44,19 @@ BEGIN
     EXECUTE format('SELECT count(*) FROM %s WHERE type IN (''domain'',''from'')',
       relation_name) INTO old_nodes;
     IF old_nodes<>0 THEN
-      RAISE EXCEPTION 'Source Anchor already exists for %, refusing to overwrite',r.id;
+      -- Re-running migrations must never overwrite a Scope's later edits.
+      -- Accept an already migrated, internally valid source tree.
+      EXECUTE format('SELECT count(*) FROM %s WHERE type=''domain'' AND title=$1',
+        relation_name) INTO existing_domains USING r.id;
+      EXECUTE format('SELECT count(*) FROM %s d
+        CROSS JOIN LATERAL jsonb_array_elements_text(d.attr->''uid'') AS child(uid)
+        LEFT JOIN %s f ON f.uid=child.uid AND f.type=''from''
+        WHERE d.type=''domain'' AND d.title=$1 AND f.uid IS NULL',
+        relation_name,relation_name) INTO broken_links USING r.id;
+      IF existing_domains<>1 OR broken_links<>0 THEN
+        RAISE EXCEPTION 'Source Anchor partially migrated for %, refusing to overwrite',r.id;
+      END IF;
+      CONTINUE;
     END IF;
     child_uids:='[]'::jsonb;
     seen_sites:='{}'::jsonb;
