@@ -13,8 +13,8 @@ Chrome → `chrome://extensions` → 開發人員模式 → 載入未封裝項�
 
 - 使用者手動點擊錄製後，content script 才使用 MutationObserver 與 IntersectionObserver 追蹤目前選定區域內已載入的卡片。停止立即斷開監聽；不跨網站爬取、不自動捲動、不繞過登入限制。
 - 一般文章使用 DOM 的 main/article、標題與可見文字及超連結；歷史對話頁嘗試辨識有角色標記的已載入訊息。只保證擷取實際載入的資料，不聲稱完整歷史；沒有可辨識的訊息時不擷取，不會把聊天網站導覽文字當作對話。
-- 單一 IndexedDB Queue；每筆事件 UUID＋來源 URL，用穩定來源識別和內容 fingerprint 在本機去重。**10 次擷取或 600 KB** 啟動批次，最多 50 筆／600 KB／批。手動傳送不受門檻限制。
-- 以穩定來源識別送往 LOC 銀河短匯入的 `write_mode=append` 協定。由服務端負責 UID、冪等與同來源接續；收到完整的批次 ID 與所有來源 UID 回執才刪除 Queue。失敗保留 Queue，並暫停自動傳送；手動重試不刪本機資料。
+- 單一 IndexedDB Queue，依每筆擷取時選擇的目的 Scope 分批（不在傳送時改目的地）；每筆事件 UUID＋來源 URL，用穩定來源識別和內容 fingerprint 在本機去重。**10 次擷取或 600 KB** 啟動批次，最多 50 筆／600 KB／批。手動傳送不受門檻限制。
+- 以「Scope＋穩定來源」識別送往 LOC 銀河短匯入的 `write_mode=append` 協定。由服務端負責 UID、冪等與同來源接續；收到完整的批次 ID 與所有來源 UID 回執才刪除 Queue。失敗保留 Queue，並暫停自動傳送；手動重試不刪本機資料。
 - **不存 Session、Access Token、Refresh Token，不呼叫 Clerk／MCP，不定時續期、不開 OAuth Popup**。手動「開啟 LOC 網站授權設定」打開 `/extension/bridge/`；網站頁面提供「更新 LOC Auth」按鍵，只有按下時才核對現有登入，不在 Extension 執行憑證交換。
 - 批次傳輸使用 `chrome.scripting.executeScript({world:'MAIN'})` 呼叫僅存在於 LOC 網站 `/extension/bridge/` 的 `window.__locGalaxyLinkImport`。網站呼叫既有 `dbAuthClient.shortImport` → LOC SQL Gateway → Authority 簽發 Scope `write` delegation → `kind=short-import` Kysely 交易。**Extension 不接觸網站 OAuth Token**，不發明第二條 `/v1/import/short` 路由。
 - 伺服端沿用 `app/loc/import/short-append-service.mjs` 及 `supabase/functions/loc-kysely/index.ts` 已存在的寫入邊界；`/extension/bridge/` 沒有編輯模式前置登入要求，真正寫入由 Authority 逐次核驗指定 Scope 的 `write` grant。沒有網站頁面、Session、Scope grant 或完整 UID 回執，一律保留 Queue。
