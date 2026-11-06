@@ -123,6 +123,7 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
   let markers=[];
   let timelineMarkers=[];
   let timelineRows=[];
+  let activeTimePointKeys=new Set();
   let pickedMarker=null;
   let pickedPosition=null;
   let savedAnchors=anchors;
@@ -136,6 +137,7 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     map.getSource('loc-trace-saved-anchors')?.setData(existingAnchorPoints(savedAnchors));
     refreshSavedRoute();
     refreshTimelineStems();
+    refreshTimeCursor();
     // Updating GeoJSON never resets the viewport. Only explicit navigation may.
   }
   // Day stems are gated by one explicit checkbox in the map's own corner
@@ -167,6 +169,18 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
   function setStemsVisible(visible){
     stemsVisible=Boolean(visible);
     refreshTimelineStems();
+  }
+  function refreshTimeCursor(){
+    if(!loaded)return;
+    // Only current map members are eligible; this is an in-memory GeoJSON
+    // filter, not another database request or a guess at route travel order.
+    const active=savedAnchors.filter(anchor=>activeTimePointKeys.has(
+      String(anchor.source_scope||'')+':'+String(anchor.uid||'')));
+    map.getSource('loc-trace-time-active')?.setData(existingAnchorPoints(active));
+  }
+  function setTimeCursor(keys=[]){
+    activeTimePointKeys=new Set(Array.isArray(keys)?keys:[]);
+    refreshTimeCursor();
   }
   function savedRoutePoints(route=selectedSavedRoute){
     if(!Array.isArray(route?.anchor_list))return [];
@@ -414,6 +428,13 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
       layout:{'text-field':['to-string',['get','order']],'text-size':12,
         'text-allow-overlap':true},
       paint:{'text-color':'#30253e'}});
+    // The proportional timeline highlights only Point UIDs with a recorded
+    // visit at or before the cursor. The saved routes remain spatial geometry.
+    map.addSource('loc-trace-time-active',{type:'geojson',data:emptyRoute()});
+    map.addLayer({id:'loc-trace-time-active-points',type:'circle',source:'loc-trace-time-active',
+      paint:{'circle-radius':15,'circle-color':'#ffffff','circle-opacity':0.08,
+        'circle-stroke-width':3,'circle-stroke-color':'#6ce4ce','circle-stroke-opacity':0.95}});
+    refreshTimeCursor();
     // Saved route markers render over the source anchor dots; make either
     // visible geometry selectable and keep the full original anchor data.
     if(typeof onAnchorSelect==='function'){
@@ -507,6 +528,6 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     pickedMarker=null;
     map.remove();
   }
-  return {focus,focusCoordinates,centerIfFar,goOrigin,setAnchors,setPlaceTimelines,setStemsVisible,setSavedRoute,setSavedGraph,overview,showRoadRoute,
+  return {focus,focusCoordinates,centerIfFar,goOrigin,setAnchors,setPlaceTimelines,setStemsVisible,setTimeCursor,setSavedRoute,setSavedGraph,overview,showRoadRoute,
     resize:()=>{if(!removed)map.resize();},destroy};
 }

@@ -1431,6 +1431,29 @@
   box-shadow:0 2px 12px rgba(0,0,0,.2);cursor:pointer;user-select:none;
 }
 .loc-trace-timeline-toggle input{margin:0}
+/* Spatial timeline uses recorded Point.attr.times only. The slider position is
+   chronological, not an even spacing of individual visits or route stops. */
+.loc-trace-time-axis{
+  min-width:0;display:grid;gap:.45rem;padding:.65rem .8rem;
+  border:1px solid var(--loc-line);border-radius:var(--loc-radius-sm);
+  background:var(--loc-panel-strong);color:var(--loc-text);
+}
+.loc-trace-time-axis-heading,.loc-trace-time-axis-controls,.loc-trace-time-axis-ends{
+  display:flex;align-items:center;justify-content:space-between;gap:.65rem;
+}
+.loc-trace-time-axis-heading span,.loc-trace-time-axis-ends{
+  color:var(--loc-muted);font-size:.8rem;
+}
+.loc-trace-time-axis-controls input[type="range"]{
+  flex:1 1 auto;min-width:3rem;accent-color:var(--loc-accent);
+}
+.loc-trace-time-axis-controls .loc-button{min-height:36px}
+.loc-trace-time-axis-controls time{white-space:nowrap;font-variant-numeric:tabular-nums}
+@media(max-width:520px){
+  .loc-trace-time-axis-controls{flex-wrap:wrap}
+  .loc-trace-time-axis-controls input[type="range"]{order:3;flex-basis:100%;width:100%}
+}
+
 .loc-trace-map-frame.is-mobile-expanded{height:min(88svh,980px)}
 @media(max-width:680px){
   .loc-trace-report-settings>label,
