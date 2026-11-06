@@ -1,6 +1,5 @@
-// Legacy website identity and Realtime bridge. LOC SQL/Auth core has no
-// vendor-specific imports; this optional wrapper is removable after login
-// and realtime cutover have passed their production acceptance checks.
+// Legacy Clerk identity adapter for LOC's provider-neutral SQL Gateway.
+// Realtime is handled independently by the LOC tabletop Worker.
 import {createClerkAccountAdapter} from '../auth/clerk-browser.mjs';
 import {createLocGatewayAdapter} from './loc-gateway.mjs';
 
