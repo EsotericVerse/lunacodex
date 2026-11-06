@@ -1,6 +1,6 @@
 // Private, one-way Channel 1 receiver. No user OAuth, scopeid or public database access.
-import {sql} from "npm:kysely@0.29.8";
-import {databaseForTarget} from "../loc-kysely/drivers.ts";
+import {sql,Kysely,PostgresDialect} from "npm:kysely@0.29.8";
+import pg from "npm:pg@8.16.3";
 
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const encoder=new TextEncoder();
@@ -48,7 +48,16 @@ function valid(r:any){
  Number.isInteger(r.part_count)&&r.part_count>=1&&r.part_count<=10000&&
  r.part_index<r.part_count&&UUID.test(r.group_id);
 }
-const target={provider:"supabase",engine:"postgres",connection_alias:"supabase_current",connection_mode:"pooler"};
+// Same pinned Kysely / pg transport used by LOC's SQL engine, without a second OAuth gateway.
+let connection:any=null;
+function database(){
+ if(connection)return connection;
+ const url=Deno.env.get("SUPABASE_DB_URL")||Deno.env.get("DATABASE_URL");
+ if(!url)throw Error("Channel 1 database connection is not configured");
+ const pool=new pg.Pool({connectionString:url,max:1,connectionTimeoutMillis:7000,idleTimeoutMillis:15000});
+ connection=new Kysely({dialect:new PostgresDialect({pool})});
+ return connection;
+}
 Deno.serve(async(request)=>{
  if(request.method!=="POST")return response({error:"method not allowed"},405);
  const expected=Deno.env.get("LOC_CHANNEL1_GALAXY_SECRET")||"";
@@ -71,7 +80,7 @@ Deno.serve(async(request)=>{
    content:r.content,url:r.url,createtime:null,date:null,...flags};
  });
  try{
-  const db=await databaseForTarget(target);
+  const db=database();
   const table="silver."+dest+"_galaxy";
   await db.transaction().execute(async(trx)=>{
    await sql`select pg_advisory_xact_lock(17483, 1)`.execute(trx);
