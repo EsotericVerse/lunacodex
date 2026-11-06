@@ -13,6 +13,6 @@ async function stats(){
 }
 for(const [id,type] of Object.entries({capture:'capture',select:'select',record:'record.start',pause:'record.pause',resume:'record.resume',stop:'record.stop',send:'queue.flush',login:'loc.open'}))
  $(id).addEventListener('click',()=>call(type));
-chrome.storage.local.get('locIncludeAssistant').then(v=>{$('includeAI').checked===true; $('includeAI').checked=Boolean(v.locIncludeAssistant);}).catch(()=>{});
+chrome.storage.local.get('locIncludeAssistant').then(v=>{$('includeAI').checked=Boolean(v.locIncludeAssistant);}).catch(()=>{});
 $('includeAI').addEventListener('change',()=>chrome.storage.local.set({locIncludeAssistant:$('includeAI').checked}));
 void stats();
