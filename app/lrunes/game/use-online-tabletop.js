@@ -2,7 +2,7 @@
 
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {produce} from 'immer';
-import {dbRealtimeClient} from '../../loc/db-client.mjs';
+import {tabletopSocketUrl} from './tabletop-socket.mjs';
 import {createLunaRunesGame} from './boardgame-rules.js';
 import {validState,packTabletopState,unpackTabletopState} from './tabletop-state.mjs';
 
@@ -33,7 +33,7 @@ function actionEffect(state,move,args,rules){
  * Everyone with the invitation code may operate any player; no referee or accounts.
  * No DB writes or permanent save; the creator must remain online.
  */
-export function useOnlineTabletop({data,count,code,host}){
+export function useOnlineTabletop({data,count,code,host,hostKey=''}){
   const game=useMemo(()=>createLunaRunesGame(data,count),[data,count]);
   const [G,setG]=useState(null);
   const [online,setOnline]=useState(false);
@@ -49,19 +49,17 @@ export function useOnlineTabletop({data,count,code,host}){
   const connectedRef=useRef(false);
 
   useEffect(()=>{
-    let active=true;
-    const sdk=dbRealtimeClient;
-    if(!sdk){setError('目前資料庫沒有即時對戰服務，請使用單機遊戲或切回支援 Realtime 的主庫。');return;}
-    const channel=sdk.channel(topic(code),{
-      config:{broadcast:{ack:true,self:false},presence:{key:memberId.current}}
-    });
-    channelRef.current=channel;
-    const report=reason=>{if(active)setError(String(reason?.message||reason||'連線訊息發送失敗'))};
-    const send=(event,payload)=>channel.send({type:'broadcast',event,payload})
-      .then(result=>{if(result!=='ok')report('Realtime 傳送失敗：'+result)})
-      .catch(report);
+    let active=true,socket=null,reconnect=null,attempt=0;
+    const report=reason=>{if(active)setError(String(reason?.message||reason||'房間連線失敗'))};
+    const send=(type,payload={})=>{
+      if(socket?.readyState!==WebSocket.OPEN)return false;
+      try{socket.send(JSON.stringify({type,payload}));return true}
+      catch(error){report(error);return false}
+    };
     const publish=(origin,effect=null)=>{
-      if(Gref.current)send('state',{state:packTabletopState(Gref.current),revision:revision.current,origin,effect});
+      if(Gref.current)send('state',{
+        state:packTabletopState(Gref.current),revision:revision.current,origin,effect
+      });
     };
     const apply=(move,args,origin,expected)=>{
       const state=Gref.current;
@@ -77,53 +75,62 @@ export function useOnlineTabletop({data,count,code,host}){
       if(origin!==memberId.current&&effect)setRemoteEffect({...effect,revision:revision.current});
     };
     applyRef.current=apply;
-    channel
-      .on('broadcast',{event:'request-state'},()=>{
+    function connect(){
+      if(!active)return;
+      let url;
+      try{url=tabletopSocketUrl({code,member:memberId.current,host,hostKey})}
+      catch(error){report(error);return}
+      socket=new WebSocket(url);
+      channelRef.current=socket;
+      socket.onopen=()=>{
+        if(!active)return;
+        attempt=0;
+        connectedRef.current=true;
+        setOnline(true);setError('');
+        send('request-state');
         if(host)publish(memberId.current);
-      })
-      .on('broadcast',{event:'move'},({payload})=>{
-        if(host&&payload?.origin&&typeof payload.move==='string'){
+      };
+      socket.onmessage=event=>{
+        if(!active)return;
+        let packet;try{packet=JSON.parse(event.data)}catch{return}
+        const {type,payload}=packet||{};
+        if(type==='presence'&&Array.isArray(packet.members)){
+          setMembers(packet.members);
+        }else if(type==='move'&&host&&payload?.origin&&typeof payload.move==='string'){
           apply(payload.move,payload.args,payload.origin,payload.expected);
+        }else if(type==='state'&&payload&&(!host||!Gref.current)&&
+          validState(payload.state)&&Number.isInteger(payload.revision)&&
+          payload.revision>=revision.current){
+          const next=unpackTabletopState(payload.state,data.cards);
+          if(!next)return;
+          Gref.current=next;
+          revision.current=payload.revision;
+          setG(next);
+          if(payload.effect&&payload.origin!==memberId.current)
+            setRemoteEffect({...payload.effect,revision:payload.revision});
+        }else if(type==='error')report(packet.message||'房間操作遭拒絕');
+      };
+      socket.onclose=event=>{
+        if(!active)return;
+        connectedRef.current=false;setOnline(false);setMembers([]);
+        if(event.code===1008||event.code===1009||event.code===4403){
+          report('房間連線遭拒絕，請重新建立或檢查邀請連結');return;
         }
-      })
-      .on('broadcast',{event:'state'},({payload})=>{
-        if(host||!payload||!validState(payload.state)||
-          !Number.isInteger(payload.revision)||payload.revision<revision.current)return;
-        const next=unpackTabletopState(payload.state,data.cards);
-        if(!next)return;
-        Gref.current=next;
-        revision.current=payload.revision;
-        setG(next);
-        if(payload.effect&&payload.origin!==memberId.current){
-          setRemoteEffect({...payload.effect,revision:payload.revision});
-        }
-      })
-      .on('presence',{event:'sync'},()=>{
-        const next=Object.values(channel.presenceState()).flat();
-        if(active)setMembers(next);
-      })
-      .subscribe(status=>{
-        const connected=status==='SUBSCRIBED';
-        connectedRef.current=connected;
-        if(active){
-          setOnline(connected);
-          if(status==='CHANNEL_ERROR'||status==='TIMED_OUT')report('Realtime '+status);
-          if(connected)setError('');
-        }
-        if(connected){
-          channel.track({id:memberId.current,role:host?'host':'guest'}).catch(report);
-          if(host)publish(memberId.current);
-          else send('request-state',{id:memberId.current});
-        }
-      });
+        report('房間連線中斷，正在重新連線');
+        reconnect=setTimeout(connect,Math.min(15000,1000*2**Math.min(attempt++,4)));
+      };
+      socket.onerror=()=>{if(active)setError('網路或 LOC 房間服務暫時無法連線')};
+    }
+    connect();
     return ()=>{
       active=false;
+      if(reconnect)clearTimeout(reconnect);
       connectedRef.current=false;
       applyRef.current=null;
       channelRef.current=null;
-      sdk.removeChannel(channel);
+      socket?.close(1000,'Room left');
     };
-  },[code,host,game,data]);
+  },[code,host,hostKey,game,data]);
 
   const start=()=>{
     if(!host||!connectedRef.current||Gref.current)return;
@@ -131,20 +138,20 @@ export function useOnlineTabletop({data,count,code,host}){
     Gref.current=state;
     revision.current+=1;
     setG(state);
-    channelRef.current?.send({type:'broadcast',event:'state',
-      payload:{state:packTabletopState(state),revision:revision.current,origin:memberId.current}})
-      .then(result=>{if(result!=='ok')setError('Realtime 傳送失敗：'+result)})
-      .catch(e=>setError(String(e?.message||e)));
+    try{channelRef.current?.send(JSON.stringify({type:'state',payload:{
+      state:packTabletopState(state),revision:revision.current,origin:memberId.current
+    }}))}catch(error){setError(String(error?.message||error))}
   };
   const moves=useMemo(()=>Object.fromEntries(Object.keys(game.moves).map(move=>[
     move,(...args)=>{
       if(!connectedRef.current||!Gref.current)return;
       if(host)applyRef.current?.(move,args,memberId.current,null);
-      else channelRef.current?.send({type:'broadcast',event:'move',
-        payload:{origin:memberId.current,move,args,
-          expected:{round:Gref.current.round,stage:Gref.current.stage}}})
-        .then(result=>{if(result!=='ok')setError('Realtime 傳送失敗：'+result)})
-        .catch(e=>setError(String(e?.message||e)));
+      else try{
+        channelRef.current?.send(JSON.stringify({type:'move',payload:{
+          move,args,origin:memberId.current,
+          expected:{round:Gref.current.round,stage:Gref.current.stage}
+        }}));
+      }catch(error){setError(String(error?.message||error))}
     }
   ])),[game,host]);
 
