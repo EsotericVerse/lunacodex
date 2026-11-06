@@ -9,6 +9,8 @@ change, RLS or GRANT change, or automatic database introspection at runtime.
   physical tables. This is a fixed model, not an instruction to deploy a schema.
 - `zenstack/schema-contract.json` is a frozen read-only metadata snapshot of
   the 17 physical tables and their 273 existing columns.
+  It also preserves the 96 database-generated/defaulted columns and the
+  existing `lrunes_daily(record_date,draw_kind)` UNIQUE constraint.
 - `zenstack/schema.mjs` maps that frozen metadata into the publicly documented
   ZenStack V3 `SchemaDef` runtime shape without installing its CLI or invoking
   Prisma. Do not represent this bridge as an official `zen generate` output.
@@ -57,7 +59,7 @@ end-to-end verification are **not yet claimed**.
 
 ## Cross-dialect Galaxy content search
 
-The active website Search provider now uses a parameterized `contains` filter
+The active website Search provider and device-local SQLite query builder use a shared, bounded AND/OR parser and a parameterized `contains` filter
 instead of encoding unrestricted `ILIKE` expressions. The implementation is
 at `app/loc/providers/portable-search.mjs` and the trusted
 `kysely-runtime.mjs`. SQL `LIKE ... ESCAPE '!'` treats `%`, `_`, and `!`
