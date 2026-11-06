@@ -1,3 +1,4 @@
+import {sourceNodePermission,assertSourceNodeWritePermission} from '../app/loc/source-node-permission.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -60,4 +61,20 @@ test('physical Anchor source hierarchy projects into keyword-shaped UI nodes',()
  assert.equal(nodes[3].site,'facebook');
  assert.equal(nodes[3].parent,nodes[2].uid);
  assert.equal(nodes[0].children[0],nodes[1].uid);
+});
+
+test('Scope sees LOC ancestors and its own source branch, never sibling Scopes',()=>{
+ const allow=(viewerScopeId,nodeType,nodeScopeId,canManageLoc=false,canManageScope=false)=>
+   sourceNodePermission({viewerScopeId,nodeType,nodeScopeId,canManageLoc,canManageScope});
+ assert.deepEqual(allow('loc','domain','lo3rwang',true),{read:true,edit:false});
+ assert.deepEqual(allow('loc','galaxy','loc',true),{read:true,edit:true});
+ assert.deepEqual(allow('lo3rwang','universe','loc',false,true),{read:true,edit:false});
+ assert.deepEqual(allow('lo3rwang','galaxy','loc',false,true),{read:true,edit:false});
+ assert.deepEqual(allow('lo3rwang','domain','lo3rwang',false,true),{read:true,edit:true});
+ assert.deepEqual(allow('lo3rwang','from','lo3rwang',false,true),{read:true,edit:true});
+ assert.deepEqual(allow('lo3rwang','domain','lrunes',false,true),{read:false,edit:false});
+ assert.deepEqual(allow('lo3rwang','from','lrunes',false,true),{read:false,edit:false});
+ assert.throws(()=>assertSourceNodeWritePermission({
+   viewerScopeId:'loc',nodeType:'from',nodeScopeId:'lo3rwang',canManageLoc:true
+ }),/denied/);
 });
