@@ -15,7 +15,7 @@ import {defaultScopeData} from '../../../loc/scope-data';
 import {featureNavigationHref} from '../../feature-navigation';
 import ScopeLink from '../../ScopeLink';
 import {featureDataErrorMessage} from '../../feature-data-state';
-import {semanticStatisticChartTypes,chartTypeGroups,statisticsZoomWindow} from './statistics-time-zoom.mjs';
+import {semanticStatisticChartTypes,chartTypeGroups,preferredStatisticChartType,statisticsZoomWindow} from './statistics-time-zoom.mjs';
 import StatisticsChartFrame from './StatisticsChartFrame';
 import StatisticsDetails from './StatisticsDetails';
 
@@ -29,7 +29,7 @@ export default function ScopeGroupStatistics({taipeiDateKey,trendBucket,loadGala
   const UI_COPY=useUiCopy();
   const t=useUiText();
   const [aggregateType,setAggregateType]=useState('total');
-  const [chartType,setChartType]=useState('line');
+  const [chartType,setChartType]=useState('auto');
   const [zoomLevel,setZoomLevel]=useState(0);
   // Persist intersection selections while the range-specific query remounts.
   const [memberLaneCount,setMemberLaneCount]=useState(2);
@@ -106,7 +106,7 @@ export default function ScopeGroupStatistics({taipeiDateKey,trendBucket,loadGala
     purpose:aggregateType==='total'?'total':'source',
     rows:trendData,series:locSeries,distribution:locDistribution,totalKey:aggregateType==='total'?'total':''
   });
-  const locChartType=locAllowed.some(([value])=>value===chartType)?chartType:(locAllowed[0]?.[0]||'line');
+  const locChartType=preferredStatisticChartType({purpose:aggregateType==='total'?'total':'source',available:locAllowed,requested:chartType});
   const chartGroups=chartTypeGroups(locAllowed,aggregateType==='total'
     ?['line','composed','bar']:['line','stacked','pie']);
 

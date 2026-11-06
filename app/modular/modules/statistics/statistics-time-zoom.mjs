@@ -170,11 +170,32 @@ export function availableStatisticChartTypes({rows=[],series=[],distribution=[],
 export const STATISTIC_CHART_PURPOSES=Object.freeze({
   total:Object.freeze(['line','composed','area','bar']),
   source:Object.freeze(['line','stacked','bar','area','pie','treemap']),
-  place:Object.freeze(['bar','line','stacked','area','pie']),
-  keyword:Object.freeze(['bar','line','stacked','area']),
-  media:Object.freeze(['bar','line','stacked','area']),
-  comparison:Object.freeze(['line','stacked','bar','scatter'])
+  // A work may refer to multiple places: counts are not exclusive slices.
+  place:Object.freeze(['bar','line','area']),
+  // Keyword and media hits can overlap, so stacking misstates their sum.
+  keyword:Object.freeze(['bar','line','area']),
+  media:Object.freeze(['bar','line','area']),
+  // Different comparison lanes are not additive partitions.
+  comparison:Object.freeze(['line','bar','scatter'])
 });
+
+// Decide the default by the question the statistic answers, not by the
+// last chart selected on a different dimension. Manual choices remain valid.
+export const STATISTIC_DEFAULT_CHART=Object.freeze({
+  total:'line',
+  source:'line',
+  place:'bar',
+  keyword:'bar',
+  media:'bar',
+  comparison:'line'
+});
+
+export function preferredStatisticChartType({purpose='total',available=[],requested='auto'}={}){
+  const ids=new Set(available.map(([id])=>id));
+  if(requested!=='auto'&&ids.has(requested))return requested;
+  const preferred=STATISTIC_DEFAULT_CHART[purpose]||'line';
+  return ids.has(preferred)?preferred:(available[0]?.[0]||'');
+}
 
 export function semanticStatisticChartTypes({
   purpose='total',rows=[],series=[],distribution=[],totalKey=''

@@ -1,7 +1,7 @@
 import {readFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {semanticStatisticChartTypes,availableStatisticChartTypes} from '../app/modular/modules/statistics/statistics-time-zoom.mjs';
+import {semanticStatisticChartTypes,availableStatisticChartTypes,preferredStatisticChartType} from '../app/modular/modules/statistics/statistics-time-zoom.mjs';
 
 const ids=rows=>rows.map(([id])=>id);
 const two=[{name:'north',value:12},{name:'south',value:7}];
@@ -13,9 +13,9 @@ test('keyword and multimedia hits do not offer exclusive-composition pies',()=>{
   assert.deepEqual(ids(semanticStatisticChartTypes({purpose:'keyword',distribution:two})),['bar']);
   assert.deepEqual(ids(semanticStatisticChartTypes({purpose:'media',distribution:two})),['bar']);
 });
-test('source and location categories retain meaningful distribution charts',()=>{
+test('only exclusive sources may use composition pies',()=>{
   assert.deepEqual(ids(semanticStatisticChartTypes({purpose:'source',distribution:two})),['bar','pie','treemap']);
-  assert.deepEqual(ids(semanticStatisticChartTypes({purpose:'place',distribution:two})),['bar','pie']);
+  assert.deepEqual(ids(semanticStatisticChartTypes({purpose:'place',distribution:two})),['bar']);
 });
 test('dense categorical pies are omitted in favor of readable rankings',()=>{
   const distribution=Array.from({length:8},(_,i)=>({name:'source-'+i,value:i+1}));
@@ -37,4 +37,35 @@ test('relationship graph retains the editor and phone/Theme controls',()=>{
   assert.match(graph,/manipulation:false/);
   assert.match(graph,/onNewGroup/);
   assert.match(css,/scope-keyword-network-controls[^{]*\{[^}]*min-height:44px/);
+});
+
+test('each statistic chooses a chart for its meaning, not the picker list order',()=>{
+  const distribution=[['line','timeline'],['bar','ranking'],['pie','composition']];
+  assert.equal(preferredStatisticChartType({purpose:'total',available:distribution}), 'line');
+  assert.equal(preferredStatisticChartType({purpose:'source',available:distribution}), 'line');
+  assert.equal(preferredStatisticChartType({purpose:'place',available:distribution}), 'bar');
+  assert.equal(preferredStatisticChartType({purpose:'keyword',available:distribution}), 'bar');
+  assert.equal(preferredStatisticChartType({purpose:'media',available:distribution}), 'bar');
+  assert.equal(preferredStatisticChartType({purpose:'comparison',available:distribution}), 'line');
+  assert.equal(preferredStatisticChartType({purpose:'media',available:distribution,requested:'line'}), 'line');
+  assert.equal(preferredStatisticChartType({purpose:'media',available:[['line','trend']]}), 'line');
+});
+
+test('active keyword and location ranking use categorical horizontal bars',()=>{
+  const keyword=readFileSync(new URL('../app/modular/modules/statistics/StatisticsMultiChart.jsx',import.meta.url),'utf8');
+  const place=readFileSync(new URL('../app/modular/features/trace/PlaceStatisticsPanel.jsx',import.meta.url),'utf8');
+  assert.match(keyword,/barLayout="vertical"/);
+  assert.match(place,/barLayout=\{activeChart==='bar'\?'vertical':'horizontal'\}/);
+  assert.match(keyword,/actual==='bar'&&barLayout==='vertical'&&categories\.length/);
+});
+
+test('overlapping counts are never portrayed as additive stacked areas',()=>{
+  const rows=[{period:'01',a:4,b:3},{period:'02',a:2,b:5},{period:'03',a:6,b:4}];
+  const series=[{key:'a',label:'A'},{key:'b',label:'B'}];
+  for(const purpose of ['place','keyword','media','comparison']){
+    const types=ids(semanticStatisticChartTypes({purpose,rows,series,distribution:two}));
+    assert.equal(types.includes('stacked'),false,purpose);
+    assert.equal(types.includes('pie'),false,purpose);
+  }
+  assert.equal(ids(semanticStatisticChartTypes({purpose:'source',rows,series,distribution:two})).includes('stacked'),true);
 });

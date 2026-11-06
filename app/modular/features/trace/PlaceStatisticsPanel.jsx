@@ -7,7 +7,7 @@ import {readPlaceSummary} from '../../../loc/place-summary-client';
 import {summarizePlaceStatistics} from '../../../loc/place-statistics.mjs';
 import useDefaultTimeUnit from '../../../loc/use-default-time-unit';
 import {useUiText} from '../../../i18n/UiText';
-import {semanticStatisticChartTypes} from '../../modules/statistics/statistics-time-zoom.mjs';
+import {semanticStatisticChartTypes,preferredStatisticChartType} from '../../modules/statistics/statistics-time-zoom.mjs';
 
 const StatisticsMultiChart=dynamic(()=>import('../../modules/statistics/StatisticsMultiChart'),{loading:()=>null});
 export default function PlaceStatisticsPanel({scopeId,range={}}){
@@ -28,8 +28,7 @@ export default function PlaceStatisticsPanel({scopeId,range={}}){
   // The same bounded category dataset powers both the ranking and its time trend.
   const chartChoices=semanticStatisticChartTypes({purpose:'place',
     rows:model.trend,series:model.series,distribution:model.distribution});
-  const activeChart=chartChoices.some(([kind])=>kind===chartType)
-    ?chartType:(chartChoices[0]?.[0]||'bar');
+  const activeChart=preferredStatisticChartType({purpose:'place',available:chartChoices,requested:chartType});
   return <section aria-label="地點統計" className="scope-stat-place">
     {query.isPending?<p className="scope-status" role="status">正在取得 ISR 地點統計…</p>:null}
     {query.error?<p className="scope-status scope-error" role="alert">
