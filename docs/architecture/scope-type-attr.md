@@ -382,3 +382,11 @@ Search 只對 Galaxy `content` 執行模糊比對；進階內容類型只保留�
 - Galaxy 的 `site` 是原始來源比對鍵，`site_id` 是外部來源識別鍵；都必須保留，不得以分類 Anchor UID 取代，避免破壞重新匯入與去重。
 - 原有 `DefaultArticleClass`／`txt_class` 扁平來源清單屬於待切換的舊 UI／統計讀寫路徑；須先完成實體 Anchor 資料與前端讀寫切換，再移除已無人使用的文章列表衍生 `attr`。不以刪除 Schema 欄位作為這次改編。
 - 本次 Branch 已加入 Kysely Anchor type 接受範圍、共用樹及投影函式；尚未完成的舊列表與資料轉換，不得標示為已上線。
+
+### 來源列表優先順序與讀寫邊界（補充）
+
+- **來源列表本身是主功能，不依附文章密度**。先完成 Anchor 來源樹的正式資料讀取、分類編輯及授權，再讓文化／統計僅消費同一份來源清單；不得為密度另外維護來源分類。
+- LOC 的「人員作品管理／作品群組分類」入口可讀所有 Scope 的來源節點，但僅能編輯 LOC 所屬 Universe/Galaxy；Scope 管理入口只能讀自己的 Domain/From 加上 LOC 上層，僅能編輯自己的 Domain/From；嚴禁同層 Scope 互看。
+- 已發現 `FlatClassificationEditor.jsx`、`scope-source-category-row.mjs` 及 `published-source-taxonomy.js` 仍以 `DefaultArticleClass`／`txt_class` 的扁平陣列為來源。**尚未切換前不能刪這些欄位上的資料**，否則來源列表、匯入建議、文化與統計會受影響。
+- 正式載入必須在受信任的 SQL/Authority 邊界按 Scope 過濾，前端的 `sourceNodePermission` 只能作為按鈕／編輯狀態判斷，不能充當跨 Scope 的安全隔離。
+- 待實際 Anchor 資料搬移與讀寫驗證完成，才汰換舊文字陣列與衍生分類 `attr`；不改 `galaxy.site` 或 `site_id`，不增加 Schema。
