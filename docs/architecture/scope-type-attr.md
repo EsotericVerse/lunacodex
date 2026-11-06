@@ -1,3 +1,12 @@
+### Point 造訪時間與地點合併（2026-11-06）
+
+- 統一 Anchor 的 `type=point` 新增允許 `attr.times: string[]`，使用來源文章或獨立打卡的完整時間戳，轉為 UTC ISO-8601、去重並依時間排序；其餘 Point `longitude/latitude/location` 與 UID 不變。獨立欄位 `createtime` 是 Point 來源／建立時間，**不是**完整造訪時間清單。
+- 多篇 Galaxy 文章即使 `location` 拼字不同，只要 `place_id` 相同，修復時就共同追加到同一 Point 的 `attr.times`；沒有必要保存文章 UID 清單，也不以原始地名分組。修復入口依據既有資料庫的 `Galaxy.createtime`，僅補充新時間，不清除舊時間或地點別名。
+- Kysely 地點合併必須在刪除來源 Point 之前，對主 Point、來源 Point 的舊 `attr.times` 和所有受影響 `Galaxy.place_id` 的非空 `createtime` 作聯集；同一個 transaction 更新路徑 UID 與 Galaxy 關聯，再寫入合併後 `attr.location` + `attr.times`，最後刪除來源 Point。
+- 匯入與修復由原本已掃描的 `attr` 建立樂觀條件寫入，併發更名時重新讀取並重組時間集合；缺少原始 `attr` 必須中止，避免覆蓋經緯度和 aliases。重跑沒有新增時間時不進行寫入。Point 的獨立 `createtime` 僅在 NULL 時以最早來源時間補值，不覆寫已設定時間。
+- Migration `20261106223000_point_attr_times_allowance.sql` 只擴充 `point` 的 CHECK key allowlist 並要求 `times` 為 JSON array；保留 lrunes rune 的例外規範。**部署須先套用 migration，再啟用新寫入程式；合併 PR 不表示現有 Point 已回填。** 回填由匯入頁下方「既有地點與日期定錨修復」明確執行。
+- 這不是地形圖年度密度功能。地形圖初始顯示、密度、時間線暫不增加查詢；`times` 只是保存資料的基礎。
+
 ### UID 顯示排序與批次排序清理（2026-11-05，第二階段）
 
 - 在資料庫 SQL / Kysely UID 排序修復之後，續清除純 JavaScript `uid.localeCompare` 與 `String(a.uid).localeCompare(String(b.uid))` 排列：文化時間軸、時代／期間、痕跡地點清單、批次補地點、經緯度自動比對、時間長河、首頁 Block、關鍵詞文章分析都不再使用隨機 UID 決定先後。
