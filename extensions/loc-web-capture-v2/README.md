@@ -9,7 +9,7 @@ LOC MCP 也稱為「彩虹橋（galaxy-link）」，兩者名稱一致但系統�
 這是**重新建立**的 Extension，非舊 `loc-galaxy-link` 的延伸、替換檔案或登入改名。MCP 負責新對話紀錄，Extension 負責正在瀏覽的網站內容、IG／Threads 可見貼文、局部動態錄製，以及**已載入的**歷史對話。完整 IG／Threads ZIP／JSON 歷史匯入維持在 LOC 網站。
 
 ## 安裝與使用
-Chrome → `chrome://extensions` → 開發人員模式 → 載入未封裝項目 → 選取本資料夾。右鍵選單可擷取目前網頁／選取文字；工具列 Popup 可擷取、選取區域、開始／停止錄製及手動送出。
+Chrome → `chrome://extensions` → 開發人員模式 → 載入未封裝項目 → 選取本資料夾。右鍵選單可擷取目前網頁／選取文字；工具列 Popup 可擷取、選取區域、開始／暫停／繼續／停止錄製及手動送出。
 
 - 使用者手動點擊錄製後，content script 才使用 MutationObserver 與 IntersectionObserver 追蹤目前選定區域內已載入的卡片。停止立即斷開監聽；不跨網站爬取、不自動捲動、不繞過登入限制。
 - 一般文章使用 DOM 的 main/article、標題與可見文字及超連結；歷史對話頁嘗試辨識有角色標記的已載入訊息。只保證擷取實際載入的資料，不聲稱完整歷史；沒有可辨識的訊息時退回一般頁面擷取。
