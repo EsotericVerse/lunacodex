@@ -33,7 +33,7 @@ async function load(sourceText,entry){
   return registry.namespace;
 }
 
-test('every active silver.manage Scope has a public JS routing record',async()=>{
+test('every active api.manage Scope has a public JS routing record',async()=>{
   const routes=await load(indexSource,'scope-route-index');
   const all=routes.SCOPE_ROUTE_INDEX;
   assert.deepEqual(Array.from(all.map(row=>row.scope_id)).sort(),['lo3rwang','loc','lrunes']);
