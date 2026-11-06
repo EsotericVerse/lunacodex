@@ -36,9 +36,9 @@ test('batch packing limits number and encoded bytes',()=>{
 });
 test('Unicode-safe splitting never truncates long webpages',async()=>{
  const written=[];let seq=0;
- const fn=new Function('MAX_TEXT_CHARS','crypto','enqueue',
+ const fn=new Function('MAX_TEXT_CHARS','crypto','enqueue','sourceKey',
   between('async function enqueuePage(record){','function batches(records){')+'return enqueuePage;')(
-   140000,{randomUUID:()=>String(++seq)},async item=>written.push(item));
+   140000,{randomUUID:()=>String(++seq)},async item=>written.push(item),u=>u);
  const content='漢'.repeat(140000)+'😀'+'字'.repeat(140000);
  assert.equal(await fn({content,title:'test'}),3);
  assert.equal(written.map(x=>x.content).join(''),content);
@@ -78,41 +78,112 @@ test('LOC 彩虹橋品牌版本與網站 favicon 綁定',()=>{
  assert.ok(text.includes("const DB_NAME='loc-channel1-queue'"),'preserve unsent IndexedDB items');
 });
 
-test('Idle retry never reads LOC auth or requests a token',async()=>{
- const flushSource=between('async function flush(){','chrome.runtime.onInstalled');
- let tokenCalls=0,networkCalls=0;
+
+function queueHelpers(){
+ const sourceKey=new Function('URL',between('function sourceKey(url){','function orderedPending(records){')+
+  'return sourceKey;')(URL);
+ const helpers=new Function('MAX_BATCH_BYTES','AUTO_BATCH_CAPTURES','TextEncoder',
+  between('function orderedPending(records){','async function enqueuePage(record){')+
+  'return {orderedPending,queueReady};')(600000,10,TextEncoder);
+ return {sourceKey,...helpers};
+}
+function flushHarness({records=[],fetchReply,manual=false}={}){
+ const {sourceKey,orderedPending,queueReady}=queueHelpers();
+ const state={},metrics={tokenCalls:0,requests:[],acknowledged:[]};
+ const chrome={storage:{local:{
+   get:async key=>key==='locConfig'?
+    {locConfig:{import_url:'https://loc.lo3rwang.cc/v1/import/short'}}:
+    Object.fromEntries((Array.isArray(key)?key:[key]).map(k=>[k,state[k]])),
+   set:async data=>Object.assign(state,data),
+   remove:async keys=>{for(const key of Array.isArray(keys)?keys:[keys])delete state[key];}
+ }}};
+ const body=between('function validateArticleReceipts(receipts,records){','chrome.runtime.onInstalled');
  const flush=new Function('activeToken','allPending','chrome','batches','stableBatchId',
-  'fetch','acknowledgeBatch','oauthError',
-  'let processing=null;'+flushSource+'return flush;')(
-  async()=>{tokenCalls++;throw Error('Idle token access must not happen');},
-  async()=>[],{storage:{local:{get:async()=>{throw Error('Idle config fetch must not happen');}}}},
-  ()=>[],async()=>'',async()=>{networkCalls++;throw Error('Idle network must not happen');},
-  async()=>{throw Error('Idle acknowledgement must not happen');},Error);
- assert.equal(await flush(),0);
- assert.equal(tokenCalls,0);
- assert.equal(networkCalls,0);
+  'fetch','acknowledgeBatch','oauthError','orderedPending','queueReady','sourceKey',
+  'let processing=null;'+body+'return flush;')(
+  async()=>{metrics.tokenCalls++;return 'loc-access-token';},
+  async()=>[...records],chrome,
+  items=>[items],async()=> 'batch-1',
+  async (url,options)=>{metrics.requests.push(JSON.parse(options.body));
+   return fetchReply?fetchReply(url,options,metrics.requests.length):
+    {ok:true,json:async()=>({accepted:true,id:'batch-1',articles:[
+     ...new Set(metrics.requests.at(-1).records.map(r=>r.source_key))].map((key,i)=>({
+      source_key:key,uid:i===0?'Ab12Cd34':'Cd34Ef56'}))})};},
+  async items=>metrics.acknowledged.push(items.map(r=>r.id)),
+  message=>Error('LOC Auth：'+message),
+  orderedPending,queueReady,sourceKey);
+ return {flush,metrics,state};
+}
+test('Queue threshold counts captures, not chunks; large payload also triggers',()=>{
+ const {sourceKey,queueReady,orderedPending}=queueHelpers();
+ assert.equal(sourceKey('https://example.org/#/post/1'),'https://example.org/#/post/1');
+ const nine=Array.from({length:9},(_,i)=>({id:'id-'+i,group_id:'g-'+i,
+  content:'text',captured_at:'2026-11-07T00:00:00Z'}));
+ assert.equal(queueReady(nine),false);
+ assert.equal(queueReady([...nine,{id:'last',group_id:'g-last',content:'text'}]),true);
+ assert.equal(queueReady(Array.from({length:7},(_,i)=>({...nine[0],id:'chunk-'+i}))),false);
+ assert.equal(queueReady([{id:'large',group_id:'large',content:'字'.repeat(210000)}]),true);
+ const chunks=orderedPending([
+  {id:'b',group_id:'same',part_index:1,captured_at:'2026-11-07T00:00:00Z'},
+  {id:'a',group_id:'same',part_index:0,captured_at:'2026-11-07T00:00:00Z'}]);
+ assert.deepEqual(chunks.map(x=>x.part_index),[0,1]);
 });
-test('Confirmed batch is acknowledged once, failed import preserves queue',async()=>{
- const flushSource=between('async function flush(){','chrome.runtime.onInstalled');
- const records=[{id:'one',captured_at:'2026-11-06T01:00:00Z'},{id:'two',captured_at:'2026-11-06T02:00:00Z'}];
- const confirmations=[];
- let accepted=true,requestCount=0;
- const flush=new Function('activeToken','allPending','chrome','batches','stableBatchId',
-  'fetch','acknowledgeBatch','oauthError',
-  'let processing=null;'+flushSource+'return flush;')(
-  async()=> 'access',
-  async()=>[...records],{storage:{local:{get:async()=>({locConfig:{import_url:'https://loc.lo3rwang.cc/v1/import/short'}})}}},
-  data=>[data],async()=> 'batch-1',
-  async(_url,options)=>{requestCount++;assert.match(options.headers.authorization,/Bearer access/);
-    return {ok:accepted,status:503,json:async()=>({accepted:true,id:'batch-1'})};},
-  async data=>{confirmations.push(data.map(x=>x.id));},Error);
- accepted=false;
- await assert.rejects(flush(),/503/);
- assert.equal(confirmations.length,0);
- accepted=true;
- assert.equal(await flush(),2);
- assert.equal(requestCount,2);
- assert.deepEqual(confirmations,[['one','two']]);
+test('Queue below threshold does not authenticate or send',async()=>{
+ const h=flushHarness({records:[{id:'1',group_id:'capture',url:'https://example.org/a',
+  captured_at:'2026-11-07T00:00:00Z'}]});
+ assert.equal(await h.flush(),0);
+ assert.equal(h.metrics.tokenCalls,0);
+ assert.equal(h.metrics.requests.length,0);
+});
+test('Queue flush transfers multiple sources once with append-only mode and UID receipts',async()=>{
+ const records=Array.from({length:10},(_,i)=>({id:'event-'+i,group_id:'capture-'+i,
+  url:i%2?'https://example.org/b':'https://example.org/a',
+  captured_at:'2026-11-07T00:00:00Z',content:'a'}));
+ const h=flushHarness({records});
+ assert.equal(await h.flush(),10);
+ assert.equal(h.metrics.requests.length,1);
+ assert.equal(h.metrics.tokenCalls,1);
+ assert.equal(h.metrics.requests[0].write_mode,'append');
+ assert.equal(new Set(h.metrics.requests[0].records.map(r=>r.source_key)).size,2);
+ assert.ok(h.metrics.requests[0].records.every(r=>r.write_mode==='append'&&r.kind==='capture'));
+ assert.equal(h.metrics.acknowledged.length,1);
+ assert.equal(h.metrics.acknowledged[0].length,10);
+});
+test('Missing article UID receipts preserve Queue and do not acknowledge',async()=>{
+ const records=Array.from({length:10},(_,i)=>({id:'event-'+i,group_id:'c-'+i,
+  url:'https://example.org/a',captured_at:'2026-11-07T00:00:00Z'}));
+ const h=flushHarness({records,fetchReply:async()=>({ok:true,
+  json:async()=>({accepted:true,id:'batch-1',articles:[]})})});
+ await assert.rejects(h.flush(),/未確認文章 UID/);
+ assert.deepEqual(h.metrics.acknowledged,[]);
+ assert.equal(h.state.locQueueRetry,true);
+});
+test('Failed import keeps same event IDs and next attempt appends only once',async()=>{
+ const records=Array.from({length:10},(_,i)=>({id:'event-'+i,group_id:'c-'+i,
+  url:'https://example.org/a',captured_at:'2026-11-07T00:00:00Z'}));
+ let fail=true;
+ const h=flushHarness({records,fetchReply:async()=>fail?
+  {ok:false,status:503}:
+  {ok:true,json:async()=>({accepted:true,id:'batch-1',articles:[
+   {source_key:'https://example.org/a',uid:'Ab12Cd34'}]})}});
+ await assert.rejects(h.flush(),/HTTP 503/);
+ assert.deepEqual(h.metrics.acknowledged,[]);
+ fail=false;
+ assert.equal(await h.flush(),10);
+ assert.equal(h.metrics.requests.length,2);
+ assert.deepEqual(h.metrics.requests[0],h.metrics.requests[1]);
+ assert.equal(h.metrics.acknowledged.length,1);
+});
+test('HTTP 429 backs off instead of retrying on every queue alarm',async()=>{
+ const records=Array.from({length:10},(_,i)=>({id:'e-'+i,group_id:'c-'+i,
+  url:'https://example.org/a',captured_at:'2026-11-07T00:00:00Z'}));
+ const h=flushHarness({records,fetchReply:async()=>({ok:false,status:429,
+  headers:{get:()=> '900'}})});
+ await assert.rejects(h.flush(),/HTTP 429/);
+ assert.equal(h.state.locQueueRetry,true);
+ assert.ok(h.state.locQueueRetryAfter>Date.now()+890000);
+ assert.equal(await h.flush(true),0);
+ assert.equal(h.metrics.requests.length,1);
 });
 test('Batch acknowledgement uses one IndexedDB transaction',async()=>{
  const batchSource=between('async function acknowledgeBatch(records){','async function badge(');
