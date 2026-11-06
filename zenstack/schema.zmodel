@@ -235,6 +235,7 @@ model LrunesDaily {
     direction                    String      @db.Text
     updated_at                   DateTime    @db.Timestamptz(6) @default(now())
     recorded_phase               String?     @db.Text
+    @@unique([record_date, draw_kind])
     @@map("lrunes_daily")
     @@schema("silver")
 }
