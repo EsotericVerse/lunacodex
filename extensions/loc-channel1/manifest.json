@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "LOC Channel 1",
+  "version": "0.1.0",
+  "description": "User-initiated save to LOC KV, without Clerk or scopeid",
+  "permissions": [
+    "contextMenus",
+    "activeTab",
+    "scripting",
+    "storage",
+    "notifications",
+    "alarms"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "options_page": "options.html",
+  "action": {
+    "default_title": "LOC Channel 1 settings"
+  }
+}
