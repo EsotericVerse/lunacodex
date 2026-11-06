@@ -1,0 +1,9 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "loc-auth",
+  "main": "./index.mjs",
+  "compatibility_date": "2026-10-31",
+  "kv_namespaces": [{"binding":"LOC_KV","id":"69132df38f8f43a6a40cae39ebfe5460"}],
+  "triggers": {"crons":["0 * * * *"]},
+  "observability": {"enabled":true}
+}

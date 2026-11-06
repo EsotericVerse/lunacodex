@@ -1,0 +1,6 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><title>LOC Channel 1</title><style>body{font:15px system-ui;max-width:620px;margin:40px auto;padding:0 20px}label{display:block;margin:20px 0}input{display:block;width:100%;padding:10px;box-sizing:border-box}button{padding:10px 18px}#status{margin-top:16px}</style></head><body>
+<h1>LOC Channel 1</h1><p>將網頁資料存入 Cloudflare KV。不使用 Clerk，不要求 scopeid。</p>
+<label>Worker HTTPS URL<input id="endpoint" type="url" placeholder="https://loc-auth.sopa2306.workers.dev"></label>
+<label>寫入專用 Token<input id="token" type="password" autocomplete="off"></label>
+<button id="save">儲存設定</button><p id="status" role="status"></p><script src="options.js"></script></body></html>
