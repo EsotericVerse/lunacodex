@@ -97,7 +97,7 @@ function flushHarness({records=[],fetchReply,manual=false}={}){
    set:async data=>Object.assign(state,data),
    remove:async keys=>{for(const key of Array.isArray(keys)?keys:[keys])delete state[key];}
  }}};
- const body=between('function validateArticleReceipts(receipts,records){','chrome.runtime.onInstalled');
+ const body=between('function importContractError(message){','chrome.runtime.onInstalled');
  const flush=new Function('activeToken','allPending','chrome','batches','stableBatchId',
   'fetch','acknowledgeBatch','oauthError','orderedPending','queueReady','sourceKey',
   'let processing=null;'+body+'return flush;')(
@@ -156,7 +156,9 @@ test('Missing article UID receipts preserve Queue and do not acknowledge',async(
   json:async()=>({accepted:true,id:'batch-1',articles:[]})})});
  await assert.rejects(h.flush(),/未確認文章 UID/);
  assert.deepEqual(h.metrics.acknowledged,[]);
- assert.equal(h.state.locQueueRetry,true);
+ assert.equal(h.state.locQueuePaused,true);
+ assert.equal(await h.flush(),0);
+ assert.equal(h.metrics.requests.length,1);
 });
 test('Failed import keeps same event IDs and next attempt appends only once',async()=>{
  const records=Array.from({length:10},(_,i)=>({id:'event-'+i,group_id:'c-'+i,
