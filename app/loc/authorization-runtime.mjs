@@ -81,6 +81,7 @@ export function assertAuthorizationForTable(table){
   }
   if(!name.startsWith('silver.'))throw new Error('未知的資料寫入目標。');
   const suffix=name.slice(7);
+  if(suffix==='manage')throw new Error('舊管理路由已停用。');
   // Rune reference tables are managed by the LunaRunes scope.
   const scopeid=suffix==='runes'||suffix.startsWith('runes_')?'lrunes':suffix.split('_')[0];
   if(scopeid==='loc'?canAuthorizeGroup('loc'):canAuthorizeScope(scopeid))return;
