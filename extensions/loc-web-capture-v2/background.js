@@ -64,8 +64,9 @@ async function stableUuid(input){
   ((parseInt(hex[16],16)&3)|8).toString(16)+hex.slice(17,20)+'-'+hex.slice(20,32);
 }
 async function toEvents(items){
+ if(!Array.isArray(items)||!items.length||items.length>100)throw Error('擷取項目數量超出限制');
  const rows=[];
- for(const item of items.slice(0,100)){
+ for(const item of items){
   if(!item||typeof item.content!=='string'||!item.content.trim())continue;
   const url=normalizedUrl(item.url||item.source_key);
   const source_key=normalizedUrl(item.source_key||item.url);
