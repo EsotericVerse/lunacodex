@@ -79,7 +79,8 @@ async function checkAuthorizedStatus(){
     return {ready:false,scopeid,subject:''};
   if(auth.mode==='website'){
     const binding=(await chrome.storage.local.get(BRIDGE_ACTIVE_KEY))[BRIDGE_ACTIVE_KEY];
-    return binding?.scopeid===scopeid&&binding.nonce&&binding.tabId
+    return binding?.scopeid===scopeid&&typeof binding.nonce==='string'&&
+      Number.isInteger(binding.tabId)
       ?{ready:true,scopeid,subject:auth.subject,renew_on_demand:true}
       :{ready:false,scopeid,subject:'',website_session_expired:true};
   }
@@ -89,11 +90,6 @@ async function checkAuthorizedStatus(){
       Number(access.verified_until)>Date.now())
       return {ready:true,scopeid,subject:access.subject};
     let issued;
-    // Website-minted JWTs cannot be renewed using an OAuth refresh token.
-    // Do not mistake a still-valid 60-second JWT for a stale grant.
-    if(auth.mode==='website')
-      return {ready:false,scopeid,subject:'',website_session_expired:true,
-        expires_at:Number(access?.expires_at)||null};
     if(access?.scopeid===scopeid&&Number(access.expires_at)>Date.now()+15_000)
       issued={...access,client_id:auth.client_id,
         refresh_token:auth.refresh_token};
@@ -123,9 +119,11 @@ async function renewWebsiteAccess(scopeid){
     if(auth?.mode!=='website'||binding?.scopeid!==scopeid||
        local[SCOPE_KEY]!==scopeid||!Number.isInteger(binding.tabId))
       throw Error('LOC 網站授權頁不存在，請從 Extension 重新連線');
-    const token=await new Promise(async(resolve,reject)=>{
-      let timeout;
+    const token=await new Promise((resolve,reject)=>{
+      let timeout,finished=false;
       const done=(error,value)=>{
+        if(finished)return;
+        finished=true;
         chrome.storage.onChanged.removeListener(onChange);
         clearTimeout(timeout);
         error?reject(error):resolve(value);
@@ -133,19 +131,27 @@ async function renewWebsiteAccess(scopeid){
       const onChange=(changes,area)=>{
         const next=changes[ACCESS_KEY]?.newValue;
         if(area==='session'&&next?.scopeid===scopeid&&
-           Number(next.expires_at)>Date.now()+15000)done(null,next.access_token);
+           Number(next.expires_at)>Date.now()+30000)done(null,next.access_token);
       };
       chrome.storage.onChanged.addListener(onChange);
       timeout=setTimeout(()=>done(Error('LOC 網站未完成短效憑證更新；請確認授權分頁仍開啟')),15000);
-      try{
-        await chrome.scripting.executeScript({
+      void (async()=>{
+        const outcome=await chrome.scripting.executeScript({
           target:{tabId:binding.tabId},world:'MAIN',
-          func:()=>window.dispatchEvent(new Event('locGalaxy.websiteRenew'))
+          args:[scopeid,binding.nonce],
+          func:(scope,nonce)=>{
+            const u=new URL(location.href);
+            if(u.origin!=='https://loc.lo3rwang.cc'||
+               u.pathname!=='/extension/auth-bridge.html'||
+               u.searchParams.get('scopeid')!==scope||
+               u.searchParams.get('nonce')!==nonce)return false;
+            window.dispatchEvent(new Event('locGalaxy.websiteRenew'));
+            return true;
+          }
         });
-        const current=(await chrome.storage.session.get(ACCESS_KEY))[ACCESS_KEY];
-        if(current?.scopeid===scopeid&&Number(current.expires_at)>Date.now()+30000)
-          done(null,current.access_token);
-      }catch(error){done(Error('LOC 網站授權頁無法喚醒，請保留該分頁'));}
+        if(outcome?.[0]?.result!==true)
+          throw Error('原本的 LOC 網站授權分頁已變更');
+      })().catch(()=>done(Error('LOC 網站授權頁無法喚醒，請保留該分頁')));
     });
     return token;
   })();
