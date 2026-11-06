@@ -78,7 +78,10 @@ export function createKyselyEdgeClient({url,publishableKey,auth,role='authentica
       headers.apikey=publishableKey;
     if(token)headers.authorization='Bearer '+token;
     const request={method:'POST',headers,credentials:'omit',
-      body:JSON.stringify({...body,target})};
+      // Short-import contract accepts exactly {kind,scopeid,batch}.
+      // Its server-selected default target is trusted; a browser-provided
+      // database target is not part of this write boundary.
+      body:JSON.stringify(body.kind==='short-import'?body:{...body,target})};
     // Preserve the caller's cancellation while enforcing the transport deadline.
     // A stale Search/Culture request must stop its HTTP work, not just hide its result.
     if(signal?.aborted)throw abortedRequest();
