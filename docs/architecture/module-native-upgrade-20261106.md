@@ -24,3 +24,9 @@ No changes to Clerk, LOC Authority, database policies, `galaxy.media_link`, MCP,
 The LOC cross-member statistics view now uses the existing `mapBounded` helper rather than unbounded `Promise.all` when loading the selected Scope datasets. The concurrency ceiling is **three** per comparison request, matching the public Kysely read budget. It does not introduce a new cache, queue, dependency, RPC, or scheduled read. The output order and existing SWR cache keys remain unchanged. `scripts/test-bounded-parallel.mjs` checks both the integration and ordering/maximum lane behavior.
 
 This is a preventative request-fan-out cap, not a claim of measured latency improvement. No authentication, database schema, media-link or Cloudflare deployment setting is changed.
+
+## Public Kysely read queue cancellation
+
+The existing anonymous SQL Gateway read budget remains capped at three concurrent requests. The public transport now forwards the caller's `AbortSignal` to the existing queue. When a queued search/culture read is cancelled, its waiting entry and abort listener are removed immediately; no gateway request is sent and no future slot is reserved for stale work. A running read continues using the existing HTTP AbortSignal handling and the 9-second transport deadline.
+
+No new queue, retry, background job, dependency, or authorization path was added. Authenticated management requests still bypass the anonymous read budget. Regression coverage is included in `npm run test:bootstrap` through the existing read-budget and abort suites. Full Node/bootstrap and browser tests should be run before deployment.
