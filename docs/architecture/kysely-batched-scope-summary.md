@@ -10,6 +10,6 @@ Regression: `scripts/test-kysely-batched-scope-summary.mjs` (included in `npm ru
 
 ## Shared keyword Classes
 
-The PostgreSQL `shared_classes` query previously calculated an SHA-256 public alias in a separate SQL round trip for **every visible shared Class**, after loading the list. The existing Kysely Anchor SELECT now conditionally adds an `sql` expression using `sql.ref('uid')` for anonymous/public callers. This preserves the `sha256(scope + ':' + uid)` alias value and public-sharing filter, while eliminating the per-Class SQL lookups.
+The PostgreSQL `shared_classes` query previously calculated an SHA-256 public alias in a separate SQL round trip for **every visible shared Class**, after loading the list. The existing Kysely Anchor SELECT now conditionally adds an `sql` expression using `sql.ref('uid')` for anonymous/public callers. This preserves the `sha256(scope + ':' + uid)` alias value, and uses Kysely `where('uid','in', sharedIds)` to filter publicly shared Classes in SQL rather than loading private Classes into the application result. The existing post-query public-sharing check remains as a defense in depth, while per-Class hash queries are eliminated.
 
 For C shared Classes, the Class-related SQL round trips fall from approximately `1+C` to `1`; owner queries still return the original UID without computing hashes. This optimization does not alter the approved permission rules or leak private Classes. The same regression suite checks public and owner projections.
