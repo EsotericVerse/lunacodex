@@ -51,3 +51,9 @@ LOC MCP 對外以 `galaxy_link` 統一執行私人對話 `search/read/check/reco
 ## 2026-11-06 Galaxy 來源統一
 
 `site=github` 的既有 Galaxy 記錄統一更名為 `site=mcp`，保持原 UID、`site_id`、標題、內容、時間與存取設定。`galaxy_link.search` 不再接受 `source`，Portable PostgREST 固定 `site=eq.mcp`，managed SQL 固定 `WHERE site = 'mcp'`，不對來源使用 bind variable，也不發起第二次 GitHub 搜尋。`update_pr` 透過既有 repo/PR `site_id` 與標題中的 PR 編號確認文章，不建立新文章。原始 GitHub 資料來源仍可由 `site_id` 區別；不另外建索引。
+
+## 2026-11-06 Extension 連線探測排除 Scope DO 不穩定
+
+Cloudflare Workers Observability 實際紀錄：`2026-11-06 01:26 UTC` 的 `GET /v1/mcp/galaxy-link/checkpoint/lo3rwang/loc-galaxy-extension-connection-probe` 因 `Network connection lost` 回 HTTP 500，對應 `LocAuthorityState.mcpCheckpoint` Durable Object RPC 遭取消；同一條路徑稍早有 HTTP 200 成功紀錄。此失敗發生於 Extension 的初次寫入權限核驗，尚未進入 Supabase SQL。
+
+對固定的 `loc-galaxy-extension-connection-probe`，LOC Authority **先照常執行 Clerk + Scope `write` 授權**；授權通過後直接回覆符合 `galaxy_link.check` 形狀的非持久化 checkpoint，避免為無實際文章的連線探測讀取 Scope Durable Object。其他 conversation ID 的 `galaxy_link.check`、正式寫入及去重 checkpoint 完全沿用原 Durable Object。未變更 Clerk、Root、QoS、SQL、前端 Extension 版本。

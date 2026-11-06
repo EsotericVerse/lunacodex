@@ -471,3 +471,17 @@ test('managed MCP text search uses a literal site and cannot accept caller sourc
   assert.match(edge,/where site='mcp' and site_id=\$\{repoSiteId\}/);
   assert.doesNotMatch(edge,/where site='github' and site_id=/);
 });
+
+test('Extension write-grant probe never reads per-Scope DO checkpoint storage',()=>{
+  const source=readFileSync(new URL('../workers/loc-authority/index.mjs',import.meta.url),'utf8');
+  const start=source.indexOf("if(parts[0]==='checkpoint'&&parts.length===3&&request.method==='GET')");
+  const end=source.indexOf("if(parts[0]==='sync'&&parts.length===2",start);
+  assert.ok(start>=0&&end>start);
+  const checkpoint=source.slice(start,end);
+  const acl=checkpoint.indexOf("allowed(scopeid,'write')");
+  const probe=checkpoint.indexOf("if(galaxyLink&&conversationId==='loc-galaxy-extension-connection-probe')");
+  const regular=checkpoint.indexOf("scoped(scopeid).mcpCheckpoint(scopeid,conversationId");
+  assert.ok(acl>=0&&probe>acl&&regular>probe);
+  assert.match(checkpoint,/return json\(\{scopeid,conversation_id:conversationId,updated_at:null,/);
+  assert.match(checkpoint,/needs_save:true/);
+});

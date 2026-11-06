@@ -967,7 +967,13 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
   if(parts[0]==='checkpoint'&&parts.length===3&&request.method==='GET'){
     const scopeid=validScope(parts[1]);
     if(!await allowed(scopeid,'write'))throw fail('Scope sync denied',403);
-    return json(await scoped(scopeid).mcpCheckpoint(scopeid,decodeURIComponent(parts[2]),
+    const conversationId=decodeURIComponent(parts[2]);
+    // Extension connection only probes the verified write grant. Do not touch
+    // per-Scope DO storage just to check a non-existent, reserved conversation.
+    if(galaxyLink&&conversationId==='loc-galaxy-extension-connection-probe')
+      return json({scopeid,conversation_id:conversationId,updated_at:null,
+        saved_at:null,uid:null,needs_save:true},200,origin);
+    return json(await scoped(scopeid).mcpCheckpoint(scopeid,conversationId,
       url.searchParams.get('updated_at')||undefined),200,origin);
   }
   if(parts[0]==='sync'&&parts.length===2&&request.method==='POST'){
