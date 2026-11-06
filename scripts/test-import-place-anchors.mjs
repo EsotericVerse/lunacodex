@@ -1,3 +1,4 @@
+import {readFileSync} from 'node:fs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {prepareImportPlaceAnchors,importedPlaceId,recordImportPlaceVisits} from '../app/loc/import-place-anchors.mjs';
@@ -361,4 +362,57 @@ test('empty visit batches return without needing a Trace write table',async()=>{
   assert.deepEqual(await recordImportPlaceVisits([],{onProgress:state=>states.push(state)}),
     {updated:0,added:0});
   assert.deepEqual(states,[{phase:'補齊定錨打卡時間',completed:0,total:0}]);
+});
+
+test('unified Point visit repair fills only NULL createtime with earliest source time',async()=>{
+  const stored=new Map([
+    ['AB12abcd',null],
+    ['CD34abcd','2025-02-01T00:00:00.000Z']
+  ]);
+  const writes=[];
+  const relation=table=>({
+    update:values=>({
+      eq:(column,uid)=>{
+        assert.equal(table,'silver.lo3rwang_anchor');
+        assert.equal(column,'uid');
+        return {eq:(typeColumn,type)=>{
+          assert.equal(typeColumn,'type');
+          assert.equal(type,'point');
+          return {is:(column,value)=>{
+            assert.equal(column,'createtime');
+            assert.equal(value,null);
+            return {select:async()=>{
+              writes.push({uid,createtime:values.createtime});
+              if(!stored.has(uid)||stored.get(uid)!==null)return {data:[],error:null};
+              stored.set(uid,values.createtime);
+              return {data:[{uid}],error:null};
+            }};
+          }};
+        }};
+      }
+    })
+  });
+  const input=[
+    {uid:'AB12abcd',time:'2024-06-03T00:00:00Z'},
+    {uid:'AB12abcd',time:'2024-06-01T00:00:00Z'},
+    {uid:'AB12abcd',time:'2024-06-01T00:00:00Z'},
+    {uid:'CD34abcd',time:'2025-06-01T00:00:00Z'},
+    {uid:'BAD',time:'2026-01-01T00:00:00Z'}
+  ];
+  const first=await recordImportPlaceVisits(input,{relation,table:'silver.lo3rwang_anchor'});
+  assert.deepEqual(first,{updated:1,added:1});
+  assert.equal(stored.get('AB12abcd'),'2024-06-01T00:00:00.000Z');
+  assert.equal(stored.get('CD34abcd'),'2025-02-01T00:00:00.000Z');
+  const repeated=await recordImportPlaceVisits(input,{relation,table:'silver.lo3rwang_anchor'});
+  assert.deepEqual(repeated,{updated:0,added:0});
+  assert.equal(writes.length,4);
+});
+
+test('unified Point repair never adds attr.times or overwrites Point attr',async()=>{
+  const source=readFileSync(new URL('../app/loc/import-place-anchors.mjs',import.meta.url),'utf8');
+  const panel=readFileSync(new URL('../app/loc/ManagementImportPanel.jsx',import.meta.url),'utf8');
+  assert.match(source,/update\(\{createtime\}\)/);
+  assert.match(source,/\.eq\('type','point'\)\.is\('createtime',null\)/);
+  assert.doesNotMatch(source,/update\(\{attr:.*times/);
+  assert.match(panel,/Point 來源時間補齊/);
 });
