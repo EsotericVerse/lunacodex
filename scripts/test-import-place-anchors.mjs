@@ -437,7 +437,7 @@ test('Point times are allowed only on the typed Point attr contract',async()=>{
   const panel=readFileSync(new URL('../app/loc/ManagementImportPanel.jsx',import.meta.url),'utf8');
   const reconcile=readFileSync(new URL('../app/loc/reconcile-import-anchors.mjs',import.meta.url),'utf8');
   assert.match(panel,/Point 造訪時間新增/);
-  assert.match(reconcile,/place_id\.not\.is\.null/);
+  assert.match(reconcile,/\.or\('location\.neq\."",place_id\.neq\.""'\)/);
 });
 
 test('Point merge unions saved times and Galaxy timestamps before deleting source UIDs',()=>{
