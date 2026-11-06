@@ -731,7 +731,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         return uid?(place.__importVisitTimes||[]).map(time=>({uid,time})):[];
       });
       const saved=await recordImportPlaceVisits(visits,{
-        relation:dbAuthRelation,table:result.table,timesByUid:result.timesByUid
+        relation:dbAuthRelation,table:result.table,timesByUid:result.timesByUid,
+        createtimeByUid:result.createtimeByUid
       });
       setStatus('獨立 Facebook 打卡已匯入：空間定錨新增 '+result.created.toLocaleString()+
         '、沿用 '+result.reused.toLocaleString()+'；日期定錨新增 '+
@@ -1077,7 +1078,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       if(savedVisits.length){
         showProgress(isUnifiedAnchorScope(scopeId)?'核對 Point 來源時間':'記錄定錨打卡時間');
         const visitResult=await recordImportPlaceVisits(savedVisits,{
-          relation:dbAuthRelation,table:placeAnchors.table,timesByUid:placeAnchors.timesByUid
+          relation:dbAuthRelation,table:placeAnchors.table,timesByUid:placeAnchors.timesByUid,
+          createtimeByUid:placeAnchors.createtimeByUid
         });
         recordedVisits=visitResult.added;
       }
