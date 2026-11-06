@@ -12,6 +12,7 @@ const OAUTH_KEY='locGalaxy.oauth';
 const ACCESS_KEY='locGalaxy.access';
 const BRIDGE_KEY='locGalaxy.websitePending';
 const BRIDGE_ACTIVE_KEY='locGalaxy.websiteActive';
+const WEBSITE_RENEW_ALARM='locGalaxy.websiteRenew';
 const SCENIC_LOGIN=LOC_ORIGIN+'/login/index.html?return_to=%2Flocal%2Fsettings%2F';
 let inProgress=false;
 const linkSearchStarted=new Map();
@@ -36,6 +37,7 @@ async function readAll(){
     auth:local[OAUTH_KEY]||null,access:session[ACCESS_KEY]||null};
 }
 async function clearCredentials(){
+  await chrome.alarms.clear(WEBSITE_RENEW_ALARM);
   await Promise.all([
     chrome.storage.local.remove([OAUTH_KEY,BRIDGE_ACTIVE_KEY]),
     chrome.storage.session.remove([ACCESS_KEY,BRIDGE_KEY])
@@ -101,6 +103,38 @@ async function checkAuthorizedStatus(){
     return {ready:false,scopeid,subject:'',temporary_unavailable:!denied};
   }
 }
+
+
+// A Manifest V3 alarm continues running even when the website tab's timers
+// are throttled. It only signals the trusted page to use its own Clerk Session.
+async function ensureWebsiteRenewAlarm(){
+  const state=await chrome.storage.local.get(BRIDGE_ACTIVE_KEY);
+  if(state[BRIDGE_ACTIVE_KEY])
+    await chrome.alarms.create(WEBSITE_RENEW_ALARM,{periodInMinutes:0.5});
+}
+chrome.runtime.onInstalled.addListener(()=>{void ensureWebsiteRenewAlarm();});
+chrome.runtime.onStartup.addListener(()=>{void ensureWebsiteRenewAlarm();});
+chrome.alarms.onAlarm.addListener(alarm=>{
+  if(alarm.name!==WEBSITE_RENEW_ALARM)return;
+  void (async()=>{
+    const [local,session]=await Promise.all([
+      chrome.storage.local.get([BRIDGE_ACTIVE_KEY,SCOPE_KEY,OAUTH_KEY]),
+      chrome.storage.session.get(ACCESS_KEY)
+    ]);
+    const binding=local[BRIDGE_ACTIVE_KEY],auth=local[OAUTH_KEY];
+    const access=session[ACCESS_KEY];
+    if(!binding||auth?.mode!=='website'||binding.scopeid!==local[SCOPE_KEY]||
+       !Number.isInteger(binding.tabId)){
+      await chrome.alarms.clear(WEBSITE_RENEW_ALARM);return;
+    }
+    if(access?.scopeid===binding.scopeid&&
+       Number(access.expires_at)>Date.now()+45000)return;
+    await chrome.scripting.executeScript({
+      target:{tabId:binding.tabId},world:'MAIN',
+      func:()=>window.dispatchEvent(new Event('locGalaxy.websiteRenew'))
+    });
+  })().catch(()=>{}); // Closed or navigated tab: status stays expired, never expose token.
+});
 
 // The workbench never receives OAuth tokens. Only the trusted service worker
 // sends approved, validated MCP calls with the verified Scope's credential.
