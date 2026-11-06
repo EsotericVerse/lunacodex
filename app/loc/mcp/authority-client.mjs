@@ -18,9 +18,12 @@ export async function authorityAction(name,args,token,env={},fetchImpl=globalThi
   const a=args||{};
   let path='',method='GET',body=null,query=null;
   if(name==='galaxy_link'){
-    if(!['search','read','check','record','update_pr'].includes(a.action))throw bad('Invalid Galaxy Link action');
+    if(a.action==='update_pr')throw bad('PR 紀錄請直接使用 GitHub PR 工具，不需 Galaxy UID');
+    if(!['search','read','check','record'].includes(a.action))throw bad('Invalid Galaxy Link action');
     if(a.source!==undefined)throw bad('Galaxy Link source is fixed to mcp');
     if(a.action==='search'){
+      if(/(?:\bPR\b|\bpull[ -]?request\b|\bgithub\b|\bcommit\b|合併請求|拉取請求)/i.test(String(a.query||'')))
+        throw bad('PR 資訊請直接搜尋 GitHub，不要搜尋 Galaxy UID');
       if(typeof a.query!=='string'||a.query.trim().length<2||a.query.length>100||
         !Number.isInteger(a.limit??5)||(a.limit??5)<1||(a.limit??5)>5)
         throw bad('Invalid Galaxy Link search');

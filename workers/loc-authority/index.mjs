@@ -819,9 +819,12 @@ export class LocAuthorityState extends DurableObject {
     if(!/^clerk:user_[A-Za-z0-9]+$/.test(String(subject||'')))throw fail('Invalid MCP principal',401);
     if(!['read','write','search'].includes(kind))throw fail('Invalid MCP quota kind',400);
     const now=Date.now(),period=60_000,leaseTtl=25_000;
+    const searchWindowMs=300_000;
     const maximum=16;
     const outcome=await this.ctx.storage.transaction(async tx=>{
       const cooldownKey='mcp-qos-cooldown:'+subject;
+      const searchKey='mcp-qos-search:'+subject;
+      const latestSearch=kind==='search'?await tx.get(searchKey):null;
       const blockedUntil=Number(await tx.get(cooldownKey)||0);
       if(blockedUntil>now)return {rejected:'cooldown'};
       // Escalate *new* abuse incidents, not every request made while blocked.
@@ -839,6 +842,15 @@ export class LocAuthorityState extends DurableObject {
       const prior=await tx.get(key);
       const bucket=prior&&now>=prior.started&&now-prior.started<period
         ?prior:{started:now,count:0,reads:0,searches:0,rateRejects:0};
+      // Five-minute Galaxy search gate, shared across Scopes for the verified identity.
+      // Denials count toward abuse detection without extending the initial timer.
+      if(kind==='search'&&latestSearch&&now>=latestSearch.at&&
+         now-latestSearch.at<searchWindowMs){
+        const rejects=(latestSearch.rejects||0)+1;
+        await tx.put(searchKey,{...latestSearch,rejects});
+        if(rejects>=3){await escalate();return {rejected:'search-cooldown'};}
+        return {rejected:'search-warning'};
+      }
       const leases=(await tx.get('mcp-quota-leases')||[]).filter(item=>item.expires>now);
       const activeReads=leases.filter(item=>item.kind==='read'||item.kind==='search').length;
       const activeSearches=leases.filter(item=>item.kind==='search').length;
@@ -868,8 +880,12 @@ export class LocAuthorityState extends DurableObject {
         reads:(bucket.reads||0)+(kind==='write'?0:1),
         searches:(bucket.searches||0)+(kind==='search'?1:0)});
       await tx.put('mcp-quota-leases',leases);
+      if(kind==='search')await tx.put(searchKey,{
+        at:now,count:(latestSearch?.count||0)+1,rejects:0});
       return {lease};
     });
+    if(outcome.rejected==='search-warning')throw fail('提醒！短時間多次搜尋將進入流量管制。每五分鐘只能搜尋一次，請停止重試。',429);
+    if(outcome.rejected==='search-cooldown')throw fail('搜尋已進入流量管制，請停止重複呼叫 Galaxy 搜尋。',429);
     if(outcome.rejected==='cooldown'||outcome.rejected==='concurrency'||
        outcome.rejected==='rate-cooldown')
       throw fail('MCP request cooldown active',429);

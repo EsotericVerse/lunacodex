@@ -128,9 +128,9 @@ const TOOLS=[
       scopeid:{type:'string'},endpoint:{type:'string',description:'HTTPS PostgREST URL ending /rest/v1; omit to view'},
       schema:{type:'string'},table:{type:'string',description:'Existing Galaxy-compatible table; LOC never creates tables'}
     },required:['scopeid'],additionalProperties:false}},
-  {name:'galaxy_link',description:'Scope-authorized Galaxy Link: MCP conversation resume plus private GitHub PR records. GitHub source requires Scope manage permission; source text is never scraped.',
+  {name:'galaxy_link',description:'Galaxy conversation continuity. Search only on an explicit user request; never search for PRs, commits or routine UIDs. One search per five minutes per verified identity. Use GitHub tools for GitHub history.',
     inputSchema:{type:'object',properties:{
-      action:{type:'string',enum:['search','read','check','record','update_pr']},
+      action:{type:'string',enum:['search','read','check','record']},
       scopeid:{type:'string'},uid:{type:'string',pattern:'^[A-Za-z0-9]{8}$',description:'Optional for update_pr: omit to locate existing GitHub PR by pr_number; never needed from the user'},
       query:{type:'string',minLength:2,maxLength:100},limit:{type:'integer',minimum:1,maximum:5},
       conversation_id:{type:'string'},updated_at:{type:'string'},created_at:{type:'string'},
@@ -203,7 +203,7 @@ export async function handleMcp(request,env={}){
       return result(payload.id,{protocolVersion:SUPPORTED_PROTOCOLS.has(proposed)?proposed:DEFAULT_PROTOCOL,
         capabilities:{tools:{listChanged:false}},serverInfo:{name:'loc-mcp',version:'0.2.0',
            ...(proposed==='2025-11-25'?{icons:[{src:'https://loc.lo3rwang.cc/assets/site/icons/loc-favicon.png',mimeType:'image/png'}]}:{})},
-        instructions:'Public search/read use existing Galaxy RLS. Private Scope read, write and Group search are independently authorized by Clerk + LOC Authority. galaxy_link separates private MCP conversations from manager-only GitHub PR records; recording requires supplied source text.'});
+        instructions:'Public search/read use existing Galaxy RLS. Private Scope read, write and Group search are independently authorized by Clerk + LOC Authority. galaxy_link handles MCP conversations, not GitHub PRs; search only on explicit user request, once per five minutes.'});
     }
     case 'ping':return result(payload.id,{});
     case 'tools/list':return result(payload.id,{tools:TOOLS});
@@ -213,6 +213,13 @@ export async function handleMcp(request,env={}){
       if(!TOOLS.some(tool=>tool.name===name))return rpcError(payload.id,-32602,'Unknown tool');
       if(!args||typeof args!=='object'||Array.isArray(args))
         return rpcError(payload.id,-32602,'Tool arguments must be an object');
+      if(name==='galaxy_link'&&args.action==='search'&&
+        /(?:\bPR\b|\bpull[ -]?request\b|\bgithub\b|\bcommit\b|合併請求|拉取請求)/i.test(String(args.query||'')))
+        return result(payload.id,{isError:true,content:[{type:'text',
+          text:'PR／GitHub 版本紀錄請直接使用 GitHub PR／Commit 工具。LOC Galaxy 不搜尋 PR，也不需要尋找 PR 的 UID。請勿改寫搜尋詞重試。'}]});
+      if(name==='galaxy_link'&&args.action==='update_pr')
+        return result(payload.id,{isError:true,content:[{type:'text',
+          text:'PR 紀錄由 GitHub 管理，請使用 GitHub PR 工具。LOC 不再同步 PR 到 Galaxy。'}]});
       if(name==='loc_connection_status')return toolResponse(payload.id,{
         connected:true,provider:'clerk',subject:identity.subject,
         resource:config.resource,galaxyPublicReadEnabled:true,

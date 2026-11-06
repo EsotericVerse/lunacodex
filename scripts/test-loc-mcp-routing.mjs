@@ -93,7 +93,7 @@ test('Valid Clerk JWT can initialize, discover read/write tools, and ping',async
   assert.deepEqual(status.availableTools,tools.map(tool=>tool.name));
   const link=tools.find(tool=>tool.name==='galaxy_link');
   assert.deepEqual(link.inputSchema.required,['action','scopeid']);
-  assert.deepEqual(link.inputSchema.properties.action.enum,['search','read','check','record','update_pr']);
+  assert.deepEqual(link.inputSchema.properties.action.enum,['search','read','check','record']);
   assert.equal(Object.hasOwn(link.inputSchema.properties,'source'),false);
   assert.equal(status.availableTools.includes('update_scope_pr'),false);
   for(const field of ['uid','pr_number','title','content','updated_at'])
@@ -143,3 +143,13 @@ test('Public UID read is metered; 429 never reaches Supabase',async()=>{
   quotaBlocked=false;
 });
 test.after(()=>{globalThis.fetch=originalFetch;});
+
+test('MCP PR search is rejected before any Authority or quota request',async()=>{
+  const jwt=await token(),before=quotaRequests.length;
+  const response=await handleMcp(req('POST',jwt,rpc('tools/call',{
+    name:'galaxy_link',arguments:{action:'search',scopeid:'lo3rwang',query:'PR #1170'}})));
+  const output=(await response.json()).result;
+  assert.equal(output.isError,true);
+  assert.match(output.content[0].text,/GitHub/);
+  assert.equal(quotaRequests.length,before);
+});
