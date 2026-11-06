@@ -134,7 +134,7 @@ export async function executeKyselyAnchor(trx,body,{role='anon'}={}){
   const op=String(attr.op||'read');
   if(!['read','catalog','suggestions','insert','update','patch','link','delete'].includes(op))
     reject('Invalid Anchor operation');
-  const registry=await trx.selectFrom('silver.manage')
+  const registry=await trx.selectFrom('api.manage')
     .select(['manage_role','active','anchor_table'])
     .where('id','=',scope).executeTakeFirst();
   if(!registry||registry.manage_role!=='scope'||registry.active!==true)
