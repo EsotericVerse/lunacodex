@@ -239,16 +239,17 @@ test('Trace loads only Frame metadata at entry; content modes remain scoped and 
   assert.match(stats,/queryKey:\['culture-time-periods',scopeId\]/);
 });
 
-test('Culture and Statistics share only published flat classification lists',()=>{
+test('Culture and Statistics share the source projection of Universe Tree',()=>{
   const catalog=read('app/modular/published-source-taxonomy.js');
   const culture=read('app/modular/features/Culture.jsx');
   const stats=read('app/modular/features/Statistics.jsx');
   const sourceNames=read('app/loc/source-classification.mjs');
   assert.match(catalog,/publishedSourceCategoryCatalog/);
-  assert.match(catalog,/SOURCE_DISPLAY_ALIASES/);
-  assert.match(catalog,/'其他':'others'/);
-  assert.match(catalog,/'方格子vocus':'vocus'/);
-  assert.match(catalog,/'無名wretch':'wretch'/);
+  assert.match(catalog,/sourceTreeFromArrays/);
+  assert.match(catalog,/sourceSiteKeyForLabel/);
+  assert.doesNotMatch(catalog,/SOURCE_DISPLAY_ALIASES/);
+  assert.match(sourceNames,/sourceTreeFromArrays/);
+  assert.match(sourceNames,/SOURCE_KEYWORD_LEVELS/);
   assert.match(culture,/const publishedTaxonomy=useMemo\(\(\)=>publishedSourceTaxonomy\(scopeId\),\[scopeId\]\)/);
   assert.match(culture,/enabled:!publishedTaxonomy/);
   assert.match(stats,/publishedSourceCategoryCatalog\(scopeId\)/);
