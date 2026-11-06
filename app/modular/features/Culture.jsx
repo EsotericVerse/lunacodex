@@ -258,7 +258,6 @@ export default function Culture(){
   useEffect(()=>setArticleSort(userActive?userSettings.sort:'desc'),[userActive,userSettings.sort]);
   // Keyword Class is optional; ordinary Time River views must not scan the whole article corpus.
   const [styleFilter,setStyleFilter]=useState('none');
-  const [keywordOptionsScope,setKeywordOptionsScope]=useState('');
   const [selectedKeywordClassUid,setSelectedKeywordClassUid]=useState('');
   const [keywordDrillSource,setKeywordDrillSource]=useState('');
   const [keywordDrillGroup,setKeywordDrillGroup]=useState('');
@@ -298,7 +297,6 @@ export default function Culture(){
   useEffect(()=>{
     setStyleFilter('none');
     setLocDensityOpen(false);
-    setKeywordOptionsScope('');
     setKeywordPeriodKey('latest');
     setKeywordCustomStart('');
     setKeywordCustomEnd('');
@@ -486,7 +484,7 @@ export default function Culture(){
     queryKey:['scope-active-keyword-class-name',scopeId],
     // Opening/focusing the style selector is the first reason to look up
     // the active Class. Ordinary Time River viewing performs no keyword SQL.
-    enabled:!isTimeEditingView&&(keywordOptionsScope===scopeId||styleFilter==='rune66')&&!isAggregateScope&&!isLrunesDaily&&!isLocItemView,
+    enabled:!isTimeEditingView&&styleFilter==='rune66'&&!isAggregateScope&&!isLrunesDaily&&!isLocItemView,
     queryFn:async()=>{
       const {selectAvailableKeywordClasses}=await import('../../loc/keyword-analysis');
       return selectAvailableKeywordClasses(scopeId);
@@ -1472,8 +1470,6 @@ export default function Culture(){
                       <select className='scope-select' aria-label={l.styleLabel}
                         value={styleFilter==='none'&&sourceStyleOptions.some(item=>item.key===selectedRiverGroup)
                           ?'source:'+selectedRiverGroup:styleFilter}
-                        onFocus={()=>setKeywordOptionsScope(scopeId)}
-                        onPointerDown={()=>setKeywordOptionsScope(scopeId)}
                         onChange={event=>{
                           const next=event.target.value;
                           const choice=next.startsWith('source:')
