@@ -7,15 +7,13 @@ function validEndpoint(value,suffix){
       parsed.pathname.replace(/\/+$/,'').endsWith(suffix);
   }catch{return false;}
 }
-export function readonlyAuthStatus({primaryId='supabase-current',
-  identityProvider='',neonAuthUrl='',neonDataApiUrl=''}={}){
+export function readonlyAuthStatus(){
   return Object.freeze({
-    primaryOAuth:'Clerk',
-    // LOC login is independent of the database. Supabase Auth is not used.
-    supabaseSupported:false,
-    // Neon Auth adapter requires both independently configured endpoints.
-    neonSupported:validEndpoint(neonAuthUrl,'/auth')&&
-      validEndpoint(neonDataApiUrl,'/rest/v1')
+    // Authentication remains a separate upstream adapter until native LOC
+    // OAuth issuance and session verification have passed production checks.
+    primaryOAuth:'Clerk（目前的身分上游；LOC OAuth 尚未啟用）',
+    authorization:'LOC Authority',
+    databaseAuthRequired:false
   });
 }
 export function recoveryOAuthLabel(settings){
