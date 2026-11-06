@@ -62,6 +62,7 @@ export class TabletopRoom extends DurableObject {
       return;
     }
     if(entry.type==='move'&&state.role==='guest'){
+      if(message.length>4096)return; // Moves are tiny; never amplify large guest frames.
       const p=entry.payload;
       if(!p||typeof p.move!=='string'||p.move.length>60||
         !Array.isArray(p.args)||p.args.length>8||
