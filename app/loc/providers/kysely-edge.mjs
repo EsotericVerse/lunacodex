@@ -87,6 +87,7 @@ export function createKyselyEdgeClient({url,publishableKey,auth,role='authentica
     const response=await fetchImpl(endpoint,{...request,signal:requestSignal});
     let payload=null;try{payload=await response.json()}catch{}
     if(!response.ok){const error=new Error(payload?.error?.message||payload?.message||`Kysely request failed (HTTP ${response.status})`);error.status=response.status;error.code=payload?.error?.code;error.details=payload?.error?.details;throw error}
+    if(body.kind==='short-import')return payload;
     if(body.kind==='managed-write'||body.kind==='managed-action'||body.kind==='anchor'||body.kind==='analytics'||body.kind==='public-action')return {data:payload?.data??null,error:null,status:response.status};
     const count=payload?.count??parseContentRange(response.headers.get('content-range'));
     return {data:payload?.data??null,error:null,count,status:response.status};
@@ -104,6 +105,10 @@ export function createKyselyEdgeClient({url,publishableKey,auth,role='authentica
     schema(schema){return {from(table){return new KyselyQuery(execute,schema,table)},managedWrite(payload){return execute({kind:'managed-write',payload,target})},managedAction(name,args={}){return execute({kind:'managed-action',name,args,target})},anchor(scopeid,type,attr={}){return execute({kind:'anchor',scopeid,type,attr,target})},analytics(args){return execute({kind:'analytics',args,target})},publicAction(name,args={}){return execute({kind:'public-action',name,args,target})}}},
 
     auth:auth||null,
+    shortImport(scopeid,batch){
+      if(role!=='authenticated')throw new Error('Short import requires LOC website session');
+      return execute({kind:'short-import',scopeid,batch});
+    },
     activeTarget(){return execute({kind:'status',name:'active_public_target'});},
     role,target
   };
