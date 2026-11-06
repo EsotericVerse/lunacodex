@@ -3,6 +3,8 @@ import {portableRelation} from './sql-engine-ports.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const FLAGS=['statics','culture','search','trace','list','keyword','extract','others'];
+const effectiveNamespace=(engine,namespace)=>
+  namespace||(engine==='mssql'?'dbo':'public');
 
 /**
  * The only required per-Scope SQL relations. No stored procedures, DB auth
@@ -13,9 +15,10 @@ export async function ensurePortableScopeSchema(db,{engine,namespace='',scopeId}
   if(!SCOPE.test(String(scopeId||''))||!['postgres','mysql','mssql'].includes(engine))
     throw new Error('Invalid portable LOC Scope or SQL engine');
   const scope=scopeId;
+  const schema=effectiveNamespace(engine,namespace);
   const meta=await db.introspection.getTables();
   const existing=new Set(meta.filter(row=>
-    engine==='mysql'||!row.schema||row.schema===namespace)
+    engine==='mysql'||!row.schema||row.schema===schema)
     .map(row=>row.name));
   const textType=engine==='mssql'?sql.raw('nvarchar(max)'):'text';
   const jsonType=engine==='postgres'?'jsonb':engine==='mysql'?'json':sql.raw('nvarchar(max)');
@@ -79,6 +82,7 @@ export async function ensurePortableScopeSchema(db,{engine,namespace='',scopeId}
 export function validatePortableScopeSchema(tables,{engine,namespace='',scopeId}={}){
   if(!SCOPE.test(String(scopeId||''))||!['postgres','mysql','mssql'].includes(engine))
     throw new Error('Invalid portable LOC Scope');
+  const schema=effectiveNamespace(engine,namespace);
   const expected={
     galaxy:['uid','title','content','createtime','location','UpdateTime','url',
       'source_id','target_id','ref_id','site','place_id','media_link','date','site_id',
@@ -91,7 +95,7 @@ export function validatePortableScopeSchema(tables,{engine,namespace='',scopeId}
   for(const [kind,columns] of Object.entries(expected)){
     const name=scopeId+'_'+kind;
     const table=tables.find(t=>t.name===name&&
-      (engine==='mysql'||!t.schema||t.schema===namespace));
+      (engine==='mysql'||!t.schema||t.schema===schema));
     if(!table)throw new Error('Missing LOC table: '+name);
     const present=new Set((table.columns||[]).map(c=>c.name));
     const missing=columns.filter(col=>!present.has(col));
