@@ -72,7 +72,7 @@ chrome.runtime.onMessageExternal.addListener((message,sender,sendResponse)=>{
         (active&&now-active.created<86400000&&await knownTab(active,nonce,scopeid)));
       if(local[SCOPE_KEY]!==scopeid)return {ok:false,error:'Extension Scope 不一致'};
       if(!matched)return {ok:false,error:'Extension 沒有匹配的授權分頁，請由 Extension 重新開始'};
-      return {ok:true,data:{bridge:true,version:chrome.runtime.getManifest().version}};
+      return {ok:true,data:{bridge:true,protocol:1,version:chrome.runtime.getManifest().version}};
     })().then(sendResponse)
       .catch(error=>sendResponse({ok:false,error:String(error?.message||error).slice(0,180)}));
     return true;
