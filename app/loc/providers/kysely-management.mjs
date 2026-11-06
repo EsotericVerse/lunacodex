@@ -4,6 +4,21 @@ import {saveBlocksKysely} from './kysely-blocks.mjs';
 
 const ID=/^[a-z][a-z0-9_]*$/i;
 const UID=/^[A-Za-z0-9]{8}$/;
+const KEYWORD_UID_ALPHABET='0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+// Cryptographic Base62 identity, matching the existing eight-character Anchor UID.
+// Rejection sampling (248 = 62*4) avoids bias; no database function is needed.
+function randomKeywordUid(){
+  for(let attempt=0;attempt<4;attempt++){
+    const bytes=crypto.getRandomValues(new Uint8Array(16));
+    let uid='';
+    for(const byte of bytes){
+      if(byte>=248)continue;
+      uid+=KEYWORD_UID_ALPHABET[byte%62];
+      if(uid.length===8)return uid;
+    }
+  }
+  reject('Keyword UID allocation failed');
+}
 const SCOPED_SUFFIXES=['_galaxy','_anchor','_blocks'];
 
 function reject(message,status=400){
@@ -740,12 +755,20 @@ async function importSharedKeywordClass(trx,args){
     .select(['uid','title','description','invisible','attr'])
     .where('uid','=',classUid).where('type','=','class').executeTakeFirst();
   if(!root)reject('Source Class not found');
-  await sql`select pg_advisory_xact_lock(hashtext(${to}),17148)`.execute(trx);
+  // CSPRNG Base62 identities and the target UID primary key replace the
+  // PostgreSQL-only advisory lock; this operation remains transactional.
+  const reserved=new Set();
   const nextUid=async()=>{
-    const r=await sql`select silver.new_keyword_tree_uid(${to}) as uid`.execute(trx);
-    const id=String(r.rows[0]?.uid||'');
-    if(!UID.test(id))reject('Keyword UID allocation failed');
-    return id;
+    for(let attempt=0;attempt<32;attempt++){
+      const uid=randomKeywordUid();
+      if(reserved.has(uid))continue;
+      const existing=await trx.selectFrom(target).select('uid')
+        .where('uid','=',uid).executeTakeFirst();
+      if(existing)continue;
+      reserved.add(uid);
+      return uid;
+    }
+    reject('Cannot allocate unique Anchor UID');
   };
   const readChild=async(uid,type)=>{
     const row=await trx.selectFrom(source)

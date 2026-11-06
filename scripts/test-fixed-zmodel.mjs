@@ -1,0 +1,208 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+
+const snapshot=JSON.parse(readFileSync(new URL('../zenstack/schema-contract.json',import.meta.url),'utf8'));
+const source=readFileSync(new URL('../zenstack/schema.zmodel',import.meta.url),'utf8');
+const native={
+  text:['String','@db.Text'],
+  varchar:['String','@db.VarChar'],
+  bpchar:['String','@db.Char'],
+  bool:['Boolean',''],
+  int2:['Int','@db.SmallInt'],
+  int4:['Int','@db.Integer'],
+  int8:['BigInt','@db.BigInt'],
+  timestamptz:['DateTime','@db.Timestamptz'],
+  timestamp:['DateTime','@db.Timestamp'],
+  date:['DateTime','@db.Date'],
+  numeric:['Decimal','@db.Decimal'],
+  jsonb:['Json','@db.JsonB'],
+  json:['Json','@db.Json'],
+  _text:['String[]','@db.Text'],
+  _varchar:['String[]','@db.VarChar'],
+  _int2:['Int[]','@db.SmallInt'],
+  _int4:['Int[]','@db.Integer']
+};
+const modelName=table=>table.split('_').map(word=>word[0].toUpperCase()+word.slice(1)).join('');
+const blocks=[...source.matchAll(/^model (\w+) \{([\s\S]*?)^\}/gm)];
+const physical=new Map();
+for(const [,name,body] of blocks){
+  const table=body.match(/^\s+@@map\("([^"]+)"\)\s*$/m)?.[1];
+  assert.ok(table,'missing physical table mapping for '+name);
+  assert.match(body,/^\s+@@schema\("silver"\)\s*$/m);
+  assert.equal(name,modelName(table),'unexpected model name');
+  assert.ok(!physical.has(table),'duplicate physical model: '+table);
+  const fields=new Map();
+  for(const line of body.split('\n')){
+    const m=line.match(/^\s{4}([A-Za-z_]\w*)\s+((?:String|Boolean|Int|BigInt|Float|Decimal|DateTime|Json|Bytes)(?:\[\]|\?)?)(?:\s+(.*))?$/);
+    if(m){
+      assert.ok(!fields.has(m[1]),'duplicate field: '+table+'.'+m[1]);
+      fields.set(m[1],{type:m[2],attributes:m[3]||''});
+    }
+  }
+  physical.set(table,{body,fields});
+}
+
+test('ZModel maps exactly to the frozen silver physical table and column contract',()=>{
+  assert.equal(snapshot.schema,'silver');
+  assert.equal(snapshot.tables.length,17);
+  assert.equal(physical.size,snapshot.tables.length);
+  let total=0;
+  for(const t of snapshot.tables){
+    const model=physical.get(t.table);
+    assert.ok(model,'missing table: '+t.table);
+    assert.equal(model.fields.size,t.columns.length,'column count drift for '+t.table);
+    assert.deepEqual([...model.fields.keys()].sort(),t.columns.map(x=>x.name).sort(),
+      'column name drift for '+t.table);
+    const ids=t.pk;
+    if(ids.length===1)assert.match(model.fields.get(ids[0]).attributes,/(?:^|\s)@id(?:\s|$)/);
+    else assert.ok(model.body.includes('@@id(['+ids.join(', ')+'])'));
+    for(const keys of t.uniques||[])assert.ok(model.body.includes('@@unique(['+keys.join(', ')+'])'),
+      'missing existing unique constraint on '+t.table);
+    for(const col of t.columns){
+      total++;
+      const field=model.fields.get(col.name);
+      assert.ok(field,'missing '+t.table+'.'+col.name);
+      assert.ok(native[col.format],'unexpected source type '+col.format);
+      const [kind,dbType]=native[col.format];
+      // ZModel cannot express nullable SQL scalar lists (String[]?, Int[]?).
+      // Those nullable arrays stay on Kysely's SQL/driver path.
+      const optional=col.nullable&&!kind.endsWith('[]')?'?':'';
+      assert.equal(field.type,kind+optional,t.table+'.'+col.name+' scalar type changed');
+      if(dbType)assert.ok(field.attributes.includes(dbType),
+        t.table+'.'+col.name+' native database type changed');
+      if(col.generated)assert.ok(!field.attributes.includes('@default('),
+        t.table+'.'+col.name+' is a stored generated column');
+    }
+  }
+  assert.equal(total,273);
+});
+
+test('Anchor remains the extension point; model does not declare migrations or bypass authorization',()=>{
+  for(const table of ['lo3rwang_anchor','lrunes_anchor']){
+    const anchor=physical.get(table);
+    assert.ok(anchor);
+    assert.equal(anchor.fields.get('uid').type,'String');
+    assert.equal(anchor.fields.get('type').type,'String');
+    assert.equal(anchor.fields.get('attr').type,'Json');
+    assert.match(anchor.fields.get('attr').attributes,/@db\.JsonB/);
+    assert.equal(anchor.fields.size,7);
+  }
+  assert.doesNotMatch(source,/^\s*generator\s+/m);
+  assert.doesNotMatch(source,/^\s*@@allow\s*\(/m);
+  assert.doesNotMatch(source,/^\s*@@deny\s*\(/m);
+});
+
+test('ZenStack V3 runtime schema bridge stays in sync with the frozen contract',async()=>{
+  const {schema}=await import('../zenstack/schema.mjs');
+  assert.equal(schema.provider.type,'postgresql');
+  assert.equal(schema.provider.defaultSchema,'silver');
+  assert.equal(Object.keys(schema.models).length,snapshot.tables.length);
+  for(const table of snapshot.tables){
+    const model=schema.models[modelName(table.table)];
+    assert.ok(model,'missing generated model '+table.table);
+    assert.deepEqual(model.idFields,table.pk);
+    for(const keys of table.uniques||[])
+      assert.deepEqual(Object.keys(model.uniqueFields[keys.join('_')]).sort(),[...keys].sort());
+    assert.equal(Object.keys(model.fields).length,table.columns.length);
+    for(const col of table.columns){
+      const field=model.fields[col.name];
+      assert.ok(field,'missing generated field '+table.table+'.'+col.name);
+      assert.equal(field.type,native[col.format][0].replace('[]',''));
+      assert.equal(Boolean(field.array),col.format.startsWith('_'));
+      assert.equal(Boolean(field.optional),col.nullable&&!col.format.startsWith('_'));
+      assert.equal(Boolean(field.default),col.hasDefault&&!col.generated,
+        'physical default metadata drift on '+table.table+'.'+col.name);
+    }
+    assert.equal(model.attributes.find(a=>a.name==='@@map')?.args?.[0]?.value?.value,table.table);
+    assert.equal(model.attributes.find(a=>a.name==='@@schema')?.args?.[0]?.value?.value,'silver');
+  }
+});
+
+test('ZenStack V3 compiles fixed-model Kysely reads without a database or stored procedure',async()=>{
+  const {createFixedLocClient}=await import('../zenstack/client.mjs');
+  const {DummyDriver,PostgresAdapter,PostgresIntrospector,PostgresQueryCompiler}=await import('kysely');
+  const dialect={
+    createDriver:()=>new DummyDriver(),
+    createAdapter:()=>new PostgresAdapter(),
+    createIntrospector:db=>new PostgresIntrospector(db),
+    createQueryCompiler:()=>new PostgresQueryCompiler()
+  };
+  const client=createFixedLocClient({dialect});
+  const compiled=client.$qb.selectFrom('Lo3rwangAnchor')
+    .select(['uid','type'])
+    .where('type','=','date')
+    .limit(5).compile();
+  assert.match(compiled.sql,/"silver"\."lo3rwang_anchor"/);
+  assert.deepEqual(compiled.parameters,['date',5]);
+});
+
+test('active LOC browser and local providers have no SQL RPC transport',()=>{
+  const active=[
+    '../app/loc/providers/clerk-gateway.mjs',
+    '../app/loc/providers/kysely-edge.mjs',
+    '../app/loc/providers/local-sqlite.mjs',
+    '../app/loc/db-client.mjs'
+  ];
+  for(const path of active){
+    const code=readFileSync(new URL(path,import.meta.url),'utf8');
+    assert.doesNotMatch(code,/\.rpc\s*\(/,path+' must not invoke a database RPC');
+    assert.doesNotMatch(code,/kind:\s*['"]rpc['"]/,path+' must not send an RPC request');
+  }
+  const bridge=readFileSync(new URL('../app/loc/providers/configured.mjs',import.meta.url),'utf8');
+  assert.match(bridge,/createClerkGatewayAdapter/);
+});
+
+test('direct Kysely action routing replaces the local and public RPC facade',()=>{
+  const local=readFileSync(new URL('../app/loc/providers/local-sqlite.mjs',import.meta.url),'utf8');
+  const browser=readFileSync(new URL('../app/loc/db-client.mjs',import.meta.url),'utf8');
+  const edge=readFileSync(new URL('../app/loc/providers/kysely-edge.mjs',import.meta.url),'utf8');
+  assert.match(local,/analytics\(args\)\{return localAnalytics\(args\);\}/);
+  assert.match(local,/managedWrite\(payload\)\{return managementWriteLocal\(payload\);\}/);
+  assert.match(browser,/localSchema\.analytics\(args\)/);
+  assert.match(browser,/localSchema\.managedWrite\(payload\)/);
+  for(const method of ['analytics','managedWrite','managedAction','publicAction','anchor'])
+    assert.ok(edge.includes(method+'('),'missing SQL action '+method);
+});
+
+test('Kysely keyword import allocates Base62 UIDs without stored SQL allocator',async()=>{
+  const source=readFileSync(new URL('../app/loc/providers/kysely-management.mjs',import.meta.url),'utf8');
+  assert.doesNotMatch(source,/silver\.new_keyword_tree_uid/);
+  const begin=source.indexOf('const KEYWORD_UID_ALPHABET=');
+  const end=source.indexOf('const SCOPED_SUFFIXES=',begin);
+  assert.ok(begin>=0&&end>begin);
+  let seed=0x19A1B2C3;
+  const cryptoStub={getRandomValues(bytes){
+    for(let i=0;i<bytes.length;i++){
+      seed^=seed<<13;seed^=seed>>>17;seed^=seed<<5;
+      bytes[i]=seed&255;
+    }
+    return bytes;
+  }};
+  const allocate=new Function('crypto','reject',source.slice(begin,end)+
+    '\nreturn randomKeywordUid;')(cryptoStub,message=>{throw Error(message)});
+  const values=new Set();
+  for(let i=0;i<400;i++){
+    const id=allocate();
+    assert.match(id,/^[A-Za-z0-9]{8}$/);
+    assert.ok(!values.has(id),'unexpected duplicate in local sample');
+    values.add(id);
+  }
+  const start=source.indexOf('  const reserved=new Set();');
+  const stop=source.indexOf('  const readChild=',start);
+  assert.ok(start>=0&&stop>start);
+  let queryCount=0;
+  const trx={selectFrom(){return {
+    select(){return this;},where(){return this;},
+    async executeTakeFirst(){queryCount++;return queryCount===1?{uid:'AAAA1111'}:null;}
+  }}};
+  let index=0;
+  const candidates=['AAAA1111','BBBB2222','BBBB2222','CCCC3333'];
+  const next=new Function('trx','target','randomKeywordUid','reject',
+    source.slice(start,stop)+'\nreturn nextUid;')(
+      trx,'silver.lo3rwang_anchor',()=>candidates[index++],
+      message=>{throw Error(message)});
+  assert.equal(await next(),'BBBB2222');
+  assert.equal(await next(),'CCCC3333');
+  assert.equal(queryCount,3,'reserved UID must not query the database twice');
+});

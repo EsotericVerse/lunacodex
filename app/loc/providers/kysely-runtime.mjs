@@ -1,10 +1,11 @@
 import {sql} from 'npm:kysely@0.29.8';
 import {DB_QUERY_BATCH_SIZE} from '../query-batch-size.mjs';
 import {serializePortableJsonFields,portableRelation} from './sql-engine-ports.mjs';
+import {portableContainsSpec,parsePortableOrExpression} from './portable-search.mjs';
 
 const identifier=/^[a-z][a-z0-9_]*$/i;
 const schemas=new Set(['silver','api']);
-const operators={eq:'=',neq:'!=',gt:'>',gte:'>=',lt:'<',lte:'<=',like:'like',ilike:'ilike',is:'is',in:'in'};
+const operators={eq:'=',neq:'!=',gt:'>',gte:'>=',lt:'<',lte:'<=',like:'like',ilike:'ilike',contains:'contains',is:'is',in:'in'};
 function checkedFilterColumn(value){
   return checkedIdentifier(value,'filter column');
 }
@@ -12,39 +13,6 @@ function checkedFilterColumn(value){
 function checkedIdentifier(value,label){
   if(typeof value!=='string'||!identifier.test(value))throw new Error('Invalid '+label);
   return value;
-}
-
-function splitExpression(expression){
-  const parts=[];let start=0,quoted=false,escaped=false,depth=0;
-  for(let i=0;i<expression.length;i++){
-    const char=expression[i];
-    if(escaped){escaped=false;continue;}
-    if(char==='\\'&&quoted){escaped=true;continue;}
-    if(char==='"')quoted=!quoted;
-    else if(!quoted&&char==='(')depth++;
-    else if(!quoted&&char===')'){if(--depth<0)throw new Error('Malformed OR filter');}
-    else if(!quoted&&depth===0&&char===','){parts.push(expression.slice(start,i));start=i+1;}
-  }
-  if(quoted||escaped||depth!==0)throw new Error('Malformed OR filter');
-  parts.push(expression.slice(start));
-  if(!parts.length||parts.length>30||parts.some(part=>!part.trim()))throw new Error('Invalid OR filter size');
-  return parts;
-}
-
-function parseExpressionTerm(raw,depth=0){
-  if(depth>8)throw new Error('OR filter nesting is too deep');
-  const part=raw.trim();
-  const group=part.match(/^(and|or)\(([\s\S]*)\)$/i);
-  if(group)return {type:group[1].toLowerCase(),items:splitExpression(group[2]).map(item=>parseExpressionTerm(item,depth+1))};
-  const match=part.match(/^([a-z][a-z0-9_]*)\.(eq|neq|gt|gte|lt|lte|like|ilike|is)\.(?:"((?:\\.|[^"])*)"|([^,]*))$/i);
-  if(!match)throw new Error('Unsupported OR filter');
-  const rawValue=match[3]!==undefined?match[3].replace(/\\(["\\])/g,'$1'):match[4];
-  const value=rawValue==='true'?true:rawValue==='false'?false:rawValue==='null'?null:/^-?\d+(?:\.\d+)?$/.test(rawValue)?Number(rawValue):rawValue;
-  return {type:'predicate',column:checkedIdentifier(match[1],'OR filter column'),operator:match[2].toLowerCase(),value};
-}
-
-function parseOrExpression(expression){
-  return {type:'or',items:splitExpression(expression).map(parseExpressionTerm)};
 }
 
 function validateQuery(input){
@@ -79,13 +47,19 @@ function validateQuery(input){
   const offset=Math.max(0,Math.min(10_000_000,Math.floor(Number(input.offset)||0)));
   if(input.or!==undefined&&!Array.isArray(input.or))throw new Error('Invalid OR filter');
   if(['insert','upsert'].includes(input.operation)&&(input.or||[]).length)throw new Error('OR filters are not supported for insert or upsert');
-  const orFilters=(input.or||[]).map(expr=>{if(typeof expr!=='string')throw new Error('Invalid OR filter');return parseOrExpression(expr)});
+  const orFilters=(input.or||[]).map(expr=>{if(typeof expr!=='string')throw new Error('Invalid OR filter');return parsePortableOrExpression(expr)});
   if(orFilters.length>10)throw new Error('Too many OR filters');
   if(input.single!==undefined&&!['single','maybeSingle'].includes(input.single))throw new Error('Invalid row cardinality');
   return {...input,schema,table,filters,columns,orders,limit,offset,orFilters};
 }
 
 const GALAXY_BOOLEAN_COLUMNS=new Set(['statics','culture','search','trace','list','keyword','extract','others']);
+function containsPredicate(column,term){
+  const {fold,pattern}=portableContainsSpec(term);
+  return fold
+    ?sql`lower(${sql.ref(column)}) like ${pattern} escape '!'`
+    :sql`${sql.ref(column)} like ${pattern} escape '!'`;
+}
 function applyFilters(query,filters){
   for(const filter of filters){
     const op=operators[filter.operator],column=checkedFilterColumn(filter.column);
@@ -94,6 +68,8 @@ function applyFilters(query,filters){
       ?filter.value==='true':filter.value;
     if(filter.operator==='in')query=filter.negate?query.where(eb=>eb.not(eb(column,'in',value))):query.where(column,'in',value);
     else if(filter.operator==='ilike')query=query.where(sql`lower(${typeof column==='string'?sql.ref(column):column})`,filter.negate?'not like':'like',String(value).toLowerCase());
+    else if(filter.operator==='contains')query=query.where(filter.negate
+      ?sql`not (${containsPredicate(column,value)})`:containsPredicate(column,value));
     else if(filter.operator==='is')query=query.where(column,value===null?(filter.negate?'is not':'is'):(filter.negate?'!=':'='),value);
     else query=filter.negate?query.where(eb=>eb.not(eb(column,op,value))):query.where(column,op,value);
   }
@@ -105,6 +81,7 @@ function applyOrFilters(query,groups){
     if(node.type==='and')return eb.and(node.items.map(item=>predicate(eb,item)));
     if(node.type==='or')return eb.or(node.items.map(item=>predicate(eb,item)));
     if(node.operator==='ilike')return eb(sql`lower(${sql.ref(node.column)})`,'like',String(node.value).toLowerCase());
+    if(node.operator==='contains')return containsPredicate(node.column,node.value);
     if(node.operator==='is'&&node.value!==null)return eb(node.column,'=',node.value);
     return eb(node.column,operators[node.operator],node.value);
   };

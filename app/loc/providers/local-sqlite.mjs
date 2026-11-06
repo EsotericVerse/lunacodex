@@ -24,6 +24,7 @@ import {Capacitor} from '@capacitor/core';
 import {sourceTaxonomyFromArrays} from '../source-classification.mjs';
 import {convertLegacyTimeRows} from '../time-schema-migration.mjs';
 import {generateKeywordClassUid} from '../keyword-uidlist.mjs';
+import {portableContainsSpec,parsePortableOrExpression} from './portable-search.mjs';
 
 const DATABASE_NAME='loc_local_scope';
 const MARKER='loc.local.scope.sqlite.v1';
@@ -720,7 +721,7 @@ function toSqlValue(value){
   return value;
 }
 
-// -- PostgREST-like filter compiler (eq/neq/gt/gte/lt/lte/like/ilike/is/in/not) --
+// -- Parameterized local SQL filter compiler (including literal contains) --
 function compileFilter(column,op,value){
   const col=quoteIdent(column);
   if(['statics','culture','search','trace','list','keyword','others','extract'].includes(column)&&
@@ -734,22 +735,38 @@ function compileFilter(column,op,value){
     case 'lte':return {sql:col+'<=?',params:[toSqlValue(value)]};
     case 'like':return {sql:col+' LIKE ?',params:[String(value)]};
     case 'ilike':return {sql:'lower('+col+') LIKE lower(?)',params:[String(value)]};
+    case 'contains':{
+      const {fold,pattern}=portableContainsSpec(value);
+      return {sql:(fold?'lower('+col+')':col)+" LIKE ? ESCAPE '!'",params:[pattern]};
+    }
     case 'is':return {sql:col+(value===null?' IS NULL':value===true?'=1':'=0'),params:[]};
     case 'in':return {sql:col+' IN ('+(Array.isArray(value)?value:[value]).map(()=>'?').join(',')+')',
       params:(Array.isArray(value)?value:[value]).map(toSqlValue)};
-    case 'not':return {sql:'NOT ('+compileFilter(column,value.op,value.value).sql+')',params:compileFilter(column,value.op,value.value).params};
+    case 'not':{
+      const compiled=compileFilter(column,value.op,value.value);
+      return {sql:'NOT ('+compiled.sql+')',params:compiled.params};
+    }
     default:throw new Error('Unsupported filter operator: '+op);
   }
+}
+
+function compileLocalOr(node){
+  if(node.type==='predicate')return compileFilter(node.column,node.operator,node.value);
+  if(node.type!=='and'&&node.type!=='or')throw new Error('Unsupported OR filter');
+  const parts=node.items.map(compileLocalOr);
+  return {sql:'('+parts.map(part=>part.sql).join(node.type==='and'?' AND ':' OR ')+')',
+    params:parts.flatMap(part=>part.params)};
 }
 
 // -- Chainable query builder matching the subset of the Supabase JS client
 //    actually used by db-contract.mjs / Culture.jsx / Statistics / Search.jsx --
 function queryBuilder(table){
   const name=tableName(table);
-  const state={select:'*',filters:[],order:null,limitN:null,rangeFrom:null,rangeTo:null,single:false,maybeSingle:false,countRequested:null,write:null};
+  const state={select:'*',filters:[],order:null,limitN:null,rangeFrom:null,rangeTo:null,single:false,maybeSingle:false,countRequested:null,write:null,orFilters:[]};
   async function execute(){
     try{
-      const where=state.filters.map(f=>compileFilter(f.column,f.op,f.value));
+      const where=[...state.filters.map(f=>compileFilter(f.column,f.op,f.value)),
+        ...state.orFilters.map(compileLocalOr)];
       const whereSql=where.length?' WHERE '+where.map(w=>w.sql).join(' AND '):'';
       const params=where.flatMap(w=>w.params);
       if(state.write){
@@ -770,7 +787,7 @@ function queryBuilder(table){
           const count=await runBatchLocal(statements);
           return {data:list,error:null,count};
         }
-        if(!where.length)throw new Error('SQLite write requires filters');
+        if(!state.filters.length)throw new Error('SQLite write requires filters');
         const before=state.select!=='*'
           ?await selectLocal('SELECT '+state.select+' FROM '+quoteIdent(name)+whereSql,params)
           :[];
@@ -825,6 +842,8 @@ function queryBuilder(table){
     lte(col,val){state.filters.push({column:col,op:'lte',value:val});return chain;},
     like(col,val){state.filters.push({column:col,op:'like',value:val});return chain;},
     ilike(col,val){state.filters.push({column:col,op:'ilike',value:val});return chain;},
+    contains(col,val){state.filters.push({column:col,op:'contains',value:val});return chain;},
+    or(expr){state.orFilters.push(parsePortableOrExpression(expr));return chain;},
     is(col,val){state.filters.push({column:col,op:'is',value:val});return chain;},
     in(col,val){state.filters.push({column:col,op:'in',value:val});return chain;},
     not(col,op,val){state.filters.push({column:col,op:'not',value:{op,value:val}});return chain;},
@@ -1113,41 +1132,28 @@ async function saveArchiveMediaExifLocal({p_scope_id,p_rows}={}){
   }catch(error){return {data:null,error:{message:String(error?.message||error)}};}
 }
 
-export async function rpcLocal(name,args={}){
-  switch(name){
-    case 'read_scope_analytics':{
-      const options=args.p_options||{},params={
-        p_scope_id:args.p_scope_id,p_start:args.p_start,p_end:args.p_end
-      };
-      switch(args.p_view){
-        case 'daily':return readScopeStatisticsLocal({...params,p_include_undated:Boolean(options.includeUndated)});
-        case 'totals':return readScopeCategoryTotalsLocal(params);
-        case 'overview':return readScopeOverviewLocal(params);
-        case 'earliest':return readScopeEarliestLocal(params);
-        case 'keyword_summary':return readKeywordTreeSummaryLocal({...params,p_class_uid:options.classUid,p_source:options.source});
-        case 'keyword_catalog':return readKeywordTreeCatalogLocal({p_class_uid:options.classUid});
-        case 'shared_classes':return readSharedKeywordClassesLocal(params);
-        default:return {data:null,error:{message:'Unsupported local analytics view'}};
-      }
-    }
-    case 'management_write':return managementWriteLocal(args);
-    case 'save_archive_media_exif':return saveArchiveMediaExifLocal(args);
-    case 'read_scope_statistics':return readScopeStatisticsLocal(args);
-    case 'read_scope_overview':return readScopeOverviewLocal(args);
-    case 'read_scope_category_totals':return readScopeCategoryTotalsLocal(args);
-    case 'read_scope_earliest':return readScopeEarliestLocal(args);
-    case 'read_keyword_class_by_uid':return readKeywordClassLocal(args);
-    case 'read_shared_keyword_classes':return readSharedKeywordClassesLocal(args);
-    case 'read_keyword_tree_summary':return readKeywordTreeSummaryLocal(args);
-    case 'log_search_keyword':return {data:null,error:null};
-    default:return {data:null,error:{message:'RPC not implemented for local scope: '+name}};
+// Device-private SQLite actions use direct functions, not stored procedures.
+async function localAnalytics(args={}){
+  const options=args.p_options||{},params={
+    p_scope_id:args.p_scope_id,p_start:args.p_start,p_end:args.p_end
+  };
+  switch(args.p_view){
+    case 'daily':return readScopeStatisticsLocal({...params,p_include_undated:Boolean(options.includeUndated)});
+    case 'totals':return readScopeCategoryTotalsLocal(params);
+    case 'overview':return readScopeOverviewLocal(params);
+    case 'earliest':return readScopeEarliestLocal(params);
+    case 'keyword_summary':return readKeywordTreeSummaryLocal({...params,p_class_uid:options.classUid,p_source:options.source});
+    case 'keyword_catalog':return readKeywordTreeCatalogLocal({p_class_uid:options.classUid});
+    case 'shared_classes':return readSharedKeywordClassesLocal(params);
+    default:return {data:null,error:{message:'Unsupported local analytics view'}};
   }
 }
 
 function schemaClient(){
   return {
     from(table){return queryBuilder(table);},
-    rpc(name,args={}){return rpcLocal(name,args);}
+    analytics(args){return localAnalytics(args);},
+    managedWrite(payload){return managementWriteLocal(payload);}
   };
 }
 

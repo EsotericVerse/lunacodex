@@ -8,8 +8,7 @@ const DEFAULT_SUPABASE_PUBLISHABLE_KEY='sb_publishable_qPn0vAzozVyXKllRuEKf2Q_fv
 // The primary Supabase must NEVER consume one direct PostgreSQL connection
 // per browser read. Supabase's managed Data API gives us the same PostgREST
 // query shape and RLS without exhausting the database's direct connection slots.
-// Custom database target management still uses trusted Kysely Edge RPC.
-const EDGE_ONLY_ADMIN_RPCS=new Set(['save_database_target','set_database_target','set_database_routing','check_backup_readiness']);
+// Custom database target management uses trusted Kysely actions directly.
 
 // Diagnostic: the browser has shown the SAME request (same table, same
 // limit) sometimes carry `apikey` and sometimes not, with no code change in
@@ -100,25 +99,16 @@ export function createSupabaseAdapter({
           }
         });
       },
-      rpc(name,args={},options={}){
-        if(schema==='silver'&&EDGE_ONLY_ADMIN_RPCS.has(name))
-          return edgeAdmin.schema(schema).rpc(name,args);
-        if(name==='read_keyword_class'||name==='read_scope_page_copy')return db.rpc(name,args,options);
-        return selectedDatabaseRouting(publicRouting).then(selected=>{
-          if(!selected.verified)throw new Error('Primary database cannot be confirmed; write cancelled');
-          if(selected.provider==='neon')throw new Error('Selected primary database is read-only');
-          return selected.primaryControl?db.rpc(name,args,options):edgeAdmin.schema(schema).rpc(name,args);
-        });
-      }
+      analytics(args){return edgeAdmin.schema(schema).analytics(args);},
+      publicAction(name,args={}){return edgeAdmin.schema(schema).publicAction(name,args);},
+      managedWrite(payload){return edgeAdmin.schema(schema).managedWrite(payload);},
+      managedAction(name,args={}){return edgeAdmin.schema(schema).managedAction(name,args);}
+
     };
   }
   const authClient={
     schema:authenticatedDatabase,
-    rpc(name,args={},options={}){
-      const schema=options.schema||'silver';
-      return authenticatedDatabase(schema).rpc(name,args,options);
-    },
     auth:authenticatedSdk.auth
   };
-  return {publicClient:publicSdk,realtimeClient:publicSdk,configuredPublicClient:publicRouting,authClient,auth:authenticatedSdk.auth};
+  return {publicClient:edgePublic,realtimeClient:publicSdk,configuredPublicClient:publicRouting,authClient,auth:authenticatedSdk.auth};
 }

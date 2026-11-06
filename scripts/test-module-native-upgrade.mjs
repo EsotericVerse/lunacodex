@@ -25,7 +25,7 @@ test('ZenStack V3 dependencies are lockfile-consistent when installed',()=>{
   for(let i=0;i<packages.length;i++){
     if(!declared[i])continue;
     const name=packages[i];
-    assert.ok(declared[i].startsWith('3.'),name+' must use ZenStack V3');
+    assert.match(declared[i],/^[~^]?3\./,name+' must use ZenStack V3');
     assert.equal(root.dependencies?.[name]??root.devDependencies?.[name],declared[i],
       name+' must match the npm lockfile root');
     assert.ok(lock.packages['node_modules/'+name],name+' must have a resolved lockfile entry');
