@@ -15,7 +15,7 @@ function verifier(payload,{audience='loc-delegation',
   const jwtVerify=async(_token,_key,options)=>{
     calls++;
     assert.deepEqual(options,{issuer:'loc',audience,algorithms:['RS256']});
-    return {payload};
+    return {payload:{...payload,aud:audience}};
   };
   const factory=new Function('Deno','jwtVerify','locDelegationJwks',
     'delegationAudience','verifyDelegationBoundary',code+';return verifyLocDelegation;');
