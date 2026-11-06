@@ -74,6 +74,15 @@ test('Block interfaces are two reads and one transactional save',()=>{
   assert.doesNotMatch(editor,/await updateRows\(table/);
   assert.doesNotMatch(editor,/await insertRows\(table/);
 });
+test('my data reuses home slot for instructions without changing other Scope homepages',()=>{
+  const shell=file('app/AppShell.jsx');
+  const phone=file('app/loc/MyPhoneHome.jsx');
+  const app=file('app/loc/LocApp.jsx');
+  assert.match(shell,/label:localWorkspace\?'使用說明':translateUiField\(activeLocale,'首頁'\)/);
+  assert.match(phone,/<FieldText text="使用說明"\/>/);
+  assert.match(phone,/本機資料空間 · SQLite（local）/);
+  assert.match(app,/HOME_VIEWS=\{loc:AboutView,lrunes:RunesHomeView,lo3rwang:AuthorHomeView/);
+});
 test('user preferences key by verified OAuth email; Header/Footer remain available',()=>{
   const store=file('app/loc/loc-user-store.mjs');
   const shell=file('app/AppShell.jsx');
