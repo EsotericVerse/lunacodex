@@ -12,15 +12,15 @@ test('DOM extraction uses page content, not highlighted selection',()=>{
  const parse=new Function('document','NodeFilter','getComputedStyle','location',
   between('function parsePage(){','async function capture(')+'return parsePage();');
  const parent={closest:()=>null},nodes=[
-  {textContent:'真正內容',parentElement:parent},
-  {textContent:'第二段文字',parentElement:parent}
+  {textContent:'這是第一段真正的網頁內容',parentElement:parent},
+  {textContent:'這是第二段網頁內容',parentElement:parent}
  ];
  let at=0;
  const doc={title:'標題',body:{},querySelector:()=>({}),
   createTreeWalker:()=>({nextNode:()=>nodes[at++]||null})};
  const result=parse(doc,{SHOW_TEXT:4},()=>({display:'block',visibility:'visible'}),
   {href:'https://example.org',hostname:'example.org'});
- assert.equal(result.content,'真正內容\n第二段文字');
+ assert.equal(result.content,'這是第一段真正的網頁內容\n這是第二段網頁內容');
  assert.equal(result.source,'example.org');
  assert.equal(result.completeness,'loaded-dom-only');
  assert.equal(text.includes('selectionText'),false);
