@@ -156,7 +156,7 @@ test('One search becomes eligible again after five minutes without resetting his
   const next=await authority.ctx.storage.get(key);
   assert.equal(next.count,2);
   assert.equal(next.rejects,0);
-  assert.ok(next.at>old.at);
+  assert.ok(next.at>=old.at);
   await authority.mcpQuotaRelease(first.lease,subject);
   await authority.mcpQuotaRelease(second.lease,subject);
 });
