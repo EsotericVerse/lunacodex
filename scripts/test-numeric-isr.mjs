@@ -93,3 +93,31 @@ test('Service Worker and published JS remain independently usable',()=>{
   assert.match(site,/loadPublishedBlocks\(id,pageName\)/);
   assert.doesNotMatch(read('scripts/build-static-export.mjs'),/NEXT_PUBLIC_LOC_ISR_ORIGIN/);
 });
+
+test('Culture, Statistics and LOC aggregates never fetch full articles when Kysely fails',async()=>{
+  const code=read('app/loc/galaxy-query.js');
+  assert.doesNotMatch(code,/missingStatisticsRpc|statisticsRpcInstalled/);
+  assert.doesNotMatch(code,/const registry=await selectScopeRegistry/);
+  const begin=code.indexOf('async function selectScopeOverviewRaw(');
+  const end=code.indexOf('// Separate source and media breakdowns.',begin);
+  assert.ok(begin>=0&&end>begin);
+  const counts={overview:0,earliest:0,loc:0};
+  const handlers=new Function('scopeOf','usesNumericIsr','readNumericIsr',
+    'readScopeOverview','readScopeEarliest','readLocStatistics',code.slice(begin,end)+
+    '\nreturn {selectScopeOverviewRaw,selectScopeEarliestRaw,selectLocStatisticsRaw};')(
+      scope=>({id:scope.id||scope}),()=>false,()=>{throw Error('ISR disabled');},
+      async()=>{counts.overview++;return {rows:[]};},
+      async()=>{counts.earliest++;return '2026-01-01';},
+      async()=>{counts.loc++;return {scopes:[],rows:[]};});
+  assert.deepEqual(await handlers.selectScopeOverviewRaw({id:'lo3rwang'}),{rows:[]});
+  assert.equal(await handlers.selectScopeEarliestRaw({id:'lo3rwang'}),'2026-01-01');
+  assert.deepEqual(await handlers.selectLocStatisticsRaw(),{scopes:[],rows:[]});
+  assert.deepEqual(counts,{overview:1,earliest:1,loc:1});
+  // Unavailable aggregates propagate the error; no legacy full-row work is started.
+  const broken=new Function('scopeOf','usesNumericIsr','readNumericIsr',
+    'readScopeOverview','readScopeEarliest','readLocStatistics',code.slice(begin,end)+
+    '\nreturn selectLocStatisticsRaw;')(
+      scope=>({id:scope.id||scope}),()=>false,()=>{},
+      async()=>{},async()=>{},async()=>{throw Error('SQL aggregate unavailable');});
+  await assert.rejects(broken(),/SQL aggregate unavailable/);
+});
