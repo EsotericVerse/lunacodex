@@ -18,13 +18,19 @@
   };
   const cleanText = el => String(el?.innerText||el?.textContent||'')
     .replace(/\u00a0/g,' ').replace(/[ \t]+\n/g,'\n').trim().slice(0,1400000);
+  const inViewport = el => {
+    const rect=el.getBoundingClientRect();
+    return rect.width>0&&rect.height>0&&rect.bottom>0&&rect.top<innerHeight;
+  };
+  const socialPostUrl = url =>
+    /instagram\.com\/(?:p|reel|tv)\/|threads\.(?:net|com)\/@[^/]+\/post\//i.test(String(url||''));
   const links = el => [...el.querySelectorAll('a[href]')]
     .filter(visible).slice(0,120).map(a=>({text:cleanText(a).slice(0,120),url:normalizeUrl(a.getAttribute('href'))}))
     .filter(x=>x.url);
   const stableSource = el => {
     const match=[...el.querySelectorAll('a[href]')].find(a=>{
       const u=normalizeUrl(a.href);
-      return u && (/instagram\.com\/p\/|instagram\.com\/reel\/|threads\.(?:net|com)\/@[^/]+\/post\//i.test(u));
+      return u&&socialPostUrl(u);
     });
     if(match)return normalizeUrl(match.href);
     // Never merge unrelated social-feed posts into the profile/feed URL
@@ -78,10 +84,21 @@
       }catch{ /* Unsupported or dynamic page: use bounded DOM fallback below. */ }
     }
     const articles=[...doc.querySelectorAll('article,[role="article"],[data-testid="post-container"]')]
-      .filter(el=>visible(el)&&cleanText(el).length>=25);
-    // During a feed recording, never append an entire changing timeline
-    // as one giant article; only independent, identifiable post elements.
-    const cards=(articles.length?articles:(mode==='record'?[]:[doc])).slice(0,100);
+      .filter(el=>visible(el)&&(mode!=='record'||inViewport(el))&&cleanText(el).length>=25);
+    // Threads may render cards as generic DIVs rather than <article>.
+    // Follow only already-rendered permanent links; never invent a source
+    // or treat the whole infinite feed as a single post.
+    if(/(?:instagram\.com|threads\.(?:net|com))$/.test(hostname)){
+      for(const a of [...doc.querySelectorAll('a[href]')].slice(0,500)){
+        if(!socialPostUrl(normalizeUrl(a.href)))continue;
+        const parent=a.closest('article,[role="article"],[data-testid="post-container"]')||
+          a.closest('[data-pressable-container]')||a.parentElement?.parentElement?.parentElement;
+        if(parent&&visible(parent)&&(mode!=='record'||inViewport(parent))&&
+          cleanText(parent).length>=25)articles.push(parent);
+      }
+    }
+    const unique=[...new Set(articles)];
+    const cards=(unique.length?unique:(mode==='record'?[]:[doc])).slice(0,50);
     return cards.map((el,index)=>{
       const source=stableSource(el);
       const text=cleanText(el);
@@ -160,7 +177,7 @@
     const recording=state.mode==='pick-record';
     stop();state.root=root;state.seen.clear();
     if(recording){
-      publish(extract(root));
+      publish(extract(root,'record',state.includeAssistant));
       watch();
     }else publish(extract(root));
   }
