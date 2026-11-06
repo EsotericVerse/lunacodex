@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "LOC 網頁擷取與錄製",
+  "version": "0.1.0",
+  "description": "擷取網站與舊對話、動態頁面局部錄製、單一佇列批次寫入 LOC Galaxy；不接觸 MCP 或 Clerk",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "contextMenus",
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://loc.lo3rwang.cc/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "LOC 網頁擷取",
+    "default_popup": "popup.html"
+  }
+}
