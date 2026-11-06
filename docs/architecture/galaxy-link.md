@@ -6,28 +6,28 @@ Galaxy Link 是跨 Agent、跨對話的 Scope 記錄與接續介面，不是另�
 每個 Scope 使用自己已授權的資料庫與 Galaxy 相容表；Scope 由 Clerk／LOC Authority 驗證，不可推測其他 Scope 的表名、憑證或內容。
 
 對外以單一 MCP 工具 `galaxy_link`，透過 `action` 區分：
-- `search`：只在使用者／Agent 明確要求接續或查架構時使用；`source=mcp` 搜對話、`source=github` 搜私人 PR 工作紀錄。後者必須通過 Clerk 和該 Scope 的 `manage` 權限；兩者均沿用 QoS，每次最多五筆 UID／標題／時間，不回傳正文。
-- `read`：已知 UID 的分段讀取；以 `source=mcp`（預設）或 `source=github` 精確限制來源。GitHub 來源需要 Scope `manage`，不因取得一般 `read` 權限而公開。
+- `search`：**使用者明確指示搜尋歷史 Galaxy 對話**才可呼叫；僅限 `site=mcp`。每個已驗證身分五分鐘最多成功搜尋一次，每次最多五筆 UID／標題／時間，不回傳正文；短時間重試回傳流量警告，第三次拒絕後啟動原有 QoS 冷卻。
+- `read`：已知 UID 的分段讀取，僅限 `site=mcp`；不以搜尋代替精確 UID。
 - `check`：只比對 `scopeid + conversation_id + updated_at` 的 Durable Object checkpoint；不掃描 Galaxy。
 - `record`：只能寫入提供的真實來源對話到 `site=mcp`，沿用安全亂數八碼 UID、批次雜湊防重與僅追加規則；不得修改 PR 紀錄。
-- `update_pr`：僅更新現有 `site=github` 且標題 PR 編號相符的 UID，後端再次驗證 Scope `manage` 及原始來源；沿用既有 `update-pr` 的 Kysely 路徑，絕不新增文章，也不讓一般 `record` 覆寫。
+- `update_pr`：**已退役**。PR 搜尋、寫入與回溯都直接使用 GitHub，MCP 不另建 PR 副本。舊 `update-pr` Authority API 回傳 410 Gone。
 
 ## 呼叫契約
 
-- `action=search`：`scopeid`、`query`（至少兩字）、選填 `limit`（至多五筆）、`source=mcp|github`（預設 MCP）。
-- `action=read`：`scopeid`、`uid`；選填 `offset`、`max_chars`、`source=mcp|github`。
+- `action=search`：`scopeid`、`query`（至少兩字）、選填 `limit`（至多五筆），服務端固定 `site=mcp`。PR／GitHub 關鍵字拒絕並指向 GitHub，不扣 Galaxy 搜尋額度。
+- `action=read`：`scopeid`、`uid`；選填 `offset`、`max_chars`，固定 `site=mcp`。
 - `action=check`：`scopeid`、來源 `conversation_id`、`updated_at`。
-- `action=update_pr`：`scopeid`、`pr_number`、`title`、`content`、`updated_at`；**`uid` 選填**（已知時用於精確限制，使用者不需要記）。後端優先由 `site_id=EsotericVerse/moon-runes-pwa#編號` 定位，舊紀錄依原標題 PR 編號核對，發現多筆或無結果拒絕；禁止修改 `site`、`site_id` 或新建文章。
+- `action=update_pr`：不再接受，使用 GitHub 原生 PR／Commit。
 - `action=record`：`scopeid`、`conversation_id`、`updated_at`、`records`，接續舊話題時可帶入從 `search` 找到的 `uid`。每批至多一百筆，正文批次最多 125000 字元。
 - `records[]` 必須具備 `role`、`kind`、`sent_at`、`text`、`message_id`；`user/original` 全量保存，`assistant/advice` 僅紀錄來源端選定的實際建議，其他類型拒絕。正文只增加時間／來源標記，不改寫每則文字。
 - Recorder 對每批來源紀錄計算 SHA-256 `batch_id`，將對應的內部標記寫入正文。管理型 PostgreSQL 以 `UID + site=mcp + batch_id` 的單筆條件 UPDATE 防止重複追加；其他 Scope 用既有 Scope Durable Object 讀取／PATCH，先檢查同一批是否已存在。資料庫成功但 checkpoint 確認遺失時，重送不會再追加同一批。
 - 無法取得來源對話全文或更新時間，不得以模型記憶假造 `records`，亦不得聲稱已完整補登。
 
-管理工具（Scope 設定、連線與 Group 授權）維持獨立且需要 `configure`／`manage` 權限；Galaxy Link 只統一 PR 工作紀錄入口，不把 PR 設定權限交給一般對話 `read`／`record`。
+管理工具（Scope 設定、連線與 Group 授權）維持獨立；Galaxy Link 只處理對話，不再兼任 PR 工作紀錄入口。
 
 ## 部署相容性
 
-Galaxy Link 的 `search/read/check/record` 使用版本化的 `/v1/mcp/galaxy-link/*` Authority 路由；`update_pr` 轉到原有嚴格驗證的 `/v1/mcp/update-pr/*`。舊 Authority 未部署時直接拒絕新呼叫，絕不回退到舊 `sync` 整篇覆寫。部署順序應為 Kysely Edge → Authority Worker → Pages MCP Router；三者分別核對版本與功能。舊 `/v1/mcp/search/*` 繼續禁用。
+Galaxy Link 的 `search/read/check/record` 使用版本化的 `/v1/mcp/galaxy-link/*` Authority 路由。`/v1/mcp/update-pr/*`、舊 `/v1/mcp/search/*` 均禁止；PR 查詢由 GitHub 原生工具完成。Authority 的 Durable Object 按驗證身分記錄五分鐘搜尋窗口與拒絕次數。部署前後核對既有 Durable Object 綁定，避免覆蓋 Authority 其他狀態。
 
 ## Recorder 來源與跨 Agent
 
@@ -35,7 +35,7 @@ MCP Server 不是 ChatGPT／Claude／其他 App 的聊天歷史 API，無法自�
 
 定時每小時刷新應由具備來源存取權的獨立客戶端排程，不由 MCP 背景掃描 Galaxy。若客戶端關閉或來源無法讀取，應顯示「未補登」，恢復後重試，不得聲稱完整。
 
-對話突然達上限時，使用者可在新 Agent 說「接續之前權限的討論」；搜尋只觸發一次，預設僅在 `site=mcp` 內，Agent 由結果找到內部 UID 後讀取及延續。多筆相似話題時由使用者確認；不要假裝模型記得 UID。
+對話突然達上限時，只有使用者明確要求「搜尋歷史 Galaxy 對話」才執行搜尋；一般「繼續」應先沿用當前對話或已知定位，不得自動掃描。多筆相似話題時由使用者確認；不要假裝模型記得 UID。
 
 ## 防遺失、防重複與私密
 

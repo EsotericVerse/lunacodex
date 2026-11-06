@@ -8,8 +8,8 @@ const source=readFileSync(new URL('../workers/loc-authority/index.mjs',import.me
   .replace(/^import[\\s\\S]*?;\\s*$/gm,'')
   .replace('export class LocAuthorityState','class LocAuthorityState')
   .replace('export default {','const worker={');
-const {LocAuthorityState}=new Function('DurableObject',
-  source+';return {LocAuthorityState};')(class {
+const {LocAuthorityState,mcpPrLookup}=new Function('DurableObject',
+  source+';return {LocAuthorityState,mcpPrLookup};')(class {
     constructor(ctx,env){this.ctx=ctx;this.env=env;}
   });
 function quota(){
@@ -63,9 +63,10 @@ test('Galaxy Link searches have a separate low-rate budget',async()=>{
   await assert.rejects(authority.mcpQuotaAcquire('search',subject),error=>error.status===429);
   await authority.mcpQuotaRelease(one.lease,subject);
   await authority.mcpQuotaRelease(two.lease,subject);
+  // The third rejected search activates the existing global cooldown, so a
+  // subsequent read is expected to reject rather than be allowed.
   await assert.rejects(authority.mcpQuotaAcquire('search',subject),error=>error.status===429);
-  const read=await authority.mcpQuotaAcquire('read',subject);
-  await authority.mcpQuotaRelease(read.lease,subject);
+  await assert.rejects(authority.mcpQuotaAcquire('read',subject),error=>error.status===429);
 });
 
 test('three repeated minute-limit refusals cause a durable three-minute cooldown',async()=>{
@@ -143,4 +144,26 @@ test('Rejected searches never reset the first accepted search timestamp',async()
   assert.equal(after.count,1);
   assert.equal(after.rejects,2);
   await authority.mcpQuotaRelease(ticket.lease,subject);
+});
+
+test('One search becomes eligible again after five minutes without resetting historic count',async()=>{
+  const authority=quota(),subject='clerk:user_SearchWindow';
+  const first=await authority.mcpQuotaAcquire('search',subject);
+  const key='mcp-qos-search:'+subject;
+  const old=await authority.ctx.storage.get(key);
+  await authority.ctx.storage.put(key,{...old,at:Date.now()-300001});
+  const second=await authority.mcpQuotaAcquire('search',subject);
+  const next=await authority.ctx.storage.get(key);
+  assert.equal(next.count,2);
+  assert.equal(next.rejects,0);
+  assert.ok(next.at>=old.at);
+  await authority.mcpQuotaRelease(first.lease,subject);
+  await authority.mcpQuotaRelease(second.lease,subject);
+});
+
+test('PR classifier routes Github lookups away from Galaxy',()=>{
+  for(const term of ['PR','PR #1172','請找PR紀錄','pull request #1172','github commit','拉取請求'])
+    assert.equal(mcpPrLookup(term),true,term);
+  for(const term of ['時間定錨','對話摘要','跨 Agent 紀錄'])
+    assert.equal(mcpPrLookup(term),false,term);
 });
