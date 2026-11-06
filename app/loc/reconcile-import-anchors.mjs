@@ -35,7 +35,7 @@ export async function reconcileExistingImportAnchors({
   // Still collect those articles' timestamps below, keyed by the saved UID.
   const needingPlace=candidates.filter(row=>!String(row.place_id||'').trim());
   const places=await prepareImportPlaceAnchors(needingPlace,{
-    scopeId:scope,relation,createMissing:true,onProgress
+    scopeId:scope,relation,createMissing:true,scanExistingOnEmpty:true,onProgress
   });
   const dates=await prepareImportTimeAnchors(candidates,{
     scopeId:scope,timeTable,relation,
