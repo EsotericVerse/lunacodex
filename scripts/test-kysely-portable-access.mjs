@@ -1,10 +1,29 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {authorizeCrossEngineQuery,assertCrossEnginePublicRead,executeCrossEngineManagedWrite,
-  serializePortableJsonFields} from '../app/loc/providers/sql-engine-ports.mjs';
+import {authorizeCrossEngineQuery as queryCore,assertCrossEnginePublicRead,
+  executeCrossEngineManagedWrite as writeCore,
+  serializePortableJsonFields,resolveSqlExecutionPort} from '../app/loc/providers/sql-engine-ports.mjs';
+import {bindLocAuthorization} from '../app/loc/providers/loc-authorization.mjs';
 
-const identity={role:'authenticated',
-  claims:{sub:'user_AbC123',provider:'clerk',email:'owner@example.test'}};
+test('plain PostgreSQL does not require provider RLS session roles',()=>{
+  assert.equal(resolveSqlExecutionPort({engine:'postgres',provider:'custom'}).session,'external-acl');
+  assert.equal(resolveSqlExecutionPort({engine:'postgres',provider:'google-cloud-sql'}).session,'external-acl');
+  assert.equal(resolveSqlExecutionPort({engine:'postgres',provider:'supabase'}).session,'postgres-rls');
+  assert.equal(resolveSqlExecutionPort({engine:'postgres',provider:'neon',rls_enabled:false}).session,'external-acl');
+  assert.equal(resolveSqlExecutionPort({engine:'mysql',provider:'custom'}).session,'external-acl');
+});
+const identity={role:'authenticated',claims:{sub:'user_AbC123',
+  provider:'loc',me:true,email:'owner@example.test',grants:['lo3rwang:manage']}};
+const root={...identity,claims:{...identity.claims,grants:['global:manage']}};
+const denied={...identity,claims:{...identity.claims,grants:[]}};
+function authorizeCrossEngineQuery(db,request,principal){
+  if(principal)bindLocAuthorization(db,{role:principal.role,claims:principal.claims});
+  return queryCore(db,request,principal);
+}
+function executeCrossEngineManagedWrite(db,request,principal){
+  if(principal)bindLocAuthorization(db,{role:principal.role,claims:principal.claims});
+  return writeCore(db,request,principal);
+}
 const query=(table,operation='select')=>({kind:'query',schema:'silver',table,operation});
 function registry(rows,{blacklist={email:[]}}={}){
   return {
@@ -36,9 +55,9 @@ function registry(rows,{blacklist={email:[]}}={}){
 test('public engine reads only reference tables; private Galaxy remains private',async()=>{
   assertCrossEnginePublicRead(query('runes'));
   await assert.rejects(authorizeCrossEngineQuery(registry([]),query('lo3rwang_galaxy')),
-    /authorization adapter/);
+    /published LOC relation/);
   await assert.rejects(authorizeCrossEngineQuery(registry([]),query('runes','delete')),
-    /authorization adapter/);
+    /published LOC relation/);
 });
 test('verified LOC Scope owner can use generic native Kysely SELECT and writes',async()=>{
   const db=registry([{id:'lo3rwang',email:'owner@example.test',
@@ -59,17 +78,17 @@ test('Scope owner cannot mutate registry, global settings, or other Scope',async
 test('inactive Scope grants are denied and forged unsigned identity is denied',async()=>{
   const db=registry([{id:'lo3rwang',email:'owner@example.test',
     manage_role:'scope',active:false}]);
-  await assert.rejects(authorizeCrossEngineQuery(db,query('lo3rwang_galaxy','insert'),identity),
+  await assert.rejects(authorizeCrossEngineQuery(db,query('lo3rwang_galaxy','insert'),denied),
     /permission denied/);
   await assert.rejects(authorizeCrossEngineQuery(db,query('lo3rwang_galaxy','insert'),
     {role:'authenticated',claims:{email:'owner@example.test'}}),
-    /Verified Clerk identity/);
+    /Verified LOC delegation/);
 });
 test('signed root administration can update all LOC Scope relations',async()=>{
   const db=registry([{id:'admin',email:'owner@example.test',
     manage_role:'admin',active:true}]);
   for(const table of ['manage','loc','lrunes_anchor']){
-    await authorizeCrossEngineQuery(db,query(table,'update'),identity);
+    await authorizeCrossEngineQuery(db,query(table,'update'),root);
   }
 });
 test('cross-engine ACL has no RPC or raw SQL bypass',async()=>{
@@ -108,17 +127,14 @@ test('portable JSON values are serialized without touching lyrics or PostgreSQL 
   assert.deepEqual(serializePortableJsonFields(row,'postgres'),row);
 });
 
-test('blacklisted Clerk identities cannot access external SQL even with admin rights',async()=>{
-  const db=registry([{id:'admin',email:'owner@example.test',
-    manage_role:'admin',active:false}],{blacklist:{email:[{email:'OWNER@example.test'}]}});
-  await assert.rejects(authorizeCrossEngineQuery(db,query('lo3rwang_galaxy'),identity),
-    /identity is blocked/);
+test('missing LOC delegation grants deny private SQL without a database permission query',async()=>{
+  const db=registry([], {blacklist:null});
+  await assert.rejects(authorizeCrossEngineQuery(db,query('lo3rwang_galaxy'),denied),
+    /permission denied/);
 });
-test('cross-engine authorization fails closed without readable LOC policy',async()=>{
-  const db=registry([{id:'admin',email:'owner@example.test',
-    manage_role:'admin',active:false}],{blacklist:null});
-  await assert.rejects(authorizeCrossEngineQuery(db,query('lo3rwang_galaxy'),identity),
-    /authorization configuration unavailable/);
+test('signed LOC Scope grant works with only delegated Galaxy and Anchor tables',async()=>{
+  const db=registry([],{blacklist:null});
+  await authorizeCrossEngineQuery(db,query('lo3rwang_galaxy'),identity);
 });
 
 test('SQL Server wide inserts stay below the 2,100-parameter statement cap',async()=>{
