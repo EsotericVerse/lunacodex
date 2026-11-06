@@ -130,7 +130,7 @@ test('website session bridge does not transfer default Clerk Session Token',()=>
   const source=read('public/extension/website-bridge.mjs');
   const manifest=JSON.parse(read('extensions/loc-galaxy/manifest.json'));
   const html=read('public/extension/auth-bridge.html');
-  assert.equal(manifest.version,'0.6.6');
+  assert.equal(manifest.version,'0.6.7');
   assert.deepEqual(manifest.externally_connectable.matches,['https://loc.lo3rwang.cc/*']);
   assert.match(grant,/chrome\.runtime\.onMessageExternal/);
   assert.match(grant,/trustedSender\(sender\)/);
@@ -153,7 +153,7 @@ test('one-minute website JWT renewal and Chrome messaging are diagnosed',()=>{
   assert.doesNotMatch(worker,/Number\(access\.expires_at\)>Date\.now\(\)\+60_000/);
   assert.match(bridge,/Extension 收到前置探測/);
   assert.match(bridge,/Chrome Extension 通訊失敗/);
-  assert.match(bridge,/nextRenewAt=claims\.exp\*1000-35000/);
+  assert.match(bridge,/window\.addEventListener\('locGalaxy\.websiteRenew'/);
   assert.match(oauth,/LOC MCP '\+name\+' 失敗/);
   assert.match(oauth,/data\.result\.content/);
 });
