@@ -1,0 +1,372 @@
+// LOC fixed physical schema — read-only model snapshot of PostgreSQL silver tables.
+// No migrations are generated/applied from this file. No SQL procedures are required.
+// Additional product features reuse the existing Anchor.attr JSON payload.
+// Portable MySQL / SQL Server / SQLite query construction remains in Kysely adapters.
+// The existing Clerk + LOC Authority security boundary must run before server DB access.
+// This model does not define or replace database RLS or runtime authorization rules.
+
+datasource db {
+    provider = "postgresql"
+    url = env("LOC_DATABASE_URL")
+    schemas = ["silver"]
+}
+
+model Game {
+    game_key                     String      @id @db.Text
+    record_type                  String      @db.Text
+    sort_order                   Int         @db.Integer @default(0)
+    status                       String      @db.Text @default(dbgenerated())
+    is_current                   Boolean      @default(true)
+    event_id                     String?     @db.Text
+    event_group                  String?     @db.Text
+    event_title                  String?     @db.Text
+    event_requirement            String?     @db.Text
+    event_description            String?     @db.Text
+    rune_id                      Int?        @db.Integer
+    rune_name                    String?     @db.Text
+    rune_group                   String?     @db.Text
+    rune_action_text             String?     @db.Text
+    rune_action_kind             String?     @db.Text
+    rune_action_value            Int?        @db.Integer
+    role_id                      Int?        @db.Integer
+    role_formal_name             String?     @db.Text
+    role_public_name             String?     @db.Text
+    role_group                   String?     @db.Text
+    role_core_function           String?     @db.Text
+    role_intervention_type       String?     @db.Text
+    role_intervention_name       String?     @db.Text
+    role_tool                    String?     @db.Text
+    role_tagline                 String?     @db.Text
+    rule_code                    String?     @db.Text
+    rule_title                   String?     @db.Text
+    rule_text                    String?     @db.Text
+    macro_code                   String?     @db.Text
+    macro_group_a                String?     @db.Text
+    macro_group_b                String?     @db.Text
+    macro_title                  String?     @db.Text
+    macro_description            String?     @db.Text
+    asset_code                   String?     @db.Text
+    asset_kind                   String?     @db.Text
+    asset_group                  String?     @db.Text
+    asset_path                   String?     @db.Text
+    asset_title                  String?     @db.Text
+    source_note                  String?     @db.Text
+    updated_at                   DateTime    @db.Timestamptz(6) @default(now())
+    rule_round_no                Int?        @db.Integer
+    rule_phase                   String?     @db.Text
+    rule_result_code             String?     @db.Text
+    rule_de_delta                Int?        @db.Integer
+    rule_draw_count              Int?        @db.Integer
+    rule_value_int               Int?        @db.Integer
+    rule_value_text              String?     @db.Text
+    asset_group_2                String?     @db.Text
+    event_group_2                String?     @db.Text
+    @@map("game")
+    @@schema("silver")
+}
+
+model Lo3rwang {
+    id                           String      @id @db.Text
+    style                        Int?        @db.Integer
+    theme                        String      @db.Text @default(dbgenerated())
+    updated_at                   DateTime    @db.Timestamptz(6) @default(now())
+    keyword_min_chars            Int         @db.Integer @default(32)
+    keyword_min_documents        Int         @db.Integer @default(100)
+    staticstime                  DateTime?   @db.Timestamptz(6)
+    keyword_class_share_enabled  Boolean      @default(false)
+    keyword_meta                 Json        @db.JsonB @default(dbgenerated())
+    display_name                 String      @db.Text
+    search_intro                 String      @db.Text @default(dbgenerated())
+    search_aliases               String[]    @db.Text @default(dbgenerated())
+    locale                       String      @db.Text @default(dbgenerated())
+    current_keyword_class_uid    String?     @db.VarChar(8)
+    keyword_suggestions          String[]    @db.Text
+    ArticleTag                   Json        @db.JsonB @default(dbgenerated())
+    status                       Json        @db.JsonB @default(dbgenerated())
+    trace                        Boolean      @default(true)
+    search                       Boolean      @default(true)
+    culture                      Boolean      @default(true)
+    statics                      Boolean      @default(true)
+    @@map("lo3rwang")
+    @@schema("silver")
+}
+
+model Lo3rwangAnchor {
+    uid                          String      @id @db.VarChar(8)
+    type                         String      @db.Text
+    title                        String?     @db.Text
+    description                  String?     @db.Text
+    invisible                    Boolean      @default(false)
+    attr                         Json        @db.JsonB @default(dbgenerated())
+    createtime                   DateTime?   @db.Timestamptz(6) @default(dbgenerated())
+    @@map("lo3rwang_anchor")
+    @@schema("silver")
+}
+
+model Lo3rwangBlocks {
+    block_title                  String      @db.VarChar(64) @default(dbgenerated())
+    block_text                   String      @db.Text @default(dbgenerated())
+    block_order                  Int         @db.Integer
+    uid                          String      @id @db.Char(8)
+    page_name                    String      @db.Text
+    block_entity                 Json        @db.JsonB @default(dbgenerated())
+    block_eyebrow                String      @db.VarChar(64) @default(dbgenerated())
+    block_subtitle               String      @db.VarChar(128) @default(dbgenerated())
+    block_image                  String?     @db.Text
+    @@map("lo3rwang_blocks")
+    @@schema("silver")
+}
+
+model Lo3rwangGalaxy {
+    uid                          String      @id @db.Char(8)
+    title                        String?     @db.Text
+    content                      String?     @db.Text
+    createtime                   DateTime?   @db.Timestamptz(6)
+    location                     String?     @db.Text
+    UpdateTime                   DateTime    @db.Timestamptz(6) @default(now())
+    url                          String?     @db.Text
+    source_id                    String?     @db.Char(8)
+    target_id                    String[]    @db.Text
+    ref_id                       String?     @db.Char(8)
+    site                         String?     @db.Text
+    place_id                     String?     @db.VarChar(8)
+    media_link                   String[]    @db.VarChar
+    date                         DateTime?   @db.Date
+    site_id                      String?     @db.Text
+    culture                      Boolean?     @default(false)
+    trace                        Boolean?     @default(false)
+    search                       Boolean?     @default(false)
+    statics                      Boolean?     @default(false)
+    list                         Boolean?     @default(false)
+    extract                      Boolean?     @default(false)
+    others                       Boolean?     @default(false)
+    keyword                      Boolean?     @default(false)
+    @@map("lo3rwang_galaxy")
+    @@schema("silver")
+}
+
+model Loc {
+    id                           String      @id @db.Text
+    display_name                 String      @db.Text
+    locale                       String      @db.Text @default(dbgenerated())
+    DefaultArticleClass          Json        @db.JsonB @default(dbgenerated())
+    blacklist                    Json        @db.JsonB @default(dbgenerated())
+    theme                        Json        @db.JsonB @default(dbgenerated())
+    keywords                     Json        @db.JsonB @default(dbgenerated())
+    title_tw                     String?     @db.Text
+    desc_tw                      String?     @db.Text
+    birthday                     DateTime?   @db.Date
+    @@map("loc")
+    @@schema("silver")
+}
+
+model LocBlocks {
+    block_title                  String      @db.VarChar(64) @default(dbgenerated())
+    block_text                   String      @db.Text @default(dbgenerated())
+    block_order                  Int         @db.Integer
+    uid                          String      @id @db.Char(8)
+    page_name                    String      @db.Text
+    block_entity                 Json        @db.JsonB @default(dbgenerated())
+    block_eyebrow                String      @db.VarChar(64) @default(dbgenerated())
+    block_subtitle               String      @db.VarChar(128) @default(dbgenerated())
+    block_image                  String?     @db.Text
+    @@map("loc_blocks")
+    @@schema("silver")
+}
+
+model Lrunes {
+    id                           String      @id @db.Text
+    style                        Int?        @db.Integer
+    theme                        String      @db.Text @default(dbgenerated())
+    updated_at                   DateTime    @db.Timestamptz(6) @default(now())
+    display_name                 String      @db.Text
+    search_intro                 String      @db.Text @default(dbgenerated())
+    search_aliases               String[]    @db.Text @default(dbgenerated())
+    locale                       String      @db.Text @default(dbgenerated())
+    txt_class                    String[]    @db.Text @default(dbgenerated())
+    keyword_min_chars            Int         @db.Integer @default(32)
+    keyword_min_documents        Int         @db.Integer @default(100)
+    keyword_class_share_enabled  Boolean      @default(false)
+    keyword_meta                 Json        @db.JsonB @default(dbgenerated())
+    staticstime                  DateTime?   @db.Timestamptz(6)
+    current_keyword_class_uid    String?     @db.VarChar(8)
+    status                       Json        @db.JsonB @default(dbgenerated())
+    trace                        Boolean      @default(true)
+    search                       Boolean      @default(true)
+    culture                      Boolean      @default(true)
+    statics                      Boolean      @default(true)
+    @@map("lrunes")
+    @@schema("silver")
+}
+
+model LrunesAnchor {
+    uid                          String      @id @db.VarChar(8)
+    type                         String      @db.Text
+    title                        String?     @db.Text
+    description                  String?     @db.Text
+    invisible                    Boolean      @default(false)
+    attr                         Json        @db.JsonB @default(dbgenerated())
+    createtime                   DateTime?   @db.Timestamptz(6) @default(dbgenerated())
+    @@map("lrunes_anchor")
+    @@schema("silver")
+}
+
+model LrunesBlocks {
+    block_title                  String      @db.VarChar(64) @default(dbgenerated())
+    block_text                   String      @db.Text @default(dbgenerated())
+    block_order                  Int         @db.Integer
+    uid                          String      @id @db.Char(8)
+    page_name                    String      @db.Text
+    block_entity                 Json        @db.JsonB @default(dbgenerated())
+    block_eyebrow                String      @db.VarChar(64) @default(dbgenerated())
+    block_subtitle               String      @db.VarChar(128) @default(dbgenerated())
+    block_image                  String?     @db.Text
+    @@map("lrunes_blocks")
+    @@schema("silver")
+}
+
+model LrunesDaily {
+    record_id                    String      @id @db.Text
+    record_date                  DateTime    @db.Date
+    draw_kind                    String      @db.Text
+    rune_number                  Int         @db.Integer
+    direction                    String      @db.Text
+    updated_at                   DateTime    @db.Timestamptz(6) @default(now())
+    recorded_phase               String?     @db.Text
+    @@map("lrunes_daily")
+    @@schema("silver")
+}
+
+model LrunesGalaxy {
+    uid                          String      @id @db.Char(8)
+    title                        String?     @db.Text
+    content                      String?     @db.Text
+    createtime                   DateTime?   @db.Timestamptz(6)
+    location                     String?     @db.Text
+    UpdateTime                   DateTime    @db.Timestamptz(6) @default(now())
+    url                          String?     @db.Text
+    source_id                    String?     @db.Char(8)
+    target_id                    String[]    @db.Text
+    ref_id                       String?     @db.Char(8)
+    site                         String?     @db.Text
+    place_id                     String?     @db.VarChar(8)
+    media_link                   String[]    @db.VarChar
+    date                         DateTime?   @db.Date
+    site_id                      String?     @db.Text
+    statics                      Boolean?     @default(false)
+    culture                      Boolean?     @default(false)
+    search                       Boolean?     @default(false)
+    trace                        Boolean?     @default(false)
+    list                         Boolean?     @default(false)
+    keyword                      Boolean?     @default(false)
+    others                       Boolean?     @default(false)
+    extract                      Boolean?     @default(false)
+    @@map("lrunes_galaxy")
+    @@schema("silver")
+}
+
+model Manage {
+    id                           String      @id @db.Text
+    email                        String?     @db.Text
+    domain                       String?     @db.Text
+    directory                    String?     @db.Text
+    parent_scope_id              String?     @db.Text
+    active                       Boolean      @default(true)
+    sort_order                   Int         @db.Integer @default(0)
+    manage_role                  String?     @db.Text
+    galaxy_table                 String      @db.Text @default(dbgenerated())
+    anchor_table                 String      @db.Text @default(dbgenerated())
+    caches                       Json        @db.JsonB @default(dbgenerated())
+    note                         String?     @db.Text
+    @@map("manage")
+    @@schema("silver")
+}
+
+model Runes {
+    rune_id                      Int         @id @db.SmallInt
+    rune_name                    String?     @db.VarChar(1)
+    english_name                 String?     @db.VarChar(12)
+    totem                        String?     @db.VarChar(2)
+    group_name                   String?     @db.VarChar(12)
+    moon_phase                   Int?        @db.SmallInt
+    card_attr                    Int?        @db.SmallInt
+    rune_description             String?     @db.VarChar(40)
+    archetype                    String?     @db.VarChar(10)
+    char_action                  String?     @db.VarChar(60)
+    positive_keywords            String?     @db.Text
+    negative_keywords            String?     @db.Text
+    extra_rules                  String?     @db.Text
+    extra_notes                  String?     @db.Text
+    positive_meaning             String?     @db.VarChar(40)
+    half_positive_meaning        String?     @db.VarChar(40)
+    half_reverse_meaning         String?     @db.VarChar(40)
+    reverse_meaning              String?     @db.VarChar(40)
+    rune_evolution_history       String?     @db.VarChar(32)
+    myth_story                   String?     @db.VarChar(48)
+    soul_question                String?     @db.VarChar(16)
+    practice_challenge           String?     @db.VarChar(20)
+    ritual_advice                String?     @db.VarChar(28)
+    harmony_advice               String?     @db.VarChar(32)
+    class_enable                 Boolean      @default(true)
+    @@map("runes")
+    @@schema("silver")
+}
+
+model RunesEtc {
+    rune_id                      Int         @db.SmallInt
+    dir                          Int         @db.SmallInt
+    type                         String      @db.VarChar(10)
+    desc                         String      @db.VarChar(80)
+    current_moon                 String      @db.VarChar @default(dbgenerated())
+
+    @@id([rune_id, dir, type, current_moon])
+    @@map("runes_etc")
+    @@schema("silver")
+}
+
+model RunesGroup {
+    group_id                     String      @id @db.VarChar(2)
+    english_name                 String      @db.VarChar(10)
+    desc                         String      @db.VarChar(40)
+    quality                      String      @db.VarChar(10)
+    style                        String      @db.VarChar(24)
+    runeslist                    Int[]       @db.SmallInt
+    @@map("runes_group")
+    @@schema("silver")
+}
+
+model VisualNovel {
+    vn_key                       String      @id @db.Text
+    work_key                     String      @db.Text
+    record_type                  String      @db.Text
+    parent_key                   String?     @db.Text
+    target_key                   String?     @db.Text
+    relation_type                String?     @db.Text
+    part_no                      Int?        @db.SmallInt
+    chapter_no                   Int?        @db.SmallInt
+    scene_no                     Int?        @db.SmallInt
+    sort_order                   Int         @db.Integer @default(0)
+    title                        String?     @db.Text
+    summary                      String?     @db.Text
+    content                      String?     @db.Text
+    text_value                   String?     @db.Text
+    number_value                 Decimal?    @db.Decimal
+    bool_value                   Boolean?
+    speaker_key                  String?     @db.Text
+    pov_key                      String?     @db.Text
+    canon_status                 String      @db.Text @default(dbgenerated())
+    status                       String      @db.Text @default(dbgenerated())
+    reveal_stage                 String?     @db.Text
+    not_before_part              Int?        @db.SmallInt
+    not_after_part               Int?        @db.SmallInt
+    is_locked                    Boolean      @default(false)
+    is_current                   Boolean      @default(true)
+    source_kind                  String?     @db.Text
+    source_ref                   String?     @db.Text
+    source_url                   String?     @db.Text
+    source_note                  String?     @db.Text
+    created_at                   DateTime    @db.Timestamptz(6) @default(now())
+    updated_at                   DateTime    @db.Timestamptz(6) @default(now())
+    @@map("VisualNovel")
+    @@schema("silver")
+}
