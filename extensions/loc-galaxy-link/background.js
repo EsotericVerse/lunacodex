@@ -25,7 +25,19 @@ async function dbOperation(mode,run){
 }
 const enqueue=record=>dbOperation('readwrite',store=>store.put(record));
 const allPending=()=>dbOperation('readonly',store=>store.getAll());
-const acknowledge=id=>dbOperation('readwrite',store=>store.delete(id));
+// Remove an acknowledged batch in one IndexedDB transaction. Partial local
+// deletion would change the retry batch ID after a crash and risk duplicates.
+async function acknowledgeBatch(records){
+ const db=await dbOpen();
+ try{await new Promise((resolve,reject)=>{
+  const tx=db.transaction(STORE,'readwrite'),store=tx.objectStore(STORE);
+  tx.oncomplete=()=>resolve();
+  tx.onerror=()=>reject(tx.error);
+  tx.onabort=()=>reject(tx.error||Error('Acknowledgement aborted'));
+  try{for(const record of records)store.delete(record.id);}
+  catch(error){tx.abort();reject(error);}
+ });}finally{db.close();}
+}
 async function badge(ok,message){
  await chrome.action.setBadgeBackgroundColor({color:ok?'#177245':'#a13b3b'});
  await chrome.action.setBadgeText({text:ok?'OK':'!'});
@@ -197,10 +209,12 @@ chrome.runtime.onMessage.addListener((message,_sender,respond)=>{
 async function flush(){
  if(processing)return processing;
  processing=(async()=>{
+  // Do not refresh or request authentication when no page has been queued.
+  const pending=(await allPending()).sort((a,b)=>a.captured_at.localeCompare(b.captured_at));
+  if(!pending.length)return 0;
   const token=await activeToken();
   const {locConfig:config}=await chrome.storage.local.get('locConfig');
   if(!config?.import_url)throw oauthError('未設定 LOC 短匯入 API');
-  const pending=(await allPending()).sort((a,b)=>a.captured_at.localeCompare(b.captured_at));
   for(const records of batches(pending)){
    const batch={id:await stableBatchId(records),records};
    const reply=await fetch(config.import_url,{
@@ -210,7 +224,7 @@ async function flush(){
    if(!reply.ok)throw Error('LOC 匯入失敗：HTTP '+reply.status);
    const result=await reply.json();
    if(!result.accepted||result.id!==batch.id)throw Error('LOC 未確認匯入批次');
-   for(const item of records)await acknowledge(item.id);
+   await acknowledgeBatch(records);
   }
   return pending.length;
  })().finally(()=>{processing=null;});
