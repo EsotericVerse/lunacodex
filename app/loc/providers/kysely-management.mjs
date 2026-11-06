@@ -755,7 +755,8 @@ async function importSharedKeywordClass(trx,args){
     .select(['uid','title','description','invisible','attr'])
     .where('uid','=',classUid).where('type','=','class').executeTakeFirst();
   if(!root)reject('Source Class not found');
-  await sql`select pg_advisory_xact_lock(hashtext(${to}),17148)`.execute(trx);
+  // CSPRNG Base62 identities and the target UID primary key replace the
+  // PostgreSQL-only advisory lock; this operation remains transactional.
   const reserved=new Set();
   const nextUid=async()=>{
     for(let attempt=0;attempt<32;attempt++){
