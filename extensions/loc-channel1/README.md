@@ -22,3 +22,17 @@ On 2026-11-06, the seven historical `loc:*` keys were removed from the existing 
 - The existing LOC website's separate Google/Clerk login is outside the scope of this Channel 1 change; do not inadvertently disable unrelated website login.
 - The hourly scheduled sync must be authenticated server-to-server and cannot be user/CLI-triggered.
 - Global single-reader / single-writer guarantees remain unimplemented; do not claim they are enforced.
+
+## Parser modules and source independence
+
+The input is not ChatGPT-specific: ChatGPT, Claude, Threads, Instagram, Facebook, GitHub, Suno, and ordinary user-accessible pages can be captured by a universal extractor, with optional source-specific adapters.
+
+Reuse repository dependencies where they apply instead of implementing their behavior again:
+- `@streamparser/json`: streaming large JSON exports
+- `fflate`: ZIP exports
+- `jsonpath-plus`: source-specific structured JSON extraction
+- `immer`: predictable local transformation state
+
+These libraries do not automatically parse platform-specific web markup. For dynamic sites, adapters need validation against actual page structure. A generic page fallback saves the visible page; it does not guarantee a complete conversation, comment thread, or export.
+
+The production PC queue should be persistent IndexedDB, with byte-bounded batches and per-batch acknowledgements. The initial extension currently uses `chrome.storage.local` and single-record POST: it is not yet a tested large-archive importer. Keep the KV pipeline source-agnostic and never require `scopeid`, Google OAuth, or Clerk OAuth to accept records.
