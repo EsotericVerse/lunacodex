@@ -7,7 +7,7 @@ const SUBJECT=/^[A-Za-z0-9_-]{1,128}$/;
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const GRANT=/^[a-z][a-z0-9]{0,14}:(read|write|manage)$/;
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
-const MCP_KINDS=new Set(['mcp-sync','mcp-search','mcp-read','mcp-append','mcp-update-pr']);
+const MCP_KINDS=new Set(['mcp-sync','mcp-search','mcp-read','mcp-append']);
 function reject(message){throw new Error(message)}
 export function delegationAudience(request){
   return MCP_KINDS.has(String(request?.kind||''))?LOC_DELEGATION_AUDIENCES.mcp:
@@ -66,10 +66,9 @@ export function verifyDelegationBoundary(payload,request,{
     const scope=String(request?.scopeid||'');
     const kind=String(request?.kind||'');
     const site=kind==='mcp-read'?String(request?.site||'mcp'):'mcp';
-    if(!['lo3rwang','lrunes'].includes(scope)||!['mcp','github'].includes(site))
+    if(!['lo3rwang','lrunes'].includes(scope)||site!=='mcp')
       reject('Invalid delegated MCP resource');
-    const needed=kind==='mcp-update-pr'||site==='github'?'manage':
-      kind==='mcp-read'||kind==='mcp-search'?'read':'write';
+    const needed=kind==='mcp-read'||kind==='mcp-search'?'read':'write';
     if(!grants.includes(scope+':'+needed))
       reject('MCP delegation does not cover this operation');
     // Internal managed write uses the existing Scope-management branch.
