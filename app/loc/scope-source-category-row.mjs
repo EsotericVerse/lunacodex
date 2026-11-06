@@ -1,6 +1,7 @@
 'use client';
 import {useAsyncResource} from './use-async-resource';
-import {dbAuthRelation} from './db-client.mjs';
+import {dbAuthClient,dbAuthRelation} from './db-client.mjs';
+import {sourceSiteKeyForLabel} from './source-classification.mjs';
 import {scopeTagColumn} from './scope-config-fields.mjs';
 
 // One scope's raw category row (silver.<id>, filtered to id=<id>) is read,
@@ -18,8 +19,18 @@ export function scopeSourceCategoryRowKey(id){
 }
 export function useScopeSourceCategoryRow(id,{enabled=true}={}){
   return useAsyncResource(scopeSourceCategoryRowKey(id),async()=>{
-    const {data,error}=await dbAuthRelation('silver.'+id).select(scopeTagColumn(id)).eq('id',id).maybeSingle();
+    if(id==='loc'){
+      const {data,error}=await dbAuthRelation('silver.loc').select('DefaultArticleClass').eq('id','loc').maybeSingle();
+      if(error)throw new Error(error.message);
+      return data;
+    }
+    const {data,error}=await dbAuthClient.schema('silver')
+      .managedAction('read_source_catalog',{p_scope_id:id});
     if(error)throw new Error(error.message);
-    return data;
+    const own=(data?.scopes||[]).find(row=>row.scopeid===id);
+    if(!own)throw new Error('Scope source catalog unavailable');
+    const values=own.domain?own.sources.map(row=>row.name):
+      own.legacy.map(sourceSiteKeyForLabel);
+    return {[scopeTagColumn(id)]:values};
   },{enabled:enabled&&Boolean(id)});
 }
