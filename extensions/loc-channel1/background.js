@@ -95,15 +95,17 @@ async function stableBatchId(records){
 
 function encode64(bytes){
  let binary='';for(const byte of bytes)binary+=String.fromCharCode(byte);
- return btoa(binary).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,'');
+ return btoa(binary).replaceAll('+','-').replaceAll('/','_').replace(/=+$/,'');
 }
 function oauthError(message){return Error('LOC Auth：'+message);}
 async function getConfig(){
  const res=await fetch(CONFIG_URL,{cache:'no-store',redirect:'error'});
  if(!res.ok)throw oauthError('尚未提供 Extension 認證設定');
  const cfg=await res.json();
- const issuer=new URL(cfg.issuer||'');
- const api=new URL(cfg.import_url||'');
+ if(!cfg.issuer||!cfg.import_url||!cfg.client_id)
+  throw oauthError('LOC 自有認證與短匯入 API 尚未啟用');
+ const issuer=new URL(cfg.issuer);
+ const api=new URL(cfg.import_url);
  if(issuer.protocol!=='https:'||api.protocol!=='https:'||
     !cfg.client_id||typeof cfg.client_id!=='string'||
     /clerk|supabase|github/i.test(issuer.hostname))
@@ -112,7 +114,7 @@ async function getConfig(){
  const metaReply=await fetch(metaUrl,{cache:'no-store',redirect:'error'});
  if(!metaReply.ok)throw oauthError('找不到 LOC OAuth 伺服器');
  const meta=await metaReply.json();
- if(meta.issuer!==issuer.href.replace(/\\/$/,'')||
+ if(meta.issuer!==(issuer.href.endsWith('/')?issuer.href.slice(0,-1):issuer.href)||
     !meta.authorization_endpoint||!meta.token_endpoint)
    throw oauthError('授權伺服器資訊不完整');
  for(const endpoint of [meta.authorization_endpoint,meta.token_endpoint]){
