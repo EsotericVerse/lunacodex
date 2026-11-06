@@ -32,10 +32,18 @@ const CORE_COLUMNS='uid,trace_type,title,description,anchor_list,route_list,invi
 const ANCHOR_COLUMNS='uid,type,title,description,invisible,attr';
 const isUnified=isUnifiedAnchorScope;
 const physicalPoint=id=>dbAuthClient.schema('silver').from(id+'_anchor');
-const pointAttr=({address,longitude,latitude})=>{
+const pointVisitTimes=values=>{
+  const input=Array.isArray(values)?values:[];
+  const timestamps=input.map(value=>Date.parse(String(value||'')));
+  if(timestamps.some(stamp=>!Number.isFinite(stamp)))
+    throw Error('Point 造訪時間必須是有效的時間戳');
+  return [...new Set(timestamps)].sort((a,b)=>a-b).map(value=>new Date(value).toISOString());
+};
+const pointAttr=({address,longitude,latitude,times=[]})=>{
   const coords=coordinateArray(longitude,latitude),attr={};
   if(coords){attr.longitude=coords[0];attr.latitude=coords[1];}
   if(postalText(address))attr.location=postalText(address);
+  if(times.length)attr.times=pointVisitTimes(times);
   return attr;
 };
 const projectUnified=(row,id)=>{
@@ -231,10 +239,9 @@ export async function addTraceAnchor({scopeId,title,description='',address='',lo
     address:coordinateArray(longitude,latitude),invisible:normalizedInvisible(invisible),
     times:Array.isArray(times)?times:[],anchor_list:[]};
   if(isUnified(id)){
-    if(times?.length)throw Error('請先將時間關聯儲存在正式時間資料中');
     const row={uid:allocateAnchorUid(),type:'point',title:record.title,
       description:record.description,invisible:record.invisible,
-      attr:pointAttr({address,longitude,latitude})};
+      attr:pointAttr({address,longitude,latitude,times:record.times})};
     return checked(await physicalPoint(id).insert(row).select('uid').single(),'新增空間定錨點');
   }
   let query=dbAuthRelation(relation(id)).insert(record).select('uid').single();
@@ -312,7 +319,7 @@ export async function addTraceAnchorsBatch({scopeId,places=[]}){
         uid:allocateAnchorUid(),type:'point',title:place.title,
         description:place.description,invisible:false,
         attr:pointAttr({address:place.route_list.postal_address,
-          longitude:place.address?.[0],latitude:place.address?.[1]})
+          longitude:place.address?.[0],latitude:place.address?.[1],times:place.times})
       }));
       count+=(checked(await physicalPoint(id).insert(rows).select('uid'),'批次新增地點')||[]).length;
     }
