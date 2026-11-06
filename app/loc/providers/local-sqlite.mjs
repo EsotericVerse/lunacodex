@@ -1113,41 +1113,28 @@ async function saveArchiveMediaExifLocal({p_scope_id,p_rows}={}){
   }catch(error){return {data:null,error:{message:String(error?.message||error)}};}
 }
 
-export async function rpcLocal(name,args={}){
-  switch(name){
-    case 'read_scope_analytics':{
-      const options=args.p_options||{},params={
-        p_scope_id:args.p_scope_id,p_start:args.p_start,p_end:args.p_end
-      };
-      switch(args.p_view){
-        case 'daily':return readScopeStatisticsLocal({...params,p_include_undated:Boolean(options.includeUndated)});
-        case 'totals':return readScopeCategoryTotalsLocal(params);
-        case 'overview':return readScopeOverviewLocal(params);
-        case 'earliest':return readScopeEarliestLocal(params);
-        case 'keyword_summary':return readKeywordTreeSummaryLocal({...params,p_class_uid:options.classUid,p_source:options.source});
-        case 'keyword_catalog':return readKeywordTreeCatalogLocal({p_class_uid:options.classUid});
-        case 'shared_classes':return readSharedKeywordClassesLocal(params);
-        default:return {data:null,error:{message:'Unsupported local analytics view'}};
-      }
-    }
-    case 'management_write':return managementWriteLocal(args);
-    case 'save_archive_media_exif':return saveArchiveMediaExifLocal(args);
-    case 'read_scope_statistics':return readScopeStatisticsLocal(args);
-    case 'read_scope_overview':return readScopeOverviewLocal(args);
-    case 'read_scope_category_totals':return readScopeCategoryTotalsLocal(args);
-    case 'read_scope_earliest':return readScopeEarliestLocal(args);
-    case 'read_keyword_class_by_uid':return readKeywordClassLocal(args);
-    case 'read_shared_keyword_classes':return readSharedKeywordClassesLocal(args);
-    case 'read_keyword_tree_summary':return readKeywordTreeSummaryLocal(args);
-    case 'log_search_keyword':return {data:null,error:null};
-    default:return {data:null,error:{message:'RPC not implemented for local scope: '+name}};
+// Device-private SQLite actions use direct functions, not stored procedures.
+async function localAnalytics(args={}){
+  const options=args.p_options||{},params={
+    p_scope_id:args.p_scope_id,p_start:args.p_start,p_end:args.p_end
+  };
+  switch(args.p_view){
+    case 'daily':return readScopeStatisticsLocal({...params,p_include_undated:Boolean(options.includeUndated)});
+    case 'totals':return readScopeCategoryTotalsLocal(params);
+    case 'overview':return readScopeOverviewLocal(params);
+    case 'earliest':return readScopeEarliestLocal(params);
+    case 'keyword_summary':return readKeywordTreeSummaryLocal({...params,p_class_uid:options.classUid,p_source:options.source});
+    case 'keyword_catalog':return readKeywordTreeCatalogLocal({p_class_uid:options.classUid});
+    case 'shared_classes':return readSharedKeywordClassesLocal(params);
+    default:return {data:null,error:{message:'Unsupported local analytics view'}};
   }
 }
 
 function schemaClient(){
   return {
     from(table){return queryBuilder(table);},
-    rpc(name,args={}){return rpcLocal(name,args);}
+    analytics(args){return localAnalytics(args);},
+    managedWrite(payload){return managementWriteLocal(payload);}
   };
 }
 
