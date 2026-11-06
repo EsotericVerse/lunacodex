@@ -177,13 +177,10 @@ export function importedPlaceId({incoming,existing,byName,byCoordinate}={}){
   return VALID_UID.test(String(uid||''))?uid:null;
 }
 
-// Each anchor keeps the creation time of every check-in made there in its
-// `times` array. Merge the newly imported articles' times into the saved ones:
-// the same instant is stored once, the result is sorted, and an anchor with
-// nothing new is not written.
-// Bound independent per-anchor writes. One UID is written by at most one
-// worker, preserving the existing append/dedupe semantics without issuing
-// hundreds of sequential round trips or flooding the database.
+// Legacy Trace can persist sorted, deduplicated times. Unified Point.attr
+// intentionally does not: its physical createtime stores only the earliest
+// proven original article/check-in timestamp, never a fabricated visits array.
+// Bound each UID's independent write with limited concurrency.
 const PLACE_VISIT_WRITE_CONCURRENCY=6;
 const PLACE_VISIT_WRITE_TIMEOUT_MS=45000;
 export async function recordImportPlaceVisits(visits,{relation,table,timesByUid,onProgress}={}){
