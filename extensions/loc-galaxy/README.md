@@ -115,3 +115,9 @@ Chrome's `runtime.onMessageExternal` for messages originating from a website may
 ## 0.6.4 — Chrome 外部訊息來源驗證
 
 0.6.3 的網站授權探測錯把 `sender.url` 當成一定含授權頁完整路徑及 query 的依據，結果 Extension 已接收網站訊息卻直接拒絕。0.6.4 改為檢查 Chrome 可信的 `sender.origin`（舊環境沒有時以 `sender.url` 的 **origin** 作兼容核對），並且另外透過 `chrome.tabs.get(pending.tabId)` 驗證由 Extension 主動開啟的真實授權頁、完整 nonce 和 Scope。原有 5 分鐘初次授權／24 小時續期、JWT 和 MCP Scope 權限檢查維持。只修正傳訊來源的判斷，不增權限、不新增對 Clerk 的請求。
+
+## 0.6.5 — 不再用 Chrome Tab URL 判定網站授權
+
+0.6.4 的探測在 `sender.origin` 通過後仍強制使用 `chrome.tabs.get(tabId).url` 比對授權頁，因此在 Chrome 未提供 URL、登入過程暫時跳轉或分頁狀態不同時誤判為「沒有匹配的授權分頁」。0.6.5 改以 Extension 自己建立的 `chrome.storage.session` 隨機 nonce、Scope、建立時間為準；Chrome 有提供 `sender.tab.id` 才另外比對 tabId。網站發訊來源仍限定 `https://loc.lo3rwang.cc`，JWT 仍透過 LOC MCP 驗證。沒有新增 Chrome 權限。
+
+授權頁若因 Extension Reload 而失去 session pending，會明確提示「沒有待處理的授權請求」；須由 Extension 再按一次網站 Session 授權以建立新的 nonce（**不須登出或重新登入 Clerk**）。若 nonce 或有效期限不一致會顯示不同訊息。修改僅限橋接，不調整 Root/Admin 權限。
