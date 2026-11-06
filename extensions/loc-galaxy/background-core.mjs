@@ -192,6 +192,51 @@ chrome.alarms.onAlarm.addListener(alarm=>{
 });
 chrome.runtime.onStartup.addListener(()=>{void capture.resume().catch(()=>{});});
 
+const MENU_ARCHIVE='loc-galaxy-archive-conversation';
+function registerArchiveMenu(){
+  chrome.contextMenus.removeAll(()=>{
+    chrome.contextMenus.create({
+      id:MENU_ARCHIVE,
+      title:'匯入此 ChatGPT 對話至 LOC Galaxy',
+      contexts:['page'],
+      documentUrlPatterns:['https://chatgpt.com/c/*','https://chatgpt.com/g/*/c/*']
+    });
+  });
+}
+chrome.runtime.onInstalled.addListener(registerArchiveMenu);
+chrome.runtime.onStartup.addListener(registerArchiveMenu);
+chrome.contextMenus.onClicked.addListener((info,tab)=>{
+  if(info.menuItemId!==MENU_ARCHIVE)return;
+  // Permission prompt is initiated by the user's context-menu gesture.
+  void (async()=>{
+    const granted=await chrome.permissions.request({origins:['https://chatgpt.com/*']});
+    if(!granted)throw Error('未取得 ChatGPT 網站讀取權限');
+    if(!Number.isInteger(tab?.id))throw Error('找不到選取的對話分頁');
+    const snapshot=await capture.archiveActive(tab.id);
+    let result={completed:0};
+    let failure='';
+    if(snapshot.queued>0){
+      try{result=await capture.sync();}
+      catch(error){failure=String(error?.message||error);}
+    }
+    const state=await readAll();
+    const description='已暫存 '+Number(snapshot.queued||0)+' 則；已確認寫入 '+
+      Number(result.completed||0)+' 則'+(failure?'；待同步：'+failure:'')+
+      (snapshot.partial?'；目前頁面歷史可能不完整':'');
+    const url=chrome.runtime.getURL('workbench.html?scopeid='+
+      encodeURIComponent(state.scopeid)+'&archive_status='+encodeURIComponent(description));
+    await chrome.tabs.create({url,active:true});
+  })().catch(async error=>{
+    const state=await readAll().catch(()=>({scopeid:''}));
+    if(!state.scopeid)return;
+    const url=chrome.runtime.getURL('workbench.html?scopeid='+
+      encodeURIComponent(state.scopeid)+'&archive_status='+
+      encodeURIComponent('匯入未完成：'+String(error?.message||error).slice(0,170)));
+    await chrome.tabs.create({url,active:true});
+  });
+});
+
+
 async function handle(message,sender){
   await protectStorage();
   switch(message?.type){
