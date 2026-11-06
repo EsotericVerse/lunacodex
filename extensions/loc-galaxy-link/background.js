@@ -270,7 +270,7 @@ async function flush(force=false){
      if(reply.status===429){
       const header=reply.headers?.get?.('retry-after');
       const value=String(header||'').trim();
-      const ms=/^\\d+$/.test(value)?Number(value)*1000:
+      const ms=/^\d+$/.test(value)?Number(value)*1000:
        (Date.parse(value)||0)-Date.now();
       await chrome.storage.local.set({locQueueRetryAfter:Date.now()+
        (Number.isFinite(ms)&&ms>0?Math.min(ms,3600000):900000)});
