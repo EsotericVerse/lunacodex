@@ -440,33 +440,28 @@ test('Culture loads management permissions only after authorized homepage editin
   assert.doesNotMatch(culture,/useAccount\(\{enabled:false\}\)/);
 });
 
-test('Admin and Scope classification forms share direct one-level DefaultArticleClass editor',()=>{
+test('LOC and Scope source editors share vis-network but keep separate write boundaries',()=>{
   const work=readFileSync(new URL('../app/loc/WorkClassificationPage.jsx',import.meta.url),'utf8');
   const personal=readFileSync(new URL('../app/loc/ScopeOthersSources.jsx',import.meta.url),'utf8');
   const editor=readFileSync(new URL('../app/loc/FlatClassificationEditor.jsx',import.meta.url),'utf8');
+  const management=readFileSync(new URL('../app/loc/providers/kysely-management.mjs',import.meta.url),'utf8');
+  const network=readFileSync(new URL('../app/loc/KeywordNetworkEditor.jsx',import.meta.url),'utf8');
   assert.match(work,/<FlatClassificationEditor scopeId="loc"\/>/);
   assert.match(personal,/<FlatClassificationEditor scopeId=\{scopeId\}\/>/);
-  assert.match(editor,/classification-inline__list/);
-  assert.match(editor,/classification-inline__actions/);
-  assert.match(editor,/classification-inline__controls/);
-  assert.match(editor,/ResizeObserver/);
-  assert.match(editor,/gridColumns/);
-  assert.match(editor,/next.splice\(target,0,item\)/);
-  assert.match(editor,/setDraft\(\[\.\.\.rows,''\]\)/);
-  assert.match(editor,/setDraft\(rows.filter/);
-  assert.doesNotMatch(editor,/!global\?<button/);
-  const css=readFileSync(new URL('../app/styles/settings-select.css',import.meta.url),'utf8');
-  assert.match(css,/grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/);
-  assert.match(css,/@container classification-inline \(max-width:720px\)/);
-  assert.match(css,/@container classification-inline \(max-width:420px\)/);
-  assert.match(editor,/type="submit"/);
-  assert.match(editor,/\.update\(\{\[scopeTagColumn\(scopeId\)\]:names\}\)/);
-  assert.match(editor,/canManageGroupSync\('loc'\)/);
+  assert.match(editor,/read_source_catalog/);
+  assert.match(editor,/save_scope_sources/);
   assert.match(editor,/update_group_default_article_class/);
+  assert.match(editor,/sourceNodes=\{graph\}/);
+  assert.match(editor,/canManageGroupSync\('loc'\)/);
   assert.match(editor,/canManageScopeSync\(scopeId\)/);
-  assert.match(editor,/作品分類/);
-  assert.match(editor,/個人分類/);
-  assert.doesNotMatch(editor,/classification-page__layout|statistics_source_categories|statistics_scope_others_groups/);
+  assert.match(editor,/系統來源（唯讀）/);
+  assert.match(editor,/將既有分類導入 Anchor/);
+  assert.match(network,/sourceNodes=null/);
+  assert.match(network,/onSelectNode=null/);
+  assert.match(management,/Source catalog permission denied/);
+  assert.match(management,/LOC cannot edit child Scope sources/);
+  assert.match(management,/\.where\('parent_scope_id','=', 'loc'\)/);
+  assert.doesNotMatch(editor,/scopeTagColumn|scopeTagNames|\.update\(\{\[scopeTagColumn/);
 });
 
 test('Scope import separates local preview from explicit Galaxy save',()=>{
