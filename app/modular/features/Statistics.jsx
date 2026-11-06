@@ -38,7 +38,7 @@ import {administrativeSourceTrend} from '../../loc/statistics-admin-source.mjs';
 import {useAccount} from '../../loc/use-account';
 import {scopeHref} from '../scope-registry';
 import ScopeLink from '../ScopeLink';
-import {STAT_VISUAL_TYPES,availableStatisticChartTypes,chartTypeGroups} from '../modules/statistics/statistics-time-zoom.mjs';
+import {STAT_VISUAL_TYPES,semanticStatisticChartTypes,chartTypeGroups} from '../modules/statistics/statistics-time-zoom.mjs';
 const StatisticsMultiChart=dynamic(()=>import('../modules/statistics/StatisticsMultiChart'),{loading:()=>null});
 const PlaceStatisticsPanel=dynamic(()=>import('./trace/PlaceStatisticsPanel'),{loading:()=>null});
 const Rune66Summary=dynamic(()=>import('../modules/statistics/StatisticsMultiChart').then(m=>m.Rune66Summary),{loading:()=>null});
@@ -437,7 +437,8 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     rawRows:selectedRawNames?(sourceRows.data||[]).filter(row=>row.kind!=='source'||selectedRawNames.includes(String(row.category||'').trim().toLowerCase())):sourceRows.data||[],
     catalog:sourceCatalog.data||{}
   };
-  const optionsForCurrent=availableStatisticChartTypes({
+  const optionsForCurrent=semanticStatisticChartTypes({
+    purpose:rankingType==='total'?'total':'source',
     rows:basicTrend,series:basicSeries,distribution:basicDistribution,
     totalKey:rankingType==='total'?'total':''
   });

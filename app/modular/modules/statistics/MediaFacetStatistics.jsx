@@ -12,7 +12,7 @@ import {StatisticsFacets} from '../../../loc/statistics-facets';
 registerDefaultSection('uiExtra.statisticsView',statisticsViewZh);
 registerDefaultSection('uiExtra.dataErrors',dataErrorsZh);
 registerDefaultSection('uiExtra.statisticsUI',statisticsUIZh);
-import {availableStatisticChartTypes,chartTypeGroups,RUNE_RANKING_PAGE_SIZE,OTHER_RANKING_PAGE_SIZE} from './statistics-time-zoom.mjs';
+import {semanticStatisticChartTypes,chartTypeGroups,RUNE_RANKING_PAGE_SIZE,OTHER_RANKING_PAGE_SIZE} from './statistics-time-zoom.mjs';
 import StatisticsChartFrame from './StatisticsChartFrame';
 import StatisticsDetails from './StatisticsDetails';
 
@@ -44,8 +44,8 @@ export default function MediaFacetStatistics({rankingType,rows=[],mediaRows=[],t
   const chartCategories=chosen==='all'?totals.slice(0,4).map(row=>row.term):[chosen];
   const chartRows=useMemo(()=>facetTrend(facetRows,window,chartCategories),[facetRows,window.startDate,window.endDate,window.bucket,chartCategories.join('\u0000')]);
   const bars=(chosen==='all'?totals.slice(0,15):displayed).map(row=>({term:row.term,value:row.item_count}));
-  const supported=availableStatisticChartTypes({
-    rows:chartRows,series:chartCategories.map(category=>({key:category,label:category})),
+  const supported=semanticStatisticChartTypes({
+    purpose:'media',rows:chartRows,series:chartCategories.map(category=>({key:category,label:category})),
     distribution:bars.map(row=>({name:row.term,value:row.value}))
   });
   const chosenChartType=supported.some(([value])=>value===chartType)?chartType:(supported[0]?.[0]||'line');

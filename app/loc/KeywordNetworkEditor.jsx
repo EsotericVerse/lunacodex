@@ -6,7 +6,7 @@ function graphOriginGroup(items=[]){
   return String(items.find(row=>row.group_uid)?.group_uid||'');
 }
 
-function buildGraph(items=[],className='',classId='',expandedGroup='',expandedItemId=''){
+function buildGraph(items=[],className='',classId='',expandedGroup='',expandedItemId='',knownGroups=[]){
   const rows=Array.isArray(items)?items:[];
   const nodes=[];
   const edges=[];
@@ -15,7 +15,11 @@ function buildGraph(items=[],className='',classId='',expandedGroup='',expandedIt
   nodes.push({id:rootId,label:className?'關鍵字群組科目：'+className:'關鍵字群組科目',level:0,kind:'class',shape:'ellipse'});
   meta.set(rootId,{kind:'class',className,classId});
 
-  const groups=new Map(rows.filter(row=>row.group_uid).map(row=>[String(row.group_uid),String(row.class_group||'')]));
+  const groups=new Map((Array.isArray(knownGroups)?knownGroups:[])
+    .filter(group=>group?.uid)
+    .map(group=>[String(group.uid),String(group.name||'')]));
+  for(const row of rows)if(row.group_uid)
+    groups.set(String(row.group_uid),String(row.class_group||groups.get(String(row.group_uid))||''));
   for(const [groupUid,groupName] of groups){
     const id='group:'+groupUid;
     nodes.push({id,label:groupName||'未命名分類群組',level:1,kind:'group',shape:'box'});
@@ -52,10 +56,14 @@ function buildGraph(items=[],className='',classId='',expandedGroup='',expandedIt
 
 export default function KeywordNetworkEditor({
   items=[],
+  groups=[],
   className='',
   classId='',
   selectedId='',
   onSelectItem=null,
+  onSelectGroup=null,
+  onSelectClass=null,
+  onNewGroup=null,
   onNewItem=null,
   onDeleteItem=null,
   onDeleteKeyword=null,
@@ -68,9 +76,12 @@ export default function KeywordNetworkEditor({
   const selectedNodeRef=useRef('');
   const [expandedGroup,setExpandedGroup]=useState(()=>graphOriginGroup(items));
   const [expandedItemId,setExpandedItemId]=useState('');
-  const handlersRef=useRef({onSelectItem,onNewItem,onDeleteItem,onDeleteKeyword,onDeleteGroup,onMessage});
+  const handlersRef=useRef({onSelectItem,onSelectGroup,onSelectClass,onNewGroup,onNewItem,onMessage});
   const [error,setError]=useState('');
-  const graph=useMemo(()=>buildGraph(items,className,classId,expandedGroup,expandedItemId),[items,className,classId,expandedGroup,expandedItemId]);
+  const [selectionLabel,setSelectionLabel]=useState('');
+  const graph=useMemo(()=>buildGraph(items,className,classId,expandedGroup,expandedItemId,groups),[items,className,classId,expandedGroup,expandedItemId,groups]);
+  const graphRef=useRef(graph);
+  graphRef.current=graph;
   useEffect(()=>{
     const row=items.find(item=>String(item.keyword_id)===String(selectedId));
     if(row){
@@ -79,85 +90,59 @@ export default function KeywordNetworkEditor({
     }
   },[selectedId,items]);
 
-  useEffect(()=>{handlersRef.current={onSelectItem,onNewItem,onDeleteItem,onDeleteKeyword,onDeleteGroup,onMessage}},[onSelectItem,onNewItem,onDeleteItem,onDeleteKeyword,onDeleteGroup,onMessage]);
+  useEffect(()=>{handlersRef.current={onSelectItem,onSelectGroup,onSelectClass,onNewGroup,onNewItem,onMessage}},[onSelectItem,onSelectGroup,onSelectClass,onNewGroup,onNewItem,onMessage]);
 
+  // Canvas styling is resolved from the active LOC Theme. vis-network renders
+  // on canvas, so CSS custom properties need to be read again when Theme changes.
+  const themeData=model=>{
+    const styles=getComputedStyle(containerRef.current);
+    const text=styles.getPropertyValue('--loc-text').trim()||'#dfe8f2';
+    const muted=styles.getPropertyValue('--loc-muted').trim()||'#9ca8b5';
+    const accent=styles.getPropertyValue('--loc-accent').trim()||'#7c9bbd';
+    const panel=styles.getPropertyValue('--loc-panel').trim()||'#162536';
+    const line=styles.getPropertyValue('--loc-line').trim()||'#526272';
+    return {
+      nodes:model.nodes.map(node=>({
+        ...node,borderWidth:node.kind==='class'?3:node.kind==='group'?2:1,
+        margin:node.kind==='keyword'?3:10,
+        color:{background:panel,border:node.kind==='class'?accent:line,
+          highlight:{background:panel,border:accent}},
+        font:{color:node.kind==='keyword'?muted:text,
+          size:node.kind==='class'?16:node.kind==='group'?14:13,face:'inherit'},
+        widthConstraint:node.kind==='keyword'?{maximum:150}:{maximum:220}
+      })),
+      edges:model.edges.map(edge=>({...edge,color:{color:line,highlight:accent,hover:accent},
+        arrows:'to',smooth:{type:'cubicBezier',forceDirection:'horizontal',roundness:.35}}))
+    };
+  };
+  const refreshGraph=network=>{
+    if(!network||!containerRef.current)return;
+    const position=network.getViewPosition(),scale=network.getScale();
+    network.setData(themeData(graphRef.current));
+    network.moveTo({position,scale,animation:false});
+    const current=selectedNodeRef.current;
+    if(current&&graphRef.current.meta.has(current))network.selectNodes([current]);
+  };
+  // Keep the Network instance alive across Group/Item expansion. Recreating
+  // the canvas on every tap made mobile editing lose position and selection.
   useEffect(()=>{
     let cancelled=false;
     let network=null;
+    let observer=null;
     setError('');
-    if(!containerRef.current||!graph.nodes.length)return undefined;
+    if(!containerRef.current)return undefined;
     import('vis-network/standalone').then(({Network})=>{
       if(cancelled||!containerRef.current)return;
-      const styles=getComputedStyle(containerRef.current);
-      const text=styles.getPropertyValue('--loc-text').trim()||'#dfe8f2';
-      const muted=styles.getPropertyValue('--loc-muted').trim()||'#9ca8b5';
-      const accent=styles.getPropertyValue('--loc-accent').trim()||'#7c9bbd';
-      const panel=styles.getPropertyValue('--loc-panel-2').trim()||'#162536';
-      const line=styles.getPropertyValue('--loc-line').trim()||'#526272';
-      const nodes=graph.nodes.map(node=>({
-        ...node,
-        borderWidth:node.kind==='class'?3:node.kind==='group'?2:1,
-        margin:node.kind==='keyword'?2:8,
-        color:{background:panel,border:node.kind==='class'?accent:line,highlight:{background:panel,border:accent}},
-        font:{color:node.kind==='keyword'?muted:text,size:node.kind==='class'?16:node.kind==='group'?14:12,face:'inherit'},
-        widthConstraint:node.kind==='keyword'?{maximum:150}:{maximum:220}
-      }));
-      const edges=graph.edges.map(edge=>({...edge,color:{color:line,highlight:accent,hover:accent},arrows:'to',smooth:{type:'cubicBezier',forceDirection:'horizontal',roundness:.35}}));
-      const metaOf=id=>graph.meta.get(String(id||''))||null;
-      const selectMeta=meta=>{
-        if(!meta)return;
-        if(meta.kind==='item'||meta.kind==='keyword')handlersRef.current.onSelectItem?.(meta.row);
-      };
-
-      network=new Network(containerRef.current,{nodes,edges},{
-        autoResize:true,
-        physics:false,
-        // vis-network manipulation uses 'en' as its fallback locale.
-        // Replacing the locale map with only 'zh-tw' left fallback undefined
-        // and crashed while reading the manipulation toolbar 'close' label.
-        locale:'en',
-        locales:{en:{
-          edit:'編輯',del:'刪除所選',back:'返回',close:'關閉',addNode:'新增節點',addEdge:'新增關係',
-          editNode:'編輯節點',editEdge:'編輯關係',addDescription:'點圖面放置新節點。',
-          edgeDescription:'拖曳建立關係。',editEdgeDescription:'拖曳調整關係。',
-          createEdgeError:'無法建立此關係。',deleteClusterError:'無法刪除群集。',editClusterError:'無法編輯群集。'
-        }},
-        layout:{hierarchical:{enabled:true,direction:'LR',sortMethod:'directed',levelSeparation:190,nodeSpacing:110,treeSpacing:170}},
-        interaction:{hover:true,navigationButtons:true,keyboard:true,dragNodes:true,dragView:true,zoomView:true},
-        manipulation:{
-          enabled:true,
-          initiallyActive:true,
-          addEdge:false,
-          editEdge:false,
-          addNode:(nodeData,callback)=>{
-            const selected=metaOf(selectedNodeRef.current);
-            const groupUid=selected?.kind==='group'
-              ?selected.groupUid
-              :(selected?.kind==='item'||selected?.kind==='keyword')?String(selected.row?.group_uid||''):'';
-            handlersRef.current.onNewItem?.(groupUid);
-            callback(null);
-          },
-          editNode:(nodeData,callback)=>{
-            const meta=metaOf(nodeData?.id);
-            selectMeta(meta);
-            if(meta?.kind==='class'||meta?.kind==='group')handlersRef.current.onMessage?.('請在群組對應調整頁編輯名稱與內容。');
-            callback(null);
-          },
-          deleteNode:(selection,callback)=>{
-            const ids=Array.isArray(selection?.nodes)?selection.nodes:[];
-            const metas=ids.map(metaOf).filter(Boolean);
-            Promise.all(metas.map(meta=>{
-              if(meta.kind==='keyword')return handlersRef.current.onDeleteKeyword?.(meta.row,meta.keyword);
-              if(meta.kind==='item')return handlersRef.current.onDeleteItem?.(meta.row);
-              if(meta.kind==='group')return handlersRef.current.onDeleteGroup?.(meta.groupUid);
-              handlersRef.current.onMessage?.('請在群組對應調整頁管理關鍵字群組。');
-              return false;
-            })).then(results=>{
-              if(results.every(Boolean))callback(selection);
-              else callback(null);
-            }).catch(()=>callback(null));
-          }
-        },
+      const compact=containerRef.current.clientWidth<680;
+      network=new Network(containerRef.current,themeData(graphRef.current),{
+        autoResize:true,physics:false,
+        layout:{hierarchical:{enabled:true,direction:compact?'UD':'LR',
+          sortMethod:'directed',levelSeparation:compact?135:190,
+          nodeSpacing:compact?115:110,treeSpacing:compact?110:170}},
+        interaction:{hover:!compact,navigationButtons:false,
+          keyboard:{enabled:true,bindToWindow:false},
+          dragNodes:false,dragView:true,zoomView:true},
+        manipulation:false,
         nodes:{chosen:true},
         edges:{selectionWidth:2,hoverWidth:1.5}
       });
@@ -166,52 +151,53 @@ export default function KeywordNetworkEditor({
       if(previousView?.classId===classId){
         network.moveTo({position:previousView.position,scale:previousView.scale,animation:false});
       }else{
-        const originId='group:'+graphOriginGroup(items);
-        if(graph.meta.has(originId)){
-          selectedNodeRef.current=originId;
-          network.selectNodes([originId]);
-          network.focus(originId,{scale:1.05,animation:false});
-        }else network.fit({animation:false});
+        const firstGroup=graphRef.current.nodes.find(node=>node.kind==='group');
+        if(firstGroup)network.focus(firstGroup.id,{scale:compact?.8:1.05,animation:false});
+        else network.fit({animation:false});
       }
       network.on('selectNode',event=>{
         const id=String(event.nodes?.[0]||'');
         selectedNodeRef.current=id;
-        const meta=metaOf(id);
-        if(meta?.kind==='group'){
+        const meta=graphRef.current.meta.get(id);
+        if(!meta)return;
+        const row=meta.row;
+        setSelectionLabel(meta.kind==='class'?className:
+          meta.kind==='group'?graphRef.current.nodes.find(node=>node.id===id)?.label||'':
+          meta.kind==='keyword'?meta.keyword:String(row?.item_name||''));
+        if(meta.kind==='class')handlersRef.current.onSelectClass?.();
+        else if(meta.kind==='group'){
           setExpandedGroup(meta.groupUid);
           setExpandedItemId('');
-        }else if(meta?.kind==='item'){
-          setExpandedGroup(String(meta.row?.group_uid||''));
-          setExpandedItemId(String(meta.row?.keyword_id||''));
+          handlersRef.current.onSelectGroup?.(meta.groupUid);
+        }else if(meta.kind==='item'||meta.kind==='keyword'){
+          setExpandedGroup(String(row?.group_uid||''));
+          setExpandedItemId(String(row?.keyword_id||''));
+          handlersRef.current.onSelectItem?.(row);
         }
-        selectMeta(meta);
       });
-      network.on('deselectNode',()=>{selectedNodeRef.current='';});
-      network.on('doubleClick',event=>{
-        const id=String(event.nodes?.[0]||'');
-        if(!id)return;
-        selectedNodeRef.current=id;
-        network.selectNodes([id]);
-        network.editNode();
+      network.on('deselectNode',()=>{
+        selectedNodeRef.current='';
+        setSelectionLabel('');
       });
-
-      if(selectedId){
-        const itemNode='item:'+String(selectedId);
-        if(graph.meta.has(itemNode)){
-          selectedNodeRef.current=itemNode;
-          network.selectNodes([itemNode]);
-        }
-      }
+      // Theme can be applied on the Scope container, body or root. Only
+      // observe ancestor attributes; no polling, DB reads or extra libraries.
+      observer=new MutationObserver(()=>refreshGraph(network));
+      for(let element=containerRef.current;element;element=element.parentElement)
+        observer.observe(element,{attributes:true,attributeFilter:['class','data-theme','style']});
     }).catch(reason=>{if(!cancelled)setError(reason?.message||'vis-network 載入失敗。');});
     return()=>{
       cancelled=true;
+      observer?.disconnect();
       if(network){
         viewportRef.current={classId,position:network.getViewPosition(),scale:network.getScale()};
         if(networkRef.current===network)networkRef.current=null;
         network.destroy();
       }
     };
-  },[graph,classId]);
+  },[classId]);
+
+  useEffect(()=>{if(networkRef.current)refreshGraph(networkRef.current);},[graph]);
+
   useEffect(()=>{
     const itemNode='item:'+String(selectedId||'');
     if(selectedId&&graph.meta.has(itemNode)&&networkRef.current){
@@ -219,19 +205,32 @@ export default function KeywordNetworkEditor({
     }
   },[selectedId,graph]);
 
+  const addChild=()=>{
+    const liveSelection=String(networkRef.current?.getSelectedNodes()?.[0]||selectedNodeRef.current||'');
+    const selectedMeta=graphRef.current.meta.get(liveSelection);
+    if(selectedMeta?.kind==='class')handlersRef.current.onNewGroup?.();
+    else if(selectedMeta?.kind==='group')handlersRef.current.onNewItem?.(selectedMeta.groupUid);
+    else handlersRef.current.onMessage?.('請先選擇科目或分類群組，再新增下層。');
+  };
+  const zoom=multiplier=>{
+    const network=networkRef.current;
+    if(!network)return;
+    network.moveTo({scale:Math.max(.25,Math.min(3,network.getScale()*multiplier)),animation:false});
+  };
   return <section className="scope-keyword-network" aria-label="關鍵詞階層圖">
     <div className="scope-keyword-network-help">
-      <strong>關鍵字群組科目 → 關鍵字分類群組 → 關鍵詞分類 → 判斷詞列表</strong>
-      <span>選擇分類群組展開關鍵詞分類，再選擇分類檢視判斷詞列表。可拖曳、縮放與編輯。</span>
+      <strong>科目 → 群組 → 分類 → 判斷詞</strong>
+      <span>點選節點展開並在旁邊編輯；拖動空白處移動視野，雙指縮放。</span>
     </div>
-    <div className="scope-stat-controls" role="group" aria-label="關鍵詞圖譜觸控操作">
-      <button type="button" className="loc-button" onClick={()=>{
-        const network=networkRef.current;
-        if(network?.getSelectedNodes()?.length)network.editNode();
-      }}>編輯選取項目</button>
-      <button type="button" className="loc-button" onClick={()=>networkRef.current?.fit({animation:false})}>重置視野</button>
+    <div className="scope-stat-controls scope-keyword-network-controls" role="group" aria-label="關鍵詞圖譜觸控操作">
+      <button type="button" className="loc-button" onClick={addChild}>新增下層</button>
+      <button type="button" className="loc-button" onClick={()=>zoom(1.3)} aria-label="放大關聯圖">放大</button>
+      <button type="button" className="loc-button" onClick={()=>zoom(1/1.3)} aria-label="縮小關聯圖">縮小</button>
+      <button type="button" className="loc-button" onClick={()=>networkRef.current?.fit({animation:false})}>全圖</button>
     </div>
-    {error?<p className="scope-status scope-error">{error}</p>:null}
-    <div ref={containerRef} className="scope-graph-canvas scope-keyword-network-canvas" role="application" aria-label={className+' 關鍵詞 vis-network 編輯器'}/>
+    {selectionLabel?<p className="scope-status" role="status">已選取：{selectionLabel}</p>:null}
+    {error?<p className="scope-status scope-error" role="alert">{error}</p>:null}
+    <div ref={containerRef} className="scope-graph-canvas scope-keyword-network-canvas" role="application"
+      aria-label={className+' 關鍵詞關聯圖'}/>
   </section>;
 }

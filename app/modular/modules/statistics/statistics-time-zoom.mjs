@@ -147,7 +147,7 @@ export function availableStatisticChartTypes({rows=[],series=[],distribution=[],
   const hasMix=categories.length>=2;
   const compare=fields.length>=2;
   const usable=type=>{
-    if(type==='line')return hasTime||hasMix;
+    if(type==='line')return hasTime; // A distribution without dated rows is not a time-series line.
     if(type==='bar')return hasTime||categories.length>0;
     if(type==='area')return hasTime&&time.length>=2;
     if(type==='pie'||type==='treemap')return hasMix;
@@ -161,3 +161,30 @@ export function availableStatisticChartTypes({rows=[],series=[],distribution=[],
   return STAT_VISUAL_TYPES.filter(([type])=>usable(type));
 }
 
+
+
+// Recharts is a presentation engine, not a reason to offer every chart for
+// every metric. Geography and multimedia are categorical keyword dimensions:
+// overlapping keyword/media hits must never be presented as parts of a pie.
+// Keep this pure: all callers use their existing bounded analytics response.
+export const STATISTIC_CHART_PURPOSES=Object.freeze({
+  total:Object.freeze(['line','composed','area','bar']),
+  source:Object.freeze(['line','stacked','bar','area','pie','treemap']),
+  place:Object.freeze(['bar','line','stacked','area','pie']),
+  keyword:Object.freeze(['bar','line','stacked','area']),
+  media:Object.freeze(['bar','line','stacked','area']),
+  comparison:Object.freeze(['line','stacked','bar','scatter'])
+});
+
+export function semanticStatisticChartTypes({
+  purpose='total',rows=[],series=[],distribution=[],totalKey=''
+}={}){
+  const preferred=STATISTIC_CHART_PURPOSES[purpose]||STATISTIC_CHART_PURPOSES.total;
+  const possible=new Map(availableStatisticChartTypes({rows,series,distribution,totalKey}));
+  const categories=normalizeDistribution(distribution,rows,nonemptySeries(rows,series));
+  // Too many pie slices conceal the ranking. A Treemap remains available
+  // for exclusive source categories; never for overlapping keyword/media.
+  return preferred.filter(type=>possible.has(type)&&
+    !(type==='pie'&&categories.length>6))
+    .map(type=>[type,possible.get(type)]);
+}

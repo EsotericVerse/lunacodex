@@ -3,7 +3,7 @@
 import {cloneElement,useMemo,useState} from 'react';
 import {useAsyncResource} from '../../../loc/use-async-resource';
 import {UI_COPY,registerDefaultSection} from '../../../i18n/ui-copy';
-import {RUNE_RANKING_PAGE_SIZE,availableStatisticChartTypes,nonemptySeries,normalizeDistribution,movingAverage,scatterPair,radarPeriodComparison,activePeriodCoverage,number,color,pointColor} from './statistics-time-zoom.mjs';
+import {RUNE_RANKING_PAGE_SIZE,availableStatisticChartTypes,semanticStatisticChartTypes,nonemptySeries,normalizeDistribution,movingAverage,scatterPair,radarPeriodComparison,activePeriodCoverage,number,color,pointColor} from './statistics-time-zoom.mjs';
 export {STAT_VISUAL_TYPES,availableStatisticChartTypes} from './statistics-time-zoom.mjs';
 import {useUiLocale,useUiSection} from '../../../i18n/ui-locale';
 import UiText,{useUiText} from '../../../i18n/UiText';
@@ -13,7 +13,7 @@ import chartLabelsZh from '../../../i18n/sections/uiExtra.chartLabels.zh_tw.js';
 registerDefaultSection('uiExtra.statisticsView',statisticsViewZh);
 registerDefaultSection('uiExtra.chartLabels',chartLabelsZh);
 import {
-  Area,AreaChart,Bar,BarChart,CartesianGrid,Cell,ComposedChart,
+  Area,AreaChart,Bar,BarChart,Brush,CartesianGrid,Cell,ComposedChart,
   Legend,Line,LineChart,Pie,PieChart,PolarAngleAxis,PolarGrid,
   PolarRadiusAxis,Radar,RadarChart,RadialBar,RadialBarChart,
   ResponsiveContainer,Scatter,ScatterChart,Tooltip,Treemap,XAxis,YAxis
@@ -69,6 +69,7 @@ export default function StatisticsMultiChart({
     <XAxis dataKey="period" tick={{fill:TEXT,fontSize:11}} angle={-20} textAnchor="end" height={64} interval="preserveStartEnd" stroke={GRID}/>
     <YAxis tick={{fill:TEXT,fontSize:11}} allowDecimals={false} stroke={GRID}/>
     <Tooltip contentStyle={TOOLTIP}/>
+    {display.length>32?<Brush dataKey="period" height={24} travellerWidth={9} stroke={CHART_ACCENT}/>:null}
     {fields.length>1&&!['bar','composed'].includes(actual)?<Legend wrapperStyle={{fontSize:12}}/>:null}
   </>);
   const colored=categories.map((item,i)=>({...item,fill:item.fill||pointColor(i)}));
@@ -125,6 +126,7 @@ export default function StatisticsMultiChart({
     <XAxis dataKey="period" tick={{fill:TEXT,fontSize:11}} angle={-20} textAnchor="end" height={64} interval="preserveStartEnd" stroke={GRID}/>
     <YAxis tick={{fill:TEXT,fontSize:11}} allowDecimals={false} stroke={GRID}/>
     <Tooltip contentStyle={TOOLTIP}/><Legend/>
+    {composed.length>32?<Brush dataKey="period" height={24} travellerWidth={9} stroke={CHART_ACCENT}/>:null}
     <Bar dataKey="__stat_total" name={t('uiExtra.chartLabels.periodTotal')} fill={color(0)} opacity={.8} maxBarSize={30}>
       {composed.map((_,i)=><Cell key={i} fill={pointColor(i)}/>)}
     </Bar>
@@ -304,7 +306,7 @@ export function Rune66Summary({analysis,range={},scopeId=''}){
   // unrelated slices cannot express. Standalone views retain chart switching.
   const trendRows=shown==='group'?trend:[];
   const series=shown==='group'?trendSeries:[];
-  const options=availableStatisticChartTypes({rows:trendRows,series,distribution})
+  const options=semanticStatisticChartTypes({purpose:'keyword',rows:trendRows,series,distribution})
     .filter(([kind])=>shown==='both'?kind==='bar'
       :shown==='group'&&trendRows.length>0||['bar','pie','treemap'].includes(kind));
   const actualChart=options.some(([kind])=>kind===chartType)?chartType:(options.find(([kind])=>kind==='bar')?.[0]||options[0]?.[0]||'bar');

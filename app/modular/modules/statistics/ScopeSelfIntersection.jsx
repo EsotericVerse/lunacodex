@@ -11,7 +11,7 @@ import {scopeTagColumn,scopeTagNames} from '../../../loc/scope-config-fields.mjs
 import {useAsyncResource} from '../../../loc/use-async-resource';
 import {selectScopeSourceBreakdownRows} from '../../../loc/galaxy-query';
 import {assignedSource} from '../../../loc/member-intersection-model.mjs';
-import {availableStatisticChartTypes,chartTypeGroups} from './statistics-time-zoom.mjs';
+import {semanticStatisticChartTypes,chartTypeGroups} from './statistics-time-zoom.mjs';
 import StatisticsMultiChart from './StatisticsMultiChart';
 import StatisticsChartFrame from './StatisticsChartFrame';
 import StatisticsDetails from './StatisticsDetails';
@@ -339,7 +339,7 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
   },[rows,categories.map(c=>c.id).join(String.fromCharCode(0)),start,end,unit,valid,catalog.data,othersConfig.data,keywords.data,keywordItems.data,selectedKeywordItems,keywordItemGroup]);
   const series=categories.map(c=>({key:c.id,label:c.name}));
   const enough=maximumLanes>=2&&categories.length===lanes;
-  const availableCharts=availableStatisticChartTypes({rows:calculated.chart,series,distribution:calculated.totals});
+  const availableCharts=semanticStatisticChartTypes({purpose:'comparison',rows:calculated.chart,series,distribution:calculated.totals});
   const shownChartType=availableCharts.some(([id])=>id===chartType)?chartType:(availableCharts[0]?.[0]||'line');
   const chartGroups=chartTypeGroups(availableCharts,['line','stacked','scatter']);
 

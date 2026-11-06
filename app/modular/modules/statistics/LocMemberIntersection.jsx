@@ -13,7 +13,7 @@ import {selectDailyRuneRange} from '../../../loc/daily-runes';
 import {normalizeDailyDraws} from '../../../lrunes/daily-analytics-model.mjs';
 import {realMoonPhase} from '../../../loc/model/moon-phase';
 import {availableMemberMeasures,calculateMemberCross} from '../../../loc/member-intersection-model.mjs';
-import {availableStatisticChartTypes} from './statistics-time-zoom.mjs';
+import {semanticStatisticChartTypes} from './statistics-time-zoom.mjs';
 import StatisticsMultiChart from './StatisticsMultiChart';
 import StatisticsChartFrame from './StatisticsChartFrame';
 import StatisticsDetails from './StatisticsDetails';
@@ -90,7 +90,7 @@ export default function LocMemberIntersection({
     from:startDate,to:endDate,unit
   }),[JSON.stringify(adjusted),datasets,startDate,endDate,unit]);
   const distribution=calculated.totals.map(item=>({name:item.name,value:item.value}));
-  const charts=availableStatisticChartTypes({rows:calculated.rows,series:calculated.series,distribution});
+  const charts=semanticStatisticChartTypes({purpose:'comparison',rows:calculated.rows,series:calculated.series,distribution});
   const chosenChart=charts.some(([kind])=>kind===graph)?graph:(charts[0]?.[0]||'line');
   const update=(i,part)=>onChoicesChange?.(old=>{
     const next=Array.from({length:laneCount},(_,index)=>({...lanes[index]}));

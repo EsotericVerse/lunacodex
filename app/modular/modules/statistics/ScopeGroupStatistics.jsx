@@ -15,7 +15,7 @@ import {defaultScopeData} from '../../../loc/scope-data';
 import {featureNavigationHref} from '../../feature-navigation';
 import ScopeLink from '../../ScopeLink';
 import {featureDataErrorMessage} from '../../feature-data-state';
-import {availableStatisticChartTypes,chartTypeGroups,statisticsZoomWindow} from './statistics-time-zoom.mjs';
+import {semanticStatisticChartTypes,chartTypeGroups,statisticsZoomWindow} from './statistics-time-zoom.mjs';
 import StatisticsChartFrame from './StatisticsChartFrame';
 import StatisticsDetails from './StatisticsDetails';
 
@@ -102,7 +102,8 @@ export default function ScopeGroupStatistics({taipeiDateKey,trendBucket,loadGala
   // set of child Scopes. A single 100% "LOC total" pie is not analytics.
   const locSeries=scopeIds.map(id=>({key:id,label:id}));
   const locDistribution=distributionData.map(row=>({name:row.term,value:row.value}));
-  const locAllowed=availableStatisticChartTypes({
+  const locAllowed=semanticStatisticChartTypes({
+    purpose:aggregateType==='total'?'total':'source',
     rows:trendData,series:locSeries,distribution:locDistribution,totalKey:aggregateType==='total'?'total':''
   });
   const locChartType=locAllowed.some(([value])=>value===chartType)?chartType:(locAllowed[0]?.[0]||'line');

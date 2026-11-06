@@ -856,3 +856,18 @@
 .scope-culture-structure-river .vis-group.scope-time-trace-broken{
   opacity:.65
 }
+
+
+/* The canvas and inspector follow LOC Theme tokens, including mobile webviews. */
+.scope-keyword-network .scope-keyword-network-controls{display:flex;flex-wrap:wrap;gap:.45rem;align-items:center}
+.scope-keyword-network-controls .loc-button{min-height:44px;min-width:64px;touch-action:manipulation}
+.scope-keyword-network-canvas{background:var(--loc-panel);border-color:var(--loc-line)}
+.scope-keyword-network-inspector{min-width:0}
+.scope-keyword-network-inspector .scope-management-editor{width:100%;min-width:0;margin:0}
+.scope-keyword-network-inspector .scope-management-editor textarea{max-width:100%;min-width:0}
+@media(max-width:980px){
+  .scope-keyword-network-layout>.scope-keyword-network-inspector{order:-1;position:static;max-height:none}
+  .scope-keyword-network-canvas{height:clamp(320px,55dvh,560px);min-height:320px}
+  .scope-keyword-network .scope-keyword-network-controls{display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}
+  .scope-keyword-network-controls .loc-button{min-width:0;padding:.5rem .2rem}
+}
