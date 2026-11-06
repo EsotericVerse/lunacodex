@@ -1,9 +1,9 @@
+import {canManageDelegation} from '../auth/delegation-contract.mjs';
 // One verified LOC authorization decision per SQL request, regardless of dialect.
 // Only the trusted gateway may bind claims. No database RPC and no DB Auth login.
 const sessions=new WeakMap();
-// Reuse the existing Clerk OAuth session's verified permission snapshot for
-// 30 seconds at most. This is lazy (no polling, Cron, or new credential).
-// Every HTTP request still needs a verified, unexpired Clerk JWT.
+// Reuse a locally verified LOC delegation's permission snapshot for at most
+// 30 seconds. The trusted gateway verifies the signed token on every request.
 const PERMISSION_REUSE_MS=30_000;
 const MAX_PERMISSION_SESSIONS=96;
 const permissionSnapshots=new Map();
@@ -13,15 +13,10 @@ function reuseKey(state){
   const issuer=String(state.claims.iss||'');
   const sub=String(state.claims.sub||'');
   const sid=String(state.claims.sid||'');
-  // An interactive Clerk Session keeps the same signed sub + sid when the
-  // short-lived JWT rotates. Reuse its *30-second* management snapshot instead
-  // of SELECTing manage again for every fresh exp/jti.
-  if(/^user_[A-Za-z0-9]+$/.test(sub)&&/^sess_[A-Za-z0-9]+$/.test(sid))
-    return JSON.stringify(['clerk-session',issuer,sub,state.email,sid]);
-  // MCP OAuth has a different audience and may have no session ID.
-  // Keep its previous token-bound key; never share it with a browser Session.
-  return JSON.stringify(['oauth-token',issuer,sub,state.email,exp,
-    sid,String(state.claims.jti||'')]);
+  // The LOC-issued session ID is independent of the external OAuth adapter.
+  if(sid)return JSON.stringify(['loc-session',issuer,sub,state.email,sid]);
+  return JSON.stringify(['loc-token',issuer,sub,state.email,exp,
+    String(state.claims.jti||'')]);
 }
 function cachedSnapshot(state){
   const key=reuseKey(state);
@@ -43,7 +38,7 @@ function rememberSnapshot(key,state,pending){
   });
 }
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const USER=/^user_[A-Za-z0-9]+$/;
+const USER=/^[A-Za-z0-9_-]{1,128}$/;
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 function deny(message='LOC management permission denied'){
   throw Object.assign(new Error(message),{httpStatus:403});
@@ -51,9 +46,9 @@ function deny(message='LOC management permission denied'){
 export function bindLocAuthorization(db,{role='anon',claims={},snapshot=null}={}){
   if(!db||typeof db.selectFrom!=='function')throw new Error('Invalid Kysely transaction');
   if(role==='authenticated'&&(
-    claims?.provider!=='clerk'||!USER.test(String(claims?.sub||''))||
+    claims?.provider!=='loc'||claims?.me!==true||!USER.test(String(claims?.sub||''))||
     !EMAIL.test(String(claims?.email||'').trim().toLowerCase())))
-    deny('Verified Clerk identity required');
+    deny('Verified LOC delegation required');
   // External Scope DBs hold only their own tables. The trusted Gateway
   // may reuse a verified permission snapshot from the LOC control DB.
   sessions.set(db,{role,claims,email:String(claims?.email||'').trim().toLowerCase(),
@@ -68,7 +63,7 @@ export async function locPermissions(db){
     state.pending=(async()=>{
     // Read the blacklist and this principal's LOC membership in ONE
     // parameterized SQL statement. No extra request or new permission cache.
-    // The transaction still carries verified Clerk claims; authorization
+    // The transaction carries a locally verified LOC identity; authorization
     // and revocation remain evaluated against the live LOC control database.
     const joined=await db.selectFrom('api.manage as m')
       .crossJoin('silver.loc as l')
@@ -96,29 +91,30 @@ export async function locPermissions(db){
   return state.pending;
 }
 export async function canManageLoc(db,type,id=''){
-  const kind=String(type||'').toLowerCase(),scope=String(id||'').toLowerCase();
-  if(!['global','group','scope'].includes(kind)||
-    (kind!=='global'&&!SCOPE.test(scope)))return false;
-  const {blocked,rows}=await locPermissions(db);
-  if(blocked)return false;
-  if(rows.some(r=>r.id==='admin'&&r.manage_role==='admin'))return true;
-  return rows.some(r=>(r.active===true||r.active===1)&&(
-    kind==='group'&&r.id===scope&&r.manage_role==='group'||
-    kind==='scope'&&(r.id===scope&&r.manage_role==='scope'||
-      scope==='loc'&&r.id==='loc'&&r.manage_role==='group')
-  ));
+  const state=sessions.get(db);
+  return Boolean(state?.role==='authenticated'&&
+    canManageDelegation(state.claims,String(type||'').toLowerCase(),id));
 }
+
 export async function locManageRows(db,type,id=null){
   const kind=String(type||'').toLowerCase(),scope=id==null?'':String(id).toLowerCase();
   if(!['self','global','group','scope'].includes(kind)||(
     ['group','scope'].includes(kind)&&!SCOPE.test(scope)))
     throw Object.assign(new Error('Invalid LOC management type or Scope'),{httpStatus:400});
+  if(kind!=='self')return [{
+    id:scope,email:null,role:kind,galaxy:null,anchor:null,birthday:null,
+    allowed:await canManageLoc(db,kind,scope)
+  }];
+  // This read supplies display metadata only; it is not an authorization gate.
   const {blocked,rows}=await locPermissions(db);
-  if(kind==='self')return blocked?[]:rows.filter(r=>
-    ['admin','group','scope'].includes(r.manage_role)&&
-    (r.manage_role==='admin'||r.active===true||r.active===1))
-    .map(r=>({id:r.id,email:r.email,role:r.manage_role,galaxy:r.galaxy_table,
-      anchor:r.anchor_table,birthday:r.birthday,allowed:true}));
-  return [{id:scope,email:null,role:kind,galaxy:null,anchor:null,birthday:null,
-    allowed:!blocked&&await canManageLoc(db,kind,scope)}];
+  if(blocked)return [];
+  const visible=rows.filter(r=>['admin','group','scope'].includes(r.manage_role));
+  const mapped=[];
+  for(const row of visible){
+    const level=row.manage_role==='admin'?'global':row.manage_role;
+    const allowed=await canManageLoc(db,level,row.id);
+    if(allowed)mapped.push({id:row.id,email:row.email,role:row.manage_role,
+      galaxy:row.galaxy_table,anchor:row.anchor_table,birthday:row.birthday,allowed});
+  }
+  return mapped;
 }
