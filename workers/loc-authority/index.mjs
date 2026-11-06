@@ -703,9 +703,9 @@ export class LocAuthorityState extends DurableObject {
     return this.mcpLinkSearch(scopeid,query,Math.min(limit,5),oauthToken);
   }
   async mcpRead(scopeid,uid,offset=0,max_chars=20000,oauthToken='',siteFilter=''){
-    if(siteFilter&&siteFilter!==true&&siteFilter!=='mcp')
-      throw fail('PR 紀錄請直接使用 GitHub。LOC MCP 僅允許讀取 mcp 來源文章。',403);
-    const onlySite='mcp'; 
+    const onlySite=siteFilter===true?'mcp':(siteFilter||'mcp');
+    if(!['mcp','github'].includes(onlySite))
+      throw fail('Invalid article source',400); 
     validScope(scopeid);
     if(!UID.test(uid)||!Number.isInteger(offset)||offset<0||offset>1000000||
       !Number.isInteger(max_chars)||max_chars<1||max_chars>40000)
@@ -1048,8 +1048,10 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
   if(parts[0]==='read'&&parts.length===3&&request.method==='GET'){
     const scopeid=validScope(parts[1]);
     const groupid=url.searchParams.get('groupid')||'';
-    const requestedSite=galaxyLink?(url.searchParams.get('site')||'mcp'):
-      (url.searchParams.get('site')==='mcp'?'mcp':'');
+    const siteParam=url.searchParams.get('site')||'mcp';
+    if(!['mcp','github'].includes(siteParam))
+      throw fail('Invalid article source',400);
+    const requestedSite=siteParam;
     if(galaxyLink&&requestedSite!=='mcp')
       throw fail('GitHub PR records are no longer served by Galaxy Link; use GitHub tools',410);
     let permitted=await allowed(scopeid,requestedSite==='github'?'manage':'read');
