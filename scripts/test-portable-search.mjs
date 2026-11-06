@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {portableContainsSpec,portableContainsTerm} from '../app/loc/providers/portable-search.mjs';
+import {portableContainsSpec,portableContainsTerm,parsePortableOrExpression} from '../app/loc/providers/portable-search.mjs';
+import {runInNewContext} from 'node:vm';
 import {isTextSearchQuery} from '../app/loc/providers/search-qos.mjs';
 
 test('CJK literal search does not introduce LOWER on Galaxy.content',()=>{
@@ -47,4 +48,40 @@ test('text search remains rate-limited and literal values are not coerced',()=>{
   }
   const runtime=readFileSync(new URL('../app/loc/providers/kysely-runtime.mjs',import.meta.url),'utf8');
   assert.match(runtime,/operator==='contains'\?String\(rawValue\)/);
+});
+
+
+test('shared OR parsing preserves punctuation, nested precedence, and text values',()=>{
+  const expr='and(or(content.contains."黑刃",content.contains."混沌"),date.gte.2026-01-01)';
+  const parsed=parsePortableOrExpression(expr);
+  assert.equal(parsed.items[0].type,'and');
+  assert.equal(parsed.items[0].items[0].type,'or');
+  assert.equal(parsed.items[0].items[0].items[0].value,'黑刃');
+  assert.equal(parsePortableOrExpression('content.contains."null"').items[0].value,'null');
+  assert.equal(parsePortableOrExpression('content.contains."0001"').items[0].value,'0001');
+  assert.equal(parsePortableOrExpression('content.contains."你好,(混沌)!"').items[0].value,'你好,(混沌)!');
+  assert.throws(()=>parsePortableOrExpression('content.contains."unfinished'),/Malformed OR filter/);
+  assert.throws(()=>parsePortableOrExpression('content;drop.contains."x"'),/Unsupported OR filter/);
+});
+
+test('local SQLite compiles the same parameterized contains and nested OR logic',()=>{
+  const source=readFileSync(new URL('../app/loc/providers/local-sqlite.mjs',import.meta.url),'utf8');
+  const start=source.indexOf('const IDENT=/');
+  const end=source.indexOf('// -- Chainable query builder',start);
+  assert.ok(start>=0&&end>start);
+  const api=runInNewContext(source.slice(start,end)+'\n({compileFilter,compileLocalOr})',
+    {portableContainsSpec,parsePortableOrExpression});
+  const simple=api.compileFilter('content','contains','黑刃%_!');
+  assert.equal(simple.sql,'"content" LIKE ? ESCAPE \'!\'');
+  assert.deepEqual([...simple.params],['%黑刃!%!_!!%']);
+  const english=api.compileFilter('content','contains','Dark Jazz');
+  assert.equal(english.sql,'lower("content") LIKE ? ESCAPE \'!\'');
+  assert.deepEqual([...english.params],['%dark jazz%']);
+  const compound=api.compileLocalOr(parsePortableOrExpression(
+    'and(or(content.contains."黑刃",content.contains."混沌"),date.gte.2026-01-01)'
+  ));
+  assert.equal(compound.sql,'(("content" LIKE ? ESCAPE \'!\' OR "content" LIKE ? ESCAPE \'!\') AND "date">=?)');
+  assert.deepEqual([...compound.params],['%黑刃%','%混沌%','2026-01-01']);
+  assert.throws(()=>api.compileFilter('content;drop','contains','x'),/Invalid column/);
+  assert.match(source,/or\(expr\)\{state\.orFilters\.push\(parsePortableOrExpression\(expr\)\)/);
 });
