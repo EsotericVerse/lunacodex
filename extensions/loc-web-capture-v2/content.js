@@ -1,7 +1,7 @@
 // LOC 網站／舊對話頁面的可見 DOM 擷取；不呼叫 OAuth、Clerk 或 MCP。
 (() => {
   if (globalThis.__locCaptureV2) return;
-  const state = {mode:'idle', root:null, observer:null, intersection:null, timer:null, hover:null, includeAssistant:false, seen:new Set()};
+  const state = {mode:'idle', root:null, observer:null, intersection:null, timer:null, hover:null, includeAssistant:false, seen:new Set(), sending:new Set()};
   const visible = el => {
     if (!(el instanceof Element)) return false;
     const style=getComputedStyle(el);
@@ -127,16 +127,31 @@
     }
     return text.length+':'+(a>>>0).toString(16)+':'+(b>>>0).toString(16);
   }
-  function publish(items){
-    const fresh=items.filter(x=>{
-      // Keep only compact transient fingerprints, never multi-MB article
-      // strings in a long-lived in-page Set during infinite scrolling.
-      const k=x.source_key+':'+fingerprint(x.content);
-      if(state.seen.has(k))return false;
+  async function publish(items){
+    // A capture only becomes "seen" once the extension confirms the
+    // IndexedDB transaction. On queue errors, release the pending key so
+    // a later scan can retry without losing the post.
+    const pending=[];
+    for(const item of items){
+      const key=item.source_key+':'+fingerprint(item.content);
+      if(state.seen.has(key)||state.sending.has(key))continue;
+      state.sending.add(key);
+      pending.push({item,key});
+    }
+    if(!pending.length)return;
+    try{
+      const result=await chrome.runtime.sendMessage({
+        type:'items.captured',items:pending.map(({item})=>item)
+      });
+      if(result?.error)throw Error(result.error);
+      if(!result||typeof result.queued!=='number')throw Error('Queue acknowledgement missing');
       if(state.seen.size>=5000)state.seen.clear();
-      state.seen.add(k);return true;
-    });
-    if(fresh.length)chrome.runtime.sendMessage({type:'items.captured',items:fresh}).catch(()=>{});
+      for(const {key} of pending)state.seen.add(key);
+    }catch{
+      // Failure is not an acknowledgement. A subsequent scan may retry.
+    }finally{
+      for(const {key} of pending)state.sending.delete(key);
+    }
   }
   function scan(){
     if(!state.root||state.mode!=='record')return;
