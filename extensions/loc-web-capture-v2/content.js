@@ -1,7 +1,7 @@
 // LOC 網站／舊對話頁面的可見 DOM 擷取；不呼叫 OAuth、Clerk 或 MCP。
 (() => {
   if (globalThis.__locCaptureV2) return;
-  const state = {mode:'idle', root:null, observer:null, intersection:null, timer:null, hover:null, seen:new Set()};
+  const state = {mode:'idle', root:null, observer:null, intersection:null, timer:null, hover:null, includeAssistant:false, seen:new Set()};
   const visible = el => {
     if (!(el instanceof Element)) return false;
     const style=getComputedStyle(el);
@@ -33,7 +33,7 @@
       return null;
     return normalizeUrl(location.href);
   };
-  function conversationTurns(scope){
+  function conversationTurns(scope,includeAssistant=false){
     const nodes=[...scope.querySelectorAll('[data-message-id], [data-testid^="conversation-turn-"], [data-message-author-role]')];
     const hits=[]; const visited=new Set();
     for(const node of nodes){
@@ -42,7 +42,7 @@
       const roleNode=parent.matches('[data-message-author-role]')?parent:parent.querySelector('[data-message-author-role]');
       const role=roleNode?.getAttribute('data-message-author-role')||parent.getAttribute('data-message-author-role')||
         (parent.querySelector('[data-testid*="user"]')?'user':'');
-      if(!['user','assistant'].includes(role))continue;
+      if(!['user','assistant'].includes(role)||role==='assistant'&&!includeAssistant)continue;
       const text=cleanText(parent);
       if(!text)continue;
       hits.push({key:parent.getAttribute('data-message-id')||parent.getAttribute('data-testid')||role+':'+text.slice(0,150),
@@ -51,11 +51,11 @@
     }
     return hits;
   }
-  function extract(scope, mode='capture'){
+  function extract(scope, mode='capture',includeAssistant=state.includeAssistant){
     const doc=scope||document.body;
     const hostname=location.hostname.toLowerCase();
     if(/(?:chatgpt\.com|claude\.ai|chat\.openai\.com)$/.test(hostname)){
-      const turns=conversationTurns(doc);
+      const turns=conversationTurns(doc,includeAssistant);
       // Chat exports contain only actually rendered, role-attributed messages.
       // Never silently archive website navigation or other UI as a conversation.
       return turns;
@@ -110,7 +110,7 @@
   function scan(){
     if(!state.root||state.mode!=='record')return;
     if(state.timer)clearTimeout(state.timer);
-    state.timer=setTimeout(()=>publish(extract(state.root,'record')),350);
+    state.timer=setTimeout(()=>publish(extract(state.root,'record',state.includeAssistant)),350);
   }
   function stopWatching(){
     state.observer?.disconnect();state.intersection?.disconnect();
@@ -168,11 +168,12 @@
     if(msg.type==='page.capture'){
       const text=msg.selection?.trim();
       const items=text?[{key:'selection',source_key:normalizeUrl(location.href),url:normalizeUrl(location.href),
-        title:document.title,content:text}]:extract(document.body);
+        title:document.title,content:text}]:extract(document.body,'capture',Boolean(msg.includeAssistant));
       reply({items});return;
     }
     if(msg.type==='page.select'||msg.type==='page.record'){
       stop();state.mode=msg.type==='page.select'?'select':'pick-record';
+      state.includeAssistant=msg.includeAssistant===true;
       document.addEventListener('mousemove',move,true);
       document.addEventListener('click',choose,true);
       reply({ok:true});return;
