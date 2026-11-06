@@ -1,7 +1,7 @@
 // Independent Chrome MV3 capture pipeline; no Clerk, MCP or extension OAuth session.
 // Internal storage key remains independent of MCP and product-facing name.
 const DB_NAME='loc-web-capture-v2';
-const STORE='events';
+const STORE='events', ACK_STORE='acknowledged';
 const MAX_BATCH=50, MAX_BYTES=600000, AUTO_CAPTURE_COUNT=10;
 const LOC_ORIGIN='https://loc.lo3rwang.cc';
 const LOC_BRIDGE=LOC_ORIGIN+'/extension/bridge/';
@@ -11,10 +11,11 @@ const sizeOf=x=>encoder.encode(JSON.stringify(x)).length;
 let inFlight=null;
 function openDb(){
  return new Promise((resolve,reject)=>{
-  const req=indexedDB.open(DB_NAME,1);
+  const req=indexedDB.open(DB_NAME,2);
   req.onupgradeneeded=()=>{
    const db=req.result;
    if(!db.objectStoreNames.contains(STORE))db.createObjectStore(STORE,{keyPath:'id'});
+   if(!db.objectStoreNames.contains(ACK_STORE))db.createObjectStore(ACK_STORE,{keyPath:'id'});
   };
   req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);
  });
@@ -33,9 +34,21 @@ async function allEvents(){
 async function putEvents(events){
  const db=await openDb();
  return new Promise((resolve,reject)=>{
-  const tx=db.transaction(STORE,'readwrite');const store=tx.objectStore(STORE);
-  for(const row of events)store.put(row);
-  tx.oncomplete=()=>{db.close();resolve(events.length);};
+  const tx=db.transaction([STORE,ACK_STORE],'readwrite');
+  const queue=tx.objectStore(STORE),ack=tx.objectStore(ACK_STORE);
+  let count=0;
+  // Preserve immutable original captured_at when a pending record is
+  // captured again. A changed captured_at with the same event UUID would
+  // otherwise cause the server append fingerprint to reject safe retries.
+  for(const row of events){
+   const old=queue.get(row.id);
+   old.onsuccess=()=>{
+    if(old.result)return;
+    const prior=ack.get(row.id);
+    prior.onsuccess=()=>{if(!prior.result){queue.add(row);count++;}};
+   };
+  }
+  tx.oncomplete=()=>{db.close();resolve(count);};
   tx.onerror=()=>{db.close();reject(tx.error);};
   tx.onabort=()=>{db.close();reject(tx.error);};
  });
@@ -43,8 +56,14 @@ async function putEvents(events){
 async function removeEvents(records){
  const db=await openDb();
  return new Promise((resolve,reject)=>{
-  const tx=db.transaction(STORE,'readwrite');const store=tx.objectStore(STORE);
-  for(const row of records)store.delete(row.id);
+  const tx=db.transaction([STORE,ACK_STORE],'readwrite');
+  const queue=tx.objectStore(STORE),ack=tx.objectStore(ACK_STORE);
+  for(const row of records){
+   // Durable receipts prevent repeated captures appending the same text
+   // again after the Queue entry has been successfully acknowledged.
+   ack.put({id:row.id,received_at:Date.now()});
+   queue.delete(row.id);
+  }
   tx.oncomplete=()=>{db.close();resolve();};
   tx.onerror=()=>{db.close();reject(tx.error);};
   tx.onabort=()=>{db.close();reject(tx.error);};
@@ -94,11 +113,11 @@ function ready(rows){
 async function acceptItems(items){
  const events=await toEvents(items);
  if(!events.length)return {message:'沒有可擷取的內容'};
- await putEvents(events);
+ const inserted=await putEvents(events);
  const all=await allEvents();
  const paused=(await chrome.storage.local.get('locImportPaused')).locImportPaused;
  if(ready(all)&&!paused)void flush(false).catch(()=>{});
- return {message:'已加入 Queue：'+events.length+' 筆',queued:all.length};
+ return {message:'新加入 Queue：'+inserted+' 筆（重複擷取已略過）',queued:all.length};
 }
 function packet(rows){
  const out=[];let current=[];
