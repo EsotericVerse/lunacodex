@@ -96,6 +96,14 @@ Extension 從 `https://loc.lo3rwang.cc/extension/oauth/config.json` 取得**公�
 - **正式服務依賴尚未接通**：LOC Auth 必須提供原生 OAuth Server／client_id、Scope 授權和與 Kysely 寫入層相容的可信執行身分。上述程式不以 Clerk Token 冒充 LOC 自有 Token，也不在尚未授權時開放匿名入庫。正式 `/v1/import/short` 尚需由 LOC Auth 掛載、部署並完成真實 OAuth／Galaxy 寫入驗證。
 - 其他 SQL 引擎要實作與現有 PostgreSQL `postgresShortImportStore` 等效的來源序列化，不能移除鎖後宣稱已達成 portable。
 
+## LOC Delegation → Kysely 短匯入接線
+
+GitHub 的 `loc-kysely` SQL Gateway 已新增內部 `kind=short-import` 路由。它只接受由 LOC Authority 簽署、`aud=loc-delegation` 且明確包含 `<scopeid>:write` 的委託，不接受 Extension 直接傳來的未驗證 OAuth Token，也不接受請求自行指定 `actor`、`target` 或 SQL 表名。由已驗證 Scope＋User 決定來源文章 UID。
+
+**正式入口** `/v1/import/short` 仍須由 LOC 自有 OAuth/Authority 掛載：驗證 Extension Bearer Access Token、發出限 Scope 的短期 SQL Delegation、以內部請求轉交 `loc-kysely` 的 `{kind:"short-import",scopeid,batch}`。前端一次 Flush 不需要自己呼叫 Delegation 或尋找 UID。
+
+**正式部署尚缺**：LOC Authority 的 `LOC_DELEGATION_SECRET` 與 SQL Gateway 同步設定；原生 OAuth `issuer`、client_id／callback、公開匯入入口。不可把目前仍以舊 Clerk 運作的 Edge 當作新式 Auth 已上線，也不能直接用 Supabase 專案金鑰充當委託憑證。此階段後端只是已完成程式接線，未通過真實 Chrome→SQL 入庫的端到端驗收。
+
 ## 邊界與驗收
 
 - 本分支只改 Extension，不更動 LOC Auth、MCP Router、Edge、資料庫 Schema 或舊網站登入。
