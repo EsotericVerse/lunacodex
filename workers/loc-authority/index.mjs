@@ -912,6 +912,12 @@ export class LocAuthorityState extends DurableObject {
   }
 }
 
+function mcpPrLookup(query){
+  // PR and commit history are stored in GitHub, not Galaxy.
+  return /(?:\bPR\b|\bpull[ -]?request\b|\bgithub\b|\bcommit\b|合併請求|拉取請求)/i
+    .test(String(query||''));
+}
+
 async function handleMcpAuthority(request,env,url,origin){
   // Authentication precedes all quotas and any downstream SQL access.
   let principal;
@@ -928,6 +934,12 @@ async function handleMcpAuthority(request,env,url,origin){
     if(args?.action==='acquire')return json(await quota.mcpQuotaAcquire(args.kind,'clerk:'+principal.subject),200,origin);
     if(args?.action==='release')return json(await quota.mcpQuotaRelease(args.lease,'clerk:'+principal.subject),200,origin);
     throw fail('Invalid MCP quota operation',400);
+  }
+  // Refuse GitHub metadata searches before quota or SQL, including direct API callers.
+  if(/^\/v1\/mcp\/galaxy-link\/search\//.test(url.pathname)&&request.method==='POST'){
+    const input=await mcpJsonBody(request.clone(),1600);
+    if(mcpPrLookup(input?.query))
+      throw fail('PR / GitHub history belongs to GitHub. Use GitHub PR / Commit tools; do not search Galaxy UID.',403);
   }
   // No DB work and no quota spend on retired search endpoints.
   if(/^\/v1\/mcp\/(?:search|group-search)\//.test(url.pathname))
