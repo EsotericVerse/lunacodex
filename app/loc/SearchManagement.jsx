@@ -49,7 +49,7 @@ export default function SearchManagement(){
   const searchParams=useSearchParams();
   const isLocAdmin=scopeId==='loc';
   // Personal preferences belong to the last Settings tab, not Article Control.
-  // Preserve old bookmarks without mounting the Scope's ArticleTag editor.
+  // Preserve old bookmarks without mounting the retired Scope classification editor.
   useEffect(()=>{
     if(isLocAdmin||searchParams?.get('section')!=='others')return;
     window.location.replace('/local/settings/?section=features');
