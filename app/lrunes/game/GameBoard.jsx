@@ -530,10 +530,10 @@ function GameHomeHero({data=null,editing=false,onEditorExit=null}){
   />;
 }
 
-function OnlineMatch({data,count,code,host,onExit}){
+function OnlineMatch({data,count,code,host,hostKey,onExit}){
   const [shareError,setShareError]=useState('');
   const {G,moves,start,online,members,error,remoteEffect,hostOnline}=
-    useOnlineTabletop({data,count,code,host});
+    useOnlineTabletop({data,count,code,host,hostKey});
   return <div className="lrg-online">
     <Paper className="lrg-setup" sx={{m:{xs:1,sm:2},p:2}}>
       <Stack direction={{xs:'column',sm:'row'}} spacing={1.5}
@@ -542,7 +542,7 @@ function OnlineMatch({data,count,code,host,onExit}){
           <Typography variant="overline" color="primary">LUNARUNES · 線上對戰</Typography>
           <Typography variant="h6" component="h1">房間 {code}</Typography>
           <Typography variant="body2" color="text.secondary" role="status">
-            {online?'已連上 Supabase Realtime':'連線中／連線已中斷'}
+            {online?'已連上 LOC 即時房間':'連線中／連線已中斷'}
             {' · 在線裝置 '+members.length}
             {host?' · 房主':' · 已加入'}
           </Typography>
@@ -667,7 +667,7 @@ export default function GameBoard(){
     </main></ThemeProvider>;
   if(onlineRoom)return <ThemeProvider theme={uiTheme}>
     <OnlineMatch key={onlineRoom.code} data={data} count={onlineRoom.count}
-      code={onlineRoom.code} host={onlineRoom.host}
+      code={onlineRoom.code} host={onlineRoom.host} hostKey={onlineRoom.hostKey||''}
       onExit={()=>{setOnlineRoom(null);if(pathname?.startsWith('/game/room'))router.replace('/game/');}}/>
   </ThemeProvider>;
   if(pathname?.startsWith('/game/room'))return <ThemeProvider theme={uiTheme}>
@@ -714,7 +714,7 @@ export default function GameBoard(){
                   const bytes=crypto.getRandomValues(new Uint8Array(6));
                   const code=Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('').toUpperCase();
                   setRoomError('');
-                  setOnlineRoom({code,count,host:true});
+                  setOnlineRoom({code,count,host:true,hostKey:crypto.randomUUID()});
                 }}>建立線上房間</Button>
               </Stack>
               <Divider sx={{my:2}}/>
