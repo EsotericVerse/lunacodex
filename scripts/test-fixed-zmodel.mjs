@@ -90,3 +90,25 @@ test('Anchor remains the extension point; model does not declare migrations or b
   assert.doesNotMatch(source,/^\s*@@allow\s*\(/m);
   assert.doesNotMatch(source,/^\s*@@deny\s*\(/m);
 });
+
+test('ZenStack V3 runtime schema bridge stays in sync with the frozen contract',async()=>{
+  const {schema}=await import('../zenstack/schema.mjs');
+  assert.equal(schema.provider.type,'postgresql');
+  assert.equal(schema.provider.defaultSchema,'silver');
+  assert.equal(Object.keys(schema.models).length,snapshot.tables.length);
+  for(const table of snapshot.tables){
+    const model=schema.models[modelName(table.table)];
+    assert.ok(model,'missing generated model '+table.table);
+    assert.deepEqual(model.idFields,table.pk);
+    assert.equal(Object.keys(model.fields).length,table.columns.length);
+    for(const col of table.columns){
+      const field=model.fields[col.name];
+      assert.ok(field,'missing generated field '+table.table+'.'+col.name);
+      assert.equal(field.type,native[col.format][0].replace('[]',''));
+      assert.equal(Boolean(field.array),col.format.startsWith('_'));
+      assert.equal(Boolean(field.optional),col.nullable&&!col.format.startsWith('_'));
+    }
+    assert.equal(model.attributes.find(a=>a.name==='@@map')?.args?.[0]?.value?.value,table.table);
+    assert.equal(model.attributes.find(a=>a.name==='@@schema')?.args?.[0]?.value?.value,'silver');
+  }
+});
