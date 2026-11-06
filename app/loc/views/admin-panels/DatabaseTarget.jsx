@@ -4,28 +4,15 @@ import {DATABASE_ACCESS_LIST} from '../../providers/access.js';
 import {resolveDatabaseRouting} from '../../providers/routing-config.mjs';
 import {dbAuthClient} from '../../db-client.mjs';
 import {readonlyAuthStatus,recoveryOAuthLabel} from '../../providers/auth-status-readonly.mjs';
-import {preferredDatabasePrimary} from '../../providers/emergency-primary.mjs';
 
 const FILE_URL='https://github.com/EsotericVerse/moon-runes-pwa/edit/main/app/loc/providers/access.js';
 const ACCESS_FILE='app/loc/providers/access.js';
 const routing=resolveDatabaseRouting();
 
-function AuthStatusLight({label,enabled}){
-  return <span role="status" aria-label={label+'：'+(enabled?'已配置支援':'尚未配置')}>
-    <span aria-hidden="true" style={{color:enabled?'#198754':'#c53030',marginRight:6}}>●</span>
-    {label}：{enabled?'已配置支援':'尚未配置'}
-  </span>;
-}
-
 export default function DatabaseTarget(){
   const [backupHealth,setBackupHealth]=useState({state:'idle'});
   const [recoveryOAuth,setRecoveryOAuth]=useState('讀取中…');
-  const [authOverview]=useState(()=>readonlyAuthStatus({
-    primaryId:preferredDatabasePrimary(),
-    identityProvider:process.env.NEXT_PUBLIC_LOC_IDENTITY_PROVIDER||'',
-    neonAuthUrl:process.env.NEXT_PUBLIC_LOC_NEON_AUTH_URL||'',
-    neonDataApiUrl:process.env.NEXT_PUBLIC_LOC_NEON_DATA_API_URL||''
-  }));
+  const [authOverview]=useState(readonlyAuthStatus);
   useEffect(()=>{
     let active=true;
     fetch('/recovery/config.json',{cache:'no-store'})
@@ -73,11 +60,11 @@ export default function DatabaseTarget(){
         backupHealth.state==='schema-error'?'連線正常，但必要表不完整':'連線或驗證失敗'}
     </p>
     <div className="scope-management-wide-field" aria-label="OAuth 與 Auth 狀態（唯讀）">
-      <h3 className="admin-workspace-section-heading">OAuth 來源（唯讀）</h3>
-      <p className="scope-status">LOC 登入：{authOverview.primaryOAuth}</p>
-      <p className="scope-status">Clerk 環境：{recoveryOAuth}</p>
-      <p className="scope-status">Supabase Auth：不使用（LOC 以獨立 Clerk 認證）</p>
-      <AuthStatusLight label="Neon Auth" enabled={authOverview.neonSupported}/>
+      <h3 className="admin-workspace-section-heading">身分來源與 LOC 授權（唯讀）</h3>
+      <p className="scope-status">目前網站登入：{authOverview.primaryOAuth}</p>
+      <p className="scope-status">授權服務：{authOverview.authorization}</p>
+      <p className="scope-status">資料庫連線不使用託管商的 Auth；登入來源不改變 SQL 授權與 Kysely 操作。</p>
+      <p className="scope-status">過渡期 Clerk 設定：{recoveryOAuth}</p>
     </div>
   </section>;
 }
