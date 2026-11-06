@@ -12,13 +12,13 @@ import {loadPublishedBlocks} from '../modular/published-blocks/index.js';
 // Public page copy (Title_TW/Desc_TW) now travels inside the shared
 // app-bootstrap request (see app/loc/app-bootstrap.js); there is no
 // standalone per-page RPC call for it any more.
-// silver.manage owns system authorization and routing; silver.loc is the
+// api.manage owns system authorization and routing; silver.loc is the
 // Group Scope List and owns display_name/title_tw/desc_tw/birthday.
 // Public birthday metadata is explicitly published, never read from manage.
 // 公開查詢絕不包含 email；權限驗證由受保護的管理 RPC 提供。
 // 以下只對非機密欄位使用 PostgREST alias，
 // buildScopeData/scopeDataFromManageRows 完全不需要改動。
-export const MANAGE_TABLE='silver.manage';
+export const MANAGE_TABLE='api.manage';
 // No PostgREST-style "alias:column" renaming here -- the Kysely edge
 // function's column validator (kysely-runtime.mjs validateQuery) only
 // accepts plain identifiers and rejects anything containing ':' with
@@ -170,7 +170,7 @@ export async function selectScopeRegistry({parentScopeId=null,scopeKind=null}={}
 // LOC's public search registry: membership and the Scope-level search switch
 // are independent of an article's searchable flag.
 export async function selectLocSearchScopes(){
-  // LOC Group membership is owned by silver.manage, not by front-end routes.
+  // LOC Group membership is owned by api.manage, not by front-end routes.
   const members=await selectScopeGroupMemberIds('loc','search');
   const registry=await selectScopeRegistry({scopeKind:'scope'});
   const scopes=await Promise.all(registry
