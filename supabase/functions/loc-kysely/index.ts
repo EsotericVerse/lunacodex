@@ -11,7 +11,7 @@ import {saveBlocksKysely} from "../../../app/loc/providers/kysely-blocks.mjs";
 import {executeKyselyAnchor,executePortableKyselyAnchor} from "../../../app/loc/providers/kysely-anchor.mjs";
 import {executeKyselyAnalytics,executePortableKyselyAnalytics} from "../../../app/loc/providers/kysely-analytics.mjs";
 import {executeKyselyPublicAction} from "../../../app/loc/providers/kysely-public.mjs";
-import {readMcpGalaxyWithKysely} from "../../../app/loc/providers/kysely-mcp-read.mjs";
+import {readMcpGalaxyWithKysely,appendMcpGalaxyWithKysely} from "../../../app/loc/providers/kysely-mcp-read.mjs";
 import {executeKyselyScopeAdmin} from "../../../app/loc/providers/kysely-scope-admin.mjs";
 import {ensurePortableScopeSchema,validatePortableScopeSchema} from "../../../app/loc/providers/kysely-schema.mjs";
 import { selectedDatabaseTarget } from "../../../app/loc/providers/selected-database-target.mjs";
@@ -351,22 +351,15 @@ Deno.serve(async (request) => {
          !/^[0-9a-f]{64}$/.test(batchId)||!content.startsWith(marker+"\n")||
          !Number.isFinite(Date.parse(stamp))) return json({error:{message:"Invalid append request"}},400);
       const db=await databaseForTarget(controlTarget);
-      const table=sql.ref("silver."+scope+"_galaxy");
       const result=await db.transaction().execute(async trx=>{
-        await bindPostgresSession(trx,"authenticated",claims);
-        await sql`set local statement_timeout = '5000ms'`.execute(trx);
-        const next=await sql`update ${table} set content=concat_ws(chr(10),nullif(content,''),${content}),
-          "UpdateTime"=${stamp} where uid=${uid} and site='mcp'
-          and position(${marker} in coalesce(content,''))=0
-          returning uid,title,createtime`.execute(trx);
-        if(next.rows.length===1)
-          return {data:{count:1,title:next.rows[0].title,createtime:next.rows[0].createtime}};
-        const duplicate=await sql`select uid,title,createtime from ${table}
-          where uid=${uid} and site='mcp' and position(${marker} in coalesce(content,''))>0
-          limit 1`.execute(trx);
-        if(duplicate.rows.length===1)
-          return {data:{count:1,duplicate:true,title:duplicate.rows[0].title,createtime:duplicate.rows[0].createtime}};
-        throw Error("MCP topic unavailable");
+        if(controlTarget.engine==='postgres'&&controlTarget.provider!=='custom'){
+          await bindPostgresSession(trx,'authenticated',claims);
+          await sql`set local statement_timeout = '5000ms'`.execute(trx);
+        }
+        return appendMcpGalaxyWithKysely(trx,body,{
+          engine:String(controlTarget.engine),
+          namespace:controlTarget.engine==='mssql'?'dbo':'silver'
+        });
       });
       return json(result);
     }
