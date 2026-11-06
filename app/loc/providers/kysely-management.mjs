@@ -743,16 +743,19 @@ async function importSharedKeywordClass(trx,args){
   if(!root)reject('Source Class not found');
   // CSPRNG Base62 identities and the target UID primary key replace the
   // PostgreSQL-only advisory lock; this operation remains transactional.
-  const reserved=new Set();
-  const nextUid=async()=>{
+  // Use the existing UID primary key to reject rare collisions as part of
+  // INSERT itself; no per-key SELECT or full table comparison is needed.
+  const assigned=new Set();
+  const insertCopy=async(type,node,attr)=>{
     for(let attempt=0;attempt<32;attempt++){
-      const uid=allocateAnchorUid(reserved);
-      if(reserved.has(uid))continue;
-      const existing=await trx.selectFrom(target).select('uid')
-        .where('uid','=',uid).executeTakeFirst();
-      if(existing)continue;
-      reserved.add(uid);
-      return uid;
+      const uid=allocateAnchorUid(assigned);
+      assigned.add(uid);
+      const inserted=await trx.insertInto(target).values({
+        uid,type,title:node.title,description:node.description,
+        invisible:node.invisible,attr
+      }).onConflict(oc=>oc.column('uid').doNothing())
+        .returning('uid').executeTakeFirst();
+      if(inserted?.uid===uid)return uid;
     }
     reject('Cannot allocate unique Anchor UID');
   };
@@ -773,23 +776,14 @@ async function importSharedKeywordClass(trx,args){
     for(const itemId of links(group)){
       if(!UID.test(String(itemId)))reject('Invalid source Item UID');
       const item=await readChild(itemId,'item');
-      const uid=await nextUid();
       const terms=Array.isArray(item.attr?.keyword)?item.attr.keyword:[];
-      await trx.insertInto(target).values({uid,type:'item',title:item.title,
-        description:item.description,invisible:item.invisible,
-        attr:{keyword:terms,total:0,uidlists:[]}}).executeTakeFirst();
+      const uid=await insertCopy('item',item,{keyword:terms,total:0,uidlists:[]});
       mapped.push(uid);items++;
     }
-    const uid=await nextUid();
-    await trx.insertInto(target).values({uid,type:'group',title:group.title,
-      description:group.description,invisible:group.invisible,
-      attr:{uid:mapped,total:0,uidlists:[]}}).executeTakeFirst();
+    const uid=await insertCopy('group',group,{uid:mapped,total:0,uidlists:[]});
     groupIds.push(uid);
   }
-  const newClass=await nextUid();
-  await trx.insertInto(target).values({uid:newClass,type:'class',title:root.title,
-    description:root.description,invisible:root.invisible,
-    attr:{uid:groupIds}}).executeTakeFirst();
+  const newClass=await insertCopy('class',root,{uid:groupIds});
   return {scopeid:to,uid:newClass,source_scopeid:from,
     source_uid:classUid,group_count:groupIds.length,item_count:items};
 }
