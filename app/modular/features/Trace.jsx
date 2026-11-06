@@ -104,8 +104,10 @@ export default function Trace({scopeId='loc'}){
   });
   useEffect(()=>{
     if(!deepLinkedPlace.data?.uid)return;
+    // A trace?place=UID link selects the spatial Anchor only. It is not a
+    // Search route and must never implicitly request Galaxy article rows.
     setSelectedPlace(deepLinkedPlace.data);
-    setReportTab('articles');
+    setReportTab(null);
   },[deepLinkedPlace.data?.uid]);
   // Reuse the route preference from the existing management editor. "All"
   // is a temporary view, not a persisted default or a second preference key.
