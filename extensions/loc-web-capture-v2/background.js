@@ -76,6 +76,19 @@ function normalizedUrl(value){
  for(const key of [...u.searchParams.keys()])if(/^utm_|^fbclid$|^igshid$/i.test(key))u.searchParams.delete(key);
  return u.href;
 }
+// A Threads permalink may use threads.net while the active page uses
+// threads.com (and Instagram has www/mobile aliases). Only exact platform
+// hostnames may cross origins; arbitrary redirects remain forbidden.
+function captureSourceMatches(pageUrl,sourceUrl){
+ const page=new URL(pageUrl),source=new URL(sourceUrl);
+ if(!['http:','https:'].includes(page.protocol)||!['http:','https:'].includes(source.protocol))return false;
+ if(page.origin===source.origin)return true;
+ if(page.protocol!=='https:'||source.protocol!=='https:')return false;
+ const THREADS=new Set(['threads.net','www.threads.net','threads.com','www.threads.com']);
+ const INSTAGRAM=new Set(['instagram.com','www.instagram.com','m.instagram.com']);
+ return (THREADS.has(page.hostname)&&THREADS.has(source.hostname))||
+   (INSTAGRAM.has(page.hostname)&&INSTAGRAM.has(source.hostname));
+}
 async function stableUuid(input){
  const bytes=new Uint8Array(await crypto.subtle.digest('SHA-256',encoder.encode(input)));
  const hex=[...bytes.slice(0,16)].map(x=>x.toString(16).padStart(2,'0')).join('');
@@ -281,9 +294,9 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
     if(sender.id!==chrome.runtime.id||!sender.tab?.url)throw Error('Invalid capture sender');
     if(!Array.isArray(message.items)||!message.items.length||message.items.length>100)
      throw Error('Invalid capture items');
-    const origin=new URL(sender.tab.url).origin;
     if(message.items.some(item=>{
-      try{return new URL(item?.url).origin!==origin || new URL(item?.source_key).origin!==origin;}
+      try{return !captureSourceMatches(sender.tab.url,item?.url)||
+        !captureSourceMatches(sender.tab.url,item?.source_key);}
       catch{return true;}
     }))throw Error('Source origin mismatch');
     return acceptItems(message.items);
