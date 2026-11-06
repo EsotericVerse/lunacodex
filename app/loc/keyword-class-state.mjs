@@ -10,10 +10,8 @@ export function keywordClassState(config={},classUid=''){
   if(record&&typeof record==='object'){
     return record.completedAt?record:null;
   }
-  // Once by_class exists, a missing Class entry is genuinely stale.
-  // Never mistake another Class's scope-level staticstime for completion.
-  if(!Object.hasOwn(meta,'by_class')&&meta.class_uid===classUid&&config.staticstime)
-    return {...meta,completedAt:config.staticstime};
+  // Completion belongs exclusively to by_class[Class UID]; never fall back
+  // to a shared scope-wide date, even for the configured default Class.
   return null;
 }
 export function invalidateKeywordClass(meta={},classUid=''){
