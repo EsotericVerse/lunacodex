@@ -2,14 +2,15 @@
   "manifest_version": 3,
   "name": "LOC Galaxy",
   "short_name": "LOC Galaxy",
-  "version": "0.6.5",
+  "version": "0.6.6",
   "description": "LOC Galaxy website Clerk Session bridge, private Galaxy recording and ChatGPT capture.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAoE0hSVGOWXA38Fq1SSwSj6k4ClhS+Ag0huhjg7gbfLXZP6KoEeH5q5i3xB8R8wQp775ESRvDCGy/fUMVlTXoQ0ZbEMKH8w9SraWHTSRDcBVX7HhQ0aiFdm1FEWxW8tUZV8klNNOTl64MKK91VXoIwgyIYYE0I2fwfHNC2tfEAvHBlDsMdZVCH9XuMFQsRocfzFWcwiOmjqRkdd0LauDAjvlPnwJ8aaZgfAmK0RZ18I6goGDupik9auieomExGIqQUXAFW9iCpg23wDelehwQN//uOaFKHetYhdXmDk01NeOB87dffrQzP6lxuL+uwmTiGNfOWzWWbqN3vHAeLjSS7QIDAQAB",
   "permissions": [
     "identity",
     "storage",
     "scripting",
-    "alarms"
+    "alarms",
+    "contextMenus"
   ],
   "host_permissions": [
     "https://loc.lo3rwang.cc/*",
