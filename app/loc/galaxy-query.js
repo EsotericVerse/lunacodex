@@ -455,12 +455,14 @@ export async function selectGalaxyIdentity(scope,uid,{includeHidden=false}={}){
     article_day:day};
 }
 
+import {portableContainsTerm} from './providers/portable-search.mjs';
+
 function literalPattern(value){
   return '%'+String(value||'').trim().replace(/\\/g,'\\\\').replace(/%/g,'\\%').replace(/_/g,'\\_')+'%';
 }
 function orExpression(fields,term){
-  const pattern=literalPattern(term).replace(/"/g,'\\"');
-  return fields.map(field=>field+'.ilike."'+pattern+'"').join(',');
+  const literal=portableContainsTerm(term);
+  return fields.map(field=>field+'.contains."'+literal+'"').join(',');
 }
 function applyParsedTerms(query,fields,parsed,and=[],nor=[]){
   const groups=(parsed.groups.length?parsed.groups:[[]]).map(group=>unique([...group,...and])).filter(group=>group.length);
@@ -470,8 +472,7 @@ function applyParsedTerms(query,fields,parsed,and=[],nor=[]){
     query=query.or(groups.map(group=>'and('+group.map(term=>'or('+orExpression(fields,term)+')').join(',')+')').join(','));
   }
   for(const term of unique([...parsed.excludes,...nor])){
-    const pattern=literalPattern(term);
-    for(const field of fields)query=query.not(field,'ilike',pattern);
+    for(const field of fields)query=query.not(field,'contains',term);
   }
   return query;
 }
