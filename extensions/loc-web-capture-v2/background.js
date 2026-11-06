@@ -111,14 +111,27 @@ function ready(rows){
  return rows.length && (new Set(rows.map(x=>x.group_id)).size>=AUTO_CAPTURE_COUNT ||
   sizeOf(rows)>=MAX_BYTES);
 }
+async function queueCount(){
+ const db=await openDb();
+ return new Promise((resolve,reject)=>{
+  const tx=db.transaction(STORE,'readonly');
+  const req=tx.objectStore(STORE).count();
+  req.onsuccess=()=>resolve(req.result);
+  req.onerror=()=>reject(req.error);
+  tx.oncomplete=()=>db.close();
+ });
+}
 async function acceptItems(items){
- const {locTargetScope='lo3rwang'}=await chrome.storage.local.get('locTargetScope');
+ const {locTargetScope='lo3rwang',locImportPaused=false}=
+  await chrome.storage.local.get(['locTargetScope','locImportPaused']);
  const events=await toEvents(items,locTargetScope);
  if(!events.length)return {message:'沒有可擷取的內容'};
  const inserted=await putEvents(events);
+ // When the website is unavailable, leave the queue alone and avoid
+ // repeatedly loading/serializing every pending capture on each scroll.
+ if(locImportPaused)return {message:'已保留 Queue：'+inserted+' 筆',queued:await queueCount()};
  const all=await allEvents();
- const paused=(await chrome.storage.local.get('locImportPaused')).locImportPaused;
- if(ready(all)&&!paused)void flush(false).catch(()=>{});
+ if(ready(all))void flush(false).catch(()=>{});
  return {message:'新加入 Queue：'+inserted+' 筆（重複擷取已略過）',queued:all.length};
 }
 function packet(rows){
