@@ -364,27 +364,34 @@ test('empty visit batches return without needing a Trace write table',async()=>{
   assert.deepEqual(states,[{phase:'補齊定錨打卡時間',completed:0,total:0}]);
 });
 
-test('unified Point visit repair fills only NULL createtime with earliest source time',async()=>{
-  const stored=new Map([
-    ['AB12abcd',null],
-    ['CD34abcd','2025-02-01T00:00:00.000Z']
+
+test('unified Point collects all distinct visit instants across location aliases',async()=>{
+  const attrsByUid=new Map([
+    ['AB12abcd',{longitude:121.49,latitude:25.05,location:['A','B'],
+      times:['2024-06-02T00:00:00.000Z']}],
+    ['CD34abcd',{longitude:121.50,latitude:25.06}]
   ]);
+  const timesByUid=new Map([...attrsByUid].map(([uid,attr])=>[uid,attr.times||[]]));
+  const createtimeByUid=new Map([
+    ['AB12abcd',null],['CD34abcd','2025-02-01T00:00:00.000Z']
+  ]);
+  const stored=new Map([...attrsByUid].map(([uid,attr])=>[uid,structuredClone(attr)]));
   const writes=[];
   const relation=table=>({
     update:values=>({
-      eq:(column,uid)=>{
+      eq:(key,uid)=>{
+        assert.equal(key,'uid');
         assert.equal(table,'silver.lo3rwang_anchor');
-        assert.equal(column,'uid');
-        return {eq:(typeColumn,type)=>{
-          assert.equal(typeColumn,'type');
-          assert.equal(type,'point');
-          return {is:(column,value)=>{
-            assert.equal(column,'createtime');
-            assert.equal(value,null);
+        return {eq:(typeKey,type)=>{
+          assert.equal(typeKey,'type');assert.equal(type,'point');
+          return {eq:(attrKey,prior)=>{
+            assert.equal(attrKey,'attr');
             return {select:async()=>{
-              writes.push({uid,createtime:values.createtime});
-              if(!stored.has(uid)||stored.get(uid)!==null)return {data:[],error:null};
-              stored.set(uid,values.createtime);
+              const old=stored.get(uid);
+              if(!old||JSON.stringify(old)!==JSON.stringify(prior))
+                return {data:[],error:null};
+              stored.set(uid,structuredClone(values.attr));
+              writes.push({uid,values});
               return {data:[{uid}],error:null};
             }};
           }};
@@ -392,27 +399,55 @@ test('unified Point visit repair fills only NULL createtime with earliest source
       }
     })
   });
-  const input=[
+  const visits=[
     {uid:'AB12abcd',time:'2024-06-03T00:00:00Z'},
     {uid:'AB12abcd',time:'2024-06-01T00:00:00Z'},
     {uid:'AB12abcd',time:'2024-06-01T00:00:00Z'},
     {uid:'CD34abcd',time:'2025-06-01T00:00:00Z'},
     {uid:'BAD',time:'2026-01-01T00:00:00Z'}
   ];
-  const first=await recordImportPlaceVisits(input,{relation,table:'silver.lo3rwang_anchor'});
-  assert.deepEqual(first,{updated:1,added:1});
-  assert.equal(stored.get('AB12abcd'),'2024-06-01T00:00:00.000Z');
-  assert.equal(stored.get('CD34abcd'),'2025-02-01T00:00:00.000Z');
-  const repeated=await recordImportPlaceVisits(input,{relation,table:'silver.lo3rwang_anchor'});
-  assert.deepEqual(repeated,{updated:0,added:0});
-  assert.equal(writes.length,4);
+  const options={relation,table:'silver.lo3rwang_anchor',
+    attrsByUid,timesByUid,createtimeByUid};
+  const first=await recordImportPlaceVisits(visits,options);
+  assert.deepEqual(first,{updated:2,added:3});
+  assert.deepEqual(stored.get('AB12abcd').location,['A','B']);
+  assert.deepEqual(stored.get('AB12abcd').times,[
+    '2024-06-01T00:00:00.000Z','2024-06-02T00:00:00.000Z','2024-06-03T00:00:00.000Z']);
+  assert.deepEqual(stored.get('CD34abcd').times,['2025-06-01T00:00:00.000Z']);
+  assert.equal(createtimeByUid.get('AB12abcd'),'2024-06-01T00:00:00.000Z');
+  assert.equal(createtimeByUid.get('CD34abcd'),'2025-02-01T00:00:00.000Z');
+  assert.equal(writes.find(row=>row.uid==='CD34abcd').values.createtime,undefined);
+  assert.deepEqual(await recordImportPlaceVisits(visits,options),{updated:0,added:0});
+  assert.equal(writes.length,2,'repeated repairs issue zero writes');
 });
 
-test('unified Point repair never adds attr.times or overwrites Point attr',async()=>{
-  const source=readFileSync(new URL('../app/loc/import-place-anchors.mjs',import.meta.url),'utf8');
+test('Point times are allowed only on the typed Point attr contract',async()=>{
+  const {toAnchorRow,fromAnchorRow}=await import('../app/loc/unified-anchor-compat.mjs');
+  const spec={kind:'trace',legacy:'trace'};
+  const row=toAnchorRow(spec,{uid:'AB12abcd',type:'point',title:'合併地點',
+    times:['2026-11-02T16:00:00+08:00','2026-11-02T08:00:00Z',
+      '2026-11-03T08:00:00Z','invalid']});
+  assert.deepEqual(row.attr.times,['2026-11-02T08:00:00.000Z','2026-11-03T08:00:00.000Z']);
+  assert.deepEqual(fromAnchorRow(spec,row).times,row.attr.times);
+  const migration=readFileSync(new URL('../supabase/migrations/20261106223000_point_attr_times_allowance.sql',
+    import.meta.url),'utf8');
+  assert.match(migration,/WHEN type='point'/);
+  assert.match(migration,/attr - 'longitude' - 'latitude' - 'location' - 'times'/);
+  assert.match(migration,/jsonb_typeof\(attr->'times'\)='array'/);
   const panel=readFileSync(new URL('../app/loc/ManagementImportPanel.jsx',import.meta.url),'utf8');
-  assert.match(source,/update\(\{createtime\}\)/);
-  assert.match(source,/\.eq\('type','point'\)\.is\('createtime',null\)/);
-  assert.doesNotMatch(source,/update\(\{attr:.*times/);
-  assert.match(panel,/Point 來源時間補齊/);
+  const reconcile=readFileSync(new URL('../app/loc/reconcile-import-anchors.mjs',import.meta.url),'utf8');
+  assert.match(panel,/Point 造訪時間新增/);
+  assert.match(reconcile,/place_id\.not\.is\.null/);
+});
+
+test('Point merge unions saved times and Galaxy timestamps before deleting source UIDs',()=>{
+  const source=readFileSync(new URL('../app/loc/providers/kysely-management.mjs',import.meta.url),'utf8');
+  const merge=source.slice(source.indexOf('async function mergeScopePoints('),
+    source.indexOf('async function importSharedKeywordClass('));
+  assert.match(merge,/jsonb_array_elements_text/);
+  assert.match(merge,/g\.place_id=any/);
+  assert.match(merge,/g\.createtime is not null/);
+  assert.match(merge,/\{times\}/);
+  assert.match(merge,/jsonb_set\(attr,'\{location\}'/);
+  assert.ok(merge.indexOf('const sources=await sql')<merge.indexOf("set({place_id:keep})"));
 });
