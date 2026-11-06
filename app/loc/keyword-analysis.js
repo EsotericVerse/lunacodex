@@ -133,9 +133,8 @@ export async function runKeywordAnalysisBatch(scopeId,{classUid:requestedClassUi
   const eligibleCount=await keywordEligibleCount(scope);
   // Mark only this Class stale; other Classes keep their completed results.
   const staleMeta=invalidateKeywordClass(config.keyword_meta,classUid);
-  const isCurrent=classUid===String(config.current_keyword_class_uid||'');
   const {data:staled,error:staleError}=await dbAuthRelation(scope.config)
-    .update({keyword_meta:staleMeta,...(isCurrent?{staticstime:null}:{})})
+    .update({keyword_meta:staleMeta,staticstime:null})
     .eq('id',id).select('id');
   if(staleError||staled?.length!==1)
     throw new Error(staleError?.message||'無法標記 Class 重新分析狀態');
@@ -204,12 +203,11 @@ export async function runKeywordAnalysisBatch(scopeId,{classUid:requestedClassUi
         .select('keyword_meta,current_keyword_class_uid').eq('id',id).limit(1);
       if(readError||latest?.length!==1)
         throw new Error(readError?.message||'無法讀取最新 Class 狀態');
-      const isActiveNow=String(latest[0].current_keyword_class_uid||'')===classUid;
       const saved=completeKeywordClass(latest[0].keyword_meta,classUid,meta,now);
       const {data,error}=await dbAuthRelation(scope.config)
         .update({
           keyword_meta:saved,
-          ...(isActiveNow?{staticstime:now}:{}),updated_at:now
+          staticstime:null,updated_at:now
         })
         .eq('id',id).select('id');
       if(error||data?.length!==1)throw new Error(error?.message||'Keywords 結果保存失敗');
