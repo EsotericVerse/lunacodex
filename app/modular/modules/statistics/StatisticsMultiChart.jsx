@@ -3,7 +3,7 @@
 import {cloneElement,useMemo,useState} from 'react';
 import {useAsyncResource} from '../../../loc/use-async-resource';
 import {UI_COPY,registerDefaultSection} from '../../../i18n/ui-copy';
-import {RUNE_RANKING_PAGE_SIZE,availableStatisticChartTypes,semanticStatisticChartTypes,nonemptySeries,normalizeDistribution,movingAverage,scatterPair,radarPeriodComparison,activePeriodCoverage,number,color,pointColor} from './statistics-time-zoom.mjs';
+import {RUNE_RANKING_PAGE_SIZE,availableStatisticChartTypes,semanticStatisticChartTypes,preferredStatisticChartType,nonemptySeries,normalizeDistribution,movingAverage,scatterPair,radarPeriodComparison,activePeriodCoverage,number,color,pointColor} from './statistics-time-zoom.mjs';
 export {STAT_VISUAL_TYPES,availableStatisticChartTypes} from './statistics-time-zoom.mjs';
 import {useUiLocale,useUiSection} from '../../../i18n/ui-locale';
 import UiText,{useUiText} from '../../../i18n/UiText';
@@ -309,7 +309,7 @@ export function Rune66Summary({analysis,range={},scopeId=''}){
   const options=semanticStatisticChartTypes({purpose:'keyword',rows:trendRows,series,distribution})
     .filter(([kind])=>shown==='both'?kind==='bar'
       :shown==='group'&&trendRows.length>0||['bar','pie','treemap'].includes(kind));
-  const actualChart=options.some(([kind])=>kind===chartType)?chartType:(options.find(([kind])=>kind==='bar')?.[0]||options[0]?.[0]||'bar');
+  const actualChart=preferredStatisticChartType({purpose:'keyword',available:options,requested:chartType});
   if(!data.staticstime)return null;
   if(!data.statisticsEnabled)return <div className="scope-ranking">
     <div><strong>{setLabel}</strong><span>{globalCount.toLocaleString()} / {minDocuments.toLocaleString()}</span></div>
