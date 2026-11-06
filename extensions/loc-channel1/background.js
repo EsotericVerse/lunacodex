@@ -1,6 +1,8 @@
 const MENU='loc-channel1-save';
 const DB_NAME='loc-channel1-queue',STORE='pending';
 const MAX_BATCH_BYTES=600000, MAX_TEXT_CHARS=140000;
+const CONFIG_URL='https://loc.lo3rwang.cc/extension/oauth/config.json';
+const AUTH_KEYS=['locOAuth','locConfig'];
 let processing=null;
 function dbOpen(){
  return new Promise((resolve,reject)=>{
@@ -90,21 +92,124 @@ async function stableBatchId(records){
  const h=Array.from(bits,b=>b.toString(16).padStart(2,'0')).join('');
  return h.slice(0,8)+'-'+h.slice(8,12)+'-'+h.slice(12,16)+'-'+h.slice(16,20)+'-'+h.slice(20);
 }
+
+function encode64(bytes){
+ let binary='';for(const byte of bytes)binary+=String.fromCharCode(byte);
+ return btoa(binary).replaceAll('+','-').replaceAll('/','_').replace(/=+$/,'');
+}
+function oauthError(message){return Error('LOC Auth：'+message);}
+async function getConfig(){
+ const res=await fetch(CONFIG_URL,{cache:'no-store',redirect:'error'});
+ if(!res.ok)throw oauthError('尚未提供 Extension 認證設定');
+ const cfg=await res.json();
+ if(!cfg.issuer||!cfg.import_url||!cfg.client_id)
+  throw oauthError('LOC 自有認證與短匯入 API 尚未啟用');
+ const issuer=new URL(cfg.issuer);
+ const api=new URL(cfg.import_url);
+ if(issuer.protocol!=='https:'||api.protocol!=='https:'||
+    !cfg.client_id||typeof cfg.client_id!=='string'||
+    /clerk|supabase|github/i.test(issuer.hostname))
+   throw oauthError('LOC 自有認證尚未啟用，不會使用其他平台登入');
+ const metaUrl=new URL('/.well-known/oauth-authorization-server',issuer);
+ const metaReply=await fetch(metaUrl,{cache:'no-store',redirect:'error'});
+ if(!metaReply.ok)throw oauthError('找不到 LOC OAuth 伺服器');
+ const meta=await metaReply.json();
+ if(meta.issuer!==(issuer.href.endsWith('/')?issuer.href.slice(0,-1):issuer.href)||
+    !meta.authorization_endpoint||!meta.token_endpoint)
+   throw oauthError('授權伺服器資訊不完整');
+ for(const endpoint of [meta.authorization_endpoint,meta.token_endpoint]){
+  if(new URL(endpoint).protocol!=='https:')throw oauthError('OAuth 端點必須使用 HTTPS');
+ }
+ const config={issuer:meta.issuer,client_id:cfg.client_id,import_url:api.href,
+  authorization_endpoint:meta.authorization_endpoint,token_endpoint:meta.token_endpoint,
+  scope:cfg.scope||'loc:import'};
+ await chrome.storage.local.set({locConfig:config});
+ return config;
+}
+async function exchange(config,body){
+ const res=await fetch(config.token_endpoint,{method:'POST',
+  headers:{'content-type':'application/x-www-form-urlencoded'},
+  body:new URLSearchParams({...body,client_id:config.client_id}).toString(),
+  redirect:'error',cache:'no-store'});
+ if(!res.ok)throw oauthError('Token 交換失敗（HTTP '+res.status+'）');
+ const json=await res.json();
+ if(!json.access_token||json.token_type?.toLowerCase()!=='bearer')
+  throw oauthError('伺服器未回傳 Bearer Token');
+ return json;
+}
+async function connectLoc(){
+ const cfg=await getConfig();
+ const verifier=encode64(crypto.getRandomValues(new Uint8Array(32)));
+ const digest=new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(verifier)));
+ const state=crypto.randomUUID();
+ const redirect=chrome.identity.getRedirectURL('loc');
+ const authorization=new URL(cfg.authorization_endpoint);
+ for(const [key,val] of Object.entries({response_type:'code',client_id:cfg.client_id,
+  redirect_uri:redirect,scope:cfg.scope,state,code_challenge:encode64(digest),
+  code_challenge_method:'S256'}))authorization.searchParams.set(key,val);
+ const returned=await chrome.identity.launchWebAuthFlow({url:authorization.href,interactive:true});
+ if(!returned||!returned.startsWith(redirect+'?'))throw oauthError('授權回呼無效');
+ const result=new URL(returned),code=result.searchParams.get('code');
+ if(result.searchParams.get('state')!==state||!code||result.searchParams.get('error'))
+  throw oauthError('授權失敗或驗證碼不符');
+ const tokens=await exchange(cfg,{grant_type:'authorization_code',code,redirect_uri:redirect,
+  code_verifier:verifier});
+ await chrome.storage.local.set({locOAuth:{
+  access_token:tokens.access_token,refresh_token:tokens.refresh_token||null,
+  expires_at:Date.now()+Math.max(0,Number(tokens.expires_in||300)-60)*1000}});
+ return {connected:true};
+}
+let refreshFlight=null;
+async function activeToken(){
+ const {locOAuth:tokens,locConfig:cfg}=await chrome.storage.local.get(AUTH_KEYS);
+ if(!tokens||!cfg)throw oauthError('請先在設定頁連接 LOC');
+ if(tokens.access_token&&tokens.expires_at>Date.now())return tokens.access_token;
+ if(!tokens.refresh_token)throw oauthError('授權已過期，請重新連接 LOC');
+ if(refreshFlight)return refreshFlight;
+ refreshFlight=(async()=>{
+  const refreshed=await exchange(cfg,{grant_type:'refresh_token',refresh_token:tokens.refresh_token});
+  const next={access_token:refreshed.access_token,
+   refresh_token:refreshed.refresh_token||tokens.refresh_token,
+   expires_at:Date.now()+Math.max(0,Number(refreshed.expires_in||300)-60)*1000};
+  await chrome.storage.local.set({locOAuth:next});
+  return next.access_token;
+ })().finally(()=>{refreshFlight=null;});
+ return refreshFlight;
+}
+chrome.runtime.onMessage.addListener((message,_sender,respond)=>{
+ if(message?.action==='loc-connect'){
+  connectLoc().then(respond).catch(error=>respond({connected:false,error:error.message}));
+  return true;
+ }
+ if(message?.action==='loc-disconnect'){
+  chrome.storage.local.remove(AUTH_KEYS).then(()=>respond({disconnected:true}))
+   .catch(e=>respond({error:e.message}));
+  return true;
+ }
+ if(message?.action==='loc-status'){
+  chrome.storage.local.get(AUTH_KEYS).then(s=>respond({
+    connected:Boolean(s.locOAuth?.refresh_token||s.locOAuth?.expires_at>Date.now()),
+    configured:Boolean(s.locConfig)})).catch(e=>respond({error:e.message}));
+  return true;
+ }
+});
+
 async function flush(){
  if(processing)return processing;
  processing=(async()=>{
-  const {endpoint,token}=await chrome.storage.local.get(['endpoint','token']);
-  if(!endpoint||!token)throw Error('尚未設定 KV Worker URL 與寫入 Token');
+  const token=await activeToken();
+  const {locConfig:config}=await chrome.storage.local.get('locConfig');
+  if(!config?.import_url)throw oauthError('未設定 LOC 短匯入 API');
   const pending=(await allPending()).sort((a,b)=>a.captured_at.localeCompare(b.captured_at));
   for(const records of batches(pending)){
    const batch={id:await stableBatchId(records),records};
-   const reply=await fetch(endpoint.replace(/\/$/,'')+'/v1/batch',{
+   const reply=await fetch(config.import_url,{
     method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+token},
     body:JSON.stringify(batch)
    });
-   if(!reply.ok)throw Error('KV 寫入失敗：HTTP '+reply.status);
+   if(!reply.ok)throw Error('LOC 匯入失敗：HTTP '+reply.status);
    const result=await reply.json();
-   if(!result.accepted||result.id!==batch.id)throw Error('KV 未確認批次寫入');
+   if(!result.accepted||result.id!==batch.id)throw Error('LOC 未確認匯入批次');
    for(const item of records)await acknowledge(item.id);
   }
   return pending.length;
@@ -130,7 +235,7 @@ chrome.contextMenus.onClicked.addListener((info,tab)=>{
 });
 chrome.alarms.onAlarm.addListener(e=>{
  if(e.name==='loc-channel1-retry'||e.name==='loc-channel1-drain')
-  flush().then(count=>{if(count)badge(true,'已送達 KV：'+count+' 筆');}).catch(err=>{
+  flush().then(count=>{if(count)badge(true,'已送達 LOC：'+count+' 筆');}).catch(err=>{
    console.warn('[LOC Queue retry]',err.message);badge(false,err.message);
   });
 });

@@ -1,57 +1,42 @@
-# LOC Channel 1 — Chrome Extension / CLI / KV / Galaxy
+# LOC 網頁短匯入 — Chrome Extension MV3
 
-## What the user gets
+## 新職責（0.3.0）
 
-Chrome → `chrome://extensions` → Developer mode → Load unpacked:
-`extensions/loc-channel1` in this repository (after its branch is merged and GitHub Desktop Pull completes).
+本 Extension 只在使用者主動按右鍵時，解析已載入的網頁 DOM，保留網頁網址、標題與來源；不讀取看不到的虛擬化歷史，不取代 LOC 網站的大量 ZIP／JSON 匯入。
+它不是 MCP 對話 Recorder。MCP 對話紀錄由 `mcp.lo3rwang.cc` 的 MCP Server 管理。
 
-Right-click the current web page → **LOC：解析並儲存此頁**. It parses the loaded DOM, removing menus, controls, header/footer and hidden elements. No highlighted-text capture and no claim to have the entire history of a virtualized page. The capture records source URL, title, observed timestamp and `completeness: loaded-dom-only`.
+- 第一次使用時按「連接 LOC」，以 Chrome 原生 `chrome.identity.launchWebAuthFlow` 執行 OAuth 授權碼 + PKCE S256。
+- Auth 完全由 LOC 自有 OAuth Authorization Server 提供；Extension 不啟動網站 Clerk Bridge、不取得 Clerk Session、不使用 Supabase 或 GitHub OAuth。
+- Token 有效時重用；過期且伺服器核發 refresh_token 時自動更新。被撤銷或無法刷新時才需要重新連線。
+- 內容只先寫在本機 IndexedDB Queue，待 LOC 短匯入 API **完整確認**批次 ID 後刪除；沒有 KV Worker 或 KV Cron 路徑。
+- 短匯入 API 需做到同一批次 ID 重送時不重複寫入，否則離線重試可能造成重複文章。
 
-User capture is **not ChatGPT-specific**: Claude, Threads, Instagram, Facebook, GitHub and generic loaded web pages share the parser. A safe body fallback is attempted only when main/article nodes are absent. The user must already be allowed to view the content in the browser; the extension does not bypass site logins.
+## 連線契約（LOC Auth 與短匯入 API 須提供）
 
-## PC queue
+Extension 從 `https://loc.lo3rwang.cc/extension/oauth/config.json` 取得**公開**連線設定：
 
-- Browser service-worker uses persistent **IndexedDB**, not `chrome.storage.local` for large content.
-- A large page is split into ordered chunks with stable `group_id`, `part_index`, `part_count` and independent UUIDs; text is not silently truncated.
-- Upload begins after 30 seconds of inactivity (Chrome Alarm); failures remain in IndexedDB for retry every five minutes.
-- Uploads are serialized, 50 items or 600 KB per batch, whichever comes first. A batch is acknowledged only when KV confirms it. Its ID derives deterministically from included item IDs.
-- If Chrome is shut down or the network is unavailable, pending chunks remain stored on the PC until later retry.
-- Changing the site or opening an unrelated browser page never triggers automatic recording.
+```json
+{
+  "issuer": "https://<LOC-managed-auth-origin>",
+  "client_id": "<LOC-public-oauth-client-id>",
+  "import_url": "https://<LOC-import-origin>/v1/import/short",
+  "scope": "loc:import"
+}
+```
 
-## Cloudflare
+尖括號均為說明用佔位符，**不能直接用於正式環境**。另一邊的 LOC Auth 開發者負責確定最後網址與 client_id；不是要求使用者每次設定。此檔案舊版仍指向 Clerk 時，Extension 應拒絕而不是使用舊 OAuth。
 
-Reuses existing `LOC_KV` namespace `69132df38f8f43a6a40cae39ebfe5460`. The Worker code lives in `workers/loc-channel1`, deployed under unused Worker name **`loc-auth`** (the third Worker). There is no Google OAuth, Google Sheets authorization, Clerk OAuth, or `scopeid` in the KV intake.
+`issuer` 需提供 OAuth Authorization Server Metadata：`/.well-known/oauth-authorization-server`，含 `issuer`、`authorization_endpoint`、`token_endpoint`，並登錄 Chrome callback `https://<extension-id>.chromiumapp.org/loc`。支援 Authorization Code + PKCE（S256），如需長期免重新登入應提供 Refresh Token。
 
-- `POST /v1/batch`: one-way authenticated write. A long-lived, write-scoped HS256 JWT with `record:create` grants no read/list/search.
-- KV keys: `pending/<UUID>` and (after Galaxy acknowledgement) `archive/<UUID>`. Old Google Sheets keys were deleted at user request.
-- Worker Cron `0 * * * *`: first lists `pending/`. Empty → exit with **zero Galaxy calls**. Otherwise sequentially uploads batches. Failed batches are never deleted.
-- There is **no** public route to trigger the hourly push, and no CLI direct Galaxy access.
-- A per-PC queue and hourly Cron are serialized; KV itself does not provide a global atomic one-reader/one-writer lock across all devices.
+短匯入端點採 HTTPS Bearer LOC access_token，收到
+`{"id":"<stable-uuid>","records":[...]}`，
+確認整批已原子保存或冪等重送時回
+`{"accepted":true,"id":"<same-uuid>"}`。
+未確認即保留 IndexedDB Queue，不宣稱已儲存。
 
-## Private Galaxy service
+## 邊界與驗收
 
-Receiver source: `supabase/functions/loc-channel1-ingest/index.ts`, using the repository's existing Kysely driver.
-
-- One fixed server-side destination controlled by `LOC_CHANNEL1_GALAXY_DESTINATION=lo3rwang` (or `lrunes`). The browser, CLI and KV records cannot choose a database or Scope.
-- An independent service secret authorizes Worker → receiver. It must match on both sides.
-- Original text is stored in `content`, with `site`, `site_id`, `title` and `url`. `createtime`/`date` are **not invented from capture time**. Long pages remain identifiable as ordered segments.
-- All eight Galaxy visibility flags are false by default.
-- Kysely transaction with PostgreSQL advisory lock and batch `site_id` lookup prevents duplicate inserts on retries, without any new table, index, trigger or RPC.
-
-## Configuration and release requirements
-
-The following server-side setup must succeed **before** asking the user to install and test:
-
-1. In Cloudflare `loc-auth`: configure secret `LOC_CHANNEL1_SECRET` (HS256 signing key, 32+ random characters). Use the private operator-only script `scripts/loc-channel1-mint-token.mjs` to issue the write-only JWT.
-2. In Cloudflare `loc-auth`: configure secret `LOC_GALAXY_SYNC_SECRET`, and `LOC_GALAXY_SYNC_URL=https://qlouywsdiiyiyzpoxyqy.supabase.co/functions/v1/loc-channel1-ingest`. Keep the current `LOC_KV` binding.
-3. In Supabase Edge secrets: set `LOC_CHANNEL1_GALAXY_SECRET` to the same value as `LOC_GALAXY_SYNC_SECRET`, plus `LOC_CHANNEL1_GALAXY_DESTINATION` to the intended fixed scope. Deploy `loc-channel1-ingest` with JWT gateway validation disabled **because the handler verifies its own service secret**.
-4. Configure Cloudflare `loc-auth` hourly Cron (it is in `workers/loc-channel1/wrangler.jsonc`).
-5. From the extension Options page, enter the Worker HTTPS URL and the write-only JWT **once**. Never put signing keys, database passwords or service synchronization credentials into the Extension, GitHub source or the browser.
-
-The LOC website's unrelated Clerk login remains untouched. No further KV schema migration is required. Secret provisioning must be verified separately from code deployment.
-
-## Tests
-
-`node --test scripts/test-loc-channel1-worker.mjs`
-
-This tests JWT rejection, malformed batches, idempotent KV acceptance, zero Galaxy requests without pending records, and persistence on failed Galaxy acknowledgement. Integration smoke testing must also verify the actual published Worker URL, Supabase function response, Cron schedule, and a private Galaxy record before claiming full production readiness.
+- 本分支只改 Extension，不更動 LOC Auth、MCP Router、Edge、資料庫 Schema 或舊網站登入。
+- Extension 的新連線在 LOC Auth 公開設定／短匯入 API 尚未部署之前，**尚不能正式使用**；絕不可用現有 Clerk issuer 假裝通過驗收。
+- Chrome `identity` 是瀏覽器內建 API，不依賴外加 npm OAuth 庫。
+- 實際安裝前需驗證 LOC Auth discovery、Chrome callback、refresh_token、短匯入 API 收件回執、斷網重送及 Gallery 實際落庫；模擬測試不等於端到端通過。

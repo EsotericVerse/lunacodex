@@ -1,23 +1,26 @@
 {
   "manifest_version": 3,
-  "name": "LOC Channel 1",
-  "version": "0.2.0",
-  "description": "User-initiated save to LOC KV, without Clerk or scopeid",
+  "name": "LOC 網頁短匯入",
+  "version": "0.3.0",
+  "description": "LOC Auth 一次授權；使用者主動擷取網頁並直接短匯入 LOC，不經 Clerk 或 KV",
   "permissions": [
     "contextMenus",
     "activeTab",
     "scripting",
     "storage",
-    "alarms"
+    "alarms",
+    "identity"
   ],
   "host_permissions": [
-    "<all_urls>"
+    "https://loc.lo3rwang.cc/*",
+    "https://mcp.lo3rwang.cc/*",
+    "https://*/*"
   ],
   "background": {
     "service_worker": "background.js"
   },
   "options_page": "options.html",
   "action": {
-    "default_title": "LOC Channel 1 settings"
+    "default_title": "LOC 網頁短匯入設定"
   }
 }
