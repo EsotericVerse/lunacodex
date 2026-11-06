@@ -19,7 +19,6 @@ function modelFields(model,fields){
 const MANAGE_ROUTE_FIELDS=modelFields(FIXED_MODELS.manage,
   ['id','domain','directory','parent_scope_id','active','sort_order','manage_role']);
 const LOC_NAME_FIELDS=modelFields(FIXED_MODELS.loc,['id','display_name','locale','birthday']);
-void LOC_NAME_FIELDS;
 function fail(message,status=400){throw Object.assign(new Error(message),{httpStatus:status});}
 function scope(value){const id=String(value??'').trim().toLowerCase();
   if(!ID.test(id))fail('Invalid Scope ID');return id;}
@@ -248,8 +247,9 @@ async function provisionScope(trx,args){
   // New Scope policies must NOT call api.manage() or any database Auth RPC.
   const canUseScope=sql`coalesce(
     (current_setting('request.jwt.claims',true)::jsonb -> 'grants')
-       ? ${sql.lit(id+':manage')},
-    false)`;
+       ? ${sql.lit(id+':manage')}
+    or (current_setting('request.jwt.claims',true)::jsonb -> 'grants')
+       ? 'global:manage',false)`;
   await sql`create policy ${sql.ref(id+'_config_public_read')} on ${config}
     for select to anonymous,authenticated using (true)`.execute(trx);
   await sql`create policy ${sql.ref(id+'_config_scope_update')} on ${config}
@@ -294,9 +294,10 @@ async function provisionScope(trx,args){
     current_keyword_class_uid:cloned?.uid||null,keyword_class_share_enabled:false,
     keyword_meta:sql`'{}'::jsonb`,staticstime:null,updated_at:sql`now()`
   }).executeTakeFirst();
-  await trx.insertInto('silver.loc').values({
-    id,display_name:display,locale:'zh-Hant',birthday:args.p_birthday||null
-  }).executeTakeFirst();
+  await trx.insertInto('silver.loc').values(Object.fromEntries(
+    LOC_NAME_FIELDS.map(field=>[field,({
+      id,display_name:display,locale:'zh-Hant',birthday:args.p_birthday||null
+    })[field]]))).executeTakeFirst();
   await sql`notify pgrst,'reload schema'`.execute(trx);
   return {scope_id:id,display_name:display,parent_scope_id:parent,
     route_mode:domain?'domain':'directory',route_value:domain||directory,
