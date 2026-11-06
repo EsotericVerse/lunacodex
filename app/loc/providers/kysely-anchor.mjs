@@ -136,6 +136,9 @@ export async function executeKyselyAnchor(trx,body,{role='anon'}={}){
     Object.keys(attr).some(field=>!allowedFields.has(field)))
     reject('Invalid Scope/Anchor request');
   const op=String(attr.op||'read');
+  // Source node writes must pass the authoritative Scope ownership and
+  // UID-link validation in the existing managed-action boundary.
+  if(sourceTypes.has(type)&&op!=='read')reject('Use authorized source catalog write',403);
   if(!['read','catalog','suggestions','insert','update','patch','link','delete'].includes(op))
     reject('Invalid Anchor operation');
   const registry=await trx.selectFrom('api.manage')
@@ -221,6 +224,7 @@ export async function executePortableKyselyAnchor(db,body,{role='anon',engine,na
      Object.keys(data).some(key=>!allowedFields.has(key)))
     reject('Invalid portable Anchor request');
   const op=String(data.op||'read'),uid=data.uid==null?null:String(data.uid);
+  if(sourceTypes.has(type)&&op!=='read')reject('Use authorized source catalog write',403);
   if(uid&&!uidPattern.test(uid))reject('Invalid UID');
   const table=portableRelation(scope+'_anchor',engine,namespace);
   const owner=await isOwner(db,scope,role);
