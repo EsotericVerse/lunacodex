@@ -609,7 +609,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
         </div>:<p className="scope-status">沒有符合基本出現篇數門檻、且尚未收錄的新詞。</p>}
         {infrequentKeywords.length>0?<div>
           <h3>已收錄但低使用的關鍵詞</h3>
-          <p className="scope-status">以下詞語在本次掃描中出現於不超過 1% 的文章；僅供整理參考，不會自動刪除、變更分類或修改 Anchor。</p>
+          <p className="scope-status">以下為長度至少 2 字、文章命中極少的既有詞語（約 1% 門檻；小樣本至少 1 篇）；僅供整理參考，不會自動刪除、變更分類或修改 Anchor。</p>
           <ol className="scope-keyword-discovery-results">
             {infrequentKeywords.map(term=><li key={term.word}>
               <strong>{term.word}</strong>
