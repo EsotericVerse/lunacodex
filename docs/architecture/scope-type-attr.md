@@ -374,3 +374,11 @@ Search 只對 Galaxy `content` 執行模糊比對；進階內容類型只保留�
 - Supabase Query Performance 曾有頂層 `postgres` 診斷查詢（`WITH m AS ... LEFT JOIN galaxy ON a.uid = any(g.media_link)`，包含 `different_times` 和 `orphan`），單次約 62.3 秒；不是網站 overview 所產生的同一段 SQL。查詢只呼叫一次，呼叫者來源未能由 pg_stat_statements 確認。
 - 此診斷的 `LEFT JOIN + count(*)` 無法辨識無文章連結的 Anchor（無匹配也至少一列）；診斷不應加入常態統計載入。過去用於補寫 `anchor.createtime` 的 Migration 保留歷史紀錄，不重跑或改寫。
 - 測試：`scripts/test-kysely-portable-search-summary.mjs` 改驗證不存在多媒體計數 Helper、`overview` 不從 Anchor 或 `media_link` 取數。
+
+## 2026-11-07｜來源分類：共用 Anchor／關鍵詞樹
+
+- 分類層級固定：`universe`（Eosteric）→ `galaxy`（LOC）→ `domain`（各 Scope）→ `from`（Galaxy.site 的來源名稱，例如 facebook）。同名標題可以存在不同層級，真正識別仍以各節點的八碼 Base62 UID 為準。
+- 使用現有 `*_anchor`：父節點 `attr.uid` 是下層節點 UID 陣列，`from` 是葉節點；不新增來源分類專用 SQL 表、Schema 欄位、索引或 RPC。複用 `keyword-tree.mjs` 的 UID 樹引擎，來源的四層對應關鍵詞 `category/class/group/item`。
+- Galaxy 的 `site` 是原始來源比對鍵，`site_id` 是外部來源識別鍵；都必須保留，不得以分類 Anchor UID 取代，避免破壞重新匯入與去重。
+- 原有 `DefaultArticleClass`／`txt_class` 扁平來源清單屬於待切換的舊 UI／統計讀寫路徑；須先完成實體 Anchor 資料與前端讀寫切換，再移除已無人使用的文章列表衍生 `attr`。不以刪除 Schema 欄位作為這次改編。
+- 本次 Branch 已加入 Kysely Anchor type 接受範圍、共用樹及投影函式；尚未完成的舊列表與資料轉換，不得標示為已上線。
