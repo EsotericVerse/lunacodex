@@ -12,6 +12,10 @@ change, RLS or GRANT change, or automatic database introspection at runtime.
 - `zenstack/schema.mjs` maps that frozen metadata into the publicly documented
   ZenStack V3 `SchemaDef` runtime shape without installing its CLI or invoking
   Prisma. Do not represent this bridge as an official `zen generate` output.
+- `zenstack/client.mjs` creates a ZenStack V3 client from a trusted injected
+  Kysely dialect for fixed models. No additional connections are opened by
+  importing the factory; only instantiate it inside the authorized server
+  execution path.
 - `npm run test:module-native` includes
   `scripts/test-fixed-zmodel.mjs` for physical-column parity, primary keys,
   Anchor's extension fields, RPC-free active browser transport and ORM/Kysely
