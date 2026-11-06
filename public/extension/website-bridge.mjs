@@ -9,7 +9,7 @@ const params=new URLSearchParams(location.search);
 const nonce=params.get('nonce')||'';
 const scopeid=params.get('scopeid')||'';
 const valid=/^[a-z][a-z0-9]{0,14}$/.test(scopeid)&&/^[A-Za-z0-9_-]{32,128}$/.test(nonce);
-let currentClerk=null,connectFlight=null,approved=false;
+let currentClerk=null,connectFlight=null,approved=false,nextRenewAt=0;
 function status(message){byId('status').textContent=message;}
 function decodeClaims(token){
   const part=token.split('.')[1];
@@ -113,6 +113,9 @@ async function connectOnce(){
   if(reply.data?.ready!==true)
     throw Error('Extension 已收到授權，但 Scope 核驗未完成');
   approved=true;
+  // Clerk loc-mcp templates can last only one minute. Renew before the
+  // Extension's 15-second safety margin, not at a fixed 45-second interval.
+  nextRenewAt=claims.exp*1000-35000;
   status('已由 LOC 網站 Session 完成 Galaxy 授權。請保留此分頁以自動續期；可切換回 ChatGPT。');
 }
 byId('retry').addEventListener('click',()=>{void connect().catch(error=>status(String(error.message||error)));});
@@ -120,4 +123,13 @@ void connect().catch(error=>status(String(error.message||error)));
 
 // Clerk template tokens are short-lived. While this trusted site tab remains open,
 // renew the dedicated audience-bound grant without asking for interactive OAuth.
-setInterval(()=>{if(approved)void connect().catch(error=>status('授權續期失敗：'+String(error.message||error)));},45000);
+function renewWhenDue(){
+  if(!approved||Date.now()<nextRenewAt||connectFlight)return;
+  void connect().catch(error=>status('授權續期失敗：'+String(error.message||error)));
+}
+// The timer checks readiness only; it does not request JWTs every eight seconds.
+// Recover as soon as the browser foregrounds a throttled authorization page.
+setInterval(renewWhenDue,8000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)renewWhenDue();});
+window.addEventListener('focus',renewWhenDue);
+window.addEventListener('locGalaxy.websiteRenew',renewWhenDue);
