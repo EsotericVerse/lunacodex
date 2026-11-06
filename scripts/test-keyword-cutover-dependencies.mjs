@@ -39,7 +39,8 @@ test('Scope and Keywords cutover uses native Kysely services rather than SQL RPC
   const isr=read('app/api/loc/scopes/[scopeId]/numeric/[kind]/route.js');
   const local=read('app/loc/providers/local-sqlite.mjs');
   assert.match(isr,/name='read_scope_analytics'/);
-  assert.match(local,/case 'read_scope_analytics'/);
+  assert.match(local,/analytics\(args\)\{return localAnalytics\(args\);\}/);
+  assert.doesNotMatch(local,/\.rpc\(/);
   const sql=read('supabase/migrations/20261103173000_scope_suggestions_consolidation.sql');
   assert.match(sql,/DROP FUNCTION silver.read_scope_keyword_suggestions\(text\) RESTRICT/);
   assert.match(sql,/DROP FUNCTION silver.trace_place_suggestions\(text,integer\) RESTRICT/);
