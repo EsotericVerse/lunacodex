@@ -391,3 +391,33 @@ test('both Kysely keyword imports reuse the existing Anchor UID generator withou
   assert.equal(nextFresh(),'New00002');
   assert.equal(serial,2);
 });
+
+test('exact api.manage cutover covers live JavaScript registry and both models',()=>{
+  const files=[
+    '../app/loc/authorization-runtime.mjs',
+    '../app/loc/db-contract.mjs',
+    '../app/loc/providers/kysely-analytics.mjs',
+    '../app/loc/providers/kysely-anchor.mjs',
+    '../app/loc/providers/kysely-management.mjs',
+    '../app/loc/providers/kysely-public.mjs',
+    '../app/loc/providers/kysely-scope-admin.mjs',
+    '../app/loc/providers/loc-authorization.mjs',
+    '../app/loc/scope-data.js',
+    '../app/loc/views/admin-panels/AdminRegistry.jsx',
+    '../app/loc/views/admin-panels/DatabaseTarget.jsx',
+    '../supabase/functions/loc-kysely/index.ts'
+  ];
+  for(const file of files){
+    const code=readFileSync(new URL(file,import.meta.url),'utf8');
+    assert.doesNotMatch(code,/\bsilver\.manage\b/,file+' still references retired registry');
+  }
+  assert.match(source,/model Manage \{[\s\S]*?@@schema\("api"\)/);
+  assert.equal(snapshot.tables.find(t=>t.table==='manage').schema,'api');
+  const migration=readFileSync(new URL(
+    '../supabase/migrations/20261106195000_api_manage_single_routing_registry.sql',import.meta.url
+  ),'utf8');
+  assert.match(migration,/DROP FUNCTION silver\.manage\(text,text\) RESTRICT;/);
+  assert.match(migration,/DROP TABLE silver\.manage RESTRICT;/);
+  assert.match(migration,/CREATE OR REPLACE VIEW api\.lo3rwang_keywords_manage AS/);
+  assert.doesNotMatch(migration,/DROP .*CASCADE/);
+});
