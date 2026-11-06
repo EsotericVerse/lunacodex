@@ -7,11 +7,9 @@ import {useAsyncResource} from './use-async-resource';
 import {dbAuthClient} from './db-client.mjs';
 import {useAccount} from './use-account';
 import {useEditDock,useEditDockForm} from '../modular/edit-dock';
-import {sourceSiteKeyForLabel} from './source-classification.mjs';
 
 const KeywordNetworkEditor=dynamic(()=>import('./KeywordNetworkEditor'),{ssr:false});
 const normalized=name=>String(name||'').trim();
-const sourceName=name=>sourceSiteKeyForLabel(normalized(name));
 const uidKey=(scope,item,index)=>scope+':'+(item.uid||'new:'+index);
 function sourceNodes(catalog,scopeId,editing){
   const root={key:'universe',type:'universe',name:catalog.universe||'Eosteric',parent:null};
@@ -26,7 +24,7 @@ function sourceNodes(catalog,scopeId,editing){
     nodes.push({key:domain,type:'domain',name:record.scopeid,parent:galaxy.key,
       scopeid:record.scopeid});
     const rows=record.scopeid===scopeId?editing:
-      record.sources.length?record.sources:record.legacy.map(name=>({name:sourceName(name)}));
+      record.sources;
     rows.forEach((item,i)=>nodes.push({
       key:uidKey(record.scopeid,item,i),type:'from',name:item.name,
       uid:item.uid||null,scopeid:record.scopeid,parent:domain
@@ -54,16 +52,13 @@ export default function FlatClassificationEditor({scopeId='loc'}){
   },{enabled:allowed});
   const catalog=query.data||{};
   const own=(catalog.scopes||[]).find(row=>row.scopeid===scopeId);
-  const anchored=Boolean(own?.domain);
-  const fallback=own?.legacy?.map(name=>({name:sourceName(name),label:name}))||[];
   const initial=global?(catalog.system||[]).map(name=>({name})):
-    (own?.sources?.length?own.sources:anchored?[]:fallback);
+    (own?.sources||[]);
   const original=useMemo(()=>initial.map(row=>({uid:row.uid,name:row.name,label:row.label||row.name})),
     // SWR values are immutable after a completed request.
     [query.data,scopeId]);
   const rows=draft??original;
   const changed=draft!==null&&JSON.stringify(rows)!==JSON.stringify(original);
-  const legacyPending=!global&&!anchored&&fallback.length>0;
   const graph=useMemo(()=>query.data?sourceNodes(catalog,scopeId,rows):[],
     [query.data,scopeId,rows]);
   const update=(index,name,field='name')=>{setDraft(list=>{
@@ -72,9 +67,9 @@ export default function FlatClassificationEditor({scopeId='loc'}){
   });setNotice('');};
   const add=()=>{setDraft(list=>[...(list??original),{name:'',label:''}]);setNotice('');};
   const remove=index=>{setDraft(list=>(list??original).filter((_,i)=>i!==index));setNotice('');};
-  async function save(force=false){
+  async function save(){
     if(!allowed||busy||query.isPending||query.error)return false;
-    if(!changed&&!force)return true;
+    if(!changed)return true;
     const items=rows.map(row=>({...(row.uid?{uid:row.uid}:{}),name:normalized(row.name),
       ...(!global?{label:normalized(row.label)||normalized(row.name)}:{})}));
     if(items.some(item=>!item.name||item.name.length>80||item.label?.length>80)){
@@ -126,8 +121,7 @@ export default function FlatClassificationEditor({scopeId='loc'}){
       {global?<div className="scope-source-system-readonly">
         <h3>各 Scope（唯讀）</h3>
         {(catalog.scopes||[]).map(item=><p className="scope-status" key={item.scopeid}>
-          {item.scopeid}：{(item.sources.length?item.sources:
-            item.legacy.map(name=>({name:sourceName(name)}))).map(x=>x.name).join('、')||'尚未設定'}
+          {item.scopeid}：{item.sources.map(x=>x.label||x.name).join('、')||'尚未設定'}
         </p>)}
       </div>:null}
       <h3>{global?'LOC 系統來源':'我的來源'}</h3>
@@ -151,8 +145,6 @@ export default function FlatClassificationEditor({scopeId='loc'}){
       </div>
       <div className="classification-inline__actions">
         <button className="loc-button" type="button" disabled={busy} onClick={add}>新增來源</button>
-        {legacyPending?<button className="loc-button" type="button" disabled={busy}
-          onClick={()=>save(true)}>將既有分類導入 Anchor</button>:null}
         {!inDock?<button className="loc-button primary" type="button"
           disabled={busy||!changed} onClick={()=>save()}>
           {busy?'儲存中…':'儲存來源'}</button>:null}
