@@ -30,3 +30,7 @@ This is a preventative request-fan-out cap, not a claim of measured latency impr
 The existing anonymous SQL Gateway read budget remains capped at three concurrent requests. The public transport now forwards the caller's `AbortSignal` to the existing queue. When a queued search/culture read is cancelled, its waiting entry and abort listener are removed immediately; no gateway request is sent and no future slot is reserved for stale work. A running read continues using the existing HTTP AbortSignal handling and the 9-second transport deadline.
 
 No new queue, retry, background job, dependency, or authorization path was added. Authenticated management requests still bypass the anonymous read budget. Regression coverage is included in `npm run test:bootstrap` through the existing read-budget and abort suites. Full Node/bootstrap and browser tests should be run before deployment.
+
+## Portable public-action request preflight
+
+`executeKyselyPublicAction` now checks the existing action allowlist, argument names and Scope ID before invoking Kysely `introspection.getTables()`. Invalid requests no longer touch external SQL metadata, eliminating avoidable round trips and unnecessary schema inspection. The valid action paths, SQL statements, authorization model and return payloads remain unchanged. Regression coverage is in `scripts/test-kysely-public-portable.mjs`.
