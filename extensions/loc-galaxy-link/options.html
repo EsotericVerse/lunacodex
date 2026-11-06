@@ -6,6 +6,7 @@ button{padding:10px 18px;margin-right:8px}#status{margin-top:16px}
 <h1>LOC galaxy-link｜LOC 彩虹橋</h1>
 <p>使用 LOC 自有 OAuth。首次按「連接 LOC」完成一次授權，之後會自動沿用有效憑證；不經 Clerk、KV 或 GitHub 登入。</p>
 <button id="connect">連接 LOC</button><button id="disconnect">解除連線</button><button id="flush">手動送出 Queue</button>
-<p id="status" role="status"></p>\n<p id="queue" role="status"></p>
+<p id="status" role="status"></p>
+<p id="queue" role="status"></p>
 <p>連線後，在網頁按右鍵選擇「LOC：解析並儲存此頁」。資料先累積在單一 IndexedDB Queue；滿 10 次擷取或達批次大小才自動送出，亦可手動送出。已保存的同來源文章只會續寫 Append，不覆蓋原文。</p>
 <script src="options.js"></script></body></html>
