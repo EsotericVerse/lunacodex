@@ -13,7 +13,6 @@ registerDefaultSection('uiExtra.statisticsView',statisticsViewZh);
 registerDefaultSection('uiExtra.chartTypes',chartTypesZh);
 
 import {useEffect,useMemo,useState} from 'react';
-import {scopeTagColumn,scopeTagNames} from '../../loc/scope-config-fields.mjs';
 import useLocFeatureSettings from '../../loc/use-loc-feature-settings';
 import dynamic from 'next/dynamic';
 import {useRouter,useSearchParams} from 'next/navigation';
@@ -195,12 +194,9 @@ async function readPersonalSourceClasses(scopeId){
   const {publishedSourceTaxonomy}=await import('../published-source-taxonomy.js');
   const published=publishedSourceTaxonomy(scopeId);
   if(published)return {groups:published.groups||[],aliases:published.groupAliases||[]};
-  const {sourceTaxonomyFromArrays}=await import('../../loc/source-classification.mjs');
-  const {rows}=await selectRows('silver.'+scopeId,{
-    columns:scopeTagColumn(scopeId),filters:[{column:'id',operator:'eq',value:scopeId}],limit:1
-  });
-  const mapped=sourceTaxonomyFromArrays([],scopeTagNames(scopeId,rows[0]));
-  return {groups:mapped.groups,aliases:mapped.groupAliases};
+  const {readPublicSourceTaxonomy}=await import('../../loc/source-catalog-public.mjs');
+  const mapped=await readPublicSourceTaxonomy(scopeId);
+  return {groups:mapped.groups||[],aliases:mapped.groupAliases||[]};
 }
 function SummaryList({rankingType,summary,scope,range,filteredSource=false,defaultSort='desc'}){
   const UI_COPY=useUiCopy();
