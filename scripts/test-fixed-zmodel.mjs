@@ -114,7 +114,7 @@ test('ZenStack V3 runtime schema bridge stays in sync with the frozen contract',
 });
 
 test('ZenStack V3 compiles fixed-model Kysely reads without a database or stored procedure',async()=>{
-  const {ZenStackClient}=await import('@zenstackhq/orm');
+  const {createFixedLocClient}=await import('../zenstack/client.mjs');
   const {DummyDriver,PostgresAdapter,PostgresIntrospector,PostgresQueryCompiler}=await import('kysely');
   const dialect={
     createDriver:()=>new DummyDriver(),
@@ -122,7 +122,7 @@ test('ZenStack V3 compiles fixed-model Kysely reads without a database or stored
     createIntrospector:db=>new PostgresIntrospector(db),
     createQueryCompiler:()=>new PostgresQueryCompiler()
   };
-  const client=new ZenStackClient((await import('../zenstack/schema.mjs')).schema,{dialect});
+  const client=createFixedLocClient({dialect});
   const compiled=client.$qb.selectFrom('Lo3rwangAnchor')
     .select(['uid','type'])
     .where('type','=','date')
