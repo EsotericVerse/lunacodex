@@ -81,11 +81,14 @@ async function checkAuthorizedStatus(){
       Number(access.verified_until)>Date.now())
       return {ready:true,scopeid,subject:access.subject};
     let issued;
-    if(access?.scopeid===scopeid&&Number(access.expires_at)>Date.now()+60_000)
+    // Website-minted JWTs cannot be renewed using an OAuth refresh token.
+    // Do not mistake a still-valid 60-second JWT for a stale grant.
+    if(auth.mode==='website')
+      return {ready:false,scopeid,subject:'',website_session_expired:true,
+        expires_at:Number(access?.expires_at)||null};
+    if(access?.scopeid===scopeid&&Number(access.expires_at)>Date.now()+15_000)
       issued={...access,client_id:auth.client_id,
         refresh_token:auth.refresh_token};
-    else if(auth.mode==='website')
-      return {ready:false,scopeid,subject:'',website_session_expired:true};
     else issued=await refreshAuthorization(auth);
     const checked=await verifyScopeAuthorization(issued.access_token,scopeid);
     await commitAuthorization(scopeid,issued,checked.subject);
@@ -104,7 +107,13 @@ async function checkAuthorizedStatus(){
 async function verifiedAccess(scopeid){
   checkedScope(scopeid);
   const state=await authorizedStatus();
-  if(!state.ready||state.scopeid!==scopeid)throw Error('請先完成 LOC Galaxy 的 Scope OAuth 授權');
+  if(!state.ready||state.scopeid!==scopeid){
+    if(state.website_session_expired)
+      throw Error('LOC 網站短效憑證暫不可用；請保留授權頁並按「重新確認網站登入」');
+    if(state.temporary_unavailable)
+      throw Error('LOC Authority 暫時無法驗證授權；目前授權資料已保留');
+    throw Error('請先完成 LOC Galaxy 的 Scope OAuth 授權');
+  }
   const access=(await readAll()).access;
   if(access?.scopeid!==scopeid||!access.access_token||
      Number(access.expires_at)<Date.now()+15000)
