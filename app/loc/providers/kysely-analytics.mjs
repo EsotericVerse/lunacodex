@@ -143,18 +143,18 @@ async function sharedClasses(trx,scope,anchor,role){
   const owner=await owns(trx,scope,role);
   const cfg=await trx.selectFrom('silver.'+scope).select('keyword_meta')
     .where('id','=',scope).executeTakeFirst();
-  const classes=await trx.selectFrom(anchor).select(['uid','title'])
-    .where('type','=','class').orderBy('title','asc').execute();
+  // Kysely projects every public alias in the Class SELECT itself.
+  // Previously each shared Class caused another PostgreSQL round trip.
+  let query=trx.selectFrom(anchor).select(['uid','title'])
+    .where('type','=','class').orderBy('title','asc');
+  if(!owner)query=query.select(sql`encode(sha256(convert_to(
+    ${scope}::text||':'||${sql.ref('uid')}::text,'UTF8')),'hex')`.as('share_hash'));
+  const classes=await query.execute();
   const result=[];
   for(const item of classes){
     if(!owner&&!published(cfg,item.uid))continue;
-    let category=item.uid;
-    if(!owner){
-      const hex=await sql`select encode(sha256(convert_to(
-        ${scope}::text||':'||${String(item.uid)}::text,'UTF8')),'hex') as hash`.execute(trx);
-      category=String(hex.rows[0]?.hash||'');
-    }
-    result.push({scopeId:scope,classUid:item.uid,name:item.title,category});
+    result.push({scopeId:scope,classUid:item.uid,name:item.title,
+      category:owner?item.uid:String(item.share_hash||'')});
   }
   return result;
 }
