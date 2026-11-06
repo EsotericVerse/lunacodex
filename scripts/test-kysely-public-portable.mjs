@@ -110,3 +110,22 @@ test('point search returns canonical lng/lat coordinates and supports legacy key
   assert.match(portableBranch,/attr\.lng\?\?attr\.longitude/);
   assert.match(portableBranch,/attr\.lat\?\?attr\.latitude/);
 });
+
+test('invalid public actions never trigger database schema introspection',async()=>{
+  let metadataReads=0;
+  const db={
+    introspection:{getTables:async()=>{metadataReads++;throw Error('must not introspect');}},
+    selectFrom(){throw Error('must not query');}
+  };
+  const execute=publicExecutor();
+  for(const invalid of [
+    {name:'unknown_action',args:{p_scope_id:'writer'}},
+    {name:'read_app_bootstrap',args:{p_scope_id:'INVALID.scope',p_page_name:'index'}},
+    {name:'read_scope_page_copy',args:{p_scope_id:'writer',extra:true}},
+    {name:'read_app_bootstrap',args:[]}
+  ]){
+    await assert.rejects(execute(db,invalid,{engine:'mysql',namespace:''}),
+      error=>error?.httpStatus===400);
+  }
+  assert.equal(metadataReads,0);
+});
