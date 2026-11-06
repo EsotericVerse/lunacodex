@@ -63,19 +63,19 @@ export default function GalaxyLinkBridge(){
   };
  },[ingest]);
  const refresh=async()=>{
-  setStatus('正在確認 LOC 網站登入');
+  setStatus('正在確認 LOC Auth');
   try{
    const result=await getAccountSession();
    const email=result?.oauth?.email||result?.user?.email||'';
    if(!result?.user)throw Error('請先登入 LOC 網站');
    setAccount(email||'已登入 LOC');
-   setStatus('LOC 網站登入有效；只有傳送時才檢查寫入 Scope');
+   setStatus('LOC Auth 有效；傳送時檢查寫入 Scope');
   }catch(error){setAccount('');setStatus(describe(error))}
  };
  return <main style={{maxWidth:620,margin:'auto',padding:'32px 20px',lineHeight:1.7}}>
   <h1>LOC galaxy-link｜彩虹橋</h1>
   <p>連接屬於你的文字銀河。</p>
-  <p>此頁是 LOC 網站提供的 Extension 寫入通道。網站維護既有登入狀態，Extension 不接觸 Session、Token 或 MCP。</p>
+  <p>此頁是 LOC 網站提供的 Extension 寫入通道。LOC Auth 維護既有登入狀態，Extension 不接觸 Session、Token 或 MCP。</p>
   <label htmlFor="galaxy-link-scope">銀河目的地</label>
   <select id="galaxy-link-scope" value={scopeid} disabled={busy}
    onChange={event=>setScopeid(event.target.value)}
@@ -84,7 +84,7 @@ export default function GalaxyLinkBridge(){
    <option value="lrunes">lrunes</option>
   </select>
   <button type="button" onClick={refresh} disabled={busy}
-   style={{padding:'8px 18px',cursor:'pointer'}}>更新網站 OAuth 狀態</button>
+   style={{padding:'8px 18px',cursor:'pointer'}}>更新 LOC Auth</button>
   {account?<p>帳號：{account}</p>:null}
   <p role="status" aria-live="polite">{status}</p>
   <p style={{opacity:.75}}>只有送出 Queue 才執行一次文章寫入；寫入失敗時 Extension 保留原本資料，不自動重登。</p>
