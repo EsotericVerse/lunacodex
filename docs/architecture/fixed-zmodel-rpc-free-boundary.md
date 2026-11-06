@@ -134,3 +134,27 @@ dependency audit are the first retirement steps. After the existing PR has
 passed Node/Next/permission checks and been deployed, refresh the deployed
 caller audit, perform a narrow `RESTRICT` retirement, and re-check public
 Search, Culture, Statistics, Trace, import, and management behavior.
+
+
+## SQL read-only RPC retirement batch (2026-11-06)
+
+`supabase/migrations/20261106173000_retire_unused_read_business_rpcs.sql`
+retires sixteen SQL `silver` functions replaced by native Kysely
+`analytics` and `publicAction` implementations. Live `pg_proc` and
+`pg_depend` metadata confirmed every target has zero external SQL
+function callers and zero NORMAL catalog dependents. Both currently
+deployed `loc-kysely` variants use the identical source hash; inspection
+found no SQL invocations of these sixteen read RPCs. Name-compatible
+Kysely actions such as `read_app_bootstrap` are unaffected.
+
+This batch **does not** drop `silver.new_keyword_tree_uid`,
+`silver.import_shared_keyword_class`, authorization, RLS, policy, or
+trigger helpers. The two deployed Edge bundles still contain the old
+`silver.new_keyword_tree_uid` call, so that allocator must remain until
+the newer Edge code is independently deployed and verified.
+
+The migration uses exact function signatures and `RESTRICT` only.
+It does not add or change any table, column, index, permission or
+Anchor `attr`, and never scans Galaxy articles or anchor rows.
+After application, verify these sixteen SQL functions are absent and
+the direct Kysely `analytics` and `publicAction` paths remain available.
