@@ -1,7 +1,6 @@
 {
   "imports": {
     "kysely": "npm:kysely@0.29.6",
-    "pg": "npm:pg@8.16.3",
-    "@supabase/supabase-js": "npm:@supabase/supabase-js@2.117.2"
+    "pg": "npm:pg@8.16.3"
   }
 }
