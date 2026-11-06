@@ -19,7 +19,8 @@ export function validScopeId(value){
 // Both public numeric reads and analytics use the same bounded Kysely transport.
 // Optional backup uses a second independently hosted Kysely SQL Gateway.
 // No database vendor Auth or PostgREST token service participates.
-export function publicNumericSources({fetchImpl=globalThis.fetch}={}){
+export function publicNumericSources({fetchImpl=globalThis.fetch,
+  backupGatewayUrl=BACKUP_SQL_GATEWAY_URL}={}){
   const timedFetch=(input,init={})=>{
     const timeout=AbortSignal.timeout(6500);
     const signal=init.signal?AbortSignal.any([init.signal,timeout]):timeout;
@@ -30,10 +31,10 @@ export function publicNumericSources({fetchImpl=globalThis.fetch}={}){
     gatewayUrl:SQL_GATEWAY_URL,target:'configured',role:'anon',fetch:timedFetch
   });
   const candidates=[{id:'primary',schema:()=>primary.schema('silver')}];
-  if(BACKUP_SQL_GATEWAY_URL){
+  if(backupGatewayUrl){
     // Never silently route backup through the primary SQL host.
     const backup=createKyselyEdgeClient({
-      gatewayUrl:BACKUP_SQL_GATEWAY_URL,target:'configured',role:'anon',fetch:timedFetch
+      gatewayUrl:backupGatewayUrl,target:'configured',role:'anon',fetch:timedFetch
     });
     candidates.push({id:'backup',schema:()=>backup.schema('silver')});
   }
