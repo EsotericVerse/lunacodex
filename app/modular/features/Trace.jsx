@@ -233,7 +233,8 @@ export default function Trace({scopeId='loc'}){
     </div>:null}
   </>;
   return <FeaturePage featureId="trace">
-    <TraceMap publicTrace floatingControls={floatingControls} spatialData={demoSpatialData} hideRoutePicker
+    <TraceMap publicTrace floatingControls={floatingControls} spatialData={demoSpatialData}
+      focusLocation={deepLinkedPlace.data||null} hideRoutePicker
       selectedRouteUid={isLoc?'':twoPointDemo?(demoRoute?.uid||''):(currentMap?.uid||'')}
       showAnchorSearch={!isLoc} onAnchorSelect={chooseMapAnchor}>
       {reportPlace?<div className="loc-trace-float-report" role="dialog" aria-modal="false"
