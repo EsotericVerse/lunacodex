@@ -12,7 +12,7 @@ configureDbSourceLabels(adapter.primarySourceLabel||'Primary',adapter.backupSour
 
 // The device-local SQLite backend for the hidden `local` Scope (see
 // providers/local-sqlite.mjs) is spliced in at this single composition
-// point: a `local`/`local_*`/`runes*` table or a `local`-scoped RPC call is
+// point: a `local`/`local_*`/`runes*` table or a local analytic/write action is
 // routed to it; everything else keeps going to the normal Supabase/Neon
 // adapter exactly as before. No other file (db-query.mjs, galaxy-query.js,
 // db-contract.mjs, or any feature page) needs to know a second backend
@@ -45,26 +45,20 @@ function routedSchema(schemaName,cloudSchema){
       const unified=unifiedAnchorSpec(schemaName,table);
       return unified?unifiedAnchorRelation(cloudSchema,unified):cloudSchema.from(table);
     },
-    rpc(name,args={},options={}){
-      const toLocal=name==='management_write'?isLocalRelation(args?.p_table,schemaName):String(args?.p_scope_id||'')==='local';
-      return toLocal?localSchema.rpc(name,args):cloudSchema.rpc(name,args,options);
-    },
     managedWrite(payload){
       return isLocalRelation(payload?.p_table,schemaName)
-        ?localSchema.rpc('management_write',payload)
+        ?localSchema.managedWrite(payload)
         :cloudSchema.managedWrite(payload);
     },
     managedAction(name,args={}){
       return cloudSchema.managedAction(name,args);
     },
     anchor(scopeId,type,attr={}){
-      // scope_type_attr is retired; local-sqlite.mjs never implemented an
-      // rpcLocal('scope_type_attr') case, so the local branch always fell
-      // through to a "not implemented" error. Anchor access is cloud-only.
+      // Anchor access continues through the trusted SQL Gateway only.
       return cloudSchema.anchor(scopeId,type,attr);
     },
     analytics(args){
-      if(String(args?.p_scope_id||'')==='local')return localSchema.rpc('read_scope_analytics',args);
+      if(String(args?.p_scope_id||'')==='local')return localSchema.analytics(args);
       const source=cloudSchema.analytics?cloudSchema:
         (adapter.configuredPublicClient||adapter.publicClient).schema(schemaName);
       return source.analytics(args);
