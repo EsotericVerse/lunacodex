@@ -2,7 +2,7 @@
 
 Unpack and load this directory at `chrome://extensions` → Developer Mode → Load unpacked.
 
-Right-click any ordinary HTTPS page → **LOC：儲存此頁至 KV**. The extension extracts only visible webpage text (not complete chat history), keeps failed submissions locally, and retries every five minutes.
+Right-click an ordinary webpage → **LOC：解析並儲存此頁**. This invokes DOM parsing on the current page: prefer `main` / `[role=main]`, otherwise `article`; omit navigation, controls, and hidden nodes. Highlighted text is **never** used as the save target. If no main content can be identified, fail visibly instead of silently storing an ambiguous selection or the whole page. This captures loaded DOM text only, not an entire virtualized chat history. Failed submissions remain queued locally and retry every five minutes.
 
 Open the extension toolbar button once to configure the private Worker HTTPS URL and **write-only** scoped JWT. Do not store a Worker signing secret in the extension.
 
@@ -33,6 +33,6 @@ Reuse repository dependencies where they apply instead of implementing their beh
 - `jsonpath-plus`: source-specific structured JSON extraction
 - `immer`: predictable local transformation state
 
-These libraries do not automatically parse platform-specific web markup. For dynamic sites, adapters need validation against actual page structure. A generic page fallback saves the visible page; it does not guarantee a complete conversation, comment thread, or export.
+These libraries do not automatically parse platform-specific web markup. For dynamic sites, adapters need validation against actual page structure. The generic parser rejects pages with no identifiable main content; it does not guarantee a complete conversation, comment thread, or export. Explicit selection capture and whole-body fallback are prohibited because they can be mistaken for a complete record.
 
 The production PC queue should be persistent IndexedDB, with byte-bounded batches and per-batch acknowledgements. The initial extension currently uses `chrome.storage.local` and single-record POST: it is not yet a tested large-archive importer. Keep the KV pipeline source-agnostic and never require `scopeid`, Google OAuth, or Clerk OAuth to accept records.
