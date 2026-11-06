@@ -86,6 +86,16 @@ Extension 從 `https://loc.lo3rwang.cc/extension/oauth/config.json` 取得**公�
 只在明確具備修訂資訊時追加註記；無法確定原文位置時不得自行猜測。原 UID 保持不變。**目前 Extension 只提供來源擷取佇列；待整併註記的產生與提醒屬短匯入服務／管理功能，不得在尚未實作時宣稱已自動化。**
 
 這是短匯入 API 的**必要服務端契約**，並非宣稱目前已實作；正式 LOC Auth／短匯入服務尚未就緒前 Extension 仍會拒絕匯入。
+
+## 短匯入服務端進度
+
+- 核心已實作於 `app/loc/import/short-append-service.mjs`，接收一批來源事件，依 **已驗證 Scope + 使用者 + source_key** 定位各自的 Galaxy 文章。第一次建文時分配安全亂數 Base62 UID，後續只在同 UID 尾端追加。沿用原有 `site_id`、`url` 與 `content`；八個公開 Boolean 預設全部 false。
+- 每筆事件內容保留 `[[LOC-Append-Event:<事件 UUID>:<內容指紋>]]` 標記，即使重新組包、批次 ID 改變，重送也不會重複追加。整批以一個資料庫交易處理；對現有 PostgreSQL Galaxy 表使用來源級排他鎖，避免同時首次寫入產生不同 UID。不新增表、欄位、索引或 RPC。
+- `app/loc/import/short-import-http.mjs` 是供 LOC Auth 裝配的 HTTP 處理器，必須先驗證 Token 簽章、發行者、受眾、有效期、撤銷狀態和 Scope 的 `loc:import` 權限。可信任 `subject`、`scopeid` 只能由 LOC Auth 提供，不得從瀏覽器請求內文接受。
+- 舊文章修訂只能送 `revision_note`，明確附上 `target_uid` 和 `revision_location`，在原文尾端追加待整併註記；正式整併另行處理。API 需回傳同批全部 `source_key → uid`，Extension 確認後才會一次清除 Queue。
+- **正式服務依賴尚未接通**：LOC Auth 必須提供原生 OAuth Server／client_id、Scope 授權和與 Kysely 寫入層相容的可信執行身分。上述程式不以 Clerk Token 冒充 LOC 自有 Token，也不在尚未授權時開放匿名入庫。正式 `/v1/import/short` 尚需由 LOC Auth 掛載、部署並完成真實 OAuth／Galaxy 寫入驗證。
+- 其他 SQL 引擎要實作與現有 PostgreSQL `postgresShortImportStore` 等效的來源序列化，不能移除鎖後宣稱已達成 portable。
+
 ## 邊界與驗收
 
 - 本分支只改 Extension，不更動 LOC Auth、MCP Router、Edge、資料庫 Schema 或舊網站登入。

@@ -294,7 +294,7 @@ async function flush(force=false){
      body:JSON.stringify(batch)
     });
     if(!reply.ok){
-     if(reply.status===401||reply.status===403)
+     if([400,401,403,404,409,410,413,415,422].includes(reply.status))
       await chrome.storage.local.set({locQueuePaused:true});
      if(reply.status===429){
       const header=reply.headers?.get?.('retry-after');
