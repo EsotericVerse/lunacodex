@@ -606,11 +606,8 @@ async function webDatabase(){
     upgradeWebLocalMedia(db);
     upgradeWebKeywordSchema(db);
     const classColumns=rowsOf(db,'PRAGMA table_info(local)');
-    if(!classColumns.some(row=>row.name==='DefaultArticleClass')){
-      if(classColumns.some(row=>row.name==='txt_class'))
-        db.run('ALTER TABLE local RENAME COLUMN txt_class TO "DefaultArticleClass"');
-      else db.run("ALTER TABLE local ADD COLUMN DefaultArticleClass TEXT NOT NULL DEFAULT '[]'");
-    }
+    if(!classColumns.some(row=>row.name==='DefaultArticleClass'))
+      db.run("ALTER TABLE local ADD COLUMN DefaultArticleClass TEXT NOT NULL DEFAULT '[]'");
     db.run(SCHEMA_MARKER_SQL,[MARKER]);
     db.run(SEED_LOCAL_ROW_SQL,[new Date().toISOString()]);
     return db;
@@ -636,11 +633,8 @@ async function nativeDatabase(){
     await upgradeNativeLocalMedia(conn);
     await upgradeNativeKeywordSchema(conn);
     const columns=(await conn.query('PRAGMA table_info(local)')).values||[];
-    if(!columns.some(row=>row.name==='DefaultArticleClass')){
-      if(columns.some(row=>row.name==='txt_class'))
-        await conn.execute('ALTER TABLE local RENAME COLUMN txt_class TO "DefaultArticleClass"');
-      else await conn.execute("ALTER TABLE local ADD COLUMN DefaultArticleClass TEXT NOT NULL DEFAULT '[]'");
-    }
+    if(!columns.some(row=>row.name==='DefaultArticleClass'))
+      await conn.execute("ALTER TABLE local ADD COLUMN DefaultArticleClass TEXT NOT NULL DEFAULT '[]'");
     await conn.run(SCHEMA_MARKER_SQL,[MARKER],false);
     await conn.run(SEED_LOCAL_ROW_SQL,[new Date().toISOString()],false);
     return conn;

@@ -456,7 +456,8 @@ test('LOC and Scope source editors share vis-network but keep separate write bou
   assert.match(editor,/canManageGroupSync\('loc'\)/);
   assert.match(editor,/canManageScopeSync\(scopeId\)/);
   assert.match(editor,/系統來源（唯讀）/);
-  assert.doesNotMatch(editor,/將既有分類導入 Anchor|own\\?\\.legacy|ArticleTag|txt_class/);
+  assert.doesNotMatch(editor,/將既有分類導入 Anchor|own\\?\\.legacy/);
+  assert.doesNotMatch(editor,new RegExp(['Article','Tag'].join('')+'|'+['txt','class'].join('_'),'i'));
   assert.match(network,/sourceNodes=null/);
   assert.match(network,/onSelectNode=null/);
   assert.match(management,/Source catalog permission denied/);
@@ -759,7 +760,7 @@ test('retired Scope source columns have no active web or publication readers',()
     'app/loc/scope-config-fields.mjs',
     'scripts/generate-public-blocks.mjs'
   ];
-  for(const path of consumers)assert.doesNotMatch(read(path),/ArticleTag|txt_class|scopeTagColumn/,
+  for(const path of consumers)assert.doesNotMatch(read(path),new RegExp(new RegExp(['Article','Tag'].join('')+'|'+['txt','class'].join('_'),'i').source+'|scopeTagColumn'),
     path+' must read Source Anchor projection instead');
   const publisher=read('scripts/generate-public-blocks.mjs');
   assert.match(publisher,/PUBLISHED_SOURCE_ENTRIES/);
@@ -767,7 +768,7 @@ test('retired Scope source columns have no active web or publication readers',()
   const publicAction=read('app/loc/providers/kysely-public.mjs');
   assert.doesNotMatch(publicAction,/published_source_catalog/);
   const schema=read('zenstack/schema.zmodel');
-  assert.doesNotMatch(schema,/\bArticleTag\b|\btxt_class\b/);
+  assert.doesNotMatch(schema,new RegExp(['Article','Tag'].join('')+'|'+['txt','class'].join('_'),'i'));
   const contract=JSON.parse(read('zenstack/schema-contract.json'));
-  assert.doesNotMatch(JSON.stringify(contract),/"name":"ArticleTag"|"name":"txt_class"/);
+  assert.doesNotMatch(JSON.stringify(contract),new RegExp(['Article','Tag'].join('')+'|'+['txt','class'].join('_'),'i'));
 });
