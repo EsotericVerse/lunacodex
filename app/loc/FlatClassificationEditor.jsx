@@ -1,144 +1,164 @@
 'use client';
 
-import {useEffect,useRef,useState} from 'react';
-import {scopeTagColumn,scopeTagNames} from './scope-config-fields.mjs';
+import {useMemo,useState} from 'react';
+import dynamic from 'next/dynamic';
 import {useSWRConfig} from 'swr';
-import {useScopeSourceCategoryRow} from './scope-source-category-row.mjs';
-import {dbAuthRelation,dbAuthClient} from './db-client.mjs';
+import {useAsyncResource} from './use-async-resource';
+import {dbAuthClient} from './db-client.mjs';
 import {useAccount} from './use-account';
-import {useUiLocale} from '../i18n/ui-locale';
 import {useEditDock,useEditDockForm} from '../modular/edit-dock';
+import {sourceSiteKeyForLabel} from './source-classification.mjs';
 
-const LABELS={
-  'zh-Hant':{work:'作品分類',personal:'個人分類',help:'每一項都是來源名稱字串，不設 ID、群組或目錄。',reading:'正在讀取',readError:'分類讀取失敗',notFound:'找不到 Scope 設定',noChanges:'沒有待儲存的修改。',invalid:'每個分類名稱須為 1–80 字。',duplicate:'分類名稱不能重複。',noPermission:'沒有寫入權限，分類未儲存。',saved:'已儲存。公開分類快照會於下次手動發布時同步。',denied:'沒有編輯權限。',retry:'重新讀取',item:'分類',remove:'刪除',add:'新增分類',save:'儲存',saving:'儲存中…',revert:'還原',moveUp:'上移一列',moveDown:'下移一列',moveBack:'往前',moveForward:'往後'},
-  'zh-Hans':{work:'作品分类',personal:'个人分类',help:'每一项都是来源名称字符串，没有 ID、分组或目录。',reading:'正在读取',readError:'分类读取失败',notFound:'找不到 Scope 配置',noChanges:'没有待保存的修改。',invalid:'每个分类名称须为 1–80 字。',duplicate:'分类名称不能重复。',noPermission:'没有写入权限，分类未保存。',saved:'已保存。公开分类快照将在下次手动发布时同步。',denied:'没有编辑权限。',retry:'重新读取',item:'分类',remove:'删除',add:'新增分类',save:'保存',saving:'保存中…',revert:'还原',moveUp:'上移一行',moveDown:'下移一行',moveBack:'前移',moveForward:'后移'},
-  en:{work:'Work categories',personal:'Personal categories',help:'Each entry is a literal source name. No IDs, groups or folders.',reading:'Loading',readError:'Failed to load categories',notFound:'Scope settings not found',noChanges:'No changes to save.',invalid:'Each name must contain 1–80 characters.',duplicate:'Category names must be unique.',noPermission:'Unable to save; check write permissions.',saved:'Saved. The public snapshot will update on the next manual publish.',denied:'You do not have permission to edit categories.',retry:'Retry',item:'Category',remove:'Remove',add:'Add category',save:'Save',saving:'Saving…',revert:'Revert',moveUp:'Move up one row',moveDown:'Move down one row',moveBack:'Move earlier',moveForward:'Move later'},
-  ja:{work:'作品カテゴリー',personal:'個人カテゴリー',help:'各項目は出典名の文字列です。ID・グループ・階層はありません。',reading:'読み込み中',readError:'分類の読み込みに失敗しました',notFound:'Scope 設定がありません',noChanges:'未保存の変更はありません。',invalid:'分類名は 1～80 文字で入力してください。',duplicate:'分類名は重複できません。',noPermission:'書き込み権限がなく保存できません。',saved:'保存しました。公開情報は次回の手動公開時に反映されます。',denied:'編集権限がありません。',retry:'再読み込み',item:'分類',remove:'削除',add:'分類を追加',save:'保存',saving:'保存中…',revert:'元に戻す',moveUp:'上の行へ',moveDown:'下の行へ',moveBack:'前へ',moveForward:'後へ'}
-};
+const KeywordNetworkEditor=dynamic(()=>import('./KeywordNetworkEditor'),{ssr:false});
+const normalized=name=>String(name||'').trim();
+const sourceName=name=>sourceSiteKeyForLabel(normalized(name));
+const uidKey=(scope,item,index)=>scope+':'+(item.uid||'new:'+index);
+function sourceNodes(catalog,scopeId,editing){
+  const root={key:'universe',type:'universe',name:catalog.universe||'Eosteric',parent:null};
+  const galaxy={key:'galaxy',type:'galaxy',name:catalog.galaxy||'LOC',parent:root.key};
+  const nodes=[root,galaxy,{key:'domain:system',type:'domain',name:'system',parent:galaxy.key}];
+  (scopeId==='loc'?editing:catalog.system||[]).forEach((item,i)=>{
+    nodes.push({key:'system:'+i,type:'from',name:typeof item==='string'?item:item.name,
+      parent:'domain:system',shared:true});
+  });
+  for(const record of catalog.scopes||[]){
+    const domain='domain:'+record.scopeid;
+    nodes.push({key:domain,type:'domain',name:record.scopeid,parent:galaxy.key,
+      scopeid:record.scopeid});
+    const rows=record.scopeid===scopeId?editing:
+      record.sources.length?record.sources:record.legacy.map(name=>({name:sourceName(name)}));
+    rows.forEach((item,i)=>nodes.push({
+      key:uidKey(record.scopeid,item,i),type:'from',name:item.name,
+      uid:item.uid||null,scopeid:record.scopeid,parent:domain
+    }));
+  }
+  return nodes;
+}
 
-// Each editable entry is a string; one text[] per Scope, without an item ID.
+// LOC and Scope have different management locations and independent write
+// ownership. This component is only the shared presentation and edit shell.
+// The trusted Kysely action filters sibling Scopes BEFORE returning any rows.
 export default function FlatClassificationEditor({scopeId='loc'}){
-  const account=useAccount();
-  const dock=useEditDock();
-  const inDock=Boolean(dock?.active&&dock.scopeId===scopeId);
-  const {locale}=useUiLocale();
-  const l=LABELS[locale]||LABELS['zh-Hant'];
-  const {mutate}=useSWRConfig();
+  const account=useAccount(),dock=useEditDock(),{mutate}=useSWRConfig();
   const global=scopeId==='loc';
-  const valid=/^[a-z][a-z0-9]{0,14}$/.test(scopeId);
-  const allowed=valid&&Boolean(account.user&&!account.loading&&!account.permissionLoading&&
+  const inDock=Boolean(dock?.active&&dock.scopeId===scopeId);
+  const allowed=Boolean(account.user&&!account.loading&&!account.permissionLoading&&
     (global?account.canManageGroupSync('loc'):account.canManageScopeSync(scopeId)));
-  const [draft,setDraft]=useState(null);
-  const [gridColumns,setGridColumns]=useState(4);
-  const listRef=useRef(null);
-  const [busy,setBusy]=useState(false);
-  const [notice,setNotice]=useState('');
-  const row=useScopeSourceCategoryRow(scopeId,{enabled:allowed});
-  const query={
-    ...row,
-    data:row.data?scopeTagNames(scopeId,row.data):undefined,
-    error:row.error||(allowed&&!row.isPending&&row.data===null?new Error(l.notFound):null)
-  };
-  const original=query.data||[];
-  const rows=draft===null?original:draft;
-  const changed=draft!==null&&JSON.stringify(draft)!==JSON.stringify(original);
-  const title=global?l.work:l.personal;
-  const change=(index,value)=>{setDraft(prev=>{
-    const next=[...(prev===null?original:prev)];next[index]=value;return next;
+  const [draft,setDraft]=useState(null),[busy,setBusy]=useState(false);
+  const [notice,setNotice]=useState(''),[selected,setSelected]=useState('');
+  const query=useAsyncResource(['source-anchor-catalog',scopeId],async()=>{
+    const {data,error}=await dbAuthClient.schema('silver')
+      .managedAction('read_source_catalog',{p_scope_id:scopeId});
+    if(error)throw new Error(error.message||'無法讀取來源分類');
+    return data;
+  },{enabled:allowed});
+  const catalog=query.data||{};
+  const own=(catalog.scopes||[]).find(row=>row.scopeid===scopeId);
+  const anchored=Boolean(own?.domain);
+  const fallback=own?.legacy?.map(name=>({name:sourceName(name),label:name}))||[];
+  const initial=global?(catalog.system||[]).map(name=>({name})):
+    (own?.sources?.length?own.sources:anchored?[]:fallback);
+  const original=useMemo(()=>initial.map(row=>({uid:row.uid,name:row.name,label:row.label||row.name})),
+    // SWR values are immutable after a completed request.
+    [query.data,scopeId]);
+  const rows=draft??original;
+  const changed=draft!==null&&JSON.stringify(rows)!==JSON.stringify(original);
+  const legacyPending=!global&&!anchored&&fallback.length>0;
+  const graph=useMemo(()=>query.data?sourceNodes(catalog,scopeId,rows):[],
+    [query.data,scopeId,rows]);
+  const update=(index,name,field='name')=>{setDraft(list=>{
+    const next=(list??original).map(item=>({...item}));
+    next[index][field]=name;return next;
   });setNotice('');};
-  // Track the actual available panel width, not the whole device viewport.
-  useEffect(()=>{
-    const node=listRef.current;
-    if(!node||typeof ResizeObserver==='undefined')return;
-    const observer=new ResizeObserver(([entry])=>{
-      const width=entry.contentRect.width;
-      setGridColumns(width<=420?1:width<=720?2:4);
-    });
-    observer.observe(node);
-    return ()=>observer.disconnect();
-  },[allowed,query.isPending,query.error]);
-  const columns=()=>gridColumns;
-  const move=(index,target)=>{
-    if(target===index||target<0||target>=rows.length)return;
-    setDraft(prev=>{
-      const next=[...(prev===null?original:prev)];
-      const [item]=next.splice(index,1);
-      next.splice(target,0,item);
-      return next;
-    });
-    setNotice('');
-  };
-  async function save(){
+  const add=()=>{setDraft(list=>[...(list??original),{name:'',label:''}]);setNotice('');};
+  const remove=index=>{setDraft(list=>(list??original).filter((_,i)=>i!==index));setNotice('');};
+  async function save(force=false){
     if(!allowed||busy||query.isPending||query.error)return false;
-    if(!changed){setNotice(l.noChanges);return true;}
-    const names=rows.map(name=>String(name).trim());
-    if(names.some(name=>!name||name.length>80)){setNotice(l.invalid);return false;}
-    const normalized=names.map(name=>name.toLocaleLowerCase());
-    if(new Set(normalized).size!==normalized.length){setNotice(l.duplicate);return false;}
+    if(!changed&&!force)return true;
+    const items=rows.map(row=>({...(row.uid?{uid:row.uid}:{}),name:normalized(row.name),
+      ...(!global?{label:normalized(row.label)||normalized(row.name)}:{})}));
+    if(items.some(item=>!item.name||item.name.length>80||item.label?.length>80)){
+      setNotice('每個來源名稱須為 1–80 字。');return false;
+    }
+    const ids=items.map(item=>item.name.normalize('NFKC').toLowerCase());
+    if(new Set(ids).size!==ids.length){setNotice('來源名稱不可重複。');return false;}
     setBusy(true);setNotice('');
     try{
-      if(global){
-        const {data,error}=await dbAuthClient.schema('silver').managedAction('update_group_default_article_class',{
-          p_group_id:'loc',p_names:names
-        });
-        if(error||data!==true)throw new Error(error?.message||l.noPermission);
-      }else{
-        const {data,error}=await dbAuthRelation('silver.'+scopeId).update({[scopeTagColumn(scopeId)]:names})
-          .eq('id',scopeId).select('id');
-        if(error||!data?.length)throw new Error(error?.message||l.noPermission);
-      }
-      await query.refetch();
+      const {data,error}=await dbAuthClient.schema('silver').managedAction(
+        global?'update_group_default_article_class':'save_scope_sources',
+        global?{p_group_id:'loc',p_names:items.map(item=>item.name)}:
+          {p_scope_id:scopeId,p_sources:items}
+      );
+      if(error||data===false)throw new Error(error?.message||'來源分類儲存失敗');
       setDraft(null);
-      await mutate(key=>Array.isArray(key)&&(
-        ['scope-others-source-summary','own-scope-source-catalog','culture-source-classification','scope-overview','statistics-source-taxonomy'].includes(key[0])));
-      setNotice(title+' '+l.saved);
+      await Promise.all([query.refetch(),
+        mutate(key=>Array.isArray(key)&&/source|culture|statistics/.test(String(key[0]||'')))]);
+      setNotice(global?'已儲存 LOC 系統來源。':
+        '已儲存 Scope Anchor 來源；Galaxy.site 與 site_id 均未修改。');
       return true;
-    }catch(error){setNotice(String(error?.message||error));return false;}
+    }catch(e){setNotice(String(e?.message||e));return false;}
     finally{setBusy(false);}
   }
-  useEditDockForm({save,isDirty:()=>changed,isBusy:()=>busy,
+  useEditDockForm({save:()=>save(),isDirty:()=>changed,isBusy:()=>busy,
     discard:()=>{setDraft(null);setNotice('');}});
-  if(!allowed)return <section className="loc-card scope-status scope-error" role="alert">{title}：{l.denied}</section>;
-  return <section className="loc-card classification-inline">
-    <h2>{title}</h2>
-    {query.isPending?<p role="status" className="scope-status">{l.reading} {title}…</p>:null}
-    {query.error?<p role="alert" className="scope-status scope-error">{String(query.error.message||query.error)}
-      <button type="button" className="loc-button" onClick={()=>query.refetch()}>{l.retry}</button>
+  if(!allowed)return <section className="loc-card scope-status scope-error" role="alert">無來源管理權限。</section>;
+  return <section className="loc-card classification-inline" aria-label="來源分類管理">
+    <h2>{global?'LOC 來源分類':'Scope 來源分類 · '+scopeId}</h2>
+    <p className="scope-status">{global
+      ?'LOC 可以檢視各 Scope 的來源，但只能修改 LOC 系統來源。'
+      :'系統來源與上層分類為唯讀；只能修改自己的來源，其他 Scope 不可見。'}</p>
+    {query.isPending?<p role="status">正在讀取來源列表…</p>:null}
+    {query.error?<p className="scope-status scope-error" role="alert">
+      {String(query.error.message||query.error)}
+      <button className="loc-button" type="button" onClick={()=>query.refetch()}>重新讀取</button>
     </p>:null}
-    {!query.isPending&&!query.error?<form onSubmit={event=>{event.preventDefault();if(!inDock)void save();}}>
-      <div className="classification-inline__list" ref={listRef}>
-        {rows.map((name,index)=>{
-          const up=index-columns();
-          const down=Math.min(rows.length-1,index+columns());
-          return <div className="classification-inline__row" key={index}>
-            <label className="classification-inline__field">
-              <span>{index+1}.</span>
-              <input type="text" maxLength={80} required disabled={busy}
-                aria-label={l.item+' '+(index+1)}
-                value={name} onChange={event=>change(index,event.target.value)}/>
-            </label>
-            <div className="classification-inline__controls">
-              <button type="button" disabled={busy||up<0} title={l.moveUp}
-                aria-label={l.moveUp+' '+(index+1)} onClick={()=>move(index,up)}>↑</button>
-              <button type="button" disabled={busy||index===rows.length-1} title={l.moveDown}
-                aria-label={l.moveDown+' '+(index+1)} onClick={()=>move(index,down)}>↓</button>
-              <button type="button" disabled={busy||index===0} title={l.moveBack}
-                aria-label={l.moveBack+' '+(index+1)} onClick={()=>move(index,index-1)}>←</button>
-              <button type="button" disabled={busy||index===rows.length-1} title={l.moveForward}
-                aria-label={l.moveForward+' '+(index+1)} onClick={()=>move(index,index+1)}>→</button>
-              <button type="button" className="classification-inline__remove" disabled={busy}
-                title={l.remove} aria-label={l.remove+' '+(index+1)}
-                onClick={()=>{setDraft(rows.filter((_,i)=>i!==index));setNotice('');}}>×</button>
-            </div>
-          </div>;
-        })}
+    {query.data?<>
+      <KeywordNetworkEditor sourceNodes={graph} className="來源" classId={'sources:'+scopeId}
+        onSelectNode={node=>setSelected(node.key)}
+        onNewChild={node=>{
+          if(global&&node?.key==='domain:system'||!global&&node?.key==='domain:'+scopeId)add();
+          else setNotice('只能在自己的來源分類新增項目。');
+        }}/>
+      {!global?<div className="scope-source-system-readonly">
+        <h3>LOC 系統來源（唯讀）</h3>
+        <p className="scope-status">{(catalog.system||[]).join('、')||'尚未設定系統來源'}</p>
+      </div>:null}
+      {global?<div className="scope-source-system-readonly">
+        <h3>各 Scope（唯讀）</h3>
+        {(catalog.scopes||[]).map(item=><p className="scope-status" key={item.scopeid}>
+          {item.scopeid}：{(item.sources.length?item.sources:
+            item.legacy.map(name=>({name:sourceName(name)}))).map(x=>x.name).join('、')||'尚未設定'}
+        </p>)}
+      </div>:null}
+      <h3>{global?'LOC 系統來源':'我的來源'}</h3>
+      <div className="classification-inline__list">
+        {rows.map((item,i)=><div className="classification-inline__row" key={item.uid||'draft:'+i}>
+          <label className="classification-inline__field">
+            <span>{i+1}.</span>
+            <input type="text" value={item.name} maxLength={80}
+              aria-label={'來源代碼 '+(i+1)} disabled={busy||!global&&Boolean(item.uid)}
+              title={!global&&item.uid?'來源代碼保留比對 Galaxy.site，需更名請用來源更正工具。':undefined}
+              onChange={e=>update(i,e.target.value)}/>
+            {!global?<input type="text" value={item.label??item.name} maxLength={80}
+              aria-label={'顯示名稱 '+(i+1)} disabled={busy}
+              onChange={e=>update(i,e.target.value,'label')}/>:null}
+          </label>
+          <div className="classification-inline__controls">
+            <button type="button" disabled={busy} onClick={()=>remove(i)}
+              aria-label={'刪除來源 '+(i+1)}>×</button>
+          </div>
+        </div>)}
       </div>
       <div className="classification-inline__actions">
-        <button type="button" className="loc-button" disabled={busy}
-          onClick={()=>{setDraft([...rows,'']);setNotice('');}}>{l.add}</button>
-        {!inDock?<button className="loc-button primary" type="submit" disabled={busy||!changed}>{busy?l.saving:l.save+' '+title}</button>:null}
+        <button className="loc-button" type="button" disabled={busy} onClick={add}>新增來源</button>
+        {legacyPending?<button className="loc-button" type="button" disabled={busy}
+          onClick={()=>save(true)}>將既有分類導入 Anchor</button>:null}
+        {!inDock?<button className="loc-button primary" type="button"
+          disabled={busy||!changed} onClick={()=>save()}>
+          {busy?'儲存中…':'儲存來源'}</button>:null}
       </div>
-    </form>:null}
+      {selected?<p className="scope-status" role="status">已選取節點：{graph.find(n=>n.key===selected)?.name||selected}</p>:null}
+    </>:null}
     {notice?<p className="scope-status" role="status">{notice}</p>:null}
   </section>;
 }

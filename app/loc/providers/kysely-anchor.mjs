@@ -6,6 +6,10 @@ const scopePattern=/^[a-z][a-z0-9]{0,14}$/;
 const uidPattern=/^[A-Za-z0-9]{8}$/;
 const publicTypes=new Set(['date','period','era','point','path','trace','image','video','rune','suno']);
 const keywordTypes=new Set(['category','class','group','item']);
+// Source classification reuses the existing Anchor tree store and operations.
+// universe -> galaxy -> domain -> from. Names may repeat across levels.
+// Galaxy.site and Galaxy.site_id are unchanged for source matching/import dedupe.
+const sourceTypes=new Set(['from','domain','galaxy','universe']);
 const allowedFields=new Set(['op','uid','title','description','invisible','data','where',
   'limit','offset','updates','mode','classUid','createtime']);
 const anchorTime=value=>{
@@ -127,11 +131,14 @@ export async function executeKyselyAnchor(trx,body,{role='anon'}={}){
   const scope=String(body?.scopeid||'').trim().toLowerCase();
   const type=String(body?.type||'').trim();
   const attr=body?.attr??{};
-  if(!scopePattern.test(scope)||!(publicTypes.has(type)||keywordTypes.has(type))||
+  if(!scopePattern.test(scope)||!(publicTypes.has(type)||keywordTypes.has(type)||sourceTypes.has(type))||
     !attr||typeof attr!=='object'||Array.isArray(attr)||
     Object.keys(attr).some(field=>!allowedFields.has(field)))
     reject('Invalid Scope/Anchor request');
   const op=String(attr.op||'read');
+  // Source node writes must pass the authoritative Scope ownership and
+  // UID-link validation in the existing managed-action boundary.
+  if(sourceTypes.has(type)&&op!=='read')reject('Use authorized source catalog write',403);
   if(!['read','catalog','suggestions','insert','update','patch','link','delete'].includes(op))
     reject('Invalid Anchor operation');
   const registry=await trx.selectFrom('api.manage')
@@ -212,11 +219,12 @@ const modified=result=>Number(result?.numUpdatedRows??result?.numAffectedRows??0
 export async function executePortableKyselyAnchor(db,body,{role='anon',engine,namespace=''}={}){
   const scope=String(body?.scopeid||'').trim().toLowerCase();
   const type=String(body?.type||'').trim(),data=body?.attr??{};
-  if(!scopePattern.test(scope)||!(publicTypes.has(type)||keywordTypes.has(type))||
+  if(!scopePattern.test(scope)||!(publicTypes.has(type)||keywordTypes.has(type)||sourceTypes.has(type))||
      !data||typeof data!=='object'||Array.isArray(data)||
      Object.keys(data).some(key=>!allowedFields.has(key)))
     reject('Invalid portable Anchor request');
   const op=String(data.op||'read'),uid=data.uid==null?null:String(data.uid);
+  if(sourceTypes.has(type)&&op!=='read')reject('Use authorized source catalog write',403);
   if(uid&&!uidPattern.test(uid))reject('Invalid UID');
   const table=portableRelation(scope+'_anchor',engine,namespace);
   const owner=await isOwner(db,scope,role);

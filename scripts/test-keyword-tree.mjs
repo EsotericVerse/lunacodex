@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {indexKeywordTree,descendantsOfKeyword,keywordClassCatalog,rebuildKeywordUidLists,keywordUidListData,keywordUidListRecord} from '../app/loc/keyword-tree.mjs';
+import {indexKeywordTree,indexSourceTree,sourceLineage,descendantsOfKeyword,keywordClassCatalog,rebuildKeywordUidLists,keywordUidListData,keywordUidListRecord} from '../app/loc/keyword-tree.mjs';
 const rows=[
  {uid:'S0p1',type:'category',name:'符文',desc:'符文各種',lists:['C0a1','C0a2'],uid_lists:[]},
  {uid:'C0a1',type:'class',name:'符文66',desc:'66符文',lists:['G001'],uid_lists:[]},
@@ -72,4 +72,23 @@ test('JSONB object contract preserves Group article UID and Item occurrence tota
  const structured=rows.map(row=>({...row,uid_lists:keywordUidListRecord(row.type,row.uid_lists)}));
  assert.equal(indexKeywordTree(structured).index.size,6);
  assert.throws(()=>keywordUidListData('item',{articles:[]}),/Invalid/);
+});
+
+test('Source uses the same Anchor UID tree, not a new source table',()=>{
+ const sources=[
+  {uid:'Univ0001',type:'universe',title:'Eosteric',attr:{uid:['Gala0001']}},
+  {uid:'Gala0001',type:'galaxy',title:'LOC',attr:{uid:['Doma0001']}},
+  {uid:'Doma0001',type:'domain',title:'lo3rwang',attr:{uid:['From0001','From0002']}},
+  {uid:'From0001',type:'from',title:'facebook',attr:{}},
+  {uid:'From0002',type:'from',title:'chatgpt',attr:{}}
+ ];
+ const tree=indexSourceTree(sources);
+ assert.equal(tree.roots[0].name,'Eosteric');
+ assert.deepEqual(sourceLineage(sources,'facebook')[0].map(n=>n.type),
+   ['universe','galaxy','domain','from']);
+ assert.equal(sourceLineage(sources,'github').length,0);
+ assert.throws(()=>indexSourceTree(sources.map(n=>n.uid==='Doma0001'
+   ?{...n,attr:{uid:['From0001','From0001']}}:n)),/unique/);
+ assert.throws(()=>indexSourceTree(sources.map(n=>n.uid==='Doma0001'
+   ?{...n,attr:{uid:['Univ0001']}}:n)),/hierarchy/);
 });

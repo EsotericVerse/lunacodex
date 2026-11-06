@@ -1,3 +1,4 @@
+import {indexSourceTree} from './keyword-tree.mjs';
 // Source names are labels on the same four-level classification model used by
 // Keywords. Galaxy.site remains the immutable comparison key of an article.
 // Tree levels are presentation/selection metadata, never new Galaxy columns.
@@ -86,4 +87,16 @@ export function sourceLabelMatchesSite(site,label){
   // Existing source display labels use a human name followed by its actual
   // ASCII site code, e.g. 方格子vocus and 無名wretch.
   return sourceSiteKeyForLabel(display)===raw;
+}
+
+// Canonical physical Anchor projection. Uses exactly the same UID edges as
+// Keyword categories; Galaxy.site remains the string compared to the from title.
+export function sourceTreeFromAnchors(rows=[]){
+  const tree=indexSourceTree(rows);
+  return [...tree.index.values()].map(node=>({
+    type:node.type,keyword_type:SOURCE_KEYWORD_LEVELS[node.type],
+    key:node.uid,uid:node.uid,name:node.name,
+    parent:tree.parent.get(node.uid)||null,children:[...node.lists],
+    ...(node.type==='from'?{site:node.name}:{})
+  }));
 }

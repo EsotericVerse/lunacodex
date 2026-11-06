@@ -1,7 +1,8 @@
+import {sourceNodePermission,assertSourceNodeWritePermission} from '../app/loc/source-node-permission.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  SOURCE_KEYWORD_LEVELS,sourceTreeFromArrays,sourceTaxonomyFromArrays,
+  SOURCE_KEYWORD_LEVELS,sourceTreeFromArrays,sourceTreeFromAnchors,sourceTaxonomyFromArrays,
   sourceSiteKeyForLabel,sourceLabelMatchesSite
 } from '../app/loc/source-classification.mjs';
 import {publishedSourceTaxonomy,publishedSourceCategoryCatalog}
@@ -46,4 +47,34 @@ test('legacy consumers get unchanged empty and flat taxonomy shapes',()=>{
     {categories:[],aliases:[],groups:[],groupAliases:[]});
   assert.deepEqual(sourceTaxonomyFromArrays(['Facebook'],['suno','FACEBOOK']).groups,
     [{group_code:'suno',display_name:'suno',enabled:true}]);
+});
+
+test('physical Anchor source hierarchy projects into keyword-shaped UI nodes',()=>{
+ const rows=[
+  {uid:'Aa000001',type:'universe',title:'Eosteric',attr:{uid:['Aa000002']}},
+  {uid:'Aa000002',type:'galaxy',title:'LOC',attr:{uid:['Aa000003']}},
+  {uid:'Aa000003',type:'domain',title:'lo3rwang',attr:{uid:['Aa000004']}},
+  {uid:'Aa000004',type:'from',title:'facebook',attr:{}}
+ ];
+ const nodes=sourceTreeFromAnchors(rows);
+ assert.deepEqual(nodes.map(n=>n.keyword_type),['category','class','group','item']);
+ assert.equal(nodes[3].site,'facebook');
+ assert.equal(nodes[3].parent,nodes[2].uid);
+ assert.equal(nodes[0].children[0],nodes[1].uid);
+});
+
+test('Scope sees LOC ancestors and its own source branch, never sibling Scopes',()=>{
+ const allow=(viewerScopeId,nodeType,nodeScopeId,canManageLoc=false,canManageScope=false)=>
+   sourceNodePermission({viewerScopeId,nodeType,nodeScopeId,canManageLoc,canManageScope});
+ assert.deepEqual(allow('loc','domain','lo3rwang',true),{read:true,edit:false});
+ assert.deepEqual(allow('loc','galaxy','loc',true),{read:true,edit:true});
+ assert.deepEqual(allow('lo3rwang','universe','loc',false,true),{read:true,edit:false});
+ assert.deepEqual(allow('lo3rwang','galaxy','loc',false,true),{read:true,edit:false});
+ assert.deepEqual(allow('lo3rwang','domain','lo3rwang',false,true),{read:true,edit:true});
+ assert.deepEqual(allow('lo3rwang','from','lo3rwang',false,true),{read:true,edit:true});
+ assert.deepEqual(allow('lo3rwang','domain','lrunes',false,true),{read:false,edit:false});
+ assert.deepEqual(allow('lo3rwang','from','lrunes',false,true),{read:false,edit:false});
+ assert.throws(()=>assertSourceNodeWritePermission({
+   viewerScopeId:'loc',nodeType:'from',nodeScopeId:'lo3rwang',canManageLoc:true
+ }),/denied/);
 });

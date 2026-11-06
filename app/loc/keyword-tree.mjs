@@ -72,26 +72,58 @@ export function normalizeKeywordTreeRow(row){
       ?uid_lists.reduce((sum,hit)=>sum+hit.times,0):uid_lists.length;
   return {uid,type,name,desc,lists:[...lists],uid_lists:[...uid_lists],total};
 }
-export function indexKeywordTree(rows=[]){
+// Shared UID-linked tree used by Keywords and source classification.
+// Physical Source Anchor: attr.uid stores child Anchor UIDs, not site names.
+export function indexAnchorTree(rows=[],{next,normalize,rootType}){
   const index=new Map(),parent=new Map();
   for(const raw of rows){
-    const row=normalizeKeywordTreeRow(raw);
-    if(index.has(row.uid))throw new Error('Duplicate Keywords UID');
+    const row=normalize(raw);
+    if(index.has(row.uid))throw new Error('Duplicate Anchor UID: '+row.uid);
     index.set(row.uid,row);
   }
   for(const row of index.values()){
-    const childType=NEXT[row.type];
-    if(!childType)continue;
-    for(const uid of row.lists){
+    const childType=next[row.type];
+    for(const uid of childType?row.lists:[]){
       const child=index.get(uid);
-      if(!child)throw new Error('Missing referenced Keywords UID: '+uid);
-      if(child.type!==childType)throw new Error('Invalid Keywords hierarchy: '+row.type+' -> '+child.type);
-      if(parent.has(uid))throw new Error('Keywords node has multiple parents: '+uid);
+      if(!child)throw new Error('Missing referenced Anchor UID: '+uid);
+      if(child.type!==childType)throw new Error('Invalid Anchor hierarchy: '+row.type+' -> '+child.type);
+      if(parent.has(uid))throw new Error('Anchor node has multiple parents: '+uid);
       parent.set(uid,row.uid);
     }
   }
-  // No implied relation from a name or a numeric ordinal.
-  return {index,parent,roots:[...index.values()].filter(row=>row.type==='category')};
+  return {index,parent,roots:[...index.values()].filter(row=>row.type===rootType)};
+}
+export function indexKeywordTree(rows=[]){
+  return indexAnchorTree(rows,{next:NEXT,normalize:normalizeKeywordTreeRow,rootType:'category'});
+}
+const SOURCE_NEXT={universe:'galaxy',galaxy:'domain',domain:'from'};
+const SOURCE_TYPES=new Set(['universe','galaxy','domain','from']);
+export function indexSourceTree(rows=[]){
+  return indexAnchorTree(rows,{next:SOURCE_NEXT,rootType:'universe',normalize:row=>{
+    const uid=String(row?.uid||''),type=String(row?.type||'');
+    if(!ARTICLE_UID.test(uid)||!SOURCE_TYPES.has(type))throw Error('Invalid Source Anchor UID/type');
+    const attr=typeof row.attr==='string'?JSON.parse(row.attr):row.attr||{};
+    const lists=attr.uid??[];
+    if(!Array.isArray(lists)||lists.some(x=>typeof x!=='string'||!ARTICLE_UID.test(x))
+       ||new Set(lists).size!==lists.length)
+      throw Error('Source Anchor attr.uid must contain unique eight-character child UIDs');
+    if(type==='from'&&lists.length)throw Error('Source from node cannot have children');
+    const name=String(row.title??row.name??'').trim();
+    if(!name)throw Error('Source Anchor title is required');
+    return {uid,type,name,lists:[...lists]};
+  }});
+}
+export function sourceLineage(rows,site){
+  const tree=indexSourceTree(rows);
+  const matches=[...tree.index.values()].filter(node=>node.type==='from'&&node.name===site);
+  return matches.map(node=>{
+    const path=[node];let current=node;
+    while(tree.parent.has(current.uid)){
+      current=tree.index.get(tree.parent.get(current.uid));
+      path.unshift(current);
+    }
+    return path;
+  });
 }
 export function descendantsOfKeyword(rows,uid,{type}={}){
   const tree=indexKeywordTree(rows),start=tree.index.get(cleanUid(uid));

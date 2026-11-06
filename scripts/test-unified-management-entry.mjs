@@ -185,3 +185,14 @@ test('Unified management forms and homepage block editors show task-specific hie
     assert.match(source,/scope-editor-stage__title">附屬內容/);
   }
 });
+
+test('Scope has its own source Anchor entry while LOC retains group-level management',()=>{
+  const scope=read('app/loc/SearchManagement.jsx');
+  const loc=read('app/loc/LocSourceManagement.jsx');
+  assert.match(scope,/\{value:'source',label:'來源分類',shortLabel:'來源'\}/);
+  assert.match(scope,/activeSection==='source'/);
+  assert.match(scope,/<ScopeOthersSources key=\{scopeId\+'-sources'\} scopeId=\{scopeId\}\/>/);
+  assert.doesNotMatch(scope,/source:'import'/);
+  assert.match(loc,/<WorkClassificationPage\/>/);
+  assert.doesNotMatch(loc,/ScopeOthersSources/);
+});

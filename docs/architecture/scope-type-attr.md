@@ -374,3 +374,29 @@ Search 只對 Galaxy `content` 執行模糊比對；進階內容類型只保留�
 - Supabase Query Performance 曾有頂層 `postgres` 診斷查詢（`WITH m AS ... LEFT JOIN galaxy ON a.uid = any(g.media_link)`，包含 `different_times` 和 `orphan`），單次約 62.3 秒；不是網站 overview 所產生的同一段 SQL。查詢只呼叫一次，呼叫者來源未能由 pg_stat_statements 確認。
 - 此診斷的 `LEFT JOIN + count(*)` 無法辨識無文章連結的 Anchor（無匹配也至少一列）；診斷不應加入常態統計載入。過去用於補寫 `anchor.createtime` 的 Migration 保留歷史紀錄，不重跑或改寫。
 - 測試：`scripts/test-kysely-portable-search-summary.mjs` 改驗證不存在多媒體計數 Helper、`overview` 不從 Anchor 或 `media_link` 取數。
+
+## 2026-11-07｜來源分類：共用 Anchor／關鍵詞樹
+
+- 分類層級固定：`universe`（Eosteric）→ `galaxy`（LOC）→ `domain`（各 Scope）→ `from`（Galaxy.site 的來源名稱，例如 facebook）。同名標題可以存在不同層級，真正識別仍以各節點的八碼 Base62 UID 為準。
+- 使用現有 `*_anchor`：父節點 `attr.uid` 是下層節點 UID 陣列，`from` 是葉節點；不新增來源分類專用 SQL 表、Schema 欄位、索引或 RPC。複用 `keyword-tree.mjs` 的 UID 樹引擎，來源的四層對應關鍵詞 `category/class/group/item`。
+- Galaxy 的 `site` 是原始來源比對鍵，`site_id` 是外部來源識別鍵；都必須保留，不得以分類 Anchor UID 取代，避免破壞重新匯入與去重。
+- 原有 `DefaultArticleClass`／`txt_class` 扁平來源清單屬於待切換的舊 UI／統計讀寫路徑；須先完成實體 Anchor 資料與前端讀寫切換，再移除已無人使用的文章列表衍生 `attr`。不以刪除 Schema 欄位作為這次改編。
+- 本次 Branch 已加入 Kysely Anchor type 接受範圍、共用樹及投影函式；尚未完成的舊列表與資料轉換，不得標示為已上線。
+
+### 來源列表優先順序與讀寫邊界（補充）
+
+- **來源列表本身是主功能，不依附文章密度**。先完成 Anchor 來源樹的正式資料讀取、分類編輯及授權，再讓文化／統計僅消費同一份來源清單；不得為密度另外維護來源分類。
+- LOC 的「人員作品管理／作品群組分類」入口可讀所有 Scope 的來源節點，但僅能編輯 LOC 所屬 Universe/Galaxy；Scope 管理入口只能讀自己的 Domain/From 加上 LOC 上層，僅能編輯自己的 Domain/From；嚴禁同層 Scope 互看。
+- 已發現 `FlatClassificationEditor.jsx`、`scope-source-category-row.mjs` 及 `published-source-taxonomy.js` 仍以 `DefaultArticleClass`／`txt_class` 的扁平陣列為來源。**尚未切換前不能刪這些欄位上的資料**，否則來源列表、匯入建議、文化與統計會受影響。
+- 正式載入必須在受信任的 SQL/Authority 邊界按 Scope 過濾，前端的 `sourceNodePermission` 只能作為按鈕／編輯狀態判斷，不能充當跨 Scope 的安全隔離。
+- 待實際 Anchor 資料搬移與讀寫驗證完成，才汰換舊文字陣列與衍生分類 `attr`；不改 `galaxy.site` 或 `site_id`，不增加 Schema。
+
+### 2026-11-07｜來源管理實際接線與前置約束驗證
+
+- LOC 管理入口沿用 `LocSourceManagement → WorkClassificationPage`；Scope 入口為 `SearchManagement?section=source → ScopeOthersSources`。兩者共用既有 `KeywordNetworkEditor` 的 vis-network 實例與圖形互動。
+- `read_source_catalog` 在 Kysely control-plane 核對 `canManageLoc` 後讀來源；LOC 只取得直屬 Scope 節點；Scope 只取得自己來源及 LOC 系統來源，不會查詢其他 Scope。來源清單不掃描 Galaxy 文章。
+- `save_scope_sources` 僅 Scope 寫入既有 `silver.<scope>_anchor` 的 Domain / From UID 階層，於同一交易更新與刪除；LOC 入口無權呼叫此寫入。原本 `Galaxy.site/site_id` 永遠不在此修改。未轉換的舊來源名稱會先唯讀顯示，明確選擇「導入 Anchor」後才寫入。
+- **實際資料庫沒有 `silver.loc_anchor`**；現階段 Universe / Galaxy 上層呈現由 LOC 控制資料投影，尚未宣稱已持久化成實體 Anchor 節點。不得把這個 UI 投影當成資料庫已完成四層實體儲存。
+- 現有 `anchor_type_check` 與 `anchor_attr_keys_minimal_chk` 會拒絕新型別。單一既有 migration 僅增加四種 source `type` 的允許值及對應 `attr` 結構檢查，完全不新增表、欄位、索引、RPC。**正式儲存前必須先套用 Migration**。
+- 驗證：於既有資料庫的單一 PostgreSQL 交易內臨時更新約束，成功插入 `domain → from` 並確認 UID 關聯；另於 lo3rwang、lrunes 兩個 Scope 都成功插入 `universe → galaxy → domain → from` 完整四層，再執行 `ROLLBACK`；再次查核約束未持久化、測試資料為 0 筆。前端實際登入／寫入、Portable 外部資料庫與部署尚未驗收。
+- 舊 `silver.loc.DefaultArticleClass` 與 Scope `ArticleTag/txt_class` 在所有公開 Culture / Statistics 使用者都切到正式來源快照前不可刪除；本次 Scope 管理／匯入入口已優先讀 Anchor。後續若未完成公開讀取切換，不可標示「完全移除舊來源分類」。
