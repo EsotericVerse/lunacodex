@@ -180,7 +180,13 @@ export function buildKyselyMutationQuery(trx,input,{dialect='postgres',namespace
       ?validated.values.map(validateLocRegistryDomain)
       :validateLocRegistryDomain(validated.values)
     :validated.values;
-  const req={...validated,values:serializePortableJsonFields(registryValues,dialect)};
+  const stamped=validated.schema==='silver'&&validated.table==='VisualNovel'&&
+    ['update','upsert'].includes(validated.operation)
+    ?Array.isArray(registryValues)
+      ?registryValues.map(row=>({...row,updated_at:new Date()}))
+      :{...registryValues,updated_at:new Date()}
+    :registryValues;
+  const req={...validated,values:serializePortableJsonFields(stamped,dialect)};
   const fullTable=databaseTable(req,dialect,namespace);
   if(!['insert','update','delete','upsert'].includes(req.operation))throw new Error('Unsupported mutation');
   let query;
@@ -265,7 +271,8 @@ export async function executeKyselyQuery(trx,input,{dialect='postgres',namespace
   // A Scope config display name and silver.loc directory label are one
   // logical write. Replace the PostgreSQL trigger with the same Kysely
   // transaction; do not issue a second network request or stored procedure.
-  if(dialect==='postgres'&&namespace===undefined&&req.schema==='silver'&&
+  if((Number(count||0)>0||Array.isArray(data)&&data.length>0)&&
+     dialect==='postgres'&&namespace===undefined&&req.schema==='silver'&&
      /^[a-z][a-z0-9]{0,14}$/.test(req.table)&&req.table!=='loc'&&
      ['insert','update','upsert'].includes(req.operation)){
     const rows=Array.isArray(req.values)?req.values:[req.values];
