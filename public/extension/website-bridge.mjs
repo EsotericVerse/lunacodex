@@ -64,8 +64,8 @@ async function connectOnce(){
     throw Error('Chrome 沒有取得 Extension 監聽器的回覆（可能是 Service Worker 未啟動）');
   if(!probe.ok)throw Error('Extension 通道核對失敗：'+String(probe.error||'沒有原因'));
   if(probe.data?.bridge!==true)throw Error('Extension 通道回應格式不符');
-  if(probe.data?.version!=='0.6.3')
-    throw Error('Extension 執行中的版本是 '+String(probe.data?.version||'未知')+'，需更新至 0.6.3');
+  if(probe.data?.protocol!==1)
+    throw Error('Extension 授權協定不符（目前版本 '+String(probe.data?.version||'未知')+'；至少需要 0.6.3）');
   status('訊息通道正常，正在確認已登入的 LOC Session…');
   const clerk=await loadClerk();
   if(!clerk.isSignedIn||!clerk.session||!clerk.user){
