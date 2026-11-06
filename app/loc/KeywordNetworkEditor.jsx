@@ -106,7 +106,7 @@ export default function KeywordNetworkEditor({
         ...node,borderWidth:node.kind==='class'?3:node.kind==='group'?2:1,
         margin:node.kind==='keyword'?3:10,
         color:{background:panel,border:node.kind==='class'?accent:line,
-          highlight:{background:accent,border:accent}},
+          highlight:{background:panel,border:accent}},
         font:{color:node.kind==='keyword'?muted:text,
           size:node.kind==='class'?16:node.kind==='group'?14:13,face:'inherit'},
         widthConstraint:node.kind==='keyword'?{maximum:150}:{maximum:220}
