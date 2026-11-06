@@ -206,16 +206,16 @@ async function currentTab(){
  if(!tab?.id||!/^https?:\/\//.test(tab.url||''))throw Error('請在一般網頁上使用');
  return tab;
 }
-async function capture(tab,selection=''){
+async function capture(tab,selection='',includeAssistant=false){
  await inject(tab.id);
- const reply=await chrome.tabs.sendMessage(tab.id,{type:'page.capture',selection});
+ const reply=await chrome.tabs.sendMessage(tab.id,{type:'page.capture',selection,includeAssistant});
  if(!Array.isArray(reply?.items))throw Error('頁面沒有回傳內容');
  return acceptItems(reply.items);
 }
-async function selectOrRecord(type){
+async function selectOrRecord(type,includeAssistant=false){
  const tab=await currentTab();
  await inject(tab.id);
- await chrome.tabs.sendMessage(tab.id,{type});
+ await chrome.tabs.sendMessage(tab.id,{type,includeAssistant});
  return {message:type==='page.record'?'請點選錄製區域，開始追蹤動態貼文':'請點選要擷取的區域'};
 }
 async function controlRecording(type){
@@ -255,9 +255,9 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
       catch{return true;}
     }))throw Error('Source origin mismatch');
     return acceptItems(message.items);
-   case 'capture':return capture(await currentTab());
-   case 'select':return selectOrRecord('page.select');
-   case 'record.start':return selectOrRecord('page.record');
+   case 'capture':return capture(await currentTab(),'',message.includeAssistant===true);
+   case 'select':return selectOrRecord('page.select',message.includeAssistant===true);
+   case 'record.start':return selectOrRecord('page.record',message.includeAssistant===true);
    case 'record.pause':return controlRecording('page.pause');
    case 'record.resume':return controlRecording('page.resume');
    case 'record.stop':return stopRecording();
