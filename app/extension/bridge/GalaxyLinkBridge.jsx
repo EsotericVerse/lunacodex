@@ -31,13 +31,13 @@ export default function GalaxyLinkBridge(){
 
  // This is a website-owned callable. The extension never sees the site's
  // OAuth/Clerk/LOC delegation tokens and does not create a second Session.
- const ingest=useCallback(async batch=>{
+ const ingest=useCallback(async (batch,requestedScope)=>{
   if(busyRef.current)throw Error('前一批仍在寫入中，請稍後再送');
   busyRef.current=true;
   setBusy(true);
   try{
    validate(batch);
-   const scope=scopeRef.current;
+   const scope=String(requestedScope||scopeRef.current);
    if(!ALLOWED_SCOPES.includes(scope))throw Error('請先在 LOC 網站選擇有效 Scope');
    setStatus('正在寫入銀河：'+batch.records.length+' 筆');
    const response=await dbAuthClient.shortImport(scope,batch);
@@ -76,7 +76,7 @@ export default function GalaxyLinkBridge(){
   <h1>LOC galaxy-link｜彩虹橋</h1>
   <p>連接屬於你的文字銀河。</p>
   <p>此頁是 LOC 網站提供的 Extension 寫入通道。LOC Auth 維護既有登入狀態，Extension 不接觸 Session、Token 或 MCP。</p>
-  <label htmlFor="galaxy-link-scope">銀河目的地</label>
+  <label htmlFor="galaxy-link-scope">網站手動預設目的銀河</label>
   <select id="galaxy-link-scope" value={scopeid} disabled={busy}
    onChange={event=>setScopeid(event.target.value)}
    style={{display:'block',padding:10,margin:'6px 0 18px',minWidth:180}}>
