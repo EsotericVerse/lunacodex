@@ -30,8 +30,9 @@ async function badge(ok,message){
  if(message)console.info('[LOC Channel 1]',message);
 }
 function parsePage(){
- const main=document.querySelector('main, [role="main"]')||document.querySelector('article');
- if(!main)return {error:'找不到主要內容區域；未儲存，避免把導覽文字誤當內容'};
+ const main=document.querySelector('main, [role="main"], article, [itemprop="articleBody"]')||document.body;
+ const fallback=main===document.body;
+ if(!main)return {error:'無法取得網頁內容'};
  const deny='script,style,noscript,nav,header,footer,aside,button,input,textarea,select,[role="navigation"],[role="menu"],[role="toolbar"],[aria-hidden="true"]';
  const walker=document.createTreeWalker(main,NodeFilter.SHOW_TEXT),parts=[];
  let node;
@@ -44,9 +45,10 @@ function parsePage(){
   if(line)parts.push(line);
  }
  const content=parts.join('\n').trim();
- if(!content)return {error:'主要內容尚未載入或沒有可解析的文字'};
+ if(content.length<12)return {error:'網頁可解析內容過少，未儲存'};
  return {url:location.href,title:document.title,source:location.hostname,
-  content,captured_at:new Date().toISOString(),extraction:'dom-main-content',
+  content,captured_at:new Date().toISOString(),
+  extraction:fallback?'dom-body-fallback':'dom-main-content',
   completeness:'loaded-dom-only'};
 }
 async function capture(tabId){
