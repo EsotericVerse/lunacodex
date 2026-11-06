@@ -376,3 +376,13 @@ test('public Trace report fits the map and keeps its three mode buttons in one r
   assert.ok(styles.includes('.loc-trace-float-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))'));
   assert.ok(styles.includes('top:clamp(9rem,28%,12rem);max-height:none;min-height:0;'));
 });
+
+test('Trace place deeplink focuses Anchor without mounting Galaxy article list',()=>{
+ const page=read('app/modular/features/Trace.jsx');
+ const map=read('app/modular/features/trace/TraceMap.jsx');
+ assert.match(page,/focusLocation=\{deepLinkedPlace\.data\|\|null\}/);
+ assert.match(page,/if\(!spatialData\|\|!anchor\?\.uid\|\|spatialData\.anchors\.some/);
+ assert.doesNotMatch(page,/setReportTab\('articles'\)/);
+ assert.match(page,/\{reportTab\?<TracePlaceResults/);
+ assert.match(map,/if\(ready&&focusLocation\)mapRef\.current\?\.focusCoordinates\(focusLocation\)/);
+});

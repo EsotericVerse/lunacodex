@@ -102,11 +102,9 @@ export default function Trace({scopeId='loc'}){
     queryFn:async()=>(await readCurrentTraceAnchors(periodScopeId,[selectedPlaceUid]))[0]||null,
     revalidateOnFocus:false,revalidateOnReconnect:false
   });
-  useEffect(()=>{
-    if(!deepLinkedPlace.data?.uid)return;
-    setSelectedPlace(deepLinkedPlace.data);
-    setReportTab('articles');
-  },[deepLinkedPlace.data?.uid]);
+  // The deep-linked point is injected into linkedSpatialData for the map.
+  // Do NOT automatically select it, mount the floating report, or fetch Galaxy.
+  // A user-initiated map click is the only entry to those controls.
   // Reuse the route preference from the existing management editor. "All"
   // is a temporary view, not a persisted default or a second preference key.
   useEffect(()=>{
@@ -164,8 +162,8 @@ export default function Trace({scopeId='loc'}){
   const linkedSpatialData=useMemo(()=>{
     const anchor=deepLinkedPlace.data;
     if(!spatialData||!anchor?.uid||spatialData.anchors.some(item=>item.uid===anchor.uid))return spatialData;
-    // A direct ?place= link may open a report, but must not add an extra
-    // non-referenced pin to LOC's strictly capped preview.
+    // A direct ?place= link draws the point on the map without opening a
+    // report. LOC's strictly capped preview keeps only referenced points.
     return isLoc?spatialData:{...spatialData,anchors:[...spatialData.anchors,anchor]};
   },[spatialData,deepLinkedPlace.data,isLoc]);
   const demoSpatialData=useMemo(()=>twoPointDemo&&linkedSpatialData
@@ -235,7 +233,8 @@ export default function Trace({scopeId='loc'}){
     </div>:null}
   </>;
   return <FeaturePage featureId="trace">
-    <TraceMap publicTrace floatingControls={floatingControls} spatialData={demoSpatialData} hideRoutePicker
+    <TraceMap publicTrace floatingControls={floatingControls} spatialData={demoSpatialData}
+      focusLocation={deepLinkedPlace.data||null} hideRoutePicker
       selectedRouteUid={isLoc?'':twoPointDemo?(demoRoute?.uid||''):(currentMap?.uid||'')}
       showAnchorSearch={!isLoc} onAnchorSelect={chooseMapAnchor}>
       {reportPlace?<div className="loc-trace-float-report" role="dialog" aria-modal="false"
