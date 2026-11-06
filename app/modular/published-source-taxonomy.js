@@ -1,30 +1,21 @@
-// Flat public source classification, published with Scope Config.
-import {sourceTaxonomyFromArrays,sourceTreeFromArrays,sourceSiteKeyForLabel} from '../loc/source-classification.mjs';
-export const PUBLISHED_SOURCE_LISTS=Object.freeze({
-  loc:{system:['Facebook','Threads','Instagram'],personal:[]},
-  lo3rwang:{system:['Facebook','Threads','Instagram'],personal:['suno','kkcity','其他','方格子vocus','ptt','無名wretch','pixnet']},
-  lrunes:{system:['Facebook','Threads','Instagram'],personal:['vocus','others','suno']}
-});
-// Galaxy.site stays literal. Canonical short keys are inferred from existing
-// From labels (e.g. 方格子vocus -> vocus), not maintained in another alias map.
+// PUBLIC Source Anchor catalogue. Updated only by explicit sync:public.
+// Scope From titles are Galaxy.site comparison keys; labels are presentation.
+import {sourceTaxonomyFromCatalog,sourceTreeFromArrays} from '../loc/source-classification.mjs';
+export const PUBLISHED_SOURCE_LISTS=Object.freeze({"loc":{"system":["Facebook","Threads","Instagram"],"personal":[]},"lo3rwang":{"system":["Facebook","Threads","Instagram"],"personal":["suno","kkcity","其他","方格子vocus","ptt","無名wretch","pixnet"]},"lrunes":{"system":["Facebook","Threads","Instagram"],"personal":["vocus","others","suno"]}});
+export const PUBLISHED_SOURCE_ENTRIES=Object.freeze({"loc":[],"lo3rwang":[{"uid":"e62b0fc7","name":"suno","label":"suno"},{"uid":"47dc42c2","name":"kkcity","label":"kkcity"},{"uid":"2e6241eb","name":"others","label":"其他"},{"uid":"8c55398d","name":"vocus","label":"方格子vocus"},{"uid":"d7a85670","name":"ptt","label":"ptt"},{"uid":"69dcacc1","name":"wretch","label":"無名wretch"},{"uid":"1ae7168c","name":"pixnet","label":"pixnet"}],"lrunes":[{"uid":"e1ce51d5","name":"vocus","label":"vocus"},{"uid":"52042f1b","name":"others","label":"others"},{"uid":"7175c3f0","name":"suno","label":"suno"}]});
 export const PUBLISHED_SOURCE_TAXONOMY=Object.freeze(Object.fromEntries(
-  Object.entries(PUBLISHED_SOURCE_LISTS).map(([id,lists])=>{
-    const taxonomy=sourceTaxonomyFromArrays(lists.system,lists.personal);
-    const tree=sourceTreeFromArrays(lists.system,lists.personal,{universe:'loc',galaxy:id});
-    const aliases=tree.filter(node=>node.type==='from'&&node.parent.endsWith(':personal'))
-      .map(node=>({source_key:sourceSiteKeyForLabel(node.name),
-        group_code:node.name.normalize('NFKC').toLocaleLowerCase()}))
-      .filter(item=>!taxonomy.groupAliases.some(existing=>
-        existing.source_key===item.source_key&&existing.group_code===item.group_code));
-    return [id,{...taxonomy,tree,groupAliases:[...taxonomy.groupAliases,...aliases]}];
+  Object.entries(PUBLISHED_SOURCE_LISTS).map(([id,values])=>{
+    const anchors=PUBLISHED_SOURCE_ENTRIES[id]||[];
+    const taxonomy=sourceTaxonomyFromCatalog(values.system,anchors);
+    const tree=sourceTreeFromArrays(values.system,values.personal,
+      {universe:'Eosteric',galaxy:'LOC'});
+    return [id,{...taxonomy,tree}];
   })
 ));
 export function publishedSourceTaxonomy(scopeId){
-  return Object.prototype.hasOwnProperty.call(PUBLISHED_SOURCE_TAXONOMY,scopeId)?PUBLISHED_SOURCE_TAXONOMY[scopeId]:null;
+  return Object.prototype.hasOwnProperty.call(PUBLISHED_SOURCE_TAXONOMY,scopeId)
+    ?PUBLISHED_SOURCE_TAXONOMY[scopeId]:null;
 }
-
-// The same published, flat source catalogue powers both Culture and Statistics.
-// Present a display-level grouping only; neither table nor stored IDs exist.
 export function publishedSourceCategoryCatalog(scopeId){
   const taxonomy=publishedSourceTaxonomy(scopeId);
   if(!taxonomy)return null;
