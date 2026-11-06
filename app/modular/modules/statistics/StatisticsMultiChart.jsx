@@ -1,6 +1,6 @@
 'use client';
 
-import {useMemo,useState} from 'react';
+import {cloneElement,useMemo,useState} from 'react';
 import {useAsyncResource} from '../../../loc/use-async-resource';
 import {UI_COPY,registerDefaultSection} from '../../../i18n/ui-copy';
 import {RUNE_RANKING_PAGE_SIZE,availableStatisticChartTypes,nonemptySeries,normalizeDistribution,movingAverage,scatterPair,radarPeriodComparison,activePeriodCoverage,number,color,pointColor} from './statistics-time-zoom.mjs';
@@ -165,7 +165,9 @@ export default function StatisticsMultiChart({
   if(!usable.length)return <p className="scope-status">{t('uiExtra.chartLabels.noComparable')}</p>;
   return <div className="scope-multichart" role="group" aria-label={t('uiExtra.chartLabels.chartAria')}>
     <div style={{height:barLayout==='vertical'?height:`min(${height}px, max(300px, 85vw))`}}>
-      <ResponsiveContainer width="100%" height="100%">{chart}</ResponsiveContainer>
+      {actual==='treemap'
+        ?<ResponsiveContainer width="100%" height="100%">{chart}</ResponsiveContainer>
+        :cloneElement(chart,{responsive:true,style:{width:'100%',height:'100%'}})}
     </div>
     {foldBlank&&gaps.length?<p className="scope-status" role="note">
       {t('uiExtra.chartLabels.gapLabel')}{gaps.map(g=>g.start+'～'+g.end+'（'+(g.days||g.buckets)+' '+(g.days?units.dayUnit:units.periodUnit)+'）').join(t('uiExtra.chartLabels.gapSeparator'))}

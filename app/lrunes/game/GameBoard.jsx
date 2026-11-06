@@ -12,7 +12,7 @@ import {
   Paper,Select,Stack,Tab,Tabs,TextField,ThemeProvider,Typography,createTheme
 } from '@mui/material';
 import {DndContext,PointerSensor,TouchSensor,useDraggable,useDroppable,useSensor,useSensors} from '@dnd-kit/core';
-import {CartesianGrid,Legend,Line,LineChart,ResponsiveContainer,Tooltip,XAxis,YAxis} from 'recharts';
+import {CartesianGrid,Legend,Line,LineChart,Tooltip,XAxis,YAxis} from 'recharts';
 import {createLunaRunesGame} from './boardgame-rules.js';
 import {useOnlineTabletop} from './use-online-tabletop.js';
 import {loadGameData} from './game-data.js';
@@ -232,8 +232,8 @@ function DeTrend({history,players}){
   return <Paper className="lrg-history-panel">
     <Typography variant="h6" component="h2">De 軌跡</Typography>
     <div className="lrg-trend">
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={history} margin={{top:12,right:16,bottom:8,left:-12}}>
+      <LineChart responsive style={{width:"100%",height:"100%"}}
+           data={history} margin={{top:12,right:16,bottom:8,left:-12}}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--loc-line,#34435b)"/>
           <XAxis dataKey="step" tick={{fill:'var(--loc-muted,#c1ccdd)'}} stroke="var(--loc-line,#34435b)"/>
           <YAxis allowDecimals={false} tick={{fill:'var(--loc-muted,#c1ccdd)'}} stroke="var(--loc-line,#34435b)"/>
@@ -241,7 +241,6 @@ function DeTrend({history,players}){
           <Legend/>
           {players.map((player,index)=><Line key={player.name} type="monotone" dataKey={LABELS[index]} name={player.name} stroke={['var(--loc-accent,#e4bf7c)','var(--loc-gold,#e4bf7c)','var(--loc-heading,#f4f1e9)','var(--loc-danger,#c66f7e)'][index]} strokeWidth={2.5} dot={{r:3}} isAnimationActive={false}/>)}
         </LineChart>
-      </ResponsiveContainer>
     </div>
   </Paper>;
 }

@@ -7,7 +7,7 @@ import featureZh from '../i18n/feature-sections/dailyRune.zh_tw.js';
 import {useAsyncResource} from '../loc/use-async-resource';
 import {
   Bar,BarChart,CartesianGrid,ComposedChart,LabelList,Line,
-  ResponsiveContainer,Tooltip,XAxis,YAxis
+  Tooltip,XAxis,YAxis
 } from 'recharts';
 import {selectDailyRuneRange,selectFirstDailyRuneDate} from '../loc/daily-runes';
 import {realMoonPhase} from '../loc/model/moon-phase';
@@ -174,8 +174,8 @@ export function LrunesDailyStatisticsPanel(){
     {!message?<>
       <p className="scope-status">{range.startDate} ～ {range.endDate} · {summary.dayCount}{text.days}{summary.recordCount}{text.drawCount}</p>
       {isDirection?<StatisticsChartFrame level={zoomLevel} onChange={setZoomLevel} range={zoomRange} idPrefix="daily-rune-stat">
-        {!summary.recordCount?<p className="scope-status">{text.empty}</p>:<ResponsiveContainer width="100%" height={360}>
-          <ComposedChart data={directionTimeline} margin={{top:30,right:24,bottom:8,left:4}}>
+        {!summary.recordCount?<p className="scope-status">{text.empty}</p>:<ComposedChart responsive style={{width:"100%",height:360}}
+             data={directionTimeline} margin={{top:30,right:24,bottom:8,left:4}}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--loc-line)"/>
             <XAxis dataKey="period" tick={{fill:'var(--loc-text)'}}/>
             <YAxis yAxisId="count" allowDecimals={false} width={42} tick={{fill:'var(--loc-text)'}}/>
@@ -185,21 +185,19 @@ export function LrunesDailyStatisticsPanel(){
             <Line yAxisId="direction" type="monotone" dataKey="directionAverage" name={text.direction} stroke="#e1a64b" strokeWidth={3} connectNulls={false} dot={{r:4}}>
               <LabelList dataKey="runeLabels" position="top" content={({x,y,value})=>value?<text x={x} y={y-9} textAnchor="middle" fill="var(--loc-text)" fontSize={11}>{String(value).length>12?String(value).slice(0,12)+'…':value}</text>:null}/>
             </Line>
-          </ComposedChart>
-        </ResponsiveContainer>}
+          </ComposedChart>}
       </StatisticsChartFrame>:!ranking.length?<StatisticsChartFrame level={zoomLevel} onChange={value=>{setZoomLevel(value);setPage(1);}} range={zoomRange} idPrefix="daily-rune-stat">
         <p className="scope-status">{text.empty}</p>
       </StatisticsChartFrame>:<>
       <StatisticsChartFrame level={zoomLevel} onChange={value=>{setZoomLevel(value);setPage(1);}} range={zoomRange} idPrefix="daily-rune-stat">
-      {selectedChart==='bar'?<ResponsiveContainer width="100%" height={Math.max(220,bars.length*29+50)}>
-        <BarChart data={bars} layout="vertical" margin={{top:8,right:16,bottom:8,left:4}}>
+      {selectedChart==='bar'?<BarChart responsive style={{width:"100%",height:Math.max(220,bars.length*29+50)}}
+           data={bars} layout="vertical" margin={{top:8,right:16,bottom:8,left:4}}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--loc-line)"/>
           <XAxis type="number" allowDecimals={false} tick={{fill:'var(--loc-text)'}}/>
           <YAxis type="category" dataKey="label" width={82} tick={{fill:'var(--loc-text)',fontSize:12}}/>
           <Tooltip contentStyle={{background:'var(--loc-panel)',border:'1px solid var(--loc-line)',color:'var(--loc-text)'}}/>
           <Bar dataKey="value" name={text.extractions} fill="var(--loc-accent)" radius={[0,4,4,0]}/>
-        </BarChart>
-      </ResponsiveContainer>:<StatisticsMultiChart
+        </BarChart>:<StatisticsMultiChart
         type={selectedChart} rows={timeline} series={runeSeries} distribution={runeCategories} height={360}
       />}
       </StatisticsChartFrame>

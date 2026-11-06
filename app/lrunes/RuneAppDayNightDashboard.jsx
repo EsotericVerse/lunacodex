@@ -1,7 +1,7 @@
 'use client';
 
 import {useEffect,useMemo,useState} from 'react';
-import {Line,LineChart,ResponsiveContainer,Tooltip,XAxis,YAxis} from 'recharts';
+import {Line,LineChart,Tooltip,XAxis,YAxis} from 'recharts';
 import {listLocalDailyRunes,listLocalRuneDraws} from './local-rune-sqlite.mjs';
 import {buildRuneAppOverview,FOUR_DIRECTIONS} from './rune-app-dashboard.mjs';
 
@@ -102,14 +102,12 @@ export default function RuneAppDayNightDashboard({canReadLocal=false,onSelectDra
           {overview?.tendency==='資料不足'?' 至少需要三筆抽符紀錄才顯示傾向。':' '+overview?.tendency+'，僅供觀察，不是事件預測。'}
         </p>
         <div className="scope-rune-daynight-chart" aria-label={'最近'+days+'天抽符次數時間趨勢'}>
-          <ResponsiveContainer width="100%" height={165}>
-            <LineChart data={overview?.daily||[]} margin={{top:8,right:8,left:-30,bottom:4}}>
+          <LineChart responsive style={{width:"100%",height:165}} data={overview?.daily||[]} margin={{top:8,right:8,left:-30,bottom:4}}>
               <XAxis dataKey="label" interval={days===7?0:'preserveStartEnd'} tick={{fontSize:10,fill:'currentColor'}}/>
               <YAxis allowDecimals={false} tick={{fontSize:10,fill:'currentColor'}}/>
               <Tooltip contentStyle={{color:'#17263f'}}/>
               <Line dataKey="count" name="抽取紀錄" type="monotone" stroke="currentColor" strokeWidth={2} dot={days===7} />
             </LineChart>
-          </ResponsiveContainer>
         </div>
       </div>:<p className="scope-rune-daynight-empty">你可以先體驗抽牌。保存紀錄與專屬趨勢分析僅開放已登入的月之符文 Scope 人員；其他使用者不會建立本機私人紀錄。</p>}
     </section>

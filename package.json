@@ -18,7 +18,8 @@
     "check:bulk-delete": "node scripts/check-bulk-delete.mjs",
     "test:authority": "node --test scripts/test-independent-authority.mjs scripts/test-portable-sql-authority.mjs",
     "test:neon-failover": "node --test scripts/test-neon-independent-backup.mjs scripts/test-neon-primary-emergency.mjs scripts/test-keyword-base62-read-provider.mjs scripts/test-portable-incremental-sync.mjs",
-    "test:keyword": "node --test scripts/test-keyword-tree.mjs scripts/test-keyword-tree-report.mjs scripts/test-keyword-reanalysis.mjs scripts/test-keyword-class-map.mjs scripts/test-keyword-write-batching.mjs scripts/test-keyword-analysis-counts.mjs scripts/test-keyword-class-state.mjs scripts/test-keyword-site-location.mjs scripts/test-keyword-cutover-dependencies.mjs scripts/test-keyword-class-sharing.mjs scripts/test-keyword-statistics-uid-wiring.mjs scripts/test-keyword-private-metadata.mjs scripts/test-keyword-discovery.mjs scripts/test-keyword-discovery-cache.mjs"
+    "test:keyword": "node --test scripts/test-keyword-tree.mjs scripts/test-keyword-tree-report.mjs scripts/test-keyword-reanalysis.mjs scripts/test-keyword-class-map.mjs scripts/test-keyword-write-batching.mjs scripts/test-keyword-analysis-counts.mjs scripts/test-keyword-class-state.mjs scripts/test-keyword-site-location.mjs scripts/test-keyword-cutover-dependencies.mjs scripts/test-keyword-class-sharing.mjs scripts/test-keyword-statistics-uid-wiring.mjs scripts/test-keyword-private-metadata.mjs scripts/test-keyword-discovery.mjs scripts/test-keyword-discovery-cache.mjs",
+    "test:module-native": "node --test scripts/test-module-native-upgrade.mjs"
   },
   "dependencies": {
     "@blocknote/core": "0.55.0",
@@ -33,8 +34,8 @@
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.0",
     "@mui/material": "^7.3.0",
-    "@react-three/drei": "10.7.8",
-    "@react-three/fiber": "9.8.1",
+    "@react-three/drei": "10.7.9",
+    "@react-three/fiber": "9.8.2",
     "@react-three/postprocessing": "3.0.4",
     "@streamparser/json": "0.0.26",
     "@supabase/postgrest-js": "2.79.0",
@@ -44,9 +45,9 @@
     "jsonpath-plus": "^11.2.2",
     "karaul": "0.1.0",
     "kysely": "0.29.8",
-    "maplibre-gl": "^6.15.0",
+    "maplibre-gl": "6.16.0",
     "motion": "13.4.4",
-    "next": "16.4.2",
+    "next": "16.4.5",
     "officeparser": "8.1.1",
     "opentype.js": "1.3.4",
     "postprocessing": "^6.37.0",
@@ -56,7 +57,7 @@
     "recharts": "3.10.1",
     "sql.js": "1.14.2",
     "swr": "2.5.1",
-    "three": "0.180.0",
+    "three": "0.187.0",
     "vis-network": "10.1.0",
     "vis-timeline": "8.5.4",
     "zod": "4.6.7"
@@ -72,7 +73,7 @@
   "devDependencies": {
     "@babel/parser": "7.29.9",
     "@capacitor/cli": "8.5.3",
-    "@opennextjs/cloudflare": "1.20.13",
-    "wrangler": "4.153.0"
+    "@opennextjs/cloudflare": "1.20.16",
+    "wrangler": "4.157.0"
   }
 }

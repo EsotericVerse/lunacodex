@@ -49,3 +49,21 @@ test('3D group entry shows its group introduction and cards without an automatic
   assert.ok(librarySource.includes('if(current&&stageRef.current)'),'only an explicitly selected card may scroll to its effect');
   assert.ok(librarySource.includes("block:'center'"),'selected rune scrolls to the effect, not section header');
 });
+
+test('board-game trend uses native Recharts responsive sizing',async()=>{
+  const boardSource=await readFile(new URL('../app/lrunes/game/GameBoard.jsx',import.meta.url),'utf8');
+  assert.match(boardSource,/<LineChart responsive style=\{\{width:"100%",height:"100%"\}\}/);
+  assert.doesNotMatch(boardSource,/ResponsiveContainer/);
+});
+
+test('daily Rune and game charts use native Recharts responsive sizing',async()=>{
+  for(const file of [
+    '../app/lrunes/RuneAppDayNightDashboard.jsx',
+    '../app/lrunes/DailyRuneAnalytics.jsx',
+    '../app/lrunes/game/GameView.jsx'
+  ]){
+    const source=await readFile(new URL(file,import.meta.url),'utf8');
+    assert.match(source,/\bresponsive style=\{\{/);
+    assert.doesNotMatch(source,/ResponsiveContainer/);
+  }
+});
