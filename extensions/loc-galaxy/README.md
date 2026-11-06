@@ -105,3 +105,9 @@ Chrome's `runtime.onMessageExternal` for messages originating from a website may
 ## 0.6.2：網站授權單一訊息入口
 
 0.6.1 將 `onMessageExternal` 註冊在原始 `background.mjs` 與 fallback 兩處，可能造成 Chrome 網站訊息回覆競爭。0.6.2 的 `background-entry.mjs` 改為載入只處理 Extension 內部訊息的 `background-core.mjs`，並只在 `website-grant-fallback.mjs` 註冊一次 `onMessageExternal`。網站驗證仍需檢查固定來源、原 Extension 開啟的分頁、nonce、Scope、短效 JWT 與 MCP 權限。Chrome 已安裝的 0.6.1 不會因 GitHub merge 自動變成 0.6.2。
+
+## 0.6.3 — 授權通訊先驗證，避免無謂 Clerk Token 核發
+
+在呼叫 Clerk `getToken({template:'loc-mcp'})` 之前，網站先以 `locGalaxy.bridgeProbe` 檢查 Chrome 外部訊息通道是否能回應、Extension 是否有當次自己開啟的授權分頁、nonce/Scope 是否正確。探測不傳 Token、不呼叫 MCP、不計入 MCP 搜尋 QoS。探測失敗直接顯示具體錯誤，成功才執行專用 JWT 與原有 Scope 驗證。Extension 回應協定版號 `protocol:1`，不是將網站鎖死在單一 Extension 版本。
+
+官方 Clerk Sync Host 另需 `@clerk/chrome-extension` SDK/bundle、Clerk allowed_origins 與 Sync Host 網域設定；目前公開站使用 development issuer，不應在缺少對應設定時直接切換登入來源。這版保留現有權限邊界，不變更 Root/Admin。

@@ -53,8 +53,30 @@ async function grant(message,sender){
 // Existing background handler processes senders that include sender.tab.
 // This fallback only handles web-origin senders without sender.tab.
 chrome.runtime.onMessageExternal.addListener((message,sender,sendResponse)=>{
-  if(message?.type!=='locGalaxy.websiteGrant')return false;
-  if(!page(sender.url,String(message.nonce||''),String(message.scopeid||'')))return false;
+  if(message?.type!=='locGalaxy.websiteGrant'&&message?.type!=='locGalaxy.bridgeProbe')
+    return false;
+  // Report an explicit diagnostic for each LOC-initiated bridge request.
+  // No credential or Session data is returned by the probe.
+  const scopeid=String(message.scopeid||''),nonce=String(message.nonce||'');
+  if(!page(sender.url,nonce,scopeid)){
+    sendResponse({ok:false,error:'Extension 已收到訊息，但授權頁 URL／nonce／Scope 不一致'});
+    return false;
+  }
+  if(message.type==='locGalaxy.bridgeProbe'){
+    void (async()=>{
+      const session=await chrome.storage.session.get(PENDING);
+      const local=await chrome.storage.local.get([ACTIVE,SCOPE_KEY]);
+      const now=Date.now(),pending=session[PENDING],active=local[ACTIVE];
+      const matched=Boolean(
+        (pending&&now-pending.created<300000&&await knownTab(pending,nonce,scopeid))||
+        (active&&now-active.created<86400000&&await knownTab(active,nonce,scopeid)));
+      if(local[SCOPE_KEY]!==scopeid)return {ok:false,error:'Extension Scope 不一致'};
+      if(!matched)return {ok:false,error:'Extension 沒有匹配的授權分頁，請由 Extension 重新開始'};
+      return {ok:true,data:{bridge:true,protocol:1,version:chrome.runtime.getManifest().version}};
+    })().then(sendResponse)
+      .catch(error=>sendResponse({ok:false,error:String(error?.message||error).slice(0,180)}));
+    return true;
+  }
   void grant(message,sender).then(data=>sendResponse({ok:true,data}))
     .catch(error=>sendResponse({ok:false,error:String(error?.message||error).slice(0,180)}));
   return true;

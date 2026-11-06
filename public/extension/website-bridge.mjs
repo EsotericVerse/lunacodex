@@ -50,7 +50,23 @@ async function connect(){
 }
 async function connectOnce(){
   if(!valid)throw Error('Extension 授權請求無效，請從 Extension 重新連線');
-  status('正在確認已登入的 LOC Session…');
+  status('正在確認 Extension 訊息通道…');
+  if(!globalThis.chrome?.runtime?.sendMessage)
+    throw Error('Chrome 未提供外部 Extension 訊息通道');
+  const probe=await new Promise((resolve,reject)=>{
+    chrome.runtime.sendMessage(EXTENSION_ID,{type:'locGalaxy.bridgeProbe',nonce,scopeid},answer=>{
+      const err=chrome.runtime.lastError?.message;
+      if(err)reject(Error('Chrome 傳訊失敗：'+err));
+      else resolve(answer);
+    });
+  });
+  if(!probe||typeof probe!=='object')
+    throw Error('Chrome 沒有取得 Extension 監聽器的回覆（可能是 Service Worker 未啟動）');
+  if(!probe.ok)throw Error('Extension 通道核對失敗：'+String(probe.error||'沒有原因'));
+  if(probe.data?.bridge!==true)throw Error('Extension 通道回應格式不符');
+  if(probe.data?.protocol!==1)
+    throw Error('Extension 授權協定不符（目前版本 '+String(probe.data?.version||'未知')+'；至少需要 0.6.3）');
+  status('訊息通道正常，正在確認已登入的 LOC Session…');
   const clerk=await loadClerk();
   if(!clerk.isSignedIn||!clerk.session||!clerk.user){
     const back='/extension/auth-bridge.html?scopeid='+encodeURIComponent(scopeid)+
@@ -92,7 +108,7 @@ async function connectOnce(){
       '。請確認已更新本機擴充功能檔案並重新載入，而非僅重新整理網站');
   }
   if(!reply||typeof reply!=='object')
-    throw Error('Extension 未回覆網站授權要求，請確認已 Reload 至 0.6.0 版本且 Extension ID 正確');
+    throw Error('Extension 收到前置探測，但沒有回覆網站授權要求，請檢查 Service Worker 錯誤');
   if(!reply.ok)throw Error(reply.error||'Extension 拒絕網站授權訊息（未提供原因）');
   if(reply.data?.ready!==true)
     throw Error('Extension 已收到授權，但 Scope 核驗未完成');
