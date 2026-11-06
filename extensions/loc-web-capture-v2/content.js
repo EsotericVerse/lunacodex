@@ -51,7 +51,9 @@
     const hostname=location.hostname.toLowerCase();
     if(/(?:chatgpt\.com|claude\.ai|chat\.openai\.com)$/.test(hostname)){
       const turns=conversationTurns(doc);
-      if(turns.length)return turns;
+      // Chat exports contain only actually rendered, role-attributed messages.
+      // Never silently archive website navigation or other UI as a conversation.
+      return turns;
     }
     // Readability is invoked only for a full-page single capture; avoid destroying
     // the live DOM or re-parsing every MutationObserver notification during recording.
@@ -100,6 +102,7 @@
   function stop(){
     state.observer?.disconnect();state.intersection?.disconnect();
     state.observer=null;state.intersection=null;
+    window.removeEventListener('scroll',scan);
     if(state.timer)clearTimeout(state.timer);
     state.timer=null;state.mode='idle';
     state.hover?.remove();state.hover=null;
@@ -134,7 +137,7 @@
       state.observer.observe(root,{childList:true,subtree:true,characterData:true,attributes:false});
       state.intersection=new IntersectionObserver(scan,{threshold:0});
       for(const node of root.querySelectorAll('article,[role="article"]'))state.intersection.observe(node);
-      window.addEventListener('scroll',scan,{passive:true,once:true});
+      window.addEventListener('scroll',scan,{passive:true});
     }else publish(extract(root));
   }
   chrome.runtime.onMessage.addListener((msg,_sender,reply)=>{
