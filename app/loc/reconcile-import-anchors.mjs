@@ -17,19 +17,25 @@ export async function reconcileExistingImportAnchors({
   for(let offset=0;;offset+=pageSize){
     const {data,error}=await relation(galaxy)
       .select('uid,title,location,place_id,date,createtime')
-      .not('location','is',null)
+      .or('location.neq."",place_id.neq.""')
       .order('createtime',{ascending:true}).range(offset,offset+pageSize-1);
     if(error)throw Error('讀取既有打卡文章失敗：'+(error.message||error));
     const page=data||[];
     if(!Array.isArray(page))throw Error('既有打卡文章格式錯誤');
-    candidates.push(...page.filter(row=>String(row.location||'').trim()));
+    // Existing place_id is authoritative even if the article's original
+    // location is empty or spelled differently from the kept Point title.
+    candidates.push(...page.filter(row=>String(row.location||'').trim()||String(row.place_id||'').trim()));
     onProgress?.({phase:'核對既有地點文章',completed:offset+page.length,total:0});
     if(page.length<pageSize)break;
   }
   if(!candidates.length)return {scanned:0,linked:0,unmatched:0,
     places:{created:0,reused:0},dates:{created:0,reused:0},visits:0};
-  const places=await prepareImportPlaceAnchors(candidates,{
-    scopeId:scope,relation,createMissing:true,onProgress
+  // A known place_id already owns its location aliases. Do not create
+  // another Point for each differently spelled location on a merged place.
+  // Still collect those articles' timestamps below, keyed by the saved UID.
+  const needingPlace=candidates.filter(row=>!String(row.place_id||'').trim());
+  const places=await prepareImportPlaceAnchors(needingPlace,{
+    scopeId:scope,relation,createMissing:true,scanExistingOnEmpty:true,onProgress
   });
   const dates=await prepareImportTimeAnchors(candidates,{
     scopeId:scope,timeTable,relation,
@@ -65,7 +71,7 @@ export async function reconcileExistingImportAnchors({
   await flush();
   const recorded=await recordImportPlaceVisits(visits,{
     relation,table:places.table,timesByUid:places.timesByUid,
-    createtimeByUid:places.createtimeByUid,onProgress
+    createtimeByUid:places.createtimeByUid,attrsByUid:places.attrsByUid,onProgress
   });
   return {scanned:candidates.length,linked,unmatched,
     places:{created:places.created,reused:places.reused},

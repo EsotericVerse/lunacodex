@@ -32,7 +32,7 @@ const parseLabelList=value=>{
 // Lists in attr hold the current eight-character UIDs, not obsolete label links.
 const allowedAttr=Object.freeze({
  date:['date'],period:['uid','date'],era:['period','date'],
- point:['longitude','latitude','location'],path:['point'],trace:['point','path'],
+ point:['longitude','latitude','location','times'],path:['point'],trace:['point','path'],
  category:['uid'],class:['uid'],group:['uid','total'],item:['keyword','total'],
  image:['url','date'],video:['url','date'],rune:['url','date'],suno:['url','date']
 });
@@ -151,9 +151,10 @@ export function toAnchorRow(spec,row){
      attributes.path=data.route_list.routes;
    if(data.route_list?.postal_address&&type==='point')
      attributes.location=String(data.route_list.postal_address);
-   // No lossy migration of timestamp or route segment payloads into unknown keys.
-   if(Array.isArray(data.times)&&data.times.length)
-     throw Error('Trace times require the explicit unified Anchor contract');
+   if(type==='point'&&Array.isArray(data.times))
+     attributes.times=[...new Set(data.times.filter(value=>typeof value==='string'&&Number.isFinite(Date.parse(value)))
+       .map(value=>new Date(value).toISOString()))].sort();
+   // No lossy migration of route segment payloads into unknown keys.
    if(Array.isArray(data.route_list?.segments)&&data.route_list.segments.length)
      throw Error('Trace segments require the explicit unified Anchor contract');
  }else if(spec.kind==='keywords'){
@@ -200,7 +201,7 @@ export function fromAnchorRow(spec,row){
         attr.longitude!=null&&attr.latitude!=null
          ?[Number(attr.longitude),Number(attr.latitude)]:attr.location??null)
      :null;
-   out.times=[];
+   out.times=row.type==='point'&&Array.isArray(attr.times)?attr.times:[];
    out.route_list=attr.path?.length?{routes:attr.path,segments:[]}:{};
    if(typeof out.description==='string'&&out.description.startsWith('{')){
      try{const doc=JSON.parse(out.description);
