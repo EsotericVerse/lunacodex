@@ -121,3 +121,12 @@ Chrome's `runtime.onMessageExternal` for messages originating from a website may
 0.6.4 的探測在 `sender.origin` 通過後仍強制使用 `chrome.tabs.get(tabId).url` 比對授權頁，因此在 Chrome 未提供 URL、登入過程暫時跳轉或分頁狀態不同時誤判為「沒有匹配的授權分頁」。0.6.5 改以 Extension 自己建立的 `chrome.storage.session` 隨機 nonce、Scope、建立時間為準；Chrome 有提供 `sender.tab.id` 才另外比對 tabId。網站發訊來源仍限定 `https://loc.lo3rwang.cc`，JWT 仍透過 LOC MCP 驗證。沒有新增 Chrome 權限。
 
 授權頁若因 Extension Reload 而失去 session pending，會明確提示「沒有待處理的授權請求」；須由 Extension 再按一次網站 Session 授權以建立新的 nonce（**不須登出或重新登入 Clerk**）。若 nonce 或有效期限不一致會顯示不同訊息。修改僅限橋接，不調整 Root/Admin 權限。
+
+
+## 0.6.6 — 短效 Clerk Token 續期與 ChatGPT 右鍵匯入
+
+- 網站授權頁依 `loc-mcp` JWT 的實際 `exp`，提前 35 秒準備續期；8 秒只是本地到期檢查，並非每 8 秒呼叫 Clerk。分頁恢復顯示時也會檢查。
+- Chrome 原生 MV3 `alarms` 以每 30 秒探測短效憑證是否接近到期，只在必要時透過現有 `scripting` 權限，向 Extension 原先開啟的 **LOC 授權分頁** 發送本地續期事件。仍由網頁現有 Clerk Session 核發 `loc-mcp` 專用 JWT；**不傳送原網站 Session Token 或 Cookie**。若授權分頁已關閉、瀏覽器暫停或斷線，續期可能失敗；本地狀態不可假裝永久有效。
+- 在 `https://chatgpt.com/c/*` 或 `/g/*/c/*` 對話頁面右鍵，可選「匯入此 ChatGPT 對話至 LOC Galaxy」。第一次會由 Chrome 要求 ChatGPT 網域授權。操作使用原有 `capture.archiveActive(tabId)`、`capture.sync()`，按來源訊息 ID 去重、保留未確認寫入的佇列。完畢開啟 Galaxy 工作台顯示暫存和確認寫入筆數；沒有隱藏的背景匯入或無條件重送。
+- 不擴大 `externally_connectable`、不改 MCP QoS 或 LOC Authority 授權；新增的 Chrome 權限只有 `contextMenus`，ChatGPT 仍為選配網站權限。半分鐘警報要求 Chrome 120 以上。
+- `site=mcp` 是 Galaxy Link 唯一搜尋來源；GitHub PR 的來源透過 `site_id` 辨認。查詢詞仍須符合現有 substring 搜尋規則，沒有模糊字詞比對。
