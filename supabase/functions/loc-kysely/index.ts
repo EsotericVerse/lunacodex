@@ -15,7 +15,7 @@ import {readMcpGalaxyWithKysely,appendMcpGalaxyWithKysely} from "../../../app/lo
 import {executeKyselyScopeAdmin} from "../../../app/loc/providers/kysely-scope-admin.mjs";
 import {ensurePortableScopeSchema,validatePortableScopeSchema} from "../../../app/loc/providers/kysely-schema.mjs";
 import { selectedDatabaseTarget } from "../../../app/loc/providers/selected-database-target.mjs";
-import {resolveSqlExecutionPort,assertCrossEnginePublicRead,authorizeCrossEngineQuery,executeCrossEngineManagedWrite} from "../../../app/loc/providers/sql-engine-ports.mjs";
+import {resolveSqlExecutionPort,assertCrossEnginePublicRead,authorizeCrossEngineQuery,executeCrossEngineManagedWrite,portableRelation} from "../../../app/loc/providers/sql-engine-ports.mjs";
 import {resolveDatabaseRouting} from "../../../app/loc/providers/routing-config.mjs";
 import {databaseAccessTargets} from "../../../app/loc/providers/access.js";
 import {isTextSearchQuery,checkSearchQos} from "../../../app/loc/providers/search-qos.mjs";
@@ -436,31 +436,33 @@ Deno.serve(async (request) => {
         return json({error:{message:"Invalid PR update payload"}},400);
       let uid=String(body.uid||"");
       const table="silver."+scope+"_galaxy";
-      const tableRef=sql.ref(table);
       const db=await databaseForTarget(controlTarget);
+      const engine=String(controlTarget.engine);
+      const name=portableRelation(scope+'_galaxy',engine,
+        engine==='mssql'?'dbo':'silver');
       const result=await db.transaction().execute(async trx=>{
-        await bindPostgresSession(trx,"authenticated",claims);
-        // The user knows their GitHub PR number, not its random Galaxy UID.
-        // Locate by stable source identity first. Do not search private content,
-        // infer an arbitrary UID, or write when multiple candidates exist.
+        if(engine==='postgres'&&controlTarget.provider!=='custom')
+          await bindPostgresSession(trx,'authenticated',claims);
+        // Exact source identity first. No unrestricted private-content scan.
         const repoSiteId="EsotericVerse/moon-runes-pwa#"+prNumber;
         const prMarker=new RegExp("(?:^|[^0-9])PR\\s*#"+Number(prNumber)+"(?:[^0-9]|$)");
         let rows:{uid:string;title:string;site:string;site_id:string|null}[];
         if(uid){
-          const existing=await sql<{uid:string;title:string;site:string;site_id:string|null}>`
-            select uid,title,site,site_id from ${tableRef} where uid=${uid} limit 1`.execute(trx);
-          rows=existing.rows;
+          rows=await trx.selectFrom(name).select(['uid','title','site','site_id'])
+            .where('uid','=',uid).limit(1).execute();
         }else{
-          const exact=await sql<{uid:string;title:string;site:string;site_id:string|null}>`
-            select uid,title,site,site_id from ${tableRef}
-            where site='mcp' and site_id=${repoSiteId} limit 2`.execute(trx);
-          rows=exact.rows;
+          rows=await trx.selectFrom(name).select(['uid','title','site','site_id'])
+            .where('site','=','mcp').where('site_id','=',repoSiteId)
+            .limit(2).execute();
           if(rows.length===0){
-            const fallback=await sql<{uid:string;title:string;site:string;site_id:string|null}>`
-              select uid,title,site,site_id from ${tableRef}
-              where site='mcp' and title ilike ${'%PR #'+prNumber+'%'}
-              order by createtime desc nulls last limit 40`.execute(trx);
-            rows=fallback.rows.filter(row=>prMarker.test(String(row.title||'')));
+            // A bounded title fallback is retained for legacy PR provenance.
+            const pattern='%PR #'+prNumber+'%';
+            const fallback=await trx.selectFrom(name)
+              .select(['uid','title','site','site_id'])
+              .where('site','=','mcp')
+              .where(sql`lower(${sql.ref('title')}) like ${pattern.toLowerCase()}`)
+              .orderBy('createtime','desc').limit(40).execute();
+            rows=fallback.filter(row=>prMarker.test(String(row.title||'')));
           }
           if(rows.length!==1)
             throw Object.assign(new Error(rows.length?'Multiple PR articles match; refusing ambiguous update':
