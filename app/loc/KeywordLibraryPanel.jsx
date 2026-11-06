@@ -72,6 +72,14 @@ export default function KeywordLibraryPanel({scopeId,account}){
     if(!rows.length)return emptyTree;
     return indexKeywordTree(rows);
   },[rows]);
+  // A stable graph dataset prevents vis-network from being destroyed every time
+  // the inspector draft changes. Only the actual keyword tree/class rebuilds it.
+  const graphItems=useMemo(()=>activeClass
+    ?descendantsOfKeyword(rows,activeClass.uid,{type:'item'}).map(node=>{
+      const group=parentOf(tree,node.uid);
+      return {keyword_id:node.uid,item_name:node.name,keywords:node.lists,
+        group_uid:group?.uid||'',class_group:group?.name||'',class_name:activeClass.name};
+    }):[],[rows,tree,activeClass]);
   const category=tree.index.get(chosen.category);
   // Category identity is maintained by Scope Group, not editable here.
   const classes=[...tree.index.values()].filter(row=>row.type==='class')
@@ -433,11 +441,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
   const currentSuggestionPage=Math.min(discoveryPage,suggestionPages);
   const visibleSuggestions=suggestedCandidates.slice(
     (currentSuggestionPage-1)*suggestionPageSize,currentSuggestionPage*suggestionPageSize);
-  const graphItems=selectedClass?descendantsOfKeyword(rows,selectedClass.uid,{type:'item'}).map(node=>{
-    const group=parentOf(tree,node.uid);
-    return {keyword_id:node.uid,item_name:node.name,keywords:node.lists,
-      group_uid:group?.uid||'',class_group:group?.name||'',class_name:selectedClass.name};
-  }):[];
+
   return <div className="scope-keyword-management">
     <ManagementSectionNav id="scope-keyword-sections" title="關鍵詞管理"
       panelId="scope-keyword-workspace" items={workspaceOptions}
@@ -609,19 +613,62 @@ export default function KeywordLibraryPanel({scopeId,account}){
     </section>:null}
     {!loading&&workspace==='network'?<section className="loc-card scope-feature-card">
       <h2>關聯圖</h2>
-      {graphItems.length?<KeywordNetworkEditor items={graphItems} className={selectedClass?.name||''}
-        classId={selectedClass?.uid||''} selectedId={chosen.item}
-        onSelectItem={item=>{setChosen(prev=>({...prev,category:chosen.category,class:selectedClass?.uid||'',group:item.group_uid,item:String(item.keyword_id)}));edit(tree.index.get(String(item.keyword_id)));setWorkspace('manual');}}
-        onNewItem={groupUid=>{const group=groups.find(row=>row.uid===groupUid);if(group){create('item',group.uid);setWorkspace('manual');}}}
-        onDeleteItem={item=>removeNode(tree.index.get(String(item.keyword_id)))}
-        onDeleteKeyword={async(item,word)=>{
-          const original=tree.index.get(String(item.keyword_id));
-          await writeKeywordLibraryItem(scopeId,'update',{...original,lists:original.lists.filter(x=>x!==word)});
-          await markStale(original.uid);await load(original.uid);await invalidate();
-        }}
-        onDeleteGroup={uid=>{const group=groups.find(row=>row.uid===uid);if(group)removeNode(group);}}
-        onMessage={setNotice}
-      />:<p className="scope-status">請先建立關鍵字群組科目、關鍵字分類群組及關鍵詞分類。</p>}
+      <div className="scope-keyword-network-layout">
+        {selectedClass?<KeywordNetworkEditor items={graphItems} className={selectedClass.name}
+          classId={selectedClass.uid} selectedId={chosen.item}
+          onSelectGroup={uid=>{
+            const node=tree.index.get(String(uid));
+            if(!node)return;
+            setChosen(prev=>({...prev,class:selectedClass.uid,group:node.uid,item:''}));
+            edit(node);
+          }}
+          onSelectItem={item=>{
+            const node=tree.index.get(String(item.keyword_id));
+            if(!node)return;
+            setChosen(prev=>({...prev,class:selectedClass.uid,group:item.group_uid,item:node.uid}));
+            edit(node);
+          }}
+          onNewItem={groupUid=>{
+            const group=tree.index.get(String(groupUid));
+            if(group?.type==='group')create('item',group.uid);
+          }}
+          onDeleteItem={item=>removeNode(tree.index.get(String(item.keyword_id)))}
+          onDeleteKeyword={async(item,word)=>{
+            const original=tree.index.get(String(item.keyword_id));
+            if(!original)return false;
+            await writeKeywordLibraryItem(scopeId,'update',{...original,lists:original.lists.filter(x=>x!==word)});
+            await markStale(original.uid);await load(original.uid);await invalidate();
+            return true;
+          }}
+          onDeleteGroup={uid=>{const group=tree.index.get(String(uid));if(group)removeNode(group);}}
+          onMessage={setNotice}
+        />:<p className="scope-status">請先選擇關鍵字群組科目。</p>}
+        <aside className="scope-keyword-network-inspector" aria-label="關聯圖節點編輯">
+          <h3>節點編輯</h3>
+          {draft?<div className="scope-keyword-network-fields">
+            <p className="scope-status">{tree.index.has(draft.uid)?'編輯':'新增'} {LABEL[draft.type]}</p>
+            <label><span>名稱</span><input value={draft.name}
+              onChange={event=>setEditor({node:{...draft,name:event.target.value}})}/></label>
+            <label><span>說明</span><textarea rows={2} value={draft.desc}
+              onChange={event=>setEditor({node:{...draft,desc:event.target.value}})}/></label>
+            {draft.type==='item'?<label><span>判斷詞（一行一個）</span>
+              <textarea rows={Math.min(12,Math.max(5,keywordText.split('\n').length+2))}
+                value={keywordText} onChange={event=>setKeywordText(event.target.value)}/>
+              <small className="scope-status">支援現有 AND、TO、NOR 規則。</small>
+            </label>:null}
+            <div className="scope-preview-links">
+              {!inDock?<button type="button" className="loc-button primary"
+                disabled={busy||!draft.name.trim()} onClick={saveNode}>
+                {busy?'儲存中…':'儲存'}
+              </button>:<span className="scope-status">使用固定儲存鍵套用修改。</span>}
+              {tree.index.has(draft.uid)?<button type="button" className="loc-button scope-danger-button"
+                disabled={busy} onClick={()=>removeNode(draft)}>刪除</button>:null}
+              <button type="button" className="loc-button" disabled={busy}
+                onClick={()=>{setEditor(null);setKeywordText('');}}>取消</button>
+            </div>
+          </div>:<p className="scope-status">點選左側圖譜的 Group 或 Item，即可在這裡修改，不用跳離關聯圖。</p>}
+        </aside>
+      </div>
     </section>:null}
     </div>
   </div>;
