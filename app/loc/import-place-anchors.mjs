@@ -56,11 +56,11 @@ export async function prepareImportPlaceAnchors(records,{
   if(!/^[a-z][a-z0-9]{0,14}$/.test(scopeId))throw Error('空間定錨 Scope 無效');
   if(typeof relation!=='function')throw Error('空間定錨資料庫不存在');
   const table='silver.'+scopeId+'_anchor';
-  const existingByCoordinate=new Map(),existingByName=new Map(),timesByUid=new Map();
+  const existingByCoordinate=new Map(),existingByName=new Map(),timesByUid=new Map(),createtimeByUid=new Map();
   onProgress?.({phase:'讀取現有空間定錨',completed:0,total:0});
   for(let offset=0;;offset+=pageSize){
     const {data,error}=await relation(table)
-      .select('uid,type,title,attr').eq('type','point')
+      .select('uid,type,title,attr,createtime').eq('type','point')
       .order('title',{ascending:true}).range(offset,offset+pageSize-1);
     if(error){
       if(allowMissing&&!createMissing&&['42P01','PGRST205'].includes(String(error.code||'')))
@@ -78,6 +78,7 @@ export async function prepareImportPlaceAnchors(records,{
       if(coordinates&&!existingByCoordinate.has(coordinates))
         existingByCoordinate.set(coordinates,saved);
       timesByUid.set(uid,[]);
+      createtimeByUid.set(uid,String(anchor.createtime||'')||null);
     }
     onProgress?.({phase:'讀取現有空間定錨',completed:offset+(data||[]).length,total:0});
     if((data||[]).length<pageSize)break;
@@ -155,6 +156,7 @@ export async function prepareImportPlaceAnchors(records,{
       seen.add(uid);
       register(place,uid);
       timesByUid.set(uid,[]);
+      createtimeByUid.set(uid,place.createtime===null?null:new Date(place.createtime).toISOString());
       created++;
     }
     if(seen.size!==chunk.length)throw Error('新增空間定錨回傳缺少部分座標');
@@ -165,7 +167,7 @@ export async function prepareImportPlaceAnchors(records,{
     if(uid){register(alias,uid);reused++;}
   }
   const unmatchedCoordinates=names.size-reused-created;
-  return {byCoordinate,byName,created,reused,timesByUid,table,
+  return {byCoordinate,byName,created,reused,timesByUid,createtimeByUid,table,
     skipped:missing+unmatchedCoordinates,unmatchedCoordinates};
 }
 export function importedPlaceId({incoming,existing,byName,byCoordinate}={}){
@@ -177,26 +179,21 @@ export function importedPlaceId({incoming,existing,byName,byCoordinate}={}){
   return VALID_UID.test(String(uid||''))?uid:null;
 }
 
-// Each anchor keeps the creation time of every check-in made there in its
-// `times` array. Merge the newly imported articles' times into the saved ones:
-// the same instant is stored once, the result is sorted, and an anchor with
-// nothing new is not written.
-// Bound independent per-anchor writes. One UID is written by at most one
-// worker, preserving the existing append/dedupe semantics without issuing
-// hundreds of sequential round trips or flooding the database.
+// Legacy Trace can persist sorted, deduplicated times. Unified Point.attr
+// intentionally does not: its physical createtime stores only the earliest
+// proven original article/check-in timestamp, never a fabricated visits array.
+// Bound each UID's independent write with limited concurrency.
 const PLACE_VISIT_WRITE_CONCURRENCY=6;
 const PLACE_VISIT_WRITE_TIMEOUT_MS=45000;
-export async function recordImportPlaceVisits(visits,{relation,table,timesByUid,onProgress}={}){
+export async function recordImportPlaceVisits(visits,{relation,table,timesByUid,createtimeByUid,onProgress}={}){
   if(!Array.isArray(visits)||!visits.length){
     onProgress?.({phase:'補齊定錨打卡時間',completed:0,total:0});
     return {updated:0,added:0};
   }
-  // Point.attr intentionally has no times array. Exact times stay in Galaxy,
-  // calendar dates in Date anchors; never persist legacy Trace.times here.
-  if(/^silver\.[a-z][a-z0-9]{0,14}_anchor$/.test(String(table||''))){
-    onProgress?.({phase:'補齊定錨打卡時間',completed:0,total:0});
-    return {updated:0,added:0};
-  }
+  // Unified Point.attr has no times array. Repair its physical
+  // createtime from the earliest proven source article/check-in instant;
+  // never invent a new attr.times field or overwrite an established date.
+  const unified=/^silver\.[a-z][a-z0-9]{0,14}_anchor$/.test(String(table||''));
   if(typeof relation!=='function'||!table)throw Error('定錨打卡時間寫入設定不存在');
   const byUid=new Map();
   for(const visit of visits||[]){
@@ -205,6 +202,42 @@ export async function recordImportPlaceVisits(visits,{relation,table,timesByUid,
     if(!VALID_UID.test(uid)||!Number.isFinite(stamp))continue;
     if(!byUid.has(uid))byUid.set(uid,new Set());
     byUid.get(uid).add(stamp);
+  }
+  if(unified){
+    const pending=[...byUid].filter(([uid])=>!createtimeByUid?.get(uid)).map(([uid,stamps])=>({
+      uid,createtime:new Date([...stamps].reduce((minimum,stamp)=>Math.min(minimum,stamp),Infinity)).toISOString()
+    }));
+    const phase='補齊 Point 來源時間',total=pending.length;
+    onProgress?.({phase,completed:0,total});
+    let cursor=0,completed=0,updated=0,firstError=null;
+    const progressStep=Math.max(1,Math.ceil(total/50));
+    const worker=async()=>{
+      while(cursor<total&&!firstError){
+        const {uid,createtime}=pending[cursor++];
+        try{
+          // Idempotent: only fill NULL and leave existing manually recorded
+          // or source-derived createtime untouched.
+          let request=relation(table).update({createtime})
+            .eq('uid',uid).eq('type','point').is('createtime',null).select('uid');
+          if(typeof request.abortSignal==='function'&&
+            typeof AbortSignal!=='undefined'&&typeof AbortSignal.timeout==='function')
+            request=request.abortSignal(AbortSignal.timeout(PLACE_VISIT_WRITE_TIMEOUT_MS));
+          const {data,error}=await request;
+          if(error)throw Error(error.message||String(error));
+          if(!Array.isArray(data))throw Error('Point 來源時間更新缺少回傳資料');
+          updated+=data.length;
+          if(data.length)createtimeByUid?.set(uid,createtime);
+          completed++;
+          if(completed%progressStep===0||completed===total)
+            onProgress?.({phase,completed,total});
+        }catch(error){if(!firstError)firstError=error;}
+      }
+    };
+    await Promise.all(Array.from({length:Math.min(PLACE_VISIT_WRITE_CONCURRENCY,total)},()=>worker()));
+    if(firstError)throw Error('補齊 Point 來源時間中斷（已處理 '+completed+'/'+total+
+      ' 個定錨）；已完成部分不會回滾，重新執行只補 NULL。原因：'+
+      String(firstError?.message||firstError));
+    return {updated,added:updated};
   }
   // Assemble one update per real anchor before writing. Existing timestamps
   // are never removed, and repeated runs skip already persisted instants.
