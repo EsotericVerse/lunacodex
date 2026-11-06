@@ -49,7 +49,7 @@ const rpc=(method,params={})=>({jsonrpc:'2.0',id:1,method,params});
 test('Clerk check: anonymous GET is 401 with RFC9728 OAuth challenge',async()=>{
   const res=await handleMcp(req('GET'));
   assert.equal(res.status,401);
-  assert.match(res.headers.get('www-authenticate'),/Bearer resource_metadata="https:\/\/loc\.lo3rwang\.cc\/\.well-known\/oauth-protected-resource\/mcp"/);
+  assert.match(res.headers.get('www-authenticate'),/Bearer resource_metadata="https:\/\/mcp\.lo3rwang\.cc\/\.well-known\/oauth-protected-resource"/);
 });
 test('Clerk check: metadata is public JSON with correct resource and authorization server',async()=>{
   const res=protectedResourceMetadata();
