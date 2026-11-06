@@ -43,3 +43,12 @@ test('Clerk token acquisition waits for a verified Extension communication probe
  assert.match(listener,/await knownTab\(pending,nonce,scopeid\)/);
  assert.match(listener,/await knownTab\(active,nonce,scopeid\)/);
 });
+
+test('Bridge trusts browser sender.origin; nonce and Scope remain bound to created tab',()=>{
+  const listener=read('extensions/loc-galaxy/website-grant-fallback.mjs');
+  assert.match(listener,/if\(sender\?\.origin!==undefined\)return sender\.origin===LOC_ORIGIN/);
+  assert.doesNotMatch(listener,/page\(sender\.url,nonce,scopeid\)/);
+  assert.match(listener,/chrome\.tabs\.get\(record\.tabId\)/);
+  assert.match(listener,/u\.searchParams\.get\('nonce'\)===nonce/);
+  assert.match(listener,/u\.searchParams\.get\('scopeid'\)===scopeid/);
+});
