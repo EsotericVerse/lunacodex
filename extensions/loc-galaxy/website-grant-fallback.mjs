@@ -13,11 +13,13 @@ function trustedSender(sender){
   if(sender?.origin!==undefined)return sender.origin===LOC_ORIGIN;
   try{return new URL(sender?.url||'').origin===LOC_ORIGIN;}catch{return false;}
 }
-async function knownTab(record,nonce,scopeid){
+function validGrant(record,nonce,scopeid,now,maxAge,sender){
   if(!record||record.nonce!==nonce||record.scopeid!==scopeid||
-     !Number.isInteger(record.tabId))return false;
-  try{const tab=await chrome.tabs.get(record.tabId);return page(tab.url,nonce,scopeid);}
-  catch{return false;}
+     !Number.isFinite(record.created)||record.created>now||
+     now-record.created>=maxAge)return false;
+  // The original tab ID is a supplementary check only when Chrome supplies
+  // it; a webpage external message may not include sender.tab.
+  return !Number.isInteger(sender?.tab?.id)||record.tabId===sender.tab.id;
 }
 async function grant(message,sender){
   const scopeid=String(message.scopeid||''),nonce=String(message.nonce||'');
@@ -26,10 +28,8 @@ async function grant(message,sender){
   const session=await chrome.storage.session.get(PENDING);
   const local=await chrome.storage.local.get([ACTIVE,SCOPE_KEY,AUTH]);
   const now=Date.now(),pending=session[PENDING],active=local[ACTIVE];
-  const initial=Boolean(pending&&now-pending.created<300000&&
-    await knownTab(pending,nonce,scopeid));
-  const renewal=Boolean(active&&now-active.created<86400000&&
-    await knownTab(active,nonce,scopeid));
+  const initial=validGrant(pending,nonce,scopeid,now,300000,sender);
+  const renewal=validGrant(active,nonce,scopeid,now,86400000,sender);
   if(!initial&&!renewal)throw Error('LOC 授權頁面不符或已過期，請從 Extension 重新連線');
   if(local[SCOPE_KEY]!==scopeid)throw Error('Extension Scope 已變更');
   const token=String(message.access_token||''),expires=Number(message.expires_at);
@@ -79,10 +79,12 @@ chrome.runtime.onMessageExternal.addListener((message,sender,sendResponse)=>{
       const local=await chrome.storage.local.get([ACTIVE,SCOPE_KEY]);
       const now=Date.now(),pending=session[PENDING],active=local[ACTIVE];
       const matched=Boolean(
-        (pending&&now-pending.created<300000&&await knownTab(pending,nonce,scopeid))||
-        (active&&now-active.created<86400000&&await knownTab(active,nonce,scopeid)));
+        validGrant(pending,nonce,scopeid,now,300000,sender)||
+        validGrant(active,nonce,scopeid,now,86400000,sender));
       if(local[SCOPE_KEY]!==scopeid)return {ok:false,error:'Extension Scope 不一致'};
-      if(!matched)return {ok:false,error:'Extension 沒有匹配的授權分頁，請由 Extension 重新開始'};
+      if(!matched)return {ok:false,error:pending||active?
+        'Extension 授權 nonce、Scope 或有效期限不一致，請由 Extension 重新開始':
+        'Extension 沒有待處理的授權請求，請從 Extension 開啟新的授權頁'};
       return {ok:true,data:{bridge:true,protocol:1,version:chrome.runtime.getManifest().version}};
     })().then(sendResponse)
       .catch(error=>sendResponse({ok:false,error:String(error?.message||error).slice(0,180)}));
