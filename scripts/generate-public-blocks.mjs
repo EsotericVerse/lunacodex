@@ -21,7 +21,7 @@ console.log('[public] Source: '+publication.source);
 const routes=site.registry.filter(x=>x.active!==false&&x.scope_kind!=='system');
 if(!routes.length||routes.some(x=>!validScope.test(x.scope_id)))throw Error('Invalid public Scope list');
 // Explicit public publication projects the existing Scope Anchor From tree.
-// This never reads obsolete ArticleTag/txt_class or scans Galaxy articles.
+// This reads published Anchor source snapshots without scanning Galaxy articles.
 const {data:globalList,error:globalError}=await db.from('loc')
   .select('DefaultArticleClass').eq('id','loc').maybeSingle();
 if(globalError||!globalList)throw Error('Cannot publish LOC DefaultArticleClass');
