@@ -1,7 +1,7 @@
 import {readFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {semanticStatisticChartTypes,availableStatisticChartTypes} from '../app/modular/modules/statistics/statistics-time-zoom.mjs';
+import {semanticStatisticChartTypes,availableStatisticChartTypes,preferredStatisticChartType} from '../app/modular/modules/statistics/statistics-time-zoom.mjs';
 
 const ids=rows=>rows.map(([id])=>id);
 const two=[{name:'north',value:12},{name:'south',value:7}];
@@ -37,4 +37,24 @@ test('relationship graph retains the editor and phone/Theme controls',()=>{
   assert.match(graph,/manipulation:false/);
   assert.match(graph,/onNewGroup/);
   assert.match(css,/scope-keyword-network-controls[^{]*\{[^}]*min-height:44px/);
+});
+
+test('each statistic chooses a chart for its meaning, not the picker list order',()=>{
+  const distribution=[['line','timeline'],['bar','ranking'],['pie','composition']];
+  assert.equal(preferredStatisticChartType({purpose:'total',available:distribution}), 'line');
+  assert.equal(preferredStatisticChartType({purpose:'source',available:distribution}), 'line');
+  assert.equal(preferredStatisticChartType({purpose:'place',available:distribution}), 'bar');
+  assert.equal(preferredStatisticChartType({purpose:'keyword',available:distribution}), 'bar');
+  assert.equal(preferredStatisticChartType({purpose:'media',available:distribution}), 'bar');
+  assert.equal(preferredStatisticChartType({purpose:'comparison',available:distribution}), 'line');
+  assert.equal(preferredStatisticChartType({purpose:'media',available:distribution,requested:'line'}), 'line');
+  assert.equal(preferredStatisticChartType({purpose:'media',available:[['line','trend']]}), 'line');
+});
+
+test('multimedia ranking actually renders ranked categories, not temporal bars',()=>{
+  const facet=readFileSync(new URL('../app/modular/modules/statistics/MediaFacetStatistics.jsx',import.meta.url),'utf8');
+  const shared=readFileSync(new URL('../app/modular/modules/statistics/StatisticsMultiChart.jsx',import.meta.url),'utf8');
+  assert.match(facet,/barLayout=\{chosenChartType==='bar'\?'vertical':'horizontal'\}/);
+  assert.match(shared,/actual==='bar'&&barLayout==='vertical'&&categories\.length/);
+  assert.match(facet,/preferredStatisticChartType\(\{purpose:'media'/);
 });
