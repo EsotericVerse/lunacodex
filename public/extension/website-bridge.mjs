@@ -132,3 +132,4 @@ function renewWhenDue(){
 setInterval(renewWhenDue,8000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)renewWhenDue();});
 window.addEventListener('focus',renewWhenDue);
+window.addEventListener('locGalaxy.websiteRenew',renewWhenDue);
