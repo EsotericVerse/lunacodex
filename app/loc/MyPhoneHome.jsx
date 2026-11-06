@@ -14,7 +14,7 @@ export default function MyPhoneHome(){
   },[]);
 
   return <main className="scope-main"><section className="scope-page">
-    <header className="loc-hero"><h1><FieldText text="我的手機"/></h1></header>
+    <header className="loc-hero"><p className="loc-eyebrow"><FieldText text="我的資料"/></p><h1><FieldText text="使用說明"/></h1></header>
     {native?<div className="scope-content">
       <section className="loc-card">
         <p className="scope-status">本機資料空間 · SQLite（local）</p>
@@ -27,7 +27,7 @@ export default function MyPhoneHome(){
             {id:'manage',label:'管理'}
           ].map(item=><ScopeLink key={item.id} native href={navigationHref('local',item.id,true)}>{item.label}</ScopeLink>)}
         </div>
-        <p><ScopeLink native href={navigationHref('local','',true)}>前往本機首頁（從首頁開啟編輯模式）</ScopeLink></p>
+        <p><ScopeLink native href={navigationHref('local','',true)}>前往本機資料頁（可開啟編輯模式）</ScopeLink></p>
       </section>
       <PrivateLocalFiles/>
     </div>:
