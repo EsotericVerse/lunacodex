@@ -83,14 +83,9 @@ export function createNewKeywordDiscovery(rows=[]){
     .sort((a,b)=>b.length-a.length);
   const regexMeta=new Set(['\\','.','*','+','?','^','$','{','}','(',')','|','[',']']);
   const escapeRegex=term=>[...term].map(char=>regexMeta.has(char)?'\\'+char:char).join('');
-  // One scan also reports existing Keywords with little or no article usage.
-  // Lookahead retains overlapping literal hits, but counts each Keyword at
-  // most once per Galaxy document. No Anchor or database writes are involved.
   const knownMatchers=[];
   for(let offset=0;offset<known.length;offset+=100)
-    knownMatchers.push(new RegExp('(?=('+known.slice(offset,offset+100)
-      .map(escapeRegex).join('|')+'))','gu'));
-  const knownDocuments=new Map(known.map(word=>[word,0]));
+    knownMatchers.push(new RegExp(known.slice(offset,offset+100).map(escapeRegex).join('|'),'u'));
   let read=0,withContent=0,limited=false;
   function add(term,seen,month,body,position,length){
     const key=normalize(term);
@@ -119,17 +114,11 @@ export function createNewKeywordDiscovery(rows=[]){
       withContent++;
       const seen=new Set();
       const month=String(row?.createtime||'').slice(0,7);
-      const normalized=normalize(body);
-      const matchedKnown=new Set();
-      for(const re of knownMatchers){
-        for(const match of normalized.matchAll(re))matchedKnown.add(match[1]);
-      }
-      for(const word of matchedKnown)
-        knownDocuments.set(word,knownDocuments.get(word)+1);
       if(/^\d{4}-\d{2}$/.test(month)){
         const item=months.get(month)||{month,documents:0,existingCovered:0};
         item.documents++;
-        if(matchedKnown.size)item.existingCovered++;
+        const normalized=normalize(body);
+        if(knownMatchers.some(re=>re.test(normalized)))item.existingCovered++;
         months.set(month,item);
       }
       let prev=null,prev2=null;
@@ -185,17 +174,9 @@ export function createNewKeywordDiscovery(rows=[]){
     }
     result=result.map(term=>({...term,language:HAN.test(term.word)?'zh':'other',
       months:[...term.months.entries()].sort(([a],[b])=>a.localeCompare(b))}));
-    // A conservative, per-document threshold: at most 1% of scanned texts.
-    // Zero hits are listed as "unobserved", not classified as unused forever.
-    const rareThreshold=Math.max(1,Math.floor(withContent*0.01));
-    const infrequentKeywords=[...knownDocuments].filter(([,documents])=>
-      documents<=rareThreshold).sort((a,b)=>a[1]-b[1]||a[0].localeCompare(b[0]))
-      .slice(0,60).map(([word,documents])=>({
-        word,documents,coverage:withContent?documents/withContent:0
-      }));
     return {read,withContent,limited,existingCount:existing.size,
       monthCoverage:[...months.values()].sort((a,b)=>a.month.localeCompare(b.month)),
-      candidates:result,infrequentKeywords};
+      candidates:result};
   }
   return {consume,finish};
 }
