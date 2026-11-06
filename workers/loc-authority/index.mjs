@@ -233,8 +233,8 @@ function managedMcpGateway(env){
   let url;try{url=new URL(configured)}catch{throw fail('Invalid LOC managed SQL Gateway URL',503)}
   if(url.protocol!=='https:'||url.username||url.password||url.search||url.hash||
      !url.pathname||url.pathname==='/'||url.hostname==='localhost'||
-     /(?:^|\\.)(?:localhost|local|internal|test)$/.test(url.hostname)||
-     /^(?:\\d{1,3}\\.){3}\\d{1,3}$/.test(url.hostname))
+     /(?:^|\.)(?:localhost|local|internal|test)$/.test(url.hostname)||
+     /^(?:\d{1,3}\.){3}\d{1,3}$/.test(url.hostname))
     throw fail('Invalid LOC managed SQL Gateway URL',503);
   return {url:url.href,apikey:''};
 }
