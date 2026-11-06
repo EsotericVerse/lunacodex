@@ -32,7 +32,11 @@ export function publicNumericSources({fetchImpl=globalThis.fetch,
   });
   const candidates=[{id:'primary',schema:()=>primary.schema('silver')}];
   if(backupGatewayUrl){
-    // Never silently route backup through the primary SQL host.
+    // Independent backup must not share the primary Gateway origin.
+    const primaryOrigin=new URL(SQL_GATEWAY_URL||SQL_PROVIDER_URL).origin;
+    const backupOrigin=new URL(backupGatewayUrl).origin;
+    if(primaryOrigin===backupOrigin)
+      throw new Error('Backup SQL Gateway must use an independent origin');
     const backup=createKyselyEdgeClient({
       gatewayUrl:backupGatewayUrl,target:'configured',role:'anon',fetch:timedFetch
     });
