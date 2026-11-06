@@ -241,3 +241,15 @@ test('exact api.manage cutover covers live JavaScript registry and both models',
   assert.match(migration,/CREATE OR REPLACE VIEW api\.lo3rwang_keywords_manage AS/);
   assert.doesNotMatch(migration,/DROP .*CASCADE/);
 });
+
+test('new Scope provisioning uses ZModel-mapped registry and LOC claims, not legacy SQL permission RPCs',()=>{
+  const source=readFileSync(new URL('../app/loc/providers/kysely-scope-admin.mjs',import.meta.url),'utf8');
+  assert.match(source,/fixedSchema\.models\.Manage/);
+  assert.match(source,/fixedSchema\.models\.Loc/);
+  assert.match(source,/returning\(MANAGE_ROUTE_FIELDS\)/);
+  assert.doesNotMatch(source,/execute\s+function\s+silver\.sync_scope_config_display_name\s*\(/i);
+  assert.doesNotMatch(source,/from\s+api\.manage\s*\(/i);
+  assert.match(source,/current_setting\('request\.jwt\.claims',true\)/);
+  assert.match(source,/sql\.lit\(id\+':manage'\)/);
+  assert.match(source,/await\s+allowedGlobal\(trx\)/);
+});
