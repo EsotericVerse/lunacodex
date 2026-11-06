@@ -45,7 +45,8 @@ test('ISR server route checks global mode, validates scope and is safe for disab
   assert.match(guard,/isAvailabilityFailure/);
   assert.match(source,/readIsrSummary\(db,\{origin:url\.origin,args\}\)/);
   assert.match(source,/tryPublicSources\(publicNumericSources\(\)/);
-  assert.match(publicServer,/createBackupPublicAdapter/);
+  assert.match(publicServer,/LOC_BACKUP_SQL_GATEWAY_URL/);
+  assert.doesNotMatch(publicServer,/NEON_AUTH_URL|@supabase\/postgrest-js/);
   assert.match(source,/status===200\?CACHE_HEADERS:NO_CACHE/);
   assert.match(source,/p_view:view/);
   assert.doesNotMatch(source,/read_scope_analytics|\.rpc\(/);
