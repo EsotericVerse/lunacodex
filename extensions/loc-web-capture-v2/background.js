@@ -212,21 +212,33 @@ async function capture(tab,selection='',includeAssistant=false){
  if(!Array.isArray(reply?.items))throw Error('頁面沒有回傳內容');
  return acceptItems(reply.items);
 }
+async function recordedTab(){
+ const {locRecorderTabId}=await chrome.storage.local.get('locRecorderTabId');
+ if(Number.isInteger(locRecorderTabId)&&locRecorderTabId>0)
+  return {id:locRecorderTabId};
+ return currentTab();
+}
 async function selectOrRecord(type,includeAssistant=false){
  const tab=await currentTab();
+ // One active recorder. Stop the prior tab before moving the recorder.
+ const prior=(await chrome.storage.local.get('locRecorderTabId')).locRecorderTabId;
+ if(type==='page.record'&&Number.isInteger(prior)&&prior!==tab.id)
+  await chrome.tabs.sendMessage(prior,{type:'page.stop'}).catch(()=>{});
  await inject(tab.id);
  await chrome.tabs.sendMessage(tab.id,{type,includeAssistant});
+ if(type==='page.record')await chrome.storage.local.set({locRecorderTabId:tab.id});
  return {message:type==='page.record'?'請點選錄製區域，開始追蹤動態貼文':'請點選要擷取的區域'};
 }
 async function controlRecording(type){
- const tab=await currentTab();
+ const tab=await recordedTab();
  const reply=await chrome.tabs.sendMessage(tab.id,{type}).catch(()=>null);
  if(!reply?.ok)throw Error('目前頁面沒有可操作的錄製');
  return {message:type==='page.pause'?'已暫停錄製':type==='page.resume'?'已繼續錄製':'已停止錄製'};
 }
 async function stopRecording(){
- const tab=await currentTab();
+ const tab=await recordedTab();
  const reply=await chrome.tabs.sendMessage(tab.id,{type:'page.stop'}).catch(()=>null);
+ await chrome.storage.local.remove('locRecorderTabId');
  return {message:reply?.ok?'已停止錄製':'目前頁面沒有正在進行的錄製'};
 }
 chrome.runtime.onInstalled.addListener(()=>{
