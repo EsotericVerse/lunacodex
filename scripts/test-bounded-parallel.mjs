@@ -53,3 +53,22 @@ test('Max MultiPara hard ceiling limits a burst to 10 parallel workers',async()=
   assert.equal(maximum,10);
   assert.deepEqual(data,Array.from({length:60},(_,i)=>i));
 });
+
+test('member comparison reuses bounded lanes rather than an unbounded Promise.all',async()=>{
+  const {readFileSync}=await import('node:fs');
+  const source=readFileSync(new URL('../app/modular/modules/statistics/LocMemberIntersection.jsx',import.meta.url),'utf8');
+  assert.match(source,/import \{mapBounded\} from '\.\.\/\.\.\/\.\.\/loc\/bounded-parallel\.mjs'/);
+  assert.match(source,/mapBounded\(chosenIds,3,async id=>\{/);
+  assert.doesNotMatch(source,/Promise\.all\(chosenIds\.map/);
+  const ids=['scope1','scope2','scope3','scope4'];
+  let active=0,maxActive=0;
+  const pairs=await mapBounded(ids,3,async id=>{
+    active++;
+    maxActive=Math.max(maxActive,active);
+    await new Promise(resolve=>setImmediate(resolve));
+    active--;
+    return [id,{rows:[]}];
+  });
+  assert.ok(maxActive<=3);
+  assert.deepEqual(pairs.map(([id])=>id),ids);
+});
