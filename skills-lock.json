@@ -152,6 +152,12 @@
       "computedHash": "7837f15d0abac0f5199eba9417bd8950e4f01c58731c81884e82e58b0c474404",
       "installMode": "copy"
     },
+    "security-audit": {
+      "source": "cloudflare/security-audit-skill",
+      "sourceType": "github",
+      "skillPath": "skills/security-audit/SKILL.md",
+      "computedHash": "e6b2e317de75da97e9de18d842982994803f3a67a4a6d8154a82323dc3de8528"
+    },
     "threejs-animation": {
       "source": "cloudai-x/threejs-skills",
       "sourceType": "github",
