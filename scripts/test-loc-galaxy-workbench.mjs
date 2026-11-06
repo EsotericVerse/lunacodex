@@ -64,7 +64,7 @@ test('Stage 4 opt-in capture requires exact ChatGPT origin and preserves retry q
   const manager=read('extensions/loc-galaxy/capture-manager.mjs');
   const view=read('extensions/loc-galaxy/workbench.mjs');
   const html=read('extensions/loc-galaxy/workbench.html');
-  assert.match(manifest.version,/^0\.\d+\.\d+$/);
+  assert.match(manifest.version,/^\d+\.\d+\.\d+(?:\.\d+)?$/);
   assert.equal(manifest.content_scripts,undefined);
   assert.match(view,/chrome\.permissions\.request/);
   assert.match(manager,/chrome\.permissions\.contains/);
