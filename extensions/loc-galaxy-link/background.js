@@ -276,7 +276,10 @@ async function flush(force=false){
    throw error;
   }
   const {locConfig:config}=await chrome.storage.local.get('locConfig');
-  if(!config?.import_url)throw oauthError('未設定 LOC 短匯入 API');
+  if(!config?.import_url){
+   await chrome.storage.local.set({locQueuePaused:true});
+   throw oauthError('未設定 LOC 短匯入 API');
+  }
   let sent=0;
   try{
    const events=pending.map(r=>({...r,source_key:r.source_key||sourceKey(r.url),
@@ -304,7 +307,7 @@ async function flush(force=false){
      throw Error('LOC 匯入失敗：HTTP '+reply.status);
     }
     const result=await reply.json();
-    if(!result.accepted||result.id!==batch.id)throw Error('LOC 未確認匯入批次');
+    if(!result.accepted||result.id!==batch.id)throw importContractError('LOC 未確認匯入批次');
     validateArticleReceipts(result.articles,records);
     await acknowledgeBatch(records);
     sent+=records.length;
@@ -338,7 +341,8 @@ chrome.contextMenus.onClicked.addListener((info,tab)=>{
   const ready=queueReady(pending);
   await badge(true,ready?'Queue 已達門檻，準備批次送出':'已累積 Queue：'+
    new Set(pending.map(r=>r.group_id||r.id)).size+'/'+AUTO_BATCH_CAPTURES+' 次擷取');
-  if(ready)await chrome.alarms.create('loc-channel1-drain',{delayInMinutes:0.5});
+  if(ready&&!await chrome.alarms.get('loc-channel1-drain'))
+   await chrome.alarms.create('loc-channel1-drain',{delayInMinutes:0.5});
  })().catch(async e=>{console.error('[LOC galaxy-link]',e);await badge(false,e.message);});
 });
 chrome.alarms.onAlarm.addListener(e=>{
