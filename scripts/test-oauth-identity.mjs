@@ -96,10 +96,11 @@ test('pure JS permissions use only scopeid/email/role and are cleared on logout'
     assert.equal(canAuthorizeGroup('loc'),true);
     assert.equal(canAuthorizeGlobal(),false);
     assert.doesNotThrow(()=>assertAuthorizationForTable('silver.loc'));
-    assert.throws(()=>assertAuthorizationForTable('silver.manage'),/沒有此 Scope/);
+    assert.throws(()=>assertAuthorizationForTable('api.manage'),/沒有全域管理權限/);
+    assert.throws(()=>assertAuthorizationForTable('silver.'+'manage'),/舊管理路由已停用/);
     setAuthorization(user,[{id:'admin',email:user.email,role:'admin'}]);
     assert.equal(canAuthorizeGlobal(),true);
-    assert.doesNotThrow(()=>assertAuthorizationForTable('silver.manage'));
+    assert.doesNotThrow(()=>assertAuthorizationForTable('api.manage'));
     assert.doesNotThrow(()=>assertAuthorizationForTable('silver.loc'));
   }finally{clearAuthorization();}
   assert.equal(readAuthorization(),null);
