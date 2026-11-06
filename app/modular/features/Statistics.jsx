@@ -38,7 +38,7 @@ import {administrativeSourceTrend} from '../../loc/statistics-admin-source.mjs';
 import {useAccount} from '../../loc/use-account';
 import {scopeHref} from '../scope-registry';
 import ScopeLink from '../ScopeLink';
-import {STAT_VISUAL_TYPES,semanticStatisticChartTypes,chartTypeGroups} from '../modules/statistics/statistics-time-zoom.mjs';
+import {STAT_VISUAL_TYPES,semanticStatisticChartTypes,chartTypeGroups,preferredStatisticChartType} from '../modules/statistics/statistics-time-zoom.mjs';
 const StatisticsMultiChart=dynamic(()=>import('../modules/statistics/StatisticsMultiChart'),{loading:()=>null});
 const PlaceStatisticsPanel=dynamic(()=>import('./trace/PlaceStatisticsPanel'),{loading:()=>null});
 const Rune66Summary=dynamic(()=>import('../modules/statistics/StatisticsMultiChart').then(m=>m.Rune66Summary),{loading:()=>null});
@@ -288,7 +288,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   const deviceTimeUnit=useDefaultTimeUnit();
   const {settings:userSettings,active:userActive}=useLocFeatureSettings('statics');
   const defaultTimeUnit=userActive?userSettings.unit:deviceTimeUnit;
-  const [chartType,setChartType]=useState('line');
+  const [chartType,setChartType]=useState('auto');
   const [zoomLevel,setZoomLevel]=useState(0);
   const [foldBlank,setFoldBlank]=useState(true);
   // Leave potentially expensive keyword aggregation OFF until explicitly chosen.
@@ -442,7 +442,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     rows:basicTrend,series:basicSeries,distribution:basicDistribution,
     totalKey:rankingType==='total'?'total':''
   });
-  const effectiveChartType=optionsForCurrent.some(([value])=>value===chartType)?chartType:(optionsForCurrent[0]?.[0]||'line');
+  const effectiveChartType=preferredStatisticChartType({purpose:rankingType==='total'?'total':'source',available:optionsForCurrent,requested:chartType});
   const chartGroups=chartTypeGroups(optionsForCurrent,rankingType==='total'
     ?['line','composed','bar']:['line','stacked','pie']);
   const styleRange=useMemo(()=>({
