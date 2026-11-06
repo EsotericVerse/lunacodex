@@ -24,7 +24,6 @@ export async function GET(request,{params}){
   if((start&&!day(start))||(end&&!day(end))||start&&end&&start>end)
     return reply(request,{error:'Invalid date range'},400);
   // The Kysely Gateway computes bounded numeric aggregates lazily.
-  const name='read_scope_analytics';
   const view={culture:'daily',statistics:'overview',earliest:'earliest',
     'loc-statistics':'loc'}[kind];
   if(view==='loc'&&scopeId!=='loc')
@@ -33,13 +32,12 @@ export async function GET(request,{params}){
     p_scope_id:scopeId,p_view:view,p_start:day(start),p_end:day(end),
     p_options:view==='daily'?{includeUndated:url.searchParams.get('includeUndated')==='true'}:{}
   };
-  // Normal request: Supabase only. If Supabase is unavailable, a configured
-  // Neon Data API provides the same PostgreSQL RPC and mirrored ISR settings.
+  // Public numeric data uses one direct analytics action, never a stored RPC.
   // No admin cookies, API keys or service secrets enter this public path.
   let outcome;
   try{
     outcome=await tryPublicSources(publicNumericSources(),db=>
-      readIsrSummary(db,{origin:url.origin,name,args}));
+      readIsrSummary(db,{origin:url.origin,args}));
   }catch{
     return reply(request,{error:'Public summary unavailable'},503);
   }
