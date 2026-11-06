@@ -1,7 +1,8 @@
 export default {
   "dailyRune": "每日符文",
   "sourceGroup": "文章來源分類",
-  "place": "地點",
+  "place": "地點（關鍵詞）",
+  "mediaKeyword": "多媒體（關鍵詞）",
   "mediaType": "多媒體類型",
   "mediaPlatform": "多媒體來源統計",
   "mediaStyle": "音樂曲風統計",
