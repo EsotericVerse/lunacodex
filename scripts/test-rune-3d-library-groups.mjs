@@ -55,3 +55,15 @@ test('board-game trend uses native Recharts responsive sizing',async()=>{
   assert.match(boardSource,/<LineChart responsive style=\{\{width:"100%",height:"100%"\}\}/);
   assert.doesNotMatch(boardSource,/ResponsiveContainer/);
 });
+
+test('daily Rune and game charts use native Recharts responsive sizing',async()=>{
+  for(const file of [
+    '../app/lrunes/RuneAppDayNightDashboard.jsx',
+    '../app/lrunes/DailyRuneAnalytics.jsx',
+    '../app/lrunes/game/GameView.jsx'
+  ]){
+    const source=await readFile(new URL(file,import.meta.url),'utf8');
+    assert.match(source,/\bresponsive style=\{\{/);
+    assert.doesNotMatch(source,/ResponsiveContainer/);
+  }
+});
