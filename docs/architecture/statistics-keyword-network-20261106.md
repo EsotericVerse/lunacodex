@@ -11,3 +11,19 @@ The existing Class → Group → Item → judging-word graph is now directly edi
 The Network instance persists across node expansions; graph refresh keeps view/selection. Canvas colors are re-read from current published LOC Theme tokens on Theme changes. Narrow/mobile views use a vertical hierarchy, a stacked inspector and 44px-or-larger touch controls. The PELT suggestion button and analysis workflow remain unchanged.
 
 **Boundaries:** front-end only. No new/modified SQL, RPC, Schema, indexes, ZModel, database drivers, authentication, or deployment workflows. Regression validation: pure chart selection tests plus real mobile/theme/browser verification after deployment.
+
+## Statistic-first chart selection
+
+A display is chosen by the question and the data, not by listing ten Recharts components. The first chart is automatic; manually selected alternatives remain available only if the underlying data supports them.
+
+| Active statistic | Default | Meaningful alternatives |
+| --- | --- | --- |
+| Scope / LOC totals | time-series Line | total + moving-average Composed, Area, time-bucket Bar |
+| Source / child-Scope activity | time-series Line | time-bucket Bar, Area, mutually exclusive source Stacked; Pie/Treemap only for bounded categorical composition |
+| Place associations | ranked vertical Bar | location time trend Line or Area; never Pie/Stacked when an article may have more than one location |
+| Keywords: Group / Item / mixed | ranked vertical Bar | Group trends Line/Area when actual dated Group counts exist; Item remains ranked without fabricated dated counts |
+| Cross-member / cross-metric | multi-line time-series | grouped time-bucket Bar; Scatter only for two varying numerical series; no stacking of overlapping measures |
+
+The legacy multimedia facet component remains unmounted: the active Statistics page deliberately uses totals, source, location and keywords. Do not reactivate deprecated media statistics merely to make a module appear utilized. Overlapping keyword/media counts and cross-comparison lanes never masquerade as additive stacked areas or exclusive slices.
+
+Automatic defaults use the existing shared selector. The data queries, time windows, Kysely, authorization, database Schema, RPC and export logic are unchanged. Browser/Node verification must still be recorded separately from source inspection.
