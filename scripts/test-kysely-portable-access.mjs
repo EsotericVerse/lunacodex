@@ -230,3 +230,196 @@ test('portable update comparison does not parse ordinary article strings as JSON
   assert.equal(response.data.count,0);
   assert.deepEqual(patches,[]);
 });
+
+test('portable update_batch selects only requested columns and groups identical changes',async()=>{
+  const original=Array.from({length:6},(_,i)=>({
+    uid:String(i).padStart(8,'0'),title:'old',content:'large untouched article'
+  }));
+  const projections=[],updates=[];
+  const acl=registry([{id:'lo3rwang',email:'owner@example.test',
+    manage_role:'scope',active:true}]);
+  const db={
+    ...acl,
+    selectFrom(table){
+      if(table!=='dbo.lo3rwang_galaxy')return acl.selectFrom(table);
+      return {
+        select(cols){projections.push(cols);return this},
+        where(){return this},
+        execute:async()=>original
+      };
+    },
+    updateTable(table){
+      assert.equal(table,'dbo.lo3rwang_galaxy');
+      const call={};
+      return {
+        set(values){call.values=values;return this},
+        where(column,operator,uids){
+          assert.equal(column,'uid');assert.equal(operator,'in');
+          call.uids=uids;return this;
+        },
+        async executeTakeFirst(){
+          updates.push(call);return {numUpdatedRows:BigInt(call.uids.length)};
+        }
+      };
+    }
+  };
+  const rows=original.map(row=>({uid:row.uid,title:'new'}));
+  const result=await executeCrossEngineManagedWrite(db,{
+    payload:{p_table:'silver.lo3rwang_galaxy',p_operation:'update_batch',p_rows:rows}
+  },{...identity,engine:'mssql',namespace:'dbo'});
+  assert.deepEqual(projections,[['uid','title']]);
+  assert.equal(updates.length,1);
+  assert.deepEqual(updates[0].uids,rows.map(row=>row.uid));
+  assert.equal(updates[0].values.title,'new');
+  assert.ok(updates[0].values.UpdateTime instanceof Date);
+  assert.equal(result.data.count,6);
+});
+
+test('portable update_batch skips unchanged data and protects nonblank place_id',async()=>{
+  const original=[
+    {uid:'Ab12Cd34',title:'same',place_id:null,media_link:'["A0000001"]'},
+    {uid:'Ef56Gh78',title:'same',place_id:'X0000001',media_link:'["A0000001"]'},
+    {uid:'Ij90Kl12',title:'same',place_id:null,media_link:'["A0000001"]'}
+  ];
+  const updates=[],projections=[];
+  const acl=registry([{id:'lo3rwang',email:'owner@example.test',
+    manage_role:'scope',active:true}]);
+  const db={
+    ...acl,
+    selectFrom(table){
+      if(table!=='lo3rwang_galaxy')return acl.selectFrom(table);
+      return {
+        select(cols){projections.push(cols);return this},
+        where(){return this},execute:async()=>original
+      };
+    },
+    updateTable(){
+      const call={};
+      return {
+        set(values){
+          if(typeof values==='function'){
+            const fn=Object.assign((name,args)=>({name,args}),{
+              coalesce:(...args)=>({name:'coalesce',args})
+            });
+            const eb={fn,val:value=>({literal:value}),case:()=>({
+              when(lhs,op,rhs){
+                assert.equal(lhs.name,'trim');
+                assert.equal(lhs.args[0].name,'coalesce');
+                assert.equal(op,'=');assert.equal(rhs,'');
+                return this;
+              },
+              then(value){this.value=value;return this},
+              elseRef(column){this.column=column;return this},
+              end(){return {kind:'case',then:this.value,elseRef:this.column}}
+            })};
+            call.values=values(eb);
+          }else call.values=values;
+          return this;
+        },
+        where(column,operator,uids){
+          call.column=column;call.operator=operator;call.uids=uids;return this;
+        },
+        async executeTakeFirst(){
+          updates.push(call);return {numUpdatedRows:BigInt(call.uids.length)};
+        }
+      };
+    }
+  };
+  const result=await executeCrossEngineManagedWrite(db,{
+    payload:{p_table:'silver.lo3rwang_galaxy',p_operation:'update_batch',p_rows:[
+      {uid:'Ab12Cd34',media_link:['A0000001'],place_id:'P0000001'},
+      {uid:'Ef56Gh78',media_link:['A0000001'],place_id:'P0000001'},
+      {uid:'Ij90Kl12',media_link:['A0000001'],place_id:'P0000001'}
+    ]}
+  },{...identity,engine:'mysql',namespace:''});
+  assert.deepEqual(projections,[['uid','place_id','media_link']]);
+  assert.equal(updates.length,1);
+  assert.deepEqual(updates[0].uids,['Ab12Cd34','Ij90Kl12']);
+  assert.deepEqual(updates[0].values.place_id,{
+    kind:'case',then:'P0000001',elseRef:'place_id'
+  });
+  assert.ok(!Object.hasOwn(updates[0].values,'media_link'));
+  assert.equal(result.data.count,2);
+});
+
+test('portable grouped updates obey a 50-row SQL parameter bound',async()=>{
+  const existing=Array.from({length:121},(_,i)=>({
+    uid:String(i).padStart(8,'0'),title:'original'
+  }));
+  const updates=[];
+  const acl=registry([{id:'lo3rwang',email:'owner@example.test',
+    manage_role:'scope',active:true}]);
+  const db={
+    ...acl,
+    selectFrom(table){
+      if(table!=='dbo.lo3rwang_galaxy')return acl.selectFrom(table);
+      return {select(){return this},where(){return this},execute:async()=>existing};
+    },
+    updateTable(){
+      return {
+        set(){return this},
+        where(_column,operator,uids){
+          assert.equal(operator,'in');updates.push(uids);return this;
+        },
+        async executeTakeFirst(){
+          return {numUpdatedRows:BigInt(updates.at(-1).length)};
+        }
+      };
+    }
+  };
+  const result=await executeCrossEngineManagedWrite(db,{
+    payload:{p_table:'silver.lo3rwang_galaxy',p_operation:'update_batch',
+      p_rows:existing.map(row=>({uid:row.uid,title:'replacement'}))}
+  },{...identity,engine:'mssql',namespace:'dbo'});
+  assert.deepEqual(updates.map(uids=>uids.length),[50,50,21]);
+  assert.equal(result.data.count,121);
+});
+
+test('portable update_batch rejects UID-only rows before reading Galaxy',async()=>{
+  let reads=0;
+  const acl=registry([{id:'lo3rwang',email:'owner@example.test',
+    manage_role:'scope',active:true}]);
+  const db={
+    ...acl,
+    selectFrom(table){
+      if(table!=='lo3rwang_galaxy')return acl.selectFrom(table);
+      reads++;throw Error('unnecessary Galaxy read');
+    }
+  };
+  await assert.rejects(executeCrossEngineManagedWrite(db,{
+    payload:{p_table:'silver.lo3rwang_galaxy',p_operation:'update_batch',
+      p_rows:[{uid:'Ab12Cd34'}]}
+  },{...identity,engine:'mysql',namespace:''}),/Invalid Galaxy batch row/);
+  assert.equal(reads,0);
+});
+
+test('portable batch write failures propagate for Gateway transaction rollback',async()=>{
+  let updates=0;
+  const acl=registry([{id:'lo3rwang',email:'owner@example.test',
+    manage_role:'scope',active:true}]);
+  const db={
+    ...acl,
+    selectFrom(table){
+      if(table!=='lo3rwang_galaxy')return acl.selectFrom(table);
+      return {select(){return this},where(){return this},
+        execute:async()=>[
+          {uid:'Ab12Cd34',title:'old1'},{uid:'Ef56Gh78',title:'old2'}
+        ]};
+    },
+    updateTable(){
+      return {
+        set(){return this},where(){return this},
+        async executeTakeFirst(){
+          updates++;
+          if(updates===2)throw Error('simulated database failure');
+          return {numUpdatedRows:1n};
+        }
+      };
+    }
+  };
+  await assert.rejects(executeCrossEngineManagedWrite(db,{
+    payload:{p_table:'silver.lo3rwang_galaxy',p_operation:'update_batch',
+      p_rows:[{uid:'Ab12Cd34',title:'new1'},{uid:'Ef56Gh78',title:'new2'}]}
+  },{...identity,engine:'mysql',namespace:''}),/simulated database failure/);
+  assert.equal(updates,2);
+});
