@@ -37,6 +37,7 @@ import {deleteRows,insertRows,updateRows} from '../../loc/db-client.mjs';
 import {selectAllRows,selectRows} from '../../loc/db-query.mjs';
 import {assignedSource} from '../../loc/member-intersection-model.mjs';
 import {publishedSourceTaxonomy} from '../published-source-taxonomy.js';
+import {sourceKeywordOptions} from '../../loc/source-keyword-options.mjs';
 import {buildCultureRiverRootPayload,selectCultureRiverChildren} from '../../loc/culture-river-roots.mjs';
 import {mediaDay} from '../../loc/statistics-facets';
 import {useAccount} from '../../loc/use-account';
@@ -437,6 +438,7 @@ export default function Culture(){
     revalidateOnFocus:false,revalidateOnReconnect:false
   });
   const sourceTaxonomy=publishedTaxonomy||sourceTaxonomyQuery.data;
+  const sourceStyleOptions=useMemo(()=>sourceKeywordOptions(sourceTaxonomy),[sourceTaxonomy]);
   // Staged rendering is a UI strategy, not an ISR feature.
   const stagedSourceRiver=Boolean(publishedTaxonomy)&&!isAggregateScope&&scopeId!=='local';
   const expandedSourceRoots=['system','custom','media'].filter(id=>openCultureRoots.includes(id));
@@ -1467,15 +1469,40 @@ export default function Culture(){
                       </label>
                     </div>
                     <label><span>{l.styleLabel}</span>
-                      <select className='scope-select' aria-label={l.styleLabel} value={styleFilter}
+                      <select className='scope-select' aria-label={l.styleLabel}
+                        value={styleFilter==='none'&&sourceStyleOptions.some(item=>item.key===selectedRiverGroup)
+                          ?'source:'+selectedRiverGroup:styleFilter}
                         onFocus={()=>setKeywordOptionsScope(scopeId)}
                         onPointerDown={()=>setKeywordOptionsScope(scopeId)}
-                        onChange={event=>{setStyleFilter(event.target.value);setKeywordDrillGroup('');}}>
+                        onChange={event=>{
+                          const next=event.target.value;
+                          const choice=next.startsWith('source:')
+                            ?sourceStyleOptions.find(item=>'source:'+item.key===next):null;
+                          if(choice){
+                            // Sources use the existing numeric Source River. Never
+                            // misinterpret an Anchor From as a Keyword Class UID.
+                            setStyleFilter('none');
+                            setSelectedRiverGroup(choice.key);
+                            setSelectedCategory('');
+                            setWorksOpen(false);
+                            setOpenCultureRoots(current=>current.includes(choice.root)
+                              ?current:[...current,choice.root]);
+                          }else if(!next.startsWith('source:')){
+                            setStyleFilter(next);
+                            if(next==='none')setSelectedRiverGroup('');
+                          }
+                          setKeywordDrillGroup('');
+                        }}>
                         <option value='none'>{l.noStyle}</option>
                         <option value='trace'>痕跡（地點）</option>
-                        <option value='rune66'>
-                          {selectedKeywordClass?.name||l.keywordStyle}
-                        </option>
+                        <optgroup label='關鍵詞'>
+                          <option value='rune66'>{selectedKeywordClass?.name||l.keywordStyle}</option>
+                        </optgroup>
+                        {sourceStyleOptions.length?<optgroup label='來源'>
+                          {sourceStyleOptions.map(item=><option key={item.key} value={'source:'+item.key}>
+                            {item.label}
+                          </option>)}
+                        </optgroup>:null}
                       </select>
                     </label>
                     {keywordPeriodKey==='custom'?<>
