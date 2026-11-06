@@ -75,6 +75,7 @@ test('public class aliases use one native Kysely projection, not one query per C
     const calls=[],filters=[];
     const trx={selectFrom(table){
       calls.push(table);
+      const localFilters=[];
       let projected=false;
       return {
         select(fields){
@@ -85,12 +86,12 @@ test('public class aliases use one native Kysely projection, not one query per C
           }
           return this;
         },
-        where(column,op,value){filters.push([column,op,value]);return this},
+        where(column,op,value){localFilters.push([column,op,value]);filters.push([column,op,value]);return this},
         orderBy(){return this},
         async executeTakeFirst(){return {
           keyword_meta:{class_shares:{Ab12Cd34:true,Ij90Kl12:true}}
         }},
-        async execute(){return classes.filter(row=>filters.every(([column,op,value])=>
+        async execute(){return classes.filter(row=>localFilters.every(([column,op,value])=>
           op==='in'?value.includes(row[column]):row[column]===value)).map(row=>({
           ...row,...(projected?{share_hash:hash(row.uid)}:{})
         }))}
