@@ -47,3 +47,34 @@ test('the last direct Scope display and managed writes use one Kysely transactio
   assert.match(runtime,/updated_at:new Date\(\)/);
   assert.match(admin,/fixedSchema\.models\.Manage/);
 });
+
+test('signed MCP readers use one Kysely query shape on all supported SQL engines',async()=>{
+  const source=readFileSync(new URL('../app/loc/providers/kysely-mcp-read.mjs',import.meta.url),'utf8')
+    .replace(/^import .*$/gm,'').replace(/^export /gm,'');
+  const sql=Object.assign((strings,...values)=>({strings,values}),{ref:value=>({ref:value})});
+  const {readMcpGalaxyWithKysely}=new Function('sql','portableRelation',
+    source+';return {readMcpGalaxyWithKysely};')(
+      sql,(table,engine,namespace)=>engine==='mysql'?table:namespace+'.'+table);
+  for(const engine of ['postgres','mysql','mssql']){
+    const steps=[];
+    const builder={select(value){steps.push(['select',value]);return this;},
+      where(...args){steps.push(['where',...args]);return this;},
+      orderBy(...args){steps.push(['orderBy',...args]);return this;},
+      limit(value){steps.push(['limit',value]);return this;},
+      async execute(){return [{uid:'AbCd1234'}]}};
+    const db={selectFrom(table){steps.push(['from',table]);return builder}};
+    const namespace=engine==='mssql'?'dbo':'silver';
+    const rows=await readMcpGalaxyWithKysely(db,{
+      kind:'mcp-read',scopeid:'lo3rwang',uid:'AbCd1234'
+    },{engine,namespace});
+    assert.equal(rows.length,1);
+    assert.ok(steps.some(x=>x[0]==='where'&&x[1]==='site'&&x[3]==='mcp'));
+    steps.length=0;
+    await readMcpGalaxyWithKysely(db,{
+      kind:'mcp-search',scopeid:'lrunes',query:'Hello_%',limit:20
+    },{engine,namespace});
+    assert.ok(steps.some(x=>x[0]==='where'&&x[1]==='site'&&x[3]==='mcp'));
+    assert.ok(steps.some(x=>x[0]==='limit'&&x[1]===20));
+    assert.ok(steps.some(x=>x[0]==='where'&&x[1]?.strings?.join('').includes('content')));
+  }
+});
