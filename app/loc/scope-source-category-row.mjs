@@ -1,8 +1,6 @@
 'use client';
 import {useAsyncResource} from './use-async-resource';
 import {dbAuthClient,dbAuthRelation} from './db-client.mjs';
-import {sourceSiteKeyForLabel} from './source-classification.mjs';
-import {scopeTagColumn} from './scope-config-fields.mjs';
 
 // One scope's raw category row (silver.<id>, filtered to id=<id>) is read,
 // in slightly different shapes, by several editors/panels that commonly
@@ -22,15 +20,14 @@ export function useScopeSourceCategoryRow(id,{enabled=true}={}){
     if(id==='loc'){
       const {data,error}=await dbAuthRelation('silver.loc').select('DefaultArticleClass').eq('id','loc').maybeSingle();
       if(error)throw new Error(error.message);
-      return data;
+      return {sourceNames:Array.isArray(data?.DefaultArticleClass)?data.DefaultArticleClass:[]};
     }
     const {data,error}=await dbAuthClient.schema('silver')
       .managedAction('read_source_catalog',{p_scope_id:id});
     if(error)throw new Error(error.message);
     const own=(data?.scopes||[]).find(row=>row.scopeid===id);
     if(!own)throw new Error('Scope source catalog unavailable');
-    const values=own.domain?own.sources.map(row=>row.name):
-      own.legacy.map(sourceSiteKeyForLabel);
-    return {[scopeTagColumn(id)]:values};
+    // From.title is the immutable Galaxy.site source comparison key.
+    return {sourceNames:own.sources.map(row=>row.name)};
   },{enabled:enabled&&Boolean(id)});
 }
