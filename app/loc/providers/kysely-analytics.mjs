@@ -88,13 +88,17 @@ async function searchSummary(trx,options){
   if(!Array.isArray(scopes)||scopes.length>100||
     scopes.some(x=>typeof x!=='string'||!SCOPE.test(x)))
     reject('Invalid Scope Search summary request');
+  const requested=[...new Set(scopes)].sort();
+  if(!requested.length)return {rows:[]};
+  // One Kysely membership read, rather than one SQL round trip per Scope.
+  // Keep per-Scope configuration queries bounded and sequential.
+  const members=await trx.selectFrom('silver.manage')
+    .select('id').where('id','in',requested)
+    .where('manage_role','=','scope').where('active','=',true).execute();
+  const allowed=new Set(members.map(row=>row.id));
   const result=[];
-  for(const scope of [...new Set(scopes)].sort()){
-    const row=await trx.selectFrom('silver.manage')
-      .select('id').where('id','=',scope)
-      .where('manage_role','=','scope').where('active','=',true)
-      .executeTakeFirst();
-    if(!row)continue;
+  for(const scope of requested){
+    if(!allowed.has(scope))continue;
     const config=await trx.selectFrom('silver.'+scope)
       .select('status').where('id','=',scope).executeTakeFirst();
     const item=config?.status?.search;
