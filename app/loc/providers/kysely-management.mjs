@@ -275,8 +275,9 @@ async function sourceCatalogAction(trx,args,save=false){
     const entries=args.p_sources;
     if(!Array.isArray(entries)||entries.length>400||
        entries.some(v=>!v||typeof v!=='object'||Array.isArray(v)||
-         Object.keys(v).some(k=>!['uid','name'].includes(k))||
+         Object.keys(v).some(k=>!['uid','name','label'].includes(k))||
          typeof v.name!=='string'||!v.name.trim()||v.name.trim().length>80||
+         v.label!==undefined&&(typeof v.label!=='string'||v.label.trim().length>80)||
          v.uid!==undefined&&!UID.test(String(v.uid))))
       reject('Invalid source names');
     const names=entries.map(item=>item.name.trim());
@@ -297,18 +298,20 @@ async function sourceCatalogAction(trx,args,save=false){
     const assigned=new Set(existing.map(row=>row.uid));
     const next=[];
     for(const item of entries){
-      const name=item.name.trim();
+      const name=item.name.trim(),label=String(item.label||name).trim();
       let uid=item.uid;
       if(uid&&!owned.has(uid))reject('Cannot edit a foreign source UID',403);
       if(uid&&!oldFrom.has(uid))reject('Source UID does not belong to Domain');
       if(uid){
-        if(oldFrom.get(uid).title!==name)
-          await trx.updateTable(anchor).set({title:name}).where('uid','=',uid)
-            .where('type','=','from').execute();
+        // From title is the Galaxy.site comparison key, never a mutable label.
+        if(oldFrom.get(uid).title!==name)reject('Source site key is immutable; use source correction',409);
+        if((oldFrom.get(uid).description||name)!==label)
+          await trx.updateTable(anchor).set({description:label===name?null:label})
+            .where('uid','=',uid).where('type','=','from').execute();
       }else{
         uid=allocateAnchorUid(assigned);assigned.add(uid);
         await trx.insertInto(anchor).values({uid,type:'from',title:name,
-          description:null,invisible:false,attr:sql`'{}'::jsonb`}).execute();
+          description:label===name?null:label,invisible:false,attr:sql`'{}'::jsonb`}).execute();
       }
       next.push(uid);
     }
@@ -349,7 +352,7 @@ async function sourceCatalogAction(trx,args,save=false){
     const config=await trx.selectFrom('silver.'+id).select(id==='lrunes'?'txt_class':'ArticleTag')
       .where('id','=',id).executeTakeFirst();
     records.push({scopeid:id,domain:domain?{uid:domain.uid,title:domain.title}:null,
-      sources:sources.map(row=>({uid:row.uid,name:row.title})),
+      sources:sources.map(row=>({uid:row.uid,name:row.title,label:row.description||row.title})),
       legacy:sourceNames(config?.[id==='lrunes'?'txt_class':'ArticleTag'])});
   }
   return {universe:'Eosteric',galaxy:'LOC',system,scopes:records};
