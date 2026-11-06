@@ -112,3 +112,21 @@ test('ZenStack V3 runtime schema bridge stays in sync with the frozen contract',
     assert.equal(model.attributes.find(a=>a.name==='@@schema')?.args?.[0]?.value?.value,'silver');
   }
 });
+
+test('ZenStack V3 compiles fixed-model Kysely reads without a database or stored procedure',async()=>{
+  const {ZenStackClient}=await import('@zenstackhq/orm');
+  const {DummyDriver,PostgresAdapter,PostgresIntrospector,PostgresQueryCompiler}=await import('kysely');
+  const dialect={
+    createDriver:()=>new DummyDriver(),
+    createAdapter:()=>new PostgresAdapter(),
+    createIntrospector:db=>new PostgresIntrospector(db),
+    createQueryCompiler:()=>new PostgresQueryCompiler()
+  };
+  const client=new ZenStackClient((await import('../zenstack/schema.mjs')).schema,{dialect});
+  const compiled=client.$qb.selectFrom('Lo3rwangAnchor')
+    .select(['uid','type'])
+    .where('type','=','date')
+    .limit(5).compile();
+  assert.match(compiled.sql,/"silver"\."lo3rwang_anchor"/);
+  assert.deepEqual(compiled.parameters,['date',5]);
+});
