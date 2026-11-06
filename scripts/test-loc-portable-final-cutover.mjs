@@ -75,6 +75,6 @@ test('signed MCP readers use one Kysely query shape on all supported SQL engines
     },{engine,namespace});
     assert.ok(steps.some(x=>x[0]==='where'&&x[1]==='site'&&x[3]==='mcp'));
     assert.ok(steps.some(x=>x[0]==='limit'&&x[1]===20));
-    assert.ok(steps.some(x=>x[0]==='where'&&x[1]?.strings?.join('').includes('content')));
+    assert.ok(steps.some(x=>x[0]==='where'&&x[1]?.values?.some(value=>value?.ref==='content')));
   }
 });
