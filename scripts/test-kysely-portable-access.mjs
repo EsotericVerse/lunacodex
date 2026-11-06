@@ -120,3 +120,48 @@ test('cross-engine authorization fails closed without readable LOC policy',async
   await assert.rejects(authorizeCrossEngineQuery(db,query('lo3rwang_galaxy'),identity),
     /authorization configuration unavailable/);
 });
+
+test('SQL Server wide inserts stay below the 2,100-parameter statement cap',async()=>{
+  const sizes=[],widths=[];
+  const db={
+    ...registry([{id:'lo3rwang',email:'owner@example.test',
+      manage_role:'scope',active:true}]),
+    insertInto:()=>({values(batch){return {executeTakeFirst:async()=>{
+      sizes.push(batch.length);
+      widths.push(Object.keys(batch[0]).length);
+      assert.ok(batch.length*Object.keys(batch[0]).length<=2000);
+      return {numInsertedOrUpdatedRows:BigInt(batch.length)};
+    }};}})
+  };
+  const rows=Array.from({length:80},(_,i)=>Object.fromEntries([
+    ['uid',String(i).padStart(8,'0')],
+    ...Array.from({length:59},(_,j)=>['field_'+j,'value'])
+  ]));
+  const result=await executeCrossEngineManagedWrite(db,{
+    payload:{p_table:'silver.lo3rwang_galaxy',p_operation:'insert',p_rows:rows}
+  },{...identity,engine:'mssql',namespace:'dbo'});
+  assert.deepEqual(sizes,[33,33,14]);
+  assert.deepEqual(widths,[60,60,60]);
+  assert.equal(result.data.count,80);
+});
+
+test('MySQL retains 50-row batches regardless of the SQL Server width limit',async()=>{
+  const sizes=[];
+  const db={
+    ...registry([{id:'lo3rwang',email:'owner@example.test',
+      manage_role:'scope',active:true}]),
+    insertInto:()=>({values(rows){return {executeTakeFirst:async()=>{
+      sizes.push(rows.length);
+      return {numInsertedOrUpdatedRows:BigInt(rows.length)};
+    }};}})
+  };
+  const rows=Array.from({length:70},(_,i)=>Object.fromEntries([
+    ['uid',String(i).padStart(8,'0')],
+    ...Array.from({length:59},(_,j)=>['field_'+j,'value'])
+  ]));
+  const result=await executeCrossEngineManagedWrite(db,{
+    payload:{p_table:'silver.lo3rwang_galaxy',p_operation:'insert',p_rows:rows}
+  },{...identity,engine:'mysql',namespace:''});
+  assert.deepEqual(sizes,[50,20]);
+  assert.equal(result.data.count,70);
+});
