@@ -30,7 +30,11 @@ export async function reconcileExistingImportAnchors({
   }
   if(!candidates.length)return {scanned:0,linked:0,unmatched:0,
     places:{created:0,reused:0},dates:{created:0,reused:0},visits:0};
-  const places=await prepareImportPlaceAnchors(candidates,{
+  // A known place_id already owns its location aliases. Do not create
+  // another Point for each differently spelled location on a merged place.
+  // Still collect those articles' timestamps below, keyed by the saved UID.
+  const needingPlace=candidates.filter(row=>!String(row.place_id||'').trim());
+  const places=await prepareImportPlaceAnchors(needingPlace,{
     scopeId:scope,relation,createMissing:true,onProgress
   });
   const dates=await prepareImportTimeAnchors(candidates,{
