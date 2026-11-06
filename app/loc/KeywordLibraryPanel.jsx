@@ -433,11 +433,14 @@ export default function KeywordLibraryPanel({scopeId,account}){
   const currentSuggestionPage=Math.min(discoveryPage,suggestionPages);
   const visibleSuggestions=suggestedCandidates.slice(
     (currentSuggestionPage-1)*suggestionPageSize,currentSuggestionPage*suggestionPageSize);
-  const graphItems=selectedClass?descendantsOfKeyword(rows,selectedClass.uid,{type:'item'}).map(node=>{
+  // Keep vis-network's data stable while typing in the adjacent inspector.
+  const graphItems=useMemo(()=>selectedClass?descendantsOfKeyword(rows,selectedClass.uid,{type:'item'}).map(node=>{
     const group=parentOf(tree,node.uid);
     return {keyword_id:node.uid,item_name:node.name,keywords:node.lists,
       group_uid:group?.uid||'',class_group:group?.name||'',class_name:selectedClass.name};
-  }):[];
+  }):[],[rows,tree,selectedClass?.uid]);
+  const graphGroups=useMemo(()=>groups.map(row=>({uid:row.uid,name:row.name})),
+    [groups.map(row=>row.uid+'|'+row.name).join('\\u0000')]);
   // Reuse exactly the manual editor in the graph's inspector, including the
   // existing authorization, edit dock, stale-analysis and save behavior.
   const draftEditor=draft?<div className="scope-management-editor">
@@ -614,7 +617,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
       <h2>關聯圖</h2>
       {selectedClass?<div className="scope-keyword-network-layout">
         <KeywordNetworkEditor items={graphItems}
-          groups={groups.map(row=>({uid:row.uid,name:row.name}))}
+          groups={graphGroups}
           className={selectedClass.name} classId={selectedClass.uid}
           selectedId={chosen.item}
           onSelectClass={()=>{setChosen(prev=>({...prev,class:selectedClass.uid,group:'',item:''}));edit(selectedClass);}}
