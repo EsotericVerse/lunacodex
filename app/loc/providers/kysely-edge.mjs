@@ -82,7 +82,9 @@ export function createKyselyEdgeClient({url,publishableKey,auth,role='authentica
     // Preserve the caller's cancellation while enforcing the transport deadline.
     // A stale Search/Culture request must stop its HTTP work, not just hide its result.
     if(signal?.aborted)throw abortedRequest();
-    const deadline=AbortSignal.timeout(9000);
+    // User-triggered batched Galaxy writes may take longer than public reads.
+    // Allow the database transaction to finish; never add hidden auth retries.
+    const deadline=AbortSignal.timeout(body.kind==='short-import'?25000:9000);
     const requestSignal=signal?AbortSignal.any([signal,deadline]):deadline;
     const response=await fetchImpl(endpoint,{...request,signal:requestSignal});
     let payload=null;try{payload=await response.json()}catch{}
