@@ -147,8 +147,14 @@ async function sharedClasses(trx,scope,anchor,role){
   // Previously each shared Class caused another PostgreSQL round trip.
   let query=trx.selectFrom(anchor).select(['uid','title'])
     .where('type','=','class').orderBy('title','asc');
-  if(!owner)query=query.select(sql`encode(sha256(convert_to(
-    ${scope}::text||':'||${sql.ref('uid')}::text,'UTF8')),'hex')`.as('share_hash'));
+  if(!owner){
+    const sharedIds=Object.entries(cfg?.keyword_meta?.class_shares||{})
+      .filter(([,flag])=>flag===true).map(([uid])=>uid);
+    if(!sharedIds.length)return [];
+    query=query.where('uid','in',sharedIds)
+      .select(sql`encode(sha256(convert_to(
+        ${scope}::text||':'||${sql.ref('uid')}::text,'UTF8')),'hex')`.as('share_hash'));
+  }
   const classes=await query.execute();
   const result=[];
   for(const item of classes){
