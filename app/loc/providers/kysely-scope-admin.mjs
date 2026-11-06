@@ -242,35 +242,38 @@ async function provisionScope(trx,args){
   await sql`create table ${anchor} (like silver.lrunes_anchor including all)`.execute(trx);
   for(const table of [config,galaxy,anchor,blocks])
     await sql`alter table ${table} enable row level security`.execute(trx);
-  // A direct SQL connection has no LOC-issued delegation. New Scope writes
-  // are denied for database-facing roles; the trusted LOC Gateway authorizes
-  // the signed delegation and performs management in this same transaction.
-  // This avoids coupling the model to a PostgreSQL-only permission function.
-  const denyDirectWrite=sql`false`;
+  // PostgreSQL compatibility boundary only: the trusted Kysely Gateway
+  // has verified an LOC-issued delegation and bound its grants to this SQL
+  // transaction. Other SQL dialects authorize in LOC/Kysely before execution.
+  // New Scope policies must NOT call api.manage() or any database Auth RPC.
+  const canUseScope=sql`coalesce(
+    (current_setting('request.jwt.claims',true)::jsonb -> 'grants')
+       ? ${sql.lit(id+':manage')},
+    false)`;
   await sql`create policy ${sql.ref(id+'_config_public_read')} on ${config}
     for select to anonymous,authenticated using (true)`.execute(trx);
   await sql`create policy ${sql.ref(id+'_config_scope_update')} on ${config}
-    for update to authenticated using (${denyDirectWrite}) with check (${denyDirectWrite})`.execute(trx);
+    for update to authenticated using (${canUseScope}) with check (${canUseScope})`.execute(trx);
   await sql`create policy ${sql.ref(id+'_galaxy_public_read')} on ${galaxy}
     for select to anonymous,authenticated using (true)`.execute(trx);
   await sql`create policy ${sql.ref(id+'_galaxy_scope_update')} on ${galaxy}
-    for update to authenticated using (${denyDirectWrite}) with check (${denyDirectWrite})`.execute(trx);
+    for update to authenticated using (${canUseScope}) with check (${canUseScope})`.execute(trx);
   await sql`create policy ${sql.ref(id+'_anchor_public_read')} on ${anchor}
     for select to anonymous,authenticated
     using (type in ('date','period','era','point','path','trace',
       'image','video','rune','suno') and invisible is false)`.execute(trx);
   await sql`create policy ${sql.ref(id+'_anchor_owner_read')} on ${anchor}
-    for select to authenticated using (${denyDirectWrite})`.execute(trx);
+    for select to authenticated using (${canUseScope})`.execute(trx);
   await sql`create policy ${sql.ref(id+'_anchor_owner_insert')} on ${anchor}
-    for insert to authenticated with check (${denyDirectWrite})`.execute(trx);
+    for insert to authenticated with check (${canUseScope})`.execute(trx);
   await sql`create policy ${sql.ref(id+'_anchor_owner_update')} on ${anchor}
-    for update to authenticated using (${denyDirectWrite}) with check (${denyDirectWrite})`.execute(trx);
+    for update to authenticated using (${canUseScope}) with check (${canUseScope})`.execute(trx);
   await sql`create policy ${sql.ref(id+'_anchor_owner_delete')} on ${anchor}
-    for delete to authenticated using (${denyDirectWrite})`.execute(trx);
+    for delete to authenticated using (${canUseScope})`.execute(trx);
   await sql`create policy ${sql.ref(id+'_blocks_public_read')} on ${blocks}
     for select to anonymous,authenticated using (true)`.execute(trx);
   await sql`create policy ${sql.ref(id+'_blocks_scope_all')} on ${blocks}
-    for all to authenticated using (${denyDirectWrite}) with check (${denyDirectWrite})`.execute(trx);
+    for all to authenticated using (${canUseScope}) with check (${canUseScope})`.execute(trx);
   for(const table of [config,galaxy,anchor,blocks]){
     await sql`grant select on ${table} to anonymous,authenticated`.execute(trx);
   }
