@@ -186,7 +186,6 @@ async function galaxyRequest(message){
   const action=String(message.action||'');
   if(!['search','read'].includes(action)||message.source!==undefined)
     throw Error('Galaxy Link 僅支援固定 MCP 來源');
-  const token=await verifiedAccess(scopeid);
   if(action==='search'){
     const query=String(message.query||'').trim();
     if(query.length<2||query.length>100||/[\u0000-\u001f\u007f]/.test(query))
@@ -194,6 +193,7 @@ async function galaxyRequest(message){
     const key=scopeid;
     const last=linkSearchStarted.get(key)||0;
     if(Date.now()-last<30000)throw Error('Galaxy Link 搜尋有 QoS 限制，請稍後再查詢');
+    const token=await verifiedAccess(scopeid);
     linkSearchStarted.set(key,Date.now());
     return mcpTool(token,'galaxy_link',{action:'search',scopeid,query,limit:5});
   }
@@ -202,6 +202,7 @@ async function galaxyRequest(message){
   const offset=Number(message.offset??0);
   if(!Number.isInteger(offset)||offset<0||offset>1000000)
     throw Error('文章讀取位置無效');
+  const token=await verifiedAccess(scopeid);
   return mcpTool(token,'galaxy_link',{
     action:'read',scopeid,uid:message.uid,offset,max_chars:20000
   });
