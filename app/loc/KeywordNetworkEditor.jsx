@@ -60,6 +60,9 @@ export default function KeywordNetworkEditor({
   className='',
   classId='',
   selectedId='',
+  sourceNodes=null,
+  onSelectNode=null,
+  onNewChild=null,
   onSelectItem=null,
   onSelectGroup=null,
   onSelectClass=null,
@@ -76,10 +79,20 @@ export default function KeywordNetworkEditor({
   const selectedNodeRef=useRef('');
   const [expandedGroup,setExpandedGroup]=useState(()=>graphOriginGroup(items));
   const [expandedItemId,setExpandedItemId]=useState('');
-  const handlersRef=useRef({onSelectItem,onSelectGroup,onSelectClass,onNewGroup,onNewItem,onMessage});
+  const handlersRef=useRef({onSelectNode,onNewChild,onSelectItem,onSelectGroup,onSelectClass,onNewGroup,onNewItem,onMessage});
   const [error,setError]=useState('');
   const [selectionLabel,setSelectionLabel]=useState('');
-  const graph=useMemo(()=>buildGraph(items,className,classId,expandedGroup,expandedItemId,groups),[items,className,classId,expandedGroup,expandedItemId,groups]);
+  const graph=useMemo(()=>{
+    if(!Array.isArray(sourceNodes))return buildGraph(items,className,classId,expandedGroup,expandedItemId,groups);
+    const nodes=sourceNodes.map(node=>({id:node.key,label:node.name,
+      level:({universe:0,galaxy:1,domain:2,from:3})[node.type]??3,
+      kind:'source',shape:node.type==='from'?'box':'ellipse'}));
+    const edges=sourceNodes.filter(node=>node.parent).map(node=>({
+      id:node.parent+'>'+node.key,from:node.parent,to:node.key
+    }));
+    const meta=new Map(sourceNodes.map(node=>[node.key,{kind:'source',node}]));
+    return {nodes,edges,meta,rootId:sourceNodes[0]?.key||''};
+  },[sourceNodes,items,className,classId,expandedGroup,expandedItemId,groups]);
   const graphRef=useRef(graph);
   graphRef.current=graph;
   useEffect(()=>{
@@ -90,7 +103,7 @@ export default function KeywordNetworkEditor({
     }
   },[selectedId,items]);
 
-  useEffect(()=>{handlersRef.current={onSelectItem,onSelectGroup,onSelectClass,onNewGroup,onNewItem,onMessage}},[onSelectItem,onSelectGroup,onSelectClass,onNewGroup,onNewItem,onMessage]);
+  useEffect(()=>{handlersRef.current={onSelectNode,onNewChild,onSelectItem,onSelectGroup,onSelectClass,onNewGroup,onNewItem,onMessage}},[onSelectNode,onNewChild,onSelectItem,onSelectGroup,onNewGroup,onNewItem,onMessage]);
 
   // Canvas styling is resolved from the active LOC Theme. vis-network renders
   // on canvas, so CSS custom properties need to be read again when Theme changes.
@@ -160,6 +173,11 @@ export default function KeywordNetworkEditor({
         selectedNodeRef.current=id;
         const meta=graphRef.current.meta.get(id);
         if(!meta)return;
+        if(meta.kind==='source'){
+          setSelectionLabel(meta.node.name);
+          handlersRef.current.onSelectNode?.(meta.node);
+          return;
+        }
         const row=meta.row;
         setSelectionLabel(meta.kind==='class'?className:
           meta.kind==='group'?graphRef.current.nodes.find(node=>node.id===id)?.label||'':
@@ -208,6 +226,10 @@ export default function KeywordNetworkEditor({
   const addChild=()=>{
     const liveSelection=String(networkRef.current?.getSelectedNodes()?.[0]||selectedNodeRef.current||'');
     const selectedMeta=graphRef.current.meta.get(liveSelection);
+    if(selectedMeta?.kind==='source'){
+      handlersRef.current.onNewChild?.(selectedMeta.node);
+      return;
+    }
     if(selectedMeta?.kind==='class')handlersRef.current.onNewGroup?.();
     else if(selectedMeta?.kind==='group')handlersRef.current.onNewItem?.(selectedMeta.groupUid);
     else handlersRef.current.onMessage?.('請先選擇科目或分類群組，再新增下層。');
@@ -217,13 +239,14 @@ export default function KeywordNetworkEditor({
     if(!network)return;
     network.moveTo({scale:Math.max(.25,Math.min(3,network.getScale()*multiplier)),animation:false});
   };
-  return <section className="scope-keyword-network" aria-label="關鍵詞階層圖">
+  const isSource=Array.isArray(sourceNodes);
+  return <section className="scope-keyword-network" aria-label={isSource?'來源階層圖':'關鍵詞階層圖'}>
     <div className="scope-keyword-network-help">
-      <strong>科目 → 群組 → 分類 → 判斷詞</strong>
+      <strong>{isSource?'Universe → Galaxy → Domain → From':'科目 → 群組 → 分類 → 判斷詞'}</strong>
       <span>點選節點展開並在旁邊編輯；拖動空白處移動視野，雙指縮放。</span>
     </div>
     <div className="scope-stat-controls scope-keyword-network-controls" role="group" aria-label="關鍵詞圖譜觸控操作">
-      <button type="button" className="loc-button" onClick={addChild}>新增下層</button>
+      <button type="button" className="loc-button" onClick={addChild}>{isSource?'新增來源':'新增下層'}</button>
       <button type="button" className="loc-button" onClick={()=>zoom(1.3)} aria-label="放大關聯圖">放大</button>
       <button type="button" className="loc-button" onClick={()=>zoom(1/1.3)} aria-label="縮小關聯圖">縮小</button>
       <button type="button" className="loc-button" onClick={()=>networkRef.current?.fit({animation:false})}>全圖</button>
@@ -231,6 +254,6 @@ export default function KeywordNetworkEditor({
     {selectionLabel?<p className="scope-status" role="status">已選取：{selectionLabel}</p>:null}
     {error?<p className="scope-status scope-error" role="alert">{error}</p>:null}
     <div ref={containerRef} className="scope-graph-canvas scope-keyword-network-canvas" role="application"
-      aria-label={className+' 關鍵詞關聯圖'}/>
+      aria-label={className+(isSource?' 來源關聯圖':' 關鍵詞關聯圖')}/>
   </section>;
 }
