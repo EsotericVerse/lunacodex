@@ -40,7 +40,6 @@ import {scopeHref} from '../scope-registry';
 import ScopeLink from '../ScopeLink';
 import {STAT_VISUAL_TYPES,semanticStatisticChartTypes,chartTypeGroups,preferredStatisticChartType} from '../modules/statistics/statistics-time-zoom.mjs';
 const StatisticsMultiChart=dynamic(()=>import('../modules/statistics/StatisticsMultiChart'),{loading:()=>null});
-const PlaceStatisticsPanel=dynamic(()=>import('./trace/PlaceStatisticsPanel'),{loading:()=>null});
 const Rune66Summary=dynamic(()=>import('../modules/statistics/StatisticsMultiChart').then(m=>m.Rune66Summary),{loading:()=>null});
 const ScopeSelfIntersection=dynamic(()=>import('../modules/statistics/ScopeSelfIntersection'),{loading:()=>null});
 const ScopeGroupStatistics=dynamic(()=>import('../modules/statistics/ScopeGroupStatistics'),{loading:()=>null});
@@ -464,14 +463,13 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     },
   });
   const availableKeywordClasses=keywordClassQuery.data?.classes||[];
-  const categoryNameFor=type=>type==='media'?['多媒體','媒體','media','multimedia']
-    :type==='place'?['地點','空間','place','location']:[];
-  const categoryNames=categoryNameFor(rankingType);
+  const categoryNames=rankingType==='media'?['多媒體','媒體','media','multimedia']
+    :rankingType==='place'?['地點','空間','place','location']:[];
   // Only select Classes under their actual Category. No inferred tags,
   // media_link joins, place_id scans or synthetic keyword counts.
   const scopedKeywordClasses=categoryNames.length
     ?availableKeywordClasses.filter(item=>categoryNames.some(name=>
-      String(item.categoryName||'').trim().toLocaleLowerCase()===name.toLocaleLowerCase()))
+      String(item.categoryName||item.name||'').trim().toLocaleLowerCase()===name.toLocaleLowerCase()))
     :availableKeywordClasses;
   const selectedKeywordClass=scopedKeywordClasses.find(item=>item.classUid===selectedKeywordClassUid)
     ||scopedKeywordClasses.find(item=>item.classUid===keywordClassQuery.data?.currentClassUid)
