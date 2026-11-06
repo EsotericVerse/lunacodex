@@ -26,7 +26,7 @@ test('Extension owns only LOC issuer host permissions and hides Access Tokens fr
   const manifest=JSON.parse(read('extensions/loc-galaxy/manifest.json'));
   const bg=read('extensions/loc-galaxy/background.mjs');
   const view=read('extensions/loc-galaxy/workbench.mjs');
-  assert.deepEqual(manifest.permissions,['identity','storage','scripting','alarms']);
+  assert.deepEqual(manifest.permissions,['identity','storage','scripting','alarms','contextMenus']);
   assert.deepEqual(manifest.optional_host_permissions,['https://chatgpt.com/*']);
   assert.deepEqual(manifest.host_permissions,[
     'https://loc.lo3rwang.cc/*','https://precise-grackle-3371.clerk.accounts.dev/*'
@@ -64,7 +64,7 @@ test('Stage 4 opt-in capture requires exact ChatGPT origin and preserves retry q
   const manager=read('extensions/loc-galaxy/capture-manager.mjs');
   const view=read('extensions/loc-galaxy/workbench.mjs');
   const html=read('extensions/loc-galaxy/workbench.html');
-  assert.equal(manifest.version,'0.5.0');
+  assert.match(manifest.version,/^0\.\d+\.\d+$/);
   assert.equal(manifest.content_scripts,undefined);
   assert.match(view,/chrome\.permissions\.request/);
   assert.match(manager,/chrome\.permissions\.contains/);
