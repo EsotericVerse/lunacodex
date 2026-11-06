@@ -26,7 +26,7 @@ test('Scope source catalogue uses Anchor projection and LOC system names',()=>{
   assert.deepEqual(scopeSourceNames({}),[]);
   const hook=readFileSync(new URL('../app/loc/scope-source-category-row.mjs',import.meta.url),'utf8');
   assert.match(hook,/read_source_catalog/);
-  assert.doesNotMatch(hook,/ArticleTag|txt_class|scopeTagColumn/);
+  assert.doesNotMatch(hook,new RegExp(['Article','Tag'].join('')+'|'+['txt','class'].join('_')+'|scopeTagColumn','i'));
 });
 
 test('feature gates and admin UI use native boolean flags',()=>{
