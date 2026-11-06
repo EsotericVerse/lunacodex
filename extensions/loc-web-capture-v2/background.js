@@ -237,7 +237,7 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
    }
    case 'queue.flush':return flush(true);
    case 'loc.open':
-    await chrome.tabs.create({url:LOC_ORIGIN+'/'});
+    await chrome.tabs.create({url:LOC_ORIGIN+'/local/settings/'});
     return {message:'已開啟 LOC 網站；網站 Session 由 LOC 自行管理'};
    default:throw Error('Unknown action');
   }
