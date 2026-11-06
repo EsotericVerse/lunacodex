@@ -26,3 +26,11 @@ test('empty or absent categories cannot generate phantom metrics',()=>{
   assert.equal(firstAvailableGroupMetric(null,new Set()),'');
   assert.deepEqual(comparisonMetricGroups('all',{source:[{name:'empty',items:[]}]}),[]);
 });
+
+test('statistics charts delegate resizing to Recharts except Treemap compatibility',async()=>{
+  const {readFile}=await import('node:fs/promises');
+  const source=await readFile(new URL('../app/modular/modules/statistics/StatisticsMultiChart.jsx',import.meta.url),'utf8');
+  assert.match(source,/cloneElement\(chart,\{responsive:true,style:/);
+  assert.match(source,/actual==='treemap'/);
+  assert.match(source,/<ResponsiveContainer width="100%" height="100%">\{chart\}<\/ResponsiveContainer>/);
+});
