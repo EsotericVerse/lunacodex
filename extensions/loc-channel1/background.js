@@ -1,57 +1,121 @@
 const MENU='loc-channel1-save';
-const notify=async(message)=>{await chrome.action.setBadgeText({text:message==='ok'?'OK':'!'});await chrome.action.setBadgeBackgroundColor({color:message==='ok'?'#18794e':'#a13b3b'});};
-chrome.runtime.onInstalled.addListener(async()=>{
- chrome.contextMenus.removeAll(()=>{
-  chrome.contextMenus.create({id:MENU,title:'LOC：解析並儲存此頁',contexts:['page']});
+const DB_NAME='loc-channel1-queue',STORE='pending';
+const MAX_BATCH_BYTES=600000, MAX_TEXT_CHARS=140000;
+let processing=null;
+function dbOpen(){
+ return new Promise((resolve,reject)=>{
+  const req=indexedDB.open(DB_NAME,1);
+  req.onupgradeneeded=()=>req.result.createObjectStore(STORE,{keyPath:'id'});
+  req.onsuccess=()=>resolve(req.result);
+  req.onerror=()=>reject(req.error);
  });
+}
+async function dbOperation(mode,run){
+ const db=await dbOpen();
+ try{return await new Promise((resolve,reject)=>{
+  const tx=db.transaction(STORE,mode),store=tx.objectStore(STORE);
+  let value;
+  tx.oncomplete=()=>resolve(value);
+  tx.onerror=()=>reject(tx.error);
+  tx.onabort=()=>reject(tx.error||Error('Queue aborted'));
+  try{const request=run(store);request.onsuccess=()=>{value=request.result;};request.onerror=()=>reject(request.error);}catch(e){tx.abort();reject(e);}
+ });}finally{db.close();}
+}
+const enqueue=record=>dbOperation('readwrite',store=>store.put(record));
+const allPending=()=>dbOperation('readonly',store=>store.getAll());
+const acknowledge=id=>dbOperation('readwrite',store=>store.delete(id));
+async function badge(ok,message){
+ await chrome.action.setBadgeBackgroundColor({color:ok?'#177245':'#a13b3b'});
+ await chrome.action.setBadgeText({text:ok?'OK':'!'});
+ if(message)console.info('[LOC Channel 1]',message);
+}
+function parsePage(){
+ const main=document.querySelector('main, [role="main"]')||document.querySelector('article');
+ if(!main)return {error:'找不到主要內容區域；未儲存，避免把導覽文字誤當內容'};
+ const deny='script,style,noscript,nav,header,footer,aside,button,input,textarea,select,[role="navigation"],[role="menu"],[role="toolbar"],[aria-hidden="true"]';
+ const walker=document.createTreeWalker(main,NodeFilter.SHOW_TEXT),parts=[];
+ let node;
+ while((node=walker.nextNode())){
+  const parent=node.parentElement;
+  if(!parent||parent.closest(deny))continue;
+  const css=getComputedStyle(parent);
+  if(css.display==='none'||css.visibility==='hidden')continue;
+  const line=node.textContent.replace(/\s+/g,' ').trim();
+  if(line)parts.push(line);
+ }
+ const content=parts.join('\n').trim();
+ if(!content)return {error:'主要內容尚未載入或沒有可解析的文字'};
+ return {url:location.href,title:document.title,source:location.hostname,
+  content,captured_at:new Date().toISOString(),extraction:'dom-main-content',
+  completeness:'loaded-dom-only'};
+}
+async function capture(tabId){
+ const result=await chrome.scripting.executeScript({target:{tabId},func:parsePage});
+ const data=result?.[0]?.result;
+ if(!data||data.error)throw Error(data?.error||'讀取頁面失敗');
+ return data;
+}
+async function enqueuePage(record){
+ const content=record.content, group_id=crypto.randomUUID();
+ const parts=Math.ceil(content.length/MAX_TEXT_CHARS);
+ for(let i=0;i<parts;i++){
+  const item={...record,id:crypto.randomUUID(),group_id,
+   part_index:i,part_count:parts,content:content.slice(i*MAX_TEXT_CHARS,(i+1)*MAX_TEXT_CHARS)};
+  await enqueue(item);
+ }
+ return parts;
+}
+function batches(records){
+ const encoder=new TextEncoder();const sets=[];let current=[],bytes=80;
+ for(const record of records){
+  const size=encoder.encode(JSON.stringify(record)).length+2;
+  if(size>MAX_BATCH_BYTES-80)throw Error('單筆內容過大，無法打包');
+  if(current.length&&(bytes+size>MAX_BATCH_BYTES||current.length>=50)){
+   sets.push(current);current=[];bytes=80;
+  }
+  current.push(record);bytes+=size;
+ }
+ if(current.length)sets.push(current);
+ return sets;
+}
+async function flush(){
+ if(processing)return processing;
+ processing=(async()=>{
+  const {endpoint,token}=await chrome.storage.local.get(['endpoint','token']);
+  if(!endpoint||!token)throw Error('尚未設定 KV Worker URL 與寫入 Token');
+  const pending=(await allPending()).sort((a,b)=>a.captured_at.localeCompare(b.captured_at));
+  for(const records of batches(pending)){
+   const batch={id:crypto.randomUUID(),records};
+   const reply=await fetch(endpoint.replace(/\/$/,'')+'/v1/batch',{
+    method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+token},
+    body:JSON.stringify(batch)
+   });
+   if(!reply.ok)throw Error('KV 寫入失敗：HTTP '+reply.status);
+   const result=await reply.json();
+   if(!result.accepted||result.id!==batch.id)throw Error('KV 未確認批次寫入');
+   for(const item of records)await acknowledge(item.id);
+  }
+  return pending.length;
+ })().finally(()=>{processing=null;});
+ return processing;
+}
+chrome.runtime.onInstalled.addListener(async()=>{
+ await chrome.contextMenus.removeAll();
+ chrome.contextMenus.create({id:MENU,title:'LOC：解析並儲存此頁',contexts:['page']});
  await chrome.alarms.create('loc-channel1-retry',{periodInMinutes:5});
 });
 chrome.action.onClicked.addListener(()=>chrome.runtime.openOptionsPage());
-async function snapshot(tabId){
- const result=await chrome.scripting.executeScript({target:{tabId},func:()=>{
-  const root=document.querySelector('main, [role="main"]')||document.querySelector('article');
-  if(!root)return {error:'找不到主要內容區域，未儲存，以免誤存導覽或其他文字'};
-  const excluded='script,style,noscript,nav,header,footer,aside,button,input,textarea,select,option,[role="navigation"],[role="menu"],[role="toolbar"],[aria-hidden="true"]';
-  const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
-  const parts=[];let node;
-  while((node=walker.nextNode())){
-   const parent=node.parentElement;
-   if(!parent||parent.closest(excluded))continue;
-   const style=getComputedStyle(parent);
-   if(style.display==='none'||style.visibility==='hidden')continue;
-   const s=node.textContent.replace(/\s+/g,' ').trim();
-   if(s)parts.push(s);
-  }
-  const content=parts.join('\n').trim();
-  if(!content)return {error:'頁面主要內容尚未載入或沒有可解析文字'};
-  if(content.length>600000)return {error:'頁面內容超過單筆限制，請勿截斷保存；需改走批次模式'};
-  return {url:location.href,title:document.title,content,captured_at:new Date().toISOString(),
-   source:location.hostname,extraction:'dom-main-content',completeness:'loaded-dom-only'};
- }});
- const data=result?.[0]?.result;
- if(data?.error)throw Error(data.error);
- return data;
-}
-async function enqueue(record){
- const id=crypto.randomUUID();await chrome.storage.local.set({['pending:'+id]:{id,...record}});return id;
-}
-let draining;
-async function drain(){
- if(draining)return draining;
- draining=(async()=>{
-  const {endpoint,token}=await chrome.storage.local.get(['endpoint','token']);
-  if(!endpoint||!token)throw Error('請先設定 Worker URL 與 Token');
-  const all=await chrome.storage.local.get(null);
-  for(const [key,record] of Object.entries(all).filter(([k])=>k.startsWith('pending:')).sort(([a],[b])=>a.localeCompare(b))){
-   const response=await fetch(endpoint+'/v1/record',{method:'POST',headers:{'authorization':'Bearer '+token,'content-type':'application/json'},body:JSON.stringify(record)});
-   if(!response.ok)throw Error('Worker '+response.status);
-   await chrome.storage.local.remove(key);
-  }
- })().finally(()=>{draining=null;});
- return draining;
-}
 chrome.contextMenus.onClicked.addListener((info,tab)=>{
  if(info.menuItemId!==MENU||!tab?.id)return;
- (async()=>{const record=await snapshot(tab.id);if(!record?.content)throw Error('頁面無可保存文字');await enqueue(record);await drain();await notify('ok');})().catch(async e=>{console.error('LOC KV save',e);await notify('error');});
+ (async()=>{
+  const record=await capture(tab.id);
+  const count=await enqueuePage(record);
+  // Local queue is durable before any network request.
+  await badge(true,'已加入本機佇列：'+count+' 筆');
+  await flush();
+  await badge(true,'已送達 KV');
+ })().catch(async e=>{console.error('[LOC Channel 1]',e);await badge(false,e.message);});
 });
-chrome.alarms.onAlarm.addListener(event=>{if(event.name==='loc-channel1-retry')drain().catch(e=>console.warn('LOC KV retry',e.message));});
+chrome.alarms.onAlarm.addListener(e=>{
+ if(e.name==='loc-channel1-retry')flush().catch(err=>console.warn('[LOC Queue retry]',err.message));
+});
