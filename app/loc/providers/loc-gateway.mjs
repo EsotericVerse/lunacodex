@@ -40,6 +40,12 @@ export function createLocGatewayAdapter({
     // Authenticated Anchor readers must retain their editor Scope grant:
     // private keywords and invisible anchors are not returned to identity-only
     // tokens. Public readers already use the separate anonymous client.
+    if(kind==='short-import'){
+      const scope=String(body.scopeid||'');
+      return /^[a-z][a-z0-9]{0,14}$/.test(scope)
+        ?{audience:'sql',scopeid:scope,actions:['write']}
+        :{audience:'sql',identity:true};
+    }
     if(kind==='anchor'){
       const scope=String(body.scopeid||'');
       return /^[a-z][a-z0-9]{0,14}$/.test(scope)

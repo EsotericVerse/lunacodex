@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {processShortImport,validateShortImportBatch,normalizeSourceUrl,newShortImportUid,
- sourceSiteId} from '../app/loc/import/short-append-service.mjs';
+ sourceSiteId,siteForShortImportSource} from '../app/loc/import/short-append-service.mjs';
 const actor={authorized:true,subject:'loc-user-verified-01',scopeid:'lo3rwang'};
 const uuid=n=>'10000000-0000-4000-8000-'+String(n).padStart(12,'0');
 const A='https://example.org/a',B='https://example.org/b';
@@ -105,4 +105,24 @@ test('UID generator uses unbiased rejection for bytes >=248',()=>{
  const crypto={calls:0,getRandomValues(arr){arr.fill(this.calls++===0?255:5);return arr;}};
  assert.equal(newShortImportUid(crypto),'55555555');
  assert.equal(crypto.calls,2);
+});
+
+test('historical AI conversations enter private MCP archive, general webpages stay web',async()=>{
+ assert.equal(siteForShortImportSource('https://chatgpt.com/c/abc'),'mcp');
+ assert.equal(siteForShortImportSource('https://chat.openai.com/c/abc'),'mcp');
+ assert.equal(siteForShortImportSource('https://claude.ai/chat/abc'),'mcp');
+ assert.equal(siteForShortImportSource('https://www.threads.net/@demo/post/1'),'web');
+ assert.equal(siteForShortImportSource('https://example.org/a'),'web');
+ const db=store(),url='https://chatgpt.com/c/abc';
+ const response=await processShortImport(batch([event(44,url)]),actor,ctx(db));
+ assert.equal(response.accepted,true);
+ assert.equal(db.rows.size,1);
+ const row=[...db.rows.values()][0];
+ assert.equal(row.site,'mcp');
+ for(const flag of ['statics','culture','search','trace','list','keyword','extract','others'])
+  assert.equal(row[flag],false,'default historical conversation must remain private: '+flag);
+ // Subsequent captures append to the same private UID with no new article.
+ const next=await processShortImport(batch([event(45,url)],211),actor,ctx(db));
+ assert.equal(next.articles[0].uid,response.articles[0].uid);
+ assert.equal(db.rows.size,1);
 });

@@ -1,0 +1,239 @@
+// LOC 網站／舊對話頁面的可見 DOM 擷取；不呼叫 OAuth、Clerk 或 MCP。
+(() => {
+  if (globalThis.__locCaptureV2) return;
+  const state = {mode:'idle', root:null, observer:null, intersection:null, timer:null, hover:null, includeAssistant:false, seen:new Set(), sending:new Set()};
+  const visible = el => {
+    if (!(el instanceof Element)) return false;
+    const style=getComputedStyle(el);
+    return style.display!=='none' && style.visibility!=='hidden' && el.getClientRects().length>0;
+  };
+  const normalizeUrl = value => {
+    try {
+      const url=new URL(value,location.href);
+      if(!/^https?:$/.test(url.protocol))return null;
+      url.hash='';
+      for(const key of [...url.searchParams.keys()])if(/^utm_|^fbclid$|^igshid$/i.test(key))url.searchParams.delete(key);
+      return url.href;
+    } catch { return null; }
+  };
+  const cleanText = el => String(el?.innerText||el?.textContent||'')
+    .replace(/\u00a0/g,' ').replace(/[ \t]+\n/g,'\n').trim().slice(0,1400000);
+  const inViewport = el => {
+    const rect=el.getBoundingClientRect();
+    return rect.width>0&&rect.height>0&&rect.bottom>0&&rect.top<innerHeight;
+  };
+  const socialPostUrl = url =>
+    /instagram\.com\/(?:p|reel|tv)\/|threads\.(?:net|com)\/@[^/]+\/post\//i.test(String(url||''));
+  const links = el => [...el.querySelectorAll('a[href]')]
+    .filter(visible).slice(0,120).map(a=>({text:cleanText(a).slice(0,120),url:normalizeUrl(a.getAttribute('href'))}))
+    .filter(x=>x.url);
+  const stableSource = el => {
+    const match=[...el.querySelectorAll('a[href]')].find(a=>{
+      const u=normalizeUrl(a.href);
+      return u&&socialPostUrl(u);
+    });
+    if(match)return normalizeUrl(match.href);
+    if(socialPostUrl(location.href))return normalizeUrl(location.href);
+    // Never merge unrelated social-feed posts into the profile/feed URL
+    // when a stable individual post permalink is not present.
+    if(/(?:instagram\.com|threads\.(?:net|com))$/.test(location.hostname.toLowerCase()))
+      return null;
+    return normalizeUrl(location.href);
+  };
+  function conversationTurns(scope,includeAssistant=false){
+    const nodes=[...scope.querySelectorAll('[data-message-id], [data-testid^="conversation-turn-"], [data-message-author-role]')];
+    const hits=[]; const visited=new Set();
+    for(const node of nodes){
+      const parent=node.closest('[data-testid^="conversation-turn-"]')||node.closest('[data-message-id]')||node;
+      if(visited.has(parent)||!visible(parent))continue; visited.add(parent);
+      const roleNode=parent.matches('[data-message-author-role]')?parent:parent.querySelector('[data-message-author-role]');
+      const role=roleNode?.getAttribute('data-message-author-role')||parent.getAttribute('data-message-author-role')||
+        (parent.querySelector('[data-testid*="user"]')?'user':'');
+      if(!['user','assistant'].includes(role)||role==='assistant'&&!includeAssistant)continue;
+      const text=cleanText(parent);
+      if(!text)continue;
+      hits.push({key:parent.getAttribute('data-message-id')||parent.getAttribute('data-testid')||role+':'+text.slice(0,150),
+        source_key:normalizeUrl(location.href),url:normalizeUrl(location.href),title:document.title,
+        content:'['+role+']\n'+text+'\n'+links(parent).map(x=>x.text+' <'+x.url+'>').join('\n')});
+    }
+    return hits;
+  }
+  function extract(scope, mode='capture',includeAssistant=state.includeAssistant){
+    const doc=scope||document.body;
+    const hostname=location.hostname.toLowerCase();
+    if(/(?:chatgpt\.com|claude\.ai|chat\.openai\.com)$/.test(hostname)){
+      const turns=conversationTurns(doc,includeAssistant);
+      // Chat exports contain only actually rendered, role-attributed messages.
+      // Never silently archive website navigation or other UI as a conversation.
+      return turns;
+    }
+    // Readability is invoked only for a full-page single capture; avoid destroying
+    // the live DOM or re-parsing every MutationObserver notification during recording.
+    if(mode==='capture'&&doc===document.body&&typeof Readability==='function'&&
+      !/(?:instagram\.com|threads\.(?:net|com)|chatgpt\.com|claude\.ai|chat\.openai\.com)$/.test(hostname)){
+      try{
+        const parsed=new Readability(document.cloneNode(true)).parse();
+        if(parsed?.textContent?.trim()?.length>100){
+          const documentFragment=new DOMParser().parseFromString(parsed.content||'','text/html');
+          const hrefs=[...documentFragment.querySelectorAll('a[href]')].slice(0,120)
+            .map(a=>({text:a.textContent?.trim()||'',url:normalizeUrl(a.href)}))
+            .filter(x=>x.url).map(x=>x.text+' <'+x.url+'>').join('\n');
+          const url=normalizeUrl(location.href);
+          return [{key:url,source_key:url,url,title:parsed.title||document.title,
+            content:parsed.textContent.trim()+(hrefs?'\n[連結]\n'+hrefs:'')}];
+        }
+      }catch{ /* Unsupported or dynamic page: use bounded DOM fallback below. */ }
+    }
+    const articles=[...doc.querySelectorAll('article,[role="article"],[data-testid="post-container"]')]
+      .filter(el=>visible(el)&&(mode!=='record'||inViewport(el))&&cleanText(el).length>=25);
+    // Threads may render cards as generic DIVs rather than <article>.
+    // Follow only already-rendered permanent links; never invent a source
+    // or treat the whole infinite feed as a single post.
+    if(/(?:instagram\.com|threads\.(?:net|com))$/.test(hostname)){
+      for(const a of [...doc.querySelectorAll('a[href]')].slice(0,500)){
+        if(!socialPostUrl(normalizeUrl(a.href)))continue;
+        const parent=a.closest('article,[role="article"],[data-testid="post-container"]')||
+          a.closest('[data-pressable-container]')||a.parentElement?.parentElement?.parentElement;
+        if(parent&&visible(parent)&&(mode!=='record'||inViewport(parent))&&
+          cleanText(parent).length>=25)articles.push(parent);
+      }
+    }
+    const unique=[...new Set(articles)];
+    const cards=(unique.length?unique:(mode==='record'?[]:[doc])).slice(0,50);
+    return cards.map((el,index)=>{
+      const source=stableSource(el);
+      const text=cleanText(el);
+      if(!source||!text)return null;
+      const hrefs=links(el).map(x=>x.text+' <'+x.url+'>').join('\n');
+      const media=[...el.querySelectorAll('img[src],video[src],video[poster],source[src]')]
+        .filter(visible).slice(0,24).map(node=>
+          normalizeUrl(node.currentSrc||node.src||node.getAttribute('poster')||''))
+        .filter(Boolean);
+      const mediaText=[...new Set(media)].map(u=>'<'+u+'>').join('\n');
+      const date=el.querySelector('time[datetime]')?.getAttribute('datetime');
+      return {key:source,source_key:source,url:source,
+        title:el.querySelector('h1,h2,h3')?.textContent?.trim()||document.title,
+        content:(date?'[時間] '+date+'\n':'')+text+(hrefs?'\n[連結]\n'+hrefs:'')+
+          (mediaText?'\n[媒體來源]\n'+mediaText:'')};
+    }).filter(Boolean);
+  }
+  function fingerprint(value){
+    const text=String(value||'');
+    let a=2166136261,b=16777619;
+    for(let i=0;i<text.length;i++){
+      const code=text.charCodeAt(i);
+      a=Math.imul(a^code,16777619);
+      b=Math.imul(b+code,2246822519);
+    }
+    return text.length+':'+(a>>>0).toString(16)+':'+(b>>>0).toString(16);
+  }
+  async function publish(items){
+    // A capture only becomes "seen" once the extension confirms the
+    // IndexedDB transaction. On queue errors, release the pending key so
+    // a later scan can retry without losing the post.
+    const pending=[];
+    for(const item of items){
+      const key=item.source_key+':'+fingerprint(item.content);
+      if(state.seen.has(key)||state.sending.has(key))continue;
+      state.sending.add(key);
+      pending.push({item,key});
+    }
+    if(!pending.length)return;
+    try{
+      const result=await chrome.runtime.sendMessage({
+        type:'items.captured',items:pending.map(({item})=>item)
+      });
+      if(result?.error)throw Error(result.error);
+      if(!result||typeof result.queued!=='number')throw Error('Queue acknowledgement missing');
+      if(state.seen.size>=5000)state.seen.clear();
+      for(const {key} of pending)state.seen.add(key);
+    }catch{
+      // Failure is not an acknowledgement. A subsequent scan may retry.
+    }finally{
+      for(const {key} of pending)state.sending.delete(key);
+    }
+  }
+  function scan(){
+    if(!state.root||state.mode!=='record')return;
+    if(state.timer)clearTimeout(state.timer);
+    state.timer=setTimeout(()=>publish(extract(state.root,'record',state.includeAssistant)),350);
+  }
+  function stopWatching(){
+    state.observer?.disconnect();state.intersection?.disconnect();
+    state.observer=null;state.intersection=null;
+    window.removeEventListener('scroll',scan);
+    if(state.timer)clearTimeout(state.timer);
+    state.timer=null;
+  }
+  function watch(){
+    if(!state.root)return false;
+    stopWatching();
+    state.mode='record';
+    state.observer=new MutationObserver(scan);
+    state.observer.observe(state.root,{childList:true,subtree:true,characterData:true,attributes:false});
+    state.intersection=new IntersectionObserver(scan,{threshold:0});
+    for(const node of state.root.querySelectorAll('article,[role="article"]'))
+      state.intersection.observe(node);
+    window.addEventListener('scroll',scan,{passive:true});
+    scan();
+    return true;
+  }
+  function stop(){
+    stopWatching();state.mode='idle';
+    state.hover?.remove();state.hover=null;
+    document.removeEventListener('mousemove',move,true);
+    document.removeEventListener('click',choose,true);
+  }
+  function move(event){
+    if(state.mode!=='select'&&state.mode!=='pick-record')return;
+    const el=event.target.closest('article,[role="article"],main,section')||event.target;
+    if(el instanceof Element&&visible(el)){
+      const rect=el.getBoundingClientRect();
+      if(!state.hover){state.hover=document.createElement('div');state.hover.style.cssText=
+        'position:fixed;pointer-events:none;z-index:2147483647;border:2px solid #3b82f6;background:#3b82f61a;box-sizing:border-box';
+        document.documentElement.append(state.hover);}
+      Object.assign(state.hover.style,{left:rect.left+'px',top:rect.top+'px',width:rect.width+'px',height:rect.height+'px'});
+    }
+  }
+  function choose(event){
+    if(state.mode!=='select'&&state.mode!=='pick-record')return;
+    event.preventDefault();event.stopImmediatePropagation();
+    const target=event.target;
+    const root=state.mode==='pick-record'?
+      (target.closest('[role="feed"],main,section')||target.closest('article,[role="article"]')?.parentElement||target):
+      (target.closest('article,[role="article"],main,section')||target);
+    if(!(root instanceof Element))return;
+    const recording=state.mode==='pick-record';
+    stop();state.root=root;state.seen.clear();
+    if(recording){
+      publish(extract(root,'record',state.includeAssistant));
+      watch();
+    }else publish(extract(root));
+  }
+  chrome.runtime.onMessage.addListener((msg,_sender,reply)=>{
+    if(msg.type==='page.capture'){
+      const text=msg.selection?.trim();
+      const items=text?[{key:'selection',source_key:normalizeUrl(location.href),url:normalizeUrl(location.href),
+        title:document.title,content:text}]:extract(document.body,'capture',Boolean(msg.includeAssistant));
+      reply({items});return;
+    }
+    if(msg.type==='page.select'||msg.type==='page.record'){
+      stop();state.mode=msg.type==='page.select'?'select':'pick-record';
+      state.includeAssistant=msg.includeAssistant===true;
+      document.addEventListener('mousemove',move,true);
+      document.addEventListener('click',choose,true);
+      reply({ok:true});return;
+    }
+    if(msg.type==='page.pause'){
+      if(state.mode!=='record'){reply({ok:false,mode:state.mode});return;}
+      stopWatching();state.mode='paused';reply({ok:true,mode:'paused'});return;
+    }
+    if(msg.type==='page.resume'){
+      const ok=state.mode==='paused'&&watch();
+      reply({ok:Boolean(ok),mode:state.mode});return;
+    }
+    if(msg.type==='page.status'){reply({ok:true,mode:state.mode,count:state.seen.size});return;}
+    if(msg.type==='page.stop'){const count=state.seen.size;stop();reply({ok:true,count});return;}
+  });
+  globalThis.__locCaptureV2=true;
+})();
