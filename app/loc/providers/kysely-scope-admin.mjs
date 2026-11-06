@@ -2,10 +2,10 @@ import {canManageLoc} from './loc-authorization.mjs';
 import {allocateAnchorUid} from '../unified-anchor-compat.mjs';
 import {sql} from 'npm:kysely@0.29.8';
 import {schema as fixedSchema} from '../../../zenstack/schema.mjs';
+import {normalizeLocDomain} from './loc-domain.mjs';
 
 const ID=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
-const DOMAIN=/^[a-z0-9][a-z0-9.-]*[a-z0-9]$/;
 const DIR=/^[a-z0-9][a-z0-9/_-]*$/;
 
 // Fixed LOC Registry models come from the same ZModel-backed schema contract as
@@ -26,10 +26,9 @@ async function allowedGlobal(trx){
   if(!await canManageLoc(trx,'global'))fail('Global administrator permission required',403);
 }
 function route(values,existing={}){
-  const domain=String(values.domain??existing.domain??'').trim().toLowerCase();
+  const domain=normalizeLocDomain(values.domain??existing.domain??null)||'';
   let directory=String(values.directory??existing.directory??'').trim().toLowerCase();
   if(Boolean(domain)===Boolean(directory))fail('Exactly one domain or directory is required');
-  if(domain&&!DOMAIN.test(domain))fail('Invalid route domain');
   if(directory){directory='/'+directory.replace(/^\/+|\/+$/g,'');
     if(!DIR.test(directory.slice(1)))fail('Invalid route directory');}
   return {domain:domain||null,directory:directory||null};
