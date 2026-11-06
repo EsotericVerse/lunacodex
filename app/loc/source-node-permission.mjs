@@ -8,11 +8,12 @@ export function sourceNodePermission({viewerScopeId,nodeType,nodeScopeId,canMana
   const viewer=String(viewerScopeId||'').toLowerCase();
   const owner=String(nodeScopeId||'').toLowerCase();
   if(!viewer||!owner)return {read:false,edit:false};
-  // Nodes may be displayed up or down the tree, regardless of edit rights.
-  const edit=level<=1
+  // LOC sees the entire source tree. A Scope sees only its own branch and LOC ancestors.
+  const read=viewer==='loc'||(level<=1?owner==='loc':owner===viewer);
+  const edit=read&&(level<=1
     ?viewer==='loc'&&owner==='loc'&&canManageLoc===true
-    :viewer!=='loc'&&viewer===owner&&canManageScope===true;
-  return {read:true,edit};
+    :viewer!=='loc'&&viewer===owner&&canManageScope===true);
+  return {read,edit};
 }
 export function assertSourceNodeWritePermission(input){
   if(!sourceNodePermission(input).edit)throw Error('Source Anchor ownership boundary denied');
