@@ -15,7 +15,8 @@ export async function extractOpenConversation(){
         ?node:node.closest('[data-testid^="conversation-turn-"]');
       if(turn&&turn!==node)continue;
       const roleNode=node.matches('[data-message-author-role]')
-        ?node:node.querySelector('[data-message-author-role]');
+        ?node:node.querySelector('[data-message-author-role]')||
+          node.closest('[data-message-author-role]');
       const role=node.getAttribute('data-message-author-role')||
         roleNode?.getAttribute('data-message-author-role');
       if(!['user','assistant'].includes(role))continue;
