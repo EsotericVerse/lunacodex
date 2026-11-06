@@ -4,6 +4,7 @@ const DB_NAME='loc-web-capture-v2';
 const STORE='events';
 const MAX_BATCH=50, MAX_BYTES=600000, AUTO_CAPTURE_COUNT=10;
 const LOC_ORIGIN='https://loc.lo3rwang.cc';
+const LOC_BRIDGE=LOC_ORIGIN+'/extension/bridge/';
 const MENU_PAGE='loc-page', MENU_SELECTION='loc-selection';
 const encoder=new TextEncoder();
 const sizeOf=x=>encoder.encode(JSON.stringify(x)).length;
@@ -112,38 +113,34 @@ function packet(rows){
  return out;
 }
 async function locTab(){
- const tabs=await chrome.tabs.query({url:LOC_ORIGIN+'/*'});
- const candidates=tabs.filter(t=>{
-  try{return new URL(t.url).origin===LOC_ORIGIN&&t.id!=null;}catch{return false;}
- });
- return candidates.find(t=>t.active)||candidates[0]||null;
+ const tabs=await chrome.tabs.query({url:LOC_BRIDGE+'*'});
+ return tabs.find(tab=>{
+  try{return tab.id!=null&&new URL(tab.url).href.startsWith(LOC_BRIDGE);}
+  catch{return false;}
+ })||null;
 }
-// IMPORTANT: HTTP call runs in the LOC website's OWN origin and cookie context.
-// No site Session, refresh token, JWT or Cookie is read by the extension.
+// Use LOC's EXISTING website auth adapter / delegated SQL gateway, not a
+// second Extension OAuth or a fictitious same-origin cookie API.
+// Only an explicitly opened, hydrated LOC bridge page can receive batches.
 async function sendViaWebsite(batch){
  const tab=await locTab();
- if(!tab)throw Error('請先開啟已登入的 LOC 網站；Queue 已保留');
+ if(!tab)throw Error('請先開啟 LOC 彩虹橋網站頁面；Queue 已保留');
  const result=await chrome.scripting.executeScript({
   target:{tabId:tab.id},world:'MAIN',
   func:async payload=>{
+   if(location.origin!=='https://loc.lo3rwang.cc'||
+      location.pathname!=='/extension/bridge/')
+    return {ok:false,error:'LOC 彩虹橋頁面來源不符'};
+   if(typeof window.__locGalaxyLinkImport!=='function')
+    return {ok:false,error:'LOC 彩虹橋網站尚未完成載入'};
    try{
-    const response=await fetch('/v1/import/short',{
-     method:'POST',credentials:'same-origin',
-     headers:{'content-type':'application/json','accept':'application/json'},
-     body:JSON.stringify(payload),redirect:'error',cache:'no-store'
-    });
-    const body=await response.json().catch(()=>null);
-    return {status:response.status,ok:response.ok,body};
-   }catch(error){return {status:0,ok:false,error:String(error?.message||error)};}
+    const body=await window.__locGalaxyLinkImport(payload);
+    return {ok:true,body};
+   }catch(error){return {ok:false,error:String(error?.message||error)};}
   },args:[batch]
  });
  const reply=result?.[0]?.result;
- if(!reply?.ok){
-  const message=reply?.status===401?'LOC 網站登入已失效':reply?.status===403?'LOC 沒有文章寫入權限':
-   reply?.status===404?'LOC 尚未掛載網站短匯入 API':reply?.status===429?'LOC 寫入流量限制':
-   'LOC 短匯入無法使用';
-  throw Error(message+'（HTTP '+(reply?.status||0)+'）；Queue 保留');
- }
+ if(!reply?.ok)throw Error(String(reply?.error||'LOC 銀河寫入失敗')+'；Queue 保留');
  if(!reply.body?.accepted||reply.body.id!==batch.id||
   !Array.isArray(reply.body.articles))throw Error('LOC 未確認完整批次回執；Queue 保留');
  const sourceKeys=new Set(batch.records.map(row=>row.source_key));
@@ -252,8 +249,8 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
    }
    case 'queue.flush':return flush(true);
    case 'loc.open':
-    await chrome.tabs.create({url:LOC_ORIGIN+'/local/settings/'});
-    return {message:'已開啟 LOC 網站；網站 Session 由 LOC 自行管理'};
+    await chrome.tabs.create({url:LOC_BRIDGE});
+    return {message:'已開啟 LOC 彩虹橋網站授權與寫入頁面'};
    default:throw Error('Unknown action');
   }
  })().then(respond).catch(error=>respond({error:String(error.message||error)}));
