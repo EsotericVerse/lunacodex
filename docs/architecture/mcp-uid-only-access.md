@@ -1,3 +1,10 @@
+## 2026-11-06｜專用 MCP 網域
+
+- 正式 MCP Resource URL 改為 `https://mcp.lo3rwang.cc`，不再要求 MCP Client 把 `/mcp` 附加到 LOC 網站根網域。
+- 沿用 Cloudflare Pages `loc` 專案：只在 Host=`mcp.lo3rwang.cc` 時把網站根路由交給 MCP Handler，其他 Host 的首頁仍交給既有網站處理。
+- OAuth Protected Resource Metadata 位於 `https://mcp.lo3rwang.cc/.well-known/oauth-protected-resource`；LOC Auth 實際授權伺服器設定由另一路工作負責，本次只變更 MCP canonical resource 與網域路由，不修改 Edge 或資料庫權限。
+- Cloudflare Pages Custom Domain、DNS、TLS 啟用狀態與正式 HTTP 請求需分別確認；合併 GitHub PR 不代表 DNS／憑證已啟用。
+
 # LOC MCP 權限邊界（Galaxy Link 更新）
 
 LOC MCP 對外以 `galaxy_link` 統一執行私人對話 `search/read/check/record` 與管理者 PR `search/read/update_pr`；Scope 設定與 Group 權限仍分開驗證。
