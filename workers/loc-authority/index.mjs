@@ -932,6 +932,10 @@ async function handleMcpAuthority(request,env,url,origin){
   // No DB work and no quota spend on retired search endpoints.
   if(/^\/v1\/mcp\/(?:search|group-search)\//.test(url.pathname))
     throw fail('MCP search is disabled',403);
+  // Retired PR write API must fail closed even for authenticated legacy clients.
+  // GitHub owns PR history. Reject before quota and any database work.
+  if(/^\/v1\/mcp\/update-pr\//.test(url.pathname))
+    throw fail('PR records belong to GitHub; use GitHub PR tools instead of Galaxy UID',410);
   const kind=/^\/v1\/mcp\/galaxy-link\/search\//.test(url.pathname)?'search':
     request.method==='GET'?'read':'write';
   const ticket=await quota.mcpQuotaAcquire(kind,'clerk:'+principal.subject);
@@ -1022,8 +1026,8 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
     const groupid=url.searchParams.get('groupid')||'';
     const requestedSite=galaxyLink?(url.searchParams.get('site')||'mcp'):
       (url.searchParams.get('site')==='mcp'?'mcp':'');
-    if(galaxyLink&&!['mcp','github'].includes(requestedSite))
-      throw fail('Invalid Galaxy Link read source',400);
+    if(galaxyLink&&requestedSite!=='mcp')
+      throw fail('GitHub PR records are no longer served by Galaxy Link; use GitHub tools',410);
     let permitted=await allowed(scopeid,requestedSite==='github'?'manage':'read');
     if(!permitted&&requestedSite!=='github'&&groupid&&await allowed(validScope(groupid),'read')){
       permitted=(await stub.mcpGroupMembers(groupid)).includes(scopeid);
