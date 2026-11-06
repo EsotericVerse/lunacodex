@@ -1,4 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
+import {issueDelegation} from '../../app/loc/auth/delegation-contract.mjs';
 import {validateKeywordCategoryEntry,hashKeywordCategory,assertPublicKeywordClass} from './keyword-categories.mjs';
 import {AUTH_PROVIDER_TYPES,validateAuthProviderSettings,publicAuthProviderSettings}
   from '../../app/loc/auth/auth-provider-settings.mjs';
@@ -527,6 +528,10 @@ export class LocAuthorityState extends DurableObject {
     const scope=String(input.scope||'').trim().toLowerCase();
     const actions=input.actions;
     const expires=Number(input.expires_at);
+    const email=String(input.email||'').trim().toLowerCase();
+    if(input.email!==undefined&&
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      throw fail('Invalid manually verified LOC identity email');
     if(!/^[a-z][a-z0-9_-]{0,31}$/.test(provider)||
       !/^[a-zA-Z0-9_:-]{1,128}$/.test(subject)||
       !/^[a-z][a-z0-9]{0,14}$/.test(scope)||
@@ -536,8 +541,27 @@ export class LocAuthorityState extends DurableObject {
       throw fail('Invalid Authority grant');
     const unique=[...new Set(actions)].sort();
     const key=provider+':'+subject+':'+scope;
-    await this.ctx.storage.put('grant:'+key,{provider,subject,scope,actions:unique,expires_at:expires});
-    return {key,provider,subject,scope,actions:unique,expires_at:expires};
+    await this.ctx.storage.put('grant:'+key,{provider,subject,scope,actions:unique,
+      expires_at:expires,...(email?{email}:{})});
+    return {key,provider,subject,scope,actions:unique,expires_at:expires,
+      ...(email?{email}:{})};
+  }
+  async delegationGrantProfile(provider,subject){
+    // Trusted, operator-maintained mapping on existing grants, not a new DB.
+    const prefix='grant:'+provider+':'+subject+':';
+    const entries=await this.ctx.storage.list({prefix});
+    const now=Date.now(),scopes=[],emails=new Set();
+    for(const [key,grant] of entries){
+      if(grant?.provider!==provider||grant?.subject!==subject||
+        grant.expires_at<=now)continue;
+      const scope=key.slice(prefix.length);
+      if(!/^[a-z][a-z0-9]{0,14}$/.test(scope))continue;
+      if(grant.email)emails.add(String(grant.email).toLowerCase());
+      if(grant.actions?.includes('manage'))scopes.push(scope);
+      if(scopes.length>64||emails.size>1)
+        throw fail('Conflicting or excessive identity delegation',403);
+    }
+    return {scopes,email:[...emails][0]||''};
   }
   async revokeGrant(key){
     if(!/^[a-z][a-z0-9_-]{0,31}:[a-zA-Z0-9_:-]{1,128}:[a-z][a-z0-9]{0,14}$/.test(String(key)))
@@ -1103,6 +1127,88 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
   throw fail('MCP operation not found',404);
 }
 
+// One exchange from a verified external identity to a narrowly scoped LOC
+// delegation. Reuses Authority's existing grants; does not create an Auth RPC.
+async function exchangeLocDelegation(request,env,principal,origin){
+  const secret=String(env.LOC_DELEGATION_SECRET||'');
+  if(secret.length<32)throw fail('LOC delegation issuer is not configured',503);
+  const raw=await request.text();
+  if(raw.length>1200)throw fail('Delegation request is too large',413);
+  let input;
+  try{input=JSON.parse(raw)}catch{throw fail('Invalid delegation request',400)}
+  if(!input||typeof input!=='object'||Array.isArray(input)||
+    Object.keys(input).some(k=>!['audience','scopeid','actions','global','identity','self'].includes(k)))
+    throw fail('Invalid delegation request',400);
+  const audience=String(input.audience||'sql');
+  const global=input.global===true,identity=input.identity===true,self=input.self===true;
+  if(!['sql','mcp'].includes(audience)||
+    input.global!==undefined&&typeof input.global!=='boolean'||
+    input.identity!==undefined&&typeof input.identity!=='boolean'||
+    input.self!==undefined&&typeof input.self!=='boolean'||
+    (global||identity||self)&&audience!=='sql'||
+    Number(global)+Number(identity)+Number(self)>1)
+    throw fail('Invalid delegation audience',400);
+  const roots=String(principal.provider==='clerk'
+    ?env.LOC_RECOVERY_ROOT_CLERK_IDS:env.LOC_RECOVERY_ROOT_SECONDARY_SUBJECTS)
+    .split(/[\s,;]+/).filter(Boolean);
+  const root=roots.includes(principal.subject);
+  const scope=String(input.scopeid||'');
+  const actions=input.actions;
+  if(global){
+    if(!root||input.scopeid!==undefined||input.actions!==undefined)
+      throw fail('Administrator delegation required',403);
+  }else if(identity||self){
+    if(input.scopeid!==undefined||input.actions!==undefined)
+      throw fail('Identity-only delegation cannot request Scope access',400);
+  }else if(!/^[a-z][a-z0-9]{0,14}$/.test(scope)||
+    !Array.isArray(actions)||!actions.length||actions.length>3||
+    actions.some(a=>!['read','write','manage'].includes(a)))
+    throw fail('Invalid requested delegation scope',400);
+  const stub=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName('loc-authority-control-v1'));
+  const profile=!principal.email&&!root||self&&!root
+    ?await stub.delegationGrantProfile(principal.provider,principal.subject):null;
+  const email=String(principal.email||profile?.email||'').trim().toLowerCase();
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+    throw fail('Verified identity email required for LOC delegation',403);
+  let grants;
+  if(global)grants=['global:manage'];
+  else if(identity)grants=[];
+  else if(self){
+    if(root)grants=['global:manage'];
+    else {
+      grants=(profile?.scopes||[]).map(scopeid=>scopeid+':manage');
+    }
+  }else grants=Array.from(new Set(actions)).map(a=>scope+':'+a);
+  if(!global&&!identity&&!self&&!root){
+    for(const action of new Set(actions)){
+      if(!await stub.mayAccess({provider:principal.provider,subject:principal.subject,scope,action}))
+        throw fail('Requested Scope delegation was not granted',403);
+    }
+  }
+  // Provider-qualified digest avoids collisions between identity providers.
+  // Explicit manual transfer may preserve an existing LOC subject separately.
+  const identityBytes=new TextEncoder().encode(principal.provider+':'+principal.subject);
+  const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',identityBytes)))
+    .map(value=>value.toString(16).padStart(2,'0')).join('');
+  const now=Math.floor(Date.now()/1000);
+  // Preserve the already-established Clerk owner_id during migration.
+  // A different provider gets a distinct LOC subject until a trusted operator
+  // explicitly maps it; matching email alone never transfers ownership.
+  const sub=principal.provider==='clerk'?principal.subject:'loc_'+digest.slice(0,40);
+  const claims=issueDelegation({sub,email,
+    grants,audience,sid:crypto.randomUUID(),now,seconds:300});
+  const encode=value=>fromBytes(new TextEncoder().encode(JSON.stringify(value)))
+    .replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  const signingInput=encode({alg:'HS256',typ:'JWT'})+'.'+encode(claims);
+  const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(secret),
+    {name:'HMAC',hash:'SHA-256'},false,['sign']);
+  const signature=await crypto.subtle.sign('HMAC',key,new TextEncoder().encode(signingInput));
+  const token=signingInput+'.'+fromBytes(new Uint8Array(signature))
+    .replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  return json({access_token:token,token_type:'Bearer',expires_at:claims.exp,
+    audience:claims.aud,scopeid:global||identity||self?null:scope,grants:claims.grants},200,origin);
+}
+
 export default {
   async fetch(request,env){
     let origin='';
@@ -1126,6 +1232,8 @@ export default {
       // Identity endpoint is only a verified principal lookup. It grants no
       // data access or management capabilities; the gateway must call mayAccess.
       if(request.method==='GET'&&url.pathname==='/v1/identity')return json(principal,200,origin);
+      if(request.method==='POST'&&url.pathname==='/v1/delegation')
+        return exchangeLocDelegation(request,env,principal,origin);
       const roots=String(principal.provider==='clerk'?env.LOC_RECOVERY_ROOT_CLERK_IDS:env.LOC_RECOVERY_ROOT_SECONDARY_SUBJECTS)
         .split(/[\s,;]+/).filter(Boolean);
       if(!roots.includes(principal.subject))throw fail('Recovery administrator required',403);
