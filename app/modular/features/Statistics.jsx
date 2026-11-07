@@ -580,7 +580,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     {keywordDimension?<>
       {keywordClassQuery.isPending?<p className="scope-status">正在讀取關鍵詞組設定…</p>:null}
       {!keywordClassQuery.isPending&&!keywordClassQuery.error&&!scopedKeywordClasses.length?<p className="scope-status">目前沒有可查看的關鍵詞科目；請先建立或公開科目。</p>:null}
-      {resolvedKeywordClassUid?<KeywordPatternSummary scopeId={scopeId} classUid={resolvedKeywordClassUid}/>:null}
+      {resolvedKeywordClassUid?<KeywordPatternSummary scopeId={scopeId} classUid={resolvedKeywordClassUid} range={styleRange}/>:null}
       {runeQuery.isPending?<p className="scope-status"><UiText id="uiExtra.statisticsUI.loadingKeywordAttrs"/></p>:null}
       {runeQuery.error?<p className="scope-status scope-error">{featureDataErrorMessage(runeQuery.error)}</p>:null}
       {!runeQuery.isPending&&!runeQuery.error&&runeQuery.data?<Rune66Summary key={resolvedKeywordClassUid} analysis={runeQuery.data} range={queryRange} scopeId={scopeId}/>:null}
