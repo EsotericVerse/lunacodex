@@ -119,6 +119,16 @@ export async function selectKeywordAnalysisSummary({scopeId,classUid='',startDat
   const matched=Math.max(0,Number(data.document_count)||0);
   const ranked=[...runeTotals].sort((a,b)=>b.count-a.count||
     b.document_count-a.document_count||a.order-b.order);
+  const groupNames=new Map(groups.map(group=>[group.uid,group.name]));
+  const classifications=(Array.isArray(data.daily)?data.daily:[])
+    .filter(row=>row.kind==='class_day'&&Number(row.document_count)>0)
+    .map(row=>({
+      key:'group-day:'+row.group_uid+':'+row.day,
+      uid:'',date:String(row.day||''),
+      classification_group:String(groupNames.get(row.group_uid)||''),
+      group_uid:String(row.group_uid||''),
+      count:Number(row.document_count)||0,status:'classified'
+    }));
   const base=emptyStored(scopedConfig,{
     keywordDocumentCount:matched,
     keywordMeta:{...state,class_uid:selectedClass,
@@ -127,7 +137,7 @@ export async function selectKeywordAnalysisSummary({scopeId,classUid='',startDat
       items:Object.fromEntries(items.map(row=>[row.uid,row.name]))}
   });
   return {...base,documentCount:matched,classifiedCount:matched,
-    unclassifiedCount:0,classifications:[],
+    unclassifiedCount:0,classifications:base.statisticsEnabled?classifications:[],
     runeTotals:base.statisticsEnabled?runeTotals:[],
     runeRanking:base.statisticsEnabled?ranked:[],
     groupTotals:base.statisticsEnabled?groupTotals:[]};
