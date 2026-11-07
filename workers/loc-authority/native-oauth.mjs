@@ -31,7 +31,8 @@ function parseCookies(request){const items=new Map();
 function cookie(name,value,age){return name+'='+value+'; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age='+age;}
 function corsOrigin(request){const origin=request.headers.get('origin');
  if(!origin)return '';
- if([ISSUER,WEB_AUDIENCE,EXT_ORIGIN].includes(origin))return origin;
+ if([ISSUER,WEB_AUDIENCE,EXT_ORIGIN].includes(origin)||
+  /^chrome-extension:\/\/[a-p]{32}$/.test(origin))return origin;
  try{const u=new URL(origin);if(u.protocol==='https:'&&
   (u.hostname==='chatgpt.com'||u.hostname.endsWith('.chatgpt.com')||
    u.hostname==='openai.com'||u.hostname.endsWith('.openai.com')))return origin;}catch{}
@@ -77,9 +78,11 @@ function resourceFor(kind,value){
  if(value&&value!==expected)error('OAuth resource mismatch');
  return expected;
 }
+function extensionRedirect(uri){return /^https:\/\/[a-p]{32}\.chromiumapp\.org\/loc$/.test(String(uri||''));}
 function safeRedirect(uri){try{const u=new URL(uri);return u.protocol==='https:'&&
   !u.username&&!u.password&&!u.hash&&
-  (u.hostname==='chatgpt.com'||u.hostname.endsWith('.chatgpt.com')||
+  (extensionRedirect(uri)||u.hostname==='chatgpt.com'||
+   u.hostname.endsWith('.chatgpt.com')||
    u.hostname==='openai.com'||u.hostname.endsWith('.openai.com'));}
  catch{return false;}}
 async function clientFor(stub,id){
@@ -87,7 +90,7 @@ async function clientFor(stub,id){
  if(!/^loc-mcp-[A-Za-z0-9_-]{43}$/.test(String(id||'')))error('Unregistered OAuth client',401);
  const value=await stub.nativeGet('native-client:'+id);
  if(!value||value.expires<Date.now())error('Unknown OAuth client',401);
- return {...value,kind:'mcp'};
+ return {...value,kind:value.kind||'mcp'};
 }
 async function register(request,stub,origin){
  const raw=await request.text();if(raw.length>6000)error('Client registration too large',413);
@@ -98,12 +101,16 @@ async function register(request,stub,origin){
   body.grant_types&&(!Array.isArray(body.grant_types)||
    body.grant_types.some(x=>!['authorization_code','refresh_token'].includes(x))))
   error('Invalid OAuth client redirect or grant');
+ const isExtension=body.redirect_uris.every(extensionRedirect);
+ if(!isExtension&&body.redirect_uris.some(extensionRedirect))
+   error('Mixed OAuth client redirect types are not allowed');
  const client_id='loc-mcp-'+random(),issued_at=Math.floor(Date.now()/1000);
- const item={client_id,redirect_uris:body.redirect_uris,
+ const item={client_id,kind:isExtension?'extension':'mcp',redirect_uris:body.redirect_uris,
   client_name:String(body.client_name||'LOC MCP').slice(0,120),
   expires:Date.now()+180*86400000};
  await stub.nativePut('native-client:'+client_id,item);
- return response({client_id,client_id_issued_at:issued_at,client_secret_expires_at:0,
+ return response({client_id,client_id_issued_at:issued_at,
+  client_id_expires_at:Math.floor(item.expires/1000),client_secret_expires_at:0,
   redirect_uris:item.redirect_uris,token_endpoint_auth_method:'none',
   response_types:['code'],grant_types:['authorization_code','refresh_token']},201,origin);
 }
