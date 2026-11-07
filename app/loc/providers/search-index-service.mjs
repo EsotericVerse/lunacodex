@@ -2,8 +2,8 @@
 // candidate filter only, NEVER a source of article content or authorization.
 // Missing or incomplete indexes leave existing Kysely SQL search unchanged.
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
-const SOURCE=/^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
-const UID=/^[A-Za-z0-9_.~-]{1,128}$/;
+const SOURCE=/^[a-z][a-z0-9_-]{0,63}$/;
+const UID=/^[A-Za-z0-9]{8}$/;
 
 function service(){
   const address=String(Deno.env.get('LOC_SEARCH_INDEX_URL')||'').trim();
