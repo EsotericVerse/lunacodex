@@ -60,7 +60,7 @@ test('Search summary only reads stored snapshot; refresh is handled by import ma
   assert.match(refresh,/data\?\.rows/);
 });
 test('SQL Edge verifies LOC delegation rather than provider-specific session RPC',()=>{
-  const code=readFileSync(new URL('../supabase/functions/loc-kysely/index.ts',import.meta.url),'utf8');
+  const code=readFileSync(new URL('../app/loc/gateway/sql-handler.ts',import.meta.url),'utf8');
   assert.match(code,/verifyLocDelegation\(match\[1\],body\)/);
   assert.match(code,/verifyDelegationBoundary\(payload,body,/);
   assert.doesNotMatch(code,/verifyClerkForSql|clerkSqlClaims|authClient\.auth\.getUser\(token\)/);
@@ -97,7 +97,7 @@ test('verified Clerk subject can be mapped to a trusted root email by server, no
     {issuer,origin,trustedEmail:'owner@example.org'}));
 });
 test('MCP and SQL use distinct signed LOC delegations, without general SQL escalation',()=>{
-  const edge=readFileSync(new URL('../supabase/functions/loc-kysely/index.ts',import.meta.url),'utf8');
+  const edge=readFileSync(new URL('../app/loc/gateway/sql-handler.ts',import.meta.url),'utf8');
   const contract=readFileSync(new URL('../app/loc/auth/delegation-contract.mjs',import.meta.url),'utf8');
   const worker=readFileSync(new URL('../workers/loc-authority/index.mjs',import.meta.url),'utf8');
   assert.match(edge,/delegationAudience\(body\)/);
@@ -106,7 +106,7 @@ test('MCP and SQL use distinct signed LOC delegations, without general SQL escal
   assert.match(worker,/managedMcpInsert\(scopeid,row,Boolean\(status\.uid\),oauthToken\)/);
 });
 test('managed MCP sync accepts only an eight-flag private article without generated date',()=>{
-  const edge=readFileSync(new URL('../supabase/functions/loc-kysely/index.ts',import.meta.url),'utf8');
+  const edge=readFileSync(new URL('../app/loc/gateway/sql-handler.ts',import.meta.url),'utf8');
   const worker=readFileSync(new URL('../workers/loc-authority/index.mjs',import.meta.url),'utf8');
   assert.match(edge,/const flags=\["statics","culture","search","trace","list","keyword","extract","others"\]/);
   assert.match(worker,/statics:false,culture:false,search:false/);
@@ -115,7 +115,7 @@ test('managed MCP sync accepts only an eight-flag private article without genera
 });
 
 test('Authority maps verified OAuth principal before issuing LOC claims',()=>{
-  const edge=readFileSync(new URL('../supabase/functions/loc-kysely/index.ts',import.meta.url),'utf8');
+  const edge=readFileSync(new URL('../app/loc/gateway/sql-handler.ts',import.meta.url),'utf8');
   const worker=readFileSync(new URL('../workers/loc-authority/index.mjs',import.meta.url),'utf8');
   assert.match(worker,/verifyIdentityToken\(request,env\)/);
   assert.match(worker,/LOC_ROOT_MANAGEMENT_EMAIL/);
@@ -123,7 +123,7 @@ test('Authority maps verified OAuth principal before issuing LOC claims',()=>{
   assert.match(edge,/verifyLocDelegation\(match\[1\],body\)/);
 });
 test('Kysely management actions replace retired business RPCs while database policy helpers remain',()=>{
-  const edge=readFileSync(new URL('../supabase/functions/loc-kysely/index.ts',import.meta.url),'utf8');
+  const edge=readFileSync(new URL('../app/loc/gateway/sql-handler.ts',import.meta.url),'utf8');
   const runtime=readFileSync(new URL('../app/loc/providers/kysely-runtime.mjs',import.meta.url),'utf8');
   const account=readFileSync(new URL('../app/loc/use-account.js',import.meta.url),'utf8');
   assert.match(edge,/legacy RPC dispatch has been retired/);

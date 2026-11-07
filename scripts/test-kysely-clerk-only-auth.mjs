@@ -6,14 +6,14 @@ import {canManageDelegation,issueDelegation,verifyDelegationBoundary}
 const source=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
 test('SQL Edge verifies locally signed LOC delegation, not provider identity',()=>{
-  const edge=source('supabase/functions/loc-kysely/index.ts');
+  const edge=source('app/loc/gateway/sql-handler.ts');
   assert.match(edge,/verifyLocDelegation\(match\[1\],body\)/);
   assert.match(edge,/verifyDelegationBoundary\(payload,body,/);
   assert.match(edge,/delegationAudience\(body\)/);
   assert.doesNotMatch(edge,/verifyClerkForSql|verifyMcpForSql|sessionIdentityCache/);
 });
 test('Kysely and Edge share one LOC delegation policy',()=>{
-  const edge=source('supabase/functions/loc-kysely/index.ts');
+  const edge=source('app/loc/gateway/sql-handler.ts');
   const auth=source('app/loc/providers/loc-authorization.mjs');
   const issuer=source('scripts/loc-delegation-mint-token.mjs');
   assert.match(edge,/from ".{1,80}\/delegation-contract\.mjs"/);
@@ -33,6 +33,6 @@ test('signed grants are portable and scope-limited independently of database RLS
 test('existing Clerk browser adapter remains optional and isolated from the SQL engine',()=>{
   const gateway=source('app/loc/providers/clerk-gateway.mjs');
   assert.match(gateway,/createClerkAccountAdapter/);
-  const edge=source('supabase/functions/loc-kysely/index.ts');
+  const edge=source('app/loc/gateway/sql-handler.ts');
   assert.doesNotMatch(edge,/createClerkAccountAdapter/);
 });

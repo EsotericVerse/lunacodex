@@ -55,7 +55,7 @@ test('policy-enforced live query uses exactly one transaction and one SQL execut
 });
 
 test('Edge actually routes model SELECTs to PolicyPlugin, not a detached schema',()=>{
-  const edge=readFileSync(new URL('../supabase/functions/loc-kysely/index.ts',import.meta.url),'utf8');
+  const edge=readFileSync(new URL('../app/loc/gateway/sql-handler.ts',import.meta.url),'utf8');
   assert.match(edge,/withFixedPolicyRead\(db,target,body,role,claims/);
   assert.match(edge,/new PolicyPlugin|PolicyPlugin\}/);
   assert.match(edge,/trustedDialectForDatabase\(db\)/);
@@ -122,7 +122,7 @@ test('global fixed write uses one existing dialect and one policy transaction',a
 
 test('managed Kysely fixed updates derive primary keys from SchemaDef, not pg_index',()=>{
   const management=readFileSync(new URL('../app/loc/providers/kysely-management.mjs',import.meta.url),'utf8');
-  const gateway=readFileSync(new URL('../supabase/functions/loc-kysely/index.ts',import.meta.url),'utf8');
+  const gateway=readFileSync(new URL('../app/loc/gateway/sql-handler.ts',import.meta.url),'utf8');
   assert.match(management,/fixedSchema\.models\[modelName\]\?\.idFields/);
   assert.match(management,/modelName\|\|\(table==='manage'/);
   assert.match(management,/if\(modelName&&\!\(modelName==='Manage'/);

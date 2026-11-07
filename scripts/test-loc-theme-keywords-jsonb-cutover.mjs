@@ -48,7 +48,7 @@ test('database migrations preserve every row then drop retired relations with RE
   assert.doesNotMatch(drop,/CASCADE/);
 });
 test('retired Theme relation is not exposed through external SQL authority',()=>{
-  const edge=file('supabase/functions/loc-kysely/index.ts');
+  const edge=file('app/loc/gateway/sql-handler.ts');
   const sql=file('app/loc/providers/sql-engine-ports.mjs');
   const policy=file('workers/loc-authority/sql-authorization.mjs');
   assert.doesNotMatch(edge,/adaptNeonThemeRequest/);

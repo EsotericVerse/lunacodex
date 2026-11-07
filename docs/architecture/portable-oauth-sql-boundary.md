@@ -50,9 +50,10 @@ Neon PostgreSQL 的存取功能仍由 Kysely PostgreSQL 方言與資料庫連線
 
 ## 獨立主站 SQL 服務入口（原始碼）
 
-- `services/loc-sql/main.ts` 是獨立 **Deno 2** 入口，沿用既有
-  `supabase/functions/loc-kysely/index.ts` 的同一 Kysely／ZenStack
-  及 LOC delegation 實作，不複製 SQL，也不新增 RPC。
+- `services/loc-sql/main.ts` 是獨立 **Deno 2** 入口，直接使用
+  `app/loc/gateway/sql-handler.ts` 的共用 Kysely／ZenStack 與
+  LOC delegation 實作；`supabase/functions/loc-kysely/index.ts`
+  僅保留舊部署相容入口，不再持有業務 SQL。
 - 伺服器必須提供 `LOC_CONTROL_DB_ALIAS`、`LOC_CONTROL_DB_ENGINE`
   （postgres／mysql／mssql）和 `LOC_DB_CONNECTIONS_JSON`；
   服務啟動時檢查別名及引擎，不允許隱性 Supabase／Neon 回退。

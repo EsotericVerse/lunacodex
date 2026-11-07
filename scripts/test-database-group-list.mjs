@@ -11,7 +11,7 @@ test('two database targets are read from access.js, not manage.database',()=>{
   assert.equal(DATABASE_ACCESS_LIST.filter(item=>item.selected).length,1);
   assert.equal(DATABASE_ACCESS_LIST.filter(item=>item.backup_selected).length,1);
   assert.equal(resolveDatabaseRouting(DATABASE_ROUTING_CONFIG).primaryId,'supabase-current');
-  const gateway=read('supabase/functions/loc-kysely/index.ts');
+  const gateway=read('app/loc/gateway/sql-handler.ts');
   const panel=read('app/loc/views/admin-panels/DatabaseTarget.jsx');
   const manager=read('app/loc/providers/kysely-management.mjs');
   assert.match(gateway,/databaseAccessTargets\(\)/);
@@ -30,6 +30,6 @@ test('email and reserved scope management remain unchanged',()=>{
     scopes=read('app/loc/views/admin-panels/AdminReservedScopeIds.jsx');
   assert.match(mail,/p_section:'email'/);
   assert.match(scopes,/p_section:'scopeid'/);
-  const gateway=read('supabase/functions/loc-kysely/index.ts');
+  const gateway=read('app/loc/gateway/sql-handler.ts');
   assert.match(gateway,/loc_admin_settings/);
 });

@@ -4,7 +4,7 @@ import {test} from 'node:test';
 import {delegationAudience,verifyDelegationBoundary,issueDelegation,
   canManageDelegation} from '../app/loc/auth/delegation-contract.mjs';
 
-const source=readFileSync(new URL('../supabase/functions/loc-kysely/index.ts',import.meta.url),'utf8');
+const source=readFileSync(new URL('../app/loc/gateway/sql-handler.ts',import.meta.url),'utf8');
 const start=source.indexOf('async function verifyLocDelegation(');
 const end=source.indexOf('// The deployed function and browser',start);
 assert.ok(start>0&&end>start,'LOC verifier exists in the active Edge entry');

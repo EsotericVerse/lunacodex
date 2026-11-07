@@ -263,7 +263,7 @@ test('exact api.manage cutover covers live JavaScript registry and both models',
     '../app/loc/scope-data.js',
     '../app/loc/views/admin-panels/AdminRegistry.jsx',
     '../app/loc/views/admin-panels/DatabaseTarget.jsx',
-    '../supabase/functions/loc-kysely/index.ts'
+    '../app/loc/gateway/sql-handler.ts'
   ];
   for(const file of files){
     const code=readFileSync(new URL(file,import.meta.url),'utf8');

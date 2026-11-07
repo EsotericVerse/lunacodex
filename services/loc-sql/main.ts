@@ -13,4 +13,4 @@ try{
 if(!profiles||Array.isArray(profiles)||typeof profiles!=='object'||
    profiles[alias]?.engine!==engine||!profiles[alias]?.url)
   throw new Error('LOC SQL server connection alias is not configured');
-await import('../../supabase/functions/loc-kysely/index.ts');
+await import('../../app/loc/gateway/sql-handler.ts');

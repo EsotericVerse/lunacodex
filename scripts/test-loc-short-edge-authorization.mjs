@@ -38,7 +38,7 @@ test('caller cannot override user, Scope, database target or SQL request shape',
    error=>status(error)===400);
 });
 test('Edge mounts short-import only after verifying LOC SQL delegation',()=>{
- const edge=readFileSync(new URL('../supabase/functions/loc-kysely/index.ts',import.meta.url),'utf8');
+ const edge=readFileSync(new URL('../app/loc/gateway/sql-handler.ts',import.meta.url),'utf8');
  const auth=edge.indexOf('const delegation=await verifyLocDelegation(match[1],body)');
  const gate=edge.indexOf('const actor=authorizeDelegatedShortImport(body,claims)');
  const db=edge.indexOf('const db=await databaseForTarget(controlTarget);',gate);
