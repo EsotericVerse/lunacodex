@@ -212,10 +212,15 @@ export function portableShortImportStore(db,sql,{engine='postgres',namespace}={}
     const held=[];
     try{
      return await conn.transaction().execute(trx=>run(operations(trx,async id=>{
-      const result=await sql`select get_lock(${id},10) as acquired`.execute(trx);
+      // MySQL named lock keys are limited to 64 characters. SourceSiteId is
+      // "gl:" + a 64-character SHA-256, so use the collision-resistant hex.
+      const lockName=String(id).startsWith('gl:')?String(id).slice(3):String(id);
+      if(lockName.length>64||!lockName)
+       throw failure('Invalid portable source lock key',400);
+      const result=await sql`select get_lock(${lockName},10) as acquired`.execute(trx);
       if(Number(result.rows?.[0]?.acquired)!==1)
        throw failure('Galaxy source is busy; Queue stays intact',409);
-      held.push(id);
+      held.push(lockName);
      })));
     }finally{
      for(const id of held.reverse())
