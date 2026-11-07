@@ -1,6 +1,7 @@
 import {canManageLoc} from './loc-authorization.mjs';
 import {portableRelation} from './sql-engine-ports.mjs';
 import {sql} from 'npm:kysely@0.29.8';
+import {keywordPatternItemMetrics,keywordPatternDailySummary} from '../keyword-search-pattern.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
@@ -166,43 +167,56 @@ async function sharedClasses(trx,scope,anchor,role){
   }
   return result;
 }
-async function keywordCatalog(trx,scope,anchor,requested,role){
+async function keywordCatalog(trx,scope,anchor,requested,role,{withTotals=true}={}){
   const info=await keywordClassInfo(trx,scope,anchor,requested,role);
   if(!info?.allowed)return {};
   const root=await trx.selectFrom(anchor).select(['uid','type','title','description','attr'])
     .where('uid','=',info.uid).where('type','=','class').executeTakeFirst();
   if(!root)return {class_uid:info.uid,rows:[]};
-  // Current Anchor uses class.attr.groups / group.attr.items / item.attr.total.
-  // Keep legacy attr.uid as read-only compatibility, never materialize article UID lists.
+  const attr=node=>typeof node?.attr==='string'?JSON.parse(node.attr):node?.attr||{};
   const children=(node,key)=>{
-    const values=node?.attr?.[key]??node?.attr?.uid;
-    return Array.isArray(values)?values.filter(value=>UID.test(String(value))):[];
+    const value=attr(node)[key]??attr(node).uid;
+    return Array.isArray(value)?value.filter(uid=>UID.test(String(uid))):[];
   };
   const groupIds=children(root,'groups');
   const groups=groupIds.length?await trx.selectFrom(anchor)
     .select(['uid','type','title','description','attr'])
     .where('type','=','group').where('uid','in',groupIds).execute():[];
-  const byGroup=new Map(groups.map(g=>[g.uid,g]));
-  const ordered=groupIds.map(uid=>byGroup.get(uid)).filter(Boolean);
-  const itemIds=[...new Set(ordered.flatMap(g=>children(g,'items')))];
+  const byGroup=new Map(groups.map(row=>[row.uid,row]));
+  if(groupIds.some(uid=>!byGroup.has(uid)))reject('Broken Keyword Group relationship');
+  const ordered=groupIds.map(uid=>byGroup.get(uid));
+  const itemIds=[...new Set(ordered.flatMap(row=>children(row,'items')))];
   const items=itemIds.length?await trx.selectFrom(anchor)
     .select(['uid','type','title','description','attr'])
     .where('type','=','item').where('uid','in',itemIds).execute():[];
-  const byItem=new Map(items.map(i=>[i.uid,i]));
-  const total=node=>Math.max(0,Number(node?.attr?.total)||0);
-  const groupWeight=group=>{
-    const own=total(group);
-    if(own>0)return own;
-    return children(group,'items').reduce((sum,id)=>sum+total(byItem.get(id)),0);
-  };
-  const model=node=>({uid:node.uid,type:node.type,name:node.title,
+  const byItem=new Map(items.map(row=>[row.uid,row]));
+  if(itemIds.some(uid=>!byItem.has(uid)))reject('Broken Keyword Item relationship');
+  const descriptions=ordered.flatMap(group=>children(group,'items').map(uid=>{
+    const item=byItem.get(uid);
+    return {uid,item_name:String(item.title||''),
+      group_uid:group.uid,keywords:Array.isArray(attr(item).keyword)?attr(item).keyword:[]};
+  }));
+  let totals=new Map(),groupTotals=new Map();
+  if(withTotals){
+    const patterns=await trx.selectFrom('silver.loc_search_pattern')
+      .select(['pattern','count','uid_list']).where('scopeid','=',scope).execute();
+    const indexed=keywordPatternItemMetrics(descriptions,patterns);
+    totals=new Map(indexed.items.map(item=>[item.uid,item.hit_count]));
+    for(const item of indexed.items)
+      groupTotals.set(item.group_uid,
+        (groupTotals.get(item.group_uid)||0)+item.hit_count);
+  }
+  const model=node=>({
+    uid:node.uid,type:node.type,name:node.title,
     desc:node.type==='item'?'':node.description,
-    lists:node.type==='class'?groupIds:node.type==='group'?children(node,'items'):[],
-    total:node.type==='group'?groupWeight(node):node.type==='item'?total(node):0,
-    uid_lists:[]});
+    lists:node.type==='class'?groupIds:node.type==='group'?children(node,'items'):
+      node.type==='item'&&Array.isArray(attr(node).keyword)?attr(node).keyword:[],
+    uid_lists:[],
+    total:node.type==='group'?groupTotals.get(node.uid)||0:
+      node.type==='item'?totals.get(node.uid)||0:0
+  });
   return {class_uid:info.uid,rows:[model(root),...ordered.map(model),
-    ...ordered.flatMap(group=>children(group,'items').map(id=>byItem.get(id))
-      .filter(Boolean).map(model))]};
+    ...descriptions.map(item=>model(byItem.get(item.uid)))]};
 }
 async function traceDaily(trx,scope,places,start,end,source){
   const galaxy=relation(scope,'galaxy');
@@ -246,66 +260,30 @@ async function traceKeywordGroups(trx,scope,anchor,places,start,end,source,reque
 async function keywordSummary(trx,scope,anchor,start,end,source,requested,role){
   const info=await keywordClassInfo(trx,scope,anchor,requested,role);
   if(!info?.allowed||!info.ready)return [];
-  const galaxy=relation(scope,'galaxy'),a=sql.ref(anchor);
-  const result=await sql`with clazz as(
-      select uid,attr from ${a} where type='class' and uid=${info.uid}
-    ),groups as materialized (
-      select g.uid::text uid,g.title,g.attr
-      from clazz c
-      cross join lateral jsonb_array_elements_text(coalesce(c.attr->'uid','[]'::jsonb)) child(uid)
-      join ${a} g on g.uid=child.uid and g.type='group'
-    ), items as materialized(
-      select i.uid::text as uid,g.uid as group_uid,i.attr
-      from groups g cross join lateral jsonb_array_elements_text(
-        coalesce(g.attr->'uid','[]'::jsonb)) child(uid)
-      join ${a} i on i.uid=child.uid and i.type='item'
-    ),group_hits as materialized(
-      select g.uid as group_uid,article.uid::text as article_uid,article.date::text as d
-      from groups g cross join lateral jsonb_array_elements_text(
-        coalesce(g.attr->'uidlists',g.attr->'articles','[]'::jsonb)) x(uid)
-      join ${galaxy} article on article.uid::text=x.uid
-      where article.keyword is true
-        and (${start}::date is null or article.date>=${start}::date)
-        and (${end}::date is null or article.date<=${end}::date)
-        and (${source}::text is null or article.site=${source})
-    ),item_hits as materialized(
-      select i.uid as item_uid,i.group_uid,article.uid::text as article_uid,
-        article.date::text as d,
-        case when jsonb_typeof(x.entry)='string' then 1
-          else (x.entry->>'times')::bigint end as times,
-        (i.attr->>'total')::bigint as total
-      from items i cross join lateral jsonb_array_elements(
-        coalesce(i.attr->'uidlists',i.attr->'hits','[]'::jsonb)) x(entry)
-      join ${galaxy} article on article.uid::text=case
-        when jsonb_typeof(x.entry)='string' then x.entry#>>'{}'
-        else x.entry->>'uid' end
-      where article.keyword is true
-        and (${start}::date is null or article.date>=${start}::date)
-        and (${end}::date is null or article.date<=${end}::date)
-        and (${source}::text is null or article.site=${source})
-    )
-    select 'eligible'::text kind,null::text item_key,null::text group_uid,
-      ''::text day,count(distinct article_uid)::bigint hit_count,
-      count(distinct article_uid)::bigint document_count from group_hits
-    union all
-    select 'class_day',null,group_uid,d,count(distinct article_uid),
-      count(distinct article_uid) from group_hits group by group_uid,d
-    union all
-    select 'item',item_uid,group_uid,'',
-      (case when ${start}::date is null and ${end}::date is null and ${source}::text is null
-        then coalesce(max(total),sum(times)) else sum(times) end)::bigint,
-      count(distinct article_uid) from item_hits where times>0 group by item_uid,group_uid
-    union all
-    select 'item_day',item_uid,group_uid,d,sum(times)::bigint,
-      count(distinct article_uid) from item_hits where times>0 group by item_uid,group_uid,d
-    union all
-    select 'keyword_all_day',null,null,d,count(distinct article_uid),
-      count(distinct article_uid) from item_hits where times>0 group by d
-    union all
-    select 'group_items_day',null,group_uid,d,count(distinct article_uid),
-      count(distinct article_uid) from item_hits where times>0 group by group_uid,d`.execute(trx);
-  return result.rows.map(row=>({...row,hit_count:Number(row.hit_count||0),
-    document_count:Number(row.document_count||0)}));
+  const catalog=await keywordCatalog(trx,scope,anchor,requested,role,{withTotals:false});
+  if(!catalog.class_uid)return [];
+  const groups=new Map((catalog.rows||[])
+    .filter(row=>row.type==='group').map(row=>[row.uid,row]));
+  const items=(catalog.rows||[]).filter(row=>row.type==='item')
+    .flatMap(row=>[...groups.values()].filter(g=>g.lists.includes(row.uid))
+      .map(group=>({uid:row.uid,group_uid:group.uid,
+        item_name:row.name,keywords:row.lists})));
+  const patterns=await trx.selectFrom('silver.loc_search_pattern')
+    .select(['pattern','count','uid_list']).where('scopeid','=',scope).execute();
+  const uids=[...new Set(patterns.flatMap(row=>row.uid_list||[]))];
+  const articles=[];
+  // Never fetch Galaxy.content. A bounded UID list -> date projection
+  // produces all chart buckets directly from stored word matches.
+  for(let i=0;i<uids.length;i+=500){
+    let query=trx.selectFrom('silver.'+scope+'_galaxy')
+      .select(['uid','date']).where('uid','in',uids.slice(i,i+500))
+      .where('keyword','=',true).where('date','is not',null);
+    if(start)query=query.where('date','>=',start);
+    if(end)query=query.where('date','<=',end);
+    if(source)query=query.where('site','=',source);
+    articles.push(...await query.execute());
+  }
+  return keywordPatternDailySummary(items,patterns,articles);
 }
 
 // Culture reads are ordinary portable Kysely operations: no stored RPC,
