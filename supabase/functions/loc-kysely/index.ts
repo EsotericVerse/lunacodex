@@ -184,7 +184,15 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
     // A database RLS policy may be more permissive than the delegated Scope.
     // Require the already signed LOC grant for every non-public SQL mutation,
     // then let PostgreSQL apply its own independent RLS/DB privileges.
-    if(body.operation!=="select"&&body.schema==="silver")
+    if(body.operation!=="select"&&
+       (body.schema==="api"&&body.table==="manage"||
+        body.schema==="silver"&&body.table==="loc")){
+      // Both generic CRUD and managed-write require the identical signed
+      // global LOC grant. Do not leave direct api.manage writes to DB RLS alone.
+      if(!await canManageLoc(trx,"global"))
+        throw Object.assign(new Error("Global LOC management permission required"),
+          {httpStatus:403});
+    }else if(body.operation!=="select"&&body.schema==="silver")
       await authorizeCrossEngineQuery(trx,body,{role,claims});
     // PostgreSQL must stop work even when browser aborts its 25s timeout.
     if(isTextSearchQuery(body))
