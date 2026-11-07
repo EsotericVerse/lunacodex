@@ -624,7 +624,7 @@ export class LocAuthorityState extends DurableObject {
     const profile=await this.mcpPrivateProfile(scopeid);
     if(!profile&&!Object.hasOwn(MANAGED_SCOPE_TABLES,scopeid))
       throw fail('LOC MCP SQL Gateway is not configured for this Scope',409);
-    const rows=await managedMcpRead(scopeid,'mcp-search',{query,limit},
+    const rows=await managedMcpRead(scopeid,'mcp-search',{query,limit,user_requested:true},
       oauthToken,this.env,profile?.endpoint||'');
     return {scopeid,results:rows.map(r=>({uid:r.uid,title:r.title,createtime:r.createtime}))};
   }
