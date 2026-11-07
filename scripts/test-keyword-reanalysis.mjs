@@ -227,3 +227,39 @@ test('NOR leaves other Items unrelated to its exclusion untouched',()=>{
   assert.equal(row.hits.some(hit=>hit.uid==='IT01'),false);
   assert.equal(row.hits.some(hit=>hit.uid==='IT02'),true);
 });
+
+test('search-pattern writer receives fresh Item UIDs before Class completion',async()=>{
+  const calls=[],saved=[];
+  await reanalyzeKeywordClass({
+    classUid:'CL01',treeRows:source,pageSize:2,compactResults:true,
+    readPage:async({offset})=>{
+      calls.push('read');
+      return offset?[]:[{uid:'Ab12Cd34',content:'心情'}];
+    },
+    writeNode:async row=>{saved.push(row);calls.push('item-write');},
+    writePatterns:async ({classUid,items})=>{
+      assert.equal(classUid,'CL01');
+      assert.equal(items.length,1);
+      assert.equal(items[0].item_name,'靈');
+      assert.deepEqual(items[0].uid_lists.uidlists,['Ab12Cd34']);
+      calls.push('pattern-write');
+    },
+    finalize:async()=>calls.push('finalize')
+  });
+  assert.ok(saved.some(row=>row.type==='item'));
+  assert.equal(calls.filter(call=>call==='read').length,2);
+  assert.ok(calls.indexOf('pattern-write')>calls.lastIndexOf('item-write'));
+  assert.ok(calls.indexOf('finalize')>calls.indexOf('pattern-write'));
+});
+
+test('failure writing pattern UID lookup never marks a Class complete',async()=>{
+  let complete=false;
+  await assert.rejects(reanalyzeKeywordClass({
+    classUid:'CL01',treeRows:source,pageSize:2,compactResults:true,
+    readPage:async({offset})=>offset?[]:[{uid:'Ab12Cd34',content:'心情'}],
+    writeNode:async()=>{},
+    writePatterns:async()=>{throw new Error('pattern service unavailable');},
+    finalize:async()=>{complete=true;}
+  }),/pattern service unavailable/);
+  assert.equal(complete,false);
+});
