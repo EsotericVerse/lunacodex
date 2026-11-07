@@ -29,5 +29,5 @@ test('public article body requires list=true',async()=>{
 test('public API never executes writes with browser public key',()=>{
   const identity={auth:{},getAccessToken:async()=>''};
   const adapter=createConfiguredAdapter({accountAdapter:identity,fetchImpl:async()=>{throw Error('fetch unavailable')}});
-  assert.throws(()=>adapter.authClient.schema('silver').from('loc').insert([]),/owner's Web Server/);
+  assert.throws(()=>adapter.authClient.schema('silver').from('loc').insert([]),/owner Web Server/);
 });
