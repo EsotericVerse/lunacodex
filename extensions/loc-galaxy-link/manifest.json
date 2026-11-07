@@ -13,6 +13,7 @@
   ],
   "host_permissions": [
     "https://loc.lo3rwang.cc/*",
+    "https://auth.lo3rwang.cc/*",
     "https://mcp.lo3rwang.cc/*",
     "https://*/*"
   ],

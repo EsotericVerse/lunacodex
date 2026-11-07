@@ -13,7 +13,8 @@ document.querySelector('#connect').addEventListener('click',async()=>{
 });
 document.querySelector('#disconnect').addEventListener('click',async()=>{
  const result=await call('loc-disconnect');
- status.textContent=result.error||'已解除 LOC 連線';
+ status.textContent=result.error||result.warning||
+  (result.serverRevoked?'已解除 LOC 連線，伺服器的續期憑證已撤銷':'已解除 LOC 連線，本機授權已清除');
 });
 document.querySelector('#flush').addEventListener('click',async()=>{
  status.textContent='正在送出累積的 Queue…';
