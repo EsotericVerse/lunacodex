@@ -213,8 +213,9 @@ async function discovery(config){
  const base=new URL(config.issuer_url);
  if(base.protocol!=='https:'||base.username||base.password||base.search||base.hash)
   error('Invalid OIDC provider',503);
- const metadata=await requestJson(new URL('/.well-known/openid-configuration',base));
- if(metadata.issuer!==base.origin||![
+ const issuer=base.href.replace(/\/$/,'');
+ const metadata=await requestJson(new URL('.well-known/openid-configuration',issuer+'/'));
+ if(metadata.issuer!==issuer||![
   metadata.authorization_endpoint,metadata.token_endpoint,metadata.jwks_uri
  ].every(x=>{try{return new URL(x).protocol==='https:';}catch{return false;}}))
   error('OIDC issuer metadata invalid',503);
@@ -230,6 +231,9 @@ async function login(url,stub){
  const name=url.searchParams.get('provider')||'github';
  if(!['github','oidc'].includes(name))error('Unknown identity provider');
  const config=await provider(stub,name);
+ const callback=ISSUER+'/oauth/callback/'+name;
+ if(String(config.callback_url||'')!==callback)
+  error('OAuth provider callback must use the LOC Auth domain',503);
  const continue_path=url.searchParams.get('continue')?
    continuation(url.searchParams.get('continue')):'';
  const return_to=continue_path?'':validReturnPath(url.searchParams.get('return_to'));
@@ -249,7 +253,7 @@ async function login(url,stub){
   target.searchParams.set('nonce',nonce);
  }
  for(const [key,value] of Object.entries({response_type:'code',state,
-  redirect_uri:ISSUER+'/oauth/callback/'+name}))
+  redirect_uri:callback}))
   target.searchParams.set(key,value);
  return redirect(target.href,[cookie(CSRF_COOKIE,csrf,600)]);
 }
@@ -284,7 +288,10 @@ async function oidc(config,code,nonce){
  if(header.alg!=='RS256'||claims.iss!==meta.issuer||
   !(Array.isArray(claims.aud)?claims.aud.includes(config.client_id):claims.aud===config.client_id)||
   claims.nonce!==nonce||claims.email_verified!==true||
-  !claims.sub||!claims.email||claims.exp<=now||claims.iat>now+60)
+  !claims.sub||!claims.email||!Number.isSafeInteger(claims.exp)||
+  !Number.isSafeInteger(claims.iat)||claims.exp<=now||
+  claims.iat>now+60||claims.iat<now-3600||
+  (claims.azp&&claims.azp!==config.client_id))
   error('OIDC identity claims invalid',401);
  const keys=await requestJson(meta.jwks_uri);
  const jwk=keys?.keys?.find(k=>k.kid===header.kid&&k.kty==='RSA'&&
