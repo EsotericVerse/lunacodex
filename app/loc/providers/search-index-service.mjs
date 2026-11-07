@@ -1,3 +1,5 @@
+import {locGlobalUid} from '../../../zenstack/global-identity.mjs';
+
 // Private LOC index transport. Works with any SQL target; the index is a
 // candidate filter only, NEVER a source of article content or authorization.
 // Missing or incomplete indexes leave existing Kysely SQL search unchanged.
@@ -62,8 +64,15 @@ export async function withIndexedCandidates(body,target){
   for(const hit of result.hits){
     if(hit?.scopeId!==scopeId||hit?.dbId!==dbId||
        hit.entityType!=='galaxy'||!UID.test(hit.uid))return body;
+    // The authoritative ZModel virtual federation contract (PR #1219).
+    // A stale or incorrectly qualified index hit must never route by UID alone.
+    const globalUid=locGlobalUid({databaseId:dbId,scopeId,uid:hit.uid});
+    if(hit.globalUid!==globalUid)return body;
     ids.push(hit.uid);
   }
+  // Empty candidate sets and temporary KV propagation gaps retain the SQL
+  // path. The search index must not hide newly committed SQL documents.
+  if(!ids.length)return body;
   return {...body,filters:[...(Array.isArray(body.filters)?body.filters:[]),
     {column:'uid',operator:'in',value:[...new Set(ids)]}]};
 }
