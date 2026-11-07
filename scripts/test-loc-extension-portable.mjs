@@ -122,3 +122,16 @@ test('gateway accepts only LOC website preflight, verifies signed SQL grant befo
  assert.match(gateway,/Access-Control-Allow-Headers/);
  assert.doesNotMatch(gateway,/supabase\.co\/functions/);
 });
+
+test('Cloudflare Container ingress targets the internal HTTP port without exposing secrets',()=>{
+ const worker=readFileSync(new URL('../services/loc-mcp-sql/cloudflare-worker.mjs',import.meta.url),'utf8');
+ const config=JSON.parse(readFileSync(new URL('../services/loc-mcp-sql/wrangler.jsonc',import.meta.url),'utf8'));
+ assert.equal(config.containers[0].scheduling_policy,'durable_object');
+ assert.equal(config.containers[0].images.base.dockerfile,'./Dockerfile');
+ assert.equal(config.containers[0].images.base.build_context,'../..');
+ assert.match(worker,/url\.protocol='http:'/);
+ assert.match(worker,/url\.host='container'/);
+ assert.match(worker,/new Request\(url,request\)/);
+ assert.match(worker,/getTcpPort\(8000\)\.fetch\(forwarded\)/);
+ assert.ok(!Object.hasOwn(config.vars,'LOC_DB_CONNECTIONS_JSON'));
+});
