@@ -1,5 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import {issueDelegation} from '../../app/loc/auth/delegation-contract.mjs';
+import {ISSUER,MCP_AUDIENCE,WEB_AUDIENCE,isNativeOAuthPath,handleNativeOAuth,
+  verifyNativeOAuth,looksLikeNativeToken} from './native-oauth.mjs';
 import {validateKeywordCategoryEntry,hashKeywordCategory,assertPublicKeywordClass} from './keyword-categories.mjs';
 import {AUTH_PROVIDER_TYPES,validateAuthProviderSettings,publicAuthProviderSettings}
   from '../../app/loc/auth/auth-provider-settings.mjs';
@@ -110,7 +112,8 @@ function requireSetup(env){
     (env.LOC_CLERK_JWT_PUBLIC_KEY||isClerkIssuer(env.LOC_CLERK_ISSUER)));
   const hasAlternative=Boolean(env.LOC_SECONDARY_ISSUER&&env.LOC_SECONDARY_JWT_PUBLIC_KEY&&
     env.LOC_SECONDARY_AUDIENCE&&env.LOC_RECOVERY_ROOT_SECONDARY_SUBJECTS);
-  if((!hasClerk&&!hasAlternative)||!env.LOC_CONTROL_ORIGIN||
+  const hasNative=Boolean(env.LOC_AUTHORITY_STATE&&env.LOC_CONTROL_ENCRYPTION_KEY);
+  if((!hasClerk&&!hasAlternative&&!hasNative)||!env.LOC_CONTROL_ORIGIN||
     !env.LOC_CONTROL_ENCRYPTION_KEY||!env.LOC_AUTHORITY_STATE)
     throw fail('Recovery control is not configured',503);
 }
@@ -280,29 +283,6 @@ function validateScopeTarget(input,scopeid){
     throw fail('Scope table must match its existing Galaxy relation',400);
   return {scopeid,endpoint,schema:String(input.schema||'public'),table};
 }
-async function verifyMcpOAuth(request,env){
-  const match=/^Bearer ([A-Za-z0-9_.-]{40,8192})$/.exec(request.headers.get('authorization')||'');
-  if(!match)throw fail('MCP OAuth token required',401);
-  const bits=match[1].split('.');
-  if(bits.length!==3)throw fail('Invalid MCP token',401);
-  let header,claims;
-  try{header=JSON.parse(new TextDecoder().decode(b64bytes(bits[0])));
-    claims=JSON.parse(new TextDecoder().decode(b64bytes(bits[1])));}
-  catch{throw fail('Invalid MCP token',401)}
-  if(header?.alg!=='RS256'||!header.kid||claims?.iss!==env.LOC_CLERK_ISSUER||
-    !/^user_[A-Za-z0-9]+$/.test(String(claims.sub||''))||
-    !(Array.isArray(claims.aud)?claims.aud.includes(MCP_RESOURCE):claims.aud===MCP_RESOURCE))
-    throw fail('MCP token issuer or audience mismatch',401);
-  const now=Math.floor(Date.now()/1000);
-  if(!Number.isFinite(claims.exp)||claims.exp<=now||
-    (claims.nbf!=null&&claims.nbf>now+60)||
-    (claims.iat!=null&&claims.iat>now+60))throw fail('MCP token expired',401);
-  const key=await clerkPublicKey(env.LOC_CLERK_ISSUER,header.kid);
-  const valid=await crypto.subtle.verify('RSASSA-PKCS1-v1_5',key,b64bytes(bits[2]),
-    new TextEncoder().encode(bits[0]+'.'+bits[1]));
-  if(!valid)throw fail('MCP token signature invalid',401);
-  return {provider:'clerk',subject:claims.sub};
-}
 async function mcpJsonBody(request,limit=160000){
   const raw=await request.text();
   if(raw.length>limit)throw fail('MCP payload too large',413);
@@ -334,6 +314,16 @@ async function managedMcpRead(scopeid,kind,args,token,env,gateway=''){
 }
 export class LocAuthorityState extends DurableObject {
   constructor(ctx,env){super(ctx,env);}
+  async nativeGet(key){return this.ctx.storage.get(key);}
+  async nativePut(key,value){await this.ctx.storage.put(key,value);return true;}
+  async nativeTake(key){return this.ctx.storage.transaction(async t=>{
+    const value=await t.get(key);if(value!==undefined)await t.delete(key);return value;
+  });}
+  async nativeProvider(type){
+    if(!['github','oidc'].includes(type))throw fail('Unsupported identity provider');
+    const item=await this.ctx.storage.get('auth-provider:'+type);
+    return item?decryptProfile(item.encrypted,this.env.LOC_CONTROL_ENCRYPTION_KEY):null;
+  }
   async listState(){
     const saved=await this.ctx.storage.list({prefix:'target:'});
     const targets=[];
@@ -419,7 +409,7 @@ export class LocAuthorityState extends DurableObject {
     let profile;
     try{
       profile=validateAuthProviderSettings(type,values,
-        {previous:former,siteOrigin:this.env.LOC_CONTROL_ORIGIN});
+        {previous:former,siteOrigin:ISSUER});
     }catch(error){throw fail(error.message||'Invalid auth provider settings',400)}
     const publicView=publicAuthProviderSettings(profile);
     await this.ctx.storage.put('auth-provider:'+type,{
@@ -855,20 +845,15 @@ function mcpPrLookup(query){
 
 async function handleMcpAuthority(request,env,url,origin){
   // Authentication precedes all quotas and any downstream SQL access.
-  let principal;
-  try{principal=await verifyMcpOAuth(request,env);}
-  catch(error){
-    if(error.status!==401)throw error;
-    principal=await verifyIdentityToken(request,env);
-  }
+  const principal=await verifyNativeOAuth(request,env,MCP_AUDIENCE);
   const quota=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName(
     'mcp-quota-global-v1'));
   if(url.pathname==='/v1/mcp/quota'&&request.method==='POST'){
-    if(principal.provider!=='clerk')throw fail('MCP OAuth required',401);
+    if(principal.provider!=='loc')throw fail('LOC MCP OAuth required',401);
     const args=await mcpJsonBody(request,400);
-    if(args?.action==='inspect')return json(await quota.mcpQuotaInspect(args.kind,'clerk:'+principal.subject),200,origin);
-    if(args?.action==='acquire')return json(await quota.mcpQuotaAcquire(args.kind,'clerk:'+principal.subject),200,origin);
-    if(args?.action==='release')return json(await quota.mcpQuotaRelease(args.lease,'clerk:'+principal.subject),200,origin);
+    if(args?.action==='inspect')return json(await quota.mcpQuotaInspect(args.kind,'loc:'+principal.subject),200,origin);
+    if(args?.action==='acquire')return json(await quota.mcpQuotaAcquire(args.kind,'loc:'+principal.subject),200,origin);
+    if(args?.action==='release')return json(await quota.mcpQuotaRelease(args.lease,'loc:'+principal.subject),200,origin);
     throw fail('Invalid MCP quota operation',400);
   }
   // Refuse GitHub metadata searches before quota or SQL, including direct API callers.
@@ -886,7 +871,7 @@ async function handleMcpAuthority(request,env,url,origin){
     throw fail('請至github頁面找尋PR相關資料！不開放搜尋PR!',410);
   const kind=/^\/v1\/mcp\/galaxy-link\/search\//.test(url.pathname)?'search':
     request.method==='GET'?'read':'write';
-  const ticket=await quota.mcpQuotaAcquire(kind,'clerk:'+principal.subject);
+  const ticket=await quota.mcpQuotaAcquire(kind,'loc:'+principal.subject);
   try{
     const answer=await handleMcpAuthorityInner(request,env,url,origin,principal);
     if(!ticket.warning||!answer.ok)return answer;
@@ -895,16 +880,16 @@ async function handleMcpAuthority(request,env,url,origin){
     headers.set('X-LOC-QoS-Warning',encodeURIComponent(ticket.warning));
     headers.set('Access-Control-Expose-Headers','X-LOC-QoS-Warning');
     return new Response(answer.body,{status:answer.status,statusText:answer.statusText,headers});
-  }finally{await quota.mcpQuotaRelease(ticket.lease,'clerk:'+principal.subject);}
+  }finally{await quota.mcpQuotaRelease(ticket.lease,'loc:'+principal.subject);}
 }
 async function handleMcpAuthorityInner(request,env,url,origin,principal){
-  const roots=String(env.LOC_RECOVERY_ROOT_CLERK_IDS||'').split(/[\s,;]+/).filter(Boolean);
+  const roots=String(env.LOC_RECOVERY_ROOT_LOC_SUBJECTS||'').split(/[\s,;]+/).filter(Boolean);
   const isRoot=roots.includes(principal.subject);
   const stub=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName('loc-authority-control-v1'));
   const scoped=scope=>env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName('mcp-scope:'+scope));
   const allowed=async(scope,action)=>isRoot||await stub.mayAccess({...principal,scope,action});
   // A trusted Scope grant becomes a short-lived LOC MCP delegation for
-  // every SQL engine and every configured Scope. Neither Clerk's token nor
+  // every SQL engine and every configured Scope. Neither LOC OAuth token nor
   // any provider-specific database identity is forwarded to the SQL Gateway.
   const managedToken=async(scope,action)=>{
     validScope(scope);
@@ -1039,7 +1024,7 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
     const scopeid=validScope(input?.scope);
     if(scopeid!==groupid&&!(await stub.mcpGroupMembers(groupid)).includes(scopeid))
       throw fail('Requested Scope is not a Group member',403);
-    return json(await stub.putGrant({provider:'clerk',subject:input?.subject,
+    return json(await stub.putGrant({provider:'loc',subject:input?.subject,
       scope:scopeid,actions:input?.actions,expires_at:input?.expires_at}),200,origin);
   }
   if(parts[0]==='group'&&parts.length===4&&parts[2]==='scope'&&request.method==='PUT'){
@@ -1054,8 +1039,8 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
     const input=await mcpJsonBody(request,1000),scopeid=validScope(input?.scope);
     if(scopeid!==groupid&&!(await stub.mcpGroupMembers(groupid)).includes(scopeid))
       throw fail('Scope is not a Group member',403);
-    if(!/^user_[A-Za-z0-9]+$/.test(String(input?.subject||'')))throw fail('Invalid Clerk subject',400);
-    return json(await stub.revokeGrant('clerk:'+input.subject+':'+scopeid),200,origin);
+    if(!/^loc_[A-Za-z0-9_-]{32,80}$/.test(String(input?.subject||'')))throw fail('Invalid LOC subject',400);
+    return json(await stub.revokeGrant('loc:'+input.subject+':'+scopeid),200,origin);
   }
   throw fail('MCP operation not found',404);
 }
@@ -1079,8 +1064,8 @@ async function exchangeLocDelegation(request,env,principal,origin){
     (global||identity||self)&&audience!=='sql'||
     Number(global)+Number(identity)+Number(self)>1)
     throw fail('Invalid delegation audience',400);
-  const roots=String(principal.provider==='clerk'
-    ?env.LOC_RECOVERY_ROOT_CLERK_IDS:env.LOC_RECOVERY_ROOT_SECONDARY_SUBJECTS)
+  const roots=String(principal.provider==='loc'?env.LOC_RECOVERY_ROOT_LOC_SUBJECTS:
+    principal.provider==='clerk'?env.LOC_RECOVERY_ROOT_CLERK_IDS:env.LOC_RECOVERY_ROOT_SECONDARY_SUBJECTS)
     .split(/[\s,;]+/).filter(Boolean);
   const root=roots.includes(principal.subject);
   const scope=String(input.scopeid||'');
@@ -1137,6 +1122,8 @@ export default {
   async fetch(request,env){
     let origin='';
     try{
+      const target=new URL(request.url);
+      if(isNativeOAuthPath(target.pathname))return handleNativeOAuth(request,env);
       requireSetup(env);
       origin=allowedOrigin(request,env);
       if(request.method==='OPTIONS'){
@@ -1159,14 +1146,17 @@ export default {
             'cache-control':'public, max-age=300','x-content-type-options':'nosniff'}
         });
       }
-      const principal=await verifyIdentityToken(request,env);
+      const principal=looksLikeNativeToken(request)
+        ?await verifyNativeOAuth(request,env,WEB_AUDIENCE)
+        :await verifyIdentityToken(request,env);
       if(!url.pathname.startsWith('/v1/'))throw fail('Not found',404);
       // Identity endpoint is only a verified principal lookup. It grants no
       // data access or management capabilities; the gateway must call mayAccess.
       if(request.method==='GET'&&url.pathname==='/v1/identity')return json(principal,200,origin);
       if(request.method==='POST'&&url.pathname==='/v1/delegation')
         return exchangeLocDelegation(request,env,principal,origin);
-      const roots=String(principal.provider==='clerk'?env.LOC_RECOVERY_ROOT_CLERK_IDS:env.LOC_RECOVERY_ROOT_SECONDARY_SUBJECTS)
+      const roots=String(principal.provider==='loc'?env.LOC_RECOVERY_ROOT_LOC_SUBJECTS:
+        principal.provider==='clerk'?env.LOC_RECOVERY_ROOT_CLERK_IDS:env.LOC_RECOVERY_ROOT_SECONDARY_SUBJECTS)
         .split(/[\s,;]+/).filter(Boolean);
       if(!roots.includes(principal.subject))throw fail('Recovery administrator required',403);
       const stub=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName('loc-authority-control-v1'));
