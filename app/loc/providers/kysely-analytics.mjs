@@ -235,27 +235,31 @@ async function traceDaily(trx,scope,places,start,end,source){
 async function traceKeywordGroups(trx,scope,anchor,places,start,end,source,requested,role){
   const info=await keywordClassInfo(trx,scope,anchor,requested,role);
   if(!info?.allowed||!info.ready)return [];
-  const galaxy=relation(scope,'galaxy');
-  const a=sql.ref(anchor);
-  const result=await sql`with cl as(
-      select uid,attr from ${a} where type='class' and uid=${info.uid}
-    ),groups as(
-      select g.uid,g.title,g.attr from cl c
-      cross join lateral jsonb_array_elements_text(coalesce(c.attr->'uid','[]'::jsonb)) child(uid)
-      join ${a} g on g.uid=child.uid and g.type='group'
-    ),articles as materialized(
-      select g.uid::text as uid from ${galaxy} g
-      where g.place_id=any(${places}::text[]) and g.keyword is true
-        and (${start}::date is null or g.date>=${start}::date)
-        and (${end}::date is null or g.date<=${end}::date)
-        and (${source}::text is null or g.site=${source})
-    )
-    select k.uid::text as group_uid,k.title as group_name,
-      count(distinct article.uid)::bigint as document_count from groups k
-      left join articles article on (coalesce(k.attr->'uidlists',
-        k.attr->'articles','[]'::jsonb)) ? article.uid
-      group by k.uid,k.title order by k.title`.execute(trx);
-  return result.rows.map(row=>({...row,document_count:Number(row.document_count||0)}));
+  const catalog=await keywordCatalog(trx,scope,anchor,requested,role,{withTotals:false});
+  if(!catalog.class_uid||!Array.isArray(places)||!places.length)return [];
+  const groups=(catalog.rows||[]).filter(row=>row.type==='group');
+  const items=(catalog.rows||[]).filter(row=>row.type==='item')
+    .flatMap(row=>groups.filter(g=>g.lists.includes(row.uid)).map(g=>({
+      uid:row.uid,group_uid:g.uid,item_name:row.name,keywords:row.lists
+    })));
+  const patterns=await trx.selectFrom('silver.loc_search_pattern')
+    .select(['pattern','count','uid_list']).where('scopeid','=',scope).execute();
+  const candidates=[...new Set(patterns.flatMap(row=>row.uid_list||[]))];
+  const located=new Set();
+  for(let i=0;i<candidates.length;i+=500){
+    let q=trx.selectFrom('silver.'+scope+'_galaxy')
+      .select('uid').where('uid','in',candidates.slice(i,i+500))
+      .where('place_id','in',places).where('keyword','=',true);
+    if(start)q=q.where('date','>=',start);
+    if(end)q=q.where('date','<=',end);
+    if(source)q=q.where('site','=',source);
+    for(const row of await q.execute())located.add(String(row.uid));
+  }
+  const metrics=keywordPatternItemMetrics(items,patterns,{articleUids:located});
+  return groups.map(group=>({
+    group_uid:group.uid,group_name:group.name,
+    document_count:Number(metrics.group_document_counts?.[group.uid])||0
+  }));
 }
 async function keywordSummary(trx,scope,anchor,start,end,source,requested,role){
   const info=await keywordClassInfo(trx,scope,anchor,requested,role);
