@@ -471,7 +471,28 @@ async function keywordPatternStatistics(trx,args){
   const patterns=await trx.selectFrom('silver.loc_search_pattern')
     .select(['pattern','count','uid_list','update_time'])
     .where('scopeid','=',scope).execute();
-  const metrics=keywordPatternItemMetrics(items,patterns);
+  const start=String(args.p_start_date||''),end=String(args.p_end_date||'');
+  const source=String(args.p_source||'').trim();
+  if([start,end].some(value=>value&&!/^\d{4}-\d{2}-\d{2}$/.test(value))||
+     start&&end&&start>end||source.length>120)
+    reject('Invalid Keyword statistics date or source');
+  let allowed=null;
+  if(start||end||source){
+    allowed=new Set();
+    const uids=[...new Set(patterns.flatMap(row=>row.uid_list||[]))];
+    // Only dated/source metadata for already indexed UIDs. No article text,
+    // Anchor count, JSONB join or separate stored statistics.
+    for(let i=0;i<uids.length;i+=500){
+      let query=trx.selectFrom('silver.'+scope+'_galaxy')
+        .select('uid').where('uid','in',uids.slice(i,i+500))
+        .where('keyword','=',true);
+      if(start)query=query.where('date','>=',start);
+      if(end)query=query.where('date','<=',end);
+      if(source)query=query.where('site','=',source);
+      for(const row of await query.execute())allowed.add(String(row.uid));
+    }
+  }
+  const metrics=keywordPatternItemMetrics(items,patterns,{articleUids:allowed});
   const groups=groupUids.map(uid=>{
     const members=metrics.items.filter(item=>item.group_uid===uid);
     const hits=members.reduce((sum,item)=>sum+item.hit_count,0);
@@ -623,7 +644,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     read_scope_registry_admin:[],
     sync_search_patterns:['p_scope_id','p_class_uid','p_patterns','p_final'],
     suggest_search_patterns:['p_scope_ids','p_query'],
-    keyword_pattern_statistics:['p_scope_id','p_class_uid']
+    keyword_pattern_statistics:['p_scope_id','p_class_uid','p_start_date','p_end_date','p_source']
   }[name];
   if(Object.keys(args).some(key=>!keys.includes(key)))reject('Unexpected Kysely action argument');
   if(name==='keyword_pattern_statistics')return {data:await keywordPatternStatistics(trx,args),count:null};
