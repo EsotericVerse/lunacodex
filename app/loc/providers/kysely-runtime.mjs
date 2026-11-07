@@ -266,7 +266,7 @@ async function executeMysqlReturningMutation(trx,req,query,namespace){
 /**
  * @param {any} trx
  * @param {any} input
- * @param {{dialect?:string, namespace?:string, publicOnly?:boolean, modelName?:string}} [options]
+ * @param {{dialect?:string, namespace?:string, publicOnly?:boolean|'list', modelName?:string}} [options]
  */
 export async function executeKyselyQuery(trx,input,{dialect='postgres',namespace,publicOnly=false,modelName=''}={}){
   const req=validateQuery(input);let data=null,count=null;
