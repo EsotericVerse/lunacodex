@@ -1,0 +1,15 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "loc-search-index",
+  "main": "./index.mjs",
+  "compatibility_date": "2026-11-07",
+  "kv_namespaces": [
+    {
+      "binding": "LOC_KV",
+      "id": "69132df38f8f43a6a40cae39ebfe5460"
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}
