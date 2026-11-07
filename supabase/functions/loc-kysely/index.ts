@@ -168,6 +168,16 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
           (executionPort.engine==="mssql"?"dbo":"silver"))
       }),count:null};
     }
+    // A standalone PostgreSQL control database supports the original LOC
+    // management actions without a provider identity or new database RPC.
+    if(body.kind==="managed-action"&&executionPort.engine==="postgres"){
+      if(role!=="authenticated")
+        throw Object.assign(new Error("Verified LOC management delegation required"),{httpStatus:403});
+      const name=String(body.name||"");
+      return ["manage_scope_registry","delete_scope","provision_scope"].includes(name)
+        ?await executeKyselyScopeAdmin(trx,body)
+        :await executeManagedKyselyAction(trx,body,claims);
+    }
     if(body.kind==="anchor")return await executePortableKyselyAnchor(trx,body,{
       role,engine:executionPort.engine,namespace:target.schema_name
     });
