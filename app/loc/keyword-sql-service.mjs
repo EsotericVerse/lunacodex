@@ -134,6 +134,9 @@ export async function readKeywordStatistics(db,scope,classUid,{
   const indexed=keywordPatternItemMetrics(tree.items,patterns,{articleUids:permitted});
   return {
     class_uid:classUid,class_name:String(tree.root.title||''),
+    completedAt:String(cfg.keyword_meta?.by_class?.[classUid]?.completedAt||''),
+    keywordMinChars:Math.max(0,Number(cfg.keyword_min_chars??32)),
+    keywordMinDocuments:Math.max(0,Number(cfg.keyword_min_documents??100)),
     groups:tree.groups.map(group=>{
       const own=indexed.items.filter(item=>item.group_uid===group.uid);
       const hits=own.reduce((sum,item)=>sum+item.hit_count,0);
