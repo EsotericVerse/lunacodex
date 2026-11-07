@@ -14,11 +14,13 @@ try{
 }catch{throw new Error('Invalid LOC SQL connection configuration');}
 if(!profiles||Array.isArray(profiles)||typeof profiles!=='object')
   throw new Error('LOC SQL server connections are invalid');
-const base=profiles[alias];
-if(base&&(base.engine!==engine||!base.url))
-  throw new Error('LOC SQL server alias/engine mismatch');
-if(!base&&!Deno.env.get('LOC_SQL_GATEWAY_SERVICE_KEY'))
-  throw new Error('LOC SQL server needs a default database or Authority service key');
+// A user-selected database can come from Authority at request time, but a
+// guest and the LOC control plane still need the server-owned default alias.
+// Authority's optional service credential cannot replace that connection.
+const base=Object.hasOwn(profiles,alias)?profiles[alias]:null;
+if(!base||typeof base!=='object'||Array.isArray(base)||
+   base.engine!==engine||typeof base.url!=='string'||!base.url.trim())
+  throw new Error('LOC SQL control alias needs a trusted database profile in LOC_DB_CONNECTIONS_JSON');
 // The live database selected by a verified user is resolved from Authority on
 // each request. A one-time Gateway deployment can serve every trusted SQL
 // engine afterward without editing these deployment variables.
