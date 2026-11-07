@@ -460,7 +460,8 @@ test('Galaxy Link search is fixed to site=mcp without caller-selectable site par
   assert.match(source,/site:'eq\.mcp'/);
   assert.match(source,/mcp-search',\{query,limit\}/);
   assert.doesNotMatch(source,/site:'eq\.'\+source/);
-  assert.match(source,/Object\.keys\(args\)\.some\(key=>!\['query','limit'\]\.includes\(key\)\)/);
+  assert.match(source,/Object\.keys\(args\)\.some\(key=>!\['query','limit','user_requested'\]\.includes\(key\)\)/);
+  assert.match(source,/args\.user_requested!==true/);
 });
 
 test('managed MCP text search uses a literal site and cannot accept caller source',()=>{
