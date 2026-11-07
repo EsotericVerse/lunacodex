@@ -390,11 +390,11 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     queryKey:['loc-pattern-autocomplete',patternScopeIds.join(','),debouncedPatternInput],
     enabled:patternScopeIds.length>0&&debouncedPatternInput.length>0,
     queryFn:async()=>{
-      const {data,error}=await dbAuthClient.schema('silver').managedAction('suggest_search_patterns',{
-        p_scope_ids:patternScopeIds,p_query:debouncedPatternInput
+      const {keywordService}=await import('../../loc/keyword-service-client.mjs');
+      const result=await keywordService('suggest',{
+        scopeIds:patternScopeIds,query:debouncedPatternInput
       });
-      if(error)throw new Error(error.message||'關鍵詞自動完成讀取失敗');
-      return Array.isArray(data)?data:[];
+      return Array.isArray(result)?result:[];
     }
   });
 
