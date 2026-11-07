@@ -4,7 +4,7 @@ The Galaxy SQL Schema remains unchanged. This is an **optional index accelerator
 
 ## Implemented
 
-- FlexSearch version **0.8.212**, repo dependency from PR #1215.
+- FlexSearch version **0.8.212**, repo dependency from PR #1215. The index uses the same **CJK encoder** in Node backfill and Cloudflare Worker; versioned v2 keys prevent mixing older tokenization with new deltas.
 - A private **loc-search-index Worker** bound to the existing Cloudflare **LOC_KV** namespace. The old MCP buffer Worker is not reused.
 - Full document identity: **(scopeId, dbId, entityType, uid)**. Two SQL sources with identical UIDs are distinct even in the same Scope. Logical DB identifiers are independent of hosting vendors.
 - Authenticated index operations: search, documents, snapshots, reset, coverage and bounded delta pruning. Service secret stays server-side.
