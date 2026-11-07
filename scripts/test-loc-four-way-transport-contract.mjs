@@ -54,3 +54,29 @@ test('database selection is a LOC Auth operation and never a website redeploy',(
   assert.match(authority,/url\.pathname==='\/v1\/databases\/selection'/);
   assert.doesNotMatch(gateway,/update source and redeploy/);
 });
+
+test('anonymous Galaxy full-article projections respect list=false across SQL dialects',()=>{
+  const runtime=readFileSync(new URL('../app/loc/providers/kysely-runtime.mjs',import.meta.url),'utf8');
+  const start=runtime.indexOf('function publishedOnly(');
+  const end=runtime.indexOf('\nfunction sameKeys(',start);
+  assert.ok(start>0&&end>start,'Kysely public-read filter must exist');
+  const section=runtime.slice(start,end).replace(/^export /gm,'');
+  const compile=new Function('validateQuery','databaseTable','applyOrFilters','applyFilters',
+    'PRIVATE_SITES',section+'\nreturn buildKyselySelectQuery;')(
+    input=>({...input,filters:[],orFilters:[],orders:[],limit:1,offset:0}),
+    req=>req.schema+'.'+req.table,q=>q,q=>q,[]);
+  for(const engine of ['postgres','mysql','mssql']){
+    for(const columns of [['title'],['uid','title'],['content'],['*']]){
+      const filters=[];
+      const query={where(...args){filters.push(args);return this;},
+        orderBy(){return this;},limit(){return this;},offset(){return this;}};
+      const trx={selectFrom:()=>({select:()=>query})};
+      compile(trx,{kind:'query',schema:'silver',table:'lo3rwang_galaxy',
+        operation:'select',columns},{dialect:engine,publicOnly:true});
+      assert.ok(filters.some(parts=>parts[0]==='search'&&parts[2]===true));
+      assert.equal(filters.some(parts=>parts[0]==='list'&&parts[2]===true),
+        columns.includes('content')||columns.includes('*'),
+        engine+' / '+columns.join(','));
+    }
+  }
+});
