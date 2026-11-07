@@ -698,42 +698,9 @@ export class LocAuthorityState extends DurableObject {
     const removed=await this.ctx.storage.delete('mcp-keyword-category:'+groupid+':'+scopeid+':'+classUid);
     return {scopeid,class:classUid,removed:Boolean(removed)};
   }
-  async mcpGroupSearch(groupid,query,limit=10){
-    validScope(groupid);
-    const members=await this.mcpGroupMembers(groupid);
-    if(!Number.isInteger(limit)||limit<1||limit>20)throw fail('Invalid search limit',400);
-    const cacheKey=groupid+':'+limit+':'+likePattern(query);
-    this.mcpGroupCache??=new Map();
-    const cached=this.mcpGroupCache.get(cacheKey);
-    if(cached&&cached.expires>Date.now())return cached.value;
-    const task=this.mcpGroupSearchUncached(groupid,query,limit,members);
-    this.mcpGroupCache.set(cacheKey,{value:task,expires:Date.now()+15000});
-    if(this.mcpGroupCache.size>80)this.mcpGroupCache.delete(this.mcpGroupCache.keys().next().value);
-    try{return await task;}catch(error){this.mcpGroupCache.delete(cacheKey);throw error;}
-  }
-  async mcpGroupSearchUncached(groupid,query,limit,members){
-    const results=await Promise.allSettled(members.map(async scopeid=>{
-      const scopeStub=this.env.LOC_AUTHORITY_STATE.get(
-        this.env.LOC_AUTHORITY_STATE.idFromName('mcp-scope:'+scopeid));
-      const profile=await scopeStub.getMcpScope(scopeid);
-      if(profile.configured&&!profile.managed)return (await scopeStub.mcpSearch(scopeid,query,limit)).results;
-      // Unconfigured built-in Scope: use existing Supabase anonymous RLS.
-      if(!['lo3rwang','lrunes'].includes(scopeid))return [];
-      const url=new URL('https://qlouywsdiiyiyzpoxyqy.supabase.co/rest/v1/'+scopeid+'_galaxy');
-      for(const [key,val] of Object.entries({select:'uid,title,date,createtime',
-        search:'eq.true',or:'(title.ilike.'+likePattern(query)+',content.ilike.'+likePattern(query)+')',
-        order:'date.desc.nullslast',limit}))url.searchParams.set(key,String(val));
-      const res=await fetch(url.href,{headers:{apikey:'sb_publishable_qPn0vAzozVyXKllRuEKf2Q_fvG-pLVV',
-        'accept-profile':'silver'},signal:AbortSignal.timeout(8500),redirect:'manual'});
-      if(!res.ok)throw fail('Public Scope search unavailable',502);
-      return (await res.json()).map(row=>({...row,scopeid}));
-    }));
-    const errors=results.map((r,i)=>r.status==='rejected'?members[i]:null).filter(Boolean);
-    const combined=results.filter(r=>r.status==='fulfilled').flatMap(r=>r.value)
-      .sort((a,b)=>String(b.date||b.createtime||'').localeCompare(String(a.date||a.createtime||''))).slice(0,limit);
-    return {groupid,members,results:combined,partial:errors.length>0,failed_scopes:errors};
-  }
-
+  // Group search is retired. Do not fall back to public provider Data APIs.
+  async mcpGroupSearch(){throw fail('MCP group search is disabled',403);}
+  async mcpGroupSearchUncached(){throw fail('MCP group search is disabled',403);}
   async getPrimaryProfileForGateway(){
     const id=await this.ctx.storage.get('primary_id');
     if(!id)return null;
