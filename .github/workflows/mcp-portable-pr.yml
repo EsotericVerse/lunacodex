@@ -3,17 +3,6 @@ name: MCP Portable regression (PR)
 # Manually triggered read-only verification. Never deploys or accesses production databases.
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - fix/mcp-search-consent-qos-main-20261107
-    paths:
-      - .github/workflows/mcp-portable-pr.yml
-      - app/loc/**
-      - extensions/loc-web-capture-v2/**
-      - scripts/test-loc-*.mjs
-      - scripts/test-mcp-qos.mjs
-      - services/loc-mcp-sql/**
-      - workers/loc-authority/**
 
 permissions:
   contents: read
