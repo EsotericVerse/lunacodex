@@ -43,3 +43,13 @@ test('website and ISR use the same independent SQL URL without provider credenti
   assert.match(browser,/url=gatewayUrl\?'':/);
   assert.match(browser,/publishableKey=gatewayUrl\?'':/);
 });
+
+test('standalone short import uses the portable Kysely backend',()=>{
+  const handler=read('app/loc/gateway/sql-handler.ts');
+  const store=read('app/loc/import/short-append-service.mjs');
+  const mcp=read('services/loc-mcp-sql/main.ts');
+  assert.match(handler,/store:portableShortImportStore\(db,sql,\{engine:controlTarget\.engine\}\)/);
+  assert.doesNotMatch(handler,/postgresShortImportStore/);
+  assert.match(store,/export function portableShortImportStore/);
+  assert.match(mcp,/portableShortImportStore\(db,sql,\{engine,namespace\}\)/);
+});
