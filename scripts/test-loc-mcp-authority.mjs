@@ -235,3 +235,73 @@ test('Portable MCP keeps one ZModel-backed Kysely executor without a provider Fu
   assert.match(worker,/LOC_MCP_SQL_GATEWAY_URL/);
   assert.doesNotMatch(worker,/MANAGED_SUPABASE_EDGE|MANAGED_PUBLISHABLE_KEY|supabase\.co\/functions\/v1\//);
 });
+
+
+test('failed first acknowledgement appends a new batch to same UID instead of rewriting previous text',async()=>{
+  const {authority}=state();
+  const a='a'.repeat(64),b='b'.repeat(64);
+  const firstContent='[[GalaxyLinkBatch:'+a+']]\\nFirst saved message';
+  const nextContent='[[GalaxyLinkBatch:'+b+']]\\nSecond message';
+  let saved='',uid='',attempt=0;
+  const calls=fakeSql(call=>{
+    if(call.body.kind==='mcp-sync'){
+      attempt++;
+      uid=call.body.row.uid;
+      saved=call.body.row.content; // Database committed; HTTP acknowledgement was lost
+      return Response.json({error:{message:'transport timed out'}},{status:503});
+    }
+    assert.equal(call.body.kind,'mcp-append');
+    assert.equal(call.body.uid,uid);
+    assert.equal(call.body.content,nextContent);
+    saved+='\\n'+call.body.content;
+    return Response.json({data:{count:1,title:'Conversation'}});
+  });
+  const first={...CONVERSATION,content:firstContent,batch_id:a,append:true};
+  await assert.rejects(authority.mcpSave('lo3rwang',first,TOKEN));
+  const second=await authority.mcpSave('lo3rwang',{
+    ...first,content:nextContent,batch_id:b,updated_at:'2026-11-01T02:00:00Z'
+  },TOKEN);
+  assert.equal(second.saved,true);
+  assert.equal(second.uid,uid);
+  assert.equal(attempt,1,'retry must never send a second full-sync write');
+  assert.deepEqual(calls.map(c=>c.body.kind),['mcp-sync','mcp-append']);
+  assert.equal(saved,firstContent+'\\n'+nextContent);
+});
+
+test('an initial write that never committed recovers by append 404 then same-UID insert',async()=>{
+  const {authority}=state();
+  const batch='a'.repeat(64),content='[[GalaxyLinkBatch:'+batch+']]\\nOriginal source';
+  let firstUid='',storedUid='',round=0;
+  const calls=fakeSql(call=>{
+    round++;
+    if(round===1){firstUid=call.body.row.uid;
+      return Response.json({error:{message:'first transport failed'}},{status:503});}
+    if(round===2){
+      assert.equal(call.body.kind,'mcp-append');
+      assert.equal(call.body.uid,firstUid);
+      return Response.json({error:{message:'MCP conversation not found'}},{status:404});
+    }
+    assert.equal(call.body.kind,'mcp-sync');
+    assert.equal(call.body.update_existing,true);
+    storedUid=call.body.row.uid;
+    return Response.json({data:{count:1}});
+  });
+  const payload={...CONVERSATION,content,batch_id:batch,append:true};
+  await assert.rejects(authority.mcpSave('lo3rwang',payload,TOKEN));
+  const second=await authority.mcpSave('lo3rwang',payload,TOKEN);
+  assert.equal(second.saved,true);
+  assert.equal(storedUid,firstUid);
+  assert.equal(second.uid,firstUid);
+  assert.deepEqual(calls.map(c=>c.body.kind),['mcp-sync','mcp-append','mcp-sync']);
+});
+
+test('the innermost Kysely retry contract never uses a full-row UPDATE',()=>{
+  const source=readFileSync(new URL('../app/loc/providers/kysely-mcp.mjs',import.meta.url),'utf8');
+  const start=source.indexOf("if(body.kind==='mcp-sync')");
+  const end=source.indexOf("const uid=String(body.uid",start);
+  const code=source.slice(start,end);
+  assert.ok(start>=0&&end>start);
+  assert.match(code,/previous\.content===row\.content/);
+  assert.match(code,/MCP sync cannot overwrite a stored conversation/);
+  assert.doesNotMatch(code,/trx\.updateTable\(/);
+});
