@@ -221,10 +221,39 @@ async function decryptProfile(value,secret){
 // Data access is separately authorized by this Group Authority's grants.
 const MCP_RESOURCE='https://loc.lo3rwang.cc/mcp';
 const MANAGED_SCOPE_TABLES=Object.freeze({lo3rwang:'lo3rwang_galaxy',lrunes:'lrunes_galaxy'});
-const MANAGED_SUPABASE_EDGE='https://qlouywsdiiyiyzpoxyqy.supabase.co/functions/v1/loc-kysely-clerk';
-// A publishable key identifies the project, not the user; the Clerk OAuth
-// token is independently verified by the Kysely Edge and LOC Authority.
-const MANAGED_PUBLISHABLE_KEY='sb_publishable_qPn0vAzozVyXKllRuEKf2Q_fvG-pLVV';
+// MCP uses LOC's independent Kysely SQL Gateway, never a provider Function.
+// The Worker holds no DB password and only forwards a signed LOC delegation.
+function mcpSqlGateway(env){
+  const raw=String(env?.LOC_MCP_SQL_GATEWAY_URL||env?.LOC_SQL_GATEWAY_URL||'');
+  if(!raw)throw fail('LOC MCP Kysely SQL Gateway is not configured',503);
+  let url;try{url=new URL(raw)}catch{throw fail('Invalid LOC MCP SQL Gateway URL',503)}
+  if(url.protocol!=='https:'||url.username||url.password||url.search||url.hash||
+     !['443',''].includes(url.port))
+    throw fail('LOC MCP SQL Gateway must be a trusted HTTPS endpoint',503);
+  return url.toString();
+}
+async function mcpSqlRequest(env,kind,scopeid,fields,locDelegation){
+  if(typeof locDelegation!=='string'||locDelegation.split('.').length!==3)
+    throw fail('LOC MCP delegation required',401);
+  const response=await fetch(mcpSqlGateway(env),{
+    method:'POST',headers:{authorization:'Bearer '+locDelegation,
+      'content-type':'application/json',accept:'application/json'},
+    body:JSON.stringify({kind,scopeid,...fields}),
+    signal:AbortSignal.timeout(12000),redirect:'error',cache:'no-store'
+  });
+  if(!response.ok){
+    let reason='MCP Kysely Gateway rejected request';
+    if(response.status>=400&&response.status<500){
+      const data=await response.json().catch(()=>null);
+      reason=String(data?.error?.message||data?.error||reason).slice(0,200);
+    }
+    throw fail(reason,response.status===401||response.status===403||response.status===409?
+      response.status:502);
+  }
+  const result=await response.json();
+  if(!result||!Object.hasOwn(result,'data'))throw fail('Invalid MCP SQL Gateway response',502);
+  return result.data;
+}
 const SCOPE_ID=/^[a-z][a-z0-9]{0,14}$/;
 const TABLE_ID=/^[a-z][a-z0-9_]{0,62}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
@@ -306,36 +335,17 @@ async function postgrest(profile,options){
 }
 function escapeScopeValue(value){return 'eq.'+value;}
 
-async function managedMcpInsert(scopeid,row,hasCheckpointUid,oauthToken){
-  if(!Object.hasOwn(MANAGED_SCOPE_TABLES,scopeid))throw fail('Scope database is not configured',409);
-  if(typeof oauthToken!=='string'||!oauthToken.startsWith('eyJ'))throw fail('MCP OAuth authorization required',401);
-  const response=await fetch(MANAGED_SUPABASE_EDGE,{
-    method:'POST',headers:{apikey:MANAGED_PUBLISHABLE_KEY,
-      authorization:'Bearer '+oauthToken,'content-type':'application/json'},
-    body:JSON.stringify({kind:'mcp-sync',scopeid,row,update_existing:hasCheckpointUid}),
-    signal:AbortSignal.timeout(12000),redirect:'manual'
-  });
-  if(!response.ok)throw fail('Managed Scope write rejected (HTTP '+response.status+')',
-    response.status===401||response.status===403?response.status:502);
-  const data=await response.json();
-  if(data?.data?.count!==1)throw fail('Managed Scope write was not confirmed',502);
+async function managedMcpInsert(scopeid,row,updateExisting,token,env){
+  const data=await mcpSqlRequest(env,'mcp-sync',scopeid,
+    {row,update_existing:updateExisting},token);
+  if(data?.count!==1)throw fail('MCP insert was not confirmed',502);
 }
-
-
 // Append is separate from full sync: existing Galaxy metadata must never be overwritten.
-async function managedMcpAppend(scopeid,uid,content,batchId,updatedAt,oauthToken){
-  if(!Object.hasOwn(MANAGED_SCOPE_TABLES,scopeid))throw fail('Scope database is not configured',409);
-  const response=await fetch(MANAGED_SUPABASE_EDGE,{
-    method:'POST',headers:{apikey:MANAGED_PUBLISHABLE_KEY,
-      authorization:'Bearer '+oauthToken,'content-type':'application/json'},
-    body:JSON.stringify({kind:'mcp-append',scopeid,uid,content,batch_id:batchId,updated_at:updatedAt}),
-    signal:AbortSignal.timeout(12000),redirect:'manual'
-  });
-  if(!response.ok)throw fail('Managed Scope append rejected (HTTP '+response.status+')',
-    response.status===401||response.status===403?response.status:502);
-  const result=await response.json();
-  if(result?.data?.count!==1)throw fail('Managed Scope append was not confirmed',502);
-  return result.data;
+async function managedMcpAppend(scopeid,uid,content,batchId,updatedAt,token,env){
+  const data=await mcpSqlRequest(env,'mcp-append',scopeid,
+    {uid,content,batch_id:batchId,updated_at:updatedAt},token);
+  if(data?.count!==1)throw fail('MCP append was not confirmed',502);
+  return data;
 }
 async function portableMcpAppend(profile,uid,content,batchId,updatedAt){
   const rows=await postgrest(profile,{params:{select:'uid,content,site,title,createtime',
@@ -360,30 +370,9 @@ async function portableMcpAppend(profile,uid,content,batchId,updatedAt){
   return {uid,title:rows[0].title,createtime:rows[0].createtime};
 }
 
-async function managedMcpUpdatePr(scopeid,uid,prNumber,title,content,updatedAt,oauthToken){
-  if(!Object.hasOwn(MANAGED_SCOPE_TABLES,scopeid))throw fail('Scope database is not configured',409);
-  if(typeof oauthToken!=='string'||!oauthToken.startsWith('eyJ'))throw fail('MCP OAuth authorization required',401);
-  const response=await fetch(MANAGED_SUPABASE_EDGE,{
-    method:'POST',headers:{apikey:MANAGED_PUBLISHABLE_KEY,
-      authorization:'Bearer '+oauthToken,'content-type':'application/json'},
-    body:JSON.stringify({kind:'mcp-update-pr',scopeid,...(uid?{uid}:{}),pr_number:prNumber,title,content,updated_at:updatedAt}),
-    signal:AbortSignal.timeout(12000),redirect:'manual'
-  });
-  if(!response.ok){
-    let message='Managed Scope write rejected (HTTP '+response.status+')';
-    if(response.status>=400&&response.status<500){
-      const data=await response.json().catch(()=>null);
-      if(typeof data?.error?.message==='string')message=data.error.message.slice(0,200);
-    }
-    throw fail(message,[401,403,404].includes(response.status)?response.status:502);
-  }
-  const data=await response.json();
-  if(data?.data?.count!==1)throw fail('Managed Scope write was not confirmed',502);
-  const confirmedUid=String(data.data.uid||uid||'');
-  if(!UID.test(confirmedUid))throw fail('PR update did not return a valid Galaxy UID',502);
-  return confirmedUid;
+async function managedMcpUpdatePr(){
+  throw fail('請至github頁面找尋PR相關資料！不開放搜尋PR!',410);
 }
-
 // Direct PostgREST path for self-hosted Scope databases. Reads the existing
 // row first so an UPDATE can never be used to create a new article, and
 // refuses unless the article is already GitHub PR-origin and its current
@@ -432,24 +421,11 @@ async function postgrestUpdatePr(profile,uid,prNumber,title,content,updatedAt){
   return uid;
 }
 
-async function managedMcpRead(scopeid,kind,args,oauthToken){
-  if(!Object.hasOwn(MANAGED_SCOPE_TABLES,scopeid))throw fail('Managed Scope is not supported',409);
-  if(typeof oauthToken!=='string'||!oauthToken.startsWith('eyJ'))
-    throw fail('MCP OAuth authorization required',401);
-  if(!['mcp-search','mcp-read'].includes(kind))throw fail('Invalid managed read',400);
-  const response=await fetch(MANAGED_SUPABASE_EDGE,{
-    method:'POST',headers:{apikey:MANAGED_PUBLISHABLE_KEY,
-      authorization:'Bearer '+oauthToken,'content-type':'application/json'},
-    body:JSON.stringify({kind,scopeid,...args}),
-    signal:AbortSignal.timeout(12000),redirect:'manual'
-  });
-  if(!response.ok)throw fail('Managed Scope read rejected (HTTP '+response.status+')',
-    response.status===401||response.status===403?response.status:502);
-  const data=await response.json();
-  if(!Array.isArray(data?.data))throw fail('Invalid managed Scope read results',502);
-  return data.data;
+async function managedMcpRead(scopeid,kind,args,token,env){
+  const rows=await mcpSqlRequest(env,kind,scopeid,args,token);
+  if(!Array.isArray(rows))throw fail('Invalid MCP Kysely read results',502);
+  return rows;
 }
-
 export class LocAuthorityState extends DurableObject {
   constructor(ctx,env){super(ctx,env);}
   async listState(){
@@ -705,7 +681,7 @@ export class LocAuthorityState extends DurableObject {
     if(useAppend){
       const result=profile?
         await portableMcpAppend(profile,uid,input.content,input.batch_id,requestedTime):
-        await managedMcpAppend(scopeid,uid,input.content,input.batch_id,requestedTime,oauthToken);
+        await managedMcpAppend(scopeid,uid,input.content,input.batch_id,requestedTime,oauthToken,this.env);
       const saved_at=new Date().toISOString();
       await this.ctx.storage.put(checkpointKey,{updated_at:requestedTime,saved_at,uid});
       return {scopeid,conversation_id,uid,title:result.title||null,
@@ -723,7 +699,7 @@ export class LocAuthorityState extends DurableObject {
     if(profile){
       // Third-party Scope providers manage their own schema independently.
       await postgrest(profile,{body:row,params:{on_conflict:'uid'}});
-    }else await managedMcpInsert(scopeid,row,Boolean(status.uid),oauthToken);
+    }else await managedMcpInsert(scopeid,row,Boolean(status.uid),oauthToken,this.env);
     const saved_at=new Date().toISOString();
     this.mcpSearchCache?.clear();
     await this.ctx.storage.put(checkpointKey,{updated_at:requestedTime,saved_at,uid});
@@ -768,7 +744,7 @@ export class LocAuthorityState extends DurableObject {
         site:'eq.mcp',or:'(title.ilike.'+pattern+',content.ilike.'+pattern+')',
         order:'createtime.desc',limit},timeout:4500});
     }else if(Object.hasOwn(MANAGED_SCOPE_TABLES,scopeid)){
-      rows=await managedMcpRead(scopeid,'mcp-search',{query,limit},oauthToken);
+      rows=await managedMcpRead(scopeid,'mcp-search',{query,limit},oauthToken,this.env);
     }else throw fail('Scope database is not configured',409);
     if(!Array.isArray(rows))throw fail('Invalid Galaxy Link search response',502);
     return {scopeid,results:rows.map(r=>({uid:r.uid,title:r.title,createtime:r.createtime}))};
@@ -790,7 +766,7 @@ export class LocAuthorityState extends DurableObject {
       rows=await postgrest(profile,{params:{select:'uid,title,content,date,createtime,site,url',
         uid:'eq.'+uid,...(onlySite?{site:'eq.'+onlySite}:{}),limit:1}});
     }else if(Object.hasOwn(MANAGED_SCOPE_TABLES,scopeid)){
-      rows=await managedMcpRead(scopeid,'mcp-read',{uid,...(onlySite?{site:onlySite}:{})},oauthToken);
+      rows=await managedMcpRead(scopeid,'mcp-read',{uid,...(onlySite?{site:onlySite}:{})},oauthToken,this.env);
     }else throw fail('Scope database is not configured',409);
     if(!Array.isArray(rows))throw fail('Invalid database response',502);
     if(!rows.length||onlySite&&rows[0].site!==onlySite)return {found:false,scopeid,uid};
