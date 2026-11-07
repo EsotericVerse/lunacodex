@@ -301,3 +301,21 @@ private access parity, and a post-migration catalog verification.
 
 MCP source code, the five-minute search guard, conditional UID reads,
 warnings, QoS quotas and legacy PR routing are **out of scope** for this change.
+
+## New Scope provisioning — 2026-11-07 verification
+
+The control-plane PostgreSQL Scope constructor clones current Configuration,
+Galaxy, Anchor and Blocks relations, registers the new Scope in `api.manage`
+and `silver.loc`, and preserves the existing four-level Keyword Anchor tree.
+Public Galaxy reads require `search=true` and exclude private MCP/PR and
+private-message sources; manager reading uses a separate delegated-grant
+policy. Both `anon` and `anonymous` roles receive public SELECT support,
+while non-public rows remain filtered. All eight Galaxy booleans use the
+existing source table's false defaults. External portable SQL targets install
+Galaxy/Anchor only; Registry, Config and Blocks remain in the LOC control plane.
+
+The default Keyword Class copy uses five Kysely SELECTs and one batched INSERT
+for a single default class in the common case, regardless of Item count
+(with extra INSERT batches only for more than 500 Anchor records). Reserved
+relation collisions are checked in one catalog query instead of seven.
+These changes do not alter MCP, existing Scope rows or existing SQL tables.
