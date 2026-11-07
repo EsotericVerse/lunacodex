@@ -40,8 +40,8 @@ function timeFilters(column,startDate,endDate){
 }
 const dayColumn=table=>String(table||'')==='silver.local_galaxy'?'createtime':
   /^silver\.[a-z][a-z0-9]*_galaxy$/.test(String(table||''))?'date':'createtime';
-async function selectRowById(table,{idColumn,id,columns,authenticated=false}={}){
-  const page=await selectRows(table,{columns,filters:[{column:idColumn,operator:'eq',value:String(id)}],limit:1,authenticated});
+async function selectRowById(table,{idColumn,id,columns,authenticated=false,expectedDbId=''}={}){
+  const page=await selectRows(table,{columns,filters:[{column:idColumn,operator:'eq',value:String(id)}],limit:1,authenticated,expectedDbId});
   return page.rows[0]||null;
 }
 function countBy(rows,keyOf,{includeEmpty=false}={}){
@@ -267,11 +267,11 @@ export async function resolveGalaxyExternalLinks(scope,rows=[],{signal=null}={})
   return source.map(row=>({...row,resolved_links:resolvedLinks(row,mediaById)}));
 }
 
-export async function selectGalaxyContent(scope,uid,{authenticated=false}={}){
+export async function selectGalaxyContent(scope,uid,{authenticated=false,dbId=''}={}){
   const current=scopeOf(scope);
   const id=String(uid||'').trim();
   if(!id)return null;
-  return selectRowById(current.galaxy,{idColumn:'uid',id,columns:'uid,content',authenticated});
+  return selectRowById(current.galaxy,{idColumn:'uid',id,columns:'uid,content',authenticated,expectedDbId:dbId});
 }
 
 async function relatedArticleTitlesFor(scope,row,{includeHidden=false}={}){
@@ -398,7 +398,7 @@ function articleStatisticsContext(scope,day){
     year:{start:yearStart,end:yearEnd}};
 }
 
-export async function selectGalaxyIdentity(scope,uid,{includeHidden=false}={}){
+export async function selectGalaxyIdentity(scope,uid,{includeHidden=false,dbId=''}={}){
   const current=scopeOf(scope);
   const id=String(uid||'').trim();
   if(!id)return null;
@@ -412,7 +412,7 @@ export async function selectGalaxyIdentity(scope,uid,{includeHidden=false}={}){
     filters:[{column:'uid',operator:'eq',value:id},
       ...(!includeHidden?[articlePermissionFilter(current,'list')]:[])],
     orFilter:'',
-    limit:1,authenticated:includeHidden
+    limit:1,authenticated:includeHidden,expectedDbId:dbId
   });
   const row=articleRows[0]||null;
   if(!row||(!includeHidden&&galaxyAble(row).list===false))return null;
@@ -432,7 +432,7 @@ export async function selectGalaxyIdentity(scope,uid,{includeHidden=false}={}){
   // Expose them as a read-only rune media view until the verified data backfill;
   // do not modify or duplicate any Galaxy article in a read request.
   // Keep media and original article URLs as distinct associations.
-  return {...row,scope_id:current.id,__table:current.galaxy,
+  return {...row,scope_id:current.id,__db_id:dbId||row.__db_id||'',__table:current.galaxy,
     links:resolvedLinks(row,new Map()),relation_titles:relationTitles,
     related_media:orderedMedia,trace_place:space.place,
     related_space:space,related_time:time,related_statistics:statistics,
