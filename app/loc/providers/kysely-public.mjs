@@ -27,8 +27,7 @@ export async function executeKyselyPublicAction(trx,body,{engine='postgres',name
        action==='page_blocks'&&kind!=='index'||
        action==='hero_blocks'&&!['culture','statics','trace','search'].includes(kind))
       throw Object.assign(new Error('Invalid public Block type'),{httpStatus:400});
-    const tableName=action==='hero_blocks'?'loc_blocks':
-      scope==='loc'?'loc_blocks':scope+'_blocks';
+    const tableName=action==='hero_blocks'?'loc_blocks':scope+'_blocks';
     const names=action==='hero_blocks'?['group_'+kind,'scope_'+kind]:[kind];
     // No registry query, table-introspection query, RLS prerequisite, or
     // SQL ORDER BY: one bounded presentation query, then client-side sorting.
