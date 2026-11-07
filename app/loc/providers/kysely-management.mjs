@@ -480,7 +480,8 @@ async function syncSearchPatterns(trx,args){
        seen.has(key)||!Number.isSafeInteger(row.count)||row.count<0||
        !Array.isArray(row.uid_list)||row.uid_list.length>100000||
        row.uid_list.some(uid=>typeof uid!=='string'||!UID.test(uid))||
-       new Set(row.uid_list).size!==row.uid_list.length)
+       new Set(row.uid_list).size!==row.uid_list.length||
+       row.count!==row.uid_list.length)
       reject('Invalid or duplicated Keyword search pattern');
     seen.add(key);
   }
