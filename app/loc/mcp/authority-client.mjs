@@ -68,14 +68,9 @@ export async function authorityAction(name,args,token,env={},fetchImpl=globalThi
     path='galaxy-link/'+path;
   }else switch(name){
     case 'scope_storage':
+      if(Object.keys(a).some(key=>key!=='scopeid'))
+        throw bad('LOC SQL Gateway registration has been permanently retired');
       path='scope/'+id(a.scopeid);
-      if(a.endpoint!==undefined){
-        method='PUT';
-        // Database credentials are accepted only by the secure LOC UI ->
-        // Authority HTTPS endpoint, never as ChatGPT/MCP tool arguments.
-        body={endpoint:a.endpoint,schema:a.schema||'public',...(a.table?{table:a.table}:{})};
-        if(!body.endpoint)throw bad('LOC SQL Gateway URL is required');
-      }
       break;
     case 'join_scope_group':
       path='group/'+id(a.groupid)+'/scope/'+id(a.scopeid);method='PUT';
