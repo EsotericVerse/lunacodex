@@ -49,6 +49,22 @@ const locPrincipal={
   },
   attributes:[{name:'@@auth'}]
 };
+
+const plainVirtualType=(name,types)=>({
+  name,
+  fields:Object.fromEntries(Object.entries(types).map(([field,type])=>[
+    field,{name:field,type}
+  ])),
+  attributes:[]
+});
+const locFederatedRef=plainVirtualType('LocFederatedRef',{
+  databaseId:'String',scopeId:'String',uid:'String'
+});
+const locAnchorLink=plainVirtualType('LocAnchorLink',{
+  family:'String',fromUid:'String',toUid:'String',
+  fromType:'String',toType:'String',attrKey:'String',resolved:'Boolean'
+});
+
 const databaseDefault=Object.freeze({kind:'call',function:'dbgenerated',args:[]});
 const modelName=table=>table.split('_').map(w=>w[0].toUpperCase()+w.slice(1)).join('');
 function compileFixedSchema({schema:namespace,tables}){
@@ -89,7 +105,8 @@ function compileFixedSchema({schema:namespace,tables}){
     };
   }
   return {provider:{type:'postgresql',defaultSchema:namespace},models,
-    typeDefs:{LocPrincipal:locPrincipal},authType:'LocPrincipal',
+    typeDefs:{LocPrincipal:locPrincipal,LocFederatedRef:locFederatedRef,LocAnchorLink:locAnchorLink},
+    authType:'LocPrincipal',
     plugins:{policy:{provider:'@zenstackhq/plugin-policy'}}};
 }
 export const schema=compileFixedSchema(contract);
