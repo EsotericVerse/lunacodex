@@ -26,7 +26,7 @@ function state(){
     delete:async key=>{data.delete(key)},
     list:async({prefix})=>new Map([...data].filter(([key])=>key.startsWith(prefix)))
   };
-  const env={LOC_MCP_SQL_NATIVE_APP_URL:NATIVE_APP};
+  const env={};
   return {authority:new LocAuthorityState({storage},env),data};
 }
 function fakeSql(gatewayFn){
@@ -227,7 +227,8 @@ test('Portable MCP keeps one ZModel-backed Kysely executor without a provider Fu
   assert.match(executor,/schema as zmodel/);
   assert.match(executor,/executePortableMcp/);
   assert.match(app,/executePortableMcp\(selected.db,body,claims/);
-  assert.match(worker,/LOC_MCP_SQL_NATIVE_APP_URL/);
+  assert.match(worker,/LOC_NATIVE_APPLICATION/);
+  assert.doesNotMatch(worker,/LOC_MCP_SQL_GATEWAY_URL|LOC_SQL_GATEWAY_URL|mcpSqlGateway/);
   assert.doesNotMatch(worker,/MANAGED_SUPABASE_EDGE|MANAGED_PUBLISHABLE_KEY|supabase\.co\/functions\/v1\//);
 });
 
