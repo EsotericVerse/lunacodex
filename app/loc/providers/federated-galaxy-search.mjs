@@ -4,6 +4,7 @@
 import {normalizeDatabaseTarget} from './selected-database-target.mjs';
 import {locGlobalUid} from '../../../zenstack/global-identity.mjs';
 import {isTextSearchQuery} from './search-qos.mjs';
+import {canManageDelegation} from '../auth/delegation-contract.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const ID=/^[a-z][a-z0-9_-]{0,63}$/;
@@ -68,6 +69,24 @@ export function isFederatedTextSearch(body){
     ['date','createtime'].includes(body.orders[0].column)&&
     body.columns.includes(body.orders[0].column)&&
     body.columns.includes('uid'));
+}
+/**
+ * LOC Auth is the authority, and Kysely applies the effective SELECT policy.
+ * This public Galaxy gate works with PostgreSQL, MySQL and SQL Server even
+ * without database RLS. It does not claim that low-level ZenStack $qb runs
+ * ORM policies automatically.
+ */
+export function publicGalaxyGate(body,role,claims={}){
+  if(body?.kind!=='query'||body.operation!=='select'||
+     body.schema!=='silver'||typeof body.table!=='string')return false;
+  const match=body.table.match(/^([a-z][a-z0-9]{0,14})_galaxy$/);
+  if(!match)return false;
+  if(role==='authenticated'&&canManageDelegation(claims,'scope',match[1]))
+    return false;
+  // Article details need "list"; search result previews need "search".
+  if(body.expectedDbId!==undefined&&isDatasetQualifiedArticleRead(body))
+    return 'list';
+  return isTextSearchQuery(body)?true:false;
 }
 export function isDatasetQualifiedArticleRead(body){
   if(!federatedScopeFromQuery(body)||body.head||body.count)return false;
