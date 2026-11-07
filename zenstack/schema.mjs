@@ -29,6 +29,20 @@ const PUBLIC_POLICY_ALLOW_READ={
     {name:'condition',value:{kind:'literal',value:true}}
   ]
 };
+const GLOBAL_ADMIN_MANAGE=new Set(['manage','loc']);
+const GLOBAL_ADMIN_POLICY={
+  name:'@@allow',args:[
+    {name:'operation',value:{kind:'literal',value:'update,delete'}},
+    {name:'condition',value:{kind:'binary',op:'==',
+      left:{kind:'member',receiver:{kind:'call',function:'auth',args:[]},members:['role']},
+      right:{kind:'literal',value:'admin'}}}
+  ]
+};
+const locPrincipal={
+  name:'LocPrincipal',
+  fields:{id:{name:'id',type:'String'},role:{name:'role',type:'String'}},
+  attributes:[{name:'@@auth'}]
+};
 const databaseDefault=Object.freeze({kind:'call',function:'dbgenerated',args:[]});
 const modelName=table=>table.split('_').map(w=>w[0].toUpperCase()+w.slice(1)).join('');
 function compileFixedSchema({schema:namespace,tables}){
@@ -63,11 +77,13 @@ function compileFixedSchema({schema:namespace,tables}){
       attributes:[
         literal('@@map','name',table.table),
         literal('@@schema','map',table.schema||namespace),
-        ...(PUBLIC_FIXED_READS.has(table.table)?[PUBLIC_POLICY_ALLOW_READ]:[])
+        ...(PUBLIC_FIXED_READS.has(table.table)?[PUBLIC_POLICY_ALLOW_READ]:[]),
+        ...(GLOBAL_ADMIN_MANAGE.has(table.table)?[GLOBAL_ADMIN_POLICY]:[])
       ]
     };
   }
   return {provider:{type:'postgresql',defaultSchema:namespace},models,
+    typeDefs:{LocPrincipal:locPrincipal},authType:'LocPrincipal',
     plugins:{policy:{provider:'@zenstackhq/plugin-policy'}}};
 }
 export const schema=compileFixedSchema(contract);

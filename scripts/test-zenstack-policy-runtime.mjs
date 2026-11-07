@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {fixedPolicyReadModel,fixedPolicyReader,withFixedPolicyRead} from
-  '../zenstack/policy-runtime.mjs';
+import {fixedPolicyReadModel,fixedPolicyWriteModel,fixedPolicyReader,
+  withFixedPolicyRead,withFixedPolicyWrite} from '../zenstack/policy-runtime.mjs';
 
 const pg={engine:'postgres',provider:'supabase'};
 const fixed=[
@@ -61,4 +61,101 @@ test('Edge actually routes model SELECTs to PolicyPlugin, not a detached schema'
   assert.match(edge,/trustedDialectForDatabase\(db\)/);
   assert.match(edge,/executeRequest\(trx,target,role,claims,body,\{modelName\}\)/);
   assert.match(edge,/db\.transaction\(\)\.execute\(trx=>/);
+});
+
+test('only verified global LOC administrator writes enter fixed-model PolicyPlugin',()=>{
+  const global={provider:'loc',me:true,sub:'user123',grants:['global:manage']};
+  const scope={provider:'loc',me:true,sub:'user123',grants:['lo3rwang:manage']};
+  for(const [path,model] of [['api.manage','Manage'],['silver.loc','Loc']]){
+    for(const operation of ['update','delete']){
+      const body={kind:'managed-write',payload:{p_table:path,p_operation:operation}};
+      assert.equal(fixedPolicyWriteModel(pg,body,'authenticated',global),model);
+      for(const claims of [scope,{...global,me:false},{...global,provider:'clerk'},{...global,grants:[]}])
+        assert.equal(fixedPolicyWriteModel(pg,body,'authenticated',claims),null);
+      assert.equal(fixedPolicyWriteModel(pg,body,'anon',global),null);
+      assert.equal(fixedPolicyWriteModel({engine:'mysql',provider:'custom'},body,'authenticated',global),null);
+      assert.equal(fixedPolicyWriteModel({engine:'postgres',provider:'neon'},body,'authenticated',global),null);
+    }
+    assert.equal(fixedPolicyWriteModel(pg,{kind:'managed-write',payload:{p_table:path,p_operation:'insert'}},
+      'authenticated',global),null,'bulk INSERT retains trusted batched Kysely executor');
+    const [schema,table]=path.split('.');
+    for(const operation of ['update','delete']){
+      assert.equal(fixedPolicyWriteModel(pg,
+        {kind:'query',schema,table,operation},'authenticated',global),model);
+      assert.equal(fixedPolicyWriteModel(pg,
+        {kind:'query',schema,table,operation},'authenticated',scope),null);
+    }
+    assert.equal(fixedPolicyWriteModel(pg,
+      {kind:'query',schema,table,operation:'upsert'},'authenticated',global),null);
+  }
+  for(const p_table of ['silver.lo3rwang','silver.lrunes','silver.lo3rwang_galaxy','api.user_records']){
+    assert.equal(fixedPolicyWriteModel(pg,
+      {kind:'managed-write',payload:{p_table,p_operation:'update'}},'authenticated',global),null);
+  }
+});
+
+test('global fixed write uses one existing dialect and one policy transaction',async()=>{
+  const logged={created:0,plugin:0,transaction:0,execution:0,auth:[]};
+  class ClientMock{
+    constructor(schema,{dialect}){assert.ok(schema.models.Manage);assert.equal(dialect,connectionDialect);logged.created++;}
+    $use(plugin){assert.ok(plugin.options.dangerouslyAllowRawSql);logged.plugin++;return this;}
+    $setAuth(value){logged.auth.push(value);return this;}
+    async $transaction(cb){logged.transaction++;
+      return cb({$qb:{executeQuery:async()=>{logged.execution++;return {count:1};}}});
+    }
+  }
+  class PluginMock{constructor(options){this.options=options;}}
+  const db={},connectionDialect={},dependencies={dialect:connectionDialect,
+    ZenStackClient:ClientMock,PolicyPlugin:PluginMock};
+  const claims={provider:'loc',me:true,sub:'user123',grants:['global:manage']};
+  const body={kind:'managed-write',payload:{p_table:'api.manage',p_operation:'update'}};
+  const execute=(trx,model)=>{assert.equal(model,'Manage');return trx.executeQuery()};
+  assert.deepEqual(await withFixedPolicyWrite(db,pg,body,'authenticated',claims,dependencies,execute),{count:1});
+  assert.deepEqual(await withFixedPolicyWrite(db,pg,body,'authenticated',claims,dependencies,execute),{count:1});
+  assert.deepEqual(logged,{created:1,plugin:1,transaction:2,execution:2,
+    auth:[{id:'user123',role:'admin'},{id:'user123',role:'admin'}]});
+  await assert.rejects(()=>withFixedPolicyWrite(db,pg,body,'authenticated',
+    {...claims,grants:['lo3rwang:manage']},dependencies,execute),
+    /Global LOC policy permission required/);
+  assert.equal(logged.execution,2,'a rejected write must not reach SQL');
+});
+
+test('managed Kysely fixed updates derive primary keys from SchemaDef, not pg_index',()=>{
+  const management=readFileSync(new URL('../app/loc/providers/kysely-management.mjs',import.meta.url),'utf8');
+  const gateway=readFileSync(new URL('../supabase/functions/loc-kysely/index.ts',import.meta.url),'utf8');
+  assert.match(management,/fixedSchema\.models\[modelName\]\?\.idFields/);
+  assert.match(management,/modelName\|\|\(table==='manage'/);
+  assert.match(management,/if\(modelName&&\!\(modelName==='Manage'/);
+  assert.match(gateway,/withFixedPolicyWrite\(db,target,body,role,claims/);
+  assert.match(gateway,/fixedPolicyWriteModel\(target,body,role,claims\)/);
+  assert.match(gateway,/executeManagedKyselyWrite\(trx,body,\{modelName\}\)/);
+  assert.match(gateway,/if\(!await canManageLoc\(trx,"global"\)\)/);
+  const runtime=readFileSync(new URL('../app/loc/providers/kysely-runtime.mjs',import.meta.url),'utf8');
+  assert.match(runtime,/buildKyselyMutationQuery\(trx,input,\{dialect,namespace,modelName\}\)/);
+  assert.match(runtime,/const fullTable=databaseTable\(req,dialect,namespace,modelName\)/);
+});
+
+test('all managed Registry, Galaxy, Anchor and Blocks updates derive primary keys without SQL',async()=>{
+  const {schema:fixedSchema}=await import('../zenstack/schema.mjs');
+  const management=readFileSync(new URL('../app/loc/providers/kysely-management.mjs',import.meta.url),'utf8');
+  const begin=management.indexOf('export function managedPrimaryKeyColumns(');
+  const end=management.indexOf('\nasync function authorizeRelation(',begin);
+  assert.ok(begin>0&&end>begin);
+  const body=management.slice(begin,end).replace('export function','function');
+  const helper=new Function('fixedSchema','SCOPED_SUFFIXES','reject',
+    body+'\nreturn managedPrimaryKeyColumns;')(
+    fixedSchema,['_galaxy','_anchor','_blocks'],m=>{throw new Error(m)});
+  const cases=[
+    ['manage','Manage','id'],['loc','Loc','id'],
+    ['lo3rwang','','id'],['lrunes','','id'],
+    ['loc_blocks','','uid'],['lo3rwang_galaxy','','uid'],
+    ['lrunes_galaxy','','uid'],['lo3rwang_anchor','','uid'],
+    ['lrunes_anchor','','uid'],['lo3rwang_blocks','','uid'],
+    ['lrunes_blocks','','uid']
+  ];
+  for(const [table,model,key] of cases)
+    assert.deepEqual(helper(table,model),[key],table+' PK contract');
+  assert.doesNotMatch(management,/from pg_index/i,
+    'no extra SQL catalog read is needed for a managed update');
+  assert.match(management,/const keys=managedPrimaryKeyColumns\(table,modelName\)/);
 });
