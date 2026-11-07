@@ -29,6 +29,9 @@ class KyselyQuery {
   maybeSingle(){this.request.single='maybeSingle';return this}
   // Optional server-only FlexSearch prefilter; older SQL Gateways ignore it.
   searchIndex(query,scopeId){this.request.indexHint={query,scopeId};return this}
+  // A logical dataset is part of the article identity. This does not select
+  // an arbitrary SQL target: the trusted Gateway must verify the resolved DB.
+  expectDatabase(dbId){this.request.expectedDbId=String(dbId);return this}
   abortSignal(signal){this.signal=signal;return this}
   then(resolve,reject){return this.executeRequest(this.request,this.signal).then(resolve,reject)}
 }
