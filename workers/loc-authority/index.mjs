@@ -670,7 +670,7 @@ export class LocAuthorityState extends DurableObject {
     const members=[groupid,...await this.mcpGroupMembers(groupid)];
     const allowed=new Set(members);
     const grants=(await this.listGrants()).filter(grant=>
-      grant.provider==='clerk'&&allowed.has(grant.scope)&&grant.expires_at>Date.now());
+      grant.provider==='loc'&&allowed.has(grant.scope)&&grant.expires_at>Date.now());
     return {groupid,members,grants,
       categories:(await this.mcpGroupKeywordCategories(groupid)).categories};
   }
@@ -708,11 +708,11 @@ export class LocAuthorityState extends DurableObject {
   }
   // Cloudflare DO RPC: only a separately bound trusted SQL gateway can call this.
   // No HTTP handler exposes the credential or returns decrypted profiles to a browser.
-  // Shared, durable quotas for each verified Clerk MCP subject.
+  // Shared, durable quotas for each verified LOC Auth MCP subject.
   // A read-only near-limit check for simultaneous PR denial + QoS warning.
   // It never acquires a lease, spends a search, or touches Galaxy rows.
   async mcpQuotaInspect(kind,subject){
-    if(!/^clerk:user_[A-Za-z0-9]+$/.test(String(subject||'')))
+    if(!/^loc:loc_[A-Za-z0-9_-]{32,80}$/.test(String(subject||'')))
       throw fail('Invalid MCP principal',401);
     if(!['read','write','search'].includes(kind))throw fail('Invalid MCP quota kind',400);
     const now=Date.now(),search=kind==='search';
@@ -734,7 +734,7 @@ export class LocAuthorityState extends DurableObject {
     return {warning:''};
   }
   async mcpQuotaAcquire(kind,subject){
-    if(!/^clerk:user_[A-Za-z0-9]+$/.test(String(subject||'')))throw fail('Invalid MCP principal',401);
+    if(!/^loc:loc_[A-Za-z0-9_-]{32,80}$/.test(String(subject||'')))throw fail('Invalid MCP principal',401);
     if(!['read','write','search'].includes(kind))throw fail('Invalid MCP quota kind',400);
     const now=Date.now(),period=60_000,leaseTtl=25_000;
     const searchWindowMs=300_000;
@@ -818,7 +818,7 @@ export class LocAuthorityState extends DurableObject {
     return outcome;
   }
   async mcpQuotaRelease(lease,subject){
-    if(!/^clerk:user_[A-Za-z0-9]+$/.test(String(subject||'')))throw fail('Invalid MCP principal',401);
+    if(!/^loc:loc_[A-Za-z0-9_-]{32,80}$/.test(String(subject||'')))throw fail('Invalid MCP principal',401);
     if(typeof lease!=='string'||!/^[a-f0-9-]{36}$/i.test(lease))
       throw fail('Invalid MCP lease',400);
     await this.ctx.storage.transaction(async tx=>{
