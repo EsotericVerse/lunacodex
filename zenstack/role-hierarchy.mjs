@@ -49,7 +49,7 @@ export function locRolePrincipal(claims,{scopeTree=[]}={}){
   for(const value of grants){
     if(typeof value!=='string')continue;
     const match=MANAGE.exec(value);
-    if(!match)continue;
+    if(!match||value==='global:manage')continue;
     const id=match[1],node=nodes.get(id);
     if(node&&!node.active)continue;
     if(node?.kind==='group'){
