@@ -49,7 +49,7 @@ test('Postgres Statistics daily source and total counts use one grouped aggregat
     async execute(){
       requests++;
       compiled=strings.join('?');
-      assert.equal(params.length,4); // relation and three date/include bounds
+      assert.equal(params.length,6); // relation, undated flag, and two inclusive date bounds
       return {rows:[
         {day:'2026-05-12',kind:'source',category:'threads',item_count:4},
         {day:'2026-05-12',kind:'total',category:'文字作品',item_count:4}
