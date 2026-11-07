@@ -41,6 +41,10 @@ function targetId(target){
 // Scope/DB identity is checked again on the response and SQL applies its
 // original content/date/site/publication/authorization predicates.
 export async function withIndexedCandidates(body,target){
+  // Never narrow a live SQL query until its index has been built and the
+  // deployment explicitly opts in. KV is eventually consistent.
+  if(String(Deno.env.get('LOC_SEARCH_INDEX_ENABLED')||'').toLowerCase()!=='true')
+    return body;
   if(body?.kind!=='query'||body.operation!=='select'||body.schema!=='silver'||
      typeof body.table!=='string'||!body.table.endsWith('_galaxy'))return body;
   const scopeId=body.table.slice(0,-'_galaxy'.length);
