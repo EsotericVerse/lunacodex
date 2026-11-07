@@ -374,6 +374,30 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   const targetScopes=useMemo(()=>scopeId==='loc'&&managementMode&&scopeFilter
     ?availableScopes.filter(item=>item.id===scopeFilter)
     :availableScopes,[scopeId,managementMode,scopeFilter,availableScopes]);
+  // Keyword lookup is a Scope-owner feature, not an anonymous list of
+  // possibly private Class terms. Enable only for an already verified editor;
+  // ordinary public page visits never trigger an extra permissions request.
+  const patternScopeIds=useMemo(()=>targetScopes
+    .filter(item=>account.user&&account.authorizer&&canManageSearchScope(account,item.id))
+    .map(item=>item.id),[targetScopes,account.user,account.authorizer]);
+  const [debouncedPatternInput,setDebouncedPatternInput]=useState('');
+  useEffect(()=>{
+    const value=query.normalize('NFKC').trim();
+    const timer=setTimeout(()=>setDebouncedPatternInput(value),220);
+    return ()=>clearTimeout(timer);
+  },[query]);
+  const patternSuggestionsQuery=useAsyncResource({
+    queryKey:['loc-pattern-autocomplete',patternScopeIds.join(','),debouncedPatternInput],
+    enabled:patternScopeIds.length>0&&debouncedPatternInput.length>0,
+    queryFn:async()=>{
+      const {data,error}=await dbAuthClient.schema('silver').managedAction('suggest_search_patterns',{
+        p_scope_ids:patternScopeIds,p_query:debouncedPatternInput
+      });
+      if(error)throw new Error(error.message||'關鍵詞自動完成讀取失敗');
+      return Array.isArray(data)?data:[];
+    }
+  });
+
   const scopeById=useMemo(()=>new Map(availableScopes.map(item=>[item.id,item])),[availableScopes]);
   const summaryScopeIds=targetScopes.map(item=>item.id);
   const scopeLabel=id=>{
@@ -1037,6 +1061,19 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   }
   const defaultTimeName=t('uiExtra.searchUI.defaultUnit'+(defaultTimeUnit==='auto'
     ?'Day':defaultTimeUnit[0].toUpperCase()+defaultTimeUnit.slice(1)));
+  const patternCompleter=patternScopeIds.length>0&&query.trim()===debouncedPatternInput
+    &&query.trim().length>0&&Array.isArray(patternSuggestionsQuery.data)
+    &&patternSuggestionsQuery.data.length>0
+    ?<div className="scope-search-suggestions" role="group" aria-label="關鍵詞自動完成">
+      <span className="scope-status">關鍵詞自動完成</span>
+      <div className="scope-search-active-filters">
+        {patternSuggestionsQuery.data.map(item=>
+          <button type="button" className="loc-button" key={item.pattern}
+            onClick={()=>followSearchSuggestion(item.pattern)}>
+            {item.pattern} ({Number(item.count)||0})
+          </button>)}
+      </div>
+    </div>:null;
   const pageContent=<>
     {managementMode?<section className="scope-search-workspace" aria-label="管理搜尋">
       <h2>管理搜尋</h2>
@@ -1055,6 +1092,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           }})}>瀏覽文章</button>
         <button type="button" className="loc-button" onClick={clearSearchFilters}>清除</button>
       </form>
+      {patternCompleter}
       {scopeId==='loc'?<div className="scope-search-scope-filter">
         <label htmlFor="scope-management-search-scope">管理範圍</label>
         <select id="scope-management-search-scope" value={scopeFilter}
@@ -1101,6 +1139,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           }}>瀏覽文章列表（不需輸入關鍵詞）</button>:null}
         <button type="button" className="loc-button" onClick={clearSearchFilters}>{t('uiExtra.searchUI.clearAll')}</button>
       </form>
+      {patternCompleter}
       <button type="button" className="loc-button scope-search-popular-toggle"
         aria-expanded={searchPopularOpen} aria-controls="scope-search-suggestions"
         onClick={()=>setSearchPopularOpen(open=>!open)}>
