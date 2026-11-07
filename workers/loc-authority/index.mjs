@@ -1,6 +1,8 @@
 import { DurableObject } from 'cloudflare:workers';
 import {issueDelegation} from '../../app/loc/auth/delegation-contract.mjs';
 import {trustedSqlProfile} from './sql-profile.mjs';
+import {normalizeSqlDriverAuthentication,publicSqlDriverAuthentication,
+  sqlAuthNeedsUserPassword} from '../../app/loc/providers/sql-driver-auth.mjs';
 import {ISSUER,MCP_AUDIENCE,WEB_AUDIENCE,isNativeOAuthPath,handleNativeOAuth,
   verifyNativeOAuth} from './native-oauth.mjs';
 import {validateKeywordCategoryEntry,hashKeywordCategory,assertPublicKeywordClass} from './keyword-categories.mjs';
@@ -40,11 +42,16 @@ function validateTarget(input,id){
   const host=String(input.host||'').trim().toLowerCase();
   const database=String(input.database||'').trim();
   const username=String(input.username||'').trim();
+  let authentication;
+  try{authentication=normalizeSqlDriverAuthentication(engine,input.authentication);}
+  catch(error){throw fail(error.message||'Invalid SQL driver authentication',400)}
   const label=String(input.label||id).trim();
   const port=Number(input.port);
   if(!ENGINES.has(engine)||!/^[a-z0-9.-]{1,253}$/.test(host)||host.startsWith('.')||host.endsWith('.')||
     !Number.isInteger(port)||port<1||port>65535||
-    !/^[a-zA-Z0-9_\-]{1,120}$/.test(database)||!username||username.length>120||!label||label.length>120)
+    !/^[a-zA-Z0-9_\-]{1,120}$/.test(database)||
+    (sqlAuthNeedsUserPassword(authentication)&&!username)||username.length>120||
+    !label||label.length>120)
     throw fail('Invalid database connection metadata');
   const password=input.password;
   if(password!==undefined&&(typeof password!=='string'||password.length>4096))throw fail('Invalid database secret');
@@ -55,7 +62,7 @@ function validateTarget(input,id){
  if(!Array.isArray(allowedSubjects)||allowedSubjects.length>500||
     allowedSubjects.some(x=>!/^loc_[A-Za-z0-9_-]{32,80}$/.test(String(x))))
    throw fail('Invalid database allowed subjects');
- return {id,engine,host,port,database,username,label,
+ return {id,engine,host,port,database,username,label,authentication,
   selectable_by_users:selectableByUsers,
   allowed_subjects:[...new Set(allowedSubjects)],
   ...(password?{password}:{})};
@@ -278,15 +285,32 @@ export class LocAuthorityState extends DurableObject {
   }
   async putTarget(id,input){
     const old=await this.ctx.storage.get('target:'+id);
+    const previous=old?await decryptProfile(old.encrypted,
+      this.env.LOC_CONTROL_ENCRYPTION_KEY):null;
+    // Only reuse encrypted secrets for the same authentication mode. An
+    // unchanged Admin form never needs to receive or re-submit a secret.
+    const incoming=input?.authentication;
+    const selectedType=String(incoming?.type||
+      previous?.authentication?.type||'default');
+    const priorAuth=previous?.authentication?.type===selectedType
+      ?previous.authentication:{};
+    const authentication=incoming===undefined
+      ?previous?.authentication
+      :{...priorAuth,...incoming};
     const validated=validateTarget({
-      ...input,
+      ...input,authentication,
       selectable_by_users:input?.selectable_by_users??
         old?.public?.selectable_by_users??false,
       allowed_subjects:input?.allowed_subjects??old?.public?.allowed_subjects??[]
     },id);
-    if(!validated.password&&!old)throw fail('New target requires a password');
-    const profile=validated.password?validated:{...validated,password:(await decryptProfile(old.encrypted,this.env.LOC_CONTROL_ENCRYPTION_KEY)).password};
-    const {password,...publicFields}=profile;
+    const password=validated.password||previous?.password||'';
+    if(sqlAuthNeedsUserPassword(validated.authentication)&&!password)
+      throw fail('New SQL target requires its database password');
+    const profile={...validated,...(password?{password}:{})};
+    // Never put a Token or Client Secret into unencrypted/public DO metadata.
+    const {password:_password,authentication:internalAuth,...fields}=profile;
+    const publicFields={...fields,
+      authentication:publicSqlDriverAuthentication(internalAuth)};
     await this.ctx.storage.put('target:'+id,{
       public:publicFields,
       encrypted:await encryptProfile(profile,this.env.LOC_CONTROL_ENCRYPTION_KEY)
