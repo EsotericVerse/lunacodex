@@ -55,7 +55,8 @@ export class LocMcpSqlContainer extends DurableObject {
    return await this.ctx.container.getTcpPort(8000).fetch(forwarded);
   }catch{
    this.ready=false;
-   return unavailable('LOC MCP SQL Gateway unavailable');
+   return unavailable('LOC MCP SQL Gateway unavailable',503,
+    request.headers.get('origin')||'');
   }
  }
 }
