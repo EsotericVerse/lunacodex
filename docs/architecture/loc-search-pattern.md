@@ -25,7 +25,7 @@ A compound `(scopeid, pattern)` primary key is the only index; **no** redundant 
 
 **Important: Item is a keyword group, not one keyword.** Each Item title is also included as an independently matched literal word. Item.total and search_pattern.count are deliberately different. An identical word shared by several Items counts the same article only once.
 
-The table starts empty until that Scope's first new analysis. Historical Item totals alone cannot reconstruct article UID arrays; do **not** invent UID lists from counts or claim that old data was backfilled.
+For large scopes, pattern UID arrays are uploaded in bounded batches (at most 700 kB each) because the existing Kysely POST transport rejects bodies above 1 MiB. Only the last batch may prune obsolete words; Class completion waits for every batch. Ordinary autocomplete remains one small read.\n\nThe table starts empty until that Scope's first new analysis. Historical Item totals alone cannot reconstruct article UID arrays; do **not** invent UID lists from counts or claim that old data was backfilled.
 
 ## Autocomplete
 
