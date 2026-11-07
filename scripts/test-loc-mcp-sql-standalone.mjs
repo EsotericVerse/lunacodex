@@ -84,7 +84,12 @@ test('portable SQL entry uses LOC delegations, no vendor Function or database AP
   assert.match(code,/validatePublicMcpQuery\(body,PUBLISHED\)/);
   assert.doesNotMatch(code,/supabase\.co|\/functions\/v1\/|\/rest\/v1\//);
   assert.match(code,/provider:'custom'/);
-  const driver=readFileSync(new URL('../supabase/functions/loc-kysely/drivers.ts',import.meta.url),'utf8');
-  assert.match(driver,/kysely-database-drivers\.ts/);
-  assert.doesNotMatch(driver,/class|new Kysely/);
+  // The standalone service must reuse the one portable Kysely driver.
+  // The old supabase/functions implementation has been retired entirely.
+  const driver=readFileSync(new URL('../app/loc/providers/kysely-database-drivers.ts',import.meta.url),'utf8');
+  assert.match(code,/import \{databaseForTarget\} from '..\/..\/app\/loc\/providers\/kysely-database-drivers\.ts'/);
+  for(const dialect of ['PostgresDialect','MysqlDialect','MssqlDialect'])
+    assert.match(driver,new RegExp(dialect));
+  assert.match(driver,/export async function databaseForTarget/);
+  assert.doesNotMatch(code,/new Kysely\(/);
 });

@@ -121,14 +121,22 @@ export function createLocGatewayAdapter({
   // The independent Extension write path never falls back to a vendor
   // Function. It reuses the site's existing LOC-signed, Scope-specific SQL
   // delegation, but its transport points only to the dedicated Kysely host.
-  const shortImportUrl=String(process.env.NEXT_PUBLIC_LOC_MCP_SQL_GATEWAY_URL||gatewayUrl||'').trim();
+  // In a transitional website the public SQL endpoint can be a legacy
+  // Function. Never treat it as an Extension write endpoint. A missing or
+  // invalid independent Gateway must leave login/reading usable and preserve
+  // the unacknowledged Queue; shortImport itself fails closed below.
+  const shortImportUrl=String(process.env.NEXT_PUBLIC_LOC_MCP_SQL_GATEWAY_URL||
+    gatewayUrl||'').trim();
   let shortImportSql=null;
   if(shortImportUrl){
-    const endpoint=new URL(shortImportUrl);
-    if(endpoint.protocol!=='https:'||endpoint.username||endpoint.password||
-      endpoint.search||endpoint.hash||endpoint.pathname!=='/v1/sql')
-      throw new Error('LOC short import requires an independent HTTPS /v1/sql Gateway');
-    shortImportSql=createKyselyEdgeClient({
+    let endpoint=null;
+    try{
+      const parsed=new URL(shortImportUrl);
+      if(parsed.protocol==='https:'&&!parsed.username&&!parsed.password&&
+        !parsed.search&&!parsed.hash&&parsed.pathname==='/v1/sql')
+        endpoint=parsed;
+    }catch{}
+    if(endpoint)shortImportSql=createKyselyEdgeClient({
       url,publishableKey,role:'authenticated',target,gatewayUrl:endpoint.href,
       getAccessToken:getLocAccessToken,fetch:fetchImpl
     });
