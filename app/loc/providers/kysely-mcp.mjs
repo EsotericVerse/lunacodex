@@ -11,7 +11,7 @@ const SCOPE_MODELS=Object.freeze({lo3rwang:'Lo3rwangGalaxy',lrunes:'LrunesGalaxy
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
 const BATCH=/^[0-9a-f]{64}$/;
-const PR_SOURCE='EsotericVerse/moon-runes-pwa#%';
+
 const FLAGS=['culture','trace','search','statics','list','extract','others','keyword'];
 function reject(message,status=400){throw Object.assign(new Error(message),{httpStatus:status});}
 function affected(result){
@@ -60,9 +60,18 @@ function validateUid(uid){
   if(!UID.test(String(uid||'')))reject('Invalid case-sensitive Galaxy UID');
 }
 function conversationOnly(q){
-  // PR articles can share site=mcp after the historical import; they must
-  // never surface in MCP conversation search (even via an unrelated query).
-  return q.where('site','=','mcp').where('site_id','not like',PR_SOURCE);
+  // A historic PR record can share site=mcp, sometimes with a different
+  // GitHub repository. Exclude PR provenance *from the SQL rows themselves*.
+  // NULL site_id is allowed for old genuine conversations. This filter is
+  // shared by read, search, sync and append, independent of the SQL engine.
+  return q.where('site','=','mcp').where(eb=>eb.or([
+    eb('site_id','is',null),
+    eb.and([
+      eb('site_id','not like','%#%'),
+      eb('site_id','not like','%/pull/%'),
+      eb(sql`lower(${sql.ref('site_id')})`,'not like','%github%')
+    ])
+  ])).where(sql`lower(${sql.ref('title')}) not like ${'%pr #%'}`);
 }
 export async function executePortableMcp(trx,body,claims,{engine='postgres',namespace='',provider='custom'}={}){
   const scope=verifyScope(body,claims);
