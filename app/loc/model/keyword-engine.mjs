@@ -196,14 +196,14 @@ function specialRuneKeywordTexts(normalizedTexts,runes,rune){
 
 // Reanalysis keeps one immutable compiled Class for every article page.
 // Public one-off calls retain the existing API and identical scoring behavior.
-export function createKeywordDocumentClassifier(catalogRows=[]){
+export function createKeywordDocumentClassifier(catalogRows=[],{collectKeywordTerms=false}={}){
   const prepared=compileCatalog(catalogRows);
-  return documents=>classifyKeywordDocumentsWithCompiled(documents,prepared);
+  return documents=>classifyKeywordDocumentsWithCompiled(documents,prepared,collectKeywordTerms);
 }
 export function classifyKeywordDocuments(documents=[],catalogRows=[]){
   return classifyKeywordDocumentsWithCompiled(documents,compileCatalog(catalogRows));
 }
-function classifyKeywordDocumentsWithCompiled(documents=[],prepared){
+function classifyKeywordDocumentsWithCompiled(documents=[],prepared,collectKeywordTerms=false){
   const source=Array.isArray(documents)?documents:[];
   const {runes,nameToRune,groupOrder,fallbackGroup}=prepared;
   if(!source.length||!runes.length)return {
@@ -221,6 +221,9 @@ function classifyKeywordDocumentsWithCompiled(documents=[],prepared){
   const normalizedTexts=source.map(row=>normalizeText(textOf(row)));
 
   const states=source.map(()=>createState());
+  // Reanalysis optionally collects exactly the literal words that matched
+  // this article. The original Item scoring is unchanged.
+  const termMatches=collectKeywordTerms?source.map(()=>new Set()):null;
   const runeById=new Map(runes.map(rune=>[rune.runeId,rune]));
   const unsupportedRules=[];
 
@@ -261,6 +264,7 @@ function classifyKeywordDocumentsWithCompiled(documents=[],prepared){
           for(const source of ownSpecificSources)text=replaceAllLiteral(text,source,' ');
         }
         if(!text.includes(normalizedKeyword))continue;
+        if(termMatches)termMatches[index].add(normalizedKeyword);
         increment(states[index],rune,'keyword:'+normalizedKeyword,signalLength(normalizedKeyword));
       }
     }
@@ -371,7 +375,8 @@ function classifyKeywordDocumentsWithCompiled(documents=[],prepared){
       top_rune:rankedRunes[0]?.label||'',
       top_rune_count:Number(rankedRunes[0]?.count)||0,
       rune_counts:rankedRunes,
-      group_counts:rankedGroups
+      group_counts:rankedGroups,
+      ...(termMatches?{matched_terms:[...termMatches[index]].sort()}:{}),
     });
   });
 
