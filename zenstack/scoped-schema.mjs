@@ -22,13 +22,17 @@ function equivalentPhysicalFields(left,right,kind){
   const a=fixedSchema.models[left],b=fixedSchema.models[right];
   if(!a||!b)throw Error('Missing frozen LOC '+kind+' ZModel');
   const leftNames=Object.keys(a.fields),rightNames=Object.keys(b.fields);
+  const shape=field=>JSON.stringify([
+    field.type,Boolean(field.array),Boolean(field.optional),
+    Boolean(field.id),Boolean(field.default),
+    (field.attributes||[]).map(attr=>attr.name).sort()
+  ]);
   if(leftNames.length!==rightNames.length||
-     leftNames.some(name=>{
-       const x=a.fields[name],y=b.fields[name];
-       return !y||x.type!==y.type||Boolean(x.array)!==Boolean(y.array)||
-         Boolean(x.optional)!==Boolean(y.optional)||Boolean(x.id)!==Boolean(y.id);
-     })||
-     a.idFields.join(',')!==b.idFields.join(','))
+     leftNames.some(name=>!b.fields[name]||
+       shape(a.fields[name])!==shape(b.fields[name]))||
+     a.idFields.join(',')!==b.idFields.join(',')||
+     Object.keys(a.uniqueFields).sort().join(',')!==
+       Object.keys(b.uniqueFields).sort().join(','))
     throw Error('Frozen LOC '+kind+' ZModel schemas differ');
   return a;
 }
