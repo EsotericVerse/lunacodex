@@ -167,7 +167,7 @@ async function sharedClasses(trx,scope,anchor,role){
   }
   return result;
 }
-async function keywordCatalog(trx,scope,anchor,requested,role,{withTotals=true}={}){
+export async function keywordCatalog(trx,scope,anchor,requested,role,{withTotals=true}={}){
   const info=await keywordClassInfo(trx,scope,anchor,requested,role);
   if(!info?.allowed)return {};
   const root=await trx.selectFrom(anchor).select(['uid','type','title','description','attr'])
@@ -261,7 +261,7 @@ async function traceKeywordGroups(trx,scope,anchor,places,start,end,source,reque
     document_count:Number(metrics.group_document_counts?.[group.uid])||0
   }));
 }
-async function keywordSummary(trx,scope,anchor,start,end,source,requested,role){
+export async function keywordSummary(trx,scope,anchor,start,end,source,requested,role){
   const info=await keywordClassInfo(trx,scope,anchor,requested,role);
   if(!info?.allowed||!info.ready)return [];
   const catalog=await keywordCatalog(trx,scope,anchor,requested,role,{withTotals:false});
