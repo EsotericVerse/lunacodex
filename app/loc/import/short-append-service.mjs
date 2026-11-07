@@ -92,6 +92,8 @@ function segmentText(e,uid){
  return marker(e)+'\n[來源：'+e.source_key+'；段落 '+(e.part_index+1)+'/'+e.part_count+
   ']\n'+e.content+'\n';
 }
+/** @param {unknown} batch @param {any} actor
+ * @param {{store?:any, cryptoProvider?:Crypto, uidFactory?:()=>string}} [options] */
 export async function processShortImport(batch,actor,{store,cryptoProvider=globalThis.crypto,
  uidFactory=()=>newShortImportUid(cryptoProvider)}={}){
  if(actor?.authorized!==true||!SCOPE.test(String(actor.scopeid||''))||
@@ -170,6 +172,8 @@ export async function processShortImport(batch,actor,{store,cryptoProvider=globa
 }
 // Unified portable Kysely short-import transaction backend; the existing
 // processShortImport remains the only batching, UID and append algorithm.
+/** @param {any} db @param {any} sql
+ * @param {{engine?:string, namespace?:string}} [options] */
 export function portableShortImportStore(db,sql,{engine='postgres',namespace}={}){
  if(typeof db?.transaction!=='function'||typeof sql!=='function'||!sql.ref||
    !['postgres','mysql','mssql'].includes(engine))
