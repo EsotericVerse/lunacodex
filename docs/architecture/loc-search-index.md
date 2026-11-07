@@ -54,6 +54,8 @@ GitHub merges do **not** deploy a Worker, change server configuration or populat
 
 - KV Free write and storage quotas are per account, not multiplied by Namespace or Worker.
 - The Worker bounds results to 200 candidate IDs and each dataset to 48 immutable deltas; on limits, it returns incomplete and preserves SQL fallback rather than silently truncating.
+- Search hints are accepted for UID prefiltering **only when the exact search term is a mandatory SQL `content.contains` predicate**; a mismatched hint, broader OR or compound expression leaves SQL authoritative instead of silently dropping articles.
+- The Worker uses the native Workers KV `get(keys, 'json')` API to read up to four index shards together, with a single-key fallback if the 25 MB bulk-response limit is reached. This reduces read-request overhead without introducing a new storage adapter.
 - The Worker currently loads up to 32 base shard snapshots plus delta segments per search. Memory/latency against production volume **has not been measured**; do not claim a 1-second SLA without evidence.
 - ZModel's `LocFederatedRef` and `LocAnchorLink` are **virtual types**, not automatically generated database policies. ZenStack's low-level **`$qb` bypasses `PolicyPlugin` policies**, even where a policy-aware client is created. The current fixed-control-model adapters therefore still rely on **the signed Gateway and Kysely filters** for effective access, not an assumed automatic policy SQL predicate. Galaxy row permissions remain the Gateway/Kysely responsibility until a separately validated policy-aware ORM cutover. No new RLS rules are necessary.
 - A text index is not a substitute for SQL COUNT, Culture temporal aggregation, Trace geographic queries, SQL Gateway routing or LOC Auth.

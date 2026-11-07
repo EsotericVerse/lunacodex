@@ -1,14 +1,27 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import worker from '../workers/loc-search-index/index.mjs';
-import {indexDocumentsFromWrite,withIndexedCandidates} from '../app/loc/providers/search-index-service.mjs';
+import {indexDocumentsFromWrite,withIndexedCandidates,federatedIndexedCandidates} from '../app/loc/providers/search-index-service.mjs';
 import {locSearchDocumentId} from '../app/loc/search-index-shard.mjs';
 import {locGlobalUid,parseLocGlobalUid} from '../zenstack/global-identity.mjs';
 import {createKyselyEdgeClient} from '../app/loc/providers/kysely-edge.mjs';
 
 class KvMemory {
-  constructor(){this.data=new Map();this.writes=0;}
-  async get(key,kind){const value=this.data.get(key)??null;return value!==null&&kind==='json'?JSON.parse(value):value;}
+  constructor(){this.data=new Map();this.writes=0;this.bulkReads=0;this.singleReads=0;this.failLargeBulk=false;}
+  async get(key,kind){
+    const decode=item=>{
+      const value=this.data.get(item)??null;
+      return value!==null&&kind==='json'?JSON.parse(value):value;
+    };
+    if(Array.isArray(key)){
+      this.bulkReads++;
+      if(this.failLargeBulk&&key.length>1)
+        throw Object.assign(new Error('KV bulk response exceeds 25 MB'),{status:413});
+      return new Map(key.map(item=>[item,decode(item)]));
+    }
+    this.singleReads++;
+    return decode(key);
+  }
   async put(key,value){this.writes++;this.data.set(key,String(value));}
   async delete(key){this.data.delete(key);}
   async list({prefix='',limit=1000}={}) {
@@ -121,7 +134,8 @@ test('Gateway adds only UID IN prefilter after a complete trusted index response
   t.after(()=>{globalThis.Deno=previousDeno;globalThis.fetch=previousFetch;});
   const request={kind:'query',operation:'select',schema:'silver',
     table:'lo3rwang_galaxy',columns:['uid','title'],filters:[
-      {column:'search',operator:'eq',value:true}],indexHint:{scopeId:'lo3rwang',query:'痕跡'}};
+      {column:'search',operator:'eq',value:true}],or:['content.contains."痕跡"'],
+    indexHint:{scopeId:'lo3rwang',query:'痕跡'}};
   const indexed=await withIndexedCandidates(request,{connection_alias:'db2'});
   assert.deepEqual(indexed.filters.at(-1),{column:'uid',operator:'in',value:['Ab123456']});
   assert.deepEqual(indexed.filters[0],request.filters[0]);
@@ -180,4 +194,115 @@ test('Gateway transport carries DB identity as an assertion rather than an SQL t
   assert.equal(submitted.target,'configured');
   assert.equal(submitted.expectedDbId,'db2');
   assert.deepEqual(submitted.filters,[{column:'uid',operator:'eq',value:'Ab123456',negate:false}]);
+});
+
+test('an untrusted index hint never narrows a different SQL content predicate',async(t)=>{
+  const previousDeno=globalThis.Deno,previousFetch=globalThis.fetch;
+  const seen=[];
+  globalThis.Deno={env:{get:name=>name==='LOC_SEARCH_INDEX_URL'?'https://index.example.test':
+    name==='LOC_SEARCH_INDEX_SECRET'?secret:
+    name==='LOC_SEARCH_INDEX_ENABLED'?'true':''}};
+  globalThis.fetch=async(url,options)=>{
+    seen.push(JSON.parse(options.body));
+    return new Response(JSON.stringify({complete:true,hits:[{
+      scopeId:'lo3rwang',dbId:'db1',entityType:'galaxy',uid:'Ab123456',
+      globalUid:locGlobalUid({databaseId:'db1',scopeId:'lo3rwang',uid:'Ab123456'})
+    }]}),{status:200});
+  };
+  t.after(()=>{globalThis.Deno=previousDeno;globalThis.fetch=previousFetch;});
+  const query={kind:'query',operation:'select',schema:'silver',
+    table:'lo3rwang_galaxy',columns:['uid','title'],filters:[],
+    or:['content.contains."文化"'],indexHint:{scopeId:'lo3rwang',query:'痕跡'}};
+  assert.equal(await withIndexedCandidates(query,{connection_alias:'db1'}),query);
+  assert.equal(await federatedIndexedCandidates(query,[{databaseId:'db1'}]),null);
+  assert.equal(seen.length,0,'mismatching hints must never query or restrict via the index');
+});
+
+test('a compound or negated search is never reduced to one FlexSearch keyword',async(t)=>{
+  const previousDeno=globalThis.Deno,previousFetch=globalThis.fetch;
+  const seen=[];
+  globalThis.Deno={env:{get:name=>name==='LOC_SEARCH_INDEX_URL'?'https://index.example.test':
+    name==='LOC_SEARCH_INDEX_SECRET'?secret:
+    name==='LOC_SEARCH_INDEX_ENABLED'?'true':''}};
+  globalThis.fetch=async(url,options)=>{
+    seen.push(JSON.parse(options.body));
+    return new Response(JSON.stringify({complete:true,hits:[{
+      scopeId:'lo3rwang',dbId:'db1',entityType:'galaxy',uid:'Ab123456',
+      globalUid:locGlobalUid({databaseId:'db1',scopeId:'lo3rwang',uid:'Ab123456'})
+    }]}),{status:200});
+  };
+  t.after(()=>{globalThis.Deno=previousDeno;globalThis.fetch=previousFetch;});
+  for(const expression of [
+    'content.contains."文化",content.contains."痕跡"',
+    'and(content.contains."文化",content.contains."痕跡")',
+    'content.contains."文化"'
+  ]){
+    const query={kind:'query',operation:'select',schema:'silver',
+      table:'lo3rwang_galaxy',columns:['uid','title'],filters:[],
+      or:[expression],indexHint:{scopeId:'lo3rwang',query:'痕跡'}};
+    assert.equal(await withIndexedCandidates(query,{connection_alias:'db1'}),query);
+  }
+  assert.equal(seen.length,0);
+});
+
+test('the exact required content term still uses one FlexSearch candidate lookup',async(t)=>{
+  const previousDeno=globalThis.Deno,previousFetch=globalThis.fetch;
+  let calls=0;
+  globalThis.Deno={env:{get:name=>name==='LOC_SEARCH_INDEX_URL'?'https://index.example.test':
+    name==='LOC_SEARCH_INDEX_SECRET'?secret:
+    name==='LOC_SEARCH_INDEX_ENABLED'?'true':''}};
+  globalThis.fetch=async()=>{
+    calls++;
+    return new Response(JSON.stringify({complete:true,hits:[{
+      scopeId:'lo3rwang',dbId:'db1',entityType:'galaxy',uid:'Ab123456',
+      globalUid:locGlobalUid({databaseId:'db1',scopeId:'lo3rwang',uid:'Ab123456'})
+    }]}),{status:200});
+  };
+  t.after(()=>{globalThis.Deno=previousDeno;globalThis.fetch=previousFetch;});
+  const query={kind:'query',operation:'select',schema:'silver',
+    table:'lo3rwang_galaxy',columns:['uid','title'],filters:[],
+    or:['content.contains."文化"'],indexHint:{scopeId:'lo3rwang',query:'文化'}};
+  const narrowed=await withIndexedCandidates(query,{connection_alias:'db1'});
+  assert.deepEqual(narrowed.filters,[{column:'uid',operator:'in',value:['Ab123456']}]);
+  assert.equal(calls,1);
+});
+
+test('KV Worker uses native bulk reads for multiple FlexSearch delta segments',async()=>{
+  const isolated=new KvMemory(),isolatedEnv={...env,LOC_KV:isolated};
+  const send=async(path,body,method='POST')=>{
+    const response=await worker.fetch(new Request('https://index.example.test'+path,{
+      method,headers:{'content-type':'application/json',
+        authorization:'Bearer '+secret},body:JSON.stringify(body)
+    }),isolatedEnv);
+    return {status:response.status,...await response.json()};
+  };
+  await send('/v1/documents',{documents:[doc('db1','Ab123456','中文共同片段')]});
+  await send('/v1/documents',{documents:[doc('db1','Cd123456','英文與共同片段')]});
+  await send('/v1/coverage',{scopeId:'lo3rwang',dbId:'db1',
+    entityType:'galaxy',complete:true,shards:[]},'PUT');
+  const result=await send('/v1/search',{scopeId:'lo3rwang',dbId:'db1',query:'共同'});
+  assert.equal(result.complete,true);
+  assert.equal(result.hits.length,2);
+  assert.equal(isolated.bulkReads,1,'multiple shards should use KV.get(keys) once');
+});
+
+test('KV Worker falls back to individual reads when bulk response exceeds 25 MB',async()=>{
+  const isolated=new KvMemory(),isolatedEnv={...env,LOC_KV:isolated};
+  const send=async(path,body,method='POST')=>{
+    const response=await worker.fetch(new Request('https://index.example.test'+path,{
+      method,headers:{'content-type':'application/json',
+        authorization:'Bearer '+secret},body:JSON.stringify(body)
+    }),isolatedEnv);
+    return {status:response.status,...await response.json()};
+  };
+  await send('/v1/documents',{documents:[doc('db1','Ab123456','共同片段')]});
+  await send('/v1/documents',{documents:[doc('db1','Cd123456','共同星球')]});
+  await send('/v1/coverage',{scopeId:'lo3rwang',dbId:'db1',
+    entityType:'galaxy',complete:true,shards:[]},'PUT');
+  isolated.failLargeBulk=true;
+  const result=await send('/v1/search',{scopeId:'lo3rwang',dbId:'db1',query:'共同'});
+  assert.equal(result.complete,true);
+  assert.equal(result.hits.length,2);
+  assert.equal(isolated.bulkReads,1);
+  assert.ok(isolated.singleReads>=3,'fallback loads each shard individually');
 });

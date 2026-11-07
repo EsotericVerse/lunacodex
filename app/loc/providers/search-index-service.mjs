@@ -1,4 +1,5 @@
 import {locGlobalUid} from '../../../zenstack/global-identity.mjs';
+import {parsePortableOrExpression} from './portable-search.mjs';
 
 // Private LOC index transport. Works with any SQL target; the index is a
 // candidate filter only, NEVER a source of article content or authorization.
@@ -38,6 +39,23 @@ function targetId(target){
   const id=String(target?.dataset_id||target?.connection_alias||target?.target_id||'');
   return SOURCE.test(id)?id:null;
 }
+// Index hints are client-provided optimization requests, not SQL predicates.
+// A UID prefilter is safe only if every possible SQL result is known to
+// contain that exact literal term. A different term or an OR expression
+// would silently omit valid Galaxy articles even when SQL permissions pass.
+function hasRequiredContentTerm(body,term){
+  const filters=Array.isArray(body?.filters)?body.filters:[];
+  if(filters.some(f=>f?.column==='content'&&f.operator==='contains'&&
+    f.negate!==true&&f.value===term))return true;
+  const or=Array.isArray(body?.or)?body.or:[];
+  if(or.length!==1)return false;
+  let parsed;
+  try{parsed=parsePortableOrExpression(or[0]);}catch{return false;}
+  return parsed.type==='or'&&parsed.items.length===1&&
+    parsed.items[0].type==='predicate'&&
+    parsed.items[0].column==='content'&&
+    parsed.items[0].operator==='contains'&&parsed.items[0].value===term;
+}
 // Exact ordinary content term only. Boolean expressions, quoted phrases,
 // browsing, excluded terms and UID lookups keep the existing SQL semantics.
 // Scope/DB identity is checked again on the response and SQL applies its
@@ -54,7 +72,8 @@ export async function withIndexedCandidates(body,target){
   const q=String(hint?.query||'').trim();
   const dbId=targetId(target);
   if(!SCOPE.test(scopeId)||hint?.scopeId!==scopeId||!dbId||
-     q.length<2||q.length>100||!/^[\p{L}\p{N}]+$/u.test(q))return body;
+     q.length<2||q.length>100||!/^[\p{L}\p{N}]+$/u.test(q)||
+     !hasRequiredContentTerm(body,q))return body;
   const result=await requestIndex('/v1/search','POST',{
     scopeId,dbId,entityType:'galaxy',query:q
   });
@@ -89,7 +108,8 @@ export async function federatedIndexedCandidates(body,sources){
   const query=String(body?.indexHint?.query||'').trim();
   if(!SCOPE.test(scopeId)||!Array.isArray(sources)||!sources.length||
      sources.length>12||query.length<2||query.length>100||
-     !/^[\p{L}\p{N}]+$/u.test(query))return null;
+     !/^[\p{L}\p{N}]+$/u.test(query)||
+     !hasRequiredContentTerm(body,query))return null;
   const dbIds=sources.map(source=>source?.databaseId);
   if(dbIds.some(id=>!SOURCE.test(id))||new Set(dbIds).size!==dbIds.length)return null;
   const response=await requestIndex('/v1/search','POST',{
