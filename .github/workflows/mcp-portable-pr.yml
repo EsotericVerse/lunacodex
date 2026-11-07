@@ -1,8 +1,18 @@
 name: MCP Portable regression (PR)
 
-# Manually triggered read-only verification. Never deploys or accesses production databases.
+# PR-only read-only verification. No secrets, production DB calls, deploys or migrations.
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'app/loc/**'
+      - 'workers/loc-authority/**'
+      - 'services/loc-sql/**'
+      - 'services/loc-mcp-sql/**'
+      - 'extensions/loc-galaxy-link/**'
+      - 'scripts/test-loc-*.mjs'
+      - 'package.json'
+      - '.github/workflows/mcp-portable-pr.yml'
 
 permissions:
   contents: read
@@ -57,6 +67,10 @@ jobs:
             scripts/test-loc-galaxy-link-extension.mjs \
             scripts/test-loc-short-append-service.mjs \
             scripts/test-loc-short-edge-authorization.mjs
+      - name: Verify complete native Authority and zero-deploy database switching
+        run: |
+          npm run test:authority
+          node --test scripts/test-loc-sql-standalone-deployment.mjs
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
