@@ -2,6 +2,8 @@ export default {
   "dailyRune": "每日符文",
   "sourceGroup": "群组来源分类",
   "place": "地点",
+  "placeKeyword": "地点（关键词）",
+  "mediaKeyword": "多媒体（关键词）",
   "mediaType": "多媒体类型",
   "mediaPlatform": "多媒体来源统计",
   "mediaStyle": "多媒体风格统计（Meta Tag）",
