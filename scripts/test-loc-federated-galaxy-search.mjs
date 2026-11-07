@@ -105,6 +105,21 @@ test('LOC Auth grant and Galaxy search/list predicates work without native RLS',
   assert.equal(publicGalaxyGate({...request(),table:'lo3rwang_anchor'},'anon',{}),false);
 });
 
+test('unqualified UID details and full-content SELECTs require list permission without RLS',()=>{
+  const uidRead={kind:'query',schema:'silver',table:'lo3rwang_galaxy',
+    operation:'select',columns:['uid','title','content'],
+    filters:[{column:'uid',operator:'eq',value:'Ab123456'}]};
+  assert.equal(publicGalaxyGate(uidRead,'anon',{}),'list');
+  assert.equal(publicGalaxyGate({...uidRead,columns:['uid','title']},'anon',{}),'list');
+  assert.equal(publicGalaxyGate({...uidRead,columns:['*'],filters:[]},'anon',{}),'list');
+  const textSearch=request();
+  assert.equal(publicGalaxyGate({...textSearch,columns:['uid','title','date']},'anon',{}),true);
+  assert.equal(publicGalaxyGate({...textSearch,columns:['uid','content']},'anon',{}),'list');
+  assert.equal(publicGalaxyGate(uidRead,'authenticated',{
+    provider:'loc',me:true,grants:['lo3rwang:read']
+  }),'list');
+});
+
 test('cross-DB search preserves duplicate UID as two independent articles',async()=>{
   const data=await mergeFederatedGalaxyRows(sources,request(0,8),reader());
   assert.deepEqual(data.data.map(x=>x.title),[

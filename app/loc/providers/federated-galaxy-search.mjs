@@ -99,10 +99,14 @@ export function publicGalaxyGate(body,role,claims={}){
   if(!match)return false;
   if(role==='authenticated'&&canManageDelegation(claims,'scope',match[1]))
     return false;
-  // Article details need "list"; search result previews need "search".
-  if(body.expectedDbId!==undefined&&isDatasetQualifiedArticleRead(body))
-    return 'list';
-  return isTextSearchQuery(body)?true:false;
+  // Search may reveal a title or permitted excerpt, never an article
+  // body when list=false. Apply the same rule even without a databaseId:
+  // the legacy single-database route must not rely on provider RLS.
+  const columns=Array.isArray(body.columns)?body.columns:['*'];
+  if(columns.includes('*')||columns.includes('content'))return 'list';
+  if(isTextSearchQuery(body))return true;
+  if(isDatasetQualifiedArticleRead(body))return 'list';
+  return false;
 }
 export function isDatasetQualifiedArticleRead(body){
   if(!federatedScopeFromQuery(body)||body.head||body.count)return false;
