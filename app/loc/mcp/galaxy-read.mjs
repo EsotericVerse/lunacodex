@@ -43,6 +43,8 @@ export async function searchMemory(args={},env={},fetchImpl=globalThis.fetch){
   const scopeid=scopeAllowed(args.scopeid);
   if(typeof args.query!=='string')throw bad('query is required');
   const term=args.query.trim();
+  if(/(?:\\bPR(?:[\\s#:\\-]*\\d+)?\\b|\\bpull[ -]?request\\b|\\bgithub\\b|\\bcommit\\b|合併請求|拉取請求)/i.test(term))
+    throw bad('請至github頁面找尋PR相關資料！不開放搜尋PR!');
   if(term.length<2||term.length>100||/[\u0000-\u001f\u007f]/.test(term))
     throw bad('query must contain 2–100 characters without control characters');
   const limit=args.limit===undefined?10:Number(args.limit);
