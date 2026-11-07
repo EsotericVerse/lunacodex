@@ -143,12 +143,13 @@ export function selectPublicSiteBootstrap(){
   if(publicSiteBootstrapRequest)return publicSiteBootstrapRequest;
   // Normal visitor path is a JS module, no fetch, JSON parsing, Worker or SQL.
   // After an authorized editor change, the current editor sees live data until publication.
-  publicSiteBootstrapRequest=(editedPublicMetadata
-    ?dbPublicClient.schema('silver').publicAction('read_app_bootstrap',{p_scope_id:'loc',p_page_name:'index'})
-      .then(({data,error})=>{if(error)throw error;return {...(data||{}),blocks:[]};})
-    :Promise.resolve({...PUBLISHED_SITE_BOOTSTRAP,
-      config:SCOPE_ROUTE_INDEX.find(row=>row.scope_id==='loc')?.config||null}
-    )).catch(error=>{publicSiteBootstrapRequest=null;throw error;});
+  // The static site publishes its registry and presentation metadata at build
+  // time. Editing invalidates the snapshot, while live Scope config and Blocks
+  // are queried independently by selectAppBootstrap. Never call a retired
+  // public-action endpoint here: the temporary public Data API cannot run it.
+  publicSiteBootstrapRequest=Promise.resolve({...PUBLISHED_SITE_BOOTSTRAP,
+    config:SCOPE_ROUTE_INDEX.find(row=>row.scope_id==='loc')?.config||null
+  });
   return publicSiteBootstrapRequest;
 }
 
@@ -285,26 +286,26 @@ export async function pageBlocks(scopeId,type='index'){
   const id=String(scopeId||'').trim().toLowerCase();
   const name=String(type||'index').trim().toLowerCase().replace(/^home$/,'index');
   if(!SCOPE_ID_PATTERN.test(id)||! /^[a-z0-9_-]+$/.test(name))return [];
-  if(id==='local')return selectLiveScopeBlocks(id,name);
-  const {data,error}=await dbPublicClient.schema('silver').publicAction('page_blocks',{
-    p_scope_id:id,p_type:name
-  });
-  if(error)throw new Error(error.message||'Page Blocks SELECT failed');
-  return (Array.isArray(data)?data:[]).sort((a,b)=>Number(a.block_order||0)-Number(b.block_order||0));
+  // The fixed physical relation is already resolved by selectLiveScopeBlocks.
+  // A bounded SELECT works for the existing public site without any SQL
+  // Gateway, retired RPC, or unsupported public-action transport.
+  return selectLiveScopeBlocks(id,name);
 }
 export async function heroBlocks(scopeId,type){
   const id=String(scopeId||'').trim().toLowerCase();
   const name=String(type||'').trim().toLowerCase();
   if(!SCOPE_ID_PATTERN.test(id)||! /^[a-z][a-z0-9_-]*$/.test(name))return [];
-  const {data,error}=await dbPublicClient.schema('silver').publicAction('hero_blocks',{
-    p_scope_id:id,p_type:name
+  // Shared Feature Heroes are two page_name values in silver.loc_blocks.
+  // Fetch them in one bounded SELECT rather than invoking a missing RPC.
+  const names=['group_'+name,'scope_'+name];
+  const {rows}=await selectRows('silver.loc_blocks',{
+    columns:BLOCK_COLUMNS,
+    filters:[{column:'page_name',operator:'in',value:names}],
+    limit:DB_QUERY_BATCH_SIZE,offset:0
   });
-  if(error)throw new Error(error.message||'Hero Blocks SELECT failed');
-  const rows=Array.isArray(data)?data:[];
   if(!rows.length){
     // The published artwork is a bundled default when a new Scope has not
     // populated its Blocks table yet; this is not an ISR/database cache.
-    const names=['group_'+name,'scope_'+name];
     const defaults=await Promise.all(names.map(page=>loadPublishedBlocks('loc',page)));
     return defaults.flatMap((items,index)=>(items||[]).map(row=>({
       ...row,page_name:names[index]
