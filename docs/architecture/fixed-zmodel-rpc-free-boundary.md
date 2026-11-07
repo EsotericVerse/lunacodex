@@ -353,3 +353,24 @@ not a claim that all Kysely management actions have migrated to ORM policies.
 Next extend the same pattern to authorized fixed-model writes after a
 real-policy deployment/SQL parity check; do not bypass the existing RLS.
 
+
+## Fixed global administration under ZenStack PolicyPlugin
+
+`api.manage` and `silver.loc` now declare `@@allow('update,delete',
+auth().role == 'admin')` in ZModel and the V3 runtime SchemaDef. The
+`LocPrincipal` auth type is an in-memory LOC-signed delegation, never a
+physical user table or DB Auth dependency. Only verified
+`global:manage` grants enter this write path; existing
+`canManageLoc('global')` checks remain enforced inside the same Kysely
+transaction. Scope-only grants never map to an administrator. Other models,
+INSERT batches, dynamic Scope updates, and every MCP route retain their
+previous LOC Auth + Kysely behavior.
+
+For fixed Registry `update`/`delete`, the authorized transaction uses the
+**same** ZenStack PolicyPlugin cache and the **same** SQL dialect/driver as
+fixed public reads. Primary-key protection is evaluated from frozen
+`schema.models[modelName].idFields` instead of querying `pg_index` on
+every fixed Registry edit. It introduces no extra database request or RPC.
+The generic dynamic-table update path retains its existing catalog check,
+pending a separate fixed/dynamic contract strategy.
+
