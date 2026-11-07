@@ -89,7 +89,7 @@ async function matchingArticleMetadata(db,scope,patterns,{start='',end='',source
   for(let i=0;i<ids.length;i+=500){
     let query=db.selectFrom(galaxyName(scope))
       .select(['uid','date']).where('uid','in',ids.slice(i,i+500))
-      .where('keyword','=',true);
+      .where('keyword','=',true).where('date','is not',null);
     if(start)query=query.where('date','>=',start);
     if(end)query=query.where('date','<=',end);
     if(source)query=query.where('site','=',source);
@@ -254,8 +254,9 @@ async function persistPatterns(trx,scope,classUid,patterns,stats){
   }
   const obsolete=rows.filter(row=>!active.has(norm(row.pattern)))
     .map(row=>row.pattern);
-  for(let i=0;i<renamed.length+obsolete.length;i+=100){
-    const batch=[...new Set([...renamed,...obsolete])].slice(i,i+100);
+  const deleting=[...new Set([...renamed,...obsolete])];
+  for(let i=0;i<deleting.length;i+=100){
+    const batch=deleting.slice(i,i+100);
     if(batch.length)await trx.deleteFrom('silver.loc_search_pattern')
       .where('scopeid','=',scope).where('pattern','in',batch).execute();
   }
@@ -302,7 +303,8 @@ export async function analyzeKeywordScope(db,scope,classUid,{
   const total=await db.selectFrom(galaxyName(scope))
     .select(eb=>eb.fn.count('uid').as('n')).executeTakeFirst();
   const expectedCount=Number(total?.n??0);
-  if(!Number.isSafeInteger(expectedCount))fail('Galaxy count out of range');
+  if(!Number.isSafeInteger(expectedCount)||expectedCount<0)
+    fail('Galaxy count out of range');
   const cols=['uid','date','createtime','UpdateTime','keyword'];
   const maximumRows=10000;
   const reader=createIndexedDateKeywordReader({
