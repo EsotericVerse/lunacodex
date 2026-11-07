@@ -21,6 +21,7 @@ function fakeStore(){
   execute:async()=>{
    const statement=parts.join('?');
    calls.push(statement);
+   calls.push({statement,values});
    return /get_lock/.test(statement)?{rows:[{acquired:1}]}:{rows:[]};
   }
  });
@@ -32,17 +33,19 @@ test('portable Extension source locks use one shared adapter for Postgres, MySQL
   const {db,sql,calls}=fakeStore();
   const store=portableShortImportStore(db,sql,{engine,namespace:engine==='mysql'?'':'silver'});
   await store.transaction('lo3rwang',async tx=>{
-   await tx.lockSource('scope|source1');
-   await tx.lockSource('scope|source2');
+   await tx.lockSource('gl:'+'a'.repeat(64));
+   await tx.lockSource('gl:'+'b'.repeat(64));
   });
   assert.deepEqual(calls.filter(x=>x==='commit'),['commit'],engine);
-  if(engine==='postgres')assert.equal(calls.filter(x=>x.includes('pg_advisory_xact_lock')).length,2);
+  if(engine==='postgres')assert.equal(calls.filter(x=>typeof x==='string'&&x.includes('pg_advisory_xact_lock')).length,2);
   if(engine==='mysql'){
-   assert.equal(calls.filter(x=>x.includes('get_lock')).length,2);
-   assert.equal(calls.filter(x=>x.includes('release_lock')).length,2);
-   assert.ok(calls.indexOf('commit')<calls.findIndex(x=>x.includes('release_lock')));
+   assert.equal(calls.filter(x=>typeof x==='string'&&x.includes('get_lock')).length,2);
+   for(const x of calls.filter(x=>typeof x==='object'&&x.statement.includes('get_lock')))
+    assert.equal(x.values[0].length,64,'MySQL lock name must be a 64-character hash');
+   assert.equal(calls.filter(x=>typeof x==='string'&&x.includes('release_lock')).length,2);
+   assert.ok(calls.indexOf('commit')<calls.findIndex(x=>typeof x==='string'&&x.includes('release_lock')));
   }
-  if(engine==='mssql')assert.equal(calls.filter(x=>x.includes('tablockx,holdlock')).length,1);
+  if(engine==='mssql')assert.equal(calls.filter(x=>typeof x==='string'&&x.includes('tablockx,holdlock')).length,1);
  }
 });
 test('short-import store never permits arbitrary Scope or SQL target from Extension',async()=>{
