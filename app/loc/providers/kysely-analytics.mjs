@@ -45,11 +45,14 @@ async function dailyStats(trx,scope,start,end,includeUndated=false){
       and (${start}::date is null or date>=${start}::date)
       and (${end}::date is null or date<=${end}::date)
   )
-  select s.d as day,'source'::text as kind,s.c as category,
-      count(*)::integer as item_count from s group by 1,3
-  union all
-  select s.d as day,'total'::text as kind,'文字作品'::text as category,
-      count(*)::integer as item_count from s group by 1
+  -- One aggregation pass returns both source lanes and per-day totals.
+  -- GROUPING(s.c) distinguishes the total row from an empty source name.
+  select s.d as day,
+    case when grouping(s.c)=1 then 'total'::text else 'source'::text end as kind,
+    case when grouping(s.c)=1 then '文字作品'::text else s.c end as category,
+    count(*)::integer as item_count
+  from s
+  group by grouping sets ((s.d,s.c),(s.d))
   order by 1,2,3`.execute(trx);
   return rows.rows;
 }
@@ -318,15 +321,15 @@ async function simpleCultureData(db,scope,mode,start,end,{engine='postgres',name
       ?JSON.parse(row.attr||'{}'):row.attr||{}}));
   }
   if(!start||!end)reject('Culture density requires a bounded date range');
-  const from=start+'T00:00:00';
-  const until=new Date(Date.parse(end+'T00:00:00Z')+86400000)
-    .toISOString().slice(0,10)+'T00:00:00';
+  // Time River groups by the published Galaxy.date, not by upload time.
+  // Apply the same date window to WHERE so an existing Galaxy.date index can
+  // prune irrelevant articles before grouping; no full text or Anchor JOIN.
   const rows=await db.selectFrom(table(scope+'_galaxy'))
     .select(['date','site'])
     .select(eb=>eb.fn.countAll().as('item_count'))
     .where('culture','=',true)
-    .where('createtime','>=',from)
-    .where('createtime','<',until)
+    .where('date','>=',start)
+    .where('date','<=',end)
     .where('date','is not',null)
     .groupBy(['date','site']).orderBy('date','asc').execute();
   return rows.map(row=>({day:portableDay(row.date),site:String(row.site||''),
