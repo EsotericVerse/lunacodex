@@ -1223,7 +1223,7 @@ export default {
       // data access or management capabilities; the gateway must call mayAccess.
       if(request.method==='GET'&&url.pathname==='/v1/identity')return json(principal,200,origin);
       if(request.method==='POST'&&url.pathname==='/v1/delegation')
-        return exchangeLocDelegation(request,env,principal,origin);
+        return await exchangeLocDelegation(request,env,principal,origin);
       // Account-level database selection is independent for each LOC identity.
       // Only profiles explicitly exposed by the root are selectable by users.
       if(url.pathname==='/v1/databases'||
