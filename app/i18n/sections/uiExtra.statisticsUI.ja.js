@@ -2,6 +2,8 @@ export default {
   "dailyRune": "毎日のルーン",
   "sourceGroup": "グループのソース分類",
   "place": "場所",
+  "placeKeyword": "場所（キーワード）",
+  "mediaKeyword": "メディア（キーワード）",
   "mediaType": "メディアの種類",
   "mediaPlatform": "メディアプラットフォーム統計",
   "mediaStyle": "メディアスタイル統計（メタタグ）",
