@@ -200,7 +200,17 @@ function validateTarget(input,id){
     throw fail('Invalid database connection metadata');
   const password=input.password;
   if(password!==undefined&&(typeof password!=='string'||password.length>4096))throw fail('Invalid database secret');
-  return {id,engine,host,port,database,username,label,...(password?{password}:{})};
+  const selectableByUsers=input.selectable_by_users===true;
+ if(input.selectable_by_users!==undefined&&typeof input.selectable_by_users!=='boolean')
+  throw fail('Invalid user database selection policy');
+ const allowedSubjects=input.allowed_subjects||[];
+ if(!Array.isArray(allowedSubjects)||allowedSubjects.length>500||
+    allowedSubjects.some(x=>!/^loc_[A-Za-z0-9_-]{32,80}$/.test(String(x))))
+   throw fail('Invalid database allowed subjects');
+ return {id,engine,host,port,database,username,label,
+  selectable_by_users:selectableByUsers,
+  allowed_subjects:[...new Set(allowedSubjects)],
+  ...(password?{password}:{})};
 }
 async function encryptionKey(secret){
   const bytes=b64bytes(secret);
@@ -419,8 +429,13 @@ export class LocAuthorityState extends DurableObject {
     return publicView;
   }
   async putTarget(id,input){
-    const validated=validateTarget(input,id);
     const old=await this.ctx.storage.get('target:'+id);
+    const validated=validateTarget({
+      ...input,
+      selectable_by_users:input?.selectable_by_users??
+        old?.public?.selectable_by_users??false,
+      allowed_subjects:input?.allowed_subjects??old?.public?.allowed_subjects??[]
+    },id);
     if(!validated.password&&!old)throw fail('New target requires a password');
     const profile=validated.password?validated:{...validated,password:(await decryptProfile(old.encrypted,this.env.LOC_CONTROL_ENCRYPTION_KEY)).password};
     const {password,...publicFields}=profile;
@@ -429,6 +444,40 @@ export class LocAuthorityState extends DurableObject {
       encrypted:await encryptProfile(profile,this.env.LOC_CONTROL_ENCRYPTION_KEY)
     });
     return publicFields;
+  }
+  // Per-user selection is stored in the existing Authority DO, not in
+  // database tables, build-time JSON, or browser-held connection credentials.
+  async databaseTargetsForUser(subject,isRoot=false){
+    if(!/^loc_[A-Za-z0-9_-]{32,80}$/.test(String(subject||'')))
+      throw fail('Valid LOC subject required',401);
+    const stored=await this.ctx.storage.list({prefix:'target:'});
+    const targets=[...stored].flatMap(([key,item])=>{
+      const info=item?.public||{};
+      const authorized=isRoot||info.selectable_by_users===true||
+        (Array.isArray(info.allowed_subjects)&&info.allowed_subjects.includes(subject));
+      if(!authorized)return [];
+      return [{id:key.slice('target:'.length),label:String(info.label||key),
+        engine:info.engine}];
+    }).sort((a,b)=>a.label.localeCompare(b.label));
+    const current=await this.ctx.storage.get('user-db:'+subject)||null;
+    return {targets,selected:targets.some(x=>x.id===current)?current:null};
+  }
+  async selectDatabaseForUser(subject,id,isRoot=false){
+    const choices=await this.databaseTargetsForUser(subject,isRoot);
+    if(id===null||id==='configured'){
+      await this.ctx.storage.delete('user-db:'+subject);
+      return {selected:null};
+    }
+    if(!ID.test(String(id||''))||!choices.targets.some(x=>x.id===id))
+      throw fail('Database is not available to this LOC account',403);
+    await this.ctx.storage.put('user-db:'+subject,id);
+    return {selected:id};
+  }
+  async selectedDatabaseForDelegation(subject,isRoot=false){
+    return (await this.databaseTargetsForUser(subject,isRoot)).selected;
+  }
+  async verifyLiveDatabaseSelection(subject,id,isRoot=false){
+    return id===await this.selectedDatabaseForDelegation(subject,isRoot);
   }
   async selectPrimary(id){
     const builtin=id==='supabase-current'||id==='neon-current';
@@ -1164,6 +1213,30 @@ export default {
       if(request.method==='GET'&&url.pathname==='/v1/identity')return json(principal,200,origin);
       if(request.method==='POST'&&url.pathname==='/v1/delegation')
         return exchangeLocDelegation(request,env,principal,origin);
+      // Account-level database selection is independent for each LOC identity.
+      // Only profiles explicitly exposed by the root are selectable by users.
+      if(url.pathname==='/v1/databases'||
+         url.pathname==='/v1/databases/selection'){
+        if(principal.provider!=='loc')throw fail('LOC Auth required',401);
+        const roots=String(env.LOC_RECOVERY_ROOT_LOC_SUBJECTS||'')
+          .split(/[\s,;]+/).filter(Boolean);
+        const state=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName(
+          'loc-authority-control-v1'));
+        const isRoot=roots.includes(principal.subject);
+        if(request.method==='GET'&&url.pathname==='/v1/databases')
+          return json(await state.databaseTargetsForUser(principal.subject,isRoot),200,origin);
+        if(request.method==='POST'&&url.pathname==='/v1/databases/selection'){
+          const raw=await request.text();
+          if(raw.length>600)throw fail('Database selection is too large',413);
+          let input;try{input=JSON.parse(raw)}catch{throw fail('Invalid database selection')}
+          if(!input||typeof input!=='object'||Array.isArray(input)||
+            Object.keys(input).some(x=>x!=='id'))
+            throw fail('Invalid database selection');
+          return json(await state.selectDatabaseForUser(principal.subject,
+            input.id,isRoot),200,origin);
+        }
+        throw fail('Method not allowed',405);
+      }
       const roots=String(principal.provider==='loc'?env.LOC_RECOVERY_ROOT_LOC_SUBJECTS:
         principal.provider==='clerk'?env.LOC_RECOVERY_ROOT_CLERK_IDS:env.LOC_RECOVERY_ROOT_SECONDARY_SUBJECTS)
         .split(/[\s,;]+/).filter(Boolean);
