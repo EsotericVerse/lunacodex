@@ -3,6 +3,8 @@ name: MCP Portable regression (PR)
 # Manually triggered read-only verification. Never deploys or accesses production databases.
 on:
   workflow_dispatch:
+  pull_request:
+    paths: [".github/workflows/mcp-portable-pr.yml", "app/loc/mcp/**", "services/loc-mcp-sql/**", "scripts/test-loc-mcp-*.mjs"]
 
 permissions:
   contents: read
