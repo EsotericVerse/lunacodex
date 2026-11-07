@@ -377,3 +377,10 @@ The verified managed-write Scope registry accepts only config tables with
 without a `pg_index` query. This was checked against the actual primary
 keys in PostgreSQL for both existing Scopes and the LOC Registry.
 
+Direct browser Kysely `query` UPDATE/DELETE targeting `api.manage` or
+`silver.loc` now follow the same policy branch as `managed-write`, with a
+required signed global LOC grant. Generic INSERT/UPSERT for these two fixed
+relations also requires `global:manage`, but stays with the original
+trusted Kysely execution until an authenticated ZenStack create policy is
+verified. Other models and all MCP routes remain unchanged.
+
