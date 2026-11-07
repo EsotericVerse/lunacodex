@@ -7,9 +7,9 @@ const UID=/^[A-Za-z0-9]{8}$/;
 const normalize=value=>String(value??'').normalize('NFKC').trim();
 const identity=value=>normalize(value).toLocaleLowerCase('zh-Hant');
 
-export function buildKeywordSearchPatterns(scopeId,items=[],matchedUids=new Map()){
+export function buildKeywordSearchPatterns(scopeId,items=[],matchedUids=[]){
   if(!SCOPE.test(String(scopeId||'')))throw new Error('Invalid search-pattern Scope');
-  if(!Array.isArray(items)||!(matchedUids instanceof Map))
+  if(!Array.isArray(items)||!Array.isArray(matchedUids))
     throw new TypeError('Invalid Keyword Items or word matches');
   // The library supplies the complete set of words, even those with zero hits.
   // Expressions such as TO/AND/NAME/NOR are analysis instructions, not words.
@@ -24,11 +24,13 @@ export function buildKeywordSearchPatterns(scopeId,items=[],matchedUids=new Map(
     }
   }
   const matches=new Map();
-  for(const [value,rawUids] of matchedUids){
-    const key=identity(value);
+  for(const match of matchedUids){
+    const key=identity(match?.pattern);
+    const rawUids=match?.uid_list;
     if(!words.has(key))throw new Error('Analysis returned an unknown Keyword word');
-    if(!(rawUids instanceof Set))throw new TypeError('Keyword UID matches must be sets');
+    if(!Array.isArray(rawUids))throw new TypeError('Keyword UID matches must be arrays');
     const uids=[...rawUids];
+    if(match.count!==uids.length)throw new Error('Word-level count must equal matched article count');
     if(uids.some(uid=>typeof uid!=='string'||!UID.test(uid)))
       throw new Error('Invalid word-level article UID');
     matches.set(key,new Set([...(matches.get(key)||[]),...uids]));
