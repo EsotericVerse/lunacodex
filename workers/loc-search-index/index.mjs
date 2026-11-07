@@ -3,6 +3,7 @@
 // This service is private to the LOC SQL Gateway; the browser never receives
 // direct index access or a search-service credential.
 import {createLocSearchIndex,LOC_SEARCH_INDEX_FORMAT,LOC_SEARCH_INDEX_PREFIX} from '../../app/loc/search-index-factory.mjs';
+import {parseLocGlobalUid} from '../../zenstack/global-identity.mjs';
 import {locSearchShard,locSearchDocumentId,LOC_SEARCH_INDEX_SHARDS} from '../../app/loc/search-index-shard.mjs';
 
 const PREFIX=LOC_SEARCH_INDEX_PREFIX;
@@ -11,9 +12,9 @@ const MAX_SHARDS=96;
 const encoder=new TextEncoder();
 const json=(value,status=200)=>Response.json(value,{status,headers:{'cache-control':'no-store'}});
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
-const SOURCE=/^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
+const SOURCE=/^[a-z][a-z0-9_-]{0,63}$/;
 const TYPE=/^[a-z][a-z0-9_]{0,31}$/;
-const UID=/^[A-Za-z0-9_.~-]{1,128}$/;
+const UID=/^[A-Za-z0-9]{8}$/;
 const invalid=(message)=>Object.assign(new Error(message),{status:400});
 
 function checked(value,pattern,label){
