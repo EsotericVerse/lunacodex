@@ -48,7 +48,7 @@ test('portable Extension source locks use one shared adapter for Postgres, MySQL
 test('short-import store never permits arbitrary Scope or SQL target from Extension',async()=>{
  const {db,sql}=fakeStore();
  const store=portableShortImportStore(db,sql,{engine:'postgres'});
- assert.rejects(store.transaction('admin',async()=>{}),/Unsupported managed Galaxy Scope/);
+ assert.throws(()=>store.transaction('admin',async()=>{}),/Unsupported managed Galaxy Scope/);
  assert.throws(()=>portableShortImportStore(db,sql,{engine:'sqlite'}),/unavailable/);
  assert.throws(()=>portableShortImportStore(db,sql,{engine:'mssql',namespace:'x;DROP'}),/namespace/);
 });
@@ -94,7 +94,7 @@ test('absent independent gateway fails closed and leaves Extension Queue availab
    accountAdapter:{auth:{},getAccessToken:async()=> 'token'},
    gatewayUrl:'https://legacy.example.org/functions/v1/loc-kysely'
   });
-  await assert.rejects(adapter.authClient.shortImport('lo3rwang',{}),/獨立 SQL Gateway 尚未設定/);
+  assert.throws(()=>adapter.authClient.shortImport('lo3rwang',{}),/獨立 SQL Gateway 尚未設定/);
  }finally{
   if(previous!==undefined)process.env.NEXT_PUBLIC_LOC_MCP_SQL_GATEWAY_URL=previous;
  }
