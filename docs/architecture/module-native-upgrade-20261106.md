@@ -4,14 +4,14 @@
 
 This update keeps the existing LOC architecture and replaces redundant Recharts sizing wrappers with the Recharts 3 native `responsive` prop where compatible. The statistics Treemap keeps its existing `ResponsiveContainer` compatibility path. Kysely, SWR, `fflate`, `@streamparser/json`, and existing native MapLibre `setData` behavior remain unchanged because they are already used directly. ZenStack V3 adoption is approved for the fixed LOC Schema; dependency installation and runtime integration are separate from this earlier module upgrade.
 
-The version bump is bundled once in `package.json` and `package-lock.json` for Next.js, Three.js, MapLibre GL JS, React Three Fiber, React Three Drei, OpenNext Cloudflare, and Wrangler.
+The 2026-11-06 version bump included Next.js, Three.js, MapLibre GL JS, React Three Fiber, React Three Drei, a since-retired Cloudflare Next adapter, and Wrangler. The adapter was removed on 2026-11-08; Wrangler remains for independent Workers.
 
 ## Verification
 
 - `npm run test:module-native`: checks manifest/lockfile parity, optional ZenStack V3 ORM/schema parity without CLI, and native responsive usage.
 - `npm run test:bootstrap`: broad UI, data, and portability regression.
 - `npm run test:game`: game regressions.
-- `npm run build` and `npm run build:cloudflare`: validate Next.js / OpenNext compilation and deployment output where the environment supports it.
+- `npm run build` and `npm run build:static`: validate Next.js and the GitHub Pages static export. The previous Cloudflare Next build target has been retired.
 
 The npm installation and local tests were run by the project owner; this connector session independently verified the updated lockfile, but does not have the local console logs or a build artifact. Treat individual test outcomes as unverified until logs or CI evidence are available.
 
@@ -59,7 +59,7 @@ The `place_id` field retains its fill-only policy; a native Kysely `CASE` in the
 
 The seven pinned upgrades from PR #1130 remain the installed versions. This pass checked actual consumers rather than adding further dependencies or replacing correct code for its own sake:
 
-- **Next.js 16 / OpenNext Cloudflare / Wrangler:** the application already uses native `output:'export'`, `defineCloudflareConfig`, static-assets incremental cache and Wrangler asset bindings. The static-export script temporarily parks server API routes because those cannot be exported as static files; removing this behavior is not safe merely because Next.js was upgraded.
+- **Next.js 16 / Wrangler:** the live website uses native `output:'export'` for GitHub Pages. The former Cloudflare Next adapter, static-assets cache config, and ISR-only root Worker config have been retired. Wrangler is retained for independently deployed Workers. The static-export script still parks server API routes because those cannot be exported as static files.
 - **MapLibre 6:** the Trace map already imports ESM exports from the installed package, calls the documented `setWorkerUrl(new URL('maplibre-gl/dist/maplibre-gl-worker.mjs',import.meta.url))` before map creation and updates GeoJSON with native `setData`. Do not add a second map library, worker loader or custom diff engine.
 - **Three.js / React Three Fiber / Drei:** the authored Effekseer WebGL stage uses native renderer/material/geometry cleanup and releases its WebGL context. The existing Effekseer/WASM stage is not functionally equivalent to an R3F Canvas, so this review did not replace visuals or add another renderer. R3F/Drei remain pinned but a version bump alone does not justify a risky visual rewrite.
 - **Recharts 3:** the current Rune charts and the statistics visualizations already use the native chart `responsive` prop, with `ResponsiveContainer` retained only for the Treemap compatibility case.

@@ -39,7 +39,7 @@ jobs:
             git sparse-checkout set \
               '/.github/workflows/**' '/app/**' '/scripts/**' \
               '/package.json' '/package-lock.json' '/next.config.mjs' \
-              '/open-next.config.ts' '/public/sw.js'
+              '/public/sw.js'
             ref="$GITHUB_SHA"
           fi
           git -c protocol.version=2 fetch --quiet --depth=1 --filter=blob:none origin "$ref"

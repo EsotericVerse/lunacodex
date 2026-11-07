@@ -40,12 +40,6 @@ if(!publicServer.includes('LOC_BACKUP_SQL_GATEWAY_URL')||
    !publicServer.includes('AbortSignal.timeout(6500)')||
    !guards.includes('isAvailabilityFailure('))
   throw Error('ISR must retain independent bounded portable SQL backup');
-const openNext=read('open-next.config.ts'),wrangler=readJson('wrangler.jsonc');
-if(!openNext.includes('static-assets-incremental-cache')||
-  /r2-incremental-cache|do-queue|do-sharded-tag-cache/.test(openNext))
-  throw Error('OpenNext must use the read-only Static Assets cache');
-if(wrangler.r2_buckets||wrangler.durable_objects)
-  throw Error('Worker still contains billable ISR cache bindings');
 const numericClient=read('app/loc/numeric-isr-client.js');
 if(!numericClient.includes("mode==='isr'")||!numericClient.includes('readNumericIsr')||
   !numericClient.includes('credentials:\'omit\''))
