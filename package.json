@@ -41,6 +41,7 @@
     "@react-three/postprocessing": "3.0.4",
     "@streamparser/json": "0.0.26",
     "@zenstackhq/orm": "^3.10.1",
+    "@zenstackhq/plugin-policy": "3.10.1",
     "@zenstackhq/schema": "^3.10.1",
     "fflate": "0.8.3",
     "flexsearch": "0.8.212",

@@ -1,6 +1,8 @@
 import { sql } from "npm:kysely@0.29.8";
 import {ZenStackClient} from "npm:@zenstackhq/orm@3.10.1";
 import {PolicyPlugin} from "npm:@zenstackhq/plugin-policy@3.10.1";
+import {scopedZModelSchema} from "../../../zenstack/scoped-schema.mjs";
+import {executeNativeRead} from "../../../zenstack/native-query.mjs";
 import {withFixedPolicyRead,fixedPolicyReadModel,withFixedPolicyWrite,fixedPolicyWriteModel} from "../../../zenstack/policy-runtime.mjs";
 import {jwtVerify,createRemoteJWKSet} from "npm:jose@5.9.6";
 import {processShortImport,postgresShortImportStore} from "../../../app/loc/import/short-append-service.mjs";
@@ -140,7 +142,7 @@ async function bindPostgresSession(trx:any,role:string,claims:Record<string,unkn
 
 async function executeRequest(trx: any, target: Record<string,any>, role: string,
   claims: Record<string, unknown>, body: Record<string, unknown>,
-  {modelName=""}:{modelName?:string}={}) {
+  {modelName="",ormClient=null,nativeScopeModel=""}:{modelName?:string,ormClient?:any,nativeScopeModel?:string}={}) {
   const executionPort=resolveSqlExecutionPort(target);
   bindLocAuthorization(trx,{role,claims});
   if(target.provider==="custom"||executionPort.session!=="postgres-rls"){
@@ -148,8 +150,12 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
     // physical schema regardless of hosting vendor. This modelName is set
     // only inside the trusted gateway, never accepted from the HTTP body.
     if(executionPort.engine==="postgres"&&modelName&&
-       body.kind==="query"&&body.operation==="select")
+       body.kind==="query"&&body.operation==="select"){
+      // Keep the existing policy-wrapped connection; use native ORM if exact.
+      const native=ormClient&&await executeNativeRead(ormClient,body,modelName);
+      if(native)return native;
       return await executeKyselyQuery(trx,body,{modelName});
+    }
     // Cross-engine Scope queries use the signed LOC ACL instead of RLS.
     if(body.kind==="managed-write"){
       if(role!=="authenticated")
@@ -192,13 +198,23 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
         (executionPort.engine==="mssql"?"dbo":"silver"))
     });
     const access=await authorizeCrossEngineQuery(trx,body,{role,claims});
+    // A signed session is not itself permission to see unpublished Galaxy
+    // rows; retain the cross-database public Search visibility gate.
+    const publicOnly=publicGalaxyGate(body,role,claims)||access?.publicOnly===true;
+    if(ormClient&&nativeScopeModel&&!publicOnly){
+      const native=await executeNativeRead(ormClient,body,nativeScopeModel);
+      if(native)return native;
+    }
     return await executeKyselyQuery(trx,body,{dialect:executionPort.engine,
       // PostgreSQL keeps the request's real api/silver schema. Other SQL
       // engines use the configured flat database/dbo namespace.
       namespace:executionPort.engine==='postgres'&&!target.schema_name
         ?undefined:String(target.schema_name||(
           executionPort.engine==='mssql'?'dbo':'public')),
-      publicOnly:publicGalaxyGate(body,role,claims)||access?.publicOnly===true});
+      publicOnly,
+      // Within ZenStack $qb use the mapped logical model; raw physical
+      // relations may be interpreted under the wrong default schema.
+      modelName:nativeScopeModel||''});
   }
   await bindPostgresSession(trx,role,claims,String(target.provider||"supabase"));
   if(body.kind==="query"){
@@ -218,10 +234,16 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
     // PostgreSQL must stop work even when browser aborts its 25s timeout.
     if(isTextSearchQuery(body))
       await sql`set local statement_timeout = '8000ms'`.execute(trx);
-    return await executeKyselyQuery(trx,body,{modelName,
-      // Public Search is independently protected by the Gateway even on a
-      // PostgreSQL connection that does not implement RLS.
-      publicOnly:publicGalaxyGate(body,role,claims)});
+    // Public Search stays independently protected even when PostgreSQL
+    // has no RLS. Native ORM is used only if those filters are unnecessary.
+    const publicOnly=publicGalaxyGate(body,role,claims);
+    if(!publicOnly&&ormClient&&body.operation==="select"&&(nativeScopeModel||modelName)){
+      const native=await executeNativeRead(ormClient,body,nativeScopeModel||modelName);
+      if(native)return native;
+    }
+    return await executeKyselyQuery(trx,body,{
+      modelName:nativeScopeModel||modelName,publicOnly
+    });
   }
   if(body.kind==="anchor")return await executeKyselyAnchor(trx,body,{role,claims});
   if(body.kind==="analytics")return await executeKyselyAnalytics(trx,body,{role});
@@ -623,8 +645,8 @@ Deno.serve(async (request) => {
     // A portable Scope database holds only Galaxy/Anchor. The LOC-signed
     // delegation contains its permission boundary: no control DB round trip.
     // Four fixed publicly readable LOC control models use the existing
-    // ZenStack V3 runtime and Kysely executor. Low-level $qb BYPASSES the
-    // PolicyPlugin; effective access comes from the trusted Gateway/SQL.
+    // ZenStack V3 runtime. Model-mapped $qb is policy-rewritten in V3.10.1,
+    // but the trusted Gateway/SQL remains the authorization boundary.
     // The same existing dialect/pool,
     // transaction, JWT binding and response shape are retained; no second DB
     // connection or permission lookup is introduced.
@@ -635,14 +657,31 @@ Deno.serve(async (request) => {
       fixedPolicyWriteModel(target,body,role,claims);
     const policyDeps=(policyModel||adminWrite)
       ?{dialect:trustedDialectForDatabase(db),ZenStackClient,PolicyPlugin}:null;
+    // Reuse this trusted database dialect; private reads still require
+    // signed LOC credentials and the existing Gateway/SQL access checks.
+    const scopeMatch=target.engine==="postgres"&&role==="authenticated"&&
+      claims?.provider==="loc"&&claims?.me===true&&
+      body.kind==="query"&&body.operation==="select"&&body.schema==="silver"
+      ?/^([a-z][a-z0-9]{0,14})_(galaxy|anchor|blocks)$/.exec(String(body.table||""))
+      :null;
+    const nativeScopeModel=scopeMatch
+      ?scopeMatch[2][0].toUpperCase()+scopeMatch[2].slice(1)
+      :undefined;
     const result=policyModel
       ?await withFixedPolicyRead(db,target,body,role,claims,policyDeps,
-        (trx,modelName)=>executeRequest(trx,target,role,claims,body,{modelName}))
+        (trx,modelName,ormClient)=>executeRequest(trx,target,role,claims,body,{modelName,ormClient}))
       :adminWrite
         ?await withFixedPolicyWrite(db,target,body,role,claims,policyDeps,
           (trx,modelName)=>executeRequest(trx,target,role,claims,body,{modelName}))
-        :await db.transaction().execute(trx=>
-          executeRequest(trx,target,role,claims,body));
+        :scopeMatch
+          ?await new ZenStackClient(scopedZModelSchema({
+            scopeId:scopeMatch[1],
+            namespace:String(target.schema_name||body.schema)
+          }),{dialect:trustedDialectForDatabase(db)}).$transaction(ormClient=>
+            executeRequest(ormClient.$qb,target,role,claims,body,
+              {ormClient,nativeScopeModel}))
+          :await db.transaction().execute(trx=>
+            executeRequest(trx,target,role,claims,body));
     // Search-only response metadata: no physical SQL column is added.
     // The browser can preserve two distinct results with the same UID
     // when future Gateway federated reads return multiple logical datasets.

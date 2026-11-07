@@ -183,7 +183,7 @@ function applyMutationReturning(query,req,dialect){
   return query.returning(req.columns);
 }
 
-export function buildKyselyMutationQuery(trx,input,{dialect='postgres',namespace}={}){
+export function buildKyselyMutationQuery(trx,input,{dialect='postgres',namespace,modelName=''}={}){
   const validated=validateQuery(input);
   const registryValues=validated.schema==='api'&&validated.table==='manage'
     ?Array.isArray(validated.values)
@@ -197,7 +197,7 @@ export function buildKyselyMutationQuery(trx,input,{dialect='postgres',namespace
       :{...registryValues,updated_at:new Date()}
     :registryValues;
   const req={...validated,values:serializePortableJsonFields(stamped,dialect)};
-  const fullTable=databaseTable(req,dialect,namespace);
+  const fullTable=databaseTable(req,dialect,namespace,modelName);
   if(!['insert','update','delete','upsert'].includes(req.operation))throw new Error('Unsupported mutation');
   let query;
   if(req.operation==='insert')query=trx.insertInto(fullTable).values(req.values);
@@ -275,7 +275,7 @@ export async function executeKyselyQuery(trx,input,{dialect='postgres',namespace
     if(built.countQuery){const row=await built.countQuery.executeTakeFirstOrThrow();count=Number(row.count)}
     if(built.query)data=await built.query.execute();
   }else{
-    const built=buildKyselyMutationQuery(trx,input,{dialect,namespace});
+    const built=buildKyselyMutationQuery(trx,input,{dialect,namespace,modelName});
     if(dialect==='mysql'&&req.returning)data=await executeMysqlReturningMutation(trx,built.request,built.query,namespace);
     else {
       const result=await built.query.execute();
