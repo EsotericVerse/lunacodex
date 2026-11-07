@@ -40,7 +40,8 @@ test('a 503 SELECT makes one HTTP request, not an immediate retry',async()=>{
         {status:503,headers:{'content-type':'application/json'}});
     }
   });
-  await assert.rejects(client.schema('silver').from('lo3rwang_galaxy').select('uid'),/temporarily unavailable/);
+  await assert.rejects(Promise.resolve(client.schema('silver').from('lo3rwang_galaxy').select('uid')),
+    /temporarily unavailable/);
   assert.equal(calls,1);
 });
 
