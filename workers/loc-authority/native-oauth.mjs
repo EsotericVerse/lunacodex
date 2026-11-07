@@ -417,10 +417,9 @@ async function importShort(request,env,stub,origin){
  let batch;try{batch=JSON.parse(raw);}catch{error('Invalid import JSON');}
  if(!batch||typeof batch!=='object'||Array.isArray(batch))
   error('Invalid import batch');
- const endpoint=new URL(String(env.LOC_SQL_GATEWAY_URL||'https://invalid.invalid'));
- if(endpoint.protocol!=='https:'||endpoint.hostname==='invalid.invalid'||
-  endpoint.username||endpoint.password||endpoint.search||endpoint.hash||
-  endpoint.pathname!=='/v1/sql')error('Independent SQL Gateway missing',503);
+ // LOC Auth owns OAuth; the existing LOC Pages application writes via its
+ // own Kysely connection. It accepts only a signed Scope-specific import.
+ const endpoint='https://mcp.lo3rwang.cc/api/loc-native';
  const now=Math.floor(Date.now()/1000);
  const selectedTarget=await stub.selectedDatabaseForDelegation(identity.subject,
   roots.includes(identity.subject));
@@ -428,7 +427,7 @@ async function importShort(request,env,stub,origin){
   grants:[scope+':write'],audience:'sql',sid:crypto.randomUUID(),now,seconds:300,
   targetId:selectedTarget});
  const signed=await stub.signLocDelegation(delegation);
- const upstream=await fetch(endpoint.href,{method:'POST',
+ const upstream=await fetch(endpoint,{method:'POST',
   headers:{authorization:'Bearer '+signed,'content-type':'application/json'},
   body:JSON.stringify({kind:'short-import',scopeid:scope,batch}),
   signal:AbortSignal.timeout(25000),redirect:'error'});
