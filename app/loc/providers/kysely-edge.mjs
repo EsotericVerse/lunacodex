@@ -27,6 +27,8 @@ class KyselyQuery {
   range(from,to){this.request.offset=from;this.request.limit=Math.max(0,to-from+1);return this}
   single(){this.request.single='single';return this}
   maybeSingle(){this.request.single='maybeSingle';return this}
+  // Optional server-only FlexSearch prefilter; older SQL Gateways ignore it.
+  searchIndex(query,scopeId){this.request.indexHint={query,scopeId};return this}
   abortSignal(signal){this.signal=signal;return this}
   then(resolve,reject){return this.executeRequest(this.request,this.signal).then(resolve,reject)}
 }

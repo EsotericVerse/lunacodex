@@ -22,7 +22,8 @@
     "test:module-native": "node --experimental-vm-modules --test scripts/test-module-native-upgrade.mjs scripts/test-resource-cache-lifecycle.mjs scripts/test-fixed-zmodel.mjs scripts/test-portable-search.mjs scripts/test-search-ordered-scope-providers.mjs scripts/test-loc-four-page-read-optimizations.mjs scripts/test-retired-read-rpcs.mjs scripts/test-loc-kysely-authorization.mjs scripts/test-loc-edge-delegation.mjs scripts/test-kysely-independent-transport.mjs scripts/test-kysely-loc-only-auth.mjs scripts/test-loc-homepage-edit-bridge.mjs scripts/test-new-scope-provision.mjs scripts/test-zenstack-policy-runtime.mjs",
     "test:short-import": "node --test scripts/test-loc-short-append-service.mjs scripts/test-loc-short-import-http.mjs scripts/test-loc-short-edge-authorization.mjs",
     "test:sql-failover": "node --test scripts/test-portable-backup-gateway.mjs scripts/test-keyword-base62-read-provider.mjs scripts/test-portable-incremental-sync.mjs",
-    "verify:portable-sql": "node scripts/verify-loc-sql-gateway.mjs"
+    "verify:portable-sql": "node scripts/verify-loc-sql-gateway.mjs",
+    "test:search-index": "node --test scripts/test-loc-search-index.mjs"
   },
   "dependencies": {
     "@blocknote/core": "0.55.0",
@@ -44,6 +45,7 @@
     "@zenstackhq/orm": "^3.10.1",
     "@zenstackhq/schema": "^3.10.1",
     "fflate": "0.8.3",
+    "flexsearch": "0.8.212",
     "immer": "11.1.18",
     "jsonpath-plus": "^11.2.2",
     "karaul": "0.1.0",
