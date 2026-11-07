@@ -7,9 +7,16 @@ const CORS_HEADERS={'access-control-allow-origin':'*',
   'access-control-allow-headers':'authorization, content-type, x-client-info',
   'access-control-allow-methods':'POST, OPTIONS',
   'access-control-max-age':'86400'};
-const OPTIONAL=['LOC_AUTHORITY_ORIGIN','LOC_DELEGATION_NOT_BEFORE',
-  'LOC_DELEGATION_REVOKED_SIDS','LOC_DB_CONNECTIONS_JSON',
-  'LOC_SQL_GATEWAY_SERVICE_KEY'];
+const OPTIONAL=[
+  'LOC_AUTHORITY_ORIGIN',
+  'LOC_DELEGATION_NOT_BEFORE',
+  'LOC_DELEGATION_REVOKED_SIDS',
+  'LOC_DB_CONNECTIONS_JSON',
+  'LOC_SQL_GATEWAY_SERVICE_KEY',
+  'LOC_SEARCH_INDEX_URL',
+  'LOC_SEARCH_INDEX_SECRET',
+  'LOC_SEARCH_INDEX_ENABLED'
+];
 function unavailable(message,status=503){
   return Response.json({error:{message}},{status,
     headers:{...CORS_HEADERS,'cache-control':'no-store'}});
@@ -65,8 +72,7 @@ export default {
   async fetch(request,env){
     const url=new URL(request.url);
     if(url.pathname!=='/v1/sql')return unavailable('Not found',404);
-    // A browser must receive a readable 503 even when secrets are missing.
-    // A preflight never boots the container or queries a database.
+    // Answer browser CORS preflight without booting a container or SQL pool.
     if(request.method==='OPTIONS')
       return new Response(null,{status:204,headers:CORS_HEADERS});
     if(request.method!=='POST')return unavailable('Method not allowed',405);

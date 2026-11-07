@@ -115,6 +115,7 @@ function toResult(row,source,scopeId,copy=UI_COPY){
   const displaySource=isGalaxy&&row.site?String(row.site):source;
   const identity=row.uid||row.song_id||row.rune_id||row.record_id||row.resource_id||row.id;
   const scope=String(row.scope_id||scopeId||'').trim();
+  const dbId=String(row.__db_id||row.db_id||row.dbId||'').trim();
   const resourceType=isGalaxy?'galaxy':isMedia?'galaxy_media':'';
   const resourceId=row.uid||'';
   const editableTable=resourceType?String(row.__table||''):'';
@@ -126,13 +127,13 @@ function toResult(row,source,scopeId,copy=UI_COPY){
   const isScopeCard=Boolean(row.scope_card);
   const href=isScopeCard?scopeHref(scope):(row.url||row.href||row.suno_url||'');
   return {
-    key:identity?[scope,source,identity].join(':'):[source,scope,title].join('-'),
+    key:identity?[scope,dbId,source,identity].join(':'):[source,scope,dbId,title].join('-'),
     source:displaySource,title:String(title),
     checkInPlace:'',
     date:row.date||row.createtime||row.address||row.record_date||row.UpdateTime||row.updated_at||'',
     createtime:row.createtime||'',
     snippet:'',...(isGalaxy?{statics:row.statics,culture:row.culture,search:row.search,trace:row.trace,list:row.list,keyword:row.keyword,others:row.others,extract:row.extract}:{}),
-    scopeId:scope,resourceType,resourceId,
+    scopeId:scope,dbId,resourceType,resourceId,
     relatedMedia:Array.isArray(row.related_media)?row.related_media:[],
     relatedTime:row.related_time||null,
     relatedSpace:row.related_space||null,
@@ -147,7 +148,7 @@ function toResult(row,source,scopeId,copy=UI_COPY){
       ?galaxyRelationLinks(scope,row)
       :[],
     dedupeKey:resourceType==='galaxy'&&typeof row.content==='string'
-      ?'article-copy:'+JSON.stringify([scope,
+      ?'article-copy:'+JSON.stringify([scope,dbId,
         String(row.title||'').normalize('NFKC').trim(),
         String(row.content||'').replace(/[\r\n]/g,'').trim(),
         String(row.site||'').normalize('NFKC').trim(),
@@ -156,9 +157,9 @@ function toResult(row,source,scopeId,copy=UI_COPY){
     groupKey:row.style_keyword_tag
       ?'style-tag:'+String(title).normalize('NFKC').trim().toLocaleLowerCase('zh-Hant')
       :(resourceType==='galaxy'&&resourceId
-      ?'galaxy:'+scope+':'+resourceId
-      :(resourceType==='galaxy_media'&&resourceId?'media:'+scope+':'+resourceId:
-        'result:'+scope+':'+(identity||title))),
+      ?'galaxy:'+scope+':'+dbId+':'+resourceId
+      :(resourceType==='galaxy_media'&&resourceId?'media:'+scope+':'+dbId+':'+resourceId:
+        'result:'+scope+':'+dbId+':'+(identity||title))),
     links:uniqueExternalLinks([...(href?[{id:resourceType||'primary',href,label:resourceType==='galaxy_media'?copy.search.mediaLink:copy.search.externalLink}]:[]),...(Array.isArray(row.resolved_links)?row.resolved_links:[])]),
     destinations:[]
   };

@@ -509,6 +509,11 @@ function makeProvider({id,table,source,scope,idColumn,columns,searchFields,filte
           dataQuery=dataQuery.ilike(exactColumn,exact);
         }else if(!browse)dataQuery=applyParsedTerms(dataQuery,frozenFields,parsed,and,nor);
         dataQuery=applyOrders(dataQuery,orders);
+        // The Gateway may narrow the SQL scan by complete FlexSearch hits.
+        // It always keeps SQL content/visibility predicates as the authority.
+        // Legacy transports and local SQLite retain their original query.
+        if(!browse&&!exactColumn&&typeof dataQuery.searchIndex==='function')
+          dataQuery=dataQuery.searchIndex(query,scope.id);
         return dataQuery.range(offset,offset+pageSize);
       },{source,authenticated,signal});
       const dataSource=dataResult.__dataSource||source||'auto';
