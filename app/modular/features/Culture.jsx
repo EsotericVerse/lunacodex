@@ -519,10 +519,10 @@ export default function Culture(){
     enabled:!isTimeEditingView&&styleFilter==='rune66'&&keywordDetailRequested&&!isAggregateScope&&!isLrunesDaily&&!isLocItemView
       &&Boolean(scopeData)&&keywordWindowValid&&Boolean(styleQuery.data?.statisticsEnabled),
     queryFn:async()=>{
-      const {readKeywordTreeSummary}=await import('../../loc/db-client.mjs');
-      return readKeywordTreeSummary(scopeId,{
-        classUid:resolvedKeywordClassUid,startDate:keywordWindowStart,endDate:keywordWindowEnd,
-        source:keywordDrillSource
+      const {keywordService}=await import('../../loc/keyword-service-client.mjs');
+      return keywordService('summary',{scopeId,
+        classUid:resolvedKeywordClassUid,startDate:keywordWindowStart,
+        endDate:keywordWindowEnd,source:keywordDrillSource
       });
     },
   });
