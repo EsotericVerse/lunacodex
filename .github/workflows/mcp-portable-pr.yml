@@ -26,6 +26,8 @@ jobs:
           node --check app/loc/mcp/authority-client.mjs
           node --check app/loc/mcp/galaxy-read.mjs
           node --check app/loc/mcp/public-sql-gate.mjs
+          node --check app/loc/providers/loc-gateway.mjs
+          node --check app/loc/import/short-append-service.mjs
           node --check workers/loc-authority/index.mjs
           node --check app/loc/providers/kysely-mcp.mjs
           node --check extensions/loc-web-capture-v2/background.js
@@ -37,6 +39,7 @@ jobs:
             scripts/test-loc-mcp-routing.mjs \
             scripts/test-loc-mcp-galaxy-read.mjs \
             scripts/test-loc-mcp-sql-standalone.mjs \
+            scripts/test-loc-extension-portable.mjs \
             scripts/test-mcp-qos.mjs \
             scripts/test-loc-web-capture-v2.mjs
       - uses: denoland/setup-deno@v2
