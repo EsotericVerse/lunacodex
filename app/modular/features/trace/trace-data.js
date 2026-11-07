@@ -6,6 +6,7 @@ import {fromAnchorRow,allocateAnchorUid,isUnifiedAnchorScope} from '../../../loc
 import {SCOPE_ROUTE_INDEX} from '../../scope-route-index.js';
 import {selectScopeGroupMemberIds,selectScopeConfig} from '../../../loc/scope-data';
 import {scopeFeatureEnabled} from '../../../loc/scope-config-fields.mjs';
+import {mapBounded} from '../../../loc/bounded-parallel.mjs';
 
 const TRACE_SOURCE_SCOPES=Object.freeze(SCOPE_ROUTE_INDEX.map(row=>row.scope_id).filter(id=>id!=='loc'));
 async function groupTraceSources(){
@@ -13,10 +14,11 @@ async function groupTraceSources(){
   const candidates=TRACE_SOURCE_SCOPES.filter(id=>members.has(id));
   // Each contributor must explicitly publish its Scope trace flag.
   // Config requests are already shared across public feature readers.
-  const allowed=await Promise.all(candidates.map(async id=>{
+  // Keep multi-Scope public Config reads below the shared SQL Gateway QoS ceiling.
+  const allowed=await mapBounded(candidates,3,async id=>{
     const config=await selectScopeConfig(id);
     return config&&scopeFeatureEnabled(config,'trace')?id:null;
-  }));
+  });
   return allowed.filter(Boolean);
 }
 export const TRACE_SCOPES=Object.freeze(['loc',...TRACE_SOURCE_SCOPES]);
@@ -157,8 +159,8 @@ export async function readTraceData(scopeId,{includeHidden=false}={}){
 }
 export async function readTraceMapIndex(scopeId,{nativeOnly=false,includeHidden=false}={}){
   const id=idScope(scopeId);
-  if(id==='loc')return Promise.all((await groupTraceSources()).map(source=>readTraceMapIndex(source,{includeHidden})))
-    .then(groups=>groups.flat());
+  if(id==='loc')return mapBounded(await groupTraceSources(),3,
+    source=>readTraceMapIndex(source,{includeHidden})).then(groups=>groups.flat());
   return readPages(id,{columns:'uid,trace_type,title,description,anchor_list,route_list,invisible',types:['path','trace'],nativeOnly,includeHidden})
     .then(rows=>rows.filter(row=>row.trace_type==='path'||row.trace_type==='trace'));
 }
@@ -184,8 +186,8 @@ export async function readAllTraceAnchors(scopeId,{nativeOnly=false,includeHidde
   const id=idScope(scopeId);
   if(id==='loc'){
     // No LOC materialized Trace table: keep source Scope ownership and RLS intact.
-    const sources=await Promise.all((await groupTraceSources()).map(source=>
-      readPages(source,{filter:'space_anchor',includeHidden})));
+    const sources=await mapBounded(await groupTraceSources(),3,source=>
+      readPages(source,{filter:'space_anchor',includeHidden}));
     return sources.flat();
   }
   return readPages(id,{filter:'space_anchor',nativeOnly,includeHidden});
