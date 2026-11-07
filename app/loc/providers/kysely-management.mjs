@@ -6,6 +6,7 @@ import {sql} from 'npm:kysely@0.29.8';
 import {saveBlocksKysely} from './kysely-blocks.mjs';
 import {allocateAnchorUid} from '../unified-anchor-compat.mjs';
 import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
+import {keywordPatternItemMetrics} from '../keyword-search-pattern.mjs';
 
 const ID=/^[a-z][a-z0-9_]*$/i;
 const UID=/^[A-Za-z0-9]{8}$/;
@@ -413,7 +414,7 @@ const ACTIONS=new Set(['read_source_catalog','save_scope_sources','read_group_me
   'preview_or_fill_galaxy_place','batch_fill_galaxy_location',
   'rename_scope_site_batch','save_scope_trace_place_names','save_blocks','loc_admin_settings',
   'refresh_scope_search_summary','merge_scope_trace_place_names','import_shared_keyword_class','manage','find_galaxy_duplicates','read_scope_registry_admin','bulk_update_galaxy_able',
-  'sync_search_patterns','suggest_search_patterns']);
+  'sync_search_patterns','suggest_search_patterns','keyword_pattern_statistics']);
 function validScope(value){
   const id=String(value||'').trim().toLowerCase();
   if(!/^[a-z][a-z0-9]{0,14}$/.test(id))reject('Invalid Scope ID');
@@ -423,6 +424,64 @@ function validUid(value){
   const uid=String(value||'').trim();
   if(!UID.test(uid))reject('Invalid block UID');
   return uid;
+}
+
+
+async function keywordPatternStatistics(trx,args){
+  const scope=validScope(args.p_scope_id),classUid=validUid(args.p_class_uid);
+  const owner=await canManageLoc(trx,'scope',scope);
+  await sql`reset role`.execute(trx);
+  const config=await trx.selectFrom('silver.'+scope)
+    .select('keyword_meta').where('id','=',scope).executeTakeFirst();
+  if(!owner&&config?.keyword_meta?.class_shares?.[classUid]!==true)
+    reject('Keyword Class not shared or authorized',403);
+  const table='silver.'+scope+'_anchor';
+  const root=await trx.selectFrom(table).select(['uid','type','title','attr'])
+    .where('uid','=',classUid).where('type','=','class').executeTakeFirst();
+  if(!root)reject('Unknown Keyword Class');
+  const attributes=node=>{
+    if(typeof node?.attr==='string')return JSON.parse(node.attr);
+    return node?.attr||{};
+  };
+  const links=(node,key)=>{
+    const attr=attributes(node),source=attr[key]??attr.uid??[];
+    return Array.isArray(source)?[...new Set(source.filter(uid=>UID.test(String(uid))))]:[];
+  };
+  const groupUids=links(root,'groups');
+  const groupRows=groupUids.length?await trx.selectFrom(table)
+    .select(['uid','type','title','attr'])
+    .where('type','=','group').where('uid','in',groupUids).execute():[];
+  const byGroup=new Map(groupRows.map(row=>[row.uid,row]));
+  if(groupUids.some(uid=>!byGroup.has(uid)))reject('Keyword Group link incomplete');
+  const itemUids=[...new Set(groupRows.flatMap(group=>links(group,'items')))];
+  const itemRows=itemUids.length?await trx.selectFrom(table)
+    .select(['uid','type','title','attr'])
+    .where('type','=','item').where('uid','in',itemUids).execute():[];
+  const byItem=new Map(itemRows.map(row=>[row.uid,row]));
+  if(itemUids.some(uid=>!byItem.has(uid)))reject('Keyword Item link incomplete');
+  const items=groupUids.flatMap(groupUid=>links(byGroup.get(groupUid),'items').map(uid=>{
+    const row=byItem.get(uid);
+    return {
+      uid,item_name:String(row.title||''),group_uid:groupUid,
+      keywords:Array.isArray(attributes(row).keyword)?attributes(row).keyword:[]
+    };
+  }));
+  // The Anchor supplies hierarchy and words only. Every hit/UID/count comes
+  // exclusively from loc_search_pattern, including newly composed Items.
+  const patterns=await trx.selectFrom('silver.loc_search_pattern')
+    .select(['pattern','count','uid_list','update_time'])
+    .where('scopeid','=',scope).execute();
+  const metrics=keywordPatternItemMetrics(items,patterns);
+  const groups=groupUids.map(uid=>{
+    const members=metrics.items.filter(item=>item.group_uid===uid);
+    const hits=members.reduce((sum,item)=>sum+item.hit_count,0);
+    return {uid,name:String(byGroup.get(uid).title||''),hit_count:hits,
+      ratio:metrics.total_hits?100*hits/metrics.total_hits:0};
+  });
+  return {
+    class_uid:classUid,class_name:String(root.title||''),groups,
+    ...metrics
+  };
 }
 
 // Indexed Keyword suggestions stay inside the verified LOC Scope-management
@@ -563,9 +622,11 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     find_galaxy_duplicates:['p_scope_id'],
     read_scope_registry_admin:[],
     sync_search_patterns:['p_scope_id','p_class_uid','p_patterns','p_final'],
-    suggest_search_patterns:['p_scope_ids','p_query']
+    suggest_search_patterns:['p_scope_ids','p_query'],
+    keyword_pattern_statistics:['p_scope_id','p_class_uid']
   }[name];
   if(Object.keys(args).some(key=>!keys.includes(key)))reject('Unexpected Kysely action argument');
+  if(name==='keyword_pattern_statistics')return {data:await keywordPatternStatistics(trx,args),count:null};
   if(name==='sync_search_patterns')return {data:await syncSearchPatterns(trx,args),count:null};
   if(name==='suggest_search_patterns')return {data:await suggestSearchPatterns(trx,args),count:null};
   if(name==='read_source_catalog')return {data:await sourceCatalogAction(trx,args),count:null};
