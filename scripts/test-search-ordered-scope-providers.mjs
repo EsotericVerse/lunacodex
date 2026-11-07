@@ -105,6 +105,24 @@ test('aborting while an early Scope waits halts later requests',async()=>{
   assert.equal(calls,1);
 });
 
+test('at most two provider requests overlap after the first miss',async()=>{
+  let active=0,peak=0;
+  const providers=Array.from({length:8},(_,i)=>provider('scope'+i,async()=>{
+    active++;
+    peak=Math.max(peak,active);
+    try{
+      // A microtask yields enough to overlap the next Scope without timers.
+      await Promise.resolve();
+      await Promise.resolve();
+      return empty();
+    }finally{active--;}
+  }));
+  const result=await searchOrderedScopeProviders(providers,'not-here',{limit:20});
+  assert.equal(result.hasMore,false);
+  assert.ok(peak<=2,'max two concurrent provider searches');
+  assert.equal(peak,2,'later misses actually overlap');
+});
+
 test('empty query handling remains in the existing Search input boundary',async()=>{
   const result=await searchOrderedScopeProviders([],'',{limit:20});
   assert.equal(result.hasMore,false);
