@@ -1,6 +1,6 @@
 # LOC ZModel completion — active handoff (2026-11-07)
 
-> Work in progress: **this document records a handoff checkpoint, NOT a finished feature or deployable release.** It can be read after a conversation reset. Continue development on this branch. Do not open a PR until implementation and focused regressions have been validated.
+> Current code checkpoint. **Code is implemented on this branch, not yet declared deployed.** All changes are bounded to the frozen model, a pure hierarchy projector, stable global identity, and portable schema validation. Review CI and integration results before claiming production behavior.
 
 ## User's latest assignment and hard boundaries
 
@@ -30,6 +30,20 @@
 
 ## Handoff status
 
-**Current changes on branch at initial checkpoint:** this handoff file only. No ZModel implementation changes made on this branch yet. Existing #1214 changes are already on main.
+**Implemented on this branch (2026-11-07):**
+
+- `zenstack/anchor-hierarchy.mjs`: pure four-family Anchor hierarchy projection: Keyword `category→class→group→item`, Source `universe→galaxy→domain→from`, Time `era→period→date`, Space `trace→path→point` (Trace may also link directly to Point). Missing linked UIDs are explicitly reported when only a partial data window is loaded.
+- `app/loc/keyword-tree.mjs`: native 8-character Keyword and Source tree parsing **now invokes the shared ZModel hierarchy logic**. Four-character legacy Keyword import behavior is preserved. This is a real production consumer, not a detached model file.
+- `zenstack/global-identity.mjs`: public, stable, non-secret `databaseId:scopeId:uid` reference. It does not alter physical UID keys, derive permission, or expose credentials. Distinguishes identical local UIDs across databases and Scopes.
+- `app/loc/providers/kysely-schema.mjs`: portable Galaxy/Anchor required-column lists now derive from the existing fixed ZenStack runtime model; Lo3rwang and Lrunes variants must have identical column sets. Kysely remains responsible for live SQL dialects, data and authorization.
+- New focused tests: `scripts/test-zmodel-anchor-hierarchy.mjs`, `scripts/test-zmodel-global-identity.mjs`, `scripts/test-zmodel-portable-schema.mjs`.
+
+**Validation evidence:** 10 direct V8 executions of existing Keyword/Source regression tests, global identity tests, and portable column scenarios passed; 9 additional V8 executions of the new Anchor hierarchy tests passed. The V8 harness evaluated the source functions with imports replaced by already-fetched dependencies; this is **not** the same as an executed Node/Next build, real ZenStack PolicyPlugin test, live DB integration or Cloudflare deployment. Those remain unverified here.
+
+**Non-goals maintained:** no modification of FlexSearch, KV, LOC Auth #1210, SQL Gateway request execution, RLS, permissions, physical Schema, SQL migrations, database synchronization, or frontend Search.
+
+**Important integration invariant:** ZModel virtual hierarchy is computed over rows already scoped to a single permitted (databaseId, ScopeID). Do not mix raw eight-character UIDs across databases into one hierarchy map. Use the global identity key for any multi-source index or result reference. Group-derived model relationships never create SQL write grants.
+
+**Source of truth:** GitHub branch `feat/loc-zmodel-completion-20261107`, this document, AGENTS.md, current main, PR #1210 and the independently owned FlexSearch work. Do not search Galaxy conversation history for this GitHub implementation task.
 
 **Source of truth:** GitHub branch `feat/loc-zmodel-completion-20261107`, this file, latest `AGENTS.md`, current main, and draft #1210. Do not search Galaxy conversation history for this GitHub implementation task.
