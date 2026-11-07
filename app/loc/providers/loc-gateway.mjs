@@ -11,7 +11,6 @@ export function createLocGatewayAdapter({
   gatewayUrl=process.env.NEXT_PUBLIC_LOC_SQL_GATEWAY_URL||
     process.env.NEXT_PUBLIC_LOC_KYSELY_GATEWAY_URL||'',
   publicGatewayUrl=gatewayUrl,
-  url='',publishableKey='',
   target='configured',
   realtimeClient=null,
   fetchImpl=globalThis.fetch
@@ -126,20 +125,19 @@ export function createLocGatewayAdapter({
     return getLocAccessToken(body);
   };
   const publicSql=createKyselyEdgeClient({
-    url,publishableKey,role:'anon',target,gatewayUrl:publicGatewayUrl,
+    role:'anon',target,gatewayUrl:publicGatewayUrl,
     getAccessToken:optionalPublicDelegation,fetch:fetchImpl
   });
   const privateSql=createKyselyEdgeClient({
-    url,publishableKey,role:'authenticated',target,gatewayUrl,
+    role:'authenticated',target,gatewayUrl,
     getAccessToken:getLocAccessToken,fetch:fetchImpl
   });
   // The independent Extension write path never falls back to a vendor
   // Function. It reuses the site's existing LOC-signed, Scope-specific SQL
   // delegation, but its transport points only to the dedicated Kysely host.
-  // In a transitional website the public SQL endpoint can be a legacy
-  // Function. Never treat it as an Extension write endpoint. A missing or
-  // invalid independent Gateway must leave login/reading usable and preserve
-  // the unacknowledged Queue; shortImport itself fails closed below.
+  // Both browser reads and Extension writes target independent LOC SQL.
+  // If the dedicated write endpoint is unavailable, preserve queued writes
+  // without retrying against an unrelated provider endpoint.
   const shortImportUrl=String(process.env.NEXT_PUBLIC_LOC_MCP_SQL_GATEWAY_URL||
     gatewayUrl||'').trim();
   let shortImportSql=null;
@@ -152,7 +150,7 @@ export function createLocGatewayAdapter({
         endpoint=parsed;
     }catch{}
     if(endpoint)shortImportSql=createKyselyEdgeClient({
-      url,publishableKey,role:'authenticated',target,gatewayUrl:endpoint.href,
+      role:'authenticated',target,gatewayUrl:endpoint.href,
       getAccessToken:getLocAccessToken,fetch:fetchImpl
     });
   }

@@ -1,12 +1,6 @@
 import {createKyselyEdgeClient} from '../../loc/providers/kysely-edge.mjs';
 
-const SQL_PROVIDER_URL=process.env.NEXT_PUBLIC_SUPABASE_URL||
-  'https://qlouywsdiiyiyzpoxyqy.supabase.co';
-const PUBLIC_KEY=process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY||
-  'sb_publishable_qPn0vAzozVyXKllRuEKf2Q_fvG-pLVV';
-
-// This is a transport URL, not a database provider or an Auth issuer.
-// Without an independent gateway, preserve the existing production Edge target.
+// The SQL Gateway is the only runtime database transport.
 const SQL_GATEWAY_URL=process.env.LOC_SQL_GATEWAY_URL||
   process.env.NEXT_PUBLIC_LOC_SQL_GATEWAY_URL||
   process.env.NEXT_PUBLIC_LOC_KYSELY_GATEWAY_URL||'';
@@ -16,11 +10,12 @@ export function validScopeId(value){
   return /^[a-z][a-z0-9]{0,14}$/.test(String(value||''));
 }
 
-// Optional ISR does not instantiate a Supabase Auth or Data API SDK.
+// Optional ISR reads through independent LOC SQL, with no provider Auth SDK.
 // Both public numeric reads and analytics use the same bounded Kysely transport.
 // Optional backup uses a second independently hosted Kysely SQL Gateway.
 // No database vendor Auth or PostgREST token service participates.
 export function publicNumericSources({fetchImpl=globalThis.fetch,
+  primaryGatewayUrl=SQL_GATEWAY_URL,
   backupGatewayUrl=BACKUP_SQL_GATEWAY_URL}={}){
   const timedFetch=(input,init={})=>{
     const timeout=AbortSignal.timeout(6500);
@@ -28,15 +23,12 @@ export function publicNumericSources({fetchImpl=globalThis.fetch,
     return fetchImpl(input,{...init,signal});
   };
   const primary=createKyselyEdgeClient({
-    // Independent SQL ingress must not carry a vendor URL or API key.
-    url:SQL_GATEWAY_URL?'':SQL_PROVIDER_URL,
-    publishableKey:SQL_GATEWAY_URL?'':PUBLIC_KEY,
-    gatewayUrl:SQL_GATEWAY_URL,target:'configured',role:'anon',fetch:timedFetch
+    gatewayUrl:primaryGatewayUrl,target:'configured',role:'anon',fetch:timedFetch
   });
   const candidates=[{id:'primary',schema:()=>primary.schema('silver')}];
   if(backupGatewayUrl){
     // Independent backup must not share the primary Gateway origin.
-    const primaryOrigin=new URL(SQL_GATEWAY_URL||SQL_PROVIDER_URL).origin;
+    const primaryOrigin=new URL(primaryGatewayUrl).origin;
     const backupOrigin=new URL(backupGatewayUrl).origin;
     if(primaryOrigin===backupOrigin)
       throw new Error('Backup SQL Gateway must use an independent origin');
