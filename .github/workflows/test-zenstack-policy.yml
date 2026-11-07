@@ -1,0 +1,24 @@
+name: ZenStack policy execution evidence
+on:
+  pull_request:
+    paths:
+      - 'zenstack/**'
+      - 'app/loc/providers/kysely-runtime.mjs'
+      - 'supabase/functions/loc-kysely/**'
+      - 'scripts/test-*zenstack*'
+      - '.github/workflows/test-zenstack-policy.yml'
+  workflow_dispatch:
+
+jobs:
+  fixed-policy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund @zenstackhq/plugin-policy@3.10.1
+      - run: node --test scripts/test-fixed-zmodel.mjs scripts/test-zenstack-policy-runtime.mjs scripts/test-zenstack-policy-runtime.real.mjs
