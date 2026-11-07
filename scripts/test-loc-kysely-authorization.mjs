@@ -84,6 +84,39 @@ test('untrusted client roles and absent or malformed registries grant no descend
   assert.equal(await canManageLoc(db,'global'),false);
 });
 
+test('management entry returns inherited Group children without granting global admin',async()=>{
+  const tree=[
+    {scope_id:'org',scope_kind:'group'},
+    {scope_id:'alpha',scope_kind:'scope',parent_scope_id:'org'}
+  ];
+  const db={
+    fn(){return 'verified-email'},
+    selectFrom(table){
+      const source=table;
+      let ownerRead=false;
+      return {
+        crossJoin(){ownerRead=true;return this;},
+        leftJoin(){return this;},select(){return this;},where(){return this;},
+        async execute(){
+          if(source!=='api.manage as m')throw Error('Unexpected management relation');
+          return ownerRead
+            ?[{id:'org',email:'owner@example.org',manage_role:'group',active:true,
+                galaxy_table:'galaxy',anchor_table:'anchor',blacklist:{email:[]}}]
+            :[{id:'alpha',manage_role:'scope',active:true,
+                galaxy_table:'galaxy',anchor_table:'anchor'}];
+        }
+      };
+    }
+  };
+  bindLocAuthorization(db,{role:'authenticated',
+    claims:{...identity,grants:['org:manage']},
+    loadScopeTree:async()=>tree});
+  const rows=await locManageRows(db,'self');
+  assert.deepEqual(rows.map(row=>row.id).sort(),['alpha','org']);
+  assert.ok(rows.every(row=>row.email==='owner@example.org'&&row.allowed));
+  assert.equal(await canManageLoc(db,'global'),false);
+});
+
 test('Gateway derives Group hierarchy server-side from api.manage, never request body',()=>{
   const handler=fs.readFileSync('app/loc/gateway/sql-handler.ts','utf8');
   const browser=fs.readFileSync('app/loc/providers/loc-gateway.mjs','utf8');
