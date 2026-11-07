@@ -86,7 +86,8 @@ test('an append writes a delta segment, not a rewrite of any base shard',async()
 test('Gateway adds only UID IN prefilter after a complete trusted index response',async(t)=>{
   const previousDeno=globalThis.Deno,previousFetch=globalThis.fetch;
   globalThis.Deno={env:{get:name=>name==='LOC_SEARCH_INDEX_URL'?'https://index.example.test':
-    name==='LOC_SEARCH_INDEX_SECRET'?secret:''}};
+    name==='LOC_SEARCH_INDEX_SECRET'?secret:
+    name==='LOC_SEARCH_INDEX_ENABLED'?'true':''}};
   globalThis.fetch=(url,options)=>worker.fetch(new Request(url,options),env);
   t.after(()=>{globalThis.Deno=previousDeno;globalThis.fetch=previousFetch;});
   const request={kind:'query',operation:'select',schema:'silver',
