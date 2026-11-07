@@ -46,7 +46,9 @@ export function buildKeywordSearchPatterns(scopeId,items=[],matchedUids=[]){
 // no Anchor total writes, and no mutation of a word's update_time.
 // Item hit_count is the SUM of its distinct literal-word hit counts;
 // document_count is the UNION of article UIDs, not that sum.
-export function keywordPatternItemMetrics(items=[],storedPatterns=[]){
+export function keywordPatternItemMetrics(items=[],storedPatterns=[],{articleUids=null}={}){
+  if(articleUids!==null&&!(articleUids instanceof Set))
+    throw new TypeError('Allowed article UIDs must be a Set');
   if(!Array.isArray(items)||!Array.isArray(storedPatterns))
     throw new TypeError('Keyword Item catalog and stored word rows are required');
   const byWord=new Map();
@@ -78,9 +80,11 @@ export function keywordPatternItemMetrics(items=[],storedPatterns=[]){
         words.push({pattern:word,count:0,indexed:false,ratio:0});
         continue;
       }
-      const count=Number(stored.count);
+      const matching=articleUids===null?stored.uid_list:
+        stored.uid_list.filter(uid=>articleUids.has(uid));
+      const count=matching.length;
       hitCount+=count;
-      for(const uid of stored.uid_list){articles.add(uid);allArticles.add(uid);}
+      for(const uid of matching){articles.add(uid);allArticles.add(uid);}
       words.push({pattern:word,count,indexed:true,ratio:0});
     }
     totalHits+=hitCount;
