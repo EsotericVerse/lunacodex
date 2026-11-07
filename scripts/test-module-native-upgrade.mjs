@@ -53,6 +53,12 @@ test('ZenStack V3 dependencies are lockfile-consistent when installed',()=>{
   }
 });
 
+test('Windows static export launches npm.cmd via cmd shell, never direct spawn',()=>{
+  const builder=readFileSync(new URL('./build-static-export.mjs',import.meta.url),'utf8');
+  assert.match(builder,/shell:process\.platform==='win32'/);
+  assert.match(builder,/run\(npm,\['run','prebuild'\]\)/);
+});
+
 test('native Recharts responsive replaces redundant wrappers in Rune views',()=>{
   for(const path of [
     '../app/lrunes/RuneAppDayNightDashboard.jsx',
