@@ -33,14 +33,20 @@ const GLOBAL_ADMIN_MANAGE=new Set(['manage','loc']);
 const GLOBAL_ADMIN_POLICY={
   name:'@@allow',args:[
     {name:'operation',value:{kind:'literal',value:'update,delete'}},
-    {name:'condition',value:{kind:'binary',op:'==',
-      left:{kind:'member',receiver:{kind:'call',function:'auth',args:[]},members:['role']},
-      right:{kind:'literal',value:'admin'}}}
+    {name:'condition',value:{kind:'binary',op:'>=',
+      left:{kind:'member',receiver:{kind:'call',function:'auth',args:[]},members:['roleLevel']},
+      right:{kind:'literal',value:4}}}
   ]
 };
 const locPrincipal={
   name:'LocPrincipal',
-  fields:{id:{name:'id',type:'String'},role:{name:'role',type:'String'}},
+  fields:{
+    id:{name:'id',type:'String'},
+    role:{name:'role',type:'String'},
+    roleLevel:{name:'roleLevel',type:'Int'},
+    scopeIds:{name:'scopeIds',type:'String',array:true},
+    groupIds:{name:'groupIds',type:'String',array:true}
+  },
   attributes:[{name:'@@auth'}]
 };
 const databaseDefault=Object.freeze({kind:'call',function:'dbgenerated',args:[]});

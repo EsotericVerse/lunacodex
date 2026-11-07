@@ -115,12 +115,17 @@ test('ZenStack V3 runtime schema bridge stays in sync with the frozen contract',
       assert.equal(guard.kind,'binary');
       assert.equal(guard.left.kind,'member');
       assert.equal(guard.left.receiver.function,'auth');
-      assert.deepEqual(guard.left.members,['role']);
-      assert.equal(guard.right.value,'admin');
+      assert.equal(guard.op,'>=');
+      assert.deepEqual(guard.left.members,['roleLevel']);
+      assert.equal(guard.right.value,4);
     }
   }
   assert.equal(schema.authType,'LocPrincipal');
-  assert.deepEqual(Object.keys(schema.typeDefs.LocPrincipal.fields).sort(),['id','role']);
+  assert.deepEqual(Object.keys(schema.typeDefs.LocPrincipal.fields).sort(),
+    ['groupIds','id','role','roleLevel','scopeIds']);
+  assert.equal(schema.typeDefs.LocPrincipal.fields.roleLevel.type,'Int');
+  assert.equal(schema.typeDefs.LocPrincipal.fields.scopeIds.array,true);
+  assert.equal(schema.typeDefs.LocPrincipal.fields.groupIds.array,true);
   assert.equal(Object.values(schema.models).flatMap(model=>model.attributes)
     .filter(attr=>attr.name==='@@allow').length,6);
   assert.equal(Object.keys(schema.models).length,snapshot.tables.length);

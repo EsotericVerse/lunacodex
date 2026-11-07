@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {fixedPolicyReadModel,fixedPolicyWriteModel,fixedPolicyReader,
   withFixedPolicyRead,withFixedPolicyWrite} from '../zenstack/policy-runtime.mjs';
+import {LOC_ROLE_LEVEL,locRolePrincipal} from '../zenstack/role-hierarchy.mjs';
 
 const pg={engine:'postgres',provider:'supabase'};
 const fixed=[
@@ -51,7 +52,8 @@ test('policy-enforced live query uses exactly one transaction and one SQL execut
   assert.equal(plugins,1,'do not reinstall the policy on every HTTP request');
   assert.equal(transactions,2);
   assert.equal(executions,2,'no duplicate SQL execution');
-  assert.deepEqual(auth,[undefined,{id:'user123',role:'authenticated'}]);
+  assert.deepEqual(auth,[undefined,{id:'user123',role:'user',roleLevel:1,
+    scopeIds:[],groupIds:[]}]);
 });
 
 test('Edge actually routes model SELECTs to PolicyPlugin, not a detached schema',()=>{
@@ -113,7 +115,8 @@ test('global fixed write uses one existing dialect and one policy transaction',a
   assert.deepEqual(await withFixedPolicyWrite(db,pg,body,'authenticated',claims,dependencies,execute),{count:1});
   assert.deepEqual(await withFixedPolicyWrite(db,pg,body,'authenticated',claims,dependencies,execute),{count:1});
   assert.deepEqual(logged,{created:1,plugin:1,transaction:2,execution:2,
-    auth:[{id:'user123',role:'admin'},{id:'user123',role:'admin'}]});
+    auth:[{id:'user123',role:'admin',roleLevel:4,scopeIds:[],groupIds:[]},
+      {id:'user123',role:'admin',roleLevel:4,scopeIds:[],groupIds:[]}]});
   await assert.rejects(()=>withFixedPolicyWrite(db,pg,body,'authenticated',
     {...claims,grants:['lo3rwang:manage']},dependencies,execute),
     /Global LOC policy permission required/);
@@ -158,4 +161,77 @@ test('all managed Registry, Galaxy, Anchor and Blocks updates derive primary key
   assert.doesNotMatch(management,/from pg_index/i,
     'no extra SQL catalog read is needed for a managed update');
   assert.match(management,/const keys=managedPrimaryKeyColumns\(table,modelName\)/);
+});
+
+test('LOC roles are projected from verified delegations, never from claimed role text',()=>{
+  const principal=(grants,extra={})=>locRolePrincipal(
+    {provider:'loc',me:true,sub:'alice',grants,role:'admin',...extra});
+  assert.deepEqual(LOC_ROLE_LEVEL,{guest:0,user:1,scope:2,group:3,admin:4});
+  const user=principal([]);
+  assert.deepEqual(user,{id:'alice',role:'user',roleLevel:1,scopeIds:[],groupIds:[]});
+  const scope=principal(['alpha:manage','beta:manage']);
+  assert.deepEqual(scope,{id:'alice',role:'scope',roleLevel:2,
+    scopeIds:['alpha','beta'],groupIds:[]});
+  const admin=principal(['global:manage']);
+  assert.deepEqual(admin,{id:'alice',role:'admin',roleLevel:4,
+    scopeIds:[],groupIds:[]});
+  assert.equal(principal(['alpha:read','beta:write']).role,'user');
+  assert.equal(locRolePrincipal({provider:'clerk',me:true,sub:'alice',
+    grants:['global:manage']}),null);
+  assert.equal(locRolePrincipal({provider:'loc',me:false,sub:'alice',
+    grants:['global:manage']}),null);
+  assert.equal(locRolePrincipal({provider:'loc',me:true,sub:'',
+    grants:['global:manage']}),null);
+});
+
+test('nested virtual Group grants expand downward, without creating Group users',()=>{
+  const tree=[
+    {scope_id:'org',scope_kind:'group'},
+    {scope_id:'division',scope_kind:'group',parent_scope_id:'org'},
+    {scope_id:'team',scope_kind:'group',parent_scope_id:'division'},
+    {scope_id:'alpha',scope_kind:'scope',parent_scope_id:'team'},
+    {scope_id:'beta',scope_kind:'scope',parent_scope_id:'division'},
+    {scope_id:'other',scope_kind:'scope',parent_scope_id:'org'},
+    {scope_id:'outside',scope_kind:'scope'},
+    {scope_id:'paused',scope_kind:'scope',parent_scope_id:'team',active:false}
+  ];
+  const claims=grants=>({provider:'loc',me:true,sub:'director',grants});
+  const division=locRolePrincipal(claims(['division:manage']),{scopeTree:tree});
+  assert.equal(division.role,'group');
+  assert.equal(division.roleLevel,3);
+  assert.deepEqual(division.groupIds,['division','team']);
+  assert.deepEqual(division.scopeIds,['alpha','beta']);
+  assert.ok(!division.scopeIds.includes('other'));
+  assert.ok(!division.scopeIds.includes('paused'));
+  assert.deepEqual(locRolePrincipal(claims(['alpha:manage']),{scopeTree:tree}),{
+    id:'director',role:'scope',roleLevel:2,scopeIds:['alpha'],groupIds:[]
+  });
+  const root=locRolePrincipal(claims(['org:manage']),{scopeTree:tree});
+  assert.deepEqual(root.scopeIds,['alpha','beta','other']);
+  assert.deepEqual(root.groupIds,['division','org','team']);
+  assert.equal(root.role,'group','an entire organization still does not equal Admin');
+  assert.equal(locRolePrincipal(claims(['division:manage'])).role,'scope',
+    'without a trusted Group tree, the claim grants only its exact identifier');
+  assert.equal(locRolePrincipal(claims(['division:manage','global:manage']),
+    {scopeTree:tree}).role,'admin');
+  assert.equal(locRolePrincipal(claims(['alpha:manage','beta:manage']),
+    {scopeTree:tree}).role,'scope','multiple Scope grants do not imply Group');
+});
+
+test('virtual Group tree rejects cyclic or ambiguous hierarchy',()=>{
+  const claims={provider:'loc',me:true,sub:'manager',grants:['a:manage']};
+  assert.throws(()=>locRolePrincipal(claims,{scopeTree:[
+    {scope_id:'a',scope_kind:'group',parent_scope_id:'b'},
+    {scope_id:'b',scope_kind:'group',parent_scope_id:'a'}
+  ]}),/Cyclic/);
+  assert.throws(()=>locRolePrincipal(claims,{scopeTree:[
+    {scope_id:'a',scope_kind:'group'},
+    {scope_id:'a',scope_kind:'scope'}
+  ]}),/Invalid/);
+  const inactive=locRolePrincipal(claims,{scopeTree:[
+    {scope_id:'a',scope_kind:'group',active:false},
+    {scope_id:'b',scope_kind:'scope',parent_scope_id:'a'}
+  ]});
+  assert.deepEqual(inactive,{id:'manager',role:'user',roleLevel:1,
+    scopeIds:[],groupIds:[]});
 });
