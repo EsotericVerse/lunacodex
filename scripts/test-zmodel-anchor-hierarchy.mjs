@@ -106,3 +106,19 @@ test('no SQL, DDL, policy change or persistent index is introduced',()=>{
   assert.doesNotMatch(src,/\b(?:selectFrom|insertInto|updateTable|deleteFrom|createTable|alterTable|executeQuery|ORDER BY|JOIN)\s*\(/i);
   assert.doesNotMatch(src,/\b(?:fetch|dbAuthClient|rpc|localStorage|KV)\s*\(/);
 });
+
+test('Trace manager resolves native Trace -> Path members through Space ZModel',()=>{
+  const manager=readFileSync(new URL('../app/loc/TraceRouteManager.jsx',import.meta.url),'utf8');
+  assert.match(manager,/indexZModelAnchorHierarchy\(mapped\.map\(row=>\(\{/);
+  assert.match(manager,/family:'space'/);
+  assert.match(manager,/spaceGraph\.childrenOf\(current\.uid\)/);
+  // The actual map index loads Trace and Path rows, not all Point rows.
+  // A partial graph resolves loaded routes without inventing missing Points.
+  const rows=[
+    row('TRC','trace',{path:[uid('PTH')],point:[uid('PNT')]}),
+    row('PTH','path',{point:[uid('PNT')]})
+  ];
+  const graph=tree('space',rows);
+  assert.deepEqual(graph.childrenOf(uid('TRC')),[uid('PTH')]);
+  assert.equal(graph.descendants(uid('TRC'),{type:'point'}).complete,false);
+});
