@@ -168,43 +168,78 @@ export async function processShortImport(batch,actor,{store,cryptoProvider=globa
  });
  return {accepted:true,id:parsed.id,articles:[...groups.keys()].map(k=>receipt.get(k))};
 }
-// Kysely implementation for existing PostgreSQL-managed Galaxy tables.
-// Other SQL engines can implement the same source lock/transaction interface.
-export function postgresShortImportStore(db,sql){
- if(typeof db?.transaction!=='function'||typeof sql!=='function'||!sql.ref)
-  throw failure('PostgreSQL Kysely adapter unavailable',503);
+// Unified portable Kysely short-import transaction backend; the existing
+// processShortImport remains the only batching, UID and append algorithm.
+export function portableShortImportStore(db,sql,{engine='postgres',namespace}={}){
+ if(typeof db?.transaction!=='function'||typeof sql!=='function'||!sql.ref||
+   !['postgres','mysql','mssql'].includes(engine))
+  throw failure('Portable Kysely short-import adapter unavailable',503);
+ const schema=namespace===undefined?(engine==='postgres'?'silver':engine==='mssql'?'dbo':''):namespace;
+ if(schema&&!/^[a-z][a-z0-9_]*$/i.test(schema))throw failure('Invalid SQL namespace',503);
  return {transaction:(scope,run)=>{
-  if(!['lo3rwang','lrunes'].includes(scope))
-   throw failure('Unsupported managed Galaxy Scope',403);
-  const name='silver.'+scope+'_galaxy',table=sql.ref(name);
-  return db.transaction().execute(async trx=>run({
-   async lockSource(id){
-    await sql`select pg_advisory_xact_lock(hashtextextended(${id},0))`.execute(trx);
-   },
+  if(!['lo3rwang','lrunes'].includes(scope))throw failure('Unsupported managed Galaxy Scope',403);
+  const name=(engine==='mysql'||!schema?'':schema+'.')+scope+'_galaxy';
+  const operations=(trx,lockSource)=>({
+   lockSource,
    async lookupMany(ids){
-    return trx.selectFrom(name).select(['uid','content','site_id'])
-     .where('site','in',['web','mcp']).where('site_id','in',ids)
-     .limit(ids.length*2).forUpdate().execute();
+    let q=trx.selectFrom(name).select(['uid','content','site_id'])
+     .where('site','in',['web','mcp']).where('site_id','in',ids).limit(ids.length*2);
+    if(engine==='postgres')q=q.forUpdate();
+    return q.execute();
    },
-   async insertMany(rows){
-    await trx.insertInto(name).values(rows).execute();
-   },
-   // Optional single-row fallbacks for other Kysely adapters.
    async lookup(id){
-    return trx.selectFrom(name).select(['uid','content'])
-     .where('site','in',['web','mcp']).where('site_id','=',id)
-     .limit(2).forUpdate().execute();
+    let q=trx.selectFrom(name).select(['uid','content','site_id'])
+     .where('site','in',['web','mcp']).where('site_id','=',id).limit(2);
+    if(engine==='postgres')q=q.forUpdate();
+    return q.execute();
    },
+   async insertMany(rows){await trx.insertInto(name).values(rows).execute();},
    async insert(row){await trx.insertInto(name).values(row).executeTakeFirstOrThrow();},
    async append(uid,id,tail){
-    const result=await trx.updateTable(name)
-      .set({content:sql`concat(coalesce(content,''),${tail})`,
-       UpdateTime:new Date().toISOString()})
-      .where('uid','=',uid).where('site','in',['web','mcp'])
-      .where('site_id','=',id).executeTakeFirstOrThrow();
-    if(BigInt(result.numUpdatedRows||0n)!==1n)
+    const update=await trx.updateTable(name)
+     .set({content:sql`concat(coalesce(${sql.ref('content')},''),${tail})`,
+      UpdateTime:new Date().toISOString()})
+     .where('uid','=',uid).where('site','in',['web','mcp'])
+     .where('site_id','=',id).executeTakeFirstOrThrow();
+    if(Number(update.numUpdatedRows??update.numAffectedRows??0)!==1)
      throw failure('Galaxy append did not affect one article',409);
    }
-  }));
+  });
+  if(engine==='mysql'){
+   // GET_LOCK is connection-scoped, so the same connection must retain it
+   // until after the transaction commits, then release every source lock.
+   return db.connection().execute(async conn=>{
+    const held=[];
+    try{
+     return await conn.transaction().execute(trx=>run(operations(trx,async id=>{
+      const result=await sql`select get_lock(${id},10) as acquired`.execute(trx);
+      if(Number(result.rows?.[0]?.acquired)!==1)
+       throw failure('Galaxy source is busy; Queue stays intact',409);
+      held.push(id);
+     })));
+    }finally{
+     for(const id of held.reverse())
+      await sql`select release_lock(${id})`.execute(conn);
+    }
+   });
+  }
+  return db.transaction().execute(trx=>{
+   let tableLocked=false;
+   return run(operations(trx,async id=>{
+    if(engine==='postgres'){
+     await sql`select pg_advisory_xact_lock(hashtextextended(${id},0))`.execute(trx);
+    }else if(!tableLocked){
+     // SQL Server: lock the whole table even if it is still empty, so
+     // two new sources cannot race a first import without a unique index.
+     await sql`select top 1 1 as locked from ${sql.ref(name)} with (tablockx,holdlock)`.execute(trx);
+     tableLocked=true;
+    }
+   }));
+  });
  }};
+}
+
+// Compatibility entry point, same implementation rather than a second store.
+export function postgresShortImportStore(db,sql){
+ return portableShortImportStore(db,sql,{engine:'postgres',namespace:'silver'});
 }
