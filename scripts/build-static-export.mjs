@@ -10,7 +10,7 @@ if(fs.existsSync(parked))throw new Error('Found an unfinished static-export buil
 
 const npm=process.platform==='win32'?'npm.cmd':'npm';
 function run(command,args,env=process.env){
-  const result=spawnSync(command,args,{cwd:root,env,stdio:'inherit'});
+  const result=spawnSync(command,args,{cwd:root,env,stdio:'inherit',shell:process.platform==='win32'});
   if(result.error)throw result.error;
   if(result.status!==0)throw new Error(`${command} ${args.join(' ')} failed with status ${result.status}`);
 }
