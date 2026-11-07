@@ -3,7 +3,7 @@
 // schema introspection, a migration, or a database connection at module load.
 // Only use this from trusted server code after Clerk + LOC Authority checks.
 // SQL-nullable list fields and dynamic Scope/SQL dialects remain on Kysely.
-import contract from './schema-contract.json' with {type:'json'};
+import contract from './schema-contract.mjs';
 
 const formatTypes=Object.freeze({
   text:'String',varchar:'String',bpchar:'String',bool:'Boolean',
