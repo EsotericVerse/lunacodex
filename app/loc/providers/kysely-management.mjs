@@ -562,7 +562,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     manage:['p_type','p_id'],
     find_galaxy_duplicates:['p_scope_id'],
     read_scope_registry_admin:[],
-    sync_search_patterns:['p_scope_id','p_class_uid','p_patterns','p_final']
+    sync_search_patterns:['p_scope_id','p_class_uid','p_patterns','p_final'],
     suggest_search_patterns:['p_scope_ids','p_query']
   }[name];
   if(Object.keys(args).some(key=>!keys.includes(key)))reject('Unexpected Kysely action argument');
