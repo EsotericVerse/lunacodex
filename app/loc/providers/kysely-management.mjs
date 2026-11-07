@@ -5,6 +5,7 @@ import {validateLocRegistryDomain} from './loc-domain.mjs';
 import {sql} from 'npm:kysely@0.29.8';
 import {saveBlocksKysely} from './kysely-blocks.mjs';
 import {allocateAnchorUid} from '../unified-anchor-compat.mjs';
+import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
 
 const ID=/^[a-z][a-z0-9_]*$/i;
 const UID=/^[A-Za-z0-9]{8}$/;
@@ -467,7 +468,10 @@ async function syncSearchPatterns(trx,args){
   const id=value=>String(value??'').normalize('NFKC').trim().toLocaleLowerCase('zh-Hant');
   for(const item of items){
     const attr=typeof item.attr==='string'?JSON.parse(item.attr):item.attr||{};
-    for(const word of [item.title,...(Array.isArray(attr.keyword)?attr.keyword:[])]){
+    const literalAliases=(Array.isArray(attr.keyword)?attr.keyword:[])
+      .filter(word=>typeof word==='string'&&
+        !parseRuneKeywordRuleSentence(word).rules.length);
+    for(const word of [item.title,...literalAliases]){
       const value=id(word);
       if(value&&value.length<=256)active.add(value);
     }
