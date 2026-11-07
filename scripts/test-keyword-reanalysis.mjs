@@ -193,48 +193,36 @@ test('unified Anchor analysis emits aggregate total and deduplicated UID strings
 });
 
 
-
-test('a single Galaxy scan consolidates words from every Class without changing selected Item totals',async()=>{
- const tree=[
-  {uid:'CAT1',type:'category',name:'全部',lists:['CL01','CL02']},
-  {uid:'CL01',type:'class',name:'時間',lists:['GR01']},
-  {uid:'CL02',type:'class',name:'空間',lists:['GR02']},
-  {uid:'GR01',type:'group',name:'時間組',lists:['IT01']},
-  {uid:'GR02',type:'group',name:'空間組',lists:['IT02']},
-  {uid:'IT01',type:'item',name:'靈',lists:['共詞','心情']},
-  {uid:'IT02',type:'item',name:'空間',lists:['共詞','地點','未命中']}
- ];
- const docs=[
-  {uid:'Ab000001',content:'共詞 靈 空間 心情'},
-  {uid:'Ab000002',content:'共詞 空間 地點'},
-  {uid:'Ab000003',content:'心情'}
+test('only selected Class Item names and literal words enter patterns; never Group/Class titles or other Classes',async()=>{
+ const rows=[
+  {uid:'CAT1',type:'category',name:'所有分類',lists:['CL01','CL02']},
+  {uid:'CL01',type:'class',name:'分類甲',lists:['GR01']},
+  {uid:'CL02',type:'class',name:'分類乙',lists:['GR02']},
+  {uid:'GR01',type:'group',name:'群組甲',lists:['IT01']},
+  {uid:'GR02',type:'group',name:'群組乙',lists:['IT02']},
+  {uid:'IT01',type:'item',name:'項目甲',lists:['內詞甲','內詞乙']},
+  {uid:'IT02',type:'item',name:'項目乙',lists:['內詞丙']}
  ];
  const writes=[];
- let patternRows=null,readCount=0;
+ let patterns;
  await reanalyzeKeywordClass({
-  classUid:'CL01',treeRows:tree,pageSize:2,expectedCount:3,
-  readPage:async({offset,limit})=>{readCount++;return docs.slice(offset,offset+limit)},
+  classUid:'CL01',treeRows:rows,pageSize:10,expectedCount:1,
+  readPage:async({offset})=>offset?[]:[{
+    uid:'Ab12Cd34',
+    content:'所有分類 分類甲 分類乙 群組甲 群組乙 項目甲 內詞甲 項目乙 內詞丙'
+  }],
   writeNode:async row=>writes.push(row),
   writePatterns:async({items,termMatches})=>{
-   assert.equal(items.length,2);
-   patternRows=buildKeywordSearchPatterns('scope',items,termMatches);
+    patterns=buildKeywordSearchPatterns('scope',items,termMatches);
   },
   finalize:async()=>{}
  });
- assert.equal(readCount,3,'the Galaxy was read once in two pages plus EOF');
+ assert.deepEqual(patterns.map(row=>row.pattern).sort(),['內詞乙','內詞甲','項目甲'].sort());
+ const counts=new Map(patterns.map(row=>[row.pattern,row.count]));
+ assert.equal(counts.get('項目甲'),1);
+ assert.equal(counts.get('內詞甲'),1);
+ assert.equal(counts.get('內詞乙'),0);
  assert.deepEqual(writes.map(row=>row.uid).sort(),['GR01','IT01']);
- const patterns=new Map(patternRows.map(row=>[row.pattern,row]));
- assert.equal(patterns.get('共詞').count,2,'one article counts once across Classes');
- assert.deepEqual(patterns.get('共詞').uid_list,['Ab000001','Ab000002']);
- assert.equal(patterns.get('靈').count,1,'Item title is an independent literal word');
- assert.equal(patterns.get('空間').count,2,'other Class Item title is included');
- assert.equal(patterns.get('心情').count,2);
- assert.equal(patterns.get('地點').count,1);
- assert.equal(patterns.get('未命中').count,0);
- assert.deepEqual(patterns.get('未命中').uid_list,[]);
- const item=writes.find(row=>row.uid==='IT01');
- assert.deepEqual(item.uid_lists.map(row=>row.uid),docs.map(row=>row.uid));
- assert.deepEqual(item.uid_lists.map(row=>row.times),[3,1,1]);
 });
 
 const ruleTree=[
