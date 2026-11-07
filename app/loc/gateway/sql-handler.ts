@@ -1,6 +1,8 @@
 import { sql } from "npm:kysely@0.29.8";
 import {ZenStackClient} from "npm:@zenstackhq/orm@3.10.1";
 import {PolicyPlugin} from "npm:@zenstackhq/plugin-policy@3.10.1";
+import {scopedZModelSchema} from "../../../zenstack/scoped-schema.mjs";
+import {executeNativeRead} from "../../../zenstack/native-query.mjs";
 import {withFixedPolicyRead,fixedPolicyReadModel,withFixedPolicyWrite,fixedPolicyWriteModel} from "../../../zenstack/policy-runtime.mjs";
 import {jwtVerify,createRemoteJWKSet} from "npm:jose@5.9.6";
 import {processShortImport,portableShortImportStore} from "../../../app/loc/import/short-append-service.mjs";
@@ -133,7 +135,7 @@ async function trustedManagementScopeTree(trx:any,target:Record<string,any>){
 
 async function executeRequest(trx: any, target: Record<string,any>, role: string,
   claims: Record<string, unknown>, body: Record<string, unknown>,
-  {modelName=""}:{modelName?:string}={}) {
+  {modelName="",ormClient=null,nativeScopeModel=""}:{modelName?:string,ormClient?:any,nativeScopeModel?:string}={}) {
   const executionPort=resolveSqlExecutionPort(target);
   bindLocAuthorization(trx,{role,claims,
     loadScopeTree:()=>trustedManagementScopeTree(trx,target)});
@@ -145,6 +147,10 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
       if(body.kind==="query"){
         if(body.operation!=="select"&&!await canManageLoc(trx,"global"))
           throw Object.assign(new Error("Global LOC management permission required"),{httpStatus:403});
+        if(body.operation==="select"&&ormClient){
+          const native=await executeNativeRead(ormClient,body,modelName);
+          if(native)return native;
+        }
         return await executeKyselyQuery(trx,body,{modelName});
       }
       if(body.kind==="managed-write"){
@@ -192,13 +198,18 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
         (executionPort.engine==="mssql"?"dbo":"silver"))
     });
     const access=await authorizeCrossEngineQuery(trx,body,{role,claims});
+    const publicOnly=publicGalaxyGate(body,role,claims)||access?.publicOnly===true;
+    if(ormClient&&nativeScopeModel&&!publicOnly){
+      const native=await executeNativeRead(ormClient,body,nativeScopeModel);
+      if(native)return native;
+    }
     return await executeKyselyQuery(trx,body,{dialect:executionPort.engine,
       // PostgreSQL keeps the request's real api/silver schema. Other SQL
       // engines use the configured flat database/dbo namespace.
       namespace:executionPort.engine==='postgres'&&!target.schema_name
         ?undefined:String(target.schema_name||(
           executionPort.engine==='mssql'?'dbo':'public')),
-      publicOnly:publicGalaxyGate(body,role,claims)||access?.publicOnly===true});
+      publicOnly,modelName:nativeScopeModel||''});
   }
   await bindPostgresSession(trx,role,claims);
   if(body.kind==="query"){
@@ -218,10 +229,12 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
     // PostgreSQL must stop work even when browser aborts its 25s timeout.
     if(isTextSearchQuery(body))
       await sql`set local statement_timeout = '8000ms'`.execute(trx);
-    return await executeKyselyQuery(trx,body,{modelName,
-      // Public Search is independently protected by the Gateway even on a
-      // PostgreSQL connection that does not implement RLS.
-      publicOnly:publicGalaxyGate(body,role,claims)});
+    const publicOnly=publicGalaxyGate(body,role,claims);
+    if(!publicOnly&&ormClient&&body.operation==="select"&&(nativeScopeModel||modelName)){
+      const native=await executeNativeRead(ormClient,body,nativeScopeModel||modelName);
+      if(native)return native;
+    }
+    return await executeKyselyQuery(trx,body,{modelName:nativeScopeModel||modelName,publicOnly});
   }
   if(body.kind==="anchor")return await executeKyselyAnchor(trx,body,{role});
   if(body.kind==="analytics")return await executeKyselyAnalytics(trx,body,{role});
@@ -656,14 +669,27 @@ Deno.serve({hostname:"0.0.0.0",port:serverPort},async (request) => {
       fixedPolicyWriteModel(target,body,role,claims);
     const policyDeps=(policyModel||adminWrite)
       ?{dialect:trustedDialectForDatabase(db),ZenStackClient,PolicyPlugin}:null;
+    const scopeMatch=target.engine==="postgres"&&role==="authenticated"&&
+      claims?.provider==="loc"&&claims?.me===true&&
+      body.kind==="query"&&body.operation==="select"&&body.schema==="silver"
+      ?/^([a-z][a-z0-9]{0,14})_(galaxy|anchor|blocks)$/.exec(String(body.table||""))
+      :null;
+    const nativeScopeModel=scopeMatch
+      ?scopeMatch[2][0].toUpperCase()+scopeMatch[2].slice(1)
+      :undefined;
     const result=policyModel
       ?await withFixedPolicyRead(db,target,body,role,claims,policyDeps!,
-        (trx:any,modelName:string)=>executeRequest(trx,target,role,claims,body,{modelName}))
+        (trx:any,modelName:string,ormClient:any)=>executeRequest(trx,target,role,claims,body,{modelName,ormClient}))
       :adminWrite
         ?await withFixedPolicyWrite(db,target,body,role,claims,policyDeps!,
           (trx:any,modelName:string)=>executeRequest(trx,target,role,claims,body,{modelName}))
-        :await db.transaction().execute(trx=>
-          executeRequest(trx,target,role,claims,body));
+        :scopeMatch
+          ?await new ZenStackClient(scopedZModelSchema({
+            scopeId:scopeMatch[1],namespace:String(target.schema_name||body.schema)
+          }),{dialect:trustedDialectForDatabase(db)}).$transaction(ormClient=>
+            executeRequest(ormClient.$qb,target,role,claims,body,{ormClient,nativeScopeModel}))
+          :await db.transaction().execute(trx=>
+            executeRequest(trx,target,role,claims,body));
     // Search-only response metadata: no physical SQL column is added.
     // The browser can preserve two distinct results with the same UID
     // when future Gateway federated reads return multiple logical datasets.

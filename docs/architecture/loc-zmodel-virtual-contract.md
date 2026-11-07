@@ -24,6 +24,20 @@ These `type` declarations **do not create tables or relations**, add physical co
 
 The field `Anchor.attr` stays `Json @db.JsonB`. Different Anchor types have different allowed attributes, so it is intentionally **not** replaced with a single restrictive `@json` type that might drop or reject existing data. Source/Keyword reference UIDs are still interpreted by their dedicated validated hierarchy projection.
 
+## Active ZModel consumers (2026-11-08)
+
+These are **runtime call paths**, not additional ZModel schemas or examples:
+
+- **Time / Era → Period:** `app/loc/views/CulturePublicReader.jsx` calls `indexZModelAnchorHierarchy(...,{family:'time'})` over the Culture Anchors already loaded for that Scope. Canonical eight-character `attr.period` references use `childrenOf(era.uid)`; imported legacy short UIDs retain the existing rendering path. Period date windows, gaps, and article visibility are unchanged.
+- **Space / Trace → Path:** `app/loc/TraceRouteManager.jsx` builds a memoized partial `family:'space'` graph from the already-loaded, owner-Scope route index. The active map's Path membership uses `childrenOf(trace.uid)`. Point nodes are fetched only by the existing lazy map-reader; a partially loaded graph is never treated as permission to fetch missing Points. Four-character legacy routes retain the old reader.
+- **Source / Domain → From:** `app/loc/providers/kysely-management.mjs` uses `family:'source'` for the authorized `read_source_catalog` relation projection. The actual Anchor rows here contain Domain/From; the Universe/Galaxy presentation parents are not fabricated as physical Base62 UIDs. The original Scope permission gate and queries remain unchanged.
+- **Keyword / Category → Class → Group → Item:** `app/loc/keyword-tree.mjs` already calls the shared `family:'keyword'` graph for canonical eight-character Anchors. Active consumers include keyword-library and analysis paths. Legacy four-character inputs retain the existing format-specific path.
+- **Native SQL Query:** `zenstack/native-query.mjs` is separately wired into the SQL Gateway for a limited, representable set of already-authorized PostgreSQL SELECTs; unsupported operators and cross-dialect requests stay on Kysely. This is independent of the in-memory Anchor graph.
+
+The graph integrations above add **zero SQL round trips**. They replace duplicated relationship resolution, but do not, on their own, prove a database latency improvement. The native ORM paths must be assessed from their compiled SQL and actual call counts, not merely from the fact that a ZModel exists.
+
+The focused Node tests run on this PR branch passed **55/55**, including Culture Era rendering, Trace and Source graph consumers, original Keyword tree behavior, real ZenStack 3.10.1 ORM/PolicyPlugin SQL compilation, and Kysely 0.29.8 integration. The Culture and Trace JSX files also passed Babel parsing. These tests use a simulated SQL driver; no live database, published deployment, or end-to-end browser flow is claimed verified.
+
 ## Explicit system boundaries
 
 - **LOC Auth:** signed grants, trust and permissions. ZModel types do not issue grants.

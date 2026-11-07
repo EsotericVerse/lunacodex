@@ -1,22 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import {validatePortableScopeSchema as validate} from '../app/loc/providers/kysely-schema.mjs';
+import {scopedZModelColumns} from '../zenstack/scoped-schema.mjs';
 
-// LOC databases are frozen. The former portable schema installer was
-// deliberately removed; validate existing Galaxy/Anchor tables instead.
 const source=fs.readFileSync('app/loc/providers/kysely-schema.mjs','utf8');
-const validate=new Function('portableRelation',source
-  .replace(/^import .*$/gm,'').replace(/^export /gm,'')+
-  ';return validatePortableScopeSchema;')(
-  (table,engine,namespace)=>engine==='mysql'?table:
-    (namespace||(engine==='mssql'?'dbo':'public'))+'.'+table
-);
 
-const galaxy=['uid','title','content','createtime','location','UpdateTime',
-  'url','source_id','target_id','ref_id','site','place_id','media_link',
-  'date','site_id','statics','culture','search','trace','list','keyword',
-  'extract','others'];
-const anchor=['uid','type','title','description','invisible','attr','createtime'];
+// Validate directly against the real frozen ZModel, not an eval'd function
+// with a stale parameter list or duplicated physical field names.
+const {galaxy,anchor}=scopedZModelColumns({scopeId:'writer',namespace:'silver'});
 const entries=(schema)=>[
   {schema,name:'writer_galaxy',columns:galaxy.map(name=>({name}))},
   {schema,name:'writer_anchor',columns:anchor.map(name=>({name}))}

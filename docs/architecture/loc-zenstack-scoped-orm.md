@@ -33,8 +33,8 @@ The above is an *internal example*, not a new endpoint or a claim that all exter
 ### Important ZenStack V3 distinctions
 
 - **Native ORM methods** can enforce ZModel access policies **when the PolicyPlugin is installed** on a schema with applicable `@@allow / @@deny` declarations.
-- **`$qb` and raw SQL bypass the policy plugin**, even when `dangerouslyAllowRawSql` is explicitly enabled. Do not describe a `$qb` query as policy-enforced. Existing Gateway authorization and DB access controls remain applicable.
-- Dynamic Galaxy/Anchor/Blocks models deliberately have **no blanket `@@allow`**: public visibility varies by page/operation, and private ownership depends on verified LOC grants. Inventing a universal `read: true` or role-level permission would be incorrect. A future independently verified, operation-specific PolicyPlugin adapter can be connected after ongoing LOC Auth/Gateway work merges.
+- **ZenStack 3.10.1 observation:** the installed PolicyPlugin rewrites the model-mapped `$qb.updateTable('Manage')` to include the ZModel role predicate (`1 >= 4` for a user, `4 >= 4` for a global admin). This does **not** prove raw SQL or all `$qb` paths are policy protected; the current upstream skill gives a broader warning. LOC Gateway authorization remains mandatory.
+- Dynamic Galaxy/Anchor/Blocks models deliberately do **not** declare blanket `@@allow`; only already-authorized Gateway operations may use the scoped ORM. Public-only requests retain their existing Kysely published-visibility predicates.
 - Native ZenStack V3 dialects currently cover PostgreSQL/MySQL/SQLite, while SQL Server is still on the LOC Kysely path. This fixed-schema derived factory is **PostgreSQL only** because the physical contract contains PostgreSQL-specific arrays and JSONB. MySQL needs a separately validated type mapping before native ZenStack calls are enabled. Querying MySQL/SQL Server via existing Kysely remains unchanged.
 - The original **nullable PostgreSQL array** limitations remain: use selected ORM fields or the existing lossless Kysely path where array-null semantics matter. Do not overwrite existing schema or silently convert arrays to JSONB.
 
@@ -50,4 +50,20 @@ node --test scripts/test-zenstack-scoped-orm.mjs
 
 **Do not mark real ZenStack or deployed database tests passed unless a corresponding run is observed.** The SQL Gateway's ongoing Auth branch and the independent FlexSearch/KV integration own their own execution paths. This PR touches neither of them, no database DDL/RLS/migration, and no storefront/search UI.
 
-Next step after LOC Auth/Gateway has settled: opt in a narrow authorized native-ORM query path, measure latency against the existing Kysely path, and only replace production query code when behavior (including permissions and pagination) is equivalent. No assumption that using more ORM methods alone yields faster SQL.
+## Gateway native ORM connection (2026-11-08)
+
+`zenstack/native-query.mjs` translates only the lossless subset of LOC `query/select` envelopes to native `findMany` and optional `count`. Explicit ZModel columns, type-compatible AND filters and bounded order/offset/limit are supported. Other operators, raw text search, unknown fields, coercible values and public-only Scope visibility remain on the established Kysely path. The original HTTP response format and `head`/`single` semantics are preserved.
+
+The Gateway applies LOC Auth/Scope validation, Session/RLS binding and its existing ACL before private native Scope reads. Four fixed control models use the existing PolicyPlugin-wrapped client. Both paths share the same trusted database dialect and connection pool; no schema, policy, RLS, index, RPC or migration is changed.
+
+The `LocFederatedRef` and `LocAnchorLink` ZModel types remain virtual identifiers and relationships, not physical foreign keys or synchronized data.
+
+### Verification and limits
+
+Using ZenStack 3.10.1, its PolicyPlugin and Kysely DummyDriver:
+
+```bash
+node --test scripts/test-zenstack-native-query.mjs scripts/test-zenstack-scoped-orm.mjs scripts/test-zenstack-policy-runtime.real.mjs scripts/test-zenstack-policy-runtime.mjs
+```
+
+This compiles and asserts real ORM SQL and policy predicates but does not connect to a live SQL database. SQL Gateway HTTP-level behavior, MySQL/SQL Server native ORM, and latency improvements are not claimed to be verified.

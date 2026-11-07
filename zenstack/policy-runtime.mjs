@@ -13,7 +13,7 @@ const ADMIN_FIXED_WRITES=Object.freeze({
 });
 /** Only signed global LOC grants may update/delete a fixed admin model. */
 export function fixedPolicyWriteModel(target,body,role,claims){
-  if(target?.engine!=='postgres'||
+  if(target?.engine!=='postgres'||target.provider!=='supabase'||
       role!=='authenticated'||claims?.provider!=='loc'||claims?.me!==true||
       !Array.isArray(claims.grants)||!claims.grants.includes('global:manage'))
     return null;
@@ -57,9 +57,9 @@ export function fixedPolicyReader(db,{dialect,ZenStackClient,PolicyPlugin}={}){
 }
 
 /** Execute a trusted fixed-model SELECT using the existing Kysely transaction.
- * IMPORTANT: ZenStack V3's low-level $qb access bypasses PolicyPlugin policies.
- * The verified Gateway authorization and explicit SQL filters remain the
- * effective access boundary; this helper must not be treated as an ACL.
+ * ZenStack 3.10.1 also rewrites mapped $qb statements with model policy
+ * predicates (verified separately), but raw and unmapped SQL are not
+ * assumed policy-enforced. Gateway authorization remains mandatory.
  */
 export async function withFixedPolicyRead(db,target,body,role,claims,
   {dialect,ZenStackClient,PolicyPlugin},run){
@@ -71,13 +71,14 @@ export async function withFixedPolicyRead(db,target,body,role,claims,
     :undefined;
   return reader.$setAuth(auth).$transaction(async scoped=>{
     if(!scoped?.$qb)throw new Error('Policy-enforced Kysely transaction missing');
-    return run(scoped.$qb,modelName);
+    return run(scoped.$qb,modelName,scoped);
   });
 }
 
 /** Trusted global registry write. The Gateway verifies the signed LOC
  * delegation, and managed-write retains its original canManageLoc guard.
- * Low-level $qb bypasses ZenStack ORM policy enforcement; do not rely on it.
+ * Mapped $qb receives tested model predicates in ZenStack 3.10.1,
+ * while Gateway authorization guards every privileged write separately.
  * A grant-derived admin principal is bound once per transaction; no SQL
  * permission lookup or second driver/pool is created by this adapter.
  */
