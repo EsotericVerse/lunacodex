@@ -43,3 +43,11 @@ The Keywords **重新分析** dropdown enumerates all editable Classes, includin
 `keyword_meta.by_class[Class UID].completedAt` is the **only** authoritative completion date. Its sibling count fields are scoped to the same UID. The historical Scope-level `staticstime` is not a shared completion date and is no longer used for Class readiness in the frontend or Kysely analytics. Existing update paths clear the old mirror instead of writing the selected Class's timestamp into a Scope-global value. Legacy records with only a Scope-wide date are treated as `未解析` until that Class is analyzed again; dates must not be guessed or copied between Classes.
 
 No new columns, tables, RPC, indexes or changes to keyword matching rules.
+
+## 2026-11-07｜來源統計 ISR 契約清理
+
+- `overview` 只包含 `earliest`、`rows`、`categories`、`aliases`；前端不能再依賴已退役的 `mediaCount` 才接受數值快取。此欄位不存在於目前的 ISR 回應，也不屬於 Statistics。
+- `selectScopeOverviewRaw` 直接驗證上述四個欄位並重用有效 ISR 回應；只有 ISR 不可用／回應無效才回到原有的 Kysely `overview` 聚合，避免每次多跑一次數字計算。
+- 多媒體是既有關鍵詞分類的一種，只按目前 Anchor Class／Group／Item 分析結果呈現；**不啟動原本的多媒體總數、Galaxy/Anchor `media_link` Join 或獨立 MediaFacet 統計**。
+- 其他功能的媒體匯入數量與文章列表分頁游標不屬於 Statistics overview，維持原用途，避免誤刪導致匯入／分頁異常。
+- 不修改 ZModel、既有 Kysely SQL、資料庫 Schema、Index、RLS、RPC 或部署設定。
