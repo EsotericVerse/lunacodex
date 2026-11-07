@@ -67,6 +67,7 @@ async function* galaxyRows(){
     for(const row of response.data)yield row;
   }
 }
+const shardManifest=[];
 const report=await stageAndPublishLocIndex({
   rows:galaxyRows(),expected,scopeId,dbId,
   shardCount:LOC_SEARCH_INDEX_SHARDS,
@@ -76,15 +77,17 @@ const report=await stageAndPublishLocIndex({
     if(verifyOnly)return;
     if(phase==='begin')
       await indexCall('/v1/reset',{scopeId,dbId,entityType:'galaxy'});
-    else if(phase==='shard')
+    else if(phase==='shard'){
       await indexCall('/v1/snapshot',{scopeId,dbId,entityType:'galaxy',shard,parts});
+      shardManifest.push(shard);
+    }
     else if(phase==='commit'){
       // Preserve immutable append deltas produced after SQL scanning began.
       await indexCall('/v1/prune-deltas',{
         scopeId,dbId,entityType:'galaxy',beforeMs:startedAt
       });
       await indexCall('/v1/coverage',{
-        scopeId,dbId,entityType:'galaxy',complete:true
+        scopeId,dbId,entityType:'galaxy',complete:true,shards:shardManifest
       },'PUT');
     }
   }
