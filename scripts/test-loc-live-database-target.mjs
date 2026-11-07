@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {normalizeLiveTarget,runtimeTargetId} from '../app/loc/providers/live-database-target.mjs';
 
 const profiles=[
@@ -43,4 +44,14 @@ test('reject invalid or browser-derived database connection configurations',()=>
  }
  assert.throws(()=>normalizeLiveTarget('test',{...valid,password:''}),
   /Trusted runtime SQL connection is incomplete/);
+});
+
+test('switching a database invalidates browser SQL delegation caches',()=>{
+ const ui=readFileSync(new URL('../app/loc/LocDatabaseSwitcher.jsx',import.meta.url),'utf8');
+ assert.match(ui,/requestDatabase\('POST','\/v1\/databases\/selection',\{id\}\)/);
+ assert.match(ui,/if\(\(result\?\.selected\|\|'configured'\)!==id\)/);
+ assert.match(ui,/window\.location\.reload\(\)/);
+ // The independent SQL Adapter is recreated on reload, not patched with a
+ // browser-selected connection string or stale signed delegation.
+ assert.doesNotMatch(ui,/connection_alias\s*:/);
 });
