@@ -19,7 +19,7 @@ export function createFixedLocClient({dialect}={}){
 // Server-only native ZenStack ORM for one independently stored Scope.
 // This factory does NOT verify LOC Auth, apply business visibility rules, or
 // install a PolicyPlugin with a made-up blanket access rule. Call it only
-// inside the already-authorized SQL Gateway execution boundary. Existing
+// inside the already-authorized LOC application-server execution boundary. Existing
 // dynamic Kysely SQL remains available for unsupported operations/dialects.
 export function createScopedLocClient({dialect,scopeId,namespace='silver'}={}){
   if(!dialect||typeof dialect.createDriver!=='function'||

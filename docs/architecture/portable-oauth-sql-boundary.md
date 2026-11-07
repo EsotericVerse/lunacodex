@@ -1,80 +1,44 @@
-# LOC Portable — 身分授權與 SQL 連線分離（2026-11-07）
+# LOC Portable — OAuth 授權與 Kysely 直接資料庫連線
 
-## 不可違反的契約
+2026-11-08 定案：**LOC 永遠不使用 SQL Gateway。**
 
-- LOC 的資料庫存取權限由 **LOC Auth / LOC Authority** 核發、驗證與委託。Clerk Auth、Supabase Auth、Neon Auth **均不得是 SQL、Kysely、公開讀取或跨庫切換的必要相依**。
-- 使用者的 OAuth access token 是身分與權限證明，**不是資料庫密碼**。SQL Gateway 在伺服器端，以受控資料庫憑證連接 PostgreSQL／MySQL／SQL Server；不讓瀏覽器直接持有資料庫憑證。
-- 不管是哪家資料庫託管商，LOC 授權契約、Scope 管理及 Kysely 查詢操作一致。
-- 匿名公開讀取不依賴個人登入；管理寫入必須驗證 LOC Authority 所核發、具有正確 Scope／action／有效期限的委託。不得以使用者提供的 Email／Scope 欄位自行授權。
-- OAuth 外部登入適配器可以是可插拔的「身分來源」，但不能被硬編碼成 LOC SQL 的要求，也不能在缺少 LOC OAuth 時偷偷回退成某個供應商的 Auth。
-- 多資料庫備援必須在 SQL 層切換。選配的 `LOC_BACKUP_SQL_GATEWAY_URL` 指向**不同來源**的受控 Kysely Gateway，而不是 Neon Auth `/token/anonymous` 或 Data API／PostgREST。
-- 啟用 SQL 備援前，要實測主、備 Gateway 使用各自的資料庫憑證、相同授權邊界。未設定獨立備援時，必須清楚表示未配置，不得假稱線上備援正常。
+## 不可違反的架構
 
-## 本次已處理
+- **LOC Auth**：原生 OAuth 2.1／PKCE S256、Session、Scope／Group 權限、
+  每位使用者授權選擇資料庫。GitHub／Google／OIDC 只是外部身分適配器。
+- **可信任 LOC 應用程式後端**：驗證 OAuth／Scope 授權後，於同一應用程式
+  伺服器的 Kysely Driver 執行 SQL，不透過另一個 HTTP SQL 中轉服務。
+- **SQL Engine**：PostgreSQL、MySQL、SQL Server 由 Kysely Dialect
+  配合各引擎協定 Driver 執行；Supabase／Neon 可以是 PostgreSQL
+  伺服器，但不得作為必要的 Auth／Edge／SDK 模組。
+- **安全界線**：OAuth token 不等於資料庫密碼；資料庫連線密碼／TLS
+  資訊只在可信任伺服器端，Browser、MCP Client、Chrome Extension
+  不能取得原始連線密碼。
+- **資料獨立**：每個資料庫內容可完全不同，只要求 LOC Schema 對齊；
+  不複製、不同步、不集中內容，以 DB ID＋Scope ID 分辨 UID。
+- **公開讀取與私有寫入**：匿名仍可讀取原有公開資料；已授權操作必須
+  保留八個 Galaxy Boolean、Scope 權限與隱藏內容過濾。
+- **永久禁止**：`services/loc-sql`、`services/loc-mcp-sql`、
+  泛用 `/v1/sql`、獨立 SQL Gateway Worker／Container、
+  Supabase Edge 與任何改名後的等價 SQL 中轉器。
 
-刪除不再是正式登入入口的 `neon-primary.mjs`、`neon-public.mjs`、`emergency-primary.mjs`；移除 `@supabase/postgrest-js`；ISR／公共發布改由兩個可選的 Kysely Gateway 實作來源切換。管理頁不再把 Neon Auth 能否連線當作資料庫是否支援 Neon 的證據。
+## 正在移除的舊實作
 
-Neon PostgreSQL 的存取功能仍由 Kysely PostgreSQL 方言與資料庫連線設定提供，不因移除 Neon Auth 而移除 Neon SQL 支援。
+#1248 誤把網站的 `configured.mjs` 和 server numeric reader
+改回獨立 Gateway 優先；本次以主分支先前可工作的公開資料來源
+恢復，並刪除兩套未部署獨立 SQL 服務和專用 Dockerfile。
 
-## 尚未完成，不能宣稱已切換
+舊 `app/loc/gateway/`、`loc-gateway.mjs`、`kysely-edge.mjs`、
+Auth／MCP 裡的 Gateway URL 與部署測試，仍需隨原生應用程式後端的
+功能移轉同步移除；**不得再從這些舊檔案建立新的 SQL 中轉器**。
 
-**主站 `app/loc/providers/configured.mjs` 已改為直接組裝 `createLocGatewayAdapter()`**，登入身分來源可替換；但目前預設上游仍是 Clerk，原生 LOC OAuth 登入尚未正式接替。
+網站目前仍有直接公開 Data API 的暫時讀取路線，這不是最終
+Kysely Driver 完工狀態。不可先砍斷這個現役公開入口造成 404；
+必須先讓可信任 LOC 應用程式後端具備直接 Kysely 查詢能力，
+完成公開、私有、MCP、Extension 端到端驗證，再把舊讀取路線刪除。
 
-正式移除此過渡入口之前，需先具備並驗證：
-1. LOC Auth 對外的 OAuth Authorization Server（正確 issuer、Authorization Code + PKCE S256、Token endpoint、回呼與續期、撤銷／逾期）。
-2. LOC Authority 對該 LOC Auth 所簽發的 OAuth token 的獨立驗簽與 subject／session／Scope 授權，不使用 Clerk 取代驗簽。
-3. 網站 browser account adapter 的登入、恢復 Session、登出與 Google/GitHub 可選身份來源，不再呼叫 Clerk SDK。
-4. SQL Gateway 驗證 LOC delegation 的主線及部署同版驗收；不同資料庫、不同 Scope、匿名讀取、跨 Scope 拒絕均通過。
+資料庫 Schema、Table、Column、Index、RLS、Policy、GRANT、RPC、
+Migration 仍全面凍結。不新增或變更任何資料庫物件。
 
-**以上驗收未完成時不得刪掉現役登入而讓正式網站鎖死，也不得宣稱全站已不依賴 Clerk。**
-
-## Browser provider decoupling / frozen Schema (2026-11-07)
-
-- The active browser entry now composes `createLocGatewayAdapter` directly.
-  The identity adapter is injectable; Clerk remains the **current compatibility
-  identity** until native LOC OAuth exists. This is not a claim that browser
-  sign-in no longer requires Clerk.
-- A configured independent `NEXT_PUBLIC_LOC_SQL_GATEWAY_URL` does not require
-  or forward the legacy Supabase URL/public key. Without an independent URL,
-  the existing hosted SQL endpoint remains the compatibility fallback.
-- Database backup routing accepts the custom provider for a separately
-  configured SQL connection; a working backup is not implied.
-- Scope Registry data edits remain available, but `provision_scope` and
-  `delete_scope` now reject with HTTP 409. Their earlier PostgreSQL DDL,
-  policy creation/deletion and grants have been removed from the active
-  Scope admin module to honor the database schema freeze.
-- This is source-only decoupling. The active LOC OAuth issuer, independently
-  hosted SQL Gateway and production host configuration are not established
-  by this commit. No DB DDL, migration, RLS, GRANT or production deployment
-  is performed by these source edits.
-
-## 獨立主站 SQL 服務入口（原始碼）
-
-- `services/loc-sql/main.ts` 是獨立 **Deno 2** 入口，直接使用
-  `app/loc/gateway/sql-handler.ts` 的共用 Kysely／ZenStack 與
-  LOC delegation 實作；`supabase/functions/loc-kysely/index.ts`
-  僅保留舊部署相容入口，不再持有業務 SQL。
-- 伺服器必須提供 `LOC_CONTROL_DB_ALIAS`、`LOC_CONTROL_DB_ENGINE`
-  （postgres／mysql／mssql）和 `LOC_DB_CONNECTIONS_JSON`；
-  服務啟動時檢查別名及引擎，不允許隱性 Supabase／Neon 回退。
-- Deno 執行環境有明確 Alias 時，`routing-config.mjs` 使用
-  `custom-current` 主庫，沒有設定則保留現役預設來源。
-- PostgreSQL 固定公開模型不論供應商都進入 ZenStack PolicyPlugin；
-  非 PostgreSQL 由 LOC 授權與 Kysely 共用的公開範圍管制。
-- 已移除無呼叫者的 Portable Schema 自動建表／建索引程式，
-  保留既有表的欄位驗證；新 Scope 建立及刪除因資料庫凍結回應 409。
-- 以上是**已提交的程式入口，不代表已正式部署**。正式主機、
-  資料庫 Secret 和 `NEXT_PUBLIC_LOC_SQL_GATEWAY_URL` 尚需配置，
-  不能在缺少連線條件時聲稱已完成切換，也不能要求使用者提供
-  SQL 樣本或測試資料。詳細設定見 `services/loc-sql/README.md`。
-
-## Unified public/private SQL Gateway
-
-The browser's public and signed private SQL requests now share
-`/functions/v1/loc-kysely` (or the same explicitly configured independent
-LOC SQL Gateway URL). The old `loc-kysely-clerk` private-only browser
-default was pointing to a stale deployment and could bypass newly shipped
-Kysely model/provisioning changes. The trusted OAuth-to-LOC delegation
-exchange, public-read budget and account identity adapter are unchanged.
-No MCP Authority endpoint or QoS behavior is modified by this browser routing
-change.
+進一步的 OAuth、MCP、Extension 以及直接 Driver 切換契約，
+見 `docs/architecture/loc-native-portable-final-cutover.md`。
