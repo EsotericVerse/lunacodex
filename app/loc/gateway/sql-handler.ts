@@ -517,7 +517,7 @@ Deno.serve({hostname:"0.0.0.0",port:serverPort},async (request) => {
         const publicAction=body.kind==="public-action"&&
           ["read_app_bootstrap","read_scope_page_copy","search_scope_trace_place_names"].includes(String(body.name));
         if(!publicAnchor&&!publicAnalytics&&!publicAction)assertCrossEnginePublicRead(body);
-      }else if(!["query","managed-write","anchor","analytics","public-action"].includes(String(body.kind)))
+      }else if(!["query","managed-write","managed-action","anchor","analytics","public-action"].includes(String(body.kind)))
         return json({error:{message:"Unsupported SQL target action"}},403);
     }
     const db=selected
