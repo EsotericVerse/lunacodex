@@ -27,7 +27,8 @@ test('Cloudflare ingress keeps health private, forwards signed SQL unchanged',()
   assert.match(worker,/url\.host='container'/);
   assert.match(worker,/new Request\(url,request\)/);
   assert.match(worker,/url\.pathname!=='\/v1\/sql'/);
-  assert.match(worker,/if\(REQUIRED\.some\(name=>!env\[name\]\)\)/);
+  assert.match(worker,/REQUIRED\.some\(name=>!env\[name\]\)/);
+  assert.match(worker,/LOC_SQL_GATEWAY_SERVICE_KEY/);
   assert.match(worker,/port\.fetch\('http:\/\/container\/health'/);
   assert.match(docker,/COPY zenstack \.\/zenstack/);
   assert.match(docker,/deno cache --config services\/loc-sql\/deno\.json/);
@@ -48,7 +49,8 @@ test('standalone short import uses the portable Kysely backend',()=>{
   const handler=read('app/loc/gateway/sql-handler.ts');
   const store=read('app/loc/import/short-append-service.mjs');
   const mcp=read('services/loc-mcp-sql/main.ts');
-  assert.match(handler,/store:portableShortImportStore\(db,sql,\{engine:controlTarget\.engine\}\)/);
+  assert.match(handler,/store:portableShortImportStore\(db,sql,\{engine:target\.engine,/);
+  assert.match(handler,/resolveRuntimeDatabase\(/);
   assert.doesNotMatch(handler,/postgresShortImportStore/);
   assert.match(store,/export function portableShortImportStore/);
   assert.match(mcp,/portableShortImportStore\(db,sql,\{engine,namespace\}\)/);

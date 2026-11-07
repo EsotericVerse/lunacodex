@@ -59,7 +59,10 @@ test('independent SQL requires server-only DB alias and signed LOC delegation',(
  assert.match(main,/LOC_CONTROL_DB_ENGINE/);
  assert.match(main,/LOC_DB_CONNECTIONS_JSON/);
  assert.match(handler,/verifyLocDelegation\(match\[1\],body\)/);
- assert.match(handler,/portableShortImportStore\(db,sql,\{engine:controlTarget\.engine\}\)/);
+ assert.match(handler,/portableShortImportStore\(db,sql,\{engine:target\.engine,/);
+ assert.match(handler,/resolveRuntimeDatabase\(/);
+ assert.match(read('workers/loc-authority/index.mjs'),/selectedDatabaseForDelegation\(/);
+ assert.match(read('workers/loc-authority/sql-profile.mjs'),/trustedSqlProfile/);
  assert.match(docker,/^FROM denoland\/deno:/m);
  assert.match(docker,/^COPY app \.\/app$/m);
  assert.match(docker,/^COPY zenstack \.\/zenstack$/m);

@@ -58,9 +58,10 @@ SQL engine type is explicit. It is not guessed from the host or first query.
 | MySQL / MariaDB | mysql | MysqlDialect | chosen database |
 | Azure SQL / SQL Server | mssql | MssqlDialect | dbo |
 
-LOC_CONTROL_DB_ALIAS must name a server-side profile inside LOC_DB_CONNECTIONS_JSON.
-The active profile's engine must match LOC_CONTROL_DB_ENGINE.
-For example, to test an existing Azure SQL database in an independent test Gateway:
+LOC_CONTROL_DB_ALIAS and LOC_CONTROL_DB_ENGINE describe only the **default boot**
+connection used for anonymous public traffic. They do not restrict the live
+per-user connections, whose engine is chosen from encrypted LOC Auth records.
+For example, this *optional separate standalone test instance* would use:
 
     LOC_CONTROL_DB_ALIAS=azure_sql_test
     LOC_CONTROL_DB_ENGINE=mssql
@@ -69,15 +70,44 @@ For example, to test an existing Azure SQL database in an independent test Gatew
 This is a placeholder format, never an actual credential. The URL and password
 belong in encrypted server environment variables, not in Git or the browser.
 
-The currently deployed standalone SQL Gateway selects ONE active
-connection alias and engine per instance. Changing either requires editing the
-server deployment settings and restarting/redeploying that Gateway. Ordinary
-read/write requests use its already-configured Kysely Dialect.
+### Runtime user selection — no deployment when switching
 
-To test Azure SQL without disturbing the existing PostgreSQL main connection,
-use a separate test Gateway with mssql and its own alias. MySQL likewise
-has a separate alias and mysql engine. A configured dialect does not
-create tables; existing Galaxy/Anchor tables must already be present.
+After the **one-time** deployment of LOC Auth and the independent SQL Gateway,
+the LOC administrator can save PostgreSQL, MySQL, and Azure SQL/SQL Server
+connections in LOC Auth's existing encrypted Durable Object via Settings.
+The administrator explicitly enables `selectable_by_users` or specifies
+`allowed_subjects`. Users can select only their own authorized targets in
+Settings → 使用的資料庫. Their selection is stored per verified LOC subject.
+
+Each new SQL/MCP delegation embeds only the target ID in the signed
+`db_target` claim. The Gateway checks its signature, fetches the credential
+using a **server-only** LOC service secret, and chooses the matching Kysely
+Dialect and existing connection pool at request time. It never accepts a
+browser-provided DB password, raw URL, arbitrary alias, or unverified engine.
+Switching immediately clears the website's in-memory delegation cache by
+reloading the page; it does **not** trigger a build, Worker deployment,
+Container restart, schema migration, RPC, or RLS change.
+
+The SQL Gateway and Auth Worker must each be provisioned **once** with the
+same encrypted environment secret `LOC_SQL_GATEWAY_SERVICE_KEY` (43+ characters).
+That secret is not a browser setting and is never committed to Git.
+Only an authenticated Gateway may call
+`POST https://auth.lo3rwang.cc/v1/sql/runtime-profile`; the Authority also
+verifies the signed target/subject against its latest user selection.
+Authorized database credentials are never returned through the public API.
+
+Anonymous visitors keep the default data source. Signed-in visitors use their
+own selection across website read, private SQL, MCP and Extension imports.
+A 5-second Gateway profile cache avoids repeated Authority requests during
+page rendering; switching to a **different** database target takes effect on
+the next request because the cache key includes the selected ID. Permission
+revocations of an existing selection may take up to five seconds to propagate.
+
+For the Azure 30-day trial, keep the existing PostgreSQL source unchanged.
+After the code and initial Gateway deployment are ready, add an Azure SQL
+connection in the LOC administrator screen, select the `mssql` engine, and
+use bounded read-only verification. No extra Gateway deployment is needed
+to switch databases. The schema remains externally managed and frozen.
 
 The optional CLI command npm run verify:portable-sql, with environment
 LOC_SQL_GATEWAY_URL=https://HOST/v1/sql, makes only one bounded public SELECT.
@@ -85,19 +115,22 @@ Its success proves the selected read path, not comprehensive SQL portability.
 
 ## Database portability
 
-Server-side `LOC_DB_CONNECTIONS_JSON` maps aliases to existing database
-connections. `LOC_CONTROL_DB_ALIAS` and `LOC_CONTROL_DB_ENGINE` select
-one connection (`postgres`, `mysql`, or `mssql`). A PostgreSQL instance
+Server-side `LOC_DB_CONNECTIONS_JSON` optionally maps the boot alias to
+an existing database connection. At least one bootstrap connection or the
+service key is necessary to start; authenticated users' live database
+profiles are independently resolved from LOC Auth. A PostgreSQL instance
 hosted on Supabase or Neon is just a PostgreSQL connection profile; no
 Supabase Auth, Neon Auth, PostgREST, provider Data API, or provider Edge
 Function is required by the standalone SQL service.
 
 Required runtime configuration:
 - SQL service: `LOC_AUTHORITY_ORIGIN`, `LOC_CONTROL_DB_ALIAS`,
-  `LOC_CONTROL_DB_ENGINE`, `LOC_DB_CONNECTIONS_JSON`.
+  `LOC_CONTROL_DB_ENGINE`, `LOC_SQL_GATEWAY_SERVICE_KEY`, plus the
+  optional static default `LOC_DB_CONNECTIONS_JSON` for anonymous reads.
 - Website build: `NEXT_PUBLIC_LOC_SQL_GATEWAY_URL=https://<sql-host>/v1/sql`.
 - Auth Worker: `LOC_SQL_GATEWAY_URL=https://<sql-host>/v1/sql`,
-  `LOC_RECOVERY_ROOT_LOC_SUBJECTS`, existing Durable Object and encryption key.
+  `LOC_RECOVERY_ROOT_LOC_SUBJECTS`, `LOC_SQL_GATEWAY_SERVICE_KEY`,
+  existing Durable Object and encryption key.
 - MCP Pages runtime: `LOC_MCP_SQL_GATEWAY_URL=https://<sql-host>/v1/sql`;
   `LOC_MCP_AUTHORITY_URL=https://auth.lo3rwang.cc` as needed.
 - Chrome Extension: public `/extension/oauth/config.json` points at
@@ -132,7 +165,8 @@ continued by stable UID, and an incomplete receipt never deletes a Queue.
   builds disabled, but remains **unlinked to Git and undeployed**.
   Its non-secret settings include control alias `loc_main`, PostgreSQL engine
   and `LOC_AUTHORITY_ORIGIN=https://auth.lo3rwang.cc`. The server-only
-  `LOC_DB_CONNECTIONS_JSON` connection secret is not yet configured.
+  `LOC_DB_CONNECTIONS_JSON` default connection and
+  `LOC_SQL_GATEWAY_SERVICE_KEY` shared service secret are not yet configured.
 - The existing Cloudflare Pages project is named `loc`, with both
   `loc.lo3rwang.cc` and `mcp.lo3rwang.cc` custom domains.
   Its production environment has no independent SQL Gateway URL set.
@@ -152,7 +186,7 @@ continued by stable UID, and an incomplete receipt never deletes a Queue.
 ## Remaining release gates (do not pretend these passed)
 
 1. Deploy an actual independent SQL Gateway with its **server-only**
-   connection secrets; confirm bounded anonymous reads and authorized
+   default connection and shared Authority service secret; confirm bounded anonymous reads and authorized
    delegated management without writing arbitrary production test data.
 2. Verify the external GitHub/Google OAuth clients and callback
    configuration inside the existing Authority Durable Object. The presence
