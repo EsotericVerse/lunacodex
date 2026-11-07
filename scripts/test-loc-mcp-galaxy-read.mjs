@@ -23,7 +23,7 @@ test('public Galaxy searches require a human user request and use Kysely contain
  assert.equal(request.table,'lo3rwang_galaxy');
  assert.deepEqual(request.columns,['uid','title','date','createtime']);
  assert.deepEqual(request.filters,[{column:'search',operator:'eq',value:true}]);
- assert.deepEqual(request.or,['(title.contains."LP26",content.contains."LP26")']);
+ assert.deepEqual(request.or,['title.contains."LP26",content.contains."LP26"']);
  assert.equal(options.headers.authorization,undefined);
  assert.equal(options.headers.apikey,undefined);
  assert.equal(options.method,'POST');
@@ -47,7 +47,7 @@ test('invalid Scope, UID, query or missing request cannot send network traffic',
  assert.equal(p.history.length,0);
  await searchMemory({query:'LP26),uid.eq.X',user_requested:true},ENV,p.fetch);
  assert.equal(p.history.length,1);
- assert.deepEqual(p.history[0].request.or,['(title.contains."LP26),uid.eq.X",content.contains."LP26),uid.eq.X")']);
+ assert.deepEqual(p.history[0].request.or,['title.contains."LP26),uid.eq.X",content.contains."LP26),uid.eq.X"']);
 });
 test('public missing record does not fall back to private articles',async()=>{
  const p=fakeFetch([]);
