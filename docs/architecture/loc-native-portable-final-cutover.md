@@ -119,6 +119,35 @@ Dockerfile. Keeping the existing published data readable is intentional.
   registering any new Gateway, but alone does not complete that migration
   or validate production private MCP functionality.
 
+### Private Galaxy Link native read/search with LOC Auth Scope permit (2026-11-08)
+
+- The existing MCP Pages runtime executes `galaxy_link.read` and
+  `galaxy_link.search` with `executePortableMcp` from the shared Kysely
+  and ZModel logic. No SQL Gateway, raw query envelope, or vendor Data API is
+  called for these two read-only actions.
+- Native LOC Auth provides `GET /v1/mcp/direct-permit/:scopeid/read`:
+  the caller's **MCP-audience OAuth** is verified first, then the current
+  Scope read grant and user-selected database are checked. This endpoint
+  returns only `subject`, `scopeid`, `action`, and an authorized
+  `db_target` alias; **never a database URL, password or SQL text**.
+- The MCP application matches the permit's immutable subject to its own
+  verified OAuth subject before SQL. It passes only the Auth-selected alias
+  into its own Kysely pool and keeps the existing private
+  `site=mcp` / historical PR-provenance exclusion from
+  `executePortableMcp`.
+- Private search now takes the existing MCP global quota with
+  `kind=search`; the Authority's five-minute search interval and QoS
+  therefore still apply, without double-counting an additional permit
+  request. Invalid PR queries and missing `user_requested=true` never
+  reach SQL.
+- This source cutover **needs** the matching LOC Auth Worker version and
+  trusted backend driver credentials deployed before live traffic can work.
+  It does **not** migrate `galaxy_link.record` or `check`, the Chrome
+  Extension short-import write, browser public reads, or remaining
+  historical Gateway helpers; those require their own bounded native
+  business operations. MySQL/MSSQL in the Pages runtime still require
+  corresponding direct drivers, not a Gateway.
+
 **Not yet complete:** the native LOC application backend still needs direct
 Kysely execution for all website, MCP and Extension operations, corresponding
 OAuth authorization, a validated hosting/runtime configuration, and real
