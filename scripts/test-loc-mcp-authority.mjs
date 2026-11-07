@@ -240,8 +240,8 @@ test('Portable MCP keeps one ZModel-backed Kysely executor without a provider Fu
 test('failed first acknowledgement appends a new batch to same UID instead of rewriting previous text',async()=>{
   const {authority}=state();
   const a='a'.repeat(64),b='b'.repeat(64);
-  const firstContent='[[GalaxyLinkBatch:'+a+']]\\nFirst saved message';
-  const nextContent='[[GalaxyLinkBatch:'+b+']]\\nSecond message';
+  const firstContent='[[GalaxyLinkBatch:'+a+']]\nFirst saved message';
+  const nextContent='[[GalaxyLinkBatch:'+b+']]\nSecond message';
   let saved='',uid='',attempt=0;
   const calls=fakeSql(call=>{
     if(call.body.kind==='mcp-sync'){
@@ -253,7 +253,7 @@ test('failed first acknowledgement appends a new batch to same UID instead of re
     assert.equal(call.body.kind,'mcp-append');
     assert.equal(call.body.uid,uid);
     assert.equal(call.body.content,nextContent);
-    saved+='\\n'+call.body.content;
+    saved+='\n'+call.body.content;
     return Response.json({data:{count:1,title:'Conversation'}});
   });
   const first={...CONVERSATION,content:firstContent,batch_id:a,append:true};
@@ -265,12 +265,12 @@ test('failed first acknowledgement appends a new batch to same UID instead of re
   assert.equal(second.uid,uid);
   assert.equal(attempt,1,'retry must never send a second full-sync write');
   assert.deepEqual(calls.map(c=>c.body.kind),['mcp-sync','mcp-append']);
-  assert.equal(saved,firstContent+'\\n'+nextContent);
+  assert.equal(saved,firstContent+'\n'+nextContent);
 });
 
 test('an initial write that never committed recovers by append 404 then same-UID insert',async()=>{
   const {authority}=state();
-  const batch='a'.repeat(64),content='[[GalaxyLinkBatch:'+batch+']]\\nOriginal source';
+  const batch='a'.repeat(64),content='[[GalaxyLinkBatch:'+batch+']]\nOriginal source';
   let firstUid='',storedUid='',round=0;
   const calls=fakeSql(call=>{
     round++;
