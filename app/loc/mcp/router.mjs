@@ -10,6 +10,8 @@ export function mcpConfig(env={}){
   return {resource:String(env.LOC_MCP_RESOURCE_URL||MCP_RESOURCE).replace(/\/+$/,''),
     issuer:String(env.LOC_CLERK_ISSUER||CLERK_ISSUER).replace(/\/+$/,'')};
 }
+const PR_SEARCH_WARNING='請至github頁面找尋PR相關資料！不開放搜尋PR!';
+const SEARCH_PERMISSION_WARNING='只有使用者明確要求時，才允許搜尋對話；禁止代理自行搜尋。';
 const SCOPES=['profile','email'];
 const DEFAULT_PROTOCOL='2025-06-18';
 const SUPPORTED_PROTOCOLS=new Set(['2025-03-26','2025-06-18','2025-11-25']);
@@ -128,11 +130,12 @@ const TOOLS=[
       scopeid:{type:'string'},endpoint:{type:'string',description:'HTTPS PostgREST URL ending /rest/v1; omit to view'},
       schema:{type:'string'},table:{type:'string',description:'Existing Galaxy-compatible table; LOC never creates tables'}
     },required:['scopeid'],additionalProperties:false}},
-  {name:'galaxy_link',description:'Galaxy conversation continuity. Search only on an explicit user request; never search for PRs, commits or routine UIDs. One search per five minutes per verified identity. Use GitHub tools for GitHub history.',
+  {name:'galaxy_link',description:'Galaxy conversation continuity. Search ONLY when the human user explicitly requests a conversation search; never search automatically. PR/GitHub search is forbidden: 請至github頁面找尋PR相關資料！不開放搜尋PR! QoS warns before the limit and enforces a five-minute search interval.',
     inputSchema:{type:'object',properties:{
       action:{type:'string',enum:['search','read','check','record']},
       scopeid:{type:'string'},uid:{type:'string',pattern:'^[A-Za-z0-9]{8}$',description:'Known exact Galaxy UID for recorded conversation read'},
       query:{type:'string',minLength:2,maxLength:100},limit:{type:'integer',minimum:1,maximum:5},
+      user_requested:{type:'boolean',description:'True only when the human user explicitly asked to search these conversations. Do not set for autonomous context lookup.'},
       conversation_id:{type:'string'},updated_at:{type:'string'},created_at:{type:'string'},
       records:{type:'array',minItems:1,maxItems:100,items:{type:'object',properties:{
         role:{type:'string',enum:['user','assistant']},kind:{type:'string',enum:['original','advice']},
@@ -155,7 +158,11 @@ const TOOLS=[
       subject:{type:'string',description:'Clerk user_... identifier'}},
       required:['groupid','scopeid','subject'],additionalProperties:false}},
 ];
-function toolResponse(id,value){return result(id,{content:[{type:'text',text:JSON.stringify(value)}],structuredContent:value});}
+function toolResponse(id,value){
+ const warning=typeof value?.warning==='string'?value.warning:'';
+ return result(id,{content:[{type:'text',text:(warning?warning+'\n':'')+JSON.stringify(value)}],
+   structuredContent:value});
+}
 // The public UID reader also uses the global Authority Durable Object quota.
 async function withMcpQuota(token,env,action){
   const authority=new URL(String(env.LOC_MCP_AUTHORITY_URL||
@@ -178,8 +185,28 @@ async function withMcpQuota(token,env,action){
     return res.json();
   };
   const permit=await request({action:'acquire',kind:'read'});
-  try{return await action();}
+  try{
+    const data=await action();
+    return permit.warning&&data&&typeof data==='object'&&!Array.isArray(data)
+      ?{...data,warning:permit.warning}:data;
+  }
   finally{await request({action:'release',lease:permit.lease});}
+}
+async function qosWarningForDeniedPr(token,env={}){
+ try{
+  const authority=new URL(String(env.LOC_MCP_AUTHORITY_URL||'https://auth.lo3rwang.cc'));
+  if(authority.protocol!=='https:'||authority.username||authority.password||
+    authority.search||authority.hash||!['','/'].includes(authority.pathname))return '';
+  const res=await fetch(new URL('/v1/mcp/quota',authority.origin),{
+    method:'POST',headers:{authorization:'Bearer '+token,
+      origin:'https://loc.lo3rwang.cc','content-type':'application/json'},
+    body:JSON.stringify({action:'inspect',kind:'search'}),
+    signal:AbortSignal.timeout(5000),redirect:'error',cache:'no-store'
+  });
+  if(!res.ok)return '';
+  const data=await res.json();
+  return typeof data?.warning==='string'?data.warning.slice(0,200):'';
+ }catch{return '';} // Never unblock a prohibited PR search, even if Authority is unavailable.
 }
 export async function handleMcp(request,env={}){
   const config=mcpConfig(env);
@@ -202,7 +229,7 @@ export async function handleMcp(request,env={}){
       return result(payload.id,{protocolVersion:SUPPORTED_PROTOCOLS.has(proposed)?proposed:DEFAULT_PROTOCOL,
         capabilities:{tools:{listChanged:false}},serverInfo:{name:'loc-mcp',version:'0.2.0',
            ...(proposed==='2025-11-25'?{icons:[{src:'https://loc.lo3rwang.cc/assets/site/icons/loc-favicon.png',mimeType:'image/png'}]}:{})},
-        instructions:'Public search/read use existing Galaxy RLS. Private Scope read, write and Group search are independently authorized by Clerk + LOC Authority. galaxy_link handles MCP conversations, not GitHub PRs; search only on explicit user request, once per five minutes.'});
+        instructions:'Public search/read use existing Galaxy RLS. Private Scope read, write and Group search are independently authorized by Clerk + LOC Authority. galaxy_link.search is permitted only by explicit human user request and user_requested=true. 請至github頁面找尋PR相關資料！不開放搜尋PR! QoS warns before the next request reaches a limit; searches have a five-minute gate.'});
     }
     case 'ping':return result(payload.id,{});
     case 'tools/list':return result(payload.id,{tools:TOOLS});
@@ -213,12 +240,17 @@ export async function handleMcp(request,env={}){
       if(!args||typeof args!=='object'||Array.isArray(args))
         return rpcError(payload.id,-32602,'Tool arguments must be an object');
       if(name==='galaxy_link'&&args.action==='search'&&
-        /(?:\bPR\b|\bpull[ -]?request\b|\bgithub\b|\bcommit\b|合併請求|拉取請求)/i.test(String(args.query||'')))
+        /(?:\bPR\b|\bpull[ -]?request\b|\bgithub\b|\bcommit\b|合併請求|拉取請求)/i.test(String(args.query||''))){
+        const near=await qosWarningForDeniedPr(match[1],env);
         return result(payload.id,{isError:true,content:[{type:'text',
-          text:'PR／GitHub 版本紀錄請直接使用 GitHub PR／Commit 工具。LOC Galaxy 不搜尋 PR，也不需要尋找 PR 的 UID。請勿改寫搜尋詞重試。'}]});
+          text:PR_SEARCH_WARNING+(near?'\n'+near:'')}]});
+      }
+      if(name==='galaxy_link'&&args.action==='search'&&args.user_requested!==true)
+        return result(payload.id,{isError:true,content:[{type:'text',
+          text:SEARCH_PERMISSION_WARNING}]});
       if(name==='galaxy_link'&&args.action==='update_pr')
         return result(payload.id,{isError:true,content:[{type:'text',
-          text:'PR 紀錄由 GitHub 管理，請使用 GitHub PR 工具。LOC 不再同步 PR 到 Galaxy。'}]});
+          text:PR_SEARCH_WARNING}]});
       if(name==='loc_connection_status')return toolResponse(payload.id,{
         connected:true,provider:'clerk',subject:identity.subject,
         resource:config.resource,galaxyPublicReadEnabled:true,
