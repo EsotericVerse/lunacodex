@@ -8,6 +8,7 @@ const PUBLIC_KEY=process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY||
 // This is a transport URL, not a database provider or an Auth issuer.
 // Without an independent gateway, preserve the existing production Edge target.
 const SQL_GATEWAY_URL=process.env.LOC_SQL_GATEWAY_URL||
+  process.env.NEXT_PUBLIC_LOC_SQL_GATEWAY_URL||
   process.env.NEXT_PUBLIC_LOC_KYSELY_GATEWAY_URL||'';
 const BACKUP_SQL_GATEWAY_URL=process.env.LOC_BACKUP_SQL_GATEWAY_URL||'';
 
@@ -27,7 +28,9 @@ export function publicNumericSources({fetchImpl=globalThis.fetch,
     return fetchImpl(input,{...init,signal});
   };
   const primary=createKyselyEdgeClient({
-    url:SQL_PROVIDER_URL,publishableKey:PUBLIC_KEY,
+    // Independent SQL ingress must not carry a vendor URL or API key.
+    url:SQL_GATEWAY_URL?'':SQL_PROVIDER_URL,
+    publishableKey:SQL_GATEWAY_URL?'':PUBLIC_KEY,
     gatewayUrl:SQL_GATEWAY_URL,target:'configured',role:'anon',fetch:timedFetch
   });
   const candidates=[{id:'primary',schema:()=>primary.schema('silver')}];

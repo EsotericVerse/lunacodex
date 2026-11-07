@@ -87,7 +87,9 @@ test('ISR numeric readers use Kysely without a Supabase SDK or Auth client',()=>
   assert.doesNotMatch(source,/@supabase\/supabase-js|createClient\(/);
   assert.match(source,/const primary=createKyselyEdgeClient\(/);
   assert.match(source,/gatewayUrl:SQL_GATEWAY_URL/);
-  assert.match(source,/createBackupPublicAdapter/);
+  assert.match(source,/candidates\.push\(\{id:\'backup\'/);
+  assert.match(source,/NEXT_PUBLIC_LOC_SQL_GATEWAY_URL/);
+  assert.match(source,/url:SQL_GATEWAY_URL\?\'\':SQL_PROVIDER_URL/);
 });
 test('verified external identity can delegate to an independent SQL Gateway',async()=>{
   const source=readFileSync(new URL('../app/loc/providers/loc-gateway.mjs',import.meta.url),'utf8')
