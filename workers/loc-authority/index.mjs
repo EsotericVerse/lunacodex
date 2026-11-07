@@ -243,7 +243,7 @@ async function mcpSqlRequest(env,kind,scopeid,fields,locDelegation,scopeGateway=
       const data=await response.json().catch(()=>null);
       reason=String(data?.error?.message||data?.error||reason).slice(0,200);
     }
-    throw fail(reason,response.status===401||response.status===403||response.status===409?
+    throw fail(reason,response.status===401||response.status===403||response.status===404||response.status===409?
       response.status:502);
   }
   const result=await response.json();
@@ -588,14 +588,24 @@ export class LocAuthorityState extends DurableObject {
     if(!status.uid)await this.ctx.storage.put(checkpointKey,
       {uid,updated_at:status.updated_at,saved_at:status.saved_at});
     // Append only the new source batch; never rewrite an older conversation.
-    const useAppend=append&&Boolean(status.saved_at||input.uid);
+    const useAppend=append&&Boolean(status.uid||input.uid);
     if(useAppend){
-      const result=await managedMcpAppend(scopeid,uid,input.content,
-        input.batch_id,requestedTime,oauthToken,this.env,profile?.endpoint||'');
-      const saved_at=new Date().toISOString();
-      await this.ctx.storage.put(checkpointKey,{updated_at:requestedTime,saved_at,uid});
-      return {scopeid,conversation_id,uid,title:result.title||null,
-        createtime:result.createtime||null,updated_at:requestedTime,saved_at,saved:true,appended:true};
+      let result=null;
+      try{
+        result=await managedMcpAppend(scopeid,uid,input.content,
+          input.batch_id,requestedTime,oauthToken,this.env,profile?.endpoint||'');
+      }catch(error){
+        // If the first insert never committed, retry using the SAME UID.
+        // Only 404 on an unsaved checkpoint may fall back to initial INSERT.
+        // A committed older batch is never overwritten by a retry.
+        if(error?.status!==404||status.saved_at||input.uid)throw error;
+      }
+      if(result){
+        const saved_at=new Date().toISOString();
+        await this.ctx.storage.put(checkpointKey,{updated_at:requestedTime,saved_at,uid});
+        return {scopeid,conversation_id,uid,title:result.title||null,
+          createtime:result.createtime||null,updated_at:requestedTime,saved_at,saved:true,appended:true};
+      }
     }
     if(input.uid&&append)throw fail('Existing MCP topic could not be resumed',409);
     const created=append?new Date().toISOString():validTimestamp(input.created_at||requestedTime);
