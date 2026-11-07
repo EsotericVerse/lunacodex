@@ -123,29 +123,8 @@ test('SQL browser reuses delegation but invalidates cache on account switch',asy
     source+'\n;return createLocGatewayAdapter;')(
     options=>options,URL,AbortSignal,process
   );
-  const adapter=create({authorityUrl:'https://authority.example.org',
-    gatewayUrl:'https://sql.example.org/v1/query',
-    accountAdapter:{auth:{},getAccessToken:async()=>oauth},
-    fetchImpl:async(url,init)=>{
-      if(String(url).endsWith('/v1/delegation')){
-        delegations.push({url:String(url),body:JSON.parse(init.body),
-          bearer:init.headers.authorization});
-        return {ok:true,status:200,json:async()=>({
-          access_token:'header.payload.signature',
-          expires_at:Math.floor(Date.now()/1000)+300
-        })};
-      }
-      sqlCalls.push({url:String(url),bearer:init.headers.authorization,
-        body:JSON.parse(init.body)});
-      return {ok:true,status:200,headers:new Headers(),
-        json:async()=>({data:[{uid:'aB12cD34'}],count:1})};
-    }});
-  const call=(kind)=>adapter.authClient.getAccessToken(kind);
-  // The SQL transport supplies tokens internally rather than exposing them
-  // as a public client method.
-  const query=()=>adapter.authClient.schema('silver').from('lo3rwang_galaxy')
-    .select('uid').limit(1);
-  // Test the internal access-token callback by routing real SQL requests.
+  // The injected SQL client exposes the delegated callback for the
+  // cache unit test; the production SQL client does not expose this method.
   const gateway=create({authorityUrl:'https://authority.example.org',
     gatewayUrl:'https://sql.example.org/v1/query',
     accountAdapter:{auth:{},getAccessToken:async()=>oauth},
