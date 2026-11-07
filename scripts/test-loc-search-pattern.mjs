@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildKeywordSearchPatterns} from '../app/loc/keyword-search-pattern.mjs';
+import {buildKeywordSearchPatterns,splitKeywordPatternBatches} from '../app/loc/keyword-search-pattern.mjs';
 
 const item=(name,keywords=[])=>({item_name:name,keywords});
 const hit=(pattern,uid_list)=>({pattern,count:uid_list.length,uid_list});
@@ -74,4 +74,27 @@ test('empty analysis still exposes zero-count literal words',()=>{
   const rows=buildKeywordSearchPatterns('scope',[item('定錨',['靈魂定錨'])],[]);
   assert.deepEqual(rows.map(row=>row.count),[0,0]);
   assert.ok(rows.every(row=>row.uid_list.length===0));
+});
+
+test('large per-word UID lists split below the SQL 1 MiB POST cap',()=>{
+  const ids=Array.from({length:120},(_,i)=>'Ab'+String(i).padStart(6,'0'));
+  const rows=Array.from({length:8},(_,i)=>({
+    scopeid:'scope',pattern:'詞'+i,count:ids.length,uid_list:ids
+  }));
+  const batches=splitKeywordPatternBatches(rows,2100);
+  assert.ok(batches.length>1);
+  assert.deepEqual(batches.flat(),rows);
+  for(const batch of batches){
+    const bytes=new TextEncoder().encode(JSON.stringify({
+      kind:'managed-action',name:'sync_search_patterns',
+      args:{p_scope_id:'scope',p_class_uid:'Ab123456',p_patterns:batch,p_final:true}
+    })).byteLength;
+    assert.ok(bytes<2100,'batch exceeds upload limit');
+  }
+});
+
+test('a single word over the transport payload limit fails explicitly',()=>{
+  const ids=Array.from({length:80},(_,i)=>'Ab'+String(i).padStart(6,'0'));
+  const row={scopeid:'scope',pattern:'測試',count:ids.length,uid_list:ids};
+  assert.throws(()=>splitKeywordPatternBatches([row],500),/同步上限/);
 });
