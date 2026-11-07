@@ -28,7 +28,7 @@ test('MCP scope_storage is read-only and never accepts Gateway URL or secrets',a
    {database_url:'postgresql://test:secret@sql.example.org/db'}
  ]){
   await assert.rejects(authorityAction('scope_storage',
-   {scopeid:'lo3rwang',...fields},OAuth,{},fetcher),/Gateway registration/);
+   {scopeid:'lo3rwang',...fields},OAuth,{},fetcher),/Scope database URL registration/);
  }
  assert.equal(requests,0);
  const status=await authorityAction('scope_storage',{scopeid:'lo3rwang'},OAuth,{},fetcher);
@@ -38,7 +38,7 @@ test('MCP scope_storage is read-only and never accepts Gateway URL or secrets',a
 test('LOC Auth has no SQL Gateway runtime-profile service or writer',()=>{
  const worker=read('workers/loc-authority/index.mjs');
  assert.doesNotMatch(worker,/trustedSqlProfile|\/v1\/sql\/runtime-profile|async putMcpScope\(/);
- assert.match(worker,/if\(request\.method==='PUT'\)throw fail\('SQL Gateway Scope registration is retired',410\)/);
+ assert.match(worker,/if\(request\.method==='PUT'\)throw fail\('Scope database URL registration is retired',410\)/);
  assert.match(worker,/legacy_gateway_retired:true/);
  assert.doesNotMatch(worker,/return \{\.\.\.item\.public,configured:/);
  assert.equal(existsSync(new URL('../workers/loc-authority/sql-profile.mjs',import.meta.url)),false);
