@@ -14,11 +14,16 @@ export function normalizeLiveTarget(id,profile){
  const port=Number(profile.port);
  const host=String(profile.host||'').toLowerCase();
  const database=String(profile.database||'');
- const username=String(profile.username||'');
- const password=String(profile.password||'');
+ // Missing credentials are invalid; coercing undefined/null to text creates
+ // a fake credential and hides the real Authority profile error.
+ if(typeof profile.username!=='string'||typeof profile.password!=='string')
+  throw Error('Trusted runtime SQL credentials are missing');
+ const username=profile.username;
+ const password=profile.password;
  if(!HOST.test(host)||host.startsWith('.')||host.endsWith('.')||
   !Number.isInteger(port)||port<1||port>65535||
-  !NAME.test(database)||!username||username.length>120||password.length>4096)
+  !NAME.test(database)||!username.trim()||username.length>120||
+  !password||password.length>4096)
   throw Error('Trusted runtime SQL connection is incomplete');
  const protocol=engine==='mssql'?'mssql':engine==='mysql'?'mysql':'postgres';
  const url=new URL(protocol+'://example.invalid');
