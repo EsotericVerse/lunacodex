@@ -496,15 +496,24 @@ async function syncSearchPatterns(trx,args){
     .where('scopeid','=',scope).execute();
   const prior=new Map(stored.map(row=>[id(row.pattern),row]));
   const now=new Date().toISOString();
-  const changed=[];
+  const changed=[],renamed=[];
   for(const row of proposed){
     const old=prior.get(id(row.pattern));
     const uids=[...row.uid_list].sort();
     const sameUids=Array.isArray(old?.uid_list)&&old.uid_list.length===uids.length&&
       [...old.uid_list].sort().every((uid,i)=>uid===uids[i]);
-    if(old&&Number(old.count)===row.count&&sameUids)continue;
+    // PK uses the visible spelling, but the word identity is NFKC/case
+    // normalized. Remove an old spelling before inserting the new one to
+    // avoid duplicate results after a title/alias casing change.
+    if(old?.pattern!==undefined&&old.pattern!==row.pattern)renamed.push(old.pattern);
+    if(old&&old.pattern===row.pattern&&Number(old.count)===row.count&&sameUids)continue;
     changed.push({scopeid:scope,pattern:row.pattern,count:row.count,
       uid_list:uids,update_time:old&&sameUids?old.update_time:now});
+  }
+  for(let i=0;i<renamed.length;i+=100){
+    await trx.deleteFrom('silver.loc_search_pattern')
+      .where('scopeid','=',scope)
+      .where('pattern','in',renamed.slice(i,i+100)).execute();
   }
   for(let i=0;i<changed.length;i+=100){
     const batch=changed.slice(i,i+100);
