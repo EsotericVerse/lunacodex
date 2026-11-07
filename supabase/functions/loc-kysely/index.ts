@@ -15,7 +15,7 @@ import {executeKyselyAnchor,executePortableKyselyAnchor} from "../../../app/loc/
 import {executeKyselyAnalytics,executePortableKyselyAnalytics} from "../../../app/loc/providers/kysely-analytics.mjs";
 import {executeKyselyPublicAction} from "../../../app/loc/providers/kysely-public.mjs";
 import {executeKyselyScopeAdmin} from "../../../app/loc/providers/kysely-scope-admin.mjs";
-import {ensurePortableScopeSchema,validatePortableScopeSchema} from "../../../app/loc/providers/kysely-schema.mjs";
+import {validatePortableScopeSchema} from "../../../app/loc/providers/kysely-schema.mjs";
 import { selectedDatabaseTarget } from "../../../app/loc/providers/selected-database-target.mjs";
 import {resolveSqlExecutionPort,assertCrossEnginePublicRead,authorizeCrossEngineQuery,executeCrossEngineManagedWrite} from "../../../app/loc/providers/sql-engine-ports.mjs";
 import {resolveDatabaseRouting} from "../../../app/loc/providers/routing-config.mjs";
@@ -141,8 +141,13 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
   const executionPort=resolveSqlExecutionPort(target);
   bindLocAuthorization(trx,{role,claims});
   if(target.provider==="custom"||executionPort.session!=="postgres-rls"){
-    // Non-PostgreSQL engines use the LOC authorization boundary,
-    // never a database provider's authentication model.
+    // Fixed public PostgreSQL models use the same ZenStack PolicyPlugin and
+    // physical schema regardless of hosting vendor. This modelName is set
+    // only inside the trusted gateway, never accepted from the HTTP body.
+    if(executionPort.engine==="postgres"&&modelName&&
+       body.kind==="query"&&body.operation==="select")
+      return await executeKyselyQuery(trx,body,{modelName});
+    // Cross-engine Scope queries use the signed LOC ACL instead of RLS.
     if(body.kind==="managed-write"){
       if(role!=="authenticated")
         throw Object.assign(new Error("Management requires verified LOC delegation"),{httpStatus:403});
@@ -163,6 +168,16 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
           (executionPort.engine==="mssql"?"dbo":"silver"))
       }),count:null};
     }
+    // A standalone PostgreSQL control database supports the original LOC
+    // management actions without a provider identity or new database RPC.
+    if(body.kind==="managed-action"&&executionPort.engine==="postgres"){
+      if(role!=="authenticated")
+        throw Object.assign(new Error("Verified LOC management delegation required"),{httpStatus:403});
+      const name=String(body.name||"");
+      return ["manage_scope_registry","delete_scope","provision_scope"].includes(name)
+        ?await executeKyselyScopeAdmin(trx,body)
+        :await executeManagedKyselyAction(trx,body,claims);
+    }
     if(body.kind==="anchor")return await executePortableKyselyAnchor(trx,body,{
       role,engine:executionPort.engine,namespace:target.schema_name
     });
@@ -175,8 +190,11 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
     });
     const access=await authorizeCrossEngineQuery(trx,body,{role,claims});
     return await executeKyselyQuery(trx,body,{dialect:executionPort.engine,
-      namespace:String(target.schema_name||(
-        executionPort.engine==='mssql'?'dbo':'public')),
+      // PostgreSQL keeps the request's real api/silver schema. Other SQL
+      // engines use the configured flat database/dbo namespace.
+      namespace:executionPort.engine==='postgres'&&!target.schema_name
+        ?undefined:String(target.schema_name||(
+          executionPort.engine==='mssql'?'dbo':'public')),
       publicOnly:access?.publicOnly===true});
   }
   await bindPostgresSession(trx,role,claims,String(target.provider||"supabase"));
