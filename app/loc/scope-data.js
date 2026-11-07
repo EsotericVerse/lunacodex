@@ -244,7 +244,7 @@ export async function selectManagedScope(scopeId){
 
 
 // One per-session public metadata request, read only when its feature opens.
-// Cloudflare OpenNext/R2 (or Vercel backup) provides cross-user 14-day ISR.
+// GitHub Pages uses published static assets; no remote ISR worker is required.
 // Authorized metadata writes explicitly clear these per-session snapshots.
 const scopeConfigInFlight=new Map();
 export function selectScopeConfig(scopeId){
