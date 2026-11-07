@@ -1,8 +1,8 @@
 // Server-side fixed-model ZenStack V3 client factory.
 // The dialect is injected from the trusted Kysely server connection layer;
 // never construct a database connection, migrate a schema, or fetch secrets here.
-// Apply existing Clerk / LOC Authority checks and RLS session claims BEFORE use.
-// Dynamic per-Scope tables and non-Postgres dialects use Kysely directly.
+// Verify native LOC OAuth delegations and Scope grants at the trusted Gateway BEFORE use.
+// Dynamic per-Scope tables and non-Postgres dialects use native Kysely directly.
 import {ZenStackClient} from '@zenstackhq/orm';
 import {schema} from './schema.mjs';
 import {scopedZModelSchema} from './scoped-schema.mjs';

@@ -10,25 +10,33 @@ import {resolveSqlExecutionPort} from '../app/loc/providers/sql-engine-ports.mjs
 
 const fetchImpl=async()=>Response.json({data:[],count:0});
 
-test('LOC SQL Gateway is mandatory; silent provider fallback is rejected',()=>{
-  assert.throws(()=>createConfiguredAdapter({gatewayUrl:' ',fetchImpl}),
-    /LOC SQL Gateway is not configured/);
+test('explicit LOC SQL Gateway selection never falls back to a vendor endpoint',()=>{
+  const identity={auth:{},getAccessToken:async()=> 'native.signed.token'};
+  assert.throws(()=>createConfiguredAdapter({
+    gatewayUrl:'http://sql.example.org/v1/sql',accountAdapter:identity,fetchImpl
+  }),/HTTPS/);
   assert.throws(()=>createKyselyEdgeClient({gatewayUrl:'',role:'anon',fetch:fetchImpl}),
     /LOC SQL Gateway is not configured/);
 });
 
-test('static app composition defers a missing Gateway error until an actual SQL read',async()=>{
+test('static site keeps its current public reads until independent SQL is deployed',async()=>{
   const source=readFileSync(new URL('../app/loc/db-client.mjs',import.meta.url),'utf8');
-  assert.match(source,/createConfiguredAdapter\(\{allowUnconfigured:true\}\)/);
-  let requests=0;
+  assert.match(source,/createConfiguredAdapter\(\)/);
+  const calls=[];
   const identity={auth:{},getAccessToken:async()=> 'native.signed.token'};
-  const adapter=createConfiguredAdapter({gatewayUrl:'',allowUnconfigured:true,
-    accountAdapter:identity,fetchImpl:async()=>{requests++;throw Error('Must not fetch');}});
+  const adapter=createConfiguredAdapter({
+    gatewayUrl:'',url:'https://data.example.org/rest/v1',publishableKey:'public_key',
+    accountAdapter:identity,fetchImpl:async(url,options)=>{
+      calls.push({url:String(url),options});
+      return new Response('[]',{status:200,headers:{'content-type':'application/json'}});
+    }
+  });
   assert.equal(adapter.publicClient.role,'anon');
-  await assert.rejects(
-    adapter.publicClient.schema('silver').from('example_galaxy').select('uid').limit(1),
-    /LOC SQL Gateway is not configured/);
-  assert.equal(requests,0,'missing SQL Gateway cannot trigger any fallback request');
+  const result=await adapter.publicClient.schema('silver')
+    .from('example_galaxy').select('uid').limit(1);
+  assert.deepEqual(result.data,[]);
+  assert.equal(calls.length,1,'existing live public reader must not be disconnected early');
+  assert.match(calls[0].url,/data\.example\.org\/rest\/v1/);
 });
 
 test('public and delegated clients use a single explicit independent endpoint',()=>{

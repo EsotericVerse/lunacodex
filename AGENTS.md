@@ -61,7 +61,7 @@
 ## Skill 路由入口
 - 從任務目的主動選用已安裝 Plugin／Skill，讀取指引後實際執行；同一能力選一份，不等待使用者點名。
 - 詳細任務對照見 [docs/agent-skill-routing.md](docs/agent-skill-routing.md)，只讀本次相關段落，避免每次預載整張表。
-- SQL／資料存取 → [Kysely](.agents/skills/kysely/SKILL.md)；Auth／登入／Session → [Clerk](.agents/skills/clerk/SKILL.md)，再依框架與功能讀相關子技能。SQL 沿用 Kysely 統合路徑。
+- SQL／資料存取 → [LOC Kysely 官方文件工作流程](.github/skills/kysely-portable-loc/SKILL.md)、[Kysely](.agents/skills/kysely/SKILL.md)；ZModel／ORM／權限 → [ZenStack V3 Querying](.agents/skills/zenstack-querying/SKILL.md)、[ZenStack V3 Access Control](.agents/skills/zenstack-access-control/SKILL.md)；Auth／登入／Session → `workers/loc-authority/native-oauth.mjs` 與 `app/loc/auth/loc-browser.mjs`。SQL 沿用 Kysely 統合路徑，不恢復舊託管 Auth SDK。
 - 專業能力不足時讀 [find-skills](.agents/skills/find-skills/SKILL.md)，到 [skills.sh](https://skills.sh/) 查找，核對來源、適用版本與技能原文；查證目前版本及新版能力後再判斷支援程度，由 Agent 接續解決與驗證。
 - LOC 需求完成流程優先查用已安裝的 `loc-finish-request`；不可用時依本文件及 repo 路由繼續，不把私人技能當成所有 Agent 都有的 repo 檔案。
 - Codex／Claude 分別使用可讀取的 `.agents/skills/`、`.claude/skills/` 或已安裝 Plugins；保留其他 Agent 需要的發現入口。

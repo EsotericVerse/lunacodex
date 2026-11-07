@@ -2,11 +2,13 @@
 
 ## Canonical deployment contract
 
-Code changes are staged as PR #1210 (native/Auth/SQL/MCP/Extension cutover)
-and dependent PR #1216 (regression and Gateway contract repairs). Merge in
-this order only after the independent Gateway is live. Database schemas,
-migrations, grants, RPCs, RLS, existing Galaxy content, and LOC page composition
-are **not** modified by either PR.
+PRs #1210 (native Auth/SQL/MCP/Extension) and #1216 (contract repairs)
+are already **merged** into `main`. Their source merge does not deploy the
+independent SQL Container. The website keeps a transitional public-read
+Data API while its Gateway URL is absent; when configured, browser and
+server-side readers prefer Kysely and native LOC OAuth delegation. Database
+schemas, migrations, grants, RPCs, RLS, Galaxy content, and LOC page
+composition remain unchanged.
 
 | Role | Endpoint | Token contract |
 |---|---|---|
@@ -20,8 +22,9 @@ are **not** modified by either PR.
 An OAuth access token is **never** a database authorization token.
 LOC Authority signs a separate, short-lived, Scope-bound SQL delegation;
 the SQL Gateway verifies the signature, claims, audience, and grants.
-Database credentials are server-only. Both anonymous public reads and
-authorized writes pass through Kysely/ZenStack, independent of the database host.
+Database credentials are server-only. Once the independent Gateway is
+configured, public reads and authorized writes pass through Kysely/ZenStack
+instead of the transitional Data API, independent of the database host.
 
 The website is hosted on Cloudflare Pages. The Auth Worker reuses the existing
 `loc-authority-control` Durable Object. The MCP entry is the Cloudflare Pages
@@ -102,10 +105,10 @@ Authorized database credentials are never returned through the public API.
 
 Anonymous visitors keep the default data source. Signed-in visitors use their
 own selection across website read, private SQL, MCP and Extension imports.
-A 5-second Gateway profile cache avoids repeated Authority requests during
-page rendering; switching to a **different** database target takes effect on
-the next request because the cache key includes the selected ID. Permission
-revocations of an existing selection may take up to five seconds to propagate.
+The Gateway validates the selected database with LOC Authority for each SQL
+HTTP request, while coalescing lookups inside a single request. There is no
+five-second cross-request database profile cache: changes or revocations are
+checked again on the next request.
 
 For the Azure 30-day trial, keep the existing PostgreSQL source unchanged.
 After the code and initial Gateway deployment are ready, add an Azure SQL
@@ -183,9 +186,10 @@ continued by stable UID, and an incomplete receipt never deletes a Queue.
   Source-backed isolated Auth/SQL transport and bootstrap tests have also
   passed; they are **not** a complete Node/Deno runner, database, deployed
   OAuth or Chrome end-to-end test.
-- PR #1210 and its dependent #1216 are **submitted but not merged**.
-  Automated workflow guard and mock tests do not provision a live Gateway.
-  No partial merge into `main` before the default control connection exists.
+- PR #1210 and its dependent #1216 are **merged**. Their mock tests and
+  GitHub commits do not provision a live Gateway or remove the remaining
+  transitional public Data API reader. The default control connection is
+  still an operational release gate.
 
 ## Remaining release gates (do not pretend these passed)
 
@@ -203,9 +207,10 @@ continued by stable UID, and an incomplete receipt never deletes a Queue.
    `npm run test:authority`;
    `node --test scripts/test-loc-mcp-routing.mjs scripts/test-loc-mcp-authority.mjs scripts/test-loc-galaxy-link-extension.mjs scripts/test-loc-auth-provider-settings.mjs`;
    `deno check --config services/loc-sql/deno.json services/loc-sql/main.ts`.
-5. The proposed branch has already removed legacy recovery, hosted Function
-   wrappers and SQL provider fallback. Bring up the replacement Auth/SQL
-   endpoints first, then merge #1210 and retarget/merge #1216. Confirm the
+5. Complete the independent Auth/SQL endpoint configuration and verify
+   read-only database access before switching the public URL. Then retire
+   the emergency public Data API transport and old provider settings; do not
+   delete a live read route before the replacement is reachable. Confirm the
    Cloudflare Pages, Worker and Vercel deployment states separately.
 
 `auth.lo3rwang.cc` is currently bound to the existing Authority Worker.
