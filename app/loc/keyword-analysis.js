@@ -1,10 +1,11 @@
 'use client';
 
-import {dbAuthRelation} from './db-client.mjs';
+import {dbAuthRelation,dbAuthClient} from './db-client.mjs';
 import {isUnifiedAnchorScope} from './unified-anchor-compat.mjs';
 import {selectAllRows,selectRows} from './db-query.mjs';
 import {defaultScopeData,selectManagedScope} from './scope-data';
 import {reanalyzeKeywordClass} from './keyword-reanalysis.mjs';
+import {buildKeywordSearchPatterns} from './keyword-search-pattern.mjs';
 import {createIndexedDateKeywordReader} from './keyword-article-reader.mjs';
 import {keywordClassState,invalidateKeywordClass,completeKeywordClass} from './keyword-class-state.mjs';
 import {keywordTreeCatalog} from './keyword-tree-report.mjs';
@@ -187,10 +188,21 @@ export async function runKeywordAnalysisBatch(scopeId,{classUid:requestedClassUi
     writeNode:async ({uid,uid_lists})=>{
       const type=typeByUid.get(uid);
       if(!type)throw new Error('Keyword UID missing during classification write');
-      const stored=isUnifiedAnchorScope(id)?uid_lists:keywordUidListRecord(type,uid_lists);
+      // The large UID array now belongs only to loc_search_pattern; Anchor
+      // retains the existing compact Item/Group count for compatibility.
+      const stored=isUnifiedAnchorScope(id)?{total:uid_lists.total,uidlists:[]}
+        :keywordUidListRecord(type,uid_lists);
       const {data,error}=await dbAuthRelation(scope.keywords).update({uid_lists:stored})
         .eq('uid',uid).select('uid');
       if(error||data?.length!==1)throw new Error('Keywords.uid_lists 儲存失敗：'+uid+' '+(error?.message||''));
+    },
+    writePatterns:async ({items})=>{
+      const patterns=buildKeywordSearchPatterns(id,items);
+      const {data,error}=await dbAuthClient.schema('silver').managedAction('sync_search_patterns',{
+        p_scope_id:id,p_class_uid:classUid,p_patterns:patterns
+      });
+      if(error||data?.patterns!==patterns.length)
+        throw new Error(error?.message||'關鍵詞搜尋對照表未能完整寫入');
     },
     finalize:async counts=>{
       // Per-Class completion is the only public-config state. Labels, hit counts
