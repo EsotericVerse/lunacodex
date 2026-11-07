@@ -40,3 +40,22 @@ export function buildKeywordSearchPatterns(scopeId,items=[],matchedUids=[]){
     return {scopeid:scopeId,pattern:word,count:uid_list.length,uid_list};
   }).sort((a,b)=>a.pattern.localeCompare(b.pattern));
 }
+
+// LOC Kysely transport caps POST bodies at 1 MiB. Bound the reanalysis-only
+// upload without imposing extra round trips on ordinary Search requests.
+export function splitKeywordPatternBatches(patterns,maxBytes=700_000){
+  if(!Array.isArray(patterns)||!Number.isSafeInteger(maxBytes)||maxBytes<256||maxBytes>900_000)
+    throw new Error('Invalid search-pattern upload budget');
+  const encoder=new TextEncoder(),batches=[];
+  let batch=[],used=256;
+  for(const row of patterns){
+    const bytes=encoder.encode(JSON.stringify(row)).byteLength+1;
+    if(bytes+256>maxBytes)throw new Error('單一關鍵詞 UID 清單超過同步上限');
+    if(used+bytes>maxBytes){
+      batches.push(batch);batch=[];used=256;
+    }
+    batch.push(row);used+=bytes;
+  }
+  if(batch.length||!batches.length)batches.push(batch);
+  return batches;
+}
