@@ -34,7 +34,7 @@ export default function LocScopeConnections({availableScopes=[]}){
       <h2>{t('mcpSelfServiceTitle')}</h2>
       <p className="scope-status">{t('mcpSelfServiceIntro')}</p>
       {loading?<p role="status">{t('loading')}</p>:
-        principal?<p>{t('mcpClerkId')}：<code>{principal}</code></p>:
+        principal?<p>{t('mcpLocId')}：<code>{principal}</code></p>:
           <p role="status">{t('mcpSignInNeeded')} <a href="/login/index.html?return_to=%2Flocal%2Fsettings%2F">{t('login')}</a></p>}
       {principal?<div className="scope-management-fields">
         <label><span>{t('mcpScopeId')}</span>

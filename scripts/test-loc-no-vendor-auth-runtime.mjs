@@ -7,10 +7,12 @@ test('old vendor browser Auth SDK modules are absent from executable app',()=>{
   for(const file of [
     'app/loc/auth/clerk-browser.mjs',
     'app/loc/providers/clerk-gateway.mjs',
-    'app/loc/mcp/clerk-access.mjs'
+    'app/loc/mcp/clerk-access.mjs',
+    'app/loc/ClerkScopeConnections.jsx'
   ])assert.equal(existsSync(new URL('../'+file,import.meta.url)),false,file);
   for(const file of [
     'app/loc/providers/configured.mjs',
+    'app/loc/GlobalSettings.jsx',
     'app/loc/mcp/loc-access.mjs',
     'app/loc/mcp/router.mjs',
     'public/login/index.html',
