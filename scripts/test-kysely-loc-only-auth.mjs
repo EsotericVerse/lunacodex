@@ -15,7 +15,7 @@ test('SQL Edge verifies locally signed LOC delegation, not provider identity',()
 test('Kysely and Edge share one LOC delegation policy',()=>{
   const edge=source('app/loc/gateway/sql-handler.ts');
   const auth=source('app/loc/providers/loc-authorization.mjs');
-  const issuer=source('scripts/loc-delegation-mint-token.mjs');
+  const issuer=source('workers/loc-authority/index.mjs');
   assert.match(edge,/from ".{1,80}\/delegation-contract\.mjs"/);
   assert.match(auth,/canManageDelegation\(state\.claims,/);
   assert.match(issuer,/issueDelegation\(/);
