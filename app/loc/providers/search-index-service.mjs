@@ -77,3 +77,41 @@ export async function writeSearchIndexDocuments(documents){
   return r?.accepted===true;
 }
 export function searchIndexDatabaseId(target){return targetId(target);}
+
+export function isSearchIndexConfigured(){return Boolean(service());}
+export function indexDocumentsFromWrite(body,target){
+  const dbId=targetId(target);
+  if(!dbId||!body||typeof body!=='object')return [];
+  const managed=body.kind==='managed-write';
+  if(!managed&&!(body.kind==='query'&&body.operation!=='select'))return [];
+  const payload=managed?body.payload:body;
+  const table=String((managed?payload?.p_table:payload?.table)||'')
+    .replace(/^silver\./,'');
+  const schema=managed?'silver':String(payload?.schema||'');
+  if(schema!=='silver'||!table.endsWith('_galaxy'))return [];
+  const scopeId=table.slice(0,-'_galaxy'.length);
+  if(!SCOPE.test(scopeId))return [];
+  const operation=String(managed?payload?.p_operation:payload?.operation);
+  let rows=[];
+  if(operation==='insert')
+    rows=managed?payload?.p_rows:Array.isArray(payload?.values)?payload.values:[payload?.values];
+  else if(operation==='update'||operation==='delete'){
+    const filters=managed?payload?.p_filters:payload?.filters;
+    if(!Array.isArray(filters)||filters.length!==1||
+       filters[0]?.column!=='uid'||filters[0]?.operator!=='eq')return [];
+    rows=[{uid:filters[0].value,
+      ...(operation==='update'?(managed?payload.p_values:payload.values):{})}];
+  }
+  if(!Array.isArray(rows)||rows.length>50)return [];
+  return rows.flatMap(row=>{
+    if(!row||!UID.test(String(row.uid||'')))return [];
+    if(operation==='delete')return [{
+      scopeId,dbId,entityType:'galaxy',uid:row.uid,operation:'remove'
+    }];
+    if(typeof row.content!=='string')return [];
+    return [{
+      scopeId,dbId,entityType:'galaxy',uid:row.uid,
+      content:row.content,operation:'upsert'
+    }];
+  });
+}
