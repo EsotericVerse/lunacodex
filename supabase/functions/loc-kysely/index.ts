@@ -1,7 +1,7 @@
 import { sql } from "npm:kysely@0.29.8";
 import {ZenStackClient} from "npm:@zenstackhq/orm@3.10.1";
 import {PolicyPlugin} from "npm:@zenstackhq/plugin-policy@3.10.1";
-import {withFixedPolicyRead,fixedPolicyReadModel} from "../../../zenstack/policy-runtime.mjs";
+import {withFixedPolicyRead,fixedPolicyReadModel,withFixedPolicyWrite,fixedPolicyWriteModel} from "../../../zenstack/policy-runtime.mjs";
 import {jwtVerify,createRemoteJWKSet} from "npm:jose@5.9.6";
 import {processShortImport,postgresShortImportStore} from "../../../app/loc/import/short-append-service.mjs";
 import {authorizeDelegatedShortImport} from "../../../app/loc/import/short-edge-authorization.mjs";
@@ -16,7 +16,7 @@ import {executeKyselyAnchor,executePortableKyselyAnchor} from "../../../app/loc/
 import {executeKyselyAnalytics,executePortableKyselyAnalytics} from "../../../app/loc/providers/kysely-analytics.mjs";
 import {executeKyselyPublicAction} from "../../../app/loc/providers/kysely-public.mjs";
 import {executeKyselyScopeAdmin} from "../../../app/loc/providers/kysely-scope-admin.mjs";
-import {ensurePortableScopeSchema,validatePortableScopeSchema} from "../../../app/loc/providers/kysely-schema.mjs";
+import {validatePortableScopeSchema} from "../../../app/loc/providers/kysely-schema.mjs";
 import { selectedDatabaseTarget } from "../../../app/loc/providers/selected-database-target.mjs";
 import {resolveSqlExecutionPort,assertCrossEnginePublicRead,authorizeCrossEngineQuery,executeCrossEngineManagedWrite} from "../../../app/loc/providers/sql-engine-ports.mjs";
 import {resolveDatabaseRouting} from "../../../app/loc/providers/routing-config.mjs";
@@ -142,8 +142,13 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
   const executionPort=resolveSqlExecutionPort(target);
   bindLocAuthorization(trx,{role,claims});
   if(target.provider==="custom"||executionPort.session!=="postgres-rls"){
-    // Non-PostgreSQL engines use the LOC authorization boundary,
-    // never a database provider's authentication model.
+    // Fixed public PostgreSQL models use the same ZenStack PolicyPlugin and
+    // physical schema regardless of hosting vendor. This modelName is set
+    // only inside the trusted gateway, never accepted from the HTTP body.
+    if(executionPort.engine==="postgres"&&modelName&&
+       body.kind==="query"&&body.operation==="select")
+      return await executeKyselyQuery(trx,body,{modelName});
+    // Cross-engine Scope queries use the signed LOC ACL instead of RLS.
     if(body.kind==="managed-write"){
       if(role!=="authenticated")
         throw Object.assign(new Error("Management requires verified LOC delegation"),{httpStatus:403});
@@ -164,6 +169,16 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
           (executionPort.engine==="mssql"?"dbo":"silver"))
       }),count:null};
     }
+    // A standalone PostgreSQL control database supports the original LOC
+    // management actions without a provider identity or new database RPC.
+    if(body.kind==="managed-action"&&executionPort.engine==="postgres"){
+      if(role!=="authenticated")
+        throw Object.assign(new Error("Verified LOC management delegation required"),{httpStatus:403});
+      const name=String(body.name||"");
+      return ["manage_scope_registry","delete_scope","provision_scope"].includes(name)
+        ?await executeKyselyScopeAdmin(trx,body)
+        :await executeManagedKyselyAction(trx,body,claims);
+    }
     if(body.kind==="anchor")return await executePortableKyselyAnchor(trx,body,{
       role,engine:executionPort.engine,namespace:target.schema_name
     });
@@ -176,8 +191,11 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
     });
     const access=await authorizeCrossEngineQuery(trx,body,{role,claims});
     return await executeKyselyQuery(trx,body,{dialect:executionPort.engine,
-      namespace:String(target.schema_name||(
-        executionPort.engine==='mssql'?'dbo':'public')),
+      // PostgreSQL keeps the request's real api/silver schema. Other SQL
+      // engines use the configured flat database/dbo namespace.
+      namespace:executionPort.engine==='postgres'&&!target.schema_name
+        ?undefined:String(target.schema_name||(
+          executionPort.engine==='mssql'?'dbo':'public')),
       publicOnly:access?.publicOnly===true});
   }
   await bindPostgresSession(trx,role,claims,String(target.provider||"supabase"));
@@ -185,7 +203,15 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
     // A database RLS policy may be more permissive than the delegated Scope.
     // Require the already signed LOC grant for every non-public SQL mutation,
     // then let PostgreSQL apply its own independent RLS/DB privileges.
-    if(body.operation!=="select"&&body.schema==="silver")
+    if(body.operation!=="select"&&
+       (body.schema==="api"&&body.table==="manage"||
+        body.schema==="silver"&&body.table==="loc")){
+      // Both generic CRUD and managed-write require the identical signed
+      // global LOC grant. Do not leave direct api.manage writes to DB RLS alone.
+      if(!await canManageLoc(trx,"global"))
+        throw Object.assign(new Error("Global LOC management permission required"),
+          {httpStatus:403});
+    }else if(body.operation!=="select"&&body.schema==="silver")
       await authorizeCrossEngineQuery(trx,body,{role,claims});
     // PostgreSQL must stop work even when browser aborts its 25s timeout.
     if(isTextSearchQuery(body))
@@ -198,7 +224,7 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
   if(body.kind==="managed-write"||body.kind==="managed-action"){
     if(role!=="authenticated")throw Object.assign(new Error("Management requires a verified session"),{httpStatus:403});
     return body.kind==="managed-write"
-      ?await executeManagedKyselyWrite(trx,body)
+      ?await executeManagedKyselyWrite(trx,body,{modelName})
       :["manage_scope_registry","delete_scope","provision_scope"].includes(String(body.name))
         ?await executeKyselyScopeAdmin(trx,body)
         :await executeManagedKyselyAction(trx,body,claims);
@@ -441,17 +467,25 @@ Deno.serve(async (request) => {
       :await databaseForTarget(target,{profileLookup:profileForTarget});
     // A portable Scope database holds only Galaxy/Anchor. The LOC-signed
     // delegation contains its permission boundary: no control DB round trip.
-    // Preserve the mainline ZenStack PolicyPlugin on the four fixed public
-    // models while all other Kysely work, including portable MCP, uses the
-    // same connection and the same LOC Scope authority contract.
+    // Four fixed publicly readable LOC models use the real ZenStack V3
+    // PolicyPlugin + Kysely query executor. The same existing dialect/pool,
+    // transaction, JWT binding and response shape are retained; no second DB
+    // connection or permission lookup is introduced.
     const policyModel=fixedPolicyReadModel(target,body);
+    // Only the LOC control-plane's signed global administrator can use a
+    // ZenStack fixed-model mutation. Dynamic scopes stay on existing Kysely.
+    const adminWrite=isControlTarget(target)&&
+      fixedPolicyWriteModel(target,body,role,claims);
+    const policyDeps=(policyModel||adminWrite)
+      ?{dialect:trustedDialectForDatabase(db),ZenStackClient,PolicyPlugin}:null;
     const result=policyModel
-      ?await withFixedPolicyRead(db,target,body,role,claims,{
-        dialect:trustedDialectForDatabase(db),ZenStackClient,PolicyPlugin
-      },(trx,modelName)=>
-        executeRequest(trx,target,role,claims,body,{modelName}))
-      :await db.transaction().execute(trx=>
-        executeRequest(trx,target,role,claims,body));
+      ?await withFixedPolicyRead(db,target,body,role,claims,policyDeps,
+        (trx,modelName)=>executeRequest(trx,target,role,claims,body,{modelName}))
+      :adminWrite
+        ?await withFixedPolicyWrite(db,target,body,role,claims,policyDeps,
+          (trx,modelName)=>executeRequest(trx,target,role,claims,body,{modelName}))
+        :await db.transaction().execute(trx=>
+          executeRequest(trx,target,role,claims,body));
     return json(result,200,result.count===null?{}:{"content-range":`0-${Math.max(0,(Array.isArray(result.data)?result.data.length:0)-1)}/${result.count}`});
   } catch (error) {
     const message = error instanceof Error ? error.message : "";

@@ -14,6 +14,13 @@ const sourceTargets=Object.freeze(Object.fromEntries(
     }: {})
   })])
 ));
+// Only a trusted Deno SQL service can override the deployed browser's target.
+ // LOC_CONTROL_DB_ALIAS selects a server-owned connection profile; it is never
+ // accepted from a request or exposed as a browser-selected database.
+const serverControlAlias=typeof Deno!=='undefined'
+  ?String(Deno.env.get('LOC_CONTROL_DB_ALIAS')||''):'';
+const serverControlEngine=typeof Deno!=='undefined'
+  ?String(Deno.env.get('LOC_CONTROL_DB_ENGINE')||''):'';
 const active=DATABASE_ACCESS_LIST.find(item=>item.selected===true);
 const backup=DATABASE_ACCESS_LIST.find(item=>item.backup_selected===true);
 if(!active||DATABASE_ACCESS_LIST.filter(item=>item.selected===true).length!==1)
@@ -25,14 +32,14 @@ export const DATABASE_ROUTING_CONFIG=Object.freeze({
     // Generic portable targets remain opt-in. Credentials are server secrets.
     'custom-current':Object.freeze({
       provider:'custom',
-      engine:(typeof process!=='undefined'&&process.env.NEXT_PUBLIC_LOC_SQL_ENGINE)||'mysql',
-      connection_alias:(typeof process!=='undefined'&&process.env.NEXT_PUBLIC_LOC_SQL_ALIAS)||'custom_current',
+      engine:serverControlEngine||(typeof process!=='undefined'&&process.env.NEXT_PUBLIC_LOC_SQL_ENGINE)||'mysql',
+      connection_alias:serverControlAlias||(typeof process!=='undefined'&&process.env.NEXT_PUBLIC_LOC_SQL_ALIAS)||'custom_current',
       primaryControl:true
     })
   }),
   blacklist:Object.freeze([]),
-  primaryId:active.target_id,
-  backupId:backup?.target_id||null,
+  primaryId:serverControlAlias?'custom-current':active.target_id,
+  backupId:serverControlAlias?null:backup?.target_id||null,
   mode:'single'
 });
 

@@ -27,11 +27,12 @@ export function fixedPolicyWriteModel(target,body,role,claims){
 const readers=new WeakMap();
 
 /** Only the four designated publicly readable fixed LOC control relations.
- * Dynamic Galaxy, Anchor and other protected models continue through the
- * existing signed Kysely transaction boundary, never an unsecured fallback.
+ * The same fixed policy applies to independent PostgreSQL Kysely connections.
+ * Dynamic Galaxy, Anchor and other models continue through the existing
+ * signed Kysely transaction boundary; non-PostgreSQL dialects use LOC ACL.
  */
 export function fixedPolicyReadModel(target,body){
-  if(target?.engine!=='postgres'||target?.provider==='custom'||
+  if(target?.engine!=='postgres'||
      body?.kind!=='query'||body.operation!=='select')return null;
   return PUBLIC_FIXED_MODELS[String(body.schema||'')+'.'+String(body.table||'')]||null;
 }
