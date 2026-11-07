@@ -62,6 +62,9 @@ export function validateAuthProviderSettings(type,values,{previous=null,siteOrig
     if(field.kind==='url'){
       const parsed=httpsUrl(value,field.key,
         {callbackOrigin:field.key==='callback_url'?origin:''});
+      if(field.key==='callback_url'&&['github','oidc'].includes(type)&&
+         origin&&parsed!==origin+'/oauth/callback/'+type)
+        invalid('Native LOC OAuth callback URL must be '+origin+'/oauth/callback/'+type);
       result[field.key]=parsed;
     }
     else if(!/^[a-zA-Z0-9._:@\/-]{2,512}$/.test(value))
