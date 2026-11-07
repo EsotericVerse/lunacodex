@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import worker from '../workers/loc-search-index/index.mjs';
-import {indexDocumentsFromWrite,withIndexedCandidates} from '../app/loc/providers/search-index-service.mjs';
+import {indexDocumentsFromWrite,withIndexedCandidates,federatedIndexedCandidates} from '../app/loc/providers/search-index-service.mjs';
 import {locSearchDocumentId} from '../app/loc/search-index-shard.mjs';
 import {locGlobalUid,parseLocGlobalUid} from '../zenstack/global-identity.mjs';
 import {createKyselyEdgeClient} from '../app/loc/providers/kysely-edge.mjs';
@@ -181,3 +181,75 @@ test('Gateway transport carries DB identity as an assertion rather than an SQL t
   assert.equal(submitted.expectedDbId,'db2');
   assert.deepEqual(submitted.filters,[{column:'uid',operator:'eq',value:'Ab123456',negate:false}]);
 });
+
+test('an untrusted index hint never narrows a different SQL content predicate',async(t)=>{
+  const previousDeno=globalThis.Deno,previousFetch=globalThis.fetch;
+  const seen=[];
+  globalThis.Deno={env:{get:name=>name==='LOC_SEARCH_INDEX_URL'?'https://index.example.test':
+    name==='LOC_SEARCH_INDEX_SECRET'?secret:
+    name==='LOC_SEARCH_INDEX_ENABLED'?'true':''}};
+  globalThis.fetch=async(url,options)=>{
+    seen.push(JSON.parse(options.body));
+    return new Response(JSON.stringify({complete:true,hits:[{
+      scopeId:'lo3rwang',dbId:'db1',entityType:'galaxy',uid:'Ab123456',
+      globalUid:locGlobalUid({databaseId:'db1',scopeId:'lo3rwang',uid:'Ab123456'})
+    }]}),{status:200});
+  };
+  t.after(()=>{globalThis.Deno=previousDeno;globalThis.fetch=previousFetch;});
+  const query={kind:'query',operation:'select',schema:'silver',
+    table:'lo3rwang_galaxy',columns:['uid','title'],filters:[],
+    or:['content.contains."文化"'],indexHint:{scopeId:'lo3rwang',query:'痕跡'}};
+  assert.equal(await withIndexedCandidates(query,{connection_alias:'db1'}),query);
+  assert.equal(await federatedIndexedCandidates(query,[{databaseId:'db1'}]),null);
+  assert.equal(seen.length,0,'mismatching hints must never query or restrict via the index');
+});
+
+test('a compound or negated search is never reduced to one FlexSearch keyword',async(t)=>{
+  const previousDeno=globalThis.Deno,previousFetch=globalThis.fetch;
+  const seen=[];
+  globalThis.Deno={env:{get:name=>name==='LOC_SEARCH_INDEX_URL'?'https://index.example.test':
+    name==='LOC_SEARCH_INDEX_SECRET'?secret:
+    name==='LOC_SEARCH_INDEX_ENABLED'?'true':''}};
+  globalThis.fetch=async(url,options)=>{
+    seen.push(JSON.parse(options.body));
+    return new Response(JSON.stringify({complete:true,hits:[{
+      scopeId:'lo3rwang',dbId:'db1',entityType:'galaxy',uid:'Ab123456',
+      globalUid:locGlobalUid({databaseId:'db1',scopeId:'lo3rwang',uid:'Ab123456'})
+    }]}),{status:200});
+  };
+  t.after(()=>{globalThis.Deno=previousDeno;globalThis.fetch=previousFetch;});
+  for(const expression of [
+    'content.contains."文化",content.contains."痕跡"',
+    'and(content.contains."文化",content.contains."痕跡")',
+    'content.contains."文化"'
+  ]){
+    const query={kind:'query',operation:'select',schema:'silver',
+      table:'lo3rwang_galaxy',columns:['uid','title'],filters:[],
+      or:[expression],indexHint:{scopeId:'lo3rwang',query:'痕跡'}};
+    assert.equal(await withIndexedCandidates(query,{connection_alias:'db1'}),query);
+  }
+  assert.equal(seen.length,0);
+});
+
+test('the exact required content term still uses one FlexSearch candidate lookup',async(t)=>{
+  const previousDeno=globalThis.Deno,previousFetch=globalThis.fetch;
+  let calls=0;
+  globalThis.Deno={env:{get:name=>name==='LOC_SEARCH_INDEX_URL'?'https://index.example.test':
+    name==='LOC_SEARCH_INDEX_SECRET'?secret:
+    name==='LOC_SEARCH_INDEX_ENABLED'?'true':''}};
+  globalThis.fetch=async()=>{
+    calls++;
+    return new Response(JSON.stringify({complete:true,hits:[{
+      scopeId:'lo3rwang',dbId:'db1',entityType:'galaxy',uid:'Ab123456',
+      globalUid:locGlobalUid({databaseId:'db1',scopeId:'lo3rwang',uid:'Ab123456'})
+    }]}),{status:200});
+  };
+  t.after(()=>{globalThis.Deno=previousDeno;globalThis.fetch=previousFetch;});
+  const query={kind:'query',operation:'select',schema:'silver',
+    table:'lo3rwang_galaxy',columns:['uid','title'],filters:[],
+    or:['content.contains."文化"'],indexHint:{scopeId:'lo3rwang',query:'文化'}};
+  const narrowed=await withIndexedCandidates(query,{connection_alias:'db1'});
+  assert.deepEqual(narrowed.filters,[{column:'uid',operator:'in',value:['Ab123456']}]);
+  assert.equal(calls,1);
+});
+
