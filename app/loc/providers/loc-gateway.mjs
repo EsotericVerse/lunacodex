@@ -13,6 +13,7 @@ export function createLocGatewayAdapter({
   publicGatewayUrl=gatewayUrl,
   target='configured',
   realtimeClient=null,
+  allowUnconfigured=false,
   fetchImpl=globalThis.fetch
 }={}){
   const {auth,getAccessToken:externalAccessToken}=accountAdapter||{};
@@ -125,11 +126,11 @@ export function createLocGatewayAdapter({
     return getLocAccessToken(body);
   };
   const publicSql=createKyselyEdgeClient({
-    role:'anon',target,gatewayUrl:publicGatewayUrl,
+    role:'anon',target,gatewayUrl:publicGatewayUrl,allowUnconfigured,
     getAccessToken:optionalPublicDelegation,fetch:fetchImpl
   });
   const privateSql=createKyselyEdgeClient({
-    role:'authenticated',target,gatewayUrl,
+    role:'authenticated',target,gatewayUrl,allowUnconfigured,
     getAccessToken:getLocAccessToken,fetch:fetchImpl
   });
   // The independent Extension write path never falls back to a vendor

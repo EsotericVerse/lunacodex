@@ -17,6 +17,20 @@ test('LOC SQL Gateway is mandatory; silent provider fallback is rejected',()=>{
     /LOC SQL Gateway is not configured/);
 });
 
+test('static app composition defers a missing Gateway error until an actual SQL read',async()=>{
+  const source=readFileSync(new URL('../app/loc/db-client.mjs',import.meta.url),'utf8');
+  assert.match(source,/createConfiguredAdapter\(\{allowUnconfigured:true\}\)/);
+  let requests=0;
+  const identity={auth:{},getAccessToken:async()=> 'native.signed.token'};
+  const adapter=createConfiguredAdapter({gatewayUrl:'',allowUnconfigured:true,
+    accountAdapter:identity,fetchImpl:async()=>{requests++;throw Error('Must not fetch');}});
+  assert.equal(adapter.publicClient.role,'anon');
+  await assert.rejects(
+    adapter.publicClient.schema('silver').from('example_galaxy').select('uid').limit(1),
+    /LOC SQL Gateway is not configured/);
+  assert.equal(requests,0,'missing SQL Gateway cannot trigger any fallback request');
+});
+
 test('public and delegated clients use a single explicit independent endpoint',()=>{
   const identity={auth:{},getAccessToken:async()=> 'native.signed.token'};
   const adapter=createConfiguredAdapter({

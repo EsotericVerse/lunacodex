@@ -10,15 +10,16 @@ export function createConfiguredAdapter({
   authorityUrl=process.env.NEXT_PUBLIC_LOC_CONTROL_URL||DEFAULT_AUTHORITY,
   gatewayUrl=process.env.NEXT_PUBLIC_LOC_SQL_GATEWAY_URL||
     process.env.NEXT_PUBLIC_LOC_KYSELY_GATEWAY_URL||'',
-  fetchImpl=globalThis.fetch
+  fetchImpl=globalThis.fetch,
+  allowUnconfigured=false
 }={}){
   const endpoint=String(gatewayUrl||'').trim();
-  if(!endpoint)throw new Error('LOC SQL Gateway is not configured');
+  if(!endpoint&&!allowUnconfigured)throw new Error('LOC SQL Gateway is not configured');
   const identity=accountAdapter||createLocAccountAdapter({
     authorityOrigin:authorityUrl,fetchImpl
   });
   return createLocGatewayAdapter({
     authorityUrl,accountAdapter:identity,gatewayUrl:endpoint,
-    publicGatewayUrl:endpoint,realtimeClient:null,fetchImpl
+    publicGatewayUrl:endpoint,realtimeClient:null,fetchImpl,allowUnconfigured
   });
 }

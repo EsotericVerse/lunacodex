@@ -47,17 +47,19 @@ function parseContentRange(value){const match=String(value||'').match(/\/(\d+)$/
 // A Kysely transport may be deployed on an independent trusted SQL Gateway.
 // Browser callers supply an OAuth JWT, never raw PostgreSQL credentials.
 export function createKyselyEdgeClient({auth=null,role='authenticated',
-  target='configured',gatewayUrl='',getAccessToken=null,fetch:fetchImpl=globalThis.fetch}={}){
+  target='configured',gatewayUrl='',allowUnconfigured=false,
+  getAccessToken=null,fetch:fetchImpl=globalThis.fetch}={}){
   if(typeof fetchImpl!=='function')throw new Error('Kysely transport requires fetch');
   const external=String(gatewayUrl||'').trim();
-  if(!external)throw new Error('LOC SQL Gateway is not configured');
-  const parsed=new URL(external);
-  if(parsed.protocol!=='https:'||parsed.username||parsed.password||parsed.search||parsed.hash)
+  if(!external&&!allowUnconfigured)throw new Error('LOC SQL Gateway is not configured');
+  const parsed=external?new URL(external):null;
+  if(parsed&&(parsed.protocol!=='https:'||parsed.username||parsed.password||parsed.search||parsed.hash))
     throw new Error('SQL Gateway endpoint must be an HTTPS URL without credentials or parameters');
   const endpoint=external.replace(/\/+$/,'');
   async function performRequest(body,signal=null){
     // A queued query can be cancelled before an HTTP request starts.
     if(signal?.aborted)throw abortedRequest();
+    if(!endpoint)throw new Error('LOC SQL Gateway is not configured');
     let token='';
     if(typeof getAccessToken==='function'){
       token=String(await getAccessToken(body)||'');
