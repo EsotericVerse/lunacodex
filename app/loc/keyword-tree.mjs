@@ -1,3 +1,4 @@
+import {indexZModelAnchorHierarchy} from '../../zenstack/anchor-hierarchy.mjs';
 // Same six-column, UID-linked hierarchy as the Scope's anchor records.
 // category -> class -> group -> item -> literal keyword strings.
 // Parent lists contain child UIDs, not names. No class_id, group_id, item_no.
@@ -80,6 +81,23 @@ export function indexAnchorTree(rows=[],{next,normalize,rootType}){
     const row=normalize(raw);
     if(index.has(row.uid))throw new Error('Duplicate Anchor UID: '+row.uid);
     index.set(row.uid,row);
+  }
+  // Native eight-character Anchor trees share the same virtual ZModel
+  // relationship resolver. Legacy four-character Keyword imports retain the
+  // existing compatible path below until their data has been migrated.
+  if(index.size>0&&[...index.keys()].every(uid=>ARTICLE_UID.test(uid))&&
+     (rootType==='category'||rootType==='universe')){
+    const family=rootType==='category'?'keyword':'source';
+    const rows=[...index.values()].map(row=>({
+      uid:row.uid,type:row.type,title:row.name,
+      attr:row.type==='item'?{keyword:row.lists}:{uid:row.lists}
+    }));
+    const graph=indexZModelAnchorHierarchy(rows,{family,strict:true});
+    for(const uid of index.keys()){
+      const parents=graph.parentsOf(uid);
+      if(parents.length)parent.set(uid,parents[0]);
+    }
+    return {index,parent,roots:[...index.values()].filter(row=>row.type===rootType)};
   }
   for(const row of index.values()){
     const childType=next[row.type];
