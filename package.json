@@ -22,7 +22,8 @@
     "test:sql-failover": "node --test scripts/test-portable-backup-gateway.mjs scripts/test-keyword-base62-read-provider.mjs scripts/test-portable-incremental-sync.mjs",
     "test:search-index": "node --test scripts/test-loc-search-index.mjs scripts/test-loc-federated-galaxy-search.mjs",
     "check:loc-vendor-coupling": "node scripts/check-loc-independent-vendor-usage.mjs",
-    "verify:portable-sql": "node scripts/verify-loc-sql-gateway.mjs"
+    "verify:portable-sql": "node scripts/verify-loc-sql-gateway.mjs",
+    "test:database-recovery": "node --test scripts/test-loc-direct-data-api.mjs"
   },
   "dependencies": {
     "@blocknote/core": "0.55.0",

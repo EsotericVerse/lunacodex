@@ -7,9 +7,8 @@ import {createLocalSqliteAdapter} from './providers/local-sqlite.mjs';
 import {unifiedAnchorSpec,unifiedAnchorRelation} from './unified-anchor-compat.mjs';
 
 // Provider construction is the only runtime composition point.
-// Static pages can render without a database connection; every remote SQL
-// request still fails explicitly unless the independent Gateway is configured.
-const adapter=createConfiguredAdapter({allowUnconfigured:true});
+// The static site reads public records from the owner's existing Data API.
+const adapter=createConfiguredAdapter();
 configureDbSourceLabels(adapter.primarySourceLabel||'Primary',adapter.backupSourceLabel??'');
 
 // The device-local SQLite backend for the hidden `local` Scope (see
@@ -56,7 +55,7 @@ function routedSchema(schemaName,cloudSchema){
       return cloudSchema.managedAction(name,args);
     },
     anchor(scopeId,type,attr={}){
-      // Anchor access continues through the trusted SQL Gateway only.
+      // Anchor access follows the independently configured database source.
       return cloudSchema.anchor(scopeId,type,attr);
     },
     analytics(args){
