@@ -2,6 +2,7 @@ import {createHash} from 'node:crypto';
 import {mkdir,readFile,rename,rm,writeFile} from 'node:fs/promises';
 import {dirname,resolve} from 'node:path';
 import {EFFECT_ASSET_BLOBS} from './rune-effekseer-asset-manifest.mjs';
+import {resolvePinnedEffekseerTarget} from './pinned-effekseer-path.mjs';
 
 // Install pinned, professionally-authored Effekseer effects and their complete direct
 // texture/material/model dependencies at build time. No custom particles are generated.
@@ -11,8 +12,7 @@ function valid(bytes,item){
  return createHash('sha1').update('blob '+bytes.length+'\0').update(bytes).digest('hex')===item.sha;
 }
 async function install(item){
- const target=resolve(ROOT,item.target);
- if(!target.startsWith(ROOT+'/'))throw Error('Unsafe Effekseer asset path: '+item.target);
+ const target=resolvePinnedEffekseerTarget(ROOT,item.target);
  try{if(valid(await readFile(target),item))return false;}catch(error){if(error.code!=='ENOENT')throw error;}
  const url='https://raw.githubusercontent.com/'+item.repo+'/'+item.revision+'/'+item.path.split('/').map(encodeURIComponent).join('/');
  let error;
