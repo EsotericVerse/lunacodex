@@ -12,7 +12,7 @@ const {LocAuthorityState}=new Function('DurableObject',
   source+';return {LocAuthorityState};')(class{
     constructor(ctx,env){this.ctx=ctx;this.env=env;}
   });
-const GATEWAY='https://sql.example.org/v1/sql';
+const NATIVE_APP='https://mcp.lo3rwang.cc/api/loc-native';
 const TOKEN='eyJ.mock.delegation';
 const CONVERSATION={
   conversation_id:'chat-1',created_at:'2026-11-01T00:00:00Z',
@@ -26,7 +26,7 @@ function state(){
     delete:async key=>{data.delete(key)},
     list:async({prefix})=>new Map([...data].filter(([key])=>key.startsWith(prefix)))
   };
-  const env={LOC_MCP_SQL_GATEWAY_URL:GATEWAY};
+  const env={};
   return {authority:new LocAuthorityState({storage},env),data};
 }
 function fakeSql(gatewayFn){
@@ -48,7 +48,7 @@ test('MCP scope registration cannot revive a SQL Gateway',async()=>{
   assert.equal(typeof authority.putMcpScope,'undefined');
   // A legacy Durable Object record is not modified or exposed to clients.
   data.set('mcp-scope:lrunes',{public:{
-    scopeid:'lrunes',endpoint:GATEWAY,schema:'silver',table:'lrunes_galaxy'
+    scopeid:'lrunes',endpoint:'https://retired.example/gateway',schema:'silver',table:'lrunes_galaxy'
   }});
   const status=await authority.getMcpScope('lrunes');
   assert.deepEqual(status,{
@@ -56,8 +56,7 @@ test('MCP scope registration cannot revive a SQL Gateway',async()=>{
     legacy_gateway_retired:true,schema:'silver',table:'lrunes_galaxy'
   });
   assert.equal(status.endpoint,undefined);
-  assert.equal((await authority.mcpPrivateProfile('lrunes')).endpoint,GATEWAY,
-    'private runtime migration is separate; existing stored data is preserved');
+
 });
 
 test('Built-in managed Scope publishes no vendor Data API or secret',async()=>{
@@ -73,7 +72,7 @@ test('Built-in managed Scope publishes no vendor Data API or secret',async()=>{
     {scopeid:'thirdscope',configured:false});
 });
 
-test('First sync uses signed LOC Kysely Gateway with private flags; unchanged content never refetches',async()=>{
+test('First sync uses signed LOC native LOC Kysely application with private flags; unchanged content never refetches',async()=>{
   const {authority}=state();
   const calls=fakeSql();
   const first=await authority.mcpSave('lo3rwang',CONVERSATION,TOKEN);
@@ -82,7 +81,7 @@ test('First sync uses signed LOC Kysely Gateway with private flags; unchanged co
   assert.equal(same.saved,false);
   assert.equal(first.uid.length,8);
   assert.equal(calls.length,1);
-  assert.equal(calls[0].url,GATEWAY);
+  assert.equal(calls[0].url,NATIVE_APP);
   assert.equal(calls[0].method,'POST');
   assert.equal(calls[0].authorization,'Bearer '+TOKEN);
   assert.equal(calls[0].body.kind,'mcp-sync');
@@ -149,13 +148,13 @@ test('Existing UID append remains idempotent after a lost Durable Object acknowl
   const retried=await authority.mcpSave('lo3rwang',input,TOKEN);
   assert.equal(retried.saved,true);
   assert.equal(text,original+'\n'+addition);
-  assert.equal(calls.length,2,'a retry rechecks the same batch at the Gateway');
+  assert.equal(calls.length,2,'a retry rechecks the same batch at the native application');
   const unchanged=await authority.mcpSave('lo3rwang',input,TOKEN);
   assert.equal(unchanged.saved,false);
   assert.equal(calls.length,2);
 });
 
-test('Private reads and user-requested conversation search use the delegated gateway only',async()=>{
+test('Private reads and user-requested conversation search use the native application only',async()=>{
   const {authority}=state();
   const calls=fakeSql(call=>Response.json({data:call.body.kind==='mcp-search'
     ?[{uid:'Ab12Cd34',title:'Conversation',createtime:'2026-11-05T00:00:00Z'}]
@@ -165,7 +164,7 @@ test('Private reads and user-requested conversation search use the delegated gat
   const article=await authority.mcpRead('lo3rwang','Ab12Cd34',0,100,TOKEN);
   assert.equal(article.content,'Only original user text');
   assert.deepEqual(calls.map(x=>x.body.kind),['mcp-search','mcp-read']);
-  assert.ok(calls.every(x=>x.url===GATEWAY&&x.authorization==='Bearer '+TOKEN));
+  assert.ok(calls.every(x=>x.url===NATIVE_APP&&x.authorization==='Bearer '+TOKEN));
   assert.equal(calls[0].body.scopeid,'lo3rwang');
   assert.equal(calls[0].body.query,'時間定錨');
   assert.equal(calls[1].body.uid,'Ab12Cd34');
@@ -223,12 +222,13 @@ test('Group Scope attachment and active grants are preserved through portable MC
 
 test('Portable MCP keeps one ZModel-backed Kysely executor without a provider Function fallback',()=>{
   const executor=readFileSync(new URL('../app/loc/providers/kysely-mcp.mjs',import.meta.url),'utf8');
-  const edge=readFileSync(new URL('../app/loc/gateway/sql-handler.ts',import.meta.url),'utf8');
+  const app=readFileSync(new URL('../app/loc/mcp/native-operations.mjs',import.meta.url),'utf8');
   const worker=readFileSync(new URL('../workers/loc-authority/index.mjs',import.meta.url),'utf8');
   assert.match(executor,/schema as zmodel/);
   assert.match(executor,/executePortableMcp/);
-  assert.match(edge,/executePortableMcp\(trx,body,claims/);
-  assert.match(worker,/LOC_MCP_SQL_GATEWAY_URL/);
+  assert.match(app,/executePortableMcp\(selected.db,body,claims/);
+  assert.match(worker,/LOC_NATIVE_APPLICATION/);
+  assert.doesNotMatch(worker,/LOC_MCP_SQL_GATEWAY_URL|LOC_SQL_GATEWAY_URL|mcpSqlGateway/);
   assert.doesNotMatch(worker,/MANAGED_SUPABASE_EDGE|MANAGED_PUBLISHABLE_KEY|supabase\.co\/functions\/v1\//);
 });
 

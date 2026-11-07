@@ -16,35 +16,24 @@ export async function hashKeywordCategory(scopeid,classUid){
   return Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');
 }
 
-// The Group authority rechecks the *public* Class-only RPC on every import.
-// Do not trust a browser's UID or a prior public/private state.
-export async function readPublicKeywordClasses(scopeid,{fetchImpl=fetch,env={}}={}){
+// Group Authority verifies the *currently published* Class directory from
+// a fixed read-only LOC application operation, never an SQL transport.
+export async function readPublicKeywordClasses(scopeid,{fetchImpl=fetch}={}){
   if(!SCOPE.test(String(scopeid||'')))
     throw Object.assign(new Error('Invalid Scope'),{status:400});
-  // The public Class directory is read through LOC's independent SQL
-  // Gateway. The removed database RPC and vendor Data API are never called.
-  const endpoint=String(env.LOC_SQL_GATEWAY_URL||env.LOC_MCP_SQL_GATEWAY_URL||'').trim();
-  let url;
-  try{
-    url=new URL(endpoint);
-    if(url.protocol!=='https:'||url.pathname!=='/v1/sql'||url.search||
-      url.hash||url.username||url.password)throw new Error('Invalid endpoint');
-  }catch{
-    throw Object.assign(new Error('LOC SQL Gateway is not configured'),{status:503});
-  }
-  const response=await fetchImpl(url.href,{
-    method:'POST',headers:{'content-type':'application/json','accept':'application/json'},
-    body:JSON.stringify({kind:'analytics',target:'configured',
-      args:{p_scope_id:scopeid,p_view:'shared_classes',p_start:null,p_end:null,p_options:{}}}),
-    credentials:'omit',redirect:'error',signal:AbortSignal.timeout(8000)
+  const url='https://mcp.lo3rwang.cc/api/loc-public-classes?scopeid='+
+    encodeURIComponent(scopeid);
+  const response=await fetchImpl(url,{
+    method:'GET',headers:{accept:'application/json'},credentials:'omit',
+    redirect:'error',cache:'no-store',signal:AbortSignal.timeout(8000)
   });
   if(!response.ok)
     throw Object.assign(new Error('Public Class verification unavailable'),{status:503});
-  const payload=await response.json();
+  const payload=await response.json().catch(()=>null);
   if(!Array.isArray(payload?.data))
     throw Object.assign(new Error('Invalid public Class directory'),{status:502});
-  // SQL Gateway projects only public, type=class rows for anonymous access.
-  return payload.data.filter(row=>row?.scopeId===scopeid&&CLASS_UID.test(row.classUid));
+  return payload.data.filter(row=>row?.scopeId===scopeid&&
+    CLASS_UID.test(String(row.classUid||'')));
 }
 export async function assertPublicKeywordClass(scopeid,classUid,options){
   const rows=await readPublicKeywordClasses(scopeid,options);

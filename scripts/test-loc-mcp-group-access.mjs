@@ -85,7 +85,7 @@ test('Group Category is scoped to the registered member and server-side Group ma
   assert.match(worker,/hashKeywordCategory\(valid\.scopeid,valid\.class\)/);
 });
 
-test('public Class import is verified by the LOC SQL Gateway, not a vendor RPC',async()=>{
+test('public Class import is verified by native read-only LOC application, not a vendor RPC',async()=>{
   const {assertPublicKeywordClass}=await import('../workers/loc-authority/keyword-categories.mjs');
   const calls=[];
   const fetchImpl=async(url,opts)=>{
@@ -93,23 +93,21 @@ test('public Class import is verified by the LOC SQL Gateway, not a vendor RPC',
     return Response.json({data:[{scopeId:'lo3rwang',classUid:'A1b2',name:'音樂'},
       {scopeId:'lo3rwang',classUid:'Ab12Cd34',name:'New Class'}]});
   };
-  const env={LOC_SQL_GATEWAY_URL:'https://sql.example.org/v1/sql'};
+  const env={};
   await assertPublicKeywordClass('lo3rwang','A1b2',{fetchImpl,env});
   await assertPublicKeywordClass('lo3rwang','Ab12Cd34',{fetchImpl,env});
   await assert.rejects(assertPublicKeywordClass('lo3rwang','item',{fetchImpl,env}),/public Class UID/);
-  const body=JSON.parse(calls[0].opts.body);
-  assert.deepEqual(body,{kind:'analytics',target:'configured',
-    args:{p_scope_id:'lo3rwang',p_view:'shared_classes',
-      p_start:null,p_end:null,p_options:{}}});
+  assert.equal(calls[0].opts.method,'GET');
+  assert.equal(calls[0].opts.body,undefined);
   assert.equal(calls[0].opts.credentials,'omit');
-  assert.equal(calls[0].url,'https://sql.example.org/v1/sql');
+  assert.equal(calls[0].url,'https://mcp.lo3rwang.cc/api/loc-public-classes?scopeid=lo3rwang');
   assert.doesNotMatch(calls[0].url,/\/rest\/v1\/rpc\//);
 });
 test('authority fail-closes if public Class RPC is unavailable',async()=>{
   const {assertPublicKeywordClass}=await import('../workers/loc-authority/keyword-categories.mjs');
   const fetchImpl=async()=>new Response('unavailable',{status:503});
   await assert.rejects(assertPublicKeywordClass('lo3rwang','A1b2',{
-    fetchImpl,env:{LOC_SQL_GATEWAY_URL:'https://sql.example.org/v1/sql'}}),/unavailable/);
+    fetchImpl,env:{}}),/unavailable/);
 });
 test('Scope Group UI lists only publicly shared Class identifiers',()=>{
   const src=readFileSync(new URL('../app/loc/ScopeGroupAccessPanel.jsx',import.meta.url),'utf8');

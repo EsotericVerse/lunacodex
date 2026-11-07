@@ -42,7 +42,6 @@ function environment(){
   async selectedDatabaseForDelegation(){return null;}
  };
  const env={LOC_IMPORT_SCOPE_ID:'lo3rwang',
-  LOC_SQL_GATEWAY_URL:'https://sql.example.org/v1/sql',
   LOC_AUTHORITY_STATE:{idFromName:x=>x,get:()=>stub}};
  return {env,stub,records};
 }
@@ -91,7 +90,7 @@ test('GitHub verified identity -> LOC cookie -> per-install PKCE -> signed token
    return Response.json({id:123456,login:'owner'});
   if(address==='https://api.github.com/user/emails')
    return Response.json([{email:'owner@example.org',verified:true,primary:true}]);
-  if(address==='https://sql.example.org/v1/sql'){
+  if(address==='https://mcp.lo3rwang.cc/api/loc-native'){
    upstreamCalls++;
    forwarded={...options,body:JSON.parse(options.body)};
    return Response.json({accepted:true,id:'batch-test',articles:[]});

@@ -129,7 +129,7 @@ const TOOLS=[
     },required:['uid'],additionalProperties:false},
     annotations:{readOnlyHint:true,destructiveHint:false}}
 ,
-  {name:'scope_storage',description:'Read the LOC Auth Scope connection status. SQL Gateway registration has been permanently retired; database selection is managed by native LOC Auth.',
+  {name:'scope_storage',description:'Read the LOC Auth Scope connection status. Scope database URL registration has been retired; database selection is managed by LOC Auth.',
     inputSchema:{type:'object',properties:{
       scopeid:{type:'string'}
     },required:['scopeid'],additionalProperties:false},

@@ -69,7 +69,7 @@ export async function authorityAction(name,args,token,env={},fetchImpl=globalThi
   }else switch(name){
     case 'scope_storage':
       if(Object.keys(a).some(key=>key!=='scopeid'))
-        throw bad('LOC SQL Gateway registration has been permanently retired');
+        throw bad('Scope database URL registration has been permanently retired');
       path='scope/'+id(a.scopeid);
       break;
     case 'join_scope_group':
