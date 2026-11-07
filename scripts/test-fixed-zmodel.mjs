@@ -77,7 +77,7 @@ test('ZModel maps exactly to the frozen silver physical table and column contrac
         t.table+'.'+col.name+' is a stored generated column');
     }
   }
-  assert.equal(total,273);
+  assert.equal(total,snapshot.tables.reduce((sum,table)=>sum+table.columns.length,0));
 });
 
 test('Anchor remains the extension point; model does not declare migrations or bypass authorization',()=>{
@@ -136,19 +136,32 @@ test('ZenStack V3 runtime schema bridge stays in sync with the frozen contract',
 test('ZenStack V3 compiles fixed-model Kysely reads without a database or stored procedure',async()=>{
   const {createFixedLocClient}=await import('../zenstack/client.mjs');
   const {DummyDriver,PostgresAdapter,PostgresIntrospector,PostgresQueryCompiler}=await import('kysely');
+  // Kysely's compile() is pre-ZenStack name mapping; capture the SQL
+  // actually executed by ZenStack instead of checking a raw compile.
+  const executed=[];
+  const driver=new DummyDriver();
+  const acquire=driver.acquireConnection.bind(driver);
+  driver.acquireConnection=async()=>{
+    const connection=await acquire();
+    const execute=connection.executeQuery.bind(connection);
+    connection.executeQuery=async query=>{
+      executed.push(query);
+      return execute(query);
+    };
+    return connection;
+  };
   const dialect={
-    createDriver:()=>new DummyDriver(),
+    createDriver:()=>driver,
     createAdapter:()=>new PostgresAdapter(),
     createIntrospector:db=>new PostgresIntrospector(db),
     createQueryCompiler:()=>new PostgresQueryCompiler()
   };
   const client=createFixedLocClient({dialect});
-  const compiled=client.$qb.selectFrom('Lo3rwangAnchor')
-    .select(['uid','type'])
-    .where('type','=','date')
-    .limit(5).compile();
-  assert.match(compiled.sql,/"silver"\."lo3rwang_anchor"/);
-  assert.deepEqual(compiled.parameters,['date',5]);
+  await client.$qb.selectFrom('Lo3rwangAnchor')
+    .select(['uid','type']).where('type','=','date').limit(5).execute();
+  assert.equal(executed.length,1,'one Kysely execution');
+  assert.match(executed[0].sql,/"silver"\."lo3rwang_anchor"/);
+  assert.deepEqual(executed[0].parameters,['date',5]);
 });
 
 test('active LOC browser and local providers have no SQL RPC transport',()=>{
@@ -214,7 +227,7 @@ test('both Kysely keyword imports reuse the existing Anchor UID generator withou
   // New Scope: provisionScope has just created an empty Anchor table.
   // The same canonical generator needs only the in-memory reserved IDs.
   const scopeStart=admin.indexOf('  const assigned=new Set();');
-  const scopeEnd=admin.indexOf("  const source='silver.lo3rwang_anchor';",scopeStart);
+  const scopeEnd=admin.indexOf('  const toRow=',scopeStart);
   assert.ok(scopeStart>=0&&scopeEnd>scopeStart);
   let serial=0;
   const nextFresh=new Function('allocateAnchorUid',

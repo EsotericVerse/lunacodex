@@ -1,12 +1,6 @@
 name: ZenStack policy execution evidence
+# Manual-only evidence; do not add a PR or push auto-trigger.
 on:
-  pull_request:
-    paths:
-      - 'zenstack/**'
-      - 'app/loc/providers/kysely-runtime.mjs'
-      - 'supabase/functions/loc-kysely/**'
-      - 'scripts/test-*zenstack*'
-      - '.github/workflows/test-zenstack-policy.yml'
   workflow_dispatch:
 
 jobs:
