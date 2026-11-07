@@ -14,9 +14,11 @@ introduce SQL schema changes or a duplicate query implementation.
 
 The entry refuses startup when its own engine/alias/connection profile is
 missing. In particular, it **never** implicitly reads a Supabase or Neon URL.
-It uses the same signed LOC delegation verifier and SQL dispatch as
-`supabase/functions/loc-kysely/index.ts`; the old hosting path can be
-retired once the independent deployment is connected.
+The canonical LOC-signed SQL handler now lives in
+`app/loc/gateway/sql-handler.ts`, with its connection adapter in
+`app/loc/gateway/database-connections.ts`. The Supabase Function is only a
+compatibility entry that imports the canonical handler. The hosted entry
+can be removed after its production traffic has switched.
 
 ## Service launch and website cutover
 
