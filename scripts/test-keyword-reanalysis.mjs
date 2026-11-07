@@ -237,11 +237,13 @@ test('search-pattern writer receives fresh Item UIDs before Class completion',as
       return offset?[]:[{uid:'Ab12Cd34',content:'心情'}];
     },
     writeNode:async row=>{saved.push(row);calls.push('item-write');},
-    writePatterns:async ({classUid,items})=>{
+    writePatterns:async ({classUid,items,termMatches})=>{
       assert.equal(classUid,'CL01');
       assert.equal(items.length,1);
       assert.equal(items[0].item_name,'靈');
-      assert.deepEqual(items[0].uid_lists.uidlists,['Ab12Cd34']);
+      assert.deepEqual(termMatches,[
+        {pattern:'心情',uid_list:['Ab12Cd34'],count:1}
+      ]);
       calls.push('pattern-write');
     },
     finalize:async()=>calls.push('finalize')
@@ -262,4 +264,35 @@ test('failure writing pattern UID lookup never marks a Class complete',async()=>
     finalize:async()=>{complete=true;}
   }),/pattern service unavailable/);
   assert.equal(complete,false);
+});
+
+test('Item group count and each literal keyword count are different',async()=>{
+  const words=[
+    {uid:'CAT1',type:'category',name:'文字',lists:['CL01']},
+    {uid:'CL01',type:'class',name:'詞庫',lists:['GR01']},
+    {uid:'GR01',type:'group',name:'範例',lists:['IT01']},
+    {uid:'IT01',type:'item',name:'定錨',lists:['時間定錨','空間定錨']}
+  ];
+  const docs=[
+    {uid:'Ab12Cd34',content:'時間定錨'},
+    {uid:'Ef56Gh78',content:'空間定錨'}
+  ];
+  let wordHits=null;
+  const written=[];
+  await reanalyzeKeywordClass({
+    classUid:'CL01',treeRows:words,pageSize:1,compactResults:true,
+    readPage:async({offset,limit})=>docs.slice(offset,offset+limit),
+    writeNode:async row=>written.push(row),
+    writePatterns:async ({termMatches})=>{wordHits=termMatches;},
+    finalize:async()=>{}
+  });
+  const itemResult=written.find(row=>row.type==='item');
+  // Each article matches both the general word and its longer alias.
+  assert.equal(itemResult.uid_lists.total,4);
+  const termCounts=new Map(wordHits.map(row=>[row.pattern,row.count]));
+  assert.deepEqual(Object.fromEntries(termCounts),{
+    '定錨':2,'時間定錨':1,'空間定錨':1
+  });
+  assert.deepEqual(wordHits.find(row=>row.pattern==='空間定錨').uid_list,
+    ['Ef56Gh78']);
 });
