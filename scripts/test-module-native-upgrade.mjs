@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
+import {existsSync,readFileSync} from 'node:fs';
 
 const manifest=JSON.parse(readFileSync(new URL('../package.json',import.meta.url),'utf8'));
 const lock=JSON.parse(readFileSync(new URL('../package-lock.json',import.meta.url),'utf8'));
 const root=lock.packages?.['']||{};
 const upgraded=['next','three','maplibre-gl','@react-three/fiber','@react-three/drei',
-  '@opennextjs/cloudflare','wrangler'];
+  'wrangler'];
 
 test('upgraded dependency specs match npm lockfile root',()=>{
   for(const name of upgraded){
@@ -14,6 +14,15 @@ test('upgraded dependency specs match npm lockfile root',()=>{
     const locked=root.dependencies?.[name]??root.devDependencies?.[name];
     assert.equal(locked,declared,name+' must be installed and lockfile regenerated');
     assert.ok(lock.packages['node_modules/'+name],name+' must have a resolved lockfile entry');
+  }
+});
+
+test('GitHub Pages has no retired Cloudflare Next adapter',()=>{
+  assert.equal(manifest.scripts?.['build:cloudflare'],undefined);
+  assert.equal(manifest.devDependencies?.['@opennextjs/cloudflare'],undefined);
+  assert.equal(lock.packages['node_modules/@opennextjs/cloudflare'],undefined);
+  for(const file of ['../open-next.config.ts','../wrangler.jsonc']){
+    assert.equal(existsSync(new URL(file,import.meta.url)),false,file);
   }
 });
 
