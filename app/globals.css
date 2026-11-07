@@ -25,6 +25,7 @@
 @import "./styles/nav.css";
 @import "./styles/list-stripes.css";
 @import "./styles/public-features.css";
+@import "./styles/aimran-inspired.css";
 
 html[data-theme-bootstrap="scheme-only"] body{
   visibility:hidden;
