@@ -240,7 +240,7 @@ export async function handleMcp(request,env={}){
       if(!args||typeof args!=='object'||Array.isArray(args))
         return rpcError(payload.id,-32602,'Tool arguments must be an object');
       if(name==='galaxy_link'&&args.action==='search'&&
-        /(?:\bPR\b|\bpull[ -]?request\b|\bgithub\b|\bcommit\b|合併請求|拉取請求)/i.test(String(args.query||''))){
+        /(?:\bPR(?:[\s#:\-]*\d+)?\b|\bpull[ -]?request\b|\bgithub\b|\bcommit\b|合併請求|拉取請求)/i.test(String(args.query||''))){
         const near=await qosWarningForDeniedPr(match[1],env);
         return result(payload.id,{isError:true,content:[{type:'text',
           text:PR_SEARCH_WARNING+(near?'\n'+near:'')}]});
