@@ -11,12 +11,9 @@ export default function KeywordPatternSummary({scopeId='',classUid='',range={}})
     queryKey:['statistics-keyword-pattern-ratios',scopeId,classUid,range.startDate,range.endDate],
     enabled:Boolean(scopeId&&classUid),
     queryFn:async()=>{
-      const {dbAuthClient}=await import('../../../loc/db-client.mjs');
-      const {data,error}=await dbAuthClient.schema('silver').managedAction(
-        'keyword_pattern_statistics',{p_scope_id:scopeId,p_class_uid:classUid,
-          p_start_date:String(range.startDate||''),p_end_date:String(range.endDate||'')});
-      if(error)throw error;
-      return data||{};
+      const {keywordService}=await import('../../../loc/keyword-service-client.mjs');
+      return await keywordService('stats',{scopeId,classUid,
+        startDate:String(range.startDate||''),endDate:String(range.endDate||'')});
     }
   });
   if(!scopeId||!classUid)return null;
