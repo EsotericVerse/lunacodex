@@ -2,6 +2,9 @@
 // No provider Function, Data API, PostgREST or database-side RPC.
 // One shared Kysely executor/driver for PostgreSQL, MySQL and SQL Server.
 import {jwtVerify,createRemoteJWKSet} from 'npm:jose@5.9.6';
+import {sql} from 'npm:kysely@0.29.8';
+import {processShortImport,portableShortImportStore} from '../../app/loc/import/short-append-service.mjs';
+import {authorizeDelegatedShortImport} from '../../app/loc/import/short-edge-authorization.mjs';
 import {databaseForTarget} from '../../app/loc/providers/kysely-database-drivers.ts';
 import {executePortableMcp} from '../../app/loc/providers/kysely-mcp.mjs';
 import {executeKyselyQuery} from '../../app/loc/providers/kysely-runtime.mjs';
@@ -49,7 +52,7 @@ function sourceConfig(){
     schema_name:namespace,selected:true
   }};
 }
-async function verifySignedMcp(request:Request,body:Record<string,unknown>){
+async function verifySignedDelegation(request:Request,body:Record<string,unknown>,mcpOnly=true){
   const match=/^Bearer\s+(\S+)$/.exec(request.headers.get('authorization')||'');
   if(!match)error('LOC MCP delegation required',401);
   let payload;
@@ -65,7 +68,8 @@ async function verifySignedMcp(request:Request,body:Record<string,unknown>){
       revokedSids:Deno.env.get('LOC_DELEGATION_REVOKED_SIDS')||''
     });
   }catch{error('Invalid delegated MCP Scope permission',403);}
-  if(!permission.verifiedMcp)error('MCP delegation audience required',403);
+  if(Boolean(permission.verifiedMcp)!==mcpOnly)
+    error('LOC delegation audience does not cover this operation',403);
   return permission.claims;
 }
 export async function handleLocMcpSql(request:Request):Promise<Response>{
@@ -74,27 +78,40 @@ export async function handleLocMcpSql(request:Request):Promise<Response>{
     if(url.pathname!=='/v1/sql'||request.method!=='POST')
       return json({error:{message:'Not found'}},404);
     // Strictly server-side transport, without CORS or arbitrary SQL endpoints.
-    if(Number(request.headers.get('content-length')||0)>180000)
+    if(Number(request.headers.get('content-length')||0)>650000)
       error('MCP SQL payload too large',413);
     const raw=await request.text();
-    if(raw.length>180000)error('MCP SQL payload too large',413);
+    if(raw.length>650000)error('LOC SQL payload too large',413);
     let body:Record<string,unknown>;
     try{body=JSON.parse(raw);}catch{error('Invalid MCP SQL JSON',400);}
     if(!body||typeof body!=='object'||Array.isArray(body))
       error('Invalid MCP SQL request',400);
     const kind=String(body.kind||'');
+    if(kind!=='short-import'&&raw.length>180000)error('MCP SQL payload too large',413);
     let claims:Record<string,unknown>|null=null;
     if(kind==='query'){
       if(request.headers.has('authorization'))
         error('Public MCP query cannot select a private delegation',403);
       validatePublicMcpQuery(body,PUBLISHED);
     }else if(OPERATIONS.has(kind)){
-      claims=await verifySignedMcp(request,body);
+      claims=await verifySignedDelegation(request,body,true);
       if(body.target!==undefined&&body.target!=='configured')
         error('MCP target selection is disabled',403);
+    }else if(kind==='short-import'){
+      claims=await verifySignedDelegation(request,body,false);
+      // The actor is always derived from a verified LOC-signed Scope write
+      // delegation. No table, source identity or raw database target is
+      // accepted from the Extension or website.
+      authorizeDelegatedShortImport(body,claims);
     }else error('Unsupported MCP operation',403);
     const {engine,namespace,target}=sourceConfig();
     const db=await databaseForTarget(target);
+    if(kind==='short-import'){
+      const actor=authorizeDelegatedShortImport(body,claims);
+      return json(await processShortImport(body.batch,actor,{
+        store:portableShortImportStore(db,sql,{engine,namespace})
+      }));
+    }
     const result=kind==='query'
       ?await db.transaction().execute(trx=>
         executeKyselyQuery(trx,body,{dialect:engine,namespace,publicOnly:true}))
