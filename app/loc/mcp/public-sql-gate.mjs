@@ -7,7 +7,7 @@ const UID=/^[A-Za-z0-9]{8}$/;
 const SEARCH_COLUMNS=['uid','title','date','createtime'];
 const READ_COLUMNS=['uid','title','content','date','createtime','site','url'];
 const FIELDS=new Set(['kind','schema','table','operation','columns','filters',
-  'or','orders','limit','offset','target']);
+  'or','orders','limit','offset','target','user_requested']);
 function deny(message){throw Object.assign(new Error(message),{httpStatus:403});}
 function same(a,b){return Array.isArray(a)&&a.length===b.length&&
   a.every((item,i)=>item===b[i]);}
@@ -16,7 +16,7 @@ function filterEqual(filter,column,value){
     filter.operator==='eq'&&filter.value===value;
 }
 function safeSearch(body){
-  if(!same(body.columns,SEARCH_COLUMNS)||body.filters?.length!==1||
+  if(body.user_requested!==true||!same(body.columns,SEARCH_COLUMNS)||body.filters?.length!==1||
     !filterEqual(body.filters[0],'search',true)||!Array.isArray(body.or)||
     body.or.length!==1||typeof body.or[0]!=='string'||body.or[0].length>750)
     return false;
@@ -36,7 +36,7 @@ function safeSearch(body){
     Number.isInteger(body.offset)&&body.offset>=0&&body.offset<=500;
 }
 function safeRead(body){
-  if(!same(body.columns,READ_COLUMNS)||body.filters?.length!==2||
+  if(body.user_requested!==undefined||!same(body.columns,READ_COLUMNS)||body.filters?.length!==2||
     !Array.isArray(body.or)&&body.or!==undefined||
     Array.isArray(body.or)&&body.or.length>0||
     !Array.isArray(body.orders)&&body.orders!==undefined||
