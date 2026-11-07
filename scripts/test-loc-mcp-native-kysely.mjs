@@ -38,7 +38,7 @@ test('dialect must match trusted profile, never caller-supplied SQL or API host'
 test('MCP Pages routes bind in-process driver; never construct or forward SQL Gateway',()=>{
  for(const route of ['functions/index.js','functions/mcp.js']){
   const source=readFileSync(new URL('../'+route,import.meta.url),'utf8');
-  assert.match(source,/locDirectDatabase:\(\)=>directMcpKysely\(bindings\)/);
+  assert.match(source,/locDirectDatabase:\(verifiedAlias=''\)=>directMcpKysely\(bindings,verifiedAlias\)/);
   assert.doesNotMatch(source,/LOC_SQL_GATEWAY_URL|\/v1\/sql/);
  }
 });
