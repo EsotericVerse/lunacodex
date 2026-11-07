@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {portableShortImportStore} from '../app/loc/import/short-append-service.mjs';
+import {authorizeDelegatedShortImport} from '../app/loc/import/short-edge-authorization.mjs';
 import {createLocGatewayAdapter} from '../app/loc/providers/loc-gateway.mjs';
 
 function fakeStore(){
@@ -51,9 +52,17 @@ test('portable Extension source locks use one shared adapter for Postgres, MySQL
 test('short-import store never permits arbitrary Scope or SQL target from Extension',async()=>{
  const {db,sql}=fakeStore();
  const store=portableShortImportStore(db,sql,{engine:'postgres'});
- assert.throws(()=>store.transaction('admin',async()=>{}),/Unsupported managed Galaxy Scope/);
+ assert.throws(()=>store.transaction('bad_scope!',async()=>{}),/Invalid Galaxy Scope/);
+ assert.doesNotThrow(()=>store.transaction('newscope',async()=>{}));
  assert.throws(()=>portableShortImportStore(db,sql,{engine:'sqlite'}),/unavailable/);
  assert.throws(()=>portableShortImportStore(db,sql,{engine:'mssql',namespace:'x;DROP'}),/namespace/);
+});
+test('new Scope short-import requires its exact signed write grant, not a fixed Scope list',()=>{
+ const body={kind:'short-import',scopeid:'newscope',batch:{id:'batch'}};
+ const claims={provider:'loc',me:true,sub:'verified-user',grants:['newscope:write']};
+ assert.equal(authorizeDelegatedShortImport(body,claims).scopeid,'newscope');
+ assert.throws(()=>authorizeDelegatedShortImport(body,{...claims,grants:['lo3rwang:write']}),/Scope write delegation required/);
+ assert.throws(()=>authorizeDelegatedShortImport({...body,scopeid:'new_scope'},claims),/Invalid short-import gateway payload/);
 });
 test('LOC browser bridge uses only independent gateway for short import and existing signed delegation',async()=>{
  const previous=process.env.NEXT_PUBLIC_LOC_MCP_SQL_GATEWAY_URL;
