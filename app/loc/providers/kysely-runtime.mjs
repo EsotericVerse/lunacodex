@@ -94,7 +94,9 @@ const PRIVATE_SITES=['messenger','chatgpt','claude','gemini','msn','whatsapp',
   'telegram','discord','line','wechat','teams','copilot','grok','perplexity','meta ai','meta-ai',
   'mcp','github'];
 const PUBLIC_ANCHOR_TYPES=['date','period','era','point','path','trace','image','video','rune','suno'];
-function databaseTable(req,dialect,namespace){
+function databaseTable(req,dialect,namespace,modelName=''){
+  // ZenStack PolicyPlugin maps a fixed logical model to the physical table.
+  if(modelName)return modelName;
   return namespace===undefined?req.schema+'.'+req.table:
     portableRelation(req.table,dialect,namespace);
 }
@@ -109,10 +111,10 @@ function publishedOnly(query,table,enabled){
       .where('type','in',PUBLIC_ANCHOR_TYPES);
   throw new Error('Unpublished external relation');
 }
-export function buildKyselySelectQuery(trx,input,{dialect='postgres',namespace,publicOnly=false}={}){
+export function buildKyselySelectQuery(trx,input,{dialect='postgres',namespace,publicOnly=false,modelName=''}={}){
   const req=validateQuery(input);
   if(req.operation!=='select')throw new Error('Unsupported operation for SELECT builder');
-  const table=databaseTable(req,dialect,namespace);
+  const table=databaseTable(req,dialect,namespace,modelName);
   let query=publishedOnly(applyOrFilters(applyFilters(
     trx.selectFrom(table).select(req.columns),req.filters),req.orFilters),req.table,publicOnly);
   for(const order of req.orders)query=query.orderBy(order.column,order.ascending===false?'desc':'asc');
@@ -254,10 +256,10 @@ async function executeMysqlReturningMutation(trx,req,query,namespace){
   return whereKeys(trx.selectFrom(fullTable).select(req.columns),keyColumns,keys).execute();
 }
 
-export async function executeKyselyQuery(trx,input,{dialect='postgres',namespace,publicOnly=false}={}){
+export async function executeKyselyQuery(trx,input,{dialect='postgres',namespace,publicOnly=false,modelName=''}={}){
   const req=validateQuery(input);let data=null,count=null;
   if(req.operation==='select'){
-    const built=buildKyselySelectQuery(trx,input,{dialect,namespace,publicOnly});
+    const built=buildKyselySelectQuery(trx,input,{dialect,namespace,publicOnly,modelName});
     if(built.countQuery){const row=await built.countQuery.executeTakeFirstOrThrow();count=Number(row.count)}
     if(built.query)data=await built.query.execute();
   }else{
