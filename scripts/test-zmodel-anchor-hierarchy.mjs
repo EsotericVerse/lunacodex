@@ -122,3 +122,15 @@ test('Trace manager resolves native Trace -> Path members through Space ZModel',
   assert.deepEqual(graph.childrenOf(uid('TRC')),[uid('PTH')]);
   assert.equal(graph.descendants(uid('TRC'),{type:'point'}).complete,false);
 });
+
+test('authorized Source catalogue consumes actual Domain/From ZModel edges',()=>{
+  const management=readFileSync(new URL('../app/loc/providers/kysely-management.mjs',import.meta.url),'utf8');
+  assert.match(management,/sourceGraph=indexZModelAnchorHierarchy\(rows,\{family:'source'\}\)/);
+  assert.match(management,/sourceGraph\.childrenOf\(domain\.uid\)/);
+  const graph=tree('source',[
+    row('DOM','domain',{uid:[uid('FRM')]}),
+    row('FRM','from',{})
+  ]);
+  assert.deepEqual(graph.childrenOf(uid('DOM')),[uid('FRM')]);
+  assert.equal(graph.descendants(uid('DOM')).complete,true);
+});
