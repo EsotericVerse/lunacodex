@@ -80,10 +80,10 @@ test('one cross-dataset search returns both distinct documents with colliding UI
 
 test('an append writes a delta segment, not a rewrite of any base shard',async()=>{
   const previous=kv.writes;
-  const baseKeys=[...kv.data.keys()].filter(x=>x.startsWith('loc-search/v1/data/'));
+  const baseKeys=[...kv.data.keys()].filter(x=>x.startsWith('loc-search/v2/data/'));
   assert.equal((await call('/v1/documents',{documents:[doc('db1','Ab123456','跨資料來源','append')]})).accepted,true);
   assert.equal(kv.writes,previous+1);
-  assert.deepEqual([...kv.data.keys()].filter(x=>x.startsWith('loc-search/v1/data/')),baseKeys);
+  assert.deepEqual([...kv.data.keys()].filter(x=>x.startsWith('loc-search/v2/data/')),baseKeys);
 });
 
 test('Gateway adds only UID IN prefilter after a complete trusted index response',async(t)=>{
