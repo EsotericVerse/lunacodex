@@ -7,7 +7,6 @@ import {processShortImport,portableShortImportStore} from "../../../app/loc/impo
 import {authorizeDelegatedShortImport} from "../../../app/loc/import/short-edge-authorization.mjs";
 import {delegationAudience,verifyDelegationBoundary,canManageDelegation} from "../../../app/loc/auth/delegation-contract.mjs";
 import {databaseForTarget,resolveConnectionProfile,trustedDialectForDatabase} from "../providers/kysely-database-drivers.ts";
-import {readVaultConnection} from "./database-connections.ts";
 import {resolveRuntimeDatabase} from "./runtime-database-target.mjs";
 import { executeKyselyQuery, isKyselyClientError } from "../../../app/loc/providers/kysely-runtime.mjs";
 import {executePortableMcp} from "../../../app/loc/providers/kysely-mcp.mjs";
@@ -27,13 +26,12 @@ import {bindLocAuthorization,canManageLoc} from "../../../app/loc/providers/loc-
 
 const corsHeaders = {
   "access-control-allow-origin": "*",
-  "access-control-allow-headers": "authorization, apikey, content-type, x-client-info",
+  "access-control-allow-headers": "authorization, content-type, x-client-info",
   "access-control-allow-methods": "POST, OPTIONS",
   "access-control-max-age": "86400",
 };
-const supabaseUrl = Deno.env.get("SUPABASE_URL")||"";
 // The Authority signs RS256 LOC delegations; the Gateway fetches only its
-// public signing keys. No Clerk/Neon/Supabase Auth and no shared signing secret.
+// public signing keys. No provider-owned Auth service is needed.
 // An alternate deployment may pin its own trusted HTTPS Authority origin.
 const locAuthorityOrigin=(()=>{
   const input=Deno.env.get("LOC_AUTHORITY_ORIGIN")||"https://auth.lo3rwang.cc";
@@ -61,14 +59,10 @@ async function verifyLocDelegation(token:string,body:Record<string,unknown>){
 const routing = resolveDatabaseRouting();
 // Cross-engine publicly readable tables are centrally enforced by sql-engine-ports.mjs.
 
-// The LOC control database is a trusted server-side connection alias.
-// Existing deployments keep their legacy default. Standalone LOC SQL nodes
-// can use any provisioned PostgreSQL/MySQL/MSSQL control profile without
-// a Supabase project URL, Data API, or Vault.
+// One trusted control alias; backend engines remain interchangeable.
 const controlTarget=(()=>{
-  const alias=String(Deno.env.get("LOC_CONTROL_DB_ALIAS")||"");
-  if(!alias)return {provider:"supabase",engine:"postgres",
-    connection_alias:"supabase_current",connection_mode:"pooler"};
+  const alias=String(Deno.env.get("LOC_CONTROL_DB_ALIAS")||"").trim();
+  if(!alias)throw new Error("LOC_CONTROL_DB_ALIAS must be configured");
   return selectedDatabaseTarget([{
     provider:"custom",engine:Deno.env.get("LOC_CONTROL_DB_ENGINE")||"postgres",
     connection_alias:alias,connection_mode:"direct",selected:true
@@ -76,30 +70,13 @@ const controlTarget=(()=>{
 })();
 
 function isControlTarget(target:Record<string,unknown>){
-  if(target.engine!==controlTarget.engine||
-     target.connection_alias!==controlTarget.connection_alias||
-     target.provider!==controlTarget.provider)return false;
-  if(target.provider!=="supabase")return true;
-  const link=String(target.project_url||"").replace(/\/$/,"");
-  return !link||Boolean(supabaseUrl)&&link===supabaseUrl.replace(/\/$/,"");
+  return target.engine===controlTarget.engine&&
+    target.connection_alias===controlTarget.connection_alias&&
+    target.provider===controlTarget.provider;
 }
 
-
-const profileCache=new Map<string,{until:number,profile:any}>();
 async function profileForTarget(target:Record<string,unknown>){
-  if(isControlTarget(target))return resolveConnectionProfile(controlTarget);
-  // Vault is a compatibility path for the original Supabase control DB only.
-  // Independent SQL deployments use trusted LOC_DB_CONNECTIONS_JSON aliases
-  // and must not query provider-specific metadata tables.
-  if(controlTarget.provider!=="supabase")return resolveConnectionProfile(target);
-  const key=String(target.connection_alias||'')+':'+String(target.project_url||'');
-  const cached=profileCache.get(key);
-  if(cached&&Date.now()<cached.until)return cached.profile;
-  const control=await databaseForTarget(controlTarget);
-  const profile=await readVaultConnection(control,target)||
-    resolveConnectionProfile(target);
-  profileCache.set(key,{until:Date.now()+30_000,profile});
-  return profile;
+  return resolveConnectionProfile(target);
 }
 async function checkAdminRole(claims:Record<string,unknown>){
   if(!canManageDelegation(claims,"global"))
@@ -128,10 +105,9 @@ async function liveConfiguredTarget():Promise<Record<string,unknown>> {
 
 // One PostgreSQL session bridge for both ordinary SQL and managed MCP.
 // PostgreSQL may apply its own RLS; other engines never depend on it.
-async function bindPostgresSession(trx:any,role:string,claims:Record<string,unknown>,provider="supabase"){
-  if(role==="authenticated")await sql`set local role authenticated`.execute(trx);
-  else if(provider==="neon")await sql`set local role anonymous`.execute(trx);
-  else await sql`set local role anon`.execute(trx);
+async function bindPostgresSession(trx:any,role:string,claims:Record<string,unknown>){
+  // The Gateway enforces delegated grants independently of database roles.
+  // Do not assume provider-installed anonymous/authenticated SQL roles exist.
   await sql`select set_config('request.jwt.claims',${JSON.stringify(claims)},true)`.execute(trx);
   await sql`select set_config('request.jwt.claim.sub',${String(claims.sub||"")},true)`.execute(trx);
   await sql`select set_config('request.jwt.claim.role',${role},true)`.execute(trx);
@@ -220,7 +196,7 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
           executionPort.engine==='mssql'?'dbo':'public')),
       publicOnly:access?.publicOnly===true});
   }
-  await bindPostgresSession(trx,role,claims,String(target.provider||"supabase"));
+  await bindPostgresSession(trx,role,claims);
   if(body.kind==="query"){
     // A database RLS policy may be more permissive than the delegated Scope.
     // Require the already signed LOC grant for every non-public SQL mutation,
@@ -285,7 +261,7 @@ Deno.serve({hostname:"0.0.0.0",port:serverPort},async (request) => {
     return json({ error: { message: "Invalid JSON body" } }, 400);
   }
   const requestedTarget = body.target === undefined ? "configured" : body.target;
-  if (!["configured", "supabase", "neon", "backup"].includes(String(requestedTarget))) {
+  if (!["configured", "backup"].includes(String(requestedTarget))) {
     return json({ error: { message: "Unsupported database target" } }, 400);
   }
 
@@ -473,11 +449,6 @@ Deno.serve({hostname:"0.0.0.0",port:serverPort},async (request) => {
     const selected=requestedTarget==="configured"?await liveSelection():null;
     if(requestedTarget==="configured")
       target=(selected?.target||await liveConfiguredTarget()) as Record<string,any>;
-    if(requestedTarget==="neon"){
-      if(routing.backupId!=="neon-current"||routing.backupProvider!=="neon")
-        return json({error:{message:"Neon target is not enabled by repository routing"}},403);
-      target={provider:"neon",engine:"postgres",connection_alias:"neon_current",connection_mode:"direct"};
-    }
     if(requestedTarget==="backup"){
       if(!routing.backupId)return json({error:{message:"Backup is disabled by repository routing"}},503);
       if(body.kind!=="query"||body.operation!=="select"||
@@ -494,17 +465,8 @@ Deno.serve({hostname:"0.0.0.0",port:serverPort},async (request) => {
       if(target.provider!==routing.backupProvider)return json({error:{message:"Backup provider differs from repository config"}},503);
       resolvingTarget=false;
     }
-    // Supabase remains the explicit control target; "configured" can route to
-    // an opt-in custom Kysely primary using only trusted repository settings.
-    // No untrusted per-request connection alias selection.
-    if(target.provider==="neon"&&(body.kind!=="query"||body.operation!=="select"))
-      return json({error:{message:"Neon LOC mirror is read-only"}},403);
-    // PostgreSQL mirrors enforce per-row access through RLS, not table-name
-    // lists. This older Supabase-hosted Edge transport remains optional; the
-    // independent Neon primary/backup never requires it.
-    if(target.provider==="neon"&&(body.schema!=="silver"||typeof body.table!=="string"))
-      return json({error:{message:"Neon LOC mirror table is not enabled"}},403);
-    if(target.provider==="neon"&&role==="anon"){role="anonymous";claims.role=role;}
+    // The active route is chosen by a trusted LOC selection, never by
+    // a caller-supplied SQL alias or provider-specific runtime branch.
     // Reject public or unsupported cross-engine actions before opening a
     // connection; private CRUD retains its LOC-managed authorization gate.
     if(target.provider==="custom"||target.engine!=="postgres"){
