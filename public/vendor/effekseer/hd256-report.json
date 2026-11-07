@@ -1,7 +1,7 @@
 {
   "targetLongestEdge": 256,
-  "actualSprites": 125,
-  "excludedNonSpriteTextures": 23,
+  "actualSprites": 75,
+  "excludedNonSpriteTextures": 11,
   "fogVariant": "MAGICALxSPIRAL/Texture/_hd256/_fog-cloud-2048.png",
   "notes": "Minimum 256px longest edge for ordinary sprites; native images larger than 256px are preserved. Alpha errors are NOT repaired by resampling.",
   "textures": [
@@ -29,17 +29,6 @@
     },
     {
       "kind": "authored-sprite",
-      "source": "godot4-material1/Textures/Flash01.png",
-      "output": "godot4-material1/Textures/_hd256/Flash01.png",
-      "sourceWidth": 256,
-      "sourceHeight": 256,
-      "width": 256,
-      "height": 256,
-      "enlarged": false,
-      "sourceHasAlpha": false
-    },
-    {
-      "kind": "authored-sprite",
       "source": "godot4-samples/Texture/Cloud01.png",
       "output": "godot4-samples/Texture/_hd256/Cloud01.png",
       "sourceWidth": 512,
@@ -62,85 +51,8 @@
     },
     {
       "kind": "authored-sprite",
-      "source": "godot4-samples/Texture/Particle01.png",
-      "output": "godot4-samples/Texture/_hd256/Particle01.png",
-      "sourceWidth": 128,
-      "sourceHeight": 128,
-      "width": 256,
-      "height": 256,
-      "enlarged": true,
-      "sourceHasAlpha": true
-    },
-    {
-      "kind": "authored-sprite",
-      "source": "godot4-samples/Texture/Particle02.png",
-      "output": "godot4-samples/Texture/_hd256/Particle02.png",
-      "sourceWidth": 128,
-      "sourceHeight": 128,
-      "width": 256,
-      "height": 256,
-      "enlarged": true,
-      "sourceHasAlpha": false
-    },
-    {
-      "kind": "authored-sprite",
-      "source": "godot4-samples/Texture/Particle04_bokashi_hard.png",
-      "output": "godot4-samples/Texture/_hd256/Particle04_bokashi_hard.png",
-      "sourceWidth": 256,
-      "sourceHeight": 256,
-      "width": 256,
-      "height": 256,
-      "enlarged": false,
-      "sourceHasAlpha": true
-    },
-    {
-      "kind": "authored-sprite",
-      "source": "godot4/Textures/tx_aura01_256.png",
-      "output": "godot4/Textures/_hd256/tx_aura01_256.png",
-      "sourceWidth": 256,
-      "sourceHeight": 256,
-      "width": 256,
-      "height": 256,
-      "enlarged": false,
-      "sourceHasAlpha": true
-    },
-    {
-      "kind": "authored-sprite",
       "source": "godot4/Textures/tx_aura07_256.png",
       "output": "godot4/Textures/_hd256/tx_aura07_256.png",
-      "sourceWidth": 256,
-      "sourceHeight": 256,
-      "width": 256,
-      "height": 256,
-      "enlarged": false,
-      "sourceHasAlpha": true
-    },
-    {
-      "kind": "authored-sprite",
-      "source": "godot4/Textures/tx_aura10_256.png",
-      "output": "godot4/Textures/_hd256/tx_aura10_256.png",
-      "sourceWidth": 256,
-      "sourceHeight": 256,
-      "width": 256,
-      "height": 256,
-      "enlarged": false,
-      "sourceHasAlpha": true
-    },
-    {
-      "kind": "authored-sprite",
-      "source": "godot4/Textures/tx_aura12_256.png",
-      "output": "godot4/Textures/_hd256/tx_aura12_256.png",
-      "sourceWidth": 256,
-      "sourceHeight": 256,
-      "width": 256,
-      "height": 256,
-      "enlarged": false,
-      "sourceHasAlpha": true
-    },
-    {
-      "kind": "authored-sprite",
-      "source": "godot4/Textures/tx_aura13_256.png",
-      "output": "godot4/Textures/_hd256/tx_aura13_256.png",
       "sourceWidth": 256,
       "sourceHeight": 256,
       "width": 256,
@@ -161,28 +73,6 @@
     },
     {
       "kind": "authored-sprite",
-      "source": "godot4/Textures/tx_crack02_256.png",
-      "output": "godot4/Textures/_hd256/tx_crack02_256.png",
-      "sourceWidth": 256,
-      "sourceHeight": 256,
-      "width": 256,
-      "height": 256,
-      "enlarged": false,
-      "sourceHasAlpha": true
-    },
-    {
-      "kind": "authored-sprite",
-      "source": "godot4/Textures/tx_crack03_256.png",
-      "output": "godot4/Textures/_hd256/tx_crack03_256.png",
-      "sourceWidth": 256,
-      "sourceHeight": 256,
-      "width": 256,
-      "height": 256,
-      "enlarged": false,
-      "sourceHasAlpha": true
-    },
-    {
-      "kind": "authored-sprite",
       "source": "godot4/Textures/tx_debris01_128.png",
       "output": "godot4/Textures/_hd256/tx_debris01_128.png",
       "sourceWidth": 128,
@@ -190,28 +80,6 @@
       "width": 256,
       "height": 256,
       "enlarged": true,
-      "sourceHasAlpha": true
-    },
-    {
-      "kind": "authored-sprite",
-      "source": "godot4/Textures/tx_directional_aura01_256.png",
-      "output": "godot4/Textures/_hd256/tx_directional_aura01_256.png",
-      "sourceWidth": 256,
-      "sourceHeight": 256,
-      "width": 256,
-      "height": 256,
-      "enlarged": false,
-      "sourceHasAlpha": true
-    },
-    {
-      "kind": "authored-sprite",
-      "source": "godot4/Textures/tx_directional_aura02_256.png",
-      "output": "godot4/Textures/_hd256/tx_directional_aura02_256.png",
-      "sourceWidth": 256,
-      "sourceHeight": 256,
-      "width": 256,
-      "height": 256,
-      "enlarged": false,
       "sourceHasAlpha": true
     },
     {
@@ -238,17 +106,6 @@
     },
     {
       "kind": "authored-sprite",
-      "source": "godot4/Textures/tx_glow03_128.png",
-      "output": "godot4/Textures/_hd256/tx_glow03_128.png",
-      "sourceWidth": 128,
-      "sourceHeight": 128,
-      "width": 256,
-      "height": 256,
-      "enlarged": true,
-      "sourceHasAlpha": true
-    },
-    {
-      "kind": "authored-sprite",
       "source": "godot4/Textures/tx_hit01_256.png",
       "output": "godot4/Textures/_hd256/tx_hit01_256.png",
       "sourceWidth": 2048,
@@ -262,39 +119,6 @@
       "kind": "authored-sprite",
       "source": "godot4/Textures/tx_ice01_256.png",
       "output": "godot4/Textures/_hd256/tx_ice01_256.png",
-      "sourceWidth": 256,
-      "sourceHeight": 256,
-      "width": 256,
-      "height": 256,
-      "enlarged": false,
-      "sourceHasAlpha": true
-    },
-    {
-      "kind": "authored-sprite",
-      "source": "godot4/Textures/tx_lightning01_256.png",
-      "output": "godot4/Textures/_hd256/tx_lightning01_256.png",
-      "sourceWidth": 256,
-      "sourceHeight": 256,
-      "width": 256,
-      "height": 256,
-      "enlarged": false,
-      "sourceHasAlpha": true
-    },
-    {
-      "kind": "authored-sprite",
-      "source": "godot4/Textures/tx_lightning04_128x256.png",
-      "output": "godot4/Textures/_hd256/tx_lightning04_128x256.png",
-      "sourceWidth": 128,
-      "sourceHeight": 256,
-      "width": 128,
-      "height": 256,
-      "enlarged": false,
-      "sourceHasAlpha": true
-    },
-    {
-      "kind": "authored-sprite",
-      "source": "godot4/Textures/tx_prism_aura01.png",
-      "output": "godot4/Textures/_hd256/tx_prism_aura01.png",
       "sourceWidth": 256,
       "sourceHeight": 256,
       "width": 256,
@@ -348,17 +172,6 @@
     },
     {
       "kind": "authored-sprite",
-      "source": "godot4/Textures/tx_slash01_256.png",
-      "output": "godot4/Textures/_hd256/tx_slash01_256.png",
-      "sourceWidth": 256,
-      "sourceHeight": 256,
-      "width": 256,
-      "height": 256,
-      "enlarged": false,
-      "sourceHasAlpha": false
-    },
-    {
-      "kind": "authored-sprite",
       "source": "godot4/Textures/tx_smoke01_256.png",
       "output": "godot4/Textures/_hd256/tx_smoke01_256.png",
       "sourceWidth": 256,
@@ -402,17 +215,6 @@
       "sourceHasAlpha": true
     },
     {
-      "kind": "authored-sprite",
-      "source": "godot4/Textures/tx_trail02_256_90.png",
-      "output": "godot4/Textures/_hd256/tx_trail02_256_90.png",
-      "sourceWidth": 256,
-      "sourceHeight": 256,
-      "width": 256,
-      "height": 256,
-      "enlarged": false,
-      "sourceHasAlpha": true
-    },
-    {
       "kind": "native-alpha-fog",
       "source": "MAGICALxSPIRAL/Texture/_fog-cloud-2048.png",
       "output": "MAGICALxSPIRAL/Texture/_hd256/_fog-cloud-2048.png",
@@ -436,17 +238,6 @@
     },
     {
       "kind": "authored-sprite",
-      "source": "MAGICALxSPIRAL/Texture/circle2.png",
-      "output": "MAGICALxSPIRAL/Texture/_hd256/circle2.png",
-      "sourceWidth": 128,
-      "sourceHeight": 128,
-      "width": 256,
-      "height": 256,
-      "enlarged": true,
-      "sourceHasAlpha": false
-    },
-    {
-      "kind": "authored-sprite",
       "source": "MAGICALxSPIRAL/Texture/circle3.png",
       "output": "MAGICALxSPIRAL/Texture/_hd256/circle3.png",
       "sourceWidth": 128,
@@ -455,17 +246,6 @@
       "height": 256,
       "enlarged": true,
       "sourceHasAlpha": false
-    },
-    {
-      "kind": "authored-sprite",
-      "source": "MAGICALxSPIRAL/Texture/circle4.png",
-      "output": "MAGICALxSPIRAL/Texture/_hd256/circle4.png",
-      "sourceWidth": 1024,
-      "sourceHeight": 1024,
-      "width": 1024,
-      "height": 1024,
-      "enlarged": false,
-      "sourceHasAlpha": true
     },
     {
       "kind": "authored-sprite",
@@ -491,17 +271,6 @@
     },
     {
       "kind": "authored-sprite",
-      "source": "MAGICALxSPIRAL/Texture/Fire3.png",
-      "output": "MAGICALxSPIRAL/Texture/_hd256/Fire3.png",
-      "sourceWidth": 512,
-      "sourceHeight": 512,
-      "width": 512,
-      "height": 512,
-      "enlarged": false,
-      "sourceHasAlpha": false
-    },
-    {
-      "kind": "authored-sprite",
       "source": "MAGICALxSPIRAL/Texture/Fire4.png",
       "output": "MAGICALxSPIRAL/Texture/_hd256/Fire4.png",
       "sourceWidth": 64,
@@ -509,17 +278,6 @@
       "width": 64,
       "height": 256,
       "enlarged": false,
-      "sourceHasAlpha": false
-    },
-    {
-      "kind": "authored-sprite",
-      "source": "MAGICALxSPIRAL/Texture/fireline.png",
-      "output": "MAGICALxSPIRAL/Texture/_hd256/fireline.png",
-      "sourceWidth": 128,
-      "sourceHeight": 64,
-      "width": 256,
-      "height": 128,
-      "enlarged": true,
       "sourceHasAlpha": false
     },
     {
@@ -799,28 +557,6 @@
     },
     {
       "kind": "authored-sprite",
-      "source": "MAGICALxSPIRAL/Texture/Thunder1.png",
-      "output": "MAGICALxSPIRAL/Texture/_hd256/Thunder1.png",
-      "sourceWidth": 128,
-      "sourceHeight": 64,
-      "width": 256,
-      "height": 128,
-      "enlarged": true,
-      "sourceHasAlpha": false
-    },
-    {
-      "kind": "authored-sprite",
-      "source": "MAGICALxSPIRAL/Texture/Thunder2.png",
-      "output": "MAGICALxSPIRAL/Texture/_hd256/Thunder2.png",
-      "sourceWidth": 256,
-      "sourceHeight": 256,
-      "width": 256,
-      "height": 256,
-      "enlarged": false,
-      "sourceHasAlpha": false
-    },
-    {
-      "kind": "authored-sprite",
       "source": "MAGICALxSPIRAL/Texture/Thunder3.png",
       "output": "MAGICALxSPIRAL/Texture/_hd256/Thunder3.png",
       "sourceWidth": 128,
@@ -828,50 +564,6 @@
       "width": 256,
       "height": 128,
       "enlarged": true,
-      "sourceHasAlpha": false
-    },
-    {
-      "kind": "authored-sprite",
-      "source": "MAGICALxSPIRAL/Texture/Thunder4.png",
-      "output": "MAGICALxSPIRAL/Texture/_hd256/Thunder4.png",
-      "sourceWidth": 128,
-      "sourceHeight": 64,
-      "width": 256,
-      "height": 128,
-      "enlarged": true,
-      "sourceHasAlpha": false
-    },
-    {
-      "kind": "authored-sprite",
-      "source": "MAGICALxSPIRAL/Texture/Thunder5.png",
-      "output": "MAGICALxSPIRAL/Texture/_hd256/Thunder5.png",
-      "sourceWidth": 128,
-      "sourceHeight": 64,
-      "width": 256,
-      "height": 128,
-      "enlarged": true,
-      "sourceHasAlpha": false
-    },
-    {
-      "kind": "authored-sprite",
-      "source": "MAGICALxSPIRAL/Texture/Thunder6.png",
-      "output": "MAGICALxSPIRAL/Texture/_hd256/Thunder6.png",
-      "sourceWidth": 128,
-      "sourceHeight": 64,
-      "width": 256,
-      "height": 128,
-      "enlarged": true,
-      "sourceHasAlpha": false
-    },
-    {
-      "kind": "authored-sprite",
-      "source": "MAGICALxSPIRAL/Texture/Water.png",
-      "output": "MAGICALxSPIRAL/Texture/_hd256/Water.png",
-      "sourceWidth": 512,
-      "sourceHeight": 512,
-      "width": 512,
-      "height": 512,
-      "enlarged": false,
       "sourceHasAlpha": false
     },
     {
@@ -884,28 +576,6 @@
       "height": 256,
       "enlarged": false,
       "sourceHasAlpha": false
-    },
-    {
-      "kind": "authored-sprite",
-      "source": "MAGICALxSPIRAL/Texture/WaterForm2.png",
-      "output": "MAGICALxSPIRAL/Texture/_hd256/WaterForm2.png",
-      "sourceWidth": 256,
-      "sourceHeight": 256,
-      "width": 256,
-      "height": 256,
-      "enlarged": false,
-      "sourceHasAlpha": false
-    },
-    {
-      "kind": "authored-sprite",
-      "source": "tktk/Texture/7iro.png",
-      "output": "tktk/Texture/_hd256/7iro.png",
-      "sourceWidth": 256,
-      "sourceHeight": 256,
-      "width": 256,
-      "height": 256,
-      "enlarged": false,
-      "sourceHasAlpha": true
     },
     {
       "kind": "authored-sprite",
@@ -931,17 +601,6 @@
     },
     {
       "kind": "authored-sprite",
-      "source": "tktk/Texture/aura3_type2.png",
-      "output": "tktk/Texture/_hd256/aura3_type2.png",
-      "sourceWidth": 1024,
-      "sourceHeight": 1024,
-      "width": 1024,
-      "height": 1024,
-      "enlarged": false,
-      "sourceHasAlpha": true
-    },
-    {
-      "kind": "authored-sprite",
       "source": "tktk/Texture/Aurora_B.png",
       "output": "tktk/Texture/_hd256/Aurora_B.png",
       "sourceWidth": 128,
@@ -955,17 +614,6 @@
       "kind": "authored-sprite",
       "source": "tktk/Texture/Aurora.png",
       "output": "tktk/Texture/_hd256/Aurora.png",
-      "sourceWidth": 128,
-      "sourceHeight": 128,
-      "width": 256,
-      "height": 256,
-      "enlarged": true,
-      "sourceHasAlpha": true
-    },
-    {
-      "kind": "authored-sprite",
-      "source": "tktk/Texture/AuroraRing.png",
-      "output": "tktk/Texture/_hd256/AuroraRing.png",
       "sourceWidth": 128,
       "sourceHeight": 128,
       "width": 256,
@@ -997,39 +645,6 @@
     },
     {
       "kind": "authored-sprite",
-      "source": "tktk/Texture/ezzi.png",
-      "output": "tktk/Texture/_hd256/ezzi.png",
-      "sourceWidth": 150,
-      "sourceHeight": 120,
-      "width": 256,
-      "height": 205,
-      "enlarged": true,
-      "sourceHasAlpha": true
-    },
-    {
-      "kind": "authored-sprite",
-      "source": "tktk/Texture/ezziglow.png",
-      "output": "tktk/Texture/_hd256/ezziglow.png",
-      "sourceWidth": 200,
-      "sourceHeight": 150,
-      "width": 256,
-      "height": 192,
-      "enlarged": true,
-      "sourceHasAlpha": true
-    },
-    {
-      "kind": "authored-sprite",
-      "source": "tktk/Texture/Flame01.png",
-      "output": "tktk/Texture/_hd256/Flame01.png",
-      "sourceWidth": 128,
-      "sourceHeight": 128,
-      "width": 256,
-      "height": 256,
-      "enlarged": true,
-      "sourceHasAlpha": true
-    },
-    {
-      "kind": "authored-sprite",
       "source": "tktk/Texture/Fog3001.png",
       "output": "tktk/Texture/_hd256/Fog3001.png",
       "sourceWidth": 128,
@@ -1048,28 +663,6 @@
       "width": 256,
       "height": 256,
       "enlarged": true,
-      "sourceHasAlpha": true
-    },
-    {
-      "kind": "authored-sprite",
-      "source": "tktk/Texture/Hammer1.png",
-      "output": "tktk/Texture/_hd256/Hammer1.png",
-      "sourceWidth": 256,
-      "sourceHeight": 256,
-      "width": 256,
-      "height": 256,
-      "enlarged": false,
-      "sourceHasAlpha": false
-    },
-    {
-      "kind": "authored-sprite",
-      "source": "tktk/Texture/hisigata0.9.png",
-      "output": "tktk/Texture/_hd256/hisigata0.9.png",
-      "sourceWidth": 512,
-      "sourceHeight": 512,
-      "width": 512,
-      "height": 512,
-      "enlarged": false,
       "sourceHasAlpha": true
     },
     {
@@ -1118,28 +711,6 @@
     },
     {
       "kind": "authored-sprite",
-      "source": "tktk/Texture/Line2.png",
-      "output": "tktk/Texture/_hd256/Line2.png",
-      "sourceWidth": 128,
-      "sourceHeight": 64,
-      "width": 256,
-      "height": 128,
-      "enlarged": true,
-      "sourceHasAlpha": false
-    },
-    {
-      "kind": "authored-sprite",
-      "source": "tktk/Texture/Line6.png",
-      "output": "tktk/Texture/_hd256/Line6.png",
-      "sourceWidth": 64,
-      "sourceHeight": 128,
-      "width": 128,
-      "height": 256,
-      "enlarged": true,
-      "sourceHasAlpha": false
-    },
-    {
-      "kind": "authored-sprite",
       "source": "tktk/Texture/magma.png",
       "output": "tktk/Texture/_hd256/magma.png",
       "sourceWidth": 1024,
@@ -1184,28 +755,6 @@
     },
     {
       "kind": "authored-sprite",
-      "source": "tktk/Texture/rainnaka.png",
-      "output": "tktk/Texture/_hd256/rainnaka.png",
-      "sourceWidth": 512,
-      "sourceHeight": 512,
-      "width": 512,
-      "height": 512,
-      "enlarged": false,
-      "sourceHasAlpha": true
-    },
-    {
-      "kind": "authored-sprite",
-      "source": "tktk/Texture/rainnki.png",
-      "output": "tktk/Texture/_hd256/rainnki.png",
-      "sourceWidth": 512,
-      "sourceHeight": 512,
-      "width": 512,
-      "height": 512,
-      "enlarged": false,
-      "sourceHasAlpha": true
-    },
-    {
-      "kind": "authored-sprite",
       "source": "tktk/Texture/rainnmidori.png",
       "output": "tktk/Texture/_hd256/rainnmidori.png",
       "sourceWidth": 512,
@@ -1219,28 +768,6 @@
       "kind": "authored-sprite",
       "source": "tktk/Texture/rainnmizu.png",
       "output": "tktk/Texture/_hd256/rainnmizu.png",
-      "sourceWidth": 512,
-      "sourceHeight": 512,
-      "width": 512,
-      "height": 512,
-      "enlarged": false,
-      "sourceHasAlpha": true
-    },
-    {
-      "kind": "authored-sprite",
-      "source": "tktk/Texture/rainntya.png",
-      "output": "tktk/Texture/_hd256/rainntya.png",
-      "sourceWidth": 512,
-      "sourceHeight": 512,
-      "width": 512,
-      "height": 512,
-      "enlarged": false,
-      "sourceHasAlpha": true
-    },
-    {
-      "kind": "authored-sprite",
-      "source": "tktk/Texture/rinngu,mizuiro.png",
-      "output": "tktk/Texture/_hd256/rinngu,mizuiro.png",
       "sourceWidth": 512,
       "sourceHeight": 512,
       "width": 512,
@@ -1272,61 +799,6 @@
     },
     {
       "kind": "authored-sprite",
-      "source": "tktk/Texture/Shock_wave_ring002.png",
-      "output": "tktk/Texture/_hd256/Shock_wave_ring002.png",
-      "sourceWidth": 128,
-      "sourceHeight": 128,
-      "width": 256,
-      "height": 256,
-      "enlarged": true,
-      "sourceHasAlpha": false
-    },
-    {
-      "kind": "authored-sprite",
-      "source": "tktk/Texture/Shock_wave001.png",
-      "output": "tktk/Texture/_hd256/Shock_wave001.png",
-      "sourceWidth": 128,
-      "sourceHeight": 128,
-      "width": 256,
-      "height": 256,
-      "enlarged": true,
-      "sourceHasAlpha": false
-    },
-    {
-      "kind": "authored-sprite",
-      "source": "tktk/Texture/Shock_wave004.png",
-      "output": "tktk/Texture/_hd256/Shock_wave004.png",
-      "sourceWidth": 128,
-      "sourceHeight": 128,
-      "width": 256,
-      "height": 256,
-      "enlarged": true,
-      "sourceHasAlpha": false
-    },
-    {
-      "kind": "authored-sprite",
-      "source": "tktk/Texture/smoke_tex.png",
-      "output": "tktk/Texture/_hd256/smoke_tex.png",
-      "sourceWidth": 500,
-      "sourceHeight": 500,
-      "width": 500,
-      "height": 500,
-      "enlarged": false,
-      "sourceHasAlpha": true
-    },
-    {
-      "kind": "authored-sprite",
-      "source": "tktk/Texture/StanBlade.png",
-      "output": "tktk/Texture/_hd256/StanBlade.png",
-      "sourceWidth": 128,
-      "sourceHeight": 128,
-      "width": 256,
-      "height": 256,
-      "enlarged": true,
-      "sourceHasAlpha": true
-    },
-    {
-      "kind": "authored-sprite",
       "source": "tktk/Texture/star.png",
       "output": "tktk/Texture/_hd256/star.png",
       "sourceWidth": 256,
@@ -1335,28 +807,6 @@
       "height": 256,
       "enlarged": false,
       "sourceHasAlpha": true
-    },
-    {
-      "kind": "authored-sprite",
-      "source": "tktk/Texture/Thunder1.png",
-      "output": "tktk/Texture/_hd256/Thunder1.png",
-      "sourceWidth": 128,
-      "sourceHeight": 64,
-      "width": 256,
-      "height": 128,
-      "enlarged": true,
-      "sourceHasAlpha": false
-    },
-    {
-      "kind": "authored-sprite",
-      "source": "tktk/Texture/WaterForm1.png",
-      "output": "tktk/Texture/_hd256/WaterForm1.png",
-      "sourceWidth": 256,
-      "sourceHeight": 256,
-      "width": 256,
-      "height": 256,
-      "enlarged": false,
-      "sourceHasAlpha": false
     },
     {
       "kind": "authored-sprite",
