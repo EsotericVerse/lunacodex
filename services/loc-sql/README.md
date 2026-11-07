@@ -34,9 +34,11 @@ redeploying the Gateway.
 
 The canonical SQL handler is `app/loc/gateway/sql-handler.ts`; the
 server-only driver is `app/loc/providers/kysely-database-drivers.ts`.
-The first batch (#1210) **removes** the legacy hosted SQL Function wrappers
-and provider URL/API-key fallback. These changes must not be merged into
-`main` until the replacement service and its website URL are available.
+PRs #1210 and #1216 have already merged into `main`, but their merge does
+**not** prove independent SQL hosting exists. The current static site keeps a
+transitional public Data API reader until `NEXT_PUBLIC_LOC_SQL_GATEWAY_URL`
+points at a functioning service. Once configured, it selects the first-party
+LOC OAuth delegation + Kysely Gateway transport instead of the Data API.
 
 ## Independent HTTPS ingress
 
@@ -64,10 +66,11 @@ After the independent HTTPS service is actually available:
 - The optional bounded read-only command `npm run verify:portable-sql`
   probes the public Galaxy projection; it does not create tables.
 
-**Do not merge #1210 or #1216 into main before this configuration.**
-The independent Gateway code has no hidden hosted-provider fallback.
-The currently deployed production services remain unchanged until
-the PRs are merged and the explicit deployment is made.
+**Release gate:** do not switch the public Gateway URL or remove the
+transitional public reader before a real trusted SQL connection and signed
+LOC Auth delegation pass read-only checks. The canonical Gateway has no
+hosted-provider fallback. Merging code, hosting a Container, and selecting
+production SQL traffic are three separate steps.
 
 ## User database selection and Azure trial
 
