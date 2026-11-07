@@ -181,3 +181,51 @@ export function indexDocumentsFromWrite(body,target){
     }];
   });
 }
+
+/**
+ * Compare live SQL page identities against the independent, *unfiltered* KV
+ * candidate index. Shadow mode is an opt-in probe only: it never narrows the
+ * SQL request or changes what the user sees. No articles, UIDs or query terms
+ * are written to logs; only integer counts are returned to the Gateway.
+ */
+export async function shadowIndexCoverage(body,sources,rows){
+  const result=(kind,checked=0,missing=0,indexed=0)=>
+    ({kind,checked,missing,indexed});
+  if(String(Deno.env.get('LOC_SEARCH_INDEX_SHADOW')||'').toLowerCase()!=='true'||
+     String(Deno.env.get('LOC_SEARCH_INDEX_ENABLED')||'').toLowerCase()==='true')
+    return result('disabled');
+  const scopeId=String(body?.indexHint?.scopeId||'');
+  const query=String(body?.indexHint?.query||'').trim();
+  if(body?.kind!=='query'||body.operation!=='select'||body.schema!=='silver'||
+     body.table!==scopeId+'_galaxy'||!SCOPE.test(scopeId)||
+     !/^[\p{L}\p{N}]+$/u.test(query)||query.length<2||query.length>100||
+     !hasRequiredContentTerm(body,query)||
+     !Array.isArray(sources)||!sources.length||sources.length>12||
+     !Array.isArray(rows)||!rows.length)return result('ineligible');
+  const ids=sources.map(s=>s?.databaseId);
+  if(ids.some(id=>!SOURCE.test(id))||new Set(ids).size!==ids.length)
+    return result('ineligible');
+  const seen=new Set();
+  for(const row of rows){
+    const dbId=String(row?.__db_id|| (ids.length===1?ids[0]:''));
+    const uid=String(row?.uid||'');
+    if(!ids.includes(dbId)||!UID.test(uid))return result('unavailable');
+    seen.add(locGlobalUid({databaseId:dbId,scopeId,uid}));
+  }
+  const index=await requestIndex('/v1/search','POST',{
+    scopeId,dbIds:ids,entityType:'galaxy',query
+  });
+  if(index?.complete!==true||!Array.isArray(index.hits)||
+     index.hits.length>200)return result('unavailable');
+  const candidates=new Set();
+  for(const hit of index.hits){
+    if(hit?.scopeId!==scopeId||!ids.includes(hit.dbId)||
+       hit.entityType!=='galaxy'||!UID.test(hit.uid)||
+       hit.globalUid!==locGlobalUid({databaseId:hit.dbId,scopeId,uid:hit.uid}))
+      return result('unavailable');
+    candidates.add(hit.globalUid);
+  }
+  let missing=0;
+  for(const uid of seen)if(!candidates.has(uid))missing++;
+  return result('compared',seen.size,missing,candidates.size);
+}
