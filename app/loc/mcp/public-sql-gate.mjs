@@ -16,7 +16,8 @@ function filterEqual(filter,column,value){
     filter.operator==='eq'&&filter.value===value;
 }
 function safeSearch(body){
-  if(body.user_requested!==true||!same(body.columns,SEARCH_COLUMNS)||body.filters?.length!==1||
+  if(body.user_requested!==true||!same(body.columns,SEARCH_COLUMNS)||
+    !Array.isArray(body.filters)||body.filters.length!==1||
     !filterEqual(body.filters[0],'search',true)||!Array.isArray(body.or)||
     body.or.length!==1||typeof body.or[0]!=='string'||body.or[0].length>750)
     return false;
@@ -36,7 +37,8 @@ function safeSearch(body){
     Number.isInteger(body.offset)&&body.offset>=0&&body.offset<=500;
 }
 function safeRead(body){
-  if(body.user_requested!==undefined||!same(body.columns,READ_COLUMNS)||body.filters?.length!==2||
+  if(body.user_requested!==undefined||!same(body.columns,READ_COLUMNS)||
+    !Array.isArray(body.filters)||body.filters.length!==2||
     !Array.isArray(body.or)&&body.or!==undefined||
     Array.isArray(body.or)&&body.or.length>0||
     !Array.isArray(body.orders)&&body.orders!==undefined||
