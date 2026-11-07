@@ -27,8 +27,17 @@ test('a signed selected SQL Server profile resolves without deploying new code',
  assert.equal(JSON.parse(seen.body).id,'azure_test');
  assert.equal(seen.headers.authorization,'Bearer '+token);
  assert.equal(calls,1);
- await resolveRuntimeDatabase(selected,token,{serviceKey,now:2,
-  fetchImpl:()=>{throw Error('second call should reuse briefly cached profile')}});
+ const next=await resolveRuntimeDatabase(selected,token,{serviceKey,
+  fetchImpl:async (_url,request)=>{
+   calls++;
+   assert.equal(JSON.parse(request.body).id,'azure_test');
+   return {ok:true,json:async()=>({id:'azure_test',profile:{
+    engine:'mssql',host:'db.example.org',port:1433,
+    database:'loc',username:'reader',password:'new-secret'
+   }})};
+  }});
+ assert.equal(calls,2,'every HTTP request must revalidate with LOC Authority');
+ assert.equal(decodeURIComponent(new URL(next.profile.url).password),'new-secret');
 });
 test('unsigned DB names, absent service key and untrusted profile fail closed',async()=>{
  const claim={db_target:'test',sub:'loc_'+'C'.repeat(40)};
@@ -36,4 +45,22 @@ test('unsigned DB names, absent service key and untrusted profile fail closed',a
  await assert.rejects(resolveRuntimeDatabase(claim,token,{serviceKey:''}),/service credential/);
  await assert.rejects(resolveRuntimeDatabase(claim,token,{serviceKey,
   fetchImpl:async()=>({ok:false,status:403})}),error=>error.httpStatus===403);
+});
+
+test('revoking the currently selected database blocks the next request',async()=>{
+ const claims={db_target:'azure_revoke',sub:'loc_'+'D'.repeat(40)};
+ let calls=0;
+ const fetchImpl=async()=>{
+  calls++;
+  return calls===1?{ok:true,json:async()=>({id:'azure_revoke',profile:{
+   engine:'mssql',host:'sql.example.org',port:1433,database:'loc',
+   username:'reader',password:'not-real'
+  }})}:{ok:false,status:403};
+ };
+ const first=await resolveRuntimeDatabase(claims,token,{serviceKey,fetchImpl});
+ assert.equal(first.target.connection_alias,'azure_revoke');
+ await assert.rejects(
+  resolveRuntimeDatabase(claims,token,{serviceKey,fetchImpl}),
+  error=>error.httpStatus===403);
+ assert.equal(calls,2);
 });
