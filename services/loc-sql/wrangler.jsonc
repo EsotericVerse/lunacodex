@@ -1,0 +1,48 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "loc-sql",
+  "main": "./cloudflare-worker.mjs",
+  "compatibility_date": "2026-11-07",
+  "containers": [
+    {
+      "class_name": "LocSqlContainer",
+      "scheduling_policy": "durable_object",
+      "images": {
+        "base": {
+          "dockerfile": "./Dockerfile",
+          "build_context": "../.."
+        }
+      }
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "LOC_SQL_CONTAINER",
+        "class_name": "LocSqlContainer"
+      }
+    ]
+  },
+  "exports": {
+    "LocSqlContainer": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
+  },
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 0.1
+    },
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 0.1
+    }
+  },
+  "vars": {
+    "LOC_CONTROL_DB_ENGINE": "postgres",
+    "LOC_CONTROL_DB_ALIAS": "loc_main",
+    "LOC_AUTHORITY_ORIGIN": "https://auth.lo3rwang.cc"
+  }
+}

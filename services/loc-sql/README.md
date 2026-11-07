@@ -42,3 +42,39 @@ does **not** establish DNS, hosting, credentials or production readiness.
 A portable service may use the selected PostgreSQL, MySQL or SQL Server
 Kysely driver, but engine-specific behavior remains in its existing adapters.
 No database tests or changes are performed by this entry.
+
+## Cloudflare Container deployment package (separate from LOC MCP)
+
+`Dockerfile`, `cloudflare-worker.mjs` and `wrangler.jsonc` define a separate
+`loc-sql` Worker and Deno Container. The external Worker accepts only
+`POST /v1/sql` and CORS `OPTIONS /v1/sql`; the internal `GET /health`
+returns 204 without a database query. JWT verification and SQL authorization
+remain in the canonical `app/loc/gateway/sql-handler.ts`.
+
+1. The Cloudflare account must have an active Workers plan that permits
+   Containers. A committed Wrangler configuration is **not** a deployment.
+2. Configure the **server-only** `LOC_DB_CONNECTIONS_JSON` Worker secret with
+   the `loc_main` alias matching `LOC_CONTROL_DB_ENGINE`. Set
+   `LOC_AUTHORITY_ORIGIN` to the actual independently deployed Authority.
+   The database URL never belongs in public environment variables or Git.
+3. Deploy `services/loc-sql/wrangler.jsonc` with Wrangler only after the
+   trusted secret, account plan, and host permissions are ready. Configure a
+   dedicated HTTPS hostname and confirm the Container's /health liveness
+   before any website cutover. Liveness is **not** database readiness.
+4. Make `NEXT_PUBLIC_LOC_SQL_GATEWAY_URL=https://<trusted-host>/v1/sql`
+   available to the website build. The server-side ISR uses
+   `LOC_SQL_GATEWAY_URL` first, then the same public setting. With an
+   independent URL, neither entry forwards legacy Supabase public credentials.
+5. Verify public anonymous reads and legitimate delegated management using
+   the production owner's normal workflow, then separately confirm the
+   actual deployed page and network route. Only after independent traffic is
+   established can the old Supabase Edge Functions be retired.
+
+An independently hosted database may be PostgreSQL (including optional Neon),
+MySQL or SQL Server: the server-side alias chooses the driver. Neon Auth,
+Neon Data API, Supabase Auth and Supabase Edge are not requirements. LOC Auth
+is maintained in its own project; this package does not modify login.
+
+The existing `loc-kysely` Edge is deliberately retained as the compatibility
+route until actual cutover. No schema, policy, RLS, migration or test data is
+created or modified as part of this deployment package.

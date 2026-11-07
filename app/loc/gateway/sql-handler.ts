@@ -240,6 +240,10 @@ function json(body: unknown, status = 200, extraHeaders: Record<string, string> 
 }
 
 Deno.serve(async (request) => {
+  // Container liveness is intentionally database-free and does not mint grants.
+  // The public Worker exposes only /v1/sql; /health stays on the internal port.
+  if (request.method === "GET" && new URL(request.url).pathname === "/health")
+    return new Response(null, {status: 204, headers: {"cache-control": "no-store"}});
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
   if (request.method !== "POST") return json({ error: { message: "Method not allowed" } }, 405);
   const contentLength = Number(request.headers.get("content-length") || 0);
