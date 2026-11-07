@@ -265,7 +265,8 @@
  * The existing single horizontal tab strip, scroll position, routing and
  * edit-dock lifecycle are authoritative; these are presentation-only states.
  */
-.management-workspace{
+/* Global because React Select may render its menu outside the workspace. */
+:root{
   --loc-management-craft-selected:
     color-mix(in srgb,var(--loc-accent) 17%,var(--loc-panel));
   --loc-management-craft-focus:
