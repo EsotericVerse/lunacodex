@@ -59,11 +59,23 @@ test('Windows static export launches npm.cmd via cmd shell, never direct spawn',
   assert.match(builder,/run\(npm,\['run','prebuild'\]\)/);
 });
 
+test('retired MUI tabletop dependencies are absent while native game logic remains',()=>{
+  for(const name of ['@mui/material','@emotion/react','@emotion/styled','@dnd-kit/core']){
+    assert.equal(manifest.dependencies?.[name],undefined,name);
+    assert.equal(lock.packages?.['node_modules/'+name]===undefined,
+      name==='@emotion/react'?false:true,
+      name+' lockfile reachability');
+  }
+  const board=readFileSync(new URL('../app/lrunes/game/GameBoard.jsx',import.meta.url),'utf8');
+  assert.match(board,/月之符文遊戲介面重寫中/);
+  assert.doesNotMatch(board,/@mui\/material|@dnd-kit\/core/);
+  assert.ok(existsSync(new URL('../app/lrunes/game/boardgame-rules.js',import.meta.url)));
+});
+
 test('native Recharts responsive replaces redundant wrappers in Rune views',()=>{
   for(const path of [
     '../app/lrunes/RuneAppDayNightDashboard.jsx',
     '../app/lrunes/DailyRuneAnalytics.jsx',
-    '../app/lrunes/game/GameBoard.jsx',
     '../app/lrunes/game/GameView.jsx'
   ]){
     const source=readFileSync(new URL(path,import.meta.url),'utf8');
