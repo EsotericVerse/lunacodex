@@ -44,9 +44,12 @@ globalThis.fetch=async (url,options)=>{
       ?Response.json({error:'MCP request limit exceeded'},{status:429})
       :Response.json(body.action==='acquire'?{lease:'7e84c5a7-f95d-414d-82e8-e84542ee60ab'}:{released:true});
   }
-  if(String(url).startsWith('https://auth.lo3rwang.cc/v1/mcp/galaxy-link/search/')){
+  if(String(url).startsWith('https://auth.lo3rwang.cc/v1/mcp/direct-permit/')){
     privateSearchRequests++;
-    return Response.json({scopeid:'lo3rwang',results:[]});
+    assert.equal(options.method,'GET');
+    assert.equal(options.headers.authorization.startsWith('Bearer eyJ'),true);
+    return Response.json({authorized:true,scopeid:'lo3rwang',
+      subject:'loc_'+'A'.repeat(40),action:'read'});
   }
   if(String(url)===LOC_OAUTH_ISSUER+'/.well-known/jwks.json'){
     jwksQueries++;return Response.json({keys:[publicKey]});
@@ -207,4 +210,6 @@ test('search is rejected unless the user-requested flag is true',async()=>{
  })));
  assert.equal((await allowed.json()).result.isError,undefined);
  assert.equal(privateSearchRequests,before+1);
+ const last=quotaRequests.filter(x=>x.action==='acquire').at(-1);
+ assert.equal(last.kind,'search','native private search preserves five-minute QoS');
 });

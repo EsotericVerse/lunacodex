@@ -8,8 +8,10 @@ const ALIAS=/^[a-z][a-z0-9_-]{0,63}$/;
 function fail(message){
   return Object.assign(new Error(message),{code:'BACKEND_UNAVAILABLE'});
 }
-function selectedProfile(env){
-  const alias=String(env.LOC_MCP_DB_ALIAS||env.LOC_CONTROL_DB_ALIAS||'');
+function selectedProfile(env,verifiedAlias=''){
+  // The override may ONLY be supplied by LOC Auth's verified Scope permit.
+  // Never map an HTTP request field to this argument.
+  const alias=String(verifiedAlias||env.LOC_MCP_DB_ALIAS||env.LOC_CONTROL_DB_ALIAS||'');
   if(!ALIAS.test(alias))throw fail('LOC MCP direct database alias is not configured');
   let profiles;
   try{profiles=JSON.parse(String(env.LOC_DB_CONNECTIONS_JSON||'{}'))}
@@ -22,7 +24,7 @@ function selectedProfile(env){
   const engine=String(profile.engine||'');
   if(!['postgres','mysql','mssql'].includes(engine))
     throw fail('LOC MCP database engine is unsupported');
-  if(env.LOC_MCP_DB_ENGINE&&env.LOC_MCP_DB_ENGINE!==engine)
+  if(!verifiedAlias&&env.LOC_MCP_DB_ENGINE&&env.LOC_MCP_DB_ENGINE!==engine)
     throw fail('LOC MCP database engine mismatch');
   if(typeof profile.url!=='string'||!profile.url)
     throw fail('LOC MCP database connection is unavailable');
@@ -35,9 +37,10 @@ function selectedProfile(env){
     throw fail('LOC MCP PostgreSQL connection URL is invalid');
   return {alias,engine,profile,namespace:String(env.LOC_MCP_DB_NAMESPACE||'silver')};
 }
-export function directMcpKysely(env={}){
+export function directMcpKysely(env={},verifiedAlias=''){
   if(!env||typeof env!=='object')throw fail('Invalid LOC MCP backend environment');
-  const {alias,engine,profile,namespace}=selectedProfile(env);
+  if(verifiedAlias&&!ALIAS.test(verifiedAlias))throw fail('Invalid verified database alias');
+  const {alias,engine,profile,namespace}=selectedProfile(env,verifiedAlias);
   if(!/^[A-Za-z][A-Za-z0-9_]*$/.test(namespace))
     throw fail('Invalid LOC MCP database namespace');
   const key=alias+'|'+profile.url+'|'+profile.tls+'|'+namespace;

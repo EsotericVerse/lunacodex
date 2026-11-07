@@ -1,8 +1,9 @@
-// One delegated MCP SQL execution boundary for PostgreSQL/MySQL/SQL Server.
-// Called only by the trusted LOC Kysely Gateway after JWT verification.
+// Scoped MCP SQL operations for PostgreSQL/MySQL/SQL Server.
+// Called by the trusted LOC MCP application after native OAuth, Scope grant
+// and selected-database authorization; never by a SQL Gateway.
 // Galaxy/Anchor are the same fixed physical models; the SQL dialect and
 // database credentials belong to Kysely, not a provider's Data API/RPC.
-import {sql} from 'npm:kysely@0.29.8';
+import {sql} from 'kysely';
 import {schema as zmodel} from '../../../zenstack/schema.mjs';
 import {portableRelation} from './sql-engine-ports.mjs';
 import {portableContainsSpec} from './portable-search.mjs';

@@ -758,6 +758,23 @@ async function handleMcpAuthority(request,env,url,origin){
     if(!webAdmin)throw error;
     principal=await verifyNativeOAuth(request,env,WEB_AUDIENCE);
   }
+  // Trusted MCP application queries its own Kysely connection. This
+  // authorization endpoint returns ONLY the verified actor, Scope permission
+  // and selected DB alias; it never returns SQL, a password, or a URL.
+  const directPermit=/^\/v1\/mcp\/direct-permit\/([a-z][a-z0-9]{0,14})\/(read)$/.exec(url.pathname);
+  if(directPermit){
+    if(request.method!=='GET')throw fail('Method not allowed',405);
+    const scopeid=validScope(directPermit[1]),action=directPermit[2];
+    const state=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName('loc-authority-control-v1'));
+    const roots=String(env.LOC_RECOVERY_ROOT_LOC_SUBJECTS||'').split(/[\s,;]+/).filter(Boolean);
+    const root=roots.includes(principal.subject);
+    if(!root&&!await state.mayAccess({provider:principal.provider,
+      subject:principal.subject,scope:scopeid,action}))
+      throw fail('MCP Scope grant denied',403);
+    const dbTarget=await state.selectedDatabaseForDelegation(principal.subject,root);
+    return json({authorized:true,subject:principal.subject,scopeid,action,
+      ...(dbTarget?{db_target:dbTarget}:{})},200,origin);
+  }
   const quota=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName(
     'mcp-quota-global-v1'));
   if(url.pathname==='/v1/mcp/quota'&&request.method==='POST'){

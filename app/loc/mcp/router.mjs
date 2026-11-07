@@ -1,5 +1,6 @@
 import {authorityAction} from './authority-client.mjs';
 import {readMemory} from './galaxy-read.mjs';
+import {privateGalaxyLink} from './private-galaxy.mjs';
 import {SCOPE_ROUTE_INDEX} from '../../modular/scope-route-index.js';
 const PUBLIC_SCOPE_IDS=Object.freeze(SCOPE_ROUTE_INDEX.filter(row=>row.active&&row.scope_id!=='loc')
   .map(row=>row.scope_id).filter(id=>/^[a-z][a-z0-9]{0,14}$/.test(id)));
@@ -167,7 +168,7 @@ function toolResponse(id,value){
    structuredContent:value});
 }
 // The public UID reader also uses the global Authority Durable Object quota.
-async function withMcpQuota(token,env,action){
+async function withMcpQuota(token,env,action,kind='read'){
   const authority=new URL(String(env.LOC_MCP_AUTHORITY_URL||
     'https://auth.lo3rwang.cc'));
   if(authority.protocol!=='https:'||authority.username||authority.password||
@@ -187,7 +188,7 @@ async function withMcpQuota(token,env,action){
     }
     return res.json();
   };
-  const permit=await request({action:'acquire',kind:'read'});
+  const permit=await request({action:'acquire',kind});
   try{
     const data=await action();
     return permit.warning&&data&&typeof data==='object'&&!Array.isArray(data)
@@ -232,7 +233,7 @@ export async function handleMcp(request,env={}){
       return result(payload.id,{protocolVersion:SUPPORTED_PROTOCOLS.has(proposed)?proposed:DEFAULT_PROTOCOL,
         capabilities:{tools:{listChanged:false}},serverInfo:{name:'loc-mcp',version:'0.2.0',
            ...(proposed==='2025-11-25'?{icons:[{src:'https://loc.lo3rwang.cc/assets/site/icons/loc-favicon.png',mimeType:'image/png'}]}:{})},
-        instructions:'Public search/read use existing Galaxy RLS. Private Scope read and writes use signed LOC Auth OAuth and explicit Scope grants. galaxy_link.search is permitted only by explicit human user request and user_requested=true. 請至github頁面找尋PR相關資料！不開放搜尋PR! QoS warns before the next request reaches a limit; searches have a five-minute gate.'});
+        instructions:'Public Galaxy reads use direct Kysely visibility filters. Private Galaxy read/search use direct Kysely after LOC Auth Scope authorization. Private writes remain on the existing continuity path. galaxy_link.search is permitted only by explicit human user request and user_requested=true. 請至github頁面找尋PR相關資料！不開放搜尋PR! QoS warns before the next request reaches a limit; searches have a five-minute gate.'});
     }
     case 'ping':return result(payload.id,{});
     case 'tools/list':return result(payload.id,{tools:TOOLS});
@@ -260,8 +261,12 @@ export async function handleMcp(request,env={}){
         galaxyWriteSupported:true,writeRequiresScopeAuthorization:true,
         availableTools:TOOLS.map(tool=>tool.name)});
       try{
+        const directPrivate=name==='galaxy_link'&&['read','search'].includes(args.action);
         const value=name==='read_memory'?
           await withMcpQuota(match[1],env,()=>readMemory(args,env)):
+          directPrivate?await withMcpQuota(match[1],env,
+            ()=>privateGalaxyLink(args,match[1],identity.subject,env),
+            args.action==='search'?'search':'read'):
           await authorityAction(name,args,match[1],env);
         return toolResponse(payload.id,value);
       }catch(error){
