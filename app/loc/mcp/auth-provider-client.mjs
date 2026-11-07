@@ -1,6 +1,6 @@
 // Browser root-admin configuration: sends credentials directly to Authority.
 // Never persist secrets in browser storage, URLs, logs or Galaxy.
-import {locAuthorityOrigin} from './scope-config-client.mjs';
+import {locAuthorityOrigin} from './authority-origin.mjs';
 import {mcpLocSession} from './loc-access.mjs';
 import {AUTH_PROVIDER_TYPES} from '../auth/auth-provider-settings.mjs';
 export async function authProviderSettingsRequest({type='',values,fetchImpl=globalThis.fetch}={}){
