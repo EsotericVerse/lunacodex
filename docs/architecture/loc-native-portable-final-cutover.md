@@ -102,6 +102,23 @@ Dockerfile. Keeping the existing published data readable is intentional.
   remain **unconverted**; do not cut away an in-use path or claim this finishes
   Portable.
 
+### LOC Auth / MCP Gateway registration retirement (2026-11-08)
+
+- `scope_storage` remains a **read-only status** MCP tool. It no longer
+  accepts a SQL Gateway URL, schema override, or table selection.
+- `PUT /v1/mcp/scope/:scopeid` rejects retired Gateway registration with
+  HTTP 410. Historic DO records are preserved without revealing their
+  `endpoint` in status responses. Retired entries are explicitly marked
+  `configured:false` and `needs_native_driver:true`.
+- The old service-key endpoint `POST /v1/sql/runtime-profile` and its
+  Gateway credential-profile implementation have been deleted. No replacement
+  generic SQL endpoint is introduced into LOC Auth.
+- **Private** `galaxy_link` read/search/record and Extension writes still
+  contain historical Gateway-era callers until their bound Kysely operations
+  are moved into the trusted LOC application runtime. This change forbids
+  registering any new Gateway, but alone does not complete that migration
+  or validate production private MCP functionality.
+
 **Not yet complete:** the native LOC application backend still needs direct
 Kysely execution for all website, MCP and Extension operations, corresponding
 OAuth authorization, a validated hosting/runtime configuration, and real
