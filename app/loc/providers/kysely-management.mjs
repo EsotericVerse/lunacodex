@@ -169,16 +169,15 @@ export async function executeManagedKyselyWrite(trx,body,{modelName=''}={}){
   await sql`reset role`.execute(trx);
   const name=modelName||(table==='manage'?'api.manage':'silver.'+table);
   if(operation==='update'){
-    // The frozen ZModel already knows the primary key of Manage/Loc.
-    // Avoid a redundant pg_index read for every authorized admin edit.
+    // Every authorized managed relation has a fixed single-column PK:
+    // Registry and Scope config -> id; Galaxy/Anchor/Blocks -> uid.
+    // These were checked against the live PostgreSQL catalog. There is no
+    // need for one pg_index SELECT on every edit, including dynamic Scopes.
     const idFields=modelName?fixedSchema.models[modelName]?.idFields:null;
     if(modelName&&(!idFields||!idFields.length))
       reject('Invalid fixed LOC primary key metadata');
-    const keys=idFields||(
-      await sql`select a.attname as name from pg_index i
-        join pg_attribute a on a.attrelid=i.indrelid and a.attnum=any(i.indkey)
-        where i.indrelid=${name}::regclass and i.indisprimary`.execute(trx)
-    ).rows.map(row=>String(row.name));
+    const keys=idFields||
+      [SCOPED_SUFFIXES.some(suffix=>table.endsWith(suffix))?'uid':'id'];
     if(keys.some(key=>Object.hasOwn(values,key)))
       reject('Primary keys cannot be updated');
   }
