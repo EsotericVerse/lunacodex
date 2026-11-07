@@ -62,7 +62,8 @@ test('PostgreSQL Edge session claims use one bridge, not duplicated provider log
   assert.equal((source.match(/set_config\('request\.jwt\.claim\.role'/g)||[]).length,1);
   assert.match(source,/async function bindPostgresSession\(/);
   assert.match(source,/await bindPostgresSession\(trx,role,claims,/);
-  assert.equal((source.match(/await bindPostgresSession\(trx,"authenticated",claims\)/g)||[]).length,3);
+  // All request kinds share the single trusted session bridge; no copied call sites.
+  assert.equal((source.match(/await bindPostgresSession\(trx,role,claims\)/g)||[]).length,1);
 });
 test('LOC-signed delegation separates MCP from ordinary SQL audience',async()=>{
   const mcpVerifier=verifier(base(),{audience:'loc-mcp'});
