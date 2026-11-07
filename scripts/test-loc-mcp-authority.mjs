@@ -233,5 +233,5 @@ test('Portable MCP keeps one ZModel-backed Kysely executor without a provider Fu
   assert.match(executor,/executePortableMcp/);
   assert.match(edge,/executePortableMcp\(trx,body,claims/);
   assert.match(worker,/LOC_MCP_SQL_GATEWAY_URL/);
-  assert.doesNotMatch(worker,/MANAGED_SUPABASE_EDGE|MANAGED_PUBLISHABLE_KEY|\/rest\/v1\//);
+  assert.doesNotMatch(worker,/MANAGED_SUPABASE_EDGE|MANAGED_PUBLISHABLE_KEY|supabase\.co\/functions\/v1\//);
 });
