@@ -1,22 +1,11 @@
-// LOC deployment-time database access registry.
-// Source of truth for the two current SQL targets; never place passwords,
-// control tokens, connection URLs containing credentials, or API secrets here.
-// Updating this file requires a new site + Edge deployment.
-// Credentials remain in trusted server secrets / Vault.
+// LOC's default control database is identified by a trusted SQL Gateway alias.
+// Personal database selections are stored in LOC Auth and take effect without
+// rebuilding or redeploying the website. No provider URL or credential lives here.
 export const DATABASE_ACCESS_LIST=Object.freeze([
   Object.freeze({
-    target_id:'supabase-current',label:'Supabase',provider:'supabase',
-    engine:'postgres',connection_alias:'supabase_current',connection_mode:'pooler',
-    project_id:'qlouywsdiiyiyzpoxyqy',
-    project_url:'https://qlouywsdiiyiyzpoxyqy.supabase.co',
-    region:'',selected:true,backup_selected:false
-  }),
-  Object.freeze({
-    target_id:'neon-current',label:'Neon',provider:'neon',
-    engine:'postgres',connection_alias:'neon_current',connection_mode:'direct',
-    project_id:null,
-    project_url:'https://ep-rapid-queen-b3oyboy6.apirest.c-4.ap-southeast-1.aws.neon.tech/neondb/rest/v1',
-    region:'',selected:false,backup_selected:true
+    target_id:'loc-main',label:'主要資料庫連線',provider:'custom',
+    engine:'postgres',connection_alias:'loc_main',connection_mode:'direct',
+    selected:true,backup_selected:false
   })
 ]);
 export function databaseAccessTargets(){

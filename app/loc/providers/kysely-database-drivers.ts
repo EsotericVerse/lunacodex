@@ -1,12 +1,11 @@
-// Shared portable Kysely database driver, used by both the legacy Edge entry
-// and the independent LOC SQL Gateway. No provider Function or Data API calls.
+// Shared portable Kysely driver for the independent LOC SQL Gateway.
 import {Kysely,PostgresDialect,MysqlDialect,MssqlDialect,ParseJSONResultsPlugin} from "npm:kysely@0.29.8";
 import pg from "npm:pg@8.16.3";
 import {normalizeDatabaseTarget} from "./selected-database-target.mjs";
 import {mysqlLdapOptions,mssqlAuthentication} from "./sql-driver-auth.mjs";
 import {PORTABLE_JSON_COLUMNS} from "./sql-engine-ports.mjs";
 
-// All credentials stay in Edge secrets. Admin stores ONLY the connection alias.
+// All credentials stay in trusted Gateway secrets; clients see only aliases.
 // LOC_DB_CONNECTIONS_JSON example:
 // {"office_mysql":{"engine":"mysql","url":"mysql://user:pass@db.example:3306/silver","tls":true},
 //  "office_mssql":{"engine":"mssql","url":"mssql://user:pass@db.example:1433/loc","tls":true}}
@@ -38,15 +37,7 @@ export function resolveConnectionProfile(input:Record<string,unknown>):Connectio
     }
     return profile;
   }
-  if(target.provider==="custom")throw new Error("Connection alias is not configured in server secrets");
-  const names=target.provider==="neon"?["NEON_DATABASE_URL"]:["SUPABASE_DB_URL","DATABASE_URL"];
-  const candidates=names.map(name=>Deno.env.get(name)).filter((value):value is string=>Boolean(value));
-  if(!candidates.length)throw new Error("Selected PostgreSQL database URL is missing");
-  const pooler=(value:string)=>{
-    try{const u=new URL(value);return u.port==="6543"&&(u.hostname.endsWith(".pooler.supabase.com")||u.hostname.startsWith("db."));}
-    catch{return false;}
-  };
-  return {engine:"postgres",url:candidates.find(pooler)||candidates[0],tls:true};
+  throw new Error("Connection alias is not configured in LOC_DB_CONNECTIONS_JSON");
 }
 export async function databaseForTarget(input:Record<string,unknown>,options:{profileLookup?:(target:Record<string,unknown>)=>Promise<ConnectionProfile>}={}){
   const target=normalizeDatabaseTarget(input);
@@ -59,12 +50,10 @@ export async function databaseForTarget(input:Record<string,unknown>,options:{pr
   let dialect;
   if(target.engine==="postgres"){
     if(!["postgres:","postgresql:"].includes(uri.protocol))throw new Error("PostgreSQL needs a postgres URL");
-    const directSupabase=target.provider==="supabase"&&uri.port!=="6543";
-    if(directSupabase)console.warn("[loc-kysely] Supabase is not using its transaction pooler (:6543); configure SUPABASE_DB_URL with the exact dashboard Transaction pooler URL");
-    // While an old secret still points at port 5432, release idle direct
-    // connections quickly: each warm Edge isolate owns an independent pool.
+    // Pool sizing is independent of database hosting. A single trusted SQL
+    // Gateway instance reuses this connection pool for its Scope queries.
     dialect=new PostgresDialect({pool:new Pool({connectionString:profile.url,
-      max:1,idleTimeoutMillis:directSupabase?1000:15000,connectionTimeoutMillis:7000})});
+      max:1,idleTimeoutMillis:15000,connectionTimeoutMillis:7000})});
   }else if(target.engine==="mysql"){
     if(uri.protocol!=="mysql:")throw new Error("MySQL needs a mysql URL");
     const mysql=await import("npm:mysql2@3.22.0");
