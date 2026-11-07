@@ -137,11 +137,26 @@ async function bindPostgresSession(trx:any,role:string,claims:Record<string,unkn
   await sql`select set_config('request.jwt.claim.role',${role},true)`.execute(trx);
 }
 
+// The owner-maintained api.manage registry is the sole source of Group tree
+// membership. A browser never supplies parents, role levels or descendants.
+// The query is lazy: exact Scope and global grants never incur this read.
+async function trustedManagementScopeTree(trx:any,target:Record<string,any>){
+  const control=isControlTarget(target)?trx:await databaseForTarget(controlTarget);
+  const rows=await control.selectFrom('api.manage')
+    .select(['id as scope_id','manage_role as scope_kind','parent_scope_id','active'])
+    .where('manage_role','in',['group','scope'])
+    .orderBy('id','asc').limit(4097).execute();
+  if(rows.length>4096)
+    throw Object.assign(new Error('LOC Group registry is too large'),{httpStatus:403});
+  return rows;
+}
+
 async function executeRequest(trx: any, target: Record<string,any>, role: string,
   claims: Record<string, unknown>, body: Record<string, unknown>,
   {modelName=""}:{modelName?:string}={}) {
   const executionPort=resolveSqlExecutionPort(target);
-  bindLocAuthorization(trx,{role,claims});
+  bindLocAuthorization(trx,{role,claims,
+    loadScopeTree:()=>trustedManagementScopeTree(trx,target)});
   if(target.provider==="custom"||executionPort.session!=="postgres-rls"){
     // Fixed public PostgreSQL models use the same ZenStack PolicyPlugin and
     // physical schema regardless of hosting vendor. This modelName is set
