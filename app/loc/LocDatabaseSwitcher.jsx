@@ -1,6 +1,7 @@
 'use client';
 import {useEffect,useState} from 'react';
 import {mcpLocSession} from './mcp/loc-access.mjs';
+import LocDatabaseAdmin from './LocDatabaseAdmin';
 
 const AUTHORITY='https://auth.lo3rwang.cc';
 const ENGINES={postgres:'PostgreSQL',mysql:'MySQL / MariaDB',
@@ -66,5 +67,6 @@ export default function LocDatabaseSwitcher(){
     </select>
    </label>}
   {switching||status?<p className="scope-status" role="status">{status}</p>:null}
+  <LocDatabaseAdmin/>
  </section>;
 }
