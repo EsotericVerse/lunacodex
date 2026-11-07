@@ -26,7 +26,7 @@ test('public and delegated clients use a single explicit independent endpoint',(
   assert.equal(adapter.realtimeClient,null);
   assert.equal(adapter.publicClient.role,'anon');
   assert.equal(adapter.authClient.role,'authenticated');
-  assert.equal(adapter.authClient.auth,identity.auth);
+  assert.equal(adapter.auth,identity.auth);
 });
 
 test('database control is an alias, not a hosting-vendor dependency',()=>{
