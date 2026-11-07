@@ -1,13 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {webcrypto} from 'node:crypto';
-import {handleMcp,protectedResourceMetadata,preflight,MCP_RESOURCE,CLERK_ISSUER} from '../app/loc/mcp/router.mjs';
+import {handleMcp as liveHandleMcp,protectedResourceMetadata,preflight,MCP_RESOURCE,CLERK_ISSUER} from '../app/loc/mcp/router.mjs';
 
 const b64url=bytes=>Buffer.from(bytes).toString('base64url');
 const encode=x=>b64url(Buffer.from(JSON.stringify(x)));
 const pair=await webcrypto.subtle.generateKey({name:'RSASSA-PKCS1-v1_5',modulusLength:2048,
   publicExponent:new Uint8Array([1,0,1]),hash:'SHA-256'},true,['sign','verify']);
 const publicKey={...await webcrypto.subtle.exportKey('jwk',pair.publicKey),kid:'test-key'};
+const TEST_ENV={LOC_MCP_SQL_GATEWAY_URL:'https://sql.lo3rwang.cc/v1/sql'};
+const handleMcp=(request,env=TEST_ENV)=>liveHandleMcp(request,env);
 const originalFetch=globalThis.fetch;
 let jwksQueries=0;
 let publicApiRequests=[];
@@ -31,12 +33,13 @@ globalThis.fetch=async (url,options)=>{
   if(String(url)===CLERK_ISSUER+'/.well-known/jwks.json'){
     jwksQueries++;return Response.json({keys:[publicKey]});
   }
-  if(String(url).startsWith('https://qlouywsdiiyiyzpoxyqy.supabase.co/rest/v1/')){
-    publicApiRequests.push({url:String(url),options});
-    const params=new URL(url).searchParams;
-    return Response.json(params.has('uid')?
+  if(String(url)===TEST_ENV.LOC_MCP_SQL_GATEWAY_URL){
+    const payload=JSON.parse(options.body);
+    publicApiRequests.push({url:String(url),payload,options});
+    const byUid=payload.filters?.some(f=>f.column==='uid');
+    return Response.json({data:byUid?
       [{uid:'30D7AFD7',title:'LP26',content:'Galaxy real article',date:'2026-11-01'}]:
-      [{uid:'30D7AFD7',title:'LP26',date:'2026-11-01'}]);
+      [{uid:'30D7AFD7',title:'LP26',date:'2026-11-01'}]});
   }
   throw Error('unexpected fetch URL: '+url);
 };
