@@ -141,7 +141,7 @@ export async function mergeFederatedGalaxyRows(sources,request,readPage){
       const databaseId=state.source.databaseId;
       if(!UID.test(String(row.uid||'')))
         throw Error('Federated SQL returned a non-Galaxy UID');
-      merged.push({...row,__db_id:databaseId,
+      merged.push({...row,__db_id:databaseId,__federated:true,
         __global_uid:locGlobalUid({databaseId,
           scopeId:federatedScopeFromQuery(request),uid:row.uid})});
     }
