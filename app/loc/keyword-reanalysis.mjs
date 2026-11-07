@@ -17,7 +17,7 @@ export function hasKeywordMinimumContent(content,minChars=0){
 // Aggregate one page at a time. Memory scales with the actual stored Keyword
 // hits, never with a second full copy of per-article classification records.
 export async function reanalyzeKeywordClass({
-  classUid,treeRows=[],minChars=0,pageSize=1000,expectedCount=null,readPage,writeNode,finalize,compactResults=false,
+  classUid,treeRows=[],minChars=0,pageSize=1000,expectedCount=null,readPage,writeNode,writePatterns=null,finalize,compactResults=false,
   onProgress=()=>{}
 }={}){
   if(typeof readPage!=='function'||typeof writeNode!=='function'||typeof finalize!=='function')
@@ -107,6 +107,15 @@ export async function reanalyzeKeywordClass({
     const node=changes[i];
     await writeNode(node);
     onProgress({phase:'writing',completed:i+1,total:changes.length});
+  }
+  // Persist the completed inverted lookup from these same Item results.
+  // The virtual unified Anchor keeps only Item totals, never UID arrays.
+  if(writePatterns){
+    const itemsByUid=new Map(changes.filter(row=>row.type==='item')
+      .map(row=>[row.uid,row.uid_lists]));
+    await writePatterns({classUid,items:catalog.map(item=>({
+      ...item,uid_lists:itemsByUid.get(item.uid)
+    }))});
   }
   const stats={classUid,analyzedDocuments:eligible,matchedDocuments:matched.size,
     itemMatches,occurrences,groupCount:root.lists.length,itemCount:catalog.length};
