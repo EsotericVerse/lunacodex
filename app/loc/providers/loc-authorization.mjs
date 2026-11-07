@@ -107,8 +107,13 @@ export async function locPermissions(db){
           .map(row=>({...row,email:state.email}));
       }
     }
-    if(!joined.length)return {blocked:false,rows:inherited};
-    let blacklist=joined[0].blacklist;
+    if(!joined.length&&!inherited.length)return {blocked:false,rows:[]};
+    // A delegated Group member need not own an api.manage email row.
+    // Never skip the same live blacklist check for that case.
+    const blacklistRow=!joined.length
+      ?await db.selectFrom('silver.loc as l').select('blacklist')
+        .where('l.id','=','loc').executeTakeFirst():null;
+    let blacklist=joined.length?joined[0].blacklist:blacklistRow?.blacklist;
     if(typeof blacklist==='string'){
       try{blacklist=JSON.parse(blacklist)}catch{deny('Invalid LOC blacklist')}
     }
