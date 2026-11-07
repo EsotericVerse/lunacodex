@@ -5,12 +5,17 @@
 // SQL-nullable array columns cannot be modeled as nullable lists in ZModel V3;
 // their null-preserving read/write behavior must stay on the Kysely path.
 // The existing Clerk + LOC Authority security boundary must run before server DB access.
-// This model does not define or replace database RLS or runtime authorization rules.
+// The four public control-plane models use ZenStack PolicyPlugin for SELECT;
+// dynamic Scope Galaxy/Anchor row visibility remains in delegated Kysely + RLS.
 
 datasource db {
     provider = "postgresql"
     url = env("LOC_DATABASE_URL")
     schemas = ["silver", "api"]
+}
+
+plugin policy {
+    provider = '@zenstackhq/plugin-policy'
 }
 
 model Game {
@@ -90,6 +95,7 @@ model Lo3rwang {
     statics                      Boolean      @default(true)
     @@map("lo3rwang")
     @@schema("silver")
+    @@allow('read', true)
 }
 
 model Lo3rwangAnchor {
@@ -159,6 +165,7 @@ model Loc {
     birthday                     DateTime?   @db.Date
     @@map("loc")
     @@schema("silver")
+    @@allow('read', true)
 }
 
 model LocBlocks {
@@ -197,6 +204,7 @@ model Lrunes {
     statics                      Boolean      @default(true)
     @@map("lrunes")
     @@schema("silver")
+    @@allow('read', true)
 }
 
 model LrunesAnchor {
@@ -281,6 +289,7 @@ model Manage {
     note                         String?     @db.Text
     @@map("manage")
     @@schema("api")
+    @@allow('read', true)
 }
 
 model Runes {

@@ -21,6 +21,14 @@ const nativeAttributes=Object.freeze({
   _int2:'@db.SmallInt',_int4:'@db.Integer'
 });
 const literal=(name,key,value)=>({name,args:[{name:key,value:{kind:'literal',value}}]});
+const PUBLIC_FIXED_READS=new Set(['manage','loc','lo3rwang','lrunes']);
+const PUBLIC_POLICY_ALLOW_READ={
+  name:'@@allow',
+  args:[
+    {name:'operation',value:{kind:'literal',value:'read'}},
+    {name:'condition',value:{kind:'literal',value:true}}
+  ]
+};
 const databaseDefault=Object.freeze({kind:'call',function:'dbgenerated',args:[]});
 const modelName=table=>table.split('_').map(w=>w[0].toUpperCase()+w.slice(1)).join('');
 function compileFixedSchema({schema:namespace,tables}){
@@ -54,10 +62,12 @@ function compileFixedSchema({schema:namespace,tables}){
       name,fields,idFields:[...table.pk],uniqueFields,
       attributes:[
         literal('@@map','name',table.table),
-        literal('@@schema','map',table.schema||namespace)
+        literal('@@schema','map',table.schema||namespace),
+        ...(PUBLIC_FIXED_READS.has(table.table)?[PUBLIC_POLICY_ALLOW_READ]:[])
       ]
     };
   }
-  return {provider:{type:'postgresql',defaultSchema:namespace},models,plugins:{}};
+  return {provider:{type:'postgresql',defaultSchema:namespace},models,
+    plugins:{policy:{provider:'@zenstackhq/plugin-policy'}}};
 }
 export const schema=compileFixedSchema(contract);

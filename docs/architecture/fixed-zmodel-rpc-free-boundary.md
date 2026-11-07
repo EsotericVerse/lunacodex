@@ -326,3 +326,30 @@ calling `api.current_user_id()` (the `owner_id` columns of `api.loc_user`,
 replaces those defaults with the identical direct LOC JWT subject expression,
 then drops the function via `RESTRICT`. This preserves new-row owner identity
 without creating an extra SQL query, and removes the last uncovered dependency.
+ 
+## ZenStack PolicyPlugin — live fixed-model read path
+
+The four universal public fixed models (`api.manage`, `silver.loc`,
+`silver.lo3rwang`, `silver.lrunes`) now declare explicit
+`@@allow('read', true)` rules in ZModel and the checked V3 SchemaDef.
+At the PostgreSQL LOC SQL Gateway, those exact SELECT queries are routed
+through `ZenStackClient.$use(new PolicyPlugin())` and a single
+`$transaction`. The existing Kysely builder executes that **same** query
+using the **same cached physical dialect/driver pool**, with the same signed
+LOC delegation, RLS session claims, result and count shape. The trusted
+server-only role/session setup requires a raw SQL exception in the plugin;
+the browser exposes no raw query endpoint.
+
+Public unrestricted table reads remain public; private/unknown tables never
+enter this public-model allowlist. Dynamic Galaxy and Anchor, authorization
+for their private writes, and non-PostgreSQL dialects stay on the existing
+delegated Kysely path. The other 13 fixed models remain default-denied by
+ZenStack's policies; they are not silently opted into public reads.
+No extra permission query, connection target, RPC, SQL function or Schema
+Migration is needed for this policy integration.
+
+This is the first real **query-executing** ZenStack V3 PolicyPlugin route,
+not a claim that all Kysely management actions have migrated to ORM policies.
+Next extend the same pattern to authorized fixed-model writes after a
+real-policy deployment/SQL parity check; do not bypass the existing RLS.
+
