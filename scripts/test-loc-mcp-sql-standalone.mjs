@@ -93,3 +93,12 @@ test('portable SQL entry uses LOC delegations, no vendor Function or database AP
   assert.match(driver,/export async function databaseForTarget/);
   assert.doesNotMatch(code,/new Kysely\(/);
 });
+
+test('MCP SQL selects its own trusted alias or the existing LOC control alias',()=>{
+  const code=readFileSync(new URL('../services/loc-mcp-sql/main.ts',import.meta.url),'utf8');
+  assert.match(code,/Deno\.env\.get\('LOC_MCP_DB_ALIAS'\)\|\|/);
+  assert.match(code,/Deno\.env\.get\('LOC_CONTROL_DB_ALIAS'\)\|\|'mcp_main'/);
+  assert.match(code,/Deno\.env\.get\('LOC_CONTROL_DB_ENGINE'\)\|\|'postgres'/);
+  assert.match(code,/profile\.engine!==engine/);
+  assert.match(code,/typeof profile\.url!=='string'/);
+});
