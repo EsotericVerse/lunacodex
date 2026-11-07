@@ -522,8 +522,10 @@ Deno.serve(async (request) => {
       :await databaseForTarget(target,{profileLookup:profileForTarget});
     // A portable Scope database holds only Galaxy/Anchor. The LOC-signed
     // delegation contains its permission boundary: no control DB round trip.
-    // Four fixed publicly readable LOC models use the real ZenStack V3
-    // PolicyPlugin + Kysely query executor. The same existing dialect/pool,
+    // Four fixed publicly readable LOC control models use the existing
+    // ZenStack V3 runtime and Kysely executor. Low-level $qb BYPASSES the
+    // PolicyPlugin; effective access comes from the trusted Gateway/SQL.
+    // The same existing dialect/pool,
     // transaction, JWT binding and response shape are retained; no second DB
     // connection or permission lookup is introduced.
     const policyModel=fixedPolicyReadModel(target,body);
