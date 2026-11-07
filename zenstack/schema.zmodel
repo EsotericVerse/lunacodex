@@ -4,7 +4,7 @@
 // Portable MySQL / SQL Server / SQLite query construction remains in Kysely adapters.
 // SQL-nullable array columns cannot be modeled as nullable lists in ZModel V3;
 // their null-preserving read/write behavior must stay on the Kysely path.
-// The existing Clerk + LOC Authority security boundary must run before server DB access.
+// LOC Auth's delegated principal must be verified by the trusted server before DB access.
 // The four public control-plane models use ZenStack PolicyPlugin for SELECT;
 // dynamic Scope Galaxy/Anchor row visibility remains in delegated Kysely + RLS.
 
@@ -29,6 +29,27 @@ type LocPrincipal {
     scopeIds  String[]
     groupIds  String[]
     @@auth
+}
+
+// Nonphysical projections for federated LOC data. Neither declaration creates
+// a relation or claims that data from different databases has been synchronized.
+// Physical primary keys remain the local eight-character Base62 UID.
+type LocFederatedRef {
+    databaseId String
+    scopeId    String
+    uid        String
+}
+
+// Typed relationship output over *already authorized and scoped* Anchor rows.
+// Link resolution never grants write access or implies a cross-database FK.
+type LocAnchorLink {
+    family   String
+    fromUid  String
+    toUid    String
+    fromType String
+    toType   String
+    attrKey  String
+    resolved Boolean
 }
 
 model Game {
@@ -178,7 +199,8 @@ model Loc {
     birthday                     DateTime?   @db.Date
     @@map("loc")
     @@schema("silver")
-    @@allow('read', true)    @@allow('update,delete', auth().roleLevel >= 4)
+    @@allow('read', true)
+    @@allow('update,delete', auth().roleLevel >= 4)
 
 }
 
@@ -303,7 +325,8 @@ model Manage {
     note                         String?     @db.Text
     @@map("manage")
     @@schema("api")
-    @@allow('read', true)    @@allow('update,delete', auth().roleLevel >= 4)
+    @@allow('read', true)
+    @@allow('update,delete', auth().roleLevel >= 4)
 
 }
 

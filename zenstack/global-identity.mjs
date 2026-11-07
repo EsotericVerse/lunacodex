@@ -29,3 +29,26 @@ export function locGlobalRowRef(row,context){
   const uid=identityPart(row?.uid,UID,'UID');
   return locGlobalUid({...context,uid});
 }
+
+
+/** Qualify local Anchor relationship records without changing physical UIDs.
+ * Different databases with the same uid remain distinct. This is indexing
+ * metadata, NOT an authorization decision or a database synchronization job.
+ */
+export function qualifyLocAnchorLinks(links,{databaseId,scopeId}={}){
+  if(!Array.isArray(links))throw new Error('Invalid LOC Anchor link collection');
+  return links.map(link=>{
+    if(!link||typeof link!=='object'||
+       !['keyword','source','time','space'].includes(link.family)||
+       typeof link.fromType!=='string'||!link.fromType||
+       typeof link.toType!=='string'||!link.toType||
+       !['uid','period','path','point'].includes(link.attrKey)||
+       typeof link.resolved!=='boolean')
+      throw new Error('Invalid LOC Anchor link');
+    return Object.freeze({
+      ...link,
+      from:locGlobalUid({databaseId,scopeId,uid:link.fromUid}),
+      to:locGlobalUid({databaseId,scopeId,uid:link.toUid})
+    });
+  });
+}
