@@ -1,6 +1,0 @@
-{
-  "imports": {
-    "kysely": "npm:kysely@0.29.6",
-    "pg": "npm:pg@8.16.3"
-  }
-}
