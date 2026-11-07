@@ -1,9 +1,12 @@
 import { sql } from "npm:kysely@0.29.8";
+import {ZenStackClient} from "npm:@zenstackhq/orm@3.10.1";
+import {PolicyPlugin} from "npm:@zenstackhq/plugin-policy@3.10.1";
+import {withFixedPolicyRead,fixedPolicyReadModel} from "../../../zenstack/policy-runtime.mjs";
 import {jwtVerify,createRemoteJWKSet} from "npm:jose@5.9.6";
 import {processShortImport,postgresShortImportStore} from "../../../app/loc/import/short-append-service.mjs";
 import {authorizeDelegatedShortImport} from "../../../app/loc/import/short-edge-authorization.mjs";
 import {delegationAudience,verifyDelegationBoundary,canManageDelegation} from "../../../app/loc/auth/delegation-contract.mjs";
-import {databaseForTarget,resolveConnectionProfile} from "./drivers.ts";
+import {databaseForTarget,resolveConnectionProfile,trustedDialectForDatabase} from "./drivers.ts";
 import {readVaultConnection} from "./database-connections.ts";
 import { executeKyselyQuery, isKyselyClientError } from "../../../app/loc/providers/kysely-runtime.mjs";
 import {executeManagedKyselyWrite,executeManagedKyselyAction} from "../../../app/loc/providers/kysely-management.mjs";
@@ -133,7 +136,8 @@ async function bindPostgresSession(trx:any,role:string,claims:Record<string,unkn
 }
 
 async function executeRequest(trx: any, target: Record<string,any>, role: string,
-  claims: Record<string, unknown>, body: Record<string, unknown>) {
+  claims: Record<string, unknown>, body: Record<string, unknown>,
+  {modelName=""}:{modelName?:string}={}) {
   const executionPort=resolveSqlExecutionPort(target);
   bindLocAuthorization(trx,{role,claims});
   if(target.provider==="custom"||executionPort.session!=="postgres-rls"){
@@ -185,7 +189,7 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
     // PostgreSQL must stop work even when browser aborts its 25s timeout.
     if(isTextSearchQuery(body))
       await sql`set local statement_timeout = '8000ms'`.execute(trx);
-    return await executeKyselyQuery(trx,body);
+    return await executeKyselyQuery(trx,body,{modelName});
   }
   if(body.kind==="anchor")return await executeKyselyAnchor(trx,body,{role,claims});
   if(body.kind==="analytics")return await executeKyselyAnalytics(trx,body,{role});
@@ -618,8 +622,18 @@ Deno.serve(async (request) => {
       :await databaseForTarget(target,{profileLookup:profileForTarget});
     // A portable Scope database holds only Galaxy/Anchor. The LOC-signed
     // delegation contains its permission boundary: no control DB round trip.
-    const result=await db.transaction().execute(trx=>
-      executeRequest(trx,target,role,claims,body));
+    // Four fixed publicly readable LOC models use the real ZenStack V3
+    // PolicyPlugin + Kysely query executor. The same existing dialect/pool,
+    // transaction, JWT binding and response shape are retained; no second DB
+    // connection or permission lookup is introduced.
+    const policyModel=fixedPolicyReadModel(target,body);
+    const result=policyModel
+      ?await withFixedPolicyRead(db,target,body,role,claims,{
+        dialect:trustedDialectForDatabase(db),ZenStackClient,PolicyPlugin
+      },(trx,modelName)=>
+        executeRequest(trx,target,role,claims,body,{modelName}))
+      :await db.transaction().execute(trx=>
+        executeRequest(trx,target,role,claims,body));
     return json(result,200,result.count===null?{}:{"content-range":`0-${Math.max(0,(Array.isArray(result.data)?result.data.length:0)-1)}/${result.count}`});
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
