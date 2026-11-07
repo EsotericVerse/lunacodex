@@ -43,25 +43,21 @@ function fakeSql(gatewayFn){
 const originalFetch=globalThis.fetch;
 test.after(()=>{globalThis.fetch=originalFetch});
 
-test('Scope config accepts only trusted HTTPS Kysely Gateway, no API keys or arbitrary table',async()=>{
+test('MCP scope registration cannot revive a SQL Gateway',async()=>{
   const {authority,data}=state();
-  const saved=await authority.putMcpScope('lrunes',{
-    endpoint:GATEWAY,schema:'silver',table:'lrunes_galaxy'
+  assert.equal(typeof authority.putMcpScope,'undefined');
+  // A legacy Durable Object record is not modified or exposed to clients.
+  data.set('mcp-scope:lrunes',{public:{
+    scopeid:'lrunes',endpoint:GATEWAY,schema:'silver',table:'lrunes_galaxy'
+  }});
+  const status=await authority.getMcpScope('lrunes');
+  assert.deepEqual(status,{
+    scopeid:'lrunes',configured:false,needs_native_driver:true,
+    legacy_gateway_retired:true,schema:'silver',table:'lrunes_galaxy'
   });
-  assert.equal(saved.configured,true);
-  assert.equal(saved.api_key,undefined);
-  assert.equal((await authority.getMcpScope('lrunes')).endpoint,GATEWAY);
-  assert.equal((await authority.mcpPrivateProfile('lrunes')).endpoint,GATEWAY);
-  assert.ok(!JSON.stringify([...data]).includes('api_key'));
-  for(const endpoint of ['https://db.example.org/rest/v1',
-    'https://db.example.org/functions/v1/loc-kysely',
-    'http://sql.example.org/v1/sql']){
-    await assert.rejects(authority.putMcpScope('lrunes',{endpoint}),
-      /Gateway|HTTPS|Data API/);
-  }
-  await assert.rejects(authority.putMcpScope('lrunes',{
-    endpoint:GATEWAY,table:'someone_else_galaxy'
-  }),/table must match/);
+  assert.equal(status.endpoint,undefined);
+  assert.equal((await authority.mcpPrivateProfile('lrunes')).endpoint,GATEWAY,
+    'private runtime migration is separate; existing stored data is preserved');
 });
 
 test('Built-in managed Scope publishes no vendor Data API or secret',async()=>{
