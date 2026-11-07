@@ -21,10 +21,11 @@ function gatewayUrl(env){
     throw Error('LOC public read requires an independent HTTPS Kysely Gateway');
   return url.toString();
 }
-async function galaxyRows({columns,filters=[],or=[],orders=[],limit=1,offset=0},
+async function galaxyRows({columns,filters=[],or=[],orders=[],limit=1,offset=0,userRequested=false},
   scopeid,env={},fetchImpl=globalThis.fetch){
   const body={kind:'query',schema:'silver',table:scopeid+'_galaxy',
-    operation:'select',columns,filters,or,orders,limit,offset,target:'configured'};
+    operation:'select',columns,filters,or,orders,limit,offset,target:'configured',
+    ...(userRequested?{user_requested:true}:{})};
   const res=await fetchImpl(gatewayUrl(env),{
     method:'POST',headers:{'content-type':'application/json',accept:'application/json'},
     body:JSON.stringify(body),signal:AbortSignal.timeout(8500),
@@ -57,7 +58,7 @@ export async function searchMemory(args={},env={},fetchImpl=globalThis.fetch){
     filters:[{column:'search',operator:'eq',value:true}],
     or:['(title.contains."'+termLiteral+'",content.contains."'+termLiteral+'")'],
     orders:[{column:'date',ascending:false},{column:'createtime',ascending:false}],
-    limit,offset
+    limit,offset,userRequested:true
   },scopeid,env,fetchImpl);
   return {scopeid,visibility:'public',query:term,limit,offset,
     results:rows.map(row=>({uid:String(row.uid||'').trim(),title:row.title||'',
