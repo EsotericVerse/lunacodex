@@ -39,7 +39,7 @@ export default {
   "groupLoadFailed": "Unable to read Group permissions or you do not have permission.",
   "groupSaveFailed": "Unable to save Group permissions.",
   "groupMemberScope": "Member Scope / Group",
-  "groupClerkSubject": "Clerk user ID",
+  "groupLocSubject": "LOC Auth user ID",
   "groupExpires": "Grant lifetime in days (1–365)",
   "groupPermissions": "Permissions",
   "groupActionRead": "Read",
