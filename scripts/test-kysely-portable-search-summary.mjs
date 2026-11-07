@@ -160,7 +160,7 @@ test('retired multimedia overview does not request Anchor inventory or media_lin
   const nativeOverview=source.slice(source.indexOf('async function scopeOverview('),
     source.indexOf('async function searchSummary('));
   assert.doesNotMatch(nativeOverview,/media_link|anchor|linkedMedia/);
-  const portableOverview=source.slice(source.indexOf("else if(mode==='overview'){",
+  const portableOverview=source.slice(source.indexOf("else if(mode==='overview'){"),
     source.indexOf('export async function executePortableKyselyAnalytics'));
   assert.doesNotMatch(portableOverview,/db\.selectFrom\(anchor\)|media_link|media_count/);
 });

@@ -4,7 +4,9 @@ import {readFileSync} from 'node:fs';
 import {schema as fixedSchema} from '../zenstack/schema.mjs';
 
 const snapshot=JSON.parse(readFileSync(new URL('../zenstack/schema-contract.json',import.meta.url),'utf8'));
-const source=readFileSync(new URL('../zenstack/schema.zmodel',import.meta.url),'utf8');
+// Windows git checkouts may use CRLF; ZModel parsing is line-oriented.
+const source=readFileSync(new URL('../zenstack/schema.zmodel',import.meta.url),'utf8')
+  .replace(/\r\n?/g,'\n');
 const native={
   text:['String','@db.Text'],
   varchar:['String','@db.VarChar'],

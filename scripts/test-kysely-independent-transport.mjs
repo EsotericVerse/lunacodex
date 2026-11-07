@@ -65,7 +65,8 @@ test('SQL Gateway never sends unauthenticated private requests',async()=>{
   const client=createKyselyEdgeClient({
     gatewayUrl:'https://db-gateway.example/v1/sql',getAccessToken:async()=>'',fetch:fakeFetch(spy)
   });
-  await assert.rejects(client.schema('silver').from('manage').select('id'),/active session/);
+  await assert.rejects(Promise.resolve(client.schema('silver').from('manage').select('id')),
+    /active session/);
   assert.equal(spy.length,0);
 });
 test('gateway URL rejects non-TLS and embedded credentials',()=>{
