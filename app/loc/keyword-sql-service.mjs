@@ -126,10 +126,11 @@ export async function readKeywordStatistics(db,scope,classUid,{
   if(!owner&&!shared(cfg,classUid))fail('Keyword Class not published',403);
   const tree=await classTree(db,scope,classUid);
   const patterns=await indexRows(db,scope);
-  let permitted=null;
+  let permitted=null,daily=[];
   if(start||end||source){
-    permitted=new Set((await matchingArticleMetadata(db,scope,patterns,{start,end,source}))
-      .map(row=>String(row.uid)));
+    const matching=await matchingArticleMetadata(db,scope,patterns,{start,end,source});
+    permitted=new Set(matching.map(row=>String(row.uid)));
+    daily=keywordPatternDailySummary(tree.items,patterns,matching);
   }
   const indexed=keywordPatternItemMetrics(tree.items,patterns,{articleUids:permitted});
   return {
@@ -144,7 +145,7 @@ export async function readKeywordStatistics(db,scope,classUid,{
         document_count:Number(indexed.group_document_counts?.[group.uid])||0,
         ratio:indexed.total_hits?100*hits/indexed.total_hits:0};
     }),
-    ...indexed
+    ...indexed,daily
   };
 }
 
