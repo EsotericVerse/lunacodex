@@ -62,7 +62,7 @@ export default function ScopeGroupAccessPanel({groupId}){
         if(!active)return;
         if(error)throw error;
         setPublicClasses((Array.isArray(rows)?rows:[])
-          .filter(row=>row.scopeId===scope&&/^[A-Za-z0-9]{8}$/.test(row.classUid)));
+          .filter(row=>row.scopeId===scope&&/^(?:[A-Za-z0-9]{4}|[A-Za-z0-9]{8})$/.test(row.classUid)));
       }).catch(()=>{if(active){setPublicClasses([]);setClassesError('目前無法查詢已公開的群組科目，請稍後再試。');}})
       .finally(()=>{if(active)setClassesLoading(false);});
     return()=>{active=false;};
@@ -77,7 +77,7 @@ export default function ScopeGroupAccessPanel({groupId}){
   const toggle=action=>setSelected(previous=>previous.includes(action)?
     previous.filter(x=>x!==action):[...previous,action]);
   const updateCategory=async(kind,scopeid,classUid)=>{
-    if(busy||!scopeid||!/^[A-Za-z0-9]{8}$/.test(classUid))return;
+    if(busy||!scopeid||!/^(?:[A-Za-z0-9]{4}|[A-Za-z0-9]{8})$/.test(classUid))return;
     setBusy(true);setStatus('');
     try{
       if(kind==='categoryAdd'){
@@ -104,9 +104,9 @@ export default function ScopeGroupAccessPanel({groupId}){
             {data.members.map(id=><option key={id} value={id}>{id}</option>)}
           </select>
         </label>
-        <label><span>{t('groupClerkSubject')}</span>
+        <label><span>{t('groupLocSubject')}</span>
           <input value={subject} onChange={e=>setSubject(e.target.value.trim())}
-            autoCapitalize="off" spellCheck={false} placeholder="user_..."/>
+            autoCapitalize="off" spellCheck={false} placeholder="loc_..."/>
         </label>
         <label><span>{t('groupExpires')}</span>
           <input type="number" min={1} max={365} value={days}
@@ -122,7 +122,7 @@ export default function ScopeGroupAccessPanel({groupId}){
           </div>
         </fieldset>
         <div className="scope-management-wide-field">
-          <button type="button" className="loc-button" disabled={busy||!subject||!selected.length}
+          <button type="button" className="loc-button" disabled={busy||!/^loc_[A-Za-z0-9_-]{32,80}$/.test(subject)||!selected.length}
             onClick={()=>submit('grant',{scopeid:scope,subject,actions:selected,days},'groupGranted')}>
             {t('groupGrant')}
           </button>
