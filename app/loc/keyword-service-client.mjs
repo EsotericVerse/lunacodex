@@ -30,14 +30,14 @@ async function delegation(scope,write){
 }
 
 export async function keywordService(operation,args={}){
-  if(!['analyze','classes','catalog','summary','stats','suggest'].includes(operation))
+  if(!['analyze','reset','classes','catalog','summary','stats','suggest'].includes(operation))
     throw Error('Unsupported Keyword operation');
   if(!args||typeof args!=='object'||Array.isArray(args))
     throw Error('Invalid Keyword request');
   const scope=String(args.scopeId||'');
   if(operation!=='suggest'&&!SCOPE.test(scope))
     throw Error('Invalid Keyword Scope');
-  const write=operation==='analyze';
+  const write=operation==='analyze'||operation==='reset';
   const token=await delegation(scope,write);
   const response=await fetch('/api/keywords',{
     method:'POST',credentials:'omit',cache:'no-store',
