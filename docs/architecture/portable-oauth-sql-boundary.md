@@ -28,6 +28,26 @@ Neon PostgreSQL 的存取功能仍由 Kysely PostgreSQL 方言與資料庫連線
 
 **以上驗收未完成時不得刪掉現役登入而讓正式網站鎖死，也不得宣稱全站已不依賴 Clerk。**
 
+## Browser provider decoupling / frozen Schema (2026-11-07)
+
+- The active browser entry now composes `createLocGatewayAdapter` directly.
+  The identity adapter is injectable; Clerk remains the **current compatibility
+  identity** until native LOC OAuth exists. This is not a claim that browser
+  sign-in no longer requires Clerk.
+- A configured independent `NEXT_PUBLIC_LOC_SQL_GATEWAY_URL` does not require
+  or forward the legacy Supabase URL/public key. Without an independent URL,
+  the existing hosted SQL endpoint remains the compatibility fallback.
+- Database backup routing accepts the custom provider for a separately
+  configured SQL connection; a working backup is not implied.
+- Scope Registry data edits remain available, but `provision_scope` and
+  `delete_scope` now reject with HTTP 409. Their earlier PostgreSQL DDL,
+  policy creation/deletion and grants have been removed from the active
+  Scope admin module to honor the database schema freeze.
+- This is source-only decoupling. The active LOC OAuth issuer, independently
+  hosted SQL Gateway and production host configuration are not established
+  by this commit. No DB DDL, migration, RLS, GRANT or production deployment
+  is performed by these source edits.
+
 ## Unified public/private SQL Gateway
 
 The browser's public and signed private SQL requests now share
