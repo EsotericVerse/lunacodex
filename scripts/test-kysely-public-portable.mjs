@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const gateway=fs.readFileSync('supabase/functions/loc-kysely/index.ts','utf8');
+const gateway=fs.readFileSync('app/loc/gateway/sql-handler.ts','utf8');
 const publicProvider=fs.readFileSync('app/loc/providers/kysely-public.mjs','utf8');
 
 test('cross-engine public actions use native Kysely, never old RPC',()=>{

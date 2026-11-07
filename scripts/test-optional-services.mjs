@@ -39,7 +39,7 @@ test('zero remote ISR services is supported on a fresh installation',()=>{
 });
 
 test('backup readiness check is only invoked in Admin settings',()=>{
-  const server=read('supabase/functions/loc-kysely/index.ts');
+  const server=read('app/loc/gateway/sql-handler.ts');
   const panel=read('app/loc/views/admin-panels/DatabaseTarget.jsx');
   assert.match(server,/check_backup_readiness/);
   assert.match(server,/\.filter\(item=>item\.backup_selected===true\)/);

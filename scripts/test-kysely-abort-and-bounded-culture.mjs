@@ -88,7 +88,7 @@ test('bounded multi-Scope reads preserve order and stop burst fan-out',async()=>
 test('time-window and group readers use bounded independent lanes',()=>{
   const culture=readFileSync(new URL('../app/loc/culture-query.js',import.meta.url),'utf8');
   const galaxy=readFileSync(new URL('../app/loc/galaxy-query.js',import.meta.url),'utf8');
-  const gateway=readFileSync(new URL('../supabase/functions/loc-kysely/index.ts',import.meta.url),'utf8');
+  const gateway=readFileSync(new URL('../app/loc/gateway/sql-handler.ts',import.meta.url),'utf8');
   assert.match(culture,/mapBounded\(windows,2,/);
   assert.match(culture,/mapBounded\(managedScopes,2,/);
   assert.match(culture,/mapBounded\(scopes,2,/);
@@ -112,7 +112,7 @@ test('gateway public queue cannot exceed 10 concurrent slots',async()=>{
 });
 
 test('MCP search is content-only and ordered by indexed Galaxy date',()=>{
-  const gateway=readFileSync(new URL('../supabase/functions/loc-kysely/index.ts',import.meta.url),'utf8');
+  const gateway=readFileSync(new URL('../app/loc/gateway/sql-handler.ts',import.meta.url),'utf8');
   assert.ok(gateway.includes('where content ilike '));
   assert.ok(gateway.includes('order by date desc nulls last limit'));
   assert.ok(!gateway.includes('where (title ilike '));

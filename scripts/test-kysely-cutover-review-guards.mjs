@@ -28,7 +28,7 @@ test('LOC blacklist updates bind SQL text[] paths, never JSON array strings',()=
 });
 
 test('authenticated Kysely writes retain Clerk and LOC authority gates',()=>{
-  const gateway=source('supabase/functions/loc-kysely/index.ts');
+  const gateway=source('app/loc/gateway/sql-handler.ts');
   const management=source('app/loc/providers/kysely-management.mjs');
   assert.match(gateway,/role!==["']authenticated["']/);
   assert.match(management,/await authorizeRelation\(trx,table,operation,values,filters,rows\)/);
@@ -38,7 +38,7 @@ test('authenticated Kysely writes retain Clerk and LOC authority gates',()=>{
 test('Search, editing and MCP sync reference eight separate Galaxy booleans',()=>{
   const search=source('app/modular/features/Search.jsx');
   const draft=source('app/modular/features/search-edit-draft.js');
-  const gateway=source('supabase/functions/loc-kysely/index.ts');
+  const gateway=source('app/loc/gateway/sql-handler.ts');
   assert.match(search,/columns:'uid,content,search,extract'/);
   assert.doesNotMatch(search,/columns:'uid,content,able'/);
   assert.match(draft,/const features=\['statics','culture','search','trace','list','keyword','extract','others'\]/);
@@ -59,8 +59,8 @@ test('Kysely 0.29.8 is synchronized across package lock and all Edge imports',()
     'app/loc/providers/kysely-management.mjs',
     'app/loc/providers/kysely-public.mjs',
     'app/loc/providers/kysely-scope-admin.mjs',
-    'supabase/functions/loc-kysely/index.ts',
-    'supabase/functions/loc-kysely/drivers.ts'
+    'app/loc/gateway/sql-handler.ts',
+    'app/loc/providers/kysely-database-drivers.ts'
   ]){
     assert.match(source(path),/npm:kysely@0\.29\.8/,path);
     assert.doesNotMatch(source(path),/npm:kysely@0\.29\.6/,path);
