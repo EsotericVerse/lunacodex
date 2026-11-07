@@ -308,10 +308,11 @@ Deno.serve(async (request) => {
         return json({error:{message:"Verified MCP Scope permission required"}},403);
       if(requestedTarget!=="configured")
         return json({error:{message:"MCP requires the configured SQL target"}},403);
-      const db=await databaseForTarget(controlTarget);
+      const mcpTarget=await liveConfiguredTarget();
+      const db=await databaseForTarget(mcpTarget,{profileLookup:profileForTarget});
       const result=await db.transaction().execute(trx=>executePortableMcp(trx,body,claims,{
-        engine:String(controlTarget.engine),provider:String(controlTarget.provider),
-        namespace:String(controlTarget.schema_name||"")
+        engine:String(mcpTarget.engine),provider:String(mcpTarget.provider),
+        namespace:String(mcpTarget.schema_name||"")
       }));
       return json(result);
     }
