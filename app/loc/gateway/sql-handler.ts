@@ -180,12 +180,9 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
         ?await executeKyselyScopeAdmin(trx,body)
         :await executeManagedKyselyAction(trx,body,claims);
     }
-    if(body.kind==="anchor")return await executePortableKyselyAnchor(trx,body,{
-      role,engine:executionPort.engine,namespace:target.schema_name
-    });
-    if(body.kind==="analytics")return await executePortableKyselyAnalytics(trx,body,{
-      role,engine:executionPort.engine,namespace:target.schema_name
-    });
+    const portableOptions={role,engine:executionPort.engine,namespace:target.schema_name};
+    if(body.kind==="anchor")return await executePortableKyselyAnchor(trx,body,portableOptions);
+    if(body.kind==="analytics")return await executePortableKyselyAnalytics(trx,body,portableOptions);
     if(body.kind==="public-action")return await executeKyselyPublicAction(trx,body,{
       engine:executionPort.engine,namespace:String(target.schema_name||
         (executionPort.engine==="mssql"?"dbo":"silver"))
@@ -219,7 +216,7 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
       await sql`set local statement_timeout = '8000ms'`.execute(trx);
     return await executeKyselyQuery(trx,body,{modelName});
   }
-  if(body.kind==="anchor")return await executeKyselyAnchor(trx,body,{role,claims});
+  if(body.kind==="anchor")return await executeKyselyAnchor(trx,body,{role});
   if(body.kind==="analytics")return await executeKyselyAnalytics(trx,body,{role});
   if(body.kind==="public-action")return await executeKyselyPublicAction(trx,body);
   if(body.kind==="managed-write"||body.kind==="managed-action"){
@@ -488,8 +485,10 @@ Deno.serve({hostname:"0.0.0.0",port:serverPort},async (request) => {
     // connection; private CRUD retains its LOC-managed authorization gate.
     if(target.provider==="custom"||target.engine!=="postgres"){
       if(role!=="authenticated"){
+        const attr=body.attr&&typeof body.attr==="object"&&!Array.isArray(body.attr)
+          ?body.attr as Record<string,unknown>:null;
         const publicAnchor=body.kind==="anchor"&&
-          (body.attr?.op===undefined||body.attr?.op==="read"||body.attr?.op==="catalog");
+          (attr?.op===undefined||attr.op==="read"||attr.op==="catalog");
         const publicAnalytics=body.kind==="analytics";
         const publicAction=body.kind==="public-action"&&
           ["read_app_bootstrap","read_scope_page_copy","search_scope_trace_place_names"].includes(String(body.name));
@@ -516,11 +515,11 @@ Deno.serve({hostname:"0.0.0.0",port:serverPort},async (request) => {
     const policyDeps=(policyModel||adminWrite)
       ?{dialect:trustedDialectForDatabase(db),ZenStackClient,PolicyPlugin}:null;
     const result=policyModel
-      ?await withFixedPolicyRead(db,target,body,role,claims,policyDeps,
-        (trx,modelName)=>executeRequest(trx,target,role,claims,body,{modelName}))
+      ?await withFixedPolicyRead(db,target,body,role,claims,policyDeps!,
+        (trx:any,modelName:string)=>executeRequest(trx,target,role,claims,body,{modelName}))
       :adminWrite
-        ?await withFixedPolicyWrite(db,target,body,role,claims,policyDeps,
-          (trx,modelName)=>executeRequest(trx,target,role,claims,body,{modelName}))
+        ?await withFixedPolicyWrite(db,target,body,role,claims,policyDeps!,
+          (trx:any,modelName:string)=>executeRequest(trx,target,role,claims,body,{modelName}))
         :await db.transaction().execute(trx=>
           executeRequest(trx,target,role,claims,body));
     return json(result,200,result.count===null?{}:{"content-range":`0-${Math.max(0,(Array.isArray(result.data)?result.data.length:0)-1)}/${result.count}`});
