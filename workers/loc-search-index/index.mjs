@@ -205,10 +205,12 @@ async function find(env,body){
   const hits=[];
   for(const id of found){
     let decoded;try{decoded=JSON.parse(id);}catch{continue;}
-    if(Array.isArray(decoded)&&decoded.length===4&&
-       decoded[0]===scopeId&&sources.some(s=>s.dbId===decoded[1])&&
-       decoded[2]===entityType&&UID.test(String(decoded[3])))
-      hits.push({scopeId:decoded[0],dbId:decoded[1],entityType:decoded[2],uid:decoded[3]});
+    if(!Array.isArray(decoded)||decoded.length!==2||decoded[0]!==entityType)
+      continue;
+    let qualified;try{qualified=parseLocGlobalUid(decoded[1]);}catch{continue;}
+    if(qualified.scopeId===scopeId&&sources.some(s=>s.dbId===qualified.databaseId))
+      hits.push({scopeId:qualified.scopeId,dbId:qualified.databaseId,
+        entityType,uid:qualified.uid,globalUid:decoded[1]});
   }
   return {complete:true,hits};
 }
