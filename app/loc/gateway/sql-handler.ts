@@ -24,7 +24,7 @@ import {resolveSqlExecutionPort,assertCrossEnginePublicRead,authorizeCrossEngine
 import {resolveDatabaseRouting} from "../../../app/loc/providers/routing-config.mjs";
 import {databaseAccessTargets} from "../../../app/loc/providers/access.js";
 import {isTextSearchQuery,checkSearchQos} from "../../../app/loc/providers/search-qos.mjs";
-import {withIndexedCandidates,federatedIndexedCandidates,writeSearchIndexDocuments,indexDocumentsFromWrite,isSearchIndexConfigured,searchIndexDatabaseId} from "../../../app/loc/providers/search-index-service.mjs";
+import {withIndexedCandidates,federatedIndexedCandidates,shadowIndexCoverage,writeSearchIndexDocuments,indexDocumentsFromWrite,isSearchIndexConfigured,searchIndexDatabaseId} from "../../../app/loc/providers/search-index-service.mjs";
 import {federatedDatasetsFor,indexTargetForScope,federatedScopeFromQuery,isFederatedTextSearch,isDatasetQualifiedArticleRead,publicGalaxyGate,mergeFederatedGalaxyRows} from "../../../app/loc/providers/federated-galaxy-search.mjs";
 import {bindLocAuthorization,canManageLoc} from "../../../app/loc/providers/loc-authorization.mjs";
 
@@ -61,6 +61,25 @@ async function verifyLocDelegation(token:string,body:Record<string,unknown>){
 }
 
 // The deployed function and browser use the same source-controlled routing contract.
+// Optional read-only proof of index completeness. It never changes SQL
+// results or reveals article identities; even a failed KV request is only a
+// sanitized diagnostic. Keep OFF until the independent Worker is deployed.
+async function reportIndexShadow(body:any,sources:any[],rows:any[]){
+  if(Deno.env.get("LOC_SEARCH_INDEX_SHADOW")!=="true")return;
+  try{
+    const observation=await shadowIndexCoverage(body,sources,rows);
+    if(observation.kind==="compared")
+      console.info("[loc-search-index] shadow comparison",{
+        checked:observation.checked,missing:observation.missing,
+        indexed:observation.indexed
+      });
+    else if(observation.kind==="unavailable")
+      console.warn("[loc-search-index] shadow index unavailable");
+  }catch{
+    // An optional diagnostic must never interfere with SQL Search.
+    console.warn("[loc-search-index] shadow comparison failed");
+  }
+}
 const routing = resolveDatabaseRouting();
 // Cross-engine publicly readable tables are centrally enforced by sql-engine-ports.mjs.
 
@@ -626,6 +645,7 @@ Deno.serve({hostname:"0.0.0.0",port:serverPort},async (request) => {
           executeRequest(trx,readTarget,role,claims,page));
         return pageResult?.data||[];
       });
+      await reportIndexShadow(body,datasets,merged.data);
       return json(merged);
     }
     // One-source federation is still a real logical route and must not
@@ -699,6 +719,9 @@ Deno.serve({hostname:"0.0.0.0",port:serverPort},async (request) => {
       const dbId=searchIndexDatabaseId(target);
       if(dbId)result.data=result.data.map(row=>({...row,__db_id:dbId}));
     }
+    const shadowDbId=searchIndexDatabaseId(target);
+    if(shadowDbId&&Array.isArray(result.data))
+      await reportIndexShadow(body,[{databaseId:shadowDbId}],result.data);
     // Index ingestion occurs only after the SQL transaction commits. A KV
     // outage never changes the result of an authorized SQL write.
     if(isSearchIndexConfigured()){
