@@ -8,6 +8,7 @@ import {authorizeDelegatedShortImport} from "../../../app/loc/import/short-edge-
 import {delegationAudience,verifyDelegationBoundary,canManageDelegation} from "../../../app/loc/auth/delegation-contract.mjs";
 import {databaseForTarget,resolveConnectionProfile,trustedDialectForDatabase} from "../providers/kysely-database-drivers.ts";
 import {readVaultConnection} from "./database-connections.ts";
+import {resolveRuntimeDatabase} from "./runtime-database-target.mjs";
 import { executeKyselyQuery, isKyselyClientError } from "../../../app/loc/providers/kysely-runtime.mjs";
 import {executePortableMcp} from "../../../app/loc/providers/kysely-mcp.mjs";
 import {executeManagedKyselyWrite,executeManagedKyselyAction} from "../../../app/loc/providers/kysely-management.mjs";
@@ -270,12 +271,14 @@ Deno.serve({hostname:"0.0.0.0",port:serverPort},async (request) => {
   let role = "anon";
   let claims: Record<string, unknown> = {role};
   let verifiedMcp=false;
+  let delegationToken="";
   const authorization=request.headers.get("authorization")||"";
   if(authorization){
     const match=authorization.match(/^Bearer\s+(.+)$/i);
     if(!match)return json({error:{message:"Invalid authorization header"}},401);
     try{
       const delegation=await verifyLocDelegation(match[1],body);
+      delegationToken=match[1];
       claims=delegation.claims;
       verifiedMcp=delegation.verifiedMcp;
       role="authenticated";
@@ -284,7 +287,20 @@ Deno.serve({hostname:"0.0.0.0",port:serverPort},async (request) => {
     }
   }
 
-  // Explicit database-target selection is never a public capability.
+  // Per-user database selection comes exclusively from the signed LOC
+  // delegation. A browser-provided target string never becomes an alias/URL.
+  // Its driver and credentials are resolved on demand from LOC Authority DO.
+  let liveSelectionPending:Promise<any>|null=null;
+  async function liveSelection(){
+    if(!claims.db_target)return null;
+    if(!liveSelectionPending)liveSelectionPending=resolveRuntimeDatabase(
+      claims,delegationToken,{
+        origin:locAuthorityOrigin,
+        serviceKey:Deno.env.get("LOC_SQL_GATEWAY_SERVICE_KEY")||""
+      });
+    return liveSelectionPending;
+  }
+  // Explicit legacy provider-target selection remains a root-only capability.
   // Ordinary visitors use the server-selected configured target only.
   if(requestedTarget!=="configured"){
     if(role!=="authenticated")
@@ -305,9 +321,15 @@ Deno.serve({hostname:"0.0.0.0",port:serverPort},async (request) => {
       // database connection/DBM here, not a new INSERT RLS policy or RPC.
       // PostgreSQL has no authenticated INSERT policy on these tables;
       // signed Scope authorization is checked above before any DB request.
-      const db=await databaseForTarget(controlTarget);
+      const selected=await liveSelection();
+      const target=selected?.target||controlTarget;
+      const db=selected
+        ?await databaseForTarget(target,{profileLookup:async()=>selected.profile})
+        :await databaseForTarget(controlTarget);
       const response=await processShortImport(body.batch,actor,{
-        store:portableShortImportStore(db,sql,{engine:controlTarget.engine})
+        store:portableShortImportStore(db,sql,{engine:target.engine,
+          namespace:String(target.schema_name||(
+            target.engine==="postgres"?"silver":target.engine==="mssql"?"dbo":""))})
       });
       return json(response);
     }catch(error){
@@ -347,8 +369,11 @@ Deno.serve({hostname:"0.0.0.0",port:serverPort},async (request) => {
         return json({error:{message:"Verified MCP Scope permission required"}},403);
       if(requestedTarget!=="configured")
         return json({error:{message:"MCP requires the configured SQL target"}},403);
-      const mcpTarget=await liveConfiguredTarget();
-      const db=await databaseForTarget(mcpTarget,{profileLookup:profileForTarget});
+      const selected=await liveSelection();
+      const mcpTarget=selected?.target||await liveConfiguredTarget();
+      const db=await databaseForTarget(mcpTarget,{
+        profileLookup:selected?async()=>selected.profile:profileForTarget
+      });
       const result=await db.transaction().execute(trx=>executePortableMcp(trx,body,claims,{
         engine:String(mcpTarget.engine),provider:String(mcpTarget.provider),
         namespace:String(mcpTarget.schema_name||"")
@@ -424,8 +449,9 @@ Deno.serve({hostname:"0.0.0.0",port:serverPort},async (request) => {
       return json(result);
     }
     let target=controlTarget as Record<string,any>;
+    const selected=requestedTarget==="configured"?await liveSelection():null;
     if(requestedTarget==="configured")
-      target=await liveConfiguredTarget() as Record<string,any>;
+      target=(selected?.target||await liveConfiguredTarget()) as Record<string,any>;
     if(requestedTarget==="neon"){
       if(routing.backupId!=="neon-current"||routing.backupProvider!=="neon")
         return json({error:{message:"Neon target is not enabled by repository routing"}},403);
@@ -471,9 +497,11 @@ Deno.serve({hostname:"0.0.0.0",port:serverPort},async (request) => {
       }else if(!["query","managed-write","anchor","analytics","public-action"].includes(String(body.kind)))
         return json({error:{message:"Unsupported SQL target action"}},403);
     }
-    const db=isControlTarget(target)
-      ?await databaseForTarget(controlTarget)
-      :await databaseForTarget(target,{profileLookup:profileForTarget});
+    const db=selected
+      ?await databaseForTarget(target,{profileLookup:async()=>selected.profile})
+      :isControlTarget(target)
+        ?await databaseForTarget(controlTarget)
+        :await databaseForTarget(target,{profileLookup:profileForTarget});
     // A portable Scope database holds only Galaxy/Anchor. The LOC-signed
     // delegation contains its permission boundary: no control DB round trip.
     // Four fixed publicly readable LOC models use the real ZenStack V3
