@@ -1,3 +1,11 @@
 import {handleMcp} from '../app/loc/mcp/router.mjs';
-// Existing Cloudflare Pages project serves static Next.js pages and this API route.
-export function onRequest(context){return handleMcp(context.request,context.env);}
+import {directMcpKysely} from '../app/loc/mcp/native-kysely.mjs';
+
+// /mcp is a second route of the same LOC MCP application. Keep identical
+// in-process database binding with the root custom-domain route.
+export function onRequest(context){
+  const bindings=context.env;
+  return handleMcp(context.request,{
+    ...bindings,locDirectDatabase:()=>directMcpKysely(bindings)
+  });
+}
