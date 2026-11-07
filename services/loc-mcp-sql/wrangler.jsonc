@@ -1,0 +1,38 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "loc-mcp-sql",
+  "main": "./cloudflare-worker.mjs",
+  "compatibility_date": "2026-11-06",
+  "containers": [
+    {
+      "class_name": "LocMcpSqlContainer",
+      "scheduling_policy": "durable_object",
+      "images": {
+        "base": {
+          "dockerfile": "./Dockerfile",
+          "build_context": "../.."
+        }
+      }
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "LOC_MCP_SQL_CONTAINER",
+        "class_name": "LocMcpSqlContainer"
+      }
+    ]
+  },
+  "exports": {
+    "LocMcpSqlContainer": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
+  },
+  "vars": {
+    "LOC_MCP_DB_ENGINE": "postgres",
+    "LOC_MCP_DB_ALIAS": "mcp_main",
+    "LOC_MCP_DB_NAMESPACE": "silver",
+    "LOC_AUTHORITY_ORIGIN": "https://auth.lo3rwang.cc"
+  }
+}

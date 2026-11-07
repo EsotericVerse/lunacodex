@@ -91,3 +91,40 @@ settings, not inferred from source code.
 
 **Do not merge/redeploy to production until the independent HTTPS SQL service
 actually exists and its endpoint is configured and verified.**
+
+## Cloudflare Containers deployment entry (not deployed by this change)
+
+`cloudflare-worker.mjs`, `Dockerfile` and `wrangler.jsonc` package the
+existing Deno MCP/Extension SQL Gateway as a Cloudflare Container without
+reimplementing any SQL or authorization. The Worker routes only
+`POST /v1/sql` and its `OPTIONS` preflight. `GET /health` is an internal
+process-liveness check; it does not read the database.
+
+Cloudflare Containers entitlement and a Docker-compatible engine are required,
+together with an authorized Workers/Containers deployment token. Never put a
+database URL into the source, the browser, Pages public variables, or the
+Wrangler configuration. Configure the selected `LOC_MCP_DB_ENGINE`,
+`LOC_MCP_DB_ALIAS` and `LOC_MCP_DB_NAMESPACE` in `wrangler.jsonc`, then:
+
+```sh
+npx wrangler secret put LOC_DB_CONNECTIONS_JSON --config services/loc-mcp-sql/wrangler.jsonc
+npx wrangler deploy --config services/loc-mcp-sql/wrangler.jsonc
+```
+
+`LOC_DB_CONNECTIONS_JSON` must be a server-only JSON mapping the alias to its
+engine and connection URL. The Container is a single named, idle-sleeping
+instance; it starts only when a request reaches the Worker. Optional
+delegation revocation variables must also be configured as Worker secrets
+when used by the LOC Authority.
+
+After an HTTPS Worker is actually reachable and **the database-backed paths
+are authorized for production cutover**, set
+`LOC_MCP_SQL_GATEWAY_URL=https://<host>/v1/sql` on LOC Authority and on
+MCP Pages, plus `NEXT_PUBLIC_LOC_MCP_SQL_GATEWAY_URL` with that same URL
+in the LOC website's Pages build configuration. A Pages build is necessary
+for the public variable. The existing fallback is not silently switched.
+
+The Cloudflare connector used for this change lacks permission to provision
+Containers (401), so these deployment files do not establish live hosting,
+credentials, DNS, or a validated database round-trip. No production settings,
+database structure, RLS or RPC were modified.

@@ -75,6 +75,9 @@ async function verifySignedDelegation(request:Request,body:Record<string,unknown
 async function handleLocMcpSqlInner(request:Request):Promise<Response>{
   try{
     const url=new URL(request.url);
+    // Internal container liveness: never read the production database.
+    if(url.pathname==='/health'&&request.method==='GET')
+      return new Response(null,{status:204,headers:BASE_HEADERS});
     if(url.pathname!=='/v1/sql'||request.method!=='POST')
       return json({error:{message:'Not found'}},404);
     // Strictly server-side transport, without CORS or arbitrary SQL endpoints.
