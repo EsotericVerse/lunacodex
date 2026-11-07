@@ -384,3 +384,30 @@ relations also requires `global:manage`, but stays with the original
 trusted Kysely execution until an authenticated ZenStack create policy is
 verified. Other models and all MCP routes remain unchanged.
 
+
+
+## LOC Search cross-Scope request scheduling (2026-11-07)
+
+The public Search page uses a **custom Kysely SQL Gateway action**, not
+ZenStack's generated model RPC API. The current frontend is already on SWR
+2.5.1 with request de-duplication. Adding `@zenstackhq/tanstack-query` would
+require the separate `@tanstack/react-query` peer and a compatible ZenStack
+model API; it does **not** automatically speed up the existing SQL contains
+filter. Avoid a second competing frontend result cache in this cutover.
+
+`searchOrderedScopeProviders` is a small, dependency-free execution scheduler:
+- Query the first Scope alone (no additional traffic on the common one-hit path).
+- If the earlier Scope is empty, overlap **at most two** following Scope reads.
+- Return in the original Scope order and preserve `{stage,offset,source}`
+  cursors, batch size, source/date/content filters, public/private auth gates,
+  and the existing three-second manual-search cooldown.
+- Cancel unused lookahead when an earlier Scope matches or the user changes
+  queries; do not persist result data or introduce a TTL cache.
+- Keep the Kysely query and its present column projection unchanged. This
+  reduces serialized no-hit network waits, **not the execution time of an
+  unindexed text SQL predicate**, and has no claim of a measured production
+  latency improvement. The targeted mock tests cover ordering, no results,
+  errors, cancellation and the QoS concurrency ceiling.
+
+Existing Galaxy/Anchor/Blocks tables, RLS, migrations, indexes, service Worker,
+site-level search rate limits and fallback routing are untouched.
