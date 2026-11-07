@@ -15,7 +15,7 @@ import {executeKyselyAnchor,executePortableKyselyAnchor} from "../../../app/loc/
 import {executeKyselyAnalytics,executePortableKyselyAnalytics} from "../../../app/loc/providers/kysely-analytics.mjs";
 import {executeKyselyPublicAction} from "../../../app/loc/providers/kysely-public.mjs";
 import {executeKyselyScopeAdmin} from "../../../app/loc/providers/kysely-scope-admin.mjs";
-import {ensurePortableScopeSchema,validatePortableScopeSchema} from "../../../app/loc/providers/kysely-schema.mjs";
+import {validatePortableScopeSchema} from "../../../app/loc/providers/kysely-schema.mjs";
 import { selectedDatabaseTarget } from "../../../app/loc/providers/selected-database-target.mjs";
 import {resolveSqlExecutionPort,assertCrossEnginePublicRead,authorizeCrossEngineQuery,executeCrossEngineManagedWrite} from "../../../app/loc/providers/sql-engine-ports.mjs";
 import {resolveDatabaseRouting} from "../../../app/loc/providers/routing-config.mjs";
