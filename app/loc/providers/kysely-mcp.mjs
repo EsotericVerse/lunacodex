@@ -120,7 +120,8 @@ export async function executePortableMcp(trx,body,claims,{engine='postgres',name
     .set({content:sql`concat(coalesce(${sql.ref('content')},''),case when
        ${sql.ref('content')} is null or ${sql.ref('content')} = ''
        then ${''} else ${'\n'} end,${content})`,UpdateTime:stamp})
-    .where('uid','=',uid).where('content','not like','%'+marker+'%').execute();
+    .where('uid','=',uid)
+    .where('content',original.content==null?'is':'=',original.content??null).execute();
   if(affected(updated)===1)
     return {data:{count:1,title:original.title,createtime:original.createtime}};
   const current=await conversationOnly(trx.selectFrom(table))
