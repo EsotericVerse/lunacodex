@@ -87,6 +87,36 @@ test('Culture, Statistics, Periods, Daily Runes and Trace have direct data provi
   assert.match(places,/Capacitor\.isNativePlatform/);
 });
 
+test('Statistics uses current source/date ISR snapshot, never requests retired mediaCount',async()=>{
+  const code=read('app/loc/galaxy-query.js');
+  const begin=code.indexOf('async function selectScopeOverviewRaw(');
+  const end=code.indexOf('async function selectScopeEarliestRaw(',begin);
+  assert.ok(begin>=0&&end>begin);
+  const segment=code.slice(begin,end);
+  assert.doesNotMatch(segment,/mediaCount|media_count|galaxyMedia|media_link/);
+
+  const snapshot={earliest:'2024-01-01',
+    rows:[{day:'2026-11-07',kind:'source',category:'threads',item_count:9}],
+    categories:[],aliases:[]};
+  let isrCalls=0,sqlCalls=0;
+  const fn=new Function('scopeOf','usesNumericIsr','readNumericIsr',
+    'readScopeOverview',segment+'\nreturn selectScopeOverviewRaw;')(
+    scope=>({id:scope.id}),()=>true,
+    async(_id,kind)=>{assert.equal(kind,'statistics');isrCalls++;return snapshot;},
+    async()=>{sqlCalls++;return {earliest:'fallback',rows:[],categories:[],aliases:[]};});
+  assert.deepEqual(await fn({id:'lo3rwang'},{
+    startDate:'2026-01-01',endDate:'2026-11-07'}),snapshot);
+  assert.equal(isrCalls,1);
+  assert.equal(sqlCalls,0);
+
+  const invalid=new Function('scopeOf','usesNumericIsr','readNumericIsr',
+    'readScopeOverview',segment+'\nreturn selectScopeOverviewRaw;')(
+    scope=>({id:scope.id}),()=>true,async()=>({rows:[]}),
+    async()=>{sqlCalls++;return {earliest:'fallback',rows:[]};});
+  assert.deepEqual(await invalid({id:'lo3rwang'}),{earliest:'fallback',rows:[]});
+  assert.equal(sqlCalls,1);
+});
+
 test('Service Worker and published JS remain independently usable',()=>{
   assert.match(read('public/sw.js'),/staticStrategy\(event\)/);
   const site=read('app/loc/scope-data.js');
