@@ -14,7 +14,9 @@ const source=readFileSync(new URL('../workers/loc-authority/index.mjs',import.me
   .replace("'../../app/loc/auth/delegation-contract.mjs'",
     JSON.stringify(new URL('../app/loc/auth/delegation-contract.mjs',import.meta.url).href))
   .replace("'./native-oauth.mjs'",
-    JSON.stringify(new URL('../workers/loc-authority/native-oauth.mjs',import.meta.url).href));
+    JSON.stringify(new URL('../workers/loc-authority/native-oauth.mjs',import.meta.url).href))
+  .replace("'./sql-profile.mjs'",
+    JSON.stringify(new URL('../workers/loc-authority/sql-profile.mjs',import.meta.url).href));
 const {LocAuthorityState,default:worker}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
 
 function fakeStorage(){

@@ -4,7 +4,17 @@ import {readFileSync} from 'node:fs';
 import {generateKeyPairSync,sign,webcrypto} from 'node:crypto';
 const path=new URL('../workers/loc-authority/index.mjs',import.meta.url);
 const source=readFileSync(path,'utf8')
-  .replace("import { DurableObject } from 'cloudflare:workers';","class DurableObject {constructor(ctx,env){this.ctx=ctx;this.env=env}};");
+  .replace("import { DurableObject } from 'cloudflare:workers';","class DurableObject {constructor(ctx,env){this.ctx=ctx;this.env=env}};")
+  .replace("'../../app/loc/auth/delegation-contract.mjs'",
+    JSON.stringify(new URL('../app/loc/auth/delegation-contract.mjs',import.meta.url).href))
+  .replace("'./native-oauth.mjs'",
+    JSON.stringify(new URL('../workers/loc-authority/native-oauth.mjs',import.meta.url).href))
+  .replace("'./sql-profile.mjs'",
+    JSON.stringify(new URL('../workers/loc-authority/sql-profile.mjs',import.meta.url).href))
+  .replace("'./keyword-categories.mjs'",
+    JSON.stringify(new URL('../workers/loc-authority/keyword-categories.mjs',import.meta.url).href))
+  .replace("'../../app/loc/auth/auth-provider-settings.mjs'",
+    JSON.stringify(new URL('../app/loc/auth/auth-provider-settings.mjs',import.meta.url).href));
 const {default:worker}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
 const {privateKey,publicKey}=generateKeyPairSync('rsa',{modulusLength:2048});
 const jwk={...publicKey.export({format:'jwk'}),kid:'clerk-test-kid',alg:'RS256',use:'sig'};
