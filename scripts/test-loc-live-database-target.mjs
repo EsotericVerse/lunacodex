@@ -55,3 +55,11 @@ test('switching a database invalidates browser SQL delegation caches',()=>{
  // browser-selected connection string or stale signed delegation.
  assert.doesNotMatch(ui,/connection_alias\s*:/);
 });
+
+test('trusted PostgreSQL TLS and SQL profile changes do not reuse stale pools',()=>{
+ const code=readFileSync(new URL('../app/loc/providers/kysely-database-drivers.ts',import.meta.url),'utf8');
+ assert.match(code,/profile\.tls===true\?\{ssl:\{rejectUnauthorized:true\}\}/);
+ assert.match(code,/profile\.tls===false\?\{ssl:false\}:\{\}/);
+ assert.match(code,/JSON\.stringify\(profile\.authentication\|\|\{\}\)/);
+ assert.match(code,/String\(profile\.tls\)/);
+});
