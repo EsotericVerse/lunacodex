@@ -1110,7 +1110,8 @@ async function exchangeLocDelegation(request,env,principal,origin){
   // Preserve the already-established Clerk owner_id during migration.
   // A different provider gets a distinct LOC subject until a trusted operator
   // explicitly maps it; matching email alone never transfers ownership.
-  const sub=principal.provider==='clerk'?principal.subject:'loc_'+digest.slice(0,40);
+  const sub=['clerk','loc'].includes(principal.provider)?principal.subject:
+    'loc_'+digest.slice(0,40);
   const claims=issueDelegation({sub,email,
     grants,audience,sid:crypto.randomUUID(),now,seconds:300});
   const token=await stub.signLocDelegation(claims);
