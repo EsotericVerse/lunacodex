@@ -256,6 +256,11 @@ async function executeMysqlReturningMutation(trx,req,query,namespace){
   return whereKeys(trx.selectFrom(fullTable).select(req.columns),keyColumns,keys).execute();
 }
 
+/**
+ * @param {any} trx
+ * @param {any} input
+ * @param {{dialect?:string, namespace?:string, publicOnly?:boolean, modelName?:string}} [options]
+ */
 export async function executeKyselyQuery(trx,input,{dialect='postgres',namespace,publicOnly=false,modelName=''}={}){
   const req=validateQuery(input);let data=null,count=null;
   if(req.operation==='select'){
