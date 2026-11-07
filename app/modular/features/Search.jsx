@@ -118,7 +118,8 @@ function toResult(row,source,scopeId,copy=UI_COPY){
   const scope=String(row.scope_id||scopeId||'').trim();
   const dbId=String(row.__db_id||row.db_id||row.dbId||'').trim();
   // ZModel virtual federation identity; DB aliases remain opaque user-set IDs.
-  const globalUid=/^[a-z][a-z0-9_-]{0,63}$/.test(dbId)&&
+  const globalUid=isGalaxy&&/^[a-z][a-z0-9_-]{0,63}$/.test(dbId)&&
+    /^[a-z][a-z0-9]{0,14}$/.test(scope)&&
     /^[A-Za-z0-9]{8}$/.test(String(row.uid||''))
     ?locGlobalUid({databaseId:dbId,scopeId:scope,uid:row.uid}):'';
   const resourceType=isGalaxy?'galaxy':isMedia?'galaxy_media':'';
