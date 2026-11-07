@@ -39,7 +39,7 @@ export default {
   "groupLoadFailed": "群組權限讀取失敗，或目前帳號沒有管理權限。",
   "groupSaveFailed": "群組權限儲存失敗。",
   "groupMemberScope": "要授權的資料來源",
-  "groupClerkSubject": "使用者識別碼（LOC Auth）",
+  "groupLocSubject": "使用者識別碼（LOC Auth）",
   "groupExpires": "授權有效天數（1～365 天）",
   "groupPermissions": "允許的操作",
   "groupActionRead": "讀取",
