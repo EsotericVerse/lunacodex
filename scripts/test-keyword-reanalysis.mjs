@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {reanalyzeKeywordClass} from '../app/loc/keyword-reanalysis.mjs';
+import {buildKeywordSearchPatterns} from '../app/loc/keyword-search-pattern.mjs';
 import {createKeywordUidDocumentClassifier,classifyKeywordDocumentsByUid} from '../app/loc/model/keyword-uid-analysis.mjs';
 const source=[
  {uid:'CAT1',type:'category',name:'符文',lists:['CL01']},
@@ -191,6 +192,38 @@ test('unified Anchor analysis emits aggregate total and deduplicated UID strings
  assert.equal(JSON.stringify(saved).includes('"times"'),false);
 });
 
+
+test('only selected Class Item names and literal words enter patterns; never Group/Class titles or other Classes',async()=>{
+ const rows=[
+  {uid:'CAT1',type:'category',name:'所有分類',lists:['CL01','CL02']},
+  {uid:'CL01',type:'class',name:'分類甲',lists:['GR01']},
+  {uid:'CL02',type:'class',name:'分類乙',lists:['GR02']},
+  {uid:'GR01',type:'group',name:'群組甲',lists:['IT01']},
+  {uid:'GR02',type:'group',name:'群組乙',lists:['IT02']},
+  {uid:'IT01',type:'item',name:'項目甲',lists:['內詞甲','內詞乙']},
+  {uid:'IT02',type:'item',name:'項目乙',lists:['內詞丙']}
+ ];
+ const writes=[];
+ let patterns;
+ await reanalyzeKeywordClass({
+  classUid:'CL01',treeRows:rows,pageSize:10,expectedCount:1,
+  readPage:async({offset})=>offset?[]:[{
+    uid:'Ab12Cd34',
+    content:'所有分類 分類甲 分類乙 群組甲 群組乙 項目甲 內詞甲 項目乙 內詞丙'
+  }],
+  writeNode:async row=>writes.push(row),
+  writePatterns:async({items,termMatches})=>{
+    patterns=buildKeywordSearchPatterns('scope',items,termMatches);
+  },
+  finalize:async()=>{}
+ });
+ assert.deepEqual(patterns.map(row=>row.pattern).sort(),['內詞乙','內詞甲','項目甲'].sort());
+ const counts=new Map(patterns.map(row=>[row.pattern,row.count]));
+ assert.equal(counts.get('項目甲'),1);
+ assert.equal(counts.get('內詞甲'),1);
+ assert.equal(counts.get('內詞乙'),0);
+ assert.deepEqual(writes.map(row=>row.uid).sort(),['GR01','IT01']);
+});
 
 const ruleTree=[
   {uid:'CAT1',type:'category',name:'文字',lists:['CL01']},
