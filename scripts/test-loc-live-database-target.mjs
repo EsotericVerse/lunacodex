@@ -35,4 +35,12 @@ test('reject invalid or browser-derived database connection configurations',()=>
   port:5432,database:'loc',username:'reader',password:'x'}));
  assert.throws(()=>normalizeLiveTarget('test',{engine:'mssql',host:'db.example.net',
   port:1433,database:'../other',username:'reader',password:'x'}));
+ const valid={engine:'mssql',host:'sql.example.net',
+  port:1433,database:'loc',username:'reader',password:'example-only'};
+ for(const missing of ['username','password']){
+  const broken={...valid};delete broken[missing];
+  assert.throws(()=>normalizeLiveTarget('test',broken),/credentials are missing/);
+ }
+ assert.throws(()=>normalizeLiveTarget('test',{...valid,password:''}),
+  /Trusted runtime SQL connection is incomplete/);
 });
