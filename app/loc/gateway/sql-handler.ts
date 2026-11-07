@@ -532,6 +532,15 @@ Deno.serve(async (request) => {
           (trx,modelName)=>executeRequest(trx,target,role,claims,body,{modelName}))
         :await db.transaction().execute(trx=>
           executeRequest(trx,target,role,claims,body));
+    // Search-only response metadata: no physical SQL column is added.
+    // The browser can preserve two distinct results with the same UID
+    // when future Gateway federated reads return multiple logical datasets.
+    if(body.kind==="query"&&body.operation==="select"&&
+       body.indexHint&&String(body.table||"").endsWith("_galaxy")&&
+       Array.isArray(result.data)){
+      const dbId=searchIndexDatabaseId(target);
+      if(dbId)result.data=result.data.map(row=>({...row,__db_id:dbId}));
+    }
     // Index ingestion occurs only after the SQL transaction commits. A KV
     // outage never changes the result of an authorized SQL write.
     if(isSearchIndexConfigured()){
