@@ -28,17 +28,6 @@ export async function reanalyzeKeywordClass({
   const root=tree.index.get(classUid);
   if(!root||root.type!=='class')throw new Error('Unknown Class UID');
   const {catalog}=keywordClassCatalog(treeRows,classUid);
-  // Pattern lookup covers every Class in this Scope. Analyze each Class's
-  // literal words on the SAME Galaxy pages, but write Item/Group totals only
-  // for the Class explicitly selected for reanalysis.
-  const otherPatternClasses=writePatterns?[...tree.index.values()]
-    .filter(node=>node.type==='class'&&node.uid!==classUid)
-    .map(node=>({
-      items:keywordClassCatalog(treeRows,node.uid).catalog,
-      classify:createKeywordUidDocumentClassifier(treeRows,node.uid,{collectKeywordTerms:true})
-    })):[];
-  const patternItems=writePatterns
-    ?[...catalog,...otherPatternClasses.flatMap(entry=>entry.items)]:null;
   const itemResults=new Map(catalog.map(item=>[item.uid,new Map()]));
   // One distinct UID per matched literal keyword, across all Items.
   // Unlike Item.total, this is the word's own count, not the group's.
@@ -48,15 +37,6 @@ export async function reanalyzeKeywordClass({
   // Compile keyword rules once per Class, not once per 1,000-article batch.
   const classify=createKeywordUidDocumentClassifier(treeRows,classUid,{collectKeywordTerms:Boolean(writePatterns)});
   const seen=new Set();
-  const collectWordMatches=result=>{
-    if(!ARTICLE_UID.test(result.uid)||!seen.has(result.uid))
-      throw new Error('Classifier returned an unknown Galaxy UID');
-    for(const term of new Set(result.matched_terms||[])){
-      let uids=termResults.get(term);
-      if(!uids){uids=new Set();termResults.set(term,uids);}
-      uids.add(result.uid);
-    }
-  };
   let offset=0,read=0,eligible=0,occurrences=0,itemMatches=0;
   for(;;){
     const page=await readPage({offset,limit:pageSize});
@@ -76,7 +56,13 @@ export async function reanalyzeKeywordClass({
     for(const result of data.classifications||[]){
       if(!ARTICLE_UID.test(result.uid)||!seen.has(result.uid))
         throw new Error('Classifier returned an unknown Galaxy UID');
-      if(termResults)collectWordMatches(result);
+      if(termResults){
+        for(const term of new Set(result.matched_terms||[])){
+          let uids=termResults.get(term);
+          if(!uids){uids=new Set();termResults.set(term,uids);}
+          uids.add(result.uid);
+        }
+      }
       const itemSeen=new Set();
       for(const hit of result.hits||[]){
         const output=itemResults.get(hit.uid);
@@ -93,11 +79,6 @@ export async function reanalyzeKeywordClass({
       const groupUid=resolver.resolve(result);
       if(groupUid)groupResults.get(groupUid).add(result.uid);
     }
-    // Additional Classes contribute only their word -> UID matches. They
-    // cannot modify the selected Class's scoring or Group tie allocation.
-    for(const entry of otherPatternClasses)
-      for(const result of entry.classify(docs).classifications||[])
-        collectWordMatches(result);
     offset+=page.length;read+=page.length;eligible+=docs.length;
     onProgress({phase:'reading',completed:read,eligible});
     // A backend may cap returned rows below LIMIT. The reader advances only
@@ -140,7 +121,7 @@ export async function reanalyzeKeywordClass({
   // Persist the completed inverted lookup from these same Item results.
   // The virtual unified Anchor keeps only Item totals, never UID arrays.
   if(writePatterns){
-    await writePatterns({classUid,items:patternItems,
+    await writePatterns({classUid,items:catalog,
       termMatches:[...termResults].map(([term,uids])=>({
         pattern:term,uid_list:[...uids].sort(),count:uids.size
       }))});
