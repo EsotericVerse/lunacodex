@@ -66,5 +66,5 @@ function readSource(){
   return requireSource();
 }
 function requireSource(){
-  return readFileSync(new URL('../supabase/functions/loc-kysely/index.ts',import.meta.url),'utf8');
+  return readFileSync(new URL('../app/loc/gateway/sql-handler.ts',import.meta.url),'utf8');
 }
