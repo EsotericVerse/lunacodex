@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync,readdirSync} from 'node:fs';
+import {readFileSync,readdirSync,existsSync} from 'node:fs';
 import {join,relative} from 'node:path';
 
 const ROOT=new URL('..',import.meta.url).pathname;
@@ -19,7 +19,7 @@ function* files(folder){
 }
 test('active LOC runtime has no direct calls to retired SQL permission/sync functions',()=>{
   const failures=[];
-  for(const root of ACTIVE)for(const path of files(root)){
+  for(const root of ACTIVE.filter(dir=>existsSync(join(ROOT,dir))))for(const path of files(root)){
     const source=readFileSync(join(ROOT,path),'utf8');
     // Comments and historical migrations are not runtime dependencies.
     const code=source.replace(/\/\*[\s\S]*?\*\/|(^|\s)\/\/[^\n]*/gm,'');

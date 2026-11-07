@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LOC galaxy-link｜彩虹橋</title><style>
+:root{font:14px/1.5 system-ui;color-scheme:light dark}body{min-width:298px;margin:0;padding:16px}h1{font-size:17px;margin:0 0 6px}p{margin:6px 0 14px;color:gray}button{width:100%;margin:4px 0;padding:9px;border:1px solid #888;border-radius:8px;background:transparent;color:inherit;cursor:pointer}button:focus-visible{outline:2px solid #3983e5}#status{white-space:pre-wrap;overflow-wrap:anywhere;min-height:30px}#stats{padding:8px 0;font-variant-numeric:tabular-nums}
+</style></head><body>
+<h1>LOC galaxy-link｜彩虹橋</h1>
+<p>連接屬於你的文字銀河。<span style="display:block">擷取與錄製由你啟動；MCP 獨立運作。</span></p>
+<label style="display:block;margin:8px 0"><input type="checkbox" id="includeAI"> 舊對話同時保存 AI 回覆（預設只記錄使用者文字）</label>
+<label style="display:block;margin:8px 0">目的銀河
+<select id="scope" style="width:100%;padding:7px"><option value="lo3rwang">lo3rwang</option><option value="lrunes">lrunes</option></select></label>
+<button id="capture">擷取目前頁面</button>
+<button id="select">選取頁面區域</button>
+<button id="record">開始區域錄製</button>
+<button id="pause">暫停錄製</button>
+<button id="resume">繼續錄製</button>
+<button id="stop">停止錄製</button>
+<div id="stats">佇列讀取中</div>
+<button id="send">手動傳送 Queue</button>
+<button id="login">開啟 LOC 網站授權設定</button>
+<div id="status" role="status" aria-live="polite"></div>
+<script src="popup.js"></script></body></html>

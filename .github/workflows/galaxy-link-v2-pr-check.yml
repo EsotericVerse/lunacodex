@@ -1,0 +1,53 @@
+name: LOC galaxy-link v2 (manual read-only checks)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: galaxy-link-v2-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.4'
+          cache: npm
+      - name: Install frozen dependencies (no site build or deployment)
+        run: npm ci --no-audit --no-fund
+      - name: Parse only galaxy-link changed JS and JSX (no global scan)
+        run: |
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          import {createRequire} from 'node:module';
+          const {parse}=createRequire(import.meta.url)('@babel/parser');
+          const paths=[
+            'app/extension/bridge/page.jsx',
+            'app/extension/bridge/GalaxyLinkBridge.jsx',
+            'app/loc/providers/loc-gateway.mjs',
+            'app/loc/providers/kysely-edge.mjs',
+            'app/loc/db-client.mjs',
+            'extensions/loc-web-capture-v2/background.js',
+            'extensions/loc-web-capture-v2/content.js',
+            'extensions/loc-web-capture-v2/popup.js',
+            'extensions/loc-web-capture-v2/vendor/Readability.js',
+            'scripts/test-loc-web-capture-v2.mjs'
+          ];
+          for(const path of paths)parse(readFileSync(path,'utf8'),{
+            sourceType:'module',plugins:['jsx']
+          });
+          console.log(paths.length+' galaxy-link files parsed successfully');
+          NODE
+      - name: Run galaxy-link v2 and existing short-import contract tests
+        run: |
+          node --test \
+            scripts/test-loc-web-capture-v2.mjs \
+            scripts/test-loc-short-append-service.mjs \
+            scripts/test-loc-short-edge-authorization.mjs

@@ -4,21 +4,22 @@ import {sql} from 'npm:kysely@0.29.8';
 import {schema as fixedSchema} from '../../../zenstack/schema.mjs';
 import {normalizeLocDomain} from './loc-domain.mjs';
 
+// Verify the physical Registry columns against LOC's frozen ZModel contract
+// once at module load; never introspect the database per request.
+function fixedColumns(model,fields){
+  const actual=fixedSchema.models[model]?.fields;
+  if(!actual||fields.some(field=>!Object.hasOwn(actual,field)))
+    throw new Error('LOC ZModel / Registry SQL field mismatch');
+  return Object.freeze(fields);
+}
+const REGISTRY_RETURNING=fixedColumns('Manage',
+  ['id','domain','directory','parent_scope_id','active','sort_order','manage_role']);
+const LOC_NAME_COLUMNS=fixedColumns('Loc',
+  ['id','display_name','locale','birthday']);
+
 const ID=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
 const DIR=/^[a-z0-9][a-z0-9/_-]*$/;
-
-// Fixed LOC Registry models come from the same ZModel-backed schema contract as
-// the ZenStack client. Dynamic Scope relations remain trusted Kysely paths.
-const FIXED_MODELS=Object.freeze({manage:fixedSchema.models.Manage,loc:fixedSchema.models.Loc});
-function modelFields(model,fields){
-  if(!model||fields.some(field=>!Object.hasOwn(model.fields,field)))
-    throw new Error('LOC fixed ZModel / Kysely field contract mismatch');
-  return fields;
-}
-const MANAGE_ROUTE_FIELDS=modelFields(FIXED_MODELS.manage,
-  ['id','domain','directory','parent_scope_id','active','sort_order','manage_role']);
-const LOC_NAME_FIELDS=modelFields(FIXED_MODELS.loc,['id','display_name','locale','birthday']);
 function fail(message,status=400){throw Object.assign(new Error(message),{httpStatus:status});}
 function scope(value){const id=String(value??'').trim().toLowerCase();
   if(!ID.test(id))fail('Invalid Scope ID');return id;}
@@ -72,7 +73,7 @@ async function managedRegistry(trx,args){
     const inserted=await trx.insertInto('api.manage').values({
       id,domain,directory,parent_scope_id:parent,
       active,sort_order:sort,manage_role:'group'
-    }).returning(MANAGE_ROUTE_FIELDS).executeTakeFirst();
+    }).returning(REGISTRY_RETURNING).executeTakeFirst();
     if(!inserted)fail('Scope Group was not created');
     await trx.insertInto('silver.loc').values({id,display_name,locale:'zh-Hant'}).executeTakeFirst();
     return resultRow(inserted,display_name);
@@ -115,7 +116,7 @@ async function managedRegistry(trx,args){
   const updated=await trx.updateTable('api.manage')
     .set({domain,directory,parent_scope_id:parent,active,sort_order:sort})
     .where('id','=',id)
-    .returning(MANAGE_ROUTE_FIELDS).executeTakeFirst();
+    .returning(REGISTRY_RETURNING).executeTakeFirst();
   if(!updated)fail('Scope Registry update failed');
   const named=await trx.updateTable('silver.loc').set({display_name}).where('id','=',id).executeTakeFirst();
   if(Number(named?.numUpdatedRows||0)!==1)fail('Group / Scope list name missing');
@@ -229,8 +230,7 @@ async function provisionScope(trx,args){
   const anchor=sql.ref('silver.'+id+'_anchor');
   const blocks=sql.ref('silver.'+id+'_blocks');
   await sql`create table ${config} (like silver.lo3rwang including all)`.execute(trx);
-  // LOC owns display-name synchronisation in the same Kysely transaction
-  // (managedRegistry / provisionScope). Do not attach a vendor SQL trigger.
+  // Scope name changes are synchronized by the same trusted Kysely transaction.
   await sql`alter table ${config} drop column if exists home_blocks`.execute(trx);
   await sql`alter table ${config} drop column if exists governance_blocks`.execute(trx);
   await sql`create table ${blocks} (like silver.lo3rwang_blocks including all)`.execute(trx);
@@ -240,15 +240,11 @@ async function provisionScope(trx,args){
   await sql`create table ${anchor} (like silver.lrunes_anchor including all)`.execute(trx);
   for(const table of [config,galaxy,anchor,blocks])
     await sql`alter table ${table} enable row level security`.execute(trx);
-  // PostgreSQL compatibility boundary only: the trusted Kysely Gateway
-  // has verified an LOC-issued delegation and bound its grants to this SQL
-  // transaction. Other SQL dialects authorize in LOC/Kysely before execution.
-  // New Scope policies must NOT call api.manage() or any database Auth RPC.
+  // PostgreSQL compatibility policies use only verified LOC delegation grants.
+  // Kysely enforces the same Scope permissions for other SQL engines.
   const canUseScope=sql`coalesce(
-    (current_setting('request.jwt.claims',true)::jsonb -> 'grants')
-       ? ${sql.lit(id+':manage')}
-    or (current_setting('request.jwt.claims',true)::jsonb -> 'grants')
-       ? 'global:manage',false)`;
+    (current_setting('request.jwt.claims',true)::jsonb -> 'grants') ? ${sql.lit(id+':manage')}
+    or (current_setting('request.jwt.claims',true)::jsonb -> 'grants') ? 'global:manage',false)`;
   await sql`create policy ${sql.ref(id+'_config_public_read')} on ${config}
     for select to anonymous,authenticated using (true)`.execute(trx);
   await sql`create policy ${sql.ref(id+'_config_scope_update')} on ${config}
@@ -293,10 +289,11 @@ async function provisionScope(trx,args){
     current_keyword_class_uid:cloned?.uid||null,keyword_class_share_enabled:false,
     keyword_meta:sql`'{}'::jsonb`,staticstime:null,updated_at:sql`now()`
   }).executeTakeFirst();
-  await trx.insertInto('silver.loc').values(Object.fromEntries(
-    LOC_NAME_FIELDS.map(field=>[field,({
-      id,display_name:display,locale:'zh-Hant',birthday:args.p_birthday||null
-    })[field]]))).executeTakeFirst();
+  const locValues={id,display_name:display,locale:'zh-Hant',
+    birthday:args.p_birthday||null};
+  await trx.insertInto('silver.loc').values(
+    Object.fromEntries(LOC_NAME_COLUMNS.map(field=>[field,locValues[field]]))
+  ).executeTakeFirst();
   await sql`notify pgrst,'reload schema'`.execute(trx);
   return {scope_id:id,display_name:display,parent_scope_id:parent,
     route_mode:domain?'domain':'directory',route_value:domain||directory,

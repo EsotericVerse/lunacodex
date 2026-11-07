@@ -1,12 +1,7 @@
 # LOC fixed-schema / RPC-free execution boundary
 
-This branch contains the unified code change and **one atomic SQL cutover**
-(`20261107090000_loc_portable_retire_last_sql_functions.sql`) for the final
-seven PostgreSQL functions. It rewrites their 38 RLS Policy dependents and
-one View, replaces one CHECK expression, and removes three old Triggers.
-No tables, columns, indexes, public SELECT grants or new RPCs are introduced.
-The SQL cutover must follow the verified Kysely code deployment; neither the
-presence of this file nor a source regex scan proves a live migration ran.
+This branch is a **code-only** cutover. There is no SQL migration, table/index
+change, RLS or GRANT change, or automatic database introspection at runtime.
 
 ## Canonical model
 
@@ -122,12 +117,13 @@ without a catalog dependency.
   bounded Kysely aggregate when ISR is unavailable. Removed missing-RPC
   detection and the large multi-Scope, full-article comparison fallback.
   Optional ISR remains a cache, not an alternate database algorithm.
-- The seven SQL identity/permission/constraint/trigger helpers had
-  real catalog dependents, not active SQL RPC consumers. The final cutover
-  includes the exact 38 Policy replacements, the dependent View rewrite,
-  the repeated-label CHECK equivalent, and three Trigger removals. Each
-  `DROP FUNCTION` uses `RESTRICT`, never `CASCADE`. New Scope provisioning
-  generates grant-based predicates and never invokes `api.manage()`.
+- Never conflate policy/trigger helper functions with public RPCs:
+  `api.current_user_id`, `api.manage`,
+  `silver.domain_has_repeated_labels`,
+  `silver.sync_scope_config_display_name`, and
+  `silver.touch_visual_novel_updated_at` currently have catalog dependents.
+  They must not be removed without explicit policy, check constraint or
+  trigger rewrites (which are outside this PR).
 - `api.management_write` and other `SECURITY DEFINER` management functions
   require separate live caller, role and transaction verification before
   deletion. Lack of a direct import in one client is not proof of no use.
@@ -270,28 +266,38 @@ that the retained seven helper routines still exist.
   not activate the revised Edge or Authority until configured secrets,
   scoped grants and representative sign-in/read/write paths are verified.
 
-## Final seven-function cutover — 2026-11-07
+## Safe fixed-model/Kysely integration (2026-11-07)
 
-The new final migration is one transaction: replace 38 PostgreSQL
-function-dependent policies using verified LOC-issued Scope/global grants
-(and `sub` for the existing owner policies), replace the dependent
-`api.lo3rwang_keywords_manage` View, preserve repeated-domain-label
-validation without a SQL function, remove three function triggers, then
-`DROP FUNCTION ... RESTRICT` for all seven. Previously published
-anonymous SELECT policies are untouched. This is a one-time retirement,
-not an ongoing cross-engine runtime dependency.
+The active trusted Scope Registry Kysely writer imports the existing
+`zenstack/schema.mjs` contract and checks the fixed `Manage` and `Loc`
+column names once at module initialization. Both Registry `RETURNING`
+projections and the LOC name insert use those validated columns. This does
+**not** trigger an extra SQL lookup, alter the existing PostgreSQL authorization
+path, or claim that the ZenStack PolicyPlugin is already enabled.
 
-Kysely now synchronizes Scope display names with `silver.loc` inside the
-same transaction; normal management writes and Group member name edits no
-longer need the old trigger. New VisualNovel updates get `updated_at`
-from the Kysely mutation builder. Shared Kysely MCP read/search/append
-and PR lookups remove the old PostgreSQL-only SQL for those operations.
-All new Galaxy flags default to private across PostgreSQL, MySQL and
-SQL Server. Domain, public/anonymous, and delegated private access must
-still pass deployment-level regression before the atomic SQL cutover.
+For newly provisioned portable PostgreSQL, MySQL and SQL Server Scope Galaxy
+tables, all eight visibility flags default to `false` instead of `true`.
+The existing Galaxy tables are untouched. Scope Anchor and Registry behaviors,
+existing SQL helper functions, and MCP QoS/conditional read routes are unchanged
+in this isolated integration. Runtime multi-database connectivity and full
+ZenStack policy execution remain separate acceptance criteria.
 
-**State of evidence:** source and live database dependency scans plus
-domain parity checks are completed; local source syntax and mocked
-multi-engine MCP query tests were run. A full `npm`/Deno build, actual
-multi-DB connectivity, GitHub merge, standalone SQL Gateway deployment
-and production cutover are **not verified** by those checks.
+
+## Final SQL function retirement and Portable Kysely transition
+
+The live Scope Registry Kysely writer uses the verified fixed ZModel column
+contract. New PostgreSQL Scope policies evaluate LOC-issued delegated grants
+directly rather than invoking the SQL `api.manage()` function. The same
+transaction maintains the `silver.loc` display label when Scope configuration
+changes. SQL vendor-specific business helper calls are not reintroduced.
+
+The optional one-time SQL cutover file
+`supabase/migrations/20261107090000_loc_portable_retire_last_sql_functions.sql`
+replaces the 38 RLS Policy references, one view, one CHECK expression and
+three triggers, then retires seven SQL functions with `RESTRICT` only.
+Storing the SQL file in Git **does not apply it to a live database**. The
+cutover must follow confirmation of the updated Kysely service, public and
+private access parity, and a post-migration catalog verification.
+
+MCP source code, the five-minute search guard, conditional UID reads,
+warnings, QoS quotas and legacy PR routing are **out of scope** for this change.

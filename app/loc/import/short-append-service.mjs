@@ -23,6 +23,15 @@ export function normalizeSourceUrl(value){
   throw failure('Source URL must be HTTP(S) without credentials');
  return u.href;
 }
+// Browser-captured past conversations belong to the private MCP archive.
+// This is derived from the normalized, trusted source URL, never a user-provided
+// site string. Every new article still starts with all eight public flags false.
+export function siteForShortImportSource(sourceKey){
+ const hostname=new URL(normalizeSourceUrl(sourceKey)).hostname.toLowerCase();
+ return hostname==='chatgpt.com'||hostname.endsWith('.chatgpt.com')||
+  hostname==='chat.openai.com'||hostname==='claude.ai'||
+  hostname.endsWith('.claude.ai')?'mcp':'web';
+}
 export function validateShortImportBatch(input){
  if(!input||typeof input!=='object'||Array.isArray(input)||
   Object.keys(input).some(key=>!['id','write_mode','records'].includes(key))||
@@ -145,7 +154,7 @@ export async function processShortImport(batch,actor,{store,cryptoProvider=globa
    const next=fresh.map(e=>segmentText(e,uid)).join('\n');
    if(!prior){
     const first=events[0];
-    pendingInserts.push({uid,title:first.title,content:next,site:'web',site_id:siteId,
+    pendingInserts.push({uid,title:first.title,content:next,site:siteForShortImportSource(url),site_id:siteId,
      url,createtime:first.captured_at,UpdateTime:new Date().toISOString(),
      ...Object.fromEntries(FLAGS.map(k=>[k,false]))});
    }else if(next){await tx.append(uid,siteId,'\n'+next);}
@@ -174,7 +183,7 @@ export function postgresShortImportStore(db,sql){
    },
    async lookupMany(ids){
     return trx.selectFrom(name).select(['uid','content','site_id'])
-     .where('site','=','web').where('site_id','in',ids)
+     .where('site','in',['web','mcp']).where('site_id','in',ids)
      .limit(ids.length*2).forUpdate().execute();
    },
    async insertMany(rows){
@@ -183,7 +192,7 @@ export function postgresShortImportStore(db,sql){
    // Optional single-row fallbacks for other Kysely adapters.
    async lookup(id){
     return trx.selectFrom(name).select(['uid','content'])
-     .where('site','=','web').where('site_id','=',id)
+     .where('site','in',['web','mcp']).where('site_id','=',id)
      .limit(2).forUpdate().execute();
    },
    async insert(row){await trx.insertInto(name).values(row).executeTakeFirstOrThrow();},
@@ -191,7 +200,7 @@ export function postgresShortImportStore(db,sql){
     const result=await trx.updateTable(name)
       .set({content:sql`concat(coalesce(content,''),${tail})`,
        UpdateTime:new Date().toISOString()})
-      .where('uid','=',uid).where('site','=', 'web')
+      .where('uid','=',uid).where('site','in',['web','mcp'])
       .where('site_id','=',id).executeTakeFirstOrThrow();
     if(BigInt(result.numUpdatedRows||0n)!==1n)
      throw failure('Galaxy append did not affect one article',409);

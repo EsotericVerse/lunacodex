@@ -11,11 +11,10 @@ import {saveBlocksKysely} from "../../../app/loc/providers/kysely-blocks.mjs";
 import {executeKyselyAnchor,executePortableKyselyAnchor} from "../../../app/loc/providers/kysely-anchor.mjs";
 import {executeKyselyAnalytics,executePortableKyselyAnalytics} from "../../../app/loc/providers/kysely-analytics.mjs";
 import {executeKyselyPublicAction} from "../../../app/loc/providers/kysely-public.mjs";
-import {readMcpGalaxyWithKysely,appendMcpGalaxyWithKysely} from "../../../app/loc/providers/kysely-mcp-read.mjs";
 import {executeKyselyScopeAdmin} from "../../../app/loc/providers/kysely-scope-admin.mjs";
 import {ensurePortableScopeSchema,validatePortableScopeSchema} from "../../../app/loc/providers/kysely-schema.mjs";
 import { selectedDatabaseTarget } from "../../../app/loc/providers/selected-database-target.mjs";
-import {resolveSqlExecutionPort,assertCrossEnginePublicRead,authorizeCrossEngineQuery,executeCrossEngineManagedWrite,portableRelation} from "../../../app/loc/providers/sql-engine-ports.mjs";
+import {resolveSqlExecutionPort,assertCrossEnginePublicRead,authorizeCrossEngineQuery,executeCrossEngineManagedWrite} from "../../../app/loc/providers/sql-engine-ports.mjs";
 import {resolveDatabaseRouting} from "../../../app/loc/providers/routing-config.mjs";
 import {databaseAccessTargets} from "../../../app/loc/providers/access.js";
 import {isTextSearchQuery,checkSearchQos} from "../../../app/loc/providers/search-qos.mjs";
@@ -322,19 +321,25 @@ Deno.serve(async (request) => {
           return json({error:{message:"Invalid managed MCP article UID"}},400);
       }else if(typeof query!=="string"||query.trim().length<2||query.length>100||
           /[\u0000-\u001f\u007f]/.test(query)||!Number.isInteger(limit)||
-          Number(limit)<1||Number(limit)>20){
+          Number(limit)<1||Number(limit)>5){
         return json({error:{message:"Invalid managed MCP search parameters"}},400);
       }
       const db=await databaseForTarget(controlTarget);
+      // The scope has already been allowlisted; the identifier is not caller-supplied.
+      const table=sql.ref("silver."+scope+"_galaxy");
       const rows=await db.transaction().execute(async trx=>{
-        if(controlTarget.engine==='postgres'&&controlTarget.provider!=='custom'){
-          await bindPostgresSession(trx,'authenticated',claims);
-          await sql`set local statement_timeout = '4000ms'`.execute(trx);
+        await bindPostgresSession(trx,"authenticated",claims);
+        if(isRead){
+          const result=await sql`select uid,title,content,date,createtime,site,url
+            from ${table} where uid=${uid} and (${body.site===undefined} or site=${body.site||""}) limit 1`.execute(trx);
+          return result.rows;
         }
-        return readMcpGalaxyWithKysely(trx,body,{
-          engine:String(controlTarget.engine),
-          namespace:controlTarget.engine==='mssql'?'dbo':'silver'
-        });
+        const pattern="%"+String(query).trim().replace(/[\\%_]/g,"\\$&")+"%";
+        await sql`set local statement_timeout = '4000ms'`.execute(trx);
+        const result=await sql`select uid,title,createtime from ${table}
+          where site = 'mcp' and (title ilike ${pattern} or content ilike ${pattern})
+          order by createtime desc nulls last limit ${Number(limit)}`.execute(trx);
+        return result.rows;
       });
       return json({data:rows});
     }
@@ -351,15 +356,22 @@ Deno.serve(async (request) => {
          !/^[0-9a-f]{64}$/.test(batchId)||!content.startsWith(marker+"\n")||
          !Number.isFinite(Date.parse(stamp))) return json({error:{message:"Invalid append request"}},400);
       const db=await databaseForTarget(controlTarget);
+      const table=sql.ref("silver."+scope+"_galaxy");
       const result=await db.transaction().execute(async trx=>{
-        if(controlTarget.engine==='postgres'&&controlTarget.provider!=='custom'){
-          await bindPostgresSession(trx,'authenticated',claims);
-          await sql`set local statement_timeout = '5000ms'`.execute(trx);
-        }
-        return appendMcpGalaxyWithKysely(trx,body,{
-          engine:String(controlTarget.engine),
-          namespace:controlTarget.engine==='mssql'?'dbo':'silver'
-        });
+        await bindPostgresSession(trx,"authenticated",claims);
+        await sql`set local statement_timeout = '5000ms'`.execute(trx);
+        const next=await sql`update ${table} set content=concat_ws(chr(10),nullif(content,''),${content}),
+          "UpdateTime"=${stamp} where uid=${uid} and site='mcp'
+          and position(${marker} in coalesce(content,''))=0
+          returning uid,title,createtime`.execute(trx);
+        if(next.rows.length===1)
+          return {data:{count:1,title:next.rows[0].title,createtime:next.rows[0].createtime}};
+        const duplicate=await sql`select uid,title,createtime from ${table}
+          where uid=${uid} and site='mcp' and position(${marker} in coalesce(content,''))>0
+          limit 1`.execute(trx);
+        if(duplicate.rows.length===1)
+          return {data:{count:1,duplicate:true,title:duplicate.rows[0].title,createtime:duplicate.rows[0].createtime}};
+        throw Error("MCP topic unavailable");
       });
       return json(result);
     }
@@ -411,6 +423,79 @@ Deno.serve(async (request) => {
         return executeRequest(trx,controlTarget,"authenticated",claims,{
           kind:"managed-write",payload:{p_table:table,p_operation:"insert",p_rows:[row]}
         });
+      });
+      return json(result);
+    }
+    if(body.kind==="mcp-update-pr"){
+      // Updates an EXISTING Galaxy article in place. Unlike mcp-sync (which
+      // upserts private conversations), this never creates a new row: it only
+      // rewrites an article that is already tagged as GitHub PR origin and
+      // whose current title names the same PR number the caller supplied.
+      if(!verifiedMcp||role!=="authenticated")
+        return json({error:{message:"Verified MCP write permission required"}},403);
+      const scope=String(body.scopeid||"");
+      const expected=["kind","scopeid","pr_number","title","content","updated_at"];
+      const allowed=[...expected,"uid"];
+      const prNumber=body.pr_number;
+      if(!["lo3rwang","lrunes"].includes(scope)||
+        Object.keys(body).length!==expected.length+(body.uid===undefined?0:1)||
+        Object.keys(body).some(key=>!allowed.includes(key))||
+        (body.uid!==undefined&&!/^[A-Za-z0-9]{8}$/.test(String(body.uid)))||
+        !Number.isInteger(prNumber)||Number(prNumber)<1||Number(prNumber)>9999999||
+        typeof body.title!=="string"||!body.title.trim()||body.title.length>350||
+        typeof body.content!=="string"||!body.content.trim()||body.content.length>125000||
+        typeof body.updated_at!=="string"||!body.updated_at)
+        return json({error:{message:"Invalid PR update payload"}},400);
+      let uid=String(body.uid||"");
+      const table="silver."+scope+"_galaxy";
+      const tableRef=sql.ref(table);
+      const db=await databaseForTarget(controlTarget);
+      const result=await db.transaction().execute(async trx=>{
+        await bindPostgresSession(trx,"authenticated",claims);
+        // The user knows their GitHub PR number, not its random Galaxy UID.
+        // Locate by stable source identity first. Do not search private content,
+        // infer an arbitrary UID, or write when multiple candidates exist.
+        const repoSiteId="EsotericVerse/moon-runes-pwa#"+prNumber;
+        const prMarker=new RegExp("(?:^|[^0-9])PR\\s*#"+Number(prNumber)+"(?:[^0-9]|$)");
+        let rows:{uid:string;title:string;site:string;site_id:string|null}[];
+        if(uid){
+          const existing=await sql<{uid:string;title:string;site:string;site_id:string|null}>`
+            select uid,title,site,site_id from ${tableRef} where uid=${uid} limit 1`.execute(trx);
+          rows=existing.rows;
+        }else{
+          const exact=await sql<{uid:string;title:string;site:string;site_id:string|null}>`
+            select uid,title,site,site_id from ${tableRef}
+            where site='mcp' and site_id=${repoSiteId} limit 2`.execute(trx);
+          rows=exact.rows;
+          if(rows.length===0){
+            const fallback=await sql<{uid:string;title:string;site:string;site_id:string|null}>`
+              select uid,title,site,site_id from ${tableRef}
+              where site='mcp' and title ilike ${'%PR #'+prNumber+'%'}
+              order by createtime desc nulls last limit 40`.execute(trx);
+            rows=fallback.rows.filter(row=>prMarker.test(String(row.title||'')));
+          }
+          if(rows.length!==1)
+            throw Object.assign(new Error(rows.length?'Multiple PR articles match; refusing ambiguous update':
+              'Existing GitHub PR record not found'),{httpStatus:409});
+          uid=rows[0].uid;
+        }
+        const row=rows[0];
+        if(!row)throw Object.assign(new Error("Scope article not found"),{httpStatus:404});
+        if(row.site!=="mcp")
+          throw Object.assign(new Error("Only GitHub PR-origin articles can be updated through this tool"),{httpStatus:403});
+        if(row.site_id!==repoSiteId&&!prMarker.test(String(row.title||'')))
+          throw Object.assign(new Error("PR number does not match article provenance"),{httpStatus:403});
+        const values={title:body.title,content:body.content,UpdateTime:body.updated_at};
+        const updated=await executeRequest(trx,controlTarget,"authenticated",claims,
+          scope==="lo3rwang"
+            ?{kind:"query",schema:"silver",table:scope+"_galaxy",operation:"update",
+              values,filters:[{column:"uid",operator:"eq",value:uid}]}
+            :{kind:"managed-write",payload:{p_table:table,p_operation:"update",p_values:values,
+                p_filters:[{column:"uid",operator:"eq",value:uid}]}});
+        const count=updated?.count??updated?.data?.count;
+        if(count!==1)throw new Error("Managed PR update affected an unexpected number of rows");
+        return {data:{count:1,uid},count:1};
+
       });
       return json(result);
     }

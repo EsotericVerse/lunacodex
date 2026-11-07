@@ -77,7 +77,8 @@ function routedSchema(schemaName,cloudSchema){
 const routedAdapter={
   ...adapter,
   publicClient:{schema:name=>routedSchema(name,adapter.publicClient.schema(name))},
-  authClient:{schema:name=>routedSchema(name,adapter.authClient.schema(name))}
+  authClient:{schema:name=>routedSchema(name,adapter.authClient.schema(name)),
+    shortImport:(scopeid,batch)=>adapter.authClient.shortImport(scopeid,batch)}
 };
 const client=createDatabaseClient(routedAdapter);
 
