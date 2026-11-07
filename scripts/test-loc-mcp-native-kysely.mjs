@@ -15,7 +15,7 @@ test('the existing MCP Pages runtime selects a trusted native SQL alias only',()
  assert.equal(first.engine,'postgres');
  assert.equal(first.namespace,'silver');
  assert.equal(typeof first.db.selectFrom,'function');
- assert.equal(first.db.dialect,undefined,'raw dialect is not exposed to MCP callers');
+ assert.deepEqual(Object.keys(first).sort(),['db','engine','namespace']);
 });
 test('no runtime SQL secret or an invalid alias fails closed',()=>{
  assert.throws(()=>directMcpKysely({}),/alias is not configured/);
