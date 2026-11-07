@@ -54,6 +54,22 @@ export function federatedDatasetsFor(raw,scopeId){
     return Object.freeze({databaseId:entry.databaseId,target});
   });
 }
+/**
+ * Associate post-commit index writes with the exact user-defined databaseId
+ * for the physical SQL connection that just committed. Without this, the
+ * primary connection's alias would write an orphan KV index under a different
+ * identity from DB1/DB2's backfill. A configured registry with no matching
+ * alias deliberately skips indexing rather than inventing a data source.
+ */
+export function indexTargetForScope(raw,scopeId,target){
+  if(!target||!SCOPE.test(String(scopeId||'')))return null;
+  const registered=federatedDatasetsFor(raw,scopeId);
+  if(!registered.length)return target;
+  const match=registered.find(item=>
+    item.target.connection_alias===target.connection_alias&&
+    item.target.engine===target.engine);
+  return match?.target||null;
+}
 export function federatedScopeFromQuery(body){
   if(body?.kind!=='query'||body.operation!=='select'||
      body.schema!=='silver'||typeof body.table!=='string')return '';
