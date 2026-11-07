@@ -17,7 +17,7 @@ export function createKeywordUidDocumentClassifier(treeRows=[],classUid='',{coll
     uid:row.uid,status:row.status,classification_group:row.classification_group,
     tied_groups:[...(row.tied_groups||[])],
     hits:(row.rune_counts||[]).map(hit=>({uid:slot.get(hit.rune_id),times:hit.count})),
-    matched_terms:[...(row.matched_terms||[])]
+    ...(collectKeywordTerms?{matched_terms:[...(row.matched_terms||[])]}:{})
     }))};
   };
 }
