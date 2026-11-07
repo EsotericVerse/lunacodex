@@ -400,7 +400,7 @@ export class LocAuthorityState extends DurableObject {
     }
     // Runtime currently verifies only the deployed Clerk Session for SQL.
     // This value is intentionally NOT writable via these configuration endpoints.
-    return {active:'clerk',providers};
+    return {active:'loc',providers};
   }
   async putAuthProvider(type,values){
     const previous=await this.ctx.storage.get('auth-provider:'+type);
@@ -943,7 +943,7 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
     const email=String(env.LOC_ROOT_MANAGEMENT_EMAIL||'').trim().toLowerCase();
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
       throw fail('Trusted root email mapping is unavailable',503);
-    return json({provider:'clerk',subject:principal.subject,scopeid,email,authorized:true},200,origin);
+    return json({provider:'loc',subject:principal.subject,scopeid,email,authorized:true},200,origin);
   }
   if(parts[0]==='checkpoint'&&parts.length===3&&request.method==='GET'){
     const scopeid=validScope(parts[1]);
@@ -1173,7 +1173,49 @@ export default {
       if(request.method==='GET'&&url.pathname==='/v1/state')return json(await stub.listState(),200,origin);
       if(request.method==='GET'&&url.pathname==='/v1/auth/providers')
         return json(await stub.listAuthProviders(),200,origin);
-      const authMatch=new RegExp('^/v1/auth/providers/(github|oidc|entra|ldap|ad|neon)$').exec(url.pathname);
+      const authMatch=new RegExp('^/v1/auth/providers/(github|oidc|entra|ldap|ad).exec(url.pathname);
+      if(request.method==='PUT'&&authMatch){
+        const raw=await request.text();
+        if(raw.length>12000)throw fail('Request too large',413);
+        let input;try{input=JSON.parse(raw)}catch{throw fail('Invalid JSON')}
+        return json(await stub.putAuthProvider(authMatch[1],input),200,origin);
+      }
+      if(request.method==='GET'&&url.pathname==='/v1/grants')return json({grants:await stub.listGrants()},200,origin);
+      if(request.method==='PUT'&&url.pathname==='/v1/grants'){
+        const raw=await request.text();if(raw.length>3000)throw fail('Request too large',413);
+        let input;try{input=JSON.parse(raw)}catch{throw fail('Invalid JSON')}
+        return json(await stub.putGrant(input),200,origin);
+      }
+      if(request.method==='POST'&&url.pathname==='/v1/revoke'){
+        const raw=await request.text();if(raw.length>1000)throw fail('Request too large',413);
+        let input;try{input=JSON.parse(raw)}catch{throw fail('Invalid JSON')}
+        return json(await stub.revokeGrant(input?.key),200,origin);
+      }
+      const match=/^\/v1\/targets\/([a-z][a-z0-9_-]{0,63})$/.exec(url.pathname);
+      if(request.method==='PUT'&&match){
+        const raw=await request.text();
+        if(raw.length>10_000)throw fail('Request too large',413);
+        let value;try{value=JSON.parse(raw)}catch{throw fail('Invalid JSON')}
+        return json(await stub.putTarget(match[1],value),200,origin);
+      }
+      if(request.method==='POST'&&url.pathname==='/v1/primary'){
+        const raw=await request.text();
+        if(raw.length>1000)throw fail('Request too large',413);
+        let input;try{input=JSON.parse(raw)}catch{throw fail('Invalid JSON')}
+        if(!ID.test(String(input?.id||'')))throw fail('Invalid primary target');
+        // Preference is persisted here. The current LOC app still uses its
+        // existing deployed routing until a trusted SQL Gateway is connected.
+        const selected=await stub.selectPrimary(input.id);
+        return json({...selected,runtime_connected:false},200,origin);
+      }
+      throw fail('Not found',404);
+    }catch(error){
+      const code=Number(error?.status)||500;
+      return json({error:code>=500?'Recovery control unavailable':String(error.message)},code,origin);
+    }
+  }
+};
+).exec(url.pathname);
       if(request.method==='PUT'&&authMatch){
         const raw=await request.text();
         if(raw.length>12000)throw fail('Request too large',413);

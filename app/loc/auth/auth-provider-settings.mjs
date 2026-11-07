@@ -1,6 +1,6 @@
 // Shared configuration contract; no auth switch is implied by a saved provider.
 // Secret material is accepted ONLY by the trusted LOC Authority and never returned.
-export const AUTH_PROVIDER_TYPES=Object.freeze(['github','oidc','entra','ldap','ad','neon']);
+export const AUTH_PROVIDER_TYPES=Object.freeze(['github','oidc','entra','ldap','ad']);
 export const AUTH_PROVIDER_FIELDS=Object.freeze({
   github:Object.freeze([{key:'client_id',label:'GitHub OAuth Client ID'},
     {key:'callback_url',label:'Callback URL',kind:'url'},
@@ -19,17 +19,11 @@ export const AUTH_PROVIDER_FIELDS=Object.freeze({
   ad:Object.freeze([{key:'bridge_issuer_url',label:'AD OIDC Bridge Issuer URL',kind:'url'},
     {key:'client_id',label:'OIDC Bridge Client ID'},
     {key:'callback_url',label:'Callback URL',kind:'url'},
-    {key:'client_secret',label:'OIDC Bridge Client Secret',kind:'secret'}]),
-  // Neon Auth owns its external social-provider credentials: LOC only saves
-  // the two HTTPS endpoints and its own same-origin OAuth callback.
-  neon:Object.freeze([{key:'auth_url',label:'Neon Auth URL（/auth）',kind:'url'},
-    {key:'data_api_url',label:'Neon Data API URL（/rest/v1）',kind:'url'},
-    {key:'callback_url',label:'LOC Callback URL',kind:'url'}])
+    {key:'client_secret',label:'OIDC Bridge Client Secret',kind:'secret'}])
 });
 export const AUTH_PROVIDER_LABELS=Object.freeze({
   github:'GitHub OAuth',oidc:'標準 OIDC',entra:'Microsoft Entra ID',
-  ldap:'LDAP（OIDC 橋接）',ad:'Active Directory（OIDC 橋接）',
-  neon:'Neon Auth'
+  ldap:'LDAP（OIDC 橋接）',ad:'Active Directory（OIDC 橋接）'
 });
 function invalid(message){throw new Error(message)}
 function httpsUrl(value,key,{originOnly=false,callbackOrigin=''}={}){
@@ -68,12 +62,6 @@ export function validateAuthProviderSettings(type,values,{previous=null,siteOrig
     if(field.kind==='url'){
       const parsed=httpsUrl(value,field.key,
         {callbackOrigin:field.key==='callback_url'?origin:''});
-      if(type==='neon'&&field.key==='auth_url'&&
-        !new URL(parsed).pathname.replace(/\/+$/,'').endsWith('/auth'))
-        invalid('Neon Auth URL must end with /auth');
-      if(type==='neon'&&field.key==='data_api_url'&&
-        !new URL(parsed).pathname.replace(/\/+$/,'').endsWith('/rest/v1'))
-        invalid('Neon Data API URL must end with /rest/v1');
       result[field.key]=parsed;
     }
     else if(!/^[a-zA-Z0-9._:@\/-]{2,512}$/.test(value))
