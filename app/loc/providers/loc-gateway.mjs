@@ -86,6 +86,21 @@ export function createLocGatewayAdapter({
         headers:{authorization:'Bearer '+oauthToken,'content-type':'application/json'},
         body:JSON.stringify(request)
       });
+      // A verified virtual Group manager holds a signed ancestor Group grant,
+      // not separate grants for every descendant Scope. If the exact request
+      // is denied, exchange the caller's own existing grants once. The SQL
+      // Gateway must then check the trusted live hierarchy before any write.
+      // An unauthorized user still has no usable inherited permission.
+      if(response.status===403&&request.scopeid&&
+         request.actions?.includes('manage')){
+        const selfRequest={audience:'sql',self:true};
+        const inherited=await getLocAccessToken({kind:'managed-action',
+          name:'manage',args:{p_type:'self'}});
+        const selfCache=delegationCache.get(oauthToken+'|'+JSON.stringify(selfRequest));
+        if(selfCache?.until>Date.now()+30_000)
+          delegationCache.set(key,{token:inherited,until:selfCache.until});
+        return inherited;
+      }
       if(!response.ok)throw new Error('LOC delegation exchange rejected (HTTP '+response.status+')');
       const data=await response.json();
       const token=String(data?.access_token||'');
