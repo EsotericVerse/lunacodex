@@ -1,6 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
 import {issueDelegation} from '../../app/loc/auth/delegation-contract.mjs';
-import {trustedSqlProfile} from './sql-profile.mjs';
 import {normalizeSqlDriverAuthentication,publicSqlDriverAuthentication,
   sqlAuthNeedsUserPassword} from '../../app/loc/providers/sql-driver-auth.mjs';
 import {ISSUER,MCP_AUDIENCE,WEB_AUDIENCE,isNativeOAuthPath,handleNativeOAuth,
@@ -136,17 +135,6 @@ function safeMcpSqlUrl(value){
     /\/rest\/v1(?:\/|$)|\/functions\/v1\//.test(u.pathname))
     throw fail('Scope requires a trusted HTTPS LOC Kysely SQL Gateway, not a vendor Data API',400);
   return u.toString();
-}
-function validateScopeTarget(input,scopeid){
-  validScope(scopeid);
-  if(!input||typeof input!=='object'||Array.isArray(input))
-    throw fail('Invalid Scope SQL Gateway configuration',400);
-  const endpoint=safeMcpSqlUrl(input.endpoint);
-  // A Scope never chooses another table, database alias or SQL credential.
-  const table=scopeid+'_galaxy';
-  if(input.table!==undefined&&input.table!==table)
-    throw fail('Scope table must match its existing Galaxy relation',400);
-  return {scopeid,endpoint,schema:String(input.schema||'public'),table};
 }
 async function mcpJsonBody(request,limit=160000){
   const raw=await request.text();
@@ -423,20 +411,15 @@ export class LocAuthorityState extends DurableObject {
     return Boolean(grant&&grant.expires_at>Date.now()&&grant.actions.includes(action));
   }
 
-  // Only the Gateway address is saved. No vendor API key, database password,
-  // or Data API credential is accepted by MCP configuration.
-  async putMcpScope(scopeid,input){
-    const next=validateScopeTarget(input,scopeid);
-    await this.ctx.storage.put('mcp-scope:'+scopeid,{public:next});
-    return {...next,configured:true};
-  }
   async getMcpScope(scopeid){
     validScope(scopeid);
     const item=await this.ctx.storage.get('mcp-scope:'+scopeid);
     if(item){
-      const endpoint=String(item.public?.endpoint||'');
-      return {...item.public,configured:!endpoint.includes('/rest/v1'),
-        needs_reconfigure:endpoint.includes('/rest/v1')};
+      // Historical Gateway URLs remain in Durable Object storage for a
+      // reversible data migration, but are never exposed as usable targets.
+      return {scopeid,configured:false,needs_native_driver:true,
+        legacy_gateway_retired:true,schema:String(item.public?.schema||'silver'),
+        table:scopeid+'_galaxy'};
     }
     if(Object.hasOwn(MANAGED_SCOPE_TABLES,scopeid))
       return {scopeid,configured:true,managed:true,provider:'loc-kysely',
@@ -845,10 +828,7 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
       if(!await allowed(scopeid,'read')&&!await allowed(scopeid,'write')&&!await allowed(scopeid,'configure'))throw fail('Scope access denied',403);
       return json(await scoped(scopeid).getMcpScope(scopeid),200,origin);
     }
-    if(request.method==='PUT'){
-      if(!await allowed(scopeid,'configure'))throw fail('Scope configuration denied',403);
-      return json(await scoped(scopeid).putMcpScope(scopeid,await mcpJsonBody(request,9000)),200,origin);
-    }
+    if(request.method==='PUT')throw fail('SQL Gateway Scope registration is retired',410);
   }
   if(['authorize-read','authorize-write'].includes(parts[0])&&
      parts.length===2&&request.method==='GET'){
@@ -1063,13 +1043,6 @@ export default {
       if(!['GET','PUT','POST'].includes(request.method))throw fail('Method not allowed',405);
       const url=new URL(request.url);
       if(url.pathname.startsWith('/v1/mcp/'))return handleMcpAuthority(request,env,url,origin);
-      // Only an independently authenticated Gateway can request a decrypted
-      // DO connection. No browser-visible path yields passwords or DB URLs.
-      if(request.method==='POST'&&url.pathname==='/v1/sql/runtime-profile'){
-        const state=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName(
-          'loc-authority-control-v1'));
-        return trustedSqlProfile(request,env,state);
-      }
       if(request.method==='GET'&&url.pathname==='/.well-known/jwks.json'){
         const state=env.LOC_AUTHORITY_STATE.get(
           env.LOC_AUTHORITY_STATE.idFromName('loc-authority-control-v1'));
