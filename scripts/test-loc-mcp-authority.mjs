@@ -227,7 +227,7 @@ test('Group Scope attachment and active grants are preserved through portable MC
 
 test('Portable MCP keeps one ZModel-backed Kysely executor without a provider Function fallback',()=>{
   const executor=readFileSync(new URL('../app/loc/providers/kysely-mcp.mjs',import.meta.url),'utf8');
-  const edge=readFileSync(new URL('../supabase/functions/loc-kysely/index.ts',import.meta.url),'utf8');
+  const edge=readFileSync(new URL('../app/loc/gateway/sql-handler.ts',import.meta.url),'utf8');
   const worker=readFileSync(new URL('../workers/loc-authority/index.mjs',import.meta.url),'utf8');
   assert.match(executor,/schema as zmodel/);
   assert.match(executor,/executePortableMcp/);
