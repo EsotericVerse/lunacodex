@@ -239,7 +239,12 @@ function json(body: unknown, status = 200, extraHeaders: Record<string, string> 
   });
 }
 
-Deno.serve(async (request) => {
+// Containers and standalone hosts may assign their own listening port.
+// Never assume the hosted compatibility runtime's default port.
+const serverPort=Number(Deno.env.get("PORT")||"8000");
+if(!Number.isInteger(serverPort)||serverPort<1||serverPort>65535)
+  throw new Error("Invalid LOC SQL Gateway listen port");
+Deno.serve({hostname:"0.0.0.0",port:serverPort},async (request) => {
   // Container liveness is intentionally database-free and does not mint grants.
   // The public Worker exposes only /v1/sql; /health stays on the internal port.
   if (request.method === "GET" && new URL(request.url).pathname === "/health")
