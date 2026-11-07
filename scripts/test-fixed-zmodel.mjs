@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {schema as fixedSchema} from '../zenstack/schema.mjs';
 
 const snapshot=JSON.parse(readFileSync(new URL('../zenstack/schema-contract.json',import.meta.url),'utf8'));
 const source=readFileSync(new URL('../zenstack/schema.zmodel',import.meta.url),'utf8');
@@ -240,4 +241,21 @@ test('exact api.manage cutover covers live JavaScript registry and both models',
   assert.match(migration,/DROP TABLE silver\.manage RESTRICT;/);
   assert.match(migration,/CREATE OR REPLACE VIEW api\.lo3rwang_keywords_manage AS/);
   assert.doesNotMatch(migration,/DROP .*CASCADE/);
+});
+
+test('live Kysely Scope management uses the fixed ZModel registry column contract',()=>{
+  const admin=readFileSync(new URL(
+    '../app/loc/providers/kysely-scope-admin.mjs',import.meta.url),'utf8');
+  for(const [model,cols] of [
+    ['Manage',['id','domain','directory','parent_scope_id','active','sort_order','manage_role']],
+    ['Loc',['id','display_name','locale','birthday']]
+  ]){
+    assert.ok(fixedSchema.models[model]);
+    for(const field of cols)assert.ok(fixedSchema.models[model].fields[field],
+      model+'.'+field+' must match the existing physical schema');
+  }
+  assert.match(admin,/import \{schema as fixedSchema\} from '\.\.\/\.\.\/\.\.\/zenstack\/schema\.mjs'/);
+  assert.match(admin,/\.returning\(REGISTRY_RETURNING\)/);
+  assert.match(admin,/Object\.fromEntries\(LOC_NAME_COLUMNS\.map/);
+  assert.equal((admin.match(/\.returning\(REGISTRY_RETURNING\)/g)||[]).length,2);
 });
