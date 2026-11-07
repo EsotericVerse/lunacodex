@@ -68,6 +68,20 @@ test('portable schema validation reuses scoped ZModel field lists',()=>{
     {engine:'postgres',namespace:'silver',scopeId:'demo'}),/missing columns: attr/);
 });
 
+test('portable MySQL and SQL Server keep Kysely field validation without invoking the native PostgreSQL ORM',()=>{
+  for(const [engine,namespace] of [['mysql',''],['mssql','dbo']]){
+    const metadata=scopedZModelColumns({scopeId:'demo',
+      namespace:namespace||'public'});
+    const tables=[
+      {name:'demo_galaxy',schema:namespace,columns:metadata.galaxy.map(name=>({name}))},
+      {name:'demo_anchor',schema:namespace,columns:metadata.anchor.map(name=>({name}))}
+    ];
+    const names=validatePortableScopeSchema(tables,{engine,namespace,scopeId:'demo'});
+    assert.ok(names.galaxy);
+    assert.ok(names.anchor);
+  }
+});
+
 test('real ZenStack V3 client compiles bounded native scope queries using one injected Kysely dialect',async()=>{
   let connections=0;
   const executed=[];
