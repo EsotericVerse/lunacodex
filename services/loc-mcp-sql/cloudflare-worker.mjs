@@ -38,7 +38,14 @@ export class LocMcpSqlContainer extends DurableObject {
     await this.starting;
     this.ready=true;
    }
-   return await this.ctx.container.getTcpPort(8000).fetch(request);
+   // Container port fetchers must receive an internal HTTP origin, not the
+   // external HTTPS Worker URL. Preserve path, method, body and auth headers.
+   const url=new URL(request.url);
+   url.protocol='http:';
+   url.host='container';
+   const forwarded=new Request(url,request);
+   forwarded.headers.delete('host');
+   return await this.ctx.container.getTcpPort(8000).fetch(forwarded);
   }catch{
    this.ready=false;
    return unavailable('LOC MCP SQL Gateway unavailable');
