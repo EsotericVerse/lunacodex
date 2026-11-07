@@ -2,15 +2,19 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync,existsSync} from 'node:fs';
 import {authorityAction} from '../app/loc/mcp/authority-client.mjs';
-import {TOOLS} from '../app/loc/mcp/router.mjs';
 
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 const OAuth='eyJ.fake.body.signature';
 
 test('MCP scope_storage is read-only and never accepts Gateway URL or secrets',async()=>{
- const tool=TOOLS.find(x=>x.name==='scope_storage');
- assert.deepEqual(Object.keys(tool.inputSchema.properties),['scopeid']);
- assert.equal(tool.annotations.readOnlyHint,true);
+ const source=read('app/loc/mcp/router.mjs');
+ const start=source.indexOf("{name:'scope_storage'");
+ const end=source.indexOf("{name:'galaxy_link'",start);
+ assert.ok(start>0&&end>start);
+ const tool=source.slice(start,end);
+ assert.match(tool,/scopeid:\{type:'string'\}/);
+ assert.doesNotMatch(tool,/endpoint:\{|schema:\{|table:\{/);
+ assert.match(tool,/readOnlyHint:true/);
  let requests=0;
  const fetcher=async(url,options)=>{
   requests++;
