@@ -56,9 +56,10 @@ export async function databaseForTarget(input:Record<string,unknown>,options:{pr
     // Pool sizing is independent of database hosting. A single trusted SQL
     // Gateway instance reuses this connection pool for its Scope queries.
     dialect=new PostgresDialect({pool:new Pool({connectionString:profile.url,
-      // Trusted runtime profiles default to TLS. A local/plaintext database
-      // must opt out explicitly; URL-based sslmode remains supported by pg.
-      ...(profile.tls===false?{ssl:false}:{ssl:{rejectUnauthorized:true}}),
+      // Explicit Authority TLS settings are enforced; profiles without a
+      // TLS flag keep pg's existing URL/sslmode behavior for local databases.
+      ...(profile.tls===true?{ssl:{rejectUnauthorized:true}}:
+        profile.tls===false?{ssl:false}:{}),
       max:1,idleTimeoutMillis:15000,connectionTimeoutMillis:7000})});
   }else if(target.engine==="mysql"){
     if(uri.protocol!=="mysql:")throw new Error("MySQL needs a mysql URL");
