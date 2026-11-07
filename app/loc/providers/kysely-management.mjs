@@ -411,7 +411,8 @@ const ACTIONS=new Set(['read_source_catalog','save_scope_sources','read_group_me
   'update_group_default_article_class','is_current_email_blocklisted','move_scope_block',
   'preview_or_fill_galaxy_place','batch_fill_galaxy_location',
   'rename_scope_site_batch','save_scope_trace_place_names','save_blocks','loc_admin_settings',
-  'refresh_scope_search_summary','merge_scope_trace_place_names','import_shared_keyword_class','manage','find_galaxy_duplicates','read_scope_registry_admin','bulk_update_galaxy_able']);
+  'refresh_scope_search_summary','merge_scope_trace_place_names','import_shared_keyword_class','manage','find_galaxy_duplicates','read_scope_registry_admin','bulk_update_galaxy_able',
+  'sync_search_patterns','suggest_search_patterns']);
 function validScope(value){
   const id=String(value||'').trim().toLowerCase();
   if(!/^[a-z][a-z0-9]{0,14}$/.test(id))reject('Invalid Scope ID');
@@ -422,6 +423,100 @@ function validUid(value){
   if(!UID.test(uid))reject('Invalid block UID');
   return uid;
 }
+
+// Indexed Keyword suggestions stay inside the verified LOC Scope-management
+// channel. No anonymous SELECT exposes private Item vocabulary or article UIDs.
+async function suggestSearchPatterns(trx,args){
+  const requested=args.p_scope_ids;
+  const query=String(args.p_query??'').normalize('NFKC').trim();
+  if(!Array.isArray(requested)||requested.length<1||requested.length>50||
+     requested.some(scope=>typeof scope!=='string'||!/^[a-z][a-z0-9]{0,14}$/.test(scope))||
+     query.length>120)reject('Invalid search-pattern request');
+  const granted=[];
+  for(const id of new Set(requested)){
+    if(await canManageLoc(trx,'scope',id))granted.push(id);
+  }
+  if(!granted.length)reject('No authorized search-pattern Scope',403);
+  await sql`reset role`.execute(trx);
+  const escaped=query.replace(/[\\%_]/gu,'\\export async function executeManagedKyselyAction(trx,body,claims={}){');
+  const rows=await trx.selectFrom('silver.loc_search_pattern')
+    .select('pattern').select(eb=>eb.fn.sum('count').as('count'))
+    .where('scopeid','in',granted)
+    .where('pattern','ilike',escaped+'%')
+    .groupBy('pattern')
+    .orderBy('count','desc').orderBy('pattern','asc')
+    .limit(10).execute();
+  return rows.map(row=>({pattern:row.pattern,count:Number(row.count)||0}));
+}
+
+async function syncSearchPatterns(trx,args){
+  const scope=await scopedWrite(trx,args.p_scope_id);
+  const classUid=validUid(args.p_class_uid);
+  const proposed=args.p_patterns;
+  if(!Array.isArray(proposed)||proposed.length>4000)
+    reject('Invalid search-pattern batch');
+  const anchor='silver.'+scope+'_anchor';
+  const klass=await trx.selectFrom(anchor).select('uid')
+    .where('uid','=',classUid).where('type','=','class').executeTakeFirst();
+  if(!klass)reject('Keyword Class not found for Scope');
+  // Only Keyword Item titles and literal aliases may appear in this table.
+  // This source read is bounded by the keyword library, not article content.
+  const items=await trx.selectFrom(anchor).select(['title','attr'])
+    .where('type','=','item').execute();
+  const active=new Set();
+  const id=value=>String(value??'').normalize('NFKC').trim().toLocaleLowerCase('zh-Hant');
+  for(const item of items){
+    const attr=typeof item.attr==='string'?JSON.parse(item.attr):item.attr||{};
+    for(const word of [item.title,...(Array.isArray(attr.keyword)?attr.keyword:[])]){
+      const value=id(word);
+      if(value&&value.length<=256)active.add(value);
+    }
+  }
+  const seen=new Set();
+  for(const row of proposed){
+    const word=String(row?.pattern??'').normalize('NFKC').trim();
+    const key=id(word);
+    if(row?.scopeid!==scope||!key||word.length>256||!active.has(key)||
+       seen.has(key)||!Number.isSafeInteger(row.count)||row.count<0||
+       !Array.isArray(row.uid_list)||row.uid_list.length>100000||
+       row.uid_list.some(uid=>typeof uid!=='string'||!UID.test(uid))||
+       new Set(row.uid_list).size!==row.uid_list.length)
+      reject('Invalid or duplicated Keyword search pattern');
+    seen.add(key);
+  }
+  const stored=await trx.selectFrom('silver.loc_search_pattern')
+    .select(['pattern','count','uid_list','update_time'])
+    .where('scopeid','=',scope).execute();
+  const prior=new Map(stored.map(row=>[id(row.pattern),row]));
+  const now=new Date().toISOString();
+  const changed=[];
+  for(const row of proposed){
+    const old=prior.get(id(row.pattern));
+    const uids=[...row.uid_list].sort();
+    const sameUids=Array.isArray(old?.uid_list)&&old.uid_list.length===uids.length&&
+      [...old.uid_list].sort().every((uid,i)=>uid===uids[i]);
+    if(old&&Number(old.count)===row.count&&sameUids)continue;
+    changed.push({scopeid:scope,pattern:row.pattern,count:row.count,
+      uid_list:uids,update_time:old&&sameUids?old.update_time:now});
+  }
+  for(let i=0;i<changed.length;i+=100){
+    const batch=changed.slice(i,i+100);
+    await trx.insertInto('silver.loc_search_pattern').values(batch)
+      .onConflict(oc=>oc.columns(['scopeid','pattern']).doUpdateSet(eb=>({
+        count:eb.ref('excluded.count'),
+        uid_list:eb.ref('excluded.uid_list'),
+        update_time:eb.ref('excluded.update_time')
+      }))).execute();
+  }
+  // Do not remove another Class's live words when this Class is reanalyzed.
+  const obsolete=stored.filter(row=>!active.has(id(row.pattern))).map(row=>row.pattern);
+  for(let i=0;i<obsolete.length;i+=100){
+    await trx.deleteFrom('silver.loc_search_pattern')
+      .where('scopeid','=',scope).where('pattern','in',obsolete.slice(i,i+100)).execute();
+  }
+  return {patterns:proposed.length,changed:changed.length,deleted:obsolete.length};
+}
+
 export async function executeManagedKyselyAction(trx,body,claims={}){
   const name=String(body?.name||'');
   if(!ACTIONS.has(name)||!body.args||typeof body.args!=='object'||
@@ -447,9 +542,13 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     import_shared_keyword_class:['p_target_scope','p_source_scope','p_class_uid'],
     manage:['p_type','p_id'],
     find_galaxy_duplicates:['p_scope_id'],
-    read_scope_registry_admin:[]
+    read_scope_registry_admin:[],
+    sync_search_patterns:['p_scope_id','p_class_uid','p_patterns'],
+    suggest_search_patterns:['p_scope_ids','p_query']
   }[name];
   if(Object.keys(args).some(key=>!keys.includes(key)))reject('Unexpected Kysely action argument');
+  if(name==='sync_search_patterns')return {data:await syncSearchPatterns(trx,args),count:null};
+  if(name==='suggest_search_patterns')return {data:await suggestSearchPatterns(trx,args),count:null};
   if(name==='read_source_catalog')return {data:await sourceCatalogAction(trx,args),count:null};
   if(name==='save_scope_sources')return {data:await sourceCatalogAction(trx,args,true),count:null};
   if(name==='save_blocks'){
