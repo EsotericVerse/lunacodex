@@ -31,41 +31,17 @@
       "skillPath": "skills/clerk-react-patterns/SKILL.md",
       "computedHash": "e6b7e52013ca836db3a8d901b3c116370da83970398b6f9d7d1e1138ba442be8"
     },
-    "clerk-react-router-patterns": {
-      "source": "clerk/skills",
-      "sourceType": "github",
-      "skillPath": "skills/clerk-react-router-patterns/SKILL.md",
-      "computedHash": "767a21fd76f6cf186293cf027c7f7815c7bee8544ed788ef66cb23841b263948"
-    },
     "clerk-setup": {
       "source": "clerk/skills",
       "sourceType": "github",
       "skillPath": "skills/clerk-setup/SKILL.md",
       "computedHash": "2ece6f11c35ba3420ca340e6b0ecd86caec149b7012d71c8625ee16f542a77f9"
     },
-    "clerk-swift": {
-      "source": "clerk/skills",
-      "sourceType": "github",
-      "skillPath": "skills/clerk-swift/SKILL.md",
-      "computedHash": "3d4c8c473c030b1d683ea3498baff2a86470bae05cd12fddebdee9c5d3b0aa2f"
-    },
-    "clerk-tanstack-patterns": {
-      "source": "clerk/skills",
-      "sourceType": "github",
-      "skillPath": "skills/clerk-tanstack-patterns/SKILL.md",
-      "computedHash": "0f8c3ad00724efa36a863295042ff79f08ba9d0203f43f4fb5e2582cd1ef5ca9"
-    },
     "clerk-testing": {
       "source": "clerk/skills",
       "sourceType": "github",
       "skillPath": "skills/clerk-testing/SKILL.md",
       "computedHash": "7a103e04442822f0e8e11184e11e92fea143723817dba8c5f06fd71dab86c4ad"
-    },
-    "clerk-vue-patterns": {
-      "source": "clerk/skills",
-      "sourceType": "github",
-      "skillPath": "skills/clerk-vue-patterns/SKILL.md",
-      "computedHash": "39422e2655a33860fd37bd2ece88417e2662cd172b896ebd1f12dcc9c367aeee"
     },
     "clerk-webhooks": {
       "source": "clerk/skills",
@@ -90,12 +66,6 @@
       "sourceType": "github",
       "skillPath": "skills/maplibre-fonts-glyphs/SKILL.md",
       "computedHash": "cf9f32b0dc6c0e5c000d0b9c8f1d234361e163ef386029731f5b8aefff73cbb6"
-    },
-    "maplibre-mapbox-migration": {
-      "source": "maplibre/maplibre-agent-skills",
-      "sourceType": "github",
-      "skillPath": "skills/maplibre-mapbox-migration/SKILL.md",
-      "computedHash": "f6f31d7b0d8e761d30e3b349405a078874671af1bea244041313c378485720e4"
     },
     "maplibre-native-gl-js-parity": {
       "source": "maplibre/maplibre-agent-skills",
@@ -277,18 +247,6 @@
       "sourceType": "github",
       "skillPath": "skills/zenstack-db-migration/SKILL.md",
       "computedHash": "a766cfd9377509d97fbb21ba339d8cca85a4823f0a2896a040c60efb89be5599"
-    },
-    "zenstack-migrate-from-prisma": {
-      "source": "zenstackhq/skills",
-      "sourceType": "github",
-      "skillPath": "skills/zenstack-migrate-from-prisma/SKILL.md",
-      "computedHash": "3bb86f8c61d4cbe4a2ba6b7c76e13174bebda41691412f12c5ca7aba6f77b5e4"
-    },
-    "zenstack-migrate-from-v2": {
-      "source": "zenstackhq/skills",
-      "sourceType": "github",
-      "skillPath": "skills/zenstack-migrate-from-v2/SKILL.md",
-      "computedHash": "96bacfe93789d91a18369f4ef1e912cc58b893c008e9c9d4b520ee8712fe7659"
     },
     "zenstack-plugin-dev": {
       "source": "zenstackhq/skills",
