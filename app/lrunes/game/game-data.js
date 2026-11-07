@@ -1,5 +1,4 @@
 import {z} from 'zod';
-import {selectAllRows} from '../../loc/db-query.mjs';
 
 const RuneRow=z.object({
   rune_id:z.coerce.number().int().min(0).max(66),
@@ -113,7 +112,7 @@ const GAME_COLUMNS=Object.freeze({
   asset:'game_key,record_type,sort_order,status,is_current,asset_code,asset_kind,asset_group,asset_group_2,asset_path,asset_title'
 });
 
-async function selectGameRunes(){
+async function selectGameRunes(selectAllRows){
   const filters=[
     {column:'rune_id',operator:'gte',value:0},
     {column:'rune_id',operator:'lte',value:66}
@@ -126,7 +125,7 @@ async function selectGameRunes(){
   return z.array(RuneRow).parse(rows);
 }
 
-async function selectGameType(recordType){
+async function selectGameType(recordType,selectAllRows){
   const columns=GAME_COLUMNS[recordType];
   if(!columns)throw new Error('未知的 silver.game record_type：'+recordType);
   const filters=[
@@ -158,14 +157,16 @@ function requiredDelta(rows,code){
 }
 
 export async function loadGameData(){
+  // Tabletop rules are pure and need no SQL connection until the catalog loads.
+  const {selectAllRows}=await import('../../loc/db-query.mjs');
   const [runes,macroRows,runeActionRows,eventRows,roleRows,ruleRows,assetRows]=await Promise.all([
-    selectGameRunes(),
-    selectGameType('macro'),
-    selectGameType('rune_action'),
-    selectGameType('event'),
-    selectGameType('role'),
-    selectGameType('rule'),
-    selectGameType('asset')
+    selectGameRunes(selectAllRows),
+    selectGameType('macro',selectAllRows),
+    selectGameType('rune_action',selectAllRows),
+    selectGameType('event',selectAllRows),
+    selectGameType('role',selectAllRows),
+    selectGameType('rule',selectAllRows),
+    selectGameType('asset',selectAllRows)
   ]);
 
   const macros=macroRows.map(row=>({
