@@ -23,7 +23,7 @@ const AUTHORITY=(()=>{
 const JWKS=createRemoteJWKSet(new URL('/.well-known/jwks.json',AUTHORITY),{
   timeoutDuration:5000,cooldownDuration:30000,cacheMaxAge:300000
 });
-function json(value,status=200){return new Response(JSON.stringify(value),{
+function json(value:unknown,status=200){return new Response(JSON.stringify(value),{
   status,headers:BASE_HEADERS
 });}
 function error(message:string,status=400):never{throw Object.assign(new Error(message),{httpStatus:status});}
@@ -49,7 +49,7 @@ function sourceConfig(){
     schema_name:namespace,selected:true
   }};
 }
-async function verifySignedMcp(request,body){
+async function verifySignedMcp(request:Request,body:Record<string,unknown>){
   const match=/^Bearer\s+(\S+)$/.exec(request.headers.get('authorization')||'');
   if(!match)error('LOC MCP delegation required',401);
   let payload;
@@ -95,9 +95,11 @@ export async function handleLocMcpSql(request:Request):Promise<Response>{
     }else error('Unsupported MCP operation',403);
     const {engine,namespace,target}=sourceConfig();
     const db=await databaseForTarget(target);
-    const result=await db.transaction().execute(trx=>kind==='query'
-      ?executeKyselyQuery(trx,body,{dialect:engine,namespace,publicOnly:true})
-      :executePortableMcp(trx,body,claims!,{engine,namespace,provider:'custom'}));
+    const result=kind==='query'
+      ?await db.transaction().execute(trx=>
+        executeKyselyQuery(trx,body,{dialect:engine,namespace,publicOnly:true}))
+      :await db.transaction().execute(trx=>
+        executePortableMcp(trx,body,claims!,{engine,namespace,provider:'custom'}));
     return json(result);
   }catch(e){
     const status=Number((e as {httpStatus?:number})?.httpStatus||500);
