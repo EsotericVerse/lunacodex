@@ -1,22 +1,14 @@
 name: MCP Portable regression (PR)
 
-# Read-only verification. Never deploys or accesses production databases.
+# Manually triggered read-only verification. Never deploys or accesses production databases.
 on:
-  pull_request:
-    paths:
-      - "app/loc/mcp/**"
-      - "app/loc/providers/kysely-mcp.mjs"
-      - "workers/loc-authority/**"
-      - "extensions/loc-web-capture-v2/**"
-      - "scripts/test-loc-mcp-*.mjs"
-      - "scripts/test-mcp-qos.mjs"
-      - ".github/workflows/mcp-portable-pr.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: mcp-portable-pr-${{ github.event.pull_request.number }}
+  group: mcp-portable-manual-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
