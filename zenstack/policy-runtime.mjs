@@ -6,6 +6,20 @@ const PUBLIC_FIXED_MODELS=Object.freeze({
   'silver.lo3rwang':'Lo3rwang',
   'silver.lrunes':'Lrunes'
 });
+const ADMIN_FIXED_WRITES=Object.freeze({
+  'api.manage':'Manage',
+  'silver.loc':'Loc'
+});
+/** Only signed global LOC grants may update/delete a fixed admin model. */
+export function fixedPolicyWriteModel(target,body,role,claims){
+  if(target?.engine!=='postgres'||target.provider!=='supabase'||
+      role!=='authenticated'||claims?.provider!=='loc'||claims?.me!==true||
+      !Array.isArray(claims.grants)||!claims.grants.includes('global:manage')||
+      body?.kind!=='managed-write'||!['update','delete'].includes(body.payload?.p_operation))
+    return null;
+  return ADMIN_FIXED_WRITES[String(body.payload?.p_table||'')]||null;
+}
+
 const readers=new WeakMap();
 
 /** Only the four designated publicly readable fixed LOC control relations.
@@ -52,4 +66,22 @@ export async function withFixedPolicyRead(db,target,body,role,claims,
     if(!scoped?.$qb)throw new Error('Policy-enforced Kysely transaction missing');
     return run(scoped.$qb,modelName);
   });
+}
+
+/** Policy-enforced global registry write. The gateway has verified the
+ * delegation, and managed-write retains its original canManageLoc guard.
+ * A grant-derived admin principal is bound once per transaction; no SQL
+ * permission lookup or second driver/pool is created by this adapter.
+ */
+export async function withFixedPolicyWrite(db,target,body,role,claims,
+  {dialect,ZenStackClient,PolicyPlugin},run){
+  const modelName=fixedPolicyWriteModel(target,body,role,claims);
+  if(!modelName)throw Object.assign(
+    new Error('Global LOC policy permission required'),{httpStatus:403});
+  const reader=fixedPolicyReader(db,{dialect,ZenStackClient,PolicyPlugin});
+  return reader.$setAuth({id:String(claims.sub||''),role:'admin'})
+    .$transaction(async scoped=>{
+      if(!scoped?.$qb)throw new Error('Policy-enforced Kysely transaction missing');
+      return run(scoped.$qb,modelName);
+    });
 }
