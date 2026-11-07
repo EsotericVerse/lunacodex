@@ -14,10 +14,14 @@ const ADMIN_FIXED_WRITES=Object.freeze({
 export function fixedPolicyWriteModel(target,body,role,claims){
   if(target?.engine!=='postgres'||target.provider!=='supabase'||
       role!=='authenticated'||claims?.provider!=='loc'||claims?.me!==true||
-      !Array.isArray(claims.grants)||!claims.grants.includes('global:manage')||
-      body?.kind!=='managed-write'||!['update','delete'].includes(body.payload?.p_operation))
+      !Array.isArray(claims.grants)||!claims.grants.includes('global:manage'))
     return null;
-  return ADMIN_FIXED_WRITES[String(body.payload?.p_table||'')]||null;
+  let relation='';
+  if(body?.kind==='managed-write'&&['update','delete'].includes(body.payload?.p_operation))
+    relation=String(body.payload?.p_table||'');
+  else if(body?.kind==='query'&&['update','delete'].includes(body.operation))
+    relation=String(body.schema||'')+'.'+String(body.table||'');
+  return ADMIN_FIXED_WRITES[relation]||null;
 }
 
 const readers=new WeakMap();
