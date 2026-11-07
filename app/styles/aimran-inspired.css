@@ -1,0 +1,260 @@
+/*
+ * LOC / interactive editorial finish (AIMRAN Library-inspired).
+ *
+ * Adapts spotlight surfaces, tactile pills and elegant navigation rhythm,
+ * not third-party component code. No new JS, dependencies, data requests,
+ * layout reordering, theme palette replacement or change to authored blocks.
+ *
+ * This layer is intentionally last: the existing Theme's semantic tokens win.
+ */
+
+:root{
+  --loc-craft-ease:cubic-bezier(.22,1,.36,1);
+  --loc-craft-quick:180ms;
+  --loc-craft-glow:color-mix(in srgb,var(--loc-accent) 19%,transparent);
+  --loc-craft-gold-glow:color-mix(in srgb,var(--loc-gold) 15%,transparent);
+  --loc-craft-hairline:color-mix(in srgb,var(--loc-line) 75%,transparent);
+  --loc-craft-ink-shadow:color-mix(in srgb,var(--loc-bg) 38%,transparent);
+}
+
+/* Navigation remains a normal, non-sticky row with the LOC return at right. */
+.scope-global{
+  border-bottom-color:color-mix(in srgb,var(--loc-accent) 23%,var(--loc-line));
+}
+.scope-nav-items :is(a,.scope-nav-current,.scope-nav-folder,.scope-nav-loc-home){
+  transition:
+    color var(--loc-craft-quick) ease,
+    border-color var(--loc-craft-quick) ease,
+    background var(--loc-craft-quick) ease,
+    box-shadow var(--loc-craft-quick) ease;
+}
+.scope-nav-items :is(a,.scope-nav-folder,.scope-nav-loc-home):is(:hover,:focus-visible){
+  background:color-mix(in srgb,var(--loc-accent) 10%,var(--loc-panel));
+  box-shadow:inset 0 1px 0 color-mix(in srgb,var(--loc-text) 9%,transparent);
+}
+.scope-nav-items :is(.scope-nav-current,[aria-current="page"],.scope-nav-folder[aria-expanded="true"]){
+  background:linear-gradient(140deg,
+    color-mix(in srgb,var(--loc-accent) 13%,var(--loc-panel)),
+    color-mix(in srgb,var(--loc-gold) 7%,var(--loc-panel)));
+  border-bottom-color:var(--loc-accent);
+  box-shadow:inset 0 1px 0 color-mix(in srgb,var(--loc-text) 12%,transparent);
+}
+
+/* Editorial typography, without changing the author's actual titles/copy. */
+.loc-next-main[data-loc-view="home"] :is(.loc-eyebrow,.scope-eyebrow),
+.scope-main[data-public-feature] :is(.loc-eyebrow,.scope-eyebrow){
+  letter-spacing:.14em;
+  text-wrap:pretty;
+}
+.loc-next-main[data-loc-view="home"] :is(h1,h2,h3),
+.scope-main[data-public-feature] :is(h1,h2,h3){
+  text-wrap:balance;
+}
+.loc-next-main[data-loc-view="home"] .home-section-heading,
+.scope-main[data-public-feature] .scope-stat-domain-heading{
+  position:relative;
+  padding-block-end:.7rem;
+}
+.loc-next-main[data-loc-view="home"] .home-section-heading::after,
+.scope-main[data-public-feature] .scope-stat-domain-heading::after{
+  content:"";
+  position:absolute;
+  inset-inline-start:0;
+  inset-block-end:0;
+  width:min(128px,28%);
+  height:2px;
+  border-radius:99px;
+  background:linear-gradient(90deg,var(--loc-accent),var(--loc-gold),transparent);
+  pointer-events:none;
+}
+
+/* Home and feature cards behave like restrained spotlight surfaces. */
+.loc-next-main[data-loc-view="home"] :is(.loc-card,.loc-panel,.loc-link-card,.scope-home-section),
+.scope-main[data-public-feature] :is(.scope-feature-card,.scope-inline-card,.scope-stat-section){
+  transition:
+    border-color 240ms ease,
+    background 280ms ease,
+    box-shadow 300ms var(--loc-craft-ease);
+}
+.loc-next-main[data-loc-view="home"] :is(.loc-card,.loc-panel,.loc-link-card):is(:hover,:focus-within),
+.scope-main[data-public-feature] :is(.scope-feature-card,.scope-inline-card,.scope-stat-section):is(:hover,:focus-within){
+  border-color:color-mix(in srgb,var(--loc-accent) 36%,var(--loc-line));
+  box-shadow:
+    0 14px 36px var(--loc-craft-ink-shadow),
+    0 0 32px var(--loc-craft-glow),
+    inset 0 1px 0 color-mix(in srgb,var(--loc-text) 12%,transparent);
+}
+.loc-next-main[data-loc-view="home"] :is(.loc-card,.loc-panel,.loc-link-card),
+.scope-main[data-public-feature] :is(.scope-feature-card,.scope-inline-card){
+  background-image:
+    radial-gradient(ellipse 65% 45% at 100% 0%,var(--loc-craft-glow),transparent 100%),
+    linear-gradient(150deg,color-mix(in srgb,var(--loc-panel-2) 25%,var(--loc-panel)),var(--loc-panel));
+}
+
+/* Existing artwork is preserved: frame and light, no image replacement. */
+.loc-next-main[data-loc-view="home"] :is(.loc-hero,.loc-home-block--hero),
+.scope-main[data-public-feature] .scope-feature-hero{
+  border-color:color-mix(in srgb,var(--loc-gold) 27%,var(--loc-line));
+  box-shadow:
+    0 24px 70px var(--loc-craft-ink-shadow),
+    0 0 0 1px color-mix(in srgb,var(--loc-text) 5%,transparent),
+    inset 0 1px 0 color-mix(in srgb,var(--loc-text) 12%,transparent);
+}
+.loc-next-main[data-loc-view="home"] .loc-home-block--hero :is(img,video),
+.scope-main[data-public-feature] .scope-feature-hero :is(img,video){
+  max-width:100%;
+}
+
+/* Tactile buttons: no invented shortcuts, no changes to click targets. */
+.loc-next-main[data-loc-view="home"] :is(.loc-button,.loc-link-card),
+.scope-main[data-public-feature] :is(.loc-button,.scope-pagination-button,.scope-culture-source-button,.scope-search-popular-toggle),
+.scope-top-feature-nav>a{
+  transition:
+    transform var(--loc-craft-quick) var(--loc-craft-ease),
+    background-color var(--loc-craft-quick) ease,
+    border-color var(--loc-craft-quick) ease,
+    box-shadow 280ms var(--loc-craft-ease);
+}
+@media(hover:hover) and (pointer:fine){
+  .loc-next-main[data-loc-view="home"] :is(a.loc-button,button.loc-button,a.loc-link-card):hover,
+  .scope-main[data-public-feature] :is(a.loc-button,button.loc-button,.scope-pagination-button,.scope-search-popular-toggle):not(:disabled):hover,
+  .scope-top-feature-nav>a:hover{
+    transform:translateY(-2px);
+    box-shadow:0 10px 26px var(--loc-craft-ink-shadow),0 0 20px var(--loc-craft-glow);
+  }
+  .scope-main[data-public-feature] .scope-culture-source-button:not(:disabled):hover{
+    transform:translateY(-2px);
+    box-shadow:0 8px 24px var(--loc-craft-ink-shadow);
+  }
+}
+.loc-next-main[data-loc-view="home"] :is(.loc-button,.loc-link-card):active,
+.scope-main[data-public-feature] :is(.loc-button,.scope-pagination-button,.scope-culture-source-button,.scope-search-popular-toggle):active,
+.scope-top-feature-nav>a:active{
+  transform:scale(.975);
+}
+:is(.loc-next-main[data-loc-view="home"],.scope-main[data-public-feature])
+  :is(.loc-button,.scope-pagination-button,.scope-culture-source-button):disabled{
+  transform:none;
+}
+
+/* Segmented selectors: selection stays obvious without depending on hover. */
+.scope-main[data-public-feature] .scope-tabs{
+  gap:clamp(.3rem,.7vw,.55rem);
+}
+.scope-main[data-public-feature] .scope-tabs button{
+  border-radius:999px;
+  min-height:42px;
+  padding-inline:clamp(.8rem,1.5vw,1.1rem);
+  box-shadow:inset 0 1px 0 color-mix(in srgb,var(--loc-text) 5%,transparent);
+}
+.scope-main[data-public-feature] .scope-tabs button:is([aria-pressed="true"],.active){
+  border-color:var(--loc-accent-border);
+  background:linear-gradient(125deg,
+    color-mix(in srgb,var(--loc-accent) 19%,var(--loc-panel)),
+    color-mix(in srgb,var(--loc-gold) 12%,var(--loc-panel)));
+  color:var(--loc-text);
+  box-shadow:0 4px 15px var(--loc-craft-glow),inset 0 1px 0 color-mix(in srgb,var(--loc-text) 13%,transparent);
+}
+.scope-top-feature-nav>a{
+  border-radius:999px;
+  background:color-mix(in srgb,var(--loc-panel) 88%,var(--loc-accent));
+}
+.scope-top-feature-nav>a[aria-current="page"]{
+  background:color-mix(in srgb,var(--loc-accent) 16%,var(--loc-panel));
+  box-shadow:inset 0 0 0 1px var(--loc-accent-border-soft);
+}
+
+/* Four public views: keep date stripes, map gestures, graph axes and list order. */
+.scope-main[data-public-feature] .loc-public-article-list>.loc-shared-work-card{
+  transition:
+    transform var(--loc-craft-quick) var(--loc-craft-ease),
+    border-color var(--loc-craft-quick) ease,
+    box-shadow 280ms var(--loc-craft-ease);
+}
+@media(hover:hover) and (pointer:fine){
+  .scope-main[data-public-feature] .loc-public-article-list>.loc-shared-work-card:hover{
+    transform:translateY(-2px);
+    box-shadow:0 10px 30px var(--loc-craft-ink-shadow),0 0 22px var(--loc-craft-glow);
+  }
+}
+.scope-main[data-public-feature="culture"]
+  :is(.scope-culture-classification-river,.scope-culture-structure-river,.scope-loc-time-river){
+  box-shadow:0 14px 38px var(--loc-craft-ink-shadow),inset 0 1px 0 color-mix(in srgb,var(--loc-text) 8%,transparent);
+}
+.scope-main[data-public-feature="statics"] .scope-ranking-chart{
+  box-shadow:0 12px 35px var(--loc-craft-ink-shadow);
+}
+.scope-main[data-public-feature="trace"] .loc-trace-panel{
+  box-shadow:0 16px 42px var(--loc-craft-ink-shadow);
+}
+
+/* Refined field states; same form markup, labels and submit semantics. */
+.scope-main[data-public-feature] :is(.scope-search-form,.scope-stat-controls)
+  :is(input:not([type="checkbox"]),select){
+  border-radius:14px;
+  border-color:var(--loc-craft-hairline);
+  background-color:color-mix(in srgb,var(--loc-panel) 86%,var(--loc-bg));
+  transition:border-color var(--loc-craft-quick) ease,box-shadow var(--loc-craft-quick) ease;
+}
+.scope-main[data-public-feature] :is(.scope-search-form,.scope-stat-controls)
+  :is(input:not([type="checkbox"]),select):focus-visible{
+  border-color:var(--loc-accent);
+  box-shadow:0 0 0 3px var(--loc-craft-glow);
+}
+.scope-main[data-public-feature="search"] .scope-search-form{
+  box-shadow:0 14px 36px var(--loc-craft-ink-shadow);
+}
+
+/* Six independent floating editor controls: never reorder Save/Cancel. */
+.scope-feature-dock :is(a,button){
+  border-radius:clamp(14px,1.6vw,19px);
+  box-shadow:
+    0 9px 26px var(--loc-craft-ink-shadow),
+    inset 0 1px 0 color-mix(in srgb,var(--loc-text) 16%,transparent);
+}
+@media(hover:hover) and (pointer:fine){
+  .scope-feature-dock :is(a,button):not(:disabled):hover{
+    transform:translateY(-4px);
+    box-shadow:
+      0 15px 30px var(--loc-craft-ink-shadow),
+      0 0 23px var(--loc-craft-glow),
+      inset 0 1px 0 color-mix(in srgb,var(--loc-text) 15%,transparent);
+  }
+}
+.scope-feature-dock :is(a,button):not(:disabled):active{transform:translateY(-1px) scale(.965);}
+
+/* An actual loading indicator, without touching lazy-loading logic. */
+.scope-main[data-public-feature] .loc-loading::before,
+.loc-next-main[data-loc-view="home"] .loc-loading::before{
+  content:"";
+  display:inline-block;
+  width:.65rem;
+  height:.65rem;
+  margin-inline-end:.6rem;
+  vertical-align:middle;
+  border:2px solid color-mix(in srgb,var(--loc-accent) 24%,transparent);
+  border-top-color:var(--loc-accent);
+  border-radius:50%;
+  animation:loc-craft-loading 800ms linear infinite;
+}
+@keyframes loc-craft-loading{to{transform:rotate(360deg)}}
+
+/* Narrow layouts keep natural wrapping and the original touch-target size. */
+@media(max-width:760px){
+  .scope-main[data-public-feature] .scope-tabs button{min-height:44px;}
+  .loc-next-main[data-loc-view="home"] :is(.loc-card,.loc-panel,.loc-link-card),
+  .scope-main[data-public-feature] :is(.scope-feature-card,.scope-inline-card){
+    background-image:
+      radial-gradient(ellipse 80% 30% at 100% 0%,var(--loc-craft-glow),transparent 100%),
+      linear-gradient(150deg,color-mix(in srgb,var(--loc-panel-2) 17%,var(--loc-panel)),var(--loc-panel));
+  }
+}
+@media(prefers-reduced-motion:reduce){
+  .scope-nav-items :is(a,.scope-nav-current,.scope-nav-folder,.scope-nav-loc-home),
+  .loc-next-main[data-loc-view="home"] :is(.loc-card,.loc-panel,.loc-link-card),
+  .scope-main[data-public-feature] :is(.scope-feature-card,.scope-inline-card,.scope-stat-section,.loc-shared-work-card,.loc-button,.scope-tabs button,.scope-pagination-button,.scope-culture-source-button,.scope-search-popular-toggle),
+  .scope-feature-dock :is(a,button),
+  .scope-top-feature-nav>a{transition:none!important;animation:none!important;transform:none!important;}
+  .scope-main[data-public-feature] .loc-loading::before,
+  .loc-next-main[data-loc-view="home"] .loc-loading::before{animation:none;border-color:var(--loc-accent);}
+}
