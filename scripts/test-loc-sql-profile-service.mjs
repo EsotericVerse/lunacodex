@@ -6,7 +6,8 @@ import {issueDelegation} from '../app/loc/auth/delegation-contract.mjs';
 
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
 const subject='loc_'+'A'.repeat(40),serviceKey='s'.repeat(43);
-const toB64=value=>Buffer.from(typeof value==='string'?value:JSON.stringify(value)).toString('base64url');
+const toB64=value=>Buffer.from(value instanceof Uint8Array?value:
+ typeof value==='string'?value:JSON.stringify(value)).toString('base64url');
 async function fixture(){
  const pair=await crypto.subtle.generateKey({name:'RSASSA-PKCS1-v1_5',
   modulusLength:2048,publicExponent:new Uint8Array([1,0,1]),

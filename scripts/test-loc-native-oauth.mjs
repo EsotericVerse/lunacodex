@@ -8,7 +8,8 @@ import {
 
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
 const encoder=new TextEncoder();
-const b64=x=>Buffer.from(typeof x==='string'?x:JSON.stringify(x)).toString('base64url');
+const b64=x=>Buffer.from(x instanceof Uint8Array?x:
+ typeof x==='string'?x:JSON.stringify(x)).toString('base64url');
 
 function environment(){
  const records=new Map();

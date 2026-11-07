@@ -459,19 +459,19 @@ export async function handleNativeOAuth(request,env){
     code_challenge_methods_supported:['S256'],token_endpoint_auth_methods_supported:['none'],
     scopes_supported:['profile','email','offline_access','loc:import'],
     resource_parameter_supported:true},200,origin);
-  if(path==='/oauth/register'&&request.method==='POST')return register(request,stub,origin);
-  if(path==='/oauth/authorize'&&request.method==='GET')return authorize(request,url,stub);
-  if(path==='/oauth/login'&&request.method==='GET')return login(url,stub);
+  if(path==='/oauth/register'&&request.method==='POST')return await register(request,stub,origin);
+  if(path==='/oauth/authorize'&&request.method==='GET')return await authorize(request,url,stub);
+  if(path==='/oauth/login'&&request.method==='GET')return await login(url,stub);
   if(path==='/oauth/callback/github'&&request.method==='GET')
-   return callback(request,url,stub,'github');
+   return await callback(request,url,stub,'github');
   if(path==='/oauth/callback/oidc'&&request.method==='GET')
-   return callback(request,url,stub,'oidc');
-  if(path==='/oauth/token'&&request.method==='POST')return token(request,stub,origin);
-  if(path==='/oauth/revoke'&&request.method==='POST')return revoke(request,stub,origin);
-  if(path==='/v1/auth/session'&&request.method==='GET')return session(request,stub,origin);
-  if(path==='/oauth/logout'&&request.method==='POST')return logout(request,stub,origin);
+   return await callback(request,url,stub,'oidc');
+  if(path==='/oauth/token'&&request.method==='POST')return await token(request,stub,origin);
+  if(path==='/oauth/revoke'&&request.method==='POST')return await revoke(request,stub,origin);
+  if(path==='/v1/auth/session'&&request.method==='GET')return await session(request,stub,origin);
+  if(path==='/oauth/logout'&&request.method==='POST')return await logout(request,stub,origin);
   if(path==='/v1/import/short'&&request.method==='POST')
-   return importShort(request,env,stub,origin);
+   return await importShort(request,env,stub,origin);
   error('OAuth endpoint unavailable',405);
  }catch(e){
   const status=Number(e?.status)||500;

@@ -32,19 +32,22 @@ test('ordinary authentication, global manage and other Scope grants do not imply
 test('caller cannot override user, Scope, database target or SQL request shape',()=>{
  for(const tampered of [{...request,actor:claims},{...request,subject:'other'},
   {...request,target:'supabase'},{...request,operation:'update'},
-  {...request,scopeid:'another'},{...request,scopeid:'LOC'},
+  {...request,scopeid:'LOC'},
   {...request,kind:'query'},{...request,batch:null}])
   assert.throws(()=>authorizeDelegatedShortImport(tampered,claims),
    error=>status(error)===400);
+ assert.throws(()=>authorizeDelegatedShortImport({...request,scopeid:'another'},claims),
+  error=>status(error)===403);
 });
 test('Edge mounts short-import only after verifying LOC SQL delegation',()=>{
  const edge=readFileSync(new URL('../app/loc/gateway/sql-handler.ts',import.meta.url),'utf8');
  const auth=edge.indexOf('const delegation=await verifyLocDelegation(match[1],body)');
  const gate=edge.indexOf('const actor=authorizeDelegatedShortImport(body,claims)');
- const db=edge.indexOf('const db=await databaseForTarget(controlTarget);',gate);
+ const db=edge.indexOf('const db=selected',gate);
  assert.ok(auth>=0&&gate>auth&&db>gate,
   'credential and Scope grant checks must happen before database access');
- assert.ok(edge.includes('store:portableShortImportStore(db,sql,{engine:controlTarget.engine})'));
+ assert.ok(edge.includes('store:portableShortImportStore(db,sql,{engine:target.engine,'));
+ assert.ok(edge.includes('const selected=await liveSelection()'));
  assert.doesNotMatch(edge,/postgresShortImportStore/);
  assert.ok(edge.includes('if(requestedTarget!=="configured")'));
 });
