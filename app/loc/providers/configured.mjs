@@ -13,8 +13,8 @@ export function createConfiguredAdapter({
   authorityUrl=process.env.NEXT_PUBLIC_LOC_CONTROL_URL||DEFAULT_AUTHORITY,
   gatewayUrl=process.env.NEXT_PUBLIC_LOC_SQL_GATEWAY_URL||
     process.env.NEXT_PUBLIC_LOC_KYSELY_GATEWAY_URL||'',
-  url=process.env.NEXT_PUBLIC_SUPABASE_URL||LEGACY_SQL_ORIGIN,
-  publishableKey=process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY||LEGACY_PUBLIC_KEY,
+  url=gatewayUrl?'':process.env.NEXT_PUBLIC_SUPABASE_URL||LEGACY_SQL_ORIGIN,
+  publishableKey=gatewayUrl?'':process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY||LEGACY_PUBLIC_KEY,
   fetchImpl=globalThis.fetch
 }={}){
   const identity=accountAdapter||createClerkAccountAdapter({
