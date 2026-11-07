@@ -22,6 +22,9 @@ function check(path){
   const value=readFileSync(path,'utf8');
   const lines=value.split(/\r?\n/);
   lines.forEach((line,index)=>{
+    // Documentation/comments are not runtime imports or provider configuration.
+    // Keep rejection fixtures in tests; actual executable references still fail.
+    if(/^(?:\/\/|\/\*|\*|<!--|#)/.test(line.trimStart()))return;
     coupling.lastIndex=0;
     const matches=[...line.matchAll(coupling)];
     if(matches.length)results.push({path:relativePath,line:index+1,
