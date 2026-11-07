@@ -44,6 +44,7 @@ test('Edge mounts short-import only after verifying LOC SQL delegation',()=>{
  const db=edge.indexOf('const db=await databaseForTarget(controlTarget);',gate);
  assert.ok(auth>=0&&gate>auth&&db>gate,
   'credential and Scope grant checks must happen before database access');
- assert.ok(edge.includes('store:postgresShortImportStore(db,sql)'));
+ assert.ok(edge.includes('store:portableShortImportStore(db,sql,{engine:controlTarget.engine})'));
+ assert.doesNotMatch(edge,/postgresShortImportStore/);
  assert.ok(edge.includes('if(requestedTarget!=="configured")'));
 });
