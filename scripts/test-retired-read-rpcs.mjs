@@ -41,7 +41,7 @@ test('current website uses direct Kysely instead of retired read RPCs',()=>{
   const contract=read('app/loc/db-contract.mjs');
   for(const src of [galaxy,contract])
     assert.doesNotMatch(src,/read_scope_analytics|\.rpc\s*\(/);
-  const gateway=read('supabase/functions/loc-kysely/index.ts');
+  const gateway=read('app/loc/gateway/sql-handler.ts');
   assert.match(gateway,/executeKyselyAnalytics/);
   assert.match(gateway,/executeKyselyPublicAction/);
   assert.doesNotMatch(gateway,/\bselect\s+silver\.read_scope_analytics\b/i);
