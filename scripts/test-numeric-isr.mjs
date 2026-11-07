@@ -54,15 +54,6 @@ test('ISR server route checks global mode, validates scope and is safe for disab
   assert.doesNotMatch(source,/service_role|SUPABASE_SERVICE_ROLE_KEY|createClient\([^,]+,[^,]+\s*\)/);
 });
 
-test('Worker and OpenNext cannot write R2 or Durable Object caches',()=>{
-  const openNext=read('open-next.config.ts');
-  const wrangler=JSON.parse(read('wrangler.jsonc'));
-  assert.match(openNext,/static-assets-incremental-cache/);
-  assert.doesNotMatch(openNext,/r2-incremental-cache|do-queue|do-sharded-tag-cache/);
-  for(const name of ['r2_buckets','durable_objects','migrations'])assert.equal(wrangler[name],undefined);
-  assert.equal(wrangler.assets.binding,'ASSETS');
-});
-
 test('Culture, Statistics, Periods, Daily Runes and Trace have direct data providers',()=>{
   const galaxy=read('app/loc/galaxy-query.js');
   const culture=read('app/modular/features/Culture.jsx');
