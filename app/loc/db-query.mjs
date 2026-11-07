@@ -27,6 +27,11 @@ const recoverableReadError=error=>{
 const abortError=()=>{const error=new Error('Request cancelled');error.name='AbortError';return error;};
 export const isAbortError=error=>error?.name==='AbortError'||error?.cause?.name==='AbortError';
 const withSignal=(query,signal)=>signal&&typeof query?.abortSignal==='function'?query.abortSignal(signal):query;
+const withExpectedDatabase=(query,dbId)=>{
+  if(!dbId)return query;
+  if(typeof query?.expectDatabase!=='function')throw new Error('SQL transport cannot verify article database identity');
+  return query.expectDatabase(dbId);
+};
 
 // Request-size budget: IN-lists are expanded into one SQL/URL parameter per value,
 // so request size grows linearly with the list. Surface the offending table once
@@ -65,7 +70,7 @@ function resultError(result,table,source){
 // Reads never hang: a request that gets no answer within READ_TIMEOUT_MS is treated
 // as a recoverable failure (primary -> backup), not as a user cancellation.
 export const READ_TIMEOUT_MS=8000;
-export async function executePublicRead(table,buildQuery,{source='auto',authenticated=false,signal=null}={}){
+export async function executePublicRead(table,buildQuery,{source='auto',authenticated=false,signal=null,expectedDbId=''}={}){
   const cancel=signal;
   const timeout=AbortSignal.timeout(READ_TIMEOUT_MS);
   signal=cancel?AbortSignal.any([cancel,timeout]):timeout;
@@ -73,6 +78,7 @@ export async function executePublicRead(table,buildQuery,{source='auto',authenti
   // Device data must never require a cloud routing decision or fall back to
   // Supabase/Neon. The routed DB client sends these relations to local SQLite.
   if(/^silver\.local(?:_[a-z0-9_]+)?$/.test(String(table))){
+    if(expectedDbId)throw new Error('Local SQLite is not a remote database dataset');
     const localClient=authenticated?dbAuthClient:dbPublicClient;
     const result=await withSignal(buildQuery(publicRelation(localClient,table)),signal);
     if(cancel?.aborted)throw abortError();
@@ -87,7 +93,7 @@ export async function executePublicRead(table,buildQuery,{source='auto',authenti
   if(authenticated){
     if(!routing.primaryControl)throw new Error('Authenticated hidden search requires Supabase as the primary database');
     try{
-      const result=await withSignal(buildQuery(publicRelation(dbAuthClient,table)),signal);
+      const result=await withSignal(withExpectedDatabase(buildQuery(publicRelation(dbAuthClient,table)),expectedDbId),signal);
       if(cancel?.aborted)throw abortError();
       const failure=resultError(result,table,'authenticated');
       if(failure)throw failure;
@@ -117,7 +123,7 @@ export async function executePublicRead(table,buildQuery,{source='auto',authenti
   const primaryClient=routing.primaryControl?dbPublicClient:dbConfiguredPublicClient;
   if(!primaryClient)throw new Error('Selected primary database is unavailable');
   const run=async(client,label)=>{
-    const result=await withSignal(buildQuery(publicRelation(client,table)),signal);
+    const result=await withSignal(withExpectedDatabase(buildQuery(publicRelation(client,table)),expectedDbId),signal);
     if(cancel?.aborted)throw abortError();
     const failure=resultError(result,table,label);
     if(failure)throw failure;
@@ -206,7 +212,8 @@ export async function selectRows(table,{
   maxLimit=DB_QUERY_BATCH_SIZE,
   source='auto',
   authenticated=false,
-  signal=null
+  signal=null,
+  expectedDbId=''
 }={}){
   if(!String(columns||'').trim()||String(columns).trim()==='*')throw new Error('DB SELECT requires explicit columns');
   const safeMaximum=Math.max(1,Math.min(queryBatchSize(columns),Math.floor(Number(maxLimit)||DB_QUERY_BATCH_SIZE)));
@@ -220,12 +227,12 @@ export async function selectRows(table,{
       if(orFilter)query=query.or(orFilter);
       query=applyOrders(query,orders);
       return query.range(safeOffset,safeOffset+safeLimit-1);
-    },{source,authenticated,signal});
+    },{source,authenticated,signal,expectedDbId});
     return {rows:data||[],count:total,dataSource:__dataSource};
   };
   // Never combine signed-in, cancellable or local-device reads. Successful
   // public results are not cached: an editor's next query sees new data.
-  if(authenticated||signal||/^silver\.local(?:_[a-z0-9_]+)?$/.test(table))return request();
+  if(authenticated||signal||expectedDbId||/^silver\.local(?:_[a-z0-9_]+)?$/.test(table))return request();
   return coalescePendingPublicRead(JSON.stringify([
     'rows',table,columns,filters,orFilter,orders,safeLimit,safeOffset,count,source
   ]),request);
