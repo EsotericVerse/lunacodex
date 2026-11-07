@@ -74,7 +74,8 @@ function checkedSource(raw){
 }
 async function mutate(env,body){
   const docs=body?.documents;
-  if(!Array.isArray(docs)||!docs.length||docs.length>50)throw invalid('Expected 1-50 documents');
+  if(!Array.isArray(docs)||!docs.length||docs.length>50)
+    throw invalid('Expected 1-50 documents');
   const groups=new Map();
   for(const entry of docs){
     const doc=identity(entry);
@@ -82,24 +83,37 @@ async function mutate(env,body){
     if(!['upsert','append','remove'].includes(operation))throw invalid('Invalid index operation');
     if(operation!=='remove'&&(typeof entry.content!=='string'||entry.content.length>140000))
       throw invalid('Invalid document content');
-    const key=shardKey(doc);
-    if(!groups.has(key))groups.set(key,[]);
-    groups.get(key).push({...doc,operation,content:entry.content||''});
+    const prefix=PREFIX+'delta/'+doc.scopeId+'/'+doc.dbId+'/'+doc.entityType+'/';
+    if(!groups.has(prefix))groups.set(prefix,[]);
+    groups.get(prefix).push({...doc,operation,content:entry.content||''});
   }
-  // Import writes may contain many docs for the same shard: perform one
-  // read / export / KV write per affected shard, not one write per article.
-  for(const [key,items] of groups){
-    const index=await loadShard(env.LOC_KV,key);
+  // Immutable delta segments are ONE KV write per logical source/batch.
+  // Appending new text never rewrites or races with a shared base shard.
+  // Old postings from edits/deletes are harmless candidates: SQL verifies
+  // every article's current content, publication and Scope permission.
+  for(const [prefix,items] of groups){
+    const index=makeIndex();
+    let changed=0;
     for(const item of items){
-      if(item.operation==='remove')index.remove(item.id);
-      else if(item.operation==='append'&&index.contain(item.id))
-        index.append(item.id,item.content);
-      else if(index.contain(item.id))index.update(item.id,item.content);
-      else index.add(item.id,item.content);
+      if(item.operation==='remove')continue; // SQL revalidation rejects deleted rows.
+      if(index.contain(item.id)){
+        if(item.operation==='append')index.append(item.id,item.content);
+        else index.update(item.id,item.content);
+      }else index.add(item.id,item.content);
+      changed++;
     }
-    await writeShard(env.LOC_KV,key,index);
+    if(!changed)continue;
+    const parts={};
+    await index.export(async(part,value)=>{
+      if(value!==undefined&&value!==null)parts[part]=value;
+    });
+    const data=JSON.stringify({version:1,parts});
+    if(encoder.encode(data).length>24*1024*1024)
+      throw Object.assign(new Error('Index delta exceeds KV limit'),{status:413});
+    const key=prefix+Date.now().toString(36)+'-'+crypto.randomUUID();
+    await env.LOC_KV.put(key,data);
   }
-  return {accepted:true,documents:docs.length,shards:groups.size};
+  return {accepted:true,documents:docs.length,segments:groups.size};
 }
 async function replaceSnapshot(env,body){
   const source=checkedSource(body||{});
@@ -142,11 +156,17 @@ async function find(env,body){
   for(const source of sources){
     if(await env.LOC_KV.get(readyKey(source))!=='v1')
       return {complete:false,hits:[],reason:'dataset-incomplete'};
-    const prefix=base(source);
-    const page=await env.LOC_KV.list({prefix,limit:MAX_SHARDS+1});
-    if(page.list_complete===false||page.keys.length>MAX_SHARDS)
-      return {complete:false,hits:[],reason:'index-too-many-shards'};
-    const keys=page.keys.map(k=>k.name);
+    const prefixes=[
+      {prefix:base(source),cap:MAX_SHARDS},
+      {prefix:PREFIX+'delta/'+source.scopeId+'/'+source.dbId+'/'+source.entityType+'/',cap:48}
+    ];
+    const keys=[];
+    for(const item of prefixes){
+      const page=await env.LOC_KV.list({prefix:item.prefix,limit:item.cap+1});
+      if(page.list_complete===false||page.keys.length>item.cap)
+        return {complete:false,hits:[],reason:'index-needs-compaction'};
+      keys.push(...page.keys.map(k=>k.name));
+    }
     for(let offset=0;offset<keys.length;offset+=4){
       const batches=keys.slice(offset,offset+4);
       const result=await Promise.all(batches.map(async key=>{
