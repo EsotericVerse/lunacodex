@@ -5,6 +5,11 @@ import {createLocAccountAdapter} from '../auth/loc-browser.mjs';
 import {createLocGatewayAdapter} from './loc-gateway.mjs';
 
 const DEFAULT_AUTHORITY='https://auth.lo3rwang.cc';
+// Temporary existing SQL HTTP transport. These are PUBLIC endpoint identifiers,
+// not a database password or an Auth SDK dependency. Remove both only after
+// the independently hosted LOC SQL Gateway is verified in production.
+const COMPAT_SQL_ORIGIN='https://qlouywsdiiyiyzpoxyqy.supabase.co';
+const COMPAT_SQL_PUBLIC_KEY='sb_publishable_qPn0vAzozVyXKllRuEKf2Q_fvG-pLVV';
 
 export function createConfiguredAdapter({
   accountAdapter,
@@ -13,9 +18,9 @@ export function createConfiguredAdapter({
     process.env.NEXT_PUBLIC_LOC_KYSELY_GATEWAY_URL||'',
   // The former SQL transport is retained only while the independent Gateway
   // lacks a live HTTPS URL. Vendor Auth SDKs are never used by either path.
-  url=gatewayUrl?'':process.env.NEXT_PUBLIC_SUPABASE_URL||'',
+  url=gatewayUrl?'':process.env.NEXT_PUBLIC_SUPABASE_URL||COMPAT_SQL_ORIGIN,
   publishableKey=gatewayUrl?'':process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY||
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY||'',
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY||COMPAT_SQL_PUBLIC_KEY,
   fetchImpl=globalThis.fetch
 }={}){
   const identity=accountAdapter||createLocAccountAdapter({
