@@ -106,7 +106,7 @@ test('point search returns canonical lng/lat coordinates and supports legacy key
   assert.match(locationSql,/coalesce\(a\.attr->>'lat',a\.attr->>'latitude'\)/);
   assert.match(locationSql,/order by a\.title limit/);
   const portableBranch=publicProvider.slice(publicProvider.indexOf('if(portable){',
-    publicProvider.indexOf('if(name===\'search_scope_trace_place_names\')'));
+    publicProvider.indexOf("if(name==='search_scope_trace_place_names')"));
   assert.match(portableBranch,/attr\.lng\?\?attr\.longitude/);
   assert.match(portableBranch,/attr\.lat\?\?attr\.latitude/);
 });
