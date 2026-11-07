@@ -1,8 +1,8 @@
 // Database source routing is read directly from access.js, never SQL.
 // No secrets, login grants, or database calls are stored here.
-// The existing LOC deployment keeps its optional Neon mirror by default;
-// NEXT_PUBLIC_LOC_BACKUP_ID='' explicitly runs with ONE database. No backup
-// connection, health check or synchronization is required for normal operation.
+// Existing target selection remains the default until a trusted SQL Gateway
+// alias is explicitly configured. A backup may use any supported SQL provider;
+// its connection and credentials remain server-side.
 import {DATABASE_ACCESS_LIST} from './access.js';
 
 const sourceTargets=Object.freeze(Object.fromEntries(
@@ -45,7 +45,7 @@ export function resolveDatabaseRouting(config=DATABASE_ROUTING_CONFIG){
   if(primary.primaryControl!==true)throw new Error('Primary route has no full provider adapter');
   const backupId=config.backupId&&config.backupId!==config.primaryId&&!blocked.has(config.backupId)?config.backupId:null;
   const backup=backupId?config.targets?.[backupId]:null;
-  if(backupId&&(!backup||!['supabase','neon'].includes(backup.provider)))
+  if(backupId&&(!backup||!['supabase','neon','custom'].includes(backup.provider)))
     throw new Error('Database backup route is not supported');
   return Object.freeze({
     provider:primary.provider,
