@@ -45,4 +45,4 @@ jobs:
         with:
           deno-version: v2.x
       - name: Type-check standalone cross-engine SQL Gateway
-        run: deno check services/loc-mcp-sql/main.ts
+        run: deno check --config services/loc-mcp-sql/deno.json services/loc-mcp-sql/main.ts
