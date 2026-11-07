@@ -1,0 +1,43 @@
+// LOC cutover evidence: an exact case-insensitive legacy-provider regex
+// scan of all first-party runtime sources, tests and build configurations.
+// Historical SQL migrations are intentionally handled after the unified merge.
+import {readdirSync,readFileSync} from 'node:fs';
+import {join,relative,extname} from 'node:path';
+const root=new URL('../',import.meta.url).pathname;
+const directories=['app','workers','functions','extensions','services',
+  'zenstack','scripts','public','supabase/functions','.github/workflows'];
+const rootFiles=['package.json','next.config.mjs','open-next.config.ts',
+  'Dockerfile','vercel.json'];
+const extensions=new Set(['.js','.mjs','.cjs','.jsx','.ts','.tsx',
+  '.json','.jsonc','.yml','.yaml','.html','.toml']);
+const skip=/^(?:public\/vendor\/|extensions\/[^/]+\/vendor\/|scripts\/check-loc-independent-vendor-usage\.mjs$)/;
+const coupling=/(supabase|neon|clerk)/ig;
+const results=[];
+function check(path){
+  const relativePath=relative(root,path).replaceAll('\\','/');
+  if(skip.test(relativePath))return;
+  const value=readFileSync(path,'utf8');
+  const lines=value.split(/\r?\n/);
+  lines.forEach((line,index)=>{
+    coupling.lastIndex=0;
+    const matches=[...line.matchAll(coupling)];
+    if(matches.length)results.push({path:relativePath,line:index+1,
+      matches:[...new Set(matches.map(match=>match[0].toLowerCase()))]});
+  });
+}
+function walk(dir){
+  for(const entry of readdirSync(dir,{withFileTypes:true})){
+    const path=join(dir,entry.name);
+    if(entry.isDirectory())walk(path);
+    else if(entry.isFile()&&extensions.has(extname(path)))check(path);
+  }
+}
+for(const dir of directories)walk(join(root,dir));
+for(const name of rootFiles)check(join(root,name));
+if(results.length){
+  for(const result of results.slice(0,250))
+    process.stderr.write(result.path+':'+result.line+' ['+result.matches.join(', ')+']\\n');
+  if(results.length>250)process.stderr.write('... '+(results.length-250)+' more lines\\n');
+  process.stderr.write('LOC legacy provider coupling: '+results.length+' lines; FAIL\\n');
+  process.exitCode=1;
+}else process.stdout.write('LOC legacy provider coupling: 0 lines; PASS\\n');
