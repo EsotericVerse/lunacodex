@@ -8,6 +8,7 @@ import {portableRelation} from './sql-engine-ports.mjs';
 import {portableContainsSpec} from './portable-search.mjs';
 
 const SCOPE_MODELS=Object.freeze({lo3rwang:'Lo3rwangGalaxy',lrunes:'LrunesGalaxy'});
+const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
 const BATCH=/^[0-9a-f]{64}$/;
 const PR_SOURCE='EsotericVerse/moon-runes-pwa#%';
@@ -20,7 +21,7 @@ function affected(result){
 }
 function verifyScope(body,claims){
   const scope=String(body?.scopeid||'');
-  if(!Object.hasOwn(SCOPE_MODELS,scope))reject('Unsupported delegated MCP Scope',403);
+  if(!SCOPE.test(scope))reject('Invalid delegated MCP Scope',403);
   const write=['mcp-sync','mcp-append'].includes(body.kind);
   if(!write&&!['mcp-search','mcp-read'].includes(body.kind))
     reject('Unsupported MCP operation',400);
@@ -32,7 +33,8 @@ function verifyScope(body,claims){
 }
 function relation(scope,engine,namespace,provider){
   if(!['postgres','mysql','mssql'].includes(engine))reject('Unsupported MCP SQL engine');
-  const model=zmodel.models[SCOPE_MODELS[scope]];
+  // Cloned Scopes inherit the fixed Galaxy contract; only the physical name varies.
+  const model=zmodel.models[SCOPE_MODELS[scope]||'Lo3rwangGalaxy'];
   const required=['uid','title','content','createtime','site','site_id','UpdateTime',...FLAGS];
   if(!model||required.some(field=>!Object.hasOwn(model.fields,field)))
     reject('Fixed LOC ZModel Galaxy contract mismatch',503);
@@ -49,7 +51,7 @@ function validateSync(body){
      !FLAGS.every(flag=>row[flag]===false)||
      typeof body.update_existing!=='boolean')
     reject('Invalid private MCP row');
-  const model=zmodel.models[SCOPE_MODELS[body.scopeid]];
+  const model=zmodel.models[SCOPE_MODELS[body.scopeid]||'Lo3rwangGalaxy'];
   if(Object.keys(row).some(key=>!Object.hasOwn(model.fields,key)))
     reject('Unsupported MCP Galaxy field');
   return row;
