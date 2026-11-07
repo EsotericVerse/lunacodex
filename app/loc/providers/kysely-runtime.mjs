@@ -117,6 +117,13 @@ export function buildKyselySelectQuery(trx,input,{dialect='postgres',namespace,p
   const table=databaseTable(req,dialect,namespace,modelName);
   let query=publishedOnly(applyOrFilters(applyFilters(
     trx.selectFrom(table).select(req.columns),req.filters),req.orFilters),req.table,publicOnly);
+  if(req.federatedNullsLast===true&&req.orders.length===1&&
+     ['date','createtime'].includes(req.orders[0].column)){
+    const sortColumn=req.orders[0].column;
+    // SQL-portable CASE expression: PostgreSQL, MySQL and SQL Server would
+    // otherwise paginate NULL dates in different positions.
+    query=query.orderBy(sql`case when ${sql.ref(sortColumn)} is null then 1 else 0 end`,'asc');
+  }
   for(const order of req.orders)query=query.orderBy(order.column,order.ascending===false?'desc':'asc');
   query=query.limit(req.limit).offset(req.offset);
   const countQuery=req.count?publishedOnly(applyOrFilters(applyFilters(
