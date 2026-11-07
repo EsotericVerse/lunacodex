@@ -6,6 +6,6 @@ import {directMcpKysely} from '../app/loc/mcp/native-kysely.mjs';
 export function onRequest(context){
   const bindings=context.env;
   return handleMcp(context.request,{
-    ...bindings,locDirectDatabase:()=>directMcpKysely(bindings)
+    ...bindings,locDirectDatabase:(verifiedAlias='')=>directMcpKysely(bindings,verifiedAlias)
   });
 }
