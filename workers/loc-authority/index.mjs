@@ -1,5 +1,6 @@
 import { DurableObject } from 'cloudflare:workers';
 import {issueDelegation} from '../../app/loc/auth/delegation-contract.mjs';
+import {trustedSqlProfile} from './sql-profile.mjs';
 import {ISSUER,MCP_AUDIENCE,WEB_AUDIENCE,isNativeOAuthPath,handleNativeOAuth,
   verifyNativeOAuth,looksLikeNativeToken} from './native-oauth.mjs';
 import {validateKeywordCategoryEntry,hashKeywordCategory,assertPublicKeywordClass} from './keyword-categories.mjs';
@@ -1199,6 +1200,13 @@ export default {
       if(!['GET','PUT','POST'].includes(request.method))throw fail('Method not allowed',405);
       const url=new URL(request.url);
       if(url.pathname.startsWith('/v1/mcp/'))return handleMcpAuthority(request,env,url,origin);
+      // Only an independently authenticated Gateway can request a decrypted
+      // DO connection. No browser-visible path yields passwords or DB URLs.
+      if(request.method==='POST'&&url.pathname==='/v1/sql/runtime-profile'){
+        const state=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName(
+          'loc-authority-control-v1'));
+        return trustedSqlProfile(request,env,state);
+      }
       if(request.method==='GET'&&url.pathname==='/.well-known/jwks.json'){
         const state=env.LOC_AUTHORITY_STATE.get(
           env.LOC_AUTHORITY_STATE.idFromName('loc-authority-control-v1'));
