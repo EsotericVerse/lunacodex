@@ -44,12 +44,11 @@ function readReadyManifest(value){
 }
 const shardKey=doc=>base(doc)+String(locSearchShard(doc.uid)).padStart(2,'0');
 function makeIndex(){return createLocSearchIndex();}
-async function loadShard(kv,key){
-  const snapshot=await kv.get(key,'json');
+async function importShard(snapshot){
   const index=makeIndex();
   // A manifest-referenced base shard or listed delta must exist. Treating a
   // temporarily invisible KV key as an empty index would drop valid hits.
-  if(snapshot===null)
+  if(snapshot==null)
     throw Object.assign(new Error('Index shard not visible yet'),{status:503});
   if(snapshot?.version!==LOC_SEARCH_INDEX_FORMAT||!snapshot.parts||
      typeof snapshot.parts!=='object')
@@ -57,6 +56,22 @@ async function loadShard(kv,key){
   for(const [part,value] of Object.entries(snapshot.parts))
     await index.import(part,value);
   return index;
+}
+async function loadShard(kv,key){return importShard(await kv.get(key,'json'));}
+async function loadShardBatch(kv,keys){
+  if(keys.length===1)return [await loadShard(kv,keys[0])];
+  let snapshots;
+  try{
+    // Native Workers KV bulk reads reduce many individual network reads.
+    // A batch can exceed the 25 MB KV response limit; retry that case only.
+    snapshots=await kv.get(keys,'json');
+    if(!(snapshots instanceof Map))throw Error('Unexpected KV bulk response');
+  }catch(error){
+    if(Number(error?.status)!==413&&!/\b413\b/.test(String(error?.message||'')))
+      throw error;
+    return Promise.all(keys.map(key=>loadShard(kv,key)));
+  }
+  return Promise.all(keys.map(key=>importShard(snapshots.get(key))));
 }
 async function writeShard(kv,key,index){
   const parts={};
@@ -205,10 +220,10 @@ async function find(env,body){
     ];
     for(let offset=0;offset<keys.length;offset+=4){
       const batches=keys.slice(offset,offset+4);
-      const result=await Promise.all(batches.map(async key=>{
-        const idx=await loadShard(env.LOC_KV,key);
-        return idx.search(query,{limit:MAX_HITS+1});
-      }));
+      const indexes=await loadShardBatch(env.LOC_KV,batches);
+      const result=await Promise.all(indexes.map(idx=>
+        idx.search(query,{limit:MAX_HITS+1})
+      ));
       for(const ids of result)for(const id of ids)found.add(id);
       if(found.size>MAX_HITS)
         return {complete:false,hits:[],reason:'candidate-limit'};
