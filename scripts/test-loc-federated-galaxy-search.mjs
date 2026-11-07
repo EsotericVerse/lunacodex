@@ -117,6 +117,21 @@ test('progresses beyond per-source batch boundary without dropping or repeating 
   assert.ok(called.some(x=>x.query.offset===40));
   assert.ok(called.every(x=>x.query.limit===40));
 });
+test('NULL dates sort last in both directions across mixed SQL engines',async()=>{
+  const example={
+    db1:[{uid:'Ab123456',title:'Historic',date:'2018-01-01'},
+      {uid:'Cd123456',title:'Undated',date:null}],
+    db2:[{uid:'Ef123456',title:'Recent',date:'2024-02-01'}]
+  };
+  const ascending=await mergeFederatedGalaxyRows(sources,request(0,5),reader(example));
+  assert.deepEqual(ascending.data.map(x=>x.title),['Historic','Recent','Undated']);
+  assert.ok(ascending.data.every(x=>x.__federated===true));
+  const descendingData={...example,db1:[...example.db1]};
+  const descending=await mergeFederatedGalaxyRows(sources,request(0,5,true),
+    reader(descendingData));
+  assert.deepEqual(descending.data.map(x=>x.title),['Recent','Historic','Undated']);
+});
+
 test('unavailable source fails the federated request rather than returning a false complete page',async()=>{
   await assert.rejects(()=>mergeFederatedGalaxyRows(sources,request(),async(source)=>{
     if(source.databaseId==='db2')throw Error('source unavailable');
