@@ -6,6 +6,7 @@ import {delegationAudience,verifyDelegationBoundary,canManageDelegation} from ".
 import {databaseForTarget,resolveConnectionProfile} from "./drivers.ts";
 import {readVaultConnection} from "./database-connections.ts";
 import { executeKyselyQuery, isKyselyClientError } from "../../../app/loc/providers/kysely-runtime.mjs";
+import {executePortableMcp} from "../../../app/loc/providers/kysely-mcp.mjs";
 import {executeManagedKyselyWrite,executeManagedKyselyAction} from "../../../app/loc/providers/kysely-management.mjs";
 import {saveBlocksKysely} from "../../../app/loc/providers/kysely-blocks.mjs";
 import {executeKyselyAnchor,executePortableKyselyAnchor} from "../../../app/loc/providers/kysely-anchor.mjs";
@@ -299,206 +300,23 @@ Deno.serve(async (request) => {
   }
   let resolvingTarget = false;
   try {
-    if(body.kind==="mcp-read"||body.kind==="mcp-search"){
-      // A signed LOC delegation already specifies the MCP resource boundary.
-      // This owner-only route accepts fixed read shapes, not arbitrary SQL.
+    if(["mcp-read","mcp-search","mcp-sync","mcp-append"].includes(String(body.kind))){
+      // One LOC-signed Kysely executor for all SQL dialects. The Gateway has
+      // already verified the JWT audience, Scope and action. No provider
+      // Data API, PostgreSQL-only function, search RPC, or RLS impersonation.
       if(!verifiedMcp||role!=="authenticated")
         return json({error:{message:"Verified MCP Scope permission required"}},403);
       if(requestedTarget!=="configured")
-        return json({error:{message:"Managed MCP reads use the control database only"}},400);
-      const scope=String(body.scopeid||"");
-      const isRead=body.kind==="mcp-read";
-      const expectedKeys=isRead?["kind","scopeid","uid",...(body.site===undefined?[]:["site"])]:["kind","scopeid","query","limit"];
-      if(!["lo3rwang","lrunes"].includes(scope)||
-         Object.keys(body).length!==expectedKeys.length||
-         Object.keys(body).some(key=>!expectedKeys.includes(key)))
-        return json({error:{message:"Invalid managed MCP read payload"}},400);
-      const uid=String(body.uid||"");
-      const query=body.query;
-      const limit=body.limit;
-      if(isRead){
-        if(!/^[A-Za-z0-9]{8}$/.test(uid)||body.site!==undefined&&!["mcp","github"].includes(body.site))
-          return json({error:{message:"Invalid managed MCP article UID"}},400);
-      }else if(typeof query!=="string"||query.trim().length<2||query.length>100||
-          /[\u0000-\u001f\u007f]/.test(query)||!Number.isInteger(limit)||
-          Number(limit)<1||Number(limit)>5){
-        return json({error:{message:"Invalid managed MCP search parameters"}},400);
-      }
+        return json({error:{message:"MCP requires the configured SQL target"}},403);
       const db=await databaseForTarget(controlTarget);
-      // The scope has already been allowlisted; the identifier is not caller-supplied.
-      const table=sql.ref("silver."+scope+"_galaxy");
-      const rows=await db.transaction().execute(async trx=>{
-        await bindPostgresSession(trx,"authenticated",claims);
-        if(isRead){
-          const result=await sql`select uid,title,content,date,createtime,site,url
-            from ${table} where uid=${uid} and (${body.site===undefined} or site=${body.site||""}) limit 1`.execute(trx);
-          return result.rows;
-        }
-        const pattern="%"+String(query).trim().replace(/[\\%_]/g,"\\$&")+"%";
-        await sql`set local statement_timeout = '4000ms'`.execute(trx);
-        const result=await sql`select uid,title,createtime from ${table}
-          where site = 'mcp' and (title ilike ${pattern} or content ilike ${pattern})
-          order by createtime desc nulls last limit ${Number(limit)}`.execute(trx);
-        return result.rows;
-      });
-      return json({data:rows});
-    }
-    if(body.kind==="mcp-append"){
-      if(!verifiedMcp||role!=="authenticated") return json({error:{message:"MCP authorization required"}},403);
-      const scope=String(body.scopeid||"");
-      const uid=String(body.uid||"");
-      const content=body.content;
-      const batchId=String(body.batch_id||"");
-      const marker="[[GalaxyLinkBatch:"+batchId+"]]";
-      const stamp=String(body.updated_at||"");
-      if(!["lo3rwang","lrunes"].includes(scope)||!/^[A-Za-z0-9]{8}$/.test(uid)||
-         typeof content!=="string"||!content.trim()||content.length>125000||
-         !/^[0-9a-f]{64}$/.test(batchId)||!content.startsWith(marker+"\n")||
-         !Number.isFinite(Date.parse(stamp))) return json({error:{message:"Invalid append request"}},400);
-      const db=await databaseForTarget(controlTarget);
-      const table=sql.ref("silver."+scope+"_galaxy");
-      const result=await db.transaction().execute(async trx=>{
-        await bindPostgresSession(trx,"authenticated",claims);
-        await sql`set local statement_timeout = '5000ms'`.execute(trx);
-        const next=await sql`update ${table} set content=concat_ws(chr(10),nullif(content,''),${content}),
-          "UpdateTime"=${stamp} where uid=${uid} and site='mcp'
-          and position(${marker} in coalesce(content,''))=0
-          returning uid,title,createtime`.execute(trx);
-        if(next.rows.length===1)
-          return {data:{count:1,title:next.rows[0].title,createtime:next.rows[0].createtime}};
-        const duplicate=await sql`select uid,title,createtime from ${table}
-          where uid=${uid} and site='mcp' and position(${marker} in coalesce(content,''))>0
-          limit 1`.execute(trx);
-        if(duplicate.rows.length===1)
-          return {data:{count:1,duplicate:true,title:duplicate.rows[0].title,createtime:duplicate.rows[0].createtime}};
-        throw Error("MCP topic unavailable");
-      });
+      const result=await db.transaction().execute(trx=>executePortableMcp(trx,body,claims,{
+        engine:String(controlTarget.engine),provider:String(controlTarget.provider),
+        namespace:String(controlTarget.schema_name||"")
+      }));
       return json(result);
     }
-    if(body.kind==="mcp-sync"){
-      if(!verifiedMcp||role!=="authenticated")
-        return json({error:{message:"Verified MCP write permission required"}},403);
-      const scope=String(body.scopeid||"");
-      // A signed MCP conversation is private irrespective of supplied flags.
-      const incomingRow=body.row as Record<string,unknown>;
-      const flags=["statics","culture","search","trace","list","keyword","extract","others"];
-      const base=["uid","title","content","site","site_id","createtime","UpdateTime"];
-      const row=incomingRow&&typeof incomingRow==="object"&&!Array.isArray(incomingRow)
-        ? Object.fromEntries([...base.map(key=>[key,key==="site"?"mcp":incomingRow[key]]),
-            ...flags.map(key=>[key,false])])
-        :incomingRow;
-      const expected=[...base,...flags];
-      if(!["lo3rwang","lrunes"].includes(scope)||!row||typeof row!=="object"||
-        Array.isArray(row)||Object.keys(row).length!==expected.length||
-        Object.keys(row).some(k=>!expected.includes(k))||
-        !/^[A-Za-z0-9]{8}$/.test(String(row.uid||""))||
-        typeof row.title!=="string"||row.title.length>350||
-        typeof row.content!=="string"||!row.content.trim()||
-        row.content.length>125000||row.site!=="mcp"||
-        typeof row.site_id!=="string"||row.site_id.length<3||
-        row.site_id.length>150||
-        !incomingRow||Object.keys(incomingRow).some(k=>!expected.includes(k))||
-        flags.some(k=>row[k]!==false)||
-        typeof row.createtime!=="string"||typeof row.UpdateTime!=="string"||
-        typeof body.update_existing!=="boolean")
-        return json({error:{message:"Invalid managed conversation payload"}},400);
-      const table="silver."+scope+"_galaxy";
-      const db=await databaseForTarget(controlTarget);
-      const result=await db.transaction().execute(async trx=>{
-        if(body.update_existing){
-          const values={...row};
-          delete values.uid;
-          const update=await executeRequest(trx,controlTarget,"authenticated",claims,
-            scope==="lo3rwang"
-              ?{kind:"query",schema:"silver",table:scope+"_galaxy",operation:"update",
-                values,filters:[{column:"uid",operator:"eq",value:row.uid},
-                  {column:"site_id",operator:"eq",value:row.site_id}]}
-              :{kind:"managed-write",payload:{p_table:table,p_operation:"update",p_values:values,
-                  p_filters:[{column:"uid",operator:"eq",value:row.uid},
-                    {column:"site_id",operator:"eq",value:row.site_id}]}});
-          const updatedCount=update?.count??update?.data?.count;
-          if(updatedCount===1)return {data:{count:1},count:1};
-          if(updatedCount!==0)throw new Error("Unexpected managed sync update count");
-        }
-        return executeRequest(trx,controlTarget,"authenticated",claims,{
-          kind:"managed-write",payload:{p_table:table,p_operation:"insert",p_rows:[row]}
-        });
-      });
-      return json(result);
-    }
-    if(body.kind==="mcp-update-pr"){
-      // Updates an EXISTING Galaxy article in place. Unlike mcp-sync (which
-      // upserts private conversations), this never creates a new row: it only
-      // rewrites an article that is already tagged as GitHub PR origin and
-      // whose current title names the same PR number the caller supplied.
-      if(!verifiedMcp||role!=="authenticated")
-        return json({error:{message:"Verified MCP write permission required"}},403);
-      const scope=String(body.scopeid||"");
-      const expected=["kind","scopeid","pr_number","title","content","updated_at"];
-      const allowed=[...expected,"uid"];
-      const prNumber=body.pr_number;
-      if(!["lo3rwang","lrunes"].includes(scope)||
-        Object.keys(body).length!==expected.length+(body.uid===undefined?0:1)||
-        Object.keys(body).some(key=>!allowed.includes(key))||
-        (body.uid!==undefined&&!/^[A-Za-z0-9]{8}$/.test(String(body.uid)))||
-        !Number.isInteger(prNumber)||Number(prNumber)<1||Number(prNumber)>9999999||
-        typeof body.title!=="string"||!body.title.trim()||body.title.length>350||
-        typeof body.content!=="string"||!body.content.trim()||body.content.length>125000||
-        typeof body.updated_at!=="string"||!body.updated_at)
-        return json({error:{message:"Invalid PR update payload"}},400);
-      let uid=String(body.uid||"");
-      const table="silver."+scope+"_galaxy";
-      const tableRef=sql.ref(table);
-      const db=await databaseForTarget(controlTarget);
-      const result=await db.transaction().execute(async trx=>{
-        await bindPostgresSession(trx,"authenticated",claims);
-        // The user knows their GitHub PR number, not its random Galaxy UID.
-        // Locate by stable source identity first. Do not search private content,
-        // infer an arbitrary UID, or write when multiple candidates exist.
-        const repoSiteId="EsotericVerse/moon-runes-pwa#"+prNumber;
-        const prMarker=new RegExp("(?:^|[^0-9])PR\\s*#"+Number(prNumber)+"(?:[^0-9]|$)");
-        let rows:{uid:string;title:string;site:string;site_id:string|null}[];
-        if(uid){
-          const existing=await sql<{uid:string;title:string;site:string;site_id:string|null}>`
-            select uid,title,site,site_id from ${tableRef} where uid=${uid} limit 1`.execute(trx);
-          rows=existing.rows;
-        }else{
-          const exact=await sql<{uid:string;title:string;site:string;site_id:string|null}>`
-            select uid,title,site,site_id from ${tableRef}
-            where site='mcp' and site_id=${repoSiteId} limit 2`.execute(trx);
-          rows=exact.rows;
-          if(rows.length===0){
-            const fallback=await sql<{uid:string;title:string;site:string;site_id:string|null}>`
-              select uid,title,site,site_id from ${tableRef}
-              where site='mcp' and title ilike ${'%PR #'+prNumber+'%'}
-              order by createtime desc nulls last limit 40`.execute(trx);
-            rows=fallback.rows.filter(row=>prMarker.test(String(row.title||'')));
-          }
-          if(rows.length!==1)
-            throw Object.assign(new Error(rows.length?'Multiple PR articles match; refusing ambiguous update':
-              'Existing GitHub PR record not found'),{httpStatus:409});
-          uid=rows[0].uid;
-        }
-        const row=rows[0];
-        if(!row)throw Object.assign(new Error("Scope article not found"),{httpStatus:404});
-        if(row.site!=="mcp")
-          throw Object.assign(new Error("Only GitHub PR-origin articles can be updated through this tool"),{httpStatus:403});
-        if(row.site_id!==repoSiteId&&!prMarker.test(String(row.title||'')))
-          throw Object.assign(new Error("PR number does not match article provenance"),{httpStatus:403});
-        const values={title:body.title,content:body.content,UpdateTime:body.updated_at};
-        const updated=await executeRequest(trx,controlTarget,"authenticated",claims,
-          scope==="lo3rwang"
-            ?{kind:"query",schema:"silver",table:scope+"_galaxy",operation:"update",
-              values,filters:[{column:"uid",operator:"eq",value:uid}]}
-            :{kind:"managed-write",payload:{p_table:table,p_operation:"update",p_values:values,
-                p_filters:[{column:"uid",operator:"eq",value:uid}]}});
-        const count=updated?.count??updated?.data?.count;
-        if(count!==1)throw new Error("Managed PR update affected an unexpected number of rows");
-        return {data:{count:1,uid},count:1};
-
-      });
-      return json(result);
-    }
+    if(body.kind==="mcp-update-pr")
+      return json({error:{message:"請至github頁面找尋PR相關資料！不開放搜尋PR!"}},410);
     if(body.kind==="managed-action"&&body.name==="check_backup_readiness"){
       if(requestedTarget!=="configured")return json({error:{message:"Invalid health target"}},400);
       if(role!=="authenticated")return json({error:{message:"Administrator permission required"}},403);
