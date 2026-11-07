@@ -14,7 +14,7 @@ test('legacy SQL Scope lifecycle is retired in favor of Kysely',()=>{
 
 test('Scope and Keywords cutover uses native Kysely services rather than SQL RPCs',()=>{
   const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
-  const backend=read('supabase/functions/loc-kysely/index.ts');
+  const backend=read('app/loc/gateway/sql-handler.ts');
   const anchor=read('app/loc/providers/kysely-anchor.mjs');
   const analytics=read('app/loc/providers/kysely-analytics.mjs');
   const management=read('app/loc/providers/kysely-management.mjs');
