@@ -1,0 +1,29 @@
+name: LOC fatal route recovery
+on:
+  pull_request:
+    paths:
+      - 'app/loc/providers/direct-data-api.mjs'
+      - 'app/loc/providers/configured.mjs'
+      - 'app/api/loc/_server.js'
+      - 'scripts/test-loc-direct-data-api.mjs'
+      - 'scripts/verify-direct-public-database.mjs'
+      - '.github/workflows/loc-fatal-route-recovery.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: node --check app/loc/providers/direct-data-api.mjs
+      - run: node --check app/loc/providers/configured.mjs
+      - run: npm run test:database-recovery
+      - name: Probe direct public database API (one public row only)
+        run: node scripts/verify-direct-public-database.mjs
