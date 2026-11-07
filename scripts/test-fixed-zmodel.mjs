@@ -91,7 +91,8 @@ test('Anchor remains the extension point; model does not declare migrations or b
     assert.equal(anchor.fields.size,7);
   }
   assert.doesNotMatch(source,/^\s*generator\s+/m);
-  assert.doesNotMatch(source,/^\s*@@allow\s*\(/m);
+  assert.equal((source.match(/^\s*@@allow\s*\(/gm)||[]).length,4);
+  assert.match(source,/plugin policy \{/);
   assert.doesNotMatch(source,/^\s*@@deny\s*\(/m);
 });
 
@@ -99,6 +100,17 @@ test('ZenStack V3 runtime schema bridge stays in sync with the frozen contract',
   const {schema}=await import('../zenstack/schema.mjs');
   assert.equal(schema.provider.type,'postgresql');
   assert.equal(schema.provider.defaultSchema,'silver');
+  assert.ok(schema.plugins.policy);
+  for(const name of ['Manage','Loc','Lo3rwang','Lrunes']){
+    const model=schema.models[name];
+    assert.ok(model,'missing fixed policy model '+name);
+    const rules=model.attributes.filter(attr=>attr.name==='@@allow');
+    assert.equal(rules.length,1,'each public model has one explicit ZenStack policy');
+    assert.equal(rules[0].args[0].value.value,'read');
+    assert.equal(rules[0].args[1].value.value,true);
+  }
+  assert.equal(Object.values(schema.models).flatMap(model=>model.attributes)
+    .filter(attr=>attr.name==='@@allow').length,4);
   assert.equal(Object.keys(schema.models).length,snapshot.tables.length);
   for(const table of snapshot.tables){
     const model=schema.models[modelName(table.table)];
