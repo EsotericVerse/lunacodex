@@ -31,3 +31,33 @@ test('public API never executes writes with browser public key',()=>{
   const adapter=createConfiguredAdapter({accountAdapter:identity,fetchImpl:async()=>{throw Error('fetch unavailable')}});
   assert.throws(()=>adapter.authClient.schema('silver').from('loc').insert([]),/owner Web Server/);
 });
+
+// After the independent service is provisioned, Kysely + LOC OAuth is the
+// single transport for public reads and managed writes; the emergency Data API
+// must not be queried by this route.
+test('configured native LOC SQL Gateway takes precedence over Data API',async()=>{
+  const calls=[];
+  const identity={auth:{getVerifiedSession:async()=>null},
+    getAccessToken:async()=> 'loc.oauth.token'};
+  const adapter=createConfiguredAdapter({
+    gatewayUrl:'https://sql.example.test/v1/sql',
+    url:'https://data.example.test/rest/v1',publishableKey:'legacy_public',
+    accountAdapter:identity,
+    fetchImpl:async(url,options)=>{
+      calls.push({url:String(url),options});
+      return Response.json({data:[{uid:'abcd1234',title:'公開'}],count:1});
+    }
+  });
+  const {data,error}=await adapter.publicClient.schema('silver')
+    .from('lo3rwang_galaxy').select('uid,title').limit(1);
+  assert.ifError(error);
+  assert.equal(data[0].uid,'abcd1234');
+  assert.equal(calls.length,1);
+  assert.equal(calls[0].url,'https://sql.example.test/v1/sql');
+  assert.equal(calls[0].options.method,'POST');
+  assert.equal(calls[0].options.headers.apikey,undefined);
+  assert.equal(calls[0].options.headers.authorization,undefined);
+  const payload=JSON.parse(calls[0].options.body);
+  assert.equal(payload.target,'configured');
+  assert.equal(payload.table,'lo3rwang_galaxy');
+});
