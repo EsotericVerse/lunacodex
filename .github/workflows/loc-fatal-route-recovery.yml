@@ -1,13 +1,5 @@
 name: LOC fatal route recovery
 on:
-  pull_request:
-    paths:
-      - 'app/loc/providers/direct-data-api.mjs'
-      - 'app/loc/providers/configured.mjs'
-      - 'app/api/loc/_server.js'
-      - 'scripts/test-loc-direct-data-api.mjs'
-      - 'scripts/verify-direct-public-database.mjs'
-      - '.github/workflows/loc-fatal-route-recovery.yml'
   workflow_dispatch:
 permissions:
   contents: read
