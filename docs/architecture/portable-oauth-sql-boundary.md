@@ -18,7 +18,7 @@ Neon PostgreSQL 的存取功能仍由 Kysely PostgreSQL 方言與資料庫連線
 
 ## 尚未完成，不能宣稱已切換
 
-**2026-11-07 的主站 `app/loc/providers/configured.mjs` 仍預設 `createClerkGatewayAdapter()`**，用 Clerk 驗證上游使用者後再向 LOC Authority 兌換委託。這是「網站登入的上游」而非 SQL 資料庫的必要驗證，但**網站端原生 LOC OAuth 登入尚未驗收完成**。
+**主站 `app/loc/providers/configured.mjs` 已改為直接組裝 `createLocGatewayAdapter()`**，登入身分來源可替換；但目前預設上游仍是 Clerk，原生 LOC OAuth 登入尚未正式接替。
 
 正式移除此過渡入口之前，需先具備並驗證：
 1. LOC Auth 對外的 OAuth Authorization Server（正確 issuer、Authorization Code + PKCE S256、Token endpoint、回呼與續期、撤銷／逾期）。
@@ -47,6 +47,25 @@ Neon PostgreSQL 的存取功能仍由 Kysely PostgreSQL 方言與資料庫連線
   hosted SQL Gateway and production host configuration are not established
   by this commit. No DB DDL, migration, RLS, GRANT or production deployment
   is performed by these source edits.
+
+## 獨立主站 SQL 服務入口（原始碼）
+
+- `services/loc-sql/main.ts` 是獨立 **Deno 2** 入口，沿用既有
+  `supabase/functions/loc-kysely/index.ts` 的同一 Kysely／ZenStack
+  及 LOC delegation 實作，不複製 SQL，也不新增 RPC。
+- 伺服器必須提供 `LOC_CONTROL_DB_ALIAS`、`LOC_CONTROL_DB_ENGINE`
+  （postgres／mysql／mssql）和 `LOC_DB_CONNECTIONS_JSON`；
+  服務啟動時檢查別名及引擎，不允許隱性 Supabase／Neon 回退。
+- Deno 執行環境有明確 Alias 時，`routing-config.mjs` 使用
+  `custom-current` 主庫，沒有設定則保留現役預設來源。
+- PostgreSQL 固定公開模型不論供應商都進入 ZenStack PolicyPlugin；
+  非 PostgreSQL 由 LOC 授權與 Kysely 共用的公開範圍管制。
+- 已移除無呼叫者的 Portable Schema 自動建表／建索引程式，
+  保留既有表的欄位驗證；新 Scope 建立及刪除因資料庫凍結回應 409。
+- 以上是**已提交的程式入口，不代表已正式部署**。正式主機、
+  資料庫 Secret 和 `NEXT_PUBLIC_LOC_SQL_GATEWAY_URL` 尚需配置，
+  不能在缺少連線條件時聲稱已完成切換，也不能要求使用者提供
+  SQL 樣本或測試資料。詳細設定見 `services/loc-sql/README.md`。
 
 ## Unified public/private SQL Gateway
 
