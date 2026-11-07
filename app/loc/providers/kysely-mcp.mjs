@@ -103,12 +103,16 @@ export async function executePortableMcp(trx,body,claims,{engine='postgres',name
   if(body.kind==='mcp-sync'){
     const row=validateSync(body);
     if(body.update_existing){
-      const patch={...row};delete patch.uid;
-      const update=await conversationOnly(trx.updateTable(table)).set(patch)
-        .where('uid','=',row.uid).where('site_id','=',row.site_id).execute();
-      const count=affected(update);
-      if(count===1)return {data:{count:1},count:1};
-      if(count!==0)reject('Unexpected MCP update count',409);
+      // The first acknowledgement may have been lost. Recheck the SAME UID
+      // without overwriting text that may already have been appended.
+      const previous=await conversationOnly(trx.selectFrom(table))
+        .select(['uid','content']).where('uid','=',row.uid)
+        .where('site_id','=',row.site_id).limit(1).executeTakeFirst();
+      if(previous){
+        if(previous.content===row.content)
+          return {data:{count:1,duplicate:true},count:1};
+        reject('MCP sync cannot overwrite a stored conversation; append the new batch',409);
+      }
     }
     await trx.insertInto(table).values(row).execute();
     return {data:{count:1},count:1};
