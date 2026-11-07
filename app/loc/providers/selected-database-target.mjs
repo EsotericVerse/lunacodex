@@ -18,7 +18,7 @@ export function normalizeDatabaseTarget(row){
   const mode=String(row.connection_mode||'direct');
   if(!modes.has(mode))throw new Error('Invalid database connection mode');
   // SQLite is supported in portable/local Kysely, not as an ephemeral Edge database.
-  if(getSqlEnginePort(engine).runtime==='persistent-gateway')throw new Error('SQLite requires a persistent trusted local/gateway runtime');
+  if(getSqlEnginePort(engine).runtime==='persistent-local')throw new Error('SQLite requires a persistent trusted local database runtime');
   return {...row,provider,engine,connection_alias:alias,connection_mode:mode};
 }
 export function selectedDatabaseTarget(rows,{fallback='custom'}={}){

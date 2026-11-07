@@ -195,10 +195,8 @@ export function managementHeroSlot(pathname='',scopeId='',editing=false,featureI
   const loc=scopeId==='loc'||scopeId==='admin';
   let key='';
   if(loc){
-    // The Admin landing Hero belongs to group_admin/scope_admin, not
-    // the management-entry copy; its search subpage remains independent.
-    if(parts[0]==='admin'&&parts[1]==='search')key='articles';
-    else if(parts[0]==='admin')return null;
+    // Admin is system-only; article management belongs to the Scope entry.
+    if(parts[0]==='admin')return null;
     else if(parts[0]==='culture'&&parts.includes('manage'))key='members';
     else if(parts[0]==='statics'&&parts.includes('manage'))key='locKeywords';
     else if(parts[0]==='trace'&&parts.includes('manage'))key='trace';
