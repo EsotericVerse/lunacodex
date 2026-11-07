@@ -84,8 +84,10 @@ test('identical capture to different galaxies is not suppressed by acknowledgeme
  const input="[{key:'same-post',url:'https://example.org/p/1',source_key:'https://example.org/p/1',title:'Post',content:'same words'}]";
  const a=await runInContext("toEvents("+input+",'lo3rwang')",context);
  const b=await runInContext("toEvents("+input+",'lrunes')",context);
+ const c=await runInContext("toEvents("+input+",'newscope')",context);
  assert.equal(a[0].scopeid,'lo3rwang');
  assert.equal(b[0].scopeid,'lrunes');
+ assert.equal(c[0].scopeid,'newscope');
  assert.notEqual(a[0].id,b[0].id);
  assert.notEqual(a[0].group_id,b[0].group_id);
  const background=text('background.js');
