@@ -103,7 +103,7 @@ function databaseTable(req,dialect,namespace,modelName=''){
 function publishedOnly(query,table,enabled){
   if(!enabled)return query;
   if(table.endsWith('_galaxy'))
-    return query.where('search','=',true)
+    return query.where(enabled==='list'?'list':'search','=',true)
       .where(eb=>eb.or([eb('site','is',null),
         eb(eb.fn('lower',['site']),'not in',PRIVATE_SITES)]));
   if(table.endsWith('_anchor'))
