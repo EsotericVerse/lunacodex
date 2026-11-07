@@ -84,8 +84,10 @@ test('identical capture to different galaxies is not suppressed by acknowledgeme
  const input="[{key:'same-post',url:'https://example.org/p/1',source_key:'https://example.org/p/1',title:'Post',content:'same words'}]";
  const a=await runInContext("toEvents("+input+",'lo3rwang')",context);
  const b=await runInContext("toEvents("+input+",'lrunes')",context);
+ const c=await runInContext("toEvents("+input+",'newscope')",context);
  assert.equal(a[0].scopeid,'lo3rwang');
  assert.equal(b[0].scopeid,'lrunes');
+ assert.equal(c[0].scopeid,'newscope');
  assert.notEqual(a[0].id,b[0].id);
  assert.notEqual(a[0].group_id,b[0].group_id);
  const background=text('background.js');
@@ -105,6 +107,29 @@ test('batch split never combines more than 50 or 590 KB of event data',()=>{
  const {context}=isolatedBackground();
  const counts=runInContext("packet(Array.from({length:103},(_,i)=>({id:'item'+i,content:'x'.repeat(300)}))).map(b=>b.length)",context);
  assert.deepEqual(Array.from(counts),[50,50,3]);
+});
+
+test('canonical Threads and Instagram permalink aliases are accepted without cross-site capture',()=>{
+ const {context}=isolatedBackground();
+ const allowed=[
+  ['https://www.threads.com/@writer/post/1','https://www.threads.net/@writer/post/1'],
+  ['https://threads.net/@writer','https://threads.com/@writer/post/2'],
+  ['https://www.instagram.com/','https://instagram.com/p/abc'],
+  ['https://m.instagram.com/','https://www.instagram.com/p/abc'],
+  ['https://example.org/read','https://example.org/post/1']
+ ];
+ const forbidden=[
+  ['https://www.threads.com/@writer','https://attacker.example/post/1'],
+  ['https://www.threads.com/@writer','https://evilthreads.com/post/1'],
+  ['https://www.threads.net/@writer','https://login.threads.net/post/1'],
+  ['https://www.threads.com/@writer','http://www.threads.net/post/1'],
+  ['https://www.instagram.com/','https://www.threads.com/@writer/post/1'],
+  ['https://example.org/','https://other.example.org/']
+ ];
+ for(const [page,source] of allowed)
+  assert.equal(runInContext('captureSourceMatches('+JSON.stringify(page)+','+JSON.stringify(source)+')',context),true,page+' -> '+source);
+ for(const [page,source] of forbidden)
+  assert.equal(runInContext('captureSourceMatches('+JSON.stringify(page)+','+JSON.stringify(source)+')',context),false,page+' -> '+source);
 });
 
 test('background rejects cross-origin injection before any Queue write',async()=>{
@@ -130,6 +155,9 @@ test('existing website gateway requests a signed write delegation, not manage, f
 });
 
 test('website signed delegation reaches short-import gateway without extra target or a second login',async()=>{
+ const previous=process.env.NEXT_PUBLIC_LOC_MCP_SQL_GATEWAY_URL;
+ process.env.NEXT_PUBLIC_LOC_MCP_SQL_GATEWAY_URL='https://sql.loc.test/v1/sql';
+ try{
  let siteAccessChecks=0,authorityCalls=0,edgeCalls=0,issued=null,sent=null;
  const batch={id:'00000000-0000-4000-8000-000000000001',write_mode:'append',records:[]};
  const gateway=createLocGatewayAdapter({
@@ -148,6 +176,7 @@ test('website signed delegation reaches short-import gateway without extra targe
     })};
    }
    edgeCalls++;
+   assert.equal(String(url),'https://sql.loc.test/v1/sql');
    sent=JSON.parse(options.body);
    assert.equal(options.headers.authorization,'Bearer signed.loc.delegation');
    return {ok:true,status:200,json:async()=>({
@@ -164,6 +193,10 @@ test('website signed delegation reaches short-import gateway without extra targe
  assert.equal(siteAccessChecks,1);
  assert.equal(authorityCalls,1);
  assert.equal(edgeCalls,1);
+ }finally{
+  if(previous===undefined)delete process.env.NEXT_PUBLIC_LOC_MCP_SQL_GATEWAY_URL;
+  else process.env.NEXT_PUBLIC_LOC_MCP_SQL_GATEWAY_URL=previous;
+ }
 });
 
 

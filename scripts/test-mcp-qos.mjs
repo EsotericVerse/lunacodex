@@ -5,7 +5,7 @@ import {webcrypto} from 'node:crypto';
 
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
 const source=readFileSync(new URL('../workers/loc-authority/index.mjs',import.meta.url),'utf8')
-  .replace(/^import[\\s\\S]*?;\\s*$/gm,'')
+  .replace(/^import[\s\S]*?;\s*$/gm,'')
   .replace('export class LocAuthorityState','class LocAuthorityState')
   .replace('export default {','const worker={');
 const {LocAuthorityState,mcpPrLookup}=new Function('DurableObject',
@@ -162,8 +162,36 @@ test('One search becomes eligible again after five minutes without resetting his
 });
 
 test('PR classifier routes Github lookups away from Galaxy',()=>{
-  for(const term of ['PR','PR #1172','請找PR紀錄','pull request #1172','github commit','拉取請求'])
+  for(const term of ['PR','PR #1172','PR1189','PR-1189','請找PR紀錄','pull request #1172','github commit','拉取請求'])
     assert.equal(mcpPrLookup(term),true,term);
   for(const term of ['時間定錨','對話摘要','跨 Agent 紀錄'])
     assert.equal(mcpPrLookup(term),false,term);
+});
+
+test('read-only QoS inspection warns at the penultimate slot without spending quota',async()=>{
+ const authority=quota(),subject='clerk:user_Inspect';
+ assert.deepEqual(await authority.mcpQuotaInspect('search',subject),{warning:''});
+ const ticket=await authority.mcpQuotaAcquire('search',subject);
+ assert.match(ticket.warning,/五分鐘/);
+ const before=await authority.ctx.storage.get('mcp-qos-search:'+subject);
+ const near=await authority.mcpQuotaInspect('search',subject);
+ assert.match(near.warning,/五分鐘/);
+ const after=await authority.ctx.storage.get('mcp-qos-search:'+subject);
+ assert.deepEqual(after,before,'inspection must not record a search or rejected attempt');
+ await authority.mcpQuotaRelease(ticket.lease,subject);
+});
+
+test('QoS warns before the final read allowance, without weakening 429 limits',async()=>{
+ const authority=quota(),subject='clerk:user_PreLimit',leases=[];
+ for(let i=0;i<10;i++)leases.push(await authority.mcpQuotaAcquire('read',subject));
+ const notice=await authority.mcpQuotaInspect('read',subject);
+ assert.deepEqual(notice,{warning:''});
+ const penultimate=await authority.mcpQuotaAcquire('read',subject);
+ assert.match(penultimate.warning,/即將達到限制/);
+ leases.push(penultimate);
+ const peek=await authority.mcpQuotaInspect('read',subject);
+ assert.match(peek.warning,/即將達到限制/);
+ leases.push(await authority.mcpQuotaAcquire('read',subject));
+ await assert.rejects(authority.mcpQuotaAcquire('read',subject),e=>e.status===429);
+ for(const ticket of leases)await authority.mcpQuotaRelease(ticket.lease,subject);
 });

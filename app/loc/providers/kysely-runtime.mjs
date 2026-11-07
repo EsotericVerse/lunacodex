@@ -1,5 +1,4 @@
 import {sql} from 'npm:kysely@0.29.8';
-import {schema as fixedSchema} from '../../../zenstack/schema.mjs';
 import {DB_QUERY_BATCH_SIZE} from '../query-batch-size.mjs';
 import {serializePortableJsonFields,portableRelation} from './sql-engine-ports.mjs';
 import {validateLocRegistryDomain} from './loc-domain.mjs';
@@ -92,11 +91,11 @@ function applyOrFilters(query,groups){
 }
 
 const PRIVATE_SITES=['messenger','chatgpt','claude','gemini','msn','whatsapp',
-  'telegram','discord','line','wechat','teams','copilot','grok','perplexity','meta ai','meta-ai'];
+  'telegram','discord','line','wechat','teams','copilot','grok','perplexity','meta ai','meta-ai',
+  'mcp','github'];
 const PUBLIC_ANCHOR_TYPES=['date','period','era','point','path','trace','image','video','rune','suno'];
 function databaseTable(req,dialect,namespace,modelName=''){
-  // A trusted ZenStack query uses the logical fixed model name. Its runtime
-  // mapper compiles it to the original physical SQL relation.
+  // ZenStack PolicyPlugin maps a fixed logical model to the physical table.
   if(modelName)return modelName;
   return namespace===undefined?req.schema+'.'+req.table:
     portableRelation(req.table,dialect,namespace);
@@ -177,7 +176,7 @@ function applyMutationReturning(query,req,dialect){
   return query.returning(req.columns);
 }
 
-export function buildKyselyMutationQuery(trx,input,{dialect='postgres',namespace,modelName=''}={}){
+export function buildKyselyMutationQuery(trx,input,{dialect='postgres',namespace}={}){
   const validated=validateQuery(input);
   const registryValues=validated.schema==='api'&&validated.table==='manage'
     ?Array.isArray(validated.values)
@@ -191,14 +190,8 @@ export function buildKyselyMutationQuery(trx,input,{dialect='postgres',namespace
       :{...registryValues,updated_at:new Date()}
     :registryValues;
   const req={...validated,values:serializePortableJsonFields(stamped,dialect)};
-  const fullTable=databaseTable(req,dialect,namespace,modelName);
+  const fullTable=databaseTable(req,dialect,namespace);
   if(!['insert','update','delete','upsert'].includes(req.operation))throw new Error('Unsupported mutation');
-  if(modelName&&req.operation==='update'){
-    const keys=fixedSchema.models[modelName]?.idFields;
-    if(!keys||!keys.length)throw new Error('Invalid fixed ZModel primary key');
-    if(keys.some(key=>Object.hasOwn(req.values,key)))
-      throw new Error('Invalid fixed model primary-key update');
-  }
   let query;
   if(req.operation==='insert')query=trx.insertInto(fullTable).values(req.values);
   if(req.operation==='upsert')query=buildKyselyUpsertQuery(trx,req,dialect,namespace);
@@ -263,6 +256,11 @@ async function executeMysqlReturningMutation(trx,req,query,namespace){
   return whereKeys(trx.selectFrom(fullTable).select(req.columns),keyColumns,keys).execute();
 }
 
+/**
+ * @param {any} trx
+ * @param {any} input
+ * @param {{dialect?:string, namespace?:string, publicOnly?:boolean, modelName?:string}} [options]
+ */
 export async function executeKyselyQuery(trx,input,{dialect='postgres',namespace,publicOnly=false,modelName=''}={}){
   const req=validateQuery(input);let data=null,count=null;
   if(req.operation==='select'){
@@ -270,7 +268,7 @@ export async function executeKyselyQuery(trx,input,{dialect='postgres',namespace
     if(built.countQuery){const row=await built.countQuery.executeTakeFirstOrThrow();count=Number(row.count)}
     if(built.query)data=await built.query.execute();
   }else{
-    const built=buildKyselyMutationQuery(trx,input,{dialect,namespace,modelName});
+    const built=buildKyselyMutationQuery(trx,input,{dialect,namespace});
     if(dialect==='mysql'&&req.returning)data=await executeMysqlReturningMutation(trx,built.request,built.query,namespace);
     else {
       const result=await built.query.execute();

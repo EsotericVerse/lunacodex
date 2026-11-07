@@ -108,6 +108,26 @@ export function createLocGatewayAdapter({
     url,publishableKey,role:'authenticated',target,gatewayUrl,
     getAccessToken:getLocAccessToken,fetch:fetchImpl
   });
+  // The independent Extension write path never falls back to a vendor
+  // Function. It reuses the site's existing LOC-signed, Scope-specific SQL
+  // delegation, but its transport points only to the dedicated Kysely host.
+  const shortImportUrl=String(process.env.NEXT_PUBLIC_LOC_MCP_SQL_GATEWAY_URL||'').trim();
+  let shortImportSql=null;
+  if(shortImportUrl){
+    const endpoint=new URL(shortImportUrl);
+    if(endpoint.protocol!=='https:'||endpoint.username||endpoint.password||
+      endpoint.search||endpoint.hash||endpoint.pathname!=='/v1/sql')
+      throw new Error('LOC short import requires an independent HTTPS /v1/sql Gateway');
+    shortImportSql=createKyselyEdgeClient({
+      url,publishableKey,role:'authenticated',target,gatewayUrl:endpoint.href,
+      getAccessToken:getLocAccessToken,fetch:fetchImpl
+    });
+  }
+  privateSql.shortImport=(scopeid,batch)=>{
+    if(!shortImportSql)throw new Error(
+      'LOC 彩虹橋獨立 SQL Gateway 尚未設定；Extension Queue 已保留');
+    return shortImportSql.shortImport(scopeid,batch);
+  };
   return {
     publicClient:publicSql,authClient:privateSql,auth,
     configuredPublicClient:publicSql,backupPublicClient:null,

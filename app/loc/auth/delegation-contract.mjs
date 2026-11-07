@@ -32,12 +32,13 @@ export function canManageDelegation(claims,type,id=''){
 export function issueDelegation({sub,email,grants=[],audience='sql',sid,now,seconds=3600}){
   const normalized=String(email||'').trim().toLowerCase();
   if(!SUBJECT.test(String(sub||''))||!SUBJECT.test(String(sid||''))||
-    !EMAIL.test(normalized)||!Object.hasOwn(LOC_DELEGATION_AUDIENCES,audience)||
+    (audience!=='mcp'&&!EMAIL.test(normalized)||audience==='mcp'&&normalized&&!EMAIL.test(normalized))||
+     !Object.hasOwn(LOC_DELEGATION_AUDIENCES,audience)||
     !Number.isSafeInteger(now)||!Number.isSafeInteger(seconds)||
     seconds<1||seconds>LOC_DELEGATION_MAX_SECONDS)
     reject('Invalid LOC delegation issuance');
   return {iss:LOC_DELEGATION_ISSUER,aud:LOC_DELEGATION_AUDIENCES[audience],
-    sub:String(sub),email:normalized,me:true,grants:delegationGrants(grants),
+    sub:String(sub),...(normalized?{email:normalized}:{}),me:true,grants:delegationGrants(grants),
     sid:String(sid),iat:now,nbf:now-5,exp:now+seconds};
 }
 export function verifyDelegationBoundary(payload,request,{
@@ -52,7 +53,9 @@ export function verifyDelegationBoundary(payload,request,{
   const revoked=String(revokedSids||'').split(/[\s,;]+/).filter(Boolean);
   if(payload?.iss!==LOC_DELEGATION_ISSUER||audience!==expectedAudience||
      payload?.me!==true||!SUBJECT.test(sub)||!SUBJECT.test(sid)||
-     !EMAIL.test(email)||!Number.isSafeInteger(issued)||!Number.isSafeInteger(expires)||
+     (! (expectedAudience===LOC_DELEGATION_AUDIENCES.mcp) && !EMAIL.test(email) ||
+      expectedAudience===LOC_DELEGATION_AUDIENCES.mcp && email && !EMAIL.test(email))||
+     !Number.isSafeInteger(issued)||!Number.isSafeInteger(expires)||
      !Number.isSafeInteger(now)||!Number.isSafeInteger(cutoff)||cutoff<0||
      issued>now+30||issued<cutoff||expires<=now||expires<=issued||
      expires-issued>LOC_DELEGATION_MAX_SECONDS||
@@ -66,7 +69,7 @@ export function verifyDelegationBoundary(payload,request,{
     const scope=String(request?.scopeid||'');
     const kind=String(request?.kind||'');
     const site=kind==='mcp-read'?String(request?.site||'mcp'):'mcp';
-    if(!['lo3rwang','lrunes'].includes(scope)||!['mcp','github'].includes(site))
+    if(!SCOPE.test(scope)||!['mcp','github'].includes(site))
       reject('Invalid delegated MCP resource');
     const needed=kind==='mcp-update-pr'||site==='github'?'manage':
       kind==='mcp-read'||kind==='mcp-search'?'read':'write';
@@ -76,7 +79,8 @@ export function verifyDelegationBoundary(payload,request,{
     // This in-memory permission is specific to the already verified MCP request.
     if(needed==='write')scopedWriteGrant=scope+':manage';
   }
-  return {claims:{role:'authenticated',provider:'loc',me:true,sub,email,
+  return {claims:{role:'authenticated',provider:'loc',me:true,sub,
+    ...(email?{email}:{}),
     iss:LOC_DELEGATION_ISSUER,sid,jti:String(payload.jti||''),exp:expires,
     grants:scopedWriteGrant?[...grants,scopedWriteGrant]:grants},
     verifiedMcp:mcp};
