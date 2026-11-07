@@ -61,7 +61,7 @@ export function keywordPatternItemMetrics(items=[],storedPatterns=[],{articleUid
       throw new Error('Invalid stored word UID lookup');
     byWord.set(key,row);
   }
-  const missing=new Map(),allArticles=new Set();
+  const missing=new Map(),allArticles=new Set(),groupArticles=new Map();
   let totalHits=0;
   const summaries=items.map(item=>{
     const itemWords=new Map();
@@ -84,7 +84,11 @@ export function keywordPatternItemMetrics(items=[],storedPatterns=[],{articleUid
         stored.uid_list.filter(uid=>articleUids.has(uid));
       const count=matching.length;
       hitCount+=count;
-      for(const uid of matching){articles.add(uid);allArticles.add(uid);}
+      for(const uid of matching){articles.add(uid);allArticles.add(uid);
+        const group=String(item.group_uid||'');
+        if(!groupArticles.has(group))groupArticles.set(group,new Set());
+        groupArticles.get(group).add(uid);
+      }
       words.push({pattern:word,count,indexed:true,ratio:0});
     }
     totalHits+=hitCount;
@@ -101,6 +105,8 @@ export function keywordPatternItemMetrics(items=[],storedPatterns=[],{articleUid
     items:summaries.map(item=>({...item,
       ratio:totalHits>0?100*item.hit_count/totalHits:0})),
     total_hits:totalHits,document_count:allArticles.size,
+    group_document_counts:Object.fromEntries([...groupArticles]
+      .map(([group,articles])=>[group,articles.size])),
     missing_patterns:[...missing.values()]
   };
 }
