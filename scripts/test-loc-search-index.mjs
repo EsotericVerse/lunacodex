@@ -7,8 +7,21 @@ import {locGlobalUid,parseLocGlobalUid} from '../zenstack/global-identity.mjs';
 import {createKyselyEdgeClient} from '../app/loc/providers/kysely-edge.mjs';
 
 class KvMemory {
-  constructor(){this.data=new Map();this.writes=0;}
-  async get(key,kind){const value=this.data.get(key)??null;return value!==null&&kind==='json'?JSON.parse(value):value;}
+  constructor(){this.data=new Map();this.writes=0;this.bulkReads=0;this.singleReads=0;this.failLargeBulk=false;}
+  async get(key,kind){
+    const decode=item=>{
+      const value=this.data.get(item)??null;
+      return value!==null&&kind==='json'?JSON.parse(value):value;
+    };
+    if(Array.isArray(key)){
+      this.bulkReads++;
+      if(this.failLargeBulk&&key.length>1)
+        throw Object.assign(new Error('KV bulk response exceeds 25 MB'),{status:413});
+      return new Map(key.map(item=>[item,decode(item)]));
+    }
+    this.singleReads++;
+    return decode(key);
+  }
   async put(key,value){this.writes++;this.data.set(key,String(value));}
   async delete(key){this.data.delete(key);}
   async list({prefix='',limit=1000}={}) {
@@ -254,3 +267,42 @@ test('the exact required content term still uses one FlexSearch candidate lookup
   assert.equal(calls,1);
 });
 
+test('KV Worker uses native bulk reads for multiple FlexSearch delta segments',async()=>{
+  const isolated=new KvMemory(),isolatedEnv={...env,LOC_KV:isolated};
+  const send=async(path,body,method='POST')=>{
+    const response=await worker.fetch(new Request('https://index.example.test'+path,{
+      method,headers:{'content-type':'application/json',
+        authorization:'Bearer '+secret},body:JSON.stringify(body)
+    }),isolatedEnv);
+    return {status:response.status,...await response.json()};
+  };
+  await send('/v1/documents',{documents:[doc('db1','Ab123456','中文共同片段')]});
+  await send('/v1/documents',{documents:[doc('db1','Cd123456','英文與共同片段')]});
+  await send('/v1/coverage',{scopeId:'lo3rwang',dbId:'db1',
+    entityType:'galaxy',complete:true,shards:[]},'PUT');
+  const result=await send('/v1/search',{scopeId:'lo3rwang',dbId:'db1',query:'共同'});
+  assert.equal(result.complete,true);
+  assert.equal(result.hits.length,2);
+  assert.equal(isolated.bulkReads,1,'multiple shards should use KV.get(keys) once');
+});
+
+test('KV Worker falls back to individual reads when bulk response exceeds 25 MB',async()=>{
+  const isolated=new KvMemory(),isolatedEnv={...env,LOC_KV:isolated};
+  const send=async(path,body,method='POST')=>{
+    const response=await worker.fetch(new Request('https://index.example.test'+path,{
+      method,headers:{'content-type':'application/json',
+        authorization:'Bearer '+secret},body:JSON.stringify(body)
+    }),isolatedEnv);
+    return {status:response.status,...await response.json()};
+  };
+  await send('/v1/documents',{documents:[doc('db1','Ab123456','共同片段')]});
+  await send('/v1/documents',{documents:[doc('db1','Cd123456','共同星球')]});
+  await send('/v1/coverage',{scopeId:'lo3rwang',dbId:'db1',
+    entityType:'galaxy',complete:true,shards:[]},'PUT');
+  isolated.failLargeBulk=true;
+  const result=await send('/v1/search',{scopeId:'lo3rwang',dbId:'db1',query:'共同'});
+  assert.equal(result.complete,true);
+  assert.equal(result.hits.length,2);
+  assert.equal(isolated.bulkReads,1);
+  assert.ok(isolated.singleReads>=3,'fallback loads each shard individually');
+});
