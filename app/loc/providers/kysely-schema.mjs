@@ -19,7 +19,6 @@ const EXPECTED_SCOPE_FIELDS=Object.freeze({
 
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
-const FLAGS=['statics','culture','search','trace','list','keyword','extract','others'];
 const effectiveNamespace=(engine,namespace)=>
   namespace||(engine==='mssql'?'dbo':'public');
 
