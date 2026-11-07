@@ -15,7 +15,6 @@ export default function sitemap(){
     '/trace',
     '/lo3rwang',
     '/lo3rwang/work',
-    '/lo3rwang/other',
     '/lo3rwang/statics',
     '/lo3rwang/culture',
     '/lo3rwang/trace'
