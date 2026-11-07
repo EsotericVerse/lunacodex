@@ -1,5 +1,5 @@
 // Browser -> signed LOC Authority. Group authorization stays server-side.
-import {locAuthorityOrigin} from './scope-config-client.mjs';
+import {locAuthorityOrigin} from './authority-origin.mjs';
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const SUBJECT=/^loc_[A-Za-z0-9_-]{32,80}$/;
 const ACTIONS=new Set(['read','write','manage','configure']);
