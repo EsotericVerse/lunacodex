@@ -23,7 +23,7 @@ import {resolveDatabaseRouting} from "../../../app/loc/providers/routing-config.
 import {databaseAccessTargets} from "../../../app/loc/providers/access.js";
 import {isTextSearchQuery,checkSearchQos} from "../../../app/loc/providers/search-qos.mjs";
 import {withIndexedCandidates,federatedIndexedCandidates,writeSearchIndexDocuments,indexDocumentsFromWrite,isSearchIndexConfigured,searchIndexDatabaseId} from "../../../app/loc/providers/search-index-service.mjs";
-import {federatedDatasetsFor,federatedScopeFromQuery,isFederatedTextSearch,isDatasetQualifiedArticleRead,publicGalaxyGate,mergeFederatedGalaxyRows} from "../../../app/loc/providers/federated-galaxy-search.mjs";
+import {federatedDatasetsFor,indexTargetForScope,federatedScopeFromQuery,isFederatedTextSearch,isDatasetQualifiedArticleRead,publicGalaxyGate,mergeFederatedGalaxyRows} from "../../../app/loc/providers/federated-galaxy-search.mjs";
 import {bindLocAuthorization,canManageLoc} from "../../../app/loc/providers/loc-authorization.mjs";
 
 const corsHeaders = {
@@ -314,7 +314,9 @@ Deno.serve(async (request) => {
       // guessed UID or client-provided partial document enters the index.
       if(isSearchIndexConfigured()&&response?.accepted===true){
         try{
-          const sourceId=searchIndexDatabaseId(controlTarget);
+          const indexedTarget=indexTargetForScope(
+            Deno.env.get("LOC_SEARCH_DATASETS_JSON")||"",actor.scopeid,controlTarget);
+          const sourceId=indexedTarget?searchIndexDatabaseId(indexedTarget):null;
           const ids=[...new Set((response.articles||[])
             .filter(item=>item?.appended>0)
             .map(item=>String(item.uid||''))
@@ -429,8 +431,10 @@ Deno.serve(async (request) => {
       // MCP append is incremental. Do not reload a whole conversation solely
       // to update FlexSearch; the matching SQL transaction already committed.
       if(result?.data?.duplicate!==true&&isSearchIndexConfigured()){
-        const dbId=searchIndexDatabaseId(mcpTarget);
         const scopeId=String(body.scopeid||'');
+        const indexedTarget=indexTargetForScope(
+          Deno.env.get("LOC_SEARCH_DATASETS_JSON")||"",scopeId,mcpTarget);
+        const dbId=indexedTarget?searchIndexDatabaseId(indexedTarget):null;
         const row=body.kind==='mcp-sync'?body.row:null;
         const doc=body.kind==='mcp-sync'&&row
           ?{uid:row.uid,content:row.content,operation:'upsert'}
@@ -651,7 +655,13 @@ Deno.serve(async (request) => {
     // Index ingestion occurs only after the SQL transaction commits. A KV
     // outage never changes the result of an authorized SQL write.
     if(isSearchIndexConfigured()){
-      const docs=indexDocumentsFromWrite(body,target);
+      const writeTable=String(body.kind==="managed-write"
+        ?(body.payload as Record<string,unknown>||{}).p_table||""
+        :body.table||"").replace(/^silver\./,"");
+      const scope=writeTable.match(/^([a-z][a-z0-9]{0,14})_galaxy$/)?.[1];
+      const indexedTarget=scope?indexTargetForScope(
+        Deno.env.get("LOC_SEARCH_DATASETS_JSON")||"",scope,target):null;
+      const docs=indexedTarget?indexDocumentsFromWrite(body,indexedTarget):[];
       if(docs.length&&Number(result?.data?.count??result?.count??1)>0){
         const indexed=await writeSearchIndexDocuments(docs);
         if(!indexed)console.warn('[loc-search-index] Galaxy write index update incomplete');
