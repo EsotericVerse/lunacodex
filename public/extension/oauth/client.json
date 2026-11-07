@@ -4,7 +4,7 @@
   "client_uri": "https://loc.lo3rwang.cc/",
   "logo_uri": "https://loc.lo3rwang.cc/assets/site/icons/loc-favicon.png",
   "redirect_uris": [
-    "https://hiaeafonocnjaclcfgjmdopbcgnafnna.chromiumapp.org/loc-galaxy"
+    "https://hiaeafonocnjaclcfgjmdopbcgnafnna.chromiumapp.org/loc"
   ],
   "grant_types": [
     "authorization_code",
@@ -14,5 +14,5 @@
     "code"
   ],
   "token_endpoint_auth_method": "none",
-  "scope": "profile email offline_access"
+  "scope": "loc:import offline_access"
 }

@@ -219,7 +219,7 @@ async function decryptProfile(value,secret){
 
 // MCP OAuth uses an audience-bound access token, not a Clerk session JWT.
 // Data access is separately authorized by this Group Authority's grants.
-const MCP_RESOURCE='https://loc.lo3rwang.cc/mcp';
+const MCP_RESOURCE='https://mcp.lo3rwang.cc';
 const MANAGED_SCOPE_TABLES=Object.freeze({lo3rwang:'lo3rwang_galaxy',lrunes:'lrunes_galaxy'});
 // MCP uses LOC's independent Kysely SQL Gateway, never a provider Function.
 // The Worker holds no DB password and only forwards a signed LOC delegation.

@@ -165,6 +165,7 @@ async function getConfig(){
   if(new URL(endpoint).protocol!=='https:')throw oauthError('OAuth 端點必須使用 HTTPS');
  }
  const config={issuer:meta.issuer,client_id:cfg.client_id,import_url:api.href,
+   resource:cfg.resource||api.href,
   authorization_endpoint:meta.authorization_endpoint,token_endpoint:meta.token_endpoint,
   scope:cfg.scope||'loc:import'};
  await chrome.storage.local.set({locConfig:config});
@@ -189,7 +190,7 @@ async function connectLoc(){
  const redirect=chrome.identity.getRedirectURL('loc');
  const authorization=new URL(cfg.authorization_endpoint);
  for(const [key,val] of Object.entries({response_type:'code',client_id:cfg.client_id,
-  redirect_uri:redirect,scope:cfg.scope,state,code_challenge:encode64(digest),
+  redirect_uri:redirect,scope:cfg.scope,resource:cfg.resource,state,code_challenge:encode64(digest),
   code_challenge_method:'S256'}))authorization.searchParams.set(key,val);
  const returned=await chrome.identity.launchWebAuthFlow({url:authorization.href,interactive:true});
  if(!returned||!returned.startsWith(redirect+'?'))throw oauthError('授權回呼無效');
