@@ -1,7 +1,7 @@
 import { sql } from "npm:kysely@0.29.8";
 import {ZenStackClient} from "npm:@zenstackhq/orm@3.10.1";
 import {PolicyPlugin} from "npm:@zenstackhq/plugin-policy@3.10.1";
-import {withFixedPolicyRead,fixedPolicyReadModel} from "../../../zenstack/policy-runtime.mjs";
+import {withFixedPolicyRead,fixedPolicyReadModel,withFixedPolicyWrite,fixedPolicyWriteModel} from "../../../zenstack/policy-runtime.mjs";
 import {jwtVerify,createRemoteJWKSet} from "npm:jose@5.9.6";
 import {processShortImport,postgresShortImportStore} from "../../../app/loc/import/short-append-service.mjs";
 import {authorizeDelegatedShortImport} from "../../../app/loc/import/short-edge-authorization.mjs";
@@ -197,7 +197,7 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
   if(body.kind==="managed-write"||body.kind==="managed-action"){
     if(role!=="authenticated")throw Object.assign(new Error("Management requires a verified session"),{httpStatus:403});
     return body.kind==="managed-write"
-      ?await executeManagedKyselyWrite(trx,body)
+      ?await executeManagedKyselyWrite(trx,body,{modelName})
       :["manage_scope_registry","delete_scope","provision_scope"].includes(String(body.name))
         ?await executeKyselyScopeAdmin(trx,body)
         :await executeManagedKyselyAction(trx,body,claims);
@@ -627,13 +627,20 @@ Deno.serve(async (request) => {
     // transaction, JWT binding and response shape are retained; no second DB
     // connection or permission lookup is introduced.
     const policyModel=fixedPolicyReadModel(target,body);
+    // Only the LOC control-plane's signed global administrator can use a
+    // ZenStack fixed-model mutation. Dynamic scopes stay on existing Kysely.
+    const adminWrite=isControlTarget(target)&&
+      fixedPolicyWriteModel(target,body,role,claims);
+    const policyDeps=(policyModel||adminWrite)
+      ?{dialect:trustedDialectForDatabase(db),ZenStackClient,PolicyPlugin}:null;
     const result=policyModel
-      ?await withFixedPolicyRead(db,target,body,role,claims,{
-        dialect:trustedDialectForDatabase(db),ZenStackClient,PolicyPlugin
-      },(trx,modelName)=>
-        executeRequest(trx,target,role,claims,body,{modelName}))
-      :await db.transaction().execute(trx=>
-        executeRequest(trx,target,role,claims,body));
+      ?await withFixedPolicyRead(db,target,body,role,claims,policyDeps,
+        (trx,modelName)=>executeRequest(trx,target,role,claims,body,{modelName}))
+      :adminWrite
+        ?await withFixedPolicyWrite(db,target,body,role,claims,policyDeps,
+          (trx,modelName)=>executeRequest(trx,target,role,claims,body,{modelName}))
+        :await db.transaction().execute(trx=>
+          executeRequest(trx,target,role,claims,body));
     return json(result,200,result.count===null?{}:{"content-range":`0-${Math.max(0,(Array.isArray(result.data)?result.data.length:0)-1)}/${result.count}`});
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
