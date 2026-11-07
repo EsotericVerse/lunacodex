@@ -3,7 +3,9 @@
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {dbAuthClient,getAccountSession} from '../../loc/db-client.mjs';
 
-const ALLOWED_SCOPES=['lo3rwang','lrunes'];
+// Keep the website bridge in sync with the signed Gateway and Extension Queue.
+// Permission is enforced by LOC Authority's exact Scope write grant.
+const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const MAX_BATCH_BYTES=601024;
 const encoder=new TextEncoder();
 function validate(batch){
@@ -38,7 +40,7 @@ export default function GalaxyLinkBridge(){
   try{
    validate(batch);
    const scope=String(requestedScope||scopeRef.current);
-   if(!ALLOWED_SCOPES.includes(scope))throw Error('請先在 LOC 網站選擇有效 Scope');
+   if(!SCOPE.test(scope))throw Error('請先在 LOC 網站選擇有效 Scope');
    setStatus('正在寫入銀河：'+batch.records.length+' 筆');
    const response=await dbAuthClient.shortImport(scope,batch);
    if(response?.accepted!==true||response?.id!==batch.id||!Array.isArray(response?.articles))
@@ -77,12 +79,10 @@ export default function GalaxyLinkBridge(){
   <p>連接屬於你的文字銀河。</p>
   <p>此頁是 LOC 網站提供的 Extension 寫入通道。LOC Auth 維護既有登入狀態，Extension 不接觸 Session、Token 或 MCP。</p>
   <label htmlFor="galaxy-link-scope">網站手動預設目的銀河</label>
-  <select id="galaxy-link-scope" value={scopeid} disabled={busy}
+  <input id="galaxy-link-scope" value={scopeid} disabled={busy}
    onChange={event=>setScopeid(event.target.value)}
-   style={{display:'block',padding:10,margin:'6px 0 18px',minWidth:180}}>
-   <option value="lo3rwang">lo3rwang</option>
-   <option value="lrunes">lrunes</option>
-  </select>
+   maxLength={15} pattern="[a-z][a-z0-9]{0,14}" spellCheck={false} autoComplete="off"
+   style={{display:'block',padding:10,margin:'6px 0 18px',minWidth:180}}/>
   <button type="button" onClick={refresh} disabled={busy}
    style={{padding:'8px 18px',cursor:'pointer'}}>更新 LOC Auth</button>
   {account?<p>帳號：{account}</p>:null}

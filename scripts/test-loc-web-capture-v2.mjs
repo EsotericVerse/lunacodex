@@ -152,6 +152,9 @@ test('existing website gateway requests a signed write delegation, not manage, f
  assert.match(edge,/shortImport\(scopeid,batch\)/);
  assert.match(page,/dbAuthClient\.shortImport\(scope,batch\)/);
  assert.match(page,/__locGalaxyLinkImport/);
+ assert.match(page,/SCOPE\.test\(scope\)/);
+ assert.doesNotMatch(page,/ALLOWED_SCOPES|\['lo3rwang','lrunes'\]/);
+ assert.match(page,/id="galaxy-link-scope"/);
 });
 
 test('website signed delegation reaches short-import gateway without extra target or a second login',async()=>{
