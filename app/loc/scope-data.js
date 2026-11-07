@@ -3,7 +3,6 @@
 
 import {DB_QUERY_BATCH_SIZE,selectRows} from './db-query.mjs';
 import {scopeConfigColumns,scopeFeatureEnabled} from './scope-config-fields.mjs';
-import {dbPublicClient,dbConfiguredPublicClient} from './db-client.mjs';
 import {Capacitor} from '@capacitor/core';
 import {SCOPE_ROUTE_INDEX} from '../modular/scope-route-index.js';
 import {PUBLISHED_SITE_BOOTSTRAP} from '../modular/published-site-bootstrap.js';
@@ -117,17 +116,14 @@ function normalizeRegistryRow(row){
   };
 }
 
-// silver.scope_registry 已停用：registry 列表改由 read_app_bootstrap RPC
-// 動態組出（來源是 silver.loc 的指向欄位 + 各節點自己的 display_name），
-// 回傳格式跟舊版 scope_registry 查詢完全相同，呼叫端不需要改動。
+// silver.scope_registry is retired; the published site registry is part of
+// the static release snapshot. Public Scope config and Blocks are live reads.
 // One public site snapshot per client runtime (including concurrent mounts).
 // Registry, theme catalogue and page-copy are shared by all Scope pages.
 let publicSiteBootstrapRequest=null;
-let editedPublicMetadata=false;
 // Only explicit admin metadata refreshes invalidate the public client snapshot.
 // Guest navigation shares the same promise and never preflights authorization.
 export function invalidatePublicScopeMetadata(){
-  editedPublicMetadata=true;
   managedScopesRequest=null;
   publicSiteBootstrapRequest=null;
   scopeConfigInFlight.clear();
@@ -141,8 +137,7 @@ export function invalidatePublicScopeMetadata(){
 export async function revalidateServerMetadata(){return false;}
 export function selectPublicSiteBootstrap(){
   if(publicSiteBootstrapRequest)return publicSiteBootstrapRequest;
-  // Normal visitor path is a JS module, no fetch, JSON parsing, Worker or SQL.
-  // After an authorized editor change, the current editor sees live data until publication.
+  // Registry publication is static; Scope config and Blocks remain live reads.
   // The static site publishes its registry and presentation metadata at build
   // time. Editing invalidates the snapshot, while live Scope config and Blocks
   // are queried independently by selectAppBootstrap. Never call a retired
