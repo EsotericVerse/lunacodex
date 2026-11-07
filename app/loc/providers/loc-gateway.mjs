@@ -111,7 +111,7 @@ export function createLocGatewayAdapter({
   // The independent Extension write path never falls back to a vendor
   // Function. It reuses the site's existing LOC-signed, Scope-specific SQL
   // delegation, but its transport points only to the dedicated Kysely host.
-  const shortImportUrl=String(process.env.NEXT_PUBLIC_LOC_MCP_SQL_GATEWAY_URL||'').trim();
+  const shortImportUrl=String(process.env.NEXT_PUBLIC_LOC_MCP_SQL_GATEWAY_URL||gatewayUrl||'').trim();
   let shortImportSql=null;
   if(shortImportUrl){
     const endpoint=new URL(shortImportUrl);

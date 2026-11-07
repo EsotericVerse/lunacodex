@@ -1,5 +1,4 @@
-/* Standalone Clerk gateway. System palette mirrors LOC published theme-1 / theme-7.
-   Keep native Clerk authentication and all status messages intact. */
+/* Standalone LOC Auth gateway. Preserve the original scenic layout and themes. */
 :root{
   color-scheme:dark;
   --loc-bg:#05060d;--loc-panel:#0b0d18;--loc-panel-2:#151827;
@@ -56,7 +55,11 @@ a:focus-visible,button:focus-visible,#login-root :is(button,input,a):focus-visib
 .auth-top{margin-bottom:16px}
 .auth-top .eyebrow{margin-bottom:4px}
 .auth-top p{margin:0;color:var(--loc-muted);font-size:.92rem}
-#login-root{width:100%;min-width:0}
+#login-root{width:100%;min-width:0;display:grid;gap:13px}
+.loc-login-choice{min-height:52px;border:1px solid var(--loc-line);border-radius:13px;
+ background:var(--loc-accent-surface);color:var(--loc-text);cursor:pointer;
+ font-weight:650;transition:background .2s,border-color .2s}
+.loc-login-choice:hover{background:var(--loc-panel-2);border-color:var(--loc-accent)}
 #login-root .cl-rootBox,#login-root .cl-cardBox,#login-root .cl-card{width:100%!important;max-width:100%!important;min-width:0!important}
 #login-root .cl-cardBox{background:transparent!important;border:0!important;box-shadow:none!important}
 #login-root .cl-card{background:transparent!important;box-shadow:none!important;border:0!important;border-radius:0!important;padding:0!important}
