@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import worker from '../workers/loc-search-index/index.mjs';
-import {indexDocumentsFromWrite,withIndexedCandidates,federatedIndexedCandidates} from '../app/loc/providers/search-index-service.mjs';
+import {indexDocumentsFromWrite,withIndexedCandidates,federatedIndexedCandidates,shadowIndexCoverage} from '../app/loc/providers/search-index-service.mjs';
 import {locSearchDocumentId} from '../app/loc/search-index-shard.mjs';
 import {locGlobalUid,parseLocGlobalUid} from '../zenstack/global-identity.mjs';
 import {createKyselyEdgeClient} from '../app/loc/providers/kysely-edge.mjs';
@@ -305,4 +305,75 @@ test('KV Worker falls back to individual reads when bulk response exceeds 25 MB'
   assert.equal(result.hits.length,2);
   assert.equal(isolated.bulkReads,1);
   assert.ok(isolated.singleReads>=3,'fallback loads each shard individually');
+});
+
+test('shadow coverage detects missing cross-DB index hits without narrowing live SQL',async(t)=>{
+  const oldDeno=globalThis.Deno,oldFetch=globalThis.fetch;
+  const hit={scopeId:'lo3rwang',dbId:'db1',entityType:'galaxy',uid:'Ab123456',
+    globalUid:locGlobalUid({databaseId:'db1',scopeId:'lo3rwang',uid:'Ab123456'})};
+  globalThis.Deno={env:{get:name=>({
+    LOC_SEARCH_INDEX_URL:'https://index.example.test',
+    LOC_SEARCH_INDEX_SECRET:secret,
+    LOC_SEARCH_INDEX_SHADOW:'true',
+    LOC_SEARCH_INDEX_ENABLED:'false'
+  })[name]||''}};
+  let requests=0;
+  globalThis.fetch=async()=>{
+    requests++;
+    return new Response(JSON.stringify({complete:true,hits:[hit]}),{status:200});
+  };
+  t.after(()=>{globalThis.Deno=oldDeno;globalThis.fetch=oldFetch;});
+  const sqlQuery={kind:'query',operation:'select',schema:'silver',
+    table:'lo3rwang_galaxy',columns:['uid','title'],filters:[],
+    or:['content.contains."文化"'],indexHint:{scopeId:'lo3rwang',query:'文化'}};
+  const sqlRows=[
+    {uid:'Ab123456',__db_id:'db1',title:'DB1 content'},
+    {uid:'Ab123456',__db_id:'db2',title:'DB2 content'}
+  ];
+  assert.equal(await withIndexedCandidates(sqlQuery,{dataset_id:'db1'}),sqlQuery);
+  assert.equal(await federatedIndexedCandidates(sqlQuery,[
+    {databaseId:'db1'},{databaseId:'db2'}]),null);
+  const observed=await shadowIndexCoverage(sqlQuery,[
+    {databaseId:'db1'},{databaseId:'db2'}],sqlRows);
+  assert.deepEqual(observed,{kind:'compared',checked:2,missing:1,indexed:1});
+  assert.equal(requests,1);
+  assert.deepEqual(sqlRows.map(x=>x.title),['DB1 content','DB2 content']);
+});
+
+test('shadow coverage refuses to report success for incomplete or invalid index',async(t)=>{
+  const oldDeno=globalThis.Deno,oldFetch=globalThis.fetch;
+  globalThis.Deno={env:{get:name=>({
+    LOC_SEARCH_INDEX_URL:'https://index.example.test',
+    LOC_SEARCH_INDEX_SECRET:secret,
+    LOC_SEARCH_INDEX_SHADOW:'true',
+    LOC_SEARCH_INDEX_ENABLED:'false'
+  })[name]||''}};
+  globalThis.fetch=async()=>new Response(JSON.stringify({complete:false,hits:[]}),{status:200});
+  t.after(()=>{globalThis.Deno=oldDeno;globalThis.fetch=oldFetch;});
+  const sqlQuery={kind:'query',operation:'select',schema:'silver',
+    table:'lo3rwang_galaxy',columns:['uid','title'],filters:[],
+    or:['content.contains."文化"'],indexHint:{scopeId:'lo3rwang',query:'文化'}};
+  assert.deepEqual(await shadowIndexCoverage(sqlQuery,[{databaseId:'db1'}],[
+    {uid:'Ab123456',__db_id:'db1'}
+  ]),{kind:'unavailable',checked:0,missing:0,indexed:0});
+});
+
+test('shadow coverage ignores unqualified index hints and never queries the index',async(t)=>{
+  const oldDeno=globalThis.Deno,oldFetch=globalThis.fetch;
+  globalThis.Deno={env:{get:name=>({
+    LOC_SEARCH_INDEX_URL:'https://index.example.test',
+    LOC_SEARCH_INDEX_SECRET:secret,
+    LOC_SEARCH_INDEX_SHADOW:'true',
+    LOC_SEARCH_INDEX_ENABLED:'false'
+  })[name]||''}};
+  let calls=0;
+  globalThis.fetch=async()=>{calls++;throw Error('Should not fetch');};
+  t.after(()=>{globalThis.Deno=oldDeno;globalThis.fetch=oldFetch;});
+  const sqlQuery={kind:'query',operation:'select',schema:'silver',
+    table:'lo3rwang_galaxy',columns:['uid','title'],filters:[],
+    or:['content.contains."文化"'],indexHint:{scopeId:'lo3rwang',query:'痕跡'}};
+  assert.deepEqual(await shadowIndexCoverage(sqlQuery,[{databaseId:'db1'}],[
+    {uid:'Ab123456',__db_id:'db1'}
+  ]),{kind:'ineligible',checked:0,missing:0,indexed:0});
+  assert.equal(calls,0);
 });
