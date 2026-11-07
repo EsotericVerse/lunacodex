@@ -274,7 +274,7 @@ async function provisionScope(trx,args){
     (current_setting('request.jwt.claims',true)::jsonb -> 'grants') ? ${sql.lit(id+':manage')}
     or (current_setting('request.jwt.claims',true)::jsonb -> 'grants') ? 'global:manage',false)`;
   await sql`create policy ${sql.ref(id+'_config_public_read')} on ${config}
-    for select to anonymous,authenticated using (true)`.execute(trx);
+    for select to anon,anonymous,authenticated using (true)`.execute(trx);
   await sql`create policy ${sql.ref(id+'_config_scope_update')} on ${config}
     for update to authenticated using (${canUseScope}) with check (${canUseScope})`.execute(trx);
   // Public pages only read explicitly published, non-private articles.
@@ -288,13 +288,13 @@ async function provisionScope(trx,args){
         and (coalesce(site_id,'') ~ '^EsotericVerse/moon-runes-pwa#[0-9]+$'
           or coalesce(title,'') ~* 'PR[[:space:]]*#[0-9]+')))`;
   await sql`create policy ${sql.ref(id+'_galaxy_public_read')} on ${galaxy}
-    for select to anonymous,authenticated using (${publicGalaxy})`.execute(trx);
+    for select to anon,anonymous,authenticated using (${publicGalaxy})`.execute(trx);
   await sql`create policy ${sql.ref(id+'_galaxy_scope_read')} on ${galaxy}
     for select to authenticated using (${canUseScope})`.execute(trx);
   await sql`create policy ${sql.ref(id+'_galaxy_scope_update')} on ${galaxy}
     for update to authenticated using (${canUseScope}) with check (${canUseScope})`.execute(trx);
   await sql`create policy ${sql.ref(id+'_anchor_public_read')} on ${anchor}
-    for select to anonymous,authenticated
+    for select to anon,anonymous,authenticated
     using (type in ('date','period','era','point','path','trace',
       'image','video','rune','suno') and invisible is false)`.execute(trx);
   await sql`create policy ${sql.ref(id+'_anchor_owner_read')} on ${anchor}
@@ -306,11 +306,11 @@ async function provisionScope(trx,args){
   await sql`create policy ${sql.ref(id+'_anchor_owner_delete')} on ${anchor}
     for delete to authenticated using (${canUseScope})`.execute(trx);
   await sql`create policy ${sql.ref(id+'_blocks_public_read')} on ${blocks}
-    for select to anonymous,authenticated using (true)`.execute(trx);
+    for select to anon,anonymous,authenticated using (true)`.execute(trx);
   await sql`create policy ${sql.ref(id+'_blocks_scope_all')} on ${blocks}
     for all to authenticated using (${canUseScope}) with check (${canUseScope})`.execute(trx);
   for(const table of [config,galaxy,anchor,blocks]){
-    await sql`grant select on ${table} to anonymous,authenticated`.execute(trx);
+    await sql`grant select on ${table} to anon,anonymous,authenticated`.execute(trx);
   }
   await sql`grant update on ${config} to authenticated`.execute(trx);
   await sql`grant update on ${galaxy} to authenticated`.execute(trx);
