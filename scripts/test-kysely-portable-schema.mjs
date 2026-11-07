@@ -88,7 +88,7 @@ test('MySQL existing tables are recognized regardless of database name',async()=
 
 
 test('verified LOC administrator is checked before touching an external SQL host',()=>{
-  const gateway=fs.readFileSync('supabase/functions/loc-kysely/index.ts','utf8');
+  const gateway=fs.readFileSync('app/loc/gateway/sql-handler.ts','utf8');
   const start=gateway.indexOf('async function saveDatabaseTarget(');
   const end=gateway.indexOf('\nasync function executeRequest(',start);
   assert.ok(start>=0&&end>start);
