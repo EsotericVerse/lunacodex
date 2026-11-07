@@ -31,7 +31,7 @@ function verifyScope(body,claims){
     reject('MCP Scope grant denied',403);
   return scope;
 }
-function relation(scope,engine,namespace,provider){
+function relation(scope,engine,namespace){
   if(!['postgres','mysql','mssql'].includes(engine))reject('Unsupported MCP SQL engine');
   // Cloned Scopes inherit the fixed Galaxy contract; only the physical name varies.
   const model=zmodel.models[SCOPE_MODELS[scope]||'Lo3rwangGalaxy'];
@@ -39,7 +39,7 @@ function relation(scope,engine,namespace,provider){
   if(!model||required.some(field=>!Object.hasOwn(model.fields,field)))
     reject('Fixed LOC ZModel Galaxy contract mismatch',503);
   return portableRelation(scope+'_galaxy',engine,namespace||
-    (provider==='supabase'?'silver':''));
+    (engine==='postgres'?'silver':''));
 }
 function validateSync(body){
   const row=body.row;
@@ -73,9 +73,9 @@ function conversationOnly(q){
     ])
   ])).where(sql`lower(${sql.ref('title')}) not like ${'%pr #%'}`);
 }
-export async function executePortableMcp(trx,body,claims,{engine='postgres',namespace='',provider='custom'}={}){
+export async function executePortableMcp(trx,body,claims,{engine='postgres',namespace=''}={}){
   const scope=verifyScope(body,claims);
-  const table=relation(scope,engine,namespace,provider);
+  const table=relation(scope,engine,namespace);
   if(body.kind==='mcp-read'){
     validateUid(body.uid);
     if(body.site!==undefined&&body.site!=='mcp')

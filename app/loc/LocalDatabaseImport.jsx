@@ -15,7 +15,7 @@ export default function LocalDatabaseImport(){
   if(!native)return null;
   return <section className="loc-card scope-feature-card">
     <h2>文件匯入</h2>
-    <p className="scope-status">選擇檔案後先解析並預覽，確認「開始匯入」才寫入本機 SQLite（local）；不寫入 Supabase 或 Neon。</p>
+    <p className="scope-status">選擇檔案後先解析並預覽，確認「開始匯入」才寫入本機 SQLite（local）；不寫入遠端 SQL 資料庫。</p>
     <ManagementImportPanel scopeId="local"/>
   </section>;
 }

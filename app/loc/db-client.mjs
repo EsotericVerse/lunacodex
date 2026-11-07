@@ -13,7 +13,7 @@ configureDbSourceLabels(adapter.primarySourceLabel||'Primary',adapter.backupSour
 // The device-local SQLite backend for the hidden `local` Scope (see
 // providers/local-sqlite.mjs) is spliced in at this single composition
 // point: a `local`/`local_*`/`runes*` table or a local analytic/write action is
-// routed to it; everything else keeps going to the normal Supabase/Neon
+// routed to it; everything else keeps going to the normal remote SQL
 // adapter exactly as before. No other file (db-query.mjs, galaxy-query.js,
 // db-contract.mjs, or any feature page) needs to know a second backend
 // exists or branch on scope id -- they keep calling dbPublicClient /
@@ -27,7 +27,7 @@ const localAdapter=createLocalSqliteAdapter();
 // site-wide, today -- share the exact same bare name. Matching on name
 // alone silently redirected every one of those production reads to the
 // empty on-device SQLite file (confirmed: silver.runes_group/runes/runes_etc
-// instead of Supabase), breaking every rune draw.
+// instead of remote SQL), breaking every rune draw.
 // `local`/`local_*` has no such collision (nothing else in the app uses
 // those names), so only the runes* tables need the schema check: they only
 // ever route locally under the Scope's own `local` schema, never `silver`.

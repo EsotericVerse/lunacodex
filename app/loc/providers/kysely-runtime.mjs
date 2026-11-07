@@ -299,4 +299,4 @@ export async function executeKyselyQuery(trx,input,{dialect='postgres',namespace
 
 // SQL operations have no stored-procedure dispatch. All calls now use
 // Kysely query, Anchor, Analytics or vetted management action executors.
-export function isKyselyClientError(error){return error instanceof Error&&['Invalid','Unsupported','Unfiltered','Write','Update','Unexpected','RPC','Schema','Too many','Malformed','Filters','OR filters','Neon theme','MySQL returning','Missing'].some(prefix=>error.message.startsWith(prefix))}
+export function isKyselyClientError(error){return error instanceof Error&&['Invalid','Unsupported','Unfiltered','Write','Update','Unexpected','RPC','Schema','Too many','Malformed','Filters','OR filters','SQL theme','MySQL returning','Missing'].some(prefix=>error.message.startsWith(prefix))}
