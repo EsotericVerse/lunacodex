@@ -2,9 +2,11 @@
 
 ## Canonical deployment contract
 
-The unified cutover has a single Git branch and a single merge. Database schemas,
+Code changes are staged as PR #1210 (native/Auth/SQL/MCP/Extension cutover)
+and dependent PR #1216 (regression and Gateway contract repairs). Merge in
+this order only after the independent Gateway is live. Database schemas,
 migrations, grants, RPCs, RLS, existing Galaxy content, and LOC page composition
-are **not** modified by this change.
+are **not** modified by either PR.
 
 | Role | Endpoint | Token contract |
 |---|---|---|
@@ -37,9 +39,9 @@ SQL Gateway deployment.
   secret `LOC_RECOVERY_ROOT_LOC_SUBJECTS`, derived from the authenticated
   GitHub account's immutable numeric ID. Its presence was verified on
   2026-11-07. The secret's value must not be copied into the repository.
-- Legacy Clerk recovery support remains in existing Authority source until
-  a real LOC OAuth session and authorized SQL transaction are confirmed.
-  It is not part of the new website default identity adapter.
+- The proposed Authority source now verifies native LOC OAuth only; the
+  legacy Clerk recovery and browser SDK entrypoints were removed in #1210.
+  Deployed production Auth has not been switched by these Git commits.
 - Existing `auth-provider:` Durable Object records can hold GitHub/OIDC
   client credentials, encrypted under `LOC_CONTROL_ENCRYPTION_KEY`. The
   OAuth callbacks must be `https://auth.lo3rwang.cc/oauth/callback/github`
@@ -89,7 +91,9 @@ reloading the page; it does **not** trigger a build, Worker deployment,
 Container restart, schema migration, RPC, or RLS change.
 
 The SQL Gateway and Auth Worker must each be provisioned **once** with the
-same encrypted environment secret `LOC_SQL_GATEWAY_SERVICE_KEY` (43+ characters).
+same encrypted environment secret `LOC_SQL_GATEWAY_SERVICE_KEY` (43+ characters)
+**for runtime user-selected profile resolution**, in addition to the default
+control connection.
 That secret is not a browser setting and is never committed to Git.
 Only an authenticated Gateway may call
 `POST https://auth.lo3rwang.cc/v1/sql/runtime-profile`; the Authority also
@@ -115,18 +119,18 @@ Its success proves the selected read path, not comprehensive SQL portability.
 
 ## Database portability
 
-Server-side `LOC_DB_CONNECTIONS_JSON` optionally maps the boot alias to
-an existing database connection. At least one bootstrap connection or the
-service key is necessary to start; authenticated users' live database
-profiles are independently resolved from LOC Auth. A PostgreSQL instance
+Server-side `LOC_DB_CONNECTIONS_JSON` **must** map the boot/control alias to
+a real database connection. The service key alone cannot replace the default
+database used by anonymous and control-plane requests. Authenticated users'
+live database profiles are independently resolved from LOC Auth. A PostgreSQL instance
 hosted on Supabase or Neon is just a PostgreSQL connection profile; no
 Supabase Auth, Neon Auth, PostgREST, provider Data API, or provider Edge
 Function is required by the standalone SQL service.
 
 Required runtime configuration:
 - SQL service: `LOC_AUTHORITY_ORIGIN`, `LOC_CONTROL_DB_ALIAS`,
-  `LOC_CONTROL_DB_ENGINE`, `LOC_SQL_GATEWAY_SERVICE_KEY`, plus the
-  optional static default `LOC_DB_CONNECTIONS_JSON` for anonymous reads.
+  `LOC_CONTROL_DB_ENGINE`, the **required default** `LOC_DB_CONNECTIONS_JSON`,
+  and `LOC_SQL_GATEWAY_SERVICE_KEY` when user-selected profiles are enabled.
 - Website build: `NEXT_PUBLIC_LOC_SQL_GATEWAY_URL=https://<sql-host>/v1/sql`.
 - Auth Worker: `LOC_SQL_GATEWAY_URL=https://<sql-host>/v1/sql`,
   `LOC_RECOVERY_ROOT_LOC_SUBJECTS`, `LOC_SQL_GATEWAY_SERVICE_KEY`,
@@ -176,12 +180,12 @@ continued by stable UID, and an incomplete receipt never deletes a Queue.
   `LOC_SQL_GATEWAY_URL` still needs a verified live SQL endpoint.
 - `scripts/test-loc-four-way-cutover-contract.mjs` provides five offline,
   no-database-write cross-service source contracts in `test:authority`.
-  These checks also passed a source-backed isolated execution of the test
-  assertions on 2026-11-07. This is **not** a Node, Deno, browser, build,
-  database, or deployed OAuth end-to-end test.
-- PR #1210 stays **Draft** until all endpoints, provider callbacks,
-  per-Scope grants, SQL connectivity and Chrome receipt handling have
-  verified release evidence. No partial merge into `main`.
+  Source-backed isolated Auth/SQL transport and bootstrap tests have also
+  passed; they are **not** a complete Node/Deno runner, database, deployed
+  OAuth or Chrome end-to-end test.
+- PR #1210 and its dependent #1216 are **submitted but not merged**.
+  Automated workflow guard and mock tests do not provision a live Gateway.
+  No partial merge into `main` before the default control connection exists.
 
 ## Remaining release gates (do not pretend these passed)
 
@@ -199,10 +203,10 @@ continued by stable UID, and an incomplete receipt never deletes a Queue.
    `npm run test:authority`;
    `node --test scripts/test-loc-mcp-routing.mjs scripts/test-loc-mcp-authority.mjs scripts/test-loc-galaxy-link-extension.mjs scripts/test-loc-auth-provider-settings.mjs`;
    `deno check --config services/loc-sql/deno.json services/loc-sql/main.ts`.
-5. Only once the new Auth and SQL endpoints are live and verified:
-   retire Clerk-specific recovery and old Edge function **runtime**
-   bindings/modules, merge the one PR, and confirm Cloudflare Pages and
-   Vercel deployment states separately.
+5. The proposed branch has already removed legacy recovery, hosted Function
+   wrappers and SQL provider fallback. Bring up the replacement Auth/SQL
+   endpoints first, then merge #1210 and retarget/merge #1216. Confirm the
+   Cloudflare Pages, Worker and Vercel deployment states separately.
 
 `auth.lo3rwang.cc` is currently bound to the existing Authority Worker.
 `mcp.lo3rwang.cc` is an existing proxied CNAME to Cloudflare Pages.

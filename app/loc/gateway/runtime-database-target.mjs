@@ -5,10 +5,8 @@ import {normalizeLiveTarget,runtimeTargetId} from '../providers/live-database-ta
 
 const AUTHORITY='https://auth.lo3rwang.cc';
 const SERVICE_SECRET=/^[A-Za-z0-9_-]{43,128}$/;
-const cache=new Map();
 export async function resolveRuntimeDatabase(claims,signedDelegation,{
- origin=AUTHORITY,serviceKey='',fetchImpl=globalThis.fetch,
- now=Date.now()
+ origin=AUTHORITY,serviceKey='',fetchImpl=globalThis.fetch
 }={}){
  const id=runtimeTargetId(claims);
  if(!id)return null;
@@ -17,9 +15,6 @@ export async function resolveRuntimeDatabase(claims,signedDelegation,{
   throw Object.assign(new Error('Signed LOC account selection required'),{httpStatus:403});
  if(!SERVICE_SECRET.test(String(serviceKey||'')))
   throw Object.assign(new Error('LOC SQL Gateway service credential is not provisioned'),{httpStatus:503});
- const key=claims.sub+':'+id;
- const previous=cache.get(key);
- if(previous&&previous.expires>now)return previous.value;
  const endpoint=new URL(origin);
  if(endpoint.protocol!=='https:'||endpoint.username||endpoint.password||
   endpoint.search||endpoint.hash||!['','/'].includes(endpoint.pathname))
@@ -41,9 +36,9 @@ export async function resolveRuntimeDatabase(claims,signedDelegation,{
  if(body?.id!==id)throw Object.assign(
    new Error('LOC SQL profile mismatch'),{httpStatus:503});
  const value=normalizeLiveTarget(id,body.profile);
- // Different selections always have distinct keys, so switching is immediate.
- // Brief cache avoids repeating the Authority RTT on a multi-query page.
- cache.set(key,{value,expires:now+5000});
- while(cache.size>32)cache.delete(cache.keys().next().value);
+ // The Authority verifies that this exact account still selects the target
+ // on every SQL request; no cross-request cached profile may outlive a
+ // database switch, removal, or permission revocation. The SQL handler
+ // already coalesces multiple accesses within the same HTTP request.
  return value;
 }

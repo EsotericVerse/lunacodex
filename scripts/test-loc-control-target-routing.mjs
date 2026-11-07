@@ -46,9 +46,11 @@ test('portable SQL never falls back to browser alias when server selects MSSQL',
  assert.equal(resolve().engine,'mssql');
  assert.equal(resolve().connectionAlias,'loc_main');
 });
-test('legacy SQL fallback remains only when no independent control alias configured',()=>{
+test('missing server override stays on trusted LOC main instead of browser-provided SQL alias',()=>{
  const {resolveDatabaseRouting:resolve}=routing();
- assert.equal(resolve().primaryId,'supabase-current');
- assert.equal(resolve().backupId,'neon-current');
- assert.equal(resolve().provider,'supabase');
+ assert.equal(resolve().primaryId,'loc-main');
+ assert.equal(resolve().backupId,null);
+ assert.equal(resolve().provider,'custom');
+ assert.equal(resolve().engine,'postgres');
+ assert.equal(resolve().connectionAlias,'loc_main');
 });

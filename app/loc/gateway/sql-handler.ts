@@ -465,7 +465,7 @@ Deno.serve({hostname:"0.0.0.0",port:serverPort},async (request) => {
       if(role!=="authenticated")return json({error:{message:"Administrator permission required"}},403);
       try{await checkAdminRole(claims);}
       catch{return json({error:{message:"Administrator permission required"}},403);}
-      return json({error:{message:"Database targets live in access.js; update source and redeploy"}},409);
+      return json({error:{message:"Database selection is managed by LOC Auth /v1/databases/selection; SQL Gateway does not change user selections"}},409);
     }
 
     // LOC registry, user settings and public presentation are control-plane

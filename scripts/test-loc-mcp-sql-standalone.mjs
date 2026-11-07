@@ -93,3 +93,97 @@ test('portable SQL entry uses LOC delegations, no vendor Function or database AP
   assert.match(driver,/export async function databaseForTarget/);
   assert.doesNotMatch(code,/new Kysely\(/);
 });
+
+test('MCP SQL selects its own trusted alias or the existing LOC control alias',()=>{
+  const code=readFileSync(new URL('../services/loc-mcp-sql/main.ts',import.meta.url),'utf8');
+  assert.match(code,/Deno\.env\.get\('LOC_MCP_DB_ALIAS'\)\|\|/);
+  assert.match(code,/Deno\.env\.get\('LOC_CONTROL_DB_ALIAS'\)\|\|'mcp_main'/);
+  assert.match(code,/Deno\.env\.get\('LOC_CONTROL_DB_ENGINE'\)\|\|'postgres'/);
+  assert.match(code,/profile\.engine!==engine/);
+  assert.match(code,/typeof profile\.url!=='string'/);
+});
+
+
+// Exercise the real Cloudflare entry in Node without a Container deployment.
+// Only the platform DurableObject base is substituted; routing remains intact.
+async function loadMcpIngress(){
+  const source=readFileSync(
+    new URL('../services/loc-mcp-sql/cloudflare-worker.mjs',import.meta.url),'utf8')
+    .replace("import {DurableObject} from 'cloudflare:workers';",
+      'class DurableObject {constructor(ctx,env){this.ctx=ctx;this.env=env;}}');
+  return import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+}
+
+test('MCP Worker allows only LOC preflight without starting the container',async()=>{
+  const {default:worker}=await loadMcpIngress();
+  const url='https://mcp.lo3rwang.cc/v1/sql';
+  const accepted=await worker.fetch(new Request(url,{method:'OPTIONS',
+    headers:{origin:'https://loc.lo3rwang.cc'}}),{});
+  assert.equal(accepted.status,204);
+  assert.equal(accepted.headers.get('access-control-allow-origin'),
+    'https://loc.lo3rwang.cc');
+  const denied=await worker.fetch(new Request(url,{method:'OPTIONS',
+    headers:{origin:'https://untrusted.example'}}),{});
+  assert.equal(denied.status,403);
+  assert.equal(denied.headers.get('access-control-allow-origin'),null);
+});
+
+test('MCP Worker forwards a trusted shared control database without MCP-only vars',async()=>{
+  const {default:worker}=await loadMcpIngress();
+  let forwarded=null;
+  const env={LOC_DB_CONNECTIONS_JSON:JSON.stringify({loc_main:{
+    engine:'postgres',url:'postgresql://test.invalid/loc'}}),
+    LOC_CONTROL_DB_ALIAS:'loc_main',LOC_CONTROL_DB_ENGINE:'postgres',
+    LOC_MCP_SQL_CONTAINER:{getByName(name){
+      assert.equal(name,'mcp-main');
+      return {fetch:async req=>{forwarded=req;return Response.json({data:[]});}};
+    }}};
+  const url='https://mcp.lo3rwang.cc/v1/sql';
+  const request=new Request(url,{method:'POST',headers:{
+    authorization:'Bearer signed.loc.delegation',
+    origin:'https://loc.lo3rwang.cc'
+  },body:'{"kind":"mcp-read"}'});
+  const response=await worker.fetch(request,env);
+  assert.equal(response.status,200);
+  assert.equal(forwarded.headers.get('authorization'),'Bearer signed.loc.delegation');
+  assert.equal(await forwarded.text(),'{"kind":"mcp-read"}');
+  const missing=await worker.fetch(new Request(url,{method:'POST',
+    headers:{origin:'https://loc.lo3rwang.cc'}}),{});
+  assert.equal(missing.status,503);
+  assert.equal(missing.headers.get('access-control-allow-origin'),
+    'https://loc.lo3rwang.cc');
+  const config=JSON.parse(readFileSync(
+    new URL('../services/loc-mcp-sql/wrangler.jsonc',import.meta.url),'utf8'));
+  assert.equal(config.vars.LOC_MCP_DB_ALIAS,undefined);
+  assert.equal(config.vars.LOC_MCP_DB_ENGINE,undefined);
+});
+
+test('MCP Container receives LOC control alias and Authority service credential',async()=>{
+  const {LocMcpSqlContainer}=await loadMcpIngress();
+  let started=null;
+  const container={running:false,images:{base:'local-image'},
+    start(opts){started=opts;this.running=true;},
+    async setInactivityTimeout(){},
+    getTcpPort(){return {fetch:async()=>new Response(null,{status:204})};}};
+  const env={LOC_DB_CONNECTIONS_JSON:'{"loc_main":{"engine":"postgres","url":"test"}}',
+    LOC_CONTROL_DB_ALIAS:'loc_main',LOC_CONTROL_DB_ENGINE:'postgres',
+    LOC_SQL_GATEWAY_SERVICE_KEY:'s'.repeat(43)};
+  const instance=new LocMcpSqlContainer({container},env);
+  await instance.ensureReady();
+  assert.equal(started.env.LOC_CONTROL_DB_ALIAS,'loc_main');
+  assert.equal(started.env.LOC_CONTROL_DB_ENGINE,'postgres');
+  assert.equal(started.env.LOC_SQL_GATEWAY_SERVICE_KEY,env.LOC_SQL_GATEWAY_SERVICE_KEY);
+  assert.equal(started.env.LOC_MCP_DB_ALIAS,undefined);
+});
+
+
+test('MCP Container failure keeps CORS readable to trusted LOC browser',async()=>{
+  const {LocMcpSqlContainer}=await loadMcpIngress();
+  const instance=new LocMcpSqlContainer({container:{running:false}},{});
+  const request=new Request('https://mcp.lo3rwang.cc/v1/sql',{
+    method:'POST',headers:{origin:'https://loc.lo3rwang.cc'}});
+  const response=await instance.fetch(request);
+  assert.equal(response.status,503);
+  assert.equal(response.headers.get('access-control-allow-origin'),
+    'https://loc.lo3rwang.cc');
+});

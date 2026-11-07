@@ -4,16 +4,37 @@ import {mcpLocSession} from './mcp/loc-access.mjs';
 
 const AUTHORITY='https://auth.lo3rwang.cc';
 const EMPTY={id:'',label:'',engine:'postgres',host:'',port:'5432',
- database:'',username:'',password:'',selectable_by_users:false,
- allowed_subjects:''};
+ database:'',username:'',password:'',auth_type:'default',domain:'',
+ client_id:'',tenant_id:'',client_secret:'',token:'',
+ selectable_by_users:false,allowed_subjects:''};
 const ENGINES=[['postgres','PostgreSQL'],['mysql','MySQL / MariaDB'],
  ['mssql','SQL Server / Azure SQL']];
+const AUTH_METHODS={
+ postgres:[['default','PostgreSQL 帳號密碼']],
+ mysql:[['default','MySQL 帳號密碼'],['ldap-simple','LDAP Simple（需 TLS）']],
+ mssql:[['default','SQL Server 帳號密碼'],['ntlm','Windows NTLM'],
+  ['azure-active-directory-default','Microsoft Entra Default Credential'],
+  ['azure-active-directory-access-token','Microsoft Entra Access Token'],
+  ['azure-active-directory-password','Microsoft Entra Username / Password'],
+  ['azure-active-directory-msi-vm','Managed Identity（VM）'],
+  ['azure-active-directory-msi-app-service','Managed Identity（App Service）'],
+  ['azure-active-directory-service-principal-secret','Entra Service Principal']]
+};
+const PASSWORD_AUTH=new Set(['default','ldap-simple','ntlm',
+ 'azure-active-directory-password']);
+const NEEDS_CLIENT_ID=new Set(['azure-active-directory-password',
+ 'azure-active-directory-service-principal-secret']);
 function cleanForm(item){
  if(!item)return {...EMPTY};
  return {id:String(item.id||''),label:String(item.label||''),
   engine:String(item.engine||'postgres'),host:String(item.host||''),
   port:String(item.port||'5432'),database:String(item.database||''),
   username:String(item.username||''),password:'',
+  auth_type:String(item.authentication?.type||'default'),
+  domain:String(item.authentication?.domain||''),
+  client_id:String(item.authentication?.clientId||''),
+  tenant_id:String(item.authentication?.tenantId||''),
+  client_secret:'',token:'',
   selectable_by_users:item.selectable_by_users===true,
   allowed_subjects:Array.isArray(item.allowed_subjects)?
     item.allowed_subjects.join('\n'):''};
@@ -63,15 +84,28 @@ export default function LocDatabaseAdmin(){
    if(!/^[a-z][a-z0-9_-]{0,63}$/.test(form.id))
     throw Error('請輸入符合規則的資料庫識別碼');
    const allowed_subjects=form.allowed_subjects.split(/[\s,;]+/).filter(Boolean);
+   const type=form.auth_type;
+   const authentication={type,
+    ...(type==='ntlm'?{domain:form.domain}:{}),
+    ...(type.startsWith('azure-active-directory-')&&form.client_id
+      ?{clientId:form.client_id}:{}),
+    ...(type.startsWith('azure-active-directory-')&&form.tenant_id&&
+       ['azure-active-directory-password',
+        'azure-active-directory-service-principal-secret'].includes(type)
+      ?{tenantId:form.tenant_id}:{}),
+    ...(type==='azure-active-directory-service-principal-secret'&&form.client_secret
+      ?{clientSecret:form.client_secret}:{}),
+    ...(type==='azure-active-directory-access-token'&&form.token
+      ?{token:form.token}:{})};
    const payload={engine:form.engine,label:form.label||form.id,
     host:form.host,port:Number(form.port),database:form.database,
-    username:form.username,selectable_by_users:form.selectable_by_users,
-    allowed_subjects,
+    username:form.username,authentication,
+    selectable_by_users:form.selectable_by_users,allowed_subjects,
     ...(form.password?{password:form.password}:{})};
    await authority('PUT','/v1/targets/'+form.id,payload);
    const data=await authority('GET','/v1/state');
    setTargets((data?.targets||[]).filter(x=>x&&x.managed!==true&&x.id));
-   setForm(previous=>({...previous,password:''}));
+   setForm(previous=>({...previous,password:'',client_secret:'',token:''}));
    setStatus('連線設定已由 LOC Auth 加密儲存。使用者可立即選擇；不需要重新部署。');
   }catch(error){
    setStatus(String(error?.message||error));
@@ -102,8 +136,9 @@ export default function LocDatabaseAdmin(){
     <select className="scope-select" value={form.engine} disabled={busy}
      onChange={event=>{
        const engine=event.target.value;
-       setForm(prev=>({...prev,engine,port:engine==='mssql'?'1433':
-        engine==='mysql'?'3306':'5432'}));
+       setForm(prev=>({...prev,engine,auth_type:'default',domain:'',
+        client_id:'',tenant_id:'',client_secret:'',token:'',
+        port:engine==='mssql'?'1433':engine==='mysql'?'3306':'5432'}));
      }}>
      {ENGINES.map(([key,label])=><option key={key} value={key}>{label}</option>)}
     </select>
@@ -118,12 +153,51 @@ export default function LocDatabaseAdmin(){
    <label><span>資料庫名稱</span>
     <input required value={form.database} disabled={busy}
       onChange={event=>change('database',event.target.value)}/></label>
+   <label><span>資料庫登入方式</span>
+    <select className="scope-select" value={form.auth_type} disabled={busy}
+      onChange={event=>setForm(previous=>({...previous,auth_type:event.target.value,
+        domain:'',client_id:'',tenant_id:'',client_secret:'',token:''}))}>
+     {AUTH_METHODS[form.engine].map(([type,label])=>
+       <option key={type} value={type}>{label}</option>)}
+    </select>
+   </label>
    <label><span>資料庫使用者</span>
-    <input required value={form.username} disabled={busy}
+    <input required={PASSWORD_AUTH.has(form.auth_type)}
+      value={form.username} disabled={busy}
       onChange={event=>change('username',event.target.value)} autoComplete="off"/></label>
    <label><span>資料庫密碼（修改既有連線可留空）</span>
     <input type="password" value={form.password} disabled={busy}
       onChange={event=>change('password',event.target.value)} autoComplete="new-password"/></label>
+   {form.auth_type==='ntlm'?<label><span>Windows 網域（NTLM）</span>
+    <input required value={form.domain} disabled={busy}
+      onChange={event=>change('domain',event.target.value)} autoComplete="off"/>
+   </label>:null}
+   {form.auth_type.startsWith('azure-active-directory-')&&
+    form.auth_type!=='azure-active-directory-access-token'?<label>
+     <span>Entra Client ID（使用者指派 Identity 可選填）</span>
+     <input required={NEEDS_CLIENT_ID.has(form.auth_type)}
+      value={form.client_id} disabled={busy}
+      onChange={event=>change('client_id',event.target.value)} autoComplete="off"/>
+    </label>:null}
+   {['azure-active-directory-password',
+     'azure-active-directory-service-principal-secret'].includes(form.auth_type)
+     ?<label><span>Entra Tenant ID（Service Principal 必填）</span>
+      <input required={form.auth_type==='azure-active-directory-service-principal-secret'}
+       value={form.tenant_id} disabled={busy}
+       onChange={event=>change('tenant_id',event.target.value)} autoComplete="off"/>
+     </label>:null}
+   {form.auth_type==='azure-active-directory-service-principal-secret'?<label>
+     <span>Entra Client Secret（已儲存可留空）</span>
+     <input type="password" value={form.client_secret} disabled={busy}
+      onChange={event=>change('client_secret',event.target.value)}
+      autoComplete="new-password"/>
+    </label>:null}
+   {form.auth_type==='azure-active-directory-access-token'?<label>
+     <span>Entra Access Token（已儲存可留空，須注意 Token 到期）</span>
+     <input type="password" value={form.token} disabled={busy}
+      onChange={event=>change('token',event.target.value)}
+      autoComplete="new-password"/>
+    </label>:null}
    <label className="scope-management-wide-field">
     <input type="checkbox" checked={form.selectable_by_users} disabled={busy}
       onChange={event=>change('selectable_by_users',event.target.checked)}/>

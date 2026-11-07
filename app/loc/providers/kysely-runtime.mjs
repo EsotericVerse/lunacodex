@@ -100,12 +100,18 @@ function databaseTable(req,dialect,namespace,modelName=''){
   return namespace===undefined?req.schema+'.'+req.table:
     portableRelation(req.table,dialect,namespace);
 }
-function publishedOnly(query,table,enabled){
+function publishedOnly(query,table,enabled,columns=['*']){
   if(!enabled)return query;
-  if(table.endsWith('_galaxy'))
-    return query.where('search','=',true)
+  if(table.endsWith('_galaxy')){
+    let published=query.where('search','=',true)
       .where(eb=>eb.or([eb('site','is',null),
         eb(eb.fn('lower',['site']),'not in',PRIVATE_SITES)]));
+    // A non-clickable search result may expose its title/metadata, but not
+    // its full article. A wildcard projection also contains article content.
+    if(columns.includes('*')||columns.includes('content'))
+      published=published.where('list','=',true);
+    return published;
+  }
   if(table.endsWith('_anchor'))
     return query.where('invisible','=',false)
       .where('type','in',PUBLIC_ANCHOR_TYPES);
@@ -116,12 +122,12 @@ export function buildKyselySelectQuery(trx,input,{dialect='postgres',namespace,p
   if(req.operation!=='select')throw new Error('Unsupported operation for SELECT builder');
   const table=databaseTable(req,dialect,namespace,modelName);
   let query=publishedOnly(applyOrFilters(applyFilters(
-    trx.selectFrom(table).select(req.columns),req.filters),req.orFilters),req.table,publicOnly);
+    trx.selectFrom(table).select(req.columns),req.filters),req.orFilters),req.table,publicOnly,req.columns);
   for(const order of req.orders)query=query.orderBy(order.column,order.ascending===false?'desc':'asc');
   query=query.limit(req.limit).offset(req.offset);
   const countQuery=req.count?publishedOnly(applyOrFilters(applyFilters(
     trx.selectFrom(table).select(trx.fn.countAll().as('count')),req.filters),req.orFilters),
-      req.table,publicOnly):null;
+      req.table,publicOnly,req.columns):null;
   return {request:req,query:req.head?null:query,countQuery};
 }
 

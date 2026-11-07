@@ -53,7 +53,7 @@ jobs:
             scripts/test-loc-mcp-native-access.mjs \
             scripts/test-loc-no-vendor-auth-runtime.mjs \
             scripts/test-loc-auth-provider-settings.mjs \
-            scripts/test-clerk-login-ux.mjs \
+            scripts/test-loc-login-ux.mjs \
             scripts/test-loc-galaxy-link-extension.mjs \
             scripts/test-loc-short-append-service.mjs \
             scripts/test-loc-short-edge-authorization.mjs

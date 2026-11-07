@@ -80,40 +80,45 @@ test('ISR numeric readers use Kysely without a SQL provider SDK or Auth client',
   const source=readFileSync(new URL('../app/api/loc/_server.js',import.meta.url),'utf8');
   assert.doesNotMatch(source,/createClient\(/);
   assert.match(source,/const primary=createKyselyEdgeClient\(/);
-  assert.match(source,/gatewayUrl:SQL_GATEWAY_URL/);
+  assert.match(source,/gatewayUrl:primaryGatewayUrl/);
   assert.match(source,/candidates\.push\(\{id:\'backup\'/);
   assert.match(source,/NEXT_PUBLIC_LOC_SQL_GATEWAY_URL/);
   assert.match(source,/gatewayUrl:primaryGatewayUrl/);
 });
-test('verified external identity can delegate to an independent SQL Gateway',async()=>{
+test('verified LOC identity delegates through the independent SQL transport',async()=>{
   const source=readFileSync(new URL('../app/loc/providers/loc-gateway.mjs',import.meta.url),'utf8')
     .replace(/^import .*$/gm,'').replace(/^export /gm,'');
   const calls=[];
-  const build=new Function('createKyselyEdgeClient',
-    'URL','AbortSignal','process',
+  const create=new Function('createKyselyEdgeClient','URL','AbortSignal','process',
     source+'\n;return createLocGatewayAdapter;')(
-    options=>options,URL,AbortSignal,process
+    createKyselyEdgeClient,URL,AbortSignal,process
   );
-  const gateway=build({
+  const gateway=create({
     authorityUrl:'https://authority.example.org',
     gatewayUrl:'https://sql.example.org/v1/query',
     accountAdapter:{auth:{getSession:async()=>({data:{session:null}})},
       getAccessToken:async()=> 'verified.external.jwt'},
     fetchImpl:async(url,init)=>{
-      calls.push({url,init});
-      return {ok:true,json:async()=>({access_token:'loc.signed.jwt',
-        expires_at:Math.floor(Date.now()/1000)+300})};
+      calls.push({url:String(url),init});
+      if(String(url).endsWith('/v1/delegation'))return {
+        ok:true,status:200,json:async()=>({access_token:'loc.signed.jwt',
+          expires_at:Math.floor(Date.now()/1000)+300})
+      };
+      return {ok:true,status:200,headers:new Headers(),
+        json:async()=>({data:[{uid:'aB12cD34'}],count:1})};
     }
   });
   assert.equal(gateway.realtimeClient,null);
-  assert.equal(gateway.publicClient.gatewayUrl,'https://sql.example.org/v1/query');
-  assert.equal(gateway.authClient.gatewayUrl,'https://sql.example.org/v1/query');
-  assert.equal(gateway.authClient.publishableKey,undefined);
-  assert.equal(await gateway.authClient.getAccessToken({kind:'query',operation:'select',
-    schema:'api',table:'loc_user'}),'loc.signed.jwt');
+  assert.equal(gateway.publicClient.role,'anon');
+  assert.equal(gateway.authClient.role,'authenticated');
+  const result=await gateway.authClient.schema('api').from('loc_user').select('uid').limit(1);
+  assert.equal(result.data[0].uid,'aB12cD34');
+  assert.equal(calls.length,2);
   assert.equal(calls[0].url,'https://authority.example.org/v1/delegation');
   assert.equal(calls[0].init.headers.authorization,'Bearer verified.external.jwt');
   assert.deepEqual(JSON.parse(calls[0].init.body),{audience:'sql',identity:true});
+  assert.equal(calls[1].url,'https://sql.example.org/v1/query');
+  assert.equal(calls[1].init.headers.authorization,'Bearer loc.signed.jwt');
 });
 
 test('explicit public publishing pages through the bounded Kysely query port',()=>{

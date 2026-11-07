@@ -34,8 +34,12 @@ function error(message:string,status=400):never{throw Object.assign(new Error(me
 function sourceConfig(){
   // A custom provider target is mandatory: no fallback to Supabase, Neon Auth,
   // a vendor Data API, or a user-supplied connection string.
-  const engine=Deno.env.get('LOC_MCP_DB_ENGINE')||'postgres';
-  const alias=Deno.env.get('LOC_MCP_DB_ALIAS')||'mcp_main';
+  // A dedicated MCP profile remains optional. When absent, share the
+  // server-owned LOC SQL control alias; never accept a browser-supplied URL.
+  const engine=Deno.env.get('LOC_MCP_DB_ENGINE')||
+    Deno.env.get('LOC_CONTROL_DB_ENGINE')||'postgres';
+  const alias=Deno.env.get('LOC_MCP_DB_ALIAS')||
+    Deno.env.get('LOC_CONTROL_DB_ALIAS')||'mcp_main';
   if(!['postgres','mysql','mssql'].includes(engine)||
     !/^[a-z][a-z0-9_]{0,63}$/.test(alias))
     error('Invalid portable MCP database target',503);

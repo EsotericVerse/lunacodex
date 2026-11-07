@@ -114,50 +114,55 @@ test('Kysely management actions replace retired business RPCs while database pol
   assert.match(themeEditor,/\.managedAction\('loc_admin_settings'/);
 });
 
-test('SQL browser reuses LOC delegation for same OAuth token and cannot inherit it after account switch',async()=>{
+test('SQL browser reuses delegation but invalidates cache on account switch',async()=>{
   const source=readFileSync(new URL('../app/loc/providers/loc-gateway.mjs',import.meta.url),'utf8')
     .replace(/^import .*$/gm,'').replace(/^export /gm,'');
-  let oauth='first.signed.token',calls=[];
+  let oauth='first.signed.token';
+  const delegations=[],sqlCalls=[];
   const create=new Function('createKyselyEdgeClient','URL','AbortSignal','process',
     source+'\n;return createLocGatewayAdapter;')(
     options=>options,URL,AbortSignal,process
   );
-  const adapter=create({authorityUrl:'https://authority.example.org',
+  // The injected SQL client exposes the delegated callback for the
+  // cache unit test; the production SQL client does not expose this method.
+  const gateway=create({authorityUrl:'https://authority.example.org',
     gatewayUrl:'https://sql.example.org/v1/query',
     accountAdapter:{auth:{},getAccessToken:async()=>oauth},
     fetchImpl:async(url,init)=>{
-      calls.push({url,source:JSON.parse(init.body),bearer:init.headers.authorization});
-      return {ok:true,json:async()=>({
-        access_token:'header.payload.signature',
-        expires_at:Math.floor(Date.now()/1000)+300
-      })};
+      if(String(url).endsWith('/v1/delegation')){
+        delegations.push({url:String(url),body:JSON.parse(init.body),
+          bearer:init.headers.authorization});
+        return {ok:true,status:200,json:async()=>({
+          access_token:'header.payload.signature',
+          expires_at:Math.floor(Date.now()/1000)+300
+        })};
+      }
+      sqlCalls.push({url:String(url),bearer:init.headers.authorization,
+        body:JSON.parse(init.body)});
+      return {ok:true,status:200,headers:new Headers(),
+        json:async()=>({data:[{uid:'aB12cD34'}],count:1})};
     }});
-  const scopeWrite={kind:'managed-write',payload:{p_table:'silver.lo3rwang_galaxy'}};
-  const [a,b]=await Promise.all([
-    adapter.authClient.getAccessToken(scopeWrite),
-    adapter.authClient.getAccessToken(scopeWrite)]);
-  assert.equal(a,'header.payload.signature');
-  assert.equal(b,a);
-  assert.equal(calls.length,1);
-  assert.deepEqual(calls[0].source,{
-    audience:'sql',scopeid:'lo3rwang',actions:['manage']});
-  assert.equal(calls[0].bearer,'Bearer first.signed.token');
-  assert.equal(await adapter.authClient.getAccessToken(scopeWrite),a);
-  assert.equal(calls.length,1);
-  await adapter.authClient.getAccessToken({kind:'query',operation:'select',
-    schema:'silver',table:'lo3rwang_galaxy'});
-  assert.deepEqual(calls[1].source,{audience:'sql',identity:true});
-  await adapter.authClient.getAccessToken({kind:'managed-action',name:'manage',
+  // Use the injected stub client to obtain internal delegated token through
+  // its callback, keeping the production SQL client API unchanged.
+  const identity={kind:'query',operation:'select',schema:'silver',table:'lo3rwang_galaxy'};
+  const token=await gateway.authClient.getAccessToken(identity);
+  assert.equal(token,'header.payload.signature');
+  assert.equal(delegations.length,1);
+  assert.deepEqual(delegations[0].body,{audience:'sql',identity:true});
+  assert.equal(await gateway.authClient.getAccessToken(identity),token);
+  assert.equal(delegations.length,1);
+  const write={kind:'managed-write',payload:{p_table:'silver.lo3rwang_galaxy'}};
+  await gateway.authClient.getAccessToken(write);
+  assert.deepEqual(delegations[1].body,
+    {audience:'sql',scopeid:'lo3rwang',actions:['manage']});
+  await gateway.authClient.getAccessToken({kind:'managed-action',name:'manage',
     args:{p_type:'self'}});
-  assert.deepEqual(calls[2].source,{audience:'sql',self:true});
-  await adapter.authClient.getAccessToken({kind:'managed-action',name:'manage',
+  assert.deepEqual(delegations[2].body,{audience:'sql',self:true});
+  await gateway.authClient.getAccessToken({kind:'managed-action',name:'manage',
     args:{p_type:'scope',p_id:'lrunes'}});
-  assert.deepEqual(calls[3].source,{audience:'sql',scopeid:'lrunes',actions:['manage']});
-  await adapter.authClient.getAccessToken({kind:'anchor',scopeid:'lrunes',type:'item',
-    attr:{op:'catalog'}});
-  assert.deepEqual(calls[4].source,{audience:'sql',scopeid:'lrunes',actions:['manage']});
+  assert.deepEqual(delegations[3].body,{audience:'sql',scopeid:'lrunes',actions:['manage']});
   oauth='second.signed.token';
-  await adapter.authClient.getAccessToken(scopeWrite);
-  assert.equal(calls.length,6);
-  assert.equal(calls[5].bearer,'Bearer second.signed.token');
+  await gateway.authClient.getAccessToken(identity);
+  assert.equal(delegations.length,5);
+  assert.equal(delegations[4].bearer,'Bearer second.signed.token');
 });

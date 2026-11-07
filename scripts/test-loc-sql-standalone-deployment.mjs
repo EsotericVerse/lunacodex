@@ -9,6 +9,9 @@ test('the LOC Deno SQL service validates its own alias, never a vendor login',()
   const handler=read('app/loc/gateway/sql-handler.ts');
   assert.match(service,/LOC_CONTROL_DB_ALIAS/);
   assert.match(service,/LOC_DB_CONNECTIONS_JSON/);
+  assert.match(service,/const base=Object\.hasOwn\(profiles,alias\)\?profiles\[alias\]:null/);
+  assert.match(service,/if\(!base\|\|typeof base!==\'object\'/);
+  assert.doesNotMatch(service,/!base&&!Deno\.env\.get\('LOC_SQL_GATEWAY_SERVICE_KEY'\)/);
   assert.match(service,/gateway\/sql-handler\.ts/);
   assert.doesNotMatch(service,/postgrest|createClient\(/);
   assert.match(handler,/pathname === "\/health"/);
@@ -28,6 +31,12 @@ test('Cloudflare ingress keeps health private, forwards signed SQL unchanged',()
   assert.match(worker,/new Request\(url,request\)/);
   assert.match(worker,/url\.pathname!=='\/v1\/sql'/);
   assert.match(worker,/REQUIRED\.some\(name=>!env\[name\]\)/);
+  assert.match(worker,/!env\.LOC_DB_CONNECTIONS_JSON/);
+  assert.doesNotMatch(worker,/!env\.LOC_DB_CONNECTIONS_JSON&&!env\.LOC_SQL_GATEWAY_SERVICE_KEY/);
+  assert.match(worker,/access-control-allow-origin/);
+  assert.match(worker,/request\.method==='OPTIONS'/);
+  assert.ok(worker.indexOf("request.method==='OPTIONS'")<
+    worker.indexOf('!env.LOC_DB_CONNECTIONS_JSON'));
   assert.match(worker,/LOC_SQL_GATEWAY_SERVICE_KEY/);
   assert.match(worker,/port\.fetch\('http:\/\/container\/health'/);
   assert.match(docker,/COPY zenstack \.\/zenstack/);

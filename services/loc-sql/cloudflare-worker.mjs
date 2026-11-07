@@ -3,6 +3,10 @@
 import {DurableObject} from 'cloudflare:workers';
 
 const REQUIRED=['LOC_CONTROL_DB_ALIAS','LOC_CONTROL_DB_ENGINE'];
+const CORS_HEADERS={'access-control-allow-origin':'*',
+  'access-control-allow-headers':'authorization, content-type, x-client-info',
+  'access-control-allow-methods':'POST, OPTIONS',
+  'access-control-max-age':'86400'};
 const OPTIONAL=[
   'LOC_AUTHORITY_ORIGIN',
   'LOC_DELEGATION_NOT_BEFORE',
@@ -15,7 +19,7 @@ const OPTIONAL=[
 ];
 function unavailable(message,status=503){
   return Response.json({error:{message}},{status,
-    headers:{'cache-control':'no-store'}});
+    headers:{...CORS_HEADERS,'cache-control':'no-store'}});
 }
 export class LocSqlContainer extends DurableObject {
   async ensureReady(){
@@ -67,10 +71,12 @@ export class LocSqlContainer extends DurableObject {
 export default {
   async fetch(request,env){
     const url=new URL(request.url);
-    if(url.pathname!=='/v1/sql'||!['POST','OPTIONS'].includes(request.method))
-      return unavailable('Not found',404);
-    if(REQUIRED.some(name=>!env[name])||
-      !env.LOC_DB_CONNECTIONS_JSON&&!env.LOC_SQL_GATEWAY_SERVICE_KEY)
+    if(url.pathname!=='/v1/sql')return unavailable('Not found',404);
+    // Answer browser CORS preflight without booting a container or SQL pool.
+    if(request.method==='OPTIONS')
+      return new Response(null,{status:204,headers:CORS_HEADERS});
+    if(request.method!=='POST')return unavailable('Method not allowed',405);
+    if(REQUIRED.some(name=>!env[name])||!env.LOC_DB_CONNECTIONS_JSON)
       return unavailable('LOC SQL Gateway is not configured');
     // The canonical Deno handler verifies LOC Authority RS256 delegations.
     return env.LOC_SQL_CONTAINER.getByName('loc-main').fetch(request);

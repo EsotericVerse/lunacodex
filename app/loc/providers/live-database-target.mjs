@@ -1,6 +1,8 @@
 // Trusted runtime SQL target selection. No runtime schema changes, browser
 // credentials or deployment-time dialect lock-in. Profiles originate ONLY from
 // the encrypted LOC Authority, never from request body parameters.
+import {normalizeSqlDriverAuthentication,sqlAuthNeedsUserPassword}
+ from './sql-driver-auth.mjs';
 const ID=/^[a-z][a-z0-9_-]{0,63}$/;
 const ENGINES=new Set(['postgres','mysql','mssql']);
 const HOST=/^[a-z0-9.-]{1,253}$/;
@@ -14,11 +16,19 @@ export function normalizeLiveTarget(id,profile){
  const port=Number(profile.port);
  const host=String(profile.host||'').toLowerCase();
  const database=String(profile.database||'');
- const username=String(profile.username||'');
- const password=String(profile.password||'');
+ const authentication=normalizeSqlDriverAuthentication(engine,profile.authentication);
+ const needsPassword=sqlAuthNeedsUserPassword(authentication);
+ // Passwordless Entra identities and signed access-token authentication do
+ // not have a SQL username/password. All other modes fail closed if missing.
+ if(needsPassword&&
+   (typeof profile.username!=='string'||typeof profile.password!=='string'))
+  throw Error('Trusted runtime SQL credentials are missing');
+ const username=typeof profile.username==='string'?profile.username:'';
+ const password=typeof profile.password==='string'?profile.password:'';
  if(!HOST.test(host)||host.startsWith('.')||host.endsWith('.')||
   !Number.isInteger(port)||port<1||port>65535||
-  !NAME.test(database)||!username||username.length>120||password.length>4096)
+  !NAME.test(database)||(needsPassword&&!username.trim())||
+  username.length>120||(needsPassword&&!password)||password.length>4096)
   throw Error('Trusted runtime SQL connection is incomplete');
  const protocol=engine==='mssql'?'mssql':engine==='mysql'?'mysql':'postgres';
  const url=new URL(protocol+'://example.invalid');
@@ -28,7 +38,7 @@ export function normalizeLiveTarget(id,profile){
  return {
   target:{provider:'custom',engine,connection_alias:id,connection_mode:'direct',
    ...(namespace?{schema_name:namespace}:{})},
-  profile:{engine,url:url.href,tls:true}
+  profile:{engine,url:url.href,tls:true,authentication}
  };
 }
 export function runtimeTargetId(claims){
