@@ -63,3 +63,39 @@ test('trusted PostgreSQL TLS and SQL profile changes do not reuse stale pools',(
  assert.match(code,/JSON\.stringify\(profile\.authentication\|\|\{\}\)/);
  assert.match(code,/String\(profile\.tls\)/);
 });
+
+test('passwordless Azure SQL still reaches the trusted driver',()=>{
+  const cases=[
+    {type:'azure-active-directory-access-token',token:'signed.token'},
+    {type:'azure-active-directory-default'},
+    {type:'azure-active-directory-msi-vm',clientId:'identity_client'},
+    {type:'azure-active-directory-service-principal-secret',
+      clientId:'app',tenantId:'tenant',clientSecret:'encrypted-secret'}
+  ];
+  for(const authentication of cases){
+    const {target,profile}=normalizeLiveTarget('azure_live',{
+      engine:'mssql',host:'server.database.windows.net',port:1433,
+      database:'loc',authentication
+    });
+    assert.equal(target.engine,'mssql');
+    assert.equal(profile.authentication.type,authentication.type);
+    const url=new URL(profile.url);
+    assert.equal(url.username,'');
+    assert.equal(url.password,'');
+    assert.equal(profile.tls,true);
+  }
+  assert.throws(()=>normalizeLiveTarget('azure_live',{
+    engine:'postgres',host:'server.database.windows.net',port:5432,
+    database:'loc',authentication:{type:'azure-active-directory-default'}
+  }),/Unsupported/);
+});
+test('LOC database editor supplies auth methods without exposing stored secrets',()=>{
+ const ui=readFileSync(new URL('../app/loc/LocDatabaseAdmin.jsx',import.meta.url),'utf8');
+ const worker=readFileSync(new URL('../workers/loc-authority/index.mjs',import.meta.url),'utf8');
+ assert.match(ui,/AUTH_METHODS\[form\.engine\]/);
+ assert.match(ui,/azure-active-directory-service-principal-secret/);
+ assert.match(ui,/client_secret:''/);
+ assert.match(ui,/token:''/);
+ assert.match(worker,/publicSqlDriverAuthentication\(internalAuth\)/);
+ assert.match(worker,/encryptProfile\(profile,this\.env\.LOC_CONTROL_ENCRYPTION_KEY\)/);
+});
