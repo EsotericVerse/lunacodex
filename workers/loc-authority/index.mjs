@@ -88,33 +88,31 @@ async function decryptProfile(value,secret){
 // Data access is separately authorized by this Group Authority's grants.
 const MCP_RESOURCE='https://mcp.lo3rwang.cc';
 const MANAGED_SCOPE_TABLES=Object.freeze({lo3rwang:'lo3rwang_galaxy',lrunes:'lrunes_galaxy'});
-// MCP uses LOC's independent Kysely SQL Gateway, never a provider Function.
-// The Worker holds no DB password and only forwards a signed LOC delegation.
-function mcpSqlGateway(env){
-  const raw=String(env?.LOC_MCP_SQL_GATEWAY_URL||env?.LOC_SQL_GATEWAY_URL||'');
-  if(!raw)throw fail('LOC MCP Kysely SQL Gateway is not configured',503);
-  return safeMcpSqlUrl(raw);
-}
-async function mcpSqlRequest(env,kind,scopeid,fields,locDelegation,scopeGateway=''){
+// OAuth grants are minted here; the existing LOC application backend opens its
+// own direct Kysely connection. This is a fixed Galaxy business operation,
+// not a generic SQL transport or a user-configurable destination.
+const LOC_NATIVE_APPLICATION='https://mcp.lo3rwang.cc/api/loc-native';
+async function mcpNativeRequest(env,kind,scopeid,fields,locDelegation){
   if(typeof locDelegation!=='string'||locDelegation.split('.').length!==3)
     throw fail('LOC MCP delegation required',401);
-  const response=await fetch(scopeGateway?safeMcpSqlUrl(scopeGateway):mcpSqlGateway(env),{
+  const response=await fetch(LOC_NATIVE_APPLICATION,{
     method:'POST',headers:{authorization:'Bearer '+locDelegation,
       'content-type':'application/json',accept:'application/json'},
     body:JSON.stringify({kind,scopeid,...fields}),
-    signal:AbortSignal.timeout(12000),redirect:'error',cache:'no-store'
+    signal:AbortSignal.timeout(25000),redirect:'error',cache:'no-store'
   });
   if(!response.ok){
-    let reason='MCP Kysely Gateway rejected request';
+    let reason='LOC native application operation rejected';
     if(response.status>=400&&response.status<500){
       const data=await response.json().catch(()=>null);
       reason=String(data?.error?.message||data?.error||reason).slice(0,200);
     }
-    throw fail(reason,response.status===401||response.status===403||response.status===404||response.status===409?
+    throw fail(reason,[400,401,403,404,409,413].includes(response.status)?
       response.status:502);
   }
   const result=await response.json();
-  if(!result||!Object.hasOwn(result,'data'))throw fail('Invalid MCP SQL Gateway response',502);
+  if(!result||!Object.hasOwn(result,'data'))
+    throw fail('Invalid LOC native application response',502);
   return result.data;
 }
 const SCOPE_ID=/^[a-z][a-z0-9]{0,14}$/;
@@ -125,16 +123,6 @@ function validTimestamp(value){
   const stamp=Date.parse(String(value||''));
   if(!Number.isFinite(stamp)||!/^\d{4}-\d\d-\d\dT/.test(String(value)))throw fail('Invalid source update time',400);
   return new Date(stamp).toISOString();
-}
-function safeMcpSqlUrl(value){
-  let u;try{u=new URL(String(value||''))}catch{throw fail('Invalid LOC MCP SQL Gateway URL',400)}
-  if(u.protocol!=='https:'||u.username||u.password||u.search||u.hash||
-    u.hostname==='localhost'||u.hostname.includes(':')||
-    /(?:^|\.)(?:localhost|local|internal|test)$/.test(u.hostname)||
-    /^(?:\d{1,3}\.){3}\d{1,3}$/.test(u.hostname)||
-    /\/rest\/v1(?:\/|$)|\/functions\/v1\//.test(u.pathname))
-    throw fail('Scope requires a trusted HTTPS LOC Kysely SQL Gateway, not a vendor Data API',400);
-  return u.toString();
 }
 async function mcpJsonBody(request,limit=160000){
   const raw=await request.text();
@@ -148,20 +136,20 @@ function likePattern(value){
     /[\u0000-\u001f\u007f]/.test(value))throw fail('Query must contain 2–100 characters',400);
   return '"*'+value.trim().replace(/\\/g,'\\\\').replace(/"/g,'\\"').replace(/[%_*]/g,'\\$&')+'*"';
 }
-async function managedMcpInsert(scopeid,row,updateExisting,token,env,gateway=''){
-  const data=await mcpSqlRequest(env,'mcp-sync',scopeid,
-    {row,update_existing:updateExisting},token,gateway);
+async function managedMcpInsert(scopeid,row,updateExisting,token,env){
+  const data=await mcpNativeRequest(env,'mcp-sync',scopeid,
+    {row,update_existing:updateExisting},token);
   if(data?.count!==1)throw fail('MCP insert was not confirmed',502);
 }
 // Append is separate from full sync: existing Galaxy metadata must never be overwritten.
-async function managedMcpAppend(scopeid,uid,content,batchId,updatedAt,token,env,gateway=''){
-  const data=await mcpSqlRequest(env,'mcp-append',scopeid,
-    {uid,content,batch_id:batchId,updated_at:updatedAt},token,gateway);
+async function managedMcpAppend(scopeid,uid,content,batchId,updatedAt,token,env){
+  const data=await mcpNativeRequest(env,'mcp-append',scopeid,
+    {uid,content,batch_id:batchId,updated_at:updatedAt},token);
   if(data?.count!==1)throw fail('MCP append was not confirmed',502);
   return data;
 }
-async function managedMcpRead(scopeid,kind,args,token,env,gateway=''){
-  const rows=await mcpSqlRequest(env,kind,scopeid,args,token,gateway);
+async function managedMcpRead(scopeid,kind,args,token,env){
+  const rows=await mcpNativeRequest(env,kind,scopeid,args,token);
   if(!Array.isArray(rows))throw fail('Invalid MCP Kysely read results',502);
   return rows;
 }
@@ -193,7 +181,7 @@ export class LocAuthorityState extends DurableObject {
   }
   // LOC delegates access with a self-managed asymmetric key. The private JWK
   // remains AES-GCM encrypted in this existing Authority Durable Object.
-  // SQL Gateways fetch only the public JWKS; no shared cloud-provider secret.
+  // The LOC application backend verifies the public JWKS; no shared bearer secret.
   async delegationKeyRecord(){
     const name='loc-auth:delegation-rs256:v1';
     const existing=await this.ctx.storage.get(name);
@@ -401,8 +389,8 @@ export class LocAuthorityState extends DurableObject {
     await this.ctx.storage.delete('grant:'+key);
     return {revoked:true,key};
   }
-  // Internal RPC for a trusted SQL gateway. The external provider's JWT must
-  // be VERIFIED by the gateway before passing provider + subject here.
+  // Scope grant checks are performed by LOC Auth before issuing signed,
+  // short-lived application delegations.
   async mayAccess({provider,subject,scope,action}={}){
     if(!['read','write','manage','configure'].includes(action))return false;
     if(!/^[a-z][a-z0-9]{0,14}$/.test(String(scope||'')))return false;
@@ -415,8 +403,8 @@ export class LocAuthorityState extends DurableObject {
     validScope(scopeid);
     const item=await this.ctx.storage.get('mcp-scope:'+scopeid);
     if(item){
-      // Historical Gateway URLs remain in Durable Object storage for a
-      // reversible data migration, but are never exposed as usable targets.
+      // Historical endpoint metadata stays encrypted in Durable Object storage
+      // for migration only; it cannot select the application's Kysely target.
       return {scopeid,configured:false,needs_native_driver:true,
         legacy_gateway_retired:true,schema:String(item.public?.schema||'silver'),
         table:scopeid+'_galaxy'};
@@ -425,13 +413,6 @@ export class LocAuthorityState extends DurableObject {
       return {scopeid,configured:true,managed:true,provider:'loc-kysely',
         schema:'silver',table:MANAGED_SCOPE_TABLES[scopeid]};
     return {scopeid,configured:false};
-  }
-  async mcpPrivateProfile(scopeid){
-    const item=await this.ctx.storage.get('mcp-scope:'+scopeid);
-    // Legacy PostgREST entries cannot authorize new portable SQL traffic.
-    if(item?.public?.endpoint?.includes('/rest/v1'))
-      throw fail('Scope must be reconfigured with a LOC Kysely SQL Gateway',409);
-    return item?.public||null;
   }
   async mcpCheckpoint(scopeid,conversationId,updatedAt){
     validScope(scopeid);
@@ -463,8 +444,6 @@ export class LocAuthorityState extends DurableObject {
     const requestedTime=validTimestamp(input.updated_at);
     const status=await this.mcpCheckpoint(scopeid,conversation_id,requestedTime);
     if(!status.needs_save)return {...status,saved:false,reason:'unchanged'};
-    const profile=await this.mcpPrivateProfile(scopeid);
-    if(!profile&&!Object.hasOwn(MANAGED_SCOPE_TABLES,scopeid))throw fail('Scope database is not configured',409);
     if(typeof input.content!=='string'||!input.content.trim()||input.content.length>125000||
       typeof input.title!=='string'||input.title.length>350)
       throw fail('Invalid conversation content or title',400);
@@ -487,7 +466,7 @@ export class LocAuthorityState extends DurableObject {
       let result=null;
       try{
         result=await managedMcpAppend(scopeid,uid,input.content,
-          input.batch_id,requestedTime,oauthToken,this.env,profile?.endpoint||'');
+          input.batch_id,requestedTime,oauthToken,this.env);
       }catch(error){
         // If the first insert never committed, retry using the SAME UID.
         // Only 404 on an unsaved checkpoint may fall back to initial INSERT.
@@ -511,7 +490,7 @@ export class LocAuthorityState extends DurableObject {
       createtime:created,
       UpdateTime:requestedTime};
     await managedMcpInsert(scopeid,row,Boolean(status.uid),oauthToken,
-      this.env,profile?.endpoint||'');
+      this.env);
     const saved_at=new Date().toISOString();
     this.mcpSearchCache?.clear();
     await this.ctx.storage.put(checkpointKey,{updated_at:requestedTime,saved_at,uid});
@@ -525,11 +504,8 @@ export class LocAuthorityState extends DurableObject {
     if(typeof query!=='string'||query.trim().length<2||query.length>100||
       /[\u0000-\u001f\u007f]/.test(query)||!Number.isInteger(limit)||limit<1||limit>5)
       throw fail('Invalid Galaxy Link search',400);
-    const profile=await this.mcpPrivateProfile(scopeid);
-    if(!profile&&!Object.hasOwn(MANAGED_SCOPE_TABLES,scopeid))
-      throw fail('LOC MCP SQL Gateway is not configured for this Scope',409);
     const rows=await managedMcpRead(scopeid,'mcp-search',{query,limit,user_requested:true},
-      oauthToken,this.env,profile?.endpoint||'');
+      oauthToken,this.env);
     return {scopeid,results:rows.map(r=>({uid:r.uid,title:r.title,createtime:r.createtime}))};
   }
   async mcpSearch(scopeid,query,limit=5,oauthToken=''){
@@ -543,11 +519,8 @@ export class LocAuthorityState extends DurableObject {
     if(!UID.test(uid)||!Number.isInteger(offset)||offset<0||offset>1000000||
       !Number.isInteger(max_chars)||max_chars<1||max_chars>40000)
       throw fail('Invalid article read parameters',400);
-    const profile=await this.mcpPrivateProfile(scopeid);
-    if(!profile&&!Object.hasOwn(MANAGED_SCOPE_TABLES,scopeid))
-      throw fail('LOC MCP SQL Gateway is not configured for this Scope',409);
     const rows=await managedMcpRead(scopeid,'mcp-read',{uid,site:'mcp'},
-      oauthToken,this.env,profile?.endpoint||'');
+      oauthToken,this.env);
     if(!rows.length)return {found:false,scopeid,uid};
     const row=rows[0],content=String(row.content||'');
     return {found:true,scopeid,uid:row.uid,title:row.title,date:row.date,
@@ -605,13 +578,6 @@ export class LocAuthorityState extends DurableObject {
   // Group search is retired. Do not fall back to public provider Data APIs.
   async mcpGroupSearch(){throw fail('MCP group search is disabled',403);}
   async mcpGroupSearchUncached(){throw fail('MCP group search is disabled',403);}
-  async getPrimaryProfileForGateway(){
-    const id=await this.ctx.storage.get('primary_id');
-    if(!id)return null;
-    return this.getProfileForGateway(id);
-  }
-  // Cloudflare DO RPC: only a separately bound trusted SQL gateway can call this.
-  // No HTTP handler exposes the credential or returns decrypted profiles to a browser.
   // Shared, durable quotas for each verified LOC Auth MCP subject.
   // A read-only near-limit check for simultaneous PR denial + QoS warning.
   // It never acquires a lease, spends a search, or touches Galaxy rows.
@@ -817,9 +783,8 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
   const stub=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName('loc-authority-control-v1'));
   const scoped=scope=>env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName('mcp-scope:'+scope));
   const allowed=async(scope,action)=>isRoot||await stub.mayAccess({...principal,scope,action});
-  // A trusted Scope grant becomes a short-lived LOC MCP delegation for
-  // every SQL engine and every configured Scope. Neither LOC OAuth token nor
-  // any provider-specific database identity is forwarded to the SQL Gateway.
+  // A trusted Scope grant becomes a short-lived LOC MCP delegation.
+  // The selected database alias is a signed claim verified by the LOC app.
   const managedToken=async(scope,action)=>{
     validScope(scope);
     if(!['read','write','manage'].includes(action)||!await allowed(scope,action))
@@ -845,7 +810,7 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
       if(!await allowed(scopeid,'read')&&!await allowed(scopeid,'write')&&!await allowed(scopeid,'configure'))throw fail('Scope access denied',403);
       return json(await scoped(scopeid).getMcpScope(scopeid),200,origin);
     }
-    if(request.method==='PUT')throw fail('SQL Gateway Scope registration is retired',410);
+    if(request.method==='PUT')throw fail('Scope database URL registration is retired',410);
   }
   if(['authorize-read','authorize-write'].includes(parts[0])&&
      parts.length===2&&request.method==='GET'){
@@ -1071,7 +1036,7 @@ export default {
       const principal=await verifyNativeOAuth(request,env,WEB_AUDIENCE);
       if(!url.pathname.startsWith('/v1/'))throw fail('Not found',404);
       // Identity endpoint is only a verified principal lookup. It grants no
-      // data access or management capabilities; the gateway must call mayAccess.
+      // data access or management capabilities; the trusted app checks grants.
       if(request.method==='GET'&&url.pathname==='/v1/identity')return json(principal,200,origin);
       if(request.method==='POST'&&url.pathname==='/v1/delegation')
         return await exchangeLocDelegation(request,env,principal,origin);
@@ -1137,8 +1102,8 @@ export default {
         if(raw.length>1000)throw fail('Request too large',413);
         let input;try{input=JSON.parse(raw)}catch{throw fail('Invalid JSON')}
         if(!ID.test(String(input?.id||'')))throw fail('Invalid primary target');
-        // Preference is persisted here. The current LOC app still uses its
-        // existing deployed routing until a trusted SQL Gateway is connected.
+        // Preference is persisted here; the LOC application resolves
+        // the selected alias using its own native Kysely driver.
         const selected=await stub.selectPrimary(input.id);
         return json({...selected,runtime_connected:false},200,origin);
       }
