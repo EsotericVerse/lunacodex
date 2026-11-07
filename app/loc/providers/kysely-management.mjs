@@ -1,5 +1,6 @@
 import {canManageLoc,locManageRows} from './loc-authorization.mjs';
 import {schema as fixedSchema} from '../../../zenstack/schema.mjs';
+import {indexZModelAnchorHierarchy} from '../../../zenstack/anchor-hierarchy.mjs';
 import {validateLocRegistryDomain} from './loc-domain.mjs';
 import {sql} from 'npm:kysely@0.29.8';
 import {saveBlocksKysely} from './kysely-blocks.mjs';
@@ -389,7 +390,14 @@ async function sourceCatalogAction(trx,args,save=false){
       .where('type','in',['domain','from']).execute();
     const domains=rows.filter(row=>row.type==='domain'&&row.title===id);
     if(domains.length>1)reject('Duplicate source Domain');
-    const domain=domains[0]||null,linked=sourceUidList(domain);
+    // Use the already-defined ZModel Source hierarchy over the authorized
+    // Domain/From rows. Universe/Galaxy remain presentation parents until
+    // their physical Anchor nodes exist; do not fabricate local UIDs.
+    const sourceGraph=indexZModelAnchorHierarchy(rows,{family:'source'});
+    const domain=domains[0]||null;
+    if(domain&&sourceGraph.descendants(domain.uid).missing.length)
+      reject('Source Domain references missing From');
+    const linked=domain?sourceGraph.childrenOf(domain.uid):[];
     const byUid=new Map(rows.filter(row=>row.type==='from').map(row=>[row.uid,row]));
     const sources=linked.map(uid=>byUid.get(uid));
     if(sources.some(item=>!item))reject('Source Domain references missing From');
