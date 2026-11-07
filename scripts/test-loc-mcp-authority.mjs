@@ -215,14 +215,14 @@ test('Group Scope attachment and active grants are preserved through portable MC
     ['lo3rwang','lrunes','thirdscope']);
   await assert.rejects(authority.addGroupScope('loc','loc'),/own group/);
   const expiry=Date.now()+86400000;
-  await authority.putGrant({provider:'clerk',subject:'user_A',scope:'lrunes',
+  await authority.putGrant({provider:'loc',subject:'loc_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',scope:'lrunes',
     actions:['read'],expires_at:expiry});
-  await authority.putGrant({provider:'clerk',subject:'user_GroupAdmin',scope:'loc',
+  await authority.putGrant({provider:'loc',subject:'loc_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB',scope:'loc',
     actions:['read'],expires_at:expiry});
-  data.set('grant:clerk:user_Expired:lo3rwang',{provider:'clerk',
-    subject:'user_Expired',scope:'lo3rwang',actions:['read'],expires_at:Date.now()-1000});
+  data.set('grant:loc:loc_CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC:lo3rwang',{provider:'loc',
+    subject:'loc_CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC',scope:'lo3rwang',actions:['read'],expires_at:Date.now()-1000});
   const list=await authority.mcpGroupGrants('loc');
-  assert.deepEqual(list.grants.map(entry=>entry.subject).sort(),['user_A','user_GroupAdmin']);
+  assert.deepEqual(list.grants.map(entry=>entry.subject).sort(),['loc_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA','loc_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB']);
 });
 
 test('Portable MCP keeps one ZModel-backed Kysely executor without a provider Function fallback',()=>{

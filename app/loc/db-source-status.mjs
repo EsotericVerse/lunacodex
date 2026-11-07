@@ -1,5 +1,5 @@
 const DEFAULT_STATE=Object.freeze({
-  primaryLabel:'Supabase',
+  primaryLabel:'主要資料庫連線',
   backupLabel:'',
   activeSource:'primary',
   degraded:false,
@@ -58,9 +58,9 @@ function emit(){
   for(const listener of listeners)listener();
 }
 
-export function configureDbSourceLabels(primaryLabel='Supabase',backupLabel=''){
+export function configureDbSourceLabels(primaryLabel='主要資料庫連線',backupLabel=''){
   labels={
-    primaryLabel:String(primaryLabel||'Supabase'),
+    primaryLabel:String(primaryLabel||'主要資料庫連線'),
     backupLabel:String(backupLabel??'')
   };
   emit();

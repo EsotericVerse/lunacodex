@@ -3,15 +3,15 @@ import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
 
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
-test('standalone Clerk login keeps the existing scenic design',()=>{
+test('standalone LOC Auth login preserves the original scenic design',()=>{
   const page=read('public/login/index.html');
   const styles=read('public/login/appearance.css');
   for(const marker of ['class="auth-scene"','class="auth-surface"',
-    "colorPrimary:token('--loc-accent')",'localization:',
-    "clerk.mountSignIn(byId('login-root'))",
+    "AUTHORITY='https://auth.lo3rwang.cc'","使用 Google 繼續",
+    "使用 GitHub 繼續",
     'role="status" aria-live="polite"','location.assign(path)'])
     assert.ok(page.includes(marker),marker);
-  assert.match(styles,/#login-root\s+\.cl-cardBox/);
+  assert.match(styles,/\.loc-login-choice/);
   assert.match(styles,/@media\s*\(max-width:\s*760px\)/);
   assert.match(styles,/prefers-reduced-motion/);
   const script=page.split('<script type="module">')[1]?.split('</script>')[0];
@@ -19,7 +19,7 @@ test('standalone Clerk login keeps the existing scenic design',()=>{
   assert.doesNotThrow(()=>new Function(script));
 });
 
-test('desktop Settings sign-in and sign-out use the scenic Clerk gateway',()=>{
+test('desktop Settings sign-in and sign-out use the scenic LOC Auth gateway',()=>{
   const settings=read('app/loc/GlobalSettings.jsx');
   assert.ok(settings.includes("const LOC_LOGIN_GATEWAY='/login/index.html?return_to="));
   assert.ok(settings.includes('await account.signOut()'));
@@ -44,16 +44,15 @@ test('Management and Admin failures redirect to scenic login and verify return',
   assert.doesNotMatch(admin,/UI_COPY\.admin\.denied/);
 });
 
-test('original scenic white Theme 7 is stable for website and Chrome launcher',()=>{
+test('original scenic white Theme 7 stays intact beside native LOC Chrome launcher',()=>{
   const page=read('public/login/index.html');
   const styles=read('public/login/appearance.css');
-  const popup=read('extensions/loc-galaxy/popup.css');
-  const extension=read('extensions/loc-galaxy/popup.html');
+  const extension=read('extensions/loc-galaxy-link/options.html');
+  const manifest=JSON.parse(read('extensions/loc-galaxy-link/manifest.json'));
   assert.ok(page.includes('<html lang="zh-Hant" data-theme-id="theme-7" data-theme="light">'));
-  assert.doesNotMatch(page,/new Intl\.DateTimeFormat\('en-US',\{timeZone:'Asia\/Taipei'/);
   assert.ok(styles.includes(':root[data-theme-id="theme-7"]'));
-  assert.ok(popup.includes('color-scheme:light'));
-  assert.ok(popup.includes('--loc-bg:#ffffff'));
-  assert.ok(extension.includes('回到你的'));
-  assert.ok(extension.includes('開啟 LOC 登入畫面'));
+  assert.ok(styles.includes('--loc-bg:#ffffff'));
+  assert.ok(extension.includes('連接 LOC'));
+  assert.equal(manifest.name,'LOC galaxy-link｜LOC 彩虹橋');
+  assert.match(page,/new URL\('\/oauth\/login',AUTHORITY\)/);
 });

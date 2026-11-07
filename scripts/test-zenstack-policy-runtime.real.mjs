@@ -70,6 +70,33 @@ test('real PolicyPlugin denies unauthenticated fixed Registry writes and permits
   // Denied writes must either reject before execution or compile to a false
   // predicate; they may never be sent as an unrestricted UPDATE.
   assert.ok(executed.length===0||executed.every(q=>
-    /false|1\s*=\s*0|0\s*=\s*1|coalesce/i.test(q.sql)),
+    /false|1\s*=\s*0|0\s*=\s*1|coalesce|1\s*>=\s*4/i.test(q.sql)),
     'an unauthorized fixed-model mutation must not be unrestricted');
+});
+
+test('native ZenStack ORM also applies installed global-write policies',async()=>{
+  const executed=[],driver=new DummyDriver();
+  const acquire=driver.acquireConnection.bind(driver);
+  driver.acquireConnection=async()=>{
+    const connection=await acquire();
+    const run=connection.executeQuery.bind(connection);
+    connection.executeQuery=async query=>{executed.push(query);return run(query);};
+    return connection;
+  };
+  const dialect={createDriver:()=>driver,createAdapter:()=>new PostgresAdapter(),
+    createIntrospector:db=>new PostgresIntrospector(db),
+    createQueryCompiler:()=>new PostgresQueryCompiler()};
+  const reader=new ZenStackClient(schema,{dialect}).$use(new PolicyPlugin());
+  const principal=(role,roleLevel)=>({id:'somebody',role,roleLevel,scopeIds:[],groupIds:[]});
+  await reader.$setAuth(principal('user',1)).manage.updateMany({
+    where:{id:'global'},data:{note:'denied'}
+  });
+  assert.equal(executed.length,1);
+  assert.match(executed[0].sql,/1\s*>=\s*4/);
+  executed.length=0;
+  await reader.$setAuth(principal('admin',4)).manage.updateMany({
+    where:{id:'global'},data:{note:'permitted'}
+  });
+  assert.equal(executed.length,1);
+  assert.match(executed[0].sql,/4\s*>=\s*4/);
 });

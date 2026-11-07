@@ -69,7 +69,7 @@ export default function SearchManagement(){
       :[...ARTICLE_CONTROL_SECTIONS,SETTINGS_OPTION];
   const [activeSection,setSection]=useManagementSection(options,isLocAdmin?'media':'publish',
     isLocAdmin?OLD_LOC_SECTION_ALIASES:OLD_SCOPE_SECTION_ALIASES);
-  // Clerk authorization can arrive after the section query is first read.
+  // LOC Auth authorization can arrive after the section query is first read.
   // Restore a bookmarked Group Access tab once its permission is available.
   useEffect(()=>{
     if(groupAuthorized&&searchParams?.get('section')==='groupAccess'&&activeSection!=='groupAccess')

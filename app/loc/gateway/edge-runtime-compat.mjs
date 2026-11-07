@@ -1,5 +1,5 @@
 // The legacy cuid@3 fingerprint helper used by the ZenStack dependency graph
-// reads process.pid at module evaluation time. Supabase's Edge Node shim may
+// reads process.pid at module evaluation time. An embedded Node runtime shim may
 // expose "process" without a numeric pid, crashing the entire SQL Function
 // before OPTIONS/CORS, routing, authorization, or database code can execute.
 //

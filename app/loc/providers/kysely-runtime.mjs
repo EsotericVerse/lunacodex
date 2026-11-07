@@ -100,12 +100,18 @@ function databaseTable(req,dialect,namespace,modelName=''){
   return namespace===undefined?req.schema+'.'+req.table:
     portableRelation(req.table,dialect,namespace);
 }
-function publishedOnly(query,table,enabled){
+function publishedOnly(query,table,enabled,columns=['*']){
   if(!enabled)return query;
-  if(table.endsWith('_galaxy'))
-    return query.where(enabled==='list'?'list':'search','=',true)
+  if(table.endsWith('_galaxy')){
+    let published=query.where(enabled==='list'?'list':'search','=',true)
       .where(eb=>eb.or([eb('site','is',null),
         eb(eb.fn('lower',['site']),'not in',PRIVATE_SITES)]));
+    // A non-clickable search result may expose its title/metadata, but not
+    // its full article. A wildcard projection also contains article content.
+    if(columns.includes('*')||columns.includes('content'))
+      published=published.where('list','=',true);
+    return published;
+  }
   if(table.endsWith('_anchor'))
     return query.where('invisible','=',false)
       .where('type','in',PUBLIC_ANCHOR_TYPES);
@@ -116,19 +122,18 @@ export function buildKyselySelectQuery(trx,input,{dialect='postgres',namespace,p
   if(req.operation!=='select')throw new Error('Unsupported operation for SELECT builder');
   const table=databaseTable(req,dialect,namespace,modelName);
   let query=publishedOnly(applyOrFilters(applyFilters(
-    trx.selectFrom(table).select(req.columns),req.filters),req.orFilters),req.table,publicOnly);
+    trx.selectFrom(table).select(req.columns),req.filters),req.orFilters),req.table,publicOnly,req.columns);
   if(req.federatedNullsLast===true&&req.orders.length===1&&
      ['date','createtime'].includes(req.orders[0].column)){
     const sortColumn=req.orders[0].column;
-    // SQL-portable CASE expression: PostgreSQL, MySQL and SQL Server would
-    // otherwise paginate NULL dates in different positions.
+    // Keep NULL dates after real dates across PostgreSQL/MySQL/SQL Server.
     query=query.orderBy(sql`case when ${sql.ref(sortColumn)} is null then 1 else 0 end`,'asc');
   }
   for(const order of req.orders)query=query.orderBy(order.column,order.ascending===false?'desc':'asc');
   query=query.limit(req.limit).offset(req.offset);
   const countQuery=req.count?publishedOnly(applyOrFilters(applyFilters(
     trx.selectFrom(table).select(trx.fn.countAll().as('count')),req.filters),req.orFilters),
-      req.table,publicOnly):null;
+      req.table,publicOnly,req.columns):null;
   return {request:req,query:req.head?null:query,countQuery};
 }
 
@@ -183,7 +188,7 @@ function applyMutationReturning(query,req,dialect){
   return query.returning(req.columns);
 }
 
-export function buildKyselyMutationQuery(trx,input,{dialect='postgres',namespace}={}){
+export function buildKyselyMutationQuery(trx,input,{dialect='postgres',namespace,modelName=''}={}){
   const validated=validateQuery(input);
   const registryValues=validated.schema==='api'&&validated.table==='manage'
     ?Array.isArray(validated.values)
@@ -197,7 +202,7 @@ export function buildKyselyMutationQuery(trx,input,{dialect='postgres',namespace
       :{...registryValues,updated_at:new Date()}
     :registryValues;
   const req={...validated,values:serializePortableJsonFields(stamped,dialect)};
-  const fullTable=databaseTable(req,dialect,namespace);
+  const fullTable=databaseTable(req,dialect,namespace,modelName);
   if(!['insert','update','delete','upsert'].includes(req.operation))throw new Error('Unsupported mutation');
   let query;
   if(req.operation==='insert')query=trx.insertInto(fullTable).values(req.values);
@@ -266,7 +271,7 @@ async function executeMysqlReturningMutation(trx,req,query,namespace){
 /**
  * @param {any} trx
  * @param {any} input
- * @param {{dialect?:string, namespace?:string, publicOnly?:boolean|'list', modelName?:string}} [options]
+ * @param {{dialect?:string, namespace?:string, publicOnly?:boolean, modelName?:string}} [options]
  */
 export async function executeKyselyQuery(trx,input,{dialect='postgres',namespace,publicOnly=false,modelName=''}={}){
   const req=validateQuery(input);let data=null,count=null;
@@ -275,7 +280,7 @@ export async function executeKyselyQuery(trx,input,{dialect='postgres',namespace
     if(built.countQuery){const row=await built.countQuery.executeTakeFirstOrThrow();count=Number(row.count)}
     if(built.query)data=await built.query.execute();
   }else{
-    const built=buildKyselyMutationQuery(trx,input,{dialect,namespace});
+    const built=buildKyselyMutationQuery(trx,input,{dialect,namespace,modelName});
     if(dialect==='mysql'&&req.returning)data=await executeMysqlReturningMutation(trx,built.request,built.query,namespace);
     else {
       const result=await built.query.execute();
@@ -306,4 +311,4 @@ export async function executeKyselyQuery(trx,input,{dialect='postgres',namespace
 
 // SQL operations have no stored-procedure dispatch. All calls now use
 // Kysely query, Anchor, Analytics or vetted management action executors.
-export function isKyselyClientError(error){return error instanceof Error&&['Invalid','Unsupported','Unfiltered','Write','Update','Unexpected','RPC','Schema','Too many','Malformed','Filters','OR filters','Neon theme','MySQL returning','Missing'].some(prefix=>error.message.startsWith(prefix))}
+export function isKyselyClientError(error){return error instanceof Error&&['Invalid','Unsupported','Unfiltered','Write','Update','Unexpected','RPC','Schema','Too many','Malformed','Filters','OR filters','SQL theme','MySQL returning','Missing'].some(prefix=>error.message.startsWith(prefix))}

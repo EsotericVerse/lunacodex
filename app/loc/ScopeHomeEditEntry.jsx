@@ -72,7 +72,7 @@ export default function ScopeHomeEditEntry(){
       onClick={enter}><UiText id={busy?'uiExtra.editBlocks.checkingEditPermission':'uiExtra.editBlocks.enterEditMode'}/></button>
     {message?<div className="scope-status" role="status">
       <p>{message.error||<UiText id={message.key}/>}</p>
-      {message.showLogin?<p><a href="/local/settings/">前往設定首頁使用 Clerk Google 登入</a></p>:null}
+      {message.showLogin?<p><a href="/local/settings/">前往設定首頁使用 LOC Auth 登入</a></p>:null}
     </div>:null}
   </div>;
 }

@@ -76,7 +76,7 @@ export async function executePublicRead(table,buildQuery,{source='auto',authenti
   signal=cancel?AbortSignal.any([cancel,timeout]):timeout;
   if(cancel?.aborted)throw abortError();
   // Device data must never require a cloud routing decision or fall back to
-  // Supabase/Neon. The routed DB client sends these relations to local SQLite.
+  // the remote Gateway. The routed DB client sends these relations to local SQLite.
   if(/^silver\.local(?:_[a-z0-9_]+)?$/.test(String(table))){
     if(expectedDbId)throw new Error('Local SQLite is not a remote database dataset');
     const localClient=authenticated?dbAuthClient:dbPublicClient;
@@ -91,7 +91,7 @@ export async function executePublicRead(table,buildQuery,{source='auto',authenti
   // Hidden Galaxy rows require the signed-in SDK and server-enforced Scope RLS.
   // Never fall back to an anonymous or backup transport for authenticated reads.
   if(authenticated){
-    if(!routing.primaryControl)throw new Error('Authenticated hidden search requires Supabase as the primary database');
+    if(!routing.primaryControl)throw new Error('Authenticated hidden search requires an authorized primary SQL connection');
     try{
       const result=await withSignal(withExpectedDatabase(buildQuery(publicRelation(dbAuthClient,table)),expectedDbId),signal);
       if(cancel?.aborted)throw abortError();
@@ -100,7 +100,7 @@ export async function executePublicRead(table,buildQuery,{source='auto',authenti
       return {...result,__dataSource:'authenticated'};
     }catch(error){
       if(cancel?.aborted||isAbortError(error))throw abortError();
-      // Only on a recoverable failure (Supabase throttled/unreachable), and only
+      // Only on a recoverable primary SQL failure, and only
       // as an anonymous read: rows that need the signed-in RLS session are not
       // in the backup and simply will not be returned. Shown as backup source.
       // A qualified article identity may not fail over to another physical

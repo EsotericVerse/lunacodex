@@ -42,137 +42,73 @@
 </div>
 <script type="module">
 const byId=id=>document.getElementById(id);
-let clerk=null,controlUrl='',checkGeneration=0,verifiedForEditor=false;
+const AUTHORITY='https://auth.lo3rwang.cc';
 const LOGIN_RETURN_KEY='loc-management-login-return-v1';
-function isProtectedReturn(path){
-  return /\/(?:manage|admin)(?:\/|$)/.test(new URL(path,location.origin).pathname);
-}
+let verifiedForEditor=false;
 function validReturnPath(){
-  const value=new URLSearchParams(location.search).get('return_to')||'/local/settings/';
-  if(!value.startsWith('/')||value.startsWith('//')||value.includes('\\')||value.includes('\\r')||value.includes('\\n'))return '/local/settings/';
-  try{
-    const parsed=new URL(value,location.origin);
-    return parsed.origin===location.origin?parsed.pathname+parsed.search+parsed.hash:'/local/settings/';
-  }catch{return '/local/settings/';}
+ const value=new URLSearchParams(location.search).get('return_to')||'/local/settings/';
+ if(!value.startsWith('/')||value.startsWith('//')||value.includes('\\'))
+  return '/local/settings/';
+ const parsed=new URL(value,location.origin);
+ return parsed.origin===location.origin?parsed.pathname+parsed.search+parsed.hash:'/local/settings/';
 }
-async function script(url,attributes={}){
-  await new Promise((resolve,reject)=>{
-    const tag=document.createElement('script');
-    tag.src=url;tag.async=true;tag.crossOrigin='anonymous';
-    for(const [name,value] of Object.entries(attributes))tag.setAttribute(name,value);
-    tag.onload=resolve;tag.onerror=()=>reject(new Error('無法載入 Clerk 登入元件'));
-    document.head.appendChild(tag);
+function isProtectedReturn(path){
+ return /\/(?:manage|admin)(?:\/|$)/.test(new URL(path,location.origin).pathname);
+}
+function signIn(provider){
+ const url=new URL('/oauth/login',AUTHORITY);
+ url.searchParams.set('provider',provider);
+ url.searchParams.set('return_to',validReturnPath());
+ location.assign(url.href);
+}
+const panel=byId('login-root');
+for(const [provider,text] of [['oidc','使用 Google 繼續'],['github','使用 GitHub 繼續']]){
+ const button=document.createElement('button');
+ button.type='button';button.className='loc-login-choice';
+ button.textContent=text;
+ button.addEventListener('click',()=>signIn(provider));
+ panel.appendChild(button);
+}
+byId('return').addEventListener('click',()=>{
+ if(!verifiedForEditor)return;
+ const path=validReturnPath();
+ if(isProtectedReturn(path)){
+  try{sessionStorage.setItem(LOGIN_RETURN_KEY,path);}catch{}
+ }
+ location.assign(path);
+});
+byId('signout').addEventListener('click',async()=>{
+ try{
+  const response=await fetch(AUTHORITY+'/oauth/logout',{
+   method:'POST',credentials:'include',cache:'no-store'
   });
-}
-async function verify(){
-  const generation=++checkGeneration;
-  if(!clerk?.isSignedIn||!clerk.session)return;
-  byId('status').textContent='Clerk 已登入，正在核驗 LOC 身分…';
-  try{
-    if(!controlUrl)throw new Error('獨立認證服務尚未設定');
-    const token=await clerk.session.getToken();
-    if(!token)throw new Error('無法取得 Clerk Session');
-    const response=await fetch(controlUrl+'/v1/identity',{
-      method:'GET',cache:'no-store',credentials:'omit',
-      headers:{authorization:'Bearer '+token,accept:'application/json'}
-    });
-    if(!response.ok){
-      let reason='';
-      try{
-        const payload=await response.json();
-        if(typeof payload?.error==='string')reason=payload.error.slice(0,160);
-      }catch{}
-      throw new Error('LOC 身分核驗失敗（HTTP '+response.status+(reason?'：'+reason:'')+'）');
-    }
-    const identity=await response.json();
-    if(identity?.provider!=='clerk'||identity.subject!==clerk.user?.id)
-      throw new Error('LOC 回傳身分不一致');
-    if(generation!==checkGeneration||!clerk.isSignedIn)return;
-    verifiedForEditor=Boolean(identity.email);
-    byId('return').disabled=!verifiedForEditor;
-    byId('status').textContent=verifiedForEditor
-      ?(isProtectedReturn(validReturnPath())
-        ?'Clerk 身分已核驗。返回後將確認編輯權限。'
-        :'Clerk 身分已核驗。進入 LOC 後將再檢查管理權限。')
-      :'Clerk Session 尚未提供已驗證的 Email 宣告，無法進入編輯。';
-  }catch(error){
-    if(generation===checkGeneration&&clerk?.isSignedIn)
-      byId('status').textContent=String(error.message||error);
-  }
-}
-function update(){
-  const signedIn=Boolean(clerk?.isSignedIn&&clerk?.session);
-  if(!signedIn){verifiedForEditor=false;byId('return').disabled=true;}
-  byId('signed-in').hidden=!signedIn;
-  byId('login-root').hidden=signedIn;
-  byId('user').textContent=signedIn?clerk.user?.primaryEmailAddress?.emailAddress||'Clerk Session 已建立':'';
-  byId('status').textContent=signedIn?'Clerk Session 已建立；尚未通過 LOC Authority 核驗。':'請使用 Google 等已啟用的方式登入 LOC。';
-  if(signedIn)void verify();
-}
-byId('return').onclick=()=>{
-  if(!verifiedForEditor)return;
-  const path=validReturnPath();
-  if(isProtectedReturn(path)){
-    try{sessionStorage.setItem(LOGIN_RETURN_KEY,path);}catch{}
-  }
-  // The real edit permission is verified on the protected destination.
-  location.assign(path);
-};
-byId('signout').onclick=async()=>{
-  await clerk?.signOut();
+  if(!response.ok)throw new Error('LOC Auth 登出失敗');
   location.reload();
-};
-async function start(){
-  const response=await fetch('/recovery/config.json',{cache:'no-store'});
-  if(!response.ok)throw new Error('無法讀取 LOC 登入設定');
-  const config=await response.json();
-  if(!config.publishableKey||!config.frontendApiUrl)throw new Error('LOC Clerk 尚未設定');
-  if(config.controlUrl){
-    const target=new URL(config.controlUrl);
-    if(target.protocol!=='https:'||target.username||target.password||target.search||target.hash||
-      target.pathname!=='/')throw new Error('LOC Authority 連線設定無效');
-    controlUrl=target.origin;
-  }
-  const domain=new URL(config.frontendApiUrl);
-  if(domain.protocol!=='https:'||domain.pathname!=='/'||domain.search||domain.hash)
-    throw new Error('登入服務網域無效');
-  await script(domain.origin+'/npm/@clerk/ui@1/dist/ui.browser.js');
-  await script(domain.origin+'/npm/@clerk/clerk-js@6/dist/clerk.browser.js',
-    {'data-clerk-publishable-key':config.publishableKey});
-  clerk=window.Clerk;
-  if(!clerk)throw new Error('Clerk 未能初始化');
-  const theme=getComputedStyle(document.documentElement);
-  const token=name=>theme.getPropertyValue(name).trim();
-  const isDark=document.documentElement.dataset.theme==='dark';
-  await clerk.load({
-    ui:{ClerkUI:window.__internal_ClerkUICtor},
-    appearance:{variables:{
-      colorPrimary:token('--loc-accent'),
-      colorPrimaryForeground:token(isDark?'--loc-bg':'--loc-panel'),
-      colorForeground:token('--loc-text'),
-      colorMutedForeground:token('--loc-muted'),
-      colorBackground:token('--loc-panel'),
-      colorBorder:token('--loc-line'),
-      colorInput:token('--loc-panel-2'),
-      colorInputForeground:token('--loc-text'),
-      colorRing:token('--loc-accent'),
-      borderRadius:'14px',
-      fontFamily:token('--loc-font-family')
-    }},
-    localization:{
-      signIn:{start:{title:'登入 LOC',subtitle:'選擇帳戶，繼續你的工作',actionText:'還沒有帳號？',actionLink:'註冊'}},
-      socialButtonsBlockButton:'使用 {{provider|titleize}} 繼續',
-      dividerText:'或',
-      formFieldLabel__emailAddress:'電子郵件',
-      formFieldInputPlaceholder__emailAddress:'輸入電子郵件',
-      formButtonPrimary:'繼續'
-    }
-  });
-  clerk.addListener(update);
-  if(!clerk.isSignedIn)clerk.mountSignIn(byId('login-root'));
-  update();
+ }catch(error){byId('status').textContent=String(error.message||error);}
+});
+async function initialize(){
+ const response=await fetch(AUTHORITY+'/v1/auth/session',{
+  method:'GET',credentials:'include',cache:'no-store',
+  headers:{accept:'application/json'}
+ });
+ if(!response.ok)throw new Error('LOC Auth 暫時無法確認登入狀態（HTTP '+response.status+'）');
+ const data=await response.json();
+ const user=data?.user;
+ const signedIn=Boolean(data?.provider==='loc'&&/^loc_[A-Za-z0-9_-]{32,80}$/.test(
+  String(user?.id||''))&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(user?.email||''))&&
+  typeof data?.session?.access_token==='string');
+ verifiedForEditor=signedIn;
+ panel.hidden=signedIn;
+ byId('signed-in').hidden=!signedIn;
+ byId('return').disabled=!signedIn;
+ byId('user').textContent=signedIn?user.email:'';
+ byId('status').textContent=signedIn
+  ?(isProtectedReturn(validReturnPath())
+   ?'LOC Auth 身分已核驗，返回後將確認編輯權限。'
+   :'LOC Auth 身分已核驗，管理與寫入權限由 LOC 獨立確認。')
+  :'請選擇 Google 或 GitHub，以 LOC Auth 登入。公開閱讀不需要登入。';
 }
-start().catch(error=>{byId('status').textContent=String(error.message||error)});
+initialize().catch(error=>{byId('status').textContent=String(error.message||error);});
 </script>
 </body>
 </html>

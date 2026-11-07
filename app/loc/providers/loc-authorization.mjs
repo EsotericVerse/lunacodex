@@ -1,4 +1,5 @@
 import {canManageDelegation} from '../auth/delegation-contract.mjs';
+import {locRolePrincipal} from '../../../zenstack/role-hierarchy.mjs';
 // One verified LOC authorization decision per SQL request, regardless of dialect.
 // Only the trusted gateway may bind claims. No database RPC and no DB Auth login.
 const sessions=new WeakMap();
@@ -43,7 +44,7 @@ const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 function deny(message='LOC management permission denied'){
   throw Object.assign(new Error(message),{httpStatus:403});
 }
-export function bindLocAuthorization(db,{role='anon',claims={},snapshot=null}={}){
+export function bindLocAuthorization(db,{role='anon',claims={},snapshot=null,loadScopeTree=null}={}){
   if(!db||typeof db.selectFrom!=='function')throw new Error('Invalid Kysely transaction');
   if(role==='authenticated'&&(
     claims?.provider!=='loc'||claims?.me!==true||!USER.test(String(claims?.sub||''))||
@@ -51,8 +52,21 @@ export function bindLocAuthorization(db,{role='anon',claims={},snapshot=null}={}
     deny('Verified LOC delegation required');
   // External Scope DBs hold only their own tables. The trusted Gateway
   // may reuse a verified permission snapshot from the LOC control DB.
+  if(loadScopeTree!==null&&typeof loadScopeTree!=='function')
+    throw new TypeError('Trusted LOC Scope tree loader is required');
   sessions.set(db,{role,claims,email:String(claims?.email||'').trim().toLowerCase(),
-    pending:snapshot?Promise.resolve(snapshot):null});
+    pending:snapshot?Promise.resolve(snapshot):null,loadScopeTree,scopeTreePromise:null});
+}
+// Hierarchy comes exclusively from the server-side control registry, never
+// from a browser-supplied role or Group tree. Once per gateway transaction.
+async function inheritedPrincipal(state){
+  if(!state?.loadScopeTree||!Array.isArray(state.claims?.grants)||
+     state.claims.grants.includes('global:manage')||
+     !state.claims.grants.some(grant=>/^[a-z][a-z0-9]{0,14}:manage$/.test(grant)))
+    return null;
+  state.scopeTreePromise??=Promise.resolve().then(()=>state.loadScopeTree())
+    .then(scopeTree=>locRolePrincipal(state.claims,{scopeTree}));
+  return state.scopeTreePromise;
 }
 export async function locPermissions(db){
   const state=sessions.get(db);
@@ -73,8 +87,39 @@ export async function locPermissions(db){
       .where('l.id','=','loc')
       .where(db.fn('lower',['m.email']),'=',state.email)
       .where('m.manage_role','in',['admin','group','scope']).execute();
-    if(!joined.length)return {blocked:false,rows:[]};
-    let blacklist=joined[0].blacklist;
+    // An explicit LOC-signed ancestor Group grant also authorizes its active
+    // child scopes. Include their display metadata for the editor's role
+    // preflight; the actual SQL write repeats the server-side permission gate.
+    const hierarchy=await inheritedPrincipal(state);
+    // Explicit signed Scope grants are authoritative even when the original
+    // api.manage owner email belongs to someone else (a delegated editor).
+    const exactIds=(state.claims.grants||[]).flatMap(value=>{
+      const match=/^([a-z][a-z0-9]{0,14}):manage$/.exec(String(value));
+      return match&&match[1]!=='global'?[match[1]]:[];
+    });
+    const alreadyJoined=new Set(joined.map(row=>row.id));
+    const ids=[...new Set([...exactIds,...(hierarchy?.groupIds||[]),
+      ...(hierarchy?.scopeIds||[])])].filter(id=>!alreadyJoined.has(id));
+    let inherited=[];
+    if(ids.length){
+        const rows=await db.selectFrom('api.manage as m')
+          .leftJoin('silver.loc as s','s.id','m.id')
+          .select(['m.id','m.manage_role','m.active','m.galaxy_table',
+            'm.anchor_table','s.birthday as birthday'])
+          .where('m.id','in',ids).where('m.active','=',true)
+          .where('m.manage_role','in',['group','scope']).execute();
+        inherited=rows.filter(row=>exactIds.includes(row.id)||
+          (row.manage_role==='group'?hierarchy?.groupIds.includes(row.id):
+            hierarchy?.scopeIds.includes(row.id)))
+          .map(row=>({...row,email:state.email}));
+    }
+    if(!joined.length&&!inherited.length)return {blocked:false,rows:[]};
+    // A delegated Group member need not own an api.manage email row.
+    // Never skip the same live blacklist check for that case.
+    const blacklistRow=!joined.length
+      ?await db.selectFrom('silver.loc as l').select('blacklist')
+        .where('l.id','=','loc').executeTakeFirst():null;
+    let blacklist=joined.length?joined[0].blacklist:blacklistRow?.blacklist;
     if(typeof blacklist==='string'){
       try{blacklist=JSON.parse(blacklist)}catch{deny('Invalid LOC blacklist')}
     }
@@ -84,7 +129,9 @@ export async function locPermissions(db){
     if((blacklist.email||[]).some(item=>
       String(item?.email||'').trim().toLowerCase()===state.email))
       return {blocked:true,rows:[]};
-    return {blocked:false,rows:joined.map(({blacklist:ignored,...row})=>row)};
+    const authorized=new Map(inherited.map(row=>[row.id,row]));
+    for(const {blacklist:ignored,...row} of joined)authorized.set(row.id,row);
+    return {blocked:false,rows:[...authorized.values()]};
     })();
     rememberSnapshot(key,state,state.pending);
   }
@@ -92,8 +139,13 @@ export async function locPermissions(db){
 }
 export async function canManageLoc(db,type,id=''){
   const state=sessions.get(db);
-  return Boolean(state?.role==='authenticated'&&
-    canManageDelegation(state.claims,String(type||'').toLowerCase(),id));
+  if(state?.role!=='authenticated')return false;
+  const kind=String(type||'').toLowerCase(),scope=String(id||'').toLowerCase();
+  if(canManageDelegation(state.claims,kind,scope))return true;
+  if(!['scope','group'].includes(kind)||!SCOPE.test(scope))return false;
+  const principal=await inheritedPrincipal(state);
+  return Boolean(principal&&(kind==='group'
+    ?principal.groupIds.includes(scope):principal.scopeIds.includes(scope)));
 }
 
 export async function locManageRows(db,type,id=null){

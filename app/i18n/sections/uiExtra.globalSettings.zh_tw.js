@@ -49,7 +49,7 @@ export default {
   "mcpTab": "資料來源",
   "mcpSelfServiceTitle": "我的資料來源與群組授權",
   "mcpSelfServiceIntro": "登入後，可以查看自己的資料來源及所屬群組。群組管理者可授予存取權限；系統只會連接已存在的資料表。",
-  "mcpClerkId": "我的授權識別碼（提供給群組管理者）",
+  "mcpLocId": "我的授權識別碼（提供給群組管理者）",
   "mcpSignInNeeded": "請先登入，才能管理資料來源。",
   "mcpInvalidScope": "請輸入有效的資料來源或群組代碼。",
   "mcpScopeId": "我的資料來源代碼",

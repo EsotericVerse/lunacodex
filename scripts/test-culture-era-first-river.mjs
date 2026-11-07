@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
+import {indexZModelAnchorHierarchy} from '../zenstack/anchor-hierarchy.mjs';
 
 const source=readFileSync(new URL('../app/loc/views/CulturePublicReader.jsx',import.meta.url),'utf8');
 const start=source.indexOf('function anchorModel(');
@@ -13,7 +14,7 @@ const anchorModel=vm.runInNewContext(`(() => {
   const attributes=row=>row?.attr||{};
   ${source.slice(start,end)}
   return anchorModel;
-})()`);
+})()`,{indexZModelAnchorHierarchy});
 
 const rows=[
   {uid:'e1',type:'era',title:'近代',attr:{periods:['p1','p2']}},
@@ -51,4 +52,20 @@ test('default culture homepage window is one calendar year in Taipei',()=>{
   assert.match(source,/const start=useMemo\(\(\)=>previousYear\(today\),\[today\]\)/);
   assert.match(source,/d\.setUTCFullYear\(d\.getUTCFullYear\(\)-1\)/);
   assert.match(source,/windowStart=\{start\} windowEnd=\{today\}/);
+});
+
+test('canonical eight-character Era uses existing ZModel Time relationships',()=>{
+  const era='ERA00001',period='PER00001',date='DAY00001';
+  const model=anchorModel([
+    {uid:era,type:'era',title:'新時代',attr:{period:[period]}},
+    {uid:period,type:'period',title:'新階段',attr:{uid:[date]}},
+    {uid:date,type:'date',title:'定錨',attr:{date:'2026-01-10'}}
+  ],'2026-01-01','2026-01-31',[era]);
+  assert.deepEqual(Array.from(model.groups,row=>row.id),[
+    'era:'+era,'period:'+era+':'+period
+  ]);
+  assert.deepEqual(Array.from(model.items.filter(row=>row.entry_type==='anchor'),
+    row=>row.uid),[date]);
+  assert.match(source,/indexZModelAnchorHierarchy\(all,\{family:'time'\}\)/);
+  assert.match(source,/timeGraph\.childrenOf\(uid\)/);
 });

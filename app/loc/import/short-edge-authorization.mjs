@@ -1,5 +1,5 @@
 // Short-import authorization boundary shared with the LOC-delegated SQL Gateway.
-// verifyLocDelegation has already validated issuer, HS256 signature, audience,
+// verifyLocDelegation has already validated issuer, RS256 signature, audience,
 // expiration, revocation and the signed grant list before calling this helper.
 // The signed Scope write grant, not a frozen two-Scope list, authorizes imports.
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;

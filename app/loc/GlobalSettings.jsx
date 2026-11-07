@@ -16,7 +16,8 @@ import ManagementSectionNav,{useManagementSection} from '../modular/ManagementSe
 import PanelLoading from './PanelLoading';
 // The home/account Settings screens never download import or management editors.
 const PrivateLocalFiles=dynamic(()=>import('./PrivateLocalFiles'),{loading:PanelLoading});
-const ClerkScopeConnections=dynamic(()=>import('./ClerkScopeConnections'),{loading:PanelLoading});
+const LocScopeConnections=dynamic(()=>import('./LocScopeConnections'),{loading:PanelLoading});
+const LocDatabaseSwitcher=dynamic(()=>import('./LocDatabaseSwitcher'),{loading:PanelLoading});
 const LocalDatabaseImport=dynamic(()=>import('./LocalDatabaseImport'),{loading:PanelLoading});
 // 每日符文紀錄：沿用既有的獨立頁面元件（/daily/log/），同一份邏輯透過它自己
 // 既有的 embedded 模式嵌入這裡，不複製任何讀寫邏輯。
@@ -29,7 +30,7 @@ import {getScope} from '../modular/scope-registry';
 const {account:accountNavigation,device:deviceNavigation}=NavigationPreferences;
 
 const option=(value,label,description,shortLabel)=>({value,label,description,shortLabel});
-// Always show LOC's full-screen Clerk gateway, not a provider-specific login UI.
+// Always show LOC's existing full-screen login composition, backed by native LOC Auth.
 const LOC_LOGIN_GATEWAY='/login/index.html?return_to=%2Flocal%2Fsettings%2F';
 export default function GlobalSettings({initialSection='home'}={}){
   useUiSection('uiExtra.globalSettings');
@@ -51,7 +52,7 @@ export default function GlobalSettings({initialSection='home'}={}){
 
   const [busy,setBusy]=useState(false);
   const [status,setStatus]=useState('');
-  // Clerk exclusively handles login; management permissions are still checked by SQL.
+  // LOC Auth exclusively handles identity; signed Scope permissions are checked by the SQL Gateway.
   const verifiedGoogleAccount=useAccount({enabled:section==='home',sessionOnly:true});
   const account=section==='home'?verifiedGoogleAccount:prefs.account;
 
@@ -151,8 +152,8 @@ export default function GlobalSettings({initialSection='home'}={}){
       {activeSection==='home'?<div className="loc-settings-panel-group">
         <section className="loc-card">
           <h2><UiText id="uiExtra.globalSettings.account"/></h2>
-          {accountWaiting?<p role="status">正在核驗 Clerk 登入身分…</p>:account.user?<p>Clerk Google（已驗證）：{account.email}</p>:null}
-          {!accountWaiting&&!account.user?<button type="button" className="loc-button primary" disabled={busy} onClick={login}>使用 Clerk Google 登入</button>:null}
+          {accountWaiting?<p role="status">正在核驗 LOC Auth 登入身分…</p>:account.user?<p>LOC Auth（已驗證）：{account.email}</p>:null}
+          {!accountWaiting&&!account.user?<button type="button" className="loc-button primary" disabled={busy} onClick={login}>使用 LOC Auth 登入</button>:null}
           {account.user||prefs.account.user?<button type="button" className="loc-button" disabled={busy} onClick={logout}><UiText id="uiExtra.globalSettings.logout"/></button>:null}
           {account.error?<div className="scope-status scope-error" role="alert">
             <p>{account.error}</p>
@@ -162,6 +163,7 @@ export default function GlobalSettings({initialSection='home'}={}){
             </button>
           </div>:null}
         </section>
+        {!native&&account.user?<LocDatabaseSwitcher/>:null}
         <section className="loc-card">
         <h2><UiText id="uiExtra.globalSettings.homeSettings"/></h2>
         <form onSubmit={saveHome} className="scope-stat-controls">
@@ -183,7 +185,7 @@ export default function GlobalSettings({initialSection='home'}={}){
       </div>:null}
 
       {activeSection==='features'?<FeatureSettingsPage embedded/>:null}
-      {activeSection==='mcp'?<ClerkScopeConnections availableScopes={choices}/>:null}
+      {activeSection==='mcp'?<LocScopeConnections availableScopes={choices}/>:null}
 
       {/* iOS-only document import; cloud Scope imports remain in Scope management. */}
       {native&&Capacitor.getPlatform()==='ios'&&activeSection==='files'?<LocalDatabaseImport/>:null}

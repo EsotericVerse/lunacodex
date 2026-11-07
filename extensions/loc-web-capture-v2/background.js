@@ -1,4 +1,4 @@
-// Independent Chrome MV3 capture pipeline; no Clerk, MCP or extension OAuth session.
+// Independent Chrome MV3 capture pipeline; no website login tokens or extension OAuth session.
 // Internal storage key remains independent of MCP and product-facing name.
 const DB_NAME='loc-web-capture-v2';
 const STORE='events', ACK_STORE='acknowledged';

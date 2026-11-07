@@ -4,6 +4,7 @@ import {useEffect,useMemo,useRef,useState} from 'react';
 import dynamic from 'next/dynamic';
 import Select from 'react-select';
 import {planTraceVisibilityUids} from './trace-visibility-plan.mjs';
+import {indexZModelAnchorHierarchy} from '../../zenstack/anchor-hierarchy.mjs';
 import {useSearchParams} from 'next/navigation';
 import {useAccount} from './use-account';
 import {SCOPE_ROUTE_INDEX} from '../modular/scope-route-index.js';
@@ -67,12 +68,33 @@ export default function TraceRouteManager({scopeId,mode='all'}){
     revalidateIfStale:false,revalidateOnFocus:false,revalidateOnReconnect:false
   });
   const records=(index.data||[]).filter(row=>row.source_scope===owner);
+  // Resolve Trace -> Path edges with the existing Space ZModel over the
+  // already-loaded owner Scope. Four-character legacy IDs stay compatible.
+  const spaceGraph=useMemo(()=>{
+    const mapped=(index.data||[]).filter(row=>row.source_scope===owner);
+    if(!mapped.length||mapped.some(row=>!/^[A-Za-z0-9]{8}$/.test(row.uid)))return null;
+    try{
+      return indexZModelAnchorHierarchy(mapped.map(row=>({
+        uid:row.uid,type:row.trace_type,title:row.title,
+        attr:{
+          point:[...new Set(traceMemberUids(row))],
+          path:row.trace_type==='trace'?[...new Set(row.route_list?.routes||[])]:[]
+        }
+      })),{family:'space'});
+    }catch{return null;}
+  },[index.data,owner]);
+  const recordByUid=useMemo(()=>new Map(
+    (index.data||[]).filter(row=>row.source_scope===owner).map(row=>[row.uid,row])
+  ),[index.data,owner]);
   const typedRecords=records.filter(row=>mode==='all'||row.trace_type===mode);
   const visibleRecords=typedRecords.filter(row=>row.title.toLocaleLowerCase().includes(filter.trim().toLocaleLowerCase()));
   const current=typedRecords.find(row=>row.uid===selectedUid)
     ||chooseDefaultTraceRoute(typedRecords,owner,readDefaultTraceRoute(owner));
   const currentRouteMembers=current?.trace_type==='trace'
-    ?records.filter(row=>row.trace_type==='path'&&(current.route_list?.routes||[]).includes(row.uid))
+    ?spaceGraph
+      ?spaceGraph.childrenOf(current.uid).map(uid=>recordByUid.get(uid))
+        .filter(row=>row?.trace_type==='path')
+      :records.filter(row=>row.trace_type==='path'&&(current.route_list?.routes||[]).includes(row.uid))
     :[];
   const currentMemberUids=current
     ?[...new Set([...traceMemberUids(current),...currentRouteMembers.flatMap(traceMemberUids)])]

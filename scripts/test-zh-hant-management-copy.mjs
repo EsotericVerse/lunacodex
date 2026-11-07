@@ -15,7 +15,7 @@ const dictionary=name=>{
 
 test('Chinese Group grant copy has meaningful labels for the whole authorization flow',()=>{
   const copy=dictionary('uiExtra.scopeSettings');
-  for(const key of ['groupTitle','groupIntro','groupMemberScope','groupClerkSubject',
+  for(const key of ['groupTitle','groupIntro','groupMemberScope','groupLocSubject',
     'groupExpires','groupPermissions','groupGrant','groupCurrentGrants',
     'groupNoGrants','groupLinkTitle','groupLinkIntro','groupLink','groupRevoke',
     'databaseTitle','databaseDesc','databaseEndpoint','databaseSchema',
@@ -24,7 +24,7 @@ test('Chinese Group grant copy has meaningful labels for the whole authorization
     assert.ok(copy[key].length>1,key);
     assert.doesNotMatch(copy[key],/uiExtra\.|Scope data|Registry|payload/iu,key);
   }
-  assert.match(copy.groupClerkSubject,/使用者識別碼/u);
+  assert.match(copy.groupLocSubject,/使用者識別碼/u);
 });
 
 test('Chinese sections do not display internal transport or raw data terminology',()=>{

@@ -46,41 +46,27 @@ function parseContentRange(value){const match=String(value||'').match(/\/(\d+)$/
 
 // A Kysely transport may be deployed on an independent trusted SQL Gateway.
 // Browser callers supply an OAuth JWT, never raw PostgreSQL credentials.
-export function createKyselyEdgeClient({url,publishableKey,auth,role='authenticated',
+export function createKyselyEdgeClient({auth=null,role='authenticated',
   target='configured',gatewayUrl='',getAccessToken=null,fetch:fetchImpl=globalThis.fetch}={}){
   if(typeof fetchImpl!=='function')throw new Error('Kysely transport requires fetch');
   const external=String(gatewayUrl||'').trim();
-  if(!external&&(!url||!publishableKey))
-    throw new Error('LOC SQL Gateway requires an HTTPS endpoint or a configured legacy SQL endpoint');
-  if(external){
-    const parsed=new URL(external);
-    if(parsed.protocol!=='https:'||parsed.username||parsed.password||parsed.search||parsed.hash)
-      throw new Error('SQL Gateway endpoint must be an HTTPS URL without credentials or parameters');
-  }
-  const endpoint=external?external.replace(/\/+$/,''):
-    String(url).replace(/\/+$/,'')+'/functions/v1/loc-kysely';
+  if(!external)throw new Error('LOC SQL Gateway is not configured');
+  const parsed=new URL(external);
+  if(parsed.protocol!=='https:'||parsed.username||parsed.password||parsed.search||parsed.hash)
+    throw new Error('SQL Gateway endpoint must be an HTTPS URL without credentials or parameters');
+  const endpoint=external.replace(/\/+$/,'');
   async function performRequest(body,signal=null){
-    // A queued query can be cancelled before it ever reaches the Edge Function.
+    // A queued query can be cancelled before an HTTP request starts.
     if(signal?.aborted)throw abortedRequest();
     let token='';
     if(typeof getAccessToken==='function'){
       token=String(await getAccessToken(body)||'');
       if(role==='authenticated'&&!token)
         throw new Error('Authenticated SQL Gateway request requires an active session');
-    }else if(auth){
-      const result=await auth.getSession();
-      token=result?.data?.session?.access_token||'';
-      if(result?.error)throw result.error;
-      if(!token)throw new Error('Authenticated database request requires an active session');
     }
     if(role==='authenticated'&&!token)
       throw new Error('Authenticated database request requires a verified session');
     const headers={'content-type':'application/json'};
-    // A same-project Edge endpoint (e.g. the isolated Clerk SQL function)
-    // still requires Supabase's public API key. A genuinely independent
-    // Gateway does not receive this provider-specific header.
-    if(publishableKey&&(!external||(url&&new URL(external).origin===new URL(url).origin)))
-      headers.apikey=publishableKey;
     if(token)headers.authorization='Bearer '+token;
     const request={method:'POST',headers,credentials:'omit',
       // Short-import contract accepts exactly {kind,scopeid,batch}.

@@ -20,7 +20,7 @@ export default {
   "groupLoadFailed": "无法读取群组权限，或当前账号没有管理权限。",
   "groupSaveFailed": "保存群组权限失败。",
   "groupMemberScope": "所属 Scope／Group",
-  "groupClerkSubject": "Clerk 用户 ID",
+  "groupLocSubject": "LOC Auth 用户 ID",
   "groupExpires": "授权有效天数（1–365）",
   "groupPermissions": "权限",
   "groupActionRead": "读取",

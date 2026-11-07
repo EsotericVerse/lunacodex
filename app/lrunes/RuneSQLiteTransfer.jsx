@@ -93,7 +93,7 @@ export default function RuneSQLiteTransfer({canManage=false,onImported}={}){
   if(!canManage)return null;
   return <section className="loc-card scope-rune-sqlite-transfer" aria-label="每日符文 SQLite 匯出與匯入">
     <h3>每日符文 · SQLite 本機備份</h3>
-    <p className="scope-settings-note">僅具月之符文 Scope 權限的登入者可操作。匯出包含目前可讀的每日符文與此裝置保存的抽牌紀錄；匯入只合併進此裝置的專用 SQLite，不修改 Supabase 或 Neon。請勿將備份視為多人共用紀錄同步。</p>
+    <p className="scope-settings-note">僅具月之符文 Scope 權限的登入者可操作。匯出包含目前可讀的每日符文與此裝置保存的抽牌紀錄；匯入只合併進此裝置的專用 SQLite，不修改遠端 SQL 資料庫。請勿將備份視為多人共用紀錄同步。</p>
     <div className="scope-stat-controls">
       <button type="button" className="loc-button" onClick={exportAll} disabled={Boolean(busy)}>匯出所有紀錄</button>
       <button type="button" className="loc-button" onClick={()=>inputRef.current?.click()} disabled={Boolean(busy)}>匯入已有紀錄</button>

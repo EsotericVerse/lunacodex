@@ -13,9 +13,9 @@ compatibility re-export of `app/loc/providers/kysely-database-drivers.ts`.
 | Environment | Purpose |
 | --- | --- |
 | `LOC_DB_CONNECTIONS_JSON` | Server-only aliases and credentials for the selected engine |
-| `LOC_MCP_DB_ALIAS` | Alias in that JSON, e.g. `mcp_main` |
-| `LOC_MCP_DB_ENGINE` | `postgres`, `mysql`, or `mssql` |
-| `LOC_MCP_DB_NAMESPACE` | `silver` (current Postgres), `public`, or `dbo`, as appropriate |
+| `LOC_CONTROL_DB_ALIAS` / `LOC_CONTROL_DB_ENGINE` | Existing control alias and engine, reused when no dedicated MCP alias is set |
+| `LOC_MCP_DB_ALIAS` / `LOC_MCP_DB_ENGINE` | Optional MCP-only override; must name a configured matching connection |
+| `LOC_MCP_DB_NAMESPACE` | Optional namespace (`silver` for Postgres, `dbo` for SQL Server) |
 | `LOC_AUTHORITY_ORIGIN` | HTTPS LOC Authority with `/.well-known/jwks.json` |
 | `LOC_DELEGATION_NOT_BEFORE`, `LOC_DELEGATION_REVOKED_SIDS` | Optional LOC delegation revocation controls |
 
@@ -30,9 +30,11 @@ Example `LOC_DB_CONNECTIONS_JSON` **shape only** (do not commit real passwords):
 }
 ```
 
-Set `LOC_MCP_DB_ALIAS=mcp_main`, `LOC_MCP_DB_ENGINE=postgres` and
-`LOC_MCP_DB_NAMESPACE=silver` for the current database. Configure a different
-engine and its actual namespace without editing the business SQL.
+If sharing the LOC control connection, configure `LOC_CONTROL_DB_ALIAS` and
+`LOC_CONTROL_DB_ENGINE` and leave the `LOC_MCP_DB_*` overrides absent. For a
+dedicated MCP target, set `LOC_MCP_DB_ALIAS=mcp_main`,
+`LOC_MCP_DB_ENGINE=postgres` and `LOC_MCP_DB_NAMESPACE=silver` (or the actual
+engine/namespace) as **server-side** configuration without editing business SQL.
 
 Run `deno run --allow-env --allow-net --config services/loc-mcp-sql/deno.json services/loc-mcp-sql/main.ts` in a trusted
 Deno 2 service, behind an HTTPS reverse proxy. Public and delegated operations
@@ -103,8 +105,10 @@ process-liveness check; it does not read the database.
 Cloudflare Containers entitlement and a Docker-compatible engine are required,
 together with an authorized Workers/Containers deployment token. Never put a
 database URL into the source, the browser, Pages public variables, or the
-Wrangler configuration. Configure the selected `LOC_MCP_DB_ENGINE`,
-`LOC_MCP_DB_ALIAS` and `LOC_MCP_DB_NAMESPACE` in `wrangler.jsonc`, then:
+Wrangler configuration. Set either `LOC_CONTROL_DB_ALIAS` / `LOC_CONTROL_DB_ENGINE` for the shared
+connection, or optional dedicated `LOC_MCP_DB_ENGINE`, `LOC_MCP_DB_ALIAS`
+and `LOC_MCP_DB_NAMESPACE` as server-side Worker configuration; never add
+credentials to `wrangler.jsonc`. Then:
 
 ```sh
 npx wrangler secret put LOC_DB_CONNECTIONS_JSON --config services/loc-mcp-sql/wrangler.jsonc
@@ -113,9 +117,12 @@ npx wrangler deploy --config services/loc-mcp-sql/wrangler.jsonc
 
 `LOC_DB_CONNECTIONS_JSON` must be a server-only JSON mapping the alias to its
 engine and connection URL. The Container is a single named, idle-sleeping
-instance; it starts only when a request reaches the Worker. Optional
-delegation revocation variables must also be configured as Worker secrets
-when used by the LOC Authority.
+instance; it starts only when a request reaches the Worker. If dynamic per-user database selection is enabled, configure the same
+`LOC_SQL_GATEWAY_SERVICE_KEY` on the independent Gateway and LOC Authority;
+the Worker passes it to the Deno container without exposing it to the browser.
+Optional delegation revocation variables must also be configured for the
+Gateway when used by LOC Authority. The Worker replies to trusted LOC browser
+OPTIONS preflight without starting the container.
 
 After an HTTPS Worker is actually reachable and **the database-backed paths
 are authorized for production cutover**, set

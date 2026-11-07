@@ -1,5 +1,7 @@
 {
-  "issuer": "https://precise-grackle-3371.clerk.accounts.dev",
-  "resource": "https://loc.lo3rwang.cc/mcp",
-  "client_id": "iujsSJQEZJmu4IP8"
+  "issuer": "https://auth.lo3rwang.cc",
+  "resource": "https://auth.lo3rwang.cc/v1/import/short",
+  "client_id": "https://loc.lo3rwang.cc/extension/oauth/client.json",
+  "scope": "loc:import offline_access",
+  "import_url": "https://auth.lo3rwang.cc/v1/import/short"
 }

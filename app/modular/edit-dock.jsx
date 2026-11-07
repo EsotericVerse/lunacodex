@@ -96,7 +96,7 @@ export function EditDockProvider({children}){
   },[pathname,releaseOperation]);
   useEffect(()=>{
     // Editing expiry must revoke only local editor UI. Never sign the user out
-    // of Google/Supabase because the independent edit-session clock elapsed.
+    // of LOC Auth because the independent edit-session clock elapsed.
     const expire=()=>end();
     window.addEventListener('loc-editor-session-expired',expire);
     return ()=>window.removeEventListener('loc-editor-session-expired',expire);
@@ -126,7 +126,7 @@ export function EditDockProvider({children}){
       const identityChanged=Boolean(userId)&&lastIdentity!==null&&lastIdentity!==identity;
       // An initial unverified/empty SDK event on a fresh HTML page is not a
       // sign-out from an active editor. Avoid clearing the cross-page editor
-      // entry marker before the first Clerk verification can finish.
+      // entry marker before the first LOC Auth verification can finish.
       if(userId)lastIdentity=identity;
       else if(event==='SIGNED_OUT')lastIdentity=null;
       const invalidated=event==='SIGNED_OUT'||identityChanged;

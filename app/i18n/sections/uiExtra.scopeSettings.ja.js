@@ -39,7 +39,7 @@ export default {
   "groupLoadFailed": "グループ権限を読み込めないか管理権限がありません。",
   "groupSaveFailed": "グループ権限の保存に失敗しました。",
   "groupMemberScope": "所属 Scope／Group",
-  "groupClerkSubject": "Clerk ユーザー ID",
+  "groupLocSubject": "LOC Auth ユーザー ID",
   "groupExpires": "権限の有効日数（1〜365）",
   "groupPermissions": "権限",
   "groupActionRead": "閲覧",

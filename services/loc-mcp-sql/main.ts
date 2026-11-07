@@ -6,6 +6,7 @@ import {sql} from 'npm:kysely@0.29.8';
 import {processShortImport,portableShortImportStore} from '../../app/loc/import/short-append-service.mjs';
 import {authorizeDelegatedShortImport} from '../../app/loc/import/short-edge-authorization.mjs';
 import {databaseForTarget} from '../../app/loc/providers/kysely-database-drivers.ts';
+import {resolveRuntimeDatabase} from '../../app/loc/gateway/runtime-database-target.mjs';
 import {executePortableMcp} from '../../app/loc/providers/kysely-mcp.mjs';
 import {executeKyselyQuery} from '../../app/loc/providers/kysely-runtime.mjs';
 import {delegationAudience,verifyDelegationBoundary} from '../../app/loc/auth/delegation-contract.mjs';
@@ -33,8 +34,12 @@ function error(message:string,status=400):never{throw Object.assign(new Error(me
 function sourceConfig(){
   // A custom provider target is mandatory: no fallback to Supabase, Neon Auth,
   // a vendor Data API, or a user-supplied connection string.
-  const engine=Deno.env.get('LOC_MCP_DB_ENGINE')||'postgres';
-  const alias=Deno.env.get('LOC_MCP_DB_ALIAS')||'mcp_main';
+  // A dedicated MCP profile remains optional. When absent, share the
+  // server-owned LOC SQL control alias; never accept a browser-supplied URL.
+  const engine=Deno.env.get('LOC_MCP_DB_ENGINE')||
+    Deno.env.get('LOC_CONTROL_DB_ENGINE')||'postgres';
+  const alias=Deno.env.get('LOC_MCP_DB_ALIAS')||
+    Deno.env.get('LOC_CONTROL_DB_ALIAS')||'mcp_main';
   if(!['postgres','mysql','mssql'].includes(engine)||
     !/^[a-z][a-z0-9_]{0,63}$/.test(alias))
     error('Invalid portable MCP database target',503);
@@ -107,8 +112,22 @@ async function handleLocMcpSqlInner(request:Request):Promise<Response>{
       // accepted from the Extension or website.
       authorizeDelegatedShortImport(body,claims);
     }else error('Unsupported MCP operation',403);
-    const {engine,namespace,target}=sourceConfig();
-    const db=await databaseForTarget(target);
+    // A selected database is authorized and signed by LOC Authority. The
+    // verified subject chooses the SQL dialect per request, never per build.
+    // Anonymous public MCP reads retain the service's default target.
+    const selected=claims?await resolveRuntimeDatabase(claims,
+      String(request.headers.get('authorization')||'').replace(/^Bearer\s+/i,''),{
+        origin:AUTHORITY,
+        serviceKey:Deno.env.get('LOC_SQL_GATEWAY_SERVICE_KEY')||''
+      }):null;
+    const base=selected?null:sourceConfig();
+    const engine=selected?.target.engine||base!.engine;
+    const namespace=selected?String(selected.target.schema_name||
+      (engine==='postgres'?'silver':engine==='mssql'?'dbo':'')):base!.namespace;
+    const target=selected?.target||base!.target;
+    const db=await databaseForTarget(target,selected
+      ?{profileLookup:async()=>selected.profile}:{});
+
     if(kind==='short-import'){
       const actor=authorizeDelegatedShortImport(body,claims);
       return json(await processShortImport(body.batch,actor,{
