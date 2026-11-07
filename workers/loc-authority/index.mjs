@@ -1051,18 +1051,15 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
   const stub=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName('loc-authority-control-v1'));
   const scoped=scope=>env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName('mcp-scope:'+scope));
   const allowed=async(scope,action)=>isRoot||await stub.mayAccess({...principal,scope,action});
-  // Managed MCP SQL consumes the SAME LOC-issued delegation as website SQL.
-  // It is created only after OAuth signature, Scope grant and root validation;
-  // external OAuth bearer credentials are never forwarded to Kysely Edge.
+  // A trusted Scope grant becomes a short-lived LOC MCP delegation for
+  // every SQL engine and every configured Scope. Neither Clerk's token nor
+  // any provider-specific database identity is forwarded to the SQL Gateway.
   const managedToken=async(scope,action)=>{
-    if(!Object.hasOwn(MANAGED_SCOPE_TABLES,scope))
-      return (request.headers.get('authorization')||'').replace(/^Bearer /,'');
-    if(!isRoot)throw fail('Managed Scope requires verified LOC root',403);
-    const email=String(env.LOC_ROOT_MANAGEMENT_EMAIL||'').trim().toLowerCase();
-    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-      throw fail('Verified root identity mapping unavailable',503);
+    validScope(scope);
+    if(!['read','write','manage'].includes(action)||!await allowed(scope,action))
+      throw fail('MCP Scope delegation denied',403);
     const claims=issueDelegation({
-      sub:principal.subject,email,grants:[scope+':'+action],audience:'mcp',
+      sub:principal.subject,grants:[scope+':'+action],audience:'mcp',
       sid:crypto.randomUUID(),now:Math.floor(Date.now()/1000),seconds:300
     });
     return stub.signLocDelegation(claims);
