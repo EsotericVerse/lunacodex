@@ -188,16 +188,15 @@ export async function runKeywordAnalysisBatch(scopeId,{classUid:requestedClassUi
     writeNode:async ({uid,uid_lists})=>{
       const type=typeByUid.get(uid);
       if(!type)throw new Error('Keyword UID missing during classification write');
-      // The large UID array now belongs only to loc_search_pattern; Anchor
-      // retains the existing compact Item/Group count for compatibility.
-      const stored=isUnifiedAnchorScope(id)?{total:uid_lists.total,uidlists:[]}
-        :keywordUidListRecord(type,uid_lists);
+      // Preserve the existing Item/Group persistence contract; per-word
+      // index hits are handled separately from the Item's total.
+      const stored=isUnifiedAnchorScope(id)?uid_lists:keywordUidListRecord(type,uid_lists);
       const {data,error}=await dbAuthRelation(scope.keywords).update({uid_lists:stored})
         .eq('uid',uid).select('uid');
       if(error||data?.length!==1)throw new Error('Keywords.uid_lists 儲存失敗：'+uid+' '+(error?.message||''));
     },
-    writePatterns:async ({items})=>{
-      const patterns=buildKeywordSearchPatterns(id,items);
+    writePatterns:async ({items,termMatches})=>{
+      const patterns=buildKeywordSearchPatterns(id,items,termMatches);
       const {data,error}=await dbAuthClient.schema('silver').managedAction('sync_search_patterns',{
         p_scope_id:id,p_class_uid:classUid,p_patterns:patterns
       });
