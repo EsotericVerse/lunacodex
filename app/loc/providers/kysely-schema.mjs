@@ -1,22 +1,5 @@
 import {portableRelation} from './sql-engine-ports.mjs';
-import {schema as fixedZModel} from '../../../zenstack/schema.mjs';
-
-// Both existing Scope variants must agree before accepting any portable Scope.
-// The fixed models act as a read-only template; they do not imply that a
-// dynamic Scope table is a generated ZenStack ORM model.
-function canonicalColumns(first,second,kind){
-  const a=Object.keys(fixedZModel.models[first]?.fields||{});
-  const b=Object.keys(fixedZModel.models[second]?.fields||{});
-  if(!a.length||a.length!==b.length||
-     a.some(key=>!Object.hasOwn(fixedZModel.models[second].fields,key)))
-    throw new Error('LOC ZModel '+kind+' column contract mismatch');
-  return Object.freeze(a);
-}
-const EXPECTED_SCOPE_FIELDS=Object.freeze({
-  galaxy:canonicalColumns('Lo3rwangGalaxy','LrunesGalaxy','Galaxy'),
-  anchor:canonicalColumns('Lo3rwangAnchor','LrunesAnchor','Anchor')
-});
-
+import {scopedZModelColumns} from '../../../zenstack/scoped-schema.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const effectiveNamespace=(engine,namespace)=>
@@ -31,7 +14,8 @@ export function validatePortableScopeSchema(tables,{engine,namespace='',scopeId}
   // The existing frozen ZModel defines the canonical portable field contract.
   // Physical type adaptation remains the responsibility of each Kysely Dialect.
   // No runtime introspection, migration, or extra SQL request is performed.
-  const expected=EXPECTED_SCOPE_FIELDS;
+  const {galaxy,anchor}=scopedZModelColumns({scopeId,namespace:schema});
+  const expected={galaxy,anchor};
   const names={scopeId};
   for(const [kind,columns] of Object.entries(expected)){
     const name=scopeId+'_'+kind;
