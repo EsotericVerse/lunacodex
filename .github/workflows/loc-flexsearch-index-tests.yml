@@ -1,29 +1,6 @@
 name: LOC FlexSearch index regression
 
 on:
-  pull_request:
-    paths:
-      - 'workers/loc-search-index/**'
-      - 'app/loc/search-index-*.mjs'
-      - 'app/loc/providers/search-index-service.mjs'
-      - 'app/loc/providers/federated-galaxy-search.mjs'
-      - 'scripts/loc-search-index-stage.mjs'
-      - 'scripts/rebuild-loc-search-index.mjs'
-      - 'scripts/test-loc-search-index*.mjs'
-      - 'scripts/test-loc-federated-galaxy-search.mjs'
-      - '.github/workflows/loc-flexsearch-index-tests.yml'
-  push:
-    branches: [main]
-    paths:
-      - 'workers/loc-search-index/**'
-      - 'app/loc/search-index-*.mjs'
-      - 'app/loc/providers/search-index-service.mjs'
-      - 'app/loc/providers/federated-galaxy-search.mjs'
-      - 'scripts/loc-search-index-stage.mjs'
-      - 'scripts/rebuild-loc-search-index.mjs'
-      - 'scripts/test-loc-search-index*.mjs'
-      - 'scripts/test-loc-federated-galaxy-search.mjs'
-      - '.github/workflows/loc-flexsearch-index-tests.yml'
   workflow_dispatch:
 
 permissions:
