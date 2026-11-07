@@ -372,6 +372,8 @@ Deno.serve(async (request) => {
   let resolvingTarget = false;
   try {
     if(body.kind==="index-snapshot"){
+      if(requestedTarget!=="configured")
+        return json({error:{message:"Index snapshot requires configured SQL route"}},403);
       // Trusted, read-only index backfill. This endpoint is not exposed by
       // the browser client: both a scope-management LOC delegation and the
       // separate index-service secret are required. It never mutates SQL.
