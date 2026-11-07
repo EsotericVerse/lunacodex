@@ -27,7 +27,7 @@ export async function selectAppBootstrap(scopeId,pageName='index',{configHint=nu
   const [registry,themes,config,blocks]=await Promise.all([
     id==='local'?Promise.resolve([]):selectScopeRegistry(),
     id==='local'?Promise.resolve([]):selectThemeRegistry(),
-    id&&id!=='admin'
+    id&&id!=='admin'&&id!=='loc'
       ?(configHint?Promise.resolve(configHint):selectScopeConfig(id))
       :Promise.resolve(null),
     id&&id!=='admin'?selectScopeBlocks(id,page):Promise.resolve([])
