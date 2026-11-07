@@ -67,29 +67,6 @@ function DigitalAssetCopy(){
   </>;
 }
 
-function NameOriginCopy(){
-  return <>
-    <p><strong>Lucas Oscar Wang 政德</strong> 是目前使用的完整署名，日常仍叫我 Oscar；<strong>lo3rwang</strong> 作為公開識別。</p>
-    <p>Lucas 取「光」的意象，Oscar 是長期使用的名字；中文名政德則是目前正式使用的姓名。</p>
-    <p>另保留 <strong>dlwang／Lucipher Drucula Wang</strong> 作為陰暗面別名，用來承認不同時期的自己，而不是抹去那些經歷。</p>
-  </>;
-}
-
-function PhilosophyCopy(){
-  return <>
-    <p>思想上偏向道教老子體系。這裡所說的「道德」，主要取道家語境中的道與德、天地人，而不是用單一倫理秩序替所有人下判斷。</p>
-    <p>實踐態度則接近 Druid 所象徵的自然觀與無為：先觀察、理解與順勢，再決定是否介入。這也是我處理語言、創作與治理時的重要底色。</p>
-  </>;
-}
-
-function CalibrationCopy(){
-  return <>
-    <p>時間是一條不可逆的時間長河。年份是定位與比較的參考，不代表經驗會自動依整齊規則排列。</p>
-    <p>對我而言，「定錨」不是回到過去，而是在某個時間點留下可辨識的文字與資料位置，再從來源、脈絡與後續變化重新理解不同時期的自己。</p>
-    <p>已發生的歷史不能倒回，但可以重新定位；文字紀錄因此成為校對工具，讓現在保有重新選擇未來的空間。</p>
-  </>;
-}
-
 function SystemsCopy(){
   return <div className="author-system-grid">
     <article className="author-editorial-block">
@@ -174,30 +151,12 @@ export default function AuthorHomeView({section=null}){
       title:'數位資產管理',
       content:<DigitalAssetCopy/>
     },
-    {
-      id:'name-origin',
-      eyebrow:'Name · Identity',
-      title:'Lucas Oscar Wang 政德',
-      content:<NameOriginCopy/>
-    },
-    {
-      id:'philosophy',
-      eyebrow:'Philosophy',
-      title:'思想取向',
-      content:<PhilosophyCopy/>
-    },
-    {
-      id:'calibration',
-      eyebrow:'Time · Calibration',
-      title:'時空定錨論',
-      content:<CalibrationCopy/>
-    },
+
   ];
 
   if(section){
     const sectionGroups=Object.freeze({
-      work:Object.freeze(['roles','work','digital-legacy']),
-      others:Object.freeze(['name-origin','philosophy','calibration'])
+      work:Object.freeze(['roles','work','digital-legacy'])
     });
     const ids=sectionGroups[section]||[];
     const activeSections=ids.length?detailedSections.filter(item=>ids.includes(item.id)):detailedSections;
@@ -211,7 +170,7 @@ export default function AuthorHomeView({section=null}){
   }
 
   // Public author homepage is owned by silver.lo3rwang_blocks, not stale JSX.
-  // The two detailed author subpages above preserve their distinct layouts.
+  // The work subpage preserves its distinct editorial layout.
   return <section className="loc-view loc-home">
     <AuthorHomeEditableBlocks/>
   </section>;
