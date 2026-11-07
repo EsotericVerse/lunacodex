@@ -78,6 +78,15 @@ test('only verified global LOC administrator writes enter fixed-model PolicyPlug
     }
     assert.equal(fixedPolicyWriteModel(pg,{kind:'managed-write',payload:{p_table:path,p_operation:'insert'}},
       'authenticated',global),null,'bulk INSERT retains trusted batched Kysely executor');
+    const [schema,table]=path.split('.');
+    for(const operation of ['update','delete']){
+      assert.equal(fixedPolicyWriteModel(pg,
+        {kind:'query',schema,table,operation},'authenticated',global),model);
+      assert.equal(fixedPolicyWriteModel(pg,
+        {kind:'query',schema,table,operation},'authenticated',scope),null);
+    }
+    assert.equal(fixedPolicyWriteModel(pg,
+      {kind:'query',schema,table,operation:'upsert'},'authenticated',global),null);
   }
   for(const p_table of ['silver.lo3rwang','silver.lrunes','silver.lo3rwang_galaxy','api.user_records']){
     assert.equal(fixedPolicyWriteModel(pg,
@@ -120,6 +129,10 @@ test('managed Kysely fixed updates derive primary keys from SchemaDef, not pg_in
   assert.match(gateway,/withFixedPolicyWrite\(db,target,body,role,claims/);
   assert.match(gateway,/fixedPolicyWriteModel\(target,body,role,claims\)/);
   assert.match(gateway,/executeManagedKyselyWrite\(trx,body,\{modelName\}\)/);
+  assert.match(gateway,/if\(!await canManageLoc\(trx,"global"\)\)/);
+  const runtime=readFileSync(new URL('../app/loc/providers/kysely-runtime.mjs',import.meta.url),'utf8');
+  assert.match(runtime,/buildKyselyMutationQuery\(trx,input,\{dialect,namespace,modelName\}\)/);
+  assert.match(runtime,/const fullTable=databaseTable\(req,dialect,namespace,modelName\)/);
 });
 
 test('all managed Registry, Galaxy, Anchor and Blocks updates derive primary keys without SQL',async()=>{
