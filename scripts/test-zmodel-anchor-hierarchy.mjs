@@ -91,12 +91,12 @@ test('reject invalid references, wrong type, duplicate parent, and fabricated UI
   ]),/unique Base62/);
   assert.throws(()=>tree('keyword',[
     row('CAT','category',{uid:[uid('GRP')]}),row('GRP','group')
-  ]),/Invalid keyword Anchor relationship/);
+  ]),/Invalid Anchor hierarchy/);
   assert.throws(()=>tree('keyword',[
     row('CAT','category',{uid:[uid('CLS')]}),
     row('CAT2','category',{uid:[uid('CLS')]}),
     row('CLS','class')
-  ]),/Multiple keyword parents/);
+  ]),/multiple parents/);
   assert.throws(()=>tree('source',[{uid:'unsafe',type:'from',attr:{}}]),/Invalid or repeated Anchor UID/);
   assert.throws(()=>tree('time',[row('DAY','date',[]) ]),/Anchor attr must be a JSON object/);
 });
