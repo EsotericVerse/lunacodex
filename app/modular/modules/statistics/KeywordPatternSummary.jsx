@@ -42,8 +42,8 @@ export default function KeywordPatternSummary({scopeId='',classUid=''}) {
   }));
   const missing=Array.isArray(data.missing_patterns)?data.missing_patterns:[];
   return <section className="scope-card scope-stat-section">
-    <h3>詞級命中與比率</h3>
-    <p className="scope-status">從既有詞級 UID 紀錄計算；Item 命中數為所屬詞命中數加總，文章篇數則去重。</p>
+    <h3>詞級累計命中與比率（全期間）</h3>
+    <p className="scope-status">從既有詞級 UID 紀錄計算；Item 命中數為所屬詞命中數加總，文章篇數則去重。Group／Item 比率以本 Class 的 Item 命中總數為分母；單詞比率以其所屬 Item 命中數為分母。</p>
     <label>
       <span>統計層級</span>
       <select className="scope-select" value={level}
