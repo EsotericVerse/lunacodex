@@ -48,6 +48,41 @@ SQL Gateway deployment.
   provider selection. This does **not** disable connecting to a Neon
   PostgreSQL database.
 
+## Choosing the SQL engine when adding a connection
+
+SQL engine type is explicit. It is not guessed from the host or first query.
+
+| Database | LOC_CONTROL_DB_ENGINE | Kysely Dialect | Default physical namespace |
+|---|---|---|---|
+| Supabase / Neon / PostgreSQL | postgres | PostgresDialect | silver / api |
+| MySQL / MariaDB | mysql | MysqlDialect | chosen database |
+| Azure SQL / SQL Server | mssql | MssqlDialect | dbo |
+
+LOC_CONTROL_DB_ALIAS must name a server-side profile inside LOC_DB_CONNECTIONS_JSON.
+The active profile's engine must match LOC_CONTROL_DB_ENGINE.
+For example, to test an existing Azure SQL database in an independent test Gateway:
+
+    LOC_CONTROL_DB_ALIAS=azure_sql_test
+    LOC_CONTROL_DB_ENGINE=mssql
+    LOC_DB_CONNECTIONS_JSON={"azure_sql_test":{"engine":"mssql","url":"mssql://USER:PASSWORD@SERVER.database.windows.net:1433/DATABASE","tls":true}}
+
+This is a placeholder format, never an actual credential. The URL and password
+belong in encrypted server environment variables, not in Git or the browser.
+
+The currently deployed standalone SQL Gateway selects ONE active
+connection alias and engine per instance. Changing either requires editing the
+server deployment settings and restarting/redeploying that Gateway. Ordinary
+read/write requests use its already-configured Kysely Dialect.
+
+To test Azure SQL without disturbing the existing PostgreSQL main connection,
+use a separate test Gateway with mssql and its own alias. MySQL likewise
+has a separate alias and mysql engine. A configured dialect does not
+create tables; existing Galaxy/Anchor tables must already be present.
+
+The optional CLI command npm run verify:portable-sql, with environment
+LOC_SQL_GATEWAY_URL=https://HOST/v1/sql, makes only one bounded public SELECT.
+Its success proves the selected read path, not comprehensive SQL portability.
+
 ## Database portability
 
 Server-side `LOC_DB_CONNECTIONS_JSON` maps aliases to existing database

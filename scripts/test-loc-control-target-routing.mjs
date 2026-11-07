@@ -28,6 +28,17 @@ test('standalone server alias always selects its own independent SQL connection'
  assert.equal(selected.backupId,null);
  assert.equal(config.targets['custom-current'].connection_alias,'loc_main');
 });
+test('MySQL uses its own Kysely dialect and trusted connection alias',()=>{
+ const {resolveDatabaseRouting:resolve}=routing({
+  LOC_CONTROL_DB_ALIAS:'mysql_test',LOC_CONTROL_DB_ENGINE:'mysql'
+ });
+ const target=resolve();
+ assert.equal(target.primaryId,'custom-current');
+ assert.equal(target.engine,'mysql');
+ assert.equal(target.provider,'custom');
+ assert.equal(target.connectionAlias,'mysql_test');
+ assert.equal(target.backupId,null);
+});
 test('portable SQL never falls back to browser alias when server selects MSSQL',()=>{
  const {resolveDatabaseRouting:resolve}=routing({
   LOC_CONTROL_DB_ALIAS:'loc_main',LOC_CONTROL_DB_ENGINE:'mssql'
