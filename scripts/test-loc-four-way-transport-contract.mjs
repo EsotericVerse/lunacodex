@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {createConfiguredAdapter} from '../app/loc/providers/configured.mjs';
 import {createKyselyEdgeClient} from '../app/loc/providers/kysely-edge.mjs';
 import {DATABASE_ACCESS_LIST} from '../app/loc/providers/access.js';
@@ -43,4 +44,13 @@ test('database control is an alias, not a hosting-vendor dependency',()=>{
   }),/not supported/);
   assert.equal(resolveSqlExecutionPort({engine:'postgres',provider:'custom'}).session,
     'external-acl');
+});
+
+test('database selection is a LOC Auth operation and never a website redeploy',()=>{
+  const gateway=readFileSync(new URL('../app/loc/gateway/sql-handler.ts',import.meta.url),'utf8');
+  const authority=readFileSync(new URL('../workers/loc-authority/index.mjs',import.meta.url),'utf8');
+  assert.match(gateway,/Database selection is managed by LOC Auth/);
+  assert.match(gateway,/\/v1\/databases\/selection/);
+  assert.match(authority,/url\.pathname==='\/v1\/databases\/selection'/);
+  assert.doesNotMatch(gateway,/update source and redeploy/);
 });
