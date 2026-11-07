@@ -657,16 +657,19 @@ export async function hydrateGalaxySearchRows(entries=[],scopes=[],hiddenScopeId
   const scopeMap=new Map((Array.isArray(scopes)?scopes:[]).map(scope=>[scope.id,scope]));
   const privateScopes=new Set(hiddenScopeIds||[]);
   const batches=new Map();
+  const identity=(scopeId,dbId,uid)=>JSON.stringify([scopeId,dbId,uid]);
   for(const entry of items){
     const row=entry?.row;
     const uid=String(row?.uid||'').trim();
     const scope=scopeMap.get(row?.scope_id);
     if(!uid||!scope?.galaxy)continue;
-    if(!batches.has(scope.id))batches.set(scope.id,{scope,ids:new Set()});
-    batches.get(scope.id).ids.add(uid);
+    const dbId=String(row.__db_id||'');
+    const key=JSON.stringify([scope.id,dbId]);
+    if(!batches.has(key))batches.set(key,{scope,dbId,ids:new Set()});
+    batches.get(key).ids.add(uid);
   }
   const metadata=new Map();
-  await mapBounded([...batches.values()],3,async({scope,ids})=>{
+  await mapBounded([...batches.values()],3,async({scope,dbId,ids})=>{
     const keys=[...ids];
     if(keys.length>DEFAULT_LIST_BATCH_SIZE)throw new Error('Search page exceeds bounded UID limit');
     const {rows}=await selectRows(scope.galaxy,{
@@ -674,18 +677,18 @@ export async function hydrateGalaxySearchRows(entries=[],scopes=[],hiddenScopeId
       filters:[{column:'uid',operator:'in',value:keys}],
       limit:keys.length,
       authenticated:privateScopes.has(scope.id),
-      signal
+      expectedDbId:dbId,signal
     });
-    for(const row of rows||[])metadata.set(scope.id+':'+row.uid,row);
+    for(const row of rows||[])metadata.set(identity(scope.id,dbId,row.uid),row);
   });
   return items.map(entry=>{
     const row=entry?.row;
     if(!row?.uid)return entry;
-    const details=metadata.get(row.scope_id+':'+row.uid);
+    const dbId=String(row.__db_id||'');
+    const details=metadata.get(identity(row.scope_id,dbId,row.uid));
     return details?{...entry,row:{...row,...details}}:entry;
   });
 }
-
 /**
  * Media facet aggregation reads only the selected Scope's narrow metadata columns,
  * in bounded DB pages. It never fetches media binary or Galaxy body content.
