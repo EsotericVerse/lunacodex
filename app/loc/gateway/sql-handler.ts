@@ -146,9 +146,18 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
     // Fixed public PostgreSQL models use the same ZenStack PolicyPlugin and
     // physical schema regardless of hosting vendor. This modelName is set
     // only inside the trusted gateway, never accepted from the HTTP body.
-    if(executionPort.engine==="postgres"&&modelName&&
-       body.kind==="query"&&body.operation==="select")
-      return await executeKyselyQuery(trx,body,{modelName});
+    if(executionPort.engine==="postgres"&&modelName){
+      if(body.kind==="query"){
+        if(body.operation!=="select"&&!await canManageLoc(trx,"global"))
+          throw Object.assign(new Error("Global LOC management permission required"),{httpStatus:403});
+        return await executeKyselyQuery(trx,body,{modelName});
+      }
+      if(body.kind==="managed-write"){
+        if(role!=="authenticated"||!await canManageLoc(trx,"global"))
+          throw Object.assign(new Error("Global LOC management permission required"),{httpStatus:403});
+        return await executeManagedKyselyWrite(trx,body,{modelName});
+      }
+    }
     // Cross-engine Scope queries use the signed LOC ACL instead of RLS.
     if(body.kind==="managed-write"){
       if(role!=="authenticated")
