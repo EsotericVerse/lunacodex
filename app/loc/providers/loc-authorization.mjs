@@ -91,21 +91,27 @@ export async function locPermissions(db){
     // child scopes. Include their display metadata for the editor's role
     // preflight; the actual SQL write repeats the server-side permission gate.
     const hierarchy=await inheritedPrincipal(state);
+    // Explicit signed Scope grants are authoritative even when the original
+    // api.manage owner email belongs to someone else (a delegated editor).
+    const exactIds=(state.claims.grants||[]).flatMap(value=>{
+      const match=/^([a-z][a-z0-9]{0,14}):manage$/.exec(String(value));
+      return match&&match[1]!=='global'?[match[1]]:[];
+    });
+    const alreadyJoined=new Set(joined.map(row=>row.id));
+    const ids=[...new Set([...exactIds,...(hierarchy?.groupIds||[]),
+      ...(hierarchy?.scopeIds||[])])].filter(id=>!alreadyJoined.has(id));
     let inherited=[];
-    if(hierarchy?.groupIds.length){
-      const ids=[...new Set([...hierarchy.groupIds,...hierarchy.scopeIds])];
-      if(ids.length){
+    if(ids.length){
         const rows=await db.selectFrom('api.manage as m')
           .leftJoin('silver.loc as s','s.id','m.id')
           .select(['m.id','m.manage_role','m.active','m.galaxy_table',
             'm.anchor_table','s.birthday as birthday'])
           .where('m.id','in',ids).where('m.active','=',true)
           .where('m.manage_role','in',['group','scope']).execute();
-        inherited=rows.filter(row=>
-          row.manage_role==='group'?hierarchy.groupIds.includes(row.id):
-            hierarchy.scopeIds.includes(row.id))
+        inherited=rows.filter(row=>exactIds.includes(row.id)||
+          (row.manage_role==='group'?hierarchy?.groupIds.includes(row.id):
+            hierarchy?.scopeIds.includes(row.id)))
           .map(row=>({...row,email:state.email}));
-      }
     }
     if(!joined.length&&!inherited.length)return {blocked:false,rows:[]};
     // A delegated Group member need not own an api.manage email row.
