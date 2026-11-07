@@ -30,9 +30,10 @@ test('signed grants are portable and scope-limited independently of database RLS
   assert.equal(canManageDelegation(claims,'scope','lo3rwang'),false);
   assert.equal(canManageDelegation(claims,'global'),false);
 });
-test('existing Clerk browser adapter remains optional and isolated from the SQL engine',()=>{
-  const gateway=source('app/loc/providers/clerk-gateway.mjs');
-  assert.match(gateway,/createClerkAccountAdapter/);
+test('site uses LOC Auth by default without a vendor Auth SDK',()=>{
+  const configured=source('app/loc/providers/configured.mjs');
+  assert.match(configured,/createLocAccountAdapter/);
+  assert.doesNotMatch(configured,/createClerkAccountAdapter|LEGACY_SQL_ORIGIN/);
   const edge=source('app/loc/gateway/sql-handler.ts');
   assert.doesNotMatch(edge,/createClerkAccountAdapter/);
 });

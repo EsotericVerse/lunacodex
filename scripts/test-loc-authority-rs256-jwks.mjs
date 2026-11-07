@@ -6,6 +6,7 @@ import {issueDelegation,verifyDelegationBoundary} from '../app/loc/auth/delegati
 
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
 const source=readFileSync(new URL('../workers/loc-authority/index.mjs',import.meta.url),'utf8')
+  .replace(/^import \{ISSUER,[\s\S]*?from '\.\/native-oauth\.mjs';\s*$/m,'')
   .replace(/^import[^\n]*;\s*$/gm,'')
   .replace(/^import \{AUTH_PROVIDER_TYPES[^\n]*\n\s*from[^\n]*;\s*$/m,'')
   .replace('export class LocAuthorityState','class LocAuthorityState')
@@ -13,9 +14,9 @@ const source=readFileSync(new URL('../workers/loc-authority/index.mjs',import.me
 const {LocAuthorityState,worker}=new Function('DurableObject','issueDelegation',
   'validateKeywordCategoryEntry','hashKeywordCategory','assertPublicKeywordClass',
   'AUTH_PROVIDER_TYPES','validateAuthProviderSettings','publicAuthProviderSettings',
-  source+'\nreturn {LocAuthorityState,worker};')(
+  'isNativeOAuthPath',source+'\nreturn {LocAuthorityState,worker};')(
     class {constructor(ctx,env){this.ctx=ctx;this.env=env;}},issueDelegation,
-    ()=>{},()=>{},()=>{},[],()=>{},()=>{}
+    ()=>{},()=>{},()=>{},[],()=>{},()=>{},()=>false
   );
 const saved=new Map();
 const storage={get:async key=>saved.get(key),put:async(k,v)=>saved.set(k,v),

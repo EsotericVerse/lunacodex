@@ -3,15 +3,15 @@ import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
 
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
-test('standalone Clerk login keeps the existing scenic design',()=>{
+test('standalone LOC Auth login preserves the original scenic design',()=>{
   const page=read('public/login/index.html');
   const styles=read('public/login/appearance.css');
   for(const marker of ['class="auth-scene"','class="auth-surface"',
-    "colorPrimary:token('--loc-accent')",'localization:',
-    "clerk.mountSignIn(byId('login-root'))",
+    "AUTHORITY='https://auth.lo3rwang.cc'","使用 Google 繼續",
+    "使用 GitHub 繼續",
     'role="status" aria-live="polite"','location.assign(path)'])
     assert.ok(page.includes(marker),marker);
-  assert.match(styles,/#login-root\s+\.cl-cardBox/);
+  assert.match(styles,/\.loc-login-choice/);
   assert.match(styles,/@media\s*\(max-width:\s*760px\)/);
   assert.match(styles,/prefers-reduced-motion/);
   const script=page.split('<script type="module">')[1]?.split('</script>')[0];
@@ -19,7 +19,7 @@ test('standalone Clerk login keeps the existing scenic design',()=>{
   assert.doesNotThrow(()=>new Function(script));
 });
 
-test('desktop Settings sign-in and sign-out use the scenic Clerk gateway',()=>{
+test('desktop Settings sign-in and sign-out use the scenic LOC Auth gateway',()=>{
   const settings=read('app/loc/GlobalSettings.jsx');
   assert.ok(settings.includes("const LOC_LOGIN_GATEWAY='/login/index.html?return_to="));
   assert.ok(settings.includes('await account.signOut()'));
