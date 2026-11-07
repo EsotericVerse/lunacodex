@@ -52,11 +52,15 @@ function registry(rows,{blacklist={email:[]}}={}){
   };
 }
 
-test('public engine reads only reference tables; private Galaxy remains private',async()=>{
-  assertCrossEnginePublicRead(query('runes'));
-  await assert.rejects(authorizeCrossEngineQuery(registry([]),query('lo3rwang_galaxy')),
-    /published LOC relation/);
+test('anonymous Galaxy and Anchor reads require the executor public-only filter',async()=>{
+  assert.deepEqual(assertCrossEnginePublicRead(query('runes')),{publicOnly:false});
+  assert.deepEqual(await authorizeCrossEngineQuery(registry([]),query('lo3rwang_galaxy')),
+    {publicOnly:true});
+  assert.deepEqual(await authorizeCrossEngineQuery(registry([]),query('lrunes_anchor')),
+    {publicOnly:true});
   await assert.rejects(authorizeCrossEngineQuery(registry([]),query('runes','delete')),
+    /published LOC relation/);
+  await assert.rejects(authorizeCrossEngineQuery(registry([]),query('private_table')),
     /published LOC relation/);
 });
 test('verified LOC Scope owner can use generic native Kysely SELECT and writes',async()=>{
