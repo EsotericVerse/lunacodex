@@ -69,19 +69,19 @@ test('LOC browser adapter exchanges native OAuth into scoped SQL delegation',()=
   const configured=readFileSync(new URL('../app/loc/providers/configured.mjs',import.meta.url),'utf8');
   const core=readFileSync(new URL('../app/loc/providers/loc-gateway.mjs',import.meta.url),'utf8');
   const browser=readFileSync(new URL('../app/loc/auth/loc-browser.mjs',import.meta.url),'utf8');
-  assert.match(configured,/createLocAccountAdapter/);
-  assert.match(configured,/createLocGatewayAdapter/);
-  assert.match(core,/getAccessToken:getLocAccessToken/);
-  assert.match(core,/\\/v1\\/delegation/);
-  assert.match(browser,/\\/v1\\/auth\\/session/);
+  assert.ok(configured.includes('createLocAccountAdapter'));
+  assert.ok(configured.includes('createLocGatewayAdapter'));
+  assert.ok(core.includes('getAccessToken:getLocAccessToken'));
+  assert.ok(core.includes('/v1/delegation'));
+  assert.ok(browser.includes('/v1/auth/session'));
   assert.doesNotMatch(configured,/createClerkAccountAdapter|NEXT_PUBLIC_LOC_IDENTITY_PROVIDER/);
 });
 test('production LOC login no longer loads vendor Auth SDKs',()=>{
   const configured=readFileSync(new URL('../app/loc/providers/configured.mjs',import.meta.url),'utf8');
   const login=readFileSync(new URL('../public/login/index.html',import.meta.url),'utf8');
-  assert.match(configured,/return createLocGatewayAdapter\\(\\{/);
+  assert.ok(configured.includes('return createLocGatewayAdapter({'));
   assert.doesNotMatch(configured,/createSupabaseAdapter|createNeonPrimaryAdapter|createClerkAccountAdapter/);
-  assert.match(login,/https:\\/\\/auth\\.lo3rwang\\.cc/);
+  assert.ok(login.includes('https://auth.lo3rwang.cc'));
   assert.doesNotMatch(login,/<script[^>]+src=[^>]*clerk/i);
 });
 test('verified Clerk subject can be mapped to a trusted root email by server, not browser',()=>{
