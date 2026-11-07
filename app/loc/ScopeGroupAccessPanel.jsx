@@ -4,7 +4,7 @@ import {useUiText} from '../i18n/UiText';
 import {useUiSection} from '../i18n/ui-locale';
 import {registerDefaultSection} from '../i18n/ui-copy';
 import scopeSettingsZh from '../i18n/sections/uiExtra.scopeSettings.zh_tw.js';
-import {mcpClerkSession} from './mcp/clerk-access.mjs';
+import {mcpLocSession} from './mcp/loc-access.mjs';
 import {scopeGroupRequest} from './mcp/scope-group-client.mjs';
 import {dbPublicClient} from './db-client.mjs';
 
@@ -31,7 +31,7 @@ export default function ScopeGroupAccessPanel({groupId}){
   const [busy,setBusy]=useState(false);
   const [status,setStatus]=useState('');
   const call=async(kind,values={})=>{
-    const {token}=await mcpClerkSession();
+    const {token}=await mcpLocSession();
     return scopeGroupRequest({groupid:groupId,kind,token,...values});
   };
   const reload=async()=>{

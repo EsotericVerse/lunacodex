@@ -1,13 +1,13 @@
 // Browser -> signed LOC Authority. Group authorization stays server-side.
 import {locAuthorityOrigin} from './scope-config-client.mjs';
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
-const SUBJECT=/^user_[A-Za-z0-9]+$/;
+const SUBJECT=/^loc_[A-Za-z0-9_-]{32,80}$/;
 const ACTIONS=new Set(['read','write','manage','configure']);
 
 export async function scopeGroupRequest({groupid,kind='list',scopeid,subject,actions,days=365,
   token,classUid,fetchImpl=globalThis.fetch}={}){
   if(!SCOPE.test(String(groupid||'')))throw Error('Invalid Group ID');
-  if(typeof token!=='string'||!token.trim())throw Error('Clerk login required');
+  if(typeof token!=='string'||!token.trim())throw Error('LOC Auth login required');
   let path='group/'+groupid+'/grants',method='GET',body;
   if(kind==='grant'){
     if(!SCOPE.test(String(scopeid||''))||!SUBJECT.test(String(subject||''))||
@@ -37,7 +37,7 @@ export async function scopeGroupRequest({groupid,kind='list',scopeid,subject,act
       ...(body===undefined?{}:{'content-type':'application/json'})},
     ...(body===undefined?{}:{body:JSON.stringify(body)})
   });
-  if(res.status===401)throw Error('Clerk login expired');
+  if(res.status===401)throw Error('LOC Auth login expired');
   if(res.status===403)throw Error('Scope Group management permission required');
   if(!res.ok)throw Error('Group Authority HTTP '+res.status);
   return res.json();

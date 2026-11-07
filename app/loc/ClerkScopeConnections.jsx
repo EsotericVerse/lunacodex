@@ -1,14 +1,14 @@
 'use client';
 import {useEffect,useState} from 'react';
 import {useUiText} from '../i18n/UiText';
-import {mcpClerkSession} from './mcp/clerk-access.mjs';
+import {mcpLocSession} from './mcp/loc-access.mjs';
 import ScopeDatabasePanel from './ScopeDatabasePanel';
 import ScopeGroupAccessPanel from './ScopeGroupAccessPanel';
 
 const ID=/^[a-z][a-z0-9]{0,14}$/;
 // This entry is independent of legacy SQL/email management privileges.
 // Individual Scope or Group permissions are verified by LOC Authority on use.
-export default function ClerkScopeConnections({availableScopes=[]}){
+export default function LocScopeConnections({availableScopes=[]}){
   const ui=useUiText();
   const t=key=>ui('uiExtra.globalSettings.'+key);
   const [principal,setPrincipal]=useState('');
@@ -19,7 +19,7 @@ export default function ClerkScopeConnections({availableScopes=[]}){
   const [loading,setLoading]=useState(true);
   useEffect(()=>{
     let current=true;
-    mcpClerkSession().then(({subject})=>{if(current)setPrincipal(subject);})
+    mcpLocSession().then(({subject})=>{if(current)setPrincipal(subject);})
       .catch(()=>{if(current)setPrincipal('');})
       .finally(()=>{if(current)setLoading(false);});
     return()=>{current=false;};
