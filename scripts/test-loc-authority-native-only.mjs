@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {issueDelegation,verifyDelegationBoundary,canManageDelegation}
   from '../app/loc/auth/delegation-contract.mjs';
+import {normalizeSqlDriverAuthentication,publicSqlDriverAuthentication,
+  sqlAuthNeedsUserPassword} from '../app/loc/providers/sql-driver-auth.mjs';
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
 test('LOC Authority verifies only signed native login identities',()=>{
@@ -30,4 +32,54 @@ test('a signed Scope grant cannot become a global or another Scope grant',()=>{
   assert.equal(canManageDelegation(result.claims,'scope','lrunes'),true);
   assert.equal(canManageDelegation(result.claims,'scope','lo3rwang'),false);
   assert.equal(canManageDelegation(result.claims,'global'),false);
+});
+
+test('LOC Authority target updates reuse encrypted SQL secrets without browser exposure',async()=>{
+  const source=read('workers/loc-authority/index.mjs');
+  const start=source.indexOf('function validateTarget(');
+  const end=source.indexOf('\nasync function encryptionKey(',start);
+  assert.ok(start>0&&end>start);
+  const fail=(message,status=400)=>Object.assign(new Error(message),{status});
+  const validate=new Function('ID','ENGINES','fail',
+    'normalizeSqlDriverAuthentication','sqlAuthNeedsUserPassword',
+    source.slice(start,end)+';return validateTarget;')(
+      /^[a-z][a-z0-9_-]{0,63}$/,new Set(['postgres','mysql','mssql']),
+      fail,normalizeSqlDriverAuthentication,sqlAuthNeedsUserPassword);
+  const putStart=source.indexOf('  async putTarget(id,input){');
+  const putEnd=source.indexOf('  // Per-user selection is stored',putStart);
+  assert.ok(putStart>0&&putEnd>putStart);
+  const method=source.slice(putStart,putEnd).trim()
+    .replace(/^async putTarget/,'async function putTarget');
+  // Mock encryption only to inspect trusted-vs-public storage boundaries.
+  // Real Durable Object encryption is independently covered by the Worker.
+  const put=new Function('validateTarget','decryptProfile','encryptProfile',
+    'fail','publicSqlDriverAuthentication','sqlAuthNeedsUserPassword',
+    method+';return putTarget;')(
+      validate,async x=>x.value,async x=>({value:x}),fail,
+      publicSqlDriverAuthentication,sqlAuthNeedsUserPassword);
+  const storage=new Map(),ctx={
+    ctx:{storage:{get:async key=>storage.get(key),
+      put:async (key,value)=>storage.set(key,value)}},
+    env:{LOC_CONTROL_ENCRYPTION_KEY:'test-placeholder'}};
+  const target={engine:'mssql',host:'sql.example.net',port:1433,
+    database:'loc',username:'',
+    authentication:{type:'azure-active-directory-service-principal-secret',
+      clientId:'client',tenantId:'tenant',clientSecret:'private-client-secret'}};
+  const visible=await put.call(ctx,'azure_test',target);
+  assert.equal(JSON.stringify(visible).includes('private-client-secret'),false);
+  assert.equal(visible.authentication.client_secret_configured,true);
+  assert.equal(JSON.stringify(storage.get('target:azure_test').public)
+    .includes('private-client-secret'),false);
+  assert.equal(storage.get('target:azure_test').encrypted.value
+    .authentication.clientSecret,'private-client-secret');
+  const {clientSecret,...redacted}=target.authentication;
+  await put.call(ctx,'azure_test',{...target,authentication:redacted});
+  assert.equal(storage.get('target:azure_test').encrypted.value
+    .authentication.clientSecret,'private-client-secret');
+  await assert.rejects(put.call(ctx,'azure_test',{
+    ...target,authentication:{type:'azure-active-directory-access-token'}
+  }),/access token required/);
+  await assert.rejects(put.call(ctx,'new_without_password',{
+    engine:'postgres',host:'db.example.net',port:5432,
+    database:'loc',username:'user'}),/requires its database password/);
 });
