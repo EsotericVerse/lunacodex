@@ -56,9 +56,10 @@ export function fixedPolicyReader(db,{dialect,ZenStackClient,PolicyPlugin}={}){
   return reader;
 }
 
-/** Execute the public fixed-model SELECT in the policy-enforced transaction.
- * The callback receives that transaction's Kysely builder and verified model.
- * The policy plugin adds the allow/read predicate to the SAME SQL query.
+/** Execute a trusted fixed-model SELECT using the existing Kysely transaction.
+ * IMPORTANT: ZenStack V3's low-level $qb access bypasses PolicyPlugin policies.
+ * The verified Gateway authorization and explicit SQL filters remain the
+ * effective access boundary; this helper must not be treated as an ACL.
  */
 export async function withFixedPolicyRead(db,target,body,role,claims,
   {dialect,ZenStackClient,PolicyPlugin},run){
@@ -74,8 +75,9 @@ export async function withFixedPolicyRead(db,target,body,role,claims,
   });
 }
 
-/** Policy-enforced global registry write. The gateway has verified the
+/** Trusted global registry write. The Gateway verifies the signed LOC
  * delegation, and managed-write retains its original canManageLoc guard.
+ * Low-level $qb bypasses ZenStack ORM policy enforcement; do not rely on it.
  * A grant-derived admin principal is bound once per transaction; no SQL
  * permission lookup or second driver/pool is created by this adapter.
  */
