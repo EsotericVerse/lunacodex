@@ -1,6 +1,7 @@
 // One server for independent Scopes. The Group Authority verifies the Clerk
 // OAuth token and permissions on EVERY call; credentials never reach MCP replies.
 const DEFAULT_AUTHORITY='https://auth.lo3rwang.cc';
+const PR_SEARCH_WARNING='請至github頁面找尋PR相關資料！不開放搜尋PR!';
 const ORIGIN='https://loc.lo3rwang.cc';
 const ID=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
@@ -18,17 +19,19 @@ export async function authorityAction(name,args,token,env={},fetchImpl=globalThi
   const a=args||{};
   let path='',method='GET',body=null,query=null;
   if(name==='galaxy_link'){
-    if(a.action==='update_pr')throw bad('PR 紀錄請直接使用 GitHub PR 工具，不需 Galaxy UID');
+    if(a.action==='update_pr')throw bad(PR_SEARCH_WARNING);
     if(!['search','read','check','record'].includes(a.action))throw bad('Invalid Galaxy Link action');
     if(a.source!==undefined)throw bad('Galaxy Link source is fixed to mcp');
     if(a.action==='search'){
       if(/(?:\bPR\b|\bpull[ -]?request\b|\bgithub\b|\bcommit\b|合併請求|拉取請求)/i.test(String(a.query||'')))
-        throw bad('PR 資訊請直接搜尋 GitHub，不要搜尋 Galaxy UID');
+        throw bad(PR_SEARCH_WARNING);
+      if(a.user_requested!==true)
+        throw bad('只有使用者明確要求時，才允許搜尋對話；禁止代理自行搜尋。');
       if(typeof a.query!=='string'||a.query.trim().length<2||a.query.length>100||
         !Number.isInteger(a.limit??5)||(a.limit??5)<1||(a.limit??5)>5)
         throw bad('Invalid Galaxy Link search');
       path='search/'+id(a.scopeid);method='POST';
-      body={query:a.query,limit:a.limit??5};
+      body={query:a.query,limit:a.limit??5,user_requested:true};
     }else if(a.action==='read'){
       if(!UID.test(String(a.uid||'')))throw bad('Invalid case-sensitive UID');
       path='read/'+id(a.scopeid)+'/'+a.uid;
@@ -111,5 +114,10 @@ export async function authorityAction(name,args,token,env={},fetchImpl=globalThi
     }
     throw Object.assign(new Error(message),{code:'AUTHORITY_ERROR',httpStatus:res.status});
   }
-  return res.json();
+  const data=await res.json();
+  const rawNotice=res.headers.get('x-loc-qos-warning');
+  if(rawNotice&&data&&typeof data==='object'&&!Array.isArray(data)){
+    try{return {...data,warning:decodeURIComponent(rawNotice)};}catch{}
+  }
+  return data;
 }
