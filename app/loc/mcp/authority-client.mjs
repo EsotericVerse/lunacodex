@@ -73,8 +73,8 @@ export async function authorityAction(name,args,token,env={},fetchImpl=globalThi
         method='PUT';
         // Database credentials are accepted only by the secure Clerk UI ->
         // Authority HTTPS endpoint, never as ChatGPT/MCP tool arguments.
-        body={endpoint:a.endpoint,schema:a.schema||'public',table:a.table};
-        if(!body.table||!body.endpoint)throw bad('Database endpoint and existing table are required');
+        body={endpoint:a.endpoint,schema:a.schema||'public',...(a.table?{table:a.table}:{})};
+        if(!body.endpoint)throw bad('LOC SQL Gateway URL is required');
       }
       break;
     case 'join_scope_group':
