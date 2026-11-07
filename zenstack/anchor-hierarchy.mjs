@@ -63,12 +63,17 @@ export function indexZModelAnchorHierarchy(rows,{family,strict=false}={}){
       throw new Error('Invalid or repeated Anchor UID: '+uid);
     nodes.set(uid,{uid,type,title:String(row?.title||''),attr:attrOf(row)});
   }
-  const unresolved=[];
+  const unresolved=[],relations=[];
   for(const node of nodes.values()){
     const edges=def.edges[node.type];
     for(const [key,childType] of Object.entries(edges)){
       for(const uid of linksOf(node,key)){
         const child=nodes.get(uid);
+        relations.push(Object.freeze({
+          family,fromUid:node.uid,toUid:uid,
+          fromType:node.type,toType:childType,attrKey:key,
+          resolved:Boolean(child)
+        }));
         if(!child){unresolved.push({from:node.uid,uid,type:childType});continue;}
         if(child.type!==childType)
           throw new Error('Invalid Anchor hierarchy ('+family+'): '+node.type+' -> '+child.type);
@@ -113,6 +118,9 @@ export function indexZModelAnchorHierarchy(rows,{family,strict=false}={}){
     family,kind:family,rootType:def.root,
     nodeCount:nodes.size,roots,
     missing:unresolved.map(ref=>({...ref})),
+    // Returned on demand to avoid changing existing tree consumers.
+    // References are local to this caller-supplied database+Scope partition.
+    links(){return [...relations];},
     descendants,
     childrenOf(uid){return [...(children.get(uid)||[])];},
     parentsOf(uid){return [...(incoming.get(uid)||[])];}
