@@ -12,6 +12,7 @@ import ScopeLink from '../../modular/ScopeLink';
 import {scopeHref} from '../../modular/scope-registry';
 import {sourceLabelMatchesSite} from '../source-classification.mjs';
 import {PUBLISHED_SOURCE_LISTS,PUBLISHED_SOURCE_ENTRIES} from '../../modular/published-source-taxonomy.js';
+import {indexZModelAnchorHierarchy} from '../../../zenstack/anchor-hierarchy.mjs';
 
 const CultureTimeline=dynamic(()=>import('../../modular/modules/culture-timeline/CultureTimeline'),{loading:()=>null});
 const NO_ITEMS=Object.freeze([]);
@@ -40,6 +41,10 @@ function attributes(row){
 function anchorModel(rows,start,end,expanded){
   const all=list(rows);
   const byUid=new Map(all.map(row=>[String(row.uid),row]));
+  // Native eight-character Anchor UIDs use the shared ZModel Time graph.
+  // Legacy imported short UIDs remain compatible with the existing river.
+  let timeGraph=null;
+  try{timeGraph=indexZModelAnchorHierarchy(all,{family:'time'});}catch{}
   const dates=all.filter(row=>row.type==='date').map(row=>({
     ...row,date:datePart(attributes(row).date)
   })).filter(row=>row.date);
@@ -57,7 +62,9 @@ function anchorModel(rows,start,end,expanded){
   const groups=[],items=[];
   for(const era of eras){
     const uid=String(era.uid),attr=attributes(era);
-    const refs=list(attr.period||attr.periods).map(id=>byUid.get(String(id)))
+    const periodUids=timeGraph&&Array.isArray(attr.period)
+      ?timeGraph.childrenOf(uid):list(attr.period||attr.periods);
+    const refs=periodUids.map(id=>byUid.get(String(id)))
       .filter(item=>item?.type==='period');
     const expandedEra=expanded.includes(uid);
     groups.push({id:'era:'+uid,label:era.title||'時代',
