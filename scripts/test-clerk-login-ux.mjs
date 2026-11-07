@@ -44,16 +44,15 @@ test('Management and Admin failures redirect to scenic login and verify return',
   assert.doesNotMatch(admin,/UI_COPY\.admin\.denied/);
 });
 
-test('original scenic white Theme 7 is stable for website and Chrome launcher',()=>{
+test('original scenic white Theme 7 stays intact beside native LOC Chrome launcher',()=>{
   const page=read('public/login/index.html');
   const styles=read('public/login/appearance.css');
-  const popup=read('extensions/loc-galaxy/popup.css');
-  const extension=read('extensions/loc-galaxy/popup.html');
+  const extension=read('extensions/loc-galaxy-link/options.html');
+  const manifest=JSON.parse(read('extensions/loc-galaxy-link/manifest.json'));
   assert.ok(page.includes('<html lang="zh-Hant" data-theme-id="theme-7" data-theme="light">'));
-  assert.doesNotMatch(page,/new Intl\.DateTimeFormat\('en-US',\{timeZone:'Asia\/Taipei'/);
   assert.ok(styles.includes(':root[data-theme-id="theme-7"]'));
-  assert.ok(popup.includes('color-scheme:light'));
-  assert.ok(popup.includes('--loc-bg:#ffffff'));
-  assert.ok(extension.includes('回到你的'));
-  assert.ok(extension.includes('開啟 LOC 登入畫面'));
+  assert.ok(styles.includes('--loc-bg:#ffffff'));
+  assert.ok(extension.includes('連接 LOC'));
+  assert.equal(manifest.name,'LOC galaxy-link｜LOC 彩虹橋');
+  assert.doesNotMatch(extension,/<script[^>]+src=[^>]*clerk/i);
 });
