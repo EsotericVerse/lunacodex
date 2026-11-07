@@ -104,7 +104,7 @@ export async function mergeFederatedGalaxyRows(sources,request,readPage){
   const refill=async state=>{
     if(state.position<state.queue.length||state.exhausted)return;
     const rows=await readPage(state.source,{
-      ...request,offset:state.offset,limit:BATCH,
+      ...request,offset:state.offset,limit:BATCH,federatedNullsLast:true,
       // Original text predicate, source/date and publication filters stay
       // attached to every per-dataset query. The index is only a candidate.
     });
@@ -126,10 +126,13 @@ export async function mergeFederatedGalaxyRows(sources,request,readPage){
       if(best===-1){best=i;continue;}
       const other=states[best].queue[states[best].position];
       const a=sortable(row[column]),b=sortable(other[column]);
-      // Never sort by opaque UID. Stable logical-source order resolves date
-      // ties; within one source the original database order is preserved.
-      const comp=a.localeCompare(b);
-      if((ascending?comp:-comp)<0)best=i;
+      // All supported SQL dialects use an explicit NULLS LAST expression
+      // for federated pages, so source-local and global ordering agree.
+      const aNull=row[column]==null,bNull=other[column]==null;
+      const comp=aNull!==bNull?(aNull?1:-1):
+        (aNull?0:(ascending?a.localeCompare(b):b.localeCompare(a)));
+      // Never sort by opaque UID. Source order resolves equal timestamps.
+      if(comp<0)best=i;
     }
     if(best===-1)break;
     const state=states[best],row=state.queue[state.position++];
