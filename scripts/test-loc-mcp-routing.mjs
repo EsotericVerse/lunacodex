@@ -8,11 +8,29 @@ const encode=x=>b64url(Buffer.from(JSON.stringify(x)));
 const pair=await webcrypto.subtle.generateKey({name:'RSASSA-PKCS1-v1_5',modulusLength:2048,
   publicExponent:new Uint8Array([1,0,1]),hash:'SHA-256'},true,['sign','verify']);
 const publicKey={...await webcrypto.subtle.exportKey('jwk',pair.publicKey),kid:'test-key'};
-const TEST_ENV={LOC_MCP_SQL_GATEWAY_URL:'https://sql.lo3rwang.cc/v1/sql'};
-const handleMcp=(request,env=TEST_ENV)=>liveHandleMcp(request,env);
-const originalFetch=globalThis.fetch;
 let jwksQueries=0;
 let publicApiRequests=[];
+const directDb={
+ selectFrom(table){
+  const request={table,columns:[],where:[],limit:null};
+  const chain={
+   select(columns){request.columns=columns;return this;},
+   where(...args){request.where.push(args);return this;},
+   orderBy(){return this;},limit(n){request.limit=n;return this;},
+   offset(){return this;},
+   async execute(){
+    publicApiRequests.push(request);
+    return request.columns.includes('content')?
+      [{uid:'30D7AFD7',title:'LP26',content:'Galaxy real article',date:'2026-11-01'}]:
+      [{uid:'30D7AFD7',title:'LP26',date:'2026-11-01'}];
+   }
+  };
+  return chain;
+ }
+};
+const TEST_ENV={locDirectDatabase:async()=>({db:directDb,engine:'postgres',namespace:'silver'})};
+const handleMcp=(request,env=TEST_ENV)=>liveHandleMcp(request,env);
+const originalFetch=globalThis.fetch;
 let quotaRequests=[];
 let quotaBlocked=false;
 let quotaNotice='';
@@ -32,14 +50,6 @@ globalThis.fetch=async (url,options)=>{
   }
   if(String(url)===LOC_OAUTH_ISSUER+'/.well-known/jwks.json'){
     jwksQueries++;return Response.json({keys:[publicKey]});
-  }
-  if(String(url)===TEST_ENV.LOC_MCP_SQL_GATEWAY_URL){
-    const payload=JSON.parse(options.body);
-    publicApiRequests.push({url:String(url),payload,options});
-    const byUid=payload.filters?.some(f=>f.column==='uid');
-    return Response.json({data:byUid?
-      [{uid:'30D7AFD7',title:'LP26',content:'Galaxy real article',date:'2026-11-01'}]:
-      [{uid:'30D7AFD7',title:'LP26',date:'2026-11-01'}]});
   }
   throw Error('unexpected fetch URL: '+url);
 };
@@ -137,7 +147,7 @@ test('MCP tool invalid input returns an error without database access',async()=>
   assert.equal(result.isError,true);
   assert.equal(publicApiRequests.length,0);
 });
-test('Public UID read is metered; 429 never reaches Supabase',async()=>{
+test('Direct Kysely UID read is metered; a 429 never executes SQL',async()=>{
   const jwt=await token();
   publicApiRequests=[];quotaRequests=[];
   const ok=await handleMcp(req('POST',jwt,rpc('tools/call',

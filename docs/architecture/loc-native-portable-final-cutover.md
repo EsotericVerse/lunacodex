@@ -74,6 +74,34 @@ remediation work restores the previous public-reader composition and removes
 the two **undeployed** standalone SQL Gateway service trees and root Container
 Dockerfile. Keeping the existing published data readable is intentional.
 
+### MCP public Galaxy in-process driver (2026-11-08)
+
+- `functions/index.js` and `functions/mcp.js` supply an in-process
+  `locDirectDatabase` factory to the **existing** Cloudflare Pages MCP
+  application; no extra Worker, Container, HTTP SQL service or generic SQL
+  endpoint is introduced.
+- `app/loc/mcp/galaxy-read.mjs` now issues **fixed Kysely SELECTs** directly:
+  anonymous published Scope only, `search=true` for a search summary,
+  `list=true` for an exact eight-character UID/full text, and a SQL-level
+  `site=mcp/github` exclusion to avoid private record leakage even when
+  historical Boolean switches are incorrect. SQL substring matching uses a
+  parameterized portable `ESCAPE '!'` expression.
+- The first runtime adapter uses native PostgreSQL `pg` + Kysely
+  `PostgresDialect` and the **server-only** `LOC_DB_CONNECTIONS_JSON`
+  + `LOC_MCP_DB_ALIAS` values. Connection pooling is reused per binding and
+  profile. This is a first feature migration, **not** full multi-engine
+  completion. The MySQL/SQL Server driver modules and native selected-database
+  mapping still need to be wired into this exact runtime.
+- Verified Cloudflare Pages project's production compatibility date
+  `2026-10-01` supports Node.js compatibility. Its current production
+  environment has **no direct MCP SQL credentials** yet. Until trusted
+  server-side bindings are supplied and real SQL tests pass, this code is
+  source-only, not a claim that MCP public reads are live.
+- Private Galaxy Link read/search/record, the LOC Auth short-import path,
+  Extension writes, browser public reads and the old Gateway-only modules
+  remain **unconverted**; do not cut away an in-use path or claim this finishes
+  Portable.
+
 **Not yet complete:** the native LOC application backend still needs direct
 Kysely execution for all website, MCP and Extension operations, corresponding
 OAuth authorization, a validated hosting/runtime configuration, and real

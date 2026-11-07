@@ -42,7 +42,7 @@
 ## 資料庫／安全硬邊界
 - **永久架構禁止：LOC 不得使用 SQL Gateway。** 不得新建、復活、改名或部署 `loc-sql`、`loc-mcp-sql`、泛用 `/v1/sql` HTTP Query 轉送器、獨立 SQL Gateway Container／Worker／Edge；不得把這些服務作為 Portable、MCP、Extension、LOC Auth 的依賴。資料庫 SQL 只由 LOC 可信任應用程式後端透過 Kysely Driver 與對應 Dialect 執行；LOC Auth 僅負責 OAuth 身分、Scope 權限和資料庫選擇，不替代 SQL Driver 登入。不得使用 Supabase Edge、Supabase／Neon／Clerk SDK 作為此架構的必要模組。網站瀏覽器不得取得資料庫連線密碼。清理期間禁止重建任何同等功能的 Gateway 來迴避此條禁令。
 - **2026-11-07 起資料庫全面凍結（最高優先）**：除使用者明確解除凍結外，所有 Agent 禁止修改或執行資料庫 Schema、Table、Column、Index、Trigger、RPC、Migration、RLS、Policy、GRANT／REVOKE、CREATE／ALTER／DROP；此限制包括 Portable 的新 Scope 建表、跨庫安裝器、自動修復和所有部署腳本。僅允許既有資料表中的 SELECT、INSERT、UPDATE、DELETE。程式不得偷偷在首次連線／管理操作時執行 DDL。既有 SQL Session 相容操作不得用來改寫 RLS。
-- **Portable 獨立部署**：連線憑證只存在可信任 SQL 服務 Secret，選擇資料庫使用伺服器端別名；Clerk、Supabase、Neon 都不得是跨庫 SQL 的必要身份相依。尚未設定獨立 Gateway 時保留現役相容入口，不得假稱部署完成或突然切斷網站。
+- **Portable 直接 Driver**：資料庫連線憑證只留在可信任 LOC 應用程式後端 Secret／Bindings；使用伺服器端別名與 Kysely Dialect 選擇 SQL Engine，LOC Auth 處理 OAuth／權限／資料庫選擇，絕不使用獨立 SQL Gateway。Clerk、Supabase、Neon 不得是跨庫 SQL 的必要身分相依。正式網站尚有公開 Data API 過渡讀取，新的直接 Driver 業務路徑完成驗證前不得擅自切斷，亦不得假稱已完成全部替換。
 - **公開 Theme 不查資料庫**：`silver.loc.theme` 僅供已授權 Admin 管理；公開前台固定使用 `app/modular/published-theme-catalog.json` 與 `published-themes.css`。管理員儲存後須明確執行 `sync:public`、提交發布產物再由既有流程部署；不可在頁面載入或 Theme 儲存後自動重新 SELECT `silver.loc.theme`，也不可為此更動 RLS。
 - **公開讀取與權限不可擅改**：使用者已明確要求 LOC 公開頁面資料可正常 SELECT。未經針對本次任務的明確授權，禁止修改 RLS Policy、GRANT／REVOKE 或以「安全考量」阻擋既有公開讀取；修復查詢頻率、Footer、Session 與 UI 不構成修改資料庫權限的授權。公開功能必須驗證未登入、沒有既有 Service Worker 快取的新訪客可載入；開發者本機快取成功不等於公開功能驗收成功。既有 Service Worker 不得因快取問題被擅自停用。
 - **UID 硬性規格**：涉及 Galaxy、Anchor 及其他既定八碼 UID 的新增流程，一律使用現有標準 Base62 安全亂數產生器；不得用標題、日期、PR 號、Scope 名稱或人造字串湊八碼。若尚無共用產生器，先查現有寫入入口，於其最小共用位置補齊，不另外新增資料表或索引。
