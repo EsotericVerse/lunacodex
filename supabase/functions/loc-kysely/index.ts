@@ -190,8 +190,11 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
     });
     const access=await authorizeCrossEngineQuery(trx,body,{role,claims});
     return await executeKyselyQuery(trx,body,{dialect:executionPort.engine,
-      namespace:String(target.schema_name||(
-        executionPort.engine==='mssql'?'dbo':'public')),
+      // PostgreSQL keeps the request's real api/silver schema. Other SQL
+      // engines use the configured flat database/dbo namespace.
+      namespace:executionPort.engine==='postgres'&&!target.schema_name
+        ?undefined:String(target.schema_name||(
+          executionPort.engine==='mssql'?'dbo':'public')),
       publicOnly:access?.publicOnly===true});
   }
   await bindPostgresSession(trx,role,claims,String(target.provider||"supabase"));
