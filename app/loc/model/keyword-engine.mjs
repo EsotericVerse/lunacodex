@@ -196,14 +196,15 @@ function specialRuneKeywordTexts(normalizedTexts,runes,rune){
 
 // Reanalysis keeps one immutable compiled Class for every article page.
 // Public one-off calls retain the existing API and identical scoring behavior.
-export function createKeywordDocumentClassifier(catalogRows=[],{collectKeywordTerms=false}={}){
+export function createKeywordDocumentClassifier(catalogRows=[],{collectKeywordTerms=false,selectedTerms=null}={}){
   const prepared=compileCatalog(catalogRows);
-  return documents=>classifyKeywordDocumentsWithCompiled(documents,prepared,collectKeywordTerms);
+  const selected=selectedTerms==null?null:new Set([...selectedTerms].map(normalizeText));
+  return documents=>classifyKeywordDocumentsWithCompiled(documents,prepared,collectKeywordTerms,selected);
 }
 export function classifyKeywordDocuments(documents=[],catalogRows=[]){
   return classifyKeywordDocumentsWithCompiled(documents,compileCatalog(catalogRows));
 }
-function classifyKeywordDocumentsWithCompiled(documents=[],prepared,collectKeywordTerms=false){
+function classifyKeywordDocumentsWithCompiled(documents=[],prepared,collectKeywordTerms=false,selectedTerms=null){
   const source=Array.isArray(documents)?documents:[];
   const {runes,nameToRune,groupOrder,fallbackGroup}=prepared;
   if(!source.length||!runes.length)return {
@@ -228,6 +229,7 @@ function classifyKeywordDocumentsWithCompiled(documents=[],prepared,collectKeywo
   const unsupportedRules=[];
 
   for(const rune of runes){
+    if(selectedTerms&&!rune.keywords.some(word=>selectedTerms.has(normalizeText(word))))continue;
     // NOR excludes the exact combined expression for this Item, across all
     // of its matching words. Other independent occurrences remain countable.
     const blockedPhrases=[...new Set(rune.rules
@@ -249,7 +251,7 @@ function classifyKeywordDocumentsWithCompiled(documents=[],prepared,collectKeywo
 
     for(const keyword of rune.keywords){
       const normalizedKeyword=normalizeText(keyword);
-      if(!normalizedKeyword)continue;
+      if(!normalizedKeyword||selectedTerms&&!selectedTerms.has(normalizedKeyword))continue;
       const isDayMoonName=(rune.label==='日'||rune.label==='月')&&normalizedKeyword===normalizeText(rune.label);
       const ownSpecificSources=isDayMoonName
         ?rune.keywords
@@ -269,6 +271,8 @@ function classifyKeywordDocumentsWithCompiled(documents=[],prepared,collectKeywo
       }
     }
 
+    // Incremental word lookup has no need for Item scoring or rule routing.
+    if(selectedTerms)continue;
     for(const rule of orderedRules){
       if(rule.operator==='NOR')continue; // applied before Item and rule matching
       const ruleSource=normalizeText(rule.source);
