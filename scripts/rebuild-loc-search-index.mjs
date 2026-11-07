@@ -1,31 +1,32 @@
-// One-time LOC Search index builder: SQL read -> in-memory FlexSearch ->
-// one snapshot per populated shard -> LOC_KV. No SQL schema, trigger, or RPC.
-// Requires a valid LOC-delegated Scope reader token and trusted index secret.
-// Run only against a stable source; the script verifies the row count and UID
-// coverage before declaring the index complete.
+// One-pass, memory-bounded LOC Galaxy -> FlexSearch -> LOC_KV backfill.
+// All backfill reads are verified against the *exact* databaseId by LOC Auth
+// and SQL Gateway. No OpenNext, SQL schema change, new RPC or RLS.
+// Requires a QUIESCED logical dataset for an exact initial snapshot.
 import {createLocSearchIndex} from '../app/loc/search-index-factory.mjs';
 import {locSearchShard,locSearchDocumentId,LOC_SEARCH_INDEX_SHARDS} from '../app/loc/search-index-shard.mjs';
+import {stageAndPublishLocIndex} from './loc-search-index-stage.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const DB=/^[a-z][a-z0-9_-]{0,63}$/;
-const UID=/^[A-Za-z0-9]{8}$/;
 const scopeId=String(process.env.LOC_INDEX_SCOPE_ID||'');
 const dbId=String(process.env.LOC_INDEX_DB_ID||'');
 const gateway=String(process.env.LOC_SQL_GATEWAY_URL||'');
 const gatewayToken=String(process.env.LOC_SQL_DELEGATION_TOKEN||'');
 const indexOrigin=String(process.env.LOC_SEARCH_INDEX_URL||'');
 const indexSecret=String(process.env.LOC_SEARCH_INDEX_SECRET||'');
+const verifyOnly=process.env.LOC_INDEX_VERIFY_ONLY==='true';
 if(!SCOPE.test(scopeId)||!DB.test(dbId)||!gatewayToken||
-   indexSecret.length<32||!/^https:\/\//.test(gateway)||!/^https:\/\//.test(indexOrigin))
-  throw Error('Provide valid LOC_INDEX_SCOPE_ID, LOC_INDEX_DB_ID, LOC_SQL_GATEWAY_URL, LOC_SQL_DELEGATION_TOKEN, LOC_SEARCH_INDEX_URL, LOC_SEARCH_INDEX_SECRET');
-const endpoint=new URL(indexOrigin);
-if(endpoint.username||endpoint.password||endpoint.search||endpoint.hash||
-  !['','/'].includes(endpoint.pathname))throw Error('Invalid index HTTPS origin');
+   indexSecret.length<32||!/^https:\/\//.test(gateway)||
+   (!verifyOnly&&!/^https:\/\//.test(indexOrigin)))
+  throw Error('Provide valid LOC_INDEX_SCOPE_ID, LOC_INDEX_DB_ID, LOC_SQL_GATEWAY_URL, LOC_SQL_DELEGATION_TOKEN, LOC_SEARCH_INDEX_SECRET and (unless verify-only) LOC_SEARCH_INDEX_URL');
+const origin=verifyOnly?null:new URL(indexOrigin);
+if(origin&&(origin.username||origin.password||origin.search||origin.hash||
+  !['','/'].includes(origin.pathname)))
+  throw Error('Invalid index HTTPS origin');
 
-async function post(url,body){
-  const response=await fetch(url,{
-    method:'POST',
-    headers:{'content-type':'application/json',
+async function readSql(body){
+  const response=await fetch(gateway,{
+    method:'POST',headers:{'content-type':'application/json',
       authorization:'Bearer '+gatewayToken,
       'x-loc-index-secret':indexSecret},
     body:JSON.stringify(body),signal:AbortSignal.timeout(30000),
@@ -33,59 +34,63 @@ async function post(url,body){
   });
   const payload=await response.json().catch(()=>null);
   if(!response.ok||payload?.error)
-    throw Error('Index build request failed: HTTP '+response.status+' '+String(payload?.error?.message||payload?.error||''));
+    throw Error('Index SQL snapshot failed: HTTP '+response.status+' '+
+      String(payload?.error?.message||payload?.error||''));
   return payload;
 }
 async function indexCall(path,body,method='POST'){
-  const r=await fetch(endpoint.origin+path,{
-    method,headers:{'content-type':'application/json',authorization:'Bearer '+indexSecret},
-    body:JSON.stringify(body),signal:AbortSignal.timeout(30000),redirect:'error'
+  const response=await fetch(origin.origin+path,{
+    method,headers:{'content-type':'application/json',
+      authorization:'Bearer '+indexSecret},
+    body:JSON.stringify(body),signal:AbortSignal.timeout(30000),
+    redirect:'error'
   });
-  const payload=await r.json().catch(()=>null);
-  if(!r.ok||payload?.accepted!==true)throw Error('Index '+path+' HTTP '+r.status);
+  const payload=await response.json().catch(()=>null);
+  if(!response.ok||payload?.accepted!==true)
+    throw Error('LOC_KV index '+path+' failed: HTTP '+response.status);
   return payload;
 }
-const snapshotStartedMs=Date.now();
-const indices=Array.from({length:LOC_SEARCH_INDEX_SHARDS},
-  ()=>createLocSearchIndex());
-const perShard=new Array(LOC_SEARCH_INDEX_SHARDS).fill(0);
-const seen=new Set(),pageSize=50;
-const base={kind:'index-snapshot',scopeId,databaseId:dbId};
-const head=await post(gateway,{...base,head:true,limit:1});
-const expected=Number(head.count);
+const startedAt=Date.now();
+const source={kind:'index-snapshot',scopeId,databaseId:dbId};
+const count=await readSql({...source,head:true,limit:1});
+const expected=Number(count.count);
 if(!Number.isSafeInteger(expected)||expected<0)
-  throw Error('LOC SQL Gateway did not supply an exact row count');
-for(let offset=0;offset<expected;offset+=pageSize){
-  const result=await post(gateway,{...base,head:false,
-    limit:pageSize,offset});
-  const rows=result.data;
-  if(!Array.isArray(rows)||!rows.length)
-    throw Error('SQL source changed or returned an incomplete page at '+offset);
-  for(const row of rows){
-    const uid=String(row.uid||'');
-    if(!UID.test(uid)||seen.has(uid)||typeof row.content!=='string')
-      throw Error('Source contains invalid, repeated, or unreadable Galaxy article: '+uid);
-    seen.add(uid);
-    const shard=locSearchShard(uid);
-    indices[shard].add(locSearchDocumentId({scopeId,dbId,uid}),row.content);
-    perShard[shard]++;
+  throw Error('LOC SQL Gateway did not return an exact Galaxy row count');
+
+async function* galaxyRows(){
+  const pageSize=50;
+  for(let offset=0;offset<expected;offset+=pageSize){
+    const response=await readSql({...source,head:false,limit:pageSize,offset});
+    if(!Array.isArray(response.data)||!response.data.length||
+       response.data.length>pageSize)
+      throw Error('SQL index snapshot page was missing/invalid at '+offset);
+    for(const row of response.data)yield row;
   }
 }
-if(seen.size!==expected)
-  throw Error('SQL snapshot coverage mismatch: expected '+expected+', read '+seen.size);
-// Do not invalidate the current index until all SQL reads and local index
-// construction succeed. Reset disables indexed search while uploading shards.
-await indexCall('/v1/reset',{scopeId,dbId,entityType:'galaxy'});
-let shipped=0;
-for(let shard=0;shard<indices.length;shard++){
-  if(!perShard[shard])continue;
-  const parts={};
-  await indices[shard].export(async(key,data)=>{
-    if(data!==undefined&&data!==null)parts[key]=data;
-  });
-  await indexCall('/v1/snapshot',{scopeId,dbId,entityType:'galaxy',shard,parts});
-  shipped++;
-}
-await indexCall('/v1/prune-deltas',{scopeId,dbId,entityType:'galaxy',beforeMs:snapshotStartedMs});
-await indexCall('/v1/coverage',{scopeId,dbId,entityType:'galaxy',complete:true},'PUT');
-console.log(JSON.stringify({indexed:expected,scopeId,dbId,shards:shipped,complete:true}));
+const shardManifest=[];
+const report=await stageAndPublishLocIndex({
+  rows:galaxyRows(),expected,scopeId,dbId,
+  shardCount:LOC_SEARCH_INDEX_SHARDS,
+  shardOf:locSearchShard,documentId:locSearchDocumentId,
+  makeIndex:createLocSearchIndex,
+  publish:async({phase,shard,parts})=>{
+    if(verifyOnly)return;
+    if(phase==='begin')
+      await indexCall('/v1/reset',{scopeId,dbId,entityType:'galaxy'});
+    else if(phase==='shard'){
+      await indexCall('/v1/snapshot',{scopeId,dbId,entityType:'galaxy',shard,parts});
+      shardManifest.push(shard);
+    }
+    else if(phase==='commit'){
+      // Preserve immutable append deltas produced after SQL scanning began.
+      await indexCall('/v1/prune-deltas',{
+        scopeId,dbId,entityType:'galaxy',beforeMs:startedAt
+      });
+      await indexCall('/v1/coverage',{
+        scopeId,dbId,entityType:'galaxy',complete:true,shards:shardManifest
+      },'PUT');
+    }
+  }
+});
+console.log(JSON.stringify({...report,scopeId,dbId,verifyOnly,
+  complete:!verifyOnly&&report.complete}));

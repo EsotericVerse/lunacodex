@@ -31,17 +31,31 @@ function identity(doc){
 }
 const base=({scopeId,dbId,entityType})=>PREFIX+'data/'+scopeId+'/'+dbId+'/'+entityType+'/';
 const readyKey=({scopeId,dbId,entityType})=>PREFIX+'ready/'+scopeId+'/'+dbId+'/'+entityType;
+function readReadyManifest(value){
+  if(typeof value!=='string')return null;
+  let data;
+  try{data=JSON.parse(value);}catch{return null;}
+  const shards=data?.shards;
+  if(data?.version!==LOC_SEARCH_INDEX_FORMAT||
+     !Array.isArray(shards)||shards.length>LOC_SEARCH_INDEX_SHARDS||
+     shards.some(x=>!Number.isInteger(x)||x<0||x>=LOC_SEARCH_INDEX_SHARDS)||
+     new Set(shards).size!==shards.length)return null;
+  return data;
+}
 const shardKey=doc=>base(doc)+String(locSearchShard(doc.uid)).padStart(2,'0');
 function makeIndex(){return createLocSearchIndex();}
 async function loadShard(kv,key){
   const snapshot=await kv.get(key,'json');
   const index=makeIndex();
-  if(snapshot!==null){
-    if(snapshot?.version!==LOC_SEARCH_INDEX_FORMAT||!snapshot.parts||typeof snapshot.parts!=='object')
-      throw Error('Unsupported or corrupt LOC index snapshot');
-    for(const [part,value] of Object.entries(snapshot.parts))
-      await index.import(part,value);
-  }
+  // A manifest-referenced base shard or listed delta must exist. Treating a
+  // temporarily invisible KV key as an empty index would drop valid hits.
+  if(snapshot===null)
+    throw Object.assign(new Error('Index shard not visible yet'),{status:503});
+  if(snapshot?.version!==LOC_SEARCH_INDEX_FORMAT||!snapshot.parts||
+     typeof snapshot.parts!=='object')
+    throw Error('Unsupported or corrupt LOC index snapshot');
+  for(const [part,value] of Object.entries(snapshot.parts))
+    await index.import(part,value);
   return index;
 }
 async function writeShard(kv,key,index){
@@ -175,22 +189,20 @@ async function find(env,body){
   if(query.length<2||query.length>160||/[\u0000-\u001f\u007f]/u.test(query))
     throw invalid('Invalid search text');
   const found=new Set();
-  // Each requested logical dataset must have a complete index. A partially
-  // provisioned distributed Scope is NEVER treated as complete.
+  // Read a committed shard manifest, not a bare readiness flag. A remote
+  // KV point-of-presence might see the marker before it sees every snapshot.
+  // Direct GETs of every named shard fail to SQL rather than losing hits.
   for(const source of sources){
-    if(await env.LOC_KV.get(readyKey(source))!=='v2')
-      return {complete:false,hits:[],reason:'dataset-incomplete'};
-    const prefixes=[
-      {prefix:base(source),cap:MAX_SHARDS},
-      {prefix:PREFIX+'delta/'+source.scopeId+'/'+source.dbId+'/'+source.entityType+'/',cap:48}
+    const ready=readReadyManifest(await env.LOC_KV.get(readyKey(source)));
+    if(!ready)return {complete:false,hits:[],reason:'dataset-incomplete'};
+    const deltaPrefix=PREFIX+'delta/'+source.scopeId+'/'+source.dbId+'/'+source.entityType+'/';
+    const delta=await env.LOC_KV.list({prefix:deltaPrefix,limit:49});
+    if(delta.list_complete===false||delta.keys.length>48)
+      return {complete:false,hits:[],reason:'index-needs-compaction'};
+    const keys=[
+      ...ready.shards.map(shard=>base(source)+String(shard).padStart(2,'0')),
+      ...delta.keys.map(item=>item.name)
     ];
-    const keys=[];
-    for(const item of prefixes){
-      const page=await env.LOC_KV.list({prefix:item.prefix,limit:item.cap+1});
-      if(page.list_complete===false||page.keys.length>item.cap)
-        return {complete:false,hits:[],reason:'index-needs-compaction'};
-      keys.push(...page.keys.map(k=>k.name));
-    }
     for(let offset=0;offset<keys.length;offset+=4){
       const batches=keys.slice(offset,offset+4);
       const result=await Promise.all(batches.map(async key=>{
@@ -216,10 +228,31 @@ async function find(env,body){
 }
 async function coverage(env,body){
   const source=checkedSource(body||{});
-  if(body.complete===true)await env.LOC_KV.put(readyKey(source),'v2');
-  else if(body.complete===false)await env.LOC_KV.delete(readyKey(source));
+  if(body.complete===true){
+    const shards=body.shards;
+    if(!Array.isArray(shards)||shards.length>LOC_SEARCH_INDEX_SHARDS||
+       shards.some(x=>!Number.isInteger(x)||x<0||x>=LOC_SEARCH_INDEX_SHARDS)||
+       new Set(shards).size!==shards.length)
+      throw invalid('Index coverage requires an explicit shard manifest');
+    await env.LOC_KV.put(readyKey(source),JSON.stringify({
+      version:LOC_SEARCH_INDEX_FORMAT,shards:[...shards].sort((a,b)=>a-b)
+    }));
+  }else if(body.complete===false)
+    await env.LOC_KV.delete(readyKey(source));
   else throw invalid('Invalid completeness flag');
   return {accepted:true,complete:body.complete};
+}
+async function sourceStatus(env,body){
+  const source=checkedSource(body||{});
+  const ready=readReadyManifest(await env.LOC_KV.get(readyKey(source)));
+  const prefix=PREFIX+'delta/'+source.scopeId+'/'+source.dbId+'/'+source.entityType+'/';
+  const delta=await env.LOC_KV.list({prefix,limit:49});
+  const tooMany=delta.list_complete===false||delta.keys.length>48;
+  return {accepted:true,scopeId:source.scopeId,dbId:source.dbId,
+    entityType:source.entityType,indexVersion:LOC_SEARCH_INDEX_FORMAT,
+    ready:Boolean(ready),baseShards:ready?.shards.length||0,
+    deltaSegments:delta.keys.length,needsCompaction:tooMany,
+    complete:Boolean(ready)&&!tooMany};
 }
 export default {
   async fetch(request,env){
@@ -229,6 +262,8 @@ export default {
     try{
       if(request.method==='POST'&&pathname==='/v1/search')
         return json(await find(env,await payloadOf(request)));
+      if(request.method==='POST'&&pathname==='/v1/status')
+        return json(await sourceStatus(env,await payloadOf(request)));
       if(request.method==='POST'&&pathname==='/v1/documents')
         return json(await mutate(env,await payloadOf(request)));
       if(request.method==='PUT'&&pathname==='/v1/coverage')

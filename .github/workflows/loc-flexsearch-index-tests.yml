@@ -1,0 +1,27 @@
+name: LOC FlexSearch index regression
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  index-tests:
+    name: FlexSearch and offline staging contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Install repo-locked dependencies without installation hooks
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Verify index, federation and bounded backfill
+        run: |
+          node --test \
+            scripts/test-loc-search-index.mjs \
+            scripts/test-loc-federated-galaxy-search.mjs \
+            scripts/test-loc-search-index-stage.mjs

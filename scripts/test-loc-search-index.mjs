@@ -36,7 +36,7 @@ test('LOC index preserves identical UIDs across independent SQL datasets',async(
   assert.equal((await call('/v1/documents',{documents:[a,b]})).accepted,true);
   assert.equal((await call('/v1/search',{scopeId:'lo3rwang',dbId:'db1',query:'文化'})).complete,false);
   for(const dbId of ['db1','db2']){
-    assert.equal((await call('/v1/coverage',{scopeId:'lo3rwang',dbId,complete:true},{method:'PUT'})).accepted,true);
+    assert.equal((await call('/v1/coverage',{scopeId:'lo3rwang',dbId,complete:true,shards:[]},{method:'PUT'})).accepted,true);
   }
   const resultA=await call('/v1/search',{scopeId:'lo3rwang',dbId:'db1',query:'文化'});
   const resultB=await call('/v1/search',{scopeId:'lo3rwang',dbId:'db2',query:'痕跡'});
@@ -44,6 +44,32 @@ test('LOC index preserves identical UIDs across independent SQL datasets',async(
   assert.equal(resultB.complete,true);
   assert.deepEqual(resultA.hits.map(x=>[x.scopeId,x.dbId,x.uid]),[['lo3rwang','db1','Ab123456']]);
   assert.deepEqual(resultB.hits.map(x=>[x.scopeId,x.dbId,x.uid]),[['lo3rwang','db2','Ab123456']]);
+});
+
+test('coverage requires a shard manifest, and status is credential protected',async()=>{
+  const source={scopeId:'lo3rwang',dbId:'db1',entityType:'galaxy'};
+  const bad=await call('/v1/coverage',{...source,complete:true},{method:'PUT'});
+  assert.equal(bad.status,400);
+  const status=await call('/v1/status',source);
+  assert.equal(status.status,200);
+  assert.equal(status.indexVersion,2);
+  assert.equal(status.ready,true);
+  assert.equal(status.baseShards,0);
+  const denied=await call('/v1/status',source,{authorized:false});
+  assert.equal(denied.status,401);
+});
+
+test('manifest-referenced but invisible base shard never gives a false complete result',async()=>{
+  const source={scopeId:'lo3rwang',dbId:'db1',entityType:'galaxy'};
+  assert.equal((await call('/v1/coverage',{
+    ...source,complete:true,shards:[0]
+  },{method:'PUT'})).accepted,true);
+  // Missing KV data must not silently behave like an empty index.
+  const result=await call('/v1/search',{...source,query:'文化'});
+  assert.equal(result.status,503);
+  assert.equal((await call('/v1/coverage',{
+    ...source,complete:true,shards:[]
+  },{method:'PUT'})).accepted,true);
 });
 
 test('append indexes the new suffix without dropping previously indexed words',async()=>{
