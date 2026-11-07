@@ -79,13 +79,11 @@ test('Admin consumes site metadata without querying nonexistent admin tables',as
   assert.equal(result.blocks.length,0);
 });
 
-test('LOC homepage gets published Blocks independently of the shared metadata',async()=>{
-  const {calls,site,resolveSite,selectAppBootstrap}=await harness();
-  const pending=selectAppBootstrap('loc','index');
-  assert.deepEqual(calls,['site','blocks:loc:index']);
-  resolveSite(site);
-  const result=await pending;
-  assert.equal(result.config.id,'loc');
+test('LOC homepage reads only its Blocks without a redundant Config SELECT',async()=>{
+  const {calls,selectAppBootstrap}=await harness();
+  const result=await selectAppBootstrap('loc','index');
+  assert.deepEqual(calls,['blocks:loc:index']);
+  assert.equal(result.config,null);
   assert.equal(result.blocks[0].uid,'loc-index');
 });
 
