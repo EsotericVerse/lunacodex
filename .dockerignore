@@ -1,0 +1,9 @@
+# LOC independent SQL/MCP Deno containers only copy these source trees.
+# Avoid uploading the 3000+ repo Skills, Git history, media and extension files.
+*
+!app
+!app/**
+!zenstack
+!zenstack/**
+!services
+!services/**
