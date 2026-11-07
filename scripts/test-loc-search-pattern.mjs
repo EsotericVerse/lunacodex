@@ -64,10 +64,10 @@ test('reject invalid identities or inconsistent per-word counts',()=>{
   ]),/count/);
   assert.throws(()=>buildKeywordSearchPatterns('scope',[item('文化')],[
     hit('文化',['BadUID'])
-  ]),/count/);
+  ]),/UID/);
   assert.throws(()=>buildKeywordSearchPatterns('scope',[item('文化')],[
     hit('不存在',['Ab12Cd34'])
-  ]),/count/);
+  ]),/unknown Keyword word/);
 });
 
 test('empty analysis still exposes zero-count literal words',()=>{
