@@ -454,6 +454,8 @@ async function syncSearchPatterns(trx,args){
   const scope=await scopedWrite(trx,args.p_scope_id);
   const classUid=validUid(args.p_class_uid);
   const proposed=args.p_patterns;
+  if(args.p_final!==undefined&&typeof args.p_final!=='boolean')
+    reject('Invalid search-pattern finalization flag');
   if(!Array.isArray(proposed)||proposed.length>4000)
     reject('Invalid search-pattern batch');
   const anchor='silver.'+scope+'_anchor';
@@ -513,8 +515,11 @@ async function syncSearchPatterns(trx,args){
         update_time:eb.ref('excluded.update_time')
       }))).execute();
   }
+  // Intermediate uploads must not prune words: a full Class may exceed the
+  // SQL transport's 1 MiB POST limit. The final batch alone performs cleanup.
   // Do not remove another Class's live words when this Class is reanalyzed.
-  const obsolete=stored.filter(row=>!active.has(id(row.pattern))).map(row=>row.pattern);
+  const obsolete=args.p_final===false?[]:
+    stored.filter(row=>!active.has(id(row.pattern))).map(row=>row.pattern);
   for(let i=0;i<obsolete.length;i+=100){
     await trx.deleteFrom('silver.loc_search_pattern')
       .where('scopeid','=',scope).where('pattern','in',obsolete.slice(i,i+100)).execute();
@@ -548,7 +553,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     manage:['p_type','p_id'],
     find_galaxy_duplicates:['p_scope_id'],
     read_scope_registry_admin:[],
-    sync_search_patterns:['p_scope_id','p_class_uid','p_patterns'],
+    sync_search_patterns:['p_scope_id','p_class_uid','p_patterns','p_final']
     suggest_search_patterns:['p_scope_ids','p_query']
   }[name];
   if(Object.keys(args).some(key=>!keys.includes(key)))reject('Unexpected Kysely action argument');
