@@ -277,24 +277,25 @@ test('LOC delegation requires verified email, not a shared signing secret',async
   assert.equal(jwks.status,200);
   assert.equal((await jwks.json()).keys[0].alg,'RS256');
 });
-test('public sign-in is Clerk-only and the recovery console is no longer offered',()=>{
+test('public sign-in uses LOC Auth, not a vendor-hosted login widget',()=>{
   const page=readFileSync(new URL('../public/login/index.html',import.meta.url),'utf8');
-  const settings=JSON.parse(readFileSync(new URL('../public/recovery/config.json',import.meta.url),'utf8'));
   const account=readFileSync(new URL('../app/loc/GlobalSettings.jsx',import.meta.url),'utf8');
   assert.match(page,/<title>LOC · 登入<\/title>/);
-  assert.match(page,/clerk\.mountSignIn/);
-  assert.doesNotMatch(page,/id="legacy"|loc-auth-provider|使用原本登入/);
+  assert.match(page,/const AUTHORITY='https:\/\/auth\.lo3rwang\.cc'/);
+  assert.match(page,/new URL\('\/oauth\/login',AUTHORITY\)/);
+  assert.match(page,/fetch\(AUTHORITY\+'\/v1\/auth\/session'/);
+  assert.match(page,/id="login-root"/);
+  assert.doesNotMatch(page,/clerk\.mountSignIn|ClerkProvider|loc-auth-provider|使用原本登入/);
   assert.doesNotMatch(account,/原本登入方式|恢復原本登入|獨立資料庫復原控制/);
-  assert.deepEqual(Object.keys(settings).sort(),['controlUrl','frontendApiUrl','publishableKey']);
 });
-test('Clerk login JavaScript parses and the public identity configuration matches its domain',()=>{
-  const cfg=JSON.parse(readFileSync(new URL('../public/recovery/config.json',import.meta.url),'utf8'));
-  assert.match(cfg.publishableKey,/^pk_(test|live)_/);
-  assert.equal(Buffer.from(cfg.publishableKey.replace(/^pk_(test|live)_/,''),'base64url').toString('utf8'),
-    new URL(cfg.frontendApiUrl).hostname+'$');
+test('LOC Auth login JavaScript parses and validates safe return paths',()=>{
   const login=readFileSync(new URL('../public/login/index.html',import.meta.url),'utf8');
   const script=login.split('<script type="module">')[1]?.split('</script>')[0];
   assert.ok(script);
   new Function(script);
-  assert.match(script,/clerk\.mountSignIn/);
+  assert.match(script,/value\.startsWith\('\/'\)/);
+  assert.match(script,/value\.startsWith\('\/\/'\)/);
+  assert.match(script,/value\.includes\('\\\\'\)/);
+  assert.match(script,/validReturnPath\(\)/);
+  assert.match(script,/verifiedForEditor=signedIn/);
 });

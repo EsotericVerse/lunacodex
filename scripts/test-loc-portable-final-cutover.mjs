@@ -45,7 +45,8 @@ test('the last direct Scope display and managed writes use one Kysely transactio
   assert.match(management,/updateTable\('silver.loc'\)\.set\(\{display_name:title\}\)/);
   assert.match(runtime,/validateLocRegistryDomain/);
   assert.match(runtime,/updated_at:new Date\(\)/);
-  assert.match(admin,/fixedSchema\.models\.Manage/);
+  assert.match(admin,/const REGISTRY_RETURNING=fixedColumns\('Manage'/);
+  assert.match(admin,/const actual=fixedSchema\.models\[model\]\?\.fields/);
 });
 
 test('owner_id defaults no longer depend on the retired user-ID SQL function',()=>{
