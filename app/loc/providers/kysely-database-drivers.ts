@@ -42,7 +42,10 @@ export function resolveConnectionProfile(input:Record<string,unknown>):Connectio
 export async function databaseForTarget(input:Record<string,unknown>,options:{profileLookup?:(target:Record<string,unknown>)=>Promise<ConnectionProfile>}={}){
   const target=normalizeDatabaseTarget(input);
   const profile=options.profileLookup?await options.profileLookup(target):resolveConnectionProfile(target);
-  const key=target.connection_alias+":"+target.engine+":"+profile.url;
+  // An updated TLS or authentication profile must not reuse an older pool.
+  // The connection identity is trusted server-only data, never sent to a client.
+  const key=target.connection_alias+":"+target.engine+":"+profile.url+":"+
+    String(profile.tls)+":"+JSON.stringify(profile.authentication||{});
   const cached=instances.get(key);
   if(cached)return cached;
   const uri=new URL(profile.url);
@@ -53,6 +56,9 @@ export async function databaseForTarget(input:Record<string,unknown>,options:{pr
     // Pool sizing is independent of database hosting. A single trusted SQL
     // Gateway instance reuses this connection pool for its Scope queries.
     dialect=new PostgresDialect({pool:new Pool({connectionString:profile.url,
+      // Trusted runtime profiles default to TLS. A local/plaintext database
+      // must opt out explicitly; URL-based sslmode remains supported by pg.
+      ...(profile.tls===false?{ssl:false}:{ssl:{rejectUnauthorized:true}}),
       max:1,idleTimeoutMillis:15000,connectionTimeoutMillis:7000})});
   }else if(target.engine==="mysql"){
     if(uri.protocol!=="mysql:")throw new Error("MySQL needs a mysql URL");
