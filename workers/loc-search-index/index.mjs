@@ -56,6 +56,7 @@ async function checkBearer(request,env){
   const token=(request.headers.get('authorization')||'').match(/^Bearer\s+(.+)$/i)?.[1]||'';
   if(secret.length<32||token.length!==secret.length)return false;
   const a=encoder.encode(token),b=encoder.encode(secret);
+  if(a.length!==b.length)return false;
   let diff=0;for(let i=0;i<a.length;i++)diff|=a[i]^b[i];
   return diff===0;
 }
@@ -126,33 +127,43 @@ async function resetSource(env,body){
   return {accepted:true,removed:page.keys.length};
 }
 async function find(env,body){
-  const source=checkedSource(body||{});
+  const scopeId=checked(body?.scopeId,SCOPE,'scopeId');
+  const entityType=checked(body?.entityType||'galaxy',TYPE,'entityType');
+  const dbIds=Array.isArray(body?.dbIds)?body.dbIds:[body?.dbId];
+  if(!dbIds.length||dbIds.length>16)throw invalid('Invalid requested datasets');
+  const sources=[...new Set(dbIds.map(dbId=>checked(dbId,SOURCE,'dbId')))]
+    .map(dbId=>({scopeId,dbId,entityType}));
   const query=String(body.query||'').trim();
-  if(query.length<2||query.length>160||/[\u0000-\u001f\u007f]/u.test(query))throw invalid('Invalid search text');
-  const covered=(await env.LOC_KV.get(readyKey(source)))==='v1';
-  if(!covered)return {complete:false,hits:[]};
+  if(query.length<2||query.length>160||/[\u0000-\u001f\u007f]/u.test(query))
+    throw invalid('Invalid search text');
   const found=new Set();
-  const prefix=base(source);
-  const page=await env.LOC_KV.list({prefix,limit:MAX_SHARDS+1});
-  if(page.list_complete===false||page.keys.length>MAX_SHARDS)
-    return {complete:false,hits:[],reason:'index-too-many-shards'};
-  const keys=page.keys.map(k=>k.name);
-  for(let offset=0;offset<keys.length;offset+=4){
-    const batches=keys.slice(offset,offset+4);
-    const result=await Promise.all(batches.map(async key=>{
-      const idx=await loadShard(env.LOC_KV,key);
-      return idx.search(query,{limit:MAX_HITS+1});
-    }));
-    for(const ids of result)for(const id of ids)found.add(id);
-    if(found.size>MAX_HITS)
-      return {complete:false,hits:[],reason:'candidate-limit'};
+  // Each requested logical dataset must have a complete index. A partially
+  // provisioned distributed Scope is NEVER treated as complete.
+  for(const source of sources){
+    if(await env.LOC_KV.get(readyKey(source))!=='v1')
+      return {complete:false,hits:[],reason:'dataset-incomplete'};
+    const prefix=base(source);
+    const page=await env.LOC_KV.list({prefix,limit:MAX_SHARDS+1});
+    if(page.list_complete===false||page.keys.length>MAX_SHARDS)
+      return {complete:false,hits:[],reason:'index-too-many-shards'};
+    const keys=page.keys.map(k=>k.name);
+    for(let offset=0;offset<keys.length;offset+=4){
+      const batches=keys.slice(offset,offset+4);
+      const result=await Promise.all(batches.map(async key=>{
+        const idx=await loadShard(env.LOC_KV,key);
+        return idx.search(query,{limit:MAX_HITS+1});
+      }));
+      for(const ids of result)for(const id of ids)found.add(id);
+      if(found.size>MAX_HITS)
+        return {complete:false,hits:[],reason:'candidate-limit'};
+    }
   }
   const hits=[];
   for(const id of found){
     let decoded;try{decoded=JSON.parse(id);}catch{continue;}
     if(Array.isArray(decoded)&&decoded.length===4&&
-       decoded[0]===source.scopeId&&decoded[1]===source.dbId&&
-       decoded[2]===source.entityType&&UID.test(String(decoded[3])))
+       decoded[0]===scopeId&&sources.some(s=>s.dbId===decoded[1])&&
+       decoded[2]===entityType&&UID.test(String(decoded[3])))
       hits.push({scopeId:decoded[0],dbId:decoded[1],entityType:decoded[2],uid:decoded[3]});
   }
   return {complete:true,hits};
