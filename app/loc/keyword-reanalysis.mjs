@@ -35,7 +35,7 @@ export async function reanalyzeKeywordClass({
   const groupResults=new Map(root.lists.map(uid=>[uid,new Set()]));
   const resolver=createKeywordUidGroupResolver(treeRows,classUid);
   // Compile keyword rules once per Class, not once per 1,000-article batch.
-  const classify=createKeywordUidDocumentClassifier(treeRows,classUid);
+  const classify=createKeywordUidDocumentClassifier(treeRows,classUid,{collectKeywordTerms:Boolean(writePatterns)});
   const seen=new Set();
   let offset=0,read=0,eligible=0,occurrences=0,itemMatches=0;
   for(;;){
