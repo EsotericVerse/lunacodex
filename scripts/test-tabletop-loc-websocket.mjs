@@ -12,7 +12,7 @@ const file=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 test('online tabletop uses only native WebSockets and does not expose the host secret in invites',()=>{
   const src=file('app/lrunes/game/use-online-tabletop.js');
   const board=file('app/lrunes/game/GameBoard.jsx');
-  const gateway=file('app/loc/providers/clerk-gateway.mjs');
+  const gateway=file('app/loc/providers/configured.mjs');
   assert.doesNotMatch(src,/Supabase|dbRealtimeClient|\.channel\(/);
   assert.match(src,/new WebSocket\(url\)/);
   assert.match(board,/hostKey:crypto\.randomUUID\(\)/);
