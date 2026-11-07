@@ -66,7 +66,7 @@ export function verifyDelegationBoundary(payload,request,{
     const scope=String(request?.scopeid||'');
     const kind=String(request?.kind||'');
     const site=kind==='mcp-read'?String(request?.site||'mcp'):'mcp';
-    if(!['lo3rwang','lrunes'].includes(scope)||!['mcp','github'].includes(site))
+    if(!SCOPE.test(scope)||!['mcp','github'].includes(site))
       reject('Invalid delegated MCP resource');
     const needed=kind==='mcp-update-pr'||site==='github'?'manage':
       kind==='mcp-read'||kind==='mcp-search'?'read':'write';
