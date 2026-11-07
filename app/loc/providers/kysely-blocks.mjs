@@ -19,7 +19,7 @@ export async function saveBlocksKysely(db,args,{engine='postgres',namespace='sil
   const supplied=args?.p_rows;
   if(!SCOPE.test(scope)||!PAGE.test(type)||!Array.isArray(supplied)||supplied.length>50)
     reject('Invalid Block save request');
-  const tableName=scope==='loc'?'loc_blocks':scope+'_blocks';
+  const tableName=scope+'_blocks';
   const table=engine==='postgres'?'silver.'+tableName:
     portableRelation(tableName,engine,namespace);
   const seen=new Set(),orders=new Set();
