@@ -50,7 +50,19 @@ export const CROSS_ENGINE_PUBLIC_READ_TABLES=Object.freeze([
   'runes','runes_etc','runes_group'
 ]);
 const externalPublicReads=new Set(CROSS_ENGINE_PUBLIC_READ_TABLES);
+// LOC's routing, configuration and block presentation are public reference
+// data regardless of SQL vendor. Keep private per-article filters separate.
+const externalPublicApi=new Set(['manage','loc_user','user_settings']);
+const externalPublicControl=new Set(['loc','lo3rwang','lrunes']);
+const publicScopeBlocks=/^[a-z][a-z0-9]{0,14}_blocks$/;
 const publicScopeData=/^[a-z][a-z0-9]{0,14}_(galaxy|anchor)$/;
+function publicReference(request){
+  const table=String(request?.table||'');
+  return request?.schema==='api'&&externalPublicApi.has(table)||
+    request?.schema==='silver'&&(
+      externalPublicReads.has(table)||externalPublicControl.has(table)||
+      publicScopeBlocks.test(table));
+}
 export function portableRelation(table,engine,namespace=''){
   if(!/^[a-z][a-z0-9_]*$/i.test(table))throw new Error('Invalid SQL relation');
   if(engine==='mysql')return table;
@@ -60,8 +72,9 @@ export function portableRelation(table,engine,namespace=''){
 }
 export function assertCrossEnginePublicRead(request){
   if(request?.kind!=='query'||request.operation!=='select'||
-      request.schema!=='silver'||typeof request.table!=='string'||
-      !(externalPublicReads.has(request.table)||publicScopeData.test(request.table))){
+      typeof request.table!=='string'||!(
+        publicReference(request)||
+        request.schema==='silver'&&publicScopeData.test(request.table))){
     const error=new Error('External SQL public read requires a published LOC relation');
     error.httpStatus=403;
     throw error;
@@ -83,6 +96,9 @@ const VERIFIED_EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export async function authorizeCrossEngineQuery(db,request,{role='anon',claims={}}={}){
   if(role!=='authenticated')
     return assertCrossEnginePublicRead(request);
+  // Public reference relations stay readable under an authenticated session.
+  if(request?.kind==='query'&&request.operation==='select'&&
+     publicReference(request))return {publicOnly:false};
   if(request?.kind!=='query'||request.schema!=='silver'||
      typeof request.table!=='string'){
     const error=new Error('Unsupported cross-engine LOC request');
