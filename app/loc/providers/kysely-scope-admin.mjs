@@ -2,6 +2,7 @@ import {canManageLoc} from './loc-authorization.mjs';
 import {allocateAnchorUid} from '../unified-anchor-compat.mjs';
 import {sql} from 'npm:kysely@0.29.8';
 import {schema as fixedSchema} from '../../../zenstack/schema.mjs';
+import {normalizeLocDomain} from './loc-domain.mjs';
 
 // Verify the physical Registry columns against LOC's frozen ZModel contract
 // once at module load; never introspect the database per request.
@@ -18,7 +19,6 @@ const LOC_NAME_COLUMNS=fixedColumns('Loc',
 
 const ID=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
-const DOMAIN=/^[a-z0-9][a-z0-9.-]*[a-z0-9]$/;
 const DIR=/^[a-z0-9][a-z0-9/_-]*$/;
 function fail(message,status=400){throw Object.assign(new Error(message),{httpStatus:status});}
 function scope(value){const id=String(value??'').trim().toLowerCase();
@@ -27,10 +27,9 @@ async function allowedGlobal(trx){
   if(!await canManageLoc(trx,'global'))fail('Global administrator permission required',403);
 }
 function route(values,existing={}){
-  const domain=String(values.domain??existing.domain??'').trim().toLowerCase();
+  const domain=normalizeLocDomain(values.domain??existing.domain??null)||'';
   let directory=String(values.directory??existing.directory??'').trim().toLowerCase();
   if(Boolean(domain)===Boolean(directory))fail('Exactly one domain or directory is required');
-  if(domain&&!DOMAIN.test(domain))fail('Invalid route domain');
   if(directory){directory='/'+directory.replace(/^\/+|\/+$/g,'');
     if(!DIR.test(directory.slice(1)))fail('Invalid route directory');}
   return {domain:domain||null,directory:directory||null};
@@ -231,9 +230,7 @@ async function provisionScope(trx,args){
   const anchor=sql.ref('silver.'+id+'_anchor');
   const blocks=sql.ref('silver.'+id+'_blocks');
   await sql`create table ${config} (like silver.lo3rwang including all)`.execute(trx);
-  await sql`create trigger sync_scope_display_name
-    after insert or update of display_name on ${config}
-    for each row execute function silver.sync_scope_config_display_name()`.execute(trx);
+  // Scope name changes are synchronized by the same trusted Kysely transaction.
   await sql`alter table ${config} drop column if exists home_blocks`.execute(trx);
   await sql`alter table ${config} drop column if exists governance_blocks`.execute(trx);
   await sql`create table ${blocks} (like silver.lo3rwang_blocks including all)`.execute(trx);
@@ -243,33 +240,35 @@ async function provisionScope(trx,args){
   await sql`create table ${anchor} (like silver.lrunes_anchor including all)`.execute(trx);
   for(const table of [config,galaxy,anchor,blocks])
     await sql`alter table ${table} enable row level security`.execute(trx);
-  // CREATE POLICY does not accept bind placeholders. sql.lit is safe here
-  // because Scope IDs were validated by the strict ^[a-z][a-z0-9]{0,14}$ rule.
-  const can=sql`coalesce((select allowed from api.manage('scope',${sql.lit(id)})),false)`;
+  // PostgreSQL compatibility policies use only verified LOC delegation grants.
+  // Kysely enforces the same Scope permissions for other SQL engines.
+  const canUseScope=sql`coalesce(
+    (current_setting('request.jwt.claims',true)::jsonb -> 'grants') ? ${sql.lit(id+':manage')}
+    or (current_setting('request.jwt.claims',true)::jsonb -> 'grants') ? 'global:manage',false)`;
   await sql`create policy ${sql.ref(id+'_config_public_read')} on ${config}
     for select to anonymous,authenticated using (true)`.execute(trx);
   await sql`create policy ${sql.ref(id+'_config_scope_update')} on ${config}
-    for update to authenticated using (${can}) with check (${can})`.execute(trx);
+    for update to authenticated using (${canUseScope}) with check (${canUseScope})`.execute(trx);
   await sql`create policy ${sql.ref(id+'_galaxy_public_read')} on ${galaxy}
     for select to anonymous,authenticated using (true)`.execute(trx);
   await sql`create policy ${sql.ref(id+'_galaxy_scope_update')} on ${galaxy}
-    for update to authenticated using (${can}) with check (${can})`.execute(trx);
+    for update to authenticated using (${canUseScope}) with check (${canUseScope})`.execute(trx);
   await sql`create policy ${sql.ref(id+'_anchor_public_read')} on ${anchor}
     for select to anonymous,authenticated
     using (type in ('date','period','era','point','path','trace',
       'image','video','rune','suno') and invisible is false)`.execute(trx);
   await sql`create policy ${sql.ref(id+'_anchor_owner_read')} on ${anchor}
-    for select to authenticated using (${can})`.execute(trx);
+    for select to authenticated using (${canUseScope})`.execute(trx);
   await sql`create policy ${sql.ref(id+'_anchor_owner_insert')} on ${anchor}
-    for insert to authenticated with check (${can})`.execute(trx);
+    for insert to authenticated with check (${canUseScope})`.execute(trx);
   await sql`create policy ${sql.ref(id+'_anchor_owner_update')} on ${anchor}
-    for update to authenticated using (${can}) with check (${can})`.execute(trx);
+    for update to authenticated using (${canUseScope}) with check (${canUseScope})`.execute(trx);
   await sql`create policy ${sql.ref(id+'_anchor_owner_delete')} on ${anchor}
-    for delete to authenticated using (${can})`.execute(trx);
+    for delete to authenticated using (${canUseScope})`.execute(trx);
   await sql`create policy ${sql.ref(id+'_blocks_public_read')} on ${blocks}
     for select to anonymous,authenticated using (true)`.execute(trx);
   await sql`create policy ${sql.ref(id+'_blocks_scope_all')} on ${blocks}
-    for all to authenticated using (${can}) with check (${can})`.execute(trx);
+    for all to authenticated using (${canUseScope}) with check (${canUseScope})`.execute(trx);
   for(const table of [config,galaxy,anchor,blocks]){
     await sql`grant select on ${table} to anonymous,authenticated`.execute(trx);
   }

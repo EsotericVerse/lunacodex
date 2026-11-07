@@ -1,6 +1,7 @@
 import {sql} from 'npm:kysely@0.29.8';
 import {DB_QUERY_BATCH_SIZE} from '../query-batch-size.mjs';
 import {serializePortableJsonFields,portableRelation} from './sql-engine-ports.mjs';
+import {validateLocRegistryDomain} from './loc-domain.mjs';
 import {portableContainsSpec,parsePortableOrExpression} from './portable-search.mjs';
 
 const identifier=/^[a-z][a-z0-9_]*$/i;
@@ -174,7 +175,18 @@ function applyMutationReturning(query,req,dialect){
 
 export function buildKyselyMutationQuery(trx,input,{dialect='postgres',namespace}={}){
   const validated=validateQuery(input);
-  const req={...validated,values:serializePortableJsonFields(validated.values,dialect)};
+  const registryValues=validated.schema==='api'&&validated.table==='manage'
+    ?Array.isArray(validated.values)
+      ?validated.values.map(validateLocRegistryDomain)
+      :validateLocRegistryDomain(validated.values)
+    :validated.values;
+  const stamped=validated.schema==='silver'&&validated.table==='VisualNovel'&&
+    ['update','upsert'].includes(validated.operation)
+    ?Array.isArray(registryValues)
+      ?registryValues.map(row=>({...row,updated_at:new Date()}))
+      :{...registryValues,updated_at:new Date()}
+    :registryValues;
+  const req={...validated,values:serializePortableJsonFields(stamped,dialect)};
   const fullTable=databaseTable(req,dialect,namespace);
   if(!['insert','update','delete','upsert'].includes(req.operation))throw new Error('Unsupported mutation');
   let query;
@@ -254,6 +266,23 @@ export async function executeKyselyQuery(trx,input,{dialect='postgres',namespace
       const result=await built.query.execute();
       if(req.returning)data=result;
       else {const affected=result[0]?.numAffectedRows??result[0]?.numInsertedOrUpdatedRows??result[0]?.numUpdatedRows??result[0]?.numDeletedRows??0n;count=Number(affected)}
+    }
+  }
+  // A Scope config display name and silver.loc directory label are one
+  // logical write. Replace the PostgreSQL trigger with the same Kysely
+  // transaction; do not issue a second network request or stored procedure.
+  if((Number(count||0)>0||Array.isArray(data)&&data.length>0)&&
+     dialect==='postgres'&&namespace===undefined&&req.schema==='silver'&&
+     /^[a-z][a-z0-9]{0,14}$/.test(req.table)&&req.table!=='loc'&&
+     ['insert','update','upsert'].includes(req.operation)){
+    const rows=Array.isArray(req.values)?req.values:[req.values];
+    for(const row of rows){
+      if(!row||!Object.hasOwn(row,'display_name')||
+        ['insert','upsert'].includes(req.operation)&&row.id!==req.table)continue;
+      const title=String(row.display_name??'').trim();
+      if(!title)throw new Error('Scope display name cannot be empty');
+      await trx.updateTable('silver.loc').set({display_name:title})
+        .where('id','=',req.table).execute();
     }
   }
   if(req.single){const rows=Array.isArray(data)?data:[];if(rows.length>1||(req.single==='single'&&rows.length!==1))throw Object.assign(new Error('Row count mismatch'),{code:'PGRST116'});data=rows[0]||null}

@@ -282,3 +282,22 @@ existing SQL helper functions, and MCP QoS/conditional read routes are unchanged
 in this isolated integration. Runtime multi-database connectivity and full
 ZenStack policy execution remain separate acceptance criteria.
 
+
+## Final SQL function retirement and Portable Kysely transition
+
+The live Scope Registry Kysely writer uses the verified fixed ZModel column
+contract. New PostgreSQL Scope policies evaluate LOC-issued delegated grants
+directly rather than invoking the SQL `api.manage()` function. The same
+transaction maintains the `silver.loc` display label when Scope configuration
+changes. SQL vendor-specific business helper calls are not reintroduced.
+
+The optional one-time SQL cutover file
+`supabase/migrations/20261107090000_loc_portable_retire_last_sql_functions.sql`
+replaces the 38 RLS Policy references, one view, one CHECK expression and
+three triggers, then retires seven SQL functions with `RESTRICT` only.
+Storing the SQL file in Git **does not apply it to a live database**. The
+cutover must follow confirmation of the updated Kysely service, public and
+private access parity, and a post-migration catalog verification.
+
+MCP source code, the five-minute search guard, conditional UID reads,
+warnings, QoS quotas and legacy PR routing are **out of scope** for this change.
