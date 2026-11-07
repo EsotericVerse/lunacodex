@@ -113,7 +113,7 @@ test('authority fail-closes if public Class RPC is unavailable',async()=>{
 });
 test('Scope Group UI lists only publicly shared Class identifiers',()=>{
   const src=readFileSync(new URL('../app/loc/ScopeGroupAccessPanel.jsx',import.meta.url),'utf8');
-  assert.match(src,/read_shared_keyword_classes/);
+  assert.match(src,/p_view:'shared_classes'/);
   assert.match(src,/publicClasses\.map\(row=><option/);
   assert.match(src,/row\.scopeId===scope/);
   assert.doesNotMatch(src,/categoryUid\} maxLength=/);
