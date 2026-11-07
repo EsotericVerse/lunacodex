@@ -84,6 +84,33 @@ when the independent Gateway can accept a trusted SQL Server connection;
 then add the Azure profile to LOC Auth, keeping existing PostgreSQL data
 and default routing unchanged.
 
+## SQL authentication profiles (before starting Azure trial)
+
+LOC Authority's administrator form supports SQL username/password (the default),
+MySQL LDAP Simple over TLS, SQL Server NTLM and SQL Server Microsoft Entra login
+methods. This is independent of LOC website OAuth identity and permissions.
+
+- SQL username/password is the simplest first Azure SQL connectivity check.
+- Microsoft Entra `Default Credential`, VM/App Service Managed Identity, access
+  token, and service principal modes do not require SQL username/password.
+  Entra Password login requires an explicit Client ID in Tedious.
+- Service Principal Client Secret and manually supplied Access Token are stored
+  only in LOC Authority's encrypted database target profile. A settings read
+  returns a boolean `*_configured` indicator, never their values. Updating the
+  same target and authentication mode without resubmitting the secret preserves
+  its encrypted value.
+- A pasted Entra access token will expire. Default Credential or a managed
+  identity only works if the **Gateway execution environment** actually has
+  the corresponding Azure credential or identity; deploying the Gateway to
+  Cloudflare does not itself grant an Azure Managed Identity.
+- PostgreSQL `tls:true` explicitly enables verified TLS; unset retains
+  the existing pg connection URI SSL mode. SQL Server Azure profiles use
+  encrypted TLS with server certificate validation.
+
+The implementation/driver wiring can be verified without Azure. Actual Azure
+authentication, firewall access, database grants and cross-engine SQL queries
+remain separate live checks once the time-limited trial is intentionally opened.
+
 ## Chrome/MCP
 
 The two Chrome extensions retain independent IndexedDB queues. No website
