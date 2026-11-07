@@ -2,6 +2,7 @@ import {createHash} from 'node:crypto';
 import {mkdir,readFile,rename,rm,writeFile} from 'node:fs/promises';
 import {dirname,resolve} from 'node:path';
 import {EFFECT_ASSET_BLOBS} from './rune-effekseer-asset-manifest.mjs';
+import {RETIRED_EFFECT_ASSETS} from './rune-effekseer-retired-assets.mjs';
 import {resolvePinnedEffekseerTarget} from './pinned-effekseer-path.mjs';
 
 // Install pinned, professionally-authored Effekseer effects and their complete direct
@@ -41,4 +42,27 @@ async function main(){
  await Promise.all(Array.from({length:Math.min(8,EFFECT_ASSET_BLOBS.length)},()=>worker()));
  console.log('Pinned authored Effekseer effects: '+EFFECT_ASSET_BLOBS.length+' files verified, '+installed+' installed.');
 }
+
+async function pruneRetired(){
+ let removed=0,modified=0;
+ const kept=new Set(EFFECT_ASSET_BLOBS.map(item=>item.target));
+ for(const item of RETIRED_EFFECT_ASSETS){
+  if(kept.has(item.target))throw Error('Pinned effect incorrectly marked retired: '+item.target);
+  const target=resolvePinnedEffekseerTarget(ROOT,item.target);
+  try{
+   const bytes=await readFile(target);
+   // Delete only the original pinned download; never delete locally changed art.
+   if(!valid(bytes,item)){modified++;continue;}
+   await rm(target,{force:true});
+   removed++;
+   if(item.target.toLowerCase().endsWith('.png')){
+    const parts=item.target.split('/'),file=parts.pop();
+    const derived=resolvePinnedEffekseerTarget(ROOT,parts.join('/')+'/_hd256/'+file);
+    await rm(derived,{force:true});
+   }
+  }catch(error){if(error.code!=='ENOENT')throw error;}
+ }
+ console.log('Retired Effekseer assets: '+removed+' pinned files removed; '+modified+' locally modified files left untouched.');
+}
 await main();
+await pruneRetired();

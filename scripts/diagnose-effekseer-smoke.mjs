@@ -4,7 +4,7 @@ import {readFile,stat} from 'node:fs/promises';
 import {resolve,dirname,join} from 'node:path';
 import {EFFECT_ASSET_BLOBS} from './rune-effekseer-asset-manifest.mjs';
 const base=resolve('public/vendor/effekseer/Collections/MAGICALxSPIRAL');
-const targets=['MxS_foot_smoke2.efkefc','MxS_foot_smoke5.efkefc','MxS_foot_smoke7.efkefc','MxS_foot_smoke8.efkefc','Texture/smoke_01.png','Texture/particle.png','Texture/star.png'];
+const targets=['MxS_foot_smoke2.efkefc','Texture/smoke_01.png','Texture/star.png'];
 for(const name of targets){
  const path=resolve(base,name);
  let file;
