@@ -9,6 +9,14 @@ import {PORTABLE_JSON_COLUMNS} from "../../../app/loc/providers/sql-engine-ports
 // {"office_mysql":{"engine":"mysql","url":"mysql://user:pass@db.example:3306/silver","tls":true},
 //  "office_mssql":{"engine":"mssql","url":"mssql://user:pass@db.example:1433/loc","tls":true}}
 const instances=new Map<string, Kysely<Record<string,Record<string,unknown>>>>();
+const trustedDialects=new WeakMap<object,unknown>();
+// Returns only the already constructed dialect for an existing LOC Kysely
+// instance. Reuses its driver/pool; never opens a second DB pool or lookup.
+export function trustedDialectForDatabase(db:object){
+  const dialect=trustedDialects.get(db);
+  if(!dialect)throw new Error('Unknown LOC Kysely database');
+  return dialect;
+}
 const {Pool}=pg;
 type ConnectionProfile={engine:string,url:string,tls?:boolean,
   authentication?:{type?:string,domain?:string,clientId?:string,
@@ -95,6 +103,7 @@ export async function databaseForTarget(input:Record<string,unknown>,options:{pr
       }
     })]:[]
   });
+  trustedDialects.set(db,dialect);
   instances.set(key,db);
   return db;
 }
