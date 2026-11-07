@@ -1,44 +1,38 @@
+import {sql} from 'kysely';
 import {SCOPE_ROUTE_INDEX} from '../../modular/scope-route-index.js';
-import {portableContainsTerm} from '../providers/portable-search.mjs';
+import {portableContainsSpec} from '../providers/portable-search.mjs';
+import {portableRelation} from '../providers/sql-engine-ports.mjs';
 
-// Public UID reads use the same independent LOC Kysely SQL Gateway as private
-// MCP operations, but never forward any OAuth token or database credentials.
+// This is a specific read model executed by the trusted MCP application, NOT
+// a generic SQL transport. No HTTP SQL endpoint, provider SDK or DB credential
+// is selected by an OAuth caller.
 const PUBLIC_SCOPE_IDS=Object.freeze(SCOPE_ROUTE_INDEX.filter(row=>row.active&&row.scope_id!=='loc')
   .map(row=>row.scope_id).filter(id=>/^[a-z][a-z0-9]{0,14}$/.test(id)));
 const UID=/^[A-Za-z0-9]{8}$/;
 function bad(message){return Object.assign(new Error(message),{code:'INVALID_ARGUMENT'});}
+function unavailable(message){return Object.assign(new Error(message),{code:'BACKEND_UNAVAILABLE'});}
 function scopeAllowed(value){
   const id=value??PUBLIC_SCOPE_IDS[0];
   if(!PUBLIC_SCOPE_IDS.includes(id))throw bad('Only configured public Galaxy Scopes are available');
   return id;
 }
-function gatewayUrl(env){
-  const raw=String(env.LOC_MCP_SQL_GATEWAY_URL||env.LOC_SQL_GATEWAY_URL||'');
-  if(!raw)throw Error('LOC public Kysely SQL Gateway is not configured');
-  let url;try{url=new URL(raw)}catch{throw Error('Invalid LOC Kysely Gateway URL')}
-  if(url.protocol!=='https:'||url.username||url.password||url.search||url.hash||
-     /\/rest\/v1(?:\/|$)|\/functions\/v1\//.test(url.pathname))
-    throw Error('LOC public read requires an independent HTTPS Kysely Gateway');
-  return url.toString();
+async function scopedDatabase(scopeid,env){
+  if(typeof env?.locDirectDatabase!=='function')
+    throw unavailable('LOC MCP direct Kysely database is not configured');
+  const port=await env.locDirectDatabase();
+  if(!port?.db||typeof port.db.selectFrom!=='function'||
+     !['postgres','mysql','mssql'].includes(port.engine))
+    throw unavailable('LOC MCP direct SQL driver is unavailable');
+  const namespace=port.namespace??(port.engine==='postgres'?'silver':port.engine==='mssql'?'dbo':'');
+  if(namespace&&!/^[A-Za-z][A-Za-z0-9_]*$/.test(namespace))
+    throw unavailable('LOC MCP SQL namespace is invalid');
+  return {db:port.db,table:portableRelation(scopeid+'_galaxy',port.engine,namespace)};
 }
-async function galaxyRows({columns,filters=[],or=[],orders=[],limit=1,offset=0,userRequested=false},
-  scopeid,env={},fetchImpl=globalThis.fetch){
-  const body={kind:'query',schema:'silver',table:scopeid+'_galaxy',
-    operation:'select',columns,filters,or,orders,limit,offset,target:'configured',
-    ...(userRequested?{user_requested:true}:{})};
-  const res=await fetchImpl(gatewayUrl(env),{
-    method:'POST',headers:{'content-type':'application/json',accept:'application/json'},
-    body:JSON.stringify(body),signal:AbortSignal.timeout(8500),
-    redirect:'error',cache:'no-store'
-  });
-  if(!res.ok)throw Object.assign(new Error('LOC public Galaxy read unavailable (HTTP '+res.status+')'),
-    {code:'BACKEND_UNAVAILABLE'});
-  const payload=await res.json().catch(()=>null);
-  if(!Array.isArray(payload?.data))
-    throw Object.assign(new Error('LOC Galaxy returned an invalid response'),{code:'BACKEND_UNAVAILABLE'});
-  return payload.data;
-}
-export async function searchMemory(args={},env={},fetchImpl=globalThis.fetch){
+// Private MCP conversations and old PR development records must never leak
+// from a public Galaxy read even if a historical Boolean was set incorrectly.
+const publicSite=sql`( ${sql.ref('site')} is null or lower(${sql.ref('site')}) not in (${sql.join(['mcp','github'])}) )`;
+
+export async function searchMemory(args={},env={}){
   if(args.user_requested!==true)
     throw bad('只有使用者明確要求時，才允許搜尋對話；禁止代理自行搜尋。');
   const scopeid=scopeAllowed(args.scopeid);
@@ -52,20 +46,21 @@ export async function searchMemory(args={},env={},fetchImpl=globalThis.fetch){
   const offset=args.offset===undefined?0:Number(args.offset);
   if(!Number.isInteger(limit)||limit<1||limit>20)throw bad('limit must be between 1 and 20');
   if(!Number.isInteger(offset)||offset<0||offset>500)throw bad('offset must be between 0 and 500');
-  const termLiteral=portableContainsTerm(term);
-  const rows=await galaxyRows({
-    columns:['uid','title','date','createtime'],
-    filters:[{column:'search',operator:'eq',value:true}],
-    or:['title.contains."'+termLiteral+'",content.contains."'+termLiteral+'"'],
-    orders:[{column:'date',ascending:false},{column:'createtime',ascending:false}],
-    limit,offset,userRequested:true
-  },scopeid,env,fetchImpl);
+  const {db,table}=await scopedDatabase(scopeid,env);
+  const spec=portableContainsSpec(term);
+  const columnLike=column=>sql`${spec.fold?sql`lower(${sql.ref(column)})`:sql.ref(column)} like ${spec.pattern} escape '!'`;
+  const rows=await db.selectFrom(table)
+    .select(['uid','title','date','createtime'])
+    .where('search','=',true).where(publicSite)
+    .where(eb=>eb.or([columnLike('title'),columnLike('content')]))
+    .orderBy('date','desc').orderBy('createtime','desc')
+    .limit(limit).offset(offset).execute();
   return {scopeid,visibility:'public',query:term,limit,offset,
     results:rows.map(row=>({uid:String(row.uid||'').trim(),title:row.title||'',
       date:row.date||null,createtime:row.createtime||null})),
     has_more:rows.length===limit};
 }
-export async function readMemory(args={},env={},fetchImpl=globalThis.fetch){
+export async function readMemory(args={},env={}){
   const scopeid=scopeAllowed(args.scopeid);
   const uid=String(args.uid||'').trim();
   if(!UID.test(uid))throw bad('uid must be an 8-character, case-sensitive Base62 ID');
@@ -74,11 +69,11 @@ export async function readMemory(args={},env={},fetchImpl=globalThis.fetch){
   if(!Number.isInteger(offset)||offset<0||offset>1000000)throw bad('offset must be 0–1000000');
   if(!Number.isInteger(maxChars)||maxChars<1||maxChars>40000)
     throw bad('max_chars must be 1–40000');
-  const rows=await galaxyRows({
-    columns:['uid','title','content','date','createtime','site','url'],
-    filters:[{column:'uid',operator:'eq',value:uid},{column:'list',operator:'eq',value:true}],
-    limit:1
-  },scopeid,env,fetchImpl);
+  const {db,table}=await scopedDatabase(scopeid,env);
+  const rows=await db.selectFrom(table)
+    .select(['uid','title','content','date','createtime','site','url'])
+    .where('uid','=',uid).where('list','=',true).where(publicSite)
+    .limit(1).execute();
   if(!rows.length)return {found:false,scopeid,uid,visibility:'public'};
   const row=rows[0],content=String(row.content||'');
   return {found:true,scopeid,visibility:'public',uid:String(row.uid||'').trim(),
