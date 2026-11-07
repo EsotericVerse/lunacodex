@@ -7,7 +7,7 @@ The Galaxy SQL Schema remains unchanged. This is an **optional index accelerator
 - FlexSearch version **0.8.212**, repo dependency from PR #1215.
 - A private **loc-search-index Worker** bound to the existing Cloudflare **LOC_KV** namespace. The old MCP buffer Worker is not reused.
 - Full document identity: **(scopeId, dbId, entityType, uid)**. Two SQL sources with identical UIDs are distinct even in the same Scope. Logical DB identifiers are independent of hosting vendors.
-- Authenticated index operations: search, documents, snapshots, reset, coverage. Service secret stays server-side.
+- Authenticated index operations: search, documents, snapshots, reset, coverage and bounded delta pruning. Service secret stays server-side.
 - SQL Gateway accepts the optional search hint, obtains candidate UIDs through the index Worker, then **still evaluates SQL content, publication, source, date and Scope permissions**. The index alone never grants content access.
 - Missing, incomplete, overloaded or unavailable index: original SQL search fallback.
 - Gateway post-commit updates, MCP append/sync and short import write immutable delta segments. New Append content is indexed without rewriting a shared KV base shard. Old deleted or edited postings may remain as harmless candidates; SQL rechecks actual content.
@@ -19,7 +19,7 @@ The current SQL Gateway has one configured primary database and its existing bac
 
 Cloudflare Workers KV is **eventually consistent**. A new index delta can lag a successful SQL commit, especially across regions. Even though SQL revalidation prevents stale/private content from being displayed, it cannot guarantee that an index has not temporarily omitted new matches. For that reason, **index-based narrowing is disabled by default**. Enable it only once full coverage, ingestion and acceptable freshness have been established. Strict read-after-write search requires a stronger consistency protocol than plain KV.
 
-An index marked complete must cover all eligible documents, including private documents that might later become public. A public/anonymous-only backfill does not prove full coverage. Rebuilding requires a quiesced logical source or coordinated snapshot: the included builder assumes no concurrent mutation. Older immutable deltas need controlled compaction before reaching the per-source cap of 48, otherwise the Worker returns incomplete and SQL search takes over.
+An index marked complete must cover all eligible documents, including private documents that might later become public. A public/anonymous-only backfill does not prove full coverage. Rebuilding requires a quiesced logical source or coordinated snapshot: the included builder assumes no concurrent mutation. The builder prunes only delta segments dated **before** the SQL scan's start, preserving newer append events; if a source reaches the per-source cap of 48 deltas, indexed narrowing falls back to SQL until a coordinated rebuild/compaction.
 
 ## Deployment / cutover (not automatic)
 
