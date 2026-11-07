@@ -1,4 +1,22 @@
 import {portableRelation} from './sql-engine-ports.mjs';
+import {schema as fixedZModel} from '../../../zenstack/schema.mjs';
+
+// Both existing Scope variants must agree before accepting any portable Scope.
+// The fixed models act as a read-only template; they do not imply that a
+// dynamic Scope table is a generated ZenStack ORM model.
+function canonicalColumns(first,second,kind){
+  const a=Object.keys(fixedZModel.models[first]?.fields||{});
+  const b=Object.keys(fixedZModel.models[second]?.fields||{});
+  if(!a.length||a.length!==b.length||
+     a.some(key=>!Object.hasOwn(fixedZModel.models[second].fields,key)))
+    throw new Error('LOC ZModel '+kind+' column contract mismatch');
+  return Object.freeze(a);
+}
+const EXPECTED_SCOPE_FIELDS=Object.freeze({
+  galaxy:canonicalColumns('Lo3rwangGalaxy','LrunesGalaxy','Galaxy'),
+  anchor:canonicalColumns('Lo3rwangAnchor','LrunesAnchor','Anchor')
+});
+
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const FLAGS=['statics','culture','search','trace','list','keyword','extract','others'];
@@ -11,14 +29,10 @@ export function validatePortableScopeSchema(tables,{engine,namespace='',scopeId}
   if(!SCOPE.test(String(scopeId||''))||!['postgres','mysql','mssql'].includes(engine))
     throw new Error('Invalid portable LOC Scope');
   const schema=effectiveNamespace(engine,namespace);
-  const expected={
-    galaxy:['uid','title','content','createtime','location','UpdateTime','url',
-      'source_id','target_id','ref_id','site','place_id','media_link','date','site_id',
-      ...FLAGS],
-    // All portable Anchor relations must expose the physical creation time.
-    // Existing databases need the additive, non-destructive Anchor migration.
-    anchor:['uid','type','title','description','invisible','attr','createtime']
-  };
+  // The existing frozen ZModel defines the canonical portable field contract.
+  // Physical type adaptation remains the responsibility of each Kysely Dialect.
+  // No runtime introspection, migration, or extra SQL request is performed.
+  const expected=EXPECTED_SCOPE_FIELDS;
   const names={scopeId};
   for(const [kind,columns] of Object.entries(expected)){
     const name=scopeId+'_'+kind;
