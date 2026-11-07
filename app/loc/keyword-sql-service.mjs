@@ -6,7 +6,7 @@ import {buildKeywordSearchPatterns,keywordPatternItemMetrics,keywordPatternDaily
 import {keywordClassCatalog} from './keyword-tree.mjs';
 import {analyzeIncrementalKeywordPatterns} from './keyword-incremental.mjs';
 import {createIndexedDateKeywordReader} from './keyword-article-reader.mjs';
-import {completeKeywordClass} from './keyword-class-state.mjs';
+import {completeKeywordClass,invalidateKeywordClass} from './keyword-class-state.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[0-9A-Za-z]{8}$/;
@@ -359,4 +359,43 @@ export async function analyzeKeywordScope(db,scope,classUid,{
   });
   const {patternScans,...safe}=result;
   return {...safe,indexedWords:pending?.length||0};
+}
+
+// Explicit reset clears a selected Class's completion and its words ONLY when
+// not shared by another Class. No Keyword Anchor.attr totals are written.
+export async function resetKeywordScope(db,scope,classUid,{
+  authorizeTransaction=()=>{}
+}={}){
+  checkScope(scope);checkClass(classUid);
+  return db.transaction().execute(async trx=>{
+    await authorizeTransaction(trx);
+    const existing=await configuration(trx,scope);
+    const classes=await trx.selectFrom(anchorName(scope))
+      .select('uid').where('type','=','class').execute();
+    if(!classes.some(row=>row.uid===classUid))
+      fail('Unknown Keyword Class',404);
+    const own=new Set(),other=new Set();
+    for(const row of classes){
+      const tree=await classTree(trx,scope,row.uid);
+      const set=row.uid===classUid?own:other;
+      for(const item of tree.items)
+        for(const word of terms(item))set.add(word);
+    }
+    const unique=[...own].filter(word=>!other.has(word));
+    const stored=await indexRows(trx,scope);
+    const toDelete=stored.filter(row=>unique.includes(norm(row.pattern)))
+      .map(row=>row.pattern);
+    for(let i=0;i<toDelete.length;i+=100)
+      await trx.deleteFrom('silver.loc_search_pattern')
+        .where('scopeid','=',scope)
+        .where('pattern','in',toDelete.slice(i,i+100)).execute();
+    const meta=invalidateKeywordClass(existing.keyword_meta,classUid);
+    const scans={...(meta.pattern_scans||{})};
+    for(const word of unique)delete scans[word];
+    const updated={...meta,pattern_scans:scans};
+    await trx.updateTable(configName(scope))
+      .set({keyword_meta:JSON.stringify(updated),staticstime:null,
+        updated_at:new Date().toISOString()}).where('id','=',scope).execute();
+    return {count:toDelete.length,retainedShared:own.size-unique.length};
+  });
 }
