@@ -497,6 +497,7 @@ async function keywordPatternStatistics(trx,args){
     const members=metrics.items.filter(item=>item.group_uid===uid);
     const hits=members.reduce((sum,item)=>sum+item.hit_count,0);
     return {uid,name:String(byGroup.get(uid).title||''),hit_count:hits,
+      document_count:Number(metrics.group_document_counts?.[uid])||0,
       ratio:metrics.total_hits?100*hits/metrics.total_hits:0};
   });
   return {
