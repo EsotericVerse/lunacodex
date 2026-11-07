@@ -77,7 +77,7 @@ test('ZModel maps exactly to the frozen silver physical table and column contrac
         t.table+'.'+col.name+' is a stored generated column');
     }
   }
-  assert.equal(total,273);
+  assert.equal(total,snapshot.tables.reduce((sum,table)=>sum+table.columns.length,0));
 });
 
 test('Anchor remains the extension point; model does not declare migrations or bypass authorization',()=>{
@@ -91,7 +91,8 @@ test('Anchor remains the extension point; model does not declare migrations or b
     assert.equal(anchor.fields.size,7);
   }
   assert.doesNotMatch(source,/^\s*generator\s+/m);
-  assert.doesNotMatch(source,/^\s*@@allow\s*\(/m);
+  assert.equal((source.match(/^\s*@@allow\s*\(/gm)||[]).length,6);
+  assert.match(source,/plugin policy \{/);
   assert.doesNotMatch(source,/^\s*@@deny\s*\(/m);
 });
 
@@ -99,6 +100,29 @@ test('ZenStack V3 runtime schema bridge stays in sync with the frozen contract',
   const {schema}=await import('../zenstack/schema.mjs');
   assert.equal(schema.provider.type,'postgresql');
   assert.equal(schema.provider.defaultSchema,'silver');
+  assert.ok(schema.plugins.policy);
+  for(const name of ['Manage','Loc','Lo3rwang','Lrunes']){
+    const model=schema.models[name];
+    assert.ok(model,'missing fixed policy model '+name);
+    const rules=model.attributes.filter(attr=>attr.name==='@@allow');
+    assert.equal(rules.length,['Manage','Loc'].includes(name)?2:1,
+      'only global Registry models have administrator mutation policies');
+    assert.equal(rules[0].args[0].value.value,'read');
+    assert.equal(rules[0].args[1].value.value,true);
+    if(['Manage','Loc'].includes(name)){
+      assert.equal(rules[1].args[0].value.value,'update,delete');
+      const guard=rules[1].args[1].value;
+      assert.equal(guard.kind,'binary');
+      assert.equal(guard.left.kind,'member');
+      assert.equal(guard.left.receiver.function,'auth');
+      assert.deepEqual(guard.left.members,['role']);
+      assert.equal(guard.right.value,'admin');
+    }
+  }
+  assert.equal(schema.authType,'LocPrincipal');
+  assert.deepEqual(Object.keys(schema.typeDefs.LocPrincipal.fields).sort(),['id','role']);
+  assert.equal(Object.values(schema.models).flatMap(model=>model.attributes)
+    .filter(attr=>attr.name==='@@allow').length,6);
   assert.equal(Object.keys(schema.models).length,snapshot.tables.length);
   for(const table of snapshot.tables){
     const model=schema.models[modelName(table.table)];
@@ -124,19 +148,32 @@ test('ZenStack V3 runtime schema bridge stays in sync with the frozen contract',
 test('ZenStack V3 compiles fixed-model Kysely reads without a database or stored procedure',async()=>{
   const {createFixedLocClient}=await import('../zenstack/client.mjs');
   const {DummyDriver,PostgresAdapter,PostgresIntrospector,PostgresQueryCompiler}=await import('kysely');
+  // Kysely's compile() is pre-ZenStack name mapping; capture the SQL
+  // actually executed by ZenStack instead of checking a raw compile.
+  const executed=[];
+  const driver=new DummyDriver();
+  const acquire=driver.acquireConnection.bind(driver);
+  driver.acquireConnection=async()=>{
+    const connection=await acquire();
+    const execute=connection.executeQuery.bind(connection);
+    connection.executeQuery=async query=>{
+      executed.push(query);
+      return execute(query);
+    };
+    return connection;
+  };
   const dialect={
-    createDriver:()=>new DummyDriver(),
+    createDriver:()=>driver,
     createAdapter:()=>new PostgresAdapter(),
     createIntrospector:db=>new PostgresIntrospector(db),
     createQueryCompiler:()=>new PostgresQueryCompiler()
   };
   const client=createFixedLocClient({dialect});
-  const compiled=client.$qb.selectFrom('Lo3rwangAnchor')
-    .select(['uid','type'])
-    .where('type','=','date')
-    .limit(5).compile();
-  assert.match(compiled.sql,/"silver"\."lo3rwang_anchor"/);
-  assert.deepEqual(compiled.parameters,['date',5]);
+  await client.$qb.selectFrom('Lo3rwangAnchor')
+    .select(['uid','type']).where('type','=','date').limit(5).execute();
+  assert.equal(executed.length,1,'one Kysely execution');
+  assert.match(executed[0].sql,/"silver"\."lo3rwang_anchor"/);
+  assert.deepEqual(executed[0].parameters,['date',5]);
 });
 
 test('active LOC browser and local providers have no SQL RPC transport',()=>{
@@ -202,7 +239,7 @@ test('both Kysely keyword imports reuse the existing Anchor UID generator withou
   // New Scope: provisionScope has just created an empty Anchor table.
   // The same canonical generator needs only the in-memory reserved IDs.
   const scopeStart=admin.indexOf('  const assigned=new Set();');
-  const scopeEnd=admin.indexOf("  const source='silver.lo3rwang_anchor';",scopeStart);
+  const scopeEnd=admin.indexOf('  const toRow=',scopeStart);
   assert.ok(scopeStart>=0&&scopeEnd>scopeStart);
   let serial=0;
   const nextFresh=new Function('allocateAnchorUid',

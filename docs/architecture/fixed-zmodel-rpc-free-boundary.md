@@ -301,3 +301,86 @@ private access parity, and a post-migration catalog verification.
 
 MCP source code, the five-minute search guard, conditional UID reads,
 warnings, QoS quotas and legacy PR routing are **out of scope** for this change.
+
+## New Scope provisioning — 2026-11-07 verification
+
+The control-plane PostgreSQL Scope constructor clones current Configuration,
+Galaxy, Anchor and Blocks relations, registers the new Scope in `api.manage`
+and `silver.loc`, and preserves the existing four-level Keyword Anchor tree.
+Public Galaxy reads require `search=true` and exclude private MCP/PR and
+private-message sources; manager reading uses a separate delegated-grant
+policy. Both `anon` and `anonymous` roles receive public SELECT support,
+while non-public rows remain filtered. All eight Galaxy booleans use the
+existing source table's false defaults. External portable SQL targets install
+Galaxy/Anchor only; Registry, Config and Blocks remain in the LOC control plane.
+
+The default Keyword Class copy uses five Kysely SELECTs and one batched INSERT
+for a single default class in the common case, regardless of Item count
+(with extra INSERT batches only for more than 500 Anchor records). Reserved
+relation collisions are checked in one catalog query instead of seven.
+These changes do not alter MCP, existing Scope rows or existing SQL tables.
+
+The final catalog dependency audit also found **three column defaults** still
+calling `api.current_user_id()` (the `owner_id` columns of `api.loc_user`,
+`api.user_records`, and `api.user_settings`). The same atomic migration now
+replaces those defaults with the identical direct LOC JWT subject expression,
+then drops the function via `RESTRICT`. This preserves new-row owner identity
+without creating an extra SQL query, and removes the last uncovered dependency.
+ 
+## ZenStack PolicyPlugin — live fixed-model read path
+
+The four universal public fixed models (`api.manage`, `silver.loc`,
+`silver.lo3rwang`, `silver.lrunes`) now declare explicit
+`@@allow('read', true)` rules in ZModel and the checked V3 SchemaDef.
+At the PostgreSQL LOC SQL Gateway, those exact SELECT queries are routed
+through `ZenStackClient.$use(new PolicyPlugin())` and a single
+`$transaction`. The existing Kysely builder executes that **same** query
+using the **same cached physical dialect/driver pool**, with the same signed
+LOC delegation, RLS session claims, result and count shape. The trusted
+server-only role/session setup requires a raw SQL exception in the plugin;
+the browser exposes no raw query endpoint.
+
+Public unrestricted table reads remain public; private/unknown tables never
+enter this public-model allowlist. Dynamic Galaxy and Anchor, authorization
+for their private writes, and non-PostgreSQL dialects stay on the existing
+delegated Kysely path. The other 13 fixed models remain default-denied by
+ZenStack's policies; they are not silently opted into public reads.
+No extra permission query, connection target, RPC, SQL function or Schema
+Migration is needed for this policy integration.
+
+This is the first real **query-executing** ZenStack V3 PolicyPlugin route,
+not a claim that all Kysely management actions have migrated to ORM policies.
+Next extend the same pattern to authorized fixed-model writes after a
+real-policy deployment/SQL parity check; do not bypass the existing RLS.
+
+
+## Fixed global administration under ZenStack PolicyPlugin
+
+`api.manage` and `silver.loc` now declare `@@allow('update,delete',
+auth().role == 'admin')` in ZModel and the V3 runtime SchemaDef. The
+`LocPrincipal` auth type is an in-memory LOC-signed delegation, never a
+physical user table or DB Auth dependency. Only verified
+`global:manage` grants enter this write path; existing
+`canManageLoc('global')` checks remain enforced inside the same Kysely
+transaction. Scope-only grants never map to an administrator. Other models,
+INSERT batches, dynamic Scope updates, and every MCP route retain their
+previous LOC Auth + Kysely behavior.
+
+For fixed Registry `update`/`delete`, the authorized transaction uses the
+**same** ZenStack PolicyPlugin cache and the **same** SQL dialect/driver as
+fixed public reads. Primary-key protection is evaluated from frozen
+`schema.models[modelName].idFields` instead of querying `pg_index` on
+every fixed Registry edit. It introduces no extra database request or RPC.
+The verified managed-write Scope registry accepts only config tables with
+`id` or Galaxy/Anchor/Blocks with `uid` primary keys. The same immutable
+`managedPrimaryKeyColumns()` helper now protects **all** managed updates
+without a `pg_index` query. This was checked against the actual primary
+keys in PostgreSQL for both existing Scopes and the LOC Registry.
+
+Direct browser Kysely `query` UPDATE/DELETE targeting `api.manage` or
+`silver.loc` now follow the same policy branch as `managed-write`, with a
+required signed global LOC grant. Generic INSERT/UPSERT for these two fixed
+relations also requires `global:manage`, but stays with the original
+trusted Kysely execution until an authenticated ZenStack create policy is
+verified. Other models and all MCP routes remain unchanged.
+

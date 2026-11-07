@@ -27,3 +27,14 @@ Neon PostgreSQL 的存取功能仍由 Kysely PostgreSQL 方言與資料庫連線
 4. SQL Gateway 驗證 LOC delegation 的主線及部署同版驗收；不同資料庫、不同 Scope、匿名讀取、跨 Scope 拒絕均通過。
 
 **以上驗收未完成時不得刪掉現役登入而讓正式網站鎖死，也不得宣稱全站已不依賴 Clerk。**
+
+## Unified public/private SQL Gateway
+
+The browser's public and signed private SQL requests now share
+`/functions/v1/loc-kysely` (or the same explicitly configured independent
+LOC SQL Gateway URL). The old `loc-kysely-clerk` private-only browser
+default was pointing to a stale deployment and could bypass newly shipped
+Kysely model/provisioning changes. The trusted OAuth-to-LOC delegation
+exchange, public-read budget and account identity adapter are unchanged.
+No MCP Authority endpoint or QoS behavior is modified by this browser routing
+change.

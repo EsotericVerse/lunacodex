@@ -1,4 +1,5 @@
 import {canManageLoc,locManageRows} from './loc-authorization.mjs';
+import {schema as fixedSchema} from '../../../zenstack/schema.mjs';
 import {validateLocRegistryDomain} from './loc-domain.mjs';
 import {sql} from 'npm:kysely@0.29.8';
 import {saveBlocksKysely} from './kysely-blocks.mjs';
@@ -61,6 +62,16 @@ function scopeFromTable(table){
     if(table.endsWith(suffix))return table.slice(0,-suffix.length);
   }
   return table;
+}
+/** PK contract for the only relations accepted by authorizeRelation().
+ * No pg_catalog SELECT: verified against actual Registry/Scope primary keys.
+ */
+export function managedPrimaryKeyColumns(table,modelName=''){
+  const idFields=modelName?fixedSchema.models[modelName]?.idFields:null;
+  if(modelName&&(!idFields||!idFields.length))
+    reject('Invalid fixed LOC primary key metadata');
+  return idFields||
+    [SCOPED_SUFFIXES.some(suffix=>table.endsWith(suffix))?'uid':'id'];
 }
 async function authorizeRelation(trx,table,operation,values,filters,rows){
   if(table==='manage'||table==='loc'){
@@ -134,11 +145,16 @@ async function writeBatch(trx,table,rows){
   `.execute(trx);
   return Number(result.numAffectedRows||0);
 }
-export async function executeManagedKyselyWrite(trx,body){
+export async function executeManagedKyselyWrite(trx,body,{modelName=''}={}){
   const payload=body?.payload;
   if(!payload||typeof payload!=='object'||Array.isArray(payload))
     reject('Invalid managed write payload');
   const table=tableName(payload.p_table);
+  // Only the two fixed global Registry models can use this privileged model
+  // mapping. Other relations retain their existing Kysely/Scope boundary.
+  if(modelName&&!(modelName==='Manage'&&table==='manage'||
+      modelName==='Loc'&&table==='loc'))
+    reject('Invalid fixed LOC model for management write',403);
   const operation=payload.p_operation;
   if(!['insert','update','delete','update_batch'].includes(operation))
     reject('Invalid managed write operation');
@@ -161,12 +177,14 @@ export async function executeManagedKyselyWrite(trx,body){
   // authorization is proved do trusted server-side Kysely mutations run
   // with the connection's original role (same privilege as old definer RPC).
   await sql`reset role`.execute(trx);
-  const name=table==='manage'?'api.manage':'silver.'+table;
+  const name=modelName||(table==='manage'?'api.manage':'silver.'+table);
   if(operation==='update'){
-    const pk=await sql`select a.attname as name from pg_index i
-      join pg_attribute a on a.attrelid=i.indrelid and a.attnum=any(i.indkey)
-      where i.indrelid=${name}::regclass and i.indisprimary`.execute(trx);
-    if(pk.rows.some(row=>Object.hasOwn(values,String(row.name))))
+    // Every authorized managed relation has a fixed single-column PK:
+    // Registry and Scope config -> id; Galaxy/Anchor/Blocks -> uid.
+    // These were checked against the live PostgreSQL catalog. There is no
+    // need for one pg_index SELECT on every edit, including dynamic Scopes.
+    const keys=managedPrimaryKeyColumns(table,modelName);
+    if(keys.some(key=>Object.hasOwn(values,key)))
       reject('Primary keys cannot be updated');
   }
   let count=0;

@@ -67,6 +67,10 @@ DROP TRIGGER sync_scope_display_name ON silver.lrunes;
 -- VisualNovel updated_at is assigned on Kysely UPDATE rather than trigger.
 DROP TRIGGER visual_novel_touch_updated_at ON silver."VisualNovel";
 -- RESTRICT refuses this cutover if any unforeseen SQL object still depends on a function.
+-- Same LOC session subject semantics as api.current_user_id() without the RPC.
+ALTER TABLE api.loc_user ALTER COLUMN owner_id SET DEFAULT nullif(coalesce(nullif(current_setting('request.jwt.claims',true),''),'{}')::jsonb ->> 'sub','');
+ALTER TABLE api.user_records ALTER COLUMN owner_id SET DEFAULT nullif(coalesce(nullif(current_setting('request.jwt.claims',true),''),'{}')::jsonb ->> 'sub','');
+ALTER TABLE api.user_settings ALTER COLUMN owner_id SET DEFAULT nullif(coalesce(nullif(current_setting('request.jwt.claims',true),''),'{}')::jsonb ->> 'sub','');
 DROP FUNCTION api.manage(text,text) RESTRICT;
 DROP FUNCTION api.current_user_id() RESTRICT;
 DROP FUNCTION silver.current_auth_email() RESTRICT;
