@@ -1,8 +1,5 @@
 'use client';
 
-import {selectRows} from './db-query.mjs';
-import {defaultScopeData} from './scope-data';
-import {keywordClassState} from './keyword-class-state.mjs';
 import {keywordService} from './keyword-service-client.mjs';
 
 const DEFAULT_KEYWORD_MIN_CHARS=32;
@@ -38,41 +35,14 @@ function reportBatchProgress(onProgress,phase,completed,total,percent,label,deta
 }
 
 export async function selectActiveKeywordClassName(scopeId=''){
-  const scope=defaultScopeData(scopeId);
-  if(!scope)return '';
-  const {rows:config}=await selectRows(scope.config,{
-    columns:'current_keyword_class_uid',
-    filters:[{column:'id',operator:'eq',value:scope.id}],limit:1
-  });
-  const uid=String(config?.[0]?.current_keyword_class_uid||'');
-  if(!uid)return '';
-  const {rows}=await selectRows(scope.keywords,{
-    columns:'uid,type,name',
-    filters:[{column:'uid',operator:'eq',value:uid},{column:'type',operator:'eq',value:'class'}],limit:1
-  });
-  return String(rows?.[0]?.name||'');
+  const info=await selectAvailableKeywordClasses(scopeId);
+  const selected=info.classes?.find(row=>row.classUid===info.currentClassUid);
+  return String(selected?.name||'');
 }
-// Only Classes that this caller can read are selectable. The existing
-// active Class is the default when it appears in that authorized directory.
 export async function selectAvailableKeywordClasses(scopeId){
   return keywordService('classes',{scopeId:normalizeScopeId(scopeId)});
 }
-async function scopeAndConfig(scopeId,{publicRead=false}={}){
-  const id=normalizeScopeId(scopeId);
-  // Public statistics only read the stored summary/config and public Galaxy attrs.
-  // The writer still resolves the managed Scope with authenticated access.
-  const scope=defaultScopeData(id);
-  if(!scope)throw new Error('找不到 '+id+' Scope');
-  const result=await selectAllRows(scope.config,{
-    columns:'id,keyword_min_chars,keyword_min_documents,current_keyword_class_uid,keyword_class_share_enabled,keyword_meta,staticstime',
-    filters:[{column:'id',operator:'eq',value:id}]
-  });
-  const config=result.rows?.[0]||null;
-  if(!config)throw new Error('找不到 '+id+' 關鍵詞設定');
-  return {scope,config,scopeId:id};
-}
-// Server-side Kysely keeps Keyword patterns and completion metadata atomic.
-// The static browser never tries to use unsupported Data API managed writes.
+// Browser only asks the verified server to run the indexed word analysis.
 export async function runKeywordAnalysisBatch(scopeId,{classUid:requestedClassUid='',onProgress}={}){
   const id=normalizeScopeId(scopeId);
   const classUid=String(requestedClassUid||'');
@@ -115,12 +85,9 @@ function emptyStored(config,extra={}){
 export async function selectKeywordAnalysisSummary({scopeId,classUid='',startDate='',endDate='',
   sourceCategory='',sourceCategories=[],sourceAliases=[],sourceNames=null}={}){
   const id=normalizeScopeId(scopeId);
-  const {config}=await scopeAndConfig(id,{publicRead:true});
-  const selectedClass=String(classUid||config.current_keyword_class_uid||'');
-  const state=keywordClassState(config,selectedClass);
-  const scopedConfig={...config,staticstime:state?.completedAt||null,
-    keyword_meta:state||{}};
-  if(!state)return emptyStored(scopedConfig);
+  const selectedClass=String(classUid||
+    (await selectAvailableKeywordClasses(id)).currentClassUid||'');
+  if(!selectedClass)return emptyStored({});
   const category=String(sourceCategory||'').trim().toLowerCase();
   const source=Array.isArray(sourceNames)&&sourceNames.length===1
     ?String(sourceNames[0]):'';
@@ -130,6 +97,13 @@ export async function selectKeywordAnalysisSummary({scopeId,classUid='',startDat
   });
   if(!data||data.class_uid!==selectedClass)
     throw new Error('指定 Class 的詞級統計資料不完整');
+  const state={class_uid:selectedClass,completedAt:String(data.completedAt||'')};
+  const scopedConfig={
+    keyword_min_chars:data.keywordMinChars,
+    keyword_min_documents:data.keywordMinDocuments,
+    staticstime:state.completedAt||null,
+    keyword_meta:state
+  };
   const groups=Array.isArray(data.groups)?data.groups:[];
   const items=Array.isArray(data.items)?data.items:[];
   const groupTotals=groups.map((row,index)=>({
