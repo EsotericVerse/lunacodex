@@ -40,6 +40,7 @@
 - 歌曲與專輯等作品紀錄須保存來源實際全文，不能用摘要冒充全文。
 
 ## 資料庫／安全硬邊界
+- **永久架構禁止：LOC 不得使用 SQL Gateway。** 不得新建、復活、改名或部署 `loc-sql`、`loc-mcp-sql`、泛用 `/v1/sql` HTTP Query 轉送器、獨立 SQL Gateway Container／Worker／Edge；不得把這些服務作為 Portable、MCP、Extension、LOC Auth 的依賴。資料庫 SQL 只由 LOC 可信任應用程式後端透過 Kysely Driver 與對應 Dialect 執行；LOC Auth 僅負責 OAuth 身分、Scope 權限和資料庫選擇，不替代 SQL Driver 登入。不得使用 Supabase Edge、Supabase／Neon／Clerk SDK 作為此架構的必要模組。網站瀏覽器不得取得資料庫連線密碼。清理期間禁止重建任何同等功能的 Gateway 來迴避此條禁令。
 - **2026-11-07 起資料庫全面凍結（最高優先）**：除使用者明確解除凍結外，所有 Agent 禁止修改或執行資料庫 Schema、Table、Column、Index、Trigger、RPC、Migration、RLS、Policy、GRANT／REVOKE、CREATE／ALTER／DROP；此限制包括 Portable 的新 Scope 建表、跨庫安裝器、自動修復和所有部署腳本。僅允許既有資料表中的 SELECT、INSERT、UPDATE、DELETE。程式不得偷偷在首次連線／管理操作時執行 DDL。既有 SQL Session 相容操作不得用來改寫 RLS。
 - **Portable 獨立部署**：連線憑證只存在可信任 SQL 服務 Secret，選擇資料庫使用伺服器端別名；Clerk、Supabase、Neon 都不得是跨庫 SQL 的必要身份相依。尚未設定獨立 Gateway 時保留現役相容入口，不得假稱部署完成或突然切斷網站。
 - **公開 Theme 不查資料庫**：`silver.loc.theme` 僅供已授權 Admin 管理；公開前台固定使用 `app/modular/published-theme-catalog.json` 與 `published-themes.css`。管理員儲存後須明確執行 `sync:public`、提交發布產物再由既有流程部署；不可在頁面載入或 Theme 儲存後自動重新 SELECT `silver.loc.theme`，也不可為此更動 RLS。

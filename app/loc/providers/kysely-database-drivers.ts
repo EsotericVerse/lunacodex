@@ -1,11 +1,11 @@
-// Shared portable Kysely driver for the independent LOC SQL Gateway.
+// Native portable Kysely driver for the trusted LOC application backend.
 import {Kysely,PostgresDialect,MysqlDialect,MssqlDialect,ParseJSONResultsPlugin} from "npm:kysely@0.29.8";
 import pg from "npm:pg@8.16.3";
 import {normalizeDatabaseTarget} from "./selected-database-target.mjs";
 import {mysqlLdapOptions,mssqlAuthentication} from "./sql-driver-auth.mjs";
 import {PORTABLE_JSON_COLUMNS} from "./sql-engine-ports.mjs";
 
-// All credentials stay in trusted Gateway secrets; clients see only aliases.
+// Database credentials stay in trusted application-server secrets; clients see only aliases.
 // LOC_DB_CONNECTIONS_JSON example:
 // {"office_mysql":{"engine":"mysql","url":"mysql://user:pass@db.example:3306/silver","tls":true},
 //  "office_mssql":{"engine":"mssql","url":"mssql://user:pass@db.example:1433/loc","tls":true}}
@@ -54,7 +54,7 @@ export async function databaseForTarget(input:Record<string,unknown>,options:{pr
   if(target.engine==="postgres"){
     if(!["postgres:","postgresql:"].includes(uri.protocol))throw new Error("PostgreSQL needs a postgres URL");
     // Pool sizing is independent of database hosting. A single trusted SQL
-    // Gateway instance reuses this connection pool for its Scope queries.
+    // Application server reuses this connection pool for its Scope queries.
     dialect=new PostgresDialect({pool:new Pool({connectionString:profile.url,
       // Explicit Authority TLS settings are enforced; profiles without a
       // TLS flag keep pg's existing URL/sslmode behavior for local databases.

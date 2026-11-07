@@ -1,14 +1,15 @@
 # LOC Channel 1 independent receiver
 
 The canonical receiver is `app/loc/gateway/channel1-receiver.ts`.
-The former `supabase/functions/loc-channel1-ingest/index.ts` only imports
-this file to keep deployed Channel 1 ingestion working. It contains no
-separate SQL implementation.
+This is a narrowly scoped Channel 1 ingestion receiver, not a generic SQL
+query service. It must never depend on the retired LOC SQL Gateway. The
+historical provider Edge entry, if still running, is a cutover liability;
+no new deployment should use it.
 
 A standalone **Deno 2** service uses:
 
 ```sh
-deno run --allow-env --allow-net --config services/loc-sql/deno.json services/loc-channel1/main.ts
+deno run --allow-env --allow-net --config services/loc-channel1/deno.json services/loc-channel1/main.ts
 ```
 
 Configure these **server-only** values:
@@ -20,7 +21,7 @@ Configure these **server-only** values:
 
 Channel 1 retains its existing PostgreSQL transaction/UID/deduplication logic.
 No table migration, RLS policy or SQL function is added. This source change
-does **not** create a host, DNS route or production secret. The old Function
-keeps its `SUPABASE_DB_URL`/`DATABASE_URL` compatibility fallback only
-while actual hosted traffic remains on that path. No switch is performed
-until a trusted standalone endpoint is configured.
+does **not** create a host, DNS route or production secret. This source does not switch a production endpoint. Cut over the existing
+one-way Queue receiver only after this direct Kysely ingestion path has
+been provisioned and its acknowledgements verified. Never restore a
+Supabase Edge fallback or add a generic SQL Gateway.

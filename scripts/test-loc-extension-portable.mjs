@@ -1,9 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
+import {readFileSync,existsSync} from 'node:fs';
 import {portableShortImportStore} from '../app/loc/import/short-append-service.mjs';
 import {authorizeDelegatedShortImport} from '../app/loc/import/short-edge-authorization.mjs';
-import {createLocGatewayAdapter} from '../app/loc/providers/loc-gateway.mjs';
 
 function fakeStore(){
  const calls=[];
@@ -64,74 +63,20 @@ test('new Scope short-import requires its exact signed write grant, not a fixed 
  assert.throws(()=>authorizeDelegatedShortImport(body,{...claims,grants:['lo3rwang:write']}),/Scope write delegation required/);
  assert.throws(()=>authorizeDelegatedShortImport({...body,scopeid:'new_scope'},claims),/Invalid short-import gateway payload/);
 });
-test('LOC browser bridge uses only independent gateway for short import and existing signed delegation',async()=>{
- const previous=process.env.NEXT_PUBLIC_LOC_MCP_SQL_GATEWAY_URL;
- process.env.NEXT_PUBLIC_LOC_MCP_SQL_GATEWAY_URL='https://sql.example.org/v1/sql';
- const calls=[];
- try{
-  const adapter=createLocGatewayAdapter({
-   authorityUrl:'https://auth.example.org',
-   accountAdapter:{auth:{},getAccessToken:async()=> 'oauth-token'},
-   gatewayUrl:'https://legacy.example.org/functions/v1/loc-kysely',
-   fetchImpl:async(url,options)=>{
-    calls.push({url:String(url),headers:options.headers,body:JSON.parse(options.body)});
-    if(String(url)==='https://auth.example.org/v1/delegation')
-     return Response.json({access_token:'a.b.c',expires_at:Math.floor(Date.now()/1000)+3600});
-    if(String(url)==='https://sql.example.org/v1/sql')
-     return Response.json({accepted:true,id:'batch-id',articles:[]});
-    throw Error('Unexpected vendor Function access: '+url);
-   }
-  });
-  const response=await adapter.authClient.shortImport('lo3rwang',{
-   id:'batch-id',write_mode:'append',records:[]
-  });
-  assert.equal(response.accepted,true);
-  assert.equal(calls.length,2);
-  assert.equal(calls[0].body.audience,'sql');
-  assert.equal(calls[0].body.scopeid,'lo3rwang');
-  assert.deepEqual(calls[0].body.actions,['write']);
-  assert.equal(calls[1].url,'https://sql.example.org/v1/sql');
-  assert.equal(calls[1].headers.authorization,'Bearer a.b.c');
-  assert.ok(calls.every(x=>!x.url.includes('/functions/v1/')));
- }finally{
-  if(previous===undefined)delete process.env.NEXT_PUBLIC_LOC_MCP_SQL_GATEWAY_URL;
-  else process.env.NEXT_PUBLIC_LOC_MCP_SQL_GATEWAY_URL=previous;
- }
-});
-test('absent independent gateway fails closed and leaves Extension Queue available',async()=>{
- const previous=process.env.NEXT_PUBLIC_LOC_MCP_SQL_GATEWAY_URL;
- delete process.env.NEXT_PUBLIC_LOC_MCP_SQL_GATEWAY_URL;
- try{
-  const adapter=createLocGatewayAdapter({
-   accountAdapter:{auth:{},getAccessToken:async()=> 'token'},
-   gatewayUrl:'https://legacy.example.org/functions/v1/loc-kysely'
-  });
-  assert.throws(()=>adapter.authClient.shortImport('lo3rwang',{}),/獨立 SQL Gateway 尚未設定/);
- }finally{
-  if(previous!==undefined)process.env.NEXT_PUBLIC_LOC_MCP_SQL_GATEWAY_URL=previous;
- }
-});
-test('gateway accepts only LOC website preflight, verifies signed SQL grant before short-import',()=>{
- const gateway=readFileSync(new URL('../services/loc-mcp-sql/main.ts',import.meta.url),'utf8');
- assert.match(gateway,/kind==='short-import'/);
- assert.match(gateway,/verifySignedDelegation\(request,body,false\)/);
- assert.match(gateway,/authorizeDelegatedShortImport\(body,claims\)/);
- assert.match(gateway,/processShortImport\(body.batch,actor/);
- assert.match(gateway,/portableShortImportStore\(db,sql/);
- assert.match(gateway,/origin==='https:\/\/loc\.lo3rwang\.cc'/);
- assert.match(gateway,/Access-Control-Allow-Headers/);
- assert.doesNotMatch(gateway,/supabase\.co\/functions/);
+test('Galaxy Link keeps its own persistent Queue and native PKCE OAuth',()=>{
+ const background=readFileSync(new URL('../extensions/loc-galaxy-link/background.js',import.meta.url),'utf8');
+ const website=readFileSync(new URL('../public/extension/website-bridge.mjs',import.meta.url),'utf8');
+ assert.match(background,/chrome\.identity\.launchWebAuthFlow/);
+ assert.match(background,/registeredClient\(/);
+ assert.match(background,/await acknowledgeBatch\(records\)/);
+ assert.match(background,/validateArticleReceipts\(/);
+ assert.match(background,/const DB_NAME='loc-channel1-queue'/);
+ assert.doesNotMatch(website,/authorization:|getToken/);
 });
 
-test('Cloudflare Container ingress targets the internal HTTP port without exposing secrets',()=>{
- const worker=readFileSync(new URL('../services/loc-mcp-sql/cloudflare-worker.mjs',import.meta.url),'utf8');
- const config=JSON.parse(readFileSync(new URL('../services/loc-mcp-sql/wrangler.jsonc',import.meta.url),'utf8'));
- assert.equal(config.containers[0].scheduling_policy,'durable_object');
- assert.equal(config.containers[0].images.base.dockerfile,'./Dockerfile');
- assert.equal(config.containers[0].images.base.build_context,'../..');
- assert.match(worker,/url\.protocol='http:'/);
- assert.match(worker,/url\.host='container'/);
- assert.match(worker,/new Request\(url,request\)/);
- assert.match(worker,/getTcpPort\(8000\)\.fetch\(forwarded\)/);
- assert.ok(!Object.hasOwn(config.vars,'LOC_DB_CONNECTIONS_JSON'));
+test('Extension does not depend on a standalone SQL Gateway deployment',()=>{
+ for(const file of ['services/loc-sql/main.ts','services/loc-mcp-sql/main.ts']){
+  assert.equal(existsSync(new URL('../'+file,import.meta.url)),false,file);
+ }
 });
+

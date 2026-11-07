@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
+import {readFileSync,existsSync} from 'node:fs';
 
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
@@ -51,22 +51,20 @@ test('Chrome native PKCE and website capture keep independent, durable Queues',(
  assert.ok(queueName(chrome)&&queueName(capture)&&queueName(chrome)!==queueName(capture));
 });
 
-test('independent SQL requires server-only DB alias and signed LOC delegation',()=>{
- const main=read('services/loc-sql/main.ts');
- const handler=read('app/loc/gateway/sql-handler.ts');
- const docker=read('Dockerfile');
- assert.match(main,/LOC_CONTROL_DB_ALIAS/);
- assert.match(main,/LOC_CONTROL_DB_ENGINE/);
- assert.match(main,/LOC_DB_CONNECTIONS_JSON/);
- assert.match(handler,/verifyLocDelegation\(match\[1\],body\)/);
- assert.match(handler,/portableShortImportStore\(db,sql,\{engine:target\.engine,/);
- assert.match(handler,/resolveRuntimeDatabase\(/);
- assert.match(read('workers/loc-authority/index.mjs'),/selectedDatabaseForDelegation\(/);
- assert.match(read('workers/loc-authority/sql-profile.mjs'),/trustedSqlProfile/);
- assert.match(docker,/^FROM denoland\/deno:/m);
- assert.match(docker,/^COPY app \.\/app$/m);
- assert.match(docker,/^COPY zenstack \.\/zenstack$/m);
- assert.doesNotMatch(main,/SUPABASE_DB_URL|NEON_DATABASE_URL|clerk-browser/);
+test('LOC never packages an independent SQL Gateway or Container',()=>{
+ for(const path of [
+  'Dockerfile','services/loc-sql/main.ts','services/loc-sql/Dockerfile',
+  'services/loc-sql/cloudflare-worker.mjs','services/loc-sql/wrangler.jsonc',
+  'services/loc-mcp-sql/main.ts','services/loc-mcp-sql/Dockerfile',
+  'services/loc-mcp-sql/cloudflare-worker.mjs','services/loc-mcp-sql/wrangler.jsonc'
+ ])assert.equal(existsSync(new URL('../'+path,import.meta.url)),false,path);
+ const driver=read('app/loc/providers/kysely-database-drivers.ts');
+ for(const dialect of ['PostgresDialect','MysqlDialect','MssqlDialect'])
+  assert.match(driver,new RegExp(dialect));
+ const configured=read('app/loc/providers/configured.mjs');
+ assert.doesNotMatch(configured,/createLocGatewayAdapter|NEXT_PUBLIC_LOC_SQL_GATEWAY_URL/);
+ const auth=read('workers/loc-authority/native-oauth.mjs');
+ assert.match(auth,/PKCE|S256|code_challenge_method/);
 });
 
 test('only main may auto-deploy on Vercel and documentation-only builds skip',()=>{

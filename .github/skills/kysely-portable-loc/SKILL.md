@@ -3,13 +3,14 @@ name: kysely-portable-loc
 description: Use for LOC SQL dialect, query, schema, transaction, migration, and authorization changes. Read Kysely's current official agent docs before changing PostgreSQL-specific code or creating RPCs.
 ---
 
-# LOC — Kysely official-documentation workflow
+# LOC — Direct Kysely Driver, no SQL Gateway
 
 Primary upstream source: https://kysely.dev/llms.txt
 Full agent-readable documentation: https://kysely.dev/llms-full.txt
 Versioned upstream source: https://github.com/kysely-org/kysely
 Installed Kysely version: **0.29.8**. Confirm the installed version, official agent docs, and upstream release notes when continuing work.
 
+0. **Permanent LOC boundary:** LOC never uses a standalone or generic SQL Gateway. OAuth is verified by LOC Auth; the trusted LOC application backend itself opens Kysely SQL Driver connections. Do not create, rename, deploy, or reintroduce a SQL Gateway, `/v1/sql`, or Supabase Edge.
 1. Read the **official current** Kysely docs relevant to the operation (Dialect, Query Builder, Schema Builder, Migrator, transaction, plugins, API). If the docs cannot be fetched, inspect the matching upstream tagged source; do not guess the API.
 2. **Prefer native Kysely** `selectFrom`, `insertInto`, `updateTable`, `deleteFrom`, `onConflict`, `mergeInto`, `transaction`, `schema`, and `Migrator`. Use `sql` only where the chosen Dialect cannot express the required feature; isolate those paths and test them per-engine.
 3. Kysely's `Dialect` **generates and executes SQL**, but does **not** translate database-specific RLS, JSONB, PostgreSQL `CREATE POLICY`, or SQL Server identity semantics into identical cross-engine security. Driver DB login is independent of native **LOC Auth OAuth + signed SQL delegation**. Do not depend on Clerk, Supabase Auth, or Neon Auth for LOC user identity.
