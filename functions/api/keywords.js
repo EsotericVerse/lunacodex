@@ -52,7 +52,7 @@ async function signingKeys(){
   })();
   try{return await loading;}finally{loading=null;}
 }
-async function verifiedIdentity(request){
+async function verifiedIdentity(request,env={}){
   const bearer=/^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization')||'');
   if(!bearer)return {role:'anon',claims:{}};
   const parts=bearer[1].split('.');
@@ -75,7 +75,10 @@ async function verifiedIdentity(request){
   if(!verified)error('LOC delegation signature invalid',401);
   try{
     const result=verifyDelegationBoundary(payload,{
-      kind:'managed-action',name:'keyword_pattern_statistics'});
+      kind:'managed-action',name:'keyword_pattern_statistics'},{
+      notBefore:String(env.LOC_DELEGATION_NOT_BEFORE||'0'),
+      revokedSids:String(env.LOC_DELEGATION_REVOKED_SIDS||'')
+    });
     return {role:'authenticated',claims:result.claims};
   }catch{error('LOC delegation expired or invalid',401);}
 }
@@ -100,7 +103,7 @@ export async function onRequestPost(context){
        typeof input.args!=='object'||Array.isArray(input.args))
       error('Unknown Keyword operation');
     const {operation,args}=input;
-    const {role,claims}=await verifiedIdentity(request);
+    const {role,claims}=await verifiedIdentity(request,context.env);
     const scope=String(args.scopeId||'');
     if(operation!=='suggest'&&!SCOPE.test(scope))
       error('Invalid Keyword Scope');
