@@ -17,7 +17,7 @@ export function hasKeywordMinimumContent(content,minChars=0){
 // Aggregate one page at a time. Memory scales with the actual stored Keyword
 // hits, never with a second full copy of per-article classification records.
 export async function reanalyzeKeywordClass({
-  classUid,treeRows=[],minChars=0,pageSize=1000,expectedCount=null,readPage,writeNode,finalize,compactResults=false,
+  classUid,treeRows=[],minChars=0,pageSize=1000,expectedCount=null,readPage,writeNode,writePatterns=null,finalize,compactResults=false,
   onProgress=()=>{}
 }={}){
   if(typeof readPage!=='function'||typeof writeNode!=='function'||typeof finalize!=='function')
@@ -29,10 +29,13 @@ export async function reanalyzeKeywordClass({
   if(!root||root.type!=='class')throw new Error('Unknown Class UID');
   const {catalog}=keywordClassCatalog(treeRows,classUid);
   const itemResults=new Map(catalog.map(item=>[item.uid,new Map()]));
+  // One distinct UID per matched literal keyword, across all Items.
+  // Unlike Item.total, this is the word's own count, not the group's.
+  const termResults=writePatterns?new Map():null;
   const groupResults=new Map(root.lists.map(uid=>[uid,new Set()]));
   const resolver=createKeywordUidGroupResolver(treeRows,classUid);
   // Compile keyword rules once per Class, not once per 1,000-article batch.
-  const classify=createKeywordUidDocumentClassifier(treeRows,classUid);
+  const classify=createKeywordUidDocumentClassifier(treeRows,classUid,{collectKeywordTerms:Boolean(writePatterns)});
   const seen=new Set();
   let offset=0,read=0,eligible=0,occurrences=0,itemMatches=0;
   for(;;){
@@ -53,6 +56,13 @@ export async function reanalyzeKeywordClass({
     for(const result of data.classifications||[]){
       if(!ARTICLE_UID.test(result.uid)||!seen.has(result.uid))
         throw new Error('Classifier returned an unknown Galaxy UID');
+      if(termResults){
+        for(const term of new Set(result.matched_terms||[])){
+          let uids=termResults.get(term);
+          if(!uids){uids=new Set();termResults.set(term,uids);}
+          uids.add(result.uid);
+        }
+      }
       const itemSeen=new Set();
       for(const hit of result.hits||[]){
         const output=itemResults.get(hit.uid);
@@ -107,6 +117,14 @@ export async function reanalyzeKeywordClass({
     const node=changes[i];
     await writeNode(node);
     onProgress({phase:'writing',completed:i+1,total:changes.length});
+  }
+  // Persist the completed inverted lookup from these same Item results.
+  // The virtual unified Anchor keeps only Item totals, never UID arrays.
+  if(writePatterns){
+    await writePatterns({classUid,items:catalog,
+      termMatches:[...termResults].map(([term,uids])=>({
+        pattern:term,uid_list:[...uids].sort(),count:uids.size
+      }))});
   }
   const stats={classUid,analyzedDocuments:eligible,matchedDocuments:matched.size,
     itemMatches,occurrences,groupCount:root.lists.length,itemCount:catalog.length};

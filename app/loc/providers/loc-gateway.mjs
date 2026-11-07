@@ -28,6 +28,10 @@ export function createLocGatewayAdapter({
       'manage_scope_registry','delete_scope','provision_scope',
       'loc_admin_settings','check_backup_readiness','connect_database_target'
     ].includes(String(body.name||'')))return {audience:'sql',global:true};
+    // A single self delegation lets the server intersect authorized Scopes
+    // for autocomplete; never trust the browser's list as permission.
+    if(kind==='managed-action'&&body.name==='suggest_search_patterns')
+      return {audience:'sql',self:true};
     if(kind==='managed-action'&&body.name==='manage'){
       const type=String(body.args?.p_type||'');
       if(type==='global')return {audience:'sql',global:true};
