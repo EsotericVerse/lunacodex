@@ -41,6 +41,66 @@ export function buildKeywordSearchPatterns(scopeId,items=[],matchedUids=[]){
   }).sort((a,b)=>a.pattern.localeCompare(b.pattern));
 }
 
+
+// Compose Item statistics from the existing word index: no Galaxy text read,
+// no Anchor total writes, and no mutation of a word's update_time.
+// Item hit_count is the SUM of its distinct literal-word hit counts;
+// document_count is the UNION of article UIDs, not that sum.
+export function keywordPatternItemMetrics(items=[],storedPatterns=[]){
+  if(!Array.isArray(items)||!Array.isArray(storedPatterns))
+    throw new TypeError('Keyword Item catalog and stored word rows are required');
+  const byWord=new Map();
+  for(const row of storedPatterns){
+    const key=identity(row?.pattern);
+    if(!key||byWord.has(key))continue;
+    const uids=row.uid_list;
+    if(!Array.isArray(uids)||uids.some(uid=>typeof uid!=='string'||!UID.test(uid))||
+       new Set(uids).size!==uids.length||Number(row.count)!==uids.length)
+      throw new Error('Invalid stored word UID lookup');
+    byWord.set(key,row);
+  }
+  const missing=new Map(),allArticles=new Set();
+  let totalHits=0;
+  const summaries=items.map(item=>{
+    const itemWords=new Map();
+    const candidates=[item.item_name,...(Array.isArray(item.keywords)?item.keywords:[])
+      .filter(value=>typeof value==='string'&&!parseRuneKeywordRuleSentence(value).rules.length)];
+    for(const value of candidates){
+      const word=normalize(value),key=identity(word);
+      if(word&&word.length<=256&&!itemWords.has(key))itemWords.set(key,word);
+    }
+    const articles=new Set(),words=[];
+    let hitCount=0;
+    for(const [key,word] of itemWords){
+      const stored=byWord.get(key);
+      if(!stored){
+        missing.set(key,word);
+        words.push({pattern:word,count:0,indexed:false,ratio:0});
+        continue;
+      }
+      const count=Number(stored.count);
+      hitCount+=count;
+      for(const uid of stored.uid_list){articles.add(uid);allArticles.add(uid);}
+      words.push({pattern:word,count,indexed:true,ratio:0});
+    }
+    totalHits+=hitCount;
+    return {
+      uid:String(item.uid||''),
+      group_uid:String(item.group_uid||''),
+      name:String(item.item_name||''),
+      hit_count:hitCount,document_count:articles.size,
+      words:words.map(word=>({...word,
+        ratio:hitCount>0&&word.indexed?100*word.count/hitCount:0}))
+    };
+  });
+  return {
+    items:summaries.map(item=>({...item,
+      ratio:totalHits>0?100*item.hit_count/totalHits:0})),
+    total_hits:totalHits,document_count:allArticles.size,
+    missing_patterns:[...missing.values()]
+  };
+}
+
 // LOC Kysely transport caps POST bodies at 1 MiB. Bound the reanalysis-only
 // upload without imposing extra round trips on ordinary Search requests.
 export function splitKeywordPatternBatches(patterns,maxBytes=700_000){
