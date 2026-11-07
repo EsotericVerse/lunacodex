@@ -43,7 +43,7 @@ export async function analyzeIncrementalKeywordPatterns({
     const completed=old?isoMillis(patternScans[k]):null;
     scanMs.set(k,completed);
   }
-  const checked=new Set();
+  const checked=new Set(),compiledByWords=new Map();
   let offset=0,scanned=0,parsed=0,reused=0;
   for(;;){
     const page=await readMetadataPage({offset,limit:pageSize});
@@ -94,9 +94,13 @@ export async function analyzeIncrementalKeywordPatterns({
     }
     for(const [signature,docs] of partitions){
       const allowed=new Set(JSON.parse(signature));
-      const classify=createKeywordUidDocumentClassifier(treeRows,classUid,{
-        collectKeywordTerms:true,selectedTerms:allowed
-      });
+      let classify=compiledByWords.get(signature);
+      if(!classify){
+        classify=createKeywordUidDocumentClassifier(treeRows,classUid,{
+          collectKeywordTerms:true,selectedTerms:allowed
+        });
+        compiledByWords.set(signature,classify);
+      }
       const result=classify(docs);
       for(const row of result.classifications||[]){
         if(!bodies.has(row.uid))throw new Error('Unknown classified Galaxy article');
