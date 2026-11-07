@@ -63,7 +63,7 @@ export async function analyzeIncrementalKeywordPatterns({
         if(completed===null||updated===null||updated>=completed)
           wordsToCheck.push(k);
       if(!wordsToCheck.length){reused++;continue;}
-      affected.set(uid,{wordsToCheck,eligible:row.keyword!==false});
+      affected.set(uid,{wordsToCheck,eligible:row.keyword===true});
       if(row.keyword!==false)contentUids.push(uid);
     }
     const bodies=new Map();
@@ -83,7 +83,7 @@ export async function analyzeIncrementalKeywordPatterns({
       for(const k of work.wordsToCheck)sets.get(k).delete(uid);
       if(!work.eligible)continue;
       const body=bodies.get(uid);
-      if(!body||body.keyword===false)continue;
+      if(!body||body.keyword!==true)continue;
       let visible=0;
       for(const char of String(body.content??''))
         if(!/\s/u.test(char)&&++visible>minChars)break;
