@@ -384,3 +384,40 @@ relations also requires `global:manage`, but stays with the original
 trusted Kysely execution until an authenticated ZenStack create policy is
 verified. Other models and all MCP routes remain unchanged.
 
+
+
+## LOC Search cross-Scope request scheduling (2026-11-07)
+
+The public Search page uses a **custom Kysely SQL Gateway action**, not
+ZenStack's generated model RPC API. The current frontend is already on SWR
+2.5.1 with request de-duplication. Adding `@zenstackhq/tanstack-query` would
+require the separate `@tanstack/react-query` peer and a compatible ZenStack
+model API; it does **not** automatically speed up the existing SQL contains
+filter. Avoid a second competing frontend result cache in this cutover.
+
+`searchOrderedScopeProviders` is a small, dependency-free execution scheduler:
+- Query the first Scope alone (no additional traffic on the common one-hit path).
+- If the earlier Scope is empty, overlap **at most two** following Scope reads.
+- Return in the original Scope order and preserve `{stage,offset,source}`
+  cursors, batch size, source/date/content filters, public/private auth gates,
+  and the existing three-second manual-search cooldown.
+- Cancel unused lookahead when an earlier Scope matches or the user changes
+  queries; do not persist result data or introduce a TTL cache.
+- Keep the Kysely query and its present column projection unchanged. This
+  reduces serialized no-hit network waits, **not the execution time of an
+  unindexed text SQL predicate**, and has no claim of a measured production
+  latency improvement. The targeted mock tests cover ordering, no results,
+  errors, cancellation and the QoS concurrency ceiling.
+
+Existing Galaxy/Anchor/Blocks tables, RLS, migrations, indexes, service Worker,
+site-level search rate limits and fallback routing are untouched.
+
+
+## 2026-11-07 四大公開讀取路徑的定點優化
+
+- **固定模型不變**：ZenStack V3 固定 ZModel 契約 + Kysely Dialect/Query Builder；不建立新的 Model Type、Schema、Table、Index、RLS、Policy、RPC、觸發器或背景預讀，亦不加入第二套 TanStack Query 快取。
+- **文化第一條時間長河**：`culture_density` 原本以 `createtime` 限定查詢範圍、卻按 `Galaxy.date` 分組。已直接以 `date >= start AND date <= end` 做範圍篩選並按相同 `date,site` 分組，保留原有 `culture=true`、頁面排序、密度比例與預先不載入文章列表的策略。這使現有日期索引可供資料庫規劃器考慮；實際效能須由執行計畫和完整頁面測量確認。
+- **統計數字**：PostgreSQL `dailyStats` 將原本兩組來源／每日總數聚合的 `UNION ALL` 改為 `GROUPING SETS ((day,site),(day))`；以 `GROUPING(site)` 判斷總數，空的來源名稱仍與文字作品總數區分。MySQL／SQL Server 維持既有 Portable Kysely groupBy + JS 合併策略。不重啟獨立多媒體統計或 `media_link` Join，多媒體只作為關鍵詞類別。
+- **痕跡跨 Scope**：LOC 群組設定、Trace 路徑清單、參照 Point 與全域 Point 讀取改用既有 `mapBounded(...,3,...)`，減少並行總量撞上 SQL Gateway QoS 的機會；仍維持原有最多 50 個公開共點、先載輕量路徑定義、點擊才載文章的流程。
+- **搜尋**：保持主頁第一個命中 Scope 只送一次查詢、空結果路徑至多兩筆並行，以及 3 秒冷卻／25 秒取消、僅載摘要必要欄位、全文按點擊延後載入。新增回歸覆蓋，避免其他頁面加速時恢復大量全文預讀。
+- **驗證範圍**：新增獨立測試覆蓋日期篩選、單次 PostgreSQL SQL 聚合、跨 Scope 查詢 QoS 上限、搜尋優先順序；不是 live SQL `EXPLAIN` 或正式部署速度量測。若無真實資料與執行計畫，不可宣稱固定加速倍數。

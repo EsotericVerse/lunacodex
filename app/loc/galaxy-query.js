@@ -1,6 +1,7 @@
 'use client';
 import {isAbortError} from './db-query.mjs';
 import {mapBounded} from './bounded-parallel.mjs';
+import {searchOrderedScopeProviders} from './search-ordered-scope-providers.mjs';
 
 
 import {StatisticsFacets} from './statistics-facets';
@@ -637,42 +638,12 @@ export async function searchGalaxyRows(scopes,query,{
   // Search is article-led: one Galaxy.content provider per Scope, with
   // Anchor relationships available only after choosing an article.
   const providers=scopeProviders.flat();
-  const failures=[];
-
-  let stage=Number.isInteger(cursor?.stage)?cursor.stage:1;
-  let sourceOffset=Math.max(0,Math.floor(Number(cursor?.offset)||0));
-  let source=cursor?.source||'auto';
-
-  // Empty match stages are internal search work, not a user-visible page.
-  // Advance until we have results or exhaust all providers; otherwise guests
-  // must press "Load more" repeatedly before any matching article appears.
-  while(stage<=providers.length){
-    if(signal?.aborted){
-      const cancelled=new Error('Request cancelled');
-      cancelled.name='AbortError';
-      throw cancelled;
-    }
-    const provider=providers[stage-1];
-    if(!provider)break;
-    try{
-      const result=await provider.search(q,{cursor:sourceOffset,startDate,endDate,and,nor,limit:safeLimit,source,browse,signal,sortDirection});
-      const rows=result.rows||[];
-      const hasMore=Boolean(result.hasMore)||stage<providers.length;
-      const nextCursor=result.hasMore
-        ?{stage,offset:result.nextCursor,source:result.dataSource||source}
-        :stage<providers.length?{stage:stage+1,offset:0,source:'auto'}:null;
-      if(rows.length||!hasMore)return {rows,failures,hasMore,nextCursor};
-    }catch(error){
-      // Cancellation must neither trigger fallback nor advance search stages.
-      if(error?.name==='AbortError'||signal?.aborted)throw error;
-      failures.push(new Error(`${provider.id}: ${error?.message||'search failed'}`));
-      if(stage===providers.length)throw new AggregateError(failures,'資料搜尋 Provider 無法查詢');
-    }
-    stage+=1;
-    sourceOffset=0;
-    source='auto';
-  }
-  return {rows:[],failures,hasMore:false,nextCursor:null};
+  // Preserve the same provider ordering and stage cursor while overlapping
+  // only the expensive no-match path. One first-Scope hit still costs ONE query.
+  return searchOrderedScopeProviders(providers,q,{
+    cursor,startDate,endDate,and,nor,limit:safeLimit,
+    browse,signal,sortDirection
+  });
 }
 
 
@@ -886,8 +857,12 @@ async function selectScopeOverviewRaw(scope,{startDate='',endDate=''}={}){
   if(usesNumericIsr(current.id)){
     try{
       const snapshot=await readNumericIsr(current.id,'statistics',{startDate,endDate});
-      // An older snapshot may omit linked media. Query Kysely instead.
-      if(snapshot?.mediaCount!=null&&Number.isFinite(Number(snapshot.mediaCount)))return snapshot;
+      // Statistics now contains only dated Galaxy source counts. Multimedia is
+      // a Keyword Class, never an additional overview statistic. Accept a
+      // complete current ISR snapshot without triggering duplicate SQL reads.
+      if(typeof snapshot?.earliest==='string'&&Array.isArray(snapshot.rows)&&
+         Array.isArray(snapshot.categories)&&Array.isArray(snapshot.aliases))
+        return snapshot;
     }catch{ /* Optional ISR cache failure: query Kysely. */ }
   }
   return readScopeOverview(current.id,{startDate,endDate});

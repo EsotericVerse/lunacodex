@@ -11,6 +11,7 @@ import traceZh from '../../i18n/sections/uiExtra.traceUI.zh_tw.js';
 registerDefaultSection('uiExtra.traceUI',traceZh);
 const TEXT='uiExtra.traceUI.';
 import {useAsyncResource} from '../../loc/use-async-resource';
+import {mapBounded} from '../../loc/bounded-parallel.mjs';
 import useLocFeatureSettings from '../../loc/use-loc-feature-settings';
 import {traceWindow} from './trace/trace-panel-filters.mjs';
 import {publicTraceMapChoices,locReferencedPointGroups,clusterLocSharedPoints} from './trace/trace-map-choices.mjs';
@@ -81,8 +82,9 @@ export default function Trace({scopeId='loc'}){
   const locPointsQuery=useAsyncResource({
     queryKey:['loc-trace-referenced-points-50',...locPointGroups.map(group=>group.scope+':'+group.ids.join(','))],
     enabled:isLoc&&supported&&traceIndex.data!==undefined,
-    queryFn:async()=>(await Promise.all(locPointGroups.map(async group=>
-      readCurrentTraceAnchors(group.scope,group.ids)))).flat(),
+    // Cross-Scope intersections remain bounded even when members grow.
+    queryFn:async()=>(await mapBounded(locPointGroups,3,group=>
+      readCurrentTraceAnchors(group.scope,group.ids))).flat(),
     revalidateIfStale:false,revalidateOnFocus:false,revalidateOnReconnect:false
   });
   const locSharedPoints=useMemo(()=>clusterLocSharedPoints(locPointsQuery.data||[],50),[locPointsQuery.data]);

@@ -1,4 +1,5 @@
 import {schema} from './schema.mjs';
+import {locRolePrincipal} from './role-hierarchy.mjs';
 
 const PUBLIC_FIXED_MODELS=Object.freeze({
   'api.manage':'Manage',
@@ -65,7 +66,7 @@ export async function withFixedPolicyRead(db,target,body,role,claims,
   if(!modelName)throw new Error('Not a fixed public ZModel policy query');
   const reader=fixedPolicyReader(db,{dialect,ZenStackClient,PolicyPlugin});
   const auth=role==='authenticated'&&claims?.provider==='loc'&&claims?.me===true
-    ?{id:String(claims.sub||''),role:'authenticated'}
+    ?locRolePrincipal(claims)
     :undefined;
   return reader.$setAuth(auth).$transaction(async scoped=>{
     if(!scoped?.$qb)throw new Error('Policy-enforced Kysely transaction missing');
@@ -84,7 +85,7 @@ export async function withFixedPolicyWrite(db,target,body,role,claims,
   if(!modelName)throw Object.assign(
     new Error('Global LOC policy permission required'),{httpStatus:403});
   const reader=fixedPolicyReader(db,{dialect,ZenStackClient,PolicyPlugin});
-  return reader.$setAuth({id:String(claims.sub||''),role:'admin'})
+  return reader.$setAuth(locRolePrincipal(claims))
     .$transaction(async scoped=>{
       if(!scoped?.$qb)throw new Error('Policy-enforced Kysely transaction missing');
       return run(scoped.$qb,modelName);

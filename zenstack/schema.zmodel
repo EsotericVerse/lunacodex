@@ -18,10 +18,16 @@ plugin policy {
     provider = '@zenstackhq/plugin-policy'
 }
 
-// Verified LOC global administrator. This is not a physical database table.
+// Verified LOC OAuth + delegated role principal. This is NOT a database table.
+// Group is a virtual Scope-management tier, not a User/Group record.
+// All scopeIds/groupIds are projected from verified LOC grants and trusted
+// server-side membership; they cannot be supplied by the browser.
 type LocPrincipal {
-    id   String
-    role String
+    id        String
+    role      String
+    roleLevel Int
+    scopeIds  String[]
+    groupIds  String[]
     @@auth
 }
 
@@ -172,7 +178,7 @@ model Loc {
     birthday                     DateTime?   @db.Date
     @@map("loc")
     @@schema("silver")
-    @@allow('read', true)    @@allow('update,delete', auth().role == 'admin')
+    @@allow('read', true)    @@allow('update,delete', auth().roleLevel >= 4)
 
 }
 
@@ -297,7 +303,7 @@ model Manage {
     note                         String?     @db.Text
     @@map("manage")
     @@schema("api")
-    @@allow('read', true)    @@allow('update,delete', auth().role == 'admin')
+    @@allow('read', true)    @@allow('update,delete', auth().roleLevel >= 4)
 
 }
 
