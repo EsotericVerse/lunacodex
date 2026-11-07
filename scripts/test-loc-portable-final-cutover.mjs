@@ -47,3 +47,14 @@ test('the last direct Scope display and managed writes use one Kysely transactio
   assert.match(runtime,/updated_at:new Date\(\)/);
   assert.match(admin,/fixedSchema\.models\.Manage/);
 });
+
+test('owner_id defaults no longer depend on the retired user-ID SQL function',()=>{
+  for(const table of ['loc_user','user_records','user_settings']){
+    assert.ok(migration.includes(
+      'ALTER TABLE api.'+table+' ALTER COLUMN owner_id SET DEFAULT'),
+      table+' must preserve current LOC identity semantics');
+  }
+  assert.equal((migration.match(/^ALTER TABLE api\.(?:loc_user|user_records|user_settings) ALTER COLUMN owner_id SET DEFAULT /gm)||[]).length,3);
+  assert.ok(migration.indexOf('ALTER TABLE api.user_settings ALTER COLUMN owner_id SET DEFAULT')<
+    migration.indexOf('DROP FUNCTION api.current_user_id() RESTRICT'));
+});

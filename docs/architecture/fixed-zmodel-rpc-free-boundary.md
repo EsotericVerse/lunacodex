@@ -319,3 +319,10 @@ for a single default class in the common case, regardless of Item count
 (with extra INSERT batches only for more than 500 Anchor records). Reserved
 relation collisions are checked in one catalog query instead of seven.
 These changes do not alter MCP, existing Scope rows or existing SQL tables.
+
+The final catalog dependency audit also found **three column defaults** still
+calling `api.current_user_id()` (the `owner_id` columns of `api.loc_user`,
+`api.user_records`, and `api.user_settings`). The same atomic migration now
+replaces those defaults with the identical direct LOC JWT subject expression,
+then drops the function via `RESTRICT`. This preserves new-row owner identity
+without creating an extra SQL query, and removes the last uncovered dependency.
