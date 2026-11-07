@@ -68,10 +68,10 @@ class Query{
   searchIndex(){return this}
   expectDatabase(id){this.dbId=String(id||'');return this}
   abortSignal(signal){this.signal=signal;return this}
-  insert(){throw Error('Private database writes require the owner's Web Server')}
-  update(){throw Error('Private database writes require the owner's Web Server')}
-  upsert(){throw Error('Private database writes require the owner's Web Server')}
-  delete(){throw Error('Private database writes require the owner's Web Server')}
+  insert(){throw Error('Private database writes require the owner Web Server')}
+  update(){throw Error('Private database writes require the owner Web Server')}
+  upsert(){throw Error('Private database writes require the owner Web Server')}
+  delete(){throw Error('Private database writes require the owner Web Server')}
   then(ok,fail){return this.run(this).then(ok,fail)}
 }
 function unsupported(){throw Error('This operation requires the database owner Web Server; LOC provides no SQL Gateway')}
