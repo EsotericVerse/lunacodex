@@ -1,4 +1,4 @@
-// LOC 網站／舊對話頁面的可見 DOM 擷取；不呼叫 OAuth、Clerk 或 MCP。
+// LOC 網站／舊對話頁面的可見 DOM 擷取；不呼叫 OAuth 或 MCP。
 (() => {
   if (globalThis.__locCaptureV2) return;
   const state = {mode:'idle', root:null, observer:null, intersection:null, timer:null, hover:null, includeAssistant:false, seen:new Set(), sending:new Set()};

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "LOC galaxy-link｜LOC 彩虹橋",
   "version": "0.1.0",
-  "description": "LOC 彩虹橋：以 LOC 自有認證擷取網頁並短匯入 Galaxy；不經 Clerk 或 KV",
+  "description": "LOC 彩虹橋：以 LOC 自有認證擷取網頁並短匯入 Galaxy；寫入前保留 Queue",
   "permissions": [
     "contextMenus",
     "activeTab",

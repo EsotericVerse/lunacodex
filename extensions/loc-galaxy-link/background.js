@@ -153,7 +153,7 @@ async function getConfig(){
  if(issuer.protocol!=='https:'||api.protocol!=='https:'||
     api.origin!==issuer.origin||api.pathname!=='/v1/import/short'||
     cfg.resource!==api.href||!cfg.client_id||typeof cfg.client_id!=='string'||
-    /clerk|supabase|github/i.test(issuer.hostname))
+    issuer.origin!=='https://auth.lo3rwang.cc')
    throw oauthError('LOC 自有認證尚未啟用，不會使用其他平台登入');
  const metaUrl=new URL('/.well-known/oauth-authorization-server',issuer);
  const metaReply=await fetch(metaUrl,{cache:'no-store',redirect:'error'});

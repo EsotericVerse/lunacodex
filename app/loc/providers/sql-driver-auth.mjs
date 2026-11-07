@@ -1,4 +1,4 @@
-// Database login belongs to the database driver. LOC/Clerk authorization
+// Database login belongs to the database driver. LOC Auth authorization
 // is a separate gate and never substitutes for SQL Server/LDAP credentials.
 export function mysqlLdapOptions(profile){
   const type=String(profile?.authentication?.type||'default');
