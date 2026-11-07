@@ -7,7 +7,7 @@ export async function verifyManagementEntry(refresh,{timeoutMs=12000}={}){
     return await Promise.race([
       Promise.resolve().then(refresh),
       new Promise((_,reject)=>{
-        timer=setTimeout(()=>reject(Error('管理權限核驗逾時；Clerk Session 或資料庫未完成回應。請重新確認管理權限。')),timeoutMs);
+        timer=setTimeout(()=>reject(Error('管理權限核驗逾時；LOC Auth Session 或 SQL Gateway未完成回應。請重新確認管理權限。')),timeoutMs);
       })
     ]);
   }finally{clearTimeout(timer);}

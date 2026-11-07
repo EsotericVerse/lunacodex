@@ -4,7 +4,7 @@ import {LOC_ORIGIN} from '../../seo/metadata';
 
 // A real Next.js App Router segment, statically exported by GitHub Pages.
 // The invitation code is read on the client under Suspense; no SSR server
-// or dynamic [room] routes are needed to connect through Supabase Realtime.
+// or dynamic [room] routes are needed to connect through LOC Realtime.
 export const metadata={
   title:'加入月之符文線上對戰｜LOC',
   description:'使用房間邀請連結加入 LunaRunes 跨裝置線上牌桌。',
