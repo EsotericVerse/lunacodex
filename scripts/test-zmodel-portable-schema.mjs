@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {schema} from '../zenstack/schema.mjs';
 import {validatePortableScopeSchema} from '../app/loc/providers/kysely-schema.mjs';
 
@@ -31,6 +32,6 @@ test('independent portable target contracts are only read-only metadata',()=>{
   assert.doesNotMatch(gateway,/\b(?:createTable|alterTable|dropTable|createIndex|migrat\w*|\.rpc\()\s*\(/i);
 });
 function readModule(path){
-  return requireText(new URL('../'+path,import.meta.url));
+  return readFileSync(new URL('../'+path,import.meta.url),'utf8');
 }
-import {readFileSync as requireText} from 'node:fs';
+
