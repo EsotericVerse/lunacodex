@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   federatedDatasetsFor,federatedScopeFromQuery,isFederatedTextSearch,
-  isDatasetQualifiedArticleRead,mergeFederatedGalaxyRows
+  isDatasetQualifiedArticleRead,publicGalaxyGate,mergeFederatedGalaxyRows
 } from '../app/loc/providers/federated-galaxy-search.mjs';
 import {locGlobalUid} from '../zenstack/global-identity.mjs';
 
@@ -74,6 +74,23 @@ test('federated text and qualified exact-UID reads are separate actions',()=>{
     filters:[{column:'uid',operator:'eq',value:'Ab123456'}]
   }),false);
 });
+test('LOC Auth grant and Galaxy search/list predicates work without native RLS',()=>{
+  const listQuery={
+    kind:'query',schema:'silver',table:'lo3rwang_galaxy',operation:'select',
+    expectedDbId:'db1',filters:[{column:'uid',operator:'eq',value:'Ab123456'}]
+  };
+  assert.equal(publicGalaxyGate(request(),'anon',{}),true);
+  assert.equal(publicGalaxyGate(listQuery,'anon',{}),'list');
+  const claims={provider:'loc',me:true,grants:['lo3rwang:read']};
+  assert.equal(publicGalaxyGate(request(),'authenticated',claims),true);
+  assert.equal(publicGalaxyGate(listQuery,'authenticated',claims),'list');
+  assert.equal(publicGalaxyGate(request(),'authenticated',{
+    provider:'loc',me:true,grants:['lo3rwang:manage']}),false);
+  assert.equal(publicGalaxyGate(listQuery,'authenticated',{
+    provider:'loc',me:true,grants:['global:manage']}),false);
+  assert.equal(publicGalaxyGate({...request(),table:'lo3rwang_anchor'},'anon',{}),false);
+});
+
 test('cross-DB search preserves duplicate UID as two independent articles',async()=>{
   const data=await mergeFederatedGalaxyRows(sources,request(0,8),reader());
   assert.deepEqual(data.data.map(x=>x.title),[
