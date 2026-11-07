@@ -857,8 +857,12 @@ async function selectScopeOverviewRaw(scope,{startDate='',endDate=''}={}){
   if(usesNumericIsr(current.id)){
     try{
       const snapshot=await readNumericIsr(current.id,'statistics',{startDate,endDate});
-      // An older snapshot may omit linked media. Query Kysely instead.
-      if(snapshot?.mediaCount!=null&&Number.isFinite(Number(snapshot.mediaCount)))return snapshot;
+      // Statistics now contains only dated Galaxy source counts. Multimedia is
+      // a Keyword Class, never an additional overview statistic. Accept a
+      // complete current ISR snapshot without triggering duplicate SQL reads.
+      if(typeof snapshot?.earliest==='string'&&Array.isArray(snapshot.rows)&&
+         Array.isArray(snapshot.categories)&&Array.isArray(snapshot.aliases))
+        return snapshot;
     }catch{ /* Optional ISR cache failure: query Kysely. */ }
   }
   return readScopeOverview(current.id,{startDate,endDate});
