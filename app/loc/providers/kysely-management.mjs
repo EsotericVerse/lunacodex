@@ -1171,10 +1171,10 @@ async function importSharedKeywordClass(trx,args){
       if(!UID.test(String(itemId)))reject('Invalid source Item UID');
       const item=await readChild(itemId,'item');
       const terms=Array.isArray(item.attr?.keyword)?item.attr.keyword:[];
-      const uid=await insertCopy('item',item,{keyword:terms,total:0,uidlists:[]});
+      const uid=await insertCopy('item',item,{keyword:terms});
       mapped.push(uid);items++;
     }
-    const uid=await insertCopy('group',group,{uid:mapped,total:0,uidlists:[]});
+    const uid=await insertCopy('group',group,{uid:mapped});
     groupIds.push(uid);
   }
   const newClass=await insertCopy('class',root,{uid:groupIds});
