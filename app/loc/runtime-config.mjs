@@ -3,7 +3,8 @@
 import {dbPublicClient,dbAuthClient} from './db-client.mjs';
 import {decodeLocCache,encodeLocCache} from './runtime-cache-fields.mjs';
 
-const relation=client=>client.schema('silver').from('manage');
+// Administration settings live in api.manage, never silver.manage.
+const relation=client=>client.schema('api').from('manage');
 const COLUMNS='id,caches';
 const runtimeRow=row=>({...row,...decodeLocCache(row?.caches)});
 
