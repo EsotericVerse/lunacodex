@@ -15,7 +15,8 @@ test('online tabletop uses only native WebSockets and does not expose the host s
   const gateway=file('app/loc/providers/configured.mjs');
   assert.doesNotMatch(src,/Supabase|dbRealtimeClient|\.channel\(/);
   assert.match(src,/new WebSocket\(url\)/);
-  assert.match(board,/hostKey:crypto\.randomUUID\(\)/);
+  assert.match(board,/遊戲介面重寫中/);
+  assert.doesNotMatch(board,/useOnlineTabletop|hostKey:/);
   assert.doesNotMatch(board,/Supabase Realtime/);
   assert.doesNotMatch(gateway,/@supabase\/supabase-js/);
   const host=new URL(tabletopSocketUrl({code:codeId,member,host:true,hostKey:secret}));
