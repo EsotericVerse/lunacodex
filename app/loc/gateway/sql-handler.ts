@@ -22,7 +22,8 @@ import {resolveSqlExecutionPort,assertCrossEnginePublicRead,authorizeCrossEngine
 import {resolveDatabaseRouting} from "../../../app/loc/providers/routing-config.mjs";
 import {databaseAccessTargets} from "../../../app/loc/providers/access.js";
 import {isTextSearchQuery,checkSearchQos} from "../../../app/loc/providers/search-qos.mjs";
-import {withIndexedCandidates,writeSearchIndexDocuments,indexDocumentsFromWrite,isSearchIndexConfigured,searchIndexDatabaseId} from "../../../app/loc/providers/search-index-service.mjs";
+import {withIndexedCandidates,federatedIndexedCandidates,writeSearchIndexDocuments,indexDocumentsFromWrite,isSearchIndexConfigured,searchIndexDatabaseId} from "../../../app/loc/providers/search-index-service.mjs";
+import {federatedDatasetsFor,federatedScopeFromQuery,isFederatedTextSearch,isDatasetQualifiedArticleRead,mergeFederatedGalaxyRows} from "../../../app/loc/providers/federated-galaxy-search.mjs";
 import {bindLocAuthorization,canManageLoc} from "../../../app/loc/providers/loc-authorization.mjs";
 
 const corsHeaders = {
@@ -197,7 +198,7 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
       namespace:executionPort.engine==='postgres'&&!target.schema_name
         ?undefined:String(target.schema_name||(
           executionPort.engine==='mssql'?'dbo':'public')),
-      publicOnly:access?.publicOnly===true});
+      publicOnly:access?.publicOnly===true||role!=="authenticated"&&isTextSearchQuery(body)});
   }
   await bindPostgresSession(trx,role,claims,String(target.provider||"supabase"));
   if(body.kind==="query"){
@@ -217,7 +218,10 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
     // PostgreSQL must stop work even when browser aborts its 25s timeout.
     if(isTextSearchQuery(body))
       await sql`set local statement_timeout = '8000ms'`.execute(trx);
-    return await executeKyselyQuery(trx,body,{modelName});
+    return await executeKyselyQuery(trx,body,{modelName,
+      // Public Search is independently protected by the Gateway even on a
+      // PostgreSQL connection that does not implement RLS.
+      publicOnly:role!=="authenticated"&&isTextSearchQuery(body)});
   }
   if(body.kind==="anchor")return await executeKyselyAnchor(trx,body,{role,claims});
   if(body.kind==="analytics")return await executeKyselyAnalytics(trx,body,{role});
@@ -503,13 +507,47 @@ Deno.serve(async (request) => {
       }else if(!["query","managed-write","anchor","analytics","public-action"].includes(String(body.kind)))
         return json({error:{message:"Unsupported SQL target action"}},403);
     }
-    // The database ID supplied with an article read is an assertion, not
-    // permission to choose arbitrary SQL credentials. A collision must
-    // reject rather than return the same UID from the wrong database.
+    // Logical data sources are registered on the trusted SQL Gateway, not
+    // selected by a browser. An empty registry preserves original behavior.
+    const queryScope=federatedScopeFromQuery(body);
+    const datasets=requestedTarget==="configured"&&queryScope
+      ?federatedDatasetsFor(Deno.env.get("LOC_SEARCH_DATASETS_JSON")||"",queryScope)
+      :[];
+    if(requestedTarget==="configured"&&datasets.length>1&&
+       body.expectedDbId===undefined&&isFederatedTextSearch(body)){
+      // One external index lookup for all configured datasets. If it is not
+      // fully covered or available, every source retains the SQL text query.
+      // This is a read-only operation; it never sends article contents to KV.
+      const indexed=await federatedIndexedCandidates(body,datasets);
+      const merged=await mergeFederatedGalaxyRows(datasets,body,async(source,page)=>{
+        const candidates=indexed?.get(source.databaseId);
+        if(candidates?.size){
+          page={...page,filters:[...(page.filters||[]),{
+            column:"uid",operator:"in",value:[...candidates]
+          }]};
+        }
+        const readTarget=source.target;
+        const readDb=isControlTarget(readTarget)
+          ?await databaseForTarget(controlTarget)
+          :await databaseForTarget(readTarget,{profileLookup:profileForTarget});
+        // The *same* signed LOC claims and Kysely policy checks apply to each
+        // database. No per-UID SQL queries, no SQL provider API and no RLS
+        // assumption beyond the existing optional PostgreSQL session.
+        const pageResult=await readDb.transaction().execute(trx=>
+          executeRequest(trx,readTarget,role,claims,page));
+        return pageResult?.data||[];
+      });
+      return json(merged);
+    }
+    // A qualified article read is an assertion against a server-authorized
+    // Scope dataset. Identical UIDs across databases are not interchangeable.
     if(body.expectedDbId!==undefined){
       const expected=String(body.expectedDbId||'');
-      if(body.kind!=="query"||body.operation!=="select"||
-         !expected||expected!==searchIndexDatabaseId(target))
+      if(!isDatasetQualifiedArticleRead(body)||!expected)
+        return json({error:{message:"Invalid qualified article read"}},400);
+      const matched=datasets.find(item=>item.databaseId===expected);
+      if(matched)target=matched.target;
+      else if(expected!==searchIndexDatabaseId(target))
         return json({error:{message:"Article database does not match the authorized SQL route"}},409);
     }
     // A complete external index can narrow only this one SELECT's UID set.
