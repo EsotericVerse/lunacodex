@@ -12,8 +12,15 @@ let profiles:Record<string,{engine?:string,url?:string}>;
 try{
   profiles=JSON.parse(Deno.env.get('LOC_DB_CONNECTIONS_JSON')||'{}');
 }catch{throw new Error('Invalid LOC SQL connection configuration');}
-if(!profiles||Array.isArray(profiles)||typeof profiles!=='object'||
-   profiles[alias]?.engine!==engine||!profiles[alias]?.url)
-  throw new Error('LOC SQL server connection alias is not configured');
+if(!profiles||Array.isArray(profiles)||typeof profiles!=='object')
+  throw new Error('LOC SQL server connections are invalid');
+const base=profiles[alias];
+if(base&&(base.engine!==engine||!base.url))
+  throw new Error('LOC SQL server alias/engine mismatch');
+if(!base&&!Deno.env.get('LOC_SQL_GATEWAY_SERVICE_KEY'))
+  throw new Error('LOC SQL server needs a default database or Authority service key');
+// The live database selected by a verified user is resolved from Authority on
+// each request. A one-time Gateway deployment can serve every trusted SQL
+// engine afterward without editing these deployment variables.
 prepareLocSqlEdgeRuntime();
 await import('../../app/loc/gateway/sql-handler.ts');

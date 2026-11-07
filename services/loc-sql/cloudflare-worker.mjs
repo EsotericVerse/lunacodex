@@ -2,8 +2,10 @@
 // No Clerk, Supabase Function, Neon Auth or database Data API is used here.
 import {DurableObject} from 'cloudflare:workers';
 
-const REQUIRED=['LOC_CONTROL_DB_ALIAS','LOC_CONTROL_DB_ENGINE','LOC_DB_CONNECTIONS_JSON'];
-const OPTIONAL=['LOC_AUTHORITY_ORIGIN','LOC_DELEGATION_NOT_BEFORE','LOC_DELEGATION_REVOKED_SIDS'];
+const REQUIRED=['LOC_CONTROL_DB_ALIAS','LOC_CONTROL_DB_ENGINE'];
+const OPTIONAL=['LOC_AUTHORITY_ORIGIN','LOC_DELEGATION_NOT_BEFORE',
+  'LOC_DELEGATION_REVOKED_SIDS','LOC_DB_CONNECTIONS_JSON',
+  'LOC_SQL_GATEWAY_SERVICE_KEY'];
 function unavailable(message,status=503){
   return Response.json({error:{message}},{status,
     headers:{'cache-control':'no-store'}});
@@ -60,7 +62,8 @@ export default {
     const url=new URL(request.url);
     if(url.pathname!=='/v1/sql'||!['POST','OPTIONS'].includes(request.method))
       return unavailable('Not found',404);
-    if(REQUIRED.some(name=>!env[name]))
+    if(REQUIRED.some(name=>!env[name])||
+      !env.LOC_DB_CONNECTIONS_JSON&&!env.LOC_SQL_GATEWAY_SERVICE_KEY)
       return unavailable('LOC SQL Gateway is not configured');
     // The canonical Deno handler verifies LOC Authority RS256 delegations.
     return env.LOC_SQL_CONTAINER.getByName('loc-main').fetch(request);
