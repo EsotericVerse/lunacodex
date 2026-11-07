@@ -3,9 +3,9 @@
 // This service is private to the LOC SQL Gateway; the browser never receives
 // direct index access or a search-service credential.
 import {Index} from 'flexsearch';
+import {locSearchShard,locSearchDocumentId,LOC_SEARCH_INDEX_SHARDS} from '../../app/loc/search-index-shard.mjs';
 
 const PREFIX='loc-search/v1/';
-const SHARDS=32;
 const MAX_HITS=200;
 const MAX_SHARDS=96;
 const encoder=new TextEncoder();
@@ -26,16 +26,11 @@ function identity(doc){
   const entityType=checked(doc.entityType||'galaxy',TYPE,'entityType');
   const uid=checked(doc.uid,UID,'uid');
   // JSON array encoding is injective even when two SQL databases reuse a UID.
-  return {scopeId,dbId,entityType,uid,id:JSON.stringify([scopeId,dbId,entityType,uid])};
-}
-function hash(value){
-  let x=2166136261;
-  for(const ch of value){x^=ch.codePointAt(0);x=Math.imul(x,16777619);}
-  return (x>>>0)%SHARDS;
+  return {scopeId,dbId,entityType,uid,id:locSearchDocumentId({scopeId,dbId,entityType,uid})};
 }
 const base=({scopeId,dbId,entityType})=>PREFIX+'data/'+scopeId+'/'+dbId+'/'+entityType+'/';
 const readyKey=({scopeId,dbId,entityType})=>PREFIX+'ready/'+scopeId+'/'+dbId+'/'+entityType;
-const shardKey=doc=>base(doc)+String(hash(doc.uid)).padStart(2,'0');
+const shardKey=doc=>base(doc)+String(locSearchShard(doc.uid)).padStart(2,'0');
 function makeIndex(){return new Index({tokenize:'full',resolution:3,cache:false});}
 async function loadShard(kv,key){
   const snapshot=await kv.get(key,'json');
@@ -64,9 +59,9 @@ async function checkBearer(request,env){
   let diff=0;for(let i=0;i<a.length;i++)diff|=a[i]^b[i];
   return diff===0;
 }
-async function payloadOf(request){
+async function payloadOf(request,maxBytes=900000){
   const text=await request.text();
-  if(encoder.encode(text).length>900000)
+  if(encoder.encode(text).length>maxBytes)
     throw Object.assign(new Error('Index request too large'),{status:413});
   try{return JSON.parse(text);}catch{throw invalid('Invalid JSON');}
 }
@@ -104,6 +99,31 @@ async function mutate(env,body){
     await writeShard(env.LOC_KV,key,index);
   }
   return {accepted:true,documents:docs.length,shards:groups.size};
+}
+async function replaceSnapshot(env,body){
+  const source=checkedSource(body||{});
+  const shard=Number(body.shard);
+  if(!Number.isInteger(shard)||shard<0||shard>=LOC_SEARCH_INDEX_SHARDS)
+    throw invalid('Invalid index shard');
+  const parts=body.parts;
+  if(!parts||typeof parts!=='object'||Array.isArray(parts)||
+     Object.entries(parts).some(([k,v])=>!k||k.length>100||typeof v!=='string'))
+    throw invalid('Invalid index snapshot');
+  const key=base(source)+String(shard).padStart(2,'0');
+  const index=makeIndex();
+  for(const [part,value] of Object.entries(parts))await index.import(part,value);
+  await writeShard(env.LOC_KV,key,index);
+  return {accepted:true,shard};
+}
+async function resetSource(env,body){
+  const source=checkedSource(body||{});
+  await env.LOC_KV.delete(readyKey(source));
+  const prefix=base(source);
+  const page=await env.LOC_KV.list({prefix,limit:MAX_SHARDS+1});
+  if(page.list_complete===false||page.keys.length>MAX_SHARDS)
+    throw Object.assign(new Error('Too many index shards for bounded reset'),{status:409});
+  for(const item of page.keys)await env.LOC_KV.delete(item.name);
+  return {accepted:true,removed:page.keys.length};
 }
 async function find(env,body){
   const source=checkedSource(body||{});
@@ -156,6 +176,10 @@ export default {
         return json(await mutate(env,await payloadOf(request)));
       if(request.method==='PUT'&&pathname==='/v1/coverage')
         return json(await coverage(env,await payloadOf(request)));
+      if(request.method==='POST'&&pathname==='/v1/snapshot')
+        return json(await replaceSnapshot(env,await payloadOf(request,20*1024*1024)));
+      if(request.method==='POST'&&pathname==='/v1/reset')
+        return json(await resetSource(env,await payloadOf(request)));
       return json({error:'not found'},404);
     }catch(error){
       const status=Number(error?.status)||500;
