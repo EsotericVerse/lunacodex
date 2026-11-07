@@ -91,7 +91,8 @@ function applyOrFilters(query,groups){
 }
 
 const PRIVATE_SITES=['messenger','chatgpt','claude','gemini','msn','whatsapp',
-  'telegram','discord','line','wechat','teams','copilot','grok','perplexity','meta ai','meta-ai'];
+  'telegram','discord','line','wechat','teams','copilot','grok','perplexity','meta ai','meta-ai',
+  'mcp','github'];
 const PUBLIC_ANCHOR_TYPES=['date','period','era','point','path','trace','image','video','rune','suno'];
 function databaseTable(req,dialect,namespace){
   return namespace===undefined?req.schema+'.'+req.table:
