@@ -204,13 +204,13 @@ test('direct Kysely action routing replaces the local and public RPC facade',()=
     assert.ok(edge.includes(method+'('),'missing SQL action '+method);
 });
 
-test('both Kysely keyword imports reuse the existing Anchor UID generator without SQL RPC',async()=>{
+test('existing keyword import retains canonical UID generator; Scope admin stays schema-frozen',async()=>{
   const management=readFileSync(new URL('../app/loc/providers/kysely-management.mjs',import.meta.url),'utf8');
   const admin=readFileSync(new URL('../app/loc/providers/kysely-scope-admin.mjs',import.meta.url),'utf8');
-  for(const source of [management,admin]){
-    assert.match(source,/import \{allocateAnchorUid\} from '\.\.\/unified-anchor-compat\.mjs';/);
-    assert.doesNotMatch(source,/silver\.new_keyword_tree_uid|KEYWORD_UID_ALPHABET|randomKeywordUid/);
-  }
+  assert.match(management,/import \{allocateAnchorUid\} from '\.\.\/unified-anchor-compat\.mjs';/);
+  assert.doesNotMatch(management,/silver\.new_keyword_tree_uid|KEYWORD_UID_ALPHABET|randomKeywordUid/);
+  assert.doesNotMatch(admin,/import \{allocateAnchorUid\}|async function provisionScope\(/);
+  assert.match(admin,/schema is frozen: Scope provisioning and deletion are unavailable/);
   // Existing Scope: INSERT with ON CONFLICT retries only after a rare PK
   // collision; the normal path requires no SELECT or large comparison.
   const begin=management.indexOf('  const assigned=new Set();');
@@ -236,18 +236,7 @@ test('both Kysely keyword imports reuse the existing Anchor UID generator withou
   assert.equal(await insertCopy('item',row,{keyword:['foo']}),'BBBB2222');
   assert.equal(await insertCopy('group',row,{uid:[]}),'CCCC3333');
   assert.equal(inserts,3);
-  // New Scope: provisionScope has just created an empty Anchor table.
-  // The same canonical generator needs only the in-memory reserved IDs.
-  const scopeStart=admin.indexOf('  const assigned=new Set();');
-  const scopeEnd=admin.indexOf('  const toRow=',scopeStart);
-  assert.ok(scopeStart>=0&&scopeEnd>scopeStart);
-  let serial=0;
-  const nextFresh=new Function('allocateAnchorUid',
-    admin.slice(scopeStart,scopeEnd)+'\nreturn nextUid;')(
-      assigned=>{let uid;do{uid='New'+String(++serial).padStart(5,'0');}while(assigned.has(uid));return uid;});
-  assert.equal(nextFresh(),'New00001');
-  assert.equal(nextFresh(),'New00002');
-  assert.equal(serial,2);
+
 });
 
 test('exact api.manage cutover covers live JavaScript registry and both models',()=>{
@@ -293,6 +282,7 @@ test('live Kysely Scope management uses the fixed ZModel registry column contrac
   }
   assert.match(admin,/import \{schema as fixedSchema\} from '\.\.\/\.\.\/\.\.\/zenstack\/schema\.mjs'/);
   assert.match(admin,/\.returning\(REGISTRY_RETURNING\)/);
-  assert.match(admin,/Object\.fromEntries\(LOC_NAME_COLUMNS\.map/);
+  assert.match(admin,/return \{data:await managedRegistry\(trx,args\),count:null\}/);
+  assert.doesNotMatch(admin,/LOC_NAME_COLUMNS|create policy|create table|drop table/i);
   assert.equal((admin.match(/\.returning\(REGISTRY_RETURNING\)/g)||[]).length,2);
 });
