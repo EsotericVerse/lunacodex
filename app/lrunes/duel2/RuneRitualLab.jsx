@@ -8,7 +8,7 @@ import {realMoonPhase} from '../../loc/model/moon-phase';
 import {navigationHref} from '../../modular/scope-registry.js';
 import useNativeNavigation from '../../modular/use-native-navigation';
 import ScopeLink from '../../modular/ScopeLink';
-import {randomIndex,loadDrawCards,buildFixedReading} from '../RuneDrawClient';
+import {randomIndex,loadDrawCards,buildFixedReading} from '../rune-draw-core.mjs';
 import {runeImage} from '../rune-directory.mjs';
 import {RUNE_ALL_DRAW_MODES} from '../rune-draw-modes.mjs';
 import RuneCardInfo from '../RuneCardInfo';
@@ -192,7 +192,6 @@ export default function RuneRitualLab({presentationSwitcher=null}){
         <ScopeLink href={navigationHref('lrunes','card',native)} native={native} className="rune-skin-btn">← 符文展示首頁</ScopeLink>
         <ScopeLink href={navigationHref('lrunes','card/list',native)} native={native} className="rune-skin-btn">切換指定圖鑑</ScopeLink>
         <ScopeLink href={navigationHref('lrunes','card/daily',native)} native={native} className="rune-skin-btn">每日符文</ScopeLink>
-        <ScopeLink href={navigationHref('lrunes','duel/one',native)} native={native} className="rune-skin-btn">舊版抽牌</ScopeLink>
       </nav>
     </div>
     <details className="rune-art-draw-guide" aria-label="占卜張數說明">

@@ -9,7 +9,7 @@ import useNativeNavigation from '../modular/use-native-navigation';
 import ScopeLink from '../modular/ScopeLink';
 import {selectRows} from '../loc/db-query.mjs';
 import {realMoonPhase} from '../loc/model/moon-phase';
-import {randomIndex,loadDrawCards,buildFixedReading} from './RuneDrawClient';
+import {randomIndex,loadDrawCards,buildFixedReading} from './rune-draw-core.mjs';
 import {runeImage,runeName,RUNE_CARD_BACK_IMAGE} from './rune-directory.mjs';
 import {runeDrawGroup,runeDrawMotion,runeDrawOrbitGlyphs} from './rune-draw-motion.mjs';
 import RuneCardInfo from './RuneCardInfo';

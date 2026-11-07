@@ -8,7 +8,7 @@ import {realMoonPhase} from '../../loc/model/moon-phase';
 import {navigationHref} from '../../modular/scope-registry.js';
 import useNativeNavigation from '../../modular/use-native-navigation';
 import ScopeLink from '../../modular/ScopeLink';
-import {loadDrawCards,randomIndex} from '../RuneDrawClient';
+import {loadDrawCards,randomIndex} from '../rune-draw-core.mjs';
 import {runeImage} from '../rune-directory.mjs';
 import '../skin-lab.css';
 import '../visual/rune-art-layout.css';
@@ -79,7 +79,6 @@ export default function RuneDaily3D({presentationSwitcher=null}){
         <ScopeLink className="rune-skin-btn" href={navigationHref('lrunes','',native)} native={native}>回符文首頁</ScopeLink>
         <ScopeLink className="rune-skin-btn" href={navigationHref('lrunes','card',native)} native={native}>← 符文展示首頁</ScopeLink>
         <ScopeLink className="rune-skin-btn" href={navigationHref('lrunes','card/duel',native)} native={native}>一般抽牌</ScopeLink>
-        <ScopeLink className="rune-skin-btn" href={navigationHref('lrunes','duel/daily',native)} native={native}>原版每日指示</ScopeLink>
       </nav>
     </div>
     {details&&draw&&typeof document!=='undefined'?createPortal(

@@ -6,18 +6,12 @@ import './rune-presentation-switch.css';
 
 // Keep the canonical 2D original-art module entirely independent of the
 // licensed Effekseer/Three.js renderer. Load only the selected presentation.
-// 'old' is the original, pre-unification fixed-spread draw UI (RuneDrawClient,
-// the component the retired /duel/* routes used) -- kept available exactly as
-// it was, not reimplemented inside the 2D ritual component. list has no old
-// mode: the gallery was never built with that older component.
 const VISUALS=Object.freeze({
   duel:{
-    old:dynamic(()=>import('./RuneDrawClient'),{ssr:false}),
     '2d':dynamic(()=>import('./duel2/RuneRitualLab'),{ssr:false}),
     '3d':dynamic(()=>import('./Rune3DPreview'),{ssr:false})
   },
   daily:{
-    old:dynamic(()=>import('./RuneDrawClient'),{ssr:false}),
     '2d':dynamic(()=>import('./daily3d/RuneDaily3D'),{ssr:false}),
     '3d':dynamic(()=>import('./Rune3DPreview'),{ssr:false})
   },
@@ -26,7 +20,7 @@ const VISUALS=Object.freeze({
     '3d':dynamic(()=>import('./Rune3DLibrary'),{ssr:false})
   }
 });
-const VIEW_LABELS=Object.freeze({old:'舊版抽牌','2d':'2D 原創美術','3d':'3D 符文特效'});
+const VIEW_LABELS=Object.freeze({'2d':'2D 原創美術','3d':'3D 符文特效'});
 const TITLES=Object.freeze({duel:'符文抽牌',daily:'每日符文',list:'符文圖鑑'});
 
 function canonicalView(queryValue,defaultView,allowed){
@@ -38,12 +32,10 @@ export default function RuneUnifiedView({feature='duel',defaultView='3d'}){
   const allowedViews=Object.keys(VISUALS[selectedFeature]);
   const fallback=canonicalView(defaultView,'3d',allowedViews);
   const [view,setView]=useState(fallback);
-  const [drawKey,setDrawKey]=useState('');
   useEffect(()=>{
     const read=()=>{
       const params=new URLSearchParams(window.location.search);
       setView(canonicalView(params.get('d'),fallback,allowedViews));
-      setDrawKey(params.get('spread')||'');
     };
     read();
     window.addEventListener('popstate',read);
@@ -67,11 +59,7 @@ export default function RuneUnifiedView({feature='duel',defaultView='3d'}){
     </div>
   </div>;
   const Component=VISUALS[selectedFeature][view];
-  // RuneDrawClient's own default is drawKey='single'; the daily feature's old
-  // mode should default to the 'daily' spread instead, same as /duel/daily did.
-  const oldDefaultDrawKey=selectedFeature==='daily'?'daily':'single';
-  const extraProps=view==='old'?{drawKey:drawKey||oldDefaultDrawKey}:
-    view==='3d'&&selectedFeature!=='list'?{mode:selectedFeature}:{};
+  const extraProps=view==='3d'&&selectedFeature!=='list'?{mode:selectedFeature}:{};
   return <Component key={selectedFeature+'-'+view}
     {...extraProps}
     presentationSwitcher={modeControl}/>;
