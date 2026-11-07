@@ -2,10 +2,10 @@
 // No SQL provider, Scope table, RLS policy, or database location is encoded here.
 // This service is private to the LOC SQL Gateway; the browser never receives
 // direct index access or a search-service credential.
-import {Index} from 'flexsearch';
+import {createLocSearchIndex,LOC_SEARCH_INDEX_FORMAT,LOC_SEARCH_INDEX_PREFIX} from '../../app/loc/search-index-factory.mjs';
 import {locSearchShard,locSearchDocumentId,LOC_SEARCH_INDEX_SHARDS} from '../../app/loc/search-index-shard.mjs';
 
-const PREFIX='loc-search/v1/';
+const PREFIX=LOC_SEARCH_INDEX_PREFIX;
 const MAX_HITS=200;
 const MAX_SHARDS=96;
 const encoder=new TextEncoder();
@@ -31,12 +31,12 @@ function identity(doc){
 const base=({scopeId,dbId,entityType})=>PREFIX+'data/'+scopeId+'/'+dbId+'/'+entityType+'/';
 const readyKey=({scopeId,dbId,entityType})=>PREFIX+'ready/'+scopeId+'/'+dbId+'/'+entityType;
 const shardKey=doc=>base(doc)+String(locSearchShard(doc.uid)).padStart(2,'0');
-function makeIndex(){return new Index({tokenize:'full',resolution:3,cache:false});}
+function makeIndex(){return createLocSearchIndex();}
 async function loadShard(kv,key){
   const snapshot=await kv.get(key,'json');
   const index=makeIndex();
   if(snapshot!==null){
-    if(snapshot?.version!==1||!snapshot.parts||typeof snapshot.parts!=='object')
+    if(snapshot?.version!==LOC_SEARCH_INDEX_FORMAT||!snapshot.parts||typeof snapshot.parts!=='object')
       throw Error('Unsupported or corrupt LOC index snapshot');
     for(const [part,value] of Object.entries(snapshot.parts))
       await index.import(part,value);
@@ -46,7 +46,7 @@ async function loadShard(kv,key){
 async function writeShard(kv,key,index){
   const parts={};
   await index.export(async(part,value)=>{if(value!==undefined&&value!==null)parts[part]=value;});
-  const payload=JSON.stringify({version:1,parts});
+  const payload=JSON.stringify({version:LOC_SEARCH_INDEX_FORMAT,parts});
   if(encoder.encode(payload).length>24*1024*1024)
     throw Object.assign(new Error('LOC index shard exceeds KV value size; increase shard count'),{status:413});
   await kv.put(key,payload);
@@ -107,7 +107,7 @@ async function mutate(env,body){
     await index.export(async(part,value)=>{
       if(value!==undefined&&value!==null)parts[part]=value;
     });
-    const data=JSON.stringify({version:1,parts});
+    const data=JSON.stringify({version:LOC_SEARCH_INDEX_FORMAT,parts});
     if(encoder.encode(data).length>24*1024*1024)
       throw Object.assign(new Error('Index delta exceeds KV limit'),{status:413});
     const key=prefix+Date.now().toString(36)+'-'+crypto.randomUUID();
@@ -177,7 +177,7 @@ async function find(env,body){
   // Each requested logical dataset must have a complete index. A partially
   // provisioned distributed Scope is NEVER treated as complete.
   for(const source of sources){
-    if(await env.LOC_KV.get(readyKey(source))!=='v1')
+    if(await env.LOC_KV.get(readyKey(source))!=='v2')
       return {complete:false,hits:[],reason:'dataset-incomplete'};
     const prefixes=[
       {prefix:base(source),cap:MAX_SHARDS},
@@ -213,7 +213,7 @@ async function find(env,body){
 }
 async function coverage(env,body){
   const source=checkedSource(body||{});
-  if(body.complete===true)await env.LOC_KV.put(readyKey(source),'v1');
+  if(body.complete===true)await env.LOC_KV.put(readyKey(source),'v2');
   else if(body.complete===false)await env.LOC_KV.delete(readyKey(source));
   else throw invalid('Invalid completeness flag');
   return {accepted:true,complete:body.complete};
