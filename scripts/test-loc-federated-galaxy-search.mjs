@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  federatedDatasetsFor,federatedScopeFromQuery,isFederatedTextSearch,
+  federatedDatasetsFor,indexTargetForScope,federatedScopeFromQuery,isFederatedTextSearch,
   isDatasetQualifiedArticleRead,publicGalaxyGate,mergeFederatedGalaxyRows
 } from '../app/loc/providers/federated-galaxy-search.mjs';
 import {locGlobalUid} from '../zenstack/global-identity.mjs';
@@ -45,6 +45,20 @@ test('trusted registry is generic across SQL engines and separates DB identity f
   assert.equal(federatedDatasetsFor('', 'lo3rwang').length,0);
   assert.deepEqual(federatedDatasetsFor(registry,'lrunes'),[]);
 });
+test('all post-commit index updates use their stable registered databaseId',()=>{
+  const target=indexTargetForScope(registry,'lo3rwang',
+    {connection_alias:'archive',engine:'mysql',provider:'custom'});
+  assert.equal(target.dataset_id,'db1');
+  assert.equal(target.connection_alias,'archive');
+  const different=indexTargetForScope(registry,'lo3rwang',
+    {connection_alias:'recent',engine:'postgres',provider:'custom'});
+  assert.equal(different.dataset_id,'db2');
+  assert.equal(indexTargetForScope(registry,'lo3rwang',
+    {connection_alias:'unregistered',engine:'mysql',provider:'custom'}),null);
+  const existing={connection_alias:'supabase_current',engine:'postgres'};
+  assert.equal(indexTargetForScope('', 'lo3rwang',existing),existing);
+});
+
 test('invalid or colliding dataset registrations are rejected',()=>{
   assert.throws(()=>federatedDatasetsFor('{oops','lo3rwang'),/Invalid federated/);
   assert.throws(()=>federatedDatasetsFor(JSON.stringify({lo3rwang:[
