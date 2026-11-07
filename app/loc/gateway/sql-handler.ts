@@ -23,7 +23,7 @@ import {resolveDatabaseRouting} from "../../../app/loc/providers/routing-config.
 import {databaseAccessTargets} from "../../../app/loc/providers/access.js";
 import {isTextSearchQuery,checkSearchQos} from "../../../app/loc/providers/search-qos.mjs";
 import {withIndexedCandidates,federatedIndexedCandidates,writeSearchIndexDocuments,indexDocumentsFromWrite,isSearchIndexConfigured,searchIndexDatabaseId} from "../../../app/loc/providers/search-index-service.mjs";
-import {federatedDatasetsFor,federatedScopeFromQuery,isFederatedTextSearch,isDatasetQualifiedArticleRead,mergeFederatedGalaxyRows} from "../../../app/loc/providers/federated-galaxy-search.mjs";
+import {federatedDatasetsFor,federatedScopeFromQuery,isFederatedTextSearch,isDatasetQualifiedArticleRead,publicGalaxyGate,mergeFederatedGalaxyRows} from "../../../app/loc/providers/federated-galaxy-search.mjs";
 import {bindLocAuthorization,canManageLoc} from "../../../app/loc/providers/loc-authorization.mjs";
 
 const corsHeaders = {
@@ -60,18 +60,6 @@ async function verifyLocDelegation(token:string,body:Record<string,unknown>){
 
 // The deployed function and browser use the same source-controlled routing contract.
 const routing = resolveDatabaseRouting();
-function publicGalaxyGate(body:Record<string,unknown>,role:string,claims:Record<string,unknown>){
-  if(body?.kind!=="query"||body.operation!=="select"||
-     body.schema!=="silver"||typeof body.table!=="string")return false;
-  const match=body.table.match(/^([a-z][a-z0-9]{0,14})_galaxy$/);
-  if(!match)return false;
-  if(role==="authenticated"&&canManageDelegation(claims,"scope",match[1]))
-    return false;
-  // Search result visibility and article open permission are different.
-  // Applied to every SQL provider even when its native RLS is disabled.
-  if(body.expectedDbId!==undefined&&isDatasetQualifiedArticleRead(body))return "list";
-  return isTextSearchQuery(body)?true:false;
-}
 // Cross-engine publicly readable tables are centrally enforced by sql-engine-ports.mjs.
 
 // The LOC control database is a trusted server-side connection alias.
