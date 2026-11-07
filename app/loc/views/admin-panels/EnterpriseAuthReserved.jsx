@@ -9,7 +9,7 @@ import {authProviderSettingsRequest} from '../../mcp/auth-provider-client.mjs';
 // The Admin shell owns the page width, tablet breakpoints and Save / Discard
 // buttons. Reuse the same selector and two-column fields as the other panels.
 const PROVIDER_OPTIONS=Object.freeze([
-  {value:'clerk',label:'Clerk（目前登入）'},
+  {value:'loc',label:'LOC Auth（目前登入）'},
   ...AUTH_PROVIDER_TYPES.map(type=>({value:type,label:AUTH_PROVIDER_LABELS[type]}))
 ]);
 function publicFields(profile){
@@ -20,14 +20,14 @@ function publicFields(profile){
   return result;
 }
 export default function EnterpriseAuthReserved(){
-  const [selected,setSelected]=useState('clerk');
+  const [selected,setSelected]=useState('loc');
   const [saved,setSaved]=useState({});
   const [draft,setDraft]=useState({});
   const [secret,setSecret]=useState('');
   const [loading,setLoading]=useState(true);
   const [busy,setBusy]=useState(false);
   const [status,setStatus]=useState('');
-  const [active,setActive]=useState('clerk');
+  const [active,setActive]=useState('loc');
   useEffect(()=>{
     let live=true;
     authProviderSettingsRequest().then(data=>{
@@ -37,7 +37,7 @@ export default function EnterpriseAuthReserved(){
         if(AUTH_PROVIDER_TYPES.includes(provider.type))profiles[provider.type]=provider;
       }
       setSaved(profiles);
-      setActive(data.active||'clerk');
+      setActive(data.active||'loc');
     }).catch(error=>{
       if(live)setStatus(error.message||'認證設定讀取失敗。');
     }).finally(()=>{if(live)setLoading(false)});
@@ -48,7 +48,7 @@ export default function EnterpriseAuthReserved(){
   const fields=AUTH_PROVIDER_FIELDS[selected]||[];
   const hasSecret=fields.some(field=>field.kind==='secret');
   const current={...publicFields(profile),...draft};
-  const dirty=selected!=='clerk'&&(Boolean(secret)||fields.some(field=>
+  const dirty=selected!=='loc'&&(Boolean(secret)||fields.some(field=>
     field.kind!=='secret'&&String(current[field.key]||'')!==String(profile?.[field.key]||'')));
 
   const discard=()=>{
@@ -83,7 +83,7 @@ export default function EnterpriseAuthReserved(){
       setSaved(previous=>({...previous,[selected]:persisted}));
       setDraft({});
       setSecret('');
-      setStatus('設定已儲存並讀回確認；正式登入仍為 Clerk。');
+      setStatus('設定已儲存並讀回確認；正式登入由 LOC Auth 管理。');
       return true;
     }catch(error){
       setStatus(String(error?.message||'認證設定儲存失敗，登入來源未變更。'));
@@ -97,7 +97,7 @@ export default function EnterpriseAuthReserved(){
     <p className="scope-status">設定不同身分服務的連線參數，驗證後仍由 LOC Authority 管理 Scope 權限。
       選擇來源只是編輯設定，<strong>不會立即切換登入</strong>。</p>
     <p className="scope-status" role="status">
-      正式登入：{active==='clerk'?'Clerk':active}。未完成登入與權限驗證的來源一律不可啟用。
+      正式登入：{active==='loc'?'LOC Auth':active}。未完成登入與權限驗證的來源一律不可啟用。
     </p>
 
     <div className="admin-inline-select">
@@ -112,9 +112,9 @@ export default function EnterpriseAuthReserved(){
       />
     </div>
 
-    {selected==='clerk'?<p className="scope-status">
-      Clerk 是目前正式啟用的登入來源，設定及機密由部署環境管理；
-      此處不讀取或覆寫 Clerk 金鑰，也不影響現有 Session。
+    {selected==='loc'?<p className="scope-status">
+      LOC Auth 是正式的簽章、Session 與權限委託服務；
+      此處只設定外部身分提供者的連線參數，不會洩漏或變更 OAuth 金鑰。
     </p>:<>
       <h3 className="admin-workspace-section-heading">{AUTH_PROVIDER_LABELS[selected]} 連線設定</h3>
       <p className="scope-status">{profile?.configured?'已儲存連線參數':'尚未設定連線參數'}。
@@ -122,9 +122,6 @@ export default function EnterpriseAuthReserved(){
           ?(profile?.secret_configured?' Secret 已保存；留空可沿用既有 Secret。':' 初次設定需提供 Client Secret。')
           :' 此來源不需要在 LOC 另存 Client Secret。'}
       </p>
-      {selected==='neon'?<p className="scope-status">
-        Neon Auth 與 Neon 資料庫是獨立設定；填寫端點不會改變主要資料庫或正式登入來源。
-      </p>:null}
       {(selected==='ldap'||selected==='ad')?<p className="scope-status">
         LDAP／AD 使用企業自行管理的 OIDC 橋接服務；不在網站收集 Bind Password 或網域帳密。
       </p>:null}

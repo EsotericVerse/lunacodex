@@ -11,9 +11,11 @@ export function createConfiguredAdapter({
   authorityUrl=process.env.NEXT_PUBLIC_LOC_CONTROL_URL||DEFAULT_AUTHORITY,
   gatewayUrl=process.env.NEXT_PUBLIC_LOC_SQL_GATEWAY_URL||
     process.env.NEXT_PUBLIC_LOC_KYSELY_GATEWAY_URL||'',
-  // Compatibility callers may pass an explicit legacy transport, but no
-  // vendor SQL URL or publishable key is compiled into LOC by default.
-  url='',publishableKey='',
+  // The former SQL transport is retained only while the independent Gateway
+  // lacks a live HTTPS URL. Vendor Auth SDKs are never used by either path.
+  url=gatewayUrl?'':process.env.NEXT_PUBLIC_SUPABASE_URL||'',
+  publishableKey=gatewayUrl?'':process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY||'',
   fetchImpl=globalThis.fetch
 }={}){
   const identity=accountAdapter||createLocAccountAdapter({
