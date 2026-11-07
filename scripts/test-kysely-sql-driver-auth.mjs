@@ -37,7 +37,8 @@ test('SQL Server Entra token works without database password or a Supabase Auth 
     {type:'azure-active-directory-access-token',options:{token:'direct-token'}});
   assert.throws(()=>mssqlAuthentication({authentication:{type:'azure-active-directory-access-token'}},'',''),
     /access token required/);
-  assert.equal(mssqlAuthentication({authentication:{type:'azure-active-directory-password'}},
+  assert.equal(mssqlAuthentication({authentication:{
+    type:'azure-active-directory-password',clientId:'entra-test-client'}},
     'user','secret').options.userName,'user');
 });
 
