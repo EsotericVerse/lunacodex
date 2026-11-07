@@ -265,3 +265,20 @@ that the retained seven helper routines still exist.
   are not equivalent to a Node integration suite or production tests; do
   not activate the revised Edge or Authority until configured secrets,
   scoped grants and representative sign-in/read/write paths are verified.
+
+## Safe fixed-model/Kysely integration (2026-11-07)
+
+The active trusted Scope Registry Kysely writer imports the existing
+`zenstack/schema.mjs` contract and checks the fixed `Manage` and `Loc`
+column names once at module initialization. Both Registry `RETURNING`
+projections and the LOC name insert use those validated columns. This does
+**not** trigger an extra SQL lookup, alter the existing PostgreSQL authorization
+path, or claim that the ZenStack PolicyPlugin is already enabled.
+
+For newly provisioned portable PostgreSQL, MySQL and SQL Server Scope Galaxy
+tables, all eight visibility flags default to `false` instead of `true`.
+The existing Galaxy tables are untouched. Scope Anchor and Registry behaviors,
+existing SQL helper functions, and MCP QoS/conditional read routes are unchanged
+in this isolated integration. Runtime multi-database connectivity and full
+ZenStack policy execution remain separate acceptance criteria.
+

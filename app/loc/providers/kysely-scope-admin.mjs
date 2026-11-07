@@ -1,6 +1,20 @@
 import {canManageLoc} from './loc-authorization.mjs';
 import {allocateAnchorUid} from '../unified-anchor-compat.mjs';
 import {sql} from 'npm:kysely@0.29.8';
+import {schema as fixedSchema} from '../../../zenstack/schema.mjs';
+
+// Verify the physical Registry columns against LOC's frozen ZModel contract
+// once at module load; never introspect the database per request.
+function fixedColumns(model,fields){
+  const actual=fixedSchema.models[model]?.fields;
+  if(!actual||fields.some(field=>!Object.hasOwn(actual,field)))
+    throw new Error('LOC ZModel / Registry SQL field mismatch');
+  return Object.freeze(fields);
+}
+const REGISTRY_RETURNING=fixedColumns('Manage',
+  ['id','domain','directory','parent_scope_id','active','sort_order','manage_role']);
+const LOC_NAME_COLUMNS=fixedColumns('Loc',
+  ['id','display_name','locale','birthday']);
 
 const ID=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
@@ -60,8 +74,7 @@ async function managedRegistry(trx,args){
     const inserted=await trx.insertInto('api.manage').values({
       id,domain,directory,parent_scope_id:parent,
       active,sort_order:sort,manage_role:'group'
-    }).returning(['id','domain','directory','parent_scope_id',
-      'active','sort_order','manage_role']).executeTakeFirst();
+    }).returning(REGISTRY_RETURNING).executeTakeFirst();
     if(!inserted)fail('Scope Group was not created');
     await trx.insertInto('silver.loc').values({id,display_name,locale:'zh-Hant'}).executeTakeFirst();
     return resultRow(inserted,display_name);
@@ -104,8 +117,7 @@ async function managedRegistry(trx,args){
   const updated=await trx.updateTable('api.manage')
     .set({domain,directory,parent_scope_id:parent,active,sort_order:sort})
     .where('id','=',id)
-    .returning(['id','domain','directory','parent_scope_id',
-      'active','sort_order','manage_role']).executeTakeFirst();
+    .returning(REGISTRY_RETURNING).executeTakeFirst();
   if(!updated)fail('Scope Registry update failed');
   const named=await trx.updateTable('silver.loc').set({display_name}).where('id','=',id).executeTakeFirst();
   if(Number(named?.numUpdatedRows||0)!==1)fail('Group / Scope list name missing');
@@ -278,9 +290,11 @@ async function provisionScope(trx,args){
     current_keyword_class_uid:cloned?.uid||null,keyword_class_share_enabled:false,
     keyword_meta:sql`'{}'::jsonb`,staticstime:null,updated_at:sql`now()`
   }).executeTakeFirst();
-  await trx.insertInto('silver.loc').values({
-    id,display_name:display,locale:'zh-Hant',birthday:args.p_birthday||null
-  }).executeTakeFirst();
+  const locValues={id,display_name:display,locale:'zh-Hant',
+    birthday:args.p_birthday||null};
+  await trx.insertInto('silver.loc').values(
+    Object.fromEntries(LOC_NAME_COLUMNS.map(field=>[field,locValues[field]]))
+  ).executeTakeFirst();
   await sql`notify pgrst,'reload schema'`.execute(trx);
   return {scope_id:id,display_name:display,parent_scope_id:parent,
     route_mode:domain?'domain':'directory',route_value:domain||directory,

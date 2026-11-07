@@ -21,7 +21,7 @@ function mockDb(existing=[]){
           addColumn(name,type,callback){
             entry.columns.push(name);entry.columnTypes[name]=type;
             const column={notNull(){return this},primaryKey(){return this},
-              defaultTo(){return this}};
+              defaultTo(value){entry.defaults??={};entry.defaults[name]=value;return this}};
             if(callback)callback(column);
             return this;
           },modifyEnd(){return this},
@@ -48,8 +48,10 @@ for(const [engine,namespace] of [['postgres','public'],['mysql','silver'],['mssq
       :[namespace+'.writer_galaxy',namespace+'.writer_anchor']);
     const galaxy=tables[0].columns,anchor=tables[1].columns;
     assert.ok(galaxy.includes('uid')&&galaxy.includes('content')&&galaxy.includes('date'));
-    for(const column of ['statics','culture','search','trace','list','keyword','extract','others'])
+    for(const column of ['statics','culture','search','trace','list','keyword','extract','others']){
       assert.ok(galaxy.includes(column));
+      assert.equal(tables[0].defaults[column],false,'new Galaxy articles must be private until published');
+    }
     assert.ok(anchor.includes('uid')&&anchor.includes('type')&&anchor.includes('attr'));
     assert.ok(!galaxy.includes('able'));
     assert.equal(indexes.length,2);
