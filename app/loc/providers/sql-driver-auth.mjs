@@ -21,10 +21,12 @@ export function sqlAuthNeedsUserPassword(authentication){
  return !TOKEN_AUTH.has(String(authentication?.type||'default'));
 }
 export function normalizeSqlDriverAuthentication(engine,input){
- const source=input===undefined||input===null?{type:'default'}:input;
+ const source=input===undefined?{type:'default'}:input;
  if(!source||typeof source!=='object'||Array.isArray(source))
   throw Error('Invalid SQL driver authentication configuration');
- const type=source.type||'default';
+ const type=source.type===undefined?'default':source.type;
+ if(typeof type!=='string'||!type)
+  throw Error('Invalid SQL driver authentication type');
  const valid=engine==='postgres'?type==='default':
   engine==='mysql'?['default','ldap-simple'].includes(type):
   engine==='mssql'&&Object.hasOwn(SQL_AUTH_FIELDS,type)&&type!=='ldap-simple';
