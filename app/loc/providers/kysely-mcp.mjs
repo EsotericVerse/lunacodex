@@ -76,6 +76,8 @@ export async function executePortableMcp(trx,body,claims,{engine='postgres',name
       .where('uid','=',body.uid).limit(1).execute()};
   }
   if(body.kind==='mcp-search'){
+    if(body.user_requested!==true)
+      reject('只有使用者明確要求時，才允許搜尋對話；禁止代理自行搜尋。',403);
     const term=String(body.query||'').trim(),limit=Number(body.limit);
     if(term.length<2||term.length>100||/[\u0000-\u001f\u007f]/.test(term)||
        !Number.isInteger(limit)||limit<1||limit>5)
