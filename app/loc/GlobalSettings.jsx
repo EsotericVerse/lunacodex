@@ -17,6 +17,7 @@ import PanelLoading from './PanelLoading';
 // The home/account Settings screens never download import or management editors.
 const PrivateLocalFiles=dynamic(()=>import('./PrivateLocalFiles'),{loading:PanelLoading});
 const LocScopeConnections=dynamic(()=>import('./LocScopeConnections'),{loading:PanelLoading});
+const LocDatabaseSwitcher=dynamic(()=>import('./LocDatabaseSwitcher'),{loading:PanelLoading});
 const LocalDatabaseImport=dynamic(()=>import('./LocalDatabaseImport'),{loading:PanelLoading});
 // 每日符文紀錄：沿用既有的獨立頁面元件（/daily/log/），同一份邏輯透過它自己
 // 既有的 embedded 模式嵌入這裡，不複製任何讀寫邏輯。
@@ -162,6 +163,7 @@ export default function GlobalSettings({initialSection='home'}={}){
             </button>
           </div>:null}
         </section>
+        {!native&&account.user?<LocDatabaseSwitcher/>:null}
         <section className="loc-card">
         <h2><UiText id="uiExtra.globalSettings.homeSettings"/></h2>
         <form onSubmit={saveHome} className="scope-stat-controls">

@@ -101,8 +101,18 @@ export function createLocGatewayAdapter({
     catch(error){if(delegationCache.get(key)?.pending===pending)delegationCache.delete(key);throw error}
   }
 
+  // A logged-in reader follows their own Authority-selected database even
+  // on ordinarily public pages; guests continue reading the default database.
+  // The JWT is always minted by LOC Authority, never chosen by HTTP body.
+  const optionalPublicDelegation=async body=>{
+    if(typeof auth.getVerifiedSession!=='function')return '';
+    const session=await auth.getVerifiedSession().catch(()=>null);
+    if(!session?.user?.id)return '';
+    return getLocAccessToken(body);
+  };
   const publicSql=createKyselyEdgeClient({
-    url,publishableKey,role:'anon',target,gatewayUrl:publicGatewayUrl,fetch:fetchImpl
+    url,publishableKey,role:'anon',target,gatewayUrl:publicGatewayUrl,
+    getAccessToken:optionalPublicDelegation,fetch:fetchImpl
   });
   const privateSql=createKyselyEdgeClient({
     url,publishableKey,role:'authenticated',target,gatewayUrl,
