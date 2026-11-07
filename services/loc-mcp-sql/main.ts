@@ -72,7 +72,7 @@ async function verifySignedDelegation(request:Request,body:Record<string,unknown
     error('LOC delegation audience does not cover this operation',403);
   return permission.claims;
 }
-export async function handleLocMcpSql(request:Request):Promise<Response>{
+async function handleLocMcpSqlInner(request:Request):Promise<Response>{
   try{
     const url=new URL(request.url);
     if(url.pathname!=='/v1/sql'||request.method!=='POST')
@@ -125,5 +125,25 @@ export async function handleLocMcpSql(request:Request):Promise<Response>{
     return json({error:{message:code>=500?'LOC SQL Gateway unavailable':
       String(e instanceof Error?e.message:'Invalid MCP request').slice(0,190)}},code);
   }
+}
+// Website-owned Extension bridge can send the same LOC delegation directly.
+// Narrow CORS only to the existing LOC site. MCP server-to-server calls do not
+// need CORS and continue to use their own signed token.
+export async function handleLocMcpSql(request:Request):Promise<Response>{
+ const origin=request.headers.get('origin')||'';
+ const trusted=origin==='https://loc.lo3rwang.cc';
+ if(request.method==='OPTIONS')
+  return trusted?new Response(null,{status:204,headers:{
+   'Access-Control-Allow-Origin':origin,
+   'Access-Control-Allow-Methods':'POST, OPTIONS',
+   'Access-Control-Allow-Headers':'Authorization, Content-Type',
+   'Access-Control-Max-Age':'300','Vary':'Origin'
+  }}):new Response(null,{status:403});
+ const answer=await handleLocMcpSqlInner(request);
+ if(!trusted)return answer;
+ const headers=new Headers(answer.headers);
+ headers.set('Access-Control-Allow-Origin',origin);
+ headers.set('Vary','Origin');
+ return new Response(answer.body,{status:answer.status,headers});
 }
 if(import.meta.main)Deno.serve({port:Number(Deno.env.get('PORT')||8000)},handleLocMcpSql);
