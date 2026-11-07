@@ -58,10 +58,29 @@ test('invalid service authorization is refused before reading index data',async(
   assert.equal(result.status,401);
 });
 
-test('independent database removal cannot remove a same-UID document elsewhere',async()=>{
+test('a removed article keeps only a harmless stale candidate, never affects another database',async()=>{
+  const writes=kv.writes;
   assert.equal((await call('/v1/documents',{documents:[doc('DB1','Ab123456','','remove')]})).accepted,true);
-  assert.equal((await call('/v1/search',{scopeId:'lo3rwang',dbId:'DB1',query:'文化'})).hits.length,0);
+  assert.equal(kv.writes,writes,'no new index writes needed for removed content');
+  // The index is a candidate filter, not the content authority. Stale
+  // candidates from removed or edited documents are rejected by SQL.
+  assert.equal((await call('/v1/search',{scopeId:'lo3rwang',dbId:'DB1',query:'文化'})).hits[0].dbId,'DB1');
   assert.equal((await call('/v1/search',{scopeId:'lo3rwang',dbId:'DB2',query:'痕跡'})).hits[0].uid,'Ab123456');
+});
+
+test('one cross-dataset search returns both distinct documents with colliding UIDs',async()=>{
+  const merged=await call('/v1/search',{scopeId:'lo3rwang',dbIds:['DB1','DB2'],query:'錨點'});
+  assert.equal(merged.complete,true);
+  assert.deepEqual(new Set(merged.hits.map(x=>x.dbId)),new Set(['DB1','DB2']));
+  assert.equal(new Set(merged.hits.map(x=>x.uid)).size,1);
+});
+
+test('an append writes a delta segment, not a rewrite of any base shard',async()=>{
+  const previous=kv.writes;
+  const baseKeys=[...kv.data.keys()].filter(x=>x.startsWith('loc-search/v1/data/'));
+  assert.equal((await call('/v1/documents',{documents:[doc('DB1','Ab123456','跨資料來源','append')]})).accepted,true);
+  assert.equal(kv.writes,previous+1);
+  assert.deepEqual([...kv.data.keys()].filter(x=>x.startsWith('loc-search/v1/data/')),baseKeys);
 });
 
 test('Gateway adds only UID IN prefilter after a complete trusted index response',async(t)=>{
