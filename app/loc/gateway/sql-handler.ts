@@ -539,6 +539,11 @@ Deno.serve(async (request) => {
       });
       return json(merged);
     }
+    // One-source federation is still a real logical route and must not
+    // silently read the control/primary database instead.
+    if(requestedTarget==="configured"&&datasets.length===1&&
+       body.expectedDbId===undefined&&isFederatedTextSearch(body))
+      target=datasets[0].target;
     // A qualified article read is an assertion against a server-authorized
     // Scope dataset. Identical UIDs across databases are not interchangeable.
     if(body.expectedDbId!==undefined){
