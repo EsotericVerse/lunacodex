@@ -60,6 +60,18 @@ async function verifyLocDelegation(token:string,body:Record<string,unknown>){
 
 // The deployed function and browser use the same source-controlled routing contract.
 const routing = resolveDatabaseRouting();
+function publicGalaxyGate(body:Record<string,unknown>,role:string,claims:Record<string,unknown>){
+  if(body?.kind!=="query"||body.operation!=="select"||
+     body.schema!=="silver"||typeof body.table!=="string")return false;
+  const match=body.table.match(/^([a-z][a-z0-9]{0,14})_galaxy$/);
+  if(!match)return false;
+  if(role==="authenticated"&&canManageDelegation(claims,"scope",match[1]))
+    return false;
+  // Search result visibility and article open permission are different.
+  // Applied to every SQL provider even when its native RLS is disabled.
+  if(body.expectedDbId!==undefined&&isDatasetQualifiedArticleRead(body))return "list";
+  return isTextSearchQuery(body)?true:false;
+}
 // Cross-engine publicly readable tables are centrally enforced by sql-engine-ports.mjs.
 
 // The LOC control database is a trusted server-side connection alias.
@@ -198,7 +210,7 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
       namespace:executionPort.engine==='postgres'&&!target.schema_name
         ?undefined:String(target.schema_name||(
           executionPort.engine==='mssql'?'dbo':'public')),
-      publicOnly:access?.publicOnly===true||role!=="authenticated"&&isTextSearchQuery(body)});
+      publicOnly:publicGalaxyGate(body,role,claims)||access?.publicOnly===true});
   }
   await bindPostgresSession(trx,role,claims,String(target.provider||"supabase"));
   if(body.kind==="query"){
@@ -221,7 +233,7 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
     return await executeKyselyQuery(trx,body,{modelName,
       // Public Search is independently protected by the Gateway even on a
       // PostgreSQL connection that does not implement RLS.
-      publicOnly:role!=="authenticated"&&isTextSearchQuery(body)});
+      publicOnly:publicGalaxyGate(body,role,claims)});
   }
   if(body.kind==="anchor")return await executeKyselyAnchor(trx,body,{role,claims});
   if(body.kind==="analytics")return await executeKyselyAnalytics(trx,body,{role});
