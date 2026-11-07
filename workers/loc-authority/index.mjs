@@ -1021,7 +1021,7 @@ export class LocAuthorityState extends DurableObject {
 
 function mcpPrLookup(query){
   // PR and commit history are stored in GitHub, not Galaxy.
-  return /(?:\bPR\b|\bpull[ -]?request\b|\bgithub\b|\bcommit\b|合併請求|拉取請求)/i
+  return /(?:\bPR(?:[\s#:\-]*\d+)?\b|\bpull[ -]?request\b|\bgithub\b|\bcommit\b|合併請求|拉取請求)/i
     .test(String(query||''));
 }
 
