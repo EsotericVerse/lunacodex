@@ -3,7 +3,7 @@ import {SQL_ENGINE_OPTIONS,getSqlEnginePort} from './sql-engine-ports.mjs';
 export const DATABASE_ENGINES=Object.freeze(SQL_ENGINE_OPTIONS.map(entry=>entry.value));
 export const DATABASE_PROVIDERS=Object.freeze(['supabase','neon','custom']);
 export const CONNECTION_MODES=Object.freeze(['direct','pooler']);
-const aliasPattern=/^[a-z][a-z0-9_]{0,63}$/;
+const aliasPattern=/^[a-z][a-z0-9_-]{0,63}$/;
 const engines=new Set(DATABASE_ENGINES);
 const providers=new Set(DATABASE_PROVIDERS);
 const modes=new Set(CONNECTION_MODES);

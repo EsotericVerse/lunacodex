@@ -37,7 +37,8 @@ function environment(){
     keys.privateKey,encoder.encode(message));
    return message+'.'+b64(new Uint8Array(sig));
   },
-  async mayAccess(){return false;}
+  async mayAccess(){return false;},
+  async selectedDatabaseForDelegation(){return null;}
  };
  const env={LOC_IMPORT_SCOPE_ID:'lo3rwang',
   LOC_SQL_GATEWAY_URL:'https://sql.example.org/v1/sql',

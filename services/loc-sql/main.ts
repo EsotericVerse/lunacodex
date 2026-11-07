@@ -5,7 +5,7 @@ import {prepareLocSqlEdgeRuntime} from '../../app/loc/gateway/edge-runtime-compa
 // A standalone host must not silently fall back to Supabase/Neon credentials.
 const alias=String(Deno.env.get('LOC_CONTROL_DB_ALIAS')||'');
 const engine=String(Deno.env.get('LOC_CONTROL_DB_ENGINE')||'');
-if(!/^[a-z][a-z0-9_]{0,63}$/.test(alias)||
+if(!/^[a-z][a-z0-9_-]{0,63}$/.test(alias)||
    !['postgres','mysql','mssql'].includes(engine))
   throw new Error('LOC standalone SQL control alias and engine are required');
 let profiles:Record<string,{engine?:string,url?:string}>;
