@@ -1,7 +1,8 @@
 // Short-import authorization boundary shared with the LOC-delegated SQL Gateway.
 // verifyLocDelegation has already validated issuer, HS256 signature, audience,
 // expiration, revocation and the signed grant list before calling this helper.
-const MANAGED_SCOPES=new Set(['lo3rwang','lrunes']);
+// The signed Scope write grant, not a frozen two-Scope list, authorizes imports.
+const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 function refusal(message,httpStatus){
  return Object.assign(new Error(message),{httpStatus});
 }
@@ -10,7 +11,7 @@ export function authorizeDelegatedShortImport(body,claims){
     Object.keys(body).length!==3||
     Object.keys(body).some(k=>!['kind','scopeid','batch'].includes(k))||
     body.kind!=='short-import'||typeof body.scopeid!=='string'||
-    !MANAGED_SCOPES.has(body.scopeid)||
+    !SCOPE.test(body.scopeid)||
     !body.batch||typeof body.batch!=='object'||Array.isArray(body.batch))
    throw refusal('Invalid short-import gateway payload',400);
  // A general authenticated session is NOT an import grant. The actual
