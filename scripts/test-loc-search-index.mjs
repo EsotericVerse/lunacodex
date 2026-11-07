@@ -121,7 +121,8 @@ test('Gateway adds only UID IN prefilter after a complete trusted index response
   t.after(()=>{globalThis.Deno=previousDeno;globalThis.fetch=previousFetch;});
   const request={kind:'query',operation:'select',schema:'silver',
     table:'lo3rwang_galaxy',columns:['uid','title'],filters:[
-      {column:'search',operator:'eq',value:true}],indexHint:{scopeId:'lo3rwang',query:'痕跡'}};
+      {column:'search',operator:'eq',value:true}],or:['content.contains."痕跡"'],
+    indexHint:{scopeId:'lo3rwang',query:'痕跡'}};
   const indexed=await withIndexedCandidates(request,{connection_alias:'db2'});
   assert.deepEqual(indexed.filters.at(-1),{column:'uid',operator:'in',value:['Ab123456']});
   assert.deepEqual(indexed.filters[0],request.filters[0]);
