@@ -6,6 +6,7 @@ import {
   RUNE_VFX_OVERLAYS,runeEffectFor
 } from '../app/lrunes/effekseer/rune-effect-library.mjs';
 import {EFFECT_ASSET_BLOBS} from './rune-effekseer-asset-manifest.mjs';
+import {RETIRED_EFFECT_ASSETS} from './rune-effekseer-retired-assets.mjs';
 import {posix,win32} from 'node:path';
 import {resolvePinnedEffekseerTarget} from './pinned-effekseer-path.mjs';
 
@@ -54,8 +55,14 @@ test('Flame has a dedicated authored fireball layer',()=>{
 
 test('every expanded MAGICAL X SPIRAL effect is pinned without duplicate entries',()=>{
   assert.equal(pinned.size,EFFECT_ASSET_BLOBS.length);
-  assert.ok(mxsPaths.length>=78);
   for(const path of mxsPaths)assert.ok(pinned.has(path.slice('Collections/'.length)),`Missing MxS scene: ${path}`);
+  const active=new Set(Object.values(AUTHORED_EFFECT_FILES)
+    .filter(path=>path.startsWith('Collections/')).map(path=>path.slice('Collections/'.length)));
+  const pinnedEffects=EFFECT_ASSET_BLOBS.filter(item=>item.target.endsWith('.efkefc')).map(item=>item.target);
+  assert.deepEqual(pinnedEffects.slice().sort(),[...active].sort(),
+    'pinned effects must equal the active 3D rune scenes and overlays');
+  for(const item of RETIRED_EFFECT_ASSETS)assert.ok(!pinned.has(item.target),
+    'retired asset must not be downloaded: '+item.target);
 });
 
 test('pinned Effekseer assets resolve safely on both Windows and POSIX',()=>{
