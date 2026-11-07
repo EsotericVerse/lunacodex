@@ -13,7 +13,7 @@ const ADMIN_FIXED_WRITES=Object.freeze({
 });
 /** Only signed global LOC grants may update/delete a fixed admin model. */
 export function fixedPolicyWriteModel(target,body,role,claims){
-  if(target?.engine!=='postgres'||target.provider!=='supabase'||
+  if(target?.engine!=='postgres'||
       role!=='authenticated'||claims?.provider!=='loc'||claims?.me!==true||
       !Array.isArray(claims.grants)||!claims.grants.includes('global:manage'))
     return null;
