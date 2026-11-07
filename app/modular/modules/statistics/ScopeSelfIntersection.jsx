@@ -254,8 +254,10 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
     queryKey:['own-scope-keyword-item-days',scope?.id,classUid,start,end],
     enabled:valid&&keywordModeActive&&selectedKeywordItems,
     queryFn:async()=>{
-      const {readKeywordTreeSummary}=await import('../../../loc/db-client.mjs');
-      return readKeywordTreeSummary(scope.id,{classUid:keywords.data?.keywordMeta?.class_uid||classUid,startDate:start,endDate:end});
+      const {keywordService}=await import('../../../loc/keyword-service-client.mjs');
+      return keywordService('summary',{scopeId:scope.id,
+        classUid:keywords.data?.keywordMeta?.class_uid||classUid,
+        startDate:start,endDate:end});
     }
   });
   const unit=['year','month','week','day'].includes(range?.bucket)?range.bucket:(Date.parse(end)-Date.parse(start))/DAY_MS>180?'month':(Date.parse(end)-Date.parse(start))/DAY_MS>60?'week':'day';
