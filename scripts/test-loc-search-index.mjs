@@ -28,57 +28,57 @@ const doc=(dbId,uid,content,operation='upsert')=>({
 });
 
 test('LOC index preserves identical UIDs across independent SQL datasets',async()=>{
-  const a=doc('DB1','Ab123456','文化錨點 漢字遠方的星星');
-  const b=doc('DB2','Ab123456','痕跡錨點 山川大海');
+  const a=doc('db1','Ab123456','文化錨點 漢字遠方的星星');
+  const b=doc('db2','Ab123456','痕跡錨點 山川大海');
   assert.equal((await call('/v1/documents',{documents:[a,b]})).accepted,true);
-  assert.equal((await call('/v1/search',{scopeId:'lo3rwang',dbId:'DB1',query:'文化'})).complete,false);
-  for(const dbId of ['DB1','DB2']){
+  assert.equal((await call('/v1/search',{scopeId:'lo3rwang',dbId:'db1',query:'文化'})).complete,false);
+  for(const dbId of ['db1','db2']){
     assert.equal((await call('/v1/coverage',{scopeId:'lo3rwang',dbId,complete:true},{method:'PUT'})).accepted,true);
   }
-  const resultA=await call('/v1/search',{scopeId:'lo3rwang',dbId:'DB1',query:'文化'});
-  const resultB=await call('/v1/search',{scopeId:'lo3rwang',dbId:'DB2',query:'痕跡'});
+  const resultA=await call('/v1/search',{scopeId:'lo3rwang',dbId:'db1',query:'文化'});
+  const resultB=await call('/v1/search',{scopeId:'lo3rwang',dbId:'db2',query:'痕跡'});
   assert.equal(resultA.complete,true);
   assert.equal(resultB.complete,true);
-  assert.deepEqual(resultA.hits.map(x=>[x.scopeId,x.dbId,x.uid]),[['lo3rwang','DB1','Ab123456']]);
-  assert.deepEqual(resultB.hits.map(x=>[x.scopeId,x.dbId,x.uid]),[['lo3rwang','DB2','Ab123456']]);
+  assert.deepEqual(resultA.hits.map(x=>[x.scopeId,x.dbId,x.uid]),[['lo3rwang','db1','Ab123456']]);
+  assert.deepEqual(resultB.hits.map(x=>[x.scopeId,x.dbId,x.uid]),[['lo3rwang','db2','Ab123456']]);
 });
 
 test('append indexes the new suffix without dropping previously indexed words',async()=>{
-  const before=await call('/v1/documents',{documents:[doc('DB1','Ab123456','另一個時間段落','append')]});
+  const before=await call('/v1/documents',{documents:[doc('db1','Ab123456','另一個時間段落','append')]});
   assert.equal(before.accepted,true);
-  const after=await call('/v1/search',{scopeId:'lo3rwang',dbId:'DB1',query:'時間'});
+  const after=await call('/v1/search',{scopeId:'lo3rwang',dbId:'db1',query:'時間'});
   assert.equal(after.complete,true);
   assert.equal(after.hits[0]?.uid,'Ab123456');
-  const original=await call('/v1/search',{scopeId:'lo3rwang',dbId:'DB1',query:'文化'});
+  const original=await call('/v1/search',{scopeId:'lo3rwang',dbId:'db1',query:'文化'});
   assert.equal(original.hits[0]?.uid,'Ab123456');
 });
 
 test('invalid service authorization is refused before reading index data',async()=>{
-  const result=await call('/v1/search',{scopeId:'lo3rwang',dbId:'DB1',query:'文化'},{authorized:false});
+  const result=await call('/v1/search',{scopeId:'lo3rwang',dbId:'db1',query:'文化'},{authorized:false});
   assert.equal(result.status,401);
 });
 
 test('a removed article keeps only a harmless stale candidate, never affects another database',async()=>{
   const writes=kv.writes;
-  assert.equal((await call('/v1/documents',{documents:[doc('DB1','Ab123456','','remove')]})).accepted,true);
+  assert.equal((await call('/v1/documents',{documents:[doc('db1','Ab123456','','remove')]})).accepted,true);
   assert.equal(kv.writes,writes,'no new index writes needed for removed content');
   // The index is a candidate filter, not the content authority. Stale
   // candidates from removed or edited documents are rejected by SQL.
-  assert.equal((await call('/v1/search',{scopeId:'lo3rwang',dbId:'DB1',query:'文化'})).hits[0].dbId,'DB1');
-  assert.equal((await call('/v1/search',{scopeId:'lo3rwang',dbId:'DB2',query:'痕跡'})).hits[0].uid,'Ab123456');
+  assert.equal((await call('/v1/search',{scopeId:'lo3rwang',dbId:'db1',query:'文化'})).hits[0].dbId,'db1');
+  assert.equal((await call('/v1/search',{scopeId:'lo3rwang',dbId:'db2',query:'痕跡'})).hits[0].uid,'Ab123456');
 });
 
 test('one cross-dataset search returns both distinct documents with colliding UIDs',async()=>{
-  const merged=await call('/v1/search',{scopeId:'lo3rwang',dbIds:['DB1','DB2'],query:'錨點'});
+  const merged=await call('/v1/search',{scopeId:'lo3rwang',dbIds:['db1','db2'],query:'錨點'});
   assert.equal(merged.complete,true);
-  assert.deepEqual(new Set(merged.hits.map(x=>x.dbId)),new Set(['DB1','DB2']));
+  assert.deepEqual(new Set(merged.hits.map(x=>x.dbId)),new Set(['db1','db2']));
   assert.equal(new Set(merged.hits.map(x=>x.uid)).size,1);
 });
 
 test('an append writes a delta segment, not a rewrite of any base shard',async()=>{
   const previous=kv.writes;
   const baseKeys=[...kv.data.keys()].filter(x=>x.startsWith('loc-search/v1/data/'));
-  assert.equal((await call('/v1/documents',{documents:[doc('DB1','Ab123456','跨資料來源','append')]})).accepted,true);
+  assert.equal((await call('/v1/documents',{documents:[doc('db1','Ab123456','跨資料來源','append')]})).accepted,true);
   assert.equal(kv.writes,previous+1);
   assert.deepEqual([...kv.data.keys()].filter(x=>x.startsWith('loc-search/v1/data/')),baseKeys);
 });
@@ -93,10 +93,10 @@ test('Gateway adds only UID IN prefilter after a complete trusted index response
   const request={kind:'query',operation:'select',schema:'silver',
     table:'lo3rwang_galaxy',columns:['uid','title'],filters:[
       {column:'search',operator:'eq',value:true}],indexHint:{scopeId:'lo3rwang',query:'痕跡'}};
-  const indexed=await withIndexedCandidates(request,{connection_alias:'DB2'});
+  const indexed=await withIndexedCandidates(request,{connection_alias:'db2'});
   assert.deepEqual(indexed.filters.at(-1),{column:'uid',operator:'in',value:['Ab123456']});
   assert.deepEqual(indexed.filters[0],request.filters[0]);
-  const noCoverage=await withIndexedCandidates(request,{connection_alias:'DB3'});
+  const noCoverage=await withIndexedCandidates(request,{connection_alias:'db3'});
   assert.equal(noCoverage,request);
 });
 
@@ -104,7 +104,7 @@ test('Managed Galaxy writes produce stable dataset-aware index records',()=>{
   const result=indexDocumentsFromWrite({kind:'managed-write',payload:{
     p_table:'lo3rwang_galaxy',p_operation:'insert',
     p_rows:[{uid:'Ab123456',content:'Hello'}]}},
-  {connection_alias:'DB2'});
-  assert.deepEqual(result,[doc('DB2','Ab123456','Hello')]);
+  {connection_alias:'db2'});
+  assert.deepEqual(result,[doc('db2','Ab123456','Hello')]);
   assert.deepEqual(indexDocumentsFromWrite({kind:'query',operation:'select'},{}),[]);
 });
