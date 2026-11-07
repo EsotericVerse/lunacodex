@@ -103,7 +103,9 @@ export async function executePublicRead(table,buildQuery,{source='auto',authenti
       // Only on a recoverable failure (Supabase throttled/unreachable), and only
       // as an anonymous read: rows that need the signed-in RLS session are not
       // in the backup and simply will not be returned. Shown as backup source.
-      if(!routing.backupId||!dbBackupPublicClient||!recoverableReadError(error))throw error;
+      // A qualified article identity may not fail over to another physical
+      // database: identical local UIDs can mean entirely different articles.
+      if(expectedDbId||!routing.backupId||!dbBackupPublicClient||!recoverableReadError(error))throw error;
       try{
         const backupResult=await withSignal(buildQuery(publicRelation(dbBackupPublicClient,table)),signal);
         if(cancel?.aborted)throw abortError();
@@ -153,11 +155,12 @@ export async function executePublicRead(table,buildQuery,{source='auto',authenti
     }
   };
   if(source==='primary')return primary();
+  if(source==='backup'&&expectedDbId)throw new Error('Qualified article reads cannot use an unverified backup');
   if(source==='backup')return backup();
   let original;
   try{return await primary()}catch(error){original=error}
   if(isAbortError(original))throw original;
-  if(!routing.backupId||!recoverableReadError(original))throw original;
+  if(expectedDbId||!routing.backupId||!recoverableReadError(original))throw original;
   try{return await backup()}catch(secondary){
     const aggregate=new AggregateError([original,secondary],'Primary and backup read failed for '+table);
     aggregate.primaryError=original;
