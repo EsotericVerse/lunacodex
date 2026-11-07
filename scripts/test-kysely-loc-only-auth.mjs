@@ -10,7 +10,7 @@ test('SQL Edge verifies locally signed LOC delegation, not provider identity',()
   assert.match(edge,/verifyLocDelegation\(match\[1\],body\)/);
   assert.match(edge,/verifyDelegationBoundary\(payload,body,/);
   assert.match(edge,/delegationAudience\(body\)/);
-  assert.doesNotMatch(edge,/verifyClerkForSql|verifyMcpForSql|sessionIdentityCache/);
+  assert.doesNotMatch(edge,/verifyMcpForSql|sessionIdentityCache/);
 });
 test('Kysely and Edge share one LOC delegation policy',()=>{
   const edge=source('app/loc/gateway/sql-handler.ts');
@@ -33,7 +33,7 @@ test('signed grants are portable and scope-limited independently of database RLS
 test('site uses LOC Auth by default without a vendor Auth SDK',()=>{
   const configured=source('app/loc/providers/configured.mjs');
   assert.match(configured,/createLocAccountAdapter/);
-  assert.doesNotMatch(configured,/createClerkAccountAdapter|LEGACY_SQL_ORIGIN/);
+  assert.doesNotMatch(configured,/LEGACY_SQL_ORIGIN/);
   const edge=source('app/loc/gateway/sql-handler.ts');
-  assert.doesNotMatch(edge,/createClerkAccountAdapter/);
+  assert.match(edge,/verifyLocDelegation/);
 });

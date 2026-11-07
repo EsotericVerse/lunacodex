@@ -3,42 +3,30 @@ import assert from 'node:assert/strict';
 import {readFileSync,existsSync} from 'node:fs';
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
-test('old vendor browser Auth SDK modules are absent from executable app',()=>{
-  for(const file of [
-    'app/loc/auth/clerk-browser.mjs',
-    'app/loc/providers/clerk-gateway.mjs',
-    'app/loc/mcp/clerk-access.mjs',
-    'app/loc/ClerkScopeConnections.jsx'
-  ])assert.equal(existsSync(new URL('../'+file,import.meta.url)),false,file);
-  for(const file of [
-    'app/loc/providers/configured.mjs',
-    'app/loc/GlobalSettings.jsx',
-    'app/loc/mcp/loc-access.mjs',
-    'app/loc/mcp/router.mjs',
-    'public/login/index.html',
-    'public/extension/website-bridge.mjs',
-    'public/extension/auth-bridge.html'
-  ]){
-    const source=read(file);
-    for(const forbidden of ['@clerk/','clerk.accounts.dev',
-      'loadLocClerk','createClerkAccountAdapter'])
-      assert.equal(source.includes(forbidden),false,
-        file+' must not load old Auth SDK: '+forbidden);
-  }
-});
-
-test('portable SQL driver is independent of Auth vendor',()=>{
-  const drivers=read('app/loc/providers/kysely-database-drivers.ts');
-  for(const dialect of ['PostgresDialect','MysqlDialect','MssqlDialect'])
-    assert.ok(drivers.includes(dialect),dialect);
+test('LOC native identity owns every active browser SQL adapter',()=>{
+  const account=read('app/loc/auth/loc-browser.mjs');
   const configured=read('app/loc/providers/configured.mjs');
-  assert.ok(configured.includes('createLocAccountAdapter'));
-  assert.ok(configured.includes('NEXT_PUBLIC_LOC_SQL_GATEWAY_URL'));
-  assert.doesNotMatch(configured,/createClerkAccountAdapter|createSupabaseAdapter/);
+  const sql=read('app/loc/providers/kysely-edge.mjs');
+  assert.match(account,/createLocAccountAdapter/);
+  assert.match(account,/\/v1\/auth\/session/);
+  assert.match(configured,/createLocAccountAdapter/);
+  assert.match(configured,/NEXT_PUBLIC_LOC_SQL_GATEWAY_URL/);
+  assert.match(sql,/LOC SQL Gateway is not configured/);
+  assert.doesNotMatch(configured,/publishableKey|frontendApiUrl/);
 });
 
-test('retired website bridge cannot send bearer tokens into an extension',()=>{
-  const code=read('public/extension/website-bridge.mjs');
-  for(const forbidden of ['getToken','authorization:','sendMessage','Clerk','@clerk/'])
-    assert.equal(code.includes(forbidden),false,forbidden);
+test('SQL Gateway drivers remain portable',()=>{
+  const driver=read('app/loc/providers/kysely-database-drivers.ts');
+  for(const dialect of ['PostgresDialect','MysqlDialect','MssqlDialect'])
+    assert.ok(driver.includes(dialect),dialect);
+  assert.match(driver,/LOC_DB_CONNECTIONS_JSON/);
+  assert.doesNotMatch(driver,/process\.env\.NEXT_PUBLIC/);
+});
+
+test('website extension bridge cannot forward a website bearer token',()=>{
+  const path='public/extension/website-bridge.mjs';
+  assert.equal(existsSync(new URL('../'+path,import.meta.url)),true);
+  const source=read(path);
+  assert.doesNotMatch(source,/getToken|authorization:|sendMessage/);
+  assert.match(source,/auth\.lo3rwang\.cc/);
 });

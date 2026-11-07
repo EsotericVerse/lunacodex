@@ -1,28 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {clerkSqlClaims} from '../app/loc/auth/clerk-sql-claims.mjs';
 import {readFileSync} from 'node:fs';
 
-const issuer='https://example.clerk.accounts.dev';
-const origin='https://loc.example.org';
-const principal={iss:issuer,azp:origin,sub:'user_ABC123',sid:'sess_ABC123',
-  email:'OWNER@example.org',email_verified:true};
-test('verified signed claims map to existing SQL role and email',()=>{
-  const result=clerkSqlClaims(principal,{issuer,origin});
-  assert.deepEqual(result,{role:'authenticated',sub:'user_ABC123',
-    email:'owner@example.org',iss:issuer,sid:'sess_ABC123',provider:'clerk'});
-  assert.equal(Object.isFrozen(result),true);
-});
-test('unsigned, other-origin and unverified claims are never promoted',()=>{
-  for(const payload of [{...principal,email_verified:false},
-    {...principal,azp:'https://attacker.example'},
-    {...principal,sub:'bad'},{...principal,iss:'https://fake.example'},
-    {...principal,email:'owner@example.org invalid'},
-    {...principal,email:''},{...principal,sid:'not-a-session'}]){
-    assert.throws(()=>clerkSqlClaims(payload,{issuer,origin}));
-  }
-});
-test('Clerk management actions are explicitly named and validated',()=>{
+test('LOC management actions are explicitly named and validated',()=>{
   const executor=readFileSync(new URL('../app/loc/providers/kysely-management.mjs',import.meta.url),'utf8');
   const account=readFileSync(new URL('../app/loc/use-account.js',import.meta.url),'utf8');
   assert.match(account,/\.managedAction\('manage',\{p_type:'self'\}\)/);
@@ -30,6 +10,7 @@ test('Clerk management actions are explicitly named and validated',()=>{
   assert.match(executor,/Object\.keys\(args\)\.some\(key=>!keys\.includes\(key\)\)/);
   assert.match(executor,/select \* from silver\.manage/);
 });
+
 test('public Search and statistics use Kysely analytics, never SQL RPC',()=>{
   const client=readFileSync(new URL('../app/loc/scope-search-summary.mjs',import.meta.url),'utf8');
   const analytics=readFileSync(new URL('../app/loc/providers/kysely-analytics.mjs',import.meta.url),'utf8');
@@ -40,6 +21,7 @@ test('public Search and statistics use Kysely analytics, never SQL RPC',()=>{
   assert.match(analytics,/mode==='search_summary'/);
   assert.match(manager,/refresh_scope_search_summary:\['p_scope_id'\]/);
 });
+
 test('Search summary only reads stored snapshot; refresh is handled by import management',()=>{
   const source=readFileSync(new URL('../app/loc/SearchSummary.jsx',import.meta.url),'utf8');
   const refresh=readFileSync(new URL('../app/loc/scope-search-summary.mjs',import.meta.url),'utf8');
@@ -59,12 +41,14 @@ test('Search summary only reads stored snapshot; refresh is handled by import ma
   assert.match(refresh,/p_view:'search_summary'/);
   assert.match(refresh,/data\?\.rows/);
 });
+
 test('SQL Edge verifies LOC delegation rather than provider-specific session RPC',()=>{
   const code=readFileSync(new URL('../app/loc/gateway/sql-handler.ts',import.meta.url),'utf8');
   assert.match(code,/verifyLocDelegation\(match\[1\],body\)/);
   assert.match(code,/verifyDelegationBoundary\(payload,body,/);
-  assert.doesNotMatch(code,/verifyClerkForSql|clerkSqlClaims|authClient\.auth\.getUser\(token\)/);
+  assert.doesNotMatch(code,/authClient\.auth\.getUser\(token\)/);
 });
+
 test('LOC browser adapter exchanges native OAuth into scoped SQL delegation',()=>{
   const configured=readFileSync(new URL('../app/loc/providers/configured.mjs',import.meta.url),'utf8');
   const core=readFileSync(new URL('../app/loc/providers/loc-gateway.mjs',import.meta.url),'utf8');
@@ -74,27 +58,18 @@ test('LOC browser adapter exchanges native OAuth into scoped SQL delegation',()=
   assert.ok(core.includes('getAccessToken:getLocAccessToken'));
   assert.ok(core.includes('/v1/delegation'));
   assert.ok(browser.includes('/v1/auth/session'));
-  assert.doesNotMatch(configured,/createClerkAccountAdapter|NEXT_PUBLIC_LOC_IDENTITY_PROVIDER/);
+  assert.doesNotMatch(configured,/NEXT_PUBLIC_LOC_IDENTITY_PROVIDER/);
 });
+
 test('production LOC login no longer loads vendor Auth SDKs',()=>{
   const configured=readFileSync(new URL('../app/loc/providers/configured.mjs',import.meta.url),'utf8');
   const login=readFileSync(new URL('../public/login/index.html',import.meta.url),'utf8');
   assert.ok(configured.includes('return createLocGatewayAdapter({'));
-  assert.doesNotMatch(configured,/createSupabaseAdapter|createNeonPrimaryAdapter|createClerkAccountAdapter/);
+  assert.match(configured,/createLocAccountAdapter/);
   assert.ok(login.includes('https://auth.lo3rwang.cc'));
-  assert.doesNotMatch(login,/<script[^>]+src=[^>]*clerk/i);
+  assert.match(login,/new URL\('\/oauth\/login',AUTHORITY\)/);
 });
-test('verified Clerk subject can be mapped to a trusted root email by server, not browser',()=>{
-  const missing={...principal,email:undefined,email_verified:undefined,azp:undefined};
-  assert.throws(()=>clerkSqlClaims(missing,{issuer,origin}),/trusted root mapping/);
-  const mapped=clerkSqlClaims(missing,{issuer,origin,trustedEmail:'OWNER@example.org'});
-  assert.equal(mapped.email,'owner@example.org');
-  assert.equal(mapped.sub,'user_ABC123');
-  assert.equal(mapped.role,'authenticated');
-  assert.throws(()=>clerkSqlClaims(missing,{issuer,origin,trustedEmail:'invalid'}));
-  assert.throws(()=>clerkSqlClaims({...missing,azp:'https://evil.example'},
-    {issuer,origin,trustedEmail:'owner@example.org'}));
-});
+
 test('MCP and SQL use distinct signed LOC delegations, without general SQL escalation',()=>{
   const edge=readFileSync(new URL('../app/loc/gateway/sql-handler.ts',import.meta.url),'utf8');
   const contract=readFileSync(new URL('../app/loc/auth/delegation-contract.mjs',import.meta.url),'utf8');
@@ -104,6 +79,7 @@ test('MCP and SQL use distinct signed LOC delegations, without general SQL escal
   assert.match(contract,/MCP delegation does not cover this operation/);
   assert.match(worker,/managedMcpInsert\(scopeid,row,Boolean\(status\.uid\),oauthToken\)/);
 });
+
 test('managed MCP sync accepts only an eight-flag private article without generated date',()=>{
   const edge=readFileSync(new URL('../app/loc/gateway/sql-handler.ts',import.meta.url),'utf8');
   const worker=readFileSync(new URL('../workers/loc-authority/index.mjs',import.meta.url),'utf8');
@@ -113,14 +89,16 @@ test('managed MCP sync accepts only an eight-flag private article without genera
   assert.doesNotMatch(edge,/row\.statistics_able/);
 });
 
+
 test('Authority maps verified OAuth principal before issuing LOC claims',()=>{
   const edge=readFileSync(new URL('../app/loc/gateway/sql-handler.ts',import.meta.url),'utf8');
   const worker=readFileSync(new URL('../workers/loc-authority/index.mjs',import.meta.url),'utf8');
-  assert.match(worker,/verifyIdentityToken\(request,env\)/);
-  assert.match(worker,/LOC_ROOT_MANAGEMENT_EMAIL/);
+  assert.match(worker,/verifyNativeOAuth\(request,env,WEB_AUDIENCE\)/);
+  assert.match(worker,/LOC_RECOVERY_ROOT_LOC_SUBJECTS/);
   assert.match(worker,/Verified identity email required for LOC delegation/);
   assert.match(edge,/verifyLocDelegation\(match\[1\],body\)/);
 });
+
 test('Kysely management actions replace retired business RPCs while database policy helpers remain',()=>{
   const edge=readFileSync(new URL('../app/loc/gateway/sql-handler.ts',import.meta.url),'utf8');
   const runtime=readFileSync(new URL('../app/loc/providers/kysely-runtime.mjs',import.meta.url),'utf8');
@@ -135,6 +113,7 @@ test('Kysely management actions replace retired business RPCs while database pol
   assert.match(keywordEditor,/\.managedAction\('loc_admin_settings'/);
   assert.match(themeEditor,/\.managedAction\('loc_admin_settings'/);
 });
+
 test('SQL browser reuses LOC delegation for same OAuth token and cannot inherit it after account switch',async()=>{
   const source=readFileSync(new URL('../app/loc/providers/loc-gateway.mjs',import.meta.url),'utf8')
     .replace(/^import .*$/gm,'').replace(/^export /gm,'');

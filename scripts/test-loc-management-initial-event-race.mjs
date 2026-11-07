@@ -6,7 +6,7 @@ import {shouldInvalidateManagementForAuthEvent} from '../app/loc/auth/account-ev
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 const session={nextUserId:'user_ABC123',nextEmail:'owner@example.org'};
 
-test('initial Clerk hydration never cancels pending management query',()=>{
+test('initial LOC Auth hydration never cancels pending management query',()=>{
   const initial=shouldInvalidateManagementForAuthEvent({
     event:'INITIAL_SESSION',previousUserId:'',previousEmail:'',
     ...session,hasAuthorization:false
@@ -57,7 +57,7 @@ test('management page does not run concurrent HomeEditModeRestore RPC',()=>{
   assert.match(access,/granted\(verification\.authorizer,scopeId,level\)/);
 });
 
-test('initial Clerk event does not invalidate active management query in useAccount',()=>{
+test('initial LOC Auth event does not invalidate active management query in useAccount',()=>{
   const account=read('app/loc/use-account.js');
   const start=account.indexOf('const listener=dbAuthEvents.onAuthStateChange(');
   const end=account.indexOf('return ()=>listener.data.subscription.unsubscribe()',start);
@@ -68,7 +68,7 @@ test('initial Clerk event does not invalidate active management query in useAcco
   assert.doesNotMatch(listener,/if\(identityChanged\|\|event==='SIGNED_OUT'\)/);
 });
 
-test('initial unauthenticated Clerk event cannot erase cross-page edit marker before verification',()=>{
+test('initial unauthenticated LOC Auth event cannot erase cross-page edit marker before verification',()=>{
   const dock=read('app/modular/edit-dock.jsx');
   assert.match(dock,/if\(!invalidated\|\|!activeScope\.current\)return/);
   assert.match(dock,/if\(userId\)lastIdentity=identity/);

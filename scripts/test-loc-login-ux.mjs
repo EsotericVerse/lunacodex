@@ -54,5 +54,5 @@ test('original scenic white Theme 7 stays intact beside native LOC Chrome launch
   assert.ok(styles.includes('--loc-bg:#ffffff'));
   assert.ok(extension.includes('連接 LOC'));
   assert.equal(manifest.name,'LOC galaxy-link｜LOC 彩虹橋');
-  assert.doesNotMatch(extension,/<script[^>]+src=[^>]*clerk/i);
+  assert.match(page,/new URL\('\/oauth\/login',AUTHORITY\)/);
 });
