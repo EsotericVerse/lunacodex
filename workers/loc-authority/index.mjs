@@ -2,12 +2,12 @@ import { DurableObject } from 'cloudflare:workers';
 import {issueDelegation} from '../../app/loc/auth/delegation-contract.mjs';
 import {trustedSqlProfile} from './sql-profile.mjs';
 import {ISSUER,MCP_AUDIENCE,WEB_AUDIENCE,isNativeOAuthPath,handleNativeOAuth,
-  verifyNativeOAuth,looksLikeNativeToken} from './native-oauth.mjs';
+  verifyNativeOAuth} from './native-oauth.mjs';
 import {validateKeywordCategoryEntry,hashKeywordCategory,assertPublicKeywordClass} from './keyword-categories.mjs';
 import {AUTH_PROVIDER_TYPES,validateAuthProviderSettings,publicAuthProviderSettings}
   from '../../app/loc/auth/auth-provider-settings.mjs';
-// LOC independent recovery control plane. Never imports a database client or Supabase Auth.
-// LOC Authority retains existing external identity adapters while signing its own SQL delegations.
+// LOC Auth is the native identity issuer and the owner of signed SQL delegations.
+// This Worker has no dependency on a third-party identity session.
 const JSON_HEADERS={'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'};
 const ID=/^[a-z][a-z0-9_-]{0,63}$/;
 const ENGINES=new Set(['postgres','mysql','mssql']);
@@ -29,163 +29,10 @@ function allowedOrigin(request,env){
   if(origin&&origin!==configured)throw fail('Origin not allowed',403);
   return origin;
 }
-// Clerk's JWKS origin is pinned to the trusted deployment issuer, not JWT data.
-// The deployment can use accounts.dev or its custom Production HTTPS domain.
-function isClerkIssuer(value){
-  try{
-    const url=new URL(String(value||''));
-    return url.protocol==='https:'&&!url.username&&!url.password&&!url.search&&!url.hash&&
-      ['','/'].includes(url.pathname)&&Boolean(url.hostname)&&
-      !url.hostname.endsWith('.local');
-  }catch{return false;}
-}
-const jwksCache=new Map();
-const jwksPending=new Map();
-async function clerkPublicKey(issuer,kid){
-  if(!isClerkIssuer(issuer))throw fail('Clerk issuer is not trusted',503);
-  if(!/^[A-Za-z0-9._-]{1,256}$/.test(String(kid||'')))throw fail('Invalid signing key ID',401);
-  const key=issuer+'#'+kid;
-  const cached=jwksCache.get(key);
-  if(cached&&cached.expires>Date.now())return cached.key;
-  // One promise per issuer/key per isolate prevents duplicate Clerk calls
-  // during concurrent requests (including MCP acquire/release).
-  let pending=jwksPending.get(key);
-  if(pending)return pending;
-  pending=fetchClerkPublicKey(issuer,kid,key);
-  jwksPending.set(key,pending);
-  try{return await pending;}
-  finally{if(jwksPending.get(key)===pending)jwksPending.delete(key);}
-}
-async function fetchClerkPublicKey(issuer,kid,key){
-  const jwksUrl=(String(issuer).endsWith('/')?String(issuer).slice(0,-1):String(issuer))+'/.well-known/jwks.json';
-  const edge=globalThis.caches?.default;
-  const request=new Request(jwksUrl,{headers:{accept:'application/json'}});
-  let response=edge?await edge.match(request).catch(()=>null):null;
-  if(!response){
-    response=await fetch(jwksUrl,{
-      method:'GET',redirect:'follow',signal:AbortSignal.timeout(6000),
-      headers:{accept:'application/json'}
-    });
-    if(!response.ok)throw fail('Clerk signing keys are unavailable',503);
-    // JWKS is public signing-key metadata; store only successful responses
-    // at the edge, at most five minutes, never tokens or private identities.
-    if(edge){
-      const copy=response.clone();
-      const cachedHeaders=new Headers(copy.headers);
-      cachedHeaders.set('Cache-Control','public, max-age=300');
-      await edge.put(request,new Response(copy.body,{status:200,headers:cachedHeaders})).catch(()=>{});
-    }
-  }
-  if(!response.ok)throw fail('Clerk signing keys are unavailable',503);
-  const body=await response.text();
-  if(body.length>120000)throw fail('Clerk signing key response too large',503);
-  let keys;try{keys=JSON.parse(body).keys}catch{throw fail('Invalid Clerk signing keys',503)}
-  if(!Array.isArray(keys))throw fail('Invalid Clerk signing keys',503);
-  const jwk=keys.find(value=>value?.kid===kid&&value.kty==='RSA'&&
-    (!value.alg||value.alg==='RS256')&&
-    (!value.use||value.use==='sig')&&typeof value.n==='string'&&
-    typeof value.e==='string');
-  if(!jwk)throw fail('Clerk signing key is not recognized',401);
-  // Clerk JWKS may contain additional metadata; the trusted RSA
-  // modulus and exponent are enough to construct a verification-only key.
-  // Do not allow JWKS metadata to change the pinned RS256 algorithm.
-  if(jwk.key_ops&&(!Array.isArray(jwk.key_ops)||!jwk.key_ops.includes('verify')))
-    throw fail('Clerk signing key is not usable for verification',503);
-  if(!/^[A-Za-z0-9_-]+$/.test(jwk.n)||!/^[A-Za-z0-9_-]+$/.test(jwk.e))
-    throw fail('Clerk signing key format is invalid',503);
-  try{
-    if(b64bytes(jwk.n).byteLength<256)throw Error('RSA key shorter than 2048 bits');
-  }catch{throw fail('Clerk signing key format is invalid',503);}
-  let cryptoKey;
-  try{
-    cryptoKey=await crypto.subtle.importKey('jwk',
-      {kty:'RSA',n:jwk.n,e:jwk.e,alg:'RS256',use:'sig'},
-      {name:'RSASSA-PKCS1-v1_5',hash:'SHA-256'},false,['verify']);
-  }catch{
-    throw fail('Clerk signing key import failed',503);
-  }
-  jwksCache.set(key,{key:cryptoKey,expires:Date.now()+5*60*1000});
-  if(jwksCache.size>16)jwksCache.delete(jwksCache.keys().next().value);
-  return cryptoKey;
-}
 function requireSetup(env){
-  const hasClerk=Boolean(env.LOC_CLERK_ISSUER&&env.LOC_RECOVERY_ROOT_CLERK_IDS&&
-    (env.LOC_CLERK_JWT_PUBLIC_KEY||isClerkIssuer(env.LOC_CLERK_ISSUER)));
-  const hasAlternative=Boolean(env.LOC_SECONDARY_ISSUER&&env.LOC_SECONDARY_JWT_PUBLIC_KEY&&
-    env.LOC_SECONDARY_AUDIENCE&&env.LOC_RECOVERY_ROOT_SECONDARY_SUBJECTS);
-  const hasNative=Boolean(env.LOC_AUTHORITY_STATE&&env.LOC_CONTROL_ENCRYPTION_KEY);
-  if((!hasClerk&&!hasAlternative&&!hasNative)||!env.LOC_CONTROL_ORIGIN||
-    !env.LOC_CONTROL_ENCRYPTION_KEY||!env.LOC_AUTHORITY_STATE)
-    throw fail('Recovery control is not configured',503);
-}
-async function verifyIdentityToken(request,env){
-  const match=/^Bearer ([A-Za-z0-9_\-.]+)$/.exec(request.headers.get('authorization')||'');
-  if(!match||match[1].length>8192)throw fail('Authentication required',401);
-  const pieces=match[1].split('.');
-  if(pieces.length!==3)throw fail('Invalid token',401);
-  let header,claims;
-  try{
-    header=JSON.parse(new TextDecoder().decode(b64bytes(pieces[0])));
-    claims=JSON.parse(new TextDecoder().decode(b64bytes(pieces[1])));
-  }catch{throw fail('Invalid token',401)}
-  if(header?.alg!=='RS256'||!claims||typeof claims!=='object')throw fail('Invalid token algorithm',401);
-  const origin=String(env.LOC_CONTROL_ORIGIN).replace(/\/$/,'');
-  const issuer=String(claims.iss||'').replace(/\/$/,'');
-  const clerk=Boolean(env.LOC_CLERK_ISSUER&&issuer===String(env.LOC_CLERK_ISSUER).replace(/\/$/,''));
-  const secondary=Boolean(env.LOC_SECONDARY_ISSUER&&issuer===String(env.LOC_SECONDARY_ISSUER).replace(/\/$/,''));
-  if(!clerk&&!secondary)throw fail('Unknown identity issuer',401);
-  const now=Math.floor(Date.now()/1000);
-  if(typeof claims.sub!=='string'||!claims.sub||claims.sub.length>128||
-    !Number.isInteger(claims.exp)||claims.exp<=now||
-    !Number.isInteger(claims.iat)||claims.iat>now+5||
-    !Number.isInteger(claims.nbf)||claims.nbf>now+5||
-    claims.sts==='pending'||claims.act)throw fail('Session is not valid',401);
-  // Clerk may omit azp when the Frontend API request had no Origin.
-  // If present, azp must still match the single configured LOC origin.
-  // The request's own Origin is separately restricted in allowedOrigin().
-  if(clerk&&claims.azp!=null&&claims.azp!==''&&claims.azp!==origin)
-    throw fail('Clerk authorized party does not match LOC',401);
-  if(clerk&&(!/^user_[A-Za-z0-9]+$/.test(claims.sub)||
-    typeof claims.sid!=='string'||!claims.sid.startsWith('sess_')))
-    throw fail('Clerk session subject or ID is invalid',401);
-  if(secondary&&(!env.LOC_SECONDARY_AUDIENCE||
-    !(Array.isArray(claims.aud)?claims.aud.includes(env.LOC_SECONDARY_AUDIENCE):claims.aud===env.LOC_SECONDARY_AUDIENCE)))
-    throw fail('Invalid token audience',401);
-  let key;
-  if(clerk&&!env.LOC_CLERK_JWT_PUBLIC_KEY){
-    key=await clerkPublicKey(env.LOC_CLERK_ISSUER,header.kid);
-  }else{
-    const pem=String(clerk?env.LOC_CLERK_JWT_PUBLIC_KEY:env.LOC_SECONDARY_JWT_PUBLIC_KEY);
-    const body=pem.replace(/-----BEGIN PUBLIC KEY-----|-----END PUBLIC KEY-----|\s/g,'');
-    if(!body)throw fail('Recovery signing key unavailable',503);
-    try{
-      key=await crypto.subtle.importKey('spki',b64bytes(body),
-        {name:'RSASSA-PKCS1-v1_5',hash:'SHA-256'},false,['verify']);
-    }catch{throw fail('Signing key import failed',503);}
-  }
-  let verified=false;
-  try{
-    verified=await crypto.subtle.verify('RSASSA-PKCS1-v1_5',key,
-      b64bytes(pieces[2]),new TextEncoder().encode(pieces[0]+'.'+pieces[1]));
-  }catch(error){
-    if(error?.status)throw error;
-    throw fail('Signature verification operation failed',503);
-  }
-  if(!verified)throw fail('Token signature invalid',401);
-  // Email is usable for legacy management grants only when it is a VERIFIED,
-  // cryptographically signed identity claim. Never promote SDK/local input.
-  const email=String(claims.email||'').trim().toLowerCase();
-  const emailFormat=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  const verifiedEmail=claims.email_verified===true&&emailFormat.test(email)?email:'';
-  // Default Clerk session JWTs contain sub/sid but usually NO signed email.
-  // This deployment's sole root has an independent trusted server-side
-  // management-email binding. Never use an email supplied by the browser.
-  const roots=String(env.LOC_RECOVERY_ROOT_CLERK_IDS||'').split(/[\s,;]+/).filter(Boolean);
-  const rootEmail=String(env.LOC_ROOT_MANAGEMENT_EMAIL||'').trim().toLowerCase();
-  const mappedEmail=clerk&&roots.length===1&&roots[0]===claims.sub&&
-    emailFormat.test(rootEmail)?rootEmail:'';
-  return {provider:clerk?'clerk':'secondary',subject:claims.sub,
-    session:clerk?claims.sid:'verified',email:verifiedEmail||mappedEmail};
+  if(!env.LOC_CONTROL_ORIGIN||!env.LOC_CONTROL_ENCRYPTION_KEY||
+     !env.LOC_AUTHORITY_STATE)
+    throw fail('LOC Auth control is not configured',503);
 }
 function validateTarget(input,id){
   if(!ID.test(id)||!input||typeof input!=='object'||Array.isArray(input))throw fail('Invalid target');
@@ -231,7 +78,7 @@ async function decryptProfile(value,secret){
   return JSON.parse(new TextDecoder().decode(bytes));
 }
 
-// MCP OAuth uses an audience-bound access token, not a Clerk session JWT.
+// MCP OAuth uses a signed, audience-bound LOC access token.
 // Data access is separately authorized by this Group Authority's grants.
 const MCP_RESOURCE='https://mcp.lo3rwang.cc';
 const MANAGED_SCOPE_TABLES=Object.freeze({lo3rwang:'lo3rwang_galaxy',lrunes:'lrunes_galaxy'});
@@ -339,15 +186,15 @@ export class LocAuthorityState extends DurableObject {
     const saved=await this.ctx.storage.list({prefix:'target:'});
     const targets=[];
     for(const [key,item] of saved)targets.push({id:key.slice(7),...item.public});
-    // Built-in routable providers are managed by the independent Gateway and
-    // require no user-entered DB password or modification of the existing Link.
-    for(const [id,label] of [['supabase-current','Supabase'],['neon-current','Neon']]){
-      if(!targets.some(target=>target.id===id))targets.push({
-        id,label,engine:'postgres',managed:true
-      });
-    }
+    // The default control alias is not a selectable user credential.
+    if(!targets.some(target=>target.id==='loc-main'))targets.push({
+      id:'loc-main',label:'主要資料庫連線',engine:'postgres',managed:true
+    });
     targets.sort((a,b)=>a.id.localeCompare(b.id));
-    return {primary_id:await this.ctx.storage.get('primary_id')||'supabase-current',targets};
+    const savedPrimary=await this.ctx.storage.get('primary_id');
+    const primary=targets.some(target=>target.id===savedPrimary)
+      ?savedPrimary:'loc-main';
+    return {primary_id:primary,targets};
   }
   // LOC delegates access with a self-managed asymmetric key. The private JWK
   // remains AES-GCM encrypted in this existing Authority Durable Object.
@@ -409,8 +256,8 @@ export class LocAuthorityState extends DurableObject {
       providers.push(item?{...item.public,active:false,runtime_connected:false}:
         {type,configured:false,secret_configured:false,active:false,runtime_connected:false});
     }
-    // Runtime currently verifies only the deployed Clerk Session for SQL.
-    // This value is intentionally NOT writable via these configuration endpoints.
+    // LOC Auth session verification is independent of OAuth provider settings.
+    // This value is intentionally not writable through these endpoints.
     return {active:'loc',providers};
   }
   async putAuthProvider(type,values){
@@ -481,7 +328,7 @@ export class LocAuthorityState extends DurableObject {
     return id===await this.selectedDatabaseForDelegation(subject,isRoot);
   }
   async selectPrimary(id){
-    const builtin=id==='supabase-current'||id==='neon-current';
+    const builtin=id==='loc-main';
     const target=builtin?{id}:await this.ctx.storage.get('target:'+id);
     if(!target)throw fail('Unknown primary target');
     await this.ctx.storage.put('primary_id',id);
@@ -1123,8 +970,7 @@ async function exchangeLocDelegation(request,env,principal,origin){
     (global||identity||self)&&audience!=='sql'||
     Number(global)+Number(identity)+Number(self)>1)
     throw fail('Invalid delegation audience',400);
-  const roots=String(principal.provider==='loc'?env.LOC_RECOVERY_ROOT_LOC_SUBJECTS:
-    principal.provider==='clerk'?env.LOC_RECOVERY_ROOT_CLERK_IDS:env.LOC_RECOVERY_ROOT_SECONDARY_SUBJECTS)
+  const roots=String(env.LOC_RECOVERY_ROOT_LOC_SUBJECTS||'')
     .split(/[\s,;]+/).filter(Boolean);
   const root=roots.includes(principal.subject);
   const scope=String(input.scopeid||'');
@@ -1160,17 +1006,10 @@ async function exchangeLocDelegation(request,env,principal,origin){
         throw fail('Requested Scope delegation was not granted',403);
     }
   }
-  // Provider-qualified digest avoids collisions between identity providers.
-  // Explicit manual transfer may preserve an existing LOC subject separately.
-  const identityBytes=new TextEncoder().encode(principal.provider+':'+principal.subject);
-  const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',identityBytes)))
-    .map(value=>value.toString(16).padStart(2,'0')).join('');
+  // Native LOC account subjects are immutable; matching email never
+  // transfers an existing owner's grants or identity.
   const now=Math.floor(Date.now()/1000);
-  // Preserve the already-established Clerk owner_id during migration.
-  // A different provider gets a distinct LOC subject until a trusted operator
-  // explicitly maps it; matching email alone never transfers ownership.
-  const sub=['clerk','loc'].includes(principal.provider)?principal.subject:
-    'loc_'+digest.slice(0,40);
+  const sub=principal.subject;
   const targetId=principal.provider==='loc'?
     await stub.selectedDatabaseForDelegation(principal.subject,root):null;
   const claims=issueDelegation({sub,email,
@@ -1215,9 +1054,7 @@ export default {
             'cache-control':'public, max-age=300','x-content-type-options':'nosniff'}
         });
       }
-      const principal=looksLikeNativeToken(request)
-        ?await verifyNativeOAuth(request,env,WEB_AUDIENCE)
-        :await verifyIdentityToken(request,env);
+      const principal=await verifyNativeOAuth(request,env,WEB_AUDIENCE);
       if(!url.pathname.startsWith('/v1/'))throw fail('Not found',404);
       // Identity endpoint is only a verified principal lookup. It grants no
       // data access or management capabilities; the gateway must call mayAccess.
@@ -1248,8 +1085,7 @@ export default {
         }
         throw fail('Method not allowed',405);
       }
-      const roots=String(principal.provider==='loc'?env.LOC_RECOVERY_ROOT_LOC_SUBJECTS:
-        principal.provider==='clerk'?env.LOC_RECOVERY_ROOT_CLERK_IDS:env.LOC_RECOVERY_ROOT_SECONDARY_SUBJECTS)
+      const roots=String(env.LOC_RECOVERY_ROOT_LOC_SUBJECTS||'')
         .split(/[\s,;]+/).filter(Boolean);
       if(!roots.includes(principal.subject))throw fail('Recovery administrator required',403);
       const stub=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName('loc-authority-control-v1'));
