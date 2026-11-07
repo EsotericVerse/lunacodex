@@ -701,10 +701,6 @@ export class LocAuthorityState extends DurableObject {
     });
     return {released:true};
   }
-  async getProfileForGateway(id){
-    const stored=await this.ctx.storage.get('target:'+id);
-    return stored?decryptProfile(stored.encrypted,this.env.LOC_CONTROL_ENCRYPTION_KEY):null;
-  }
 }
 
 function mcpPrLookup(query){
