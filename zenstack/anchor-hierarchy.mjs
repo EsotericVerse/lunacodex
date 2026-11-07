@@ -71,9 +71,9 @@ export function indexZModelAnchorHierarchy(rows,{family,strict=false}={}){
         const child=nodes.get(uid);
         if(!child){unresolved.push({from:node.uid,uid,type:childType});continue;}
         if(child.type!==childType)
-          throw new Error('Invalid '+family+' Anchor relationship: '+node.type+' -> '+child.type);
+          throw new Error('Invalid Anchor hierarchy ('+family+'): '+node.type+' -> '+child.type);
         if(family!=='space'&&incoming.has(uid))
-          throw new Error('Multiple '+family+' parents for Anchor '+uid);
+          throw new Error('Anchor node has multiple parents: '+uid);
         if(!children.has(node.uid))children.set(node.uid,[]);
         children.get(node.uid).push(uid);
         if(!incoming.has(uid))incoming.set(uid,[]);
