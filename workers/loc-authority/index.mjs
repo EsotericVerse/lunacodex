@@ -845,7 +845,15 @@ function mcpPrLookup(query){
 
 async function handleMcpAuthority(request,env,url,origin){
   // Authentication precedes all quotas and any downstream SQL access.
-  const principal=await verifyNativeOAuth(request,env,MCP_AUDIENCE);
+  // Browser administration uses a site-audience LOC OAuth token. MCP tools
+  // keep the separate MCP audience. Both must pass explicit LOC Scope grants.
+  const webAdmin=/^\/v1\/mcp\/(?:scope|group)\//.test(url.pathname);
+  let principal;
+  try{principal=await verifyNativeOAuth(request,env,MCP_AUDIENCE);}
+  catch(error){
+    if(!webAdmin)throw error;
+    principal=await verifyNativeOAuth(request,env,WEB_AUDIENCE);
+  }
   const quota=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName(
     'mcp-quota-global-v1'));
   if(url.pathname==='/v1/mcp/quota'&&request.method==='POST'){
