@@ -4,11 +4,11 @@ import {dbAuthRelation,dbAuthClient} from './db-client.mjs';
 import {isUnifiedAnchorScope} from './unified-anchor-compat.mjs';
 import {selectAllRows,selectRows} from './db-query.mjs';
 import {defaultScopeData,selectManagedScope} from './scope-data';
-import {reanalyzeKeywordClass} from './keyword-reanalysis.mjs';
-import {buildKeywordSearchPatterns,splitKeywordPatternBatches} from './keyword-search-pattern.mjs';
+import {analyzeIncrementalKeywordPatterns} from './keyword-incremental.mjs';
+import {splitKeywordPatternBatches} from './keyword-search-pattern.mjs';
 import {createIndexedDateKeywordReader} from './keyword-article-reader.mjs';
 import {keywordClassState,invalidateKeywordClass,completeKeywordClass} from './keyword-class-state.mjs';
-import {keywordTreeCatalog} from './keyword-tree-report.mjs';
+import {keywordClassCatalog} from './keyword-tree.mjs';
 import {keywordClassDirectory} from './keyword-class-directory.mjs';
 
 const KEYWORD_ANALYSIS_READ_PAGE_SIZE=1000;
@@ -45,11 +45,11 @@ function reportBatchProgress(onProgress,phase,completed,total,percent,label,deta
   });
 }
 
-async function keywordEligibleCount(scope){
+async function keywordSourceCount(scope){
   // COUNT and scan must use the same authenticated visibility: public reads
   // omit owner-visible hidden articles and would report a misleading total.
   const {count,error}=await dbAuthRelation(scope.galaxy)
-    .select('uid',{count:'exact',head:true}).eq('keyword','true');
+    .select('uid',{count:'exact',head:true});
   if(error||count===null||!Number.isSafeInteger(Number(count)))
     throw new Error(error?.message||'無法取得完整 Galaxy 統計總筆數');
   return Number(count);
@@ -111,14 +111,15 @@ async function scopeAndConfig(scopeId,{publicRead=false}={}){
   if(!config)throw new Error('找不到 '+id+' 關鍵詞設定');
   return {scope,config,scopeId:id};
 }
-// Portable full reanalysis: all Galaxy content is read, but only Keyword Item
-// uidlist columns are written. No old classification state is consulted.
+// The Scope keeps ONE literal-word UID index. Article metadata is scanned
+// without body text; only words with no prior scan or documents whose
+// Galaxy.UpdateTime is newer than that word's previous scan read content.
+// Anchor is ZModel hierarchy only: it no longer receives totals/UID lists.
 export async function runKeywordAnalysisBatch(scopeId,{classUid:requestedClassUid='',onProgress}={}){
   const id=normalizeScopeId(scopeId),{scope,config}=await scopeAndConfig(id);
   const classUid=String(requestedClassUid||config.current_keyword_class_uid||'');
   if(!/^[0-9A-Za-z]{8}$/.test(classUid))throw new Error('尚未指定有效的 Keywords Class');
-  // Keywords rules are private unless explicitly shared. Reanalysis always
-  // reads with the authenticated Scope-owner client, never anonymous RLS.
+  const startedAt=new Date().toISOString();
   const treeRows=[];
   for(let offset=0;;offset+=500){
     const {data,error}=await dbAuthRelation(scope.keywords)
@@ -128,11 +129,19 @@ export async function runKeywordAnalysisBatch(scopeId,{classUid:requestedClassUi
     treeRows.push(...(data||[]));
     if((data||[]).length<500)break;
   }
-  const catalog=keywordTreeCatalog(treeRows,classUid);
+  const {catalog}=keywordClassCatalog(treeRows,classUid);
   const minChars=normalizeKeywordMinChars(config.keyword_min_chars);
   const minDocuments=normalizeKeywordMinDocuments(config.keyword_min_documents);
-  const eligibleCount=await keywordEligibleCount(scope);
-  // Mark only this Class stale; other Classes keep their completed results.
+  const expectedCount=await keywordSourceCount(scope);
+  const existingPatterns=[];
+  for(let offset=0;;offset+=500){
+    const {data,error}=await dbAuthRelation('silver.loc_search_pattern')
+      .select('pattern,count,uid_list').eq('scopeid',id)
+      .order('pattern',{ascending:true}).range(offset,offset+499);
+    if(error)throw new Error(error.message||'關鍵詞詞級索引讀取失敗');
+    existingPatterns.push(...(data||[]));
+    if((data||[]).length<500)break;
+  }
   const staleMeta=invalidateKeywordClass(config.keyword_meta,classUid);
   const {data:staled,error:staleError}=await dbAuthRelation(scope.config)
     .update({keyword_meta:staleMeta,staticstime:null})
@@ -143,63 +152,52 @@ export async function runKeywordAnalysisBatch(scopeId,{classUid:requestedClassUi
   const progress=event=>{
     const done=Number(event.completed)||0,total=Number(event.total)||0;
     const percent=event.phase==='reading'
-      ?Math.min(60,3+Math.floor(57*done/Math.max(1,Number(eligibleCount)||done)))
-      :event.phase==='writing'?60+Math.floor(39*done/Math.max(1,total)):100;
+      ?Math.min(60,3+Math.floor(57*done/Math.max(1,expectedCount))):
+      event.phase==='writing'?60+Math.floor(39*done/Math.max(1,total)):100;
     reportBatchProgress(onProgress,event.phase,done,total,percent,
-      event.phase==='reading'?'已重新判斷 '+done+' 篇文章':
-      event.phase==='writing'?'已更新 '+done+' / '+total+' 筆 Keywords':'分析已完成');
+      event.phase==='reading'
+        ?'檢查 '+done+' 篇文章（實際解析 '+(Number(event.parsed)||0)+' 篇）':
+      event.phase==='writing'?'已更新 '+done+' / '+total+' 組詞級索引':'分析已完成');
   };
-  // Galaxy.date is already indexed. All eligible LOC Galaxy dates were
-  // checked against their Taipei publication-date components before this
-  // cutover; the reader also validates every returned row before writing.
-  // Within each day articles stay in createtime + UID order.
-  const articleColumns='uid,date,createtime,content,keyword';
-  const readArticles=createIndexedDateKeywordReader({
+  // A metadata-only date reader preserves the established chronological,
+  // tie-complete and article COUNT checks. No body text is transferred until
+  // this incremental scan decides that an article actually needs parsing.
+  const articleColumns='uid,date,createtime,UpdateTime,keyword';
+  const readMetadataPage=createIndexedDateKeywordReader({
     readDatePage:async ({after,limit})=>{
-      let query=dbAuthRelation(scope.galaxy)
-        .select(articleColumns).eq('keyword','true')
-        .not('date','is',null)
-        .order('date',{ascending:true}).limit(limit);
-      if(after!==null)query=query.gt('date',after);
-      const {data,error}=await query;
-      if(error)throw new Error(error.message||'Galaxy 日期索引分頁讀取失敗');
+      let q=dbAuthRelation(scope.galaxy).select(articleColumns)
+        .not('date','is',null).order('date',{ascending:true}).limit(limit);
+      if(after!==null)q=q.gt('date',after);
+      const {data,error}=await q;
+      if(error)throw new Error(error.message||'Galaxy metadata 分頁讀取失敗');
       return data||[];
     },
     readDatePeers:async ({date,maximumRows})=>{
       const {data,count,error}=await dbAuthRelation(scope.galaxy)
-        .select(articleColumns,{count:'exact'}).eq('keyword','true')
-        .eq('date',date).limit(maximumRows);
-      if(error)throw new Error(error.message||'Galaxy 同日文章讀取失敗');
+        .select(articleColumns,{count:'exact'}).eq('date',date).limit(maximumRows);
+      if(error)throw new Error(error.message||'Galaxy 同日 metadata 讀取失敗');
       return {rows:data||[],count};
     },
     readUndated:async ({maximumRows})=>{
       const {data,count,error}=await dbAuthRelation(scope.galaxy)
-        .select(articleColumns,{count:'exact'}).eq('keyword','true')
-        .is('date',null).limit(maximumRows);
-      if(error)throw new Error(error.message||'Galaxy 無日期文章讀取失敗');
+        .select(articleColumns,{count:'exact'}).is('date',null).limit(maximumRows);
+      if(error)throw new Error(error.message||'Galaxy 無日期 metadata 讀取失敗');
       return {rows:data||[],count};
     }
   });
-  const {keywordUidListRecord}=await import('./keyword-tree.mjs');
-  const typeByUid=new Map(treeRows.map(row=>[row.uid,row.type]));
-  const result=await reanalyzeKeywordClass({
-    classUid,treeRows,minChars,pageSize:KEYWORD_ANALYSIS_READ_PAGE_SIZE,expectedCount:eligibleCount,compactResults:isUnifiedAnchorScope(id),
-    readPage:readArticles,
-    writeNode:async ({uid,uid_lists})=>{
-      const type=typeByUid.get(uid);
-      if(!type)throw new Error('Keyword UID missing during classification write');
-      // Preserve the existing Item/Group persistence contract; per-word
-      // index hits are handled separately from the Item's total.
-      const stored=isUnifiedAnchorScope(id)?uid_lists:keywordUidListRecord(type,uid_lists);
-      const {data,error}=await dbAuthRelation(scope.keywords).update({uid_lists:stored})
-        .eq('uid',uid).select('uid');
-      if(error||data?.length!==1)throw new Error('Keywords.uid_lists 儲存失敗：'+uid+' '+(error?.message||''));
+  const result=await analyzeIncrementalKeywordPatterns({
+    scopeId:id,classUid,treeRows,items:catalog,
+    existingPatterns,patternScans:config.keyword_meta?.pattern_scans||{},
+    minChars,pageSize:KEYWORD_ANALYSIS_READ_PAGE_SIZE,expectedCount,
+    startedAt,readMetadataPage,
+    readContent:async uids=>{
+      if(!uids.length)return [];
+      const {data,error}=await dbAuthRelation(scope.galaxy)
+        .select('uid,content,keyword').in('uid',uids).limit(uids.length);
+      if(error)throw new Error(error.message||'Galaxy 變動文章內文讀取失敗');
+      return data||[];
     },
-    writePatterns:async ({items,termMatches})=>{
-      const patterns=buildKeywordSearchPatterns(id,items,termMatches);
-      // The SQL transport accepts at most 1 MiB per request. Keep large
-      // article UID arrays out of any single upload; only the last batch
-      // can prune obsolete terms before the Class completion marker.
+    writePatterns:async ({patterns})=>{
       const batches=splitKeywordPatternBatches(patterns);
       for(let i=0;i<batches.length;i++){
         const {data,error}=await dbAuthClient.schema('silver').managedAction('sync_search_patterns',{
@@ -207,35 +205,36 @@ export async function runKeywordAnalysisBatch(scopeId,{classUid:requestedClassUi
           p_final:i===batches.length-1
         });
         if(error||data?.patterns!==batches[i].length)
-          throw new Error(error?.message||'關鍵詞搜尋對照表未能完整寫入');
+          throw new Error(error?.message||'關鍵詞詞級索引未能完整寫入');
+        progress({phase:'writing',completed:i+1,total:batches.length});
       }
     },
     finalize:async counts=>{
-      // Per-Class completion is the only public-config state. Labels, hit counts
-      // and matching details are read from Class-authorized tree RPCs instead.
-      const meta={class_uid:classUid,matchedDocuments:counts.matchedDocuments,
-        analyzedDocuments:counts.analyzedDocuments,itemMatches:counts.itemMatches,
-        occurrences:counts.occurrences};
       const now=new Date().toISOString();
       const {data:latest,error:readError}=await dbAuthRelation(scope.config)
-        .select('keyword_meta,current_keyword_class_uid').eq('id',id).limit(1);
+        .select('keyword_meta').eq('id',id).limit(1);
       if(readError||latest?.length!==1)
-        throw new Error(readError?.message||'無法讀取最新 Class 狀態');
-      const saved=completeKeywordClass(latest[0].keyword_meta,classUid,meta,now);
+        throw new Error(readError?.message||'無法讀取最新關鍵詞狀態');
+      const meta={class_uid:classUid,matchedDocuments:counts.matchedDocuments,
+        analyzedDocuments:counts.analyzedDocuments,parsedDocuments:counts.parsedDocuments,
+        reusedDocuments:counts.reusedDocuments,itemMatches:counts.itemMatches,
+        occurrences:counts.occurrences};
+      const merged=completeKeywordClass(latest[0].keyword_meta,classUid,meta,now);
+      const saved={...merged,pattern_scans:{
+        ...(merged.pattern_scans||{}),...counts.patternScans
+      }};
       const {data,error}=await dbAuthRelation(scope.config)
-        .update({
-          keyword_meta:saved,
-          staticstime:null,updated_at:now
-        })
+        .update({keyword_meta:saved,staticstime:null,updated_at:now})
         .eq('id',id).select('id');
-      if(error||data?.length!==1)throw new Error(error?.message||'Keywords 結果保存失敗');
-    },onProgress:progress
+      if(error||data?.length!==1)throw new Error(error?.message||'Keywords 狀態保存失敗');
+    },
+    onProgress:progress
   });
   clearKeywordAnalysisCache();
   return {...result,documentCount:result.analyzedDocuments,
     keywordDocumentCount:result.matchedDocuments,keywordMinChars:minChars,
-    keywordMinDocuments:minDocuments,statisticsEnabled:result.matchedDocuments>minDocuments,
-    skipped:false};
+    keywordMinDocuments:minDocuments,
+    statisticsEnabled:result.matchedDocuments>minDocuments,skipped:false};
 }
 function emptyStored(config,extra={}){
   const minDocuments=normalizeKeywordMinDocuments(config?.keyword_min_documents);
