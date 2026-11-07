@@ -1,14 +1,14 @@
 // Device-local SQLite backend for the hidden "local" Scope (private article
 // import: MSN / Twitter style personal archives). This NEVER writes to
-// Supabase or Neon -- every table lives only in this browser's IndexedDB
+// remote SQL Gateways -- every table lives only in this browser's IndexedDB
 // (web) or this device's native SQLite file (iOS via Capacitor), mirroring
 // the dual web/native pattern already proven by ../../lrunes/local-rune-sqlite.mjs.
 // That file is LunaRunes-daily-draw-settings-specific and is NOT reused or
 // touched here; this is a separate, general-purpose adapter conforming to
-// the SAME db-contract.mjs interface shape as providers/supabase.mjs, so
+// the SAME db-contract.mjs interface shape as providers/remote SQL transport.mjs, so
 // Culture.jsx / Statistics / Search.jsx work against it unchanged.
 //
-// Table set (field-for-field parity with the matching Supabase `silver`
+// Table set (field-for-field parity with the matching remote SQL transport `silver`
 // tables, confirmed column-by-column against the live schema):
 //   local               -- scope settings row (was `lo3rwang`)
 //   local_galaxy        -- imported articles (was `lo3rwang_galaxy`)
@@ -752,7 +752,7 @@ function compileLocalOr(node){
     params:parts.flatMap(part=>part.params)};
 }
 
-// -- Chainable query builder matching the subset of the Supabase JS client
+// -- Chainable query builder matching the subset of the remote SQL transport JS client
 //    actually used by db-contract.mjs / Culture.jsx / Statistics / Search.jsx --
 function queryBuilder(table){
   const name=tableName(table);
@@ -858,7 +858,7 @@ function queryBuilder(table){
 }
 // JSON/boolean columns round-trip through TEXT/INTEGER in SQLite; decode the
 // handful of columns that are arrays/objects/booleans in the real Postgres
-// schema so callers see the same shapes they'd get from Supabase.
+// schema so callers see the same shapes they'd get from remote SQL transport.
 const JSON_COLUMNS=new Set(['DefaultArticleClass','keyword_meta','search_aliases','block_entity','block_image',
   'target_id','media_link','anchor_ids','range','lists','uid_lists','runeslist']);
 const BOOL_COLUMNS=new Set(['statics','culture','search','trace','list','keyword','others','extract','search_able','statistics_able','culture_able','keyword_class_share_enabled',
