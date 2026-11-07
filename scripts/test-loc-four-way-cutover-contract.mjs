@@ -27,7 +27,9 @@ test('Cloudflare Pages root MCP route and discovery endpoints are enabled',()=>{
   assert.ok(routes.include.includes(p),'Missing Pages function route: '+p);
  const handler=read('functions/index.js');
  assert.match(handler,/hostname==='mcp\.lo3rwang\.cc'/);
- assert.match(handler,/return handleMcp\(context\.request,context\.env\)/);
+ assert.match(handler,/return handleMcp\(context\.request,\{/);
+ assert.match(handler,/locDirectDatabase:\(\)=>directMcpKysely\(bindings\)/);
+ assert.doesNotMatch(handler,/LOC_SQL_GATEWAY_URL|LOC_MCP_SQL_GATEWAY_URL/);
  assert.match(handler,/return context\.next\(\)/);
 });
 
