@@ -6,6 +6,8 @@ import {
   RUNE_VFX_OVERLAYS,runeEffectFor
 } from '../app/lrunes/effekseer/rune-effect-library.mjs';
 import {EFFECT_ASSET_BLOBS} from './rune-effekseer-asset-manifest.mjs';
+import {posix,win32} from 'node:path';
+import {resolvePinnedEffekseerTarget} from './pinned-effekseer-path.mjs';
 
 const drawable=CANONICAL_RUNE_ENGLISH.filter(name=>name!=='Virtue');
 const pinned=new Set(EFFECT_ASSET_BLOBS.map(asset=>asset.target));
@@ -54,4 +56,21 @@ test('every expanded MAGICAL X SPIRAL effect is pinned without duplicate entries
   assert.equal(pinned.size,EFFECT_ASSET_BLOBS.length);
   assert.ok(mxsPaths.length>=78);
   for(const path of mxsPaths)assert.ok(pinned.has(path.slice('Collections/'.length)),`Missing MxS scene: ${path}`);
+});
+
+test('pinned Effekseer assets resolve safely on both Windows and POSIX',()=>{
+  for(const [platform,root] of [
+    [posix,'/loc/public/vendor/effekseer/Collections'],
+    [win32,'C:\\loc\\public\\vendor\\effekseer\\Collections']
+  ]){
+    const entry='MAGICALxSPIRAL/MxS_Gohlem_Shield1.efkefc';
+    assert.equal(resolvePinnedEffekseerTarget(root,entry,platform),platform.resolve(root,entry));
+    for(const illegal of ['../outside.efkefc','../Collections-other/fake.png','.','']){
+      assert.throws(()=>resolvePinnedEffekseerTarget(root,illegal,platform),
+        /Unsafe Effekseer asset path/);
+    }
+    const absolute=platform===win32?'D:\\outside\\evil.efkefc':'/outside/evil.efkefc';
+    assert.throws(()=>resolvePinnedEffekseerTarget(root,absolute,platform),
+      /Unsafe Effekseer asset path/);
+  }
 });
