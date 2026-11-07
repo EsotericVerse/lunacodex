@@ -76,6 +76,39 @@ export async function withIndexedCandidates(body,target){
   return {...body,filters:[...(Array.isArray(body.filters)?body.filters:[]),
     {column:'uid',operator:'in',value:[...new Set(ids)]}]};
 }
+/**
+ * One FlexSearch lookup for an authorized Scope spread over multiple SQL
+ * targets. All dataset IDs originate in the trusted Gateway registry.
+ * Partial, invalid, empty, stale or unavailable indexes fall back to each
+ * source's original SQL predicate. Never trust index hits as permissions.
+ */
+export async function federatedIndexedCandidates(body,sources){
+  if(String(Deno.env.get('LOC_SEARCH_INDEX_ENABLED')||'').toLowerCase()!=='true')
+    return null;
+  const scopeId=String(body?.indexHint?.scopeId||'');
+  const query=String(body?.indexHint?.query||'').trim();
+  if(!SCOPE.test(scopeId)||!Array.isArray(sources)||!sources.length||
+     sources.length>12||query.length<2||query.length>100||
+     !/^[\p{L}\p{N}]+$/u.test(query))return null;
+  const dbIds=sources.map(source=>source?.databaseId);
+  if(dbIds.some(id=>!SOURCE.test(id))||new Set(dbIds).size!==dbIds.length)return null;
+  const response=await requestIndex('/v1/search','POST',{
+    scopeId,dbIds,entityType:'galaxy',query
+  });
+  if(response?.complete!==true||!Array.isArray(response.hits)||
+     response.hits.length>200||!response.hits.length)return null;
+  const candidates=new Map(dbIds.map(id=>[id,new Set()]));
+  for(const hit of response.hits){
+    if(hit?.scopeId!==scopeId||!candidates.has(hit.dbId)||
+       hit.entityType!=='galaxy'||!UID.test(hit.uid)||
+       hit.globalUid!==locGlobalUid({
+         databaseId:hit.dbId,scopeId,uid:hit.uid
+       }))return null;
+    candidates.get(hit.dbId).add(hit.uid);
+  }
+  return candidates;
+}
+
 // A trusted Gateway writes only to the private index Worker. An index failure
 // never changes or rolls back a committed Galaxy write; index completeness
 // must be managed separately by the backfill/cutover procedure.

@@ -140,7 +140,7 @@ function toResult(row,source,scopeId,copy=UI_COPY){
     date:row.date||row.createtime||row.address||row.record_date||row.UpdateTime||row.updated_at||'',
     createtime:row.createtime||'',
     snippet:'',...(isGalaxy?{statics:row.statics,culture:row.culture,search:row.search,trace:row.trace,list:row.list,keyword:row.keyword,others:row.others,extract:row.extract}:{}),
-    scopeId:scope,dbId,globalUid,resourceType,resourceId,
+    scopeId:scope,dbId,globalUid,federated:Boolean(row.__federated),resourceType,resourceId,
     relatedMedia:Array.isArray(row.related_media)?row.related_media:[],
     relatedTime:row.related_time||null,
     relatedSpace:row.related_space||null,
@@ -410,7 +410,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     const scopeData=scopeById.get(result.scopeId);
     if(!scopeData)throw new Error(UI_COPY.search.fullTextNotFound);
     const id=result.editResourceId||result.resourceId;
-    return selectGalaxyIdentity(scopeData,id,{includeHidden:canManageSearchScope(account,result.scopeId),dbId:result.dbId||''});
+    return selectGalaxyIdentity(scopeData,id,{includeHidden:canManageSearchScope(account,result.scopeId),dbId:result.dbId||'',federated:result.federated===true});
   }
 
   async function executeSearch(rawQuery,cursor=null,{append=false,browse=false,overrideOptions=null}={}){

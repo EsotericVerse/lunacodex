@@ -22,7 +22,8 @@ import {resolveSqlExecutionPort,assertCrossEnginePublicRead,authorizeCrossEngine
 import {resolveDatabaseRouting} from "../../../app/loc/providers/routing-config.mjs";
 import {databaseAccessTargets} from "../../../app/loc/providers/access.js";
 import {isTextSearchQuery,checkSearchQos} from "../../../app/loc/providers/search-qos.mjs";
-import {withIndexedCandidates,writeSearchIndexDocuments,indexDocumentsFromWrite,isSearchIndexConfigured,searchIndexDatabaseId} from "../../../app/loc/providers/search-index-service.mjs";
+import {withIndexedCandidates,federatedIndexedCandidates,writeSearchIndexDocuments,indexDocumentsFromWrite,isSearchIndexConfigured,searchIndexDatabaseId} from "../../../app/loc/providers/search-index-service.mjs";
+import {federatedDatasetsFor,indexTargetForScope,federatedScopeFromQuery,isFederatedTextSearch,isDatasetQualifiedArticleRead,publicGalaxyGate,mergeFederatedGalaxyRows} from "../../../app/loc/providers/federated-galaxy-search.mjs";
 import {bindLocAuthorization,canManageLoc} from "../../../app/loc/providers/loc-authorization.mjs";
 
 const corsHeaders = {
@@ -197,7 +198,7 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
       namespace:executionPort.engine==='postgres'&&!target.schema_name
         ?undefined:String(target.schema_name||(
           executionPort.engine==='mssql'?'dbo':'public')),
-      publicOnly:access?.publicOnly===true});
+      publicOnly:publicGalaxyGate(body,role,claims)||access?.publicOnly===true});
   }
   await bindPostgresSession(trx,role,claims,String(target.provider||"supabase"));
   if(body.kind==="query"){
@@ -217,7 +218,10 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
     // PostgreSQL must stop work even when browser aborts its 25s timeout.
     if(isTextSearchQuery(body))
       await sql`set local statement_timeout = '8000ms'`.execute(trx);
-    return await executeKyselyQuery(trx,body,{modelName});
+    return await executeKyselyQuery(trx,body,{modelName,
+      // Public Search is independently protected by the Gateway even on a
+      // PostgreSQL connection that does not implement RLS.
+      publicOnly:publicGalaxyGate(body,role,claims)});
   }
   if(body.kind==="anchor")return await executeKyselyAnchor(trx,body,{role,claims});
   if(body.kind==="analytics")return await executeKyselyAnalytics(trx,body,{role});
@@ -310,7 +314,9 @@ Deno.serve(async (request) => {
       // guessed UID or client-provided partial document enters the index.
       if(isSearchIndexConfigured()&&response?.accepted===true){
         try{
-          const sourceId=searchIndexDatabaseId(controlTarget);
+          const indexedTarget=indexTargetForScope(
+            Deno.env.get("LOC_SEARCH_DATASETS_JSON")||"",actor.scopeid,controlTarget);
+          const sourceId=indexedTarget?searchIndexDatabaseId(indexedTarget):null;
           const ids=[...new Set((response.articles||[])
             .filter(item=>item?.appended>0)
             .map(item=>String(item.uid||''))
@@ -355,6 +361,59 @@ Deno.serve(async (request) => {
   }
   let resolvingTarget = false;
   try {
+    if(body.kind==="index-snapshot"){
+      if(requestedTarget!=="configured")
+        return json({error:{message:"Index snapshot requires configured SQL route"}},403);
+      // Trusted, read-only index backfill. This endpoint is not exposed by
+      // the browser client: both a scope-management LOC delegation and the
+      // separate index-service secret are required. It never mutates SQL.
+      const scopeId=String(body.scopeId||"");
+      const databaseId=String(body.databaseId||"");
+      const expectedSecret=String(Deno.env.get("LOC_SEARCH_INDEX_SECRET")||"");
+      const suppliedSecret=String(request.headers.get("x-loc-index-secret")||"");
+      const encode=new TextEncoder();
+      const a=encode.encode(expectedSecret),b=encode.encode(suppliedSecret);
+      let diff=a.length^b.length;
+      for(let i=0;i<Math.max(a.length,b.length);i++)
+        diff|=(a[i]||0)^(b[i]||0);
+      if(role!=="authenticated"||expectedSecret.length<32||diff!==0||
+         !/^[a-z][a-z0-9]{0,14}$/.test(scopeId)||
+         !/^[a-z][a-z0-9_-]{0,63}$/.test(databaseId)||
+         !canManageDelegation(claims,"scope",scopeId))
+        return json({error:{message:"Verified LOC index backfill permission required"}},403);
+      const datasets=federatedDatasetsFor(
+        Deno.env.get("LOC_SEARCH_DATASETS_JSON")||"",scopeId);
+      const configured=await liveConfiguredTarget();
+      const selected=datasets.find(item=>item.databaseId===databaseId);
+      const source=selected?.target||
+        (datasets.length===0&&databaseId===searchIndexDatabaseId(configured)
+          ?configured:null);
+      if(!source)return json({error:{message:"Index source is not registered for this Scope"}},409);
+      const offset=Number(body.offset||0),limit=Number(body.limit||50);
+      const head=body.head===true;
+      if(!Number.isSafeInteger(offset)||offset<0||offset>10_000_000||
+         !Number.isSafeInteger(limit)||limit<1||limit>50)
+        return json({error:{message:"Invalid bounded index snapshot page"}},400);
+      const db=isControlTarget(source)
+        ?await databaseForTarget(controlTarget)
+        :await databaseForTarget(source,{profileLookup:profileForTarget});
+      const executionPort=resolveSqlExecutionPort(source);
+      const queryBody={
+        kind:"query",schema:"silver",table:scopeId+"_galaxy",operation:"select",
+        columns:head?["uid"]:["uid","content"],
+        filters:[],or:[],orders:[{column:"createtime",ascending:true}],
+        head,count:head?"exact":null,limit,offset
+      };
+      // DBM connection is trusted here. Reading the complete index dataset
+      // must not depend on vendor RLS session impersonation or public flags.
+      // No UID ordering: duplicates/coverage are checked by the builder.
+      const result=await db.transaction().execute(trx=>executeKyselyQuery(trx,
+        queryBody,{dialect:executionPort.engine,namespace:
+          executionPort.engine==="postgres"&&!source.schema_name
+            ?undefined:String(source.schema_name||(
+              executionPort.engine==="mssql"?"dbo":"public"))}));
+      return json(result);
+    }
     if(["mcp-read","mcp-search","mcp-sync","mcp-append"].includes(String(body.kind))){
       // One LOC-signed Kysely executor for all SQL dialects. The Gateway has
       // already verified the JWT audience, Scope and action. No provider
@@ -372,8 +431,10 @@ Deno.serve(async (request) => {
       // MCP append is incremental. Do not reload a whole conversation solely
       // to update FlexSearch; the matching SQL transaction already committed.
       if(result?.data?.duplicate!==true&&isSearchIndexConfigured()){
-        const dbId=searchIndexDatabaseId(mcpTarget);
         const scopeId=String(body.scopeid||'');
+        const indexedTarget=indexTargetForScope(
+          Deno.env.get("LOC_SEARCH_DATASETS_JSON")||"",scopeId,mcpTarget);
+        const dbId=indexedTarget?searchIndexDatabaseId(indexedTarget):null;
         const row=body.kind==='mcp-sync'?body.row:null;
         const doc=body.kind==='mcp-sync'&&row
           ?{uid:row.uid,content:row.content,operation:'upsert'}
@@ -503,13 +564,52 @@ Deno.serve(async (request) => {
       }else if(!["query","managed-write","anchor","analytics","public-action"].includes(String(body.kind)))
         return json({error:{message:"Unsupported SQL target action"}},403);
     }
-    // The database ID supplied with an article read is an assertion, not
-    // permission to choose arbitrary SQL credentials. A collision must
-    // reject rather than return the same UID from the wrong database.
+    // Logical data sources are registered on the trusted SQL Gateway, not
+    // selected by a browser. An empty registry preserves original behavior.
+    const queryScope=federatedScopeFromQuery(body);
+    const datasets=requestedTarget==="configured"&&queryScope
+      ?federatedDatasetsFor(Deno.env.get("LOC_SEARCH_DATASETS_JSON")||"",queryScope)
+      :[];
+    if(requestedTarget==="configured"&&datasets.length>1&&
+       body.expectedDbId===undefined&&isFederatedTextSearch(body)){
+      // One external index lookup for all configured datasets. If it is not
+      // fully covered or available, every source retains the SQL text query.
+      // This is a read-only operation; it never sends article contents to KV.
+      const indexed=await federatedIndexedCandidates(body,datasets);
+      const merged=await mergeFederatedGalaxyRows(datasets,body,async(source,page)=>{
+        const candidates=indexed?.get(source.databaseId);
+        if(candidates?.size){
+          page={...page,filters:[...(page.filters||[]),{
+            column:"uid",operator:"in",value:[...candidates]
+          }]};
+        }
+        const readTarget=source.target;
+        const readDb=isControlTarget(readTarget)
+          ?await databaseForTarget(controlTarget)
+          :await databaseForTarget(readTarget,{profileLookup:profileForTarget});
+        // The *same* signed LOC claims and Kysely policy checks apply to each
+        // database. No per-UID SQL queries, no SQL provider API and no RLS
+        // assumption beyond the existing optional PostgreSQL session.
+        const pageResult=await readDb.transaction().execute(trx=>
+          executeRequest(trx,readTarget,role,claims,page));
+        return pageResult?.data||[];
+      });
+      return json(merged);
+    }
+    // One-source federation is still a real logical route and must not
+    // silently read the control/primary database instead.
+    if(requestedTarget==="configured"&&datasets.length===1&&
+       body.expectedDbId===undefined&&isFederatedTextSearch(body))
+      target=datasets[0].target;
+    // A qualified article read is an assertion against a server-authorized
+    // Scope dataset. Identical UIDs across databases are not interchangeable.
     if(body.expectedDbId!==undefined){
       const expected=String(body.expectedDbId||'');
-      if(body.kind!=="query"||body.operation!=="select"||
-         !expected||expected!==searchIndexDatabaseId(target))
+      if(!isDatasetQualifiedArticleRead(body)||!expected)
+        return json({error:{message:"Invalid qualified article read"}},400);
+      const matched=datasets.find(item=>item.databaseId===expected);
+      if(matched)target=matched.target;
+      else if(expected!==searchIndexDatabaseId(target))
         return json({error:{message:"Article database does not match the authorized SQL route"}},409);
     }
     // A complete external index can narrow only this one SELECT's UID set.
@@ -555,7 +655,13 @@ Deno.serve(async (request) => {
     // Index ingestion occurs only after the SQL transaction commits. A KV
     // outage never changes the result of an authorized SQL write.
     if(isSearchIndexConfigured()){
-      const docs=indexDocumentsFromWrite(body,target);
+      const writeTable=String(body.kind==="managed-write"
+        ?(body.payload as Record<string,unknown>||{}).p_table||""
+        :body.table||"").replace(/^silver\./,"");
+      const scope=writeTable.match(/^([a-z][a-z0-9]{0,14})_galaxy$/)?.[1];
+      const indexedTarget=scope?indexTargetForScope(
+        Deno.env.get("LOC_SEARCH_DATASETS_JSON")||"",scope,target):null;
+      const docs=indexedTarget?indexDocumentsFromWrite(body,indexedTarget):[];
       if(docs.length&&Number(result?.data?.count??result?.count??1)>0){
         const indexed=await writeSearchIndexDocuments(docs);
         if(!indexed)console.warn('[loc-search-index] Galaxy write index update incomplete');

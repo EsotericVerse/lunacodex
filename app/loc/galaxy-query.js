@@ -274,7 +274,7 @@ export async function selectGalaxyContent(scope,uid,{authenticated=false,dbId=''
   return selectRowById(current.galaxy,{idColumn:'uid',id,columns:'uid,content',authenticated,expectedDbId:dbId});
 }
 
-async function relatedArticleTitlesFor(scope,row,{includeHidden=false}={}){
+async function relatedArticleTitlesFor(scope,row,{includeHidden=false,dbId=''}={}){
   const ids=[...new Set([row.source_id,row.ref_id,...(normalizeRelationIds(row.target_id)||[])]
     .map(value=>String(value||'').trim()).filter(Boolean))];
   if(!ids.length)return {};
@@ -287,7 +287,7 @@ async function relatedArticleTitlesFor(scope,row,{includeHidden=false}={}){
         ...(!includeHidden?[articlePermissionFilter(scope,'list')]:[])],
       orFilter:'',
       limit:batch.length,
-      authenticated:includeHidden
+      authenticated:includeHidden,expectedDbId:dbId
     });
     return rows;
   });
@@ -398,7 +398,7 @@ function articleStatisticsContext(scope,day){
     year:{start:yearStart,end:yearEnd}};
 }
 
-export async function selectGalaxyIdentity(scope,uid,{includeHidden=false,dbId=''}={}){
+export async function selectGalaxyIdentity(scope,uid,{includeHidden=false,dbId='',federated=false}={}){
   const current=scopeOf(scope);
   const id=String(uid||'').trim();
   if(!id)return null;
@@ -420,10 +420,15 @@ export async function selectGalaxyIdentity(scope,uid,{includeHidden=false,dbId='
   const placeId=String(row.place_id||'').trim();
   const day=local?localArticleDate(row.createtime):articleDate(row.date);
   const [relationTitles,mediaRows,space,time,statistics]=await Promise.all([
-    relatedArticleTitlesFor(current,row,{includeHidden}).catch(()=>({})),
-    mediaRowsFor(current,mediaIds).catch(()=>[]),
-    articleSpaceContext(current,placeId,{authenticated:includeHidden}).catch(()=>({place:null,routes:[],traces:[]})),
-    articleTimeContext(current,day).catch(()=>({anchors:[],periods:[],eras:[]})),
+    relatedArticleTitlesFor(current,row,{includeHidden,dbId:federated?dbId:''}).catch(()=>({})),
+    // A federated Galaxy row may live in another database with independent
+    // Anchor/Media/Time UIDs. Until those readers accept a qualified dataset,
+    // never attach unrelated primary-DB metadata to this article.
+    federated?Promise.resolve([]):mediaRowsFor(current,mediaIds).catch(()=>[]),
+    federated?Promise.resolve({place:null,routes:[],traces:[]}):
+      articleSpaceContext(current,placeId,{authenticated:includeHidden}).catch(()=>({place:null,routes:[],traces:[]})),
+    federated?Promise.resolve({anchors:[],periods:[],eras:[]}):
+      articleTimeContext(current,day).catch(()=>({anchors:[],periods:[],eras:[]})),
     articleStatisticsContext(current,day)
   ]);
   const mediaById=new Map(mediaRows.map(item=>[String(item.uid),item]));

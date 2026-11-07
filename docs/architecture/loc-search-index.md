@@ -16,7 +16,9 @@ The Galaxy SQL Schema remains unchanged. This is an **optional index accelerator
 
 ## Boundaries
 
-The current SQL Gateway has one configured primary database and its existing backup choices. It **does not yet federate one Scope across two simultaneously active SQL targets**. The index contract supports multiple logical dbIds, but SQL multi-target orchestration and article-detail routing are separate work.
+The SQL Gateway now has an **opt-in federated Galaxy text-search route**: one Scope can read multiple independent registered SQL datasets in one request, preserving colliding local UIDs as separate ZModel global IDs. The source list is a trusted server-side configuration, not a browser SQL target selector. All sources use their existing Kysely drivers and signed LOC Auth gate; cross-dataset date pagination uses an explicit SQL-portable NULLS LAST expression and a bounded k-way merge (max four concurrent SQL reads). There is no SQL replication or shared Galaxy table.
+
+This is **not yet unrestricted SQL federation**: only the Search text-query shape and qualified Galaxy row lookup are handled. Culture/Trace/Statistics and deep search pages beyond the bounded 2,000-row window retain their existing routes or fail explicitly. For federated article details, **unqualified Anchor/Media/Time context is intentionally not attached**: mixing source-local Anchor or Media UIDs from the primary DB would be incorrect. Qualified Galaxy related-article title reads use the same `databaseId`; the remaining linked-data readers require a later dataset-aware route. Ordinary non-federated article details keep their existing functionality. A future user-facing hot-swap registration UI is not part of this change.
 
 Cloudflare Workers KV is **eventually consistent**. A new index delta can lag a successful SQL commit, especially across regions. Even though SQL revalidation prevents stale/private content from being displayed, it cannot guarantee that an index has not temporarily omitted new matches. For that reason, **index-based narrowing is disabled by default**. Enable it only once full coverage, ingestion and acceptable freshness have been established. Strict read-after-write search requires a stronger consistency protocol than plain KV.
 
@@ -27,10 +29,26 @@ An index marked complete must cover all eligible documents, including private do
 1. Retain existing LOC_KV. The former MCP buffer at workers/loc-channel1 and the loc-auth hourly Cron are unrelated to the new search tier; neither is modified or deleted by this PR. Decide their retirement separately.
 2. Deploy workers/loc-search-index/wrangler.jsonc using the existing Wrangler workflow. Configure a random 32+ character, server-only **LOC_SEARCH_INDEX_SECRET** on that Worker; do not commit the secret.
 3. On the **trusted LOC SQL Gateway**, set **LOC_SEARCH_INDEX_URL** to the HTTPS origin of the private Worker, and set the same **LOC_SEARCH_INDEX_SECRET**. The Cloudflare Container ingress forwards these variables to the Deno backend when configured.
-4. Backfill each **logical dataset** separately using authorized, complete SQL read credentials and environment **LOC_INDEX_SCOPE_ID**, **LOC_INDEX_DB_ID**, **LOC_SQL_GATEWAY_URL**, **LOC_SQL_DELEGATION_TOKEN**, plus index URL and secret. Run node scripts/rebuild-loc-search-index.mjs. The logical DB ID must match the SQL Gateway server-side alias/dataset ID.
-5. Run **npm run test:search-index**. Only after verified coverage and acceptable KV freshness, set **LOC_SEARCH_INDEX_ENABLED=true** on the trusted SQL Gateway. Leave it unset/false to preserve original SQL search.
+4. For multiple independent SQL datasets, configure the trusted Gateway/container with **LOC_SEARCH_DATASETS_JSON** (see the example below), backed by existing **LOC_DB_CONNECTIONS_JSON** server-side profiles. Keep each user-defined logical ID stable and lower-case; never place passwords or URLs in the index.
+5. Backfill each **logical dataset** separately with a signed **Scope manage** LOC SQL delegation, and environment **LOC_INDEX_SCOPE_ID**, **LOC_INDEX_DB_ID**, **LOC_SQL_GATEWAY_URL**, **LOC_SQL_DELEGATION_TOKEN**, plus index URL and secret. Run node scripts/rebuild-loc-search-index.mjs. The builder now uses the dedicated, read-only **index-snapshot** Gateway action and `x-loc-index-secret` header, so it reads the **specified** database, not implicitly the primary. The Gateway validates both the signed Scope grant and the service secret. The count/unique-UID check must succeed before marking index coverage complete.
+6. Run **npm run test:search-index** and **node --test scripts/test-loc-federated-galaxy-search.mjs**. Only after verified coverage and acceptable KV freshness, set **LOC_SEARCH_INDEX_ENABLED=true** on the trusted SQL Gateway. Leave it unset/false to preserve original SQL search.
 
-GitHub merges do **not** deploy a Worker or populate KV automatically. Secrets and Cloudflare routing are separate steps.
+Example **trusted server-only** logical source registry (never accepted from the browser):
+
+```json
+{
+  "lo3rwang": [
+    {"databaseId":"db1","provider":"supabase","engine":"postgres","connection_alias":"supabase_current"},
+    {"databaseId":"db2","provider":"custom","engine":"mysql","connection_alias":"office_mysql"}
+  ]
+}
+```
+
+When a Scope has multiple registered datasets, a qualifying Galaxy content search fans out through the same Gateway, produces one globally ordered page, and keeps each source's `databaseId`. **Post-commit Galaxy, MCP Append and short-import index writes also resolve the stable `databaseId` from the trusted registry** before writing KV; they do not accidentally create a second, orphan index under the physical connection alias. A registered Scope whose configured SQL alias cannot be matched skips index ingestion rather than inventing a database identity. When the index is unavailable, every registered database is searched with the existing SQL content predicate; it does **not** silently search only the primary. Ordinary single-database behavior remains unchanged when the registry is absent. The qualified `expectedDbId` field is checked against this trusted registry (or the existing configured source in legacy mode), preventing same-UID collisions and wrong-database failover.
+
+For public Galaxy text searches, the Gateway independently applies `search=true` plus private-site filtering; a dataset-qualified public article read applies `list=true` plus private-site filtering. Authorized Scope administrators continue to use their existing signed grant. These Kysely conditions are independent of native PostgreSQL RLS.
+
+GitHub merges do **not** deploy a Worker, change server configuration or populate KV automatically. Secrets, routing configuration and Cloudflare deployment are separate steps.
 
 ## Workload and cost
 

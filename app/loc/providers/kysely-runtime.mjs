@@ -103,7 +103,7 @@ function databaseTable(req,dialect,namespace,modelName=''){
 function publishedOnly(query,table,enabled){
   if(!enabled)return query;
   if(table.endsWith('_galaxy'))
-    return query.where('search','=',true)
+    return query.where(enabled==='list'?'list':'search','=',true)
       .where(eb=>eb.or([eb('site','is',null),
         eb(eb.fn('lower',['site']),'not in',PRIVATE_SITES)]));
   if(table.endsWith('_anchor'))
@@ -117,6 +117,13 @@ export function buildKyselySelectQuery(trx,input,{dialect='postgres',namespace,p
   const table=databaseTable(req,dialect,namespace,modelName);
   let query=publishedOnly(applyOrFilters(applyFilters(
     trx.selectFrom(table).select(req.columns),req.filters),req.orFilters),req.table,publicOnly);
+  if(req.federatedNullsLast===true&&req.orders.length===1&&
+     ['date','createtime'].includes(req.orders[0].column)){
+    const sortColumn=req.orders[0].column;
+    // SQL-portable CASE expression: PostgreSQL, MySQL and SQL Server would
+    // otherwise paginate NULL dates in different positions.
+    query=query.orderBy(sql`case when ${sql.ref(sortColumn)} is null then 1 else 0 end`,'asc');
+  }
   for(const order of req.orders)query=query.orderBy(order.column,order.ascending===false?'desc':'asc');
   query=query.limit(req.limit).offset(req.offset);
   const countQuery=req.count?publishedOnly(applyOrFilters(applyFilters(
@@ -259,7 +266,7 @@ async function executeMysqlReturningMutation(trx,req,query,namespace){
 /**
  * @param {any} trx
  * @param {any} input
- * @param {{dialect?:string, namespace?:string, publicOnly?:boolean, modelName?:string}} [options]
+ * @param {{dialect?:string, namespace?:string, publicOnly?:boolean|'list', modelName?:string}} [options]
  */
 export async function executeKyselyQuery(trx,input,{dialect='postgres',namespace,publicOnly=false,modelName=''}={}){
   const req=validateQuery(input);let data=null,count=null;
