@@ -8,8 +8,8 @@ import {bindLocAuthorization} from '../app/loc/providers/loc-authorization.mjs';
 test('plain PostgreSQL does not require provider RLS session roles',()=>{
   assert.equal(resolveSqlExecutionPort({engine:'postgres',provider:'custom'}).session,'external-acl');
   assert.equal(resolveSqlExecutionPort({engine:'postgres',provider:'google-cloud-sql'}).session,'external-acl');
-  assert.equal(resolveSqlExecutionPort({engine:'postgres',provider:'supabase'}).session,'postgres-rls');
-  assert.equal(resolveSqlExecutionPort({engine:'postgres',provider:'neon',rls_enabled:false}).session,'external-acl');
+  assert.equal(resolveSqlExecutionPort({engine:'postgres',provider:'custom',rls_enabled:true}).session,'external-acl');
+  assert.equal(resolveSqlExecutionPort({engine:'postgres',provider:'custom',rls_enabled:false}).session,'external-acl');
   assert.equal(resolveSqlExecutionPort({engine:'mysql',provider:'custom'}).session,'external-acl');
 });
 const identity={role:'authenticated',claims:{sub:'user_AbC123',

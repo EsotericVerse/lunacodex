@@ -1,51 +1,38 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
-import {parseVerifiedGoogleOAuthUser} from '../app/loc/oauth-identity.mjs';
+import {createLocAccountAdapter} from '../app/loc/auth/loc-browser.mjs';
 import {createDatabaseClient} from '../app/loc/db-contract.mjs';
-import {setAuthorization,readAuthorization,clearAuthorization,canAuthorizeScope,canAuthorizeGlobal,canAuthorizeGroup,createScopeAuthorizer,assertAuthorizationForTable} from '../app/loc/authorization-runtime.mjs';
+import {setAuthorization,readAuthorization,clearAuthorization,canAuthorizeScope,canAuthorizeGlobal,canAuthorizeGroup,createScopeAuthorizer,assertAuthorizationForTable}
+  from '../app/loc/authorization-runtime.mjs';
 
-const validUser=(provider='google',oauthEmail='owner@example.com')=>({
-  id:'supabase-user-1',email:'owner@example.com',
-  identities:[{provider,user_id:'supabase-user-1',provider_id:'google-uid-77',
-    identity_data:{email:oauthEmail,email_verified:true}}]
+const user={id:'loc_'+('A'.repeat(40)),email:'owner@example.com'};
+const future=()=>Math.floor(Date.now()/1000)+300;
+function nativeSession(overrides={}){
+  return {user,provider:'loc',session:{user,access_token:'signed.loc.token',
+    expires_at:future()},...overrides};
+}
+test('LOC browser identity accepts only native signed session metadata',async()=>{
+  const adapter=createLocAccountAdapter({
+    fetchImpl:async()=>Response.json(nativeSession())
+  });
+  assert.equal(await adapter.getAccessToken(),'signed.loc.token');
+  assert.equal((await adapter.auth.getSession()).data.session.user.id,user.id);
 });
-
-test('Google identity email is parsed from verified OAuth identity',()=>{
-  const identity=parseVerifiedGoogleOAuthUser(validUser());
-  assert.deepEqual({...identity},{provider:'google',email:'owner@example.com',providerId:'google-uid-77',userId:'supabase-user-1'});
-  assert.equal(Object.isFrozen(identity),true);
+test('LOC browser rejects mismatched identities and expired sessions',async()=>{
+  for(const session of [
+    nativeSession({session:{user:{id:'loc_'+('B'.repeat(40))},
+      access_token:'signed.loc.token',expires_at:future()}}),
+    nativeSession({session:{user,access_token:'signed.loc.token',expires_at:1}}),
+    nativeSession({user:{id:'untrusted',email:'owner@example.com'}})
+  ]){
+    const adapter=createLocAccountAdapter({fetchImpl:async()=>Response.json(session)});
+    await assert.rejects(adapter.getAccessToken(),/LOC Auth returned invalid/);
+  }
 });
-
-test('user.email alone is not Google OAuth proof',()=>{
-  assert.throws(()=>parseVerifiedGoogleOAuthUser({id:'supabase-user-1',email:'owner@example.com',identities:[]}),/Google OAuth/);
-});
-test('other OAuth/email identities are rejected',()=>{
-  assert.throws(()=>parseVerifiedGoogleOAuthUser(validUser('email')),/Google OAuth/);
-});
-test('mismatched Google identity email is rejected',()=>{
-  assert.throws(()=>parseVerifiedGoogleOAuthUser(validUser('google','other@example.com')),/不一致/);
-});
-test('unverified OAuth identity email is rejected',()=>{
-  const u=validUser();u.identities[0].identity_data.email_verified=false;
-  assert.throws(()=>parseVerifiedGoogleOAuthUser(u),/尚未驗證/);
-});
-test('missing Google email_verified claim is rejected',()=>{
-  const u=validUser();delete u.identities[0].identity_data.email_verified;
-  assert.throws(()=>parseVerifiedGoogleOAuthUser(u),/尚未驗證/);
-});
-test('Google identity belonging to different Supabase user is rejected',()=>{
-  const u=validUser();u.identities[0].user_id='other-user';
-  assert.throws(()=>parseVerifiedGoogleOAuthUser(u),/Google OAuth/);
-});
-test('Google identity without optional provider ID remains verified',()=>{
-  const u=validUser();delete u.identities[0].provider_id;
-  assert.equal(parseVerifiedGoogleOAuthUser(u).email,'owner@example.com');
-});
-
 // A database SDK is no longer a LOC identity provider, even if it returns
 // its own signed-in Google user. Only an Authority-verified adapter is accepted.
-test('LOC account contract refuses the deprecated Supabase Auth fallback',async()=>{
+test('LOC account contract refuses the deprecated legacy database Auth fallback',async()=>{
   const auth={
     getSession:async()=>({data:{session:{user:{id:'legacy-user'},access_token:'legacy-jwt'}},error:null}),
     getUser:async()=>({data:{user:validUser()},error:null}),
@@ -78,7 +65,7 @@ test('Settings home owns the sole OAuth login action and verifies session',()=>{
 });
 
 test('pure JS permissions use only scopeid/email/role and are cleared on logout',()=>{
-  const user={id:'supabase-user-1',email:'owner@example.com'};
+  const user={id:'loc_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',email:'owner@example.com'};
   try{
     setAuthorization(user,[
       {id:'lo3rwang',email:'owner@example.com',role:'scope',galaxy:'private-metadata'},
