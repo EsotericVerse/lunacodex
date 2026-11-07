@@ -3,7 +3,7 @@
 // Requires a valid LOC-delegated Scope reader token and trusted index secret.
 // Run only against a stable source; the script verifies the row count and UID
 // coverage before declaring the index complete.
-import {Index} from 'flexsearch';
+import {createLocSearchIndex} from '../app/loc/search-index-factory.mjs';
 import {locSearchShard,locSearchDocumentId,LOC_SEARCH_INDEX_SHARDS} from '../app/loc/search-index-shard.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
@@ -46,7 +46,7 @@ async function indexCall(path,body,method='POST'){
 }
 const snapshotStartedMs=Date.now();
 const indices=Array.from({length:LOC_SEARCH_INDEX_SHARDS},
-  ()=>new Index({tokenize:'full',resolution:3,cache:false}));
+  ()=>createLocSearchIndex());
 const perShard=new Array(LOC_SEARCH_INDEX_SHARDS).fill(0);
 const seen=new Set(),pageSize=50;
 const base={kind:'query',schema:'silver',table:scopeId+'_galaxy',
