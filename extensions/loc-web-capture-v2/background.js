@@ -6,6 +6,7 @@ const MAX_BATCH=50, MAX_BYTES=600000, AUTO_CAPTURE_COUNT=10;
 const LOC_ORIGIN='https://loc.lo3rwang.cc';
 const LOC_BRIDGE=LOC_ORIGIN+'/extension/bridge/';
 const MENU_PAGE='loc-page', MENU_SELECTION='loc-selection';
+const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const encoder=new TextEncoder();
 const sizeOf=x=>encoder.encode(JSON.stringify(x)).length;
 let inFlight=null;
@@ -97,7 +98,7 @@ async function stableUuid(input){
   ((parseInt(hex[16],16)&3)|8).toString(16)+hex.slice(17,20)+'-'+hex.slice(20,32);
 }
 async function toEvents(items,scopeid='lo3rwang'){
- if(!['lo3rwang','lrunes'].includes(scopeid))throw Error('不支援的銀河 Scope');
+ if(!SCOPE.test(scopeid))throw Error('不支援的銀河 Scope');
  if(!Array.isArray(items)||!items.length||items.length>100)throw Error('擷取項目數量超出限制');
  const rows=[];
  for(const item of items){
@@ -313,7 +314,7 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
    }
    case 'queue.scope':{
     const scopeid=String(message.scopeid||'');
-    if(!['lo3rwang','lrunes'].includes(scopeid))throw Error('不支援的銀河 Scope');
+    if(!SCOPE.test(scopeid))throw Error('不支援的銀河 Scope');
     await chrome.storage.local.set({locTargetScope:scopeid});
     return {message:'目的銀河：'+scopeid};
    }
