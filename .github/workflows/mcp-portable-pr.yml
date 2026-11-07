@@ -1,18 +1,8 @@
 name: MCP Portable regression (PR)
 
-# PR-only read-only verification. No secrets, production DB calls, deploys or migrations.
+# Manual read-only verification. No secrets, production DB calls, deploys or migrations.
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - 'app/loc/**'
-      - 'workers/loc-authority/**'
-      - 'services/loc-sql/**'
-      - 'services/loc-mcp-sql/**'
-      - 'extensions/loc-galaxy-link/**'
-      - 'scripts/test-loc-*.mjs'
-      - 'package.json'
-      - '.github/workflows/mcp-portable-pr.yml'
 
 permissions:
   contents: read
