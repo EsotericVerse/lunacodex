@@ -60,7 +60,7 @@ async function signingKey(kid,fetchImpl){
     {name:'RSASSA-PKCS1-v1_5',hash:'SHA-256'},false,['verify']);
 }
 async function signedClaims(authorization,body,env,fetchImpl){
-  const match=/^Bearer\\s+([A-Za-z0-9_.-]{30,8192})$/i.exec(String(authorization||''));
+  const match=/^Bearer\s+([A-Za-z0-9_.-]{30,8192})$/i.exec(String(authorization||''));
   if(!match)throw refusal('Signed LOC delegation required',401);
   const pieces=match[1].split('.');
   if(pieces.length!==3)throw refusal('Invalid LOC delegation',401);
@@ -83,7 +83,7 @@ export async function handleNativeLocOperation(request,env={},{
   if(request.method!=='POST')return reply({error:{message:'Method not allowed'}},405);
   if(new URL(request.url).hostname!==MCP_HOST)
     return reply({error:{message:'Not found'}},404);
-  if(!/^application\\/json(?:\\s*;|$)/i.test(request.headers.get('content-type')||''))
+  if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('content-type')||''))
     return reply({error:{message:'JSON body required'}},415);
   if(Number(request.headers.get('content-length')||0)>MAX_BYTES)
     return reply({error:{message:'Payload too large'}},413);
