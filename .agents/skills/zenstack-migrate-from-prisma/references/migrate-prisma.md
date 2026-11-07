@@ -1,1 +1,0 @@
-../../../references/migrate-prisma.md
