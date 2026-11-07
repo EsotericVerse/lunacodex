@@ -71,6 +71,7 @@ jobs:
         run: |
           npm run test:authority
           node --test scripts/test-loc-sql-standalone-deployment.mjs
+          node --test scripts/test-zenstack-policy-runtime.mjs
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
