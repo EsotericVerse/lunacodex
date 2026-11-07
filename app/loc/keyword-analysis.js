@@ -5,7 +5,7 @@ import {isUnifiedAnchorScope} from './unified-anchor-compat.mjs';
 import {selectAllRows,selectRows} from './db-query.mjs';
 import {defaultScopeData,selectManagedScope} from './scope-data';
 import {reanalyzeKeywordClass} from './keyword-reanalysis.mjs';
-import {buildKeywordSearchPatterns} from './keyword-search-pattern.mjs';
+import {buildKeywordSearchPatterns,splitKeywordPatternBatches} from './keyword-search-pattern.mjs';
 import {createIndexedDateKeywordReader} from './keyword-article-reader.mjs';
 import {keywordClassState,invalidateKeywordClass,completeKeywordClass} from './keyword-class-state.mjs';
 import {keywordTreeCatalog} from './keyword-tree-report.mjs';
@@ -197,11 +197,18 @@ export async function runKeywordAnalysisBatch(scopeId,{classUid:requestedClassUi
     },
     writePatterns:async ({items,termMatches})=>{
       const patterns=buildKeywordSearchPatterns(id,items,termMatches);
-      const {data,error}=await dbAuthClient.schema('silver').managedAction('sync_search_patterns',{
-        p_scope_id:id,p_class_uid:classUid,p_patterns:patterns
-      });
-      if(error||data?.patterns!==patterns.length)
-        throw new Error(error?.message||'關鍵詞搜尋對照表未能完整寫入');
+      // The SQL transport accepts at most 1 MiB per request. Keep large
+      // article UID arrays out of any single upload; only the last batch
+      // can prune obsolete terms before the Class completion marker.
+      const batches=splitKeywordPatternBatches(patterns);
+      for(let i=0;i<batches.length;i++){
+        const {data,error}=await dbAuthClient.schema('silver').managedAction('sync_search_patterns',{
+          p_scope_id:id,p_class_uid:classUid,p_patterns:batches[i],
+          p_final:i===batches.length-1
+        });
+        if(error||data?.patterns!==batches[i].length)
+          throw new Error(error?.message||'關鍵詞搜尋對照表未能完整寫入');
+      }
     },
     finalize:async counts=>{
       // Per-Class completion is the only public-config state. Labels, hit counts
