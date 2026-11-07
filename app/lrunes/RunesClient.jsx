@@ -2,8 +2,6 @@ import {navigationHref} from '../modular/scope-registry.js';
 import useNativeNavigation from '../modular/use-native-navigation';
 import {usePassiveSessionAccount} from '../loc/use-account';
 import ScopeLink from '../modular/ScopeLink';
-import {RUNE_CUSTOM_DRAW_MODES} from './rune-draw-modes.mjs';
-import CustomDrawSelector from './CustomDrawSelector';
 import RuneIntroSection from './RuneIntroSection';
 import {HomeBlock} from '../loc/home-block-model';
 import {resolveHomeImage,RunesHomeBlockDisplay,locHomeBlockClass,homeBlockMediaStyle} from '../loc/LocHomeBlockDisplay';
@@ -95,12 +93,9 @@ export default function RunesClient(){
     </section>
 
     <section className="loc-card rune-basics runes-custom-draw-section">
-      <h2>其他張數</h2>
-      <CustomDrawSelector options={RUNE_CUSTOM_DRAW_MODES.map(item=>({
-        count:item.count,
-        description:item.description,
-        href:runeHref(item.path,native)
-      }))}/>
+      <h2>符文抽牌</h2>
+      <p>同一個抽牌入口可切換 2D 平面原創卡面與最新 3D 特效，並自由決定抽取 1 至 11 枚。</p>
+      <ScopeLink className="loc-button" href={runeHref('card/duel',native)} native={native}>開始抽牌</ScopeLink>
     </section>
 
     <section className="loc-card rune-basics runes-review-section">

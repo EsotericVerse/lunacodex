@@ -4,7 +4,7 @@ import {useAsyncResource} from '../loc/use-async-resource';
 import {selectRows} from '../loc/db-query.mjs';
 import {runeImage} from './rune-directory.mjs';
 import RuneCardInfo from './RuneCardInfo';
-import RuneDrawModeBubbles from './RuneDrawModeBubbles';
+import RuneCardEntryBubbles from './RuneCardEntryBubbles';
 
 export default function RuneIntroSection(){
   const sample=useAsyncResource(['lunarunes-intro-rune',66],async()=>{
@@ -32,7 +32,7 @@ export default function RuneIntroSection(){
         <p className="runes-hint-lead">月之符文的特有66符文字會給你提示籤詩，指引你的可能未來；能是祝福可能是警告，你當然擁有選擇權。</p>
         <p className="runes-hint-seed">抽牌讓這符文成語意種子，成為語意起點，<br/>用你想要的方式，成長成為完整語意的成熟果實。</p>
         <p>最後的選擇權仍然在你的手上！</p>
-        <RuneDrawModeBubbles />
+        <RuneCardEntryBubbles />
       </div>
     </div>
   </section>;

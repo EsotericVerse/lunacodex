@@ -192,7 +192,6 @@ export default function RuneAtlasLab({presentationSwitcher=null}){
         <ScopeLink href={navigationHref('lrunes','',native)} native={native} className="rune-skin-btn">回符文首頁</ScopeLink>
         <ScopeLink href={navigationHref('lrunes','card',native)} native={native} className="rune-skin-btn">← 符文展示首頁</ScopeLink>
         <ScopeLink href={navigationHref('lrunes','card/duel',native)} native={native} className="rune-skin-btn">切換隨機抽牌</ScopeLink>
-        <ScopeLink href={navigationHref('lrunes','list',native)} native={native} className="rune-skin-btn">舊版圖鑑</ScopeLink>
       </nav>
     </footer>
     {details?<RuneInfoDialog rune={details} onClose={closeDetails}/>:null}
