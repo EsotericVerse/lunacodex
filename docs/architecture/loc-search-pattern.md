@@ -10,18 +10,20 @@ Exactly five columns:
 | --- | --- |
 | `scopeid` | The owning Scope (a future database-qualified Scope can reuse this identifier without a separate field). |
 | `pattern` | Normalized NFKC literal Item title or a literal string in that Item's `keyword` list. Judgement-rule expressions are excluded. |
-| `count` | Existing Item hit total. A title and its aliases share that Item total; identical terms in Items of the analyzed Class sum counts. Not a substring frequency or number of unique documents. |
-| `uid_list` | Sorted, deduplicated eight-character Galaxy UID strings that matched that Item. A word lookup obtains UIDs without rescanning Galaxy content. |
+| `count` | **The literal keyword's own hit count**, not the Item group's total. The existing classifier counts one match per word per article, so this equals the length of that word's deduplicated UID list. |
+| `uid_list` | Sorted, deduplicated eight-character Galaxy UID strings that matched that **word**, independent of other words in the same Item. |
 | `update_time` | Last time this term's UID set changed. Count-only changes preserve the original timestamp. |
 
 A compound `(scopeid, pattern)` primary key is the only index; **no** redundant per-article index, per-Class field, FlexSearch Worker, trigger, or RPC. Date-interval density is not inferable from these five fields alone: time-specific charts still need article dates or an existing dated aggregate, not an invented count.
 
 ## Reanalysis flow
 
-1. The existing selected-Class reanalysis scans the eligible Galaxy content **once**, via its existing date/createtime reader. Its compiled classifier already produces Item UID hits and counts.
+1. The existing selected-Class reanalysis scans the eligible Galaxy content **once**, via its existing date/createtime reader. While the compiled classifier checks each **literal word** already, it now also records which article UID matched each word, deduplicating the same UID across Items.
 2. The original Group/Item Anchor total write stays for compatibility with existing Culture/Statistics consumers; there is **no** duplicate full UID array stored on unified Anchor.
-3. An additional completion callback turns the freshly produced Item results into one word/title -> UID mapping. It issues a single authenticated, Scope-authorized native Kysely `sync_search_patterns` action. This action does **not** read Galaxy or redo tokenization; it only checks the small Item catalogue, compares existing patterns, upserts changed rows, and removes terms no longer present in any Item. The Class completion marker is saved **only after** the pattern write succeeds.
+3. An additional completion callback turns the freshly produced **per-word** results into one word/title -> UID mapping. It issues a single authenticated, Scope-authorized native Kysely `sync_search_patterns` action. This action does **not** read Galaxy or redo tokenization; it only checks the small Item catalogue, compares existing patterns, upserts changed rows, and removes terms no longer present in any Item. The Class completion marker is saved **only after** the pattern write succeeds.
 4. Existing Class-only reanalysis remains Class-only. Other Classes' live words are not globally purged. An Item alias present in more than one Class is a shared logical term; without an Item/Class provenance column, a later single-Class reanalysis cannot perfectly subtract the other Class's previous contribution. This is a deliberate current five-column limit, not a reason to silently add a sixth field.
+
+**Important: Item is a keyword group, not one keyword.** Each Item title is also included as an independently matched literal word. Item.total and search_pattern.count are deliberately different. An identical word shared by several Items counts the same article only once.
 
 The table starts empty until that Scope's first new analysis. Historical Item totals alone cannot reconstruct article UID arrays; do **not** invent UID lists from counts or claim that old data was backfilled.
 
