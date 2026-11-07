@@ -3,7 +3,7 @@
 import {DurableObject} from 'cloudflare:workers';
 
 const REQUIRED=['LOC_CONTROL_DB_ALIAS','LOC_CONTROL_DB_ENGINE','LOC_DB_CONNECTIONS_JSON'];
-const OPTIONAL=['LOC_AUTHORITY_ORIGIN','LOC_DELEGATION_NOT_BEFORE','LOC_DELEGATION_REVOKED_SIDS'];
+const OPTIONAL=['LOC_AUTHORITY_ORIGIN','LOC_DELEGATION_NOT_BEFORE','LOC_DELEGATION_REVOKED_SIDS','LOC_SEARCH_INDEX_URL','LOC_SEARCH_INDEX_SECRET'];
 function unavailable(message,status=503){
   return Response.json({error:{message}},{status,
     headers:{'cache-control':'no-store'}});
