@@ -12,9 +12,9 @@ create table if not exists silver.loc_search_pattern (
 );
 
 comment on table silver.loc_search_pattern is
-  'Scope Keyword Item title and literal alias -> analyzed count and distinct Galaxy UIDs; no full-text tokenization.';
+  'Each literal keyword or Item title -> its own matched article count and deduplicated Galaxy UIDs.';
 comment on column silver.loc_search_pattern.count is
-  'Sum of matched Item signals; aliases reuse their Item total, not literal substring frequency.';
+  'One matched article counts once for this literal keyword; not the containing Item total.';
 comment on column silver.loc_search_pattern.update_time is
   'Time when uid_list last changed; count-only adjustments preserve it.';
 
