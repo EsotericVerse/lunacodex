@@ -7,6 +7,7 @@ const SUBJECT=/^[A-Za-z0-9_-]{1,128}$/;
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const GRANT=/^[a-z][a-z0-9]{0,14}:(read|write|manage)$/;
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
+const DATABASE=/^[a-z][a-z0-9_-]{0,63}$/;
 const MCP_KINDS=new Set(['mcp-sync','mcp-search','mcp-read','mcp-append','mcp-update-pr']);
 function reject(message){throw new Error(message)}
 export function delegationAudience(request){
@@ -29,23 +30,26 @@ export function canManageDelegation(claims,type,id=''){
   return grants.includes('global:manage')||
     type!=='global'&&grants.includes(scope+':manage');
 }
-export function issueDelegation({sub,email,grants=[],audience='sql',sid,now,seconds=3600}){
+export function issueDelegation({sub,email,grants=[],audience='sql',sid,now,seconds=3600,targetId=null}){
   const normalized=String(email||'').trim().toLowerCase();
   if(!SUBJECT.test(String(sub||''))||!SUBJECT.test(String(sid||''))||
     (audience!=='mcp'&&!EMAIL.test(normalized)||audience==='mcp'&&normalized&&!EMAIL.test(normalized))||
      !Object.hasOwn(LOC_DELEGATION_AUDIENCES,audience)||
     !Number.isSafeInteger(now)||!Number.isSafeInteger(seconds)||
-    seconds<1||seconds>LOC_DELEGATION_MAX_SECONDS)
+    (seconds<1||seconds>LOC_DELEGATION_MAX_SECONDS)||
+    targetId!==null&&(typeof targetId!=='string'||!DATABASE.test(targetId)))
     reject('Invalid LOC delegation issuance');
   return {iss:LOC_DELEGATION_ISSUER,aud:LOC_DELEGATION_AUDIENCES[audience],
     sub:String(sub),...(normalized?{email:normalized}:{}),me:true,grants:delegationGrants(grants),
-    sid:String(sid),iat:now,nbf:now-5,exp:now+seconds};
+    sid:String(sid),iat:now,nbf:now-5,exp:now+seconds,
+    ...(targetId?{db_target:targetId}:{})};
 }
 export function verifyDelegationBoundary(payload,request,{
   now=Math.floor(Date.now()/1000),notBefore='0',revokedSids=''
 }={}){
   const expectedAudience=delegationAudience(request);
   const audience=payload?.aud;
+  const targetId=payload?.db_target;
   const email=String(payload?.email||'').trim().toLowerCase();
   const sub=String(payload?.sub||''),sid=String(payload?.sid||'');
   const issued=payload?.iat,expires=payload?.exp;
@@ -60,7 +64,8 @@ export function verifyDelegationBoundary(payload,request,{
      issued>now+30||issued<cutoff||expires<=now||expires<=issued||
      expires-issued>LOC_DELEGATION_MAX_SECONDS||
      revoked.length>1000||revoked.some(value=>!SUBJECT.test(value))||
-     revoked.includes(sid))
+     revoked.includes(sid)||
+     targetId!==undefined&&(typeof targetId!=='string'||!DATABASE.test(targetId)))
     reject('Invalid or revoked LOC delegation');
   const grants=delegationGrants(payload.grants);
   const mcp=expectedAudience===LOC_DELEGATION_AUDIENCES.mcp;
@@ -82,6 +87,7 @@ export function verifyDelegationBoundary(payload,request,{
   return {claims:{role:'authenticated',provider:'loc',me:true,sub,
     ...(email?{email}:{}),
     iss:LOC_DELEGATION_ISSUER,sid,jti:String(payload.jti||''),exp:expires,
-    grants:scopedWriteGrant?[...grants,scopedWriteGrant]:grants},
+    grants:scopedWriteGrant?[...grants,scopedWriteGrant]:grants,
+    ...(targetId?{db_target:targetId}:{})},
     verifiedMcp:mcp};
 }

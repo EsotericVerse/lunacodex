@@ -952,8 +952,9 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
     validScope(scope);
     if(!['read','write','manage'].includes(action)||!await allowed(scope,action))
       throw fail('MCP Scope delegation denied',403);
+    const targetId=await stub.selectedDatabaseForDelegation(principal.subject,isRoot);
     const claims=issueDelegation({
-      sub:principal.subject,grants:[scope+':'+action],audience:'mcp',
+      sub:principal.subject,grants:[scope+':'+action],audience:'mcp',targetId,
       sid:crypto.randomUUID(),now:Math.floor(Date.now()/1000),seconds:300
     });
     return stub.signLocDelegation(claims);
@@ -1169,8 +1170,10 @@ async function exchangeLocDelegation(request,env,principal,origin){
   // explicitly maps it; matching email alone never transfers ownership.
   const sub=['clerk','loc'].includes(principal.provider)?principal.subject:
     'loc_'+digest.slice(0,40);
+  const targetId=principal.provider==='loc'?
+    await stub.selectedDatabaseForDelegation(principal.subject,root):null;
   const claims=issueDelegation({sub,email,
-    grants,audience,sid:crypto.randomUUID(),now,seconds:300});
+    grants,audience,sid:crypto.randomUUID(),now,seconds:300,targetId});
   const token=await stub.signLocDelegation(claims);
   return json({access_token:token,token_type:'Bearer',expires_at:claims.exp,
     audience:claims.aud,scopeid:global||identity||self?null:scope,grants:claims.grants},200,origin);

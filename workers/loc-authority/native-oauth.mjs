@@ -422,8 +422,11 @@ async function importShort(request,env,stub,origin){
   endpoint.username||endpoint.password||endpoint.search||endpoint.hash||
   endpoint.pathname!=='/v1/sql')error('Independent SQL Gateway missing',503);
  const now=Math.floor(Date.now()/1000);
+ const selectedTarget=await stub.selectedDatabaseForDelegation(identity.subject,
+  roots.includes(identity.subject));
  const delegation=issueDelegation({sub:identity.subject,email:identity.email,
-  grants:[scope+':write'],audience:'sql',sid:crypto.randomUUID(),now,seconds:300});
+  grants:[scope+':write'],audience:'sql',sid:crypto.randomUUID(),now,seconds:300,
+  targetId:selectedTarget});
  const signed=await stub.signLocDelegation(delegation);
  const upstream=await fetch(endpoint.href,{method:'POST',
   headers:{authorization:'Bearer '+signed,'content-type':'application/json'},
