@@ -1061,8 +1061,9 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   }
   const defaultTimeName=t('uiExtra.searchUI.defaultUnit'+(defaultTimeUnit==='auto'
     ?'Day':defaultTimeUnit[0].toUpperCase()+defaultTimeUnit.slice(1)));
-  const patternCompleter=patternScopeIds.length>0&&query.trim()===debouncedPatternInput
-    &&query.trim().length>0&&Array.isArray(patternSuggestionsQuery.data)
+  const normalizedPatternInput=query.normalize('NFKC').trim();
+  const patternCompleter=patternScopeIds.length>0&&normalizedPatternInput===debouncedPatternInput
+    &&normalizedPatternInput.length>0&&Array.isArray(patternSuggestionsQuery.data)
     &&patternSuggestionsQuery.data.length>0
     ?<div className="scope-search-suggestions" role="group" aria-label="關鍵詞自動完成">
       <span className="scope-status">關鍵詞自動完成</span>
