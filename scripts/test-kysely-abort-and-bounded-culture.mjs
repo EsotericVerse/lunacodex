@@ -13,7 +13,7 @@ test('already-cancelled anonymous query never opens HTTP',async()=>{
   const controller=new AbortController();
   controller.abort();
   const db=createKyselyEdgeClient({
-    url:'https://demo.supabase.co',publishableKey:'public-key',role:'anon',
+    gatewayUrl:'https://db-gateway.example/v1/sql',role:'anon',
     fetch:async()=>{fetches++;return ok()}
   });
   await assert.rejects(
@@ -29,7 +29,7 @@ test('in-flight query cancels its real HTTP fetch signal',async()=>{
   let started,signal;
   const entered=new Promise(resolve=>{started=resolve});
   const db=createKyselyEdgeClient({
-    url:'https://demo.supabase.co',publishableKey:'public-key',role:'anon',
+    gatewayUrl:'https://db-gateway.example/v1/sql',role:'anon',
     fetch:async(_url,options)=>{
       signal=options.signal;
       return new Promise((_resolve,reject)=>{
@@ -54,7 +54,7 @@ test('cancelled query waiting in the public budget never sends HTTP',async()=>{
   const hold=new Promise(resolve=>{release=resolve});
   let fetches=0;
   const db=createKyselyEdgeClient({
-    url:'https://demo.supabase.co',publishableKey:'public-key',role:'anon',
+    gatewayUrl:'https://db-gateway.example/v1/sql',role:'anon',
     fetch:async()=>{fetches++;await hold;return ok()}
   });
   const active=Array.from({length:3},()=>Promise.resolve(
