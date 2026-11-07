@@ -157,52 +157,75 @@ async function copyDefaultKeywordClass(trx,id,target){
     .select('current_keyword_class_uid').where('id','=','lo3rwang').executeTakeFirst();
   const src=String(config?.current_keyword_class_uid||'');
   if(!UID.test(src))fail('Default Keyword Class unavailable');
-  // The target Anchor was just created by provisionScope, so there are no
-  // existing target UIDs to fetch. Reserve only this copy's generated UIDs.
-  const assigned=new Set();
-  const nextUid=()=>{
-    const uid=allocateAnchorUid(assigned);
-    assigned.add(uid);
-    return uid;
-  };
   const source='silver.lo3rwang_anchor';
-  const root=await trx.selectFrom(source).select(['uid','title','description','attr'])
-    .where('uid','=',src).where('type','=','class').executeTakeFirst();
+  const root=await trx.selectFrom(source)
+    .select(['uid','title','description','attr']).where('uid','=',src)
+    .where('type','=','class').executeTakeFirst();
   if(!root)fail('Source Keyword Class missing');
   const category=await trx.selectFrom(source).select(['title','description'])
     .where('type','=','category')
     .where(sql`attr->'uid' ? ${src}`).executeTakeFirst();
   if(!category)fail('Source Keyword Category missing');
-  const insert=async(uid,type,row,attr)=>{
-    await trx.insertInto(target).values({uid,type,title:row.title,
-      description:row.description,attr:sql`${JSON.stringify(attr)}::jsonb`})
-      .executeTakeFirst();
-  };
-  const categoryId=nextUid(),newClass=nextUid();
-  await insert(categoryId,'category',category,{uid:[newClass]});
-  const groupUids=[];let itemCount=0;
-  for(const groupId of Array.isArray(root.attr?.uid)?root.attr.uid:[]){
-    if(!UID.test(String(groupId)))fail('Source Group UID invalid');
-    const groupRow=await trx.selectFrom(source)
-      .select(['uid','title','description','attr'])
-      .where('uid','=',groupId).where('type','=','group').executeTakeFirst();
-    if(!groupRow)fail('Source Group missing');
-    const mapped=[],newGroup=nextUid();
-    for(const itemId of Array.isArray(groupRow.attr?.uid)?groupRow.attr.uid:[]){
-      const item=await trx.selectFrom(source)
-        .select(['uid','title','description','attr'])
-        .where('uid','=',itemId).where('type','=','item').executeTakeFirst();
+
+  // Fetch each relation level in one bounded query, not one query per item.
+  // All Anchor UIDs are generated before one bulk Kysely insert.
+  const oldGroups=Array.isArray(root.attr?.uid)?root.attr.uid:[];
+  if(oldGroups.some(uid=>!UID.test(String(uid))))
+    fail('Source Group UID invalid');
+  const uniqueGroups=[...new Set(oldGroups)];
+  const groupRows=uniqueGroups.length
+    ?await trx.selectFrom(source).select(['uid','title','description','attr'])
+      .where('uid','in',uniqueGroups).where('type','=','group').execute()
+    :[];
+  const groupByUid=new Map(groupRows.map(row=>[String(row.uid),row]));
+  const oldItems=[];
+  for(const oldGroup of oldGroups){
+    const group=groupByUid.get(String(oldGroup));
+    if(!group)fail('Source Group missing');
+    for(const itemUid of Array.isArray(group.attr?.uid)?group.attr.uid:[]){
+      if(!UID.test(String(itemUid)))fail('Source Item UID invalid');
+      oldItems.push(String(itemUid));
+    }
+  }
+  const uniqueItems=[...new Set(oldItems)];
+  const itemRows=uniqueItems.length
+    ?await trx.selectFrom(source).select(['uid','title','description','attr'])
+      .where('uid','in',uniqueItems).where('type','=','item').execute()
+    :[];
+  const itemByUid=new Map(itemRows.map(row=>[String(row.uid),row]));
+  if(itemByUid.size!==uniqueItems.length)
+    fail('Source Keyword Item missing');
+
+  const assigned=new Set();
+  const nextUid=()=>{const uid=allocateAnchorUid(assigned);assigned.add(uid);return uid;};
+  const toRow=(uid,type,row,attr)=>({
+    uid,type,title:row.title,description:row.description,
+    attr:sql`${JSON.stringify(attr)}::jsonb`
+  });
+  const categoryUid=nextUid(),classUid=nextUid();
+  const inserts=[toRow(categoryUid,'category',category,{uid:[classUid]})];
+  const copiedGroups=[];
+  let itemCount=0;
+  for(const oldGroup of oldGroups){
+    const group=groupByUid.get(String(oldGroup)),newGroup=nextUid();
+    const mapped=[];
+    for(const itemUid of Array.isArray(group.attr?.uid)?group.attr.uid:[]){
+      const item=itemByUid.get(String(itemUid));
       if(!item)fail('Source Keyword Item missing');
       const newItem=nextUid();
-      await insert(newItem,'item',item,{keyword:Array.isArray(item.attr?.keyword)
-        ?item.attr.keyword:[],total:0});
+      inserts.push(toRow(newItem,'item',item,{
+        keyword:Array.isArray(item.attr?.keyword)?item.attr.keyword:[],total:0
+      }));
       mapped.push(newItem);itemCount++;
     }
-    await insert(newGroup,'group',groupRow,{uid:mapped,total:0});
-    groupUids.push(newGroup);
+    inserts.push(toRow(newGroup,'group',group,{uid:mapped,total:0}));
+    copiedGroups.push(newGroup);
   }
-  await insert(newClass,'class',root,{uid:groupUids});
-  return {uid:newClass,count:itemCount};
+  inserts.push(toRow(classUid,'class',root,{uid:copiedGroups}));
+  // Fixed-size batches avoid parameter ceilings without per-Item SQL trips.
+  for(let offset=0;offset<inserts.length;offset+=500)
+    await trx.insertInto(target).values(inserts.slice(offset,offset+500)).execute();
+  return {uid:classUid,count:itemCount};
 }
 async function provisionScope(trx,args){
   const id=scope(args.p_scope_id);
