@@ -57,7 +57,8 @@ test('Postgres Statistics daily source and total counts use one grouped aggregat
     }
   });
   sql.ref=name=>name;
-  const fn=new Function('sql',source+';return dailyStats;')(sql);
+  const fn=new Function('sql','relation',source+';return dailyStats;')(
+    sql,(scope,suffix)=>sql.ref('silver.'+scope+'_'+suffix));
   const rows=await fn({},'lo3rwang','2026-05-01','2026-05-31',false);
   assert.equal(requests,1);
   assert.match(compiled,/group by grouping sets/i);
