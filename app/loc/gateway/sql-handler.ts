@@ -22,6 +22,7 @@ import {resolveSqlExecutionPort,assertCrossEnginePublicRead,authorizeCrossEngine
 import {resolveDatabaseRouting} from "../../../app/loc/providers/routing-config.mjs";
 import {databaseAccessTargets} from "../../../app/loc/providers/access.js";
 import {isTextSearchQuery,checkSearchQos} from "../../../app/loc/providers/search-qos.mjs";
+import {withIndexedCandidates,writeSearchIndexDocuments,indexDocumentsFromWrite,isSearchIndexConfigured,searchIndexDatabaseId} from "../../../app/loc/providers/search-index-service.mjs";
 import {bindLocAuthorization,canManageLoc} from "../../../app/loc/providers/loc-authorization.mjs";
 
 const corsHeaders = {
@@ -304,6 +305,26 @@ Deno.serve(async (request) => {
       const response=await processShortImport(body.batch,actor,{
         store:postgresShortImportStore(db,sql)
       });
+      // The short-import transaction has committed. One bounded UID query
+      // captures the actual stored text, including append markers; no
+      // guessed UID or client-provided partial document enters the index.
+      if(isSearchIndexConfigured()&&response?.accepted===true){
+        try{
+          const sourceId=searchIndexDatabaseId(controlTarget);
+          const ids=[...new Set((response.articles||[])
+            .filter(item=>item?.appended>0)
+            .map(item=>String(item.uid||''))
+            .filter(uid=>/^[A-Za-z0-9]{8}$/.test(uid)))];
+          if(ids.length&&sourceId){
+            const articles=await db.selectFrom('silver.'+actor.scopeid+'_galaxy')
+              .select(['uid','content']).where('uid','in',ids).execute();
+            await writeSearchIndexDocuments(articles.map(row=>({
+              scopeId:actor.scopeid,dbId:sourceId,entityType:'galaxy',
+              uid:row.uid,content:row.content,operation:'upsert'
+            })));
+          }
+        }catch(error){console.warn('[loc-search-index] short import index update failed',String(error));}
+      }
       return json(response);
     }catch(error){
       const status=Number((error as {httpStatus?:number})?.httpStatus)||500;
@@ -348,6 +369,22 @@ Deno.serve(async (request) => {
         engine:String(mcpTarget.engine),provider:String(mcpTarget.provider),
         namespace:String(mcpTarget.schema_name||"")
       }));
+      // MCP append is incremental. Do not reload a whole conversation solely
+      // to update FlexSearch; the matching SQL transaction already committed.
+      if(result?.data?.duplicate!==true&&isSearchIndexConfigured()){
+        const dbId=searchIndexDatabaseId(mcpTarget);
+        const scopeId=String(body.scopeid||'');
+        const row=body.kind==='mcp-sync'?body.row:null;
+        const doc=body.kind==='mcp-sync'&&row
+          ?{uid:row.uid,content:row.content,operation:'upsert'}
+          :body.kind==='mcp-append'
+            ?{uid:body.uid,content:body.content,operation:'append'}:null;
+        if(dbId&&doc){
+          const ok=await writeSearchIndexDocuments([{...doc,
+            scopeId,dbId,entityType:'galaxy'}]);
+          if(!ok)console.warn('[loc-search-index] MCP index update incomplete');
+        }
+      }
       return json(result);
     }
     if(body.kind==="mcp-update-pr")
@@ -466,6 +503,11 @@ Deno.serve(async (request) => {
       }else if(!["query","managed-write","anchor","analytics","public-action"].includes(String(body.kind)))
         return json({error:{message:"Unsupported SQL target action"}},403);
     }
+    // A complete external index can narrow only this one SELECT's UID set.
+    // Incomplete, unavailable or ambiguous indexes fall back to the original
+    // SQL query without affecting permissions, sort order or pagination.
+    if(requestedTarget==="configured")
+      body=await withIndexedCandidates(body,target);
     const db=isControlTarget(target)
       ?await databaseForTarget(controlTarget)
       :await databaseForTarget(target,{profileLookup:profileForTarget});
@@ -490,6 +532,15 @@ Deno.serve(async (request) => {
           (trx,modelName)=>executeRequest(trx,target,role,claims,body,{modelName}))
         :await db.transaction().execute(trx=>
           executeRequest(trx,target,role,claims,body));
+    // Index ingestion occurs only after the SQL transaction commits. A KV
+    // outage never changes the result of an authorized SQL write.
+    if(isSearchIndexConfigured()){
+      const docs=indexDocumentsFromWrite(body,target);
+      if(docs.length&&Number(result?.data?.count??result?.count??1)>0){
+        const indexed=await writeSearchIndexDocuments(docs);
+        if(!indexed)console.warn('[loc-search-index] Galaxy write index update incomplete');
+      }
+    }
     return json(result,200,result.count===null?{}:{"content-range":`0-${Math.max(0,(Array.isArray(result.data)?result.data.length:0)-1)}/${result.count}`});
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
