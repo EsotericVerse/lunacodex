@@ -151,7 +151,8 @@ async function getConfig(){
  const issuer=new URL(cfg.issuer);
  const api=new URL(cfg.import_url);
  if(issuer.protocol!=='https:'||api.protocol!=='https:'||
-    !cfg.client_id||typeof cfg.client_id!=='string'||
+    api.origin!==issuer.origin||api.pathname!=='/v1/import/short'||
+    cfg.resource!==api.href||!cfg.client_id||typeof cfg.client_id!=='string'||
     /clerk|supabase|github/i.test(issuer.hostname))
    throw oauthError('LOC 自有認證尚未啟用，不會使用其他平台登入');
  const metaUrl=new URL('/.well-known/oauth-authorization-server',issuer);
@@ -159,14 +160,17 @@ async function getConfig(){
  if(!metaReply.ok)throw oauthError('找不到 LOC OAuth 伺服器');
  const meta=await metaReply.json();
  if(meta.issuer!==(issuer.href.endsWith('/')?issuer.href.slice(0,-1):issuer.href)||
-    !meta.authorization_endpoint||!meta.token_endpoint)
+    !meta.authorization_endpoint||!meta.token_endpoint||!meta.registration_endpoint)
    throw oauthError('授權伺服器資訊不完整');
- for(const endpoint of [meta.authorization_endpoint,meta.token_endpoint]){
-  if(new URL(endpoint).protocol!=='https:')throw oauthError('OAuth 端點必須使用 HTTPS');
+ for(const endpoint of [meta.authorization_endpoint,meta.token_endpoint,meta.registration_endpoint]){
+  const url=new URL(endpoint);
+  if(url.protocol!=='https:'||url.origin!==issuer.origin)
+   throw oauthError('OAuth 端點必須使用 LOC Auth HTTPS');
  }
  const config={issuer:meta.issuer,client_id:cfg.client_id,import_url:api.href,
    resource:cfg.resource||api.href,
   authorization_endpoint:meta.authorization_endpoint,token_endpoint:meta.token_endpoint,
+  registration_endpoint:meta.registration_endpoint,
   scope:cfg.scope||'loc:import'};
  await chrome.storage.local.set({locConfig:config});
  return config;
@@ -182,12 +186,37 @@ async function exchange(config,body){
   throw oauthError('伺服器未回傳 Bearer Token');
  return json;
 }
+async function registeredClient(config,redirect){
+ const {locRegisteredOAuthClient:prior}=await chrome.storage.local.get('locRegisteredOAuthClient');
+ if(prior?.issuer===config.issuer&&prior.redirect===redirect&&
+  prior.expires_at>Date.now()+86400000&&/^loc-mcp-[A-Za-z0-9_-]{43}$/.test(prior.client_id))
+  return prior.client_id;
+ const reply=await fetch(config.registration_endpoint,{
+  method:'POST',headers:{'content-type':'application/json'},
+  body:JSON.stringify({client_name:'LOC 彩虹橋',
+   redirect_uris:[redirect],response_types:['code'],
+   grant_types:['authorization_code','refresh_token'],
+   token_endpoint_auth_method:'none'}),
+  cache:'no-store',redirect:'error'
+ });
+ if(!reply.ok)throw oauthError('無法註冊 Chrome OAuth Client（HTTP '+reply.status+'）');
+ const saved=await reply.json();
+ if(!/^loc-mcp-[A-Za-z0-9_-]{43}$/.test(String(saved.client_id||''))||
+   !saved.redirect_uris?.includes(redirect))
+  throw oauthError('LOC Auth 未確認 Chrome 回呼網址');
+ const next={issuer:config.issuer,redirect,client_id:saved.client_id,
+  expires_at:Number(saved.client_id_expires_at||0)*1000||Date.now()+86400000};
+ await chrome.storage.local.set({locRegisteredOAuthClient:next});
+ return next.client_id;
+}
 async function connectLoc(){
  const cfg=await getConfig();
+ const redirect=chrome.identity.getRedirectURL('loc');
+ cfg.client_id=await registeredClient(cfg,redirect);
+ await chrome.storage.local.set({locConfig:cfg});
  const verifier=encode64(crypto.getRandomValues(new Uint8Array(32)));
  const digest=new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(verifier)));
  const state=crypto.randomUUID();
- const redirect=chrome.identity.getRedirectURL('loc');
  const authorization=new URL(cfg.authorization_endpoint);
  for(const [key,val] of Object.entries({response_type:'code',client_id:cfg.client_id,
   redirect_uri:redirect,scope:cfg.scope,resource:cfg.resource,state,code_challenge:encode64(digest),
