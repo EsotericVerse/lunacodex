@@ -22,11 +22,11 @@ const endpoint=new URL(indexOrigin);
 if(endpoint.username||endpoint.password||endpoint.search||endpoint.hash||
   !['','/'].includes(endpoint.pathname))throw Error('Invalid index HTTPS origin');
 
-async function post(url,body,secret){
+async function post(url,body){
   const response=await fetch(url,{
-    method:secret==='index'?'POST':'POST',
+    method:'POST',
     headers:{'content-type':'application/json',
-      authorization:'Bearer '+(secret==='index'?indexSecret:gatewayToken)},
+      authorization:'Bearer '+gatewayToken},
     body:JSON.stringify(body),signal:AbortSignal.timeout(30000),
     redirect:'error'
   });
@@ -44,19 +44,20 @@ async function indexCall(path,body,method='POST'){
   if(!r.ok||payload?.accepted!==true)throw Error('Index '+path+' HTTP '+r.status);
   return payload;
 }
+const snapshotStartedMs=Date.now();
 const indices=Array.from({length:LOC_SEARCH_INDEX_SHARDS},
   ()=>new Index({tokenize:'full',resolution:3,cache:false}));
 const perShard=new Array(LOC_SEARCH_INDEX_SHARDS).fill(0);
 const seen=new Set(),pageSize=50;
 const base={kind:'query',schema:'silver',table:scopeId+'_galaxy',
   operation:'select',target:'configured',filters:[],or:[],orders:[]};
-const head=await post(gateway,{...base,columns:['uid'],head:true,count:'exact',limit:1},'sql');
+const head=await post(gateway,{...base,columns:['uid'],head:true,count:'exact',limit:1},);
 const expected=Number(head.count);
 if(!Number.isSafeInteger(expected)||expected<0)
   throw Error('LOC SQL Gateway did not supply an exact row count');
 for(let offset=0;offset<expected;offset+=pageSize){
   const result=await post(gateway,{...base,columns:['uid','content'],
-    limit:pageSize,offset},'sql');
+    limit:pageSize,offset},);
   const rows=result.data;
   if(!Array.isArray(rows)||!rows.length)
     throw Error('SQL source changed or returned an incomplete page at '+offset);
@@ -85,5 +86,6 @@ for(let shard=0;shard<indices.length;shard++){
   await indexCall('/v1/snapshot',{scopeId,dbId,entityType:'galaxy',shard,parts});
   shipped++;
 }
+await indexCall('/v1/prune-deltas',{scopeId,dbId,entityType:'galaxy',beforeMs:snapshotStartedMs});
 await indexCall('/v1/coverage',{scopeId,dbId,entityType:'galaxy',complete:true},'PUT');
 console.log(JSON.stringify({indexed:expected,scopeId,dbId,shards:shipped,complete:true}));
