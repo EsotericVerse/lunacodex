@@ -249,8 +249,7 @@ async function provisionScope(trx,args){
     for select to anonymous,authenticated using (true)`.execute(trx);
   await sql`create policy ${sql.ref(id+'_config_scope_update')} on ${config}
     for update to authenticated using (${canUseScope}) with check (${canUseScope})`.execute(trx);
-  // A public Galaxy SELECT must not expose private articles. Keep the
-  // existing lo3rwang/lrunes policy semantics for every newly made Scope.
+  // Public pages only read explicitly published, non-private articles.
   const publicGalaxy=sql`search is true
     and lower(coalesce(site,'')) <> all (array[
       'messenger','chatgpt','claude','gemini','msn','whatsapp','telegram',
@@ -258,72 +257,7 @@ async function provisionScope(trx,args){
       'meta ai','meta-ai'])
     and not (lower(coalesce(site,''))='mcp'
       or (lower(coalesce(site,''))='github'
-        and (coalesce(site_id,'') ~ '^EsotericVerse/moon-runes-pwa#[0-9]+
-    for update to authenticated using (${canUseScope}) with check (${canUseScope})`.execute(trx);
-  await sql`create policy ${sql.ref(id+'_anchor_public_read')} on ${anchor}
-    for select to anonymous,authenticated
-    using (type in ('date','period','era','point','path','trace',
-      'image','video','rune','suno') and invisible is false)`.execute(trx);
-  await sql`create policy ${sql.ref(id+'_anchor_owner_read')} on ${anchor}
-    for select to authenticated using (${canUseScope})`.execute(trx);
-  await sql`create policy ${sql.ref(id+'_anchor_owner_insert')} on ${anchor}
-    for insert to authenticated with check (${canUseScope})`.execute(trx);
-  await sql`create policy ${sql.ref(id+'_anchor_owner_update')} on ${anchor}
-    for update to authenticated using (${canUseScope}) with check (${canUseScope})`.execute(trx);
-  await sql`create policy ${sql.ref(id+'_anchor_owner_delete')} on ${anchor}
-    for delete to authenticated using (${canUseScope})`.execute(trx);
-  await sql`create policy ${sql.ref(id+'_blocks_public_read')} on ${blocks}
-    for select to anonymous,authenticated using (true)`.execute(trx);
-  await sql`create policy ${sql.ref(id+'_blocks_scope_all')} on ${blocks}
-    for all to authenticated using (${canUseScope}) with check (${canUseScope})`.execute(trx);
-  for(const table of [config,galaxy,anchor,blocks]){
-    await sql`grant select on ${table} to anonymous,authenticated`.execute(trx);
-  }
-  await sql`grant update on ${config} to authenticated`.execute(trx);
-  await sql`grant update on ${galaxy} to authenticated`.execute(trx);
-  for(const table of [anchor,blocks])
-    await sql`grant insert,update,delete on ${table} to authenticated`.execute(trx);
-  const sort=await nextSort(trx,parent);
-  await trx.insertInto('api.manage').values({
-    id,email,domain,directory,parent_scope_id:parent,
-    active:true,sort_order:sort,manage_role:'scope'
-  }).executeTakeFirst();
-  const cloned=args.p_copy_keywords===false?null:await copyDefaultKeywordClass(trx,id,'silver.'+id+'_anchor');
-  await trx.insertInto('silver.'+id).values({
-    id,email,display_name:display,search_intro:'',search_aliases:[id,display],
-    theme,locale:'zh-Hant',search:true,statics:true,culture:true,trace:true,
-    keyword_min_chars:32,keyword_min_documents:100,
-    current_keyword_class_uid:cloned?.uid||null,keyword_class_share_enabled:false,
-    keyword_meta:sql`'{}'::jsonb`,staticstime:null,updated_at:sql`now()`
-  }).executeTakeFirst();
-  const locValues={id,display_name:display,locale:'zh-Hant',
-    birthday:args.p_birthday||null};
-  await trx.insertInto('silver.loc').values(
-    Object.fromEntries(LOC_NAME_COLUMNS.map(field=>[field,locValues[field]]))
-  ).executeTakeFirst();
-  await sql`notify pgrst,'reload schema'`.execute(trx);
-  return {scope_id:id,display_name:display,parent_scope_id:parent,
-    route_mode:domain?'domain':'directory',route_value:domain||directory,
-    keyword_rows:cloned?.count||0,keyword_class_uid:cloned?.uid||null};
-}
-export async function executeKyselyScopeAdmin(trx,body){
-  const action=String(body?.name||''),args=body?.args??{};
-  const options={
-    manage_scope_registry:['p_operation','p_scope_id','p_values'],
-    provision_scope:['p_scope_id','p_display_name','p_email','p_birthday',
-      'p_domain','p_directory','p_parent_scope_id','p_theme','p_copy_keywords'],
-    delete_scope:['p_scope_id']
-  };
-  if(!options[action]||!args||typeof args!=='object'||Array.isArray(args)||
-    Object.keys(args).some(k=>!options[action].includes(k)))
-    fail('Unknown Scope administration action');
-  await allowedGlobal(trx);
-  await sql`reset role`.execute(trx);
-  if(action==='manage_scope_registry')return {data:await managedRegistry(trx,args),count:null};
-  if(action==='delete_scope')return {data:await deleteScope(trx,args),count:null};
-  return {data:await provisionScope(trx,args),count:null};
-}
-
+        and (coalesce(site_id,'') ~ '^EsotericVerse/moon-runes-pwa#[0-9]+$'
           or coalesce(title,'') ~* 'PR[[:space:]]*#[0-9]+')))`;
   await sql`create policy ${sql.ref(id+'_galaxy_public_read')} on ${galaxy}
     for select to anonymous,authenticated using (${publicGalaxy})`.execute(trx);
