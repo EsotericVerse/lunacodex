@@ -61,6 +61,7 @@ export function bindLocAuthorization(db,{role='anon',claims={},snapshot=null,loa
 // from a browser-supplied role or Group tree. Once per gateway transaction.
 async function inheritedPrincipal(state){
   if(!state?.loadScopeTree||!Array.isArray(state.claims?.grants)||
+     state.claims.grants.includes('global:manage')||
      !state.claims.grants.some(grant=>/^[a-z][a-z0-9]{0,14}:manage$/.test(grant)))
     return null;
   state.scopeTreePromise??=Promise.resolve().then(()=>state.loadScopeTree())
