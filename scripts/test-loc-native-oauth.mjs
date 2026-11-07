@@ -12,7 +12,8 @@ const b64=x=>Buffer.from(typeof x==='string'?x:JSON.stringify(x)).toString('base
 
 function environment(){
  const records=new Map();
- const provider={client_id:'github-app-id',client_secret:'github-app-secret'};
+ const provider={client_id:'github-app-id',client_secret:'github-app-secret',
+  callback_url:'https://auth.lo3rwang.cc/oauth/callback/github'};
  let keys;
  const ready=(async()=>{
   keys=await crypto.subtle.generateKey({
