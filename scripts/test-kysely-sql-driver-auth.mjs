@@ -88,6 +88,8 @@ test('SQL authentication rejects unsupported engines and incomplete or unexpecte
   type:'default',token:'browser-token'}),/Unexpected/);
  assert.throws(()=>normalizeSqlDriverAuthentication('mysql',{type:'ldap-simple',password:'secret'}),
   /Unexpected/);
+ assert.throws(()=>normalizeSqlDriverAuthentication('mssql',null),/Invalid/);
+ assert.throws(()=>normalizeSqlDriverAuthentication('mssql',{type:42}),/Invalid/);
  assert.throws(()=>mssqlAuthentication({authentication:{
   type:'azure-active-directory-password'}},'user','password'),/clientId/);
 });
