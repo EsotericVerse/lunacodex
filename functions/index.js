@@ -8,7 +8,7 @@ export function onRequest(context){
   if(new URL(context.request.url).hostname==='mcp.lo3rwang.cc'){
     const bindings=context.env;
     return handleMcp(context.request,{
-      ...bindings,locDirectDatabase:()=>directMcpKysely(bindings)
+      ...bindings,locDirectDatabase:(verifiedAlias='')=>directMcpKysely(bindings,verifiedAlias)
     });
   }
   return context.next();
