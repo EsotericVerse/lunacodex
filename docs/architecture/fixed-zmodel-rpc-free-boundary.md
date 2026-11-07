@@ -371,6 +371,9 @@ For fixed Registry `update`/`delete`, the authorized transaction uses the
 fixed public reads. Primary-key protection is evaluated from frozen
 `schema.models[modelName].idFields` instead of querying `pg_index` on
 every fixed Registry edit. It introduces no extra database request or RPC.
-The generic dynamic-table update path retains its existing catalog check,
-pending a separate fixed/dynamic contract strategy.
+The verified managed-write Scope registry accepts only config tables with
+`id` or Galaxy/Anchor/Blocks with `uid` primary keys. The same immutable
+`managedPrimaryKeyColumns()` helper now protects **all** managed updates
+without a `pg_index` query. This was checked against the actual primary
+keys in PostgreSQL for both existing Scopes and the LOC Registry.
 
