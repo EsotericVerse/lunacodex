@@ -53,8 +53,12 @@ export function normalizeSqlDriverAuthentication(engine,input){
 }
 export function publicSqlDriverAuthentication(configuration){
  if(!configuration)return {type:'default'};
- const {token,clientSecret,...fields}=configuration;
- return {...fields,
+ // Deliberate allowlist: even unexpected legacy encrypted fields never
+ // become public admin metadata or browser-visible connection credentials.
+ const {type='default',domain,clientId,tenantId,token,clientSecret}=configuration;
+ return {type,
+  ...(domain?{domain}:{}),...(clientId?{clientId}:{}),
+  ...(tenantId?{tenantId}:{}),
   ...(token?{token_configured:true}:{}),
   ...(clientSecret?{client_secret_configured:true}:{})};
 }
@@ -83,6 +87,7 @@ export function mssqlAuthentication(profile,username,password){
   }
   if(type==='azure-active-directory-password'){
     if(!username||!password)throw new Error('SQL Server Entra user credentials required');
+    if(!options.clientId)throw new Error('SQL Server Entra password authentication requires clientId');
     return {type,options:{userName:username,password,
       ...(options.tenantId?{tenantId:String(options.tenantId)}:{}),
       ...(options.clientId?{clientId:String(options.clientId)}:{})}};
