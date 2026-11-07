@@ -25,7 +25,7 @@ export async function scopeGroupRequest({groupid,kind='list',scopeid,subject,act
     path='group/'+groupid+'/scope/'+scopeid;method='PUT';body={};
   }else if(kind==='categoryAdd'||kind==='categoryRemove'){
     if(!SCOPE.test(String(scopeid||''))||scopeid===groupid||
-        !/^[A-Za-z0-9]{4}$/.test(String(classUid||'')))
+        !/^(?:[A-Za-z0-9]{4}|[A-Za-z0-9]{8})$/.test(String(classUid||'')))
       throw Error('Invalid keyword Category identifier');
     path='group/'+groupid+'/category';method=kind==='categoryAdd'?'PUT':'POST';
     body={scopeid,class_uid:classUid};
