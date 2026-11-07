@@ -87,13 +87,14 @@ export async function databaseForTarget(input:Record<string,unknown>,options:{pr
       tedious:{...Tedious,connectionFactory:()=>new Tedious.Connection({
         server:uri.hostname,
         authentication:mssqlAuthentication(profile,
-          decodeURIComponent(uri.username),decodeURIComponent(uri.password)),
+          decodeURIComponent(uri.username),decodeURIComponent(uri.password)) as
+          ConstructorParameters<typeof Tedious.Connection>[0]['authentication'],
         options:{database:decodeURIComponent(uri.pathname.slice(1)),port:Number(uri.port)||1433,encrypt:profile.tls!==false,trustServerCertificate:false,connectTimeout:5000}
       })}
     });
   }else throw new Error("Selected database engine has no trusted server driver");
   const jsonColumns=new Set(PORTABLE_JSON_COLUMNS);
-  const db=new Kysely({dialect,
+  const db=new Kysely<Record<string,Record<string,unknown>>>({dialect,
     // MS SQL Server returns JSON values as text. Use Kysely's official
     // result plugin, restricted to known JSON fields so lyrics/content
     // that happen to look like JSON are never parsed into objects.
