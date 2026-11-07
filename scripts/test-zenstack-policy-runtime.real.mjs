@@ -55,14 +55,14 @@ test('real PolicyPlugin denies unauthenticated fixed Registry writes and permits
   };
   const policy=new ZenStackClient(schema,{dialect}).$use(
     new PolicyPlugin({dangerouslyAllowRawSql:true}));
-  await policy.$setAuth({id:'user1',role:'admin'}).$qb
+  await policy.$setAuth({id:'user1',role:'admin',roleLevel:4,scopeIds:[],groupIds:[]}).$qb
     .updateTable('Manage').set({note:'test'}).where('id','=','global').execute();
   assert.equal(executed.length,1,'a fixed global policy must not issue a permission SELECT');
   assert.match(executed[0].sql,/"api"."manage"/);
   assert.ok(executed[0].parameters.includes('test'));
   executed.length=0;
   try{
-    await policy.$setAuth({id:'user1',role:'member'}).$qb
+    await policy.$setAuth({id:'user1',role:'user',roleLevel:1,scopeIds:[],groupIds:[]}).$qb
       .updateTable('Manage').set({note:'denied'}).where('id','=','global').execute();
   }catch(error){
     assert.match(String(error),/policy|denied|reject/i);
