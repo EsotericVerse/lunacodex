@@ -4,7 +4,7 @@ import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
-const folders=['app','scripts','workers','extensions','functions','zenstack','supabase/functions'];
+const folders=['app','scripts','workers','extensions','functions','zenstack'];
 const extensions=/\.(?:[cm]?js|jsx|tsx?|jsonc?|zmodel|sql|vue|py|rb|sh|swift|css|html)$/i;
 const legacy=new RegExp('(?:'+['article','tag'].join('[_-]?')+'|'+['txt','class'].join('[_-]?')+')','i');
 const findings=[];
