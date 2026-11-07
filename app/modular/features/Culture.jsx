@@ -553,9 +553,9 @@ export default function Culture(){
     enabled:!isTimeEditingView&&styleFilter==='rune66'&&Boolean(keywordDrillGroup)
       &&Boolean(styleQuery.data?.keywordMeta?.class_uid)&&Boolean(scopeData?.keywords),
     queryFn:async()=>{
-      const {readKeywordTreeCatalog}=await import('../../loc/db-client.mjs');
+      const {keywordService}=await import('../../loc/keyword-service-client.mjs');
       const {keywordTreeCatalog}=await import('../../loc/keyword-tree-report.mjs');
-      const result=await readKeywordTreeCatalog(scopeId,{classUid:resolvedKeywordClassUid});
+      const result=await keywordService('catalog',{scopeId,classUid:resolvedKeywordClassUid});
       if(!result.class_uid)return [];
       const catalog=keywordTreeCatalog(result.rows,result.class_uid);
       return (catalog.groups.find(group=>group.uid===keywordDrillGroup)?.items||[])
