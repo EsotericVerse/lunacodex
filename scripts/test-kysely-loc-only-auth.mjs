@@ -10,7 +10,7 @@ test('SQL Edge verifies locally signed LOC delegation, not provider identity',()
   assert.match(edge,/verifyLocDelegation\(match\[1\],body\)/);
   assert.match(edge,/verifyDelegationBoundary\(payload,body,/);
   assert.match(edge,/delegationAudience\(body\)/);
-  assert.doesNotMatch(edge,/verifyClerkForSql|verifyMcpForSql|sessionIdentityCache/);
+  assert.doesNotMatch(edge,/verifyMcpForSql|sessionIdentityCache/);
 });
 test('Kysely and Edge share one LOC delegation policy',()=>{
   const edge=source('app/loc/gateway/sql-handler.ts');
@@ -30,9 +30,10 @@ test('signed grants are portable and scope-limited independently of database RLS
   assert.equal(canManageDelegation(claims,'scope','lo3rwang'),false);
   assert.equal(canManageDelegation(claims,'global'),false);
 });
-test('existing Clerk browser adapter remains optional and isolated from the SQL engine',()=>{
-  const gateway=source('app/loc/providers/clerk-gateway.mjs');
-  assert.match(gateway,/createClerkAccountAdapter/);
+test('site uses LOC Auth by default without a vendor Auth SDK',()=>{
+  const configured=source('app/loc/providers/configured.mjs');
+  assert.match(configured,/createLocAccountAdapter/);
+  assert.doesNotMatch(configured,/LEGACY_SQL_ORIGIN/);
   const edge=source('app/loc/gateway/sql-handler.ts');
-  assert.doesNotMatch(edge,/createClerkAccountAdapter/);
+  assert.match(edge,/verifyLocDelegation/);
 });

@@ -1,6 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "git": {
-    "deploymentEnabled": false
-  }
+    "deploymentEnabled": {
+      "*": false,
+      "main": true
+    }
+  },
+  "ignoreCommand": "test -n \"$VERCEL_GIT_PREVIOUS_SHA\" || exit 1; f=$(git diff --name-only \"$VERCEL_GIT_PREVIOUS_SHA\" HEAD) || exit 1; printf '%s\\n' \"$f\" | grep -Eqv '(^AGENTS\\.md$|\\.md$|^(\\.githooks|node_modules|\\.git|\\.agents|claude)/)' && exit 1; exit 0"
 }

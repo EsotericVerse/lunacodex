@@ -53,22 +53,17 @@ let connection:any=null;
 function database(){
  if(connection)return connection;
  // First-party Channel 1 service uses a server-only LOC connection profile.
- // The legacy hosted Function may still read its previously provisioned URL.
- const alias=String(Deno.env.get("LOC_CHANNEL1_DB_ALIAS")||"");
- let url="";
- if(alias){
-  if(!/^[a-z][a-z0-9_]{0,63}$/.test(alias))throw Error("Invalid Channel 1 SQL alias");
-  let sources:any;
-  try{sources=JSON.parse(Deno.env.get("LOC_DB_CONNECTIONS_JSON")||"{}");}
-  catch{throw Error("Invalid LOC SQL connections configuration");}
-  const profile=sources?.[alias];
-  if(profile?.engine!=="postgres"||typeof profile.url!=="string"||!profile.url)
-   throw Error("Channel 1 SQL alias must point to PostgreSQL");
-  url=profile.url;
- }else{
-  url=Deno.env.get("SUPABASE_DB_URL")||Deno.env.get("DATABASE_URL")||"";
- }
- if(!url)throw Error("Channel 1 database connection is not configured");
+ const alias=String(Deno.env.get("LOC_CHANNEL1_DB_ALIAS")||
+   Deno.env.get("LOC_CONTROL_DB_ALIAS")||"").trim();
+ if(!/^[a-z][a-z0-9_]{0,63}$/.test(alias))
+  throw Error("Channel 1 SQL alias is not configured");
+ let sources:any;
+ try{sources=JSON.parse(Deno.env.get("LOC_DB_CONNECTIONS_JSON")||"{}");}
+ catch{throw Error("Invalid LOC SQL connections configuration");}
+ const profile=sources?.[alias];
+ if(profile?.engine!=="postgres"||typeof profile.url!=="string"||!profile.url)
+  throw Error("Channel 1 SQL alias must point to PostgreSQL"); 
+ const url=profile.url;
  const pool=new pg.Pool({connectionString:url,max:1,connectionTimeoutMillis:7000,idleTimeoutMillis:15000});
  connection=new Kysely({dialect:new PostgresDialect({pool})});
  return connection;

@@ -30,9 +30,6 @@
     }
   },
   "vars": {
-    "LOC_MCP_DB_ENGINE": "postgres",
-    "LOC_MCP_DB_ALIAS": "mcp_main",
-    "LOC_MCP_DB_NAMESPACE": "silver",
     "LOC_AUTHORITY_ORIGIN": "https://auth.lo3rwang.cc"
   }
 }

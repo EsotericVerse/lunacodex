@@ -3,7 +3,7 @@ import {canManageLoc} from './loc-authorization.mjs';
 // Kysely provides dialect-specific SQL generation; connection and security
 // adapters remain on the trusted runtime (never in the browser).
 const ENGINE_DEFINITIONS=[
-  {id:'postgres',label:'PostgreSQL',dialect:'PostgresDialect',driver:'pg',runtime:'edge',namespace:'schema',session:'postgres-rls',schema:'kysely'},
+  {id:'postgres',label:'PostgreSQL',dialect:'PostgresDialect',driver:'pg',runtime:'edge',namespace:'schema',session:'external-acl',schema:'kysely'},
   {id:'mysql',label:'MySQL / MariaDB',dialect:'MysqlDialect',driver:'mysql2',runtime:'edge',namespace:'database',session:'external-acl',schema:'kysely'},
   {id:'mssql',label:'SQL Server / Azure SQL',dialect:'MssqlDialect',driver:'tedious+tarn',runtime:'edge',namespace:'schema',session:'external-acl',schema:'kysely'},
   {id:'sqlite',label:'SQLite',dialect:'SqliteDialect',driver:'sqlite',runtime:'persistent-gateway',namespace:'attached-database',session:'external-acl',schema:'kysely'}
@@ -33,13 +33,9 @@ export function getSqlRuntimeCapabilities(engine){
 // dialect; PostgreSQL's existing RLS is an independent database-side layer.
 export function resolveSqlExecutionPort(target){
   const port=getSqlEnginePort(target.engine);
-  // PostgreSQL is portable with or without provider-managed RLS roles.
-  // Only the existing provider-specific gateways opt into session impersonation.
-  const managedRls=port.id==='postgres'&&
-    ['supabase','neon'].includes(String(target.provider||''))&&
-    target.rls_enabled!==false;
-  const session=port.id==='postgres'&&!managedRls?'external-acl':port.session;
-  return Object.freeze({engine:port.id,session,namespace:port.namespace,runtime:port.runtime});
+  // LOC delegation is the portable policy boundary on every engine.
+  return Object.freeze({engine:port.id,session:port.session,
+    namespace:port.namespace,runtime:port.runtime});
 }
 
 // An external Kysely dialect does not inherit PostgreSQL RLS. Whitelisting

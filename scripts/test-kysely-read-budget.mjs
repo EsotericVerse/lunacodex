@@ -33,7 +33,7 @@ test('a failed read releases its reserved capacity',async()=>{
 test('a 503 SELECT makes one HTTP request, not an immediate retry',async()=>{
   let calls=0;
   const client=createKyselyEdgeClient({
-    url:'https://demo.supabase.co',publishableKey:'public-key',
+    gatewayUrl:'https://db-gateway.example/v1/sql',
     role:'anon',fetch:async()=>{
       calls++;
       return new Response(JSON.stringify({error:{message:'DB temporarily unavailable'}}),
@@ -101,7 +101,7 @@ test('cancelled queued gateway query settles before active requests release',asy
   let fetches=0,release;
   const gate=new Promise(resolve=>{release=resolve});
   const client=createKyselyEdgeClient({
-    url:'https://demo.supabase.co',publishableKey:'public-key',role:'anon',
+    gatewayUrl:'https://db-gateway.example/v1/sql',role:'anon',
     fetch:async()=>{
       fetches++;
       await gate;

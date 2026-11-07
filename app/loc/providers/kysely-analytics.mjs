@@ -630,7 +630,7 @@ export async function executePortableKyselyAnalytics(db,body,{engine,namespace='
       item_count:Number(row.n)}));
   }else{
     // Advanced private keyword/trace joins require a matching portable
-    // summary contract. Never silently substitute legacy Supabase totals.
+    // summary contract. Never silently substitute legacy provider-specific totals.
     reject('Unsupported portable LOC analytics mode');
   }
   return {data,count:null};

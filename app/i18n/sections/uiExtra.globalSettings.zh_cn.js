@@ -117,7 +117,7 @@ export default {
   "mcpTab": "数据来源",
   "mcpSelfServiceTitle": "我的数据来源与群组授权",
   "mcpSelfServiceIntro": "登录后，可以查看自己的数据来源及所属群组。群组管理员可以授予访问权限；系统只会连接已存在的数据表。",
-  "mcpClerkId": "我的授权标识码（提供给群组管理员）",
+  "mcpLocId": "我的授权标识码（提供给群组管理员）",
   "mcpSignInNeeded": "请先登录，才能管理数据来源。",
   "mcpInvalidScope": "请输入有效的数据来源或群组代码。",
   "mcpScopeId": "我的数据来源代码",

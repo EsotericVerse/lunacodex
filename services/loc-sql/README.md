@@ -1,80 +1,123 @@
 # LOC Portable SQL Gateway
 
-This Deno 2 entry runs the **existing** LOC Kysely/ZenStack SQL service independently
-of Supabase Functions, PostgREST, Neon Auth, and database RPC. It does not
-introduce SQL schema changes or a duplicate query implementation.
+The independent LOC SQL Gateway runs the existing Kysely / ZenStack SQL
+executor in Deno 2. The same backend supports PostgreSQL, MySQL and
+SQL Server. A database's hosting provider does not determine its dialect.
+No schema, RLS, RPC, migration or content changes are performed here.
 
-## Required trusted-server environment
+## Configuration before the one-time Gateway deployment
 
-- `LOC_CONTROL_DB_ALIAS`: a server-only alias matching `^[a-z][a-z0-9_]{0,63}$`
-- `LOC_CONTROL_DB_ENGINE`: `postgres`, `mysql` or `mssql`
-- `LOC_DB_CONNECTIONS_JSON`: server secret mapping alias to `{"engine":"postgres","url":"postgresql://..."}` or equivalent supported dialect
-- `LOC_AUTHORITY_ORIGIN`: `https://auth.lo3rwang.cc` (or the explicitly deployed LOC Authority)
-- Optional: `LOC_DELEGATION_NOT_BEFORE`, `LOC_DELEGATION_REVOKED_SIDS`
+All connection credentials belong in the trusted runtime, **not in Git,
+a browser setting or the Chrome Extension**.
 
-The entry refuses startup when its own engine/alias/connection profile is
-missing. In particular, it **never** implicitly reads a Supabase or Neon URL.
-The canonical LOC-signed SQL handler now lives in
-`app/loc/gateway/sql-handler.ts`, with its connection adapter in
-`app/loc/gateway/database-connections.ts`. The Supabase Function is only a
-compatibility entry that imports the canonical handler. The hosted entry
-can be removed after its production traffic has switched.
+| Variable | Purpose |
+|---|---|
+| `LOC_CONTROL_DB_ALIAS` | Required default/control alias, such as `loc_main` |
+| `LOC_CONTROL_DB_ENGINE` | Required default dialect: `postgres`, `mysql` or `mssql` |
+| `LOC_DB_CONNECTIONS_JSON` | **Required** server-only JSON mapping the default alias to an `engine` and database `url` |
+| `LOC_AUTHORITY_ORIGIN` | LOC Authority, normally `https://auth.lo3rwang.cc` |
+| `LOC_SQL_GATEWAY_SERVICE_KEY` | Required **when retrieving a user's selected database profile** from LOC Auth; not a substitute for the default connection |
+| `LOC_DELEGATION_NOT_BEFORE`, `LOC_DELEGATION_REVOKED_SIDS` | Optional delegation revocation controls |
 
-## Service launch and website cutover
+Example shape only (do not commit real passwords):
 
-On a trusted host with Deno 2 and outbound database connectivity:
-
-```sh
-deno run --allow-env --allow-net --config services/loc-sql/deno.json services/loc-sql/main.ts
+```json
+{"loc_main":{"engine":"postgres","url":"postgresql://USER:PASSWORD@DB_HOST:5432/DATABASE"}}
 ```
 
-Put the service behind a trusted HTTPS gateway and configure the **website**
-build with `NEXT_PUBLIC_LOC_SQL_GATEWAY_URL=https://<your-host>/v1/sql`.
-Both anonymous and delegated browser requests use the same URL.
-Do not expose database credentials to browsers or to source control.
-A configured independent URL is already supported by `configured.mjs`.
-Preserve the legacy URL until the standalone host and credentials actually
-exist; removing the fallback early would disable the website.
+The Deno service checks that the default alias exists in
+`LOC_DB_CONNECTIONS_JSON` and matches `LOC_CONTROL_DB_ENGINE` **at
+startup**. A service key alone cannot serve anonymous/control-plane reads.
+Dynamic PostgreSQL, MySQL and SQL Server profiles remain stored encrypted
+in LOC Auth and are resolved per authorized user without rebuilding or
+redeploying the Gateway.
 
-The serving process is the existing Deno HTTP handler and accepts POST
-and OPTIONS; its route is set by your reverse proxy. The service configuration
-does **not** establish DNS, hosting, credentials or production readiness.
-A portable service may use the selected PostgreSQL, MySQL or SQL Server
-Kysely driver, but engine-specific behavior remains in its existing adapters.
-No database tests or changes are performed by this entry.
+The canonical SQL handler is `app/loc/gateway/sql-handler.ts`; the
+server-only driver is `app/loc/providers/kysely-database-drivers.ts`.
+The first batch (#1210) **removes** the legacy hosted SQL Function wrappers
+and provider URL/API-key fallback. These changes must not be merged into
+`main` until the replacement service and its website URL are available.
 
-## Cloudflare Container deployment package (separate from LOC MCP)
+## Independent HTTPS ingress
 
-`Dockerfile`, `cloudflare-worker.mjs` and `wrangler.jsonc` define a separate
-`loc-sql` Worker and Deno Container. The external Worker accepts only
-`POST /v1/sql` and CORS `OPTIONS /v1/sql`; the internal `GET /health`
-returns 204 without a database query. JWT verification and SQL authorization
-remain in the canonical `app/loc/gateway/sql-handler.ts`.
+The Cloudflare implementation is
+`services/loc-sql/cloudflare-worker.mjs`,
+`services/loc-sql/wrangler.jsonc`, and
+`services/loc-sql/Dockerfile`. It uses the Cloudflare Durable Object
+Container API. A separate Vercel Container project is also provisioned
+but has not been deployed. Source files and DNS names alone are not
+running services.
 
-1. The Cloudflare account must have an active Workers plan that permits
-   Containers. A committed Wrangler configuration is **not** a deployment.
-2. Configure the **server-only** `LOC_DB_CONNECTIONS_JSON` Worker secret with
-   the `loc_main` alias matching `LOC_CONTROL_DB_ENGINE`. Set
-   `LOC_AUTHORITY_ORIGIN` to the actual independently deployed Authority.
-   The database URL never belongs in public environment variables or Git.
-3. Deploy `services/loc-sql/wrangler.jsonc` with Wrangler only after the
-   trusted secret, account plan, and host permissions are ready. Configure a
-   dedicated HTTPS hostname and confirm the Container's /health liveness
-   before any website cutover. Liveness is **not** database readiness.
-4. Make `NEXT_PUBLIC_LOC_SQL_GATEWAY_URL=https://<trusted-host>/v1/sql`
-   available to the website build. The server-side ISR uses
-   `LOC_SQL_GATEWAY_URL` first, then the same public setting. With an
-   independent URL, neither entry forwards legacy Supabase public credentials.
-5. Verify public anonymous reads and legitimate delegated management using
-   the production owner's normal workflow, then separately confirm the
-   actual deployed page and network route. Only after independent traffic is
-   established can the old Supabase Edge Functions be retired.
+The external Worker exposes only `POST /v1/sql` and its
+`OPTIONS /v1/sql` browser preflight. Its configuration and transport
+errors carry readable JSON/CORS headers; the internal, database-free
+`GET /health` is not published. JWT signature and LOC Scope grants are
+checked by the canonical Deno SQL handler, not by the browser.
 
-An independently hosted database may be PostgreSQL (including optional Neon),
-MySQL or SQL Server: the server-side alias chooses the driver. Neon Auth,
-Neon Data API, Supabase Auth and Supabase Edge are not requirements. LOC Auth
-is maintained in its own project; this package does not modify login.
+After the independent HTTPS service is actually available:
 
-The existing `loc-kysely` Edge is deliberately retained as the compatibility
-route until actual cutover. No schema, policy, RLS, migration or test data is
-created or modified as part of this deployment package.
+- Set the website build variable `NEXT_PUBLIC_LOC_SQL_GATEWAY_URL`
+  to the verified `https://SQL_HOST/v1/sql` endpoint.
+- Set `LOC_SQL_GATEWAY_URL` for server-only ISR calls if desired.
+- Configure the LOC Auth import bridge and MCP server to the same
+  verified endpoint, with separate OAuth audiences and signed delegations.
+- The optional bounded read-only command `npm run verify:portable-sql`
+  probes the public Galaxy projection; it does not create tables.
+
+**Do not merge #1210 or #1216 into main before this configuration.**
+The independent Gateway code has no hidden hosted-provider fallback.
+The currently deployed production services remain unchanged until
+the PRs are merged and the explicit deployment is made.
+
+## User database selection and Azure trial
+
+In Settings, a user can select only the database targets exposed to that
+LOC subject by the administrator. LOC Auth persists each choice and
+issues signed `db_target` claims; the Gateway fetches encrypted profiles
+over the server-to-server channel and selects the appropriate Kysely
+dialect. The page reload clears the browser's delegation cache. No SQL
+DDL, website rebuild, or Gateway redeploy is needed for switching.
+
+An Azure SQL trial is **not required for any of the source, contract,
+bootstrap, or mock transport tests**. Activate the time-limited trial only
+when the independent Gateway can accept a trusted SQL Server connection;
+then add the Azure profile to LOC Auth, keeping existing PostgreSQL data
+and default routing unchanged.
+
+## SQL authentication profiles (before starting Azure trial)
+
+LOC Authority's administrator form supports SQL username/password (the default),
+MySQL LDAP Simple over TLS, SQL Server NTLM and SQL Server Microsoft Entra login
+methods. This is independent of LOC website OAuth identity and permissions.
+
+- SQL username/password is the simplest first Azure SQL connectivity check.
+- Microsoft Entra `Default Credential`, VM/App Service Managed Identity, access
+  token, and service principal modes do not require SQL username/password.
+  Entra Password login requires an explicit Client ID in Tedious.
+- Service Principal Client Secret and manually supplied Access Token are stored
+  only in LOC Authority's encrypted database target profile. A settings read
+  returns a boolean `*_configured` indicator, never their values. Updating the
+  same target and authentication mode without resubmitting the secret preserves
+  its encrypted value.
+- A pasted Entra access token will expire. Default Credential or a managed
+  identity only works if the **Gateway execution environment** actually has
+  the corresponding Azure credential or identity; deploying the Gateway to
+  Cloudflare does not itself grant an Azure Managed Identity.
+- PostgreSQL `tls:true` explicitly enables verified TLS; unset retains
+  the existing pg connection URI SSL mode. SQL Server Azure profiles use
+  encrypted TLS with server certificate validation.
+
+The implementation/driver wiring can be verified without Azure. Actual Azure
+authentication, firewall access, database grants and cross-engine SQL queries
+remain separate live checks once the time-limited trial is intentionally opened.
+
+## Chrome/MCP
+
+The two Chrome extensions retain independent IndexedDB queues. No website
+OAuth session is forwarded into them. An incomplete receipt never empties
+the queue; the separate LOC Auth token and short-import write delegation
+remain required. The MCP standalone SQL entry can reuse the trusted
+`LOC_CONTROL_DB_ALIAS` if it has no dedicated `LOC_MCP_DB_ALIAS`.
+
+The database schema, RLS, migrations, existing content, and active
+production deployment are outside this repository cutover.

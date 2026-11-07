@@ -3,7 +3,7 @@ import {useEffect,useState} from 'react';
 import {DATABASE_ACCESS_LIST} from '../../providers/access.js';
 import {resolveDatabaseRouting} from '../../providers/routing-config.mjs';
 import {dbAuthClient} from '../../db-client.mjs';
-import {readonlyAuthStatus,recoveryOAuthLabel} from '../../providers/auth-status-readonly.mjs';
+import {readonlyAuthStatus} from '../../providers/auth-status-readonly.mjs';
 
 const FILE_URL='https://github.com/EsotericVerse/moon-runes-pwa/edit/main/app/loc/providers/access.js';
 const ACCESS_FILE='app/loc/providers/access.js';
@@ -11,14 +11,9 @@ const routing=resolveDatabaseRouting();
 
 export default function DatabaseTarget(){
   const [backupHealth,setBackupHealth]=useState({state:'idle'});
-  const [recoveryOAuth,setRecoveryOAuth]=useState('讀取中…');
   const [authOverview]=useState(readonlyAuthStatus);
   useEffect(()=>{
     let active=true;
-    fetch('/recovery/config.json',{cache:'no-store'})
-      .then(response=>{if(!response.ok)throw Error('No recovery config');return response.json();})
-      .then(config=>{if(active)setRecoveryOAuth(recoveryOAuthLabel(config));})
-      .catch(()=>{if(active)setRecoveryOAuth('未設定／無法讀取');});
     if(!DATABASE_ACCESS_LIST.some(item=>item.backup_selected===true)){
       setBackupHealth({state:'absent'});
     }else{
@@ -35,8 +30,9 @@ export default function DatabaseTarget(){
   const ready=DATABASE_ACCESS_LIST;
   return <section className="loc-card admin-workspace">
     <h2>資料庫連線與部署設定</h2>
-    <p className="scope-status">資料庫目標由 <code>{ACCESS_FILE}</code> 決定。這是部署設定，不讀寫
-      <code>api.manage.database</code>。修改 JS 並提交 GitHub 後，重新部署才會生效；此頁不提供假的即時儲存。</p>
+    <p className="scope-status">本頁僅顯示預設控制資料庫連線；每位使用者的資料庫選擇由 LOC Auth
+      即時管理，切換 PostgreSQL／MySQL／SQL Server 無需重新部署，亦不讀寫
+      <code>api.manage.database</code>。</p>
     <p className="scope-status">主要：{ready.find(item=>item.target_id===routing.primaryId)?.label||routing.primaryId}
       ｜備援：{ready.find(item=>item.target_id===routing.backupId)?.label||'未啟用'}</p>
     <div className="scope-management-fields">
@@ -45,13 +41,13 @@ export default function DatabaseTarget(){
         <p className="scope-status">類型：{item.engine} / {item.provider}
           ｜{item.target_id===routing.primaryId?'主要資料庫':item.backup_selected?'備援資料庫':'未啟用'}</p>
         <p className="scope-status">連線 Alias：<code>{item.connection_alias}</code></p>
-        <p className="scope-status">Project ID／Endpoint：<code>{item.project_id||item.project_url||'依伺服器設定'}</code></p>
+        <p className="scope-status">連線位置與密碼由 LOC SQL Gateway 管理，不傳送給瀏覽器。</p>
       </section>)}
     </div>
-    <p className="scope-status">連線密碼、Token、含密碼的 Database URL 不得寫入 JS；仍由 Edge Secrets／Vault 提供。
-      存取此設定檔並不等於取得資料庫讀寫權限。</p>
+    <p className="scope-status">連線密碼、Token 與資料庫 URL 由 LOC Auth／SQL Gateway 的受信任環境保管。
+      預設連線 Alias 不提供資料庫存取權限。</p>
     <p><a className="loc-button" href={FILE_URL} target="_blank" rel="noopener noreferrer">
-      在 GitHub 編輯 access.js
+      在 GitHub 查看預設 access.js
     </a></p>
     <p className="scope-status" role="status">備援：
       {backupHealth.state==='absent'?'未設定':
@@ -64,7 +60,6 @@ export default function DatabaseTarget(){
       <p className="scope-status">目前網站登入：{authOverview.primaryOAuth}</p>
       <p className="scope-status">授權服務：{authOverview.authorization}</p>
       <p className="scope-status">資料庫連線不使用託管商的 Auth；登入來源不改變 SQL 授權與 Kysely 操作。</p>
-      <p className="scope-status">過渡期 Clerk 設定：{recoveryOAuth}</p>
     </div>
   </section>;
 }

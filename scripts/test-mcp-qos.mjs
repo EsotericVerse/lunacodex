@@ -21,7 +21,7 @@ function quota(){
   };
   return new LocAuthorityState({storage},{});
 }
-const who='clerk:user_QoSTest';
+const who='loc:loc_QoSTestAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
 test('MCP QoS reserves four slots for writes and enforces 16 total',async()=>{
   const authority=quota(),tickets=[];
   for(let i=0;i<12;i++)tickets.push(await authority.mcpQuotaAcquire('read',who));
@@ -31,7 +31,7 @@ test('MCP QoS reserves four slots for writes and enforces 16 total',async()=>{
   assert.equal(tickets.length,16);
   assert.equal(new Set(tickets.map(item=>item.lease)).size,16);
   // Other account reaches global concurrency cap without exhausting its own rate quota.
-  const other='clerk:user_Other';
+  const other='loc:loc_OtherAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
   await assert.rejects(authority.mcpQuotaAcquire('write',other),error=>error.status===429);
   const suspended=await authority.ctx.storage.get('mcp-qos-cooldown:'+other);
   assert.ok(suspended>Date.now()+170000);
@@ -39,21 +39,21 @@ test('MCP QoS reserves four slots for writes and enforces 16 total',async()=>{
   // The durable cooldown persists even after active leases are released.
   await assert.rejects(authority.mcpQuotaAcquire('write',other),error=>error.status===429);
   await assert.rejects(authority.mcpQuotaAcquire('read',who),error=>error.status===429);
-  const next=await authority.mcpQuotaAcquire('read','clerk:user_Third');
-  await authority.mcpQuotaRelease(next.lease,'clerk:user_Third');
+  const next=await authority.mcpQuotaAcquire('read','loc:loc_ThirdAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+  await authority.mcpQuotaRelease(next.lease,'loc:loc_ThirdAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
 });
 test('MCP QoS refuses cross-account release and invalid principal',async()=>{
   const authority=quota(),ticket=await authority.mcpQuotaAcquire('write',who);
-  await assert.rejects(authority.mcpQuotaRelease(ticket.lease,'clerk:user_Other'),
+  await assert.rejects(authority.mcpQuotaRelease(ticket.lease,'loc:loc_OtherAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'),
     error=>error.status===403);
-  await assert.rejects(authority.mcpQuotaAcquire('read','not-clerk'),
+  await assert.rejects(authority.mcpQuotaAcquire('read','not-loc'),
     error=>error.status===401);
   assert.deepEqual(await authority.mcpQuotaRelease(ticket.lease,who),{released:true});
 });
 
 test('Galaxy Link searches have a separate low-rate budget',async()=>{
   const authority=quota();
-  const subject='clerk:user_Search';
+  const subject='loc:loc_SearchAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
   const one=await authority.mcpQuotaAcquire('search',subject);
   await assert.rejects(authority.mcpQuotaAcquire('search',subject),e=>e.status===429&&/五分鐘/.test(e.message));
   const counter=await authority.ctx.storage.get('mcp-qos-search:'+subject);
@@ -70,7 +70,7 @@ test('Galaxy Link searches have a separate low-rate budget',async()=>{
 });
 
 test('three repeated minute-limit refusals cause a durable three-minute cooldown',async()=>{
-  const authority=quota(),subject='clerk:user_RepeatRate',leases=[];
+  const authority=quota(),subject='loc:loc_RepeatRateAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',leases=[];
   for(let i=0;i<16;i++)leases.push(await authority.mcpQuotaAcquire('write',subject));
   await assert.rejects(authority.mcpQuotaAcquire('write',subject),error=>error.status===429);
   assert.equal(await authority.ctx.storage.get('mcp-qos-cooldown:'+subject),undefined);
@@ -80,12 +80,12 @@ test('three repeated minute-limit refusals cause a durable three-minute cooldown
   assert.ok((await authority.ctx.storage.get('mcp-qos-cooldown:'+subject))>Date.now()+170000);
   for(const lease of leases)await authority.mcpQuotaRelease(lease.lease,subject);
   await assert.rejects(authority.mcpQuotaAcquire('read',subject),error=>error.status===429);
-  const unaffected=await authority.mcpQuotaAcquire('read','clerk:user_OtherRate');
-  await authority.mcpQuotaRelease(unaffected.lease,'clerk:user_OtherRate');
+  const unaffected=await authority.mcpQuotaAcquire('read','loc:loc_OtherRateAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+  await authority.mcpQuotaRelease(unaffected.lease,'loc:loc_OtherRateAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
 });
 
 test('three repeated Galaxy Link search violations trigger three-minute cooldown',async()=>{
-  const authority=quota(),subject='clerk:user_SearchBurst',leases=[];
+  const authority=quota(),subject='loc:loc_SearchBurstAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',leases=[];
   leases.push(await authority.mcpQuotaAcquire('search',subject));
   for(let i=0;i<2;i++){
     await assert.rejects(authority.mcpQuotaAcquire('search',subject),error=>error.status===429);
@@ -98,7 +98,7 @@ test('three repeated Galaxy Link search violations trigger three-minute cooldown
 });
 
 test('repeated cooldown incidents escalate 3/6/12/24/48/60 minutes, then cap',async()=>{
-  const authority=quota(),subject='clerk:user_Escalation';
+  const authority=quota(),subject='loc:loc_EscalationAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
   const base=Date.now(),duration=[3,6,12,24,48,60,60];
   // Seed a full search quota so each three refused search attempts is a new incident.
   const tickets=[await authority.mcpQuotaAcquire('search',subject)];
@@ -135,7 +135,7 @@ test('repeated cooldown incidents escalate 3/6/12/24/48/60 minutes, then cap',as
 });
 
 test('Rejected searches never reset the first accepted search timestamp',async()=>{
-  const authority=quota(),subject='clerk:user_SearchStable';
+  const authority=quota(),subject='loc:loc_SearchStableAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
   const ticket=await authority.mcpQuotaAcquire('search',subject);
   const before=await authority.ctx.storage.get('mcp-qos-search:'+subject);
   for(let i=0;i<2;i++)await assert.rejects(authority.mcpQuotaAcquire('search',subject),e=>e.status===429);
@@ -147,7 +147,7 @@ test('Rejected searches never reset the first accepted search timestamp',async()
 });
 
 test('One search becomes eligible again after five minutes without resetting historic count',async()=>{
-  const authority=quota(),subject='clerk:user_SearchWindow';
+  const authority=quota(),subject='loc:loc_SearchWindowAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
   const first=await authority.mcpQuotaAcquire('search',subject);
   const key='mcp-qos-search:'+subject;
   const old=await authority.ctx.storage.get(key);
@@ -169,7 +169,7 @@ test('PR classifier routes Github lookups away from Galaxy',()=>{
 });
 
 test('read-only QoS inspection warns at the penultimate slot without spending quota',async()=>{
- const authority=quota(),subject='clerk:user_Inspect';
+ const authority=quota(),subject='loc:loc_InspectAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
  assert.deepEqual(await authority.mcpQuotaInspect('search',subject),{warning:''});
  const ticket=await authority.mcpQuotaAcquire('search',subject);
  assert.match(ticket.warning,/五分鐘/);
@@ -182,7 +182,7 @@ test('read-only QoS inspection warns at the penultimate slot without spending qu
 });
 
 test('QoS warns before the final read allowance, without weakening 429 limits',async()=>{
- const authority=quota(),subject='clerk:user_PreLimit',leases=[];
+ const authority=quota(),subject='loc:loc_PreLimitAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',leases=[];
  for(let i=0;i<10;i++)leases.push(await authority.mcpQuotaAcquire('read',subject));
  const notice=await authority.mcpQuotaInspect('read',subject);
  assert.deepEqual(notice,{warning:''});

@@ -1,4 +1,4 @@
-// One server for independent Scopes. The Group Authority verifies the Clerk
+// One server for independent Scopes. The Group Authority verifies the LOC
 // OAuth token and permissions on EVERY call; credentials never reach MCP replies.
 const DEFAULT_AUTHORITY='https://auth.lo3rwang.cc';
 const PR_SEARCH_WARNING='請至github頁面找尋PR相關資料！不開放搜尋PR!';
@@ -15,7 +15,7 @@ function target(value,env){
 }
 export async function authorityAction(name,args,token,env={},fetchImpl=globalThis.fetch){
   if(typeof token!=='string'||!token.startsWith('eyJ'))
-    throw bad('Authenticated Clerk OAuth required');
+    throw bad('Authenticated LOC OAuth required');
   const a=args||{};
   let path='',method='GET',body=null,query=null;
   if(name==='galaxy_link'){
@@ -71,7 +71,7 @@ export async function authorityAction(name,args,token,env={},fetchImpl=globalThi
       path='scope/'+id(a.scopeid);
       if(a.endpoint!==undefined){
         method='PUT';
-        // Database credentials are accepted only by the secure Clerk UI ->
+        // Database credentials are accepted only by the secure LOC UI ->
         // Authority HTTPS endpoint, never as ChatGPT/MCP tool arguments.
         body={endpoint:a.endpoint,schema:a.schema||'public',...(a.table?{table:a.table}:{})};
         if(!body.endpoint)throw bad('LOC SQL Gateway URL is required');
@@ -82,7 +82,7 @@ export async function authorityAction(name,args,token,env={},fetchImpl=globalThi
       body={};break;
     case 'grant_scope_access':
       path='group/'+id(a.groupid)+'/grant';method='PUT';
-      if(!/^user_[A-Za-z0-9]+$/.test(String(a.subject||'')))throw bad('Valid Clerk user subject required');
+      if(!/^loc_[A-Za-z0-9_-]{32,80}$/.test(String(a.subject||'')))throw bad('Valid LOC subject required');
       if(!Array.isArray(a.actions)||a.actions.length===0||
         a.actions.some(x=>!['read','write','manage','configure'].includes(x)))
         throw bad('Invalid Authority actions');
@@ -92,7 +92,7 @@ export async function authorityAction(name,args,token,env={},fetchImpl=globalThi
         expires_at:Date.now()+days*86400000};break;
     case 'revoke_scope_access':
       path='group/'+id(a.groupid)+'/revoke';method='POST';
-      if(!/^user_[A-Za-z0-9]+$/.test(String(a.subject||'')))throw bad('Valid Clerk user subject required');
+      if(!/^loc_[A-Za-z0-9_-]{32,80}$/.test(String(a.subject||'')))throw bad('Valid LOC subject required');
       body={scope:id(a.scopeid),subject:a.subject};break;
     default:throw bad('Unknown LOC MCP action');
   }

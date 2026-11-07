@@ -5,14 +5,14 @@ const PUBLIC_SCOPE_IDS=Object.freeze(SCOPE_ROUTE_INDEX.filter(row=>row.active&&r
   .map(row=>row.scope_id).filter(id=>/^[a-z][a-z0-9]{0,14}$/.test(id)));
 // LOC MCP HTTP entry point. No database write is granted by an OAuth login.
 export const MCP_RESOURCE=(globalThis.process?.env?.LOC_MCP_RESOURCE_URL||'https://mcp.lo3rwang.cc').replace(/\/+$/,'');
-export const CLERK_ISSUER=(globalThis.process?.env?.LOC_CLERK_ISSUER||'https://precise-grackle-3371.clerk.accounts.dev').replace(/\/+$/,'');
+export const LOC_OAUTH_ISSUER='https://auth.lo3rwang.cc';
 export function mcpConfig(env={}){
   return {resource:String(env.LOC_MCP_RESOURCE_URL||MCP_RESOURCE).replace(/\/+$/,''),
-    issuer:String(env.LOC_CLERK_ISSUER||CLERK_ISSUER).replace(/\/+$/,'')};
+    issuer:LOC_OAUTH_ISSUER};
 }
 const PR_SEARCH_WARNING='請至github頁面找尋PR相關資料！不開放搜尋PR!';
 const SEARCH_PERMISSION_WARNING='只有使用者明確要求時，才允許搜尋對話；禁止代理自行搜尋。';
-const SCOPES=['profile','email'];
+const SCOPES=['profile','email','offline_access'];
 const DEFAULT_PROTOCOL='2025-06-18';
 const SUPPORTED_PROTOCOLS=new Set(['2025-03-26','2025-06-18','2025-11-25']);
 const COMMON_HEADERS={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',
@@ -32,7 +32,7 @@ export function protectedResourceMetadata(env={}){
 }
 function unauthorized(config){
   const resourceMetadata=config.resource+'/.well-known/oauth-protected-resource';
-  return response({error:'unauthorized',error_description:'Clerk OAuth access token required'},401,{
+  return response({error:'unauthorized',error_description:'LOC OAuth access token required'},401,{
     'WWW-Authenticate':'Bearer resource_metadata="'+resourceMetadata+'", scope="'+SCOPES.join(' ')+'"'
   });
 }
@@ -57,12 +57,12 @@ async function loadKeys(issuer){
     response=await fetch(url,{headers:{accept:'application/json'},
       signal:AbortSignal.timeout(6500)});
   }
-  if(!response.ok)throw new Error('Clerk JWKS unavailable');
+  if(!response.ok)throw new Error('LOC JWKS unavailable');
   const text=await response.text();
-  if(text.length>120000)throw new Error('Clerk JWKS response too large');
+  if(text.length>120000)throw new Error('LOC JWKS response too large');
   let data;
-  try{data=JSON.parse(text);}catch{throw new Error('Invalid Clerk JWKS');}
-  if(!Array.isArray(data?.keys))throw new Error('Invalid Clerk JWKS');
+  try{data=JSON.parse(text);}catch{throw new Error('Invalid LOC JWKS');}
+  if(!Array.isArray(data?.keys))throw new Error('Invalid LOC JWKS');
   if(!fromEdge&&edge){
     const headers=new Headers({'content-type':'application/json',
       'cache-control':'public, max-age=300'});
@@ -86,13 +86,16 @@ async function getKeys(issuer){
 // Session JWTs, arbitrary bearer strings and tokens for other audiences are never accepted.
 async function verifyOAuthToken(token,config){
   const parts=token.split('.');
-  if(parts.length!==3) return null; // Clerk opaque tokens require separate server-side verification.
+  if(parts.length!==3) return null; // Opaque OAuth tokens are not accepted.
   const header=decodeJson(parts[0]);
   const claims=decodeJson(parts[1]);
   if(header?.alg!=='RS256'||!header?.kid||claims?.iss!==config.issuer||
-    !/^user_[A-Za-z0-9]+$/.test(String(claims.sub||'')))return null;
+    !/^loc_[A-Za-z0-9_-]{32,80}$/.test(String(claims.sub||''))||
+    !/^[A-Za-z0-9_-]{43}$/.test(String(claims.sid||''))||
+    claims.email_verified!==true)return null;
   const now=Math.floor(Date.now()/1000);
   if(!Number.isFinite(claims.exp)||claims.exp<=now||
+    !Number.isFinite(claims.iat)||claims.exp-claims.iat>630||
     (claims.nbf!=null&&(!Number.isFinite(claims.nbf)||claims.nbf>now+60))||
     (claims.iat!=null&&(!Number.isFinite(claims.iat)||claims.iat>now+60)))return null;
   const audiences=Array.isArray(claims.aud)?claims.aud:[claims.aud];
@@ -113,7 +116,7 @@ function rpcError(id,code,message,httpStatus=200){
   return response({jsonrpc:'2.0',id,error:{code,message}},httpStatus);
 }
 const TOOLS=[
-  {name:'loc_connection_status',description:'Check LOC MCP and Clerk OAuth connectivity (read only).',
+  {name:'loc_connection_status',description:'Check LOC MCP and LOC OAuth connectivity (read only).',
     inputSchema:{type:'object',properties:{},additionalProperties:false},
     annotations:{readOnlyHint:true,destructiveHint:false}},
   {name:'read_memory',description:'Read a PUBLIC LOC Galaxy article by exact, case-sensitive UID; supports content paging with offset/max_chars.',
@@ -147,15 +150,15 @@ const TOOLS=[
   {name:'join_scope_group',description:'Group manager attaches an existing Scope; does not move or copy data.',
     inputSchema:{type:'object',properties:{groupid:{type:'string'},scopeid:{type:'string'}},
       required:['groupid','scopeid'],additionalProperties:false}},
-  {name:'grant_scope_access',description:'Only a Scope Group manager may grant Clerk subjects read/write/configure/manage rights to the Group or a member Scope.',
+  {name:'grant_scope_access',description:'Only a Scope Group manager may grant LOC subjects read/write/configure/manage rights to the Group or a member Scope.',
     inputSchema:{type:'object',properties:{groupid:{type:'string'},scopeid:{type:'string'},
-      subject:{type:'string',description:'Verified Clerk user_... identifier'},
+      subject:{type:'string',description:'Verified loc_... identity subject'},
       actions:{type:'array',items:{type:'string',enum:['read','write','manage','configure']}},
       days:{type:'integer',minimum:1,maximum:365}},
       required:['groupid','scopeid','subject','actions'],additionalProperties:false}},
-  {name:'revoke_scope_access',description:'Scope Group manager immediately revokes one member’s Clerk access to a Group or member Scope.',
+  {name:'revoke_scope_access',description:'Scope Group manager immediately revokes one member’s LOC access to a Group or member Scope.',
     inputSchema:{type:'object',properties:{groupid:{type:'string'},scopeid:{type:'string'},
-      subject:{type:'string',description:'Clerk user_... identifier'}},
+      subject:{type:'string',description:'Verified loc_... identity subject'}},
       required:['groupid','scopeid','subject'],additionalProperties:false}},
 ];
 function toolResponse(id,value){
@@ -229,7 +232,7 @@ export async function handleMcp(request,env={}){
       return result(payload.id,{protocolVersion:SUPPORTED_PROTOCOLS.has(proposed)?proposed:DEFAULT_PROTOCOL,
         capabilities:{tools:{listChanged:false}},serverInfo:{name:'loc-mcp',version:'0.2.0',
            ...(proposed==='2025-11-25'?{icons:[{src:'https://loc.lo3rwang.cc/assets/site/icons/loc-favicon.png',mimeType:'image/png'}]}:{})},
-        instructions:'Public search/read use existing Galaxy RLS. Private Scope read, write and Group search are independently authorized by Clerk + LOC Authority. galaxy_link.search is permitted only by explicit human user request and user_requested=true. 請至github頁面找尋PR相關資料！不開放搜尋PR! QoS warns before the next request reaches a limit; searches have a five-minute gate.'});
+        instructions:'Public search/read use existing Galaxy RLS. Private Scope read and writes use signed LOC Auth OAuth and explicit Scope grants. galaxy_link.search is permitted only by explicit human user request and user_requested=true. 請至github頁面找尋PR相關資料！不開放搜尋PR! QoS warns before the next request reaches a limit; searches have a five-minute gate.'});
     }
     case 'ping':return result(payload.id,{});
     case 'tools/list':return result(payload.id,{tools:TOOLS});
@@ -252,7 +255,7 @@ export async function handleMcp(request,env={}){
         return result(payload.id,{isError:true,content:[{type:'text',
           text:PR_SEARCH_WARNING}]});
       if(name==='loc_connection_status')return toolResponse(payload.id,{
-        connected:true,provider:'clerk',subject:identity.subject,
+        connected:true,provider:'loc',subject:identity.subject,
         resource:config.resource,galaxyPublicReadEnabled:true,
         galaxyWriteSupported:true,writeRequiresScopeAuthorization:true,
         availableTools:TOOLS.map(tool=>tool.name)});

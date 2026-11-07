@@ -1,4 +1,4 @@
-// An initial Clerk session emitted during a full document navigation is not
+// An initial LOC Auth session emitted during a full document navigation is not
 // a change of an already-known identity. Cancelling an in-flight management
 // query here leaves the editor gated without revalidation.
 export function shouldInvalidateManagementForAuthEvent({

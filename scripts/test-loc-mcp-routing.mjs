@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {webcrypto} from 'node:crypto';
-import {handleMcp as liveHandleMcp,protectedResourceMetadata,preflight,MCP_RESOURCE,CLERK_ISSUER} from '../app/loc/mcp/router.mjs';
+import {handleMcp as liveHandleMcp,protectedResourceMetadata,preflight,MCP_RESOURCE,LOC_OAUTH_ISSUER} from '../app/loc/mcp/router.mjs';
 
 const b64url=bytes=>Buffer.from(bytes).toString('base64url');
 const encode=x=>b64url(Buffer.from(JSON.stringify(x)));
@@ -30,7 +30,7 @@ globalThis.fetch=async (url,options)=>{
     privateSearchRequests++;
     return Response.json({scopeid:'lo3rwang',results:[]});
   }
-  if(String(url)===CLERK_ISSUER+'/.well-known/jwks.json'){
+  if(String(url)===LOC_OAUTH_ISSUER+'/.well-known/jwks.json'){
     jwksQueries++;return Response.json({keys:[publicKey]});
   }
   if(String(url)===TEST_ENV.LOC_MCP_SQL_GATEWAY_URL){
@@ -46,8 +46,9 @@ globalThis.fetch=async (url,options)=>{
 async function token(claimOverrides={}){
   const now=Math.floor(Date.now()/1000);
   const hdr=encode({alg:'RS256',kid:'test-key',typ:'JWT'});
-  const body=encode({iss:CLERK_ISSUER,sub:'user_12345',aud:MCP_RESOURCE,
-    exp:now+3600,iat:now-30,scope:'profile email',...claimOverrides});
+  const body=encode({iss:LOC_OAUTH_ISSUER,sub:'loc_'+ 'A'.repeat(40),sid:'B'.repeat(43),
+    email_verified:true,aud:MCP_RESOURCE,
+    exp:now+300,iat:now-30,scope:'profile email',...claimOverrides});
   const sig=await webcrypto.subtle.sign('RSASSA-PKCS1-v1_5',pair.privateKey,new TextEncoder().encode(hdr+'.'+body));
   return hdr+'.'+body+'.'+b64url(sig);
 }
@@ -56,17 +57,17 @@ function req(method='POST',bearer='',body){return new Request(MCP_RESOURCE,{meth
   ...(body?{body:JSON.stringify(body)}:{})});}
 const rpc=(method,params={})=>({jsonrpc:'2.0',id:1,method,params});
 
-test('Clerk check: anonymous GET is 401 with RFC9728 OAuth challenge',async()=>{
+test('LOC OAuth check: anonymous GET is 401 with RFC9728 OAuth challenge',async()=>{
   const res=await handleMcp(req('GET'));
   assert.equal(res.status,401);
   assert.match(res.headers.get('www-authenticate'),/Bearer resource_metadata="https:\/\/mcp\.lo3rwang\.cc\/\.well-known\/oauth-protected-resource"/);
 });
-test('Clerk check: metadata is public JSON with correct resource and authorization server',async()=>{
+test('LOC OAuth check: metadata is public JSON with correct resource and authorization server',async()=>{
   const res=protectedResourceMetadata();
   assert.equal(res.status,200);
   assert.match(res.headers.get('content-type'),/application\/json/);
-  assert.deepEqual(await res.json(),{resource:MCP_RESOURCE,authorization_servers:[CLERK_ISSUER],
-    bearer_methods_supported:['header'],scopes_supported:['profile','email']});
+  assert.deepEqual(await res.json(),{resource:MCP_RESOURCE,authorization_servers:[LOC_OAUTH_ISSUER],
+    bearer_methods_supported:['header'],scopes_supported:['profile','email','offline_access']});
 });
 test('CORS OPTIONS is public',()=>assert.equal(preflight().status,204));
 test('Missing/invalid token is rejected',async()=>{
@@ -74,7 +75,7 @@ test('Missing/invalid token is rejected',async()=>{
   assert.equal((await handleMcp(req('POST',await token({aud:'https://other.site/mcp'}),rpc('initialize')))).status,401);
   assert.equal((await handleMcp(req('POST',await token({exp:0}),rpc('initialize')))).status,401);
 });
-test('concurrent valid MCP calls share public JWKS and do not trigger one Clerk fetch per request',async()=>{
+test('concurrent valid MCP calls share public JWKS and do not trigger one LOC OAuth fetch per request',async()=>{
   const jwt=await token();
   const before=jwksQueries;
   const replies=await Promise.all(Array.from({length:12},()=>handleMcp(req('POST',jwt,rpc('initialize')))));
@@ -82,7 +83,7 @@ test('concurrent valid MCP calls share public JWKS and do not trigger one Clerk 
   assert.ok(jwksQueries-before<=1,'concurrent MCP calls must share one JWKS fetch');
 });
 
-test('Valid Clerk JWT can initialize, discover read/write tools, and ping',async()=>{
+test('Valid LOC OAuth JWT can initialize, discover read/write tools, and ping',async()=>{
   const jwt=await token();
   let r=await handleMcp(req('POST',jwt,rpc('initialize',{protocolVersion:'2025-06-18'})));
   assert.equal(r.status,200);assert.equal((await r.json()).result.serverInfo.name,'loc-mcp');

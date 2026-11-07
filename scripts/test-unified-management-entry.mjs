@@ -120,7 +120,7 @@ test('Group authorization registers its own UI locale independent of Settings ta
   assert.match(group,/grant\.actions\.map\(actionLabel\)/);
   for(const locale of ['zh_tw','zh_cn','en','ja']){
     const dictionary=read('app/i18n/sections/uiExtra.scopeSettings.'+locale+'.js');
-    for(const key of ['groupTitle','groupIntro','groupMemberScope','groupClerkSubject',
+    for(const key of ['groupTitle','groupIntro','groupMemberScope','groupLocSubject',
       'groupExpires','groupPermissions','groupGrant','groupCurrentGrants',
       'groupNoGrants','groupActionRead','groupActionWrite','groupActionConfigure',
       'groupActionManage']){

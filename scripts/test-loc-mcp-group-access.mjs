@@ -21,7 +21,7 @@ test('group list uses authenticated endpoint and no credential in URL',async()=>
 });
 test('group grants bounded rights without leaking authorization to URL',async()=>{
   const {fetchImpl,requests}=service();
-  await scopeGroupRequest({groupid:'loc',kind:'grant',scopeid:'lrunes',subject:'user_A1',
+  await scopeGroupRequest({groupid:'loc',kind:'grant',scopeid:'lrunes',subject:'loc_12345678901234567890123456789012',
     actions:['read','configure'],days:365,token:'signed-token',fetchImpl});
   const req=requests[1],payload=JSON.parse(req.opts.body);
   assert.equal(req.opts.method,'PUT');
@@ -30,18 +30,18 @@ test('group grants bounded rights without leaking authorization to URL',async()=
   assert.equal(payload.scope,'lrunes');
   assert.ok(payload.expires_at>Date.now());
 });
-test('revoke targets a selected Clerk principal and Scope',async()=>{
+test('revoke targets a selected LOC Auth principal and Scope',async()=>{
   const {fetchImpl,requests}=service();
-  await scopeGroupRequest({groupid:'loc',kind:'revoke',scopeid:'lrunes',subject:'user_2',
+  await scopeGroupRequest({groupid:'loc',kind:'revoke',scopeid:'lrunes',subject:'loc_12345678901234567890123456789012',
     token:'signed-token',fetchImpl});
   assert.equal(requests[1].opts.method,'POST');
-  assert.deepEqual(JSON.parse(requests[1].opts.body),{scope:'lrunes',subject:'user_2'});
+  assert.deepEqual(JSON.parse(requests[1].opts.body),{scope:'lrunes',subject:'loc_12345678901234567890123456789012'});
 });
 test('invalid group, subject or permissions cannot issue network calls',async()=>{
   const {fetchImpl,requests}=service();
   await assert.rejects(scopeGroupRequest({groupid:'../loc',token:'signed-token',fetchImpl}),/Invalid Group/);
   await assert.rejects(scopeGroupRequest({groupid:'loc',kind:'grant',scopeid:'lrunes',
-    subject:'user_1',actions:['admin'],token:'signed-token',fetchImpl}),/Invalid Group/);
+    subject:'loc_12345678901234567890123456789012',actions:['admin'],token:'signed-token',fetchImpl}),/Invalid Group/);
   assert.equal(requests.length,0);
 });
 test('joining an existing Scope uses the consent-enforcing Group endpoint',async()=>{
@@ -57,7 +57,7 @@ test('HTTP 403 denies group grant visibility',async()=>{
     /permission required/);
 });
 
-test('Group Category accepts only member Scope and exact four-character Class UID',async()=>{
+test('Group Category accepts only member Scope and native or legacy Class UID',async()=>{
   const {fetchImpl,requests}=service();
   await scopeGroupRequest({groupid:'loc',kind:'categoryAdd',scopeid:'lo3rwang',
     classUid:'Ab1Z',token:'signed-token',fetchImpl});
@@ -68,10 +68,13 @@ test('Group Category accepts only member Scope and exact four-character Class UI
   await scopeGroupRequest({groupid:'loc',kind:'categoryRemove',scopeid:'lo3rwang',
     classUid:'Ab1Z',token:'signed-token',fetchImpl});
   assert.equal(requests[3].opts.method,'POST');
-  for(const uid of ['Ab1','12345','group',''])await assert.rejects(
+  await scopeGroupRequest({groupid:'loc',kind:'categoryAdd',scopeid:'lo3rwang',
+    classUid:'Ab12Cd34',token:'signed-token',fetchImpl});
+  assert.equal(JSON.parse(requests[5].opts.body).class_uid,'Ab12Cd34');
+  for(const uid of ['Ab1','12345','group','123456789',''])await assert.rejects(
     scopeGroupRequest({groupid:'loc',kind:'categoryAdd',scopeid:'lo3rwang',
       classUid:uid,token:'signed-token',fetchImpl}),/Invalid keyword Category/);
-  assert.equal(requests.length,4);
+  assert.equal(requests.length,6);
 });
 
 test('Group Category is scoped to the registered member and server-side Group manager',()=>{
@@ -82,30 +85,35 @@ test('Group Category is scoped to the registered member and server-side Group ma
   assert.match(worker,/hashKeywordCategory\(valid\.scopeid,valid\.class\)/);
 });
 
-test('public Class import is verified by authority, not solely by UI',async()=>{
+test('public Class import is verified by the LOC SQL Gateway, not a vendor RPC',async()=>{
   const {assertPublicKeywordClass}=await import('../workers/loc-authority/keyword-categories.mjs');
   const calls=[];
   const fetchImpl=async(url,opts)=>{
     calls.push({url,opts});
-    return Response.json([{scopeId:'lo3rwang',classUid:'A1b2',name:'音樂'},
-      {scopeId:'lo3rwang',classUid:'G3rp',name:'Other'}]);
+    return Response.json({data:[{scopeId:'lo3rwang',classUid:'A1b2',name:'音樂'},
+      {scopeId:'lo3rwang',classUid:'Ab12Cd34',name:'New Class'}]});
   };
-  await assertPublicKeywordClass('lo3rwang','A1b2',{fetchImpl});
-  await assert.rejects(assertPublicKeywordClass('lo3rwang','item',{fetchImpl}),/public Class UID/);
-  assert.equal(calls[0].opts.method,'POST');
-  assert.deepEqual(JSON.parse(calls[0].opts.body),{p_scope_id:'lo3rwang'});
-  assert.equal(calls[0].opts.headers['accept-profile'],'silver');
-  assert.equal(calls[0].opts.headers['content-profile'],'silver');
-  assert.equal(calls[0].url.endsWith('/rest/v1/rpc/read_shared_keyword_classes'),true);
+  const env={LOC_SQL_GATEWAY_URL:'https://sql.example.org/v1/sql'};
+  await assertPublicKeywordClass('lo3rwang','A1b2',{fetchImpl,env});
+  await assertPublicKeywordClass('lo3rwang','Ab12Cd34',{fetchImpl,env});
+  await assert.rejects(assertPublicKeywordClass('lo3rwang','item',{fetchImpl,env}),/public Class UID/);
+  const body=JSON.parse(calls[0].opts.body);
+  assert.deepEqual(body,{kind:'analytics',target:'configured',
+    args:{p_scope_id:'lo3rwang',p_view:'shared_classes',
+      p_start:null,p_end:null,p_options:{}}});
+  assert.equal(calls[0].opts.credentials,'omit');
+  assert.equal(calls[0].url,'https://sql.example.org/v1/sql');
+  assert.doesNotMatch(calls[0].url,/\/rest\/v1\/rpc\//);
 });
 test('authority fail-closes if public Class RPC is unavailable',async()=>{
   const {assertPublicKeywordClass}=await import('../workers/loc-authority/keyword-categories.mjs');
   const fetchImpl=async()=>new Response('unavailable',{status:503});
-  await assert.rejects(assertPublicKeywordClass('lo3rwang','A1b2',{fetchImpl}),/unavailable/);
+  await assert.rejects(assertPublicKeywordClass('lo3rwang','A1b2',{
+    fetchImpl,env:{LOC_SQL_GATEWAY_URL:'https://sql.example.org/v1/sql'}}),/unavailable/);
 });
 test('Scope Group UI lists only publicly shared Class identifiers',()=>{
   const src=readFileSync(new URL('../app/loc/ScopeGroupAccessPanel.jsx',import.meta.url),'utf8');
-  assert.match(src,/read_shared_keyword_classes/);
+  assert.match(src,/p_view:'shared_classes'/);
   assert.match(src,/publicClasses\.map\(row=><option/);
   assert.match(src,/row\.scopeId===scope/);
   assert.doesNotMatch(src,/categoryUid\} maxLength=/);

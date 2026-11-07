@@ -1,7 +1,7 @@
 /**
  * LunaRunes local tabletop rules.
  * Pure rules: no LOC components, CSS, navigation or database writes.
- * Supabase game rows are loaded before constructing the match.
+ * LOC SQL game rows are loaded before constructing the match.
  */
 import {applyDe,draw,evaluateAlphaEvent,finishOpening,freshPlayer,shuffle} from './game-data.js';
 

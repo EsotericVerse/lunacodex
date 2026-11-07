@@ -2,10 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync,readdirSync,existsSync} from 'node:fs';
 import {join,relative} from 'node:path';
+import {fileURLToPath} from 'node:url';
 
-const ROOT=new URL('..',import.meta.url).pathname;
+const ROOT=fileURLToPath(new URL('../',import.meta.url));
 const ACTIVE=['app/loc/providers','app/loc/auth','app/loc/mcp','workers',
-  'supabase/functions','functions'];
+  'supabase/functions','functions','extensions','services'];
 const EXT=/\.(?:js|jsx|mjs|ts|tsx)$/;
 const CALL=/\b(?:api\s*\.\s*(?:manage|current_user_id|request_claims)|silver\s*\.\s*(?:current_auth_email|domain_has_repeated_labels|sync_scope_config_display_name|touch_visual_novel_updated_at))\s*\(/g;
 const CREATE_TRIGGER=/\bexecute\s+function\s+silver\s*\.\s*(?:sync_scope_config_display_name|touch_visual_novel_updated_at)\s*\(/gi;

@@ -44,6 +44,89 @@ test('Group scope delegation is not global administrator',async()=>{
   assert.equal(await canManageLoc(db,'scope','loc'),true);
   assert.equal(await canManageLoc(db,'global'),false);
 });
+test('virtual Group descendant permissions use only a server-verified live registry',async()=>{
+  const {db}=fixture();
+  let loads=0;
+  const hierarchy=[
+    {scope_id:'org',scope_kind:'group',active:true},
+    {scope_id:'child',scope_kind:'group',parent_scope_id:'org',active:true},
+    {scope_id:'alpha',scope_kind:'scope',parent_scope_id:'child',active:true},
+    {scope_id:'paused',scope_kind:'scope',parent_scope_id:'org',active:false},
+    {scope_id:'outside',scope_kind:'scope',active:true}
+  ];
+  bindLocAuthorization(db,{role:'authenticated',
+    claims:{...identity,grants:['org:manage']},
+    loadScopeTree:async()=>{loads++;return hierarchy;}});
+  assert.equal(await canManageLoc(db,'group','org'),true,'exact signed grant');
+  assert.equal(loads,0,'an exact grant needs no hierarchy read');
+  assert.equal(await canManageLoc(db,'scope','alpha'),true);
+  assert.equal(await canManageLoc(db,'group','child'),true);
+  assert.equal(await canManageLoc(db,'scope','outside'),false);
+  assert.equal(await canManageLoc(db,'scope','paused'),false);
+  assert.equal(await canManageLoc(db,'global'),false,'Group never implies Admin');
+  assert.equal(loads,1,'all descendant checks share one trusted tree');
+});
+
+test('untrusted client roles and absent or malformed registries grant no descendants',async()=>{
+  const {db}=fixture();
+  bindLocAuthorization(db,{role:'authenticated',
+    claims:{...identity,grants:['org:manage'],role:'admin',scopeIds:['alpha']}});
+  assert.equal(await canManageLoc(db,'scope','alpha'),false);
+  assert.equal(await canManageLoc(db,'global'),false);
+  bindLocAuthorization(db,{role:'authenticated',
+    claims:{...identity,grants:['org:manage']},
+    loadScopeTree:async()=>[
+      {scope_id:'org',scope_kind:'group',parent_scope_id:'child'},
+      {scope_id:'child',scope_kind:'group',parent_scope_id:'org'},
+      {scope_id:'alpha',scope_kind:'scope',parent_scope_id:'child'}
+    ]});
+  await assert.rejects(()=>canManageLoc(db,'scope','alpha'),/Cyclic/);
+  assert.equal(await canManageLoc(db,'global'),false);
+});
+
+test('management entry returns inherited Group children without granting global admin',async()=>{
+  const tree=[
+    {scope_id:'org',scope_kind:'group'},
+    {scope_id:'alpha',scope_kind:'scope',parent_scope_id:'org'}
+  ];
+  const db={
+    fn(){return 'verified-email'},
+    selectFrom(table){
+      const source=table;
+      let ownerRead=false;
+      return {
+        crossJoin(){ownerRead=true;return this;},
+        leftJoin(){return this;},select(){return this;},where(){return this;},
+        async execute(){
+          if(source!=='api.manage as m')throw Error('Unexpected management relation');
+          return ownerRead
+            ?[{id:'org',email:'owner@example.org',manage_role:'group',active:true,
+                galaxy_table:'galaxy',anchor_table:'anchor',blacklist:{email:[]}}]
+            :[{id:'alpha',manage_role:'scope',active:true,
+                galaxy_table:'galaxy',anchor_table:'anchor'}];
+        }
+      };
+    }
+  };
+  bindLocAuthorization(db,{role:'authenticated',
+    claims:{...identity,grants:['org:manage']},
+    loadScopeTree:async()=>tree});
+  const rows=await locManageRows(db,'self');
+  assert.deepEqual(rows.map(row=>row.id).sort(),['alpha','org']);
+  assert.ok(rows.every(row=>row.email==='owner@example.org'&&row.allowed));
+  assert.equal(await canManageLoc(db,'global'),false);
+});
+
+test('Gateway derives Group hierarchy server-side from api.manage, never request body',()=>{
+  const handler=fs.readFileSync('app/loc/gateway/sql-handler.ts','utf8');
+  const browser=fs.readFileSync('app/loc/providers/loc-gateway.mjs','utf8');
+  assert.match(handler,/async function trustedManagementScopeTree/);
+  assert.match(handler,/control\.selectFrom\('api\.manage'\)/);
+  assert.match(handler,/loadScopeTree:\(\)=>trustedManagementScopeTree\(trx,target\)/);
+  assert.match(browser,/request\.actions\?\.includes\('manage'\)/);
+  assert.match(browser,/name:'manage',args:\{p_type:'self'\}/);
+});
+
 test('Management membership is read only for display, not for authorization',async()=>{
   const {db,hits}=fixture({entries:[{id:'admin',email:identity.email,
     manage_role:'admin',active:true}]});

@@ -1,6 +1,6 @@
 name: MCP Portable regression (PR)
 
-# Manually triggered read-only verification. Never deploys or accesses production databases.
+# Manual read-only verification. No secrets, production DB calls, deploys or migrations.
 on:
   workflow_dispatch:
 
@@ -29,6 +29,10 @@ jobs:
           node --check app/loc/providers/loc-gateway.mjs
           node --check app/loc/import/short-append-service.mjs
           node --check workers/loc-authority/index.mjs
+          node --check workers/loc-authority/native-oauth.mjs
+          node --check app/loc/auth/loc-browser.mjs
+          node --check app/loc/mcp/loc-access.mjs
+          node --check extensions/loc-galaxy-link/background.js
           node --check app/loc/providers/kysely-mcp.mjs
           node --check extensions/loc-web-capture-v2/background.js
           node --check extensions/loc-web-capture-v2/content.js
@@ -42,8 +46,26 @@ jobs:
             scripts/test-loc-extension-portable.mjs \
             scripts/test-mcp-qos.mjs \
             scripts/test-loc-web-capture-v2.mjs
+      - name: Verify native Auth, no vendor SDK, PKCE, and append-only extension
+        run: |
+          node --test \
+            scripts/test-loc-native-oauth.mjs \
+            scripts/test-loc-mcp-native-access.mjs \
+            scripts/test-loc-no-vendor-auth-runtime.mjs \
+            scripts/test-loc-auth-provider-settings.mjs \
+            scripts/test-loc-login-ux.mjs \
+            scripts/test-loc-galaxy-link-extension.mjs \
+            scripts/test-loc-short-append-service.mjs \
+            scripts/test-loc-short-edge-authorization.mjs
+      - name: Verify complete native Authority and zero-deploy database switching
+        run: |
+          npm run test:authority
+          node --test scripts/test-loc-sql-standalone-deployment.mjs
+          node --test scripts/test-zenstack-policy-runtime.mjs
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-      - name: Type-check standalone cross-engine SQL Gateway
-        run: deno check --config services/loc-mcp-sql/deno.json services/loc-mcp-sql/main.ts
+      - name: Type-check standalone cross-engine SQL Gateways
+        run: |
+          deno check --config services/loc-mcp-sql/deno.json services/loc-mcp-sql/main.ts
+          deno check --config services/loc-sql/deno.json services/loc-sql/main.ts

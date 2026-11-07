@@ -76,7 +76,9 @@ test('only verified global LOC administrator writes enter fixed-model PolicyPlug
         assert.equal(fixedPolicyWriteModel(pg,body,'authenticated',claims),null);
       assert.equal(fixedPolicyWriteModel(pg,body,'anon',global),null);
       assert.equal(fixedPolicyWriteModel({engine:'mysql',provider:'custom'},body,'authenticated',global),null);
-      assert.equal(fixedPolicyWriteModel({engine:'postgres',provider:'neon'},body,'authenticated',global),null);
+      // The fixed policy is tied to a verified LOC control target, not its SQL host.
+      assert.equal(fixedPolicyWriteModel({engine:'postgres',provider:'custom'},body,'authenticated',global),model);
+      assert.equal(fixedPolicyWriteModel({engine:'postgres',provider:'neon'},body,'authenticated',global),model);
     }
     assert.equal(fixedPolicyWriteModel(pg,{kind:'managed-write',payload:{p_table:path,p_operation:'insert'}},
       'authenticated',global),null,'bulk INSERT retains trusted batched Kysely executor');

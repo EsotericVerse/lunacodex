@@ -14,7 +14,7 @@ const normalizeScopeId=value=>String(value||'').trim().toLowerCase();
 // One shared resource per identity level for the current browser runtime.
 // Public navigation observes Auth state without initiating a session or
 // management query. Only protected views opt into management authorization. A permission result is UI state, never a substitute for
-// Supabase RLS / RPC write authorization.
+// LOC delegated SQL write authorization.
 const SESSION_KEY=['loc-account','session'];
 const VERIFIED_SESSION_KEY=['loc-account','verified-google-oauth'];
 const MANAGEMENT_KEY=['loc-account','management'];
@@ -55,7 +55,7 @@ async function fetchManagementAccount(mutate){
   const obsolete=()=>startedAt!==authRevision;
   let verifiedIdentity=null;
   try{
-    // Both endpoints independently verify the current signed Clerk JWT.
+    // Both endpoints independently verify the current signed LOC Auth token.
     // Start them together instead of spending an extra network round trip
     // between Authority identity and the protected Scope permissions RPC.
     const [sessionRead,permissionRead]=await Promise.allSettled([
@@ -105,7 +105,7 @@ async function fetchManagementAccount(mutate){
 }
 
 // Passive management consumers reuse the grant already verified for this
-// identity. An explicit editor entry still forces a live Clerk + Scope check.
+// identity. An explicit editor entry still forces a live LOC Auth + Scope check.
 // Server RLS / RPC authorization independently protects every write.
 function loadManagementAccount(mutate,{force=false}={}){
   if(!force){
@@ -235,7 +235,7 @@ export function usePassiveSessionAccount(){
       const user=session?.user||null;
       const nextUserId=String(user?.id||'');
       const nextEmail=normalizeAuthEmail(user?.email);
-      // On a fresh static management page the verified Clerk session can
+      // On a fresh static management page the verified LOC Auth session can
       // arrive while the management RPC is still in flight. Hydration is
       // NOT a sign-out or replacement of an existing authorized identity.
       const invalidate=shouldInvalidateManagementForAuthEvent({

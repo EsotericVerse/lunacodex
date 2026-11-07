@@ -183,7 +183,7 @@ test('ZenStack V3 compiles fixed-model Kysely reads without a database or stored
 
 test('active LOC browser and local providers have no SQL RPC transport',()=>{
   const active=[
-    '../app/loc/providers/clerk-gateway.mjs',
+    '../app/loc/providers/configured.mjs',
     '../app/loc/providers/kysely-edge.mjs',
     '../app/loc/providers/local-sqlite.mjs',
     '../app/loc/db-client.mjs'

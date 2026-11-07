@@ -3,11 +3,11 @@ import {ZenStackClient} from "npm:@zenstackhq/orm@3.10.1";
 import {PolicyPlugin} from "npm:@zenstackhq/plugin-policy@3.10.1";
 import {withFixedPolicyRead,fixedPolicyReadModel,withFixedPolicyWrite,fixedPolicyWriteModel} from "../../../zenstack/policy-runtime.mjs";
 import {jwtVerify,createRemoteJWKSet} from "npm:jose@5.9.6";
-import {processShortImport,postgresShortImportStore} from "../../../app/loc/import/short-append-service.mjs";
+import {processShortImport,portableShortImportStore} from "../../../app/loc/import/short-append-service.mjs";
 import {authorizeDelegatedShortImport} from "../../../app/loc/import/short-edge-authorization.mjs";
 import {delegationAudience,verifyDelegationBoundary,canManageDelegation} from "../../../app/loc/auth/delegation-contract.mjs";
 import {databaseForTarget,resolveConnectionProfile,trustedDialectForDatabase} from "../providers/kysely-database-drivers.ts";
-import {readVaultConnection} from "./database-connections.ts";
+import {resolveRuntimeDatabase} from "./runtime-database-target.mjs";
 import { executeKyselyQuery, isKyselyClientError } from "../../../app/loc/providers/kysely-runtime.mjs";
 import {executePortableMcp} from "../../../app/loc/providers/kysely-mcp.mjs";
 import {executeManagedKyselyWrite,executeManagedKyselyAction} from "../../../app/loc/providers/kysely-management.mjs";
@@ -28,13 +28,13 @@ import {bindLocAuthorization,canManageLoc} from "../../../app/loc/providers/loc-
 
 const corsHeaders = {
   "access-control-allow-origin": "*",
-  "access-control-allow-headers": "authorization, apikey, content-type, x-client-info",
+  "access-control-allow-headers": "authorization, content-type, x-client-info",
   "access-control-allow-methods": "POST, OPTIONS",
   "access-control-max-age": "86400",
 };
-const supabaseUrl = Deno.env.get("SUPABASE_URL")||"";
+
 // The Authority signs RS256 LOC delegations; the Gateway fetches only its
-// public signing keys. No Clerk/Neon/Supabase Auth and no shared signing secret.
+// public signing keys. No provider-owned Auth service is needed.
 // An alternate deployment may pin its own trusted HTTPS Authority origin.
 const locAuthorityOrigin=(()=>{
   const input=Deno.env.get("LOC_AUTHORITY_ORIGIN")||"https://auth.lo3rwang.cc";
@@ -62,14 +62,10 @@ async function verifyLocDelegation(token:string,body:Record<string,unknown>){
 const routing = resolveDatabaseRouting();
 // Cross-engine publicly readable tables are centrally enforced by sql-engine-ports.mjs.
 
-// The LOC control database is a trusted server-side connection alias.
-// Existing deployments keep their legacy default. Standalone LOC SQL nodes
-// can use any provisioned PostgreSQL/MySQL/MSSQL control profile without
-// a Supabase project URL, Data API, or Vault.
+// One trusted control alias; backend engines remain interchangeable.
 const controlTarget=(()=>{
-  const alias=String(Deno.env.get("LOC_CONTROL_DB_ALIAS")||"");
-  if(!alias)return {provider:"supabase",engine:"postgres",
-    connection_alias:"supabase_current",connection_mode:"pooler"};
+  const alias=String(Deno.env.get("LOC_CONTROL_DB_ALIAS")||"").trim();
+  if(!alias)throw new Error("LOC_CONTROL_DB_ALIAS must be configured");
   return selectedDatabaseTarget([{
     provider:"custom",engine:Deno.env.get("LOC_CONTROL_DB_ENGINE")||"postgres",
     connection_alias:alias,connection_mode:"direct",selected:true
@@ -77,30 +73,14 @@ const controlTarget=(()=>{
 })();
 
 function isControlTarget(target:Record<string,unknown>){
-  if(target.engine!==controlTarget.engine||
-     target.connection_alias!==controlTarget.connection_alias||
-     target.provider!==controlTarget.provider)return false;
-  if(target.provider!=="supabase")return true;
-  const link=String(target.project_url||"").replace(/\/$/,"");
-  return !link||Boolean(supabaseUrl)&&link===supabaseUrl.replace(/\/$/,"");
+  return target.engine===controlTarget.engine&&
+    target.connection_alias===controlTarget.connection_alias&&
+    target.provider===controlTarget.provider;
 }
 
 
-const profileCache=new Map<string,{until:number,profile:any}>();
 async function profileForTarget(target:Record<string,unknown>){
-  if(isControlTarget(target))return resolveConnectionProfile(controlTarget);
-  // Vault is a compatibility path for the original Supabase control DB only.
-  // Independent SQL deployments use trusted LOC_DB_CONNECTIONS_JSON aliases
-  // and must not query provider-specific metadata tables.
-  if(controlTarget.provider!=="supabase")return resolveConnectionProfile(target);
-  const key=String(target.connection_alias||'')+':'+String(target.project_url||'');
-  const cached=profileCache.get(key);
-  if(cached&&Date.now()<cached.until)return cached.profile;
-  const control=await databaseForTarget(controlTarget);
-  const profile=await readVaultConnection(control,target)||
-    resolveConnectionProfile(target);
-  profileCache.set(key,{until:Date.now()+30_000,profile});
-  return profile;
+  return resolveConnectionProfile(target);
 }
 async function checkAdminRole(claims:Record<string,unknown>){
   if(!canManageDelegation(claims,"global"))
@@ -129,27 +109,50 @@ async function liveConfiguredTarget():Promise<Record<string,unknown>> {
 
 // One PostgreSQL session bridge for both ordinary SQL and managed MCP.
 // PostgreSQL may apply its own RLS; other engines never depend on it.
-async function bindPostgresSession(trx:any,role:string,claims:Record<string,unknown>,provider="supabase"){
-  if(role==="authenticated")await sql`set local role authenticated`.execute(trx);
-  else if(provider==="neon")await sql`set local role anonymous`.execute(trx);
-  else await sql`set local role anon`.execute(trx);
+async function bindPostgresSession(trx:any,role:string,claims:Record<string,unknown>){
+  // The Gateway enforces delegated grants independently of database roles.
+  // Do not assume provider-installed anonymous/authenticated SQL roles exist.
   await sql`select set_config('request.jwt.claims',${JSON.stringify(claims)},true)`.execute(trx);
   await sql`select set_config('request.jwt.claim.sub',${String(claims.sub||"")},true)`.execute(trx);
   await sql`select set_config('request.jwt.claim.role',${role},true)`.execute(trx);
+}
+
+// The owner-maintained api.manage registry is the sole source of Group tree
+// membership. A browser never supplies parents, role levels or descendants.
+// The query is lazy: exact Scope and global grants never incur this read.
+async function trustedManagementScopeTree(trx:any,target:Record<string,any>){
+  const control=isControlTarget(target)?trx:await databaseForTarget(controlTarget);
+  const rows=await control.selectFrom('api.manage')
+    .select(['id as scope_id','manage_role as scope_kind','parent_scope_id','active'])
+    .where('manage_role','in',['group','scope'])
+    .orderBy('id','asc').limit(4097).execute();
+  if(rows.length>4096)
+    throw Object.assign(new Error('LOC Group registry is too large'),{httpStatus:403});
+  return rows;
 }
 
 async function executeRequest(trx: any, target: Record<string,any>, role: string,
   claims: Record<string, unknown>, body: Record<string, unknown>,
   {modelName=""}:{modelName?:string}={}) {
   const executionPort=resolveSqlExecutionPort(target);
-  bindLocAuthorization(trx,{role,claims});
+  bindLocAuthorization(trx,{role,claims,
+    loadScopeTree:()=>trustedManagementScopeTree(trx,target)});
   if(target.provider==="custom"||executionPort.session!=="postgres-rls"){
     // Fixed public PostgreSQL models use the same ZenStack PolicyPlugin and
     // physical schema regardless of hosting vendor. This modelName is set
     // only inside the trusted gateway, never accepted from the HTTP body.
-    if(executionPort.engine==="postgres"&&modelName&&
-       body.kind==="query"&&body.operation==="select")
-      return await executeKyselyQuery(trx,body,{modelName});
+    if(executionPort.engine==="postgres"&&modelName){
+      if(body.kind==="query"){
+        if(body.operation!=="select"&&!await canManageLoc(trx,"global"))
+          throw Object.assign(new Error("Global LOC management permission required"),{httpStatus:403});
+        return await executeKyselyQuery(trx,body,{modelName});
+      }
+      if(body.kind==="managed-write"){
+        if(role!=="authenticated"||!await canManageLoc(trx,"global"))
+          throw Object.assign(new Error("Global LOC management permission required"),{httpStatus:403});
+        return await executeManagedKyselyWrite(trx,body,{modelName});
+      }
+    }
     // Cross-engine Scope queries use the signed LOC ACL instead of RLS.
     if(body.kind==="managed-write"){
       if(role!=="authenticated")
@@ -181,12 +184,9 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
         ?await executeKyselyScopeAdmin(trx,body)
         :await executeManagedKyselyAction(trx,body,claims);
     }
-    if(body.kind==="anchor")return await executePortableKyselyAnchor(trx,body,{
-      role,engine:executionPort.engine,namespace:target.schema_name
-    });
-    if(body.kind==="analytics")return await executePortableKyselyAnalytics(trx,body,{
-      role,engine:executionPort.engine,namespace:target.schema_name
-    });
+    const portableOptions={role,engine:executionPort.engine,namespace:target.schema_name};
+    if(body.kind==="anchor")return await executePortableKyselyAnchor(trx,body,portableOptions);
+    if(body.kind==="analytics")return await executePortableKyselyAnalytics(trx,body,portableOptions);
     if(body.kind==="public-action")return await executeKyselyPublicAction(trx,body,{
       engine:executionPort.engine,namespace:String(target.schema_name||
         (executionPort.engine==="mssql"?"dbo":"silver"))
@@ -200,7 +200,7 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
           executionPort.engine==='mssql'?'dbo':'public')),
       publicOnly:publicGalaxyGate(body,role,claims)||access?.publicOnly===true});
   }
-  await bindPostgresSession(trx,role,claims,String(target.provider||"supabase"));
+  await bindPostgresSession(trx,role,claims);
   if(body.kind==="query"){
     // A database RLS policy may be more permissive than the delegated Scope.
     // Require the already signed LOC grant for every non-public SQL mutation,
@@ -223,7 +223,7 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
       // PostgreSQL connection that does not implement RLS.
       publicOnly:publicGalaxyGate(body,role,claims)});
   }
-  if(body.kind==="anchor")return await executeKyselyAnchor(trx,body,{role,claims});
+  if(body.kind==="anchor")return await executeKyselyAnchor(trx,body,{role});
   if(body.kind==="analytics")return await executeKyselyAnalytics(trx,body,{role});
   if(body.kind==="public-action")return await executeKyselyPublicAction(trx,body);
   if(body.kind==="managed-write"||body.kind==="managed-action"){
@@ -244,7 +244,12 @@ function json(body: unknown, status = 200, extraHeaders: Record<string, string> 
   });
 }
 
-Deno.serve(async (request) => {
+// Containers and standalone hosts may assign their own listening port.
+// Never assume the hosted compatibility runtime's default port.
+const serverPort=Number(Deno.env.get("PORT")||"8000");
+if(!Number.isInteger(serverPort)||serverPort<1||serverPort>65535)
+  throw new Error("Invalid LOC SQL Gateway listen port");
+Deno.serve({hostname:"0.0.0.0",port:serverPort},async (request) => {
   // Container liveness is intentionally database-free and does not mint grants.
   // The public Worker exposes only /v1/sql; /health stays on the internal port.
   if (request.method === "GET" && new URL(request.url).pathname === "/health")
@@ -263,19 +268,21 @@ Deno.serve(async (request) => {
     return json({ error: { message: "Invalid JSON body" } }, 400);
   }
   const requestedTarget = body.target === undefined ? "configured" : body.target;
-  if (!["configured", "supabase", "neon", "backup"].includes(String(requestedTarget))) {
+  if (!["configured", "backup"].includes(String(requestedTarget))) {
     return json({ error: { message: "Unsupported database target" } }, 400);
   }
 
   let role = "anon";
   let claims: Record<string, unknown> = {role};
   let verifiedMcp=false;
+  let delegationToken="";
   const authorization=request.headers.get("authorization")||"";
   if(authorization){
     const match=authorization.match(/^Bearer\s+(.+)$/i);
     if(!match)return json({error:{message:"Invalid authorization header"}},401);
     try{
       const delegation=await verifyLocDelegation(match[1],body);
+      delegationToken=match[1];
       claims=delegation.claims;
       verifiedMcp=delegation.verifiedMcp;
       role="authenticated";
@@ -284,7 +291,20 @@ Deno.serve(async (request) => {
     }
   }
 
-  // Explicit database-target selection is never a public capability.
+  // Per-user database selection comes exclusively from the signed LOC
+  // delegation. A browser-provided target string never becomes an alias/URL.
+  // Its driver and credentials are resolved on demand from LOC Authority DO.
+  let liveSelectionPending:Promise<any>|null=null;
+  async function liveSelection(){
+    if(!claims.db_target)return null;
+    if(!liveSelectionPending)liveSelectionPending=resolveRuntimeDatabase(
+      claims,delegationToken,{
+        origin:locAuthorityOrigin,
+        serviceKey:Deno.env.get("LOC_SQL_GATEWAY_SERVICE_KEY")||""
+      });
+    return liveSelectionPending;
+  }
+  // Explicit legacy provider-target selection remains a root-only capability.
   // Ordinary visitors use the server-selected configured target only.
   if(requestedTarget!=="configured"){
     if(role!=="authenticated")
@@ -305,9 +325,15 @@ Deno.serve(async (request) => {
       // database connection/DBM here, not a new INSERT RLS policy or RPC.
       // PostgreSQL has no authenticated INSERT policy on these tables;
       // signed Scope authorization is checked above before any DB request.
-      const db=await databaseForTarget(controlTarget);
+      const selected=await liveSelection();
+      const target=selected?.target||controlTarget;
+      const db=selected
+        ?await databaseForTarget(target,{profileLookup:async()=>selected.profile})
+        :await databaseForTarget(controlTarget);
       const response=await processShortImport(body.batch,actor,{
-        store:postgresShortImportStore(db,sql)
+        store:portableShortImportStore(db,sql,{engine:target.engine,
+          namespace:String(target.schema_name||(
+            target.engine==="postgres"?"silver":target.engine==="mssql"?"dbo":""))})
       });
       // The short-import transaction has committed. One bounded UID query
       // captures the actual stored text, including append markers; no
@@ -422,8 +448,11 @@ Deno.serve(async (request) => {
         return json({error:{message:"Verified MCP Scope permission required"}},403);
       if(requestedTarget!=="configured")
         return json({error:{message:"MCP requires the configured SQL target"}},403);
-      const mcpTarget=await liveConfiguredTarget();
-      const db=await databaseForTarget(mcpTarget,{profileLookup:profileForTarget});
+      const selected=await liveSelection();
+      const mcpTarget=selected?.target||await liveConfiguredTarget();
+      const db=await databaseForTarget(mcpTarget,{
+        profileLookup:selected?async()=>selected.profile:profileForTarget
+      });
       const result=await db.transaction().execute(trx=>executePortableMcp(trx,body,claims,{
         engine:String(mcpTarget.engine),provider:String(mcpTarget.provider),
         namespace:String(mcpTarget.schema_name||"")
@@ -431,6 +460,7 @@ Deno.serve(async (request) => {
       // MCP append is incremental. Do not reload a whole conversation solely
       // to update FlexSearch; the matching SQL transaction already committed.
       if(result?.data?.duplicate!==true&&isSearchIndexConfigured()){
+
         const scopeId=String(body.scopeid||'');
         const indexedTarget=indexTargetForScope(
           Deno.env.get("LOC_SEARCH_DATASETS_JSON")||"",scopeId,mcpTarget);
@@ -499,7 +529,7 @@ Deno.serve(async (request) => {
       if(role!=="authenticated")return json({error:{message:"Administrator permission required"}},403);
       try{await checkAdminRole(claims);}
       catch{return json({error:{message:"Administrator permission required"}},403);}
-      return json({error:{message:"Database targets live in access.js; update source and redeploy"}},409);
+      return json({error:{message:"Database selection is managed by LOC Auth /v1/databases/selection; SQL Gateway does not change user selections"}},409);
     }
 
     // LOC registry, user settings and public presentation are control-plane
@@ -517,13 +547,9 @@ Deno.serve(async (request) => {
       return json(result);
     }
     let target=controlTarget as Record<string,any>;
+    const selected=requestedTarget==="configured"?await liveSelection():null;
     if(requestedTarget==="configured")
-      target=await liveConfiguredTarget() as Record<string,any>;
-    if(requestedTarget==="neon"){
-      if(routing.backupId!=="neon-current"||routing.backupProvider!=="neon")
-        return json({error:{message:"Neon target is not enabled by repository routing"}},403);
-      target={provider:"neon",engine:"postgres",connection_alias:"neon_current",connection_mode:"direct"};
-    }
+      target=(selected?.target||await liveConfiguredTarget()) as Record<string,any>;
     if(requestedTarget==="backup"){
       if(!routing.backupId)return json({error:{message:"Backup is disabled by repository routing"}},503);
       if(body.kind!=="query"||body.operation!=="select"||
@@ -540,28 +566,21 @@ Deno.serve(async (request) => {
       if(target.provider!==routing.backupProvider)return json({error:{message:"Backup provider differs from repository config"}},503);
       resolvingTarget=false;
     }
-    // Supabase remains the explicit control target; "configured" can route to
-    // an opt-in custom Kysely primary using only trusted repository settings.
-    // No untrusted per-request connection alias selection.
-    if(target.provider==="neon"&&(body.kind!=="query"||body.operation!=="select"))
-      return json({error:{message:"Neon LOC mirror is read-only"}},403);
-    // PostgreSQL mirrors enforce per-row access through RLS, not table-name
-    // lists. This older Supabase-hosted Edge transport remains optional; the
-    // independent Neon primary/backup never requires it.
-    if(target.provider==="neon"&&(body.schema!=="silver"||typeof body.table!=="string"))
-      return json({error:{message:"Neon LOC mirror table is not enabled"}},403);
-    if(target.provider==="neon"&&role==="anon"){role="anonymous";claims.role=role;}
+    // The active route is chosen by a trusted LOC selection, never by
+    // a caller-supplied SQL alias or provider-specific runtime branch.
     // Reject public or unsupported cross-engine actions before opening a
     // connection; private CRUD retains its LOC-managed authorization gate.
     if(target.provider==="custom"||target.engine!=="postgres"){
       if(role!=="authenticated"){
+        const attr=body.attr&&typeof body.attr==="object"&&!Array.isArray(body.attr)
+          ?body.attr as Record<string,unknown>:null;
         const publicAnchor=body.kind==="anchor"&&
-          (body.attr?.op===undefined||body.attr?.op==="read"||body.attr?.op==="catalog");
+          (attr?.op===undefined||attr.op==="read"||attr.op==="catalog");
         const publicAnalytics=body.kind==="analytics";
         const publicAction=body.kind==="public-action"&&
           ["read_app_bootstrap","read_scope_page_copy","search_scope_trace_place_names"].includes(String(body.name));
         if(!publicAnchor&&!publicAnalytics&&!publicAction)assertCrossEnginePublicRead(body);
-      }else if(!["query","managed-write","anchor","analytics","public-action"].includes(String(body.kind)))
+      }else if(!["query","managed-write","managed-action","anchor","analytics","public-action"].includes(String(body.kind)))
         return json({error:{message:"Unsupported SQL target action"}},403);
     }
     // Logical data sources are registered on the trusted SQL Gateway, not
@@ -617,9 +636,11 @@ Deno.serve(async (request) => {
     // SQL query without affecting permissions, sort order or pagination.
     if(requestedTarget==="configured")
       body=await withIndexedCandidates(body,target);
-    const db=isControlTarget(target)
-      ?await databaseForTarget(controlTarget)
-      :await databaseForTarget(target,{profileLookup:profileForTarget});
+    const db=selected
+      ?await databaseForTarget(target,{profileLookup:async()=>selected.profile})
+      :isControlTarget(target)
+        ?await databaseForTarget(controlTarget)
+        :await databaseForTarget(target,{profileLookup:profileForTarget});
     // A portable Scope database holds only Galaxy/Anchor. The LOC-signed
     // delegation contains its permission boundary: no control DB round trip.
     // Four fixed publicly readable LOC control models use the existing
@@ -636,11 +657,11 @@ Deno.serve(async (request) => {
     const policyDeps=(policyModel||adminWrite)
       ?{dialect:trustedDialectForDatabase(db),ZenStackClient,PolicyPlugin}:null;
     const result=policyModel
-      ?await withFixedPolicyRead(db,target,body,role,claims,policyDeps,
-        (trx,modelName)=>executeRequest(trx,target,role,claims,body,{modelName}))
+      ?await withFixedPolicyRead(db,target,body,role,claims,policyDeps!,
+        (trx:any,modelName:string)=>executeRequest(trx,target,role,claims,body,{modelName}))
       :adminWrite
-        ?await withFixedPolicyWrite(db,target,body,role,claims,policyDeps,
-          (trx,modelName)=>executeRequest(trx,target,role,claims,body,{modelName}))
+        ?await withFixedPolicyWrite(db,target,body,role,claims,policyDeps!,
+          (trx:any,modelName:string)=>executeRequest(trx,target,role,claims,body,{modelName}))
         :await db.transaction().execute(trx=>
           executeRequest(trx,target,role,claims,body));
     // Search-only response metadata: no physical SQL column is added.

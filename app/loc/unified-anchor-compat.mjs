@@ -351,7 +351,7 @@ class UnifiedQuery{
       if(mapped==='attr')throw Error('JSONB sort requires a native unified query');
       physical=physical.order(mapped,{ascending:order.ascending,nullsFirst:order.nullsFirst});
     }
-    // Supabase postgrest builders support abortSignal; KyselyEdge builders do not.
+    // Legacy HTTP query builders support abortSignal; KyselyEdge builders do not.
     // Their fetch already has its own bounded timeout. Never call an absent method.
     if(this.abort&&typeof physical.abortSignal==='function')physical=physical.abortSignal(this.abort);
     if(includeRange)physical=physical.range(this.offset,this.offset+Math.max(1,this.maximum)-1);

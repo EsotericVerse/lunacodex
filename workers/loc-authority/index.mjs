@@ -1,10 +1,15 @@
 import { DurableObject } from 'cloudflare:workers';
 import {issueDelegation} from '../../app/loc/auth/delegation-contract.mjs';
+import {trustedSqlProfile} from './sql-profile.mjs';
+import {normalizeSqlDriverAuthentication,publicSqlDriverAuthentication,
+  sqlAuthNeedsUserPassword} from '../../app/loc/providers/sql-driver-auth.mjs';
+import {ISSUER,MCP_AUDIENCE,WEB_AUDIENCE,isNativeOAuthPath,handleNativeOAuth,
+  verifyNativeOAuth} from './native-oauth.mjs';
 import {validateKeywordCategoryEntry,hashKeywordCategory,assertPublicKeywordClass} from './keyword-categories.mjs';
 import {AUTH_PROVIDER_TYPES,validateAuthProviderSettings,publicAuthProviderSettings}
   from '../../app/loc/auth/auth-provider-settings.mjs';
-// LOC independent recovery control plane. Never imports a database client or Supabase Auth.
-// LOC Authority retains existing external identity adapters while signing its own SQL delegations.
+// LOC Auth is the native identity issuer and the owner of signed SQL delegations.
+// This Worker has no dependency on a third-party identity session.
 const JSON_HEADERS={'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'};
 const ID=/^[a-z][a-z0-9_-]{0,63}$/;
 const ENGINES=new Set(['postgres','mysql','mssql']);
@@ -26,162 +31,10 @@ function allowedOrigin(request,env){
   if(origin&&origin!==configured)throw fail('Origin not allowed',403);
   return origin;
 }
-// Clerk's JWKS origin is pinned to the trusted deployment issuer, not JWT data.
-// The deployment can use accounts.dev or its custom Production HTTPS domain.
-function isClerkIssuer(value){
-  try{
-    const url=new URL(String(value||''));
-    return url.protocol==='https:'&&!url.username&&!url.password&&!url.search&&!url.hash&&
-      ['','/'].includes(url.pathname)&&Boolean(url.hostname)&&
-      !url.hostname.endsWith('.local');
-  }catch{return false;}
-}
-const jwksCache=new Map();
-const jwksPending=new Map();
-async function clerkPublicKey(issuer,kid){
-  if(!isClerkIssuer(issuer))throw fail('Clerk issuer is not trusted',503);
-  if(!/^[A-Za-z0-9._-]{1,256}$/.test(String(kid||'')))throw fail('Invalid signing key ID',401);
-  const key=issuer+'#'+kid;
-  const cached=jwksCache.get(key);
-  if(cached&&cached.expires>Date.now())return cached.key;
-  // One promise per issuer/key per isolate prevents duplicate Clerk calls
-  // during concurrent requests (including MCP acquire/release).
-  let pending=jwksPending.get(key);
-  if(pending)return pending;
-  pending=fetchClerkPublicKey(issuer,kid,key);
-  jwksPending.set(key,pending);
-  try{return await pending;}
-  finally{if(jwksPending.get(key)===pending)jwksPending.delete(key);}
-}
-async function fetchClerkPublicKey(issuer,kid,key){
-  const jwksUrl=(String(issuer).endsWith('/')?String(issuer).slice(0,-1):String(issuer))+'/.well-known/jwks.json';
-  const edge=globalThis.caches?.default;
-  const request=new Request(jwksUrl,{headers:{accept:'application/json'}});
-  let response=edge?await edge.match(request).catch(()=>null):null;
-  if(!response){
-    response=await fetch(jwksUrl,{
-      method:'GET',redirect:'follow',signal:AbortSignal.timeout(6000),
-      headers:{accept:'application/json'}
-    });
-    if(!response.ok)throw fail('Clerk signing keys are unavailable',503);
-    // JWKS is public signing-key metadata; store only successful responses
-    // at the edge, at most five minutes, never tokens or private identities.
-    if(edge){
-      const copy=response.clone();
-      const cachedHeaders=new Headers(copy.headers);
-      cachedHeaders.set('Cache-Control','public, max-age=300');
-      await edge.put(request,new Response(copy.body,{status:200,headers:cachedHeaders})).catch(()=>{});
-    }
-  }
-  if(!response.ok)throw fail('Clerk signing keys are unavailable',503);
-  const body=await response.text();
-  if(body.length>120000)throw fail('Clerk signing key response too large',503);
-  let keys;try{keys=JSON.parse(body).keys}catch{throw fail('Invalid Clerk signing keys',503)}
-  if(!Array.isArray(keys))throw fail('Invalid Clerk signing keys',503);
-  const jwk=keys.find(value=>value?.kid===kid&&value.kty==='RSA'&&
-    (!value.alg||value.alg==='RS256')&&
-    (!value.use||value.use==='sig')&&typeof value.n==='string'&&
-    typeof value.e==='string');
-  if(!jwk)throw fail('Clerk signing key is not recognized',401);
-  // Clerk JWKS may contain additional metadata; the trusted RSA
-  // modulus and exponent are enough to construct a verification-only key.
-  // Do not allow JWKS metadata to change the pinned RS256 algorithm.
-  if(jwk.key_ops&&(!Array.isArray(jwk.key_ops)||!jwk.key_ops.includes('verify')))
-    throw fail('Clerk signing key is not usable for verification',503);
-  if(!/^[A-Za-z0-9_-]+$/.test(jwk.n)||!/^[A-Za-z0-9_-]+$/.test(jwk.e))
-    throw fail('Clerk signing key format is invalid',503);
-  try{
-    if(b64bytes(jwk.n).byteLength<256)throw Error('RSA key shorter than 2048 bits');
-  }catch{throw fail('Clerk signing key format is invalid',503);}
-  let cryptoKey;
-  try{
-    cryptoKey=await crypto.subtle.importKey('jwk',
-      {kty:'RSA',n:jwk.n,e:jwk.e,alg:'RS256',use:'sig'},
-      {name:'RSASSA-PKCS1-v1_5',hash:'SHA-256'},false,['verify']);
-  }catch{
-    throw fail('Clerk signing key import failed',503);
-  }
-  jwksCache.set(key,{key:cryptoKey,expires:Date.now()+5*60*1000});
-  if(jwksCache.size>16)jwksCache.delete(jwksCache.keys().next().value);
-  return cryptoKey;
-}
 function requireSetup(env){
-  const hasClerk=Boolean(env.LOC_CLERK_ISSUER&&env.LOC_RECOVERY_ROOT_CLERK_IDS&&
-    (env.LOC_CLERK_JWT_PUBLIC_KEY||isClerkIssuer(env.LOC_CLERK_ISSUER)));
-  const hasAlternative=Boolean(env.LOC_SECONDARY_ISSUER&&env.LOC_SECONDARY_JWT_PUBLIC_KEY&&
-    env.LOC_SECONDARY_AUDIENCE&&env.LOC_RECOVERY_ROOT_SECONDARY_SUBJECTS);
-  if((!hasClerk&&!hasAlternative)||!env.LOC_CONTROL_ORIGIN||
-    !env.LOC_CONTROL_ENCRYPTION_KEY||!env.LOC_AUTHORITY_STATE)
-    throw fail('Recovery control is not configured',503);
-}
-async function verifyIdentityToken(request,env){
-  const match=/^Bearer ([A-Za-z0-9_\-.]+)$/.exec(request.headers.get('authorization')||'');
-  if(!match||match[1].length>8192)throw fail('Authentication required',401);
-  const pieces=match[1].split('.');
-  if(pieces.length!==3)throw fail('Invalid token',401);
-  let header,claims;
-  try{
-    header=JSON.parse(new TextDecoder().decode(b64bytes(pieces[0])));
-    claims=JSON.parse(new TextDecoder().decode(b64bytes(pieces[1])));
-  }catch{throw fail('Invalid token',401)}
-  if(header?.alg!=='RS256'||!claims||typeof claims!=='object')throw fail('Invalid token algorithm',401);
-  const origin=String(env.LOC_CONTROL_ORIGIN).replace(/\/$/,'');
-  const issuer=String(claims.iss||'').replace(/\/$/,'');
-  const clerk=Boolean(env.LOC_CLERK_ISSUER&&issuer===String(env.LOC_CLERK_ISSUER).replace(/\/$/,''));
-  const secondary=Boolean(env.LOC_SECONDARY_ISSUER&&issuer===String(env.LOC_SECONDARY_ISSUER).replace(/\/$/,''));
-  if(!clerk&&!secondary)throw fail('Unknown identity issuer',401);
-  const now=Math.floor(Date.now()/1000);
-  if(typeof claims.sub!=='string'||!claims.sub||claims.sub.length>128||
-    !Number.isInteger(claims.exp)||claims.exp<=now||
-    !Number.isInteger(claims.iat)||claims.iat>now+5||
-    !Number.isInteger(claims.nbf)||claims.nbf>now+5||
-    claims.sts==='pending'||claims.act)throw fail('Session is not valid',401);
-  // Clerk may omit azp when the Frontend API request had no Origin.
-  // If present, azp must still match the single configured LOC origin.
-  // The request's own Origin is separately restricted in allowedOrigin().
-  if(clerk&&claims.azp!=null&&claims.azp!==''&&claims.azp!==origin)
-    throw fail('Clerk authorized party does not match LOC',401);
-  if(clerk&&(!/^user_[A-Za-z0-9]+$/.test(claims.sub)||
-    typeof claims.sid!=='string'||!claims.sid.startsWith('sess_')))
-    throw fail('Clerk session subject or ID is invalid',401);
-  if(secondary&&(!env.LOC_SECONDARY_AUDIENCE||
-    !(Array.isArray(claims.aud)?claims.aud.includes(env.LOC_SECONDARY_AUDIENCE):claims.aud===env.LOC_SECONDARY_AUDIENCE)))
-    throw fail('Invalid token audience',401);
-  let key;
-  if(clerk&&!env.LOC_CLERK_JWT_PUBLIC_KEY){
-    key=await clerkPublicKey(env.LOC_CLERK_ISSUER,header.kid);
-  }else{
-    const pem=String(clerk?env.LOC_CLERK_JWT_PUBLIC_KEY:env.LOC_SECONDARY_JWT_PUBLIC_KEY);
-    const body=pem.replace(/-----BEGIN PUBLIC KEY-----|-----END PUBLIC KEY-----|\s/g,'');
-    if(!body)throw fail('Recovery signing key unavailable',503);
-    try{
-      key=await crypto.subtle.importKey('spki',b64bytes(body),
-        {name:'RSASSA-PKCS1-v1_5',hash:'SHA-256'},false,['verify']);
-    }catch{throw fail('Signing key import failed',503);}
-  }
-  let verified=false;
-  try{
-    verified=await crypto.subtle.verify('RSASSA-PKCS1-v1_5',key,
-      b64bytes(pieces[2]),new TextEncoder().encode(pieces[0]+'.'+pieces[1]));
-  }catch(error){
-    if(error?.status)throw error;
-    throw fail('Signature verification operation failed',503);
-  }
-  if(!verified)throw fail('Token signature invalid',401);
-  // Email is usable for legacy management grants only when it is a VERIFIED,
-  // cryptographically signed identity claim. Never promote SDK/local input.
-  const email=String(claims.email||'').trim().toLowerCase();
-  const emailFormat=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  const verifiedEmail=claims.email_verified===true&&emailFormat.test(email)?email:'';
-  // Default Clerk session JWTs contain sub/sid but usually NO signed email.
-  // This deployment's sole root has an independent trusted server-side
-  // management-email binding. Never use an email supplied by the browser.
-  const roots=String(env.LOC_RECOVERY_ROOT_CLERK_IDS||'').split(/[\s,;]+/).filter(Boolean);
-  const rootEmail=String(env.LOC_ROOT_MANAGEMENT_EMAIL||'').trim().toLowerCase();
-  const mappedEmail=clerk&&roots.length===1&&roots[0]===claims.sub&&
-    emailFormat.test(rootEmail)?rootEmail:'';
-  return {provider:clerk?'clerk':'secondary',subject:claims.sub,
-    session:clerk?claims.sid:'verified',email:verifiedEmail||mappedEmail};
+  if(!env.LOC_CONTROL_ORIGIN||!env.LOC_CONTROL_ENCRYPTION_KEY||
+     !env.LOC_AUTHORITY_STATE)
+    throw fail('LOC Auth control is not configured',503);
 }
 function validateTarget(input,id){
   if(!ID.test(id)||!input||typeof input!=='object'||Array.isArray(input))throw fail('Invalid target');
@@ -189,15 +42,30 @@ function validateTarget(input,id){
   const host=String(input.host||'').trim().toLowerCase();
   const database=String(input.database||'').trim();
   const username=String(input.username||'').trim();
+  let authentication;
+  try{authentication=normalizeSqlDriverAuthentication(engine,input.authentication);}
+  catch(error){throw fail(error.message||'Invalid SQL driver authentication',400)}
   const label=String(input.label||id).trim();
   const port=Number(input.port);
   if(!ENGINES.has(engine)||!/^[a-z0-9.-]{1,253}$/.test(host)||host.startsWith('.')||host.endsWith('.')||
     !Number.isInteger(port)||port<1||port>65535||
-    !/^[a-zA-Z0-9_\-]{1,120}$/.test(database)||!username||username.length>120||!label||label.length>120)
+    !/^[a-zA-Z0-9_\-]{1,120}$/.test(database)||
+    (sqlAuthNeedsUserPassword(authentication)&&!username)||username.length>120||
+    !label||label.length>120)
     throw fail('Invalid database connection metadata');
   const password=input.password;
   if(password!==undefined&&(typeof password!=='string'||password.length>4096))throw fail('Invalid database secret');
-  return {id,engine,host,port,database,username,label,...(password?{password}:{})};
+  const selectableByUsers=input.selectable_by_users===true;
+ if(input.selectable_by_users!==undefined&&typeof input.selectable_by_users!=='boolean')
+  throw fail('Invalid user database selection policy');
+ const allowedSubjects=input.allowed_subjects||[];
+ if(!Array.isArray(allowedSubjects)||allowedSubjects.length>500||
+    allowedSubjects.some(x=>!/^loc_[A-Za-z0-9_-]{32,80}$/.test(String(x))))
+   throw fail('Invalid database allowed subjects');
+ return {id,engine,host,port,database,username,label,authentication,
+  selectable_by_users:selectableByUsers,
+  allowed_subjects:[...new Set(allowedSubjects)],
+  ...(password?{password}:{})};
 }
 async function encryptionKey(secret){
   const bytes=b64bytes(secret);
@@ -217,9 +85,9 @@ async function decryptProfile(value,secret){
   return JSON.parse(new TextDecoder().decode(bytes));
 }
 
-// MCP OAuth uses an audience-bound access token, not a Clerk session JWT.
+// MCP OAuth uses a signed, audience-bound LOC access token.
 // Data access is separately authorized by this Group Authority's grants.
-const MCP_RESOURCE='https://loc.lo3rwang.cc/mcp';
+const MCP_RESOURCE='https://mcp.lo3rwang.cc';
 const MANAGED_SCOPE_TABLES=Object.freeze({lo3rwang:'lo3rwang_galaxy',lrunes:'lrunes_galaxy'});
 // MCP uses LOC's independent Kysely SQL Gateway, never a provider Function.
 // The Worker holds no DB password and only forwards a signed LOC delegation.
@@ -280,29 +148,6 @@ function validateScopeTarget(input,scopeid){
     throw fail('Scope table must match its existing Galaxy relation',400);
   return {scopeid,endpoint,schema:String(input.schema||'public'),table};
 }
-async function verifyMcpOAuth(request,env){
-  const match=/^Bearer ([A-Za-z0-9_.-]{40,8192})$/.exec(request.headers.get('authorization')||'');
-  if(!match)throw fail('MCP OAuth token required',401);
-  const bits=match[1].split('.');
-  if(bits.length!==3)throw fail('Invalid MCP token',401);
-  let header,claims;
-  try{header=JSON.parse(new TextDecoder().decode(b64bytes(bits[0])));
-    claims=JSON.parse(new TextDecoder().decode(b64bytes(bits[1])));}
-  catch{throw fail('Invalid MCP token',401)}
-  if(header?.alg!=='RS256'||!header.kid||claims?.iss!==env.LOC_CLERK_ISSUER||
-    !/^user_[A-Za-z0-9]+$/.test(String(claims.sub||''))||
-    !(Array.isArray(claims.aud)?claims.aud.includes(MCP_RESOURCE):claims.aud===MCP_RESOURCE))
-    throw fail('MCP token issuer or audience mismatch',401);
-  const now=Math.floor(Date.now()/1000);
-  if(!Number.isFinite(claims.exp)||claims.exp<=now||
-    (claims.nbf!=null&&claims.nbf>now+60)||
-    (claims.iat!=null&&claims.iat>now+60))throw fail('MCP token expired',401);
-  const key=await clerkPublicKey(env.LOC_CLERK_ISSUER,header.kid);
-  const valid=await crypto.subtle.verify('RSASSA-PKCS1-v1_5',key,b64bytes(bits[2]),
-    new TextEncoder().encode(bits[0]+'.'+bits[1]));
-  if(!valid)throw fail('MCP token signature invalid',401);
-  return {provider:'clerk',subject:claims.sub};
-}
 async function mcpJsonBody(request,limit=160000){
   const raw=await request.text();
   if(raw.length>limit)throw fail('MCP payload too large',413);
@@ -334,19 +179,29 @@ async function managedMcpRead(scopeid,kind,args,token,env,gateway=''){
 }
 export class LocAuthorityState extends DurableObject {
   constructor(ctx,env){super(ctx,env);}
+  async nativeGet(key){return this.ctx.storage.get(key);}
+  async nativePut(key,value){await this.ctx.storage.put(key,value);return true;}
+  async nativeTake(key){return this.ctx.storage.transaction(async t=>{
+    const value=await t.get(key);if(value!==undefined)await t.delete(key);return value;
+  });}
+  async nativeProvider(type){
+    if(!['github','oidc'].includes(type))throw fail('Unsupported identity provider');
+    const item=await this.ctx.storage.get('auth-provider:'+type);
+    return item?decryptProfile(item.encrypted,this.env.LOC_CONTROL_ENCRYPTION_KEY):null;
+  }
   async listState(){
     const saved=await this.ctx.storage.list({prefix:'target:'});
     const targets=[];
     for(const [key,item] of saved)targets.push({id:key.slice(7),...item.public});
-    // Built-in routable providers are managed by the independent Gateway and
-    // require no user-entered DB password or modification of the existing Link.
-    for(const [id,label] of [['supabase-current','Supabase'],['neon-current','Neon']]){
-      if(!targets.some(target=>target.id===id))targets.push({
-        id,label,engine:'postgres',managed:true
-      });
-    }
+    // The default control alias is not a selectable user credential.
+    if(!targets.some(target=>target.id==='loc-main'))targets.push({
+      id:'loc-main',label:'主要資料庫連線',engine:'postgres',managed:true
+    });
     targets.sort((a,b)=>a.id.localeCompare(b.id));
-    return {primary_id:await this.ctx.storage.get('primary_id')||'supabase-current',targets};
+    const savedPrimary=await this.ctx.storage.get('primary_id');
+    const primary=targets.some(target=>target.id===savedPrimary)
+      ?savedPrimary:'loc-main';
+    return {primary_id:primary,targets};
   }
   // LOC delegates access with a self-managed asymmetric key. The private JWK
   // remains AES-GCM encrypted in this existing Authority Durable Object.
@@ -408,9 +263,9 @@ export class LocAuthorityState extends DurableObject {
       providers.push(item?{...item.public,active:false,runtime_connected:false}:
         {type,configured:false,secret_configured:false,active:false,runtime_connected:false});
     }
-    // Runtime currently verifies only the deployed Clerk Session for SQL.
-    // This value is intentionally NOT writable via these configuration endpoints.
-    return {active:'clerk',providers};
+    // LOC Auth session verification is independent of OAuth provider settings.
+    // This value is intentionally not writable through these endpoints.
+    return {active:'loc',providers};
   }
   async putAuthProvider(type,values){
     const previous=await this.ctx.storage.get('auth-provider:'+type);
@@ -419,7 +274,7 @@ export class LocAuthorityState extends DurableObject {
     let profile;
     try{
       profile=validateAuthProviderSettings(type,values,
-        {previous:former,siteOrigin:this.env.LOC_CONTROL_ORIGIN});
+        {previous:former,siteOrigin:ISSUER});
     }catch(error){throw fail(error.message||'Invalid auth provider settings',400)}
     const publicView=publicAuthProviderSettings(profile);
     await this.ctx.storage.put('auth-provider:'+type,{
@@ -429,19 +284,75 @@ export class LocAuthorityState extends DurableObject {
     return publicView;
   }
   async putTarget(id,input){
-    const validated=validateTarget(input,id);
     const old=await this.ctx.storage.get('target:'+id);
-    if(!validated.password&&!old)throw fail('New target requires a password');
-    const profile=validated.password?validated:{...validated,password:(await decryptProfile(old.encrypted,this.env.LOC_CONTROL_ENCRYPTION_KEY)).password};
-    const {password,...publicFields}=profile;
+    const previous=old?await decryptProfile(old.encrypted,
+      this.env.LOC_CONTROL_ENCRYPTION_KEY):null;
+    // Only reuse encrypted secrets for the same authentication mode. An
+    // unchanged Admin form never needs to receive or re-submit a secret.
+    const incoming=input?.authentication;
+    const selectedType=String(incoming?.type||
+      previous?.authentication?.type||'default');
+    const priorAuth=previous?.authentication?.type===selectedType
+      ?previous.authentication:{};
+    const authentication=incoming===undefined
+      ?previous?.authentication
+      :{...priorAuth,...incoming};
+    const validated=validateTarget({
+      ...input,authentication,
+      selectable_by_users:input?.selectable_by_users??
+        old?.public?.selectable_by_users??false,
+      allowed_subjects:input?.allowed_subjects??old?.public?.allowed_subjects??[]
+    },id);
+    const password=validated.password||previous?.password||'';
+    if(sqlAuthNeedsUserPassword(validated.authentication)&&!password)
+      throw fail('New SQL target requires its database password');
+    const profile={...validated,...(password?{password}:{})};
+    // Never put a Token or Client Secret into unencrypted/public DO metadata.
+    const {password:_password,authentication:internalAuth,...fields}=profile;
+    const publicFields={...fields,
+      authentication:publicSqlDriverAuthentication(internalAuth)};
     await this.ctx.storage.put('target:'+id,{
       public:publicFields,
       encrypted:await encryptProfile(profile,this.env.LOC_CONTROL_ENCRYPTION_KEY)
     });
     return publicFields;
   }
+  // Per-user selection is stored in the existing Authority DO, not in
+  // database tables, build-time JSON, or browser-held connection credentials.
+  async databaseTargetsForUser(subject,isRoot=false){
+    if(!/^loc_[A-Za-z0-9_-]{32,80}$/.test(String(subject||'')))
+      throw fail('Valid LOC subject required',401);
+    const stored=await this.ctx.storage.list({prefix:'target:'});
+    const targets=[...stored].flatMap(([key,item])=>{
+      const info=item?.public||{};
+      const authorized=isRoot||info.selectable_by_users===true||
+        (Array.isArray(info.allowed_subjects)&&info.allowed_subjects.includes(subject));
+      if(!authorized)return [];
+      return [{id:key.slice('target:'.length),label:String(info.label||key),
+        engine:info.engine}];
+    }).sort((a,b)=>a.label.localeCompare(b.label));
+    const current=await this.ctx.storage.get('user-db:'+subject)||null;
+    return {targets,selected:targets.some(x=>x.id===current)?current:null};
+  }
+  async selectDatabaseForUser(subject,id,isRoot=false){
+    const choices=await this.databaseTargetsForUser(subject,isRoot);
+    if(id===null||id==='configured'){
+      await this.ctx.storage.delete('user-db:'+subject);
+      return {selected:null};
+    }
+    if(!ID.test(String(id||''))||!choices.targets.some(x=>x.id===id))
+      throw fail('Database is not available to this LOC account',403);
+    await this.ctx.storage.put('user-db:'+subject,id);
+    return {selected:id};
+  }
+  async selectedDatabaseForDelegation(subject,isRoot=false){
+    return (await this.databaseTargetsForUser(subject,isRoot)).selected;
+  }
+  async verifyLiveDatabaseSelection(subject,id,isRoot=false){
+    return id===await this.selectedDatabaseForDelegation(subject,isRoot);
+  }
   async selectPrimary(id){
-    const builtin=id==='supabase-current'||id==='neon-current';
+    const builtin=id==='loc-main';
     const target=builtin?{id}:await this.ctx.storage.get('target:'+id);
     if(!target)throw fail('Unknown primary target');
     await this.ctx.storage.put('primary_id',id);
@@ -680,7 +591,7 @@ export class LocAuthorityState extends DurableObject {
     const members=[groupid,...await this.mcpGroupMembers(groupid)];
     const allowed=new Set(members);
     const grants=(await this.listGrants()).filter(grant=>
-      grant.provider==='clerk'&&allowed.has(grant.scope)&&grant.expires_at>Date.now());
+      grant.provider==='loc'&&allowed.has(grant.scope)&&grant.expires_at>Date.now());
     return {groupid,members,grants,
       categories:(await this.mcpGroupKeywordCategories(groupid)).categories};
   }
@@ -718,11 +629,11 @@ export class LocAuthorityState extends DurableObject {
   }
   // Cloudflare DO RPC: only a separately bound trusted SQL gateway can call this.
   // No HTTP handler exposes the credential or returns decrypted profiles to a browser.
-  // Shared, durable quotas for each verified Clerk MCP subject.
+  // Shared, durable quotas for each verified LOC Auth MCP subject.
   // A read-only near-limit check for simultaneous PR denial + QoS warning.
   // It never acquires a lease, spends a search, or touches Galaxy rows.
   async mcpQuotaInspect(kind,subject){
-    if(!/^clerk:user_[A-Za-z0-9]+$/.test(String(subject||'')))
+    if(!/^loc:loc_[A-Za-z0-9_-]{32,80}$/.test(String(subject||'')))
       throw fail('Invalid MCP principal',401);
     if(!['read','write','search'].includes(kind))throw fail('Invalid MCP quota kind',400);
     const now=Date.now(),search=kind==='search';
@@ -744,7 +655,7 @@ export class LocAuthorityState extends DurableObject {
     return {warning:''};
   }
   async mcpQuotaAcquire(kind,subject){
-    if(!/^clerk:user_[A-Za-z0-9]+$/.test(String(subject||'')))throw fail('Invalid MCP principal',401);
+    if(!/^loc:loc_[A-Za-z0-9_-]{32,80}$/.test(String(subject||'')))throw fail('Invalid MCP principal',401);
     if(!['read','write','search'].includes(kind))throw fail('Invalid MCP quota kind',400);
     const now=Date.now(),period=60_000,leaseTtl=25_000;
     const searchWindowMs=300_000;
@@ -828,7 +739,7 @@ export class LocAuthorityState extends DurableObject {
     return outcome;
   }
   async mcpQuotaRelease(lease,subject){
-    if(!/^clerk:user_[A-Za-z0-9]+$/.test(String(subject||'')))throw fail('Invalid MCP principal',401);
+    if(!/^loc:loc_[A-Za-z0-9_-]{32,80}$/.test(String(subject||'')))throw fail('Invalid MCP principal',401);
     if(typeof lease!=='string'||!/^[a-f0-9-]{36}$/i.test(lease))
       throw fail('Invalid MCP lease',400);
     await this.ctx.storage.transaction(async tx=>{
@@ -855,20 +766,23 @@ function mcpPrLookup(query){
 
 async function handleMcpAuthority(request,env,url,origin){
   // Authentication precedes all quotas and any downstream SQL access.
+  // Browser administration uses a site-audience LOC OAuth token. MCP tools
+  // keep the separate MCP audience. Both must pass explicit LOC Scope grants.
+  const webAdmin=/^\/v1\/mcp\/(?:scope|group)\//.test(url.pathname);
   let principal;
-  try{principal=await verifyMcpOAuth(request,env);}
+  try{principal=await verifyNativeOAuth(request,env,MCP_AUDIENCE);}
   catch(error){
-    if(error.status!==401)throw error;
-    principal=await verifyIdentityToken(request,env);
+    if(!webAdmin)throw error;
+    principal=await verifyNativeOAuth(request,env,WEB_AUDIENCE);
   }
   const quota=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName(
     'mcp-quota-global-v1'));
   if(url.pathname==='/v1/mcp/quota'&&request.method==='POST'){
-    if(principal.provider!=='clerk')throw fail('MCP OAuth required',401);
+    if(principal.provider!=='loc')throw fail('LOC MCP OAuth required',401);
     const args=await mcpJsonBody(request,400);
-    if(args?.action==='inspect')return json(await quota.mcpQuotaInspect(args.kind,'clerk:'+principal.subject),200,origin);
-    if(args?.action==='acquire')return json(await quota.mcpQuotaAcquire(args.kind,'clerk:'+principal.subject),200,origin);
-    if(args?.action==='release')return json(await quota.mcpQuotaRelease(args.lease,'clerk:'+principal.subject),200,origin);
+    if(args?.action==='inspect')return json(await quota.mcpQuotaInspect(args.kind,'loc:'+principal.subject),200,origin);
+    if(args?.action==='acquire')return json(await quota.mcpQuotaAcquire(args.kind,'loc:'+principal.subject),200,origin);
+    if(args?.action==='release')return json(await quota.mcpQuotaRelease(args.lease,'loc:'+principal.subject),200,origin);
     throw fail('Invalid MCP quota operation',400);
   }
   // Refuse GitHub metadata searches before quota or SQL, including direct API callers.
@@ -886,7 +800,7 @@ async function handleMcpAuthority(request,env,url,origin){
     throw fail('請至github頁面找尋PR相關資料！不開放搜尋PR!',410);
   const kind=/^\/v1\/mcp\/galaxy-link\/search\//.test(url.pathname)?'search':
     request.method==='GET'?'read':'write';
-  const ticket=await quota.mcpQuotaAcquire(kind,'clerk:'+principal.subject);
+  const ticket=await quota.mcpQuotaAcquire(kind,'loc:'+principal.subject);
   try{
     const answer=await handleMcpAuthorityInner(request,env,url,origin,principal);
     if(!ticket.warning||!answer.ok)return answer;
@@ -895,23 +809,24 @@ async function handleMcpAuthority(request,env,url,origin){
     headers.set('X-LOC-QoS-Warning',encodeURIComponent(ticket.warning));
     headers.set('Access-Control-Expose-Headers','X-LOC-QoS-Warning');
     return new Response(answer.body,{status:answer.status,statusText:answer.statusText,headers});
-  }finally{await quota.mcpQuotaRelease(ticket.lease,'clerk:'+principal.subject);}
+  }finally{await quota.mcpQuotaRelease(ticket.lease,'loc:'+principal.subject);}
 }
 async function handleMcpAuthorityInner(request,env,url,origin,principal){
-  const roots=String(env.LOC_RECOVERY_ROOT_CLERK_IDS||'').split(/[\s,;]+/).filter(Boolean);
+  const roots=String(env.LOC_RECOVERY_ROOT_LOC_SUBJECTS||'').split(/[\s,;]+/).filter(Boolean);
   const isRoot=roots.includes(principal.subject);
   const stub=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName('loc-authority-control-v1'));
   const scoped=scope=>env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName('mcp-scope:'+scope));
   const allowed=async(scope,action)=>isRoot||await stub.mayAccess({...principal,scope,action});
   // A trusted Scope grant becomes a short-lived LOC MCP delegation for
-  // every SQL engine and every configured Scope. Neither Clerk's token nor
+  // every SQL engine and every configured Scope. Neither LOC OAuth token nor
   // any provider-specific database identity is forwarded to the SQL Gateway.
   const managedToken=async(scope,action)=>{
     validScope(scope);
     if(!['read','write','manage'].includes(action)||!await allowed(scope,action))
       throw fail('MCP Scope delegation denied',403);
+    const targetId=await stub.selectedDatabaseForDelegation(principal.subject,isRoot);
     const claims=issueDelegation({
-      sub:principal.subject,grants:[scope+':'+action],audience:'mcp',
+      sub:principal.subject,grants:[scope+':'+action],audience:'mcp',targetId,
       sid:crypto.randomUUID(),now:Math.floor(Date.now()/1000),seconds:300
     });
     return stub.signLocDelegation(claims);
@@ -950,7 +865,7 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
     const email=String(env.LOC_ROOT_MANAGEMENT_EMAIL||'').trim().toLowerCase();
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
       throw fail('Trusted root email mapping is unavailable',503);
-    return json({provider:'clerk',subject:principal.subject,scopeid,email,authorized:true},200,origin);
+    return json({provider:'loc',subject:principal.subject,scopeid,email,authorized:true},200,origin);
   }
   if(parts[0]==='checkpoint'&&parts.length===3&&request.method==='GET'){
     const scopeid=validScope(parts[1]);
@@ -1039,7 +954,7 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
     const scopeid=validScope(input?.scope);
     if(scopeid!==groupid&&!(await stub.mcpGroupMembers(groupid)).includes(scopeid))
       throw fail('Requested Scope is not a Group member',403);
-    return json(await stub.putGrant({provider:'clerk',subject:input?.subject,
+    return json(await stub.putGrant({provider:'loc',subject:input?.subject,
       scope:scopeid,actions:input?.actions,expires_at:input?.expires_at}),200,origin);
   }
   if(parts[0]==='group'&&parts.length===4&&parts[2]==='scope'&&request.method==='PUT'){
@@ -1054,8 +969,8 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
     const input=await mcpJsonBody(request,1000),scopeid=validScope(input?.scope);
     if(scopeid!==groupid&&!(await stub.mcpGroupMembers(groupid)).includes(scopeid))
       throw fail('Scope is not a Group member',403);
-    if(!/^user_[A-Za-z0-9]+$/.test(String(input?.subject||'')))throw fail('Invalid Clerk subject',400);
-    return json(await stub.revokeGrant('clerk:'+input.subject+':'+scopeid),200,origin);
+    if(!/^loc_[A-Za-z0-9_-]{32,80}$/.test(String(input?.subject||'')))throw fail('Invalid LOC subject',400);
+    return json(await stub.revokeGrant('loc:'+input.subject+':'+scopeid),200,origin);
   }
   throw fail('MCP operation not found',404);
 }
@@ -1079,8 +994,7 @@ async function exchangeLocDelegation(request,env,principal,origin){
     (global||identity||self)&&audience!=='sql'||
     Number(global)+Number(identity)+Number(self)>1)
     throw fail('Invalid delegation audience',400);
-  const roots=String(principal.provider==='clerk'
-    ?env.LOC_RECOVERY_ROOT_CLERK_IDS:env.LOC_RECOVERY_ROOT_SECONDARY_SUBJECTS)
+  const roots=String(env.LOC_RECOVERY_ROOT_LOC_SUBJECTS||'')
     .split(/[\s,;]+/).filter(Boolean);
   const root=roots.includes(principal.subject);
   const scope=String(input.scopeid||'');
@@ -1116,18 +1030,14 @@ async function exchangeLocDelegation(request,env,principal,origin){
         throw fail('Requested Scope delegation was not granted',403);
     }
   }
-  // Provider-qualified digest avoids collisions between identity providers.
-  // Explicit manual transfer may preserve an existing LOC subject separately.
-  const identityBytes=new TextEncoder().encode(principal.provider+':'+principal.subject);
-  const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',identityBytes)))
-    .map(value=>value.toString(16).padStart(2,'0')).join('');
+  // Native LOC account subjects are immutable; matching email never
+  // transfers an existing owner's grants or identity.
   const now=Math.floor(Date.now()/1000);
-  // Preserve the already-established Clerk owner_id during migration.
-  // A different provider gets a distinct LOC subject until a trusted operator
-  // explicitly maps it; matching email alone never transfers ownership.
-  const sub=principal.provider==='clerk'?principal.subject:'loc_'+digest.slice(0,40);
+  const sub=principal.subject;
+  const targetId=principal.provider==='loc'?
+    await stub.selectedDatabaseForDelegation(principal.subject,root):null;
   const claims=issueDelegation({sub,email,
-    grants,audience,sid:crypto.randomUUID(),now,seconds:300});
+    grants,audience,sid:crypto.randomUUID(),now,seconds:300,targetId});
   const token=await stub.signLocDelegation(claims);
   return json({access_token:token,token_type:'Bearer',expires_at:claims.exp,
     audience:claims.aud,scopeid:global||identity||self?null:scope,grants:claims.grants},200,origin);
@@ -1137,6 +1047,8 @@ export default {
   async fetch(request,env){
     let origin='';
     try{
+      const target=new URL(request.url);
+      if(isNativeOAuthPath(target.pathname))return handleNativeOAuth(request,env);
       requireSetup(env);
       origin=allowedOrigin(request,env);
       if(request.method==='OPTIONS'){
@@ -1151,6 +1063,13 @@ export default {
       if(!['GET','PUT','POST'].includes(request.method))throw fail('Method not allowed',405);
       const url=new URL(request.url);
       if(url.pathname.startsWith('/v1/mcp/'))return handleMcpAuthority(request,env,url,origin);
+      // Only an independently authenticated Gateway can request a decrypted
+      // DO connection. No browser-visible path yields passwords or DB URLs.
+      if(request.method==='POST'&&url.pathname==='/v1/sql/runtime-profile'){
+        const state=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName(
+          'loc-authority-control-v1'));
+        return trustedSqlProfile(request,env,state);
+      }
       if(request.method==='GET'&&url.pathname==='/.well-known/jwks.json'){
         const state=env.LOC_AUTHORITY_STATE.get(
           env.LOC_AUTHORITY_STATE.idFromName('loc-authority-control-v1'));
@@ -1159,14 +1078,38 @@ export default {
             'cache-control':'public, max-age=300','x-content-type-options':'nosniff'}
         });
       }
-      const principal=await verifyIdentityToken(request,env);
+      const principal=await verifyNativeOAuth(request,env,WEB_AUDIENCE);
       if(!url.pathname.startsWith('/v1/'))throw fail('Not found',404);
       // Identity endpoint is only a verified principal lookup. It grants no
       // data access or management capabilities; the gateway must call mayAccess.
       if(request.method==='GET'&&url.pathname==='/v1/identity')return json(principal,200,origin);
       if(request.method==='POST'&&url.pathname==='/v1/delegation')
-        return exchangeLocDelegation(request,env,principal,origin);
-      const roots=String(principal.provider==='clerk'?env.LOC_RECOVERY_ROOT_CLERK_IDS:env.LOC_RECOVERY_ROOT_SECONDARY_SUBJECTS)
+        return await exchangeLocDelegation(request,env,principal,origin);
+      // Account-level database selection is independent for each LOC identity.
+      // Only profiles explicitly exposed by the root are selectable by users.
+      if(url.pathname==='/v1/databases'||
+         url.pathname==='/v1/databases/selection'){
+        if(principal.provider!=='loc')throw fail('LOC Auth required',401);
+        const roots=String(env.LOC_RECOVERY_ROOT_LOC_SUBJECTS||'')
+          .split(/[\s,;]+/).filter(Boolean);
+        const state=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName(
+          'loc-authority-control-v1'));
+        const isRoot=roots.includes(principal.subject);
+        if(request.method==='GET'&&url.pathname==='/v1/databases')
+          return json(await state.databaseTargetsForUser(principal.subject,isRoot),200,origin);
+        if(request.method==='POST'&&url.pathname==='/v1/databases/selection'){
+          const raw=await request.text();
+          if(raw.length>600)throw fail('Database selection is too large',413);
+          let input;try{input=JSON.parse(raw)}catch{throw fail('Invalid database selection')}
+          if(!input||typeof input!=='object'||Array.isArray(input)||
+            Object.keys(input).some(x=>x!=='id'))
+            throw fail('Invalid database selection');
+          return json(await state.selectDatabaseForUser(principal.subject,
+            input.id,isRoot),200,origin);
+        }
+        throw fail('Method not allowed',405);
+      }
+      const roots=String(env.LOC_RECOVERY_ROOT_LOC_SUBJECTS||'')
         .split(/[\s,;]+/).filter(Boolean);
       if(!roots.includes(principal.subject))throw fail('Recovery administrator required',403);
       const stub=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName('loc-authority-control-v1'));
@@ -1174,7 +1117,7 @@ export default {
       if(request.method==='GET'&&url.pathname==='/v1/state')return json(await stub.listState(),200,origin);
       if(request.method==='GET'&&url.pathname==='/v1/auth/providers')
         return json(await stub.listAuthProviders(),200,origin);
-      const authMatch=new RegExp('^/v1/auth/providers/(github|oidc|entra|ldap|ad|neon)$').exec(url.pathname);
+      const authMatch=/^\/v1\/auth\/providers\/(github|oidc|entra|ldap|ad)$/.exec(url.pathname);
       if(request.method==='PUT'&&authMatch){
         const raw=await request.text();
         if(raw.length>12000)throw fail('Request too large',413);
@@ -1216,3 +1159,4 @@ export default {
     }
   }
 };
+

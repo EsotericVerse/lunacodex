@@ -50,7 +50,7 @@ export const SCOPES=Object.freeze({
 
   // Private, device-local content (future: MSN/Twitter-style personal
   // archive imports, parsed into an on-device SQLite store -- never
-  // Supabase). nativeOnly marks it for useScopeRuntime: outside the native
+  // remote Gateway). nativeOnly marks it for useScopeRuntime: outside the native
   // App this id must resolve exactly like an unmatched path, not like a
   // known-but-restricted one. No `nav` key on purpose: it never appears in
   // the built-in Scope switcher (NAV_SCOPES in AppShell.jsx filters on

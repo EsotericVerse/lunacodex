@@ -138,7 +138,7 @@ async function readPages(id,{columns=CORE_COLUMNS,filter=null,types=null,limit=n
   }
   const union=false,rows=[],size=750;
   for(let offset=0;;offset+=size){
-    // Public lists use anonymous RLS; only includeHidden manager reads use Clerk.
+    // Public lists use anonymous RLS; only includeHidden manager reads use LOC Auth.
     let query=readClient.schema('silver').from(id+'_trace')
       .select(columns+(union?',scope_id':'')).order('title',{ascending:true})
       .range(offset,offset+Math.min(size,limit===null?size:limit-offset)-1);

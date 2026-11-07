@@ -1,17 +1,14 @@
 // Database source routing is read directly from access.js, never SQL.
 // No secrets, login grants, or database calls are stored here.
-// Existing target selection remains the default until a trusted SQL Gateway
-// alias is explicitly configured. A backup may use any supported SQL provider;
-// its connection and credentials remain server-side.
+// The default control alias is server-owned. Personal database choices are
+// resolved by LOC Auth, not by this deployment-time registry.
 import {DATABASE_ACCESS_LIST} from './access.js';
 
 const sourceTargets=Object.freeze(Object.fromEntries(
   DATABASE_ACCESS_LIST.map(item=>[item.target_id,Object.freeze({
     provider:item.provider,
     primaryControl:true,
-    ...(item.provider==='custom'?{
-      engine:item.engine,connection_alias:item.connection_alias
-    }: {})
+    engine:item.engine,connection_alias:item.connection_alias
   })])
 ));
 // Only a trusted Deno SQL service can override the deployed browser's target.
@@ -32,7 +29,7 @@ export const DATABASE_ROUTING_CONFIG=Object.freeze({
     // Generic portable targets remain opt-in. Credentials are server secrets.
     'custom-current':Object.freeze({
       provider:'custom',
-      engine:serverControlEngine||(typeof process!=='undefined'&&process.env.NEXT_PUBLIC_LOC_SQL_ENGINE)||'mysql',
+      engine:serverControlEngine||(typeof process!=='undefined'&&process.env.NEXT_PUBLIC_LOC_SQL_ENGINE)||'postgres',
       connection_alias:serverControlAlias||(typeof process!=='undefined'&&process.env.NEXT_PUBLIC_LOC_SQL_ALIAS)||'custom_current',
       primaryControl:true
     })
@@ -47,12 +44,12 @@ export function resolveDatabaseRouting(config=DATABASE_ROUTING_CONFIG){
   const blocked=new Set(config.blacklist||[]);
   const primary=config.targets?.[config.primaryId];
   if(!primary||blocked.has(config.primaryId))throw new Error('Primary database route is missing or blacklisted');
-  if(!['supabase','neon','custom'].includes(primary.provider))
+  if(primary.provider!=='custom')
     throw new Error('Unsupported SQL primary');
-  if(primary.primaryControl!==true)throw new Error('Primary route has no full provider adapter');
+  if(primary.primaryControl!==true)throw new Error('Primary route has no control alias');
   const backupId=config.backupId&&config.backupId!==config.primaryId&&!blocked.has(config.backupId)?config.backupId:null;
   const backup=backupId?config.targets?.[backupId]:null;
-  if(backupId&&(!backup||!['supabase','neon','custom'].includes(backup.provider)))
+  if(backupId&&(!backup||backup.provider!=='custom'))
     throw new Error('Database backup route is not supported');
   return Object.freeze({
     provider:primary.provider,
@@ -61,8 +58,7 @@ export function resolveDatabaseRouting(config=DATABASE_ROUTING_CONFIG){
     backupProvider:backup?.provider||null,
     mode:config.mode==='db-managed'?'db-managed':'single',
     primaryControl:primary.primaryControl===true,
-    ...(primary.provider==='custom'
-      ?{engine:primary.engine,connectionAlias:primary.connection_alias}:{}),
+    engine:primary.engine,connectionAlias:primary.connection_alias,
     verified:true
   });
 }

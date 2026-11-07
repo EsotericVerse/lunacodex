@@ -8,8 +8,8 @@ import {bindLocAuthorization} from '../app/loc/providers/loc-authorization.mjs';
 test('plain PostgreSQL does not require provider RLS session roles',()=>{
   assert.equal(resolveSqlExecutionPort({engine:'postgres',provider:'custom'}).session,'external-acl');
   assert.equal(resolveSqlExecutionPort({engine:'postgres',provider:'google-cloud-sql'}).session,'external-acl');
-  assert.equal(resolveSqlExecutionPort({engine:'postgres',provider:'supabase'}).session,'postgres-rls');
-  assert.equal(resolveSqlExecutionPort({engine:'postgres',provider:'neon',rls_enabled:false}).session,'external-acl');
+  assert.equal(resolveSqlExecutionPort({engine:'postgres',provider:'custom',rls_enabled:true}).session,'external-acl');
+  assert.equal(resolveSqlExecutionPort({engine:'postgres',provider:'custom',rls_enabled:false}).session,'external-acl');
   assert.equal(resolveSqlExecutionPort({engine:'mysql',provider:'custom'}).session,'external-acl');
 });
 const identity={role:'authenticated',claims:{sub:'user_AbC123',
@@ -52,11 +52,15 @@ function registry(rows,{blacklist={email:[]}}={}){
   };
 }
 
-test('public engine reads only reference tables; private Galaxy remains private',async()=>{
-  assertCrossEnginePublicRead(query('runes'));
-  await assert.rejects(authorizeCrossEngineQuery(registry([]),query('lo3rwang_galaxy')),
-    /published LOC relation/);
+test('anonymous Galaxy and Anchor reads require the executor public-only filter',async()=>{
+  assert.deepEqual(assertCrossEnginePublicRead(query('runes')),{publicOnly:false});
+  assert.deepEqual(await authorizeCrossEngineQuery(registry([]),query('lo3rwang_galaxy')),
+    {publicOnly:true});
+  assert.deepEqual(await authorizeCrossEngineQuery(registry([]),query('lrunes_anchor')),
+    {publicOnly:true});
   await assert.rejects(authorizeCrossEngineQuery(registry([]),query('runes','delete')),
+    /published LOC relation/);
+  await assert.rejects(authorizeCrossEngineQuery(registry([]),query('private_table')),
     /published LOC relation/);
 });
 test('verified LOC Scope owner can use generic native Kysely SELECT and writes',async()=>{

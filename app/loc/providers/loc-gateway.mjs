@@ -11,7 +11,6 @@ export function createLocGatewayAdapter({
   gatewayUrl=process.env.NEXT_PUBLIC_LOC_SQL_GATEWAY_URL||
     process.env.NEXT_PUBLIC_LOC_KYSELY_GATEWAY_URL||'',
   publicGatewayUrl=gatewayUrl,
-  url='',publishableKey='',
   target='configured',
   realtimeClient=null,
   fetchImpl=globalThis.fetch
@@ -86,6 +85,21 @@ export function createLocGatewayAdapter({
         headers:{authorization:'Bearer '+oauthToken,'content-type':'application/json'},
         body:JSON.stringify(request)
       });
+      // A verified virtual Group manager holds a signed ancestor Group grant,
+      // not separate grants for every descendant Scope. If the exact request
+      // is denied, exchange the caller's own existing grants once. The SQL
+      // Gateway must then check the trusted live hierarchy before any write.
+      // An unauthorized user still has no usable inherited permission.
+      if(response.status===403&&request.scopeid&&
+         request.actions?.includes('manage')){
+        const selfRequest={audience:'sql',self:true};
+        const inherited=await getLocAccessToken({kind:'managed-action',
+          name:'manage',args:{p_type:'self'}});
+        const selfCache=delegationCache.get(oauthToken+'|'+JSON.stringify(selfRequest));
+        if(selfCache?.until>Date.now()+30_000)
+          delegationCache.set(key,{token:inherited,until:selfCache.until});
+        return inherited;
+      }
       if(!response.ok)throw new Error('LOC delegation exchange rejected (HTTP '+response.status+')');
       const data=await response.json();
       const token=String(data?.access_token||'');
@@ -101,25 +115,42 @@ export function createLocGatewayAdapter({
     catch(error){if(delegationCache.get(key)?.pending===pending)delegationCache.delete(key);throw error}
   }
 
+  // A logged-in reader follows their own Authority-selected database even
+  // on ordinarily public pages; guests continue reading the default database.
+  // The JWT is always minted by LOC Authority, never chosen by HTTP body.
+  const optionalPublicDelegation=async body=>{
+    if(typeof auth.getVerifiedSession!=='function')return '';
+    const session=await auth.getVerifiedSession().catch(()=>null);
+    if(!session?.user?.id)return '';
+    return getLocAccessToken(body);
+  };
   const publicSql=createKyselyEdgeClient({
-    url,publishableKey,role:'anon',target,gatewayUrl:publicGatewayUrl,fetch:fetchImpl
+    role:'anon',target,gatewayUrl:publicGatewayUrl,
+    getAccessToken:optionalPublicDelegation,fetch:fetchImpl
   });
   const privateSql=createKyselyEdgeClient({
-    url,publishableKey,role:'authenticated',target,gatewayUrl,
+    role:'authenticated',target,gatewayUrl,
     getAccessToken:getLocAccessToken,fetch:fetchImpl
   });
   // The independent Extension write path never falls back to a vendor
   // Function. It reuses the site's existing LOC-signed, Scope-specific SQL
   // delegation, but its transport points only to the dedicated Kysely host.
-  const shortImportUrl=String(process.env.NEXT_PUBLIC_LOC_MCP_SQL_GATEWAY_URL||'').trim();
+  // Both browser reads and Extension writes target independent LOC SQL.
+  // If the dedicated write endpoint is unavailable, preserve queued writes
+  // without retrying against an unrelated provider endpoint.
+  const shortImportUrl=String(process.env.NEXT_PUBLIC_LOC_MCP_SQL_GATEWAY_URL||
+    gatewayUrl||'').trim();
   let shortImportSql=null;
   if(shortImportUrl){
-    const endpoint=new URL(shortImportUrl);
-    if(endpoint.protocol!=='https:'||endpoint.username||endpoint.password||
-      endpoint.search||endpoint.hash||endpoint.pathname!=='/v1/sql')
-      throw new Error('LOC short import requires an independent HTTPS /v1/sql Gateway');
-    shortImportSql=createKyselyEdgeClient({
-      url,publishableKey,role:'authenticated',target,gatewayUrl:endpoint.href,
+    let endpoint=null;
+    try{
+      const parsed=new URL(shortImportUrl);
+      if(parsed.protocol==='https:'&&!parsed.username&&!parsed.password&&
+        !parsed.search&&!parsed.hash&&parsed.pathname==='/v1/sql')
+        endpoint=parsed;
+    }catch{}
+    if(endpoint)shortImportSql=createKyselyEdgeClient({
+      role:'authenticated',target,gatewayUrl:endpoint.href,
       getAccessToken:getLocAccessToken,fetch:fetchImpl
     });
   }

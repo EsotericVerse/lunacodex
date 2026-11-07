@@ -83,7 +83,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
       payload={...payload,p_rows:prepareGalaxyInsertRows(payload.p_table,payload.p_rows||[])};
     if(isScopedGalaxy(payload?.p_table)&&payload?.p_operation==='update')
       payload={...payload,p_values:prepareGalaxyUpdateValues(payload.p_table,payload.p_values)};
-    // The unified anchor store is already governed by the Clerk-verified
+    // The unified anchor store is already governed by the LOC Auth-verified
     // authenticated Kysely client and its database RLS. Legacy management
     // SQL RPCs are never used for this cutover.
     const parts=String(payload?.p_table||'').split('.');
@@ -606,7 +606,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
 
   async function getAccountSession(){
     // A configured identity provider must prove its identity through LOC
-    // Authority. Supabase/Neon/database SDK sessions are never a fallback.
+    // Authority. database SDK sessions are never a fallback.
     if(typeof auth.getVerifiedSession!=='function')
       throw new Error('LOC verified identity provider is required');
     return auth.getVerifiedSession();
