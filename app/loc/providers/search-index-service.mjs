@@ -33,7 +33,7 @@ async function requestIndex(path,method,body){
   }
 }
 function targetId(target){
-  const id=String(target?.dataset_id||target?.target_id||target?.connection_alias||'');
+  const id=String(target?.dataset_id||target?.connection_alias||target?.target_id||'');
   return SOURCE.test(id)?id:null;
 }
 // Exact ordinary content term only. Boolean expressions, quoted phrases,
@@ -48,7 +48,7 @@ export async function withIndexedCandidates(body,target){
   const q=String(hint?.query||'').trim();
   const dbId=targetId(target);
   if(!SCOPE.test(scopeId)||hint?.scopeId!==scopeId||!dbId||
-     q.length<2||q.length>100||/[\s\u3000|"“”!]/u.test(q))return body;
+     q.length<2||q.length>100||!/^[\p{L}\p{N}]+$/u.test(q))return body;
   const result=await requestIndex('/v1/search','POST',{
     scopeId,dbId,entityType:'galaxy',query:q
   });
