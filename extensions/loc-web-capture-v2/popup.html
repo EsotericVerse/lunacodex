@@ -7,7 +7,7 @@
 <p>連接屬於你的文字銀河。<span style="display:block">擷取與錄製由你啟動；MCP 獨立運作。</span></p>
 <label style="display:block;margin:8px 0"><input type="checkbox" id="includeAI"> 舊對話同時保存 AI 回覆（預設只記錄使用者文字）</label>
 <label style="display:block;margin:8px 0">目的銀河
-<select id="scope" style="width:100%;padding:7px"><option value="lo3rwang">lo3rwang</option><option value="lrunes">lrunes</option></select></label>
+<input id="scope" value="lo3rwang" maxlength="15" pattern="[a-z][a-z0-9]{0,14}" spellcheck="false" autocomplete="off" style="width:100%;box-sizing:border-box;padding:7px"></label>
 <button id="capture">擷取目前頁面</button>
 <button id="select">選取頁面區域</button>
 <button id="record">開始區域錄製</button>
