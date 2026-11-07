@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import worker from '../workers/loc-search-index/index.mjs';
 import {indexDocumentsFromWrite,withIndexedCandidates} from '../app/loc/providers/search-index-service.mjs';
+import {locSearchDocumentId} from '../app/loc/search-index-shard.mjs';
+import {locGlobalUid,parseLocGlobalUid} from '../zenstack/global-identity.mjs';
+import {createKyselyEdgeClient} from '../app/loc/providers/kysely-edge.mjs';
 
 class KvMemory {
   constructor(){this.data=new Map();this.writes=0;}
@@ -107,4 +110,48 @@ test('Managed Galaxy writes produce stable dataset-aware index records',()=>{
   {connection_alias:'db2'});
   assert.deepEqual(result,[doc('db2','Ab123456','Hello')]);
   assert.deepEqual(indexDocumentsFromWrite({kind:'query',operation:'select'},{}),[]);
+});
+
+test('index document identity uses exact PR #1219 canonical ZModel federation',()=>{
+  const first=locGlobalUid({databaseId:'db1',scopeId:'lo3rwang',uid:'Ab123456'});
+  const second=locGlobalUid({databaseId:'db2',scopeId:'lo3rwang',uid:'Ab123456'});
+  assert.notEqual(first,second);
+  assert.deepEqual(parseLocGlobalUid(first),{databaseId:'db1',scopeId:'lo3rwang',uid:'Ab123456'});
+  assert.equal(locSearchDocumentId({scopeId:'lo3rwang',dbId:'db1',entityType:'galaxy',uid:'Ab123456'}),
+    JSON.stringify(['galaxy',first]));
+  assert.notEqual(locSearchDocumentId({scopeId:'lo3rwang',dbId:'db1',entityType:'anchor',uid:'Ab123456'}),
+    JSON.stringify(['galaxy',first]));
+  assert.throws(()=>locSearchDocumentId({scopeId:'lo3rwang',dbId:'DB1',uid:'Ab123456'}),/Invalid LOC database ID/);
+});
+
+test('search index hit qualification never trusts a different database ID',async(t)=>{
+  const previousDeno=globalThis.Deno,previousFetch=globalThis.fetch;
+  globalThis.Deno={env:{get:name=>name==='LOC_SEARCH_INDEX_URL'?'https://index.example.test':
+    name==='LOC_SEARCH_INDEX_SECRET'?secret:
+    name==='LOC_SEARCH_INDEX_ENABLED'?'true':''}};
+  globalThis.fetch=async()=>new Response(JSON.stringify({complete:true,hits:[{
+    scopeId:'lo3rwang',dbId:'db2',entityType:'galaxy',uid:'Ab123456',
+    globalUid:'db1:lo3rwang:Ab123456'
+  }]}),{status:200});
+  t.after(()=>{globalThis.Deno=previousDeno;globalThis.fetch=previousFetch;});
+  const query={kind:'query',schema:'silver',table:'lo3rwang_galaxy',operation:'select',
+    indexHint:{scopeId:'lo3rwang',query:'文化'},filters:[]};
+  assert.equal(await withIndexedCandidates(query,{connection_alias:'db2'}),query);
+});
+
+test('Gateway transport carries DB identity as an assertion rather than an SQL target selector',async()=>{
+  let submitted;
+  const gateway=createKyselyEdgeClient({
+    gatewayUrl:'https://gateway.example.test/v1/sql',role:'anon',
+    fetch:async(_url,options)=>{
+      submitted=JSON.parse(options.body);
+      return new Response(JSON.stringify({data:[],count:null}),{status:200});
+    }
+  });
+  const result=await gateway.schema('silver').from('lo3rwang_galaxy')
+    .select('uid,title').eq('uid','Ab123456').expectDatabase('db2');
+  assert.deepEqual(result.data,[]);
+  assert.equal(submitted.target,'configured');
+  assert.equal(submitted.expectedDbId,'db2');
+  assert.deepEqual(submitted.filters,[{column:'uid',operator:'eq',value:'Ab123456',negate:false}]);
 });
