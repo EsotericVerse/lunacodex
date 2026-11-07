@@ -255,37 +255,16 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     return rows;
   }
 
-  async function resetKeywordClassification(scopeId,{classUid:requestedClassUid='',onProgress}={}){
+  async function resetKeywordClassification(scopeId,{classUid='',onProgress}={}){
     const scope=normalizeScopeId(scopeId);
-    const table='silver.'+scope+'_keywords';
-    preflightWrite(table);
-    const config=await selectAuthRow('silver.'+scope,{
-      idColumn:'id',id:scope,
-      columns:'current_keyword_class_uid,keyword_meta,staticstime'
-    });
-    const classUid=String(requestedClassUid||config?.current_keyword_class_uid||'');
-    if(!/^[A-Za-z0-9]{4}(?:[A-Za-z0-9]{4})?$/.test(classUid))throw new Error('尚未選取 Keywords Class');
-    const all=await readOwnedKeywordNodes(table);
-    const {descendantsOfKeyword,keywordUidListRecord}=await import('./keyword-tree.mjs');
-    const children=descendantsOfKeyword(all,classUid)
-      .filter(node=>node.type==='group'||node.type==='item');
-    const {invalidateKeywordClass}=await import('./keyword-class-state.mjs');
-    const isCurrent=classUid===String(config?.current_keyword_class_uid||'');
-    const {data:staled,error:staleError}=await dbAuthRelation('silver.'+scope)
-      .update({keyword_meta:invalidateKeywordClass(config?.keyword_meta,classUid),
-        ...(isCurrent?{staticstime:null}:{})})
-      .eq('id',scope).select('id');
-    if(staleError||staled?.length!==1)throw new Error(staleError?.message||'無法作廢舊分析');
-    let completed=0;
-    for(const row of children){
-      const {data,error}=await dbAuthRelation(table)
-        .update({uid_lists:keywordUidListRecord(row.type,[])}).eq('uid',row.uid).select('uid');
-      if(error||data?.length!==1)throw new Error(error?.message||'清空 '+row.uid+' 失敗');
-      completed++;
-      onProgress?.({phase:'resetting',completed,total:children.length});
-    }
-    onProgress?.({phase:'completed',completed,total:children.length});
-    return {count:completed};
+    const uid=String(classUid||'');
+    if(!/^[A-Za-z0-9]{8}$/.test(uid))
+      throw new Error('尚未選取 Keywords Class');
+    const {keywordService}=await import('./keyword-service-client.mjs');
+    onProgress?.({phase:'resetting',completed:0,total:1});
+    const result=await keywordService('reset',{scopeId:scope,classUid:uid});
+    onProgress?.({phase:'completed',completed:1,total:1});
+    return result;
   }
 
   async function verifiedKeywordOwner(){
