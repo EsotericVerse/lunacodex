@@ -16,22 +16,27 @@ test('old vendor browser Auth SDK modules are absent from executable app',()=>{
     'public/login/index.html',
     'public/extension/website-bridge.mjs',
     'public/extension/auth-bridge.html'
-  ])assert.doesNotMatch(read(file),
-    /@clerk\\/|clerk\\.accounts\\.dev|loadLocClerk|createClerkAccountAdapter/,
-    file+' must not load old Auth SDK');
+  ]){
+    const source=read(file);
+    for(const forbidden of ['@clerk/','clerk.accounts.dev',
+      'loadLocClerk','createClerkAccountAdapter'])
+      assert.equal(source.includes(forbidden),false,
+        file+' must not load old Auth SDK: '+forbidden);
+  }
 });
 
 test('portable SQL driver is independent of Auth vendor',()=>{
   const drivers=read('app/loc/providers/kysely-database-drivers.ts');
   for(const dialect of ['PostgresDialect','MysqlDialect','MssqlDialect'])
-    assert.match(drivers,new RegExp(dialect));
+    assert.ok(drivers.includes(dialect),dialect);
   const configured=read('app/loc/providers/configured.mjs');
-  assert.match(configured,/createLocAccountAdapter/);
-  assert.match(configured,/NEXT_PUBLIC_LOC_SQL_GATEWAY_URL/);
+  assert.ok(configured.includes('createLocAccountAdapter'));
+  assert.ok(configured.includes('NEXT_PUBLIC_LOC_SQL_GATEWAY_URL'));
   assert.doesNotMatch(configured,/createClerkAccountAdapter|createSupabaseAdapter/);
 });
 
 test('retired website bridge cannot send bearer tokens into an extension',()=>{
   const code=read('public/extension/website-bridge.mjs');
-  assert.doesNotMatch(code,/getToken|authorization:|sendMessage|Clerk|@clerk\\//);
+  for(const forbidden of ['getToken','authorization:','sendMessage','Clerk','@clerk/'])
+    assert.equal(code.includes(forbidden),false,forbidden);
 });
