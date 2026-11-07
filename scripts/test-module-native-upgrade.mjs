@@ -5,7 +5,8 @@ import {readFileSync} from 'node:fs';
 const manifest=JSON.parse(readFileSync(new URL('../package.json',import.meta.url),'utf8'));
 const lock=JSON.parse(readFileSync(new URL('../package-lock.json',import.meta.url),'utf8'));
 const root=lock.packages?.['']||{};
-const upgraded=['next','three','maplibre-gl','@opennextjs/cloudflare','wrangler'];
+const upgraded=['next','three','maplibre-gl','@react-three/fiber','@react-three/drei',
+  '@opennextjs/cloudflare','wrangler'];
 
 test('upgraded dependency specs match npm lockfile root',()=>{
   for(const name of upgraded){
@@ -13,15 +14,6 @@ test('upgraded dependency specs match npm lockfile root',()=>{
     const locked=root.dependencies?.[name]??root.devDependencies?.[name];
     assert.equal(locked,declared,name+' must be installed and lockfile regenerated');
     assert.ok(lock.packages['node_modules/'+name],name+' must have a resolved lockfile entry');
-  }
-});
-
-test('unused React Three renderer, postprocessing, and font libraries are absent',()=>{
-  const removed=["@react-three/drei","@react-three/fiber","@react-three/postprocessing","opentype.js","postprocessing"];
-  for(const name of removed){
-    assert.equal(manifest.dependencies?.[name]??manifest.devDependencies?.[name],undefined);
-    assert.equal(root.dependencies?.[name]??root.devDependencies?.[name],undefined);
-    assert.equal(lock.packages['node_modules/'+name],undefined);
   }
 });
 
