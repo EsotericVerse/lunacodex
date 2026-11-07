@@ -438,7 +438,7 @@ async function suggestSearchPatterns(trx,args){
   }
   if(!granted.length)reject('No authorized search-pattern Scope',403);
   await sql`reset role`.execute(trx);
-  const escaped=query.replace(/[\\%_]/gu,'\\export async function executeManagedKyselyAction(trx,body,claims={}){');
+  const escaped=query.replace(/[\\%_]/gu,char=>'\\'+char);
   const rows=await trx.selectFrom('silver.loc_search_pattern')
     .select('pattern').select(eb=>eb.fn.sum('count').as('count'))
     .where('scopeid','in',granted)
