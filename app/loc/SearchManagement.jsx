@@ -34,7 +34,7 @@ const LOC_OPTIONS=Object.freeze([
   {value:'media',label:'發表多媒體',shortLabel:'媒體'},
   {value:'trace',label:'治理原則',shortLabel:'治理原則'}
 ]);
-const SETTINGS_OPTION={value:'settings',label:'主題／資料庫',shortLabel:'設定'};
+const SETTINGS_OPTION={value:'settings',label:'主題與資料庫',shortLabel:'設定'};
 const GROUP_OPTION={value:'groupAccess',label:'群組權限',shortLabel:'授權'};
 // LOC no longer has a separate management search. Keep old links functional.
 const OLD_LOC_SECTION_ALIASES=Object.freeze({search:'media'});

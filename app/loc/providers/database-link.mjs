@@ -1,5 +1,5 @@
-// LOC database link display model: engine + host. The SQL Gateway owns
-// credentials; no hosting-vendor-specific endpoint or fallback is needed.
+// LOC database link display model: engine + host. Credentials stay in
+// trusted LOC Auth / application backend storage, never in browser state.
 export const DATABASE_PROVIDER_CHOICES=Object.freeze([
   Object.freeze({value:'custom',label:'SQL 連線',
     engines:['postgres','mysql','mssql','sqlite']})

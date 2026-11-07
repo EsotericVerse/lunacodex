@@ -52,7 +52,7 @@ export default function GlobalSettings({initialSection='home'}={}){
 
   const [busy,setBusy]=useState(false);
   const [status,setStatus]=useState('');
-  // LOC Auth exclusively handles identity; signed Scope permissions are checked by the SQL Gateway.
+  // LOC Auth owns identity and Scope grants; the trusted application backend checks every signed delegation.
   const verifiedGoogleAccount=useAccount({enabled:section==='home',sessionOnly:true});
   const account=section==='home'?verifiedGoogleAccount:prefs.account;
 

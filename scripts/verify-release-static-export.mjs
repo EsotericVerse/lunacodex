@@ -9,7 +9,7 @@ const routes=[
   'lo3rwang', 'lo3rwang/search', 'lo3rwang/culture', 'lo3rwang/statics',
   'lrunes', 'lrunes/search', 'lrunes/game', 'game/room',
   'scope-shell', 'scope-shell/search',
-  'admin', 'admin/search', 'search/manage', 'lrunes/manage', 'lrunes/manage/search',
+  'admin', 'search/manage', 'lrunes/manage', 'lrunes/manage/search',
   'lrunes/culture/manage', 'lrunes/statics/manage', 'lrunes/trace/manage', 'lrunes/search/manage',
   'lo3rwang/manage', 'lo3rwang/manage/search',
   'lo3rwang/culture/manage', 'lo3rwang/statics/manage', 'lo3rwang/trace/manage', 'lo3rwang/search/manage',

@@ -41,10 +41,10 @@ export default function DatabaseTarget(){
         <p className="scope-status">類型：{item.engine} / {item.provider}
           ｜{item.target_id===routing.primaryId?'主要資料庫':item.backup_selected?'備援資料庫':'未啟用'}</p>
         <p className="scope-status">連線 Alias：<code>{item.connection_alias}</code></p>
-        <p className="scope-status">連線位置與密碼由 LOC SQL Gateway 管理，不傳送給瀏覽器。</p>
+        <p className="scope-status">連線位置與密碼僅在 LOC Auth 與受信任的應用後端管理，不傳送給瀏覽器。</p>
       </section>)}
     </div>
-    <p className="scope-status">連線密碼、Token 與資料庫 URL 由 LOC Auth／SQL Gateway 的受信任環境保管。
+    <p className="scope-status">連線密碼、Token 與資料庫 URL 由 LOC Auth 及受信任的應用後端保管。
       預設連線 Alias 不提供資料庫存取權限。</p>
     <p><a className="loc-button" href={FILE_URL} target="_blank" rel="noopener noreferrer">
       在 GitHub 查看預設 access.js
