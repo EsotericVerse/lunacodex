@@ -71,7 +71,8 @@ test('Clerk browser adapter exchanges OAuth into LOC delegation before Edge',()=
   assert.match(legacy,/createLocGatewayAdapter/);
   assert.match(core,/getAccessToken:getLocAccessToken/);
   assert.match(core,/\/v1\/delegation/);
-  assert.match(legacy,/loc-kysely-clerk/);
+  assert.ok(legacy.includes('/functions/v1/loc-kysely'));
+  assert.doesNotMatch(legacy,/loc-kysely-clerk/);
   assert.doesNotMatch(source,/createNeonPrimaryAdapter|createBackupPublicAdapter/);
 });
 test('production LOC routes every account login via Clerk, with no per-device toggle',()=>{
@@ -80,7 +81,8 @@ test('production LOC routes every account login via Clerk, with no per-device to
   assert.match(configured,/return createClerkGatewayAdapter\(\)/);
   assert.doesNotMatch(configured,/loc-auth-provider|NEXT_PUBLIC_LOC_IDENTITY_PROVIDER|createNeonPrimaryAdapter/);
   assert.doesNotMatch(client,/createSupabaseAdapter|autoRefreshToken:true|persistSession:true/);
-  assert.match(client,/loc-kysely-clerk/);
+  assert.ok(client.includes('/functions/v1/loc-kysely'));
+  assert.doesNotMatch(client,/loc-kysely-clerk/);
 });
 
 test('verified Clerk subject can be mapped to a trusted root email by server, not browser',()=>{

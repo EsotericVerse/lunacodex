@@ -20,14 +20,13 @@ export function createClerkGatewayAdapter({
     authorityOrigin:authorityUrl,fetchImpl
   });
   const sqlBase=String(url).replace(/\/+$/,'');
-  // The old site uses separate public/private Edge slugs. A standalone LOC
-  // Gateway intentionally uses one provider-neutral endpoint for both.
-  const privateEndpoint=gatewayUrl||sqlBase+'/functions/v1/loc-kysely-clerk';
-  const publicEndpoint=gatewayUrl||'';
+  // Both public reads and delegated private writes use the same LOC SQL
+  // Gateway; do not route one side to a stale provider-named Edge function.
+  const endpoint=gatewayUrl||sqlBase+'/functions/v1/loc-kysely';
   return createLocGatewayAdapter({
     authorityUrl,accountAdapter:identity,
     url,publishableKey,
-    gatewayUrl:privateEndpoint,publicGatewayUrl:publicEndpoint,
+    gatewayUrl:endpoint,publicGatewayUrl:endpoint,
     realtimeClient:null,fetchImpl
   });
 }
