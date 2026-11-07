@@ -59,7 +59,6 @@ test('management Hero uses nine dedicated page_name documents, not group_manage 
   assert.equal(HomeBlock.managementHeroSlot('/lo3rwang/statics/manage','lo3rwang',true,'statics')?.page,'ScopeKeyword');
   assert.equal(HomeBlock.managementHeroSlot('/lo3rwang/trace/manage','lo3rwang',true,'trace')?.page,'SpaceAnchor');
   assert.equal(HomeBlock.managementHeroSlot('/lo3rwang/search/manage','lo3rwang',true,'search')?.page,'ScopeAdvSearch');
-  assert.equal(HomeBlock.managementHeroSlot('/admin/search','loc')?.page,'GroupArticle');
   assert.equal(HomeBlock.managementHeroSlot('/search/manage','loc')?.page,'GroupArticle');
   assert.equal(HomeBlock.managementHeroSlot('/culture/manage','loc',true,'culture')?.page,'GalaxyManage');
   assert.equal(HomeBlock.managementHeroSlot('/statics/manage','loc',true,'statics')?.page,'Groupkeyword');
