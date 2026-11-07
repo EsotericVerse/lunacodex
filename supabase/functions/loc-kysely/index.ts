@@ -141,8 +141,13 @@ async function executeRequest(trx: any, target: Record<string,any>, role: string
   const executionPort=resolveSqlExecutionPort(target);
   bindLocAuthorization(trx,{role,claims});
   if(target.provider==="custom"||executionPort.session!=="postgres-rls"){
-    // Non-PostgreSQL engines use the LOC authorization boundary,
-    // never a database provider's authentication model.
+    // Fixed public PostgreSQL models use the same ZenStack PolicyPlugin and
+    // physical schema regardless of hosting vendor. This modelName is set
+    // only inside the trusted gateway, never accepted from the HTTP body.
+    if(executionPort.engine==="postgres"&&modelName&&
+       body.kind==="query"&&body.operation==="select")
+      return await executeKyselyQuery(trx,body,{modelName});
+    // Cross-engine Scope queries use the signed LOC ACL instead of RLS.
     if(body.kind==="managed-write"){
       if(role!=="authenticated")
         throw Object.assign(new Error("Management requires verified LOC delegation"),{httpStatus:403});
