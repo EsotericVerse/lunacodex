@@ -244,10 +244,15 @@ async function provisionScope(trx,args){
     .where(sql`lower(domain)=${domain}`).executeTakeFirst())fail('Domain already allocated');
   if(directory&&await trx.selectFrom('api.manage').select('id')
     .where(sql`lower(directory)=${directory}`).executeTakeFirst())fail('Directory already allocated');
+  // The seven collision candidates are checked in one catalog lookup,
+  // not seven independent to_regclass SQL round trips.
   const variants=[id,id+'_galaxy',id+'_galaxy_media',id+'_time',
     id+'_keywords',id+'_blocks',id+'_anchor'];
-  for(const name of variants)if(await existsRelation(trx,'silver.'+name))
-    fail('Scope relation already exists');
+  const occupied=await sql`select c.relname from pg_class c
+    join pg_namespace n on n.oid=c.relnamespace
+    where n.nspname='silver' and c.relname in (${sql.join(variants)})
+    limit 1`.execute(trx);
+  if(occupied.rows.length)fail('Scope relation already exists');
   const config=sql.ref('silver.'+id);
   const galaxy=sql.ref('silver.'+id+'_galaxy');
   const anchor=sql.ref('silver.'+id+'_anchor');
