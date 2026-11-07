@@ -56,7 +56,7 @@ export async function searchMemory(args={},env={},fetchImpl=globalThis.fetch){
   const rows=await galaxyRows({
     columns:['uid','title','date','createtime'],
     filters:[{column:'search',operator:'eq',value:true}],
-    or:['(title.contains."'+termLiteral+'",content.contains."'+termLiteral+'")'],
+    or:['title.contains."'+termLiteral+'",content.contains."'+termLiteral+'"'],
     orders:[{column:'date',ascending:false},{column:'createtime',ascending:false}],
     limit,offset,userRequested:true
   },scopeid,env,fetchImpl);
