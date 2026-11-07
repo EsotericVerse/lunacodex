@@ -14,10 +14,6 @@ const source=readFileSync(new URL('../app/loc/app-bootstrap.js',import.meta.url)
 
 async function harness(){
   const calls=[];
-  let resolveSite;
-  let rejectSite;
-  let siteResponse=new Promise((resolve,reject)=>{resolveSite=resolve;rejectSite=reject;});
-  const site={config:{id:'loc',theme:'theme-7'},blocks:[{uid:'loc-block'}],registry:[],page_copy:[],themes:[],theme_list:[]};
   const context=vm.createContext({Promise,Date});
   const stub={
     './use-async-resource':{useAsyncResource:()=>({})},
@@ -25,7 +21,6 @@ async function harness(){
     './scope-data':{
       invalidatePublicScopeMetadata:()=>{},
       invalidatePublicThemeSnapshot:()=>{},
-      selectPublicSiteBootstrap:()=>{calls.push('site');return siteResponse;},
       selectScopeBlocks:(id,page)=>{calls.push('blocks:'+id+':'+page);return Promise.resolve([{uid:id+'-'+page}]);},
       selectScopeConfig:id=>{calls.push('config:'+id);return Promise.resolve({id,display_name:id});},
       selectScopeRegistry:()=>Promise.resolve([])
@@ -44,15 +39,14 @@ async function harness(){
     return dependency;
   });
   await module.evaluate();
-  return {calls,site,resolveSite,selectAppBootstrap:module.namespace.selectAppBootstrap};
+  return {calls,selectAppBootstrap:module.namespace.selectAppBootstrap};
 }
 
-test('non-LOC public Config and blocks begin alongside site Bootstrap',async()=>{
-  const {calls,site,resolveSite,selectAppBootstrap}=await harness();
+test('non-LOC Config and Blocks start without a retired site Bootstrap RPC',async()=>{
+  const {calls,selectAppBootstrap}=await harness();
   const pending=selectAppBootstrap('lo3rwang','search');
-  assert.deepEqual(calls,['site','config:lo3rwang','blocks:lo3rwang:search'],
-    'Scope reads must not wait for the site RPC to finish');
-  resolveSite(site);
+  assert.deepEqual(calls,['config:lo3rwang','blocks:lo3rwang:search'],
+    'Scope reads must start immediately, without a site bootstrap request');
   const result=await pending;
   assert.equal(result.config.id,'lo3rwang');
   assert.equal(result.blocks[0].uid,'lo3rwang-search');
@@ -70,20 +64,18 @@ test('local iPhone Scope reads config and blocks without cloud site bootstrap',a
 });
 
 test('Admin consumes site metadata without querying nonexistent admin tables',async()=>{
-  const {calls,site,resolveSite,selectAppBootstrap}=await harness();
+  const {calls,selectAppBootstrap}=await harness();
   const pending=selectAppBootstrap('admin','index');
-  assert.deepEqual(calls,['site']);
-  resolveSite(site);
+  assert.deepEqual(calls,[]);
   const result=await pending;
   assert.equal(result.config,null);
   assert.equal(result.blocks.length,0);
 });
 
 test('LOC homepage gets published Blocks independently of the shared metadata',async()=>{
-  const {calls,site,resolveSite,selectAppBootstrap}=await harness();
+  const {calls,selectAppBootstrap}=await harness();
   const pending=selectAppBootstrap('loc','index');
-  assert.deepEqual(calls,['site','blocks:loc:index']);
-  resolveSite(site);
+  assert.deepEqual(calls,['config:loc','blocks:loc:index']);
   const result=await pending;
   assert.equal(result.config.id,'loc');
   assert.equal(result.blocks[0].uid,'loc-index');
