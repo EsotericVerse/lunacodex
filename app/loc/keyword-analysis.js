@@ -258,81 +258,56 @@ function emptyStored(config,extra={}){
     ...extra
   };
 }
-// Exact counts for the stored classification, reduced from row-level data. Used only
-// when the database-side RPC (silver.read_rune66_summary) is not available.
-// Exact UID-list results are summarized by PostgreSQL.
-function aggregateSummaryRpcRows(rows){
-  const result={eligible:0,groupDays:[],items:new Map()};
-  for(const row of rows||[]){
-    if(row.kind==='eligible')result.eligible=Number(row.document_count)||0;
-    if(row.kind==='class_day')result.groupDays.push({
-      group_uid:String(row.group_uid||''),day:String(row.day||'').slice(0,10),
-      count:Number(row.document_count)||0
-    });
-    if(row.kind==='item')result.items.set(String(row.item_key||''),row);
-  }
-  return result;
-}
-function storedSummary(agg,config,globalCount=agg.eligible){
-  const meta=config?.keyword_meta||{};
-  const classes=meta.classes||{},items=meta.items||{};
-  const totals=new Map(),classifications=[];
-  for(const item of agg.groupDays){
-    if(!classes[item.group_uid]||!item.count)continue;
-    totals.set(item.group_uid,(totals.get(item.group_uid)||0)+item.count);
-    classifications.push({
-      key:'group-day:'+item.group_uid+':'+item.day,uid:'',date:item.day,
-      classification_group:String(classes[item.group_uid]),
-      group_uid:item.group_uid,count:item.count,status:'classified'
-    });
-  }
-  const groupTotals=Object.entries(classes).map(([uid,name],index)=>({
-    group_uid:uid,group:name,order:index,document_count:totals.get(uid)||0
-  }));
-  const runeTotals=Object.entries(items).map(([uid,label],index)=>({
-    uid,label,order:index,count:Number(agg.items.get(uid)?.hit_count)||0,
-    document_count:Number(agg.items.get(uid)?.document_count)||0
-  }));
-  const classifiedCount=classifications.reduce((n,row)=>n+row.count,0);
-  const base=emptyStored(config,{keywordDocumentCount:globalCount});
-  return {...base,documentCount:agg.eligible,classifiedCount,
-    unclassifiedCount:Math.max(0,agg.eligible-classifiedCount),
-    classifications:base.statisticsEnabled?classifications:[],
-    runeTotals:base.statisticsEnabled?runeTotals:[],
-    runeRanking:base.statisticsEnabled?[...runeTotals].sort((a,b)=>b.count-a.count||b.document_count-a.document_count||a.order-b.order):[],
-    groupTotals:base.statisticsEnabled?groupTotals:[]
-  };
-}
+// Class/Group/Item statistics are projections of the one stored literal-word
+// UID index. Anchor supplies the ZModel hierarchy, never stored hit numbers.
 export async function selectKeywordAnalysisSummary({scopeId,classUid='',startDate='',endDate='',
   sourceCategory='',sourceCategories=[],sourceAliases=[],sourceNames=null}={}){
   const id=normalizeScopeId(scopeId);
+  const {config}=await scopeAndConfig(id,{publicRead:true});
+  const selectedClass=String(classUid||config.current_keyword_class_uid||'');
+  const state=keywordClassState(config,selectedClass);
+  const scopedConfig={...config,staticstime:state?.completedAt||null,
+    keyword_meta:state||{}};
+  if(!state)return emptyStored(scopedConfig);
   const category=String(sourceCategory||'').trim().toLowerCase();
-  const source=Array.isArray(sourceNames)&&sourceNames.length===1?String(sourceNames[0]):'';
-  return (async()=>{
-    const {config}=await scopeAndConfig(id,{publicRead:true});
-    const selectedClass=String(classUid||config.current_keyword_class_uid||'');
-    const state=keywordClassState(config,selectedClass);
-    const {readKeywordTreeSummary,readKeywordTreeCatalog}=await import('./db-client.mjs');
-    // A private Class must not expose even its completion timestamp through
-    // the public statistics helper. The catalog RPC enforces Class sharing.
-    const directory=await readKeywordTreeCatalog(id,{classUid:selectedClass});
-    if(directory.class_uid!==selectedClass)
-      return emptyStored({...config,staticstime:null,keyword_meta:{}});
-    const scopedConfig={...config,staticstime:state?.completedAt||null,keyword_meta:state||{}};
-    if(!state)return emptyStored(scopedConfig);
-    if(category&&!source)
-      throw new Error('關鍵詞來源分類需要指定原始來源名稱');
-    const tree=keywordTreeCatalog(directory.rows,selectedClass);
-    const {groups}=tree;
-    const displayed={
-      ...state,class_uid:selectedClass,class_name:tree.name,
-      classes:Object.fromEntries(groups.map(group=>[group.uid,group.name])),
-      items:Object.fromEntries(groups.flatMap(group=>group.items.map(item=>[item.uid,item.name])))
-    };
-    const rows=await readKeywordTreeSummary(id,{classUid:selectedClass,startDate,endDate,source});
-    const agg=aggregateSummaryRpcRows(rows.filter(row=>row.kind!=='item_day'));
-    return storedSummary(agg,{...scopedConfig,keyword_meta:displayed},agg.eligible);
-  })();
+  const source=Array.isArray(sourceNames)&&sourceNames.length===1
+    ?String(sourceNames[0]):'';
+  if(category&&!source)throw new Error('關鍵詞來源分類需要指定原始來源名稱');
+  const {data,error}=await dbAuthClient.schema('silver').managedAction(
+    'keyword_pattern_statistics',{
+      p_scope_id:id,p_class_uid:selectedClass,
+      p_start_date:startDate,p_end_date:endDate,p_source:source
+    });
+  if(error)throw error;
+  if(!data||data.class_uid!==selectedClass)
+    throw new Error('指定 Class 的詞級統計資料不完整');
+  const groups=Array.isArray(data.groups)?data.groups:[];
+  const items=Array.isArray(data.items)?data.items:[];
+  const groupTotals=groups.map((row,index)=>({
+    group_uid:row.uid,group:row.name,order:index,
+    document_count:Number(row.document_count)||0,
+    hit_count:Number(row.hit_count)||0
+  }));
+  const runeTotals=items.map((row,index)=>({
+    uid:row.uid,label:row.name,order:index,
+    count:Number(row.hit_count)||0,
+    document_count:Number(row.document_count)||0
+  }));
+  const matched=Math.max(0,Number(data.document_count)||0);
+  const ranked=[...runeTotals].sort((a,b)=>b.count-a.count||
+    b.document_count-a.document_count||a.order-b.order);
+  const base=emptyStored(scopedConfig,{
+    keywordDocumentCount:matched,
+    keywordMeta:{...state,class_uid:selectedClass,
+      class_name:String(data.class_name||''),
+      classes:Object.fromEntries(groups.map(row=>[row.uid,row.name])),
+      items:Object.fromEntries(items.map(row=>[row.uid,row.name]))}
+  });
+  return {...base,documentCount:matched,classifiedCount:matched,
+    unclassifiedCount:0,classifications:[],
+    runeTotals:base.statisticsEnabled?runeTotals:[],
+    runeRanking:base.statisticsEnabled?ranked:[],
+    groupTotals:base.statisticsEnabled?groupTotals:[]};
 }
 
 // Stateless: Keyword / Galaxy data is never retained in a module-level cache.
