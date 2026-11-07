@@ -177,7 +177,7 @@ export function portableShortImportStore(db,sql,{engine='postgres',namespace}={}
  const schema=namespace===undefined?(engine==='postgres'?'silver':engine==='mssql'?'dbo':''):namespace;
  if(schema&&!/^[a-z][a-z0-9_]*$/i.test(schema))throw failure('Invalid SQL namespace',503);
  return {transaction:(scope,run)=>{
-  if(!['lo3rwang','lrunes'].includes(scope))throw failure('Unsupported managed Galaxy Scope',403);
+  if(!/^[a-z][a-z0-9]{0,14}$/.test(scope))throw failure('Invalid Galaxy Scope',403);
   const name=(engine==='mysql'||!schema?'':schema+'.')+scope+'_galaxy';
   const operations=(trx,lockSource)=>({
    lockSource,
