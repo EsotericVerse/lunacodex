@@ -6,7 +6,7 @@ This RC captures the current main source and keeps all existing functionality. P
 
 ## Deployment and usage
 
-- Primary ISR: Cloudflare OpenNext Worker `loc-isr` with R2 incremental cache and Durable Objects for queue/tag management, at `isr.lo3rwang.cc`.
+- Historical primary ISR worker configuration was retired on 2026-11-08; the current website deployment uses GitHub Pages static export.
 - Manual alternate ISR: Vercel. The public `loc.lo3rwang.cc` DNS currently points to the independent GitHub Pages static site. Do not assume these domains host identical builds.
 - Supabase is the authoritative database; Neon remains a manually selected backup. Local SQLite is the on-device data provider for imported data.
 - Media keeps source URLs and the public-image browser cache. **No lossy image compression or original artwork changes** in this RC.
