@@ -1,5 +1,4 @@
 import {canManageLoc} from './loc-authorization.mjs';
-import {allocateAnchorUid} from '../unified-anchor-compat.mjs';
 import {sql} from 'npm:kysely@0.29.8';
 import {schema as fixedSchema} from '../../../zenstack/schema.mjs';
 import {normalizeLocDomain} from './loc-domain.mjs';
@@ -14,11 +13,8 @@ function fixedColumns(model,fields){
 }
 const REGISTRY_RETURNING=fixedColumns('Manage',
   ['id','domain','directory','parent_scope_id','active','sort_order','manage_role']);
-const LOC_NAME_COLUMNS=fixedColumns('Loc',
-  ['id','display_name','locale','birthday']);
 
 const ID=/^[a-z][a-z0-9]{0,14}$/;
-const UID=/^[A-Za-z0-9]{8}$/;
 const DIR=/^[a-z0-9][a-z0-9/_-]*$/;
 function fail(message,status=400){throw Object.assign(new Error(message),{httpStatus:status});}
 function scope(value){const id=String(value??'').trim().toLowerCase();
@@ -122,223 +118,8 @@ async function managedRegistry(trx,args){
   if(Number(named?.numUpdatedRows||0)!==1)fail('Group / Scope list name missing');
   return resultRow(updated,display_name);
 }
-async function existsRelation(trx,relation){
-  const r=await sql`select to_regclass(${relation}) is not null as present`.execute(trx);
-  return r.rows[0]?.present===true;
-}
-async function deleteScope(trx,args){
-  const id=scope(args.p_scope_id);
-  if(['loc','lrunes','lo3rwang','admin'].includes(id))fail('Built-in Scopes cannot be deleted');
-  const row=await trx.selectFrom('api.manage').select('manage_role')
-    .where('id','=',id).forUpdate().executeTakeFirst();
-  if(row?.manage_role!=='scope')fail('Only existing non-system Scopes may be deleted');
-  const child=await trx.selectFrom('api.manage').select('id')
-    .where('parent_scope_id','=',id).executeTakeFirst();
-  if(child)fail('Scope has child Registry entries');
-  const anchor=await existsRelation(trx,'silver.'+id+'_anchor');
-  const old=await existsRelation(trx,'silver.'+id+'_keywords');
-  if(!anchor&&!old)fail('Scope metadata relation missing');
-  for(const suffix of ['_anchor','_galaxy_media','_trace','_time',
-    '_keywords','_place','_galaxy','_blocks','']){
-    const relation='silver.'+id+suffix;
-    if(await existsRelation(trx,relation)){
-      await sql`drop table ${sql.ref(relation)} restrict`.execute(trx);
-    }else if(['_galaxy','_blocks',''].includes(suffix)){
-      fail('Required Scope relation missing: '+relation);
-    }
-  }
-  await trx.deleteFrom('api.manage').where('id','=',id).executeTakeFirst();
-  await trx.deleteFrom('silver.loc').where('id','=',id).executeTakeFirst();
-  await sql`notify pgrst,'reload schema'`.execute(trx);
-  return {scope_id:id,deleted:true};
-}
-async function copyDefaultKeywordClass(trx,id,target){
-  const config=await trx.selectFrom('silver.lo3rwang')
-    .select('current_keyword_class_uid').where('id','=','lo3rwang').executeTakeFirst();
-  const src=String(config?.current_keyword_class_uid||'');
-  if(!UID.test(src))fail('Default Keyword Class unavailable');
-  const source='silver.lo3rwang_anchor';
-  const root=await trx.selectFrom(source)
-    .select(['uid','title','description','attr']).where('uid','=',src)
-    .where('type','=','class').executeTakeFirst();
-  if(!root)fail('Source Keyword Class missing');
-  const category=await trx.selectFrom(source).select(['title','description'])
-    .where('type','=','category')
-    .where(sql`attr->'uid' ? ${src}`).executeTakeFirst();
-  if(!category)fail('Source Keyword Category missing');
-
-  // Fetch each relation level in one bounded query, not one query per item.
-  // All Anchor UIDs are generated before one bulk Kysely insert.
-  const oldGroups=Array.isArray(root.attr?.uid)?root.attr.uid:[];
-  if(oldGroups.some(uid=>!UID.test(String(uid))))
-    fail('Source Group UID invalid');
-  const uniqueGroups=[...new Set(oldGroups)];
-  const groupRows=uniqueGroups.length
-    ?await trx.selectFrom(source).select(['uid','title','description','attr'])
-      .where('uid','in',uniqueGroups).where('type','=','group').execute()
-    :[];
-  const groupByUid=new Map(groupRows.map(row=>[String(row.uid),row]));
-  const oldItems=[];
-  for(const oldGroup of oldGroups){
-    const group=groupByUid.get(String(oldGroup));
-    if(!group)fail('Source Group missing');
-    for(const itemUid of Array.isArray(group.attr?.uid)?group.attr.uid:[]){
-      if(!UID.test(String(itemUid)))fail('Source Item UID invalid');
-      oldItems.push(String(itemUid));
-    }
-  }
-  const uniqueItems=[...new Set(oldItems)];
-  const itemRows=uniqueItems.length
-    ?await trx.selectFrom(source).select(['uid','title','description','attr'])
-      .where('uid','in',uniqueItems).where('type','=','item').execute()
-    :[];
-  const itemByUid=new Map(itemRows.map(row=>[String(row.uid),row]));
-  if(itemByUid.size!==uniqueItems.length)
-    fail('Source Keyword Item missing');
-
-  const assigned=new Set();
-  const nextUid=()=>{const uid=allocateAnchorUid(assigned);assigned.add(uid);return uid;};
-  const toRow=(uid,type,row,attr)=>({
-    uid,type,title:row.title,description:row.description,
-    attr:sql`${JSON.stringify(attr)}::jsonb`
-  });
-  const categoryUid=nextUid(),classUid=nextUid();
-  const inserts=[toRow(categoryUid,'category',category,{uid:[classUid]})];
-  const copiedGroups=[];
-  let itemCount=0;
-  for(const oldGroup of oldGroups){
-    const group=groupByUid.get(String(oldGroup)),newGroup=nextUid();
-    const mapped=[];
-    for(const itemUid of Array.isArray(group.attr?.uid)?group.attr.uid:[]){
-      const item=itemByUid.get(String(itemUid));
-      if(!item)fail('Source Keyword Item missing');
-      const newItem=nextUid();
-      inserts.push(toRow(newItem,'item',item,{
-        keyword:Array.isArray(item.attr?.keyword)?item.attr.keyword:[],total:0
-      }));
-      mapped.push(newItem);itemCount++;
-    }
-    inserts.push(toRow(newGroup,'group',group,{uid:mapped,total:0}));
-    copiedGroups.push(newGroup);
-  }
-  inserts.push(toRow(classUid,'class',root,{uid:copiedGroups}));
-  // Fixed-size batches avoid parameter ceilings without per-Item SQL trips.
-  for(let offset=0;offset<inserts.length;offset+=500)
-    await trx.insertInto(target).values(inserts.slice(offset,offset+500)).execute();
-  return {uid:classUid,count:itemCount};
-}
-async function provisionScope(trx,args){
-  const id=scope(args.p_scope_id);
-  const display=String(args.p_display_name||'').trim();
-  const email=String(args.p_email||'').trim().toLowerCase();
-  const theme=String(args.p_theme||'system-default').trim().toLowerCase();
-  const parent=scope(args.p_parent_scope_id??'loc');
-  const {domain,directory}=route({domain:args.p_domain,directory:args.p_directory});
-  if(!display||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||
-     theme!=='system-default'&&!/^theme-[1-8]$/.test(theme))
-    fail('Invalid Scope owner, name, or theme');
-  await group(trx,parent);
-  if(await trx.selectFrom('api.manage').select('id').where('id','=',id).executeTakeFirst())
-    fail('Scope already exists');
-  if(domain&&await trx.selectFrom('api.manage').select('id')
-    .where(sql`lower(domain)=${domain}`).executeTakeFirst())fail('Domain already allocated');
-  if(directory&&await trx.selectFrom('api.manage').select('id')
-    .where(sql`lower(directory)=${directory}`).executeTakeFirst())fail('Directory already allocated');
-  // The seven collision candidates are checked in one catalog lookup,
-  // not seven independent to_regclass SQL round trips.
-  const variants=[id,id+'_galaxy',id+'_galaxy_media',id+'_time',
-    id+'_keywords',id+'_blocks',id+'_anchor'];
-  const occupied=await sql`select c.relname from pg_class c
-    join pg_namespace n on n.oid=c.relnamespace
-    where n.nspname='silver' and c.relname in (${sql.join(variants)})
-    limit 1`.execute(trx);
-  if(occupied.rows.length)fail('Scope relation already exists');
-  const config=sql.ref('silver.'+id);
-  const galaxy=sql.ref('silver.'+id+'_galaxy');
-  const anchor=sql.ref('silver.'+id+'_anchor');
-  const blocks=sql.ref('silver.'+id+'_blocks');
-  await sql`create table ${config} (like silver.lo3rwang including all)`.execute(trx);
-  // Scope name changes are synchronized by the same trusted Kysely transaction.
-  await sql`alter table ${config} drop column if exists home_blocks`.execute(trx);
-  await sql`alter table ${config} drop column if exists governance_blocks`.execute(trx);
-  await sql`create table ${blocks} (like silver.lo3rwang_blocks including all)`.execute(trx);
-  await sql`create table ${galaxy} (like silver.lo3rwang_galaxy including all)`.execute(trx);
-  // New Scopes must never reintroduce the retired Galaxy.able column.
-  await sql`alter table ${galaxy} drop column if exists able restrict`.execute(trx);
-  await sql`create table ${anchor} (like silver.lrunes_anchor including all)`.execute(trx);
-  for(const table of [config,galaxy,anchor,blocks])
-    await sql`alter table ${table} enable row level security`.execute(trx);
-  // PostgreSQL compatibility policies use only verified LOC delegation grants.
-  // Kysely enforces the same Scope permissions for other SQL engines.
-  const canUseScope=sql`coalesce(
-    (current_setting('request.jwt.claims',true)::jsonb -> 'grants') ? ${sql.lit(id+':manage')}
-    or (current_setting('request.jwt.claims',true)::jsonb -> 'grants') ? 'global:manage',false)`;
-  await sql`create policy ${sql.ref(id+'_config_public_read')} on ${config}
-    for select to anon,anonymous,authenticated using (true)`.execute(trx);
-  await sql`create policy ${sql.ref(id+'_config_scope_update')} on ${config}
-    for update to authenticated using (${canUseScope}) with check (${canUseScope})`.execute(trx);
-  // Public pages only read explicitly published, non-private articles.
-  const publicGalaxy=sql`search is true
-    and lower(coalesce(site,'')) <> all (array[
-      'messenger','chatgpt','claude','gemini','msn','whatsapp','telegram',
-      'discord','line','wechat','teams','copilot','grok','perplexity',
-      'meta ai','meta-ai'])
-    and not (lower(coalesce(site,''))='mcp'
-      or (lower(coalesce(site,''))='github'
-        and (coalesce(site_id,'') ~ '^EsotericVerse/moon-runes-pwa#[0-9]+$'
-          or coalesce(title,'') ~* 'PR[[:space:]]*#[0-9]+')))`;
-  await sql`create policy ${sql.ref(id+'_galaxy_public_read')} on ${galaxy}
-    for select to anon,anonymous,authenticated using (${publicGalaxy})`.execute(trx);
-  await sql`create policy ${sql.ref(id+'_galaxy_scope_read')} on ${galaxy}
-    for select to authenticated using (${canUseScope})`.execute(trx);
-  await sql`create policy ${sql.ref(id+'_galaxy_scope_update')} on ${galaxy}
-    for update to authenticated using (${canUseScope}) with check (${canUseScope})`.execute(trx);
-  await sql`create policy ${sql.ref(id+'_anchor_public_read')} on ${anchor}
-    for select to anon,anonymous,authenticated
-    using (type in ('date','period','era','point','path','trace',
-      'image','video','rune','suno') and invisible is false)`.execute(trx);
-  await sql`create policy ${sql.ref(id+'_anchor_owner_read')} on ${anchor}
-    for select to authenticated using (${canUseScope})`.execute(trx);
-  await sql`create policy ${sql.ref(id+'_anchor_owner_insert')} on ${anchor}
-    for insert to authenticated with check (${canUseScope})`.execute(trx);
-  await sql`create policy ${sql.ref(id+'_anchor_owner_update')} on ${anchor}
-    for update to authenticated using (${canUseScope}) with check (${canUseScope})`.execute(trx);
-  await sql`create policy ${sql.ref(id+'_anchor_owner_delete')} on ${anchor}
-    for delete to authenticated using (${canUseScope})`.execute(trx);
-  await sql`create policy ${sql.ref(id+'_blocks_public_read')} on ${blocks}
-    for select to anon,anonymous,authenticated using (true)`.execute(trx);
-  await sql`create policy ${sql.ref(id+'_blocks_scope_all')} on ${blocks}
-    for all to authenticated using (${canUseScope}) with check (${canUseScope})`.execute(trx);
-  for(const table of [config,galaxy,anchor,blocks]){
-    await sql`grant select on ${table} to anon,anonymous,authenticated`.execute(trx);
-  }
-  await sql`grant update on ${config} to authenticated`.execute(trx);
-  await sql`grant update on ${galaxy} to authenticated`.execute(trx);
-  for(const table of [anchor,blocks])
-    await sql`grant insert,update,delete on ${table} to authenticated`.execute(trx);
-  const sort=await nextSort(trx,parent);
-  await trx.insertInto('api.manage').values({
-    id,email,domain,directory,parent_scope_id:parent,
-    active:true,sort_order:sort,manage_role:'scope'
-  }).executeTakeFirst();
-  const cloned=args.p_copy_keywords===false?null:await copyDefaultKeywordClass(trx,id,'silver.'+id+'_anchor');
-  await trx.insertInto('silver.'+id).values({
-    id,email,display_name:display,search_intro:'',search_aliases:[id,display],
-    theme,locale:'zh-Hant',search:true,statics:true,culture:true,trace:true,
-    keyword_min_chars:32,keyword_min_documents:100,
-    current_keyword_class_uid:cloned?.uid||null,keyword_class_share_enabled:false,
-    keyword_meta:sql`'{}'::jsonb`,staticstime:null,updated_at:sql`now()`
-  }).executeTakeFirst();
-  const locValues={id,display_name:display,locale:'zh-Hant',
-    birthday:args.p_birthday||null};
-  await trx.insertInto('silver.loc').values(
-    Object.fromEntries(LOC_NAME_COLUMNS.map(field=>[field,locValues[field]]))
-  ).executeTakeFirst();
-  await sql`notify pgrst,'reload schema'`.execute(trx);
-  return {scope_id:id,display_name:display,parent_scope_id:parent,
-    route_mode:domain?'domain':'directory',route_value:domain||directory,
-    keyword_rows:cloned?.count||0,keyword_class_uid:cloned?.uid||null};
-}
+// Schema freeze: existing Scope Registry data may be edited; Scope creation or
+// deletion cannot run because they require table/policy DDL.
 export async function executeKyselyScopeAdmin(trx,body){
   const action=String(body?.name||''),args=body?.args??{};
   const options={
@@ -350,9 +131,9 @@ export async function executeKyselyScopeAdmin(trx,body){
   if(!options[action]||!args||typeof args!=='object'||Array.isArray(args)||
     Object.keys(args).some(k=>!options[action].includes(k)))
     fail('Unknown Scope administration action');
+  if(action!=='manage_scope_registry')
+    fail('LOC database schema is frozen: Scope provisioning and deletion are unavailable',409);
   await allowedGlobal(trx);
   await sql`reset role`.execute(trx);
-  if(action==='manage_scope_registry')return {data:await managedRegistry(trx,args),count:null};
-  if(action==='delete_scope')return {data:await deleteScope(trx,args),count:null};
-  return {data:await provisionScope(trx,args),count:null};
+  return {data:await managedRegistry(trx,args),count:null};
 }

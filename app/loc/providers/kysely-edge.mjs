@@ -46,7 +46,7 @@ export function createKyselyEdgeClient({url,publishableKey,auth,role='authentica
   if(typeof fetchImpl!=='function')throw new Error('Kysely transport requires fetch');
   const external=String(gatewayUrl||'').trim();
   if(!external&&(!url||!publishableKey))
-    throw new Error('Supabase Kysely Edge requires a project URL and publishable key');
+    throw new Error('LOC SQL Gateway requires an HTTPS endpoint or a configured legacy SQL endpoint');
   if(external){
     const parsed=new URL(external);
     if(parsed.protocol!=='https:'||parsed.username||parsed.password||parsed.search||parsed.hash)
@@ -74,7 +74,7 @@ export function createKyselyEdgeClient({url,publishableKey,auth,role='authentica
     // A same-project Edge endpoint (e.g. the isolated Clerk SQL function)
     // still requires Supabase's public API key. A genuinely independent
     // Gateway does not receive this provider-specific header.
-    if(!external||(url&&new URL(external).origin===new URL(url).origin))
+    if(publishableKey&&(!external||(url&&new URL(external).origin===new URL(url).origin)))
       headers.apikey=publishableKey;
     if(token)headers.authorization='Bearer '+token;
     const request={method:'POST',headers,credentials:'omit',

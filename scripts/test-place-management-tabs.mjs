@@ -66,7 +66,7 @@ test('Timeline uses LOC Auth events independently of the SQL query adapter',()=>
   assert.match(timeline,/dbAuthEvents\.getUser\(\)\.then\(\(\{data\}\)=>\{/);
   assert.doesNotMatch(timeline,/dbAuthClient\.auth/);
   assert.match(db,/export const dbAuthEvents=adapter\.auth;/);
-  assert.match(configured,/return createClerkGatewayAdapter\(\)/);
+  assert.match(configured,/return createLocGatewayAdapter\(\{/);
   assert.match(gateway,/publicClient:publicSql,authClient:privateSql,auth,/);
   assert.match(place,/section==='timeline'\?<TimelinePlaceManager/);
 });

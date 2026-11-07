@@ -189,7 +189,7 @@ test('active LOC browser and local providers have no SQL RPC transport',()=>{
     assert.doesNotMatch(code,/kind:\s*['"]rpc['"]/,path+' must not send an RPC request');
   }
   const bridge=readFileSync(new URL('../app/loc/providers/configured.mjs',import.meta.url),'utf8');
-  assert.match(bridge,/createClerkGatewayAdapter/);
+  assert.match(bridge,/createLocGatewayAdapter/);
 });
 
 test('direct Kysely action routing replaces the local and public RPC facade',()=>{
