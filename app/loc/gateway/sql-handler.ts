@@ -3,7 +3,7 @@ import {ZenStackClient} from "npm:@zenstackhq/orm@3.10.1";
 import {PolicyPlugin} from "npm:@zenstackhq/plugin-policy@3.10.1";
 import {withFixedPolicyRead,fixedPolicyReadModel,withFixedPolicyWrite,fixedPolicyWriteModel} from "../../../zenstack/policy-runtime.mjs";
 import {jwtVerify,createRemoteJWKSet} from "npm:jose@5.9.6";
-import {processShortImport,postgresShortImportStore} from "../../../app/loc/import/short-append-service.mjs";
+import {processShortImport,portableShortImportStore} from "../../../app/loc/import/short-append-service.mjs";
 import {authorizeDelegatedShortImport} from "../../../app/loc/import/short-edge-authorization.mjs";
 import {delegationAudience,verifyDelegationBoundary,canManageDelegation} from "../../../app/loc/auth/delegation-contract.mjs";
 import {databaseForTarget,resolveConnectionProfile,trustedDialectForDatabase} from "../providers/kysely-database-drivers.ts";
@@ -302,7 +302,7 @@ Deno.serve(async (request) => {
       // signed Scope authorization is checked above before any DB request.
       const db=await databaseForTarget(controlTarget);
       const response=await processShortImport(body.batch,actor,{
-        store:postgresShortImportStore(db,sql)
+        store:portableShortImportStore(db,sql,{engine:controlTarget.engine})
       });
       return json(response);
     }catch(error){
