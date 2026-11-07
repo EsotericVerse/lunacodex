@@ -1,0 +1,52 @@
+{
+  "source": "pinned Effekseer art",
+  "targetLongestEdgeAtLeast": 256,
+  "operation": "scoped matte alpha/edge feather; original PNG and .efkefc unmodified",
+  "sprites": [
+    {
+      "filename": "Line1.png",
+      "sourceWidth": 128,
+      "sourceHeight": 64,
+      "width": 256,
+      "height": 128,
+      "sourceHadAlpha": false,
+      "activePixels": 1220
+    },
+    {
+      "filename": "Line2.png",
+      "sourceWidth": 128,
+      "sourceHeight": 64,
+      "width": 256,
+      "height": 128,
+      "sourceHadAlpha": false,
+      "activePixels": 2054
+    },
+    {
+      "filename": "particle2.png",
+      "sourceWidth": 64,
+      "sourceHeight": 64,
+      "width": 256,
+      "height": 256,
+      "sourceHadAlpha": false,
+      "activePixels": 7792
+    },
+    {
+      "filename": "smoke_01.png",
+      "sourceWidth": 128,
+      "sourceHeight": 128,
+      "width": 256,
+      "height": 256,
+      "sourceHadAlpha": false,
+      "activePixels": 13166
+    },
+    {
+      "filename": "star.png",
+      "sourceWidth": 64,
+      "sourceHeight": 64,
+      "width": 256,
+      "height": 256,
+      "sourceHadAlpha": false,
+      "activePixels": 19974
+    }
+  ]
+}
