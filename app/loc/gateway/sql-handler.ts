@@ -371,6 +371,57 @@ Deno.serve(async (request) => {
   }
   let resolvingTarget = false;
   try {
+    if(body.kind==="index-snapshot"){
+      // Trusted, read-only index backfill. This endpoint is not exposed by
+      // the browser client: both a scope-management LOC delegation and the
+      // separate index-service secret are required. It never mutates SQL.
+      const scopeId=String(body.scopeId||"");
+      const databaseId=String(body.databaseId||"");
+      const expectedSecret=String(Deno.env.get("LOC_SEARCH_INDEX_SECRET")||"");
+      const suppliedSecret=String(request.headers.get("x-loc-index-secret")||"");
+      const encode=new TextEncoder();
+      const a=encode.encode(expectedSecret),b=encode.encode(suppliedSecret);
+      let diff=a.length^b.length;
+      for(let i=0;i<Math.max(a.length,b.length);i++)
+        diff|=(a[i]||0)^(b[i]||0);
+      if(role!=="authenticated"||expectedSecret.length<32||diff!==0||
+         !/^[a-z][a-z0-9]{0,14}$/.test(scopeId)||
+         !/^[a-z][a-z0-9_-]{0,63}$/.test(databaseId)||
+         !canManageDelegation(claims,"scope",scopeId))
+        return json({error:{message:"Verified LOC index backfill permission required"}},403);
+      const datasets=federatedDatasetsFor(
+        Deno.env.get("LOC_SEARCH_DATASETS_JSON")||"",scopeId);
+      const configured=await liveConfiguredTarget();
+      const selected=datasets.find(item=>item.databaseId===databaseId);
+      const source=selected?.target||
+        (datasets.length===0&&databaseId===searchIndexDatabaseId(configured)
+          ?configured:null);
+      if(!source)return json({error:{message:"Index source is not registered for this Scope"}},409);
+      const offset=Number(body.offset||0),limit=Number(body.limit||50);
+      const head=body.head===true;
+      if(!Number.isSafeInteger(offset)||offset<0||offset>10_000_000||
+         !Number.isSafeInteger(limit)||limit<1||limit>50)
+        return json({error:{message:"Invalid bounded index snapshot page"}},400);
+      const db=isControlTarget(source)
+        ?await databaseForTarget(controlTarget)
+        :await databaseForTarget(source,{profileLookup:profileForTarget});
+      const executionPort=resolveSqlExecutionPort(source);
+      const queryBody={
+        kind:"query",schema:"silver",table:scopeId+"_galaxy",operation:"select",
+        columns:head?["uid"]:["uid","content"],
+        filters:[],or:[],orders:[{column:"createtime",ascending:true}],
+        head,count:head?"exact":null,limit,offset
+      };
+      // DBM connection is trusted here. Reading the complete index dataset
+      // must not depend on vendor RLS session impersonation or public flags.
+      // No UID ordering: duplicates/coverage are checked by the builder.
+      const result=await db.transaction().execute(trx=>executeKyselyQuery(trx,
+        queryBody,{dialect:executionPort.engine,namespace:
+          executionPort.engine==="postgres"&&!source.schema_name
+            ?undefined:String(source.schema_name||(
+              executionPort.engine==="mssql"?"dbo":"public"))}));
+      return json(result);
+    }
     if(["mcp-read","mcp-search","mcp-sync","mcp-append"].includes(String(body.kind))){
       // One LOC-signed Kysely executor for all SQL dialects. The Gateway has
       // already verified the JWT audience, Scope and action. No provider
