@@ -6,14 +6,14 @@ import {bindLocAuthorization,canManageLoc} from '../../app/loc/providers/loc-aut
 import {verifyDelegationBoundary} from '../../app/loc/auth/delegation-contract.mjs';
 import {
   readKeywordClasses,readKeywordStatistics,readKeywordCatalog,readKeywordDaily,
-  suggestKeywordPatterns,analyzeKeywordScope
+  suggestKeywordPatterns,analyzeKeywordScope,resetKeywordScope
 } from '../../app/loc/keyword-sql-service.mjs';
 
 const ISSUER='https://auth.lo3rwang.cc';
 const JWKS=ISSUER+'/.well-known/jwks.json';
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
-const OPERATIONS=new Set(['analyze','classes','catalog','summary','stats','suggest']);
+const OPERATIONS=new Set(['analyze','reset','classes','catalog','summary','stats','suggest']);
 let keys=null,expires=0,loading=null;
 
 function respond(data,status=200){
@@ -107,7 +107,7 @@ export async function onRequestPost(context){
     const scope=String(args.scopeId||'');
     if(operation!=='suggest'&&!SCOPE.test(scope))
       error('Invalid Keyword Scope');
-    if(['catalog','stats','summary','analyze'].includes(operation)&&
+    if(['catalog','stats','summary','analyze','reset'].includes(operation)&&
        !UID.test(String(args.classUid||'')))
       error('Invalid Keyword Class');
     // The existing Pages native Kysely connection is server-selected; never
@@ -127,15 +127,16 @@ export async function onRequestPost(context){
       });
     }else{
       const owner=await permission(db,role,claims,scope);
-      if(operation==='analyze'){
+      if(operation==='analyze'||operation==='reset'){
         if(!owner)error('Scope Keyword management permission required',403);
-        result=await analyzeKeywordScope(db,scope,args.classUid,{
-          authorizeTransaction:async trx=>{
-            bindLocAuthorization(trx,{role,claims});
-            if(!await canManageLoc(trx,'scope',scope))
-              error('Scope Keyword authorization expired',403);
-          }
-        });
+        const authorizeTransaction=async trx=>{
+          bindLocAuthorization(trx,{role,claims});
+          if(!await canManageLoc(trx,'scope',scope))
+            error('Scope Keyword authorization expired',403);
+        };
+        result=operation==='reset'?
+          await resetKeywordScope(db,scope,args.classUid,{authorizeTransaction}):
+          await analyzeKeywordScope(db,scope,args.classUid,{authorizeTransaction});
       }else if(operation==='classes'){
         result=await readKeywordClasses(db,scope,{owner});
       }else if(operation==='catalog'){
