@@ -125,9 +125,9 @@ const TOOLS=[
     },required:['uid'],additionalProperties:false},
     annotations:{readOnlyHint:true,destructiveHint:false}}
 ,
-  {name:'scope_storage',description:'View or change authorized Scope database endpoint and existing table. Enter provider credentials only through secure LOC Clerk UI/Authority endpoint, never in chat.',
+  {name:'scope_storage',description:'View or configure a trusted HTTPS LOC Kysely SQL Gateway for the authorized Scope. No vendor Data API, database password, or API key is accepted through MCP.',
     inputSchema:{type:'object',properties:{
-      scopeid:{type:'string'},endpoint:{type:'string',description:'HTTPS PostgREST URL ending /rest/v1; omit to view'},
+      scopeid:{type:'string'},endpoint:{type:'string',description:'HTTPS LOC Kysely Gateway URL; omit to view'},
       schema:{type:'string'},table:{type:'string',description:'Existing Galaxy-compatible table; LOC never creates tables'}
     },required:['scopeid'],additionalProperties:false}},
   {name:'galaxy_link',description:'Galaxy conversation continuity. Search ONLY when the human user explicitly requests a conversation search; never search automatically. PR/GitHub search is forbidden: 請至github頁面找尋PR相關資料！不開放搜尋PR! QoS warns before the limit and enforces a five-minute search interval.',
