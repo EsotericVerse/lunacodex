@@ -59,7 +59,7 @@ export async function ensurePortableScopeSchema(db,{engine,namespace='',scopeId}
       .addColumn('date','date')
       .addColumn('site_id',textType);
     for(const flag of FLAGS)
-      q=q.addColumn(flag,boolType,c=>c.notNull().defaultTo(true));
+      q=q.addColumn(flag,boolType,c=>c.notNull().defaultTo(false));
     await finalize(q,scope+'_galaxy','date');
   }
   if(!existing.has(scope+'_anchor')){
