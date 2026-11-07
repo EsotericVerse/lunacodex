@@ -226,16 +226,12 @@ const MANAGED_SCOPE_TABLES=Object.freeze({lo3rwang:'lo3rwang_galaxy',lrunes:'lru
 function mcpSqlGateway(env){
   const raw=String(env?.LOC_MCP_SQL_GATEWAY_URL||env?.LOC_SQL_GATEWAY_URL||'');
   if(!raw)throw fail('LOC MCP Kysely SQL Gateway is not configured',503);
-  let url;try{url=new URL(raw)}catch{throw fail('Invalid LOC MCP SQL Gateway URL',503)}
-  if(url.protocol!=='https:'||url.username||url.password||url.search||url.hash||
-     !['443',''].includes(url.port))
-    throw fail('LOC MCP SQL Gateway must be a trusted HTTPS endpoint',503);
-  return url.toString();
+  return safeMcpSqlUrl(raw);
 }
-async function mcpSqlRequest(env,kind,scopeid,fields,locDelegation){
+async function mcpSqlRequest(env,kind,scopeid,fields,locDelegation,scopeGateway=''){
   if(typeof locDelegation!=='string'||locDelegation.split('.').length!==3)
     throw fail('LOC MCP delegation required',401);
-  const response=await fetch(mcpSqlGateway(env),{
+  const response=await fetch(scopeGateway?safeMcpSqlUrl(scopeGateway):mcpSqlGateway(env),{
     method:'POST',headers:{authorization:'Bearer '+locDelegation,
       'content-type':'application/json',accept:'application/json'},
     body:JSON.stringify({kind,scopeid,...fields}),
@@ -263,25 +259,26 @@ function validTimestamp(value){
   if(!Number.isFinite(stamp)||!/^\d{4}-\d\d-\d\dT/.test(String(value)))throw fail('Invalid source update time',400);
   return new Date(stamp).toISOString();
 }
-function safePostgrestUrl(value){
-  const u=new URL(String(value||''));
+function safeMcpSqlUrl(value){
+  let u;try{u=new URL(String(value||''))}catch{throw fail('Invalid LOC MCP SQL Gateway URL',400)}
   if(u.protocol!=='https:'||u.username||u.password||u.search||u.hash||
-    u.pathname.replace(/\/+$/,'')!=='/rest/v1'||u.hostname==='localhost'||
+    u.hostname==='localhost'||u.hostname.includes(':')||
     /(?:^|\.)(?:localhost|local|internal|test)$/.test(u.hostname)||
-    /^(?:\d{1,3}\.){3}\d{1,3}$/.test(u.hostname)||u.hostname.includes(':'))
-    throw fail('Database must expose a public HTTPS PostgREST Data API',400);
-  return u.origin+'/rest/v1';
+    /^(?:\d{1,3}\.){3}\d{1,3}$/.test(u.hostname)||
+    /\/rest\/v1(?:\/|$)|\/functions\/v1\//.test(u.pathname))
+    throw fail('Scope requires a trusted HTTPS LOC Kysely SQL Gateway, not a vendor Data API',400);
+  return u.toString();
 }
 function validateScopeTarget(input,scopeid){
   validScope(scopeid);
-  if(!input||typeof input!=='object'||Array.isArray(input))throw fail('Invalid Scope database',400);
-  const endpoint=safePostgrestUrl(input.endpoint);
-  const schema=String(input.schema||'public').trim();
-  const table=String(input.table||'').trim();
-  const apiKey=String(input.api_key||'');
-  if(!TABLE_ID.test(schema)||!TABLE_ID.test(table)||apiKey.length>4096||
-    /[\r\n]/.test(apiKey))throw fail('Invalid Scope table or API credential',400);
-  return {scopeid,endpoint,schema,table,api_key:apiKey};
+  if(!input||typeof input!=='object'||Array.isArray(input))
+    throw fail('Invalid Scope SQL Gateway configuration',400);
+  const endpoint=safeMcpSqlUrl(input.endpoint);
+  // A Scope never chooses another table, database alias or SQL credential.
+  const table=scopeid+'_galaxy';
+  if(input.table!==undefined&&input.table!==table)
+    throw fail('Scope table must match its existing Galaxy relation',400);
+  return {scopeid,endpoint,schema:String(input.schema||'public'),table};
 }
 async function verifyMcpOAuth(request,env){
   const match=/^Bearer ([A-Za-z0-9_.-]{40,8192})$/.exec(request.headers.get('authorization')||'');
@@ -335,15 +332,15 @@ async function postgrest(profile,options){
 }
 function escapeScopeValue(value){return 'eq.'+value;}
 
-async function managedMcpInsert(scopeid,row,updateExisting,token,env){
+async function managedMcpInsert(scopeid,row,updateExisting,token,env,gateway=''){
   const data=await mcpSqlRequest(env,'mcp-sync',scopeid,
-    {row,update_existing:updateExisting},token);
+    {row,update_existing:updateExisting},token,gateway);
   if(data?.count!==1)throw fail('MCP insert was not confirmed',502);
 }
 // Append is separate from full sync: existing Galaxy metadata must never be overwritten.
-async function managedMcpAppend(scopeid,uid,content,batchId,updatedAt,token,env){
+async function managedMcpAppend(scopeid,uid,content,batchId,updatedAt,token,env,gateway=''){
   const data=await mcpSqlRequest(env,'mcp-append',scopeid,
-    {uid,content,batch_id:batchId,updated_at:updatedAt},token);
+    {uid,content,batch_id:batchId,updated_at:updatedAt},token,gateway);
   if(data?.count!==1)throw fail('MCP append was not confirmed',502);
   return data;
 }
@@ -421,8 +418,8 @@ async function postgrestUpdatePr(profile,uid,prNumber,title,content,updatedAt){
   return uid;
 }
 
-async function managedMcpRead(scopeid,kind,args,token,env){
-  const rows=await mcpSqlRequest(env,kind,scopeid,args,token);
+async function managedMcpRead(scopeid,kind,args,token,env,gateway=''){
+  const rows=await mcpSqlRequest(env,kind,scopeid,args,token,gateway);
   if(!Array.isArray(rows))throw fail('Invalid MCP Kysely read results',502);
   return rows;
 }
