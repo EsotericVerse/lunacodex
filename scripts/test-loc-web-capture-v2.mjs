@@ -107,6 +107,29 @@ test('batch split never combines more than 50 or 590 KB of event data',()=>{
  assert.deepEqual(Array.from(counts),[50,50,3]);
 });
 
+test('canonical Threads and Instagram permalink aliases are accepted without cross-site capture',()=>{
+ const {context}=isolatedBackground();
+ const allowed=[
+  ['https://www.threads.com/@writer/post/1','https://www.threads.net/@writer/post/1'],
+  ['https://threads.net/@writer','https://threads.com/@writer/post/2'],
+  ['https://www.instagram.com/','https://instagram.com/p/abc'],
+  ['https://m.instagram.com/','https://www.instagram.com/p/abc'],
+  ['https://example.org/read','https://example.org/post/1']
+ ];
+ const forbidden=[
+  ['https://www.threads.com/@writer','https://attacker.example/post/1'],
+  ['https://www.threads.com/@writer','https://evilthreads.com/post/1'],
+  ['https://www.threads.net/@writer','https://login.threads.net/post/1'],
+  ['https://www.threads.com/@writer','http://www.threads.net/post/1'],
+  ['https://www.instagram.com/','https://www.threads.com/@writer/post/1'],
+  ['https://example.org/','https://other.example.org/']
+ ];
+ for(const [page,source] of allowed)
+  assert.equal(runInContext('captureSourceMatches('+JSON.stringify(page)+','+JSON.stringify(source)+')',context),true,page+' -> '+source);
+ for(const [page,source] of forbidden)
+  assert.equal(runInContext('captureSourceMatches('+JSON.stringify(page)+','+JSON.stringify(source)+')',context),false,page+' -> '+source);
+});
+
 test('background rejects cross-origin injection before any Queue write',async()=>{
  const {listeners}=isolatedBackground();
  let result=null;
