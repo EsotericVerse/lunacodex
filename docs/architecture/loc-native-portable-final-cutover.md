@@ -70,6 +70,50 @@ Required runtime configuration:
   installation dynamically registers its exact Chrome OAuth callback.
   IndexedDB Queue, append-only writes, batch IDs and UID receipts remain.
 
+## Chrome Extension separation (no Queue migration)
+
+There are **two intentionally separate MV3 products**. Do not rename a Queue,
+merge IndexedDB databases, relay website Sessions, or assume a changed manifest
+version represents a safe replacement:
+
+- `extensions/loc-galaxy-link/` uses Chrome Authorization Code + PKCE S256
+  with LOC Auth, stores only its own OAuth tokens, and keeps its historical
+  `loc-channel1-queue` IndexedDB name. Its `/oauth/revoke` disconnect removes
+  the current refresh grant server-side when reachable, while **never deleting
+  pending captured records**. On HTTP failures it preserves Queue and waits
+  for explicit re-authorization or retry after recovery.
+- `extensions/loc-web-capture-v2/` owns the richer selection/DOM recording
+  and distinct `loc-web-capture-v2` IndexedDB Queue. It uses an explicitly
+  opened LOC website bridge and **never** receives LOC OAuth Access Tokens,
+  Refresh Tokens, or the website's Session cookie.
+
+Both may append text to Galaxy, but their consent, stored state, capture
+workflow and upload confirmation are not interchangeable. A known source is
+continued by stable UID, and an incomplete receipt never deletes a Queue.
+
+## Deployment control / current evidence
+
+- The Vercel project `loc-sql` exists with Container framework and preview
+  builds disabled, but remains **unlinked to Git and undeployed**.
+  Its non-secret settings include control alias `loc_main`, PostgreSQL engine
+  and `LOC_AUTHORITY_ORIGIN=https://auth.lo3rwang.cc`. The server-only
+  `LOC_DB_CONNECTIONS_JSON` connection secret is not yet configured.
+- The existing Cloudflare Pages project is named `loc`, with both
+  `loc.lo3rwang.cc` and `mcp.lo3rwang.cc` custom domains.
+  Its production environment has no independent SQL Gateway URL set.
+- The existing `loc-authority-control` Worker is already bound to
+  `auth.lo3rwang.cc`. It retains encrypted state and an explicit native-root
+  subject secret. Its new OAuth code is **not yet deployed**, and
+  `LOC_SQL_GATEWAY_URL` still needs a verified live SQL endpoint.
+- `scripts/test-loc-four-way-cutover-contract.mjs` provides five offline,
+  no-database-write cross-service source contracts in `test:authority`.
+  These checks also passed a source-backed isolated execution of the test
+  assertions on 2026-11-07. This is **not** a Node, Deno, browser, build,
+  database, or deployed OAuth end-to-end test.
+- PR #1210 stays **Draft** until all endpoints, provider callbacks,
+  per-Scope grants, SQL connectivity and Chrome receipt handling have
+  verified release evidence. No partial merge into `main`.
+
 ## Remaining release gates (do not pretend these passed)
 
 1. Deploy an actual independent SQL Gateway with its **server-only**
