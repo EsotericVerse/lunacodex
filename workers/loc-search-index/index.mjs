@@ -140,6 +140,29 @@ async function resetSource(env,body){
   for(const item of page.keys)await env.LOC_KV.delete(item.name);
   return {accepted:true,removed:page.keys.length};
 }
+async function pruneDeltas(env,body){
+  const source=checkedSource(body||{});
+  const cutoff=Number(body.beforeMs);
+  if(!Number.isSafeInteger(cutoff)||cutoff<1||cutoff>Date.now())
+    throw invalid('Invalid compaction cutoff');
+  const prefix=PREFIX+'delta/'+source.scopeId+'/'+source.dbId+'/'+source.entityType+'/';
+  // Compaction is an explicit operation after a verified SQL backfill.
+  // The cutoff is captured BEFORE the SQL scan: any newer appended text
+  // remains in immutable deltas rather than being deleted with old postings.
+  const page=await env.LOC_KV.list({prefix,limit:1001});
+  if(page.list_complete===false||page.keys.length>1000)
+    throw Object.assign(new Error('Index delta prune exceeds bounded limit'),{status:409});
+  let removed=0;
+  for(const entry of page.keys){
+    const raw=entry.name.slice(prefix.length).split('-')[0];
+    const created=Number.parseInt(raw,36);
+    if(Number.isSafeInteger(created)&&created<cutoff){
+      await env.LOC_KV.delete(entry.name);
+      removed++;
+    }
+  }
+  return {accepted:true,removed};
+}
 async function find(env,body){
   const scopeId=checked(body?.scopeId,SCOPE,'scopeId');
   const entityType=checked(body?.entityType||'galaxy',TYPE,'entityType');
@@ -211,6 +234,8 @@ export default {
         return json(await replaceSnapshot(env,await payloadOf(request,20*1024*1024)));
       if(request.method==='POST'&&pathname==='/v1/reset')
         return json(await resetSource(env,await payloadOf(request)));
+      if(request.method==='POST'&&pathname==='/v1/prune-deltas')
+        return json(await pruneDeltas(env,await payloadOf(request)));
       return json({error:'not found'},404);
     }catch(error){
       const status=Number(error?.status)||500;
