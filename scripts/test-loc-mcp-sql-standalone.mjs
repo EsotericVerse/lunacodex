@@ -175,3 +175,15 @@ test('MCP Container receives LOC control alias and Authority service credential'
   assert.equal(started.env.LOC_SQL_GATEWAY_SERVICE_KEY,env.LOC_SQL_GATEWAY_SERVICE_KEY);
   assert.equal(started.env.LOC_MCP_DB_ALIAS,undefined);
 });
+
+
+test('MCP Container failure keeps CORS readable to trusted LOC browser',async()=>{
+  const {LocMcpSqlContainer}=await loadMcpIngress();
+  const instance=new LocMcpSqlContainer({container:{running:false}},{});
+  const request=new Request('https://mcp.lo3rwang.cc/v1/sql',{
+    method:'POST',headers:{origin:'https://loc.lo3rwang.cc'}});
+  const response=await instance.fetch(request);
+  assert.equal(response.status,503);
+  assert.equal(response.headers.get('access-control-allow-origin'),
+    'https://loc.lo3rwang.cc');
+});
