@@ -9,7 +9,7 @@ const SEARCH={kind:'query',schema:'silver',table:'lo3rwang_galaxy',
   operation:'select',target:'configured',user_requested:true,
   columns:['uid','title','date','createtime'],
   filters:[{column:'search',operator:'eq',value:true}],
-  or:['(title.contains."時間長河",content.contains."時間長河")'],
+  or:['title.contains."時間長河",content.contains."時間長河"'],
   orders:[{column:'date',ascending:false},{column:'createtime',ascending:false}],
   limit:10,offset:0};
 const READ={kind:'query',schema:'silver',table:'lrunes_galaxy',
@@ -44,8 +44,8 @@ test('public article content cannot be returned through the search/list-summary 
   denied({...SEARCH,columns:['uid','title','content','date','createtime']});
   denied({...SEARCH,filters:[]});
   denied({...SEARCH,filters:[{column:'search',operator:'eq',value:false}]});
-  denied({...SEARCH,or:['(title.contains."test",content.contains."different")']});
-  denied({...SEARCH,or:['(title.contains."test",content.contains."test",uid.eq.Ab12Cd34)']});
+  denied({...SEARCH,or:['title.contains."test",content.contains."different"']});
+  denied({...SEARCH,or:['title.contains."test",content.contains."test",uid.eq.Ab12Cd34)']});
   denied({...SEARCH,limit:21});
   denied({...SEARCH,offset:501});
 });
