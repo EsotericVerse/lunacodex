@@ -755,6 +755,7 @@ export class LocAuthorityState extends DurableObject {
     return {scopeid,uid:resolvedUid,pr_number:prNumber,updated_at:requestedTime,updated:true};
   }
   async mcpLinkSearch(scopeid,query,limit=5,oauthToken=''){
+    if(mcpPrLookup(query))throw fail('請至github頁面找尋PR相關資料！不開放搜尋PR!',403);
     validScope(scopeid);
     if(typeof query!=='string'||query.trim().length<2||query.length>100||
       /[\u0000-\u001f\u007f]/.test(query)||!Number.isInteger(limit)||limit<1||limit>5)
@@ -890,6 +891,30 @@ export class LocAuthorityState extends DurableObject {
   // Cloudflare DO RPC: only a separately bound trusted SQL gateway can call this.
   // No HTTP handler exposes the credential or returns decrypted profiles to a browser.
   // Shared, durable quotas for each verified Clerk MCP subject.
+  // A read-only near-limit check for simultaneous PR denial + QoS warning.
+  // It never acquires a lease, spends a search, or touches Galaxy rows.
+  async mcpQuotaInspect(kind,subject){
+    if(!/^clerk:user_[A-Za-z0-9]+$/.test(String(subject||'')))
+      throw fail('Invalid MCP principal',401);
+    if(!['read','write','search'].includes(kind))throw fail('Invalid MCP quota kind',400);
+    const now=Date.now(),search=kind==='search';
+    const cooldown=Number(await this.ctx.storage.get('mcp-qos-cooldown:'+subject)||0);
+    if(cooldown>now)return {warning:'提醒！MCP QoS 已進入流量管制，請停止重試。'};
+    const latest=search?await this.ctx.storage.get('mcp-qos-search:'+subject):null;
+    if(latest&&now>=latest.at&&now-latest.at<300_000)
+      return {warning:'提醒！短時間多次搜尋將進入流量管制。每五分鐘只能搜尋一次，請停止重試。'};
+    const bucket=await this.ctx.storage.get('mcp-quota-window:'+subject);
+    if(bucket&&now>=bucket.started&&now-bucket.started<60_000&&
+       (bucket.count>=15||(kind!=='write'&&bucket.reads>=11)||
+        (search&&bucket.searches>=1)))
+      return {warning:'提醒！MCP QoS 即將達到限制，請放慢呼叫頻率。'};
+    const leases=(await this.ctx.storage.get('mcp-quota-leases')||[])
+      .filter(item=>item.expires>now);
+    const reads=leases.filter(item=>item.kind!=='write').length;
+    if(leases.length>=15||(kind!=='write'&&reads>=11))
+      return {warning:'提醒！MCP QoS 即將達到限制，請放慢呼叫頻率。'};
+    return {warning:''};
+  }
   async mcpQuotaAcquire(kind,subject){
     if(!/^clerk:user_[A-Za-z0-9]+$/.test(String(subject||'')))throw fail('Invalid MCP principal',401);
     if(!['read','write','search'].includes(kind))throw fail('Invalid MCP quota kind',400);
@@ -957,7 +982,14 @@ export class LocAuthorityState extends DurableObject {
       await tx.put('mcp-quota-leases',leases);
       if(kind==='search')await tx.put(searchKey,{
         at:now,count:(latestSearch?.count||0)+1,rejects:0});
-      return {lease};
+      // A successful search consumes the single five-minute opportunity.
+      // Other operations warn with one rate/concurrency slot remaining.
+      const near=kind==='search'
+        ?'提醒！每五分鐘只能搜尋一次，短時間重複搜尋會啟動流量管制。'
+        :(bucket.count+1>=15||(kind!=='write'&&bucket.reads+1>=11)||
+          leases.length>=15)
+          ?'提醒！MCP QoS 即將達到限制，請放慢呼叫頻率。':'';
+      return {lease,...(near?{warning:near}:{})};
     });
     if(outcome.rejected==='search-warning')throw fail('提醒！短時間多次搜尋將進入流量管制。每五分鐘只能搜尋一次，請停止重試。',429);
     if(outcome.rejected==='search-cooldown')throw fail('搜尋已進入流量管制，請停止重複呼叫 Galaxy 搜尋。',429);
@@ -1006,6 +1038,7 @@ async function handleMcpAuthority(request,env,url,origin){
   if(url.pathname==='/v1/mcp/quota'&&request.method==='POST'){
     if(principal.provider!=='clerk')throw fail('MCP OAuth required',401);
     const args=await mcpJsonBody(request,400);
+    if(args?.action==='inspect')return json(await quota.mcpQuotaInspect(args.kind,'clerk:'+principal.subject),200,origin);
     if(args?.action==='acquire')return json(await quota.mcpQuotaAcquire(args.kind,'clerk:'+principal.subject),200,origin);
     if(args?.action==='release')return json(await quota.mcpQuotaRelease(args.lease,'clerk:'+principal.subject),200,origin);
     throw fail('Invalid MCP quota operation',400);
@@ -1014,7 +1047,7 @@ async function handleMcpAuthority(request,env,url,origin){
   if(/^\/v1\/mcp\/galaxy-link\/search\//.test(url.pathname)&&request.method==='POST'){
     const input=await mcpJsonBody(request.clone(),1600);
     if(mcpPrLookup(input?.query))
-      throw fail('PR / GitHub history belongs to GitHub. Use GitHub PR / Commit tools; do not search Galaxy UID.',403);
+      throw fail('請至github頁面找尋PR相關資料！不開放搜尋PR!',403);
   }
   // No DB work and no quota spend on retired search endpoints.
   if(/^\/v1\/mcp\/(?:search|group-search)\//.test(url.pathname))
@@ -1022,12 +1055,19 @@ async function handleMcpAuthority(request,env,url,origin){
   // Retired PR write API must fail closed even for authenticated legacy clients.
   // GitHub owns PR history. Reject before quota and any database work.
   if(/^\/v1\/mcp\/update-pr\//.test(url.pathname))
-    throw fail('PR records belong to GitHub; use GitHub PR tools instead of Galaxy UID',410);
+    throw fail('請至github頁面找尋PR相關資料！不開放搜尋PR!',410);
   const kind=/^\/v1\/mcp\/galaxy-link\/search\//.test(url.pathname)?'search':
     request.method==='GET'?'read':'write';
   const ticket=await quota.mcpQuotaAcquire(kind,'clerk:'+principal.subject);
-  try{return await handleMcpAuthorityInner(request,env,url,origin,principal);}
-  finally{await quota.mcpQuotaRelease(ticket.lease,'clerk:'+principal.subject);}
+  try{
+    const answer=await handleMcpAuthorityInner(request,env,url,origin,principal);
+    if(!ticket.warning||!answer.ok)return answer;
+    const headers=new Headers(answer.headers);
+    // HTTP headers are ASCII; encode the warning for the MCP caller.
+    headers.set('X-LOC-QoS-Warning',encodeURIComponent(ticket.warning));
+    headers.set('Access-Control-Expose-Headers','X-LOC-QoS-Warning');
+    return new Response(answer.body,{status:answer.status,statusText:answer.statusText,headers});
+  }finally{await quota.mcpQuotaRelease(ticket.lease,'clerk:'+principal.subject);}
 }
 async function handleMcpAuthorityInner(request,env,url,origin,principal){
   const roots=String(env.LOC_RECOVERY_ROOT_CLERK_IDS||'').split(/[\s,;]+/).filter(Boolean);
@@ -1117,7 +1157,8 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
     const scopeid=validScope(parts[1]);
     const args=await mcpJsonBody(request,1600);
     if(!args||typeof args!=='object'||Array.isArray(args)||
-      Object.keys(args).some(key=>!['query','limit'].includes(key)))
+      Object.keys(args).some(key=>!['query','limit','user_requested'].includes(key))||
+      args.user_requested!==true)
       throw fail('Invalid Galaxy Link search payload',400);
     if(!await allowed(scopeid,'read'))
       throw fail('Scope source search denied',403);
