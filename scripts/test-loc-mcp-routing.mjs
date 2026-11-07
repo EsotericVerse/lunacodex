@@ -13,13 +13,20 @@ let jwksQueries=0;
 let publicApiRequests=[];
 let quotaRequests=[];
 let quotaBlocked=false;
+let quotaNotice='';
+let privateSearchRequests=0;
 globalThis.fetch=async (url,options)=>{
   if(String(url)==='https://auth.lo3rwang.cc/v1/mcp/quota'){
     const body=JSON.parse(options.body);
+    if(body.action==='inspect')return Response.json({warning:quotaNotice});
     quotaRequests.push(body);
     return quotaBlocked&&body.action==='acquire'
       ?Response.json({error:'MCP request limit exceeded'},{status:429})
       :Response.json(body.action==='acquire'?{lease:'7e84c5a7-f95d-414d-82e8-e84542ee60ab'}:{released:true});
+  }
+  if(String(url).startsWith('https://auth.lo3rwang.cc/v1/mcp/galaxy-link/search/')){
+    privateSearchRequests++;
+    return Response.json({scopeid:'lo3rwang',results:[]});
   }
   if(String(url)===CLERK_ISSUER+'/.well-known/jwks.json'){
     jwksQueries++;return Response.json({keys:[publicKey]});
@@ -96,7 +103,7 @@ test('Valid Clerk JWT can initialize, discover read/write tools, and ping',async
   assert.deepEqual(link.inputSchema.properties.action.enum,['search','read','check','record']);
   assert.equal(Object.hasOwn(link.inputSchema.properties,'source'),false);
   assert.equal(status.availableTools.includes('update_scope_pr'),false);
-  for(const field of ['uid','pr_number','title','content','updated_at'])
+  for(const field of ['uid','user_requested','title','content','updated_at'])
     assert.ok(Object.hasOwn(link.inputSchema.properties,field));
   r=await handleMcp(req('POST',jwt,rpc('ping')));
   assert.deepEqual((await r.json()).result,{});
@@ -150,6 +157,40 @@ test('MCP PR search is rejected before any Authority or quota request',async()=>
     name:'galaxy_link',arguments:{action:'search',scopeid:'lo3rwang',query:'PR #1170'}})));
   const output=(await response.json()).result;
   assert.equal(output.isError,true);
-  assert.match(output.content[0].text,/GitHub/);
+  assert.equal(output.content[0].text,'請至github頁面找尋PR相關資料！不開放搜尋PR!');
   assert.equal(quotaRequests.length,before);
+});
+
+test('PR denial and the approaching QoS warning appear as two lines, without spending search quota',async()=>{
+ const jwt=await token(),before=quotaRequests.length,searches=privateSearchRequests;
+ quotaNotice='提醒！MCP QoS 即將達到限制，請放慢呼叫頻率。';
+ try{
+  const response=await handleMcp(req('POST',jwt,rpc('tools/call',{
+   name:'galaxy_link',arguments:{action:'search',scopeid:'lo3rwang',
+    query:'PR #9999',user_requested:true}
+  })));
+  const result=(await response.json()).result;
+  assert.equal(result.isError,true);
+  assert.deepEqual(result.content[0].text.split('\n'),[
+   '請至github頁面找尋PR相關資料！不開放搜尋PR!',
+   quotaNotice
+  ]);
+  assert.equal(quotaRequests.length,before,'quota inspection must not count as acquire/release');
+  assert.equal(privateSearchRequests,searches,'PR query cannot reach private Galaxy SQL');
+ }finally{quotaNotice='';}
+});
+
+test('search is rejected unless the user-requested flag is true',async()=>{
+ const jwt=await token(),before=privateSearchRequests;
+ const denied=await handleMcp(req('POST',jwt,rpc('tools/call',{
+  name:'galaxy_link',arguments:{action:'search',scopeid:'lo3rwang',query:'時間定錨'}
+ })));
+ assert.equal((await denied.json()).result.isError,true);
+ assert.equal(privateSearchRequests,before);
+ const allowed=await handleMcp(req('POST',jwt,rpc('tools/call',{
+  name:'galaxy_link',arguments:{action:'search',scopeid:'lo3rwang',
+   query:'時間定錨',user_requested:true}
+ })));
+ assert.equal((await allowed.json()).result.isError,undefined);
+ assert.equal(privateSearchRequests,before+1);
 });
