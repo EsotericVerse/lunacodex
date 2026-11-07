@@ -503,6 +503,15 @@ Deno.serve(async (request) => {
       }else if(!["query","managed-write","anchor","analytics","public-action"].includes(String(body.kind)))
         return json({error:{message:"Unsupported SQL target action"}},403);
     }
+    // The database ID supplied with an article read is an assertion, not
+    // permission to choose arbitrary SQL credentials. A collision must
+    // reject rather than return the same UID from the wrong database.
+    if(body.expectedDbId!==undefined){
+      const expected=String(body.expectedDbId||'');
+      if(body.kind!=="query"||body.operation!=="select"||
+         !expected||expected!==searchIndexDatabaseId(target))
+        return json({error:{message:"Article database does not match the authorized SQL route"}},409);
+    }
     // A complete external index can narrow only this one SELECT's UID set.
     // Incomplete, unavailable or ambiguous indexes fall back to the original
     // SQL query without affecting permissions, sort order or pagination.
