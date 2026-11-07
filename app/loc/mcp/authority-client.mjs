@@ -23,7 +23,7 @@ export async function authorityAction(name,args,token,env={},fetchImpl=globalThi
     if(!['search','read','check','record'].includes(a.action))throw bad('Invalid Galaxy Link action');
     if(a.source!==undefined)throw bad('Galaxy Link source is fixed to mcp');
     if(a.action==='search'){
-      if(/(?:\bPR\b|\bpull[ -]?request\b|\bgithub\b|\bcommit\b|合併請求|拉取請求)/i.test(String(a.query||'')))
+      if(/(?:\bPR(?:[\s#:\-]*\d+)?\b|\bpull[ -]?request\b|\bgithub\b|\bcommit\b|合併請求|拉取請求)/i.test(String(a.query||'')))
         throw bad(PR_SEARCH_WARNING);
       if(a.user_requested!==true)
         throw bad('只有使用者明確要求時，才允許搜尋對話；禁止代理自行搜尋。');
