@@ -3,7 +3,8 @@
 // Historical SQL migrations are intentionally handled after the unified merge.
 import {readdirSync,readFileSync} from 'node:fs';
 import {join,relative,extname} from 'node:path';
-const root=new URL('../',import.meta.url).pathname;
+import {fileURLToPath} from 'node:url';
+const root=fileURLToPath(new URL('../',import.meta.url));
 const directories=['app','workers','functions','extensions','services',
   'zenstack','scripts','public','supabase/functions','.github/workflows'];
 const rootFiles=['package.json','next.config.mjs','open-next.config.ts',
@@ -36,8 +37,8 @@ for(const dir of directories)walk(join(root,dir));
 for(const name of rootFiles)check(join(root,name));
 if(results.length){
   for(const result of results.slice(0,250))
-    process.stderr.write(result.path+':'+result.line+' ['+result.matches.join(', ')+']\\n');
-  if(results.length>250)process.stderr.write('... '+(results.length-250)+' more lines\\n');
-  process.stderr.write('LOC legacy provider coupling: '+results.length+' lines; FAIL\\n');
+    process.stderr.write(result.path+':'+result.line+' ['+result.matches.join(', ')+']\n');
+  if(results.length>250)process.stderr.write('... '+(results.length-250)+' more lines\n');
+  process.stderr.write('LOC legacy provider coupling: '+results.length+' lines; FAIL\n');
   process.exitCode=1;
-}else process.stdout.write('LOC legacy provider coupling: 0 lines; PASS\\n');
+}else process.stdout.write('LOC legacy provider coupling: 0 lines; PASS\n');

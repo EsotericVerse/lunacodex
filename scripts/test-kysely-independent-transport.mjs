@@ -80,7 +80,7 @@ test('ISR numeric readers use Kysely without a SQL provider SDK or Auth client',
   const source=readFileSync(new URL('../app/api/loc/_server.js',import.meta.url),'utf8');
   assert.doesNotMatch(source,/createClient\(/);
   assert.match(source,/const primary=createKyselyEdgeClient\(/);
-  assert.match(source,/gatewayUrl:SQL_GATEWAY_URL/);
+  assert.match(source,/gatewayUrl:primaryGatewayUrl/);
   assert.match(source,/candidates\.push\(\{id:\'backup\'/);
   assert.match(source,/NEXT_PUBLIC_LOC_SQL_GATEWAY_URL/);
   assert.match(source,/gatewayUrl:primaryGatewayUrl/);
@@ -106,8 +106,8 @@ test('verified external identity can delegate to an independent SQL Gateway',asy
     }
   });
   assert.equal(gateway.realtimeClient,null);
-  assert.equal(gateway.publicClient.gatewayUrl,'https://sql.example.org/v1/query');
-  assert.equal(gateway.authClient.gatewayUrl,'https://sql.example.org/v1/query');
+  assert.equal(gateway.publicClient.role,'anon');
+  assert.equal(gateway.authClient.role,'authenticated');
   assert.equal(gateway.authClient.publishableKey,undefined);
   assert.equal(await gateway.authClient.getAccessToken({kind:'query',operation:'select',
     schema:'api',table:'loc_user'}),'loc.signed.jwt');
