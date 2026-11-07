@@ -26,7 +26,7 @@ const JWKS=createRemoteJWKSet(new URL('/.well-known/jwks.json',AUTHORITY),{
 function json(value,status=200){return new Response(JSON.stringify(value),{
   status,headers:BASE_HEADERS
 });}
-function error(message,status=400){throw Object.assign(new Error(message),{httpStatus:status});}
+function error(message:string,status=400):never{throw Object.assign(new Error(message),{httpStatus:status});}
 function sourceConfig(){
   // A custom provider target is mandatory: no fallback to Supabase, Neon Auth,
   // a vendor Data API, or a user-supplied connection string.
