@@ -63,6 +63,16 @@ function scopeFromTable(table){
   }
   return table;
 }
+/** PK contract for the only relations accepted by authorizeRelation().
+ * No pg_catalog SELECT: verified against actual Registry/Scope primary keys.
+ */
+export function managedPrimaryKeyColumns(table,modelName=''){
+  const idFields=modelName?fixedSchema.models[modelName]?.idFields:null;
+  if(modelName&&(!idFields||!idFields.length))
+    reject('Invalid fixed LOC primary key metadata');
+  return idFields||
+    [SCOPED_SUFFIXES.some(suffix=>table.endsWith(suffix))?'uid':'id'];
+}
 async function authorizeRelation(trx,table,operation,values,filters,rows){
   if(table==='manage'||table==='loc'){
     if(!await canManageLoc(trx,'global'))reject('Global management permission required',403);
@@ -173,11 +183,7 @@ export async function executeManagedKyselyWrite(trx,body,{modelName=''}={}){
     // Registry and Scope config -> id; Galaxy/Anchor/Blocks -> uid.
     // These were checked against the live PostgreSQL catalog. There is no
     // need for one pg_index SELECT on every edit, including dynamic Scopes.
-    const idFields=modelName?fixedSchema.models[modelName]?.idFields:null;
-    if(modelName&&(!idFields||!idFields.length))
-      reject('Invalid fixed LOC primary key metadata');
-    const keys=idFields||
-      [SCOPED_SUFFIXES.some(suffix=>table.endsWith(suffix))?'uid':'id'];
+    const keys=managedPrimaryKeyColumns(table,modelName);
     if(keys.some(key=>Object.hasOwn(values,key)))
       reject('Primary keys cannot be updated');
   }
