@@ -171,6 +171,7 @@ async function getConfig(){
    resource:cfg.resource||api.href,
   authorization_endpoint:meta.authorization_endpoint,token_endpoint:meta.token_endpoint,
   registration_endpoint:meta.registration_endpoint,
+  revocation_endpoint:meta.revocation_endpoint||'',
   scope:cfg.scope||'loc:import'};
  await chrome.storage.local.set({locConfig:config});
  return config;
@@ -208,6 +209,28 @@ async function registeredClient(config,redirect){
   expires_at:Number(saved.client_id_expires_at||0)*1000||Date.now()+86400000};
  await chrome.storage.local.set({locRegisteredOAuthClient:next});
  return next.client_id;
+}
+async function disconnectLoc(){
+ // Keep all pending Queue data even if server-side revocation is unavailable.
+ if(refreshFlight)await refreshFlight.catch(()=>{});
+ const state=await chrome.storage.local.get(AUTH_KEYS);
+ const token=state.locOAuth?.refresh_token,cfg=state.locConfig;
+ let revoked=false;
+ if(token&&cfg?.client_id&&cfg?.revocation_endpoint){
+  try{
+   const endpoint=new URL(cfg.revocation_endpoint);
+   if(endpoint.origin===new URL(cfg.issuer).origin&&endpoint.pathname==='/oauth/revoke'){
+    const reply=await fetch(endpoint.href,{method:'POST',redirect:'error',cache:'no-store',
+     headers:{'content-type':'application/x-www-form-urlencoded'},
+     body:new URLSearchParams({client_id:cfg.client_id,token,
+      token_type_hint:'refresh_token'}).toString()});
+    revoked=reply.ok;
+   }
+  }catch{}
+ }
+ await chrome.storage.local.remove(AUTH_KEYS);
+ return {disconnected:true,serverRevoked:revoked,
+  ...(token&&!revoked?{warning:'已清除本機授權；伺服器無法確認撤銷，請在連線恢復後重新登入。'}:{})};
 }
 async function connectLoc(){
  const cfg=await getConfig();
@@ -257,7 +280,7 @@ chrome.runtime.onMessage.addListener((message,_sender,respond)=>{
   return true;
  }
  if(message?.action==='loc-disconnect'){
-  chrome.storage.local.remove(AUTH_KEYS).then(()=>respond({disconnected:true}))
+  disconnectLoc().then(respond)
    .catch(e=>respond({error:e.message}));
   return true;
  }

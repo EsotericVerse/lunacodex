@@ -64,6 +64,7 @@ test('native LOC OAuth exposes PKCE-only metadata, keeps SQL resource separate',
  const body=await meta.json();
  assert.equal(body.issuer,ISSUER);
  assert.equal(body.registration_endpoint,ISSUER+'/oauth/register');
+ assert.equal(body.revocation_endpoint,ISSUER+'/oauth/revoke');
  assert.deepEqual(body.code_challenge_methods_supported,['S256']);
  assert.equal(body.token_endpoint_auth_methods_supported[0],'none');
  assert.notEqual(MCP_AUDIENCE,IMPORT_AUDIENCE);
@@ -194,6 +195,17 @@ test('GitHub verified identity -> LOC cookie -> per-install PKCE -> signed token
   assert.equal(claims.sub,profile.user.id);
   assert.deepEqual(claims.grants,['lo3rwang:write']);
 
+  const revoked=await handleNativeOAuth(request('/oauth/revoke',{
+   method:'POST',headers:{origin,'content-type':'application/x-www-form-urlencoded'},
+   body:new URLSearchParams({client_id:client.client_id,
+    token:next.refresh_token,token_type_hint:'refresh_token'}).toString()
+  }),env);
+  assertStatus(revoked,200);
+  assertStatus(await handleNativeOAuth(request('/oauth/token',{
+   method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},
+   body:new URLSearchParams({grant_type:'refresh_token',client_id:client.client_id,
+    refresh_token:next.refresh_token}).toString()
+  }),env),401);
   assertStatus(await handleNativeOAuth(request('/oauth/logout',{
    method:'POST',headers:{origin:WEB_AUDIENCE,cookie}}),env),200);
   await assert.rejects(verifyNativeOAuth(request('/v1/import/short',{

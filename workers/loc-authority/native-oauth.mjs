@@ -135,6 +135,7 @@ async function issueToken(stub,session,resource,scope,client_id){
 export function isNativeOAuthPath(path){
  return path==='/.well-known/oauth-authorization-server'||path==='/oauth/register'||
   path==='/oauth/authorize'||path==='/oauth/login'||path==='/oauth/token'||
+  path==='/oauth/revoke'||
   path==='/oauth/callback/github'||path==='/oauth/callback/oidc'||
   path==='/oauth/logout'||path==='/v1/auth/session'||path==='/v1/import/short';
 }
@@ -370,6 +371,23 @@ async function token(request,stub,origin){
  }
  error('Unsupported OAuth grant');
 }
+// RFC 7009: revoking an unknown token succeeds without revealing validity;
+// a public client may only consume refresh records issued to that client.
+async function revoke(request,stub,origin){
+ if(!String(request.headers.get('content-type')||'').toLowerCase()
+  .startsWith('application/x-www-form-urlencoded'))error('OAuth form required',415);
+ const raw=await request.text();
+ if(raw.length>3000)error('Revocation form too large',413);
+ const form=new URLSearchParams(raw),clientId=String(form.get('client_id')||'');
+ await clientFor(stub,clientId);
+ const secret=String(form.get('token')||'');
+ if(CODE_PATTERN.test(secret)){
+  const key='native-refresh:'+await sha(secret);
+  const saved=await stub.nativeGet(key);
+  if(saved?.client_id===clientId)await stub.nativeTake(key);
+ }
+ return response({},200,origin);
+}
 async function session(request,stub,origin){
  const identity=await sessionFromCookie(request,stub);
  if(!identity)return response({session:null,user:null},200,origin);
@@ -431,7 +449,8 @@ export async function handleNativeOAuth(request,env){
   const stub=authority(env),path=url.pathname;
   if(path==='/.well-known/oauth-authorization-server'&&request.method==='GET')
    return response({issuer:ISSUER,authorization_endpoint:ISSUER+'/oauth/authorize',
-    token_endpoint:ISSUER+'/oauth/token',registration_endpoint:ISSUER+'/oauth/register',
+    token_endpoint:ISSUER+'/oauth/token',revocation_endpoint:ISSUER+'/oauth/revoke',
+    registration_endpoint:ISSUER+'/oauth/register',
     jwks_uri:ISSUER+'/.well-known/jwks.json',
     response_types_supported:['code'],grant_types_supported:['authorization_code','refresh_token'],
     code_challenge_methods_supported:['S256'],token_endpoint_auth_methods_supported:['none'],
@@ -445,6 +464,7 @@ export async function handleNativeOAuth(request,env){
   if(path==='/oauth/callback/oidc'&&request.method==='GET')
    return callback(request,url,stub,'oidc');
   if(path==='/oauth/token'&&request.method==='POST')return token(request,stub,origin);
+  if(path==='/oauth/revoke'&&request.method==='POST')return revoke(request,stub,origin);
   if(path==='/v1/auth/session'&&request.method==='GET')return session(request,stub,origin);
   if(path==='/oauth/logout'&&request.method==='POST')return logout(request,stub,origin);
   if(path==='/v1/import/short'&&request.method==='POST')
