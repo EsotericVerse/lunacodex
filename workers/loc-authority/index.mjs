@@ -5,6 +5,9 @@ import {normalizeSqlDriverAuthentication,publicSqlDriverAuthentication,
   sqlAuthNeedsUserPassword} from '../../app/loc/providers/sql-driver-auth.mjs';
 import {ISSUER,MCP_AUDIENCE,WEB_AUDIENCE,isNativeOAuthPath,handleNativeOAuth,
   verifyNativeOAuth} from './native-oauth.mjs';
+import {runBetterAuthStore} from './better-auth-store.mjs';
+import {handleFirstPartyAuth} from './better-auth-native.mjs';
+import {verifyAuthReference,assertReferencePermission} from './auth-ref.mjs';
 import {validateKeywordCategoryEntry,hashKeywordCategory,assertPublicKeywordClass} from './keyword-categories.mjs';
 import {AUTH_PROVIDER_TYPES,validateAuthProviderSettings,publicAuthProviderSettings}
   from '../../app/loc/auth/auth-provider-settings.mjs';
@@ -55,6 +58,24 @@ function validateTarget(input,id){
     throw fail('Invalid database connection metadata');
   const password=input.password;
   if(password!==undefined&&(typeof password!=='string'||password.length>4096))throw fail('Invalid database secret');
+  const refProvider=String(input.ref_provider||'');
+  const refPermission=String(input.ref_permission||'');
+  if(refProvider&&!AUTH_PROVIDER_TYPES.includes(refProvider)||
+     refPermission&&(!refProvider||!/^[A-Za-z0-9_:@.\/\-]{2,256}$/.test(refPermission)))
+    throw fail('Invalid database Auth Ref requirement',400);
+  const schemaName=String(input.schema_name||
+    (engine==='postgres'?'silver':engine==='mssql'?'dbo':''));
+  const tableName=String(input.table_name||'');
+  const columns=input.field_map||{};
+  const identifier=/^[A-Za-z][A-Za-z0-9_]{0,119}$/;
+  if((schemaName&&!identifier.test(schemaName))||
+     (tableName&&!identifier.test(tableName))||
+     !columns||typeof columns!=='object'||Array.isArray(columns)||
+     Object.keys(columns).length>32||
+     Object.entries(columns).some(([logical,physical])=>
+       !identifier.test(logical)||typeof physical!=='string'||
+       !identifier.test(physical)))
+    throw fail('Invalid database relation mapping',400);
   const selectableByUsers=input.selectable_by_users===true;
  if(input.selectable_by_users!==undefined&&typeof input.selectable_by_users!=='boolean')
   throw fail('Invalid user database selection policy');
@@ -63,6 +84,8 @@ function validateTarget(input,id){
     allowedSubjects.some(x=>!/^loc_[A-Za-z0-9_-]{32,80}$/.test(String(x))))
    throw fail('Invalid database allowed subjects');
  return {id,engine,host,port,database,username,label,authentication,
+  ref_provider:refProvider,ref_permission:refPermission,
+  schema_name:schemaName,table_name:tableName,field_map:columns,
   selectable_by_users:selectableByUsers,
   allowed_subjects:[...new Set(allowedSubjects)],
   ...(password?{password}:{})};
@@ -195,11 +218,43 @@ export class LocAuthorityState extends DurableObject {
         ((next.blockedUntil > now ? next.blockedUntil : next.start + minute)-now)/1000)};
     });
   }
+  async betterAuthStorage(request){return runBetterAuthStore(this.ctx.storage,request);}
   async nativeGet(key){return this.ctx.storage.get(key);}
   async nativePut(key,value){await this.ctx.storage.put(key,value);return true;}
   async nativeTake(key){return this.ctx.storage.transaction(async t=>{
     const value=await t.get(key);if(value!==undefined)await t.delete(key);return value;
   });}
+  async authRefProfile(type){
+    if(!AUTH_PROVIDER_TYPES.includes(type))throw fail('Unknown Auth Ref',400);
+    const item=await this.ctx.storage.get('auth-provider:'+type);
+    if(!item)throw fail('Auth Ref is not configured',503);
+    return decryptProfile(item.encrypted,this.env.LOC_CONTROL_ENCRYPTION_KEY);
+  }
+  async recordAuthReference(subject,assertion){
+    if(!/^loc_[A-Za-z0-9_-]{32,80}$/.test(String(subject||''))||
+       !AUTH_PROVIDER_TYPES.includes(assertion?.provider)||
+       !Number.isFinite(assertion?.expires)||assertion.expires<=Date.now())
+      throw fail('Invalid Auth Ref assertion',400);
+    await this.ctx.storage.put('auth-ref:'+subject+':'+assertion.provider,assertion);
+    return {provider:assertion.provider,externalSubject:assertion.externalSubject,
+      permissions:assertion.permissions,expires:assertion.expires};
+  }
+  async authReferenceStatus(subject){
+    const rows=await this.ctx.storage.list({prefix:'auth-ref:'+subject+':'});
+    return [...rows.values()].filter(x=>x.expires>Date.now()).map(x=>
+      ({provider:x.provider,externalSubject:x.externalSubject,
+        permissions:x.permissions,expires:x.expires}));
+  }
+  async checkAuthReference(subject,provider,permission=''){
+    const assertion=await this.ctx.storage.get('auth-ref:'+subject+':'+provider);
+    assertReferencePermission(assertion,provider,permission);
+    return true;
+  }
+  async hasVerifiedAuthRefEmail(subject,email){
+    const proofs=await this.ctx.storage.list({prefix:'auth-ref:'+subject+':'});
+    return [...proofs.values()].some(x=>x.emailVerified===true&&
+      x.expires>Date.now()&&x.email===String(email||'').trim().toLowerCase());
+  }
   async nativeProvider(type){
     if(!['github','oidc'].includes(type))throw fail('Unsupported identity provider');
     const item=await this.ctx.storage.get('auth-provider:'+type);
@@ -299,6 +354,12 @@ export class LocAuthorityState extends DurableObject {
     });
     return publicView;
   }
+  async trustedDatabaseProfile(id){
+    if(!ID.test(String(id||'')))throw fail('Invalid database target',400);
+    const saved=await this.ctx.storage.get('target:'+id);
+    if(!saved)throw fail('Database target not configured',404);
+    return decryptProfile(saved.encrypted,this.env.LOC_CONTROL_ENCRYPTION_KEY);
+  }
   async putTarget(id,input){
     const old=await this.ctx.storage.get('target:'+id);
     const previous=old?await decryptProfile(old.encrypted,
@@ -345,7 +406,8 @@ export class LocAuthorityState extends DurableObject {
         (Array.isArray(info.allowed_subjects)&&info.allowed_subjects.includes(subject));
       if(!authorized)return [];
       return [{id:key.slice('target:'.length),label:String(info.label||key),
-        engine:info.engine}];
+        engine:info.engine,ref_provider:String(info.ref_provider||''),
+        ref_permission:String(info.ref_permission||'')}];
     }).sort((a,b)=>a.label.localeCompare(b.label));
     const current=await this.ctx.storage.get('user-db:'+subject)||null;
     return {targets,selected:targets.some(x=>x.id===current)?current:null};
@@ -362,7 +424,13 @@ export class LocAuthorityState extends DurableObject {
     return {selected:id};
   }
   async selectedDatabaseForDelegation(subject,isRoot=false){
-    return (await this.databaseTargetsForUser(subject,isRoot)).selected;
+    const id=(await this.databaseTargetsForUser(subject,isRoot)).selected;
+    if(id){
+      const target=await this.ctx.storage.get('target:'+id);
+      const {ref_provider,ref_permission}=target?.public||{};
+      if(ref_provider)await this.checkAuthReference(subject,ref_provider,ref_permission);
+    }
+    return id;
   }
   async verifyLiveDatabaseSelection(subject,id,isRoot=false){
     return id===await this.selectedDatabaseForDelegation(subject,isRoot);
@@ -992,6 +1060,13 @@ async function exchangeLocDelegation(request,env,principal,origin){
     (global||identity||self)&&audience!=='sql'||
     Number(global)+Number(identity)+Number(self)>1)
     throw fail('Invalid delegation audience',400);
+  // A self-asserted native email cannot acquire Scope or administrator grants.
+  if(principal.emailVerified===false){
+    const state=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName(
+      'loc-authority-control-v1'));
+    if(!await state.hasVerifiedAuthRefEmail(principal.subject,principal.email))
+      throw fail('Verified LOC email or matching external Auth Ref required',403);
+  }
   const roots=String(env.LOC_RECOVERY_ROOT_LOC_SUBJECTS||'')
     .split(/[\s,;]+/).filter(Boolean);
   const root=roots.includes(principal.subject);
@@ -1046,6 +1121,7 @@ export default {
     let origin='';
     try{
       const target=new URL(request.url);
+      if(target.pathname.startsWith('/api/auth/'))return handleFirstPartyAuth(request,env);
       if(isNativeOAuthPath(target.pathname))return handleNativeOAuth(request,env);
       requireSetup(env);
       origin=allowedOrigin(request,env);
@@ -1073,11 +1149,45 @@ export default {
             'cache-control':'public, max-age=300','x-content-type-options':'nosniff'}
         });
       }
+      // Trusted application backends fetch a selected connection profile.
+      // This endpoint NEVER executes SQL and is inaccessible to OAuth users.
+      const profileMatch=/^\/v1\/internal\/database\/([a-z][a-z0-9_-]{0,63})$/
+        .exec(url.pathname);
+      if(profileMatch){
+        if(request.method!=='GET')throw fail('Method not allowed',405);
+        const expected=String(env.LOC_DB_PROFILE_SERVICE_TOKEN||'');
+        const supplied=String(request.headers.get('x-loc-service-token')||'');
+        if(expected.length<32||supplied.length!==expected.length)
+          throw fail('Trusted LOC backend required',403);
+        let mismatch=0;
+        for(let i=0;i<expected.length;i++)
+          mismatch|=expected.charCodeAt(i)^supplied.charCodeAt(i);
+        if(mismatch!==0)throw fail('Trusted LOC backend required',403);
+        const owner=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName(
+          'loc-authority-control-v1'));
+        return json(await owner.trustedDatabaseProfile(profileMatch[1]),200,'');
+      }
       const principal=await verifyNativeOAuth(request,env,WEB_AUDIENCE);
       if(!url.pathname.startsWith('/v1/'))throw fail('Not found',404);
       // Identity endpoint is only a verified principal lookup. It grants no
       // data access or management capabilities; the trusted app checks grants.
       if(request.method==='GET'&&url.pathname==='/v1/identity')return json(principal,200,origin);
+      const control=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName(
+        'loc-authority-control-v1'));
+      if(request.method==='GET'&&url.pathname==='/v1/auth/ref/status')
+        return json({references:await control.authReferenceStatus(principal.subject)},200,origin);
+      if(request.method==='POST'&&url.pathname==='/v1/auth/ref/check'){
+        const raw=await request.text();
+        if(raw.length>13000)throw fail('Auth Ref proof is too large',413);
+        let input;try{input=JSON.parse(raw)}catch{throw fail('Invalid Auth Ref request',400)}
+        if(!input||typeof input!=='object'||Array.isArray(input)||
+          Object.keys(input).some(key=>!['provider','credential'].includes(key))||
+          !AUTH_PROVIDER_TYPES.includes(input.provider))
+          throw fail('Invalid Auth Ref provider',400);
+        const profile=await control.authRefProfile(input.provider);
+        const proof=await verifyAuthReference(input.provider,input.credential,profile);
+        return json(await control.recordAuthReference(principal.subject,proof),200,origin);
+      }
       if(request.method==='POST'&&url.pathname==='/v1/delegation')
         return await exchangeLocDelegation(request,env,principal,origin);
       // Account-level database selection is independent for each LOC identity.
@@ -1112,7 +1222,7 @@ export default {
       if(request.method==='GET'&&url.pathname==='/v1/state')return json(await stub.listState(),200,origin);
       if(request.method==='GET'&&url.pathname==='/v1/auth/providers')
         return json(await stub.listAuthProviders(),200,origin);
-      const authMatch=/^\/v1\/auth\/providers\/(github|oidc|entra|ldap|ad)$/.exec(url.pathname);
+      const authMatch=/^\/v1\/auth\/providers\/(github|oidc|entra|ldap|ad|clerk)$/.exec(url.pathname);
       if(request.method==='PUT'&&authMatch){
         const raw=await request.text();
         if(raw.length>12000)throw fail('Request too large',413);

@@ -6,17 +6,17 @@ import {issueDelegation,verifyDelegationBoundary} from '../app/loc/auth/delegati
 
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
 const source=readFileSync(new URL('../workers/loc-authority/index.mjs',import.meta.url),'utf8')
-  .replace(/^import \{ISSUER,[\s\S]*?from '\.\/native-oauth\.mjs';\s*$/m,'')
-  .replace(/^import[^\n]*;\s*$/gm,'')
-  .replace(/^import \{AUTH_PROVIDER_TYPES[^\n]*\n\s*from[^\n]*;\s*$/m,'')
+  .replace(/^[\s\S]*?(?=\/\/ LOC Auth is the native identity issuer)/,'')
   .replace('export class LocAuthorityState','class LocAuthorityState')
   .replace('export default {','const worker={');
 const {LocAuthorityState,worker}=new Function('DurableObject','issueDelegation',
   'validateKeywordCategoryEntry','hashKeywordCategory','assertPublicKeywordClass',
   'AUTH_PROVIDER_TYPES','validateAuthProviderSettings','publicAuthProviderSettings',
-  'isNativeOAuthPath','looksLikeNativeToken',source+'\nreturn {LocAuthorityState,worker};')(
+  'isNativeOAuthPath','looksLikeNativeToken','checkExternalAuthQos','verifyNativeOAuth','WEB_AUDIENCE',source+'\nreturn {LocAuthorityState,worker};')(
     class {constructor(ctx,env){this.ctx=ctx;this.env=env;}},issueDelegation,
-    ()=>{},()=>{},()=>{},[],()=>{},()=>{},()=>false,()=>false
+    ()=>{},()=>{},()=>{},[],()=>{},()=>{},()=>false,()=>false,async()=>null,
+    async()=>{throw Object.assign(new Error('OAuth required'),{status:401});},
+    'https://loc.lo3rwang.cc'
   );
 const saved=new Map();
 const storage={get:async key=>saved.get(key),put:async(k,v)=>saved.set(k,v),

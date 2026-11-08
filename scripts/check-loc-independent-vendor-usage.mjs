@@ -3,7 +3,7 @@
 // Negative regression tests intentionally mention forbidden vendor names;
 // historical migrations, test fixtures and manual workflows are not runtime imports.
 // A passing result therefore means active-runtime scan, not every repository byte.
-import {readdirSync,readFileSync} from 'node:fs';
+import {readdirSync,readFileSync,existsSync} from 'node:fs';
 import {join,relative,extname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 const root=fileURLToPath(new URL('../',import.meta.url));
@@ -14,7 +14,8 @@ const rootFiles=['package.json','next.config.mjs','open-next.config.ts',
 const extensions=new Set(['.js','.mjs','.cjs','.jsx','.ts','.tsx',
   '.json','.jsonc','.yml','.yaml','.html','.toml']);
 const skip=/^(?:public\/vendor\/|extensions\/[^/]+\/vendor\/)/;
-const coupling=/(supabase|neon|clerk)/ig;
+// Names of horizontal Auth Ref providers are allowed; their vendor SDKs are not.
+const coupling=/(@clerk\/|@supabase\/|@neondatabase\/)/ig;
 const results=[];
 function check(path){
   const relativePath=relative(root,path).replaceAll('\\','/');
@@ -39,7 +40,10 @@ function walk(dir){
   }
 }
 for(const dir of directories)walk(join(root,dir));
-for(const name of rootFiles)check(join(root,name));
+for(const name of rootFiles){
+  const path=join(root,name);
+  if(existsSync(path))check(path);
+}
 if(results.length){
   for(const result of results.slice(0,250))
     process.stderr.write(result.path+':'+result.line+' ['+result.matches.join(', ')+']\n');

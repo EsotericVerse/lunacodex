@@ -103,6 +103,7 @@ export async function handleNativeLocOperation(request,env={},{
     if(!selected?.db||!['postgres','mysql','mssql'].includes(selected.engine))
       throw refusal('LOC native Kysely driver is not configured',503);
     if(body.kind==='short-import'){
+      if(selected.tableName)throw refusal('External mapped tables are read only',403);
       const actor=authorizeDelegatedShortImport(body,claims);
       const receipt=await processShortImport(body.batch,actor,{
         store:portableShortImportStore(selected.db,sql,{
@@ -111,7 +112,8 @@ export async function handleNativeLocOperation(request,env={},{
       return reply(receipt);
     }
     const result=await executePortableMcp(selected.db,body,claims,{
-      engine:selected.engine,namespace:selected.namespace});
+      engine:selected.engine,namespace:selected.namespace,
+      tableName:selected.tableName,fieldMap:selected.fieldMap});
     return reply({data:result.data});
   }catch(error){
     const status=Number(error?.httpStatus)||500;

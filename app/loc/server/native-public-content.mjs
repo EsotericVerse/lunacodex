@@ -5,6 +5,7 @@ import {SCOPE_ROUTE_INDEX} from '../../modular/scope-route-index.js';
 import {scopeConfigColumns,scopeFeatureEnabled} from '../scope-config-fields.mjs';
 import {directMcpKysely} from '../mcp/native-kysely.mjs';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
+import {portableRelation} from '../providers/sql-engine-ports.mjs';
 
 const FEATURES=new Set(['culture','statics','trace','search']);
 const HEADERS={'content-type':'application/json; charset=utf-8',
@@ -21,8 +22,9 @@ const total=value=>Number(value)||0;
 // A fixed, bounded Galaxy aggregation performed where the native connection
 // already lives. Never download per-article rows to aggregate in a browser;
 // never infer Galaxy.site from a Source Anchor display label.
-async function readGalaxyNumeric(db,scope,kind,start,end){
-  const table='silver.'+scope+'_galaxy';
+async function readGalaxyNumeric(db,scope,kind,start,end,port){
+  const table=portableRelation(scope+'_galaxy',port.engine,
+    port.namespace||(port.engine==='postgres'?'silver':'dbo'));
   const isCulture=kind==='culture_density';
   if(kind==='earliest'){
     const first=await db.selectFrom(table).select(eb=>eb.fn.min('date').as('earliest'))
@@ -109,18 +111,19 @@ export async function handleNativePublicContent(request,env={},{
     const alias=String(env.LOC_PUBLIC_DB_ALIAS||env.LOC_CONTROL_DB_ALIAS||
       env.LOC_MCP_DB_ALIAS||publishedAlias);
     const port=await database(env,alias);
-    if(!port?.db||port.engine!=='postgres')
+    if(!port?.db||!['postgres','mysql','mssql'].includes(port.engine))
       return respond({error:'LOC native database unavailable'},503);
     const query=port.db;
-    if(numeric)return respond({data:await readGalaxyNumeric(query,scope,kind,start,end)});
+    const relation=name=>portableRelation(name,port.engine,
+      port.namespace||(port.engine==='postgres'?'silver':'dbo'));
+    if(numeric)return respond({data:await readGalaxyNumeric(query,scope,kind,start,end,port)});
     if(kind==='config'){
       const columns=scopeConfigColumns(scope).split(',').filter(Boolean);
-      const row=await query.selectFrom('silver.'+scope)
+      const row=await query.selectFrom(relation(scope))
         .select(columns).where('id','=',scope).limit(1).executeTakeFirst();
       return respond({data:row||null});
     }
-    const table=kind==='hero'?'silver.loc_blocks':
-      'silver.'+scope+'_blocks';
+    const table=relation(kind==='hero'?'loc_blocks':scope+'_blocks');
     const names=kind==='hero'?['group_'+feature,'scope_'+feature]:['index'];
     const data=await query.selectFrom(table).select(BLOCK_FIELDS)
       .where('page_name','in',names).orderBy('block_order','asc')

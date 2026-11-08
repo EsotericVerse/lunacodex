@@ -9,8 +9,8 @@ const sample={client_id:'OAuthClient_123',client_secret:'loc-super-secret-123',
   callback_url:'https://auth.lo3rwang.cc/oauth/callback/github'};
 
 test('each supported provider has its own field contract',()=>{
-  assert.deepEqual(AUTH_PROVIDER_TYPES,['github','oidc','entra','ldap','ad']);
-  for(const type of AUTH_PROVIDER_TYPES)
+  assert.deepEqual(AUTH_PROVIDER_TYPES,['github','oidc','entra','ldap','ad','clerk']);
+  for(const type of AUTH_PROVIDER_TYPES.filter(type=>type!=='clerk'))
     assert.ok(AUTH_PROVIDER_FIELDS[type].some(field=>field.kind==='secret'));
   assert.equal(AUTH_PROVIDER_FIELDS.neon,undefined);
 });
@@ -44,7 +44,7 @@ test('reject untrusted or unknown fields, including fake activation',()=>{
   assert.throws(()=>validateAuthProviderSettings('github',{...sample,active:true},{siteOrigin}),
     /Unexpected/);
   assert.throws(()=>validateAuthProviderSettings('clerk',sample,{siteOrigin}),
-    /Unsupported/);
+    /Unexpected/);
   assert.throws(()=>validateAuthProviderSettings('github',{...sample,client_secret:'x'},
     {siteOrigin}),/Client Secret/);
 });

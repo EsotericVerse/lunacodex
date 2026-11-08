@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {normalizeLiveTarget,runtimeTargetId} from '../app/loc/providers/live-database-target.mjs';
 
 const profiles=[
- ['postgres',5432,'postgres:',''],
+ ['postgres',5432,'postgres:','silver'],
  ['mysql',3306,'mysql:',''],
  ['mssql',1433,'mssql:','dbo']
 ];
