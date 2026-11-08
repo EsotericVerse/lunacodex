@@ -51,7 +51,7 @@ test('Settings home owns the sole OAuth login action and verifies session',()=>{
   assert.ok(account.includes('VERIFIED_SESSION_KEY'));
   assert.ok(account.includes('sessionOnly?(enabled?VERIFIED_SESSION_KEY:SESSION_KEY)'));
   assert.ok(settings.includes("useAccount({enabled:section==='home',sessionOnly:true})"));
-  assert.ok(settings.includes('Google OAuth（已驗證）：{account.email}'));
+  assert.ok(settings.includes('LOC Auth（已驗證）：{account.email}'));
   assert.ok(!settings.includes('account.email||account.user.email'));
   assert.equal(settings.match(/onClick=\{login\}/g)?.length,1);
   assert.equal(settings.match(/onClick=\{logout\}/g)?.length,1);
