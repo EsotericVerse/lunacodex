@@ -21,7 +21,7 @@ import Select from 'react-select';
 import {useAsyncResource,useResourceCache} from '../../loc/use-async-resource';
 import {useRouter,useSearchParams} from 'next/navigation';
 
-import {dbAuthClient,deleteRows,updateRows} from '../../loc/db-client.mjs';
+import {dbAuthClient,dbPublicClient,deleteRows,updateRows} from '../../loc/db-client.mjs';
 import {useAccount} from '../../loc/use-account';
 import {ArticleSortSelect,FeaturePage,IncrementalList,WorkFullText} from '../ui';
 import ScopeLink from '../ScopeLink';
@@ -386,9 +386,13 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     return ()=>clearTimeout(timer);
   },[query]);
   const patternSuggestionsQuery=useAsyncResource({
-    queryKey:['loc-pattern-autocomplete',patternScopeIds.join(','),debouncedPatternInput],
+    queryKey:['loc-pattern-autocomplete',managementMode?'manage':'public',patternScopeIds.join(','),debouncedPatternInput],
     enabled:patternScopeIds.length>0&&debouncedPatternInput.length>0,
     queryFn:async()=>{
+      if(!managementMode){
+        const {suggestPublicAnchors}=await import('../../loc/public-anchor-search.mjs');
+        return suggestPublicAnchors(patternScopeIds,debouncedPatternInput,{client:dbPublicClient});
+      }
       const {keywordService}=await import('../../loc/keyword-service-client.mjs');
       const result=await keywordService('suggestAnchors',{
         scopeIds:patternScopeIds,query:debouncedPatternInput
@@ -456,6 +460,21 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     append=false,overrideOptions=null
   }={}){
     if(!selection?.scopeId||!selection.uid||!selection.type)return;
+    // Public Keyword UIDs have no analyzed article posting lists yet.
+    // Run the existing article search for published words, never block on
+    // the private Keyword service or make an unindexed UID lookup.
+    if(!managementMode&&['pattern','item'].includes(selection.type)){
+      const {publicKeywordQuery}=await import('../../loc/public-anchor-search.mjs');
+      const terms=publicKeywordQuery(selection);
+      if(terms){
+        setQuery(String(selection.title||''));
+        return executeSearch(terms,null,{overrideOptions:{
+          contentType,sourceFilter,startDate,endDate,
+          scopeFilter:selection.scopeId,placeOnly:false,
+          browse:false,sortDirection:articleSort
+        }});
+      }
+    }
     const options=overrideOptions||{
       anchorSelection:selection,contentType,sourceFilter,startDate,endDate,
       sortDirection:articleSort,browse:false
@@ -471,14 +490,22 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     const id=++searchId.current;
     beginRequest();
     try{
-      const {keywordService}=await import('../../loc/keyword-service-client.mjs');
-      const result=await keywordService('anchorSearch',{
-        scopeId:selection.scopeId,uid:selection.uid,type:selection.type,
+      const request={
         offset:cursor||0,limit:pageSize,
         sortDirection:options.sortDirection||'desc',
         startDate:options.startDate||'',endDate:options.endDate||'',
         sourceFilter:options.sourceFilter||'',contentType:options.contentType||''
-      });
+      };
+      let result;
+      if(!managementMode&&['date','point','from','domain'].includes(selection.type)){
+        const {readPublicAnchorArticles}=await import('../../loc/public-anchor-search.mjs');
+        result=await readPublicAnchorArticles(selection,request,dbPublicClient);
+      }else{
+        const {keywordService}=await import('../../loc/keyword-service-client.mjs');
+        result=await keywordService('anchorSearch',{
+          scopeId:selection.scopeId,uid:selection.uid,type:selection.type,...request
+        });
+      }
       if(id!==searchId.current)return;
       const converted=(result?.rows||[]).map(({row,source})=>
         toResult(row,source,scopeId,UI_COPY)).filter(Boolean);
@@ -520,13 +547,13 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       }
       lastTextSearchAt.current=now;
     }
-    const searchScopes=scopeId==='loc'&&managementMode&&options.scopeFilter
+    const searchScopes=scopeId==='loc'&&options.scopeFilter
       ?availableScopes.filter(item=>item.id===options.scopeFilter)
       :availableScopes;
-    if(scopeId==='loc'&&managementMode&&options.scopeFilter&&!searchScopes.length){
+    if(scopeId==='loc'&&options.scopeFilter&&!searchScopes.length){
       setError(t('uiExtra.searchUI.scopeUnavailable'));return;
     }
-    const searchCollectionLabel=scopeId==='loc'&&managementMode&&options.scopeFilter
+    const searchCollectionLabel=scopeId==='loc'&&options.scopeFilter
       ?scopeLabel(options.scopeFilter):collectionLabel;
     if(options.startDate&&options.endDate&&options.startDate>options.endDate){
       setError(t('uiExtra.searchUI.invalidDateRange'));return;
@@ -1145,7 +1172,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     placeholder={placeholder} aria-label="綜合導覽搜尋與定錨自動完成"
     value={null} inputValue={query} options={anchorSuggestGroups}
     filterOption={()=>true} isLoading={Boolean(patternSuggestionsQuery.isPending)}
-    noOptionsMessage={()=>normalizedPatternInput?'沒有符合的定錨建議':'輸入關鍵詞、地點、來源或日期'}
+    noOptionsMessage={()=>patternSuggestionsQuery.isError?'建議暫時無法讀取，可直接搜尋全文':normalizedPatternInput?'沒有符合的定錨建議':'輸入關鍵詞、地點、來源或日期'}
     onInputChange={(value,meta)=>{
       if(meta.action==='input-change'){
         setQuery(value);setSearchPopularOpen(false);
