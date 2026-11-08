@@ -31,3 +31,40 @@ test('public API never executes writes with browser public key',()=>{
   const adapter=createConfiguredAdapter({accountAdapter:identity,fetchImpl:async()=>{throw Error('fetch unavailable')}});
   assert.throws(()=>adapter.authClient.schema('silver').from('loc').insert([]),/owner Web Server/);
 });
+
+
+test('Culture and Statistics use the same native bounded Galaxy business reader',async()=>{
+  const calls=[];
+  const api=createDirectDataApiClient({url:'https://example.net/rest/v1',apiKey:'public',
+    fetch:async(url,opts)=>{
+      calls.push({url:String(url),opts});
+      return Response.json({data:[{day:'2026-11-08',site:'threads',item_count:3}]});
+    }});
+  const data=await api.schema('silver').analytics({
+    p_view:'culture_density',p_scope_id:'lo3rwang',
+    p_start:'2026-11-01',p_end:'2026-11-08'
+  });
+  assert.equal(data.data[0].item_count,3);
+  const stats=await api.schema('silver').analytics({
+    p_view:'overview',p_scope_id:'lo3rwang',
+    p_start:'2026-11-01',p_end:'2026-11-08'
+  });
+  assert.equal(stats.data[0].item_count,3);
+  assert.equal(calls.length,2);
+  assert.ok(calls.every(call=>call.url.startsWith('/api/loc-public-content?')));
+  assert.equal(new URL(calls[0].url,'https://loc.lo3rwang.cc').searchParams.get('kind'),
+    'culture_density');
+  assert.equal(new URL(calls[1].url,'https://loc.lo3rwang.cc').searchParams.get('kind'),
+    'overview');
+  assert.ok(calls.every(call=>!call.url.includes('count()')&&!call.url.includes('/rest/v1')));
+  assert.ok(calls.every(call=>call.opts.credentials==='omit'));
+});
+test('native Galaxy analytics rejects unrecognized operations without any request',async()=>{
+  let calls=0;
+  const api=createDirectDataApiClient({url:'https://example.net/rest/v1',apiKey:'public',
+    fetch:async()=>{calls++;throw Error('unexpected network')}});
+  await assert.rejects(api.schema('silver').analytics({
+    p_scope_id:'lo3rwang',p_view:'arbitrary_sql'
+  }),/Unsupported public aggregation operation/);
+  assert.equal(calls,0);
+});
