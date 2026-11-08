@@ -68,9 +68,13 @@ export function normalizeKeywordTreeRow(row){
   }
   const compact=row?.uid_lists&&typeof row.uid_lists==='object'&&!Array.isArray(row.uid_lists)
     &&Array.isArray(row.uid_lists.uidlists);
-  const total=compact&&Number.isSafeInteger(Number(row.uid_lists.total))
-    ?Number(row.uid_lists.total):type==='item'
-      ?uid_lists.reduce((sum,hit)=>sum+hit.times,0):uid_lists.length;
+  // A virtual catalog may provide a computed total from loc_search_pattern.
+  // Physical Anchor itself never stores Keyword hit numbers.
+  const projected=Number(row?.total);
+  const total=Number.isSafeInteger(projected)&&projected>=0&&row?.total!=null
+    ?projected:compact&&Number.isSafeInteger(Number(row.uid_lists.total))
+      ?Number(row.uid_lists.total):type==='item'
+        ?uid_lists.reduce((sum,hit)=>sum+hit.times,0):uid_lists.length;
   return {uid,type,name,desc,lists:[...lists],uid_lists:[...uid_lists],total};
 }
 // Shared UID-linked tree used by Keywords and source classification.
