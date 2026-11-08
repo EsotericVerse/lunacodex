@@ -1,4 +1,4 @@
-// Short-import authorization boundary shared with the LOC-delegated SQL Gateway.
+// Short-import authorization boundary for signed LOC native Kysely business operations.
 // verifyLocDelegation has already validated issuer, RS256 signature, audience,
 // expiration, revocation and the signed grant list before calling this helper.
 // The signed Scope write grant, not a frozen two-Scope list, authorizes imports.
@@ -13,7 +13,7 @@ export function authorizeDelegatedShortImport(body,claims){
     body.kind!=='short-import'||typeof body.scopeid!=='string'||
     !SCOPE.test(body.scopeid)||
     !body.batch||typeof body.batch!=='object'||Array.isArray(body.batch))
-   throw refusal('Invalid short-import gateway payload',400);
+   throw refusal('Invalid native short-import payload',400);
  // A general authenticated session is NOT an import grant. The actual
  // LOC identity MUST have an explicit, signed write grant for this Scope.
  if(claims?.provider!=='loc'||claims.me!==true||
