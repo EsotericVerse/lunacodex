@@ -374,12 +374,10 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   const targetScopes=useMemo(()=>scopeId==='loc'&&managementMode&&scopeFilter
     ?availableScopes.filter(item=>item.id===scopeFilter)
     :availableScopes,[scopeId,managementMode,scopeFilter,availableScopes]);
-  // Keyword lookup is a Scope-owner feature, not an anonymous list of
-  // possibly private Class terms. Enable only for an already verified editor;
-  // ordinary public page visits never trigger an extra permissions request.
-  const patternScopeIds=useMemo(()=>targetScopes
-    .filter(item=>account.user&&account.authorizer&&canManageSearchScope(account,item.id))
-    .map(item=>item.id),[targetScopes,account.user,account.authorizer]);
+  // Published terms may autocomplete for guests; owner-only words still need
+  // signed Scope authorization. The fixed Keyword endpoint applies the Class
+  // share filter before returning any candidate pattern or hit count.
+  const patternScopeIds=useMemo(()=>targetScopes.map(item=>item.id),[targetScopes]);
   const [debouncedPatternInput,setDebouncedPatternInput]=useState('');
   useEffect(()=>{
     const value=query.normalize('NFKC').trim();
@@ -390,11 +388,11 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     queryKey:['loc-pattern-autocomplete',patternScopeIds.join(','),debouncedPatternInput],
     enabled:patternScopeIds.length>0&&debouncedPatternInput.length>0,
     queryFn:async()=>{
-      const {data,error}=await dbAuthClient.schema('silver').managedAction('suggest_search_patterns',{
-        p_scope_ids:patternScopeIds,p_query:debouncedPatternInput
+      const {keywordService}=await import('../../loc/keyword-service-client.mjs');
+      const result=await keywordService('suggest',{
+        scopeIds:patternScopeIds,query:debouncedPatternInput
       });
-      if(error)throw new Error(error.message||'關鍵詞自動完成讀取失敗');
-      return Array.isArray(data)?data:[];
+      return Array.isArray(result)?result:[];
     }
   });
 
