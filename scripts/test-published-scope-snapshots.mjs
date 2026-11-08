@@ -96,3 +96,15 @@ test('public single-Scope Culture time timeline uses published routing, not priv
   assert.doesNotMatch(block,/selectManagedScope\(/);
   assert.match(block,/publishedScope\?defaultScopeData\(id\):null/);
 });
+
+test('Culture public Time Anchors are paged below the browser Data API limit',()=>{
+  const source=read('app/loc/culture-query.js');
+  const begin=source.indexOf('export async function selectCultureTimeRows');
+  const end=source.indexOf('function openPeriodRangeFromRows',begin);
+  assert.ok(begin>=0&&end>begin);
+  const reader=source.slice(begin,end);
+  assert.match(reader,/pageSize=Math\.min\(DB_QUERY_BATCH_SIZE,1000\)/);
+  assert.match(reader,/offset\+=pageSize/);
+  assert.match(reader,/limit:pageSize,offset,maxLimit:pageSize/);
+  assert.doesNotMatch(reader,/limit:DB_QUERY_BATCH_SIZE,offset:0/);
+});
