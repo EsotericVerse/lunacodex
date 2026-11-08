@@ -1,5 +1,5 @@
 name: Deploy LOC native Auth (OAuth only, no SQL Gateway)
-# Release 2026-11-09: remove registration/password identities; retain Google/GitHub OAuth and explicit Scope grants.
+# Release 2026-11-09: use existing Supabase Google OAuth for invited LOC owner; keep registration closed.
 # A change to this workflow deploys LOC Auth once; routine LOC changes do not.
 # Manual releases remain available without consuming quota on every push.
 on:

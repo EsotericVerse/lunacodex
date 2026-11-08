@@ -66,3 +66,15 @@ test('owner can copy only immutable LOC Subject, never an OAuth token, to author
  const script=page.split('<script type="module">')[1]?.split('</script>')[0];
  assert.doesNotThrow(()=>new Function(script));
 });
+
+test('Google OAuth callback deletes URL fragment before exchanging identity and never stores token',()=>{
+ const callback=read('public/login/supabase-callback.mjs');
+ const html=read('public/login/supabase-callback.html');
+ assert.match(callback,/history\.replaceState\(null,'','\/login\/supabase-callback\.html'\)/);
+ assert.match(callback,/credentials:'include'/);
+ assert.match(callback,/https:\/\/auth\.lo3rwang\.cc\/oauth\/callback\/supabase/);
+ assert.doesNotMatch(callback,/localStorage|sessionStorage|document\.cookie|console\.log/);
+ assert.match(html,/name="referrer" content="no-referrer"/);
+ assert.match(html,/default-src 'none'; script-src 'self'/);
+ assert.match(read('public/login/index.html'),/\['google','使用 Google 繼續'\]/);
+});
