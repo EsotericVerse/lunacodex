@@ -236,6 +236,11 @@ export class LocAuthorityState extends DurableObject {
     assertReferencePermission(assertion,provider,permission);
     return true;
   }
+  async hasVerifiedAuthRefEmail(subject,email){
+    const proofs=await this.ctx.storage.list({prefix:'auth-ref:'+subject+':'});
+    return [...proofs.values()].some(x=>x.emailVerified===true&&
+      x.expires>Date.now()&&x.email===String(email||'').trim().toLowerCase());
+  }
   async nativeProvider(type){
     if(!['github','oidc'].includes(type))throw fail('Unsupported identity provider');
     const item=await this.ctx.storage.get('auth-provider:'+type);
@@ -1035,7 +1040,12 @@ async function exchangeLocDelegation(request,env,principal,origin){
     Number(global)+Number(identity)+Number(self)>1)
     throw fail('Invalid delegation audience',400);
   // A self-asserted native email cannot acquire Scope or administrator grants.
-  if(principal.emailVerified===false)throw fail('Verified LOC email required for delegation',403);
+  if(principal.emailVerified===false){
+    const state=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName(
+      'loc-authority-control-v1'));
+    if(!await state.hasVerifiedAuthRefEmail(principal.subject,principal.email))
+      throw fail('Verified LOC email or matching external Auth Ref required',403);
+  }
   const roots=String(env.LOC_RECOVERY_ROOT_LOC_SUBJECTS||'')
     .split(/[\s,;]+/).filter(Boolean);
   const root=roots.includes(principal.subject);
