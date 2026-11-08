@@ -64,16 +64,12 @@ export function applyGlobalCacheConfig(record){
 }
 export function loadCachePolicy(){
   if(policyRequest)return policyRequest;
-  policyRequest=(async()=>{
-    const cached=readSessionPolicy();
-    if(cached)return applyGlobalCacheConfig(cached);
-    try{
-      const {readLocRuntimeConfig}=await import('./runtime-config.mjs');
-      return applyGlobalCacheConfig(await readLocRuntimeConfig());
-    }catch{
-      // An unavailable public config must not disable the Service Worker.
-      return applyGlobalCacheConfig({cache_mode:CACHE_POLICY.mode,isr_domains:[]});
-    }
-  })();
+  // api.manage is a private control-plane relation, not an anonymous
+  // PostgREST table. Public startup must not issue its guaranteed-failing
+  // SELECT (HTTP 406). Use the same already-published fallback that was
+  // previously reached after that failed request.
+  policyRequest=Promise.resolve().then(()=>applyGlobalCacheConfig(
+    readSessionPolicy()||{cache_mode:CACHE_POLICY.mode,isr_domains:[]}
+  ));
   return policyRequest;
 }
