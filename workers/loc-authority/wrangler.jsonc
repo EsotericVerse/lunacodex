@@ -30,6 +30,8 @@
     }
   ],
   "vars": {
-    "LOC_CONTROL_ORIGIN": "https://loc.lo3rwang.cc"
+    "LOC_CONTROL_ORIGIN": "https://loc.lo3rwang.cc",
+    "LOC_SUPABASE_AUTH_ORIGIN": "https://qlouywsdiiyiyzpoxyqy.supabase.co",
+    "LOC_SUPABASE_PUBLIC_KEY": "sb_publishable_qPn0vAzozVyXKllRuEKf2Q_fvG-pLVV"
   }
 }
