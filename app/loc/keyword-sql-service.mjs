@@ -7,7 +7,7 @@ import {keywordClassCatalog} from './keyword-tree.mjs';
 import {analyzeIncrementalKeywordPatterns} from './keyword-incremental.mjs';
 import {createIndexedDateKeywordReader} from './keyword-article-reader.mjs';
 import {completeKeywordClass,invalidateKeywordClass} from './keyword-class-state.mjs';
-import {scopeDatabaseUid,readScopePatternRows,storeScopePatternMatches} from './keyword-anchor-index.mjs';
+import {scopeDatabaseUid,readScopePatternRows,storeScopePatternMatches,ensureScopePatternLibrary} from './keyword-anchor-index.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[0-9A-Za-z]{8}$/;
@@ -364,5 +364,122 @@ export async function resetKeywordScope(db,scope,classUid,{
       .set({keyword_meta:JSON.stringify(updated),staticstime:null,
         updated_at:new Date().toISOString()}).where('id','=',scope).execute();
     return {count:reset.length,retainedShared:own.size-unique.length};
+  });
+}
+
+
+const asNodeText=value=>String(value??'').normalize('NFKC').trim();
+function checkKeywordWordList(value){
+  if(!Array.isArray(value)||value.length>400)fail('Too many Item Patterns');
+  const seen=new Set(),out=[];
+  for(const raw of value){
+    if(typeof raw!=='string')fail('Invalid Pattern word');
+    const word=asNodeText(raw),key=norm(word);
+    if(!word||word.length>256||seen.has(key))continue;
+    seen.add(key);out.push(word);
+  }
+  return out;
+}
+async function findContainingGroup(trx,scope,itemUid){
+  const groups=await trx.selectFrom(anchorName(scope))
+    .select(['uid','attr']).where('type','=','group').execute();
+  const parents=groups.filter(group=>children(group).includes(itemUid));
+  if(parents.length!==1)fail('Keyword Item parent Group is missing or ambiguous',409);
+  return parents[0];
+}
+async function classContainingGroup(trx,scope,groupUid){
+  const classes=await trx.selectFrom(anchorName(scope))
+    .select(['uid','attr']).where('type','=','class').execute();
+  const matched=classes.filter(row=>children(row).includes(groupUid));
+  if(matched.length!==1)fail('Keyword Group parent Class is missing or ambiguous',409);
+  return matched[0].uid;
+}
+async function invalidateKeywordTreeClass(trx,scope,classUid){
+  const cfg=await configuration(trx,scope);
+  const metadata=invalidateKeywordClass(cfg.keyword_meta,classUid);
+  await trx.updateTable(configName(scope))
+    .set({keyword_meta:JSON.stringify(metadata),staticstime:null,
+      updated_at:new Date().toISOString()}).where('id','=',scope).execute();
+}
+
+// The Item editor's single authorized transaction saves its word list,
+// maintains Group membership and reconciles all Pattern UID references.
+// Legacy Item.keyword remains as temporary input to old style readers;
+// the actual postings are exclusively on Pattern Anchor rows.
+export async function saveKeywordItem(db,scope,values,{
+  authorizeTransaction=()=>{}
+}={}){
+  checkScope(scope);
+  if(!values||typeof values!=='object'||Array.isArray(values)||
+    !UID.test(String(values.uid||''))||
+    typeof values.name!=='string'||!asNodeText(values.name)||
+    asNodeText(values.name).length>256||
+    typeof values.desc!=='string'||values.desc.length>4000)
+    fail('Invalid Keyword Item');
+  const words=checkKeywordWordList(values.words);
+  const mode=String(values.mode||'');
+  if(!['create','update'].includes(mode))fail('Invalid Item write mode');
+  return db.transaction().execute(async trx=>{
+    await authorizeTransaction(trx);
+    const table=anchorName(scope),old=await trx.selectFrom(table)
+      .select(['uid','type','attr']).where('uid','=',values.uid).forUpdate().executeTakeFirst();
+    let parent;
+    if(mode==='create'){
+      if(old)fail('Keyword UID is already in use',409);
+      const groupId=String(values.parentUid||'');
+      if(!UID.test(groupId))fail('Invalid parent Group UID');
+      parent=await trx.selectFrom(table).select(['uid','type','attr'])
+        .where('uid','=',groupId).where('type','=','group').forUpdate().executeTakeFirst();
+      if(!parent)fail('Unknown parent Group',404);
+      await trx.insertInto(table).values({uid:values.uid,type:'item',
+        title:asNodeText(values.name),description:values.desc,
+        attr:JSON.stringify({keyword:words})}).execute();
+      await trx.updateTable(table).set({attr:JSON.stringify({
+        ...attr(parent),uid:[...new Set([...children(parent),values.uid])]
+      })}).where('uid','=',parent.uid).where('type','=','group').execute();
+    }else{
+      if(old?.type!=='item')fail('Keyword Item not found',404);
+      parent=await findContainingGroup(trx,scope,values.uid);
+      await trx.updateTable(table).set({
+        title:asNodeText(values.name),description:values.desc,
+        attr:JSON.stringify({...attr(old),keyword:words})
+      }).where('uid','=',values.uid).where('type','=','item').execute();
+    }
+    const dbUid=await scopeDatabaseUid(trx,scope);
+    const linked=await ensureScopePatternLibrary(trx,scope,dbUid);
+    const classUid=await classContainingGroup(trx,scope,parent.uid);
+    await invalidateKeywordTreeClass(trx,scope,classUid);
+    return {uid:values.uid,classUid,created:linked.created,linked:linked.linked};
+  });
+}
+
+export async function deleteKeywordItem(db,scope,itemUid,{authorizeTransaction=()=>{}}={}){
+  checkScope(scope);if(!UID.test(String(itemUid||'')))fail('Invalid Item UID');
+  return db.transaction().execute(async trx=>{
+    await authorizeTransaction(trx);
+    const table=anchorName(scope);
+    const item=await trx.selectFrom(table).select(['uid','type'])
+      .where('uid','=',itemUid).forUpdate().executeTakeFirst();
+    if(item?.type!=='item')fail('Keyword Item missing',404);
+    const parent=await findContainingGroup(trx,scope,itemUid);
+    const classUid=await classContainingGroup(trx,scope,parent.uid);
+    await trx.updateTable(table).set({attr:JSON.stringify({
+      ...attr(parent),uid:children(parent).filter(uid=>uid!==itemUid)
+    })}).where('uid','=',parent.uid).execute();
+    await trx.deleteFrom(table).where('uid','=',itemUid).where('type','=','item').execute();
+    const dbUid=await scopeDatabaseUid(trx,scope);
+    const linked=await ensureScopePatternLibrary(trx,scope,dbUid);
+    await invalidateKeywordTreeClass(trx,scope,classUid);
+    return {uid:itemUid,removed:linked.removed};
+  });
+}
+export async function synchronizeKeywordLibrary(db,scope,{
+  authorizeTransaction=()=>{}
+}={}){
+  checkScope(scope);
+  return db.transaction().execute(async trx=>{
+    await authorizeTransaction(trx);
+    const dbUid=await scopeDatabaseUid(trx,scope);
+    return ensureScopePatternLibrary(trx,scope,dbUid);
   });
 }
