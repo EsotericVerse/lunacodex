@@ -77,7 +77,7 @@ export async function ensureScopePatternLibrary(trx,scope,dbUid){
   const items=await trx.selectFrom(table)
     .select(['uid','title','attr']).where('type','=','item').execute();
   const assigned=new Set([...rows.map(row=>row.uid),...items.map(row=>row.uid)]);
-  const created=[],updates=[];
+  const created=[],updates=[],active=new Set();
   for(const item of items){
     const a=attrs(item.attr),uids=[];
     for(const name of literalItemWords(item)){
@@ -85,18 +85,24 @@ export async function ensureScopePatternLibrary(trx,scope,dbUid){
       let pattern=old.get(key);
       if(!pattern){
         const uid=allocateAnchorUid(assigned);
+        assigned.add(uid);
         pattern={uid,pattern:name,count:0,num:0,uid_list:[],
           attr:{[dbUid]:[]},createtime:null};
         old.set(key,pattern);
         created.push({uid,type:'pattern',title:name,attr:JSON.stringify(pattern.attr),num:0});
       }
       uids.push(pattern.uid);
+      active.add(pattern.uid);
     }
     const previous=Array.isArray(a.uid)?a.uid:[];
     if(JSON.stringify(previous)!==JSON.stringify(uids)){
       updates.push({uid:item.uid,attr:JSON.stringify({...a,uid:uids})});
     }
   }
+  const orphan=rows.filter(row=>!active.has(row.uid)).map(row=>row.uid);
+  for(let i=0;i<orphan.length;i+=100)
+    await trx.deleteFrom(table).where('uid','in',orphan.slice(i,i+100))
+      .where('type','=','pattern').execute();
   for(let i=0;i<created.length;i+=100)
     await trx.insertInto(table).values(created.slice(i,i+100)).execute();
   for(let i=0;i<updates.length;i+=100)
@@ -104,7 +110,8 @@ export async function ensureScopePatternLibrary(trx,scope,dbUid){
       ({uid:row.uid,type:'item',attr:row.attr})))
       .onConflict(oc=>oc.column('uid').doUpdateSet(eb=>({attr:eb.ref('excluded.attr')})))
       .execute();
-  return {patterns:[...old.values()],created:created.length,linked:updates.length};
+  return {patterns:[...old.values()].filter(row=>active.has(row.uid)),
+    created:created.length,linked:updates.length,removed:orphan.length};
 }
 
 export async function storeScopePatternMatches(trx,scope,dbUid,incoming=[]){
