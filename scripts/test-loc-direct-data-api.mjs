@@ -144,3 +144,19 @@ test('Search summary reads published public status without unsupported analytics
   assert.equal(result.summary.firstDate,'2005-04-12');
   assert.equal(result.summary.lastDate,'2026-11-05');
 });
+
+test('LOC Group aggregate uses existing fixed native public endpoint, not a retired RPC',async()=>{
+  const calls=[];
+  const api=createDirectDataApiClient({
+    url:'https://example.net/rest/v1',apiKey:'public',
+    fetch:async(url)=>{calls.push(String(url));return Response.json({
+      data:{earliest:'2005-04-12',scopes:[{scope_id:'lo3rwang',display_name:'作者'}],rows:[]}
+    });}
+  });
+  const result=await api.schema('silver').analytics({
+    p_view:'loc',p_scope_id:'loc',p_start:'2026-11-01',p_end:'2026-11-09'
+  });
+  assert.equal(result.data.scopes[0].scope_id,'lo3rwang');
+  assert.equal(calls.length,1);
+  assert.match(calls[0],/^\/api\/loc-public-content\?kind=loc&scope=loc&start=/);
+});

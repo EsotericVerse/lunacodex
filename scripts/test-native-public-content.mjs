@@ -252,3 +252,28 @@ test('published date/source history keeps public Culture and Statistics availabl
   assert.equal(total.status,200);
   assert.ok((await total.json()).data.length>0);
 });
+
+test('LOC Group statistics merge both published Scope totals while the native connection is offline',async()=>{
+  const request=new Request('https://loc.lo3rwang.cc/api/loc-public-content?kind=loc&scope=loc&start=2026-11-01&end=2026-11-09');
+  const result=await handleNativePublicContent(request,{},{
+    database:async()=>{throw Error('SQL credentials unavailable')}
+  });
+  assert.equal(result.status,200);
+  const body=await result.json();
+  assert.equal(body.source,'published');
+  assert.equal(body.data.earliest,'2005-04-12');
+  assert.deepEqual(body.data.scopes.map(row=>row.scope_id),['lo3rwang','lrunes']);
+  assert.ok(body.data.rows.some(row=>row.scope_id==='lo3rwang'&&row.item_count>0));
+  assert.ok(body.data.rows.every(row=>row.scope_id==='lo3rwang'||row.scope_id==='lrunes'));
+});
+test('LOC Group statistics use live bounded SQL when configured',async()=>{
+  const mock=numericDatabase();
+  const request=new Request('https://loc.lo3rwang.cc/api/loc-public-content?kind=loc&scope=loc&start=2026-11-01&end=2026-11-09');
+  const response=await handleNativePublicContent(request,{},mock);
+  assert.equal(response.status,200);
+  const result=(await response.json()).data;
+  assert.deepEqual(result.scopes.map(row=>row.scope_id),['lo3rwang','lrunes']);
+  assert.ok(result.rows.some(row=>row.scope_id==='lrunes'));
+  assert.ok(mock.calls.some(call=>call.table==='silver.lrunes_galaxy'));
+  assert.ok(mock.calls.some(call=>call.table==='silver.lo3rwang_galaxy'));
+});
