@@ -20,7 +20,7 @@ function mode(path) {
   if (path === '/api/auth/sign-out') return 'logout';
   if (path === '/v1/auth/ref/check') return 'login';
   if (path === '/oauth/token') return 'token';
-  if (path === '/oauth/login') return 'login';
+  if (path === '/oauth/login' || path === '/oauth/ref') return 'login';
   if (path.startsWith('/oauth/callback/')) return 'callback';
   if (path === '/oauth/register') return 'register';
   if (path === '/oauth/authorize') return 'authorize';
