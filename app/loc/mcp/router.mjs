@@ -1,6 +1,7 @@
 import {authorityAction} from './authority-client.mjs';
 import {readMemory} from './galaxy-read.mjs';
 import {privateGalaxyLink} from './private-galaxy.mjs';
+import {mcpDatabaseConfiguration} from './native-kysely.mjs';
 import {SCOPE_ROUTE_INDEX} from '../../modular/scope-route-index.js';
 const PUBLIC_SCOPE_IDS=Object.freeze(SCOPE_ROUTE_INDEX.filter(row=>row.active&&row.scope_id!=='loc')
   .map(row=>row.scope_id).filter(id=>/^[a-z][a-z0-9]{0,14}$/.test(id)));
