@@ -44,7 +44,7 @@ test('mapped SQL rejects normal read-only scopes and all writes',async()=>{
  },{...claims,grants:['lo3rwang:read']},opts),/manager/);
  await assert.rejects(executePortableMcp(db,{
   kind:'mcp-sync',scopeid:scope,uid:'external'
- },claims,opts),/manager read/);
+ },claims,opts),/Scope grant denied/);
 });
 test('native Galaxy table does not inherit external physical mapping',async()=>{
  const {db,calls}=capture();
