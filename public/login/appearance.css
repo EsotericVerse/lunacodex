@@ -56,6 +56,18 @@ a:focus-visible,button:focus-visible,#login-root :is(button,input,a):focus-visib
 .auth-top .eyebrow{margin-bottom:4px}
 .auth-top p{margin:0;color:var(--loc-muted);font-size:.92rem}
 #login-root{width:100%;min-width:0;display:grid;gap:13px}
+#loc-native-form{display:grid;gap:11px}
+#loc-native-form label{display:grid;gap:5px;font-size:.86rem;color:var(--loc-muted)}
+#loc-native-form input{width:100%;min-height:45px;border:1px solid var(--loc-line);border-radius:10px;
+ padding:9px 12px;background:var(--loc-panel-2);color:var(--loc-text)}
+#loc-native-form input:focus{border-color:var(--loc-accent)}
+.loc-native-choice{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:3px}
+.loc-native-choice button{padding:9px 12px;border:1px solid var(--loc-line);border-radius:10px;
+ cursor:pointer;background:transparent;color:var(--loc-text)}
+.loc-native-choice button[aria-pressed="true"]{background:var(--loc-accent-surface);border-color:var(--loc-accent)}
+#loc-native-form .native-note{margin:2px 0 0;font-size:.74rem;line-height:1.5;color:var(--loc-muted)}
+.native-divider{margin:4px 0;text-align:center;font-size:.77rem;color:var(--loc-muted)}
+
 .loc-login-choice{min-height:52px;border:1px solid var(--loc-line);border-radius:13px;
  background:var(--loc-accent-surface);color:var(--loc-text);cursor:pointer;
  font-weight:650;transition:background .2s,border-color .2s}
