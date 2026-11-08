@@ -74,7 +74,7 @@ test('all Class UIDs are selectable independently in analysis, Culture, Statisti
   assert.match(panel,/選擇要解析的關鍵詞科目（Class）/);
   assert.match(panel,/onChange=\{event=>choose\('class',event\.target\.value\)\}/);
   assert.match(panel,/runKeywordAnalysisBatch\(scopeId,\{classUid:runClassUid/);
-  assert.match(analysis,/completeKeywordClass\(latest\[0\]\.keyword_meta,classUid,meta,now\)/);
+  assert.match(analysis,/keywordService\('analyze'/);
   assert.match(read('app/loc/keyword-sql-service.mjs'),/matchedDocuments:stats.matchedDocuments/);
   assert.match(culture,/availableKeywordClasses\.length>0/);
   assert.match(statistics,/const scopedKeywordClasses=availableKeywordClasses/);
@@ -89,7 +89,7 @@ test('analysis selector exposes per-Class dates, and Kysely ignores shared stati
   assert.match(panel,/allClassNodes\.map\(node=><option/);
   assert.match(panel,/keywordClassState\(config,node\.uid\)\?\.completedAt/);
   assert.match(panel,/keywordClassState\(config,activeClass\?\.uid\)\?\.completedAt/);
-  assert.match(analysis,/completeKeywordClass\(latest\[0\]\.keyword_meta,classUid,meta,now\)/);
+  assert.match(analysis,/keywordService\('analyze'/);
   assert.match(analytics,/const done=meta\.by_class\?\.\[uid\]\?\.completedAt/);
   assert.doesNotMatch(analytics,/meta\.class_uid===uid&&config\?\.staticstime/);
 });
