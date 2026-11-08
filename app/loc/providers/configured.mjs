@@ -25,8 +25,45 @@ export function createConfiguredAdapter({
   const publicClient=createDirectDataApiClient({url,apiKey:publishableKey,role:'anon',fetch:fetchImpl});
   // LOC OAuth JWTs are NOT database credentials. Authenticated SQL writes
   // require the database owner's server-side connection, never a public API key.
-  const authClient=createDirectDataApiClient({url,apiKey:publishableKey,
+  const readOnlyAuthClient=createDirectDataApiClient({url,apiKey:publishableKey,
     role:'authenticated',fetch:fetchImpl});
+  // Website-owned Extension bridge obtains a narrow LOC signed delegation.
+  // The account token is never passed to the Extension or to PostgREST.
+  const shortImport=async(scopeid,batch)=>{
+    const scope=String(scopeid||'');
+    if(!/^[a-z][a-z0-9]{0,14}$/.test(scope))
+      throw Error('Invalid LOC import Scope');
+    const access=String(await identity.getAccessToken()||'');
+    if(!access)throw Error('LOC login required');
+    const authorize=await fetchImpl(authorityUrl.replace(/\\/+$/,'')+'/v1/delegation',{
+      method:'POST',credentials:'omit',cache:'no-store',
+      headers:{authorization:'Bearer '+access,'content-type':'application/json',
+        accept:'application/json'},
+      body:JSON.stringify({audience:'sql',scopeid:scope,actions:['write']}),
+      signal:AbortSignal.timeout(8000)
+    });
+    if(!authorize.ok){
+      const error=new Error('LOC Scope import authorization denied');
+      error.status=authorize.status;throw error;
+    }
+    const delegation=await authorize.json().catch(()=>null);
+    const signed=String(delegation?.access_token||'');
+    if(signed.split('.').length!==3)throw Error('Invalid LOC import delegation');
+    const response=await fetchImpl('/api/loc-native',{
+      method:'POST',credentials:'omit',cache:'no-store',
+      headers:{authorization:'Bearer '+signed,'content-type':'application/json',
+        accept:'application/json'},
+      body:JSON.stringify({kind:'short-import',scopeid:scope,batch}),
+      signal:AbortSignal.timeout(30000)
+    });
+    const result=await response.json().catch(()=>null);
+    if(!response.ok){
+      const error=new Error(result?.error?.message||'LOC import failed');
+      error.status=response.status;throw error;
+    }
+    return result;
+  };
+  const authClient={...readOnlyAuthClient,shortImport};
   return {publicClient,authClient,auth:identity.auth,
     configuredPublicClient:publicClient,backupPublicClient:null,
     realtimeClient:null,primarySourceLabel:'主要資料庫連線',backupSourceLabel:''};
