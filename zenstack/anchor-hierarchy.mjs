@@ -6,7 +6,7 @@ const UID=/^[A-Za-z0-9]{8}$/;
 const FAMILY_DEFS=Object.freeze({
   keyword:{
     root:'category',
-    edges:{category:{uid:'class'},class:{uid:'group'},group:{uid:'item'},item:{}}
+    edges:{category:{uid:'class'},class:{uid:'group'},group:{uid:'item'},item:{uid:'pattern'},pattern:{}}
   },
   source:{
     root:'universe',
