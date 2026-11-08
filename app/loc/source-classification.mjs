@@ -18,7 +18,7 @@ const key=value=>String(value??'').trim().normalize('NFKC').toLocaleLowerCase();
 // Scope Domain / From comes from its *existing* saved Anchor UIDs. Virtual
 // keys distinguish unpersisted parents; they are NOT fabricated Anchor UIDs.
 export function sourceTreeFromCatalog(systemNames=[],entries=[],{
-  universe='loc',galaxy='loc',scopeId='lo3rwang',domainUid=''
+  universe='loc',galaxy='loc',scopeId='lo3rwang',domainUid='',includeSystem=true
 }={}){
   if(!Array.isArray(entries))throw new Error('Source catalogue must be an array');
   const root={type:'universe',keyword_type:'category',key:'universe:'+universe,
@@ -28,7 +28,9 @@ export function sourceTreeFromCatalog(systemNames=[],entries=[],{
   root.children.push(parent.key);
   const nodes=[root,parent],used=new Set();
   const append=(kind,name,leaves,uid='')=>{
-    if(!leaves.length)return;
+    if(kind==='scope'&&scopeId==='loc')return;
+    if(uid&&!/^[A-Za-z0-9]{8}$/.test(uid))
+      throw new Error('Invalid persisted Domain UID');
     const physical=kind==='scope'&&/^[A-Za-z0-9]{8}$/.test(uid);
     const domain={
       type:'domain',keyword_type:'group',
@@ -58,7 +60,7 @@ export function sourceTreeFromCatalog(systemNames=[],entries=[],{
       domain.children.push(from.key);nodes.push(from);
     }
   };
-  append('system','Default',classNames(systemNames).map(name=>({name})));
+  if(includeSystem)append('system','Default',classNames(systemNames).map(name=>({name})));
   append('scope',scopeId,entries,domainUid);
   return nodes;
 }
