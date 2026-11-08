@@ -131,9 +131,7 @@ test('interactive GitHub Auth Ref preserves the LOC session and binds the verifi
 test('interactive OIDC Auth Ref validates state/nonce and remains horizontally scoped',async()=>{
  const {env,records,subject,cookie}=referenceEnvironment();
  const previousFetch=globalThis.fetch;
- let token='';
- const {jwk}=await signedJwt({iss:'https://identity.example.org',aud:'loc-app',
-  sub:'placeholder',iat:Math.floor(Date.now()/1000),exp:Math.floor(Date.now()/1000)+600});
+ let token='',jwk=null;
  globalThis.fetch=async(uri)=>{
   const u=String(uri);
   if(u.endsWith('/.well-known/openid-configuration'))return Response.json({
@@ -154,6 +152,11 @@ test('interactive OIDC Auth Ref validates state/nonce and remains horizontally s
   const authz=new URL(start.headers.get('location'));
   assert.equal(authz.hostname,'identity.example.org');
   assert.ok(authz.searchParams.get('nonce'));
+  const result=await signedJwt({iss:'https://identity.example.org',
+   aud:'loc-app',sub:'external-1',iat:Math.floor(Date.now()/1000)-20,
+   exp:Math.floor(Date.now()/1000)+600,nonce:'wrong-nonce',email_verified:true,
+   email:'member@example.org'});
+  token=result.jwt;jwk=result.jwk;
   const callback=await handleNativeOAuth(new Request(ISSUER+
    '/oauth/callback/oidc?state='+encodeURIComponent(authz.searchParams.get('state'))+
    '&code=once',{headers:{cookie:cookie+'; '+csrfCookie(start)}}),env);
