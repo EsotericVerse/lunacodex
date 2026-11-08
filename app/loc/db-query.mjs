@@ -5,6 +5,11 @@ import {coalescePendingPublicRead} from './inflight-public-read.mjs';
 import {mapBounded} from './bounded-parallel.mjs';
 export {DB_QUERY_BATCH_SIZE,queryBatchSize} from './db-contract.mjs';
 
+// Browser public Data API pages are bounded independently of the application's
+// 10,000-row I/O ceiling. Keep paging offsets aligned with actual page sizes
+// and never pass an oversize range to the public query adapter.
+const PUBLIC_DATA_API_PAGE_SIZE=1000;
+
 import {dbAuthClient,dbBackupPublicClient,dbConfiguredPublicClient,dbPublicClient} from './db-client.mjs';
 import {isDatabaseConnectivityFailure,markPrimaryReadFailed,markPrimaryReadSucceeded,markBackupReadFailed,markBackupReadSucceeded} from './db-source-status.mjs';
 
@@ -211,7 +216,7 @@ export async function selectRows(table,{
   expectedDbId=''
 }={}){
   if(!String(columns||'').trim()||String(columns).trim()==='*')throw new Error('DB SELECT requires explicit columns');
-  const safeMaximum=Math.max(1,Math.min(queryBatchSize(columns),Math.floor(Number(maxLimit)||DB_QUERY_BATCH_SIZE)));
+  const safeMaximum=Math.max(1,Math.min(PUBLIC_DATA_API_PAGE_SIZE,queryBatchSize(columns),Math.floor(Number(maxLimit)||DB_QUERY_BATCH_SIZE)));
   const safeLimit=Math.max(1,Math.min(safeMaximum,Math.floor(Number(limit)||20)));
   const safeOffset=Math.max(0,Math.floor(Number(offset)||0));
   warnOversizedFilters(table,filters);
@@ -241,7 +246,7 @@ export async function selectAllRows(table,{
   pageSize=DB_QUERY_BATCH_SIZE,
   onProgress=null
 }={}){
-  const size=Math.max(1,Math.min(queryBatchSize(columns),Math.floor(Number(pageSize)||DB_QUERY_BATCH_SIZE)));
+  const size=Math.max(1,Math.min(PUBLIC_DATA_API_PAGE_SIZE,queryBatchSize(columns),Math.floor(Number(pageSize)||DB_QUERY_BATCH_SIZE)));
   const first=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset:0,count:'exact'});
   const rows=[...first.rows];
   const total=Number(first.count) || rows.length;
@@ -279,7 +284,7 @@ export async function selectAllRowsBounded(table,{
   parallelAfterPages=PARALLEL_SCAN_AFTER_PAGES,
   concurrency=PARALLEL_SCAN_CONCURRENCY
 }={}){
-  const size=Math.max(1,Math.min(queryBatchSize(columns),Math.floor(Number(pageSize)||DB_QUERY_BATCH_SIZE)));
+  const size=Math.max(1,Math.min(PUBLIC_DATA_API_PAGE_SIZE,queryBatchSize(columns),Math.floor(Number(pageSize)||DB_QUERY_BATCH_SIZE)));
   const first=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset:0,count:'exact',authenticated});
   const rows=[...first.rows];
   const total=Number(first.count)||rows.length;
@@ -314,7 +319,7 @@ export async function forEachAllRowsPage(table,{
   pausePageMs=STREAM_PAGE_PAUSE_MS,
   signal=null
 }={},onPage){
-  const size=Math.max(1,Math.min(queryBatchSize(columns),Math.floor(Number(pageSize)||DB_QUERY_BATCH_SIZE)));
+  const size=Math.max(1,Math.min(PUBLIC_DATA_API_PAGE_SIZE,queryBatchSize(columns),Math.floor(Number(pageSize)||DB_QUERY_BATCH_SIZE)));
   let offset=0;
   for(;;){
     const {rows}=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset,signal});
