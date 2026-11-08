@@ -80,3 +80,17 @@ test('Extension does not depend on a standalone SQL Gateway deployment',()=>{
  }
 });
 
+
+test('native app restricts website URL to short-import business operations',async()=>{
+ const {handleNativeLocOperation}=await import('../app/loc/mcp/native-operations.mjs');
+ const request=(kind,host='loc.lo3rwang.cc')=>new Request('https://'+host+'/api/loc-native',{
+  method:'POST',headers:{'content-type':'application/json'},
+  body:JSON.stringify({kind,scopeid:'lo3rwang'})
+ });
+ const denied=await handleNativeLocOperation(request('mcp-read'));
+ assert.equal(denied.status,404);
+ const unsigned=await handleNativeLocOperation(request('short-import'));
+ assert.equal(unsigned.status,401,'website import still requires signed LOC delegation');
+ const untrusted=await handleNativeLocOperation(request('short-import','other.example.org'));
+ assert.equal(untrusted.status,404);
+});
