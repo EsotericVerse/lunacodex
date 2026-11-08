@@ -34,3 +34,39 @@ test('statistics charts delegate resizing to Recharts except Treemap compatibili
   assert.match(source,/actual==='treemap'/);
   assert.match(source,/<ResponsiveContainer width="100%" height="100%">\{chart\}<\/ResponsiveContainer>/);
 });
+
+test('statistics route provides the same Dashboard and Scope switcher for every Scope',async()=>{
+  const {readFile}=await import('node:fs/promises');
+  const read=path=>readFile(new URL('../'+path,import.meta.url),'utf8');
+  const [statistics,group,nav,locApp]=await Promise.all([
+    read('app/modular/features/Statistics.jsx'),
+    read('app/loc/ScopeGroupOverview.jsx'),
+    read('app/modular/modules/statistics/StatisticsScopeNavigation.jsx'),
+    read('app/loc/LocApp.jsx')
+  ]);
+  assert.match(statistics,/<StatisticsScopeNavigation scopeId=\{scopeId\}/,
+    'Single Scope and LOC statistics must both expose navigation');
+  assert.match(statistics,/return <ScopeStatisticsPanel scopeId=\{scopeId\}/,
+    'Every non-group Scope retains the shared statistics dashboard');
+  assert.match(group,/if\(featureId==='statics'\)/,
+    'Scope Group statistics must use a dashboard rather than the old directory');
+  assert.match(group,/statistics-dashboard__group-grid/);
+  assert.match(locApp,/groupOverviewView\?<FeaturePage featureId=\{forcedView\}>/,
+    'Direct Group routes must still render ScopeGroupOverview');
+  assert.match(nav,/SCOPE_ROUTE_INDEX/);
+  assert.match(nav,/navigationHref\(row.id,'statics',native\)/);
+  assert.doesNotMatch(nav,/selectScopeRegistry|selectScopeGroupChildren|fetch\(|useAsyncResource/,
+    'Scope switching must not fetch unrelated Scope data');
+});
+
+test('group Dashboard does not aggregate child Scope content or introduce new data queries',async()=>{
+  const {readFile}=await import('node:fs/promises');
+  const group=await readFile(new URL('../app/loc/ScopeGroupOverview.jsx',import.meta.url),'utf8');
+  const dashboard=group.split("if(featureId==='statics'){")[1]?.split("return <section className=\"scope-card scope-group-overview\"")[0]||'';
+  assert.match(dashboard,/query\.isPending/);
+  assert.match(dashboard,/scopes\.filter\(row=>row\.scope_kind==='scope'\)/);
+  assert.doesNotMatch(dashboard,/selectScopeOverview|selectLocStatistics|selectRows\(|Promise\.all\(/);
+  const nav=await readFile(new URL('../app/modular/modules/statistics/StatisticsScopeNavigation.jsx',import.meta.url),'utf8');
+  assert.match(nav,/row\.active!==false/);
+  assert.match(nav,/row\.config\?\.statistics_able!==false/);
+});

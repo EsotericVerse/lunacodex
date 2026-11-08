@@ -1,4 +1,5 @@
 export default {
+  "dashboardScopeNavigation": "切換 Scope",
   "dashboardTitle": "統計儀表板",
   "dashboardScopeHelp": "以既有統計結果呈現時間趨勢、來源分佈與深度分析。",
   "dashboardLocHelp": "查看 LOC 所屬 Scope 的整體紀錄與分佈。",

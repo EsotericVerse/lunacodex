@@ -49,6 +49,7 @@ const Article=dynamic(()=>import('../Article'),{loading:()=>null});
 import StatisticsChartFrame from '../modules/statistics/StatisticsChartFrame';
 import StatisticsDetails from '../modules/statistics/StatisticsDetails';
 import StatisticsDashboardKpis from '../modules/statistics/StatisticsDashboardKpis';
+import StatisticsScopeNavigation from '../modules/statistics/StatisticsScopeNavigation';
 import {statisticsZoomWindow} from '../modules/statistics/statistics-time-zoom.mjs';
 
 const CHART_TYPES=STAT_VISUAL_TYPES;
@@ -671,6 +672,7 @@ export default function Statistics(){
     [navigation,userActive,userSettings.display]);
   return <FeaturePage featureId="statics">
     <section className="loc-card scope-feature-card">
+      <StatisticsScopeNavigation scopeId={scopeId} currentLabel={scope?.label||scopeId}/>
       <StatisticsPanel
         scopeId={scopeId}
         aggregateScopes={Boolean(scope?.aggregateChildren)}
