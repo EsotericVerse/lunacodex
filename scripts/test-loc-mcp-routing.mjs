@@ -216,3 +216,17 @@ test('search is rejected unless the user-requested flag is true',async()=>{
  const last=quotaRequests.filter(x=>x.action==='acquire').at(-1);
  assert.equal(last.kind,'search','native private search preserves five-minute QoS');
 });
+
+test('independent native password account can connect MCP before optional email verification, without gaining a Scope grant',async()=>{
+ const jwt=await token({email_verified:false});
+ const initialize=await handleMcp(req('POST',jwt,rpc('initialize')));
+ assert.equal(initialize.status,200);
+ const status=await handleMcp(req('POST',jwt,rpc('tools/call',{
+  name:'loc_connection_status',arguments:{}
+ })));
+ assert.equal(status.status,200);
+ const body=(await status.json()).result;
+ assert.equal(JSON.parse(body.content[0].text).subject,'loc_'+ 'A'.repeat(40));
+ const invalid=await handleMcp(req('POST',await token({email_verified:'false'}),rpc('initialize')));
+ assert.equal(invalid.status,401,'email verification claim must be a real boolean');
+});

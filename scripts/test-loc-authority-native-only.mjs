@@ -83,3 +83,10 @@ test('LOC Authority target updates reuse encrypted SQL secrets without browser e
     engine:'postgres',host:'db.example.net',port:5432,
     database:'loc',username:'user'}),/requires its database password/);
 });
+
+test('unverified first-party LOC identity remains subject-bound, not email-granted',()=>{
+ const worker=readFileSync(new URL('../workers/loc-authority/index.mjs',import.meta.url),'utf8');
+ assert.doesNotMatch(worker,/if\(principal\.emailVerified===false\)\s*\{/);
+ assert.match(worker,/roots\.includes\(principal\.subject\)/);
+ assert.match(worker,/stub\.mayAccess\(\{provider:principal\.provider,subject:principal\.subject,scope,action\}\)/);
+});
