@@ -35,7 +35,7 @@ export function createConfiguredAdapter({
       throw Error('Invalid LOC import Scope');
     const access=String(await identity.getAccessToken()||'');
     if(!access)throw Error('LOC login required');
-    const authorize=await fetchImpl(authorityUrl.replace(/\\/+$/,'')+'/v1/delegation',{
+    const authorize=await fetchImpl(new URL('/v1/delegation',authorityUrl).href,{
       method:'POST',credentials:'omit',cache:'no-store',
       headers:{authorization:'Bearer '+access,'content-type':'application/json',
         accept:'application/json'},
