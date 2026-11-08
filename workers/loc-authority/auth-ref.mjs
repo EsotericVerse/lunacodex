@@ -69,6 +69,8 @@ async function jwtReference(type,credential,profile,options){
   reject('Expired or unsupported Auth Ref token',401);
  const issuer=configuredIssuer(type,profile);
  if(claims.iss!==issuer)reject('Auth Ref issuer mismatch',401);
+ if(options.expectedNonce&&claims.nonce!==options.expectedNonce)
+  reject('Auth Ref OIDC nonce mismatch',401);
  const audience=String(profile.client_id||'');
  const audiences=Array.isArray(claims.aud)?claims.aud:[claims.aud];
  if(!audience||!audiences.includes(audience)||
