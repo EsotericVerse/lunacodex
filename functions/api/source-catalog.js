@@ -2,7 +2,7 @@
 // No generic SQL executor, no browser-supplied connection, schema or role.
 // The native Kysely action enforces group-vs-Scope ownership in its transaction.
 import {directMcpKysely} from '../../app/loc/mcp/native-kysely.mjs';
-import {executeManagedKyselyAction} from '../../app/loc/providers/kysely-management.mjs';
+import {sourceCatalogAction} from '../../app/loc/source-sql-service.mjs';
 import {bindLocAuthorization} from '../../app/loc/providers/loc-authorization.mjs';
 import {verifiedIdentity} from '../_loc-delegation.mjs';
 
@@ -70,7 +70,24 @@ export async function onRequestPost(context){
       bindLocAuthorization(trx,{role,claims});
       // The existing native action repeats the exact permission check on
       // this transaction before any configured Source table is read/written.
-      return executeManagedKyselyAction(trx,operation,claims);
+      if(operation.name==='read_source_catalog')
+        return {data:await sourceCatalogAction(trx,operation.args),count:null};
+      if(operation.name==='save_scope_sources')
+        return {data:await sourceCatalogAction(trx,operation.args,true),count:null};
+      // The global system array remains silver.loc.DefaultArticleClass until
+      // LOC promotes Default to a physical Domain. This is its only writer.
+      const names=operation.args.p_names;
+      const {canManageLoc}=await import('../../app/loc/providers/loc-authorization.mjs');
+      if(!await canManageLoc(trx,'group','loc'))
+        reject('LOC Group edit permission required',403);
+      const {sql}=await import('kysely');
+      await sql`reset role`.execute(trx);
+      const updated=await trx.updateTable('silver.loc')
+        .set({DefaultArticleClass:JSON.stringify(names)})
+        .where('id','=','loc').executeTakeFirst();
+      if(Number(updated?.numUpdatedRows||0)!==1)
+        reject('LOC system source update was not saved');
+      return {data:true,count:null};
     });
     return respond({data:result.data});
   }catch(e){
