@@ -1060,13 +1060,11 @@ async function exchangeLocDelegation(request,env,principal,origin){
     (global||identity||self)&&audience!=='sql'||
     Number(global)+Number(identity)+Number(self)>1)
     throw fail('Invalid delegation audience',400);
-  // A self-asserted native email cannot acquire Scope or administrator grants.
-  if(principal.emailVerified===false){
-    const state=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName(
-      'loc-authority-control-v1'));
-    if(!await state.hasVerifiedAuthRefEmail(principal.subject,principal.email))
-      throw fail('Verified LOC email or matching external Auth Ref required',403);
-  }
+  // Native Email/Password authenticates an immutable LOC subject even before
+  // optional email delivery is configured. Unverified email NEVER grants
+  // privileges: root subjects are matched by ID; other actions must pass
+  // explicit per-subject LOC Scope grants below. An email match cannot
+  // transfer another account's permissions.
   const roots=String(env.LOC_RECOVERY_ROOT_LOC_SUBJECTS||'')
     .split(/[\s,;]+/).filter(Boolean);
   const root=roots.includes(principal.subject);
