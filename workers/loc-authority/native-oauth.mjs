@@ -1,5 +1,6 @@
 import {issueDelegation} from '../../app/loc/auth/delegation-contract.mjs';
 import {checkExternalAuthQos} from './auth-qos.mjs';
+import {hasFirstPartyCookie,firstPartySession,firstPartySignOut} from './better-auth-native.mjs';
 
 // Independent OAuth 2.1 authorization server; all state lives in the existing
 // LOC Authority Durable Object. No SQL database, Clerk, Neon or vendor Auth SDK.
@@ -129,7 +130,7 @@ async function issueToken(stub,session,resource,scope,client_id){
  const iat=Math.floor(Date.now()/1000);
  return {access_token:await stub.signLocDelegation({iss:ISSUER,sub:session.subject,
    aud:resource,scope,client_id,sid:session.sidHash,
-   email:session.email,email_verified:true,iat,nbf:iat-5,
+   email:session.email,email_verified:session.emailVerified!==false,iat,nbf:iat-5,
    exp:iat+ACCESS_SECONDS,jti:crypto.randomUUID()}),
   token_type:'Bearer',expires_in:ACCESS_SECONDS,scope};
 }
@@ -155,7 +156,7 @@ export async function verifyNativeOAuth(request,env,resource){
  const now=Math.floor(Date.now()/1000);
  if(head.alg!=='RS256'||typeof head.kid!=='string'||claims.iss!==ISSUER||
   claims.aud!==resource||!LOC_SUBJECT.test(String(claims.sub||''))||
-  !CODE_PATTERN.test(String(claims.sid||''))||claims.email_verified!==true||
+  !CODE_PATTERN.test(String(claims.sid||''))||typeof claims.email_verified!=='boolean'||
   !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(claims.email||''))||
   !Number.isSafeInteger(claims.iat)||claims.iat>now+60||
   !Number.isSafeInteger(claims.nbf)||claims.nbf>now+60||
@@ -173,12 +174,29 @@ export async function verifyNativeOAuth(request,env,resource){
   dec(parts[2]),TXT.encode(parts[0]+'.'+parts[1]));}catch{}
  if(!valid)error('LOC OAuth signature invalid',401);
  const session=await sessionForHash(stub,claims.sid);
- if(!session||session.subject!==claims.sub||session.email!==claims.email)
+ if(!session||session.subject!==claims.sub||session.email!==claims.email||
+  (session.emailVerified!==false)!==claims.email_verified)
    error('LOC OAuth session revoked',401);
  return {provider:'loc',subject:session.subject,email:session.email,
-  session:session.sidHash,scope:String(claims.scope||''),client_id:claims.client_id};
+  session:session.sidHash,scope:String(claims.scope||''),client_id:claims.client_id,
+  emailVerified:claims.email_verified};
 }
-async function authorize(request,url,stub){
+async function sessionFromBetter(request,env,stub){
+ const entry=await firstPartySession(request,env);
+ if(!entry)return null;
+ const maxAge=Math.min(7200,Math.floor((entry.expires-Date.now())/1000));
+ if(maxAge<=0)return null;
+ // Local user IDs are independent from provider email, GitHub IDs and DB identities.
+ const subject='loc_'+(await sha('better-auth:'+entry.userId)).slice(0,40);
+ const sid=random(),sidHash=await sha(sid);
+ const session={subject,provider:'loc',identityProvider:'native',
+  email:entry.email,emailVerified:entry.emailVerified,
+  sidHash,expires:Date.now()+maxAge*1000};
+ await stub.nativePut('native-session:'+sidHash,session);
+ return {session,cookie:cookie(SESSION_COOKIE,sid,maxAge)};
+}
+
+async function authorize(request,url,stub,env){
  const p=url.searchParams;
  if(p.get('response_type')!=='code')error('Only authorization code supported');
  const client=await clientFor(stub,p.get('client_id'));
@@ -192,10 +210,11 @@ async function authorize(request,url,stub){
  const resource=resourceFor(client.kind,p.get('resource'));
  const scope=scopeFor(client.kind,p.get('scope')||
   (client.kind==='extension'?'loc:import offline_access':'profile email offline_access'));
- const session=await sessionFromCookie(request,stub);
+ let session=await sessionFromCookie(request,stub);
  if(!session){
-  const next=new URL('/oauth/login',ISSUER);
-  next.searchParams.set('provider','github');
+  const native=hasFirstPartyCookie(request)?await sessionFromBetter(request,env,stub):null;
+  if(native)return redirect(url.pathname+url.search,[native.cookie]);
+  const next=new URL('/login/index.html',WEB_AUDIENCE);
   next.searchParams.set('continue',url.pathname+url.search);
   return redirect(next.href);
  }
@@ -230,7 +249,14 @@ async function requestJson(url,options={}){
  return r.json().catch(()=>error('Invalid identity provider response',502));
 }
 async function login(url,stub){
- const name=url.searchParams.get('provider')||'github';
+ const name=url.searchParams.get('provider');
+ if(!name){
+  const next=new URL('/login/index.html',WEB_AUDIENCE);
+  const continuePath=url.searchParams.get('continue');
+  if(continuePath)next.searchParams.set('continue',continuation(continuePath));
+  else next.searchParams.set('return_to',validReturnPath(url.searchParams.get('return_to')));
+  return redirect(next.href);
+ }
  if(!['github','oidc'].includes(name))error('Unknown identity provider');
  const config=await provider(stub,name);
  const callback=ISSUER+'/oauth/callback/'+name;
@@ -389,20 +415,30 @@ async function revoke(request,stub,origin){
  }
  return response({},200,origin);
 }
-async function session(request,stub,origin){
- const identity=await sessionFromCookie(request,stub);
+async function session(request,stub,origin,env){
+ let identity=await sessionFromCookie(request,stub);
+ let cookieValue='';
+ if(!identity&&hasFirstPartyCookie(request)){
+  const native=await sessionFromBetter(request,env,stub);
+  if(native){identity=native.session;cookieValue=native.cookie;}
+ }
  if(!identity)return response({session:null,user:null},200,origin);
  const auth=await issueToken(stub,identity,WEB_AUDIENCE,'profile email','loc-web');
- const user={id:identity.subject,email:identity.email};
+ const user={id:identity.subject,email:identity.email,emailVerified:identity.emailVerified!==false};
  return response({session:{...auth,user,expires_at:Math.floor(Date.now()/1000)+ACCESS_SECONDS},
-  user,provider:'loc'},200,origin);
+  user,provider:'loc'},200,origin,cookieValue?{'set-cookie':cookieValue}:{});
 }
-async function logout(request,stub,origin){
+async function logout(request,stub,origin,env){
  const csrf=String(request.headers.get('origin')||'');
  if(csrf&&csrf!==WEB_AUDIENCE&&csrf!==ISSUER)error('Cross-origin logout forbidden',403);
  const sid=parseCookies(request).get(SESSION_COOKIE);
  if(sid&&CODE_PATTERN.test(sid))await stub.nativeTake('native-session:'+await sha(sid));
- return response({signed_out:true},200,origin,{'set-cookie':cookie(SESSION_COOKIE,'',0)});
+ const result=response({signed_out:true},200,origin,{'set-cookie':cookie(SESSION_COOKIE,'',0)});
+ if(hasFirstPartyCookie(request)){
+  const revoked=await firstPartySignOut(request,env);
+  for(const item of revoked.headers.getSetCookie())result.headers.append('set-cookie',item);
+ }
+ return result;
 }
 async function importShort(request,env,stub,origin){
  const identity=await verifyNativeOAuth(request,env,IMPORT_AUDIENCE);
@@ -462,7 +498,7 @@ export async function handleNativeOAuth(request,env){
     scopes_supported:['profile','email','offline_access','loc:import'],
     resource_parameter_supported:true},200,origin);
   if(path==='/oauth/register'&&request.method==='POST')return await register(request,stub,origin);
-  if(path==='/oauth/authorize'&&request.method==='GET')return await authorize(request,url,stub);
+  if(path==='/oauth/authorize'&&request.method==='GET')return await authorize(request,url,stub,env);
   if(path==='/oauth/login'&&request.method==='GET')return await login(url,stub);
   if(path==='/oauth/callback/github'&&request.method==='GET')
    return await callback(request,url,stub,'github');
@@ -470,8 +506,8 @@ export async function handleNativeOAuth(request,env){
    return await callback(request,url,stub,'oidc');
   if(path==='/oauth/token'&&request.method==='POST')return await token(request,stub,origin);
   if(path==='/oauth/revoke'&&request.method==='POST')return await revoke(request,stub,origin);
-  if(path==='/v1/auth/session'&&request.method==='GET')return await session(request,stub,origin);
-  if(path==='/oauth/logout'&&request.method==='POST')return await logout(request,stub,origin);
+  if(path==='/v1/auth/session'&&request.method==='GET')return await session(request,stub,origin,env);
+  if(path==='/oauth/logout'&&request.method==='POST')return await logout(request,stub,origin,env);
   if(path==='/v1/import/short'&&request.method==='POST')
    return await importShort(request,env,stub,origin);
   error('OAuth endpoint unavailable',405);
