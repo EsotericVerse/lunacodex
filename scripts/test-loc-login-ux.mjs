@@ -56,3 +56,13 @@ test('original scenic white Theme 7 stays intact beside native LOC Chrome launch
   assert.equal(manifest.name,'LOC galaxy-link｜LOC 彩虹橋');
   assert.match(page,/new URL\('\/oauth\/login',AUTHORITY\)/);
 });
+
+test('owner can copy only immutable LOC Subject, never an OAuth token, to authorize recovery setup',()=>{
+ const page=read('public/login/index.html');
+ assert.match(page,/id="copy-loc-subject"/);
+ assert.match(page,/navigator\.clipboard\.writeText\(subject\)/);
+ assert.match(page,/byId\('copy-loc-subject'\)\.dataset\.subject=signedIn\?user\.id:''/);
+ assert.doesNotMatch(page,/navigator\.clipboard\.writeText\(.*access_token/);
+ const script=page.split('<script type="module">')[1]?.split('</script>')[0];
+ assert.doesNotThrow(()=>new Function(script));
+});
