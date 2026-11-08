@@ -1,5 +1,3 @@
-[functions.loc-kysely]
-verify_jwt = false
-
-[functions.loc-channel1-ingest]
-verify_jwt = false # service secret verified by handler
+# No Supabase Edge Functions are deployed from LOC source anymore.
+# Existing hosted legacy functions must be audited/removed separately;
+# editing this configuration does not alter running deployments or data.
