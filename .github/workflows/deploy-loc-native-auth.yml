@@ -26,6 +26,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22.23.4'
+      - name: Require deployment authorization before consuming build minutes
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::error title=LOC Auth release blocked::Missing GitHub Actions repository secret CLOUDFLARE_API_TOKEN. Existing Cloudflare Worker has NOT been updated."
+            echo "## LOC Auth release blocked: deployment credential missing" >> "$GITHUB_STEP_SUMMARY"
+            echo "Set CLOUDFLARE_API_TOKEN with Workers Scripts Edit and required zone route permissions; rerun this job. Do not create another Worker." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
       - name: Install exact test dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Verify LOC first-party credentials, Auth Ref, Scope, and mapped SQL contracts
@@ -40,15 +48,7 @@ jobs:
           npm run check:loc-vendor-coupling
       - name: Build native OAuth Worker (no SQL Gateway)
         run: npx --yes wrangler@4.157.0 deploy --config workers/loc-authority/wrangler.jsonc --dry-run --outdir /tmp/loc-native-auth-check
-      - name: Explain missing deployment authorization
-        if: ${{ env.CLOUDFLARE_API_TOKEN == '' }}
-        run: |
-          echo "::warning title=LOC Auth not deployed::GitHub repository secret CLOUDFLARE_API_TOKEN is missing. Build validated, but auth.lo3rwang.cc remains offline."
-          echo "## Native LOC Auth deployment blocked" >> "$GITHUB_STEP_SUMMARY"
-          echo "Set repository secret CLOUDFLARE_API_TOKEN with Workers Scripts Edit and zone Workers Routes/Domains permissions; rerun this workflow." >> "$GITHUB_STEP_SUMMARY"
       - name: Deploy native OAuth and custom domain
-        if: ${{ env.CLOUDFLARE_API_TOKEN != '' }}
         run: npx --yes wrangler@4.157.0 deploy --config workers/loc-authority/wrangler.jsonc
       - name: Verify live OAuth discovery, JWKS and session boundary
-        if: ${{ env.CLOUDFLARE_API_TOKEN != '' }}
         run: node scripts/probe-loc-native-auth.mjs
