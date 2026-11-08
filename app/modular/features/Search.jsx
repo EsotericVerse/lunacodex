@@ -452,6 +452,57 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     return selectGalaxyIdentity(scopeData,id,{includeHidden:canManageSearchScope(account,result.scopeId),dbId:result.dbId||'',federated:result.federated===true});
   }
 
+  async function executeAnchorSelection(selection,cursor=0,{
+    append=false,overrideOptions=null
+  }={}){
+    if(!selection?.scopeId||!selection.uid||!selection.type)return;
+    const options=overrideOptions||{
+      anchorSelection:selection,contentType,sourceFilter,startDate,endDate,
+      sortDirection:articleSort,browse:false
+    };
+    if(!append){
+      activeSearchOptionsRef.current={...options,anchorSelection:selection};
+      setQuery(String(selection.title||''));
+      setBrowseResults(false);
+      setResults([]);setStatus('搜尋中請稍後');setError('');
+      setLoadMoreError('');setHasMore(false);setNextCursor(null);
+      matchedQueryRef.current=String(selection.title||'');
+    }else setLoadingMore(true);
+    const id=++searchId.current;
+    beginRequest();
+    try{
+      const {keywordService}=await import('../../loc/keyword-service-client.mjs');
+      const result=await keywordService('anchorSearch',{
+        scopeId:selection.scopeId,uid:selection.uid,type:selection.type,
+        offset:cursor||0,limit:pageSize,
+        sortDirection:options.sortDirection||'desc',
+        startDate:options.startDate||'',endDate:options.endDate||'',
+        sourceFilter:options.sourceFilter||'',contentType:options.contentType||''
+      });
+      if(id!==searchId.current)return;
+      const converted=(result?.rows||[]).map(({row,source})=>
+        toResult(row,source,scopeId,UI_COPY)).filter(Boolean);
+      setResults(current=>append
+        ?mergeSummaryResults([...current,...converted],UI_COPY):converted);
+      setHasMore(Boolean(result?.hasMore));
+      setNextCursor(result?.nextOffset??null);
+      if(!append){
+        setStatus(converted.length||result?.hasMore
+          ?'已依「'+String(selection.title||'')+'」的'+({
+            date:'時間',point:'空間',from:'來源',domain:'來源分類',
+            item:'關鍵詞組',pattern:'關鍵詞'
+          }[selection.type]||'定錨')+'關聯取得文章'
+          :UI_COPY.search.empty);
+        scrollToResults();
+      }
+    }catch(exception){
+      if(id!==searchId.current)return;
+      if(append)setLoadMoreError(featureDataErrorMessage(exception,UI_COPY));
+      else{setError(featureDataErrorMessage(exception,UI_COPY));
+        setStatus(UI_COPY.search.failed);scrollToResults();}
+    }finally{if(append&&id===searchId.current)setLoadingMore(false);}
+  }
+
   async function executeSearch(rawQuery,cursor=null,{append=false,browse=false,overrideOptions=null}={}){
     const q=String(rawQuery||'').trim();
     const options=append&&activeSearchOptionsRef.current
@@ -606,7 +657,14 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     const q=matchedQueryRef.current||query.trim();
     if((!q&&!activeSearchOptionsRef.current?.browse)||!hasMore||loadMoreInFlight.current||nextCursor===null)return;
     loadMoreInFlight.current=true;
-    try{await executeSearch(q,nextCursor,{append:true,browse:activeSearchOptionsRef.current?.browse});}
+    try{
+      const active=activeSearchOptionsRef.current;
+      if(active?.anchorSelection)
+        await executeAnchorSelection(active.anchorSelection,nextCursor,
+          {append:true,overrideOptions:active});
+      else
+        await executeSearch(q,nextCursor,{append:true,browse:active?.browse});
+    }
     finally{loadMoreInFlight.current=false;}
   }
   function changeArticleSort(direction){
@@ -614,7 +672,11 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     setArticleSort(direction);
     const active=activeSearchOptionsRef.current;
     if(active){
-      executeSearch(matchedQueryRef.current,null,{
+      if(active.anchorSelection)
+        executeAnchorSelection(active.anchorSelection,0,{
+          overrideOptions:{...active,sortDirection:direction}
+        });
+      else executeSearch(matchedQueryRef.current,null,{
         browse:Boolean(active.browse),overrideOptions:{...active,sortDirection:direction}
       });
     }
