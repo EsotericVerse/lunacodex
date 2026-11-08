@@ -1,4 +1,4 @@
-name: Deploy LOC native OAuth (without Clerk or SQL Gateway)
+name: Deploy LOC native Auth (Better Auth, no SQL Gateway)
 # A change to this workflow deploys LOC Auth once; routine LOC changes do not.
 # Manual releases remain available without consuming quota on every push.
 on:
@@ -28,13 +28,16 @@ jobs:
           node-version: '22.23.4'
       - name: Install exact test dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Verify local OAuth and Scope contracts
+      - name: Verify LOC first-party credentials, Auth Ref, Scope, and mapped SQL contracts
         run: |
           node --check workers/loc-authority/index.mjs
           node --check workers/loc-authority/native-oauth.mjs
-          node --check workers/loc-authority/auth-qos.mjs
-          node --check app/loc/auth/sql-state-store.mjs
-          node --test scripts/test-loc-native-oauth.mjs scripts/test-loc-authority-native-only.mjs scripts/test-loc-no-vendor-auth-runtime.mjs scripts/test-loc-auth-qos.mjs scripts/test-loc-auth-store.mjs
+          node --check workers/loc-authority/better-auth-native.mjs
+          node --check workers/loc-authority/better-auth-store.mjs
+          node --check workers/loc-authority/auth-ref.mjs
+          npm run test:authority
+          node --test scripts/test-loc-auth-qos.mjs scripts/test-loc-auth-store.mjs
+          npm run check:loc-vendor-coupling
       - name: Build native OAuth Worker (no SQL Gateway)
         run: npx --yes wrangler@4.157.0 deploy --config workers/loc-authority/wrangler.jsonc --dry-run --outdir /tmp/loc-native-auth-check
       - name: Explain missing deployment authorization
