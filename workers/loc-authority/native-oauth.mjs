@@ -1,4 +1,5 @@
 import {issueDelegation} from '../../app/loc/auth/delegation-contract.mjs';
+import {checkExternalAuthQos} from './auth-qos.mjs';
 
 // Independent OAuth 2.1 authorization server; all state lives in the existing
 // LOC Authority Durable Object. No SQL database, Clerk, Neon or vendor Auth SDK.
@@ -448,6 +449,8 @@ export async function handleNativeOAuth(request,env){
     'access-control-allow-headers':'content-type,authorization',
     'access-control-max-age':'600','cache-control':'no-store',vary:'origin'}});
   }
+  const limited=await checkExternalAuthQos(request,env);
+  if(limited)return limited;
   const stub=authority(env),path=url.pathname;
   if(path==='/.well-known/oauth-authorization-server'&&request.method==='GET')
    return response({issuer:ISSUER,authorization_endpoint:ISSUER+'/oauth/authorize',
