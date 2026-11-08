@@ -4,6 +4,7 @@
 import {SCOPE_ROUTE_INDEX} from '../../modular/scope-route-index.js';
 import {scopeConfigColumns,scopeFeatureEnabled} from '../scope-config-fields.mjs';
 import {directMcpKysely} from '../mcp/native-kysely.mjs';
+import {readPublishedGalaxyNumeric,PUBLISHED_GALAXY_SNAPSHOT_DATE} from './published-galaxy-fallback.mjs';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 import {portableRelation} from '../providers/sql-engine-ports.mjs';
 
@@ -107,6 +108,13 @@ export async function handleNativePublicContent(request,env={},{
     if(!scopeFeatureEnabled(published?.config,flag))
       return respond({error:'Public feature unavailable'},403);
   }
+  // The already-published grouped snapshot preserves public reading while
+  // the native Pages database connection is not yet configured.
+  const publishedResponse=()=>{
+    if(!numeric)return null;
+    const data=readPublishedGalaxyNumeric(scope,kind,start,end);
+    return data===null?null:respond({data,source:'published',as_of:PUBLISHED_GALAXY_SNAPSHOT_DATE});
+  };
   try{
     // Alias and credential are server-owned. An HTTP parameter must never
     // determine the engine, endpoint, connection profile or SQL relation.
@@ -115,7 +123,7 @@ export async function handleNativePublicContent(request,env={},{
       env.LOC_MCP_DB_ALIAS||publishedAlias);
     const port=await database(env,alias);
     if(!port?.db||!['postgres','mysql','mssql'].includes(port.engine))
-      return respond({error:'LOC native database unavailable'},503);
+      return publishedResponse()||respond({error:'LOC native database unavailable'},503);
     const query=port.db;
     const relation=name=>portableRelation(name,port.engine,
       port.namespace||(port.engine==='postgres'?'silver':'dbo'));
@@ -134,6 +142,6 @@ export async function handleNativePublicContent(request,env={},{
     return respond({data});
   }catch(error){
     console.error('[LOC native public content] server database connection unavailable');
-    return respond({error:'LOC native database unavailable'},503);
+    return publishedResponse()||respond({error:'LOC native database unavailable'},503);
   }
 }
