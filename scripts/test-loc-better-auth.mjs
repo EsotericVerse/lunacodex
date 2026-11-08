@@ -119,3 +119,32 @@ test('native credentials become LOC OAuth Session without GitHub and keep unveri
  assert.equal(out.status,200);
  assert.ok(out.headers.getSetCookie().some(x=>x.startsWith('__Host-loc-session=')));
 });
+
+test('indexed Session and email lookups avoid scanning all Auth records',async()=>{
+ const storage=new FakeStorage(),list=storage.list.bind(storage);
+ let scans=0;
+ storage.list=async(...args)=>{scans++;return list(...args)};
+ const first={id:'s1',userId:'user1',token:'signed-cookie-1',
+  expiresAt:new Date(Date.now()+7200000)};
+ const second={id:'s2',userId:'user2',token:'signed-cookie-2',
+  expiresAt:new Date(Date.now()+7200000)};
+ await runBetterAuthStore(storage,{operation:'create',model:'session',data:first});
+ await runBetterAuthStore(storage,{operation:'create',model:'session',data:second});
+ assert.equal(scans,0,'creating sessions must not scan all existing sessions');
+ const record=await runBetterAuthStore(storage,{operation:'findOne',model:'session',
+  where:[{field:'token',value:'signed-cookie-1'}]});
+ assert.equal(record.id,'s1');
+ assert.equal(scans,0,'session token index should make login lookup direct');
+ const result=await runBetterAuthStore(storage,{operation:'update',model:'session',
+  where:[{field:'token',value:'signed-cookie-1'}],update:{token:'rotated-1'}});
+ assert.equal(result.token,'rotated-1');
+ assert.equal(await runBetterAuthStore(storage,{operation:'findOne',model:'session',
+  where:[{field:'token',value:'signed-cookie-1'}]}),null);
+ assert.equal((await runBetterAuthStore(storage,{operation:'findOne',model:'session',
+  where:[{field:'token',value:'rotated-1'}]})).id,'s1');
+ await runBetterAuthStore(storage,{operation:'delete',model:'session',
+  where:[{field:'token',value:'rotated-1'}]});
+ assert.equal(await runBetterAuthStore(storage,{operation:'findOne',model:'session',
+  where:[{field:'token',value:'rotated-1'}]}),null);
+ assert.equal(scans,0);
+});
