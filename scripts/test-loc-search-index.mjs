@@ -4,7 +4,6 @@ import worker from '../workers/loc-search-index/index.mjs';
 import {indexDocumentsFromWrite,withIndexedCandidates,federatedIndexedCandidates,shadowIndexCoverage} from '../app/loc/providers/search-index-service.mjs';
 import {locSearchDocumentId} from '../app/loc/search-index-shard.mjs';
 import {locGlobalUid,parseLocGlobalUid} from '../zenstack/global-identity.mjs';
-import {createKyselyEdgeClient} from '../app/loc/providers/kysely-edge.mjs';
 
 class KvMemory {
   constructor(){this.data=new Map();this.writes=0;this.bulkReads=0;this.singleReads=0;this.failLargeBulk=false;}
@@ -177,23 +176,6 @@ test('search index hit qualification never trusts a different database ID',async
   const query={kind:'query',schema:'silver',table:'lo3rwang_galaxy',operation:'select',
     indexHint:{scopeId:'lo3rwang',query:'文化'},filters:[]};
   assert.equal(await withIndexedCandidates(query,{connection_alias:'db2'}),query);
-});
-
-test('Gateway transport carries DB identity as an assertion rather than an SQL target selector',async()=>{
-  let submitted;
-  const gateway=createKyselyEdgeClient({
-    gatewayUrl:'https://gateway.example.test/v1/sql',role:'anon',
-    fetch:async(_url,options)=>{
-      submitted=JSON.parse(options.body);
-      return new Response(JSON.stringify({data:[],count:null}),{status:200});
-    }
-  });
-  const result=await gateway.schema('silver').from('lo3rwang_galaxy')
-    .select('uid,title').eq('uid','Ab123456').expectDatabase('db2');
-  assert.deepEqual(result.data,[]);
-  assert.equal(submitted.target,'configured');
-  assert.equal(submitted.expectedDbId,'db2');
-  assert.deepEqual(submitted.filters,[{column:'uid',operator:'eq',value:'Ab123456',negate:false}]);
 });
 
 test('an untrusted index hint never narrows a different SQL content predicate',async(t)=>{

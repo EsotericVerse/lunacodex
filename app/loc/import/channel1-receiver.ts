@@ -48,7 +48,7 @@ function valid(r:any){
  Number.isInteger(r.part_count)&&r.part_count>=1&&r.part_count<=10000&&
  r.part_index<r.part_count&&UUID.test(r.group_id);
 }
-// Same pinned Kysely / pg transport used by LOC's SQL engine, without a second OAuth gateway.
+// Standalone fixed-operation ingestion via Kysely / pg; no generic SQL transport.
 let connection:any=null;
 function database(){
  if(connection)return connection;

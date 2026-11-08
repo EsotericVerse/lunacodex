@@ -47,11 +47,3 @@ test('database migrations preserve every row then drop retired relations with RE
   assert.match(drop,/DROP TABLE silver\.loc_keywords RESTRICT/);
   assert.doesNotMatch(drop,/CASCADE/);
 });
-test('retired Theme relation is not exposed through external SQL authority',()=>{
-  const edge=file('app/loc/gateway/sql-handler.ts');
-  const sql=file('app/loc/providers/sql-engine-ports.mjs');
-  const policy=file('workers/loc-authority/sql-authorization.mjs');
-  assert.doesNotMatch(edge,/adaptNeonThemeRequest/);
-  assert.doesNotMatch(sql,/'loc_theme'/);
-  assert.doesNotMatch(policy,/'loc_theme'/);
-});

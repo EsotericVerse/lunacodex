@@ -30,17 +30,3 @@ test('cross-engine SQL exposes only published Scope rows and explicitly public a
   assert.throws(()=>assertCrossEnginePublicRead({kind:'rpc',schema:'silver',name:'management_write'}));
   assert.throws(()=>assertCrossEnginePublicRead({kind:'query',operation:'select',schema:'api',table:'user_records'}));
 });
-test('production Kysely Edge always enforces the external permission boundary',()=>{
-  const source=readFileSync(new URL('../app/loc/gateway/sql-handler.ts',import.meta.url),'utf8');
-  assert.match(source,/assertCrossEnginePublicRead\(body\)/);
-  assert.doesNotMatch(source,/neonLocReadTables/);
-});
-
-test('Kysely Edge no longer references a deleted Neon table-name allowlist',()=>{
-  const source=readFileSync(new URL('../app/loc/gateway/sql-handler.ts',import.meta.url),'utf8');
-  assert.doesNotMatch(source,/neonLocReadTables/);
-  const checks=[...source.matchAll(/assertCrossEnginePublicRead\(body\)/g)];
-  assert.ok(checks.length>=1,'cross-engine permissions must be checked before connection');
-  assert.match(source,/if\(target\.provider==="neon"&&\(body\.schema!=="silver"/);
-  assert.match(source,/if\(target\.provider==="custom"\|\|target\.engine!=="postgres"\)/);
-});

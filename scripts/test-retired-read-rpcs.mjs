@@ -32,22 +32,6 @@ test('drop exactly the sixteen replaced functions, with RESTRICT',()=>{
     assert.ok(!actual.includes(required),'Protected helper must remain: '+required);
 });
 
-test('current website uses direct Kysely instead of retired read RPCs',()=>{
-  const numeric=read('app/api/loc/_numeric-failover.mjs');
-  assert.match(numeric,/await db\.analytics\(args\)/);
-  assert.match(numeric,/await client\.publicAction\('read_app_bootstrap'/);
-  assert.doesNotMatch(numeric,/\.rpc\s*\(/);
-  const galaxy=read('app/loc/galaxy-query.js');
-  const contract=read('app/loc/db-contract.mjs');
-  for(const src of [galaxy,contract])
-    assert.doesNotMatch(src,/read_scope_analytics|\.rpc\s*\(/);
-  const gateway=read('app/loc/gateway/sql-handler.ts');
-  assert.match(gateway,/executeKyselyAnalytics/);
-  assert.match(gateway,/executeKyselyPublicAction/);
-  assert.doesNotMatch(gateway,/\bselect\s+silver\.read_scope_analytics\b/i);
-});
-
-
 const finalRetirement=read('supabase/migrations/20261106200000_retire_final_19_business_rpcs.sql');
 const retiredBusinessFunctions=[
   'silver.manage_scope_registry','api.manage_scope_registry',

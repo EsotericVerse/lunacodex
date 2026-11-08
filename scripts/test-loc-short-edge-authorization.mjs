@@ -39,15 +39,3 @@ test('caller cannot override user, Scope, database target or SQL request shape',
  assert.throws(()=>authorizeDelegatedShortImport({...request,scopeid:'another'},claims),
   error=>status(error)===403);
 });
-test('Edge mounts short-import only after verifying LOC SQL delegation',()=>{
- const edge=readFileSync(new URL('../app/loc/gateway/sql-handler.ts',import.meta.url),'utf8');
- const auth=edge.indexOf('const delegation=await verifyLocDelegation(match[1],body)');
- const gate=edge.indexOf('const actor=authorizeDelegatedShortImport(body,claims)');
- const db=edge.indexOf('const db=selected',gate);
- assert.ok(auth>=0&&gate>auth&&db>gate,
-  'credential and Scope grant checks must happen before database access');
- assert.ok(edge.includes('store:portableShortImportStore(db,sql,{engine:target.engine,'));
- assert.ok(edge.includes('const selected=await liveSelection()'));
- assert.doesNotMatch(edge,/postgresShortImportStore/);
- assert.ok(edge.includes('if(requestedTarget!=="configured")'));
-});

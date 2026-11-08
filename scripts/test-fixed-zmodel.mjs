@@ -186,7 +186,7 @@ test('ZenStack V3 compiles fixed-model Kysely reads without a database or stored
 test('active LOC browser and local providers have no SQL RPC transport',()=>{
   const active=[
     '../app/loc/providers/configured.mjs',
-    '../app/loc/providers/kysely-edge.mjs',
+    '../app/loc/mcp/native-operations.mjs',
     '../app/loc/db-client.mjs'
   ];
   for(const path of active){
@@ -195,17 +195,17 @@ test('active LOC browser and local providers have no SQL RPC transport',()=>{
     assert.doesNotMatch(code,/kind:\s*['"]rpc['"]/,path+' must not send an RPC request');
   }
   const bridge=readFileSync(new URL('../app/loc/providers/configured.mjs',import.meta.url),'utf8');
-  assert.match(bridge,/createLocGatewayAdapter/);
+  assert.match(bridge,/createDirectDataApiClient/);
 });
 
 test('unprovisioned Local Scope never falls through to remote SQL',()=>{
   const browser=readFileSync(new URL('../app/loc/db-client.mjs',import.meta.url),'utf8');
-  const edge=readFileSync(new URL('../app/loc/providers/kysely-edge.mjs',import.meta.url),'utf8');
+  const native=readFileSync(new URL('../app/loc/mcp/native-operations.mjs',import.meta.url),'utf8');
   assert.match(browser,/function unavailableLocal\(/);
   assert.match(browser,/isUnprovisionedLocal\(table,schemaName\)/);
   assert.doesNotMatch(browser,/createLocalSqliteAdapter|local-sqlite\.mjs/);
-  for(const method of ['analytics','managedWrite','managedAction','publicAction','anchor'])
-    assert.ok(edge.includes(method+'('),'missing SQL action '+method);
+  assert.match(native,/verifyDelegationBoundary/);
+  assert.match(native,/executePortableMcp/);
 });
 
 test('existing keyword import retains canonical UID generator; Scope admin stays schema-frozen',async()=>{
@@ -255,8 +255,7 @@ test('exact api.manage cutover covers live JavaScript registry and both models',
     '../app/loc/providers/loc-authorization.mjs',
     '../app/loc/scope-data.js',
     '../app/loc/views/admin-panels/AdminRegistry.jsx',
-    '../app/loc/views/admin-panels/DatabaseTarget.jsx',
-    '../app/loc/gateway/sql-handler.ts'
+    '../app/loc/views/admin-panels/DatabaseTarget.jsx'
   ];
   for(const file of files){
     const code=readFileSync(new URL(file,import.meta.url),'utf8');

@@ -1,39 +1,34 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {canManageDelegation,issueDelegation,verifyDelegationBoundary}
-  from '../app/loc/auth/delegation-contract.mjs';
-const source=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
+import {issueDelegation,verifyDelegationBoundary,delegationAudience,canManageDelegation} from '../app/loc/auth/delegation-contract.mjs';
+const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
-test('SQL Edge verifies locally signed LOC delegation, not provider identity',()=>{
-  const edge=source('app/loc/gateway/sql-handler.ts');
-  assert.match(edge,/verifyLocDelegation\(match\[1\],body\)/);
-  assert.match(edge,/verifyDelegationBoundary\(payload,body,/);
-  assert.match(edge,/delegationAudience\(body\)/);
-  assert.doesNotMatch(edge,/verifyMcpForSql|sessionIdentityCache/);
+test('native signed LOC delegation keeps identity and database login separate',()=>{
+ const now=Math.floor(Date.now()/1000);
+ const signed=issueDelegation({sub:'loc_test',email:'owner@example.org',
+  grants:['lo3rwang:manage'],audience:'sql',sid:'session1',
+  now,seconds:300,targetId:'loc_main'});
+ assert.equal(signed.aud,delegationAudience({kind:'query'}));
+ const value=verifyDelegationBoundary(signed,{kind:'query'}, {now});
+ assert.equal(value.claims.db_target,'loc_main');
+ assert.equal(canManageDelegation(value.claims,'scope','lo3rwang'),true);
+ assert.equal(canManageDelegation(value.claims,'global'),false);
 });
-test('Kysely and Edge share one LOC delegation policy',()=>{
-  const edge=source('app/loc/gateway/sql-handler.ts');
-  const auth=source('app/loc/providers/loc-authorization.mjs');
-  const issuer=source('workers/loc-authority/index.mjs');
-  assert.match(edge,/from ".{1,80}\/delegation-contract\.mjs"/);
-  assert.match(auth,/canManageDelegation\(state\.claims,/);
-  assert.match(issuer,/issueDelegation\(/);
-  assert.doesNotMatch(auth,/grants\.includes\('global:manage'\)/);
+
+test('native LOC Auth requires Scope permission and rejects cross-audience tokens',()=>{
+ const now=Math.floor(Date.now()/1000);
+ const signed=issueDelegation({sub:'loc_test',grants:['lo3rwang:read'],
+  audience:'mcp',sid:'session2',now,seconds:300});
+ assert.equal(verifyDelegationBoundary(signed,{kind:'mcp-read',scopeid:'lo3rwang'},{now}).verifiedMcp,true);
+ assert.throws(()=>verifyDelegationBoundary(signed,{kind:'mcp-read',scopeid:'lrunes'},{now}));
+ assert.throws(()=>verifyDelegationBoundary(signed,{kind:'query'},{now}));
 });
-test('signed grants are portable and scope-limited independently of database RLS',()=>{
-  const now=Math.floor(Date.now()/1000);
-  const token=issueDelegation({sub:'user_test',email:'test@example.org',
-    grants:['lrunes:manage'],audience:'sql',sid:'test1',now,seconds:600});
-  const {claims}=verifyDelegationBoundary(token,{kind:'query'});
-  assert.equal(canManageDelegation(claims,'scope','lrunes'),true);
-  assert.equal(canManageDelegation(claims,'scope','lo3rwang'),false);
-  assert.equal(canManageDelegation(claims,'global'),false);
-});
-test('site uses LOC Auth by default without a vendor Auth SDK',()=>{
-  const configured=source('app/loc/providers/configured.mjs');
-  assert.match(configured,/createLocAccountAdapter/);
-  assert.doesNotMatch(configured,/LEGACY_SQL_ORIGIN/);
-  const edge=source('app/loc/gateway/sql-handler.ts');
-  assert.match(edge,/verifyLocDelegation/);
+
+test('application authentication is native; no vendor SDK transport',()=>{
+ const configured=read('app/loc/providers/configured.mjs');
+ const native=read('workers/loc-authority/native-oauth.mjs');
+ assert.match(configured,/createLocAccountAdapter/);
+ assert.match(native,/PKCE|code_challenge_method/);
+ assert.doesNotMatch(configured,/createLocGatewayAdapter|createKyselyEdgeClient/);
 });

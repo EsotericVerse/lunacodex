@@ -40,7 +40,7 @@
 - 歌曲與專輯等作品紀錄須保存來源實際全文，不能用摘要冒充全文。
 
 ## 資料庫／安全硬邊界
-- **永久架構禁止：LOC 不得使用 SQL Gateway。** 不得新建、復活、改名或部署 `loc-sql`、`loc-mcp-sql`、泛用 `/v1/sql` HTTP Query 轉送器、獨立 SQL Gateway Container／Worker／Edge；不得把這些服務作為 Portable、MCP、Extension、LOC Auth 的依賴。資料庫 SQL 只由 LOC 可信任應用程式後端透過 Kysely Driver 與對應 Dialect 執行；LOC Auth 僅負責 OAuth 身分、Scope 權限和資料庫選擇，不替代 SQL Driver 登入。不得使用 Supabase Edge、Supabase／Neon／Clerk SDK 作為此架構的必要模組。網站瀏覽器不得取得資料庫連線密碼。清理期間禁止重建任何同等功能的 Gateway 來迴避此條禁令。
+- **永久架構禁止：LOC 不得使用 SQL Gateway。** 不得新建、復活、改名或部署 `loc-sql`、`loc-mcp-sql`、泛用 `/v1/sql` HTTP Query 轉送器、獨立 SQL Gateway Container／Worker／Edge；不得把這些服務作為 Portable、MCP、Extension、LOC Auth 的依賴。資料庫 SQL 只由 LOC 可信任應用程式後端透過 Kysely Driver 與對應 Dialect 執行；LOC Auth 僅負責 OAuth 身分、Scope 權限和資料庫選擇，不替代 SQL Driver 登入。**Supabase SDK（含 `@supabase/*`）與 Clerk SDK（含 `@clerk/*`）一律禁止安裝、復裝或作為直接／間接相依；不是只禁止設為必要模組。** 不得使用 Supabase Edge 或以託管 Auth SDK 代替 LOC Auth。`package.json` 與 `package-lock.json` 的建置禁裝檢查不得繞過。網站瀏覽器不得取得資料庫連線密碼。清理期間禁止重建任何同等功能的 Gateway 來迴避此條禁令。
 - **2026-11-07 起資料庫全面凍結（最高優先）**：除使用者明確解除凍結外，所有 Agent 禁止修改或執行資料庫 Schema、Table、Column、Index、Trigger、RPC、Migration、RLS、Policy、GRANT／REVOKE、CREATE／ALTER／DROP；此限制包括 Portable 的新 Scope 建表、跨庫安裝器、自動修復和所有部署腳本。僅允許既有資料表中的 SELECT、INSERT、UPDATE、DELETE。程式不得偷偷在首次連線／管理操作時執行 DDL。既有 SQL Session 相容操作不得用來改寫 RLS。
 - **Portable 直接 Driver**：資料庫連線憑證只留在可信任 LOC 應用程式後端 Secret／Bindings；使用伺服器端別名與 Kysely Dialect 選擇 SQL Engine，LOC Auth 處理 OAuth／權限／資料庫選擇，絕不使用獨立 SQL Gateway。Clerk、Supabase、Neon 不得是跨庫 SQL 的必要身分相依。正式網站尚有公開 Data API 過渡讀取，新的直接 Driver 業務路徑完成驗證前不得擅自切斷，亦不得假稱已完成全部替換。
 - **公開 Theme 不查資料庫**：`silver.loc.theme` 僅供已授權 Admin 管理；公開前台固定使用 `app/modular/published-theme-catalog.json` 與 `published-themes.css`。管理員儲存後須明確執行 `sync:public`、提交發布產物再由既有流程部署；不可在頁面載入或 Theme 儲存後自動重新 SELECT `silver.loc.theme`，也不可為此更動 RLS。

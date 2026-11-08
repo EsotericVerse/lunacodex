@@ -66,18 +66,6 @@ test('native Scope query uses the authorized existing dialect and mapped table',
   assert.match(executed[0].sql,/"silver"\."alpha_galaxy"/);
   assert.ok(executed[0].parameters.includes('Ab12Cd34'));
 });
-test('Gateway only reaches native dynamic Scope ORM after signed authorization',()=>{
-  const edge=readFileSync(new URL('../app/loc/gateway/sql-handler.ts',import.meta.url),'utf8');
-  assert.match(edge,/const scopeMatch=target.engine==="postgres"&&role==="authenticated"/);
-  assert.match(edge,/claims\?\.provider==="loc"&&claims\?\.me===true/);
-  assert.match(edge,/const access=await authorizeCrossEngineQuery\(trx,body,\{role,claims\}\)/);
-  assert.match(edge,/const publicOnly=publicGalaxyGate\(body,role,claims\)\|\|access\?\.publicOnly===true/);
-  assert.match(edge,/executeNativeRead\(ormClient,body,nativeScopeModel\)/);
-  assert.match(edge,/\$transaction\(ormClient=>/);
-  assert.match(edge,/modelName:nativeScopeModel\|\|''/);
-  assert.match(edge,/const publicOnly=publicGalaxyGate\(body,role,claims\)/);
-});
-
 test('count/head uses the ORM count without loading any article row',async()=>{
   let selected=0,counts=0;
   const client={galaxy:{

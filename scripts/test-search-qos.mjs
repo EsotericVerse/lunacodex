@@ -55,16 +55,3 @@ test('different clients are independent; expired windows clear',()=>{
   now+=3200;
   assert.equal(check('a').allowed,true);
 });
-test('server-side SQL timeout and 429 responses exist without altering Culture/Trace',()=>{
-  const source=readSource();
-  assert.match(source,/set local statement_timeout = '8000ms'/);
-  assert.match(source,/retry-after/);
-  assert.match(source,/429/);
-  assert.match(source,/if\(isTextSearchQuery\(body\)\)/);
-});
-function readSource(){
-  return requireSource();
-}
-function requireSource(){
-  return readFileSync(new URL('../app/loc/gateway/sql-handler.ts',import.meta.url),'utf8');
-}
