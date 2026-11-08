@@ -91,7 +91,7 @@ export async function handleNativePublicContent(request,env={},{
           (!DAY.test(start)||!DAY.test(end)||start>end))||
         (kind==='earliest'&&(start||end))||
         (kind==='totals'&&(Boolean(start)!==Boolean(end)||
-          start&&(!DAY.test(start)||!DAY.test(end)||start>end)))))
+          start&&(!DAY.test(start)||!DAY.test(end)||start>end))))))
     return respond({error:'Invalid LOC public content request'},400);
   try{
     // Alias and credential are server-owned. An HTTP parameter must never
