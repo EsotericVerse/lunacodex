@@ -27,7 +27,7 @@ test('native ZenStack scope schema derives all three fixed physical models',()=>
     assert.deepEqual(actual.attributes.map(x=>x.name),['@@map','@@schema'],
       'scoped ORM never invents public/policy permissions');
   }
-  assert.equal(Object.keys(fixed.models).length,17);
+  assert.equal(Object.keys(fixed.models).length,18);
 });
 
 test('two independent databases can project identical scope names without modifying fixed models',()=>{
