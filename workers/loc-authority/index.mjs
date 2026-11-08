@@ -354,6 +354,12 @@ export class LocAuthorityState extends DurableObject {
     });
     return publicView;
   }
+  async trustedDatabaseProfile(id){
+    if(!ID.test(String(id||'')))throw fail('Invalid database target',400);
+    const saved=await this.ctx.storage.get('target:'+id);
+    if(!saved)throw fail('Database target not configured',404);
+    return decryptProfile(saved.encrypted,this.env.LOC_CONTROL_ENCRYPTION_KEY);
+  }
   async putTarget(id,input){
     const old=await this.ctx.storage.get('target:'+id);
     const previous=old?await decryptProfile(old.encrypted,
@@ -1141,6 +1147,24 @@ export default {
           status:200,headers:{'content-type':'application/json; charset=utf-8',
             'cache-control':'public, max-age=300','x-content-type-options':'nosniff'}
         });
+      }
+      // Trusted application backends fetch a selected connection profile.
+      // This endpoint NEVER executes SQL and is inaccessible to OAuth users.
+      const profileMatch=/^\/v1\/internal\/database\/([a-z][a-z0-9_-]{0,63})$/
+        .exec(url.pathname);
+      if(profileMatch){
+        if(request.method!=='GET')throw fail('Method not allowed',405);
+        const expected=String(env.LOC_DB_PROFILE_SERVICE_TOKEN||'');
+        const supplied=String(request.headers.get('x-loc-service-token')||'');
+        if(expected.length<32||supplied.length!==expected.length)
+          throw fail('Trusted LOC backend required',403);
+        let mismatch=0;
+        for(let i=0;i<expected.length;i++)
+          mismatch|=expected.charCodeAt(i)^supplied.charCodeAt(i);
+        if(mismatch!==0)throw fail('Trusted LOC backend required',403);
+        const owner=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName(
+          'loc-authority-control-v1'));
+        return json(await owner.trustedDatabaseProfile(profileMatch[1]),200,'');
       }
       const principal=await verifyNativeOAuth(request,env,WEB_AUDIENCE);
       if(!url.pathname.startsWith('/v1/'))throw fail('Not found',404);
