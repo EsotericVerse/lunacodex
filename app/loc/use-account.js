@@ -2,7 +2,9 @@
 
 import {useCallback,useEffect} from 'react';
 import {useSWRConfig} from 'swr';
-import {getAccountSession,dbAuthEvents,dbAuthClient,signInWithGoogle,signOutAccount} from './db-client.mjs';
+import {getAccountSession,dbAuthEvents,signInWithGoogle,signOutAccount} from './db-client.mjs';
+import {readLocEditorGrants} from './auth/editor-grants.mjs';
+import {SCOPE_ROUTE_INDEX} from '../modular/scope-route-index.js';
 import {readAuthorization,setAuthorization,clearAuthorization,createScopeAuthorizer} from './authorization-runtime.mjs';
 import {defaultScopeData,scopeDataFromManageRows} from './scope-data';
 import {useAsyncResource} from './use-async-resource';
@@ -18,8 +20,8 @@ const normalizeScopeId=value=>String(value||'').trim().toLowerCase();
 const SESSION_KEY=['loc-account','session'];
 const VERIFIED_SESSION_KEY=['loc-account','verified-google-oauth'];
 const MANAGEMENT_KEY=['loc-account','management'];
-// A management workspace verifies once on entry. Never re-query on focus or
-// stale-time expiry; explicit refresh and database write authorization remain.
+// A management workspace verifies LOC Auth once on entry. Never re-query on
+// focus or stale expiry; protected writes still verify server authorization.
 const emptyState=Object.freeze({
   loading:true,user:null,email:'',role:'',authorizer:null,
   permissionLoading:true,error:'',scopes:[]
@@ -55,15 +57,9 @@ async function fetchManagementAccount(mutate){
   const obsolete=()=>startedAt!==authRevision;
   let verifiedIdentity=null;
   try{
-    // Both endpoints independently verify the current signed LOC Auth token.
-    // Start them together instead of spending an extra network round trip
-    // between Authority identity and the protected Scope permissions RPC.
-    const [sessionRead,permissionRead]=await Promise.allSettled([
-      getAccountSession(),
-      dbAuthClient.schema('silver').managedAction('manage',{p_type:'self'})
-    ]);
-    if(sessionRead.status==='rejected')throw sessionRead.reason;
-    const session=sessionRead.value;
+    // Clicked edit entry: first check the LOC Auth session. A signed-out
+    // visitor must never issue a management/SQL request.
+    const session=await getAccountSession();
     const user=session?.user||null;
     if(obsolete())return signedOutState;
     if(!user){
@@ -74,13 +70,14 @@ async function fetchManagementAccount(mutate){
       void mutate(SESSION_KEY,signedOutState,{revalidate:false});
       return signedOutState;
     }
-    // Only grant editor access AFTER BOTH independent checks succeed.
+    // LOC Auth owns signed Scope grants independently of the SQL connection.
+    // One self-delegation request is performed only on explicit edit entry.
     verifiedIdentity={user,email:normalizeAuthEmail(session.oauth?.email||user.email),oauth:session.oauth};
-    if(permissionRead.status==='rejected')throw permissionRead.reason;
-    const {data,error}=permissionRead.value;
-    if(error)throw new Error(error.message||'Management permission read failed');
+    const permissions=await readLocEditorGrants(session,{
+      authorityOrigin:process.env.NEXT_PUBLIC_LOC_CONTROL_URL||'https://auth.lo3rwang.cc',
+      scopeKinds:Object.fromEntries(SCOPE_ROUTE_INDEX.map(row=>[row.scope_id,row.scope_kind]))
+    });
     if(obsolete())return signedOutState;
-    const permissions=Array.isArray(data)?data:[];
     const metadata=scopeDataFromManageRows(permissions);
     setAuthorization(user,permissions);
     scopeMetadata=metadata;
@@ -105,8 +102,8 @@ async function fetchManagementAccount(mutate){
 }
 
 // Passive management consumers reuse the grant already verified for this
-// identity. An explicit editor entry still forces a live LOC Auth + Scope check.
-// Server RLS / RPC authorization independently protects every write.
+// identity. An explicit editor entry still forces a live LOC Auth Scope check.
+// Each write must be reauthorized by the trusted application backend.
 function loadManagementAccount(mutate,{force=false}={}){
   if(!force){
     const verified=readVerifiedManagementEntry();
@@ -171,8 +168,8 @@ export function useAccount({enabled=true,sessionOnly=false}={}){
     };
   },[sessionOnly,enabled,state.error,query.mutate]);
 
-  // Explicit edit entry must re-verify; normal component mounts reuse
-  // the in-memory grant and never send another manage(self) query.
+  // Explicit edit entry rechecks LOC Auth; normal mounts reuse the
+  // in-memory grant and never query a management table.
   const refresh=useCallback(async()=>{
     const fetcher=sessionOnly?queryFn:()=>loadManagementAccount(mutate,{force:true});
     const result=await mutate(queryKey,fetcher,{revalidate:false});
