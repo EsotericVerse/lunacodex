@@ -225,6 +225,11 @@ async function authorize(request,url,stub,env){
  const scope=scopeFor(client.kind,p.get('scope')||
   (client.kind==='extension'?'loc:import offline_access':'profile email offline_access'));
  let session=await sessionFromCookie(request,stub);
+ let bridged=null;
+ if(!session&&hasFirstPartyCookie(request)){
+  bridged=await sessionFromBetter(request,env,stub);
+  session=bridged.session;
+ }
  if(!session){
   const next=new URL('/login/index.html',WEB_AUDIENCE);
   next.searchParams.set('continue',url.pathname+url.search);
@@ -235,7 +240,7 @@ async function authorize(request,url,stub,env){
   redirect_uri,scope,resource,challenge,expires:Date.now()+300000});
  const result=new URL(redirect_uri);result.searchParams.set('code',code);
  result.searchParams.set('state',state);result.searchParams.set('iss',ISSUER);
- return redirect(result.href);
+ return redirect(result.href,bridged?[bridged.cookie]:[]);
 }
 async function provider(stub,name){
  const item=await stub.nativeProvider(name);
@@ -612,20 +617,31 @@ async function revoke(request,stub,origin){
  return response({},200,origin);
 }
 async function session(request,stub,origin,env){
- const identity=await sessionFromCookie(request,stub);
+ let identity=await sessionFromCookie(request,stub),bridged=null;
+ if(!identity&&hasFirstPartyCookie(request)){
+  bridged=await sessionFromBetter(request,env,stub);
+  identity=bridged.session;
+ }
  if(!identity)return response({session:null,user:null},200,origin);
  const auth=await issueToken(stub,identity,WEB_AUDIENCE,'profile email','loc-web');
  const user={id:identity.subject,email:identity.email,emailVerified:identity.emailVerified!==false};
  return response({session:{...auth,user,expires_at:Math.floor(Date.now()/1000)+ACCESS_SECONDS},
-  user,provider:'loc'},200,origin);
+  user,provider:'loc'},200,origin,bridged?{'set-cookie':bridged.cookie}:{});
 }
 async function logout(request,stub,origin,env){
  const csrf=String(request.headers.get('origin')||'');
  if(csrf&&csrf!==WEB_AUDIENCE&&csrf!==ISSUER)error('Cross-origin logout forbidden',403);
  const sid=parseCookies(request).get(SESSION_COOKIE);
  if(sid&&CODE_PATTERN.test(sid))await stub.nativeTake('native-session:'+await sha(sid));
- return response({signed_out:true},200,origin,
+ const result=response({signed_out:true},200,origin,
   {'set-cookie':cookie(SESSION_COOKIE,'',0)});
+ if(hasFirstPartyCookie(request)){
+  const revoked=await firstPartySignOut(request,env);
+  if(!revoked.ok)error('Better Auth session revoke failed',502);
+  for(const item of revoked.headers.getSetCookie?.()||[])
+   result.headers.append('set-cookie',item);
+ }
+ return result;
 }
 async function importShort(request,env,stub,origin){
  const identity=await verifyNativeOAuth(request,env,IMPORT_AUDIENCE);
