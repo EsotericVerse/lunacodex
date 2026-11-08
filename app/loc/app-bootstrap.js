@@ -3,6 +3,7 @@
 import {useAsyncResource} from './use-async-resource';
 import {invalidatePublicScopeMetadata,selectScopeBlocks,selectScopeConfig,selectScopeRegistry} from './scope-data';
 import {selectThemeRegistry,themeUiId} from './theme-data';
+import {SCOPE_ROUTE_INDEX} from '../modular/scope-route-index.js';
 
 // Shared public site snapshot (Registry/Theme/page copy) is fetched once per
 // client runtime. Each Scope page fetches only its own config and page blocks.
@@ -28,7 +29,9 @@ export async function selectAppBootstrap(scopeId,pageName='index',{configHint=nu
     id==='local'?Promise.resolve([]):selectScopeRegistry(),
     id==='local'?Promise.resolve([]):selectThemeRegistry(),
     id&&id!=='admin'
-      ?(configHint?Promise.resolve(configHint):selectScopeConfig(id))
+      ?(configHint?Promise.resolve(configHint):page==='index'
+        ?Promise.resolve(SCOPE_ROUTE_INDEX.find(row=>row.scope_id===id)?.config||null)
+        :selectScopeConfig(id))
       :Promise.resolve(null),
     id&&id!=='admin'?selectScopeBlocks(id,page):Promise.resolve([])
   ]);
