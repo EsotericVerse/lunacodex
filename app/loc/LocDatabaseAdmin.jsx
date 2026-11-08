@@ -4,7 +4,9 @@ import {mcpLocSession} from './mcp/loc-access.mjs';
 
 const AUTHORITY='https://auth.lo3rwang.cc';
 const EMPTY={id:'',label:'',engine:'postgres',host:'',port:'5432',
- database:'',username:'',password:'',auth_type:'default',domain:'',
+ database:'',schema_name:'silver',table_name:'',field_map:'{}',
+ ref_provider:'',ref_permission:'',
+ username:'',password:'',auth_type:'default',domain:'',
  client_id:'',tenant_id:'',client_secret:'',token:'',
  selectable_by_users:false,allowed_subjects:''};
 const ENGINES=[['postgres','PostgreSQL'],['mysql','MySQL / MariaDB'],
@@ -29,6 +31,9 @@ function cleanForm(item){
  return {id:String(item.id||''),label:String(item.label||''),
   engine:String(item.engine||'postgres'),host:String(item.host||''),
   port:String(item.port||'5432'),database:String(item.database||''),
+  schema_name:String(item.schema_name|| (item.engine==='mssql'?'dbo':item.engine==='mysql'?'':'silver')),
+  table_name:String(item.table_name||''),field_map:JSON.stringify(item.field_map||{},null,2),
+  ref_provider:String(item.ref_provider||''),ref_permission:String(item.ref_permission||''),
   username:String(item.username||''),password:'',
   auth_type:String(item.authentication?.type||'default'),
   domain:String(item.authentication?.domain||''),
@@ -97,7 +102,18 @@ export default function LocDatabaseAdmin(){
       ?{clientSecret:form.client_secret}:{}),
     ...(type==='azure-active-directory-access-token'&&form.token
       ?{token:form.token}:{})};
+   let field_map;
+   try{field_map=JSON.parse(form.field_map||'{}')}
+   catch{throw Error('欄位映射必須是有效 JSON')}
+   if(!field_map||typeof field_map!=='object'||Array.isArray(field_map))
+     throw Error('欄位映射必須是欄位名稱的對照物件');
+   const safe=/^[A-Za-z][A-Za-z0-9_]{0,119}$/;
+   if(Object.entries(field_map).some(([logical,physical])=>
+       !safe.test(logical)||typeof physical!=='string'||!safe.test(physical)))
+     throw Error('欄位映射包含無效欄位');
    const payload={engine:form.engine,label:form.label||form.id,
+    schema_name:form.schema_name,table_name:form.table_name,field_map,
+    ref_provider:form.ref_provider,ref_permission:form.ref_permission,
     host:form.host,port:Number(form.port),database:form.database,
     username:form.username,authentication,
     selectable_by_users:form.selectable_by_users,allowed_subjects,
@@ -138,7 +154,8 @@ export default function LocDatabaseAdmin(){
        const engine=event.target.value;
        setForm(prev=>({...prev,engine,auth_type:'default',domain:'',
         client_id:'',tenant_id:'',client_secret:'',token:'',
-        port:engine==='mssql'?'1433':engine==='mysql'?'3306':'5432'}));
+        port:engine==='mssql'?'1433':engine==='mysql'?'3306':'5432',
+        schema_name:engine==='mssql'?'dbo':engine==='mysql'?'':'silver'}));
      }}>
      {ENGINES.map(([key,label])=><option key={key} value={key}>{label}</option>)}
     </select>
@@ -153,6 +170,35 @@ export default function LocDatabaseAdmin(){
    <label><span>資料庫名稱</span>
     <input required value={form.database} disabled={busy}
       onChange={event=>change('database',event.target.value)}/></label>
+   <label><span>Schema（MySQL 留空，SQL Server 預設 dbo）</span>
+    <input value={form.schema_name} disabled={busy}
+      onChange={event=>change('schema_name',event.target.value)}
+      placeholder={form.engine==='mssql'?'dbo':'silver'}/></label>
+   <label><span>既有資料表（選填；指定後為唯讀映射）</span>
+    <input value={form.table_name} disabled={busy}
+      onChange={event=>change('table_name',event.target.value)}
+      placeholder="existing_articles"/></label>
+   <label className="scope-management-wide-field"><span>欄位映射（JSON；邏輯欄位 → 實際欄位）</span>
+    <textarea rows={4} value={form.field_map} disabled={busy}
+      spellCheck={false} onChange={event=>change('field_map',event.target.value)}
+      placeholder={'{"uid":"external_id","title":"headline","content":"body","createtime":"created_at"}'}/>
+   </label>
+   <label><span>外部 Auth Ref（選填）</span>
+    <select className="scope-select" value={form.ref_provider}
+      onChange={event=>change('ref_provider',event.target.value)} disabled={busy}>
+      <option value="">不要求外部 Auth Ref</option>
+      <option value="github">GitHub</option>
+      <option value="oidc">OIDC</option>
+      <option value="entra">Microsoft Entra</option>
+      <option value="ldap">LDAP（OIDC Bridge）</option>
+      <option value="ad">Active Directory（OIDC Bridge）</option>
+      <option value="clerk">Clerk JWT</option>
+    </select>
+   </label>
+   <label><span>要求的外部權限 Claim（選填）</span>
+    <input value={form.ref_permission} disabled={busy}
+      onChange={event=>change('ref_permission',event.target.value)}
+      placeholder="team-read"/></label>
    <label><span>資料庫登入方式</span>
     <select className="scope-select" value={form.auth_type} disabled={busy}
       onChange={event=>setForm(previous=>({...previous,auth_type:event.target.value,
