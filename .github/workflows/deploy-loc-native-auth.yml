@@ -1,5 +1,5 @@
-name: Deploy LOC native Auth (Better Auth, no SQL Gateway)
-# Release 2026-11-09: ship first-party LOC subject-only authorization with explicit Scope grants.
+name: Deploy LOC native Auth (OAuth only, no SQL Gateway)
+# Release 2026-11-09: remove registration/password identities; retain Google/GitHub OAuth and explicit Scope grants.
 # A change to this workflow deploys LOC Auth once; routine LOC changes do not.
 # Manual releases remain available without consuming quota on every push.
 on:
@@ -41,8 +41,6 @@ jobs:
         run: |
           node --check workers/loc-authority/index.mjs
           node --check workers/loc-authority/native-oauth.mjs
-          node --check workers/loc-authority/better-auth-native.mjs
-          node --check workers/loc-authority/better-auth-store.mjs
           node --check workers/loc-authority/auth-ref.mjs
           npm run test:authority
           node --test scripts/test-loc-auth-qos.mjs scripts/test-loc-auth-store.mjs
