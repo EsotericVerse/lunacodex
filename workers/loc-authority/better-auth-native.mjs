@@ -46,7 +46,7 @@ export function locBetterAuth(env){
   account:{accountLinking:{enabled:false}},
   session:{expiresIn:7200,updateAge:1800},
   rateLimit:{enabled:true,window:60,max:30},
-  advanced:{useSecureCookies:true}
+  advanced:{useSecureCookies:true,ipAddress:{ipAddressHeaders:['cf-connecting-ip']}}
  });
 }
 export function hasFirstPartyCookie(request){
