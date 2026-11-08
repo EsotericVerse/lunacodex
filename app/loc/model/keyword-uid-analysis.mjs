@@ -3,14 +3,14 @@ import {keywordClassCatalog,indexKeywordTree} from '../keyword-tree.mjs';
 
 // Keep scoring rules unchanged; ephemeral ordinals only index one analysis call.
 // All externally visible references are four-character Item UIDs.
-export function createKeywordUidDocumentClassifier(treeRows=[],classUid='',{collectKeywordTerms=false}={}){
+export function createKeywordUidDocumentClassifier(treeRows=[],classUid='',{collectKeywordTerms=false,selectedTerms=null}={}){
   const {catalog}=keywordClassCatalog(treeRows,classUid);
   const slot=new Map(catalog.map((item,i)=>[i+1,item.uid]));
   const temp=catalog.map((item,i)=>({
     item_no:i+1,item_name:item.item_name,class_group:item.group_uid,
     keywords:item.keywords,order_no:item.order_no,class_enable:true
   }));
-  const classify=createKeywordDocumentClassifier(temp,{collectKeywordTerms});
+  const classify=createKeywordDocumentClassifier(temp,{collectKeywordTerms,selectedTerms});
   return documents=>{
     const outcome=classify(documents);
     return {...outcome,classifications:(outcome.classifications||[]).map(row=>({
