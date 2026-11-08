@@ -145,17 +145,17 @@ export function createDirectDataApiClient({
   }
   async function publicAnalytics(args={}) {
     const view=String(args.p_view||'');
-    const supported=['culture_anchors','culture_density','daily','overview','earliest','totals'];
+    const supported=['culture_anchors','culture_density','daily','overview','earliest','totals','loc'];
     if(!supported.includes(view))throw Error('Unsupported public aggregation operation');
     const scope=String(args.p_scope_id||'');
     const start=args.p_start==null?'':String(args.p_start);
     const end=args.p_end==null?'':String(args.p_end);
-    const dated=view!=='culture_anchors'&&view!=='earliest'&&view!=='totals';
+    const dated=view!=='culture_anchors'&&view!=='earliest'&&view!=='totals'&&view!=='loc';
     if(!/^[a-z][a-z0-9]{0,14}$/.test(scope)||
       (dated&&(!/^\d{4}-\d{2}-\d{2}$/.test(start)||
         !/^\d{4}-\d{2}-\d{2}$/.test(end)||start>end))||
       (view==='earliest'&&(start||end))||
-      (view==='totals'&&(Boolean(start)!==Boolean(end)||
+      ((view==='totals'||view==='loc')&&(Boolean(start)!==Boolean(end)||
         start&&(!/^\d{4}-\d{2}-\d{2}$/.test(start)||
           !/^\d{4}-\d{2}-\d{2}$/.test(end)||start>end))))
       throw Error('Invalid LOC public aggregation query');
