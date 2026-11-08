@@ -144,3 +144,23 @@ export async function sourceCatalogAction(trx,args,save=false){
   return {universe:'loc',galaxy:'loc',system,scopes:records,tree};
 }
 
+
+export async function saveLocSystemSources(trx,{p_group_id,p_names}={}){
+  const group=validScope(p_group_id),names=p_names;
+  if(group!=='loc'||!Array.isArray(names)||names.length>400||
+    names.some(n=>typeof n!=='string'||n.trim().length<1||n.trim().length>80)||
+    new Set(names.map(n=>n.trim().normalize('NFKC').toLowerCase())).size!==names.length)
+    reject('Invalid LOC system source names');
+  if(!await canManageLoc(trx,'group','loc'))
+    reject('LOC Group management permission required',403);
+  await sql`reset role`.execute(trx);
+  const exists=await trx.selectFrom('silver.loc').select('id')
+    .where('id','=','loc').forUpdate().executeTakeFirst();
+  if(!exists)reject('LOC Group configuration not found',404);
+  const updated=await trx.updateTable('silver.loc')
+    .set({DefaultArticleClass:sql`${JSON.stringify(names.map(n=>n.trim()))}::jsonb`})
+    .where('id','=','loc').executeTakeFirst();
+  if(Number(updated?.numUpdatedRows||0)!==1)
+    reject('LOC system source update failed');
+  return true;
+}
