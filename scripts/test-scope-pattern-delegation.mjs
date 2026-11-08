@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {literalItemWords,scopeDatabaseUid,readScopePatternRows,
-  ensureScopePatternLibrary,storeScopePatternMatches} from '../app/loc/keyword-anchor-index.mjs';
+  ensureScopePatternLibrary,storeScopePatternMatches,scopePatternScanClocks,
+  SCOPE_PATTERN_INDEX_VERSION} from '../app/loc/keyword-anchor-index.mjs';
 import {indexZModelAnchorHierarchy} from '../zenstack/anchor-hierarchy.mjs';
 
 // Minimal Kysely contract simulator; no database credentials or SQL string
@@ -150,4 +151,18 @@ test('public Anchor suggestions are gated by the Scope publication flag',()=>{
   assert.match(server,/published:settings\?\.search===true/);
   assert.match(server,/if\(!owner&&!visible\.published\)continue/);
   assert.match(server,/if\(settings\?\.search!==true\)err\('This Scope does not publish Search',403\)/);
+});
+
+test('old scan timestamps cannot skip first native Scope Pattern backfill',()=>{
+  const legacy={pattern_scans:{'水':'2026-11-08T00:00:00.000Z'},
+    by_class:{CL000001:{completedAt:'2026-11-08T00:00:00.000Z'}}};
+  assert.deepEqual(scopePatternScanClocks(legacy),{});
+  const native={...legacy,pattern_index_version:SCOPE_PATTERN_INDEX_VERSION};
+  assert.deepEqual(scopePatternScanClocks(native),legacy.pattern_scans);
+  const service=readFileSync(new URL('../app/loc/keyword-sql-service.mjs',import.meta.url),'utf8');
+  assert.match(service,/patternScans:scopePatternScanClocks\(cfg\.keyword_meta\)/);
+  assert.match(service,/baseMeta=alreadyNative\?oldMeta:\{\.\.\.oldMeta,by_class:\{\},pattern_scans:\{\}\}/);
+  assert.match(service,/pattern_index_version:SCOPE_PATTERN_INDEX_VERSION/);
+  const stats=readFileSync(new URL('../app/modular/modules/statistics/KeywordPatternSummary.jsx',import.meta.url),'utf8');
+  assert.match(stats,/if\(data\.indexPending\)/);
 });

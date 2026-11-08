@@ -47,7 +47,8 @@ export async function accessibleKeywordAnchors(db,scope,owner=false){
   const patterns=new Set();
   for(const itemId of visible)
     for(const uid of kids(byUid.get(itemId)))patterns.add(uid);
-  const indexed=new Set(Object.keys(meta.pattern_scans||{}));
+  const indexed=meta.pattern_index_version==='scope_anchor_v1'
+    ?new Set(Object.keys(meta.pattern_scans||{})):new Set();
   return {items:visible,patterns,indexed,published:settings?.search===true};
 }
 

@@ -6,6 +6,15 @@ import {parseRuneKeywordRuleSentence} from './model/rune-keyword-rules.mjs';
 
 const UID=/^[A-Za-z0-9]{8}$/;
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
+// Legacy scan clocks cannot certify newly backfilled empty Scope postings.
+export const SCOPE_PATTERN_INDEX_VERSION='scope_anchor_v1';
+export function scopePatternScanClocks(metadata={}){
+  const meta=typeof metadata==='string'?JSON.parse(metadata):metadata;
+  if(!meta||typeof meta!=='object'||Array.isArray(meta)||
+     meta.pattern_index_version!==SCOPE_PATTERN_INDEX_VERSION)return {};
+  const scans=meta.pattern_scans;
+  return scans&&typeof scans==='object'&&!Array.isArray(scans)?scans:{};
+}
 export const keywordIdentity=value=>String(value??'').normalize('NFKC').trim().toLocaleLowerCase('zh-Hant');
 const visible=value=>String(value??'').normalize('NFKC').trim();
 const scopeAnchor=scope=>{
