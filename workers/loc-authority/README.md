@@ -46,3 +46,7 @@ AD 與 LDAP 此版透過 OIDC Bridge 互通，**並非原生 LDAP TCP Bind**。�
 ### 驗證及部署
 
 測試涵蓋原生帳號、Session、PKCE、OAuth Ref 不取代 LOC 主體、簽章／Nonce／權限拒絕、三種 Kysely Dialect 的語法編譯、既有 Table／欄位映射，以及 Cloudflare Wrangler Dry Run。真實 AD/LDAP、Azure SQL、MySQL 仍需要對應外部伺服器和實際權限才能完成連線驗證，模擬測試不能代替生產驗收。合併 main、網站部署與 LOC Auth Worker 發布為不同狀態，須分別確認。
+
+## OAuth-only Google 登入（2026-11-09）
+
+Google 按鈕直接沿用 Supabase 已設定的 Google OAuth，不要求使用者註冊 LOC 或提供密碼。LOC Auth 只接收 Supabase Auth 驗證過的 Google 身分，且僅允許預先綁定的既有管理身分建立 LOC Session。OAuth State 和一次性 CSRF Cookie 檢查完成後，LOC 自行簽發 Session、MCP/Extension Token 與 Scope 授權。使用者的 Supabase Access Token 不儲存。`LOC_RECOVERY_ROOT_LOC_SUBJECTS` 是 Cloudflare Worker Secret，不得暴露在 Git 或網站。GitHub OAuth 需要提供者實際啟用才可運作，不以尚未設定冒充已完成。
