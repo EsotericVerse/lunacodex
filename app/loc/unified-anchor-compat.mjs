@@ -33,7 +33,7 @@ const parseLabelList=value=>{
 const allowedAttr=Object.freeze({
  date:['date'],period:['uid','date'],era:['period','date'],
  point:['longitude','latitude','location','times'],path:['point'],trace:['point','path'],
- category:['uid'],class:['uid'],group:['uid','total'],item:['keyword','total'],
+ category:['uid'],class:['uid'],group:['uid'],item:['keyword'],
  image:['url','date'],video:['url','date'],rune:['url','date'],suno:['url','date']
 });
 const listOf=value=>Array.isArray(value)?value:parseLabelList(value);
@@ -47,29 +47,6 @@ function compactAttr(type,value){
 
 const simpleFilters=new Set(['eq','neq','gte','lte','gt','lt','like','ilike','is','in']);
 const hasOwn=(obj,key)=>Object.prototype.hasOwnProperty.call(obj,key);
-const uniqueArticleIds=list=>[...new Set((Array.isArray(list)?list:[])
- .map(uid=>String(uid||'')).filter(uid=>/^[A-Za-z0-9]{8}$/.test(uid)))].sort();
-function compactKeywordAnalysis(type,value){
- if(type!=='group'&&type!=='item')return {};
- const input=value&&typeof value==='object'?value:{};
- if(Array.isArray(input.uidlists)){
-   const list=uniqueArticleIds(input.uidlists),n=Number(input.total);
-   return {total:Number.isSafeInteger(n)&&n>=0?n:list.length,uidlists:list};
- }
- if(type==='group'){
-   const list=uniqueArticleIds(Array.isArray(input)?input:input.articles);
-   return {total:list.length,uidlists:list};
- }
- const hits=Array.isArray(input)?input:Array.isArray(input.hits)?input.hits:[];
- const byUid=new Map();
- for(const hit of hits){
-   const uid=String(hit?.uid||''),times=Number(hit?.times);
-   if(!/^[A-Za-z0-9]{8}$/.test(uid)||!Number.isSafeInteger(times)||times<0)continue;
-   byUid.set(uid,Math.max(byUid.get(uid)||0,times));
- }
- return {total:[...byUid.values()].reduce((a,b)=>a+b,0),uidlists:[...byUid.keys()].sort()};
-}
-
 // Four kinds share one case-sensitive UID key. Trace/Media used to depend
 // on database-generated UIDs; the unified Anchor table has no such default.
 const UID_ALPHABET='0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
@@ -160,10 +137,7 @@ export function toAnchorRow(spec,row){
  }else if(spec.kind==='keywords'){
    if(hasOwn(data,'lists'))
      attributes[type==='item'?'keyword':'uid']=listOf(data.lists);
-   if(hasOwn(data,'uid_lists')&&(type==='group'||type==='item')){
-     const stats=compactKeywordAnalysis(type,data.uid_lists);
-     attributes.total=stats.total;
-   }
+
  }else if(spec.kind==='media'){
    if(hasOwn(data,'url'))attributes.url=data.url;
  }
@@ -210,7 +184,7 @@ export function fromAnchorRow(spec,row){
  }else if(spec.kind==='keywords'){
    out.name=row.title;out.desc=row.description;
    out.lists=listOf(row.type==='item'?attr.keyword:attr.uid);
-   out.uid_lists=attr.total!=null?{total:attr.total,uidlists:[]}:null;
+   out.uid_lists=[]; // Classification is only in loc_search_pattern.
  }else if(spec.kind==='media'){
    out.url=attr.url??null;
    out.location=null;
