@@ -63,6 +63,19 @@ function validateTarget(input,id){
   if(refProvider&&!AUTH_PROVIDER_TYPES.includes(refProvider)||
      refPermission&&(!refProvider||!/^[A-Za-z0-9_:@.\/\-]{2,256}$/.test(refPermission)))
     throw fail('Invalid database Auth Ref requirement',400);
+  const schemaName=String(input.schema_name||
+    (engine==='postgres'?'silver':engine==='mssql'?'dbo':''));
+  const tableName=String(input.table_name||'');
+  const columns=input.field_map||{};
+  const identifier=/^[A-Za-z][A-Za-z0-9_]{0,119}$/;
+  if((schemaName&&!identifier.test(schemaName))||
+     (tableName&&!identifier.test(tableName))||
+     !columns||typeof columns!=='object'||Array.isArray(columns)||
+     Object.keys(columns).length>32||
+     Object.entries(columns).some(([logical,physical])=>
+       !identifier.test(logical)||typeof physical!=='string'||
+       !identifier.test(physical)))
+    throw fail('Invalid database relation mapping',400);
   const selectableByUsers=input.selectable_by_users===true;
  if(input.selectable_by_users!==undefined&&typeof input.selectable_by_users!=='boolean')
   throw fail('Invalid user database selection policy');
@@ -72,6 +85,7 @@ function validateTarget(input,id){
    throw fail('Invalid database allowed subjects');
  return {id,engine,host,port,database,username,label,authentication,
   ref_provider:refProvider,ref_permission:refPermission,
+  schema_name:schemaName,table_name:tableName,field_map:columns,
   selectable_by_users:selectableByUsers,
   allowed_subjects:[...new Set(allowedSubjects)],
   ...(password?{password}:{})};
