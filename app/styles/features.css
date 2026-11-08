@@ -728,6 +728,44 @@
   box-shadow:inset 0 1px 0 color-mix(in srgb,var(--loc-text) 5%,transparent);
 }
 .scope-search-workspace .scope-search-form>label{grid-area:label;font-weight:800;letter-spacing:.02em;color:var(--loc-text);font-size:.9rem}
+/* The installed react-select shares the existing Search input grid-area.
+   Date/Point/Source/Pattern suggestions are keyboard navigable. */
+.scope-search-workspace .scope-search-form>.loc-anchor-select{
+  grid-area:input;min-width:0;width:100%;font:inherit;
+}
+.loc-anchor-select__control{
+  min-height:3.15rem;padding:.35rem .65rem;
+  border:1px solid var(--loc-ui-hairline);
+  border-radius:var(--loc-ui-radius-md);
+  background:var(--loc-surface);color:var(--loc-text);
+}
+.loc-anchor-select__control--is-focused{
+  border-color:var(--loc-accent-border);
+  box-shadow:0 0 0 3px var(--loc-ui-accent-soft);
+}
+.loc-anchor-select__value-container{gap:.15rem;min-width:0}
+.loc-anchor-select__input-container,.loc-anchor-select__single-value,
+.loc-anchor-select__placeholder{color:var(--loc-text)}
+.loc-anchor-select__placeholder{opacity:.7}
+.loc-anchor-select__menu{
+  margin-top:.25rem;z-index:40;max-height:22rem;overflow:auto;
+  border:1px solid var(--loc-ui-hairline);
+  border-radius:var(--loc-ui-radius-md);
+  background:var(--loc-panel);box-shadow:var(--loc-shadow-card);
+}
+.loc-anchor-select__menu-list{padding:.35rem}
+.loc-anchor-select__group-heading{
+  padding:.45rem .7rem;font-size:.8rem;font-weight:800;
+  color:var(--loc-text);opacity:.75;
+}
+.loc-anchor-select__option{
+  padding:.55rem .75rem;border-radius:var(--loc-ui-radius-sm);
+  color:var(--loc-text);cursor:pointer;
+}
+.loc-anchor-select__option--is-focused,
+.loc-anchor-select__option--is-selected{background:var(--loc-ui-accent-soft)}
+.loc-anchor-select__no-options-message,
+.loc-anchor-select__loading-message{padding:.7rem;color:var(--loc-text);opacity:.7}
 .scope-search-workspace .scope-search-form>input{
   grid-area:input;min-width:0;min-height:3.15rem;padding:.75rem 1.1rem;
   border-radius:var(--loc-ui-radius-md)!important;
