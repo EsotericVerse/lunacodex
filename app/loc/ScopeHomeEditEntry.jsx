@@ -9,7 +9,6 @@ registerDefaultSection('uiExtra.editBlocks',editBlocksZh);
 import {useScopeRuntime} from '../modular/use-scope-runtime';
 import {useEditDock} from '../modular/edit-dock';
 import {useAccount} from './use-account';
-import {Capacitor} from '@capacitor/core';
 import {grantHomeEditorAccess} from './home-edit-access.mjs';
 import {clearEditorSession} from './edit-session-ttl.mjs';
 
@@ -29,12 +28,8 @@ export default function ScopeHomeEditEntry(){
     setBusy(true);
     setMessage('');
     try{
-      // Native device-local edits never require a cloud login; only the
-      // local SQLite adapter may receive writes for this hidden Scope.
-      if(scopeId==='local'&&Capacitor.isNativePlatform()&&Capacitor.getPlatform()==='ios'){
-        clearEditorSession(window.sessionStorage);
-        grantHomeEditorAccess(window.sessionStorage,'local','local-device');
-        editDock?.begin('local');
+      if(scopeId==='local'){
+        setMessage({error:'Local Scope 尚未啟用，請先設定資料庫引擎。'});
         return;
       }
       // One live verification for this edit entry. An earlier result is not

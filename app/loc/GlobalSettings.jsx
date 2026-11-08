@@ -18,7 +18,6 @@ import PanelLoading from './PanelLoading';
 const PrivateLocalFiles=dynamic(()=>import('./PrivateLocalFiles'),{loading:PanelLoading});
 const LocScopeConnections=dynamic(()=>import('./LocScopeConnections'),{loading:PanelLoading});
 const LocDatabaseSwitcher=dynamic(()=>import('./LocDatabaseSwitcher'),{loading:PanelLoading});
-const LocalDatabaseImport=dynamic(()=>import('./LocalDatabaseImport'),{loading:PanelLoading});
 // 每日符文紀錄：沿用既有的獨立頁面元件（/daily/log/），同一份邏輯透過它自己
 // 既有的 embedded 模式嵌入這裡，不複製任何讀寫邏輯。
 const DailyRuneCalendarSettings=dynamic(()=>import('../lrunes/DailyRuneCalendarSettings'),{loading:PanelLoading});
@@ -45,7 +44,6 @@ export default function GlobalSettings({initialSection='home'}={}){
     option('mcp',uiT('uiExtra.globalSettings.mcpSelfServiceTitle'),uiT('uiExtra.globalSettings.mcpSelfServiceIntro'),uiT('uiExtra.globalSettings.mcpTab')),
     ...(native?[option('manage',uiT('uiExtra.globalSettings.manageMenu'),uiT('uiExtra.globalSettings.manageMenuDescription'),uiT('uiExtra.globalSettings.tabManage'))]:[]),
     ...(native||prefs.account.user?[option('dailyRune',uiT('uiExtra.globalSettings.dailyRune'),uiT('uiExtra.globalSettings.dailyRuneDescription'),uiT('uiExtra.globalSettings.tabDailyRune'))]:[]),
-    ...(native&&Capacitor.getPlatform()==='ios'?[option('files',uiT('uiExtra.globalSettings.documentImport'),uiT('uiExtra.globalSettings.documentImportDescription'),uiT('uiExtra.globalSettings.tabDocumentImport'))]:[])
   ];
   // favorites is the legacy URL alias for the public home/settings panel.
   const [section,setSection]=useManagementSection(sections,initialSection,{favorites:'home',account:'home'});
@@ -71,11 +69,10 @@ export default function GlobalSettings({initialSection='home'}={}){
 
   const choices=useMemo(()=>{
     const baseChoices=[{id:'lrunes',label:uiT('nav.lunarunes')},{id:'lo3rwang',label:uiT('uiExtra.globalSettings.authorHome')},{id:'loc',label:uiT('uiExtra.globalSettings.locHome')}];
-    // A Web visitor must not reach the device-only SQLite Scope from Settings.
-    if(native)baseChoices.push({id:'local',label:uiT('uiExtra.globalSettings.localScope')});
+    // Local Scope is not provisioned and must not be offered as an SQL destination.
     const found=new Map(baseChoices.map(item=>[item.id,item]));
     for(const row of registry){
-      if(!row?.scope_id||row.scope_id==='admin'||(!native&&getScope(row.scope_id).nativeOnly))continue;
+      if(!row?.scope_id||row.scope_id==='admin'||row.scope_id==='local'||getScope(row.scope_id).nativeOnly)continue;
       found.set(row.scope_id,{
         id:row.scope_id,
         label:baseChoices.find(item=>item.id===row.scope_id)?.label||row.display_name||row.scope_id
@@ -187,8 +184,6 @@ export default function GlobalSettings({initialSection='home'}={}){
       {activeSection==='features'?<FeatureSettingsPage embedded/>:null}
       {activeSection==='mcp'?<LocScopeConnections availableScopes={choices}/>:null}
 
-      {/* iOS-only document import; cloud Scope imports remain in Scope management. */}
-      {native&&Capacitor.getPlatform()==='ios'&&activeSection==='files'?<LocalDatabaseImport/>:null}
       {activeSection==='dailyRune'?<DailyRuneCalendarSettings/>:null}
 
       {/* Device management never mounts website Scope/Article/Admin capabilities. */}

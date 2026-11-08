@@ -42,19 +42,8 @@ export function galaxyAble(row={}){
 export function isScopedGalaxy(table){
   return /^silver\.[a-z][a-z0-9]{0,14}_galaxy$/.test(String(table||''));
 }
-const localGalaxy=table=>String(table)==='silver.local_galaxy';
-function toLocalFields(row={}){
-  const flags=galaxyAble(row);
-  const {keyword,others,...rest}=flags;
-  // Device-local SQLite has only the legacy packed permission field.
-  // Never pass physical Galaxy booleans through its column adapter.
-  const omit=new Set([...GALAXY_ABLE_KEYS,'able','searchable','statistics_able','keywords','game']);
-  const fields=Object.fromEntries(Object.entries(row).filter(([key])=>!omit.has(key)));
-  return {...fields,able:{...rest,keywords:keyword,game:others}};
-}
 export function prepareGalaxyInsertRows(table,rows=[]){
   if(!isScopedGalaxy(table))return rows;
-  if(localGalaxy(table))return rows.map(toLocalFields);
   return rows.map(row=>{
     const {able,searchable,statistics_able,keywords,game,...fields}=row;
     return {...fields,...galaxyAble(row)};
@@ -62,13 +51,6 @@ export function prepareGalaxyInsertRows(table,rows=[]){
 }
 export function prepareGalaxyUpdateValues(table,values){
   if(!isScopedGalaxy(table))return values;
-  if(localGalaxy(table)){
-    const fields=values||{};
-    const hasFlags=Object.hasOwn(fields,'able')||
-      GALAXY_ABLE_KEYS.some(key=>Object.hasOwn(fields,key))||
-      Object.hasOwn(fields,'keywords')||Object.hasOwn(fields,'game');
-    return hasFlags?toLocalFields(fields):fields;
-  }
   const {able,searchable,statistics_able,keywords,game,...fields}=values||{};
   // A partial edit must only touch flags explicitly provided. Never reset
   // other columns or rebuild the old packed "able" payload.

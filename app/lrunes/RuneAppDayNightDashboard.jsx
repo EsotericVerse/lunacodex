@@ -2,7 +2,7 @@
 
 import {useEffect,useMemo,useState} from 'react';
 import {Line,LineChart,Tooltip,XAxis,YAxis} from 'recharts';
-import {listLocalDailyRunes,listLocalRuneDraws} from './local-rune-sqlite.mjs';
+import {listLocalDailyRunes,listLocalRuneDraws} from './local-rune-records.mjs';
 import {buildRuneAppOverview,FOUR_DIRECTIONS} from './rune-app-dashboard.mjs';
 
 function taipeiDate(){
@@ -85,7 +85,7 @@ export default function RuneAppDayNightDashboard({canReadLocal=false,onSelectDra
         </select>
       </div>
       {canReadLocal?<div>
-        {busy?<p className="scope-status">正在讀取本機 SQLite 紀錄…</p>:null}
+        {busy?<p className="scope-status">正在讀取本機紀錄…</p>:null}
         {error?<p className="scope-status scope-error" role="alert">本機紀錄讀取失敗：{error}</p>:null}
         <div className="scope-rune-daynight-metrics">
           <div><strong>{overview?.total||0}</strong><span>抽符紀錄</span></div>

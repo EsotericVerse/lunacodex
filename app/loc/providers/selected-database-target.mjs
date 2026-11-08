@@ -1,5 +1,5 @@
 // LOC database targets are provider-neutral: engine plus trusted SQL alias.
-import {SQL_ENGINE_OPTIONS,getSqlEnginePort} from './sql-engine-ports.mjs';
+import {SQL_ENGINE_OPTIONS} from './sql-engine-ports.mjs';
 export const DATABASE_ENGINES=Object.freeze(SQL_ENGINE_OPTIONS.map(entry=>entry.value));
 export const DATABASE_PROVIDERS=Object.freeze(['custom']);
 export const CONNECTION_MODES=Object.freeze(['direct','pooler']);
@@ -17,8 +17,6 @@ export function normalizeDatabaseTarget(row){
   if(!aliasPattern.test(alias))throw new Error('Invalid server-side connection alias');
   const mode=String(row.connection_mode||'direct');
   if(!modes.has(mode))throw new Error('Invalid database connection mode');
-  // SQLite is supported in portable/local Kysely, not as an ephemeral Edge database.
-  if(getSqlEnginePort(engine).runtime==='persistent-local')throw new Error('SQLite requires a persistent trusted local database runtime');
   return {...row,provider,engine,connection_alias:alias,connection_mode:mode};
 }
 export function selectedDatabaseTarget(rows,{fallback='custom'}={}){

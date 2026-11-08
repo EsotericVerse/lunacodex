@@ -187,7 +187,6 @@ test('active LOC browser and local providers have no SQL RPC transport',()=>{
   const active=[
     '../app/loc/providers/configured.mjs',
     '../app/loc/providers/kysely-edge.mjs',
-    '../app/loc/providers/local-sqlite.mjs',
     '../app/loc/db-client.mjs'
   ];
   for(const path of active){
@@ -199,14 +198,12 @@ test('active LOC browser and local providers have no SQL RPC transport',()=>{
   assert.match(bridge,/createLocGatewayAdapter/);
 });
 
-test('direct Kysely action routing replaces the local and public RPC facade',()=>{
-  const local=readFileSync(new URL('../app/loc/providers/local-sqlite.mjs',import.meta.url),'utf8');
+test('unprovisioned Local Scope never falls through to remote SQL',()=>{
   const browser=readFileSync(new URL('../app/loc/db-client.mjs',import.meta.url),'utf8');
   const edge=readFileSync(new URL('../app/loc/providers/kysely-edge.mjs',import.meta.url),'utf8');
-  assert.match(local,/analytics\(args\)\{return localAnalytics\(args\);\}/);
-  assert.match(local,/managedWrite\(payload\)\{return managementWriteLocal\(payload\);\}/);
-  assert.match(browser,/localSchema\.analytics\(args\)/);
-  assert.match(browser,/localSchema\.managedWrite\(payload\)/);
+  assert.match(browser,/function unavailableLocal\(/);
+  assert.match(browser,/isUnprovisionedLocal\(table,schemaName\)/);
+  assert.doesNotMatch(browser,/createLocalSqliteAdapter|local-sqlite\.mjs/);
   for(const method of ['analytics','managedWrite','managedAction','publicAction','anchor'])
     assert.ok(edge.includes(method+'('),'missing SQL action '+method);
 });

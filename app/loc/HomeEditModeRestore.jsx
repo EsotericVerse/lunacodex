@@ -1,6 +1,5 @@
 'use client';
 import {useEffect} from 'react';
-import {Capacitor} from '@capacitor/core';
 import {useEditDock} from '../modular/edit-dock';
 import {readHomeEditorAccess,clearHomeEditorAccess} from './home-edit-access.mjs';
 // Single unified permission entry point: ScopeHomeEditEntry.jsx is the only
@@ -23,8 +22,8 @@ export default function HomeEditModeRestore({scopeId}){
       if(!marker)clearHomeEditorAccess(window.sessionStorage);
       return undefined;
     }
-    if(scopeId==='local'&&marker.userId==='local-device'&&Capacitor.isNativePlatform()){
-      dock?.begin('local');return undefined;
+    if(scopeId==='local'){
+      clearHomeEditorAccess(window.sessionStorage);return undefined;
     }
     dock?.begin(scopeId);
     return undefined;

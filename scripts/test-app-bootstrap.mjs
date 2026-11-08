@@ -263,38 +263,27 @@ test('keyword reset reports progress and edit dock remains in AppShell',()=>{
   assert.ok(css.includes('.scope-feature-dock .scope-edit-dock-notice{'));
 });
 
-test('Web Settings cannot navigate into the iOS-only local Scope',()=>{
+test('unprovisioned Local Scope is never offered for database editing',()=>{
   const settings=readFileSync(new URL('../app/loc/GlobalSettings.jsx',import.meta.url),'utf8');
   const shell=readFileSync(new URL('../app/AppShell.jsx',import.meta.url),'utf8');
   const locApp=readFileSync(new URL('../app/loc/LocApp.jsx',import.meta.url),'utf8');
   const scopeRegistry=readFileSync(new URL('../app/modular/scope-registry.js',import.meta.url),'utf8');
   assert.ok(scopeRegistry.includes('nativeOnly:true'));
-  assert.ok(settings.includes("if(native)baseChoices.push({id:'local'"));
-  assert.ok(settings.includes("(!native&&getScope(row.scope_id).nativeOnly)"));
-  assert.ok(settings.includes("...(native&&Capacitor.getPlatform()==='ios'?[option('files'"));
-  assert.ok(settings.includes("native&&Capacitor.getPlatform()==='ios'&&activeSection==='files'?<LocalDatabaseImport/>"));
-  assert.ok(!settings.includes('const managedScopes='));
-  assert.ok(!settings.includes('loc-import-scope'));
+  assert.match(settings,/row\.scope_id==='local'\|\|getScope\(row\.scope_id\)\.nativeOnly/);
+  assert.doesNotMatch(settings,/LocalDatabaseImport|baseChoices\.push\(\{id:'local'/);
   assert.ok(!settings.includes('ManagementImportPanel'));
   assert.ok(shell.includes("const navScopeId=!native&&currentScope.nativeOnly?'loc'"));
   assert.ok(shell.includes("(native||!getScope(id).nativeOnly)"));
   assert.ok(locApp.includes("router.replace('/local/settings/')"));
-  assert.ok(locApp.includes("if(scopeMeta?.nativeOnly&&!nativeOnlyReady)"));
 });
-
-test('Settings document import is iOS only, and the existing importer uses local SQLite',()=>{
+test('device settings preserve private file management but remove SQL imports',()=>{
   const settings=readFileSync(new URL('../app/loc/GlobalSettings.jsx',import.meta.url),'utf8');
-  const localImport=readFileSync(new URL('../app/loc/LocalDatabaseImport.jsx',import.meta.url),'utf8');
-  const panel=readFileSync(new URL('../app/loc/ManagementImportPanel.jsx',import.meta.url),'utf8');
-  const dbClient=readFileSync(new URL('../app/loc/db-client.mjs',import.meta.url),'utf8');
-  assert.match(settings,/native&&Capacitor\.getPlatform\(\)==='ios'\?\[option\('files'/);
-  assert.doesNotMatch(settings,/activeSection==='files'&&!native/);
-  assert.doesNotMatch(settings,/loc-import-scope|requestedScope|managedScopes|ManagementImportPanel/);
-  assert.match(localImport,/Capacitor\.isNativePlatform\(\)&&Capacitor\.getPlatform\(\)==='ios'/);
-  assert.match(localImport,/if\(!native\)return null;/);
-  assert.match(localImport,/<ManagementImportPanel scopeId="local"\/>/);
-  assert.match(panel,/scopeId==='local'&&Capacitor\.isNativePlatform\(\)&&Capacitor\.getPlatform\(\)==='ios'/);
-  assert.match(dbClient,/if\(name==='local'\|\|name\.startsWith\('local_'\)\)return true/);
+  const local=readFileSync(new URL('../app/loc/views/LocalSettingView.jsx',import.meta.url),'utf8');
+  const client=readFileSync(new URL('../app/loc/db-client.mjs',import.meta.url),'utf8');
+  assert.match(settings,/<PrivateLocalFiles\/>/);
+  assert.match(local,/<PrivateLocalFiles\/>/);
+  assert.match(client,/function unavailableLocal\(/);
+  assert.doesNotMatch(settings,/LocalDatabaseImport|activeSection==='files'/);
 });
 
 test('LOC public search is global and does not enumerate Scope IDs in its UI',()=>{

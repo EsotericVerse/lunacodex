@@ -6,14 +6,13 @@ import {useEffect,useState} from 'react';
 import dynamic from 'next/dynamic';
 import PanelLoading from '../PanelLoading';
 
-const LocalDatabaseImport=dynamic(()=>import('../LocalDatabaseImport'),{loading:PanelLoading});
 const PrivateLocalFiles=dynamic(()=>import('../PrivateLocalFiles'),{loading:PanelLoading});
 
 export default function LocalSettingView(){
   const [native,setNative]=useState(false);
   useEffect(()=>setNative(Capacitor.isNativePlatform()&&Capacitor.getPlatform()==='ios'),[]);
   return <FeaturePage featureId="manage">
-    {native?<><LocalDatabaseImport/><PrivateLocalFiles/></>:
+    {native?<PrivateLocalFiles/>:
       <section className="loc-card"><p>本機管理僅在 iOS App 提供。</p></section>}
   </FeaturePage>;
 }

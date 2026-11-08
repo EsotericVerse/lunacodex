@@ -3,7 +3,7 @@
 import {Capacitor} from '@capacitor/core';
 
 // Web: use the unified DB-side analytics entry, not a full article scan.
-// Native/local SQLite retains the original on-device row-level reader.
+// Local Scope SQL has not been provisioned; native-only reads remain disabled.
 export async function readPlaceSummary(scopeId,{startDate='',endDate=''}={}){
   const [{forEachAllRowsPage,selectRows},{defaultScopeData},{dbPublicClient}]=await Promise.all([
     import('./db-query.mjs'),import('./scope-data'),import('./db-client.mjs')

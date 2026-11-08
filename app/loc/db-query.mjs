@@ -75,17 +75,9 @@ export async function executePublicRead(table,buildQuery,{source='auto',authenti
   const timeout=AbortSignal.timeout(READ_TIMEOUT_MS);
   signal=cancel?AbortSignal.any([cancel,timeout]):timeout;
   if(cancel?.aborted)throw abortError();
-  // Device data must never require a cloud routing decision or fall back to
-  // the remote Gateway. The routed DB client sends these relations to local SQLite.
-  if(/^silver\.local(?:_[a-z0-9_]+)?$/.test(String(table))){
-    if(expectedDbId)throw new Error('Local SQLite is not a remote database dataset');
-    const localClient=authenticated?dbAuthClient:dbPublicClient;
-    const result=await withSignal(buildQuery(publicRelation(localClient,table)),signal);
-    if(cancel?.aborted)throw abortError();
-    const failure=resultError(result,table,'local');
-    if(failure)throw failure;
-    return {...result,__dataSource:'local'};
-  }
+  // Local Scope is not provisioned; do not let its reads reach remote SQL.
+  if(/^silver\.local(?:_[a-z0-9_]+)?$/.test(String(table)))
+    throw new Error('Local Scope 尚未啟用，請先設定資料庫引擎。');
   const routing=await selectedDatabaseRouting(dbConfiguredPublicClient);
   if(cancel?.aborted)throw abortError();
   // Hidden Galaxy rows require the signed-in SDK and server-enforced Scope RLS.

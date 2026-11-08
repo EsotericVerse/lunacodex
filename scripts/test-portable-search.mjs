@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {portableContainsSpec,portableContainsTerm,parsePortableOrExpression} from '../app/loc/providers/portable-search.mjs';
-import {runInNewContext} from 'node:vm';
 import {isTextSearchQuery} from '../app/loc/providers/search-qos.mjs';
 
 test('CJK literal search does not introduce LOWER on Galaxy.content',()=>{
@@ -64,24 +63,3 @@ test('shared OR parsing preserves punctuation, nested precedence, and text value
   assert.throws(()=>parsePortableOrExpression('content;drop.contains."x"'),/Unsupported OR filter/);
 });
 
-test('local SQLite compiles the same parameterized contains and nested OR logic',()=>{
-  const source=readFileSync(new URL('../app/loc/providers/local-sqlite.mjs',import.meta.url),'utf8');
-  const start=source.indexOf('const IDENT=/');
-  const end=source.indexOf('// -- Chainable query builder',start);
-  assert.ok(start>=0&&end>start);
-  const api=runInNewContext(source.slice(start,end)+'\n({compileFilter,compileLocalOr})',
-    {portableContainsSpec,parsePortableOrExpression});
-  const simple=api.compileFilter('content','contains','黑刃%_!');
-  assert.equal(simple.sql,'"content" LIKE ? ESCAPE \'!\'');
-  assert.deepEqual([...simple.params],['%黑刃!%!_!!%']);
-  const english=api.compileFilter('content','contains','Dark Jazz');
-  assert.equal(english.sql,'lower("content") LIKE ? ESCAPE \'!\'');
-  assert.deepEqual([...english.params],['%dark jazz%']);
-  const compound=api.compileLocalOr(parsePortableOrExpression(
-    'and(or(content.contains."黑刃",content.contains."混沌"),date.gte.2026-01-01)'
-  ));
-  assert.equal(compound.sql,'((("content" LIKE ? ESCAPE \'!\' OR "content" LIKE ? ESCAPE \'!\') AND "date">=?))');
-  assert.deepEqual([...compound.params],['%黑刃%','%混沌%','2026-01-01']);
-  assert.throws(()=>api.compileFilter('content;drop','contains','x'),/Invalid column/);
-  assert.match(source,/or\(expr\)\{state\.orFilters\.push\(parsePortableOrExpression\(expr\)\)/);
-});

@@ -80,7 +80,7 @@ test('my data reuses home slot for instructions without changing other Scope hom
   const app=file('app/loc/LocApp.jsx');
   assert.match(shell,/label:localWorkspace\?'使用說明':translateUiField\(activeLocale,'首頁'\)/);
   assert.match(phone,/<FieldText text="使用說明"\/>/);
-  assert.match(phone,/本機資料空間 · SQLite（local）/);
+  assert.match(phone,/本機資料庫尚未啟用/);
   assert.match(app,/HOME_VIEWS=\{loc:AboutView,lrunes:RunesHomeView,lo3rwang:AuthorHomeView/);
 });
 test('user preferences key by verified OAuth email; Header/Footer remain available',()=>{

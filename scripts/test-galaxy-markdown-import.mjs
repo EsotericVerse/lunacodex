@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {webcrypto} from 'node:crypto';
-import {parseUniversalImportFile} from '../app/loc/universal-file-import.mjs';
+import {parseUniversalImportFile,UNIVERSAL_IMPORT_ACCEPT} from '../app/loc/universal-file-import.mjs';
 
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
 const file=(name,body,size=Buffer.byteLength(body))=>({name,size,text:async()=>body});
@@ -134,4 +134,11 @@ test('document size limit and JSON import remain unchanged',async()=>{
   const json='[{"title":"舊資料","content":"文字"}]';
   const rows=await parseUniversalImportFile(file('archive.json',json));
   assert.deepEqual(rows,[{title:'舊資料',content:'文字'}]);
+});
+
+test('standalone import offers JSON, ZIP archives and Galaxy Markdown without Office dependency',async()=>{
+  assert.equal(UNIVERSAL_IMPORT_ACCEPT,'.zip,.json,.md');
+  for(const ext of ['csv','xlsx','docx','pdf','epub','html']){
+    await assert.rejects(parseUniversalImportFile(file('unsupported.'+ext,'plain text')),/不支援的匯入格式/);
+  }
 });

@@ -38,7 +38,7 @@ test('two occupied kinds cannot be silently replaced, or confused across days',(
   assert.ok(backend.includes('if(String(error.code||\'\')===\'23505\')'),'unique constraint remains enforced');
 });
 
-test('local SQLite and cloud inserts keep their separate responsibilities',()=>{
+test('device-local IndexedDB and cloud inserts keep their separate responsibilities',()=>{
   assert.ok(log.includes('if(native){'));
   assert.ok(log.includes('importLocalDailyTransfer(['));
   assert.ok(log.includes('else await insertDailyRuneRecord(newForm)'));

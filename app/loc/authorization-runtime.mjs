@@ -72,9 +72,9 @@ export function createScopeAuthorizer(user){
 }
 
 export function assertAuthorizationForTable(table){
-  // The hidden device-only SQLite scope has its own independent local write path.
+  // Local Scope is not provisioned and must never bypass authorization.
   const name=String(table||'').trim().toLowerCase();
-  if(name==='silver.local'||name.startsWith('silver.local_'))return;
+  if(name==='silver.local'||name.startsWith('silver.local_'))throw new Error('Local Scope 尚未啟用。');
   if(name==='api.manage'){
     if(canAuthorizeGlobal())return;
     throw new Error('目前登入帳號沒有全域管理權限。');

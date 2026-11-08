@@ -18,11 +18,9 @@ import {readTraceMapIndex} from '../modular/features/trace/trace-data.js';
 import {isUnifiedAnchorScope} from './unified-anchor-compat.mjs';
 import {GALAXY_ABLE_KEYS,galaxyAble} from './galaxy-able.mjs';
 import {portableContainsTerm} from './providers/portable-search.mjs';
-const localArticle=scope=>String(scope?.galaxy||'')==='silver.local_galaxy';
-const articlePermissionColumns=scope=>localArticle(scope)?['able']:GALAXY_ABLE_KEYS;
-const articlePermissionFilter=(scope,name)=>({
-  column:localArticle(scope)?'able->>'+name:name,
-  operator:'eq',value:localArticle(scope)?'true':true
+const articlePermissionColumns=()=>GALAXY_ABLE_KEYS;
+const articlePermissionFilter=(_scope,name)=>({
+  column:name,operator:'eq',value:true
 });
 
 function unique(values=[]){
@@ -38,7 +36,7 @@ function timeFilters(column,startDate,endDate){
   if(endDate)filters.push({column,operator:'lte',value:String(endDate).slice(0,10)+(isDate?'':'T23:59:59.999+08:00')});
   return filters;
 }
-const dayColumn=table=>String(table||'')==='silver.local_galaxy'?'createtime':
+const dayColumn=table=>
   /^silver\.[a-z][a-z0-9]*_galaxy$/.test(String(table||''))?'date':'createtime';
 async function selectRowById(table,{idColumn,id,columns,authenticated=false,expectedDbId=''}={}){
   const page=await selectRows(table,{columns,filters:[{column:idColumn,operator:'eq',value:String(id)}],limit:1,authenticated,expectedDbId});
@@ -299,10 +297,6 @@ function articleDate(value){
   const day=String(value||'').slice(0,10);
   return /^\d{4}-\d{2}-\d{2}$/.test(day)?day:'';
 }
-function localArticleDate(value){
-  const instant=Date.parse(String(value||''));
-  return Number.isFinite(instant)?new Date(instant+8*3_600_000).toISOString().slice(0,10):articleDate(value);
-}
 function shiftedDay(day,shift){
   const d=new Date(day+'T00:00:00Z');
   d.setUTCDate(d.getUTCDate()+shift);
@@ -404,11 +398,8 @@ export async function selectGalaxyIdentity(scope,uid,{includeHidden=false,dbId='
   if(!id)return null;
   // One exact UID SELECT loads the selected article. The list never reads
   // content, linked media, references or Trace data.
-  const local=current.id==='local';
   const {rows:articleRows}=await selectRows(current.galaxy,{
-    columns:local
-      ?'uid,title,createtime,content,site,url,source_id,target_id,ref_id,media_link,location,able'
-      :'uid,title,date,createtime,content,site,url,source_id,target_id,ref_id,media_link,place_id,location,statics,culture,search,trace,list,keyword,others,extract',
+    columns:'uid,title,date,createtime,content,site,url,source_id,target_id,ref_id,media_link,place_id,location,statics,culture,search,trace,list,keyword,others,extract',
     filters:[{column:'uid',operator:'eq',value:id},
       ...(!includeHidden?[articlePermissionFilter(current,'list')]:[])],
     orFilter:'',
@@ -418,7 +409,7 @@ export async function selectGalaxyIdentity(scope,uid,{includeHidden=false,dbId='
   if(!row||(!includeHidden&&galaxyAble(row).list===false))return null;
   const mediaIds=mediaIdsOf(row.media_link);
   const placeId=String(row.place_id||'').trim();
-  const day=local?localArticleDate(row.createtime):articleDate(row.date);
+  const day=articleDate(row.date);
   const [relationTitles,mediaRows,space,time,statistics]=await Promise.all([
     relatedArticleTitlesFor(current,row,{includeHidden,dbId:federated?dbId:''}).catch(()=>({})),
     // A federated Galaxy row may live in another database with independent
@@ -516,7 +507,7 @@ function makeProvider({id,table,source,scope,idColumn,columns,searchFields,filte
         dataQuery=applyOrders(dataQuery,orders);
         // The Gateway may narrow the SQL scan by complete FlexSearch hits.
         // It always keeps SQL content/visibility predicates as the authority.
-        // Legacy transports and local SQLite retain their original query.
+        // Legacy transports retain their original query.
         if(!browse&&!exactColumn&&typeof dataQuery.searchIndex==='function')
           dataQuery=dataQuery.searchIndex(query,scope.id);
         return dataQuery.range(offset,offset+pageSize);
@@ -586,7 +577,7 @@ function managementArticleProviders(scope,{contentType='',sourceFilter='',source
   ];
   const base={
     table:current.galaxy,source:current.id+' 文章',scope:current,idColumn:'uid',
-    columns:['uid','title','createtime',...(!localArticle(current)?['date']:[]),...articlePermissionColumns(current)],dateColumn:dayColumn(current.galaxy),filters,sourceClause:sourceNameClause(selection),
+    columns:['uid','title','createtime','date',...articlePermissionColumns(current)],dateColumn:dayColumn(current.galaxy),filters,sourceClause:sourceNameClause(selection),
     authenticated:true
   };
   if(placeOnly)return [makeProvider({
@@ -610,7 +601,7 @@ function genericScopeProviders(scope,{includeHiddenText=false,contentType='',sou
   const textFilters=includeHiddenText
     ?kindFilters
     :publicContentFilters([articlePermissionFilter(current,'search'),...kindFilters]);
-  const textColumns=['uid','title','createtime',...(!localArticle(current)?['date']:[]),...articlePermissionColumns(current)];
+  const textColumns=['uid','title','createtime','date',...articlePermissionColumns(current)];
   // Search uses only the article service: Galaxy.content. Anchor is
   // resolved through article relationships, never queried as a reverse index.
   if(contentType&&!['galaxy','lyrics_work','text_work'].includes(contentType))
