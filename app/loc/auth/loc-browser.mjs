@@ -67,9 +67,14 @@ export function createLocAccountAdapter({authorityOrigin=DEFAULT_AUTHORITY,
    }catch(error){return {data:{user:null},error};}
   },
   async signInWithOAuth({provider,options={}}={}){
-   const selected=provider==='google'||provider==='oidc'?'oidc':
-     provider==='github'?'github':'';
+   // The Google identity is already verified by the configured Supabase Auth
+   // provider. Never redirect it to an unrelated, unconfigured OIDC issuer.
+   const selected=['google','github','oidc'].includes(provider)?provider:'';
    if(!selected)return {data:null,error:new Error('Unsupported OAuth provider')};
+   // A valid LOC-owned session is authoritative for all its applications.
+   // A fresh provider round-trip is not needed just to reopen settings/MCP.
+   const existing=await verified();
+   if(existing)return {data:{session:existing.session},error:null};
    const link=new URL('/oauth/login',authority);
    link.searchParams.set('provider',selected);
    link.searchParams.set('return_to',returnPath(options.redirectTo));

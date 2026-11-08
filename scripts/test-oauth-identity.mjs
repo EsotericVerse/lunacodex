@@ -51,7 +51,7 @@ test('Settings home owns the sole OAuth login action and verifies session',()=>{
   assert.ok(account.includes('VERIFIED_SESSION_KEY'));
   assert.ok(account.includes('sessionOnly?(enabled?VERIFIED_SESSION_KEY:SESSION_KEY)'));
   assert.ok(settings.includes("useAccount({enabled:section==='home',sessionOnly:true})"));
-  assert.ok(settings.includes('Google OAuth（已驗證）：{account.email}'));
+  assert.ok(settings.includes('LOC Auth（已驗證）：{account.email}'));
   assert.ok(!settings.includes('account.email||account.user.email'));
   assert.equal(settings.match(/onClick=\{login\}/g)?.length,1);
   assert.equal(settings.match(/onClick=\{logout\}/g)?.length,1);
@@ -92,4 +92,40 @@ test('pure JS permissions use only scopeid/email/role and are cleared on logout'
   }finally{clearAuthorization();}
   assert.equal(readAuthorization(),null);
   assert.equal(canAuthorizeScope('lo3rwang'),false);
+});
+
+test('LOC Google uses configured Google provider rather than unrelated OIDC login',async()=>{
+ const navigations=[];
+ const adapter=createLocAccountAdapter({
+  fetchImpl:async()=>Response.json({session:null,user:null}),
+  navigate:value=>navigations.push(value)
+ });
+ const result=await adapter.auth.signInWithOAuth({provider:'google',
+  options:{redirectTo:'/local/settings/'}});
+ assert.equal(result.error,null);
+ const url=new URL(navigations[0]);
+ assert.equal(url.origin,'https://auth.lo3rwang.cc');
+ assert.equal(url.pathname,'/oauth/login');
+ assert.equal(url.searchParams.get('provider'),'google');
+ assert.equal(url.searchParams.get('return_to'),'/local/settings/');
+ const github=await adapter.auth.signInWithOAuth({provider:'github'});
+ assert.equal(github.error,null);
+ assert.equal(new URL(navigations[1]).searchParams.get('provider'),'github');
+ assert.equal(navigations.length,2,'only the requested provider redirects');
+});
+test('LOC Auth reuses an existing session without asking Google/GitHub to authenticate again',async()=>{
+ const navigations=[];
+ let reads=0;
+ const adapter=createLocAccountAdapter({
+  fetchImpl:async()=>{reads++;return Response.json(nativeSession())},
+  navigate:value=>navigations.push(value)
+ });
+ const signedIn=await adapter.auth.signInWithOAuth({provider:'google'});
+ assert.equal(signedIn.error,null);
+ assert.equal(signedIn.data.session.user.id,user.id);
+ const other=await adapter.auth.signInWithOAuth({provider:'github'});
+ assert.equal(other.error,null);
+ assert.equal(other.data.session.user.id,user.id);
+ assert.equal(navigations.length,0,'a verified LOC session must not start another OAuth login');
+ assert.equal(reads,1,'reuse the existing session response');
 });
