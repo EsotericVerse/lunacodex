@@ -12,9 +12,10 @@ const source=readFileSync(new URL('../workers/loc-authority/index.mjs',import.me
 const {LocAuthorityState,worker}=new Function('DurableObject','issueDelegation',
   'validateKeywordCategoryEntry','hashKeywordCategory','assertPublicKeywordClass',
   'AUTH_PROVIDER_TYPES','validateAuthProviderSettings','publicAuthProviderSettings',
-  'isNativeOAuthPath','looksLikeNativeToken','checkExternalAuthQos',source+'\nreturn {LocAuthorityState,worker};')(
+  'isNativeOAuthPath','looksLikeNativeToken','checkExternalAuthQos','verifyNativeOAuth',source+'\nreturn {LocAuthorityState,worker};')(
     class {constructor(ctx,env){this.ctx=ctx;this.env=env;}},issueDelegation,
-    ()=>{},()=>{},()=>{},[],()=>{},()=>{},()=>false,()=>false,async()=>null
+    ()=>{},()=>{},()=>{},[],()=>{},()=>{},()=>false,()=>false,async()=>null,
+    async()=>{throw Object.assign(new Error('OAuth required'),{status:401});}
   );
 const saved=new Map();
 const storage={get:async key=>saved.get(key),put:async(k,v)=>saved.set(k,v),
