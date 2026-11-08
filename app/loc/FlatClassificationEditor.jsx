@@ -4,7 +4,7 @@ import {useMemo,useState} from 'react';
 import dynamic from 'next/dynamic';
 import {useSWRConfig} from 'swr';
 import {useAsyncResource} from './use-async-resource';
-import {dbAuthClient} from './db-client.mjs';
+import {sourceCatalogService} from './source-catalog-client.mjs';
 import {useAccount} from './use-account';
 import {useEditDock,useEditDockForm} from '../modular/edit-dock';
 
@@ -46,10 +46,7 @@ export default function FlatClassificationEditor({scopeId='loc'}){
   const [draft,setDraft]=useState(null),[busy,setBusy]=useState(false);
   const [notice,setNotice]=useState(''),[selected,setSelected]=useState('');
   const query=useAsyncResource(['source-anchor-catalog',scopeId],async()=>{
-    const {data,error}=await dbAuthClient.schema('silver')
-      .managedAction('read_source_catalog',{p_scope_id:scopeId});
-    if(error)throw new Error(error.message||'無法讀取來源分類');
-    return data;
+    return sourceCatalogService('read',scopeId);
   },{enabled:allowed});
   const catalog=query.data||{};
   const own=(catalog.scopes||[]).find(row=>row.scopeid===scopeId);
@@ -80,17 +77,16 @@ export default function FlatClassificationEditor({scopeId='loc'}){
     if(new Set(ids).size!==ids.length){setNotice('來源名稱不可重複。');return false;}
     setBusy(true);setNotice('');
     try{
-      const {data,error}=await dbAuthClient.schema('silver').managedAction(
-        global?'update_group_default_article_class':'save_scope_sources',
-        global?{p_group_id:'loc',p_names:items.map(item=>item.name)}:
-          {p_scope_id:scopeId,p_sources:items}
+      const result=await sourceCatalogService(
+        global?'save_system':'save_scope',scopeId,
+        global?items.map(item=>item.name):items
       );
-      if(error||data===false)throw new Error(error?.message||'來源分類儲存失敗');
+      if(result===false)throw new Error('來源分類儲存失敗');
       setDraft(null);
       await Promise.all([query.refetch(),
         mutate(key=>Array.isArray(key)&&/source|culture|statistics/.test(String(key[0]||'')))]);
-      setNotice(global?'已儲存 LOC 系統來源。':
-        '已儲存 Scope Anchor 來源；Galaxy.site 與 site_id 均未修改。');
+      setNotice(global?'已儲存 LOC 系統來源；公開頁快照仍須重新發布。':
+        '已儲存 Scope Anchor 來源；Galaxy.site 不變，公開頁快照仍須重新發布。');
       return true;
     }catch(e){setNotice(String(e?.message||e));return false;}
     finally{setBusy(false);}
