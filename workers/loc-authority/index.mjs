@@ -5,6 +5,8 @@ import {normalizeSqlDriverAuthentication,publicSqlDriverAuthentication,
   sqlAuthNeedsUserPassword} from '../../app/loc/providers/sql-driver-auth.mjs';
 import {ISSUER,MCP_AUDIENCE,WEB_AUDIENCE,isNativeOAuthPath,handleNativeOAuth,
   verifyNativeOAuth} from './native-oauth.mjs';
+import {runBetterAuthStore} from './better-auth-store.mjs';
+import {handleFirstPartyAuth} from './better-auth-native.mjs';
 import {validateKeywordCategoryEntry,hashKeywordCategory,assertPublicKeywordClass} from './keyword-categories.mjs';
 import {AUTH_PROVIDER_TYPES,validateAuthProviderSettings,publicAuthProviderSettings}
   from '../../app/loc/auth/auth-provider-settings.mjs';
@@ -195,6 +197,7 @@ export class LocAuthorityState extends DurableObject {
         ((next.blockedUntil > now ? next.blockedUntil : next.start + minute)-now)/1000)};
     });
   }
+  async betterAuthStorage(request){return runBetterAuthStore(this.ctx.storage,request);}
   async nativeGet(key){return this.ctx.storage.get(key);}
   async nativePut(key,value){await this.ctx.storage.put(key,value);return true;}
   async nativeTake(key){return this.ctx.storage.transaction(async t=>{
@@ -1046,6 +1049,7 @@ export default {
     let origin='';
     try{
       const target=new URL(request.url);
+      if(target.pathname.startsWith('/api/auth/'))return handleFirstPartyAuth(request,env);
       if(isNativeOAuthPath(target.pathname))return handleNativeOAuth(request,env);
       requireSetup(env);
       origin=allowedOrigin(request,env);
