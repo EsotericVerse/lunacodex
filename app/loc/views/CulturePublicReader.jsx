@@ -184,6 +184,7 @@ export default function CulturePublicReader(){
   const [keywordClass,setKeywordClass]=useState('');
   const [keywordClasses,setKeywordClasses]=useState(NO_ITEMS);
   const [keywordGroups,setKeywordGroups]=useState(NO_ITEMS);
+  const [keywordDaily,setKeywordDaily]=useState(NO_ITEMS);
   const [keywordLoading,setKeywordLoading]=useState(false);
   const [customStart,setCustomStart]=useState('');
   const [customEnd,setCustomEnd]=useState('');
@@ -242,51 +243,40 @@ export default function CulturePublicReader(){
     if(densityMode!=='keyword'||!keywordClass){setKeywordGroups([]);return undefined;}
     let active=true;
     setKeywordLoading(true);
-    dbPublicClient.schema('silver').analytics({p_scope_id:scopeId,p_view:'keyword_catalog',
-      p_start:null,p_end:null,p_options:{classUid:keywordClass}})
-      .then(({data,error})=>{
-        if(error)throw error;
-        if(active)setKeywordGroups((data?.rows||[]).filter(row=>row.type==='group')
-          .map(row=>({id:String(row.uid),name:String(row.name||row.uid),weight:Math.max(0,Number(row.total)||0)})));
+    import('../keyword-service-client.mjs')
+      .then(({keywordService})=>keywordService('stats',{
+        scopeId,classUid:keywordClass,startDate:rangeStart,endDate:rangeEnd
+      }))
+      .then(data=>{
+        if(!active)return;
+        const groups=Array.isArray(data?.groups)?data.groups:[];
+        setKeywordGroups(groups.map(group=>({
+          id:String(group.uid),name:String(group.name||group.uid),
+          weight:Math.max(0,Number(group.hit_count)||0)
+        })));
+        const names=new Map(groups.map(row=>[String(row.uid),String(row.name||row.uid)]));
+        setKeywordDaily((data?.daily||[])
+          .filter(row=>row.kind==='class_day')
+          .map(row=>({day:row.day,site:names.get(String(row.group_uid))||'',
+            item_count:Number(row.document_count)||0}))
+          .filter(row=>row.site));
       }).catch(error=>{if(active)setKeywordError(String(error?.message||error));})
       .finally(()=>{if(active)setKeywordLoading(false);});
     return()=>{active=false;};
-  },[scopeId,densityMode,keywordClass]);
+  },[scopeId,densityMode,keywordClass,rangeStart,rangeEnd]);
   useEffect(()=>{
     if(densityMode!=='keyword')return undefined;
     let active=true;
     setClassesLoading(true);
-    analytics(scopeId,'shared_classes',null,null)
-      .then(rows=>{if(active)setKeywordClasses(rows);})
+    import('../keyword-service-client.mjs')
+      .then(({keywordService})=>keywordService('classes',{scopeId}))
+      .then(result=>{if(active)setKeywordClasses(result?.classes||[]);})
       .catch(error=>{if(active)setKeywordError(String(error?.message||error));})
       .finally(()=>{if(active)setClassesLoading(false);});
     return()=>{active=false;};
   },[scopeId,densityMode]);
   const anchorRiver=useMemo(()=>anchorModel(anchors,start,today,expandedEras),
     [anchors,start,today,expandedEras]);
-  const keywordDaily=useMemo(()=>{
-    if(densityMode!=='keyword'||!keywordClass||!keywordGroups.length)return [];
-    const dailyTotals=new Map();
-    for(const row of daily){
-      const day=datePart(row.day);
-      if(!day)continue;
-      dailyTotals.set(day,(dailyTotals.get(day)||0)+Number(row.item_count||0));
-    }
-    // Preserve stored Anchor total ratios across each day's culture density.
-    // When no group has a saved total, show an equal-share fallback.
-    const totalWeight=keywordGroups.reduce((sum,group)=>sum+group.weight,0);
-    const weights=keywordGroups.map(group=>totalWeight?group.weight:1);
-    const denominator=weights.reduce((sum,n)=>sum+n,0);
-    return [...dailyTotals].flatMap(([day,total])=>{
-      let allotted=0;
-      return keywordGroups.map((group,index)=>{
-        const count=index===keywordGroups.length-1?total-allotted:
-          Math.floor(total*weights[index]/denominator);
-        allotted+=count;
-        return {day,site:group.name,item_count:count};
-      });
-    });
-  },[daily,densityMode,keywordClass,keywordGroups]);
   const densityRiver=useMemo(()=>densityMode==='keyword'
     ?sourceModel(keywordDaily,[],[],expandedSources,rangeStart,rangeEnd)
     :sourceModel(daily,catalog.system,catalog.personal,expandedSources,rangeStart,rangeEnd),
@@ -411,7 +401,7 @@ export default function CulturePublicReader(){
             const category=densityRiver.sites.find(item=>'site:'+item.key===name);
             if(category)openArticles(category.site,category.key);
           }}/>
-        {densityMode==='keyword'&&keywordClass?<p className='scope-status'>關鍵詞河道依 Anchor 已存總量比例分配每日文化密度，非當日實際命中筆數。</p>:null}
+        {densityMode==='keyword'&&keywordClass?<p className='scope-status'>每日關鍵詞密度來自詞級索引的實際 UID 命中，依日期統計並去重文章。</p>:null}
         {densityMode==='keyword'&&classesLoading?<p className='scope-status'>正在載入關鍵詞科目…</p>:null}
         {densityMode==='keyword'&&keywordLoading?<p className='scope-status'>正在載入關鍵詞統計…</p>:null}
         {densityMode==='keyword'&&!classesLoading&&!keywordClasses.length?<p className='scope-status'>目前沒有可使用的公開關鍵詞科目。</p>:null}
