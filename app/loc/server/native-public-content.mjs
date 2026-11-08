@@ -29,12 +29,11 @@ async function readGalaxyNumeric(db,scope,kind,start,end){
     return day(first?.earliest)||'';
   }
   if(kind==='totals'){
-    const rows=await db.selectFrom(table).select('site')
+    let query=db.selectFrom(table).select('site')
       .select(eb=>eb.fn.countAll().as('item_count'))
-      .where('statics','=',true)
-      .where('date','>=',start).where('date','<=',end)
-      .where('date','is not',null)
-      .groupBy('site').orderBy('site','asc').limit(5001).execute();
+      .where('statics','=',true).where('date','is not',null);
+    if(start)query=query.where('date','>=',start).where('date','<=',end);
+    const rows=await query.groupBy('site').orderBy('site','asc').limit(5001).execute();
     if(rows.length>5000)throw new Error('Too many Galaxy sources');
     return rows.map(row=>({kind:'source',category:String(row.site||''),
       item_count:total(row.item_count)}));
@@ -87,9 +86,12 @@ export async function handleNativePublicContent(request,env={},{
       (kind==='hero'?!FEATURES.has(feature):Boolean(feature))||
       (kind==='hero'&&!keys.includes('feature'))||
       (!numeric&&(url.searchParams.has('start')||url.searchParams.has('end')))||
-      (numeric&&(scope==='loc'||(kind!=='earliest'&&
-        (!DAY.test(start)||!DAY.test(end)||start>end))||
-        (kind==='earliest'&&(start||end)))))
+      (numeric&&(scope==='loc'||
+        (kind!=='earliest'&&kind!=='totals'&&
+          (!DAY.test(start)||!DAY.test(end)||start>end))||
+        (kind==='earliest'&&(start||end))||
+        (kind==='totals'&&(Boolean(start)!==Boolean(end)||
+          start&&(!DAY.test(start)||!DAY.test(end)||start>end)))))
     return respond({error:'Invalid LOC public content request'},400);
   try{
     // Alias and credential are server-owned. An HTTP parameter must never
