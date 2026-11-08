@@ -1,5 +1,9 @@
 name: Verify LOC Auth, MCP, Extension and Portable (no deployment)
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/test-loc-auth-integrations.yml'
+      - 'scripts/test-loc-oauth-only.mjs'
   workflow_dispatch:
 permissions:
   contents: read
