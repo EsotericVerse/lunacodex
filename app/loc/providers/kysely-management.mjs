@@ -3,7 +3,7 @@ import {schema as fixedSchema} from '../../../zenstack/schema.mjs';
 import {validateLocRegistryDomain} from './loc-domain.mjs';
 import {sql} from 'npm:kysely@0.29.8';
 import {saveBlocksKysely} from './kysely-blocks.mjs';
-import {sourceCatalogAction} from '../source-sql-service.mjs';
+import {sourceCatalogAction,saveLocSystemSources} from '../source-sql-service.mjs';
 import {allocateAnchorUid} from '../unified-anchor-compat.mjs';
 import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
 import {keywordPatternItemMetrics} from '../keyword-search-pattern.mjs';
@@ -627,24 +627,8 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
       reject('Group / Scope list name missing');
     return {data:true,count:null};
   }
-  if(name==='update_group_default_article_class'){
-    const group=validScope(args.p_group_id);
-    const names=args.p_names;
-    if(group!=='loc'||!Array.isArray(names)||
-      names.some(n=>typeof n!=='string'||n.trim().length<1||n.trim().length>80)||
-      new Set(names.map(n=>n.trim().toLowerCase())).size!==names.length)
-      reject('Invalid Group article classifications');
-    if(!await canManageLoc(trx,'group',group))reject('Group management permission required',403);
-    await sql`reset role`.execute(trx);
-    const exists=await trx.selectFrom('silver.loc').select('id')
-      .where('id','=',group).forUpdate().executeTakeFirst();
-    if(!exists)reject('Group config not found');
-    const updated=await trx.updateTable('silver.loc')
-      .set({DefaultArticleClass:sql`${JSON.stringify(names)}::jsonb`})
-      .where('id','=',group).executeTakeFirst();
-    if(Number(updated?.numUpdatedRows||0)!==1)reject('Group classification update failed');
-    return {data:true,count:null};
-  }
+  if(name==='update_group_default_article_class')
+    return {data:await saveLocSystemSources(trx,args),count:null};
   const scope=validScope(args.p_scope_id);
   const page=String(args.p_page_name||'').trim().toLowerCase();
   const uid=validUid(args.p_uid);
