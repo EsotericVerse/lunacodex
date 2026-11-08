@@ -2,6 +2,7 @@ import {canManageLoc} from './loc-authorization.mjs';
 import {portableRelation} from './sql-engine-ports.mjs';
 import {sql} from 'npm:kysely@0.29.8';
 import {keywordPatternItemMetrics,keywordPatternDailySummary} from '../keyword-search-pattern.mjs';
+import {readScopePatternRows,scopeDatabaseUid} from '../keyword-anchor-index.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
@@ -198,8 +199,7 @@ export async function keywordCatalog(trx,scope,anchor,requested,role,{withTotals
   }));
   let totals=new Map(),groupTotals=new Map();
   if(withTotals){
-    const patterns=await trx.selectFrom('silver.loc_search_pattern')
-      .select(['pattern','count','uid_list']).where('scopeid','=',scope).execute();
+    const patterns=await readScopePatternRows(trx,scope,await scopeDatabaseUid(trx,scope));
     const indexed=keywordPatternItemMetrics(descriptions,patterns);
     totals=new Map(indexed.items.map(item=>[item.uid,item.hit_count]));
     for(const item of indexed.items)
@@ -242,8 +242,7 @@ async function traceKeywordGroups(trx,scope,anchor,places,start,end,source,reque
     .flatMap(row=>groups.filter(g=>g.lists.includes(row.uid)).map(g=>({
       uid:row.uid,group_uid:g.uid,item_name:row.name,keywords:row.lists
     })));
-  const patterns=await trx.selectFrom('silver.loc_search_pattern')
-    .select(['pattern','count','uid_list']).where('scopeid','=',scope).execute();
+  const patterns=await readScopePatternRows(trx,scope,await scopeDatabaseUid(trx,scope));
   const candidates=[...new Set(patterns.flatMap(row=>row.uid_list||[]))];
   const located=new Set();
   for(let i=0;i<candidates.length;i+=500){
@@ -272,8 +271,7 @@ export async function keywordSummary(trx,scope,anchor,start,end,source,requested
     .flatMap(row=>[...groups.values()].filter(g=>g.lists.includes(row.uid))
       .map(group=>({uid:row.uid,group_uid:group.uid,
         item_name:row.name,keywords:row.lists})));
-  const patterns=await trx.selectFrom('silver.loc_search_pattern')
-    .select(['pattern','count','uid_list']).where('scopeid','=',scope).execute();
+  const patterns=await readScopePatternRows(trx,scope,await scopeDatabaseUid(trx,scope));
   const uids=[...new Set(patterns.flatMap(row=>row.uid_list||[]))];
   const articles=[];
   // Never fetch Galaxy.content. A bounded UID list -> date projection
