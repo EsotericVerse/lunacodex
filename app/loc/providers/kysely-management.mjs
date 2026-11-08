@@ -414,7 +414,7 @@ async function sourceCatalogAction(trx,args,save=false){
   const galaxyNode=tree.find(node=>node.type==='galaxy');
   for(const record of records){
     const branch=sourceTreeFromCatalog([],record.sources,{
-      scopeId:record.scopeid,domainUid:record.domain?.uid||''
+      scopeId:record.scopeid,domainUid:record.domain?.uid||'',includeSystem:false
     });
     const sourceDomain=branch.find(node=>node.type==='domain');
     if(!sourceDomain)continue;
