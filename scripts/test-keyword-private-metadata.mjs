@@ -1,37 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-
-const code=readFileSync(new URL('../app/loc/keyword-analysis.js',import.meta.url),'utf8');
-const runner=code.slice(code.indexOf('export async function runKeywordAnalysisBatch('),
-  code.indexOf('\nfunction emptyStored('));
-const summary=code.slice(code.indexOf('export async function selectKeywordAnalysisSummary('),
-  code.indexOf('\n// Stateless:'));
-
-test('per-Class config stores only completion identity, not private labels or hit totals',()=>{
-  assert.match(runner,/const meta=\{class_uid:classUid\};/);
-  assert.match(runner,/keyword_meta:saved/);
-  assert.doesNotMatch(runner,/keyword_meta:isActiveNow\?\{\.\.\.saved,\.\.\.meta\}/);
-  assert.doesNotMatch(runner,/const items=Object\.fromEntries\(/);
-  assert.doesNotMatch(runner,/fingerprint/);
+const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
+test('public Class and statistics calls enforce published-class gate server-side',()=>{
+ const server=read('app/loc/keyword-sql-service.mjs');
+ assert.match(server,/visible=classes\.filter\(row=>owner\|\|shared\(cfg,row\.uid\)\)/);
+ assert.match(server,/if\(!owner&&!shared\(cfg,classUid\)\)fail\('Keyword Class not published',403\)/);
+ assert.match(server,/visible=new Set\(\)/);
 });
-
-test('public statistics never return private Class state before checking the authorized catalog',()=>{
-  assert.match(summary,/readKeywordTreeCatalog\(id,\{classUid:selectedClass\}\)/);
-  assert.match(summary,/if\(directory\.class_uid!==selectedClass\)/);
-  assert.match(summary,/return emptyStored\(\{\.\.\.config,staticstime:null,keyword_meta:\{\}\}\)/);
+test('frontend receives only native aggregate data, not private raw catalog',()=>{
+ const analysis=read('app/loc/keyword-analysis.js');
+ const endpoint=read('functions/api/keywords.js');
+ assert.match(analysis,/keywordService\('stats'/);
+ assert.match(endpoint,/verifyDelegationBoundary/);
+ assert.match(endpoint,/crypto\.subtle\.verify/);
+ assert.match(endpoint,/LOC_DELEGATION_REVOKED_SIDS/);
+ assert.doesNotMatch(endpoint,/secret_key|service_role/);
 });
-
-test('Group and Item labels are resolved from the authorized live UID tree',()=>{
-  assert.match(summary,/keywordTreeCatalog\(directory\.rows,selectedClass\)/);
-  assert.match(summary,/classes:Object\.fromEntries\(groups\.map\(group=>\[group\.uid,group\.name\]\)\)/);
-  assert.match(summary,/items:Object\.fromEntries\(groups\.flatMap\(group=>group\.items\.map\(item=>\[item\.uid,item\.name\]\)\)\)/);
-  assert.match(summary,/readKeywordTreeSummary\(id,\{classUid:selectedClass/);
-});
-
-test('reanalysis needs no Galaxy createtime sorting or persistent intermediate results',()=>{
-  assert.match(code,/async function keywordEligibleCount\(/);
-  assert.doesNotMatch(runner,/keywordFingerprint/);
-  assert.doesNotMatch(runner,/order\('createtime'/);
-  assert.doesNotMatch(runner,/CREATE TABLE|TEMP TABLE|staging/i);
+test('completion timestamp and word scan times are separate from Pattern update_time',()=>{
+ const service=read('app/loc/keyword-sql-service.mjs');
+ assert.match(service,/pattern_scans/);
+ assert.match(service,/update_time:same\?previous\.update_time:now/);
+ assert.match(service,/completeKeywordClass/);
 });
