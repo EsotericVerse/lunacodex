@@ -94,3 +94,27 @@ test('MCP Pages is a native business route, not a SQL Gateway',()=>{
   assert.doesNotMatch(source,/LOC_SQL_GATEWAY_URL|\/v1\/sql/);
  }
 });
+
+test('published server alias resolves to encrypted LOC Authority target with no duplicate Pages SQL password',async()=>{
+ const env={LOC_DB_PROFILE_SERVICE_TOKEN:'backend-only-secret-with-at-least-32-bytes'};
+ const observed=[];
+ const fetchImpl=async(url,options)=>{
+  observed.push({url,options});
+  return Response.json({engine:'postgres',host:'db.example.org',port:5432,
+   database:'loc',username:'loc_reader',password:'in-memory-test-only',
+   schema_name:'silver'});
+ };
+ const selected=await directMcpKysely(env,'',{fetchImpl});
+ assert.equal(selected.engine,'postgres');
+ assert.equal(selected.namespace,'silver');
+ assert.equal(observed.length,1);
+ assert.match(observed[0].url,/\/v1\/internal\/database\/loc_main$/);
+ assert.equal(observed[0].options.headers['x-loc-service-token'],env.LOC_DB_PROFILE_SERVICE_TOKEN);
+ await selected.db.destroy();
+});
+test('untrusted missing Authority target is refused; secret never appears in an exception',async()=>{
+ const env={LOC_DB_PROFILE_SERVICE_TOKEN:'backend-only-secret-with-at-least-32-bytes'};
+ await assert.rejects(directMcpKysely(env,'',{fetchImpl:async()=>new Response('Forbidden',{status:403})}),
+  error=>/profile lookup refused \(403\)/.test(error.message)&&
+    !error.message.includes(env.LOC_DB_PROFILE_SERVICE_TOKEN));
+});
