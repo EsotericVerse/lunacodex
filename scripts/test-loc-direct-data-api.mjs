@@ -97,3 +97,40 @@ test('compound full-text filters retain AND/OR grouping and literal wildcard esc
   assert.ok(!clause.includes('.contains.'));
   assert.equal(url.searchParams.get('content'),'not.ilike.*封鎖*');
 });
+
+test('website Extension bridge exchanges LOC Session for an exact write delegation',async()=>{
+  const calls=[];
+  const token='header.payload.signature';
+  const fake=async(url,options={})=>{
+    calls.push({url:String(url),options});
+    if(String(url).endsWith('/v1/delegation'))return Response.json({access_token:token});
+    if(url==='/api/loc-native')return Response.json({accepted:true,id:'batch-id',articles:[]});
+    throw Error('Unexpected URL');
+  };
+  const adapter=createConfiguredAdapter({
+    accountAdapter:{auth:{},getAccessToken:async()=> 'site.session.jwt'},
+    fetchImpl:fake
+  });
+  const result=await adapter.authClient.shortImport('lo3rwang',{id:'batch-id'});
+  assert.equal(result.accepted,true);
+  assert.equal(calls.length,2);
+  assert.deepEqual(JSON.parse(calls[0].options.body),{
+    audience:'sql',scopeid:'lo3rwang',actions:['write']
+  });
+  assert.equal(calls[0].options.headers.authorization,'Bearer site.session.jwt');
+  assert.equal(calls[1].url,'/api/loc-native');
+  assert.equal(calls[1].options.headers.authorization,'Bearer '+token);
+  assert.deepEqual(JSON.parse(calls[1].options.body),{
+    kind:'short-import',scopeid:'lo3rwang',batch:{id:'batch-id'}
+  });
+  assert.ok(!calls.some(item=>item.url.includes('/rest/v1')));
+});
+test('website importer never sends a request for an invalid Scope',async()=>{
+  let calls=0;
+  const adapter=createConfiguredAdapter({
+    accountAdapter:{auth:{},getAccessToken:async()=> 'anything'},
+    fetchImpl:async()=>{calls++;throw Error('unexpected')}
+  });
+  await assert.rejects(adapter.authClient.shortImport('bad_scope',{id:'x'}),/Invalid LOC import Scope/);
+  assert.equal(calls,0);
+});
