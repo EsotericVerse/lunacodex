@@ -4,6 +4,7 @@
 import {SCOPE_ROUTE_INDEX} from '../../modular/scope-route-index.js';
 import {scopeConfigColumns,scopeFeatureEnabled} from '../scope-config-fields.mjs';
 import {directMcpKysely} from '../mcp/native-kysely.mjs';
+import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 
 const FEATURES=new Set(['culture','statics','trace','search']);
 const HEADERS={'content-type':'application/json; charset=utf-8',
@@ -104,8 +105,9 @@ export async function handleNativePublicContent(request,env={},{
   try{
     // Alias and credential are server-owned. An HTTP parameter must never
     // determine the engine, endpoint, connection profile or SQL relation.
+    const publishedAlias=DATABASE_ACCESS_LIST.find(row=>row.selected===true)?.connection_alias||'';
     const alias=String(env.LOC_PUBLIC_DB_ALIAS||env.LOC_CONTROL_DB_ALIAS||
-      env.LOC_MCP_DB_ALIAS||'');
+      env.LOC_MCP_DB_ALIAS||publishedAlias);
     const port=await database(env,alias);
     if(!port?.db||port.engine!=='postgres')
       return respond({error:'LOC native database unavailable'},503);
