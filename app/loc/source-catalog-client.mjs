@@ -9,7 +9,9 @@ export async function sourceCatalogService(operation,scopeId,values=null){
     throw new Error('Invalid LOC Source request');
   if(operation==='save_system'&&scope!=='loc'||operation==='save_scope'&&scope==='loc')
     throw new Error('Invalid Source owner');
-  const token=await locDelegation(scope,operation!=='read');
+  // The existing LOC editor acquires its Scope/Group snapshot with self:true.
+  // The trusted native action, not the browser, checks ownership on every write.
+  const token=await locDelegation(scope,false);
   // No unauthenticated catalogue in the management editor, including reads.
   if(!token)throw new Error('LOC 管理授權尚未就緒');
   const payload={operation,scopeId:scope};
