@@ -10,6 +10,7 @@ import {directMcpKysely} from './native-kysely.mjs';
 
 const JWKS='https://auth.lo3rwang.cc/.well-known/jwks.json';
 const MCP_HOST='mcp.lo3rwang.cc';
+const WEB_HOST='loc.lo3rwang.cc';
 const MAX_BYTES=700000;
 const KINDS=new Set(['mcp-sync','mcp-append','mcp-read','mcp-search','short-import']);
 const headers={'content-type':'application/json; charset=utf-8',
@@ -81,7 +82,8 @@ export async function handleNativeLocOperation(request,env={},{
   fetchImpl=globalThis.fetch,database=directMcpKysely
 }={}){
   if(request.method!=='POST')return reply({error:{message:'Method not allowed'}},405);
-  if(new URL(request.url).hostname!==MCP_HOST)
+  const host=new URL(request.url).hostname;
+  if(host!==MCP_HOST&&host!==WEB_HOST)
     return reply({error:{message:'Not found'}},404);
   if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('content-type')||''))
     return reply({error:{message:'JSON body required'}},415);
@@ -96,6 +98,10 @@ export async function handleNativeLocOperation(request,env={},{
     if(!body||typeof body!=='object'||Array.isArray(body)||
       !KINDS.has(body.kind)||typeof body.scopeid!=='string')
       throw refusal('Unsupported LOC business operation');
+    // The website exposes only short-import. MCP business operations remain
+    // restricted to the dedicated MCP hostname and their own audience.
+    if(host===WEB_HOST&&body.kind!=='short-import')
+      throw refusal('Not found',404);
     // The verified signed claim, not the HTTP body, selects the connection.
     const claims=await signedClaims(request.headers.get('authorization'),
       body,env,fetchImpl);
