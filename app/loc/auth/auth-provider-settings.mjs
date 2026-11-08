@@ -1,6 +1,6 @@
 // Shared configuration contract; no auth switch is implied by a saved provider.
 // Secret material is accepted ONLY by the trusted LOC Authority and never returned.
-export const AUTH_PROVIDER_TYPES=Object.freeze(['github','oidc','entra','ldap','ad']);
+export const AUTH_PROVIDER_TYPES=Object.freeze(['github','oidc','entra','ldap','ad','clerk']);
 export const AUTH_PROVIDER_FIELDS=Object.freeze({
   github:Object.freeze([{key:'client_id',label:'GitHub OAuth Client ID'},
     {key:'callback_url',label:'Callback URL',kind:'url'},
@@ -16,6 +16,8 @@ export const AUTH_PROVIDER_FIELDS=Object.freeze({
     {key:'client_id',label:'OIDC Bridge Client ID'},
     {key:'callback_url',label:'Callback URL',kind:'url'},
     {key:'client_secret',label:'OIDC Bridge Client Secret',kind:'secret'}]),
+  clerk:Object.freeze([{key:'issuer_url',label:'Clerk JWT Issuer URL',kind:'url'},
+    {key:'client_id',label:'Allowed JWT Audience'}]),
   ad:Object.freeze([{key:'bridge_issuer_url',label:'AD OIDC Bridge Issuer URL',kind:'url'},
     {key:'client_id',label:'OIDC Bridge Client ID'},
     {key:'callback_url',label:'Callback URL',kind:'url'},
@@ -23,7 +25,8 @@ export const AUTH_PROVIDER_FIELDS=Object.freeze({
 });
 export const AUTH_PROVIDER_LABELS=Object.freeze({
   github:'GitHub OAuth',oidc:'標準 OIDC',entra:'Microsoft Entra ID',
-  ldap:'LDAP（OIDC 橋接）',ad:'Active Directory（OIDC 橋接）'
+  ldap:'LDAP（OIDC 橋接）',ad:'Active Directory（OIDC 橋接）',
+  clerk:'Clerk JWT Ref（不安裝 Clerk SDK）'
 });
 function invalid(message){throw new Error(message)}
 function httpsUrl(value,key,{originOnly=false,callbackOrigin=''}={}){
