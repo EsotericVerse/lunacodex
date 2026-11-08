@@ -20,7 +20,7 @@ import {
 import {selectRows} from '../../loc/db-query.mjs';
 import {useAccount} from '../../loc/use-account';
 import {useResourceCache} from '../../loc/use-async-resource';
-import {listLocalDailyRunes,importLocalDailyTransfer,updateLocalDailyRune,deleteLocalDailyRune} from '../../lrunes/local-rune-sqlite.mjs';
+import {listLocalDailyRunes,importLocalDailyTransfer,updateLocalDailyRune,deleteLocalDailyRune} from '../../lrunes/local-rune-records.mjs';
 
 const FIRST_MONTH=2026*12+7;
 const EMPTY_ROWS=Object.freeze([]);

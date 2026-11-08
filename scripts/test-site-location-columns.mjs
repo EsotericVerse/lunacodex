@@ -12,14 +12,6 @@ test('Galaxy and media import use site and location columns consistently',()=>{
   assert.doesNotMatch(panel,/source_place|source_name/);
   assert.doesNotMatch(fields,/source_place|source_name/);
 });
-test('SQLite upgrades existing data in place before other migrations',()=>{
-  const local=code('app/loc/providers/local-sqlite.mjs');
-  assert.match(local,/upgradeWebLocalGalaxyNames\(db\);\s*upgradeWebLocalTime/);
-  assert.match(local,/upgradeNativeLocalGalaxyNames\(conn\);\s*upgradeNativeLocalTime/);
-  assert.match(local,/ALTER TABLE .* RENAME COLUMN/);
-  assert.match(local,/location TEXT/);
-  assert.match(local,/site TEXT/);
-});
 test('Postgres migration includes both article and media tables',()=>{
   const sql=code('supabase/migrations/20261030023000_galaxy_location_site.sql');
   for(const name of ['lo3rwang_galaxy','lrunes_galaxy','lo3rwang_galaxy_media','lrunes_galaxy_media'])

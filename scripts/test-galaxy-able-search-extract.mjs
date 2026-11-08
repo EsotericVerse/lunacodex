@@ -39,10 +39,10 @@ test('search is primary, excerpt is optional and never loads in regular browse',
   assert.match(ui,/row\.list===false\?'（使用者隱藏）'/);
 });
 
-test('device-local SQLite continues storing the archived able payload',()=>{
-  const local=prepareGalaxyInsertRows('silver.local_galaxy',[{uid:'ABcD1234',list:false}])[0];
-  assert.equal(local.able.list,false);
-  assert.equal(Object.hasOwn(local,'list'),false);
-  assert.equal(local.able.keywords,true);
-  assert.equal(local.able.game,true);
+test('unprovisioned Local Scope does not retain packed SQLite able writes',()=>{
+  const row=prepareGalaxyInsertRows('silver.local_galaxy',[{uid:'ABcD1234',list:false}])[0];
+  assert.equal(row.list,false);
+  assert.equal(Object.hasOwn(row,'able'),false);
+  assert.equal(row.keyword,true);
+  assert.equal(row.others,true);
 });

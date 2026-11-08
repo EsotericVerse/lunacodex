@@ -113,9 +113,9 @@ test('article detail separates original links, linked media, rune data and struc
 });
 
 
-test('SQLite local Galaxy uses createtime because it has no date column',()=>{
+test('Galaxy date grouping uses canonical date columns',()=>{
   const query=read('app/loc/galaxy-query.js');
-  assert.match(query,/String\(table\|\|''\)==='silver\.local_galaxy'\?'createtime'/);
+  assert.doesNotMatch(query,/String\(table\|\|''\)==='silver\.local_galaxy'/);
   assert.match(query,/dateColumn:dayColumn\(current\.galaxy\)/);
 });
 
