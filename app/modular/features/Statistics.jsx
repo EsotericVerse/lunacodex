@@ -48,6 +48,7 @@ const ScopeGroupOverview=dynamic(()=>import('../../loc/ScopeGroupOverview'),{loa
 const Article=dynamic(()=>import('../Article'),{loading:()=>null});
 import StatisticsChartFrame from '../modules/statistics/StatisticsChartFrame';
 import StatisticsDetails from '../modules/statistics/StatisticsDetails';
+import StatisticsDashboardKpis from '../modules/statistics/StatisticsDashboardKpis';
 import {statisticsZoomWindow} from '../modules/statistics/statistics-time-zoom.mjs';
 
 const CHART_TYPES=STAT_VISUAL_TYPES;
@@ -496,9 +497,16 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
       &&Boolean(styleRange.startDate&&styleRange.endDate),
   });
 
-  return <section className="scope-stat-section">
-    <header className="scope-stat-domain-heading"><div><h2>{UI_COPY.statistics.result}</h2></div></header>
-    <div className="scope-stat-controls">
+  const sourceBreakdownTotal=sourceSummary.sources.reduce((sum,row)=>sum+(Number(row.item_count)||0),0);
+  return <section className="scope-stat-section statistics-dashboard">
+    <header className="scope-stat-domain-heading statistics-dashboard__heading">
+      <div>
+        <span className="statistics-dashboard__eyebrow">LOC / ANALYTICS</span>
+        <h2>{t('uiExtra.statisticsView.dashboardTitle')}</h2>
+        <p>{t('uiExtra.statisticsView.dashboardScopeHelp')}</p>
+      </div>
+    </header>
+    <div className="scope-stat-controls statistics-dashboard__filters">
       <StatisticTypeSelect scopeId={scopeId} navigation={navigation} types={types}
         selectedSource={activeSourceSelection}/>
       {keywordDimension?<label>
@@ -561,21 +569,46 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     </div>:null}
     {sourceChart&&(sourceRows.error||sourceCatalog.error)?<p className="scope-status scope-error">{featureDataErrorMessage(sourceRows.error||sourceCatalog.error,UI_COPY)}</p>:null}
     {sourceChart&&!sourceRows.isPending&&!sourceCatalog.isPending&&adminSourceReady&&!sourceRows.error&&!sourceCatalog.error?<>
-      <p className="scope-status">{sourceSummary.startDate&&sourceSummary.endDate?sourceSummary.startDate+' ～ '+sourceSummary.endDate:''}</p>
-      <StatisticsChartFrame level={zoomLevel} onChange={setZoomLevel} range={queryRange} idPrefix="scope-stat">
-        <StatisticsMultiChart
-          type={effectiveChartType}
-          rows={basicTrend}
-          series={basicSeries}
-          distribution={basicDistribution}
-          totalKey={rankingType==='total'?'total':''}
-          foldBlank={foldBlank}
-          height={420}
-        />
-      </StatisticsChartFrame>
-      <StatisticsDetails>{()=> <SummaryList rankingType={rankingType} summary={sourceSummary}
-        scope={targetScopes[0]} range={queryRange} filteredSource={Boolean(activeSourceSelection)}
-        defaultSort={userActive?userSettings.sort:'desc'}/>}</StatisticsDetails>
+      <StatisticsDashboardKpis label={t('uiExtra.statisticsView.dashboardTitle')} items={[
+        {key:'records',label:t('uiExtra.statisticsView.dashboardRecords'),value:sourceSummary.total.toLocaleString()},
+        {key:'categories',label:t('uiExtra.statisticsView.dashboardCategoryCount'),value:sourceSummary.sources.length.toLocaleString()},
+        {key:'active',label:t('uiExtra.statisticsView.dashboardActiveBuckets'),
+          value:basicTrend.filter(row=>Number(row.total)>0).length.toLocaleString()}
+      ]}/>
+      <div className="statistics-dashboard__workspace">
+        <section className="statistics-dashboard__panel statistics-dashboard__panel--chart" aria-label={t('uiExtra.statisticsView.dashboardTrendTitle')}>
+          <header className="statistics-dashboard__panel-heading">
+            <h3>{t('uiExtra.statisticsView.dashboardTrendTitle')}</h3>
+            <p>{sourceSummary.startDate&&sourceSummary.endDate?sourceSummary.startDate+' ～ '+sourceSummary.endDate:''}</p>
+          </header>
+          <StatisticsChartFrame level={zoomLevel} onChange={setZoomLevel} range={queryRange} idPrefix="scope-stat">
+            <StatisticsMultiChart type={effectiveChartType} rows={basicTrend}
+              series={basicSeries} distribution={basicDistribution}
+              totalKey={rankingType==='total'?'total':''}
+              foldBlank={foldBlank} height={420}/>
+          </StatisticsChartFrame>
+        </section>
+        <aside className="statistics-dashboard__panel statistics-dashboard__panel--insights" aria-label={t('uiExtra.statisticsView.dashboardDistributionTitle')}>
+          <header className="statistics-dashboard__panel-heading">
+            <h3>{t('uiExtra.statisticsView.dashboardDistributionTitle')}</h3>
+          </header>
+          {sourceSummary.sources.length?<div className="statistics-dashboard__breakdown">
+            {[...sourceSummary.sources].sort((a,b)=>b.item_count-a.item_count).slice(0,8).map(row=>{
+              const ratio=sourceBreakdownTotal>0?(Number(row.item_count)||0)/sourceBreakdownTotal*100:0;
+              return <div key={row.category||row.term} className="statistics-dashboard__breakdown-item">
+                <div className="statistics-dashboard__breakdown-label">
+                  <span title={row.term}>{row.term}</span>
+                  <strong>{Number(row.item_count||0).toLocaleString()}</strong>
+                </div>
+                <div className="statistics-dashboard__bar" aria-hidden="true"><span style={{width:ratio+'%'}}/></div>
+              </div>;
+            })}
+          </div>:<p className="scope-status">{t('uiExtra.statisticsView.dashboardEmpty')}</p>}
+          <StatisticsDetails>{()=> <SummaryList rankingType={rankingType} summary={sourceSummary}
+            scope={targetScopes[0]} range={queryRange} filteredSource={Boolean(activeSourceSelection)}
+            defaultSort={userActive?userSettings.sort:'desc'}/>}</StatisticsDetails>
+        </aside>
+      </div>
     </>:null}
     {keywordDimension?<>
       {keywordClassQuery.isPending?<p className="scope-status">正在讀取關鍵詞組設定…</p>:null}

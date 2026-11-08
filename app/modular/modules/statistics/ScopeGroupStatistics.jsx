@@ -18,6 +18,7 @@ import {featureDataErrorMessage} from '../../feature-data-state';
 import {semanticStatisticChartTypes,chartTypeGroups,preferredStatisticChartType,statisticsZoomWindow} from './statistics-time-zoom.mjs';
 import StatisticsChartFrame from './StatisticsChartFrame';
 import StatisticsDetails from './StatisticsDetails';
+import StatisticsDashboardKpis from './StatisticsDashboardKpis';
 
 const StatisticsMultiChart=dynamic(()=>import('./StatisticsMultiChart'),{loading:()=>null});
 const LocMemberIntersection=dynamic(()=>import('./LocMemberIntersection'),{loading:()=>null});
@@ -110,53 +111,70 @@ export default function ScopeGroupStatistics({taipeiDateKey,trendBucket,loadGala
   const chartGroups=chartTypeGroups(locAllowed,aggregateType==='total'
     ?['line','composed','bar']:['line','stacked','pie']);
 
-  return <section className="scope-stat-section">
-    <header className="scope-stat-domain-heading">
+  return <section className="scope-stat-section statistics-dashboard">
+    <header className="scope-stat-domain-heading statistics-dashboard__heading">
       <div>
-        <h2>{UI_COPY.statistics.result}</h2>
+        <span className="statistics-dashboard__eyebrow">LOC / ANALYTICS</span>
+        <h2>{t('uiExtra.statisticsView.dashboardTitle')}</h2>
+        <p>{t('uiExtra.statisticsView.dashboardLocHelp')}</p>
       </div>
     </header>
-    <div className="scope-stat-controls">
-      <label>
-        <span>{UI_COPY.statistics.item}</span>
+    <div className="scope-stat-controls statistics-dashboard__filters">
+      <label><span>{UI_COPY.statistics.item}</span>
         <select className="scope-select" value={aggregateType} onChange={event=>setAggregateType(event.target.value)}>
           <option value="total"><UiText id="uiExtra.statisticsView.memberCount"/></option>
           <option value="scope"><UiText id="uiExtra.statisticsView.memberDistribution"/></option>
         </select>
       </label>
-      <label>
-        <span>{UI_COPY.statistics.chart}</span>
+      <label><span>{UI_COPY.statistics.chart}</span>
         <select className="scope-select" value={locChartType} onChange={event=>setChartType(event.target.value)}>
           {chartGroups.primary.length?<optgroup label={t('uiExtra.statisticsView.chartPrimary')}>
-  {chartGroups.primary.map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}
-</optgroup>:null}
-{chartGroups.advanced.length?<optgroup label={t('uiExtra.statisticsView.chartAdvanced')}>
-  {chartGroups.advanced.map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}
-</optgroup>:null}{!locAllowed.length?<option value="line"><UiText id="uiExtra.statisticsView.noVisual"/></option>:null}
+            {chartGroups.primary.map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}
+          </optgroup>:null}
+          {chartGroups.advanced.length?<optgroup label={t('uiExtra.statisticsView.chartAdvanced')}>
+            {chartGroups.advanced.map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}
+          </optgroup>:null}
+          {!locAllowed.length?<option value="line"><UiText id="uiExtra.statisticsView.noVisual"/></option>:null}
         </select>
       </label>
     </div>
-
-    <p className="scope-status">{startDate&&rangeEndDate?startDate+' ～ '+rangeEndDate:''}</p>
-    <StatisticsChartFrame level={zoomLevel} onChange={setZoomLevel} range={zoomRange} idPrefix="loc-stat">
-      {!densityQuery.isPending&&!densityQuery.error&&trendData.length?<StatisticsMultiChart
-        type={locChartType} rows={trendData} series={locSeries}
-        distribution={locDistribution} totalKey={aggregateType==='total'?'total':''} height={420}
-      />:<p className="scope-status">{densityQuery.isPending?t('uiExtra.statisticsUI.loading'):t('uiExtra.statisticsUI.noChart')}</p>}
-    </StatisticsChartFrame>
-    <StatisticsDetails>{()=><>
-    <div className="scope-ranking">
-      <div>
-        <strong><UiText id="uiExtra.statisticsView.memberCount"/></strong>
-        <span>{t('uiExtra.statisticsView.totalWithCount',{count:overallTotal.toLocaleString()})}</span>
-      </div>
+    {!densityQuery.isPending&&!densityQuery.error?<StatisticsDashboardKpis
+      label={t('uiExtra.statisticsView.dashboardTitle')} items={[
+        {key:'records',label:t('uiExtra.statisticsView.dashboardRecords'),value:overallTotal.toLocaleString()},
+        {key:'scopes',label:t('uiExtra.statisticsView.dashboardScopeCount'),value:scopeIds.length.toLocaleString()},
+        {key:'active',label:t('uiExtra.statisticsView.dashboardActiveBuckets'),
+          value:trendData.filter(row=>Number(row.total)>0).length.toLocaleString()}
+      ]}/>:null}
+    <div className="statistics-dashboard__workspace">
+      <section className="statistics-dashboard__panel statistics-dashboard__panel--chart" aria-label={t('uiExtra.statisticsView.dashboardTrendTitle')}>
+        <header className="statistics-dashboard__panel-heading">
+          <h3>{t('uiExtra.statisticsView.dashboardTrendTitle')}</h3>
+          <p>{startDate&&rangeEndDate?startDate+' ～ '+rangeEndDate:''}</p>
+        </header>
+        <StatisticsChartFrame level={zoomLevel} onChange={setZoomLevel} range={zoomRange} idPrefix="loc-stat">
+          {!densityQuery.isPending&&!densityQuery.error&&trendData.length?<StatisticsMultiChart
+            type={locChartType} rows={trendData} series={locSeries}
+            distribution={locDistribution} totalKey={aggregateType==='total'?'total':''} height={420}
+          />:<p className="scope-status" role="status">{densityQuery.error
+            ?featureDataErrorMessage(densityQuery.error,UI_COPY)
+            :densityQuery.isPending?t('uiExtra.statisticsUI.loading'):t('uiExtra.statisticsUI.noChart')}</p>}
+        </StatisticsChartFrame>
+      </section>
+      <aside className="statistics-dashboard__panel statistics-dashboard__panel--insights" aria-label={t('uiExtra.statisticsView.dashboardScopeDistributionTitle')}>
+        <header className="statistics-dashboard__panel-heading">
+          <h3>{t('uiExtra.statisticsView.dashboardScopeDistributionTitle')}</h3>
+        </header>
+        {scopeIds.length?<div className="statistics-dashboard__breakdown">
+          {[...totals].sort((a,b)=>b.total-a.total).map(row=><div className="statistics-dashboard__breakdown-item" key={row.scope_id}>
+            <div className="statistics-dashboard__breakdown-label">
+              <ScopeLink href={featureNavigationHref(row.scope_id,'statics')}>{scopes.find(scope=>scope.id===row.scope_id)?.label||row.scope_id}</ScopeLink>
+              <strong>{row.total.toLocaleString()}</strong>
+            </div>
+            <div className="statistics-dashboard__bar" aria-hidden="true"><span style={{width:row.ratio+'%'}}/></div>
+          </div>)}
+        </div>:<p className="scope-status">{t('uiExtra.statisticsView.dashboardEmpty')}</p>}
+      </aside>
     </div>
-
-    <div className="scope-result-links">
-      {scopeIds.map(id=><ScopeLink key={id} href={featureNavigationHref(id,'statics')}>{id} · {t('uiExtra.statisticsView.viewMemberStat')}</ScopeLink>)}
-    </div>
-
-    </>}</StatisticsDetails>
     <StatisticsDetails className="scope-stat-details" summary={<UiText id="uiExtra.statisticsView.memberCrossTitle"/>}>
       {()=> <LocMemberIntersection key={startDate+'|'+rangeEndDate}
         scopes={scopes} startDate={startDate} endDate={rangeEndDate}
