@@ -8,13 +8,13 @@ const uid=(s)=>String(s).padEnd(8,'0');
 const row=(name,type,attr={})=>({uid:uid(name),type,title:name,attr});
 const tree=(family,rows,options={})=>indexZModelAnchorHierarchy(rows,{family,...options});
 
-test('all four virtual families use the unchanged seven-column ZModel Anchor',()=>{
+test('all four virtual families use the eight-column ZModel Anchor',()=>{
   assert.deepEqual(ANCHOR_HIERARCHY_FAMILIES,['keyword','source','time','space']);
-  for(const model of ['Lo3rwangAnchor','LrunesAnchor']){
+  for(const model of ['Lo3rwangAnchor','LrunesAnchor','LocAnchor']){
     const cols=schema.models[model]?.fields;
     assert.ok(cols);
     assert.deepEqual(Object.keys(cols).sort(),
-      ['uid','type','title','description','invisible','attr','createtime'].sort());
+      ['uid','type','title','description','invisible','attr','createtime','num'].sort());
     assert.equal(cols.attr.type,'Json');
   }
   const contract=readFileSync(new URL('../zenstack/schema.zmodel',import.meta.url),'utf8');
