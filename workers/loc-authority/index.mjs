@@ -995,6 +995,8 @@ async function exchangeLocDelegation(request,env,principal,origin){
     (global||identity||self)&&audience!=='sql'||
     Number(global)+Number(identity)+Number(self)>1)
     throw fail('Invalid delegation audience',400);
+  // A self-asserted native email cannot acquire Scope or administrator grants.
+  if(principal.emailVerified===false)throw fail('Verified LOC email required for delegation',403);
   const roots=String(env.LOC_RECOVERY_ROOT_LOC_SUBJECTS||'')
     .split(/[\s,;]+/).filter(Boolean);
   const root=roots.includes(principal.subject);
