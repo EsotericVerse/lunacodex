@@ -406,7 +406,8 @@ export class LocAuthorityState extends DurableObject {
         (Array.isArray(info.allowed_subjects)&&info.allowed_subjects.includes(subject));
       if(!authorized)return [];
       return [{id:key.slice('target:'.length),label:String(info.label||key),
-        engine:info.engine}];
+        engine:info.engine,ref_provider:String(info.ref_provider||''),
+        ref_permission:String(info.ref_permission||'')}];
     }).sort((a,b)=>a.label.localeCompare(b.label));
     const current=await this.ctx.storage.get('user-db:'+subject)||null;
     return {targets,selected:targets.some(x=>x.id===current)?current:null};
