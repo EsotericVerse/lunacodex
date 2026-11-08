@@ -40,7 +40,7 @@ export function locBetterAuth(env){
   baseURL:ISSUER,basePath:'/api/auth',
   secret:env.LOC_CONTROL_ENCRYPTION_KEY,
   trustedOrigins:[ISSUER,WEB],
-  database:ADAPTER({__locState:stub}),
+  database:(options)=>ADAPTER({...options,__locState:stub}),
   emailAndPassword:{enabled:true,minPasswordLength:12,maxPasswordLength:128},
   // A native account must not inherit another issuer's identity or grants.
   account:{accountLinking:{enabled:false}},
