@@ -15,13 +15,50 @@ const BLOCK_FIELDS=['uid','page_name','block_eyebrow','block_title','block_subti
   'block_text','block_order','block_entity','block_image'];
 const respond=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:HEADERS});
 const allowedScope=id=>SCOPE_ROUTE_INDEX.some(row=>row.scope_id===id&&row.active!==false);
-const NUMERIC_KINDS=new Set(['culture_density','daily','overview','earliest','totals']);
+const NUMERIC_KINDS=new Set(['culture_density','daily','overview','earliest','totals','loc']);
 // Existing published Galaxy history exceeds 5,000 date/source groups. Bound
 // the result by groups (never article rows) while preserving full-history views.
 const MAX_PUBLIC_GROUPS=20000;
 const DAY=/^\d{4}-\d{2}-\d{2}$/;
 const day=value=>value instanceof Date?value.toISOString().slice(0,10):String(value??'').slice(0,10);
 const total=value=>Number(value)||0;
+
+// LOC Group totals aggregate fixed published child Scope totals, not article
+// rows or user-selected tables. All database reads stay in existing Kysely.
+async function readLocGroupNumeric(db,start,end,port){
+  const entries=SCOPE_ROUTE_INDEX.filter(row=>row.scope_id!=='loc'&&row.active!==false&&
+    scopeFeatureEnabled(row.config,'statistics_able'));
+  const scopes=[],rows=[];let earliest='';
+  for(const entry of entries){
+    const id=entry.scope_id;
+    const [daily,first]=await Promise.all([
+      readGalaxyNumeric(db,id,'daily',start||'0001-01-01',end||'9999-12-31',port),
+      readGalaxyNumeric(db,id,'earliest','','',port)
+    ]);
+    scopes.push({scope_id:id,display_name:String(entry.config?.display_name||id)});
+    rows.push(...daily.filter(row=>row.kind==='total')
+      .map(row=>({scope_id:id,day:row.day,item_count:row.item_count})));
+    if(first&&(!earliest||first<earliest))earliest=first;
+  }
+  return {earliest,scopes,rows};
+}
+function publishedNumeric(scope,kind,start,end){
+  if(kind!=='loc')return readPublishedGalaxyNumeric(scope,kind,start,end);
+  const scopes=[],rows=[];let earliest='';
+  for(const entry of SCOPE_ROUTE_INDEX){
+    if(entry.scope_id==='loc'||entry.active===false||
+        !scopeFeatureEnabled(entry.config,'statistics_able'))continue;
+    const id=entry.scope_id;
+    const daily=readPublishedGalaxyNumeric(id,'daily',start,end);
+    if(!daily)continue;
+    scopes.push({scope_id:id,display_name:String(entry.config?.display_name||id)});
+    rows.push(...daily.filter(row=>row.kind==='total')
+      .map(row=>({scope_id:id,day:row.day,item_count:row.item_count})));
+    const first=readPublishedGalaxyNumeric(id,'earliest');
+    if(first&&(!earliest||first<earliest))earliest=first;
+  }
+  return {earliest,scopes,rows};
+}
 
 // A fixed, bounded Galaxy aggregation performed where the native connection
 // already lives. Never download per-article rows to aggregate in a browser;
@@ -93,11 +130,11 @@ export async function handleNativePublicContent(request,env={},{
       (kind==='hero'?!FEATURES.has(feature):Boolean(feature))||
       (kind==='hero'&&!keys.includes('feature'))||
       (!numeric&&(url.searchParams.has('start')||url.searchParams.has('end')))||
-      (numeric&&(scope==='loc'||
-        (kind!=='earliest'&&kind!=='totals'&&
+      (numeric&&((kind==='loc'?scope!=='loc':scope==='loc')||
+        (kind!=='earliest'&&kind!=='totals'&&kind!=='loc'&&
           (!DAY.test(start)||!DAY.test(end)||start>end))||
         (kind==='earliest'&&(start||end))||
-        (kind==='totals'&&(Boolean(start)!==Boolean(end)||
+        ((kind==='totals'||kind==='loc')&&(Boolean(start)!==Boolean(end)||
           start&&(!DAY.test(start)||!DAY.test(end)||start>end))))))
     return respond({error:'Invalid LOC public content request'},400);
   // Release-published feature availability is a guest-visible rule; do not
@@ -112,7 +149,7 @@ export async function handleNativePublicContent(request,env={},{
   // the native Pages database connection is not yet configured.
   const publishedResponse=()=>{
     if(!numeric)return null;
-    const data=readPublishedGalaxyNumeric(scope,kind,start,end);
+    const data=publishedNumeric(scope,kind,start,end);
     return data===null?null:respond({data,source:'published',as_of:PUBLISHED_GALAXY_SNAPSHOT_DATE});
   };
   try{
@@ -127,7 +164,8 @@ export async function handleNativePublicContent(request,env={},{
     const query=port.db;
     const relation=name=>portableRelation(name,port.engine,
       port.namespace||(port.engine==='postgres'?'silver':'dbo'));
-    if(numeric)return respond({data:await readGalaxyNumeric(query,scope,kind,start,end,port)});
+    if(numeric)return respond({data:await (kind==='loc'?
+      readLocGroupNumeric(query,start,end,port):readGalaxyNumeric(query,scope,kind,start,end,port))});
     if(kind==='config'){
       const columns=scopeConfigColumns(scope).split(',').filter(Boolean);
       const row=await query.selectFrom(relation(scope))
