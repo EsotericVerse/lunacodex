@@ -912,9 +912,10 @@ export async function selectSourceTrendRows(scopes,{startDate='',endDate=''}={})
   }).sort((a,b)=>a.day.localeCompare(b.day)||SOURCE_BUCKET_ORDER.indexOf(a.source)-SOURCE_BUCKET_ORDER.indexOf(b.source));
 }
 
-// Statistics read failure (database unreachable) is shown as an empty result, never as a
-// stale or made-up number. The footer already reports the database status.
-// Cancellation (AbortError) is not a failure and is rethrown.
+// Optional ancillary statistics may still show an empty state after failure.
+// The primary Statistics overview deliberately does NOT use this wrapper:
+// an unavailable Galaxy aggregate is an error, not a verified zero count.
+// Cancellation (AbortError) is rethrown.
 function emptyOnFailure(fn,fallback){
   return async(...args)=>{
     try{return await fn(...args);}
@@ -927,6 +928,8 @@ function emptyOnFailure(fn,fallback){
 }
 export const selectMediaStatisticsFacetRows=emptyOnFailure(selectMediaStatisticsFacetRowsRaw,[]);
 export const selectScopeDensityRows=emptyOnFailure(selectScopeDensityRowsRaw,[]);
-export const selectScopeOverview=emptyOnFailure(selectScopeOverviewRaw,{earliest:'',rows:[],categories:[],aliases:[]});
+// A failed Statistics overview is a query failure, never a legitimate zero chart.
+// Let useAsyncResource display the actual request error and its retry action.
+export const selectScopeOverview=selectScopeOverviewRaw;
 export const selectScopeEarliest=emptyOnFailure(selectScopeEarliestRaw,'');
 export const selectLocStatistics=emptyOnFailure(selectLocStatisticsRaw,{earliest:'',scopes:[],rows:[]});

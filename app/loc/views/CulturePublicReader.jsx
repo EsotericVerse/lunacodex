@@ -41,10 +41,21 @@ function attributes(row){
 function anchorModel(rows,start,end,expanded){
   const all=list(rows);
   const byUid=new Map(all.map(row=>[String(row.uid),row]));
-  // Native eight-character Anchor UIDs use the shared ZModel Time graph.
-  // Legacy imported short UIDs remain compatible with the existing river.
+  // The same Scope may contain canonical Base62 and historical short UIDs.
+  // Project only canonical, valid Time edges with ZModel. One legacy row must
+  // never invalidate every canonical Era/Period in the first Culture river.
+  const canonical=all.filter(row=>{
+    if(!/^[A-Za-z0-9]{8}$/.test(String(row.uid||'')))return false;
+    const attr=attributes(row);
+    const link=row.type==='era'?attr.period:
+      row.type==='period'?attr.uid:null;
+    return !Array.isArray(link)||link.every(uid=>/^[A-Za-z0-9]{8}$/.test(String(uid)));
+  });
   let timeGraph=null;
-  try{timeGraph=indexZModelAnchorHierarchy(all,{family:'time'});}catch{}
+  if(canonical.length){
+    try{timeGraph=indexZModelAnchorHierarchy(canonical,{family:'time'});}
+    catch(error){console.warn('[LOC Culture] Time projection:',String(error?.message||error));}
+  }
   const dates=all.filter(row=>row.type==='date').map(row=>({
     ...row,date:datePart(attributes(row).date)
   })).filter(row=>row.date);
@@ -62,8 +73,12 @@ function anchorModel(rows,start,end,expanded){
   const groups=[],items=[];
   for(const era of eras){
     const uid=String(era.uid),attr=attributes(era);
-    const periodUids=timeGraph&&Array.isArray(attr.period)
-      ?timeGraph.childrenOf(uid):list(attr.period||attr.periods);
+    const savedPeriodUids=list(attr.period||attr.periods);
+    const resolved=timeGraph&&Array.isArray(attr.period)?timeGraph.childrenOf(uid):[];
+    // Partially published graphs may contain unresolved links. Resolve only
+    // complete canonical branches; old IDs still use the explicit saved UIDs.
+    const periodUids=resolved.length===savedPeriodUids.length?
+      resolved:savedPeriodUids;
     const refs=periodUids.map(id=>byUid.get(String(id)))
       .filter(item=>item?.type==='period');
     const expandedEra=expanded.includes(uid);

@@ -121,35 +121,49 @@ export function createDirectDataApiClient({
     if(q.cardinality==='single'&&list.length!==1)throw Error('Expected exactly one database record');
     return {data:q.head?null:q.cardinality?list[0]||null:list,error:null,count,status:response.status};
   }
-  async function cultureAnalytics(args={}) {
+  async function publicAnalytics(args={}) {
     const view=String(args.p_view||'');
-    if(!['culture_anchors','culture_density'].includes(view))
-      throw Error('Unsupported public Culture operation');
+    const supported=['culture_anchors','culture_density','daily','overview','earliest','totals'];
+    if(!supported.includes(view))throw Error('Unsupported public aggregation operation');
     const scope=String(args.p_scope_id||'');
     const start=args.p_start==null?'':String(args.p_start);
     const end=args.p_end==null?'':String(args.p_end);
+    const dated=view!=='culture_anchors'&&view!=='earliest'&&view!=='totals';
     if(!/^[a-z][a-z0-9]{0,14}$/.test(scope)||
-      (view==='culture_density'&&(!/^\d{4}-\d{2}-\d{2}$/.test(start)||
-        !/^\d{4}-\d{2}-\d{2}$/.test(end)||start>end)))
-      throw Error('Invalid LOC Culture query');
-    // Use the configured public Data API directly; never create another SQL
-    // service, database alias, or authentication preflight for guest readers.
+      (dated&&(!/^\d{4}-\d{2}-\d{2}$/.test(start)||
+        !/^\d{4}-\d{2}-\d{2}$/.test(end)||start>end))||
+      (view==='earliest'&&(start||end))||
+      (view==='totals'&&(Boolean(start)!==Boolean(end)||
+        start&&(!/^\d{4}-\d{2}-\d{2}$/.test(start)||
+          !/^\d{4}-\d{2}-\d{2}$/.test(end)||start>end))))
+      throw Error('Invalid LOC public aggregation query');
     if(view==='culture_anchors'){
+      // Anchor is a simple bounded public SELECT. No business aggregate or
+      // separate server round trip is necessary for the first Culture river.
       const q=new Query(read,'silver',scope+'_anchor');
       const {data}=await q.select('uid,type,title,attr')
         .in('type',['date','period','era']).eq('invisible',false).limit(5000);
       return {data:data.map(row=>({...row,attr:typeof row.attr==='string'
         ?JSON.parse(row.attr||'{}'):row.attr||{}})),error:null};
     }
-    // Database-side grouped aggregate, not a browser-side article scan.
-    const q=new Query(read,'silver',scope+'_galaxy');
-    const {data}=await q.select('date,site,count()')
-      .eq('culture',true).gte('date',start).lte('date',end)
-      .order('date',{ascending:true}).limit(5000);
-    return {data:data.map(row=>({
-      day:String(row.date||'').slice(0,10),site:String(row.site||''),
-      item_count:Number(row.count||0)
-    })),error:null};
+    // The STATIC browser must not emit PostgREST count() / GROUP BY, which
+    // the public Data API rejects. Fixed native Galaxy aggregation executes
+    // inside the already-existing Pages Kysely application.
+    const params=new URLSearchParams({kind:view,scope});
+    if(start){params.set('start',start);params.set('end',end);}
+    const response=await fetchImpl('/api/loc-public-content?'+params.toString(),{
+      method:'GET',credentials:'omit',cache:'no-store',
+      signal:AbortSignal.timeout(9000),headers:{accept:'application/json'}
+    });
+    const payload=await response.json().catch(()=>null);
+    if(!response.ok){
+      const error=new Error(payload?.error||'Native LOC Galaxy aggregate unavailable (HTTP '+response.status+')');
+      error.status=response.status;
+      throw error;
+    }
+    if(!payload||!Object.hasOwn(payload,'data'))
+      throw Error('Invalid LOC Galaxy aggregate response');
+    return {data:payload.data,error:null,status:response.status};
   }
   function execute(q){
     return role==='anon'?withPublicReadBudget(()=>read(q),q.signal):read(q);
@@ -159,7 +173,7 @@ export function createDirectDataApiClient({
     schema(schema){
       assertId(schema);
       return {from(table){return new Query(execute,schema,table)},
-        analytics:cultureAnalytics,managedWrite:unsupported,managedAction:unsupported,
+        analytics:publicAnalytics,managedWrite:unsupported,managedAction:unsupported,
         publicAction:unsupported,anchor:unsupported};
     },
     shortImport:unsupported,

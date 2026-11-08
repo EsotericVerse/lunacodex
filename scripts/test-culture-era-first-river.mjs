@@ -66,6 +66,31 @@ test('canonical eight-character Era uses existing ZModel Time relationships',()=
   ]);
   assert.deepEqual(Array.from(model.items.filter(row=>row.entry_type==='anchor'),
     row=>row.uid),[date]);
-  assert.match(source,/indexZModelAnchorHierarchy\(all,\{family:'time'\}\)/);
+  assert.match(source,/indexZModelAnchorHierarchy\(canonical,\{family:'time'\}\)/);
   assert.match(source,/timeGraph\.childrenOf\(uid\)/);
+});
+
+test('mixed legacy and canonical UIDs do not disable canonical ZModel Time',()=>{
+  const era='ERA00001',period='PER00001',date='DAY00001';
+  const data=[
+    {uid:'e1',type:'era',title:'舊時代',attr:{periods:['p1']}},
+    {uid:'p1',type:'period',title:'舊期間',attr:{dates:['2026-01-01','2026-02-01']}},
+    {uid:era,type:'era',title:'新時代',attr:{period:[period]}},
+    {uid:period,type:'period',title:'新期間',attr:{uid:[date]}},
+    {uid:date,type:'date',title:'新日期',attr:{date:'2026-01-10'}}
+  ];
+  const calls=[];
+  const code='(() => {const list=value=>Array.isArray(value)?value:[];'+
+    'const datePart=value=>String(value||\'\').slice(0,10);'+
+    'const attributes=row=>row?.attr||{};'+source.slice(start,end)+';return anchorModel;})()';
+  const model=vm.runInNewContext(code,{indexZModelAnchorHierarchy:(rows,opts)=>{
+    calls.push({uids:rows.map(x=>x.uid),family:opts.family});
+    return indexZModelAnchorHierarchy(rows,opts);
+  }});
+  const result=model(data,'2026-01-01','2026-02-28',[era]);
+  assert.equal(calls.length,1);
+  assert.deepEqual(calls[0].uids,[era,period,date]);
+  assert.deepEqual(Array.from(result.items.filter(x=>x.entry_type==='period'),x=>x.uid),[period]);
+  assert.ok(result.items.some(x=>x.uid===date&&x.entry_type==='anchor'));
+  assert.ok(result.groups.some(x=>x.id==='era:e1'));
 });
