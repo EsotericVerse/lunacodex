@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {directMcpKysely} from '../app/loc/mcp/native-kysely.mjs';
+import {directMcpKysely,mcpDatabaseConfiguration} from '../app/loc/mcp/native-kysely.mjs';
 
 const url='postgresql://app:password@127.0.0.1:5432/database';
 const profile={engine:'postgres',url,tls:true};
