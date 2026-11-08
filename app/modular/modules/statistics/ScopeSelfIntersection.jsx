@@ -150,9 +150,10 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
     queryKey:['scope-advanced-keyword-catalog',scope?.id,keywords.data?.keywordMeta?.class_uid],
     enabled:valid&&keywordModeActive&&Boolean(scope?.keywords&&keywords.data?.keywordMeta?.class_uid),
     queryFn:async()=>{
-      const {readKeywordTreeCatalog}=await import('../../../loc/db-client.mjs');
+      const {keywordService}=await import('../../../loc/keyword-service-client.mjs');
       const {keywordTreeCatalog}=await import('../../../loc/keyword-tree-report.mjs');
-      const result=await readKeywordTreeCatalog(scope.id,{classUid:keywords.data.keywordMeta.class_uid});
+      const result=await keywordService('catalog',{
+        scopeId:scope.id,classUid:keywords.data.keywordMeta.class_uid});
       if(!result.class_uid)return [];
       return keywordTreeCatalog(result.rows,result.class_uid).groups.flatMap(group=>
         group.items.map(item=>({uid:item.uid,group_uid:group.uid,class_group:group.name})));
@@ -254,8 +255,10 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
     queryKey:['own-scope-keyword-item-days',scope?.id,classUid,start,end],
     enabled:valid&&keywordModeActive&&selectedKeywordItems,
     queryFn:async()=>{
-      const {readKeywordTreeSummary}=await import('../../../loc/db-client.mjs');
-      return readKeywordTreeSummary(scope.id,{classUid:keywords.data?.keywordMeta?.class_uid||classUid,startDate:start,endDate:end});
+      const {keywordService}=await import('../../../loc/keyword-service-client.mjs');
+      return keywordService('summary',{scopeId:scope.id,
+        classUid:keywords.data?.keywordMeta?.class_uid||classUid,
+        startDate:start,endDate:end});
     }
   });
   const unit=['year','month','week','day'].includes(range?.bucket)?range.bucket:(Date.parse(end)-Date.parse(start))/DAY_MS>180?'month':(Date.parse(end)-Date.parse(start))/DAY_MS>60?'week':'day';
