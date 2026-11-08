@@ -87,16 +87,17 @@ export function scopeDataFromManageRows(rows=[]){
 let managedScopesRequest=null;
 export function selectManagedScopes(){
   if(managedScopesRequest)return managedScopesRequest;
-  managedScopesRequest=selectRows(MANAGE_TABLE,{
-    columns:MANAGE_COLUMNS,
-    filters:[{column:MANAGE_ROLE_COLUMN,operator:'in',value:['scope']}],
-    orders:[{column:'id',ascending:true}],
-    limit:DB_QUERY_BATCH_SIZE,
-    offset:0
-  }).then(({rows})=>scopeDataFromManageRows(rows)).catch(error=>{
-    managedScopesRequest=null;
-    throw error;
-  });
+  // Scope membership and physical suffixes are already published in the
+  // release registry. The browser's public Data API exposes silver, NOT api.
+  // Never query the private api.manage schema for a public Scope chooser.
+  const rows=(PUBLISHED_SITE_BOOTSTRAP.registry||[])
+    .filter(row=>row?.active!==false&&row?.scope_kind==='scope')
+    .map(row=>({
+      id:row.scope_id,manage_role:'scope',galaxy_table:'galaxy',
+      anchor_table:'anchor',
+      birthday:PUBLISHED_SITE_BOOTSTRAP.scope_birthdays?.[row.scope_id]||''
+    }));
+  managedScopesRequest=Promise.resolve(scopeDataFromManageRows(rows));
   return managedScopesRequest;
 }
 
