@@ -7,48 +7,6 @@
       "skillPath": "skills/chrome-extensions/SKILL.md",
       "computedHash": "4b7e7beb7711c75ba267dcd5e3483d56aaa49d4670db88fd8619afea970cbccc"
     },
-    "clerk": {
-      "source": "clerk/skills",
-      "sourceType": "github",
-      "skillPath": "skills/clerk/SKILL.md",
-      "computedHash": "c5f37de2849cf786ecb594f3cf62e94cf7c5f5367d2e8174e2b3a7dd852d1225"
-    },
-    "clerk-backend-api": {
-      "source": "clerk/skills",
-      "sourceType": "github",
-      "skillPath": "skills/clerk-backend-api/SKILL.md",
-      "computedHash": "f546f7a163670ff580271573e52e01f2a539fcbd6b3b2d6dd714656f60ee1a65"
-    },
-    "clerk-nextjs-patterns": {
-      "source": "clerk/skills",
-      "sourceType": "github",
-      "skillPath": "skills/clerk-nextjs-patterns/SKILL.md",
-      "computedHash": "208b936809f814fa0aa2a6e15b2e880b8b9fee5f0b3ca4fce9ac2f2ea7472418"
-    },
-    "clerk-react-patterns": {
-      "source": "clerk/skills",
-      "sourceType": "github",
-      "skillPath": "skills/clerk-react-patterns/SKILL.md",
-      "computedHash": "e6b7e52013ca836db3a8d901b3c116370da83970398b6f9d7d1e1138ba442be8"
-    },
-    "clerk-setup": {
-      "source": "clerk/skills",
-      "sourceType": "github",
-      "skillPath": "skills/clerk-setup/SKILL.md",
-      "computedHash": "2ece6f11c35ba3420ca340e6b0ecd86caec149b7012d71c8625ee16f542a77f9"
-    },
-    "clerk-testing": {
-      "source": "clerk/skills",
-      "sourceType": "github",
-      "skillPath": "skills/clerk-testing/SKILL.md",
-      "computedHash": "7a103e04442822f0e8e11184e11e92fea143723817dba8c5f06fd71dab86c4ad"
-    },
-    "clerk-webhooks": {
-      "source": "clerk/skills",
-      "sourceType": "github",
-      "skillPath": "skills/clerk-webhooks/SKILL.md",
-      "computedHash": "2e09a26af49fcd7081b9c370e9c2008f1ff5ee4474141fd2c693431358c9e4ec"
-    },
     "kysely": {
       "source": "Mindrally/skills",
       "sourceType": "github",

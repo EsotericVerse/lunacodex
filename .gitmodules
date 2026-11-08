@@ -1,4 +1,0 @@
-[submodule "tools/blogsh"]
-	path = tools/blogsh
-	url = https://github.com/DanielSnor/blog.sh.git
-	branch = main
