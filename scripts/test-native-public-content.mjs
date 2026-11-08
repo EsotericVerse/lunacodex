@@ -224,3 +224,31 @@ test('full-history Galaxy statistics return more than five thousand grouped date
   assert.equal(data.filter(row=>row.kind==='source').length,6829);
   assert.equal(data.filter(row=>row.kind==='total').length,6829);
 });
+
+test('published date/source history keeps public Culture and Statistics available without a database connection',async()=>{
+  const offline=async()=>{throw new Error('Database profile unavailable')};
+  const earliest=await handleNativePublicContent(numericPage('earliest'),{},{database:offline});
+  assert.equal(earliest.status,200);
+  assert.equal((await earliest.json()).data,'2005-04-12');
+  const daily=await handleNativePublicContent(numericPage('daily',
+    'start=2026-11-01&end=2026-11-09'),{},{database:offline});
+  const dailyBody=await daily.json();
+  assert.equal(daily.status,200);
+  assert.equal(dailyBody.source,'published');
+  assert.equal(dailyBody.as_of,'2026-11-09');
+  assert.ok(dailyBody.data.some(row=>row.kind==='source'));
+  assert.ok(dailyBody.data.some(row=>row.kind==='total'));
+  const overview=await handleNativePublicContent(numericPage('overview',
+    'start=2026-11-01&end=2026-11-09'),{},{database:offline});
+  const overviewBody=await overview.json();
+  assert.equal(overview.status,200);
+  assert.equal(overviewBody.data.earliest,'2005-04-12');
+  assert.ok(overviewBody.data.rows.length>0);
+  const culture=await handleNativePublicContent(numericPage('culture_density',
+    'start=2026-11-01&end=2026-11-09'),{},{database:offline});
+  assert.equal(culture.status,200);
+  assert.ok(Array.isArray((await culture.json()).data));
+  const total=await handleNativePublicContent(numericPage('totals'),{},{database:offline});
+  assert.equal(total.status,200);
+  assert.ok((await total.json()).data.length>0);
+});
