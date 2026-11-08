@@ -192,3 +192,16 @@ test('Cloudflare Pages routes include the existing native business Functions',()
     '/api/loc-native','/api/keywords'])
     assert.ok(routes.include.includes(endpoint),'Missing executable Pages Function: '+endpoint);
 });
+
+
+test('public Kysely Alias uses the existing Admin access.js selection, not a Manage SQL query',async()=>{
+  let selected='';
+  const mock=numericDatabase();
+  const response=await handleNativePublicContent(numericPage('culture_density',
+    'start=2026-11-01&end=2026-11-08'),{},{
+    database:async(_env,alias)=>{selected=alias;return mock.database();}
+  });
+  assert.equal(response.status,200);
+  assert.equal(selected,'loc_main');
+  assert.ok(mock.calls.every(call=>!call.table.includes('manage')));
+});
