@@ -1,14 +1,7 @@
 name: Deploy LOC native OAuth (without Clerk or SQL Gateway)
+# Intentionally manual: do not consume deployment/build quota for each
+# routine LOC code change. Trigger only for a controlled OAuth release.
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/deploy-loc-native-auth.yml'
-      - 'workers/loc-authority/**'
-      - 'app/loc/auth/delegation-contract.mjs'
-      - 'app/loc/auth/auth-provider-settings.mjs'
-      - 'app/loc/providers/sql-driver-auth.mjs'
-      - 'scripts/probe-loc-native-auth.mjs'
   workflow_dispatch:
 
 permissions:
