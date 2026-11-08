@@ -6,12 +6,15 @@ import {bindLocAuthorization,canManageLoc} from '../../app/loc/providers/loc-aut
 import {verifiedIdentity} from '../_loc-delegation.mjs';
 import {
   readKeywordClasses,readKeywordStatistics,readKeywordCatalog,readKeywordDaily,
-  suggestKeywordPatterns,analyzeKeywordScope,resetKeywordScope
+  suggestKeywordPatterns,analyzeKeywordScope,resetKeywordScope,
+  saveKeywordItem,deleteKeywordItem,synchronizeKeywordLibrary
 } from '../../app/loc/keyword-sql-service.mjs';
+import {suggestAnchorOptions,queryAnchorArticles} from '../../app/loc/keyword-anchor-search.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
-const OPERATIONS=new Set(['analyze','reset','classes','catalog','summary','stats','suggest']);
+const OPERATIONS=new Set(['analyze','reset','classes','catalog','summary','stats','suggest',
+  'suggestAnchors','anchorSearch','saveItem','deleteItem','syncLibrary']);
 function respond(data,status=200){
   return new Response(JSON.stringify(data),{
     status,headers:{'content-type':'application/json; charset=utf-8',
@@ -44,7 +47,7 @@ export async function onRequestPost(context){
     const {operation,args}=input;
     const {role,claims}=await verifiedIdentity(request,context.env);
     const scope=String(args.scopeId||'');
-    if(operation!=='suggest'&&!SCOPE.test(scope))
+    if(!['suggest','suggestAnchors'].includes(operation)&&!SCOPE.test(scope))
       error('Invalid Keyword Scope');
     if(['catalog','stats','summary','analyze','reset'].includes(operation)&&
        !UID.test(String(args.classUid||'')))
@@ -54,28 +57,41 @@ export async function onRequestPost(context){
     const entry=directMcpKysely(context.env);
     const db=entry.db;
     let result;
-    if(operation==='suggest'){
+    if(operation==='suggest'||operation==='suggestAnchors'){
       const scopes=args.scopeIds;
       if(!Array.isArray(scopes)||scopes.some(id=>!SCOPE.test(id)))
         error('Invalid Keyword Scope list');
       const owned=new Set();
       for(const id of new Set(scopes))
         if(await permission(db,role,claims,id))owned.add(id);
-      result=await suggestKeywordPatterns(db,scopes,String(args.query||''),{
-        ownerScopes:owned
-      });
+      result=operation==='suggestAnchors'
+        ?await suggestAnchorOptions(db,scopes,String(args.query||''),{ownerScopes:owned})
+        :await suggestKeywordPatterns(db,scopes,String(args.query||''),{ownerScopes:owned});
     }else{
       const owner=await permission(db,role,claims,scope);
-      if(operation==='analyze'||operation==='reset'){
+      if(['analyze','reset','saveItem','deleteItem','syncLibrary'].includes(operation)){
         if(!owner)error('Scope Keyword management permission required',403);
         const authorizeTransaction=async trx=>{
           bindLocAuthorization(trx,{role,claims});
           if(!await canManageLoc(trx,'scope',scope))
             error('Scope Keyword authorization expired',403);
         };
-        result=operation==='reset'?
-          await resetKeywordScope(db,scope,args.classUid,{authorizeTransaction}):
-          await analyzeKeywordScope(db,scope,args.classUid,{authorizeTransaction});
+        if(operation==='reset')
+          result=await resetKeywordScope(db,scope,args.classUid,{authorizeTransaction});
+        else if(operation==='analyze')
+          result=await analyzeKeywordScope(db,scope,args.classUid,{authorizeTransaction});
+        else if(operation==='saveItem')
+          result=await saveKeywordItem(db,scope,args.item,{authorizeTransaction});
+        else if(operation==='deleteItem')
+          result=await deleteKeywordItem(db,scope,args.itemUid,{authorizeTransaction});
+        else result=await synchronizeKeywordLibrary(db,scope,{authorizeTransaction});
+      }else if(operation==='anchorSearch'){
+        result=await queryAnchorArticles(db,{scopeId:scope,
+          uid:String(args.uid||''),type:String(args.type||''),owner,
+          offset:args.offset??0,limit:args.limit??20,
+          sortDirection:String(args.sortDirection||'desc'),
+          startDate:String(args.startDate||''),endDate:String(args.endDate||''),
+          contentType:String(args.contentType||''),sourceFilter:String(args.sourceFilter||'')});
       }else if(operation==='classes'){
         result=await readKeywordClasses(db,scope,{owner});
       }else if(operation==='catalog'){

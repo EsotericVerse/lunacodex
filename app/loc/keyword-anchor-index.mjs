@@ -1,0 +1,148 @@
+// Scope-owned Pattern index. LOC's control Anchor identifies the delegated
+// database; the article UID postings always remain with the owner's Scope.
+// No SQL gateway, no token storage, no cross-database data replication.
+import {allocateAnchorUid} from './unified-anchor-compat.mjs';
+import {parseRuneKeywordRuleSentence} from './model/rune-keyword-rules.mjs';
+
+const UID=/^[A-Za-z0-9]{8}$/;
+const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
+export const keywordIdentity=value=>String(value??'').normalize('NFKC').trim().toLocaleLowerCase('zh-Hant');
+const visible=value=>String(value??'').normalize('NFKC').trim();
+const scopeAnchor=scope=>{
+  if(!SCOPE.test(String(scope||'')))throw Error('Invalid Scope Pattern lookup');
+  return 'silver.'+scope+'_anchor';
+};
+const attrs=value=>{
+  const raw=typeof value==='string'?JSON.parse(value):value;
+  return raw&&typeof raw==='object'&&!Array.isArray(raw)?raw:{};
+};
+const rule=value=>Boolean(parseRuneKeywordRuleSentence(String(value||'')).rules.length);
+export const literalItemWords=item=>{
+  const a=attrs(item.attr),words=[item.title,...(Array.isArray(a.keyword)?a.keyword:[])],
+    out=new Map();
+  for(const raw of words){
+    if(typeof raw!=='string'||rule(raw))continue;
+    const name=visible(raw),key=keywordIdentity(raw);
+    if(name&&name.length<=256&&!out.has(key))out.set(key,name);
+  }
+  return [...out.values()];
+};
+
+export async function scopeDatabaseUid(db,scope){
+  const table='silver.'+scope+'_galaxy';
+  const mappings=await db.selectFrom('silver.loc_anchor').select(['uid','attr'])
+    .where('type','=','table').where('title','=',table).limit(2).execute();
+  if(mappings.length!==1)throw Object.assign(
+    new Error('LOC Source Mapping for '+scope+' is not configured'),{httpStatus:503});
+  const dbUid=String(attrs(mappings[0].attr).database_uid||'');
+  if(!UID.test(dbUid))throw Error('Invalid LOC database UID mapping');
+  const database=await db.selectFrom('silver.loc_anchor').select('uid')
+    .where('type','=','database').where('uid','=',dbUid).executeTakeFirst();
+  if(!database)throw Error('Missing LOC Database mapping identity');
+  return dbUid;
+}
+
+export async function readScopePatternRows(db,scope,dbUid){
+  if(!UID.test(String(dbUid||'')))throw Error('Invalid Pattern database UID');
+  const rows=await db.selectFrom(scopeAnchor(scope))
+    .select(['uid','title','attr','num','createtime'])
+    .where('type','=','pattern').execute();
+  return rows.map(row=>{
+    const postings=attrs(row.attr),uid_list=postings[dbUid]??[];
+    if(!Array.isArray(uid_list)||uid_list.some(uid=>!UID.test(String(uid)))||
+      new Set(uid_list).size!==uid_list.length)throw Error('Invalid Pattern posting list');
+    return {uid:row.uid,pattern:String(row.title||''),count:uid_list.length,
+      uid_list:[...uid_list],num:Number(row.num)||0,
+      attr:postings,createtime:row.createtime};
+  });
+}
+
+function patternRowsToIndex(rows){
+  const out=new Map();
+  for(const row of rows){
+    const key=keywordIdentity(row.pattern);
+    if(!key||out.has(key))throw Error('Duplicate Scope Pattern literal');
+    out.set(key,row);
+  }
+  return out;
+}
+
+// Reconcile the Item -> Pattern graph once, under the same signed transaction
+// as a Keyword editor write or completed analysis. Existing literals remain in
+// Item.keyword during compatibility cutover for older chart/import readers.
+// They are NOT the index; the canonical article UID list lives on Pattern.
+export async function ensureScopePatternLibrary(trx,scope,dbUid){
+  const table=scopeAnchor(scope),rows=await readScopePatternRows(trx,scope,dbUid);
+  const old=patternRowsToIndex(rows);
+  const items=await trx.selectFrom(table)
+    .select(['uid','title','attr']).where('type','=','item').execute();
+  const assigned=new Set([...rows.map(row=>row.uid),...items.map(row=>row.uid)]);
+  const created=[],updates=[],active=new Set();
+  for(const item of items){
+    const a=attrs(item.attr),uids=[];
+    for(const name of literalItemWords(item)){
+      const key=keywordIdentity(name);
+      let pattern=old.get(key);
+      if(!pattern){
+        const uid=allocateAnchorUid(assigned);
+        assigned.add(uid);
+        pattern={uid,pattern:name,count:0,num:0,uid_list:[],
+          attr:{[dbUid]:[]},createtime:null};
+        old.set(key,pattern);
+        created.push({uid,type:'pattern',title:name,attr:JSON.stringify(pattern.attr),num:0});
+      }
+      uids.push(pattern.uid);
+      active.add(pattern.uid);
+    }
+    const previous=Array.isArray(a.uid)?a.uid:[];
+    if(JSON.stringify(previous)!==JSON.stringify(uids)){
+      updates.push({uid:item.uid,attr:JSON.stringify({...a,uid:uids})});
+    }
+  }
+  const orphan=rows.filter(row=>!active.has(row.uid)).map(row=>row.uid);
+  for(let i=0;i<orphan.length;i+=100)
+    await trx.deleteFrom(table).where('uid','in',orphan.slice(i,i+100))
+      .where('type','=','pattern').execute();
+  for(let i=0;i<created.length;i+=100)
+    await trx.insertInto(table).values(created.slice(i,i+100)).execute();
+  for(let i=0;i<updates.length;i+=100)
+    await trx.insertInto(table).values(updates.slice(i,i+100).map(row=>
+      ({uid:row.uid,type:'item',attr:row.attr})))
+      .onConflict(oc=>oc.column('uid').doUpdateSet(eb=>({attr:eb.ref('excluded.attr')})))
+      .execute();
+  return {patterns:[...old.values()].filter(row=>active.has(row.uid)),
+    created:created.length,linked:updates.length,removed:orphan.length};
+}
+
+export async function storeScopePatternMatches(trx,scope,dbUid,incoming=[]){
+  if(!Array.isArray(incoming))throw Error('Invalid Pattern results');
+  const table=scopeAnchor(scope);
+  const {patterns}=await ensureScopePatternLibrary(trx,scope,dbUid);
+  const indexed=patternRowsToIndex(patterns),updates=[],seen=new Set();
+  for(const row of incoming){
+    const key=keywordIdentity(row.pattern),old=indexed.get(key),
+      list=row.uid_list;
+    if(!old||seen.has(key)||!Array.isArray(list)||
+      list.some(uid=>!UID.test(String(uid)))||
+      new Set(list).size!==list.length||list.length!==Number(row.count))
+      throw Error('Pattern analysis is not consistent with the Keyword library');
+    seen.add(key);
+    const next=[...list].sort();
+    const before=[...old.uid_list].sort();
+    if(JSON.stringify(next)===JSON.stringify(before))continue;
+    const posting={...old.attr,[dbUid]:next};
+    const count=Object.values(posting).reduce((sum,ids)=>{
+      if(!Array.isArray(ids)||ids.some(uid=>!UID.test(String(uid))))
+        throw Error('Invalid database posting list');
+      return sum+new Set(ids).size;
+    },0);
+    updates.push({uid:old.uid,type:'pattern',title:old.pattern,
+      attr:JSON.stringify(posting),num:count});
+  }
+  for(let i=0;i<updates.length;i+=100)
+    await trx.insertInto(table).values(updates.slice(i,i+100))
+      .onConflict(oc=>oc.column('uid').doUpdateSet(eb=>({
+        attr:eb.ref('excluded.attr'),num:eb.ref('excluded.num')
+      }))).execute();
+  return {changed:updates.length,indexed:incoming.length};
+}

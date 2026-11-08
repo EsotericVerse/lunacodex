@@ -7,6 +7,7 @@ import {keywordClassCatalog} from './keyword-tree.mjs';
 import {analyzeIncrementalKeywordPatterns} from './keyword-incremental.mjs';
 import {createIndexedDateKeywordReader} from './keyword-article-reader.mjs';
 import {completeKeywordClass,invalidateKeywordClass} from './keyword-class-state.mjs';
+import {scopeDatabaseUid,readScopePatternRows,storeScopePatternMatches,ensureScopePatternLibrary} from './keyword-anchor-index.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[0-9A-Za-z]{8}$/;
@@ -73,11 +74,8 @@ async function classTree(db,scope,classUid){
   return {root,groups:ordered,items:words};
 }
 
-async function indexRows(db,scope,withTime=false){
-  return db.selectFrom('silver.loc_search_pattern')
-    .select(withTime?['pattern','count','uid_list','update_time']:
-      ['pattern','count','uid_list'])
-    .where('scopeid','=',scope).execute();
+async function indexRows(db,scope){
+  return readScopePatternRows(db,scope,await scopeDatabaseUid(db,scope));
 }
 
 async function matchingArticleMetadata(db,scope,patterns,{start='',end='',source='',places=null}={}){
@@ -212,11 +210,9 @@ export async function suggestKeywordPatterns(db,scopeIds=[],query='',{
           for(const term of terms(item))visible.add(term);
       }
     }
-    const escaped=prefix.replace(/[\\%_]/gu,char=>'\\'+char);
-    const rows=await db.selectFrom('silver.loc_search_pattern')
-      .select(['pattern','count']).where('scopeid','=',scope)
-      .where('pattern','ilike',escaped+'%')
-      .orderBy('count','desc').limit(2000).execute();
+    const rows=(await indexRows(db,scope))
+      .filter(row=>norm(row.pattern).startsWith(prefix))
+      .sort((a,b)=>b.count-a.count||a.pattern.localeCompare(b.pattern)).slice(0,2000);
     for(const row of rows){
       const key=norm(row.pattern);
       if(visible&&!visible.has(key))continue;
@@ -230,48 +226,11 @@ export async function suggestKeywordPatterns(db,scopeIds=[],query='',{
 }
 
 async function persistPatterns(trx,scope,classUid,patterns,stats){
-  const rows=await indexRows(trx,scope,true);
-  const old=new Map(rows.map(row=>[norm(row.pattern),row]));
-  const active=new Set();
-  const allItems=await trx.selectFrom(anchorName(scope))
-    .select(['title','attr']).where('type','=','item').execute();
-  for(const row of allItems)
-    for(const term of terms({item_name:row.title,keywords:attr(row).keyword}))
-      active.add(term);
-  const seen=new Set(),changes=[],renamed=[];
+  // The Pattern rows and their Item UID edges are committed in the same
+  // transaction as class completion. Article bodies never enter loc_anchor.
+  const dbUid=await scopeDatabaseUid(trx,scope);
+  await storeScopePatternMatches(trx,scope,dbUid,patterns);
   const now=new Date().toISOString();
-  for(const row of patterns){
-    const key=norm(row.pattern),previous=old.get(key);
-    if(!key||!active.has(key)||seen.has(key)||!Array.isArray(row.uid_list)||
-       row.uid_list.some(uid=>!UID.test(uid))||
-       new Set(row.uid_list).size!==row.uid_list.length||
-       row.count!==row.uid_list.length)fail('Invalid Keyword pattern write');
-    seen.add(key);
-    const sorted=[...row.uid_list].sort();
-    const same=previous&&previous.uid_list.length===sorted.length&&
-      [...previous.uid_list].sort().every((uid,i)=>uid===sorted[i]);
-    if(previous?.pattern!==undefined&&previous.pattern!==row.pattern)
-      renamed.push(previous.pattern);
-    if(previous&&previous.pattern===row.pattern&&same)continue;
-    changes.push({scopeid:scope,pattern:row.pattern,count:sorted.length,
-      uid_list:sorted,update_time:same?previous.update_time:now});
-  }
-  const obsolete=rows.filter(row=>!active.has(norm(row.pattern)))
-    .map(row=>row.pattern);
-  const deleting=[...new Set([...renamed,...obsolete])];
-  for(let i=0;i<deleting.length;i+=100){
-    const batch=deleting.slice(i,i+100);
-    if(batch.length)await trx.deleteFrom('silver.loc_search_pattern')
-      .where('scopeid','=',scope).where('pattern','in',batch).execute();
-  }
-  for(let i=0;i<changes.length;i+=100){
-    await trx.insertInto('silver.loc_search_pattern')
-      .values(changes.slice(i,i+100))
-      .onConflict(oc=>oc.columns(['scopeid','pattern']).doUpdateSet(eb=>({
-        count:eb.ref('excluded.count'),uid_list:eb.ref('excluded.uid_list'),
-        update_time:eb.ref('excluded.update_time')
-      }))).execute();
-  }
   const cfg=await configuration(trx,scope);
   const record={class_uid:classUid,matchedDocuments:stats.matchedDocuments,
     analyzedDocuments:stats.analyzedDocuments,parsedDocuments:stats.parsedDocuments,
@@ -382,13 +341,21 @@ export async function resetKeywordScope(db,scope,classUid,{
         for(const word of terms(item))set.add(word);
     }
     const unique=[...own].filter(word=>!other.has(word));
-    const stored=await indexRows(trx,scope);
-    const toDelete=stored.filter(row=>unique.includes(norm(row.pattern)))
-      .map(row=>row.pattern);
-    for(let i=0;i<toDelete.length;i+=100)
-      await trx.deleteFrom('silver.loc_search_pattern')
-        .where('scopeid','=',scope)
-        .where('pattern','in',toDelete.slice(i,i+100)).execute();
+    const dbUid=await scopeDatabaseUid(trx,scope);
+    const stored=await readScopePatternRows(trx,scope,dbUid);
+    const reset=stored.filter(row=>unique.includes(norm(row.pattern))&&row.uid_list.length);
+    for(let i=0;i<reset.length;i+=100){
+      const updated=reset.slice(i,i+100).map(row=>{
+        const posting={...row.attr,[dbUid]:[]};
+        const total=Object.values(posting).reduce((count,ids)=>
+          count+(Array.isArray(ids)?new Set(ids).size:0),0);
+        return {uid:row.uid,type:'pattern',attr:JSON.stringify(posting),num:total};
+      });
+      await trx.insertInto(anchorName(scope)).values(updated)
+        .onConflict(oc=>oc.column('uid').doUpdateSet(eb=>({
+          attr:eb.ref('excluded.attr'),num:eb.ref('excluded.num')
+        }))).execute();
+    }
     const meta=invalidateKeywordClass(existing.keyword_meta,classUid);
     const scans={...(meta.pattern_scans||{})};
     for(const word of unique)delete scans[word];
@@ -396,6 +363,123 @@ export async function resetKeywordScope(db,scope,classUid,{
     await trx.updateTable(configName(scope))
       .set({keyword_meta:JSON.stringify(updated),staticstime:null,
         updated_at:new Date().toISOString()}).where('id','=',scope).execute();
-    return {count:toDelete.length,retainedShared:own.size-unique.length};
+    return {count:reset.length,retainedShared:own.size-unique.length};
+  });
+}
+
+
+const asNodeText=value=>String(value??'').normalize('NFKC').trim();
+function checkKeywordWordList(value){
+  if(!Array.isArray(value)||value.length>400)fail('Too many Item Patterns');
+  const seen=new Set(),out=[];
+  for(const raw of value){
+    if(typeof raw!=='string')fail('Invalid Pattern word');
+    const word=asNodeText(raw),key=norm(word);
+    if(!word||word.length>256||seen.has(key))continue;
+    seen.add(key);out.push(word);
+  }
+  return out;
+}
+async function findContainingGroup(trx,scope,itemUid){
+  const groups=await trx.selectFrom(anchorName(scope))
+    .select(['uid','attr']).where('type','=','group').execute();
+  const parents=groups.filter(group=>children(group).includes(itemUid));
+  if(parents.length!==1)fail('Keyword Item parent Group is missing or ambiguous',409);
+  return parents[0];
+}
+async function classContainingGroup(trx,scope,groupUid){
+  const classes=await trx.selectFrom(anchorName(scope))
+    .select(['uid','attr']).where('type','=','class').execute();
+  const matched=classes.filter(row=>children(row).includes(groupUid));
+  if(matched.length!==1)fail('Keyword Group parent Class is missing or ambiguous',409);
+  return matched[0].uid;
+}
+async function invalidateKeywordTreeClass(trx,scope,classUid){
+  const cfg=await configuration(trx,scope);
+  const metadata=invalidateKeywordClass(cfg.keyword_meta,classUid);
+  await trx.updateTable(configName(scope))
+    .set({keyword_meta:JSON.stringify(metadata),staticstime:null,
+      updated_at:new Date().toISOString()}).where('id','=',scope).execute();
+}
+
+// The Item editor's single authorized transaction saves its word list,
+// maintains Group membership and reconciles all Pattern UID references.
+// Legacy Item.keyword remains as temporary input to old style readers;
+// the actual postings are exclusively on Pattern Anchor rows.
+export async function saveKeywordItem(db,scope,values,{
+  authorizeTransaction=()=>{}
+}={}){
+  checkScope(scope);
+  if(!values||typeof values!=='object'||Array.isArray(values)||
+    !UID.test(String(values.uid||''))||
+    typeof values.name!=='string'||!asNodeText(values.name)||
+    asNodeText(values.name).length>256||
+    typeof values.desc!=='string'||values.desc.length>4000)
+    fail('Invalid Keyword Item');
+  const words=checkKeywordWordList(values.words);
+  const mode=String(values.mode||'');
+  if(!['create','update'].includes(mode))fail('Invalid Item write mode');
+  return db.transaction().execute(async trx=>{
+    await authorizeTransaction(trx);
+    const table=anchorName(scope),old=await trx.selectFrom(table)
+      .select(['uid','type','attr']).where('uid','=',values.uid).forUpdate().executeTakeFirst();
+    let parent;
+    if(mode==='create'){
+      if(old)fail('Keyword UID is already in use',409);
+      const groupId=String(values.parentUid||'');
+      if(!UID.test(groupId))fail('Invalid parent Group UID');
+      parent=await trx.selectFrom(table).select(['uid','type','attr'])
+        .where('uid','=',groupId).where('type','=','group').forUpdate().executeTakeFirst();
+      if(!parent)fail('Unknown parent Group',404);
+      await trx.insertInto(table).values({uid:values.uid,type:'item',
+        title:asNodeText(values.name),description:values.desc,
+        attr:JSON.stringify({keyword:words})}).execute();
+      await trx.updateTable(table).set({attr:JSON.stringify({
+        ...attr(parent),uid:[...new Set([...children(parent),values.uid])]
+      })}).where('uid','=',parent.uid).where('type','=','group').execute();
+    }else{
+      if(old?.type!=='item')fail('Keyword Item not found',404);
+      parent=await findContainingGroup(trx,scope,values.uid);
+      await trx.updateTable(table).set({
+        title:asNodeText(values.name),description:values.desc,
+        attr:JSON.stringify({...attr(old),keyword:words})
+      }).where('uid','=',values.uid).where('type','=','item').execute();
+    }
+    const dbUid=await scopeDatabaseUid(trx,scope);
+    const linked=await ensureScopePatternLibrary(trx,scope,dbUid);
+    const classUid=await classContainingGroup(trx,scope,parent.uid);
+    await invalidateKeywordTreeClass(trx,scope,classUid);
+    return {uid:values.uid,classUid,created:linked.created,linked:linked.linked};
+  });
+}
+
+export async function deleteKeywordItem(db,scope,itemUid,{authorizeTransaction=()=>{}}={}){
+  checkScope(scope);if(!UID.test(String(itemUid||'')))fail('Invalid Item UID');
+  return db.transaction().execute(async trx=>{
+    await authorizeTransaction(trx);
+    const table=anchorName(scope);
+    const item=await trx.selectFrom(table).select(['uid','type'])
+      .where('uid','=',itemUid).forUpdate().executeTakeFirst();
+    if(item?.type!=='item')fail('Keyword Item missing',404);
+    const parent=await findContainingGroup(trx,scope,itemUid);
+    const classUid=await classContainingGroup(trx,scope,parent.uid);
+    await trx.updateTable(table).set({attr:JSON.stringify({
+      ...attr(parent),uid:children(parent).filter(uid=>uid!==itemUid)
+    })}).where('uid','=',parent.uid).execute();
+    await trx.deleteFrom(table).where('uid','=',itemUid).where('type','=','item').execute();
+    const dbUid=await scopeDatabaseUid(trx,scope);
+    const linked=await ensureScopePatternLibrary(trx,scope,dbUid);
+    await invalidateKeywordTreeClass(trx,scope,classUid);
+    return {uid:itemUid,removed:linked.removed};
+  });
+}
+export async function synchronizeKeywordLibrary(db,scope,{
+  authorizeTransaction=()=>{}
+}={}){
+  checkScope(scope);
+  return db.transaction().execute(async trx=>{
+    await authorizeTransaction(trx);
+    const dbUid=await scopeDatabaseUid(trx,scope);
+    return ensureScopePatternLibrary(trx,scope,dbUid);
   });
 }

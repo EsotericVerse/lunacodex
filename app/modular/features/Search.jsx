@@ -17,6 +17,7 @@ registerDefaultSection('uiExtra.pagination',paginationZh);
 
 import {Fragment,useEffect,useMemo,useRef,useState} from 'react';
 import dynamic from 'next/dynamic';
+import Select from 'react-select';
 import {useAsyncResource,useResourceCache} from '../../loc/use-async-resource';
 import {useRouter,useSearchParams} from 'next/navigation';
 
@@ -389,7 +390,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     enabled:patternScopeIds.length>0&&debouncedPatternInput.length>0,
     queryFn:async()=>{
       const {keywordService}=await import('../../loc/keyword-service-client.mjs');
-      const result=await keywordService('suggest',{
+      const result=await keywordService('suggestAnchors',{
         scopeIds:patternScopeIds,query:debouncedPatternInput
       });
       return Array.isArray(result)?result:[];
@@ -397,6 +398,22 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   });
 
   const scopeById=useMemo(()=>new Map(availableScopes.map(item=>[item.id,item])),[availableScopes]);
+  const anchorSuggestGroups=useMemo(()=>{
+    const kinds=[['date','時間定錨'],['point','空間定錨'],
+      ['from','來源'],['domain','來源分類'],['item','關鍵詞組'],['pattern','關鍵詞']];
+    const rows=Array.isArray(patternSuggestionsQuery.data)?patternSuggestionsQuery.data:[];
+    return kinds.map(([type,label])=>({
+      label,options:rows.filter(row=>row.type===type).map(row=>({
+        ...row,value:[row.scopeId,type,row.uid].join(':'),
+        label:String(row.title||'')+
+          (row.date?' · '+row.date:'')+
+          (Number.isFinite(row.count)?' · '+Number(row.count).toLocaleString()+' 篇':'')+
+          (patternScopeIds.length>1&&scopeById.get(row.scopeId)?.display_name
+            ?' · '+scopeById.get(row.scopeId).display_name:'')
+      }))
+    })).filter(group=>group.options.length>0);
+  },[patternSuggestionsQuery.data,patternScopeIds.length,scopeById]);
+
   const summaryScopeIds=targetScopes.map(item=>item.id);
   const scopeLabel=id=>{
     const item=scopeById.get(id);
@@ -433,6 +450,57 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     if(!scopeData)throw new Error(UI_COPY.search.fullTextNotFound);
     const id=result.editResourceId||result.resourceId;
     return selectGalaxyIdentity(scopeData,id,{includeHidden:canManageSearchScope(account,result.scopeId),dbId:result.dbId||'',federated:result.federated===true});
+  }
+
+  async function executeAnchorSelection(selection,cursor=0,{
+    append=false,overrideOptions=null
+  }={}){
+    if(!selection?.scopeId||!selection.uid||!selection.type)return;
+    const options=overrideOptions||{
+      anchorSelection:selection,contentType,sourceFilter,startDate,endDate,
+      sortDirection:articleSort,browse:false
+    };
+    if(!append){
+      activeSearchOptionsRef.current={...options,anchorSelection:selection};
+      setQuery(String(selection.title||''));
+      setBrowseResults(false);
+      setResults([]);setStatus('搜尋中請稍後');setError('');
+      setLoadMoreError('');setHasMore(false);setNextCursor(null);
+      matchedQueryRef.current=String(selection.title||'');
+    }else setLoadingMore(true);
+    const id=++searchId.current;
+    beginRequest();
+    try{
+      const {keywordService}=await import('../../loc/keyword-service-client.mjs');
+      const result=await keywordService('anchorSearch',{
+        scopeId:selection.scopeId,uid:selection.uid,type:selection.type,
+        offset:cursor||0,limit:pageSize,
+        sortDirection:options.sortDirection||'desc',
+        startDate:options.startDate||'',endDate:options.endDate||'',
+        sourceFilter:options.sourceFilter||'',contentType:options.contentType||''
+      });
+      if(id!==searchId.current)return;
+      const converted=(result?.rows||[]).map(({row,source})=>
+        toResult(row,source,scopeId,UI_COPY)).filter(Boolean);
+      setResults(current=>append
+        ?mergeSummaryResults([...current,...converted],UI_COPY):converted);
+      setHasMore(Boolean(result?.hasMore));
+      setNextCursor(result?.nextOffset??null);
+      if(!append){
+        setStatus(converted.length||result?.hasMore
+          ?'已依「'+String(selection.title||'')+'」的'+({
+            date:'時間',point:'空間',from:'來源',domain:'來源分類',
+            item:'關鍵詞組',pattern:'關鍵詞'
+          }[selection.type]||'定錨')+'關聯取得文章'
+          :UI_COPY.search.empty);
+        scrollToResults();
+      }
+    }catch(exception){
+      if(id!==searchId.current)return;
+      if(append)setLoadMoreError(featureDataErrorMessage(exception,UI_COPY));
+      else{setError(featureDataErrorMessage(exception,UI_COPY));
+        setStatus(UI_COPY.search.failed);scrollToResults();}
+    }finally{if(append&&id===searchId.current)setLoadingMore(false);}
   }
 
   async function executeSearch(rawQuery,cursor=null,{append=false,browse=false,overrideOptions=null}={}){
@@ -589,7 +657,14 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     const q=matchedQueryRef.current||query.trim();
     if((!q&&!activeSearchOptionsRef.current?.browse)||!hasMore||loadMoreInFlight.current||nextCursor===null)return;
     loadMoreInFlight.current=true;
-    try{await executeSearch(q,nextCursor,{append:true,browse:activeSearchOptionsRef.current?.browse});}
+    try{
+      const active=activeSearchOptionsRef.current;
+      if(active?.anchorSelection)
+        await executeAnchorSelection(active.anchorSelection,nextCursor,
+          {append:true,overrideOptions:active});
+      else
+        await executeSearch(q,nextCursor,{append:true,browse:active?.browse});
+    }
     finally{loadMoreInFlight.current=false;}
   }
   function changeArticleSort(direction){
@@ -597,7 +672,11 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     setArticleSort(direction);
     const active=activeSearchOptionsRef.current;
     if(active){
-      executeSearch(matchedQueryRef.current,null,{
+      if(active.anchorSelection)
+        executeAnchorSelection(active.anchorSelection,0,{
+          overrideOptions:{...active,sortDirection:direction}
+        });
+      else executeSearch(matchedQueryRef.current,null,{
         browse:Boolean(active.browse),overrideOptions:{...active,sortDirection:direction}
       });
     }
@@ -1060,28 +1139,32 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   const defaultTimeName=t('uiExtra.searchUI.defaultUnit'+(defaultTimeUnit==='auto'
     ?'Day':defaultTimeUnit[0].toUpperCase()+defaultTimeUnit.slice(1)));
   const normalizedPatternInput=query.normalize('NFKC').trim();
-  const patternCompleter=patternScopeIds.length>0&&normalizedPatternInput===debouncedPatternInput
-    &&normalizedPatternInput.length>0&&Array.isArray(patternSuggestionsQuery.data)
-    &&patternSuggestionsQuery.data.length>0
-    ?<div className="scope-search-suggestions" role="group" aria-label="關鍵詞自動完成">
-      <span className="scope-status">關鍵詞自動完成</span>
-      <div className="scope-search-active-filters">
-        {patternSuggestionsQuery.data.map(item=>
-          <button type="button" className="loc-button" key={item.pattern}
-            onClick={()=>followSearchSuggestion(item.pattern)}>
-            {item.pattern} ({Number(item.count)||0})
-          </button>)}
-      </div>
-    </div>:null;
+  const anchorSelect=(inputId,placeholder)=><Select
+    inputId={inputId} instanceId={inputId} className="loc-anchor-select"
+    classNamePrefix="loc-anchor-select" unstyled
+    placeholder={placeholder} aria-label="綜合導覽搜尋與定錨自動完成"
+    value={null} inputValue={query} options={anchorSuggestGroups}
+    filterOption={()=>true} isLoading={Boolean(patternSuggestionsQuery.isPending)}
+    noOptionsMessage={()=>normalizedPatternInput?'沒有符合的定錨建議':'輸入關鍵詞、地點、來源或日期'}
+    onInputChange={(value,meta)=>{
+      if(meta.action==='input-change'){
+        setQuery(value);setSearchPopularOpen(false);
+      }
+    }}
+    onChange={choice=>{
+      if(choice){
+        setSearchPopularOpen(false);
+        void executeAnchorSelection(choice);
+      }
+    }}
+  />;
   const pageContent=<>
     {managementMode?<section className="scope-search-workspace" aria-label="管理搜尋">
       <h2>管理搜尋</h2>
       <SearchSummary scopeIds={summaryScopeIds}/>
       <form className="scope-search-form" onSubmit={runSearch}>
         <label htmlFor="scope-management-search-query">文章內文</label>
-        <input id="scope-management-search-query" value={query}
-          onChange={event=>setQuery(event.target.value)}
-          placeholder="輸入文章內文關鍵字"/>
+        {anchorSelect('scope-management-search-query','輸入內文、地點、日期、來源或關鍵詞')}
         <button type="submit" disabled={scopeId==='loc'&&!scopesQuery.isSuccess}>查詢文章</button>
         <button type="button" className="loc-button"
           disabled={scopeId==='loc'&&!scopesQuery.isSuccess}
@@ -1091,7 +1174,6 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           }})}>瀏覽文章</button>
         <button type="button" className="loc-button" onClick={clearSearchFilters}>清除</button>
       </form>
-      {patternCompleter}
       {scopeId==='loc'?<div className="scope-search-scope-filter">
         <label htmlFor="scope-management-search-scope">管理範圍</label>
         <select id="scope-management-search-scope" value={scopeFilter}
@@ -1123,10 +1205,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     {!managementMode?<section className="scope-search-workspace" aria-label={t('uiExtra.searchUI.searchWorkspace')}>
       <form className="scope-search-form" onSubmit={runSearch}>
         {!managementMode?<label htmlFor="scope-search-query">{UI_COPY.search.textPromptLabel}</label>:null}
-        <input id="scope-search-query" 
-          value={query} onDoubleClick={()=>setSearchPopularOpen(true)}
-          onChange={event=>{setQuery(event.target.value);setSearchPopularOpen(false);}}
-          placeholder={managementMode?'':UI_COPY.search.textPlaceholder} aria-label={UI_COPY.search.textPromptLabel}/>
+        {anchorSelect('scope-search-query','搜尋全文或選取 Anchor 定錨建議')}
         <button type="submit" disabled={scopeId==='loc'&&!scopesQuery.isSuccess}>{UI_COPY.nav.search}</button>
         {managementMode?<button type="button" className="loc-button" disabled={scopeId==='loc'&&!scopesQuery.isSuccess}
           onClick={()=>{
@@ -1138,7 +1217,6 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           }}>瀏覽文章列表（不需輸入關鍵詞）</button>:null}
         <button type="button" className="loc-button" onClick={clearSearchFilters}>{t('uiExtra.searchUI.clearAll')}</button>
       </form>
-      {patternCompleter}
       <button type="button" className="loc-button scope-search-popular-toggle"
         aria-expanded={searchPopularOpen} aria-controls="scope-search-suggestions"
         onClick={()=>setSearchPopularOpen(open=>!open)}>
@@ -1226,7 +1304,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
               {filterSources.filter(([value])=>value&&!value.startsWith('category:')&&!value.startsWith('source:'))
                 .map(([value,label])=><option key={value} value={value}>{label}</option>)}
             </select>
-            <p className="scope-status">搜尋僅比對文章內文；時間、空間及關鍵詞定錨由文章關聯開啟。</p>
+            <p className="scope-status">搜尋可透過定錨建議直接定位文章；未選定錨時使用全文搜尋。</p>
             {sourceTaxonomyQuery.isPending?<p className="scope-status" role="status">載入來源分類…</p>:null}
             {sourceTaxonomyQuery.isError?<p className="scope-status scope-error" role="alert">來源分類載入失敗。
               <button type="button" className="loc-button" onClick={()=>sourceTaxonomyQuery.refetch()}>重試</button>

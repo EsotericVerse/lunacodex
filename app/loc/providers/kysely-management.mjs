@@ -7,6 +7,7 @@ import {sourceCatalogAction,saveLocSystemSources} from '../source-sql-service.mj
 import {allocateAnchorUid} from '../unified-anchor-compat.mjs';
 import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
 import {keywordPatternItemMetrics} from '../keyword-search-pattern.mjs';
+import {readScopePatternRows,scopeDatabaseUid,storeScopePatternMatches} from '../keyword-anchor-index.mjs';
 
 const ID=/^[a-z][a-z0-9_]*$/i;
 const UID=/^[A-Za-z0-9]{8}$/;
@@ -355,9 +356,8 @@ async function keywordPatternStatistics(trx,args){
   }));
   // The Anchor supplies hierarchy and words only. Every hit/UID/count comes
   // exclusively from loc_search_pattern, including newly composed Items.
-  const patterns=await trx.selectFrom('silver.loc_search_pattern')
-    .select(['pattern','count','uid_list','update_time'])
-    .where('scopeid','=',scope).execute();
+  const patterns=await readScopePatternRows(
+    trx,scope,await scopeDatabaseUid(trx,scope));
   const start=String(args.p_start_date||''),end=String(args.p_end_date||'');
   const source=String(args.p_source||'').trim();
   if([start,end].some(value=>value&&!/^\d{4}-\d{2}-\d{2}$/.test(value))||
@@ -397,25 +397,28 @@ async function keywordPatternStatistics(trx,args){
 // channel. No anonymous SELECT exposes private Item vocabulary or article UIDs.
 async function suggestSearchPatterns(trx,args){
   const requested=args.p_scope_ids;
-  const query=String(args.p_query??'').normalize('NFKC').trim();
+  const query=String(args.p_query??'').normalize('NFKC').trim().toLocaleLowerCase('zh-Hant');
   if(!Array.isArray(requested)||requested.length<1||requested.length>50||
      requested.some(scope=>typeof scope!=='string'||!/^[a-z][a-z0-9]{0,14}$/.test(scope))||
      query.length>120)reject('Invalid search-pattern request');
   const granted=[];
-  for(const id of new Set(requested)){
+  for(const id of new Set(requested))
     if(await canManageLoc(trx,'scope',id))granted.push(id);
-  }
-  if(!granted.length)reject('No authorized search-pattern Scope',403);
+  if(!granted.length)reject('No authorized Pattern Scope',403);
   await sql`reset role`.execute(trx);
-  const escaped=query.replace(/[\\%_]/gu,char=>'\\'+char);
-  const rows=await trx.selectFrom('silver.loc_search_pattern')
-    .select('pattern').select(eb=>eb.fn.sum('count').as('count'))
-    .where('scopeid','in',granted)
-    .where('pattern','ilike',escaped+'%')
-    .groupBy('pattern')
-    .orderBy('count','desc').orderBy('pattern','asc')
-    .limit(10).execute();
-  return rows.map(row=>({pattern:row.pattern,count:Number(row.count)||0}));
+  const found=new Map();
+  for(const scope of granted){
+    const rows=await readScopePatternRows(trx,scope,await scopeDatabaseUid(trx,scope));
+    for(const row of rows){
+      const key=String(row.pattern||'').normalize('NFKC').toLocaleLowerCase('zh-Hant');
+      if(!key.startsWith(query))continue;
+      const current=found.get(key)||{pattern:row.pattern,count:0};
+      current.count+=row.count;
+      found.set(key,current);
+    }
+  }
+  return [...found.values()].sort((a,b)=>b.count-a.count||
+    a.pattern.localeCompare(b.pattern)).slice(0,10);
 }
 
 async function syncSearchPatterns(trx,args){
@@ -423,85 +426,20 @@ async function syncSearchPatterns(trx,args){
   const classUid=validUid(args.p_class_uid);
   const proposed=args.p_patterns;
   if(args.p_final!==undefined&&typeof args.p_final!=='boolean')
-    reject('Invalid search-pattern finalization flag');
+    reject('Invalid Pattern finalization');
   if(!Array.isArray(proposed)||proposed.length>4000)
-    reject('Invalid search-pattern batch');
+    reject('Invalid Pattern batch');
   const anchor='silver.'+scope+'_anchor';
   const klass=await trx.selectFrom(anchor).select('uid')
     .where('uid','=',classUid).where('type','=','class').executeTakeFirst();
-  if(!klass)reject('Keyword Class not found for Scope');
-  // Only Keyword Item titles and literal aliases may appear in this table.
-  // This source read is bounded by the keyword library, not article content.
-  const items=await trx.selectFrom(anchor).select(['title','attr'])
-    .where('type','=','item').execute();
-  const active=new Set();
-  const id=value=>String(value??'').normalize('NFKC').trim().toLocaleLowerCase('zh-Hant');
-  for(const item of items){
-    const attr=typeof item.attr==='string'?JSON.parse(item.attr):item.attr||{};
-    const literalAliases=(Array.isArray(attr.keyword)?attr.keyword:[])
-      .filter(word=>typeof word==='string'&&
-        !parseRuneKeywordRuleSentence(word).rules.length);
-    for(const word of [item.title,...literalAliases]){
-      const value=id(word);
-      if(value&&value.length<=256)active.add(value);
-    }
-  }
-  const seen=new Set();
+  if(!klass)reject('Keyword Class is missing');
   for(const row of proposed){
-    const word=String(row?.pattern??'').normalize('NFKC').trim();
-    const key=id(word);
-    if(row?.scopeid!==scope||!key||word.length>256||!active.has(key)||
-       seen.has(key)||!Number.isSafeInteger(row.count)||row.count<0||
-       !Array.isArray(row.uid_list)||row.uid_list.length>100000||
-       row.uid_list.some(uid=>typeof uid!=='string'||!UID.test(uid))||
-       new Set(row.uid_list).size!==row.uid_list.length||
-       row.count!==row.uid_list.length)
-      reject('Invalid or duplicated Keyword search pattern');
-    seen.add(key);
+    if(row?.scopeid!==scope||typeof row?.pattern!=='string'||
+       !Array.isArray(row.uid_list)||row.count!==row.uid_list.length)
+      reject('Invalid Pattern batch row');
   }
-  const stored=await trx.selectFrom('silver.loc_search_pattern')
-    .select(['pattern','count','uid_list','update_time'])
-    .where('scopeid','=',scope).execute();
-  const prior=new Map(stored.map(row=>[id(row.pattern),row]));
-  const now=new Date().toISOString();
-  const changed=[],renamed=[];
-  for(const row of proposed){
-    const old=prior.get(id(row.pattern));
-    const uids=[...row.uid_list].sort();
-    const sameUids=Array.isArray(old?.uid_list)&&old.uid_list.length===uids.length&&
-      [...old.uid_list].sort().every((uid,i)=>uid===uids[i]);
-    // PK uses the visible spelling, but the word identity is NFKC/case
-    // normalized. Remove an old spelling before inserting the new one to
-    // avoid duplicate results after a title/alias casing change.
-    if(old?.pattern!==undefined&&old.pattern!==row.pattern)renamed.push(old.pattern);
-    if(old&&old.pattern===row.pattern&&Number(old.count)===row.count&&sameUids)continue;
-    changed.push({scopeid:scope,pattern:row.pattern,count:row.count,
-      uid_list:uids,update_time:old&&sameUids?old.update_time:now});
-  }
-  for(let i=0;i<renamed.length;i+=100){
-    await trx.deleteFrom('silver.loc_search_pattern')
-      .where('scopeid','=',scope)
-      .where('pattern','in',renamed.slice(i,i+100)).execute();
-  }
-  for(let i=0;i<changed.length;i+=100){
-    const batch=changed.slice(i,i+100);
-    await trx.insertInto('silver.loc_search_pattern').values(batch)
-      .onConflict(oc=>oc.columns(['scopeid','pattern']).doUpdateSet(eb=>({
-        count:eb.ref('excluded.count'),
-        uid_list:eb.ref('excluded.uid_list'),
-        update_time:eb.ref('excluded.update_time')
-      }))).execute();
-  }
-  // Intermediate uploads must not prune words: a full Class may exceed the
-  // SQL transport's 1 MiB POST limit. The final batch alone performs cleanup.
-  // Do not remove another Class's live words when this Class is reanalyzed.
-  const obsolete=args.p_final===false?[]:
-    stored.filter(row=>!active.has(id(row.pattern))).map(row=>row.pattern);
-  for(let i=0;i<obsolete.length;i+=100){
-    await trx.deleteFrom('silver.loc_search_pattern')
-      .where('scopeid','=',scope).where('pattern','in',obsolete.slice(i,i+100)).execute();
-  }
-  return {patterns:proposed.length,changed:changed.length,deleted:obsolete.length};
+  const dbUid=await scopeDatabaseUid(trx,scope);
+  return storeScopePatternMatches(trx,scope,dbUid,proposed);
 }
 
 export async function executeManagedKyselyAction(trx,body,claims={}){

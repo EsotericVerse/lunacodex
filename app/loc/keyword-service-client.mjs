@@ -2,16 +2,18 @@
 // No generic SQL Gateway: the browser can request only four bounded Keyword
 // operations, with the same LOC Auth delegation already used by the site.
 import {locDelegation} from './auth/browser-delegation.mjs';
+const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 
 export async function keywordService(operation,args={}){
-  if(!['analyze','reset','classes','catalog','summary','stats','suggest'].includes(operation))
+  if(!['analyze','reset','classes','catalog','summary','stats','suggest',
+      'suggestAnchors','anchorSearch','saveItem','deleteItem','syncLibrary'].includes(operation))
     throw Error('Unsupported Keyword operation');
   if(!args||typeof args!=='object'||Array.isArray(args))
     throw Error('Invalid Keyword request');
   const scope=String(args.scopeId||'');
-  if(operation!=='suggest'&&!SCOPE.test(scope))
+  if(!['suggest','suggestAnchors'].includes(operation)&&!SCOPE.test(scope))
     throw Error('Invalid Keyword Scope');
-  const write=operation==='analyze'||operation==='reset';
+  const write=['analyze','reset','saveItem','deleteItem','syncLibrary'].includes(operation);
   const token=await locDelegation(scope,write);
   const response=await fetch('/api/keywords',{
     method:'POST',credentials:'omit',cache:'no-store',
