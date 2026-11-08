@@ -283,7 +283,7 @@ const BLOCK_COLUMNS='uid,page_name,block_eyebrow,block_title,block_subtitle,bloc
 export async function selectLiveScopeBlocks(scopeId,page='index'){
   const id=String(scopeId||'').trim().toLowerCase();
   const name=String(page||'index').trim();
-  if(!SCOPE_ID_PATTERN.test(id)||! /^[A-Za-z0-9_-]+$/.test(name))return [];
+  if(id==='local'||!SCOPE_ID_PATTERN.test(id)||! /^[A-Za-z0-9_-]+$/.test(name))return [];
   if(name==='index'){
     // Live editor read: Kysely SELECT in the trusted LOC Pages application.
     const rows=await nativePublicContent('blocks',id);
@@ -325,7 +325,7 @@ export async function heroBlocks(scopeId,type){
 export async function selectScopeBlocks(scopeId,page='index'){
   const id=String(scopeId||'').trim().toLowerCase();
   const name=String(page||'index').trim().toLowerCase().replace(/^home$/,'index');
-  if(!SCOPE_ID_PATTERN.test(id)||! /^[a-z0-9_-]+$/.test(name))return [];
+  if(id==='local'||!SCOPE_ID_PATTERN.test(id)||! /^[a-z0-9_-]+$/.test(name))return [];
   const key=id+':'+name;
   const existing=scopeBlocksRequests.get(key);
   if(existing)return existing;
