@@ -26,13 +26,13 @@ export async function accessibleKeywordAnchors(db,scope,owner=false){
     .execute();
   const byUid=new Map(rows.map(row=>[row.uid,row]));
   const visible=new Set();
+  const settings=await db.selectFrom('silver.'+scope).select('keyword_meta')
+    .where('id','=',scope).executeTakeFirst();
+  const meta=typeof settings?.keyword_meta==='string'
+    ?JSON.parse(settings.keyword_meta):settings?.keyword_meta||{};
   if(owner){
     for(const row of rows)if(row.type==='item')visible.add(row.uid);
   }else{
-    const settings=await db.selectFrom('silver.'+scope).select('keyword_meta')
-      .where('id','=',scope).executeTakeFirst();
-    const meta=typeof settings?.keyword_meta==='string'
-      ?JSON.parse(settings.keyword_meta):settings?.keyword_meta||{};
     const shared=Object.entries(meta.class_shares||{})
       .filter(([,enabled])=>enabled===true).map(([id])=>id);
     for(const id of shared){
@@ -47,7 +47,8 @@ export async function accessibleKeywordAnchors(db,scope,owner=false){
   const patterns=new Set();
   for(const itemId of visible)
     for(const uid of kids(byUid.get(itemId)))patterns.add(uid);
-  return {items:visible,patterns};
+  const indexed=new Set(Object.keys(meta.pattern_scans||{}));
+  return {items:visible,patterns,indexed};
 }
 
 export async function suggestAnchorOptions(db,scopeIds,rawQuery,{ownerScopes=new Set()}={}){
@@ -84,7 +85,8 @@ export async function suggestAnchorOptions(db,scopeIds,rawQuery,{ownerScopes=new
         const when=type==='date'?String(attrs(row).date||''):'';
         result.push({scopeId:scope,uid:row.uid,type,title,
           ...(when?{date:when}:{}),
-          ...(type==='pattern'?{count:Math.max(0,Number(row.num)||0)}:{})});
+          ...(type==='pattern'&&visible.indexed.has(keywordIdentity(title))
+            ?{count:Math.max(0,Number(row.num)||0)}:{})});
       }
     }
   }
