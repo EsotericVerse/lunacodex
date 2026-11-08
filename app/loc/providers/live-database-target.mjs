@@ -34,10 +34,20 @@ export function normalizeLiveTarget(id,profile){
  const url=new URL(protocol+'://example.invalid');
  url.hostname=host;url.port=String(port);url.username=username;
  url.password=password;url.pathname='/'+encodeURIComponent(database);
- const namespace=engine==='mysql'?'':engine==='mssql'?'dbo':'';
+ const namespace=engine==='mysql'?'':String(profile.schema_name||
+   (engine==='mssql'?'dbo':'silver'));
+ const safe=/^[A-Za-z][A-Za-z0-9_]{0,119}$/;
+ const table=String(profile.table_name||'');
+ const fieldMap=profile.field_map||{};
+ if(namespace&&!safe.test(namespace)||table&&!safe.test(table)||
+   !fieldMap||typeof fieldMap!=='object'||Array.isArray(fieldMap)||
+   Object.keys(fieldMap).length>32||Object.entries(fieldMap).some(([k,v])=>
+      !safe.test(k)||typeof v!=='string'||!safe.test(v)))
+   throw Error('Trusted SQL relation mapping invalid');
  return {
   target:{provider:'custom',engine,connection_alias:id,connection_mode:'direct',
-   ...(namespace?{schema_name:namespace}:{})},
+   ...(namespace?{schema_name:namespace}:{}),
+   ...(table?{table_name:table}:{}),field_map:fieldMap},
   profile:{engine,url:url.href,tls:true,authentication}
  };
 }
