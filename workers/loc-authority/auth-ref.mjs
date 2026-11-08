@@ -117,7 +117,7 @@ async function githubReference(credential,options){
   const chosen=Array.isArray(emails)?
    emails.find(x=>x.verified===true&&x.primary===true)||
    emails.find(x=>x.verified===true):null;
-  if(chosen&&/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(String(chosen.email||'')))
+  if(chosen&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(chosen.email||'')))
    email=String(chosen.email).toLowerCase();
  }catch{}
  return {provider:'github',externalSubject:String(identity.id),email,
