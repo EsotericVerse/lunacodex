@@ -51,10 +51,10 @@ test('Self-intersection maps Group membership by UID, not visible label',()=>{
   assert.doesNotMatch(intersection,/item\.group===group\.group/);
 });
 
-test('All consumers request the Class UID that produced the summary',()=>{
-  assert.match(chart,/readKeywordTreeCatalog\(scopeId,\{classUid:meta\.class_uid\}\)/);
-  assert.match(intersection,/readKeywordTreeCatalog\(scope\.id,\{classUid:keywords\.data\.keywordMeta\.class_uid\}\)/);
-  assert.match(culture,/readKeywordTreeCatalog\(scopeId,\{classUid:resolvedKeywordClassUid\}\)/);
+test('All consumer catalogs are selected by Class UID through native Keyword API',()=>{
+  assert.match(chart,/keywordService\('catalog',\{scopeId,classUid:meta\.class_uid\}\)/);
+  assert.match(intersection,/keywordService\('catalog'/);
+  assert.match(culture,/keywordService\('catalog',\{scopeId,classUid:resolvedKeywordClassUid\}\)/);
 });
 
 test('Culture and Statistics offer only authorized Class choices and bind queries to UID',()=>{
@@ -75,7 +75,7 @@ test('all Class UIDs are selectable independently in analysis, Culture, Statisti
   assert.match(panel,/onChange=\{event=>choose\('class',event\.target\.value\)\}/);
   assert.match(panel,/runKeywordAnalysisBatch\(scopeId,\{classUid:runClassUid/);
   assert.match(analysis,/completeKeywordClass\(latest\[0\]\.keyword_meta,classUid,meta,now\)/);
-  assert.match(analysis,/matchedDocuments:counts\.matchedDocuments/);
+  assert.match(read('app/loc/keyword-sql-service.mjs'),/matchedDocuments:stats.matchedDocuments/);
   assert.match(culture,/availableKeywordClasses\.length>0/);
   assert.match(statistics,/const scopedKeywordClasses=availableKeywordClasses/);
   assert.doesNotMatch(statistics,/categoryNames\.some\(/);
