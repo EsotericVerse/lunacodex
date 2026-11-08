@@ -13,7 +13,7 @@ const BLOCK_FIELDS=['uid','page_name','block_eyebrow','block_title','block_subti
 const respond=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:HEADERS});
 const allowedScope=id=>SCOPE_ROUTE_INDEX.some(row=>row.scope_id===id&&row.active!==false);
 const NUMERIC_KINDS=new Set(['culture_density','daily','overview','earliest','totals']);
-const DAY=/^\\d{4}-\\d{2}-\\d{2}$/;
+const DAY=/^\d{4}-\d{2}-\d{2}$/;
 const day=value=>value instanceof Date?value.toISOString().slice(0,10):String(value??'').slice(0,10);
 const total=value=>Number(value)||0;
 
