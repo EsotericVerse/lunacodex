@@ -6,7 +6,6 @@ import {CultureTimelineModel} from '../modular/modules/culture-timeline/culture-
 import {workDisplayText} from '../modular/work-display-model';
 import {selectScopeDailyCounts} from './galaxy-query';
 import {DB_QUERY_BATCH_SIZE,selectAllRows,selectCount,selectRows} from './db-query.mjs';
-import {dbPublicClient} from './db-client.mjs';
 import {mapBounded} from './bounded-parallel.mjs';
 import {publicContentFilters} from './content-policy';
 import {selectManagedScope,selectManagedScopes,selectScopeGroupMemberIds} from './scope-data';
@@ -565,24 +564,6 @@ export async function selectCultureArticleListPage(scope,{
   const start=String(startDate||'').slice(0,10);
   const end=String(endDate||'').slice(0,10);
   if(!start||!end||start>end)return {rows:[],hasMore:false,nextCursor:null};
-  if(scopeId!=='local'&&site){
-    const pageOffset=Math.max(0,Math.floor(Number(offset)||0));
-    const {data,error}=await dbPublicClient.schema('silver').analytics({
-      p_scope_id:scopeId,p_view:'culture_list',
-      p_start:start,p_end:end,p_options:{site,offset:pageOffset}
-    });
-    if(error)throw new Error(error.message||'文化文章列表讀取失敗');
-    if(!data||!Array.isArray(data.rows))throw new Error('文章列表回傳格式錯誤');
-    return {...data,rows:data.rows.map((row,index)=>({
-      key:row.hidden?'hidden:'+String(pageOffset+index):'galaxy:'+row.uid,
-      entry_id:row.hidden?'':String(row.uid||''),
-      uid:row.hidden?'':String(row.uid||''),
-      entry_type:row.hidden?'hidden':'work',scope_id:scopeId,
-      title:row.hidden?'本文已隱藏':String(row.title||''),
-      date:row.hidden?'':String(row.date||'').slice(0,10),
-      hidden:row.hidden===true,list:!row.hidden
-    }))};
-  }
   const sourceNames=[...new Set((sites||[]).map(value=>String(value??'').trim()))];
   const selectedSources=sourceNames.length?sourceNames:site?[String(site).trim()]:[];
   const filters=[

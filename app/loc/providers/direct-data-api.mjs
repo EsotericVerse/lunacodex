@@ -36,6 +36,9 @@ function publishedGalaxy(table,columns,filters){
   // list visibility only when returning article bodies.
   if(!/_galaxy$/.test(table)||filters.some(f=>f.column==='search'))return filters;
   const isContent=columns.includes('*')||columns.includes('content');
+  // Culture is a separate public visibility flag, not a Search opt-in.
+  if(filters.some(f=>f.column==='culture'&&String(f.value)==='true')&&!isContent)
+    return filters;
   return [...filters,{column:'search',op:'eq',value:true},
     ...(isContent?[{column:'list',op:'eq',value:true}]:[])];
 }
@@ -120,31 +123,33 @@ export function createDirectDataApiClient({
   }
   async function cultureAnalytics(args={}) {
     const view=String(args.p_view||'');
-    if(!['culture_anchors','culture_density','culture_list'].includes(view))
-      throw Error('This operation requires the database owner Web Server; LOC provides no SQL Gateway');
+    if(!['culture_anchors','culture_density'].includes(view))
+      throw Error('Unsupported public Culture operation');
     const scope=String(args.p_scope_id||'');
     const start=args.p_start==null?'':String(args.p_start);
     const end=args.p_end==null?'':String(args.p_end);
-    const options=args.p_options||{};
     if(!/^[a-z][a-z0-9]{0,14}$/.test(scope)||
-      (view!=='culture_anchors'&&(!/^\d{4}-\d{2}-\d{2}$/.test(start)||
+      (view==='culture_density'&&(!/^\d{4}-\d{2}-\d{2}$/.test(start)||
         !/^\d{4}-\d{2}-\d{2}$/.test(end)||start>end)))
       throw Error('Invalid LOC Culture query');
-    const params=new URLSearchParams({view,scope});
-    if(view!=='culture_anchors'){params.set('start',start);params.set('end',end);}
-    if(view==='culture_list'){
-      const site=String(options.site||''),offset=Number(options.offset||0);
-      if(!site||site.length>120||!Number.isSafeInteger(offset)||offset<0||offset>100000)
-        throw Error('Invalid LOC Culture list request');
-      params.set('site',site);params.set('offset',String(offset));
+    // Use the configured public Data API directly; never create another SQL
+    // service, database alias, or authentication preflight for guest readers.
+    if(view==='culture_anchors'){
+      const q=new Query(read,'silver',scope+'_anchor');
+      const {data}=await q.select('uid,type,title,attr')
+        .in('type',['date','period','era']).eq('invisible',false).limit(5000);
+      return {data:data.map(row=>({...row,attr:typeof row.attr==='string'
+        ?JSON.parse(row.attr||'{}'):row.attr||{}})),error:null};
     }
-    const response=await fetchImpl('/api/loc-culture?'+params.toString(),{
-      method:'GET',credentials:'omit',cache:'no-store',
-      signal:AbortSignal.timeout(9000),headers:{accept:'application/json'}
-    });
-    const result=await response.json().catch(()=>null);
-    if(!response.ok)throw Error(result?.error||'LOC Culture native database unavailable');
-    return {data:result.data,error:null,status:response.status};
+    // Database-side grouped aggregate, not a browser-side article scan.
+    const q=new Query(read,'silver',scope+'_galaxy');
+    const {data}=await q.select('date,site,count()')
+      .eq('culture',true).gte('date',start).lte('date',end)
+      .order('date',{ascending:true}).limit(5000);
+    return {data:data.map(row=>({
+      day:String(row.date||'').slice(0,10),site:String(row.site||''),
+      item_count:Number(row.count||0)
+    })),error:null};
   }
   function execute(q){
     return role==='anon'?withPublicReadBudget(()=>read(q),q.signal):read(q);
