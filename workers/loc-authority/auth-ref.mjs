@@ -74,7 +74,8 @@ async function jwtReference(type,credential,profile,options){
  if(!audience||!audiences.includes(audience)||
   (claims.azp&&claims.azp!==audience))
   reject('Auth Ref audience mismatch',401);
- const discovery=await jsonFetch(issuer+'/.well-known/openid-configuration',options);
+ const discovery=type==='clerk'?{issuer,jwks_uri:issuer+'/.well-known/jwks.json'}:
+  await jsonFetch(issuer+'/.well-known/openid-configuration',options);
  if(discovery.issuer!==issuer)reject('Auth Ref discovery mismatch',401);
  const jwksUrl=trustedUrl(discovery.jwks_uri);
  // Treat the configured issuer as the trust root; never fetch an arbitrary
@@ -107,10 +108,20 @@ async function githubReference(credential,options){
   reject('GitHub Auth Ref identity invalid',401);
  const permissions=[];
  if(identity.login)permissions.push('login:'+identity.login);
- // The token's own OAuth scopes do not grant a LOC Scope permission.
- // An Admin-configured target may demand a specific GitHub login claim.
- return {provider:'github',externalSubject:String(identity.id),email:'',
-  emailVerified:false,permissions,expires:Date.now()+300000};
+ // A second GitHub API result can attest email ownership. Missing OAuth
+ // email scope never becomes an unverified privileged email claim.
+ let email='';
+ try{
+  const emails=await jsonFetch('https://api.github.com/user/emails',
+   {...options,token:credential});
+  const chosen=Array.isArray(emails)?
+   emails.find(x=>x.verified===true&&x.primary===true)||
+   emails.find(x=>x.verified===true):null;
+  if(chosen&&/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(String(chosen.email||'')))
+   email=String(chosen.email).toLowerCase();
+ }catch{}
+ return {provider:'github',externalSubject:String(identity.id),email,
+  emailVerified:Boolean(email),permissions,expires:Date.now()+300000};
 }
 export async function verifyAuthReference(provider,credential,profile,options={}){
  if(!PROVIDERS.has(provider))reject('Unsupported Auth Ref',400);
