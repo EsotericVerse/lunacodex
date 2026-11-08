@@ -1,6 +1,7 @@
 'use client';
 import {useAsyncResource} from './use-async-resource';
-import {dbAuthClient,dbAuthRelation} from './db-client.mjs';
+import {dbAuthRelation} from './db-client.mjs';
+import {sourceCatalogService} from './source-catalog-client.mjs';
 
 // One scope's raw category row (silver.<id>, filtered to id=<id>) is read,
 // in slightly different shapes, by several editors/panels that commonly
@@ -22,9 +23,7 @@ export function useScopeSourceCategoryRow(id,{enabled=true}={}){
       if(error)throw new Error(error.message);
       return {sourceNames:Array.isArray(data?.DefaultArticleClass)?data.DefaultArticleClass:[]};
     }
-    const {data,error}=await dbAuthClient.schema('silver')
-      .managedAction('read_source_catalog',{p_scope_id:id});
-    if(error)throw new Error(error.message);
+    const data=await sourceCatalogService('read',id);
     const own=(data?.scopes||[]).find(row=>row.scopeid===id);
     if(!own)throw new Error('Scope source catalog unavailable');
     // From.title is the immutable Galaxy.site source comparison key.
