@@ -53,12 +53,14 @@ test('homepage entry performs live Auth/permission verification and exposes erro
   const draft=readFileSync(new URL('../app/loc/ScopeBlockDraftList.jsx',import.meta.url),'utf8');
   assert.match(entry,/account\.refresh\(\)/);
   assert.match(entry,/message\.error\|\|/);
-  assert.match(entry,/前往設定首頁使用 Clerk Google 登入/);
-  assert.match(restore,/account\.refresh\(\)/);
+  assert.match(entry,/前往設定首頁使用 LOC Auth 登入/);
+  assert.match(restore,/readHomeEditorAccess\(window\.sessionStorage\)/);
   assert.match(account,/if\(result\?\.error\)throw new Error\(result\.error\)/);
   assert.doesNotMatch(account,/cachedManagementAccount|MANAGEMENT_REVERIFY_TTL_MS|lastVerifiedAt/);
   assert.match(account,/let pendingManagementVerification=null/);
-  assert.match(account,/const result=await mutate\(queryKey,queryFn,\{revalidate:false\}\)/);
+  assert.match(account,/readLocEditorGrants\(session/);
+  assert.doesNotMatch(account,/managedAction\(['"]manage['"]/);
+  assert.match(account,/const result=await mutate\(queryKey,fetcher,\{revalidate:false\}\)/);
   assert.match(draft,/planHomeBlockWrites/);
   assert.match(draft,/if\(plan\.hasWrites\)/);
   assert.match(draft,/refreshWarning/);
