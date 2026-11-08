@@ -260,6 +260,7 @@ export async function handleMcp(request,env={}){
         connected:true,provider:'loc',subject:identity.subject,
         resource:config.resource,galaxyPublicReadEnabled:true,
         galaxyWriteSupported:true,writeRequiresScopeAuthorization:true,
+        nativeDatabase:mcpDatabaseConfiguration(env),
         availableTools:TOOLS.map(tool=>tool.name)});
       try{
         const directPrivate=name==='galaxy_link'&&['read','search'].includes(args.action);
