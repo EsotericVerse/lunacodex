@@ -1,43 +1,36 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-const code=readFileSync(new URL('../app/loc/keyword-analysis.js',import.meta.url),'utf8');
-const runner=code.slice(code.indexOf('export async function runKeywordAnalysisBatch('),code.indexOf('\nfunction emptyStored('));
-const summary=code.slice(code.indexOf('export async function selectKeywordAnalysisSummary('),
- code.indexOf('\nexport function clearKeywordAnalysisCache('));
-test('analysis reads Galaxy articles but never updates Galaxy classification columns',()=>{
- assert.match(runner,/articleColumns='uid,date,createtime,content,searchable'/);
- assert.match(runner,/dbAuthRelation\(scope\.galaxy\)/);
- assert.match(runner,/reanalyzeKeywordClass/);
- assert.match(runner,/update\(\{uid_lists\}\)/);
- assert.doesNotMatch(runner,/\.update\(\{class_id|group_lists|applyKeywordClassification/);
-});
-test('analysis identifies Class and Items exclusively through four-character UID',()=>{
- assert.match(runner,/current_keyword_class_uid/);
- assert.match(runner,/\.select\('uid,type,name,desc,lists'\)/);
- assert.match(runner,/keywordTreeCatalog/);
- assert.doesNotMatch(runner,/keyword_id|item_no|class_id/);
-});
-test('public Culture and Statistics summary invokes UID-tree RPC',()=>{
- assert.match(summary,/readKeywordTreeSummary/);
- assert.doesNotMatch(summary,/readRune66Summary|group_lists/);
-});
-test('stale marker precedes every Group and Item write',()=>{
- assert.ok(runner.indexOf('staticstime:null')<runner.indexOf('writeNode:async'));
+const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
+
+test('client sends only one selected Class to authenticated native Keyword analyzer',()=>{
+ const ui=read('app/loc/keyword-analysis.js');
+ assert.match(ui,/keywordService\('analyze',\{scopeId:id,classUid\}\)/);
+ assert.doesNotMatch(ui,/reanalyzeKeywordClass|writeNode|\.update\(\{uid_lists/);
 });
 
-test('COUNT uses owner visibility and chronological 1000-row batches before writes',()=>{
- const start=code.indexOf('async function keywordEligibleCount(');
- const end=code.indexOf('export async function selectActiveKeywordClassName(',start);
- const countFunction=code.slice(start,end);
- assert.ok(countFunction.includes('dbAuthRelation(scope.galaxy)'));
- assert.ok(countFunction.includes("count:'exact',head:true"));
- assert.doesNotMatch(countFunction,/selectCount\(/);
- assert.ok(code.includes('KEYWORD_ANALYSIS_READ_PAGE_SIZE=1000'));
- assert.ok(runner.includes('expectedCount:eligibleCount'));
- assert.ok(runner.includes('createIndexedDateKeywordReader'));
- assert.ok(runner.includes(".order('date',{ascending:true})"));
- assert.doesNotMatch(runner,/\.order\('createtime'/);
- const articleReader=runner.slice(runner.indexOf('const articleColumns='),runner.indexOf('writeNode:async'));
- assert.doesNotMatch(articleReader,/\.order\('uid'/);
+test('the indexed parser never reads unchanged Galaxy article bodies',()=>{
+ const service=read('app/loc/keyword-sql-service.mjs');
+ const pure=read('app/loc/keyword-incremental.mjs');
+ assert.match(service,/select\(\['uid','date','createtime','UpdateTime','keyword'\]\)|const cols=\['uid','date','createtime','UpdateTime','keyword'\]/);
+ assert.match(service,/analyzeIncrementalKeywordPatterns\(/);
+ assert.match(pure,/wordsToCheck\.length/);
+ assert.match(pure,/updated>=completed/);
+ assert.match(pure,/if\(!wordsToCheck\.length\)\{reused\+\+/);
+ assert.doesNotMatch(pure,/\.update\(\{uid_lists/);
+});
+
+test('Class status is saved with the word scan times atomically after word index',()=>{
+ const service=read('app/loc/keyword-sql-service.mjs');
+ assert.match(service,/keyword_meta:JSON\.stringify\(metadata\)/);
+ assert.match(service,/pattern_scans:/);
+ assert.match(service,/await persistPatterns\(trx,scope,classUid,pending,stats\)/);
+ assert.match(service,/completeKeywordClass\(/);
+});
+
+test('Culture and Statistics both consume word-backed native summary',()=>{
+ const analysis=read('app/loc/keyword-analysis.js');
+ const culture=read('app/modular/features/Culture.jsx');
+ assert.match(analysis,/keywordService\('stats'/);
+ assert.match(culture,/keywordService\('summary'/);
 });
