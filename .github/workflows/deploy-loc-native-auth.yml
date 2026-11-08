@@ -4,10 +4,6 @@ name: Deploy LOC native Auth (OAuth only, no SQL Gateway)
 # Manual releases remain available without consuming quota on every push.
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/deploy-loc-native-auth.yml'
 
 permissions:
   contents: read
