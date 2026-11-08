@@ -5,6 +5,7 @@ import {Kysely,PostgresDialect,MysqlDialect,MssqlDialect} from 'kysely';
 import pg from 'pg';
 import {mssqlAuthentication,mysqlLdapOptions} from '../providers/sql-driver-auth.mjs';
 import {normalizeLiveTarget} from '../providers/live-database-target.mjs';
+import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 
 const targets=new WeakMap();
 const ALIAS=/^[a-z][a-z0-9_-]{0,63}$/;
@@ -13,7 +14,14 @@ function fail(message){
  return Object.assign(new Error(message),{code:'BACKEND_UNAVAILABLE'});
 }
 function trustedAlias(env,verifiedAlias){
- const alias=String(verifiedAlias||env.LOC_MCP_DB_ALIAS||env.LOC_CONTROL_DB_ALIAS||'');
+ // The deployed Pages app already publishes the fixed database selection.
+ // The trusted service token enables resolving that alias without SQL or a
+ // duplicate deployment-local connection password.
+ const profileService=String(env.LOC_DB_PROFILE_SERVICE_TOKEN||'');
+ const published=profileService.length>=32?
+  DATABASE_ACCESS_LIST.find(target=>target.selected===true)?.connection_alias:'';
+ const alias=String(verifiedAlias||env.LOC_MCP_DB_ALIAS||
+  env.LOC_CONTROL_DB_ALIAS||env.LOC_PUBLIC_DB_ALIAS||published||'');
  if(!ALIAS.test(alias))throw fail('LOC MCP direct database alias is not configured');
  return alias;
 }
@@ -32,7 +40,11 @@ function localProfile(env,alias){
 }
 async function authorizedProfile(env,alias,verifiedAlias,fetchImpl){
  const secret=String(env.LOC_DB_PROFILE_SERVICE_TOKEN||'');
- if(verifiedAlias&&secret){
+ // Explicit local profiles stay valid for self-hosting, but do not override
+ // a user-selected alias signed by LOC Auth.
+ if(!verifiedAlias&&env.LOC_DB_CONNECTIONS_JSON)
+  return localProfile(env,alias);
+ if(secret){
   if(secret.length<32)throw fail('LOC trusted profile secret is invalid');
   const result=await fetchImpl('https://auth.lo3rwang.cc/v1/internal/database/'+alias,{
    method:'GET',headers:{'x-loc-service-token':secret,accept:'application/json'},
