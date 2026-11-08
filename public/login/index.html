@@ -52,6 +52,7 @@
         <p>登入後會確認你的帳戶身分；管理與寫入權限仍由 LOC 獨立檢查。</p>
         <div class="actions">
           <button id="return" type="button" disabled>核驗後返回 LOC</button>
+          <button id="copy-loc-subject" type="button" disabled>複製 LOC ID</button>
           <button id="signout" type="button">登出</button>
         </div>
       </div>
@@ -143,6 +144,18 @@ byId('return').addEventListener('click',()=>{
  const continued=oauthContinuation();
  location.assign(continued?AUTHORITY+continued:path);
 });
+// LOC Subject is a non-secret identifier, not an access token. Copying it
+// lets the owner configure one exact root identity without sharing passwords.
+byId('copy-loc-subject').addEventListener('click',async()=>{
+ const subject=String(byId('copy-loc-subject').dataset.subject||'');
+ if(!/^loc_[A-Za-z0-9_-]{32,80}$/.test(subject))return;
+ try{
+  await navigator.clipboard.writeText(subject);
+  byId('status').textContent='LOC ID 已複製。這不是密碼或登入權杖。';
+ }catch{
+  byId('status').textContent='LOC ID：'+subject;
+ }
+});
 byId('signout').addEventListener('click',async()=>{
  try{
   const response=await fetch(AUTHORITY+'/oauth/logout',{
@@ -168,6 +181,8 @@ async function initialize(){
  panel.hidden=signedIn&&!choose;
  byId('signed-in').hidden=!signedIn;
  byId('return').disabled=!signedIn;
+ byId('copy-loc-subject').disabled=!signedIn;
+ byId('copy-loc-subject').dataset.subject=signedIn?user.id:'';
  byId('user').textContent=signedIn?user.email:'';
  byId('status').textContent=signedIn
   ?(isProtectedReturn(validReturnPath())
