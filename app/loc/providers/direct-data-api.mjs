@@ -118,6 +118,34 @@ export function createDirectDataApiClient({
     if(q.cardinality==='single'&&list.length!==1)throw Error('Expected exactly one database record');
     return {data:q.head?null:q.cardinality?list[0]||null:list,error:null,count,status:response.status};
   }
+  async function cultureAnalytics(args={}) {
+    const view=String(args.p_view||'');
+    if(!['culture_anchors','culture_density','culture_list'].includes(view))
+      throw Error('This operation requires the database owner Web Server; LOC provides no SQL Gateway');
+    const scope=String(args.p_scope_id||'');
+    const start=args.p_start==null?'':String(args.p_start);
+    const end=args.p_end==null?'':String(args.p_end);
+    const options=args.p_options||{};
+    if(!/^[a-z][a-z0-9]{0,14}$/.test(scope)||
+      (view!=='culture_anchors'&&(!/^\\d{4}-\\d{2}-\\d{2}$/.test(start)||
+        !/^\\d{4}-\\d{2}-\\d{2}$/.test(end)||start>end)))
+      throw Error('Invalid LOC Culture query');
+    const params=new URLSearchParams({view,scope});
+    if(view!=='culture_anchors'){params.set('start',start);params.set('end',end);}
+    if(view==='culture_list'){
+      const site=String(options.site||''),offset=Number(options.offset||0);
+      if(!site||site.length>120||!Number.isSafeInteger(offset)||offset<0||offset>100000)
+        throw Error('Invalid LOC Culture list request');
+      params.set('site',site);params.set('offset',String(offset));
+    }
+    const response=await fetchImpl('/api/loc-culture?'+params.toString(),{
+      method:'GET',credentials:'omit',cache:'no-store',
+      signal:AbortSignal.timeout(9000),headers:{accept:'application/json'}
+    });
+    const result=await response.json().catch(()=>null);
+    if(!response.ok)throw Error(result?.error||'LOC Culture native database unavailable');
+    return {data:result.data,error:null,status:response.status};
+  }
   function execute(q){
     return role==='anon'?withPublicReadBudget(()=>read(q),q.signal):read(q);
   }
@@ -126,7 +154,7 @@ export function createDirectDataApiClient({
     schema(schema){
       assertId(schema);
       return {from(table){return new Query(execute,schema,table)},
-        analytics:unsupported,managedWrite:unsupported,managedAction:unsupported,
+        analytics:cultureAnalytics,managedWrite:unsupported,managedAction:unsupported,
         publicAction:unsupported,anchor:unsupported};
     },
     shortImport:unsupported,
