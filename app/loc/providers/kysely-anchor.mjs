@@ -55,7 +55,8 @@ async function keywordCatalog(trx,scope,anchor,attr,owner){
       .where('type','=','item').where('uid','in',itemUids).execute():[];
   const itemByUid=new Map(items.map(row=>[row.uid,row]));
   const mapped=node=>({uid:node.uid,type:node.type,name:node.title,
-    desc:node.type==='item'?'':node.description,lists:node.type==='item'?[]:namesFrom(node),
+    desc:node.type==='item'?'':node.description,
+    lists:node.type==='item'?(Array.isArray(node.attr?.keyword)?node.attr.keyword:[]):namesFrom(node),
     uid_lists:[]});
   return {class_uid:classUid,rows:[mapped(base),...ordered.map(mapped),
     ...ordered.flatMap(g=>namesFrom(g).map(uid=>itemByUid.get(uid)).filter(Boolean).map(mapped))]};
