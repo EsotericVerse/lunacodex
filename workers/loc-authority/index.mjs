@@ -1,4 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
+import {checkExternalAuthQos} from './auth-qos.mjs';
 import {issueDelegation} from '../../app/loc/auth/delegation-contract.mjs';
 import {normalizeSqlDriverAuthentication,publicSqlDriverAuthentication,
   sqlAuthNeedsUserPassword} from '../../app/loc/providers/sql-driver-auth.mjs';
@@ -155,6 +156,45 @@ async function managedMcpRead(scopeid,kind,args,token,env){
 }
 export class LocAuthorityState extends DurableObject {
   constructor(ctx,env){super(ctx,env);}
+  async authQuotaAcquire(kind, fingerprint, limit){
+    // All callers in a bucket are serialized by its Durable Object.
+    if (!/^[a-z]{3,20}$/.test(String(kind)) ||
+        !/^[0-9a-f]{64}$/.test(String(fingerprint)) ||
+        !Number.isSafeInteger(limit) || limit < 1 || limit > 1000)
+      throw fail('Invalid LOC Auth quota request', 400);
+    const now = Date.now(), minute = 60_000;
+    const key = 'auth-qos:' + kind + ':' + fingerprint;
+    return this.ctx.storage.transaction(async tx => {
+      const saved = await tx.get(key) || {};
+      if (Number(saved.blockedUntil || 0) > now)
+        return {allowed:false, retryAfter:Math.ceil((saved.blockedUntil-now)/1000)};
+      const inWindow = Number(saved.start || 0) <= now &&
+        now - Number(saved.start || 0) < minute;
+      const next = {
+        start:inWindow ? saved.start : now,
+        count:(inWindow ? Number(saved.count || 0) : 0) + 1,
+        rejects:inWindow ? Number(saved.rejects || 0) : 0,
+        strikes:Number(saved.lastStrikeAt || 0) > now-86_400_000 ?
+          Number(saved.strikes || 0) : 0,
+        lastStrikeAt:Number(saved.lastStrikeAt || 0),
+        blockedUntil:0
+      };
+      if (next.count <= limit) {
+        await tx.put(key, next);
+        return {allowed:true};
+      }
+      next.rejects += 1;
+      if (next.rejects >= 3) {
+        next.strikes = Math.min(6, next.strikes + 1);
+        next.lastStrikeAt = now;
+        next.blockedUntil = now +
+          Math.min(3_600_000, 180_000 * 2 ** (next.strikes - 1));
+      }
+      await tx.put(key, next);
+      return {allowed:false, retryAfter:Math.ceil(
+        ((next.blockedUntil > now ? next.blockedUntil : next.start + minute)-now)/1000)};
+    });
+  }
   async nativeGet(key){return this.ctx.storage.get(key);}
   async nativePut(key,value){await this.ctx.storage.put(key,value);return true;}
   async nativeTake(key){return this.ctx.storage.transaction(async t=>{
@@ -1020,6 +1060,10 @@ export default {
       if(!origin&&request.headers.get('sec-fetch-site')==='cross-site')throw fail('Cross-origin request rejected',403);
       if(!['GET','PUT','POST'].includes(request.method))throw fail('Method not allowed',405);
       const url=new URL(request.url);
+      // External identity/delegation lookups share native Auth HTTP QoS.
+      // Existing MCP business-search QoS stays a separate quota.
+      const limited=await checkExternalAuthQos(request,env);
+      if(limited)return limited;
       if(url.pathname.startsWith('/v1/mcp/'))return handleMcpAuthority(request,env,url,origin);
       if(request.method==='GET'&&url.pathname==='/.well-known/jwks.json'){
         const state=env.LOC_AUTHORITY_STATE.get(
