@@ -8,7 +8,8 @@ import {selectScopeDailyCounts} from './galaxy-query';
 import {DB_QUERY_BATCH_SIZE,selectAllRows,selectCount,selectRows} from './db-query.mjs';
 import {mapBounded} from './bounded-parallel.mjs';
 import {publicContentFilters} from './content-policy';
-import {selectManagedScope,selectManagedScopes,selectScopeGroupMemberIds} from './scope-data';
+import {selectManagedScope,selectScopeGroupMemberIds,defaultScopeData} from './scope-data';
+import {PUBLISHED_SITE_BOOTSTRAP} from '../modular/published-site-bootstrap.js';
 import {resolveTimeSegments,resolveTimeTrace,timePeriodSortDate,timeDateWindows,timePeriodContainsDate,intersectTimeDateWindows,storedTimeRange} from './time-anchor-ranges.mjs';
 
 
@@ -294,8 +295,13 @@ export async function selectScopeCultureData(scopeId){
   if(!id)throw new Error('資料設定無效');
 
   if(id==='loc'){
-    const [members,allScopes]=await Promise.all([selectScopeGroupMemberIds('loc','culture'),selectManagedScopes()]);
-    const managedScopes=allScopes.filter(scope=>members.has(scope.id));
+    // Public Group membership and routing were already released as a static
+    // site snapshot. No api.manage read: the public Data API exposes silver,
+    // not the internal api schema. Runtime time/era data remain live reads.
+    const members=await selectScopeGroupMemberIds('loc','culture');
+    const managedScopes=(PUBLISHED_SITE_BOOTSTRAP.registry||[])
+      .filter(entry=>entry.scope_kind==='scope'&&entry.active!==false&&members.has(entry.scope_id))
+      .map(entry=>defaultScopeData(entry.scope_id)).filter(Boolean);
     if(!managedScopes.length){
       return {
         scopeId:id,scope:null,eras:{eras:[]},periods:[],openRanges:[],scopeRanges:[],
