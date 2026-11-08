@@ -6,6 +6,7 @@ import {scopeConfigColumns,scopeFeatureEnabled} from '../scope-config-fields.mjs
 import {directMcpKysely} from '../mcp/native-kysely.mjs';
 import {readPublishedGalaxyNumeric,PUBLISHED_GALAXY_SNAPSHOT_DATE} from './published-galaxy-fallback.mjs';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
+import {createDirectDataApiClient} from '../providers/direct-data-api.mjs';
 import {portableRelation} from '../providers/sql-engine-ports.mjs';
 
 const FEATURES=new Set(['culture','statics','trace','search']);
@@ -22,6 +23,32 @@ const MAX_PUBLIC_GROUPS=20000;
 const DAY=/^\d{4}-\d{2}-\d{2}$/;
 const day=value=>value instanceof Date?value.toISOString().slice(0,10):String(value??'').slice(0,10);
 const total=value=>Number(value)||0;
+
+// Public presentation fallback stays inside the existing Pages application.
+// It uses the published Data API with the anonymous key (never an owner token).
+// This preserves live Config/Blocks/Hero reads when the native Kysely profile
+// broker is unavailable, without exposing arbitrary SQL or private relations.
+async function publicPresentationFallback(kind,scope,feature,env={}){
+  const base=String(env.NEXT_PUBLIC_LOC_DATA_API_URL||
+    env.LOC_DATA_API_URL||
+    'https://qlouywsdiiyiyzpoxyqy.supabase.co/rest/v1');
+  const apiKey=String(env.NEXT_PUBLIC_LOC_DATA_API_PUBLIC_KEY||
+    env.LOC_DATA_API_PUBLIC_KEY||
+    env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY||
+    'sb_publishable_qPn0vAzozVyXKllRuEKf2Q_fvG-pLVV');
+  const client=createDirectDataApiClient({url:base,apiKey,role:'anon'});
+  const from=table=>client.schema('silver').from(table);
+  if(kind==='config'){
+    const columns=scopeConfigColumns(scope);
+    const {data}=await from(scope).select(columns).eq('id',scope).limit(1);
+    return data?.[0]||null;
+  }
+  const table=kind==='hero'?'loc_blocks':scope+'_blocks';
+  const names=kind==='hero'?['group_'+feature,'scope_'+feature]:['index'];
+  const {data}=await from(table).select(BLOCK_FIELDS.join(','))
+    .in('page_name',names).order('block_order',{ascending:true}).limit(100);
+  return data||[];
+}
 
 // LOC Group totals aggregate fixed published child Scope totals, not article
 // rows or user-selected tables. All database reads stay in existing Kysely.
@@ -180,6 +207,13 @@ export async function handleNativePublicContent(request,env={},{
     return respond({data});
   }catch(error){
     console.error('[LOC native public content] server database connection unavailable');
+    if(!numeric){
+      try{
+        return respond({data:await publicPresentationFallback(kind,scope,feature,env)});
+      }catch(fallbackError){
+        console.error('[LOC native public content] public presentation fallback unavailable');
+      }
+    }
     return publishedResponse()||respond({error:'LOC native database unavailable'},503);
   }
 }
