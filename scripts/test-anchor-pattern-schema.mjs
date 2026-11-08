@@ -18,7 +18,7 @@ test('one shared LOC mapping registry; existing Scope data stays in their own An
   for(const name of ['Lo3rwangAnchor','LrunesAnchor']){
     assert.equal(schema.models[name].fields.num.type,'BigInt');
   }
-  assert.deepEqual(scopedZModelColumns({scopeId:'demo'}).anchor.sort(),
+  assert.deepEqual([...scopedZModelColumns({scopeId:'demo'}).anchor].sort(),
     Object.keys(schema.models.Lo3rwangAnchor.fields).sort());
   assert.equal(schema.models.LocAnchor.attributes.some(a=>a.name==='@@allow'),false);
   assert.match(ddl,/CREATE TABLE IF NOT EXISTS silver\.loc_anchor/i);
@@ -65,6 +65,6 @@ test('existing Item keyword arrays and Rune metadata CHECK semantics survive',()
   assert.doesNotMatch(ddl,/DROP TABLE silver\.(?:loc_search_pattern|lo3rwang_anchor|lrunes_anchor)/i);
   assert.doesNotMatch(ddl,/UPDATE silver\.(?:lo3rwang_anchor|lrunes_anchor)/i);
   assert.match(ddl,/ALTER TABLE %s ADD COLUMN IF NOT EXISTS num bigint NOT NULL DEFAULT 0/);
-  assert.match(ddl,/type='item'/);
-  assert.match(ddl,/type='pattern'/);
+  assert.match(ddl,/type=''item''/);
+  assert.match(ddl,/type=''pattern''/);
 });
