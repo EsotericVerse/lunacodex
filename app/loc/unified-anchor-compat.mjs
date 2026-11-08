@@ -5,11 +5,11 @@
 const legacyName=/^([a-z][a-z0-9]{0,14})_(time|trace|keywords|galaxy_media)$/;
 const pendingAnchorScopes=new Set(['loc']);
 export const isUnifiedAnchorScope=scopeId=>/^[a-z][a-z0-9]{0,14}$/.test(String(scopeId||''))&&!pendingAnchorScopes.has(String(scopeId));
-const physicalColumns=['uid','type','title','description','invisible','attr','createtime'];
+const physicalColumns=['uid','type','title','description','invisible','attr','createtime','num'];
 const legacyKinds={time:'time',trace:'trace',keywords:'keywords',galaxy_media:'media'};
 const scopeTypes={
  time:['date','period','era'],trace:['point','path','trace'],
- keywords:['category','class','group','item'],media:['image','video','rune','suno']
+ keywords:['category','class','group','item','pattern'],media:['image','video','rune','suno']
 };
 const aliases={
  time:{address:'attr',anchor_ids:'attr',range:'attr'},
@@ -33,11 +33,23 @@ const parseLabelList=value=>{
 const allowedAttr=Object.freeze({
  date:['date'],period:['uid','date'],era:['period','date'],
  point:['longitude','latitude','location','times'],path:['point'],trace:['point','path'],
- category:['uid'],class:['uid'],group:['uid'],item:['keyword'],
+ category:['uid'],class:['uid'],group:['uid'],item:['keyword','uid','total'],pattern:[],
  image:['url','date'],video:['url','date'],rune:['url','date'],suno:['url','date']
 });
 const listOf=value=>Array.isArray(value)?value:parseLabelList(value);
 function compactAttr(type,value){
+ // Dynamic database keys are part of the Pattern posting map. Do not drop
+ // them through the legacy fixed-key projection.
+ if(type==='pattern'){
+   const input=value&&typeof value==='object'&&!Array.isArray(value)?value:{};
+   for(const [dbUid,articles] of Object.entries(input)){
+     if(!/^[A-Za-z0-9]{8}$/.test(dbUid)||!Array.isArray(articles)||
+       articles.some(uid=>typeof uid!=='string'||!/^[A-Za-z0-9]{8}$/.test(uid))||
+       new Set(articles).size!==articles.length)
+       throw Error('Pattern postings require db_uid -> unique Galaxy UID array');
+   }
+   return input;
+ }
  const allowed=allowedAttr[type];
  if(!allowed)return {};
  const input=value&&typeof value==='object'&&!Array.isArray(value)?value:{};
@@ -102,6 +114,7 @@ export function toAnchorRow(spec,row){
  if(hasOwn(data,'invisible'))out.invisible=data.invisible;
  // Provenance timestamp is physical, never cultural attr.date.
  if(hasOwn(data,'createtime'))out.createtime=data.createtime;
+ if(hasOwn(data,'num'))out.num=data.num;
  if(hasOwn(data,'description'))out.description=
    spec.kind==='trace'&&data.description&&typeof data.description==='object'
      ?JSON.stringify(data.description):data.description;
@@ -151,7 +164,7 @@ export function toAnchorRow(spec,row){
  for(const key of Object.keys(data)){
    if(['uid','type','trace_type','title','name','invisible','description','desc',
      'address','anchor_ids','range','anchor_list','times','route_list','lists',
-     'uid_lists','url','createtime','location','attr','attrs'].includes(key))continue;
+     'uid_lists','url','createtime','num','location','attr','attrs'].includes(key))continue;
    throw Error('Unsupported legacy anchor column: '+key);
  }
  return out;
@@ -159,7 +172,7 @@ export function toAnchorRow(spec,row){
 export function fromAnchorRow(spec,row){
  if(!row)return row;
  const out={},attr=row.attr||{};
- for(const key of ['uid','title','invisible','description','createtime'])
+ for(const key of ['uid','title','invisible','description','createtime','num'])
    if(hasOwn(row,key))out[key]=row[key];
  if(hasOwn(row,'type'))out.type=legacyType(row.type);
  if(spec.kind==='time'){

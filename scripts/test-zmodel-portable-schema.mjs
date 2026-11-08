@@ -13,7 +13,7 @@ test('portable DB contract derives its required columns from the fixed ZModel',(
   assert.ok(result.galaxy);
   assert.ok(result.anchor);
   assert.equal(fields('Lo3rwangGalaxy').length,23);
-  assert.equal(fields('Lo3rwangAnchor').length,7);
+  assert.equal(fields('Lo3rwangAnchor').length,8);
   assert.deepEqual([...fields('Lo3rwangGalaxy')].sort(),[...fields('LrunesGalaxy')].sort());
   assert.deepEqual([...fields('Lo3rwangAnchor')].sort(),[...fields('LrunesAnchor')].sort());
 });

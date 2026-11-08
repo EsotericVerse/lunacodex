@@ -39,8 +39,8 @@ test('ZModel declares only three nonphysical projection types, mirrored by runti
     assert.deepEqual(schema.typeDefs[name].attributes,[]);
 });
 
-test('existing physical 17-model and policy boundary is unchanged',()=>{
-  assert.equal(Object.keys(schema.models).length,17);
+test('physical 18-model contract keeps legacy policy boundary',()=>{
+  assert.equal(Object.keys(schema.models).length,18);
   assert.equal(schema.provider.type,'postgresql');
   assert.match(zmodel,/^model Lo3rwangAnchor \{/m);
   assert.match(zmodel,/^model LrunesAnchor \{/m);
