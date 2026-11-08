@@ -2,7 +2,7 @@
 // All SQL is fixed-purpose, Kysely-built and bounded. No user-supplied SQL,
 // imported schema copying, Article body scans or duplicate search tables.
 import {scopeDatabaseUid,readScopePatternRows,keywordIdentity} from './keyword-anchor-index.mjs';
-import {sql} from 'npm:kysely@0.29.8';
+import {sql} from 'kysely';
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
 const TYPES=['date','point','from','domain','item','pattern'];
