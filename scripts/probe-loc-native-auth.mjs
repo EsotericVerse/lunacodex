@@ -3,10 +3,9 @@
 import assert from 'node:assert/strict';
 
 const ORIGIN='https://auth.lo3rwang.cc';
-const timeout=AbortSignal.timeout(12000);
 async function get(path){
   const res=await fetch(ORIGIN+path,{method:'GET',redirect:'error',
-    cache:'no-store',headers:{accept:'application/json'},signal:timeout});
+    cache:'no-store',headers:{accept:'application/json'},signal:AbortSignal.timeout(12000)});
   assert.equal(res.status,200,path+' must respond 200, got '+res.status);
   const type=res.headers.get('content-type')||'';
   assert.ok(type.toLowerCase().includes('application/json'),path+' must return JSON');
