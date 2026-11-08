@@ -320,7 +320,7 @@ export async function heroBlocks(scopeId,type){
   const defaults=await Promise.all(names.map(page=>loadPublishedBlocks('loc',page)));
   return defaults.flatMap((items,index)=>(items||[]).map(row=>({
     ...row,page_name:names[index]
-  }));
+  })));
 }
 export async function selectScopeBlocks(scopeId,page='index'){
   const id=String(scopeId||'').trim().toLowerCase();
