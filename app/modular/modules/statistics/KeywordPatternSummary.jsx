@@ -5,17 +5,15 @@ import StatisticsMultiChart from './StatisticsMultiChart';
 
 // All Item/word ratios are composed from existing loc_search_pattern rows.
 // No article rescan and no Anchor count is involved in this view.
-export default function KeywordPatternSummary({scopeId='',classUid=''}) {
+export default function KeywordPatternSummary({scopeId='',classUid='',range={}}) {
   const [level,setLevel]=useState('item');
   const summary=useAsyncResource({
-    queryKey:['statistics-keyword-pattern-ratios',scopeId,classUid],
+    queryKey:['statistics-keyword-pattern-ratios',scopeId,classUid,range.startDate,range.endDate],
     enabled:Boolean(scopeId&&classUid),
     queryFn:async()=>{
-      const {dbAuthClient}=await import('../../../loc/db-client.mjs');
-      const {data,error}=await dbAuthClient.schema('silver').managedAction(
-        'keyword_pattern_statistics',{p_scope_id:scopeId,p_class_uid:classUid});
-      if(error)throw error;
-      return data||{};
+      const {keywordService}=await import('../../../loc/keyword-service-client.mjs');
+      return await keywordService('stats',{scopeId,classUid,
+        startDate:String(range.startDate||''),endDate:String(range.endDate||'')});
     }
   });
   if(!scopeId||!classUid)return null;
@@ -42,7 +40,7 @@ export default function KeywordPatternSummary({scopeId='',classUid=''}) {
   }));
   const missing=Array.isArray(data.missing_patterns)?data.missing_patterns:[];
   return <section className="scope-card scope-stat-section">
-    <h3>詞級累計命中與比率（全期間）</h3>
+    <h3>詞級命中與比率</h3>
     <p className="scope-status">從既有詞級 UID 紀錄計算；Item 命中數為所屬詞命中數加總，文章篇數則去重。Group／Item 比率以本 Class 的 Item 命中總數為分母；單詞比率以其所屬 Item 命中數為分母。</p>
     <label>
       <span>統計層級</span>
