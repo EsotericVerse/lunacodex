@@ -50,7 +50,7 @@ export async function handleNativePublicContent(request,env={},{
       .limit(100).execute();
     return respond({data});
   }catch(error){
-    console.error('[LOC native public content]',String(error?.message||error));
+    console.error('[LOC native public content] server database connection unavailable');
     return respond({error:'LOC native database unavailable'},503);
   }
 }
