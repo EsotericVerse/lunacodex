@@ -9,7 +9,7 @@ async function get(path){
     cache:'no-store',headers:{accept:'application/json'},signal:timeout});
   assert.equal(res.status,200,path+' must respond 200, got '+res.status);
   const type=res.headers.get('content-type')||'';
-  assert.match(type,/application\\/json/i,path+' must return JSON');
+  assert.ok(type.toLowerCase().includes('application/json'),path+' must return JSON');
   return res.json();
 }
 const discovery=await get('/.well-known/oauth-authorization-server');
