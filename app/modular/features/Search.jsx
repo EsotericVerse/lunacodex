@@ -1139,28 +1139,32 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   const defaultTimeName=t('uiExtra.searchUI.defaultUnit'+(defaultTimeUnit==='auto'
     ?'Day':defaultTimeUnit[0].toUpperCase()+defaultTimeUnit.slice(1)));
   const normalizedPatternInput=query.normalize('NFKC').trim();
-  const patternCompleter=patternScopeIds.length>0&&normalizedPatternInput===debouncedPatternInput
-    &&normalizedPatternInput.length>0&&Array.isArray(patternSuggestionsQuery.data)
-    &&patternSuggestionsQuery.data.length>0
-    ?<div className="scope-search-suggestions" role="group" aria-label="關鍵詞自動完成">
-      <span className="scope-status">關鍵詞自動完成</span>
-      <div className="scope-search-active-filters">
-        {patternSuggestionsQuery.data.map(item=>
-          <button type="button" className="loc-button" key={item.pattern}
-            onClick={()=>followSearchSuggestion(item.pattern)}>
-            {item.pattern} ({Number(item.count)||0})
-          </button>)}
-      </div>
-    </div>:null;
+  const anchorSelect=(inputId,placeholder)=><Select
+    inputId={inputId} instanceId={inputId} className="loc-anchor-select"
+    classNamePrefix="loc-anchor-select" unstyled
+    placeholder={placeholder} aria-label="綜合導覽搜尋與定錨自動完成"
+    value={null} inputValue={query} options={anchorSuggestGroups}
+    filterOption={()=>true} isLoading={Boolean(patternSuggestionsQuery.isPending)}
+    noOptionsMessage={()=>normalizedPatternInput?'沒有符合的定錨建議':'輸入關鍵詞、地點、來源或日期'}
+    onInputChange={(value,meta)=>{
+      if(meta.action==='input-change'){
+        setQuery(value);setSearchPopularOpen(false);
+      }
+    }}
+    onChange={choice=>{
+      if(choice){
+        setSearchPopularOpen(false);
+        void executeAnchorSelection(choice);
+      }
+    }}
+  />;
   const pageContent=<>
     {managementMode?<section className="scope-search-workspace" aria-label="管理搜尋">
       <h2>管理搜尋</h2>
       <SearchSummary scopeIds={summaryScopeIds}/>
       <form className="scope-search-form" onSubmit={runSearch}>
         <label htmlFor="scope-management-search-query">文章內文</label>
-        <input id="scope-management-search-query" value={query}
-          onChange={event=>setQuery(event.target.value)}
-          placeholder="輸入文章內文關鍵字"/>
+        {anchorSelect('scope-management-search-query','輸入內文、地點、日期、來源或關鍵詞')}
         <button type="submit" disabled={scopeId==='loc'&&!scopesQuery.isSuccess}>查詢文章</button>
         <button type="button" className="loc-button"
           disabled={scopeId==='loc'&&!scopesQuery.isSuccess}
@@ -1170,7 +1174,6 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           }})}>瀏覽文章</button>
         <button type="button" className="loc-button" onClick={clearSearchFilters}>清除</button>
       </form>
-      {patternCompleter}
       {scopeId==='loc'?<div className="scope-search-scope-filter">
         <label htmlFor="scope-management-search-scope">管理範圍</label>
         <select id="scope-management-search-scope" value={scopeFilter}
@@ -1202,10 +1205,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     {!managementMode?<section className="scope-search-workspace" aria-label={t('uiExtra.searchUI.searchWorkspace')}>
       <form className="scope-search-form" onSubmit={runSearch}>
         {!managementMode?<label htmlFor="scope-search-query">{UI_COPY.search.textPromptLabel}</label>:null}
-        <input id="scope-search-query" 
-          value={query} onDoubleClick={()=>setSearchPopularOpen(true)}
-          onChange={event=>{setQuery(event.target.value);setSearchPopularOpen(false);}}
-          placeholder={managementMode?'':UI_COPY.search.textPlaceholder} aria-label={UI_COPY.search.textPromptLabel}/>
+        {anchorSelect('scope-search-query','搜尋全文或選取 Anchor 定錨建議')}
         <button type="submit" disabled={scopeId==='loc'&&!scopesQuery.isSuccess}>{UI_COPY.nav.search}</button>
         {managementMode?<button type="button" className="loc-button" disabled={scopeId==='loc'&&!scopesQuery.isSuccess}
           onClick={()=>{
@@ -1217,7 +1217,6 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           }}>瀏覽文章列表（不需輸入關鍵詞）</button>:null}
         <button type="button" className="loc-button" onClick={clearSearchFilters}>{t('uiExtra.searchUI.clearAll')}</button>
       </form>
-      {patternCompleter}
       <button type="button" className="loc-button scope-search-popular-toggle"
         aria-expanded={searchPopularOpen} aria-controls="scope-search-suggestions"
         onClick={()=>setSearchPopularOpen(open=>!open)}>
@@ -1305,7 +1304,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
               {filterSources.filter(([value])=>value&&!value.startsWith('category:')&&!value.startsWith('source:'))
                 .map(([value,label])=><option key={value} value={value}>{label}</option>)}
             </select>
-            <p className="scope-status">搜尋僅比對文章內文；時間、空間及關鍵詞定錨由文章關聯開啟。</p>
+            <p className="scope-status">搜尋可透過定錨建議直接定位文章；未選定錨時使用全文搜尋。</p>
             {sourceTaxonomyQuery.isPending?<p className="scope-status" role="status">載入來源分類…</p>:null}
             {sourceTaxonomyQuery.isError?<p className="scope-status scope-error" role="alert">來源分類載入失敗。
               <button type="button" className="loc-button" onClick={()=>sourceTaxonomyQuery.refetch()}>重試</button>
