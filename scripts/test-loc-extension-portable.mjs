@@ -61,7 +61,7 @@ test('new Scope short-import requires its exact signed write grant, not a fixed 
  const claims={provider:'loc',me:true,sub:'verified-user',grants:['newscope:write']};
  assert.equal(authorizeDelegatedShortImport(body,claims).scopeid,'newscope');
  assert.throws(()=>authorizeDelegatedShortImport(body,{...claims,grants:['lo3rwang:write']}),/Scope write delegation required/);
- assert.throws(()=>authorizeDelegatedShortImport({...body,scopeid:'new_scope'},claims),/Invalid short-import gateway payload/);
+ assert.throws(()=>authorizeDelegatedShortImport({...body,scopeid:'new_scope'},claims),/Invalid native short-import payload/);
 });
 test('Galaxy Link keeps its own persistent Queue and native PKCE OAuth',()=>{
  const background=readFileSync(new URL('../extensions/loc-galaxy-link/background.js',import.meta.url),'utf8');
