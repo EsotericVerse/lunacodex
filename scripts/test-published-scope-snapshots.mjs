@@ -74,3 +74,15 @@ test('Culture classification is a published JS module, not a mandatory four-quer
   assert.doesNotMatch(culture,/readNumericIsr|usesNumericIsr/);
   assert.ok(culture.includes("selectedRiverGroup+'|source|'"));
 });
+
+test('public LOC Culture reads published Group membership without private api.manage transport',()=>{
+ const culture=read('app/loc/culture-query.js');
+ const begin=culture.indexOf("if(id==='loc'){",culture.indexOf('export async function selectScopeCultureData'));
+ const end=culture.indexOf('const bundles=await mapBounded(managedScopes',begin);
+ assert.ok(begin>=0&&end>begin);
+ const flow=culture.slice(begin,end);
+ assert.match(flow,/selectScopeGroupMemberIds\('loc','culture'\)/);
+ assert.match(flow,/PUBLISHED_SITE_BOOTSTRAP\.registry/);
+ assert.match(flow,/defaultScopeData\(entry\.scope_id\)/);
+ assert.doesNotMatch(flow,/selectManagedScopes\(/);
+});
