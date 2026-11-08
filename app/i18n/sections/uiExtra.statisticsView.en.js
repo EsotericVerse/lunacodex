@@ -1,4 +1,5 @@
 export default {
+  "dashboardScopeNavigation": "Switch Scope",
   "dashboardTitle": "Statistics dashboard",
   "dashboardScopeHelp": "Explore trends, source distribution, and deeper analysis using existing statistics.",
   "dashboardLocHelp": "Overview of records and distribution across LOC member scopes.",
