@@ -23,7 +23,8 @@ const total=value=>Number(value)||0;
 // already lives. Never download per-article rows to aggregate in a browser;
 // never infer Galaxy.site from a Source Anchor display label.
 async function readGalaxyNumeric(db,scope,kind,start,end,port){
-  const table=portableRelation(scope+'_galaxy',port.engine,port.namespace);
+  const table=portableRelation(scope+'_galaxy',port.engine,
+    port.namespace||(port.engine==='postgres'?'silver':'dbo'));
   const isCulture=kind==='culture_density';
   if(kind==='earliest'){
     const first=await db.selectFrom(table).select(eb=>eb.fn.min('date').as('earliest'))
@@ -113,7 +114,8 @@ export async function handleNativePublicContent(request,env={},{
     if(!port?.db||!['postgres','mysql','mssql'].includes(port.engine))
       return respond({error:'LOC native database unavailable'},503);
     const query=port.db;
-    const relation=name=>portableRelation(name,port.engine,port.namespace);
+    const relation=name=>portableRelation(name,port.engine,
+      port.namespace||(port.engine==='postgres'?'silver':'dbo'));
     if(numeric)return respond({data:await readGalaxyNumeric(query,scope,kind,start,end,port)});
     if(kind==='config'){
       const columns=scopeConfigColumns(scope).split(',').filter(Boolean);
