@@ -1,137 +1,40 @@
-import './test-loc-sql-standalone-deployment.mjs';
-import {readFileSync} from 'node:fs';
+import test from 'node:test';
 import assert from 'node:assert/strict';
-import {test} from 'node:test';
-import {createKyselyEdgeClient} from '../app/loc/providers/kysely-edge.mjs';
+import {readFileSync,existsSync} from 'node:fs';
+import {getSqlRuntimeCapabilities,portableRelation} from '../app/loc/providers/sql-engine-ports.mjs';
 
-function fakeFetch(spy){
-  return async (url,init)=>{
-    spy.push({url,init});
-    return new Response(JSON.stringify({data:[{uid:'aB12cD34'}],count:1}),
-      {status:200,headers:{'content-type':'application/json'}});
-  };
-}
-test('SQL client requires a configured independent Gateway',()=>{
-  assert.throws(()=>createKyselyEdgeClient({role:'anon',fetch:fakeFetch([])}),
-    /SQL Gateway is not configured/);
-});
+const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
-test('independent Kysely Gateway uses verified access-token callback without SQL provider',async()=>{
-  const spy=[];
-  const client=createKyselyEdgeClient({
-    gatewayUrl:'https://db-gateway.example/v1/sql',
-    role:'authenticated',getAccessToken:async()=> 'trusted.jwt.token',fetch:fakeFetch(spy)
-  });
-  const result=await client.schema('silver').from('runes').select('uid').limit(1);
-  assert.equal(result.data[0].uid,'aB12cD34');
-  assert.equal(spy[0].url,'https://db-gateway.example/v1/sql');
-  assert.equal(spy[0].init.headers.authorization,'Bearer trusted.jwt.token');
-  assert.equal(spy[0].init.headers.apikey,undefined);
-  assert.equal(spy[0].init.credentials,'omit');
-});
-test('LOC managed writes use Kysely instead of the management SQL RPC',async()=>{
-  const spy=[];
-  const client=createKyselyEdgeClient({
-    gatewayUrl:'https://db-gateway.example/v1/sql',
-    role:'authenticated',getAccessToken:async()=> 'trusted.jwt.token',fetch:fakeFetch(spy)
-  });
-  const payload={p_table:'silver.lo3rwang_galaxy',p_operation:'update',
-    p_values:{title:'Updated'},p_filters:[{column:'uid',operator:'eq',value:'aB12cD34'}]};
-  const result=await client.schema('silver').managedWrite(payload);
-  assert.ifError(result.error);
-  assert.deepEqual(JSON.parse(spy[0].init.body),{kind:'managed-write',payload,target:'configured'});
-  assert.equal(spy[0].init.headers.authorization,'Bearer trusted.jwt.token');
-  assert.equal(spy[0].init.credentials,'omit');
-});
-test('LOC actions route through the Kysely executor without database RPCs',async()=>{
-  const spy=[];
-  const client=createKyselyEdgeClient({gatewayUrl:'https://db-gateway.example/v1/sql',
-    role:'authenticated',getAccessToken:async()=> 'trusted.jwt.token',fetch:fakeFetch(spy)});
-  await client.schema('silver').managedAction('read_group_members',{p_group_id:'loc'});
-  assert.deepEqual(JSON.parse(spy[0].init.body),{kind:'managed-action',
-    name:'read_group_members',args:{p_group_id:'loc'},target:'configured'});
-  assert.equal(spy[0].init.headers.authorization,'Bearer trusted.jwt.token');
-});
-test('Canonical Anchor requests use typed Kysely operations',async()=>{
-  const spy=[];
-  const client=createKyselyEdgeClient({gatewayUrl:'https://db-gateway.example/v1/sql',
-    role:'authenticated',getAccessToken:async()=> 'trusted.jwt.token',fetch:fakeFetch(spy)});
-  await client.schema('silver').anchor('lo3rwang','point',{op:'link',mode:'place_id',updates:[]});
-  assert.deepEqual(JSON.parse(spy[0].init.body),{kind:'anchor',scopeid:'lo3rwang',type:'point',
-    attr:{op:'link',mode:'place_id',updates:[]},target:'configured'});
-});
-test('SQL Gateway never sends unauthenticated private requests',async()=>{
-  const spy=[];
-  const client=createKyselyEdgeClient({
-    gatewayUrl:'https://db-gateway.example/v1/sql',getAccessToken:async()=>'',fetch:fakeFetch(spy)
-  });
-  await assert.rejects(Promise.resolve(client.schema('silver').from('manage').select('id')),
-    /active session/);
-  assert.equal(spy.length,0);
-});
-test('gateway URL rejects non-TLS and embedded credentials',()=>{
-  for(const url of ['http://db-gateway.example/v1','https://user:pass@db-gateway.example/v1',
-    'https://db-gateway.example/v1?apikey=exposed','https://db-gateway.example/v1#secret']){
-    assert.throws(()=>createKyselyEdgeClient({gatewayUrl:url,fetch:fakeFetch([])}),/HTTPS URL/);
-  }
+test('direct Kysely dialect selection remains portable across SQL engines',()=>{
+ const driver=read('app/loc/providers/kysely-database-drivers.ts');
+ for(const [engine,dialect] of Object.entries({
+   postgres:'PostgresDialect',mysql:'MysqlDialect',mssql:'MssqlDialect'
+ })){
+   assert.equal(getSqlRuntimeCapabilities(engine).dialect,dialect);
+   assert.ok(driver.includes(dialect));
+ }
+ assert.equal(portableRelation('lo3rwang_galaxy','postgres','silver'),'silver.lo3rwang_galaxy');
+ assert.equal(portableRelation('lo3rwang_galaxy','mysql'),'lo3rwang_galaxy');
+ assert.equal(portableRelation('lo3rwang_galaxy','mssql','dbo'),'dbo.lo3rwang_galaxy');
 });
 
-
-test('ISR numeric readers use Kysely without a SQL provider SDK or Auth client',()=>{
-  const source=readFileSync(new URL('../app/api/loc/_server.js',import.meta.url),'utf8');
-  assert.doesNotMatch(source,/createClient\(/);
-  assert.match(source,/const primary=createKyselyEdgeClient\(/);
-  assert.match(source,/gatewayUrl:primaryGatewayUrl/);
-  assert.match(source,/candidates\.push\(\{id:\'backup\'/);
-  assert.match(source,/NEXT_PUBLIC_LOC_SQL_GATEWAY_URL/);
-  assert.match(source,/gatewayUrl:primaryGatewayUrl/);
-});
-test('verified LOC identity delegates through the independent SQL transport',async()=>{
-  const source=readFileSync(new URL('../app/loc/providers/loc-gateway.mjs',import.meta.url),'utf8')
-    .replace(/^import .*$/gm,'').replace(/^export /gm,'');
-  const calls=[];
-  const create=new Function('createKyselyEdgeClient','URL','AbortSignal','process',
-    source+'\n;return createLocGatewayAdapter;')(
-    createKyselyEdgeClient,URL,AbortSignal,process
-  );
-  const gateway=create({
-    authorityUrl:'https://authority.example.org',
-    gatewayUrl:'https://sql.example.org/v1/query',
-    accountAdapter:{auth:{getSession:async()=>({data:{session:null}})},
-      getAccessToken:async()=> 'verified.external.jwt'},
-    fetchImpl:async(url,init)=>{
-      calls.push({url:String(url),init});
-      if(String(url).endsWith('/v1/delegation'))return {
-        ok:true,status:200,json:async()=>({access_token:'loc.signed.jwt',
-          expires_at:Math.floor(Date.now()/1000)+300})
-      };
-      return {ok:true,status:200,headers:new Headers(),
-        json:async()=>({data:[{uid:'aB12cD34'}],count:1})};
-    }
-  });
-  assert.equal(gateway.realtimeClient,null);
-  assert.equal(gateway.publicClient.role,'anon');
-  assert.equal(gateway.authClient.role,'authenticated');
-  const result=await gateway.authClient.schema('api').from('loc_user').select('uid').limit(1);
-  assert.equal(result.data[0].uid,'aB12cD34');
-  assert.equal(calls.length,2);
-  assert.equal(calls[0].url,'https://authority.example.org/v1/delegation');
-  assert.equal(calls[0].init.headers.authorization,'Bearer verified.external.jwt');
-  assert.deepEqual(JSON.parse(calls[0].init.body),{audience:'sql',identity:true});
-  assert.equal(calls[1].url,'https://sql.example.org/v1/query');
-  assert.equal(calls[1].init.headers.authorization,'Bearer loc.signed.jwt');
+test('the application does not package a generic SQL Gateway',()=>{
+ for(const path of ['app/loc/gateway/sql-handler.ts',
+   'app/loc/gateway/runtime-database-target.mjs',
+   'app/loc/providers/loc-gateway.mjs',
+   'app/loc/providers/kysely-edge.mjs'])
+   assert.equal(existsSync(new URL('../'+path,import.meta.url)),false,path);
+ const browser=read('app/loc/providers/configured.mjs');
+ assert.match(browser,/createDirectDataApiClient/);
+ assert.doesNotMatch(browser,/createKyselyEdgeClient|createLocGatewayAdapter/);
 });
 
-test('explicit public publishing pages through the bounded Kysely query port',()=>{
-  const source=readFileSync(new URL('../scripts/generate-public-blocks.mjs',import.meta.url),'utf8');
-  assert.match(source,/const pageSize=1000/);
-  assert.match(source,/\.order\('block_order'\)\.order\('uid'\)\.range\(start,end\)/);
-  assert.doesNotMatch(source,/\.range\(0,65534\)/);
-});
-
-test('LOC core has no direct vendor SDK or provider imports',()=>{
-  const source=readFileSync(new URL('../app/loc/providers/loc-gateway.mjs',import.meta.url),'utf8');
-  assert.doesNotMatch(source,/createClient\(/);
-  assert.match(source,/createKyselyEdgeClient/);
-  assert.match(source,/createLocGatewayAdapter/);
+test('MCP and short imports execute fixed native Kysely operations',()=>{
+ const native=read('app/loc/mcp/native-operations.mjs');
+ const driver=read('app/loc/mcp/native-kysely.mjs');
+ assert.match(native,/executePortableMcp/);
+ assert.match(native,/authorizeDelegatedShortImport/);
+ assert.match(native,/verifyDelegationBoundary/);
+ assert.match(driver,/PostgresDialect/);
+ assert.match(read('functions/api/loc-native.js'),/handleNativeLocOperation/);
 });

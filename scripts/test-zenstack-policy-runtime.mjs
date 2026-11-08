@@ -56,15 +56,6 @@ test('policy-enforced live query uses exactly one transaction and one SQL execut
     scopeIds:[],groupIds:[]}]);
 });
 
-test('Edge actually routes model SELECTs to PolicyPlugin, not a detached schema',()=>{
-  const edge=readFileSync(new URL('../app/loc/gateway/sql-handler.ts',import.meta.url),'utf8');
-  assert.match(edge,/withFixedPolicyRead\(db,target,body,role,claims/);
-  assert.match(edge,/new PolicyPlugin|PolicyPlugin\}/);
-  assert.match(edge,/trustedDialectForDatabase\(db\)/);
-  assert.match(edge,/executeRequest\(trx,target,role,claims,body,\{modelName\}\)/);
-  assert.match(edge,/db\.transaction\(\)\.execute\(trx=>/);
-});
-
 test('only verified global LOC administrator writes enter fixed-model PolicyPlugin',()=>{
   const global={provider:'loc',me:true,sub:'user123',grants:['global:manage']};
   const scope={provider:'loc',me:true,sub:'user123',grants:['lo3rwang:manage']};
@@ -123,21 +114,6 @@ test('global fixed write uses one existing dialect and one policy transaction',a
     {...claims,grants:['lo3rwang:manage']},dependencies,execute),
     /Global LOC policy permission required/);
   assert.equal(logged.execution,2,'a rejected write must not reach SQL');
-});
-
-test('managed Kysely fixed updates derive primary keys from SchemaDef, not pg_index',()=>{
-  const management=readFileSync(new URL('../app/loc/providers/kysely-management.mjs',import.meta.url),'utf8');
-  const gateway=readFileSync(new URL('../app/loc/gateway/sql-handler.ts',import.meta.url),'utf8');
-  assert.match(management,/fixedSchema\.models\[modelName\]\?\.idFields/);
-  assert.match(management,/modelName\|\|\(table==='manage'/);
-  assert.match(management,/if\(modelName&&\!\(modelName==='Manage'/);
-  assert.match(gateway,/withFixedPolicyWrite\(db,target,body,role,claims/);
-  assert.match(gateway,/fixedPolicyWriteModel\(target,body,role,claims\)/);
-  assert.match(gateway,/executeManagedKyselyWrite\(trx,body,\{modelName\}\)/);
-  assert.match(gateway,/if\(!await canManageLoc\(trx,"global"\)\)/);
-  const runtime=readFileSync(new URL('../app/loc/providers/kysely-runtime.mjs',import.meta.url),'utf8');
-  assert.match(runtime,/buildKyselyMutationQuery\(trx,input,\{dialect,namespace,modelName\}\)/);
-  assert.match(runtime,/const fullTable=databaseTable\(req,dialect,namespace,modelName\)/);
 });
 
 test('all managed Registry, Galaxy, Anchor and Blocks updates derive primary keys without SQL',async()=>{

@@ -1,5 +1,4 @@
 import test from 'node:test';
-import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import {bindLocAuthorization,canManageLoc,locManageRows} from '../app/loc/providers/loc-authorization.mjs';
 
@@ -115,16 +114,6 @@ test('management entry returns inherited Group children without granting global 
   assert.deepEqual(rows.map(row=>row.id).sort(),['alpha','org']);
   assert.ok(rows.every(row=>row.email==='owner@example.org'&&row.allowed));
   assert.equal(await canManageLoc(db,'global'),false);
-});
-
-test('Gateway derives Group hierarchy server-side from api.manage, never request body',()=>{
-  const handler=fs.readFileSync('app/loc/gateway/sql-handler.ts','utf8');
-  const browser=fs.readFileSync('app/loc/providers/loc-gateway.mjs','utf8');
-  assert.match(handler,/async function trustedManagementScopeTree/);
-  assert.match(handler,/control\.selectFrom\('api\.manage'\)/);
-  assert.match(handler,/loadScopeTree:\(\)=>trustedManagementScopeTree\(trx,target\)/);
-  assert.match(browser,/request\.actions\?\.includes\('manage'\)/);
-  assert.match(browser,/name:'manage',args:\{p_type:'self'\}/);
 });
 
 test('Management membership is read only for display, not for authorization',async()=>{

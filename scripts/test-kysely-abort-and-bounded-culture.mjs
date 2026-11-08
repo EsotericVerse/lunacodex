@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {createKyselyEdgeClient} from '../app/loc/providers/kysely-edge.mjs';
+import {createDirectDataApiClient} from '../app/loc/providers/direct-data-api.mjs';
 import {mapBounded} from '../app/loc/bounded-parallel.mjs';
 
-const ok=()=>new Response(JSON.stringify({data:[{uid:'aB12cD34'}]}),{
+const ok=()=>new Response(JSON.stringify([{uid:'aB12cD34'}]),{
   status:200,headers:{'content-type':'application/json'}
 });
 
@@ -12,8 +12,8 @@ test('already-cancelled anonymous query never opens HTTP',async()=>{
   let fetches=0;
   const controller=new AbortController();
   controller.abort();
-  const db=createKyselyEdgeClient({
-    gatewayUrl:'https://db-gateway.example/v1/sql',role:'anon',
+  const db=createDirectDataApiClient({
+    url:'https://public.example.net/rest/v1',apiKey:'public-read-key',role:'anon',
     fetch:async()=>{fetches++;return ok()}
   });
   await assert.rejects(
@@ -28,8 +28,8 @@ test('in-flight query cancels its real HTTP fetch signal',async()=>{
   const controller=new AbortController();
   let started,signal;
   const entered=new Promise(resolve=>{started=resolve});
-  const db=createKyselyEdgeClient({
-    gatewayUrl:'https://db-gateway.example/v1/sql',role:'anon',
+  const db=createDirectDataApiClient({
+    url:'https://public.example.net/rest/v1',apiKey:'public-read-key',role:'anon',
     fetch:async(_url,options)=>{
       signal=options.signal;
       return new Promise((_resolve,reject)=>{
@@ -53,8 +53,8 @@ test('cancelled query waiting in the public budget never sends HTTP',async()=>{
   let release;
   const hold=new Promise(resolve=>{release=resolve});
   let fetches=0;
-  const db=createKyselyEdgeClient({
-    gatewayUrl:'https://db-gateway.example/v1/sql',role:'anon',
+  const db=createDirectDataApiClient({
+    url:'https://public.example.net/rest/v1',apiKey:'public-read-key',role:'anon',
     fetch:async()=>{fetches++;await hold;return ok()}
   });
   const active=Array.from({length:3},()=>Promise.resolve(
@@ -88,17 +88,14 @@ test('bounded multi-Scope reads preserve order and stop burst fan-out',async()=>
 test('time-window and group readers use bounded independent lanes',()=>{
   const culture=readFileSync(new URL('../app/loc/culture-query.js',import.meta.url),'utf8');
   const galaxy=readFileSync(new URL('../app/loc/galaxy-query.js',import.meta.url),'utf8');
-  const gateway=readFileSync(new URL('../app/loc/gateway/sql-handler.ts',import.meta.url),'utf8');
   assert.match(culture,/mapBounded\(windows,2,/);
   assert.match(culture,/mapBounded\(managedScopes,2,/);
   assert.match(culture,/mapBounded\(scopes,2,/);
   assert.match(galaxy,/mapBounded\(Array\.isArray\(scopes\)\?scopes:\[\],2,/);
-  assert.match(gateway,/if\(selectedRouteInFlight\)return selectedRouteInFlight;/);
-  assert.match(gateway,/if\(revision===selectedRouteRevision\)/);
 });
 
 
-test('gateway public queue cannot exceed 10 concurrent slots',async()=>{
+test('shared public read budget cannot exceed 10 concurrent slots',async()=>{
   const {createPublicReadBudget}=await import('../app/loc/providers/kysely-read-budget.mjs');
   let active=0,maximum=0;
   const budget=createPublicReadBudget(500);
@@ -111,9 +108,3 @@ test('gateway public queue cannot exceed 10 concurrent slots',async()=>{
   assert.equal(items.length,40);
 });
 
-test('MCP search is content-only and ordered by indexed Galaxy date',()=>{
-  const gateway=readFileSync(new URL('../app/loc/gateway/sql-handler.ts',import.meta.url),'utf8');
-  assert.ok(gateway.includes('where content ilike '));
-  assert.ok(gateway.includes('order by date desc nulls last limit'));
-  assert.ok(!gateway.includes('where (title ilike '));
-});

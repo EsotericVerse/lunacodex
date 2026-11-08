@@ -92,7 +92,23 @@ export function checkLocScopeBoundary(migrations=[]){
   return {checked:migrations.length};
 }
 
+// Build-time hard stop: neither production nor transitive dependency graph may
+// reinstall a Supabase or Clerk SDK. Native LOC Auth and Kysely remain separate.
+export function checkProhibitedVendorDependencies(packageJson,lockJson){
+  const pkg=JSON.parse(packageJson),lock=JSON.parse(lockJson);
+  const bad=name=>/^(?:@supabase\/|@clerk\/|supabase(?:-|$)|clerk(?:-|$))/i.test(name);
+  const declared=Object.entries(pkg)
+    .filter(([section])=>['dependencies','devDependencies','optionalDependencies','peerDependencies'].includes(section))
+    .flatMap(([,dependencies])=>Object.keys(dependencies||{})).filter(bad);
+  const installed=Object.keys(lock.packages||{})
+    .filter(path=>/^(?:node_modules\/)(?:@supabase\/|@clerk\/|supabase(?:-|$)|clerk(?:-|$))/i.test(path));
+  if(declared.length||installed.length)
+    throw Error('Forbidden vendor Auth/Data SDK dependencies: '+[...declared,...installed].join(', '));
+  return {declared:0,installed:0};
+}
+
 if(process.argv[1]&&fileURLToPath(import.meta.url)===process.argv[1]){
+  checkProhibitedVendorDependencies(read('package.json'),read('package-lock.json'));
   const result=checkDbContract(read(databaseContract),read(databaseClient));
   const migrationDir=new URL('../supabase/migrations/',import.meta.url);
   const migrationFiles=readdirSync(migrationDir)

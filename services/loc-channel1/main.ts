@@ -8,4 +8,4 @@ catch{throw Error('Invalid LOC SQL connection configuration');}
 if(!profiles||Array.isArray(profiles)||typeof profiles!=='object'||
  profiles[alias]?.engine!=='postgres'||!profiles[alias]?.url)
  throw Error('LOC Channel 1 PostgreSQL connection is unavailable');
-await import('../../app/loc/gateway/channel1-receiver.ts');
+await import('../../app/loc/import/channel1-receiver.ts');

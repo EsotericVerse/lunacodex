@@ -1,6 +1,6 @@
 # LOC Channel 1 independent receiver
 
-The canonical receiver is `app/loc/gateway/channel1-receiver.ts`.
+The canonical receiver is `app/loc/import/channel1-receiver.ts`.
 This is a narrowly scoped Channel 1 ingestion receiver, not a generic SQL
 query service. It must never depend on the retired LOC SQL Gateway. The
 historical provider Edge entry, if still running, is a cutover liability;

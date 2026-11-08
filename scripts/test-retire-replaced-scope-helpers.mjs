@@ -15,12 +15,3 @@ test('replaced legacy Scope helper SQL functions retire safely',()=>{
   assert.doesNotMatch(migration,/\b(?:DROP TABLE|TRUNCATE|DELETE FROM|CASCADE)\b/i);
 });
 
-test('current Kysely duplicate and site correction operations remain callable',()=>{
-  const managed=source('app/loc/providers/kysely-management.mjs');
-  const edge=source('app/loc/gateway/sql-handler.ts');
-  const contract=source('app/loc/db-contract.mjs');
-  assert.match(managed,/if\(name==='find_galaxy_duplicates'\)/);
-  assert.match(managed,/if\(name==='rename_scope_site_batch'\)/);
-  assert.match(contract,/managedAction\(\s*'find_galaxy_duplicates'/);
-  assert.match(edge,/executeManagedKyselyAction/);
-});

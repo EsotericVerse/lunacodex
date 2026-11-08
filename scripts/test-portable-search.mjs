@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {portableContainsSpec,portableContainsTerm,parsePortableOrExpression} from '../app/loc/providers/portable-search.mjs';
+import {runInNewContext} from 'node:vm';
 import {isTextSearchQuery} from '../app/loc/providers/search-qos.mjs';
 
 test('CJK literal search does not introduce LOWER on Galaxy.content',()=>{
@@ -17,7 +18,7 @@ test('LIKE punctuation is literal, not user-controlled wildcards',()=>{
   assert.equal(portableContainsTerm('a"b\\c'),'a\\"b\\\\c');
   assert.equal(portableContainsTerm('a\nb'),'a b');
 });
-test('SQL gateway contains uses parameterized cross-dialect LIKE with explicit ESCAPE',()=>{
+test('Native Kysely contains uses parameterized cross-dialect LIKE with explicit ESCAPE',()=>{
   const sql=readFileSync(new URL('../app/loc/providers/kysely-runtime.mjs',import.meta.url),'utf8');
   assert.match(sql,/contains:'contains'/);
   assert.match(sql,/containsPredicate\(column,term\)/);
@@ -28,10 +29,10 @@ test('SQL gateway contains uses parameterized cross-dialect LIKE with explicit E
 });
 test('article search routes advanced AND OR excludes through contains',()=>{
   const search=readFileSync(new URL('../app/loc/galaxy-query.js',import.meta.url),'utf8');
-  const transport=readFileSync(new URL('../app/loc/providers/kysely-edge.mjs',import.meta.url),'utf8');
+  const transport=readFileSync(new URL('../app/loc/providers/direct-data-api.mjs',import.meta.url),'utf8');
   assert.match(search,/\.contains\./);
   assert.match(search,/query\.not\(field,'contains',term\)/);
-  assert.match(transport,/contains\(column,value\)/);
+  assert.match(transport,/contains\(c,v\)/);
   const qos=readFileSync(new URL('../app/loc/providers/search-qos.mjs',import.meta.url),'utf8');
   assert.match(qos,/contains/);
   assert.doesNotMatch(search,/field\+'\.ilike/);
@@ -63,3 +64,24 @@ test('shared OR parsing preserves punctuation, nested precedence, and text value
   assert.throws(()=>parsePortableOrExpression('content;drop.contains."x"'),/Unsupported OR filter/);
 });
 
+test('local SQLite compiles the same parameterized contains and nested OR logic',()=>{
+  const source=readFileSync(new URL('../app/loc/providers/local-sqlite.mjs',import.meta.url),'utf8');
+  const start=source.indexOf('const IDENT=/');
+  const end=source.indexOf('// -- Chainable query builder',start);
+  assert.ok(start>=0&&end>start);
+  const api=runInNewContext(source.slice(start,end)+'\n({compileFilter,compileLocalOr})',
+    {portableContainsSpec,parsePortableOrExpression});
+  const simple=api.compileFilter('content','contains','黑刃%_!');
+  assert.equal(simple.sql,'"content" LIKE ? ESCAPE \'!\'');
+  assert.deepEqual([...simple.params],['%黑刃!%!_!!%']);
+  const english=api.compileFilter('content','contains','Dark Jazz');
+  assert.equal(english.sql,'lower("content") LIKE ? ESCAPE \'!\'');
+  assert.deepEqual([...english.params],['%dark jazz%']);
+  const compound=api.compileLocalOr(parsePortableOrExpression(
+    'and(or(content.contains."黑刃",content.contains."混沌"),date.gte.2026-01-01)'
+  ));
+  assert.equal(compound.sql,'((("content" LIKE ? ESCAPE \'!\' OR "content" LIKE ? ESCAPE \'!\') AND "date">=?))');
+  assert.deepEqual([...compound.params],['%黑刃%','%混沌%','2026-01-01']);
+  assert.throws(()=>api.compileFilter('content;drop','contains','x'),/Invalid column/);
+  assert.match(source,/or\(expr\)\{state\.orFilters\.push\(parsePortableOrExpression\(expr\)\)/);
+});

@@ -1,4 +1,4 @@
-// LOC's default control database is identified by a trusted SQL Gateway alias.
+// LOC's default control database is a server-owned Kysely Driver connection alias.
 // Personal database selections are stored in LOC Auth and take effect without
 // rebuilding or redeploying the website. No provider URL or credential lives here.
 export const DATABASE_ACCESS_LIST=Object.freeze([

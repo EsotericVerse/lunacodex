@@ -11,7 +11,7 @@ const sourceTargets=Object.freeze(Object.fromEntries(
     engine:item.engine,connection_alias:item.connection_alias
   })])
 ));
-// Only a trusted Deno SQL service can override the deployed browser's target.
+// Only trusted server-side configuration can select a database profile; this is not a SQL relay.
  // LOC_CONTROL_DB_ALIAS selects a server-owned connection profile; it is never
  // accepted from a request or exposed as a browser-selected database.
 const serverControlAlias=typeof Deno!=='undefined'

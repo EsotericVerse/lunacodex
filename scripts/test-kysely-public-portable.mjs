@@ -2,22 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const gateway=fs.readFileSync('app/loc/gateway/sql-handler.ts','utf8');
 const publicProvider=fs.readFileSync('app/loc/providers/kysely-public.mjs','utf8');
 
 test('cross-engine public actions use native Kysely, never old RPC',()=>{
-  assert.match(gateway,/body\.kind==="public-action".*executeKyselyPublicAction\(trx,body/);
   assert.match(publicProvider,/introspection\.getTables\(/);
   assert.doesNotMatch(publicProvider,/to_regclass\(/);
 });
-
-test('public-action on MySQL and SQL Server is routed before the private query ACL',()=>{
-  const portable=gateway.slice(gateway.indexOf('if(target.provider==="custom"'));
-  assert.match(portable,/body\.kind==="public-action"/);
-  assert.ok(portable.indexOf('body.kind==="public-action"')<
-    portable.indexOf('authorizeCrossEngineQuery(trx,body'));
-});
-
 
 function publicExecutor(){
   const build=new Function('sql','portableRelation',
@@ -90,14 +80,6 @@ test('two-table SQL installation boots without manage, loc or any RPC',async()=>
   assert.equal(metadataReads,1);
 });
 
-
-test('configured public bootstrap reaches selected SQL target, not Supabase control',()=>{
-  const control=gateway.slice(gateway.indexOf('// LOC registry, user settings'),
-    gateway.indexOf('let target=controlTarget',gateway.indexOf('// LOC registry, user settings')));
-  assert.doesNotMatch(control,/controlPublic\.has\(/);
-  const publicGate=gateway.slice(gateway.indexOf('if(target.provider==="custom"||target.engine!=="postgres")'));
-  assert.match(publicGate,/body\.kind==="public-action"/);
-});
 
 test('point search returns canonical lng/lat coordinates and supports legacy keys',()=>{
   const locationSql=publicProvider.slice(publicProvider.indexOf('const anchor=sql.ref('),

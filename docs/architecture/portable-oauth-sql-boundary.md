@@ -22,15 +22,19 @@
   泛用 `/v1/sql`、獨立 SQL Gateway Worker／Container、
   Supabase Edge 與任何改名後的等價 SQL 中轉器。
 
-## 正在移除的舊實作
+## 已退役的實作（2026-11-08）
 
-#1248 誤把網站的 `configured.mjs` 和 server numeric reader
-改回獨立 Gateway 優先；本次以主分支先前可工作的公開資料來源
-恢復，並刪除兩套未部署獨立 SQL 服務和專用 Dockerfile。
+獨立 SQL Gateway 及其專用 HTTP Client 已從正式來源移除：
+`app/loc/gateway/sql-handler.ts`、`runtime-database-target.mjs`、
+`edge-runtime-compat.mjs`、`app/loc/providers/loc-gateway.mjs`、
+`app/loc/providers/kysely-edge.mjs`。
 
-舊 `app/loc/gateway/`、`loc-gateway.mjs`、`kysely-edge.mjs`、
-Auth／MCP 裡的 Gateway URL 與部署測試，仍需隨原生應用程式後端的
-功能移轉同步移除；**不得再從這些舊檔案建立新的 SQL 中轉器**。
+唯一仍保留的 Channel 1 固定業務匯入器已移至
+`app/loc/import/channel1-receiver.ts`，以 Kysely 直接執行已核准的
+匯入操作，**不能作為通用 SQL 通道**。
+
+建置期 `scripts/check-db-contract.mjs` 禁止任何直接或間接
+`@supabase/*`、`@clerk/*` SDK 相依；不得再安裝。
 
 網站目前仍有直接公開 Data API 的暫時讀取路線，這不是最終
 Kysely Driver 完工狀態。不可先砍斷這個現役公開入口造成 404；

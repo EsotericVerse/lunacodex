@@ -1,9 +1,9 @@
 import {MAX_MULTIPARA} from '../bounded-parallel.mjs';
 
-// All anonymous Kysely readers in one browser runtime share the same budget.
+// All public browser readers share one bounded request budget.
 // Limit burst fan-out without touching authenticated writes or adding retries.
-export const MAX_PUBLIC_GATEWAY_READS=3;
-export function createPublicReadBudget(max=MAX_PUBLIC_GATEWAY_READS){
+export const MAX_PUBLIC_READS=3;
+export function createPublicReadBudget(max=MAX_PUBLIC_READS){
   if(!Number.isSafeInteger(max)||max<1)throw new RangeError('Invalid public read concurrency');
   max=Math.min(max,MAX_MULTIPARA);
   let active=0;
