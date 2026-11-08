@@ -12,61 +12,85 @@ export const classNames=values=>[...new Set((Array.isArray(values)?values:[])
   .map(value=>String(value??'').trim()).filter(Boolean))];
 const key=value=>String(value??'').trim().normalize('NFKC').toLocaleLowerCase();
 
-// Construct one tree, not a parallel source-only classification engine.
-// Keys are UI identities, not persisted UIDs or new Anchor types.
-export function sourceTreeFromArrays(systemNames=[],personalNames=[],{
-  universe='loc',galaxy='loc'
+// A single nonphysical projection of the existing Source ZModel:
+// loc (Universe) -> loc (Galaxy) -> Default / Scope Domain -> From.
+// The Default leaves come from silver.loc.DefaultArticleClass, while each
+// Scope Domain / From comes from its *existing* saved Anchor UIDs. Virtual
+// keys distinguish unpersisted parents; they are NOT fabricated Anchor UIDs.
+export function sourceTreeFromCatalog(systemNames=[],entries=[],{
+  universe='loc',galaxy='loc',scopeId='lo3rwang',domainUid='',includeSystem=true
 }={}){
-  const system=classNames(systemNames);
-  const known=new Set(system.map(key));
-  const personal=classNames(personalNames).filter(name=>!known.has(key(name)));
+  if(!Array.isArray(entries))throw new Error('Source catalogue must be an array');
   const root={type:'universe',keyword_type:'category',key:'universe:'+universe,
     name:universe,children:[]};
-  const galaxyNode={type:'galaxy',keyword_type:'class',key:'galaxy:'+galaxy,
+  const parent={type:'galaxy',keyword_type:'class',key:'galaxy:'+galaxy,
     name:galaxy,parent:root.key,children:[]};
-  root.children.push(galaxyNode.key);
-  const nodes=[root,galaxyNode];
-  const append=(label,sourceNames)=>{
-    if(!sourceNames.length)return;
-    const domain={type:'domain',keyword_type:'group',
-      key:'domain:'+galaxy+':'+label,name:label,parent:galaxyNode.key,children:[]};
-    galaxyNode.children.push(domain.key);
-    nodes.push(domain);
-    sourceNames.forEach(name=>{
-      const from={type:'from',keyword_type:'item',
-        key:'from:'+galaxy+':'+key(name),name,parent:domain.key,
-        children:[],site:name};
-      domain.children.push(from.key);
-      nodes.push(from);
-    });
+  root.children.push(parent.key);
+  const nodes=[root,parent],used=new Set();
+  const append=(kind,name,leaves,uid='')=>{
+    if(kind==='scope'&&scopeId==='loc')return;
+    if(uid&&!/^[A-Za-z0-9]{8}$/.test(uid))
+      throw new Error('Invalid persisted Domain UID');
+    const physical=kind==='scope'&&/^[A-Za-z0-9]{8}$/.test(uid);
+    const domain={
+      type:'domain',keyword_type:'group',
+      key:physical?'domain:'+scopeId+':'+uid:'domain:'+galaxy+':'+name,
+      ...(physical?{uid}:{}),name,parent:parent.key,
+      source_scope:kind==='system'?'loc':scopeId,domain_kind:kind,children:[]
+    };
+    parent.children.push(domain.key);nodes.push(domain);
+    for(const leaf of leaves){
+      const site=String(leaf?.name??leaf?.site??'').trim();
+      const label=String(leaf?.label??site).trim();
+      if(!site||!label)throw new Error('Invalid From source');
+      const identity=key(site);
+      if(used.has(identity))throw new Error('Duplicate source across Domains: '+site);
+      used.add(identity);
+      const realUid=String(leaf?.uid||'');
+      if(realUid&&!/^[A-Za-z0-9]{8}$/.test(realUid))
+        throw new Error('Invalid persisted From UID');
+      const from={
+        type:'from',keyword_type:'item',
+        key:realUid?'from:'+scopeId+':'+realUid:
+          'from:'+(kind==='system'?'loc':scopeId)+':'+identity,
+        ...(realUid?{uid:realUid}:{}),
+        name:site,label,parent:domain.key,children:[],site,
+        source_scope:kind==='system'?'loc':scopeId,domain_kind:kind
+      };
+      domain.children.push(from.key);nodes.push(from);
+    }
   };
-  append('system',system);
-  append('personal',personal);
+  if(includeSystem)append('system','Default',classNames(systemNames).map(name=>({name})));
+  append('scope',scopeId,entries,domainUid);
   return nodes;
 }
-
-// The legacy Culture/Statistics selector format is a projection of the tree.
-// No extra category JSONB, alias table or article-list rows are created.
-export function sourceTaxonomyFromArrays(systemNames=[],personalNames=[]){
-  const tree=sourceTreeFromArrays(systemNames,personalNames);
-  const leaves=tree.filter(node=>node.type==='from');
-  const system=leaves.filter(node=>node.parent.endsWith(':system'));
-  const personal=leaves.filter(node=>node.parent.endsWith(':personal'));
-  const categories=system.map(node=>({
-    category_code:key(node.name),display_name:node.name,enabled:true
-  }));
-  const aliases=system.map(node=>({
-    source_key:key(node.site),category_code:key(node.name)
-  }));
-  const groups=personal.map(node=>({
-    group_code:key(node.name),display_name:node.name,enabled:true
-  }));
-  const groupAliases=personal.map(node=>({
-    source_key:key(node.site),group_code:key(node.name)
-  }));
-  return {categories,aliases,groups,groupAliases};
+export function sourceTreeFromArrays(systemNames=[],personalNames=[],options={}){
+  const system=classNames(systemNames),known=new Set(system.map(key));
+  const entries=classNames(personalNames)
+    .filter(name=>!known.has(key(name))).map(name=>({name}));
+  return sourceTreeFromCatalog(system,entries,options);
 }
-
+// Read-only taxonomy for the existing chart and selection API. A From title
+// remains the Galaxy.site comparison key. No count, article UID or secondary
+// source registry is computed from the Source tree.
+function sourceTaxonomyFromTree(tree){
+  const leaves=tree.filter(row=>row.type==='from');
+  const system=leaves.filter(row=>row.domain_kind==='system');
+  const personal=leaves.filter(row=>row.domain_kind==='scope');
+  return {
+    categories:system.map(row=>({category_code:key(row.site),
+      display_name:row.label,enabled:true})),
+    aliases:system.map(row=>({source_key:key(row.site),
+      category_code:key(row.site)})),
+    groups:personal.map(row=>({group_code:key(row.site),
+      display_name:row.label,enabled:true})),
+    groupAliases:personal.map(row=>({source_key:key(row.site),
+      group_code:key(row.site)}))
+  };
+}
+export function sourceTaxonomyFromArrays(systemNames=[],personalNames=[]){
+  return sourceTaxonomyFromTree(sourceTreeFromArrays(systemNames,personalNames));
+}
 // Keep short actual Galaxy.site codes distinct from presentation names.
 // This is an ordinary string normalization, not a new source alias registry.
 export function sourceSiteKeyForLabel(label){
@@ -104,17 +128,7 @@ export function sourceTreeFromAnchors(rows=[]){
 // Public and statistics projections use the From Anchor's immutable source
 // key (title) for matching and its independently editable label for display.
 // Never infer Galaxy.site from the display label once an Anchor exists.
-export function sourceTaxonomyFromCatalog(systemNames=[],entries=[]){
-  if(!Array.isArray(entries))throw new Error('Source catalog entries must be an array');
-  const base=sourceTaxonomyFromArrays(systemNames,[]);
-  const seen=new Set();
-  for(const entry of entries){
-    const site=key(entry?.name??entry?.site);
-    const label=String(entry?.label??entry?.name??entry?.site??'').trim();
-    if(!site||!label||seen.has(site))throw new Error('Invalid or duplicate From source');
-    seen.add(site);
-    base.groups.push({group_code:site,display_name:label,enabled:true});
-    base.groupAliases.push({source_key:site,group_code:site});
-  }
-  return base;
+export function sourceTaxonomyFromCatalog(systemNames=[],entries=[],options={}){
+  const tree=sourceTreeFromCatalog(systemNames,entries,options);
+  return {...sourceTaxonomyFromTree(tree),tree};
 }

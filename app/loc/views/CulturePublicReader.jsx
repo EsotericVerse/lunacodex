@@ -11,7 +11,7 @@ import {selectGalaxyIdentity} from '../galaxy-query';
 import ScopeLink from '../../modular/ScopeLink';
 import {scopeHref} from '../../modular/scope-registry';
 import {sourceLabelMatchesSite} from '../source-classification.mjs';
-import {PUBLISHED_SOURCE_LISTS,PUBLISHED_SOURCE_ENTRIES} from '../../modular/published-source-taxonomy.js';
+import {publishedSourceTaxonomy} from '../../modular/published-source-taxonomy.js';
 import {indexZModelAnchorHierarchy} from '../../../zenstack/anchor-hierarchy.mjs';
 
 const CultureTimeline=dynamic(()=>import('../../modular/modules/culture-timeline/CultureTimeline'),{loading:()=>null});
@@ -119,18 +119,33 @@ function anchorModel(rows,start,end,expanded){
   }
   return {items,groups};
 }
-function sourceModel(rows,systemNames,personalNames,expanded,start,end){
+function sourceModel(rows,taxonomy,expanded,start,end){
   const names=[...new Set(list(rows).map(row=>String(row.site||'')))];
-  // Source names may include the owner's human-readable label
-  // (e.g. 方格子vocus) while Galaxy.site stores the short canonical key.
-  const matches=(site,configured)=>configured.some(label=>sourceLabelMatchesSite(site,label));
-  const roots=[{
-    id:'system',label:'系統分類',
-    sites:names.filter(site=>!systemNames.length||matches(site,systemNames))
-  },{
-    id:'personal',label:'個人分類',
-    sites:names.filter(site=>matches(site,personalNames))
-  }];
+  const tree=Array.isArray(taxonomy?.tree)?taxonomy.tree:[];
+  const froms=new Map(tree.filter(node=>node.type==='from')
+    .map(node=>[node.key,node]));
+  const linked=new Set(),roots=[];
+  for(const domain of tree.filter(node=>node.type==='domain')){
+    const leaves=(domain.children||[]).map(id=>froms.get(id)).filter(Boolean);
+    const sites=names.filter(site=>{
+      const belongs=leaves.some(from=>sourceLabelMatchesSite(site,from.site));
+      if(belongs)linked.add(site);
+      return belongs;
+    });
+    roots.push({id:domain.key,label:domain.name,sites,
+      labels:new Map(sites.map(site=>[
+        site,leaves.find(from=>sourceLabelMatchesSite(site,from.site))?.label||site
+      ]))});
+  }
+  // The standalone Keyword river has keyword Group labels rather than
+  // Source From UIDs; it is not projected onto the Source hierarchy.
+  if(!tree.length)roots.push({id:'keyword',label:'關鍵詞',sites:names,labels:new Map()});
+  if(tree.length){
+    const unknown=names.filter(site=>!linked.has(site));
+    if(unknown.length)roots.push({
+      id:'unclassified',label:'未分類',sites:unknown,labels:new Map()
+    });
+  }
   const groups=[],items=[],sites=[];
   const max=Math.max(1,...rows.map(row=>Number(row.item_count)||0));
   for(const root of roots){
@@ -154,18 +169,19 @@ function sourceModel(rows,systemNames,personalNames,expanded,start,end){
       continue;
     }
     for(const site of root.sites){
+      const label=root.labels.get(site)||site;
       const key=root.id+':'+site;
       const count=rows.filter(row=>String(row.site)===site)
         .reduce((sum,row)=>sum+Number(row.item_count||0),0);
-      groups.push({id:'site:'+key,label:'　'+site+' ('+count+')',
+      groups.push({id:'site:'+key,label:'　'+label+' ('+count+')',
         selectable:true,order:groups.length});
-      sites.push({key,site,root:root.id,count});
+      sites.push({key,site,root:root.id,count,label});
       for(const row of rows){
         if(String(row.site)!==site||row.day<start||row.day>end)continue;
         items.push({id:'site:'+key+':'+row.day,entry_type:'source',
-          group_key:'site:'+key,group_label:site,start_date:row.day,
+          group_key:'site:'+key,group_label:label,start_date:row.day,
           item_count:Number(row.item_count||0),density_ratio:Number(row.item_count||0)/max,
-          display_label:'',title:row.day+' · '+site+' · '+row.item_count});
+          display_label:'',title:row.day+' · '+label+' · '+row.item_count});
       }
     }
   }
@@ -179,14 +195,11 @@ async function analytics(scope,view,start,end,options={}){
   return Array.isArray(data)?data:[];
 }
 async function sourceCatalog(scope){
-  const published=PUBLISHED_SOURCE_LISTS[scope];
-  if(published){
-    // A published site never reads private Scope Anchor data on page load.
-    // From.name, not the editable display label, identifies Galaxy.site.
-    return {system:published.system||[],
-      personal:(PUBLISHED_SOURCE_ENTRIES[scope]||[]).map(item=>item.name)};
-  }
-  throw new Error('來源分類尚未發布');
+  // The published Source ZModel is the same tree used by Statistics and
+  // the authorized management catalog. No private Anchor SELECT on page load.
+  const published=publishedSourceTaxonomy(scope);
+  if(!published)throw new Error('來源分類尚未發布');
+  return published;
 }
 export default function CulturePublicReader(){
   const {scopeId}=useScopeRuntime();
@@ -293,8 +306,8 @@ export default function CulturePublicReader(){
   const anchorRiver=useMemo(()=>anchorModel(anchors,start,today,expandedEras),
     [anchors,start,today,expandedEras]);
   const densityRiver=useMemo(()=>densityMode==='keyword'
-    ?sourceModel(keywordDaily,[],[],expandedSources,rangeStart,rangeEnd)
-    :sourceModel(daily,catalog.system,catalog.personal,expandedSources,rangeStart,rangeEnd),
+    ?sourceModel(keywordDaily,null,expandedSources,rangeStart,rangeEnd)
+    :sourceModel(daily,catalog,expandedSources,rangeStart,rangeEnd),
     [densityMode,keywordDaily,daily,catalog,expandedSources,rangeStart,rangeEnd]);
   const resetArticles=(site='',categoryKey='')=>{
     sequence.current+=1;setSelectedSite(site);setSelectedCategoryKey(categoryKey);setArticlesOpen(false);

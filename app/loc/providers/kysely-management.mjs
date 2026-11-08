@@ -1,6 +1,7 @@
 import {canManageLoc,locManageRows} from './loc-authorization.mjs';
 import {schema as fixedSchema} from '../../../zenstack/schema.mjs';
 import {indexZModelAnchorHierarchy} from '../../../zenstack/anchor-hierarchy.mjs';
+import {sourceTreeFromCatalog} from '../source-classification.mjs';
 import {validateLocRegistryDomain} from './loc-domain.mjs';
 import {sql} from 'npm:kysely@0.29.8';
 import {saveBlocksKysely} from './kysely-blocks.mjs';
@@ -406,7 +407,21 @@ async function sourceCatalogAction(trx,args,save=false){
     records.push({scopeid:id,domain:domain?{uid:domain.uid,title:domain.title}:null,
       sources:sources.map(row=>({uid:row.uid,name:row.title,label:row.description||row.title}))});
   }
-  return {universe:'Eosteric',galaxy:'LOC',system,scopes:records};
+  // Join only presentation metadata across Scope partitions. Persisted
+  // Domain/From UIDs stay local to their owning Scope; unpersisted loc
+  // Universe/Galaxy/Default nodes have stable UI keys, not fake Anchor UIDs.
+  const tree=sourceTreeFromCatalog(system,[],{scopeId:'loc'});
+  const galaxyNode=tree.find(node=>node.type==='galaxy');
+  for(const record of records){
+    const branch=sourceTreeFromCatalog([],record.sources,{
+      scopeId:record.scopeid,domainUid:record.domain?.uid||'',includeSystem:false
+    });
+    const sourceDomain=branch.find(node=>node.type==='domain');
+    if(!sourceDomain)continue;
+    galaxyNode.children.push(sourceDomain.key);
+    tree.push(...branch.filter(node=>node.type==='domain'||node.type==='from'));
+  }
+  return {universe:'loc',galaxy:'loc',system,scopes:records,tree};
 }
 
 const ACTIONS=new Set(['read_source_catalog','save_scope_sources','read_group_members','update_group_member_name',

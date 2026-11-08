@@ -36,7 +36,19 @@ test('site is never replaced with display label and aliases come from one rule',
   assert.equal(sourceLabelMatchesSite('facebook','Facebook'),true);
   const published=publishedSourceTaxonomy('lo3rwang');
   assert.ok(published.tree.find(row=>row.type==='universe'));
-  assert.ok(published.tree.find(row=>row.type==='galaxy'&&row.name==='LOC'));
+  assert.ok(published.tree.find(row=>row.type==='galaxy'&&row.name==='loc'));
+  const defaultDomain=published.tree.find(row=>row.type==='domain'&&row.name==='Default');
+  const ownDomain=published.tree.find(row=>row.type==='domain'&&row.name==='lo3rwang');
+  assert.ok(defaultDomain&&ownDomain);
+  assert.equal(ownDomain.uid,'5dfdb539');
+  assert.equal(published.tree.find(row=>row.type==='from'&&row.name==='kkcity').uid,
+    '47dc42c2');
+  assert.equal(published.tree.find(row=>row.type==='from'&&row.name==='Facebook').parent,
+    defaultDomain.key);
+  assert.equal(published.tree.find(row=>row.type==='from'&&row.name==='Threads').parent,
+    defaultDomain.key);
+  assert.equal(published.tree.find(row=>row.type==='from'&&row.name==='kkcity').parent,
+    ownDomain.key);
   assert.ok(published.groupAliases.some(row=>row.source_key==='vocus'));
   assert.ok(published.groupAliases.some(row=>row.source_key==='wretch'));
   assert.ok(published.groupAliases.some(row=>row.source_key==='others'));
@@ -87,6 +99,10 @@ test('physical From site key is independent from the user-facing label',()=>{
   assert.deepEqual(taxonomy.groups.map(row=>[row.group_code,row.display_name]),
     [['vocus','我的方格子'],['others','其他']]);
   assert.deepEqual(taxonomy.groupAliases.map(row=>row.source_key),['vocus','others']);
-  assert.deepEqual(sourceTaxonomyFromCatalog([],[]),
+  const empty=sourceTaxonomyFromCatalog([],[]);
+  assert.deepEqual({categories:empty.categories,aliases:empty.aliases,
+    groups:empty.groups,groupAliases:empty.groupAliases},
     {categories:[],aliases:[],groups:[],groupAliases:[]});
+  assert.equal(empty.tree[0].name,'loc');
+  assert.equal(empty.tree[1].name,'loc');
 });

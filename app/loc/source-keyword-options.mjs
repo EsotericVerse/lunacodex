@@ -4,6 +4,8 @@
 export function sourceKeywordOptions(taxonomy){
   const choices=[];
   const seen=new Set();
+  const domains=new Map((taxonomy?.tree||[]).filter(node=>node.type==='domain')
+    .map(node=>[node.domain_kind,node.name]));
   for(const [root,rows,codeKey] of [
     ['system',taxonomy?.categories||[],'category_code'],
     ['custom',taxonomy?.groups||[],'group_code']
@@ -14,7 +16,8 @@ export function sourceKeywordOptions(taxonomy){
       const label=String(row?.display_name||code).trim();
       if(!code||!label||seen.has(code.toLocaleLowerCase()))continue;
       seen.add(code.toLocaleLowerCase());
-      choices.push({key:root+':'+code,code,root,label});
+      choices.push({key:root+':'+code,code,root,label,
+        domain:domains.get(root==='system'?'system':'scope')||''});
     }
   }
   return choices;
