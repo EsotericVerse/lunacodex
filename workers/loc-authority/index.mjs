@@ -7,6 +7,7 @@ import {ISSUER,MCP_AUDIENCE,WEB_AUDIENCE,isNativeOAuthPath,handleNativeOAuth,
   verifyNativeOAuth} from './native-oauth.mjs';
 import {runBetterAuthStore} from './better-auth-store.mjs';
 import {handleFirstPartyAuth} from './better-auth-native.mjs';
+import {verifyAuthReference,assertReferencePermission} from './auth-ref.mjs';
 import {validateKeywordCategoryEntry,hashKeywordCategory,assertPublicKeywordClass} from './keyword-categories.mjs';
 import {AUTH_PROVIDER_TYPES,validateAuthProviderSettings,publicAuthProviderSettings}
   from '../../app/loc/auth/auth-provider-settings.mjs';
@@ -57,6 +58,11 @@ function validateTarget(input,id){
     throw fail('Invalid database connection metadata');
   const password=input.password;
   if(password!==undefined&&(typeof password!=='string'||password.length>4096))throw fail('Invalid database secret');
+  const refProvider=String(input.ref_provider||'');
+  const refPermission=String(input.ref_permission||'');
+  if(refProvider&&!AUTH_PROVIDER_TYPES.includes(refProvider)||
+     refPermission&&(!refProvider||!/^[A-Za-z0-9_:@.\/\-]{2,256}$/.test(refPermission)))
+    throw fail('Invalid database Auth Ref requirement',400);
   const selectableByUsers=input.selectable_by_users===true;
  if(input.selectable_by_users!==undefined&&typeof input.selectable_by_users!=='boolean')
   throw fail('Invalid user database selection policy');
@@ -65,6 +71,7 @@ function validateTarget(input,id){
     allowedSubjects.some(x=>!/^loc_[A-Za-z0-9_-]{32,80}$/.test(String(x))))
    throw fail('Invalid database allowed subjects');
  return {id,engine,host,port,database,username,label,authentication,
+  ref_provider:refProvider,ref_permission:refPermission,
   selectable_by_users:selectableByUsers,
   allowed_subjects:[...new Set(allowedSubjects)],
   ...(password?{password}:{})};
@@ -203,6 +210,32 @@ export class LocAuthorityState extends DurableObject {
   async nativeTake(key){return this.ctx.storage.transaction(async t=>{
     const value=await t.get(key);if(value!==undefined)await t.delete(key);return value;
   });}
+  async authRefProfile(type){
+    if(!AUTH_PROVIDER_TYPES.includes(type))throw fail('Unknown Auth Ref',400);
+    const item=await this.ctx.storage.get('auth-provider:'+type);
+    if(!item)throw fail('Auth Ref is not configured',503);
+    return decryptProfile(item.encrypted,this.env.LOC_CONTROL_ENCRYPTION_KEY);
+  }
+  async recordAuthReference(subject,assertion){
+    if(!/^loc_[A-Za-z0-9_-]{32,80}$/.test(String(subject||''))||
+       !AUTH_PROVIDER_TYPES.includes(assertion?.provider)||
+       !Number.isFinite(assertion?.expires)||assertion.expires<=Date.now())
+      throw fail('Invalid Auth Ref assertion',400);
+    await this.ctx.storage.put('auth-ref:'+subject+':'+assertion.provider,assertion);
+    return {provider:assertion.provider,externalSubject:assertion.externalSubject,
+      permissions:assertion.permissions,expires:assertion.expires};
+  }
+  async authReferenceStatus(subject){
+    const rows=await this.ctx.storage.list({prefix:'auth-ref:'+subject+':'});
+    return [...rows.values()].filter(x=>x.expires>Date.now()).map(x=>
+      ({provider:x.provider,externalSubject:x.externalSubject,
+        permissions:x.permissions,expires:x.expires}));
+  }
+  async checkAuthReference(subject,provider,permission=''){
+    const assertion=await this.ctx.storage.get('auth-ref:'+subject+':'+provider);
+    assertReferencePermission(assertion,provider,permission);
+    return true;
+  }
   async nativeProvider(type){
     if(!['github','oidc'].includes(type))throw fail('Unsupported identity provider');
     const item=await this.ctx.storage.get('auth-provider:'+type);
@@ -365,7 +398,13 @@ export class LocAuthorityState extends DurableObject {
     return {selected:id};
   }
   async selectedDatabaseForDelegation(subject,isRoot=false){
-    return (await this.databaseTargetsForUser(subject,isRoot)).selected;
+    const id=(await this.databaseTargetsForUser(subject,isRoot)).selected;
+    if(id){
+      const target=await this.ctx.storage.get('target:'+id);
+      const {ref_provider,ref_permission}=target?.public||{};
+      if(ref_provider)await this.checkAuthReference(subject,ref_provider,ref_permission);
+    }
+    return id;
   }
   async verifyLiveDatabaseSelection(subject,id,isRoot=false){
     return id===await this.selectedDatabaseForDelegation(subject,isRoot);
@@ -1084,6 +1123,22 @@ export default {
       // Identity endpoint is only a verified principal lookup. It grants no
       // data access or management capabilities; the trusted app checks grants.
       if(request.method==='GET'&&url.pathname==='/v1/identity')return json(principal,200,origin);
+      const control=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName(
+        'loc-authority-control-v1'));
+      if(request.method==='GET'&&url.pathname==='/v1/auth/ref/status')
+        return json({references:await control.authReferenceStatus(principal.subject)},200,origin);
+      if(request.method==='POST'&&url.pathname==='/v1/auth/ref/check'){
+        const raw=await request.text();
+        if(raw.length>13000)throw fail('Auth Ref proof is too large',413);
+        let input;try{input=JSON.parse(raw)}catch{throw fail('Invalid Auth Ref request',400)}
+        if(!input||typeof input!=='object'||Array.isArray(input)||
+          Object.keys(input).some(key=>!['provider','credential'].includes(key))||
+          !AUTH_PROVIDER_TYPES.includes(input.provider))
+          throw fail('Invalid Auth Ref provider',400);
+        const profile=await control.authRefProfile(input.provider);
+        const proof=await verifyAuthReference(input.provider,input.credential,profile);
+        return json(await control.recordAuthReference(principal.subject,proof),200,origin);
+      }
       if(request.method==='POST'&&url.pathname==='/v1/delegation')
         return await exchangeLocDelegation(request,env,principal,origin);
       // Account-level database selection is independent for each LOC identity.
@@ -1118,7 +1173,7 @@ export default {
       if(request.method==='GET'&&url.pathname==='/v1/state')return json(await stub.listState(),200,origin);
       if(request.method==='GET'&&url.pathname==='/v1/auth/providers')
         return json(await stub.listAuthProviders(),200,origin);
-      const authMatch=/^\/v1\/auth\/providers\/(github|oidc|entra|ldap|ad)$/.exec(url.pathname);
+      const authMatch=/^\/v1\/auth\/providers\/(github|oidc|entra|ldap|ad|clerk)$/.exec(url.pathname);
       if(request.method==='PUT'&&authMatch){
         const raw=await request.text();
         if(raw.length>12000)throw fail('Request too large',413);
