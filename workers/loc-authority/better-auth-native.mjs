@@ -31,6 +31,27 @@ function state(env){
  if(!env.LOC_AUTHORITY_STATE)throw new Error('LOC Authority state unavailable');
  return env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName('loc-authority-control-v1'));
 }
+async function sendLocVerification(env,{user,url}){
+ const endpoint=String(env.LOC_AUTH_EMAIL_ENDPOINT||'');
+ const token=String(env.LOC_AUTH_EMAIL_TOKEN||'');
+ let address;
+ try{address=new URL(endpoint)}catch{throw new Error('LOC email sender not configured')}
+ if(address.protocol!=='https:'||!address.hostname||address.username||
+   address.password||address.hash||address.search||
+   address.hostname==='localhost'||address.hostname.endsWith('.local')||
+   !/^[A-Za-z0-9_-]{32,256}$/.test(token))
+   throw new Error('LOC email sender configuration invalid');
+ const verifyUrl=new URL(url);
+ if(verifyUrl.origin!==ISSUER||!verifyUrl.pathname.startsWith('/api/auth/verify-email'))
+   throw new Error('LOC email verification origin invalid');
+ const sent=await fetch(address.href,{method:'POST',redirect:'error',
+  headers:{authorization:'Bearer '+token,'content-type':'application/json'},
+  body:JSON.stringify({to:String(user.email||''),subject:'驗證你的 LOC 帳號',
+    verify_url:verifyUrl.href}),
+  signal:AbortSignal.timeout(8000)});
+ if(!sent.ok)throw new Error('LOC email verification delivery unavailable');
+}
+
 export function locBetterAuth(env){
  if(!env.LOC_CONTROL_ENCRYPTION_KEY)
   throw new Error('LOC Auth encryption key unavailable');
@@ -42,6 +63,12 @@ export function locBetterAuth(env){
   trustedOrigins:[ISSUER,WEB],
   database:(options)=>ADAPTER({...options,__locState:stub}),
   emailAndPassword:{enabled:true,minPasswordLength:12,maxPasswordLength:128},
+  emailVerification:{
+   sendOnSignUp:Boolean(env.LOC_AUTH_EMAIL_ENDPOINT),
+   sendOnSignIn:Boolean(env.LOC_AUTH_EMAIL_ENDPOINT),
+   expiresIn:3600,
+   sendVerificationEmail:data=>sendLocVerification(env,data)
+  },
   // A native account must not inherit another issuer's identity or grants.
   account:{accountLinking:{enabled:false}},
   session:{expiresIn:7200,updateAge:1800},
