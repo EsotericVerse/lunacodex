@@ -18,7 +18,7 @@ test('Better Auth is local to LOC; native MCP OAuth and SQL separation remain',(
  assert.match(worker,/runBetterAuthStore\(this\.ctx\.storage,request\)/);
  assert.match(auth,/socialProviders:\{google:\{clientId,clientSecret/);
  assert.match(auth,/emailAndPassword:\{enabled:false\}/);
- assert.match(auth,/\/api\/auth\/(?:sign-up/);
+ assert.match(auth,/LOC password login and registration disabled/);
  assert.match(native,/googleViaBetter\(request,url,stub,env\)/);
  assert.match(native,/sessionFromBetter\(request,env,stub\)/);
  assert.match(native,/native-google-link/);
