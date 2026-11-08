@@ -2,7 +2,7 @@
 // Kysely talks to the database itself. No generic SQL endpoint, arbitrary
 // table/column/operator input, connection URL, or browser-selected driver.
 import {SCOPE_ROUTE_INDEX} from '../../modular/scope-route-index.js';
-import {scopeConfigColumns} from '../scope-config-fields.mjs';
+import {scopeConfigColumns,scopeFeatureEnabled} from '../scope-config-fields.mjs';
 import {directMcpKysely} from '../mcp/native-kysely.mjs';
 
 const FEATURES=new Set(['culture','statics','trace','search']);
@@ -93,6 +93,14 @@ export async function handleNativePublicContent(request,env={},{
         (kind==='totals'&&(Boolean(start)!==Boolean(end)||
           start&&(!DAY.test(start)||!DAY.test(end)||start>end))))))
     return respond({error:'Invalid LOC public content request'},400);
+  // Release-published feature availability is a guest-visible rule; do not
+  // query Manage or open SQL just to decide whether to serve a disabled feature.
+  if(numeric){
+    const published=SCOPE_ROUTE_INDEX.find(row=>row.scope_id===scope);
+    const flag=kind==='culture_density'?'culture_able':'statistics_able';
+    if(!scopeFeatureEnabled(published?.config,flag))
+      return respond({error:'Public feature unavailable'},403);
+  }
   try{
     // Alias and credential are server-owned. An HTTP parameter must never
     // determine the engine, endpoint, connection profile or SQL relation.
