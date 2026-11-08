@@ -2,15 +2,15 @@
 
 > 2026-11-01；依使用者本次明確授權整理。本文按需讀取，`AGENTS.md` 不全文預載路由表。Claude 與 Codex 共享最高判別原則「審時度勢」，不得用某一個 Plugin 的通用流程取代。
 
-## 現行補充入口（2026-11-04）
+## 現行補充入口（2026-11-09）
 
 | 任務 | 優先讀取 |
 |---|---|
 | LOC 需求持續完成與跨對話續作 | 已安裝的 `loc-finish-request`；未提供時依 AGENTS.md 與本表繼續 |
 | SQL、查詢、資料存取與 portable 整合 | [Kysely](../.agents/skills/kysely/SKILL.md) |
-| Auth、登入、Session | [Clerk](../.agents/skills/clerk/SKILL.md)，依任務選同目錄下 clerk-nextjs-patterns、clerk-backend-api、clerk-webhooks、clerk-testing 等相關子技能 |
+| Auth、登入、Session | [LOC 原生 OAuth](../workers/loc-authority/native-oauth.mjs)、[LOC Browser Auth](../app/loc/auth/loc-browser.mjs)；Session／Scope 權限以現行程式與 `AGENTS.md` 為準 |
 
-先檢查當前入口實際存在且可讀；下方歷史路由與清理紀錄不是目前每項能力都存在的保證。按需選一份指引，詳細流程不搬回 AGENTS.md。資料庫授權、部署及中斷恢復語法檢查均以現行 AGENTS.md 與最新使用者指示為準；本索引不擴大授權。Clerk 處理身分驗證，LOC Authority 權責沿用現況；SQL 經既有 Kysely 整合路徑。
+先檢查當前入口實際存在且可讀；下方歷史路由與清理紀錄不是目前每項能力都存在的保證。按需選一份指引，詳細流程不搬回 AGENTS.md。資料庫授權、部署及中斷恢復語法檢查均以現行 AGENTS.md 與最新使用者指示為準；本索引不擴大授權。LOC Auth 採獨立原生身分認證，Clerk／Supabase Auth 不再是 LOC 執行期依賴；SQL 經既有 Kysely 整合路徑。
 
 ## 清理執行範圍
 
@@ -31,20 +31,17 @@
 ## 原 LOC Skill 路由對照（按需查閱）
 
 ### Skill 對應優先層級
-- **Security：** 新 skill/package → `find-skills`；auth/輸入輸出/密鑰相關 → `code-review-expert` 的 `security-checklist.md`（只當檢查清單用，不跑完整 review）；Postgres/Supabase schema → `supabase-postgres-best-practices`；Supabase Auth/Edge/Realtime → `supabase`；MCP server → `mcp-builder`。
-- **Portable：** 寫新程式碼前先找既有實作；改 LOC 詞彙/Scope 邊界/ADR → `domain-modeling`。
+- **Security：** 新 skill/package → `find-skills`；權限／密鑰／認證以 LOC Native Auth 程式及 `AGENTS.md` 為準；SQL／PostgreSQL → Kysely、ZenStack V3 與 `sql-optimization-patterns`；MCP server → `mcp-builder`。不得因技能建議恢復 Clerk／Supabase Auth 或 Supabase Edge。
+- **Portable：** 寫新程式碼前先找既有實作；LOC 詞彙／Scope 邊界／ADR 以 `AGENTS.md` 與 `docs/architecture/` 為準。
 - **Loading/UI：** React/Next.js → `vercel-react-best-practices`；不明原因的錯誤/效能 → Superpowers `systematic-debugging`（本地副本已移除，見下）；N+1/慢查詢 → `sql-optimization-patterns`；元件 API → `vercel-composition-patterns`；視覺/互動 → `ui-ux-pro-max`；驗證有沒有真的動 → `webapp-testing`；宣稱修好前 → Superpowers `verification-before-completion`（本地副本已移除，見下）。
 
 ## Skill 路由表
 
 | Repository skill | Use it for |
 |---|---|
-| `.agents/skills/domain-modeling/SKILL.md` | LOC terminology, Scope/Registry boundaries, glossary, ADRs. |
 | `.agents/skills/vercel-react-best-practices/SKILL.md` | React/Next.js implementation and performance. |
 | `.agents/skills/vercel-composition-patterns/SKILL.md` | Component API design, compound components. |
-| `.agents/skills/supabase-postgres-best-practices/SKILL.md` | Any Postgres/Supabase schema, RLS, migration, performance work. |
 | `.agents/skills/sql-optimization-patterns/SKILL.md` | N+1, slow SQL, aggregation, EXPLAIN. |
-| `.agents/skills/supabase/SKILL.md` | Supabase Auth, Edge Functions, Realtime, Storage, CLI/MCP. |
 | `.agents/skills/ui-skills-root/SKILL.md` | Selecting a small set of relevant UI skills. |
 | `.agents/skills/frontend-design/SKILL.md` | Deliberate visual direction for new/reshaped UI. |
 | `.agents/skills/ui-ux-pro-max/SKILL.md` | Layout, color, typography, UX review (`python3 .agents/skills/ui-ux-pro-max/scripts/search.py "<query>" --domain <domain>`). |
@@ -55,16 +52,12 @@
 | `.agents/skills/fixing-motion-performance/SKILL.md` | Animation jank, layout thrashing. |
 | `.agents/skills/improve-ui/SKILL.md` | Read-only UI audit + implementation plan. |
 | `.agents/skills/web-design-guidelines/SKILL.md` | Read-only Web Interface Guidelines review. |
-| `.agents/skills/create-design-md/SKILL.md` | Create/update `DESIGN.md` from evidence. |
 | `.agents/skills/component-canvas/SKILL.md` | Interactive canvas of existing component variants. |
-| `.agents/skills/create-canvas/SKILL.md` | Freeform canvas for exploring ideas. |
 | `.agents/skills/sleek-design-mobile-apps/SKILL.md` | Mobile screens in Sleek / React Native / HTML. |
 | `.agents/skills/vercel-react-native-skills/SKILL.md` | React Native / Expo, native modules, mobile performance. |
 | `.agents/skills/agent-browser/SKILL.md` | General browser automation and testing. |
 | `.agents/skills/browser-use/SKILL.md` | Direct CDP / logged-in-session browser control. |
 | `.agents/skills/remotion-best-practices/SKILL.md` | Remotion video/animation workflow router. |
-| `.agents/skills/seo-audit/SKILL.md` | SEO audit/diagnosis. |
-| `.agents/skills/code-review-expert/SKILL.md` | Security checklist reference; full review only when explicitly asked. |
 | `.agents/skills/find-skills/SKILL.md` | Discover/install a skill for a real capability gap. |
 | `.agents/skills/skill-creator/SKILL.md` | Create/edit/evaluate a skill. |
 | `.agents/skills/grill-me/SKILL.md` / `grilling/SKILL.md` / `grill-with-docs/SKILL.md` | Stress-test a plan via interview; `grill-with-docs` also records ADRs. |
@@ -84,4 +77,5 @@
 
 - 第一輪：經授權的 TDD 副本去重與 Agent 文檔整理；其餘用途不同或 Claude 仍依賴的目錄不刪。
 - 第二輪（2026-11-02）：經使用者明確授權，移除 `brainstorming`／`systematic-debugging`／`verification-before-completion` 本地副本——Superpowers **plugin 本身維持已安裝、不動**，只砍跟它重複的本地 skill。`sql-optimization-patterns`、`supabase-postgres-best-practices` 等領域知識型 skill 不在此次範圍內，Superpowers 不涵蓋這些內容，繼續保留。
+- 第三輪（2026-11-09）：已清除 `skills-lock.json` 的 7 筆失效 Clerk 索引，並將現役 Auth Skill 路由改為 LOC Native Auth；失效的本地 Skill 連結不再列為可用入口。歷史清理紀錄保留作為時間點記載，不代表目前仍安裝。
 - 後續若要精簡更多內容，應先比較真實 Skill 觸發／上下文占用，以及實際 Agent 可否找到保留版本，再逐項決定，不再靠同名判斷。

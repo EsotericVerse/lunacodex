@@ -7,6 +7,8 @@ node_modules/
 out/
 
 # Local transient artifacts
+.wrangler/
+.open-next/
 .tmp/
 tmp/
 .cache/
