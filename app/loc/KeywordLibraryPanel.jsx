@@ -198,24 +198,30 @@ export default function KeywordLibraryPanel({scopeId,account}){
       if(!TYPES.includes(node.type))throw new Error('Keywords Type 無效');
       const isNew=!tree.index.has(node.uid);
       if(node.type==='category')throw new Error('群組關鍵字目錄請到群組管理頁面編輯。');
-      if(isNew&&node.type!=='class'){
-        const parent=tree.index.get(pendingParent);
-        const expected=TYPES[TYPES.indexOf(node.type)-1];
-        if(!parent||parent.type!==expected)throw new Error('請先選擇上層分類。');
-        await writeKeywordLibraryItem(scopeId,'insert',node);
-        try{await writeKeywordLibraryItem(scopeId,'update',{
-          ...parent,lists:[...parent.lists,node.uid]
-        });}catch(error){
-          await writeKeywordLibraryItem(scopeId,'delete',node).catch(()=>{});
-          throw error;
-        }
-        await markStale(parent.uid);
-      }else{
-        const parent=parentOf(tree,node.uid);
-        await writeKeywordLibraryItem(scopeId,isNew?'insert':'update',node);
-        await markStale(node.uid);
-      }
-      await load(node.uid);await invalidate();setNotice('已儲存；相關關鍵字群組需重新分析。');
+      if(node.type==='item'&&isUnifiedAnchorScope(scopeId)){
+         const {keywordService}=await import('./keyword-service-client.mjs');
+         await keywordService('saveItem',{scopeId,item:{
+           uid:node.uid,name:node.name,desc:String(node.desc||''),
+           words:node.lists,mode:isNew?'create':'update',
+           ...(isNew?{parentUid:pendingParent}:{})
+         }});
+       }else if(isNew&&node.type!=='class'){
+         const parent=tree.index.get(pendingParent);
+         const expected=TYPES[TYPES.indexOf(node.type)-1];
+         if(!parent||parent.type!==expected)throw new Error('請先選擇上層分類。');
+         await writeKeywordLibraryItem(scopeId,'insert',node);
+         try{await writeKeywordLibraryItem(scopeId,'update',{
+           ...parent,lists:[...parent.lists,node.uid]
+         });}catch(error){
+           await writeKeywordLibraryItem(scopeId,'delete',node).catch(()=>{});
+           throw error;
+         }
+         await markStale(parent.uid);
+       }else{
+         await writeKeywordLibraryItem(scopeId,isNew?'insert':'update',node);
+         await markStale(node.uid);
+       }
+       await load(node.uid);await invalidate();setNotice('已儲存；相關關鍵字群組需重新分析。');
       return true;
     }catch(e){setError(String(e.message||e));return false;}
     finally{setBusy(false);}
