@@ -150,9 +150,10 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
     queryKey:['scope-advanced-keyword-catalog',scope?.id,keywords.data?.keywordMeta?.class_uid],
     enabled:valid&&keywordModeActive&&Boolean(scope?.keywords&&keywords.data?.keywordMeta?.class_uid),
     queryFn:async()=>{
-      const {readKeywordTreeCatalog}=await import('../../../loc/db-client.mjs');
+      const {keywordService}=await import('../../../loc/keyword-service-client.mjs');
       const {keywordTreeCatalog}=await import('../../../loc/keyword-tree-report.mjs');
-      const result=await readKeywordTreeCatalog(scope.id,{classUid:keywords.data.keywordMeta.class_uid});
+      const result=await keywordService('catalog',{
+        scopeId:scope.id,classUid:keywords.data.keywordMeta.class_uid});
       if(!result.class_uid)return [];
       return keywordTreeCatalog(result.rows,result.class_uid).groups.flatMap(group=>
         group.items.map(item=>({uid:item.uid,group_uid:group.uid,class_group:group.name})));
