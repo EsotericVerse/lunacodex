@@ -197,7 +197,9 @@ export function fromAnchorRow(spec,row){
  }else if(spec.kind==='keywords'){
    out.name=row.title;out.desc=row.description;
    out.lists=listOf(row.type==='item'?attr.keyword:attr.uid);
-   out.attr=attr; // Returned only when the Keyword reader selects attr.
+   // Item linkage is safe for the authorized editor; never project the
+   // Pattern database->article UID postings through this browser adapter.
+   if(row.type==='item')out.attr={uid:listOf(attr.uid)};
    out.uid_lists=[]; // Article postings live on Pattern Anchors.
  }else if(spec.kind==='media'){
    out.url=attr.url??null;
