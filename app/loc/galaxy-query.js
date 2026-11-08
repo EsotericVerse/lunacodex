@@ -927,6 +927,8 @@ function emptyOnFailure(fn,fallback){
 }
 export const selectMediaStatisticsFacetRows=emptyOnFailure(selectMediaStatisticsFacetRowsRaw,[]);
 export const selectScopeDensityRows=emptyOnFailure(selectScopeDensityRowsRaw,[]);
-export const selectScopeOverview=emptyOnFailure(selectScopeOverviewRaw,{earliest:'',rows:[],categories:[],aliases:[]});
+// A failed Statistics overview is a query failure, never a legitimate zero chart.
+// Let useAsyncResource display the actual request error and its retry action.
+export const selectScopeOverview=selectScopeOverviewRaw;
 export const selectScopeEarliest=emptyOnFailure(selectScopeEarliestRaw,'');
 export const selectLocStatistics=emptyOnFailure(selectLocStatisticsRaw,{earliest:'',scopes:[],rows:[]});
