@@ -2,6 +2,7 @@
 // All SQL is fixed-purpose, Kysely-built and bounded. No user-supplied SQL,
 // imported schema copying, Article body scans or duplicate search tables.
 import {scopeDatabaseUid,readScopePatternRows,keywordIdentity} from './keyword-anchor-index.mjs';
+import {sql} from 'npm:kysely@0.29.8';
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
 const TYPES=['date','point','from','domain','item','pattern'];
@@ -60,12 +61,19 @@ export async function suggestAnchorOptions(db,scopeIds,rawQuery,{ownerScopes=new
     const owner=ownerScopes.has(scope);
     const visible=await accessibleKeywordAnchors(db,scope,owner);
     for(const type of TYPES){
-      // A small per-type limit prevents the many Date Anchors from crowding
-      // out Point/From/Item/Pattern suggestions.
-      const found=await db.selectFrom(anchorTable(scope))
+      // Check Anchor semantics, not only display titles. A date typed as
+      // 2026-11 must match attr.date; a place alias may be in attr.location.
+      let search=db.selectFrom(anchorTable(scope))
         .select(['uid','type','title','attr','num','invisible'])
-        .where('type','=',type).where('title','ilike',like)
-        .orderBy('title','asc').limit(12).execute();
+        .where('type','=',type);
+      if(type==='date')search=search.where(eb=>eb.or([
+        eb('title','ilike',like),sql`(attr->>'date') ilike ${like}`
+      ]));
+      else if(type==='point')search=search.where(eb=>eb.or([
+        eb('title','ilike',like),sql`(attr->>'location') ilike ${like}`
+      ]));
+      else search=search.where('title','ilike',like);
+      const found=await search.orderBy('title','asc').limit(12).execute();
       for(const row of found){
         if(!owner&&row.invisible)continue;
         if(type==='item'&&!visible.items.has(row.uid))continue;
@@ -108,6 +116,13 @@ export async function queryAnchorArticles(db,{scopeId,uid,type,owner=false,
     const visible=await accessibleKeywordAnchors(db,scope,owner);
     const allowed=type==='item'?visible.items:visible.patterns;
     if(!allowed.has(uid))err('Keyword Class is not published',403);
+  }
+  if(!owner){
+    // The article's own search flag is not a substitute for its Scope's
+    // publication setting. Never expose a disabled Scope via guessed UID.
+    const settings=await db.selectFrom('silver.'+scope).select('search')
+      .where('id','=',scope).executeTakeFirst();
+    if(settings?.search!==true)err('This Scope does not publish Search',403);
   }
   const current=attrs(anchor),galaxy=sourceTable(scope),sourceValues=[];
   let ids=[];
