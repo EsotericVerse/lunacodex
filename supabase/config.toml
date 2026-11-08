@@ -1,5 +1,0 @@
-[functions.loc-kysely]
-verify_jwt = false
-
-[functions.loc-channel1-ingest]
-verify_jwt = false # service secret verified by handler
