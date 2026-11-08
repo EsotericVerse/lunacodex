@@ -1,4 +1,5 @@
 name: Deploy LOC native Auth (Better Auth, no SQL Gateway)
+# Release 2026-11-09: ship first-party LOC subject-only authorization with explicit Scope grants.
 # A change to this workflow deploys LOC Auth once; routine LOC changes do not.
 # Manual releases remain available without consuming quota on every push.
 on:
