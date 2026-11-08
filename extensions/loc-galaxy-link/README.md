@@ -96,13 +96,14 @@ Extension 從 `https://loc.lo3rwang.cc/extension/oauth/config.json` 取得**公�
 - **正式服務依賴尚未接通**：LOC Auth 必須提供原生 OAuth Server／client_id、Scope 授權和與 Kysely 寫入層相容的可信執行身分。上述程式不以 Clerk Token 冒充 LOC 自有 Token，也不在尚未授權時開放匿名入庫。正式 `/v1/import/short` 尚需由 LOC Auth 掛載、部署並完成真實 OAuth／Galaxy 寫入驗證。
 - 其他 SQL 引擎要實作與現有 PostgreSQL `postgresShortImportStore` 等效的來源序列化，不能移除鎖後宣稱已達成 portable。
 
-## LOC Delegation → Kysely 短匯入接線
+## LOC Auth → 原生 Kysely 短匯入接線（2026-11-08）
 
-GitHub 的 `loc-kysely` SQL Gateway 已新增內部 `kind=short-import` 路由。它只接受由 LOC Authority 簽署、`aud=loc-delegation` 且明確包含 `<scopeid>:write` 的委託，不接受 Extension 直接傳來的未驗證 OAuth Token，也不接受請求自行指定 `actor`、`target` 或 SQL 表名。由已驗證 Scope＋User 決定來源文章 UID。
-
-**正式入口** `/v1/import/short` 仍須由 LOC 自有 OAuth/Authority 掛載：驗證 Extension Bearer Access Token、發出限 Scope 的短期 SQL Delegation、以內部請求轉交 `loc-kysely` 的 `{kind:"short-import",scopeid,batch}`。前端一次 Flush 不需要自己呼叫 Delegation 或尋找 UID。
-
-**正式部署驗收尚缺**：LOC Authority 已能自行簽發 RS256 委託 Token，SQL Gateway 透過公開 JWKS 驗簽，雙方不共用簽章 Secret。原生 LOC Auth 的 OAuth `issuer`、client_id／callback，以及 Extension 公開匯入入口仍需完成與實測。不能用現有 Clerk 上游登入冒充原生 LOC Auth 完工；Chrome→SQL 端到端寫入尚未驗證。
+- **永久禁用 SQL Gateway**：不得使用 `loc-kysely` HTTP SQL 中轉、SQL Delegation 路由或獨立 SQL Worker／Container。先前描述的 Gateway 接線為過時資訊，不是可部署方案。
+- Chrome Extension 以原生 LOC OAuth Authorization Code + PKCE S256 取得 `loc:import` Access Token，僅呼叫固定業務端點 `POST /v1/import/short`。
+- LOC Auth 驗證 Token 的簽章、issuer、audience、有效期／撤銷狀態及 Scope 寫入授權；可信任的 LOC 應用程式後端在同一執行環境使用原生 Kysely Dialect／Driver 執行已限定的短匯入操作。不得把資料庫密碼交給瀏覽器、Extension 或 MCP Client。
+- `app/loc/import/short-import-http.mjs` 與 `short-append-service.mjs` 是現有業務處理器；部署前必須把已驗證的 actor 和正確資料庫 Driver 裝配到實際 HTTP 路由。現有 `postgresShortImportStore` 是 PostgreSQL 實作，不代表 MySQL／SQL Server 已完成。
+- 嚴格保持來源 UID 映射、單一交易、Event 冪等、Append-only 及 Queue 收據全數確認後才刪除；不可用 SQL UPDATE 覆蓋既有文章。
+- **尚未上線驗收**：原生 OAuth／Chrome callback、真正的 `/v1/import/short` 服務、可用的資料庫後端及實際寫入回執都必須逐項驗證，不能以程式碼存在視為正式可用。
 
 ## 邊界與驗收
 
