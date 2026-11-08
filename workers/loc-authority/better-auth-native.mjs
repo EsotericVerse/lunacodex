@@ -49,6 +49,13 @@ export function locBetterAuth(env){
   advanced:{useSecureCookies:true}
  });
 }
+export function hasFirstPartyCookie(request){
+ return /(?:^|;\s*)(?:__Secure-)?better-auth\.session_token=/.test(
+  request.headers.get('cookie')||'');
+}
+export async function firstPartySignOut(request,env){
+ return locBetterAuth(env).api.signOut({headers:request.headers,asResponse:true});
+}
 export async function firstPartySession(request,env){
  const existing=await locBetterAuth(env).api.getSession({headers:request.headers});
  if(!existing?.session||!existing?.user)return null;
