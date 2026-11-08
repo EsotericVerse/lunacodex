@@ -1,31 +1,27 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {descendantsOfKeyword} from '../app/loc/keyword-tree.mjs';
-
-const code=readFileSync(new URL('../app/loc/db-contract.mjs',import.meta.url),'utf8');
-const from=code.indexOf('  async function resetKeywordClassification(');
-const to=code.indexOf('  async function readKeywordClass(',from);
-assert.ok(from>=0&&to>from,'UID-tree reset must exist');
-const body=code.slice(from,to);
-
-test('reset erases only the active Class Group/Item uid_lists',()=>{
- assert.match(body,/descendantsOfKeyword/);
- assert.match(body,/node=>node.type==='group'\|\|node.type==='item'/);
- assert.match(body,/update\(\{uid_lists:keywordUidListRecord\(row\.type,\[\]\)\}\)/);
- assert.match(body,/\.eq\('uid',row.uid\)/);
- assert.doesNotMatch(body,/apply_keyword_classification|\.update\(\{class_id|galaxy/);
+const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
+test('Class reset is a server-authorized index mutation, never an Anchor UID-list write',()=>{
+ const client=read('app/loc/db-contract.mjs');
+ const service=read('app/loc/keyword-sql-service.mjs');
+ const a=client.indexOf('  async function resetKeywordClassification(');
+ const b=client.indexOf('  async function verifiedKeywordOwner(',a);
+ assert.ok(a>=0&&b>a);
+ const body=client.slice(a,b);
+ assert.match(body,/keywordService\('reset',\{scopeId:scope,classUid:uid\}\)/);
+ assert.doesNotMatch(body,/uid_lists|keywordUidListRecord|\.update\(/);
+ assert.match(service,/invalidateKeywordClass\(existing\.keyword_meta,classUid\)/);
+ assert.match(service,/const unique=\[\.\.\.own\]\.filter\(word=>!other\.has\(word\)\)/);
 });
-test('stale analysis marker is cleared before partial Keyword writes',()=>{
- assert.ok(body.indexOf('staticstime:null')<body.indexOf('for(const row of children)'));
+test('selected Class reset cannot delete terms still used by another Class',()=>{
+ const source=read('app/loc/keyword-sql-service.mjs');
+ assert.match(source,/const toDelete=stored\.filter\(row=>unique\.includes\(norm\(row\.pattern\)\)\)/);
+ assert.match(source,/retainedShared:own\.size-unique\.length/);
 });
-test('only Group and Item descendants are reset',()=>{
- const rows=[
-  {uid:'C001',type:'category',name:'符文',lists:['L001']},
-  {uid:'L001',type:'class',name:'符文66',lists:['G001']},
-  {uid:'G001',type:'group',name:'靈魂',lists:['I001']},
-  {uid:'I001',type:'item',name:'靈',lists:['感']}
- ];
- const resetNodes=descendantsOfKeyword(rows,'L001').filter(row=>row.type==='group'||row.type==='item');
- assert.deepEqual(resetNodes.map(x=>x.uid),['G001','I001']);
+test('the article index is written in bounded SQL batches and then marks Class complete',()=>{
+ const source=read('app/loc/keyword-sql-service.mjs');
+ assert.match(source,/for\(let i=0;i<changes\.length;i\+=100\)/);
+ assert.match(source,/await trx\.insertInto\('silver\.loc_search_pattern'\)/);
+ assert.match(source,/keyword_meta:JSON\.stringify\(metadata\)/);
 });
