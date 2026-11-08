@@ -82,6 +82,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
   const activeGroup=tree.index.get(chosen.group);
   const items=childrenOf(tree,activeGroup?.uid);
   const selected=tree.index.get(chosen.item)||activeGroup||activeClass||null;
+  const selectedSourceRow=rows.find(row=>row.uid===selected?.uid);
   const draft=editor?.node||null;
   const classShareEnabled=uid=>{
     if(!uid)return false;
@@ -515,9 +516,9 @@ export default function KeywordLibraryPanel({scopeId,account}){
           </label>;
         })}
       </div>
-      {selected?.type==='item'&&Array.isArray(selected.patternUids)&&selected.patternUids.length
+      {selected?.type==='item'&&Array.isArray(selectedSourceRow?.patternUids)&&selectedSourceRow?.patternUids.length
          ?<div className="scope-search-active-filters" aria-label="Item 關聯 Pattern">
-           {selected.patternUids.map(uid=>patternNodes.get(uid)).filter(Boolean).map(row=>
+           {selectedSourceRow.patternUids.map(uid=>patternNodes.get(uid)).filter(Boolean).map(row=>
              <span key={row.uid} className="scope-search-chip">
                {row.name} · {Number(row.num||0).toLocaleString()} 篇
              </span>)}
