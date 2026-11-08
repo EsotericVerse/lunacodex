@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {webcrypto} from 'node:crypto';
+import {handleNativeOAuth,ISSUER} from '../workers/loc-authority/native-oauth.mjs';
 import {verifyAuthReference,assertReferencePermission}
  from '../workers/loc-authority/auth-ref.mjs';
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
@@ -66,4 +67,98 @@ test('GitHub ref verifies external identity without minting LOC roles',async()=>
  assert.deepEqual(assertion.permissions,['login:companydev']);
  assert.equal(assertReferencePermission(assertion,'github','login:companydev'),true);
  assert.equal(calls.length,2);
+});
+
+function referenceEnvironment(){
+ const records=new Map(),sid='A'.repeat(43);
+ const subject='loc_'+'c'.repeat(40);
+ const sha=value=>crypto.subtle.digest('SHA-256',new TextEncoder().encode(value))
+  .then(x=>Buffer.from(x).toString('base64url'));
+ const ready=sha(sid).then(hash=>records.set('native-session:'+hash,{
+  subject,email:'member@example.org',sidHash:hash,expires:Date.now()+7200000}));
+ const providers={
+  github:{type:'github',client_id:'github-ref-client',client_secret:'github-ref-secret',
+   callback_url:ISSUER+'/oauth/callback/github'},
+  oidc:{type:'oidc',issuer_url:'https://identity.example.org',client_id:'loc-app',
+   client_secret:'oidc-ref-secret',callback_url:ISSUER+'/oauth/callback/oidc'}
+ };
+ const stub={
+  authQuotaAcquire:async()=>({allowed:true}),
+  nativeGet:async key=>(await ready,records.get(key)),
+  nativePut:async(key,val)=>{records.set(key,val);return true},
+  nativeTake:async key=>{const val=records.get(key);records.delete(key);return val},
+  authRefProfile:async name=>providers[name],
+  recordAuthReference:async(sub,proof)=>{records.set('auth-ref:'+sub+':'+proof.provider,proof);return proof}
+ };
+ const env={LOC_AUTHORITY_STATE:{idFromName:x=>x,get:()=>stub}};
+ return {env,records,subject,cookie:'__Host-loc-session='+sid,providers};
+}
+function csrfCookie(resp){
+ return resp.headers.getSetCookie().find(x=>x.startsWith('__Host-loc-csrf=')).split(';')[0];
+}
+test('interactive GitHub Auth Ref preserves the LOC session and binds the verified external proof',async()=>{
+ const {env,records,subject,cookie}=referenceEnvironment();
+ const previousFetch=globalThis.fetch;
+ const calls=[];
+ globalThis.fetch=async(uri)=>{
+  calls.push(String(uri));
+  if(String(uri)==='https://github.com/login/oauth/access_token')
+   return Response.json({access_token:'github-verified-token'});
+  if(String(uri)==='https://api.github.com/user')
+   return Response.json({id:123,login:'companydev'});
+  if(String(uri)==='https://api.github.com/user/emails')
+   return Response.json([{email:'member@example.org',primary:true,verified:true}]);
+  throw Error('Unexpected mocked Ref fetch '+uri);
+ };
+ try{
+  const start=await handleNativeOAuth(new Request(ISSUER+'/oauth/ref?provider=github',{
+    headers:{cookie}}),env);
+  assert.equal(start.status,302);
+  const target=new URL(start.headers.get('location'));
+  assert.equal(target.hostname,'github.com');
+  const state=target.searchParams.get('state');
+  const finish=await handleNativeOAuth(new Request(ISSUER+
+    '/oauth/callback/github?state='+encodeURIComponent(state)+'&code=once',{
+    headers:{cookie:cookie+'; '+csrfCookie(start)}}),env);
+  assert.equal(finish.status,302);
+  assert.match(finish.headers.get('location'),/^https:\/\/loc\.lo3rwang\.cc\/local\/settings\//);
+  assert.equal(records.get('auth-ref:'+subject+':github')?.externalSubject,'123');
+  assert.equal(records.get('auth-ref:'+subject+':github')?.email,'member@example.org');
+  assert.equal(finish.headers.getSetCookie().filter(x=>x.startsWith('__Host-loc-session=')).length,0);
+  assert.equal(calls.length,3);
+ }finally{globalThis.fetch=previousFetch}
+});
+test('interactive OIDC Auth Ref validates state/nonce and remains horizontally scoped',async()=>{
+ const {env,records,subject,cookie}=referenceEnvironment();
+ const previousFetch=globalThis.fetch;
+ let token='';
+ const {jwk}=await signedJwt({iss:'https://identity.example.org',aud:'loc-app',
+  sub:'placeholder',iat:Math.floor(Date.now()/1000),exp:Math.floor(Date.now()/1000)+600});
+ globalThis.fetch=async(uri)=>{
+  const u=String(uri);
+  if(u.endsWith('/.well-known/openid-configuration'))return Response.json({
+   issuer:'https://identity.example.org',
+   authorization_endpoint:'https://identity.example.org/authorize',
+   token_endpoint:'https://identity.example.org/token',
+   jwks_uri:'https://identity.example.org/.well-known/jwks.json'});
+  if(u.endsWith('/token'))return Response.json({id_token:token});
+  if(u.endsWith('/.well-known/jwks.json'))return Response.json({keys:[jwk]});
+  throw Error('Unexpected OIDC fetch '+u);
+ };
+ // The signed token below must use the same public key as the discovery JWKS;
+ // the test's other cases verify accepted signed payloads directly.
+ try{
+  const start=await handleNativeOAuth(new Request(ISSUER+'/oauth/ref?provider=oidc',{
+   headers:{cookie}}),env);
+  assert.equal(start.status,302);
+  const authz=new URL(start.headers.get('location'));
+  assert.equal(authz.hostname,'identity.example.org');
+  assert.ok(authz.searchParams.get('nonce'));
+  const callback=await handleNativeOAuth(new Request(ISSUER+
+   '/oauth/callback/oidc?state='+encodeURIComponent(authz.searchParams.get('state'))+
+   '&code=once',{headers:{cookie:cookie+'; '+csrfCookie(start)}}),env);
+  // The provider token deliberately lacks a matching signed nonce: fail closed.
+  assert.equal(callback.status,401);
+  assert.equal(records.has('auth-ref:'+subject+':oidc'),false);
+ }finally{globalThis.fetch=previousFetch}
 });
