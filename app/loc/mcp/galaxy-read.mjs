@@ -53,12 +53,12 @@ export async function searchMemory(args={},env={}){
     .select(['uid','title','date','createtime'])
     .where('search','=',true).where(publicSite)
     .where(eb=>eb.or([columnLike('title'),columnLike('content')]))
-    .orderBy('createtime','desc')
-    .limit(limit+1).offset(offset).execute();
+    .orderBy('date','desc').orderBy('createtime','desc')
+    .limit(limit).offset(offset).execute();
   return {scopeid,visibility:'public',query:term,limit,offset,
-    results:rows.slice(0,limit).map(row=>({uid:String(row.uid||'').trim(),title:row.title||'',
+    results:rows.map(row=>({uid:String(row.uid||'').trim(),title:row.title||'',
       date:row.date||null,createtime:row.createtime||null})),
-    has_more:rows.length>limit};
+    has_more:rows.length===limit};
 }
 export async function readMemory(args={},env={}){
   const scopeid=scopeAllowed(args.scopeid);
