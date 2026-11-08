@@ -43,3 +43,13 @@ test('LOC Auth has no SQL Gateway runtime-profile service or writer',()=>{
  assert.doesNotMatch(worker,/return \{\.\.\.item\.public,configured:/);
  assert.equal(existsSync(new URL('../workers/loc-authority/sql-profile.mjs',import.meta.url)),false);
 });
+
+test('LOC source does not redeclare retired Supabase Edge Function deployments',()=>{
+ const config=read('supabase/config.toml');
+ assert.doesNotMatch(config,/^\s*\[functions\.[^\]]+\]/m);
+ for(const path of [
+   'supabase/functions/loc-kysely',
+   'supabase/functions/loc-kysely-clerk',
+   'supabase/functions/loc-channel1-ingest'
+ ])assert.equal(existsSync(new URL('../'+path,import.meta.url)),false,path);
+});
