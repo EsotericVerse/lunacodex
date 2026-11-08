@@ -1,7 +1,6 @@
 name: Deploy LOC native Auth (OAuth only, no SQL Gateway)
-# Release 2026-11-09: use existing Supabase Google OAuth for invited LOC owner; keep registration closed.
-# A change to this workflow deploys LOC Auth once; routine LOC changes do not.
-# Manual releases remain available without consuming quota on every push.
+# LOC Auth remains a single existing Worker; releases are manual only.
+# Better Auth directly verifies Google; no automatic Worker deploy or SQL Gateway.
 on:
   workflow_dispatch:
 
