@@ -17,6 +17,7 @@ registerDefaultSection('uiExtra.pagination',paginationZh);
 
 import {Fragment,useEffect,useMemo,useRef,useState} from 'react';
 import dynamic from 'next/dynamic';
+import Select from 'react-select';
 import {useAsyncResource,useResourceCache} from '../../loc/use-async-resource';
 import {useRouter,useSearchParams} from 'next/navigation';
 
@@ -389,7 +390,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     enabled:patternScopeIds.length>0&&debouncedPatternInput.length>0,
     queryFn:async()=>{
       const {keywordService}=await import('../../loc/keyword-service-client.mjs');
-      const result=await keywordService('suggest',{
+      const result=await keywordService('suggestAnchors',{
         scopeIds:patternScopeIds,query:debouncedPatternInput
       });
       return Array.isArray(result)?result:[];
@@ -397,6 +398,22 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   });
 
   const scopeById=useMemo(()=>new Map(availableScopes.map(item=>[item.id,item])),[availableScopes]);
+  const anchorSuggestGroups=useMemo(()=>{
+    const kinds=[['date','時間定錨'],['point','空間定錨'],
+      ['from','來源'],['domain','來源分類'],['item','關鍵詞組'],['pattern','關鍵詞']];
+    const rows=Array.isArray(patternSuggestionsQuery.data)?patternSuggestionsQuery.data:[];
+    return kinds.map(([type,label])=>({
+      label,options:rows.filter(row=>row.type===type).map(row=>({
+        ...row,value:[row.scopeId,type,row.uid].join(':'),
+        label:String(row.title||'')+
+          (row.date?' · '+row.date:'')+
+          (Number.isFinite(row.count)?' · '+Number(row.count).toLocaleString()+' 篇':'')+
+          (patternScopeIds.length>1&&scopeById.get(row.scopeId)?.display_name
+            ?' · '+scopeById.get(row.scopeId).display_name:'')
+      }))
+    })).filter(group=>group.options.length>0);
+  },[patternSuggestionsQuery.data,patternScopeIds.length,scopeById]);
+
   const summaryScopeIds=targetScopes.map(item=>item.id);
   const scopeLabel=id=>{
     const item=scopeById.get(id);
