@@ -42,7 +42,7 @@ test('Kysely really chooses Postgres, MySQL and SQL Server SQL dialect',async()=
   const query=selected.db.selectFrom(name).select('uid').limit(2).compile();
   if(engine==='postgres')assert.match(query.sql,/"silver"\."galaxy"/);
   if(engine==='mysql')assert.match(query.sql,/\`galaxy\`/);
-  if(engine==='mssql')assert.match(query.sql,/\[dbo\]\.\[galaxy\]/);
+  if(engine==='mssql')assert.match(query.sql,/"dbo"\."galaxy"/);
   await selected.db.destroy();
  }
 });
