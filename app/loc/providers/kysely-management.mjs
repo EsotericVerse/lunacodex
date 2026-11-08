@@ -721,27 +721,11 @@ async function managedLocSettings(trx,args,claims){
   const operation=String(args.p_operation||'read');
   const key=String(args.p_key??'').trim();
   const value=args.p_value;
-  if(!['theme','keywords','email','scopeid'].includes(section))
+  if(!['theme','keywords','email'].includes(section))
     reject('Invalid LOC settings section');
   // Permission was established with the signed Clerk identity; no arbitrary
   // table is addressable through this route.
   await sql`reset role`.execute(trx);
-  if(section==='scopeid'){
-    // Routing-reserved names are system records. The real Admin ID remains
-    // role=admin, but its protected-route note is editable alongside reserves.
-    const rows=await trx.selectFrom('api.manage')
-      .select(['id','note','manage_role'])
-      .where('manage_role','in',['reserve','admin'])
-      .orderBy('id','asc').execute();
-    if(operation==='read')return rows.map(({id,note})=>({id,note}));
-    if(operation!=='note'||!key)reject('Reserved Scope notes only');
-    const target=rows.find(item=>item.id===key);
-    if(!target)reject('Reserved Scope ID not found');
-    const note=String(value??'').trim()||null;
-    await trx.updateTable('api.manage').set({note})
-      .where('id','=',key).executeTakeFirst();
-    return rows.map(item=>({id:item.id,note:item.id===key?note:item.note}));
-  }
   const row=await trx.selectFrom('silver.loc')
     .select(['theme','keywords','blacklist'])
     .where('id','=','loc').forUpdate().executeTakeFirst();
@@ -807,16 +791,6 @@ async function managedLocSettings(trx,args,claims){
       String(item?.email||'').toLowerCase()!==email);
     if(operation==='add'&&!saved.some(item=>String(item?.email||'').toLowerCase()===email))
       updated.push({email,created_at:new Date().toISOString()});
-    returnValue=updated;
-  }else{
-    if(operation!=='note'||!key)reject('Reserved Scope notes only');
-    let found=false;
-    updated=saved.map(item=>{
-      if(item?.id!==key)return item;
-      found=true;const note=String(value??'').trim();
-      return {...item,note:note||null};
-    });
-    if(!found)reject('Reserved Scope ID not found');
     returnValue=updated;
   }
   if(column==='blacklist'){

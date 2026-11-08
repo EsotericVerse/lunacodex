@@ -487,7 +487,7 @@ test('LOC group member editing and system Admin panels are disjoint; media targe
   assert.doesNotMatch(admin,/section==='registry'/);
   assert.match(admin,/section==='lists'/);
   assert.match(admin,/section==='network'/);
-  assert.match(admin,/<AdminReservedScopeIds\/>/);
+  assert.doesNotMatch(admin,/AdminReservedScopeIds/);
   assert.match(admin,/<AdminEmailBlocklist\/>/);
   assert.match(admin,/<DatabaseTarget scopeGroup=\{scopeGroup\}\/>/);
   assert.match(admin,/<IsrDomainTarget\/>/);
@@ -509,7 +509,6 @@ test('Admin first tab is People; lists and network consolidate existing secure e
   const admin=read('app/loc/views/AdminHomeView.jsx');
   const cache=read('app/loc/views/admin-panels/IsrDomainTarget.jsx');
   const dock=read('app/modular/edit-dock.jsx');
-  const reserved=read('app/loc/views/admin-panels/AdminReservedScopeIds.jsx');
   const email=read('app/loc/views/admin-panels/AdminEmailBlocklist.jsx');
   const registry=read('app/loc/views/admin-panels/AdminRegistry.jsx');
   const menu=admin.match(/const ADMIN_OPTIONS=Object\.freeze\(\[([\s\S]*?)\]\);/);
@@ -520,20 +519,21 @@ test('Admin first tab is People; lists and network consolidate existing secure e
    assert.match(read('app/loc/views/admin-panels/RuntimeIoSettings.jsx'),/key:'maxRows'/);
   assert.match(admin,/useManagementSection\(ADMIN_OPTIONS,'lists'/);
   for(const [oldId,newId] of Object.entries({
-    database:'network',isr:'network',reserved:'lists',blocklist:'lists'
+    database:'network',isr:'network',blocklist:'lists'
   }))assert.ok(admin.includes(oldId+":'"+newId+"'"),'legacy section '+oldId+' not mapped');
-  assert.match(admin,/section==='lists'\?<\>[\s\S]*?<AdminReservedScopeIds\/>[\s\S]*?<AdminEmailBlocklist\/>[\s\S]*?<\/\>/);
+  assert.match(admin,/section==='lists'\?<\>[\s\S]*?<AdminEmailBlocklist\/>[\s\S]*?<\/\>/);
   assert.match(admin,/section==='network'\?<\>[\s\S]*?<DatabaseTarget scopeGroup=\{scopeGroup\}\/>[\s\S]*?<IsrDomainTarget\/>[\s\S]*?<\/\>/);
   assert.match(cache,/<h2>快取／ISR<\/h2>/);
   assert.match(cache,/CACHE_POLICY/);
   assert.doesNotMatch(cache,/dbAuthRelation|loc_cache_runtime|loc_cache_settings/);
   assert.match(dock,/const dirty=\[\.\.\.registeredEditors\.current\]\.filter/);
   assert.match(dock,/for\(const editor of editors\)/);
-  assert.match(reserved,/useEditDockForm/);
   assert.match(email,/useEditDockForm/);
   assert.match(registry,/useEditDockForm/);
-  assert.match(reserved,/p_section:'scopeid'/);
   assert.match(email,/p_section:'email'/);
+  const managedSettings=read('app/loc/providers/kysely-management.mjs');
+  assert.match(managedSettings,/\['theme','keywords','email'\]\.includes\(section\)/);
+  assert.doesNotMatch(managedSettings,/section==='scopeid'/);
   assert.doesNotMatch(admin,/updateRows|deleteRows|insertRows/);
 });
 
