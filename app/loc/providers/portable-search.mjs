@@ -1,4 +1,4 @@
-// Literal substring matching shared by LOC's SQL gateway and search UI.
+// Literal substring matching shared by native Kysely and the search UI.
 // The custom ESCAPE marker avoids PostgreSQL/MySQL backslash-mode differences.
 // With no content index, this is a correctness/portability optimisation, not
 // a claim that unrestricted substring matches have indexed performance.
@@ -20,10 +20,9 @@ export function portableContainsTerm(raw){
 }
 
 
-// Shared PostgREST-style boolean-group parser for the browser-independent
-// SQL Gateway and the device-local SQLite query builder. No SQL text/values
-// are interpolated by this parser: each consumer compiles named predicates
-// with a bound value and checks the identifier grammar.
+// Shared PostgREST-style boolean-group parser for compatibility filter inputs.
+// This parser only returns bounded predicates; SQL consumers must bind values
+// and validate physical identifiers independently.
 const OR_TERM=/^([a-z][a-z0-9_]*)\.(eq|neq|gt|gte|lt|lte|like|ilike|contains|is)\.(?:"((?:\\.|[^"])*)"|([^,]*))$/i;
 const OR_IDENTIFIER=/^[a-z][a-z0-9_]*$/i;
 function splitOrGroup(expression){
