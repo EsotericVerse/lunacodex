@@ -94,7 +94,7 @@ test('Pattern terms exclude instructions and share the same UID across Items',as
   const items=nodes.filter(row=>row.type==='item');
   assert.deepEqual(patterns.map(row=>row.title).sort(),['水','水土','火','風'].sort());
   const fire=patterns.find(row=>row.title==='火');
-  assert.ok(items.every(item=>item.attr.keyword.length>0));
+  assert.ok(items.every(item=>JSON.parse(item.attr).keyword.length>0));
   assert.ok(items.every(item=>JSON.parse(item.attr).uid.includes(fire.uid)));
   const graph=indexZModelAnchorHierarchy(nodes.map(row=>({
     uid:row.uid,type:row.type,title:row.title,attr:typeof row.attr==='string'
@@ -127,9 +127,7 @@ test('autocomplete is typed and routed; no client can submit arbitrary SQL',()=>
   const server=readFileSync(new URL('../app/loc/keyword-anchor-search.mjs',import.meta.url),'utf8');
   const endpoint=readFileSync(new URL('../functions/api/keywords.js',import.meta.url),'utf8');
   const ui=readFileSync(new URL('../app/modular/features/Search.jsx',import.meta.url),'utf8');
-  assert.match(server,/q=q\.where\('place_id','=','uid'\)/);
-  assert.match(server,/q=q\.where\('place_id','=','uid'\)/);
-  assert.match(server,/where\('place_id','=','uid'\)/);
+  assert.match(server,/q=q\\.where\\('place_id','=',uid\\)/);
   assert.match(server,/type==='date'/);
   assert.match(server,/sourceValues\.push/);
   assert.match(server,/attrs\(row\)\[dbUid\]/);
