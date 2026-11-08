@@ -25,7 +25,11 @@ async function harness(){
       selectScopeConfig:id=>{calls.push('config:'+id);return Promise.resolve({id,display_name:id});},
       selectScopeRegistry:()=>Promise.resolve([])
     },
-    './theme-data':{selectThemeRegistry:()=>Promise.resolve([]),themeUiId:id=>id}
+    './theme-data':{selectThemeRegistry:()=>Promise.resolve([]),themeUiId:id=>id},
+    '../modular/scope-route-index.js':{SCOPE_ROUTE_INDEX:[
+      {scope_id:'loc',config:{id:'loc',display_name:'LOC 月典'}},
+      {scope_id:'lo3rwang',config:{id:'lo3rwang',display_name:'作者'}}
+    ]}
   };
   const modules=new Map(Object.entries(stub).map(([name,values])=>[
     name,new vm.SyntheticModule(Object.keys(values),function(){
@@ -75,7 +79,7 @@ test('Admin consumes site metadata without querying nonexistent admin tables',as
 test('LOC homepage gets published Blocks independently of the shared metadata',async()=>{
   const {calls,selectAppBootstrap}=await harness();
   const pending=selectAppBootstrap('loc','index');
-  assert.deepEqual(calls,['config:loc','blocks:loc:index']);
+  assert.deepEqual(calls,['blocks:loc:index']); // Guest config is published, no live SQL.
   const result=await pending;
   assert.equal(result.config.id,'loc');
   assert.equal(result.blocks[0].uid,'loc-index');
