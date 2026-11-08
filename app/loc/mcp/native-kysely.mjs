@@ -71,6 +71,25 @@ function validateProfile(env,profile,verifiedAlias){
   throw fail('Invalid LOC SQL mapping');
  return {engine,profile,namespace,tableName,fieldMap,parsed};
 }
+// Configuration-only introspection: never opens a connection, reads a record,
+// resolves a subject, or includes a credential/alias in the MCP response.
+// A configured profile is NOT proof that its database is reachable.
+export function mcpDatabaseConfiguration(env={}){
+ let publicReadConfigured=false;
+ try{
+  const alias=trustedAlias(env,'');
+  validateProfile(env,localProfile(env,alias),'');
+  publicReadConfigured=true;
+ }catch{} // Missing or invalid local configuration is reported, never leaked.
+ const delegatedProfileConfigured=typeof env.LOC_DB_PROFILE_SERVICE_TOKEN==='string'&&
+  env.LOC_DB_PROFILE_SERVICE_TOKEN.length>=32;
+ return {
+  publicReadConfigured,
+  privateReadConfigured:publicReadConfigured||delegatedProfileConfigured,
+  privateWriteConfigured:publicReadConfigured||delegatedProfileConfigured,
+  verification:'configuration-only'
+ };
+}
 async function newDialect({engine,profile,parsed}){
  if(engine==='postgres'){
   return new PostgresDialect({pool:new pg.Pool({
