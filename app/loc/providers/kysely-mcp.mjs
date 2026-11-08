@@ -32,14 +32,14 @@ function verifyScope(body,claims){
     reject('MCP Scope grant denied',403);
   return scope;
 }
-function relation(scope,engine,namespace){
+function relation(scope,engine,namespace,tableName=''){ 
   if(!['postgres','mysql','mssql'].includes(engine))reject('Unsupported MCP SQL engine');
   // Cloned Scopes inherit the fixed Galaxy contract; only the physical name varies.
   const model=zmodel.models[SCOPE_MODELS[scope]||'Lo3rwangGalaxy'];
   const required=['uid','title','content','createtime','site','site_id','UpdateTime',...FLAGS];
   if(!model||required.some(field=>!Object.hasOwn(model.fields,field)))
     reject('Fixed LOC ZModel Galaxy contract mismatch',503);
-  return portableRelation(scope+'_galaxy',engine,namespace||
+  return portableRelation(tableName||scope+'_galaxy',engine,namespace||
     (engine==='postgres'?'silver':''));
 }
 function validateSync(body){
@@ -74,16 +74,38 @@ function conversationOnly(q){
     ])
   ])).where(sql`lower(${sql.ref('title')}) not like ${'%pr #%'}`);
 }
-export async function executePortableMcp(trx,body,claims,{engine='postgres',namespace=''}={}){
+export async function executePortableMcp(trx,body,claims,{
+ engine='postgres',namespace='',tableName='',fieldMap={}
+}={}){
   const scope=verifyScope(body,claims);
-  const table=relation(scope,engine,namespace);
+  const table=relation(scope,engine,namespace,tableName);
+  const external=Boolean(tableName);
+  // An external existing article table is a read-only projection, never a
+  // destination for MCP sync or append. Explicit management rights are needed.
+  if(external&&(!claims.grants.includes(scope+':manage')||
+    !['mcp-read','mcp-search'].includes(body.kind)))
+    reject('Mapped external SQL data requires Scope manager read permission',403);
+  const safe=/^[A-Za-z][A-Za-z0-9_]{0,119}$/;
+  if(!fieldMap||typeof fieldMap!=='object'||Array.isArray(fieldMap)||
+    Object.entries(fieldMap).some(([k,v])=>!safe.test(k)||!safe.test(v)))
+    reject('Invalid trusted SQL field mapping',503);
+  const physical=name=>fieldMap[name]||name;
+  const columns=names=>names.map(name=>name===physical(name)?
+    name:sql.ref(physical(name)).as(name));
   if(body.kind==='mcp-read'){
-    validateUid(body.uid);
+    if(external){
+      if(typeof body.uid!=='string'||body.uid.length<1||body.uid.length>128||
+        /[\u0000-\u001f\u007f]/.test(body.uid))reject('Invalid mapped article ID');
+    }else validateUid(body.uid);
     if(body.site!==undefined&&body.site!=='mcp')
       reject('請至github頁面找尋PR相關資料！不開放搜尋PR!',403);
-    return {data:await conversationOnly(trx.selectFrom(table))
-      .select(['uid','title','content','date','createtime','site','url'])
-      .where('uid','=',body.uid).limit(1).execute()};
+    const source=external?trx.selectFrom(table):
+      conversationOnly(trx.selectFrom(table));
+    const fields=external?
+      ['uid','title','content','date','createtime','url']:
+      ['uid','title','content','date','createtime','site','url'];
+    return {data:await source.select(columns(fields))
+      .where(physical('uid'),'=',body.uid).limit(1).execute()};
   }
   if(body.kind==='mcp-search'){
     if(body.user_requested!==true)
@@ -95,10 +117,12 @@ export async function executePortableMcp(trx,body,claims,{engine='postgres',name
     if(/(?:\bPR(?:[\s#:\-]*\d+)?\b|\bpull[ -]?request\b|\bgithub\b|\bcommit\b|合併請求|拉取請求)/i.test(term))
       reject('請至github頁面找尋PR相關資料！不開放搜尋PR!',403);
     const pattern=portableContainsSpec(term).pattern;
-    const results=await conversationOnly(trx.selectFrom(table))
-      .select(['uid','title','createtime'])
-      .where(sql`lower(${sql.ref('content')}) like ${pattern} escape '!'`)
-      .orderBy('createtime','desc').limit(limit).execute();
+    const source=external?trx.selectFrom(table):
+      conversationOnly(trx.selectFrom(table));
+    const results=await source
+      .select(columns(['uid','title','createtime']))
+      .where(sql`lower(${sql.ref(physical('content'))}) like ${pattern} escape '!'`)
+      .orderBy(physical('createtime'),'desc').limit(limit).execute();
     return {data:results};
   }
   if(body.kind==='mcp-sync'){
