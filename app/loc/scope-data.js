@@ -242,20 +242,33 @@ export async function selectManagedScope(scopeId){
 // One per-session public metadata request, read only when its feature opens.
 // GitHub Pages uses published static assets; no remote ISR worker is required.
 // Authorized metadata writes explicitly clear these per-session snapshots.
+// The browser sends a fixed business request to the existing LOC application.
+// No SQL, relation, filter, dialect, credentials or connection URL are accepted.
+async function nativePublicContent(kind,scope,feature=''){
+  const params=new URLSearchParams({kind,scope});
+  if(feature)params.set('feature',feature);
+  const response=await fetch('/api/loc-public-content?'+params,{
+    method:'GET',cache:'no-store',credentials:'omit',
+    headers:{accept:'application/json'}
+  });
+  if(!response.ok)throw new Error('Native LOC Kysely read HTTP '+response.status);
+  const payload=await response.json();
+  return payload.data;
+}
+const publishedConfig=id=>SCOPE_ROUTE_INDEX.find(row=>row.scope_id===id&&row.active!==false)?.config||null;
 const scopeConfigInFlight=new Map();
 export function selectScopeConfig(scopeId){
   const scope=defaultScopeData(scopeId);
   if(!scope)return Promise.resolve(null);
   const existing=scopeConfigInFlight.get(scope.id);
   if(existing)return existing;
-  // The published route entry also holds its public Config, one shared JS source.
-  const live=()=>selectRows(scope.config,{
-    columns:scopeConfigColumns(scope.id),
-    filters:[{column:'id',operator:'eq',value:scope.id}],limit:1,offset:0
-  }).then(({rows})=>rows[0]||null);
-  // Availability flags come from the Scope itself; no management permission
-  // or Galaxy/Anchor query is needed to render public features.
-  const request=live();
+  // Published configuration is the guest fallback. Live feature configuration
+  // is read through the existing application runtime's native Kysely driver.
+  // Never let an unavailable SQL connection blank a public Scope page.
+  const request=scope.id==='local'?Promise.resolve(null):
+    nativePublicContent('config',scope.id)
+      .then(data=>data||publishedConfig(scope.id))
+      .catch(()=>publishedConfig(scope.id));
   if(scope.id!=='local')scopeConfigInFlight.set(scope.id,request);
   return request;
 }
@@ -271,6 +284,14 @@ export async function selectLiveScopeBlocks(scopeId,page='index'){
   const id=String(scopeId||'').trim().toLowerCase();
   const name=String(page||'index').trim();
   if(!SCOPE_ID_PATTERN.test(id)||! /^[A-Za-z0-9_-]+$/.test(name))return [];
+  if(name==='index'){
+    // Live editor read: Kysely SELECT in the trusted LOC Pages application.
+    const rows=await nativePublicContent('blocks',id);
+    return (Array.isArray(rows)?rows:[])
+      .sort((a,b)=>Number(a.block_order||0)-Number(b.block_order||0));
+  }
+  // Other management pages still need their authenticated read contract;
+  // do not expose them through the public Kysely endpoint.
   const {rows}=await selectRows(`silver.${id}_blocks`,{
     columns:BLOCK_COLUMNS,filters:[{column:'page_name',operator:'eq',value:name}],
     limit:DB_QUERY_BATCH_SIZE,offset:0
@@ -290,23 +311,16 @@ export async function heroBlocks(scopeId,type){
   const id=String(scopeId||'').trim().toLowerCase();
   const name=String(type||'').trim().toLowerCase();
   if(!SCOPE_ID_PATTERN.test(id)||! /^[a-z][a-z0-9_-]*$/.test(name))return [];
-  // Shared Feature Heroes are two page_name values in silver.loc_blocks.
-  // Fetch them in one bounded SELECT rather than invoking a missing RPC.
+  // One fixed Kysely business read for both feature Hero slots. Public
+  // presentation must remain available from published modules when offline.
   const names=['group_'+name,'scope_'+name];
-  const {rows}=await selectRows('silver.loc_blocks',{
-    columns:BLOCK_COLUMNS,
-    filters:[{column:'page_name',operator:'in',value:names}],
-    limit:DB_QUERY_BATCH_SIZE,offset:0
-  });
-  if(!rows.length){
-    // The published artwork is a bundled default when a new Scope has not
-    // populated its Blocks table yet; this is not an ISR/database cache.
-    const defaults=await Promise.all(names.map(page=>loadPublishedBlocks('loc',page)));
-    return defaults.flatMap((items,index)=>(items||[]).map(row=>({
-      ...row,page_name:names[index]
-    })));
-  }
-  return rows.sort((a,b)=>Number(a.block_order||0)-Number(b.block_order||0));
+  const rows=await nativePublicContent('hero',id,name).catch(()=>[]);
+  if(Array.isArray(rows)&&rows.length)
+    return rows.sort((a,b)=>Number(a.block_order||0)-Number(b.block_order||0));
+  const defaults=await Promise.all(names.map(page=>loadPublishedBlocks('loc',page)));
+  return defaults.flatMap((items,index)=>(items||[]).map(row=>({
+    ...row,page_name:names[index]
+  }));
 }
 export async function selectScopeBlocks(scopeId,page='index'){
   const id=String(scopeId||'').trim().toLowerCase();
@@ -315,8 +329,10 @@ export async function selectScopeBlocks(scopeId,page='index'){
   const key=id+':'+name;
   const existing=scopeBlocksRequests.get(key);
   if(existing)return existing;
-  const promise=(name==='index'?pageBlocks(id,name):selectLiveScopeBlocks(id,name))
-    .then(async rows=>rows.length?rows:loadPublishedBlocks(id,name))
+  // Guest content is a published JS artifact. It must never wait for a DB
+  // connection. An unpublished page may still use a live editor read.
+  const promise=loadPublishedBlocks(id,name)
+    .then(async rows=>rows.length?rows:selectLiveScopeBlocks(id,name))
     .catch(error=>{scopeBlocksRequests.delete(key);throw error});
   scopeBlocksRequests.set(key,promise);
   return promise;
