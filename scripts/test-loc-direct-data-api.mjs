@@ -134,3 +134,13 @@ test('website importer never sends a request for an invalid Scope',async()=>{
   await assert.rejects(adapter.authClient.shortImport('bad_scope',{id:'x'}),/Invalid LOC import Scope/);
   assert.equal(calls,0);
 });
+
+test('Search summary reads published public status without unsupported analytics or network',async()=>{
+  const {readScopeSearchSummary}=await import('../app/loc/scope-search-summary.mjs');
+  const result=await readScopeSearchSummary(['lo3rwang','lrunes']);
+  assert.deepEqual(result.rows.map(row=>row.scope_id),['lo3rwang','lrunes']);
+  assert.equal(result.summary.articleCount,49031);
+  assert.equal(result.summary.wordCount,4904148);
+  assert.equal(result.summary.firstDate,'2005-04-12');
+  assert.equal(result.summary.lastDate,'2026-11-05');
+});
