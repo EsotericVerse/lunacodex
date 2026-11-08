@@ -10,27 +10,28 @@ import {useEditDock,useEditDockForm} from '../modular/edit-dock';
 
 const KeywordNetworkEditor=dynamic(()=>import('./KeywordNetworkEditor'),{ssr:false});
 const normalized=name=>String(name||'').trim();
-const uidKey=(scope,item,index)=>scope+':'+(item.uid||'new:'+index);
+// The server and public sites now share exactly one ZModel Source tree. Keep
+// existing saved physical keys; overlay only the editor's own draft leaves.
 function sourceNodes(catalog,scopeId,editing){
-  const root={key:'universe',type:'universe',name:catalog.universe||'Eosteric',parent:null};
-  const galaxy={key:'galaxy',type:'galaxy',name:catalog.galaxy||'LOC',parent:root.key};
-  const nodes=[root,galaxy,{key:'domain:system',type:'domain',name:'system',parent:galaxy.key}];
-  (scopeId==='loc'?editing:catalog.system||[]).forEach((item,i)=>{
-    nodes.push({key:'system:'+i,type:'from',name:typeof item==='string'?item:item.name,
-      parent:'domain:system',shared:true});
+  const nodes=(catalog.tree||[]).map(node=>({...node,children:[...(node.children||[])]}));
+  const global=scopeId==='loc';
+  const parent=nodes.find(node=>node.type==='domain'&&
+    (global?node.domain_kind==='system'&&node.source_scope==='loc':
+      node.domain_kind==='scope'&&node.source_scope===scopeId));
+  if(!parent)return nodes;
+  const retained=nodes.filter(node=>!(node.type==='from'&&node.parent===parent.key));
+  parent.children=[];
+  editing.forEach((item,index)=>{
+    const name=String(item?.name||'').trim(),uid=String(item?.uid||'');
+    const key=uid?'from:'+scopeId+':'+uid:
+      name?'from:'+scopeId+':'+name.normalize('NFKC').toLowerCase():
+        'draft:'+scopeId+':'+index;
+    const node={key,type:'from',name:name||'新來源',label:item?.label||name,
+      ...(uid?{uid}:{}),parent:parent.key,source_scope:scopeId,
+      domain_kind:parent.domain_kind,site:name,children:[]};
+    parent.children.push(key);retained.push(node);
   });
-  for(const record of catalog.scopes||[]){
-    const domain='domain:'+record.scopeid;
-    nodes.push({key:domain,type:'domain',name:record.scopeid,parent:galaxy.key,
-      scopeid:record.scopeid});
-    const rows=record.scopeid===scopeId?editing:
-      record.sources;
-    rows.forEach((item,i)=>nodes.push({
-      key:uidKey(record.scopeid,item,i),type:'from',name:item.name,
-      uid:item.uid||null,scopeid:record.scopeid,parent:domain
-    }));
-  }
-  return nodes;
+  return retained;
 }
 
 // LOC and Scope have different management locations and independent write
@@ -111,7 +112,8 @@ export default function FlatClassificationEditor({scopeId='loc'}){
       <KeywordNetworkEditor sourceNodes={graph} className="來源" classId={'sources:'+scopeId}
         onSelectNode={node=>setSelected(node.key)}
         onNewChild={node=>{
-          if(global&&node?.key==='domain:system'||!global&&node?.key==='domain:'+scopeId)add();
+          if(node?.type==='domain'&&node.source_scope===scopeId&&
+             node.domain_kind===(global?'system':'scope'))add();
           else setNotice('只能在自己的來源分類新增項目。');
         }}/>
       {!global?<div className="scope-source-system-readonly">
