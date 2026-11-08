@@ -1,7 +1,8 @@
 'use client';
 
 
-import {dbAuthClient,dbPublicClient} from './db-client.mjs';
+import {dbAuthClient} from './db-client.mjs';
+import {PUBLISHED_SEARCH_SUMMARY} from '../modular/published-search-summary.js';
 
 const SCOPE_ID=/^[a-z][a-z0-9]{0,14}$/;
 
@@ -34,11 +35,12 @@ export function summarizeScopeSearchSummary(scopeIds,rows=[]){
 export async function readScopeSearchSummary(scopeIds){
   const ids=summaryScopeIds(scopeIds);
   if(!ids.length)return {rows:[],summary:null};
-  // Scope status.search is not publicly readable as a table column.
-  // Unified analytics projects only aggregate statistics without exposing config.
-  const {data,error}=await dbPublicClient.schema('silver').analytics({p_scope_id:'loc',p_view:'search_summary',p_options:{scopeIds:ids}});
-  if(error)throw new Error(error.message||'搜尋摘要讀取失敗');
-  const rows=Array.isArray(data?.rows)?data.rows:[];
+  // Search summary is an explicitly published, non-sensitive Scope aggregate.
+  // The browser must not call a retired analytics RPC or read private status.
+  const rows=ids.flatMap(id=>{
+    const published=PUBLISHED_SEARCH_SUMMARY[id];
+    return published?[published]:[];
+  });
   return {rows,summary:summarizeScopeSearchSummary(ids,rows)};
 }
 
