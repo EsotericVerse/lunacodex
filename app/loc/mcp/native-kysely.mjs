@@ -1,59 +1,129 @@
-// Kysely runs inside the existing LOC MCP application runtime, not via SQL Gateway.
-// The database login is server-only; neither OAuth nor an HTTP caller chooses a URL.
-import {Kysely,PostgresDialect} from 'kysely';
+// LOC native Kysely Driver: the selected SQL engine controls its real wire
+// protocol. SQL always executes here in the trusted application, never through
+// LOC Auth or an HTTP SQL Gateway.
+import {Kysely,PostgresDialect,MysqlDialect,MssqlDialect} from 'kysely';
 import pg from 'pg';
+import {mssqlAuthentication,mysqlLdapOptions} from '../providers/sql-driver-auth.mjs';
+import {normalizeLiveTarget} from '../providers/live-database-target.mjs';
 
 const targets=new WeakMap();
 const ALIAS=/^[a-z][a-z0-9_-]{0,63}$/;
+const IDENT=/^[A-Za-z][A-Za-z0-9_]{0,119}$/;
 function fail(message){
-  return Object.assign(new Error(message),{code:'BACKEND_UNAVAILABLE'});
+ return Object.assign(new Error(message),{code:'BACKEND_UNAVAILABLE'});
 }
-function selectedProfile(env,verifiedAlias=''){
-  // The override may ONLY be supplied by LOC Auth's verified Scope permit.
-  // Never map an HTTP request field to this argument.
-  const alias=String(verifiedAlias||env.LOC_MCP_DB_ALIAS||env.LOC_CONTROL_DB_ALIAS||'');
-  if(!ALIAS.test(alias))throw fail('LOC MCP direct database alias is not configured');
-  let profiles;
-  try{profiles=JSON.parse(String(env.LOC_DB_CONNECTIONS_JSON||'{}'))}
-  catch{throw fail('LOC direct database profiles have invalid JSON')}
-  if(!profiles||typeof profiles!=='object'||Array.isArray(profiles))
-    throw fail('LOC direct database profiles are invalid');
-  const profile=Object.hasOwn(profiles,alias)?profiles[alias]:null;
-  if(!profile||typeof profile!=='object'||Array.isArray(profile))
-    throw fail('LOC MCP database alias does not exist');
-  const engine=String(profile.engine||'');
-  if(!['postgres','mysql','mssql'].includes(engine))
-    throw fail('LOC MCP database engine is unsupported');
-  if(!verifiedAlias&&env.LOC_MCP_DB_ENGINE&&env.LOC_MCP_DB_ENGINE!==engine)
-    throw fail('LOC MCP database engine mismatch');
-  if(typeof profile.url!=='string'||!profile.url)
-    throw fail('LOC MCP database connection is unavailable');
-  // Do not silently route an unimplemented dialect to a provider Data API.
-  if(engine!=='postgres')
-    throw fail('MCP application runtime needs a native '+engine+' driver');
-  let uri;
-  try{uri=new URL(profile.url)}catch{throw fail('Invalid LOC MCP database connection')}
-  if(!['postgres:','postgresql:'].includes(uri.protocol)||!uri.hostname)
-    throw fail('LOC MCP PostgreSQL connection URL is invalid');
-  return {alias,engine,profile,namespace:String(env.LOC_MCP_DB_NAMESPACE||'silver')};
+function trustedAlias(env,verifiedAlias){
+ const alias=String(verifiedAlias||env.LOC_MCP_DB_ALIAS||env.LOC_CONTROL_DB_ALIAS||'');
+ if(!ALIAS.test(alias))throw fail('LOC MCP direct database alias is not configured');
+ return alias;
 }
-export function directMcpKysely(env={},verifiedAlias=''){
-  if(!env||typeof env!=='object')throw fail('Invalid LOC MCP backend environment');
-  if(verifiedAlias&&!ALIAS.test(verifiedAlias))throw fail('Invalid verified database alias');
-  const {alias,engine,profile,namespace}=selectedProfile(env,verifiedAlias);
-  if(!/^[A-Za-z][A-Za-z0-9_]*$/.test(namespace))
-    throw fail('Invalid LOC MCP database namespace');
-  const key=alias+'|'+profile.url+'|'+profile.tls+'|'+namespace;
-  let cache=targets.get(env);
-  if(!cache){cache=new Map();targets.set(env,cache)}
-  const existing=cache.get(key);
-  if(existing)return existing;
-  const pool=new pg.Pool({
-    connectionString:profile.url,max:2,idleTimeoutMillis:12000,
-    connectionTimeoutMillis:7000,
-    ssl:profile.tls===false?false:{rejectUnauthorized:true}
+function localProfile(env,alias){
+ let profiles;
+ try{profiles=JSON.parse(String(env.LOC_DB_CONNECTIONS_JSON||'{}'))}
+ catch{throw fail('LOC direct database profiles have invalid JSON')}
+ if(!profiles||typeof profiles!=='object'||Array.isArray(profiles))
+  throw fail('LOC direct database profiles are invalid');
+ const profile=Object.hasOwn(profiles,alias)?profiles[alias]:null;
+ if(!profile||typeof profile!=='object'||Array.isArray(profile))
+  throw fail('LOC MCP database alias does not exist');
+ if(typeof profile.url!=='string'||!profile.url)
+  throw fail('LOC MCP database connection is unavailable');
+ return profile;
+}
+async function authorizedProfile(env,alias,verifiedAlias,fetchImpl){
+ const secret=String(env.LOC_DB_PROFILE_SERVICE_TOKEN||'');
+ if(verifiedAlias&&secret){
+  if(secret.length<32)throw fail('LOC trusted profile secret is invalid');
+  const result=await fetchImpl('https://auth.lo3rwang.cc/v1/internal/database/'+alias,{
+   method:'GET',headers:{'x-loc-service-token':secret,accept:'application/json'},
+   cache:'no-store',redirect:'error',signal:AbortSignal.timeout(8000)
   });
-  const entry={db:new Kysely({dialect:new PostgresDialect({pool})}),engine,namespace};
-  cache.set(key,entry);
-  return entry;
+  if(!result.ok)throw fail('LOC Authority profile lookup refused ('+result.status+')');
+  const profile=await result.json().catch(()=>null);
+  // Identity/selection has already been checked in the signed LOC delegation.
+  const verified=normalizeLiveTarget(alias,profile);
+  return {...verified.profile,schema_name:verified.target.schema_name,
+   table_name:verified.target.table_name,field_map:verified.target.field_map};
+ }
+ return localProfile(env,alias);
+}
+function validateProfile(env,profile,verifiedAlias){
+ const engine=String(profile.engine||'');
+ if(!['postgres','mysql','mssql'].includes(engine))
+  throw fail('LOC MCP database engine is unsupported');
+ if(!verifiedAlias&&env.LOC_MCP_DB_ENGINE&&env.LOC_MCP_DB_ENGINE!==engine)
+  throw fail('LOC MCP database engine mismatch');
+ const url=String(profile.url||'');
+ let parsed;
+ try{parsed=new URL(url)}catch{throw fail('LOC database connection URL invalid')}
+ const schemes={postgres:['postgres:','postgresql:'],mysql:['mysql:'],
+  mssql:['mssql:','sqlserver:']};
+ if(!schemes[engine].includes(parsed.protocol)||!parsed.hostname)
+  throw fail('LOC '+engine+' connection URL invalid');
+ const namespace=engine==='mysql'?'':String(profile.schema_name||
+  env.LOC_MCP_DB_NAMESPACE||(engine==='mssql'?'dbo':'silver'));
+ const tableName=String(profile.table_name||'');
+ const fieldMap=profile.field_map||{};
+ if(namespace&&!IDENT.test(namespace)||tableName&&!IDENT.test(tableName)||
+  !fieldMap||typeof fieldMap!=='object'||Array.isArray(fieldMap)||
+  Object.entries(fieldMap).some(([key,value])=>!IDENT.test(key)||
+   typeof value!=='string'||!IDENT.test(value)))
+  throw fail('Invalid LOC SQL mapping');
+ return {engine,profile,namespace,tableName,fieldMap,parsed};
+}
+async function newDialect({engine,profile,parsed}){
+ if(engine==='postgres'){
+  return new PostgresDialect({pool:new pg.Pool({
+   connectionString:profile.url,max:2,idleTimeoutMillis:12000,
+   connectionTimeoutMillis:7000,
+   ...(profile.tls===false?{ssl:false}:{ssl:{rejectUnauthorized:true}})
+  })});
+ }
+ if(engine==='mysql'){
+  const module=await import('mysql2');
+  const createPool=module.createPool||module.default?.createPool;
+  if(typeof createPool!=='function')throw fail('MySQL protocol driver unavailable');
+  return new MysqlDialect({pool:createPool({
+   host:parsed.hostname,port:Number(parsed.port)||3306,
+   user:decodeURIComponent(parsed.username),password:decodeURIComponent(parsed.password),
+   database:decodeURIComponent(parsed.pathname.slice(1)),
+   waitForConnections:true,connectionLimit:2,queueLimit:10,
+   ...(profile.tls===false?{}:{ssl:{rejectUnauthorized:true}}),
+   ...mysqlLdapOptions(profile)
+  })});
+ }
+ const Tedious=await import('tedious'),Tarn=await import('tarn');
+ return new MssqlDialect({
+  tarn:{...Tarn,options:{min:0,max:2}},
+  tedious:{...Tedious,connectionFactory:()=>new Tedious.Connection({
+   server:parsed.hostname,
+   authentication:mssqlAuthentication(profile,
+    decodeURIComponent(parsed.username),decodeURIComponent(parsed.password)),
+   options:{database:decodeURIComponent(parsed.pathname.slice(1)),
+    port:Number(parsed.port)||1433,encrypt:profile.tls!==false,
+    trustServerCertificate:false,connectTimeout:7000}
+  })}
+ });
+}
+export async function directMcpKysely(env={},verifiedAlias='',{
+ fetchImpl=globalThis.fetch
+}={}){
+ if(!env||typeof env!=='object')throw fail('Invalid LOC MCP backend environment');
+ if(verifiedAlias&&!ALIAS.test(verifiedAlias))throw fail('Invalid verified database alias');
+ const alias=trustedAlias(env,verifiedAlias);
+ const profile=await authorizedProfile(env,alias,verifiedAlias,fetchImpl);
+ const input=validateProfile(env,profile,verifiedAlias);
+ const {engine,namespace,tableName,fieldMap}=input;
+ const key=alias+'|'+engine+'|'+profile.url+'|'+profile.tls+'|'+namespace+
+  '|'+tableName+'|'+JSON.stringify(fieldMap)+'|'+JSON.stringify(profile.authentication||{});
+ let cache=targets.get(env);
+ if(!cache){cache=new Map();targets.set(env,cache)}
+ if(cache.has(key))return cache.get(key);
+ const create=async()=>{
+  const db=new Kysely({dialect:await newDialect(input)});
+  return {db,engine,namespace,tableName,fieldMap};
+ };
+ const promise=create();
+ cache.set(key,promise);
+ try{return await promise}catch(error){cache.delete(key);throw error}
 }
