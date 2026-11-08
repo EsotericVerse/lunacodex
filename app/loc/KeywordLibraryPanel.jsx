@@ -231,7 +231,14 @@ export default function KeywordLibraryPanel({scopeId,account}){
     if(!window.confirm('刪除「'+node.name+'」及其下層分類？原始 Galaxy 文章不受影響。'))return;
     setBusy(true);setError('');
     try{
-      const parent=parentOf(tree,node.uid);
+      if(node.type==='item'&&isUnifiedAnchorScope(scopeId)){
+         const {keywordService}=await import('./keyword-service-client.mjs');
+         await keywordService('deleteItem',{scopeId,itemUid:node.uid});
+         await load(chosen.group||'');await invalidate();
+         setNotice('已移除 Item 和無其他關聯的 Pattern，文章保留。');
+         return;
+       }
+       const parent=parentOf(tree,node.uid);
       if(parent)await writeKeywordLibraryItem(scopeId,'update',{
         ...parent,lists:parent.lists.filter(uid=>uid!==node.uid)
       });
@@ -254,7 +261,11 @@ export default function KeywordLibraryPanel({scopeId,account}){
           .eq('id',scopeId);
         if(settingsError)throw settingsError;
       }
-      await load(parent?.uid||'');await invalidate();
+      if(isUnifiedAnchorScope(scopeId)){
+         const {keywordService}=await import('./keyword-service-client.mjs');
+         await keywordService('syncLibrary',{scopeId});
+       }
+       await load(parent?.uid||'');await invalidate();
       setNotice('已刪除；不會刪除文章。');
     }catch(e){setError(String(e.message||e));}
     finally{setBusy(false);}
