@@ -1,5 +1,4 @@
 export default {
-  "dashboardScopeNavigation": "Scope を切り替え",
   "dashboardTitle": "統計ダッシュボード",
   "dashboardScopeHelp": "既存の統計結果から推移、ソースの分布、詳細分析を確認します。",
   "dashboardLocHelp": "LOC の所属 Scope ごとの記録と分布を確認します。",
