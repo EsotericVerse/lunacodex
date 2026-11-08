@@ -29,11 +29,20 @@ export async function selectCultureTimeRows(scope,birthday=''){
   // maps address/anchor_ids to attr.date/attr.uid/attr.period.
   const table=String(scope?.time||'').replace(/_anchor$/,'_time');
   if(!scopeId||!table)throw new Error('Scope data 未解析');
-  const {rows}=await selectRows(table,{
-    columns:TIME_COLUMNS,
-    filters:[{column:'type',operator:'in',value:['anchor','period','era']}],
-    limit:DB_QUERY_BATCH_SIZE,offset:0
-  });
+  // Public Data API imposes a smaller page size than the application's
+  // general 10,000-row I/O ceiling. Query it page by page so Culture neither
+  // throws an Invalid page limit error nor silently omits Time Anchors.
+  const rows=[],pageSize=Math.min(DB_QUERY_BATCH_SIZE,1000),maxRows=10000;
+  for(let offset=0;offset<maxRows;offset+=pageSize){
+    const result=await selectRows(table,{
+      columns:TIME_COLUMNS,
+      filters:[{column:'type',operator:'in',value:['anchor','period','era']}],
+      limit:pageSize,offset,maxLimit:pageSize
+    });
+    rows.push(...result.rows);
+    if(result.rows.length<pageSize)break;
+    if(offset+pageSize>=maxRows)throw new Error('Culture time Anchor limit exceeded');
+  }
   const anchors=rows.filter(row=>row.type==='anchor');
   const byUid=new Map(anchors.map(row=>[String(row.uid),row]));
   const normalize=(row,type,eventMap)=>{
