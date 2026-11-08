@@ -1,16 +1,35 @@
 {
   "$schema": "https://unpkg.com/wrangler@4.157.0/config-schema.json",
-  "name": "loc-authority-control",
+  "name": "loc-native-auth",
   "main": "./index.mjs",
   "compatibility_date": "2026-10-31",
   "keep_vars": true,
   "durable_objects": {
     "bindings": [
-      {"name": "LOC_AUTHORITY_STATE", "class_name": "LocAuthorityState"}
+      {
+        "name": "LOC_AUTHORITY_STATE",
+        "class_name": "LocAuthorityState"
+      }
     ]
   },
   "exports": {
-    "LocAuthorityState": {"type": "durable-object", "storage": "sqlite"}
+    "LocAuthorityState": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
   },
-  "observability": {"enabled": true}
+  "observability": {
+    "enabled": true
+  },
+  "workers_dev": false,
+  "routes": [
+    {
+      "pattern": "auth.lo3rwang.cc",
+      "custom_domain": true,
+      "zone_name": "lo3rwang.cc"
+    }
+  ],
+  "vars": {
+    "LOC_CONTROL_ORIGIN": "https://loc.lo3rwang.cc"
+  }
 }
