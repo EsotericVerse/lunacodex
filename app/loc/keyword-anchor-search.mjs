@@ -2,7 +2,7 @@
 // All SQL is fixed-purpose, Kysely-built and bounded. No user-supplied SQL,
 // imported schema copying, Article body scans or duplicate search tables.
 import {scopeDatabaseUid,readScopePatternRows,keywordIdentity} from './keyword-anchor-index.mjs';
-import {sql} from 'npm:kysely@0.29.8';
+import {sql} from 'kysely';
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
 const TYPES=['date','point','from','domain','item','pattern'];
@@ -26,7 +26,7 @@ export async function accessibleKeywordAnchors(db,scope,owner=false){
     .execute();
   const byUid=new Map(rows.map(row=>[row.uid,row]));
   const visible=new Set();
-  const settings=await db.selectFrom('silver.'+scope).select('keyword_meta')
+  const settings=await db.selectFrom('silver.'+scope).select(['keyword_meta','search'])
     .where('id','=',scope).executeTakeFirst();
   const meta=typeof settings?.keyword_meta==='string'
     ?JSON.parse(settings.keyword_meta):settings?.keyword_meta||{};
@@ -48,7 +48,7 @@ export async function accessibleKeywordAnchors(db,scope,owner=false){
   for(const itemId of visible)
     for(const uid of kids(byUid.get(itemId)))patterns.add(uid);
   const indexed=new Set(Object.keys(meta.pattern_scans||{}));
-  return {items:visible,patterns,indexed};
+  return {items:visible,patterns,indexed,published:settings?.search===true};
 }
 
 export async function suggestAnchorOptions(db,scopeIds,rawQuery,{ownerScopes=new Set()}={}){
@@ -61,6 +61,7 @@ export async function suggestAnchorOptions(db,scopeIds,rawQuery,{ownerScopes=new
   for(const scope of new Set(scopeIds)){
     const owner=ownerScopes.has(scope);
     const visible=await accessibleKeywordAnchors(db,scope,owner);
+    if(!owner&&!visible.published)continue;
     for(const type of TYPES){
       // Check Anchor semantics, not only display titles. A date typed as
       // 2026-11 must match attr.date; a place alias may be in attr.location.
