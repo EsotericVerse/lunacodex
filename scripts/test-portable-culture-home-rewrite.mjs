@@ -99,7 +99,9 @@ test('Culture reuses one FeaturePage Hero and one portable list reader',()=>{
   assert.match(ui,/heroBlocks\(scopeId,featureId\)/);
   assert.doesNotMatch(view,/heroBlocks\(scopeId/);
   assert.match(view,/selectCultureArticleListPage\(scope,/);
-  assert.match(query,/p_view:'culture_list'/);
+  assert.match(query,/export async function selectCultureArticleListPage/);
+  assert.match(query,/columns:scopeId==='local'\?'uid,title,createtime,site,able':'uid,date,title,list'/);
+  assert.doesNotMatch(query,/p_view:'culture_list'/);
   assert.match(view,/onClick=\{\(\)=>openArticles\(item\.site\)\}/);
   assert.match(view,/resetArticles=site=>/);
   assert.match(view,/setArticleRows\(\[\]\)/);
