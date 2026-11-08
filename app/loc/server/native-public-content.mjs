@@ -15,6 +15,9 @@ const BLOCK_FIELDS=['uid','page_name','block_eyebrow','block_title','block_subti
 const respond=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:HEADERS});
 const allowedScope=id=>SCOPE_ROUTE_INDEX.some(row=>row.scope_id===id&&row.active!==false);
 const NUMERIC_KINDS=new Set(['culture_density','daily','overview','earliest','totals']);
+// Existing published Galaxy history exceeds 5,000 date/source groups. Bound
+// the result by groups (never article rows) while preserving full-history views.
+const MAX_PUBLIC_GROUPS=20000;
 const DAY=/^\d{4}-\d{2}-\d{2}$/;
 const day=value=>value instanceof Date?value.toISOString().slice(0,10):String(value??'').slice(0,10);
 const total=value=>Number(value)||0;
@@ -36,8 +39,8 @@ async function readGalaxyNumeric(db,scope,kind,start,end,port){
       .select(eb=>eb.fn.countAll().as('item_count'))
       .where('statics','=',true).where('date','is not',null);
     if(start)query=query.where('date','>=',start).where('date','<=',end);
-    const rows=await query.groupBy('site').orderBy('site','asc').limit(5001).execute();
-    if(rows.length>5000)throw new Error('Too many Galaxy sources');
+    const rows=await query.groupBy('site').orderBy('site','asc').limit(MAX_PUBLIC_GROUPS+1).execute();
+    if(rows.length>MAX_PUBLIC_GROUPS)throw new Error('Too many Galaxy sources');
     return rows.map(row=>({kind:'source',category:String(row.site||''),
       item_count:total(row.item_count)}));
   }
@@ -46,7 +49,7 @@ async function readGalaxyNumeric(db,scope,kind,start,end,port){
     .where(isCulture?'culture':'statics','=',true)
     .where('date','>=',start).where('date','<=',end)
     .where('date','is not',null)
-    .groupBy(['date','site']).orderBy('date','asc').limit(5001);
+    .groupBy(['date','site']).orderBy('date','asc').limit(MAX_PUBLIC_GROUPS+1);
   const [raw,first]=await Promise.all([
     q.execute(),
     kind==='overview'?db.selectFrom(table)
@@ -54,7 +57,7 @@ async function readGalaxyNumeric(db,scope,kind,start,end,port){
       .where('statics','=',true).where('date','is not',null)
       .executeTakeFirst():Promise.resolve(null)
   ]);
-  if(raw.length>5000)throw new Error('Too many daily Galaxy groups');
+  if(raw.length>MAX_PUBLIC_GROUPS)throw new Error('Too many daily Galaxy groups');
   if(isCulture)return raw.map(row=>({day:day(row.date),
     site:String(row.site||''),item_count:total(row.item_count)}));
   // One grouped SQL query supplies both the Source and Total rows. It is not
