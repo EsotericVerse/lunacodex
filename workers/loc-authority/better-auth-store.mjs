@@ -1,26 +1,26 @@
-// Better Auth's dedicated, schema-free persistence inside the existing LOC Authority DO.
-// No user SQL tables, migrations, or tenant database writes are performed.
+// First-party Better Auth persistence, using existing LOC Authority DO storage.
+// Uniqueness and hot lookups use KV indexes, NOT full-table scans or SQL DDL.
 const PREFIX='loc-better-auth:';
+const IDX='loc-better-auth-idx:';
 const MODEL=/^[a-z][a-zA-Z0-9]{0,39}$/;
 const FIELD=/^[a-zA-Z][a-zA-Z0-9_]{0,63}$/;
 const MAX_WHERE=24;
-const MAX_RECORDS=10000;
-function invalid(message){throw new Error(message);}
-function validate(model){
+const MAX_SCAN=100000;
+const txt=new TextEncoder();
+function invalid(message){throw new Error(message)}
+function prefix(model){
  if(typeof model!=='string'||!MODEL.test(model))invalid('Invalid Better Auth model');
  return PREFIX+model+':';
 }
 function comparable(value){
  if(value instanceof Date)return value.getTime();
- if(value===undefined)return null;
- return value;
+ return value===undefined?null:value;
 }
-function same(a,b){return comparable(a)===comparable(b);}
+function same(a,b){return comparable(a)===comparable(b)}
 function matchesField(row,rule){
  const {field,operator='eq',value}=rule;
  if(!FIELD.test(String(field||'')))invalid('Invalid Better Auth field');
- const own=Object.hasOwn(row,field)?row[field]:null;
- const lhs=comparable(own);
+ const lhs=comparable(Object.hasOwn(row,field)?row[field]:null);
  const rhs=comparable(value);
  if(operator==='eq')return same(lhs,rhs);
  if(operator==='ne')return !same(lhs,rhs);
@@ -56,25 +56,68 @@ function clean(data){
  }
  return {...data};
 }
+function normalizedEmail(value){return String(value||'').trim().toLowerCase()}
+function indices(model,row){
+ const result=[];
+ if(model==='user'&&typeof row.email==='string'&&row.email)
+  result.push(['email',normalizedEmail(row.email)]);
+ if(model==='account'&&typeof row.providerId==='string'&&typeof row.accountId==='string')
+  result.push(['provider-account',row.providerId+'\0'+row.accountId]);
+ if(model==='session'&&typeof row.token==='string'&&row.token)
+  result.push(['token',row.token]);
+ return result;
+}
+async function indexKey(model,field,value){
+ const digest=await crypto.subtle.digest('SHA-256',txt.encode(value));
+ const hex=[...new Uint8Array(digest)].map(b=>b.toString(16).padStart(2,'0')).join('');
+ return IDX+model+':'+field+':'+hex;
+}
+async function indexedId(storage,model,where){
+ if(!Array.isArray(where)||!where.length||where.some(x=>x.connector==='OR'))
+  return null;
+ const equal=Object.fromEntries(where.filter(x=>x.operator===undefined||x.operator==='eq')
+  .map(x=>[x.field,x.value]));
+ if(typeof equal.id==='string')return equal.id;
+ const specs=indices(model,equal);
+ if(!specs.length)return null;
+ const [field,value]=specs[0];
+ return await storage.get(await indexKey(model,field,value))||'';
+}
 async function matchingRows(storage,model,where){
- const rows=await storage.list({prefix:validate(model)});
- if(rows.size>MAX_RECORDS)invalid('Better Auth storage capacity exceeded');
- return [...rows.entries()].filter(([,value])=>matches(value,where));
+ const key=prefix(model);
+ const id=await indexedId(storage,model,where);
+ if(id!==null){
+  const row=id?await storage.get(key+id):null;
+  return row&&matches(row,where)?[[key+id,row]]:[];
+ }
+ const rows=await storage.list({prefix:key});
+ if(rows.size>MAX_SCAN)invalid('Better Auth query exceeds supported bounded scan');
+ return [...rows.entries()].filter(([,row])=>matches(row,where));
 }
-async function unique(storage,model,data){
- const rows=await matchingRows(storage,model,[]);
- const has=(field,value)=>rows.some(([,row])=>same(row[field],value));
- if(model==='user'&&typeof data.email==='string'&&rows.some(([,row])=>
-  String(row.email||'').toLowerCase()===data.email.toLowerCase()))
-  invalid('Account email already registered');
- if(model==='account'&&rows.some(([,row])=>
-  row.providerId===data.providerId&&row.accountId===data.accountId))
-  invalid('External account already linked');
- if(model==='session'&&has('token',data.token))invalid('Session token already in use');
- if(rows.some(([,row])=>same(row.id,data.id)))invalid('Better Auth record ID exists');
+async function ensureFree(storage,model,row,ignoreId=''){
+ const key=prefix(model)+row.id;
+ if(!ignoreId&&await storage.get(key))invalid('Better Auth record ID exists');
+ for(const [field,value] of indices(model,row)){
+  const holder=await storage.get(await indexKey(model,field,value));
+  if(holder&&holder!==ignoreId){
+   if(model==='user')invalid('Account email already registered');
+   if(model==='account')invalid('External account already linked');
+   invalid('Session token already in use');
+  }
+ }
 }
-export async function runBetterAuthStore(storage,{operation,model,data,where=[],update,limit,offset,sortBy}={}){
- validate(model);
+async function writeIndices(storage,model,row,deleteOnly=false){
+ for(const [field,value] of indices(model,row)){
+  const key=await indexKey(model,field,value);
+  if(deleteOnly){
+   if(await storage.get(key)===row.id)await storage.delete(key);
+  }else await storage.put(key,row.id);
+ }
+}
+export async function runBetterAuthStore(storage,{
+ operation,model,data,where=[],update,limit,offset,sortBy
+}={}){
+ prefix(model);
  const read=async()=>{
   let rows=(await matchingRows(storage,model,where)).map(([,record])=>record);
   if(sortBy?.field){
@@ -99,8 +142,9 @@ export async function runBetterAuthStore(storage,{operation,model,data,where=[],
   const row=clean(data);
   if(typeof row.id!=='string'||!row.id||row.id.length>160)invalid('Missing Better Auth ID');
   return storage.transaction(async tx=>{
-   await unique(tx,model,row);
-   await tx.put(validate(model)+row.id,row);
+   await ensureFree(tx,model,row);
+   await tx.put(prefix(model)+row.id,row);
+   await writeIndices(tx,model,row);
    return row;
   });
  }
@@ -114,10 +158,19 @@ export async function runBetterAuthStore(storage,{operation,model,data,where=[],
   if(operation==='update'||operation==='updateMany'){
    const patch=clean(update);
    if(Object.hasOwn(patch,'id'))invalid('Better Auth ID cannot change');
-   for(const [key,row] of selected)await tx.put(key,{...row,...patch});
+   for(const [key,row] of selected){
+    const next={...row,...patch};
+    await ensureFree(tx,model,next,row.id);
+    await writeIndices(tx,model,row,true);
+    await tx.put(key,next);
+    await writeIndices(tx,model,next);
+   }
    return many?selected.length:selected.length?{...selected[0][1],...patch}:null;
   }
-  for(const [key] of selected)await tx.delete(key);
+  for(const [key,row] of selected){
+   await tx.delete(key);
+   await writeIndices(tx,model,row,true);
+  }
   return many?selected.length:undefined;
  });
 }
