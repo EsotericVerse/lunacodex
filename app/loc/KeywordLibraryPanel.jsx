@@ -40,6 +40,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
   const inDock=Boolean(dock?.active&&dock.scopeId===scopeId);
   const {mutate}=useSWRConfig();
   const [rows,setRows]=useState([]);
+  const [patternNodes,setPatternNodes]=useState(new Map());
   const [config,setConfig]=useState({});
   const [savedConfig,setSavedConfig]=useState({});
   const [editor,setEditor]=useState(null);
@@ -106,7 +107,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
           const owned=[],size=500;
           for(let offset=0;;offset+=size){
             const {data,error}=await dbAuthRelation(table)
-              .select('uid,type,name,desc,lists')
+              .select('uid,type,name,desc,lists,attr,num')
               .order('name',{ascending:true}).range(offset,offset+size-1);
             if(error)throw new Error(error.message||'Keywords 讀取失敗');
             owned.push(...(data||[]));
@@ -119,7 +120,18 @@ export default function KeywordLibraryPanel({scopeId,account}){
         ).eq('id',scopeId).limit(1)
       ]);
       if(settings.error)throw settings.error;
-      const records=(found.rows||[]).map(row=>({...row,uid_lists:[]})),index=indexKeywordTree(records);
+      const patterns=new Map((found.rows||[]).filter(row=>row.type==='pattern')
+        .map(row=>[row.uid,row]));
+      const records=(found.rows||[]).filter(row=>row.type!=='pattern')
+        .map(row=>{
+          if(row.type!=='item')return {...row,uid_lists:[]};
+          const references=Array.isArray(row.attr?.uid)?row.attr.uid:[];
+          const derived=references.map(uid=>patterns.get(uid)?.name).filter(Boolean)
+            .filter(word=>word.normalize('NFKC').toLocaleLowerCase('zh-Hant')!==
+              String(row.name||'').normalize('NFKC').toLocaleLowerCase('zh-Hant'));
+          const words=[...new Set([...(Array.isArray(row.lists)?row.lists:[]),...derived])];
+          return {...row,lists:words,patternUids:references,uid_lists:[]};
+        }),index=indexKeywordTree(records);
       const first=index.roots[0];
       const firstClass=[...index.index.values()].find(row=>row.type==='class');
       const current=index.index.get(preferredUid);
@@ -129,7 +141,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
       const lineage={},nodeType=target?.type;
       let node=target;
       while(node){lineage[node.type]=node.uid;node=parentOf(index,node.uid);}
-      setRows(records);setConfig(settings.data?.[0]||{});setSavedConfig(settings.data?.[0]||{});
+      setPatternNodes(patterns);setRows(records);setConfig(settings.data?.[0]||{});setSavedConfig(settings.data?.[0]||{});
       setChosen({category:lineage.category||first?.uid||'',
         class:lineage.class||(target?.type==='category'?childrenOf(index,target.uid)[0]?.uid:'')||firstClass?.uid||'',
         group:lineage.group||'',item:lineage.item||''});
@@ -448,7 +460,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
           <label><span>說明</span><textarea rows={2} value={draft.desc} onChange={e=>setEditor({node:{...draft,desc:e.target.value}})}/></label>
         </div>
         {draft.type==='item'?<label className="scope-management-wide-field">
-          <span>判斷詞列表（一行一個）</span>
+          <span>Pattern 關鍵詞（一行一詞，規則保留）</span>
           <textarea rows={9} value={keywordText} onChange={e=>setKeywordText(e.target.value)}/>
           <small className="scope-status">規則範例：家園AND音樂（連結兩個 Item，音樂加 1 筆）；水土TO地（指定計入地）；家園NOR旅館（家園旅館不計入家園，其他詞照常計算）。每行一筆。</small>
         </label>:null}
@@ -486,7 +498,14 @@ export default function KeywordLibraryPanel({scopeId,account}){
           </label>;
         })}
       </div>
-      {selected?<div className="scope-preview-links">
+      {selected?.type==='item'&&Array.isArray(selected.patternUids)&&selected.patternUids.length
+         ?<div className="scope-search-active-filters" aria-label="Item 關聯 Pattern">
+           {selected.patternUids.map(uid=>patternNodes.get(uid)).filter(Boolean).map(row=>
+             <span key={row.uid} className="scope-search-chip">
+               {row.name} · {Number(row.num||0).toLocaleString()} 篇
+             </span>)}
+         </div>:null}
+       {selected?<div className="scope-preview-links">
         <button className="loc-button" type="button" disabled={busy} onClick={()=>edit(selected)}>編輯「{selected.name}」</button>
         <span className="scope-status">{LABEL[selected.type]}：{selected.lists.length}{selected.type==='item'?' 個判斷詞':' 筆'}</span>
       </div>:null}
