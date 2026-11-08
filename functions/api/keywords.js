@@ -54,7 +54,7 @@ export async function onRequestPost(context){
       error('Invalid Keyword Class');
     // The existing Pages native Kysely connection is server-selected; never
     // accept a target URL, SQL dialect or credential from HTTP arguments.
-    const entry=directMcpKysely(context.env);
+    const entry=await directMcpKysely(context.env);
     const db=entry.db;
     let result;
     if(operation==='suggest'||operation==='suggestAnchors'){

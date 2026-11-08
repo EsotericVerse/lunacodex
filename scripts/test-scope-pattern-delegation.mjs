@@ -136,3 +136,18 @@ test('autocomplete is typed and routed; no client can submit arbitrary SQL',()=>
   assert.match(ui,/executeAnchorSelection\(choice\)/);
   assert.match(ui,/executeAnchorSelection\(active\.anchorSelection/);
 });
+
+test('Keyword HTTP boundary awaits the native Kysely connection before accessing db',()=>{
+  const endpoint=readFileSync(new URL('../functions/api/keywords.js',import.meta.url),'utf8');
+  assert.match(endpoint,/const entry=await directMcpKysely\(context\.env\)/);
+  assert.match(endpoint,/const db=entry\.db/);
+  assert.doesNotMatch(endpoint,/const entry=directMcpKysely\(context\.env\)/);
+});
+
+test('public Anchor suggestions are gated by the Scope publication flag',()=>{
+  const server=readFileSync(new URL('../app/loc/keyword-anchor-search.mjs',import.meta.url),'utf8');
+  assert.match(server,/select\(\['keyword_meta','search'\]\)/);
+  assert.match(server,/published:settings\?\.search===true/);
+  assert.match(server,/if\(!owner&&!visible\.published\)continue/);
+  assert.match(server,/if\(settings\?\.search!==true\)err\('This Scope does not publish Search',403\)/);
+});
