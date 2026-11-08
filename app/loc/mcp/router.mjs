@@ -1,6 +1,7 @@
 import {authorityAction} from './authority-client.mjs';
 import {readMemory} from './galaxy-read.mjs';
 import {privateGalaxyLink} from './private-galaxy.mjs';
+import {mcpDatabaseConfiguration} from './native-kysely.mjs';
 import {SCOPE_ROUTE_INDEX} from '../../modular/scope-route-index.js';
 const PUBLIC_SCOPE_IDS=Object.freeze(SCOPE_ROUTE_INDEX.filter(row=>row.active&&row.scope_id!=='loc')
   .map(row=>row.scope_id).filter(id=>/^[a-z][a-z0-9]{0,14}$/.test(id)));
@@ -233,7 +234,7 @@ export async function handleMcp(request,env={}){
       return result(payload.id,{protocolVersion:SUPPORTED_PROTOCOLS.has(proposed)?proposed:DEFAULT_PROTOCOL,
         capabilities:{tools:{listChanged:false}},serverInfo:{name:'loc-mcp',version:'0.2.0',
            ...(proposed==='2025-11-25'?{icons:[{src:'https://loc.lo3rwang.cc/assets/site/icons/loc-favicon.png',mimeType:'image/png'}]}:{})},
-        instructions:'Public Galaxy reads use direct Kysely visibility filters. Private Galaxy read/search use direct Kysely after LOC Auth Scope authorization. Private writes remain on the existing continuity path. galaxy_link.search is permitted only by explicit human user request and user_requested=true. 請至github頁面找尋PR相關資料！不開放搜尋PR! QoS warns before the next request reaches a limit; searches have a five-minute gate.'});
+        instructions:'Public Galaxy reads use direct Kysely visibility filters. Private Galaxy read/search use direct Kysely after LOC Auth Scope authorization. Private writes require an independent LOC Auth Scope grant and a configured native Kysely backend. loc_connection_status reports configuration only, not successful database read/write. galaxy_link.search is permitted only by explicit human user request and user_requested=true. 請至github頁面找尋PR相關資料！不開放搜尋PR! QoS warns before the next request reaches a limit; searches have a five-minute gate.'});
     }
     case 'ping':return result(payload.id,{});
     case 'tools/list':return result(payload.id,{tools:TOOLS});
@@ -259,6 +260,7 @@ export async function handleMcp(request,env={}){
         connected:true,provider:'loc',subject:identity.subject,
         resource:config.resource,galaxyPublicReadEnabled:true,
         galaxyWriteSupported:true,writeRequiresScopeAuthorization:true,
+        nativeDatabase:mcpDatabaseConfiguration(env),
         availableTools:TOOLS.map(tool=>tool.name)});
       try{
         const directPrivate=name==='galaxy_link'&&['read','search'].includes(args.action);
