@@ -5,6 +5,7 @@ import {literalItemWords,scopeDatabaseUid,readScopePatternRows,
   ensureScopePatternLibrary,storeScopePatternMatches,scopePatternScanClocks,
   SCOPE_PATTERN_INDEX_VERSION} from '../app/loc/keyword-anchor-index.mjs';
 import {indexZModelAnchorHierarchy} from '../zenstack/anchor-hierarchy.mjs';
+import {queryAnchorArticles} from '../app/loc/keyword-anchor-search.mjs';
 
 // Minimal Kysely contract simulator; no database credentials or SQL string
 // interpolation. Verify existing Item words, Pattern shares and UID postings.
@@ -24,14 +25,21 @@ function fakeDatabase(initial){
   return {
     tables:store,
     selectFrom(table){
-      let keys=null,limit=Infinity;const filters=[];
+      let keys=null,limit=Infinity,offset=0,sort=null;const filters=[];
       const query={
         select(names){keys=Array.isArray(names)?names:[names];return query;},
         where(k,op,v){filters.push([k,op,v]);return query;},
         limit(n){limit=n;return query;},
-        async execute(){return data(table).filter(row=>match(row,filters)).slice(0,limit)
-          .map(row=>keys===null?copy(row):Object.fromEntries(
-            keys.map(k=>[k,copy(row[k])])));},
+        offset(n){offset=n;return query;},
+        orderBy(col,dir='asc'){sort=[col,dir];return query;},
+        async execute(){
+          const rows=data(table).filter(row=>match(row,filters));
+          if(sort)rows.sort((a,b)=>String(a[sort[0]]??'')
+            .localeCompare(String(b[sort[0]]??''))*(sort[1]==='desc'?-1:1));
+          return rows.slice(offset,offset+limit)
+            .map(row=>keys===null?copy(row):Object.fromEntries(
+              keys.map(k=>[k,copy(row[k])])));
+        },
         async executeTakeFirst(){return (await query.execute())[0]||null;}
       };
       return query;
@@ -128,7 +136,7 @@ test('autocomplete is typed and routed; no client can submit arbitrary SQL',()=>
   const server=readFileSync(new URL('../app/loc/keyword-anchor-search.mjs',import.meta.url),'utf8');
   const endpoint=readFileSync(new URL('../functions/api/keywords.js',import.meta.url),'utf8');
   const ui=readFileSync(new URL('../app/modular/features/Search.jsx',import.meta.url),'utf8');
-  assert.match(server,/q=q\\.where\\('place_id','=',uid\\)/);
+  assert.match(server,/q=q\.where\('place_id','=',uid\)/);
   assert.match(server,/type==='date'/);
   assert.match(server,/sourceValues\.push/);
   assert.match(server,/attrs\(row\)\[dbUid\]/);
@@ -165,4 +173,36 @@ test('old scan timestamps cannot skip first native Scope Pattern backfill',()=>{
   assert.match(service,/pattern_index_version:SCOPE_PATTERN_INDEX_VERSION/);
   const stats=readFileSync(new URL('../app/modular/modules/statistics/KeywordPatternSummary.jsx',import.meta.url),'utf8');
   assert.match(stats,/if\(data\.indexPending\)/);
+});
+
+test('Point Anchor searches Galaxy.place_id regardless of text; public pages stay gated',async()=>{
+  const point='PNT00001',other='PNT00002';
+  const db=fakeDatabase({
+    'silver.demo':[{id:'demo',search:true}],
+    'silver.demo_anchor':[
+      {uid:point,type:'point',title:'台北',attr:{location:'台北'},invisible:false}
+    ],
+    'silver.demo_galaxy':[
+      {uid:'ART00001',title:'散步筆記',date:'2026-11-09',
+        createtime:'2026-11-09T12:00:00Z',place_id:point,search:true,
+        content:'夜色與河流，完全沒有目的地名稱'},
+      {uid:'ART00002',title:'午後散步',date:'2026-11-08',
+        createtime:'2026-11-09T11:00:00Z',place_id:point,search:true,
+        content:'沿途有很多人'},
+      {uid:'ART00003',title:'台北專題',date:'2026-11-07',
+        createtime:'2026-11-09T10:00:00Z',place_id:other,search:true,
+        content:'台北台北台北'}
+    ]
+  });
+  const args={scopeId:'demo',uid:point,type:'point',limit:1};
+  const first=await queryAnchorArticles(db,{...args,offset:0});
+  assert.deepEqual(first.rows.map(item=>item.row.uid),['ART00001']);
+  assert.equal(first.hasMore,true);
+  assert.equal(first.nextOffset,1);
+  assert.equal(Object.hasOwn(first.rows[0].row,'content'),false);
+  const second=await queryAnchorArticles(db,{...args,offset:1});
+  assert.deepEqual(second.rows.map(item=>item.row.uid),['ART00002']);
+  assert.equal(second.hasMore,false);
+  db.tables.get('silver.demo')[0].search=false;
+  await assert.rejects(()=>queryAnchorArticles(db,args),/does not publish Search/);
 });
