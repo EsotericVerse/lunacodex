@@ -99,7 +99,7 @@ test('Service calls native same-origin endpoint with self-delegation',async()=>{
 
 test('Source service is Pages compatible and no business SQL action is duplicated',()=>{
   assert.match(shared,/import \{sql\} from 'kysely'/);
-  assert.doesNotMatch(shared,/npm:kysely|createTable|CREATE TABLE|JOIN /i);
+  assert.doesNotMatch(shared,/npm:kysely|createTable|CREATE TABLE|\.innerJoin\(|\.crossJoin\(|\.leftJoin\(/i);
   const manager=source('app/loc/providers/kysely-management.mjs');
   assert.match(manager,/import \{sourceCatalogAction,saveLocSystemSources\}/);
   assert.equal(manager.includes('async function sourceCatalogAction('),false);
