@@ -286,7 +286,7 @@ function StatisticTypeSelect({scopeId,navigation,types,selectedSource=''}) {
       {types.includes('source')?<optgroup label="來源">
         <option value="source">全部來源</option>
         {sourceOptions.map(item=><option key={item.key} value={'source:'+item.code}>
-          {item.label}
+          {item.domain?item.domain+' / ':''}{item.label}
         </option>)}
       </optgroup>:null}
     </select>
