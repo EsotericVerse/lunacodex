@@ -14,7 +14,8 @@ test('Group owns the single personnel management entry, with admin-only advanced
   assert.doesNotMatch(admin,/value:'registry',label:'人員'/);
   assert.doesNotMatch(admin,/<AdminRegistry\/>/);
   assert.match(admin,/registry:'lists'/);
-  assert.match(admin,/<AdminReservedScopeIds\/>/);
+  assert.doesNotMatch(admin,/AdminReservedScopeIds/);
+  assert.match(admin,/<AdminEmailBlocklist\/>/);
 });
 
 test('Group editor hides global system destination without fetching authorization again',()=>{
