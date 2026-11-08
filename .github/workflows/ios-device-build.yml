@@ -92,6 +92,10 @@ jobs:
           xcrun --find swift
       - name: Install dependency lockfile
         run: npm ci --no-audit --no-fund
+      - name: Install pinned Capacitor CLI in isolated native toolchain
+        run: |
+          npm install --prefix "$RUNNER_TEMP/loc-capacitor-cli" --no-save --no-package-lock --no-audit --no-fund "@capacitor/cli@8.5.3"
+          test -x "$RUNNER_TEMP/loc-capacitor-cli/node_modules/.bin/cap"
       - name: Build LOC static export for the native shell
         run: |
           npm run build:static
@@ -102,8 +106,8 @@ jobs:
         run: python3 scripts/prepare-ios-static-assets.py out
       - name: Generate ephemeral iOS project and sync
         run: |
-          npx cap add ios
-          npx cap sync ios
+          "$RUNNER_TEMP/loc-capacitor-cli/node_modules/.bin/cap" add ios
+          "$RUNNER_TEMP/loc-capacitor-cli/node_modules/.bin/cap" sync ios
           test -f ios/App/App.xcodeproj/project.pbxproj
       - name: Install approved native LOC launcher icon
         run: |

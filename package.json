@@ -66,8 +66,6 @@
   },
   "devDependencies": {
     "@babel/parser": "7.29.9",
-    "@capacitor/cli": "8.5.3",
-    "wrangler": "4.157.0",
     "typescript": "5.9.3"
   }
 }

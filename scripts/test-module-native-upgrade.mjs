@@ -5,7 +5,7 @@ import {existsSync,readFileSync} from 'node:fs';
 const manifest=JSON.parse(readFileSync(new URL('../package.json',import.meta.url),'utf8'));
 const lock=JSON.parse(readFileSync(new URL('../package-lock.json',import.meta.url),'utf8'));
 const root=lock.packages?.['']||{};
-const upgraded=['next','three','maplibre-gl','wrangler'];
+const upgraded=['next','three','maplibre-gl'];
 
 test('upgraded dependency specs match npm lockfile root',()=>{
   for(const name of upgraded){
@@ -14,6 +14,19 @@ test('upgraded dependency specs match npm lockfile root',()=>{
     assert.equal(locked,declared,name+' must be installed and lockfile regenerated');
     assert.ok(lock.packages['node_modules/'+name],name+' must have a resolved lockfile entry');
   }
+});
+
+test('deployment-only CLIs do not inflate website npm install',()=>{
+  for(const name of ['@capacitor/cli','wrangler']){
+    assert.equal(manifest.dependencies?.[name],undefined,name);
+    assert.equal(manifest.devDependencies?.[name],undefined,name);
+    assert.equal(root.dependencies?.[name],undefined,name);
+    assert.equal(root.devDependencies?.[name],undefined,name);
+    assert.equal(lock.packages?.['node_modules/'+name],undefined,name);
+  }
+  const ios=readFileSync(new URL('../.github/workflows/ios-device-build.yml',import.meta.url),'utf8');
+  assert.match(ios,/@capacitor\\/cli@8\\.5\\.3/);
+  assert.match(ios,/loc-capacitor-cli\\/node_modules\\/\\.bin\\/cap/);
 });
 
 test('Unused React Three stack is absent while core Three.js remains',()=>{
