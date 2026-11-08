@@ -86,3 +86,13 @@ test('public LOC Culture reads published Group membership without private api.ma
  assert.match(flow,/defaultScopeData\(entry\.scope_id\)/);
  assert.doesNotMatch(flow,/selectManagedScopes\(/);
 });
+
+test('public single-Scope Culture time timeline uses published routing, not private Manage reads',()=>{
+  const culture=read('app/loc/culture-query.js');
+  const start=culture.indexOf('export async function selectScopeCultureData');
+  const end=culture.indexOf('export async function selectScopePeriodSourceSnapshot',start);
+  assert.ok(start>=0&&end>start);
+  const block=culture.slice(start,end);
+  assert.doesNotMatch(block,/selectManagedScope\(/);
+  assert.match(block,/publishedScope\?defaultScopeData\(id\):null/);
+});

@@ -8,7 +8,7 @@ import {selectScopeDailyCounts} from './galaxy-query';
 import {DB_QUERY_BATCH_SIZE,selectAllRows,selectCount,selectRows} from './db-query.mjs';
 import {mapBounded} from './bounded-parallel.mjs';
 import {publicContentFilters} from './content-policy';
-import {selectManagedScope,selectScopeGroupMemberIds,defaultScopeData} from './scope-data';
+import {selectScopeGroupMemberIds,defaultScopeData} from './scope-data';
 import {PUBLISHED_SITE_BOOTSTRAP} from '../modular/published-site-bootstrap.js';
 import {resolveTimeSegments,resolveTimeTrace,timePeriodSortDate,timeDateWindows,timePeriodContainsDate,intersectTimeDateWindows,storedTimeRange} from './time-anchor-ranges.mjs';
 
@@ -399,7 +399,11 @@ export async function selectScopeCultureData(scopeId){
     };
   }
 
-  const scope=await selectManagedScope(id);
+  // Public Scope time history uses the same published routing as Group Culture.
+  // No guest query may depend on the unpublished api.manage schema.
+  const publishedScope=(PUBLISHED_SITE_BOOTSTRAP.registry||[]).some(row=>
+    row.scope_id===id&&row.scope_kind==='scope'&&row.active!==false);
+  const scope=publishedScope?defaultScopeData(id):null;
   if(!scope)throw new Error('找不到 Scope 資料設定');
   const scopeContext=await selectCultureTimeRows(scope,scope.birthday);
   const parts=cultureParts(scopeContext,scope.id);
