@@ -31,3 +31,47 @@ test('public API never executes writes with browser public key',()=>{
   const adapter=createConfiguredAdapter({accountAdapter:identity,fetchImpl:async()=>{throw Error('fetch unavailable')}});
   assert.throws(()=>adapter.authClient.schema('silver').from('loc').insert([]),/owner Web Server/);
 });
+
+test('Culture density reaches the fixed native operation with real date values',async()=>{
+  const calls=[];
+  const api=createDirectDataApiClient({url:'https://example.net/rest/v1',apiKey:'public',
+    fetch:async(input,options)=>{
+      calls.push({input:String(input),options});
+      return new Response(JSON.stringify({data:[{day:'2026-11-08',site:'threads',item_count:3}]}),{status:200});
+    }});
+  const result=await api.schema('silver').analytics({
+    p_scope_id:'lo3rwang',p_view:'culture_density',
+    p_start:'2025-11-08',p_end:'2026-11-08'});
+  assert.equal(result.data[0].item_count,3);
+  assert.equal(calls.length,1);
+  const url=new URL(calls[0].input,'https://loc.lo3rwang.cc');
+  assert.equal(url.pathname,'/api/loc-culture');
+  assert.equal(url.searchParams.get('start'),'2025-11-08');
+  assert.equal(url.searchParams.get('end'),'2026-11-08');
+  assert.equal(calls[0].options.method,'GET');
+  assert.equal(calls[0].options.credentials,'omit');
+});
+test('Culture article list forwards a bounded site and offset',async()=>{
+  const calls=[];
+  const api=createDirectDataApiClient({url:'https://example.net/rest/v1',apiKey:'public',
+    fetch:async(input)=>{calls.push(String(input));return new Response(JSON.stringify({
+      data:{rows:[],hasMore:false,nextCursor:null}
+    }),{status:200});}});
+  const result=await api.schema('silver').analytics({
+    p_scope_id:'lo3rwang',p_view:'culture_list',
+    p_start:'2026-11-01',p_end:'2026-11-08',
+    p_options:{site:'Threads',offset:20}});
+  assert.deepEqual(result.data.rows,[]);
+  const params=new URL(calls[0],'https://loc.lo3rwang.cc').searchParams;
+  assert.equal(params.get('site'),'Threads');
+  assert.equal(params.get('offset'),'20');
+});
+test('Culture rejects malformed dates before any network request',async()=>{
+  let calls=0;
+  const api=createDirectDataApiClient({url:'https://example.net/rest/v1',apiKey:'public',
+    fetch:async()=>{calls++;throw Error('unexpected network call');}});
+  await assert.rejects(api.schema('silver').analytics({
+    p_scope_id:'lo3rwang',p_view:'culture_density',
+    p_start:'not-a-date',p_end:'2026-11-08'}),/Invalid LOC Culture query/);
+  assert.equal(calls,0);
+});

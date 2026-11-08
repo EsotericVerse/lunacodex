@@ -127,8 +127,8 @@ export function createDirectDataApiClient({
     const end=args.p_end==null?'':String(args.p_end);
     const options=args.p_options||{};
     if(!/^[a-z][a-z0-9]{0,14}$/.test(scope)||
-      (view!=='culture_anchors'&&(!/^\\d{4}-\\d{2}-\\d{2}$/.test(start)||
-        !/^\\d{4}-\\d{2}-\\d{2}$/.test(end)||start>end)))
+      (view!=='culture_anchors'&&(!/^\d{4}-\d{2}-\d{2}$/.test(start)||
+        !/^\d{4}-\d{2}-\d{2}$/.test(end)||start>end)))
       throw Error('Invalid LOC Culture query');
     const params=new URLSearchParams({view,scope});
     if(view!=='culture_anchors'){params.set('start',start);params.set('end',end);}
