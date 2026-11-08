@@ -25,8 +25,8 @@ test('deployment-only CLIs do not inflate website npm install',()=>{
     assert.equal(lock.packages?.['node_modules/'+name],undefined,name);
   }
   const ios=readFileSync(new URL('../.github/workflows/ios-device-build.yml',import.meta.url),'utf8');
-  assert.match(ios,/@capacitor\\/cli@8\\.5\\.3/);
-  assert.match(ios,/loc-capacitor-cli\\/node_modules\\/\\.bin\\/cap/);
+  assert.ok(ios.includes('@capacitor/cli@8.5.3'));
+  assert.ok(ios.includes('loc-capacitor-cli/node_modules/.bin/cap'));
 });
 
 test('Unused React Three stack is absent while core Three.js remains',()=>{
