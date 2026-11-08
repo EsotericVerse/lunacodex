@@ -49,7 +49,7 @@ for(const [,name,body] of blocks){
 
 test('ZModel maps exactly to the frozen silver physical table and column contract',()=>{
   assert.equal(snapshot.schema,'silver');
-  assert.equal(snapshot.tables.length,17);
+  assert.equal(snapshot.tables.length,18);
   assert.equal(physical.size,snapshot.tables.length);
   let total=0;
   for(const t of snapshot.tables){
@@ -83,14 +83,15 @@ test('ZModel maps exactly to the frozen silver physical table and column contrac
 });
 
 test('Anchor remains the extension point; model does not declare migrations or bypass authorization',()=>{
-  for(const table of ['lo3rwang_anchor','lrunes_anchor']){
+  for(const table of ['lo3rwang_anchor','lrunes_anchor','loc_anchor']){
     const anchor=physical.get(table);
     assert.ok(anchor);
     assert.equal(anchor.fields.get('uid').type,'String');
     assert.equal(anchor.fields.get('type').type,'String');
     assert.equal(anchor.fields.get('attr').type,'Json');
+    assert.equal(anchor.fields.get('num').type,'BigInt');
     assert.match(anchor.fields.get('attr').attributes,/@db\.JsonB/);
-    assert.equal(anchor.fields.size,7);
+    assert.equal(anchor.fields.size,8);
   }
   assert.doesNotMatch(source,/^\s*generator\s+/m);
   assert.equal((source.match(/^\s*@@allow\s*\(/gm)||[]).length,6);
