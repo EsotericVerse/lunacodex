@@ -8,6 +8,26 @@ const profile={engine:'postgres',url,tls:true};
 const configured=()=>({LOC_MCP_DB_ALIAS:'control',
  LOC_DB_CONNECTIONS_JSON:JSON.stringify({control:profile})});
 
+test('MCP distinguishes OAuth connectivity from actual native database configuration',()=>{
+ const empty=mcpDatabaseConfiguration({});
+ assert.deepEqual(empty,{publicReadConfigured:false,privateReadConfigured:false,
+  privateWriteConfigured:false,verification:'configuration-only'});
+ assert.deepEqual(mcpDatabaseConfiguration({LOC_MCP_DB_ALIAS:'control',
+  LOC_DB_CONNECTIONS_JSON:'bad json'}),empty);
+ const configuredStatus=mcpDatabaseConfiguration(configured());
+ assert.equal(configuredStatus.publicReadConfigured,true);
+ assert.equal(configuredStatus.privateReadConfigured,true);
+ assert.equal(configuredStatus.privateWriteConfigured,true);
+ const delegated=mcpDatabaseConfiguration({
+  LOC_DB_PROFILE_SERVICE_TOKEN:'trusted-profile-token-at-least-32-characters'});
+ assert.equal(delegated.publicReadConfigured,false);
+ assert.equal(delegated.privateReadConfigured,true);
+ assert.equal(delegated.privateWriteConfigured,true);
+ assert.equal(JSON.stringify(delegated).includes('trusted-profile-token'),false);
+ const badEngine=mcpDatabaseConfiguration({LOC_MCP_DB_ALIAS:'control',
+  LOC_DB_CONNECTIONS_JSON:JSON.stringify({control:{engine:'sqlite',url}})});
+ assert.equal(badEngine.publicReadConfigured,false);
+});
 test('trusted alias reuses one in-process Kysely pool',async()=>{
  const env=configured();
  const first=await directMcpKysely(env),second=await directMcpKysely(env);
