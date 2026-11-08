@@ -13,6 +13,7 @@ CREATE INDEX IF NOT EXISTS loc_auth_expiry_idx
     ON api.loc_auth (expires_at) WHERE expires_at IS NOT NULL;
 
 REVOKE ALL PRIVILEGES ON TABLE api.loc_auth FROM PUBLIC, anon, anonymous, authenticated;
+GRANT USAGE ON SCHEMA api TO service_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE api.loc_auth TO service_role;
 
 -- api.manage remains publicly SELECT-able. RLS is not an auth substitute.
