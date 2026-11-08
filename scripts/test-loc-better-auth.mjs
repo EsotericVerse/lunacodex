@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {locBetterAuth} from '../workers/loc-authority/better-auth-native.mjs';
+import {handleNativeOAuth,ISSUER,IMPORT_AUDIENCE,WEB_AUDIENCE} from '../workers/loc-authority/native-oauth.mjs';
 import {runBetterAuthStore} from '../workers/loc-authority/better-auth-store.mjs';
 
 class FakeStorage {
@@ -65,4 +66,56 @@ test('DO adapter never runs SQL or DDL and enforces data bounds',async()=>{
  await assert.rejects(()=>runBetterAuthStore(s,{operation:'deleteMany',model:'user'}),/unbounded/);
  assert.equal((await runBetterAuthStore(s,{operation:'findOne',model:'user',
   where:[{field:'email',value:'alice@example.org'}]})).id,'a');
+});
+
+test('native credentials become LOC OAuth Session without GitHub and keep unverified email unprivileged',async()=>{
+ const {auth,req,env,storage}=fixture();
+ const stub={
+  betterAuthStorage:args=>runBetterAuthStore(storage,args),
+  authQuotaAcquire:async()=>({allowed:true}),
+  nativeGet:key=>storage.get(key),nativePut:(key,val)=>storage.put(key,val),
+  nativeTake:async key=>{const value=await storage.get(key);await storage.delete(key);return value},
+  signLocDelegation:async claims=>JSON.stringify(claims)
+ };
+ env.LOC_AUTHORITY_STATE.get=()=>stub;
+ const signedUp=await auth.handler(req('/api/auth/sign-up/email',{
+  name:'Independent User',email:'independent@example.org',password:'independent-pass-2026'
+ }));
+ assert.equal(signedUp.status,200,await signedUp.text());
+ const cookies=signedUp.headers.getSetCookie().map(x=>x.split(';')[0]).join('; ');
+ const session=await handleNativeOAuth(new Request(ISSUER+'/v1/auth/session',{
+  headers:{cookie:cookies}}),env);
+ assert.equal(session.status,200);
+ const value=await session.json();
+ assert.match(value.user.id,/^loc_[A-Za-z0-9_-]{40}$/);
+ assert.equal(value.user.email,'independent@example.org');
+ assert.equal(value.user.emailVerified,false);
+ assert.equal(JSON.parse(value.session.access_token).email_verified,false);
+ const locCookie=session.headers.getSetCookie().find(x=>x.startsWith('__Host-loc-session='));
+ assert.ok(locCookie);
+ const verifier='A'.repeat(64),challenge=Buffer.from(
+  await crypto.subtle.digest('SHA-256',new TextEncoder().encode(verifier))).toString('base64url');
+ const redirectUri='https://hiaeafonocnjaclcfgjmdopbcgnafnna.chromiumapp.org/loc';
+ const params=new URLSearchParams({response_type:'code',
+  client_id:WEB_AUDIENCE+'/extension/oauth/client.json',
+  redirect_uri:redirectUri,code_challenge:challenge,code_challenge_method:'S256',
+  state:'test-long-oauth-state-abcdefghij',scope:'loc:import offline_access',
+  resource:IMPORT_AUDIENCE});
+ const chooser=await handleNativeOAuth(new Request(ISSUER+'/oauth/authorize?'+params),env);
+ assert.equal(chooser.status,302);
+ assert.match(chooser.headers.get('location'),/^https:\/\/loc\.lo3rwang\.cc\/login\/index\.html/);
+ assert.doesNotMatch(chooser.headers.get('location'),/github\.com/);
+ const native=await handleNativeOAuth(new Request(ISSUER+'/oauth/authorize?'+params,
+  {headers:{cookie:cookies}}),env);
+ assert.equal(native.status,302);
+ assert.match(native.headers.get('location'),/^\/oauth\/authorize\?/);
+ assert.ok(native.headers.get('set-cookie')?.includes('__Host-loc-session'));
+ const completed=await handleNativeOAuth(new Request(ISSUER+'/oauth/authorize?'+params,
+  {headers:{cookie:locCookie.split(';')[0]}}),env);
+ assert.equal(completed.status,302);
+ assert.ok(completed.headers.get('location').startsWith(redirectUri));
+ const out=await handleNativeOAuth(new Request(ISSUER+'/oauth/logout',{
+  method:'POST',headers:{cookie:cookies+'; '+locCookie.split(';')[0]}}),env);
+ assert.equal(out.status,200);
+ assert.ok(out.headers.getSetCookie().some(x=>x.startsWith('__Host-loc-session=')));
 });
