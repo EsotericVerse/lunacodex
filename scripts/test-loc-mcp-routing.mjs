@@ -107,6 +107,9 @@ test('Valid LOC OAuth JWT can initialize, discover read/write tools, and ping',a
   const contents=(await r.json()).result.content;
   const status=JSON.parse(contents[0].text);
   assert.equal(status.galaxyWriteSupported,true);
+  assert.deepEqual(status.nativeDatabase,{publicReadConfigured:false,
+    privateReadConfigured:false,privateWriteConfigured:false,
+    verification:'configuration-only'});
   assert.equal(status.writeRequiresScopeAuthorization,true);
   assert.equal(status.availableTools.includes('search_memory'),false);
   assert.equal(status.availableTools.includes('search_scope'),false);
