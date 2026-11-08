@@ -1496,7 +1496,7 @@ export default function Culture(){
                         </optgroup>
                         {sourceStyleOptions.length?<optgroup label='來源'>
                           {sourceStyleOptions.map(item=><option key={item.key} value={'source:'+item.key}>
-                            {item.label}
+                            {item.domain?item.domain+' / ':''}{item.label}
                           </option>)}
                         </optgroup>:null}
                       </select>
