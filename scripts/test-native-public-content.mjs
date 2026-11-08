@@ -146,7 +146,7 @@ test('native Galaxy aggregation and first river are independent; no Manage or UI
   const result=(await response.json()).data;
   assert.deepEqual(result[0],{day:'2026-11-07',site:'threads',item_count:2});
   assert.deepEqual(mock.calls.map(x=>x.table),['silver.lo3rwang_galaxy']);
-  assert.equal(mock.calls[0].limit,5001);
+  assert.equal(mock.calls[0].limit,20001);
   assert.ok(mock.calls[0].wheres.some(x=>x[0]==='culture'&&x[2]===true));
   assert.ok(mock.calls[0].group);
   assert.ok(!JSON.stringify(result).includes('uid'));
@@ -204,4 +204,23 @@ test('public Kysely Alias uses the existing Admin access.js selection, not a Man
   assert.equal(response.status,200);
   assert.equal(selected,'loc_main');
   assert.ok(mock.calls.every(call=>!call.table.includes('manage')));
+});
+
+test('full-history Galaxy statistics return more than five thousand grouped dates without truncation',async()=>{
+  const groups=Array.from({length:6829},(_,index)=>({
+    date:new Date(Date.UTC(2005,3,12+index)).toISOString().slice(0,10),
+    site:'threads',item_count:1
+  }));
+  const db={selectFrom:()=>({
+    select(){return this},where(){return this},groupBy(){return this},
+    orderBy(){return this},limit(n){assert.equal(n,20001);return this},
+    async execute(){return groups}
+  })};
+  const response=await handleNativePublicContent(numericPage('daily',
+    'start=2005-01-01&end=2026-11-09'),{},
+    {database:async()=>({engine:'postgres',namespace:'silver',db})});
+  assert.equal(response.status,200);
+  const data=(await response.json()).data;
+  assert.equal(data.filter(row=>row.kind==='source').length,6829);
+  assert.equal(data.filter(row=>row.kind==='total').length,6829);
 });
