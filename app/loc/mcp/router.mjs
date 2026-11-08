@@ -94,7 +94,7 @@ async function verifyOAuthToken(token,config){
   if(header?.alg!=='RS256'||!header?.kid||claims?.iss!==config.issuer||
     !/^loc_[A-Za-z0-9_-]{32,80}$/.test(String(claims.sub||''))||
     !/^[A-Za-z0-9_-]{43}$/.test(String(claims.sid||''))||
-    claims.email_verified!==true)return null;
+    typeof claims.email_verified!=='boolean')return null;
   const now=Math.floor(Date.now()/1000);
   if(!Number.isFinite(claims.exp)||claims.exp<=now||
     !Number.isFinite(claims.iat)||claims.exp-claims.iat>630||
