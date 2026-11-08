@@ -26,25 +26,7 @@
     <section class="auth-surface" aria-label="LOC 登入與身分核驗">
       <div class="auth-top"><span class="eyebrow">YOUR ACCOUNT</span><p>安全登入，繼續原本的工作。</p></div>
       <div id="login-root">
-        <form id="loc-native-form" autocomplete="on">
-          <div class="loc-native-choice" role="group" aria-label="LOC 登入或註冊">
-            <button type="button" id="native-login-toggle" aria-pressed="true">LOC 登入</button>
-            <button type="button" id="native-signup-toggle" aria-pressed="false">註冊 LOC 帳號</button>
-          </div>
-          <label id="native-name-field" hidden>顯示名稱
-            <input id="native-name" name="name" autocomplete="name" maxlength="100">
-          </label>
-          <label>電子郵件
-            <input id="native-email" type="email" name="email" autocomplete="email" required maxlength="250">
-          </label>
-          <label>密碼
-            <input id="native-password" type="password" name="password" autocomplete="current-password"
-              required minlength="12" maxlength="128">
-          </label>
-          <button type="submit" class="loc-login-choice" id="native-submit">登入 LOC</button>
-          <p class="native-note">LOC 是獨立帳號，不需要 GitHub 或其他服務。註冊後如需管理權限，仍須完成信箱驗證及 LOC 授權。</p>
-        </form>
-        <p class="native-divider">或參照外部身分登入</p>
+        <p class="native-note">LOC 不提供帳號註冊，也不蒐集登入密碼。請使用 Google 或 GitHub OAuth 登入。</p>
       </div>
       <div id="signed-in" hidden>
         <h2>身分核驗</h2>
@@ -92,42 +74,6 @@ function signIn(provider){
  location.assign(url.href);
 }
 const panel=byId('login-root');
-let signup=false,submitting=false;
-function setNativeMode(next){
- signup=next;
- byId('native-login-toggle').setAttribute('aria-pressed',String(!next));
- byId('native-signup-toggle').setAttribute('aria-pressed',String(next));
- byId('native-name-field').hidden=!next;
- byId('native-name').required=next;
- byId('native-password').autocomplete=next?'new-password':'current-password';
- byId('native-submit').textContent=next?'建立 LOC 帳號':'登入 LOC';
-}
-byId('native-login-toggle').addEventListener('click',()=>setNativeMode(false));
-byId('native-signup-toggle').addEventListener('click',()=>setNativeMode(true));
-byId('loc-native-form').addEventListener('submit',async event=>{
- event.preventDefault();
- if(submitting)return;
- submitting=true;byId('native-submit').disabled=true;
- byId('status').textContent=signup?'正在建立 LOC 帳號…':'正在核驗 LOC 帳號…';
- try{
-  const email=byId('native-email').value.trim().toLowerCase();
-  const password=byId('native-password').value;
-  const body=signup?{name:byId('native-name').value.trim(),email,password}:
-   {email,password};
-  const endpoint=signup?'/api/auth/sign-up/email':'/api/auth/sign-in/email';
-  const reply=await fetch(AUTHORITY+endpoint,{
-   method:'POST',credentials:'include',cache:'no-store',
-   headers:{'content-type':'application/json','accept':'application/json'},
-   body:JSON.stringify(body)
-  });
-  if(!reply.ok)throw Error('LOC 帳號驗證失敗（HTTP '+reply.status+'）。請確認資料或改用其他已授權方式。');
-  await initialize();
-  const continued=oauthContinuation();
-  if(continued){location.assign(AUTHORITY+continued);return;}
-  if(signup)byId('status').textContent='LOC 帳號已建立；管理與寫入權限仍須信箱驗證及 LOC 授權。';
- }catch(error){byId('status').textContent=String(error.message||error)}
- finally{submitting=false;byId('native-submit').disabled=false}
-});
 for(const [provider,text] of [['oidc','使用 Google 繼續'],['github','使用 GitHub 繼續']]){
  const button=document.createElement('button');
  button.type='button';button.className='loc-login-choice';
@@ -188,7 +134,7 @@ async function initialize(){
   ?(isProtectedReturn(validReturnPath())
    ?'LOC Auth 身分已核驗，返回後將確認編輯權限。'
    :'LOC Auth 身分已核驗，管理與寫入權限由 LOC 獨立確認。')
-  :'可使用 LOC 原生帳號，或自行選擇外部身分核驗。公開閱讀不需要登入。';
+  :'選擇 Google 或 GitHub 登入。LOC 不需要註冊或密碼；公開閱讀不需要登入。';
 }
 initialize().catch(error=>{byId('status').textContent=String(error.message||error);});
 </script>
