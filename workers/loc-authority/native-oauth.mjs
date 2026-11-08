@@ -1,6 +1,5 @@
 import {issueDelegation} from '../../app/loc/auth/delegation-contract.mjs';
 import {checkExternalAuthQos} from './auth-qos.mjs';
-import {hasFirstPartyCookie,firstPartySession,firstPartySignOut} from './better-auth-native.mjs';
 import {verifyAuthReference} from './auth-ref.mjs';
 
 // Independent OAuth 2.1 authorization server; all state lives in the existing
@@ -183,21 +182,6 @@ export async function verifyNativeOAuth(request,env,resource){
   session:session.sidHash,scope:String(claims.scope||''),client_id:claims.client_id,
   emailVerified:claims.email_verified};
 }
-async function sessionFromBetter(request,env,stub){
- const entry=await firstPartySession(request,env);
- if(!entry)return null;
- const maxAge=Math.min(7200,Math.floor((entry.expires-Date.now())/1000));
- if(maxAge<=0)return null;
- // Local user IDs are independent from provider email, GitHub IDs and DB identities.
- const subject='loc_'+(await sha('better-auth:'+entry.userId)).slice(0,40);
- const sid=random(),sidHash=await sha(sid);
- const session={subject,provider:'loc',identityProvider:'native',
-  email:entry.email,emailVerified:entry.emailVerified,
-  sidHash,expires:Date.now()+maxAge*1000};
- await stub.nativePut('native-session:'+sidHash,session);
- return {session,cookie:cookie(SESSION_COOKIE,sid,maxAge)};
-}
-
 async function authorize(request,url,stub,env){
  const p=url.searchParams;
  if(p.get('response_type')!=='code')error('Only authorization code supported');
@@ -214,8 +198,6 @@ async function authorize(request,url,stub,env){
   (client.kind==='extension'?'loc:import offline_access':'profile email offline_access'));
  let session=await sessionFromCookie(request,stub);
  if(!session){
-  const native=hasFirstPartyCookie(request)?await sessionFromBetter(request,env,stub):null;
-  if(native)return redirect(url.pathname+url.search,[native.cookie]);
   const next=new URL('/login/index.html',WEB_AUDIENCE);
   next.searchParams.set('continue',url.pathname+url.search);
   return redirect(next.href);
@@ -346,12 +328,7 @@ function refIssuer(type,profile){
 }
 async function verifiedLocPrincipal(request,env,stub){
  const existing=await sessionFromCookie(request,stub);
- if(existing)return {subject:existing.subject,email:existing.email};
- if(!hasFirstPartyCookie(request))return null;
- const native=await firstPartySession(request,env);
- if(!native)return null;
- return {subject:'loc_'+(await sha('better-auth:'+native.userId)).slice(0,40),
-  email:native.email};
+ return existing?{subject:existing.subject,email:existing.email}:null;
 }
 async function refLogin(request,url,stub,env){
  const type=String(url.searchParams.get('provider')||'');
@@ -497,29 +474,20 @@ async function revoke(request,stub,origin){
  return response({},200,origin);
 }
 async function session(request,stub,origin,env){
- let identity=await sessionFromCookie(request,stub);
- let cookieValue='';
- if(!identity&&hasFirstPartyCookie(request)){
-  const native=await sessionFromBetter(request,env,stub);
-  if(native){identity=native.session;cookieValue=native.cookie;}
- }
+ const identity=await sessionFromCookie(request,stub);
  if(!identity)return response({session:null,user:null},200,origin);
  const auth=await issueToken(stub,identity,WEB_AUDIENCE,'profile email','loc-web');
  const user={id:identity.subject,email:identity.email,emailVerified:identity.emailVerified!==false};
  return response({session:{...auth,user,expires_at:Math.floor(Date.now()/1000)+ACCESS_SECONDS},
-  user,provider:'loc'},200,origin,cookieValue?{'set-cookie':cookieValue}:{});
+  user,provider:'loc'},200,origin);
 }
 async function logout(request,stub,origin,env){
  const csrf=String(request.headers.get('origin')||'');
  if(csrf&&csrf!==WEB_AUDIENCE&&csrf!==ISSUER)error('Cross-origin logout forbidden',403);
  const sid=parseCookies(request).get(SESSION_COOKIE);
  if(sid&&CODE_PATTERN.test(sid))await stub.nativeTake('native-session:'+await sha(sid));
- const result=response({signed_out:true},200,origin,{'set-cookie':cookie(SESSION_COOKIE,'',0)});
- if(hasFirstPartyCookie(request)){
-  const revoked=await firstPartySignOut(request,env);
-  for(const item of revoked.headers.getSetCookie())result.headers.append('set-cookie',item);
- }
- return result;
+ return response({signed_out:true},200,origin,
+  {'set-cookie':cookie(SESSION_COOKIE,'',0)});
 }
 async function importShort(request,env,stub,origin){
  const identity=await verifyNativeOAuth(request,env,IMPORT_AUDIENCE);

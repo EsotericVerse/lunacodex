@@ -14,10 +14,7 @@ const LIMITS = Object.freeze({
 });
 const text = new TextEncoder();
 function mode(path) {
-  if (path === '/v1/auth/session' || path === '/api/auth/get-session') return 'session';
-  if (path === '/api/auth/sign-in/email') return 'login';
-  if (path === '/api/auth/sign-up/email') return 'register';
-  if (path === '/api/auth/sign-out') return 'logout';
+  if (path === '/v1/auth/session') return 'session';
   if (path === '/v1/auth/ref/check') return 'login';
   if (path === '/oauth/token') return 'token';
   if (path === '/oauth/login' || path === '/oauth/ref') return 'login';

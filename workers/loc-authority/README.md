@@ -21,13 +21,11 @@
 
 ## 2026-11-09：原生 LOC Auth、平行 Auth Ref 與 Kysely SQL Data Method
 
-### 身分主權
+### 身分主權（OAuth Only）
 
-既有 auth.lo3rwang.cc Worker 仍是唯一 LOC OAuth 2.1 issuer，網站、MCP、Extension 沿用其 PKCE、RS256、Refresh Session 和 Scope 委託。新增 Better Auth 1.7.18 只用於 LOC 自有 Email／Password／Session，不以 GitHub、Clerk、LDAP 或任何供應商為強制上游。登入端點為 /api/auth/sign-up/email、/api/auth/sign-in/email；/v1/auth/session 可接續原生 Session。
+LOC 不接受公開帳號註冊，也不接受或儲存 LOC 登入密碼。登入頁只提供 Google／GitHub OAuth，完成外部身份核驗後由 `auth.lo3rwang.cc` 簽發 LOC 自己的 Session 與資源限定的 OAuth 授權；原有獨立 Scope 權限檢查不變。
 
-Better Auth 透過現有 LOC Authority Durable Object 的自訂 KV Adapter 儲存帳號和 Session；不修改或建立使用者資料庫 SQL Table、Column 或 Index。使用者 Email、Session Token、OAuth Account 有原生 KV 唯一性索引，避免對所有 Session 反覆全量掃描。
-
-未經證明的原生註冊 Email **不直接繼承**既有 Email 帳戶的管理權限；LOC Scope 授權仍獨立判斷。可在 Worker 配置 LOC_AUTH_EMAIL_ENDPOINT（HTTPS 自營寄信接收端）與 LOC_AUTH_EMAIL_TOKEN（32 字元以上），接收 JSON 的 to、subject、verify_url，由營運者寄出 Better Auth 驗證連結。這是郵件傳輸，不是外部 Auth。未設定時仍可建立 LOC 帳號與 Session，但不得宣稱 Email 已驗證。
+所有 `/api/auth/*` 舊 Email／Password、註冊、密碼重設端點回 HTTP 410，不會建立帳號或寫入密碼憑證。OAuth 2.1 的 `/oauth/register` 僅供 **MCP OAuth Client** 動態註冊，與使用者帳號註冊完全不同，不得刪除。
 
 ### 橫向 Auth Ref（非上級委託）
 
