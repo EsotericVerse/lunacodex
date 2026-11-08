@@ -23,6 +23,7 @@ function environment(){
   },true,['sign','verify']);
  })();
  const stub={
+  async authQuotaAcquire(){return {allowed:true};},
   async nativeGet(key){return records.get(key);},
   async nativePut(key,value){records.set(key,value);},
   async nativeTake(key){const value=records.get(key);records.delete(key);return value;},
