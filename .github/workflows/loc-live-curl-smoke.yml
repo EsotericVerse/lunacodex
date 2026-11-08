@@ -1,0 +1,45 @@
+name: LOC public live curl smoke
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/loc-live-curl-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-curl:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Real DNS, no-cache HTTP status, and timing from external runner
+        shell: bash
+        run: |
+          set -u
+          urls=(
+            'https://loc.lo3rwang.cc/'
+            'https://loc.lo3rwang.cc/api/loc-public-content?kind=earliest&scope=lo3rwang'
+            'https://loc.lo3rwang.cc/api/loc-public-content?kind=config&scope=lo3rwang'
+            'https://loc.lo3rwang.cc/api/loc-public-content?kind=loc&scope=loc&start=2026-11-01&end=2026-11-09'
+            'https://auth.lo3rwang.cc/.well-known/oauth-authorization-server'
+            'https://auth.lo3rwang.cc/v1/auth/session'
+            'https://auth.lo3rwang.cc/oauth/login?provider=google'
+            'https://auth.lo3rwang.cc/oauth/login?provider=github'
+            'https://mcp.lo3rwang.cc/.well-known/oauth-protected-resource'
+          )
+          for url in "${urls[@]}"; do
+            echo "::group::curl ${url}"
+            curl --noproxy '*' --silent --show-error --max-time 14 \
+              -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' \
+              -D /tmp/loc-head -o /tmp/loc-body \
+              -w 'curl: HTTP=%{http_code} IP=%{remote_ip} DNS=%{time_namelookup}s TCP=%{time_connect}s TLS=%{time_appconnect}s TTFB=%{time_starttransfer}s TOTAL=%{time_total}s\\n' \
+              "${url}" || echo "curl exit status: $?"
+            grep -iE '^(HTTP/|location:|cache-control:|content-type:|cf-ray:)' /tmp/loc-head | head -n 9 || true
+            head -c 500 /tmp/loc-body || true
+            echo; echo "::endgroup::"
+          done
+          echo '=== PostgreSQL endpoint DNS (no database credentials sent) ==='
+          getent ahostsv4 db.qlouywsdiiyiyzpoxyqy.supabase.co || true
+          getent ahostsv6 db.qlouywsdiiyiyzpoxyqy.supabase.co || true
