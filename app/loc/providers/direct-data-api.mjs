@@ -3,6 +3,7 @@
 // This is the public-read transport for the CURRENT static Pages deployment;
 // the owner's own Web Server may use its configured SQL driver independently.
 import {queryBatchSize} from '../db-contract.mjs';
+import {parsePortableOrExpression} from './portable-search.mjs';
 import {withPublicReadBudget} from './kysely-read-budget.mjs';
 
 const ID=/^[a-z_][a-z0-9_]*$/i;
@@ -42,6 +43,27 @@ function publishedGalaxy(table,columns,filters){
   return [...filters,{column:'search',op:'eq',value:true},
     ...(isContent?[{column:'list',op:'eq',value:true}]:[])];
 }
+
+// The existing public Data API accepts ILIKE, not Kysely's virtual
+// 'contains' predicate. Keep the transport's literal/compound search
+// semantics without sending an unsupported PostgREST operator.
+function dataApiOrExpression(expression){
+  const raw=String(expression);
+  if(!raw.includes('.contains.'))return raw;
+  const parsed=parsePortableOrExpression(raw);
+  const render=node=>{
+    if(node.type==='or'||node.type==='and')
+      return node.type+'('+node.items.map(render).join(',')+')';
+    if(node.type!=='predicate')throw Error('Invalid Data API OR predicate');
+    if(node.operator==='contains'){
+      const term=String(node.value).replace(/[\\%_*]/g,ch=>'\\'+ch);
+      return node.column+'.ilike.'+JSON.stringify('*'+term+'*');
+    }
+    const value=typeof node.value==='string'?JSON.stringify(node.value):String(node.value);
+    return node.column+'.'+node.operator+'.'+value;
+  };
+  return parsed.items.map(render).join(',');
+}
 class Query{
   constructor(run,schema,table){
     this.run=run;this.schema=schema;this.table=assertId(table);
@@ -62,7 +84,7 @@ class Query{
   is(c,v){return this._f(c,'is',v)} in(c,v){return this._f(c,'in',v)}
   contains(c,v){return this._f(c,'contains',v)}
   not(c,op,v){return this._f(c,op,v,true)}
-  or(expression){this.orFilters.push(String(expression));return this}
+  or(expression){this.orFilters.push(dataApiOrExpression(expression));return this}
   order(column,{ascending=true}={}){this.orders.push({column:assertId(column),ascending});return this}
   limit(n){if(!Number.isInteger(n)||n<0||n>5000)throw Error('Invalid page limit');this.rowLimit=n;return this}
   range(a,b){if(!Number.isInteger(a)||!Number.isInteger(b)||a<0||b<a)throw Error('Invalid row range');this.offset=a;return this.limit(b-a+1)}

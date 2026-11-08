@@ -30,7 +30,7 @@ const Statistics=dynamic(()=>import('../modular/features/Statistics'),{loading})
 const KeywordSettings=dynamic(()=>import('../modular/features/KeywordSettings'),{loading});
 const Culture=dynamic(()=>import('../modular/features/Culture'),{loading});
 const CulturePublic=dynamic(()=>import('./views/CulturePublicReader'),{loading});
-const Search=dynamic(()=>import('../modular/features/Search'),{loading});
+const Search=dynamic(()=>import('../modular/features/Search').catch(recoverChunkOnce),{loading});
 const SearchManagement=dynamic(()=>import('./SearchManagement'),{loading});
 const Trace=dynamic(()=>import('../modular/features/Trace'),{loading});
 const RunesHomeView=dynamic(()=>import('../lrunes/RunesClient'),{loading});

@@ -68,3 +68,32 @@ test('native Galaxy analytics rejects unrecognized operations without any reques
   }),/Unsupported public aggregation operation/);
   assert.equal(calls,0);
 });
+
+test('public full-text search compiles contains into supported Data API ILIKE',async()=>{
+  const calls=[];
+  const api=createDirectDataApiClient({url:'https://example.net/rest/v1',
+    apiKey:'public',fetch:async url=>{
+      calls.push(new URL(url));return Response.json([{uid:'abcd1234'}]);
+    }});
+  await api.schema('silver').from('lo3rwang_galaxy')
+    .select('uid').eq('search',true).or('content.contains."希望",title.contains."希望"')
+    .limit(1);
+  const clause=calls[0].searchParams.get('or');
+  assert.equal(clause,'(content.ilike."*希望*",title.ilike."*希望*")');
+  assert.ok(!clause.includes('.contains.'));
+  assert.equal(calls[0].searchParams.get('search'),'eq.true');
+});
+test('compound full-text filters retain AND/OR grouping and literal wildcard escaping',async()=>{
+  let url;
+  const api=createDirectDataApiClient({url:'https://example.net/rest/v1',
+    apiKey:'public',fetch:async raw=>{url=new URL(raw);return Response.json([]);}});
+  await api.schema('silver').from('lo3rwang_galaxy')
+    .select('uid').or('and(or(content.contains."A_B",title.contains."希望"),date.gte.2026-11-01)')
+    .not('content','contains','封鎖').limit(1);
+  const clause=url.searchParams.get('or');
+  assert.match(clause,/^\(and\(or\(content\.ilike\./);
+  assert.ok(clause.includes('title.ilike."*希望*"'));
+  assert.ok(clause.includes('date.gte.'));
+  assert.ok(!clause.includes('.contains.'));
+  assert.equal(url.searchParams.get('content'),'not.ilike.*封鎖*');
+});
