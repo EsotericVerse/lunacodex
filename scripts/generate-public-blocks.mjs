@@ -7,7 +7,7 @@ import {publicNumericSources} from '../app/api/loc/_server.js';
 import {readPublishedBootstrap} from '../app/api/loc/_numeric-failover.mjs';
 import {THEME_TOKEN_KEYS} from '../app/modular/theme-registry.js';
 import {classNames} from '../app/loc/source-classification.mjs';
-import {PUBLISHED_SOURCE_ENTRIES} from '../app/modular/published-source-taxonomy.js';
+import {PUBLISHED_SOURCE_ENTRIES,PUBLISHED_SOURCE_DOMAINS} from '../app/modular/published-source-taxonomy.js';
 import {scopeConfigColumns} from '../app/loc/scope-config-fields.mjs';
 import {publishPublicFiles} from './publish-public-files.mjs';
 
@@ -26,7 +26,7 @@ const {data:globalList,error:globalError}=await db.from('loc')
   .select('DefaultArticleClass').eq('id','loc').maybeSingle();
 if(globalError||!globalList)throw Error('Cannot publish LOC DefaultArticleClass');
 const systemNames=classNames(globalList.DefaultArticleClass);
-const publishedSourceLists={},publishedSourceEntries={};
+const publishedSourceLists={},publishedSourceEntries={},publishedSourceDomains={};
 const allBlocks=new Map(),routeConfigs=[];
 const cols='uid,page_name,block_eyebrow,block_title,block_subtitle,block_text,block_order,block_entity,block_image';
 for(const row of routes){
@@ -45,6 +45,7 @@ for(const row of routes){
   if(entries.some(item=>!/^[A-Za-z0-9]{8}$/.test(String(item.uid))||!item.name))
     throw Error('Invalid published source UID or site in '+id);
   publishedSourceEntries[id]=entries;
+  if(PUBLISHED_SOURCE_DOMAINS[id])publishedSourceDomains[id]=PUBLISHED_SOURCE_DOMAINS[id];
   publishedSourceLists[id]={system:systemNames,personal:entries.map(item=>item.label)};
   // Keep the unrelated paginated Block publication change from latest main.
   const blocks=[];
@@ -88,7 +89,7 @@ const bootstrap={scope_id:'loc',page_name:'index',registry:site.registry,
   theme_list:themeMeta,themes:[],blocks:[]};
 const entries=[
   ['app/modular/scope-route-index.js','// PUBLIC Scope routing + Config; explicit publication only.\nexport const SCOPE_ROUTE_INDEX=Object.freeze('+encode(routeConfigs)+');\n'],
-  ['app/modular/published-source-taxonomy.js',"// PUBLIC Source Anchor catalogue; updated only by explicit sync:public.\nimport {sourceTaxonomyFromCatalog,sourceTreeFromArrays} from '../loc/source-classification.mjs';\nexport const PUBLISHED_SOURCE_LISTS=Object.freeze("+encode(publishedSourceLists)+");\nexport const PUBLISHED_SOURCE_ENTRIES=Object.freeze("+encode(publishedSourceEntries)+");\nexport const PUBLISHED_SOURCE_TAXONOMY=Object.freeze(Object.fromEntries(Object.entries(PUBLISHED_SOURCE_LISTS).map(([id,lists])=>{const entries=PUBLISHED_SOURCE_ENTRIES[id]||[];const taxonomy=sourceTaxonomyFromCatalog(lists.system,entries);return [id,{...taxonomy,tree:sourceTreeFromArrays(lists.system,lists.personal,{universe:'Eosteric',galaxy:'LOC'})}];})));\nexport function publishedSourceTaxonomy(scopeId){return Object.prototype.hasOwnProperty.call(PUBLISHED_SOURCE_TAXONOMY,scopeId)?PUBLISHED_SOURCE_TAXONOMY[scopeId]:null;}\nexport function publishedSourceCategoryCatalog(scopeId){const taxonomy=publishedSourceTaxonomy(scopeId);if(!taxonomy)return null;return {categories:[...taxonomy.categories,...taxonomy.groups.map(row=>({category_code:row.group_code,display_name:row.display_name,enabled:row.enabled}))],aliases:[...taxonomy.aliases,...taxonomy.groupAliases.map(row=>({source_key:row.source_key,category_code:row.group_code}))]};}\n"],
+  ['app/modular/published-source-taxonomy.js',"// PUBLIC Source ZModel snapshot; updated only by explicit sync:public.\\nimport {sourceTaxonomyFromCatalog} from '../loc/source-classification.mjs';\\nexport const PUBLISHED_SOURCE_LISTS=Object.freeze("+encode(publishedSourceLists)+");\\nexport const PUBLISHED_SOURCE_ENTRIES=Object.freeze("+encode(publishedSourceEntries)+");\\nexport const PUBLISHED_SOURCE_DOMAINS=Object.freeze("+encode(publishedSourceDomains)+");\\nexport const PUBLISHED_SOURCE_TAXONOMY=Object.freeze(Object.fromEntries(Object.entries(PUBLISHED_SOURCE_LISTS).map(([id,lists])=>[id,sourceTaxonomyFromCatalog(lists.system,PUBLISHED_SOURCE_ENTRIES[id]||[],{scopeId:id,universe:'loc',galaxy:'loc',domainUid:PUBLISHED_SOURCE_DOMAINS[id]||''})])));\\nexport function publishedSourceTaxonomy(scopeId){return Object.prototype.hasOwnProperty.call(PUBLISHED_SOURCE_TAXONOMY,scopeId)?PUBLISHED_SOURCE_TAXONOMY[scopeId]:null;}\\nexport function publishedSourceCategoryCatalog(scopeId){const taxonomy=publishedSourceTaxonomy(scopeId);if(!taxonomy)return null;return {categories:[...taxonomy.categories,...taxonomy.groups.map(row=>({category_code:row.group_code,display_name:row.display_name,enabled:row.enabled}))],aliases:[...taxonomy.aliases,...taxonomy.groupAliases.map(row=>({source_key:row.source_key,category_code:row.group_code}))]};}\\n"],
   ['app/modular/published-theme-catalog.json',JSON.stringify(themes,null,2)+'\n'],
   ['app/modular/published-site-bootstrap.js','// PUBLIC navigation metadata and published Theme JSON; no visit-time SQL.\nimport publishedThemes from \'./published-theme-catalog.json\';\nexport const PUBLISHED_SITE_BOOTSTRAP=Object.freeze({...'+encode(bootstrap)+',themes:publishedThemes});\n'],
   ['app/modular/published-theme-meta.js','// Published Theme metadata (palettes are CSS).\nexport const PUBLISHED_THEME_META='+encode(themes.map(t=>['theme-'+t.theme_id,t.theme_name,t.scheme,t.style_key]))+';\n'],
