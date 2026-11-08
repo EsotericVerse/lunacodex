@@ -520,7 +520,9 @@ export default function KeywordLibraryPanel({scopeId,account}){
          ?<div className="scope-search-active-filters" aria-label="Item 關聯 Pattern">
            {selectedSourceRow.patternUids.map(uid=>patternNodes.get(uid)).filter(Boolean).map(row=>
              <span key={row.uid} className="scope-search-chip">
-               {row.name} · {Number(row.num||0).toLocaleString()} 篇
+               {row.name} · {config.keyword_meta?.pattern_scans?.[
+                 String(row.name||'').normalize('NFKC').trim().toLocaleLowerCase('zh-Hant')
+               ]?Number(row.num||0).toLocaleString()+' 篇':'待解析'}
              </span>)}
          </div>:null}
        {selected?<div className="scope-preview-links">
