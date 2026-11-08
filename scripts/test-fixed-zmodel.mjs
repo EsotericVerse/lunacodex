@@ -38,7 +38,7 @@ for(const [,name,body] of blocks){
   assert.ok(!physical.has(table),'duplicate physical model: '+table);
   const fields=new Map();
   for(const line of body.split('\n')){
-    const m=line.match(/^\s{4}([A-Za-z_]\w*)\s+((?:String|Boolean|Int|BigInt|Float|Decimal|DateTime|Json|Bytes)(?:\[\]|\?)?)(?:\s+(.*))?$/);
+    const m=line.match(/^\s{4}([A-Za-z_]\w*)\s+((?:String|Boolean|Int|BigInt|Float|Decimal|DateTime|Json|Bytes)(?:\[\]|\?)?)(?:[ \t]+(.*))?$/);
     if(m){
       assert.ok(!fields.has(m[1]),'duplicate field: '+table+'.'+m[1]);
       fields.set(m[1],{type:m[2],attributes:m[3]||''});
