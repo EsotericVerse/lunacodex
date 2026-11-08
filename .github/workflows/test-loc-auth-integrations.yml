@@ -1,0 +1,27 @@
+name: Verify LOC Auth, MCP, Extension and Portable (no deployment)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.4'
+      - name: Install exact dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Verify OAuth Worker syntax and integration contracts
+        run: |
+          node --check workers/loc-authority/index.mjs
+          node --check workers/loc-authority/native-oauth.mjs
+          node --check workers/loc-authority/better-auth-native.mjs
+          node --check workers/loc-authority/better-auth-store.mjs
+          node --check scripts/test-loc-native-oauth.mjs
+          npm run test:authority
+      - name: Verify MCP, Extension, Kysely and no SQL Gateway
+        run: |
+          node --test scripts/test-loc-mcp-routing.mjs scripts/test-loc-mcp-native-kysely.mjs scripts/test-loc-mcp-private-direct.mjs scripts/test-loc-mcp-native-access.mjs scripts/test-loc-no-vendor-auth-runtime.mjs scripts/test-portable-driver-without-gateway.mjs scripts/test-kysely-independent-transport.mjs scripts/test-loc-short-edge-authorization.mjs
+          npm run check:loc-vendor-coupling

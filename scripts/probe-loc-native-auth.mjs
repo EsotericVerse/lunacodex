@@ -30,18 +30,16 @@ assert.equal(discovery.jwks_uri,ORIGIN+'/.well-known/jwks.json');
 const jwks=await get('/.well-known/jwks.json');
 assert.ok(Array.isArray(jwks.keys)&&jwks.keys.some(x=>x.alg==='RS256'&&x.kty==='RSA'),
   'LOC native signing keys must be published');
-// This does not authenticate a user or create any account; it verifies that
-// Google's login button reaches the already-configured Supabase provider.
+// This does not authenticate a user. Confirm that Google authorization goes
+// directly to Google with the existing LOC Auth Better Auth callback.
 const start=await fetch(ORIGIN+'/oauth/login?provider=google',{
  method:'GET',redirect:'manual',cache:'no-store',signal:AbortSignal.timeout(12000)
 });
-assert.equal(start.status,302,'Google login must redirect to existing OAuth');
+assert.equal(start.status,302,'Google login must redirect directly to Google');
 const google=new URL(start.headers.get('location'));
-assert.equal(google.origin,'https://qlouywsdiiyiyzpoxyqy.supabase.co');
-assert.equal(google.pathname,'/auth/v1/authorize');
-assert.equal(google.searchParams.get('provider'),'google');
-assert.equal(new URL(google.searchParams.get('redirect_to')).pathname,
- '/login/supabase-callback.html');
+assert.equal(google.origin,'https://accounts.google.com');
+assert.equal(google.searchParams.get('response_type'),'code');
+assert.equal(google.searchParams.get('redirect_uri'),ORIGIN+'/api/auth/callback/google');
 const guest=await get('/v1/auth/session');
 assert.equal(guest.session,null,'anonymous visitors must not be authenticated');
-console.log('LOC OAuth only: password endpoints retired; discovery, JWKS and anonymous session verified.');
+console.log('LOC Better Auth Google: no password, direct Google callback, discovery, JWKS, anonymous session verified.');

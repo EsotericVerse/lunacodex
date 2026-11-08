@@ -5,6 +5,8 @@ import {normalizeSqlDriverAuthentication,publicSqlDriverAuthentication,
   sqlAuthNeedsUserPassword} from '../../app/loc/providers/sql-driver-auth.mjs';
 import {ISSUER,MCP_AUDIENCE,WEB_AUDIENCE,isNativeOAuthPath,handleNativeOAuth,
   verifyNativeOAuth} from './native-oauth.mjs';
+import {runBetterAuthStore} from './better-auth-store.mjs';
+import {handleFirstPartyAuth} from './better-auth-native.mjs';
 import {verifyAuthReference,assertReferencePermission} from './auth-ref.mjs';
 import {validateKeywordCategoryEntry,hashKeywordCategory,assertPublicKeywordClass} from './keyword-categories.mjs';
 import {AUTH_PROVIDER_TYPES,validateAuthProviderSettings,publicAuthProviderSettings}
@@ -216,6 +218,7 @@ export class LocAuthorityState extends DurableObject {
         ((next.blockedUntil > now ? next.blockedUntil : next.start + minute)-now)/1000)};
     });
   }
+  async betterAuthStorage(request){return runBetterAuthStore(this.ctx.storage,request);}
   async nativeGet(key){return this.ctx.storage.get(key);}
   async nativePut(key,value){await this.ctx.storage.put(key,value);return true;}
   async nativeTake(key){return this.ctx.storage.transaction(async t=>{
@@ -920,14 +923,15 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
     if(!['mcp','github'].includes(source)||(source==='github'&&!isRead))
       throw fail('Invalid managed MCP source',400);
     const action=isRead?(source==='github'?'manage':'read'):'write';
-    // Managed Kysely uses a trusted root email mapping. Never issue its
-    // credentials to a non-root even if that subject can read another Scope.
+    // Managed Scope uses the existing, signed LOC root email rather than a
+    // second env identity that could be missing or drift from LOC Auth.
     if(!isRoot||!await allowed(scopeid,action))
       throw fail('Managed Scope '+action+' denied',403);
     if(!Object.hasOwn(MANAGED_SCOPE_TABLES,scopeid))throw fail('Managed Scope is not supported',404);
-    const email=String(env.LOC_ROOT_MANAGEMENT_EMAIL||'').trim().toLowerCase();
-    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-      throw fail('Trusted root email mapping is unavailable',503);
+    const email=String(principal.email||'').trim().toLowerCase();
+    if(principal.emailVerified!==true||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      throw fail('Verified LOC root email required',403);
     return json({provider:'loc',subject:principal.subject,scopeid,email,authorized:true},200,origin);
   }
   if(parts[0]==='checkpoint'&&parts.length===3&&request.method==='GET'){
@@ -1119,7 +1123,7 @@ export default {
       // LOC identities enter through Google/GitHub OAuth only. Never accept
       // account/password creation, password login, or password resets.
       if(target.pathname.startsWith('/api/auth/'))
-        return json({error:'LOC only supports Google or GitHub OAuth login'},410);
+        return handleFirstPartyAuth(request,env);
       if(isNativeOAuthPath(target.pathname))return handleNativeOAuth(request,env);
       requireSetup(env);
       origin=allowedOrigin(request,env);

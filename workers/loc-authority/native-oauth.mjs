@@ -1,5 +1,6 @@
 import {issueDelegation} from '../../app/loc/auth/delegation-contract.mjs';
 import {checkExternalAuthQos} from './auth-qos.mjs';
+import {handleFirstPartyAuth,hasFirstPartyCookie,firstPartySession,firstPartySignOut} from './better-auth-native.mjs';
 import {verifyAuthReference} from './auth-ref.mjs';
 
 // Independent OAuth 2.1 authorization server; all state lives in the existing
@@ -128,6 +129,30 @@ async function sessionFromCookie(request,stub){
  if(!CODE_PATTERN.test(String(token||'')))return null;
  return sessionForHash(stub,await sha(token));
 }
+async function sessionFromBetter(request,env,stub){
+ const identity=await firstPartySession(request,env);
+ if(!identity||!identity.emailVerified)error('Verified Better Auth Google identity required',401);
+ const linkedKey='native-google-link:'+await sha('google:'+identity.googleAccountId);
+ const stored=await stub.nativeGet(linkedKey),prior=await sessionFromCookie(request,stub);
+ let subject='';
+ if(stored){
+  if(!LOC_SUBJECT.test(String(stored.subject||''))||stored.email!==identity.email)
+   error('LOC Google identity binding mismatch',403);
+  subject=stored.subject;
+ }else if(prior&&prior.emailVerified!==false&&prior.email===identity.email&&
+    LOC_SUBJECT.test(String(prior.subject||''))){
+  // No email-only subject enrollment. Prove both existing LOC and Google.
+  subject=prior.subject;
+  await stub.nativePut(linkedKey,{subject,email:identity.email});
+ }else error('LOC Google identity needs an existing signed LOC session link',403);
+ const sid=random(),sidHash=await sha(sid);
+ const next={subject,provider:'loc',identityProvider:'better-auth-google',
+  email:identity.email,emailVerified:true,sidHash,
+  expires:Date.now()+SESSION_SECONDS*1000};
+ await stub.nativePut('native-session:'+sidHash,next);
+ return {session:next,cookie:cookie(SESSION_COOKIE,sid,SESSION_SECONDS)};
+}
+
 async function issueToken(stub,session,resource,scope,client_id){
  const iat=Math.floor(Date.now()/1000);
  return {access_token:await stub.signLocDelegation({iss:ISSUER,sub:session.subject,
@@ -141,7 +166,7 @@ export function isNativeOAuthPath(path){
   path==='/oauth/authorize'||path==='/oauth/login'||path==='/oauth/token'||
   path==='/oauth/revoke'||
   path==='/oauth/callback/github'||path==='/oauth/callback/oidc'||
-  path==='/oauth/callback/supabase'||
+  path==='/oauth/callback/supabase'||path==='/oauth/complete'||
   path==='/oauth/logout'||path==='/oauth/ref'||
   path==='/v1/auth/session'||path==='/v1/import/short';
 }
@@ -200,6 +225,11 @@ async function authorize(request,url,stub,env){
  const scope=scopeFor(client.kind,p.get('scope')||
   (client.kind==='extension'?'loc:import offline_access':'profile email offline_access'));
  let session=await sessionFromCookie(request,stub);
+ let bridged=null;
+ if(!session&&hasFirstPartyCookie(request)){
+  bridged=await sessionFromBetter(request,env,stub);
+  session=bridged.session;
+ }
  if(!session){
   const next=new URL('/login/index.html',WEB_AUDIENCE);
   next.searchParams.set('continue',url.pathname+url.search);
@@ -210,7 +240,7 @@ async function authorize(request,url,stub,env){
   redirect_uri,scope,resource,challenge,expires:Date.now()+300000});
  const result=new URL(redirect_uri);result.searchParams.set('code',code);
  result.searchParams.set('state',state);result.searchParams.set('iss',ISSUER);
- return redirect(result.href);
+ return redirect(result.href,bridged?[bridged.cookie]:[]);
 }
 async function provider(stub,name){
  const item=await stub.nativeProvider(name);
@@ -312,7 +342,39 @@ async function supabaseCallback(request,stub,env,origin){
  return response({next},200,origin,{'set-cookie':cookie(SESSION_COOKIE,sid,SESSION_SECONDS)});
 }
 
-async function login(url,stub,env){
+async function googleViaBetter(request,url,stub,env){
+ const continue_path=url.searchParams.get('continue')?
+  continuation(url.searchParams.get('continue')):'';
+ const return_to=continue_path?'':validReturnPath(url.searchParams.get('return_to'));
+ const state=random(),csrf=random();
+ const complete=new URL('/oauth/complete',ISSUER);complete.searchParams.set('state',state);
+ const upstream=await handleFirstPartyAuth(new Request(ISSUER+'/api/auth/sign-in/social',{
+  method:'POST',headers:{origin:ISSUER,'content-type':'application/json'},
+  body:JSON.stringify({provider:'google',callbackURL:complete.href})}),env);
+ if(!upstream.ok)error('LOC Google Better Auth sign-in unavailable',upstream.status);
+ const info=await upstream.json().catch(()=>null);
+ let target;try{target=new URL(info?.url)}catch{error('Invalid Better Auth Google redirect',502)}
+ if(target.protocol!=='https:'||target.hostname!=='accounts.google.com')
+  error('Unexpected Google OAuth authorization host',502);
+ await put(stub,'native-login',state,{provider:'better-google',csrfHash:await sha(csrf),
+  continue_path,return_to,expires:Date.now()+600000});
+ const cookies=[cookie(CSRF_COOKIE,csrf,600)];
+ for(const item of upstream.headers.getSetCookie?.()||[])cookies.push(item);
+ return redirect(target.href,cookies);
+}
+async function completeBetterGoogle(request,url,stub,env){
+ const state=url.searchParams.get('state')||'';
+ if(!CODE_PATTERN.test(state))error('Invalid LOC Google continuation',401);
+ const pending=await take(stub,'native-login',state);
+ const csrf=parseCookies(request).get(CSRF_COOKIE);
+ if(!pending||pending.provider!=='better-google'||pending.expires<Date.now()||
+   !csrf||await sha(csrf)!==pending.csrfHash)
+  error('LOC Google continuation state invalid',401);
+ const {cookie:sessionCookie}=await sessionFromBetter(request,env,stub);
+ const next=pending.continue_path?ISSUER+pending.continue_path:WEB_AUDIENCE+pending.return_to;
+ return redirect(next,[sessionCookie,cookie(CSRF_COOKIE,'',0)]);
+}
+async function login(request,url,stub,env){
  const name=url.searchParams.get('provider');
  if(!name){
   const next=new URL('/login/index.html',WEB_AUDIENCE);
@@ -321,7 +383,7 @@ async function login(url,stub,env){
   else next.searchParams.set('return_to',validReturnPath(url.searchParams.get('return_to')));
   return redirect(next.href);
  }
- if(name==='google')return googleViaSupabase(url,stub,env);
+ if(name==='google')return googleViaBetter(request,url,stub,env);
  if(!['github','oidc'].includes(name))error('Unknown identity provider');
  const config=await provider(stub,name);
  const callback=ISSUER+'/oauth/callback/'+name;
@@ -555,20 +617,31 @@ async function revoke(request,stub,origin){
  return response({},200,origin);
 }
 async function session(request,stub,origin,env){
- const identity=await sessionFromCookie(request,stub);
+ let identity=await sessionFromCookie(request,stub),bridged=null;
+ if(!identity&&hasFirstPartyCookie(request)){
+  bridged=await sessionFromBetter(request,env,stub);
+  identity=bridged.session;
+ }
  if(!identity)return response({session:null,user:null},200,origin);
  const auth=await issueToken(stub,identity,WEB_AUDIENCE,'profile email','loc-web');
  const user={id:identity.subject,email:identity.email,emailVerified:identity.emailVerified!==false};
  return response({session:{...auth,user,expires_at:Math.floor(Date.now()/1000)+ACCESS_SECONDS},
-  user,provider:'loc'},200,origin);
+  user,provider:'loc'},200,origin,bridged?{'set-cookie':bridged.cookie}:{});
 }
 async function logout(request,stub,origin,env){
  const csrf=String(request.headers.get('origin')||'');
  if(csrf&&csrf!==WEB_AUDIENCE&&csrf!==ISSUER)error('Cross-origin logout forbidden',403);
  const sid=parseCookies(request).get(SESSION_COOKIE);
  if(sid&&CODE_PATTERN.test(sid))await stub.nativeTake('native-session:'+await sha(sid));
- return response({signed_out:true},200,origin,
+ const result=response({signed_out:true},200,origin,
   {'set-cookie':cookie(SESSION_COOKIE,'',0)});
+ if(hasFirstPartyCookie(request)){
+  const revoked=await firstPartySignOut(request,env);
+  if(!revoked.ok)error('Better Auth session revoke failed',502);
+  for(const item of revoked.headers.getSetCookie?.()||[])
+   result.headers.append('set-cookie',item);
+ }
+ return result;
 }
 async function importShort(request,env,stub,origin){
  const identity=await verifyNativeOAuth(request,env,IMPORT_AUDIENCE);
@@ -629,7 +702,9 @@ export async function handleNativeOAuth(request,env){
     resource_parameter_supported:true},200,origin);
   if(path==='/oauth/register'&&request.method==='POST')return await register(request,stub,origin);
   if(path==='/oauth/authorize'&&request.method==='GET')return await authorize(request,url,stub,env);
-  if(path==='/oauth/login'&&request.method==='GET')return await login(url,stub,env);
+  if(path==='/oauth/login'&&request.method==='GET')return await login(request,url,stub,env);
+   if(path==='/oauth/complete'&&request.method==='GET')
+    return await completeBetterGoogle(request,url,stub,env);
   if(path==='/oauth/callback/supabase'&&request.method==='POST')
    return await supabaseCallback(request,stub,env,origin);
   if(path==='/oauth/ref'&&request.method==='GET')return await refLogin(request,url,stub,env);

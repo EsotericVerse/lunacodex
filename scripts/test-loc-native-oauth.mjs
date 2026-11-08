@@ -5,6 +5,7 @@ import {
  ISSUER,WEB_AUDIENCE,MCP_AUDIENCE,IMPORT_AUDIENCE,
  handleNativeOAuth,verifyNativeOAuth
 } from '../workers/loc-authority/native-oauth.mjs';
+import {runBetterAuthStore} from '../workers/loc-authority/better-auth-store.mjs';
 
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
 const encoder=new TextEncoder();
@@ -216,75 +217,36 @@ test('GitHub verified identity -> LOC cookie -> per-install PKCE -> signed token
  }finally{globalThis.fetch=originalFetch;}
 });
 
-test('existing Supabase Google OAuth identity becomes LOC Session without registration or password',async()=>{
+test('Google provider fails closed when this Worker has no Google Client credentials',async()=>{
  const {env}=environment();
- const userId='12345678-1234-4234-8234-123456789abc';
- const hash=await crypto.subtle.digest('SHA-256',encoder.encode('supabase:'+userId));
- const subject='loc_'+Buffer.from(hash).toString('base64url').slice(0,40);
- env.LOC_SUPABASE_AUTH_ORIGIN='https://qlouywsdiiyiyzpoxyqy.supabase.co';
- env.LOC_SUPABASE_PUBLIC_KEY='sb_publishable_'+'Q'.repeat(30);
- env.LOC_RECOVERY_ROOT_LOC_SUBJECTS=subject;
- const oldFetch=globalThis.fetch;let queried=0;
- globalThis.fetch=async(url,options)=>{
-  assert.equal(String(url),env.LOC_SUPABASE_AUTH_ORIGIN+'/auth/v1/user');
-  assert.equal(options.headers.apikey,env.LOC_SUPABASE_PUBLIC_KEY);
-  assert.equal(options.headers.authorization,'Bearer '+'eyJ.'+'e'.repeat(128)+'.'+'s'.repeat(130));
-  queried++;
-  return Response.json({id:userId,email:'owner@example.org',
-   email_confirmed_at:'2026-10-31T00:00:00Z',identities:[{provider:'google'}]});
- };
- try{
-  const begin=await handleNativeOAuth(request('/oauth/login?provider=google&return_to=%2Flocal%2Fsettings%2F'),env);
-  assertStatus(begin,302);
-  const target=new URL(begin.headers.get('location'));
-  assert.equal(target.origin,env.LOC_SUPABASE_AUTH_ORIGIN);
-  assert.equal(target.pathname,'/auth/v1/authorize');
-  assert.equal(target.searchParams.get('provider'),'google');
-  const callback=new URL(target.searchParams.get('redirect_to'));
-  assert.equal(callback.origin,WEB_AUDIENCE);
-  assert.equal(callback.pathname,'/login/supabase-callback.html');
-  const csrf=fromSetCookie(begin,'__Host-loc-csrf');
-  const access_token='eyJ.'+'e'.repeat(128)+'.'+'s'.repeat(130);
-  const input=JSON.stringify({state:callback.searchParams.get('state'),access_token});
-  const completed=await handleNativeOAuth(request('/oauth/callback/supabase',{
-   method:'POST',headers:{cookie:csrf,origin:WEB_AUDIENCE,'content-type':'application/json'},
-   body:input
-  }),env);
-  assertStatus(completed,200);
-  assert.equal((await completed.json()).next,WEB_AUDIENCE+'/local/settings/');
-  assert.equal(queried,1);
-  const sid=fromSetCookie(completed,'__Host-loc-session');
-  const session=await handleNativeOAuth(request('/v1/auth/session',{headers:{cookie:sid}}),env);
-  assertStatus(session,200);
-  const identity=await session.json();
-  assert.equal(identity.user.id,subject);
-  assert.equal(identity.user.emailVerified,true);
-  const replay=await handleNativeOAuth(request('/oauth/callback/supabase',{
-   method:'POST',headers:{cookie:csrf,origin:WEB_AUDIENCE,'content-type':'application/json'},
-   body:input}),env);
-  assertStatus(replay,401);
-  assert.equal(queried,1,'replayed OAuth state must not contact the identity source');
- }finally{globalThis.fetch=oldFetch}
+ const response=await handleNativeOAuth(request('/oauth/login?provider=google'),env);
+ assertStatus(response,503);
+ assert.notEqual(response.headers.get('location')?.includes('supabase.co'),true);
 });
-test('Supabase Google login refuses non-invited accounts and cannot register new LOC identities',async()=>{
- const {env}=environment();
- env.LOC_SUPABASE_AUTH_ORIGIN='https://qlouywsdiiyiyzpoxyqy.supabase.co';
- env.LOC_SUPABASE_PUBLIC_KEY='sb_publishable_'+'Q'.repeat(30);
- env.LOC_RECOVERY_ROOT_LOC_SUBJECTS='loc_'+'Z'.repeat(40);
- const begin=await handleNativeOAuth(request('/oauth/login?provider=google'),env);
- const callback=new URL(new URL(begin.headers.get('location')).searchParams.get('redirect_to'));
- const csrf=fromSetCookie(begin,'__Host-loc-csrf');
- const previous=globalThis.fetch;
- globalThis.fetch=async()=>Response.json({
-  id:'12345678-1234-4234-8234-123456789abc',
-  email:'unauthorized@example.org',email_confirmed_at:'2026-10-31T00:00:00Z',
-  identities:[{provider:'google'}]
- });
- try{
-  const response=await handleNativeOAuth(request('/oauth/callback/supabase',{
-   method:'POST',headers:{cookie:csrf,origin:WEB_AUDIENCE,'content-type':'application/json'},
-   body:JSON.stringify({state:callback.searchParams.get('state'),
-    access_token:'eyJ.'+'a'.repeat(128)+'.'+'b'.repeat(128)})}),env);
-  assertStatus(response,403);
- }finally{globalThis.fetch=previous}
+test('Google OAuth starts on LOC Better Auth with the exact Google callback',async()=>{
+ const {env,stub}=environment();
+ const records=new Map();
+ const storage={
+  async get(key){return records.get(key)},
+  async put(key,value){records.set(key,value)},
+  async delete(key){records.delete(key)},
+  async list({prefix}){return new Map([...records].filter(([key])=>key.startsWith(prefix)))},
+  async transaction(action){return action(this)}
+ };
+ stub.betterAuthStorage=args=>runBetterAuthStore(storage,args);
+ env.LOC_CONTROL_ENCRYPTION_KEY=Buffer.alloc(32,42).toString('base64');
+ env.LOC_GOOGLE_CLIENT_ID='loc-test.apps.googleusercontent.com';
+ env.LOC_GOOGLE_CLIENT_SECRET='test-client-secret';
+ const begin=await handleNativeOAuth(request('/oauth/login?provider=google&return_to=%2Flocal%2Fsettings%2F'),env);
+ assertStatus(begin,302);
+ const target=new URL(begin.headers.get('location'));
+ assert.equal(target.hostname,'accounts.google.com');
+ assert.equal(target.searchParams.get('client_id'),env.LOC_GOOGLE_CLIENT_ID);
+ assert.equal(target.searchParams.get('redirect_uri'),ISSUER+'/api/auth/callback/google');
+ assert.equal(target.searchParams.get('response_type'),'code');
+ assert.ok(fromSetCookie(begin,'__Host-loc-csrf'));
+ const loginState=fromSetCookie(begin,'__Host-loc-csrf');
+ const reused=await handleNativeOAuth(request('/oauth/complete?state=invalid',{
+  headers:{cookie:loginState}}),env);
+ assertStatus(reused,401);
 });
