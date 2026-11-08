@@ -273,7 +273,8 @@ export default function KeywordLibraryPanel({scopeId,account}){
         keyword_min_documents:Number(config.keyword_min_documents)||0,
         // Legacy scope-wide date is not an analysis completion date.
         staticstime:null,
-        ...(rulesChanged?{keyword_meta:{...(config.keyword_meta||{}),by_class:{}}}:{})
+        ...(rulesChanged?{keyword_meta:{...(config.keyword_meta||{}),
+          by_class:{},pattern_scans:{}}}:{})
       };
       const {data,error:writeError}=await dbAuthRelation(configTable).update(payload)
         .eq('id',scopeId).select('id');
