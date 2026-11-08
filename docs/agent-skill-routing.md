@@ -75,8 +75,7 @@
 
 ## 本次處理後的追蹤
 
-- 第三輪（2026-11-09）：已清除 `skills-lock.json` 的 7 筆失效 Clerk 索引，並將現役 Auth Skill 路由改為 LOC Native Auth；失效的本地 Skill 連結不再列為可用入口。歷史清理紀錄保留作為時間點記載，不代表目前仍安裝。
-
 - 第一輪：經授權的 TDD 副本去重與 Agent 文檔整理；其餘用途不同或 Claude 仍依賴的目錄不刪。
 - 第二輪（2026-11-02）：經使用者明確授權，移除 `brainstorming`／`systematic-debugging`／`verification-before-completion` 本地副本——Superpowers **plugin 本身維持已安裝、不動**，只砍跟它重複的本地 skill。`sql-optimization-patterns`、`supabase-postgres-best-practices` 等領域知識型 skill 不在此次範圍內，Superpowers 不涵蓋這些內容，繼續保留。
+- 第三輪（2026-11-09）：已清除 `skills-lock.json` 的 7 筆失效 Clerk 索引，並將現役 Auth Skill 路由改為 LOC Native Auth；失效的本地 Skill 連結不再列為可用入口。歷史清理紀錄保留作為時間點記載，不代表目前仍安裝。
 - 後續若要精簡更多內容，應先比較真實 Skill 觸發／上下文占用，以及實際 Agent 可否找到保留版本，再逐項決定，不再靠同名判斷。
