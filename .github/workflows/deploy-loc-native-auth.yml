@@ -32,7 +32,9 @@ jobs:
         run: |
           node --check workers/loc-authority/index.mjs
           node --check workers/loc-authority/native-oauth.mjs
-          node --test scripts/test-loc-native-oauth.mjs scripts/test-loc-authority-native-only.mjs scripts/test-loc-no-vendor-auth-runtime.mjs
+          node --check workers/loc-authority/auth-qos.mjs
+          node --check app/loc/auth/sql-state-store.mjs
+          node --test scripts/test-loc-native-oauth.mjs scripts/test-loc-authority-native-only.mjs scripts/test-loc-no-vendor-auth-runtime.mjs scripts/test-loc-auth-qos.mjs scripts/test-loc-auth-store.mjs
       - name: Build native OAuth Worker (no SQL Gateway)
         run: npx --yes wrangler@4.157.0 deploy --config workers/loc-authority/wrangler.jsonc --dry-run --outdir /tmp/loc-native-auth-check
       - name: Explain missing deployment authorization
