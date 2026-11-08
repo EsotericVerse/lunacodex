@@ -210,11 +210,9 @@ export async function suggestKeywordPatterns(db,scopeIds=[],query='',{
           for(const term of terms(item))visible.add(term);
       }
     }
-    const escaped=prefix.replace(/[\\%_]/gu,char=>'\\'+char);
-    const rows=await db.selectFrom('silver.loc_search_pattern')
-      .select(['pattern','count']).where('scopeid','=',scope)
-      .where('pattern','ilike',escaped+'%')
-      .orderBy('count','desc').limit(2000).execute();
+    const rows=(await indexRows(db,scope))
+      .filter(row=>norm(row.pattern).startsWith(prefix))
+      .sort((a,b)=>b.count-a.count||a.pattern.localeCompare(b.pattern)).slice(0,2000);
     for(const row of rows){
       const key=norm(row.pattern);
       if(visible&&!visible.has(key))continue;
