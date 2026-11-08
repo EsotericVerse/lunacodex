@@ -22,6 +22,9 @@ export default function KeywordPatternSummary({scopeId='',classUid='',range={}})
     詞級統計讀取失敗：{String(summary.error.message||summary.error)}
   </p>;
   const data=summary.data||{};
+  if(data.indexPending)return <p className="scope-status" role="status">
+    詞級索引尚待重新分析；目前 Pattern.num=0 不代表零命中。
+  </p>;
   const items=Array.isArray(data.items)?data.items:[];
   const rows=level==='group'
     ?(data.groups||[]).map(group=>({key:group.uid,label:group.name,

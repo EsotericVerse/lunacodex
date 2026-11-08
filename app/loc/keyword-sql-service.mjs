@@ -7,7 +7,7 @@ import {keywordClassCatalog} from './keyword-tree.mjs';
 import {analyzeIncrementalKeywordPatterns} from './keyword-incremental.mjs';
 import {createIndexedDateKeywordReader} from './keyword-article-reader.mjs';
 import {completeKeywordClass,invalidateKeywordClass} from './keyword-class-state.mjs';
-import {scopeDatabaseUid,readScopePatternRows,storeScopePatternMatches,ensureScopePatternLibrary} from './keyword-anchor-index.mjs';
+import {scopeDatabaseUid,readScopePatternRows,storeScopePatternMatches,ensureScopePatternLibrary,SCOPE_PATTERN_INDEX_VERSION,scopePatternScanClocks} from './keyword-anchor-index.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[0-9A-Za-z]{8}$/;
@@ -122,6 +122,9 @@ export async function readKeywordStatistics(db,scope,classUid,{
   checkScope(scope);checkClass(classUid);
   const cfg=await configuration(db,scope);
   if(!owner&&!shared(cfg,classUid))fail('Keyword Class not published',403);
+  const meta=attr({attr:cfg.keyword_meta});
+  const indexReady=meta.pattern_index_version===SCOPE_PATTERN_INDEX_VERSION&&
+    Boolean(meta.by_class?.[classUid]?.completedAt);
   const tree=await classTree(db,scope,classUid);
   const patterns=await indexRows(db,scope);
   let permitted=null,daily=[];
@@ -133,7 +136,8 @@ export async function readKeywordStatistics(db,scope,classUid,{
   const indexed=keywordPatternItemMetrics(tree.items,patterns,{articleUids:permitted});
   return {
     class_uid:classUid,class_name:String(tree.root.title||''),
-    completedAt:String(cfg.keyword_meta?.by_class?.[classUid]?.completedAt||''),
+    completedAt:indexReady?String(meta.by_class[classUid].completedAt):'',
+    indexPending:!indexReady,
     keywordMinChars:Math.max(0,Number(cfg.keyword_min_chars??32)),
     keywordMinDocuments:Math.max(0,Number(cfg.keyword_min_documents??100)),
     groups:tree.groups.map(group=>{
@@ -236,8 +240,13 @@ async function persistPatterns(trx,scope,classUid,patterns,stats){
     analyzedDocuments:stats.analyzedDocuments,parsedDocuments:stats.parsedDocuments,
     reusedDocuments:stats.reusedDocuments,itemMatches:stats.itemMatches,
     occurrences:stats.occurrences};
-  const merged=completeKeywordClass(cfg.keyword_meta,classUid,record,now);
-  const metadata={...merged,pattern_scans:{
+  const oldMeta=attr({attr:cfg.keyword_meta});
+  const alreadyNative=oldMeta.pattern_index_version===SCOPE_PATTERN_INDEX_VERSION;
+  // Migration preserved legacy scan/class completion; invalidate on first cutover.
+  const baseMeta=alreadyNative?oldMeta:{...oldMeta,by_class:{},pattern_scans:{}};
+  const merged=completeKeywordClass(baseMeta,classUid,record,now);
+  const metadata={...merged,pattern_index_version:SCOPE_PATTERN_INDEX_VERSION,
+    pattern_scans:{
     ...(merged.pattern_scans||{}),...stats.patternScans
   }};
   await trx.updateTable(configName(scope))
@@ -298,7 +307,7 @@ export async function analyzeKeywordScope(db,scope,classUid,{
   let pending=null;
   const result=await analyzeIncrementalKeywordPatterns({
     scopeId:scope,classUid,treeRows,items:catalog,
-    existingPatterns,patternScans:cfg.keyword_meta?.pattern_scans||{},
+    existingPatterns,patternScans:scopePatternScanClocks(cfg.keyword_meta),
     expectedCount,minChars:Math.max(0,Number(cfg.keyword_min_chars)||0),
     startedAt,pageSize:1000,readMetadataPage:reader,
     readContent:async uids=>{
