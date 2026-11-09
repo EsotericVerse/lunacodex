@@ -5,6 +5,7 @@ import {sql} from 'kysely';
 import {canManageLoc} from './providers/loc-authorization.mjs';
 import {indexZModelAnchorHierarchy} from '../../zenstack/anchor-hierarchy.mjs';
 import {sourceTreeFromCatalog} from './source-classification.mjs';
+import {PUBLISHED_SOURCE_DOMAINS} from '../modular/published-source-taxonomy.js';
 import {allocateAnchorUid} from './unified-anchor-compat.mjs';
 
 const UID=/^[A-Za-z0-9]{8}$/;
@@ -18,6 +19,21 @@ function validScope(value){
 }
 
 const sourceUidList=row=>Array.isArray(row?.attr?.uid)?row.attr.uid:[];
+// A Source Domain is a physical Anchor node. Resolve it by UID, never by
+// its editable title. Publication retains the approved UID for existing
+// Scopes; newly provisioned Scopes may use their sole Domain until published.
+// Multiple candidates without a UID are ambiguous and must not be guessed.
+export function selectScopeSourceDomain(rows,scopeId){
+  const domains=(rows||[]).filter(row=>row.type==='domain');
+  const uid=String(PUBLISHED_SOURCE_DOMAINS[scopeId]||'');
+  if(uid){
+    const selected=domains.find(row=>row.uid===uid);
+    if(!selected)reject('Saved Source Domain UID missing for '+scopeId,409);
+    return selected;
+  }
+  if(domains.length>1)reject('Source Domain UID required for '+scopeId,409);
+  return domains[0]||null;
+}
 const sourceNames=value=>{
   if(typeof value==='string'){try{value=JSON.parse(value)}catch{return []}}
   return Array.isArray(value)?value.filter(x=>typeof x==='string'&&x.trim()).map(x=>x.trim()):[];
@@ -55,9 +71,7 @@ export async function sourceCatalogAction(trx,args,save=false){
     await sql`select pg_advisory_xact_lock(hashtext(${viewer}),hashtext('source-anchor'))`.execute(trx);
     const existing=await trx.selectFrom(anchor).select(['uid','type','title','attr'])
       .where('type','in',['domain','from']).execute();
-    const domains=existing.filter(row=>row.type==='domain'&&row.title===viewer);
-    if(domains.length>1)reject('Duplicate Scope source Domain');
-    const current=domains[0]||null,owned=new Set(sourceUidList(current));
+    const current=selectScopeSourceDomain(existing,viewer),owned=new Set(sourceUidList(current));
     const oldFrom=new Map(existing.filter(row=>row.type==='from'&&owned.has(row.uid))
       .map(row=>[row.uid,row]));
     if(owned.size!==oldFrom.size)reject('Broken source hierarchy references');
@@ -111,13 +125,11 @@ export async function sourceCatalogAction(trx,args,save=false){
     const anchor='silver.'+id+'_'+suffix;
     const rows=await trx.selectFrom(anchor).select(['uid','type','title','description','attr'])
       .where('type','in',['domain','from']).execute();
-    const domains=rows.filter(row=>row.type==='domain'&&row.title===id);
-    if(domains.length>1)reject('Duplicate source Domain');
+    const domain=selectScopeSourceDomain(rows,id);
     // Use the already-defined ZModel Source hierarchy over the authorized
     // Domain/From rows. Universe/Galaxy remain presentation parents until
     // their physical Anchor nodes exist; do not fabricate local UIDs.
     const sourceGraph=indexZModelAnchorHierarchy(rows,{family:'source'});
-    const domain=domains[0]||null;
     if(domain&&sourceGraph.descendants(domain.uid).missing.length)
       reject('Source Domain references missing From');
     const linked=domain?sourceGraph.childrenOf(domain.uid):[];
@@ -134,7 +146,8 @@ export async function sourceCatalogAction(trx,args,save=false){
   const galaxyNode=tree.find(node=>node.type==='galaxy');
   for(const record of records){
     const branch=sourceTreeFromCatalog([],record.sources,{
-      scopeId:record.scopeid,domainUid:record.domain?.uid||'',includeSystem:false
+      scopeId:record.scopeid,domainUid:record.domain?.uid||'',
+      domainTitle:record.domain?.title||record.scopeid,includeSystem:false
     });
     const sourceDomain=branch.find(node=>node.type==='domain');
     if(!sourceDomain)continue;
