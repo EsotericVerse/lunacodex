@@ -11,7 +11,7 @@ test('LOC Authority verifies only signed native login identities',()=>{
   const worker=read('workers/loc-authority/index.mjs');
   assert.match(worker,/const principal=await verifyNativeOAuth\(request,env,WEB_AUDIENCE\)/);
   assert.doesNotMatch(worker,/verifyIdentityToken\(/);
-  assert.match(worker,/verifiedLocOwner\(principal\)/);
+  assert.match(worker,/verifiedLocOwner\(principal,env\)/);
   assert.doesNotMatch(worker,/LOC_RECOVERY_ROOT_LOC_SUBJECTS/);
   assert.match(worker,/const sub=principal\.subject/);
 });
