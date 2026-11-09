@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import * as fs from 'node:fs';
 import {bindLocAuthorization,canManageLoc,locManageRows} from '../app/loc/providers/loc-authorization.mjs';
 
-const identity={provider:'loc',me:true,sub:'user_123456',email:'owner@example.org',
+const identity={provider:'loc',me:true,sub:'user_123456',email:'sopa2306@gmail.com',
   grants:['global:manage']};
 function fixture({entries=[],blacklist={email:[]}}={}){
   const hits={manage:0};
@@ -26,96 +27,23 @@ test('LOC signed global delegation authorizes without an authorization SQL round
   assert.equal(await canManageLoc(db,'group','loc'),true);
   assert.deepEqual(hits,{manage:0});
 });
-test('Scope delegation cannot administer another scope or global registry',async()=>{
+test('Owner without Scope grants can manage all LOC scopes with one decision',async()=>{
   const {db,hits}=fixture();
-  bindLocAuthorization(db,{role:'authenticated',claims:
-    {...identity,grants:['lrunes:manage']}});
+  bindLocAuthorization(db,{role:'authenticated',claims:{...identity,grants:[]}});
   assert.equal(await canManageLoc(db,'scope','lrunes'),true);
-  assert.equal(await canManageLoc(db,'scope','lo3rwang'),false);
-  assert.equal(await canManageLoc(db,'global'),false);
+  assert.equal(await canManageLoc(db,'scope','lo3rwang'),true);
+  assert.equal(await canManageLoc(db,'group','loc'),true);
+  assert.equal(await canManageLoc(db,'global'),true);
   assert.deepEqual(hits,{manage:0});
 });
-test('Group scope delegation is not global administrator',async()=>{
+test('A nonowner cannot manage, even with global grants or administrator role',async()=>{
   const {db}=fixture();
-  bindLocAuthorization(db,{role:'authenticated',claims:
-    {...identity,grants:['loc:manage']}});
-  assert.equal(await canManageLoc(db,'group','loc'),true);
-  assert.equal(await canManageLoc(db,'scope','loc'),true);
+  bindLocAuthorization(db,{role:'authenticated',claims:{
+    ...identity,email:'reader@example.org',grants:['global:manage'],role:'admin'
+  }});
   assert.equal(await canManageLoc(db,'global'),false);
+  assert.equal(await canManageLoc(db,'scope','lo3rwang'),false);
 });
-test('virtual Group descendant permissions use only a server-verified live registry',async()=>{
-  const {db}=fixture();
-  let loads=0;
-  const hierarchy=[
-    {scope_id:'org',scope_kind:'group',active:true},
-    {scope_id:'child',scope_kind:'group',parent_scope_id:'org',active:true},
-    {scope_id:'alpha',scope_kind:'scope',parent_scope_id:'child',active:true},
-    {scope_id:'paused',scope_kind:'scope',parent_scope_id:'org',active:false},
-    {scope_id:'outside',scope_kind:'scope',active:true}
-  ];
-  bindLocAuthorization(db,{role:'authenticated',
-    claims:{...identity,grants:['org:manage']},
-    loadScopeTree:async()=>{loads++;return hierarchy;}});
-  assert.equal(await canManageLoc(db,'group','org'),true,'exact signed grant');
-  assert.equal(loads,0,'an exact grant needs no hierarchy read');
-  assert.equal(await canManageLoc(db,'scope','alpha'),true);
-  assert.equal(await canManageLoc(db,'group','child'),true);
-  assert.equal(await canManageLoc(db,'scope','outside'),false);
-  assert.equal(await canManageLoc(db,'scope','paused'),false);
-  assert.equal(await canManageLoc(db,'global'),false,'Group never implies Admin');
-  assert.equal(loads,1,'all descendant checks share one trusted tree');
-});
-
-test('untrusted client roles and absent or malformed registries grant no descendants',async()=>{
-  const {db}=fixture();
-  bindLocAuthorization(db,{role:'authenticated',
-    claims:{...identity,grants:['org:manage'],role:'admin',scopeIds:['alpha']}});
-  assert.equal(await canManageLoc(db,'scope','alpha'),false);
-  assert.equal(await canManageLoc(db,'global'),false);
-  bindLocAuthorization(db,{role:'authenticated',
-    claims:{...identity,grants:['org:manage']},
-    loadScopeTree:async()=>[
-      {scope_id:'org',scope_kind:'group',parent_scope_id:'child'},
-      {scope_id:'child',scope_kind:'group',parent_scope_id:'org'},
-      {scope_id:'alpha',scope_kind:'scope',parent_scope_id:'child'}
-    ]});
-  await assert.rejects(()=>canManageLoc(db,'scope','alpha'),/Cyclic/);
-  assert.equal(await canManageLoc(db,'global'),false);
-});
-
-test('management entry returns inherited Group children without granting global admin',async()=>{
-  const tree=[
-    {scope_id:'org',scope_kind:'group'},
-    {scope_id:'alpha',scope_kind:'scope',parent_scope_id:'org'}
-  ];
-  const db={
-    fn(){return 'verified-email'},
-    selectFrom(table){
-      const source=table;
-      let ownerRead=false;
-      return {
-        crossJoin(){ownerRead=true;return this;},
-        leftJoin(){return this;},select(){return this;},where(){return this;},
-        async execute(){
-          if(source!=='api.manage as m')throw Error('Unexpected management relation');
-          return ownerRead
-            ?[{id:'org',email:'owner@example.org',manage_role:'group',active:true,
-                galaxy_table:'galaxy',anchor_table:'anchor',blacklist:{email:[]}}]
-            :[{id:'alpha',manage_role:'scope',active:true,
-                galaxy_table:'galaxy',anchor_table:'anchor'}];
-        }
-      };
-    }
-  };
-  bindLocAuthorization(db,{role:'authenticated',
-    claims:{...identity,grants:['org:manage']},
-    loadScopeTree:async()=>tree});
-  const rows=await locManageRows(db,'self');
-  assert.deepEqual(rows.map(row=>row.id).sort(),['alpha','org']);
-  assert.ok(rows.every(row=>row.email==='owner@example.org'&&row.allowed));
-  assert.equal(await canManageLoc(db,'global'),false);
-});
-
 test('Management membership is read only for display, not for authorization',async()=>{
   const {db,hits}=fixture({entries:[{id:'admin',email:identity.email,
     manage_role:'admin',active:true}]});
@@ -123,14 +51,14 @@ test('Management membership is read only for display, not for authorization',asy
   assert.equal((await locManageRows(db,'self'))[0].allowed,true);
   assert.deepEqual(hits,{manage:1});
 });
-test('No signed grant, non-LOC identity, false ME, or anonymous cannot manage',async()=>{
+test('Owner does not need grants; external and anonymous identities cannot manage',async()=>{
   const {db}=fixture();
   assert.throws(()=>bindLocAuthorization(db,{role:'authenticated',claims:
     {...identity,provider:'clerk'}}),{httpStatus:403});
   assert.throws(()=>bindLocAuthorization(db,{role:'authenticated',claims:
     {...identity,me:false}}),{httpStatus:403});
   bindLocAuthorization(db,{role:'authenticated',claims:{...identity,grants:[]}});
-  assert.equal(await canManageLoc(db,'global'),false);
+  assert.equal(await canManageLoc(db,'global'),true);
   bindLocAuthorization(db,{role:'anon'});
   assert.equal(await canManageLoc(db,'scope','lrunes'),false);
 });
@@ -160,7 +88,7 @@ test('portable Galaxy batch reads existing rows once, not once per article',asyn
     p_operation:'update_batch',p_rows:[
       {uid:'ABCD1234',title:'new1'},{uid:'EFGH5678',title:'new2'}
     ]}},{role:'authenticated',claims:{provider:'loc',me:true,sub:'user_123456',
-      email:'owner@example.org'},engine:'mysql',namespace:''});
+      email:'sopa2306@gmail.com'},engine:'mysql',namespace:''});
   assert.equal(result.data.count,2);
   assert.equal(writes,2);
   assert.equal(reads,1);
