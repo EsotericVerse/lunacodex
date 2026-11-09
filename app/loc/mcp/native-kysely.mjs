@@ -18,7 +18,7 @@ function trustedAlias(env,verifiedAlias){
  // The trusted service token enables resolving that alias without SQL or a
  // duplicate deployment-local connection password.
  const profileService=String(env.LOC_DB_PROFILE_SERVICE_TOKEN||'');
- const published=profileService.length>=32?
+ const published=profileService.length>=32||Boolean(env.LOC_DATABASE_URL)?
   DATABASE_ACCESS_LIST.find(target=>target.selected===true)?.connection_alias:'';
  const alias=String(verifiedAlias||env.LOC_MCP_DB_ALIAS||
   env.LOC_CONTROL_DB_ALIAS||env.LOC_PUBLIC_DB_ALIAS||published||'');
@@ -44,6 +44,12 @@ async function authorizedProfile(env,alias,verifiedAlias,fetchImpl){
  // a user-selected alias signed by LOC Auth.
  if(!verifiedAlias&&env.LOC_DB_CONNECTIONS_JSON)
   return localProfile(env,alias);
+ // Primary database wiring is a backend-owned PostgreSQL driver connection.
+ // Never route its credential via LOC Auth or expose it to browser OAuth.
+ const control=DATABASE_ACCESS_LIST.find(item=>item.selected===true);
+ if(!verifiedAlias&&alias===control?.connection_alias&&env.LOC_DATABASE_URL)
+  return {engine:'postgres',url:String(env.LOC_DATABASE_URL),tls:true,
+   schema_name:'silver'};
  if(secret){
   if(secret.length<32)throw fail('LOC trusted profile secret is invalid');
   // `loc_main` is a local connection alias, not LOC Auth's target ID.
@@ -95,7 +101,12 @@ export function mcpDatabaseConfiguration(env={}){
  let publicReadConfigured=false;
  try{
   const alias=trustedAlias(env,'');
-  validateProfile(env,localProfile(env,alias),'');
+  const control=DATABASE_ACCESS_LIST.find(item=>item.selected===true);
+  const profile=!env.LOC_DB_CONNECTIONS_JSON&&env.LOC_DATABASE_URL&&
+   alias===control?.connection_alias
+   ?{engine:'postgres',url:String(env.LOC_DATABASE_URL),tls:true,schema_name:'silver'}
+   :localProfile(env,alias);
+  validateProfile(env,profile,'');
   publicReadConfigured=true;
  }catch{} // Missing or invalid local configuration is reported, never leaked.
  const delegatedProfileConfigured=typeof env.LOC_DB_PROFILE_SERVICE_TOKEN==='string'&&
