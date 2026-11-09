@@ -99,3 +99,16 @@ test('LOC database editor supplies auth methods without exposing stored secrets'
  assert.match(worker,/publicSqlDriverAuthentication\(internalAuth\)/);
  assert.match(worker,/encryptProfile\(profile,this\.env\.LOC_CONTROL_ENCRYPTION_KEY\)/);
 });
+
+test('SSO Connection Secret can be rotated without changing the target or Project ID',()=>{
+ const ui=readFileSync(new URL('../app/loc/LocDatabaseAdmin.jsx',import.meta.url),'utf8');
+ const auth=readFileSync(new URL('../workers/loc-authority/index.mjs',import.meta.url),'utf8');
+ assert.match(ui,/主動輪替 Connection Secret/);
+ assert.match(ui,/Target ID、Project ID、SQL Type、Domain、Port/);
+ assert.match(ui,/可單獨輪替；留空則沿用既有值/);
+ assert.match(ui,/若疑似外洩，請立即更換並撤銷舊憑證/);
+ assert.match(ui,/\.\.\.\(form\.password\?\{password:form\.password\}:\{\}\)/);
+ assert.match(auth,/const password=validated\.password\|\|previous\?\.password\|\|''/);
+ assert.match(auth,/encrypted:await encryptProfile\(profile,this\.env\.LOC_CONTROL_ENCRYPTION_KEY\)/);
+ assert.doesNotMatch(ui,/localStorage\.setItem\([^)]*password/);
+});
