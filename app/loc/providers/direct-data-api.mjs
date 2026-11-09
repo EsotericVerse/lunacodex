@@ -201,18 +201,26 @@ export function createDirectDataApiClient({
     if(!Number.isSafeInteger(count)||count<0)throw Error('Invalid LOC write receipt');
     if(!q.returning||!count)return {data:[],error:null,count};
     if(q.operation==='delete')return {data:(before||[]).slice(0,count),error:null,count};
-    const idField=rows.every(row=>typeof row.uid==='string')?'uid':
-      rows.every(row=>typeof row.id==='string')?'id':'';
+    // Preserve the caller's narrow, already validated lookup filters on UPDATE.
+    // INSERT/UPSERT return by their explicit stable primary key. If the
+    // follow-up read fails after the database committed, do not pretend the
+    // mutation itself failed (the caller still receives its committed count).
+    const idField=['uid','record_id','id'].find(field=>
+      rows.length&&rows.every(row=>row[field]!==undefined&&row[field]!==null));
     const ids=idField?[...new Set(rows.map(row=>row[idField]))]:[];
-    const eq=q.filters.find(f=>f.op==='eq'&&['uid','id'].includes(f.column));
-    if(eq&&!ids.length)ids.push(eq.value);
-    if(!ids.length)return {data:[],error:null,count};
     const follow=new Query(read,q.schema,q.table);
     follow.columns=q.columns;
-    follow.filters=[{column:idField||eq.column,op:'in',value:ids,negate:false}];
-    follow.rowLimit=Math.min(5000,Math.max(ids.length,count));
-    const response=await read(follow);
-    return {data:response.data||[],error:null,count};
+    follow.filters=ids.length?
+      [{column:idField,op:'in',value:ids,negate:false}]:
+      [...q.filters];
+    if(!follow.filters.length)return {data:[],error:null,count};
+    follow.rowLimit=Math.min(5000,Math.max(count,ids.length,1));
+    try{
+      const response=await read(follow);
+      return {data:response.data||[],error:null,count};
+    }catch(error){
+      return {data:[],error:null,count,readError:String(error?.message||error)};
+    }
   }
   return {
     role,
