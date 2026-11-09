@@ -43,32 +43,34 @@
   // ChatGPT and Claude change markup independently. Identify a message turn by
   // its role metadata or the semantic labels on the rendered conversation
   // article, not only by one generation of data-message-author-role.
-  const TURN_SELECTOR='[data-message-id],[data-testid^="conversation-turn-"],'+
+  const TURN_SELECTOR='[data-testid^="conversation-turn-"],[data-message-id],'+
     '[data-message-author-role],[data-testid="user-message"],'+
     '[data-testid="assistant-message"],article[aria-label]';
-  const TURN_CONTAINER='[data-testid^="conversation-turn-"],[data-message-id],'+
-    'article[data-message-author-role],[data-testid="user-message"],'+
-    '[data-testid="assistant-message"]';
+  const CHAT_HOST=/(?:^|\.)chatgpt\.com$|(?:^|\.)chat\.openai\.com$/;
   function roleOf(turn){
-    const node=turn.matches?.('[data-message-author-role]')?turn:
-      turn.querySelector?.('[data-message-author-role]');
-    const value=(node?.getAttribute?.('data-message-author-role')||
-      turn.getAttribute?.('data-message-author-role')||'').toLowerCase();
-    if(value==='user'||value==='assistant')return value;
+    const own=(turn.getAttribute?.('data-message-author-role')||
+      turn.getAttribute?.('data-role')||'').toLowerCase();
+    if(own==='user'||own==='assistant')return own;
     const testid=(turn.getAttribute?.('data-testid')||'').toLowerCase();
     if(testid==='user-message')return 'user';
     if(testid==='assistant-message')return 'assistant';
-    const label=(turn.getAttribute?.('aria-label')||'').toLowerCase();
-    // sr-only headings are deliberately invisible but provide reliable
-    // accessible role semantics in modern ChatGPT conversation turns.
+    // Modern ChatGPT places the role on a child of the turn, not its article.
+    const direct=turn.querySelector?.('[data-message-author-role="user"],'+
+      '[data-message-author-role="assistant"],[data-testid="user-message"],'+
+      '[data-testid="assistant-message"]');
+    if(direct){
+      const attr=direct.getAttribute('data-message-author-role');
+      if(attr==='user'||attr==='assistant')return attr;
+      return direct.getAttribute('data-testid')==='user-message'?'user':'assistant';
+    }
     const headings=[...(turn.querySelectorAll?.('h5,h6,[class*="sr-only"]')||[])];
-    const visibleLabels=(label+' '+headings.slice(0,8)
-      .map(n=>String(n.textContent||n.innerText||'').trim()).join(' ')).toLowerCase();
-    if(/you said|你說|你说|您說|您说|user message|human:/.test(visibleLabels))
+    const labels=[turn.getAttribute?.('aria-label')||'',
+      ...headings.slice(0,12).map(n=>String(n.textContent||'').trim())]
+      .join(' ').toLowerCase();
+    if(/you said|你說|你说|您說|您说|user message|human:/.test(labels))
       return 'user';
-    if(/chatgpt said|claude said|assistant message|assistant:/.test(visibleLabels))
+    if(/chatgpt said|claude said|assistant message|assistant:/.test(labels))
       return 'assistant';
-    if(turn.querySelector?.('[data-testid*="user"]'))return 'user';
     return '';
   }
   function conversationTurns(scope,includeAssistant=false){
@@ -76,10 +78,8 @@
       ...(scope.querySelectorAll?.(TURN_SELECTOR)||[])];
     const hits=[],visited=new Set(),url=normalizeUrl(location.href);
     for(const node of nodes){
-      // Resolve the same outer conversation Turn for every nested content node.
-      // Without this, one ChatGPT message can be queued twice.
-      const turn=node.closest?.('[data-testid^="conversation-turn-"]')||
-        node.closest?.('[data-message-id]')||
+      // Resolve one canonical turn from nested message/test-id nodes.
+      const turn=node.closest?.('[data-testid^="conversation-turn-"],[data-message-id]')||
         node.closest?.('article[aria-label],article[data-message-author-role]')||
         node.closest?.('[data-message-author-role]')||node;
       if(visited.has(turn)||!visible(turn))continue;
@@ -87,25 +87,24 @@
       if(!['user','assistant'].includes(role))continue;
       visited.add(turn);
       if(role==='assistant'&&!includeAssistant)continue;
-      // The role's own message body is preferable to the container's
-      // toolbars/feedback buttons, which are not conversation content.
-      const roleNode=turn.matches?.('[data-message-author-role]')?turn:
-        turn.querySelector?.('[data-message-author-role]');
-      const text=cleanText(roleNode||turn);
+      const message=turn.querySelector?.(role==='user'?
+        '[data-testid="user-message"],[data-message-author-role="user"]':
+        '[data-testid="assistant-message"],[data-message-author-role="assistant"]');
+      const body=message||turn.querySelector?.(role==='user'?
+        '.whitespace-pre-wrap,[data-testid="message-text-content"]':
+        '.markdown.prose,[data-testid="message-text-content"]');
+      const text=cleanText(body||turn);
       if(!text)continue;
-      hits.push({key:turn.getAttribute?.('data-message-id')||
-          turn.getAttribute?.('data-testid')||role+':'+text.slice(0,150),
-        source_key:url,url,title:document.title,
-        content:'['+role+']\n'+text+'\n'+links(turn).map(x=>x.text+' <'+x.url+'>').join('\n')});
+      const key=turn.getAttribute?.('data-message-id')||
+        turn.getAttribute?.('data-testid')||role+':'+text.slice(0,150);
+      hits.push({key,source_key:url,url,title:document.title,
+        content:'['+role+']\n'+text+'\n'+links(body||turn)
+          .map(x=>x.text+' <'+x.url+'>').join('\n')});
     }
     if(hits.length)return hits;
-    // ChatGPT may render a user's message as a whitespace-pre-wrap bubble
-    // with no role attributes or conversation-turn IDs. Restrict this
-    // fallback to the main conversation and user-bubble shapes only;
-    // never silently archive the sidebar or reclassify AI replies as user.
-    if(/(?:^|\.)chatgpt\.com$|(?:^|\.)chat\.openai\.com$/.test(location.hostname.toLowerCase())){
-      // A selected area must not unexpectedly expand into the whole chat.
-      // Full-page/recording paths already pass their main conversation root.
+    // ChatGPT's user bubbles are sometimes rendered without author-role IDs.
+    // Only inspect the conversation in main, never sidebar/navigation or input.
+    if(CHAT_HOST.test(location.hostname.toLowerCase())){
       const region=scope===document.body?
         document.querySelector?.('main')||scope:scope;
       if(!region||!(region===document.body||region.closest?.('main')||
@@ -115,13 +114,18 @@
       for(const bubble of bubbles){
         if(!visible(bubble)||bubble.closest?.('nav,aside,form,[role="navigation"],[contenteditable="true"]'))continue;
         const turn=bubble.closest?.('[data-testid^="conversation-turn-"],article')||bubble;
-        if(visited.has(turn)||roleOf(turn)==='assistant')continue;
+        const knownRole=roleOf(turn);
+        if(visited.has(turn)||knownRole==='assistant')continue;
+        // An unlabelled whitespace bubble must not be treated as a user
+        // message when it is inside an assistant-rendered markdown response.
+        if(knownRole!=='user'&&bubble.getAttribute?.('data-testid')!=='user-message'&&
+          bubble.closest?.('.markdown,[data-testid="assistant-message"]'))continue;
         const text=cleanText(bubble);
         if(!text)continue;
         visited.add(turn);
-        hits.push({key:turn.getAttribute?.('data-testid')||
-          'user-bubble:'+text.slice(0,150),source_key:url,url,title:document.title,
-          content:'[user]\n'+text});
+        hits.push({key:turn.getAttribute?.('data-message-id')||
+          turn.getAttribute?.('data-testid')||'user-bubble:'+text.slice(0,150),
+          source_key:url,url,title:document.title,content:'[user]\n'+text});
       }
     }
     return hits;
