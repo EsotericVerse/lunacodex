@@ -26,7 +26,7 @@
     <section class="auth-surface" aria-label="LOC 登入與身分核驗">
       <div class="auth-top"><span class="eyebrow">YOUR ACCOUNT</span><p>安全登入，繼續原本的工作。</p></div>
       <div id="login-root">
-        <p class="native-note">請使用 LOC Auth（Google）登入。</p>
+        <p class="native-note">Google 驗證身分，或沿用現有的 LOC SSO 登入。</p>
       </div>
       <div id="signed-in" hidden>
         <h2>身分核驗</h2>
@@ -81,6 +81,16 @@ for(const [provider,text] of [['google','使用 Google 繼續']]){
  button.addEventListener('click',()=>signIn(provider));
  panel.appendChild(button);
 }
+const divider=document.createElement('p');
+divider.className='native-divider';
+divider.textContent='或';
+panel.appendChild(divider);
+const ssoButton=document.createElement('button');
+ssoButton.type='button';
+ssoButton.id='loc-sso-login';
+ssoButton.className='loc-login-choice';
+ssoButton.textContent='使用 LOC SSO';
+panel.appendChild(ssoButton);
 byId('return').addEventListener('click',()=>{
  if(!verifiedForEditor)return;
  const path=validReturnPath();
@@ -89,6 +99,34 @@ byId('return').addEventListener('click',()=>{
  }
  const continued=oauthContinuation();
  location.assign(continued?AUTHORITY+continued:path);
+});
+// SSO reuses the existing LOC Authority session. It does not introduce
+// another identity provider, a password, or a second account registry.
+ssoButton.addEventListener('click',async()=>{
+ ssoButton.disabled=true;
+ byId('status').textContent='正在確認 LOC SSO Session…';
+ try{
+  const response=await fetch(AUTHORITY+'/v1/auth/session',{
+   method:'GET',credentials:'include',cache:'no-store',
+   headers:{accept:'application/json'}
+  });
+  if(!response.ok)throw new Error('LOC SSO 身分確認失敗（HTTP '+response.status+'）');
+  const data=await response.json();
+  const identity=data?.user;
+  const signedIn=Boolean(data?.provider==='loc'&&
+   /^loc_[A-Za-z0-9_-]{32,80}$/.test(String(identity?.id||''))&&
+   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(identity?.email||''))&&
+   typeof data?.session?.access_token==='string');
+  if(!signedIn){
+   signIn('google');
+   return;
+  }
+  verifiedForEditor=true;
+  byId('return').click();
+ }catch(error){
+  byId('status').textContent=String(error.message||error);
+  ssoButton.disabled=false;
+ }
 });
 // LOC Subject is a non-secret identifier, not an access token. Copying it
 // lets the owner configure one exact root identity without sharing passwords.
@@ -134,7 +172,7 @@ async function initialize(){
   ?(isProtectedReturn(validReturnPath())
    ?'LOC Auth 身分已核驗，返回後將確認編輯權限。'
    :'LOC Auth 身分已核驗，管理與寫入權限由 LOC 獨立確認。')
-  :'使用 Google 登入 LOC Auth。';
+  :'選擇 Google 驗證身分，或使用 LOC SSO。';
 }
 initialize().catch(error=>{byId('status').textContent=String(error.message||error);});
 </script>
