@@ -20,7 +20,9 @@ function trustedAlias(env,verifiedAlias){
  const profileService=String(env.LOC_DB_PROFILE_SERVICE_TOKEN||'');
  const published=profileService.length>=32||Boolean(env.LOC_DATABASE_URL)?
   DATABASE_ACCESS_LIST.find(target=>target.selected===true)?.connection_alias:'';
- const alias=String(verifiedAlias||env.LOC_MCP_DB_ALIAS||
+ const primary=DATABASE_ACCESS_LIST.find(item=>item.selected===true);
+ const selected=verifiedAlias===primary?.target_id?primary.connection_alias:verifiedAlias;
+ const alias=String(selected||env.LOC_MCP_DB_ALIAS||
   env.LOC_CONTROL_DB_ALIAS||env.LOC_PUBLIC_DB_ALIAS||published||'');
  if(!ALIAS.test(alias))throw fail('LOC MCP direct database alias is not configured');
  return alias;
@@ -42,12 +44,18 @@ async function authorizedProfile(env,alias,verifiedAlias,fetchImpl){
  const secret=String(env.LOC_DB_PROFILE_SERVICE_TOKEN||'');
  // Explicit local profiles stay valid for self-hosting, but do not override
  // a user-selected alias signed by LOC Auth.
+ // The control database remains local even when a signed LOC delegation
+ // explicitly selects the published primary target ID.
+ const control=DATABASE_ACCESS_LIST.find(item=>item.selected===true);
+ const isPrimary=alias===control?.connection_alias&&
+  (!verifiedAlias||verifiedAlias===control.target_id);
+ if(isPrimary&&env.LOC_DB_CONNECTIONS_JSON)
+  return localProfile(env,alias);
  if(!verifiedAlias&&env.LOC_DB_CONNECTIONS_JSON)
   return localProfile(env,alias);
  // Primary database wiring is a backend-owned PostgreSQL driver connection.
  // Never route its credential via LOC Auth or expose it to browser OAuth.
- const control=DATABASE_ACCESS_LIST.find(item=>item.selected===true);
- if(!verifiedAlias&&alias===control?.connection_alias&&env.LOC_DATABASE_URL)
+ if(isPrimary&&env.LOC_DATABASE_URL)
   return {engine:'postgres',url:String(env.LOC_DATABASE_URL),tls:true,
    schema_name:'silver'};
  if(secret){
