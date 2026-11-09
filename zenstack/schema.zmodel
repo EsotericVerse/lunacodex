@@ -205,22 +205,6 @@ model Loc {
 
 }
 
-// LOC's delegated external source registry. Database/table Mapping is
-// supplied by the data owner, never inferred from a source's physical Schema.
-// No credentials or external article contents are persisted here.
-model LocAnchor {
-    uid                          String      @id @db.VarChar(8)
-    type                         String      @db.Text
-    title                        String?     @db.Text
-    description                  String?     @db.Text
-    invisible                    Boolean     @default(false)
-    attr                         Json        @db.JsonB @default(dbgenerated())
-    createtime                   DateTime?   @db.Timestamptz(6) @default(dbgenerated())
-    num                          BigInt      @db.BigInt @default(0)
-    @@map("loc_anchor")
-    @@schema("silver")
-}
-
 model LocBlocks {
     block_title                  String      @db.VarChar(64) @default(dbgenerated())
     block_text                   String      @db.Text @default(dbgenerated())

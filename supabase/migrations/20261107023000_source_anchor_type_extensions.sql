@@ -1,7 +1,7 @@
 -- Extend ONLY existing Anchor CHECK constraints for the four source types.
 -- No table/column/index/RPC changes; existing Keyword and Rune rules survive.
 -- Every active Scope owns its own Domain/From nodes; Group upstream nodes
--- remain a LOC control-plane projection while silver.loc_anchor does not exist.
+-- remain a LOC control-plane projection.
 BEGIN;
 DO $$
 DECLARE

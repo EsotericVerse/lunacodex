@@ -10,7 +10,7 @@ const tree=(family,rows,options={})=>indexZModelAnchorHierarchy(rows,{family,...
 
 test('all four virtual families use the eight-column ZModel Anchor',()=>{
   assert.deepEqual(ANCHOR_HIERARCHY_FAMILIES,['keyword','source','time','space']);
-  for(const model of ['Lo3rwangAnchor','LrunesAnchor','LocAnchor']){
+  for(const model of ['Lo3rwangAnchor','LrunesAnchor']){
     const cols=schema.models[model]?.fields;
     assert.ok(cols);
     assert.deepEqual(Object.keys(cols).sort(),

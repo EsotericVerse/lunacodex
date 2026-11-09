@@ -7,7 +7,7 @@ import {sourceCatalogAction,saveLocSystemSources} from '../source-sql-service.mj
 import {allocateAnchorUid} from '../unified-anchor-compat.mjs';
 import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
 import {keywordPatternItemMetrics} from '../keyword-search-pattern.mjs';
-import {readScopePatternRows,scopeDatabaseUid,storeScopePatternMatches} from '../keyword-anchor-index.mjs';
+import {readScopePatternRows,storeScopePatternMatches} from '../keyword-anchor-index.mjs';
 
 const ID=/^[a-z][a-z0-9_]*$/i;
 const UID=/^[A-Za-z0-9]{8}$/;
@@ -356,8 +356,7 @@ async function keywordPatternStatistics(trx,args){
   }));
   // The Anchor supplies hierarchy and words only. Every hit/UID/count comes
   // exclusively from loc_search_pattern, including newly composed Items.
-  const patterns=await readScopePatternRows(
-    trx,scope,await scopeDatabaseUid(trx,scope));
+  const patterns=await readScopePatternRows(trx,scope);
   const start=String(args.p_start_date||''),end=String(args.p_end_date||'');
   const source=String(args.p_source||'').trim();
   if([start,end].some(value=>value&&!/^\d{4}-\d{2}-\d{2}$/.test(value))||
@@ -408,7 +407,7 @@ async function suggestSearchPatterns(trx,args){
   await sql`reset role`.execute(trx);
   const found=new Map();
   for(const scope of granted){
-    const rows=await readScopePatternRows(trx,scope,await scopeDatabaseUid(trx,scope));
+    const rows=await readScopePatternRows(trx,scope);
     for(const row of rows){
       const key=String(row.pattern||'').normalize('NFKC').toLocaleLowerCase('zh-Hant');
       if(!key.startsWith(query))continue;
@@ -438,8 +437,7 @@ async function syncSearchPatterns(trx,args){
        !Array.isArray(row.uid_list)||row.count!==row.uid_list.length)
       reject('Invalid Pattern batch row');
   }
-  const dbUid=await scopeDatabaseUid(trx,scope);
-  return storeScopePatternMatches(trx,scope,dbUid,proposed);
+  return storeScopePatternMatches(trx,scope,proposed);
 }
 
 export async function executeManagedKyselyAction(trx,body,claims={}){

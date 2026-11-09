@@ -68,7 +68,7 @@ const locAnchorLink=plainVirtualType('LocAnchorLink',{
 const databaseDefault=Object.freeze({kind:'call',function:'dbgenerated',args:[]});
 const modelName=table=>table.split('_').map(w=>w[0].toUpperCase()+w.slice(1)).join('');
 function compileFixedSchema({schema:namespace,tables}){
-  if(namespace!=='silver'||tables.length!==18)
+  if(namespace!=='silver'||tables.length!==17)
     throw new Error('Invalid fixed LOC schema contract');
   const models={};
   for(const table of tables){

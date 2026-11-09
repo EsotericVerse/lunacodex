@@ -640,11 +640,7 @@ WITH lexical(word) AS (VALUES
  INSERT INTO silver.lo3rwang_anchor(uid,type,title,attr,num)
  SELECT left(replace(gen_random_uuid()::text,'-',''),8),
    'pattern', word,
-   jsonb_build_object((
-     SELECT m.attr->>'database_uid' FROM silver.loc_anchor m
-     WHERE m.type='table' AND m.title='silver.lo3rwang_galaxy'
-     LIMIT 1
-   ),'[]'::jsonb),0
+   jsonb_build_object('63ade525','[]'::jsonb),0
  FROM missing;
 WITH requested(item_uid,word,rank) AS (VALUES
     ('00WZYFPX','斷',0),
@@ -1919,11 +1915,7 @@ WITH lexical(word) AS (VALUES
  INSERT INTO silver.lrunes_anchor(uid,type,title,attr,num)
  SELECT left(replace(gen_random_uuid()::text,'-',''),8),
    'pattern', word,
-   jsonb_build_object((
-     SELECT m.attr->>'database_uid' FROM silver.loc_anchor m
-     WHERE m.type='table' AND m.title='silver.lrunes_galaxy'
-     LIMIT 1
-   ),'[]'::jsonb),0
+   jsonb_build_object('63ade525','[]'::jsonb),0
  FROM missing;
 WITH requested(item_uid,word,rank) AS (VALUES
     ('07BD4IBT','德',0),

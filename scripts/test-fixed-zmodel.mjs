@@ -49,7 +49,7 @@ for(const [,name,body] of blocks){
 
 test('ZModel maps exactly to the frozen silver physical table and column contract',()=>{
   assert.equal(snapshot.schema,'silver');
-  assert.equal(snapshot.tables.length,18);
+  assert.equal(snapshot.tables.length,17);
   assert.equal(physical.size,snapshot.tables.length);
   let total=0;
   for(const t of snapshot.tables){
@@ -83,7 +83,7 @@ test('ZModel maps exactly to the frozen silver physical table and column contrac
 });
 
 test('Anchor remains the extension point; model does not declare migrations or bypass authorization',()=>{
-  for(const table of ['lo3rwang_anchor','lrunes_anchor','loc_anchor']){
+  for(const table of ['lo3rwang_anchor','lrunes_anchor']){
     const anchor=physical.get(table);
     assert.ok(anchor);
     assert.equal(anchor.fields.get('uid').type,'String');

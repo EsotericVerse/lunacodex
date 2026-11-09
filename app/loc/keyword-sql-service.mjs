@@ -7,7 +7,7 @@ import {keywordClassCatalog} from './keyword-tree.mjs';
 import {analyzeIncrementalKeywordPatterns} from './keyword-incremental.mjs';
 import {createIndexedDateKeywordReader} from './keyword-article-reader.mjs';
 import {completeKeywordClass,invalidateKeywordClass} from './keyword-class-state.mjs';
-import {scopeDatabaseUid,readScopePatternRows,storeScopePatternMatches,ensureScopePatternLibrary,SCOPE_PATTERN_INDEX_VERSION,scopePatternScanClocks} from './keyword-anchor-index.mjs';
+import {readScopePatternRows,storeScopePatternMatches,ensureScopePatternLibrary,SCOPE_PATTERN_POSTING_KEY,SCOPE_PATTERN_INDEX_VERSION,scopePatternScanClocks} from './keyword-anchor-index.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[0-9A-Za-z]{8}$/;
@@ -75,7 +75,7 @@ async function classTree(db,scope,classUid){
 }
 
 async function indexRows(db,scope){
-  return readScopePatternRows(db,scope,await scopeDatabaseUid(db,scope));
+  return readScopePatternRows(db,scope);
 }
 
 async function matchingArticleMetadata(db,scope,patterns,{start='',end='',source='',places=null}={}){
@@ -231,9 +231,8 @@ export async function suggestKeywordPatterns(db,scopeIds=[],query='',{
 
 async function persistPatterns(trx,scope,classUid,patterns,stats){
   // The Pattern rows and their Item UID edges are committed in the same
-  // transaction as class completion. Article bodies never enter loc_anchor.
-  const dbUid=await scopeDatabaseUid(trx,scope);
-  await storeScopePatternMatches(trx,scope,dbUid,patterns);
+  // transaction as class completion. Article bodies are never duplicated.
+  await storeScopePatternMatches(trx,scope,patterns);
   const now=new Date().toISOString();
   const cfg=await configuration(trx,scope);
   const record={class_uid:classUid,matchedDocuments:stats.matchedDocuments,
@@ -350,14 +349,12 @@ export async function resetKeywordScope(db,scope,classUid,{
         for(const word of terms(item))set.add(word);
     }
     const unique=[...own].filter(word=>!other.has(word));
-    const dbUid=await scopeDatabaseUid(trx,scope);
-    const stored=await readScopePatternRows(trx,scope,dbUid);
+    const stored=await readScopePatternRows(trx,scope);
     const reset=stored.filter(row=>unique.includes(norm(row.pattern))&&row.uid_list.length);
     for(let i=0;i<reset.length;i+=100){
       const updated=reset.slice(i,i+100).map(row=>{
-        const posting={...row.attr,[dbUid]:[]};
-        const total=Object.values(posting).reduce((count,ids)=>
-          count+(Array.isArray(ids)?new Set(ids).size:0),0);
+        const posting={...row.attr,[SCOPE_PATTERN_POSTING_KEY]:[]};
+        const total=0;
         return {uid:row.uid,type:'pattern',attr:JSON.stringify(posting),num:total};
       });
       await trx.insertInto(anchorName(scope)).values(updated)
@@ -454,8 +451,7 @@ export async function saveKeywordItem(db,scope,values,{
         attr:JSON.stringify({...attr(old),keyword:words})
       }).where('uid','=',values.uid).where('type','=','item').execute();
     }
-    const dbUid=await scopeDatabaseUid(trx,scope);
-    const linked=await ensureScopePatternLibrary(trx,scope,dbUid);
+    const linked=await ensureScopePatternLibrary(trx,scope);
     const classUid=await classContainingGroup(trx,scope,parent.uid);
     await invalidateKeywordTreeClass(trx,scope,classUid);
     return {uid:values.uid,classUid,created:linked.created,linked:linked.linked};
@@ -476,8 +472,7 @@ export async function deleteKeywordItem(db,scope,itemUid,{authorizeTransaction=(
       ...attr(parent),uid:children(parent).filter(uid=>uid!==itemUid)
     })}).where('uid','=',parent.uid).execute();
     await trx.deleteFrom(table).where('uid','=',itemUid).where('type','=','item').execute();
-    const dbUid=await scopeDatabaseUid(trx,scope);
-    const linked=await ensureScopePatternLibrary(trx,scope,dbUid);
+    const linked=await ensureScopePatternLibrary(trx,scope);
     await invalidateKeywordTreeClass(trx,scope,classUid);
     return {uid:itemUid,removed:linked.removed};
   });
@@ -488,7 +483,6 @@ export async function synchronizeKeywordLibrary(db,scope,{
   checkScope(scope);
   return db.transaction().execute(async trx=>{
     await authorizeTransaction(trx);
-    const dbUid=await scopeDatabaseUid(trx,scope);
-    return ensureScopePatternLibrary(trx,scope,dbUid);
+    return ensureScopePatternLibrary(trx,scope);
   });
 }

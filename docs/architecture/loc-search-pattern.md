@@ -1,13 +1,6 @@
 # LOC 詞級索引與增量解析 — 2026-11-08
 
-> **2026-11-09 資料表切換公告：** 以下記載的是先前 `silver.loc_search_pattern` 的
-> 五欄設計與舊程式運作流程，不再代表最終資料模型。
-> 新的正式設計見 [LOC 委託式映射與 Scope Pattern Anchor](loc-anchor-pattern-mapping.md)：
-> `loc_anchor` 儲存 database/table Mapping，
-> `<scopeid>_anchor.type=pattern` 儲存 `{db_uid: articleUid[]}`，
-> `num` 為獨立物理計數欄位。資料表已完成但舊索引程式尚未切換。
-> 本文以下所述的 `loc_search_pattern` 僅供舊程式現況追蹤；遷移完成之前不可刪除。
-
+> **現行實作：** 各 Scope 自己的 `type=pattern` 儲存詞級索引；無獨立的 LOC Mapping Registry。以下保留舊索引設計說明。
 
 ## 唯一詞級資料來源
 

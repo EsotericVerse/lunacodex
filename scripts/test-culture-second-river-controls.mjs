@@ -33,7 +33,7 @@ test('Kysely Keyword catalog reports pattern-computed totals without reading Anc
   const to=backend.indexOf('async function traceDaily(',from);
   const catalog=backend.slice(from,to);
   assert.match(catalog,/keywordPatternItemMetrics\(/);
-  assert.match(catalog,/readScopePatternRows\(trx,scope,await scopeDatabaseUid\(trx,scope\)\)/);
+  assert.match(catalog,/readScopePatternRows\(trx,scope\)/);
   assert.doesNotMatch(catalog,/attr\?\.total|attr->>'total'/);
 
 });
