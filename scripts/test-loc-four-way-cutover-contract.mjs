@@ -33,24 +33,23 @@ test('Cloudflare Pages root MCP route and discovery endpoints are enabled',()=>{
  assert.match(handler,/return context\.next\(\)/);
 });
 
-test('Chrome native PKCE and website capture keep independent, durable Queues',()=>{
+test('Chrome galaxy-link is the only extension: native PKCE + all capture modes, one Queue',()=>{
  const config=JSON.parse(read('public/extension/oauth/config.json'));
  assert.equal(config.issuer,'https://auth.lo3rwang.cc');
  assert.equal(config.resource,'https://auth.lo3rwang.cc/v1/import/short');
- assert.equal(config.import_url,config.resource);
- assert.ok(config.scope.split(/\s+/).includes('loc:import'));
- const chrome=read('extensions/loc-galaxy-link/background.js');
- const capture=read('extensions/loc-web-capture-v2/background.js');
+ const bg=read('extensions/loc-galaxy-link/background.js');
+ const capture=read('extensions/loc-galaxy-link/content.js');
  const manifest=JSON.parse(read('extensions/loc-galaxy-link/manifest.json'));
  assert.ok(manifest.host_permissions.includes('https://auth.lo3rwang.cc/*'));
- assert.match(chrome,/chrome\.identity\.launchWebAuthFlow/);
- assert.match(chrome,/registeredClient\(/);
- assert.match(chrome,/disconnectLoc\(/);
- assert.match(chrome,/validateArticleReceipts\(/);
- assert.match(chrome,/await acknowledgeBatch\(records\)/);
- assert.match(capture,/window\.__locGalaxyLinkImport/);
- const queueName=text=>text.match(/const DB_NAME='([^']+)'/)?.[1];
- assert.ok(queueName(chrome)&&queueName(capture)&&queueName(chrome)!==queueName(capture));
+ assert.ok(manifest.permissions.includes('identity'));
+ assert.equal(manifest.action.default_popup,'popup.html');
+ assert.match(bg,/chrome\.identity\.launchWebAuthFlow/);
+ assert.match(bg,/validateArticleReceipts/);
+ assert.match(bg,/await removeEvents\(group\)/);
+ assert.match(bg,/const DB_NAME='loc-channel1-queue'/);
+ assert.match(capture,/MutationObserver/);
+ assert.match(capture,/Readability/);
+ assert.equal(existsSync(new URL('../extensions/loc-web-capture-v2/',import.meta.url)),false);
 });
 
 test('LOC never packages an independent SQL Gateway or Container',()=>{

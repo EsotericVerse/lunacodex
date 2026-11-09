@@ -60,9 +60,10 @@ replacement business operations and public pages have been verified.
 - `extensions/loc-galaxy-link/`: Chrome PKCE S256, local
   `loc-channel1-queue`, stable UID receipts, batch idempotency, append-only.
   Incomplete receipts must never remove queued captures.
-- `extensions/loc-web-capture-v2/`: separate capture consent and
-  `loc-web-capture-v2` IndexedDB Queue. Never pass website or extension
-  OAuth tokens to each other.
+- `extensions/loc-galaxy-link/`: **one** extension for ordinary pages, selected
+  text/areas, rendered conversations, and live recording; all capture modes
+  share the existing `loc-channel1-queue`, LOC-owned OAuth and append-only
+  receipt-checked importer. The former second Web Capture extension is retired.
 - LOC Auth receives no externally supplied raw SQL, relation name, database
   credential or arbitrary Host URL.
 

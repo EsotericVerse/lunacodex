@@ -1,15 +1,16 @@
 {
   "manifest_version": 3,
   "name": "LOC galaxy-link｜LOC 彩虹橋",
-  "version": "0.1.0",
-  "description": "LOC 彩虹橋：以 LOC 自有認證擷取網頁並短匯入 Galaxy；寫入前保留 Queue",
+  "version": "0.2.0",
+  "description": "單一 LOC 彩虹橋：OAuth PKCE、網頁／選區／對話／動態錄製、離線 Queue 與 Append 匯入",
   "permissions": [
     "contextMenus",
     "activeTab",
     "scripting",
     "storage",
     "alarms",
-    "identity"
+    "identity",
+    "tabs"
   ],
   "host_permissions": [
     "https://loc.lo3rwang.cc/*",
@@ -27,7 +28,8 @@
       "16": "icons/loc-favicon.png",
       "48": "icons/loc-favicon.png",
       "128": "icons/loc-favicon.png"
-    }
+    },
+    "default_popup": "popup.html"
   },
   "short_name": "LOC 彩虹橋",
   "icons": {

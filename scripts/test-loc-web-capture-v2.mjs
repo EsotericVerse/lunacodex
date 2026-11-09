@@ -6,17 +6,18 @@ import {fileURLToPath} from 'node:url';
 import {Script,createContext,runInContext} from 'node:vm';
 import {webcrypto} from 'node:crypto';
 import {TextEncoder} from 'node:util';
-const root=join(dirname(fileURLToPath(import.meta.url)),'../extensions/loc-web-capture-v2');
+const root=join(dirname(fileURLToPath(import.meta.url)),'../extensions/loc-galaxy-link');
 const text=name=>readFileSync(join(root,name),'utf8');
 const manifest=JSON.parse(text('manifest.json'));
 
-test('independent extension is MV3 and does not request identity or MCP privileges',()=>{
+test('single LOC galaxy-link extension owns OAuth and all capture modes',()=>{
  assert.equal(manifest.manifest_version,3);
  assert.equal(manifest.background.service_worker,'background.js');
- assert.ok(!manifest.permissions.includes('identity'));
- assert.ok(!manifest.host_permissions.some(s=>s.includes('mcp.')));
- assert.ok(!manifest.host_permissions.some(s=>s.includes('clerk')));
- assert.deepEqual(manifest.host_permissions,['https://loc.lo3rwang.cc/*']);
+ assert.equal(manifest.name,'LOC galaxy-link｜LOC 彩虹橋');
+ assert.equal(manifest.action.default_popup,'popup.html');
+ assert.ok(manifest.permissions.includes('identity'));
+ assert.ok(manifest.permissions.includes('tabs'));
+ assert.ok(manifest.host_permissions.includes('https://auth.lo3rwang.cc/*'));
 });
 
 test('extension scripts and vendored Readability compile',()=>{
@@ -24,18 +25,17 @@ test('extension scripts and vendored Readability compile',()=>{
   assert.doesNotThrow(()=>new Script(text(name),{filename:name}));
 });
 
-test('only one IndexedDB queue; no OAuth token storage or Auth retries',()=>{
- const background=text('background.js');
- assert.match(background,/const DB_NAME='loc-web-capture-v2'/);
- assert.match(background,/const STORE='events'/);
- assert.match(background,/AUTO_CAPTURE_COUNT=10/);
- assert.match(background,/MAX_BYTES=600000/);
- assert.match(background,/__locGalaxyLinkImport/);
- assert.match(background,/world:'MAIN'/);
- assert.match(background,/locImportPaused/);
- assert.match(background,/ACK_STORE='acknowledged'/);
- assert.match(background,/indexedDB\.open\(DB_NAME,2\)/);
- assert.doesNotMatch(background,/launchWebAuthFlow|getToken\(|refresh_token|access_token|locOAuth|loc-mcp|mcp\.lo3rwang\.cc/);
+test('one upgraded durable Queue and native LOC OAuth without website bridge',()=>{
+ const bg=text('background.js');
+ assert.match(bg,/const DB_NAME='loc-channel1-queue'/);
+ assert.match(bg,/const STORE='pending',ACK_STORE='acknowledged'/);
+ assert.match(bg,/AUTO_CAPTURE_COUNT=10/);
+ assert.match(bg,/MAX_BYTES=600000/);
+ assert.match(bg,/indexedDB\.open\(DB_NAME,2\)/);
+ assert.match(bg,/chrome\.identity\.launchWebAuthFlow/);
+ assert.match(bg,/supports_scope_routing/);
+ assert.match(bg,/sendViaAuth\(/);
+ assert.doesNotMatch(bg,/__locGalaxyLinkImport|LOC_BRIDGE/);
 });
 
 test('recording uses explicit user selection and only observes selected visible DOM',()=>{
@@ -54,8 +54,8 @@ function isolatedBackground(){
  const listeners={};
  const on=name=>({addListener:fn=>{listeners[name]=fn;}});
  const chrome={
-  runtime:{id:'test-extension',onInstalled:on('installed'),onMessage:on('message')},
-  contextMenus:{onClicked:on('menu')},
+  runtime:{id:'test-extension',onInstalled:on('installed'),onMessage:on('message'),openOptionsPage:async()=>{}},
+  contextMenus:{onClicked:on('menu')},alarms:{onAlarm:on('alarm')},action:{setBadgeText:async()=>{}},
   storage:{local:{get:async()=>({}),set:async()=>{},remove:async()=>{}}},
   tabs:{query:async()=>[]}
  };
