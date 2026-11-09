@@ -212,7 +212,7 @@ async function issueToken(stub,session,resource,scope,client_id){
 }
 export function isNativeOAuthPath(path){
  return path==='/.well-known/oauth-authorization-server'||path==='/oauth/register'||
-  path==='/oauth/consent'||path==='/oauth/consent/revoke'||
+  path==='/oauth/consent'||path==='/oauth/consent/web'||path==='/oauth/consent/revoke'||
   path==='/oauth/authorize'||path==='/oauth/login'||path==='/oauth/token'||
   path==='/oauth/revoke'||
   path==='/oauth/callback/github'||path==='/oauth/callback/oidc'||
@@ -302,6 +302,54 @@ async function authorize(request,url,stub,env){
   ...(bridged?{'set-cookie':bridged.cookie}:{})
  }});
 }
+const WEB_CONSENT_SCOPE='profile email loc:manage';
+const WEB_CONSENT_CLIENT='loc-web';
+async function startWebConsent(stub,session,next,cookies=[]){
+ if(!next.startsWith(WEB_AUDIENCE+'/')&&
+  !next.startsWith(ISSUER+'/oauth/authorize?'))
+  error('Invalid LOC SSO continuation',400);
+ if(await approvedConsent(stub,session.subject,WEB_CONSENT_CLIENT,
+  WEB_AUDIENCE,WEB_CONSENT_SCOPE))
+  return redirect(next,cookies);
+ const nonce=random();
+ await put(stub,'native-consent-pending',nonce,{
+  kind:'web',sidHash:session.sidHash,subject:session.subject,
+  client_id:WEB_CONSENT_CLIENT,client_name:'LOC 網站',
+  scope:WEB_CONSENT_SCOPE,resource:WEB_AUDIENCE,next,
+  expires:Date.now()+600000
+ });
+ return redirect(ISSUER+'/oauth/consent/web?nonce='+encodeURIComponent(nonce),cookies);
+}
+async function webConsentPage(request,url,stub,env){
+ let session=await sessionFromCookie(request,stub),bridged=null;
+ if(!session&&hasFirstPartyCookie(request)){
+  bridged=await sessionFromBetter(request,env,stub);
+  session=bridged.session;
+ }
+ if(!session){
+  const dest=new URL('/login/index.html',WEB_AUDIENCE);
+  dest.searchParams.set('return_to',validReturnPath(url.searchParams.get('return_to')));
+  return redirect(dest.href);
+ }
+ const nonce=url.searchParams.get('nonce');
+ if(!nonce){
+  const next=WEB_AUDIENCE+validReturnPath(url.searchParams.get('return_to'));
+  return startWebConsent(stub,session,next,bridged?[bridged.cookie]:[]);
+ }
+ if(!CODE_PATTERN.test(nonce))error('Invalid LOC web consent',400);
+ const pending=await get(stub,'native-consent-pending',nonce);
+ if(!pending||pending.kind!=='web'||pending.sidHash!==session.sidHash||
+  pending.subject!==session.subject||pending.expires<Date.now())
+  error('LOC web consent request expired',401);
+ return new Response(consentPage({nonce,clientName:'LOC 網站',
+  scope:WEB_CONSENT_SCOPE,resource:WEB_AUDIENCE,identity:session.email}),
+  {status:200,headers:{
+   'content-type':'text/html; charset=utf-8','cache-control':'no-store',
+   'content-security-policy':"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+   'x-content-type-options':'nosniff',
+   ...(bridged?{'set-cookie':bridged.cookie}:{})
+  }});
+}
 async function authorizedCode(stub,details,cookies=[]){
  const code=random();
  await put(stub,'native-code',code,{sidHash:details.sidHash,
@@ -327,6 +375,18 @@ async function consentResponse(request,stub){
  if(!details||!session||details.sidHash!==session.sidHash||
   details.subject!==session.subject||details.expires<Date.now())
   error('Consent session or request expired',401);
+ if(details.kind==='web'){
+  if(details.client_id!==WEB_CONSENT_CLIENT||
+   details.resource!==WEB_AUDIENCE||details.scope!==WEB_CONSENT_SCOPE||
+   typeof details.next!=='string'||!details.next.startsWith(WEB_AUDIENCE+'/'))
+    error('Invalid LOC web consent contract',400);
+  if(form.get('decision')==='deny')return redirect(WEB_AUDIENCE+'/');
+  if(form.get('decision')!=='approve')
+   error('Explicit consent decision required',400);
+  await recordConsent(stub,session.subject,WEB_CONSENT_CLIENT,
+   WEB_AUDIENCE,WEB_CONSENT_SCOPE);
+  return redirect(details.next);
+ }
  const client=await clientFor(stub,details.client_id);
  if(!client.redirect_uris.includes(details.redirect_uri)||
   resourceFor(client.kind,details.resource)!==details.resource||
@@ -408,9 +468,11 @@ async function completeBetterGoogle(request,url,stub,env){
  if(!pending||pending.provider!=='better-google'||pending.expires<Date.now()||
    !csrf||await sha(csrf)!==pending.csrfHash)
   error('LOC Google continuation state invalid',401);
- const {cookie:sessionCookie}=await sessionFromBetter(request,env,stub);
+ const {session:identity,cookie:sessionCookie}=await sessionFromBetter(request,env,stub);
  const next=pending.continue_path?ISSUER+pending.continue_path:WEB_AUDIENCE+pending.return_to;
- return redirect(next,[sessionCookie,cookie(CSRF_COOKIE,'',0)]);
+ const cookies=[sessionCookie,cookie(CSRF_COOKIE,'',0)];
+ return pending.continue_path?redirect(next,cookies):
+  startWebConsent(stub,identity,next,cookies);
 }
 async function login(request,url,stub,env){
  const name=url.searchParams.get('provider');
@@ -591,7 +653,9 @@ async function callback(request,url,stub,name,env){
  await stub.nativePut('native-session:'+sidHash,session);
  const dest=pending.continue_path?ISSUER+pending.continue_path:
   WEB_AUDIENCE+'/login/index.html?return_to='+encodeURIComponent(pending.return_to);
- return redirect(dest,[cookie(SESSION_COOKIE,sid,SESSION_SECONDS),cookie(CSRF_COOKIE,'',0)]);
+ const cookies=[cookie(SESSION_COOKIE,sid,SESSION_SECONDS),cookie(CSRF_COOKIE,'',0)];
+ return pending.continue_path?redirect(dest,cookies):
+  startWebConsent(stub,session,dest,cookies);
 }
 async function token(request,stub,origin){
  if(!String(request.headers.get('content-type')||'').toLowerCase()
@@ -747,6 +811,7 @@ export async function handleNativeOAuth(request,env){
   if(path==='/oauth/register'&&request.method==='POST')return await register(request,stub,origin);
   if(path==='/oauth/authorize'&&request.method==='GET')return await authorize(request,url,stub,env);
    if(path==='/oauth/consent'&&request.method==='POST')return await consentResponse(request,stub);
+   if(path==='/oauth/consent/web'&&request.method==='GET')return await webConsentPage(request,url,stub,env);
    if(path==='/oauth/consent/revoke'&&request.method==='POST')return await revokeConsentResponse(request,stub);
   if(path==='/oauth/login'&&request.method==='GET')return await login(request,url,stub,env);
    if(path==='/oauth/complete'&&request.method==='GET')
