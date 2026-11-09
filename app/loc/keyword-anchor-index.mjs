@@ -1,6 +1,5 @@
-// Scope-owned Pattern index. LOC's control Anchor identifies the delegated
-// database; the article UID postings always remain with the owner's Scope.
-// No SQL gateway, no token storage, no cross-database data replication.
+// Scope-owned Pattern index. Article UID postings remain inside each Scope.
+// No database mapping registry is required for the current database.
 import {allocateAnchorUid} from './unified-anchor-compat.mjs';
 import {parseRuneKeywordRuleSentence} from './model/rune-keyword-rules.mjs';
 
@@ -8,6 +7,8 @@ const UID=/^[A-Za-z0-9]{8}$/;
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 // Legacy scan clocks cannot certify newly backfilled empty Scope postings.
 export const SCOPE_PATTERN_INDEX_VERSION='scope_anchor_v1';
+// Existing Pattern.attr key. No registry lookup or database identity query.
+export const SCOPE_PATTERN_POSTING_KEY='63ade525';
 export function scopePatternScanClocks(metadata={}){
   const meta=typeof metadata==='string'?JSON.parse(metadata):metadata;
   if(!meta||typeof meta!=='object'||Array.isArray(meta)||
@@ -37,27 +38,12 @@ export const literalItemWords=item=>{
   return [...out.values()];
 };
 
-export async function scopeDatabaseUid(db,scope){
-  const table='silver.'+scope+'_galaxy';
-  const mappings=await db.selectFrom('silver.loc_anchor').select(['uid','attr'])
-    .where('type','=','table').where('title','=',table).limit(2).execute();
-  if(mappings.length!==1)throw Object.assign(
-    new Error('LOC Source Mapping for '+scope+' is not configured'),{httpStatus:503});
-  const dbUid=String(attrs(mappings[0].attr).database_uid||'');
-  if(!UID.test(dbUid))throw Error('Invalid LOC database UID mapping');
-  const database=await db.selectFrom('silver.loc_anchor').select('uid')
-    .where('type','=','database').where('uid','=',dbUid).executeTakeFirst();
-  if(!database)throw Error('Missing LOC Database mapping identity');
-  return dbUid;
-}
-
-export async function readScopePatternRows(db,scope,dbUid){
-  if(!UID.test(String(dbUid||'')))throw Error('Invalid Pattern database UID');
+export async function readScopePatternRows(db,scope){
   const rows=await db.selectFrom(scopeAnchor(scope))
     .select(['uid','title','attr','num','createtime'])
     .where('type','=','pattern').execute();
   return rows.map(row=>{
-    const postings=attrs(row.attr),uid_list=postings[dbUid]??[];
+    const postings=attrs(row.attr),uid_list=postings[SCOPE_PATTERN_POSTING_KEY]??[];
     if(!Array.isArray(uid_list)||uid_list.some(uid=>!UID.test(String(uid)))||
       new Set(uid_list).size!==uid_list.length)throw Error('Invalid Pattern posting list');
     return {uid:row.uid,pattern:String(row.title||''),count:uid_list.length,
@@ -80,8 +66,8 @@ function patternRowsToIndex(rows){
 // as a Keyword editor write or completed analysis. Existing literals remain in
 // Item.keyword during compatibility cutover for older chart/import readers.
 // They are NOT the index; the canonical article UID list lives on Pattern.
-export async function ensureScopePatternLibrary(trx,scope,dbUid){
-  const table=scopeAnchor(scope),rows=await readScopePatternRows(trx,scope,dbUid);
+export async function ensureScopePatternLibrary(trx,scope){
+  const table=scopeAnchor(scope),rows=await readScopePatternRows(trx,scope);
   const old=patternRowsToIndex(rows);
   const items=await trx.selectFrom(table)
     .select(['uid','title','attr']).where('type','=','item').execute();
@@ -96,7 +82,7 @@ export async function ensureScopePatternLibrary(trx,scope,dbUid){
         const uid=allocateAnchorUid(assigned);
         assigned.add(uid);
         pattern={uid,pattern:name,count:0,num:0,uid_list:[],
-          attr:{[dbUid]:[]},createtime:null};
+          attr:{[SCOPE_PATTERN_POSTING_KEY]:[]},createtime:null};
         old.set(key,pattern);
         created.push({uid,type:'pattern',title:name,attr:JSON.stringify(pattern.attr),num:0});
       }
@@ -123,10 +109,10 @@ export async function ensureScopePatternLibrary(trx,scope,dbUid){
     created:created.length,linked:updates.length,removed:orphan.length};
 }
 
-export async function storeScopePatternMatches(trx,scope,dbUid,incoming=[]){
+export async function storeScopePatternMatches(trx,scope,incoming=[]){
   if(!Array.isArray(incoming))throw Error('Invalid Pattern results');
   const table=scopeAnchor(scope);
-  const {patterns}=await ensureScopePatternLibrary(trx,scope,dbUid);
+  const {patterns}=await ensureScopePatternLibrary(trx,scope);
   const indexed=patternRowsToIndex(patterns),updates=[],seen=new Set();
   for(const row of incoming){
     const key=keywordIdentity(row.pattern),old=indexed.get(key),
@@ -139,12 +125,8 @@ export async function storeScopePatternMatches(trx,scope,dbUid,incoming=[]){
     const next=[...list].sort();
     const before=[...old.uid_list].sort();
     if(JSON.stringify(next)===JSON.stringify(before))continue;
-    const posting={...old.attr,[dbUid]:next};
-    const count=Object.values(posting).reduce((sum,ids)=>{
-      if(!Array.isArray(ids)||ids.some(uid=>!UID.test(String(uid))))
-        throw Error('Invalid database posting list');
-      return sum+new Set(ids).size;
-    },0);
+    const posting={...old.attr,[SCOPE_PATTERN_POSTING_KEY]:next};
+    const count=next.length;
     updates.push({uid:old.uid,type:'pattern',title:old.pattern,
       attr:JSON.stringify(posting),num:count});
   }
