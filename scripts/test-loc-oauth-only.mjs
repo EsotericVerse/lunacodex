@@ -22,6 +22,9 @@ test('Better Auth is local to LOC; native MCP OAuth and SQL separation remain',(
  assert.match(native,/googleViaBetter\(request,url,stub,env\)/);
  assert.match(native,/sessionFromBetter\(request,env,stub\)/);
  assert.match(native,/native-google-link/);
+ assert.match(native,/export async function googleLocSubject/);
+ assert.match(native,/LOC owner write required/);
+ assert.doesNotMatch(native,/Google identity needs an existing signed LOC session link/);
  assert.doesNotMatch(native,/if\(name==='google'\)return googleViaSupabase/);
  for(const p of ['/oauth/login','/oauth/complete','/oauth/callback/oidc','/oauth/callback/github','/oauth/register'])
   assert.equal(isNativeOAuthPath(p),true,p);

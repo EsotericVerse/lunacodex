@@ -222,6 +222,19 @@ export class LocAuthorityState extends DurableObject {
     });
   }
   async betterAuthStorage(request){return runBetterAuthStore(this.ctx.storage,request);}
+  async nativeBindGoogleOwner(subject,googleAccountId,email){
+    if(!/^loc_[A-Za-z0-9_-]{32,80}$/.test(String(subject||''))||
+       !googleAccountId||!email)throw fail('Invalid LOC owner identity binding',400);
+    return this.ctx.storage.transaction(async t=>{
+      const key='native-google-owner:'+subject;
+      const current=await t.get(key);
+      if(current&&(current.googleAccountId!==googleAccountId||
+                    current.email!==email))
+        throw fail('LOC owner Google account already bound',403);
+      if(!current)await t.put(key,{googleAccountId,email});
+      return true;
+    });
+  }
   async nativeGet(key){return this.ctx.storage.get(key);}
   async nativePut(key,value){await this.ctx.storage.put(key,value);return true;}
   async nativeTake(key){return this.ctx.storage.transaction(async t=>{
@@ -893,7 +906,9 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
   const isRoot=roots.includes(principal.subject);
   const stub=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName('loc-authority-control-v1'));
   const scoped=scope=>env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName('mcp-scope:'+scope));
-  const allowed=async(scope,action)=>isRoot||await stub.mayAccess({...principal,scope,action});
+  const allowed=async(scope,action)=>
+    ['write','manage','configure'].includes(action)?isRoot:
+    isRoot||await stub.mayAccess({...principal,scope,action});
   // A trusted Scope grant becomes a short-lived LOC MCP delegation.
   // The selected database alias is a signed claim verified by the LOC app.
   const managedToken=async(scope,action)=>{
@@ -1100,9 +1115,11 @@ async function exchangeLocDelegation(request,env,principal,origin){
   else if(self){
     if(root)grants=['global:manage'];
     else {
-      grants=(profile?.scopes||[]).map(scopeid=>scopeid+':manage');
+      grants=[]; // Non-owner identity never receives a management token.
     }
   }else grants=Array.from(new Set(actions)).map(a=>scope+':'+a);
+  if(!root&&!global&&!identity&&!self&&actions.some(a=>a!=='read'))
+    throw fail('LOC owner write required',403);
   if(!global&&!identity&&!self&&!root){
     for(const action of new Set(actions)){
       if(!await stub.mayAccess({provider:principal.provider,subject:principal.subject,scope,action}))

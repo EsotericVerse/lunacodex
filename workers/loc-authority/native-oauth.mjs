@@ -127,22 +127,55 @@ async function sessionFromCookie(request,stub){
  if(!CODE_PATTERN.test(String(token||'')))return null;
  return sessionForHash(stub,await sha(token));
 }
+// Better Auth verifies who Google says the user is. An OAuth app client
+// ID/secret does not prove ownership of LOC. Independent LOC Subject binding
+// cannot require a pre-existing LOC cookie or first-time sign-in deadlocks.
+export async function googleLocSubject(identity,stub,env,prior=null){
+ const email=String(identity?.email||'').trim().toLowerCase();
+ const googleId=String(identity?.googleAccountId||'');
+ if(identity?.emailVerified!==true||!email||
+  !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||
+  !googleId||googleId.length>256)error('Verified Google identity required',401);
+ const key='native-google-link:'+await sha('google:'+googleId);
+ const saved=await stub.nativeGet(key);
+ if(saved&&(!LOC_SUBJECT.test(String(saved.subject||''))||
+  saved.email!==email))error('LOC Google identity binding mismatch',403);
+ const roots=[...new Set(String(env.LOC_RECOVERY_ROOT_LOC_SUBJECTS||'')
+  .split(/[\s,;]+/).filter(x=>LOC_SUBJECT.test(x)))];
+ const matches=[];
+ if(typeof stub.delegationGrantProfile==='function'){
+  for(const root of roots){
+   const existing=await stub.delegationGrantProfile('loc',root);
+   if(existing?.email===email)matches.push(root);
+  }
+ }
+ // Optional operator-only secret for existing roots whose grant lacks email.
+ // This must match the Google's *verified account email*, never a URL input.
+ const pinned=String(env.LOC_RECOVERY_ROOT_GOOGLE_EMAIL||'').trim().toLowerCase();
+ if(pinned&&pinned===email&&roots.length===1)matches.push(roots[0]);
+ const candidates=[...new Set(matches)];
+ if(candidates.length>1)error('Ambiguous LOC owner identity mapping',409);
+ const root=candidates[0]||'';
+ let subject=saved?.subject||'';
+ if(root){
+  if(typeof stub.nativeBindGoogleOwner!=='function')
+   error('LOC owner binding storage unavailable',503);
+  await stub.nativeBindGoogleOwner(root,googleId,email);
+  subject=root;
+ }else if(!subject&&prior&&prior.emailVerified!==false&&
+  prior.email===email&&LOC_SUBJECT.test(String(prior.subject||''))){
+  subject=prior.subject; // Only an already signed LOC cookie preserves identity.
+ }
+ if(!subject)subject='loc_'+(await sha('google:'+googleId)).slice(0,40);
+ if(!saved||saved.subject!==subject)
+  await stub.nativePut(key,{subject,email});
+ return subject;
+}
 async function sessionFromBetter(request,env,stub){
  const identity=await firstPartySession(request,env);
  if(!identity||!identity.emailVerified)error('Verified Better Auth Google identity required',401);
- const linkedKey='native-google-link:'+await sha('google:'+identity.googleAccountId);
- const stored=await stub.nativeGet(linkedKey),prior=await sessionFromCookie(request,stub);
- let subject='';
- if(stored){
-  if(!LOC_SUBJECT.test(String(stored.subject||''))||stored.email!==identity.email)
-   error('LOC Google identity binding mismatch',403);
-  subject=stored.subject;
- }else if(prior&&prior.emailVerified!==false&&prior.email===identity.email&&
-    LOC_SUBJECT.test(String(prior.subject||''))){
-  // No email-only subject enrollment. Prove both existing LOC and Google.
-  subject=prior.subject;
-  await stub.nativePut(linkedKey,{subject,email:identity.email});
- }else error('LOC Google identity needs an existing signed LOC session link',403);
+ const prior=await sessionFromCookie(request,stub);
+ const subject=await googleLocSubject(identity,stub,env,prior);
  const sid=random(),sidHash=await sha(sid);
  const next={subject,provider:'loc',identityProvider:'better-auth-google',
   email:identity.email,emailVerified:true,sidHash,
@@ -150,7 +183,6 @@ async function sessionFromBetter(request,env,stub){
  await stub.nativePut('native-session:'+sidHash,next);
  return {session:next,cookie:cookie(SESSION_COOKIE,sid,SESSION_SECONDS)};
 }
-
 async function issueToken(stub,session,resource,scope,client_id){
  const iat=Math.floor(Date.now()/1000);
  return {access_token:await stub.signLocDelegation({iss:ISSUER,sub:session.subject,
@@ -571,9 +603,8 @@ async function importShort(request,env,stub,origin){
  const scope=requestedScope===null?String(env.LOC_IMPORT_SCOPE_ID||'lo3rwang'):requestedScope;
  if(!SCOPE_ID.test(scope))error('Import Scope invalid',503);
  const roots=String(env.LOC_RECOVERY_ROOT_LOC_SUBJECTS||'').split(/[\s,;]+/).filter(Boolean);
- if(!roots.includes(identity.subject)&&
-  !await stub.mayAccess({provider:'loc',subject:identity.subject,scope,action:'write'}))
-  error('LOC Scope write permission required',403);
+ // OAuth authentication alone never grants write access.
+ if(!roots.includes(identity.subject))error('LOC owner write required',403);
  const raw=await request.text();
  if(TXT.encode(raw).length>1048576)error('Import batch too large',413);
  let batch;try{batch=JSON.parse(raw);}catch{error('Invalid import JSON');}
