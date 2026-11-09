@@ -19,5 +19,7 @@ jobs:
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Verify Kysely website and MCP writing
         run: node --test scripts/test-loc-managed-write.mjs
+      - name: Verify ZenStack schema and policy mapping
+        run: node --test scripts/test-fixed-zmodel.mjs scripts/test-zenstack-policy-runtime.mjs
       - name: Verify authority-wide Kysely contracts
         run: npm run test:authority
