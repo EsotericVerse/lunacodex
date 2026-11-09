@@ -1,0 +1,23 @@
+name: Temporary Kysely write regression validation
+on:
+  push:
+    branches:
+      - fix/kysely-authorized-write-mcp-20261109
+
+permissions:
+  contents: read
+
+jobs:
+  write-contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.4'
+      - name: Install exact lockfile
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Verify Kysely website and MCP writing
+        run: node --test scripts/test-loc-managed-write.mjs
+      - name: Verify authority-wide Kysely contracts
+        run: npm run test:authority
