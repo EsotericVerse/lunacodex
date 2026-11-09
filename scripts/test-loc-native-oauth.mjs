@@ -91,7 +91,7 @@ test('GitHub verified identity -> LOC cookie -> per-install PKCE -> signed token
   if(address==='https://api.github.com/user')
    return Response.json({id:123456,login:'owner'});
   if(address==='https://api.github.com/user/emails')
-   return Response.json([{email:'owner@example.org',verified:true,primary:true}]);
+   return Response.json([{email:'sopa2306@gmail.com',verified:true,primary:true}]);
   if(address==='https://mcp.lo3rwang.cc/api/loc-native'){
    upstreamCalls++;
    forwarded={...options,body:JSON.parse(options.body)};
@@ -128,7 +128,7 @@ test('GitHub verified identity -> LOC cookie -> per-install PKCE -> signed token
   const profile=await signedIn.json();
   assert.equal(profile.provider,'loc');
   assert.match(profile.user.id,/^loc_[A-Za-z0-9_-]{40}$/);
-  assert.equal(profile.user.email,'owner@example.org');
+  assert.equal(profile.user.email,'sopa2306@gmail.com');
   const webIdentity=await verifyNativeOAuth(request('/v1/delegation',{
    headers:{authorization:'Bearer '+profile.session.access_token}}),env,WEB_AUDIENCE);
   assert.equal(webIdentity.subject,profile.user.id);
@@ -183,9 +183,7 @@ test('GitHub verified identity -> LOC cookie -> per-install PKCE -> signed token
   const send=()=>request('/v1/import/short',{method:'POST',
    headers:{origin,authorization:'Bearer '+next.access_token,
     'content-type':'application/json'},body:JSON.stringify(batch)});
-  assertStatus(await handleNativeOAuth(send(),env),403);
-  assert.equal(upstreamCalls,0,'no SQL write without explicit LOC root or Scope grant');
-  env.LOC_RECOVERY_ROOT_LOC_SUBJECTS=profile.user.id;
+  // Only the verified LOC owner may write, without Root subject or Scope grants.
   const imported=await handleNativeOAuth(send(),env);
   assertStatus(imported,200);
   assert.equal((await imported.json()).accepted,true);
