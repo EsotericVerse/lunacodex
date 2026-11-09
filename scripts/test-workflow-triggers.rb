@@ -38,6 +38,11 @@ class WorkflowTriggerTest < Minitest::Test
     refute check("on:\n  push:\n    branches: [main, dev]\n  workflow_dispatch:\n", filename: 'deploy-pages.yml')
     refute check("on:\n  push:\n    branches: [main]\n    tags: ['*']\n  workflow_dispatch:\n", filename: 'deploy-pages.yml')
     refute check("on:\n  push:\n    branches: [main]\n  schedule:\n    - cron: '0 0 * * *'\n", filename: 'deploy-pages.yml')
+    # Owner-approved: optional paths-ignore so docs/skill/hook-only pushes skip the deploy.
+    assert check("on:\n  push:\n    branches: [main]\n    paths-ignore: ['**/*.md', '.claude/**']\n  workflow_dispatch:\n", filename: 'deploy-pages.yml')
+    refute check("on:\n  push:\n    branches: [main]\n    paths-ignore: ['**/*.md']\n  workflow_dispatch:\n")
+    refute check("on:\n  push:\n    paths-ignore: ['**/*.md']\n  workflow_dispatch:\n", filename: 'deploy-pages.yml')
+    refute check("on:\n  push:\n    branches: [main]\n    paths: ['app/**']\n  workflow_dispatch:\n", filename: 'deploy-pages.yml')
   end
 
   def test_ambiguous_documents_are_rejected

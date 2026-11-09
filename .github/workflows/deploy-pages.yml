@@ -6,6 +6,18 @@ on:
   push:
     branches:
       - main
+    # Owner-approved: skip the deploy build when a push to main changes ONLY
+    # docs/agent/hook files. GitHub runs the job only if at least one changed
+    # path is NOT matched below, so mixed code+docs pushes still deploy.
+    paths-ignore:
+      - '**/*.md'
+      - '*.md'
+      - 'AGENTS.md'
+      - '.githooks/**'
+      - '.agents/**'
+      - '.claude/**'
+      - 'node_modules/**'
+      - '.git/**'
   workflow_dispatch:
 
 permissions:
