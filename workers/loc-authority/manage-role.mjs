@@ -1,6 +1,7 @@
 // LOC Auth verifies identity and makes the authorization decision.
-// api.manage is read through LOC's existing trusted Kysely application,
-// never through MCP, the browser, or a public SQL management endpoint.
+// api.manage is the sole source of management roles. The primary lookup uses
+// LOC's trusted Kysely application; only a backend outage enables the existing
+// public Data API SELECT to break the control-profile bootstrap deadlock.
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const cache=new Map();
@@ -60,7 +61,7 @@ export async function locRegistryRoles(env,email,{fetchImpl=globalThis.fetch}={}
       method:'GET',headers:{'x-loc-service-token':secret,accept:'application/json'},
       redirect:'manual',cache:'no-store',signal:AbortSignal.timeout(8000)
     });
-  }catch{throw Object.assign(new Error('LOC Auth registry lookup unavailable'),{status:503})}
+  }catch{response={ok:false,status:503};}
   // A refused service token (403) must never trigger a public fallback.
   // Only a broken trusted backend (5xx), e.g. a missing loc-main profile,
   // may recover the identical api.manage facts via the existing public read.
