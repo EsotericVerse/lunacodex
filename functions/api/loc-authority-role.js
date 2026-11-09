@@ -5,7 +5,7 @@ import {directMcpKysely} from '../../app/loc/mcp/native-kysely.mjs';
 
 const HEADERS={'content-type':'application/json; charset=utf-8',
   'cache-control':'no-store','x-content-type-options':'nosniff'};
-const EMAIL=/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;
+const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const respond=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:HEADERS});
 export async function onRequest(context){
   const {request,env}=context;
