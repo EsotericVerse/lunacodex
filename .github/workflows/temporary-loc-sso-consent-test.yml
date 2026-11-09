@@ -1,0 +1,22 @@
+name: Temporary LOC SSO and Kysely validation
+on:
+  push:
+    branches:
+      - fix/loc-sso-consent-primary-20261109
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.4'
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Validate one-time SSO and OAuth contract
+        run: node --test scripts/test-loc-sso-consent.mjs scripts/test-loc-native-oauth.mjs scripts/test-loc-editor-grants.mjs scripts/test-loc-login-ux.mjs
+      - name: Validate complete authority regression
+        run: npm run test:authority
+      - name: Validate native Kysely driver and managed writes
+        run: node --test scripts/test-loc-managed-write.mjs scripts/test-loc-mcp-native-kysely.mjs
