@@ -381,7 +381,7 @@ test('registry outage preserves an existing bound owner identity but never grant
  const root='loc_'+'R'.repeat(40);
  const email='outage-existing@example.org',googleAccountId='g-outage-existing';
  const digest=Buffer.from(await crypto.subtle.digest('SHA-256',
-  new TextEncoder().encode('google:'+googleAccountId))).toString('hex');
+  new TextEncoder().encode('google:'+googleAccountId))).toString('base64url');
  const key='native-google-link:'+digest;
  records.set(key,{subject:root,email});
  env.LOC_RECOVERY_ROOT_LOC_SUBJECTS=root;
