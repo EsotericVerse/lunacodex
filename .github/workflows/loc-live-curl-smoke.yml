@@ -1,9 +1,6 @@
 name: LOC public live curl smoke
 
 on:
-  pull_request:
-    paths:
-      - '.github/workflows/loc-live-curl-smoke.yml'
   workflow_dispatch:
 
 permissions:
