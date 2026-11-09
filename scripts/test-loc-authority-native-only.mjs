@@ -24,19 +24,20 @@ test('LOC credentials remain encrypted in the Authority state',()=>{
   assert.match(worker,/id:'loc-main'/);
 });
 
-test('only a verified owner receives a write delegation',()=>{
+test('signed grants are valid only after the issuer checks api.manage',()=>{
   const now=Math.floor(Date.now()/1000);
-  assert.throws(()=>issueDelegation({sub:'loc_'+('A'.repeat(40)),
-    email:'reader@example.org',grants:['lrunes:manage'],audience:'sql',
-    sid:'verified-test',now,seconds:300}),/Only verified LOC owner/);
   const claims=issueDelegation({sub:'loc_'+('A'.repeat(40)),
-    email:'sopa2306@gmail.com',grants:['lrunes:manage'],audience:'sql',
+    email:'reader@example.org',grants:['lrunes:manage'],audience:'sql',
     sid:'verified-test',now,seconds:300});
   const result=verifyDelegationBoundary(claims,{kind:'query'});
   assert.equal(canManageDelegation(result.claims,'scope','lrunes'),true);
   assert.equal(canManageDelegation(result.claims,'scope','lo3rwang'),false);
   assert.equal(canManageDelegation(result.claims,'global'),false);
+  const worker=read('workers/loc-authority/index.mjs');
+  assert.match(worker,/locRegistryRoles\(env,principal\.email\)/);
+  assert.match(worker,/isLocRegistryAdmin/);
 });
+
 test('LOC Authority target updates reuse encrypted SQL secrets without browser exposure',async()=>{
   const source=read('workers/loc-authority/index.mjs');
   const start=source.indexOf('function validateTarget(');
@@ -87,7 +88,7 @@ test('LOC Authority target updates reuse encrypted SQL secrets without browser e
     database:'loc',username:'user'}),/requires its database password/);
 });
 
-test('Worker management uses verified owner email, not root subject or grants',()=>{
+test('Worker management uses verified OAuth email and database registry role',()=>{
  const worker=read('workers/loc-authority/index.mjs');
  assert.match(worker,/principal\.emailVerified===true/);
  assert.match(worker,/isLocWriteOwner\(principal\.email\)/);
