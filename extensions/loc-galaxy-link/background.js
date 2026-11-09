@@ -158,14 +158,16 @@ async function queueCount(){
  });
 }
 async function acceptItems(items){
+ if(!Array.isArray(items)||items.length>2000)
+  throw Error('擷取數量超出上限（2000 則），請分段錄製；原有 Queue 保留');
  const {locTargetScope='lo3rwang',locImportPaused=false}=
   await chrome.storage.local.get(['locTargetScope','locImportPaused']);
- const events=await toEvents(items,locTargetScope);
+ const events=[];
+ for(let i=0;i<items.length;i+=100)
+  events.push(...await toEvents(items.slice(i,i+100),locTargetScope));
  if(!events.length)return {message:'目前頁面沒有符合擷取條件的可見內容',queued:(await allEvents()).length,empty:true};
  const inserted=await putEvents(events);
  await updateQueueBadge().catch(error=>console.warn('[LOC Queue badge]',String(error)));
- // When the website is unavailable, leave the queue alone and avoid
- // repeatedly loading/serializing every pending capture on each scroll.
  if(locImportPaused)return {message:'已保留 Queue：'+inserted+' 筆',queued:await queueCount()};
  const all=await allEvents();
  if(ready(all))void flush(false).catch(async error=>{
@@ -174,6 +176,7 @@ async function acceptItems(items){
  });
  return {message:'新加入 Queue：'+inserted+' 筆（重複擷取已略過）',queued:all.length};
 }
+
 function packet(rows){
  const out=[];let current=[];
  for(const row of rows){
@@ -339,7 +342,29 @@ async function sendViaAuth(scopeid,batch,token,config){
  if(endpoint.origin!=='https://auth.lo3rwang.cc'||endpoint.pathname!=='/v1/import/short')throw contractError('LOC Auth 匯入位址錯誤');
  if(config.supports_scope_routing)endpoint.searchParams.set('scopeid',scopeid);
  const reply=await fetch(endpoint.href,{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify(batch),redirect:'error',cache:'no-store'});
- if(!reply.ok){const e=Error('LOC 匯入失敗：HTTP '+reply.status);e.httpStatus=reply.status;e.retryAfter=reply.headers?.get?.('retry-after')||'';throw e;}
+ if(!reply.ok){
+   let detail='';
+   const mime=String(reply.headers?.get?.('content-type')||'').toLowerCase();
+   if(mime.includes('json')||mime.includes('text/plain')){
+    try{
+     const raw=(await reply.text()).slice(0,2000);
+     const body=mime.includes('json')?JSON.parse(raw):null;
+     const value=body?(body?.error?.message||body?.error||body?.message||body?.code):raw;
+     const safe=typeof value==='string'?value:'';
+     // Never expose tokens, database URLs, credential strings or HTML.
+     detail=safe.replace(/(?:https?|postgres(?:ql)?|mysql|mssql|sqlserver):\/\/\S+/gi,'[URL]')
+      .replace(/(?:Bearer\s+)[A-Za-z0-9._~+/-]+/gi,'Bearer [redacted]')
+      .replace(/\b(?:password|secret|token|authorization)\s*[:=]\s*\S+/gi,'[redacted]')
+      .replace(/<[^>]*>/g,' ').replace(/[\r\n\t]+/g,' ')
+      .replace(/\s{2,}/g,' ').trim().slice(0,180);
+    }catch{}
+   }
+   const e=Error('LOC 匯入失敗：HTTP '+reply.status+
+    (detail?' — '+detail:'（後端未提供可讀取的錯誤說明）'));
+   e.httpStatus=reply.status;
+   e.retryAfter=reply.headers?.get?.('retry-after')||'';
+   throw e;
+  }
  const receipt=await reply.json().catch(()=>{throw contractError('LOC 回執不可解析')});
  if(receipt?.accepted!==true||receipt.id!==batch.id)throw contractError('LOC 未確認批次 ID');
  validateArticleReceipts(receipt.articles,batch.records);
@@ -351,9 +376,12 @@ async function flush(force=false){
   const rows=(await allEvents()).sort((a,b)=>String(a.captured_at||'').localeCompare(String(b.captured_at||'')));
   if(!rows.length)return {message:'Queue 已清空',sent:0};
   if(!force&&!ready(rows))return {message:'未達批次門檻',sent:0};
-  const settings=await chrome.storage.local.get(['locImportPaused','locQueueRetryAfter','locConfig']);
+  const settings=await chrome.storage.local.get(['locImportPaused','locQueueRetryAfter','locQueueRetryType','locQueueFailures','locConfig']);
   if(!force&&settings.locImportPaused)return {message:'已暫停自動傳送',sent:0};
-  if(Number(settings.locQueueRetryAfter||0)>Date.now())return {message:'流量管制等待中',sent:0};
+  if(Number(settings.locQueueRetryAfter||0)>Date.now()&&
+     (!force||settings.locQueueRetryType==='rate'))
+    return {message:settings.locQueueRetryType==='rate'?'流量管制等待中':
+     '後端故障暫緩自動重試（手動送出仍可執行）',sent:0};
   let token;
   try{token=await activeToken()}catch(e){await chrome.storage.local.set({locImportPaused:true});throw e}
   if(!settings.locConfig?.import_url){await chrome.storage.local.set({locImportPaused:true});throw Error('LOC 匯入設定不存在')}
@@ -368,12 +396,22 @@ async function flush(force=false){
      count+=group.length;
     }
    }
-   await chrome.storage.local.remove(['locImportPaused','locQueueRetryAfter']);
+   await chrome.storage.local.remove(['locImportPaused','locQueueRetryAfter','locQueueRetryType','locQueueFailures']);
    return {message:'LOC 已確認寫入 '+count+' 筆',sent:count};
   }catch(e){
    const s=Number(e.httpStatus||0);
-   if(s===429){const v=String(e.retryAfter||'');const ms=/^\d+$/.test(v)?Number(v)*1000:(Date.parse(v)||0)-Date.now();await chrome.storage.local.set({locQueueRetryAfter:Date.now()+(Number.isFinite(ms)&&ms>0?Math.min(ms,3600000):900000)});}
-   else if(e.code==='LOC_IMPORT_CONTRACT'||[400,401,403,404,409,410,413,415,422].includes(s))await chrome.storage.local.set({locImportPaused:true});
+   if(s===429){
+     const v=String(e.retryAfter||'');
+     const ms=/^\d+$/.test(v)?Number(v)*1000:(Date.parse(v)||0)-Date.now();
+     await chrome.storage.local.set({locQueueRetryType:'rate',
+       locQueueRetryAfter:Date.now()+(Number.isFinite(ms)&&ms>0?Math.min(ms,3600000):900000)});
+    }else if(s>=500||(s===0&&e.code!=='LOC_IMPORT_CONTRACT')){
+     const failures=Math.min(8,Math.max(0,Number(settings.locQueueFailures||0))+1);
+     const delay=Math.min(3600000,60000*2**Math.min(failures,6));
+     await chrome.storage.local.set({locQueueFailures:failures,
+       locQueueRetryType:'server',locQueueRetryAfter:Date.now()+delay});
+    }else if(e.code==='LOC_IMPORT_CONTRACT'||[400,401,403,404,409,410,413,415,422].includes(s))
+     await chrome.storage.local.set({locImportPaused:true});
    throw e;
   }
  })().finally(()=>{inFlight=null});return inFlight;
@@ -423,7 +461,8 @@ async function stopRecording(){
  const tab=await recordedTab();
  const reply=await chrome.tabs.sendMessage(tab.id,{type:'page.stop'}).catch(()=>null);
  await chrome.storage.local.remove('locRecorderTabId');
- return {message:reply?.ok?'已停止錄製':'目前頁面沒有正在進行的錄製'};
+ if(reply?.error)throw Error('最後一次錄製入列失敗：'+reply.error);
+ return {message:reply?.ok?'已停止錄製，最後內容已確認入列':'目前頁面沒有正在進行的錄製'};
 }
 
 // Context-menu options must reflect the actual active recording state.
@@ -536,10 +575,13 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
    }
    case 'loc-status':{
     const [session,queue]=await Promise.all([
-     chrome.storage.local.get([...AUTH_KEYS,'locImportPaused','locLastAction']),allEvents()]);
+     chrome.storage.local.get([...AUTH_KEYS,'locImportPaused','locLastAction','locQueueRetryAfter','locQueueRetryType','locQueueFailures']),allEvents()]);
     return {connected:Boolean(session.locOAuth?.refresh_token||session.locOAuth?.expires_at>Date.now()),
      configured:Boolean(session.locConfig),paused:session.locImportPaused===true,
-     ...captureTotals(queue),lastAction:session.locLastAction||null};
+     ...captureTotals(queue),lastAction:session.locLastAction||null,
+     nextRetryAt:Number(session.locQueueRetryAfter||0),
+     retryReason:session.locQueueRetryType||'',
+     consecutiveFailures:Number(session.locQueueFailures||0)};
    }
   }
   switch(message?.type){

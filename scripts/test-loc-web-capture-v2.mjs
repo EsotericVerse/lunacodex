@@ -300,8 +300,21 @@ test('ChatGPT recording reports empty extraction and never silently suppresses Q
  const source=text('content.js'),background=text('background.js');
  assert.match(source,/reportCapture\('錄製已啟動/);
  assert.match(source,/錄製擷取失敗，Queue 未確認寫入/);
- assert.match(source,/const main=chat&&/);
+ assert.match(source,/const main=recording&&chat/);
  assert.match(source,/watch\(\);/);
  assert.match(background,/case 'capture\.report'/);
  assert.match(background,/await noteAction\('動態擷取',false/);
+});
+
+
+test('ChatGPT nested role markup is captured exactly once per outer turn',()=>{
+ const nested=new SemanticNode({text:'Save this user message exactly once',
+  role:'user',tagName:'DIV'});
+ const article=new SemanticNode({tagName:'ARTICLE',
+  testid:'conversation-turn-0',children:[nested]});
+ const main=new SemanticNode({tagName:'MAIN',children:[article]});
+ const capture=contentFixture({href:'https://chatgpt.com/c/nested',feed:main});
+ const messages=capture();
+ assert.equal(messages.length,1,'outer article + nested role is one message');
+ assert.match(messages[0].content,/Save this user message exactly once/);
 });

@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync,existsSync} from 'node:fs';
-import {Script} from 'node:vm';
+import {Script,createContext,runInContext} from 'node:vm';
+import {webcrypto} from 'node:crypto';
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 const base='extensions/loc-galaxy-link/';
 const bg=read(base+'background.js');
@@ -9,7 +10,7 @@ const content=read(base+'content.js');
 const manifest=JSON.parse(read(base+'manifest.json'));
 test('only one named galaxy-link extension with all right-click actions',()=>{
  assert.equal(manifest.name,'LOC galaxy-link｜LOC 彩虹橋');
- assert.equal(manifest.version,'0.2.3');
+ assert.equal(manifest.version,'0.2.4');
  assert.equal(Object.hasOwn(manifest.action,'default_popup'),false);
  assert.equal(manifest.background.service_worker,'background.js');
  assert.ok(manifest.permissions.includes('identity'));
@@ -107,4 +108,120 @@ test('recording failures and no-message state are never silently swallowed',()=>
  assert.match(bg,/case 'capture\.report'/);
  assert.match(bg,/await noteAction\('動態擷取',false/);
  assert.doesNotMatch(content,/catch\s*\{\s*\/\/ Failure is not an acknowledgement/);
+});
+test('long ChatGPT conversation is split into 100-turn Queue messages; never dropped as a whole',()=>{
+ assert.match(bg,/for\(let i=0;i<items.length;i\+=100\)/);
+ assert.match(content,/for\(let offset=0;offset<pending.length;offset\+=100\)/);
+ assert.match(content,/const outstanding=\[\.\.\.state\.pendingWrites\]/);
+ assert.match(content,/await Promise\.all\(outstanding\)/);
+ assert.match(content,/node\.closest\?\.\('\[data-testid\^="conversation-turn-"\]'\)/);
+});
+test('HTTP backend errors are visible with redaction and exponential backoff',()=>{
+ assert.match(bg,/後端未提供可讀取的錯誤說明/);
+ assert.match(bg,/locQueueFailures:failures/);
+ assert.match(bg,/locQueueRetryType:'server'/);
+ assert.match(bg,/e\.httpStatus=reply\.status/);
+ assert.match(bg,/if\(reply\?\.error\)throw Error\('最後一次錄製入列失敗/);
+ assert.match(read(base+'options.js'),/result\.nextRetryAt>Date\.now\(\)/);
+});
+
+
+function runtimeCaptureHarness(){
+ const state={locImportPaused:true,locTargetScope:'lo3rwang',
+  locConfig:{import_url:'https://auth.lo3rwang.cc/v1/import/short',
+   supports_scope_routing:false}};
+ const saved=[],removed=[],requestLog=[];
+ let responder=async()=>Response.json({error:'service unavailable'},{status:500});
+ const on=()=>({addListener(){}});
+ const chrome={
+  runtime:{id:'loc-test',onInstalled:on(),onStartup:on(),onMessage:on(),
+   openOptionsPage:async()=>{}},
+  contextMenus:{onShown:on(),onClicked:on()},action:{onClicked:on(),
+   setBadgeText:async()=>{},setTitle:async()=>{}},
+  alarms:{onAlarm:on()},tabs:{query:async()=>[],sendMessage:async()=>{}},
+  storage:{local:{
+   get:async()=>({...state}),
+   set:async v=>{Object.assign(state,v)},
+   remove:async keys=>{for(const key of Array.isArray(keys)?keys:[keys])
+    delete state[key]}
+  }}
+ };
+ const ctx=createContext({chrome,crypto:webcrypto,TextEncoder,URL,URLSearchParams,
+  Response,Date,console,Promise,Array,Uint8Array,Set,Map,btoa,fetch:async(url,opts)=>{
+   requestLog.push({url,opts});return responder(url,opts);
+  }});
+ runInContext(bg,ctx,{filename:'background.js'});
+ // Exercise real batching/UID/HTTP logic; replace only IndexedDB and OAuth.
+ ctx.saved=saved;ctx.removed=removed;
+ runInContext(
+  'putEvents=async events=>{saved.push(...events);return events.length};'+
+  'allEvents=async()=>saved;'+
+  'queueCount=async()=>saved.length;'+
+  'updateQueueBadge=async()=>({});'+
+  "activeToken=async()=> 'test-token-only';"+
+  'removeEvents=async rows=>{removed.push(...rows);'+
+   'for(const row of rows){const i=saved.findIndex(x=>x.id===row.id);'+
+   'if(i>=0)saved.splice(i,1)}};',
+  ctx);
+ return {state,saved,removed,requestLog,api:name=>runInContext(name,ctx),
+  respond:fn=>{responder=fn}};
+}
+test('runtime: 205-turn loaded conversation enters Queue without >100 rejection',async()=>{
+ const h=runtimeCaptureHarness();
+ const input=Array.from({length:205},(_,i)=>({
+  key:'turn-'+i,title:'Chat',url:'https://chatgpt.com/c/history',
+  source_key:'https://chatgpt.com/c/history',content:'[user]\nMessage '+i
+ }));
+ const reply=await h.api('acceptItems')(input);
+ assert.equal(reply.queued,205);
+ assert.equal(h.saved.length,205);
+ assert.equal(h.requestLog.length,0);
+});
+test('runtime: HTTP 500 keeps all Queue items and backs off safely',async()=>{
+ const h=runtimeCaptureHarness();
+ const source='https://chatgpt.com/c/queue';
+ await h.api('acceptItems')([{key:'turn',title:'Chat',url:source,
+  source_key:source,content:'[user]\nKeep original conversation'}]);
+ h.state.locImportPaused=false;
+ h.respond(async()=>Response.json({error:
+  'Missing SQL target password=private postgresql://user:private@db.example/loc'},
+  {status:500}));
+ await assert.rejects(h.api('flush')(true),e=>
+  e.httpStatus===500&&/Missing SQL target/.test(e.message)&&
+  !e.message.includes('password=private')&&
+  !e.message.includes('postgresql://'));
+ assert.equal(h.saved.length,1);
+ assert.equal(h.removed.length,0);
+ assert.equal(h.state.locQueueRetryType,'server');
+ assert.ok(h.state.locQueueRetryAfter>Date.now());
+});
+test('runtime: only fully confirmed UID receipt deletes a Queue record',async()=>{
+ const h=runtimeCaptureHarness();
+ const source='https://chatgpt.com/c/uid';
+ await h.api('acceptItems')([{key:'turn',title:'Chat',url:source,
+  source_key:source,content:'[user]\nPersist after confirmed UID'}]);
+ h.state.locImportPaused=false;
+ h.respond(async(_url,opts)=>{
+  const batch=JSON.parse(opts.body);
+  return Response.json({accepted:true,id:batch.id,
+   articles:[{source_key:source,uid:'ABCDEFGH'}]});
+ });
+ const done=await h.api('flush')(true);
+ assert.equal(done.sent,1);
+ assert.equal(h.saved.length,0);
+ assert.equal(h.removed.length,1);
+ assert.equal(h.state.locQueueFailures,undefined);
+});
+test('runtime: 429 rate limit blocks manual retry as well',async()=>{
+ const h=runtimeCaptureHarness();
+ const source='https://chatgpt.com/c/ratelimit';
+ await h.api('acceptItems')([{key:'turn',url:source,source_key:source,
+  title:'Chat',content:'[user]\nRetain me'}]);
+ h.state.locImportPaused=false;
+ h.state.locQueueRetryAfter=Date.now()+120000;
+ h.state.locQueueRetryType='rate';
+ const result=await h.api('flush')(true);
+ assert.equal(result.sent,0);
+ assert.equal(h.requestLog.length,0);
+ assert.equal(h.saved.length,1);
 });

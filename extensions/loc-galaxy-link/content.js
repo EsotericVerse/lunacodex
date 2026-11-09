@@ -1,7 +1,7 @@
 // LOC 網站／舊對話頁面的可見 DOM 擷取；不呼叫 OAuth 或 MCP。
 (() => {
   if (globalThis.__locCaptureV2) return;
-  const state = {mode:'idle', root:null, observer:null, intersection:null, timer:null, hover:null, includeAssistant:false, seen:new Set(), sending:new Set(), emptyReported:false};
+  const state = {mode:'idle', root:null, observer:null, intersection:null, timer:null, hover:null, includeAssistant:false, seen:new Set(), sending:new Set(), pendingWrites:new Set(), emptyReported:false};
   const visible = el => {
     if (!(el instanceof Element)) return false;
     const style=getComputedStyle(el);
@@ -76,10 +76,17 @@
       ...(scope.querySelectorAll?.(TURN_SELECTOR)||[])];
     const hits=[],visited=new Set(),url=normalizeUrl(location.href);
     for(const node of nodes){
-      const turn=node.closest?.(TURN_CONTAINER)||node.closest?.('article')||node;
-      if(visited.has(turn)||!visible(turn))continue;visited.add(turn);
+      // Resolve the same outer conversation Turn for every nested content node.
+      // Without this, one ChatGPT message can be queued twice.
+      const turn=node.closest?.('[data-testid^="conversation-turn-"]')||
+        node.closest?.('[data-message-id]')||
+        node.closest?.('article[aria-label],article[data-message-author-role]')||
+        node.closest?.('[data-message-author-role]')||node;
+      if(visited.has(turn)||!visible(turn))continue;
       const role=roleOf(turn);
-      if(!['user','assistant'].includes(role)||role==='assistant'&&!includeAssistant)continue;
+      if(!['user','assistant'].includes(role))continue;
+      visited.add(turn);
+      if(role==='assistant'&&!includeAssistant)continue;
       // The role's own message body is preferable to the container's
       // toolbars/feedback buttons, which are not conversation content.
       const roleNode=turn.matches?.('[data-message-author-role]')?turn:
@@ -198,7 +205,6 @@
       message:String(message).slice(0,350),ok});}catch{}
   }
   async function publish(items){
-    // A running observer is not proof of a saved capture.
     const pending=[];
     for(const item of items){
       const key=item.source_key+':'+fingerprint(item.content);
@@ -206,26 +212,38 @@
       state.sending.add(key);pending.push({item,key});
     }
     if(!pending.length)return {accepted:0,queued:false};
+    let accepted=0,queued=0;
     try{
-      const result=await chrome.runtime.sendMessage({
-        type:'items.captured',items:pending.map(({item})=>item)
-      });
-      if(result?.error)throw Error(result.error);
-      if(!result||typeof result.queued!=='number')
-        throw Error('LOC Queue 沒有回傳入列確認');
-      if(state.seen.size>=5000)state.seen.clear();
-      for(const {key} of pending)state.seen.add(key);
+      // A long conversation must be recorded in 100-turn chunks;
+      // partial Queue acknowledgements survive a later failed chunk.
+      for(let offset=0;offset<pending.length;offset+=100){
+        const part=pending.slice(offset,offset+100);
+        const result=await chrome.runtime.sendMessage({
+          type:'items.captured',items:part.map(({item})=>item)
+        });
+        if(result?.error)throw Error(result.error);
+        if(!result||!Number.isInteger(result.queued)||result.queued<0)
+          throw Error('LOC Queue 沒有回傳入列確認');
+        if(state.seen.size>=5000)state.seen.clear();
+        for(const {key} of part)state.seen.add(key);
+        accepted+=part.length;
+        queued=result.queued;
+      }
       state.emptyReported=false;
-      return {accepted:pending.length,queued:result.queued};
+      return {accepted,queued};
     }catch(error){
-      // The previous implementation swallowed this exception, leaving a
-      // misleading "recording" state with Queue 0 forever.
       const reason=String(error?.message||error);
-      void reportCapture('錄製擷取失敗，Queue 未確認寫入：'+reason,false);
-      return {accepted:0,error:reason};
+      void reportCapture('錄製擷取未全部入列（已確認 '+accepted+'/'+pending.length+' 則）：'+reason,false);
+      return {accepted,error:reason,queued};
     }finally{
       for(const {key} of pending)state.sending.delete(key);
     }
+  }
+  function queuePublish(items){
+    const current=publish(items);
+    state.pendingWrites.add(current);
+    void current.finally(()=>state.pendingWrites.delete(current));
+    return current;
   }
   function scan(){
     if(!state.root||state.mode!=='record')return;
@@ -240,8 +258,8 @@
         }
         return;
       }
-      void publish(items);
-    },350);
+      void queuePublish(items);
+    },1250);
   }
   function stopWatching(){
     state.observer?.disconnect();state.intersection?.disconnect();
@@ -299,7 +317,7 @@
     }else{
       const items=extract(root,'capture',state.includeAssistant);
       if(!items.length)void reportCapture('選取區域內沒有可擷取內容，Queue 未變動',false);
-      else void publish(items);
+      else void queuePublish(items);
     }
   }
   function feedback(message,ok=false){
@@ -343,7 +361,22 @@
       reply({ok:Boolean(ok),mode:state.mode});return;
     }
     if(msg.type==='page.status'){reply({ok:true,mode:state.mode,count:state.seen.size});return;}
-    if(msg.type==='page.stop'){const count=state.seen.size;stop();reply({ok:true,count});return;}
+    if(msg.type==='page.stop'){
+      const isRecording=state.mode==='record'||state.mode==='paused';
+      const items=isRecording&&state.root?extract(state.root,'record',state.includeAssistant):[];
+      const count=state.seen.size;
+      const outstanding=[...state.pendingWrites];
+      stop();
+      void (async()=>{
+        // Wait for any capture already being written before checking the final
+        // snapshot; a "stop" acknowledgement must not outrun IndexedDB.
+        await Promise.all(outstanding);
+        const result=items.length?await queuePublish(items):{accepted:0,queued:0};
+        reply({ok:!result.error,count:state.seen.size,queued:result.queued||0,
+          ...(result.error?{error:result.error}:{})});
+      })().catch(error=>reply({ok:false,count,error:String(error?.message||error)}));
+      return true;
+    }
   });
   globalThis.__locCaptureV2=true;
 })();

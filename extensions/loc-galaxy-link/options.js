@@ -7,8 +7,11 @@ async function show(){
   chrome.storage.local.get(['locTargetScope','locIncludeAssistant'])
  ]);
  status.textContent=result.error||(result.connected?'已連接 LOC Auth':'尚未連接 LOC Auth');
+ const cooldown=result.nextRetryAt>Date.now()?
+  (result.retryReason==='server'?'；後端故障，自動重試延後至 ':'；流量管制至 ')+
+  new Date(result.nextRetryAt).toLocaleString('zh-TW'):'';
  queue.textContent='待送 Queue：'+(result.pendingCaptures??0)+' 次擷取／'+(result.pending??0)+' 筆資料'+
-  (result.paused?'；自動送出已暫停，原始 Queue 保留':'');
+  (result.paused?'；自動送出已暫停，原始 Queue 保留':'')+cooldown;
  const last=result.lastAction;
  $('lastAction').textContent=last?
   (last.ok?'成功':'失敗')+' · '+last.name+' · '+(last.at||'').replace('T',' ').slice(0,19)+'\n'+last.message:

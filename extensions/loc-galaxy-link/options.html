@@ -36,7 +36,7 @@ small{display:block;color:gray}
 <h2>離線 Queue</h2>
 <p id="queue" role="status"></p>
 <button id="flush">手動送出 Queue</button>
-<small>所有擷取功能共用單一 Queue。滿十次擷取或達批次大小才自動送出；只有 LOC 回傳完整文章 UID 才清除已確認的紀錄。</small>
+<small>所有擷取功能共用單一 Queue；長對話分批入列。後端 5xx 將延後自動重試，避免反覆消耗請求；只有 LOC 回傳完整文章 UID 才清除對應紀錄。</small>
 <script src="options.js"></script>
 </body>
 </html>
