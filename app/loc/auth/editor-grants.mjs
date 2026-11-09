@@ -39,6 +39,11 @@ export async function readLocEditorGrants(session,{
      data.grants.length>64||data.grants.some(x=>
        x!=='global:manage'&&!GRANT.test(String(x))))
     throw new Error('LOC Auth 編輯授權回應不完整');
+  // AGENTS.md 2026-11-09: only anonymous and the verified LOC owner "me"
+  // exist -- no admin/group/scope tier. isLocWriteOwner(email) is already
+  // checked above, so every grant below is already the one verified owner's;
+  // scopeKinds classifies what KIND of scope a row is (a container vs a
+  // leaf), never the caller's own access level, and must not downgrade it.
   const result=[];
   const seen=new Set();
   for(const grant of data.grants){
@@ -50,8 +55,7 @@ export async function readLocEditorGrants(session,{
     }
     const scope=GRANT.exec(grant)?.[1];
     if(!scope)continue;
-    const role=scope==='loc'||scopeKinds[scope]==='group'?'group':'scope';
-    result.push({id:scope,email,role,manage_role:role});
+    result.push({id:scope,email,role:'admin',manage_role:'admin'});
   }
   return result;
 }

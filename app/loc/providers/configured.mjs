@@ -63,7 +63,52 @@ export function createConfiguredAdapter({
     }
     return result;
   };
-  const authClient={...readOnlyAuthClient,shortImport};
+  // Only these two fixed ZModel control relations accept an authenticated
+  // UPDATE/DELETE (zenstack/policy-runtime.mjs ADMIN_FIXED_WRITES). Everything
+  // else keeps the original "owner Web Server required" refusal from
+  // direct-data-api.mjs -- there is no generic write transport here.
+  const FIXED_WRITE_TABLES=new Set(['api.manage','silver.loc']);
+  const managedWrite=async(payload)=>{
+    const table=String(payload?.p_table||'');
+    if(!FIXED_WRITE_TABLES.has(table))
+      throw Error('This operation requires the database owner Web Server; LOC provides no SQL Gateway');
+    const access=String(await identity.getAccessToken()||'');
+    if(!access)throw Error('LOC login required');
+    // A global self-delegation only ever carries 'global:manage' for the one
+    // verified LOC owner (workers/loc-authority/index.mjs exchangeLocDelegation).
+    // No Scope id is requested; this is not a per-Scope grant.
+    const authorize=await fetchImpl(new URL('/v1/delegation',authorityUrl).href,{
+      method:'POST',credentials:'omit',cache:'no-store',
+      headers:{authorization:'Bearer '+access,'content-type':'application/json',
+        accept:'application/json'},
+      body:JSON.stringify({audience:'sql',self:true}),
+      signal:AbortSignal.timeout(8000)
+    });
+    if(!authorize.ok){
+      const error=new Error('LOC 寫入授權失敗');
+      error.status=authorize.status;throw error;
+    }
+    const delegation=await authorize.json().catch(()=>null);
+    const signed=String(delegation?.access_token||'');
+    if(signed.split('.').length!==3||!Array.isArray(delegation?.grants)||
+      !delegation.grants.includes('global:manage'))
+      throw Error('此帳號沒有固定模型的寫入權限');
+    const response=await fetchImpl('/api/loc-native',{
+      method:'POST',credentials:'omit',cache:'no-store',
+      headers:{authorization:'Bearer '+signed,'content-type':'application/json',
+        accept:'application/json'},
+      body:JSON.stringify({kind:'managed-write',scopeid:'',payload}),
+      signal:AbortSignal.timeout(15000)
+    });
+    const result=await response.json().catch(()=>null);
+    if(!response.ok){
+      const error=new Error(result?.error?.message||'LOC managed write failed');
+      error.status=response.status;throw error;
+    }
+    return {data:result?.data,error:null};
+  };
+  const authClient={...readOnlyAuthClient,shortImport,
+    schema(name){return {...readOnlyAuthClient.schema(name),managedWrite};}};
   return {publicClient,authClient,auth:identity.auth,
     configuredPublicClient:publicClient,backupPublicClient:null,
     realtimeClient:null,primarySourceLabel:'主要資料庫連線',backupSourceLabel:''};
