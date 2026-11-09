@@ -32,18 +32,6 @@ function rawFilter(op,value){
     throw Error('Unsupported Data API filter');
   return op+'.'+encodedValue(value);
 }
-function publishedGalaxy(table,columns,filters){
-  // The existing LOC public read contract permits search visibility, and
-  // list visibility only when returning article bodies.
-  if(!/_galaxy$/.test(table)||filters.some(f=>f.column==='search'))return filters;
-  const isContent=columns.includes('*')||columns.includes('content');
-  // Culture is a separate public visibility flag, not a Search opt-in.
-  if(filters.some(f=>f.column==='culture'&&String(f.value)==='true')&&!isContent)
-    return filters;
-  return [...filters,{column:'search',op:'eq',value:true},
-    ...(isContent?[{column:'list',op:'eq',value:true}]:[])];
-}
-
 // The existing public Data API accepts ILIKE, not Kysely's virtual
 // 'contains' predicate. Keep the transport's literal/compound search
 // semantics without sending an unsupported PostgREST operator.
@@ -115,7 +103,7 @@ export function createDirectDataApiClient({
       throw Error('Invalid Data API projection');
     const url=new URL(base+'/'+q.table);
     url.searchParams.set('select',columns.join(','));
-    const filters=publishedGalaxy(q.table,columns,q.filters);
+    const filters=q.filters;
     for(const f of filters)url.searchParams.append(f.column,(f.negate?'not.':'')+rawFilter(f.op,f.value));
     for(const group of q.orFilters){
       if(group.length>4000||/[;\u0000-\u001f]/.test(group))throw Error('Invalid OR filter');
