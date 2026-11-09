@@ -63,3 +63,21 @@ test('Kysely primary can use backend-only SQL URL without LOC Authority profile 
  assert.match(driver,/if\(!verifiedAlias&&alias===control\?\.connection_alias&&env\.LOC_DATABASE_URL\)/);
  assert.doesNotMatch(driver,/NEXT_PUBLIC_LOC_DATABASE_URL/);
 });
+
+test('control DB and signed selected loc-main both reuse Kysely without calling the Auth Profile route',async()=>{
+ const {directMcpKysely,mcpDatabaseConfiguration}=
+  await import('../app/loc/mcp/native-kysely.mjs');
+ const env={LOC_DATABASE_URL:'postgresql://loc:test@127.0.0.1:5432/loc',
+  LOC_DB_PROFILE_SERVICE_TOKEN:'local-profile-secret-32-characters-or-more'};
+ assert.equal(mcpDatabaseConfiguration(env).publicReadConfigured,true);
+ let profileRequests=0;
+ const fetchImpl=async()=>{profileRequests++;throw new Error('Main DB must not request Auth profile')};
+ const defaultDb=await directMcpKysely(env,'',{fetchImpl});
+ const selectedDb=await directMcpKysely(env,'loc-main',{fetchImpl});
+ assert.strictEqual(defaultDb.db,selectedDb.db,
+  'the selected primary must share exactly the same database pool');
+ assert.equal(defaultDb.engine,'postgres');
+ assert.equal(defaultDb.namespace,'silver');
+ assert.equal(profileRequests,0);
+ await defaultDb.db.destroy();
+});
