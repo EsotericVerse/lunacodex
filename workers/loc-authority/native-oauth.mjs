@@ -3,6 +3,7 @@ import {locRegistryRoles,isLocRegistryAdmin,canLocRegistryManage} from './manage
 import {checkExternalAuthQos} from './auth-qos.mjs';
 import {handleFirstPartyAuth,hasFirstPartyCookie,firstPartySession,firstPartySignOut} from './better-auth-native.mjs';
 import {verifyAuthReference} from './auth-ref.mjs';
+import {approvedConsent,recordConsent,revokeConsent,consentPage} from './oauth-consent.mjs';
 
 // Independent OAuth 2.1 authorization server; all state lives in the existing
 // LOC Authority Durable Object. No SQL database, Clerk, Neon or vendor Auth SDK.
@@ -90,7 +91,7 @@ function safeRedirect(uri){try{const u=new URL(uri);return u.protocol==='https:'
    u.hostname==='openai.com'||u.hostname.endsWith('.openai.com'));}
  catch{return false;}}
 async function clientFor(stub,id){
- if(id===EXT_CLIENT)return {kind:'extension',client_id:id,redirect_uris:[EXT_REDIRECT]};
+ if(id===EXT_CLIENT)return {kind:'extension',client_id:id,client_name:'LOC galaxy-link 彩虹橋',redirect_uris:[EXT_REDIRECT]};
  if(!/^loc-mcp-[A-Za-z0-9_-]{43}$/.test(String(id||'')))error('Unregistered OAuth client',401);
  const value=await stub.nativeGet('native-client:'+id);
  if(!value||value.expires<Date.now())error('Unknown OAuth client',401);
@@ -211,6 +212,7 @@ async function issueToken(stub,session,resource,scope,client_id){
 }
 export function isNativeOAuthPath(path){
  return path==='/.well-known/oauth-authorization-server'||path==='/oauth/register'||
+  path==='/oauth/consent'||path==='/oauth/consent/revoke'||
   path==='/oauth/authorize'||path==='/oauth/login'||path==='/oauth/token'||
   path==='/oauth/revoke'||
   path==='/oauth/callback/github'||path==='/oauth/callback/oidc'||
@@ -283,12 +285,77 @@ async function authorize(request,url,stub,env){
   next.searchParams.set('continue',url.pathname+url.search);
   return redirect(next.href);
  }
+ const details={sidHash:session.sidHash,subject:session.subject,
+  client_id:client.client_id,client_name:client.client_name||'LOC MCP',
+  redirect_uri,scope,resource,challenge,state};
+ if(await approvedConsent(stub,session.subject,client.client_id,resource,scope))
+  return authorizedCode(stub,details,bridged?[bridged.cookie]:[]);
+ const nonce=random();
+ await put(stub,'native-consent-pending',nonce,{
+  ...details,expires:Date.now()+600000
+ });
+ return new Response(consentPage({nonce,clientName:details.client_name,scope,
+  resource,identity:session.email}),{status:200,headers:{
+  'content-type':'text/html; charset=utf-8','cache-control':'no-store',
+  'content-security-policy':"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+  'x-content-type-options':'nosniff',
+  ...(bridged?{'set-cookie':bridged.cookie}:{})
+ }});
+}
+async function authorizedCode(stub,details,cookies=[]){
  const code=random();
- await put(stub,'native-code',code,{sidHash:session.sidHash,client_id:client.client_id,
-  redirect_uri,scope,resource,challenge,expires:Date.now()+300000});
- const result=new URL(redirect_uri);result.searchParams.set('code',code);
- result.searchParams.set('state',state);result.searchParams.set('iss',ISSUER);
- return redirect(result.href,bridged?[bridged.cookie]:[]);
+ await put(stub,'native-code',code,{sidHash:details.sidHash,
+  client_id:details.client_id,redirect_uri:details.redirect_uri,
+  scope:details.scope,resource:details.resource,challenge:details.challenge,
+  expires:Date.now()+300000});
+ const result=new URL(details.redirect_uri);
+ result.searchParams.set('code',code);
+ result.searchParams.set('state',details.state);
+ result.searchParams.set('iss',ISSUER);
+ return redirect(result.href,cookies);
+}
+async function consentResponse(request,stub){
+ if(request.headers.get('origin')!==ISSUER)error('Consent origin required',403);
+ if(!String(request.headers.get('content-type')||'').toLowerCase()
+  .startsWith('application/x-www-form-urlencoded'))
+  error('Consent form required',415);
+ const raw=await request.text();if(raw.length>600)error('Consent response too large',413);
+ const form=new URLSearchParams(raw),nonce=form.get('nonce')||'';
+ if(!CODE_PATTERN.test(nonce))error('Invalid consent request',400);
+ const details=await take(stub,'native-consent-pending',nonce);
+ const session=await sessionFromCookie(request,stub);
+ if(!details||!session||details.sidHash!==session.sidHash||
+  details.subject!==session.subject||details.expires<Date.now())
+  error('Consent session or request expired',401);
+ const client=await clientFor(stub,details.client_id);
+ if(!client.redirect_uris.includes(details.redirect_uri)||
+  resourceFor(client.kind,details.resource)!==details.resource||
+  scopeFor(client.kind,details.scope)!==details.scope)
+  error('Consent application or scope changed',400);
+ const decision=form.get('decision');
+ if(decision==='deny'){
+  const result=new URL(details.redirect_uri);
+  result.searchParams.set('error','access_denied');
+  result.searchParams.set('state',details.state);
+  result.searchParams.set('iss',ISSUER);
+  return redirect(result.href);
+ }
+ if(decision!=='approve')error('Explicit consent decision required',400);
+ await recordConsent(stub,session.subject,details.client_id,details.resource,details.scope);
+ return authorizedCode(stub,details);
+}
+async function revokeConsentResponse(request,stub){
+ if(request.headers.get('origin')!==ISSUER)error('Consent origin required',403);
+ if(!String(request.headers.get('content-type')||'').toLowerCase()
+  .startsWith('application/x-www-form-urlencoded'))error('Consent form required',415);
+ const raw=await request.text();if(raw.length>1500)error('Consent revoke too large',413);
+ const form=new URLSearchParams(raw);
+ const session=await sessionFromCookie(request,stub);
+ if(!session)error('LOC session required to revoke consent',401);
+ const client=await clientFor(stub,form.get('client_id'));
+ const resource=resourceFor(client.kind,form.get('resource'));
+ await revokeConsent(stub,session.subject,client.client_id,resource);
+ return response({revoked:true});
 }
 async function provider(stub,name){
  const item=await stub.nativeProvider(name);
@@ -675,6 +742,8 @@ export async function handleNativeOAuth(request,env){
     resource_parameter_supported:true,loc_import_scope_routing:'query-v1'},200,origin);
   if(path==='/oauth/register'&&request.method==='POST')return await register(request,stub,origin);
   if(path==='/oauth/authorize'&&request.method==='GET')return await authorize(request,url,stub,env);
+   if(path==='/oauth/consent'&&request.method==='POST')return await consentResponse(request,stub);
+   if(path==='/oauth/consent/revoke'&&request.method==='POST')return await revokeConsentResponse(request,stub);
   if(path==='/oauth/login'&&request.method==='GET')return await login(request,url,stub,env);
    if(path==='/oauth/complete'&&request.method==='GET')
     return await completeBetterGoogle(request,url,stub,env);
