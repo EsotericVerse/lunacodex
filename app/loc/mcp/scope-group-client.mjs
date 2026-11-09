@@ -32,7 +32,7 @@ export async function scopeGroupRequest({groupid,kind='list',scopeid,subject,act
   }else if(kind!=='list')throw Error('Unknown Group action');
   const origin=await locAuthorityOrigin(fetchImpl);
   const res=await fetchImpl(origin+'/v1/mcp/'+path,{
-    method,cache:'no-store',credentials:'omit',redirect:'error',
+    method,cache:'no-store',credentials:'omit',redirect:'manual',
     signal:AbortSignal.timeout(12000),headers:{authorization:'Bearer '+token,accept:'application/json',
       ...(body===undefined?{}:{'content-type':'application/json'})},
     ...(body===undefined?{}:{body:JSON.stringify(body)})

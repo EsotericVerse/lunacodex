@@ -12,7 +12,7 @@ export async function authProviderSettingsRequest({type='',values,fetchImpl=glob
   const endpoint=authority+'/v1/auth/providers'+(type?'/'+type:'');
   const response=await fetchImpl(endpoint,{
     method:values===undefined?'GET':'PUT',cache:'no-store',
-    credentials:'omit',redirect:'error',signal:AbortSignal.timeout(12000),
+    credentials:'omit',redirect:'manual',signal:AbortSignal.timeout(12000),
     headers:{authorization:'Bearer '+identity.token,accept:'application/json',
       ...(values!==undefined?{'content-type':'application/json'}:{})},
     ...(values!==undefined?{body:JSON.stringify(values)}:{})

@@ -24,7 +24,7 @@ async function requestIndex(path,method,body){
     const response=await fetch(options.url+path,{
       method,headers:{'content-type':'application/json',
         authorization:'Bearer '+options.secret},
-      body:JSON.stringify(body),redirect:'error',
+      body:JSON.stringify(body),redirect:'manual',
       signal:AbortSignal.timeout(1800)
     });
     if(!response.ok)throw new Error('LOC Index HTTP '+response.status);

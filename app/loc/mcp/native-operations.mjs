@@ -82,7 +82,7 @@ async function signingKey(kid,fetchImpl){
   let keys=publicKeys;
   if(!keys||now>=keyExpires||!keys.some(k=>k.kid===kid)){
     const response=await fetchImpl(JWKS,{headers:{accept:'application/json'},
-      redirect:'error',cache:'no-store',signal:AbortSignal.timeout(7000)});
+      redirect:'manual',cache:'no-store',signal:AbortSignal.timeout(7000)});
     if(!response.ok)throw refusal('LOC Auth signing keys unavailable',503);
     const jwks=await response.json().catch(()=>null);
     if(!Array.isArray(jwks?.keys)||jwks.keys.length>20)

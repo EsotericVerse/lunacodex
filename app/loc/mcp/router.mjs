@@ -181,7 +181,7 @@ async function withMcpQuota(token,env,action,kind='read'){
       method:'POST',headers:{authorization:'Bearer '+token,
         origin:'https://loc.lo3rwang.cc','content-type':'application/json'},
       body:JSON.stringify(payload),signal:AbortSignal.timeout(12000),
-      redirect:'error',cache:'no-store'
+      redirect:'manual',cache:'no-store'
     });
     if(!res.ok){
       const err=new Error(res.status===429?'MCP request limit exceeded':'MCP quota unavailable');
@@ -206,7 +206,7 @@ async function qosWarningForDeniedPr(token,env={}){
     method:'POST',headers:{authorization:'Bearer '+token,
       origin:'https://loc.lo3rwang.cc','content-type':'application/json'},
     body:JSON.stringify({action:'inspect',kind:'search'}),
-    signal:AbortSignal.timeout(5000),redirect:'error',cache:'no-store'
+    signal:AbortSignal.timeout(5000),redirect:'manual',cache:'no-store'
   });
   if(!res.ok)return '';
   const data=await res.json();

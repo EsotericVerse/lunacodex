@@ -21,7 +21,7 @@ async function permit(scopeid,token,subject,env,fetchImpl){
   const response=await fetchImpl(url.href,{
     method:'GET',headers:{authorization:'Bearer '+token,
       origin:'https://loc.lo3rwang.cc',accept:'application/json'},
-    redirect:'error',cache:'no-store',signal:AbortSignal.timeout(8000)
+    redirect:'manual',cache:'no-store',signal:AbortSignal.timeout(8000)
   });
   if(!response.ok)throw unavailable('LOC Scope read permission denied or unavailable',
     response.status===401||response.status===403?response.status:503);
