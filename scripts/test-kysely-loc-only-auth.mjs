@@ -6,7 +6,7 @@ const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
 test('native signed LOC delegation keeps identity and database login separate',()=>{
  const now=Math.floor(Date.now()/1000);
- const signed=issueDelegation({sub:'loc_test',email:'owner@example.org',
+ const signed=issueDelegation({sub:'loc_test',email:'sopa2306@gmail.com',
   grants:['lo3rwang:manage'],audience:'sql',sid:'session1',
   now,seconds:300,targetId:'loc_main'});
  assert.equal(signed.aud,delegationAudience({kind:'query'}));
