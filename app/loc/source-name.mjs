@@ -4,7 +4,7 @@ export function canonicalImportSourceName(value,system=[],personal=[]){
   if(!name)return '';
   const key=name.toLocaleLowerCase();
   const match=names=>(Array.isArray(names)?names:[]).find(label=>String(label).trim().toLocaleLowerCase()===key);
-  return match(system)||OFFICIAL_SOURCE_LABELS[key]||match(personal)||name;
+  return match(system)||OFFICIAL_SOURCE_LABELS[key]||'Others';
 }
 export function inferImportSourceFromFilename(fileName=''){
   const value=String(fileName).toLowerCase();

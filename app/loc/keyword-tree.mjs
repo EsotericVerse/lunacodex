@@ -118,35 +118,6 @@ export function indexAnchorTree(rows=[],{next,normalize,rootType}){
 export function indexKeywordTree(rows=[]){
   return indexAnchorTree(rows,{next:NEXT,normalize:normalizeKeywordTreeRow,rootType:'category'});
 }
-const SOURCE_NEXT={universe:'galaxy',galaxy:'domain',domain:'from'};
-const SOURCE_TYPES=new Set(['universe','galaxy','domain','from']);
-export function indexSourceTree(rows=[]){
-  return indexAnchorTree(rows,{next:SOURCE_NEXT,rootType:'universe',normalize:row=>{
-    const uid=String(row?.uid||''),type=String(row?.type||'');
-    if(!ARTICLE_UID.test(uid)||!SOURCE_TYPES.has(type))throw Error('Invalid Source Anchor UID/type');
-    const attr=typeof row.attr==='string'?JSON.parse(row.attr):row.attr||{};
-    const lists=attr.uid??[];
-    if(!Array.isArray(lists)||lists.some(x=>typeof x!=='string'||!ARTICLE_UID.test(x))
-       ||new Set(lists).size!==lists.length)
-      throw Error('Source Anchor attr.uid must contain unique eight-character child UIDs');
-    if(type==='from'&&lists.length)throw Error('Source from node cannot have children');
-    const name=String(row.title??row.name??'').trim();
-    if(!name)throw Error('Source Anchor title is required');
-    return {uid,type,name,lists:[...lists]};
-  }});
-}
-export function sourceLineage(rows,site){
-  const tree=indexSourceTree(rows);
-  const matches=[...tree.index.values()].filter(node=>node.type==='from'&&node.name===site);
-  return matches.map(node=>{
-    const path=[node];let current=node;
-    while(tree.parent.has(current.uid)){
-      current=tree.index.get(tree.parent.get(current.uid));
-      path.unshift(current);
-    }
-    return path;
-  });
-}
 export function descendantsOfKeyword(rows,uid,{type}={}){
   const tree=indexKeywordTree(rows),start=tree.index.get(cleanUid(uid));
   if(!start)throw new Error('Unknown Keywords UID');

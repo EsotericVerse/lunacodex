@@ -1,11 +1,10 @@
 // Public LOC autocomplete and Anchor navigation using already-public data.
 // No SQL Gateway, no privileged connection, no additional database policies.
-import {PUBLISHED_SOURCE_ENTRIES,PUBLISHED_SOURCE_DOMAINS} from '../modular/published-source-taxonomy.js';
 import {PUBLISHED_SEARCH_KEYWORDS} from '../modular/published-search-keywords.js';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
-const TYPES=['date','point','from','domain','item','pattern'];
+const TYPES=['date','point','item','pattern'];
 const normalize=value=>String(value??'').normalize('NFKC').trim().toLocaleLowerCase('zh-Hant');
 const scopesOf=values=>[...new Set((Array.isArray(values)?values:[])
   .map(value=>String(value||'')).filter(value=>SCOPE.test(value)))].slice(0,50);
@@ -26,14 +25,7 @@ export function publicPublishedAnchorSuggestions(scopeIds,rawQuery){
       if(UID.test(uid)&&normalize(title).includes(query))
         out.push({scopeId:scope,uid,type:'pattern',title});
     }
-    for(const source of PUBLISHED_SOURCE_ENTRIES[scope]||[]){
-      if(UID.test(source.uid)&&(normalize(source.name).includes(query)||
-          normalize(source.label).includes(query)))
-        out.push({scopeId:scope,uid:source.uid,type:'from',title:source.name});
-    }
-    const domain=PUBLISHED_SOURCE_DOMAINS[scope];
-    if(UID.test(String(domain||''))&&normalize(scope).includes(query))
-      out.push({scopeId:scope,uid:domain,type:'domain',title:scope});
+
   }
   return out;
 }
@@ -89,29 +81,18 @@ export async function readPublicAnchorArticles(selection,options={},client){
   const scope=String(selection?.scopeId||''),uid=String(selection?.uid||'');
   const type=String(selection?.type||'');
   if(!client?.schema||!SCOPE.test(scope)||!UID.test(uid)||
-    !['date','point','from','domain'].includes(type))
+    !['date','point'].includes(type))
     throw Error('Invalid public Anchor choice');
   const offset=Number(options.offset??0),limit=Number(options.limit??20);
   if(!Number.isSafeInteger(offset)||offset<0||offset>200000||
     !Number.isSafeInteger(limit)||limit<1||limit>100)
     throw Error('Invalid public Anchor page');
-  const sourceList=PUBLISHED_SOURCE_ENTRIES[scope]||[];
-  const source=type==='from'?sourceList.find(item=>item.uid===uid):null;
-  const domain=PUBLISHED_SOURCE_DOMAINS[scope];
-  if(type==='from'&&!source)throw Error('Unpublished Source choice');
-  if(type==='domain'&&domain!==uid)throw Error('Unpublished Source category');
   if(type==='date'&&!dateValue(selection.date))throw Error('Invalid date Anchor');
   let query=client.schema('silver').from(scope+'_galaxy')
     .select('uid,title,date,createtime,site,url,location,place_id,search,statics,culture,trace,list,keyword,extract,others')
     .eq('search',true);
   if(type==='date')query=query.eq('date',selection.date);
   if(type==='point')query=query.eq('place_id',uid);
-  if(type==='from')query=query.eq('site',source.name);
-  if(type==='domain'){
-    const names=sourceList.map(item=>item.name).filter(Boolean);
-    if(!names.length)return {rows:[],hasMore:false,nextOffset:null};
-    query=query.in('site',names);
-  }
   for(const [name,operator] of [['startDate','gte'],['endDate','lte']]){
     const value=String(options[name]||'');
     if(value){

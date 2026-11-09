@@ -191,8 +191,7 @@ model Loc {
     id                           String      @id @db.Text
     display_name                 String      @db.Text
     locale                       String      @db.Text @default(dbgenerated())
-    DefaultArticleClass          Json        @db.JsonB @default(dbgenerated())
-    blacklist                    Json        @db.JsonB @default(dbgenerated())
+    ArticleTag                   Json        @db.JsonB @default(dbgenerated())
     theme                        Json        @db.JsonB @default(dbgenerated())
     keywords                     Json        @db.JsonB @default(dbgenerated())
     title_tw                     String?     @db.Text

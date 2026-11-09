@@ -127,22 +127,61 @@ async function sessionFromCookie(request,stub){
  if(!CODE_PATTERN.test(String(token||'')))return null;
  return sessionForHash(stub,await sha(token));
 }
+// Better Auth verifies who Google says the user is. An OAuth app client
+// ID/secret does not prove ownership of LOC. Independent LOC Subject binding
+// cannot require a pre-existing LOC cookie or first-time sign-in deadlocks.
+export async function googleLocSubject(identity,stub,env,prior=null){
+ const email=String(identity?.email||'').trim().toLowerCase();
+ const googleId=String(identity?.googleAccountId||'');
+ if(identity?.emailVerified!==true||!email||
+  !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||
+  !googleId||googleId.length>256)error('Verified Google identity required',401);
+ const key='native-google-link:'+await sha('google:'+googleId);
+ const saved=await stub.nativeGet(key);
+ if(saved&&(!LOC_SUBJECT.test(String(saved.subject||''))||
+  saved.email!==email))error('LOC Google identity binding mismatch',403);
+ const roots=[...new Set(String(env.LOC_RECOVERY_ROOT_LOC_SUBJECTS||'')
+  .split(/[\s,;]+/).filter(x=>LOC_SUBJECT.test(x)))];
+ const matches=[];
+ // Only the unique verified LOC owner can recover an existing root Subject.
+ // An OAuth app ID/Secret, or an old Scope grant for another email, is not "me".
+ if(isLocWriteOwner(email)){
+  if(typeof stub.delegationGrantProfile==='function'){
+   for(const root of roots){
+    const existing=await stub.delegationGrantProfile('loc',root);
+    if(String(existing?.email||'').trim().toLowerCase()===email)matches.push(root);
+   }
+  }
+  const pinned=String(env.LOC_RECOVERY_ROOT_GOOGLE_EMAIL||'').trim().toLowerCase();
+  if(roots.length===1&&(pinned===email||isLocWriteOwner(email)))
+   matches.push(roots[0]);
+ }
+ const candidates=[...new Set(matches)];
+ if(candidates.length>1)error('Ambiguous LOC owner identity mapping',409);
+ const root=candidates[0]||'';
+ if(!isLocWriteOwner(email)&&roots.includes(saved?.subject))
+  error('Existing LOC root identity is restricted to the verified owner',403);
+ let subject=saved?.subject||'';
+ if(root){
+  if(typeof stub.nativeBindGoogleOwner!=='function')
+   error('LOC owner binding storage unavailable',503);
+  await stub.nativeBindGoogleOwner(root,googleId,email);
+  subject=root;
+ }else if(!subject&&prior&&prior.emailVerified!==false&&
+  prior.email===email&&LOC_SUBJECT.test(String(prior.subject||''))&&
+  (isLocWriteOwner(email)||!roots.includes(prior.subject))){
+  subject=prior.subject; // Never inherit the owner's Subject from another account.
+ }
+ if(!subject)subject='loc_'+(await sha('google:'+googleId)).slice(0,40);
+ if(!saved||saved.subject!==subject)
+  await stub.nativePut(key,{subject,email});
+ return subject;
+}
 async function sessionFromBetter(request,env,stub){
  const identity=await firstPartySession(request,env);
  if(!identity||!identity.emailVerified)error('Verified Better Auth Google identity required',401);
- const linkedKey='native-google-link:'+await sha('google:'+identity.googleAccountId);
- const stored=await stub.nativeGet(linkedKey),prior=await sessionFromCookie(request,stub);
- let subject='';
- if(stored){
-  if(!LOC_SUBJECT.test(String(stored.subject||''))||stored.email!==identity.email)
-   error('LOC Google identity binding mismatch',403);
-  subject=stored.subject;
- }else if(prior&&prior.emailVerified!==false&&prior.email===identity.email&&
-    LOC_SUBJECT.test(String(prior.subject||''))){
-  // No email-only subject enrollment. Prove both existing LOC and Google.
-  subject=prior.subject;
-  await stub.nativePut(linkedKey,{subject,email:identity.email});
- }else error('LOC Google identity needs an existing signed LOC session link',403);
+ const prior=await sessionFromCookie(request,stub);
+ const subject=await googleLocSubject(identity,stub,env,prior);
  const sid=random(),sidHash=await sha(sid);
  const next={subject,provider:'loc',identityProvider:'better-auth-google',
   email:identity.email,emailVerified:true,sidHash,
@@ -150,7 +189,6 @@ async function sessionFromBetter(request,env,stub){
  await stub.nativePut('native-session:'+sidHash,next);
  return {session:next,cookie:cookie(SESSION_COOKIE,sid,SESSION_SECONDS)};
 }
-
 async function issueToken(stub,session,resource,scope,client_id){
  const iat=Math.floor(Date.now()/1000);
  return {access_token:await stub.signLocDelegation({iss:ISSUER,sub:session.subject,

@@ -59,7 +59,7 @@ export function locBetterAuth(env){
   trustedOrigins:[ISSUER,WEB],
   database:(options)=>ADAPTER({...options,__locState:stub}),
   // No LOC password signup or login. Better Auth may persist a Google identity,
-  // but it cannot grant or create an LOC subject without an existing LOC link.
+  // while LOC assigns Subject and permits writes only for its anchored owner.
   emailAndPassword:{enabled:false},
   socialProviders:{google:{clientId,clientSecret,disableIdTokenSignIn:true}},
   account:{accountLinking:{enabled:false}},

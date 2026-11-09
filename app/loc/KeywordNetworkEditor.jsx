@@ -60,7 +60,6 @@ export default function KeywordNetworkEditor({
   className='',
   classId='',
   selectedId='',
-  sourceNodes=null,
   onSelectNode=null,
   onNewChild=null,
   onSelectItem=null,
@@ -83,16 +82,8 @@ export default function KeywordNetworkEditor({
   const [error,setError]=useState('');
   const [selectionLabel,setSelectionLabel]=useState('');
   const graph=useMemo(()=>{
-    if(!Array.isArray(sourceNodes))return buildGraph(items,className,classId,expandedGroup,expandedItemId,groups);
-    const nodes=sourceNodes.map(node=>({id:node.key,label:node.name,
-      level:({universe:0,galaxy:1,domain:2,from:3})[node.type]??3,
-      kind:'source',shape:node.type==='from'?'box':'ellipse'}));
-    const edges=sourceNodes.filter(node=>node.parent).map(node=>({
-      id:node.parent+'>'+node.key,from:node.parent,to:node.key
-    }));
-    const meta=new Map(sourceNodes.map(node=>[node.key,{kind:'source',node}]));
-    return {nodes,edges,meta,rootId:sourceNodes[0]?.key||''};
-  },[sourceNodes,items,className,classId,expandedGroup,expandedItemId,groups]);
+    return buildGraph(items,className,classId,expandedGroup,expandedItemId,groups);
+  },[items,className,classId,expandedGroup,expandedItemId,groups]);
   const graphRef=useRef(graph);
   graphRef.current=graph;
   useEffect(()=>{

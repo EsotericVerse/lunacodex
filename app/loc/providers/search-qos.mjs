@@ -15,28 +15,20 @@ export function isTextSearchQuery(body){
 // A warm Edge isolate's bounded memory map avoids a DB write per search.
 // This is defense-in-depth, not a globally shared IP blacklist.
 export function createSearchQos({now=()=>Date.now(),max=24,windowMs=60000,
-  minIntervalMs=0,blockMs=120000,maxEntries=4096}={}){
+  minIntervalMs=0,maxEntries=4096}={}){
   const entries=new Map();
   return function check(key){
     const identity=String(key||'').slice(0,256)||'anonymous-unknown';
     const time=now();
     let entry=entries.get(identity);
-    if(!entry)entry={times:[],blockedUntil:0,lastAccepted:0};
-    if(entry.blockedUntil>time)return {allowed:false,retryAfterMs:entry.blockedUntil-time,blocked:true};
-    entry.blockedUntil=0;
+    if(!entry)entry={times:[],lastAccepted:0};
     entry.times=entry.times.filter(t=>time-t<windowMs);
     // Count individual SQL search requests, not browser search actions. A
     // single user query may legitimately fan out across multiple Scopes and
     // the Galaxy providers. Do not impose per-request spacing here;
     // the UI enforces search-action spacing separately.
-    // Count attempts even when spacing is denied, so repeated spam
-    // eventually enters a temporary blacklist.
     entry.times.push(time);
-    if(entry.times.length>max){
-      entry.blockedUntil=time+blockMs;
-      entries.set(identity,entry);
-      return {allowed:false,retryAfterMs:blockMs,blocked:true};
-    }
+    if(entry.times.length>max){entries.set(identity,entry);return {allowed:false,retryAfterMs:windowMs,blocked:false};}
     const spacing=entry.lastAccepted?minIntervalMs-(time-entry.lastAccepted):0;
     entries.delete(identity);
     entries.set(identity,entry);

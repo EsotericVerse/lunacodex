@@ -34,20 +34,18 @@ export const DATABASE_ROUTING_CONFIG=Object.freeze({
       primaryControl:true
     })
   }),
-  blacklist:Object.freeze([]),
   primaryId:serverControlAlias?'custom-current':active.target_id,
   backupId:serverControlAlias?null:backup?.target_id||null,
   mode:'single'
 });
 
 export function resolveDatabaseRouting(config=DATABASE_ROUTING_CONFIG){
-  const blocked=new Set(config.blacklist||[]);
   const primary=config.targets?.[config.primaryId];
-  if(!primary||blocked.has(config.primaryId))throw new Error('Primary database route is missing or blacklisted');
+  if(!primary)throw new Error('Primary database route is missing');
   if(primary.provider!=='custom')
     throw new Error('Unsupported SQL primary');
   if(primary.primaryControl!==true)throw new Error('Primary route has no control alias');
-  const backupId=config.backupId&&config.backupId!==config.primaryId&&!blocked.has(config.backupId)?config.backupId:null;
+  const backupId=config.backupId&&config.backupId!==config.primaryId?config.backupId:null;
   const backup=backupId?config.targets?.[backupId]:null;
   if(backupId&&(!backup||backup.provider!=='custom'))
     throw new Error('Database backup route is not supported');

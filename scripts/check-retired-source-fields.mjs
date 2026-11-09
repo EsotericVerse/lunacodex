@@ -4,9 +4,9 @@ import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
-const folders=['app','scripts','workers','extensions','functions','zenstack'];
+const folders=['app','workers','extensions','functions','zenstack'];
 const extensions=/\.(?:[cm]?js|jsx|tsx?|jsonc?|zmodel|sql|vue|py|rb|sh|swift|css|html)$/i;
-const legacy=new RegExp('(?:'+['article','tag'].join('[_-]?')+'|'+['txt','class'].join('[_-]?')+')','i');
+const legacy=/DefaultArticleClass|\btxt_class\b/i;
 const findings=[];
 let checked=0;
 function visit(dir){

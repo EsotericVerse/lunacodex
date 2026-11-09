@@ -391,7 +391,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     data:overview.data?.rows,dataUpdatedAt:overview.dataUpdatedAt};
   // Public Scopes have a published JS category snapshot. Reuse it in Culture
   // and Statistics; never schedule a separate classification request to draw
-  // an already ISR-cached chart. Only an unknown Scope falls back to DefaultArticleClass.
+  // an already ISR-cached chart. Only an unknown Scope falls back to LOC ArticleTag.
   const publishedCatalog=useMemo(()=>publishedSourceCategoryCatalog(scopeId),[scopeId]);
   const othersConfig=useAsyncResource({
     queryKey:['scope-others-source-summary',scopeId],

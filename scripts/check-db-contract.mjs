@@ -79,7 +79,9 @@ export function checkLocScopeBoundary(migrations=[]){
     ['20261105230000_api_scope_registry_loc_group_writes.sql',
       /\bINSERT\s+INTO\s+silver\.loc\s*\(id\b/i],
     ['20261105231000_finish_manage_system_loc_group_cutover.sql',
-      /\bALTER\s+TABLE\s+silver\.loc\s+DROP\s+COLUMN\s+IF\s+EXISTS\s+(?:caches|database)\b/i]
+      /\bALTER\s+TABLE\s+silver\.loc\s+DROP\s+COLUMN\s+IF\s+EXISTS\s+(?:caches|database)\b/i],
+    ['20261109093000_loc_source_article_tag_only.sql',
+      /^ALTER\s+TABLE\s+silver\.loc\s+DROP\s+COLUMN\s+IF\s+EXISTS\s+"DefaultArticleClass"\s*,\s*DROP\s+COLUMN\s+IF\s+EXISTS\s+blacklist$/i]
   ]);
   for(const [name,sql] of migrations){
     const allow=approved.get(name);

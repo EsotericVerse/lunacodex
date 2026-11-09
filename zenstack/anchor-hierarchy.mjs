@@ -8,10 +8,6 @@ const FAMILY_DEFS=Object.freeze({
     root:'category',
     edges:{category:{uid:'class'},class:{uid:'group'},group:{uid:'item'},item:{uid:'pattern'},pattern:{}}
   },
-  source:{
-    root:'universe',
-    edges:{universe:{uid:'galaxy'},galaxy:{uid:'domain'},domain:{uid:'from'},from:{}}
-  },
   time:{
     root:'era',
     edges:{era:{period:'period'},period:{uid:'date'},date:{}}

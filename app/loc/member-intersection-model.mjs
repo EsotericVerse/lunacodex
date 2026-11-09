@@ -6,8 +6,8 @@ const lower=value=>String(value||'').trim().toLowerCase();
 // source names inside Others are counted live from the data, never stored.
 export function assignedSource(value,aliases=[],categories=[]){
   const mapping=aliases.find(row=>lower(row.source_key)===lower(value));
-  const category=lower(mapping?.category_code||'unclassified');
-  return categories.some(row=>row.category_code===category&&row.enabled!==false)?category:'unclassified';
+  const category=lower(mapping?.category_code||'others');
+  return categories.some(row=>row.category_code===category&&row.enabled!==false)?category:'others';
 }
 export function availableMemberMeasures(datasets=[],categories=[]){
   const media=new Set();

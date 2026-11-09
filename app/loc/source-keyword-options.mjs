@@ -1,24 +1,5 @@
-// Shared selector projection for Culture and Statistics. Keyword Class IDs
-// and Source codes remain independent; Source choices consume published
-// Scope Anchor labels, never Galaxy rows or the keyword-analysis engine.
 export function sourceKeywordOptions(taxonomy){
-  const choices=[];
-  const seen=new Set();
-  const domains=new Map((taxonomy?.tree||[]).filter(node=>node.type==='domain')
-    .map(node=>[node.domain_kind,node.name]));
-  for(const [root,rows,codeKey] of [
-    ['system',taxonomy?.categories||[],'category_code'],
-    ['custom',taxonomy?.groups||[],'group_code']
-  ]){
-    for(const row of rows){
-      if(row?.enabled===false)continue;
-      const code=String(row?.[codeKey]||'').trim();
-      const label=String(row?.display_name||code).trim();
-      if(!code||!label||seen.has(code.toLocaleLowerCase()))continue;
-      seen.add(code.toLocaleLowerCase());
-      choices.push({key:root+':'+code,code,root,label,
-        domain:domains.get(root==='system'?'system':'scope')||''});
-    }
-  }
-  return choices;
+ return (taxonomy?.categories||[]).filter(row=>row.enabled!==false).map(row=>({
+  key:'source:'+row.category_code,code:row.category_code,root:'system',label:row.display_name||row.category_code
+ }));
 }

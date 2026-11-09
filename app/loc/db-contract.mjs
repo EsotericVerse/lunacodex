@@ -512,11 +512,6 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     return {count:saved.length,class_uid:mapping.get(original.uid),uid:mapping.get(original.uid)};
   }
 
-  async function isCurrentEmailBlocklisted(){
-    const {data,error}=await authClient.schema('silver').managedAction('is_current_email_blocklisted');
-    if(error)throw new Error(error.message||'無法核對系統黑名單');
-    return data===true;
-  }
 
   async function copyRune66KeywordClassUnchecked(scopeId,sourceClassUid){
     const {generateKeywordClassUid}=await import('./keyword-uidlist.mjs');
@@ -607,7 +602,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     if(error)throw new Error(error.message||'Account sign-out failed');
   }
 
-  return {publicClient,authClient,dbAuthRelation,selectAuthRow,insertRows,insertImportRows,updateRows,deleteRows,updateImportRows,resetKeywordClassification,readKeywordClass,readScopeStatistics,readScopeCategoryTotals,readScopeOverview,readScopeEarliest,readLocStatistics,findGalaxyDuplicates,readKeywordTreeSummary,readKeywordTreeCatalog,readSharedKeywordClasses,writeKeywordLibraryItem,copyKeywordLibraryClass,copyRune66KeywordClass,isCurrentEmailBlocklisted,deleteScope,moveScopeBlock,provisionScope,manageScopeRegistry,getAccountSession,signInWithGoogle,signOutAccount};
+  return {publicClient,authClient,dbAuthRelation,selectAuthRow,insertRows,insertImportRows,updateRows,deleteRows,updateImportRows,resetKeywordClassification,readKeywordClass,readScopeStatistics,readScopeCategoryTotals,readScopeOverview,readScopeEarliest,readLocStatistics,findGalaxyDuplicates,readKeywordTreeSummary,readKeywordTreeCatalog,readSharedKeywordClasses,writeKeywordLibraryItem,copyKeywordLibraryClass,copyRune66KeywordClass,deleteScope,moveScopeBlock,provisionScope,manageScopeRegistry,getAccountSession,signInWithGoogle,signOutAccount};
 }
 
 // One universal hard ceiling for all database read adapters and selected columns.

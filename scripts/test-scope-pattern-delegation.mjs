@@ -129,7 +129,7 @@ test('autocomplete is typed and routed; no client can submit arbitrary SQL',()=>
   const ui=readFileSync(new URL('../app/modular/features/Search.jsx',import.meta.url),'utf8');
   assert.match(server,/q=q\.where\('place_id','=',uid\)/);
   assert.match(server,/type==='date'/);
-  assert.match(server,/sourceValues\.push/);
+  assert.doesNotMatch(server,/sourceValues|type==='domain'|type==='from'/);
   assert.match(server,/attrs\(row\)\[SCOPE_PATTERN_POSTING_KEY\]/);
   assert.match(endpoint,/verifiedIdentity\(request,context\.env\)/);
   assert.match(ui,/from 'react-select'/);
