@@ -30,7 +30,7 @@ async function jsonFetch(url,{fetchImpl=fetch,token}={}){
  const result=await fetchImpl(target.href,{
   headers:{accept:'application/json',...(token?{authorization:'Bearer '+token,
    'user-agent':'LOC-Authority'}:{})},
-  redirect:'error',signal:AbortSignal.timeout(7000)
+  redirect:'manual',signal:AbortSignal.timeout(7000)
  });
  if(!result.ok)reject('External Auth Ref rejected or unavailable',result.status===401?401:502);
  return result.json().catch(()=>reject('Invalid Auth Ref response',502));

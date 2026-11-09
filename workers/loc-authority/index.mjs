@@ -128,7 +128,7 @@ async function mcpNativeRequest(env,kind,scopeid,fields,locDelegation){
     method:'POST',headers:{authorization:'Bearer '+locDelegation,
       'content-type':'application/json',accept:'application/json'},
     body:JSON.stringify({kind,scopeid,...fields}),
-    signal:AbortSignal.timeout(25000),redirect:'error',cache:'no-store'
+    signal:AbortSignal.timeout(25000),redirect:'manual',cache:'no-store'
   });
   if(!response.ok){
     let reason='LOC native application operation rejected';

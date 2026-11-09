@@ -9,8 +9,7 @@
     "/api/loc-public-classes",
     "/api/loc-authority-role",
     "/api/loc-native",
-    "/api/keywords",
-    "/api/loc-db-probe"
+    "/api/keywords"
   ],
   "exclude": []
 }

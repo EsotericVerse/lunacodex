@@ -298,7 +298,7 @@ async function discovery(config){
  return metadata;
 }
 async function requestJson(url,options={}){
- const r=await fetch(url,{...options,redirect:'error',
+ const r=await fetch(url,{...options,redirect:'manual',
   signal:AbortSignal.timeout(8000)});
  if(!r.ok)error('External identity provider unavailable',502);
  return r.json().catch(()=>error('Invalid identity provider response',502));
@@ -631,7 +631,9 @@ async function importShort(request,env,stub,origin){
  const upstream=await fetch(endpoint,{method:'POST',
   headers:{authorization:'Bearer '+signed,'content-type':'application/json'},
   body:JSON.stringify({kind:'short-import',scopeid:scope,batch}),
-  signal:AbortSignal.timeout(25000),redirect:'error'});
+  signal:AbortSignal.timeout(25000),redirect:'manual'});
+ if(upstream.type==='opaqueredirect'||upstream.status>=300&&upstream.status<400)
+  error('Unexpected LOC application redirect',502);
  return new Response(upstream.body,{status:upstream.status,headers:{
   'content-type':'application/json; charset=utf-8','cache-control':'no-store',
   ...(origin?{'access-control-allow-origin':origin,vary:'origin'}:{})}});

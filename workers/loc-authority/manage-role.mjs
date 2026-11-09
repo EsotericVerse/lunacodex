@@ -19,7 +19,7 @@ export async function locRegistryRoles(env,email,{fetchImpl=globalThis.fetch}={}
   try{
     response=await fetchImpl(url.href,{
       method:'GET',headers:{'x-loc-service-token':secret,accept:'application/json'},
-      redirect:'error',cache:'no-store',signal:AbortSignal.timeout(8000)
+      redirect:'manual',cache:'no-store',signal:AbortSignal.timeout(8000)
     });
   }catch{throw Object.assign(new Error('LOC Auth registry lookup unavailable'),{status:503})}
   if(!response.ok)

@@ -25,7 +25,7 @@ export async function readPublicKeywordClasses(scopeid,{fetchImpl=fetch}={}){
     encodeURIComponent(scopeid);
   const response=await fetchImpl(url,{
     method:'GET',headers:{accept:'application/json'},credentials:'omit',
-    redirect:'error',cache:'no-store',signal:AbortSignal.timeout(8000)
+    redirect:'manual',cache:'no-store',signal:AbortSignal.timeout(8000)
   });
   if(!response.ok)
     throw Object.assign(new Error('Public Class verification unavailable'),{status:503});

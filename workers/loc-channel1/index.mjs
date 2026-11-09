@@ -59,7 +59,7 @@ async function sync(env){
    const response=await fetch(env.LOC_GALAXY_SYNC_URL,{
     method:'POST',headers:{'content-type':'application/json',
      authorization:'Bearer '+env.LOC_GALAXY_SYNC_SECRET},
-    body:JSON.stringify(batch),redirect:'error',signal:AbortSignal.timeout(20000)
+    body:JSON.stringify(batch),redirect:'manual',signal:AbortSignal.timeout(20000)
    });
    if(!response.ok)throw Error('Galaxy HTTP '+response.status);
    const result=await response.json();
