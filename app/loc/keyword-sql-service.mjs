@@ -7,7 +7,7 @@ import {keywordClassCatalog} from './keyword-tree.mjs';
 import {analyzeIncrementalKeywordPatterns} from './keyword-incremental.mjs';
 import {createIndexedDateKeywordReader} from './keyword-article-reader.mjs';
 import {completeKeywordClass,invalidateKeywordClass} from './keyword-class-state.mjs';
-import {readScopePatternRows,storeScopePatternMatches,ensureScopePatternLibrary,SCOPE_PATTERN_INDEX_VERSION,scopePatternScanClocks} from './keyword-anchor-index.mjs';
+import {readScopePatternRows,storeScopePatternMatches,ensureScopePatternLibrary,SCOPE_PATTERN_POSTING_KEY,SCOPE_PATTERN_INDEX_VERSION,scopePatternScanClocks} from './keyword-anchor-index.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[0-9A-Za-z]{8}$/;
@@ -353,9 +353,8 @@ export async function resetKeywordScope(db,scope,classUid,{
     const reset=stored.filter(row=>unique.includes(norm(row.pattern))&&row.uid_list.length);
     for(let i=0;i<reset.length;i+=100){
       const updated=reset.slice(i,i+100).map(row=>{
-        const posting={...row.attr,[dbUid]:[]};
-        const total=Object.values(posting).reduce((count,ids)=>
-          count+(Array.isArray(ids)?new Set(ids).size:0),0);
+        const posting={...row.attr,[SCOPE_PATTERN_POSTING_KEY]:[]};
+        const total=0;
         return {uid:row.uid,type:'pattern',attr:JSON.stringify(posting),num:total};
       });
       await trx.insertInto(anchorName(scope)).values(updated)
