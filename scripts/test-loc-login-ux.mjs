@@ -14,7 +14,7 @@ test('standalone LOC Auth login preserves the original scenic design',()=>{
   assert.match(page,/id='loc-sso-login'/);
   assert.match(page,/ssoButton.addEventListener\('click'/);
   assert.match(page,/credentials:'include'/);
-  assert.match(page,/byId\('return'\).click\(\)/);
+  assert.match(page,/returnToLoc\(\)/);
   assert.match(page,/if\(!signedIn\)\{/);
   assert.match(styles,/\.loc-login-choice/);
   assert.match(styles,/@media\s*\(max-width:\s*760px\)/);
