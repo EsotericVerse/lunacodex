@@ -91,6 +91,6 @@ test('LOC Authority target updates reuse encrypted SQL secrets without browser e
 test('Worker management uses verified OAuth email and database registry role',()=>{
  const worker=read('workers/loc-authority/index.mjs');
  assert.match(worker,/principal\.emailVerified===true/);
- assert.match(worker,/isLocWriteOwner\(principal\.email\)/);
+ assert.match(worker,/isLocRegistryAdmin\(await locRegistryRoles\(env,principal\.email\)\)/);
  assert.doesNotMatch(worker,/roots\.includes\(principal\.subject\)/);
 });
