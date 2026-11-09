@@ -97,20 +97,21 @@ test('Managed write is refused without a global:manage grant',async()=>{
   assert.equal(executed.length,0,'no SQL must run when the policy gate refuses');
 });
 
-test('Managed write rejects any table outside api.manage / silver.loc',async()=>{
+test('Managed write cannot route arbitrary api tables through Registry management',async()=>{
   const now=Math.floor(Date.now()/1000);
   const {token,fetchImpl}=await ownerDelegation(now,['global:manage']);
   const {executed,dialect}=fixedModelDialect();
+  const db=new Kysely({dialect});
   const body={kind:'managed-write',scopeid:'',payload:{
-    p_table:'silver.lo3rwang',p_operation:'update',
-    p_values:{display_name:'hijacked'},
-    p_filters:[{column:'id',operator:'eq',value:'lo3rwang'}]
+    p_table:'api.user_records',p_operation:'update',
+    p_values:{value:'hijacked'},
+    p_filters:[{column:'id',operator:'eq',value:'someone-else'}]
   }};
-  const response=await handleNativeLocOperation(request(body,token),{},{
-    fetchImpl,database:async()=>({engine:'postgres',dialect,db:{}})
-  });
-  assert.equal(response.status,403);
-  assert.equal(executed.length,0);
+  const response=await handleNativeLocOperation(request(body,token),{},
+    {fetchImpl,database:async()=>({engine:'postgres',dialect,db})});
+  assert.equal(response.status,400);
+  assert.equal(executed.length,0,'arbitrary api table must never reach SQL');
+  await db.destroy();
 });
 
 test('Managed write rejects an unfiltered delete before any SQL runs',async()=>{
