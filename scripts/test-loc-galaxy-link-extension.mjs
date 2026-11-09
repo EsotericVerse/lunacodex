@@ -225,3 +225,37 @@ test('runtime: 429 rate limit blocks manual retry as well',async()=>{
  assert.equal(h.requestLog.length,0);
  assert.equal(h.saved.length,1);
 });
+
+
+test('runtime: ChatGPT DOM captures one turn at a time and never treats AI as user',()=>{
+ const helper=content.slice(content.indexOf('  const TURN_SELECTOR='),
+  content.indexOf('  function extract('));
+ const createTurn=(role,index,headings=false)=>{
+  const body={innerText:role+' content',querySelectorAll:()=>[],
+   getAttribute:key=>key==='data-testid'?role+'-message':null};
+  const turn={innerText:'toolbar should not be archived',
+   getAttribute:key=>key==='data-testid'?'conversation-turn-'+index:null,
+   matches:()=>true,closest:()=>turn,
+   querySelector:selector=>!headings&&selector.includes(role+'-message')?body:null,
+   querySelectorAll:selector=>selector.includes('h5,h6,')&&headings?
+    [{textContent:role==='user'?'You said':'ChatGPT said'}]:[]};
+  return turn;
+ };
+ const user=createTurn('user',0),assistant=createTurn('assistant',1);
+ const document={body:{},querySelector:()=>null};
+ const location={hostname:'chatgpt.com',href:'https://chatgpt.com/c/test'};
+ const api=new Function('location','document','normalizeUrl','cleanText','visible','links',
+  helper+'return {roleOf,conversationTurns};')(
+   location,document,x=>x,node=>node?.innerText||'',()=>true,()=>[]);
+ const main={matches:()=>false,closest:()=>null,
+  querySelectorAll:()=>[user,assistant]};
+ const users=api.conversationTurns(main,false);
+ assert.equal(users.length,1);
+ assert.match(users[0].content,/^\[user\]\nuser content/);
+ assert.doesNotMatch(users[0].content,/toolbar|assistant content/);
+ const both=api.conversationTurns(main,true);
+ assert.equal(both.length,2);
+ assert.match(both[1].content,/^\[assistant\]\nassistant content/);
+ assert.equal(api.roleOf(createTurn('user',2,true)),'user');
+ assert.equal(api.roleOf(createTurn('assistant',3,true)),'assistant');
+});
