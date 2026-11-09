@@ -44,7 +44,7 @@ async function signedDelegation(pair,kid,claims){
     pair.privateKey,new TextEncoder().encode(header+'.'+payload)));
   return header+'.'+payload+'.'+b64(digest);
 }
-async function ownerDelegation(now,grants,audience='sql'){
+async function ownerDelegation(now,grants,audience='sql',targetId=null){
   const pair=await crypto.subtle.generateKey({name:'RSASSA-PKCS1-v1_5',
     modulusLength:2048,publicExponent:new Uint8Array([1,0,1]),hash:'SHA-256'
   },true,['sign','verify']);
@@ -52,7 +52,7 @@ async function ownerDelegation(now,grants,audience='sql'){
   const jwk={...await crypto.subtle.exportKey('jwk',pair.publicKey),
     use:'sig',alg:'RS256',kid};
   const claims=issueDelegation({sub:'loc_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
-    email:'sopa2306@gmail.com',grants,audience,sid:'managed-write-session',now});
+    email:'sopa2306@gmail.com',grants,audience,sid:'managed-write-session',now,targetId});
   const token=await signedDelegation(pair,kid,claims);
   return {token,fetchImpl:async()=>Response.json({keys:[jwk]})};
 }
@@ -184,5 +184,29 @@ test('MCP signed write cannot insert when api.manage admin has been revoked',asy
   assert.equal(response.status,403);
   assert.ok(executed.some(x=>/from "api"\."manage"/i.test(x.sql)));
   assert.equal(executed.some(x=>/insert into "silver"\."lo3rwang_galaxy"/i.test(x.sql)),false);
+  await db.destroy();
+});
+
+test('Selected loc-main remains writable for signed MCP and external targets remain read-only',async()=>{
+  const now=Math.floor(Date.now()/1000);
+  const owner=await ownerDelegation(now,['lo3rwang:write'],'mcp','loc-main');
+  const {executed,dialect}=fixedModelDialect();
+  const db=new Kysely({dialect});
+  const body={kind:'mcp-sync',scopeid:'lo3rwang',update_existing:false,
+    row:{uid:'Ab12Cd34',site:'mcp',site_id:'conversation-1',title:'Conversation',content:'Text',
+      ...Object.fromEntries(['culture','trace','search','statics','list','extract','others','keyword']
+        .map(key=>[key,false]))}};
+  let alias='';
+  const success=await handleNativeLocOperation(request(body,owner.token,'https://mcp.lo3rwang.cc'),{},
+    {fetchImpl:owner.fetchImpl,database:async(_env,selected)=>{
+      alias=selected;return {engine:'postgres',namespace:'silver',db};
+    }});
+  assert.equal(success.status,200);
+  assert.equal(alias,'loc-main');
+  assert.ok(executed.some(x=>/insert into "silver"\."lo3rwang_galaxy"/i.test(x.sql)));
+  const external=await ownerDelegation(now,['lo3rwang:write'],'mcp','office_mysql');
+  const rejected=await handleNativeLocOperation(request(body,external.token,'https://mcp.lo3rwang.cc'),{},
+    {fetchImpl:external.fetchImpl,database:async()=>{throw Error('External writes must not open SQL');}});
+  assert.equal(rejected.status,403);
   await db.destroy();
 });
