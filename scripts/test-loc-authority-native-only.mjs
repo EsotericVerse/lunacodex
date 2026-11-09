@@ -11,7 +11,8 @@ test('LOC Authority verifies only signed native login identities',()=>{
   const worker=read('workers/loc-authority/index.mjs');
   assert.match(worker,/const principal=await verifyNativeOAuth\(request,env,WEB_AUDIENCE\)/);
   assert.doesNotMatch(worker,/verifyIdentityToken\(/);
-  assert.match(worker,/LOC_RECOVERY_ROOT_LOC_SUBJECTS/);
+  assert.match(worker,/verifiedLocOwner\(principal\)/);
+  assert.doesNotMatch(worker,/LOC_RECOVERY_ROOT_LOC_SUBJECTS/);
   assert.match(worker,/const sub=principal\.subject/);
 });
 
@@ -23,17 +24,19 @@ test('LOC credentials remain encrypted in the Authority state',()=>{
   assert.match(worker,/id:'loc-main'/);
 });
 
-test('a signed Scope grant cannot become a global or another Scope grant',()=>{
+test('only a verified owner receives a write delegation',()=>{
   const now=Math.floor(Date.now()/1000);
-  const claims=issueDelegation({sub:'loc_'+('A'.repeat(40)),
+  assert.throws(()=>issueDelegation({sub:'loc_'+('A'.repeat(40)),
     email:'reader@example.org',grants:['lrunes:manage'],audience:'sql',
+    sid:'verified-test',now,seconds:300}),/Only verified LOC owner/);
+  const claims=issueDelegation({sub:'loc_'+('A'.repeat(40)),
+    email:'sopa2306@gmail.com',grants:['lrunes:manage'],audience:'sql',
     sid:'verified-test',now,seconds:300});
   const result=verifyDelegationBoundary(claims,{kind:'query'});
   assert.equal(canManageDelegation(result.claims,'scope','lrunes'),true);
   assert.equal(canManageDelegation(result.claims,'scope','lo3rwang'),false);
   assert.equal(canManageDelegation(result.claims,'global'),false);
 });
-
 test('LOC Authority target updates reuse encrypted SQL secrets without browser exposure',async()=>{
   const source=read('workers/loc-authority/index.mjs');
   const start=source.indexOf('function validateTarget(');
@@ -84,9 +87,9 @@ test('LOC Authority target updates reuse encrypted SQL secrets without browser e
     database:'loc',username:'user'}),/requires its database password/);
 });
 
-test('unverified first-party LOC identity remains subject-bound, not email-granted',()=>{
- const worker=readFileSync(new URL('../workers/loc-authority/index.mjs',import.meta.url),'utf8');
- assert.doesNotMatch(worker,/if\(principal\.emailVerified===false\)\s*\{/);
- assert.match(worker,/roots\.includes\(principal\.subject\)/);
- assert.match(worker,/stub\.mayAccess\(\{provider:principal\.provider,subject:principal\.subject,scope,action\}\)/);
+test('Worker management uses verified owner email, not root subject or grants',()=>{
+ const worker=read('workers/loc-authority/index.mjs');
+ assert.match(worker,/principal\.emailVerified===true/);
+ assert.match(worker,/isLocWriteOwner\(principal\.email\)/);
+ assert.doesNotMatch(worker,/roots\.includes\(principal\.subject\)/);
 });
