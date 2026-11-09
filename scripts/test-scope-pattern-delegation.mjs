@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {literalItemWords,scopeDatabaseUid,readScopePatternRows,
+import {literalItemWords,SCOPE_PATTERN_POSTING_KEY,readScopePatternRows,
   ensureScopePatternLibrary,storeScopePatternMatches,scopePatternScanClocks,
   SCOPE_PATTERN_INDEX_VERSION} from '../app/loc/keyword-anchor-index.mjs';
 import {indexZModelAnchorHierarchy} from '../zenstack/anchor-hierarchy.mjs';
@@ -73,29 +73,23 @@ function fakeDatabase(initial){
     }
   };
 }
-const DB='DB000001',DB2='DB000002';
-const base=()=>fakeDatabase({
-  'silver.loc_anchor':[
-    {uid:DB,type:'database',title:'Native'},
-    {uid:'MAP00001',type:'table',title:'silver.demo_galaxy',
-      attr:{database_uid:DB,mapping:{uid:'uid'}}}
-  ],
-  'silver.demo_anchor':[
+const DB=SCOPE_PATTERN_POSTING_KEY;
+const base=()=>fakeDatabase({  'silver.demo_anchor':[
     {uid:'ITM00001',type:'item',title:'水',attr:{keyword:['火','水','水AND土']}},
     {uid:'ITM00002',type:'item',title:'水土',attr:{keyword:['火','風']}}
   ]
 });
 
-test('owner Mapping resolves DB UID, never derives it from the Scope ID',async()=>{
+test('Pattern index does not require source registry queries',async()=>{
   const db=base();
-  assert.equal(await scopeDatabaseUid(db,'demo'),DB);
-  await assert.rejects(()=>scopeDatabaseUid(db,'other'),/Mapping/);
+  await ensureScopePatternLibrary(db,'demo');
+  assert.equal(db.tables.size,1);
 });
 test('Pattern terms exclude instructions and share the same UID across Items',async()=>{
   const db=base();
   assert.deepEqual(literalItemWords({title:'水',attr:{keyword:['火','水AND土']}}),
     ['水','火']);
-  const x=await ensureScopePatternLibrary(db,'demo',DB);
+  const x=await ensureScopePatternLibrary(db,'demo');
   assert.equal(x.created,4);
   assert.equal(x.linked,2);
   const nodes=db.tables.get('silver.demo_anchor');
@@ -110,26 +104,23 @@ test('Pattern terms exclude instructions and share the same UID across Items',as
       ?JSON.parse(row.attr):row.attr
   })),{family:'keyword'});
   assert.equal(graph.parentsOf(fire.uid).length,2);
-  const rerun=await ensureScopePatternLibrary(db,'demo',DB);
+  const rerun=await ensureScopePatternLibrary(db,'demo');
   assert.equal(rerun.created,0);
   assert.equal(rerun.linked,0);
 });
 test('Postings are scoped to database UID; number is per distinct article',async()=>{
   const db=base();
-  await ensureScopePatternLibrary(db,'demo',DB);
-  const first=await storeScopePatternMatches(db,'demo',DB,[
+  await ensureScopePatternLibrary(db,'demo');
+  const first=await storeScopePatternMatches(db,'demo',[
     {pattern:'火',count:2,uid_list:['ART00001','ART00002']}]);
   assert.equal(first.changed,1);
   const row=db.tables.get('silver.demo_anchor').find(row=>row.title==='火');
   assert.equal(row.num,2);
   assert.deepEqual(JSON.parse(row.attr)[DB],['ART00001','ART00002']);
-  await storeScopePatternMatches(db,'demo',DB2,[
-    {pattern:'火',count:1,uid_list:['ART00001']}]);
-  assert.equal(row.num,3);
-  assert.equal(Object.keys(JSON.parse(row.attr)).length,2);
-  const native=await readScopePatternRows(db,'demo',DB);
+  assert.equal(Object.keys(JSON.parse(row.attr)).length,1);
+  const native=await readScopePatternRows(db,'demo');
   assert.equal(native.find(p=>p.pattern==='火').count,2);
-  await assert.rejects(()=>storeScopePatternMatches(db,'demo',DB,[
+  await assert.rejects(()=>storeScopePatternMatches(db,'demo',[
     {pattern:'火',count:2,uid_list:['ART00001','ART00001']}]),/not consistent/);
 });
 test('autocomplete is typed and routed; no client can submit arbitrary SQL',()=>{
@@ -139,7 +130,7 @@ test('autocomplete is typed and routed; no client can submit arbitrary SQL',()=>
   assert.match(server,/q=q\.where\('place_id','=',uid\)/);
   assert.match(server,/type==='date'/);
   assert.match(server,/sourceValues\.push/);
-  assert.match(server,/attrs\(row\)\[dbUid\]/);
+  assert.match(server,/attrs\(row\)\[SCOPE_PATTERN_POSTING_KEY\]/);
   assert.match(endpoint,/verifiedIdentity\(request,context\.env\)/);
   assert.match(ui,/from 'react-select'/);
   assert.match(ui,/executeAnchorSelection\(choice\)/);
