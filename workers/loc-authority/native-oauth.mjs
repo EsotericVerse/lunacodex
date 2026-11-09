@@ -612,6 +612,8 @@ async function token(request,stub,origin){
    error('OAuth resource mismatch',401);
   const session=await sessionForHash(stub,item.sidHash);
   if(!session)error('LOC session expired',401);
+  if(!await approvedConsent(stub,session.subject,client.client_id,item.resource,item.scope))
+   error('LOC OAuth data consent missing or revoked',403);
   const refresh=random();
   await put(stub,'native-refresh',refresh,{sidHash:item.sidHash,
    client_id:client.client_id,scope:item.scope,resource:item.resource,
@@ -629,6 +631,8 @@ async function token(request,stub,origin){
    error('OAuth resource mismatch',401);
   const session=await sessionForHash(stub,item.sidHash);
   if(!session)error('LOC session expired',401);
+  if(!await approvedConsent(stub,session.subject,client.client_id,item.resource,item.scope))
+   error('LOC OAuth data consent missing or revoked',403);
   const refresh=random();
   await put(stub,'native-refresh',refresh,{...item,
    expires:Date.now()+REFRESH_SECONDS*1000});
