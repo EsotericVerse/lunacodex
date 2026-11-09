@@ -12,12 +12,14 @@ const encoder=new TextEncoder();
 const b64=x=>Buffer.from(x instanceof Uint8Array?x:
  typeof x==='string'?x:JSON.stringify(x)).toString('base64url');
 
+let registryOutage=false;
 function roleLookupFixture(address){
  let url;
  try{url=new URL(String(address))}catch{return null}
  if(url.origin!=='https://loc.lo3rwang.cc'||url.pathname!=='/api/loc-authority-role')
    return null;
  const email=String(url.searchParams.get('email')||'').toLowerCase();
+ if(registryOutage)return Response.json({error:'registry unavailable'},{status:503});
  return Response.json({rows:email==='sopa2306@gmail.com'?[{
    id:'lo3rwang',email,role:'admin',active:true
  }]:[]});
@@ -360,4 +362,35 @@ test('verified single LOC owner recovers original Subject even without prior coo
  assert.equal(await googleLocSubject(owner,stub,env),root);
  const other={googleAccountId:'g-other',email:'other@example.org',emailVerified:true};
  assert.notEqual(await googleLocSubject(other,stub,env),root);
+});
+
+
+test('Google OAuth login survives an unavailable role registry without giving write rights',async()=>{
+ const {env,stub,records}=environment();
+ const identity={googleAccountId:'g-outage-reader',email:'outage-reader@example.org',emailVerified:true};
+ registryOutage=true;
+ try{
+  const subject=await googleLocSubject(identity,stub,env);
+  assert.match(subject,/^loc_[A-Za-z0-9_-]{40}$/);
+  assert.equal(await googleLocSubject(identity,stub,env),subject);
+  assert.ok(records.size>=1);
+ }finally{registryOutage=false;}
+});
+test('registry outage preserves an existing bound owner identity but never grants new owner identity',async()=>{
+ const {env,stub,records}=environment();
+ const root='loc_'+'R'.repeat(40);
+ const email='outage-existing@example.org',googleAccountId='g-outage-existing';
+ const digest=Buffer.from(await crypto.subtle.digest('SHA-256',
+  new TextEncoder().encode('google:'+googleAccountId))).toString('hex');
+ const key='native-google-link:'+digest;
+ records.set(key,{subject:root,email});
+ env.LOC_RECOVERY_ROOT_LOC_SUBJECTS=root;
+ registryOutage=true;
+ try{
+  const same=await googleLocSubject({googleAccountId,email,emailVerified:true},stub,env);
+  assert.equal(same,root,'already verified owner link must not be discarded during outage');
+  const other=await googleLocSubject({googleAccountId:'g-outage-new',
+   email:'outage-new@example.org',emailVerified:true},stub,env);
+  assert.notEqual(other,root,'new identity cannot claim protected root in outage');
+ }finally{registryOutage=false;}
 });
