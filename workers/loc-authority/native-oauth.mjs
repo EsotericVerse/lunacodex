@@ -1,4 +1,4 @@
-import {issueDelegation} from '../../app/loc/auth/delegation-contract.mjs';
+import {issueDelegation,isLocWriteOwner} from '../../app/loc/auth/delegation-contract.mjs';
 import {checkExternalAuthQos} from './auth-qos.mjs';
 import {handleFirstPartyAuth,hasFirstPartyCookie,firstPartySession,firstPartySignOut} from './better-auth-native.mjs';
 import {verifyAuthReference} from './auth-ref.mjs';
@@ -570,10 +570,9 @@ async function importShort(request,env,stub,origin){
  const requestedScope=new URL(request.url).searchParams.get('scopeid');
  const scope=requestedScope===null?String(env.LOC_IMPORT_SCOPE_ID||'lo3rwang'):requestedScope;
  if(!SCOPE_ID.test(scope))error('Import Scope invalid',503);
- const roots=String(env.LOC_RECOVERY_ROOT_LOC_SUBJECTS||'').split(/[\s,;]+/).filter(Boolean);
- if(!roots.includes(identity.subject)&&
-  !await stub.mayAccess({provider:'loc',subject:identity.subject,scope,action:'write'}))
-  error('LOC Scope write permission required',403);
+ if(identity.provider!=='loc'||identity.emailVerified!==true||
+    !isLocWriteOwner(identity.email))
+   error('Verified LOC owner required for import',403);
  const raw=await request.text();
  if(TXT.encode(raw).length>1048576)error('Import batch too large',413);
  let batch;try{batch=JSON.parse(raw);}catch{error('Invalid import JSON');}
@@ -583,8 +582,7 @@ async function importShort(request,env,stub,origin){
  // own Kysely connection. It accepts only a signed Scope-specific import.
  const endpoint='https://mcp.lo3rwang.cc/api/loc-native';
  const now=Math.floor(Date.now()/1000);
- const selectedTarget=await stub.selectedDatabaseForDelegation(identity.subject,
-  roots.includes(identity.subject));
+ const selectedTarget=await stub.selectedDatabaseForDelegation(identity.subject,true);
  const delegation=issueDelegation({sub:identity.subject,email:identity.email,
   grants:[scope+':write'],audience:'sql',sid:crypto.randomUUID(),now,seconds:300,
   targetId:selectedTarget});
