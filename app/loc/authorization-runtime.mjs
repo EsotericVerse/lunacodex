@@ -1,4 +1,5 @@
-// Browser-runtime authorization gate. Only three authority fields per entry.
+// Browser-runtime authorization gate. Only the verified LOC owner may edit.
+import {isLocWriteOwner} from './auth/delegation-contract.mjs';
 // This is a UX preflight, not a substitute for the server's RLS/RPC checks.
 let userId='';
 let email='';
@@ -18,6 +19,10 @@ export function setAuthorization(user,rows=[]){
   const id=String(user?.id||'');
   const verifiedEmail=normalizeEmail(user?.email);
   if(!id||!verifiedEmail)throw new Error('無法取得已確認的登入身分。');
+  if(!isLocWriteOwner(verifiedEmail)){
+    userId=id;email=verifiedEmail;entries=Object.freeze([]);
+    return entries;
+  }
   const next=(Array.isArray(rows)?rows:[]).flatMap(row=>{
     const scopeid=normalizeScope(row?.scopeid||row?.id);
     const recordEmail=normalizeEmail(row?.email);

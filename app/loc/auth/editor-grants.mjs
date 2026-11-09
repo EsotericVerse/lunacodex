@@ -2,6 +2,7 @@
 // Never query a management SQL table to establish a browser edit session.
 // This response is a UI preflight only; authenticated server writes must
 // independently verify the signed LOC delegation and requested operation.
+import {isLocWriteOwner} from './delegation-contract.mjs';
 const LOC_AUTH='https://auth.lo3rwang.cc';
 const SUBJECT=/^loc_[A-Za-z0-9_-]{32,80}$/;
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -24,6 +25,7 @@ export async function readLocEditorGrants(session,{
   if(!SUBJECT.test(String(user?.id||''))||!EMAIL.test(email)||
      typeof token!=='string'||token.split('.').length!==3)
     throw new Error('LOC Auth verified session required');
+  if(!isLocWriteOwner(email))return [];
   if(typeof fetchImpl!=='function')throw new Error('LOC Auth transport unavailable');
   const response=await fetchImpl(trustedOrigin(authorityOrigin)+'/v1/delegation',{
     method:'POST',

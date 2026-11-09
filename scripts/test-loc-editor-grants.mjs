@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {readLocEditorGrants} from '../app/loc/auth/editor-grants.mjs';
 
-const user={id:'loc_'+('A'.repeat(40)),email:'Owner@Example.org'};
+const user={id:'loc_'+('A'.repeat(40)),email:'SOPA2306@GMAIL.COM'};
 const session={user,oauth:{email:user.email},session:{access_token:'signed.loc.token'}};
 const reply=grants=>Response.json({audience:'loc-delegation',grants});
 test('clicked editor authorization calls native LOC Auth exactly once, no manage SQL lookup',async()=>{
@@ -13,8 +13,8 @@ test('clicked editor authorization calls native LOC Auth exactly once, no manage
     fetchImpl:async(url,init)=>{calls.push({url,init});return reply(['loc:manage','lo3rwang:manage']);}
   });
   assert.deepEqual(result,[
-    {id:'loc',email:'owner@example.org',role:'group',manage_role:'group'},
-    {id:'lo3rwang',email:'owner@example.org',role:'scope',manage_role:'scope'}
+    {id:'loc',email:'sopa2306@gmail.com',role:'group',manage_role:'group'},
+    {id:'lo3rwang',email:'sopa2306@gmail.com',role:'scope',manage_role:'scope'}
   ]);
   assert.equal(calls.length,1);
   assert.equal(calls[0].url,'https://auth.lo3rwang.cc/v1/delegation');
@@ -29,6 +29,15 @@ test('native LOC Auth root delegation creates admin role without management SQL'
     'global:manage','global:manage','lrunes:manage'
   ])});
   assert.deepEqual(result.map(x=>[x.id,x.role]),[['admin','admin'],['lrunes','scope']]);
+});
+test('other OAuth users receive no write permission even with old management grants',async()=>{
+  let calls=0;
+  const stranger={...session,user:{...user,email:'reader@example.org'}};
+  const rows=await readLocEditorGrants(stranger,{
+    fetchImpl:async()=>{calls++;return reply(['global:manage']);}
+  });
+  assert.deepEqual(rows,[]);
+  assert.equal(calls,0);
 });
 test('anonymous click never contacts management SQL or LOC Authority delegation',async()=>{
   let calls=0;

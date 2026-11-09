@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {webcrypto} from 'node:crypto';
 import {
  ISSUER,WEB_AUDIENCE,MCP_AUDIENCE,IMPORT_AUDIENCE,
- handleNativeOAuth,verifyNativeOAuth
+ handleNativeOAuth,verifyNativeOAuth,googleLocSubject
 } from '../workers/loc-authority/native-oauth.mjs';
 import {runBetterAuthStore} from '../workers/loc-authority/better-auth-store.mjs';
 
@@ -91,7 +91,7 @@ test('GitHub verified identity -> LOC cookie -> per-install PKCE -> signed token
   if(address==='https://api.github.com/user')
    return Response.json({id:123456,login:'owner'});
   if(address==='https://api.github.com/user/emails')
-   return Response.json([{email:'owner@example.org',verified:true,primary:true}]);
+   return Response.json([{email:'sopa2306@gmail.com',verified:true,primary:true}]);
   if(address==='https://mcp.lo3rwang.cc/api/loc-native'){
    upstreamCalls++;
    forwarded={...options,body:JSON.parse(options.body)};
@@ -128,7 +128,7 @@ test('GitHub verified identity -> LOC cookie -> per-install PKCE -> signed token
   const profile=await signedIn.json();
   assert.equal(profile.provider,'loc');
   assert.match(profile.user.id,/^loc_[A-Za-z0-9_-]{40}$/);
-  assert.equal(profile.user.email,'owner@example.org');
+  assert.equal(profile.user.email,'sopa2306@gmail.com');
   const webIdentity=await verifyNativeOAuth(request('/v1/delegation',{
    headers:{authorization:'Bearer '+profile.session.access_token}}),env,WEB_AUDIENCE);
   assert.equal(webIdentity.subject,profile.user.id);
@@ -183,9 +183,6 @@ test('GitHub verified identity -> LOC cookie -> per-install PKCE -> signed token
   const send=()=>request('/v1/import/short',{method:'POST',
    headers:{origin,authorization:'Bearer '+next.access_token,
     'content-type':'application/json'},body:JSON.stringify(batch)});
-  assertStatus(await handleNativeOAuth(send(),env),403);
-  assert.equal(upstreamCalls,0,'no SQL write without explicit LOC root or Scope grant');
-  env.LOC_RECOVERY_ROOT_LOC_SUBJECTS=profile.user.id;
   const imported=await handleNativeOAuth(send(),env);
   assertStatus(imported,200);
   assert.equal((await imported.json()).accepted,true);
@@ -294,7 +291,7 @@ test('verified owner Google identity preserves the original root, but other Goog
  env.LOC_RECOVERY_ROOT_LOC_SUBJECTS=root;
  stub.delegationGrantProfile=async(provider,subject)=>{
   assert.equal(provider,'loc');assert.equal(subject,root);
-  return {email:'owner@example.org'};
+  return {email:'sopa2306@gmail.com'};
  };
  stub.nativeBindGoogleOwner=async(subject,id,email)=>{
   const key='native-google-owner:'+subject,old=records.get(key);
@@ -302,7 +299,7 @@ test('verified owner Google identity preserves the original root, but other Goog
    throw Object.assign(new Error('LOC owner Google account already bound'),{status:403});
   if(!old)records.set(key,{googleAccountId:id,email});
  };
- const owner={googleAccountId:'g-owner',email:'owner@example.org',emailVerified:true};
+ const owner={googleAccountId:'g-owner',email:'sopa2306@gmail.com',emailVerified:true};
  const reader={googleAccountId:'g-reader',email:'reader@example.org',emailVerified:true};
  assert.equal(await googleLocSubject(owner,stub,env),root);
  assert.notEqual(await googleLocSubject(reader,stub,env),root);
@@ -320,13 +317,29 @@ test('operator-pinned, Google-verified email can restore the original owner with
  const {env,stub,records}=environment();
  const root='loc_'+'R'.repeat(40);
  env.LOC_RECOVERY_ROOT_LOC_SUBJECTS=root;
- env.LOC_RECOVERY_ROOT_GOOGLE_EMAIL='owner@example.org';
+ env.LOC_RECOVERY_ROOT_GOOGLE_EMAIL='sopa2306@gmail.com';
  stub.nativeBindGoogleOwner=async(subject,id,email)=>{
   const key='native-google-owner:'+subject;
   if(records.has(key)&&records.get(key).googleAccountId!==id)throw Error('already bound');
   records.set(key,{googleAccountId:id,email});
  };
- const identity={googleAccountId:'g-owner',email:'owner@example.org',emailVerified:true};
+ const identity={googleAccountId:'g-owner',email:'sopa2306@gmail.com',emailVerified:true};
  assert.equal(await googleLocSubject(identity,stub,env),root);
  await assert.rejects(googleLocSubject({...identity,emailVerified:false},stub,env),/Verified Google/);
+});
+
+test('verified single LOC owner recovers original Subject even without prior cookie or grant profile',async()=>{
+ const {env,stub,records}=environment();
+ const root='loc_'+'R'.repeat(40);
+ env.LOC_RECOVERY_ROOT_LOC_SUBJECTS=root;
+ stub.nativeBindGoogleOwner=async(subject,id,email)=>{
+  const key='native-google-owner:'+subject,old=records.get(key);
+  if(old&&old.googleAccountId!==id)throw Error('already bound');
+  records.set(key,{googleAccountId:id,email});
+ };
+ const owner={googleAccountId:'g-me-owner',email:'sopa2306@gmail.com',emailVerified:true};
+ assert.equal(await googleLocSubject(owner,stub,env),root);
+ assert.equal(await googleLocSubject(owner,stub,env),root);
+ const other={googleAccountId:'g-other',email:'other@example.org',emailVerified:true};
+ assert.notEqual(await googleLocSubject(other,stub,env),root);
 });

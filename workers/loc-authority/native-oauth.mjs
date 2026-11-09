@@ -1,4 +1,4 @@
-import {issueDelegation} from '../../app/loc/auth/delegation-contract.mjs';
+import {issueDelegation,isLocWriteOwner} from '../../app/loc/auth/delegation-contract.mjs';
 import {checkExternalAuthQos} from './auth-qos.mjs';
 import {handleFirstPartyAuth,hasFirstPartyCookie,firstPartySession,firstPartySignOut} from './better-auth-native.mjs';
 import {verifyAuthReference} from './auth-ref.mjs';
@@ -143,19 +143,24 @@ export async function googleLocSubject(identity,stub,env,prior=null){
  const roots=[...new Set(String(env.LOC_RECOVERY_ROOT_LOC_SUBJECTS||'')
   .split(/[\s,;]+/).filter(x=>LOC_SUBJECT.test(x)))];
  const matches=[];
- if(typeof stub.delegationGrantProfile==='function'){
-  for(const root of roots){
-   const existing=await stub.delegationGrantProfile('loc',root);
-   if(existing?.email===email)matches.push(root);
+ // Only the unique verified LOC owner can recover an existing root Subject.
+ // An OAuth app ID/Secret, or an old Scope grant for another email, is not "me".
+ if(isLocWriteOwner(email)){
+  if(typeof stub.delegationGrantProfile==='function'){
+   for(const root of roots){
+    const existing=await stub.delegationGrantProfile('loc',root);
+    if(String(existing?.email||'').trim().toLowerCase()===email)matches.push(root);
+   }
   }
+  const pinned=String(env.LOC_RECOVERY_ROOT_GOOGLE_EMAIL||'').trim().toLowerCase();
+  if(roots.length===1&&(pinned===email||isLocWriteOwner(email)))
+   matches.push(roots[0]);
  }
- // Optional operator-only secret for existing roots whose grant lacks email.
- // This must match the Google's *verified account email*, never a URL input.
- const pinned=String(env.LOC_RECOVERY_ROOT_GOOGLE_EMAIL||'').trim().toLowerCase();
- if(pinned&&pinned===email&&roots.length===1)matches.push(roots[0]);
  const candidates=[...new Set(matches)];
  if(candidates.length>1)error('Ambiguous LOC owner identity mapping',409);
  const root=candidates[0]||'';
+ if(!isLocWriteOwner(email)&&roots.includes(saved?.subject))
+  error('Existing LOC root identity is restricted to the verified owner',403);
  let subject=saved?.subject||'';
  if(root){
   if(typeof stub.nativeBindGoogleOwner!=='function')
@@ -163,8 +168,9 @@ export async function googleLocSubject(identity,stub,env,prior=null){
   await stub.nativeBindGoogleOwner(root,googleId,email);
   subject=root;
  }else if(!subject&&prior&&prior.emailVerified!==false&&
-  prior.email===email&&LOC_SUBJECT.test(String(prior.subject||''))){
-  subject=prior.subject; // Only an already signed LOC cookie preserves identity.
+  prior.email===email&&LOC_SUBJECT.test(String(prior.subject||''))&&
+  (isLocWriteOwner(email)||!roots.includes(prior.subject))){
+  subject=prior.subject; // Never inherit the owner's Subject from another account.
  }
  if(!subject)subject='loc_'+(await sha('google:'+googleId)).slice(0,40);
  if(!saved||saved.subject!==subject)
@@ -602,9 +608,9 @@ async function importShort(request,env,stub,origin){
  const requestedScope=new URL(request.url).searchParams.get('scopeid');
  const scope=requestedScope===null?String(env.LOC_IMPORT_SCOPE_ID||'lo3rwang'):requestedScope;
  if(!SCOPE_ID.test(scope))error('Import Scope invalid',503);
- const roots=String(env.LOC_RECOVERY_ROOT_LOC_SUBJECTS||'').split(/[\s,;]+/).filter(Boolean);
- // OAuth authentication alone never grants write access.
- if(!roots.includes(identity.subject))error('LOC owner write required',403);
+ if(identity.provider!=='loc'||identity.emailVerified!==true||
+    !isLocWriteOwner(identity.email))
+   error('Verified LOC owner required for import',403);
  const raw=await request.text();
  if(TXT.encode(raw).length>1048576)error('Import batch too large',413);
  let batch;try{batch=JSON.parse(raw);}catch{error('Invalid import JSON');}
@@ -614,8 +620,7 @@ async function importShort(request,env,stub,origin){
  // own Kysely connection. It accepts only a signed Scope-specific import.
  const endpoint='https://mcp.lo3rwang.cc/api/loc-native';
  const now=Math.floor(Date.now()/1000);
- const selectedTarget=await stub.selectedDatabaseForDelegation(identity.subject,
-  roots.includes(identity.subject));
+ const selectedTarget=await stub.selectedDatabaseForDelegation(identity.subject,true);
  const delegation=issueDelegation({sub:identity.subject,email:identity.email,
   grants:[scope+':write'],audience:'sql',sid:crypto.randomUUID(),now,seconds:300,
   targetId:selectedTarget});

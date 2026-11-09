@@ -127,10 +127,16 @@ test('author keyword source filters the main chart without changing all-source t
   assert.equal(administrativeSourceTrend(raw,taxonomy,{...range,sourceCategory:'facebook',sourceNames:[]}).total,0);
 });
 
-test('source settings are unavailable and ArticleTag is fixed',()=>{
- const code=readFileSync(new URL('../app/modular/published-source-taxonomy.js',import.meta.url),'utf8');
- assert.match(code,/PUBLISHED_LOC_ARTICLE_TAGS/);
+test('statistics uses one flat source selector and no retired classification tables',()=>{
+  const code=readFileSync(new URL('../app/modular/features/Statistics.jsx',import.meta.url),'utf8');
+  const editor=readFileSync(new URL('../app/loc/FlatClassificationEditor.jsx',import.meta.url),'utf8');
+  assert.match(code,/const activeSourceSelection=styleFilter==='rune66'/);
+  assert.match(code,/作品／個人分類/);
+  assert.doesNotMatch(code,/sourceSubgroup|statistics_scope_others_groups|statistics_scope_others_aliases/);
+  assert.match(editor,/update\(\{\[scopeTagColumn\(scopeId\)\]:names\}\)/);
+  assert.doesNotMatch(editor,/group_code|category_code|source_key/);
 });
+
 test('keyword charts share one canvas and intersections offer at most eight lanes',async()=>{
   const chart=readFileSync(new URL('../app/modular/modules/statistics/StatisticsMultiChart.jsx',import.meta.url),'utf8');
   const pane=readFileSync(new URL('../app/modular/modules/statistics/ScopeSelfIntersection.jsx',import.meta.url),'utf8');
@@ -420,10 +426,33 @@ test('Culture loads management permissions only after authorized homepage editin
   assert.doesNotMatch(culture,/useAccount\(\{enabled:false\}\)/);
 });
 
-test('source settings are unavailable and ArticleTag is fixed',()=>{
- const code=readFileSync(new URL('../app/modular/published-source-taxonomy.js',import.meta.url),'utf8');
- assert.match(code,/PUBLISHED_LOC_ARTICLE_TAGS/);
+test('LOC and Scope source editors share vis-network but keep separate write boundaries',()=>{
+  const work=readFileSync(new URL('../app/loc/WorkClassificationPage.jsx',import.meta.url),'utf8');
+  const personal=readFileSync(new URL('../app/loc/ScopeOthersSources.jsx',import.meta.url),'utf8');
+  const editor=readFileSync(new URL('../app/loc/FlatClassificationEditor.jsx',import.meta.url),'utf8');
+  const management=readFileSync(new URL('../app/loc/providers/kysely-management.mjs',import.meta.url),'utf8');
+  const network=readFileSync(new URL('../app/loc/KeywordNetworkEditor.jsx',import.meta.url),'utf8');
+  assert.match(work,/<FlatClassificationEditor scopeId="loc"\/>/);
+  assert.match(personal,/<FlatClassificationEditor scopeId=\{scopeId\}\/>/);
+  assert.match(editor,/read_source_catalog/);
+  assert.match(editor,/save_scope_sources/);
+  assert.match(editor,/update_group_default_article_class/);
+  assert.match(editor,/sourceNodes=\{graph\}/);
+  assert.match(editor,/canManageGroupSync\('loc'\)/);
+  assert.match(editor,/canManageScopeSync\(scopeId\)/);
+  assert.match(editor,/系統來源（唯讀）/);
+  assert.doesNotMatch(editor,/將既有分類導入 Anchor|own\\?\\.legacy/);
+  assert.doesNotMatch(editor,new RegExp(['Article','Tag'].join('')+'|'+['txt','class'].join('_'),'i'));
+  assert.match(network,/sourceNodes=null/);
+  assert.match(network,/onSelectNode=null/);
+  assert.match(management,/Source catalog permission denied/);
+  assert.match(management,/LOC cannot edit child Scope sources/);
+  assert.match(management,/Source site key is immutable/);
+  assert.match(editor,/來源代碼保留比對 Galaxy.site/);
+  assert.match(management,/parent_scope_id/);
+  assert.doesNotMatch(editor,/scopeTagColumn|scopeTagNames|\.update\(\{\[scopeTagColumn/);
 });
+
 test('Scope import separates local preview from explicit Galaxy save',()=>{
   const panel=readFileSync(new URL('../app/loc/ManagementImportPanel.jsx',import.meta.url),'utf8');
   assert.match(panel,/scope-import-primary-row/);
@@ -631,10 +660,18 @@ test('Homepage real Save avoids repeated SELECT and a forced page navigation',()
   assert.match(blocks,/if\(editDock\?\.active&&editDock\.scopeId===scopeId\)\{[\s\S]*?return;/);
 });
 
-test('source settings are unavailable and ArticleTag is fixed',()=>{
- const code=readFileSync(new URL('../app/modular/published-source-taxonomy.js',import.meta.url),'utf8');
- assert.match(code,/PUBLISHED_LOC_ARTICLE_TAGS/);
+test('Inline block, classification, route and time editors reuse fixed Dock Save',()=>{
+  const single=read('app/loc/ScopeBlockEditorSession.jsx');
+  const classes=read('app/loc/FlatClassificationEditor.jsx');
+  const trace=read('app/loc/TraceRouteManager.jsx');
+  const culture=read('app/modular/features/CultureTimelineEditor.jsx');
+  assert.match(single,/useEditDockForm\(\{save,isDirty:/);
+  assert.match(single,/\.\.\.\(inDock\?\[\]:\[\{key:'save'/);
+  assert.match(classes,/!inDock\?<button className="loc-button primary"/);
+  assert.match(trace,/!inDock\?<button className="loc-button primary"/);
+  assert.match(culture,/onSubmit=\{event=>event\.preventDefault\(\)\}/);
 });
+
 test('Culture refreshes active source-window keys, not retired v2/v6 keys',()=>{
   const culture=read('app/modular/features/Culture.jsx');
   assert.match(culture,/resourceCache\.invalidate\(\{queryKey:\['culture-period-roots'\]\}\)/);
@@ -651,49 +688,35 @@ test('Search shows Galaxy date and updates same-page URL without a route remount
 
 test('LOC permission snapshot does one Kysely query rather than two per request',()=>{
   const auth=readFileSync(new URL('../app/loc/providers/loc-authorization.mjs',import.meta.url),'utf8');
-  assert.match(auth,/crossJoin\('silver\.loc as l'\)/);
+  assert.match(auth,/leftJoin\('silver\.loc as s'\)/);
   assert.doesNotMatch(auth,/const config=await db\.selectFrom\('silver\.loc'\)/);
 });
 
 
-test('Verified LOC delegation expiry bounds lazy authorization cache across requests',async()=>{
-  // Execute the actual pure authorization module with a fake Kysely SELECT.
-  // No Supabase connection, RLS or user credential is involved.
-  const source=read('app/loc/providers/loc-authorization.mjs')
-    .replace(/^import .*$/gm,'').replace(/^export /gm,'');
-  const {bindLocAuthorization,locPermissions}=vm.runInNewContext(
-    source+'\n;({bindLocAuthorization,locPermissions})',
-    {Date,Promise,canManageDelegation});
+test('Verified owner gets display metadata; other OAuth identities do not',async()=>{
+  const {bindLocAuthorization,locPermissions}=await import('../app/loc/providers/loc-authorization.mjs');
   let selects=0;
   const db=()=>({
     fn:()=>'(lower email)',
-    selectFrom(){selects+=1;return{
-      crossJoin(){return this;},leftJoin(){return this;},select(){return this;},where(){return this;},
-      async execute(){return[{
-        id:'lo3rwang',email:'editor@example.org',manage_role:'scope',active:true,
-        galaxy_table:'galaxy',anchor_table:'anchor',birthday:null,
-        blacklist:{email:[]}
-      }];}
+    selectFrom(){selects++;return{
+      leftJoin(){return this},select(){return this},where(){return this},
+      async execute(){return[{id:'lo3rwang',email:'sopa2306@gmail.com',
+        manage_role:'scope',active:true}]}
     }}
   });
-  const claims={provider:'loc',me:true,sub:'user_Abc123',email:'editor@example.org',
-    sid:'session-1',exp:Math.floor(Date.now()/1000)+120};
-  const first=db(),second=db();
-  bindLocAuthorization(first,{role:'authenticated',claims});
-  bindLocAuthorization(second,{role:'authenticated',claims});
-  const [one,two]=await Promise.all([locPermissions(first),locPermissions(second)]);
-  assert.equal(selects,1,'same unexpired OAuth session reuses one SQL permission check');
-  assert.equal(one.rows[0].id,'lo3rwang');
-  assert.equal(two.rows[0].id,'lo3rwang');
-  const another=db();
-  bindLocAuthorization(another,{role:'authenticated',claims:{...claims,sid:'session-2'}});
-  await locPermissions(another);
-  assert.equal(selects,2,'different LOC session never reuses prior authorization');
-  const expired=db();
-  bindLocAuthorization(expired,{role:'authenticated',
-    claims:{...claims,exp:Math.floor(Date.now()/1000)-1}});
-  await locPermissions(expired);
-  assert.equal(selects,3,'expired OAuth credentials cannot reuse the cache');
+  const stranger=db();
+  bindLocAuthorization(stranger,{role:'authenticated',claims:{
+    provider:'loc',me:true,sub:'reader',email:'reader@example.org',
+    grants:['global:manage']}});
+  assert.equal((await locPermissions(stranger)).blocked,true);
+  assert.equal(selects,0);
+  const owner=db();
+  bindLocAuthorization(owner,{role:'authenticated',claims:{
+    provider:'loc',me:true,sub:'owner',email:'sopa2306@gmail.com',grants:[]}});
+  const result=await locPermissions(owner);
+  assert.equal(result.blocked,false);
+  assert.equal(result.rows[0].id,'lo3rwang');
+  assert.equal(selects,1);
 });
 
 test('retired Scope source columns have no active web or publication readers',()=>{

@@ -28,7 +28,7 @@ const env={LOC_CONTROL_ORIGIN:'https://loc.lo3rwang.cc',
   LOC_CONTROL_ENCRYPTION_KEY:Buffer.alloc(32,27).toString('base64'),
   LOC_AUTHORITY_STATE:{idFromName:name=>name,get:()=>authority}};
 const authority=new LocAuthorityState(ctx,env);
-const claims=issueDelegation({sub:'user_example',email:'owner@example.org',
+const claims=issueDelegation({sub:'user_example',email:'sopa2306@gmail.com',
   grants:['global:manage'],audience:'sql',sid:'test-session',
   now:Math.floor(Date.now()/1000),seconds:300});
 
