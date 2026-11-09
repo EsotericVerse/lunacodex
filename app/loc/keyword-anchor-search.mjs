@@ -5,7 +5,7 @@ import {SCOPE_PATTERN_POSTING_KEY,readScopePatternRows,keywordIdentity} from './
 import {sql} from 'kysely';
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
-const TYPES=['date','point','from','domain','item','pattern'];
+const TYPES=['date','point','item','pattern'];
 const anchorTable=s=>{
   if(!SCOPE.test(String(s||'')))throw Error('Invalid Scope');
   return 'silver.'+s+'_anchor';
@@ -128,7 +128,7 @@ export async function queryAnchorArticles(db,{scopeId,uid,type,owner=false,
       .where('id','=',scope).executeTakeFirst();
     if(settings?.search!==true)err('This Scope does not publish Search',403);
   }
-  const current=attrs(anchor),galaxy=sourceTable(scope),sourceValues=[];
+  const current=attrs(anchor),galaxy=sourceTable(scope);
   let ids=[];
   if(type==='pattern'||type==='item'){
     const patternIds=type==='pattern'?[uid]:kids(anchor);
@@ -144,18 +144,8 @@ export async function queryAnchorArticles(db,{scopeId,uid,type,owner=false,
       }
     }
     ids=[...new Set(ids)];
-  }else if(type==='from'){
-    sourceValues.push(String(anchor.title||''));
-  }else if(type==='domain'){
-    const child=kids(anchor);
-    if(child.length){
-      const sources=await db.selectFrom(anchorTable(scope))
-        .select(['title']).where('type','=','from').where('uid','in',child).execute();
-      sourceValues.push(...sources.map(row=>String(row.title||'')));
-    }
   }
   if((['pattern','item'].includes(type)&&!ids.length)||
-     (['from','domain'].includes(type)&&!sourceValues.filter(Boolean).length)||
      (type==='date'&&!/^\d{4}-\d{2}-\d{2}$/.test(String(current.date||''))))
     return {rows:[],hasMore:false,nextOffset:null};
   if(type==='pattern'||type==='item'){
@@ -168,7 +158,6 @@ export async function queryAnchorArticles(db,{scopeId,uid,type,owner=false,
   if(type==='date')q=q.where('date','=',current.date);
   if(type==='point')q=q.where('place_id','=',uid);
   if(type==='pattern'||type==='item')q=q.where('uid','in',ids);
-  if(type==='from'||type==='domain')q=q.where('site','in',sourceValues.filter(Boolean));
   if(startDate)q=q.where('date','>=',startDate);
   if(endDate)q=q.where('date','<=',endDate);
   if(contentType==='lyrics_work')q=q.where('site','=','suno');

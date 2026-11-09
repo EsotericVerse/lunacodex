@@ -21,8 +21,8 @@ export function scopeFeaturePatch(id,config){
   ]));
 }
 // Source names now come from Scope Anchor From nodes. LOC's system entries
-// remain the explicitly managed group-level DefaultArticleClass catalogue.
+// remain the explicitly managed group-level ArticleTag catalogue.
 export function scopeSourceNames(row){
-  const value=row?.sourceNames??row?.DefaultArticleClass;
+  const value=row?.sourceNames??row?.ArticleTag;
   return Array.isArray(value)?value:[];
 }

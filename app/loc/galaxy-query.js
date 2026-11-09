@@ -164,9 +164,9 @@ export async function selectScopeCategoryTotals(scope,{startDate='',endDate=''}=
 // management authentication or scans article bodies to populate a filter.
 export async function selectSourceTaxonomy(){
   const {rows}=await selectRows('silver.loc',{
-    columns:'DefaultArticleClass',filters:[{column:'id',operator:'eq',value:'loc'}],limit:1
+    columns:'ArticleTag',filters:[{column:'id',operator:'eq',value:'loc'}],limit:1
   });
-  return sourceTaxonomyFromArrays(rows[0]?.DefaultArticleClass||[]);
+  return sourceTaxonomyFromArrays(rows[0]?.ArticleTag||[]);
 }
 
 export async function selectSourceCatalog(scope,{startDate='',endDate='',limit=20}={}){

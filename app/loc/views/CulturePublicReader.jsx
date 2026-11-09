@@ -121,31 +121,12 @@ function anchorModel(rows,start,end,expanded){
 }
 function sourceModel(rows,taxonomy,expanded,start,end){
   const names=[...new Set(list(rows).map(row=>String(row.site||'')))];
-  const tree=Array.isArray(taxonomy?.tree)?taxonomy.tree:[];
-  const froms=new Map(tree.filter(node=>node.type==='from')
-    .map(node=>[node.key,node]));
-  const linked=new Set(),roots=[];
-  for(const domain of tree.filter(node=>node.type==='domain')){
-    const leaves=(domain.children||[]).map(id=>froms.get(id)).filter(Boolean);
-    const sites=names.filter(site=>{
-      const belongs=leaves.some(from=>sourceLabelMatchesSite(site,from.site));
-      if(belongs)linked.add(site);
-      return belongs;
-    });
-    roots.push({id:domain.key,label:domain.name,sites,
-      labels:new Map(sites.map(site=>[
-        site,leaves.find(from=>sourceLabelMatchesSite(site,from.site))?.label||site
-      ]))});
-  }
-  // The standalone Keyword river has keyword Group labels rather than
-  // Source From UIDs; it is not projected onto the Source hierarchy.
-  if(!tree.length)roots.push({id:'keyword',label:'關鍵詞',sites:names,labels:new Map()});
-  if(tree.length){
-    const unknown=names.filter(site=>!linked.has(site));
-    if(unknown.length)roots.push({
-      id:'unclassified',label:'未分類',sites:unknown,labels:new Map()
-    });
-  }
+  const roots=taxonomy?(taxonomy.categories||[]).map(tag=>({
+    id:'source:'+tag.category_code,label:tag.display_name,
+    sites:names.filter(site=>tag.category_code==='others'
+      ?!(taxonomy.categories||[]).some(other=>other.category_code!=='others'&&sourceLabelMatchesSite(site,other.display_name))
+      :sourceLabelMatchesSite(site,tag.display_name)),labels:new Map()
+  })): [{id:'keyword',label:'關鍵詞',sites:names,labels:new Map()}];
   const groups=[],items=[],sites=[];
   const max=Math.max(1,...rows.map(row=>Number(row.item_count)||0));
   for(const root of roots){

@@ -445,10 +445,10 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   const timeWindow=useMemo(()=>importTimeRangeWindow(timeRange),[timeRange,fileName]);
   const sourceCategoriesEnabled=!nativeLocal&&Boolean(account.user)&&account.canManageScopeSync(scopeId);
   const sourceCategoriesSystemRow=useScopeSourceCategoryRow('loc',{enabled:sourceCategoriesEnabled});
-  const sourceCategoriesPersonalRow=useScopeSourceCategoryRow(scopeId,{enabled:sourceCategoriesEnabled});
+
   const sourceCategories={
-    data:sourceCategoriesSystemRow.data!==undefined&&sourceCategoriesPersonalRow.data!==undefined
-      ?{system:scopeSourceNames(sourceCategoriesSystemRow.data),personal:scopeSourceNames(sourceCategoriesPersonalRow.data)}
+    data:sourceCategoriesSystemRow.data!==undefined
+      ?{system:scopeSourceNames(sourceCategoriesSystemRow.data),personal:[]}
       :undefined
   };
   const sourceOptions=[...new Set([...(sourceCategories.data?.system||[]),...(sourceCategories.data?.personal||[])])];

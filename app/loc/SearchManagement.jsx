@@ -17,15 +17,13 @@ const ManagementContentTarget=dynamic(()=>import('./ManagementContentTarget'),{l
 const ManagementImportPanel=dynamic(()=>import('./ManagementImportPanel'),{loading:()=>null});
 const ScopeSettingsPanel=dynamic(()=>import('./ScopeSettingsPanel'),{loading:()=>null});
 const ScopeGroupAccessPanel=dynamic(()=>import('./ScopeGroupAccessPanel'),{loading:()=>null});
-const ScopeOthersSources=dynamic(()=>import('./ScopeOthersSources'),{loading:()=>null});
 
 // Article Control sections share one Scope ownership and authorization boundary. Moving a panel
 // never changes its Scope ownership, database tables or authorizer.
 export const ARTICLE_CONTROL_SECTIONS=Object.freeze([
   {value:'publish',label:'文章管理',shortLabel:'文章管理'},
   {value:'blocks',label:'修改建議與治理原則',shortLabel:'區塊修改'},
-  {value:'import',label:'匯入',shortLabel:'匯入'},
-  {value:'source',label:'來源分類',shortLabel:'來源'}
+  {value:'import',label:'匯入',shortLabel:'匯入'}
 ]);
 
 // LOC's global management has its own permissions and existing destinations.
@@ -120,8 +118,6 @@ export default function SearchManagement(){
 
         {!isLocAdmin&&activeSection==='import'
           ?<ManagementImportPanel key={scopeId+'-import'} scopeId={scopeId}/>:null}
-        {!isLocAdmin&&activeSection==='source'
-          ?<ScopeOthersSources key={scopeId+'-sources'} scopeId={scopeId}/>:null}
         {!isLocAdmin&&activeSection==='settings'
           ?<ScopeSettingsPanel key={scopeId+'-settings'} scopeId={scopeId}/>:null}
         {activeSection==='groupAccess'&&(isLocAdmin||account.canManageGroupSync(scopeId))

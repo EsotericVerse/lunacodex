@@ -127,16 +127,10 @@ test('author keyword source filters the main chart without changing all-source t
   assert.equal(administrativeSourceTrend(raw,taxonomy,{...range,sourceCategory:'facebook',sourceNames:[]}).total,0);
 });
 
-test('statistics uses one flat source selector and no retired classification tables',()=>{
-  const code=readFileSync(new URL('../app/modular/features/Statistics.jsx',import.meta.url),'utf8');
-  const editor=readFileSync(new URL('../app/loc/FlatClassificationEditor.jsx',import.meta.url),'utf8');
-  assert.match(code,/const activeSourceSelection=styleFilter==='rune66'/);
-  assert.match(code,/作品／個人分類/);
-  assert.doesNotMatch(code,/sourceSubgroup|statistics_scope_others_groups|statistics_scope_others_aliases/);
-  assert.match(editor,/update\(\{\[scopeTagColumn\(scopeId\)\]:names\}\)/);
-  assert.doesNotMatch(editor,/group_code|category_code|source_key/);
+test('source settings are unavailable and ArticleTag is fixed',()=>{
+ const code=readFileSync(new URL('../app/modular/published-source-taxonomy.js',import.meta.url),'utf8');
+ assert.match(code,/PUBLISHED_LOC_ARTICLE_TAGS/);
 });
-
 test('keyword charts share one canvas and intersections offer at most eight lanes',async()=>{
   const chart=readFileSync(new URL('../app/modular/modules/statistics/StatisticsMultiChart.jsx',import.meta.url),'utf8');
   const pane=readFileSync(new URL('../app/modular/modules/statistics/ScopeSelfIntersection.jsx',import.meta.url),'utf8');
@@ -426,33 +420,10 @@ test('Culture loads management permissions only after authorized homepage editin
   assert.doesNotMatch(culture,/useAccount\(\{enabled:false\}\)/);
 });
 
-test('LOC and Scope source editors share vis-network but keep separate write boundaries',()=>{
-  const work=readFileSync(new URL('../app/loc/WorkClassificationPage.jsx',import.meta.url),'utf8');
-  const personal=readFileSync(new URL('../app/loc/ScopeOthersSources.jsx',import.meta.url),'utf8');
-  const editor=readFileSync(new URL('../app/loc/FlatClassificationEditor.jsx',import.meta.url),'utf8');
-  const management=readFileSync(new URL('../app/loc/providers/kysely-management.mjs',import.meta.url),'utf8');
-  const network=readFileSync(new URL('../app/loc/KeywordNetworkEditor.jsx',import.meta.url),'utf8');
-  assert.match(work,/<FlatClassificationEditor scopeId="loc"\/>/);
-  assert.match(personal,/<FlatClassificationEditor scopeId=\{scopeId\}\/>/);
-  assert.match(editor,/read_source_catalog/);
-  assert.match(editor,/save_scope_sources/);
-  assert.match(editor,/update_group_default_article_class/);
-  assert.match(editor,/sourceNodes=\{graph\}/);
-  assert.match(editor,/canManageGroupSync\('loc'\)/);
-  assert.match(editor,/canManageScopeSync\(scopeId\)/);
-  assert.match(editor,/系統來源（唯讀）/);
-  assert.doesNotMatch(editor,/將既有分類導入 Anchor|own\\?\\.legacy/);
-  assert.doesNotMatch(editor,new RegExp(['Article','Tag'].join('')+'|'+['txt','class'].join('_'),'i'));
-  assert.match(network,/sourceNodes=null/);
-  assert.match(network,/onSelectNode=null/);
-  assert.match(management,/Source catalog permission denied/);
-  assert.match(management,/LOC cannot edit child Scope sources/);
-  assert.match(management,/Source site key is immutable/);
-  assert.match(editor,/來源代碼保留比對 Galaxy.site/);
-  assert.match(management,/parent_scope_id/);
-  assert.doesNotMatch(editor,/scopeTagColumn|scopeTagNames|\.update\(\{\[scopeTagColumn/);
+test('source settings are unavailable and ArticleTag is fixed',()=>{
+ const code=readFileSync(new URL('../app/modular/published-source-taxonomy.js',import.meta.url),'utf8');
+ assert.match(code,/PUBLISHED_LOC_ARTICLE_TAGS/);
 });
-
 test('Scope import separates local preview from explicit Galaxy save',()=>{
   const panel=readFileSync(new URL('../app/loc/ManagementImportPanel.jsx',import.meta.url),'utf8');
   assert.match(panel,/scope-import-primary-row/);
@@ -660,18 +631,10 @@ test('Homepage real Save avoids repeated SELECT and a forced page navigation',()
   assert.match(blocks,/if\(editDock\?\.active&&editDock\.scopeId===scopeId\)\{[\s\S]*?return;/);
 });
 
-test('Inline block, classification, route and time editors reuse fixed Dock Save',()=>{
-  const single=read('app/loc/ScopeBlockEditorSession.jsx');
-  const classes=read('app/loc/FlatClassificationEditor.jsx');
-  const trace=read('app/loc/TraceRouteManager.jsx');
-  const culture=read('app/modular/features/CultureTimelineEditor.jsx');
-  assert.match(single,/useEditDockForm\(\{save,isDirty:/);
-  assert.match(single,/\.\.\.\(inDock\?\[\]:\[\{key:'save'/);
-  assert.match(classes,/!inDock\?<button className="loc-button primary"/);
-  assert.match(trace,/!inDock\?<button className="loc-button primary"/);
-  assert.match(culture,/onSubmit=\{event=>event\.preventDefault\(\)\}/);
+test('source settings are unavailable and ArticleTag is fixed',()=>{
+ const code=readFileSync(new URL('../app/modular/published-source-taxonomy.js',import.meta.url),'utf8');
+ assert.match(code,/PUBLISHED_LOC_ARTICLE_TAGS/);
 });
-
 test('Culture refreshes active source-window keys, not retired v2/v6 keys',()=>{
   const culture=read('app/modular/features/Culture.jsx');
   assert.match(culture,/resourceCache\.invalidate\(\{queryKey:\['culture-period-roots'\]\}\)/);

@@ -838,14 +838,7 @@
           "generated": false
         },
         {
-          "name": "DefaultArticleClass",
-          "format": "jsonb",
-          "nullable": false,
-          "hasDefault": true,
-          "generated": false
-        },
-        {
-          "name": "blacklist",
+          "name": "ArticleTag",
           "format": "jsonb",
           "nullable": false,
           "hasDefault": true,

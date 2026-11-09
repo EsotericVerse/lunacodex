@@ -18,7 +18,6 @@ import PanelLoading from '../PanelLoading';
 // Admin keeps only privileged registry provisioning and system configuration.
 
 const ADMIN_OPTIONS=Object.freeze([
-  {value:'lists',label:'系統名單',shortLabel:'名單',description:'管理員專屬的 Email 黑名單設定。'}, 
   {value:'network',label:'網路設定',shortLabel:'網路',description:'資料庫連線、ISR 快取與認證來源設定。'},
   {value:'io',label:'系統設定',shortLabel:'系統設定',description:'系統匯入、匯出及批次限制。'},
   {value:'featureHero',label:'功能區塊設定',shortLabel:'區塊',description:'編輯功能頁 Hero 與展示資源。'},
@@ -29,7 +28,6 @@ const DatabaseTarget=dynamic(()=>import('./admin-panels/DatabaseTarget'),{loadin
 const IsrDomainTarget=dynamic(()=>import('./admin-panels/IsrDomainTarget'),{loading:PanelLoading});
 const RuntimeIoSettings=dynamic(()=>import('./admin-panels/RuntimeIoSettings'),{loading:PanelLoading});
 const ThemeEditor=dynamic(()=>import('./admin-panels/ThemeEditor'),{loading:PanelLoading});
-const AdminEmailBlocklist=dynamic(()=>import('./admin-panels/AdminEmailBlocklist'),{loading:PanelLoading});
 const FeatureHeroImages=dynamic(()=>import('./admin-panels/FeatureHeroImages'),{loading:PanelLoading});
 
 export default function AdminHomeView({scopeGroup}){
@@ -41,10 +39,9 @@ export default function AdminHomeView({scopeGroup}){
   const [entryVerified,setEntryVerified]=useState(false);
   const canManage=Boolean(account.user&&!account.loading&&!account.permissionLoading&&account.canManageGlobalSync());
   // Preserve deep links created before the Admin sections were consolidated.
-  const [section,setSection]=useManagementSection(ADMIN_OPTIONS,'lists',{ 
-    registry:'lists',members:'lists',
+  const [section,setSection]=useManagementSection(ADMIN_OPTIONS,'network',{
+    registry:'network',members:'network',
     database:'network',isr:'network',enterpriseAuth:'network',auth:'network',system:'network',
-    blocklist:'lists',
     traceAnchor:'network',traceMap:'network'
   });
   const switchSection=next=>{
@@ -87,9 +84,6 @@ export default function AdminHomeView({scopeGroup}){
         items={ADMIN_OPTIONS} value={section} onChange={switchSection}/>
       <div className="management-workspace-panel" id="admin-management-panel" role="region"
         aria-labelledby={'admin-sections-option-'+selectedOption.value}>
-        {section==='lists'?<>
-          <AdminEmailBlocklist/>
-        </>:null}
         {section==='network'?<>
           <DatabaseTarget scopeGroup={scopeGroup}/>
           <IsrDomainTarget/>

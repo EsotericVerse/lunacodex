@@ -78,10 +78,10 @@ async function scopeOverview(trx,scope,start,end){
   const [rows,first,loc]=await Promise.all([
     dailyStats(trx,scope,start,end),
     earliest(trx,scope),
-    trx.selectFrom('silver.loc').select('DefaultArticleClass')
+    trx.selectFrom('silver.loc').select('ArticleTag')
       .where('id','=','loc').executeTakeFirst()
   ]);
-  const list=Array.isArray(loc?.DefaultArticleClass)?loc.DefaultArticleClass:[];
+  const list=Array.isArray(loc?.ArticleTag)?loc.ArticleTag:[];
   const categories=list.map(name=>({category_code:String(name).trim().toLowerCase(),
     display_name:String(name).trim(),enabled:true}));
   const aliases=list.map(name=>({source_key:String(name).trim().toLowerCase(),

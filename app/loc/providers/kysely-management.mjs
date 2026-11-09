@@ -3,7 +3,6 @@ import {schema as fixedSchema} from '../../../zenstack/schema.mjs';
 import {validateLocRegistryDomain} from './loc-domain.mjs';
 import {sql} from 'npm:kysely@0.29.8';
 import {saveBlocksKysely} from './kysely-blocks.mjs';
-import {sourceCatalogAction,saveLocSystemSources} from '../source-sql-service.mjs';
 import {allocateAnchorUid} from '../unified-anchor-compat.mjs';
 import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
 import {keywordPatternItemMetrics} from '../keyword-search-pattern.mjs';
@@ -52,8 +51,8 @@ function withFilters(query,filters){
 // typed JSON document instead; never rewrite the stored bubble structure.
 // Only known JSONB fields are encoded, leaving SQL array columns untouched.
 const MANAGED_JSONB_COLUMNS=new Set([
-  'block_entity','attr','status','blacklist','theme','keywords',
-  'database','keyword_meta','DefaultArticleClass','search_aliases','caches'
+  'block_entity','attr','status','theme','keywords',
+  'database','keyword_meta','ArticleTag','search_aliases','caches'
 ]);
 export function postgresManagedJsonbValues(values){
   return Object.fromEntries(Object.entries(values).map(([key,value])=>[
@@ -79,6 +78,8 @@ export function managedPrimaryKeyColumns(table,modelName=''){
 }
 async function authorizeRelation(trx,table,operation,values,filters,rows){
   if(table==='manage'||table==='loc'){
+    if(table==='loc'&&(Object.hasOwn(values||{},'ArticleTag')||rows.some(row=>Object.hasOwn(row,'ArticleTag'))))
+      reject('LOC ArticleTag is fixed and cannot be configured',403);
     if(!await canManageLoc(trx,'global'))reject('Global management permission required',403);
     return;
   }
@@ -297,8 +298,8 @@ async function bulkUpdateGalaxyFlags(trx,args){
 // Source-list control uses the existing per-Scope Anchor table, not Galaxy
 // article scans or a new SQL schema. Privileged reads happen only after
 // verifying LOC Group or the requested Scope, never across sibling Scopes.
-const ACTIONS=new Set(['read_source_catalog','save_scope_sources','read_group_members','update_group_member_name',
-  'update_group_default_article_class','is_current_email_blocklisted','move_scope_block',
+const ACTIONS=new Set(['read_group_members','update_group_member_name',
+  'move_scope_block',
   'preview_or_fill_galaxy_place','batch_fill_galaxy_location',
   'rename_scope_site_batch','save_scope_trace_place_names','save_blocks','loc_admin_settings',
   'refresh_scope_search_summary','merge_scope_trace_place_names','import_shared_keyword_class','manage','find_galaxy_duplicates','read_scope_registry_admin','bulk_update_galaxy_able',
@@ -446,12 +447,8 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     Array.isArray(body.args))reject('Unknown Kysely action');
   const args=body.args;
   const keys={
-    read_source_catalog:['p_scope_id'],
-    save_scope_sources:['p_scope_id','p_sources'],
     read_group_members:['p_group_id'],
     update_group_member_name:['p_group_id','p_member_id','p_display_name'],
-    update_group_default_article_class:['p_group_id','p_names'],
-    is_current_email_blocklisted:[],
     move_scope_block:['p_scope_id','p_page_name','p_uid','p_direction'],
     save_blocks:['p_scope_id','p_type','p_rows'],
     preview_or_fill_galaxy_place:['p_scope_id','p_start_date','p_end_date','p_place','p_apply','p_expected_count'],
@@ -474,8 +471,6 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
   if(name==='keyword_pattern_statistics')return {data:await keywordPatternStatistics(trx,args),count:null};
   if(name==='sync_search_patterns')return {data:await syncSearchPatterns(trx,args),count:null};
   if(name==='suggest_search_patterns')return {data:await suggestSearchPatterns(trx,args),count:null};
-  if(name==='read_source_catalog')return {data:await sourceCatalogAction(trx,args),count:null};
-  if(name==='save_scope_sources')return {data:await sourceCatalogAction(trx,args,true),count:null};
   if(name==='save_blocks'){
     const scope=validScope(args.p_scope_id);
     const page=String(args.p_type||'').trim();
@@ -517,16 +512,6 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
   if(name==='batch_fill_galaxy_location')return {data:await batchFillGalaxyLocation(trx,args),count:null};
   if(name==='rename_scope_site_batch')return {data:await renameScopeSiteBatch(trx,args),count:null};
   if(name==='save_scope_trace_place_names')return {data:await saveScopePointAliases(trx,args),count:null};
-  if(name==='is_current_email_blocklisted'){
-    const email=String(claims.email||'').trim().toLowerCase();
-    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))reject('Verified email unavailable',403);
-    await sql`reset role`.execute(trx);
-    const config=await trx.selectFrom('silver.loc').select('blacklist')
-      .where('id','=','loc').executeTakeFirst();
-    const list=config?.blacklist?.email;
-    return {data:Array.isArray(list)&&list.some(item=>
-      String(item?.email||'').trim().toLowerCase()===email),count:null};
-  }
   if(name==='read_group_members'){
     const group=validScope(args.p_group_id);
     if(!await canManageLoc(trx,'group',group))reject('Group management permission required',403);
@@ -563,8 +548,6 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
       reject('Group / Scope list name missing');
     return {data:true,count:null};
   }
-  if(name==='update_group_default_article_class')
-    return {data:await saveLocSystemSources(trx,args),count:null};
   const scope=validScope(args.p_scope_id);
   const page=String(args.p_page_name||'').trim().toLowerCase();
   const uid=validUid(args.p_uid);
@@ -719,19 +702,19 @@ async function managedLocSettings(trx,args,claims){
   const operation=String(args.p_operation||'read');
   const key=String(args.p_key??'').trim();
   const value=args.p_value;
-  if(!['theme','keywords','email'].includes(section))
+  if(!['theme','keywords'].includes(section))
     reject('Invalid LOC settings section');
   // Permission was established with the signed Clerk identity; no arbitrary
   // table is addressable through this route.
   await sql`reset role`.execute(trx);
   const row=await trx.selectFrom('silver.loc')
-    .select(['theme','keywords','blacklist'])
+    .select(['theme','keywords'])
     .where('id','=','loc').forUpdate().executeTakeFirst();
   if(!row)reject('LOC Group settings unavailable');
   const saved=validCatalog(
-    section==='theme'?row.theme:section==='keywords'?row.keywords:row.blacklist?.[section],section);
+    section==='theme'?row.theme:row.keywords,section);
   if(operation==='read')return saved;
-  let updated=[],column='blacklist',returnValue;
+  let updated=[],column='keywords',returnValue;
   if(section==='theme'){
     if(operation!=='upsert'||!/^[1-8]$/.test(key)||!catalogObject(value)||
        value.theme_id!==key||!['dark','light'].includes(value.scheme)||
@@ -779,28 +762,10 @@ async function managedLocSettings(trx,args,claims){
       seen.add(signature);
     }
     column='keywords';returnValue=operation==='delete'?{deleted:true}:next;
-  }else if(section==='email'){
-    const email=key.toLowerCase();
-    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||!['add','remove'].includes(operation))
-      reject('Invalid email blacklist operation');
-    if(operation==='add'&&email===String(claims.email||'').trim().toLowerCase())
-      reject('Current administrator cannot be blocked');
-    updated=saved.filter(item=>operation==='add'||
-      String(item?.email||'').toLowerCase()!==email);
-    if(operation==='add'&&!saved.some(item=>String(item?.email||'').toLowerCase()===email))
-      updated.push({email,created_at:new Date().toISOString()});
-    returnValue=updated;
   }
-  if(column==='blacklist'){
-    await trx.updateTable('silver.loc').set({
-      blacklist:sql`jsonb_set(blacklist,ARRAY[${section}]::text[],
-        ${JSON.stringify(updated)}::jsonb,true)`
-    }).where('id','=','loc').executeTakeFirst();
-  }else{
-    await trx.updateTable('silver.loc').set({
-      [column]:sql`${JSON.stringify(updated)}::jsonb`
-    }).where('id','=','loc').executeTakeFirst();
-  }
+  await trx.updateTable('silver.loc').set({
+    [column]:sql`${JSON.stringify(updated)}::jsonb`
+  }).where('id','=','loc').executeTakeFirst();
   return returnValue;
 }
 

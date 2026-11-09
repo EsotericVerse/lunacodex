@@ -75,16 +75,14 @@ export async function locPermissions(db){
     const {key,pending}=cachedSnapshot(state);
     if(pending){state.pending=pending;return pending;}
     state.pending=(async()=>{
-    // Read the blacklist and this principal's LOC membership in ONE
+    // Read this principal's LOC membership in ONE
     // parameterized SQL statement. No extra request or new permission cache.
     // The transaction carries a locally verified LOC identity; authorization
     // and revocation remain evaluated against the live LOC control database.
     const joined=await db.selectFrom('api.manage as m')
-      .crossJoin('silver.loc as l')
       .leftJoin('silver.loc as s','s.id','m.id')
       .select(['m.id','m.email','m.manage_role','m.active','m.galaxy_table',
-        'm.anchor_table','s.birthday as birthday','l.blacklist'])
-      .where('l.id','=','loc')
+        'm.anchor_table','s.birthday as birthday'])
       .where(db.fn('lower',['m.email']),'=',state.email)
       .where('m.manage_role','in',['admin','group','scope']).execute();
     // An explicit LOC-signed ancestor Group grant also authorizes its active
@@ -114,23 +112,8 @@ export async function locPermissions(db){
           .map(row=>({...row,email:state.email}));
     }
     if(!joined.length&&!inherited.length)return {blocked:false,rows:[]};
-    // A delegated Group member need not own an api.manage email row.
-    // Never skip the same live blacklist check for that case.
-    const blacklistRow=!joined.length
-      ?await db.selectFrom('silver.loc as l').select('blacklist')
-        .where('l.id','=','loc').executeTakeFirst():null;
-    let blacklist=joined.length?joined[0].blacklist:blacklistRow?.blacklist;
-    if(typeof blacklist==='string'){
-      try{blacklist=JSON.parse(blacklist)}catch{deny('Invalid LOC blacklist')}
-    }
-    if(!blacklist||typeof blacklist!=='object'||Array.isArray(blacklist)||
-      blacklist.email!==undefined&&!Array.isArray(blacklist.email))
-      deny('LOC blacklist configuration unavailable');
-    if((blacklist.email||[]).some(item=>
-      String(item?.email||'').trim().toLowerCase()===state.email))
-      return {blocked:true,rows:[]};
     const authorized=new Map(inherited.map(row=>[row.id,row]));
-    for(const {blacklist:ignored,...row} of joined)authorized.set(row.id,row);
+    for(const row of joined)authorized.set(row.id,row);
     return {blocked:false,rows:[...authorized.values()]};
     })();
     rememberSnapshot(key,state,state.pending);

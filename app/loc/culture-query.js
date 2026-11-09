@@ -114,14 +114,12 @@ function openPeriodRangeFromRows(scopeId,rows=[]){
     derived_from:'era period UID collection of actual anchor dates'};
 }
 
-const LOC_SOURCE_ORDER=Object.freeze(['Facebook','Threads','IG','Others']);
+import {PUBLISHED_LOC_ARTICLE_TAGS} from '../modular/published-source-taxonomy.js';
+const LOC_SOURCE_ORDER=Object.freeze(PUBLISHED_LOC_ARTICLE_TAGS);
 function locSourceCategory(value=''){
-  const source=String(value||'').trim().toLowerCase();
-  if(!source)return 'Others';
-  if(source.includes('facebook')||source==='fb')return 'Facebook';
-  if(source.includes('threads'))return 'Threads';
-  if(source.includes('instagram')||source.includes('reels')||source==='ig')return 'IG';
-  return 'Others';
+ const k=String(value||'').trim().toLowerCase();
+ const name=LOC_SOURCE_ORDER.find(tag=>tag.toLowerCase()===k);
+ return name||'Others';
 }
 function buildLocScopeDistribution(rows=[]){
   const combined=new Map();
