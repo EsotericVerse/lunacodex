@@ -158,7 +158,9 @@ export async function handleNativeLocOperation(request,env={},{
     // never for api.loc_user / api.user_settings / api.manage.
     const control=['personal-read','personal-write','managed-write','managed-action']
       .includes(body.kind);
-    const selected=await database(env,control?'':claims.db_target||'');
+    const externalTarget=claims.db_target&&claims.db_target!==primaryId
+      ?claims.db_target:'';
+    const selected=await database(env,control?'':externalTarget);
     if(!selected?.db||!['postgres','mysql','mssql'].includes(selected.engine))
       throw refusal('LOC native Kysely driver is not configured',503);
     if(body.kind==='short-import'){
