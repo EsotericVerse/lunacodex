@@ -1,7 +1,7 @@
 // Typed ZModel/Anchor autocomplete and selected-anchor Galaxy navigation.
 // All SQL is fixed-purpose, Kysely-built and bounded. No user-supplied SQL,
 // imported schema copying, Article body scans or duplicate search tables.
-import {scopeDatabaseUid,readScopePatternRows,keywordIdentity} from './keyword-anchor-index.mjs';
+import {SCOPE_PATTERN_POSTING_KEY,readScopePatternRows,keywordIdentity} from './keyword-anchor-index.mjs';
 import {sql} from 'kysely';
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
@@ -131,14 +131,13 @@ export async function queryAnchorArticles(db,{scopeId,uid,type,owner=false,
   const current=attrs(anchor),galaxy=sourceTable(scope),sourceValues=[];
   let ids=[];
   if(type==='pattern'||type==='item'){
-    const dbUid=await scopeDatabaseUid(db,scope);
     const patternIds=type==='pattern'?[uid]:kids(anchor);
     if(patternIds.length){
       const patterns=await db.selectFrom(anchorTable(scope))
         .select(['uid','attr']).where('type','=','pattern')
         .where('uid','in',patternIds).execute();
       for(const row of patterns){
-        const list=attrs(row)[dbUid]||[];
+        const list=attrs(row)[SCOPE_PATTERN_POSTING_KEY]||[];
         if(!Array.isArray(list)||list.some(id=>!UID.test(id)))
           err('Invalid Scope Pattern postings',503);
         ids.push(...list);
