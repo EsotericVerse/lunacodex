@@ -67,7 +67,7 @@ export function createLocAccountAdapter({authorityOrigin=DEFAULT_AUTHORITY,
    }catch(error){return {data:{user:null},error};}
   },
   async signInWithOAuth({provider,options={}}={}){
-   // The Google identity is already verified by the configured Supabase Auth
+   // Google identity is verified by LOC-hosted Better Auth
    // provider. Never redirect it to an unrelated, unconfigured OIDC issuer.
    const selected=['google','github','oidc'].includes(provider)?provider:'';
    if(!selected)return {data:null,error:new Error('Unsupported OAuth provider')};
