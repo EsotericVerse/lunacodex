@@ -301,3 +301,25 @@ test('the innermost Kysely retry contract never uses a full-row UPDATE',()=>{
   assert.match(code,/MCP sync cannot overwrite a stored conversation/);
   assert.doesNotMatch(code,/trx\.updateTable\(/);
 });
+
+test('new conversation batch with the SAME source timestamp appends once, preserving every message',async()=>{
+ const {authority}=state();
+ const batchA='a'.repeat(64),batchB='b'.repeat(64);
+ const first={...CONVERSATION,content:'[[GalaxyLinkBatch:'+batchA+']]\nFirst original',
+  batch_id:batchA,append:true};
+ const second={...first,content:'[[GalaxyLinkBatch:'+batchB+']]\nNew message',batch_id:batchB};
+ const calls=fakeSql(call=>{
+  assert.ok(['mcp-sync','mcp-append'].includes(call.body.kind));
+  return Response.json({data:{count:1}});
+ });
+ const created=await authority.mcpSave('lo3rwang',first,TOKEN);
+ const appended=await authority.mcpSave('lo3rwang',second,TOKEN);
+ const repeated=await authority.mcpSave('lo3rwang',second,TOKEN);
+ assert.equal(created.saved,true);
+ assert.equal(appended.saved,true);
+ assert.equal(appended.appended,true);
+ assert.equal(appended.uid,created.uid);
+ assert.equal(repeated.saved,false);
+ assert.deepEqual(calls.map(c=>c.body.kind),['mcp-sync','mcp-append']);
+ assert.equal(calls[1].body.content,second.content);
+});

@@ -154,7 +154,10 @@ async function mcpJsonBody(request,limit=160000){
   try{return JSON.parse(raw)}catch{throw fail('Invalid MCP JSON',400)}
 }
 const BASE62='0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
-function newUid(){const bytes=crypto.getRandomValues(new Uint8Array(8));return [...bytes].map(b=>BASE62[b%62]).join('');}
+function newUid(){let uid='';while(uid.length<8){
+  for(const b of crypto.getRandomValues(new Uint8Array(16)))
+    if(b<248&&uid.length<8)uid+=BASE62[b%62];
+ }return uid;}
 function likePattern(value){
   if(typeof value!=='string'||value.trim().length<2||value.length>100||
     /[\u0000-\u001f\u007f]/.test(value))throw fail('Query must contain 2–100 characters',400);
@@ -551,11 +554,13 @@ export class LocAuthorityState extends DurableObject {
     const conversation_id=String(input.conversation_id||'');
     const requestedTime=validTimestamp(input.updated_at);
     const status=await this.mcpCheckpoint(scopeid,conversation_id,requestedTime);
-    if(!status.needs_save)return {...status,saved:false,reason:'unchanged'};
+    const append=input.append===true;
+    const savedBatch=append?await this.ctx.storage.get('mcp-sync:'+scopeid+':'+conversation_id):null;
+    if(!status.needs_save&&(!append||savedBatch?.last_batch_id===input.batch_id))
+      return {...status,saved:false,reason:'unchanged'};
     if(typeof input.content!=='string'||!input.content.trim()||input.content.length>125000||
       typeof input.title!=='string'||input.title.length>350)
       throw fail('Invalid conversation content or title',400);
-    const append=input.append===true;
     const marker='[[GalaxyLinkBatch:'+input.batch_id+']]';
     if(append&&(!/^[0-9a-f]{64}$/.test(String(input.batch_id||''))||
       !input.content.startsWith(marker+'\n')))
@@ -583,7 +588,8 @@ export class LocAuthorityState extends DurableObject {
       }
       if(result){
         const saved_at=new Date().toISOString();
-        await this.ctx.storage.put(checkpointKey,{updated_at:requestedTime,saved_at,uid});
+        await this.ctx.storage.put(checkpointKey,{updated_at:requestedTime,saved_at,uid,
+        ...(append?{last_batch_id:input.batch_id}:{})});
         return {scopeid,conversation_id,uid,title:result.title||null,
           createtime:result.createtime||null,updated_at:requestedTime,saved_at,saved:true,appended:true};
       }
@@ -601,7 +607,8 @@ export class LocAuthorityState extends DurableObject {
       this.env);
     const saved_at=new Date().toISOString();
     this.mcpSearchCache?.clear();
-    await this.ctx.storage.put(checkpointKey,{updated_at:requestedTime,saved_at,uid});
+    await this.ctx.storage.put(checkpointKey,{updated_at:requestedTime,saved_at,uid,
+        ...(append?{last_batch_id:input.batch_id}:{})});
     return {scopeid,conversation_id,updated_at:requestedTime,saved_at,uid,title,createtime:created,saved:true,appended:false};
   }
   // GitHub PR records are not readable/searchable/updatable via Galaxy Link.
