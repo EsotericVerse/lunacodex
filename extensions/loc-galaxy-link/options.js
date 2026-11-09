@@ -9,6 +9,10 @@ async function show(){
  status.textContent=result.error||(result.connected?'已連接 LOC Auth':'尚未連接 LOC Auth');
  queue.textContent='待送 Queue：'+(result.pendingCaptures??0)+' 次擷取／'+(result.pending??0)+' 筆資料'+
   (result.paused?'；自動送出已暫停，原始 Queue 保留':'');
+ const last=result.lastAction;
+ $('lastAction').textContent=last?
+  (last.ok?'成功':'失敗')+' · '+last.name+' · '+(last.at||'').replace('T',' ').slice(0,19)+'\n'+last.message:
+  '目前沒有操作紀錄。';
  $('scope').value=saved.locTargetScope||'lo3rwang';
  $('includeAI').checked=saved.locIncludeAssistant===true;
 }
@@ -45,5 +49,10 @@ $('flush').addEventListener('click',async()=>{
   await show();
   status.textContent=result.error||result.message||'已處理';
  }catch(error){status.textContent=String(error?.message||error);}
+});
+chrome.storage.onChanged?.addListener((changes,area)=>{
+ if(area==='local'&&changes.locLastAction){
+  void show().catch(error=>status.textContent=String(error?.message||error));
+ }
 });
 show().catch(error=>status.textContent=String(error?.message||error));

@@ -14,7 +14,7 @@ button:focus-visible,input:focus-visible{outline:2px solid #3983e5;outline-offse
 label{display:block;margin:10px 0}
 input[type=text]{display:block;max-width:400px;width:100%;box-sizing:border-box;padding:9px;border:1px solid #8b929e;border-radius:6px;background:transparent;color:inherit}
 small{display:block;color:gray}
-#status,#queue,#notice{white-space:pre-wrap;overflow-wrap:anywhere}
+#status,#queue,#notice,#lastAction{white-space:pre-wrap;overflow-wrap:anywhere}
 </style>
 </head>
 <body>
@@ -30,6 +30,9 @@ small{display:block;color:gray}
 <label><input type="checkbox" id="includeAI"> 擷取已載入的對話時也保存 AI 回覆</label>
 <small>預設只擷取使用者文字。Chrome 只可擷取當前已載入的對話內容。</small>
 <div id="notice" role="status"></div>
+<h2>最近一次操作與錯誤</h2>
+<p id="lastAction" role="status">目前沒有操作紀錄。</p>
+<small>如果右鍵擷取失敗，將顯示具體原因，不再只在工具列出現不明驚嘆號。</small>
 <h2>離線 Queue</h2>
 <p id="queue" role="status"></p>
 <button id="flush">手動送出 Queue</button>

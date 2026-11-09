@@ -120,6 +120,29 @@ async function toEvents(items,scopeid='lo3rwang'){
  }
  return rows;
 }
+function captureTotals(rows){return {pending:rows.length,pendingCaptures:new Set(rows.map(r=>r.group_id||r.id)).size};}
+async function updateQueueBadge(rows=null){
+ const totals=captureTotals(rows||await allEvents());
+ const count=totals.pendingCaptures;
+ await chrome.action.setBadgeText({text:count?(count>99?'99+':String(count)):''});
+ await chrome.action.setTitle?.({title:count?'LOC 彩虹橋：待送 '+count+' 次擷取':'LOC 彩虹橋：Queue 0 次待送'});
+ return totals;
+}
+async function clearLegacyTabBadges(){
+ // Older versions wrote '!' / 'OK' to individual tab badges. Those per-tab
+ // overrides survive until explicitly cleared and hide the real Queue count.
+ const tabs=await chrome.tabs.query({});
+ await Promise.all(tabs.filter(t=>Number.isInteger(t.id)).map(t=>
+  chrome.action.setBadgeText({text:'',tabId:t.id}).catch(()=>{})));
+}
+async function noteAction(name,ok,message,tabId=null){
+ const item={name:String(name||'擷取'),ok:ok===true,
+  message:String(message||'未提供原因').slice(0,600),at:new Date().toISOString()};
+ await chrome.storage.local.set({locLastAction:item}).catch(()=>{});
+ if(tabId)await chrome.tabs.sendMessage(tabId,{type:'page.feedback',ok:item.ok,
+  message:item.name+'：'+item.message}).catch(()=>{});
+ return item;
+}
 function ready(rows){
  return rows.length && (new Set(rows.map(x=>x.group_id)).size>=AUTO_CAPTURE_COUNT ||
   sizeOf(rows)>=MAX_BYTES);
@@ -138,13 +161,17 @@ async function acceptItems(items){
  const {locTargetScope='lo3rwang',locImportPaused=false}=
   await chrome.storage.local.get(['locTargetScope','locImportPaused']);
  const events=await toEvents(items,locTargetScope);
- if(!events.length)return {message:'沒有可擷取的內容'};
+ if(!events.length)return {message:'目前頁面沒有符合擷取條件的可見內容',queued:(await allEvents()).length,empty:true};
  const inserted=await putEvents(events);
+ await updateQueueBadge().catch(error=>console.warn('[LOC Queue badge]',String(error)));
  // When the website is unavailable, leave the queue alone and avoid
  // repeatedly loading/serializing every pending capture on each scroll.
  if(locImportPaused)return {message:'已保留 Queue：'+inserted+' 筆',queued:await queueCount()};
  const all=await allEvents();
- if(ready(all))void flush(false).catch(()=>{});
+ if(ready(all))void flush(false).catch(async error=>{
+  console.warn('[LOC galaxy-link automatic import]',String(error));
+  await noteAction('自動傳送',false,error?.message||String(error));
+ });
  return {message:'新加入 Queue：'+inserted+' 筆（重複擷取已略過）',queued:all.length};
 }
 function packet(rows){
@@ -337,6 +364,7 @@ async function flush(force=false){
      const batch={id:await stableUuid(group.map(r=>r.id).sort().join('|')),write_mode:'append',records:group.map(({scopeid:localScope,...record})=>({...record,source_key:record.source_key||normalizedUrl(record.url),write_mode:'append',kind:record.kind||'capture'}))};
      await sendViaAuth(scopeid,batch,token,settings.locConfig);
      await removeEvents(group); // Clear only after complete server-side UID receipts.
+     await updateQueueBadge().catch(error=>console.warn('[LOC Queue badge]',String(error)));
      count+=group.length;
     }
    }
@@ -364,6 +392,7 @@ async function capture(tab,selection='',includeAssistant=false){
  await inject(tab.id);
  const reply=await chrome.tabs.sendMessage(tab.id,{type:'page.capture',selection,includeAssistant});
  if(!Array.isArray(reply?.items))throw Error('頁面沒有回傳內容');
+ if(!reply.items.length)throw Error('未找到可擷取的內容：目前頁面可能尚未載入對話，或網站 DOM 格式已變更');
  return acceptItems(reply.items);
 }
 async function recordedTab(){
@@ -379,7 +408,8 @@ async function selectOrRecord(type,includeAssistant=false,providedTab=null){
  if(type==='page.record'&&Number.isInteger(prior)&&prior!==tab.id)
   await chrome.tabs.sendMessage(prior,{type:'page.stop'}).catch(()=>{});
  await inject(tab.id);
- await chrome.tabs.sendMessage(tab.id,{type,includeAssistant});
+ const response=await chrome.tabs.sendMessage(tab.id,{type,includeAssistant});
+ if(response?.ok!==true)throw Error('頁面沒有啟動選取／錄製工具');
  if(type==='page.record')await chrome.storage.local.set({locRecorderTabId:tab.id});
  return {message:type==='page.record'?'請點選錄製區域，開始追蹤動態貼文':'請點選要擷取的區域'};
 }
@@ -396,51 +426,120 @@ async function stopRecording(){
  return {message:reply?.ok?'已停止錄製':'目前頁面沒有正在進行的錄製'};
 }
 
+// Context-menu options must reflect the actual active recording state.
+const RECORD_MENU_IDS=[MENU_PAGE,MENU_SELECTION,MENU_AREA,MENU_RECORD,MENU_PAUSE,MENU_RESUME,MENU_STOP];
+function menuVisibility(mode='idle'){
+ const active=['record','paused','pick-record'].includes(mode);
+ return {
+  [MENU_PAGE]:!active,[MENU_SELECTION]:!active,[MENU_AREA]:!active,
+  [MENU_RECORD]:!active,[MENU_PAUSE]:mode==='record',
+  [MENU_RESUME]:mode==='paused',[MENU_STOP]:active
+ };
+}
+async function syncMenus(mode='idle'){
+ const visibility=menuVisibility(mode);
+ await Promise.all(RECORD_MENU_IDS.map(id=>
+  chrome.contextMenus.update(id,{visible:visibility[id]})));
+ chrome.contextMenus.refresh?.();
+}
+async function shownMode(tab){
+ if(!tab?.id)return 'idle';
+ const {locRecorderTabId}=await chrome.storage.local.get('locRecorderTabId');
+ if(locRecorderTabId!==tab.id)return 'idle';
+ const reply=await chrome.tabs.sendMessage(tab.id,{type:'page.status'}).catch(()=>null);
+ const mode=String(reply?.mode||'idle');
+ if(!['record','paused','pick-record'].includes(mode)){
+  await chrome.storage.local.remove('locRecorderTabId');
+  return 'idle';
+ }
+ return mode;
+}
 function installMenu(){
- chrome.contextMenus.removeAll().then(()=>{
+ chrome.contextMenus.removeAll().then(async()=>{
   chrome.contextMenus.create({id:MENU_ROOT,title:'LOC 彩虹橋｜galaxy-link',contexts:['page','selection']});
-  for(const [id,title,contexts] of [[MENU_PAGE,'擷取整頁／可見對話',['page','selection']],[MENU_SELECTION,'擷取選取文字',['selection']],[MENU_AREA,'選取頁面區域',['page','selection']],[MENU_RECORD,'開始動態錄製',['page','selection']],[MENU_PAUSE,'暫停錄製',['page','selection']],[MENU_RESUME,'繼續錄製',['page','selection']],[MENU_STOP,'停止錄製',['page','selection']]])
-   chrome.contextMenus.create({id,parentId:MENU_ROOT,title,contexts});
+  for(const [id,title,contexts] of [
+   [MENU_PAGE,'擷取整頁／可見對話',['page','selection']],
+   [MENU_SELECTION,'擷取選取文字',['selection']],
+   [MENU_AREA,'選取頁面區域',['page','selection']],
+   [MENU_RECORD,'開始動態錄製',['page','selection']],
+   [MENU_PAUSE,'暫停錄製',['page','selection']],
+   [MENU_RESUME,'繼續錄製',['page','selection']],
+   [MENU_STOP,'停止錄製',['page','selection']]
+  ])chrome.contextMenus.create({id,parentId:MENU_ROOT,title,contexts,
+    visible:menuVisibility()[id]});
  }).catch(e=>console.warn('[LOC galaxy-link menu]',String(e)));
 }
 chrome.runtime.onInstalled.addListener(async()=>{
  installMenu();
  await chrome.storage.local.setAccessLevel({accessLevel:'TRUSTED_CONTEXTS'});
  await chrome.alarms.create('loc-galaxy-link-retry',{periodInMinutes:5});
+ await clearLegacyTabBadges().catch(()=>{});
+ await updateQueueBadge().catch(e=>console.warn('[LOC Queue badge]',String(e)));
 });
-chrome.runtime.onStartup?.addListener(installMenu);
-// The toolbar icon opens settings only; capture actions live in the native web-page right-click submenu.
+chrome.runtime.onStartup?.addListener(()=>{
+ installMenu();
+ void updateQueueBadge().catch(e=>console.warn('[LOC Queue badge]',String(e)));
+});
+chrome.contextMenus.onShown?.addListener((_info,tab)=>{
+ void shownMode(tab).then(syncMenus).catch(e=>console.warn('[LOC menu status]',String(e)));
+});
+// The toolbar icon opens the native extension settings, never a capture Popup.
 chrome.action.onClicked.addListener(()=>chrome.runtime.openOptionsPage());
 chrome.contextMenus.onClicked.addListener((info,tab)=>{
  if(!tab?.id)return;
+ const action=info.menuItemId;
+ const label=({
+  [MENU_PAGE]:'擷取整頁', [MENU_SELECTION]:'擷取選取文字',
+  [MENU_AREA]:'選取區域', [MENU_RECORD]:'開始錄製',
+  [MENU_PAUSE]:'暫停錄製',[MENU_RESUME]:'繼續錄製',[MENU_STOP]:'停止錄製'
+ })[action]||'擷取';
  void (async()=>{
   const {locIncludeAssistant}=await chrome.storage.local.get('locIncludeAssistant');
   const ai=locIncludeAssistant===true;
-  switch(info.menuItemId){
-   case MENU_PAGE:return capture(tab,'',ai);
-   case MENU_SELECTION:return capture(tab,info.selectionText||'',ai);
-   case MENU_AREA:return selectOrRecord('page.select',ai,tab);
-   case MENU_RECORD:return selectOrRecord('page.record',ai,tab);
-   case MENU_PAUSE:return controlRecording('page.pause');
-   case MENU_RESUME:return controlRecording('page.resume');
-   case MENU_STOP:return stopRecording();
+  let result;
+  switch(action){
+   case MENU_PAGE:result=await capture(tab,'',ai);break;
+   case MENU_SELECTION:result=await capture(tab,info.selectionText||'',ai);break;
+   case MENU_AREA:result=await selectOrRecord('page.select',ai,tab);break;
+   case MENU_RECORD:result=await selectOrRecord('page.record',ai,tab);break;
+   case MENU_PAUSE:result=await controlRecording('page.pause');break;
+   case MENU_RESUME:result=await controlRecording('page.resume');break;
+   case MENU_STOP:result=await stopRecording();break;
+   default:return;
   }
- })().then(r=>{if(r)void chrome.action.setBadgeText({text:'OK',tabId:tab.id})}).catch(e=>{
-  console.warn('[LOC galaxy-link capture]',String(e));void chrome.action.setBadgeText({text:'!',tabId:tab.id});
+  if(action===MENU_RECORD)await syncMenus('pick-record');
+  if(action===MENU_PAUSE)await syncMenus('paused');
+  if(action===MENU_RESUME)await syncMenus('record');
+  if(action===MENU_STOP)await syncMenus('idle');
+  await noteAction(label,!result?.empty,result?.message||'操作已完成',tab.id);
+  await updateQueueBadge().catch(()=>{});
+ })().catch(async e=>{
+  console.warn('[LOC galaxy-link '+label+']',e);
+  await noteAction(label,false,e?.message||String(e),tab.id);
+  await updateQueueBadge().catch(()=>{});
  });
 });
 chrome.alarms.onAlarm.addListener(e=>{
- if(e.name==='loc-galaxy-link-retry')void flush(false).catch(err=>console.warn('[LOC galaxy-link Queue]',String(err)));
+ if(e.name==='loc-galaxy-link-retry')void flush(false).catch(async err=>{
+   console.warn('[LOC galaxy-link Queue]',String(err));
+   await noteAction('自動重試',false,err?.message||String(err));
+  });
 });
 chrome.runtime.onMessage.addListener((message,sender,respond)=>{
  (async()=>{
   switch(message?.action){
    case 'loc-connect':return connectLoc();
    case 'loc-disconnect':return disconnectLoc();
-   case 'loc-flush':return flush(true);
+   case 'loc-flush':{
+    try{const result=await flush(true);await updateQueueBadge();await noteAction('手動傳送',true,result.message);return result;}
+    catch(e){await noteAction('手動傳送',false,e?.message||String(e));throw e;}
+   }
    case 'loc-status':{
-    const [session,queue]=await Promise.all([chrome.storage.local.get([...AUTH_KEYS,'locImportPaused']),allEvents()]);
-    return {connected:Boolean(session.locOAuth?.refresh_token||session.locOAuth?.expires_at>Date.now()),configured:Boolean(session.locConfig),paused:session.locImportPaused===true,pending:queue.length,pendingCaptures:new Set(queue.map(r=>r.group_id||r.id)).size};
+    const [session,queue]=await Promise.all([
+     chrome.storage.local.get([...AUTH_KEYS,'locImportPaused','locLastAction']),allEvents()]);
+    return {connected:Boolean(session.locOAuth?.refresh_token||session.locOAuth?.expires_at>Date.now()),
+     configured:Boolean(session.locConfig),paused:session.locImportPaused===true,
+     ...captureTotals(queue),lastAction:session.locLastAction||null};
    }
   }
   switch(message?.type){
@@ -448,7 +547,9 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
     if(sender.id!==chrome.runtime.id||!sender.tab?.url)throw Error('Invalid capture sender');
     if(!Array.isArray(message.items)||!message.items.length||message.items.length>100)throw Error('Invalid capture items');
     if(message.items.some(item=>{try{return !captureSourceMatches(sender.tab.url,item?.url)||!captureSourceMatches(sender.tab.url,item?.source_key)}catch{return true}}))throw Error('Source origin mismatch');
-    return acceptItems(message.items);
+    const result=await acceptItems(message.items);
+    await noteAction('動態擷取',!result.empty,result.message,sender.tab.id);
+    return result;
    case 'capture':return capture(await currentTab(),'',message.includeAssistant===true);
    case 'select':return selectOrRecord('page.select',message.includeAssistant===true);
    case 'record.start':return selectOrRecord('page.record',message.includeAssistant===true);

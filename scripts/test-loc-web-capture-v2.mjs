@@ -55,8 +55,9 @@ function isolatedBackground(){
  const on=name=>({addListener:fn=>{listeners[name]=fn;}});
  const chrome={
   runtime:{id:'test-extension',onInstalled:on('installed'),onMessage:on('message'),openOptionsPage:async()=>{}},
-  contextMenus:{onClicked:on('menu')},alarms:{onAlarm:on('alarm')},action:{setBadgeText:async()=>{},onClicked:on('action')},
-  storage:{local:{get:async()=>({}),set:async()=>{},remove:async()=>{}}},
+  contextMenus:{onClicked:on('menu'),onShown:on('shown'),update:async()=>{},refresh:()=>{}},
+   alarms:{onAlarm:on('alarm')},action:{setBadgeText:async()=>{},setTitle:async()=>{},onClicked:on('action')},
+  storage:{local:{get:async()=>({}),set:async()=>{},remove:async()=>{},setAccessLevel:async()=>{}}},
   tabs:{query:async()=>[]}
  };
  const context=createContext({chrome,crypto:webcrypto,TextEncoder,URL,console,Promise,Date,Uint8Array,Set,Map});
@@ -91,7 +92,7 @@ test('identical capture to different galaxies is not suppressed by acknowledgeme
  assert.notEqual(a[0].group_id,b[0].group_id);
  const background=text('background.js');
  assert.match(background,/rows\.filter\(r=>\(r\.scopeid\|\|'lo3rwang'\)===scopeid\)/);
- assert.match(background,/records:batchRows\.map\(\(\{scopeid:localScope,\.\.\.record\}\)=>record\)/);
+ assert.match(background,/records:group\.map\(\(\{scopeid:localScope,\.\.\.record\}\)=>\(\{\.\.\.record,/);
 });
 
 test('queue threshold is 10 captures or 600 KB, not each individual request',()=>{
@@ -214,4 +215,17 @@ test('history capture includes full original user text and AI text only when opt
  assert.match(defaultItems[0].content,/complete original user message/);
  assert.equal(withAssistant.length,2);
  assert.ok(withAssistant.some(x=>x.content.startsWith('[assistant]')));
+});
+
+test('contextual menus track paused/record/idle and toolbar badge never shows an error glyph',async()=>{
+ const {context}=isolatedBackground();
+ const modes=runInContext("['idle','record','paused','pick-record'].map(menuVisibility)",context);
+ assert.equal(modes[0]['loc-pause'],false);
+ assert.equal(modes[0]['loc-record'],true);
+ assert.equal(modes[1]['loc-pause'],true);
+ assert.equal(modes[1]['loc-resume'],false);
+ assert.equal(modes[2]['loc-resume'],true);
+ assert.equal(modes[2]['loc-pause'],false);
+ assert.equal(modes[3]['loc-stop'],true);
+ assert.doesNotMatch(text('background.js'),/setBadgeText\(\{text:'!'|setBadgeText\(\{text:'OK'/);
 });
