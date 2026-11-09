@@ -191,9 +191,19 @@ test('GitHub verified identity -> LOC cookie -> per-install PKCE -> signed token
   }),env);
   assertStatus(withoutDecision,400);
   // A submitted malformed decision is consumed; the app must restart OAuth.
+  const rejectedStart=await handleNativeOAuth(request('/oauth/authorize?'+query,
+   {headers:{cookie}}),env);
+  assertStatus(rejectedStart,200);
+  const denyNonce=/name="nonce" value="([A-Za-z0-9_-]+)"/.exec(await rejectedStart.text())?.[1];
+  const denied=await handleNativeOAuth(request('/oauth/consent',{
+   method:'POST',headers:{cookie,origin:ISSUER,'content-type':'application/x-www-form-urlencoded'},
+   body:new URLSearchParams({nonce:denyNonce,decision:'deny'}).toString()
+  }),env);
+  assertStatus(denied,302);
+  assert.equal(new URL(denied.headers.get('location')).searchParams.get('error'),'access_denied');
   const retry=await handleNativeOAuth(request('/oauth/authorize?'+query,
    {headers:{cookie}}),env);
-  assertStatus(retry,200);
+  assertStatus(retry,200,'denial must never mark consent as approved');
   const freshNonce=/name="nonce" value="([A-Za-z0-9_-]+)"/.exec(await retry.text())?.[1];
   const accepted=await handleNativeOAuth(request('/oauth/consent',{
    method:'POST',headers:{cookie,origin:ISSUER,'content-type':'application/x-www-form-urlencoded'},
@@ -232,6 +242,21 @@ test('GitHub verified identity -> LOC cookie -> per-install PKCE -> signed token
   assertStatus(rotated,200);
   const next=await rotated.json();
   assert.notEqual(next.refresh_token,minted.refresh_token);
+  // Explicit revocation prevents future OAuth refresh; current short-lived
+  // Access Tokens continue only until their fixed expiry.
+  const revokeDataConsent=await handleNativeOAuth(request('/oauth/consent/revoke',{
+   method:'POST',headers:{cookie,origin:ISSUER,
+    'content-type':'application/x-www-form-urlencoded'},
+   body:new URLSearchParams({client_id:client.client_id,resource:IMPORT_AUDIENCE}).toString()
+  }),env);
+  assertStatus(revokeDataConsent,200);
+  const afterRevoke=await handleNativeOAuth(request('/oauth/token',{
+   method:'POST',headers:{origin,
+    'content-type':'application/x-www-form-urlencoded'},
+   body:new URLSearchParams({grant_type:'refresh_token',client_id:client.client_id,
+    refresh_token:next.refresh_token}).toString()
+  }),env);
+  assertStatus(afterRevoke,403);
   assertStatus(await handleNativeOAuth(request('/oauth/token',{
    method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},
    body:refreshForm.toString()}),env),401);
