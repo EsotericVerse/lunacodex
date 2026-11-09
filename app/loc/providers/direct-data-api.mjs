@@ -53,13 +53,16 @@ function dataApiOrExpression(expression){
   return parsed.items.map(render).join(',');
 }
 class Query{
-  constructor(run,schema,table){
-    this.run=run;this.schema=schema;this.table=assertId(table);
+  constructor(run,schema,table,mutate=null){
+    this.run=run;this.mutate=mutate;this.operation='select';this.values=null;
+    this.returning=false;this.conflict=null;
+    this.schema=schema;this.table=assertId(table);
     this.columns=['*'];this.filters=[];this.orFilters=[];this.orders=[];
     this.offset=0;this.rowLimit=queryBatchSize('*');this.count=null;this.head=false;
     this.cardinality=null;this.signal=null;this.dbId='';
   }
   select(cols='*',options={}){
+    this.returning=true;
     this.columns=String(cols||'*').split(',').map(s=>s.trim()).filter(Boolean);
     this.rowLimit=queryBatchSize(this.columns);
     this.count=options.count||null;this.head=options.head===true;return this;
@@ -81,15 +84,15 @@ class Query{
   searchIndex(){return this}
   expectDatabase(id){this.dbId=String(id||'');return this}
   abortSignal(signal){this.signal=signal;return this}
-  insert(){throw Error('Private database writes require the owner Web Server')}
-  update(){throw Error('Private database writes require the owner Web Server')}
-  upsert(){throw Error('Private database writes require the owner Web Server')}
-  delete(){throw Error('Private database writes require the owner Web Server')}
-  then(ok,fail){return this.run(this).then(ok,fail)}
+  insert(rows){if(!this.mutate)throw Error('Private database writes require the owner Web Server');this.operation='insert';this.values=rows;return this}
+  update(values){if(!this.mutate)throw Error('Private database writes require the owner Web Server');this.operation='update';this.values=values;return this}
+  upsert(rows,options={}){if(!this.mutate)throw Error('Private database writes require the owner Web Server');this.operation='upsert';this.values=rows;this.conflict=options;return this}
+  delete(){if(!this.mutate)throw Error('Private database writes require the owner Web Server');this.operation='delete';return this}
+  then(ok,fail){return (this.operation==='select'?this.run(this):this.mutate(this)).then(ok,fail)}
 }
 function unsupported(){throw Error('This operation requires the database owner Web Server; LOC provides no SQL Gateway')}
 export function createDirectDataApiClient({
-  url,apiKey,role='anon',fetch:fetchImpl=globalThis.fetch
+  url,apiKey,role='anon',fetch:fetchImpl=globalThis.fetch,mutate=null
 }={}){
   const base=requiredApi(url);
   if(typeof fetchImpl!=='function')throw Error('Data API requires fetch');
@@ -178,11 +181,44 @@ export function createDirectDataApiClient({
   function execute(q){
     return role==='anon'?withPublicReadBudget(()=>read(q),q.signal):read(q);
   }
+  async function write(q){
+    if(role!=='authenticated'||typeof mutate!=='function')
+      throw Error('LOC Auth management write is not configured');
+    if(q.filters.some(f=>f.negate||!['eq','neq','gt','gte','lt','lte','like','ilike','is','in'].includes(f.op)))
+      throw Error('Unsupported managed write filter');
+    const rows=Array.isArray(q.values)?q.values:q.values?[q.values]:[];
+    const filters=q.filters.map(f=>({column:f.column,operator:f.op,value:f.value}));
+    if(['update','delete'].includes(q.operation)&&!filters.length)
+      throw Error('Unfiltered database mutation denied');
+    const payload={p_table:q.schema+'.'+q.table,p_operation:q.operation,
+      p_rows:['insert','upsert'].includes(q.operation)?rows:null,
+      p_values:q.operation==='update'?q.values:null,
+      p_filters:filters};
+    const before=q.returning&&q.operation==='delete'?(await read(q)).data:[];
+    const result=await mutate(payload);
+    if(result?.error)throw Error(result.error.message||'LOC management write failed');
+    const count=Number(result?.data?.count??result?.count??0);
+    if(!Number.isSafeInteger(count)||count<0)throw Error('Invalid LOC write receipt');
+    if(!q.returning||!count)return {data:[],error:null,count};
+    if(q.operation==='delete')return {data:(before||[]).slice(0,count),error:null,count};
+    const idField=rows.every(row=>typeof row.uid==='string')?'uid':
+      rows.every(row=>typeof row.id==='string')?'id':'';
+    const ids=idField?[...new Set(rows.map(row=>row[idField]))]:[];
+    const eq=q.filters.find(f=>f.op==='eq'&&['uid','id'].includes(f.column));
+    if(eq&&!ids.length)ids.push(eq.value);
+    if(!ids.length)return {data:[],error:null,count};
+    const follow=new Query(read,q.schema,q.table);
+    follow.columns=q.columns;
+    follow.filters=[{column:idField||eq.column,op:'in',value:ids,negate:false}];
+    follow.rowLimit=Math.min(5000,Math.max(ids.length,count));
+    const response=await read(follow);
+    return {data:response.data||[],error:null,count};
+  }
   return {
     role,
     schema(schema){
       assertId(schema);
-      return {from(table){return new Query(execute,schema,table)},
+      return {from(table){return new Query(execute,schema,table,mutate?write:null)},
         analytics:publicAnalytics,managedWrite:unsupported,managedAction:unsupported,
         publicAction:unsupported,anchor:unsupported};
     },
