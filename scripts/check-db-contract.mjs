@@ -1,4 +1,4 @@
-import {readFileSync,readdirSync} from 'node:fs';
+import {readFileSync,readdirSync,existsSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {parse} from '@babel/parser';
 import {scopeConfigColumns,scopeFeatureColumns,scopeFeaturePatch} from '../app/loc/scope-config-fields.mjs';
@@ -112,10 +112,12 @@ export function checkProhibitedVendorDependencies(packageJson,lockJson){
 if(process.argv[1]&&fileURLToPath(import.meta.url)===process.argv[1]){
   checkProhibitedVendorDependencies(read('package.json'),read('package-lock.json'));
   const result=checkDbContract(read(databaseContract),read(databaseClient));
-  const migrationDir=new URL('../supabase/migrations/',import.meta.url);
-  const migrationFiles=readdirSync(migrationDir)
-    .filter(name=>name.endsWith('.sql')&&name.slice(0,8)>='20261102')
-    .map(name=>[name,read('supabase/migrations/'+name)]);
-  const loc=checkLocScopeBoundary(migrationFiles);
-  console.log('DB contract OK: '+result.exported+' exports, '+result.consumed+' consumers; LOC boundary checked '+loc.checked+' migrations.');
+  // LOC uses the live database schema as its single baseline.
+  // Fail closed if old SQL migrations are ever reintroduced to the repository.
+  const legacyDir=new URL('../supabase/migrations/',import.meta.url);
+  const retired=existsSync(legacyDir)
+    ?readdirSync(legacyDir).filter(name=>name.endsWith('.sql')):[];
+  if(retired.length)throw Error('Retired SQL migrations must not return: '+retired.join(', '));
+  checkLocScopeBoundary([]);
+  console.log('DB contract OK: '+result.exported+' exports, '+result.consumed+' consumers; legacy migrations: 0.');
 }
