@@ -10,11 +10,12 @@ const env={
 };
 const owner='owner@example.test';
 const role=(email=owner)=>({id:'lo3rwang',email,manage_role:'admin',active:true});
-const lookup=async({pages=503,rows=[role()],publicStatus=200}={})=>{
+const lookup=async({pages=503,rows=[role()],publicStatus=200,offline=false}={})=>{
  const requests=[];
  const fetchImpl=async(input,init)=>{
   const url=new URL(String(input));
   requests.push({url,init});
+  if(offline&&url.origin==='https://loc.lo3rwang.cc')throw Error('backend offline');
   if(url.origin==='https://loc.lo3rwang.cc')
    return Response.json(pages===200?{rows:rows.map(r=>({
     id:r.id,email:r.email,role:r.manage_role,active:r.active
@@ -38,6 +39,11 @@ test('verified LOC owner recovers api.manage roles when native Kysely profile is
  assert.equal(q.requests[1].init.headers['accept-profile'],'api');
  assert.equal(q.requests[1].init.headers.apikey,env.LOC_SUPABASE_PUBLIC_KEY);
  assert.equal(q.requests[1].init.method,'GET');
+});
+test('an offline trusted Pages role endpoint can recover from the same public registry',async()=>{
+ const q=await lookup({offline:true});
+ assert.equal(isLocRegistryAdmin(await q.roles()),true);
+ assert.equal(q.requests.length,2);
 });
 test('a healthy trusted role lookup is never replaced by a public fallback',async()=>{
  const q=await lookup({pages:200});
