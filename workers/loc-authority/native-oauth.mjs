@@ -567,7 +567,8 @@ async function logout(request,stub,origin,env){
 async function importShort(request,env,stub,origin){
  const identity=await verifyNativeOAuth(request,env,IMPORT_AUDIENCE);
  if(!identity.scope.split(/\s+/).includes('loc:import'))error('Import scope required',403);
- const scope=String(env.LOC_IMPORT_SCOPE_ID||'lo3rwang');
+ const requestedScope=new URL(request.url).searchParams.get('scopeid');
+ const scope=requestedScope===null?String(env.LOC_IMPORT_SCOPE_ID||'lo3rwang'):requestedScope;
  if(!SCOPE_ID.test(scope))error('Import Scope invalid',503);
  const roots=String(env.LOC_RECOVERY_ROOT_LOC_SUBJECTS||'').split(/[\s,;]+/).filter(Boolean);
  if(!roots.includes(identity.subject)&&
@@ -620,7 +621,7 @@ export async function handleNativeOAuth(request,env){
     response_types_supported:['code'],grant_types_supported:['authorization_code','refresh_token'],
     code_challenge_methods_supported:['S256'],token_endpoint_auth_methods_supported:['none'],
     scopes_supported:['profile','email','offline_access','loc:import'],
-    resource_parameter_supported:true},200,origin);
+    resource_parameter_supported:true,loc_import_scope_routing:'query-v1'},200,origin);
   if(path==='/oauth/register'&&request.method==='POST')return await register(request,stub,origin);
   if(path==='/oauth/authorize'&&request.method==='GET')return await authorize(request,url,stub,env);
   if(path==='/oauth/login'&&request.method==='GET')return await login(request,url,stub,env);

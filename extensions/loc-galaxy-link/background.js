@@ -1,140 +1,163 @@
-const MENU='loc-galaxy-link-save';
-const DB_NAME='loc-channel1-queue',STORE='pending';
-const MAX_BATCH_BYTES=600000, MAX_TEXT_CHARS=140000;
-const AUTO_BATCH_CAPTURES=10; // local captures, not individual article chunks
+// One LOC galaxy-link extension: one LOC Auth, one queue, multiple capture modes.
+const DB_NAME='loc-channel1-queue';
+const STORE='pending',ACK_STORE='acknowledged';
+const MAX_BATCH=50,MAX_BYTES=600000,AUTO_CAPTURE_COUNT=10;
 const CONFIG_URL='https://loc.lo3rwang.cc/extension/oauth/config.json';
 const AUTH_KEYS=['locOAuth','locConfig'];
-let processing=null;
-function dbOpen(){
+const MENU_PAGE='loc-page',MENU_SELECTION='loc-selection',MENU_AREA='loc-area',MENU_RECORD='loc-record',MENU_PAUSE='loc-pause',MENU_RESUME='loc-resume',MENU_STOP='loc-stop',MENU_ROOT='loc-galaxy-link';
+const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
+const encoder=new TextEncoder();
+const sizeOf=x=>encoder.encode(JSON.stringify(x)).length;
+let inFlight=null;
+function openDb(){
  return new Promise((resolve,reject)=>{
-  const req=indexedDB.open(DB_NAME,1);
-  req.onupgradeneeded=()=>req.result.createObjectStore(STORE,{keyPath:'id'});
-  req.onsuccess=()=>resolve(req.result);
-  req.onerror=()=>reject(req.error);
+  const req=indexedDB.open(DB_NAME,2);
+  req.onupgradeneeded=()=>{
+   const db=req.result;
+   if(!db.objectStoreNames.contains(STORE))db.createObjectStore(STORE,{keyPath:'id'});
+   if(!db.objectStoreNames.contains(ACK_STORE))db.createObjectStore(ACK_STORE,{keyPath:'id'});
+  };
+  req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);
  });
 }
-async function dbOperation(mode,run){
- const db=await dbOpen();
- try{return await new Promise((resolve,reject)=>{
-  const tx=db.transaction(STORE,mode),store=tx.objectStore(STORE);
-  let value;
-  tx.oncomplete=()=>resolve(value);
+async function allEvents(){
+ const db=await openDb();
+ return new Promise((resolve,reject)=>{
+  const tx=db.transaction(STORE,'readonly');
+  const req=tx.objectStore(STORE).getAll();
+  req.onsuccess=()=>resolve(req.result||[]);
+  req.onerror=()=>reject(req.error);
+  tx.oncomplete=()=>db.close();
   tx.onerror=()=>reject(tx.error);
-  tx.onabort=()=>reject(tx.error||Error('Queue aborted'));
-  try{const request=run(store);request.onsuccess=()=>{value=request.result;};request.onerror=()=>reject(request.error);}catch(e){tx.abort();reject(e);}
- });}finally{db.close();}
+ });
 }
-// A split capture must enter the one queue atomically: either all parts exist
-// or no part is eligible for import.
-async function enqueueMany(records){
- const db=await dbOpen();
- try{await new Promise((resolve,reject)=>{
-  const tx=db.transaction(STORE,'readwrite'),store=tx.objectStore(STORE);
-  tx.oncomplete=()=>resolve();
-  tx.onerror=()=>reject(tx.error);
-  tx.onabort=()=>reject(tx.error||Error('Capture enqueue aborted'));
-  try{for(const record of records)store.put(record);}
-  catch(error){tx.abort();reject(error);}
- });}finally{db.close();}
-}
-const allPending=()=>dbOperation('readonly',store=>store.getAll());
-// Remove an acknowledged batch in one IndexedDB transaction. Partial local
-// deletion would change the retry batch ID after a crash and risk duplicates.
-async function acknowledgeBatch(records){
- const db=await dbOpen();
- try{await new Promise((resolve,reject)=>{
-  const tx=db.transaction(STORE,'readwrite'),store=tx.objectStore(STORE);
-  tx.oncomplete=()=>resolve();
-  tx.onerror=()=>reject(tx.error);
-  tx.onabort=()=>reject(tx.error||Error('Acknowledgement aborted'));
-  try{for(const record of records)store.delete(record.id);}
-  catch(error){tx.abort();reject(error);}
- });}finally{db.close();}
-}
-async function badge(ok,message){
- await chrome.action.setBadgeBackgroundColor({color:ok?'#177245':'#a13b3b'});
- await chrome.action.setBadgeText({text:ok?'OK':'!'});
- if(message)console.info('[LOC galaxy-link]',message);
-}
-function parsePage(){
- const main=document.querySelector('main, [role="main"], article, [itemprop="articleBody"]')||document.body;
- const fallback=main===document.body;
- if(!main)return {error:'無法取得網頁內容'};
- const deny='script,style,noscript,nav,header,footer,aside,button,input,textarea,select,[role="navigation"],[role="menu"],[role="toolbar"],[aria-hidden="true"]';
- const walker=document.createTreeWalker(main,NodeFilter.SHOW_TEXT),parts=[];
- let node;
- while((node=walker.nextNode())){
-  const parent=node.parentElement;
-  if(!parent||parent.closest(deny)||parent.closest('[hidden],[inert]'))continue;
-  const css=getComputedStyle(parent);
-  if(css.display==='none'||css.visibility==='hidden')continue;
-  const line=node.textContent.replace(/\s+/g,' ').trim();
-  if(line)parts.push(line);
- }
- const content=parts.join('\n').trim();
- if(content.length<12)return {error:'網頁可解析內容過少，未儲存'};
- return {url:location.href,title:document.title,source:location.hostname,
-  content,captured_at:new Date().toISOString(),
-  extraction:fallback?'dom-body-fallback':'dom-main-content',
-  completeness:'loaded-dom-only'};
-}
-async function capture(tabId){
- const result=await chrome.scripting.executeScript({target:{tabId},func:parsePage});
- const data=result?.[0]?.result;
- if(!data||data.error)throw Error(data?.error||'讀取頁面失敗');
- return data;
-}
-function sourceKey(url){
- const parsed=new URL(url);
- if(!['https:','http:'].includes(parsed.protocol))throw Error('不支援的文章來源網址');
- // Do not strip the hash: many single-page sites use it as the article ID.
- return parsed.href;
-}
-function orderedPending(records){
- return records.sort((a,b)=>String(a.captured_at||'').localeCompare(String(b.captured_at||''))||
-  String(a.group_id||a.id).localeCompare(String(b.group_id||b.id))||
-  (a.part_index||0)-(b.part_index||0));
-}
-function queueReady(records){
- const captures=new Set(records.map(r=>r.group_id||r.id));
- if(captures.size>=AUTO_BATCH_CAPTURES)return true;
- // Full byte budget also triggers transmission even for a single large page.
- return new TextEncoder().encode(JSON.stringify(records)).length>=MAX_BATCH_BYTES;
-}
-async function enqueuePage(record){
- const content=record.content, group_id=crypto.randomUUID(),source_key=sourceKey(record.url);
- const parts=Math.ceil(content.length/MAX_TEXT_CHARS);
- const chunks=[];let offset=0;
- while(offset<content.length){
-  let end=Math.min(offset+MAX_TEXT_CHARS,content.length);
-  if(end<content.length&&end>offset&&/^[\uD800-\uDBFF]$/.test(content[end-1]))end--;
-  chunks.push(content.slice(offset,end));offset=end;
- }
- const events=chunks.map((chunk,i)=>({...record,id:crypto.randomUUID(),group_id,
-  source_key,write_mode:'append',kind:'capture',
-  part_index:i,part_count:chunks.length,content:chunk}));
- await enqueueMany(events);
- return chunks.length;
-}
-function batches(records){
- const encoder=new TextEncoder();const sets=[];let current=[],bytes=80;
- for(const record of records){
-  const size=encoder.encode(JSON.stringify(record)).length+2;
-  if(size>MAX_BATCH_BYTES-80)throw Error('單筆內容過大，無法打包');
-  if(current.length&&(bytes+size>MAX_BATCH_BYTES||current.length>=50)){
-   sets.push(current);current=[];bytes=80;
+async function putEvents(events){
+ const db=await openDb();
+ return new Promise((resolve,reject)=>{
+  const tx=db.transaction([STORE,ACK_STORE],'readwrite');
+  const queue=tx.objectStore(STORE),ack=tx.objectStore(ACK_STORE);
+  let count=0;
+  // Preserve immutable original captured_at when a pending record is
+  // captured again. A changed captured_at with the same event UUID would
+  // otherwise cause the server append fingerprint to reject safe retries.
+  for(const row of events){
+   const old=queue.get(row.id);
+   old.onsuccess=()=>{
+    if(old.result)return;
+    const prior=ack.get(row.id);
+    prior.onsuccess=()=>{if(!prior.result){queue.add(row);count++;}};
+   };
   }
-  current.push(record);bytes+=size;
- }
- if(current.length)sets.push(current);
- return sets;
+  tx.oncomplete=()=>{db.close();resolve(count);};
+  tx.onerror=()=>{db.close();reject(tx.error);};
+  tx.onabort=()=>{db.close();reject(tx.error);};
+ });
 }
-async function stableBatchId(records){
- const data=new TextEncoder().encode(records.map(r=>r.id).join(':'));
- const bits=new Uint8Array(await crypto.subtle.digest('SHA-256',data)).slice(0,16);
- bits[6]=(bits[6]&15)|64;bits[8]=(bits[8]&63)|128;
- const h=Array.from(bits,b=>b.toString(16).padStart(2,'0')).join('');
- return h.slice(0,8)+'-'+h.slice(8,12)+'-'+h.slice(12,16)+'-'+h.slice(16,20)+'-'+h.slice(20);
+async function removeEvents(records){
+ const db=await openDb();
+ return new Promise((resolve,reject)=>{
+  const tx=db.transaction([STORE,ACK_STORE],'readwrite');
+  const queue=tx.objectStore(STORE),ack=tx.objectStore(ACK_STORE);
+  for(const row of records){
+   // Durable receipts prevent repeated captures appending the same text
+   // again after the Queue entry has been successfully acknowledged.
+   ack.put({id:row.id,received_at:Date.now()});
+   queue.delete(row.id);
+  }
+  tx.oncomplete=()=>{db.close();resolve();};
+  tx.onerror=()=>{db.close();reject(tx.error);};
+  tx.onabort=()=>{db.close();reject(tx.error);};
+ });
+}
+function normalizedUrl(value){
+ const u=new URL(value);
+ if(!['https:','http:'].includes(u.protocol)||u.username||u.password)throw Error('只支援 HTTP(S) 來源');
+ u.hash='';
+ for(const key of [...u.searchParams.keys()])if(/^utm_|^fbclid$|^igshid$/i.test(key))u.searchParams.delete(key);
+ return u.href;
+}
+// A Threads permalink may use threads.net while the active page uses
+// threads.com (and Instagram has www/mobile aliases). Only exact platform
+// hostnames may cross origins; arbitrary redirects remain forbidden.
+function captureSourceMatches(pageUrl,sourceUrl){
+ const page=new URL(pageUrl),source=new URL(sourceUrl);
+ if(!['http:','https:'].includes(page.protocol)||!['http:','https:'].includes(source.protocol))return false;
+ if(page.origin===source.origin)return true;
+ if(page.protocol!=='https:'||source.protocol!=='https:')return false;
+ const THREADS=new Set(['threads.net','www.threads.net','threads.com','www.threads.com']);
+ const INSTAGRAM=new Set(['instagram.com','www.instagram.com','m.instagram.com']);
+ return (THREADS.has(page.hostname)&&THREADS.has(source.hostname))||
+   (INSTAGRAM.has(page.hostname)&&INSTAGRAM.has(source.hostname));
+}
+async function stableUuid(input){
+ const bytes=new Uint8Array(await crypto.subtle.digest('SHA-256',encoder.encode(input)));
+ const hex=[...bytes.slice(0,16)].map(x=>x.toString(16).padStart(2,'0')).join('');
+ // Version 5/variant RFC 4122 fingerprint UUID; retries keep the same event ID.
+ return hex.slice(0,8)+'-'+hex.slice(8,12)+'-5'+hex.slice(13,16)+'-'+
+  ((parseInt(hex[16],16)&3)|8).toString(16)+hex.slice(17,20)+'-'+hex.slice(20,32);
+}
+async function toEvents(items,scopeid='lo3rwang'){
+ if(!SCOPE.test(scopeid))throw Error('不支援的銀河 Scope');
+ if(!Array.isArray(items)||!items.length||items.length>100)throw Error('擷取項目數量超出限制');
+ const rows=[];
+ for(const item of items){
+  if(!item||typeof item.content!=='string'||!item.content.trim())continue;
+  const url=normalizedUrl(item.url||item.source_key);
+  const source_key=normalizedUrl(item.source_key||item.url);
+  if(url!==source_key)continue;
+  const title=String(item.title||'未命名網頁').slice(0,350);
+  const content=item.content.trim();
+  // Use per-item capture groups, not one group for unrelated posts.
+  const group_id=await stableUuid(scopeid+'\u0000'+source_key+'\u0000'+(item.key||'')+'\u0000'+content);
+  const partSize=85000,part_count=Math.ceil(content.length/partSize);
+  if(part_count>10000)throw Error('文章過長');
+  for(let index=0;index<part_count;index++){
+   const part=content.slice(index*partSize,(index+1)*partSize);
+   const id=await stableUuid(scopeid+'\u0000'+source_key+'\u0000'+(item.key||'')+'\u0000'+part+'\u0000'+index);
+   rows.push({id,group_id,scopeid,source_key,url,title,kind:'capture',write_mode:'append',
+    part_index:index,part_count,captured_at:new Date().toISOString(),content:part});
+  }
+ }
+ return rows;
+}
+function ready(rows){
+ return rows.length && (new Set(rows.map(x=>x.group_id)).size>=AUTO_CAPTURE_COUNT ||
+  sizeOf(rows)>=MAX_BYTES);
+}
+async function queueCount(){
+ const db=await openDb();
+ return new Promise((resolve,reject)=>{
+  const tx=db.transaction(STORE,'readonly');
+  const req=tx.objectStore(STORE).count();
+  req.onsuccess=()=>resolve(req.result);
+  req.onerror=()=>reject(req.error);
+  tx.oncomplete=()=>db.close();
+ });
+}
+async function acceptItems(items){
+ const {locTargetScope='lo3rwang',locImportPaused=false}=
+  await chrome.storage.local.get(['locTargetScope','locImportPaused']);
+ const events=await toEvents(items,locTargetScope);
+ if(!events.length)return {message:'沒有可擷取的內容'};
+ const inserted=await putEvents(events);
+ // When the website is unavailable, leave the queue alone and avoid
+ // repeatedly loading/serializing every pending capture on each scroll.
+ if(locImportPaused)return {message:'已保留 Queue：'+inserted+' 筆',queued:await queueCount()};
+ const all=await allEvents();
+ if(ready(all))void flush(false).catch(()=>{});
+ return {message:'新加入 Queue：'+inserted+' 筆（重複擷取已略過）',queued:all.length};
+}
+function packet(rows){
+ const out=[];let current=[];
+ for(const row of rows){
+  const next=[...current,row];
+  // Add enough headroom for JSON batch envelope.
+  if(current.length&&(next.length>MAX_BATCH||sizeOf({id:'00000000-0000-4000-8000-000000000000',write_mode:'append',records:next})>590000)){
+   out.push(current);current=[row];
+  }else current=next;
+ }
+ if(current.length)out.push(current);
+ return out;
 }
 
 function encode64(bytes){
@@ -167,7 +190,7 @@ async function getConfig(){
   if(url.protocol!=='https:'||url.origin!==issuer.origin)
    throw oauthError('OAuth 端點必須使用 LOC Auth HTTPS');
  }
- const config={issuer:meta.issuer,client_id:cfg.client_id,import_url:api.href,
+ const config={supports_scope_routing:meta.loc_import_scope_routing==='query-v1',issuer:meta.issuer,client_id:cfg.client_id,import_url:api.href,
    resource:cfg.resource||api.href,
   authorization_endpoint:meta.authorization_endpoint,token_endpoint:meta.token_endpoint,
   registration_endpoint:meta.registration_endpoint,
@@ -254,7 +277,7 @@ async function connectLoc(){
  await chrome.storage.local.set({locOAuth:{
   access_token:tokens.access_token,refresh_token:tokens.refresh_token||null,
   expires_at:Date.now()+Math.max(0,Number(tokens.expires_in||300)-60)*1000}});
- await chrome.storage.local.remove('locQueuePaused');
+ await chrome.storage.local.remove(['locImportPaused','locQueuePaused']);
  return {connected:true};
 }
 let refreshFlight=null;
@@ -274,135 +297,167 @@ async function activeToken(){
  })().finally(()=>{refreshFlight=null;});
  return refreshFlight;
 }
-chrome.runtime.onMessage.addListener((message,_sender,respond)=>{
- if(message?.action==='loc-connect'){
-  connectLoc().then(respond).catch(error=>respond({connected:false,error:error.message}));
-  return true;
- }
- if(message?.action==='loc-disconnect'){
-  disconnectLoc().then(respond)
-   .catch(e=>respond({error:e.message}));
-  return true;
- }
- if(message?.action==='loc-status'){
-  Promise.all([chrome.storage.local.get([...AUTH_KEYS,'locQueuePaused']),allPending()]).then(([s,pending])=>respond({
-    connected:Boolean(s.locOAuth?.refresh_token||s.locOAuth?.expires_at>Date.now()),
-    configured:Boolean(s.locConfig),paused:s.locQueuePaused===true,pending:pending.length,
-    pendingCaptures:new Set(pending.map(r=>r.group_id||r.id)).size
-  })).catch(e=>respond({error:e.message}));
-  return true;
- }
- if(message?.action==='loc-flush'){
-  flush(true).then(count=>respond({sent:count})).catch(e=>respond({error:e.message}));
-  return true;
- }
-});
 
-function importContractError(message){
- return Object.assign(new Error(message),{code:'LOC_IMPORT_CONTRACT'});
-}
+function contractError(message){return Object.assign(new Error(message),{code:'LOC_IMPORT_CONTRACT'})}
 function validateArticleReceipts(receipts,records){
- if(!Array.isArray(receipts))throw importContractError('LOC 尚未回傳來源文章 UID，Queue 保留');
- const entries=new Map();
- for(const item of receipts){
-  if(typeof item?.source_key==='string'&&/^[0-9A-Za-z]{8}$/.test(String(item.uid||'')))
-   entries.set(item.source_key,item.uid);
- }
- for(const key of new Set(records.map(r=>r.source_key)))
-  if(!entries.has(key))throw importContractError('LOC 未確認文章 UID：'+key);
+ if(!Array.isArray(receipts))throw contractError('LOC 未回傳 UID 回執，Queue 保留');
+ const received=new Map();
+ for(const r of receipts)if(typeof r?.source_key==='string'&&/^[A-Za-z0-9]{8}$/.test(String(r.uid||'')))received.set(r.source_key,r.uid);
+ for(const key of new Set(records.map(r=>r.source_key)))if(!received.has(key))throw contractError('未確認文章 UID：'+key);
+}
+async function sendViaAuth(scopeid,batch,token,config){
+ if(!SCOPE.test(scopeid))throw Error('Invalid Scope');
+ if(scopeid!=='lo3rwang'&&config.supports_scope_routing!==true)throw contractError('多 Scope 認證尚未啟用；Queue 保留，禁止錯誤寫入');
+ const endpoint=new URL(config.import_url||'');
+ if(endpoint.origin!=='https://auth.lo3rwang.cc'||endpoint.pathname!=='/v1/import/short')throw contractError('LOC Auth 匯入位址錯誤');
+ if(config.supports_scope_routing)endpoint.searchParams.set('scopeid',scopeid);
+ const reply=await fetch(endpoint.href,{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify(batch),redirect:'error',cache:'no-store'});
+ if(!reply.ok){const e=Error('LOC 匯入失敗：HTTP '+reply.status);e.httpStatus=reply.status;e.retryAfter=reply.headers?.get?.('retry-after')||'';throw e;}
+ const receipt=await reply.json().catch(()=>{throw contractError('LOC 回執不可解析')});
+ if(receipt?.accepted!==true||receipt.id!==batch.id)throw contractError('LOC 未確認批次 ID');
+ validateArticleReceipts(receipt.articles,batch.records);
+ return receipt;
 }
 async function flush(force=false){
- if(processing)return processing;
- processing=(async()=>{
-  const pending=orderedPending(await allPending());
-  if(!pending.length)return 0;
-  const state=await chrome.storage.local.get(['locQueueRetry','locQueueRetryAfter','locQueuePaused']);
-  if(state.locQueuePaused&&!force)return 0;
-  if(Number(state.locQueueRetryAfter||0)>Date.now())return 0;
-  if(!force&&!state.locQueueRetry&&!queueReady(pending))return 0;
-  // One OAuth lookup per ready flush, not per capture or individual article.
+ if(inFlight)return inFlight;
+ inFlight=(async()=>{
+  const rows=(await allEvents()).sort((a,b)=>String(a.captured_at||'').localeCompare(String(b.captured_at||'')));
+  if(!rows.length)return {message:'Queue 已清空',sent:0};
+  if(!force&&!ready(rows))return {message:'未達批次門檻',sent:0};
+  const settings=await chrome.storage.local.get(['locImportPaused','locQueueRetryAfter','locConfig']);
+  if(!force&&settings.locImportPaused)return {message:'已暫停自動傳送',sent:0};
+  if(Number(settings.locQueueRetryAfter||0)>Date.now())return {message:'流量管制等待中',sent:0};
   let token;
-  try{token=await activeToken();}
-  catch(error){
-   // Do not retry unavailable or invalid OAuth every five minutes.
-   await chrome.storage.local.set({locQueuePaused:true});
-   throw error;
-  }
-  const {locConfig:config}=await chrome.storage.local.get('locConfig');
-  if(!config?.import_url){
-   await chrome.storage.local.set({locQueuePaused:true});
-   throw oauthError('未設定 LOC 短匯入 API');
-  }
-  let sent=0;
+  try{token=await activeToken()}catch(e){await chrome.storage.local.set({locImportPaused:true});throw e}
+  if(!settings.locConfig?.import_url){await chrome.storage.local.set({locImportPaused:true});throw Error('LOC 匯入設定不存在')}
+  let count=0;
   try{
-   const events=pending.map(r=>({...r,source_key:r.source_key||sourceKey(r.url),
-    write_mode:'append',kind:r.kind||'capture'}));
-   for(const records of batches(events)){
-    // One request carries multiple independent article append events.
-    // The backend must deduplicate each record.id even when batch membership
-    // changes after a lost acknowledgement or another capture.
-    const batch={id:await stableBatchId(records),write_mode:'append',records};
-    const reply=await fetch(config.import_url,{
-     method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+token},
-     body:JSON.stringify(batch)
-    });
-    if(!reply.ok){
-     if([400,401,403,404,409,410,413,415,422].includes(reply.status))
-      await chrome.storage.local.set({locQueuePaused:true});
-     if(reply.status===429){
-      const header=reply.headers?.get?.('retry-after');
-      const value=String(header||'').trim();
-      const ms=/^\d+$/.test(value)?Number(value)*1000:
-       (Date.parse(value)||0)-Date.now();
-      await chrome.storage.local.set({locQueueRetryAfter:Date.now()+
-       (Number.isFinite(ms)&&ms>0?Math.min(ms,3600000):900000)});
-     }
-     throw Error('LOC 匯入失敗：HTTP '+reply.status);
+   for(const scopeid of [...new Set(rows.map(r=>r.scopeid||'lo3rwang'))]){
+    for(const group of packet(rows.filter(r=>(r.scopeid||'lo3rwang')===scopeid))){
+     const batch={id:await stableUuid(group.map(r=>r.id).sort().join('|')),write_mode:'append',records:group.map(({scopeid:localScope,...record})=>({...record,source_key:record.source_key||normalizedUrl(record.url),write_mode:'append',kind:record.kind||'capture'}))};
+     await sendViaAuth(scopeid,batch,token,settings.locConfig);
+     await removeEvents(group); // Clear only after complete server-side UID receipts.
+     count+=group.length;
     }
-    let result;
-    try{result=await reply.json();}
-    catch{throw importContractError('LOC 匯入回執格式錯誤，Queue 保留');}
-    if(!result?.accepted||result.id!==batch.id)throw importContractError('LOC 未確認匯入批次');
-    validateArticleReceipts(result.articles,records);
-    await acknowledgeBatch(records);
-    sent+=records.length;
    }
-   await chrome.storage.local.remove(['locQueueRetry','locQueueRetryAfter','locQueuePaused']);
-  }catch(error){
-   if(error.code==='LOC_IMPORT_CONTRACT'){
-    // Server may have written already; never blindly retry an unconfirmed append.
-    await chrome.storage.local.set({locQueuePaused:true});
-   }else await chrome.storage.local.set({locQueueRetry:true});
-   throw error;
+   await chrome.storage.local.remove(['locImportPaused','locQueueRetryAfter']);
+   return {message:'LOC 已確認寫入 '+count+' 筆',sent:count};
+  }catch(e){
+   const s=Number(e.httpStatus||0);
+   if(s===429){const v=String(e.retryAfter||'');const ms=/^\d+$/.test(v)?Number(v)*1000:(Date.parse(v)||0)-Date.now();await chrome.storage.local.set({locQueueRetryAfter:Date.now()+(Number.isFinite(ms)&&ms>0?Math.min(ms,3600000):900000)});}
+   else if(e.code==='LOC_IMPORT_CONTRACT'||[400,401,403,404,409,410,413,415,422].includes(s))await chrome.storage.local.set({locImportPaused:true});
+   throw e;
   }
-  return sent;
- })().finally(()=>{processing=null;});
- return processing;
+ })().finally(()=>{inFlight=null});return inFlight;
+}
+
+async function inject(tabId){
+ await chrome.scripting.executeScript({target:{tabId},files:['vendor/Readability.js','content.js']});
+}
+async function currentTab(){
+ const tabs=await chrome.tabs.query({active:true,currentWindow:true});
+ const tab=tabs[0];
+ if(!tab?.id||!/^https?:\/\//.test(tab.url||''))throw Error('請在一般網頁上使用');
+ return tab;
+}
+async function capture(tab,selection='',includeAssistant=false){
+ await inject(tab.id);
+ const reply=await chrome.tabs.sendMessage(tab.id,{type:'page.capture',selection,includeAssistant});
+ if(!Array.isArray(reply?.items))throw Error('頁面沒有回傳內容');
+ return acceptItems(reply.items);
+}
+async function recordedTab(){
+ const {locRecorderTabId}=await chrome.storage.local.get('locRecorderTabId');
+ if(Number.isInteger(locRecorderTabId)&&locRecorderTabId>0)
+  return {id:locRecorderTabId};
+ return currentTab();
+}
+async function selectOrRecord(type,includeAssistant=false,providedTab=null){
+ const tab=providedTab||await currentTab();
+ // One active recorder. Stop the prior tab before moving the recorder.
+ const prior=(await chrome.storage.local.get('locRecorderTabId')).locRecorderTabId;
+ if(type==='page.record'&&Number.isInteger(prior)&&prior!==tab.id)
+  await chrome.tabs.sendMessage(prior,{type:'page.stop'}).catch(()=>{});
+ await inject(tab.id);
+ await chrome.tabs.sendMessage(tab.id,{type,includeAssistant});
+ if(type==='page.record')await chrome.storage.local.set({locRecorderTabId:tab.id});
+ return {message:type==='page.record'?'請點選錄製區域，開始追蹤動態貼文':'請點選要擷取的區域'};
+}
+async function controlRecording(type){
+ const tab=await recordedTab();
+ const reply=await chrome.tabs.sendMessage(tab.id,{type}).catch(()=>null);
+ if(!reply?.ok)throw Error('目前頁面沒有可操作的錄製');
+ return {message:type==='page.pause'?'已暫停錄製':type==='page.resume'?'已繼續錄製':'已停止錄製'};
+}
+async function stopRecording(){
+ const tab=await recordedTab();
+ const reply=await chrome.tabs.sendMessage(tab.id,{type:'page.stop'}).catch(()=>null);
+ await chrome.storage.local.remove('locRecorderTabId');
+ return {message:reply?.ok?'已停止錄製':'目前頁面沒有正在進行的錄製'};
+}
+
+function installMenu(){
+ chrome.contextMenus.removeAll().then(()=>{
+  chrome.contextMenus.create({id:MENU_ROOT,title:'LOC 彩虹橋｜galaxy-link',contexts:['page','selection']});
+  for(const [id,title,contexts] of [[MENU_PAGE,'擷取整頁／可見對話',['page','selection']],[MENU_SELECTION,'擷取選取文字',['selection']],[MENU_AREA,'選取頁面區域',['page','selection']],[MENU_RECORD,'開始動態錄製',['page','selection']],[MENU_PAUSE,'暫停錄製',['page','selection']],[MENU_RESUME,'繼續錄製',['page','selection']],[MENU_STOP,'停止錄製',['page','selection']]])
+   chrome.contextMenus.create({id,parentId:MENU_ROOT,title,contexts});
+ }).catch(e=>console.warn('[LOC galaxy-link menu]',String(e)));
 }
 chrome.runtime.onInstalled.addListener(async()=>{
- await chrome.contextMenus.removeAll();
- chrome.contextMenus.create({id:MENU,title:'LOC 彩虹橋：擷取並儲存此頁',contexts:['page']});
+ installMenu();
  await chrome.storage.local.setAccessLevel({accessLevel:'TRUSTED_CONTEXTS'});
- await chrome.alarms.create('loc-channel1-retry',{periodInMinutes:5});
+ await chrome.alarms.create('loc-galaxy-link-retry',{periodInMinutes:5});
 });
-chrome.action.onClicked.addListener(()=>chrome.runtime.openOptionsPage());
+chrome.runtime.onStartup?.addListener(installMenu);
 chrome.contextMenus.onClicked.addListener((info,tab)=>{
- if(info.menuItemId!==MENU||!tab?.id)return;
- (async()=>{
-  const record=await capture(tab.id);
-  const count=await enqueuePage(record);
-  // Local queue is durable before any network request.
-  const pending=await allPending();
-  const ready=queueReady(pending);
-  await badge(true,ready?'Queue 已達門檻，準備批次送出':'已累積 Queue：'+
-   new Set(pending.map(r=>r.group_id||r.id)).size+'/'+AUTO_BATCH_CAPTURES+' 次擷取');
-  if(ready&&!await chrome.alarms.get('loc-channel1-drain'))
-   await chrome.alarms.create('loc-channel1-drain',{delayInMinutes:0.5});
- })().catch(async e=>{console.error('[LOC galaxy-link]',e);await badge(false,e.message);});
+ if(!tab?.id)return;
+ void (async()=>{
+  const {locIncludeAssistant}=await chrome.storage.local.get('locIncludeAssistant');
+  const ai=locIncludeAssistant===true;
+  switch(info.menuItemId){
+   case MENU_PAGE:return capture(tab,'',ai);
+   case MENU_SELECTION:return capture(tab,info.selectionText||'',ai);
+   case MENU_AREA:return selectOrRecord('page.select',ai,tab);
+   case MENU_RECORD:return selectOrRecord('page.record',ai,tab);
+   case MENU_PAUSE:return controlRecording('page.pause');
+   case MENU_RESUME:return controlRecording('page.resume');
+   case MENU_STOP:return stopRecording();
+  }
+ })().then(r=>{if(r)void chrome.action.setBadgeText({text:'OK',tabId:tab.id})}).catch(e=>{
+  console.warn('[LOC galaxy-link capture]',String(e));void chrome.action.setBadgeText({text:'!',tabId:tab.id});
+ });
 });
 chrome.alarms.onAlarm.addListener(e=>{
- if(e.name==='loc-channel1-retry'||e.name==='loc-channel1-drain')
-  flush().then(count=>{if(count)badge(true,'已送達 LOC：'+count+' 筆');}).catch(err=>{
-   console.warn('[LOC galaxy-link Queue]',err.message);badge(false,err.message);
-  });
+ if(e.name==='loc-galaxy-link-retry')void flush(false).catch(err=>console.warn('[LOC galaxy-link Queue]',String(err)));
+});
+chrome.runtime.onMessage.addListener((message,sender,respond)=>{
+ (async()=>{
+  switch(message?.action){
+   case 'loc-connect':return connectLoc();
+   case 'loc-disconnect':return disconnectLoc();
+   case 'loc-flush':return flush(true);
+   case 'loc-status':{
+    const [session,queue]=await Promise.all([chrome.storage.local.get([...AUTH_KEYS,'locImportPaused']),allEvents()]);
+    return {connected:Boolean(session.locOAuth?.refresh_token||session.locOAuth?.expires_at>Date.now()),configured:Boolean(session.locConfig),paused:session.locImportPaused===true,pending:queue.length,pendingCaptures:new Set(queue.map(r=>r.group_id||r.id)).size};
+   }
+  }
+  switch(message?.type){
+   case 'items.captured':
+    if(sender.id!==chrome.runtime.id||!sender.tab?.url)throw Error('Invalid capture sender');
+    if(!Array.isArray(message.items)||!message.items.length||message.items.length>100)throw Error('Invalid capture items');
+    if(message.items.some(item=>{try{return !captureSourceMatches(sender.tab.url,item?.url)||!captureSourceMatches(sender.tab.url,item?.source_key)}catch{return true}}))throw Error('Source origin mismatch');
+    return acceptItems(message.items);
+   case 'capture':return capture(await currentTab(),'',message.includeAssistant===true);
+   case 'select':return selectOrRecord('page.select',message.includeAssistant===true);
+   case 'record.start':return selectOrRecord('page.record',message.includeAssistant===true);
+   case 'record.pause':return controlRecording('page.pause');
+   case 'record.resume':return controlRecording('page.resume');
+   case 'record.stop':return stopRecording();
+   case 'queue.status':{const rows=await allEvents();const s=await chrome.storage.local.get('locImportPaused');return {count:rows.length,bytes:sizeOf(rows),paused:s.locImportPaused===true};}
+   case 'queue.scope':{const scopeid=String(message.scopeid||'');if(!SCOPE.test(scopeid))throw Error('Invalid Scope');await chrome.storage.local.set({locTargetScope:scopeid});return {message:'目的銀河：'+scopeid};}
+   case 'queue.flush':return flush(true);
+   case 'loc.open':await chrome.runtime.openOptionsPage();return {message:'請選擇連接 LOC 完成授權'};
+   default:throw Error('Unknown galaxy-link action');
+  }
+ })().then(respond).catch(e=>respond({error:String(e?.message||e)}));return true;
 });

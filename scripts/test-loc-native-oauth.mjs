@@ -197,6 +197,19 @@ test('GitHub verified identity -> LOC cookie -> per-install PKCE -> signed token
   assert.equal(claims.aud,'loc-delegation');
   assert.equal(claims.sub,profile.user.id);
   assert.deepEqual(claims.grants,['lo3rwang:write']);
+  // The optional exact Scope target must still use the existing LOC grant.
+  const other=await handleNativeOAuth(request('/v1/import/short?scopeid=lrunes',{
+   method:'POST',headers:{origin,authorization:'Bearer '+next.access_token,
+    'content-type':'application/json'},body:JSON.stringify(batch)}),env);
+  assertStatus(other,200);
+  assert.equal(forwarded.body.scopeid,'lrunes');
+  const otherClaims=JSON.parse(Buffer.from(forwarded.headers.authorization.split('.')[1],'base64url').toString());
+  assert.deepEqual(otherClaims.grants,['lrunes:write']);
+  const invalidScope=await handleNativeOAuth(request('/v1/import/short?scopeid=bad_scope',{
+   method:'POST',headers:{origin,authorization:'Bearer '+next.access_token,
+    'content-type':'application/json'},body:JSON.stringify(batch)}),env);
+  assertStatus(invalidScope,503);
+
 
   const revoked=await handleNativeOAuth(request('/oauth/revoke',{
    method:'POST',headers:{origin,'content-type':'application/x-www-form-urlencoded'},
