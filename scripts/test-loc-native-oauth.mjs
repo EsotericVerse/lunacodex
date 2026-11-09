@@ -13,7 +13,8 @@ const b64=x=>Buffer.from(x instanceof Uint8Array?x:
  typeof x==='string'?x:JSON.stringify(x)).toString('base64url');
 
 function roleLookupFixture(address){
- const url=new URL(String(address));
+ let url;
+ try{url=new URL(String(address))}catch{return null}
  if(url.origin!=='https://loc.lo3rwang.cc'||url.pathname!=='/api/loc-authority-role')
    return null;
  const email=String(url.searchParams.get('email')||'').toLowerCase();
