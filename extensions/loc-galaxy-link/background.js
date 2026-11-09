@@ -409,6 +409,8 @@ chrome.runtime.onInstalled.addListener(async()=>{
  await chrome.alarms.create('loc-galaxy-link-retry',{periodInMinutes:5});
 });
 chrome.runtime.onStartup?.addListener(installMenu);
+// The toolbar icon opens settings only; capture actions live in the native web-page right-click submenu.
+chrome.action.onClicked.addListener(()=>chrome.runtime.openOptionsPage());
 chrome.contextMenus.onClicked.addListener((info,tab)=>{
  if(!tab?.id)return;
  void (async()=>{

@@ -9,3 +9,7 @@
 非預設 Scope 需要 LOC Auth Discovery 宣告 `loc_import_scope_routing: query-v1`；部署前不可將這些內容誤寫到預設 Scope。程式不使用舊網站 Session Bridge、SQL Gateway、Clerk、Supabase Auth 或 Neon Auth。
 
 **既有另一個已安裝 Extension 注意：** Chrome 不允許新 Extension 直接讀取不同 Extension ID 的 IndexedDB。若舊的 `loc-web-capture-v2` 已有待送資料，請先從舊版送達、確認 UID 再卸載；本倉庫不再提供第二套獨立 Extension。瀏覽器尚未載入的對話不會自動取得。
+
+## 操作入口（0.2.1）
+
+請直接在**網頁內容上按右鍵**，打開 Chrome 原生「LOC 彩虹橋｜galaxy-link」子選單，再選擇整頁、選字、選區或錄製及其控制指令。工具列圖示僅打開設定頁（LOC Auth、Scope、是否包含 AI 回覆、Queue），**不提供擷取 Popup**。升級不改原本的 Chrome Extension ID、IndexedDB 名稱或儲存的 Queue。
