@@ -543,13 +543,28 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
    }
   }
   switch(message?.type){
+   case 'capture.report':
+    if(sender.id!==chrome.runtime.id||!sender.tab?.url)throw Error('Invalid recorder sender');
+    if(typeof message.message!=='string'||message.message.length>350)
+     throw Error('Invalid recorder status');
+    await noteAction('動態錄製',message.ok===true,message.message,sender.tab.id);
+    return {recorded:true};
    case 'items.captured':
     if(sender.id!==chrome.runtime.id||!sender.tab?.url)throw Error('Invalid capture sender');
-    if(!Array.isArray(message.items)||!message.items.length||message.items.length>100)throw Error('Invalid capture items');
-    if(message.items.some(item=>{try{return !captureSourceMatches(sender.tab.url,item?.url)||!captureSourceMatches(sender.tab.url,item?.source_key)}catch{return true}}))throw Error('Source origin mismatch');
-    const result=await acceptItems(message.items);
-    await noteAction('動態擷取',!result.empty,result.message,sender.tab.id);
-    return result;
+    try{
+     if(!Array.isArray(message.items)||!message.items.length||message.items.length>100)
+      throw Error('Invalid capture items');
+     if(message.items.some(item=>{
+      try{return !captureSourceMatches(sender.tab.url,item?.url)||
+       !captureSourceMatches(sender.tab.url,item?.source_key)}catch{return true}
+     }))throw Error('Source origin mismatch');
+     const result=await acceptItems(message.items);
+     await noteAction('動態擷取',!result.empty,result.message,sender.tab.id);
+     return result;
+    }catch(error){
+     await noteAction('動態擷取',false,error?.message||String(error),sender.tab.id);
+     throw error;
+    }
    case 'capture':return capture(await currentTab(),'',message.includeAssistant===true);
    case 'select':return selectOrRecord('page.select',message.includeAssistant===true);
    case 'record.start':return selectOrRecord('page.record',message.includeAssistant===true);

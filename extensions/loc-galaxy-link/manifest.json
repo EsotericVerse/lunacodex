@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LOC galaxy-link｜LOC 彩虹橋",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "單一 LOC 彩虹橋：OAuth PKCE、網頁／選區／對話／動態錄製、離線 Queue 與 Append 匯入",
   "permissions": [
     "contextMenus",

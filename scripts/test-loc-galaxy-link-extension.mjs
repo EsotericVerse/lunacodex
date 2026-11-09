@@ -9,7 +9,7 @@ const content=read(base+'content.js');
 const manifest=JSON.parse(read(base+'manifest.json'));
 test('only one named galaxy-link extension with all right-click actions',()=>{
  assert.equal(manifest.name,'LOC galaxy-link｜LOC 彩虹橋');
- assert.equal(manifest.version,'0.2.2');
+ assert.equal(manifest.version,'0.2.3');
  assert.equal(Object.hasOwn(manifest.action,'default_popup'),false);
  assert.equal(manifest.background.service_worker,'background.js');
  assert.ok(manifest.permissions.includes('identity'));
@@ -92,4 +92,19 @@ test('badge comes only from pending Queue, errors have actionable diagnostics',(
  assert.match(bg,/noteAction\(label,false/);
  assert.match(content,/msg\.type==='page\.feedback'/);
  assert.match(read(base+'options.html'),/id="lastAction"/);
+});
+test('conversation capture searches rendered turns by role and semantic labels, including selected main',()=>{
+ assert.match(content,/function roleOf\(turn\)/);
+ assert.match(content,/you said\|你說/);
+ assert.match(content,/\[data-testid="user-message"\],\.whitespace-pre-wrap/);
+ assert.match(content,/mode==='record'\|\|doc===document\.body/);
+ assert.match(content,/const main=recording&&chat/);
+ assert.match(content,/scope\.matches\?\.\(TURN_SELECTOR\)/);
+});
+test('recording failures and no-message state are never silently swallowed',()=>{
+ assert.match(content,/reportCapture\('錄製已啟動/);
+ assert.match(content,/錄製擷取失敗，Queue 未確認寫入/);
+ assert.match(bg,/case 'capture\.report'/);
+ assert.match(bg,/await noteAction\('動態擷取',false/);
+ assert.doesNotMatch(content,/catch\s*\{\s*\/\/ Failure is not an acknowledgement/);
 });
