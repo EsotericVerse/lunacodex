@@ -7,7 +7,8 @@ const labels=Object.freeze({
  'profile':'讀取已驗證的 LOC 身分識別',
  'email':'讀取已驗證的電子郵件',
  'offline_access':'在授權有效期間內更新登入憑證',
- 'loc:import':'在 api.manage 許可的範圍內提出匯入寫入要求'
+ 'loc:import':'在 api.manage 許可的範圍內提出匯入寫入要求',
+ 'loc:manage':'提出 LOC 管理及資料寫入要求（實際操作仍須 api.manage 核准）'
 });
 function escapeHtml(v){
  return String(v||'').replace(/[&<>"']/g,c=>({
