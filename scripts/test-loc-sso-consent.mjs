@@ -60,7 +60,7 @@ test('write-delegation endpoint requires accepted web contract and editor can re
 test('Kysely primary can use backend-only SQL URL without LOC Authority profile relay',()=>{
  const driver=readFileSync(new URL('../app/loc/mcp/native-kysely.mjs',import.meta.url),'utf8');
  assert.match(driver,/env\.LOC_DATABASE_URL/);
- assert.match(driver,/if\(!verifiedAlias&&alias===control\?\.connection_alias&&env\.LOC_DATABASE_URL\)/);
+ assert.match(driver,/if\(isPrimary&&env\.LOC_DATABASE_URL\)/);
  assert.doesNotMatch(driver,/NEXT_PUBLIC_LOC_DATABASE_URL/);
 });
 
