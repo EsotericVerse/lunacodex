@@ -10,6 +10,7 @@ import {bindLocAuthorization,canManageLoc} from '../providers/loc-authorization.
 import {executeManagedKyselyWrite,executeManagedKyselyAction} from '../providers/kysely-management.mjs';
 import {executeLocPersonal} from '../providers/kysely-personal.mjs';
 import {directMcpKysely} from './native-kysely.mjs';
+import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 import {withFixedPolicyWrite} from '../../../zenstack/policy-runtime.mjs';
 import {ZenStackClient} from '@zenstackhq/orm';
 import {PolicyPlugin} from '@zenstackhq/plugin-policy';
@@ -149,7 +150,8 @@ export async function handleNativeLocOperation(request,env={},{
     // extension import path and MCP append/sync. OAuth never changes this.
     const writesToSelectedDatabase=['short-import','mcp-sync','mcp-append']
       .includes(body.kind);
-    if(writesToSelectedDatabase&&claims.db_target)
+    const primaryId=DATABASE_ACCESS_LIST.find(item=>item.selected===true)?.target_id;
+    if(writesToSelectedDatabase&&claims.db_target&&claims.db_target!==primaryId)
       throw refusal('External database connections are read only',403);
     // Personal preferences and Admin settings always use LOC's control
     // database. A user's selected external database is for their Scope data,
