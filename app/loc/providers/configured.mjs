@@ -25,8 +25,59 @@ export function createConfiguredAdapter({
   const publicClient=createDirectDataApiClient({url,apiKey:publishableKey,role:'anon',fetch:fetchImpl});
   // LOC OAuth JWTs are NOT database credentials. Authenticated SQL writes
   // require the database owner's server-side connection, never a public API key.
+  // Ordinary LOC OAuth is sufficient for the person's own preferences.
+  // The owner_id is always resolved from the signed LOC subject in Kysely.
+  const PERSONAL=new Set(['api.loc_user','api.user_settings','api.user_records']);
+  const nativePersonal=async(kind,payload)=>{
+    const access=String(await identity.getAccessToken()||'');
+    if(!access)throw Error('LOC login required');
+    const authorize=await fetchImpl(new URL('/v1/delegation',authorityUrl).href,{
+      method:'POST',credentials:'omit',cache:'no-store',
+      headers:{authorization:'Bearer '+access,'content-type':'application/json',
+        accept:'application/json'},
+      body:JSON.stringify({audience:'sql',identity:true}),
+      signal:AbortSignal.timeout(8000)
+    });
+    if(!authorize.ok)throw Error('LOC OAuth personal delegation failed (HTTP '+authorize.status+')');
+    const delegation=await authorize.json().catch(()=>null);
+    const signed=String(delegation?.access_token||'');
+    if(signed.split('.').length!==3)throw Error('Invalid LOC personal delegation');
+    const response=await fetchImpl('/api/loc-native',{
+      method:'POST',credentials:'omit',cache:'no-store',
+      headers:{authorization:'Bearer '+signed,'content-type':'application/json',
+        accept:'application/json'},
+      body:JSON.stringify({kind,scopeid:'',payload}),
+      signal:AbortSignal.timeout(30000)
+    });
+    const result=await response.json().catch(()=>null);
+    if(!response.ok){
+      const error=new Error(result?.error?.message||
+        'LOC personal database operation failed (HTTP '+response.status+')');
+      error.status=response.status;throw error;
+    }
+    return {data:result?.data||{},error:null};
+  };
+  const privateRead=async query=>{
+    const result=await nativePersonal('personal-read',{
+      p_table:query.schema+'.'+query.table,p_operation:'select',
+      p_columns:query.columns,p_filters:query.filters.map(f=>({
+        column:f.column,operator:f.op,value:f.value,negate:f.negate
+      })),
+      p_orders:query.orders,p_limit:query.rowLimit,p_offset:query.offset,
+      p_head:query.head
+    });
+    const rows=Array.isArray(result.data.data)?result.data.data:[];
+    if(query.cardinality==='single'&&rows.length!==1)
+      throw Error('Expected exactly one personal record');
+    return {data:query.head?null:query.cardinality?rows[0]||null:rows,
+      error:null,count:result.data.count??null,status:200};
+  };
   const readOnlyAuthClient=createDirectDataApiClient({url,apiKey:publishableKey,
-    role:'authenticated',fetch:fetchImpl,mutate:payload=>managedWrite(payload)});
+    role:'authenticated',fetch:fetchImpl,readPrivate:privateRead,
+    mutate:payload=>PERSONAL.has(payload.p_table)
+      ?nativePersonal('personal-write',payload).then(result=>({
+        data:{count:result.data.count,rows:result.data.data},error:null
+      })):managedWrite(payload)});
   // Website-owned Extension bridge obtains a narrow LOC signed delegation.
   // The account token is never passed to the Extension or to PostgREST.
   const shortImport=async(scopeid,batch)=>{
