@@ -2,6 +2,31 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {handleNativePublicContent} from '../app/loc/server/native-public-content.mjs';
+import {DummyDriver,PostgresAdapter,PostgresIntrospector,PostgresQueryCompiler} from 'kysely';
+
+// A trusted PostgreSQL dialect backed by DummyDriver, so 'config' reads on a
+// fixed public model (loc/lo3rwang/lrunes) run through the REAL
+// ZenStack+PolicyPlugin reader (zenstack/policy-runtime.mjs) end to end,
+// the same as production, instead of a hand-mocked query builder.
+function fixedModelDialect(row){
+  const executed=[];
+  const driver=new DummyDriver();
+  const acquire=driver.acquireConnection.bind(driver);
+  driver.acquireConnection=async()=>{
+    const connection=await acquire();
+    const run=connection.executeQuery.bind(connection);
+    connection.executeQuery=async compiled=>{
+      executed.push(compiled);
+      return {rows:row?[row]:[]};
+    };
+    return connection;
+  };
+  return {executed,dialect:{
+    createDriver:()=>driver,createAdapter:()=>new PostgresAdapter(),
+    createIntrospector:db=>new PostgresIntrospector(db),
+    createQueryCompiler:()=>new PostgresQueryCompiler()
+  }};
+}
 
 const page=(kind,scope,feature='')=>{
   const url=new URL('https://loc.lo3rwang.cc/api/loc-public-content');
@@ -48,16 +73,23 @@ test('public feature Hero reads two fixed page names in one Kysely query',async(
   assert.deepEqual(mock.calls[0].where,['page_name','in',['group_culture','scope_culture']]);
 });
 
-test('config projects only the public Scope columns, never Manage or secrets',async()=>{
-  const mock=makeDatabase();
-  const response=await handleNativePublicContent(page('config','lo3rwang'),{},mock);
+test('config projects only the public Scope columns, never Manage or secrets, via the real ZenStack PolicyPlugin reader',async()=>{
+  // lo3rwang is one of the four fixed public ZModel control models, so
+  // 'config' now runs through the real ZenStack+PolicyPlugin $qb on the
+  // same dialect/pool -- not the hand-rolled Kysely query builder.
+  const {executed,dialect}=fixedModelDialect({id:'lo3rwang',display_name:'LOC 月典'});
+  const database=async()=>({engine:'postgres',dialect,db:{selectFrom:()=>{
+    throw new Error('Must not use the plain Kysely path for a fixed public model');
+  }}});
+  const response=await handleNativePublicContent(page('config','lo3rwang'),{},{database});
   assert.equal(response.status,200);
-  assert.equal(mock.calls.length,1);
-  assert.equal(mock.calls[0].table,'silver.lo3rwang');
-  assert.deepEqual(mock.calls[0].where,['id','=','lo3rwang']);
-  assert.ok(mock.calls[0].cols.includes('display_name'));
+  assert.deepEqual(await response.json(),{data:{id:'lo3rwang',display_name:'LOC 月典'}});
+  assert.equal(executed.length,1,'PolicyPlugin must not trigger any duplicate SELECT');
+  const sql=executed[0].sql;
+  assert.match(sql,/"silver"\."lo3rwang"/);
+  assert.match(sql,/"display_name"/);
   for(const key of ['password','email','token','connection_alias','manage_role'])
-    assert.ok(!mock.calls[0].cols.includes(key));
+    assert.ok(!sql.includes('"'+key+'"'));
 });
 
 test('the website cannot submit SQL, table names, arbitrary operations or connection targets',async()=>{

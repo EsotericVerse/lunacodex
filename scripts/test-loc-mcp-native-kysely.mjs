@@ -35,7 +35,11 @@ test('trusted alias reuses one in-process Kysely pool',async()=>{
  assert.equal(first.engine,'postgres');
  assert.equal(first.namespace,'silver');
  assert.equal(typeof first.db.selectFrom,'function');
- assert.deepEqual(Object.keys(first).sort(),['db','engine','fieldMap','namespace','tableName']);
+ // dialect is exposed so a trusted caller can build a ZenStack+PolicyPlugin
+ // reader on the SAME dialect/pool (zenstack/policy-runtime.mjs), not a
+ // second connection.
+ assert.equal(typeof first.dialect.createDriver,'function');
+ assert.deepEqual(Object.keys(first).sort(),['db','dialect','engine','fieldMap','namespace','tableName']);
 });
 test('missing/mismatched trusted profiles fail closed',async()=>{
  await assert.rejects(directMcpKysely({}),/alias is not configured/);

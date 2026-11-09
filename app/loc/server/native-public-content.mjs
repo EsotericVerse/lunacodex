@@ -8,6 +8,9 @@ import {readPublishedGalaxyNumeric,PUBLISHED_GALAXY_SNAPSHOT_DATE} from './publi
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 import {createDirectDataApiClient} from '../providers/direct-data-api.mjs';
 import {portableRelation} from '../providers/sql-engine-ports.mjs';
+import {fixedPolicyReadModel,withFixedPolicyRead} from '../../../zenstack/policy-runtime.mjs';
+import {ZenStackClient} from '@zenstackhq/orm';
+import {PolicyPlugin} from '@zenstackhq/plugin-policy';
 
 const FEATURES=new Set(['culture','statics','trace','search']);
 const HEADERS={'content-type':'application/json; charset=utf-8',
@@ -195,8 +198,22 @@ export async function handleNativePublicContent(request,env={},{
       readLocGroupNumeric(query,start,end,port):readGalaxyNumeric(query,scope,kind,start,end,port))});
     if(kind==='config'){
       const columns=scopeConfigColumns(scope).split(',').filter(Boolean);
-      const row=await query.selectFrom(relation(scope))
-        .select(columns).where('id','=',scope).limit(1).executeTakeFirst();
+      // loc/lo3rwang/lrunes are three of the four fixed public ZModel control
+      // relations (zenstack/policy-runtime.mjs). Route those through the real
+      // ZenStack+PolicyPlugin reader -- same Kysely dialect/pool, no second
+      // connection -- instead of the hand-rolled selectFrom below. A custom
+      // Scope's own config table is not a fixed model, so it keeps the
+      // existing plain Kysely path unchanged.
+      const modelName=fixedPolicyReadModel({engine:port.engine},
+        {kind:'query',schema:'silver',table:scope,operation:'select'});
+      const row=modelName
+        ?await withFixedPolicyRead(query,{engine:port.engine},
+            {kind:'query',schema:'silver',table:scope,operation:'select'},
+            'anon',{},{dialect:port.dialect,ZenStackClient,PolicyPlugin},
+            trx=>trx.selectFrom(modelName).select(columns)
+              .where('id','=',scope).limit(1).executeTakeFirst())
+        :await query.selectFrom(relation(scope))
+            .select(columns).where('id','=',scope).limit(1).executeTakeFirst();
       return respond({data:row||null});
     }
     const table=relation(kind==='hero'?'loc_blocks':scope+'_blocks');

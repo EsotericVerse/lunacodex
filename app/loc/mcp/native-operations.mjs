@@ -7,12 +7,46 @@ import {authorizeDelegatedShortImport} from '../import/short-edge-authorization.
 import {processShortImport,portableShortImportStore} from '../import/short-append-service.mjs';
 import {executePortableMcp} from '../providers/kysely-mcp.mjs';
 import {directMcpKysely} from './native-kysely.mjs';
+import {withFixedPolicyWrite} from '../../../zenstack/policy-runtime.mjs';
+import {ZenStackClient} from '@zenstackhq/orm';
+import {PolicyPlugin} from '@zenstackhq/plugin-policy';
 
 const JWKS='https://auth.lo3rwang.cc/.well-known/jwks.json';
 const MCP_HOST='mcp.lo3rwang.cc';
 const WEB_HOST='loc.lo3rwang.cc';
 const MAX_BYTES=700000;
-const KINDS=new Set(['mcp-sync','mcp-append','mcp-read','mcp-search','short-import']);
+const KINDS=new Set(['mcp-sync','mcp-append','mcp-read','mcp-search','short-import','managed-write']);
+// api.manage / silver.loc are the only two fixed ZModel control relations a
+// signed global:manage delegation may UPDATE/DELETE (zenstack/policy-runtime.mjs
+// ADMIN_FIXED_WRITES). No insert, no other table -- the website's own
+// RLS-free database relies entirely on this gate (AGENTS.md 2026-11-09:
+// only the verified LOC owner "me" may INSERT/UPDATE/DELETE).
+const FILTER_SQL_OP={eq:'=',neq:'!=',gt:'>',gte:'>=',lt:'<',lte:'<=',
+  like:'like',ilike:'ilike',is:'is',in:'in'};
+function withManagedFilters(query,filters){
+  return filters.reduce((q,filter)=>{
+    const op=FILTER_SQL_OP[filter?.operator];
+    if(!op)throw refusal('Unsupported managed write filter: '+filter?.operator,400);
+    return q.where(filter.column,op,filter.value);
+  },query);
+}
+async function applyManagedWrite(qb,modelName,payload){
+  const filters=Array.isArray(payload?.p_filters)?payload.p_filters:[];
+  if(!filters.length)throw refusal('Unsafe unfiltered managed write',400);
+  if(payload.p_operation==='update'){
+    const values=payload.p_values;
+    if(!values||typeof values!=='object'||Array.isArray(values))
+      throw refusal('Invalid managed write values',400);
+    const result=await withManagedFilters(qb.updateTable(modelName).set(values),filters)
+      .executeTakeFirst();
+    return {count:Number(result?.numUpdatedRows||0)};
+  }
+  if(payload.p_operation==='delete'){
+    const result=await withManagedFilters(qb.deleteFrom(modelName),filters).executeTakeFirst();
+    return {count:Number(result?.numDeletedRows||0)};
+  }
+  throw refusal('Unsupported managed write operation',400);
+}
 const headers={'content-type':'application/json; charset=utf-8',
   'cache-control':'no-store','x-content-type-options':'nosniff'};
 const txt=new TextEncoder();
@@ -98,9 +132,10 @@ export async function handleNativeLocOperation(request,env={},{
     if(!body||typeof body!=='object'||Array.isArray(body)||
       !KINDS.has(body.kind)||typeof body.scopeid!=='string')
       throw refusal('Unsupported LOC business operation');
-    // The website exposes only short-import. MCP business operations remain
-    // restricted to the dedicated MCP hostname and their own audience.
-    if(host===WEB_HOST&&body.kind!=='short-import')
+    // The website exposes only short-import and the fixed-model managed
+    // write. MCP business operations remain restricted to the dedicated
+    // MCP hostname and their own audience.
+    if(host===WEB_HOST&&body.kind!=='short-import'&&body.kind!=='managed-write')
       throw refusal('Not found',404);
     // The verified signed claim, not the HTTP body, selects the connection.
     const claims=await signedClaims(request.headers.get('authorization'),
@@ -116,6 +151,16 @@ export async function handleNativeLocOperation(request,env={},{
           engine:selected.engine,namespace:selected.namespace})
       });
       return reply(receipt);
+    }
+    if(body.kind==='managed-write'){
+      if(selected.tableName)throw refusal('External mapped tables are read only',403);
+      if(!selected.dialect)throw refusal('LOC native Kysely driver is not configured',503);
+      const payload=body.payload||{};
+      const row=await withFixedPolicyWrite(selected.db,{engine:selected.engine},
+        body,claims.role,claims,
+        {dialect:selected.dialect,ZenStackClient,PolicyPlugin},
+        (qb,modelName)=>applyManagedWrite(qb,modelName,payload));
+      return reply({data:row});
     }
     const result=await executePortableMcp(selected.db,body,claims,{
       engine:selected.engine,namespace:selected.namespace,
