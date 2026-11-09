@@ -1,7 +1,7 @@
 // LOC Auth verifies identity and makes the authorization decision.
 // api.manage is read through LOC's existing trusted Kysely application,
 // never through MCP, the browser, or a public SQL management endpoint.
-const EMAIL=/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;
+const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const cache=new Map();
 const TTL=30000;
