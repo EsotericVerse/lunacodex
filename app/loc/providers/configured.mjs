@@ -26,7 +26,7 @@ export function createConfiguredAdapter({
   // LOC OAuth JWTs are NOT database credentials. Authenticated SQL writes
   // require the database owner's server-side connection, never a public API key.
   const readOnlyAuthClient=createDirectDataApiClient({url,apiKey:publishableKey,
-    role:'authenticated',fetch:fetchImpl});
+    role:'authenticated',fetch:fetchImpl,mutate:payload=>managedWrite(payload)});
   // Website-owned Extension bridge obtains a narrow LOC signed delegation.
   // The account token is never passed to the Extension or to PostgREST.
   const shortImport=async(scopeid,batch)=>{
