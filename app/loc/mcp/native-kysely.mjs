@@ -46,14 +46,19 @@ async function authorizedProfile(env,alias,verifiedAlias,fetchImpl){
   return localProfile(env,alias);
  if(secret){
   if(secret.length<32)throw fail('LOC trusted profile secret is invalid');
-  const result=await fetchImpl('https://auth.lo3rwang.cc/v1/internal/database/'+alias,{
+  // `loc_main` is a local connection alias, not LOC Auth's target ID.
+  // The trusted profile route is keyed by target_id (e.g. loc-main).
+  const control=verifiedAlias?'':DATABASE_ACCESS_LIST.find(item=>
+   item.selected===true&&item.connection_alias===alias)?.target_id;
+  const profileId=control||alias;
+  const result=await fetchImpl('https://auth.lo3rwang.cc/v1/internal/database/'+profileId,{
    method:'GET',headers:{'x-loc-service-token':secret,accept:'application/json'},
    cache:'no-store',redirect:'manual',signal:AbortSignal.timeout(8000)
   });
   if(!result.ok)throw fail('LOC Authority profile lookup refused ('+result.status+')');
   const profile=await result.json().catch(()=>null);
   // Identity/selection has already been checked in the signed LOC delegation.
-  const verified=normalizeLiveTarget(alias,profile);
+  const verified=normalizeLiveTarget(profileId,profile);
   return {...verified.profile,schema_name:verified.target.schema_name,
    table_name:verified.target.table_name,field_map:verified.target.field_map};
  }
