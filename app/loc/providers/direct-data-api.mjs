@@ -53,13 +53,16 @@ function dataApiOrExpression(expression){
   return parsed.items.map(render).join(',');
 }
 class Query{
-  constructor(run,schema,table){
-    this.run=run;this.schema=schema;this.table=assertId(table);
+  constructor(run,schema,table,mutate=null){
+    this.run=run;this.mutate=mutate;this.operation='select';this.values=null;
+    this.returning=false;this.conflict=null;
+    this.schema=schema;this.table=assertId(table);
     this.columns=['*'];this.filters=[];this.orFilters=[];this.orders=[];
     this.offset=0;this.rowLimit=queryBatchSize('*');this.count=null;this.head=false;
     this.cardinality=null;this.signal=null;this.dbId='';
   }
   select(cols='*',options={}){
+    this.returning=true;
     this.columns=String(cols||'*').split(',').map(s=>s.trim()).filter(Boolean);
     this.rowLimit=queryBatchSize(this.columns);
     this.count=options.count||null;this.head=options.head===true;return this;
@@ -81,15 +84,15 @@ class Query{
   searchIndex(){return this}
   expectDatabase(id){this.dbId=String(id||'');return this}
   abortSignal(signal){this.signal=signal;return this}
-  insert(){throw Error('Private database writes require the owner Web Server')}
-  update(){throw Error('Private database writes require the owner Web Server')}
-  upsert(){throw Error('Private database writes require the owner Web Server')}
-  delete(){throw Error('Private database writes require the owner Web Server')}
-  then(ok,fail){return this.run(this).then(ok,fail)}
+  insert(rows){if(!this.mutate)throw Error('Private database writes require the owner Web Server');this.operation='insert';this.values=rows;return this}
+  update(values){if(!this.mutate)throw Error('Private database writes require the owner Web Server');this.operation='update';this.values=values;return this}
+  upsert(rows,options={}){if(!this.mutate)throw Error('Private database writes require the owner Web Server');this.operation='upsert';this.values=rows;this.conflict=options;return this}
+  delete(){if(!this.mutate)throw Error('Private database writes require the owner Web Server');this.operation='delete';return this}
+  then(ok,fail){return (this.operation==='select'?this.run(this):this.mutate(this)).then(ok,fail)}
 }
 function unsupported(){throw Error('This operation requires the database owner Web Server; LOC provides no SQL Gateway')}
 export function createDirectDataApiClient({
-  url,apiKey,role='anon',fetch:fetchImpl=globalThis.fetch
+  url,apiKey,role='anon',fetch:fetchImpl=globalThis.fetch,mutate=null
 }={}){
   const base=requiredApi(url);
   if(typeof fetchImpl!=='function')throw Error('Data API requires fetch');
@@ -178,11 +181,52 @@ export function createDirectDataApiClient({
   function execute(q){
     return role==='anon'?withPublicReadBudget(()=>read(q),q.signal):read(q);
   }
+  async function write(q){
+    if(role!=='authenticated'||typeof mutate!=='function')
+      throw Error('LOC Auth management write is not configured');
+    if(q.filters.some(f=>f.negate||!['eq','neq','gt','gte','lt','lte','like','ilike','is','in'].includes(f.op)))
+      throw Error('Unsupported managed write filter');
+    const rows=Array.isArray(q.values)?q.values:q.values?[q.values]:[];
+    const filters=q.filters.map(f=>({column:f.column,operator:f.op,value:f.value}));
+    if(['update','delete'].includes(q.operation)&&!filters.length)
+      throw Error('Unfiltered database mutation denied');
+    const payload={p_table:q.schema+'.'+q.table,p_operation:q.operation,
+      p_rows:['insert','upsert'].includes(q.operation)?rows:null,
+      p_values:q.operation==='update'?q.values:null,
+      p_filters:filters};
+    const before=q.returning&&q.operation==='delete'?(await read(q)).data:[];
+    const result=await mutate(payload);
+    if(result?.error)throw Error(result.error.message||'LOC management write failed');
+    const count=Number(result?.data?.count??result?.count??0);
+    if(!Number.isSafeInteger(count)||count<0)throw Error('Invalid LOC write receipt');
+    if(!q.returning||!count)return {data:[],error:null,count};
+    if(q.operation==='delete')return {data:(before||[]).slice(0,count),error:null,count};
+    // Preserve the caller's narrow, already validated lookup filters on UPDATE.
+    // INSERT/UPSERT return by their explicit stable primary key. If the
+    // follow-up read fails after the database committed, do not pretend the
+    // mutation itself failed (the caller still receives its committed count).
+    const idField=['uid','record_id','id'].find(field=>
+      rows.length&&rows.every(row=>row[field]!==undefined&&row[field]!==null));
+    const ids=idField?[...new Set(rows.map(row=>row[idField]))]:[];
+    const follow=new Query(read,q.schema,q.table);
+    follow.columns=q.columns;
+    follow.filters=ids.length?
+      [{column:idField,op:'in',value:ids,negate:false}]:
+      [...q.filters];
+    if(!follow.filters.length)return {data:[],error:null,count};
+    follow.rowLimit=Math.min(5000,Math.max(count,ids.length,1));
+    try{
+      const response=await read(follow);
+      return {data:response.data||[],error:null,count};
+    }catch(error){
+      return {data:[],error:null,count,readError:String(error?.message||error)};
+    }
+  }
   return {
     role,
     schema(schema){
       assertId(schema);
-      return {from(table){return new Query(execute,schema,table)},
+      return {from(table){return new Query(execute,schema,table,mutate?write:null)},
         analytics:publicAnalytics,managedWrite:unsupported,managedAction:unsupported,
         publicAction:unsupported,anchor:unsupported};
     },

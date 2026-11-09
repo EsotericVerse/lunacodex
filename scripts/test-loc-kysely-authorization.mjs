@@ -5,60 +5,62 @@ import {bindLocAuthorization,canManageLoc,locManageRows} from '../app/loc/provid
 
 const identity={provider:'loc',me:true,sub:'user_123456',email:'sopa2306@gmail.com',
   grants:['global:manage']};
-function fixture({entries=[],blacklist={email:[]}}={}){
+const ownerAdmin={id:'lo3rwang',email:identity.email,manage_role:'admin',active:true};
+function fixture(entries=[]){
   const hits={manage:0};
   const db={fn(name,columns){return {name,columns}},selectFrom(name){
-    assert.equal(name,'api.manage as m');
+    assert.ok(['api.manage','api.manage as m'].includes(name));
     hits.manage++;
+    let email='';
     return {
-      crossJoin(name){assert.equal(name,'silver.loc as l');return this},
       leftJoin(name){assert.equal(name,'silver.loc as s');return this},
-      select(){return this},where(){return this},orderBy(){return this},
-      async execute(){return entries.map(row=>({...row,blacklist}))}
+      select(){return this},
+      where(_column,_operator,value){if(typeof value==='string'&&value.includes('@'))email=value;return this},
+      orderBy(){return this},
+      async execute(){return entries.filter(row=>!email||row.email.toLowerCase()===email).map(row=>({...row}))}
     };
   }};
   return {db,hits};
 }
-test('LOC signed global delegation authorizes without an authorization SQL round trip',async()=>{
-  const {db,hits}=fixture();
+test('LOC signed Admin delegation also requires matching active api.manage Admin',async()=>{
+  const {db,hits}=fixture([ownerAdmin,{id:'admin',email:identity.email,manage_role:'admin',active:false}]);
   bindLocAuthorization(db,{role:'authenticated',claims:identity});
   assert.equal(await canManageLoc(db,'global'),true);
   assert.equal(await canManageLoc(db,'scope','lrunes'),true);
-  assert.equal(await canManageLoc(db,'group','loc'),true);
-  assert.deepEqual(hits,{manage:0});
+  assert.deepEqual(hits,{manage:1},'one registry query per bound transaction');
 });
-test('Owner without Scope grants can manage all LOC scopes with one decision',async()=>{
-  const {db,hits}=fixture();
+test('without LOC Auth management grant, a database row does not grant writes',async()=>{
+  const {db}=fixture([ownerAdmin]);
   bindLocAuthorization(db,{role:'authenticated',claims:{...identity,grants:[]}});
-  assert.equal(await canManageLoc(db,'scope','lrunes'),true);
-  assert.equal(await canManageLoc(db,'scope','lo3rwang'),true);
-  assert.equal(await canManageLoc(db,'group','loc'),true);
-  assert.equal(await canManageLoc(db,'global'),true);
-  assert.deepEqual(hits,{manage:0});
-});
-test('A nonowner cannot manage, even with global grants or administrator role',async()=>{
-  const {db}=fixture();
-  bindLocAuthorization(db,{role:'authenticated',claims:{
-    ...identity,email:'reader@example.org',grants:['global:manage'],role:'admin'
-  }});
   assert.equal(await canManageLoc(db,'global'),false);
   assert.equal(await canManageLoc(db,'scope','lo3rwang'),false);
 });
-test('Management membership is read only for display, not for authorization',async()=>{
-  const {db,hits}=fixture({entries:[{id:'admin',email:identity.email,
-    manage_role:'admin',active:true}]});
-  bindLocAuthorization(db,{role:'authenticated',claims:identity});
-  assert.equal((await locManageRows(db,'self'))[0].allowed,true);
-  assert.deepEqual(hits,{manage:1});
+test('another verified email cannot inherit an Admin row owned by someone else',async()=>{
+  const {db}=fixture([ownerAdmin]);
+  bindLocAuthorization(db,{role:'authenticated',claims:{...identity,
+    email:'reader@example.org',grants:['global:manage']}});
+  assert.equal(await canManageLoc(db,'global'),false);
 });
-test('Owner does not need grants; external and anonymous identities cannot manage',async()=>{
-  const {db}=fixture();
-  assert.throws(()=>bindLocAuthorization(db,{role:'authenticated',claims:
-    {...identity,provider:'clerk'}}),{httpStatus:403});
-  assert.throws(()=>bindLocAuthorization(db,{role:'authenticated',claims:
-    {...identity,me:false}}),{httpStatus:403});
-  bindLocAuthorization(db,{role:'authenticated',claims:{...identity,grants:[]}});
-  assert.equal(await canManageLoc(db,'global'),true);
+test('an explicit Scope delegation never becomes global Admin',async()=>{
+  const {db}=fixture([{id:'lrunes',email:identity.email,manage_role:'scope',active:true}]);
+  bindLocAuthorization(db,{role:'authenticated',claims:{...identity,grants:['lrunes:manage']}});
+  assert.equal(await canManageLoc(db,'global'),false);
+  assert.equal(await canManageLoc(db,'scope','lrunes'),true);
+  assert.equal(await canManageLoc(db,'scope','lo3rwang'),false);
+});
+test('Manage self view reports roles only after actual database check',async()=>{
+  const {db}=fixture([ownerAdmin]);
+  bindLocAuthorization(db,{role:'authenticated',claims:identity});
+  const rows=await locManageRows(db,'self');
+  assert.equal(rows[0].role,'admin');
+  assert.equal(rows[0].allowed,true);
+});
+test('unverified external and anonymous identities cannot write',async()=>{
+  const {db}=fixture([ownerAdmin]);
+  assert.throws(()=>bindLocAuthorization(db,{role:'authenticated',
+    claims:{...identity,provider:'clerk'}}),{httpStatus:403});
+  assert.throws(()=>bindLocAuthorization(db,{role:'authenticated',
+    claims:{...identity,me:false}}),{httpStatus:403});
   bindLocAuthorization(db,{role:'anon'});
   assert.equal(await canManageLoc(db,'scope','lrunes'),false);
 });

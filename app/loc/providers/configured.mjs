@@ -26,7 +26,7 @@ export function createConfiguredAdapter({
   // LOC OAuth JWTs are NOT database credentials. Authenticated SQL writes
   // require the database owner's server-side connection, never a public API key.
   const readOnlyAuthClient=createDirectDataApiClient({url,apiKey:publishableKey,
-    role:'authenticated',fetch:fetchImpl});
+    role:'authenticated',fetch:fetchImpl,mutate:payload=>managedWrite(payload)});
   // Website-owned Extension bridge obtains a narrow LOC signed delegation.
   // The account token is never passed to the Extension or to PostgREST.
   const shortImport=async(scopeid,batch)=>{
@@ -63,20 +63,11 @@ export function createConfiguredAdapter({
     }
     return result;
   };
-  // Only these two fixed ZModel control relations accept an authenticated
-  // UPDATE/DELETE (zenstack/policy-runtime.mjs ADMIN_FIXED_WRITES). Everything
-  // else keeps the original "owner Web Server required" refusal from
-  // direct-data-api.mjs -- there is no generic write transport here.
-  const FIXED_WRITE_TABLES=new Set(['api.manage','silver.loc']);
-  const managedWrite=async(payload)=>{
-    const table=String(payload?.p_table||'');
-    if(!FIXED_WRITE_TABLES.has(table))
-      throw Error('This operation requires the database owner Web Server; LOC provides no SQL Gateway');
+  // LOC Auth signs the principal; the trusted LOC Pages backend performs
+  // the SQL operation through Kysely. No browser SQL access or MCP dependency.
+  const nativeManagement=async(kind,fields)=>{
     const access=String(await identity.getAccessToken()||'');
     if(!access)throw Error('LOC login required');
-    // A global self-delegation only ever carries 'global:manage' for the one
-    // verified LOC owner (workers/loc-authority/index.mjs exchangeLocDelegation).
-    // No Scope id is requested; this is not a per-Scope grant.
     const authorize=await fetchImpl(new URL('/v1/delegation',authorityUrl).href,{
       method:'POST',credentials:'omit',cache:'no-store',
       headers:{authorization:'Bearer '+access,'content-type':'application/json',
@@ -85,30 +76,32 @@ export function createConfiguredAdapter({
       signal:AbortSignal.timeout(8000)
     });
     if(!authorize.ok){
-      const error=new Error('LOC 寫入授權失敗');
+      const error=new Error('LOC 寫入授權失敗（HTTP '+authorize.status+'）');
       error.status=authorize.status;throw error;
     }
     const delegation=await authorize.json().catch(()=>null);
     const signed=String(delegation?.access_token||'');
     if(signed.split('.').length!==3||!Array.isArray(delegation?.grants)||
       !delegation.grants.includes('global:manage'))
-      throw Error('此帳號沒有固定模型的寫入權限');
+      throw Error('LOC Auth 未核發管理寫入權限');
     const response=await fetchImpl('/api/loc-native',{
       method:'POST',credentials:'omit',cache:'no-store',
       headers:{authorization:'Bearer '+signed,'content-type':'application/json',
         accept:'application/json'},
-      body:JSON.stringify({kind:'managed-write',scopeid:'',payload}),
-      signal:AbortSignal.timeout(15000)
+      body:JSON.stringify({kind,scopeid:'',...fields}),
+      signal:AbortSignal.timeout(30000)
     });
     const result=await response.json().catch(()=>null);
     if(!response.ok){
-      const error=new Error(result?.error?.message||'LOC managed write failed');
+      const error=new Error(result?.error?.message||'LOC 原生資料庫寫入失敗（HTTP '+response.status+'）');
       error.status=response.status;throw error;
     }
     return {data:result?.data,error:null};
   };
+  const managedWrite=payload=>nativeManagement('managed-write',{payload});
+  const managedAction=(name,args={})=>nativeManagement('managed-action',{name,args});
   const authClient={...readOnlyAuthClient,shortImport,
-    schema(name){return {...readOnlyAuthClient.schema(name),managedWrite};}};
+    schema(name){return {...readOnlyAuthClient.schema(name),managedWrite,managedAction};}};
   return {publicClient,authClient,auth:identity.auth,
     configuredPublicClient:publicClient,backupPublicClient:null,
     realtimeClient:null,primarySourceLabel:'主要資料庫連線',backupSourceLabel:''};

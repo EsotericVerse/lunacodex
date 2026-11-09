@@ -23,8 +23,8 @@ test('Better Auth is local to LOC; native MCP OAuth and SQL separation remain',(
  assert.match(native,/sessionFromBetter\(request,env,stub\)/);
  assert.match(native,/native-google-link/);
  assert.match(native,/export async function googleLocSubject/);
- assert.match(native,/Verified LOC owner required for import/);
- assert.match(native,/identity\.provider!=='loc'\|\|identity\.emailVerified!==true/);
+ assert.match(native,/Verified LOC registry management role required for import/);
+ assert.match(native,/identity\.provider==='loc'&&identity\.emailVerified===true/);
  assert.match(native,/!isLocWriteOwner\(identity\.email\)/);
  assert.doesNotMatch(native,/Google identity needs an existing signed LOC session link/);
  assert.doesNotMatch(native,/if\(name==='google'\)return googleViaSupabase/);

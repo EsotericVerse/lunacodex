@@ -1,4 +1,4 @@
-import {sql} from 'npm:kysely@0.29.8';
+import {sql} from 'kysely';
 import {DB_QUERY_BATCH_SIZE} from '../query-batch-size.mjs';
 import {serializePortableJsonFields,portableRelation} from './sql-engine-ports.mjs';
 import {validateLocRegistryDomain} from './loc-domain.mjs';

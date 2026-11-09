@@ -12,6 +12,21 @@ const encoder=new TextEncoder();
 const b64=x=>Buffer.from(x instanceof Uint8Array?x:
  typeof x==='string'?x:JSON.stringify(x)).toString('base64url');
 
+function roleLookupFixture(address){
+ let url;
+ try{url=new URL(String(address))}catch{return null}
+ if(url.origin!=='https://loc.lo3rwang.cc'||url.pathname!=='/api/loc-authority-role')
+   return null;
+ const email=String(url.searchParams.get('email')||'').toLowerCase();
+ return Response.json({rows:email==='sopa2306@gmail.com'?[{
+   id:'lo3rwang',email,role:'admin',active:true
+ }]:[]});
+}
+const originalSystemFetch=globalThis.fetch;
+globalThis.fetch=(address,options)=>roleLookupFixture(address)||
+ originalSystemFetch(address,options);
+
+
 function environment(){
  const records=new Map();
  const provider={client_id:'github-app-id',client_secret:'github-app-secret',
@@ -44,6 +59,7 @@ function environment(){
   async selectedDatabaseForDelegation(){return null;}
  };
  const env={LOC_IMPORT_SCOPE_ID:'lo3rwang',
+  LOC_DB_PROFILE_SERVICE_TOKEN:'test-loc-role-lookup-service-token-strong',
   LOC_AUTHORITY_STATE:{idFromName:x=>x,get:()=>stub}};
  return {env,stub,records};
 }
@@ -86,13 +102,15 @@ test('GitHub verified identity -> LOC cookie -> per-install PKCE -> signed token
  let upstreamCalls=0,forwarded=null;
  globalThis.fetch=async(url,options={})=>{
   const address=String(url);
+  const reg=roleLookupFixture(address);
+  if(reg)return reg;
   if(address==='https://github.com/login/oauth/access_token')
    return Response.json({access_token:'github-mocked-token'});
   if(address==='https://api.github.com/user')
    return Response.json({id:123456,login:'owner'});
   if(address==='https://api.github.com/user/emails')
    return Response.json([{email:'sopa2306@gmail.com',verified:true,primary:true}]);
-  if(address==='https://mcp.lo3rwang.cc/api/loc-native'){
+  if(address==='https://loc.lo3rwang.cc/api/loc-native'){
    upstreamCalls++;
    forwarded={...options,body:JSON.parse(options.body)};
    return Response.json({accepted:true,id:'batch-test',articles:[]});

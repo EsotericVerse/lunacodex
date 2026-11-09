@@ -1,7 +1,7 @@
 import {canManageLoc,locManageRows} from './loc-authorization.mjs';
 import {schema as fixedSchema} from '../../../zenstack/schema.mjs';
 import {validateLocRegistryDomain} from './loc-domain.mjs';
-import {sql} from 'npm:kysely@0.29.8';
+import {sql} from 'kysely';
 import {saveBlocksKysely} from './kysely-blocks.mjs';
 import {allocateAnchorUid} from '../unified-anchor-compat.mjs';
 import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
@@ -33,16 +33,20 @@ function validateRows(value){
 }
 function validateFilters(value){
   if(!Array.isArray(value)||!value.length||value.length>20)reject('Managed write requires filters');
+  const operators=new Set(['eq','neq','gt','gte','lt','lte','like','ilike','is','in']);
   for(const filter of value){
     if(!filter||typeof filter!=='object'||!ID.test(filter.column)||
-       (filter.operator||'eq')!=='eq')reject('Invalid managed filter');
+      !operators.has(filter.operator||'eq')||
+      filter.operator==='in'&&(!Array.isArray(filter.value)||filter.value.length>500))
+      reject('Invalid managed filter');
   }
   return value;
 }
 function withFilters(query,filters){
-  for(const filter of filters){
-    query=query.where(filter.column,filter.value===null?'is':'=',filter.value);
-  }
+  const operators={eq:'=',neq:'!=',gt:'>',gte:'>=',lt:'<',lte:'<=',
+    like:'like',ilike:'ilike',is:'is',in:'in'};
+  for(const filter of filters)
+    query=query.where(filter.column,operators[filter.operator||'eq'],filter.value);
   return query;
 }
 
@@ -74,13 +78,19 @@ export function managedPrimaryKeyColumns(table,modelName=''){
   if(modelName&&(!idFields||!idFields.length))
     reject('Invalid fixed LOC primary key metadata');
   return idFields||
-    [SCOPED_SUFFIXES.some(suffix=>table.endsWith(suffix))?'uid':'id'];
+    [table==='lrunes_daily'?'record_id':
+      SCOPED_SUFFIXES.some(suffix=>table.endsWith(suffix))?'uid':'id'];
 }
 async function authorizeRelation(trx,table,operation,values,filters,rows){
   if(table==='manage'||table==='loc'){
     if(table==='loc'&&(Object.hasOwn(values||{},'ArticleTag')||rows.some(row=>Object.hasOwn(row,'ArticleTag'))))
       reject('LOC ArticleTag is fixed and cannot be configured',403);
     if(!await canManageLoc(trx,'global'))reject('Global management permission required',403);
+    return;
+  }
+  if(table==='lrunes_daily'){
+    if(!await canManageLoc(trx,'scope','lrunes'))
+      reject('Daily Rune management permission required',403);
     return;
   }
   if(table==='loc_blocks'){
@@ -107,7 +117,7 @@ async function authorizeRelation(trx,table,operation,values,filters,rows){
   const record=await trx.selectFrom('api.manage')
     .select(['id','manage_role','galaxy_table','anchor_table'])
     .where('id','=',scope).executeTakeFirst();
-  if(!record||record.manage_role!=='scope')reject('Scope is not registered',403);
+  if(!record||!['scope','admin'].includes(record.manage_role))reject('Scope is not registered',403);
   const galaxy=String(record.galaxy_table||'galaxy');
   const anchor=String(record.anchor_table||'anchor');
   if(!ID.test(galaxy)||!ID.test(anchor))reject('Scope registry is invalid',403);
@@ -161,9 +171,9 @@ export async function executeManagedKyselyWrite(trx,body,{modelName=''}={}){
       modelName==='Loc'&&table==='loc'))
     reject('Invalid fixed LOC model for management write',403);
   const operation=payload.p_operation;
-  if(!['insert','update','delete','update_batch'].includes(operation))
+  if(!['insert','upsert','update','delete','update_batch'].includes(operation))
     reject('Invalid managed write operation');
-  const rows=operation==='insert'?validateRows(payload.p_rows):[];
+  const rows=['insert','upsert'].includes(operation)?validateRows(payload.p_rows):[];
   const values=payload.p_values;
   const filters=['update','delete'].includes(operation)?validateFilters(payload.p_filters):[];
   if(operation==='update'&&(!values||typeof values!=='object'||Array.isArray(values)||
@@ -172,7 +182,7 @@ export async function executeManagedKyselyWrite(trx,body,{modelName=''}={}){
   if(operation==='update_batch'&&table.endsWith('_galaxy')===false)
     reject('Article batches must target a Galaxy table');
   if(table==='manage'){
-    if(operation==='insert')for(let i=0;i<rows.length;i++)
+    if(['insert','upsert'].includes(operation))for(let i=0;i<rows.length;i++)
       rows[i]=validateLocRegistryDomain(rows[i]);
     if(operation==='update'&&Object.hasOwn(values,'domain'))
       Object.assign(values,validateLocRegistryDomain(values));
@@ -194,7 +204,21 @@ export async function executeManagedKyselyWrite(trx,body,{modelName=''}={}){
   }
   let count=0;
   if(operation==='update_batch')count=await writeBatch(trx,table,payload.p_rows);
-  else if(operation==='insert'){
+  else if(operation==='upsert'){
+    const keys=managedPrimaryKeyColumns(table,modelName);
+    if(keys.length!==1)reject('Composite primary key cannot be upserted');
+    const primary=keys[0];
+    for(const row of rows){
+      if(row[primary]===undefined||row[primary]===null)
+        reject('Upsert requires an explicit primary key');
+      const document=postgresManagedJsonbValues(row);
+      const updates={...document};delete updates[primary];
+      const builder=trx.insertInto(name).values(document);
+      const result=await builder.onConflict(oc=>updates&&Object.keys(updates).length
+        ?oc.column(primary).doUpdateSet(updates):oc.column(primary).doNothing()).executeTakeFirst();
+      count+=Number(result?.numInsertedOrUpdatedRows??result?.numAffectedRows??1);
+    }
+  }else if(operation==='insert'){
     const groups=[];
     for(const row of rows){
       const keys=Object.keys(row).sort().join('\0');
@@ -259,7 +283,7 @@ async function bulkUpdateGalaxyFlags(trx,args){
   // Reuse the Scope Registry. Do not trust user-supplied SQL relation names.
   const registry=await trx.selectFrom('api.manage').select(['manage_role','galaxy_table'])
     .where('id','=',scope).executeTakeFirst();
-  if(registry?.manage_role!=='scope'||registry.galaxy_table!=='galaxy')
+  if(!['scope','admin'].includes(registry?.manage_role)||registry.galaxy_table!=='galaxy')
     reject('Scope Galaxy mapping unavailable',403);
   const table=sql.ref('silver.'+scope+'_galaxy');
   const values=Object.entries(flags);
@@ -584,7 +608,7 @@ async function scopedWrite(trx,input){
   if(!await canManageLoc(trx,'scope',scope))reject('Scope write permission required',403);
   const registry=await trx.selectFrom('api.manage').select(['id','manage_role','active'])
     .where('id','=',scope).executeTakeFirst();
-  if(!registry||registry.manage_role!=='scope'||registry.active!==true)
+  if(!registry||!['scope','admin'].includes(registry.manage_role)||registry.active!==true)
     reject('Unknown or inactive Scope',403);
   await sql`reset role`.execute(trx);
   return scope;

@@ -1,4 +1,5 @@
-import {issueDelegation,isLocWriteOwner} from '../../app/loc/auth/delegation-contract.mjs';
+import {issueDelegation} from '../../app/loc/auth/delegation-contract.mjs';
+import {locRegistryRoles,isLocRegistryAdmin,canLocRegistryManage} from './manage-role.mjs';
 import {checkExternalAuthQos} from './auth-qos.mjs';
 import {handleFirstPartyAuth,hasFirstPartyCookie,firstPartySession,firstPartySignOut} from './better-auth-native.mjs';
 import {verifyAuthReference} from './auth-ref.mjs';
@@ -136,6 +137,7 @@ export async function googleLocSubject(identity,stub,env,prior=null){
  if(identity?.emailVerified!==true||!email||
   !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||
   !googleId||googleId.length>256)error('Verified Google identity required',401);
+ const owner=isLocRegistryAdmin(await locRegistryRoles(env,email));
  const key='native-google-link:'+await sha('google:'+googleId);
  const saved=await stub.nativeGet(key);
  if(saved&&(!LOC_SUBJECT.test(String(saved.subject||''))||
@@ -145,7 +147,7 @@ export async function googleLocSubject(identity,stub,env,prior=null){
  const matches=[];
  // Only the unique verified LOC owner can recover an existing root Subject.
  // An OAuth app ID/Secret, or an old Scope grant for another email, is not "me".
- if(isLocWriteOwner(email)){
+ if(owner){
   if(typeof stub.delegationGrantProfile==='function'){
    for(const root of roots){
     const existing=await stub.delegationGrantProfile('loc',root);
@@ -153,13 +155,13 @@ export async function googleLocSubject(identity,stub,env,prior=null){
    }
   }
   const pinned=String(env.LOC_RECOVERY_ROOT_GOOGLE_EMAIL||'').trim().toLowerCase();
-  if(roots.length===1&&(pinned===email||isLocWriteOwner(email)))
+  if(roots.length===1&&(pinned===email||owner))
    matches.push(roots[0]);
  }
  const candidates=[...new Set(matches)];
  if(candidates.length>1)error('Ambiguous LOC owner identity mapping',409);
  const root=candidates[0]||'';
- if(!isLocWriteOwner(email)&&roots.includes(saved?.subject))
+ if(!owner&&roots.includes(saved?.subject))
   error('Existing LOC root identity is restricted to the verified owner',403);
  let subject=saved?.subject||'';
  if(root){
@@ -169,7 +171,7 @@ export async function googleLocSubject(identity,stub,env,prior=null){
   subject=root;
  }else if(!subject&&prior&&prior.emailVerified!==false&&
   prior.email===email&&LOC_SUBJECT.test(String(prior.subject||''))&&
-  (isLocWriteOwner(email)||!roots.includes(prior.subject))){
+  (owner||!roots.includes(prior.subject))){
   subject=prior.subject; // Never inherit the owner's Subject from another account.
  }
  if(!subject)subject='loc_'+(await sha('google:'+googleId)).slice(0,40);
@@ -608,9 +610,10 @@ async function importShort(request,env,stub,origin){
  const requestedScope=new URL(request.url).searchParams.get('scopeid');
  const scope=requestedScope===null?String(env.LOC_IMPORT_SCOPE_ID||'lo3rwang'):requestedScope;
  if(!SCOPE_ID.test(scope))error('Import Scope invalid',503);
- if(identity.provider!=='loc'||identity.emailVerified!==true||
-    !isLocWriteOwner(identity.email))
-   error('Verified LOC owner required for import',403);
+ const roles=identity.provider==='loc'&&identity.emailVerified===true
+   ?await locRegistryRoles(env,identity.email):[];
+ if(!canLocRegistryManage(roles,scope))
+   error('Verified LOC registry management role required for import',403);
  const raw=await request.text();
  if(TXT.encode(raw).length>1048576)error('Import batch too large',413);
  let batch;try{batch=JSON.parse(raw);}catch{error('Invalid import JSON');}
@@ -618,9 +621,9 @@ async function importShort(request,env,stub,origin){
   error('Invalid import batch');
  // LOC Auth owns OAuth; the existing LOC Pages application writes via its
  // own Kysely connection. It accepts only a signed Scope-specific import.
- const endpoint='https://mcp.lo3rwang.cc/api/loc-native';
+ const endpoint='https://loc.lo3rwang.cc/api/loc-native';
  const now=Math.floor(Date.now()/1000);
- const selectedTarget=await stub.selectedDatabaseForDelegation(identity.subject,true);
+ const selectedTarget=await stub.selectedDatabaseForDelegation(identity.subject,isLocRegistryAdmin(roles));
  const delegation=issueDelegation({sub:identity.subject,email:identity.email,
   grants:[scope+':write'],audience:'sql',sid:crypto.randomUUID(),now,seconds:300,
   targetId:selectedTarget});

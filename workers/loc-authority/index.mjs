@@ -1,6 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import {checkExternalAuthQos} from './auth-qos.mjs';
-import {issueDelegation,isLocWriteOwner} from '../../app/loc/auth/delegation-contract.mjs';
+import {issueDelegation} from '../../app/loc/auth/delegation-contract.mjs';
+import {locRegistryRoles,isLocRegistryAdmin} from './manage-role.mjs';
 import {normalizeSqlDriverAuthentication,publicSqlDriverAuthentication,
   sqlAuthNeedsUserPassword} from '../../app/loc/providers/sql-driver-auth.mjs';
 import {ISSUER,MCP_AUDIENCE,WEB_AUDIENCE,isNativeOAuthPath,handleNativeOAuth,
@@ -17,9 +18,9 @@ const JSON_HEADERS={'content-type':'application/json; charset=utf-8','cache-cont
 const ID=/^[a-z][a-z0-9_-]{0,63}$/;
 const ENGINES=new Set(['postgres','mysql','mssql']);
 function fail(message,status=400){return Object.assign(new Error(message),{status});}
-function verifiedLocOwner(principal){
+async function verifiedLocOwner(principal,env){
   return principal?.provider==='loc'&&principal.emailVerified===true&&
-    isLocWriteOwner(principal.email);
+    isLocRegistryAdmin(await locRegistryRoles(env,principal.email));
 }
 function b64bytes(value){
   const value64=String(value).replace(/-/g,'+').replace(/_/g,'/');
@@ -860,7 +861,7 @@ async function handleMcpAuthority(request,env,url,origin){
     if(request.method!=='GET')throw fail('Method not allowed',405);
     const scopeid=validScope(directPermit[1]),action=directPermit[2];
     const state=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName('loc-authority-control-v1'));
-    const root=verifiedLocOwner(principal);
+    const root=await verifiedLocOwner(principal,env);
     const dbTarget=await state.selectedDatabaseForDelegation(principal.subject,root);
     return json({authorized:true,subject:principal.subject,scopeid,action,
       ...(dbTarget?{db_target:dbTarget}:{})},200,origin);
@@ -902,7 +903,7 @@ async function handleMcpAuthority(request,env,url,origin){
   }finally{await quota.mcpQuotaRelease(ticket.lease,'loc:'+principal.subject);}
 }
 async function handleMcpAuthorityInner(request,env,url,origin,principal){
-  const isRoot=verifiedLocOwner(principal);
+  const isRoot=await verifiedLocOwner(principal,env);
   const stub=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName('loc-authority-control-v1'));
   const scoped=scope=>env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName('mcp-scope:'+scope));
   const allowed=async(scope,action)=>action==='read'||isRoot;
@@ -1084,7 +1085,7 @@ async function exchangeLocDelegation(request,env,principal,origin){
   // subject lists and role strings cannot elevate another identity.
   if(principal?.provider!=='loc'||principal.emailVerified!==true)
     throw fail('Verified LOC OAuth identity required',403);
-  const root=verifiedLocOwner(principal);
+  const root=await verifiedLocOwner(principal,env);
   const scope=String(input.scopeid||'');
   const actions=input.actions;
   if(global){
@@ -1202,7 +1203,7 @@ export default {
         if(principal.provider!=='loc')throw fail('LOC Auth required',401);
         const state=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName(
           'loc-authority-control-v1'));
-        const isRoot=verifiedLocOwner(principal);
+        const isRoot=await verifiedLocOwner(principal,env);
         if(request.method==='GET'&&url.pathname==='/v1/databases')
           return json(await state.databaseTargetsForUser(principal.subject,isRoot),200,origin);
         if(request.method==='POST'&&url.pathname==='/v1/databases/selection'){
@@ -1217,7 +1218,7 @@ export default {
         }
         throw fail('Method not allowed',405);
       }
-      if(!verifiedLocOwner(principal))throw fail('LOC owner required',403);
+      if(!await verifiedLocOwner(principal,env))throw fail('LOC owner required',403);
       const stub=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName('loc-authority-control-v1'));
       if(request.method==='GET'&&url.pathname==='/v1/me')return json(principal,200,origin);
       if(request.method==='GET'&&url.pathname==='/v1/state')return json(await stub.listState(),200,origin);

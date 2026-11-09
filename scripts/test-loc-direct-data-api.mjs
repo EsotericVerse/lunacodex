@@ -26,10 +26,20 @@ test('public article body requires list=true',async()=>{
   assert.equal(actual.searchParams.get('search'),'eq.true');
   assert.equal(actual.searchParams.get('list'),'eq.true');
 });
-test('public API never executes writes with browser public key',()=>{
-  const identity={auth:{},getAccessToken:async()=>''};
-  const adapter=createConfiguredAdapter({accountAdapter:identity,fetchImpl:async()=>{throw Error('fetch unavailable')}});
-  assert.throws(()=>adapter.authClient.schema('silver').from('loc').insert([]),/owner Web Server/);
+test('public Data API remains read-only and LOC OAuth is required for managed writes',async()=>{
+  const publicOnly=createDirectDataApiClient({
+    url:'https://example.net/rest/v1',apiKey:'public',role:'anon',
+    fetch:async()=>{throw Error('unexpected public write')}
+  });
+  assert.throws(()=>publicOnly.schema('silver').from('loc').insert({uid:'abcdefgh'}),
+    /owner Web Server/);
+  const adapter=createConfiguredAdapter({
+    accountAdapter:{auth:{},getAccessToken:async()=>''},
+    fetchImpl:async()=>{throw Error('unexpected unauthenticated network request')}
+  });
+  await assert.rejects(
+    adapter.authClient.schema('silver').from('loc').insert([{id:'x'}]).select('id'),
+    /LOC login required/);
 });
 
 

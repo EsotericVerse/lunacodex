@@ -6,6 +6,8 @@ import {verifyDelegationBoundary} from '../auth/delegation-contract.mjs';
 import {authorizeDelegatedShortImport} from '../import/short-edge-authorization.mjs';
 import {processShortImport,portableShortImportStore} from '../import/short-append-service.mjs';
 import {executePortableMcp} from '../providers/kysely-mcp.mjs';
+import {bindLocAuthorization} from '../providers/loc-authorization.mjs';
+import {executeManagedKyselyWrite,executeManagedKyselyAction} from '../providers/kysely-management.mjs';
 import {directMcpKysely} from './native-kysely.mjs';
 import {withFixedPolicyWrite} from '../../../zenstack/policy-runtime.mjs';
 import {ZenStackClient} from '@zenstackhq/orm';
@@ -15,7 +17,7 @@ const JWKS='https://auth.lo3rwang.cc/.well-known/jwks.json';
 const MCP_HOST='mcp.lo3rwang.cc';
 const WEB_HOST='loc.lo3rwang.cc';
 const MAX_BYTES=700000;
-const KINDS=new Set(['mcp-sync','mcp-append','mcp-read','mcp-search','short-import','managed-write']);
+const KINDS=new Set(['mcp-sync','mcp-append','mcp-read','mcp-search','short-import','managed-write','managed-action']);
 // api.manage / silver.loc are the only two fixed ZModel control relations a
 // signed global:manage delegation may UPDATE/DELETE (zenstack/policy-runtime.mjs
 // ADMIN_FIXED_WRITES). No insert, no other table -- the website's own
@@ -135,7 +137,7 @@ export async function handleNativeLocOperation(request,env={},{
     // The website exposes only short-import and the fixed-model managed
     // write. MCP business operations remain restricted to the dedicated
     // MCP hostname and their own audience.
-    if(host===WEB_HOST&&body.kind!=='short-import'&&body.kind!=='managed-write')
+    if(host===WEB_HOST&&body.kind!=='short-import'&&body.kind!=='managed-write'&&body.kind!=='managed-action')
       throw refusal('Not found',404);
     // The verified signed claim, not the HTTP body, selects the connection.
     const claims=await signedClaims(request.headers.get('authorization'),
@@ -152,14 +154,32 @@ export async function handleNativeLocOperation(request,env={},{
       });
       return reply(receipt);
     }
-    if(body.kind==='managed-write'){
+    if(body.kind==='managed-write'||body.kind==='managed-action'){
       if(selected.tableName)throw refusal('External mapped tables are read only',403);
-      if(!selected.dialect)throw refusal('LOC native Kysely driver is not configured',503);
+      if(selected.engine!=='postgres')throw refusal('LOC management writer needs a PostgreSQL control database',503);
+      if(!claims.grants?.some(grant=>grant==='global:manage'||grant.endsWith(':manage')))
+        throw refusal('LOC management delegation required',403);
+      // Keep the fixed-model ZenStack policy path for UPDATE and DELETE.
+      // All other known LOC tables use the existing Kysely management
+      // executor, with the signed principal bound to this transaction.
       const payload=body.payload||{};
-      const row=await withFixedPolicyWrite(selected.db,{engine:selected.engine},
-        body,claims.role,claims,
-        {dialect:selected.dialect,ZenStackClient,PolicyPlugin},
-        (qb,modelName)=>applyManagedWrite(qb,modelName,payload));
+      const fixed=body.kind==='managed-write'&&
+        ['api.manage','silver.loc'].includes(payload.p_table)&&
+        ['update','delete'].includes(payload.p_operation);
+      if(fixed){
+        if(!selected.dialect)throw refusal('LOC native Kysely driver is not configured',503);
+        const row=await withFixedPolicyWrite(selected.db,{engine:selected.engine},
+          body,claims.role,claims,
+          {dialect:selected.dialect,ZenStackClient,PolicyPlugin},
+          (qb,modelName)=>applyManagedWrite(qb,modelName,payload));
+        return reply({data:row});
+      }
+      const row=await selected.db.transaction().execute(async trx=>{
+        bindLocAuthorization(trx,{role:claims.role,claims});
+        return body.kind==='managed-write'
+          ?(await executeManagedKyselyWrite(trx,body)).data
+          :(await executeManagedKyselyAction(trx,body,claims)).data;
+      });
       return reply({data:row});
     }
     const result=await executePortableMcp(selected.db,body,claims,{
