@@ -4,6 +4,7 @@
 // Galaxy/Anchor are the same fixed physical models; the SQL dialect and
 // database credentials belong to Kysely, not a provider's Data API/RPC.
 import {sql} from 'kysely';
+import {isLocWriteOwner} from '../auth/delegation-contract.mjs';
 import {schema as zmodel} from '../../../zenstack/schema.mjs';
 import {portableRelation} from './sql-engine-ports.mjs';
 import {portableContainsSpec} from './portable-search.mjs';
@@ -28,6 +29,7 @@ function verifyScope(body,claims){
     reject('Unsupported MCP operation',400);
   const permission=scope+':'+(write?'write':'read');
   if(claims?.provider!=='loc'||claims?.me!==true||
+    (write&&!isLocWriteOwner(claims.email))||
     !Array.isArray(claims.grants)||!claims.grants.includes(permission))
     reject('MCP Scope grant denied',403);
   return scope;
