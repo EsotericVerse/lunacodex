@@ -7,10 +7,15 @@ test('standalone LOC Auth login preserves the original scenic design',()=>{
   const page=read('public/login/index.html');
   const styles=read('public/login/appearance.css');
   for(const marker of ['class="auth-scene"','class="auth-surface"',
-    "AUTHORITY='https://auth.lo3rwang.cc'","使用 Google 繼續",
-    "使用 GitHub 繼續",
+    "AUTHORITY='https://auth.lo3rwang.cc'","使用 Google 繼續","使用 LOC SSO",
     'role="status" aria-live="polite"','oauthContinuation()'])
     assert.ok(page.includes(marker),marker);
+  assert.doesNotMatch(page,/使用 GitHub 繼續|\['github'/);
+  assert.match(page,/id='loc-sso-login'/);
+  assert.match(page,/ssoButton.addEventListener\('click'/);
+  assert.match(page,/credentials:'include'/);
+  assert.match(page,/returnToLoc\(\)/);
+  assert.match(page,/if\(!signedIn\)\{/);
   assert.match(styles,/\.loc-login-choice/);
   assert.match(styles,/@media\s*\(max-width:\s*760px\)/);
   assert.match(styles,/prefers-reduced-motion/);
