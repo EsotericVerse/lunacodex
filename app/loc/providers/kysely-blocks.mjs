@@ -1,4 +1,4 @@
-import {sql} from 'npm:kysely@0.29.8';
+import {sql} from 'kysely';
 import {buildKyselyUpsertQuery} from './kysely-runtime.mjs';
 import {portableRelation,serializePortableJsonFields} from './sql-engine-ports.mjs';
 
