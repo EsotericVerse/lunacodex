@@ -305,9 +305,9 @@ test('the innermost Kysely retry contract never uses a full-row UPDATE',()=>{
 test('new conversation batch with the SAME source timestamp appends once, preserving every message',async()=>{
  const {authority}=state();
  const batchA='a'.repeat(64),batchB='b'.repeat(64);
- const first={...CONVERSATION,content:'[[GalaxyLinkBatch:'+batchA+']]\\nFirst original',
+ const first={...CONVERSATION,content:'[[GalaxyLinkBatch:'+batchA+']]\nFirst original',
   batch_id:batchA,append:true};
- const second={...first,content:'[[GalaxyLinkBatch:'+batchB+']]\\nNew message',batch_id:batchB};
+ const second={...first,content:'[[GalaxyLinkBatch:'+batchB+']]\nNew message',batch_id:batchB};
  const calls=fakeSql(call=>{
   assert.ok(['mcp-sync','mcp-append'].includes(call.body.kind));
   return Response.json({data:{count:1}});
