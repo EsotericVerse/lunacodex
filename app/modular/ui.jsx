@@ -76,11 +76,18 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
     ()=>selectLiveScopeBlocks('loc',groupHeroPage),{
       enabled:!managementMode&&adminHero
     });
+  // Admin uses group_admin for its configured image. Personal Settings uses
+  // scope_setting for its separate image (group_setting stores its copy).
+  const settingImageQuery=useAsyncResource(['scope-blocks-live','loc',scopeHeroPage],
+    ()=>selectLiveScopeBlocks('loc',scopeHeroPage),{
+      enabled:!managementMode&&featureId==='setting'
+    });
   const groupHeroRows=adminHero
     ?adminHeroQuery.data||[]
     :(publicHeroQuery.data||[]).filter(row=>row.page_name===groupHeroPage);
   const scopeHeroRows=adminHero
-    ?[]:(publicHeroQuery.data||[]).filter(row=>row.page_name===scopeHeroPage);
+    ?(featureId==='setting'?settingImageQuery.data||[]:[])
+    :(publicHeroQuery.data||[]).filter(row=>row.page_name===scopeHeroPage);
   const managementTextPage=managementSlot?.page||'';
   const managementImagePage=HomeBlock.managementHeroImagePage(managementSlot);
   const managementTextQuery=useAsyncResource(['scope-blocks-live','loc',managementTextPage],
@@ -89,8 +96,9 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
     ()=>selectLiveScopeBlocks('loc',managementImagePage),{enabled:managementMode});
   const heroImageRow=managementMode
     ?managementImageQuery.data?.find(row=>Number(row.block_order)===1)
-    :((scopeId==='loc'&&!HomeBlock.shouldUseSingleFeatureHeroImage(featureId))
-      ?groupHeroRows:scopeHeroRows).find(row=>Number(row.block_order)===1);
+    :(featureId==='admin'?groupHeroRows:
+      (scopeId==='loc'&&!HomeBlock.shouldUseSingleFeatureHeroImage(featureId))
+        ?groupHeroRows:scopeHeroRows).find(row=>Number(row.block_order)===1);
   const heroImageOverride=heroImageUrlOf(heroImageRow)||(managementMode?HomeBlock.managementHeroDefaultImage(managementSlot):'');
   const heroStyle=heroImageOverride?{'--scope-feature-hero-image':`url("${heroImageOverride}")`}:undefined;
   const shared=managementMode?HomeBlock.managementHeroCopy(managementTextQuery.data,managementSlot)
