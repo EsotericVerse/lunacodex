@@ -2,7 +2,7 @@
 
 **唯一 Chrome Extension：** 於 `chrome://extensions/` 載入 `extensions/loc-galaxy-link/`。
 
-本擴充功能整合 LOC Auth OAuth + PKCE S256、Readability 一般網頁、選取文字、區域擷取、Instagram／Threads 已載入貼文、ChatGPT／Claude 已載入的逐則對話，以及選區動態錄製／暫停／恢復／停止。右鍵「LOC 彩虹橋｜galaxy-link」即可選擇操作，工具列 Popup 也可操作，含 AI 回覆預設關閉。
+本擴充功能整合 LOC Auth OAuth + PKCE S256、Readability 一般網頁、選取文字、區域擷取、Instagram／Threads 已載入貼文、ChatGPT／Claude 已載入的逐則對話，以及選區動態錄製／暫停／恢復／停止。右鍵「LOC 彩虹橋｜galaxy-link」即可選擇操作，工具列圖示只開啟設定頁，AI 回覆擷取預設關閉。
 
 僅使用既有 IndexedDB `loc-channel1-queue` 與 `pending` store，版本 2 新增 `acknowledged` 去重存儲；原有未送 Queue 不清空、不搬移、不換帳號。所有功能共用這一個 Queue、這一組 LOC Auth 與短匯入 API。滿 10 次擷取或累積約 600 KB 送出，手動可提前送出；依擷取當下的 Scope 分批，各篇以來源為單位持續 Append，完整收齊批次／UID 回執後才刪 Queue。禁止匿名、覆寫文章及跨 Scope 混合批次。
 
@@ -21,3 +21,7 @@
 ## v0.2.3：ChatGPT 對話錄製實際入列
 
 辨識新版 ChatGPT 對話的語意標籤（You said／你說）與訊息區塊，不再只仰賴 data-message-author-role。聊天頁選取錄製區域會涵蓋同一個 main 對話容器，避免只錄製單一訊息泡泡而得不到訊息節點。無法辨識內容、Queue 寫入失敗均顯示原因；錄製狀態不代表入列成功。原有 Queue、OAuth、Scope、UID 流程不變。
+
+## v0.2.4：長對話、錄製確認與失敗退避
+
+ChatGPT 巢狀 DOM 以外層訊息 Turn 去重，同一則訊息不再重複入列；已載入超過 100 則的長對話以每次最多 100 則入列，不會整批拒絕。動態錄製對串流內容採 1.25 秒去抖，按停止時等待尚未完成的 Queue 寫入，最後擷取也必須拿到 Queue 回執。HTTP 5xx 顯示可安全揭露的短錯誤原因並採指數退避（上限一小時），避免無效請求；手動傳送仍可重試，429 遵守流量限制。現有 IndexedDB、Queue、已保存 UID、OAuth、Extension ID、Scope ID 均不變。

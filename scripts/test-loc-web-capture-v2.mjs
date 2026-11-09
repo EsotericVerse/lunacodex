@@ -300,7 +300,7 @@ test('ChatGPT recording reports empty extraction and never silently suppresses Q
  const source=text('content.js'),background=text('background.js');
  assert.match(source,/reportCapture\('錄製已啟動/);
  assert.match(source,/錄製擷取失敗，Queue 未確認寫入/);
- assert.match(source,/const main=chat&&/);
+ assert.match(source,/const main=recording&&chat/);
  assert.match(source,/watch\(\);/);
  assert.match(background,/case 'capture\.report'/);
  assert.match(background,/await noteAction\('動態擷取',false/);
