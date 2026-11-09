@@ -182,6 +182,10 @@ test('ZenStack V3 compiles fixed-model Kysely reads without a database or stored
   assert.equal(executed.length,1,'one Kysely execution');
   assert.match(executed[0].sql,/"silver"\."lo3rwang_anchor"/);
   assert.deepEqual(executed[0].parameters,['date',5]);
+  await client.$qb.selectFrom('Manage').select('id').limit(1).execute();
+  assert.equal(executed.length,2,'Manage model should use existing dialect');
+  assert.match(executed[1].sql,/from "api"\."manage"/i,
+    'ZenStack Manage MUST map to api.manage, not public.manage or silver.manage');
 });
 
 test('active LOC browser and local providers have no SQL RPC transport',()=>{

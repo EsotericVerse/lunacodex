@@ -6,10 +6,11 @@ import {verifyDelegationBoundary} from '../auth/delegation-contract.mjs';
 import {authorizeDelegatedShortImport} from '../import/short-edge-authorization.mjs';
 import {processShortImport,portableShortImportStore} from '../import/short-append-service.mjs';
 import {executePortableMcp} from '../providers/kysely-mcp.mjs';
-import {bindLocAuthorization} from '../providers/loc-authorization.mjs';
+import {bindLocAuthorization,canManageLoc} from '../providers/loc-authorization.mjs';
 import {executeManagedKyselyWrite,executeManagedKyselyAction} from '../providers/kysely-management.mjs';
 import {executeLocPersonal} from '../providers/kysely-personal.mjs';
 import {directMcpKysely} from './native-kysely.mjs';
+import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 import {withFixedPolicyWrite} from '../../../zenstack/policy-runtime.mjs';
 import {ZenStackClient} from '@zenstackhq/orm';
 import {PolicyPlugin} from '@zenstackhq/plugin-policy';
@@ -18,6 +19,7 @@ const JWKS='https://auth.lo3rwang.cc/.well-known/jwks.json';
 const MCP_HOST='mcp.lo3rwang.cc';
 const WEB_HOST='loc.lo3rwang.cc';
 const MAX_BYTES=700000;
+const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const KINDS=new Set(['mcp-sync','mcp-append','mcp-read','mcp-search','short-import','managed-write','managed-action','personal-read','personal-write']);
 // api.manage / silver.loc are the only two fixed ZModel control relations a
 // signed global:manage delegation may UPDATE/DELETE (zenstack/policy-runtime.mjs
@@ -148,14 +150,17 @@ export async function handleNativeLocOperation(request,env={},{
     // extension import path and MCP append/sync. OAuth never changes this.
     const writesToSelectedDatabase=['short-import','mcp-sync','mcp-append']
       .includes(body.kind);
-    if(writesToSelectedDatabase&&claims.db_target)
+    const primaryId=DATABASE_ACCESS_LIST.find(item=>item.selected===true)?.target_id;
+    if(writesToSelectedDatabase&&claims.db_target&&claims.db_target!==primaryId)
       throw refusal('External database connections are read only',403);
     // Personal preferences and Admin settings always use LOC's control
     // database. A user's selected external database is for their Scope data,
     // never for api.loc_user / api.user_settings / api.manage.
     const control=['personal-read','personal-write','managed-write','managed-action']
       .includes(body.kind);
-    const selected=await database(env,control?'':claims.db_target||'');
+    const externalTarget=claims.db_target&&claims.db_target!==primaryId
+      ?claims.db_target:'';
+    const selected=await database(env,control?'':externalTarget);
     if(!selected?.db||!['postgres','mysql','mssql'].includes(selected.engine))
       throw refusal('LOC native Kysely driver is not configured',503);
     if(body.kind==='short-import'){
@@ -194,7 +199,16 @@ export async function handleNativeLocOperation(request,env={},{
         const row=await withFixedPolicyWrite(selected.db,{engine:selected.engine},
           body,claims.role,claims,
           {dialect:selected.dialect,ZenStackClient,PolicyPlugin},
-          (qb,modelName)=>applyManagedWrite(qb,modelName,payload));
+          async(qb,modelName)=>{
+              if(!Array.isArray(payload.p_filters)||!payload.p_filters.length)
+                throw refusal('Unsafe unfiltered managed write',400);
+              // api.manage remains the live source of management rights in
+             // the same Kysely transaction as the ZenStack-model write.
+             bindLocAuthorization(qb,{role:claims.role,claims});
+             if(!await canManageLoc(qb,'global','','Manage'))
+               throw refusal('LOC Registry management permission denied',403);
+             return applyManagedWrite(qb,modelName,payload);
+           });
         return reply({data:row});
       }
       const row=await selected.db.transaction().execute(async trx=>{
@@ -205,9 +219,27 @@ export async function handleNativeLocOperation(request,env={},{
       });
       return reply({data:row});
     }
-    const result=await executePortableMcp(selected.db,body,claims,{
+    const runMcp=db=>executePortableMcp(db,body,claims,{
       engine:selected.engine,namespace:selected.namespace,
       tableName:selected.tableName,fieldMap:selected.fieldMap});
+    // MCP sync/append use the existing Kysely driver, with one SQL
+    // transaction for both live Registry verification and the write.
+    if(body.kind==='mcp-sync'||body.kind==='mcp-append'){
+      if(selected.engine!=='postgres'||selected.tableName)
+        throw refusal('LOC MCP control database is unavailable for writing',503);
+      const email=String(claims.email||'').trim().toLowerCase();
+      if(!EMAIL.test(email))throw refusal('Verified MCP writer email required',403);
+      const result=await selected.db.transaction().execute(async trx=>{
+        const owner=await trx.selectFrom('api.manage')
+          .select('id').where(eb=>eb.fn('lower',['email']),'=',email)
+          .where('manage_role','=','admin').where('active','=',true)
+          .limit(1).executeTakeFirst();
+        if(!owner)throw refusal('MCP Registry write permission denied',403);
+        return runMcp(trx);
+      });
+      return reply({data:result.data});
+    }
+    const result=await runMcp(selected.db);
     return reply({data:result.data});
   }catch(error){
     const status=Number(error?.httpStatus)||500;

@@ -17,8 +17,8 @@ export function bindLocAuthorization(db,{role='anon',claims={}}={}){
     deny('Verified LOC delegation required');
   sessions.set(db,{role,claims,email:String(claims?.email||'').trim().toLowerCase(),registry:null});
 }
-async function registryFor(db,state){
-  if(!state.registry)state.registry=db.selectFrom('api.manage')
+async function registryFor(db,state,registryRelation='api.manage'){
+  if(!state.registry)state.registry=db.selectFrom(registryRelation)
     .select(['id','manage_role','active'])
     .where(db.fn('lower',['email']),'=',state.email).execute();
   return state.registry;
@@ -33,14 +33,14 @@ export async function locPermissions(db){
     .where(db.fn('lower',['m.email']),'=',state.email).execute();
   return {blocked:false,rows};
 }
-export async function canManageLoc(db,type,id=''){
+export async function canManageLoc(db,type,id='',registryRelation='api.manage'){
   const state=sessions.get(db);
   if(!state||state.role!=='authenticated')return false;
   const kind=String(type||'').toLowerCase(),scope=String(id||'').toLowerCase();
   if(!['global','scope','group'].includes(kind)||
      kind!=='global'&&!SCOPE.test(scope))return false;
   const grants=state.claims.grants;
-  const rows=await registryFor(db,state);
+  const rows=await registryFor(db,state,registryRelation);
   // Admin must come from the database, AND LOC Auth must have signed
   // the global grant. An inactive scope never becomes an implicit permission.
   const admin=grants.includes('global:manage')&&rows.some(row=>
