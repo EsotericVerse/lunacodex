@@ -48,7 +48,7 @@ async function authorizedProfile(env,alias,verifiedAlias,fetchImpl){
   if(secret.length<32)throw fail('LOC trusted profile secret is invalid');
   const result=await fetchImpl('https://auth.lo3rwang.cc/v1/internal/database/'+alias,{
    method:'GET',headers:{'x-loc-service-token':secret,accept:'application/json'},
-   cache:'no-store',redirect:'error',signal:AbortSignal.timeout(8000)
+   cache:'no-store',redirect:'manual',signal:AbortSignal.timeout(8000)
   });
   if(!result.ok)throw fail('LOC Authority profile lookup refused ('+result.status+')');
   const profile=await result.json().catch(()=>null);
