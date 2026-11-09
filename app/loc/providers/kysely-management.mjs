@@ -78,13 +78,19 @@ export function managedPrimaryKeyColumns(table,modelName=''){
   if(modelName&&(!idFields||!idFields.length))
     reject('Invalid fixed LOC primary key metadata');
   return idFields||
-    [SCOPED_SUFFIXES.some(suffix=>table.endsWith(suffix))?'uid':'id'];
+    [table==='lrunes_daily'?'record_id':
+      SCOPED_SUFFIXES.some(suffix=>table.endsWith(suffix))?'uid':'id'];
 }
 async function authorizeRelation(trx,table,operation,values,filters,rows){
   if(table==='manage'||table==='loc'){
     if(table==='loc'&&(Object.hasOwn(values||{},'ArticleTag')||rows.some(row=>Object.hasOwn(row,'ArticleTag'))))
       reject('LOC ArticleTag is fixed and cannot be configured',403);
     if(!await canManageLoc(trx,'global'))reject('Global management permission required',403);
+    return;
+  }
+  if(table==='lrunes_daily'){
+    if(!await canManageLoc(trx,'scope','lrunes'))
+      reject('Daily Rune management permission required',403);
     return;
   }
   if(table==='loc_blocks'){
