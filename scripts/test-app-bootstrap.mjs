@@ -688,49 +688,35 @@ test('Search shows Galaxy date and updates same-page URL without a route remount
 
 test('LOC permission snapshot does one Kysely query rather than two per request',()=>{
   const auth=readFileSync(new URL('../app/loc/providers/loc-authorization.mjs',import.meta.url),'utf8');
-  assert.match(auth,/crossJoin\('silver\.loc as l'\)/);
+  assert.match(auth,/leftJoin\('silver\.loc as s'\)/);
   assert.doesNotMatch(auth,/const config=await db\.selectFrom\('silver\.loc'\)/);
 });
 
 
-test('Verified LOC delegation expiry bounds lazy authorization cache across requests',async()=>{
-  // Execute the actual pure authorization module with a fake Kysely SELECT.
-  // No Supabase connection, RLS or user credential is involved.
-  const source=read('app/loc/providers/loc-authorization.mjs')
-    .replace(/^import .*$/gm,'').replace(/^export /gm,'');
-  const {bindLocAuthorization,locPermissions}=vm.runInNewContext(
-    source+'\n;({bindLocAuthorization,locPermissions})',
-    {Date,Promise,canManageDelegation});
+test('Verified owner gets display metadata; other OAuth identities do not',async()=>{
+  const {bindLocAuthorization,locPermissions}=await import('../app/loc/providers/loc-authorization.mjs');
   let selects=0;
   const db=()=>({
     fn:()=>'(lower email)',
-    selectFrom(){selects+=1;return{
-      crossJoin(){return this;},leftJoin(){return this;},select(){return this;},where(){return this;},
-      async execute(){return[{
-        id:'lo3rwang',email:'editor@example.org',manage_role:'scope',active:true,
-        galaxy_table:'galaxy',anchor_table:'anchor',birthday:null,
-        blacklist:{email:[]}
-      }];}
+    selectFrom(){selects++;return{
+      leftJoin(){return this},select(){return this},where(){return this},
+      async execute(){return[{id:'lo3rwang',email:'sopa2306@gmail.com',
+        manage_role:'scope',active:true}]}
     }}
   });
-  const claims={provider:'loc',me:true,sub:'user_Abc123',email:'editor@example.org',
-    sid:'session-1',exp:Math.floor(Date.now()/1000)+120};
-  const first=db(),second=db();
-  bindLocAuthorization(first,{role:'authenticated',claims});
-  bindLocAuthorization(second,{role:'authenticated',claims});
-  const [one,two]=await Promise.all([locPermissions(first),locPermissions(second)]);
-  assert.equal(selects,1,'same unexpired OAuth session reuses one SQL permission check');
-  assert.equal(one.rows[0].id,'lo3rwang');
-  assert.equal(two.rows[0].id,'lo3rwang');
-  const another=db();
-  bindLocAuthorization(another,{role:'authenticated',claims:{...claims,sid:'session-2'}});
-  await locPermissions(another);
-  assert.equal(selects,2,'different LOC session never reuses prior authorization');
-  const expired=db();
-  bindLocAuthorization(expired,{role:'authenticated',
-    claims:{...claims,exp:Math.floor(Date.now()/1000)-1}});
-  await locPermissions(expired);
-  assert.equal(selects,3,'expired OAuth credentials cannot reuse the cache');
+  const stranger=db();
+  bindLocAuthorization(stranger,{role:'authenticated',claims:{
+    provider:'loc',me:true,sub:'reader',email:'reader@example.org',
+    grants:['global:manage']}});
+  assert.equal((await locPermissions(stranger)).blocked,true);
+  assert.equal(selects,0);
+  const owner=db();
+  bindLocAuthorization(owner,{role:'authenticated',claims:{
+    provider:'loc',me:true,sub:'owner',email:'sopa2306@gmail.com',grants:[]}});
+  const result=await locPermissions(owner);
+  assert.equal(result.blocked,false);
+  assert.equal(result.rows[0].id,'lo3rwang');
+  assert.equal(selects,1);
 });
 
 test('retired Scope source columns have no active web or publication readers',()=>{
