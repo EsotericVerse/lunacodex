@@ -65,13 +65,13 @@ test('Settings home owns the sole OAuth login action and verifies session',()=>{
 });
 
 test('pure JS permissions use only scopeid/email/role and are cleared on logout',()=>{
-  const user={id:'loc_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',email:'owner@example.com'};
+  const user={id:'loc_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',email:'sopa2306@gmail.com'};
   try{
     setAuthorization(user,[
-      {id:'lo3rwang',email:'owner@example.com',role:'scope',galaxy:'private-metadata'},
-      {id:'other',email:'not-owner@example.com',role:'admin'}
+      {id:'lo3rwang',email:'sopa2306@gmail.com',role:'scope',galaxy:'private-metadata'},
+      {id:'other',email:'not-sopa2306@gmail.com',role:'admin'}
     ]);
-    assert.deepEqual(readAuthorization().entries,[{scopeid:'lo3rwang',email:'owner@example.com',role:'scope'}]);
+    assert.deepEqual(readAuthorization().entries,[{scopeid:'lo3rwang',email:'sopa2306@gmail.com',role:'scope'}]);
     assert.equal(canAuthorizeScope('lo3rwang'),true);
     assert.equal(canAuthorizeGlobal(),false);
     assert.equal(canAuthorizeScope('other'),false);
