@@ -196,7 +196,9 @@ export async function handleNativeLocOperation(request,env={},{
           body,claims.role,claims,
           {dialect:selected.dialect,ZenStackClient,PolicyPlugin},
           async(qb,modelName)=>{
-             // api.manage remains the live source of management rights in
+              if(!Array.isArray(payload.p_filters)||!payload.p_filters.length)
+                throw refusal('Unsafe unfiltered managed write',400);
+              // api.manage remains the live source of management rights in
              // the same Kysely transaction as the ZenStack-model write.
              bindLocAuthorization(qb,{role:claims.role,claims});
              if(!await canManageLoc(qb,'global'))
