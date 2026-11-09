@@ -143,6 +143,13 @@ export async function handleNativeLocOperation(request,env={},{
     // The verified signed claim, not the HTTP body, selects the connection.
     const claims=await signedClaims(request.headers.get('authorization'),
       body,env,fetchImpl);
+    // External user-selected connections are READ ONLY, whether they map an
+    // existing table or expose the ordinary Scope schema. This includes the
+    // extension import path and MCP append/sync. OAuth never changes this.
+    const writesToSelectedDatabase=['short-import','mcp-sync','mcp-append']
+      .includes(body.kind);
+    if(writesToSelectedDatabase&&claims.db_target)
+      throw refusal('External database connections are read only',403);
     // Personal preferences and Admin settings always use LOC's control
     // database. A user's selected external database is for their Scope data,
     // never for api.loc_user / api.user_settings / api.manage.
