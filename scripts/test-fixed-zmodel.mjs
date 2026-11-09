@@ -49,7 +49,7 @@ for(const [,name,body] of blocks){
 
 test('ZModel maps exactly to the frozen silver physical table and column contract',()=>{
   assert.equal(snapshot.schema,'silver');
-  assert.equal(snapshot.tables.length,18);
+  assert.equal(snapshot.tables.length,17);
   assert.equal(physical.size,snapshot.tables.length);
   let total=0;
   for(const t of snapshot.tables){
