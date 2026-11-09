@@ -1,11 +1,5 @@
 # LOC Agent 執行規範（精簡版）
 
-## 2026-11-09 LOC 單一權限規則（最高優先）
-- **只分 anonymous 與 me**。anonymous（包括其他已登入帳號）可讀取公開 LOC 內容；只有 LOC OAuth 已驗證為 sopa2306@gmail.com 的 me 能 INSERT／UPDATE／DELETE。Google Client ID／Secret 僅驗證 OAuth 應用，不授予使用者權限；authenticated、Scope grant、角色或根 Subject 本身均不得繞過已驗證的本人判定。
-- **2026-11-09 主資料庫已完成清理：api、silver 共 21 張表、0 張啟用 RLS、0 條 Policy**；20 張業務資料表允許匿名 SELECT，禁止 anon／authenticated 直接 DML，內部 api.loc_auth 不公開。資料庫 DML 寫入只能由可信任後端驗證 me 後執行；維持既有 SQL 身分與憑證隔離。
-- **禁止自動恢復／新增 RLS、Policy、重複的權限例外或讀取過濾**。新增 type、功能、欄位或匯入流程不構成修改資料庫權限的授權。Schema／GRANT／REVOKE／RLS 的任何新變動均須使用者明確同意。舊版 migrations 為歷史紀錄，不得當成必須重跑的初始化工作。
-- 登入不能依賴「先有有效 LOC Session 才能完成首次 Google 登入」；維持原 LOC Subject／Scope、既有 Worker 與獨立資料庫連線，不重新引入 Clerk、Supabase Auth 或 SQL Gateway。
-
 ## Galaxy 搜尋與 GitHub PR 最新規則（優先於下方歷史流程）
 - **不得為了 PR、Commit、Diff、Branch 或例行任務而搜尋 Galaxy UID**；GitHub 原始紀錄由 GitHub 工具直接查詢。`galaxy_link.update_pr` 退役，PR 不再另建 Galaxy 副本或更新同篇 UID。
 - `galaxy_link.search` **僅在使用者明確要求搜尋歷史 Galaxy 對話時使用**；不可新對話自動查、不自行換詞連查。已知 UID 用 `read`、已知 conversation_id 用 `check`，對話記錄用 `record`。
