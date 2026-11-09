@@ -8,6 +8,7 @@ import {processShortImport,portableShortImportStore} from '../import/short-appen
 import {executePortableMcp} from '../providers/kysely-mcp.mjs';
 import {bindLocAuthorization} from '../providers/loc-authorization.mjs';
 import {executeManagedKyselyWrite,executeManagedKyselyAction} from '../providers/kysely-management.mjs';
+import {executeLocPersonal} from '../providers/kysely-personal.mjs';
 import {directMcpKysely} from './native-kysely.mjs';
 import {withFixedPolicyWrite} from '../../../zenstack/policy-runtime.mjs';
 import {ZenStackClient} from '@zenstackhq/orm';
@@ -17,7 +18,7 @@ const JWKS='https://auth.lo3rwang.cc/.well-known/jwks.json';
 const MCP_HOST='mcp.lo3rwang.cc';
 const WEB_HOST='loc.lo3rwang.cc';
 const MAX_BYTES=700000;
-const KINDS=new Set(['mcp-sync','mcp-append','mcp-read','mcp-search','short-import','managed-write','managed-action']);
+const KINDS=new Set(['mcp-sync','mcp-append','mcp-read','mcp-search','short-import','managed-write','managed-action','personal-read','personal-write']);
 // api.manage / silver.loc are the only two fixed ZModel control relations a
 // signed global:manage delegation may UPDATE/DELETE (zenstack/policy-runtime.mjs
 // ADMIN_FIXED_WRITES). No insert, no other table -- the website's own
@@ -137,12 +138,17 @@ export async function handleNativeLocOperation(request,env={},{
     // The website exposes only short-import and the fixed-model managed
     // write. MCP business operations remain restricted to the dedicated
     // MCP hostname and their own audience.
-    if(host===WEB_HOST&&body.kind!=='short-import'&&body.kind!=='managed-write'&&body.kind!=='managed-action')
+    if(host===WEB_HOST&&body.kind!=='short-import'&&body.kind!=='managed-write'&&body.kind!=='managed-action'&&body.kind!=='personal-read'&&body.kind!=='personal-write')
       throw refusal('Not found',404);
     // The verified signed claim, not the HTTP body, selects the connection.
     const claims=await signedClaims(request.headers.get('authorization'),
       body,env,fetchImpl);
-    const selected=await database(env,claims.db_target||'');
+    // Personal preferences and Admin settings always use LOC's control
+    // database. A user's selected external database is for their Scope data,
+    // never for api.loc_user / api.user_settings / api.manage.
+    const control=['personal-read','personal-write','managed-write','managed-action']
+      .includes(body.kind);
+    const selected=await database(env,control?'':claims.db_target||'');
     if(!selected?.db||!['postgres','mysql','mssql'].includes(selected.engine))
       throw refusal('LOC native Kysely driver is not configured',503);
     if(body.kind==='short-import'){
@@ -153,6 +159,16 @@ export async function handleNativeLocOperation(request,env={},{
           engine:selected.engine,namespace:selected.namespace})
       });
       return reply(receipt);
+    }
+    if(body.kind==='personal-read'||body.kind==='personal-write'){
+      if(host!==WEB_HOST)throw refusal('Personal records belong to the LOC website',404);
+      if(selected.tableName||selected.engine!=='postgres')
+        throw refusal('LOC personal database connection unavailable',503);
+      // An identity-only signed LOC OAuth delegation has zero management
+      // grants. The Kysely query is constrained to its own owner_id, not RLS.
+      const row=await selected.db.transaction().execute(trx=>
+        executeLocPersonal(trx,claims,body));
+      return reply({data:row});
     }
     if(body.kind==='managed-write'||body.kind==='managed-action'){
       if(selected.tableName)throw refusal('External mapped tables are read only',403);

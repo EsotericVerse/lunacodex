@@ -92,13 +92,17 @@ class Query{
 }
 function unsupported(){throw Error('This operation requires the database owner Web Server; LOC provides no SQL Gateway')}
 export function createDirectDataApiClient({
-  url,apiKey,role='anon',fetch:fetchImpl=globalThis.fetch,mutate=null
+  url,apiKey,role='anon',fetch:fetchImpl=globalThis.fetch,mutate=null,
+  readPrivate=null
 }={}){
   const base=requiredApi(url);
   if(typeof fetchImpl!=='function')throw Error('Data API requires fetch');
   const key=String(apiKey||'').trim();
   if(!key)throw Error('Public database API key is not configured');
   async function read(q){
+    if(role==='authenticated'&&q.schema==='api'&&
+      ['loc_user','user_settings','user_records'].includes(q.table)&&
+      typeof readPrivate==='function')return readPrivate(q);
     if(q.dbId)throw Error('A database-specific read requires that database owner endpoint');
     if(q.signal?.aborted)throw new DOMException('Cancelled','AbortError');
     const columns=q.columns;
@@ -194,12 +198,16 @@ export function createDirectDataApiClient({
       p_rows:['insert','upsert'].includes(q.operation)?rows:null,
       p_values:q.operation==='update'?q.values:null,
       p_filters:filters};
-    const before=q.returning&&q.operation==='delete'?(await read(q)).data:[];
+    const personal=q.schema==='api'&&
+      ['loc_user','user_settings','user_records'].includes(q.table);
+    const before=q.returning&&q.operation==='delete'&&!personal?(await read(q)).data:[];
     const result=await mutate(payload);
     if(result?.error)throw Error(result.error.message||'LOC management write failed');
     const count=Number(result?.data?.count??result?.count??0);
     if(!Number.isSafeInteger(count)||count<0)throw Error('Invalid LOC write receipt');
     if(!q.returning||!count)return {data:[],error:null,count};
+    if(personal&&Array.isArray(result?.data?.rows))
+      return {data:result.data.rows,error:null,count};
     if(q.operation==='delete')return {data:(before||[]).slice(0,count),error:null,count};
     // Preserve the caller's narrow, already validated lookup filters on UPDATE.
     // INSERT/UPSERT return by their explicit stable primary key. If the
