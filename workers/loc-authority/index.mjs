@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers';
 import {checkExternalAuthQos} from './auth-qos.mjs';
-import {issueDelegation} from '../../app/loc/auth/delegation-contract.mjs';
+import {issueDelegation,isLocWriteOwner} from '../../app/loc/auth/delegation-contract.mjs';
 import {normalizeSqlDriverAuthentication,publicSqlDriverAuthentication,
   sqlAuthNeedsUserPassword} from '../../app/loc/providers/sql-driver-auth.mjs';
 import {ISSUER,MCP_AUDIENCE,WEB_AUDIENCE,isNativeOAuthPath,handleNativeOAuth,
@@ -17,6 +17,10 @@ const JSON_HEADERS={'content-type':'application/json; charset=utf-8','cache-cont
 const ID=/^[a-z][a-z0-9_-]{0,63}$/;
 const ENGINES=new Set(['postgres','mysql','mssql']);
 function fail(message,status=400){return Object.assign(new Error(message),{status});}
+function verifiedLocOwner(principal){
+  return principal?.provider==='loc'&&principal.emailVerified===true&&
+    isLocWriteOwner(principal.email);
+}
 function b64bytes(value){
   const value64=String(value).replace(/-/g,'+').replace(/_/g,'/');
   if(!/^[A-Za-z0-9+/]*={0,2}$/.test(value64))throw fail('Invalid encoding',401);
@@ -843,11 +847,7 @@ async function handleMcpAuthority(request,env,url,origin){
     if(request.method!=='GET')throw fail('Method not allowed',405);
     const scopeid=validScope(directPermit[1]),action=directPermit[2];
     const state=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName('loc-authority-control-v1'));
-    const roots=String(env.LOC_RECOVERY_ROOT_LOC_SUBJECTS||'').split(/[\s,;]+/).filter(Boolean);
-    const root=roots.includes(principal.subject);
-    if(!root&&!await state.mayAccess({provider:principal.provider,
-      subject:principal.subject,scope:scopeid,action}))
-      throw fail('MCP Scope grant denied',403);
+    const root=verifiedLocOwner(principal);
     const dbTarget=await state.selectedDatabaseForDelegation(principal.subject,root);
     return json({authorized:true,subject:principal.subject,scopeid,action,
       ...(dbTarget?{db_target:dbTarget}:{})},200,origin);
@@ -889,11 +889,10 @@ async function handleMcpAuthority(request,env,url,origin){
   }finally{await quota.mcpQuotaRelease(ticket.lease,'loc:'+principal.subject);}
 }
 async function handleMcpAuthorityInner(request,env,url,origin,principal){
-  const roots=String(env.LOC_RECOVERY_ROOT_LOC_SUBJECTS||'').split(/[\s,;]+/).filter(Boolean);
-  const isRoot=roots.includes(principal.subject);
+  const isRoot=verifiedLocOwner(principal);
   const stub=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName('loc-authority-control-v1'));
   const scoped=scope=>env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName('mcp-scope:'+scope));
-  const allowed=async(scope,action)=>isRoot||await stub.mayAccess({...principal,scope,action});
+  const allowed=async(scope,action)=>action==='read'||isRoot;
   // A trusted Scope grant becomes a short-lived LOC MCP delegation.
   // The selected database alias is a signed claim verified by the LOC app.
   const managedToken=async(scope,action)=>{
@@ -902,7 +901,7 @@ async function handleMcpAuthorityInner(request,env,url,origin,principal){
       throw fail('MCP Scope delegation denied',403);
     const targetId=await stub.selectedDatabaseForDelegation(principal.subject,isRoot);
     const claims=issueDelegation({
-      sub:principal.subject,grants:[scope+':'+action],audience:'mcp',targetId,
+      sub:principal.subject,email:principal.email,grants:[scope+':'+action],audience:'mcp',targetId,
       sid:crypto.randomUUID(),now:Math.floor(Date.now()/1000),seconds:300
     });
     return stub.signLocDelegation(claims);
@@ -1068,14 +1067,11 @@ async function exchangeLocDelegation(request,env,principal,origin){
     (global||identity||self)&&audience!=='sql'||
     Number(global)+Number(identity)+Number(self)>1)
     throw fail('Invalid delegation audience',400);
-  // Native Email/Password authenticates an immutable LOC subject even before
-  // optional email delivery is configured. Unverified email NEVER grants
-  // privileges: root subjects are matched by ID; other actions must pass
-  // explicit per-subject LOC Scope grants below. An email match cannot
-  // transfer another account's permissions.
-  const roots=String(env.LOC_RECOVERY_ROOT_LOC_SUBJECTS||'')
-    .split(/[\s,;]+/).filter(Boolean);
-  const root=roots.includes(principal.subject);
+  // OAuth-verified email is the sole write authority. Scope grants, root
+  // subject lists and role strings cannot elevate another identity.
+  if(principal?.provider!=='loc'||principal.emailVerified!==true)
+    throw fail('Verified LOC OAuth identity required',403);
+  const root=verifiedLocOwner(principal);
   const scope=String(input.scopeid||'');
   const actions=input.actions;
   if(global){
@@ -1088,27 +1084,14 @@ async function exchangeLocDelegation(request,env,principal,origin){
     !Array.isArray(actions)||!actions.length||actions.length>3||
     actions.some(a=>!['read','write','manage'].includes(a)))
     throw fail('Invalid requested delegation scope',400);
+  if(!root&&Array.isArray(actions)&&actions.some(a=>a!=='read'))
+    throw fail('Only the LOC owner may request writes',403);
   const stub=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName('loc-authority-control-v1'));
-  const profile=!principal.email&&!root||self&&!root
-    ?await stub.delegationGrantProfile(principal.provider,principal.subject):null;
-  const email=String(principal.email||profile?.email||'').trim().toLowerCase();
+  const email=String(principal.email||'').trim().toLowerCase();
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
     throw fail('Verified identity email required for LOC delegation',403);
-  let grants;
-  if(global)grants=['global:manage'];
-  else if(identity)grants=[];
-  else if(self){
-    if(root)grants=['global:manage'];
-    else {
-      grants=(profile?.scopes||[]).map(scopeid=>scopeid+':manage');
-    }
-  }else grants=Array.from(new Set(actions)).map(a=>scope+':'+a);
-  if(!global&&!identity&&!self&&!root){
-    for(const action of new Set(actions)){
-      if(!await stub.mayAccess({provider:principal.provider,subject:principal.subject,scope,action}))
-        throw fail('Requested Scope delegation was not granted',403);
-    }
-  }
+  const grants=global||self?(root?['global:manage']:[]):
+    identity?[]:[...new Set(actions)].map(a=>scope+':'+a);
   // Native LOC account subjects are immutable; matching email never
   // transfers an existing owner's grants or identity.
   const now=Math.floor(Date.now()/1000);
@@ -1204,11 +1187,9 @@ export default {
       if(url.pathname==='/v1/databases'||
          url.pathname==='/v1/databases/selection'){
         if(principal.provider!=='loc')throw fail('LOC Auth required',401);
-        const roots=String(env.LOC_RECOVERY_ROOT_LOC_SUBJECTS||'')
-          .split(/[\s,;]+/).filter(Boolean);
         const state=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName(
           'loc-authority-control-v1'));
-        const isRoot=roots.includes(principal.subject);
+        const isRoot=verifiedLocOwner(principal);
         if(request.method==='GET'&&url.pathname==='/v1/databases')
           return json(await state.databaseTargetsForUser(principal.subject,isRoot),200,origin);
         if(request.method==='POST'&&url.pathname==='/v1/databases/selection'){
@@ -1223,9 +1204,7 @@ export default {
         }
         throw fail('Method not allowed',405);
       }
-      const roots=String(env.LOC_RECOVERY_ROOT_LOC_SUBJECTS||'')
-        .split(/[\s,;]+/).filter(Boolean);
-      if(!roots.includes(principal.subject))throw fail('Recovery administrator required',403);
+      if(!verifiedLocOwner(principal))throw fail('LOC owner required',403);
       const stub=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName('loc-authority-control-v1'));
       if(request.method==='GET'&&url.pathname==='/v1/me')return json(principal,200,origin);
       if(request.method==='GET'&&url.pathname==='/v1/state')return json(await stub.listState(),200,origin);
