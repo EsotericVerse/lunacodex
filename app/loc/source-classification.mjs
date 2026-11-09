@@ -18,7 +18,7 @@ const key=value=>String(value??'').trim().normalize('NFKC').toLocaleLowerCase();
 // Scope Domain / From comes from its *existing* saved Anchor UIDs. Virtual
 // keys distinguish unpersisted parents; they are NOT fabricated Anchor UIDs.
 export function sourceTreeFromCatalog(systemNames=[],entries=[],{
-  universe='loc',galaxy='loc',scopeId='lo3rwang',domainUid='',includeSystem=true
+  universe='loc',galaxy='loc',scopeId='lo3rwang',domainUid='',domainTitle='',includeSystem=true
 }={}){
   if(!Array.isArray(entries))throw new Error('Source catalogue must be an array');
   const root={type:'universe',keyword_type:'category',key:'universe:'+universe,
@@ -34,7 +34,9 @@ export function sourceTreeFromCatalog(systemNames=[],entries=[],{
     const physical=kind==='scope'&&/^[A-Za-z0-9]{8}$/.test(uid);
     const domain={
       type:'domain',keyword_type:'group',
-      key:physical?'domain:'+scopeId+':'+uid:'domain:'+galaxy+':'+name,
+      key:physical?'domain:'+scopeId+':'+uid:
+        kind==='system'?'virtual-domain:system':
+          'virtual-domain:scope:'+scopeId,
       ...(physical?{uid}:{}),name,parent:parent.key,
       source_scope:kind==='system'?'loc':scopeId,domain_kind:kind,children:[]
     };
@@ -61,7 +63,7 @@ export function sourceTreeFromCatalog(systemNames=[],entries=[],{
     }
   };
   if(includeSystem)append('system','Default',classNames(systemNames).map(name=>({name})));
-  append('scope',scopeId,entries,domainUid);
+  append('scope',String(domainTitle||scopeId),entries,domainUid);
   return nodes;
 }
 export function sourceTreeFromArrays(systemNames=[],personalNames=[],options={}){
