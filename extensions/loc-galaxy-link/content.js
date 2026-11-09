@@ -79,7 +79,8 @@
     const hits=[],visited=new Set(),url=normalizeUrl(location.href);
     for(const node of nodes){
       // Resolve one canonical turn from nested message/test-id nodes.
-      const turn=node.closest?.('[data-testid^="conversation-turn-"],[data-message-id]')||
+      const turn=node.closest?.('[data-testid^="conversation-turn-"]')||
+        node.closest?.('[data-message-id]')||
         node.closest?.('article[aria-label],article[data-message-author-role]')||
         node.closest?.('[data-message-author-role]')||node;
       if(visited.has(turn)||!visible(turn))continue;
