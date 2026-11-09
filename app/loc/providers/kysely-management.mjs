@@ -188,9 +188,9 @@ export async function executeManagedKyselyWrite(trx,body,{modelName=''}={}){
       Object.assign(values,validateLocRegistryDomain(values));
   }
   await authorizeRelation(trx,table,operation,values,filters,rows);
-  // Above checks execute as the verified Clerk principal. Only after Scope
-  // authorization is proved do trusted server-side Kysely mutations run
-  // with the connection's original role (same privilege as old definer RPC).
+  // The signed identity is checked against api.manage above. Only then
+  // does the existing trusted Kysely connection execute the mutation.
+  // This does not introduce a database Auth API or a separate SQL Gateway.
   await sql`reset role`.execute(trx);
   const name=modelName||(table==='manage'?'api.manage':'silver.'+table);
   if(operation==='update'){
