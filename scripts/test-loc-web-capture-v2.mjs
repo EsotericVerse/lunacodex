@@ -14,14 +14,14 @@ test('single LOC galaxy-link extension owns OAuth and all capture modes',()=>{
  assert.equal(manifest.manifest_version,3);
  assert.equal(manifest.background.service_worker,'background.js');
  assert.equal(manifest.name,'LOC galaxy-link｜LOC 彩虹橋');
- assert.equal(manifest.action.default_popup,'popup.html');
+ assert.equal(Object.hasOwn(manifest.action,'default_popup'),false);
  assert.ok(manifest.permissions.includes('identity'));
  assert.ok(manifest.permissions.includes('tabs'));
  assert.ok(manifest.host_permissions.includes('https://auth.lo3rwang.cc/*'));
 });
 
 test('extension scripts and vendored Readability compile',()=>{
- for(const name of ['background.js','content.js','popup.js','vendor/Readability.js'])
+ for(const name of ['background.js','content.js','options.js','vendor/Readability.js'])
   assert.doesNotThrow(()=>new Script(text(name),{filename:name}));
 });
 
@@ -55,7 +55,7 @@ function isolatedBackground(){
  const on=name=>({addListener:fn=>{listeners[name]=fn;}});
  const chrome={
   runtime:{id:'test-extension',onInstalled:on('installed'),onMessage:on('message'),openOptionsPage:async()=>{}},
-  contextMenus:{onClicked:on('menu')},alarms:{onAlarm:on('alarm')},action:{setBadgeText:async()=>{}},
+  contextMenus:{onClicked:on('menu')},alarms:{onAlarm:on('alarm')},action:{setBadgeText:async()=>{},onClicked:on('action')},
   storage:{local:{get:async()=>({}),set:async()=>{},remove:async()=>{}}},
   tabs:{query:async()=>[]}
  };

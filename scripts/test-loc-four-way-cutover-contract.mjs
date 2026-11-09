@@ -42,7 +42,7 @@ test('Chrome galaxy-link is the only extension: native PKCE + all capture modes,
  const manifest=JSON.parse(read('extensions/loc-galaxy-link/manifest.json'));
  assert.ok(manifest.host_permissions.includes('https://auth.lo3rwang.cc/*'));
  assert.ok(manifest.permissions.includes('identity'));
- assert.equal(manifest.action.default_popup,'popup.html');
+ assert.equal(Object.hasOwn(manifest.action,'default_popup'),false);
  assert.match(bg,/chrome\.identity\.launchWebAuthFlow/);
  assert.match(bg,/validateArticleReceipts/);
  assert.match(bg,/await removeEvents\(group\)/);

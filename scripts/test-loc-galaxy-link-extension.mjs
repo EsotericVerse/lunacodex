@@ -9,8 +9,8 @@ const content=read(base+'content.js');
 const manifest=JSON.parse(read(base+'manifest.json'));
 test('only one named galaxy-link extension with all right-click actions',()=>{
  assert.equal(manifest.name,'LOC galaxy-link｜LOC 彩虹橋');
- assert.equal(manifest.version,'0.2.0');
- assert.equal(manifest.action.default_popup,'popup.html');
+ assert.equal(manifest.version,'0.2.1');
+ assert.equal(Object.hasOwn(manifest.action,'default_popup'),false);
  assert.equal(manifest.background.service_worker,'background.js');
  assert.ok(manifest.permissions.includes('identity'));
  assert.ok(manifest.permissions.includes('contextMenus'));
@@ -19,7 +19,7 @@ test('only one named galaxy-link extension with all right-click actions',()=>{
  assert.equal(existsSync(new URL('../extensions/loc-web-capture-v2/',import.meta.url)),false);
 });
 test('all extension scripts compile and Readability library is included',()=>{
- for(const script of ['background.js','content.js','popup.js','options.js','vendor/Readability.js'])
+ for(const script of ['background.js','content.js','options.js','vendor/Readability.js'])
   assert.doesNotThrow(()=>new Script(read(base+script),{filename:script}));
  assert.ok(existsSync(new URL('../'+base+'vendor/LICENSE.md',import.meta.url)));
 });
@@ -62,4 +62,16 @@ test('same-origin and origin-bound capture plus UID receipts prevent data loss',
  assert.match(bg,/if\(!received\.has\(key\)\)throw contractError/);
  assert.match(bg,/await sendViaAuth\(scopeid,batch,token,settings\.locConfig\)/);
  assert.match(bg,/await removeEvents\(group\)/);
+});
+
+test('Chrome icon opens preferences; all capture commands stay in native right-click menu',()=>{
+ assert.match(bg,/chrome\.action\.onClicked\.addListener\(\(\)=>chrome\.runtime\.openOptionsPage\(\)\)/);
+ assert.match(bg,/chrome\.contextMenus\.onClicked\.addListener/);
+ assert.match(bg,/parentId:MENU_ROOT/);
+ assert.doesNotMatch(read(base+'options.html'),/id="capture"|id="record"|id="pause"|id="resume"|id="stop"/);
+ assert.ok(!existsSync(new URL('../'+base+'popup.html',import.meta.url)));
+ assert.ok(!existsSync(new URL('../'+base+'popup.js',import.meta.url)));
+ assert.match(read(base+'options.html'),/網頁右鍵/);
+ assert.match(read(base+'options.js'),/locTargetScope/);
+ assert.match(read(base+'options.js'),/locIncludeAssistant/);
 });

@@ -1,12 +1,39 @@
 <!doctype html>
-<html lang="zh-Hant"><head><meta charset="UTF-8"><title>LOC galaxy-link｜LOC 彩虹橋</title><style>
-body{font:15px system-ui;max-width:620px;margin:40px auto;padding:0 20px;line-height:1.65}
-button{padding:10px 18px;margin-right:8px}#status{margin-top:16px}
-</style></head><body>
-<h1>LOC galaxy-link｜LOC 彩虹橋</h1>
-<p>使用 LOC 自有 OAuth。首次按「連接 LOC」完成一次授權，之後會自動沿用有效憑證；由 LOC Auth 發行憑證，可選擇已設定的 Google 或 GitHub 身分提供者；不將網站 Session 交給擴充功能。</p>
-<button id="connect">連接 LOC</button><button id="disconnect">解除連線</button><button id="flush">手動送出 Queue</button>
-<p id="status" role="status"></p>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LOC galaxy-link｜設定</title>
+<style>
+:root{font:15px/1.65 system-ui;color-scheme:light dark}
+body{max-width:560px;margin:36px auto;padding:0 22px}
+h1{font-size:23px;margin:0 0 10px}
+h2{font-size:17px;margin:20px 0 8px}
+button{cursor:pointer;border:1px solid #8b929e;border-radius:7px;padding:9px 13px;background:transparent;color:inherit;margin:4px 6px 4px 0}
+button:focus-visible,input:focus-visible{outline:2px solid #3983e5;outline-offset:2px}
+label{display:block;margin:10px 0}
+input[type=text]{display:block;max-width:400px;width:100%;box-sizing:border-box;padding:9px;border:1px solid #8b929e;border-radius:6px;background:transparent;color:inherit}
+small{display:block;color:gray}
+#status,#queue,#notice{white-space:pre-wrap;overflow-wrap:anywhere}
+</style>
+</head>
+<body>
+<h1>LOC galaxy-link｜彩虹橋</h1>
+<p>所有擷取與錄製操作都在<strong>網頁右鍵 → LOC 彩虹橋｜galaxy-link</strong> 子選單執行。點擊擴充功能圖示只開啟此設定頁，不會彈出擷取面板。</p>
+<h2>LOC Auth</h2>
+<button id="connect">連接 LOC Auth</button>
+<button id="disconnect">解除連線</button>
+<div id="status" role="status"></div>
+<h2>擷取偏好</h2>
+<label for="scope">目的 Scope ID（加入 Queue 時固定，不會事後改目的地）</label>
+<input type="text" id="scope" value="lo3rwang" pattern="[a-z][a-z0-9]{0,14}" maxlength="15" autocomplete="off" spellcheck="false">
+<label><input type="checkbox" id="includeAI"> 擷取已載入的對話時也保存 AI 回覆</label>
+<small>預設只擷取使用者文字。Chrome 只可擷取當前已載入的對話內容。</small>
+<div id="notice" role="status"></div>
+<h2>離線 Queue</h2>
 <p id="queue" role="status"></p>
-<p>連線後，在網頁按右鍵選擇「LOC 彩虹橋｜galaxy-link」，可選擇整頁、選取文字、指定區域或動態錄製。資料先累積在單一 IndexedDB Queue；滿 10 次擷取或達批次大小才自動送出，亦可手動送出。已保存的同來源文章只會續寫 Append，不覆蓋原文。</p>
-<script src="options.js"></script></body></html>
+<button id="flush">手動送出 Queue</button>
+<small>所有擷取功能共用單一 Queue。滿十次擷取或達批次大小才自動送出；只有 LOC 回傳完整文章 UID 才清除已確認的紀錄。</small>
+<script src="options.js"></script>
+</body>
+</html>
