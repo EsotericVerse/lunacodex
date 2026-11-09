@@ -9,7 +9,7 @@ const content=read(base+'content.js');
 const manifest=JSON.parse(read(base+'manifest.json'));
 test('only one named galaxy-link extension with all right-click actions',()=>{
  assert.equal(manifest.name,'LOC galaxy-link｜LOC 彩虹橋');
- assert.equal(manifest.version,'0.2.1');
+ assert.equal(manifest.version,'0.2.2');
  assert.equal(Object.hasOwn(manifest.action,'default_popup'),false);
  assert.equal(manifest.background.service_worker,'background.js');
  assert.ok(manifest.permissions.includes('identity'));
@@ -74,4 +74,22 @@ test('Chrome icon opens preferences; all capture commands stay in native right-c
  assert.match(read(base+'options.html'),/網頁右鍵/);
  assert.match(read(base+'options.js'),/locTargetScope/);
  assert.match(read(base+'options.js'),/locIncludeAssistant/);
+});
+
+test('context menu options are contextual, never all active together',()=>{
+ assert.match(bg,/chrome\.contextMenus\.onShown\?\.addListener/);
+ assert.match(bg,/function menuVisibility\(mode='idle'\)/);
+ assert.match(bg,/\[MENU_PAUSE\]:mode==='record'/);
+ assert.match(bg,/\[MENU_RESUME\]:mode==='paused'/);
+ assert.match(bg,/\[MENU_STOP\]:active/);
+ assert.match(bg,/visible:menuVisibility\(\)\[id\]/);
+});
+test('badge comes only from pending Queue, errors have actionable diagnostics',()=>{
+ assert.match(bg,/async function updateQueueBadge/);
+ assert.match(bg,/captureTotals\(rows/);
+ assert.doesNotMatch(bg,/setBadgeText\(\{text:'!'|setBadgeText\(\{text:'OK'/);
+ assert.match(bg,/locLastAction:item/);
+ assert.match(bg,/noteAction\(label,false/);
+ assert.match(content,/msg\.type==='page\.feedback'/);
+ assert.match(read(base+'options.html'),/id="lastAction"/);
 });

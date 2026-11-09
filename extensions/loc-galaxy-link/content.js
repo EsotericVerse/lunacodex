@@ -210,7 +210,25 @@
       watch();
     }else publish(extract(root));
   }
+  function feedback(message,ok=false){
+    const id='loc-galaxy-link-status';
+    let notice=document.getElementById(id);
+    if(!notice){
+      notice=document.createElement('div');notice.id=id;
+      notice.setAttribute('role','status');notice.setAttribute('aria-live','polite');
+      notice.style.cssText='position:fixed;bottom:18px;right:18px;max-width:min(390px,85vw);'+
+        'padding:10px 14px;border-radius:9px;background:#222;color:#fff;'+
+        'font:14px/1.5 system-ui;box-shadow:0 3px 16px #0004;z-index:2147483647;'+
+        'white-space:pre-wrap;overflow-wrap:anywhere;pointer-events:none';
+      document.documentElement.appendChild(notice);
+    }
+    notice.textContent=String(message||'LOC 擷取狀態').slice(0,450);
+    notice.style.borderLeft=ok?'4px solid #52bd8b':'4px solid #ea766e';
+    clearTimeout(feedback.timer);
+    feedback.timer=setTimeout(()=>notice?.remove(),6500);
+  }
   chrome.runtime.onMessage.addListener((msg,_sender,reply)=>{
+    if(msg.type==='page.feedback'){feedback(msg.message,msg.ok===true);reply({ok:true});return;}
     if(msg.type==='page.capture'){
       const text=msg.selection?.trim();
       const items=text?[{key:'selection',source_key:normalizeUrl(location.href),url:normalizeUrl(location.href),
