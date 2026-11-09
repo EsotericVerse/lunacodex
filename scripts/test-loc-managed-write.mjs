@@ -202,7 +202,7 @@ test('Selected loc-main remains writable for signed MCP and external targets rem
       alias=selected;return {engine:'postgres',namespace:'silver',db};
     }});
   assert.equal(success.status,200);
-  assert.equal(alias,'loc-main');
+  assert.equal(alias,'','loc-main must reuse the existing default Kysely control pool');
   assert.ok(executed.some(x=>/insert into "silver"\."lo3rwang_galaxy"/i.test(x.sql)));
   const external=await ownerDelegation(now,['lo3rwang:write'],'mcp','office_mysql');
   const rejected=await handleNativeLocOperation(request(body,external.token,'https://mcp.lo3rwang.cc'),{},
