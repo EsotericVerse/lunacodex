@@ -33,14 +33,14 @@ test('native LOC Auth root delegation creates admin role without management SQL'
   ])});
   assert.deepEqual(result.map(x=>[x.id,x.role]),[['admin','admin'],['lrunes','admin']]);
 });
-test('other OAuth users receive no write permission even with old management grants',async()=>{
+test('editor follows issuer-signed management grants without a hardcoded email whitelist',async()=>{
   let calls=0;
-  const stranger={...session,user:{...user,email:'reader@example.org'}};
-  const rows=await readLocEditorGrants(stranger,{
+  const alternate={...session,user:{...user,email:'reader@example.org'}};
+  const rows=await readLocEditorGrants(alternate,{
     fetchImpl:async()=>{calls++;return reply(['global:manage']);}
   });
-  assert.deepEqual(rows,[]);
-  assert.equal(calls,0);
+  assert.deepEqual(rows,[{id:'admin',email:'reader@example.org',role:'admin',manage_role:'admin'}]);
+  assert.equal(calls,1);
 });
 test('anonymous click never contacts management SQL or LOC Authority delegation',async()=>{
   let calls=0;
