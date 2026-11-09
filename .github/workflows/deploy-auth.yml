@@ -1,6 +1,6 @@
-name: Deploy LOC native Auth (OAuth only, no SQL Gateway)
-# LOC Auth remains a single existing Worker; releases are manual only.
-# Better Auth directly verifies Google; no automatic Worker deploy or SQL Gateway.
+name: Deploy auth
+# Deploy the existing auth Worker (auth.lo3rwang.cc); never create a duplicate.
+# Better Auth handles Google OAuth; this workflow is manual, separate from Cloudflare Builds.
 on:
   workflow_dispatch:
 
@@ -8,11 +8,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: loc-native-oauth
+  group: auth-deploy
   cancel-in-progress: true
 
 jobs:
-  native-oauth:
+  auth:
     runs-on: ubuntu-24.04
     env:
       CLOUDFLARE_ACCOUNT_ID: f730f29a620a25bb047a69d542457fc0
@@ -25,14 +25,14 @@ jobs:
       - name: Require deployment authorization before consuming build minutes
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
-            echo "::error title=LOC Auth release blocked::Missing GitHub Actions repository secret CLOUDFLARE_API_TOKEN. Existing Cloudflare Worker has NOT been updated."
-            echo "## LOC Auth release blocked: deployment credential missing" >> "$GITHUB_STEP_SUMMARY"
+            echo "::error title=auth release blocked::Missing GitHub Actions repository secret CLOUDFLARE_API_TOKEN. Existing Cloudflare Worker has NOT been updated."
+            echo "## auth release blocked: deployment credential missing" >> "$GITHUB_STEP_SUMMARY"
             echo "Set CLOUDFLARE_API_TOKEN with Workers Scripts Edit and required zone route permissions; rerun this job. Do not create another Worker." >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
       - name: Install exact test dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Verify LOC first-party credentials, Auth Ref, Scope, and mapped SQL contracts
+      - name: Verify auth credentials, Auth Ref, Scope, and mapped SQL contracts
         run: |
           node --check workers/loc-authority/index.mjs
           node --check workers/loc-authority/native-oauth.mjs
@@ -40,9 +40,9 @@ jobs:
           npm run test:authority
           node --test scripts/test-loc-auth-qos.mjs scripts/test-loc-auth-store.mjs
           npm run check:loc-vendor-coupling
-      - name: Build native OAuth Worker (no SQL Gateway)
-        run: npx --yes wrangler@4.157.0 deploy --config workers/loc-authority/wrangler.jsonc --dry-run --outdir /tmp/loc-native-auth-check
-      - name: Deploy native OAuth and custom domain
+      - name: Validate auth Worker deployment (dry run)
+        run: npx --yes wrangler@4.157.0 deploy --config workers/loc-authority/wrangler.jsonc --dry-run --outdir /tmp/auth-check
+      - name: Deploy auth at auth.lo3rwang.cc
         run: npx --yes wrangler@4.157.0 deploy --config workers/loc-authority/wrangler.jsonc
-      - name: Verify live OAuth discovery, JWKS and session boundary
+      - name: Verify auth discovery, JWKS and session boundary
         run: node scripts/probe-loc-native-auth.mjs

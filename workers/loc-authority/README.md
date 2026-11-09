@@ -6,7 +6,7 @@
 
 - `native-oauth.mjs`：OAuth Authorization Code + PKCE S256、Session、短效 JWT、Refresh Token rotation、GitHub/OIDC 身分來源。
 - `index.mjs`：RS256 JWKS、Scope 授權及 Durable Object 儲存。LOC Auth 僅簽發授權；業務 SQL 由另一個受信任後端的 Kysely 執行。
-- `wrangler.jsonc`：部署為 `loc-native-auth`，透過 Cloudflare Workers Custom Domain 綁定 `auth.lo3rwang.cc`；使用獨立 SQLite-backed Durable Object 儲存 OAuth session/grants。這個 Durable Object 不是使用者文章 SQL 資料庫。
+- `wrangler.jsonc`：部署為 `auth`，透過 Cloudflare Workers Custom Domain 綁定 `auth.lo3rwang.cc`；使用獨立 SQLite-backed Durable Object 儲存 OAuth session/grants。這個 Durable Object 不是使用者文章 SQL 資料庫。
 
 ## 上線條件
 
