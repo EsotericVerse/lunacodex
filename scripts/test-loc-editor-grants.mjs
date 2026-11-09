@@ -8,13 +8,16 @@ const session={user,oauth:{email:user.email},session:{access_token:'signed.loc.t
 const reply=grants=>Response.json({audience:'loc-delegation',grants});
 test('clicked editor authorization calls native LOC Auth exactly once, no manage SQL lookup',async()=>{
   const calls=[];
+  // AGENTS.md 2026-11-09: only anonymous/me -- a scope's own kind
+  // classification (scopeKinds) must never downgrade the verified owner's
+  // own access level below admin.
   const result=await readLocEditorGrants(session,{
     scopeKinds:{loc:'group',lo3rwang:'scope'},
     fetchImpl:async(url,init)=>{calls.push({url,init});return reply(['loc:manage','lo3rwang:manage']);}
   });
   assert.deepEqual(result,[
-    {id:'loc',email:'sopa2306@gmail.com',role:'group',manage_role:'group'},
-    {id:'lo3rwang',email:'sopa2306@gmail.com',role:'scope',manage_role:'scope'}
+    {id:'loc',email:'sopa2306@gmail.com',role:'admin',manage_role:'admin'},
+    {id:'lo3rwang',email:'sopa2306@gmail.com',role:'admin',manage_role:'admin'}
   ]);
   assert.equal(calls.length,1);
   assert.equal(calls[0].url,'https://auth.lo3rwang.cc/v1/delegation');
@@ -28,7 +31,7 @@ test('native LOC Auth root delegation creates admin role without management SQL'
   const result=await readLocEditorGrants(session,{fetchImpl:async()=>reply([
     'global:manage','global:manage','lrunes:manage'
   ])});
-  assert.deepEqual(result.map(x=>[x.id,x.role]),[['admin','admin'],['lrunes','scope']]);
+  assert.deepEqual(result.map(x=>[x.id,x.role]),[['admin','admin'],['lrunes','admin']]);
 });
 test('other OAuth users receive no write permission even with old management grants',async()=>{
   let calls=0;

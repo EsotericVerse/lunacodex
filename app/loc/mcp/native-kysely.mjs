@@ -151,8 +151,12 @@ export async function directMcpKysely(env={},verifiedAlias='',{
  if(!cache){cache=new Map();targets.set(env,cache)}
  if(cache.has(key))return cache.get(key);
  const create=async()=>{
-  const db=new Kysely({dialect:await newDialect(input)});
-  return {db,engine,namespace,tableName,fieldMap};
+  const dialect=await newDialect(input);
+  const db=new Kysely({dialect});
+  // Exposed so a trusted caller can layer ZenStack+PolicyPlugin on the SAME
+  // dialect/pool for the four fixed public control models, without opening
+  // a second connection. See zenstack/policy-runtime.mjs:fixedPolicyReader.
+  return {db,dialect,engine,namespace,tableName,fieldMap};
  };
  const promise=create();
  cache.set(key,promise);
