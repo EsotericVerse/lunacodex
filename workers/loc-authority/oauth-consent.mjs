@@ -54,7 +54,7 @@ export function consentPage({nonce,clientName,scope,resource,identity}){
  const items=permissions.map(x=>'<li>'+escapeHtml(labels[x])+'</li>').join('');
  return '<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8">'+
   '<meta name="viewport" content="width=device-width,initial-scale=1">'+
-  '<meta name="robots" content="noindex,nofollow"><meta name="referrer" content="no-referrer">'+
+  '<meta name="robots" content="noindex,nofollow"><meta name="referrer" content="same-origin">'+
   '<title>LOC Auth · 展開資料合約</title><style>'+
   'body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0d111c;color:#f4f5fa;font:16px/1.7 system-ui,sans-serif}'+
   'main{box-sizing:border-box;width:min(92vw,670px);padding:clamp(22px,6vw,48px);border:1px solid #5b6480;border-radius:20px;background:#1b2233}'+
