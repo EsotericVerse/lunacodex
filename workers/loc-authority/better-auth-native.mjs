@@ -91,6 +91,18 @@ function cors(request){
  const origin=request.headers.get('origin')||'';
  return origin===WEB||origin===ISSUER?origin:'';
 }
+// Direct navigation to Google's callback is not an OAuth response. Render
+// LOC's regular login experience instead of Better Auth's state_not_found page.
+// Real provider redirects (state, code, or error) must reach Better Auth intact.
+export function directGoogleCallbackRedirect(request){
+ const url=new URL(request.url);
+ if(request.method!=='GET'||url.pathname!=='/api/auth/callback/google'||url.search)
+  return null;
+ return new Response(null,{status:302,headers:{
+  location:WEB+'/login/index.html?return_to=%2Flocal%2Fsettings%2F',
+  'cache-control':'no-store'
+ }});
+}
 export async function handleFirstPartyAuth(request,env){
  const origin=cors(request);
  if(request.method==='OPTIONS'){
@@ -103,6 +115,8 @@ export async function handleFirstPartyAuth(request,env){
    'access-control-max-age':'600','vary':'Origin'}});
  }
  if(request.headers.get('origin')&&!origin)return new Response('Origin denied',{status:403});
+ const directCallback=directGoogleCallbackRedirect(request);
+ if(directCallback)return directCallback;
  // Reject legacy registration/password endpoints even if the library exposes
  // an internal handler for them. Google callback stays available.
  if(/^\/api\/auth\/(?:sign-up\/|sign-in\/email|sign-in\/username|reset-password|request-password-reset|change-password|set-password)/.test(new URL(request.url).pathname))
