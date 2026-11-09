@@ -53,7 +53,7 @@ export default function ScopeHomeEditEntry(){
       // The homepage editor is mounted on this same Scope homepage.
       // Only switch its authorized UI state; never navigate to a new URL.
       // This also preserves the dynamic Scope shell's existing scopeid query.
-      editDock?.begin(scopeId);
+      editDock?.begin(scopeId,{globalManage:Boolean(result.authorizer?.canManageGlobalSync())});
     }catch(error){
       setMessage({error:String(error?.message||'編輯權限查詢失敗，請檢查登入或資料庫連線。')});
     }finally{
