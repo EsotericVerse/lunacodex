@@ -1,46 +1,7 @@
--- LOC delegated-source registry + Scope-owned Pattern postings.
--- A database/table mapping is LOC metadata; the source content stays remote.
--- Pattern attr is { "<db_uid>": ["<article_uid>", ...] }. No source copies.
--- The existing loc_search_pattern remains until every read/write caller migrates.
+-- Scope Pattern support on existing registered Anchor tables.
 BEGIN;
 SET LOCAL lock_timeout='5s';
 SET LOCAL statement_timeout='60s';
-
-CREATE TABLE IF NOT EXISTS silver.loc_anchor (
-  uid varchar(8) PRIMARY KEY,
-  type text NOT NULL,
-  title text,
-  description text,
-  invisible boolean NOT NULL DEFAULT false,
-  attr jsonb NOT NULL DEFAULT '{}'::jsonb,
-  createtime timestamptz DEFAULT CURRENT_TIMESTAMP,
-  num bigint NOT NULL DEFAULT 0,
-  CONSTRAINT loc_anchor_uid_eight_chk CHECK (uid ~ '^[A-Za-z0-9]{8}$'),
-  CONSTRAINT loc_anchor_type_check CHECK (type IN ('database','table')),
-  CONSTRAINT loc_anchor_attr_object_chk CHECK (jsonb_typeof(attr)='object'),
-  CONSTRAINT loc_anchor_num_nonnegative_chk CHECK (num>=0),
-  CONSTRAINT loc_anchor_mapping_shape_chk CHECK (
-    CASE
-      WHEN type='database' THEN
-        (NOT (attr ? 'uid') OR jsonb_typeof(attr->'uid')='array')
-      WHEN type='table' THEN
-        (attr ? 'database_uid')
-        AND jsonb_typeof(attr->'database_uid')='string'
-        AND (attr->>'database_uid') ~ '^[A-Za-z0-9]{8}$'
-        AND (NOT (attr ? 'mapping') OR jsonb_typeof(attr->'mapping')='object')
-      ELSE false
-    END
-  )
-);
-COMMENT ON TABLE silver.loc_anchor IS
-  'LOC-owned database/table mapping metadata. Never store external article bodies or authentication secrets.';
-COMMENT ON COLUMN silver.loc_anchor.attr IS
-  'Database: optional uid[] of table mapping nodes and auth reference (not credentials). Table: database_uid and client-supplied semantic field mapping.';
-COMMENT ON COLUMN silver.loc_anchor.num IS
-  'Reserved nonnegative derived count; not the number of mapping child UIDs.';
--- The mapping registry may include private structural metadata: no browser
--- direct Data API access. The trusted LOC Auth/Kysely backend owns access.
-REVOKE ALL ON silver.loc_anchor FROM PUBLIC, anon, authenticated;
 
 -- Respect each registered Scope's existing physical Anchor name and original
 -- CHECK expressions (including lrunes rune extensions). Add only new cases.
@@ -108,5 +69,5 @@ END;
 $$;
 
 COMMENT ON TABLE silver.loc_search_pattern IS
-  'Legacy empty Scope keyword index; retained only while readers/writers move to Scope Anchor type=pattern. Do not treat as the LOC database/table mapping registry.';
+  'Legacy empty Scope keyword index; retained while readers/writers move to Scope Anchor type=pattern.';
 COMMIT;
