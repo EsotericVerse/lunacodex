@@ -140,8 +140,22 @@ test('GitHub verified identity -> LOC cookie -> per-install PKCE -> signed token
   const finish=await handleNativeOAuth(request('/oauth/callback/github?state='+
    encodeURIComponent(state)+'&code=provider-code',{headers:{cookie:csrf}}),env);
   assertStatus(finish,302);
-  assert.match(finish.headers.get('location'),/^https:\/\/loc\.lo3rwang\.cc\/login\//);
+  assert.match(finish.headers.get('location'),/^https:\/\/auth\.lo3rwang\.cc\/oauth\/consent\/web\?/);
   const cookie=fromSetCookie(finish,'__Host-loc-session');
+  const landing=new URL(finish.headers.get('location'));
+  const webPreview=await handleNativeOAuth(request(landing.pathname+landing.search,
+   {headers:{cookie}}),env);
+  assertStatus(webPreview,200);
+  const webContract=await webPreview.text();
+  assert.match(webContract,/展開資料合約/);
+  assert.match(webContract,/LOC 網站/);
+  const webNonce=landing.searchParams.get('nonce');
+  const webAccepted=await handleNativeOAuth(request('/oauth/consent',{
+   method:'POST',headers:{cookie,origin:ISSUER,'content-type':'application/x-www-form-urlencoded'},
+   body:new URLSearchParams({nonce:webNonce,decision:'approve'}).toString()
+  }),env);
+  assertStatus(webAccepted,302);
+  assert.match(webAccepted.headers.get('location'),/^https:\/\/loc\.lo3rwang\.cc\/login\//);
   const signedIn=await handleNativeOAuth(request('/v1/auth/session',{
    headers:{cookie,origin:WEB_AUDIENCE}}),env);
   assertStatus(signedIn,200);
@@ -165,8 +179,31 @@ test('GitHub verified identity -> LOC cookie -> per-install PKCE -> signed token
    resource:IMPORT_AUDIENCE});
   const authorized=await handleNativeOAuth(request('/oauth/authorize?'+query,
    {headers:{cookie}}),env);
-  assertStatus(authorized,302);
-  const returned=new URL(authorized.headers.get('location'));
+  assertStatus(authorized,200,'unapproved OAuth client must display a contract');
+  const contract=await authorized.text();
+  assert.match(contract,/展開資料合約/);
+  assert.match(contract,/LOC 彩虹橋/);
+  const clientNonce=/name="nonce" value="([A-Za-z0-9_-]+)"/.exec(contract)?.[1];
+  assert.ok(clientNonce);
+  const withoutDecision=await handleNativeOAuth(request('/oauth/consent',{
+   method:'POST',headers:{cookie,origin:ISSUER,'content-type':'application/x-www-form-urlencoded'},
+   body:new URLSearchParams({nonce:clientNonce}).toString()
+  }),env);
+  assertStatus(withoutDecision,400);
+  // A submitted malformed decision is consumed; the app must restart OAuth.
+  const retry=await handleNativeOAuth(request('/oauth/authorize?'+query,
+   {headers:{cookie}}),env);
+  assertStatus(retry,200);
+  const freshNonce=/name="nonce" value="([A-Za-z0-9_-]+)"/.exec(await retry.text())?.[1];
+  const accepted=await handleNativeOAuth(request('/oauth/consent',{
+   method:'POST',headers:{cookie,origin:ISSUER,'content-type':'application/x-www-form-urlencoded'},
+   body:new URLSearchParams({nonce:freshNonce,decision:'approve'}).toString()
+  }),env);
+  assertStatus(accepted,302);
+  const returned=new URL(accepted.headers.get('location'));
+  const reused=await handleNativeOAuth(request('/oauth/authorize?'+query,
+   {headers:{cookie}}),env);
+  assertStatus(reused,302,'the same Subject, client and Scopes reuse one consent');
   assert.equal(returned.origin,new URL(callback).origin);
   assert.equal(returned.searchParams.get('state'),'test-state-0123456789abcdef');
   const code=returned.searchParams.get('code');
