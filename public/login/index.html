@@ -91,7 +91,7 @@ ssoButton.id='loc-sso-login';
 ssoButton.className='loc-login-choice';
 ssoButton.textContent='使用 LOC SSO';
 panel.appendChild(ssoButton);
-byId('return').addEventListener('click',()=>{
+function returnToLoc(){
  if(!verifiedForEditor)return;
  const path=validReturnPath();
  if(isProtectedReturn(path)){
@@ -99,7 +99,8 @@ byId('return').addEventListener('click',()=>{
  }
  const continued=oauthContinuation();
  location.assign(continued?AUTHORITY+continued:path);
-});
+}
+byId('return').addEventListener('click',returnToLoc);
 // SSO reuses the existing LOC Authority session. It does not introduce
 // another identity provider, a password, or a second account registry.
 ssoButton.addEventListener('click',async()=>{
@@ -122,7 +123,7 @@ ssoButton.addEventListener('click',async()=>{
    return;
   }
   verifiedForEditor=true;
-  byId('return').click();
+  returnToLoc();
  }catch(error){
   byId('status').textContent=String(error.message||error);
   ssoButton.disabled=false;
