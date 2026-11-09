@@ -7,6 +7,7 @@ import {normalizeSqlDriverAuthentication,publicSqlDriverAuthentication,
 import {ISSUER,MCP_AUDIENCE,WEB_AUDIENCE,isNativeOAuthPath,handleNativeOAuth,
   verifyNativeOAuth} from './native-oauth.mjs';
 import {runBetterAuthStore} from './better-auth-store.mjs';
+import {approvedConsent} from './oauth-consent.mjs';
 import {handleFirstPartyAuth} from './better-auth-native.mjs';
 import {verifyAuthReference,assertReferencePermission} from './auth-ref.mjs';
 import {validateKeywordCategoryEntry,hashKeywordCategory,assertPublicKeywordClass} from './keyword-categories.mjs';
@@ -1085,6 +1086,16 @@ async function exchangeLocDelegation(request,env,principal,origin){
   // subject lists and role strings cannot elevate another identity.
   if(principal?.provider!=='loc'||principal.emailVerified!==true)
     throw fail('Verified LOC OAuth identity required',403);
+  // LOC SSO identity alone never implies approval of a data-write contract.
+  // Consent is remembered per signed-in Subject and version; api.manage
+  // remains the sole source of the actual management permission.
+  const stub=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName('loc-authority-control-v1'));
+  const wantsWrite=global||self||Array.isArray(input.actions)&&
+   input.actions.some(a=>a==='write'||a==='manage');
+  if(wantsWrite&&!await approvedConsent(stub,principal.subject,'loc-web',
+   'https://loc.lo3rwang.cc','profile email loc:manage'))
+   return json({error:'LOC data contract consent required',
+    consent_url:'https://auth.lo3rwang.cc/oauth/consent/web'},428,origin);
   const root=await verifiedLocOwner(principal,env);
   const scope=String(input.scopeid||'');
   const actions=input.actions;
@@ -1100,7 +1111,6 @@ async function exchangeLocDelegation(request,env,principal,origin){
     throw fail('Invalid requested delegation scope',400);
   if(!root&&Array.isArray(actions)&&actions.some(a=>a!=='read'))
     throw fail('Only the LOC owner may request writes',403);
-  const stub=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName('loc-authority-control-v1'));
   const email=String(principal.email||'').trim().toLowerCase();
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
     throw fail('Verified identity email required for LOC delegation',403);
