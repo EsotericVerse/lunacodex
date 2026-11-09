@@ -250,3 +250,11 @@ test('Google OAuth starts on LOC Better Auth with the exact Google callback',asy
   headers:{cookie:loginState}}),env);
  assertStatus(reused,401);
 });
+
+test('retired Supabase Auth callback cannot establish a LOC session',async()=>{
+ const {env}=environment();
+ const legacy=await handleNativeOAuth(request('/oauth/callback/supabase',{
+  method:'POST',headers:{'content-type':'application/json'},body:'{}'
+ }),env);
+ assertStatus(legacy,405);
+});

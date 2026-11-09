@@ -12,8 +12,6 @@ export const IMPORT_AUDIENCE=ISSUER+'/v1/import/short';
 const EXT_CLIENT=WEB_AUDIENCE+'/extension/oauth/client.json';
 const EXT_REDIRECT='https://hiaeafonocnjaclcfgjmdopbcgnafnna.chromiumapp.org/loc';
 const EXT_ORIGIN='chrome-extension://hiaeafonocnjaclcfgjmdopbcgnafnna';
-const SUPABASE_CALLBACK=WEB_AUDIENCE+'/login/supabase-callback.html';
-const SUPABASE_OWNER_SOURCE='https://qlouywsdiiyiyzpoxyqy.supabase.co';
 const SESSION_COOKIE='__Host-loc-session',CSRF_COOKIE='__Host-loc-csrf';
 const TXT=new TextEncoder(),UTF=new TextDecoder();
 const CODE_PATTERN=/^[A-Za-z0-9_-]{43,128}$/;
@@ -166,7 +164,7 @@ export function isNativeOAuthPath(path){
   path==='/oauth/authorize'||path==='/oauth/login'||path==='/oauth/token'||
   path==='/oauth/revoke'||
   path==='/oauth/callback/github'||path==='/oauth/callback/oidc'||
-  path==='/oauth/callback/supabase'||path==='/oauth/complete'||
+  path==='/oauth/complete'||
   path==='/oauth/logout'||path==='/oauth/ref'||
   path==='/v1/auth/session'||path==='/v1/import/short';
 }
@@ -265,83 +263,6 @@ async function requestJson(url,options={}){
  if(!r.ok)error('External identity provider unavailable',502);
  return r.json().catch(()=>error('Invalid identity provider response',502));
 }
-function supabaseConfig(env){
- const origin=String(env.LOC_SUPABASE_AUTH_ORIGIN||'').replace(/\/+$/,'');
- const apiKey=String(env.LOC_SUPABASE_PUBLIC_KEY||'');
- if(origin!==SUPABASE_OWNER_SOURCE||
-   !/^sb_publishable_[A-Za-z0-9_-]{20,128}$/.test(apiKey))
-  error('LOC Google OAuth configuration is unavailable',503);
- return {origin,apiKey};
-}
-async function googleViaSupabase(url,stub,env){
- const {origin}=supabaseConfig(env);
- const continue_path=url.searchParams.get('continue')?
-  continuation(url.searchParams.get('continue')):'';
- const return_to=continue_path?'':validReturnPath(url.searchParams.get('return_to'));
- const state=random(),csrf=random();
- await put(stub,'native-login',state,{
-  provider:'supabase-google',csrfHash:await sha(csrf),
-  continue_path,return_to,expires:Date.now()+600000
- });
- const redirectUrl=new URL(SUPABASE_CALLBACK);
- redirectUrl.searchParams.set('state',state);
- const target=new URL(origin+'/auth/v1/authorize');
- target.searchParams.set('provider','google');
- target.searchParams.set('redirect_to',redirectUrl.href);
- return redirect(target.href,[cookie(CSRF_COOKIE,csrf,600)]);
-}
-async function supabaseCallback(request,stub,env,origin){
- if(request.method!=='POST')error('Method not allowed',405);
- if(request.headers.get('origin')!==WEB_AUDIENCE)
-  error('OAuth callback origin denied',403);
- if(!String(request.headers.get('content-type')||'').toLowerCase().startsWith('application/json'))
-  error('OAuth callback JSON required',415);
- const raw=await request.text();
- if(raw.length>12000)error('OAuth callback too large',413);
- let data;try{data=JSON.parse(raw)}catch{error('Invalid OAuth callback')}
- if(!data||typeof data!=='object'||Array.isArray(data)||
-  Object.keys(data).some(x=>!['state','access_token'].includes(x)))
-  error('Invalid OAuth callback');
- const state=String(data.state||''),access=String(data.access_token||'');
- if(!CODE_PATTERN.test(state)||access.length<100||access.length>8192||
-  access.split('.').length!==3||!/^[A-Za-z0-9._~-]+$/.test(access))
-  error('Invalid OAuth response',401);
- const pending=await take(stub,'native-login',state);
- const csrf=parseCookies(request).get(CSRF_COOKIE);
- if(!pending||pending.provider!=='supabase-google'||pending.expires<Date.now()||
-  !csrf||await sha(csrf)!==pending.csrfHash)
-  error('OAuth state or CSRF validation failed',401);
- const {origin:issuer,apiKey}=supabaseConfig(env);
- const provider=await fetch(issuer+'/auth/v1/user',{
-  method:'GET',headers:{authorization:'Bearer '+access,apikey:apiKey,
-   accept:'application/json'},redirect:'error',cache:'no-store',
-  signal:AbortSignal.timeout(8000)
- });
- if(!provider.ok)error('Google OAuth identity could not be verified',401);
- const user=await provider.json().catch(()=>null);
- const id=String(user?.id||'');
- const email=String(user?.email||'').trim().toLowerCase();
- if(!/^[0-9a-f]{8}-[0-9a-f-]{27}$/.test(id)||
-  !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||
-  !user?.email_confirmed_at||
-  !Array.isArray(user.identities)||
-  !user.identities.some(item=>item?.provider==='google'))
-  error('Verified Google identity required',403);
- // LOC signup remains closed. Only the pre-existing Supabase Google identity
- // explicitly named as the LOC root can receive a LOC Auth session.
- const subject='loc_'+(await sha('supabase:'+id)).slice(0,40);
- const roots=String(env.LOC_RECOVERY_ROOT_LOC_SUBJECTS||'').split(/[\s,;]+/).filter(Boolean);
- if(!roots.includes(subject))error('LOC does not allow new account registration',403);
- const sid=random(),sidHash=await sha(sid);
- await stub.nativePut('native-session:'+sidHash,{
-  subject,provider:'loc',identityProvider:'supabase-google',
-  email,emailVerified:true,sidHash,expires:Date.now()+SESSION_SECONDS*1000
- });
- const next=pending.continue_path?ISSUER+pending.continue_path:
-  WEB_AUDIENCE+pending.return_to;
- return response({next},200,origin,{'set-cookie':cookie(SESSION_COOKIE,sid,SESSION_SECONDS)});
-}
-
 async function googleViaBetter(request,url,stub,env){
  const continue_path=url.searchParams.get('continue')?
   continuation(url.searchParams.get('continue')):'';
@@ -705,8 +626,6 @@ export async function handleNativeOAuth(request,env){
   if(path==='/oauth/login'&&request.method==='GET')return await login(request,url,stub,env);
    if(path==='/oauth/complete'&&request.method==='GET')
     return await completeBetterGoogle(request,url,stub,env);
-  if(path==='/oauth/callback/supabase'&&request.method==='POST')
-   return await supabaseCallback(request,stub,env,origin);
   if(path==='/oauth/ref'&&request.method==='GET')return await refLogin(request,url,stub,env);
   if(path==='/oauth/callback/github'&&request.method==='GET')
    return await callback(request,url,stub,'github',env);
