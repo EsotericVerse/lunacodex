@@ -1,7 +1,7 @@
 // LOC 網站／舊對話頁面的可見 DOM 擷取；不呼叫 OAuth 或 MCP。
 (() => {
   if (globalThis.__locCaptureV2) return;
-  const state = {mode:'idle', root:null, observer:null, intersection:null, timer:null, hover:null, includeAssistant:false, seen:new Set(), sending:new Set()};
+  const state = {mode:'idle', root:null, observer:null, intersection:null, timer:null, hover:null, includeAssistant:false, seen:new Set(), sending:new Set(), emptyReported:false};
   const visible = el => {
     if (!(el instanceof Element)) return false;
     const style=getComputedStyle(el);
@@ -40,21 +40,82 @@
       return null;
     return normalizeUrl(location.href);
   };
+  // ChatGPT and Claude change markup independently. Identify a message turn by
+  // its role metadata or the semantic labels on the rendered conversation
+  // article, not only by one generation of data-message-author-role.
+  const TURN_SELECTOR='[data-message-id],[data-testid^="conversation-turn-"],'+
+    '[data-message-author-role],[data-testid="user-message"],'+
+    '[data-testid="assistant-message"],article[aria-label]';
+  const TURN_CONTAINER='[data-testid^="conversation-turn-"],[data-message-id],'+
+    'article[data-message-author-role],[data-testid="user-message"],'+
+    '[data-testid="assistant-message"]';
+  function roleOf(turn){
+    const node=turn.matches?.('[data-message-author-role]')?turn:
+      turn.querySelector?.('[data-message-author-role]');
+    const value=(node?.getAttribute?.('data-message-author-role')||
+      turn.getAttribute?.('data-message-author-role')||'').toLowerCase();
+    if(value==='user'||value==='assistant')return value;
+    const testid=(turn.getAttribute?.('data-testid')||'').toLowerCase();
+    if(testid==='user-message')return 'user';
+    if(testid==='assistant-message')return 'assistant';
+    const label=(turn.getAttribute?.('aria-label')||'').toLowerCase();
+    // sr-only headings are deliberately invisible but provide reliable
+    // accessible role semantics in modern ChatGPT conversation turns.
+    const headings=[...(turn.querySelectorAll?.('h5,h6,[class*="sr-only"]')||[])];
+    const visibleLabels=(label+' '+headings.slice(0,8)
+      .map(n=>String(n.textContent||n.innerText||'').trim()).join(' ')).toLowerCase();
+    if(/you said|你說|你说|您說|您说|user message|human:/.test(visibleLabels))
+      return 'user';
+    if(/chatgpt said|claude said|assistant message|assistant:/.test(visibleLabels))
+      return 'assistant';
+    if(turn.querySelector?.('[data-testid*="user"]'))return 'user';
+    return '';
+  }
   function conversationTurns(scope,includeAssistant=false){
-    const nodes=[...scope.querySelectorAll('[data-message-id], [data-testid^="conversation-turn-"], [data-message-author-role]')];
-    const hits=[]; const visited=new Set();
+    const nodes=[...(scope.matches?.(TURN_SELECTOR)?[scope]:[]),
+      ...(scope.querySelectorAll?.(TURN_SELECTOR)||[])];
+    const hits=[],visited=new Set(),url=normalizeUrl(location.href);
     for(const node of nodes){
-      const parent=node.closest('[data-testid^="conversation-turn-"]')||node.closest('[data-message-id]')||node;
-      if(visited.has(parent)||!visible(parent))continue; visited.add(parent);
-      const roleNode=parent.matches('[data-message-author-role]')?parent:parent.querySelector('[data-message-author-role]');
-      const role=roleNode?.getAttribute('data-message-author-role')||parent.getAttribute('data-message-author-role')||
-        (parent.querySelector('[data-testid*="user"]')?'user':'');
+      const turn=node.closest?.(TURN_CONTAINER)||node.closest?.('article')||node;
+      if(visited.has(turn)||!visible(turn))continue;visited.add(turn);
+      const role=roleOf(turn);
       if(!['user','assistant'].includes(role)||role==='assistant'&&!includeAssistant)continue;
-      const text=cleanText(parent);
+      // The role's own message body is preferable to the container's
+      // toolbars/feedback buttons, which are not conversation content.
+      const roleNode=turn.matches?.('[data-message-author-role]')?turn:
+        turn.querySelector?.('[data-message-author-role]');
+      const text=cleanText(roleNode||turn);
       if(!text)continue;
-      hits.push({key:parent.getAttribute('data-message-id')||parent.getAttribute('data-testid')||role+':'+text.slice(0,150),
-        source_key:normalizeUrl(location.href),url:normalizeUrl(location.href),title:document.title,
-        content:'['+role+']\n'+text+'\n'+links(parent).map(x=>x.text+' <'+x.url+'>').join('\n')});
+      hits.push({key:turn.getAttribute?.('data-message-id')||
+          turn.getAttribute?.('data-testid')||role+':'+text.slice(0,150),
+        source_key:url,url,title:document.title,
+        content:'['+role+']\n'+text+'\n'+links(turn).map(x=>x.text+' <'+x.url+'>').join('\n')});
+    }
+    if(hits.length)return hits;
+    // ChatGPT may render a user's message as a whitespace-pre-wrap bubble
+    // with no role attributes or conversation-turn IDs. Restrict this
+    // fallback to the main conversation and user-bubble shapes only;
+    // never silently archive the sidebar or reclassify AI replies as user.
+    if(/(?:^|\.)chatgpt\.com$|(?:^|\.)chat\.openai\.com$/.test(location.hostname.toLowerCase())){
+      // A selected area must not unexpectedly expand into the whole chat.
+      // Full-page/recording paths already pass their main conversation root.
+      const region=scope===document.body?
+        document.querySelector?.('main')||scope:scope;
+      if(!region||!(region===document.body||region.closest?.('main')||
+        region.matches?.('main')||region.querySelector?.('main')))return [];
+      const bubbles=[...(region.matches?.('[data-testid="user-message"],.whitespace-pre-wrap')?[region]:[]),
+        ...(region.querySelectorAll?.('[data-testid="user-message"],.whitespace-pre-wrap')||[])];
+      for(const bubble of bubbles){
+        if(!visible(bubble)||bubble.closest?.('nav,aside,form,[role="navigation"],[contenteditable="true"]'))continue;
+        const turn=bubble.closest?.('[data-testid^="conversation-turn-"],article')||bubble;
+        if(visited.has(turn)||roleOf(turn)==='assistant')continue;
+        const text=cleanText(bubble);
+        if(!text)continue;
+        visited.add(turn);
+        hits.push({key:turn.getAttribute?.('data-testid')||
+          'user-bubble:'+text.slice(0,150),source_key:url,url,title:document.title,
+          content:'[user]\n'+text});
+      }
     }
     return hits;
   }
@@ -62,7 +123,11 @@
     const doc=scope||document.body;
     const hostname=location.hostname.toLowerCase();
     if(/(?:chatgpt\.com|claude\.ai|chat\.openai\.com)$/.test(hostname)){
-      const turns=conversationTurns(doc,includeAssistant);
+      // Full-page capture and recording use the full current conversation.
+      // An explicit area selection stays limited to the selected element.
+      const region=mode==='record'||doc===document.body?
+        (doc.closest?.('main')||doc.querySelector?.('main')||doc):doc;
+      const turns=conversationTurns(region,includeAssistant);
       // Chat exports contain only actually rendered, role-attributed messages.
       // Never silently archive website navigation or other UI as a conversation.
       return turns;
@@ -127,28 +192,37 @@
     }
     return text.length+':'+(a>>>0).toString(16)+':'+(b>>>0).toString(16);
   }
+  async function reportCapture(message,ok=false){
+    feedback(message,ok);
+    try{await chrome.runtime.sendMessage({type:'capture.report',
+      message:String(message).slice(0,350),ok});}catch{}
+  }
   async function publish(items){
-    // A capture only becomes "seen" once the extension confirms the
-    // IndexedDB transaction. On queue errors, release the pending key so
-    // a later scan can retry without losing the post.
+    // A running observer is not proof of a saved capture.
     const pending=[];
     for(const item of items){
       const key=item.source_key+':'+fingerprint(item.content);
       if(state.seen.has(key)||state.sending.has(key))continue;
-      state.sending.add(key);
-      pending.push({item,key});
+      state.sending.add(key);pending.push({item,key});
     }
-    if(!pending.length)return;
+    if(!pending.length)return {accepted:0,queued:false};
     try{
       const result=await chrome.runtime.sendMessage({
         type:'items.captured',items:pending.map(({item})=>item)
       });
       if(result?.error)throw Error(result.error);
-      if(!result||typeof result.queued!=='number')throw Error('Queue acknowledgement missing');
+      if(!result||typeof result.queued!=='number')
+        throw Error('LOC Queue 沒有回傳入列確認');
       if(state.seen.size>=5000)state.seen.clear();
       for(const {key} of pending)state.seen.add(key);
-    }catch{
-      // Failure is not an acknowledgement. A subsequent scan may retry.
+      state.emptyReported=false;
+      return {accepted:pending.length,queued:result.queued};
+    }catch(error){
+      // The previous implementation swallowed this exception, leaving a
+      // misleading "recording" state with Queue 0 forever.
+      const reason=String(error?.message||error);
+      void reportCapture('錄製擷取失敗，Queue 未確認寫入：'+reason,false);
+      return {accepted:0,error:reason};
     }finally{
       for(const {key} of pending)state.sending.delete(key);
     }
@@ -156,7 +230,18 @@
   function scan(){
     if(!state.root||state.mode!=='record')return;
     if(state.timer)clearTimeout(state.timer);
-    state.timer=setTimeout(()=>publish(extract(state.root,'record',state.includeAssistant)),350);
+    state.timer=setTimeout(()=>{
+      if(state.mode!=='record')return;
+      const items=extract(state.root,'record',state.includeAssistant);
+      if(!items.length){
+        if(!state.emptyReported){
+          state.emptyReported=true;
+          void reportCapture('錄製已啟動，但目前找不到可辨識的對話訊息；Queue 仍是 0。請確認對話已載入。',false);
+        }
+        return;
+      }
+      void publish(items);
+    },350);
   }
   function stopWatching(){
     state.observer?.disconnect();state.intersection?.disconnect();
@@ -179,7 +264,7 @@
     return true;
   }
   function stop(){
-    stopWatching();state.mode='idle';
+    stopWatching();state.mode='idle';state.emptyReported=false;
     state.hover?.remove();state.hover=null;
     document.removeEventListener('mousemove',move,true);
     document.removeEventListener('click',choose,true);
@@ -199,16 +284,23 @@
     if(state.mode!=='select'&&state.mode!=='pick-record')return;
     event.preventDefault();event.stopImmediatePropagation();
     const target=event.target;
-    const root=state.mode==='pick-record'?
-      (target.closest('[role="feed"],main,section')||target.closest('article,[role="article"]')?.parentElement||target):
-      (target.closest('article,[role="article"],main,section')||target);
-    if(!(root instanceof Element))return;
     const recording=state.mode==='pick-record';
-    stop();state.root=root;state.seen.clear();
+    const chat=/^(?:chatgpt\.com|chat\.openai\.com|claude\.ai)$/.test(location.hostname);
+    const main=recording&&chat&&(target.closest?.('main')||document.querySelector?.('main'));
+    const root=main||(state.mode==='pick-record'?
+      (target.closest('[role="feed"],main,section')||target.closest('article,[role="article"]')?.parentElement||target):
+      (target.closest('article,[role="article"],main,section')||target));
+    if(!(root instanceof Element))return;
+    stop();state.root=root;state.seen.clear();state.emptyReported=false;
     if(recording){
-      publish(extract(root,'record',state.includeAssistant));
+      // Record the current loaded turns immediately, then observe changes.
+      // Do not announce captured data until background acknowledges Queue.
       watch();
-    }else publish(extract(root));
+    }else{
+      const items=extract(root,'capture',state.includeAssistant);
+      if(!items.length)void reportCapture('選取區域內沒有可擷取內容，Queue 未變動',false);
+      else void publish(items);
+    }
   }
   function feedback(message,ok=false){
     const id='loc-galaxy-link-status';

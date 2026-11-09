@@ -229,3 +229,79 @@ test('contextual menus track paused/record/idle and toolbar badge never shows an
  assert.equal(modes[3]['loc-stop'],true);
  assert.doesNotMatch(text('background.js'),/setBadgeText\(\{text:'!'|setBadgeText\(\{text:'OK'/);
 });
+
+
+class SemanticNode extends FakeElement{
+ constructor({text='',tagName='DIV',testid='',role='',classes='',children=[]}={}){
+  super(text,tagName,role);this.testid=testid;this.classes=classes;
+  this.children=children;for(const child of children)child.parentElement=this;
+ }
+ matches(selector){
+  return super.matches(selector)||
+   (this.testid.startsWith('conversation-turn-')&&selector.includes('conversation-turn-'))||
+   (this.testid==='user-message'&&selector.includes('user-message'))||
+   (this.tagName==='MAIN'&&selector==='main');
+ }
+ closest(selector){
+  if(this.testid.startsWith('conversation-turn-')&&selector.includes('conversation-turn-'))
+   return this;
+  if(this.tagName==='MAIN'&&selector.includes('main'))return this;
+  return super.closest(selector)||this.parentElement?.closest?.(selector)||null;
+ }
+ getAttribute(key){
+  if(key==='data-testid')return this.testid||null;
+  return super.getAttribute(key);
+ }
+ querySelectorAll(selector){
+  const found=[];
+  const visit=node=>{
+   for(const child of node.children){
+    if((selector.includes('conversation-turn-')&&child.testid?.startsWith('conversation-turn-'))||
+       (selector.includes('data-message-author-role')&&child.role)||
+       (selector.includes('h5,h6')&&['H5','H6'].includes(child.tagName))||
+       (selector.includes('.whitespace-pre-wrap')&&child.classes?.includes('whitespace-pre-wrap'))||
+       (selector.includes('user-message')&&child.testid==='user-message'))
+      found.push(child);
+    visit(child);
+   }
+  };
+  visit(this);return found;
+ }
+ querySelector(selector){return this.querySelectorAll(selector)[0]||null}
+}
+test('modern ChatGPT semantic turn labels capture original user text with no legacy role attributes',()=>{
+ const user=new SemanticNode({text:'The exact user message must enter the Queue',
+  tagName:'ARTICLE',testid:'conversation-turn-0',
+  children:[new SemanticNode({tagName:'H5',text:'You said:'})]});
+ const ai=new SemanticNode({text:'Assistant response remains opt-in',
+  tagName:'ARTICLE',testid:'conversation-turn-1',
+  children:[new SemanticNode({tagName:'H6',text:'ChatGPT said:'})]});
+ const main=new SemanticNode({tagName:'MAIN',children:[user,ai]});
+ const capture=contentFixture({href:'https://chatgpt.com/g-project/c/thread',feed:main});
+ const withoutAI=capture();
+ assert.equal(withoutAI.length,1);
+ assert.match(withoutAI[0].content,/exact user message/);
+ assert.ok(withoutAI[0].content.startsWith('[user]'));
+ const withAI=capture({includeAssistant:true});
+ assert.equal(withAI.length,2);
+ assert.ok(withAI.some(x=>x.content.startsWith('[assistant]')));
+});
+test('ChatGPT user-bubble fallback works without obsolete message IDs or roles',()=>{
+ const bubble=new SemanticNode({text:'User writing rendered by the new chat UI',
+   classes:'whitespace-pre-wrap'});
+ const main=new SemanticNode({tagName:'MAIN',children:[bubble]});
+ const capture=contentFixture({href:'https://chatgpt.com/c/modern',feed:main});
+ const records=capture();
+ assert.equal(records.length,1);
+ assert.match(records[0].content,/User writing rendered/);
+ assert.match(records[0].source_key,/chatgpt\.com\/c\/modern/);
+});
+test('ChatGPT recording reports empty extraction and never silently suppresses Queue errors',()=>{
+ const source=text('content.js'),background=text('background.js');
+ assert.match(source,/reportCapture\('錄製已啟動/);
+ assert.match(source,/錄製擷取失敗，Queue 未確認寫入/);
+ assert.match(source,/const main=chat&&/);
+ assert.match(source,/watch\(\);/);
+ assert.match(background,/case 'capture\.report'/);
+ assert.match(background,/await noteAction\('動態擷取',false/);
+});
