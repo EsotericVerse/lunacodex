@@ -27,6 +27,24 @@ function trustedAlias(env,verifiedAlias){
  if(!ALIAS.test(alias))throw fail('LOC MCP direct database alias is not configured');
  return alias;
 }
+// Main SQL engine is chosen explicitly in access.js; its temporary private URL
+// supplies hostname and port. The Dialect is NEVER guessed from vendor or port.
+export function mainDatabaseProfile(url,chosen){
+ const engine=String(chosen?.engine||'');
+ const schemes={postgres:['postgres:','postgresql:'],
+  mysql:['mysql:'],mssql:['mssql:','sqlserver:']};
+ if(!Object.hasOwn(schemes,engine))
+  throw fail('Main database SQL type must be selected');
+ let parsed;
+ try{parsed=new URL(String(url||''))}catch{throw fail('Invalid main SQL connection URL')}
+ if(!schemes[engine].includes(parsed.protocol))
+  throw fail('Main SQL connection protocol does not match selected Dialect');
+ if(!parsed.hostname||!parsed.port||!Number.isInteger(Number(parsed.port))||
+   Number(parsed.port)<1||Number(parsed.port)>65535)
+  throw fail('Main SQL hostname and explicit port are required');
+ return {engine,url:String(url),tls:true,
+  schema_name:engine==='mysql'?'':engine==='mssql'?'dbo':'silver'};
+}
 function localProfile(env,alias){
  let profiles;
  try{profiles=JSON.parse(String(env.LOC_DB_CONNECTIONS_JSON||'{}'))}
@@ -53,11 +71,10 @@ async function authorizedProfile(env,alias,verifiedAlias,fetchImpl){
   return localProfile(env,alias);
  if(!verifiedAlias&&env.LOC_DB_CONNECTIONS_JSON)
   return localProfile(env,alias);
- // Primary database wiring is a backend-owned PostgreSQL driver connection.
- // Never route its credential via LOC Auth or expose it to browser OAuth.
+ // Only the private main connection can be a deployment-time exception.
+ // SQL type is explicit; hostname and port come from its temporary private URL.
  if(isPrimary&&env.LOC_DATABASE_URL)
-  return {engine:'postgres',url:String(env.LOC_DATABASE_URL),tls:true,
-   schema_name:'silver'};
+  return mainDatabaseProfile(env.LOC_DATABASE_URL,control);
  if(secret){
   if(secret.length<32)throw fail('LOC trusted profile secret is invalid');
   // `loc_main` is a local connection alias, not LOC Auth's target ID.
@@ -112,7 +129,7 @@ export function mcpDatabaseConfiguration(env={}){
   const control=DATABASE_ACCESS_LIST.find(item=>item.selected===true);
   const profile=!env.LOC_DB_CONNECTIONS_JSON&&env.LOC_DATABASE_URL&&
    alias===control?.connection_alias
-   ?{engine:'postgres',url:String(env.LOC_DATABASE_URL),tls:true,schema_name:'silver'}
+   ?mainDatabaseProfile(env.LOC_DATABASE_URL,control)
    :localProfile(env,alias);
   validateProfile(env,profile,'');
   publicReadConfigured=true;
