@@ -188,7 +188,10 @@ export async function handleNativePublicContent(request,env={},{
     const publishedAlias=DATABASE_ACCESS_LIST.find(row=>row.selected===true)?.connection_alias||'';
     const alias=String(env.LOC_PUBLIC_DB_ALIAS||env.LOC_CONTROL_DB_ALIAS||
       env.LOC_MCP_DB_ALIAS||publishedAlias);
-    const port=await database(env,alias);
+    // The published control alias is not a user-selected external database ID.
+    // Let directMcpKysely resolve the configured control target_id (loc-main).
+    // Preserve explicit, distinct external aliases unchanged.
+    const port=await database(env,alias===publishedAlias?'':alias);
     if(!port?.db||!['postgres','mysql','mssql'].includes(port.engine))
       return publishedResponse()||respond({error:'LOC native database unavailable'},503);
     const query=port.db;
