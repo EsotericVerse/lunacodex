@@ -98,7 +98,7 @@ function compileFixedSchema({schema:namespace,tables}){
       name,fields,idFields:[...table.pk],uniqueFields,
       attributes:[
         literal('@@map','name',table.table),
-        literal('@@schema','map',table.schema||namespace),
+        literal('@@schema','name',table.schema||namespace),
         ...(PUBLIC_FIXED_READS.has(table.table)?[PUBLIC_POLICY_ALLOW_READ]:[]),
         ...(GLOBAL_ADMIN_MANAGE.has(table.table)?[GLOBAL_ADMIN_POLICY]:[])
       ]
