@@ -7,6 +7,7 @@
     "/.well-known/oauth-protected-resource/mcp",
     "/api/loc-public-content",
     "/api/loc-public-classes",
+    "/api/loc-authority-role",
     "/api/loc-native",
     "/api/keywords"
   ],
