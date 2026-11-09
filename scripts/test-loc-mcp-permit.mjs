@@ -22,21 +22,22 @@ const env={LOC_AUTHORITY_STATE:{idFromName:name=>name,get:()=>authority},
  LOC_RECOVERY_ROOT_LOC_SUBJECTS:''};
 const url={pathname:'/v1/mcp/direct-permit/lo3rwang/read'};
 
-test('LOC Auth permits only an explicit current MCP read grant, without DB secrets',async()=>{
+test('LOC public read permit works without Scope grants or DB secrets',async()=>{
  allowed=true;grantCalls=selectionCalls=0;
  const res=await handleMcpAuthority({method:'GET'},env,url,'');
  assert.equal(res.status,200);
  assert.deepEqual(await res.json(),{authorized:true,subject,scopeid:'lo3rwang',
   action:'read',db_target:'office_pg'});
- assert.equal(grantCalls,1);
+ assert.equal(grantCalls,0);
  assert.equal(selectionCalls,1);
 });
-test('missing Scope authorization fails before database selection',async()=>{
+test('public read remains available when no Scope read grant exists',async()=>{
  allowed=false;grantCalls=selectionCalls=0;
- await assert.rejects(handleMcpAuthority({method:'GET'},env,url,''),error=>
-  error.status===403);
- assert.equal(grantCalls,1);
- assert.equal(selectionCalls,0);
+ const res=await handleMcpAuthority({method:'GET'},env,url,'');
+ assert.equal(res.status,200);
+ assert.equal((await res.json()).authorized,true);
+ assert.equal(grantCalls,0);
+ assert.equal(selectionCalls,1);
 });
 test('the authorization-only permit cannot accept writes or SQL payloads',async()=>{
  allowed=true;
