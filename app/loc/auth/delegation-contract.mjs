@@ -5,8 +5,6 @@ export const LOC_DELEGATION_AUDIENCES=Object.freeze({sql:'loc-delegation',mcp:'l
 export const LOC_DELEGATION_MAX_SECONDS=24*60*60;
 const SUBJECT=/^[A-Za-z0-9_-]{1,128}$/;
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-export const LOC_WRITE_OWNER='sopa2306@gmail.com';
-export const isLocWriteOwner=email=>String(email||'').trim().toLowerCase()===LOC_WRITE_OWNER;
 const GRANT=/^[a-z][a-z0-9]{0,14}:(read|write|manage)$/;
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const DATABASE=/^[a-z][a-z0-9_-]{0,63}$/;
@@ -23,7 +21,7 @@ export function delegationGrants(value){
   return [...new Set(value)];
 }
 export function canManageDelegation(claims,type,id=''){
-  if(claims?.provider!=='loc'||claims?.me!==true||!isLocWriteOwner(claims.email))return false;
+  if(claims?.provider!=='loc'||claims?.me!==true||!EMAIL.test(String(claims.email||'')))return false;
   const scope=String(id||'').toLowerCase();
   if(!['global','group','scope'].includes(type)||
      (type!=='global'&&!SCOPE.test(scope)))return false;
@@ -42,8 +40,8 @@ export function issueDelegation({sub,email,grants=[],audience='sql',sid,now,seco
     targetId!==null&&(typeof targetId!=='string'||!DATABASE.test(targetId)))
     reject('Invalid LOC delegation issuance');
   const acceptedGrants=delegationGrants(grants);
-  if(acceptedGrants.some(g=>/:(?:write|manage)$/.test(g))&&!isLocWriteOwner(normalized))
-    reject('Only verified LOC owner may receive write grants');
+  if(acceptedGrants.some(g=>/:(?:write|manage)$/.test(g))&&!EMAIL.test(normalized))
+    reject('Verified LOC email required for management delegation');
   return {iss:LOC_DELEGATION_ISSUER,aud:LOC_DELEGATION_AUDIENCES[audience],
     sub:String(sub),...(normalized?{email:normalized}:{}),me:true,grants:acceptedGrants,
     sid:String(sid),iat:now,nbf:now-5,exp:now+seconds,
@@ -73,8 +71,6 @@ export function verifyDelegationBoundary(payload,request,{
      targetId!==undefined&&(typeof targetId!=='string'||!DATABASE.test(targetId)))
     reject('Invalid or revoked LOC delegation');
   const grants=delegationGrants(payload.grants);
-  if(grants.some(g=>/:(?:write|manage)$/.test(g))&&!isLocWriteOwner(email))
-    reject('Only verified LOC owner may use write grants');
   const mcp=expectedAudience===LOC_DELEGATION_AUDIENCES.mcp;
   let scopedWriteGrant='';
   if(mcp){
