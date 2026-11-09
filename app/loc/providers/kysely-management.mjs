@@ -1,7 +1,7 @@
 import {canManageLoc,locManageRows} from './loc-authorization.mjs';
 import {schema as fixedSchema} from '../../../zenstack/schema.mjs';
 import {validateLocRegistryDomain} from './loc-domain.mjs';
-import {sql} from 'npm:kysely@0.29.8';
+import {sql} from 'kysely';
 import {saveBlocksKysely} from './kysely-blocks.mjs';
 import {allocateAnchorUid} from '../unified-anchor-compat.mjs';
 import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
@@ -107,7 +107,7 @@ async function authorizeRelation(trx,table,operation,values,filters,rows){
   const record=await trx.selectFrom('api.manage')
     .select(['id','manage_role','galaxy_table','anchor_table'])
     .where('id','=',scope).executeTakeFirst();
-  if(!record||record.manage_role!=='scope')reject('Scope is not registered',403);
+  if(!record||!['scope','admin'].includes(record.manage_role))reject('Scope is not registered',403);
   const galaxy=String(record.galaxy_table||'galaxy');
   const anchor=String(record.anchor_table||'anchor');
   if(!ID.test(galaxy)||!ID.test(anchor))reject('Scope registry is invalid',403);
