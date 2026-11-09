@@ -201,7 +201,7 @@ export async function handleNativeLocOperation(request,env={},{
               // api.manage remains the live source of management rights in
              // the same Kysely transaction as the ZenStack-model write.
              bindLocAuthorization(qb,{role:claims.role,claims});
-             if(!await canManageLoc(qb,'global'))
+             if(!await canManageLoc(qb,'global','','Manage'))
                throw refusal('LOC Registry management permission denied',403);
              return applyManagedWrite(qb,modelName,payload);
            });
