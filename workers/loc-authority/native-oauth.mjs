@@ -137,11 +137,19 @@ export async function googleLocSubject(identity,stub,env,prior=null){
  if(identity?.emailVerified!==true||!email||
   !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||
   !googleId||googleId.length>256)error('Verified Google identity required',401);
- const owner=isLocRegistryAdmin(await locRegistryRoles(env,email));
+ // Google identity binding must still work if the SQL-backed role registry is
+ // unavailable. A registry outage never grants management privileges.
  const key='native-google-link:'+await sha('google:'+googleId);
  const saved=await stub.nativeGet(key);
  if(saved&&(!LOC_SUBJECT.test(String(saved.subject||''))||
   saved.email!==email))error('LOC Google identity binding mismatch',403);
+ let owner=false,registryUnavailable=false;
+ try{owner=isLocRegistryAdmin(await locRegistryRoles(env,email));}
+ catch(cause){
+  if(Number(cause?.status)!==503)throw cause;
+  registryUnavailable=true;
+  console.warn('[LOC OAuth] role registry unavailable; identity login remains enabled');
+ }
  const roots=[...new Set(String(env.LOC_RECOVERY_ROOT_LOC_SUBJECTS||'')
   .split(/[\s,;]+/).filter(x=>LOC_SUBJECT.test(x)))];
  const matches=[];
@@ -161,7 +169,9 @@ export async function googleLocSubject(identity,stub,env,prior=null){
  const candidates=[...new Set(matches)];
  if(candidates.length>1)error('Ambiguous LOC owner identity mapping',409);
  const root=candidates[0]||'';
- if(!owner&&roots.includes(saved?.subject))
+ // An already bound Google ID is retained during a registry outage.
+ // No new or previously unbound Google account may claim a root Subject.
+ if(!owner&&!registryUnavailable&&roots.includes(saved?.subject))
   error('Existing LOC root identity is restricted to the verified owner',403);
  let subject=saved?.subject||'';
  if(root){
