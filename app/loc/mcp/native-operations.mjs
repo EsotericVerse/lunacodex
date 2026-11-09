@@ -143,7 +143,12 @@ export async function handleNativeLocOperation(request,env={},{
     // The verified signed claim, not the HTTP body, selects the connection.
     const claims=await signedClaims(request.headers.get('authorization'),
       body,env,fetchImpl);
-    const selected=await database(env,claims.db_target||'');
+    // Personal preferences and Admin settings always use LOC's control
+    // database. A user's selected external database is for their Scope data,
+    // never for api.loc_user / api.user_settings / api.manage.
+    const control=['personal-read','personal-write','managed-write','managed-action']
+      .includes(body.kind);
+    const selected=await database(env,control?'':claims.db_target||'');
     if(!selected?.db||!['postgres','mysql','mssql'].includes(selected.engine))
       throw refusal('LOC native Kysely driver is not configured',503);
     if(body.kind==='short-import'){
