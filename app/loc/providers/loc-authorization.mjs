@@ -3,7 +3,7 @@
 // database role alone authorizes a write.
 const sessions=new WeakMap();
 const SUBJECT=/^[A-Za-z0-9_-]{1,128}$/;
-const EMAIL=/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;
+const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 function deny(message='LOC management permission denied'){
   throw Object.assign(new Error(message),{httpStatus:403});
