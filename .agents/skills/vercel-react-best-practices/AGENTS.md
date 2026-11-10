@@ -48,7 +48,7 @@ Comprehensive performance optimization guide for React and Next.js applications,
 4. [Client-Side Data Fetching](#4-client-side-data-fetching) — **MEDIUM-HIGH**
    - 4.1 [Deduplicate Global Event Listeners](#41-deduplicate-global-event-listeners)
    - 4.2 [Use Passive Event Listeners for Scrolling Performance](#42-use-passive-event-listeners-for-scrolling-performance)
-   - 4.3 [Use SWR for Automatic Deduplication](#43-use-swr-for-automatic-deduplication)
+   - 4.3 [Reuse LOC ZenStack Client Queries](#43-reuse-loc-zenstack-client-queries)
    - 4.4 [Version and Minimize localStorage Data](#44-version-and-minimize-localstorage-data)
 5. [Re-render Optimization](#5-re-render-optimization) — **MEDIUM**
    - 5.1 [Calculate Derived State During Rendering](#51-calculate-derived-state-during-rendering)
@@ -1373,69 +1373,30 @@ Automatic deduplication and efficient data fetching patterns reduce redundant ne
 
 **Impact: LOW (single listener for N components)**
 
-Use `useSWRSubscription()` to share global event listeners across component instances.
-
-**Incorrect: N instances = N listeners**
-
-```tsx
-function useKeyboardShortcut(key: string, callback: () => void) {
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.metaKey && e.key === key) {
-        callback()
-      }
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [key, callback])
-}
-```
-
-When using the `useKeyboardShortcut` hook multiple times, each instance will register a new listener.
-
-**Correct: N instances = 1 listener**
+Share one browser listener across mounted React components, without
+introducing a data-query dependency for event subscriptions.
 
 ```tsx
-import useSWRSubscription from 'swr/subscription'
+import {useEffect} from 'react'
 
-// Module-level Map to track callbacks per key
-const keyCallbacks = new Map<string, Set<() => void>>()
-
-function useKeyboardShortcut(key: string, callback: () => void) {
-  // Register this callback in the Map
-  useEffect(() => {
-    if (!keyCallbacks.has(key)) {
-      keyCallbacks.set(key, new Set())
-    }
-    keyCallbacks.get(key)!.add(callback)
-
-    return () => {
-      const set = keyCallbacks.get(key)
-      if (set) {
-        set.delete(callback)
-        if (set.size === 0) {
-          keyCallbacks.delete(key)
-        }
-      }
-    }
-  }, [key, callback])
-
-  useSWRSubscription('global-keydown', () => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.metaKey && keyCallbacks.has(e.key)) {
-        keyCallbacks.get(e.key)!.forEach(cb => cb())
-      }
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  })
+const callbacks=new Map<string,Set<() => void>>()
+let subscriptions=0
+const onKeydown=(event:KeyboardEvent)=>{
+  if(event.metaKey)callbacks.get(event.key)?.forEach(callback=>callback())
 }
 
-function Profile() {
-  // Multiple shortcuts will share the same listener
-  useKeyboardShortcut('p', () => { /* ... */ }) 
-  useKeyboardShortcut('k', () => { /* ... */ })
-  // ...
+function useKeyboardShortcut(key:string,callback:()=>void){
+  useEffect(()=>{
+    const listeners=callbacks.get(key)??new Set<() => void>()
+    listeners.add(callback)
+    callbacks.set(key,listeners)
+    if(subscriptions++===0)window.addEventListener('keydown',onKeydown)
+    return ()=>{
+      listeners.delete(callback)
+      if(!listeners.size)callbacks.delete(key)
+      if(--subscriptions===0)window.removeEventListener('keydown',onKeydown)
+    }
+  },[key,callback])
 }
 ```
 
@@ -1483,57 +1444,28 @@ useEffect(() => {
 
 **Don't use passive when:** implementing custom swipe gestures, custom zoom controls, or any listener that needs `preventDefault()`.
 
-### 4.3 Use SWR for Automatic Deduplication
+### 4.3 Reuse LOC ZenStack Client Queries
 
-**Impact: MEDIUM-HIGH (automatic deduplication)**
+**Impact: MEDIUM-HIGH (one shared query lifecycle)**
 
-SWR enables request deduplication, caching, and revalidation across component instances.
-
-**Incorrect: no deduplication, each instance fetches**
+LOC uses the shared `zenstack/client-queries.js` QueryClient. Native request
+deduplication, infinite paging and invalidation replace duplicated browser
+fetch state. Do not install another frontend query library or add an unused
+generated model endpoint merely to reuse a hook.
 
 ```tsx
-function UserList() {
-  const [users, setUsers] = useState([])
-  useEffect(() => {
-    fetch('/api/users')
-      .then(r => r.json())
-      .then(setUsers)
-  }, [])
+import {useAsyncResource} from '@/zenstack/client-queries'
+
+function UserList(){
+  const {data:users,isPending}=useAsyncResource({
+    queryKey:['users'],queryFn:readUsers
+  })
+  return isPending?null:<UserListView users={users||[]}/>
 }
 ```
 
-**Correct: multiple instances share one request**
-
-```tsx
-import useSWR from 'swr'
-
-function UserList() {
-  const { data: users } = useSWR('/api/users', fetcher)
-}
-```
-
-**For immutable data:**
-
-```tsx
-import { useImmutableSWR } from '@/lib/swr'
-
-function StaticContent() {
-  const { data } = useImmutableSWR('/api/config', fetcher)
-}
-```
-
-**For mutations:**
-
-```tsx
-import { useSWRMutation } from 'swr/mutation'
-
-function UpdateButton() {
-  const { trigger } = useSWRMutation('/api/user', updateUser)
-  return <button onClick={() => trigger()}>Update</button>
-}
-```
-
-Reference: [https://swr.vercel.app](https://swr.vercel.app)
+Use existing query-client invalidation after writes, and keep Kysely DB access
+on the server. See `rules/client-zenstack-query-dedup.md`.
 
 ### 4.4 Version and Minimize localStorage Data
 

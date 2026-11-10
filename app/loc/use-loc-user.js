@@ -4,7 +4,7 @@ import {usePassiveSessionAccount} from './use-account';
 import {useAsyncResource} from './use-async-resource';
 import {loadOrCreateLocUser,saveLocUserField} from './loc-user-store.mjs';
 
-// Shared per-OAuth SWR resource. Guests make no request; a verified login
+// Shared per-OAuth ZenStack client resource. Guests make no request; a verified login
 // supplies the account ID. No automatic INSERT and no second email check.
 export default function useLocUser({verifiedSubject=''}={}){
   const account=usePassiveSessionAccount();

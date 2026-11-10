@@ -1,5 +1,5 @@
 // A protected entry must settle as verified, denied or failed. Returning a
-// permanently pending SWR state is not a valid authorization outcome.
+// permanently pending client-query state is not a valid authorization outcome.
 export async function verifyManagementEntry(refresh,{timeoutMs=12000}={}){
   if(typeof refresh!=='function')throw Error('管理權限核驗函式不存在');
   let timer;
