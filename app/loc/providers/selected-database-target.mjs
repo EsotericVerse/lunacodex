@@ -1,7 +1,7 @@
 // LOC database targets are provider-neutral: engine plus trusted SQL alias.
 import {SQL_ENGINE_OPTIONS} from './sql-engine-ports.mjs';
 export const DATABASE_ENGINES=Object.freeze(SQL_ENGINE_OPTIONS.map(entry=>entry.value));
-export const DATABASE_PROVIDERS=Object.freeze(['custom']);
+export const DATABASE_PROVIDERS=Object.freeze(['custom','direct','supabase','neon']);
 export const CONNECTION_MODES=Object.freeze(['direct','pooler']);
 const aliasPattern=/^[a-z][a-z0-9_-]{0,63}$/;
 const engines=new Set(DATABASE_ENGINES);
