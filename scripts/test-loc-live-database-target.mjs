@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {normalizeLiveTarget,runtimeTargetId} from '../app/loc/providers/live-database-target.mjs';
+import {normalizeLiveTarget,runtimeTargetId,registryRelationForEngine} from '../app/loc/providers/live-database-target.mjs';
 
 const profiles=[
  ['postgres',5432,'postgres:','silver'],
@@ -111,4 +111,16 @@ test('SSO Connection Secret can be rotated without changing the target or Projec
  assert.match(auth,/const password=validated\.password\|\|previous\?\.password\|\|''/);
  assert.match(auth,/encrypted:await encryptProfile\(profile,this\.env\.LOC_CONTROL_ENCRYPTION_KEY\)/);
  assert.doesNotMatch(ui,/localStorage\.setItem\([^)]*password/);
+});
+
+test('main registry permission relation uses each selected SQL Dialect',()=>{
+ assert.equal(registryRelationForEngine('postgres'),'api.manage');
+ assert.equal(registryRelationForEngine('mssql'),'api.manage');
+ assert.equal(registryRelationForEngine('mysql'),'manage');
+ assert.throws(()=>registryRelationForEngine('sqlite'),/Unsupported main SQL engine/);
+ const source=readFileSync(new URL('../functions/api/loc-authority-role.js',import.meta.url),'utf8');
+ assert.match(source,/registryRelationForEngine\(selected\.engine\)/);
+ assert.doesNotMatch(source,/selected\.engine!=='postgres'/);
+ const operation=readFileSync(new URL('../app/loc/mcp/native-operations.mjs',import.meta.url),'utf8');
+ assert.match(operation,/trx\.selectFrom\(registryRelationForEngine\(selected\.engine\)\)/);
 });
