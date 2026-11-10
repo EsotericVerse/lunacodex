@@ -35,7 +35,7 @@ test('the browser cannot write or choose a SQL connection',async()=>{
   }});
   assert.throws(()=>client.schema('silver').from('lo3rwang_galaxy')
     .insert({title:'private'}),/read only/);
-  await assert.rejects(client.schema('silver').from('lo3rwang_galaxy')
+  await assert.rejects(async()=>client.schema('silver').from('lo3rwang_galaxy')
     .select('uid').expectDatabase('external'),/signed LOC delegation/);
 });
 test('anonymous API rejects manage, personal data and arbitrary SQL before database access',async()=>{
