@@ -3,7 +3,8 @@ import {useEffect,useState} from 'react';
 import {mcpLocSession} from './mcp/loc-access.mjs';
 
 const AUTHORITY='https://auth.lo3rwang.cc';
-const EMPTY={id:'',label:'',engine:'',host:'',port:'',
+const DB_TYPES=[['direct','Direct SQL'],['supabase','Supabase API'],['neon','Neon API']];
+const EMPTY={id:'',label:'',db_type:'direct',project_id:'',provider_oauth:'',engine:'',host:'',port:'',
  database:'',schema_name:'silver',table_name:'',field_map:'{}',
  ref_provider:'',ref_permission:'',
  username:'',password:'',auth_type:'default',domain:'',
@@ -29,7 +30,8 @@ const NEEDS_CLIENT_ID=new Set(['azure-active-directory-password',
 function cleanForm(item){
  if(!item)return {...EMPTY};
  return {id:String(item.id||''),label:String(item.label||''),
-  engine:String(item.engine||''),host:String(item.host||''),
+  db_type:String(item.db_type||'direct'),project_id:String(item.project_id||''),
+  provider_oauth:'',engine:String(item.engine||''),host:String(item.host||''),
   port:String(item.port??''),database:String(item.database||''),
   schema_name:String(item.schema_name|| (item.engine==='mssql'?'dbo':item.engine==='mysql'?'':'silver')),
   table_name:String(item.table_name||''),field_map:JSON.stringify(item.field_map||{},null,2),
@@ -134,7 +136,14 @@ export default function LocDatabaseAdmin(){
    if(Object.entries(field_map).some(([logical,physical])=>
        !safe.test(logical)||typeof physical!=='string'||!safe.test(physical)))
      throw Error('欄位映射包含無效欄位');
-   const payload={engine:form.engine,label:form.label||form.id,
+   if(form.db_type!=='direct'&&form.engine!=='postgres')
+     throw Error('此供應商僅支援指定 PostgreSQL SQL Type');
+   if(form.db_type!=='direct'&&!/^[A-Za-z0-9_-]{1,80}$/.test(form.project_id))
+     throw Error('請輸入供應商 Project ID');
+   const payload={engine:form.engine,db_type:form.db_type,
+    project_id:form.db_type==='direct'?'':form.project_id,
+    ...(form.provider_oauth?{provider_oauth:form.provider_oauth}:{}),
+    label:form.label||form.id,
     schema_name:form.schema_name,table_name:form.table_name,field_map,
     ref_provider:form.ref_provider,ref_permission:form.ref_permission,
     host:form.host,port:Number(form.port),database:form.database,
@@ -144,7 +153,7 @@ export default function LocDatabaseAdmin(){
    await authority('PUT','/v1/targets/'+form.id,payload);
    const data=await authority('GET','/v1/state');
    setTargets((data?.targets||[]).filter(x=>x&&x.managed!==true&&x.id));
-   setForm(previous=>({...previous,password:'',client_secret:'',token:''}));
+   setForm(previous=>({...previous,password:'',provider_oauth:'',client_secret:'',token:''}));
    setDirty(false);
    setStatus('連線設定已由 LOC Auth 加密儲存。Connection Secret 可獨立輪替，不影響 Target ID；不需要重新部署。');
   }catch(error){
@@ -174,6 +183,26 @@ export default function LocDatabaseAdmin(){
     <input maxLength={120} value={form.label} disabled={busy}
       onChange={event=>change('label',event.target.value)}
       placeholder="Azure SQL 測試資料庫"/></label>
+   <label><span>資料庫供應商（db_type）</span>
+    <select className="scope-select" value={form.db_type} disabled={busy}
+     onChange={event=>{setDirty(true);setForm(previous=>({
+       ...previous,db_type:event.target.value,
+       project_id:'',provider_oauth:'',
+       ...(event.target.value!=='direct'?{engine:'postgres'}:{})
+     }));}}>
+     {DB_TYPES.map(([value,label])=><option key={value} value={value}>{label}</option>)}
+    </select>
+   </label>
+   {form.db_type!=='direct'?<>
+    <label><span>供應商 Project ID</span>
+     <input required value={form.project_id} disabled={busy}
+      onChange={event=>change('project_id',event.target.value)}
+      autoCapitalize="off" spellCheck={false}/></label>
+    <label><span>供應商 API OAuth／Token（已儲存可留空）</span>
+     <input type="password" value={form.provider_oauth} disabled={busy}
+      onChange={event=>change('provider_oauth',event.target.value)}
+      autoComplete="new-password"/></label>
+   </>:null}
    <label><span>SQL Type（必須明確指定）</span>
     <select className="scope-select" required value={form.engine} disabled={busy}
      onChange={event=>{
@@ -185,7 +214,8 @@ export default function LocDatabaseAdmin(){
         schema_name:engine==='mssql'?'dbo':engine==='mysql'?'':'silver'}));
      }}>
      <option value="">請選擇 SQL Type</option>
-     {ENGINES.map(([key,label])=><option key={key} value={key}>{label}</option>)}
+     {ENGINES.filter(([key])=>form.db_type==='direct'||key==='postgres')
+       .map(([key,label])=><option key={key} value={key}>{label}</option>)}
     </select>
    </label>
    <label><span>資料庫主機</span>
