@@ -5,7 +5,9 @@ import {issueDelegation,verifyDelegationBoundary,canManageDelegation}
   from '../app/loc/auth/delegation-contract.mjs';
 import {normalizeSqlDriverAuthentication,publicSqlDriverAuthentication,
   sqlAuthNeedsUserPassword} from '../app/loc/providers/sql-driver-auth.mjs';
-import {sqlTargetRevision} from '../workers/loc-authority/sql-source-gate.mjs';
+import {sqlTargetRevision,sqlSourceKey,reserveSqlProbe,finishSqlProbe,
+  sqlVerificationAllowed,SQL_PROBE_COOLDOWN_MS,SQL_PROBE_WINDOW_MS}
+  from '../workers/loc-authority/sql-source-gate.mjs';
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
 test('LOC Authority verifies only signed native login identities',()=>{
@@ -150,4 +152,75 @@ test('production registry tracing is in the existing authenticated route, not a 
   assert.ok(route.includes("return respond({error:'LOC registry read unavailable',stage,code,...roleProbe},503)"));
   assert.ok(role.includes('httpStatus:response.status,code,dbRole'));
   assert.doesNotMatch(route,/errorStack|errorCause|url\.searchParams\.get\('token'\)/);
+});
+
+test('SQL breaker shares one source across projects on the same server and port',async()=>{
+ const first=await sqlSourceKey({host:'DB.EXAMPLE.NET',port:6543});
+ const second=await sqlSourceKey({host:'db.example.net',port:6543});
+ const otherPort=await sqlSourceKey({host:'db.example.net',port:5432});
+ assert.equal(first,second);
+ assert.notEqual(first,otherPort);
+});
+
+test('one SQL login failure pauses its shared source immediately and retains hourly limit',()=>{
+ const now=1_700_000_000_000;
+ let start=reserveSqlProbe(null,now,'a');
+ assert.equal(start.allowed,true);
+ assert.equal(start.state.attempts,1);
+ const rejected=finishSqlProbe(start.state,'a',
+  {ok:false,reason:'AUTH_FAILED'},now+100);
+ assert.equal(rejected.accepted,true);
+ assert.equal(rejected.reason,'AUTH_FAILED');
+ assert.equal(rejected.state.last_update,now+100);
+ assert.equal(rejected.state.blockedUntil,now+100+SQL_PROBE_COOLDOWN_MS);
+ assert.equal(rejected.state.generation,1);
+ const paused=reserveSqlProbe(rejected.state,now+101,'b');
+ assert.equal(paused.allowed,false);
+ assert.equal(paused.reason,'SOURCE_PAUSED');
+ assert.equal(paused.retryAt,rejected.state.blockedUntil);
+ let afterCooldown=reserveSqlProbe(rejected.state,
+  now+100+SQL_PROBE_COOLDOWN_MS,'b');
+ assert.equal(afterCooldown.allowed,true);
+ assert.equal(afterCooldown.state.attempts,2);
+ let succeeded=finishSqlProbe(afterCooldown.state,'b',
+  {ok:true,typeVerified:true,credentialsVerified:true},
+  now+101+SQL_PROBE_COOLDOWN_MS);
+ assert.equal(succeeded.success,true);
+ const third=reserveSqlProbe(succeeded.state,now+102+SQL_PROBE_COOLDOWN_MS,'c');
+ assert.equal(third.allowed,true);
+ succeeded=finishSqlProbe(third.state,'c',
+  {ok:true,typeVerified:true,credentialsVerified:true},
+  now+103+SQL_PROBE_COOLDOWN_MS);
+ assert.equal(succeeded.success,true);
+ const blocked=reserveSqlProbe(succeeded.state,now+104+SQL_PROBE_COOLDOWN_MS,'d');
+ assert.equal(blocked.allowed,false);
+ assert.equal(blocked.reason,'PROBE_LIMIT');
+ assert.equal(blocked.retryAt,now+SQL_PROBE_WINDOW_MS);
+});
+
+test('expired SQL probe lease never grants an automatic retry',()=>{
+ const now=1_700_000_000_000;
+ const start=reserveSqlProbe(null,now,'ticket');
+ const expired=reserveSqlProbe(start.state,now+30_001,'new-ticket');
+ assert.equal(expired.allowed,false);
+ assert.equal(expired.reason,'SOURCE_PAUSED');
+ assert.equal(expired.state.last_update,now+30_001);
+ assert.equal(expired.state.generation,1);
+ assert.equal(expired.save,true);
+});
+
+test('SQL execution requires matched verification revision and breaker generation',()=>{
+ const now=1_700_000_000_000;
+ const source={blockedUntil:0,generation:2,inFlight:null};
+ const target={status:'verified',revision:'rev',generation:2};
+ assert.equal(sqlVerificationAllowed(source,target,'rev',now),true);
+ assert.equal(sqlVerificationAllowed({...source,blockedUntil:now+300000},
+  target,'rev',now),false);
+ assert.equal(sqlVerificationAllowed({...source,inFlight:'another-probe'},
+  target,'rev',now),false);
+ assert.equal(sqlVerificationAllowed({...source,generation:3},
+  target,'rev',now),false);
+ assert.equal(sqlVerificationAllowed(source,target,'changed',now),false);
+ assert.equal(sqlVerificationAllowed(source,{...target,status:'unverified'},
+  'rev',now),false);
 });
