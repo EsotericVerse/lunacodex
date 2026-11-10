@@ -200,7 +200,8 @@ test('active LOC browser and local providers have no SQL RPC transport',()=>{
     assert.doesNotMatch(code,/kind:\s*['"]rpc['"]/,path+' must not send an RPC request');
   }
   const bridge=readFileSync(new URL('../app/loc/providers/configured.mjs',import.meta.url),'utf8');
-  assert.match(bridge,/createDirectDataApiClient/);
+  assert.match(bridge,/createKyselyPublicClient/);
+  assert.doesNotMatch(bridge,/createDirectDataApiClient|rest\\/v1/);
 });
 
 test('unprovisioned Local Scope never falls through to remote SQL',()=>{
