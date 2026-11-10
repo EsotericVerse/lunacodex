@@ -80,6 +80,57 @@ async function authorizedProfile(env,alias,verifiedAlias,fetchImpl,probeTicket='
  if(probeTicket)throw fail('Trusted SQL profile service required for a manual probe');
  return localProfile(env,alias);
 }
+// Provider-specific official APIs live ONLY in db_connection. They prove
+// that the saved project is accessible to the authorized provider identity.
+// SQL host/port/credentials remain explicit and never come from a guessed
+// region, a browser request or an alternative SQL driver.
+const providerChecks=new WeakMap();
+async function checkProviderApi(env,profile,fetchImpl){
+ const type=String(profile.db_type||'direct');
+ if(type==='direct')return;
+ if(!['supabase','neon'].includes(type)||profile.engine!=='postgres')
+  throw fail('Invalid SQL database provider or SQL Type');
+ const project=String(profile.project_id||'');
+ const token=String(profile.provider_oauth||'');
+ if(!/^[A-Za-z0-9_-]{1,80}$/.test(project)||!token||/[\\r\\n]/.test(token))
+  throw fail('Authorized provider API project and OAuth are required');
+ let cache=providerChecks.get(env);
+ if(!cache){cache=new Map();providerChecks.set(env,cache)}
+ const key=type+'|'+project+'|'+token;
+ const existing=cache.get(key);
+ if(existing&&existing.until>Date.now()){
+  if(existing.error)throw fail(existing.error);
+  return existing.promise;
+ }
+ const url=type==='supabase'
+  ?'https://api.supabase.com/v1/projects'
+  :'https://console.neon.tech/api/v2/projects/'+encodeURIComponent(project);
+ const pending=(async()=>{
+  let response;
+  try{
+   response=await fetchImpl(url,{method:'GET',
+    headers:{authorization:'Bearer '+token,accept:'application/json'},
+    redirect:'manual',cache:'no-store',signal:AbortSignal.timeout(7000)});
+  }catch{throw fail('Provider API unavailable')}
+  if(!response.ok)throw fail('Provider API rejected ('+response.status+')');
+  const data=await response.json().catch(()=>null);
+  const valid=type==='supabase'
+   ?Array.isArray(data)&&data.some(item=>item&&
+     (item.ref===project||item.id===project))
+   :data?.project?.id===project;
+  if(!valid)throw fail('Provider API project is not authorized');
+ })();
+ cache.set(key,{promise:pending,until:Date.now()+120000});
+ try{
+  await pending;
+  // Bound the isolate-local memo; it contains no public or persistent token.
+  if(cache.size>16)cache.clear();
+ }catch(error){
+  cache.set(key,{error:String(error.message||'Provider API unavailable'),
+   until:Date.now()+300000});
+  throw error;
+ }
+}
 function validateProfile(env,profile,verifiedAlias){
  const engine=String(profile.engine||'');
  if(!['postgres','mysql','mssql'].includes(engine))
@@ -172,6 +223,8 @@ export async function db_connection(env={},verifiedAlias='',{
   throw fail('Invalid one-time SQL verification ticket');
  const alias=trustedAlias(env,verifiedAlias);
  const profile=await authorizedProfile(env,alias,verifiedAlias,fetchImpl,probeTicket);
+ // This reads only provider metadata. It never opens or probes a SQL socket.
+ await checkProviderApi(env,profile,fetchImpl);
  const input=validateProfile(env,profile,verifiedAlias);
  const {engine,namespace,tableName,fieldMap}=input;
  const key=alias+'|'+engine+'|'+profile.url+'|'+profile.tls+'|'+namespace+
