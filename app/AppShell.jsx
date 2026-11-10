@@ -3,7 +3,7 @@
 import {useEffect,useLayoutEffect,useMemo,useRef,useState,useSyncExternalStore} from 'react';
 import dynamic from 'next/dynamic';
 import {Capacitor} from '@capacitor/core';
-import {SWRConfig,useSWRConfig} from 'swr';
+import {QueryClient,QueryClientProvider,useQueryClient} from '@tanstack/react-query';
 import {translateUiField,UI_COPY,UI_LOCALE_OPTIONS,normalizeUiLocale,uiCopy,registerDefaultSection,isSectionLoaded,loadSection} from './i18n/ui-copy';
 import {UiLocaleProvider,useLoadedUiLocale,useUiLocale,useUiSection} from './i18n/ui-locale';
 import FieldText from './i18n/FieldText';
@@ -259,19 +259,17 @@ function NavTarget({href,label,current=false,native=false}){
 // The provider must sit ABOVE the component that calls useAppBootstrap, so it
 // lives in this thin wrapper (a hook cannot read a provider rendered by itself).
 export default function AppShell({children}){
-  return <SWRConfig value={{
-    // Read when a feature first opens; never poll or revalidate just because
-    // the tab focused/reconnected. Writes trigger explicit mutate calls.
-    revalidateOnFocus:false,
-    revalidateOnReconnect:false,
-    revalidateIfStale:false,
-    refreshInterval:0,
-    shouldRetryOnError:false
-  }}><EditDockProvider><AppShellInner>{children}</AppShellInner></EditDockProvider></SWRConfig>;
+  const [client]=useState(()=>new QueryClient({
+    defaultOptions:{queries:{
+      staleTime:Infinity,refetchOnWindowFocus:false,
+      refetchOnReconnect:false,retry:false
+    }}
+  }));
+  return <QueryClientProvider client={client}><EditDockProvider><AppShellInner>{children}</AppShellInner></EditDockProvider></QueryClientProvider>;
 }
 
 function AppShellInner({children}){
-  const {mutate}=useSWRConfig();
+  const queryClient=useQueryClient();
   useEffect(()=>{
     // Public Blocks, images and versioned static assets only. Authenticated
     // reads, SQL, searches and ISR numerics never enter the browser cache.
@@ -282,15 +280,15 @@ function AppShellInner({children}){
   // Administrative Scope metadata updates must refresh the same SWR
   // snapshot consumed by the shell, runtime, and Guest feature pages.
   useEffect(()=>{
-    const refresh=()=>mutate(key=>Array.isArray(key)&&key[0]==='app-bootstrap');
-    const refreshLocal=()=>mutate(key=>Array.isArray(key)&&key.some(part=>part==='local'||(typeof part==='string'&&part.startsWith('silver.local_'))));
+    const refresh=()=>queryClient.invalidateQueries({queryKey:['app-bootstrap']});
+    const refreshLocal=()=>queryClient.invalidateQueries({predicate:query=>Array.isArray(query.queryKey)&&query.queryKey.some(part=>part==='local'||(typeof part==='string'&&part.startsWith('silver.local_')))});
     window.addEventListener('loc-public-scope-metadata-changed',refresh);
     window.addEventListener('loc-local-data-changed',refreshLocal);
     return()=>{
       window.removeEventListener('loc-public-scope-metadata-changed',refresh);
       window.removeEventListener('loc-local-data-changed',refreshLocal);
     };
-  },[mutate]);
+  },[queryClient]);
   const {scopeId,scope,host,pathname,registryRow,configRow}=useScopeRuntime();
   const protectedEditorRoute=isManagementHref(pathname)||/^\/admin(?:\/|$)/i.test(String(pathname||''));
   // Reconcile the public three-mode policy on initial load and route changes.
@@ -386,7 +384,7 @@ function AppShellInner({children}){
   const [openFolderId,setOpenFolderId]=useState('');
   // Registry, NAV titles and Themes share one site snapshot across pages.
   // Scope config and page blocks load separately when first needed.
-  // Components using the same (scopeId, pageName) SWR key share it.
+  // Components using the same (scopeId, pageName) ZenStack query key share one read.
   const bootstrap=useAppBootstrap(scopeId,pageName);
   const registryScopes=bootstrap.data?.registry||[];
   const registryLoaded=bootstrap.isSuccess||bootstrap.isError;
