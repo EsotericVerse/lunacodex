@@ -74,7 +74,7 @@ test('runtime settings use the existing api.manage table; native four-way work i
   const runtime=read('app/loc/runtime-config.mjs');
   assert.match(runtime,/client\.schema\('api'\)\.from\('manage'\)/);
   assert.doesNotMatch(runtime,/schema\('silver'\)\.from\('manage'\)/);
-  const driver=read('app/loc/providers/kysely-database-drivers.ts');
+  const driver=read('app/loc/mcp/native-kysely.mjs');
   for(const dialect of ['PostgresDialect','MysqlDialect','MssqlDialect'])
     assert.ok(driver.includes(dialect),'Missing portable '+dialect);
   const browser=read('app/loc/providers/configured.mjs');
