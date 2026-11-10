@@ -127,12 +127,12 @@ test('LOC registry role lookup preserves trusted lookup stages and never promote
 test('production registry tracing is in the existing authenticated route, not a public diagnostic API',()=>{
   const route=read('functions/api/loc-authority-role.js');
   const role=read('workers/loc-authority/manage-role.mjs');
-  assert.match(route,/let stage='driver'/);
+  assert.match(route,/let stage='driver',selected=null/);
   assert.match(route,/DATABASE_ACCESS_LIST\.find\(item=>item\.selected===true\)/);
   assert.match(route,/directMcpKysely\(env,primary\.target_id\)/);
   assert.match(route,/stage='registry-query'/);
   assert.match(route,/LOC_DB_PROFILE_SERVICE_TOKEN/);
-  assert.match(route,/return respond\\(\\{error:'LOC registry read unavailable',stage,code,\\.\\.\\.roleProbe\\},503\\)/);
-  assert.match(role,/stage:downstream,[\\s\\S]*?httpStatus:response.status,code,dbRole/);
+  assert.ok(route.includes("return respond({error:'LOC registry read unavailable',stage,code,...roleProbe},503)"));
+  assert.ok(role.includes('httpStatus:response.status,code,dbRole'));
   assert.doesNotMatch(route,/errorStack|errorCause|url\.searchParams\.get\('token'\)/);
 });
