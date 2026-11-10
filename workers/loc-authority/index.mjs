@@ -52,6 +52,14 @@ function requireSetup(env){
 function validateTarget(input,id){
   if(!ID.test(id)||!input||typeof input!=='object'||Array.isArray(input))throw fail('Invalid target');
   const engine=String(input.engine||'');
+  const db_type=String(input.db_type||'direct');
+  const project_id=String(input.project_id||'').trim();
+  const provider_oauth=String(input.provider_oauth||'');
+  if(!['direct','supabase','neon'].includes(db_type)||
+     db_type!=='direct'&&(engine!=='postgres'||
+       !/^[A-Za-z0-9_-]{1,80}$/.test(project_id))||
+     provider_oauth.length>4096)
+    throw fail('Invalid database provider or project');
   const host=String(input.host||'').trim().toLowerCase();
   const database=String(input.database||'').trim();
   const username=String(input.username||'').trim();
@@ -93,7 +101,8 @@ function validateTarget(input,id){
  if(!Array.isArray(allowedSubjects)||allowedSubjects.length>500||
     allowedSubjects.some(x=>!/^loc_[A-Za-z0-9_-]{32,80}$/.test(String(x))))
    throw fail('Invalid database allowed subjects');
- return {id,engine,host,port,database,username,label,authentication,
+ return {id,engine,db_type,project_id,host,port,database,username,label,authentication,
+  ...(provider_oauth?{provider_oauth}:{}),
   ref_provider:refProvider,ref_permission:refPermission,
   schema_name:schemaName,table_name:tableName,field_map:columns,
   selectable_by_users:selectableByUsers,
@@ -465,18 +474,28 @@ export class LocAuthorityState extends DurableObject {
     const authentication=incoming===undefined
       ?previous?.authentication
       :{...priorAuth,...incoming};
+    const db_type=String(input?.db_type||previous?.db_type||'direct');
+    const project_id=String(input?.project_id??previous?.project_id??'');
+    // Switching providers must never reuse a different provider's OAuth proof.
+    const sameProvider=db_type===(previous?.db_type||'direct')&&
+      project_id===(previous?.project_id||'');
+    const provider_oauth=String(input?.provider_oauth||
+      (sameProvider?previous?.provider_oauth:'')||'');
     const validated=validateTarget({
-      ...input,authentication,
+      ...input,db_type,project_id,provider_oauth,authentication,
       selectable_by_users:input?.selectable_by_users??
         old?.public?.selectable_by_users??false,
       allowed_subjects:input?.allowed_subjects??old?.public?.allowed_subjects??[]
     },id);
+    if(db_type!=='direct'&&!provider_oauth)
+      throw fail('Provider API authorization is required');
     const password=validated.password||previous?.password||'';
     if(sqlAuthNeedsUserPassword(validated.authentication)&&!password)
       throw fail('New SQL target requires its database password');
     const profile={...validated,...(password?{password}:{})};
     // Never put a Token or Client Secret into unencrypted/public DO metadata.
-    const {password:_password,authentication:internalAuth,...fields}=profile;
+    const {password:_password,provider_oauth:_providerOAuth,
+      authentication:internalAuth,...fields}=profile;
     const publicFields={...fields,
       authentication:publicSqlDriverAuthentication(internalAuth)};
     // Any changed SQL connection credentials or endpoint invalidate the prior
