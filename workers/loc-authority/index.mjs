@@ -379,7 +379,12 @@ export class LocAuthorityState extends DurableObject {
   async trustedDatabaseProfile(id){
     if(!ID.test(String(id||'')))throw fail('Invalid database target',400);
     const saved=await this.ctx.storage.get('target:'+id);
-    if(!saved)throw fail('Database target not configured',404);
+    if(!saved){
+      const available=[...(await this.ctx.storage.list({prefix:'target:'})).keys()]
+        .map(key=>key.slice('target:'.length));
+      console.error('[LOC SQL target missing]',{requested:id,available});
+      throw fail('Database target not configured',404);
+    }
     return decryptProfile(saved.encrypted,this.env.LOC_CONTROL_ENCRYPTION_KEY);
   }
   async putTarget(id,input){
