@@ -54,22 +54,6 @@ export function federatedDatasetsFor(raw,scopeId){
     return Object.freeze({databaseId:entry.databaseId,target});
   });
 }
-/**
- * Associate post-commit index writes with the exact user-defined databaseId
- * for the physical SQL connection that just committed. Without this, the
- * primary connection's alias would write an orphan KV index under a different
- * identity from DB1/DB2's backfill. A configured registry with no matching
- * alias deliberately skips indexing rather than inventing a data source.
- */
-export function indexTargetForScope(raw,scopeId,target){
-  if(!target||!SCOPE.test(String(scopeId||'')))return null;
-  const registered=federatedDatasetsFor(raw,scopeId);
-  if(!registered.length)return target;
-  const match=registered.find(item=>
-    item.target.connection_alias===target.connection_alias&&
-    item.target.engine===target.engine);
-  return match?.target||null;
-}
 export function federatedScopeFromQuery(body){
   if(body?.kind!=='query'||body.operation!=='select'||
      body.schema!=='silver'||typeof body.table!=='string')return '';
@@ -78,7 +62,7 @@ export function federatedScopeFromQuery(body){
 }
 export function isFederatedTextSearch(body){
   const scopeId=federatedScopeFromQuery(body);
-  return Boolean(scopeId&&body.indexHint?.scopeId===scopeId&&
+  return Boolean(scopeId&&
     !body.head&&!body.count&&isTextSearchQuery(body)&&
     Array.isArray(body.columns)&&
     Array.isArray(body.orders)&&body.orders.length===1&&
@@ -144,8 +128,7 @@ export async function mergeFederatedGalaxyRows(sources,request,readPage){
     if(state.position<state.queue.length||state.exhausted)return;
     const rows=await readPage(state.source,{
       ...request,offset:state.offset,limit:BATCH,federatedNullsLast:true,
-      // Original text predicate, source/date and publication filters stay
-      // attached to every per-dataset query. The index is only a candidate.
+      // Original text, source/date and publication filters stay attached.
     });
     if(!Array.isArray(rows)||rows.length>BATCH)
       throw Error('Invalid bounded federated SQL page');

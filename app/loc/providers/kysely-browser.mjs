@@ -57,7 +57,6 @@ class Query {
   }
   single(){this.cardinality='single';return this}
   maybeSingle(){this.cardinality='maybeSingle';return this}
-  searchIndex(){return this}
   expectDatabase(id){this.dbId=String(id||'');return this}
   abortSignal(signal){this.signal=signal;return this}
   insert(rows){if(!this.mutate)return noWrite();this.operation='insert';this.values=rows;return this}

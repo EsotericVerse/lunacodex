@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  federatedDatasetsFor,indexTargetForScope,federatedScopeFromQuery,isFederatedTextSearch,
+  federatedDatasetsFor,federatedScopeFromQuery,isFederatedTextSearch,
   isDatasetQualifiedArticleRead,publicGalaxyGate,mergeFederatedGalaxyRows
 } from '../app/loc/providers/federated-galaxy-search.mjs';
 import {locGlobalUid} from '../zenstack/global-identity.mjs';
@@ -18,7 +18,7 @@ const request=(offset=0,limit=21,descending=false)=>({
     {column:'content',operator:'contains',value:'時間定錨'}
   ],
   or:[],orders:[{column:'date',ascending:!descending}],
-  offset,limit,indexHint:{scopeId:'lo3rwang',query:'時間定錨'}
+  offset,limit
 });
 const rows={
   db1:[
@@ -45,20 +45,6 @@ test('trusted registry is generic across SQL engines and separates DB identity f
   assert.equal(federatedDatasetsFor('', 'lo3rwang').length,0);
   assert.deepEqual(federatedDatasetsFor(registry,'lrunes'),[]);
 });
-test('all post-commit index updates use their stable registered databaseId',()=>{
-  const target=indexTargetForScope(registry,'lo3rwang',
-    {connection_alias:'archive',engine:'mysql',provider:'custom'});
-  assert.equal(target.dataset_id,'db1');
-  assert.equal(target.connection_alias,'archive');
-  const different=indexTargetForScope(registry,'lo3rwang',
-    {connection_alias:'recent',engine:'postgres',provider:'custom'});
-  assert.equal(different.dataset_id,'db2');
-  assert.equal(indexTargetForScope(registry,'lo3rwang',
-    {connection_alias:'unregistered',engine:'mysql',provider:'custom'}),null);
-  const existing={connection_alias:'supabase_current',engine:'postgres'};
-  assert.equal(indexTargetForScope('', 'lo3rwang',existing),existing);
-});
-
 test('invalid or colliding dataset registrations are rejected',()=>{
   assert.throws(()=>federatedDatasetsFor('{oops','lo3rwang'),/Invalid federated/);
   assert.throws(()=>federatedDatasetsFor(JSON.stringify({lo3rwang:[
@@ -76,7 +62,7 @@ test('invalid or colliding dataset registrations are rejected',()=>{
 test('federated text and qualified exact-UID reads are separate actions',()=>{
   assert.equal(federatedScopeFromQuery(request()),'lo3rwang');
   assert.equal(isFederatedTextSearch(request()),true);
-  assert.equal(isFederatedTextSearch({...request(),indexHint:null}),false);
+  assert.equal(isFederatedTextSearch({...request(),head:true}),false);
   assert.equal(isFederatedTextSearch({...request(),filters:[]}),false);
   assert.equal(isDatasetQualifiedArticleRead({
     kind:'query',operation:'select',schema:'silver',table:'lo3rwang_galaxy',
