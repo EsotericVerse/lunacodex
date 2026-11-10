@@ -8,9 +8,11 @@ import {processShortImport,portableShortImportStore} from '../import/short-appen
 import {executePortableMcp} from '../providers/kysely-mcp.mjs';
 import {bindLocAuthorization,canManageLoc} from '../providers/loc-authorization.mjs';
 import {executeManagedKyselyWrite,executeManagedKyselyAction} from '../providers/kysely-management.mjs';
+import {executeCrossEngineManagedWrite} from '../providers/sql-engine-ports.mjs';
 import {executeLocPersonal} from '../providers/kysely-personal.mjs';
 import {directMcpKysely} from './native-kysely.mjs';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
+import {registryRelationForEngine} from '../providers/live-database-target.mjs';
 import {withFixedPolicyWrite} from '../../../zenstack/policy-runtime.mjs';
 import {ZenStackClient} from '@zenstackhq/orm';
 import {PolicyPlugin} from '@zenstackhq/plugin-policy';
@@ -184,13 +186,39 @@ export async function handleNativeLocOperation(request,env={},{
     }
     if(body.kind==='managed-write'||body.kind==='managed-action'){
       if(selected.tableName)throw refusal('External mapped tables are read only',403);
-      if(selected.engine!=='postgres')throw refusal('LOC management writer needs a PostgreSQL control database',503);
       if(!claims.grants?.some(grant=>grant==='global:manage'||grant.endsWith(':manage')))
         throw refusal('LOC management delegation required',403);
+      // PostgreSQL fixed-model mutations keep the existing ZenStack policy
+      // path. For a non-PostgreSQL MAIN database, use the already installed
+      // portable Kysely writer only after rechecking api.manage in the same
+      // transaction. Neither external targets nor arbitrary SQL are writable.
+      const payload=body.payload||{};
+      if(selected.engine!=='postgres'){
+        if(body.kind!=='managed-write')
+          throw refusal('This LOC management action needs a portable implementation',503);
+        const row=await selected.db.transaction().execute(async trx=>{
+          bindLocAuthorization(trx,{role:claims.role,claims,engine:selected.engine});
+          if(payload.p_table==='api.manage'){
+            if(!claims.grants.includes('global:manage')||
+                !await canManageLoc(trx,'global'))
+              throw refusal('LOC Registry management permission denied',403);
+            if(!['update','delete'].includes(payload.p_operation))
+              throw refusal('Registry mutation requires a fixed operation',403);
+            if(!Array.isArray(payload.p_filters)||!payload.p_filters.length)
+              throw refusal('Unsafe unfiltered managed write',400);
+            return applyManagedWrite(trx,
+              registryRelationForEngine(selected.engine),payload);
+          }
+          return (await executeCrossEngineManagedWrite(trx,body,{
+            engine:selected.engine,namespace:selected.namespace,
+            role:claims.role,claims
+          })).data;
+        });
+        return reply({data:row});
+      }
       // Keep the fixed-model ZenStack policy path for UPDATE and DELETE.
       // All other known LOC tables use the existing Kysely management
       // executor, with the signed principal bound to this transaction.
-      const payload=body.payload||{};
       const fixed=body.kind==='managed-write'&&
         ['api.manage','silver.loc'].includes(payload.p_table)&&
         ['update','delete'].includes(payload.p_operation);
@@ -212,7 +240,7 @@ export async function handleNativeLocOperation(request,env={},{
         return reply({data:row});
       }
       const row=await selected.db.transaction().execute(async trx=>{
-        bindLocAuthorization(trx,{role:claims.role,claims});
+        bindLocAuthorization(trx,{role:claims.role,claims,engine:selected.engine});
         return body.kind==='managed-write'
           ?(await executeManagedKyselyWrite(trx,body)).data
           :(await executeManagedKyselyAction(trx,body,claims)).data;
@@ -225,12 +253,12 @@ export async function handleNativeLocOperation(request,env={},{
     // MCP sync/append use the existing Kysely driver, with one SQL
     // transaction for both live Registry verification and the write.
     if(body.kind==='mcp-sync'||body.kind==='mcp-append'){
-      if(selected.engine!=='postgres'||selected.tableName)
+      if(selected.tableName)
         throw refusal('LOC MCP control database is unavailable for writing',503);
       const email=String(claims.email||'').trim().toLowerCase();
       if(!EMAIL.test(email))throw refusal('Verified MCP writer email required',403);
       const result=await selected.db.transaction().execute(async trx=>{
-        const owner=await trx.selectFrom('api.manage')
+        const owner=await trx.selectFrom(registryRelationForEngine(selected.engine))
           .select('id').where(eb=>eb.fn('lower',['email']),'=',email)
           .where('manage_role','=','admin').where('active','=',true)
           .limit(1).executeTakeFirst();

@@ -122,14 +122,15 @@ export default function LocDatabaseAdmin(){
    const data=await authority('GET','/v1/state');
    setTargets((data?.targets||[]).filter(x=>x&&x.managed!==true&&x.id));
    setForm(previous=>({...previous,password:'',client_secret:'',token:''}));
-   setStatus('連線設定已由 LOC Auth 加密儲存。使用者可立即選擇；不需要重新部署。');
+   setStatus('連線設定已由 LOC Auth 加密儲存。Connection Secret 可獨立輪替，不影響 Target ID；不需要重新部署。');
   }catch(error){
    setStatus(String(error?.message||error));
   }finally{setBusy(false);}
  };
  return <section className="loc-card" aria-label="管理資料庫連線">
   <h2>管理可供使用者選擇的資料庫</h2>
-  <p className="scope-status">只有 LOC 管理者能新增連線及開放選擇。資料庫密碼只傳往 LOC Auth 加密儲存，不會存於網站或 Git。</p>
+  <p className="scope-status">只有 LOC 管理者能新增連線及開放選擇。Connection Secret 只傳往 LOC Auth 加密儲存，不會存於網站或 Git。</p>
+  <p className="scope-status">建議定期檢視並主動輪替 Connection Secret；若疑似外洩，請立即更換並撤銷舊憑證。輪替只更改連線憑證，不會變更 Target ID、Project ID、SQL Type、Domain、Port 或原有 SSO 授權。輪替後應確認新連線成功，再停用舊憑證。</p>
   <label><span>編輯既有連線</span>
    <select className="scope-select" value={targets.some(x=>x.id===form.id)?form.id:''}
     onChange={event=>editId(event.target.value)} disabled={busy}>
@@ -211,7 +212,7 @@ export default function LocDatabaseAdmin(){
     <input required={PASSWORD_AUTH.has(form.auth_type)}
       value={form.username} disabled={busy}
       onChange={event=>change('username',event.target.value)} autoComplete="off"/></label>
-   <label><span>資料庫密碼（修改既有連線可留空）</span>
+   <label><span>Connection Secret／資料庫密碼（可單獨輪替；留空則沿用既有值）</span>
     <input type="password" value={form.password} disabled={busy}
       onChange={event=>change('password',event.target.value)} autoComplete="new-password"/></label>
    {form.auth_type==='ntlm'?<label><span>Windows 網域（NTLM）</span>

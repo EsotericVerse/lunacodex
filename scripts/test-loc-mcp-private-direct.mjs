@@ -81,5 +81,7 @@ test('private read path contains no HTTP SQL Gateway or database credential forw
  assert.doesNotMatch(source,/LOC_SQL_GATEWAY_URL|\/v1\/sql|sql_gateway|gatewayUrl/);
  assert.match(source,/executePortableMcp\(selected\.db,body/);
  assert.match(auth,/direct-permit/);
- assert.match(auth,/MCP Scope grant denied/);
+ // LOC public reads remain available without extra Scope grants, while
+ // Auth still binds the selected database and never forwards its credentials.
+ assert.match(auth,/selectedDatabaseForDelegation\(principal\.subject,root\)/);
 });

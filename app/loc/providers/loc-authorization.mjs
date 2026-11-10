@@ -1,3 +1,4 @@
+import {registryRelationForEngine} from './live-database-target.mjs';
 // LOC OAuth verifies the person. The signed delegation and api.manage
 // determine database management authority; neither a client email nor a
 // database role alone authorizes a write.
@@ -8,16 +9,17 @@ const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 function deny(message='LOC management permission denied'){
   throw Object.assign(new Error(message),{httpStatus:403});
 }
-export function bindLocAuthorization(db,{role='anon',claims={}}={}){
+export function bindLocAuthorization(db,{role='anon',claims={},engine='postgres'}={}){
   if(!db||typeof db.selectFrom!=='function')throw new Error('Invalid Kysely transaction');
   if(role==='authenticated'&&(
     claims?.provider!=='loc'||claims?.me!==true||!SUBJECT.test(String(claims?.sub||''))||
     !EMAIL.test(String(claims?.email||'').trim().toLowerCase())||
     !Array.isArray(claims.grants)))
     deny('Verified LOC delegation required');
-  sessions.set(db,{role,claims,email:String(claims?.email||'').trim().toLowerCase(),registry:null});
+  sessions.set(db,{role,claims,email:String(claims?.email||'').trim().toLowerCase(),
+    registry:null,registryRelation:registryRelationForEngine(engine)});
 }
-async function registryFor(db,state,registryRelation='api.manage'){
+async function registryFor(db,state,registryRelation=state.registryRelation){
   if(!state.registry)state.registry=db.selectFrom(registryRelation)
     .select(['id','manage_role','active'])
     .where(db.fn('lower',['email']),'=',state.email).execute();
@@ -33,14 +35,14 @@ export async function locPermissions(db){
     .where(db.fn('lower',['m.email']),'=',state.email).execute();
   return {blocked:false,rows};
 }
-export async function canManageLoc(db,type,id='',registryRelation='api.manage'){
+export async function canManageLoc(db,type,id='',registryRelation=null){
   const state=sessions.get(db);
   if(!state||state.role!=='authenticated')return false;
   const kind=String(type||'').toLowerCase(),scope=String(id||'').toLowerCase();
   if(!['global','scope','group'].includes(kind)||
      kind!=='global'&&!SCOPE.test(scope))return false;
   const grants=state.claims.grants;
-  const rows=await registryFor(db,state,registryRelation);
+  const rows=await registryFor(db,state,registryRelation||state.registryRelation);
   // Admin must come from the database, AND LOC Auth must have signed
   // the global grant. An inactive scope never becomes an implicit permission.
   const admin=grants.includes('global:manage')&&rows.some(row=>

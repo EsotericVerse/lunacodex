@@ -58,3 +58,13 @@ export function runtimeTargetId(claims){
   throw Error('Invalid LOC-authorized database selection');
  return id;
 }
+
+// The fixed LOC control contract lives in the selected main database.
+// PostgreSQL / SQL Server have SQL schemas; MySQL uses its selected database
+// and an unqualified table. Never use the external article field mapping to
+// resolve the control registry or let a caller choose this relation.
+export function registryRelationForEngine(engine){
+ if(engine==='mysql')return 'manage';
+ if(engine==='postgres'||engine==='mssql')return 'api.manage';
+ throw Error('Unsupported main SQL engine');
+}

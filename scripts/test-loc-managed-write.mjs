@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {webcrypto} from 'node:crypto';
-import {Kysely,DummyDriver,PostgresAdapter,PostgresIntrospector,PostgresQueryCompiler} from 'kysely';
+import {Kysely,DummyDriver,PostgresAdapter,PostgresIntrospector,PostgresQueryCompiler,
+ MysqlAdapter,MysqlIntrospector,MysqlQueryCompiler,
+ MssqlAdapter,MssqlIntrospector,MssqlQueryCompiler} from 'kysely';
 import {issueDelegation} from '../app/loc/auth/delegation-contract.mjs';
 import {handleNativeLocOperation} from '../app/loc/mcp/native-operations.mjs';
 
@@ -210,3 +212,66 @@ test('Selected loc-main remains writable for signed MCP and external targets rem
   assert.equal(rejected.status,403);
   await db.destroy();
 });
+
+function portableMainTestDialect(engine,{registryRows=[{id:'lo3rwang',manage_role:'admin',active:true}]}={}){
+ const executed=[],driver=new DummyDriver();
+ const acquire=driver.acquireConnection.bind(driver);
+ driver.acquireConnection=async()=>{
+  const connection=await acquire();
+  connection.executeQuery=async compiled=>{
+   executed.push(compiled);
+   const registry=engine==='mysql'?/from `manage`/i:/from "api"\."manage"/i;
+   if(/^select\s/i.test(compiled.sql)&&registry.test(compiled.sql))
+    return {rows:registryRows,numAffectedRows:0n};
+   return {rows:[],numAffectedRows:1n};
+  };
+  return connection;
+ };
+ const dialect=engine==='mysql'
+  ?{createDriver:()=>driver,createAdapter:()=>new MysqlAdapter(),
+    createIntrospector:db=>new MysqlIntrospector(db),
+    createQueryCompiler:()=>new MysqlQueryCompiler()}
+  :{createDriver:()=>driver,createAdapter:()=>new MssqlAdapter(),
+    createIntrospector:db=>new MssqlIntrospector(db),
+    createQueryCompiler:()=>new MssqlQueryCompiler()};
+ return {dialect,executed};
+}
+
+for(const engine of ['mysql','mssql']){
+ test(engine+' main SQL Dialect uses current api.manage authority before LOC writes',async()=>{
+  const now=Math.floor(Date.now()/1000);
+  const {token,fetchImpl}=await ownerDelegation(now,['global:manage']);
+  const {dialect,executed}=portableMainTestDialect(engine);
+  const db=new Kysely({dialect});
+  const body={kind:'managed-write',scopeid:'',payload:{
+   p_table:'silver.loc',p_operation:'update',
+   p_values:{display_name:'Model port test'},
+   p_filters:[{column:'id',operator:'eq',value:'lo3rwang'}]
+  }};
+  const response=await handleNativeLocOperation(request(body,token),{},{
+   fetchImpl,database:async()=>({engine,
+    namespace:engine==='mysql'?'':'dbo',db})
+  });
+  assert.equal(response.status,200,await response.text().catch(()=>''));
+  assert.ok(executed.some(x=>/select\s/i.test(x.sql)&&/manage/i.test(x.sql)));
+  assert.ok(executed.some(x=>/update\s/i.test(x.sql)&&/loc/i.test(x.sql)));
+  await db.destroy();
+ });
+ test(engine+' revoked api.manage owner cannot mutate the main SQL database',async()=>{
+  const now=Math.floor(Date.now()/1000);
+  const {token,fetchImpl}=await ownerDelegation(now,['global:manage']);
+  const {dialect,executed}=portableMainTestDialect(engine,{registryRows:[]});
+  const db=new Kysely({dialect});
+  const body={kind:'managed-write',scopeid:'',payload:{
+   p_table:'silver.loc',p_operation:'update',p_values:{display_name:'No'},
+   p_filters:[{column:'id',operator:'eq',value:'lo3rwang'}]
+  }};
+  const response=await handleNativeLocOperation(request(body,token),{},{
+   fetchImpl,database:async()=>({engine,
+    namespace:engine==='mysql'?'':'dbo',db})
+  });
+  assert.equal(response.status,403);
+  assert.equal(executed.some(x=>/^update\s/i.test(x.sql)),false);
+  await db.destroy();
+ });
+}

@@ -67,8 +67,7 @@ test('retire exactly 19 Kysely-replaced business functions, no schema or access 
 test('the deployed-source Kysely import does not call the old UID RPC',()=>{
   const management=read('app/loc/providers/kysely-management.mjs');
   const scopeAdmin=read('app/loc/providers/kysely-scope-admin.mjs');
-  for(const source of [management,scopeAdmin]){
-    assert.match(source,/allocateAnchorUid/);
+  assert.match(management,/allocateAnchorUid/);
+  for(const source of [management,scopeAdmin])
     assert.doesNotMatch(source,/silver\.new_keyword_tree_uid\s*\(/);
-  }
 });

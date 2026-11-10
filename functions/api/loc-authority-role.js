@@ -2,6 +2,8 @@
 // the LOC Pages application supplies the existing database facts via Kysely.
 // MCP is not involved, and no arbitrary SQL or database table is exposed.
 import {directMcpKysely} from '../../app/loc/mcp/native-kysely.mjs';
+import {registryRelationForEngine} from '../../app/loc/providers/live-database-target.mjs';
+import {DATABASE_ACCESS_LIST} from '../../app/loc/providers/access.js';
 
 const HEADERS={'content-type':'application/json; charset=utf-8',
   'cache-control':'no-store','x-content-type-options':'nosniff'};
@@ -22,11 +24,19 @@ export async function onRequest(context){
   if(difference!==0)return respond({error:'LOC Auth trusted backend required'},403);
   const email=String(new URL(request.url).searchParams.get('email')||'').trim().toLowerCase();
   if(!EMAIL.test(email))return respond({error:'Invalid LOC identity email'},400);
+  let stage='driver';
   try{
-    const selected=await directMcpKysely(env);
-    if(selected.engine!=='postgres'||selected.tableName)
+    // Authority roles must come from the fixed main control target, never
+    // from a stale local MCP alias or a user-selected external SQL target.
+    const primary=DATABASE_ACCESS_LIST.find(item=>item.selected===true);
+    if(!primary)throw new Error('Main control target is missing');
+    const selected=await directMcpKysely(env,primary.target_id);
+    if(selected.tableName)
       return respond({error:'LOC registry source unavailable'},503);
-    const rows=await selected.db.selectFrom('api.manage')
+    // Main DB uses the chosen Kysely SQL Dialect, never provider detection.
+    const registry=registryRelationForEngine(selected.engine);
+    stage='registry-query';
+    const rows=await selected.db.selectFrom(registry)
       .select(['id','email','manage_role','active'])
       .where(selected.db.fn('lower',['email']),'=',email)
       .limit(64).execute();
@@ -34,7 +44,10 @@ export async function onRequest(context){
       id:row.id,email:row.email,role:row.manage_role,active:row.active
     }))});
   }catch(error){
-    console.error('[LOC Auth registry lookup]',String(error?.code||error?.message||error));
-    return respond({error:'LOC registry read unavailable'},503);
+    // Only a fixed stage reaches the trusted internal caller. Never log
+    // connection strings, credentials, SQL parameters, or identity details.
+    const code=String(error?.code||'').replace(/[^A-Za-z0-9_]/g,'').slice(0,40);
+    console.error('[LOC Auth registry lookup]',{stage,code:code||'UNKNOWN'});
+    return respond({error:'LOC registry read unavailable',stage},503);
   }
 }

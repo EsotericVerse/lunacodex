@@ -3,6 +3,7 @@
 // expiration, revocation and the signed grant list before calling this helper.
 // The signed Scope write grant, not a frozen two-Scope list, authorizes imports.
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
+const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 function refusal(message,httpStatus){
  return Object.assign(new Error(message),{httpStatus});
 }
@@ -18,6 +19,7 @@ export function authorizeDelegatedShortImport(body,claims){
  // LOC identity MUST have an explicit, signed write grant for this Scope.
  if(claims?.provider!=='loc'||claims.me!==true||
     typeof claims.sub!=='string'||claims.sub.length<3||claims.sub.length>180||
+    typeof claims.email!=='string'||!EMAIL.test(claims.email)||
     !Array.isArray(claims.grants)||
     !claims.grants.includes(body.scopeid+':write'))
    throw refusal('LOC Scope write delegation required',403);
