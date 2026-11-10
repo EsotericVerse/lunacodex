@@ -46,7 +46,7 @@ async function signedDelegation(pair,kid,claims){
     pair.privateKey,new TextEncoder().encode(header+'.'+payload)));
   return header+'.'+payload+'.'+b64(digest);
 }
-async function ownerDelegation(now,grants,audience='sql',targetId=null){
+async function ownerDelegation(now,grants,audience='sql',targetId=null,email='sopa2306@gmail.com'){
   const pair=await crypto.subtle.generateKey({name:'RSASSA-PKCS1-v1_5',
     modulusLength:2048,publicExponent:new Uint8Array([1,0,1]),hash:'SHA-256'
   },true,['sign','verify']);
@@ -54,7 +54,7 @@ async function ownerDelegation(now,grants,audience='sql',targetId=null){
   const jwk={...await crypto.subtle.exportKey('jwk',pair.publicKey),
     use:'sig',alg:'RS256',kid};
   const claims=issueDelegation({sub:'loc_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
-    email:'sopa2306@gmail.com',grants,audience,sid:'managed-write-session',now,targetId});
+    email,grants,audience,sid:'managed-write-session',now,targetId});
   const token=await signedDelegation(pair,kid,claims);
   return {token,fetchImpl:async()=>Response.json({keys:[jwk]})};
 }
@@ -77,10 +77,9 @@ test('A signed global:manage delegation updates api.manage through the real Poli
   });
   assert.equal(response.status,200);
   assert.deepEqual(await response.json(),{data:{count:1}});
-  assert.equal(executed.length,2);
-  assert.match(executed[0].sql,/from "api"\."manage"/i);
-  assert.match(executed[1].sql,/update "api"\."manage"/i);
-  assert.match(executed[1].sql,/where "id" = /i);
+  assert.equal(executed.length,1);
+  assert.match(executed[0].sql,/update "api"\."manage"/i);
+  assert.match(executed[0].sql,/where "id" = /i);
 });
 
 test('Managed write is refused without a global:manage grant',async()=>{
@@ -138,10 +137,11 @@ test('The website host now accepts managed-write but still rejects other MCP kin
   assert.equal(rejected.status,404,'the website host must still only expose short-import and managed-write');
 });
 
-test('Revoked api.manage admin is denied despite an existing signed global grant',async()=>{
+test('a signed non-owner cannot write even with a global:manage claim',async()=>{
   const now=Math.floor(Date.now()/1000);
-  const {token,fetchImpl}=await ownerDelegation(now,['global:manage']);
-  const {executed,dialect}=fixedModelDialect({registryRows:[]});
+  const {token,fetchImpl}=await ownerDelegation(now,['global:manage'],
+    'sql',null,'not-owner@example.org');
+  const {executed,dialect}=fixedModelDialect();
   const body={kind:'managed-write',scopeid:'',payload:{
     p_table:'api.manage',p_operation:'update',p_values:{manage_role:'admin'},
     p_filters:[{column:'id',operator:'eq',value:'lo3rwang'}]
@@ -149,11 +149,10 @@ test('Revoked api.manage admin is denied despite an existing signed global grant
   const response=await handleNativeLocOperation(request(body,token),{},
     {fetchImpl,database:async()=>({engine:'postgres',dialect,db:{}})});
   assert.equal(response.status,403);
-  assert.equal(executed.length,1,'revoked owner must never reach UPDATE');
-  assert.match(executed[0].sql,/from "api"\."manage"/i);
+  assert.equal(executed.length,0);
 });
 
-test('MCP sync commits through native Kysely after verifying current api.manage',async()=>{
+test('MCP sync commits through native Kysely after signed owner verification',async()=>{
   const now=Math.floor(Date.now()/1000);
   const {token,fetchImpl}=await ownerDelegation(now,['lo3rwang:write'],'mcp');
   const {executed,dialect}=fixedModelDialect();
@@ -167,26 +166,22 @@ test('MCP sync commits through native Kysely after verifying current api.manage'
     {fetchImpl,database:async()=>({engine:'postgres',namespace:'silver',db})});
   assert.equal(response.status,200);
   assert.deepEqual(await response.json(),{data:{count:1}});
-  assert.ok(executed.some(x=>/from "api"\."manage"/i.test(x.sql)));
+  assert.equal(executed.some(x=>/from "api"\."manage"/i.test(x.sql)),false);
   assert.ok(executed.some(x=>/insert into "silver"\."lo3rwang_galaxy"/i.test(x.sql)));
   await db.destroy();
 });
 
-test('MCP signed write cannot insert when api.manage admin has been revoked',async()=>{
+test('MCP signed non-owner cannot insert and never opens SQL',async()=>{
   const now=Math.floor(Date.now()/1000);
-  const {token,fetchImpl}=await ownerDelegation(now,['lo3rwang:write'],'mcp');
-  const {executed,dialect}=fixedModelDialect({registryRows:[]});
-  const db=new Kysely({dialect});
+  const {token,fetchImpl}=await ownerDelegation(now,['lo3rwang:write'],
+    'mcp',null,'not-owner@example.org');
   const body={kind:'mcp-sync',scopeid:'lo3rwang',update_existing:false,
-    row:{uid:'Ab12Cd34',site:'mcp',site_id:'conversation-1',title:'Conversation',content:'Text',
-      ...Object.fromEntries(['culture','trace','search','statics','list','extract','others','keyword']
-        .map(key=>[key,false]))}};
-  const response=await handleNativeLocOperation(request(body,token,'https://mcp.lo3rwang.cc'),{},
-    {fetchImpl,database:async()=>({engine:'postgres',namespace:'silver',db})});
+    row:{uid:'Ab12Cd34',site:'mcp',site_id:'conversation-1',title:'Conversation',
+      content:'Text'}};
+  const response=await handleNativeLocOperation(
+    request(body,token,'https://mcp.lo3rwang.cc'),{},
+    {fetchImpl,database:async()=>{throw Error('Non-owner SQL access');}});
   assert.equal(response.status,403);
-  assert.ok(executed.some(x=>/from "api"\."manage"/i.test(x.sql)));
-  assert.equal(executed.some(x=>/insert into "silver"\."lo3rwang_galaxy"/i.test(x.sql)),false);
-  await db.destroy();
 });
 
 test('Selected loc-main remains writable for signed MCP and external targets remain read-only',async()=>{
@@ -238,7 +233,7 @@ function portableMainTestDialect(engine,{registryRows=[{id:'lo3rwang',manage_rol
 }
 
 for(const engine of ['mysql','mssql']){
- test(engine+' main SQL Dialect uses current api.manage authority before LOC writes',async()=>{
+ test(engine+' main SQL Dialect accepts signed LOC owner without Registry authorization',async()=>{
   const now=Math.floor(Date.now()/1000);
   const {token,fetchImpl}=await ownerDelegation(now,['global:manage']);
   const {dialect,executed}=portableMainTestDialect(engine);
@@ -253,13 +248,14 @@ for(const engine of ['mysql','mssql']){
     namespace:engine==='mysql'?'':'dbo',db})
   });
   assert.equal(response.status,200,await response.text().catch(()=>''));
-  assert.ok(executed.some(x=>/select\s/i.test(x.sql)&&/manage/i.test(x.sql)));
+  assert.equal(executed.some(x=>/select\s/i.test(x.sql)&&/manage/i.test(x.sql)),false);
   assert.ok(executed.some(x=>/update\s/i.test(x.sql)&&/loc/i.test(x.sql)));
   await db.destroy();
  });
- test(engine+' revoked api.manage owner cannot mutate the main SQL database',async()=>{
+ test(engine+' rejects another LOC identity before touching main SQL database',async()=>{
   const now=Math.floor(Date.now()/1000);
-  const {token,fetchImpl}=await ownerDelegation(now,['global:manage']);
+  const {token,fetchImpl}=await ownerDelegation(now,['global:manage'],
+    'sql',null,'not-owner@example.org');
   const {dialect,executed}=portableMainTestDialect(engine,{registryRows:[]});
   const db=new Kysely({dialect});
   const body={kind:'managed-write',scopeid:'',payload:{
