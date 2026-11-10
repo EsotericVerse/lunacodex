@@ -432,6 +432,20 @@ export class LocAuthorityState extends DurableObject {
   }
   async trustedDatabaseProfile(id,probeTicket=''){
     if(!ID.test(String(id||'')))throw fail('Invalid database target',400);
+    if(id==='primary'){
+      // The selected main database lives in the existing Authority state.
+      // No guessed provider, alternate target or implicit SQL fallback.
+      const selected=await this.ctx.storage.get('primary_id');
+      if(selected){
+        if(!ID.test(String(selected)))throw fail('Invalid primary database target',503);
+        id=selected;
+      }else{
+        // Retain the original main target only when it actually exists.
+        const legacy=await this.ctx.storage.get('target:loc-main');
+        if(!legacy)throw fail('Primary database profile is not configured',503);
+        id='loc-main';
+      }
+    }
     const saved=await this.ctx.storage.get('target:'+id);
     if(!saved)throw fail('SQL connection profile is not configured',503);
     const profile=await decryptProfile(saved.encrypted,this.env.LOC_CONTROL_ENCRYPTION_KEY);
@@ -552,9 +566,9 @@ export class LocAuthorityState extends DurableObject {
     return id===await this.selectedDatabaseForDelegation(subject,isRoot);
   }
   async selectPrimary(id){
-    const builtin=id==='loc-main';
-    const target=builtin?{id}:await this.ctx.storage.get('target:'+id);
-    if(!target)throw fail('Unknown primary target');
+    // A name alone cannot make an unavailable connection usable.
+    const target=await this.ctx.storage.get('target:'+id);
+    if(!target)throw fail('Primary database profile is not configured',503);
     await this.ctx.storage.put('primary_id',id);
     return {primary_id:id};
   }
