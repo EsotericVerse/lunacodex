@@ -7,7 +7,7 @@ import {SCOPE_ROUTE_INDEX} from '../modular/scope-route-index.js';
 
 // Shared public site snapshot (Registry/Theme/page copy) is fetched once per
 // client runtime. Each Scope page fetches only its own config and page blocks.
-// SWR deduplicates consumers of the same (scopeId, pageName) key.
+// Shared ZenStack client queries deduplicate consumers of the same (scopeId, pageName) key.
 const SCOPE_ID=/^[a-z][a-z0-9]{0,14}$/;
 const PAGE_NAME=/^[a-z0-9_-]+$/;
 export function invalidateAppBootstrapMetadata(){
