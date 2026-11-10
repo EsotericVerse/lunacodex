@@ -2,7 +2,7 @@
 
 ## Scope
 
-This update keeps the existing LOC architecture and replaces redundant Recharts sizing wrappers with the Recharts 3 native `responsive` prop where compatible. The statistics Treemap keeps its existing `ResponsiveContainer` compatibility path. Kysely, SWR, `fflate`, `@streamparser/json`, and existing native MapLibre `setData` behavior remain unchanged because they are already used directly. ZenStack V3 adoption is approved for the fixed LOC Schema; dependency installation and runtime integration are separate from this earlier module upgrade.
+This update keeps the existing LOC architecture and replaces redundant Recharts sizing wrappers with the Recharts 3 native `responsive` prop where compatible. The statistics Treemap keeps its existing `ResponsiveContainer` compatibility path. Kysely, ZenStack client queries, `fflate`, `@streamparser/json`, and existing native MapLibre `setData` behavior remain unchanged because they are already used directly. ZenStack V3 adoption is approved for the fixed LOC Schema; dependency installation and runtime integration are separate from this earlier module upgrade.
 
 The 2026-11-06 version bump included Next.js, Three.js, MapLibre GL JS, React Three Fiber, React Three Drei, a since-retired Cloudflare Next adapter, and Wrangler. The adapter was removed on 2026-11-08; Wrangler remains for independent Workers.
 
@@ -66,3 +66,26 @@ The seven pinned upgrades from PR #1130 remain the installed versions. This pass
 - **Kysely / SWR:** portable SQL already uses the built-in dialect/query APIs. SWR remains the single browser data cache. One real SWR Infinite mismatch was corrected: a `null` next-page cursor now stops loading just like `undefined`, while page zero may still have a null initial cursor and `0` remains a valid next-page offset. The shared infinite resource reports `hasNextPage=false` for either terminal value, preventing phantom follow-up pages.
 
 `npm run test:module-native` now also includes the existing SWR resource/cache lifecycle suite and its additional null/zero-cursor regressions. These are module-integration checks, not proof of a full browser render or deployed Cloudflare worker test. No changes were made to the paused GitHub Auth branch, Clerk, Authority, MCP, or SQL Schema/RLS. The earlier ZenStack non-installation assumption is superseded by the approved V3 ORM/schema dependency adoption; it does not authorize schema migrations or imply runtime integration is complete.
+
+## 2026-11-10 — Consolidated ZenStack client queries
+
+The former SWR and all of its live React hooks are retired. The single native
+TanStack Query engine is owned by `zenstack/client-queries.js`, which serves
+LOC's existing authenticated ZenStack/Kysely SQL Gateway requests and shares
+one QueryClient across public and management features. The old
+`app/loc/use-async-resource.js` now only re-exports the existing stable hook
+names; it has no cache logic. Existing read keys, explicit updates and infinite
+cursor semantics are maintained through native query APIs.
+
+**No second cache, ISR, polling, duplicate database connection, schema change,
+migration, or new model RPC endpoint** is introduced. LOC Auth, delegated
+authorizations, fixed-model ZenStack PolicyPlugin, and Kysely SQL Dialect
+remain on the established server-side paths.
+
+ZenStack's `@zenstackhq/tanstack-query` model hooks require a matching
+ZenStack model RPC endpoint. LOC's custom cross-Scope SQL Gateway is not that
+endpoint; creating a separate CRUD API just to adopt the generated hooks would
+duplicate existing responsibilities. Therefore this migration reuses TanStack
+Query's native hook/query-client behavior inside the ZenStack client module,
+not a parallel query provider. Official model hooks can use this same provider
+when an authorized compatible model endpoint is genuinely needed.

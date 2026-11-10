@@ -1,7 +1,7 @@
 'use client';
 
 import {useState} from 'react';
-import {useSWRConfig} from 'swr';
+import {useQueryClient} from '@tanstack/react-query';
 import {useAccount} from './use-account';
 import {useAsyncResource} from './use-async-resource';
 import {dbAuthClient} from './db-client.mjs';
@@ -15,7 +15,7 @@ export default function LocGroupMemberList({groupId='loc'}){
   const account=useAccount();
   const dock=useEditDock();
   const inDock=Boolean(dock?.active&&dock.scopeId===groupId);
-  const {mutate}=useSWRConfig();
+  const queryClient=useQueryClient();
   const allowed=Boolean(account.user&&!account.loading&&!account.permissionLoading&&
     account.canManageGroupSync(groupId));
   const [draft,setDraft]=useState({});
@@ -44,7 +44,7 @@ export default function LocGroupMemberList({groupId='loc'}){
       }
       setDraft({});
       invalidateAppBootstrapMetadata();
-      await Promise.all([query.refetch(),mutate(key=>Array.isArray(key)&&key[0]==='app-bootstrap')]);
+      await Promise.all([query.refetch(),queryClient.invalidateQueries({queryKey:['app-bootstrap']})]);
       setNotice('群組人員資料已更新。');
       return true;
     }catch(error){setNotice(String(error?.message||error));return false;}

@@ -3,7 +3,7 @@ import UiText from '../../../i18n/UiText';
 import FieldText from '../../../i18n/FieldText';
 import {normalizeUiLocale,UI_LOCALE_OPTIONS} from '../../../i18n/ui-copy';
 import {useCallback,useEffect,useRef,useState} from 'react';
-import {useSWRConfig} from 'swr';
+import {useQueryClient} from '@tanstack/react-query';
 import {invalidateAppBootstrapMetadata} from '../../app-bootstrap';
 import {useEditDock,useEditDockForm} from '../../../modular/edit-dock';
 import dynamic from 'next/dynamic';
@@ -47,7 +47,7 @@ async function readAdminScopeConfig(scopeId,{attempts=7}={}){
 }
 
 function useAdminScopeData(){
-  const {mutate}=useSWRConfig();
+  const queryClient=useQueryClient();
   const [registry,setRegistry]=useState([]);
   const [mappings,setMappings]=useState([]);
   const [originalMappings,setOriginalMappings]=useState([]);
@@ -111,7 +111,7 @@ function useAdminScopeData(){
     registry,setRegistry,mappings,setMappings,originalMappings,configs,setConfigs,status,setStatus,
     refresh:()=>{
       invalidateAppBootstrapMetadata();
-      mutate(key=>Array.isArray(key)&&key[0]==='app-bootstrap');
+      void queryClient.invalidateQueries({queryKey:['app-bootstrap']});
       setRevision(value=>value+1);
     }
   };

@@ -1,6 +1,6 @@
 'use client';
 import {useCallback,useEffect,useRef,useState} from 'react';
-import {useSWRConfig} from 'swr';
+import {useQueryClient} from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
 import {invalidateScopeBlockPage,selectLiveScopeBlocks} from '../../scope-data';
 import {HomeBlock} from '../../home-block-model';
@@ -39,7 +39,7 @@ function ImageSlot({feature,variant,onDirtyChange,pageOverride='',defaultUrl=''}
   const dock=useEditDock();
   const inDock=Boolean(dock?.active&&dock.scopeId==='loc');
   const savingNow=useRef(false);
-  const {mutate}=useSWRConfig();
+  const queryClient=useQueryClient();
   const [rows,setRows]=useState(null);
   const [value,setValue]=useState('');
   const [busy,setBusy]=useState(false);
@@ -99,9 +99,9 @@ function ImageSlot({feature,variant,onDirtyChange,pageOverride='',defaultUrl=''}
         throw new Error('儲存後資料庫讀回不一致，請檢查寫入權限。');
       setRows(verified);
       await Promise.all([
-        mutate(['scope-blocks','loc',page]),
-        mutate(['scope-blocks-live','loc',page]),
-        mutate(['app-bootstrap','loc',page])
+        queryClient.invalidateQueries({queryKey:['scope-blocks','loc',page]}),
+        queryClient.invalidateQueries({queryKey:['scope-blocks-live','loc',page]}),
+        queryClient.invalidateQueries({queryKey:['app-bootstrap','loc',page]})
       ]);
       setStatus('首頁圖連結已儲存並讀回確認。');
       setRevision(n=>n+1);
@@ -128,7 +128,7 @@ function ImageSlot({feature,variant,onDirtyChange,pageOverride='',defaultUrl=''}
 }
 
 function ManagementHeroDetails({slot,onDirtyChange}){
-  const {mutate}=useSWRConfig();
+  const queryClient=useQueryClient();
   const dock=useEditDock();
   const inDock=Boolean(dock?.active&&dock.scopeId==='loc');
   const savingNow=useRef(false);
@@ -193,9 +193,9 @@ function ManagementHeroDetails({slot,onDirtyChange}){
         throw new Error('儲存後資料庫讀回不一致，請檢查寫入權限。');
       setRows(verified);
       await Promise.all([
-        mutate(['scope-blocks','loc',page]),
-        mutate(['scope-blocks-live','loc',page]),
-        mutate(['app-bootstrap','loc',page])
+        queryClient.invalidateQueries({queryKey:['scope-blocks','loc',page]}),
+        queryClient.invalidateQueries({queryKey:['scope-blocks-live','loc',page]}),
+        queryClient.invalidateQueries({queryKey:['app-bootstrap','loc',page]})
       ]);
       setStatus('管理區塊已儲存並讀回確認。');
       setRevision(v=>v+1);

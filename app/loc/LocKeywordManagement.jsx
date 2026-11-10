@@ -2,7 +2,7 @@
 
 import {useEffect,useRef,useState} from 'react';
 import {useAsyncResource} from './use-async-resource';
-import {useSWRConfig} from 'swr';
+import {useQueryClient} from '@tanstack/react-query';
 import {dbAuthClient} from './db-client.mjs';
 import {useEditDock} from '../modular/edit-dock';
 
@@ -21,7 +21,7 @@ async function readRegistry(){
 }
 
 export default function LocKeywordManagement(){
-  const {mutate}=useSWRConfig();
+  const queryClient=useQueryClient();
   const {data=[],isPending,error,refetch}=useAsyncResource(['loc-keywords-admin'],readRegistry);
   const editDock=useEditDock();
   const inDock=Boolean(editDock?.active&&editDock.scopeId==='loc');
@@ -56,7 +56,7 @@ export default function LocKeywordManagement(){
       });
       if(result.error)throw Error(result.error.message);
       if(!result.data?.scope_id)throw Error('資料未更新，請檢查 Admin 權限。');
-      await mutate(key=>Array.isArray(key)&&key[0]==='loc-keywords-admin');
+      await queryClient.invalidateQueries({queryKey:['loc-keywords-admin']});
       choose(result.data);
       setNotice('已儲存。');
       return true;
@@ -94,7 +94,7 @@ export default function LocKeywordManagement(){
       });
       if(deleteError)throw Error(deleteError.message);
       if(!removed?.deleted)throw Error('沒有刪除資料，請檢查 Admin 權限。');
-      await mutate(key=>Array.isArray(key)&&key[0]==='loc-keywords-admin');
+      await queryClient.invalidateQueries({queryKey:['loc-keywords-admin']});
       choose(null);setNotice('已刪除管理紀錄。');
     }catch(e){setNotice(String(e?.message||e));}
     finally{setBusy(false);}
