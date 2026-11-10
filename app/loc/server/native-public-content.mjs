@@ -4,9 +4,7 @@
 import {SCOPE_ROUTE_INDEX} from '../../modular/scope-route-index.js';
 import {scopeConfigColumns,scopeFeatureEnabled} from '../scope-config-fields.mjs';
 import {directMcpKysely} from '../mcp/native-kysely.mjs';
-import {readPublishedGalaxyNumeric,PUBLISHED_GALAXY_SNAPSHOT_DATE} from './published-galaxy-fallback.mjs';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
-import {createDirectDataApiClient} from '../providers/direct-data-api.mjs';
 import {portableRelation} from '../providers/sql-engine-ports.mjs';
 import {fixedPolicyReadModel,withFixedPolicyRead} from '../../../zenstack/policy-runtime.mjs';
 import {ZenStackClient} from '@zenstackhq/orm';
@@ -27,32 +25,6 @@ const DAY=/^\d{4}-\d{2}-\d{2}$/;
 const day=value=>value instanceof Date?value.toISOString().slice(0,10):String(value??'').slice(0,10);
 const total=value=>Number(value)||0;
 
-// Public presentation fallback stays inside the existing Pages application.
-// It uses the published Data API with the anonymous key (never an owner token).
-// This preserves live Config/Blocks/Hero reads when the native Kysely profile
-// broker is unavailable, without exposing arbitrary SQL or private relations.
-async function publicPresentationFallback(kind,scope,feature,env={}){
-  const base=String(env.NEXT_PUBLIC_LOC_DATA_API_URL||
-    env.LOC_DATA_API_URL||
-    'https://qlouywsdiiyiyzpoxyqy.supabase.co/rest/v1');
-  const apiKey=String(env.NEXT_PUBLIC_LOC_DATA_API_PUBLIC_KEY||
-    env.LOC_DATA_API_PUBLIC_KEY||
-    env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY||
-    'sb_publishable_qPn0vAzozVyXKllRuEKf2Q_fvG-pLVV');
-  const client=createDirectDataApiClient({url:base,apiKey,role:'anon'});
-  const from=table=>client.schema('silver').from(table);
-  if(kind==='config'){
-    const columns=scopeConfigColumns(scope);
-    const {data}=await from(scope).select(columns).eq('id',scope).limit(1);
-    return data?.[0]||null;
-  }
-  const table=kind==='hero'?'loc_blocks':scope+'_blocks';
-  const names=kind==='hero'?['group_'+feature,'scope_'+feature]:['index'];
-  const {data}=await from(table).select(BLOCK_FIELDS.join(','))
-    .in('page_name',names).order('block_order',{ascending:true}).limit(100);
-  return data||[];
-}
-
 // LOC Group totals aggregate fixed published child Scope totals, not article
 // rows or user-selected tables. All database reads stay in existing Kysely.
 async function readLocGroupNumeric(db,start,end,port){
@@ -72,24 +44,6 @@ async function readLocGroupNumeric(db,start,end,port){
   }
   return {earliest,scopes,rows};
 }
-function publishedNumeric(scope,kind,start,end){
-  if(kind!=='loc')return readPublishedGalaxyNumeric(scope,kind,start,end);
-  const scopes=[],rows=[];let earliest='';
-  for(const entry of SCOPE_ROUTE_INDEX){
-    if(entry.scope_id==='loc'||entry.active===false||
-        !scopeFeatureEnabled(entry.config,'statistics_able'))continue;
-    const id=entry.scope_id;
-    const daily=readPublishedGalaxyNumeric(id,'daily',start,end);
-    if(!daily)continue;
-    scopes.push({scope_id:id,display_name:String(entry.config?.display_name||id)});
-    rows.push(...daily.filter(row=>row.kind==='total')
-      .map(row=>({scope_id:id,day:row.day,item_count:row.item_count})));
-    const first=readPublishedGalaxyNumeric(id,'earliest');
-    if(first&&(!earliest||first<earliest))earliest=first;
-  }
-  return {earliest,scopes,rows};
-}
-
 // A fixed, bounded Galaxy aggregation performed where the native connection
 // already lives. Never download per-article rows to aggregate in a browser;
 // never infer Galaxy.site from a Source Anchor display label.
@@ -155,7 +109,7 @@ export async function handleNativePublicContent(request,env={},{
   const numeric=NUMERIC_KINDS.has(kind);
   const start=String(url.searchParams.get('start')||'');
   const end=String(url.searchParams.get('end')||'');
-  if(!allowedScope(scope)||!['config','blocks','hero'].includes(kind)&&!numeric||
+  if(!allowedScope(scope)||!['config','blocks','hero','culture_anchors'].includes(kind)&&!numeric||
       keys.some(key=>!['kind','scope','feature','start','end'].includes(key))||
       (kind==='hero'?!FEATURES.has(feature):Boolean(feature))||
       (kind==='hero'&&!keys.includes('feature'))||
@@ -175,30 +129,28 @@ export async function handleNativePublicContent(request,env={},{
     if(!scopeFeatureEnabled(published?.config,flag))
       return respond({error:'Public feature unavailable'},403);
   }
-  // The already-published grouped snapshot preserves public reading while
-  // the native Pages database connection is not yet configured.
-  const publishedResponse=()=>{
-    if(!numeric)return null;
-    const data=publishedNumeric(scope,kind,start,end);
-    return data===null?null:respond({data,source:'published',as_of:PUBLISHED_GALAXY_SNAPSHOT_DATE});
-  };
   try{
     // Alias and credential are server-owned. An HTTP parameter must never
     // determine the engine, endpoint, connection profile or SQL relation.
-    const publishedAlias=DATABASE_ACCESS_LIST.find(row=>row.selected===true)?.connection_alias||'';
-    const alias=String(env.LOC_PUBLIC_DB_ALIAS||env.LOC_CONTROL_DB_ALIAS||
-      env.LOC_MCP_DB_ALIAS||publishedAlias);
-    // The published control alias is not a user-selected external database ID.
-    // Let directMcpKysely resolve the configured control target_id (loc-main).
-    // Preserve explicit, distinct external aliases unchanged.
-    const port=await database(env,alias===publishedAlias?'':alias);
+    const primary=DATABASE_ACCESS_LIST.find(row=>row.selected===true);
+    if(!primary)throw Error('LOC main SQL target is not configured');
+    const port=await database(env,primary.target_id);
     if(!port?.db||!['postgres','mysql','mssql'].includes(port.engine))
-      return publishedResponse()||respond({error:'LOC native database unavailable'},503);
+      return respond({error:'LOC native database unavailable',stage:'driver'},503);
     const query=port.db;
     const relation=name=>portableRelation(name,port.engine,
       port.namespace||(port.engine==='postgres'?'silver':'dbo'));
     if(numeric)return respond({data:await (kind==='loc'?
       readLocGroupNumeric(query,start,end,port):readGalaxyNumeric(query,scope,kind,start,end,port))});
+    if(kind==='culture_anchors'){
+      const rows=await query.selectFrom(relation(scope+'_anchor'))
+        .select(['uid','type','title','attr'])
+        .where('type','in',['date','period','era'])
+        .where('invisible','=',false).limit(5000).execute();
+      return respond({data:rows.map(row=>({...row,
+        attr:typeof row.attr==='string'?JSON.parse(row.attr||'{}'):row.attr||{}
+      }))});
+    }
     if(kind==='config'){
       const columns=scopeConfigColumns(scope).split(',').filter(Boolean);
       // loc/lo3rwang/lrunes are three of the four fixed public ZModel control
@@ -225,15 +177,15 @@ export async function handleNativePublicContent(request,env={},{
       .where('page_name','in',names).orderBy('block_order','asc')
       .limit(100).execute();
     return respond({data});
-  }catch(error){
-    console.error('[LOC native public content] server database connection unavailable');
-    if(!numeric){
-      try{
-        return respond({data:await publicPresentationFallback(kind,scope,feature,env)});
-      }catch(fallbackError){
-        console.error('[LOC native public content] public presentation fallback unavailable');
+   }catch(error){
+    // Surface the live SQL fault; do not silently switch to Data API/snapshot.
+    let code='UNKNOWN',cause=error;
+    for(let depth=0;cause&&depth<5;depth++,cause=cause.cause){
+      if(/^[A-Za-z0-9_]{2,40}$/.test(String(cause.code||''))){
+        code=String(cause.code);break;
       }
     }
-    return publishedResponse()||respond({error:'LOC native database unavailable'},503);
+    console.error('[LOC native public content]',{stage:'kysely-query',code});
+    return respond({error:'LOC native Kysely query failed',stage:'kysely-query',code},503);
   }
 }

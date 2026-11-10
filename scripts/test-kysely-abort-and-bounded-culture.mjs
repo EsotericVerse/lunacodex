@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {createDirectDataApiClient} from '../app/loc/providers/direct-data-api.mjs';
+import {createKyselyPublicClient} from '../app/loc/providers/kysely-browser.mjs';
 import {mapBounded} from '../app/loc/bounded-parallel.mjs';
 
-const ok=()=>new Response(JSON.stringify([{uid:'aB12cD34'}]),{
+const ok=()=>new Response(JSON.stringify({data:[{uid:'aB12cD34'}]}),{
   status:200,headers:{'content-type':'application/json'}
 });
 
@@ -12,8 +12,8 @@ test('already-cancelled anonymous query never opens HTTP',async()=>{
   let fetches=0;
   const controller=new AbortController();
   controller.abort();
-  const db=createDirectDataApiClient({
-    url:'https://public.example.net/rest/v1',apiKey:'public-read-key',role:'anon',
+  const db=createKyselyPublicClient({
+    role:'anon',
     fetch:async()=>{fetches++;return ok()}
   });
   await assert.rejects(
@@ -28,8 +28,8 @@ test('in-flight query cancels its real HTTP fetch signal',async()=>{
   const controller=new AbortController();
   let started,signal;
   const entered=new Promise(resolve=>{started=resolve});
-  const db=createDirectDataApiClient({
-    url:'https://public.example.net/rest/v1',apiKey:'public-read-key',role:'anon',
+  const db=createKyselyPublicClient({
+    role:'anon',
     fetch:async(_url,options)=>{
       signal=options.signal;
       return new Promise((_resolve,reject)=>{
@@ -53,8 +53,8 @@ test('cancelled query waiting in the public budget never sends HTTP',async()=>{
   let release;
   const hold=new Promise(resolve=>{release=resolve});
   let fetches=0;
-  const db=createDirectDataApiClient({
-    url:'https://public.example.net/rest/v1',apiKey:'public-read-key',role:'anon',
+  const db=createKyselyPublicClient({
+    role:'anon',
     fetch:async()=>{fetches++;await hold;return ok()}
   });
   const active=Array.from({length:3},()=>Promise.resolve(

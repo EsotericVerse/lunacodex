@@ -28,7 +28,7 @@ test('Native Kysely contains uses parameterized cross-dialect LIKE with explicit
 });
 test('article search routes advanced AND OR excludes through contains',()=>{
   const search=readFileSync(new URL('../app/loc/galaxy-query.js',import.meta.url),'utf8');
-  const transport=readFileSync(new URL('../app/loc/providers/direct-data-api.mjs',import.meta.url),'utf8');
+  const transport=readFileSync(new URL('../app/loc/providers/kysely-browser.mjs',import.meta.url),'utf8');
   assert.match(search,/\.contains\./);
   assert.match(search,/query\.not\(field,'contains',term\)/);
   assert.match(transport,/contains\(c,v\)/);

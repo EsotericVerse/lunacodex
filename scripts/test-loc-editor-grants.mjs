@@ -72,11 +72,12 @@ test('denied or malformed Authority grants do not enter edit mode',async()=>{
 test('homepage edit click uses LOC Auth; passive rendering never calls manage(self)',()=>{
   const account=readFileSync(new URL('../app/loc/use-account.js',import.meta.url),'utf8');
   const button=readFileSync(new URL('../app/loc/ScopeHomeEditEntry.jsx',import.meta.url),'utf8');
-  const dataApi=readFileSync(new URL('../app/loc/providers/direct-data-api.mjs',import.meta.url),'utf8');
+  const publicReader=readFileSync(new URL('../app/loc/providers/kysely-browser.mjs',import.meta.url),'utf8');
   assert.match(account,/readLocEditorGrants\(session/);
   assert.doesNotMatch(account,/managedAction\(['"]manage['"]/);
   assert.match(button,/onClick=\{enter\}/);
   assert.match(button,/const result=await account\.refresh\(\)/);
   assert.match(button,/useAccount\(\{enabled:false\}\)/);
-  assert.match(dataApi,/managedAction:unsupported/);
+  assert.match(publicReader,/managedAction:noWrite/);
+  assert.doesNotMatch(publicReader,/managedAction:.*nativeManagement/);
 });

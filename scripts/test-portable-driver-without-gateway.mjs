@@ -33,17 +33,12 @@ test('Kysely keeps SQL engine dialects and independent physical namespaces',()=>
  assert.equal(portableRelation('lo3rwang_galaxy','mssql','dbo'),'dbo.lo3rwang_galaxy');
 });
 
-test('temporary published public read cannot secretly choose a SQL Gateway',async()=>{
+test('public reads use LOC Pages Kysely, not a vendor REST API',async()=>{
  const calls=[];
  const sources=publicNumericSources({
-  url:'https://public.example.net/rest/v1',
-  apiKey:'public-read-key',
-  primaryGatewayUrl:'https://ignored.example.net/v1/sql',
-  backupGatewayUrl:'https://ignored-backup.example.net/v1/sql',
   fetchImpl:async(url,options)=>{
    calls.push({url:String(url),options});
-   return new Response(JSON.stringify([{uid:'Ab12Cd34'}]),{status:200,
-    headers:{'content-type':'application/json'}});
+   return Response.json({data:[{uid:'Ab12Cd34'}]});
   }
  });
  assert.deepEqual(sources.map(x=>x.id),['primary']);
@@ -51,6 +46,6 @@ test('temporary published public read cannot secretly choose a SQL Gateway',asyn
   .eq('uid','Ab12Cd34').limit(1);
  assert.equal(result.data[0].uid,'Ab12Cd34');
  assert.equal(calls.length,1);
- assert.ok(calls[0].url.startsWith('https://public.example.net/rest/v1/'));
- assert.ok(!calls[0].url.includes('/v1/sql'));
+ assert.equal(calls[0].url,'https://loc.lo3rwang.cc/api/loc-public-query');
+ assert.ok(!calls[0].url.includes('/rest/v1'));
 });

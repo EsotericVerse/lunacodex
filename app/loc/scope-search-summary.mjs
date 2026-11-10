@@ -1,8 +1,7 @@
 'use client';
 
 
-import {dbAuthClient} from './db-client.mjs';
-import {PUBLISHED_SEARCH_SUMMARY} from '../modular/published-search-summary.js';
+import {dbAuthClient,dbPublicClient} from './db-client.mjs';
 
 const SCOPE_ID=/^[a-z][a-z0-9]{0,14}$/;
 
@@ -35,12 +34,13 @@ export function summarizeScopeSearchSummary(scopeIds,rows=[]){
 export async function readScopeSearchSummary(scopeIds){
   const ids=summaryScopeIds(scopeIds);
   if(!ids.length)return {rows:[],summary:null};
-  // Search summary is an explicitly published, non-sensitive Scope aggregate.
-  // The browser must not call a retired analytics RPC or read private status.
-  const rows=ids.flatMap(id=>{
-    const published=PUBLISHED_SEARCH_SUMMARY[id];
-    return published?[published]:[];
+  // Read the current server-side Kysely summary; never substitute a build-time
+  // published snapshot when the SQL query fails or returns partial data.
+  const result=await dbPublicClient.schema('silver').analytics({
+    p_scope_id:'loc',p_view:'search_summary',p_options:{scopeIds:ids}
   });
+  if(result?.error)throw Error(result.error.message||'LOC Search summary unavailable');
+  const rows=Array.isArray(result?.data?.rows)?result.data.rows:[];
   return {rows,summary:summarizeScopeSearchSummary(ids,rows)};
 }
 
