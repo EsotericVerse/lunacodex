@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {directMcpKysely,mcpDatabaseConfiguration,mainDatabaseProfile} from '../app/loc/mcp/native-kysely.mjs';
+import {directMcpKysely,mcpDatabaseConfiguration} from '../app/loc/mcp/native-kysely.mjs';
 
 const url='postgresql://app:password@127.0.0.1:5432/database';
 const profile={engine:'postgres',url,tls:true};
@@ -123,27 +123,10 @@ test('untrusted missing Authority target is refused; secret never appears in an 
     !error.message.includes(env.LOC_DB_PROFILE_SERVICE_TOKEN));
 });
 
-test('temporary main DB selects SQL type, domain and port explicitly without guessing',()=>{
- const cases=[
-  ['postgres','postgresql','pg-a.example.org',6543,'silver'],
-  ['mysql','mysql','mariadb-a.example.org',13306,''],
-  ['mssql','mssql','azure-a.database.windows.net',15143,'dbo']
- ];
- for(const [engine,protocol,host,port,schema] of cases){
-  const url=protocol+'://app:private@'+host+':'+port+'/test';
-  const profile=mainDatabaseProfile(url,{engine});
-  assert.equal(profile.engine,engine);
-  assert.equal(profile.schema_name,schema);
-  assert.equal(new URL(profile.url).hostname,host);
-  assert.equal(new URL(profile.url).port,String(port));
- }
- assert.throws(()=>mainDatabaseProfile(
-  'mysql://app:private@db.example.org:3306/test',{engine:'postgres'}),
-  /protocol does not match selected Dialect/);
- assert.throws(()=>mainDatabaseProfile(
-  'postgresql://app:private@db.example.org/test',{engine:'postgres'}),
-  /explicit port are required/);
- assert.throws(()=>mainDatabaseProfile(
-  'postgresql://app:private@db.example.org:5432/test',{engine:'mariadb'}),
-  /SQL type must be selected/);
+test('the primary SQL Model Gateway never restores a deployment database URL',()=>{
+ const source=readFileSync(new URL('../app/loc/mcp/native-kysely.mjs',import.meta.url),'utf8');
+ assert.doesNotMatch(source,/LOC_DATABASE_URL|mainDatabaseProfile/);
+ assert.match(source,/LOC_DB_PROFILE_SERVICE_TOKEN/);
+ assert.match(source,/normalizeLiveTarget/);
+ assert.match(source,/PostgresDialect|MysqlDialect|MssqlDialect/);
 });
