@@ -223,6 +223,6 @@ test('failed provider authorization halts the one-shot connection path',async()=
      host:'db.example.net',port:5432,database:'postgres',
      username:'reader',password:'placeholder-only'});
    return Response.json({error:'Forbidden'},{status:403});
-  }}),/Provider API rejected \\(403\\)/);
+  }}),error=>error.message.includes('Provider API rejected (403)'));
  assert.equal(calls,2);
 });
