@@ -111,13 +111,14 @@ test('the website cannot submit SQL, table names, arbitrary operations or connec
   assert.equal(called,0);
 });
 
-test('unconfigured database safely serves published public fallback without exposing secrets',async()=>{
-  const database=async()=>{throw Error('postgresql://private:secret@database.example')};
-  const response=await handleNativePublicContent(page('blocks','loc'),{},{database});
-  assert.equal(response.status,200);
-  const result=await response.json();
-  assert.ok(Object.hasOwn(result,'data'));
-  assert.ok(!JSON.stringify(result).includes('secret'));
+test('unavailable Kysely reports a driver error instead of a public Data API fallback',async()=>{
+  const response=await handleNativePublicContent(page('blocks','loc'),{},{
+    database:async()=>{throw Error('private connection text must not leak')}
+  });
+  assert.equal(response.status,503);
+  const data=await response.json();
+  assert.equal(data.stage,'kysely-query');
+  assert.equal(JSON.stringify(data).includes('private connection text'),false);
 });
 
 test('guest site uses published config and Blocks without any SQL request',()=>{
@@ -221,7 +222,7 @@ test('numeric URL rejects untrusted SQL, aliases, wrong dates before touching DB
 });
 test('Cloudflare Pages routes include the existing native business Functions',()=>{
   const routes=JSON.parse(readFileSync(new URL('../public/_routes.json',import.meta.url),'utf8'));
-  for(const endpoint of ['/api/loc-public-content','/api/loc-public-classes',
+  for(const endpoint of ['/api/loc-public-content','/api/loc-public-query','/api/loc-public-classes',
     '/api/loc-native','/api/keywords'])
     assert.ok(routes.include.includes(endpoint),'Missing executable Pages Function: '+endpoint);
 });
@@ -235,7 +236,7 @@ test('public Kysely Alias uses the existing Admin access.js selection, not a Man
     database:async(_env,alias)=>{selected=alias;return mock.database();}
   });
   assert.equal(response.status,200);
-  assert.equal(selected,'','public control target resolves through the existing selected main Kysely profile');
+  assert.equal(selected,'loc-main','public reads and LOC Auth must use the same control target');
   assert.ok(mock.calls.every(call=>!call.table.includes('manage')));
 });
 
@@ -258,46 +259,22 @@ test('full-history Galaxy statistics return more than five thousand grouped date
   assert.equal(data.filter(row=>row.kind==='total').length,6829);
 });
 
-test('published date/source history keeps public Culture and Statistics available without a database connection',async()=>{
+test('offline Culture, Statistics and LOC Group report SQL errors without published snapshots',async()=>{
   const offline=async()=>{throw new Error('Database profile unavailable')};
-  const earliest=await handleNativePublicContent(numericPage('earliest'),{},{database:offline});
-  assert.equal(earliest.status,200);
-  assert.equal((await earliest.json()).data,'2005-04-12');
-  const daily=await handleNativePublicContent(numericPage('daily',
-    'start=2026-11-01&end=2026-11-09'),{},{database:offline});
-  const dailyBody=await daily.json();
-  assert.equal(daily.status,200);
-  assert.equal(dailyBody.source,'published');
-  assert.equal(dailyBody.as_of,'2026-11-09');
-  assert.ok(dailyBody.data.some(row=>row.kind==='source'));
-  assert.ok(dailyBody.data.some(row=>row.kind==='total'));
-  const overview=await handleNativePublicContent(numericPage('overview',
-    'start=2026-11-01&end=2026-11-09'),{},{database:offline});
-  const overviewBody=await overview.json();
-  assert.equal(overview.status,200);
-  assert.equal(overviewBody.data.earliest,'2005-04-12');
-  assert.ok(overviewBody.data.rows.length>0);
-  const culture=await handleNativePublicContent(numericPage('culture_density',
-    'start=2026-11-01&end=2026-11-09'),{},{database:offline});
-  assert.equal(culture.status,200);
-  assert.ok(Array.isArray((await culture.json()).data));
-  const total=await handleNativePublicContent(numericPage('totals'),{},{database:offline});
-  assert.equal(total.status,200);
-  assert.ok((await total.json()).data.length>0);
-});
-
-test('LOC Group statistics merge both published Scope totals while the native connection is offline',async()=>{
-  const request=new Request('https://loc.lo3rwang.cc/api/loc-public-content?kind=loc&scope=loc&start=2026-11-01&end=2026-11-09');
-  const result=await handleNativePublicContent(request,{},{
-    database:async()=>{throw Error('SQL credentials unavailable')}
-  });
-  assert.equal(result.status,200);
-  const body=await result.json();
-  assert.equal(body.source,'published');
-  assert.equal(body.data.earliest,'2005-04-12');
-  assert.deepEqual(body.data.scopes.map(row=>row.scope_id),['lo3rwang','lrunes']);
-  assert.ok(body.data.rows.some(row=>row.scope_id==='lo3rwang'&&row.item_count>0));
-  assert.ok(body.data.rows.every(row=>row.scope_id==='lo3rwang'||row.scope_id==='lrunes'));
+  for(const request of [
+    numericPage('earliest'),
+    numericPage('daily','start=2026-11-01&end=2026-11-09'),
+    numericPage('overview','start=2026-11-01&end=2026-11-09'),
+    numericPage('culture_density','start=2026-11-01&end=2026-11-09'),
+    numericPage('totals'),
+    new Request('https://loc.lo3rwang.cc/api/loc-public-content?kind=loc&scope=loc&start=2026-11-01&end=2026-11-09')
+  ]){
+    const response=await handleNativePublicContent(request,{},{database:offline});
+    assert.equal(response.status,503,request.url);
+    const result=await response.json();
+    assert.equal(result.stage,'kysely-query');
+    assert.equal(result.source,undefined,'never report a published source as live SQL');
+  }
 });
 test('LOC Group statistics use live bounded SQL when configured',async()=>{
   const mock=numericDatabase();
