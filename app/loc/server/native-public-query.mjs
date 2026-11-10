@@ -220,12 +220,18 @@ export async function handleNativePublicQuery(request,env={},{
     query=normalized.columns[0]==='*'?query.selectAll():query.select(normalized.columns);
     for(const order of normalized.orders)
       query=query.orderBy(order.column,order.ascending===false?'desc':'asc');
+    // Count=exact is the filtered relation count, NOT the current page size.
+    // Preserve the existing query-builder contract across all SQL dialects.
+    const fullCount=normalized.count==='exact'
+      ?Number((await withFilters(selected.db.selectFrom(table),normalized)
+        .select(eb=>eb.fn.countAll().as('count')).executeTakeFirst())?.count||0)
+      :null;
     const rows=await query.limit(normalized.limit).offset(normalized.offset).execute();
     if(normalized.cardinality==='single'&&rows.length!==1||
        normalized.cardinality==='maybeSingle'&&rows.length>1)
       return respond({error:'Expected one LOC record',stage:'cardinality'},406);
     return respond({data:normalized.cardinality?rows[0]||null:rows,
-      count:normalized.count?rows.length:null});
+      count:fullCount});
   }catch(error){
     let code='UNKNOWN',cause=error;
     for(let depth=0;cause&&depth<5;depth++,cause=cause.cause)
