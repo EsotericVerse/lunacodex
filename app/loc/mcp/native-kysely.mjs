@@ -54,13 +54,13 @@ async function authorizedProfile(env,alias,verifiedAlias,fetchImpl,probeTicket='
   if(secret.length<32)throw fail('LOC trusted profile secret is invalid');
   // `loc_main` is a local connection alias, not LOC Auth's target ID.
   // The trusted profile route is keyed by target_id (e.g. loc-main).
-  // `loc-main` is the Authority target ID; `loc_main` is only its
-  // in-process SQL connection alias. Both signed primary and guest reads
-  // must ask the Authority for the same stable target ID.
+  // The trusted Authority owns the selected main profile. The local
+  // `loc_main` alias is only an in-process control pool name; never an
+  // instruction to look up a phantom `loc-main` target.
   const selectedPrimary=DATABASE_ACCESS_LIST.find(item=>
    item.selected===true&&item.connection_alias===alias);
   const profileId=selectedPrimary&&isPrimary
-   ?selectedPrimary.target_id:alias;
+   ?'primary':alias;
   const result=await fetchImpl('https://auth.lo3rwang.cc/v1/internal/database/'+profileId,{
    method:'GET',headers:{'x-loc-service-token':secret,accept:'application/json',
     ...(probeTicket?{'x-loc-probe-ticket':probeTicket}:{})},
