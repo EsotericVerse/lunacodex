@@ -129,7 +129,7 @@ test('configured LOC Auth overrides legacy local SQL profiles for the main targe
    schema_name:'silver'});
  }});
  assert.equal(observed.length,1);
- assert.match(observed[0],/\\/v1\\/internal\\/database\\/loc-main$/);
+ assert.ok(observed[0].endsWith('/v1/internal/database/loc-main'));
  assert.equal(selected.engine,'postgres');
  assert.equal(selected.namespace,'silver');
  await selected.db.destroy();
