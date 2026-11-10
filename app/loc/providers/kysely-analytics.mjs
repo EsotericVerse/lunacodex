@@ -88,7 +88,7 @@ async function scopeOverview(trx,scope,start,end){
     category_code:String(name).trim().toLowerCase()}));
   return {earliest:first,rows,categories,aliases};
 }
-async function searchSummary(trx,options){
+async function searchSummary(trx,options,{publishedScopeIds=null}={}){
   const scopes=options.scopeIds;
   if(!Array.isArray(scopes)||scopes.length>100||
     scopes.some(x=>typeof x!=='string'||!SCOPE.test(x)))
@@ -97,10 +97,13 @@ async function searchSummary(trx,options){
   if(!requested.length)return {rows:[]};
   // One Kysely membership read, rather than one SQL round trip per Scope.
   // Keep per-Scope configuration queries bounded and sequential.
-  const members=await trx.selectFrom('api.manage')
-    .select('id').where('id','in',requested)
-    .where('manage_role','=','scope').where('active','=',true).execute();
-  const allowed=new Set(members.map(row=>row.id));
+  // The published Scope index is already verified by the public HTTP boundary.
+  // Do not introduce an api.manage GRANT dependency to anonymous Search.
+  const allowed=publishedScopeIds===null
+    ?new Set((await trx.selectFrom('api.manage').select('id')
+      .where('id','in',requested).where('manage_role','=','scope')
+      .where('active','=',true).execute()).map(row=>row.id))
+    :new Set(publishedScopeIds);
   const result=[];
   for(const scope of requested){
     if(!allowed.has(scope))continue;
@@ -339,7 +342,7 @@ async function cultureListPage(db,scope,start,end,options,{engine='postgres',nam
     nextCursor:raw.length===100?{offset:offset+raw.length}:null};
 }
 
-export async function executeKyselyAnalytics(trx,body,{role='anon'}={}){
+export async function executeKyselyAnalytics(trx,body,{role='anon',publishedScopeIds=null}={}){
   const args=body?.args??body;
   const mode=String(args.p_view||'').trim().toLowerCase();
   const scope=scopeId(args.p_scope_id);
@@ -360,7 +363,7 @@ export async function executeKyselyAnalytics(trx,body,{role='anon'}={}){
   await sql`reset role`.execute(trx);
   if(mode==='search_summary'){
     if(scope!=='loc'||start||end)reject('Invalid Search summary request');
-    return {data:await searchSummary(trx,options),count:null};
+    return {data:await searchSummary(trx,options,{publishedScopeIds}),count:null};
   }
   if(mode==='loc'){
     if(scope!=='loc')reject('Invalid LOC statistics Scope');
@@ -388,7 +391,9 @@ export async function executeKyselyAnalytics(trx,body,{role='anon'}={}){
     }
     return {data:{earliest:first,scopes,rows},count:null};
   }
-  const reg=await registry(trx,scope);
+  const reg=publishedScopeIds?.includes(scope)
+    ?{galaxy_table:'galaxy',anchor_table:'anchor'}
+    :await registry(trx,scope);
   const galaxy=safeName(reg.galaxy_table,'galaxy'),anchorSuffix=safeName(reg.anchor_table,'anchor');
   if(galaxy!=='galaxy')reject('Unsupported configured Galaxy relation');
   let data;
