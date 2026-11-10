@@ -1124,7 +1124,13 @@ async function exchangeLocDelegation(request,env,principal,origin){
     await stub.selectedDatabaseForDelegation(principal.subject,root):null;
   const claims=issueDelegation({sub,email,
     grants,audience,sid:crypto.randomUUID(),now,seconds:300,targetId});
-  const token=await stub.signLocDelegation(claims);
+  let token;
+  try{token=await stub.signLocDelegation(claims);}
+  catch(error){
+    console.error('[LOC delegation signing]',{stage:'grant-sign'});
+    throw Object.assign(new Error('LOC delegation signing failed'),
+      {status:503,stage:'grant-sign',code:'SIGN_FAILED'});
+  }
   return json({access_token:token,token_type:'Bearer',expires_at:claims.exp,
     audience:claims.aud,scopeid:global||identity||self?null:scope,grants:claims.grants},200,origin);
 }
@@ -1272,7 +1278,13 @@ export default {
       throw fail('Not found',404);
     }catch(error){
       const code=Number(error?.status)||500;
-      return json({error:code>=500?'Recovery control unavailable':String(error.message)},code,origin);
+      // Return only fixed diagnostic labels. Never expose SQL text or credentials.
+      const stage=/^(driver|registry-query|http|service-config|transport|response-contract|grant-sign)$/.test(String(error?.stage||''))
+        ?String(error.stage):'';
+      const driverCode=/^[A-Za-z0-9_]{2,40}$/.test(String(error?.code||''))
+        ?String(error.code):'';
+      return json({error:code>=500?'Recovery control unavailable':String(error.message),
+        ...(stage?{stage}:{}),...(driverCode?{code:driverCode}:{})},code,origin);
     }
   }
 };
