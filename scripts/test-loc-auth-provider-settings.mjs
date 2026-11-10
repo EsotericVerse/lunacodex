@@ -65,7 +65,7 @@ test('LDAP and AD use a dedicated OIDC bridge, not raw passwords in the browser'
 
 test('vendor-specific Neon Auth is removed without changing SQL database drivers',()=>{
   assert.throws(()=>validateAuthProviderSettings('neon',sample,{siteOrigin}),/Unsupported/);
-  const source=readFileSync(new URL('../app/loc/providers/kysely-database-drivers.ts',import.meta.url),'utf8');
+  const source=readFileSync(new URL('../app/loc/mcp/native-kysely.mjs',import.meta.url),'utf8');
   assert.match(source,/PostgresDialect/);
   assert.match(source,/MysqlDialect/);
   assert.match(source,/MssqlDialect/);
