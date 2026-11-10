@@ -10,30 +10,16 @@ const EMPTY={id:'',label:'',db_type:'direct',project_id:'',provider_oauth:'',eng
  username:'',password:'',auth_type:'default',domain:'',
  client_id:'',tenant_id:'',client_secret:'',token:'',
  selectable_by_users:false,allowed_subjects:''};
-const ENGINES=[['postgres','PostgreSQL'],['mysql','MySQL / MariaDB'],
- ['mssql','SQL Server / Azure SQL']];
-const AUTH_METHODS={
- postgres:[['default','PostgreSQL 帳號密碼']],
- mysql:[['default','MySQL 帳號密碼'],['ldap-simple','LDAP Simple（需 TLS）']],
- mssql:[['default','SQL Server 帳號密碼'],['ntlm','Windows NTLM'],
-  ['azure-active-directory-default','Microsoft Entra Default Credential'],
-  ['azure-active-directory-access-token','Microsoft Entra Access Token'],
-  ['azure-active-directory-password','Microsoft Entra Username / Password'],
-  ['azure-active-directory-msi-vm','Managed Identity（VM）'],
-  ['azure-active-directory-msi-app-service','Managed Identity（App Service）'],
-  ['azure-active-directory-service-principal-secret','Entra Service Principal']]
-};
-const PASSWORD_AUTH=new Set(['default','ldap-simple','ntlm',
- 'azure-active-directory-password']);
-const NEEDS_CLIENT_ID=new Set(['azure-active-directory-password',
- 'azure-active-directory-service-principal-secret']);
+const ENGINES=[['postgres','PostgreSQL']];
+const AUTH_METHODS={postgres:[['default','PostgreSQL 帳號密碼']]};
+const PASSWORD_AUTH=new Set(['default']);
 function cleanForm(item){
  if(!item)return {...EMPTY};
  return {id:String(item.id||''),label:String(item.label||''),
   db_type:String(item.db_type||'direct'),project_id:String(item.project_id||''),
   provider_oauth:'',engine:String(item.engine||''),host:String(item.host||''),
   port:String(item.port??''),database:String(item.database||''),
-  schema_name:String(item.schema_name|| (item.engine==='mssql'?'dbo':item.engine==='mysql'?'':'silver')),
+  schema_name:String(item.schema_name||'silver'),
   table_name:String(item.table_name||''),field_map:JSON.stringify(item.field_map||{},null,2),
   ref_provider:String(item.ref_provider||''),ref_permission:String(item.ref_permission||''),
   username:String(item.username||''),password:'',
@@ -83,7 +69,7 @@ export default function LocDatabaseAdmin(){
   authority('GET','/v1/state').then(data=>{
    if(!active)return;
    setRoot(true);
-   setTargets((data?.targets||[]).filter(x=>x&&x.managed!==true&&x.id));
+   setTargets((data?.targets||[]).filter(x=>x&&x.managed!==true&&x.id&&x.engine==='postgres'));
    setPrimaryId(String(data?.primary_id||''));
   }).catch(error=>{
    if(!active)return;
@@ -122,7 +108,7 @@ export default function LocDatabaseAdmin(){
   try{
    await authority('POST','/v1/primary',{id:form.id});
    const data=await authority('GET','/v1/state');
-   setTargets((data?.targets||[]).filter(x=>x&&x.managed!==true&&x.id));
+   setTargets((data?.targets||[]).filter(x=>x&&x.managed!==true&&x.id&&x.engine==='postgres'));
    setPrimaryId(String(data?.primary_id||''));
    if(data?.primary_id!==form.id)throw Error('主要資料庫選擇未確認');
    setStatus('已選擇主要資料庫：'+form.id+'。讀寫仍須該連線通過手動 SQL 驗證。');
@@ -143,8 +129,7 @@ export default function LocDatabaseAdmin(){
    if(source.length>4096)throw Error('連線網址過長');
    let link;
    try{link=new URL(source)}catch{throw Error('連線網址格式不正確');}
-   const engines={'postgres:':'postgres','postgresql:':'postgres',
-    'mysql:':'mysql','mssql:':'mssql','sqlserver:':'mssql'};
+   const engines={'postgres:':'postgres','postgresql:':'postgres'};
    const engine=engines[link.protocol];
    if(!engine||!link.hostname||!link.port)
     throw Error('請使用供應商 Connect 提供的 SQL 連線網址，並確認其中包含實際 Port');
@@ -164,7 +149,7 @@ export default function LocDatabaseAdmin(){
    await authority('PUT','/v1/targets/'+id,{
     label:'主要資料庫連線',engine,db_type:'direct',project_id:'',
     host:link.hostname,port:Number(link.port),database,
-    schema_name:engine==='postgres'?'silver':engine==='mssql'?'dbo':'',
+    schema_name:'silver',
     username,password,authentication:{type:'default'},
     table_name:'',field_map:{},ref_provider:'',ref_permission:'',
     selectable_by_users:false,allowed_subjects:[]
@@ -172,7 +157,7 @@ export default function LocDatabaseAdmin(){
    await authority('POST','/v1/primary',{id});
    const data=await authority('GET','/v1/state');
    if(data?.primary_id!==id)throw Error('主要資料庫設定尚未確認');
-   const next=(data.targets||[]).filter(x=>x&&x.managed!==true&&x.id);
+   const next=(data.targets||[]).filter(x=>x&&x.managed!==true&&x.id&&x.engine==='postgres');
    setTargets(next);
    setPrimaryId(id);
    setForm(cleanForm(next.find(x=>x.id===id)));
@@ -194,19 +179,7 @@ export default function LocDatabaseAdmin(){
    if(!Number.isInteger(Number(form.port))||Number(form.port)<1||Number(form.port)>65535)
     throw Error('請輸入實際資料庫 Server Port');
    const allowed_subjects=form.allowed_subjects.split(/[\s,;]+/).filter(Boolean);
-   const type=form.auth_type;
-   const authentication={type,
-    ...(type==='ntlm'?{domain:form.domain}:{}),
-    ...(type.startsWith('azure-active-directory-')&&form.client_id
-      ?{clientId:form.client_id}:{}),
-    ...(type.startsWith('azure-active-directory-')&&form.tenant_id&&
-       ['azure-active-directory-password',
-        'azure-active-directory-service-principal-secret'].includes(type)
-      ?{tenantId:form.tenant_id}:{}),
-    ...(type==='azure-active-directory-service-principal-secret'&&form.client_secret
-      ?{clientSecret:form.client_secret}:{}),
-    ...(type==='azure-active-directory-access-token'&&form.token
-      ?{token:form.token}:{})};
+   const authentication={type:'default'};
    let field_map;
    try{field_map=JSON.parse(form.field_map||'{}')}
    catch{throw Error('欄位映射必須是有效 JSON')}
@@ -232,7 +205,7 @@ export default function LocDatabaseAdmin(){
     ...(form.password?{password:form.password}:{})};
    await authority('PUT','/v1/targets/'+form.id,payload);
    const data=await authority('GET','/v1/state');
-   setTargets((data?.targets||[]).filter(x=>x&&x.managed!==true&&x.id));
+   setTargets((data?.targets||[]).filter(x=>x&&x.managed!==true&&x.id&&x.engine==='postgres'));
    setPrimaryId(String(data?.primary_id||''));
    setForm(previous=>({...previous,password:'',provider_oauth:'',client_secret:'',token:''}));
    setDirty(false);
@@ -278,11 +251,11 @@ export default function LocDatabaseAdmin(){
    <label><span>資料庫識別碼</span>
     <input required maxLength={64} value={form.id} disabled={busy}
       onChange={event=>change('id',event.target.value)}
-      placeholder="azure_sql_test" autoCapitalize="off" spellCheck={false}/></label>
+      placeholder="postgres_test" autoCapitalize="off" spellCheck={false}/></label>
    <label><span>顯示名稱</span>
     <input maxLength={120} value={form.label} disabled={busy}
       onChange={event=>change('label',event.target.value)}
-      placeholder="Azure SQL 測試資料庫"/></label>
+      placeholder="PostgreSQL 測試資料庫"/></label>
    <label><span>資料庫供應商（db_type）</span>
     <select className="scope-select" value={form.db_type} disabled={busy}
      onChange={event=>{setDirty(true);setForm(previous=>({
@@ -310,8 +283,8 @@ export default function LocDatabaseAdmin(){
        setDirty(true);
        setForm(prev=>({...prev,engine,auth_type:'default',domain:'',
         client_id:'',tenant_id:'',client_secret:'',token:'',
-        port:'', // The SQL Server Port is specified, never guessed.
-        schema_name:engine==='mssql'?'dbo':engine==='mysql'?'':'silver'}));
+        port:'', // Port comes from the selected SQL connection.
+        schema_name:'silver'}));
      }}>
      <option value="">請選擇 SQL Type</option>
      {ENGINES.filter(([key])=>form.db_type==='direct'||key==='postgres')
@@ -321,17 +294,17 @@ export default function LocDatabaseAdmin(){
    <label><span>資料庫主機</span>
     <input required value={form.host} disabled={busy}
       onChange={event=>change('host',event.target.value)}
-      placeholder="server.database.windows.net" autoCapitalize="off" spellCheck={false}/></label>
+      placeholder="database.example.net" autoCapitalize="off" spellCheck={false}/></label>
    <label><span>資料庫 Server Port（依實際配發，例如 6543）</span>
     <input required inputMode="numeric" value={form.port} disabled={busy}
       onChange={event=>change('port',event.target.value)}/></label>
    <label><span>資料庫名稱</span>
     <input required value={form.database} disabled={busy}
       onChange={event=>change('database',event.target.value)}/></label>
-   <label><span>Schema（MySQL 留空，SQL Server 預設 dbo）</span>
+   <label><span>Schema（PostgreSQL）</span>
     <input value={form.schema_name} disabled={busy}
       onChange={event=>change('schema_name',event.target.value)}
-      placeholder={form.engine==='mssql'?'dbo':'silver'}/></label>
+      placeholder="silver"/></label>
    <label><span>既有資料表（選填；指定後為唯讀映射）</span>
     <input value={form.table_name} disabled={busy}
       onChange={event=>change('table_name',event.target.value)}
@@ -372,36 +345,6 @@ export default function LocDatabaseAdmin(){
    <label><span>Connection Secret／資料庫密碼（可單獨輪替；留空則沿用既有值）</span>
     <input type="password" value={form.password} disabled={busy}
       onChange={event=>change('password',event.target.value)} autoComplete="new-password"/></label>
-   {form.auth_type==='ntlm'?<label><span>Windows 網域（NTLM）</span>
-    <input required value={form.domain} disabled={busy}
-      onChange={event=>change('domain',event.target.value)} autoComplete="off"/>
-   </label>:null}
-   {form.auth_type.startsWith('azure-active-directory-')&&
-    form.auth_type!=='azure-active-directory-access-token'?<label>
-     <span>Entra Client ID（使用者指派 Identity 可選填）</span>
-     <input required={NEEDS_CLIENT_ID.has(form.auth_type)}
-      value={form.client_id} disabled={busy}
-      onChange={event=>change('client_id',event.target.value)} autoComplete="off"/>
-    </label>:null}
-   {['azure-active-directory-password',
-     'azure-active-directory-service-principal-secret'].includes(form.auth_type)
-     ?<label><span>Entra Tenant ID（Service Principal 必填）</span>
-      <input required={form.auth_type==='azure-active-directory-service-principal-secret'}
-       value={form.tenant_id} disabled={busy}
-       onChange={event=>change('tenant_id',event.target.value)} autoComplete="off"/>
-     </label>:null}
-   {form.auth_type==='azure-active-directory-service-principal-secret'?<label>
-     <span>Entra Client Secret（已儲存可留空）</span>
-     <input type="password" value={form.client_secret} disabled={busy}
-      onChange={event=>change('client_secret',event.target.value)}
-      autoComplete="new-password"/>
-    </label>:null}
-   {form.auth_type==='azure-active-directory-access-token'?<label>
-     <span>Entra Access Token（已儲存可留空，須注意 Token 到期）</span>
-     <input type="password" value={form.token} disabled={busy}
-      onChange={event=>change('token',event.target.value)}
-      autoComplete="new-password"/>
-    </label>:null}
    <label className="scope-management-wide-field">
     <input type="checkbox" checked={form.selectable_by_users} disabled={busy}
       onChange={event=>change('selectable_by_users',event.target.checked)}/>

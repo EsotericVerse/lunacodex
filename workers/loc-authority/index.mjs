@@ -19,7 +19,7 @@ import {AUTH_PROVIDER_TYPES,validateAuthProviderSettings,publicAuthProviderSetti
 // This Worker has no dependency on a third-party identity session.
 const JSON_HEADERS={'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'};
 const ID=/^[a-z][a-z0-9_-]{0,63}$/;
-const ENGINES=new Set(['postgres','mysql','mssql']);
+const ENGINES=new Set(['postgres']);
 function fail(message,status=400){return Object.assign(new Error(message),{status});}
 async function verifiedLocOwner(principal,env){
   // The single LOC owner must be able to configure the primary SQL target
@@ -82,7 +82,7 @@ function validateTarget(input,id){
      refPermission&&(!refProvider||!/^[A-Za-z0-9_:@.\/\-]{2,256}$/.test(refPermission)))
     throw fail('Invalid database Auth Ref requirement',400);
   const schemaName=String(input.schema_name||
-    (engine==='postgres'?'silver':engine==='mssql'?'dbo':''));
+    'silver');
   const tableName=String(input.table_name||'');
   const columns=input.field_map||{};
   const identifier=/^[A-Za-z][A-Za-z0-9_]{0,119}$/;

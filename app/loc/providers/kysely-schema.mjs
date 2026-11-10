@@ -3,12 +3,12 @@ import {scopedZModelColumns} from '../../../zenstack/scoped-schema.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const effectiveNamespace=(engine,namespace)=>
-  namespace||(engine==='mssql'?'dbo':'public');
+  namespace||'public';
 
 // A matching table name is not enough: validate once at onboarding instead
 // of letting every feature fail independently on a missing SQL column.
 export function validatePortableScopeSchema(tables,{engine,namespace='',scopeId}={}){
-  if(!SCOPE.test(String(scopeId||''))||!['postgres','mysql','mssql'].includes(engine))
+  if(!SCOPE.test(String(scopeId||''))||engine!=='postgres')
     throw new Error('Invalid portable LOC Scope');
   const schema=effectiveNamespace(engine,namespace);
   // The existing frozen ZModel defines the canonical portable field contract.
@@ -20,7 +20,7 @@ export function validatePortableScopeSchema(tables,{engine,namespace='',scopeId}
   for(const [kind,columns] of Object.entries(expected)){
     const name=scopeId+'_'+kind;
     const table=tables.find(t=>t.name===name&&
-      (engine==='mysql'||!t.schema||t.schema===schema));
+      (!t.schema||t.schema===schema));
     if(!table)throw new Error('Missing LOC table: '+name);
     const present=new Set((table.columns||[]).map(c=>c.name));
     const missing=columns.filter(col=>!present.has(col));

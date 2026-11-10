@@ -5,16 +5,12 @@ const TABLE = 'api.loc_auth';
 const KEY = /^[A-Za-z0-9:._-]{1,320}$/;
 const BUCKET = /^[A-Za-z0-9._-]{1,64}$/;
 const PREFIX = /^[A-Za-z0-9:.-]{1,160}$/;
-const ENGINES = new Set(['postgres', 'mysql', 'mssql']);
+const ENGINES = new Set(['postgres']);
 
 function affected(result) {
   const first = Array.isArray(result) ? result[0] : result;
   return Number(first?.numDeletedRows ?? first?.numUpdatedRows ??
     first?.numAffectedRows ?? 0);
-}
-function duplicate(error) {
-  return error?.code === '23505' || error?.code === 'ER_DUP_ENTRY' ||
-    error?.errno === 1062 || error?.number === 2627 || error?.number === 2601;
 }
 function validKey(value) {
   if (typeof value !== 'string' || !KEY.test(value))
@@ -60,24 +56,9 @@ export function createLocAuthSqlState(db, {
       value_json: row.value_json, expires_at: row.expires_at,
       updated_at: row.updated_at, revision: row.revision
     };
-    if (engine === 'postgres') {
-      await db.insertInto(TABLE).values(row)
-        .onConflict(oc => oc.columns(['bucket', 'state_key'])
-          .doUpdateSet(changes)).execute();
-    } else if (engine === 'mysql') {
-      await db.insertInto(TABLE).values(row)
-        .onDuplicateKeyUpdate(changes).execute();
-    } else {
-      // SQL Server: portable optimistic insert/update without MERGE.
-      const apply = () => db.updateTable(TABLE).set(changes)
-        .where('bucket', '=', bucket).where('state_key', '=', key).execute();
-      if (affected(await apply())) return true;
-      try { await db.insertInto(TABLE).values(row).execute(); }
-      catch (error) {
-        if (!duplicate(error)) throw error;
-        await apply();
-      }
-    }
+    await db.insertInto(TABLE).values(row)
+      .onConflict(oc => oc.columns(['bucket', 'state_key'])
+        .doUpdateSet(changes)).execute();
     return true;
   }
   async function take(key) {

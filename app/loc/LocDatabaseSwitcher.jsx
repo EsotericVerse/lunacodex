@@ -4,8 +4,7 @@ import {mcpLocSession} from './mcp/loc-access.mjs';
 import LocDatabaseAdmin from './LocDatabaseAdmin';
 
 const AUTHORITY='https://auth.lo3rwang.cc';
-const ENGINES={postgres:'PostgreSQL',mysql:'MySQL / MariaDB',
- mssql:'SQL Server / Azure SQL'};
+const ENGINES={postgres:'PostgreSQL'};
 const AUTH_REFS={github:'GitHub',oidc:'OIDC',entra:'Microsoft Entra',
  ldap:'LDAP（OIDC Bridge）',ad:'Active Directory（OIDC Bridge）',clerk:'Clerk JWT'};
 async function requestDatabase(method,path,body){
@@ -80,7 +79,7 @@ export default function LocDatabaseSwitcher(){
  }
  return <section className="loc-card" aria-label="資料庫切換">
   <h2>使用的資料庫</h2>
-  <p className="scope-status">選擇已授權的資料庫，LOC 會即時使用對應的 PostgreSQL、MySQL 或 SQL Server 連線，不需要重新部署。</p>
+  <p className="scope-status">選擇已授權的資料庫，LOC 會即時使用對應的 PostgreSQL 連線，不需要重新部署。</p>
   {loading?<p role="status">正在取得可使用的資料庫…</p>:
    <label><span>資料庫連線</span>
     <select className="scope-select" value={selected}

@@ -21,9 +21,9 @@ async function scopedDatabase(scopeid,env){
     throw unavailable('LOC MCP direct Kysely database is not configured');
   const port=await env.locDirectDatabase();
   if(!port?.db||typeof port.db.selectFrom!=='function'||
-     !['postgres','mysql','mssql'].includes(port.engine))
+     port.engine!=='postgres')
     throw unavailable('LOC MCP direct SQL driver is unavailable');
-  const namespace=port.namespace??(port.engine==='postgres'?'silver':port.engine==='mssql'?'dbo':'');
+  const namespace=port.namespace??'silver';
   if(namespace&&!/^[A-Za-z][A-Za-z0-9_]*$/.test(namespace))
     throw unavailable('LOC MCP SQL namespace is invalid');
   return {db:port.db,table:portableRelation(scopeid+'_galaxy',port.engine,namespace)};

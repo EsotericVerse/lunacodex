@@ -131,7 +131,7 @@ export function buildKyselySelectQuery(trx,input,{dialect='postgres',namespace,p
   if(req.federatedNullsLast===true&&req.orders.length===1&&
      ['date','createtime'].includes(req.orders[0].column)){
     const sortColumn=req.orders[0].column;
-    // Keep NULL dates after real dates across PostgreSQL/MySQL/SQL Server.
+    // Keep NULL dates after real dates in PostgreSQL.
     query=query.orderBy(sql`case when ${sql.ref(sortColumn)} is null then 1 else 0 end`,'asc');
   }
   for(const order of req.orders)query=query.orderBy(order.column,order.ascending===false?'desc':'asc');
@@ -152,29 +152,7 @@ export function buildKyselyUpsertQuery(trx,req,dialect='postgres',namespace){
   if(!sameKeys(rows))throw new Error('Upsert rows must have the same columns');
   const table=databaseTable(req,dialect,namespace);
   const updateColumns=Object.keys(rows[0]||{}).filter(col=>!req.onConflict.includes(col));
-  if(dialect==='mysql'){
-    const duplicateUpdates=req.ignoreDuplicates||!updateColumns.length
-      ?Object.fromEntries(req.onConflict.map(col=>[col,sql.ref(col)]))
-      :Object.fromEntries(updateColumns.map(col=>[col,sql`values(${sql.ref(col)})`]));
-    return trx.insertInto(table).values(req.values).onDuplicateKeyUpdate(duplicateUpdates);
-  }
-  if(dialect==='mssql'){
-    const columns=Object.keys(rows[0]);
-    let source=trx.selectNoFrom(columns.map(col=>sql`${sql.val(rows[0][col])}`.as(col)));
-    for(const row of rows.slice(1))
-      source=source.unionAll(trx.selectNoFrom(columns.map(col=>sql`${sql.val(row[col])}`.as(col))));
-    let query=trx.mergeInto(table).using(source.as('source'),join=>{
-      let condition=join.onRef(`${table}.${req.onConflict[0]}`,'=','source.'+req.onConflict[0]);
-      for(const col of req.onConflict.slice(1))condition=condition.onRef(`${table}.${col}`,'=','source.'+col);
-      return condition;
-    });
-    if(!req.ignoreDuplicates&&updateColumns.length)
-      query=query.whenMatched().thenUpdateSet(eb=>Object.fromEntries(
-        updateColumns.map(col=>[col,eb.ref('source.'+col)])));
-    return query.whenNotMatched().thenInsertValues(eb=>Object.fromEntries(
-      columns.map(col=>[col,eb.ref('source.'+col)])));
-  }
-  // PostgreSQL and SQLite: excluded.<column> represents EACH incoming row.
+  // PostgreSQL: excluded.<column> represents EACH incoming row.
   // Reusing rows[0] here silently overwrote multi-row upserts with the
   // first row's values. Kysely supports the native excluded reference.
   return trx.insertInto(table).values(req.values).onConflict(oc=>updateColumns.length&&!req.ignoreDuplicates
@@ -183,14 +161,8 @@ export function buildKyselyUpsertQuery(trx,req,dialect='postgres',namespace){
     :oc.columns(req.onConflict).doNothing());
 }
 
-function applyMutationReturning(query,req,dialect){
-  if(!req.returning)return query;
-  if(dialect==='mssql'){
-    const prefix=req.operation==='delete'?'deleted':'inserted';
-    return query.output(req.columns.map(column=>sql.ref(`${prefix}.${column}`).as(column)));
-  }
-  if(dialect==='mysql')return query;
-  return query.returning(req.columns);
+function applyMutationReturning(query,req){
+  return req.returning?query.returning(req.columns):query;
 }
 
 export function buildKyselyMutationQuery(trx,input,{dialect='postgres',namespace,modelName=''}={}){
@@ -218,61 +190,6 @@ export function buildKyselyMutationQuery(trx,input,{dialect='postgres',namespace
   return {request:req,query:applyMutationReturning(query,req,dialect)};
 }
 
-function whereKeys(query,columns,keys){
-  if(!columns.length||!keys.length)return query.where(sql`1 = 0`);
-  return query.where(eb=>eb.or(keys.map(key=>eb.and(columns.map(column=>key[column]===null
-    ?eb(column,'is',null)
-    :eb(column,'=',key[column]))))));
-}
-
-async function mysqlPrimaryKeyColumns(trx,req){
-  const result=await sql`
-    select COLUMN_NAME as column_name
-    from information_schema.KEY_COLUMN_USAGE
-    where TABLE_SCHEMA = database()
-      and TABLE_NAME = ${req.table}
-      and CONSTRAINT_NAME = 'PRIMARY'
-    order by ORDINAL_POSITION
-  `.execute(trx);
-  const columns=result.rows.map(row=>String(row.column_name));
-  if(!columns.length)throw new Error('MySQL returning needs a primary key');
-  return columns;
-}
-
-async function executeMysqlReturningMutation(trx,req,query,namespace){
-  const fullTable=databaseTable(req,'mysql',namespace);
-  if(req.operation==='delete'){
-    const before=await applyOrFilters(applyFilters(trx.selectFrom(fullTable).select(req.columns),req.filters),req.orFilters).execute();
-    await query.execute();
-    return before;
-  }
-  let keys=[];let keyColumns=[];
-  if(req.operation==='update'){
-    keyColumns=await mysqlPrimaryKeyColumns(trx,req);
-    const existing=await applyOrFilters(applyFilters(trx.selectFrom(fullTable).select(keyColumns),req.filters),req.orFilters).execute();
-    keys=existing;
-    await query.execute();
-  }else{
-    const result=await query.execute();
-    keyColumns=req.operation==='upsert'?req.onConflict:await mysqlPrimaryKeyColumns(trx,req);
-    const values=Array.isArray(req.values)?req.values:[req.values];
-    keys=values.filter(row=>keyColumns.every(column=>Object.hasOwn(row,column)));
-    if(!keys.length&&req.operation==='insert'&&keyColumns.length===1&&result[0]?.insertId!==undefined){
-      keys=[{[keyColumns[0]]:result[0].insertId}];
-    }
-    if(keys.length!==values.length&&req.operation==='insert'){
-      const rowColumns=[...new Set(values.flatMap(row=>Object.keys(row)))];
-      if(values.some(row=>rowColumns.some(column=>!Object.hasOwn(row,column))))throw new Error('MySQL returning needs consistent insert columns');
-      const returned=await whereKeys(trx.selectFrom(fullTable).select(req.columns),rowColumns,values)
-        .orderBy(keyColumns[0],'asc').execute();
-      if(returned.length!==values.length)throw new Error('MySQL could not identify every inserted row for RETURNING');
-      return returned;
-    }
-    if(keys.length!==values.length)throw new Error('MySQL returning needs each row primary key');
-  }
-  return whereKeys(trx.selectFrom(fullTable).select(req.columns),keyColumns,keys).execute();
-}
-
 /**
  * @param {any} trx
  * @param {any} input
@@ -286,12 +203,9 @@ export async function executeKyselyQuery(trx,input,{dialect='postgres',namespace
     if(built.query)data=await built.query.execute();
   }else{
     const built=buildKyselyMutationQuery(trx,input,{dialect,namespace,modelName});
-    if(dialect==='mysql'&&req.returning)data=await executeMysqlReturningMutation(trx,built.request,built.query,namespace);
-    else {
-      const result=await built.query.execute();
-      if(req.returning)data=result;
-      else {const affected=result[0]?.numAffectedRows??result[0]?.numInsertedOrUpdatedRows??result[0]?.numUpdatedRows??result[0]?.numDeletedRows??0n;count=Number(affected)}
-    }
+    const result=await built.query.execute();
+    if(req.returning)data=result;
+    else {const affected=result[0]?.numAffectedRows??result[0]?.numInsertedOrUpdatedRows??result[0]?.numUpdatedRows??result[0]?.numDeletedRows??0n;count=Number(affected)}
   }
   // A Scope config display name and silver.loc directory label are one
   // logical write. Replace the PostgreSQL trigger with the same Kysely
@@ -316,4 +230,4 @@ export async function executeKyselyQuery(trx,input,{dialect='postgres',namespace
 
 // SQL operations have no stored-procedure dispatch. All calls now use
 // Kysely query, Anchor, Analytics or vetted management action executors.
-export function isKyselyClientError(error){return error instanceof Error&&['Invalid','Unsupported','Unfiltered','Write','Update','Unexpected','RPC','Schema','Too many','Malformed','Filters','OR filters','SQL theme','MySQL returning','Missing'].some(prefix=>error.message.startsWith(prefix))}
+export function isKyselyClientError(error){return error instanceof Error&&['Invalid','Unsupported','Unfiltered','Write','Update','Unexpected','RPC','Schema','Too many','Malformed','Filters','OR filters','SQL theme','Missing'].some(prefix=>error.message.startsWith(prefix))}

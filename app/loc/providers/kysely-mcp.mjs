@@ -1,4 +1,4 @@
-// Scoped MCP SQL operations for PostgreSQL/MySQL/SQL Server.
+// Scoped MCP SQL operations for PostgreSQL.
 // Called by the trusted LOC MCP application after native OAuth, Scope grant
 // and selected-database authorization; never by a SQL Gateway.
 // Galaxy/Anchor are the same fixed physical models; the SQL dialect and
@@ -33,14 +33,14 @@ function verifyScope(body,claims){
   return scope;
 }
 function relation(scope,engine,namespace,tableName=''){ 
-  if(!['postgres','mysql','mssql'].includes(engine))reject('Unsupported MCP SQL engine');
+  if(engine!=='postgres')reject('Unsupported MCP SQL engine');
   // Cloned Scopes inherit the fixed Galaxy contract; only the physical name varies.
   const model=zmodel.models[SCOPE_MODELS[scope]||'Lo3rwangGalaxy'];
   const required=['uid','title','content','createtime','site','site_id','UpdateTime',...FLAGS];
   if(!model||required.some(field=>!Object.hasOwn(model.fields,field)))
     reject('Fixed LOC ZModel Galaxy contract mismatch',503);
   return portableRelation(tableName||scope+'_galaxy',engine,namespace||
-    (engine==='postgres'?'silver':''));
+    'silver');
 }
 function validateSync(body){
   const row=body.row;
