@@ -3,7 +3,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {useEditDock} from '../modular/edit-dock';
 import dynamic from 'next/dynamic';
-import {useSWRConfig} from 'swr';
+import {useQueryClient} from '@tanstack/react-query';
 import UiText,{useUiText} from '../i18n/UiText';
 import {registerDefaultSection} from '../i18n/ui-copy';
 import {useUiSection} from '../i18n/ui-locale';
@@ -39,7 +39,7 @@ export default function ScopeBlockDraftList({
   useUiSection('uiExtra.editBlocks');
   useUiSection('uiExtra.frameEditor');
   const t=useUiText();
-  const {mutate}=useSWRConfig();
+  const queryClient=useQueryClient();
   const editDock=useEditDock();
   const dockActions=useRef({save:null,discard:null});
   const inDock=Boolean(editDock?.active&&editDock.scopeId===scopeId);
@@ -65,9 +65,9 @@ export default function ScopeBlockDraftList({
     // Future visits to this edited page read the live provider, not published JS.
     invalidateScopeBlockPage(scopeId,pageName);
     await Promise.all([
-      mutate(appBootstrapKey(scopeId,pageName),
-        current=>current?{...current,blocks:rows}:current,{revalidate:false}),
-      mutate(['scope-blocks',scopeId,pageName],rows,{revalidate:false})
+      queryClient.setQueryData(appBootstrapKey(scopeId,pageName),
+        current=>current?{...current,blocks:rows}:current),
+      queryClient.setQueryData(['scope-blocks',scopeId,pageName],rows)
     ]);
   }
 
