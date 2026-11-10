@@ -48,7 +48,7 @@ Comprehensive performance optimization guide for React and Next.js applications,
 4. [Client-Side Data Fetching](#4-client-side-data-fetching) — **MEDIUM-HIGH**
    - 4.1 [Deduplicate Global Event Listeners](#41-deduplicate-global-event-listeners)
    - 4.2 [Use Passive Event Listeners for Scrolling Performance](#42-use-passive-event-listeners-for-scrolling-performance)
-   - 4.3 [Use SWR for Automatic Deduplication](#43-use-swr-for-automatic-deduplication)
+   - 4.3 [Reuse LOC ZenStack Client Queries](#43-reuse-loc-zenstack-client-queries)
    - 4.4 [Version and Minimize localStorage Data](#44-version-and-minimize-localstorage-data)
 5. [Re-render Optimization](#5-re-render-optimization) — **MEDIUM**
    - 5.1 [Calculate Derived State During Rendering](#51-calculate-derived-state-during-rendering)
