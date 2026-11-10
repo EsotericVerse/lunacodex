@@ -2,6 +2,7 @@
 // target/project sharing the same host and port. No SQL discovery or retries.
 export const SQL_PROBE_WINDOW_MS=60*60*1000;
 export const SQL_PROBE_LIMIT=3;
+export const SQL_PROBE_COOLDOWN_MS=5*60*1000;
 const BAD=/^(AUTH_FAILED|TYPE_MISMATCH|CAPACITY|TIMEOUT|TRANSPORT|DATABASE_UNAVAILABLE)$/;
 
 export async function sqlSourceKey(profile){
@@ -24,14 +25,24 @@ export function reserveSqlProbe(previous,now,ticket){
  const blockedUntil=Number(old.blockedUntil||0);
  if(blockedUntil>now)
   return {allowed:false,reason:'SOURCE_PAUSED',retryAt:blockedUntil,state:old};
- if(old.inFlight&&Number(old.leaseExpires||0)>now)
-  return {allowed:false,reason:'SOURCE_BUSY',retryAt:old.leaseExpires,state:old};
+ if(old.inFlight){
+  // An expired unfinished probe is still an unknown SQL connection outcome.
+  // Never send another login automatically: pause the shared source first.
+  const lease=Number(old.leaseExpires||0);
+  if(lease>now)
+   return {allowed:false,reason:'SOURCE_BUSY',retryAt:lease,state:old};
+  const paused={...old,inFlight:null,leaseExpires:0,
+   blockedUntil:now+SQL_PROBE_COOLDOWN_MS,last_update:now,
+   generation:Number(old.generation||0)+1};
+  return {allowed:false,reason:'SOURCE_PAUSED',
+   retryAt:paused.blockedUntil,state:paused,save:true};
+ }
  if(attempts>=SQL_PROBE_LIMIT)
   return {allowed:false,reason:'PROBE_LIMIT',retryAt:windowStart+SQL_PROBE_WINDOW_MS,state:old};
  return {allowed:true,reason:'ALLOWED',retryAt:0,state:{
   windowStart,attempts:attempts+1,blockedUntil:0,
   generation:Number(old.generation||0),inFlight:ticket,
-  leaseExpires:now+30000
+  leaseExpires:now+30000,last_update:now
  }};
 }
 
@@ -44,9 +55,9 @@ export function finishSqlProbe(previous,ticket,result,now){
   BAD.test(String(result?.reason||''))?result.reason:'DATABASE_UNAVAILABLE';
  // A single rejected login or busy/failed connection pauses the entire
  // database source immediately. Not merely the user ID or LOC project.
- const blockedUntil=success?0:now+SQL_PROBE_WINDOW_MS;
+ const blockedUntil=success?0:now+SQL_PROBE_COOLDOWN_MS;
  return {accepted:true,success,reason,state:{
-  ...old,inFlight:null,leaseExpires:0,blockedUntil,
+  ...old,inFlight:null,leaseExpires:0,blockedUntil,last_update:now,
   generation:Number(old.generation||0)+(success?0:1)
  }};
 }
