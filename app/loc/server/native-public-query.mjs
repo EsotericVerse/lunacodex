@@ -4,6 +4,7 @@
 import {sql} from 'kysely';
 import {executeKyselyAnalytics,executePortableKyselyAnalytics}
   from '../providers/kysely-analytics.mjs';
+import {executeKyselyPublicAction} from '../providers/kysely-public.mjs';
 import {SCOPE_ROUTE_INDEX} from '../../modular/scope-route-index.js';
 import {directMcpKysely} from '../mcp/native-kysely.mjs';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
@@ -102,6 +103,19 @@ function normalize(body){
     head:body.head===true,cardinality:body.cardinality||null,count:body.count||null};
 }
 
+
+const PUBLIC_ACTIONS=new Set(['read_app_bootstrap','read_scope_page_copy',
+  'page_blocks','hero_blocks','search_scope_trace_place_names']);
+function normalizeAction(body){
+  if(Object.keys(body).some(k=>!['kind','name','args'].includes(k))||
+     !PUBLIC_ACTIONS.has(body.name)||!body.args||typeof body.args!=='object'||
+     Array.isArray(body.args)||!SCOPE.has(String(body.args.p_scope_id||'')))
+    throw invalid('Unavailable LOC public action');
+  if(body.name==='search_scope_trace_place_names'&&body.args.p_scope_id==='loc')
+    throw invalid('Unavailable Trace Scope');
+  return {name:body.name,args:body.args};
+}
+
 const PUBLIC_ANALYTICS=new Set(['culture_list','trace_places','trace_daily',
   'trace_keywords','shared_classes','search_summary','keyword_catalog','keyword_summary']);
 const PUBLIC_ANALYTICS_OPTIONS=new Set(['scopeIds','placeIds','classUid','source','site','offset']);
@@ -157,12 +171,13 @@ export async function handleNativePublicQuery(request,env={},{
   database=directMcpKysely
 }={}){
   if(request.method!=='POST')return respond({error:'POST required'},405);
-  let body,normalized,analytics=null;
+  let body,normalized,analytics=null,action=null;
   try{
     const raw=await request.text();
     if(raw.length>18000)throw invalid('Public query is too large');
     try{body=JSON.parse(raw)}catch{throw invalid('Invalid public JSON')}
     if(body?.kind==='analytics')analytics=normalizeAnalytics(body);
+    else if(body?.kind==='public-action')action=normalizeAction(body);
     else normalized=normalize(body);
   }catch(error){return respond({error:String(error.message)},400)}
   let stage='driver';
@@ -174,8 +189,17 @@ export async function handleNativePublicQuery(request,env={},{
     const selected=await database(env,primary.target_id);
     if(!selected?.db||!['postgres','mysql','mssql'].includes(selected.engine))
       throw Error('LOC Kysely driver unavailable');
-    const table=analytics?null:portableRelation(normalized.table,selected.engine,
+    const table=analytics||action?null:portableRelation(normalized.table,selected.engine,
       selected.namespace||(selected.engine==='postgres'?'silver':'dbo'));
+    if(action){
+      stage='public-action';
+      const output=await executeKyselyPublicAction(selected.db,action,{
+        engine:selected.engine,namespace:selected.namespace||
+          (selected.engine==='postgres'?'silver':'dbo'),
+        publishedScopeIds:[...SCOPE]
+      });
+      return respond({data:output.data,count:output.count??null});
+    }
     if(analytics){
       stage='analytics';
       const settings={role:'anon',publishedScopeIds:PUBLIC_SCOPES};
