@@ -14,45 +14,24 @@ function fail(message){
  return Object.assign(new Error(message),{code:'BACKEND_UNAVAILABLE'});
 }
 function trustedAlias(env,verifiedAlias){
- // The deployed Pages app already publishes the fixed database selection.
- // The trusted service token enables resolving that alias without SQL or a
- // duplicate deployment-local connection password.
- const profileService=String(env.LOC_DB_PROFILE_SERVICE_TOKEN||'');
- const published=profileService.length>=32?
-  DATABASE_ACCESS_LIST.find(target=>target.selected===true)?.connection_alias:'';
- const primary=DATABASE_ACCESS_LIST.find(item=>item.selected===true);
- const selected=verifiedAlias===primary?.target_id?primary.connection_alias:verifiedAlias;
- const alias=String(selected||env.LOC_MCP_DB_ALIAS||
-  env.LOC_CONTROL_DB_ALIAS||env.LOC_PUBLIC_DB_ALIAS||published||'');
- if(!ALIAS.test(alias))throw fail('LOC MCP direct database alias is not configured');
+ const primary=DATABASE_ACCESS_LIST.find(target=>target.selected===true);
+ if(!primary||!ALIAS.test(primary.connection_alias))
+  throw fail('LOC primary database selection is not configured');
+ const alias=verifiedAlias===primary.target_id||!verifiedAlias
+  ?primary.connection_alias:verifiedAlias;
+ if(!ALIAS.test(alias))throw fail('Invalid verified database alias');
  return alias;
-}
-function localProfile(env,alias){
- let profiles;
- try{profiles=JSON.parse(String(env.LOC_DB_CONNECTIONS_JSON||'{}'))}
- catch{throw fail('LOC direct database profiles have invalid JSON')}
- if(!profiles||typeof profiles!=='object'||Array.isArray(profiles))
-  throw fail('LOC direct database profiles are invalid');
- const profile=Object.hasOwn(profiles,alias)?profiles[alias]:null;
- if(!profile||typeof profile!=='object'||Array.isArray(profile))
-  throw fail('LOC MCP database alias does not exist');
- if(typeof profile.url!=='string'||!profile.url)
-  throw fail('LOC MCP database connection is unavailable');
- return profile;
 }
 async function authorizedProfile(env,alias,verifiedAlias,fetchImpl,probeTicket=''){
  const secret=String(env.LOC_DB_PROFILE_SERVICE_TOKEN||'');
- // A configured LOC Auth service is always authoritative for live SQL
- // profiles, including the default database and owner-selected targets.
- // A deployment-local JSON profile must never bypass SQL verification.
- // Local profiles remain a standalone Direct fallback only when LOC Auth
- // is not configured at all.
+ // All database profiles are owned by LOC Authority. Old deployment-local
+ // profiles and environment aliases cannot override the selected SQL target.
  const control=DATABASE_ACCESS_LIST.find(item=>item.selected===true);
  const isPrimary=alias===control?.connection_alias&&
   (!verifiedAlias||verifiedAlias===control.target_id||
    verifiedAlias===control.connection_alias);
- if(secret){
-  if(secret.length<32)throw fail('LOC trusted profile secret is invalid');
+ if(secret.length<32)throw fail('Trusted LOC profile service is required');
+ {
   // `loc_main` is a local connection alias, not LOC Auth's target ID.
   // The trusted profile route is keyed by target_id (e.g. loc-main).
   // The trusted Authority owns the selected main profile. The local
@@ -82,8 +61,6 @@ async function authorizedProfile(env,alias,verifiedAlias,fetchImpl,probeTicket='
   return {...verified.profile,schema_name:verified.target.schema_name,
    table_name:verified.target.table_name,field_map:verified.target.field_map};
  }
- if(probeTicket)throw fail('Trusted SQL profile service required for a manual probe');
- return localProfile(env,alias);
 }
 // Provider-specific official APIs live ONLY in db_connection. They prove
 // that the saved project is accessible to the authorized provider identity.
@@ -140,8 +117,6 @@ function validateProfile(env,profile,verifiedAlias){
  const engine=String(profile.engine||'');
  if(!['postgres','mysql','mssql'].includes(engine))
   throw fail('LOC MCP database engine is unsupported');
- if(!verifiedAlias&&env.LOC_MCP_DB_ENGINE&&env.LOC_MCP_DB_ENGINE!==engine)
-  throw fail('LOC MCP database engine mismatch');
  const url=String(profile.url||'');
  let parsed;
  try{parsed=new URL(url)}catch{throw fail('LOC database connection URL invalid')}
@@ -155,7 +130,7 @@ function validateProfile(env,profile,verifiedAlias){
  if(!Number.isInteger(explicitPort)||explicitPort<1||explicitPort>65535)
   throw fail('LOC SQL connection requires the configured server port');
  const namespace=engine==='mysql'?'':String(profile.schema_name||
-  env.LOC_MCP_DB_NAMESPACE||(engine==='mssql'?'dbo':'silver'));
+  (engine==='mssql'?'dbo':'silver'));
  const tableName=String(profile.table_name||'');
  const fieldMap=profile.field_map||{};
  if(namespace&&!IDENT.test(namespace)||tableName&&!IDENT.test(tableName)||
@@ -169,19 +144,13 @@ function validateProfile(env,profile,verifiedAlias){
 // resolves a subject, or includes a credential/alias in the MCP response.
 // A configured profile is NOT proof that its database is reachable.
 export function mcpDatabaseConfiguration(env={}){
- let publicReadConfigured=false;
- try{
-  const alias=trustedAlias(env,'');
-  const profile=localProfile(env,alias);
-  validateProfile(env,profile,'');
-  publicReadConfigured=true;
- }catch{} // Missing or invalid local configuration is reported, never leaked.
- const delegatedProfileConfigured=typeof env.LOC_DB_PROFILE_SERVICE_TOKEN==='string'&&
-  env.LOC_DB_PROFILE_SERVICE_TOKEN.length>=32;
+ // Presence of the service credential is not proof of a SQL connection or
+ // permission to write. Callers must verify the selected Authority profile.
+ const configured=String(env.LOC_DB_PROFILE_SERVICE_TOKEN||'').length>=32;
  return {
-  publicReadConfigured,
-  privateReadConfigured:publicReadConfigured||delegatedProfileConfigured,
-  privateWriteConfigured:publicReadConfigured||delegatedProfileConfigured,
+  publicReadConfigured:false,
+  privateReadConfigured:configured,
+  privateWriteConfigured:false,
   verification:'configuration-only'
  };
 }

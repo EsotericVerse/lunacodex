@@ -3,77 +3,68 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {directMcpKysely,mcpDatabaseConfiguration} from '../app/loc/mcp/native-kysely.mjs';
 
-const url='postgresql://app:password@127.0.0.1:5432/database';
-const profile={engine:'postgres',url,tls:true};
-const configured=()=>({LOC_MCP_DB_ALIAS:'control',
- LOC_DB_CONNECTIONS_JSON:JSON.stringify({control:profile})});
+const SERVICE='backend-only-secret-with-at-least-32-bytes';
+const getEnv=()=>({LOC_DB_PROFILE_SERVICE_TOKEN:SERVICE});
+const mockProfile=(engine='postgres')=>({
+ engine,host:'db.example.net',port:engine==='mysql'?3306:engine==='mssql'?1433:5432,
+ database:'loc',username:'reader',password:'test-only-password',
+ schema_name:engine==='mysql'?'':engine==='mssql'?'dbo':'silver'
+});
 
-test('MCP distinguishes OAuth connectivity from actual native database configuration',()=>{
+test('the LOC service token is configuration only, never proof of write success',()=>{
  const empty=mcpDatabaseConfiguration({});
  assert.deepEqual(empty,{publicReadConfigured:false,privateReadConfigured:false,
   privateWriteConfigured:false,verification:'configuration-only'});
- assert.deepEqual(mcpDatabaseConfiguration({LOC_MCP_DB_ALIAS:'control',
-  LOC_DB_CONNECTIONS_JSON:'bad json'}),empty);
- const configuredStatus=mcpDatabaseConfiguration(configured());
- assert.equal(configuredStatus.publicReadConfigured,true);
- assert.equal(configuredStatus.privateReadConfigured,true);
- assert.equal(configuredStatus.privateWriteConfigured,true);
- const delegated=mcpDatabaseConfiguration({
-  LOC_DB_PROFILE_SERVICE_TOKEN:'trusted-profile-token-at-least-32-characters'});
- assert.equal(delegated.publicReadConfigured,false);
- assert.equal(delegated.privateReadConfigured,true);
- assert.equal(delegated.privateWriteConfigured,true);
- assert.equal(JSON.stringify(delegated).includes('trusted-profile-token'),false);
- const badEngine=mcpDatabaseConfiguration({LOC_MCP_DB_ALIAS:'control',
-  LOC_DB_CONNECTIONS_JSON:JSON.stringify({control:{engine:'sqlite',url}})});
- assert.equal(badEngine.publicReadConfigured,false);
+ assert.deepEqual(mcpDatabaseConfiguration({
+  LOC_DB_CONNECTIONS_JSON:'untrusted-local-override'}),empty);
+ const service=mcpDatabaseConfiguration(getEnv());
+ assert.equal(service.privateReadConfigured,true);
+ assert.equal(service.privateWriteConfigured,false);
+ assert.equal(service.publicReadConfigured,false);
+ assert.equal(JSON.stringify(service).includes(SERVICE),false);
 });
-test('trusted alias reuses one in-process Kysely pool',async()=>{
- const env=configured();
- const first=await directMcpKysely(env),second=await directMcpKysely(env);
- assert.equal(first,second);
+
+test('signed primary aliases share one Kysely dialect without a second profile path',async()=>{
+ const env=getEnv(),urls=[];
+ const fetchImpl=async url=>{urls.push(url);return Response.json(mockProfile());};
+ const first=await directMcpKysely(env,'',{fetchImpl});
+ const second=await directMcpKysely(env,'loc-main',{fetchImpl});
+ assert.strictEqual(first,second);
  assert.equal(first.engine,'postgres');
  assert.equal(first.namespace,'silver');
  assert.equal(typeof first.db.selectFrom,'function');
- // dialect is exposed so a trusted caller can build a ZenStack+PolicyPlugin
- // reader on the SAME dialect/pool (zenstack/policy-runtime.mjs), not a
- // second connection.
  assert.equal(typeof first.dialect.createDriver,'function');
- assert.deepEqual(Object.keys(first).sort(),['db','dialect','engine','fieldMap','namespace','tableName']);
+ assert.ok(urls.every(url=>url.endsWith('/v1/internal/database/primary')));
+ await first.db.destroy();
 });
-test('missing/mismatched trusted profiles fail closed',async()=>{
- await assert.rejects(directMcpKysely({}),/alias is not configured/);
- await assert.rejects(directMcpKysely({...configured(),LOC_MCP_DB_ALIAS:'bad/alias'}),/alias is not configured/);
- await assert.rejects(directMcpKysely({...configured(),LOC_DB_CONNECTIONS_JSON:'not-json'}),/invalid JSON/);
- await assert.rejects(directMcpKysely({...configured(),LOC_DB_CONNECTIONS_JSON:'{}'}),/alias does not exist/);
- await assert.rejects(directMcpKysely({...configured(),LOC_MCP_DB_ENGINE:'mssql'}),/engine mismatch/);
- await assert.rejects(directMcpKysely({...configured(),LOC_DB_CONNECTIONS_JSON:
-  JSON.stringify({control:{engine:'postgres',url:'https://example.com/rest/v1'}})}),/connection URL invalid/);
+
+test('missing or invalid Authority profile access fails closed',async()=>{
+ await assert.rejects(directMcpKysely({}),/Trusted LOC profile service is required/);
+ await assert.rejects(directMcpKysely(getEnv(),'bad/alias'),/Invalid verified database alias/);
+ await assert.rejects(directMcpKysely(getEnv(),'external',{
+  fetchImpl:async()=>Response.json({code:'DATABASE_TARGET_MISSING'},{status:503})
+ }),error=>error.code==='DATABASE_TARGET_MISSING');
 });
-test('Kysely really chooses Postgres, MySQL and SQL Server SQL dialect',async()=>{
- const input=[
-  ['postgres','postgresql://app:pass@127.0.0.1:5432/loc','silver'],
-  ['mysql','mysql://app:pass@127.0.0.1:3306/loc',''],
-  ['mssql','mssql://app:pass@127.0.0.1:1433/loc','dbo']
- ];
- for(const [engine,url,namespace] of input){
-  const env={LOC_MCP_DB_ALIAS:'source',LOC_DB_CONNECTIONS_JSON:
-   JSON.stringify({source:{engine,url,tls:false}})};
-  const selected=await directMcpKysely(env);
+
+test('Kysely compiles Postgres, MySQL and SQL Server via one Authority profile',async()=>{
+ for(const engine of ['postgres','mysql','mssql']){
+  const env=getEnv();
+  const selected=await directMcpKysely(env,'target_'+engine,{
+   fetchImpl:async()=>Response.json(mockProfile(engine))
+  });
   assert.equal(selected.engine,engine);
+  const namespace=engine==='mysql'?'':engine==='mssql'?'dbo':'silver';
   assert.equal(selected.namespace,namespace);
-  const name=namespace?namespace+'.galaxy':'galaxy';
-  const query=selected.db.selectFrom(name).select('uid').limit(2).compile();
-  if(engine==='postgres')assert.match(query.sql,/"silver"\."galaxy"/);
-  if(engine==='mysql')assert.match(query.sql,/\`galaxy\`/);
-  if(engine==='mssql')assert.match(query.sql,/"dbo"\."galaxy"/);
+  const sql=selected.db.selectFrom(namespace?namespace+'.galaxy':'galaxy')
+   .select('uid').limit(2).compile().sql;
+  if(engine==='postgres')assert.match(sql,/"silver"\."galaxy"/);
+  if(engine==='mysql')assert.match(sql,/\x60galaxy\x60/);
+  if(engine==='mssql')assert.match(sql,/"dbo"\."galaxy"/);
   await selected.db.destroy();
  }
 });
 test('live Auth-selected profile is resolved only through trusted server secret',async()=>{
- const env={LOC_MCP_DB_ALIAS:'primary',
-  LOC_DB_PROFILE_SERVICE_TOKEN:'backend-only-secret-with-at-least-32-bytes',
-  LOC_DB_CONNECTIONS_JSON:'{}'};
+ const env={LOC_DB_PROFILE_SERVICE_TOKEN:'backend-only-secret-with-at-least-32-bytes'};
  const invoked=[];
  const fetchImpl=async(url,options)=>{
   invoked.push({url,options});
@@ -116,7 +107,7 @@ test('published server alias resolves to encrypted LOC Authority target with no 
  assert.equal(observed[0].options.headers['x-loc-service-token'],env.LOC_DB_PROFILE_SERVICE_TOKEN);
  await selected.db.destroy();
 });
-test('configured LOC Auth overrides legacy local SQL profiles for the main target',async()=>{
+test('Authority owns primary profile even when old environment JSON is supplied',async()=>{
  const env={LOC_DB_PROFILE_SERVICE_TOKEN:'trusted-service-token-over-32-characters',
   LOC_DB_CONNECTIONS_JSON:JSON.stringify({loc_main:{
    engine:'postgres',url:'postgresql://old:old@old.example.net:5432/loc'
