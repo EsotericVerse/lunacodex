@@ -135,6 +135,18 @@ test('configured LOC Auth overrides legacy local SQL profiles for the main targe
  await selected.db.destroy();
 });
 
+test('legacy loc_main alias resolves the current primary, not a phantom Authority target',async()=>{
+ const env={LOC_DB_PROFILE_SERVICE_TOKEN:'backend-only-secret-with-at-least-32-bytes'};
+ const calls=[];
+ const selected=await directMcpKysely(env,'loc_main',{fetchImpl:async(url)=>{
+  calls.push(url);
+  return Response.json({engine:'postgres',host:'db.example.net',port:5432,
+   database:'loc',username:'reader',password:'test-only-password',schema_name:'silver'});
+ }});
+ assert.equal(calls.length,1);
+ assert.ok(calls[0].endsWith('/v1/internal/database/primary'));
+ await selected.db.destroy();
+});
 test('untrusted missing Authority target is refused; secret never appears in an exception',async()=>{
  const env={LOC_DB_PROFILE_SERVICE_TOKEN:'backend-only-secret-with-at-least-32-bytes'};
  await assert.rejects(directMcpKysely(env,'',{fetchImpl:async()=>new Response('Forbidden',{status:403})}),
