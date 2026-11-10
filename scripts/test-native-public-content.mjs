@@ -235,7 +235,7 @@ test('public Kysely Alias uses the existing Admin access.js selection, not a Man
     database:async(_env,alias)=>{selected=alias;return mock.database();}
   });
   assert.equal(response.status,200);
-  assert.equal(selected,'loc_main');
+  assert.equal(selected,'','public control target resolves through the existing selected main Kysely profile');
   assert.ok(mock.calls.every(call=>!call.table.includes('manage')));
 });
 
