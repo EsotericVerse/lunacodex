@@ -110,7 +110,7 @@ export default function CultureTimelineEditor({
   }),[all,anchors,eventChoices]);
   const recordOptions=useMemo(()=>rows.filter(row=>row.type===browseType).map(row=>({
     value:String(row.uid),
-    label:(row.type==='anchor'&&day(row.address)?day(row.address)+'｜':'')+String(row.title||row.uid)
+    label:(row.type==='anchor'&&day(row.address)?day(row.address)+'｜':'')+String(row.title||'未命名紀錄')
   })),[rows,browseType]);
   const selectRow=id=>{
     const row=all.find(item=>String(item.uid)===String(id));
