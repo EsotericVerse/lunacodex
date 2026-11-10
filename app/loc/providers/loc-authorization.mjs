@@ -1,7 +1,6 @@
-import {registryRelationForEngine} from './live-database-target.mjs';
-// LOC OAuth verifies the person. The signed delegation and api.manage
-// determine database management authority; neither a client email nor a
-// database role alone authorizes a write.
+// LOC OAuth verifies the person. A signed, time-limited LOC delegation from
+// the verified unique owner authorizes writes; SQL Registry isn't an identity
+// service and cannot block owner bootstrap.
 const sessions=new WeakMap();
 const SUBJECT=/^[A-Za-z0-9_-]{1,128}$/;
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -16,14 +15,7 @@ export function bindLocAuthorization(db,{role='anon',claims={},engine='postgres'
     !EMAIL.test(String(claims?.email||'').trim().toLowerCase())||
     !Array.isArray(claims.grants)))
     deny('Verified LOC delegation required');
-  sessions.set(db,{role,claims,email:String(claims?.email||'').trim().toLowerCase(),
-    registry:null,registryRelation:registryRelationForEngine(engine)});
-}
-async function registryFor(db,state,registryRelation=state.registryRelation){
-  if(!state.registry)state.registry=db.selectFrom(registryRelation)
-    .select(['id','manage_role','active'])
-    .where(db.fn('lower',['email']),'=',state.email).execute();
-  return state.registry;
+  sessions.set(db,{role,claims,email:String(claims?.email||'').trim().toLowerCase()});
 }
 export async function locPermissions(db){
   const state=sessions.get(db);
@@ -41,16 +33,15 @@ export async function canManageLoc(db,type,id='',registryRelation=null){
   const kind=String(type||'').toLowerCase(),scope=String(id||'').toLowerCase();
   if(!['global','scope','group'].includes(kind)||
      kind!=='global'&&!SCOPE.test(scope))return false;
-  const grants=state.claims.grants;
-  const rows=await registryFor(db,state,registryRelation||state.registryRelation);
-  // Admin must come from the database, AND LOC Auth must have signed
-  // the global grant. An inactive scope never becomes an implicit permission.
-  const admin=grants.includes('global:manage')&&rows.some(row=>
-    row.manage_role==='admin'&&row.active===true);
-  if(admin)return true;
-  if(kind==='global'||!grants.includes(scope+':manage'))return false;
-  return rows.some(row=>row.id===scope&&row.active===true&&
-    (row.manage_role===kind||kind==='scope'&&row.manage_role==='admin'));
+  const claims=state.claims;
+  // The issuer has already verified the LOC OAuth principal and signed this
+  // exact short-lived delegation. The owner's identity is fixed: no SQL
+  // Registry or RLS lookup can veto a valid signature or promote another user.
+  if(claims?.provider!=='loc'||claims?.me!==true||
+     state.email!=='sopa2306@gmail.com'||!Array.isArray(claims.grants))
+    return false;
+  return claims.grants.includes('global:manage')||
+    kind!=='global'&&claims.grants.includes(scope+':manage');
 }
 export async function locManageRows(db,type,id=null){
   const kind=String(type||'').toLowerCase(),scope=id==null?'':String(id).toLowerCase();
