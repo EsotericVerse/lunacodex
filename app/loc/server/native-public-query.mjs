@@ -9,6 +9,7 @@ import {SCOPE_ROUTE_INDEX} from '../../modular/scope-route-index.js';
 import {directMcpKysely} from '../mcp/native-kysely.mjs';
 import {createScopedLocClient} from '../../../zenstack/client.mjs';
 import {nativeReadPlan,executeNativeRead} from '../../../zenstack/native-query.mjs';
+import {verifyModeledSqlFields} from '../../../zenstack/model-column-guard.mjs';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 import {portableRelation} from '../providers/sql-engine-ports.mjs';
 import {parsePortableOrExpression,portableContainsSpec}
@@ -101,6 +102,9 @@ function normalize(body){
   if(body.count!=null&&body.count!=='exact')
     throw invalid('Invalid SQL count mode');
   if(body.head!=null&&typeof body.head!=='boolean')throw invalid('Invalid SQL HEAD');
+  // Validate known physical column names against the single ZenStack model.
+  // No SQL connection is needed to reject unknown modeled projections.
+  verifyModeledSqlFields({schema:'silver',table,columns,filters,orders});
   return {table,columns,filters,orFilters,orders,limit,offset,
     head:body.head===true,cardinality:body.cardinality||null,count:body.count||null};
 }
