@@ -133,7 +133,7 @@ export function invalidatePublicScopeMetadata(){
     window.dispatchEvent(new Event('loc-public-scope-metadata-changed'));
   }
 }
-// The caller's SWR invalidation and direct database reads provide freshness;
+// Client-query invalidation and direct database reads provide freshness;
 // no API request or background ISR cache invalidation is necessary.
 export async function revalidateServerMetadata(){return false;}
 export function selectPublicSiteBootstrap(){
