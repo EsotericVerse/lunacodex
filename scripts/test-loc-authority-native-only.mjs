@@ -118,8 +118,8 @@ test('LOC registry role lookup preserves trusted lookup stages and never promote
       error=>error.status===503&&error.message.includes('('+status+')'));
   }
   await assert.rejects(locRegistryRoles(env,email,{fetchImpl:async()=>
-    Response.json({error:'LOC registry read unavailable',stage:'registry-query'},{status:503})}),
-    error=>error.status===503);
+    Response.json({error:'LOC registry read unavailable',stage:'registry-query',code:'42501'},{status:503})}),
+    error=>error.status===503&&error.stage==='registry-query'&&error.code==='42501');
   await assert.rejects(locRegistryRoles(env,email,{fetchImpl:async()=>
     Response.json({unexpected:true})}),error=>error.status===503);
 });
@@ -132,7 +132,7 @@ test('production registry tracing is in the existing authenticated route, not a 
   assert.match(route,/directMcpKysely\(env,primary\.target_id\)/);
   assert.match(route,/stage='registry-query'/);
   assert.match(route,/LOC_DB_PROFILE_SERVICE_TOKEN/);
-  assert.match(route,/return respond\(\{error:'LOC registry read unavailable',stage\},503\)/);
-  assert.match(role,/stage:downstream,httpStatus:response.status/);
+  assert.match(route,/return respond\\(\\{error:'LOC registry read unavailable',stage,code,\\.\\.\\.roleProbe\\},503\\)/);
+  assert.match(role,/stage:downstream,[\\s\\S]*?httpStatus:response.status,code,dbRole/);
   assert.doesNotMatch(route,/errorStack|errorCause|url\.searchParams\.get\('token'\)/);
 });

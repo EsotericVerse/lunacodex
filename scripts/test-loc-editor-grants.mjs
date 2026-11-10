@@ -60,7 +60,14 @@ test('denied or malformed Authority grants do not enter edit mode',async()=>{
   ])await assert.rejects(readLocEditorGrants(session,{
     fetchImpl:async()=>Response.json({audience:'loc-delegation',grants})
   }),/回應不完整/);
-  assert.deepEqual(await readLocEditorGrants(session,{fetchImpl:async()=>reply([])}),[]);
+  await assert.rejects(readLocEditorGrants(session,{fetchImpl:async()=>reply([])}),
+    /role-match \/ no-global-manage/);
+  await assert.rejects(readLocEditorGrants(session,{fetchImpl:async()=>
+    Response.json({error:'LOC registry read unavailable',stage:'registry-query',code:'42501'},
+      {status:503})}),/registry-query \/ 42501/);
+  await assert.rejects(readLocEditorGrants(session,{fetchImpl:async()=>
+    Response.json({stage:'grant-sign',code:'SIGN_FAILED'},{status:503})}),
+    /grant-sign \/ SIGN_FAILED/);
 });
 test('homepage edit click uses LOC Auth; passive rendering never calls manage(self)',()=>{
   const account=readFileSync(new URL('../app/loc/use-account.js',import.meta.url),'utf8');
