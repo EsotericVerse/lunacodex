@@ -863,11 +863,6 @@ async function handleMcpAuthority(request,env,url,origin){
     const scopeid=validScope(directPermit[1]),action=directPermit[2];
     const state=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName('loc-authority-control-v1'));
     const root=await verifiedLocOwner(principal,env);
-    // MCP conversation data is private, unlike LOC's public article listing.
-    // A valid OAuth session is not itself a Scope read grant.
-    if(!root&&!await state.mayAccess({provider:'loc',subject:principal.subject,
-      scope:scopeid,action:'read'}))
-      throw fail('MCP Scope grant denied',403);
     const dbTarget=await state.selectedDatabaseForDelegation(principal.subject,root);
     return json({authorized:true,subject:principal.subject,scopeid,action,
       ...(dbTarget?{db_target:dbTarget}:{})},200,origin);
