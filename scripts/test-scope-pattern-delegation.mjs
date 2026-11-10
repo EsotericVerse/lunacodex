@@ -132,9 +132,10 @@ test('autocomplete is typed and routed; no client can submit arbitrary SQL',()=>
   assert.doesNotMatch(server,/sourceValues|type==='domain'|type==='from'/);
   assert.match(server,/attrs\(row\)\[SCOPE_PATTERN_POSTING_KEY\]/);
   assert.match(endpoint,/verifiedIdentity\(request,context\.env\)/);
-  assert.match(ui,/from 'react-select'/);
-  assert.match(ui,/executeAnchorSelection\(choice\)/);
-  assert.match(ui,/executeAnchorSelection\(active\.anchorSelection/);
+  assert.doesNotMatch(ui,/from 'react-select'/);
+  assert.match(ui,/publicPatternSuggestions/);
+  assert.match(ui,/<datalist/);
+  assert.doesNotMatch(endpoint,/suggestAnchors/);
 });
 
 test('Keyword HTTP boundary awaits the native Kysely connection before accessing db',()=>{
@@ -144,11 +145,12 @@ test('Keyword HTTP boundary awaits the native Kysely connection before accessing
   assert.doesNotMatch(endpoint,/const entry=directMcpKysely\(context\.env\)/);
 });
 
-test('public Anchor suggestions are gated by the Scope publication flag',()=>{
+test('public Anchor suggestions are removed, while exact navigation stays publication gated',()=>{
   const server=readFileSync(new URL('../app/loc/keyword-anchor-search.mjs',import.meta.url),'utf8');
   assert.match(server,/select\(\['keyword_meta','search'\]\)/);
   assert.match(server,/published:settings\?\.search===true/);
-  assert.match(server,/if\(!owner&&!visible\.published\)continue/);
+  assert.doesNotMatch(server,/suggestAnchorOptions/);
+  assert.match(server,/if\(!owner\)q=q\.where\('invisible','=',false\)/);
   assert.match(server,/if\(settings\?\.search!==true\)err\('This Scope does not publish Search',403\)/);
 });
 

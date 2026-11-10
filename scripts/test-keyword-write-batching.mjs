@@ -21,7 +21,7 @@ test('selected Class reset cannot delete terms still used by another Class',()=>
 });
 test('the article index is written in bounded SQL batches and then marks Class complete',()=>{
  const source=read('app/loc/keyword-sql-service.mjs');
- assert.match(source,/storeScopePatternMatches\(trx,scope,dbUid,patterns\)/);
+ assert.match(source,/storeScopePatternMatches\(trx,scope,patterns\)/);
  assert.match(read('app/loc/keyword-anchor-index.mjs'),/for\(let i=0;i<updates\.length;i\+=100\)/);
  assert.match(source,/keyword_meta:JSON\.stringify\(metadata\)/);
 });
