@@ -77,7 +77,7 @@ test('existing Scope anchor is chosen by UID, not county',()=>{
  assert.match(ui,/import ScopeOptionPicker/);
   assert.match(ui,/<ScopeOptionPicker /);
  assert.match(ui,/ownAnchors\.find\(item=>item\.uid===uid\)/);
- assert.match(ui,/onChange=\{choice=>pickExisting/);
+ assert.match(ui,/onChange=\{pickExisting\}/);
  assert.doesNotMatch(ui,/county_id|setFloorLevel/);
 });
 
