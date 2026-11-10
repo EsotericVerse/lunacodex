@@ -4,8 +4,6 @@ import {canManageLoc} from './loc-authorization.mjs';
 // adapters remain on the trusted runtime (never in the browser).
 const ENGINE_DEFINITIONS=[
   {id:'postgres',label:'PostgreSQL',dialect:'PostgresDialect',driver:'pg',runtime:'edge',namespace:'schema',session:'external-acl',schema:'kysely'},
-  {id:'mysql',label:'MySQL / MariaDB',dialect:'MysqlDialect',driver:'mysql2',runtime:'edge',namespace:'database',session:'external-acl',schema:'kysely'},
-  {id:'mssql',label:'SQL Server / Azure SQL',dialect:'MssqlDialect',driver:'tedious+tarn',runtime:'edge',namespace:'schema',session:'external-acl',schema:'kysely'},
 ];
 export const SQL_ENGINE_PORTS=Object.freeze(ENGINE_DEFINITIONS.map(entry=>Object.freeze(entry)));
 export const SQL_ENGINE_OPTIONS=Object.freeze(SQL_ENGINE_PORTS.map(({id,label})=>Object.freeze({value:id,label})));
@@ -60,8 +58,8 @@ function publicReference(request){
 }
 export function portableRelation(table,engine,namespace=''){
   if(!/^[a-z][a-z0-9_]*$/i.test(table))throw new Error('Invalid SQL relation');
-  if(engine==='mysql')return table;
-  const schema=String(namespace|| (engine==='mssql'?'dbo':'public'));
+  if(engine!=='postgres')throw new Error('Unsupported SQL engine');
+  const schema=String(namespace||'public');
   if(!/^[a-z][a-z0-9_]*$/i.test(schema))throw new Error('Invalid SQL namespace');
   return schema+'.'+table;
 }
@@ -139,20 +137,7 @@ function managedAffected(result){
   return Number(result?.numInsertedOrUpdatedRows??result?.numUpdatedRows??
     result?.numDeletedRows??result?.numAffectedRows??0);
 }
-function matchingPortableField(key,incoming,stored,engine){
-  // SQL Server returns JSON stored in nvarchar as text; MySQL drivers may
-  // return native JSON or text. Compare media_link by its array value so a
-  // repeat import does not issue an UPDATE only because the read type differs.
-  if(key==='media_link'&&engine!=='postgres'){
-    const decode=value=>{
-      if(typeof value!=='string')return value;
-      try{
-        const parsed=JSON.parse(value);
-        return Array.isArray(parsed)?parsed:value;
-      }catch{return value;}
-    };
-    return JSON.stringify(decode(incoming))===JSON.stringify(decode(stored));
-  }
+function matchingPortableField(_key,incoming,stored){
   return JSON.stringify(incoming)===JSON.stringify(stored);
 }
 /**
@@ -182,8 +167,7 @@ export async function executeCrossEngineManagedWrite(db,body,context){
         invalidWrite('Invalid managed insert columns');
     }
     // Batch by column shape to preserve omitted database defaults.
-    // SQL Server limits one statement to 2,100 bound parameters. Derive
-    // batch size from its row width rather than assuming 50 rows always fit.
+    // Preserve batched INSERTs rather than issuing one request per row.
     const groups=new Map();
     for(const row of rows){
       const shape=Object.keys(row).sort().join('|');
@@ -191,10 +175,7 @@ export async function executeCrossEngineManagedWrite(db,body,context){
       group.push(row);groups.set(shape,group);
     }
     const batches=[...groups.values()].map(group=>{
-      const columns=Object.keys(group[0]).length;
-      // Reserve capacity below SQL Server's 2,100 parameter maximum.
-      const size=context.engine==='mssql'?Math.min(50,Math.floor(2000/columns)):50;
-      if(size<1)invalidWrite('Managed insert row exceeds SQL Server parameter limit');
+      const size=50;
       return {group,size};
     });
     for(const {group,size} of batches){
@@ -289,11 +270,7 @@ export const PORTABLE_JSON_COLUMNS=Object.freeze([
   'attr','block_entity','status','media_link','theme','keywords','database',
   'keyword_meta','ArticleTag','search_aliases','target_id'
 ]);
-const portableJsonFields=new Set(PORTABLE_JSON_COLUMNS);
 export function serializePortableJsonFields(values,engine){
-  if(engine==='postgres'||!values||typeof values!=='object')return values;
-  if(Array.isArray(values))return values.map(row=>serializePortableJsonFields(row,engine));
-  return Object.fromEntries(Object.entries(values).map(([key,value])=>
-    [key,portableJsonFields.has(key)&&value!==null&&typeof value==='object'
-      ?JSON.stringify(value):value]));
+  if(engine!=='postgres')throw new Error('Unsupported SQL engine');
+  return values;
 }

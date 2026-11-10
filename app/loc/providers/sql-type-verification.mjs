@@ -1,39 +1,22 @@
-// Verify, never discover, the SQL type explicitly selected by the connection
-// owner. Exactly one read-only query is issued through that type's existing
-// Kysely Dialect. No fallback Driver, port scan, or arbitrary SQL input.
+// Verify the selected PostgreSQL type through its existing Kysely connection.
+// Exactly one fixed, read-only query. No discovery or alternative driver.
 import {sql} from 'kysely';
-
-const SQL_TYPES=new Set(['postgres','mysql','mssql']);
-
-export function assertSelectedSqlVersion(engine,version,vendor=''){
+const SQL_TYPES=new Set(['postgres']);
+export function assertSelectedSqlVersion(engine,version){
  if(!SQL_TYPES.has(engine))
   throw Object.assign(new Error('SQL Type must be explicitly selected'),
    {code:'SQL_TYPE_REQUIRED'});
  const text=String(version||'');
- const matches=engine==='postgres'
-  ? /^PostgreSQL\b/i.test(text)
-  : engine==='mysql'
-    ? /^\d+\.\d+/.test(text) // MySQL protocol has already been negotiated by MysqlDialect
-    : /\bMicrosoft SQL (?:Server|Azure)\b|\bAzure SQL\b/i.test(text);
- if(!matches)throw Object.assign(
+ if(!/^PostgreSQL\\b/i.test(text))throw Object.assign(
   new Error('Server does not match the selected SQL Type'),
   {code:'SQL_TYPE_MISMATCH'});
  return {engine,version:text.slice(0,300)};
 }
-
 export async function verifySelectedSqlType(db,engine,{query}={}){
  if(!SQL_TYPES.has(engine))
   throw Object.assign(new Error('SQL Type must be explicitly selected'),
    {code:'SQL_TYPE_REQUIRED'});
- // These are fixed, read-only version statements, not discovery SQL.
- const read=query||(
-  engine==='postgres'
-   ?()=>sql`select version() as server_version`.execute(db)
-   :engine==='mysql'
-    ?()=>sql`select version() as server_version, @@version_comment as server_comment`.execute(db)
-    :()=>sql`select @@version as server_version`.execute(db)
- );
+ const read=query||(()=>sql`select version() as server_version`.execute(db));
  const response=await read();
- const row=response?.rows?.[0]||{};
- return assertSelectedSqlVersion(engine,row.server_version,row.server_comment);
+ return assertSelectedSqlVersion(engine,response?.rows?.[0]?.server_version);
 }

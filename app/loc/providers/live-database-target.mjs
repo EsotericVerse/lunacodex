@@ -4,7 +4,7 @@
 import {normalizeSqlDriverAuthentication,sqlAuthNeedsUserPassword}
  from './sql-driver-auth.mjs';
 const ID=/^[a-z][a-z0-9_-]{0,63}$/;
-const ENGINES=new Set(['postgres','mysql','mssql']);
+const ENGINES=new Set(['postgres']);
 const HOST=/^[a-z0-9.-]{1,253}$/;
 const NAME=/^[A-Za-z0-9_-]{1,120}$/;
 export function normalizeLiveTarget(id,profile){
@@ -18,8 +18,7 @@ export function normalizeLiveTarget(id,profile){
  const database=String(profile.database||'');
  const authentication=normalizeSqlDriverAuthentication(engine,profile.authentication);
  const needsPassword=sqlAuthNeedsUserPassword(authentication);
- // Passwordless Entra identities and signed access-token authentication do
- // not have a SQL username/password. All other modes fail closed if missing.
+ // PostgreSQL credentials are required for the selected database connection.
  if(needsPassword&&
    (typeof profile.username!=='string'||typeof profile.password!=='string'))
   throw Error('Trusted runtime SQL credentials are missing');
@@ -30,12 +29,11 @@ export function normalizeLiveTarget(id,profile){
   !NAME.test(database)||(needsPassword&&!username.trim())||
   username.length>120||(needsPassword&&!password)||password.length>4096)
   throw Error('Trusted runtime SQL connection is incomplete');
- const protocol=engine==='mssql'?'mssql':engine==='mysql'?'mysql':'postgres';
+ const protocol='postgres';
  const url=new URL(protocol+'://example.invalid');
  url.hostname=host;url.port=String(port);url.username=username;
  url.password=password;url.pathname='/'+encodeURIComponent(database);
- const namespace=engine==='mysql'?'':String(profile.schema_name||
-   (engine==='mssql'?'dbo':'silver'));
+ const namespace=String(profile.schema_name||'silver');
  const safe=/^[A-Za-z][A-Za-z0-9_]{0,119}$/;
  const table=String(profile.table_name||'');
  const fieldMap=profile.field_map||{};
@@ -61,12 +59,8 @@ export function runtimeTargetId(claims){
  return id;
 }
 
-// The fixed LOC control contract lives in the selected main database.
-// PostgreSQL / SQL Server have SQL schemas; MySQL uses its selected database
-// and an unqualified table. Never use the external article field mapping to
-// resolve the control registry or let a caller choose this relation.
+// The fixed LOC control registry is in the selected PostgreSQL database.
 export function registryRelationForEngine(engine){
- if(engine==='mysql')return 'manage';
- if(engine==='postgres'||engine==='mssql')return 'api.manage';
+ if(engine==='postgres')return 'api.manage';
  throw Error('Unsupported main SQL engine');
 }

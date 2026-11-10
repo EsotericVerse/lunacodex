@@ -1,9 +1,8 @@
 // LOC native Kysely Driver: the selected SQL engine controls its real wire
 // protocol. SQL always executes here in the trusted application, never through
 // LOC Auth or an HTTP SQL Gateway.
-import {Kysely,PostgresDialect,MysqlDialect,MssqlDialect} from 'kysely';
+import {Kysely,PostgresDialect} from 'kysely';
 import pg from 'pg';
-import {mssqlAuthentication,mysqlLdapOptions} from '../providers/sql-driver-auth.mjs';
 import {normalizeLiveTarget} from '../providers/live-database-target.mjs';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 
@@ -135,22 +134,19 @@ async function checkProviderApi(env,profile,fetchImpl){
 }
 function validateProfile(env,profile,verifiedAlias){
  const engine=String(profile.engine||'');
- if(!['postgres','mysql','mssql'].includes(engine))
+ if(engine!=='postgres')
   throw fail('LOC MCP database engine is unsupported');
  const url=String(profile.url||'');
  let parsed;
  try{parsed=new URL(url)}catch{throw fail('LOC database connection URL invalid')}
- const schemes={postgres:['postgres:','postgresql:'],mysql:['mysql:'],
-  mssql:['mssql:','sqlserver:']};
- if(!schemes[engine].includes(parsed.protocol)||!parsed.hostname)
+ if(!['postgres:','postgresql:'].includes(parsed.protocol)||!parsed.hostname)
   throw fail('LOC '+engine+' connection URL invalid');
  // The owner supplies the port, including nonstandard pooler ports (6543).
  // No default or supplier-driven port derivation is allowed.
  const explicitPort=Number(parsed.port);
  if(!Number.isInteger(explicitPort)||explicitPort<1||explicitPort>65535)
   throw fail('LOC SQL connection requires the configured server port');
- const namespace=engine==='mysql'?'':String(profile.schema_name||
-  (engine==='mssql'?'dbo':'silver'));
+ const namespace=String(profile.schema_name||'silver');
  const tableName=String(profile.table_name||'');
  const fieldMap=profile.field_map||{};
  if(namespace&&!IDENT.test(namespace)||tableName&&!IDENT.test(tableName)||
@@ -175,39 +171,13 @@ export function mcpDatabaseConfiguration(env={}){
   verification:'configuration-only'
  };
 }
-async function newDialect({engine,profile,parsed}){
- if(engine==='postgres'){
-  return new PostgresDialect({pool:new pg.Pool({
-   connectionString:profile.url,max:1,idleTimeoutMillis:12000,
-   connectionTimeoutMillis:7000,
-   ...(profile.tls===false?{ssl:false}:{ssl:{rejectUnauthorized:true}})
-  })});
- }
- if(engine==='mysql'){
-  const module=await import('mysql2');
-  const createPool=module.createPool||module.default?.createPool;
-  if(typeof createPool!=='function')throw fail('MySQL protocol driver unavailable');
-  return new MysqlDialect({pool:createPool({
-   host:parsed.hostname,port:Number(parsed.port),
-   user:decodeURIComponent(parsed.username),password:decodeURIComponent(parsed.password),
-   database:decodeURIComponent(parsed.pathname.slice(1)),
-   waitForConnections:false,connectionLimit:1,queueLimit:0,
-   ...(profile.tls===false?{}:{ssl:{rejectUnauthorized:true}}),
-   ...mysqlLdapOptions(profile)
-  })});
- }
- const Tedious=await import('tedious'),Tarn=await import('tarn');
- return new MssqlDialect({
-  tarn:{...Tarn,options:{min:0,max:1}},
-  tedious:{...Tedious,connectionFactory:()=>new Tedious.Connection({
-   server:parsed.hostname,
-   authentication:mssqlAuthentication(profile,
-    decodeURIComponent(parsed.username),decodeURIComponent(parsed.password)),
-   options:{database:decodeURIComponent(parsed.pathname.slice(1)),
-    port:Number(parsed.port),encrypt:profile.tls!==false,
-    trustServerCertificate:false,connectTimeout:7000}
-  })}
- });
+async function newDialect({engine,profile}){
+ if(engine!=='postgres')throw fail('Unsupported SQL engine');
+ return new PostgresDialect({pool:new pg.Pool({
+  connectionString:profile.url,max:1,idleTimeoutMillis:12000,
+  connectionTimeoutMillis:7000,
+  ...(profile.tls===false?{ssl:false}:{ssl:{rejectUnauthorized:true}})
+ })});
 }
 export async function db_connection(env={},verifiedAlias='',{
  fetchImpl=globalThis.fetch,probeTicket=''

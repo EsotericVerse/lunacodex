@@ -2,7 +2,7 @@
 // trusted LOC Auth / application backend storage, never in browser state.
 export const DATABASE_PROVIDER_CHOICES=Object.freeze([
   Object.freeze({value:'custom',label:'SQL 連線',
-    engines:['postgres','mysql','mssql']})
+    engines:['postgres']})
 ]);
 export function databaseProviderChoices(engine='postgres'){
   return DATABASE_PROVIDER_CHOICES.filter(choice=>choice.engines.includes(engine));
