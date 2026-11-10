@@ -2,7 +2,7 @@
 
 import {useEffect,useMemo,useRef,useState} from 'react';
 import dynamic from 'next/dynamic';
-import Select from 'react-select';
+import ScopeOptionPicker from '../modular/ScopeOptionPicker';
 import {planTraceVisibilityUids} from './trace-visibility-plan.mjs';
 import {indexZModelAnchorHierarchy} from '../../zenstack/anchor-hierarchy.mjs';
 import {useSearchParams} from 'next/navigation';
@@ -358,12 +358,12 @@ export default function TraceRouteManager({scopeId,mode='all'}){
       <div className="loc-trace-route-pickers">
         <div className="loc-trace-route-autocomplete">
           <label htmlFor="trace-spool-title-search">搜尋地點標題</label>
-          <Select inputId="trace-spool-title-search" instanceId="trace-spool-title-search"
+          <ScopeOptionPicker id="trace-spool-title-search"
             options={options.filter(opt=>!spool.includes(opt.value))}
-            value={selectedAnchor} onChange={setSelectedAnchor}
-            isClearable isDisabled={busy||anchorIndex.isPending}
-            placeholder="輸入標題，自動完成（不限縣市）"
-            noOptionsMessage={()=>'沒有符合地點'} classNamePrefix="loc-react-select"/>
+            value={selectedAnchor?.value||''}
+            onChange={id=>setSelectedAnchor(options.find(option=>option.value===id)||null)}
+            disabled={busy||anchorIndex.isPending} placeholder="選擇已授權地點"
+            noOptionsMessage="沒有符合地點"/>
         </div>
         <button className="loc-button" type="button" disabled={!selectedAnchor||busy} onClick={addToSpool}>＋ 加入候選地點</button>
       </div>
@@ -376,11 +376,9 @@ export default function TraceRouteManager({scopeId,mode='all'}){
       <h4>{type==='path'?'安排路線站點順序':'安排痕跡線段'}</h4>
       {type==='path'?<>
         <div className="loc-trace-route-pickers">
-          <Select inputId="trace-queue-stop" instanceId="trace-queue-stop"
-            options={availableRoadOptions} value={availableRoadOptions.find(x=>x.value===selectedStop)||null}
-            onChange={option=>setSelectedStop(option?.value||'')} isClearable
-            isDisabled={busy||queue.length>=MAX_ROAD} placeholder="選擇下一站（選過即消失）"
-            classNamePrefix="loc-react-select"/>
+          <ScopeOptionPicker id="trace-queue-stop" options={availableRoadOptions}
+            value={selectedStop} onChange={setSelectedStop}
+            disabled={busy||queue.length>=MAX_ROAD} placeholder="選擇下一站（選過即消失）"/>
           <button type="button" className="loc-button" onClick={addRoadStop}
             disabled={busy||!selectedStop}>＋ 加入路線</button>
         </div>

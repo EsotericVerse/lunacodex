@@ -2,7 +2,7 @@
 
 import {useMemo,useState} from 'react';
 import dynamic from 'next/dynamic';
-import Select from 'react-select';
+import ScopeOptionPicker from '../modular/ScopeOptionPicker';
 import {useEditDockForm} from '../modular/edit-dock';
 import {useAsyncResource,useResourceCache} from './use-async-resource';
 import {revalidateServerMetadata} from './scope-data';
@@ -212,10 +212,9 @@ function AnchorEditor({scopeId,spatial,reload}){
   return <section className="loc-card scope-feature-card loc-trace-anchor-editor">
     <h3>{editingUid?'編輯空間定錨點':'新增空間定錨點'}</h3>
     <label>編輯既有地點（直接搜尋標題）
-      <Select instanceId={'trace-anchor-edit-'+scopeId} inputId={'trace-anchor-edit-'+scopeId}
-        options={options} isClearable value={options.find(o=>o.value===editingUid)||null}
-        onChange={choice=>pickExisting(choice?.value||'')} isDisabled={busy}
-        placeholder="搜尋標題，或留空新增" classNamePrefix="loc-react-select"/>
+      <ScopeOptionPicker id={'trace-anchor-edit-'+scopeId} options={options}
+        value={editingUid} onChange={pickExisting} disabled={busy}
+        placeholder="搜尋標題，或留空新增"/>
     </label>
     <details className="scope-card loc-trace-quick-update">
       <summary>快速更新｜相同位置、名稱排列不同（{renameGroups.length} 組）</summary>

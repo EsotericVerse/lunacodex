@@ -3,7 +3,6 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {runeImage} from '../rune-directory.mjs';
 import {useAsyncResource} from '../../loc/use-async-resource';
-import Select from 'react-select';
 import {AnimatePresence,motion} from 'motion/react';
 import {CartesianGrid,Legend,Line,LineChart,ReferenceLine,Tooltip,XAxis,YAxis} from 'recharts';
 import {
@@ -236,19 +235,13 @@ function GameThemeControl({value,onChange,effectiveSlot}){
     {value:GAME_THEME_AUTO,label:'事件跟隨'},
     ...THEME_SLOTS.map(slot=>({value:slot.id,label:slot.label}))
   ];
-  const selected=options.find(option=>option.value===value)||options.find(option=>option.value===GAME_THEME_DEFAULT);
+  const selected=options.some(option=>option.value===value)?value:GAME_THEME_DEFAULT;
   return <label className="game-theme-control">
     <span>遊戲主題</span>
-    <Select
-      className="game-theme-select"
-      classNamePrefix="game-theme-select"
-      unstyled
-      isSearchable={false}
-      options={options}
-      value={selected}
-      onChange={option=>onChange(option?.value||GAME_THEME_DEFAULT)}
-      aria-label="遊戲主題"
-    />
+    <select className="game-theme-select" value={selected}
+      onChange={event=>onChange(event.target.value)} aria-label="遊戲主題">
+      {options.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}
+    </select>
     <small>{value===GAME_THEME_AUTO?'目前跟隨 '+effectiveSlot.label+' 組':'局部 '+effectiveSlot.label+' 主題'}</small>
   </label>;
 }
@@ -356,18 +349,11 @@ function GameDocs({data}){
       </label>
       {section!=='rules'?<label className="game-doc-group-filter">
         <span>分組</span>
-        <Select
-          className="game-select"
-          classNamePrefix="game-select"
-          unstyled
-          isClearable
-          isSearchable
-          options={groupOptions}
-          value={groupFilter}
-          onChange={setGroupFilter}
-          placeholder="全部分組"
-          noOptionsMessage={()=>"沒有符合的分組"}
-        />
+        <select className="game-select" value={groupFilter?.value||''}
+          onChange={event=>setGroupFilter(groupOptions.find(item=>item.value===event.target.value)||null)}>
+          <option value="">全部分組</option>
+          {groupOptions.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}
+        </select>
       </label>:null}
     </div>
 

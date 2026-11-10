@@ -1,6 +1,5 @@
 'use client';
 import {useEffect,useState} from 'react';
-import Select from 'react-select';
 import {useEditDockForm} from '../../../modular/edit-dock';
 import {AUTH_PROVIDER_FIELDS,AUTH_PROVIDER_LABELS,AUTH_PROVIDER_TYPES}
   from '../../auth/auth-provider-settings.mjs';
@@ -102,14 +101,11 @@ export default function EnterpriseAuthReserved(){
 
     <div className="admin-inline-select">
       <label htmlFor="admin-auth-provider-select">設定認證來源</label>
-      <Select
-        inputId="admin-auth-provider-select" instanceId="admin-auth-provider-select"
-        unstyled className="loc-settings-select" classNamePrefix="loc-settings-select"
-        isSearchable={false} isClearable={false} isDisabled={loading||busy}
-        options={PROVIDER_OPTIONS}
-        value={PROVIDER_OPTIONS.find(option=>option.value===selected)}
-        onChange={option=>{if(option)selectProvider(option.value)}}
-      />
+      <select id="admin-auth-provider-select" className="loc-settings-select"
+        disabled={loading||busy} value={selected}
+        onChange={event=>selectProvider(event.target.value)}>
+        {PROVIDER_OPTIONS.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}
+      </select>
     </div>
 
     {selected==='loc'?<p className="scope-status">

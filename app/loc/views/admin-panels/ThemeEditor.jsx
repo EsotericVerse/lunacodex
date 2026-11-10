@@ -1,6 +1,5 @@
 'use client';
 import {useEffect,useState} from 'react';
-import Select from 'react-select';
 import UiText from '../../../i18n/UiText';
 import FieldText from '../../../i18n/FieldText';
 import {registerDefaultSection} from '../../../i18n/ui-copy';
@@ -117,18 +116,16 @@ export default function ThemeEditor(){
     <h2><UiText id="uiExtra.adminView.themeAppearance"/></h2>
     <div className="admin-inline-select">
       <label htmlFor="admin-theme-select"><UiText id="uiExtra.adminView.editingTheme"/></label>
-      <Select
-        inputId="admin-theme-select" instanceId="admin-theme-select"
-        unstyled className="loc-settings-select" classNamePrefix="loc-settings-select"
-        isSearchable={false} isClearable={false}
-        options={options} value={options.find(option=>option.value===themeId)||null}
-        onChange={option=>{
-          if(!option||option.value===themeId)return;
+      <select id="admin-theme-select" className="loc-settings-select" value={themeId}
+        onChange={event=>{
+          const next=event.target.value;
+          if(!next||next===themeId)return;
           if(draft&&JSON.stringify(draft)!==JSON.stringify(baseline)&&
              !window.confirm('目前的主題草稿尚未儲存，確定放棄再切換？'))return;
-          setThemeId(option.value);
-        }}
-      />
+          setThemeId(next);
+        }}>
+        {options.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}
+      </select>
     </div>
     {draft?<>
       <div className="scope-management-fields">
