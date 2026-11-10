@@ -46,8 +46,14 @@ export async function onRequest(context){
   }catch(error){
     // Only a fixed stage reaches the trusted internal caller. Never log
     // connection strings, credentials, SQL parameters, or identity details.
-    const code=String(error?.code||'').replace(/[^A-Za-z0-9_]/g,'').slice(0,40);
-    console.error('[LOC Auth registry lookup]',{stage,code:code||'UNKNOWN'});
-    return respond({error:'LOC registry read unavailable',stage},503);
+    // Kysely may wrap the SQL driver error in a cause chain.
+    // Expose only the SQLSTATE/vendor code, never SQL text or credentials.
+    let detail=error,code='UNKNOWN';
+    for(let depth=0;detail&&depth<5;depth++,detail=detail.cause){
+      const candidate=String(detail.code||'');
+      if(/^[A-Za-z0-9_]{2,40}$/.test(candidate)){code=candidate;break;}
+    }
+    console.error('[LOC Auth registry lookup]',{stage,code});
+    return respond({error:'LOC registry read unavailable',stage,code},503);
   }
 }
