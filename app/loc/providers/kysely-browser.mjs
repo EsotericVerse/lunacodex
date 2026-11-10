@@ -136,6 +136,23 @@ export function createKyselyPublicClient({
       throw Error('Invalid LOC Kysely analytics response');
     return {data:payload.data,error:null,status:response.status};
   }
+  async function publicAction(name,args={}){
+    const response=await fetchImpl('/api/loc-public-query',{
+      method:'POST',credentials:'omit',cache:'no-store',redirect:'error',
+      headers:{accept:'application/json','content-type':'application/json'},
+      body:JSON.stringify({kind:'public-action',name,args}),
+      signal:AbortSignal.timeout(9000)
+    });
+    const payload=await response.json().catch(()=>null);
+    if(!response.ok){
+      const error=new Error('LOC public action failed (HTTP '+response.status+
+        (payload?.code?', SQLSTATE '+payload.code:'')+')');
+      error.status=response.status;error.code=payload?.code;throw error;
+    }
+    if(!payload||!Object.hasOwn(payload,'data'))
+      throw Error('Invalid LOC public action response');
+    return {data:payload.data,error:null,count:payload.count??null,status:response.status};
+  }
   async function write(q){
     if(role!=='authenticated'||!mutate)throw Error('LOC management grant required');
     if(['update','delete'].includes(q.operation)&&!q.filters.length)
@@ -171,7 +188,7 @@ export function createKyselyPublicClient({
         withPublicReadBudget(()=>read(q),q.signal):read(q),schema,table,
         mutate?write:null)},
       analytics,managedWrite:noWrite,managedAction:noWrite,
-      publicAction:noWrite,anchor:noWrite};
+      publicAction,anchor:noWrite};
     },
     shortImport:noWrite,
     activeTarget:async()=>({data:{id:'primary'},error:null})
