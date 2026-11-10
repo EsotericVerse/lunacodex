@@ -101,16 +101,29 @@ export function createKyselyPublicClient({
   }
   async function analytics(args={}){
     const view=String(args.p_view||''),scope=String(args.p_scope_id||'');
-    if(!['culture_anchors','culture_density','daily','overview','earliest','totals','loc'].includes(view))
+    if(!['culture_anchors','culture_density','daily','overview','earliest','totals','loc',
+      'culture_list','trace_places','trace_daily','trace_keywords','shared_classes',
+      'search_summary','keyword_catalog','keyword_summary'].includes(view))
       throw Error('Unsupported LOC analytics query');
     if(!/^[a-z][a-z0-9]{0,14}$/.test(scope))
       throw Error('Invalid LOC analytics Scope');
     const start=String(args.p_start||''),end=String(args.p_end||'');
     const params=new URLSearchParams({kind:view,scope});
     if(start||end){params.set('start',start);params.set('end',end)}
-    const response=await fetchImpl('/api/loc-public-content?'+params,{
-      method:'GET',credentials:'omit',cache:'no-store',redirect:'error',
-      headers:{accept:'application/json'},signal:AbortSignal.timeout(9000)
+    const fixedContent=new Set(['culture_anchors','culture_density','daily',
+      'overview','earliest','totals','loc']);
+    const useContent=fixedContent.has(view);
+    const response=await fetchImpl(useContent?'/api/loc-public-content?'+params:
+      '/api/loc-public-query',{
+      method:useContent?'GET':'POST',credentials:'omit',cache:'no-store',
+      redirect:'error',
+      headers:useContent?{accept:'application/json'}:
+        {accept:'application/json','content-type':'application/json'},
+      ...(useContent?{}:{body:JSON.stringify({kind:'analytics',args:{
+        p_scope_id:scope,p_view:view,p_start:start||null,p_end:end||null,
+        p_options:args.p_options||{}
+      }})}),
+      signal:AbortSignal.timeout(9000)
     });
     const payload=await response.json().catch(()=>null);
     if(!response.ok){
