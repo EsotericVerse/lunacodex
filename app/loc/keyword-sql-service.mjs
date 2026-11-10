@@ -196,30 +196,15 @@ export async function suggestKeywordPatterns(db,scopeIds=[],query='',{
      typeof query!=='string'||query.length>120)
     fail('Invalid Keyword suggestion request');
   const prefix=norm(query);
-  if(!prefix)return [];
+  if(!prefix||UID.test(prefix))return [];
   const matches=new Map();
   for(const scope of new Set(scopeIds)){
-    const owner=ownerScopes.has(scope);
-    let visible=null;
-    if(!owner){
-      const cfg=await configuration(db,scope);
-      const sharedClasses=Object.entries(cfg.keyword_meta?.class_shares||{})
-        .filter(([,enabled])=>enabled===true).map(([id])=>id);
-      if(!sharedClasses.length)continue;
-      visible=new Set();
-      for(const classUid of sharedClasses){
-        if(!UID.test(classUid))continue;
-        const tree=await classTree(db,scope,classUid);
-        for(const item of tree.items)
-          for(const term of terms(item))visible.add(term);
-      }
-    }
+    if(!ownerScopes.has(scope))continue;
     const rows=(await indexRows(db,scope))
-      .filter(row=>norm(row.pattern).startsWith(prefix))
+      .filter(row=>!UID.test(String(row.pattern))&&norm(row.pattern).startsWith(prefix))
       .sort((a,b)=>b.count-a.count||a.pattern.localeCompare(b.pattern)).slice(0,2000);
     for(const row of rows){
       const key=norm(row.pattern);
-      if(visible&&!visible.has(key))continue;
       const record=matches.get(key)||{pattern:String(row.pattern),count:0};
       record.count+=Number(row.count)||0;
       matches.set(key,record);

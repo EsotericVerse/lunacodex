@@ -19,8 +19,10 @@ function err(message,status=400){throw Object.assign(new Error(message),{httpSta
 
 // Exact navigation retains keyword publication checks.
 export async function accessibleKeywordAnchors(db,scope,owner=false){
-  const rows=await db.selectFrom(anchorTable(scope))
-    .select(['uid','type','attr']).where('type','in',['class','group','item']).execute();
+  let q=db.selectFrom(anchorTable(scope))
+    .select(['uid','type','attr']).where('type','in',['class','group','item']);
+  if(!owner)q=q.where('invisible','=',false);
+  const rows=await q.execute();
   const byUid=new Map(rows.map(row=>[row.uid,row]));
   const visible=new Set();
   const settings=await db.selectFrom('silver.'+scope).select(['keyword_meta','search'])

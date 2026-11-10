@@ -116,6 +116,25 @@ test('published server alias resolves to encrypted LOC Authority target with no 
  assert.equal(observed[0].options.headers['x-loc-service-token'],env.LOC_DB_PROFILE_SERVICE_TOKEN);
  await selected.db.destroy();
 });
+test('configured LOC Auth overrides legacy local SQL profiles for the main target',async()=>{
+ const env={LOC_DB_PROFILE_SERVICE_TOKEN:'trusted-service-token-over-32-characters',
+  LOC_DB_CONNECTIONS_JSON:JSON.stringify({loc_main:{
+   engine:'postgres',url:'postgresql://old:old@old.example.net:5432/loc'
+  }})};
+ const observed=[];
+ const selected=await directMcpKysely(env,'',{fetchImpl:async(url)=>{
+  observed.push(url);
+  return Response.json({engine:'postgres',host:'verified.example.net',port:6543,
+   database:'loc',username:'reader',password:'test-only-credential',
+   schema_name:'silver'});
+ }});
+ assert.equal(observed.length,1);
+ assert.ok(observed[0].endsWith('/v1/internal/database/loc-main'));
+ assert.equal(selected.engine,'postgres');
+ assert.equal(selected.namespace,'silver');
+ await selected.db.destroy();
+});
+
 test('untrusted missing Authority target is refused; secret never appears in an exception',async()=>{
  const env={LOC_DB_PROFILE_SERVICE_TOKEN:'backend-only-secret-with-at-least-32-bytes'};
  await assert.rejects(directMcpKysely(env,'',{fetchImpl:async()=>new Response('Forbidden',{status:403})}),
