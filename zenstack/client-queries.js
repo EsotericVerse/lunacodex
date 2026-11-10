@@ -5,7 +5,7 @@ import {useQuery,useInfiniteQuery,useQueryClient,skipToken} from '@tanstack/reac
 import {flashMessage} from '../app/loc/flash-message';
 
 // ZenStack V3 frontend resource layer. One QueryClient uses the trusted
-// ZenStack/Kysely SQL Gateway. No SWR, extra cache or background polling.
+// ZenStack/Kysely SQL Gateway. No parallel browser cache or background polling.
 const keyOf=key=>Array.isArray(key)?key:[key];
 const defaults={
   staleTime:Infinity,refetchOnWindowFocus:false,
