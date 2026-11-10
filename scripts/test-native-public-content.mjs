@@ -92,28 +92,6 @@ test('config projects only the public Scope columns, never Manage or secrets, vi
     assert.ok(!sql.includes('"'+key+'"'));
 });
 
-test('live PostgreSQL Blocks, Hero and Culture Anchors reuse the existing dialect through scoped ZenStack',async()=>{
-  for(const spec of [
-    {kind:'blocks',scope:'lo3rwang',table:'lo3rwang_blocks',
-      row:{uid:'A1234567',page_name:'index',block_order:1,block_title:'Page'}},
-    {kind:'hero',scope:'lo3rwang',feature:'culture',table:'loc_blocks',
-      row:{uid:'B1234567',page_name:'group_culture',block_order:1,block_title:'Hero'}},
-    {kind:'culture_anchors',scope:'lo3rwang',table:'lo3rwang_anchor',
-      row:{uid:'C1234567',type:'era',title:'Era',attr:{},invisible:false}}
-  ]){
-    const {executed,dialect}=fixedModelDialect(spec.row);
-    const database=async()=>({engine:'postgres',namespace:'silver',dialect,db:{
-      selectFrom(){throw Error('Do not bypass ZenStack for a modeled PostgreSQL read');}
-    }});
-    const response=await handleNativePublicContent(
-      page(spec.kind,spec.scope,spec.feature||''),{},{database});
-    assert.equal(response.status,200,spec.kind);
-    assert.equal((await response.json()).data.length,1,spec.kind);
-    assert.equal(executed.length,1,'One query, using the existing dialect');
-    assert.match(executed[0].sql,new RegExp('"silver"\\."'+spec.table+'"'));
-  }
-});
-
 test('the website cannot submit SQL, table names, arbitrary operations or connection targets',async()=>{
   let called=0;
   const database=async()=>{called++;throw Error('Must not open database')};

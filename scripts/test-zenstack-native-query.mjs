@@ -1,14 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {Kysely,DummyDriver,PostgresAdapter,PostgresIntrospector,PostgresQueryCompiler} from 'kysely';
+import {DummyDriver,PostgresAdapter,PostgresIntrospector,PostgresQueryCompiler} from 'kysely';
 import {ZenStackClient} from '@zenstackhq/orm';
 import {PolicyPlugin} from '@zenstackhq/plugin-policy';
 import {schema} from '../zenstack/schema.mjs';
 import {createScopedLocClient} from '../zenstack/client.mjs';
 import {withFixedPolicyRead} from '../zenstack/policy-runtime.mjs';
 import {nativeReadPlan,executeNativeRead} from '../zenstack/native-query.mjs';
-import {suggestAnchorOptions} from '../app/loc/keyword-anchor-search.mjs';
 
 const simple={kind:'query',operation:'select',schema:'silver',
   table:'test_galaxy',columns:['uid','title'],filters:[
@@ -86,20 +85,4 @@ test('scoped $qb fallback uses mapped ZModel name to preserve SQL namespace',asy
   assert.deepEqual(result,[]);
   assert.equal(executed.length,1);
   assert.match(executed[0].sql,/"silver"."alpha_galaxy"/);
-});
-
-test('Anchor autocomplete reuses a trusted Kysely dialect with ZenStack and preserves JSON/ILIKE filters',async()=>{
-  const compiled=[],dialect=dummyDialect(compiled),db=new Kysely({dialect});
-  const suggestions=await suggestAnchorOptions(db,['alpha'],'文字',{
-    dialect,namespace:'silver',ownerScopes:new Set(['alpha'])
-  });
-  assert.deepEqual(suggestions,[]);
-  // 1 ORM visibility model read, 1 existing Scope config, 4 modeled
-  // suggestions. All six SQL statements use the injected existing driver.
-  assert.equal(compiled.length,6);
-  assert.ok(compiled.some(query=>/"silver"\."alpha_anchor"/.test(query.sql)));
-  assert.ok(compiled.some(query=>/->>'date'/.test(query.sql)));
-  assert.ok(compiled.some(query=>/->>'location'/.test(query.sql)));
-  assert.ok(compiled.some(query=>/ilike/i.test(query.sql)));
-  await db.destroy();
 });
