@@ -5,7 +5,7 @@
 import {useRef,useState} from 'react';
 import {useEditDock,useEditDockForm} from '../modular/edit-dock';
 import dynamic from 'next/dynamic';
-import {useSWRConfig} from 'swr';
+import {useQueryClient} from '@tanstack/react-query';
 import UiText,{useUiText} from '../i18n/UiText';
 import {registerDefaultSection} from '../i18n/ui-copy';
 import {useUiSection} from '../i18n/ui-locale';
@@ -32,7 +32,7 @@ export default function ScopeBlockEditorSession({
   useUiSection('uiExtra.editBlocks');
   useUiSection('uiExtra.frameEditor');
   const t=useUiText();
-  const {mutate}=useSWRConfig();
+  const queryClient=useQueryClient();
   const editDock=useEditDock();
   const inDock=Boolean(editDock?.active&&editDock.scopeId===scopeId);
   const initialSnapshot=useRef(JSON.stringify({...initial,entities:HomeBlock.normalizeEntities(initial.entities)}));
@@ -44,9 +44,9 @@ export default function ScopeBlockEditorSession({
   async function updateBlockCaches(rows){
     invalidateScopeBlockPage(scopeId,pageName);
     await Promise.all([
-      mutate(appBootstrapKey(scopeId,pageName),
-        current=>current?{...current,blocks:rows}:current,{revalidate:false}),
-      mutate(['scope-blocks',scopeId,pageName],rows,{revalidate:false})
+      queryClient.setQueryData(appBootstrapKey(scopeId,pageName),
+        current=>current?{...current,blocks:rows}:current),
+      queryClient.setQueryData(['scope-blocks',scopeId,pageName],rows)
     ]);
   }
   async function refreshBlockQueries(){
@@ -196,7 +196,7 @@ export default function ScopeBlockEditorSession({
       let displayWarning='';
       try{
         const key=appBootstrapKey(scopeId,pageName);
-        const existing=(await mutate(key,current=>current,{revalidate:false}))||{};
+        const existing=queryClient.getQueryData(key)||{};
         if(!Array.isArray(existing.blocks)){
           // A concurrent metadata invalidation may have cleared this page.
           // Only then read once; never replace sibling blocks with one row.
