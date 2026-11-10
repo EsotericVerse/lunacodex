@@ -42,17 +42,14 @@ function localProfile(env,alias){
 }
 async function authorizedProfile(env,alias,verifiedAlias,fetchImpl,probeTicket=''){
  const secret=String(env.LOC_DB_PROFILE_SERVICE_TOKEN||'');
- // Explicit local profiles stay valid for self-hosting, but do not override
- // a user-selected alias signed by LOC Auth.
- // The control database remains local even when a signed LOC delegation
- // explicitly selects the published primary target ID.
+ // A configured LOC Auth service is always authoritative for live SQL
+ // profiles, including the default database and owner-selected targets.
+ // A deployment-local JSON profile must never bypass SQL verification.
+ // Local profiles remain a standalone Direct fallback only when LOC Auth
+ // is not configured at all.
  const control=DATABASE_ACCESS_LIST.find(item=>item.selected===true);
  const isPrimary=alias===control?.connection_alias&&
   (!verifiedAlias||verifiedAlias===control.target_id);
- if(!probeTicket&&isPrimary&&env.LOC_DB_CONNECTIONS_JSON)
-  return localProfile(env,alias);
- if(!probeTicket&&!verifiedAlias&&env.LOC_DB_CONNECTIONS_JSON)
-  return localProfile(env,alias);
  if(secret){
   if(secret.length<32)throw fail('LOC trusted profile secret is invalid');
   // `loc_main` is a local connection alias, not LOC Auth's target ID.
@@ -166,7 +163,7 @@ async function newDialect({engine,profile,parsed}){
   })}
  });
 }
-export async function directMcpKysely(env={},verifiedAlias='',{
+export async function db_connection(env={},verifiedAlias='',{
  fetchImpl=globalThis.fetch,probeTicket=''
 }={}){
  if(!env||typeof env!=='object')throw fail('Invalid LOC MCP backend environment');
@@ -197,3 +194,6 @@ export async function directMcpKysely(env={},verifiedAlias='',{
  cache.set(key,promise);
  try{return await promise}catch(error){cache.delete(key);throw error}
 }
+
+// Legacy import name is the same function, not a second SQL connection path.
+export {db_connection as directMcpKysely};
