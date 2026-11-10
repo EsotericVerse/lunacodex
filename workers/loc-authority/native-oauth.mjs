@@ -201,8 +201,8 @@ export async function googleLocSubject(identity,stub,env,prior=null){
   await stub.nativePut(key,{subject,email});
  return subject;
 }
-async function sessionFromBetter(request,env,stub){
- const identity=await firstPartySession(request,env);
+async function sessionFromBetter(request,env,stub,verified=null){
+ const identity=verified||await firstPartySession(request,env);
  if(!identity||!identity.emailVerified)error('Verified Better Auth Google identity required',401);
  const prior=await sessionFromCookie(request,stub,env);
  const subject=await googleLocSubject(identity,stub,env,prior);
@@ -739,8 +739,11 @@ async function session(request,stub,origin,env){
  let identity=await sessionFromCookie(request,stub,env),bridged=null;
 
  if(!identity&&hasFirstPartyCookie(request)){
-  bridged=await sessionFromBetter(request,env,stub);
-  identity=bridged.session;
+  const sso=await firstPartySession(request,env);
+  if(sso){
+   bridged=await sessionFromBetter(request,env,stub,sso);
+   identity=bridged.session;
+  }
  }
  if(!identity)return response({session:null,user:null},200,origin);
  const auth=await issueToken(stub,identity,WEB_AUDIENCE,'profile email','loc-web');
