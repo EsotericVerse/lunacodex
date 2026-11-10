@@ -1,4 +1,4 @@
-import {sql} from 'npm:kysely@0.29.8';
+import {sql} from 'kysely';
 import {portableRelation} from './sql-engine-ports.mjs';
 const scopePattern=/^[a-z][a-z0-9]{0,14}$/;
 function id(value){
