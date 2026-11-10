@@ -111,11 +111,12 @@ test('the website cannot submit SQL, table names, arbitrary operations or connec
   assert.equal(called,0);
 });
 
-test('unconfigured or failing database returns 503 without exposing secrets',async()=>{
+test('unconfigured database safely serves published public fallback without exposing secrets',async()=>{
   const database=async()=>{throw Error('postgresql://private:secret@database.example')};
   const response=await handleNativePublicContent(page('blocks','loc'),{},{database});
-  assert.equal(response.status,503);
+  assert.equal(response.status,200);
   const result=await response.json();
+  assert.ok(Object.hasOwn(result,'data'));
   assert.ok(!JSON.stringify(result).includes('secret'));
 });
 
