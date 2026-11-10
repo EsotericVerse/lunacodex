@@ -1,7 +1,7 @@
 'use client';
 
 import {useCallback,useEffect} from 'react';
-import {useSWRConfig} from 'swr';
+import {useQueryClient} from '@tanstack/react-query';
 import {getAccountSession,dbAuthEvents,signInWithGoogle,signOutAccount} from './db-client.mjs';
 import {readLocEditorGrants} from './auth/editor-grants.mjs';
 import {SCOPE_ROUTE_INDEX} from '../modular/scope-route-index.js';
@@ -52,7 +52,7 @@ let scopeMetadata=[];
 // navigation within the same verified identity. Explicit refresh stays live.
 let pendingManagementVerification=null;
 
-async function fetchManagementAccount(mutate){
+async function fetchManagementAccount(queryClient){
   const startedAt=authRevision;
   const obsolete=()=>startedAt!==authRevision;
   let verifiedIdentity=null;
@@ -67,7 +67,7 @@ async function fetchManagementAccount(mutate){
       scopeMetadata=[];
       authUserId='';
       authEmail='';
-      void mutate(SESSION_KEY,signedOutState,{revalidate:false});
+      queryClient.setQueryData(SESSION_KEY,signedOutState);
       return signedOutState;
     }
     // LOC Auth owns signed Scope grants independently of the SQL connection.
@@ -104,7 +104,7 @@ async function fetchManagementAccount(mutate){
 // Passive management consumers reuse the grant already verified for this
 // identity. An explicit editor entry still forces a live LOC Auth Scope check.
 // Each write must be reauthorized by the trusted application backend.
-function loadManagementAccount(mutate,{force=false}={}){
+function loadManagementAccount(queryClient,{force=false}={}){
   if(!force){
     const verified=readVerifiedManagementEntry();
     if(verified)return Promise.resolve({
@@ -114,7 +114,7 @@ function loadManagementAccount(mutate,{force=false}={}){
     });
   }
   if(pendingManagementVerification)return pendingManagementVerification;
-  const current=fetchManagementAccount(mutate);
+  const current=fetchManagementAccount(queryClient);
   pendingManagementVerification=current;
   void current.then(
     ()=>{if(pendingManagementVerification===current)pendingManagementVerification=null;},
@@ -134,11 +134,11 @@ export function readVerifiedManagementEntry(){
 }
 
 export function useAccount({enabled=true,sessionOnly=false}={}){
-  const {mutate}=useSWRConfig();
+  const queryClient=useQueryClient();
   const queryKey=sessionOnly?(enabled?VERIFIED_SESSION_KEY:SESSION_KEY):MANAGEMENT_KEY;
   const queryFn=useCallback(
-    ()=>sessionOnly?loadSessionAccount():loadManagementAccount(mutate),
-    [sessionOnly,mutate]
+    ()=>sessionOnly?loadSessionAccount():loadManagementAccount(queryClient),
+    [sessionOnly,queryClient]
   );
   // Passive identity must subscribe to auth-event cache updates without making
   // a session/network request. A null SWR key unsubscribes and leaves Settings
@@ -171,13 +171,15 @@ export function useAccount({enabled=true,sessionOnly=false}={}){
   // Explicit edit entry rechecks LOC Auth; normal mounts reuse the
   // in-memory grant and never query a management table.
   const refresh=useCallback(async()=>{
-    const fetcher=sessionOnly?queryFn:()=>loadManagementAccount(mutate,{force:true});
-    const result=await mutate(queryKey,fetcher,{revalidate:false});
+    const fetcher=sessionOnly?queryFn:()=>loadManagementAccount(queryClient,{force:true});
+    await queryClient.cancelQueries({queryKey,exact:true});
+    const result=await fetcher();
+    queryClient.setQueryData(queryKey,result);
     if(result?.error)throw new Error(result.error);
     if(sessionOnly)return result?.user||null;
     return result?.user&&result.authorizer
       ?{user:result.user,authorizer:result.authorizer}:null;
-  },[mutate,queryKey,queryFn,sessionOnly]);
+  },[queryClient,queryKey,queryFn,sessionOnly]);
 
   const signIn=useCallback(callbackURL=>signInWithGoogle(String(callbackURL||'').trim()),[]);
   const signOut=useCallback(async()=>{
@@ -188,12 +190,11 @@ export function useAccount({enabled=true,sessionOnly=false}={}){
     clearAuthorization();
     scopeMetadata=[];
     pendingManagementVerification=null;
-    await Promise.all([
-      mutate(SESSION_KEY,signedOutState,{revalidate:false}),
-      mutate(VERIFIED_SESSION_KEY,signedOutState,{revalidate:false}),
-      mutate(MANAGEMENT_KEY,signedOutState,{revalidate:false})
-    ]);
-  },[mutate]);
+    await queryClient.cancelQueries({queryKey:['loc-account']});
+    queryClient.setQueryData(SESSION_KEY,signedOutState);
+    queryClient.setQueryData(VERIFIED_SESSION_KEY,signedOutState);
+    queryClient.setQueryData(MANAGEMENT_KEY,signedOutState);
+  },[queryClient]);
 
   // The hidden local Scope is device-only and has no cloud management row.
   const canManageScopeSync=useCallback(
@@ -226,7 +227,7 @@ export function useAccount({enabled=true,sessionOnly=false}={}){
 // OAuth and management entries still use the explicit authorization path.
 export function usePassiveSessionAccount(){
   const account=useAccount({enabled:false,sessionOnly:true});
-  const {mutate}=useSWRConfig();
+  const queryClient=useQueryClient();
   useEffect(()=>{
     const listener=dbAuthEvents.onAuthStateChange((event,session)=>{
       const user=session?.user||null;
@@ -249,18 +250,19 @@ export function usePassiveSessionAccount(){
       authEmail=nextEmail;
       // Passive navigation needs only a session ID hint, never an OAuth email.
       // Google provider email is displayed only after Auth.getUser() verifies it.
-      void mutate(SESSION_KEY,nextUserId
+      queryClient.setQueryData(SESSION_KEY,nextUserId
         ?{...signedOutState,user:{id:nextUserId}}
-        :signedOutState,{revalidate:false});
+        :signedOutState);
       if(invalidate){
         // Never put an unverified SDK event user into the verified OAuth cache.
-        void mutate(VERIFIED_SESSION_KEY,undefined,{revalidate:Boolean(user)});
+        queryClient.setQueryData(VERIFIED_SESSION_KEY,signedOutState);
+        if(user)void queryClient.invalidateQueries({queryKey:VERIFIED_SESSION_KEY,exact:true});
         // Real sign-out or account replacement revokes old management grants.
         // Do not invalidate the active RPC on INITIAL_SESSION hydration.
-        void mutate(MANAGEMENT_KEY,undefined,{revalidate:false});
+        queryClient.setQueryData(MANAGEMENT_KEY,signedOutState);
       }
     });
     return ()=>listener.data.subscription.unsubscribe();
-  },[mutate]);
+  },[queryClient]);
   return account;
 }
