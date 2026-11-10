@@ -264,6 +264,7 @@ export default function LocDatabaseAdmin(){
   </section>:null}
   {(targets.length>0||showAdvanced)?<>
   <p className="scope-status">進階連線設定：僅在新增其他 SQL 來源或修改現有 Profile 時使用。SQL 驗證由管理者手動啟動，失敗後遵守來源冷卻。</p>
+  <p className="scope-status">需要時可主動輪替 Connection Secret；若疑似外洩，請立即更換並撤銷舊憑證。輪替只變更連線密碼，不會變更 Target ID、Project ID、SQL Type、Domain、Port 或 LOC SSO 授權。</p>
   <label><span>編輯既有連線</span>
    <select className="scope-select" value={targets.some(x=>x.id===form.id)?form.id:''}
     onChange={event=>editId(event.target.value)} disabled={busy}>
