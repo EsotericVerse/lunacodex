@@ -7,6 +7,7 @@ import {directMcpKysely} from '../mcp/native-kysely.mjs';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 import {portableRelation} from '../providers/sql-engine-ports.mjs';
 import {fixedPolicyReadModel,withFixedPolicyRead} from '../../../zenstack/policy-runtime.mjs';
+import {createScopedLocClient} from '../../../zenstack/client.mjs';
 import {ZenStackClient} from '@zenstackhq/orm';
 import {PolicyPlugin} from '@zenstackhq/plugin-policy';
 
@@ -140,13 +141,24 @@ export async function handleNativePublicContent(request,env={},{
     const query=port.db;
     const relation=name=>portableRelation(name,port.engine,
       port.namespace||(port.engine==='postgres'?'silver':'dbo'));
+    // ZenStack V3 shares the existing trusted Kysely dialect/pool; it does
+    // not resolve credentials, create a second SQL target, or grant access.
+    const scopedFor=id=>port.engine==='postgres'&&port.dialect
+      ?createScopedLocClient({dialect:port.dialect,scopeId:id,
+        namespace:port.namespace||'silver'}):null;
     if(numeric)return respond({data:await (kind==='loc'?
       readLocGroupNumeric(query,start,end,port):readGalaxyNumeric(query,scope,kind,start,end,port))});
     if(kind==='culture_anchors'){
-      const rows=await query.selectFrom(relation(scope+'_anchor'))
-        .select(['uid','type','title','attr'])
-        .where('type','in',['date','period','era'])
-        .where('invisible','=',false).limit(5000).execute();
+      const typed=scopedFor(scope);
+      const rows=typed
+        ?await typed.anchor.findMany({
+            where:{type:{in:['date','period','era']},invisible:false},
+            select:{uid:true,type:true,title:true,attr:true},take:5000
+          })
+        :await query.selectFrom(relation(scope+'_anchor'))
+            .select(['uid','type','title','attr'])
+            .where('type','in',['date','period','era'])
+            .where('invisible','=',false).limit(5000).execute();
       return respond({data:rows.map(row=>({...row,
         attr:typeof row.attr==='string'?JSON.parse(row.attr||'{}'):row.attr||{}
       }))});
@@ -165,17 +177,27 @@ export async function handleNativePublicContent(request,env={},{
         ?await withFixedPolicyRead(query,{engine:port.engine},
             {kind:'query',schema:'silver',table:scope,operation:'select'},
             'anon',{},{dialect:port.dialect,ZenStackClient,PolicyPlugin},
-            trx=>trx.selectFrom(modelName).select(columns)
-              .where('id','=',scope).limit(1).executeTakeFirst())
+            (_qb,name,authorized)=>authorized[
+              name[0].toLowerCase()+name.slice(1)].findFirst({
+                where:{id:scope},
+                select:Object.fromEntries(columns.map(column=>[column,true]))
+              }))
         :await query.selectFrom(relation(scope))
             .select(columns).where('id','=',scope).limit(1).executeTakeFirst();
       return respond({data:row||null});
     }
     const table=relation(kind==='hero'?'loc_blocks':scope+'_blocks');
     const names=kind==='hero'?['group_'+feature,'scope_'+feature]:['index'];
-    const data=await query.selectFrom(table).select(BLOCK_FIELDS)
-      .where('page_name','in',names).orderBy('block_order','asc')
-      .limit(100).execute();
+    const typed=scopedFor(kind==='hero'?'loc':scope);
+    const data=typed
+      ?await typed.blocks.findMany({
+          where:{page_name:{in:names}},
+          select:Object.fromEntries(BLOCK_FIELDS.map(column=>[column,true])),
+          orderBy:{block_order:'asc'},take:100
+        })
+      :await query.selectFrom(table).select(BLOCK_FIELDS)
+          .where('page_name','in',names).orderBy('block_order','asc')
+          .limit(100).execute();
     return respond({data});
    }catch(error){
     // Surface the live SQL fault; do not silently switch to Data API/snapshot.
