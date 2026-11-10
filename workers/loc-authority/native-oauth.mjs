@@ -144,6 +144,9 @@ export async function googleLocSubject(identity,stub,env,prior=null){
  const saved=await stub.nativeGet(key);
  if(saved&&(!LOC_SUBJECT.test(String(saved.subject||''))||
   saved.email!==email))error('LOC Google identity binding mismatch',403);
+ // An already linked Google identity is authoritative for WHO signed in.
+ // A separate authorization check controls write permissions.
+ if(saved)return saved.subject;
  let owner=false,registryUnavailable=false;
  try{owner=isLocRegistryAdmin(await locRegistryRoles(env,email));}
  catch(cause){
@@ -198,7 +201,8 @@ async function sessionFromBetter(request,env,stub){
  const sid=random(),sidHash=await sha(sid);
  const next={subject,provider:'loc',identityProvider:'better-auth-google',
   email:identity.email,emailVerified:true,sidHash,
-  expires:Date.now()+SESSION_SECONDS*1000};
+  // An auxiliary LOC OAuth session cannot outlive its Better Auth SSO.
+  expires:Math.min(identity.expires,Date.now()+SESSION_SECONDS*1000)};
  await stub.nativePut('native-session:'+sidHash,next);
  return {session:next,cookie:cookie(SESSION_COOKIE,sid,SESSION_SECONDS)};
 }
@@ -724,6 +728,15 @@ async function revoke(request,stub,origin){
 }
 async function session(request,stub,origin,env){
  let identity=await sessionFromCookie(request,stub),bridged=null;
+ if(identity?.identityProvider==='better-auth-google'){
+  // Never renew a custom LOC browser session after its Better Auth SSO ends.
+  const sso=hasFirstPartyCookie(request)?await firstPartySession(request,env):null;
+  const link=sso?await stub.nativeGet('native-google-link:'+await sha('google:'+sso.googleAccountId)):null;
+  if(!sso||sso.email!==identity.email||link?.subject!==identity.subject){
+   if(identity.sidHash)await stub.nativeTake('native-session:'+identity.sidHash);
+   identity=null;
+  }
+ }
  if(!identity&&hasFirstPartyCookie(request)){
   bridged=await sessionFromBetter(request,env,stub);
   identity=bridged.session;
