@@ -147,6 +147,18 @@ test('legacy loc_main alias resolves the current primary, not a phantom Authorit
  assert.ok(calls[0].endsWith('/v1/internal/database/primary'));
  await selected.db.destroy();
 });
+test('Authority profile failures retain precise public-safe codes without SQL',async()=>{
+ const env={LOC_DB_PROFILE_SERVICE_TOKEN:'backend-only-secret-with-at-least-32-bytes'};
+ for(const [status,code] of [[503,'PRIMARY_TARGET_MISSING'],
+   [503,'DATABASE_TARGET_MISSING'],[423,'SQL_VERIFICATION_REQUIRED']]){
+  await assert.rejects(directMcpKysely(env,'',{
+   fetchImpl:async()=>Response.json({error:'Recovery control unavailable',code},{status})
+  }),error=>error.code===code&&!error.message.includes(env.LOC_DB_PROFILE_SERVICE_TOKEN));
+ }
+ await assert.rejects(directMcpKysely(env,'',{
+   fetchImpl:async()=>Response.json({error:'Trusted LOC backend required'},{status:403})
+ }),error=>error.code==='PROFILE_HTTP_403');
+});
 test('untrusted missing Authority target is refused; secret never appears in an exception',async()=>{
  const env={LOC_DB_PROFILE_SERVICE_TOKEN:'backend-only-secret-with-at-least-32-bytes'};
  await assert.rejects(directMcpKysely(env,'',{fetchImpl:async()=>new Response('Forbidden',{status:403})}),
