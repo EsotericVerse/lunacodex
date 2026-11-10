@@ -68,8 +68,12 @@ async function authorizedProfile(env,alias,verifiedAlias,fetchImpl,probeTicket='
    cache:'no-store',redirect:'manual',signal:AbortSignal.timeout(8000)
   });
   if(!result.ok){
+   // Authority publishes only stable diagnostic codes, never SQL credentials.
+   const detail=await result.json().catch(()=>null);
+   const allowed=new Set(['PRIMARY_TARGET_MISSING','PRIMARY_TARGET_INVALID',
+     'DATABASE_TARGET_MISSING','SQL_VERIFICATION_REQUIRED']);
    const error=fail('LOC Authority profile lookup refused ('+result.status+')');
-   error.code='PROFILE_HTTP_'+result.status;
+   error.code=allowed.has(detail?.code)?detail.code:'PROFILE_HTTP_'+result.status;
    throw error;
   }
   const profile=await result.json().catch(()=>null);
