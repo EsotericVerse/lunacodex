@@ -157,12 +157,41 @@ test('untrusted missing Authority target is refused; secret never appears in an 
     !error.message.includes(env.LOC_DB_PROFILE_SERVICE_TOKEN));
 });
 
-test('the primary SQL Model Gateway never restores a deployment database URL',()=>{
- const source=readFileSync(new URL('../app/loc/mcp/native-kysely.mjs',import.meta.url),'utf8');
- assert.doesNotMatch(source,/LOC_DATABASE_URL|mainDatabaseProfile/);
- assert.match(source,/LOC_DB_PROFILE_SERVICE_TOKEN/);
- assert.match(source,/normalizeLiveTarget/);
- assert.match(source,/PostgresDialect|MysqlDialect|MssqlDialect/);
+test('the fixed primary can use a server-only Cloudflare SQL secret through Kysely',async()=>{
+ const env={LOC_DATABASE_URL:'postgresql://postgres.test:temporary@db.example.org:6543/postgres'};
+ const urls=[];
+ const fetchImpl=async url=>{urls.push(url);throw Error('Primary must not request the missing Authority profile')};
+ const a=await directMcpKysely(env,'',{fetchImpl});
+ const b=await directMcpKysely(env,'loc-main',{fetchImpl});
+ const c=await directMcpKysely(env,'loc_main',{fetchImpl});
+ assert.strictEqual(a,b);
+ assert.strictEqual(a,c);
+ assert.equal(a.engine,'postgres');
+ assert.equal(a.namespace,'silver');
+ assert.equal(a.tableName,'');
+ assert.equal(urls.length,0);
+ assert.match(a.db.selectFrom('silver.lo3rwang_galaxy').select('uid').limit(1).compile().sql,/"silver"\."lo3rwang_galaxy"/);
+ assert.equal(mcpDatabaseConfiguration(env).privateReadConfigured,true);
+ assert.equal(mcpDatabaseConfiguration(env).privateWriteConfigured,false);
+ await a.db.destroy();
+});
+test('external database alias cannot use a Cloudflare primary connection secret',async()=>{
+ const secret='postgresql://postgres.test:temporary@db.example.org:6543/postgres';
+ const env={LOC_DATABASE_URL:secret,LOC_DB_PROFILE_SERVICE_TOKEN:SERVICE};
+ const requested=[];
+ const target=await directMcpKysely(env,'office_mysql',{fetchImpl:async url=>{
+  requested.push(url);
+  return Response.json(mockProfile('mysql'));
+ }});
+ assert.equal(target.engine,'mysql');
+ assert.ok(requested[0].endsWith('/v1/internal/database/office_mysql'));
+ await target.db.destroy();
+});
+test('malformed Cloudflare primary URL is refused before SQL or Authority request',async()=>{
+ const env={LOC_DATABASE_URL:'postgresql://postgres:secret@db.example.org/postgres'};
+ await assert.rejects(directMcpKysely(env,'',{fetchImpl:async()=>{
+  throw Error('Must not call HTTP');
+ }}),err=>err.code==='BACKEND_UNAVAILABLE'&&!err.message.includes('secret'));
 });
 
 test('one LOC caller can select two provider APIs through db_connection',async()=>{
