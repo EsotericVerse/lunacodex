@@ -56,7 +56,16 @@ async function authority(method,path,payload){
   signal:AbortSignal.timeout(12000)
  });
  if(result.status===429)return result.json();
- if(!result.ok)throw Error('LOC Auth 資料庫管理失敗（HTTP '+result.status+'）');
+ if(!result.ok){
+  // LOC Auth returns a bounded diagnostic message without SQL credentials.
+  // Preserve the actual HTTP status instead of hiding every failure as 403.
+  const detail=await result.json().catch(()=>null);
+  const reason=typeof detail?.error==='string'&&detail.error.length<=160
+   ?'：'+detail.error:'';
+  const stage=typeof detail?.stage==='string'&&detail.stage.length<=32
+   ?'（'+detail.stage+'）':'';
+  throw Error('LOC Auth 資料庫管理失敗（HTTP '+result.status+'）'+reason+stage);
+ }
  return result.json();
 }
 export default function LocDatabaseAdmin(){
@@ -76,12 +85,13 @@ export default function LocDatabaseAdmin(){
    setPrimaryId(String(data?.primary_id||''));
   }).catch(error=>{
    if(!active)return;
-   // Non-root users never receive the administrator form or connection metadata.
-   if(!/HTTP 403/.test(String(error.message)))setStatus(String(error.message));
+   // Never reveal the administrator form to non-root users, but do not
+   // silently conceal a rejected or expired verified LOC session either.
+   setStatus(String(error?.message||error));
   });
   return ()=>{active=false;};
  },[]);
- if(!root)return null;
+ if(!root)return status?<p className="scope-status" role="status">{status}</p>:null;
  const change=(key,value)=>{setDirty(true);setForm(previous=>({...previous,[key]:value}));};
  const editId=id=>{
   const selected=targets.find(t=>t.id===id);
