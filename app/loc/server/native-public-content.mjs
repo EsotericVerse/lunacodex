@@ -200,14 +200,31 @@ export async function handleNativePublicContent(request,env={},{
           .limit(100).execute();
     return respond({data});
    }catch(error){
-    // Surface the live SQL fault; do not silently switch to Data API/snapshot.
+    // Categorize the real TCP/TLS/SQL failure without revealing credentials,
+    // endpoints, query text or the raw driver error. No new connection attempt.
     let code='UNKNOWN',cause=error;
+    const messages=[],types=[];
     for(let depth=0;cause&&depth<5;depth++,cause=cause.cause){
-      if(/^[A-Za-z0-9_]{2,40}$/.test(String(cause.code||''))){
-        code=String(cause.code);break;
-      }
+      if(code==='UNKNOWN'&&/^[A-Za-z0-9_]{2,40}$/.test(String(cause.code||'')))
+        code=String(cause.code);
+      messages.push(String(cause.message||'').toLowerCase());
+      types.push(String(cause.name||''));
     }
-    console.error('[LOC native public content]',{stage:'kysely-query',code});
-    return respond({error:'LOC native Kysely query failed',stage:'kysely-query',code},503);
+    const message=messages.join(' ');
+    const reason=
+      /certificate|self.signed|tls|ssl|secure connection|handshake/.test(message)?'TLS':
+      /password authentication|scram|sasl|authentication failed/.test(message)?'DB_AUTH':
+      /permission denied|insufficient privilege/.test(message)?'DB_PRIVILEGE':
+      /relation .* does not exist|undefined table/.test(message)?'DB_RELATION':
+      /getaddrinfo|dns|name resolution|enotfound|eai_again/.test(message)?'DNS':
+      /network|socket|connect|connection|timeout|timed out|unreachable|refused/.test(message)?'TRANSPORT':
+      /unsupported|not implemented|not supported/.test(message)?'RUNTIME_UNSUPPORTED':
+      /cannot read|is not a function|undefined|typeerror/.test(message)?'RUNTIME_TYPE':
+      /pool|client/.test(message)?'DRIVER_POOL':'UNCLASSIFIED';
+    const type=types.find(name=>
+      ['Error','TypeError','SyntaxError','RangeError','AggregateError'].includes(name))||'Other';
+    console.error('[LOC native public content]',{stage:'kysely-query',code,reason,type});
+    return respond({error:'LOC native Kysely query failed',
+      stage:'kysely-query',code,reason,type},503);
   }
 }

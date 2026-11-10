@@ -111,6 +111,27 @@ test('the website cannot submit SQL, table names, arbitrary operations or connec
   assert.equal(called,0);
 });
 
+test('native read separates TLS, auth and TCP failures without exposing secrets',async()=>{
+ const samples=[
+  ['self-signed certificate for postgres', 'TLS'],
+  ['password authentication failed for user secret-owner', 'DB_AUTH'],
+  ['connect ETIMEDOUT to hidden.internal', 'TRANSPORT'],
+  ['Unsupported node.js runtime socket', 'TRANSPORT']
+ ];
+ for(const [message,expected] of samples){
+  const response=await handleNativePublicContent(page('blocks','loc'),{},{
+   database:async()=>{throw Error(message)}
+  });
+  assert.equal(response.status,503);
+  const body=await response.json();
+  assert.equal(body.reason,expected);
+  assert.equal(body.stage,'kysely-query');
+  assert.ok(!JSON.stringify(body).includes(message));
+  assert.ok(!JSON.stringify(body).includes('secret-owner'));
+  assert.ok(!JSON.stringify(body).includes('hidden.internal'));
+ }
+});
+
 test('unavailable Kysely reports a driver error instead of a public Data API fallback',async()=>{
   const response=await handleNativePublicContent(page('blocks','loc'),{},{
     database:async()=>{throw Error('private connection text must not leak')}
