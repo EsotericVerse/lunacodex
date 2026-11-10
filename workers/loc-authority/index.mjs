@@ -417,7 +417,8 @@ export class LocAuthorityState extends DurableObject {
         verifiedAt:outcome.success?Date.now():0
       });
       return {verified:outcome.success,reason:outcome.reason,
-        retryAt:outcome.state.blockedUntil||0};
+        retryAt:outcome.state.blockedUntil||0,
+        last_update:outcome.state.last_update};
     });
   }
   async trustedDatabaseProfile(id,probeTicket=''){
@@ -1320,6 +1321,7 @@ export default {
         if(!reservation.allowed)return json({verified:false,reason:reservation.reason,
           retryAt:reservation.retryAt},429,origin);
         let verdict={ok:false,reason:'DATABASE_UNAVAILABLE'};
+        let version='';
         try{
           const expected=String(env.LOC_DB_PROFILE_SERVICE_TOKEN||'');
           if(expected.length<32)throw fail('LOC backend service is not configured',503);
@@ -1332,15 +1334,18 @@ export default {
           if(probe.ok){
             const response=await probe.json();
             if(response&&response.ok===true&&response.typeVerified===true&&
-              response.credentialsVerified===true)
+              response.credentialsVerified===true){
               verdict={ok:true,typeVerified:true,credentialsVerified:true};
+              version=String(response.version||'').slice(0,300);
+            }
             else verdict={ok:false,reason:String(response?.reason||'DATABASE_UNAVAILABLE')};
           }else verdict={ok:false,reason:'DATABASE_UNAVAILABLE'};
         }catch(error){
           verdict={ok:false,reason:error?.name==='TimeoutError'
             ?'TIMEOUT':'TRANSPORT'};
         }
-        return json(await stub.finishSqlProbe(targetId,reservation.ticket,verdict),200,origin);
+        const finished=await stub.finishSqlProbe(targetId,reservation.ticket,verdict);
+        return json({...finished,...(finished.verified?{version}:{})},200,origin);
       }
       if(request.method==='GET'&&url.pathname==='/v1/auth/providers')
         return json(await stub.listAuthProviders(),200,origin);
