@@ -24,11 +24,11 @@ test('authorized physical mapping chooses table and columns without changing sch
  const {db,calls}=capture();
  const result=await executePortableMcp(db,{
   kind:'mcp-search',scopeid:scope,user_requested:true,query:'mapped',limit:2
- },claims,{engine:'mysql',namespace:'',tableName:'archive_existing',
+ },claims,{engine:'postgres',namespace:'silver',tableName:'archive_existing',
   fieldMap:{uid:'external_id',title:'headline',content:'body',
    createtime:'created_at'}});
  assert.equal(result.data.length,1);
- assert.equal(calls[0].table,'archive_existing');
+ assert.equal(calls[0].table,'silver.archive_existing');
  assert.equal(calls[0].order.field,'created_at');
  const mappedNames=calls[0].fields.map(field=>
   typeof field==='string'?field:JSON.stringify(field.toOperationNode()));
@@ -59,11 +59,11 @@ test('external model does not require unmapped optional date and URL columns',as
  const {db,calls}=capture();
  await executePortableMcp(db,{
    kind:'mcp-read',scopeid:scope,uid:'source-article-42',site:'mcp'
- },claims,{engine:'mssql',namespace:'dbo',tableName:'my_existing_articles',
+ },claims,{engine:'postgres',namespace:'silver',tableName:'my_existing_articles',
    fieldMap:{uid:'article_id',title:'headline',content:'body',createtime:'published_at'}});
  const fields=calls[0].fields.map(field=>
    typeof field==='string'?field:JSON.stringify(field.toOperationNode()));
- assert.equal(calls[0].table,'dbo.my_existing_articles');
+ assert.equal(calls[0].table,'silver.my_existing_articles');
  assert.equal(fields.length,4);
  assert.ok(fields.some(field=>field.includes('article_id')));
  assert.ok(fields.some(field=>field.includes('headline')));
@@ -75,7 +75,7 @@ test('mapped optional columns are selected only when explicitly configured',asyn
  const {db,calls}=capture();
  await executePortableMcp(db,{
    kind:'mcp-read',scopeid:scope,uid:'article-custom',site:'mcp'
- },claims,{engine:'mysql',tableName:'archive',
+ },claims,{engine:'postgres',namespace:'silver',tableName:'archive',
    fieldMap:{uid:'external_id',title:'headline',content:'body',
     createtime:'created_at',url:'source_url'}});
  const fields=calls[0].fields.map(field=>

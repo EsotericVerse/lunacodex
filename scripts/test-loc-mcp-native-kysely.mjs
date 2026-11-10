@@ -46,38 +46,35 @@ test('missing or invalid Authority profile access fails closed',async()=>{
  }),error=>error.code==='DATABASE_TARGET_MISSING');
 });
 
-test('Kysely compiles Postgres, MySQL and SQL Server via one Authority profile',async()=>{
- for(const engine of ['postgres','mysql','mssql']){
-  const env=getEnv();
-  const selected=await directMcpKysely(env,'target_'+engine,{
+test('Kysely compiles PostgreSQL and rejects absent runtime dialects',async()=>{
+ const selected=await directMcpKysely(getEnv(),'target_postgres',{
+  fetchImpl:async()=>Response.json(mockProfile('postgres'))
+ });
+ assert.equal(selected.engine,'postgres');
+ assert.equal(selected.namespace,'silver');
+ assert.match(selected.db.selectFrom('silver.galaxy').select('uid').limit(2).compile().sql,
+  /"silver"\."galaxy"/);
+ await selected.db.destroy();
+ for(const engine of ['mysql','mssql'])
+  await assert.rejects(directMcpKysely(getEnv(),'target_'+engine,{
    fetchImpl:async()=>Response.json(mockProfile(engine))
-  });
-  assert.equal(selected.engine,engine);
-  const namespace=engine==='mysql'?'':engine==='mssql'?'dbo':'silver';
-  assert.equal(selected.namespace,namespace);
-  const sql=selected.db.selectFrom(namespace?namespace+'.galaxy':'galaxy')
-   .select('uid').limit(2).compile().sql;
-  if(engine==='postgres')assert.match(sql,/"silver"\."galaxy"/);
-  if(engine==='mysql')assert.match(sql,/\x60galaxy\x60/);
-  if(engine==='mssql')assert.match(sql,/"dbo"\."galaxy"/);
-  await selected.db.destroy();
- }
+  }),/Unsupported runtime SQL engine/);
 });
 test('live Auth-selected profile is resolved only through trusted server secret',async()=>{
  const env={LOC_DB_PROFILE_SERVICE_TOKEN:'backend-only-secret-with-at-least-32-bytes'};
  const invoked=[];
  const fetchImpl=async(url,options)=>{
   invoked.push({url,options});
-  return Response.json({engine:'mysql',host:'db.example.net',port:3306,database:'loc',
+  return Response.json({engine:'postgres',host:'db.example.net',port:5432,database:'loc',
    username:'readonly',password:'sample-only-secret',
-   schema_name:'',table_name:'existing_articles',field_map:{title:'headline'}});
+   schema_name:'silver',table_name:'existing_articles',field_map:{title:'headline'}});
  };
- const selected=await directMcpKysely(env,'office_mysql',{fetchImpl});
- assert.equal(selected.engine,'mysql');
+ const selected=await directMcpKysely(env,'office_postgres',{fetchImpl});
+ assert.equal(selected.engine,'postgres');
  assert.equal(selected.tableName,'existing_articles');
  assert.deepEqual(selected.fieldMap,{title:'headline'});
  assert.equal(invoked.length,1);
- assert.match(invoked[0].url,/\/v1\/internal\/database\/office_mysql$/);
+ assert.match(invoked[0].url,/\/v1\/internal\/database\/office_postgres$/);
  assert.equal(invoked[0].options.headers['x-loc-service-token'],env.LOC_DB_PROFILE_SERVICE_TOKEN);
  await selected.db.destroy();
  await assert.rejects(directMcpKysely(env,'bad/alias',{fetchImpl}),/Invalid verified database alias/);
@@ -179,12 +176,12 @@ test('external database alias cannot use a Cloudflare primary connection secret'
  const secret='postgresql://postgres.test:temporary@db.example.org:6543/postgres';
  const env={LOC_DATABASE_URI:secret,LOC_DB_PROFILE_SERVICE_TOKEN:SERVICE};
  const requested=[];
- const target=await directMcpKysely(env,'office_mysql',{fetchImpl:async url=>{
+ const target=await directMcpKysely(env,'office_postgres',{fetchImpl:async url=>{
   requested.push(url);
-  return Response.json(mockProfile('mysql'));
+  return Response.json(mockProfile('postgres'));
  }});
- assert.equal(target.engine,'mysql');
- assert.ok(requested[0].endsWith('/v1/internal/database/office_mysql'));
+ assert.equal(target.engine,'postgres');
+ assert.ok(requested[0].endsWith('/v1/internal/database/office_postgres'));
  await target.db.destroy();
 });
 test('malformed Cloudflare primary URL is refused before SQL or Authority request',async()=>{

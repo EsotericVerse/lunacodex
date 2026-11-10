@@ -273,7 +273,7 @@ function portableMainTestDialect(engine,{registryRows=[{id:'lo3rwang',manage_rol
 }
 
 for(const engine of ['mysql','mssql']){
- test(engine+' main SQL Dialect accepts signed LOC owner without Registry authorization',async()=>{
+ test(engine+' missing SQL driver rejects owner writes before SQL executes',async()=>{
   const now=Math.floor(Date.now()/1000);
   const {token,fetchImpl}=await ownerDelegation(now,['global:manage']);
   const {dialect,executed}=portableMainTestDialect(engine);
@@ -287,9 +287,9 @@ for(const engine of ['mysql','mssql']){
    fetchImpl,database:async()=>({engine,
     namespace:engine==='mysql'?'':'dbo',db})
   });
-  assert.equal(response.status,200,await response.text().catch(()=>''));
+  assert.equal(response.status,500,await response.text().catch(()=>''));
   assert.equal(executed.some(x=>/select\s/i.test(x.sql)&&/manage/i.test(x.sql)),false);
-  assert.ok(executed.some(x=>/update\s/i.test(x.sql)&&/loc/i.test(x.sql)));
+  assert.equal(executed.some(x=>/update\s/i.test(x.sql)&&/loc/i.test(x.sql)),false);
   await db.destroy();
  });
  test(engine+' rejects another LOC identity before touching main SQL database',async()=>{

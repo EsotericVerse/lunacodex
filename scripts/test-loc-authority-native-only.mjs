@@ -52,7 +52,7 @@ test('LOC Authority target updates reuse encrypted SQL secrets without browser e
   const validate=new Function('ID','ENGINES','fail',
     'normalizeSqlDriverAuthentication','sqlAuthNeedsUserPassword',
     source.slice(start,end)+';return validateTarget;')(
-      /^[a-z][a-z0-9_-]{0,63}$/,new Set(['postgres','mysql','mssql']),
+      /^[a-z][a-z0-9_-]{0,63}$/,new Set(['postgres']),
       fail,normalizeSqlDriverAuthentication,sqlAuthNeedsUserPassword);
   const putStart=source.indexOf('  async putTarget(id,input){');
   const putEnd=source.indexOf('  // Per-user selection is stored',putStart);
@@ -70,24 +70,21 @@ test('LOC Authority target updates reuse encrypted SQL secrets without browser e
     ctx:{storage:{get:async key=>storage.get(key),
       put:async (key,value)=>storage.set(key,value)}},
     env:{LOC_CONTROL_ENCRYPTION_KEY:'test-placeholder'}};
-  const target={engine:'mssql',host:'sql.example.net',port:1433,
-    database:'loc',username:'',
-    authentication:{type:'azure-active-directory-service-principal-secret',
-      clientId:'client',tenantId:'tenant',clientSecret:'private-client-secret'}};
-  const visible=await put.call(ctx,'azure_test',target);
-  assert.equal(JSON.stringify(visible).includes('private-client-secret'),false);
-  assert.equal(visible.authentication.client_secret_configured,true);
-  assert.equal(JSON.stringify(storage.get('target:azure_test').public)
-    .includes('private-client-secret'),false);
-  assert.equal(storage.get('target:azure_test').encrypted.value
-    .authentication.clientSecret,'private-client-secret');
-  const {clientSecret,...redacted}=target.authentication;
-  await put.call(ctx,'azure_test',{...target,authentication:redacted});
-  assert.equal(storage.get('target:azure_test').encrypted.value
-    .authentication.clientSecret,'private-client-secret');
-  await assert.rejects(put.call(ctx,'azure_test',{
-    ...target,authentication:{type:'azure-active-directory-access-token'}
-  }),/access token required/);
+  const target={engine:'postgres',host:'db.example.net',port:5432,
+    database:'loc',username:'loc_admin',password:'private-db-test-password'};
+  const visible=await put.call(ctx,'postgres_test',target);
+  assert.equal(JSON.stringify(visible).includes('private-db-test-password'),false);
+  assert.equal(JSON.stringify(storage.get('target:postgres_test').public)
+    .includes('private-db-test-password'),false);
+  assert.equal(storage.get('target:postgres_test').encrypted.value.password,
+    'private-db-test-password');
+  await put.call(ctx,'postgres_test',{...target,password:''});
+  assert.equal(storage.get('target:postgres_test').encrypted.value.password,
+    'private-db-test-password');
+  await assert.rejects(put.call(ctx,'sqlserver_disabled',{
+    engine:'mssql',host:'sql.example.net',port:1433,database:'loc',
+    username:'reader',password:'test-only'
+  }),/Unsupported|SQL engine/);
   await assert.rejects(put.call(ctx,'new_without_password',{
     engine:'postgres',host:'db.example.net',port:5432,
     database:'loc',username:'user'}),/requires its database password/);

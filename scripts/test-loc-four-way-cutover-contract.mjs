@@ -60,8 +60,8 @@ test('LOC never packages an independent SQL Gateway or Container',()=>{
   'services/loc-mcp-sql/cloudflare-worker.mjs','services/loc-mcp-sql/wrangler.jsonc'
  ])assert.equal(existsSync(new URL('../'+path,import.meta.url)),false,path);
  const driver=read('app/loc/mcp/native-kysely.mjs');
- for(const dialect of ['PostgresDialect','MysqlDialect','MssqlDialect'])
-  assert.match(driver,new RegExp(dialect));
+ assert.match(driver,/PostgresDialect/);
+ assert.doesNotMatch(driver,/MysqlDialect|MssqlDialect/);
  const configured=read('app/loc/providers/configured.mjs');
  assert.doesNotMatch(configured,/createLocGatewayAdapter|NEXT_PUBLIC_LOC_SQL_GATEWAY_URL/);
  const auth=read('workers/loc-authority/native-oauth.mjs');
