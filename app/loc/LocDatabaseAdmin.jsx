@@ -76,6 +76,8 @@ export default function LocDatabaseAdmin(){
  const [busy,setBusy]=useState(false);
  const [dirty,setDirty]=useState(false);
  const [status,setStatus]=useState('');
+ const [connectionUrl,setConnectionUrl]=useState('');
+ const [showAdvanced,setShowAdvanced]=useState(false);
  useEffect(()=>{
   let active=true;
   authority('GET','/v1/state').then(data=>{
@@ -126,6 +128,59 @@ export default function LocDatabaseAdmin(){
    setStatus('已選擇主要資料庫：'+form.id+'。讀寫仍須該連線通過手動 SQL 驗證。');
   }catch(error){setStatus('主要資料庫切換失敗：'+String(error?.message||error));}
   finally{setBusy(false);}
+ };
+ // First-time recovery of the existing main SQL connection. A single
+ // provider-issued URI contains its *actual* SQL type, endpoint, port and
+ // login; LOC never guesses these values or calls an SQL probe on save.
+ const restoreMainFromUrl=async event=>{
+  event.preventDefault();
+  if(busy||targets.length)return;
+  const source=connectionUrl.trim();
+  setConnectionUrl(''); // Never retain SQL secrets in a long-lived form field.
+  setBusy(true);
+  setStatus('正在恢復既有主要資料庫的連線設定…');
+  try{
+   if(source.length>4096)throw Error('連線網址過長');
+   let link;
+   try{link=new URL(source)}catch{throw Error('連線網址格式不正確');}
+   const engines={'postgres:':'postgres','postgresql:':'postgres',
+    'mysql:':'mysql','mssql:':'mssql','sqlserver:':'mssql'};
+   const engine=engines[link.protocol];
+   if(!engine||!link.hostname||!link.port)
+    throw Error('請使用供應商 Connect 提供的 SQL 連線網址，並確認其中包含實際 Port');
+   let username,password,database;
+   try{
+    username=decodeURIComponent(link.username);
+    password=decodeURIComponent(link.password);
+    database=decodeURIComponent(link.pathname.slice(1));
+   }catch{throw Error('連線網址的帳號或資料庫名稱編碼無效');}
+   if(!username||!password||!database)
+    throw Error('連線網址尚缺資料庫使用者、密碼或資料庫名稱');
+   if(!/^[a-z0-9.-]{1,253}$/i.test(link.hostname)||
+     !/^[a-zA-Z0-9_-]{1,120}$/.test(database)||
+     !Number.isInteger(Number(link.port))||Number(link.port)<1||Number(link.port)>65535)
+    throw Error('連線網址含有無效的資料庫主機、Port 或資料庫名稱');
+   const id='loc-main';
+   await authority('PUT','/v1/targets/'+id,{
+    label:'主要資料庫連線',engine,db_type:'direct',project_id:'',
+    host:link.hostname,port:Number(link.port),database,
+    schema_name:engine==='postgres'?'silver':engine==='mssql'?'dbo':'',
+    username,password,authentication:{type:'default'},
+    table_name:'',field_map:{},ref_provider:'',ref_permission:'',
+    selectable_by_users:false,allowed_subjects:[]
+   });
+   await authority('POST','/v1/primary',{id});
+   const data=await authority('GET','/v1/state');
+   if(data?.primary_id!==id)throw Error('主要資料庫設定尚未確認');
+   const next=(data.targets||[]).filter(x=>x&&x.managed!==true&&x.id);
+   setTargets(next);
+   setPrimaryId(id);
+   setForm(cleanForm(next.find(x=>x.id===id)));
+   setDirty(false);
+   setStatus('主要資料庫連線已加密儲存並選定；尚需由本人手動驗證一次 SQL，才會啟用正式讀寫。');
+  }catch(error){
+   setStatus('主要資料庫恢復未完成：'+String(error?.message||error));
+  }finally{setBusy(false);}
  };
  const save=async event=>{
   event.preventDefault();
@@ -188,9 +243,27 @@ export default function LocDatabaseAdmin(){
  };
  return <section className="loc-card" aria-label="管理資料庫連線">
   <h2>管理可供使用者選擇的資料庫</h2>
-  <p className="scope-status">只有 LOC 管理者能新增連線及開放選擇。Connection Secret 只傳往 LOC Auth 加密儲存，不會存於網站或 Git。</p>
-  <p className="scope-status">所有 SQL Type 使用同一套 db_connection。已選主要資料庫：{primaryId||'尚未設定'}。儲存後可選擇主要資料庫並由管理者手動測試；失敗立即停止、五分鐘冷卻，不允許一般讀取觸發重試。</p>
-  <p className="scope-status">建議定期檢視並主動輪替 Connection Secret；若疑似外洩，請立即更換並撤銷舊憑證。輪替只更改連線憑證，不會變更 Target ID、Project ID、SQL Type、Domain、Port 或原有 SSO 授權。輪替後應確認新連線成功，再停用舊憑證。</p>
+  <p className="scope-status">已選主要資料庫：{primaryId||'尚未設定'}。連線密碼只傳至 LOC Auth 加密儲存；不存於網站或 Git，儲存不觸發 SQL 測試。</p>
+  {targets.length===0?<section className="scope-management-wide-field">
+   <h3>恢復既有主要資料庫</h3>
+   <p className="scope-status">LOC Auth 尚未有已儲存的主要資料庫 Profile。不需重建資料庫、選擇 SQL Type 或逐欄猜測 Host、Port；直接使用既有供應商 Connect 頁提供的完整 SQL Connection URL。</p>
+   <form className="scope-management-fields" onSubmit={restoreMainFromUrl} autoComplete="off">
+    <label className="scope-management-wide-field"><span>既有資料庫的 SQL Connection URL（須含實際 Port 及密碼）</span>
+     <input required type="password" value={connectionUrl} disabled={busy}
+      onChange={event=>setConnectionUrl(event.target.value)}
+      autoComplete="off" spellCheck={false} placeholder="postgresql://…@…:實際Port/資料庫名稱"/>
+    </label>
+    <button type="submit" className="loc-button primary" disabled={busy||!connectionUrl.trim()}>
+     {busy?'儲存中…':'加密儲存並設為主要資料庫（不測試 SQL）'}
+    </button>
+   </form>
+   <button type="button" className="loc-button" disabled={busy}
+    onClick={()=>setShowAdvanced(value=>!value)}>
+    {showAdvanced?'收起進階連線設定':'展開進階連線設定'}
+   </button>
+  </section>:null}
+  {(targets.length>0||showAdvanced)?<>
+  <p className="scope-status">進階連線設定：僅在新增其他 SQL 來源或修改現有 Profile 時使用。SQL 驗證由管理者手動啟動，失敗後遵守來源冷卻。</p>
   <label><span>編輯既有連線</span>
    <select className="scope-select" value={targets.some(x=>x.id===form.id)?form.id:''}
     onChange={event=>editId(event.target.value)} disabled={busy}>
@@ -349,6 +422,7 @@ export default function LocDatabaseAdmin(){
     {busy?'儲存中…':'儲存資料庫連線與選擇權限'}
    </button>
   </form>
+  </>:null}
   {status?<p role="status" className="scope-status">{status}</p>:null}
  </section>;
 }
