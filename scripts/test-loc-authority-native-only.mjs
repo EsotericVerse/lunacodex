@@ -132,7 +132,7 @@ test('production registry tracing is in the existing authenticated route, not a 
   assert.match(route,/directMcpKysely\(env,primary\.target_id\)/);
   assert.match(route,/stage='registry-query'/);
   assert.match(route,/LOC_DB_PROFILE_SERVICE_TOKEN/);
-  assert.match(route,/return respond\(\{error:'LOC registry read unavailable',stage,code\},503\)/);
-  assert.match(role,/stage:downstream,httpStatus:response.status,code/);
+  assert.match(route,/return respond\\(\\{error:'LOC registry read unavailable',stage,code,\\.\\.\\.roleProbe\\},503\\)/);
+  assert.match(role,/stage:downstream,[\\s\\S]*?httpStatus:response.status,code,dbRole/);
   assert.doesNotMatch(route,/errorStack|errorCause|url\.searchParams\.get\('token'\)/);
 });
