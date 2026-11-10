@@ -2,23 +2,25 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {testLocAuthConnection} from '../functions/api/loc-auth-connectivity.js';
 const env={LOC_DATABASE_URI:'postgresql://test:secret@db.example.test:6543/postgres'};
-test('test table query runs through selected Kysely connection',async()=>{
+test('Neon-ready Kysely Galaxy probe reads a real LOC relation without publishing UID',async()=>{
  const calls=[];
  const response=await testLocAuthConnection(env,async(_env,id)=>{
   assert.equal(id,'loc-main');
   return {engine:'postgres',db:{selectFrom(table){
-   assert.equal(table,'silver.loc_auth');
+   assert.equal(table,'silver.lo3rwang_galaxy');
    return {select(fields){calls.push(fields);return this},
-    where(...terms){calls.push(terms);return this},
-    async executeTakeFirst(){return {uid:'001',email:'owner@example.test',
-     scopeid:'lo3rwang',role:'admin'}}};
+    limit(n){calls.push(n);return this},
+    async executeTakeFirst(){return {uid:'UNEXPOSED'}}};
   }}};
  });
  assert.equal(response.status,200);
  const result=await response.json();
  assert.equal(result.ok,true);
- assert.equal(result.data.uid,'001');
- assert.deepEqual(calls[1],['uid','=','001']);
+ assert.equal(result.rowFound,true);
+ assert.equal(result.table,'lo3rwang_galaxy');
+ assert.equal(result.data,undefined);
+ assert.ok(!JSON.stringify(result).includes('UNEXPOSED'));
+ assert.deepEqual(calls,['uid',1]);
 });
 test('missing deployment secret is reported without making a request',async()=>{
  const response=await testLocAuthConnection({},async()=>{

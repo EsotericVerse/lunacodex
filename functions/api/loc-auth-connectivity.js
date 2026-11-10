@@ -1,4 +1,4 @@
-// Fixed connectivity check for the explicitly authorized public test table.
+// Read-only connectivity check against the existing LOC Galaxy contract.
 // Reuses LOC's existing server-side Kysely pool and Cloudflare LOC_DATABASE_URI.
 // No credentials, SQL input, target selection or arbitrary parameters exposed.
 import {db_connection} from '../../app/loc/mcp/native-kysely.mjs';
@@ -42,11 +42,14 @@ export async function testLocAuthConnection(env={},database=db_connection){
  try{
   const connection=await database(env,'loc-main');
   if(connection.engine!=='postgres')return json({ok:false,stage:'driver',code:'NOT_POSTGRES'},503);
-  const row=await connection.db.selectFrom('silver.loc_auth')
-    .select(['uid','email','scopeid','role']).where('uid','=','001')
-    .executeTakeFirst();
-  if(!row)return json({ok:false,stage:'query',code:'TEST_ROW_NOT_FOUND'},404);
-  return json({ok:true,connection:'postgresql',schema:'silver',table:'loc_auth',data:row});
+  // A common, existing LOC relation verifies the configured PostgreSQL
+  // connection for Supabase or Neon. No temporary auth test table is needed.
+  // Never echo a Galaxy UID, article data or credentials in this response.
+  const row=await connection.db.selectFrom('silver.lo3rwang_galaxy')
+    .select('uid').limit(1).executeTakeFirst();
+  if(!row)return json({ok:false,stage:'query',code:'GALAXY_EMPTY'},404);
+  return json({ok:true,connection:'postgresql',schema:'silver',
+    table:'lo3rwang_galaxy',rowFound:true});
  }catch(error){
   return json({ok:false,stage:'sql-query',...failureCode(error)},503);
  }
