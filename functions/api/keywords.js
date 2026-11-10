@@ -65,7 +65,12 @@ export async function onRequestPost(context){
       for(const id of new Set(scopes))
         if(await permission(db,role,claims,id))owned.add(id);
       result=operation==='suggestAnchors'
-        ?await suggestAnchorOptions(db,scopes,String(args.query||''),{ownerScopes:owned})
+        ?await suggestAnchorOptions(db,scopes,String(args.query||''),{
+            ownerScopes:owned,
+            // Reuse the existing PostgreSQL connection; portable SQL stays on Kysely.
+            dialect:entry.engine==='postgres'?entry.dialect:null,
+            namespace:entry.namespace||'silver'
+          })
         :await suggestKeywordPatterns(db,scopes,String(args.query||''),{ownerScopes:owned});
     }else{
       const owner=await permission(db,role,claims,scope);
