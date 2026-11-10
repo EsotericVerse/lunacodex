@@ -19,7 +19,7 @@ const TXT=new TextEncoder(),UTF=new TextDecoder();
 const CODE_PATTERN=/^[A-Za-z0-9_-]{43,128}$/;
 const LOC_SUBJECT=/^loc_[A-Za-z0-9_-]{32,80}$/;
 const SCOPE_ID=/^[a-z][a-z0-9]{0,14}$/;
-const SESSION_SECONDS=30*86400,ACCESS_SECONDS=600,REFRESH_SECONDS=30*86400;
+const SESSION_SECONDS=86400,ACCESS_SECONDS=600,REFRESH_SECONDS=86400;
 function error(message,status=400){throw Object.assign(new Error(message),{status});}
 function enc(value){const bytes=value instanceof Uint8Array?value:TXT.encode(value);let s='';
  for(const b of bytes)s+=String.fromCharCode(b);
@@ -124,10 +124,18 @@ async function sessionForHash(stub,hash){
  const s=await stub.nativeGet('native-session:'+hash);
  return s&&s.expires>Date.now()?s:null;
 }
-async function sessionFromCookie(request,stub){
+async function sessionFromCookie(request,stub,env){
  const token=parseCookies(request).get(SESSION_COOKIE);
  if(!CODE_PATTERN.test(String(token||'')))return null;
- return sessionForHash(stub,await sha(token));
+ const identity=await sessionForHash(stub,await sha(token));
+ if(!identity||identity.identityProvider!=='better-auth-google')return identity;
+ // Better Auth is the session authority for Google. The 24h auxiliary
+ // LOC OAuth cookie never outlives a verified first-party SSO session.
+ const sso=hasFirstPartyCookie(request)?await firstPartySession(request,env):null;
+ const link=sso?await stub.nativeGet('native-google-link:'+await sha('google:'+sso.googleAccountId)):null;
+ if(sso?.email===identity.email&&link?.subject===identity.subject)return identity;
+ await stub.nativeTake('native-session:'+identity.sidHash);
+ return null;
 }
 // Better Auth verifies who Google says the user is. An OAuth app client
 // ID/secret does not prove ownership of LOC. Independent LOC Subject binding
@@ -196,7 +204,7 @@ export async function googleLocSubject(identity,stub,env,prior=null){
 async function sessionFromBetter(request,env,stub){
  const identity=await firstPartySession(request,env);
  if(!identity||!identity.emailVerified)error('Verified Better Auth Google identity required',401);
- const prior=await sessionFromCookie(request,stub);
+ const prior=await sessionFromCookie(request,stub,env);
  const subject=await googleLocSubject(identity,stub,env,prior);
  const sid=random(),sidHash=await sha(sid);
  const next={subject,provider:'loc',identityProvider:'better-auth-google',
@@ -279,7 +287,7 @@ async function authorize(request,url,stub,env){
  const resource=resourceFor(client.kind,p.get('resource'));
  const scope=scopeFor(client.kind,p.get('scope')||
   (client.kind==='extension'?'loc:import offline_access':'profile email offline_access'));
- let session=await sessionFromCookie(request,stub);
+ let session=await sessionFromCookie(request,stub,env);
  let bridged=null;
  if(!session&&hasFirstPartyCookie(request)){
   bridged=await sessionFromBetter(request,env,stub);
@@ -326,7 +334,7 @@ async function startWebConsent(stub,session,next,cookies=[]){
  return redirect(ISSUER+'/oauth/consent/web?nonce='+encodeURIComponent(nonce),cookies);
 }
 async function webConsentPage(request,url,stub,env){
- let session=await sessionFromCookie(request,stub),bridged=null;
+ let session=await sessionFromCookie(request,stub,env),bridged=null;
  if(!session&&hasFirstPartyCookie(request)){
   bridged=await sessionFromBetter(request,env,stub);
   session=bridged.session;
@@ -367,7 +375,7 @@ async function authorizedCode(stub,details,cookies=[]){
  result.searchParams.set('iss',ISSUER);
  return redirect(result.href,cookies);
 }
-async function consentResponse(request,stub){
+async function consentResponse(request,stub,env){
  if(request.headers.get('origin')!==ISSUER)error('Consent origin required',403);
  if(!String(request.headers.get('content-type')||'').toLowerCase()
   .startsWith('application/x-www-form-urlencoded'))
@@ -376,7 +384,7 @@ async function consentResponse(request,stub){
  const form=new URLSearchParams(raw),nonce=form.get('nonce')||'';
  if(!CODE_PATTERN.test(nonce))error('Invalid consent request',400);
  const details=await take(stub,'native-consent-pending',nonce);
- const session=await sessionFromCookie(request,stub);
+ const session=await sessionFromCookie(request,stub,env);
  if(!details||!session||details.sidHash!==session.sidHash||
   details.subject!==session.subject||details.expires<Date.now())
   error('Consent session or request expired',401);
@@ -409,13 +417,13 @@ async function consentResponse(request,stub){
  await recordConsent(stub,session.subject,details.client_id,details.resource,details.scope);
  return authorizedCode(stub,details);
 }
-async function revokeConsentResponse(request,stub){
+async function revokeConsentResponse(request,stub,env){
  if(request.headers.get('origin')!==ISSUER)error('Consent origin required',403);
  if(!String(request.headers.get('content-type')||'').toLowerCase()
   .startsWith('application/x-www-form-urlencoded'))error('Consent form required',415);
  const raw=await request.text();if(raw.length>1500)error('Consent revoke too large',413);
  const form=new URLSearchParams(raw);
- const session=await sessionFromCookie(request,stub);
+ const session=await sessionFromCookie(request,stub,env);
  if(!session)error('LOC session required to revoke consent',401);
  const client=await clientFor(stub,form.get('client_id'));
  const resource=resourceFor(client.kind,form.get('resource'));
@@ -575,7 +583,7 @@ function refIssuer(type,profile){
  return type==='ad'||type==='ldap'?profile.bridge_issuer_url:profile.issuer_url;
 }
 async function verifiedLocPrincipal(request,env,stub){
- const existing=await sessionFromCookie(request,stub);
+ const existing=await sessionFromCookie(request,stub,env);
  return existing?{subject:existing.subject,email:existing.email}:null;
 }
 async function refLogin(request,url,stub,env){
@@ -728,16 +736,8 @@ async function revoke(request,stub,origin){
  return response({},200,origin);
 }
 async function session(request,stub,origin,env){
- let identity=await sessionFromCookie(request,stub),bridged=null;
- if(identity?.identityProvider==='better-auth-google'){
-  // Never renew a custom LOC browser session after its Better Auth SSO ends.
-  const sso=hasFirstPartyCookie(request)?await firstPartySession(request,env):null;
-  const link=sso?await stub.nativeGet('native-google-link:'+await sha('google:'+sso.googleAccountId)):null;
-  if(!sso||sso.email!==identity.email||link?.subject!==identity.subject){
-   if(identity.sidHash)await stub.nativeTake('native-session:'+identity.sidHash);
-   identity=null;
-  }
- }
+ let identity=await sessionFromCookie(request,stub,env),bridged=null;
+
  if(!identity&&hasFirstPartyCookie(request)){
   bridged=await sessionFromBetter(request,env,stub);
   identity=bridged.session;
@@ -824,9 +824,9 @@ export async function handleNativeOAuth(request,env){
     resource_parameter_supported:true,loc_import_scope_routing:'query-v1'},200,origin);
   if(path==='/oauth/register'&&request.method==='POST')return await register(request,stub,origin);
   if(path==='/oauth/authorize'&&request.method==='GET')return await authorize(request,url,stub,env);
-   if(path==='/oauth/consent'&&request.method==='POST')return await consentResponse(request,stub);
+   if(path==='/oauth/consent'&&request.method==='POST')return await consentResponse(request,stub,env);
    if(path==='/oauth/consent/web'&&request.method==='GET')return await webConsentPage(request,url,stub,env);
-   if(path==='/oauth/consent/revoke'&&request.method==='POST')return await revokeConsentResponse(request,stub);
+   if(path==='/oauth/consent/revoke'&&request.method==='POST')return await revokeConsentResponse(request,stub,env);
   if(path==='/oauth/login'&&request.method==='GET')return await login(request,url,stub,env);
    if(path==='/oauth/complete'&&request.method==='GET')
     return await completeBetterGoogle(request,url,stub,env);
