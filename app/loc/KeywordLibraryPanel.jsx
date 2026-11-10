@@ -2,7 +2,7 @@
 
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import dynamic from 'next/dynamic';
-import {useSWRConfig} from 'swr';
+import {useQueryClient} from '@tanstack/react-query';
 import {useEditDock} from '../modular/edit-dock';
 import {dbAuthRelation,dbPublicClient,dbAuthClient,resetKeywordClassification,updateRows,writeKeywordLibraryItem,copyKeywordLibraryClass} from './db-client.mjs';
 import {indexKeywordTree,descendantsOfKeyword} from './keyword-tree.mjs';
@@ -38,7 +38,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
   const canEdit=account.canManageScopeSync(scopeId)&&Boolean(table&&configTable);
   const dock=useEditDock(),dockActions=useRef(null);
   const inDock=Boolean(dock?.active&&dock.scopeId===scopeId);
-  const {mutate}=useSWRConfig();
+  const queryClient=useQueryClient();
   const [rows,setRows]=useState([]);
   const [patternNodes,setPatternNodes]=useState(new Map());
   const [config,setConfig]=useState({});
@@ -96,8 +96,8 @@ export default function KeywordLibraryPanel({scopeId,account}){
   const invalidate=useCallback(async()=>{
     const {clearKeywordAnalysisCache}=await import('./keyword-analysis');
     clearKeywordAnalysisCache();
-    await mutate(key=>Array.isArray(key)&&/keyword|culture-style-filter|statistics-style-filter/.test(String(key[0]||'')),undefined,{revalidate:true});
-  },[mutate]);
+    await queryClient.invalidateQueries({predicate:query=>Array.isArray(query.queryKey)&&/keyword|culture-style-filter|statistics-style-filter/.test(String(query.queryKey[0]||''))});
+  },[queryClient]);
 
   const load=useCallback(async(preferredUid='')=>{
     if(!canEdit)return;
