@@ -77,7 +77,7 @@ export function selectCultureRiverChildren(rows=[],taxonomy={},roots=[]){
 /**
  * Reuse ONE time-bounded DB aggregate for the initial parent lanes and
  * clicked children. The first paint consumes rootBuckets/groups only; the
- * compact numericRows remain in SWR until the user expands a parent.
+ * compact numericRows remain in the shared client query until a parent expands.
  *
  * No article text, extra SQL request, or remote ISR cache is involved.
  */

@@ -312,7 +312,7 @@ export default function Culture(){
 
   const isAggregateScope=Boolean(scope?.aggregateChildren);
   // LOC's first Time River never queries per-day article/media density.
-  // On-demand second-river data stays in the regular SWR request cache.
+  // On-demand second-river data uses the shared ZenStack query client.
   const locDensityQuery=useAsyncResource({
     queryKey:['loc-culture-density',scopeId,query.data?.intersectionStart,query.data?.intersectionEnd,
       JSON.stringify(query.data?.intersectionWindows||[])],
@@ -840,7 +840,7 @@ export default function Culture(){
     ]);
   }
   async function refreshTimelineData(){
-    // Time edits refresh the direct database query and SWR resource keys.
+    // Time edits refresh direct database reads and shared client-query keys.
     if(scopeId!=='local')await revalidateServerMetadata();
     await Promise.all([
       resourceCache.invalidate({queryKey:['culture-timeline',scopeId]}),

@@ -221,7 +221,7 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     selectedSavedGraph=null;
     if(changed)lastGraphFocusKey='';
     refreshSavedRoute();
-    // SWR refreshes may return a new object representing the same route.
+    // Query refreshes may return a new object representing the same route.
     if(!loaded||!selectedSavedRoute||!changed)return;
     const valid=savedRoutePoints().filter(Boolean);
     if(valid.length===1){

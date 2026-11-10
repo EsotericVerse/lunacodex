@@ -4,6 +4,7 @@
 - 使用者決定「需求」及「需自行觸發的計費／正式發布時機」；Agent 自行負責程式、驗證、衝突、PR、Galaxy 與清理。不要要求使用者看 code、diff、commit log 或解決技術問題。
 - 以使用者當下明確需求為準；不要為已確定的事情反覆確認、腦力激盪或拆出額外工作。必要的範圍外修改先用白話說明並取得同意。回報結果與真正卡點，不洗版、不宣稱未完成的事情已完成。
 - GitHub Pages 與 Cloudflare Pages 均在 `main` push 後按既有設定自動部署；Agent 不手動觸發正式部署。公開發布與明顯高計費的手動工作流程仍由使用者決定觸發。
+- LOC 前端查詢統一使用 `zenstack/client-queries.js` 的單一 QueryClient；不得重新加入已移除的 SWR、第二套前端快取或為取代查詢 Hook 而新增無用的模型 RPC。Kysely 資料庫連線與 LOC Auth 維持原有邊界。
 
 ## 唯一正常工作流程
 **需求 → 沿用／建立一個工作 Branch → 修改完成 → 開一個 PR → 確認可合併 → Merge → 刪除已合併 Branch。**

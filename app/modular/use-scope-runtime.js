@@ -88,7 +88,7 @@ export function useScopeRuntime(){
     scopeId&&scopeId!=='admin'&&!base.aggregateChildren&&(!dynamic||activeRegistryRow?.scope_kind==='scope')
   );
   // Scope config already belongs to the page's shared bootstrap. Consume the
-  // same SWR resource key as AppShell, ThemeSelect and ScopeEditableBlocks;
+  // same ZenStack query key as AppShell, ThemeSelect and ScopeEditableBlocks;
   // do not maintain a second cache/effect or a second config SELECT.
   const bootstrap=useAppBootstrap(scopeId,featureIdForPath(pathname)||'index');
   const activeConfigRow=configEnabled&&bootstrap.data?.config?.id===scopeId

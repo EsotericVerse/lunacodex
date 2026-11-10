@@ -421,9 +421,9 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   },[publishedCatalog,overview.isPending,overview.isSuccess,overview.data,overview.dataUpdatedAt,
     othersConfig.isSuccess,othersConfig.data,othersConfig.error,othersConfig.dataUpdatedAt,sourceChart]);
   const selectedRawNames=null;
-  // Numeric counts come from ISR. Category bucketing is tiny synchronous
-  // presentation work, not an independent remote resource: avoid a second SWR
-  // suspense/loading cycle after the cached numeric response arrives.
+  // Numeric counts use the existing scoped database query. Category bucketing
+  // is tiny synchronous presentation work, not an independent remote resource:
+  // avoid a second loading cycle after the numeric response arrives.
   const adminSource=useMemo(()=>{
     if(!sourceChart||!sourceCatalog.isSuccess)return null;
     return administrativeSourceTrend(overview.data?.rows||[],sourceCatalog.data||{},{
