@@ -2,27 +2,19 @@
 // public reads use the database owner's existing HTTPS Data API directly.
 // This is not an SQL Gateway or an independently hosted LOC SQL service.
 import {createLocAccountAdapter} from '../auth/loc-browser.mjs';
-import {createDirectDataApiClient} from './direct-data-api.mjs';
+import {createKyselyPublicClient} from './kysely-browser.mjs';
 
 const DEFAULT_AUTHORITY='https://auth.lo3rwang.cc';
-const DEFAULT_PUBLIC_DATABASE='https://qlouywsdiiyiyzpoxyqy.supabase.co';
-const DEFAULT_PUBLIC_KEY='sb_publishable_qPn0vAzozVyXKllRuEKf2Q_fvG-pLVV';
-const apiUrl=()=>process.env.NEXT_PUBLIC_LOC_DATA_API_URL||
-  (process.env.NEXT_PUBLIC_SUPABASE_URL||DEFAULT_PUBLIC_DATABASE).replace(/\/+$/,'')+'/rest/v1';
-const apiKey=()=>process.env.NEXT_PUBLIC_LOC_DATA_API_PUBLIC_KEY||
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY||
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY||DEFAULT_PUBLIC_KEY;
 
 export function createConfiguredAdapter({
   accountAdapter,
   authorityUrl=process.env.NEXT_PUBLIC_LOC_CONTROL_URL||DEFAULT_AUTHORITY,
-  url=apiUrl(),publishableKey=apiKey(),
   fetchImpl=globalThis.fetch
 }={}){
   const identity=accountAdapter||createLocAccountAdapter({
     authorityOrigin:authorityUrl,fetchImpl
   });
-  const publicClient=createDirectDataApiClient({url,apiKey:publishableKey,role:'anon',fetch:fetchImpl});
+  const publicClient=createKyselyPublicClient({role:'anon',fetch:fetchImpl});
   // LOC OAuth JWTs are NOT database credentials. Authenticated SQL writes
   // require the database owner's server-side connection, never a public API key.
   // Ordinary LOC OAuth is sufficient for the person's own preferences.
@@ -72,7 +64,7 @@ export function createConfiguredAdapter({
     return {data:query.head?null:query.cardinality?rows[0]||null:rows,
       error:null,count:result.data.count??null,status:200};
   };
-  const readOnlyAuthClient=createDirectDataApiClient({url,apiKey:publishableKey,
+  const readOnlyAuthClient=createKyselyPublicClient({
     role:'authenticated',fetch:fetchImpl,readPrivate:privateRead,
     mutate:payload=>PERSONAL.has(payload.p_table)
       ?nativePersonal('personal-write',payload).then(result=>({
