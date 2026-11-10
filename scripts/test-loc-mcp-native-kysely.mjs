@@ -158,7 +158,7 @@ test('untrusted missing Authority target is refused; secret never appears in an 
 });
 
 test('the fixed primary can use a server-only Cloudflare SQL secret through Kysely',async()=>{
- const env={LOC_DATABASE_URL:'postgresql://postgres.test:temporary@db.example.org:6543/postgres'};
+ const env={LOC_DATABASE_URI:'postgresql://postgres.test:temporary@db.example.org:6543/postgres'};
  const urls=[];
  const fetchImpl=async url=>{urls.push(url);throw Error('Primary must not request the missing Authority profile')};
  const a=await directMcpKysely(env,'',{fetchImpl});
@@ -177,7 +177,7 @@ test('the fixed primary can use a server-only Cloudflare SQL secret through Kyse
 });
 test('external database alias cannot use a Cloudflare primary connection secret',async()=>{
  const secret='postgresql://postgres.test:temporary@db.example.org:6543/postgres';
- const env={LOC_DATABASE_URL:secret,LOC_DB_PROFILE_SERVICE_TOKEN:SERVICE};
+ const env={LOC_DATABASE_URI:secret,LOC_DB_PROFILE_SERVICE_TOKEN:SERVICE};
  const requested=[];
  const target=await directMcpKysely(env,'office_mysql',{fetchImpl:async url=>{
   requested.push(url);
@@ -188,7 +188,7 @@ test('external database alias cannot use a Cloudflare primary connection secret'
  await target.db.destroy();
 });
 test('malformed Cloudflare primary URL is refused before SQL or Authority request',async()=>{
- const env={LOC_DATABASE_URL:'postgresql://postgres:secret@db.example.org/postgres'};
+ const env={LOC_DATABASE_URI:'postgresql://postgres:secret@db.example.org/postgres'};
  await assert.rejects(directMcpKysely(env,'',{fetchImpl:async()=>{
   throw Error('Must not call HTTP');
  }}),err=>err.code==='BACKEND_UNAVAILABLE'&&!err.message.includes('secret'));

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {testLocAuthConnection} from '../functions/api/loc-auth-connectivity.js';
-const env={LOC_DATABASE_URL:'postgresql://test:secret@db.example.test:6543/postgres'};
+const env={LOC_DATABASE_URI:'postgresql://test:secret@db.example.test:6543/postgres'};
 test('test table query runs through selected Kysely connection',async()=>{
  const calls=[];
  const response=await testLocAuthConnection(env,async(_env,id)=>{
@@ -25,7 +25,7 @@ test('missing deployment secret is reported without making a request',async()=>{
   throw Error('must not execute');
  });
  assert.equal(response.status,503);
- assert.equal((await response.json()).code,'LOC_DATABASE_URL_MISSING');
+ assert.equal((await response.json()).code,'LOC_DATABASE_URI_MISSING');
 });
 test('SQL auth error is categorized without leaking credentials',async()=>{
  const response=await testLocAuthConnection(env,async()=>{

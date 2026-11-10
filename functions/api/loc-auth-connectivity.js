@@ -1,5 +1,5 @@
 // Fixed connectivity check for the explicitly authorized public test table.
-// Reuses LOC's existing server-side Kysely pool and Cloudflare LOC_DATABASE_URL.
+// Reuses LOC's existing server-side Kysely pool and Cloudflare LOC_DATABASE_URI.
 // No credentials, SQL input, target selection or arbitrary parameters exposed.
 import {db_connection} from '../../app/loc/mcp/native-kysely.mjs';
 
@@ -29,8 +29,8 @@ function failureCode(error){
 }
 
 export async function testLocAuthConnection(env={},database=db_connection){
- if(!String(env.LOC_DATABASE_URL||'').trim())
-  return json({ok:false,stage:'configuration',code:'LOC_DATABASE_URL_MISSING'},503);
+ if(!String(env.LOC_DATABASE_URI||'').trim())
+  return json({ok:false,stage:'configuration',code:'LOC_DATABASE_URI_MISSING'},503);
  try{
   const connection=await database(env,'loc-main');
   if(connection.engine!=='postgres')return json({ok:false,stage:'driver',code:'NOT_POSTGRES'},503);

@@ -29,15 +29,15 @@ function deployedMainProfile(env,alias,verifiedAlias){
  if(!primary||alias!==primary.connection_alias||
    verifiedAlias&&verifiedAlias!==primary.target_id&&
    verifiedAlias!==primary.connection_alias)return null;
- const raw=String(env.LOC_DATABASE_URL||'').trim();
+ const raw=String(env.LOC_DATABASE_URI||'').trim();
  if(!raw)return null;
  let connection;
  try{connection=new URL(raw)}
- catch{throw fail('LOC primary database URL is malformed')}
+ catch{throw fail('LOC primary database URI is malformed')}
  if(!['postgres:','postgresql:'].includes(connection.protocol)||
    !connection.hostname||!connection.port||!connection.username||
    !connection.password||connection.pathname.length<2)
-  throw fail('LOC primary database URL lacks required connection parameters');
+  throw fail('LOC primary database URI lacks required connection parameters');
  return {engine:'postgres',db_type:'direct',url:raw,
   schema_name:'silver',table_name:'',field_map:{},tls:true};
 }
@@ -187,7 +187,7 @@ export async function db_connection(env={},verifiedAlias='',{
  if(probeTicket&&!/^[0-9a-f-]{36}$/.test(probeTicket))
   throw fail('Invalid one-time SQL verification ticket');
  const alias=trustedAlias(env,verifiedAlias);
- // LOC_DATABASE_URL is used only for the fixed main database. Manual
+ // LOC_DATABASE_URI is used only for the fixed main database. Manual
  // Authority probes retain their one-time ticket, and unrelated database
  // selections always use their own encrypted Authority target.
  const profile=(!probeTicket&&deployedMainProfile(env,alias,verifiedAlias))||

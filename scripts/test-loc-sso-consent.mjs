@@ -59,7 +59,7 @@ test('write-delegation endpoint requires accepted web contract and editor can re
 });
 test('fixed primary accepts owner Cloudflare Secret and external targets retain Authority',()=>{
  const driver=readFileSync(new URL('../app/loc/mcp/native-kysely.mjs',import.meta.url),'utf8');
- assert.match(driver,/LOC_DATABASE_URL/);
+ assert.match(driver,/LOC_DATABASE_URI/);
  assert.match(driver,/deployedMainProfile/);
  assert.match(driver,/\/v1\/internal\/database\//);
  assert.match(driver,/PostgresDialect/);
