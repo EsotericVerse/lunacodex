@@ -57,10 +57,12 @@ test('write-delegation endpoint requires accepted web contract and editor can re
  assert.match(grants,/response\.status===428/);
  assert.match(grants,/\/oauth\/consent\/web/);
 });
-test('primary SQL Model Gateway reads Authority target instead of extra deployment URL',()=>{
+test('fixed primary accepts owner Cloudflare Secret and external targets retain Authority',()=>{
  const driver=readFileSync(new URL('../app/loc/mcp/native-kysely.mjs',import.meta.url),'utf8');
- assert.doesNotMatch(driver,/LOC_DATABASE_URL|mainDatabaseProfile/);
+ assert.match(driver,/LOC_DATABASE_URL/);
+ assert.match(driver,/deployedMainProfile/);
  assert.match(driver,/\/v1\/internal\/database\//);
+ assert.match(driver,/PostgresDialect/);
 });
 
 test('control DB and signed loc-main share the Kysely pool from LOC Authority',async()=>{

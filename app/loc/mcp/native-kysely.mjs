@@ -22,6 +22,26 @@ function trustedAlias(env,verifiedAlias){
  if(!ALIAS.test(alias))throw fail('Invalid verified database alias');
  return alias;
 }
+// The fixed main target may use the owner's Cloudflare Pages production Secret
+// as a temporary, server-only PostgreSQL connection. External targets must
+// still resolve from the signed Authority selection. No caller-provided URLs.
+function deployedMainProfile(env,alias,verifiedAlias){
+ const primary=DATABASE_ACCESS_LIST.find(target=>target.selected===true);
+ if(!primary||alias!==primary.connection_alias||
+   verifiedAlias&&verifiedAlias!==primary.target_id&&
+   verifiedAlias!==primary.connection_alias)return null;
+ const raw=String(env.LOC_DATABASE_URL||'').trim();
+ if(!raw)return null;
+ let connection;
+ try{connection=new URL(raw)}
+ catch{throw fail('LOC primary database URL is malformed')}
+ if(!['postgres:','postgresql:'].includes(connection.protocol)||
+   !connection.hostname||!connection.port||!connection.username||
+   !connection.password||connection.pathname.length<2)
+  throw fail('LOC primary database URL lacks required connection parameters');
+ return {engine:'postgres',db_type:'direct',url:raw,
+  schema_name:'silver',table_name:'',field_map:{},tls:true};
+}
 async function authorizedProfile(env,alias,verifiedAlias,fetchImpl,probeTicket=''){
  const secret=String(env.LOC_DB_PROFILE_SERVICE_TOKEN||'');
  // All database profiles are owned by LOC Authority. Old deployment-local
@@ -146,7 +166,8 @@ function validateProfile(env,profile,verifiedAlias){
 export function mcpDatabaseConfiguration(env={}){
  // Presence of the service credential is not proof of a SQL connection or
  // permission to write. Callers must verify the selected Authority profile.
- const configured=String(env.LOC_DB_PROFILE_SERVICE_TOKEN||'').length>=32;
+ const configured=String(env.LOC_DB_PROFILE_SERVICE_TOKEN||'').length>=32||
+  Boolean(deployedMainProfile(env,'loc_main',''));
  return {
   publicReadConfigured:false,
   privateReadConfigured:configured,
@@ -196,7 +217,11 @@ export async function db_connection(env={},verifiedAlias='',{
  if(probeTicket&&!/^[0-9a-f-]{36}$/.test(probeTicket))
   throw fail('Invalid one-time SQL verification ticket');
  const alias=trustedAlias(env,verifiedAlias);
- const profile=await authorizedProfile(env,alias,verifiedAlias,fetchImpl,probeTicket);
+ // LOC_DATABASE_URL is used only for the fixed main database. Manual
+ // Authority probes retain their one-time ticket, and unrelated database
+ // selections always use their own encrypted Authority target.
+ const profile=(!probeTicket&&deployedMainProfile(env,alias,verifiedAlias))||
+  await authorizedProfile(env,alias,verifiedAlias,fetchImpl,probeTicket);
  // Provider API metadata is checked only during a user-initiated probe.
  // Public reads, search and MCP never perform implicit provider API checks.
  if(probeTicket)await checkProviderApi(env,profile,fetchImpl);
