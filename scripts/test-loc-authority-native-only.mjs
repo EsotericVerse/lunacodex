@@ -5,6 +5,7 @@ import {issueDelegation,verifyDelegationBoundary,canManageDelegation}
   from '../app/loc/auth/delegation-contract.mjs';
 import {normalizeSqlDriverAuthentication,publicSqlDriverAuthentication,
   sqlAuthNeedsUserPassword} from '../app/loc/providers/sql-driver-auth.mjs';
+import {sqlTargetRevision} from '../workers/loc-authority/sql-source-gate.mjs';
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
 test('LOC Authority verifies only signed native login identities',()=>{
@@ -21,10 +22,11 @@ test('LOC credentials remain encrypted in the Authority state',()=>{
   assert.match(worker,/encryptProfile\(profile,this\.env\.LOC_CONTROL_ENCRYPTION_KEY\)/);
   assert.match(worker,/decryptProfile\(/);
   assert.match(worker,/databaseTargetsForUser\(subject,isRoot=false\)/);
-  assert.match(worker,/id:'loc-main'/);
+  assert.match(worker,/this\.ctx\.storage\.list\(\{prefix:'target:'\}\)/);
+  assert.doesNotMatch(worker,/targets\.push\(\{id:'loc-main'/);
 });
 
-test('signed grants are valid only after the issuer checks api.manage',()=>{
+test('signed grants remain scoped, and issuer write authority requires verified LOC owner',()=>{
   const now=Math.floor(Date.now()/1000);
   const claims=issueDelegation({sub:'loc_'+('A'.repeat(40)),
     email:'reader@example.org',grants:['lrunes:manage'],audience:'sql',
@@ -34,8 +36,9 @@ test('signed grants are valid only after the issuer checks api.manage',()=>{
   assert.equal(canManageDelegation(result.claims,'scope','lo3rwang'),false);
   assert.equal(canManageDelegation(result.claims,'global'),false);
   const worker=read('workers/loc-authority/index.mjs');
-  assert.match(worker,/locRegistryRoles\(env,principal\.email\)/);
-  assert.match(worker,/isLocRegistryAdmin/);
+  assert.match(worker,/const root=await verifiedLocOwner\(principal,env\)/);
+  assert.match(worker,/Only the LOC owner may request writes/);
+  assert.match(worker,/if\(!root\|\|input\.scopeid!==undefined/);
 });
 
 test('LOC Authority target updates reuse encrypted SQL secrets without browser exposure',async()=>{
@@ -58,9 +61,9 @@ test('LOC Authority target updates reuse encrypted SQL secrets without browser e
   // Real Durable Object encryption is independently covered by the Worker.
   const put=new Function('validateTarget','decryptProfile','encryptProfile',
     'fail','publicSqlDriverAuthentication','sqlAuthNeedsUserPassword',
-    method+';return putTarget;')(
+    'sqlTargetRevision',method+';return putTarget;')(
       validate,async x=>x.value,async x=>({value:x}),fail,
-      publicSqlDriverAuthentication,sqlAuthNeedsUserPassword);
+      publicSqlDriverAuthentication,sqlAuthNeedsUserPassword,sqlTargetRevision);
   const storage=new Map(),ctx={
     ctx:{storage:{get:async key=>storage.get(key),
       put:async (key,value)=>storage.set(key,value)}},
@@ -88,10 +91,22 @@ test('LOC Authority target updates reuse encrypted SQL secrets without browser e
     database:'loc',username:'user'}),/requires its database password/);
 });
 
-test('Worker management uses verified OAuth email and database registry role',()=>{
+test('Worker management permits only the verified single LOC owner identity',async()=>{
  const worker=read('workers/loc-authority/index.mjs');
- assert.match(worker,/principal\.emailVerified===true/);
- assert.match(worker,/isLocRegistryAdmin\(await locRegistryRoles\(env,principal\.email\)\)/);
+ const start=worker.indexOf('async function verifiedLocOwner(');
+ const end=worker.indexOf('\nfunction b64bytes(',start);
+ assert.ok(start>0&&end>start);
+ const verifiedLocOwner=new Function(worker.slice(start,end)+
+   ';return verifiedLocOwner;')();
+ const owner={provider:'loc',emailVerified:true,email:'sopa2306@gmail.com'};
+ assert.equal(await verifiedLocOwner(owner,{}),true);
+ assert.equal(await verifiedLocOwner({...owner,email:'SOPA2306@GMAIL.COM'},{}),true);
+ assert.equal(await verifiedLocOwner({...owner,emailVerified:false},{}),false);
+ assert.equal(await verifiedLocOwner({...owner,provider:'github'},{}),false);
+ assert.equal(await verifiedLocOwner({...owner,email:'someone@example.org'},{}),false);
+ assert.equal(await verifiedLocOwner(null,{}),false);
+ assert.match(worker,/if\(!await verifiedLocOwner\(principal,env\)\)throw fail\('LOC owner required',403\)/);
+ assert.match(worker,/const principal=await verifyNativeOAuth\(request,env,WEB_AUDIENCE\)/);
  assert.doesNotMatch(worker,/roots\.includes\(principal\.subject\)/);
 });
 
