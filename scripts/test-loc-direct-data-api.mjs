@@ -15,16 +15,16 @@ test('static LOC public reads use existing Data API, never an SQL proxy',async()
   assert.equal(result.data[0].uid,'abcd1234');
   assert.match(calls[0].url,/example.net\/rest\/v1\/lo3rwang_galaxy/);
   assert.equal(calls[0].options.headers['accept-profile'],'silver');
-  assert.equal(new URL(calls[0].url).searchParams.get('search'),'eq.true');
+  assert.equal(new URL(calls[0].url).searchParams.get('search'),null);
   assert.ok(!calls[0].url.includes('gateway'));
 });
-test('public article body requires list=true',async()=>{
+test('public article body no longer uses retired list/search flag filters',async()=>{
   let actual;
   const api=createDirectDataApiClient({url:'https://example.net/rest/v1',apiKey:'public',
     fetch:async u=>{actual=new URL(u);return new Response('[]',{status:200})}});
   await api.schema('silver').from('lo3rwang_galaxy').select('uid,content');
-  assert.equal(actual.searchParams.get('search'),'eq.true');
-  assert.equal(actual.searchParams.get('list'),'eq.true');
+  assert.equal(actual.searchParams.get('search'),null);
+  assert.equal(actual.searchParams.get('list'),null);
 });
 test('public Data API remains read-only and LOC OAuth is required for managed writes',async()=>{
   const publicOnly=createDirectDataApiClient({
@@ -38,7 +38,7 @@ test('public Data API remains read-only and LOC OAuth is required for managed wr
     fetchImpl:async()=>{throw Error('unexpected unauthenticated network request')}
   });
   await assert.rejects(
-    adapter.authClient.schema('silver').from('loc').insert([{id:'x'}]).select('id'),
+    async()=>await adapter.authClient.schema('silver').from('loc').insert([{id:'x'}]).select('id'),
     /LOC login required/);
 });
 
