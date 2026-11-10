@@ -23,12 +23,14 @@ export async function onRequest(context){
   if(difference!==0)return respond({error:'LOC Auth trusted backend required'},403);
   const email=String(new URL(request.url).searchParams.get('email')||'').trim().toLowerCase();
   if(!EMAIL.test(email))return respond({error:'Invalid LOC identity email'},400);
+  let stage='driver';
   try{
     const selected=await directMcpKysely(env);
     if(selected.tableName)
       return respond({error:'LOC registry source unavailable'},503);
     // Main DB uses the chosen Kysely SQL Dialect, never provider detection.
     const registry=registryRelationForEngine(selected.engine);
+    stage='registry-query';
     const rows=await selected.db.selectFrom(registry)
       .select(['id','email','manage_role','active'])
       .where(selected.db.fn('lower',['email']),'=',email)
@@ -37,7 +39,10 @@ export async function onRequest(context){
       id:row.id,email:row.email,role:row.manage_role,active:row.active
     }))});
   }catch(error){
-    console.error('[LOC Auth registry lookup]',String(error?.code||error?.message||error));
-    return respond({error:'LOC registry read unavailable'},503);
+    // Only a fixed stage reaches the trusted internal caller. Never log
+    // connection strings, credentials, SQL parameters, or identity details.
+    const code=String(error?.code||'').replace(/[^A-Za-z0-9_]/g,'').slice(0,40);
+    console.error('[LOC Auth registry lookup]',{stage,code:code||'UNKNOWN'});
+    return respond({error:'LOC registry read unavailable',stage},503);
   }
 }
