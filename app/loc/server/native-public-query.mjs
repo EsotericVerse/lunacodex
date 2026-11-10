@@ -4,6 +4,7 @@
 import {sql} from 'kysely';
 import {SCOPE_ROUTE_INDEX} from '../../modular/scope-route-index.js';
 import {directMcpKysely} from '../mcp/native-kysely.mjs';
+import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 import {portableRelation} from '../providers/sql-engine-ports.mjs';
 import {parsePortableOrExpression,portableContainsSpec}
   from '../providers/portable-search.mjs';
@@ -121,7 +122,10 @@ export async function handleNativePublicQuery(request,env={},{
   let stage='driver';
   try{
     // No bearer, email, user-supplied alias, SQL text or table override.
-    const selected=await database(env);
+    // Force the same fixed control target used by api.manage authorization.
+    const primary=DATABASE_ACCESS_LIST.find(item=>item.selected===true);
+    if(!primary)throw Error('LOC primary SQL target is not configured');
+    const selected=await database(env,primary.target_id);
     if(!selected?.db||!['postgres','mysql','mssql'].includes(selected.engine))
       throw Error('LOC Kysely driver unavailable');
     const table=portableRelation(normalized.table,selected.engine,
