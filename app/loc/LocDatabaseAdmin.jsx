@@ -3,7 +3,7 @@ import {useEffect,useState} from 'react';
 import {mcpLocSession} from './mcp/loc-access.mjs';
 
 const AUTHORITY='https://auth.lo3rwang.cc';
-const EMPTY={id:'',label:'',engine:'postgres',host:'',port:'5432',
+const EMPTY={id:'',label:'',engine:'',host:'',port:'',
  database:'',schema_name:'silver',table_name:'',field_map:'{}',
  ref_provider:'',ref_permission:'',
  username:'',password:'',auth_type:'default',domain:'',
@@ -29,8 +29,8 @@ const NEEDS_CLIENT_ID=new Set(['azure-active-directory-password',
 function cleanForm(item){
  if(!item)return {...EMPTY};
  return {id:String(item.id||''),label:String(item.label||''),
-  engine:String(item.engine||'postgres'),host:String(item.host||''),
-  port:String(item.port||'5432'),database:String(item.database||''),
+  engine:String(item.engine||''),host:String(item.host||''),
+  port:String(item.port??''),database:String(item.database||''),
   schema_name:String(item.schema_name|| (item.engine==='mssql'?'dbo':item.engine==='mysql'?'':'silver')),
   table_name:String(item.table_name||''),field_map:JSON.stringify(item.field_map||{},null,2),
   ref_provider:String(item.ref_provider||''),ref_permission:String(item.ref_permission||''),
@@ -53,6 +53,7 @@ async function authority(method,path,payload){
   ...(payload?{body:JSON.stringify(payload)}:{}),
   signal:AbortSignal.timeout(12000)
  });
+ if(result.status===429)return result.json();
  if(!result.ok)throw Error('LOC Auth 資料庫管理失敗（HTTP '+result.status+'）');
  return result.json();
 }
@@ -61,6 +62,7 @@ export default function LocDatabaseAdmin(){
  const [targets,setTargets]=useState([]);
  const [form,setForm]=useState(EMPTY);
  const [busy,setBusy]=useState(false);
+ const [dirty,setDirty]=useState(false);
  const [status,setStatus]=useState('');
  useEffect(()=>{
   let active=true;
@@ -76,10 +78,27 @@ export default function LocDatabaseAdmin(){
   return ()=>{active=false;};
  },[]);
  if(!root)return null;
- const change=(key,value)=>setForm(previous=>({...previous,[key]:value}));
+ const change=(key,value)=>{setDirty(true);setForm(previous=>({...previous,[key]:value}));};
  const editId=id=>{
   const selected=targets.find(t=>t.id===id);
-  setForm(cleanForm(selected));setStatus('');
+  setForm(cleanForm(selected));setDirty(false);setStatus('');
+ };
+ const testConnection=async()=>{
+  if(busy||dirty||!targets.some(t=>t.id===form.id))return;
+  setBusy(true);setStatus('正在測試已儲存的 db_connection（只嘗試一次）…');
+  try{
+   const result=await authority('POST','/v1/targets/'+form.id+'/probe');
+   const timestamp=result?.last_update?
+    '；last_update：'+new Date(result.last_update).toLocaleString('zh-TW'):'';
+   if(result?.verified===true)
+    setStatus('db_connection 驗證成功：'+String(result.version||form.engine)+timestamp);
+   else{
+    const retry=Number(result?.retryAt||0);
+    const wait=retry>Date.now()?'；'+Math.ceil((retry-Date.now())/60000)+' 分鐘後可再手動測試':'';
+    setStatus('db_connection 未通過：'+String(result?.reason||'DATABASE_UNAVAILABLE')+wait+timestamp+'。已停止其他測試連線。');
+   }
+  }catch(error){setStatus('db_connection 測試未執行：'+String(error?.message||error));}
+  finally{setBusy(false);}
  };
  const save=async event=>{
   event.preventDefault();
@@ -88,6 +107,10 @@ export default function LocDatabaseAdmin(){
   try{
    if(!/^[a-z][a-z0-9_-]{0,63}$/.test(form.id))
     throw Error('請輸入符合規則的資料庫識別碼');
+   if(!ENGINES.some(([value])=>value===form.engine))
+    throw Error('請先明確選擇 SQL Type');
+   if(!Number.isInteger(Number(form.port))||Number(form.port)<1||Number(form.port)>65535)
+    throw Error('請輸入實際資料庫 Server Port');
    const allowed_subjects=form.allowed_subjects.split(/[\s,;]+/).filter(Boolean);
    const type=form.auth_type;
    const authentication={type,
@@ -122,6 +145,7 @@ export default function LocDatabaseAdmin(){
    const data=await authority('GET','/v1/state');
    setTargets((data?.targets||[]).filter(x=>x&&x.managed!==true&&x.id));
    setForm(previous=>({...previous,password:'',client_secret:'',token:''}));
+   setDirty(false);
    setStatus('連線設定已由 LOC Auth 加密儲存。Connection Secret 可獨立輪替，不影響 Target ID；不需要重新部署。');
   }catch(error){
    setStatus(String(error?.message||error));
@@ -130,6 +154,7 @@ export default function LocDatabaseAdmin(){
  return <section className="loc-card" aria-label="管理資料庫連線">
   <h2>管理可供使用者選擇的資料庫</h2>
   <p className="scope-status">只有 LOC 管理者能新增連線及開放選擇。Connection Secret 只傳往 LOC Auth 加密儲存，不會存於網站或 Git。</p>
+  <p className="scope-status">所有 SQL Type 使用同一套 db_connection。儲存之後由管理者手動測試；失敗立即停止、五分鐘冷卻，不允許一般讀取觸發重試。</p>
   <p className="scope-status">建議定期檢視並主動輪替 Connection Secret；若疑似外洩，請立即更換並撤銷舊憑證。輪替只更改連線憑證，不會變更 Target ID、Project ID、SQL Type、Domain、Port 或原有 SSO 授權。輪替後應確認新連線成功，再停用舊憑證。</p>
   <label><span>編輯既有連線</span>
    <select className="scope-select" value={targets.some(x=>x.id===form.id)?form.id:''}
@@ -149,15 +174,17 @@ export default function LocDatabaseAdmin(){
     <input maxLength={120} value={form.label} disabled={busy}
       onChange={event=>change('label',event.target.value)}
       placeholder="Azure SQL 測試資料庫"/></label>
-   <label><span>SQL 種類</span>
-    <select className="scope-select" value={form.engine} disabled={busy}
+   <label><span>SQL Type（必須明確指定）</span>
+    <select className="scope-select" required value={form.engine} disabled={busy}
      onChange={event=>{
        const engine=event.target.value;
+       setDirty(true);
        setForm(prev=>({...prev,engine,auth_type:'default',domain:'',
         client_id:'',tenant_id:'',client_secret:'',token:'',
-        port:engine==='mssql'?'1433':engine==='mysql'?'3306':'5432',
+        port:'', // The SQL Server Port is specified, never guessed.
         schema_name:engine==='mssql'?'dbo':engine==='mysql'?'':'silver'}));
      }}>
+     <option value="">請選擇 SQL Type</option>
      {ENGINES.map(([key,label])=><option key={key} value={key}>{label}</option>)}
     </select>
    </label>
@@ -165,7 +192,7 @@ export default function LocDatabaseAdmin(){
     <input required value={form.host} disabled={busy}
       onChange={event=>change('host',event.target.value)}
       placeholder="server.database.windows.net" autoCapitalize="off" spellCheck={false}/></label>
-   <label><span>連接埠</span>
+   <label><span>資料庫 Server Port（依實際配發，例如 6543）</span>
     <input required inputMode="numeric" value={form.port} disabled={busy}
       onChange={event=>change('port',event.target.value)}/></label>
    <label><span>資料庫名稱</span>
@@ -202,9 +229,9 @@ export default function LocDatabaseAdmin(){
       placeholder="team-read"/></label>
    <label><span>資料庫登入方式</span>
     <select className="scope-select" value={form.auth_type} disabled={busy}
-      onChange={event=>setForm(previous=>({...previous,auth_type:event.target.value,
-        domain:'',client_id:'',tenant_id:'',client_secret:'',token:''}))}>
-     {AUTH_METHODS[form.engine].map(([type,label])=>
+      onChange={event=>{setDirty(true);setForm(previous=>({...previous,auth_type:event.target.value,
+        domain:'',client_id:'',tenant_id:'',client_secret:'',token:''}));}}>
+     {(AUTH_METHODS[form.engine]||[]).map(([type,label])=>
        <option key={type} value={type}>{label}</option>)}
     </select>
    </label>
@@ -254,6 +281,10 @@ export default function LocDatabaseAdmin(){
     <textarea rows={3} value={form.allowed_subjects} disabled={busy}
       onChange={event=>change('allowed_subjects',event.target.value)} spellCheck={false}/>
    </label>
+   <button type="button" className="loc-button" onClick={testConnection}
+    disabled={busy||dirty||!targets.some(t=>t.id===form.id)}>
+    單次測試 db_connection（每小時最多三次）
+   </button>
    <button type="submit" className="loc-button primary" disabled={busy}>
     {busy?'儲存中…':'儲存資料庫連線與選擇權限'}
    </button>
