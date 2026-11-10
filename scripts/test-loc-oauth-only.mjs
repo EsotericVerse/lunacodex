@@ -22,6 +22,8 @@ test('Better Auth is local to LOC; native MCP OAuth and SQL separation remain',(
  assert.match(auth,/LOC password login and registration disabled/);
  assert.match(native,/googleViaBetter\(request,url,stub,env\)/);
  assert.match(native,/sessionFromBetter\(request,env,stub\)/);
+ assert.match(native,/request\.headers\.get\('cf-connecting-ip'\)/);
+ assert.match(native,/\.\.\.\(ip\?\{'cf-connecting-ip':ip\}:\{\}\)/);
  assert.match(native,/native-google-link/);
  assert.match(native,/export async function googleLocSubject/);
  assert.match(native,/Verified LOC registry management role required for import/);
