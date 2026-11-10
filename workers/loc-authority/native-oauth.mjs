@@ -459,8 +459,13 @@ async function googleViaBetter(request,url,stub,env){
  const return_to=continue_path?'':validReturnPath(url.searchParams.get('return_to'));
  const state=random(),csrf=random();
  const complete=new URL('/oauth/complete',ISSUER);complete.searchParams.set('state',state);
+ // Keep Cloudflare's verified client IP across the internal Better Auth
+ // Google request, avoiding a shared rate-limit bucket for every login.
+ const ip=request.headers.get('cf-connecting-ip');
+ const headers={origin:ISSUER,'content-type':'application/json',
+  ...(ip?{'cf-connecting-ip':ip}:{})};
  const upstream=await handleFirstPartyAuth(new Request(ISSUER+'/api/auth/sign-in/social',{
-  method:'POST',headers:{origin:ISSUER,'content-type':'application/json'},
+  method:'POST',headers,
   body:JSON.stringify({provider:'google',callbackURL:complete.href})}),env);
  if(!upstream.ok)error('LOC Google Better Auth sign-in unavailable',upstream.status);
  const info=await upstream.json().catch(()=>null);
