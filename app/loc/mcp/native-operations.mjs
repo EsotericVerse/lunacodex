@@ -11,6 +11,7 @@ import {executeManagedKyselyWrite,executeManagedKyselyAction} from '../providers
 import {executeLocPersonal} from '../providers/kysely-personal.mjs';
 import {directMcpKysely} from './native-kysely.mjs';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
+import {registryRelationForEngine} from '../providers/live-database-target.mjs';
 import {withFixedPolicyWrite} from '../../../zenstack/policy-runtime.mjs';
 import {ZenStackClient} from '@zenstackhq/orm';
 import {PolicyPlugin} from '@zenstackhq/plugin-policy';
@@ -212,7 +213,7 @@ export async function handleNativeLocOperation(request,env={},{
         return reply({data:row});
       }
       const row=await selected.db.transaction().execute(async trx=>{
-        bindLocAuthorization(trx,{role:claims.role,claims});
+        bindLocAuthorization(trx,{role:claims.role,claims,engine:selected.engine});
         return body.kind==='managed-write'
           ?(await executeManagedKyselyWrite(trx,body)).data
           :(await executeManagedKyselyAction(trx,body,claims)).data;
@@ -225,12 +226,12 @@ export async function handleNativeLocOperation(request,env={},{
     // MCP sync/append use the existing Kysely driver, with one SQL
     // transaction for both live Registry verification and the write.
     if(body.kind==='mcp-sync'||body.kind==='mcp-append'){
-      if(selected.engine!=='postgres'||selected.tableName)
+      if(selected.tableName)
         throw refusal('LOC MCP control database is unavailable for writing',503);
       const email=String(claims.email||'').trim().toLowerCase();
       if(!EMAIL.test(email))throw refusal('Verified MCP writer email required',403);
       const result=await selected.db.transaction().execute(async trx=>{
-        const owner=await trx.selectFrom('api.manage')
+        const owner=await trx.selectFrom(registryRelationForEngine(selected.engine))
           .select('id').where(eb=>eb.fn('lower',['email']),'=',email)
           .where('manage_role','=','admin').where('active','=',true)
           .limit(1).executeTakeFirst();
