@@ -57,11 +57,10 @@ test('switching a database invalidates browser SQL delegation caches',()=>{
 });
 
 test('trusted PostgreSQL TLS and SQL profile changes do not reuse stale pools',()=>{
- const code=readFileSync(new URL('../app/loc/providers/kysely-database-drivers.ts',import.meta.url),'utf8');
- assert.match(code,/profile\.tls===true\?\{ssl:\{rejectUnauthorized:true\}\}/);
- assert.match(code,/profile\.tls===false\?\{ssl:false\}:\{\}/);
+ const code=readFileSync(new URL('../app/loc/mcp/native-kysely.mjs',import.meta.url),'utf8');
+ assert.match(code,/profile\.tls===false\?\{ssl:false\}:\{ssl:\{rejectUnauthorized:true\}\}/);
  assert.match(code,/JSON\.stringify\(profile\.authentication\|\|\{\}\)/);
- assert.match(code,/String\(profile\.tls\)/);
+ assert.ok(code.includes("profile.tls+'|'"));
 });
 
 test('passwordless Azure SQL still reaches the trusted driver',()=>{

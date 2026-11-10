@@ -41,7 +41,6 @@
   "exclude": [
     "node_modules",
     "app/loc/import/channel1-receiver.ts",
-    "app/loc/providers/kysely-database-drivers.ts",
     "services/**",
     "supabase/**",
     "workers/**"

@@ -6,7 +6,7 @@ import {getSqlRuntimeCapabilities,portableRelation} from '../app/loc/providers/s
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
 test('direct Kysely dialect selection remains portable across SQL engines',()=>{
- const driver=read('app/loc/providers/kysely-database-drivers.ts');
+ const driver=read('app/loc/mcp/native-kysely.mjs');
  for(const [engine,dialect] of Object.entries({
    postgres:'PostgresDialect',mysql:'MysqlDialect',mssql:'MssqlDialect'
  })){
@@ -19,6 +19,8 @@ test('direct Kysely dialect selection remains portable across SQL engines',()=>{
 });
 
 test('the application does not package a generic SQL Gateway',()=>{
+ assert.equal(existsSync(new URL('../app/loc/providers/kysely-database-drivers.ts',import.meta.url)),false,
+  'Retired standalone Deno driver must not be reintroduced');
  for(const path of ['app/loc/gateway/sql-handler.ts',
    'app/loc/gateway/runtime-database-target.mjs',
    'app/loc/providers/loc-gateway.mjs',

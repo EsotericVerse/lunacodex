@@ -57,27 +57,32 @@ test('write-delegation endpoint requires accepted web contract and editor can re
  assert.match(grants,/response\.status===428/);
  assert.match(grants,/\/oauth\/consent\/web/);
 });
-test('Kysely primary can use backend-only SQL URL without LOC Authority profile relay',()=>{
+test('primary SQL Model Gateway reads Authority target instead of extra deployment URL',()=>{
  const driver=readFileSync(new URL('../app/loc/mcp/native-kysely.mjs',import.meta.url),'utf8');
- assert.match(driver,/env\.LOC_DATABASE_URL/);
- assert.match(driver,/if\(isPrimary&&env\.LOC_DATABASE_URL\)/);
- assert.doesNotMatch(driver,/NEXT_PUBLIC_LOC_DATABASE_URL/);
+ assert.doesNotMatch(driver,/LOC_DATABASE_URL|mainDatabaseProfile/);
+ assert.match(driver,/\/v1\/internal\/database\//);
 });
 
-test('control DB and signed selected loc-main both reuse Kysely without calling the Auth Profile route',async()=>{
+test('control DB and signed loc-main share the Kysely pool from LOC Authority',async()=>{
  const {directMcpKysely,mcpDatabaseConfiguration}=
   await import('../app/loc/mcp/native-kysely.mjs');
- const env={LOC_DATABASE_URL:'postgresql://loc:test@127.0.0.1:5432/loc',
-  LOC_DB_PROFILE_SERVICE_TOKEN:'local-profile-secret-32-characters-or-more'};
- assert.equal(mcpDatabaseConfiguration(env).publicReadConfigured,true);
- let profileRequests=0;
- const fetchImpl=async()=>{profileRequests++;throw new Error('Main DB must not request Auth profile')};
+ const env={LOC_DB_PROFILE_SERVICE_TOKEN:'local-profile-secret-32-characters-or-more'};
+ assert.equal(mcpDatabaseConfiguration(env).publicReadConfigured,false);
+ assert.equal(mcpDatabaseConfiguration(env).privateReadConfigured,true);
+ const requests=[];
+ const fetchImpl=async(url)=>{
+  requests.push(url);
+  return Response.json({engine:'postgres',host:'db.example.net',port:5432,
+   database:'loc',username:'reader',password:'test-only-password',
+   schema_name:'silver'});
+ };
  const defaultDb=await directMcpKysely(env,'',{fetchImpl});
  const selectedDb=await directMcpKysely(env,'loc-main',{fetchImpl});
  assert.strictEqual(defaultDb.db,selectedDb.db,
-  'the selected primary must share exactly the same database pool');
+  'signed primary and public reader must share one database pool');
  assert.equal(defaultDb.engine,'postgres');
  assert.equal(defaultDb.namespace,'silver');
- assert.equal(profileRequests,0);
+ assert.equal(requests.length,2);
+ assert.ok(requests.every(url=>url.endsWith('/v1/internal/database/loc-main')));
  await defaultDb.db.destroy();
 });

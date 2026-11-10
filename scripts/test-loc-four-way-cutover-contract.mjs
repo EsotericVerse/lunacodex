@@ -59,7 +59,7 @@ test('LOC never packages an independent SQL Gateway or Container',()=>{
   'services/loc-mcp-sql/main.ts','services/loc-mcp-sql/Dockerfile',
   'services/loc-mcp-sql/cloudflare-worker.mjs','services/loc-mcp-sql/wrangler.jsonc'
  ])assert.equal(existsSync(new URL('../'+path,import.meta.url)),false,path);
- const driver=read('app/loc/providers/kysely-database-drivers.ts');
+ const driver=read('app/loc/mcp/native-kysely.mjs');
  for(const dialect of ['PostgresDialect','MysqlDialect','MssqlDialect'])
   assert.match(driver,new RegExp(dialect));
  const configured=read('app/loc/providers/configured.mjs');

@@ -23,7 +23,7 @@ test('Kysely keeps SQL engine dialects and independent physical namespaces',()=>
  const required={
   postgres:'PostgresDialect',mysql:'MysqlDialect',mssql:'MssqlDialect'
  };
- const driver=read('app/loc/providers/kysely-database-drivers.ts');
+ const driver=read('app/loc/mcp/native-kysely.mjs');
  for(const [engine,dialect] of Object.entries(required)){
   assert.equal(getSqlRuntimeCapabilities(engine).dialect,dialect);
   assert.match(driver,new RegExp(dialect));

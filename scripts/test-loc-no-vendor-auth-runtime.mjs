@@ -14,10 +14,11 @@ test('LOC browser login uses native OAuth and never selects a standalone SQL gat
 });
 
 test('Kysely engine drivers stay portable without a standalone gateway',()=>{
-  const driver=read('app/loc/providers/kysely-database-drivers.ts');
+  const driver=read('app/loc/mcp/native-kysely.mjs');
   for(const dialect of ['PostgresDialect','MysqlDialect','MssqlDialect'])
     assert.ok(driver.includes(dialect),dialect);
-  assert.match(driver,/LOC_DB_CONNECTIONS_JSON/);
+  assert.match(driver,/LOC_DB_PROFILE_SERVICE_TOKEN/);
+  assert.match(driver,/normalizeLiveTarget/);
   assert.doesNotMatch(driver,/process\.env\.NEXT_PUBLIC/);
 });
 
