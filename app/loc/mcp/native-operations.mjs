@@ -147,6 +147,14 @@ export async function handleNativeLocOperation(request,env={},{
     // The verified signed claim, not the HTTP body, selects the connection.
     const claims=await signedClaims(request.headers.get('authorization'),
       body,env,fetchImpl);
+    // Only the verified LOC owner can mutate any LOC data. The token's email
+    // and grants are signed by LOC Auth, never accepted from the HTTP body.
+    const writeKinds=new Set(['short-import','mcp-sync','mcp-append',
+      'managed-write','managed-action','personal-write']);
+    if(writeKinds.has(body.kind)&&(
+       claims.provider!=='loc'||claims.me!==true||
+       String(claims.email||'').trim().toLowerCase()!=='sopa2306@gmail.com'))
+      throw refusal('Only the verified LOC owner may write',403);
     // External user-selected connections are READ ONLY, whether they map an
     // existing table or expose the ordinary Scope schema. This includes the
     // extension import path and MCP append/sync. OAuth never changes this.
@@ -250,21 +258,12 @@ export async function handleNativeLocOperation(request,env={},{
     const runMcp=db=>executePortableMcp(db,body,claims,{
       engine:selected.engine,namespace:selected.namespace,
       tableName:selected.tableName,fieldMap:selected.fieldMap});
-    // MCP sync/append use the existing Kysely driver, with one SQL
-    // transaction for both live Registry verification and the write.
+    // The signed LOC Owner delegation is the only write permission. Never
+    // query api.manage merely to authorize the same identity a second time.
     if(body.kind==='mcp-sync'||body.kind==='mcp-append'){
       if(selected.tableName)
         throw refusal('LOC MCP control database is unavailable for writing',503);
-      const email=String(claims.email||'').trim().toLowerCase();
-      if(!EMAIL.test(email))throw refusal('Verified MCP writer email required',403);
-      const result=await selected.db.transaction().execute(async trx=>{
-        const owner=await trx.selectFrom(registryRelationForEngine(selected.engine))
-          .select('id').where(eb=>eb.fn('lower',['email']),'=',email)
-          .where('manage_role','=','admin').where('active','=',true)
-          .limit(1).executeTakeFirst();
-        if(!owner)throw refusal('MCP Registry write permission denied',403);
-        return runMcp(trx);
-      });
+      const result=await selected.db.transaction().execute(trx=>runMcp(trx));
       return reply({data:result.data});
     }
     const result=await runMcp(selected.db);
