@@ -25,7 +25,7 @@ test('ordinary authentication, global manage and other Scope grants do not imply
   assert.throws(()=>authorizeDelegatedShortImport(request,{...claims,grants:grant}),
    error=>status(error)===403);
  for(const invalid of [{...claims,provider:'clerk'},{...claims,me:false},
-  {...claims,sub:''},{...claims,email:'reader@example.org'},
+  {...claims,sub:''},{...claims,email:'not-an-email'},
   {...claims,email:undefined},{...claims,grants:null},null])
   assert.throws(()=>authorizeDelegatedShortImport(request,invalid),
    error=>status(error)===403);
