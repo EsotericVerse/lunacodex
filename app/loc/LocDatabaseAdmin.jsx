@@ -62,6 +62,7 @@ async function authority(method,path,payload){
 export default function LocDatabaseAdmin(){
  const [root,setRoot]=useState(false);
  const [targets,setTargets]=useState([]);
+ const [primaryId,setPrimaryId]=useState('');
  const [form,setForm]=useState(EMPTY);
  const [busy,setBusy]=useState(false);
  const [dirty,setDirty]=useState(false);
@@ -72,6 +73,7 @@ export default function LocDatabaseAdmin(){
    if(!active)return;
    setRoot(true);
    setTargets((data?.targets||[]).filter(x=>x&&x.managed!==true&&x.id));
+   setPrimaryId(String(data?.primary_id||''));
   }).catch(error=>{
    if(!active)return;
    // Non-root users never receive the administrator form or connection metadata.
@@ -100,6 +102,19 @@ export default function LocDatabaseAdmin(){
     setStatus('db_connection 未通過：'+String(result?.reason||'DATABASE_UNAVAILABLE')+wait+timestamp+'。已停止其他測試連線。');
    }
   }catch(error){setStatus('db_connection 測試未執行：'+String(error?.message||error));}
+  finally{setBusy(false);}
+ };
+ const makePrimary=async()=>{
+  if(busy||dirty||!targets.some(t=>t.id===form.id))return;
+  setBusy(true);setStatus('正在切換既有主要 db_connection…');
+  try{
+   await authority('POST','/v1/primary',{id:form.id});
+   const data=await authority('GET','/v1/state');
+   setTargets((data?.targets||[]).filter(x=>x&&x.managed!==true&&x.id));
+   setPrimaryId(String(data?.primary_id||''));
+   if(data?.primary_id!==form.id)throw Error('主要資料庫選擇未確認');
+   setStatus('已選擇主要資料庫：'+form.id+'。讀寫仍須該連線通過手動 SQL 驗證。');
+  }catch(error){setStatus('主要資料庫切換失敗：'+String(error?.message||error));}
   finally{setBusy(false);}
  };
  const save=async event=>{
@@ -153,6 +168,7 @@ export default function LocDatabaseAdmin(){
    await authority('PUT','/v1/targets/'+form.id,payload);
    const data=await authority('GET','/v1/state');
    setTargets((data?.targets||[]).filter(x=>x&&x.managed!==true&&x.id));
+   setPrimaryId(String(data?.primary_id||''));
    setForm(previous=>({...previous,password:'',provider_oauth:'',client_secret:'',token:''}));
    setDirty(false);
    setStatus('連線設定已由 LOC Auth 加密儲存。Connection Secret 可獨立輪替，不影響 Target ID；不需要重新部署。');
@@ -163,7 +179,7 @@ export default function LocDatabaseAdmin(){
  return <section className="loc-card" aria-label="管理資料庫連線">
   <h2>管理可供使用者選擇的資料庫</h2>
   <p className="scope-status">只有 LOC 管理者能新增連線及開放選擇。Connection Secret 只傳往 LOC Auth 加密儲存，不會存於網站或 Git。</p>
-  <p className="scope-status">所有 SQL Type 使用同一套 db_connection。儲存之後由管理者手動測試；失敗立即停止、五分鐘冷卻，不允許一般讀取觸發重試。</p>
+  <p className="scope-status">所有 SQL Type 使用同一套 db_connection。已選主要資料庫：{primaryId||'尚未設定'}。儲存後可選擇主要資料庫並由管理者手動測試；失敗立即停止、五分鐘冷卻，不允許一般讀取觸發重試。</p>
   <p className="scope-status">建議定期檢視並主動輪替 Connection Secret；若疑似外洩，請立即更換並撤銷舊憑證。輪替只更改連線憑證，不會變更 Target ID、Project ID、SQL Type、Domain、Port 或原有 SSO 授權。輪替後應確認新連線成功，再停用舊憑證。</p>
   <label><span>編輯既有連線</span>
    <select className="scope-select" value={targets.some(x=>x.id===form.id)?form.id:''}
@@ -311,6 +327,10 @@ export default function LocDatabaseAdmin(){
     <textarea rows={3} value={form.allowed_subjects} disabled={busy}
       onChange={event=>change('allowed_subjects',event.target.value)} spellCheck={false}/>
    </label>
+   <button type="button" className="loc-button" onClick={makePrimary}
+    disabled={busy||dirty||!targets.some(t=>t.id===form.id)||primaryId===form.id}>
+    {primaryId===form.id?'目前主要資料庫':'設為主要資料庫（不觸發 SQL 測試）'}
+   </button>
    <button type="button" className="loc-button" onClick={testConnection}
     disabled={busy||dirty||!targets.some(t=>t.id===form.id)}>
     單次測試 db_connection（每小時最多三次）
