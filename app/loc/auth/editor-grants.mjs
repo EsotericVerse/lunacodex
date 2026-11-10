@@ -50,12 +50,22 @@ export async function readLocEditorGrants(session,{
     }
     throw new Error('LOC Auth 資料合約尚未確認');
   }
-  if(!response.ok)throw new Error('LOC Auth 編輯授權失敗（HTTP '+response.status+'）');
+  if(!response.ok){
+    const diagnostic=await response.json().catch(()=>null);
+    const stage=/^(driver|registry-query|http|service-config|transport|response-contract|grant-sign)$/.test(String(diagnostic?.stage||''))
+      ?String(diagnostic.stage):'';
+    const code=/^[A-Za-z0-9_]{2,40}$/.test(String(diagnostic?.code||''))
+      ?String(diagnostic.code):'';
+    throw new Error('LOC Auth 編輯授權失敗（HTTP '+response.status+
+      (stage?'；'+stage+(code?' / '+code:''):'')+'）');
+  }
   const data=await response.json();
   if(data?.audience!=='loc-delegation'||!Array.isArray(data.grants)||
      data.grants.length>64||data.grants.some(x=>
        x!=='global:manage'&&!GRANT.test(String(x))))
     throw new Error('LOC Auth 編輯授權回應不完整');
+  if(data.grants.length===0)
+    throw new Error('LOC Auth 已完成管理角色查詢，但未核發管理 Grant（role-match / no-global-manage）');
   // The signed LOC Auth grants, not a browser email whitelist, drive the UI.
   const result=[];
   const seen=new Set();
