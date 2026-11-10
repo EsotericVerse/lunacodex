@@ -26,7 +26,7 @@ test('the application does not package a generic SQL Gateway',()=>{
    assert.equal(existsSync(new URL('../'+path,import.meta.url)),false,path);
  const browser=read('app/loc/providers/configured.mjs');
  assert.match(browser,/createKyselyPublicClient/);
- assert.doesNotMatch(browser,/createDirectDataApiClient|rest\\/v1/);
+ assert.doesNotMatch(browser,/createDirectDataApiClient|rest[/]v1/);
  assert.doesNotMatch(browser,/createKyselyEdgeClient|createLocGatewayAdapter/);
 });
 
