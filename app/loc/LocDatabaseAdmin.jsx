@@ -188,7 +188,7 @@ export default function LocDatabaseAdmin(){
      onChange={event=>{setDirty(true);setForm(previous=>({
        ...previous,db_type:event.target.value,
        project_id:'',provider_oauth:'',
-       ...(event.target.value!=='direct'?{engine:'postgres'}:{})
+       engine:'' // SQL Type must be chosen by the user, never inferred.
      }));}}>
      {DB_TYPES.map(([value,label])=><option key={value} value={value}>{label}</option>)}
     </select>
