@@ -9,12 +9,11 @@ export function assertSelectedSqlVersion(engine,version,vendor=''){
  if(!SQL_TYPES.has(engine))
   throw Object.assign(new Error('SQL Type must be explicitly selected'),
    {code:'SQL_TYPE_REQUIRED'});
- const text=String(version||''),edition=String(vendor||'');
+ const text=String(version||'');
  const matches=engine==='postgres'
   ? /^PostgreSQL\b/i.test(text)
   : engine==='mysql'
-    ? /\b(?:mysql|mariadb|percona)\b/i.test(text+' '+edition)
-      && /^\d+\.\d+/.test(text)
+    ? /^\d+\.\d+/.test(text) // MySQL protocol has already been negotiated by MysqlDialect
     : /\bMicrosoft SQL (?:Server|Azure)\b|\bAzure SQL\b/i.test(text);
  if(!matches)throw Object.assign(
   new Error('Server does not match the selected SQL Type'),
