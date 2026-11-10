@@ -112,7 +112,7 @@ test('published server alias resolves to encrypted LOC Authority target with no 
  assert.equal(selected.engine,'postgres');
  assert.equal(selected.namespace,'silver');
  assert.equal(observed.length,1);
- assert.match(observed[0].url,/\/v1\/internal\/database\/loc-main$/);
+ assert.match(observed[0].url,/\/v1\/internal\/database\/primary$/);
  assert.equal(observed[0].options.headers['x-loc-service-token'],env.LOC_DB_PROFILE_SERVICE_TOKEN);
  await selected.db.destroy();
 });
@@ -129,7 +129,7 @@ test('configured LOC Auth overrides legacy local SQL profiles for the main targe
    schema_name:'silver'});
  }});
  assert.equal(observed.length,1);
- assert.ok(observed[0].endsWith('/v1/internal/database/loc-main'));
+ assert.ok(observed[0].endsWith('/v1/internal/database/primary'));
  assert.equal(selected.engine,'postgres');
  assert.equal(selected.namespace,'silver');
  await selected.db.destroy();
