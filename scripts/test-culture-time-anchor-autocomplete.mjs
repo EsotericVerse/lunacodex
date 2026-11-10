@@ -5,9 +5,9 @@ import {readFileSync} from 'node:fs';
 const editor=readFileSync(new URL('../app/modular/features/CultureTimelineEditor.jsx',import.meta.url),'utf8');
 const styles=readFileSync(new URL('../app/styles/features.css',import.meta.url),'utf8');
 
-test('time records use React Select and period anchors retain autocomplete',()=>{
-  assert.ok(editor.includes("import Select from 'react-select'"));
-  assert.ok(editor.includes("import Select from 'react-select'"));
+test('time records use scoped React and native select controls',()=>{
+  assert.match(editor,/import ScopeOptionPicker/);
+  assert.doesNotMatch(editor,/from 'react-select'/);
   assert.match(editor,/anchorOptions=useMemo\(\(\)=>anchorChoices\.map\(row=>/);
   assert.match(editor,/options=\{anchorOptions\}/);
   assert.match(editor,/options=\{anchorOptions\.filter\(option=>option\.value!==segment\.start\)\}/);
@@ -59,11 +59,11 @@ test('time editor separates era, period, and anchors before searching',()=>{
   assert.match(editor,/role="group" aria-label="時間紀錄類型"/);
   assert.match(editor,/rows\.filter\(row=>row\.type===browseType\)/);
   assert.match(editor,/options=\{recordOptions\}/);
-  assert.match(editor,/isSearchable/);
+  assert.match(editor,/<ScopeOptionPicker/);
   assert.doesNotMatch(editor,/<select className="scope-select" value=\{selectedId\}/);
   assert.match(editor,/setVisibilitySelection\(\[\]\)/);
   assert.match(editor,/lastExternalSelectedId\.current/);
   assert.match(editor,/切換紀錄會捨棄尚未儲存的修改/);
   assert.match(styles,/\.scope-culture-record-browser\{/);
-  assert.match(styles,/\.scope-culture-inline-editor\) \.loc-react-select__control/);
+  assert.match(styles,/\.loc-scope-option-picker>select/);
 });

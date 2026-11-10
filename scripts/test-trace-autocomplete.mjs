@@ -41,8 +41,9 @@ test('same name or position never silently reuses another anchor UID',()=>{
 });
 test('route composer offers React Select and does not require a county selector',()=>{
  const source=readFileSync(new URL('../app/loc/TraceRouteManager.jsx',import.meta.url),'utf8');
- assert.ok(source.includes("import Select from 'react-select'"));
-  assert.match(source,/<Select /);
+ assert.match(source,/import ScopeOptionPicker/);
+ assert.doesNotMatch(source,/from 'react-select'/);
+  assert.match(source,/<ScopeOptionPicker /);
  assert.ok(source.includes('onClick={addToSpool}'));
  assert.ok(!source.includes('selectedCounty'));
  assert.ok(!source.includes('county_id'));
@@ -97,9 +98,9 @@ test('spatial management dropdowns use Theme colors in route, anchor and organiz
  const route=readFileSync(new URL('../app/loc/TraceRouteManager.jsx',import.meta.url),'utf8');
  const anchor=readFileSync(new URL('../app/loc/TraceManagement.jsx',import.meta.url),'utf8');
  const organizer=readFileSync(new URL('../app/loc/TraceOrganizer.jsx',import.meta.url),'utf8');
- for(const source of [route,anchor])assert.match(source,/classNamePrefix="loc-react-select"/);
- assert.match(styles,/:is\(\.loc-trace-anchor-editor,\.loc-trace-map-manager,\.scope-culture-inline-editor\) \.loc-react-select__option--is-selected/);
- assert.match(styles,/:is\(\.loc-trace-anchor-editor,\.loc-trace-map-manager,\.scope-culture-inline-editor\) \.loc-react-select__input-container input/);
+ for(const source of [route,anchor])assert.match(source,/<ScopeOptionPicker /);
+ assert.match(styles,/\.loc-scope-option-picker/);
+ assert.match(styles,/\.loc-scope-option-picker>input/);
  assert.match(styles,/:is\(\.loc-trace-anchor-editor,\.loc-trace-map-manager,\.loc-trace-article-choice\) select option/);
  assert.match(styles,/background:var\(--loc-rune-selected-bg\)/);
  assert.match(styles,/color:var\(--loc-text\)/);
@@ -119,7 +120,7 @@ test('anchor quick-update preserves UID, is visible and uses theme-colored full-
  assert.match(db,/\.update\(\{title:nonempty\(title,'地點標題'\)\}\)/);
  assert.match(db,/\.eq\('trace_type','space_anchor'\)\.in\('uid',ids\)/);
  assert.match(styles,/\.loc-trace-description-field\{grid-column:1\/-1\}/);
- assert.match(styles,/\.loc-react-select__single-value/);
+ assert.match(styles,/\.loc-scope-option-picker>select/);
  assert.match(styles,/var\(--loc-text\)/);
  assert.ok(ui.indexOf("{notice?<p") < ui.indexOf("<TraceMap spatialData={spatial}"));
  assert.doesNotMatch(organizer,/runAutomatic|合併明確文字變體/);

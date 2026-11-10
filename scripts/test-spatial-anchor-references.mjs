@@ -74,8 +74,8 @@ test('Meta explicitly labelled visited-place JSON preserves the check-in locatio
 
 test('existing Scope anchor is chosen by UID, not county',()=>{
  const ui=readFileSync(new URL('../app/loc/TraceManagement.jsx',import.meta.url),'utf8');
- assert.match(ui,/import Select from 'react-select'/);
-  assert.match(ui,/<Select /);
+ assert.match(ui,/import ScopeOptionPicker/);
+  assert.match(ui,/<ScopeOptionPicker /);
  assert.match(ui,/ownAnchors\.find\(item=>item\.uid===uid\)/);
  assert.match(ui,/onChange=\{choice=>pickExisting/);
  assert.doesNotMatch(ui,/county_id|setFloorLevel/);

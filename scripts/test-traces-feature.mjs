@@ -170,7 +170,7 @@ test('paid third-party place geocoding is absent from all Trace surfaces',()=>{
 test('Frame Queue uses existing selected UIDs with no county prerequisite',()=>{
  const ui=read('app/loc/TraceRouteManager.jsx');
  const db=read('app/modular/features/trace/trace-data.js');
- assert.match(ui,/import Select from 'react-select'/);
+ assert.match(ui,/import ScopeOptionPicker/);
  assert.match(ui,/onClick=\{addToSpool\}/);
  assert.match(ui,/onClick=\{addRoadStop\}/);
  assert.match(ui,/readAllTraceAnchors\(owner/);
