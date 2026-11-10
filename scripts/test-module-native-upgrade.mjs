@@ -75,9 +75,8 @@ test('Windows static export launches npm.cmd via cmd shell, never direct spawn',
 test('retired MUI tabletop dependencies are absent while native game logic remains',()=>{
   for(const name of ['@mui/material','@emotion/react','@emotion/styled','@dnd-kit/core']){
     assert.equal(manifest.dependencies?.[name],undefined,name);
-    assert.equal(lock.packages?.['node_modules/'+name]===undefined,
-      name==='@emotion/react'?false:true,
-      name+' lockfile reachability');
+    assert.equal(lock.packages?.['node_modules/'+name],undefined,
+      name+' must not remain in the dependency graph');
   }
   const board=readFileSync(new URL('../app/lrunes/game/GameBoard.jsx',import.meta.url),'utf8');
   assert.match(board,/月之符文遊戲介面重寫中/);
