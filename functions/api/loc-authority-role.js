@@ -3,6 +3,7 @@
 // MCP is not involved, and no arbitrary SQL or database table is exposed.
 import {directMcpKysely} from '../../app/loc/mcp/native-kysely.mjs';
 import {registryRelationForEngine} from '../../app/loc/providers/live-database-target.mjs';
+import {DATABASE_ACCESS_LIST} from '../../app/loc/providers/access.js';
 
 const HEADERS={'content-type':'application/json; charset=utf-8',
   'cache-control':'no-store','x-content-type-options':'nosniff'};
@@ -25,7 +26,11 @@ export async function onRequest(context){
   if(!EMAIL.test(email))return respond({error:'Invalid LOC identity email'},400);
   let stage='driver';
   try{
-    const selected=await directMcpKysely(env);
+    // Authority roles must come from the fixed main control target, never
+    // from a stale local MCP alias or a user-selected external SQL target.
+    const primary=DATABASE_ACCESS_LIST.find(item=>item.selected===true);
+    if(!primary)throw new Error('Main control target is missing');
+    const selected=await directMcpKysely(env,primary.target_id);
     if(selected.tableName)
       return respond({error:'LOC registry source unavailable'},503);
     // Main DB uses the chosen Kysely SQL Dialect, never provider detection.
