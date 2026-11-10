@@ -92,7 +92,7 @@ async function checkProviderApi(env,profile,fetchImpl){
   throw fail('Invalid SQL database provider or SQL Type');
  const project=String(profile.project_id||'');
  const token=String(profile.provider_oauth||'');
- if(!/^[A-Za-z0-9_-]{1,80}$/.test(project)||!token||/[\\r\\n]/.test(token))
+ if(!/^[A-Za-z0-9_-]{1,80}$/.test(project)||!token||/\s/.test(token))
   throw fail('Authorized provider API project and OAuth are required');
  let cache=providerChecks.get(env);
  if(!cache){cache=new Map();providerChecks.set(env,cache)}
