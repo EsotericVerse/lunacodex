@@ -223,8 +223,9 @@ export async function db_connection(env={},verifiedAlias='',{
   throw fail('Invalid one-time SQL verification ticket');
  const alias=trustedAlias(env,verifiedAlias);
  const profile=await authorizedProfile(env,alias,verifiedAlias,fetchImpl,probeTicket);
- // This reads only provider metadata. It never opens or probes a SQL socket.
- await checkProviderApi(env,profile,fetchImpl);
+ // Provider API metadata is checked only during a user-initiated probe.
+ // Public reads, search and MCP never perform implicit provider API checks.
+ if(probeTicket)await checkProviderApi(env,profile,fetchImpl);
  const input=validateProfile(env,profile,verifiedAlias);
  const {engine,namespace,tableName,fieldMap}=input;
  const key=alias+'|'+engine+'|'+profile.url+'|'+profile.tls+'|'+namespace+
