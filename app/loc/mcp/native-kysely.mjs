@@ -40,7 +40,7 @@ function localProfile(env,alias){
   throw fail('LOC MCP database connection is unavailable');
  return profile;
 }
-async function authorizedProfile(env,alias,verifiedAlias,fetchImpl){
+async function authorizedProfile(env,alias,verifiedAlias,fetchImpl,probeTicket=''){
  const secret=String(env.LOC_DB_PROFILE_SERVICE_TOKEN||'');
  // Explicit local profiles stay valid for self-hosting, but do not override
  // a user-selected alias signed by LOC Auth.
@@ -49,9 +49,9 @@ async function authorizedProfile(env,alias,verifiedAlias,fetchImpl){
  const control=DATABASE_ACCESS_LIST.find(item=>item.selected===true);
  const isPrimary=alias===control?.connection_alias&&
   (!verifiedAlias||verifiedAlias===control.target_id);
- if(isPrimary&&env.LOC_DB_CONNECTIONS_JSON)
+ if(!probeTicket&&isPrimary&&env.LOC_DB_CONNECTIONS_JSON)
   return localProfile(env,alias);
- if(!verifiedAlias&&env.LOC_DB_CONNECTIONS_JSON)
+ if(!probeTicket&&!verifiedAlias&&env.LOC_DB_CONNECTIONS_JSON)
   return localProfile(env,alias);
  if(secret){
   if(secret.length<32)throw fail('LOC trusted profile secret is invalid');
@@ -65,7 +65,8 @@ async function authorizedProfile(env,alias,verifiedAlias,fetchImpl){
   const profileId=selectedPrimary&&isPrimary
    ?selectedPrimary.target_id:alias;
   const result=await fetchImpl('https://auth.lo3rwang.cc/v1/internal/database/'+profileId,{
-   method:'GET',headers:{'x-loc-service-token':secret,accept:'application/json'},
+   method:'GET',headers:{'x-loc-service-token':secret,accept:'application/json',
+    ...(probeTicket?{'x-loc-probe-ticket':probeTicket}:{})},
    cache:'no-store',redirect:'manual',signal:AbortSignal.timeout(8000)
   });
   if(!result.ok){
@@ -79,6 +80,7 @@ async function authorizedProfile(env,alias,verifiedAlias,fetchImpl){
   return {...verified.profile,schema_name:verified.target.schema_name,
    table_name:verified.target.table_name,field_map:verified.target.field_map};
  }
+ if(probeTicket)throw fail('Trusted SQL profile service required for a manual probe');
  return localProfile(env,alias);
 }
 function validateProfile(env,profile,verifiedAlias){
@@ -160,19 +162,21 @@ async function newDialect({engine,profile,parsed}){
  });
 }
 export async function directMcpKysely(env={},verifiedAlias='',{
- fetchImpl=globalThis.fetch
+ fetchImpl=globalThis.fetch,probeTicket=''
 }={}){
  if(!env||typeof env!=='object')throw fail('Invalid LOC MCP backend environment');
  if(verifiedAlias&&!ALIAS.test(verifiedAlias))throw fail('Invalid verified database alias');
+ if(probeTicket&&!/^[0-9a-f-]{36}$/.test(probeTicket))
+  throw fail('Invalid one-time SQL verification ticket');
  const alias=trustedAlias(env,verifiedAlias);
- const profile=await authorizedProfile(env,alias,verifiedAlias,fetchImpl);
+ const profile=await authorizedProfile(env,alias,verifiedAlias,fetchImpl,probeTicket);
  const input=validateProfile(env,profile,verifiedAlias);
  const {engine,namespace,tableName,fieldMap}=input;
  const key=alias+'|'+engine+'|'+profile.url+'|'+profile.tls+'|'+namespace+
   '|'+tableName+'|'+JSON.stringify(fieldMap)+'|'+JSON.stringify(profile.authentication||{});
  let cache=targets.get(env);
  if(!cache){cache=new Map();targets.set(env,cache)}
- if(cache.has(key))return cache.get(key);
+ if(!probeTicket&&cache.has(key))return cache.get(key);
  const create=async()=>{
   const dialect=await newDialect(input);
   const db=new Kysely({dialect});
@@ -182,6 +186,9 @@ export async function directMcpKysely(env={},verifiedAlias='',{
   return {db,dialect,engine,namespace,tableName,fieldMap};
  };
  const promise=create();
+ // Manual probing is single-use, not a reusable cached connection. The
+ // caller owns and destroys its one temporary pool immediately after testing.
+ if(probeTicket)return promise;
  cache.set(key,promise);
  try{return await promise}catch(error){cache.delete(key);throw error}
 }
