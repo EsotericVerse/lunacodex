@@ -128,6 +128,8 @@ test('production registry tracing is in the existing authenticated route, not a 
   const route=read('functions/api/loc-authority-role.js');
   const role=read('workers/loc-authority/manage-role.mjs');
   assert.match(route,/let stage='driver'/);
+  assert.match(route,/DATABASE_ACCESS_LIST\.find\(item=>item\.selected===true\)/);
+  assert.match(route,/directMcpKysely\(env,primary\.target_id\)/);
   assert.match(route,/stage='registry-query'/);
   assert.match(route,/LOC_DB_PROFILE_SERVICE_TOKEN/);
   assert.match(route,/return respond\(\{error:'LOC registry read unavailable',stage\},503\)/);
