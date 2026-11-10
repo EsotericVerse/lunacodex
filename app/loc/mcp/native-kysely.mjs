@@ -96,6 +96,11 @@ function validateProfile(env,profile,verifiedAlias){
   mssql:['mssql:','sqlserver:']};
  if(!schemes[engine].includes(parsed.protocol)||!parsed.hostname)
   throw fail('LOC '+engine+' connection URL invalid');
+ // The owner supplies the port, including nonstandard pooler ports (6543).
+ // No default or supplier-driven port derivation is allowed.
+ const explicitPort=Number(parsed.port);
+ if(!Number.isInteger(explicitPort)||explicitPort<1||explicitPort>65535)
+  throw fail('LOC SQL connection requires the configured server port');
  const namespace=engine==='mysql'?'':String(profile.schema_name||
   env.LOC_MCP_DB_NAMESPACE||(engine==='mssql'?'dbo':'silver'));
  const tableName=String(profile.table_name||'');
@@ -130,7 +135,7 @@ export function mcpDatabaseConfiguration(env={}){
 async function newDialect({engine,profile,parsed}){
  if(engine==='postgres'){
   return new PostgresDialect({pool:new pg.Pool({
-   connectionString:profile.url,max:2,idleTimeoutMillis:12000,
+   connectionString:profile.url,max:1,idleTimeoutMillis:12000,
    connectionTimeoutMillis:7000,
    ...(profile.tls===false?{ssl:false}:{ssl:{rejectUnauthorized:true}})
   })});
@@ -140,23 +145,23 @@ async function newDialect({engine,profile,parsed}){
   const createPool=module.createPool||module.default?.createPool;
   if(typeof createPool!=='function')throw fail('MySQL protocol driver unavailable');
   return new MysqlDialect({pool:createPool({
-   host:parsed.hostname,port:Number(parsed.port)||3306,
+   host:parsed.hostname,port:Number(parsed.port),
    user:decodeURIComponent(parsed.username),password:decodeURIComponent(parsed.password),
    database:decodeURIComponent(parsed.pathname.slice(1)),
-   waitForConnections:true,connectionLimit:2,queueLimit:10,
+   waitForConnections:false,connectionLimit:1,queueLimit:0,
    ...(profile.tls===false?{}:{ssl:{rejectUnauthorized:true}}),
    ...mysqlLdapOptions(profile)
   })});
  }
  const Tedious=await import('tedious'),Tarn=await import('tarn');
  return new MssqlDialect({
-  tarn:{...Tarn,options:{min:0,max:2}},
+  tarn:{...Tarn,options:{min:0,max:1}},
   tedious:{...Tedious,connectionFactory:()=>new Tedious.Connection({
    server:parsed.hostname,
    authentication:mssqlAuthentication(profile,
     decodeURIComponent(parsed.username),decodeURIComponent(parsed.password)),
    options:{database:decodeURIComponent(parsed.pathname.slice(1)),
-    port:Number(parsed.port)||1433,encrypt:profile.tls!==false,
+    port:Number(parsed.port),encrypt:profile.tls!==false,
     trustServerCertificate:false,connectTimeout:7000}
   })}
  });
