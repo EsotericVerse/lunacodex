@@ -58,3 +58,16 @@ export function sqlVerificationAllowed(source,target,revision,now){
   target.revision===revision&&
   target.generation===Number(source.generation||0));
 }
+
+export async function sqlTargetRevision(profile){
+ // A credential or SQL Type edit invalidates validation immediately.
+ // Never return this fingerprint to the browser or log it.
+ const input=new TextEncoder().encode(JSON.stringify({
+  engine:profile.engine,host:profile.host,port:profile.port,
+  database:profile.database,username:profile.username,
+  password:profile.password,authentication:profile.authentication
+ }));
+ const hash=await crypto.subtle.digest('SHA-256',input);
+ return Array.from(new Uint8Array(hash),
+  byte=>byte.toString(16).padStart(2,'0')).join('');
+}
