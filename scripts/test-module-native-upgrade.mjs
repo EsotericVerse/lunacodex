@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {existsSync,readFileSync} from 'node:fs';
+import {existsSync,readFileSync,readdirSync} from 'node:fs';
+import {join} from 'node:path';
+import {fileURLToPath} from 'node:url';
 
 const manifest=JSON.parse(readFileSync(new URL('../package.json',import.meta.url),'utf8'));
 const lock=JSON.parse(readFileSync(new URL('../package-lock.json',import.meta.url),'utf8'));
@@ -79,6 +81,21 @@ test('SWR is retired; ZenStack client queries share one native QueryClient',()=>
   assert.match(source,/useInfiniteQuery/);
 });
 
+test('retired SWR cannot be imported by LOC application modules',()=>{
+  const scan=directory=>{
+    for(const entry of readdirSync(directory,{withFileTypes:true})){
+      const filename=join(directory,entry.name);
+      if(entry.isDirectory()){scan(filename);continue;}
+      if(!/\.(?:js|jsx|mjs|ts|tsx)$/.test(entry.name))continue;
+      const source=readFileSync(filename,'utf8');
+      assert.doesNotMatch(source,
+        /\b(?:from\s*|import\s*|require\s*\(\s*)['"]swr(?:\/[^'"]*)?['"]/,
+        filename+' must not import the removed library');
+    }
+  };
+  scan(fileURLToPath(new URL('../app/',import.meta.url)));
+  scan(fileURLToPath(new URL('../zenstack/',import.meta.url)));
+});
 test('Windows static export launches npm.cmd via cmd shell, never direct spawn',()=>{
   const builder=readFileSync(new URL('./build-static-export.mjs',import.meta.url),'utf8');
   assert.match(builder,/shell:process\.platform==='win32'/);
