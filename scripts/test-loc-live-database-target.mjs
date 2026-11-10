@@ -121,5 +121,6 @@ test('main registry permission relation uses each selected SQL Dialect',()=>{
  assert.match(source,/registryRelationForEngine\(selected\.engine\)/);
  assert.doesNotMatch(source,/selected\.engine!=='postgres'/);
  const operation=readFileSync(new URL('../app/loc/mcp/native-operations.mjs',import.meta.url),'utf8');
- assert.match(operation,/trx\.selectFrom\(registryRelationForEngine\(selected\.engine\)\)/);
+ assert.doesNotMatch(operation,/trx\\.selectFrom\\(registryRelationForEngine\\(selected\\.engine\\)\\)/);
+ assert.match(operation,/Only the verified LOC owner may write/);
 });
