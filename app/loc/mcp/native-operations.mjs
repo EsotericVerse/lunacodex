@@ -8,6 +8,7 @@ import {processShortImport,portableShortImportStore} from '../import/short-appen
 import {executePortableMcp} from '../providers/kysely-mcp.mjs';
 import {bindLocAuthorization,canManageLoc} from '../providers/loc-authorization.mjs';
 import {executeManagedKyselyWrite,executeManagedKyselyAction} from '../providers/kysely-management.mjs';
+import {executeCrossEngineManagedWrite} from '../providers/sql-engine-ports.mjs';
 import {executeLocPersonal} from '../providers/kysely-personal.mjs';
 import {directMcpKysely} from './native-kysely.mjs';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
@@ -185,13 +186,39 @@ export async function handleNativeLocOperation(request,env={},{
     }
     if(body.kind==='managed-write'||body.kind==='managed-action'){
       if(selected.tableName)throw refusal('External mapped tables are read only',403);
-      if(selected.engine!=='postgres')throw refusal('LOC management writer needs a PostgreSQL control database',503);
       if(!claims.grants?.some(grant=>grant==='global:manage'||grant.endsWith(':manage')))
         throw refusal('LOC management delegation required',403);
+      // PostgreSQL fixed-model mutations keep the existing ZenStack policy
+      // path. For a non-PostgreSQL MAIN database, use the already installed
+      // portable Kysely writer only after rechecking api.manage in the same
+      // transaction. Neither external targets nor arbitrary SQL are writable.
+      const payload=body.payload||{};
+      if(selected.engine!=='postgres'){
+        if(body.kind!=='managed-write')
+          throw refusal('This LOC management action needs a portable implementation',503);
+        const row=await selected.db.transaction().execute(async trx=>{
+          bindLocAuthorization(trx,{role:claims.role,claims,engine:selected.engine});
+          if(payload.p_table==='api.manage'){
+            if(!claims.grants.includes('global:manage')||
+                !await canManageLoc(trx,'global'))
+              throw refusal('LOC Registry management permission denied',403);
+            if(!['update','delete'].includes(payload.p_operation))
+              throw refusal('Registry mutation requires a fixed operation',403);
+            if(!Array.isArray(payload.p_filters)||!payload.p_filters.length)
+              throw refusal('Unsafe unfiltered managed write',400);
+            return applyManagedWrite(trx,
+              registryRelationForEngine(selected.engine),payload);
+          }
+          return (await executeCrossEngineManagedWrite(trx,body,{
+            engine:selected.engine,namespace:selected.namespace,
+            role:claims.role,claims
+          })).data;
+        });
+        return reply({data:row});
+      }
       // Keep the fixed-model ZenStack policy path for UPDATE and DELETE.
       // All other known LOC tables use the existing Kysely management
       // executor, with the signed principal bound to this transaction.
-      const payload=body.payload||{};
       const fixed=body.kind==='managed-write'&&
         ['api.manage','silver.loc'].includes(payload.p_table)&&
         ['update','delete'].includes(payload.p_operation);
