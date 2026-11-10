@@ -18,6 +18,9 @@ function run(command,args,env=process.env){
 // Public JS/CSS snapshots are explicitly published and committed beforehand.
 // Static exports must never read Supabase simply to build app assets.
 run(npm,['run','prebuild']);
+// Prevent static Pages deployments from publishing an unverified LOC Auth
+// contract. This uses the existing test suite; no new workflow or framework.
+run(npm,['run','test:authority']);
 fs.renameSync(api,parked);
 try{
   run(process.execPath,[path.join(root,'node_modules','next','dist','bin','next'),'build'],{
