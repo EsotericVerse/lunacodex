@@ -1,6 +1,6 @@
 'use client';
 
-// Short, non-blocking notice for a failed read. Throttled so SWR retries do not flood the screen.
+// Short, non-blocking notice for failed reads. Throttled to prevent repeated notices.
 export const FLASH_EVENT='loc-flash-message';
 const THROTTLE_MS=3000;
 let lastAt=0;
