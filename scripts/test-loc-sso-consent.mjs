@@ -83,6 +83,6 @@ test('control DB and signed loc-main share the Kysely pool from LOC Authority',a
  assert.equal(defaultDb.engine,'postgres');
  assert.equal(defaultDb.namespace,'silver');
  assert.equal(requests.length,2);
- assert.ok(requests.every(url=>url.endsWith('/v1/internal/database/loc-main')));
+ assert.ok(requests.every(url=>url.endsWith('/v1/internal/database/primary')));
  await defaultDb.db.destroy();
 });
