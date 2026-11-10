@@ -35,7 +35,7 @@ function deployedMainProfile(env,alias,verifiedAlias){
  try{connection=new URL(raw)}
  catch{throw fail('LOC primary database URI is malformed')}
  if(!['postgres:','postgresql:'].includes(connection.protocol)||
-   !connection.hostname||!connection.port||!connection.username||
+   !connection.hostname||!connection.username||
    !connection.password||connection.pathname.length<2)
   throw fail('LOC primary database URI lacks required connection parameters');
  return {engine:'postgres',db_type:'direct',url:raw,
@@ -141,11 +141,14 @@ function validateProfile(env,profile,verifiedAlias){
  try{parsed=new URL(url)}catch{throw fail('LOC database connection URL invalid')}
  if(!['postgres:','postgresql:'].includes(parsed.protocol)||!parsed.hostname)
   throw fail('LOC '+engine+' connection URL invalid');
- // The owner supplies the port, including nonstandard pooler ports (6543).
- // No default or supplier-driven port derivation is allowed.
- const explicitPort=Number(parsed.port);
- if(!Number.isInteger(explicitPort)||explicitPort<1||explicitPort>65535)
-  throw fail('LOC SQL connection requires the configured server port');
+ // PostgreSQL defaults to port 5432 when its URI omits an explicit port.
+ // Preserve and validate any owner-specified nonstandard port (e.g. 6543).
+ // The selected provider never supplies or guesses a different port.
+ if(parsed.port){
+  const explicitPort=Number(parsed.port);
+  if(!Number.isInteger(explicitPort)||explicitPort<1||explicitPort>65535)
+   throw fail('LOC SQL connection port is invalid');
+ }
  const namespace=String(profile.schema_name||'silver');
  const tableName=String(profile.table_name||'');
  const fieldMap=profile.field_map||{};
