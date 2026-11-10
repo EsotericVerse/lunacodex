@@ -74,8 +74,16 @@ function AnchorEditor({scopeId,spatial,reload}){
   )):Boolean(title||description||postalAddress||longitude||latitude);
   const dirty=formDirty||Object.keys(pendingRenames).length>0||Boolean(pendingVisibility)||mergeUids.length>0;
   const pickExisting=uid=>{
+    if(busy||bulkBusy)return false;
+    if(uid===editingUid)return true;
     const row=ownAnchors.find(item=>item.uid===uid);
+    if(uid&&!row)return false;
+    if(dirty&&!window.confirm('目前有尚未儲存的地點修改或批次操作，確定放棄並切換？'))
+      return false;
     setEditingUid(row?.uid||'');
+    setPendingRenames({});
+    setStandardTitles({});
+    setIsError(false);setNotice('');
     // Switching primary starts a new merge selection. Never silently
     // merge source checkboxes carried over from a previous primary.
     setBulkUids([]);
@@ -86,8 +94,9 @@ function AnchorEditor({scopeId,spatial,reload}){
     setInvisible(Boolean(row?.invisible));
     setLongitude(row?.longitude==null?'':String(row.longitude));
     setLatitude(row?.latitude==null?'':String(row.latitude));
-    if(row?.longitude!=null&&row?.latitude!=null)
-      setFocusLocation({longitude:row.longitude,latitude:row.latitude,name:row.title});
+    setFocusLocation(row?.longitude!=null&&row?.latitude!=null
+      ?{longitude:row.longitude,latitude:row.latitude,name:row.title}:null);
+    return true;
   };
   const save=async({switching=false}={})=>{
     if(scopeId==='loc'){
@@ -213,7 +222,7 @@ function AnchorEditor({scopeId,spatial,reload}){
     <h3>{editingUid?'編輯空間定錨點':'新增空間定錨點'}</h3>
     <label>編輯既有地點（直接搜尋標題）
       <ScopeOptionPicker id={'trace-anchor-edit-'+scopeId} options={options}
-        value={editingUid} onChange={pickExisting} disabled={busy}
+        value={editingUid} onChange={pickExisting} disabled={busy||bulkBusy} resetKey={scopeId}
         placeholder="搜尋標題，或留空新增"/>
     </label>
     <details className="scope-card loc-trace-quick-update">

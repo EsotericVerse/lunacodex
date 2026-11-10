@@ -1,5 +1,5 @@
 'use client';
-import {useId,useMemo,useState} from 'react';
+import {useEffect,useId,useMemo,useState} from 'react';
 
 // Scope-managed time/space options are supplied by the existing authorized
 // read path. Filter display labels only: never query or autocomplete UIDs.
@@ -8,10 +8,12 @@ const IDENTIFIER=/^[A-Za-z0-9]{8}$/;
 const MAX_VISIBLE=200;
 
 export default function ScopeOptionPicker({id,options=[],value='',onChange,
-  disabled=false,allowClear=true,placeholder='選擇項目',noOptionsMessage='沒有符合項目'}){
+  disabled=false,allowClear=true,placeholder='選擇項目',noOptionsMessage='沒有符合項目',resetKey=''}){
   const generatedId=useId();
   const inputId=id||generatedId;
   const [input,setInput]=useState('');
+  // A new Scope or record type must not inherit the previous picker filter.
+  useEffect(()=>setInput(''),[resetKey]);
   const term=normalized(input);
   const matches=useMemo(()=>
     IDENTIFIER.test(term)?[]:options.filter(option=>
@@ -29,7 +31,11 @@ export default function ScopeOptionPicker({id,options=[],value='',onChange,
       onChange={event=>setInput(event.target.value)}/>
     <select id={inputId+'-choice'} value={String(value||'')} disabled={disabled}
       aria-label={placeholder}
-      onChange={event=>{onChange(event.target.value);setInput('');}}>
+      onChange={event=>{
+        // Keep the current choice and filter if the owning editor rejects
+        // a record switch (for example, unsaved changes).
+        if(onChange(event.target.value)!==false)setInput('');
+      }}>
       <option value="" disabled={!allowClear}>{placeholder}</option>
       {visible.map(option=><option key={option.value} value={option.value}>
         {option.label}

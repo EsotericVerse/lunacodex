@@ -158,7 +158,7 @@ export default function TraceRouteManager({scopeId,mode='all'}){
   },[params,index.data,owner,own]);
   const addToSpool=()=>{
     const uid=selectedAnchor?.value;
-    if(!uid||spool.includes(uid))return;
+    if(!uid||!anchorMap.has(uid)||spool.includes(uid))return;
     setSpool(items=>[...items,uid]);setSelectedAnchor(null);
   };
   const removeFromSpool=uid=>{
@@ -168,7 +168,8 @@ export default function TraceRouteManager({scopeId,mode='all'}){
     if(from===uid)setFrom('');if(to===uid)setTo('');
   };
   const addRoadStop=()=>{
-    if(!selectedStop||queue.includes(selectedStop)||queue.length>=MAX_ROAD)return;
+    if(!selectedStop||!availableRoadOptions.some(option=>option.value===selectedStop)||
+      queue.includes(selectedStop)||queue.length>=MAX_ROAD)return;
     setQueue(items=>[...items,selectedStop]);setSelectedStop('');
   };
   const shift=(index,step)=>{
@@ -362,7 +363,8 @@ export default function TraceRouteManager({scopeId,mode='all'}){
             options={options.filter(opt=>!spool.includes(opt.value))}
             value={selectedAnchor?.value||''}
             onChange={id=>setSelectedAnchor(options.find(option=>option.value===id)||null)}
-            disabled={busy||anchorIndex.isPending} placeholder="選擇已授權地點"
+            disabled={busy||anchorIndex.isPending} resetKey={owner}
+            placeholder="選擇已授權地點"
             noOptionsMessage="沒有符合地點"/>
         </div>
         <button className="loc-button" type="button" disabled={!selectedAnchor||busy} onClick={addToSpool}>＋ 加入候選地點</button>
@@ -378,9 +380,10 @@ export default function TraceRouteManager({scopeId,mode='all'}){
         <div className="loc-trace-route-pickers">
           <ScopeOptionPicker id="trace-queue-stop" options={availableRoadOptions}
             value={selectedStop} onChange={setSelectedStop}
-            disabled={busy||queue.length>=MAX_ROAD} placeholder="選擇下一站（選過即消失）"/>
+            disabled={busy||queue.length>=MAX_ROAD} resetKey={owner}
+            placeholder="選擇下一站（選過即消失）"/>
           <button type="button" className="loc-button" onClick={addRoadStop}
-            disabled={busy||!selectedStop}>＋ 加入路線</button>
+            disabled={busy||!availableRoadOptions.some(option=>option.value===selectedStop)}>＋ 加入路線</button>
         </div>
         <ol className="loc-trace-selection-order">{queue.map((uid,i)=><li key={uid}>
           <span>{anchorMap.get(uid)?.title||uid}</span>

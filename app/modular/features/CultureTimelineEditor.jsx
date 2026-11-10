@@ -116,12 +116,13 @@ export default function CultureTimelineEditor({
     const row=all.find(item=>String(item.uid)===String(id));
     if(!row)return;
     if(String(id)!==selectedId&&dockActions.current.isDirty()
-      &&!window.confirm('切換紀錄會捨棄尚未儲存的修改，確定繼續？'))return;
+      &&!window.confirm('切換紀錄會捨棄尚未儲存的修改，確定繼續？'))return false;
     onClose?.();
     setSelectedId(String(id));setBrowseType(row.type);setVisibilitySelection([]);
     setTracePairs([]);setPairFrom(null);setPairTo(null);
     const next=normalizeDraft(row);
     original.current=next;setDraft(next);setMessage('');
+    return true;
   };
   useEffect(()=>{
     const id=String(selectedRecordId||'').trim();
@@ -173,8 +174,9 @@ export default function CultureTimelineEditor({
     startNew(type);setVisibilitySelection([]);onClose?.();
   };
   const beginNew=()=>{
-    if(dockActions.current.isDirty()&&!window.confirm('新增紀錄會捨棄尚未儲存的修改，確定繼續？'))return;
+    if(dockActions.current.isDirty()&&!window.confirm('新增紀錄會捨棄尚未儲存的修改，確定繼續？'))return false;
     startNew(browseType);onClose?.();
+    return true;
   };
   const change=(key,value)=>setDraft(row=>({...row,[key]:value}));
   const segments=draft.type==='era'
@@ -415,7 +417,7 @@ export default function CultureTimelineEditor({
         <div className="scope-culture-record-browser-select">
           <label htmlFor="culture-record-search">現有{displayType[browseType]}（依名稱搜尋）</label>
           <ScopeOptionPicker id="culture-record-search" options={recordOptions}
-            disabled={query.isPending||busy} value={selectedId}
+            disabled={query.isPending||busy} resetKey={browseType} value={selectedId}
             onChange={id=>id?selectRow(id):beginNew()}
             placeholder={'搜尋'+displayType[browseType]+'名稱'}
             noOptionsMessage={recordOptions.length?'沒有符合項目':'此類型尚無紀錄'}/>
@@ -500,7 +502,7 @@ export default function CultureTimelineEditor({
             <ScopeOptionPicker
               options={draft.type==='era'?eventChoices.map(row=>({value:row.uid,label:'期間｜'+row.title})):anchorOptions}
               value={segment.start} onChange={id=>updateSegment(index,'start',id)}
-              allowClear={false}
+              disabled={busy||query.isPending} allowClear={false}
               placeholder={draft.type==='era'?'搜尋期間標題':'搜尋定錨點標題'}
               noOptionsMessage="沒有符合項目"/>
           </label>
@@ -508,7 +510,7 @@ export default function CultureTimelineEditor({
             <ScopeOptionPicker
               options={anchorOptions.filter(option=>option.value!==segment.start)}
               value={segment.end||''} onChange={id=>updateSegment(index,'end',id)}
-              placeholder="搜尋定錨點標題（單一定錨點留空）"
+              disabled={busy||query.isPending} placeholder="搜尋定錨點標題（單一定錨點留空）"
               noOptionsMessage="沒有符合項目"/>
           </label>:null}
           <button type="button" className="loc-button"
@@ -528,12 +530,12 @@ export default function CultureTimelineEditor({
             <label>起點
               <ScopeOptionPicker options={anchorOptions}
                 value={pairFrom?.value||''} onChange={id=>setPairFrom(anchorOptionOf(id))}
-                placeholder="搜尋定錨點標題" noOptionsMessage="沒有符合項目"/>
+                disabled={busy||query.isPending} placeholder="搜尋定錨點標題" noOptionsMessage="沒有符合項目"/>
             </label>
             <label>終點
               <ScopeOptionPicker options={anchorOptions.filter(option=>option.value!==pairFrom?.value)}
                 value={pairTo?.value||''} onChange={id=>setPairTo(anchorOptionOf(id))}
-                placeholder="搜尋定錨點標題" noOptionsMessage="沒有符合項目"/>
+                disabled={busy||query.isPending} placeholder="搜尋定錨點標題" noOptionsMessage="沒有符合項目"/>
             </label>
             <button type="button" className="loc-button"
               disabled={!pairFrom||!pairTo||pairFrom.value===pairTo?.value}
