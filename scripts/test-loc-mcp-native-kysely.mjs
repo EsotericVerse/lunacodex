@@ -149,3 +149,80 @@ test('the primary SQL Model Gateway never restores a deployment database URL',()
  assert.match(source,/normalizeLiveTarget/);
  assert.match(source,/PostgresDialect|MysqlDialect|MssqlDialect/);
 });
+
+test('one LOC caller can select two provider APIs through db_connection',async()=>{
+ const key='authorized-provider-test-token';
+ const profiles={
+  supabase_db:{engine:'postgres',db_type:'supabase',
+   project_id:'abcdefghijklmnopqrst',provider_oauth:key,
+   host:'db.supabase.example',port:6543,database:'postgres',
+   username:'reader',password:'placeholder-only',schema_name:'silver'},
+  neon_db:{engine:'postgres',db_type:'neon',
+   project_id:'mellow-river-12345678',provider_oauth:key,
+   host:'db.neon.example',port:5432,database:'neondb',
+   username:'reader',password:'placeholder-only',schema_name:'silver'}
+ };
+ const calls=[];
+ const fetchImpl=async(url,options)=>{
+  calls.push({url,options});
+  if(url.endsWith('/v1/internal/database/supabase_db'))
+   return Response.json(profiles.supabase_db);
+  if(url.endsWith('/v1/internal/database/neon_db'))
+   return Response.json(profiles.neon_db);
+  if(url==='https://api.supabase.com/v1/projects')
+   return Response.json([{id:profiles.supabase_db.project_id}]);
+  if(url==='https://console.neon.tech/api/v2/projects/'+profiles.neon_db.project_id)
+   return Response.json({project:{id:profiles.neon_db.project_id}});
+  throw Error('Unexpected provider API call');
+ };
+ const env={LOC_DB_PROFILE_SERVICE_TOKEN:'test-signed-profile-service-secret-long-enough'};
+ const probe='00000000-0000-4000-8000-000000000001';
+ const supabase=await directMcpKysely(env,'supabase_db',{fetchImpl,probeTicket:probe});
+ const neon=await directMcpKysely(env,'neon_db',{fetchImpl,
+  probeTicket:'00000000-0000-4000-8000-000000000002'});
+ assert.equal(supabase.engine,'postgres');
+ assert.equal(neon.engine,'postgres');
+ assert.notStrictEqual(supabase.db,neon.db);
+ assert.equal(calls.length,4);
+ assert.equal(calls.filter(call=>call.url.includes('api.supabase.com')).length,1);
+ assert.equal(calls.filter(call=>call.url.includes('console.neon.tech')).length,1);
+ assert.ok(calls.filter(call=>call.url.includes('api.supabase.com')||
+  call.url.includes('console.neon.tech')).every(call=>
+   call.options.headers.authorization==='Bearer '+key));
+ await supabase.db.destroy();
+ await neon.db.destroy();
+});
+
+test('public db_connection read does not probe provider APIs',async()=>{
+ const env={LOC_DB_PROFILE_SERVICE_TOKEN:'test-signed-profile-service-secret-long-enough'};
+ const calls=[];
+ const selected=await directMcpKysely(env,'public_supabase',{
+  fetchImpl:async(url)=>{
+   calls.push(url);
+   if(!url.endsWith('/v1/internal/database/public_supabase'))
+    throw Error('Public reads must not query provider API');
+   return Response.json({engine:'postgres',db_type:'supabase',
+    project_id:'abcdefghijklmnopqrst',provider_oauth:'provider-token',
+    host:'db.example.net',port:6543,database:'postgres',
+    username:'reader',password:'placeholder-only'});
+  }});
+ assert.equal(calls.length,1);
+ await selected.db.destroy();
+});
+
+test('failed provider authorization halts the one-shot connection path',async()=>{
+ const env={LOC_DB_PROFILE_SERVICE_TOKEN:'test-signed-profile-service-secret-long-enough'};
+ let calls=0;
+ await assert.rejects(directMcpKysely(env,'neon_test',{
+  probeTicket:'00000000-0000-4000-8000-000000000003',
+  fetchImpl:async(url)=>{
+   calls++;
+   if(url.endsWith('/v1/internal/database/neon_test'))
+    return Response.json({engine:'postgres',db_type:'neon',
+     project_id:'mellow-river-12345678',provider_oauth:'provider-token',
+     host:'db.example.net',port:5432,database:'postgres',
+     username:'reader',password:'placeholder-only'});
+   return Response.json({error:'Forbidden'},{status:403});
+  }}),error=>error.message.includes('Provider API rejected (403)'));
+ assert.equal(calls,2);
+});
