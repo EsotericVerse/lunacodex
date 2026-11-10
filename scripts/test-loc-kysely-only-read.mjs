@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createKyselyPublicClient} from '../app/loc/providers/kysely-browser.mjs';
 import {handleNativePublicQuery} from '../app/loc/server/native-public-query.mjs';
+import {DummyDriver,PostgresAdapter,PostgresIntrospector,PostgresQueryCompiler} from 'kysely';
 
 const endpoint='https://loc.lo3rwang.cc/api/loc-public-query';
 const request=value=>new Request(endpoint,{method:'POST',headers:{
@@ -78,6 +79,34 @@ test('valid public SELECT uses the same fixed loc-main Kysely target',async()=>{
   assert.deepEqual(selectedColumns,['uid','title']);
   assert.equal((await response.json()).data[0].title,'公開作品');
 });
+test('public Scope SELECT uses ZenStack native model over the trusted existing Kysely dialect',async()=>{
+  const executed=[],driver=new DummyDriver();
+  const original=driver.acquireConnection.bind(driver);
+  driver.acquireConnection=async()=>{
+    const connection=await original();
+    connection.executeQuery=async compiled=>{
+      executed.push(compiled);
+      return {rows:[{uid:'abcdefgh',title:'公開作品'}]};
+    };
+    return connection;
+  };
+  const dialect={
+    createDriver:()=>driver,createAdapter:()=>new PostgresAdapter(),
+    createQueryCompiler:()=>new PostgresQueryCompiler(),
+    createIntrospector:db=>new PostgresIntrospector(db)
+  };
+  const response=await handleNativePublicQuery(request(query),{},{
+    database:async()=>({engine:'postgres',namespace:'silver',dialect,db:{
+      selectFrom(){throw Error('Modeled public read bypassed ZenStack');}
+    }})
+  });
+  assert.equal(response.status,200);
+  assert.deepEqual((await response.json()).data,[{uid:'abcdefgh',title:'公開作品'}]);
+  assert.equal(executed.length,1);
+  assert.match(executed[0].sql,/"silver"\."lo3rwang_galaxy"/);
+  assert.ok(executed[0].parameters.includes('abcdefgh'));
+});
+
 test('backend SQL errors expose only stage and SQLSTATE',async()=>{
   const result=await handleNativePublicQuery(request(query),{},{
     database:async()=>({engine:'postgres',namespace:'silver',db:{
