@@ -389,11 +389,12 @@ verified. Other models and all MCP routes remain unchanged.
 ## LOC Search cross-Scope request scheduling (2026-11-07)
 
 The public Search page uses a **custom Kysely SQL Gateway action**, not
-ZenStack's generated model RPC API. The current frontend is already on SWR
-2.5.1 with request de-duplication. Adding `@zenstackhq/tanstack-query` would
-require the separate `@tanstack/react-query` peer and a compatible ZenStack
-model API; it does **not** automatically speed up the existing SQL contains
-filter. Avoid a second competing frontend result cache in this cutover.
+ZenStack's generated model RPC API. Since the 2026-11-10 consolidation,
+`zenstack/client-queries.js` owns a single native QueryClient for request
+deduplication, pagination, and explicit invalidation. The former frontend
+query library has been removed. Generated ZenStack model hooks still require
+a compatible model API; this does **not** accelerate SQL `contains` filtering
+or justify a second browser result cache.
 
 `searchOrderedScopeProviders` is a small, dependency-free execution scheduler:
 - Query the first Scope alone (no additional traffic on the common one-hit path).
