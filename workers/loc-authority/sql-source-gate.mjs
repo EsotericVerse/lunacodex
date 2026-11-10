@@ -74,7 +74,9 @@ export async function sqlTargetRevision(profile){
  // A credential or SQL Type edit invalidates validation immediately.
  // Never return this fingerprint to the browser or log it.
  const input=new TextEncoder().encode(JSON.stringify({
-  engine:profile.engine,host:profile.host,port:profile.port,
+  engine:profile.engine,db_type:profile.db_type||'direct',
+  project_id:profile.project_id||'',provider_oauth:profile.provider_oauth||'',
+  host:profile.host,port:profile.port,
   database:profile.database,username:profile.username,
   password:profile.password,authentication:profile.authentication
  }));
