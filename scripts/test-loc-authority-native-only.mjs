@@ -94,3 +94,43 @@ test('Worker management uses verified OAuth email and database registry role',()
  assert.match(worker,/isLocRegistryAdmin\(await locRegistryRoles\(env,principal\.email\)\)/);
  assert.doesNotMatch(worker,/roots\.includes\(principal\.subject\)/);
 });
+
+
+test('LOC registry role lookup preserves trusted lookup stages and never promotes an HTTP failure',async()=>{
+  const {locRegistryRoles}=await import('../workers/loc-authority/manage-role.mjs');
+  const env={LOC_DB_PROFILE_SERVICE_TOKEN:'test-only-internal-token-at-least-32-characters'};
+  const email='owner@example.org';
+  const requests=[];
+  const good=await locRegistryRoles(env,email,{fetchImpl:async(url,options)=>{
+    requests.push({url,options});
+    return Response.json({rows:[{id:'lo3rwang',email,role:'admin',active:true},
+      {id:'lrunes',email:'other@example.org',role:'admin',active:true},
+      {id:'unused',email,role:'admin',active:false}]});
+  }});
+  assert.deepEqual(good,[{id:'lo3rwang',role:'admin'}]);
+  assert.equal(requests.length,1);
+  assert.equal(new URL(requests[0].url).pathname,'/api/loc-authority-role');
+  assert.equal(requests[0].options.headers['x-loc-service-token'],
+    env.LOC_DB_PROFILE_SERVICE_TOKEN);
+  for(const status of [403,404,503]){
+    await assert.rejects(locRegistryRoles(env,email,{fetchImpl:async()=>
+      Response.json({error:'LOC registry read unavailable',stage:'driver'},{status})}),
+      error=>error.status===503&&error.message.includes('('+status+')'));
+  }
+  await assert.rejects(locRegistryRoles(env,email,{fetchImpl:async()=>
+    Response.json({error:'LOC registry read unavailable',stage:'registry-query'},{status:503})}),
+    error=>error.status===503);
+  await assert.rejects(locRegistryRoles(env,email,{fetchImpl:async()=>
+    Response.json({unexpected:true})}),error=>error.status===503);
+});
+
+test('production registry tracing is in the existing authenticated route, not a public diagnostic API',()=>{
+  const route=read('functions/api/loc-authority-role.js');
+  const role=read('workers/loc-authority/manage-role.mjs');
+  assert.match(route,/let stage='driver'/);
+  assert.match(route,/stage='registry-query'/);
+  assert.match(route,/LOC_DB_PROFILE_SERVICE_TOKEN/);
+  assert.match(route,/return respond\(\{error:'LOC registry read unavailable',stage\},503\)/);
+  assert.match(role,/stage:downstream,httpStatus:response.status/);
+  assert.doesNotMatch(route,/errorStack|errorCause|url\.searchParams\.get\('token'\)/);
+});
