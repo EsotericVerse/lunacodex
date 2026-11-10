@@ -13,7 +13,8 @@ export async function locRegistryRoles(env,email,{fetchImpl=globalThis.fetch}={}
   const secret=String(env?.LOC_DB_PROFILE_SERVICE_TOKEN||'');
   if(secret.length<32){
     console.error('[LOC registry delegation]',{stage:'service-config'});
-    throw Object.assign(new Error('LOC Auth registry service token is not configured'),{status:503});
+    throw Object.assign(new Error('LOC Auth registry service token is not configured'),
+      {status:503,stage:'service-config',code:'SERVICE_CONFIG'});
   }
   const url=new URL('https://loc.lo3rwang.cc/api/loc-authority-role');
   url.searchParams.set('email',normalized);
@@ -25,19 +26,24 @@ export async function locRegistryRoles(env,email,{fetchImpl=globalThis.fetch}={}
     });
   }catch{
     console.error('[LOC registry delegation]',{stage:'transport'});
-    throw Object.assign(new Error('LOC Auth registry lookup unavailable'),{status:503});
+    throw Object.assign(new Error('LOC Auth registry lookup unavailable'),
+      {status:503,stage:'transport',code:'TRANSPORT'});
   }
   if(!response.ok){
     const detail=await response.json().catch(()=>null);
     const allowedStages=new Set(['driver','registry-query']);
     const downstream=allowedStages.has(detail?.stage)?detail.stage:'http';
-    console.error('[LOC registry delegation]',{stage:downstream,httpStatus:response.status});
-    throw Object.assign(new Error('LOC Auth registry lookup failed ('+response.status+')'),{status:503});
+    const code=/^[A-Za-z0-9_]{2,40}$/.test(String(detail?.code||''))
+      ?String(detail.code):'UNKNOWN';
+    console.error('[LOC registry delegation]',{stage:downstream,httpStatus:response.status,code});
+    throw Object.assign(new Error('LOC Auth registry lookup failed ('+response.status+')'),
+      {status:503,stage:downstream,code});
   }
   const result=await response.json().catch(()=>null);
   if(!Array.isArray(result?.rows)||result.rows.length>64){
     console.error('[LOC registry delegation]',{stage:'response-contract'});
-    throw Object.assign(new Error('Invalid LOC Auth registry response'),{status:503});
+    throw Object.assign(new Error('Invalid LOC Auth registry response'),
+      {status:503,stage:'response-contract',code:'INVALID_RESPONSE'});
   }
   const roles=result.rows.filter(row=>row&&
     String(row.email||'').trim().toLowerCase()===normalized&&
