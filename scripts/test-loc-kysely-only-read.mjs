@@ -105,3 +105,69 @@ test('active LOC providers contain no vendor REST API path or published numeric 
   const routes=JSON.parse(read('public/_routes.json'));
   assert.ok(routes.include.includes('/api/loc-public-query'));
 });
+
+
+test('guest analytics and public actions stay on Kysely and preserve request contracts',async()=>{
+  const calls=[];
+  const client=createKyselyPublicClient({fetch:async(url,options)=>{
+    calls.push({url,options});
+    return Response.json({data:url.includes('public-content')?[]:{rows:[]},count:null});
+  }});
+  const schema=client.schema('silver');
+  await schema.analytics({p_scope_id:'lo3rwang',p_view:'culture_list',
+    p_start:'2026-11-01',p_end:'2026-11-10',
+    p_options:{site:'threads',offset:0}});
+  await schema.analytics({p_scope_id:'loc',p_view:'search_summary',
+    p_options:{scopeIds:['lo3rwang','lrunes']}});
+  await schema.publicAction('page_blocks',{p_scope_id:'loc',p_type:'index'});
+  await schema.analytics({p_scope_id:'lo3rwang',p_view:'daily',
+    p_start:'2026-11-01',p_end:'2026-11-10'});
+  assert.deepEqual(calls.slice(0,3).map(c=>c.url),
+    Array(3).fill('/api/loc-public-query'));
+  const [culture,search,blocks]=calls.map(c=>JSON.parse(c.options.body||'null'));
+  assert.equal(culture.kind,'analytics');
+  assert.equal(culture.args.p_view,'culture_list');
+  assert.deepEqual(search.args.p_options.scopeIds,['lo3rwang','lrunes']);
+  assert.equal(blocks.kind,'public-action');
+  assert.equal(blocks.name,'page_blocks');
+  assert.ok(calls[3].url.startsWith('/api/loc-public-content?'));
+  assert.ok(calls.every(c=>c.options.credentials==='omit'));
+});
+
+test('guest analytics and public actions reject unknown scopes and private modes before SQL',async()=>{
+  let databaseCalls=0;
+  for(const body of [
+    {kind:'analytics',args:{p_scope_id:'admin',p_view:'culture_list'}},
+    {kind:'analytics',args:{p_scope_id:'loc',p_view:'keyword_catalog'}},
+    {kind:'analytics',args:{p_scope_id:'loc',p_view:'search_summary',
+      p_options:{scopeIds:['admin']}}},
+    {kind:'analytics',args:{p_scope_id:'lo3rwang',p_view:'culture_list',
+      p_options:{site:'x',connection:'arbitrary'}}},
+    {kind:'public-action',name:'managedWrite',args:{p_scope_id:'loc'}},
+    {kind:'public-action',name:'search_scope_trace_place_names',
+      args:{p_scope_id:'loc',p_term:'abc'}}
+  ]){
+    const res=await handleNativePublicQuery(request(body),{},{
+      database:async()=>{databaseCalls++;throw Error('Private SQL must not run')}
+    });
+    assert.equal(res.status,400,JSON.stringify(body));
+  }
+  assert.equal(databaseCalls,0);
+});
+
+test('exact count is not the size of the selected page',async()=>{
+  let countReads=0;
+  const response=await handleNativePublicQuery(request({...query,count:'exact'}),{},{
+    database:async()=>({engine:'postgres',namespace:'silver',db:{
+      selectFrom:()=>({
+        where(){return this},select(value){this.isCount=typeof value==='function';return this},
+        limit(){return this},offset(){return this},
+        async executeTakeFirst(){countReads++;return {count:127}},
+        async execute(){return [{uid:'abcdefgh',title:'作品'}]}
+      })
+    }})
+  });
+  assert.equal(response.status,200);
+  assert.equal((await response.json()).count,127);
+  assert.equal(countReads,1);
+});
