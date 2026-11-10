@@ -48,7 +48,9 @@ function database() {
   db:{selectFrom:()=>statement('select'),insertInto:()=>statement('insert'),
     updateTable:()=>statement('update'),deleteFrom:()=>statement('delete')}};
 }
-for (const engine of ['postgres','mysql','mssql']) {
+// Only PostgreSQL is an installed SQL runtime. Keep the full Auth Store
+// atomic-consumption regression test on the actual supported driver.
+for (const engine of ['postgres']) {
  test('LOC Auth SQL '+engine+' stores hashed keys and atomically takes tokens',async()=>{
   const {rows,db}=database();
   const s=createLocAuthSqlState(db,{engine});
@@ -69,3 +71,13 @@ for (const engine of ['postgres','mysql','mssql']) {
   assert.equal(await s.get('native-session:abc'),undefined);
  });
 }
+
+
+test('LOC Auth rejects disabled MySQL and MSSQL SQL stores without accessing data',()=>{
+ for(const engine of ['mysql','mssql']){
+  const {rows,db}=database();
+  assert.throws(()=>createLocAuthSqlState(db,{engine}),
+   /Invalid trusted LOC Auth Kysely store/);
+  assert.equal(rows.size,0);
+ }
+});
