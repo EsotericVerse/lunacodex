@@ -54,3 +54,32 @@ test('native Galaxy table does not inherit external physical mapping',async()=>{
  assert.equal(calls[0].table,'silver.lo3rwang_galaxy');
  assert.equal(result.data.length,1);
 });
+
+test('external model does not require unmapped optional date and URL columns',async()=>{
+ const {db,calls}=capture();
+ await executePortableMcp(db,{
+   kind:'mcp-read',scopeid:scope,uid:'source-article-42',site:'mcp'
+ },claims,{engine:'mssql',namespace:'dbo',tableName:'my_existing_articles',
+   fieldMap:{uid:'article_id',title:'headline',content:'body',createtime:'published_at'}});
+ const fields=calls[0].fields.map(field=>
+   typeof field==='string'?field:JSON.stringify(field.toOperationNode()));
+ assert.equal(calls[0].table,'dbo.my_existing_articles');
+ assert.equal(fields.length,4);
+ assert.ok(fields.some(field=>field.includes('article_id')));
+ assert.ok(fields.some(field=>field.includes('headline')));
+ assert.ok(fields.some(field=>field.includes('published_at')));
+ assert.equal(fields.some(field=>field==='url'||field==='date'),false);
+});
+
+test('mapped optional columns are selected only when explicitly configured',async()=>{
+ const {db,calls}=capture();
+ await executePortableMcp(db,{
+   kind:'mcp-read',scopeid:scope,uid:'article-custom',site:'mcp'
+ },claims,{engine:'mysql',tableName:'archive',
+   fieldMap:{uid:'external_id',title:'headline',content:'body',
+    createtime:'created_at',url:'source_url'}});
+ const fields=calls[0].fields.map(field=>
+   typeof field==='string'?field:JSON.stringify(field.toOperationNode()));
+ assert.equal(fields.length,5);
+ assert.ok(fields.some(field=>field.includes('source_url')));
+});
