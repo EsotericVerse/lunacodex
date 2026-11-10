@@ -389,7 +389,7 @@ export class LocAuthorityState extends DurableObject {
     const result=await this.ctx.storage.transaction(async tx=>{
       const previous=await tx.get(key);
       const decision=reserveSqlProbe(previous,Date.now(),ticket);
-      if(decision.allowed)await tx.put(key,{...decision.state,targetId:id});
+      if(decision.allowed)await tx.put(key,{...decision.state,targetId:id,probeUsed:false});
       return {allowed:decision.allowed,reason:decision.reason,
         retryAt:decision.retryAt};
     });
@@ -428,10 +428,19 @@ export class LocAuthorityState extends DurableObject {
     const source=await this.ctx.storage.get(key)||{};
     const now=Date.now();
     if(probeTicket){
-      if(!/^[0-9a-f-]{36}$/.test(probeTicket)||
-         source.targetId!==id||source.inFlight!==probeTicket||
-         Number(source.leaseExpires||0)<=now)
+      if(!/^[0-9a-f-]{36}$/.test(probeTicket))
         throw fail('SQL connection probe not authorized',423);
+      // Consume the ticket atomically BEFORE returning credentials; a request
+      // replay must never launch a second DB login from the same probe.
+      const consumed=await this.ctx.storage.transaction(async tx=>{
+        const active=await tx.get(key)||{};
+        if(active.targetId!==id||active.inFlight!==probeTicket||
+           active.probeUsed===true||Number(active.leaseExpires||0)<=Date.now())
+          return false;
+        await tx.put(key,{...active,probeUsed:true});
+        return true;
+      });
+      if(!consumed)throw fail('SQL connection probe not authorized',423);
     }else{
       const record=await this.ctx.storage.get('sql-verified:'+id);
       const revision=await sqlTargetRevision(profile);
