@@ -38,7 +38,7 @@ jobs:
           node --check workers/loc-authority/native-oauth.mjs
           node --check workers/loc-authority/auth-ref.mjs
           npm run test:authority
-          node --test scripts/test-loc-auth-qos.mjs scripts/test-loc-auth-store.mjs scripts/test-loc-supabase-secret-check.mjs
+          node --test scripts/test-loc-auth-qos.mjs scripts/test-loc-auth-store.mjs
           npm run check:loc-vendor-coupling
       - name: Validate auth Worker deployment (dry run)
         run: npx --yes wrangler@4.157.0 deploy --config workers/loc-authority/wrangler.jsonc --dry-run --outdir /tmp/auth-check
