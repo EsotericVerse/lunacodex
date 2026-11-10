@@ -29,8 +29,11 @@ test('database control is an alias, not a hosting-vendor dependency',()=>{
   assert.equal(route.provider,'custom');
   assert.equal(route.connectionAlias,'loc_main');
   assert.equal(normalizeDatabaseTarget({
+    provider:'custom',engine:'postgres',connection_alias:'office_pg'
+  }).engine,'postgres');
+  assert.throws(()=>normalizeDatabaseTarget({
     provider:'custom',engine:'mssql',connection_alias:'office_mssql'
-  }).engine,'mssql');
+  }),/Invalid database engine/);
   assert.throws(()=>normalizeDatabaseTarget({
     provider:'unknown',engine:'postgres',connection_alias:'office_pg'
   }),/not supported/);

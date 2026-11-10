@@ -90,7 +90,7 @@ test('portable Galaxy batch reads existing rows once, not once per article',asyn
     p_operation:'update_batch',p_rows:[
       {uid:'ABCD1234',title:'new1'},{uid:'EFGH5678',title:'new2'}
     ]}},{role:'authenticated',claims:{provider:'loc',me:true,sub:'user_123456',
-      email:'sopa2306@gmail.com'},engine:'mysql',namespace:''});
+      email:'sopa2306@gmail.com'},engine:'postgres',namespace:'silver'});
   assert.equal(result.data.count,2);
   assert.equal(writes,2);
   assert.equal(reads,1);

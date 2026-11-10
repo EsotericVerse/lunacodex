@@ -7,15 +7,15 @@ const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
 test('direct Kysely dialect selection remains portable across SQL engines',()=>{
  const driver=read('app/loc/mcp/native-kysely.mjs');
- for(const [engine,dialect] of Object.entries({
-   postgres:'PostgresDialect',mysql:'MysqlDialect',mssql:'MssqlDialect'
- })){
-   assert.equal(getSqlRuntimeCapabilities(engine).dialect,dialect);
-   assert.ok(driver.includes(dialect));
+ assert.equal(getSqlRuntimeCapabilities('postgres').dialect,'PostgresDialect');
+ assert.ok(driver.includes('PostgresDialect'));
+ assert.equal(portableRelation('lo3rwang_galaxy','postgres','silver'),
+  'silver.lo3rwang_galaxy');
+ for(const disabled of ['mysql','mssql']){
+  assert.throws(()=>getSqlRuntimeCapabilities(disabled),/Unsupported SQL engine/);
+  assert.throws(()=>portableRelation('lo3rwang_galaxy',disabled),
+   /Unsupported SQL engine/);
  }
- assert.equal(portableRelation('lo3rwang_galaxy','postgres','silver'),'silver.lo3rwang_galaxy');
- assert.equal(portableRelation('lo3rwang_galaxy','mysql'),'lo3rwang_galaxy');
- assert.equal(portableRelation('lo3rwang_galaxy','mssql','dbo'),'dbo.lo3rwang_galaxy');
 });
 
 test('the application does not package a generic SQL Gateway',()=>{
