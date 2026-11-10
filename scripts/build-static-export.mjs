@@ -37,7 +37,7 @@ function run(command,args,env=process.env){
 run(npm,['run','prebuild']);
 // Prevent static Pages deployments from publishing an unverified LOC Auth
 // contract. This uses the existing test suite; no new workflow or framework.
-run(npm,['run','test:authority']);
+runTestSummary('test:authority');
 runTestSummary('test:module-native');
 runTestSummary('test:short-import');
 fs.renameSync(api,parked);
