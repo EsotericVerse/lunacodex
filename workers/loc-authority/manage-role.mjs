@@ -35,7 +35,13 @@ export async function locRegistryRoles(env,email,{fetchImpl=globalThis.fetch}={}
     const downstream=allowedStages.has(detail?.stage)?detail.stage:'http';
     const code=/^[A-Za-z0-9_]{2,40}$/.test(String(detail?.code||''))
       ?String(detail.code):'UNKNOWN';
-    console.error('[LOC registry delegation]',{stage:downstream,httpStatus:response.status,code});
+    const dbRole=/^[A-Za-z0-9_]{1,63}$/.test(String(detail?.db_role||''))
+      ?String(detail.db_role):'UNKNOWN';
+    // Log only nonsecret PostgreSQL role and boolean GRANT results.
+    console.error('[LOC registry delegation]',{stage:downstream,
+      httpStatus:response.status,code,dbRole,
+      schemaUsage:detail?.schema_usage===true,tableSelect:detail?.table_select===true,
+      probeError:String(detail?.probe_error||'').slice(0,40)});
     throw Object.assign(new Error('LOC Auth registry lookup failed ('+response.status+')'),
       {status:503,stage:downstream,code});
   }
