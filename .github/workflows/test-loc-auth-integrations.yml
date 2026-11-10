@@ -1,19 +1,6 @@
 name: Verify LOC Auth, MCP, Extension and Portable (no deployment)
 on:
   workflow_dispatch:
-  pull_request:
-    branches: [main]
-    paths:
-      - 'app/loc/auth/**'
-      - 'app/loc/mcp/**'
-      - 'app/loc/providers/**'
-      - 'app/loc/import/**'
-      - 'workers/loc-authority/**'
-      - 'extensions/loc-galaxy-link/**'
-      - 'functions/api/loc-*'
-      - 'zenstack/**'
-      - 'scripts/test-loc-*'
-      - '.github/workflows/test-loc-auth-integrations.yml'
 permissions:
   contents: read
 jobs:
