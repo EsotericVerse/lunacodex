@@ -437,17 +437,17 @@ export class LocAuthorityState extends DurableObject {
       // No guessed provider, alternate target or implicit SQL fallback.
       const selected=await this.ctx.storage.get('primary_id');
       if(selected){
-        if(!ID.test(String(selected)))throw fail('Invalid primary database target',503);
+        if(!ID.test(String(selected)))throw Object.assign(fail('Invalid primary database target',503),{code:'PRIMARY_TARGET_INVALID'});
         id=selected;
       }else{
         // Retain the original main target only when it actually exists.
         const legacy=await this.ctx.storage.get('target:loc-main');
-        if(!legacy)throw fail('Primary database profile is not configured',503);
+        if(!legacy)throw Object.assign(fail('Primary database profile is not configured',503),{code:'PRIMARY_TARGET_MISSING'});
         id='loc-main';
       }
     }
     const saved=await this.ctx.storage.get('target:'+id);
-    if(!saved)throw fail('SQL connection profile is not configured',503);
+    if(!saved)throw Object.assign(fail('SQL connection profile is not configured',503),{code:'DATABASE_TARGET_MISSING'});
     const profile=await decryptProfile(saved.encrypted,this.env.LOC_CONTROL_ENCRYPTION_KEY);
     const key=await sqlSourceKey(profile);
     const source=await this.ctx.storage.get(key)||{};
@@ -470,7 +470,7 @@ export class LocAuthorityState extends DurableObject {
       const record=await this.ctx.storage.get('sql-verified:'+id);
       const revision=await sqlTargetRevision(profile);
       if(!sqlVerificationAllowed(source,record,revision,now))
-        throw fail('SQL connection has not passed manual verification',423);
+        throw Object.assign(fail('SQL connection has not passed manual verification',423),{code:'SQL_VERIFICATION_REQUIRED'});
     }
     return profile;
   }
