@@ -66,6 +66,19 @@ test('ZenStack V3 dependencies are lockfile-consistent when installed',()=>{
   }
 });
 
+test('SWR is retired; ZenStack client queries share one native QueryClient',()=>{
+  assert.equal(manifest.dependencies?.swr,undefined);
+  assert.equal(root.dependencies?.swr,undefined);
+  assert.equal(lock.packages?.['node_modules/swr'],undefined);
+  assert.equal(manifest.dependencies?.['@tanstack/react-query'],'5.103.1');
+  assert.equal(root.dependencies?.['@tanstack/react-query'],'5.103.1');
+  assert.ok(lock.packages?.['node_modules/@tanstack/react-query']);
+  assert.ok(lock.packages?.['node_modules/@tanstack/query-core']);
+  const source=readFileSync(new URL('../zenstack/client-queries.js',import.meta.url),'utf8');
+  assert.doesNotMatch(source,/\bswr\b|useSWR/);
+  assert.match(source,/useInfiniteQuery/);
+});
+
 test('Windows static export launches npm.cmd via cmd shell, never direct spawn',()=>{
   const builder=readFileSync(new URL('./build-static-export.mjs',import.meta.url),'utf8');
   assert.match(builder,/shell:process\.platform==='win32'/);
