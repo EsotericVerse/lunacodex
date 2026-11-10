@@ -1,9 +1,7 @@
-// Typed ZModel/Anchor autocomplete and selected-anchor Galaxy navigation.
+// Exact UID-selected Anchor navigation only; never autocomplete identifiers.
 // All SQL is fixed-purpose, Kysely-built and bounded. No user-supplied SQL,
 // imported schema copying, Article body scans or duplicate search tables.
-import {SCOPE_PATTERN_POSTING_KEY,readScopePatternRows,keywordIdentity} from './keyword-anchor-index.mjs';
-import {sql} from 'kysely';
-import {createScopedLocClient} from '../../zenstack/client.mjs';
+import {SCOPE_PATTERN_POSTING_KEY} from './keyword-anchor-index.mjs';
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
 const TYPES=['date','point','item','pattern'];
@@ -19,17 +17,10 @@ const kids=row=>Array.isArray(attrs(row).uid)?attrs(row).uid.filter(uid=>UID.tes
 const sourceTable=s=>'silver.'+s+'_galaxy';
 function err(message,status=400){throw Object.assign(new Error(message),{httpStatus:status});}
 
-// Public autocomplete must not expose private keyword trees even when an
-// Anchor UID is guessed. Individual date/place/source nodes use invisible.
-export async function accessibleKeywordAnchors(db,scope,owner=false,typed=null){
-  const rows=typed
-    ?await typed.anchor.findMany({
-        where:{type:{in:['class','group','item']}},
-        select:{uid:true,type:true,attr:true}
-      })
-    :await db.selectFrom(anchorTable(scope))
-        .select(['uid','type','attr']).where('type','in',['class','group','item'])
-        .execute();
+// Exact navigation retains keyword publication checks.
+export async function accessibleKeywordAnchors(db,scope,owner=false){
+  const rows=await db.selectFrom(anchorTable(scope))
+    .select(['uid','type','attr']).where('type','in',['class','group','item']).execute();
   const byUid=new Map(rows.map(row=>[row.uid,row]));
   const visible=new Set();
   const settings=await db.selectFrom('silver.'+scope).select(['keyword_meta','search'])
@@ -56,58 +47,6 @@ export async function accessibleKeywordAnchors(db,scope,owner=false,typed=null){
   const indexed=meta.pattern_index_version==='scope_anchor_v1'
     ?new Set(Object.keys(meta.pattern_scans||{})):new Set();
   return {items:visible,patterns,indexed,published:settings?.search===true};
-}
-
-export async function suggestAnchorOptions(db,scopeIds,rawQuery,{ownerScopes=new Set(),dialect=null,namespace='silver'}={}){
-  const query=String(rawQuery??'').normalize('NFKC').trim();
-  if(!Array.isArray(scopeIds)||scopeIds.length>50||
-     scopeIds.some(scope=>!SCOPE.test(scope))||query.length>120)
-    err('Invalid Anchor autocomplete request');
-  if(!query)return [];
-  const result=[],seen=new Set(),like='%'+query.replace(/[\\%_]/g,ch=>'\\'+ch)+'%';
-  for(const scope of new Set(scopeIds)){
-    const owner=ownerScopes.has(scope);
-    // The trusted Pages connection supplies the Kysely dialect to ZenStack.
-    // Keep one pool and preserve PostgreSQL JSON/ILIKE semantics via $qb.
-    const typed=dialect?createScopedLocClient({dialect,scopeId:scope,namespace}):null;
-    const visible=await accessibleKeywordAnchors(db,scope,owner,typed);
-    if(!owner&&!visible.published)continue;
-    for(const type of TYPES){
-      // Check Anchor semantics, not only display titles. A date typed as
-      // 2026-11 must match attr.date; a place alias may be in attr.location.
-      let search=(typed?.$qb||db).selectFrom(typed?'Anchor':anchorTable(scope))
-        .select(['uid','type','title','attr','num','invisible'])
-        .where('type','=',type);
-      if(type==='date')search=search.where(eb=>eb.or([
-        eb('title','ilike',like),sql`(attr->>'date') ilike ${like}`
-      ]));
-      else if(type==='point')search=search.where(eb=>eb.or([
-        eb('title','ilike',like),sql`(attr->>'location') ilike ${like}`
-      ]));
-      else search=search.where('title','ilike',like);
-      const found=await search.orderBy('title','asc').limit(12).execute();
-      for(const row of found){
-        if(!owner&&row.invisible)continue;
-        if(type==='item'&&!visible.items.has(row.uid))continue;
-        if(type==='pattern'&&!visible.patterns.has(row.uid))continue;
-        const key=scope+':'+type+':'+row.uid;if(seen.has(key))continue;
-        seen.add(key);
-        const title=String(row.title||'');
-        const when=type==='date'?String(attrs(row).date||''):'';
-        result.push({scopeId:scope,uid:row.uid,type,title,
-          ...(when?{date:when}:{}),
-          ...(type==='pattern'&&visible.indexed.has(keywordIdentity(title))
-            ?{count:Math.max(0,Number(row.num)||0)}:{})});
-      }
-    }
-  }
-  // Query-match first, then stable source/type ordering and known Pattern count.
-  return result.sort((a,b)=>{
-    const starts=Number(keywordIdentity(b.title).startsWith(keywordIdentity(query)))-
-      Number(keywordIdentity(a.title).startsWith(keywordIdentity(query)));
-    return starts||TYPES.indexOf(a.type)-TYPES.indexOf(b.type)||
-      (b.count||0)-(a.count||0)||a.title.localeCompare(b.title);
-  }).slice(0,36);
 }
 
 export async function queryAnchorArticles(db,{scopeId,uid,type,owner=false,

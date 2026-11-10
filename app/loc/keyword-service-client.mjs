@@ -6,12 +6,12 @@ const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 
 export async function keywordService(operation,args={}){
   if(!['analyze','reset','classes','catalog','summary','stats','suggest',
-      'suggestAnchors','anchorSearch','saveItem','deleteItem','syncLibrary'].includes(operation))
+      'anchorSearch','saveItem','deleteItem','syncLibrary'].includes(operation))
     throw Error('Unsupported Keyword operation');
   if(!args||typeof args!=='object'||Array.isArray(args))
     throw Error('Invalid Keyword request');
   const scope=String(args.scopeId||'');
-  if(!['suggest','suggestAnchors'].includes(operation)&&!SCOPE.test(scope))
+  if(!SCOPE.test(scope))
     throw Error('Invalid Keyword Scope');
   const write=['analyze','reset','saveItem','deleteItem','syncLibrary'].includes(operation);
   const token=await locDelegation(scope,write);

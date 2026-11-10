@@ -9,12 +9,12 @@ import {
   suggestKeywordPatterns,analyzeKeywordScope,resetKeywordScope,
   saveKeywordItem,deleteKeywordItem,synchronizeKeywordLibrary
 } from '../../app/loc/keyword-sql-service.mjs';
-import {suggestAnchorOptions,queryAnchorArticles} from '../../app/loc/keyword-anchor-search.mjs';
+import {queryAnchorArticles} from '../../app/loc/keyword-anchor-search.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
 const OPERATIONS=new Set(['analyze','reset','classes','catalog','summary','stats','suggest',
-  'suggestAnchors','anchorSearch','saveItem','deleteItem','syncLibrary']);
+  'anchorSearch','saveItem','deleteItem','syncLibrary']);
 function respond(data,status=200){
   return new Response(JSON.stringify(data),{
     status,headers:{'content-type':'application/json; charset=utf-8',
@@ -47,7 +47,7 @@ export async function onRequestPost(context){
     const {operation,args}=input;
     const {role,claims}=await verifiedIdentity(request,context.env);
     const scope=String(args.scopeId||'');
-    if(!['suggest','suggestAnchors'].includes(operation)&&!SCOPE.test(scope))
+    if(operation!=='suggest'&&!SCOPE.test(scope))
       error('Invalid Keyword Scope');
     if(['catalog','stats','summary','analyze','reset'].includes(operation)&&
        !UID.test(String(args.classUid||'')))
@@ -57,21 +57,13 @@ export async function onRequestPost(context){
     const entry=await directMcpKysely(context.env);
     const db=entry.db;
     let result;
-    if(operation==='suggest'||operation==='suggestAnchors'){
-      const scopes=args.scopeIds;
-      if(!Array.isArray(scopes)||scopes.some(id=>!SCOPE.test(id)))
-        error('Invalid Keyword Scope list');
-      const owned=new Set();
-      for(const id of new Set(scopes))
-        if(await permission(db,role,claims,id))owned.add(id);
-      result=operation==='suggestAnchors'
-        ?await suggestAnchorOptions(db,scopes,String(args.query||''),{
-            ownerScopes:owned,
-            // Reuse the existing PostgreSQL connection; portable SQL stays on Kysely.
-            dialect:entry.engine==='postgres'?entry.dialect:null,
-            namespace:entry.namespace||'silver'
-          })
-        :await suggestKeywordPatterns(db,scopes,String(args.query||''),{ownerScopes:owned});
+    if(operation==='suggest'){
+      // Management-only suggestion; a single verified Scope.
+      if(!await permission(db,role,claims,scope))
+        error('Scope Keyword management permission required',403);
+      result=await suggestKeywordPatterns(db,[scope],String(args.query||''),{
+        ownerScopes:new Set([scope])
+      });
     }else{
       const owner=await permission(db,role,claims,scope);
       if(['analyze','reset','saveItem','deleteItem','syncLibrary'].includes(operation)){
