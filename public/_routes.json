@@ -10,6 +10,7 @@
     "/api/loc-public-classes",
     "/api/loc-authority-role",
     "/api/loc-native",
+    "/api/loc-auth-connectivity",
     "/api/keywords"
   ],
   "exclude": []
