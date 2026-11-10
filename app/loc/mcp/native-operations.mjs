@@ -269,9 +269,26 @@ export async function handleNativeLocOperation(request,env={},{
     const result=await runMcp(selected.db);
     return reply({data:result.data});
   }catch(error){
-    const status=Number(error?.httpStatus)||500;
-    if(status>=500)console.error('[LOC native app operation]',String(error?.message||error));
-    return reply({error:{message:status>=500?'LOC native database operation unavailable':
-      String(error?.message||'LOC request denied')}},status>=400&&status<=599?status:500);
+    // A trusted Authority Profile failure has a stable, non-secret code.
+    // Do not turn a missing primary connection into an unrelated HTTP 500,
+    // and never forward raw connection strings or SQL driver messages.
+    const profileCodes=new Set(['PRIMARY_TARGET_MISSING','PRIMARY_TARGET_INVALID',
+      'DATABASE_TARGET_MISSING','SQL_VERIFICATION_REQUIRED',
+      'PROFILE_HTTP_403','PROFILE_HTTP_404','PROFILE_HTTP_423','PROFILE_HTTP_503']);
+    const code=String(error?.code||'');
+    const profileFailure=profileCodes.has(code);
+    const status=profileFailure
+      ?(code==='SQL_VERIFICATION_REQUIRED'||code==='PROFILE_HTTP_423'?423:503)
+      :Number(error?.httpStatus)||500;
+    if(status>=500)console.error('[LOC native app operation]',{
+      stage:profileFailure?'db_connection':'operation',
+      code:profileFailure?code:'OPERATION_FAILED'
+    });
+    const message=profileFailure?'LOC 主要資料庫連線尚未就緒':
+      status>=500?'LOC native database operation unavailable':
+      String(error?.message||'LOC request denied');
+    return reply({error:{message,
+      ...(profileFailure?{code,stage:'db_connection'}:{})}},
+      status>=400&&status<=599?status:500);
   }
 }

@@ -136,8 +136,15 @@ export function createConfiguredAdapter({
     });
     const result=await response.json().catch(()=>null);
     if(!response.ok){
-      const error=new Error(result?.error?.message||'LOC 原生資料庫寫入失敗（HTTP '+response.status+'）');
-      error.status=response.status;throw error;
+      const code=typeof result?.error?.code==='string'&&
+        /^[A-Z0-9_]{3,40}$/.test(result.error.code)
+        ?result.error.code:'';
+      const explanation=code?' ['+code+']':'';
+      const error=new Error((result?.error?.message||
+        'LOC 原生資料庫寫入失敗')+'（HTTP '+response.status+explanation+'）');
+      error.status=response.status;
+      if(code)error.code=code;
+      throw error;
     }
     return {data:result?.data,error:null};
   };
