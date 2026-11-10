@@ -49,7 +49,8 @@ async function authorizedProfile(env,alias,verifiedAlias,fetchImpl,probeTicket='
  // is not configured at all.
  const control=DATABASE_ACCESS_LIST.find(item=>item.selected===true);
  const isPrimary=alias===control?.connection_alias&&
-  (!verifiedAlias||verifiedAlias===control.target_id);
+  (!verifiedAlias||verifiedAlias===control.target_id||
+   verifiedAlias===control.connection_alias);
  if(secret){
   if(secret.length<32)throw fail('LOC trusted profile secret is invalid');
   // `loc_main` is a local connection alias, not LOC Auth's target ID.
