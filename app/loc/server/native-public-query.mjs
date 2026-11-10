@@ -233,12 +233,29 @@ export async function handleNativePublicQuery(request,env={},{
     return respond({data:normalized.cardinality?rows[0]||null:rows,
       count:fullCount});
   }catch(error){
+    // Public diagnostics expose only fixed transport categories, never
+    // connection hosts, credentials, SQL statements, or query parameters.
     let code='UNKNOWN',cause=error;
-    for(let depth=0;cause&&depth<5;depth++,cause=cause.cause)
-      if(/^[A-Za-z0-9_]{2,40}$/.test(String(cause.code||''))){
-        code=String(cause.code);break;
-      }
-    console.error('[LOC public Kysely]',{stage,code});
-    return respond({error:'LOC Kysely public read failed',stage,code},503);
+    const descriptions=[],types=[];
+    for(let depth=0;cause&&depth<5;depth++,cause=cause.cause){
+      if(/^[A-Za-z0-9_]{2,40}$/.test(String(cause.code||''))&&code==='UNKNOWN')
+        code=String(cause.code);
+      descriptions.push(String(cause.message||'').toLowerCase());
+      types.push(String(cause.name||''));
+    }
+    const message=descriptions.join(' ');
+    const reason=
+      /certificate|self.signed|tls|ssl|secure connection|handshake/.test(message)?'TLS':
+      /password authentication|scram|sasl|authentication failed/.test(message)?'DB_AUTH':
+      /permission denied|insufficient privilege/.test(message)?'DB_PRIVILEGE':
+      /relation .* does not exist|undefined table/.test(message)?'DB_RELATION':
+      /getaddrinfo|dns|name resolution|enotfound|eai_again/.test(message)?'DNS':
+      /network|socket|connect|connection|timeout|timed out|unreachable|refused/.test(message)?'TRANSPORT':
+      /unsupported|not implemented|not supported/.test(message)?'RUNTIME_UNSUPPORTED':
+      /cannot read|is not a function|undefined|typeerror/.test(message)?'RUNTIME_TYPE':
+      /pool|client/.test(message)?'DRIVER_POOL':'UNCLASSIFIED';
+    const type=types.find(name=>['Error','TypeError','SyntaxError','RangeError','AggregateError'].includes(name))||'Other';
+    console.error('[LOC public Kysely]',{stage,code,reason,type});
+    return respond({error:'LOC Kysely public read failed',stage,code,reason,type},503);
   }
 }
