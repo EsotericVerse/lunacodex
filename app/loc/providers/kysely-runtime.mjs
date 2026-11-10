@@ -3,6 +3,7 @@ import {DB_QUERY_BATCH_SIZE} from '../query-batch-size.mjs';
 import {serializePortableJsonFields,portableRelation} from './sql-engine-ports.mjs';
 import {validateLocRegistryDomain} from './loc-domain.mjs';
 import {portableContainsSpec,parsePortableOrExpression} from './portable-search.mjs';
+import {verifyModeledSqlFields} from '../../../zenstack/model-column-guard.mjs';
 
 const identifier=/^[a-z][a-z0-9_]*$/i;
 const schemas=new Set(['silver','api']);
@@ -51,6 +52,10 @@ function validateQuery(input){
   const orFilters=(input.or||[]).map(expr=>{if(typeof expr!=='string')throw new Error('Invalid OR filter');return parsePortableOrExpression(expr)});
   if(orFilters.length>10)throw new Error('Too many OR filters');
   if(input.single!==undefined&&!['single','maybeSingle'].includes(input.single))throw new Error('Invalid row cardinality');
+  // ZModel is the shared model contract for the native ORM and Kysely
+  // fallback. Keep existing request/SQL syntax guards for unmodeled tables.
+  verifyModeledSqlFields({schema,table,columns,filters,orders,
+    values:input.values,onConflict:input.onConflict||[]});
   return {...input,schema,table,filters,columns,orders,limit,offset,orFilters};
 }
 

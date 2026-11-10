@@ -3,6 +3,7 @@
 // imported schema copying, Article body scans or duplicate search tables.
 import {SCOPE_PATTERN_POSTING_KEY,readScopePatternRows,keywordIdentity} from './keyword-anchor-index.mjs';
 import {sql} from 'kysely';
+import {createScopedLocClient} from '../../zenstack/client.mjs';
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
 const TYPES=['date','point','item','pattern'];
@@ -20,10 +21,15 @@ function err(message,status=400){throw Object.assign(new Error(message),{httpSta
 
 // Public autocomplete must not expose private keyword trees even when an
 // Anchor UID is guessed. Individual date/place/source nodes use invisible.
-export async function accessibleKeywordAnchors(db,scope,owner=false){
-  const rows=await db.selectFrom(anchorTable(scope))
-    .select(['uid','type','attr']).where('type','in',['class','group','item'])
-    .execute();
+export async function accessibleKeywordAnchors(db,scope,owner=false,typed=null){
+  const rows=typed
+    ?await typed.anchor.findMany({
+        where:{type:{in:['class','group','item']}},
+        select:{uid:true,type:true,attr:true}
+      })
+    :await db.selectFrom(anchorTable(scope))
+        .select(['uid','type','attr']).where('type','in',['class','group','item'])
+        .execute();
   const byUid=new Map(rows.map(row=>[row.uid,row]));
   const visible=new Set();
   const settings=await db.selectFrom('silver.'+scope).select(['keyword_meta','search'])
@@ -52,7 +58,7 @@ export async function accessibleKeywordAnchors(db,scope,owner=false){
   return {items:visible,patterns,indexed,published:settings?.search===true};
 }
 
-export async function suggestAnchorOptions(db,scopeIds,rawQuery,{ownerScopes=new Set()}={}){
+export async function suggestAnchorOptions(db,scopeIds,rawQuery,{ownerScopes=new Set(),dialect=null,namespace='silver'}={}){
   const query=String(rawQuery??'').normalize('NFKC').trim();
   if(!Array.isArray(scopeIds)||scopeIds.length>50||
      scopeIds.some(scope=>!SCOPE.test(scope))||query.length>120)
@@ -61,12 +67,15 @@ export async function suggestAnchorOptions(db,scopeIds,rawQuery,{ownerScopes=new
   const result=[],seen=new Set(),like='%'+query.replace(/[\\%_]/g,ch=>'\\'+ch)+'%';
   for(const scope of new Set(scopeIds)){
     const owner=ownerScopes.has(scope);
-    const visible=await accessibleKeywordAnchors(db,scope,owner);
+    // The trusted Pages connection supplies the Kysely dialect to ZenStack.
+    // Keep one pool and preserve PostgreSQL JSON/ILIKE semantics via $qb.
+    const typed=dialect?createScopedLocClient({dialect,scopeId:scope,namespace}):null;
+    const visible=await accessibleKeywordAnchors(db,scope,owner,typed);
     if(!owner&&!visible.published)continue;
     for(const type of TYPES){
       // Check Anchor semantics, not only display titles. A date typed as
       // 2026-11 must match attr.date; a place alias may be in attr.location.
-      let search=db.selectFrom(anchorTable(scope))
+      let search=(typed?.$qb||db).selectFrom(typed?'Anchor':anchorTable(scope))
         .select(['uid','type','title','attr','num','invisible'])
         .where('type','=',type);
       if(type==='date')search=search.where(eb=>eb.or([

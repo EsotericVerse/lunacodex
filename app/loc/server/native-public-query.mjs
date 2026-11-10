@@ -7,6 +7,9 @@ import {executeKyselyAnalytics,executePortableKyselyAnalytics}
 import {executeKyselyPublicAction} from '../providers/kysely-public.mjs';
 import {SCOPE_ROUTE_INDEX} from '../../modular/scope-route-index.js';
 import {directMcpKysely} from '../mcp/native-kysely.mjs';
+import {createScopedLocClient} from '../../../zenstack/client.mjs';
+import {nativeReadPlan,executeNativeRead} from '../../../zenstack/native-query.mjs';
+import {verifyModeledSqlFields} from '../../../zenstack/model-column-guard.mjs';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 import {portableRelation} from '../providers/sql-engine-ports.mjs';
 import {parsePortableOrExpression,portableContainsSpec}
@@ -99,10 +102,38 @@ function normalize(body){
   if(body.count!=null&&body.count!=='exact')
     throw invalid('Invalid SQL count mode');
   if(body.head!=null&&typeof body.head!=='boolean')throw invalid('Invalid SQL HEAD');
+  // Validate known physical column names against the single ZenStack model.
+  // No SQL connection is needed to reject unknown modeled projections.
+  verifyModeledSqlFields({schema:'silver',table,columns,filters,orders});
   return {table,columns,filters,orFilters,orders,limit,offset,
     head:body.head===true,cardinality:body.cardinality||null,count:body.count||null};
 }
 
+
+// The lossless subset of ordinary public Scope SELECTs uses the ZenStack ORM
+// against the SAME trusted PostgreSQL Kysely dialect. Everything it cannot
+// express without a behavior change (JSON, nullable arrays, SQL dialects,
+// OR/LIKE, user-supplied dates, cardinality) remains on the Kysely path.
+function modeledPublicSelect(selected,query){
+  if(selected.engine!=='postgres'||!selected.dialect||query.cardinality)
+    return null;
+  const matched=/^([a-z][a-z0-9]{0,14})_(galaxy|anchor|blocks)$/.exec(query.table);
+  if(!matched||!SCOPE.has(matched[1]))return null;
+  const modelName=matched[2][0].toUpperCase()+matched[2].slice(1);
+  const body={
+    kind:'query',operation:'select',schema:'silver',table:query.table,
+    columns:query.columns,
+    filters:query.filters.map(f=>({
+      column:f.column,operator:f.op,value:f.value,negate:f.negate
+    })),
+    or:query.orFilters,
+    orders:query.orders,limit:query.limit,offset:query.offset,
+    head:query.head,count:query.head||query.count==='exact'
+  };
+  if(!nativeReadPlan(body,modelName))return null;
+  return {client:createScopedLocClient({dialect:selected.dialect,
+    namespace:selected.namespace||'silver',scopeId:matched[1]}),body,modelName};
+}
 
 const PUBLIC_ACTIONS=new Set(['read_app_bootstrap','read_scope_page_copy',
   'page_blocks','hero_blocks','search_scope_trace_place_names']);
@@ -211,6 +242,11 @@ export async function handleNativePublicQuery(request,env={},{
       return respond({data:output.data,count:output.count??null});
     }
     stage='select';
+    const modeled=modeledPublicSelect(selected,normalized);
+    if(modeled){
+      const output=await executeNativeRead(modeled.client,modeled.body,modeled.modelName);
+      return respond({data:output.data,count:output.count??null});
+    }
     if(normalized.head){
       const result=await withFilters(selected.db.selectFrom(table),normalized)
         .select(eb=>eb.fn.countAll().as('count')).executeTakeFirst();
