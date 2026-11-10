@@ -4,6 +4,8 @@ import {issueDelegation} from '../../app/loc/auth/delegation-contract.mjs';
 import {locRegistryRoles,isLocRegistryAdmin} from './manage-role.mjs';
 import {normalizeSqlDriverAuthentication,publicSqlDriverAuthentication,
   sqlAuthNeedsUserPassword} from '../../app/loc/providers/sql-driver-auth.mjs';
+import {sqlSourceKey,sqlTargetRevision,reserveSqlProbe,finishSqlProbe,
+  sqlVerificationAllowed} from './sql-source-gate.mjs';
 import {ISSUER,MCP_AUDIENCE,WEB_AUDIENCE,isNativeOAuthPath,handleNativeOAuth,
   verifyNativeOAuth} from './native-oauth.mjs';
 import {runBetterAuthStore} from './better-auth-store.mjs';
@@ -20,8 +22,10 @@ const ID=/^[a-z][a-z0-9_-]{0,63}$/;
 const ENGINES=new Set(['postgres','mysql','mssql']);
 function fail(message,status=400){return Object.assign(new Error(message),{status});}
 async function verifiedLocOwner(principal,env){
+  // The single LOC owner must be able to configure the primary SQL target
+  // before any database registry query is possible. No SQL for SSO bootstrap.
   return principal?.provider==='loc'&&principal.emailVerified===true&&
-    isLocRegistryAdmin(await locRegistryRoles(env,principal.email));
+    String(principal.email||'').trim().toLowerCase()==='sopa2306@gmail.com';
 }
 function b64bytes(value){
   const value64=String(value).replace(/-/g,'+').replace(/_/g,'/');
@@ -286,14 +290,11 @@ export class LocAuthorityState extends DurableObject {
     const saved=await this.ctx.storage.list({prefix:'target:'});
     const targets=[];
     for(const [key,item] of saved)targets.push({id:key.slice(7),...item.public});
-    // The default control alias is not a selectable user credential.
-    if(!targets.some(target=>target.id==='loc-main'))targets.push({
-      id:'loc-main',label:'主要資料庫連線',engine:'postgres',managed:true
-    });
+    // Never invent an SQL Type or display a non-existent database target.
     targets.sort((a,b)=>a.id.localeCompare(b.id));
     const savedPrimary=await this.ctx.storage.get('primary_id');
     const primary=targets.some(target=>target.id===savedPrimary)
-      ?savedPrimary:'loc-main';
+      ?savedPrimary:(targets.some(target=>target.id==='loc-main')?'loc-main':null);
     return {primary_id:primary,targets};
   }
   // LOC delegates access with a self-managed asymmetric key. The private JWK
@@ -376,16 +377,68 @@ export class LocAuthorityState extends DurableObject {
     });
     return publicView;
   }
-  async trustedDatabaseProfile(id){
+  // The only way to begin a DB connection probe is an owner-initiated,
+  // bounded request. All projects at the same DB server share the same gate.
+  async beginSqlProbe(id){
     if(!ID.test(String(id||'')))throw fail('Invalid database target',400);
     const saved=await this.ctx.storage.get('target:'+id);
-    if(!saved){
-      const available=[...(await this.ctx.storage.list({prefix:'target:'})).keys()]
-        .map(key=>key.slice('target:'.length));
-      console.error('[LOC SQL target missing]',{requested:id,available});
-      throw fail('Database target not configured',404);
+    if(!saved)throw fail('SQL connection profile is not configured',503);
+    const profile=await decryptProfile(saved.encrypted,this.env.LOC_CONTROL_ENCRYPTION_KEY);
+    const key=await sqlSourceKey(profile);
+    const ticket=crypto.randomUUID();
+    const result=await this.ctx.storage.transaction(async tx=>{
+      const previous=await tx.get(key);
+      const decision=reserveSqlProbe(previous,Date.now(),ticket);
+      if(decision.allowed)await tx.put(key,{...decision.state,targetId:id});
+      return {allowed:decision.allowed,reason:decision.reason,
+        retryAt:decision.retryAt};
+    });
+    return {...result,...(result.allowed?{ticket}:{})};
+  }
+  async finishSqlProbe(id,ticket,result){
+    if(!ID.test(String(id||''))||typeof ticket!=='string'||
+      !/^[0-9a-f-]{36}$/.test(ticket))throw fail('Invalid probe ticket',400);
+    const saved=await this.ctx.storage.get('target:'+id);
+    if(!saved)throw fail('SQL connection profile is not configured',503);
+    const profile=await decryptProfile(saved.encrypted,this.env.LOC_CONTROL_ENCRYPTION_KEY);
+    const key=await sqlSourceKey(profile);
+    const revision=await sqlTargetRevision(profile);
+    return this.ctx.storage.transaction(async tx=>{
+      const previous=await tx.get(key)||{};
+      if(previous.targetId!==id)throw fail('SQL probe ticket does not match source',403);
+      const outcome=finishSqlProbe(previous,ticket,result,Date.now());
+      if(!outcome.accepted)throw fail('SQL probe expired',409);
+      await tx.put(key,outcome.state);
+      await tx.put('sql-verified:'+id,{
+        status:outcome.success?'verified':'rejected',
+        revision,generation:outcome.state.generation,
+        reason:outcome.reason,
+        verifiedAt:outcome.success?Date.now():0
+      });
+      return {verified:outcome.success,reason:outcome.reason,
+        retryAt:outcome.state.blockedUntil||0};
+    });
+  }
+  async trustedDatabaseProfile(id,probeTicket=''){
+    if(!ID.test(String(id||'')))throw fail('Invalid database target',400);
+    const saved=await this.ctx.storage.get('target:'+id);
+    if(!saved)throw fail('SQL connection profile is not configured',503);
+    const profile=await decryptProfile(saved.encrypted,this.env.LOC_CONTROL_ENCRYPTION_KEY);
+    const key=await sqlSourceKey(profile);
+    const source=await this.ctx.storage.get(key)||{};
+    const now=Date.now();
+    if(probeTicket){
+      if(!/^[0-9a-f-]{36}$/.test(probeTicket)||
+         source.targetId!==id||source.inFlight!==probeTicket||
+         Number(source.leaseExpires||0)<=now)
+        throw fail('SQL connection probe not authorized',423);
+    }else{
+      const record=await this.ctx.storage.get('sql-verified:'+id);
+      const revision=await sqlTargetRevision(profile);
+      if(!sqlVerificationAllowed(source,record,revision,now))
+        throw fail('SQL connection has not passed manual verification',423);
     }
-    return decryptProfile(saved.encrypted,this.env.LOC_CONTROL_ENCRYPTION_KEY);
+    return profile;
   }
   async putTarget(id,input){
     const old=await this.ctx.storage.get('target:'+id);
@@ -415,10 +468,16 @@ export class LocAuthorityState extends DurableObject {
     const {password:_password,authentication:internalAuth,...fields}=profile;
     const publicFields={...fields,
       authentication:publicSqlDriverAuthentication(internalAuth)};
+    // Any changed SQL connection credentials or endpoint invalidate the prior
+    // verification. Saving does not open a SQL socket or reset source limits.
+    const revision=await sqlTargetRevision(profile);
     await this.ctx.storage.put('target:'+id,{
       public:publicFields,
       encrypted:await encryptProfile(profile,this.env.LOC_CONTROL_ENCRYPTION_KEY)
     });
+    const oldRecord=await this.ctx.storage.get('sql-verified:'+id);
+    if(oldRecord?.revision!==revision)
+      await this.ctx.storage.put('sql-verified:'+id,{status:'unverified',revision});
     return publicFields;
   }
   // Per-user selection is stored in the existing Authority DO, not in
@@ -1192,7 +1251,8 @@ export default {
         if(mismatch!==0)throw fail('Trusted LOC backend required',403);
         const owner=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName(
           'loc-authority-control-v1'));
-        return json(await owner.trustedDatabaseProfile(profileMatch[1]),200,'');
+        return json(await owner.trustedDatabaseProfile(profileMatch[1],
+          String(request.headers.get('x-loc-probe-ticket')||'')),200,'');
       }
       const principal=await verifyNativeOAuth(request,env,WEB_AUDIENCE);
       if(!url.pathname.startsWith('/v1/'))throw fail('Not found',404);
@@ -1243,6 +1303,35 @@ export default {
       const stub=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName('loc-authority-control-v1'));
       if(request.method==='GET'&&url.pathname==='/v1/me')return json(principal,200,origin);
       if(request.method==='GET'&&url.pathname==='/v1/state')return json(await stub.listState(),200,origin);
+      const probeMatch=/^\/v1\/targets\/([a-z][a-z0-9_-]{0,63})\/probe$/.exec(url.pathname);
+      if(request.method==='POST'&&probeMatch){
+        const targetId=probeMatch[1];
+        const reservation=await stub.beginSqlProbe(targetId);
+        if(!reservation.allowed)return json({verified:false,reason:reservation.reason,
+          retryAt:reservation.retryAt},429,origin);
+        let verdict={ok:false,reason:'DATABASE_UNAVAILABLE'};
+        try{
+          const expected=String(env.LOC_DB_PROFILE_SERVICE_TOKEN||'');
+          if(expected.length<32)throw fail('LOC backend service is not configured',503);
+          const probe=await fetch('https://loc.lo3rwang.cc/api/loc-db-probe',{
+            method:'POST',headers:{'x-loc-service-token':expected,
+              'content-type':'application/json'},
+            body:JSON.stringify({id:targetId,ticket:reservation.ticket}),
+            redirect:'manual',cache:'no-store',signal:AbortSignal.timeout(12000)
+          });
+          if(probe.ok){
+            const response=await probe.json();
+            if(response&&response.ok===true&&response.typeVerified===true&&
+              response.credentialsVerified===true)
+              verdict={ok:true,typeVerified:true,credentialsVerified:true};
+            else verdict={ok:false,reason:String(response?.reason||'DATABASE_UNAVAILABLE')};
+          }else verdict={ok:false,reason:'DATABASE_UNAVAILABLE'};
+        }catch(error){
+          verdict={ok:false,reason:error?.name==='TimeoutError'
+            ?'TIMEOUT':'TRANSPORT'};
+        }
+        return json(await stub.finishSqlProbe(targetId,reservation.ticket,verdict),200,origin);
+      }
       if(request.method==='GET'&&url.pathname==='/v1/auth/providers')
         return json(await stub.listAuthProviders(),200,origin);
       const authMatch=/^\/v1\/auth\/providers\/(github|oidc|entra|ldap|ad|clerk)$/.exec(url.pathname);
