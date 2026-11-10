@@ -82,6 +82,46 @@ test('A signed global:manage delegation updates api.manage through the real Poli
   assert.match(executed[0].sql,/where "id" = /i);
 });
 
+test('missing primary profile returns a specific 503 without leaking SQL or bypassing owner auth',async()=>{
+  const now=Math.floor(Date.now()/1000);
+  const {token,fetchImpl}=await ownerDelegation(now,['global:manage']);
+  const body={kind:'managed-write',scopeid:'',payload:{
+    p_table:'silver.loc',p_operation:'update',
+    p_values:{display_name:'Must never execute'},
+    p_filters:[{column:'id',operator:'eq',value:'lo3rwang'}]
+  }};
+  const secret='postgresql://user:secret@example.invalid:5432/postgres';
+  const response=await handleNativeLocOperation(request(body,token),{},{
+    fetchImpl,database:async()=>{
+      throw Object.assign(new Error('SQL profile refused '+secret),
+        {code:'PRIMARY_TARGET_MISSING'});
+    }
+  });
+  assert.equal(response.status,503);
+  const payload=await response.json();
+  assert.deepEqual(payload,{error:{message:'LOC 主要資料庫連線尚未就緒',
+    code:'PRIMARY_TARGET_MISSING',stage:'db_connection'}});
+  assert.doesNotMatch(JSON.stringify(payload),/example\\.invalid|secret/);
+});
+
+test('unverified SQL connection is reported as 423 and cannot execute a write',async()=>{
+  const now=Math.floor(Date.now()/1000);
+  const {token,fetchImpl}=await ownerDelegation(now,['global:manage']);
+  const body={kind:'managed-write',scopeid:'',payload:{
+    p_table:'silver.loc',p_operation:'update',
+    p_values:{display_name:'Not yet verified'},
+    p_filters:[{column:'id',operator:'eq',value:'lo3rwang'}]
+  }};
+  const response=await handleNativeLocOperation(request(body,token),{},{
+    fetchImpl,database:async()=>{
+      throw Object.assign(new Error('Provider authentication not verified'),
+        {code:'SQL_VERIFICATION_REQUIRED'});
+    }
+  });
+  assert.equal(response.status,423);
+  assert.equal((await response.json()).error.code,'SQL_VERIFICATION_REQUIRED');
+});
+
 test('Managed write is refused without a global:manage grant',async()=>{
   const now=Math.floor(Date.now()/1000);
   const {token,fetchImpl}=await ownerDelegation(now,['lo3rwang:write']);
