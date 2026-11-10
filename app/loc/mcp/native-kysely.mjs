@@ -86,7 +86,11 @@ async function authorizedProfile(env,alias,verifiedAlias,fetchImpl){
    method:'GET',headers:{'x-loc-service-token':secret,accept:'application/json'},
    cache:'no-store',redirect:'manual',signal:AbortSignal.timeout(8000)
   });
-  if(!result.ok)throw fail('LOC Authority profile lookup refused ('+result.status+')');
+  if(!result.ok){
+   const error=fail('LOC Authority profile lookup refused ('+result.status+')');
+   error.code='PROFILE_HTTP_'+result.status;
+   throw error;
+  }
   const profile=await result.json().catch(()=>null);
   // Identity/selection has already been checked in the signed LOC delegation.
   const verified=normalizeLiveTarget(profileId,profile);
