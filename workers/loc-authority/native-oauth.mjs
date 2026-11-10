@@ -204,7 +204,8 @@ async function sessionFromBetter(request,env,stub){
   // An auxiliary LOC OAuth session cannot outlive its Better Auth SSO.
   expires:Math.min(identity.expires,Date.now()+SESSION_SECONDS*1000)};
  await stub.nativePut('native-session:'+sidHash,next);
- return {session:next,cookie:cookie(SESSION_COOKIE,sid,SESSION_SECONDS)};
+ return {session:next,cookie:cookie(SESSION_COOKIE,sid,
+  Math.max(1,Math.ceil((next.expires-Date.now())/1000)))};
 }
 async function issueToken(stub,session,resource,scope,client_id){
  const iat=Math.floor(Date.now()/1000);
