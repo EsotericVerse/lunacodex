@@ -51,4 +51,31 @@ export async function testLocAuthConnection(env={},database=db_connection){
   return json({ok:false,stage:'sql-query',...failureCode(error)},503);
  }
 }
-export function onRequestGet({env}){return testLocAuthConnection(env)}
+// Explicit diagnostic path for the Supabase API key hosted ONLY on Auth Worker.
+export async function testSupabaseSecretViaAuthority(env={},fetchImpl=fetch){
+ const token=String(env.LOC_DB_PROFILE_SERVICE_TOKEN||'');
+ if(token.length<32)return json({ok:false,stage:'configuration',
+   code:'PROFILE_SERVICE_TOKEN_MISSING'},503);
+ try{
+  const response=await fetchImpl('https://auth.lo3rwang.cc/v1/internal/supabase/loc-auth-test',{
+   method:'GET',headers:{'x-loc-service-token':token,accept:'application/json'},
+   redirect:'error',cache:'no-store',signal:AbortSignal.timeout(11000)
+  });
+  if(!response.ok)return json({ok:false,stage:'authority',code:'AUTHORITY_HTTP_'+response.status},503);
+  const data=await response.json();
+  const fields=['ok','source','status','code','rowMatched','uidMatched','emailMatched',
+    'scopeMatched','roleMatched'];
+  const safe=Object.fromEntries(fields.filter(key=>Object.hasOwn(data,key))
+    .map(key=>[key,data[key]]));
+  return json(safe,data.ok===true?200:503);
+ }catch{return json({ok:false,stage:'authority',code:'AUTHORITY_FETCH_FAILED'},503)}
+}
+export function onRequestGet({request,env}){
+ const url=new URL(request.url);
+ if(url.searchParams.get('source')==='supabase-api'&&
+    [...url.searchParams.keys()].every(k=>k==='source'))
+  return testSupabaseSecretViaAuthority(env);
+ if([...url.searchParams.keys()].length)
+  return json({ok:false,code:'UNSUPPORTED_PROBE'},400);
+ return testLocAuthConnection(env)
+}

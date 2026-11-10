@@ -1,5 +1,6 @@
 import { DurableObject } from 'cloudflare:workers';
 import {checkExternalAuthQos} from './auth-qos.mjs';
+import {checkSupabaseSecretLocAuth} from './supabase-secret-check.mjs';
 import {issueDelegation} from '../../app/loc/auth/delegation-contract.mjs';
 import {locRegistryRoles,isLocRegistryAdmin} from './manage-role.mjs';
 import {normalizeSqlDriverAuthentication,publicSqlDriverAuthentication,
@@ -1283,7 +1284,8 @@ export default {
       // This endpoint NEVER executes SQL and is inaccessible to OAuth users.
       const profileMatch=/^\/v1\/internal\/database\/([a-z][a-z0-9_-]{0,63})$/
         .exec(url.pathname);
-      if(profileMatch){
+      const supabaseCheck=url.pathname==='/v1/internal/supabase/loc-auth-test';
+      if(profileMatch||supabaseCheck){
         if(request.method!=='GET')throw fail('Method not allowed',405);
         const expected=String(env.LOC_DB_PROFILE_SERVICE_TOKEN||'');
         const supplied=String(request.headers.get('x-loc-service-token')||'');
@@ -1293,6 +1295,9 @@ export default {
         for(let i=0;i<expected.length;i++)
           mismatch|=expected.charCodeAt(i)^supplied.charCodeAt(i);
         if(mismatch!==0)throw fail('Trusted LOC backend required',403);
+        // Fixed read-only Supabase Data API diagnostic. This does NOT create
+        // a PostgreSQL SQL connection or alter the LOC auth/SQL permissions.
+        if(supabaseCheck)return json(await checkSupabaseSecretLocAuth(env),200,'');
         const owner=env.LOC_AUTHORITY_STATE.get(env.LOC_AUTHORITY_STATE.idFromName(
           'loc-authority-control-v1'));
         return json(await owner.trustedDatabaseProfile(profileMatch[1],
