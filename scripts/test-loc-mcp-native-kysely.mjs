@@ -184,8 +184,19 @@ test('external database alias cannot use a Cloudflare primary connection secret'
  assert.ok(requested[0].endsWith('/v1/internal/database/office_postgres'));
  await target.db.destroy();
 });
+test('portless Neon PostgreSQL URI is accepted with the standard 5432 driver default',async()=>{
+ const env={LOC_DATABASE_URI:'postgresql://reader:sample-only@neon.example.org/neondb?sslmode=require'};
+ const selected=await directMcpKysely(env,'loc-main',{fetchImpl:async()=>{
+  throw Error('Main must not request Authority profile');
+ }});
+ assert.equal(selected.engine,'postgres');
+ assert.equal(selected.namespace,'silver');
+ assert.match(selected.db.selectFrom('silver.lo3rwang_galaxy').select('uid').compile().sql,
+  /"silver"."lo3rwang_galaxy"/);
+ await selected.db.destroy();
+});
 test('malformed Cloudflare primary URL is refused before SQL or Authority request',async()=>{
- const env={LOC_DATABASE_URI:'postgresql://postgres:secret@db.example.org/postgres'};
+ const env={LOC_DATABASE_URI:'postgresql://postgres:secret@/postgres'};
  await assert.rejects(directMcpKysely(env,'',{fetchImpl:async()=>{
   throw Error('Must not call HTTP');
  }}),err=>err.code==='BACKEND_UNAVAILABLE'&&!err.message.includes('secret'));
