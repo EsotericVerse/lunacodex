@@ -22,20 +22,20 @@ function fixture(entries=[]){
   }};
   return {db,hits};
 }
-test('LOC signed Admin delegation also requires matching active api.manage Admin',async()=>{
+test('verified LOC owner delegation authorizes writes without a redundant SQL Registry query',async()=>{
   const {db,hits}=fixture([ownerAdmin,{id:'admin',email:identity.email,manage_role:'admin',active:false}]);
   bindLocAuthorization(db,{role:'authenticated',claims:identity});
   assert.equal(await canManageLoc(db,'global'),true);
   assert.equal(await canManageLoc(db,'scope','lrunes'),true);
-  assert.deepEqual(hits,{manage:1},'one registry query per bound transaction');
+  assert.deepEqual(hits,{manage:0},'authorization must not depend on a live Registry SELECT');
 });
-test('without LOC Auth management grant, a database row does not grant writes',async()=>{
+test('without LOC Auth management grant, even the owner cannot write',async()=>{
   const {db}=fixture([ownerAdmin]);
   bindLocAuthorization(db,{role:'authenticated',claims:{...identity,grants:[]}});
   assert.equal(await canManageLoc(db,'global'),false);
   assert.equal(await canManageLoc(db,'scope','lo3rwang'),false);
 });
-test('another verified email cannot inherit an Admin row owned by someone else',async()=>{
+test('another signed LOC identity cannot inherit the unique owner write grant',async()=>{
   const {db}=fixture([ownerAdmin]);
   bindLocAuthorization(db,{role:'authenticated',claims:{...identity,
     email:'reader@example.org',grants:['global:manage']}});
@@ -48,7 +48,7 @@ test('an explicit Scope delegation never becomes global Admin',async()=>{
   assert.equal(await canManageLoc(db,'scope','lrunes'),true);
   assert.equal(await canManageLoc(db,'scope','lo3rwang'),false);
 });
-test('Manage self view reports roles only after actual database check',async()=>{
+test('Manage self view can still display optional database Registry data',async()=>{
   const {db}=fixture([ownerAdmin]);
   bindLocAuthorization(db,{role:'authenticated',claims:identity});
   const rows=await locManageRows(db,'self');
