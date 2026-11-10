@@ -75,6 +75,8 @@ export function createKyselyPublicClient({
       ['loc_user','user_settings','user_records'].includes(q.table)&&
       typeof readPrivate==='function')return readPrivate(q);
     if(q.dbId)throw Error('Selected SQL database requires signed LOC delegation');
+    if(q.signal?.aborted){const error=new Error('Request cancelled');
+      error.name='AbortError';throw error;}
     const response=await fetchImpl('/api/loc-public-query',{
       method:'POST',credentials:'omit',cache:'no-store',redirect:'error',
       headers:{accept:'application/json','content-type':'application/json'},
