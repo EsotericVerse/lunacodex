@@ -141,8 +141,8 @@ export function useAccount({enabled=true,sessionOnly=false}={}){
     [sessionOnly,queryClient]
   );
   // Passive identity must subscribe to auth-event cache updates without making
-  // a session/network request. A null SWR key unsubscribes and leaves Settings
-  // permanently stuck in emptyState.loading=true.
+  // a session/network request. A passive query subscribes to auth-event updates
+  // while remaining disabled for network fetches.
   const passive=sessionOnly&&!enabled;
   const query=useAsyncResource(queryKey,passive?null:queryFn,{
     enabled:enabled||passive,
