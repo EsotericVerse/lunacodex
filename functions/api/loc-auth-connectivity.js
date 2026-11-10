@@ -25,7 +25,15 @@ function failureCode(error){
   /unsupported|not implemented|not supported/.test(message)?'RUNTIME_UNSUPPORTED':
   /cannot read|is not a function|undefined|typeerror/.test(message)?'RUNTIME_TYPE':
   /pool|client/.test(message)?'DRIVER_POOL':'UNCLASSIFIED';
- return {code,reason};
+ const detail=
+  /connection terminated unexpectedly|terminated unexpectedly/.test(message)?'EARLY_CLOSE':
+  /connection timeout|timed out|etimedout|timeout exceeded/.test(message)?'TIMEOUT':
+  /econnreset|reset by peer|connection reset/.test(message)?'RESET':
+  /econnrefused|connection refused/.test(message)?'REFUSED':
+  /enetunreach|ehostunreach|network unreachable/.test(message)?'UNREACHABLE':
+  /socket|worker|runtime/.test(message)?'SOCKET_RUNTIME':
+  'UNSPECIFIED';
+ return {code,reason,detail};
 }
 
 export async function testLocAuthConnection(env={},database=db_connection){
