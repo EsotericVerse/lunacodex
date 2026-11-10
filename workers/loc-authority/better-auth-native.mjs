@@ -63,7 +63,7 @@ export function locBetterAuth(env){
   emailAndPassword:{enabled:false},
   socialProviders:{google:{clientId,clientSecret,disableIdTokenSignIn:true}},
   account:{accountLinking:{enabled:false}},
-  session:{expiresIn:7200,updateAge:1800},
+  session:{expiresIn:30*86400,updateAge:86400},
   rateLimit:{enabled:true,window:60,max:30},
   advanced:{useSecureCookies:true,ipAddress:{ipAddressHeaders:['cf-connecting-ip']}}
  });
