@@ -272,13 +272,13 @@ function AppShellInner({children}){
   const queryClient=useQueryClient();
   useEffect(()=>{
     // Public Blocks, images and versioned static assets only. Authenticated
-    // reads, SQL, searches and ISR numerics never enter the browser cache.
+    // reads, SQL, searches and live statistics never enter the browser cache.
     if(Capacitor.isNativePlatform()||!('serviceWorker' in navigator))return;
     if(location.protocol!=='https:'&&location.hostname!=='localhost')return;
     navigator.serviceWorker.register('/sw.js',{scope:'/'}).catch(()=>{});
   },[]);
-  // Administrative Scope metadata updates must refresh the same SWR
-  // snapshot consumed by the shell, runtime, and Guest feature pages.
+  // Administrative Scope metadata updates refresh the shared ZenStack
+  // query state consumed by the shell, runtime, and Guest feature pages.
   useEffect(()=>{
     const refresh=()=>queryClient.invalidateQueries({queryKey:['app-bootstrap']});
     const refreshLocal=()=>queryClient.invalidateQueries({predicate:query=>Array.isArray(query.queryKey)&&query.queryKey.some(part=>part==='local'||(typeof part==='string'&&part.startsWith('silver.local_')))});
