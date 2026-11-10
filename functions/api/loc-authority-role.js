@@ -2,6 +2,7 @@
 // the LOC Pages application supplies the existing database facts via Kysely.
 // MCP is not involved, and no arbitrary SQL or database table is exposed.
 import {directMcpKysely} from '../../app/loc/mcp/native-kysely.mjs';
+import {registryRelationForEngine} from '../../app/loc/providers/live-database-target.mjs';
 
 const HEADERS={'content-type':'application/json; charset=utf-8',
   'cache-control':'no-store','x-content-type-options':'nosniff'};
@@ -24,9 +25,11 @@ export async function onRequest(context){
   if(!EMAIL.test(email))return respond({error:'Invalid LOC identity email'},400);
   try{
     const selected=await directMcpKysely(env);
-    if(selected.engine!=='postgres'||selected.tableName)
+    if(selected.tableName)
       return respond({error:'LOC registry source unavailable'},503);
-    const rows=await selected.db.selectFrom('api.manage')
+    // Main DB uses the chosen Kysely SQL Dialect, never provider detection.
+    const registry=registryRelationForEngine(selected.engine);
+    const rows=await selected.db.selectFrom(registry)
       .select(['id','email','manage_role','active'])
       .where(selected.db.fn('lower',['email']),'=',email)
       .limit(64).execute();
