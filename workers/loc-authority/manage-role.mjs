@@ -11,8 +11,10 @@ export async function locRegistryRoles(env,email,{fetchImpl=globalThis.fetch}={}
   const saved=fetchImpl===globalThis.fetch?cache.get(normalized):null;
   if(saved&&saved.expires>Date.now())return saved.rows;
   const secret=String(env?.LOC_DB_PROFILE_SERVICE_TOKEN||'');
-  if(secret.length<32)
+  if(secret.length<32){
+    console.error('[LOC registry delegation]',{stage:'service-config'});
     throw Object.assign(new Error('LOC Auth registry service token is not configured'),{status:503});
+  }
   const url=new URL('https://loc.lo3rwang.cc/api/loc-authority-role');
   url.searchParams.set('email',normalized);
   let response;
@@ -21,12 +23,22 @@ export async function locRegistryRoles(env,email,{fetchImpl=globalThis.fetch}={}
       method:'GET',headers:{'x-loc-service-token':secret,accept:'application/json'},
       redirect:'manual',cache:'no-store',signal:AbortSignal.timeout(8000)
     });
-  }catch{throw Object.assign(new Error('LOC Auth registry lookup unavailable'),{status:503})}
-  if(!response.ok)
+  }catch{
+    console.error('[LOC registry delegation]',{stage:'transport'});
+    throw Object.assign(new Error('LOC Auth registry lookup unavailable'),{status:503});
+  }
+  if(!response.ok){
+    const detail=await response.json().catch(()=>null);
+    const allowedStages=new Set(['driver','registry-query']);
+    const downstream=allowedStages.has(detail?.stage)?detail.stage:'http';
+    console.error('[LOC registry delegation]',{stage:downstream,httpStatus:response.status});
     throw Object.assign(new Error('LOC Auth registry lookup failed ('+response.status+')'),{status:503});
+  }
   const result=await response.json().catch(()=>null);
-  if(!Array.isArray(result?.rows)||result.rows.length>64)
+  if(!Array.isArray(result?.rows)||result.rows.length>64){
+    console.error('[LOC registry delegation]',{stage:'response-contract'});
     throw Object.assign(new Error('Invalid LOC Auth registry response'),{status:503});
+  }
   const roles=result.rows.filter(row=>row&&
     String(row.email||'').trim().toLowerCase()===normalized&&
     SCOPE.test(String(row.id||''))&&
