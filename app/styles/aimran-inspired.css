@@ -415,34 +415,15 @@
   transform:scale(.98);
 }
 
-/* Dropdown is a real component: account / database / Scope choice list.
-   Retain the existing React Select portal, keyboard semantics and z-index. */
-.loc-settings-select__control{
-  border-color:var(--loc-craft-hairline);
-  border-radius:14px;
+/* Native account, database and Scope selections retain the themed control. */
+.loc-settings-select{
+  border-color:var(--loc-craft-hairline);border-radius:14px;
   background:color-mix(in srgb,var(--loc-panel) 87%,var(--loc-bg));
   box-shadow:inset 0 1px 0 color-mix(in srgb,var(--loc-text) 6%,transparent);
-  transition:border-color var(--loc-craft-quick) ease,box-shadow var(--loc-craft-quick) ease;
+  transition:border-color var(--loc-craft-quick) ease,box-shadow var(--loc-craft-quick) ease
 }
-.loc-settings-select__control--is-focused{
-  border-color:var(--loc-accent);
-  box-shadow:0 0 0 3px var(--loc-management-craft-focus);
-}
-.loc-settings-select__menu{
-  border-color:var(--loc-accent-border-soft);
-  border-radius:14px;
-  box-shadow:0 18px 42px var(--loc-craft-ink-shadow);
-}
-.loc-settings-select__option{
-  transition:background-color var(--loc-craft-quick) ease;
-}
-.loc-settings-select__option--is-focused{
-  background:color-mix(in srgb,var(--loc-accent) 14%,var(--loc-panel));
-}
-.loc-settings-select__option--is-selected{
-  background:var(--loc-management-craft-selected);
-  color:var(--loc-heading);
-  box-shadow:inset 2px 0 0 var(--loc-accent);
+.loc-settings-select:focus-visible{
+  border-color:var(--loc-accent);box-shadow:0 0 0 3px var(--loc-management-craft-focus)
 }
 
 /* Mobile widths do not change the single-row navigation contract. */
@@ -462,6 +443,5 @@
 }
 @media(prefers-reduced-motion:reduce){
   .management-section-nav .management-section-nav__item,
-  .loc-settings-select__control,
-  .loc-settings-select__option{transition:none!important;transform:none!important;}
+  .loc-settings-select{transition:none!important;transform:none!important;}
 }

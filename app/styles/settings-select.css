@@ -236,28 +236,15 @@
 .management-workspace-panel .admin-theme-primary-color>small{color:var(--loc-muted);font-size:.84rem;line-height:1.5;}
 .management-workspace-panel .admin-theme-advanced-colors>summary:focus-visible{outline:2px solid var(--loc-accent);outline-offset:4px;}
 
-/* Scope picker inside Settings still uses the existing React Select control. */
-.loc-settings-select{width:100%;max-width:var(--loc-management-menu-max-width);position:relative;z-index:var(--loc-management-menu-control-layer);}
-.loc-settings-select__control{
-  min-height:var(--loc-management-menu-control-min-height);display:flex;align-items:center;gap:var(--loc-management-menu-control-gap);
+.loc-settings-select{
+  width:100%;max-width:var(--loc-management-menu-max-width);
+  min-height:var(--loc-management-menu-control-min-height);
   border:1px solid var(--loc-line);border-radius:var(--loc-management-menu-control-radius);
-  padding:var(--loc-management-menu-control-padding);background:var(--loc-panel);color:var(--loc-text);cursor:pointer;
+  padding:var(--loc-management-menu-control-padding);
+  background:var(--loc-panel);color:var(--loc-text);font:inherit;cursor:pointer
 }
-.loc-settings-select__control--is-focused{border-color:var(--loc-accent);box-shadow:0 0 0 2px var(--loc-accent-surface-strong);}
-.loc-settings-select__value-container{display:flex;flex:1;min-width:0;align-items:center;gap:.25rem;}
-.loc-settings-select__single-value,.loc-settings-select__input-container{color:var(--loc-text);}
-.loc-settings-select__indicators{display:flex;align-items:center;color:var(--loc-muted);}
-.loc-settings-select__indicator{padding:.25rem;display:flex;align-items:center;}
-.loc-settings-select__indicator-separator{display:none;}
-.loc-settings-select__menu{
-  position:absolute;top:100%;width:100%;z-index:var(--loc-management-menu-popup-layer);margin-top:var(--loc-management-menu-popup-offset);
-  border:1px solid var(--loc-line);border-radius:var(--loc-management-menu-control-radius);background:var(--loc-panel);
-  color:var(--loc-text);box-shadow:var(--loc-shadow-card);overflow:hidden;isolation:isolate;
-}
-.loc-settings-select__menu-list{max-height:var(--loc-management-menu-list-max-height);overflow-y:auto;padding:var(--loc-management-menu-list-padding);background:var(--loc-panel);}
-.loc-settings-select__option{padding:var(--loc-management-menu-option-padding);cursor:pointer;border-radius:var(--loc-management-menu-option-radius);background:var(--loc-panel);}
-.loc-settings-select__option--is-focused{background:var(--loc-accent-surface-strong);}
-.loc-settings-select__option--is-selected{background:var(--loc-rune-selected-bg);color:var(--loc-text);font-weight:600;}
+.loc-settings-select:focus-visible{outline:2px solid var(--loc-accent);outline-offset:2px}
+.loc-settings-select option{background:var(--loc-panel);color:var(--loc-text)}
 .management-workspace-panel .loc-settings-select{max-width:32rem;}
 
 /* Read-only favorites remain a compact preview inside Homepage settings. */
