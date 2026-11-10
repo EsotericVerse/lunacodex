@@ -1,4 +1,5 @@
 import {sql} from 'kysely';
+import {SCOPE_ROUTE_INDEX} from '../../modular/scope-route-index.js';
 import {portableRelation} from './sql-engine-ports.mjs';
 const scopePattern=/^[a-z][a-z0-9]{0,14}$/;
 function id(value){
@@ -13,7 +14,7 @@ const ACTION_ARGS={
   hero_blocks:['p_scope_id','p_type'],
   search_scope_trace_place_names:['p_scope_id','p_term','p_limit']
 };
-export async function executeKyselyPublicAction(trx,body,{engine='postgres',namespace='silver'}={}){
+export async function executeKyselyPublicAction(trx,body,{engine='postgres',namespace='silver',publishedScopeIds=null}={}){
   const portable=engine!=='postgres';
   const table=name=>portable?portableRelation(name,engine,namespace):
     name==='manage'?'api.manage':'silver.'+name;
@@ -63,10 +64,12 @@ export async function executeKyselyPublicAction(trx,body,{engine='postgres',name
   // pre-approved public result shape; callers cannot choose relations/SQL.
   if(!portable)await sql`reset role`.execute(trx);
   if(name==='read_scope_page_copy'){
-    if(!has('manage'))return {data:[],count:null};
-    const allowed=await trx.selectFrom(table('manage'))
-      .select('id').where('id','=',scope)
-      .where('manage_role','=','scope').where('active','=',true).executeTakeFirst();
+    if(!has('manage')&&publishedScopeIds===null)return {data:[],count:null};
+    const allowed=publishedScopeIds!==null
+      ?publishedScopeIds.includes(scope)?{id:scope}:null
+      :await trx.selectFrom(table('manage'))
+        .select('id').where('id','=',scope)
+        .where('manage_role','=','scope').where('active','=',true).executeTakeFirst();
     const record=allowed&&has('loc')
       ?await trx.selectFrom(table('loc')).select(['title_tw','desc_tw'])
         .where('id','=',scope).executeTakeFirst():null;
@@ -77,12 +80,12 @@ export async function executeKyselyPublicAction(trx,body,{engine='postgres',name
   if(name==='search_scope_trace_place_names'){
     const term=String(args.p_term||'').trim().slice(0,100);
     const limit=args.p_limit===undefined?8:Math.max(1,Math.min(8,Number(args.p_limit)||8));
-    const registered=has('manage')
-      ?await trx.selectFrom(table('manage')).select('id')
+    const registered=publishedScopeIds!==null
+      ?publishedScopeIds.includes(scope)
+      :has('manage')?Boolean(await trx.selectFrom(table('manage')).select('id')
         .where('id','=',scope).where('manage_role','=','scope')
-        .where('active','=',true).executeTakeFirst()
-      :{id:scope};
-    if(!term||!registered||!has(scope+'_anchor'))return {data:[],count:null};
+        .where('active','=',true).executeTakeFirst()):portable;
+    if(!term||scope==='loc'||!registered||!has(scope+'_anchor'))return {data:[],count:null};
     if(portable){
       // Bounded Kysely pages preserve alias search without vendor-specific JSON RPC.
       const found=[],needle=term.toLocaleLowerCase();
@@ -135,10 +138,16 @@ export async function executeKyselyPublicAction(trx,body,{engine='postgres',name
     return {data:{scope_id:scope,page_name:page,config:null,blocks:[],
       registry,page_copy:[],theme_list:[],themes:[]},count:null};
   }
-  const members=await trx.selectFrom(table('manage'))
-    .select(['id','manage_role','active','sort_order',
-      'domain','directory','parent_scope_id'])
-    .orderBy('sort_order','asc').orderBy('id','asc').execute();
+  const members=publishedScopeIds!==null
+    ?SCOPE_ROUTE_INDEX.filter(row=>row.active!==false&&publishedScopeIds.includes(row.scope_id))
+      .map((row,sort_order)=>({id:row.scope_id,
+        manage_role:row.scope_id==='loc'?'group':'scope',active:true,sort_order,
+        domain:row.domain||null,directory:row.directory||null,
+        parent_scope_id:row.scope_id==='loc'?null:'loc'}))
+    :await trx.selectFrom(table('manage'))
+      .select(['id','manage_role','active','sort_order',
+        'domain','directory','parent_scope_id'])
+      .orderBy('sort_order','asc').orderBy('id','asc').execute();
   const groupRows=has('loc')?await trx.selectFrom(table('loc'))
     .select(['id','display_name','title_tw','desc_tw','birthday']).execute():[];
   const groupMap=new Map(groupRows.map(row=>[row.id,row]));
