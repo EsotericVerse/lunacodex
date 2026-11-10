@@ -390,6 +390,7 @@ export class LocAuthorityState extends DurableObject {
       const previous=await tx.get(key);
       const decision=reserveSqlProbe(previous,Date.now(),ticket);
       if(decision.allowed)await tx.put(key,{...decision.state,targetId:id,probeUsed:false});
+      else if(decision.save)await tx.put(key,decision.state);
       return {allowed:decision.allowed,reason:decision.reason,
         retryAt:decision.retryAt};
     });
