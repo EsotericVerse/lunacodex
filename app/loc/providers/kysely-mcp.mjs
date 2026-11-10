@@ -101,8 +101,12 @@ export async function executePortableMcp(trx,body,claims,{
       reject('請至github頁面找尋PR相關資料！不開放搜尋PR!',403);
     const source=external?trx.selectFrom(table):
       conversationOnly(trx.selectFrom(table));
+    // External tables need only the four canonical article fields. Optional
+    // date/url columns are selected only when the owner maps them explicitly:
+    // never assume the source schema contains LOC-specific optional columns.
     const fields=external?
-      ['uid','title','content','date','createtime','url']:
+      ['uid','title','content','createtime',
+        ...['date','url'].filter(name=>Object.hasOwn(fieldMap,name))]:
       ['uid','title','content','date','createtime','site','url'];
     return {data:await source.select(columns(fields))
       .where(physical('uid'),'=',body.uid).limit(1).execute()};
