@@ -53,7 +53,7 @@ export default function ScopeManagement({scopeId:routeScopeId='loc',section:entr
       <ManagementWorkspaceFrame level={isLoc?'group':'scope'}
         title={traceOnly?'痕跡圖管理':'空間定錨管理'}>
         <ManagementSectionNav id="scope-sections" title="空間定錨管理" panelId="scope-management-panel"
-          items={options} value={section} onChange={next=>{
+          items={options} value={section} mobileSelect onChange={next=>{
             if(next===section)return;
             if(editDock?.active)editDock.switchSection(next,setSection);
             else setSection(next);
