@@ -107,7 +107,7 @@ export function createKyselyPublicClient({
   async function analytics(args={}){
     const view=String(args.p_view||''),scope=String(args.p_scope_id||'');
     if(!['culture_anchors','culture_density','daily','overview','earliest','totals','loc',
-      'culture_list','trace_places','trace_daily','lane_daily','trace_keywords','shared_classes',
+      'culture_list','trace_places','trace_territory','trace_daily','lane_daily','trace_keywords','shared_classes',
       'search_summary','keyword_catalog','keyword_summary'].includes(view))
       throw Error('Unsupported LOC analytics query');
     if(!/^[a-z][a-z0-9]{0,14}$/.test(scope))
