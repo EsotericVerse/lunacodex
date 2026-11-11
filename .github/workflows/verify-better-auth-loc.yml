@@ -7,6 +7,8 @@ on:
     paths:
       - 'workers/loc-authority/**'
       - 'scripts/loc-auth-migrate.mjs'
+      - 'scripts/loc-auth-rls.mjs'
+      - 'scripts/loc-auth-ci-roles.mjs'
       - 'scripts/test-loc-auth-runtime.mjs'
       - 'app/loc/mcp/**'
       - '.github/workflows/verify-better-auth-loc.yml'
@@ -51,10 +53,17 @@ jobs:
           npm run test:authority
       - name: Bundle Auth Worker without deployment
         run: npx --yes wrangler@4.157.0 deploy --config workers/loc-authority/wrangler.jsonc --dry-run --outdir /tmp/loc-auth-dry
+      - name: Create isolated CI-only Auth and unrelated Web database roles
+        env:
+          GITHUB_ACTIONS: 'true'
+          LOC_AUTH_SCHEMA_GENERATION: '1'
+          LOC_AUTH_DATABASE_URL: postgresql://loc_ci:loc_ci_only@127.0.0.1:5432/loc_auth_schema
+        run: node scripts/loc-auth-ci-roles.mjs
       - name: Initialize disposable LOC Auth schema with official Better Auth migrations
         env:
           LOC_AUTH_SCHEMA_GENERATION: '1'
           LOC_AUTH_APPLY_SCHEMA: '1'
+          LOC_AUTH_RLS_ROLE: loc_auth_ci
           LOC_AUTH_DATABASE_URL: postgresql://loc_ci:loc_ci_only@127.0.0.1:5432/loc_auth_schema
           BETTER_AUTH_SECRET: disposable-integration-test-secret-not-a-production-key
         run: node scripts/loc-auth-migrate.mjs
