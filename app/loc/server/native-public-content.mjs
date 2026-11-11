@@ -179,7 +179,7 @@ export async function handleNativePublicContent(request,env={},{
                 select:Object.fromEntries(columns.map(column=>[column,true]))
               }))
         :await query.selectFrom(relation(scope))
-            .select(columns).where('id','=',scope).limit(1).executeTakeFirst();
+            .select(columns).where('id','=',scope).executeTakeFirst();
       return respond({data:row||null});
     }
     const table=relation(kind==='hero'?'loc_blocks':scope+'_blocks');
