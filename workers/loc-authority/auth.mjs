@@ -9,7 +9,7 @@ import {Pool} from 'pg';
 export const LOC_ISSUER='https://auth.lo3rwang.cc';
 export const LOC_WEB='https://loc.lo3rwang.cc';
 export const LOC_MCP='https://mcp.lo3rwang.cc';
-export const LOC_IMPORT=LOC_ISSUER+'/v1/import/short';
+export const LOC_IMPORT=LOC_MCP+'/api/loc-native';
 const OWNER_EMAIL='sopa2306@gmail.com';
 
 export function checkLocAuthEnvironment(env){
