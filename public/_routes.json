@@ -8,7 +8,7 @@
     "/api/loc-public-content",
     "/api/loc-public-query",
     "/api/loc-public-classes",
-    "/api/loc-authority-role",
+    "/api/loc-permissions",
     "/api/loc-native",
     "/api/loc-auth-connectivity",
     "/api/keywords"
