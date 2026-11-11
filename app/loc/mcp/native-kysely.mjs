@@ -23,28 +23,35 @@ function mainUri(env){
 }
 // Pool-shaped adapter for Kysely: one fresh pg.Client per connect(), closed on
 // release. Holds no sockets or waiters between requests.
-// A Free-plan Neon compute suspends after ~5 minutes idle; the first connection
-// after that can fail while it wakes. Only the connect step is retried (nothing
-// has been sent yet, so it is always safe); queries are never retried.
+// One failed connection opens a five-minute local circuit breaker.
+// Never retry connections, poll for recovery, or call Neon during cooldown.
+// This is per worker isolate, not a cross-region/distributed guarantee.
+export const NEON_CONNECTION_COOLDOWN_MS=5*60*1000;
 export function requestScopedPool(options,ClientClass=pg.Client,
-    {attempts=2,delayMs=400}={}){
+    {cooldownMs=NEON_CONNECTION_COOLDOWN_MS,now=Date.now}={}){
+  let blockedUntil=0;
+  let connecting=null;
   return {
     async connect(){
-      let lastError;
-      for(let attempt=1;attempt<=attempts;attempt++){
+      if(now()<blockedUntil)throw unavailable('LOC database connection cooling down');
+      if(connecting)return connecting;
+      const attempt=(async()=>{
         const client=new ClientClass(options);
         client.on?.('error',()=>{});
         try{
           await client.connect();
+          blockedUntil=0;
           client.release=()=>{void Promise.resolve(client.end()).catch(()=>{});};
           return client;
         }catch(error){
-          lastError=error;
+          blockedUntil=now()+cooldownMs;
           void Promise.resolve(client.end?.()).catch(()=>{});
-          if(attempt<attempts)await new Promise(resolve=>setTimeout(resolve,delayMs));
+          throw error;
         }
-      }
-      throw lastError;
+      })();
+      connecting=attempt;
+      try{return await attempt}
+      finally{if(connecting===attempt)connecting=null}
     },
     async end(){}
   };
