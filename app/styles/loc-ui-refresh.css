@@ -251,3 +251,50 @@
     max-height:48svh;
   }
 }
+
+/* Optional native picker replaces horizontal tab hunting only on small screens. */
+.management-section-nav__mobile-picker{display:none;}
+@media(max-width:680px){
+  .management-section-nav--mobile-select .management-section-nav__mobile-picker{
+    display:grid;
+    grid-template-columns:minmax(0,1fr);
+    gap:.35rem;
+    min-width:0;
+  }
+  .management-section-nav--mobile-select .management-section-nav__mobile-picker>span{
+    color:var(--loc-muted);
+    font-size:.8rem;
+    font-weight:600;
+  }
+  .management-section-nav--mobile-select .management-section-nav__mobile-picker>select{
+    display:block;
+    width:100%;
+    min-width:0;
+    min-height:48px;
+    padding:.65rem 2rem .65rem .8rem;
+    box-sizing:border-box;
+    border:1px solid var(--loc-accent-border-soft);
+    border-radius:var(--loc-ui-radius-sm,12px);
+    background:var(--loc-panel);
+    color:var(--loc-heading);
+    font:inherit;
+    font-weight:650;
+    color-scheme:inherit;
+  }
+  .management-section-nav--mobile-select .management-section-nav__mobile-picker>select:focus-visible{
+    outline:2px solid var(--loc-accent);
+    outline-offset:2px;
+  }
+  .management-section-nav--mobile-select .management-section-nav__items{
+    display:none!important;
+  }
+  .scope-settings-options .loc-settings-panel-group{
+    min-width:0;
+    display:grid;
+    gap:.75rem;
+  }
+  .scope-settings-options .loc-settings-panel-group>.loc-card{
+    min-width:0;
+    padding:clamp(.75rem,3vw,1rem);
+  }
+}

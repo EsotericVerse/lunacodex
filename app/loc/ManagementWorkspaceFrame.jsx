@@ -3,9 +3,9 @@
 // Shared visual shell for Scope, Scope Group and Admin management.
 // Keep each page's existing data access, permissions and editor lifecycle.
 const LEVEL_LABELS=Object.freeze({
-  scope:'Scope 管理',
-  group:'Scope Group 管理',
-  admin:'Admin 管理'
+  scope:'內容',
+  group:'群組',
+  admin:'系統'
 });
 
 export default function ManagementWorkspaceFrame({

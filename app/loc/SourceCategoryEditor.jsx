@@ -4,6 +4,7 @@ import dynamic from 'next/dynamic';
 import {useAsyncResource} from './use-async-resource';
 import {dbPublicClient,insertRows,updateRows,deleteRows} from './db-client.mjs';
 import {allocateAnchorUid} from './unified-anchor-compat.mjs';
+import {useEditDockForm} from '../modular/edit-dock';
 
 // The very same graph canvas used by the personal Keyword editor.
 const KeywordNetworkEditor=dynamic(()=>import('./KeywordNetworkEditor'),{ssr:false});
@@ -42,6 +43,12 @@ export function AdminSourceCategories(){
   const byUid=useMemo(()=>new Map(nodes.map(row=>[row.uid,row])),[nodes]);
   const current=byUid.get(selected)||null;
   const children=uid=>(byUid.get(uid)?.attr?.uid||[]).map(id=>byUid.get(id)).filter(Boolean);
+  const isDirty=()=>Boolean(draft&&(
+    !byUid.has(draft.uid)||
+    draft.title!==(byUid.get(draft.uid)?.title||'')||
+    draft.description!==(byUid.get(draft.uid)?.description||'')
+  ));
+  const canChangeNode=()=>!busy&&(!isDirty()||window.confirm('目前的來源修改尚未儲存，確定放棄變更？'));
   const load=useCallback(async()=>{
     setLoading(true);setError('');
     try{
@@ -52,13 +59,14 @@ export function AdminSourceCategories(){
   },[]);
   useEffect(()=>{void load();},[load]);
   const edit=row=>{
-    if(!row)return;
+    if(!row||row.uid===draft?.uid||!canChangeNode())return;
     setSelected(row.uid);
     setDraft({uid:row.uid,type:row.type,title:row.title||'',
       description:row.description||''});
     setPendingParent('');setError('');setNotice('');
   };
   const create=parent=>{
+    if(!canChangeNode())return;
     const type=parent?NEXT[parent.type]:'universe';
     if(!type)return;
     const uid=allocateAnchorUid(new Set(nodes.map(row=>row.uid)));
@@ -67,9 +75,9 @@ export function AdminSourceCategories(){
     setError('');setNotice('');
   };
   const save=async()=>{
-    if(!draft||busy)return;
+    if(!draft||busy)return false;
     const title=draft.title.trim();
-    if(!title){setError('請填寫來源名稱');return;}
+    if(!title){setError('請填寫來源名稱');return false;}
     setBusy(true);setError('');setNotice('');
     try{
       const exists=byUid.has(draft.uid);
@@ -98,9 +106,13 @@ export function AdminSourceCategories(){
       }
       await load();setSelected(draft.uid);setDraft(null);
       setNotice(exists?'來源名稱已更新。':'已新增來源並建立 UID 關聯。');
-    }catch(e){setError(String(e.message||e));}
+      return true;
+    }catch(e){setError(String(e.message||e));return false;}
     finally{setBusy(false);}
   };
+  // This editor is mounted only under Admin management. Use the existing six-key Save.
+  useEditDockForm({save,isDirty,isBusy:()=>busy||loading,
+    discard:()=>{setDraft(null);setError('');}});
   const remove=async()=>{
     if(!current||busy)return;
     if(children(current.uid).length){setError('此節點仍有下層來源，請先處理子節點。');return;}
@@ -119,8 +131,8 @@ export function AdminSourceCategories(){
   };
   const roots=nodes.filter(row=>row.type==='universe');
   return <section className="loc-card scope-feature-card scope-keyword-management">
-    <h2>LOC 系統來源關鍵詞</h2>
-    <p className="scope-status">來源階層由 UID 關聯；個人關鍵詞獨立管理。點選關聯圖節點即可編輯。</p>
+    <h2>文章來源</h2>
+    <p className="scope-status">選取圖上節點編輯來源；儲存使用下方六鍵。</p>
     {error?<p className="scope-status scope-error" role="alert">{error}</p>:null}
     {notice?<p className="scope-status" role="status">{notice}</p>:null}
     {loading?<p className="scope-status" role="status">讀取來源階層中…</p>:null}
@@ -134,8 +146,9 @@ export function AdminSourceCategories(){
         <div className="scope-management-fields">
           <label><span>來源階層</span>
             <select className="scope-select" value={selected} onChange={e=>{
-              const row=byUid.get(e.target.value);setSelected(e.target.value);
-              if(row)edit(row);else setDraft(null);
+              const row=byUid.get(e.target.value);
+              if(row)edit(row);
+              else if(canChangeNode()){setSelected('');setDraft(null);}
             }}>
               <option value="">選擇來源</option>
               {roots.map(root=><optgroup key={root.uid} label={root.title}>
@@ -147,9 +160,12 @@ export function AdminSourceCategories(){
             </select>
           </label>
         </div>
-        {current?<p className="scope-status">UID：<code>{current.uid}</code> · {current.type}
-          {' · '}lo3rwang：{Number(current.attr.counts.lo3rwang||0).toLocaleString()}
-          {' · '}lrunes：{Number(current.attr.counts.lrunes||0).toLocaleString()}</p>:null}
+        {current?<details className="scope-source-meta">
+          <summary>來源資料</summary>
+          <p className="scope-status">UID：<code>{current.uid}</code> · {current.type}
+            {' · '}lo3rwang：{Number(current.attr.counts.lo3rwang||0).toLocaleString()}
+            {' · '}lrunes：{Number(current.attr.counts.lrunes||0).toLocaleString()}</p>
+        </details>:null}
         <div className="scope-preview-links">
           <button type="button" className="loc-button" onClick={()=>create(null)} disabled={busy}>新增 Universe</button>
           <button type="button" className="loc-button" onClick={()=>create(current)}
@@ -162,10 +178,9 @@ export function AdminSourceCategories(){
           <label><span>說明</span><textarea rows={3} value={draft.description}
             onChange={e=>setDraft(v=>({...v,description:e.target.value}))}/></label>
           <div className="scope-preview-links">
-            <button type="button" className="loc-button primary" onClick={save} disabled={busy||!draft.title.trim()}>{busy?'儲存中…':'儲存'}</button>
             {current&&current.uid===draft.uid?<button type="button" className="loc-button scope-danger-button"
               disabled={busy||children(current.uid).length>0} onClick={remove}>刪除</button>:null}
-            <button type="button" className="loc-button" onClick={()=>setDraft(null)} disabled={busy}>取消</button>
+            <button type="button" className="loc-button" onClick={()=>{if(canChangeNode())setDraft(null);}} disabled={busy}>取消</button>
           </div>
         </div>:<p className="scope-status">選取圖上的節點，或透過選單開始編輯。</p>}
       </aside>

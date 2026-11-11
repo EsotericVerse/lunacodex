@@ -7,22 +7,29 @@ import {useSearchParams} from 'next/navigation';
  * In-page management navigator.
  * In-page horizontal tabs are React selection UI, NOT a Next.js route transition.
  */
-export default function ManagementSectionNav({id,title,panelId,items,value,onChange,showDescriptions=false}){
+export default function ManagementSectionNav({id,title,panelId,items,value,onChange,showDescriptions=false,mobileSelect=false}){
   const activeItem=items.find(item=>item.value===value)||items[0];
   const headingId=id+'-heading';
   const itemsRef=useRef(null);
   useEffect(()=>{
     const list=itemsRef.current;
     const active=list?.querySelector('[aria-pressed="true"]');
-    if(!list||!active)return;
+    if(!list||!active||list.clientWidth===0)return;
     // Reveal the selected tab within this strip only; never scroll the page.
     const bounds=list.getBoundingClientRect();
     const target=active.getBoundingClientRect();
     if(target.left<bounds.left)list.scrollLeft-=bounds.left-target.left;
     else if(target.right>bounds.right)list.scrollLeft+=target.right-bounds.right;
   },[value]);
-  return <section className="management-section-nav" aria-labelledby={headingId}>
+  return <section className={"management-section-nav"+(mobileSelect?" management-section-nav--mobile-select":"")} aria-labelledby={headingId}>
     <h2 className="management-section-nav__title" id={headingId}>{title}</h2>
+    {mobileSelect?<label className="management-section-nav__mobile-picker">
+      <span>選擇功能</span>
+      <select value={activeItem?.value||''} onChange={event=>onChange(event.target.value)}
+        aria-controls={panelId} aria-label={title}>
+        {items.map(item=><option key={item.value} value={item.value}>{item.label}</option>)}
+      </select>
+    </label>:null}
     <div ref={itemsRef} className="management-section-nav__items" role="group" aria-label={title}>
       {items.map(item=>{
         const selected=item.value===activeItem?.value;
@@ -58,6 +65,16 @@ export function useManagementSection(items,defaultValue='',aliases={}){
   const resolveRef=useRef(resolve);
   resolveRef.current=resolve;
   const [value,setLocalValue]=useState(()=>resolve(searchParams?.get('section')||''));
+  const availableSections=items.map(item=>item.value).join('|');
+  // Native-only sections arrive after hydration. Restore deep links as soon
+  // as the section exists, without navigating or scrolling the page.
+  useEffect(()=>{
+    const requested=new URL(window.location.href).searchParams.get('section')||'';
+    setLocalValue(current=>{
+      const next=resolveRef.current(requested);
+      return current===next?current:next;
+    });
+  },[availableSections]);
   useEffect(()=>{
     const sync=()=>setLocalValue(resolveRef.current(new URL(window.location.href).searchParams.get('section')||''));
     window.addEventListener('popstate',sync);
