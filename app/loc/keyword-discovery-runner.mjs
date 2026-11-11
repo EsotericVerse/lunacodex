@@ -108,8 +108,9 @@ export async function suggestNewKeywords({galaxy,existingRows=[],onProgress=()=>
       // Always fetch the entire last-day peer group: PostgreSQL may return
       // pages smaller than LIMIT, and date alone is not a unique cursor.
       const prefix=normalizedPage.filter(row=>row.date!==boundary);
-      // Read every row of the boundary day in stable pages, regardless of COUNT.
-      const peers=[];
+      // Stream the boundary day with stable UID paging. No total-row ceiling,
+      // and no need to hold an entire high-density date in browser memory.
+      await consumePage(prefix);
       for(let peerOffset=0;;){
         const {data}=await readPage(relation=>relation.select(ARTICLE_COLUMNS)
           .eq('date',boundary).order('uid',{ascending:true})
@@ -119,11 +120,9 @@ export async function suggestNewKeywords({galaxy,existingRows=[],onProgress=()=>
         const normalized=part.map(row=>({...row,date:normalizeDay(row?.date)}));
         if(normalized.some(row=>row.date!==boundary))
           throw new Error('Galaxy 同日文章分頁日期異常，未覆寫先前暫存');
-        peers.push(...normalized);
+        await consumePage(normalized);
         peerOffset+=part.length;
       }
-      await consumePage(prefix);
-      await consumePage(peers);
       after=String(boundary);
     }
     // Undated records are scanned completely with no fixed row ceiling.
