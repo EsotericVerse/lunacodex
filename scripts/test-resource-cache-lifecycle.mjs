@@ -86,6 +86,23 @@ test('native invalidation allows fresh explicit reads without background polling
   assert.equal(calls,2);
 });
 
+test('committed import invalidates only matching Scope across statistics and culture',async()=>{
+  const h=await resourceHarness(),client=h.makeClient();
+  const cache=h.api.createResourceCache(client);
+  let reads=0;
+  const load=()=>{reads++;return reads;};
+  const own=['scope-overview','scopea','2026-01-01','2026-12-31'];
+  const unrelated=['scope-overview','scopeb','2026-01-01','2026-12-31'];
+  const culture=['culture-period-roots','v4','scopea'];
+  await cache.getOrLoad({queryKey:own,queryFn:load});
+  await cache.getOrLoad({queryKey:unrelated,queryFn:load});
+  await cache.getOrLoad({queryKey:culture,queryFn:load});
+  await cache.invalidateScope({scopeId:'scopea'});
+  assert.equal(await cache.getOrLoad({queryKey:unrelated,queryFn:load}),2);
+  assert.equal(await cache.getOrLoad({queryKey:own,queryFn:load}),4);
+  assert.equal(await cache.getOrLoad({queryKey:culture,queryFn:load}),5);
+});
+
 test('explicit clear prevents obsolete responses from repopulating the cache',async()=>{
   const h=await resourceHarness(),client=h.makeClient();
   const cache=h.api.createResourceCache(client),queryKey=['works','scope-a'];
