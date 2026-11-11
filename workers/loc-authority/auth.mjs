@@ -11,6 +11,23 @@ export const LOC_WEB='https://loc.lo3rwang.cc';
 export const LOC_MCP='https://mcp.lo3rwang.cc';
 export const LOC_IMPORT=LOC_MCP+'/api/loc-native';
 const OWNER_EMAIL='sopa2306@gmail.com';
+// Auth owns only explicitly named Rainbow tables. This is model mapping,
+// NOT SQL DDL. No table or RLS policy is created when this module loads.
+export const RAINBOW_TABLES=Object.freeze({
+  user:'rainbow_auth',
+  session:'rainbow_session',
+  account:'rainbow_account',
+  verification:'rainbow_verification',
+  jwks:'rainbow_jwks',
+  oauthClient:'rainbow_oauth_client',
+  oauthResource:'rainbow_oauth_resource',
+  oauthClientResource:'rainbow_oauth_client_resource',
+  oauthRefreshToken:'rainbow_oauth_refresh_token',
+  oauthAccessToken:'rainbow_oauth_access_token',
+  oauthConsent:'rainbow_oauth_consent',
+  oauthClientAssertion:'rainbow_oauth_client_assertion'
+});
+
 
 // Session data is a *short-lived signed cache*, not the Auth source of truth.
 // Cloudflare gives each Worker version a stable ID. A new deployment changes
@@ -68,6 +85,12 @@ export function createLocAuth(env){
       // Approved storage namespace only. No automatic DDL or test schema.
       schemaName:env.LOC_AUTH_SCHEMA
     },
+    user:{modelName:RAINBOW_TABLES.user},
+    session:{modelName:RAINBOW_TABLES.session,
+      expiresIn:30*86400,updateAge:86400,storeSessionInDatabase:true,
+      cookieCache:locAuthSessionCache(env)},
+    account:{modelName:RAINBOW_TABLES.account,accountLinking:{enabled:false}},
+    verification:{modelName:RAINBOW_TABLES.verification},
     emailAndPassword:{enabled:false},
     socialProviders:{
       google:{
@@ -76,9 +99,8 @@ export function createLocAuth(env){
         disableIdTokenSignIn:true
       }
     },
-    account:{accountLinking:{enabled:false}},
-    session:{expiresIn:30*86400,updateAge:86400,storeSessionInDatabase:true,
-      cookieCache:locAuthSessionCache(env)},
+
+
     disabledPaths:['/token'],
     rateLimit:{enabled:true,window:60,max:30},
     advanced:{
@@ -91,6 +113,7 @@ export function createLocAuth(env){
     },
     plugins:[
       jwt({
+        schema:{jwks:{modelName:RAINBOW_TABLES.jwks}},
         disableSettingJwtHeader:true,
         jwks:{
           keyPairConfig:{alg:'RS256',modulusLength:3072},
@@ -100,6 +123,15 @@ export function createLocAuth(env){
         jwt:{issuer:LOC_ISSUER+'/api/auth'}
       }),
       oauthProvider({
+        schema:{
+          oauthClient:{modelName:RAINBOW_TABLES.oauthClient},
+          oauthResource:{modelName:RAINBOW_TABLES.oauthResource},
+          oauthClientResource:{modelName:RAINBOW_TABLES.oauthClientResource},
+          oauthRefreshToken:{modelName:RAINBOW_TABLES.oauthRefreshToken},
+          oauthAccessToken:{modelName:RAINBOW_TABLES.oauthAccessToken},
+          oauthConsent:{modelName:RAINBOW_TABLES.oauthConsent},
+          oauthClientAssertion:{modelName:RAINBOW_TABLES.oauthClientAssertion}
+        },
         loginPage:'/login',
         consentPage:'/consent',
         scopes:['openid','profile','email','offline_access','loc:import'],
