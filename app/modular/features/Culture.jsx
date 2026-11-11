@@ -36,7 +36,7 @@ import {revalidateServerMetadata} from '../../loc/scope-data';
 import {deleteRows,insertRows,updateRows} from '../../loc/db-client.mjs';
 import {selectAllRows,selectRows} from '../../loc/db-query.mjs';
 import {assignedSource} from '../../loc/member-intersection-model.mjs';
-import {publishedSourceTaxonomy} from '../published-source-taxonomy.js';
+import {DEFAULT_YEAR_WINDOW} from '../../loc/default-year-window.mjs';
 import {sourceKeywordOptions} from '../../loc/source-keyword-options.mjs';
 import {buildCultureRiverRootPayload,selectCultureRiverChildren} from '../../loc/culture-river-roots.mjs';
 import {mediaDay} from '../../loc/statistics-facets';
@@ -55,14 +55,7 @@ const LrunesDailyCulturePanel=dynamic(()=>import('../../lrunes/DailyRuneAnalytic
 const LocItemConfluence=dynamic(()=>import('./LocItemConfluence'),{loading:()=>null});
 
 function editorRiverYearWindow(){
-  // Same Taipei-calendar one-year default as CulturePublicReader.
-  const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Taipei',
-    year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
-  const part=key=>parts.find(item=>item.type===key)?.value||'';
-  const end=part('year')+'-'+part('month')+'-'+part('day');
-  const date=new Date(end+'T00:00:00Z');
-  date.setUTCFullYear(date.getUTCFullYear()-1);
-  return {start:date.toISOString().slice(0,10),end};
+  return {start:DEFAULT_YEAR_WINDOW.startDate,end:DEFAULT_YEAR_WINDOW.endDate};
 }
 function isInteractiveTarget(target){
   return Boolean(target?.closest?.('a,button,input,select,textarea,summary,[role="button"],[contenteditable="true"]'));
@@ -248,7 +241,7 @@ export default function Culture(){
     enabled:!isLrunesDaily&&!isLocItemView,
   });
 
-  const [selectedPeriodKey,setSelectedPeriodKey]=useState('');
+  const [selectedPeriodKey,setSelectedPeriodKey]=useState('year');
   const [structureWindowKey,setStructureWindowKey]=useState('');
   const [expandedEraIds,setExpandedEraIds]=useState([]);
   const [expandedEditorEraIds,setExpandedEditorEraIds]=useState([]);
@@ -261,7 +254,7 @@ export default function Culture(){
   const [selectedKeywordClassUid,setSelectedKeywordClassUid]=useState('');
   const [keywordDrillSource,setKeywordDrillSource]=useState('');
   const [keywordDrillGroup,setKeywordDrillGroup]=useState('');
-  const [keywordPeriodKey,setKeywordPeriodKey]=useState('current');
+  const [keywordPeriodKey,setKeywordPeriodKey]=useState('year');
   const [keywordCustomStart,setKeywordCustomStart]=useState('');
   const [keywordCustomEnd,setKeywordCustomEnd]=useState('');
   const [selectedVirtualAnchorDates,setSelectedVirtualAnchorDates]=useState([]);
@@ -297,7 +290,8 @@ export default function Culture(){
   useEffect(()=>{
     setStyleFilter('none');
     setLocDensityOpen(false);
-    setKeywordPeriodKey('latest');
+    setSelectedPeriodKey('year');
+    setKeywordPeriodKey('year');
     setKeywordCustomStart('');
     setKeywordCustomEnd('');
     setOpenCultureRoots([]);
@@ -341,26 +335,28 @@ export default function Culture(){
   const closestPeriod=primaryPeriods.find(item=>periodKey(item)===structurePreference.preferredKey)||null;
   // Articles may exist even when no formal Period has been created. Use an
   // ordinary bounded date window; never treat an empty Time table as invalid.
+  const defaultYearPeriod=useMemo(()=>({
+    period:'year',title:DEFAULT_YEAR_WINDOW.label,
+    display_label:DEFAULT_YEAR_WINDOW.label,
+    start_date:DEFAULT_YEAR_WINDOW.startDate,
+    end_date:DEFAULT_YEAR_WINDOW.endDate,
+    scope_id:classificationScope
+  }),[classificationScope]);
   const allTimePeriod=useMemo(()=>{
     if(primaryPeriods.length)return periodRange(primaryPeriods,classificationScope,UI_COPY.culture.allTime);
-    const endDate=new Date().toISOString().slice(0,10);
-    const yearStart=endDate.slice(0,4)+'-01-01';
-    return {
-      period:'all',title:'未設定時代（本年度）',display_label:'未設定時代（本年度）',
-      start_date:yearStart,end_date:endDate,scope_id:classificationScope
-    };
-  },[primaryPeriods,classificationScope,UI_COPY.culture.allTime]);
+    return defaultYearPeriod;
+  },[primaryPeriods,classificationScope,UI_COPY.culture.allTime,defaultYearPeriod]);
   useEffect(()=>{
     if(isAggregateScope||!query.data)return;
     const preferred=structurePreference.preferredKey;
     const scopeChanged=periodSelectionScopeRef.current!==scopeId;
     periodSelectionScopeRef.current=scopeId;
-    setSelectedPeriodKey(current=>scopeChanged?preferred:
-      (current==='all'||primaryPeriods.some(period=>periodKey(period)===current))?current:preferred);
+    setSelectedPeriodKey(current=>scopeChanged?'year':
+      (current==='year'||current==='all'||primaryPeriods.some(period=>periodKey(period)===current))?current:'year');
   },[scopeId,isAggregateScope,query.data,structurePreference,primaryPeriods]);
-  const selectedWorkPeriod=selectedPeriodKey==='all'
-    ?allTimePeriod
-    :(primaryPeriods.find(item=>periodKey(item)===selectedPeriodKey)||closestPeriod||allTimePeriod);
+  const selectedWorkPeriod=selectedPeriodKey==='year'?defaultYearPeriod
+    :selectedPeriodKey==='all'?allTimePeriod
+    :(primaryPeriods.find(item=>periodKey(item)===selectedPeriodKey)||closestPeriod||defaultYearPeriod);
   // Use the nearest saved trace until the selected period is settled.
   const selectedWindowStart=String(selectedWorkPeriod?.start_date||'');
   const selectedWindowEnd=String(selectedWorkPeriod?.end_date||new Date().toISOString().slice(0,10));
@@ -368,7 +364,8 @@ export default function Culture(){
   // classification river, keyword-density river, suggestions, and work list.
   // The upper Time structure river keeps its own period navigation.
   // Events are part of the selected Period window, never a selector mode.
-  const keywordPeriod=keywordPeriodKey==='all'?allTimePeriod
+  const keywordPeriod=keywordPeriodKey==='year'?defaultYearPeriod:
+    keywordPeriodKey==='all'?allTimePeriod
     :keywordPeriodKey==='latest'?(closestPeriod||selectedWorkPeriod||allTimePeriod)
     :keywordPeriodKey==='current'?(selectedWorkPeriod||allTimePeriod)
     :primaryPeriods.find(period=>periodKey(period)===keywordPeriodKey)||closestPeriod||selectedWorkPeriod;
@@ -383,15 +380,16 @@ export default function Culture(){
   const classificationWindowEnd=keywordWindowEnd;
   // SQL reads only the bounding envelope. The selected period's exact
   // intervals must still exclude every day of an unlinked gap.
-  const classificationPeriodRanges=keywordPeriodKey==='custom'||keywordPeriodKey==='all'
+  const classificationPeriodRanges=keywordPeriodKey==='custom'||keywordPeriodKey==='all'||keywordPeriodKey==='year'
     ?null:(Array.isArray(keywordPeriod?.ranges)?keywordPeriod.ranges:null);
   const periodRangeSignature=JSON.stringify((classificationPeriodRanges||[]).map(range=>
     [range.start_date,range.end_date,range.open_end,range.invalid]));
   const classificationWindowValid=keywordWindowValid;
   // An unfilled custom range is normal until dates are supplied.
   const optionalTimeRangeUnfilled=!keywordWindowStart||!keywordWindowEnd;
-  const classificationPeriodLabel=keywordPeriodKey==='custom'
-    ?l.customPeriod:keywordPeriod?localizedLabelOf(keywordPeriod,0):l.timeTrace;
+  const classificationPeriodLabel=keywordPeriodKey==='year'?DEFAULT_YEAR_WINDOW.label:
+    keywordPeriodKey==='custom'?l.customPeriod:
+    keywordPeriod?localizedLabelOf(keywordPeriod,0):l.timeTrace;
   const requestedWindowStart=String(navigation.from||'').slice(0,10);
   const requestedWindowEnd=String(navigation.to||'').slice(0,10);
   const requestedPeriodUid=String(navigation.period||'').trim();
@@ -422,54 +420,52 @@ export default function Culture(){
     }
   },[scopeId,isAggregateScope,requestedWindowStart,requestedWindowEnd,requestedPeriodUid,primaryPeriods]);
 
-  // A published flat classification is a JS value, not an async database
-  // resource. Culture and Statistics use the exact same public source catalog.
-  const publishedTaxonomy=useMemo(()=>publishedSourceTaxonomy(scopeId),[scopeId]);
+  // One public LocAnchor ZModel read, shared in meaning with Statistics.
+  // The persisted Source hierarchy (attr.uid) replaces ArticleTag snapshots.
   const sourceTaxonomyQuery=useAsyncResource({
-    queryKey:['culture-source-classification',scopeId],
-    enabled:!isTimeEditingView&&!publishedTaxonomy&&!isAggregateScope&&!isLrunesDaily&&!isLocItemView
+    queryKey:['loc-zmodel-source-taxonomy'],
+    enabled:!isTimeEditingView&&!isAggregateScope&&!isLrunesDaily&&!isLocItemView
       &&scopeId!=='local'&&Boolean(scopeData),
     queryFn:async()=>{
       const {readPublicSourceTaxonomy}=await import('../../loc/source-catalog-public.mjs');
-      return readPublicSourceTaxonomy(scopeId);
+      return readPublicSourceTaxonomy();
     },
     revalidateOnFocus:false,revalidateOnReconnect:false
   });
-  const sourceTaxonomy=publishedTaxonomy||sourceTaxonomyQuery.data;
+  const sourceTaxonomy=sourceTaxonomyQuery.data;
   const sourceStyleOptions=useMemo(()=>sourceKeywordOptions(sourceTaxonomy),[sourceTaxonomy]);
-  // Staged rendering is a UI strategy, not an ISR feature.
-  const stagedSourceRiver=Boolean(publishedTaxonomy)&&!isAggregateScope&&scopeId!=='local';
+  const stagedSourceRiver=Boolean(sourceTaxonomy)&&!isAggregateScope&&scopeId!=='local';
   const expandedSourceRoots=['system','custom','media'].filter(id=>openCultureRoots.includes(id));
   // Retrieve one bounded daily aggregate per selected period. Reuse it when
   // expanding a group, so a UI interaction never starts a second SQL job.
   const sourceRootQuery=useAsyncResource({
-    queryKey:['culture-period-roots','v4-staged-numeric',classificationScope,classificationWindowStart,classificationWindowEnd,periodRangeSignature],
+    queryKey:['culture-period-roots','v5-zmodel-anchors',classificationScope,classificationWindowStart,classificationWindowEnd,periodRangeSignature],
     enabled:!isTimeEditingView&&stagedSourceRiver&&styleFilter!=='trace'&&!isLrunesDaily&&!isLocItemView
       &&Boolean(scopeData)&&classificationWindowValid,
     queryFn:async()=>{
-      const {text,media}=await selectScopeDailyCounts(scopeData,{
+      const {text}=await selectScopeDailyCounts(scopeData,{
         startDate:classificationWindowStart,endDate:classificationWindowEnd,
         includeUndated:true,requireAggregate:true
       });
       const inside=row=>!classificationPeriodRanges||timePeriodContainsDate(
         {ranges:classificationPeriodRanges},String(row.day||''));
       return buildCultureRiverRootPayload({
-        text:text.filter(inside),media:media.filter(inside)
-      },publishedTaxonomy);
+        text:text.filter(inside),media:[]
+      },sourceTaxonomy);
     },
     revalidateOnFocus:false,revalidateOnReconnect:false
   });
   const expandedSourceRootsKey=expandedSourceRoots.join(',');
   const requestedChildren=useMemo(()=>{
     if(!stagedSourceRiver||!sourceRootQuery.data?.numericRows||!expandedSourceRoots.length)return [];
-    return selectCultureRiverChildren(sourceRootQuery.data.numericRows,publishedTaxonomy,expandedSourceRoots);
-  },[stagedSourceRiver,sourceRootQuery.data,publishedTaxonomy,expandedSourceRootsKey]);
+    return selectCultureRiverChildren(sourceRootQuery.data.numericRows,sourceTaxonomy,expandedSourceRoots);
+  },[stagedSourceRiver,sourceRootQuery.data,sourceTaxonomy,expandedSourceRootsKey]);
   const expandedSourceReady=Boolean(sourceRootQuery.data)&&expandedSourceRoots.length>0;
   // In a published scope expanding a lane only transforms cached numeric rows.
   const sourceSnapshotQuery=useAsyncResource({
-    queryKey:['culture-period-source-snapshot','v8-reused-numeric',classificationScope,classificationWindowStart,classificationWindowEnd,periodRangeSignature,stagedSourceRiver?expandedSourceRootsKey:'all'],
+    queryKey:['culture-period-source-snapshot','v9-zmodel-source-only',classificationScope,classificationWindowStart,classificationWindowEnd,periodRangeSignature,stagedSourceRiver?expandedSourceRootsKey:'all'],
     enabled:!isTimeEditingView&&styleFilter!=='trace'&&!isLrunesDaily&&!isLocItemView&&!isAggregateScope&&Boolean(scopeData)&&classificationWindowValid
-      &&(!stagedSourceRiver||expandedSourceReady),
+      &&Boolean(sourceTaxonomy)&&(!stagedSourceRiver||expandedSourceReady),
     queryFn:async()=>{
       const {selectScopePeriodSourceSnapshot}=await import('../../loc/culture-query');
       const range={
@@ -704,12 +700,12 @@ export default function Culture(){
     }
   };
   const currentStructurePeriod=primaryPeriods.find(item=>periodKey(item)===activeStructureKey)||null;
-  const currentStructureStart=activeStructureKey==='all'?''
+  const currentStructureStart=activeStructureKey==='all'?DEFAULT_YEAR_WINDOW.startDate
     :String(currentStructurePeriod?.start_date||'').slice(0,10);
   // A trace stops at its final real anchor; no virtual today endpoint.
   const lastAnchorDate=String(structurePreference.lastAnchor?.start_date||'').slice(0,10);
   const savedTraceEnd=String(currentStructurePeriod?.end_date||'').slice(0,10);
-  const currentStructureEnd=activeStructureKey==='all'?''
+  const currentStructureEnd=activeStructureKey==='all'?DEFAULT_YEAR_WINDOW.endDate
     :structureWindowKey===''&&lastAnchorDate>savedTraceEnd?lastAnchorDate:savedTraceEnd;
   // Keep the first river grouped by era UID. A selected trace changes
   // only the camera viewport, never the saved anchor/event/trace graph.
@@ -1459,7 +1455,8 @@ export default function Culture(){
                             setKeywordPeriodKey(next);
 
                           }}>
-                          <option value='latest'>{primaryPeriods.length?l.recentTimeTrace:'未設定時代（本年度）'}</option>
+                          <option value='year'>{DEFAULT_YEAR_WINDOW.label}</option>
+                          <option value='latest'>{primaryPeriods.length?l.recentTimeTrace:'未設定時代'}</option>
                            <option value='all'>{primaryPeriods.length?l.allTimeTraces:'本年度（未設定時代）'}</option>
                            {primaryPeriods.map(item=><option key={periodKey(item)} value={periodKey(item)}>{localizedLabelOf(item,0)}</option>)}
                            <option value='custom'>{l.customPeriod}</option>
