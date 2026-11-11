@@ -1,11 +1,8 @@
 name: Workflow guard
 
-# Automatically check workflow trigger policy ONLY when workflow files change.
-# Manual syntax recovery is available for interrupted edits; no deploy or build.
+# Strictly manual. No automatic PR, push, merge, or scheduled runs.
+# This check is opt-in only; do not email the owner on each workflow edit.
 on:
-  pull_request:
-    paths:
-      - '.github/workflows/**'
   workflow_dispatch:
 
 permissions:
