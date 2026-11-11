@@ -113,7 +113,9 @@ export function createLocAuth(env){
       // The LOC website receives the opaque session cookie only for explicit
       // protected operations. Public rendering never consults Auth.
       crossSubDomainCookies:{enabled:true,domain:'lo3rwang.cc'},
-      database:{joins:true},
+      // Schema is verified out of band; skip the per-request introspection
+      // query, which otherwise runs on every fresh serverless connection.
+      database:{joins:true,validateSchema:false},
       ipAddress:{ipAddressHeaders:['cf-connecting-ip']}
     },
     plugins:[

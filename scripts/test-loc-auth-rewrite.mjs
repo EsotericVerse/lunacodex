@@ -136,6 +136,6 @@ test('OpenID and OAuth discovery serve root and issuer-path metadata',()=>{
  const entry=source('workers/loc-authority/index.mjs');
  assert.ok(entry.includes("url.pathname==='/.well-known/oauth-authorization-server/api/auth'"));
  assert.ok(entry.includes("url.pathname==='/api/auth/.well-known/openid-configuration'"));
- assert.ok(entry.includes('oauthProviderAuthServerMetadata(auth)'));
- assert.ok(entry.includes('oauthProviderOpenIdConfigMetadata(auth)'));
+ assert.ok(entry.includes('oauthProviderAuthServerMetadata(getAuth())'));
+ assert.ok(entry.includes('oauthProviderOpenIdConfigMetadata(getAuth())'));
 });
