@@ -307,18 +307,20 @@ export default function Culture(){
   const isAggregateScope=Boolean(scope?.aggregateChildren);
   // LOC's first Time River never queries per-day article/media density.
   // On-demand second-river data uses the shared ZenStack query client.
+  const locRequestedStart=String(navigation.from||'').slice(0,10);
+  const locRequestedEnd=String(navigation.to||'').slice(0,10);
+  const locRequestedValid=/^\d{4}-\d{2}-\d{2}$/.test(locRequestedStart)&&
+    /^\d{4}-\d{2}-\d{2}$/.test(locRequestedEnd)&&locRequestedStart<=locRequestedEnd;
+  const locSourceStart=locRequestedValid?locRequestedStart:DEFAULT_YEAR_WINDOW.startDate;
+  const locSourceEnd=locRequestedValid?locRequestedEnd:DEFAULT_YEAR_WINDOW.endDate;
   const locDensityQuery=useAsyncResource({
-    queryKey:['loc-culture-density',scopeId,query.data?.intersectionStart,query.data?.intersectionEnd,
-      JSON.stringify(query.data?.intersectionWindows||[])],
+    queryKey:['loc-culture-density','zmodel-source-year',scopeId,locSourceStart,locSourceEnd],
     enabled:!isTimeEditingView&&isAggregateScope&&scopeId==='loc'&&!isLocItemView&&locDensityOpen
-      &&Boolean(query.data?.intersectionWindows?.length),
+      &&Boolean(query.data?.scopes?.length),
     queryFn:async()=>{
       const {selectLocCultureDensity}=await import('../../loc/culture-query');
       return selectLocCultureDensity({
-        scopes:query.data?.scopes||[],
-        intersectionWindows:query.data?.intersectionWindows||[],
-        intersectionStart:query.data?.intersectionStart||'',
-        intersectionEnd:query.data?.intersectionEnd||''
+        scopes:query.data?.scopes||[],startDate:locSourceStart,endDate:locSourceEnd
       });
     },
   });
@@ -1379,8 +1381,8 @@ export default function Culture(){
                   labelOf={emptyRiverLabel}
                   focus={EMPTY_RIVER_FOCUS}
                   mode='source'
-                  windowStart={requestedWindowStart||locDistributionStart}
-                  windowEnd={requestedWindowEnd||locDistributionEnd}
+                  windowStart={locSourceStart}
+                  windowEnd={locSourceEnd}
                   fixedMin={locDistributionStart}
                   fixedMax={locDistributionEnd}
                 />:null}
@@ -1389,7 +1391,7 @@ export default function Culture(){
                 <div className='scope-result-links'>
                   {[...new Set(locScopeIntervalItems.map(item=>item.scope_id))].map(id=><ScopeLink key={id} href={featureNavigationHref(id,'culture')}>{id}{l.personalTimelineSuffix}</ScopeLink>)}
                 </div>
-                {locIntersectionScopeIds.length?<details className='scope-stat-details scope-culture-density-details'
+                {query.data?.scopes?.length?<details className='scope-stat-details scope-culture-density-details'
                   onToggle={event=>setLocDensityOpen(event.currentTarget.open)}>
                   <summary>{UI_COPY.culture.intersectionRiver} · {UI_COPY.culture.combinedRiver}</summary>
                   {locDensityOpen?<>
@@ -1402,8 +1404,8 @@ export default function Culture(){
                     labelOf={emptyRiverLabel}
                     focus={EMPTY_RIVER_FOCUS}
                     mode='source'
-                    windowStart={requestedWindowStart||locIntersectionStart}
-                    windowEnd={requestedWindowEnd||locIntersectionEnd}
+                    windowStart={locSourceStart}
+                    windowEnd={locSourceEnd}
                     fixedMin={locIntersectionStart}
                     fixedMax={locIntersectionEnd}
                     hiddenDates={locRiverAnalysis.hiddenDates}
@@ -1417,8 +1419,8 @@ export default function Culture(){
                     labelOf={emptyRiverLabel}
                     focus={EMPTY_RIVER_FOCUS}
                     mode='source'
-                    windowStart={requestedWindowStart||locDistributionStart}
-                    windowEnd={requestedWindowEnd||locDistributionEnd}
+                    windowStart={locSourceStart}
+                    windowEnd={locSourceEnd}
                     fixedMin={locDistributionStart}
                     fixedMax={locDistributionEnd}
                     hiddenDates={locRiverAnalysis.hiddenDates}
