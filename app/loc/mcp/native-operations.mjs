@@ -7,6 +7,7 @@ import {locPermissionsForEmail} from '../permissions/roles.mjs';
 import {authorizeDelegatedShortImport} from '../import/short-edge-authorization.mjs';
 import {processShortImport,portableShortImportStore} from '../import/short-append-service.mjs';
 import {executePortableMcp} from '../providers/kysely-mcp.mjs';
+import {executeLocConversation} from './conversations.mjs';
 import {bindLocAuthorization,canManageLoc} from '../providers/loc-authorization.mjs';
 import {executeManagedKyselyWrite,executeManagedKyselyAction} from '../providers/kysely-management.mjs';
 import {executeCrossEngineManagedWrite} from '../providers/sql-engine-ports.mjs';
@@ -24,7 +25,7 @@ const MCP_HOST='mcp.lo3rwang.cc';
 const WEB_HOST='loc.lo3rwang.cc';
 const MAX_BYTES=700000;
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const KINDS=new Set(['mcp-sync','mcp-append','mcp-read','mcp-search','short-import','managed-write','managed-action','personal-read','personal-write']);
+const KINDS=new Set(['mcp-sync','mcp-append','mcp-read','mcp-search','mcp-conversation','mcp-scope-status','short-import','managed-write','managed-action','personal-read','personal-write']);
 // api.manage / silver.loc are the only two fixed ZModel control relations a
 // signed global:manage delegation may UPDATE/DELETE (zenstack/policy-runtime.mjs
 // ADMIN_FIXED_WRITES). No insert, no other table -- the website's own
@@ -147,7 +148,8 @@ export async function handleNativeLocOperation(request,env={},{
     // Only the verified LOC owner can mutate any LOC data. The token's email
     // and grants are signed by LOC Auth, never accepted from the HTTP body.
     const writeKinds=new Set(['short-import','mcp-sync','mcp-append',
-      'managed-write','managed-action','personal-write']);
+      'managed-write','managed-action','personal-write',
+      ...(body.kind==='mcp-conversation'&&body.action==='record'?['mcp-conversation']:[])]);
     // Write permission is checked after opening the business database.
     // External user-selected connections are READ ONLY, whether they map an
     // existing table or expose the ordinary Scope schema. This includes the
@@ -172,6 +174,30 @@ export async function handleNativeLocOperation(request,env={},{
     claims.grants=permission.grants;
     if(writeKinds.has(body.kind)&&!permission.canWrite)
       throw refusal('LOC write permission denied',403);
+    // These fixed MCP operations are business data; no Authority-owned
+    // custom Scope grants, token service, or SQL profile endpoint is involved.
+    if(body.kind==='mcp-conversation'){
+      if(host!==MCP_HOST)throw refusal('MCP conversation endpoint only',404);
+      const result=await selected.db.transaction().execute(trx=>
+        executeLocConversation(trx,body,claims));
+      return reply({data:result});
+    }
+    if(body.kind==='mcp-scope-status'){
+      if(host!==MCP_HOST)throw refusal('MCP Scope endpoint only',404);
+      if(!/^[a-z][a-z0-9]{0,14}$/.test(body.scopeid))
+        throw refusal('Invalid Scope',400);
+      const allowed=permission.grants.includes('global:manage')||
+        permission.grants.includes(body.scopeid+':read');
+      if(!allowed)throw refusal('LOC Scope permission required',403);
+      const row=await selected.db.selectFrom('api.manage')
+        .select(['id','manage_role','active','galaxy_table','anchor_table'])
+        .where('id','=',body.scopeid).executeTakeFirst();
+      return reply({data:{scopeid:body.scopeid,active:row?.active===true,
+        role:row?.manage_role||'',
+        database:'主要資料庫連線',readable:true,
+        writable:permission.grants.includes('global:manage')||
+          permission.grants.includes(body.scopeid+':write')}});
+    }
     if(body.kind==='short-import'){
       if(selected.tableName)throw refusal('External mapped tables are read only',403);
       const actor=authorizeDelegatedShortImport(body,claims);
