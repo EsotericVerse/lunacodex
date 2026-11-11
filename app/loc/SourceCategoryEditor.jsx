@@ -132,7 +132,7 @@ export function AdminSourceCategories(){
   const roots=nodes.filter(row=>row.type==='universe');
   return <section className="loc-card scope-feature-card scope-keyword-management">
     <h2>LOC 系統來源關鍵詞</h2>
-    <p className="scope-status">來源階層由 UID 關聯；個人關鍵詞獨立管理。點選關聯圖節點即可編輯。</p>
+    <p className="scope-status">選取圖上節點編輯來源；儲存使用下方六鍵。</p>
     {error?<p className="scope-status scope-error" role="alert">{error}</p>:null}
     {notice?<p className="scope-status" role="status">{notice}</p>:null}
     {loading?<p className="scope-status" role="status">讀取來源階層中…</p>:null}
