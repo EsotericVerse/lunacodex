@@ -1,6 +1,6 @@
-// LOC OAuth verifies the person. A signed, time-limited LOC delegation from
-// the verified unique owner authorizes writes; SQL Registry isn't an identity
-// service and cannot block owner bootstrap.
+// LOC business authorization. Auth establishes identity; api.manage decides
+// write rights in a separate business database lookup. The trusted backend
+// binds only grants resolved from that table, never browser role assertions.
 const sessions=new WeakMap();
 const SUBJECT=/^[A-Za-z0-9_-]{1,128}$/;
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -14,7 +14,7 @@ export function bindLocAuthorization(db,{role='anon',claims={},engine='postgres'
     claims?.provider!=='loc'||claims?.me!==true||!SUBJECT.test(String(claims?.sub||''))||
     !EMAIL.test(String(claims?.email||'').trim().toLowerCase())||
     !Array.isArray(claims.grants)))
-    deny('Verified LOC delegation required');
+    deny('Verified LOC business role required');
   sessions.set(db,{role,claims,email:String(claims?.email||'').trim().toLowerCase()});
 }
 export async function locPermissions(db){
@@ -34,11 +34,9 @@ export async function canManageLoc(db,type,id='',registryRelation=null){
   if(!['global','scope','group'].includes(kind)||
      kind!=='global'&&!SCOPE.test(scope))return false;
   const claims=state.claims;
-  // The issuer has already verified the LOC OAuth principal and signed this
-  // exact short-lived delegation. The owner's identity is fixed: no SQL
-  // Registry or RLS lookup can veto a valid signature or promote another user.
-  if(claims?.provider!=='loc'||claims?.me!==true||
-     state.email!=='sopa2306@gmail.com'||!Array.isArray(claims.grants))
+  // Email identity was already checked at the Auth boundary; permissions
+  // were looked up in api.manage. Never repeat email/role policy here.
+  if(claims?.provider!=='loc'||claims?.me!==true||!Array.isArray(claims.grants))
     return false;
   return claims.grants.includes('global:manage')||
     kind!=='global'&&claims.grants.includes(scope+':manage');
