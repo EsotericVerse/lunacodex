@@ -9,14 +9,10 @@ export async function readLocEditorGrants(session,{fetchImpl=globalThis.fetch}={
   const data=await response.json().catch(()=>null);
   if(!response.ok||!data?.canWrite||!Array.isArray(data.grants))
     throw Error(data?.error||'LOC edit permission denied');
+  if(!Array.isArray(data.roles))throw Error('LOC role response invalid');
   const email=String(data.email||'').trim().toLowerCase();
-  const grants=[...new Set(data.grants)];
-  const results=[];
-  if(grants.includes('global:manage'))
-    results.push({id:'admin',email,role:'admin',manage_role:'admin'});
-  for(const value of grants){
-    const id=/^([a-z][a-z0-9]{0,14}):manage$/.exec(value)?.[1];
-    if(id)results.push({id,email,role:'admin',manage_role:'admin'});
-  }
-  return results;
+  return data.roles.filter(row=>
+    row?.email===email&&['admin','group','scope'].includes(row.role)&&
+    /^[a-z][a-z0-9]{0,14}$/.test(String(row.id||''))
+  ).map(row=>({id:row.id,email,role:row.role,manage_role:row.role}));
 }
