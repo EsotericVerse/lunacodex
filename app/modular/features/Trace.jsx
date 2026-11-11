@@ -45,6 +45,7 @@ export default function Trace({scopeId='loc'}){
   const {settings:userSettings,active:userActive}=useLocFeatureSettings('trace');
   const [selectedPlace,setSelectedPlace]=useState(null);
   const [annualGaugeOn,setAnnualGaugeOn]=useState(true);
+  const [annualGaugeDetailVisible,setAnnualGaugeDetailVisible]=useState(false);
   const routeParams=useSearchParams();
   const selectedPlaceUid=String(routeParams?.get('place')||'').trim();
   const selectedMapUid=String(routeParams?.get('map')||'').trim();
@@ -181,7 +182,7 @@ export default function Trace({scopeId='loc'}){
   const annualSummary=useAsyncResource({
     queryKey:['trace-annual-place-days-v1',annualWindow.startDate,annualWindow.endDate,
       ...annualGroups.map(group=>group.scope+':'+group.ids.join(','))],
-    enabled:annualGaugeOn&&annualGroups.length>0,
+    enabled:annualGaugeOn&&annualGaugeDetailVisible&&annualGroups.length>0,
     queryFn:async()=>(await mapBounded(annualGroups,2,async({scope,ids})=>{
       const {data,error}=await dbPublicClient.schema('silver').analytics({
         p_scope_id:scope,p_view:'trace_daily',
@@ -267,9 +268,10 @@ export default function Trace({scopeId='loc'}){
   return <FeaturePage featureId="trace">
     <TraceMap publicTrace floatingControls={floatingControls} spatialData={demoSpatialData}
        annualGauges={annualGauges} annualGaugeOn={annualGaugeOn}
-       annualGaugeBusy={annualGaugeOn&&annualGroups.length>0&&annualSummary.isPending}
+       annualGaugeBusy={annualGaugeOn&&annualGaugeDetailVisible&&annualGroups.length>0&&annualSummary.isPending}
        annualGaugeError={Boolean(annualSummary.error)}
        onAnnualGaugeToggle={()=>setAnnualGaugeOn(value=>!value)}
+       onAnnualGaugeVisibleChange={setAnnualGaugeDetailVisible}
       focusLocation={deepLinkedPlace.data||null} hideRoutePicker
       selectedRouteUid={isLoc?'':twoPointDemo?(demoRoute?.uid||''):(currentMap?.uid||'')}
       showAnchorSearch={!isLoc} onAnchorSelect={chooseMapAnchor}>
