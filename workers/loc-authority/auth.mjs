@@ -37,7 +37,7 @@ export function locAuthSessionCache(env={}){
   const workerVersion=String(env?.CF_VERSION_METADATA?.id||'').trim();
   return {
     enabled:true,
-    maxAge:5*60,
+    maxAge:30*60,
     strategy:'compact',
     version:workerVersion||'loc-auth-local'
   };
