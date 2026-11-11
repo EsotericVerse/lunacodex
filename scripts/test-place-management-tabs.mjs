@@ -44,16 +44,10 @@ test('Timeline analysis is isolated from initial management entry',()=>{
   assert.match(editor,/onClick=\{\(\)=>setMapOpen\(open=>!open\)\}/);
 });
 
-test('Service Worker never reuses stale management HTML after a deploy',()=>{
+test('Retired PWA worker never intercepts public or management HTML',()=>{
   const sw=read('public/sw.js');
-  const self={location:{origin:'https://loc.example'},addEventListener(){}};
-  const isPublicHtml=Function('self',sw+'\nreturn isPublicHtml')(self);
-  const url=pathname=>({origin:self.location.origin,pathname,search:'',searchParams:new URLSearchParams()});
-  const request={mode:'navigate'};
-  assert.equal(isPublicHtml(request,url('/lo3rwang/manage/')),false);
-  assert.equal(isPublicHtml(request,url('/lo3rwang/manage/search/')),false);
-  assert.equal(isPublicHtml(request,url('/lrunes/manage/')),false);
-  assert.equal(isPublicHtml(request,url('/lo3rwang/culture/')),true);
+  assert.doesNotMatch(sw,/addEventListener\(['"]fetch['"]/);
+  assert.match(sw,/self\.registration\.unregister\(\)/);
 });
 
 test('Timeline uses native LOC Auth events independently from its SQL client',()=>{
