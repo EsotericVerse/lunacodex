@@ -142,8 +142,16 @@ export async function handleNativePublicContent(request,env={},{
     const scopedFor=id=>port.engine==='postgres'&&port.dialect
       ?createScopedLocClient({dialect:port.dialect,scopeId:id,
         namespace:port.namespace||'silver'}):null;
-    if(numeric)return respond({data:await (kind==='loc'?
-      readLocGroupNumeric(query,start,end,port):readGalaxyNumeric(query,scope,kind,start,end,port))});
+    if(numeric){
+      // Statistics may issue several statements: keep one physical SQL
+      // acquisition for this request instead of reconnecting per statement.
+      const run=db=>kind==='loc'
+        ?readLocGroupNumeric(db,start,end,port)
+        :readGalaxyNumeric(db,scope,kind,start,end,port);
+      const data=typeof query.connection==='function'
+        ?await query.connection().execute(run):await run(query);
+      return respond({data});
+    }
     if(kind==='culture_anchors'){
       const typed=scopedFor(scope);
       const rows=typed
