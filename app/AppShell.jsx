@@ -3,8 +3,7 @@
 import {useEffect,useLayoutEffect,useMemo,useRef,useState,useSyncExternalStore} from 'react';
 import dynamic from 'next/dynamic';
 import {Capacitor} from '@capacitor/core';
-import {QueryClient,QueryClientProvider,useQueryClient} from '@tanstack/react-query';
-import {invalidateScopeQueryCache} from '../zenstack/client-queries';
+import {LocResourceProvider,useQueryClient,invalidateScopeQueryCache} from '../zenstack/client-queries';
 import {invalidateScopeStatisticsCached} from './loc/scope-statistics-cache.mjs';
 import {translateUiField,UI_COPY,UI_LOCALE_OPTIONS,normalizeUiLocale,uiCopy,registerDefaultSection,isSectionLoaded,loadSection} from './i18n/ui-copy';
 import {UiLocaleProvider,useLoadedUiLocale,useUiLocale,useUiSection} from './i18n/ui-locale';
@@ -261,13 +260,7 @@ function NavTarget({href,label,current=false,native=false}){
 // The provider must sit ABOVE the component that calls useAppBootstrap, so it
 // lives in this thin wrapper (a hook cannot read a provider rendered by itself).
 export default function AppShell({children}){
-  const [client]=useState(()=>new QueryClient({
-    defaultOptions:{queries:{
-      gcTime:2*60*60*1000,staleTime:Infinity,refetchOnMount:false,refetchOnWindowFocus:false,
-      refetchOnReconnect:false,refetchInterval:false,retry:false
-    }}
-  }));
-  return <QueryClientProvider client={client}><EditDockProvider><AppShellInner>{children}</AppShellInner></EditDockProvider></QueryClientProvider>;
+  return <LocResourceProvider><EditDockProvider><AppShellInner>{children}</AppShellInner></EditDockProvider></LocResourceProvider>;
 }
 
 function AppShellInner({children}){
