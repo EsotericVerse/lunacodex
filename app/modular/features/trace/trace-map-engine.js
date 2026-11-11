@@ -100,7 +100,8 @@ function existingAnchorPoints(anchors){
   return {type:'FeatureCollection',features:(Array.isArray(anchors)?anchors:[])
     .filter(isValidSavedAnchor)
     .map((a,i)=>({type:'Feature',id:i,properties:{title:String(a.title||''),address:String(a.postal_address||''),
-        uid:String(a.uid||''),source_scope:String(a.source_scope||'')},
+        uid:String(a.uid||''),source_scope:String(a.source_scope||''),
+        territoryTotal:Number(a.territory_total||0),territorySource:String(a.territory_source||'')},
       geometry:{type:'Point',coordinates:spaceCoordinates(a)}}))};
 }
 function emptyRoute(){
@@ -113,7 +114,7 @@ function routeGeometry(coordinates){
   }]};
 }
 
-export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLocationPick=null,onAnchorSelect=null,anchors=[],showAnchorPopup=true,onGaugeVisibilityChange=()=>{}}={}){
+export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLocationPick=null,onAnchorSelect=null,anchors=[],showAnchorPopup=true,onGaugeVisibilityChange=()=>{},territoryMode=false}={}){
   if(!container)throw new Error('找不到地圖容器。');
   const controller=new AbortController();
   let removed=false;
@@ -419,8 +420,18 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
       });
     }
     map.addSource('loc-trace-saved-anchors',{type:'geojson',data:existingAnchorPoints(savedAnchors)});
+    if(territoryMode)map.addLayer({id:'loc-trace-territory-halo',type:'circle',
+      source:'loc-trace-saved-anchors',paint:{
+        'circle-radius':['step',['get','territoryTotal'],19,3,23,10,29,30,35,100,43],
+        'circle-color':'#ffc979','circle-opacity':0.13,
+        'circle-stroke-width':1,'circle-stroke-color':'#ffc979','circle-stroke-opacity':0.55
+      }});
     map.addLayer({id:'loc-trace-saved-point-layer',type:'circle',source:'loc-trace-saved-anchors',
-      paint:{'circle-radius':6,'circle-color':'#6ce4ce','circle-opacity':0.95,
+      paint:territoryMode?{
+        'circle-radius':['step',['get','territoryTotal'],7,3,10,10,14,30,18,100,23],
+        'circle-color':'#f8b963','circle-opacity':0.91,
+        'circle-stroke-width':2,'circle-stroke-color':'#fff4cd'
+      }:{'circle-radius':6,'circle-color':'#6ce4ce','circle-opacity':0.95,
         'circle-stroke-width':1.5,'circle-stroke-color':'#153739'}});
     map.addLayer({id:'loc-trace-saved-point-labels',type:'symbol',source:'loc-trace-saved-anchors',
       minzoom:12,layout:{'text-field':['get','title'],
