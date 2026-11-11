@@ -123,6 +123,8 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
   let markers=[];
   let timelineMarkers=[];
   let timelineRows=[];
+  let annualGaugeMarkers=[];
+  let annualGaugeRows=[];
   let activeTimePointKeys=new Set();
   let pickedMarker=null;
   let pickedPosition=null;
@@ -137,6 +139,7 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     map.getSource('loc-trace-saved-anchors')?.setData(existingAnchorPoints(savedAnchors));
     refreshSavedRoute();
     refreshTimelineStems();
+    refreshAnnualGauges();
     refreshTimeCursor();
     // Updating GeoJSON never resets the viewport. Only explicit navigation may.
   }
@@ -161,6 +164,36 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
       timelineMarkers.push(new Marker({element,anchor:'bottom',offset:[0,0]})
         .setLngLat(spaceCoordinates(anchor)).addTo(map));
     }
+  }
+  function refreshAnnualGauges(){
+    annualGaugeMarkers.forEach(marker=>marker.remove());
+    annualGaugeMarkers=[];
+    if(!loaded||!annualGaugeRows.length)return;
+    const byKey=new globalThis.Map(annualGaugeRows.map(row=>[
+      String(row.source_scope||'')+':'+String(row.uid||''),row
+    ]));
+    // One small HUD per saved point, not per article. At zoomed-out scales,
+    // the original MapLibre pin layer remains the lightweight overview.
+    for(const point of savedAnchors.filter(isValidSavedAnchor).slice(0,80)){
+      const row=byKey.get(String(point.source_scope||'')+':'+String(point.uid||''));
+      if(!row||!Number.isFinite(Number(row.percent)))continue;
+      const percent=Math.max(0,Math.min(100,Math.round(Number(row.percent))));
+      const element=document.createElement('div');
+      element.className='loc-trace-annual-gauge';
+      element.style.setProperty('--loc-gauge-progress',Math.round(percent*2.7)+'deg');
+      element.style.pointerEvents='none';
+      element.setAttribute('aria-hidden','true');
+      const value=document.createElement('span');
+      value.className='loc-trace-annual-gauge__number';
+      value.textContent=percent+'%';
+      element.appendChild(value);
+      annualGaugeMarkers.push(new Marker({element,anchor:'center'})
+        .setLngLat(spaceCoordinates(point)).addTo(map));
+    }
+  }
+  function setAnnualGauges(rows){
+    annualGaugeRows=Array.isArray(rows)?rows:[];
+    refreshAnnualGauges();
   }
   function setPlaceTimelines(rows){
     timelineRows=Array.isArray(rows)?rows:[];
@@ -371,6 +404,7 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     if(removed)return;
     loaded=true;
     refreshTimelineStems();
+    refreshAnnualGauges();
     if(canPickLocation){
       // The Banqiao mock stations belong to the anchor editor only.
       map.addSource('loc-trace-extrusions',{type:'geojson',data:pillarGeojson(EXAMPLE_ANCHORS)});
@@ -524,10 +558,12 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     markers=[];
     timelineMarkers.forEach(marker=>marker.remove());
     timelineMarkers=[];
+    annualGaugeMarkers.forEach(marker=>marker.remove());
+    annualGaugeMarkers=[];
     pickedMarker?.remove();
     pickedMarker=null;
     map.remove();
   }
-  return {focus,focusCoordinates,centerIfFar,goOrigin,setAnchors,setPlaceTimelines,setStemsVisible,setTimeCursor,setSavedRoute,setSavedGraph,overview,showRoadRoute,
+  return {focus,focusCoordinates,centerIfFar,goOrigin,setAnchors,setPlaceTimelines,setAnnualGauges,setStemsVisible,setTimeCursor,setSavedRoute,setSavedGraph,overview,showRoadRoute,
     resize:()=>{if(!removed)map.resize();},destroy};
 }
