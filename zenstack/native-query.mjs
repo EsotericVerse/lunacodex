@@ -5,43 +5,15 @@ import {schema} from './schema.mjs';
 const SCOPED={Galaxy:'Lo3rwangGalaxy',Anchor:'Lo3rwangAnchor',Blocks:'Lo3rwangBlocks'};
 const OPS={eq:'equals',neq:'not',gt:'gt',gte:'gte',lt:'lt',lte:'lte',in:'in'};
 
-// Only lossless scalar coercions enter ZenStack's typed ORM. The browser
-// serializes dates and boolean query values as strings; rejecting all of them
-// previously sent ordinary Culture/Search predicates to custom SQL.
-const UNSUPPORTED=Symbol('unsupported native LOC filter');
-function typedValue(field,value){
-  if(value===null)return field.optional?null:UNSUPPORTED;
-  if(field.array)return UNSUPPORTED;
-  if(field.type==='String')return typeof value==='string'?value:UNSUPPORTED;
-  if(field.type==='Boolean'){
-    if(typeof value==='boolean')return value;
-    if(value==='true')return true;
-    if(value==='false')return false;
-    return UNSUPPORTED;
-  }
-  if(field.type==='Int')return Number.isSafeInteger(value)?value:UNSUPPORTED;
-  if(field.type==='BigInt')return typeof value==='bigint'?value:UNSUPPORTED;
-  if(field.type==='DateTime'){
-    if(value instanceof Date)return Number.isNaN(value.getTime())?UNSUPPORTED:value;
-    if(typeof value!=='string')return UNSUPPORTED;
-    const types=new Set((field.attributes||[]).map(attribute=>attribute.name));
-    // A PostgreSQL DATE has no time zone. A strict calendar day maps to UTC
-    // midnight without accepting JS Date's overflow normalization (Feb 30).
-    if(types.has('@db.Date')&&/^\d{4}-\d{2}-\d{2}$/.test(value)){
-      const date=new Date(value+'T00:00:00.000Z');
-      return !Number.isNaN(date.getTime())&&date.toISOString().slice(0,10)===value
-        ?date:UNSUPPORTED;
-    }
-    // A timestamp with an explicit offset can be mapped to a JS Date only at
-    // millisecond precision. Microsecond input stays on Kysely unchanged.
-    // Local timestamps without a zone also stay on Kysely.
-    if(types.has('@db.Timestamptz')&&
-      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)){
-      const date=new Date(value);
-      return Number.isNaN(date.getTime())?UNSUPPORTED:date;
-    }
-  }
-  return UNSUPPORTED;
+function matchingValue(field,value){
+  if(value===null)return Boolean(field.optional);
+  if(field.array)return false;
+  if(field.type==='String')return typeof value==='string';
+  if(field.type==='Boolean')return typeof value==='boolean';
+  if(field.type==='Int')return Number.isSafeInteger(value);
+  if(field.type==='BigInt')return typeof value==='bigint';
+  if(field.type==='DateTime')return value instanceof Date&&!Number.isNaN(value.getTime());
+  return false;
 }
 export function nativeReadPlan(body,modelName){
   const model=schema.models[modelName]||schema.models[SCOPED[modelName]];
@@ -57,34 +29,18 @@ export function nativeReadPlan(body,modelName){
   const filters=[];
   for(const item of body.filters||[]){
     if(!item||!Object.hasOwn(fields,item.column)||item.negate||
-      !(item.operator==='is'||OPS[item.operator]))return null;
+      !(item.operator==='is'&&item.value===null||OPS[item.operator]))return null;
     const field=fields[item.column];
-    if(['gt','gte','lt','lte'].includes(item.operator)&&
-      !['String','Int','BigInt','DateTime'].includes(field.type))return null;
-    if(item.operator==='is'&&item.value!==null&&
-      field.type!=='Boolean')return null;
-    let value;
     if(item.operator==='in'){
-      if(!Array.isArray(item.value))return null;
-      value=[];
-      for(const itemValue of item.value){
-        const normalized=typedValue(field,itemValue);
-        if(normalized===UNSUPPORTED||normalized===null)return null;
-        value.push(normalized);
-      }
-    }else{
-      value=typedValue(field,item.value);
-      if(value===UNSUPPORTED)return null;
-    }
+      if(!Array.isArray(item.value)||item.value.some(v=>v===null||!matchingValue(field,v)))return null;
+    }else if(!matchingValue(field,item.value))return null;
     filters.push({[item.column]:{
-      [item.operator==='is'?'equals':OPS[item.operator]]:value
+      [item.operator==='is'?'equals':OPS[item.operator]]:item.value
     }});
   }
   const orderBy=[];
   for(const item of body.orders||[]){
-    // Prisma-like orderBy cannot express the caller's explicit NULLS FIRST.
-    if(!item||!Object.hasOwn(fields,item.column)||
-      item.nullsFirst!==undefined)return null;
+    if(!item||!Object.hasOwn(fields,item.column))return null;
     orderBy.push({[item.column]:item.ascending===false?'desc':'asc'});
   }
   if(body.single!==undefined&&!['single','maybeSingle'].includes(body.single))
