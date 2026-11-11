@@ -8,8 +8,8 @@ assert.equal(url.hostname,'127.0.0.1','CI role setup must use local PostgreSQL')
 assert.equal(url.pathname,'/loc_auth_schema','CI role setup must use disposable test DB');
 const pool=new Pool({connectionString:url.toString(),ssl:false,max:1});
 try{
-  await pool.query("CREATE ROLE loc_auth_ci LOGIN PASSWORD 'loc_auth_ci_only' NOSUPERUSER NOBYPASSRLS");
-  await pool.query("CREATE ROLE loc_web_ci LOGIN PASSWORD 'loc_web_ci_only' NOSUPERUSER NOBYPASSRLS");
+  await pool.query("CREATE ROLE loc_auth_ci LOGIN PASSWORD 'loc_auth_ci_only' NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE");
+  await pool.query("CREATE ROLE loc_web_ci LOGIN PASSWORD 'loc_web_ci_only' NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE");
   await pool.query('GRANT CONNECT ON DATABASE loc_auth_schema TO loc_auth_ci');
   await pool.query('GRANT CONNECT ON DATABASE loc_auth_schema TO loc_web_ci');
 }finally{
