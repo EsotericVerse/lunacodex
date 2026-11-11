@@ -2,6 +2,26 @@
 // This is a relying-party call, not a second Session/JWT implementation.
 const ISSUER='https://auth.lo3rwang.cc';
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Reuse a *previously verified* Better Auth Session within this Pages worker.
+// This is an identity result cache, not a token issuer or a permission grant.
+// It avoids a second Auth network round trip for repeated editor saves on the
+// same worker isolate. A new isolate must still perform an initial verification.
+const VERIFIED_SESSION_TTL_MS=30*60*1000;
+const MAX_VERIFIED_SESSIONS=256;
+const verifiedSessions=new Map();
+const inFlight=new Map();
+async function cookieFingerprint(cookie){
+  const bytes=new TextEncoder().encode(cookie);
+  const digest=await crypto.subtle.digest('SHA-256',bytes);
+  return Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('');
+}
+function rememberVerifiedSession(key,identity,now){
+  verifiedSessions.delete(key);
+  verifiedSessions.set(key,{identity,expiresAt:now+VERIFIED_SESSION_TTL_MS});
+  while(verifiedSessions.size>MAX_VERIFIED_SESSIONS)
+    verifiedSessions.delete(verifiedSessions.keys().next().value);
+}
 function err(message,status,reason){
   return Object.assign(new Error(message),{httpStatus:status,reason});
 }
@@ -10,6 +30,24 @@ export async function verifiedLocWebsiteSession(request,{
 }={}){
   const cookie=request.headers.get('cookie')||'';
   if(!cookie)throw err('LOC sign-in required',401,'no_cookie');
+  const key=await cookieFingerprint(cookie);
+  const now=Date.now();
+  const cached=verifiedSessions.get(key);
+  if(cached&&cached.expiresAt>now)return cached.identity;
+  if(cached)verifiedSessions.delete(key);
+  const pending=inFlight.get(key);
+  if(pending)return pending;
+  const verify=verifySessionWithBetterAuth(cookie,fetchImpl);
+  inFlight.set(key,verify);
+  try{
+    const identity=await verify;
+    rememberVerifiedSession(key,identity,Date.now());
+    return identity;
+  }finally{
+    if(inFlight.get(key)===verify)inFlight.delete(key);
+  }
+}
+async function verifySessionWithBetterAuth(cookie,fetchImpl){
   let response;
   try{
     // This verifier is used for privileged website operations; signed
