@@ -80,28 +80,28 @@ function dailyRowsFromCounts(counts){
 }
 
 // A Statistics/Culture page view commonly renders more than one chart for the
-// same Scope + date range in one render pass. Share one short-lived
-// Kysely aggregate request across concurrent charts instead of duplicating SQL.
-function cachedByKey(cache,key,ttlMs,factory){
-  const now=Date.now();
-  const cached=cache.get(key);
-  if(cached&&cached.expires>now)return cached.promise;
+// same Scope + date range in one render pass. Coalesce the concurrent identical
+// Kysely aggregate requests into one instead of duplicating SQL — but keep NO
+// cache: the entry is released the moment the request settles, so a later read
+// always hits the database fresh. LOC holds no client-side data cache.
+function dedupeInflight(pending,key,factory){
+  const existing=pending.get(key);
+  if(existing)return existing;
   const promise=factory();
-  cache.set(key,{expires:now+ttlMs,promise});
-  promise.catch(()=>{if(cache.get(key)?.promise===promise)cache.delete(key);});
-  if(cache.size>40)cache.delete(cache.keys().next().value);
+  pending.set(key,promise);
+  const release=()=>{if(pending.get(key)===promise)pending.delete(key);};
+  promise.then(release,release);
   return promise;
 }
-const scopeStatisticsCache=new Map();
-const scopeCategoryTotalsCache=new Map();
-const STATISTICS_CACHE_TTL_MS=20_000;
+const scopeStatisticsInflight=new Map();
+const scopeCategoryTotalsInflight=new Map();
 function cachedReadScopeStatistics(id,args){
   const key=String(id)+'|'+JSON.stringify(args);
-  return cachedByKey(scopeStatisticsCache,key,STATISTICS_CACHE_TTL_MS,()=>readScopeStatistics(id,args));
+  return dedupeInflight(scopeStatisticsInflight,key,()=>readScopeStatistics(id,args));
 }
 function cachedReadScopeCategoryTotals(id,args){
   const key=String(id)+'|'+JSON.stringify(args);
-  return cachedByKey(scopeCategoryTotalsCache,key,STATISTICS_CACHE_TTL_MS,()=>readScopeCategoryTotals(id,args));
+  return dedupeInflight(scopeCategoryTotalsInflight,key,()=>readScopeCategoryTotals(id,args));
 }
 
 // Native Kysely aggregation only. No RPC-existence probe or article-level
