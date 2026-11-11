@@ -48,7 +48,7 @@ export function AdminSourceCategories(){
     draft.title!==(byUid.get(draft.uid)?.title||'')||
     draft.description!==(byUid.get(draft.uid)?.description||'')
   ));
-  const canChangeNode=()=>!isDirty()||window.confirm('目前的來源修改尚未儲存，確定放棄變更？');
+  const canChangeNode=()=>!busy&&(!isDirty()||window.confirm('目前的來源修改尚未儲存，確定放棄變更？'));
   const load=useCallback(async()=>{
     setLoading(true);setError('');
     try{
