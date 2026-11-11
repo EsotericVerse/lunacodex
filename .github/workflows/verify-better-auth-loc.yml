@@ -29,3 +29,7 @@ jobs:
           npm run test:authority
       - name: Bundle Auth Worker without deployment
         run: npx --yes wrangler@4.157.0 deploy --config workers/loc-authority/wrangler.jsonc --dry-run --outdir /tmp/loc-auth-dry
+      - name: Verify LOC website production build and public rendering compilation
+        run: |
+          npm run check:syntax
+          npm run build
