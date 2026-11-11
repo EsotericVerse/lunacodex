@@ -13,11 +13,12 @@ export const LOC_IMPORT=LOC_ISSUER+'/v1/import/short';
 const OWNER_EMAIL='sopa2306@gmail.com';
 
 export function checkLocAuthEnvironment(env){
-  const missing=['LOC_AUTH_DATABASE_URL','BETTER_AUTH_SECRET',
-    'LOC_GOOGLE_CLIENT_ID','LOC_GOOGLE_CLIENT_SECRET'].filter(key=>
-      typeof env?.[key]!=='string'||!env[key].trim());
-  if(missing.length)throw new Error('LOC Auth missing required environment bindings: '+missing.join(', '));
-  if(env.BETTER_AUTH_SECRET.length<32)throw new Error('BETTER_AUTH_SECRET must be at least 32 characters');
+  const secret=env?.BETTER_AUTH_SECRET||env?.LOC_CONTROL_ENCRYPTION_KEY;
+  const googleId=env?.LOC_GOOGLE_CLIENT_ID||env?.GOOGLE_CLIENT_ID;
+  const googleSecret=env?.LOC_GOOGLE_CLIENT_SECRET||env?.GOOGLE_CLIENT_SECRET;
+  if(!env?.LOC_AUTH_DATABASE_URL||!secret||!googleId||!googleSecret)
+    throw new Error('LOC Auth needs PostgreSQL and the existing OAuth credentials');
+  if(secret.length<32)throw new Error('LOC Auth secret must be at least 32 characters');
   const url=new URL(env.LOC_AUTH_DATABASE_URL);
   if(!['postgresql:','postgres:'].includes(url.protocol))
     throw new Error('LOC Auth requires a PostgreSQL connection');
@@ -39,7 +40,7 @@ export function createLocAuth(env){
     appName:'LOC Auth',
     baseURL:LOC_ISSUER,
     basePath:'/api/auth',
-    secret:env.BETTER_AUTH_SECRET,
+    secret:env.BETTER_AUTH_SECRET||env.LOC_CONTROL_ENCRYPTION_KEY,
     trustedOrigins:[LOC_ISSUER,LOC_WEB],
     database:{
       dialect:new PostgresDialect({pool}),
@@ -50,8 +51,8 @@ export function createLocAuth(env){
     emailAndPassword:{enabled:false},
     socialProviders:{
       google:{
-        clientId:env.LOC_GOOGLE_CLIENT_ID,
-        clientSecret:env.LOC_GOOGLE_CLIENT_SECRET,
+        clientId:env.LOC_GOOGLE_CLIENT_ID||env.GOOGLE_CLIENT_ID,
+        clientSecret:env.LOC_GOOGLE_CLIENT_SECRET||env.GOOGLE_CLIENT_SECRET,
         disableIdTokenSignIn:true
       }
     },
