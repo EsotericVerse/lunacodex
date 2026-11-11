@@ -75,6 +75,27 @@
 /* Accessible Timeline controls do not depend on a mouse modifier key. */
 .scope-timeline-controls{display:flex;align-items:center;flex-wrap:wrap;gap:.4rem;margin:.4rem 0 .65rem}
 .scope-timeline-controls .loc-button{min-width:44px;min-height:44px;padding:.4rem .7rem}
+
+/* Motion animates only this React-owned selection status, never vis-timeline's
+   positioned items or virtualized rows. Reserve its footprint to prevent jumps. */
+.scope-timeline-focus-slot{
+  display:flex;align-items:center;min-width:0;min-height:44px;
+  flex:1 1 180px;max-width:100%;overflow:hidden;
+}
+.scope-timeline-focus-pill{
+  display:flex;align-items:center;gap:.45rem;
+  min-width:0;max-width:100%;padding:.35rem .65rem;
+  border:1px solid var(--loc-accent-border-soft);
+  border-radius:999px;background:var(--loc-panel-2);color:var(--loc-text);
+  font-size:.82rem;box-sizing:border-box;
+}
+.scope-timeline-focus-pill time{
+  flex:none;font-variant-numeric:tabular-nums;color:var(--loc-heading);font-weight:650;
+}
+.scope-timeline-focus-pill span{
+  min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+
 .scope-timeline-item-picker{display:grid;gap:.3rem;max-width:min(100%,26rem);margin:.35rem 0 .65rem}
 .scope-timeline-item-picker .scope-select{width:100%;min-height:44px}
 .scope-culture-timeline-selection{margin-top:.65rem}

@@ -133,3 +133,24 @@ test('later article pages only append and do not replace earlier visible items',
     code.slice(start,end)+';return visibleWorkRows;')(fn=>fn(),pages);
   assert.deepEqual(result,[original,next]);
 });
+
+test('vis timeline retains ownership of its geometry while Motion decorates selection and insight',()=>{
+  const timeline=readFileSync(new URL('../app/modular/modules/culture-timeline/CultureTimeline.jsx',import.meta.url),'utf8');
+  assert.ok(parse(timeline,{sourceType:'module',plugins:['jsx']}).program.body.length>0);
+  assert.match(timeline,/import \{AnimatePresence,motion,useReducedMotion\} from 'motion\/react'/);
+  assert.match(timeline,/const cameraAnimation=reduceMotion\?false:/);
+  assert.match(timeline,/timeline\.zoomIn\(\.35,\{animation:cameraAnimation\}\)/);
+  assert.match(timeline,/timeline\.zoomOut\(\.35,\{animation:cameraAnimation\}\)/);
+  assert.match(timeline,/timeline\.setWindow\(new Date\(from\+shift\),new Date\(to\+shift\),\{animation:cameraAnimation\}\)/);
+  assert.match(timeline,/className='scope-timeline-focus-pill'/);
+  assert.match(timeline,/className='scope-candidate-insight'/);
+  assert.match(timeline,/instance\.fit\(\{animation:false\}\)/);
+  assert.match(timeline,/timeline\.redraw\(\)/);
+  assert.match(timeline,/instance\.destroy\(\)/);
+  // The vis-owned container stays a plain element with its original ref.
+  assert.match(timeline,/<div ref=\{containerRef\} data-anchor-gesture=/);
+  assert.doesNotMatch(timeline,/<motion\.div ref=\{containerRef\}/);
+  const style=readFileSync(new URL('../app/styles/scope-system.css',import.meta.url),'utf8');
+  assert.match(style,/\.scope-timeline-focus-slot\{/);
+  assert.match(style,/min-height:44px/);
+});
