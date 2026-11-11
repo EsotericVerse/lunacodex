@@ -61,6 +61,9 @@ export function createLocAuth(env){
     rateLimit:{enabled:true,window:60,max:30},
     advanced:{
       useSecureCookies:true,
+      // The LOC website receives the opaque session cookie only for explicit
+      // protected operations. Public rendering never consults Auth.
+      crossSubDomainCookies:{enabled:true,domain:'lo3rwang.cc'},
       database:{joins:true},
       ipAddress:{ipAddressHeaders:['cf-connecting-ip']}
     },
