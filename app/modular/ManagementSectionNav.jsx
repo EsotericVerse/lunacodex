@@ -65,6 +65,16 @@ export function useManagementSection(items,defaultValue='',aliases={}){
   const resolveRef=useRef(resolve);
   resolveRef.current=resolve;
   const [value,setLocalValue]=useState(()=>resolve(searchParams?.get('section')||''));
+  const availableSections=items.map(item=>item.value).join('|');
+  // Native-only sections arrive after hydration. Restore deep links as soon
+  // as the section exists, without navigating or scrolling the page.
+  useEffect(()=>{
+    const requested=new URL(window.location.href).searchParams.get('section')||'';
+    setLocalValue(current=>{
+      const next=resolveRef.current(requested);
+      return current===next?current:next;
+    });
+  },[availableSections]);
   useEffect(()=>{
     const sync=()=>setLocalValue(resolveRef.current(new URL(window.location.href).searchParams.get('section')||''));
     window.addEventListener('popstate',sync);
