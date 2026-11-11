@@ -12,9 +12,9 @@ export async function verifiedLocWebsiteSession(request,{
   if(!cookie)throw err('LOC sign-in required',401,'no_cookie');
   let response;
   try{
-    // This verifier is used for privileged website operations; signed
-    // session_data Cookie Cache must not extend access after revocation.
-    response=await fetchImpl(ISSUER+'/api/auth/get-session?disableCookieCache=true',{
+    // Reuse the existing signed Session Cookie Cache; no forced Auth DB
+    // lookup for each privileged website operation.
+    response=await fetchImpl(ISSUER+'/api/auth/get-session',{
       method:'GET',headers:{cookie,accept:'application/json'},
       cache:'no-store',redirect:'manual',signal:AbortSignal.timeout(7000)
     });
