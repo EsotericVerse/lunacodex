@@ -48,10 +48,11 @@ test('expanding one era shows only its periods, with no free-standing period row
   assert.equal(model.items.filter(row=>row.entry_type==='period').length,2);
   assert.equal(model.groups[0].expanded,true);
 });
-test('default culture homepage window is one calendar year in Taipei',()=>{
-  assert.match(source,/const start=useMemo\(\(\)=>previousYear\(today\),\[today\]\)/);
-  assert.match(source,/d\.setUTCFullYear\(d\.getUTCFullYear\(\)-1\)/);
-  assert.match(source,/windowStart=\{start\} windowEnd=\{today\}/);
+test('default culture homepage window is the fixed 2025 calendar year despite Era',()=>{
+  assert.match(source,/const start=DEFAULT_YEAR_WINDOW\.startDate/);
+  assert.match(source,/const end=DEFAULT_YEAR_WINDOW\.endDate/);
+  assert.match(source,/windowStart=\{start\} windowEnd=\{end\}/);
+  assert.match(source,/useState\('year'\)/);
 });
 
 test('canonical eight-character Era uses existing ZModel Time relationships',()=>{
