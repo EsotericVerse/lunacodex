@@ -1125,7 +1125,10 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       });
       // Committed import writes change the Scope's time/count aggregates.
       // Invalidate only this Scope; ordinary reads never refresh on a timer.
-      if(!nativeLocal)invalidateScopeStatisticsCached(scopeId);
+      if(!nativeLocal){
+        invalidateScopeStatisticsCached(scopeId);
+        await resourceCache.invalidateScope({scopeId});
+      }
       // All article and media writes are finished: now recompute the
       // persisted Search summary once. A summary error must not turn a
       // successful import into a retry-all error.
@@ -1144,7 +1147,11 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       if(nativeLocal)window.dispatchEvent(new Event('loc-local-data-changed'));
     }catch(error){
       // Earlier batches may have committed even when a later batch failed.
-      if(!nativeLocal)invalidateScopeStatisticsCached(scopeId);
+      if(!nativeLocal){
+        invalidateScopeStatisticsCached(scopeId);
+        // A partially committed import must not leave stale UI aggregates.
+        void resourceCache.invalidateScope({scopeId}).catch(()=>{});
+      }
       setProgress(null);
       setStatus('匯入在「'+lastImportStage+'」階段失敗；之前成功的批次可能已寫入。原始錯誤：'+
         String(error?.message||error||t('uiExtra.importUI.importFailed'))+
