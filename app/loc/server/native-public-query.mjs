@@ -255,7 +255,8 @@ export async function handleNativePublicQuery(request,env={},{
     }
     if(analytics){
       stage='analytics';
-      const settings={role:'anon',publishedScopeIds:PUBLIC_SCOPES};
+      const settings={role:'anon',publishedScopeIds:PUBLIC_SCOPES,
+        dialect:selected.dialect};
       // Reuse the acquired connection across all statistics/config reads.
       const output=await withConnection(selected.db,db=>
         selected.engine==='postgres'
