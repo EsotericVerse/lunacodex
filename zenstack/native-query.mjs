@@ -66,17 +66,25 @@ export function nativeReadPlan(body,modelName){
 export async function executeNativeRead(client,body,modelName){
   const plan=nativeReadPlan(body,modelName);
   if(!plan)return null;
-  const delegate=client?.[modelName[0].toLowerCase()+modelName.slice(1)];
-  if(!delegate||typeof delegate.findMany!=='function'||typeof delegate.count!=='function')
-    throw new Error('ZenStack native model is unavailable');
-  const count=plan.count?Number(await delegate.count({where:plan.where})):null;
-  const data=plan.head?null:await delegate.findMany({
-    where:plan.where,select:plan.select,orderBy:plan.orderBy,
-    skip:plan.skip,take:plan.take
-  });
-  if(!plan.single)return {data,count};
-  const rows=data||[];
-  if(rows.length>1||plan.single==='single'&&rows.length!==1)
-    throw Object.assign(new Error('Row count mismatch'),{code:'PGRST116'});
-  return {data:rows[0]||null,count};
+  const key=modelName[0].toLowerCase()+modelName.slice(1);
+  const read=async scoped=>{
+    const delegate=scoped?.[key];
+    if(!delegate||typeof delegate.findMany!=='function'||typeof delegate.count!=='function')
+      throw new Error('ZenStack native model is unavailable');
+    const count=plan.count?Number(await delegate.count({where:plan.where})):null;
+    const data=plan.head?null:await delegate.findMany({
+      where:plan.where,select:plan.select,orderBy:plan.orderBy,
+      skip:plan.skip,take:plan.take
+    });
+    if(!plan.single)return {data,count};
+    const rows=data||[];
+    if(rows.length>1||plan.single==='single'&&rows.length!==1)
+      throw Object.assign(new Error('Row count mismatch'),{code:'PGRST116'});
+    return {data:rows[0]||null,count};
+  };
+  // One transaction pins a single Kysely/driver acquisition for both
+  // COUNT and data SELECT. Exact COUNT remains unbounded by take/skip.
+  if(plan.count&&!plan.head&&typeof client?.$transaction==='function')
+    return client.$transaction(read);
+  return read(client);
 }
