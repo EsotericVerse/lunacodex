@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import {getMigrations} from 'better-auth/db/migration';
 import {createLocAuth} from '../workers/loc-authority/auth.mjs';
-import {applyLocAuthRls} from './loc-auth-rls.mjs';
+import {applyLocAuthRls,assertLocAuthRuntimeRole} from './loc-auth-rls.mjs';
 
 if(process.env.LOC_AUTH_APPLY_SCHEMA!=='1')
   throw Error('LOC Auth migration requires explicit LOC_AUTH_APPLY_SCHEMA=1');
@@ -21,6 +21,9 @@ const env={...process.env,
     process.env.GOOGLE_CLIENT_SECRET||'migration-only-secret'};
 const {auth,pool}=createLocAuth(env);
 try{
+  // Fail before Better Auth creates tables if the dedicated runtime role
+  // is missing or would bypass RLS.
+  await assertLocAuthRuntimeRole(pool,process.env.LOC_AUTH_RLS_ROLE);
   const {runMigrations}=await getMigrations(auth.options);
   await runMigrations();
   const required=['user','session','account','verification'];
