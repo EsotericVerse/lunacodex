@@ -13,7 +13,8 @@ export function resolveLocPermissions(email,rows=[]){
   if(!active.length)return denied;
   const isAdmin=active.some(row=>String(row.manage_role||'').toLowerCase()==='admin');
   const grants=active.filter(row=>['admin','group','scope'].includes(
-    String(row.manage_role||'').toLowerCase())).map(row=>row.id+':manage');
+    String(row.manage_role||'').toLowerCase())).flatMap(row=>[
+      row.id+':manage',row.id+':write',row.id+':read']);
   if(isAdmin)grants.unshift('global:manage');
   return {canWrite:grants.length>0,canManage:isAdmin,
     grants:[...new Set(grants)]};
