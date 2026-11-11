@@ -1,112 +1,70 @@
-# LOC Auth — Better Auth model
+# LOC Auth (Rainbow / Galaxy-Link)
 
-This Worker **is LOC Auth**. It is not Neon Auth, a Neon Auth proxy, a website display handler,
-a Kysely SQL gateway, or a handmade OAuth server.
+LOC Auth is an independent SSO, OAuth/OIDC, Session and MCP Gateway service.
+Better Auth is the implementation module, **not** the product name.
 
-- Issuer: `https://auth.lo3rwang.cc/api/auth`
-- Authentication / Google OAuth: `better-auth`, email/password disabled
-- OAuth 2.1 and OIDC provider: `@better-auth/oauth-provider`, Authorization Code + PKCE S256, token/refresh revocation, UserInfo and consent
-- RSA signing and JWKS: `better-auth/plugins` `jwt`
-- Runtime: existing Cloudflare Worker `auth`
-- Storage: PostgreSQL via the **built-in Better Auth Kysely dialect** using Neon merely as PostgreSQL
-- Auth namespace: `loc_auth`, not Neon-managed `neon_auth`
-- Website read/display: independent Cloudflare Pages/Kysely business data
-- Authorization: LOC Auth authenticates users and authorizes its own MCP clients independently; website `api.manage` and Scope authorize website business writes separately, and are never required for an Auth user or Session to exist.
+The LOC Web (LunaCodex / Language of Codex Framework) shares source code, not
+the Auth user registry. LOC Web owns business tables and `api.manage`. A LOC
+Auth user is valid even if no LOC Web user or `api.manage` record exists.
+Specific delegated business operations may reference website permissions; this
+must not be required for login or Session creation.
 
-## Independent user registries and optional cross-reference
+## Storage isolation: Rainbow names only
 
-**LOC Auth (Rainbow / Galaxy-Link)** and **LOC Web (LunaCodex / Language of Codex Framework)** share a source repository, **not** an identity database or a user registry.
+**The old `loc_auth` test objects are not an Auth storage design.** Never
+recreate, import, use, or refer to those test records as the production system.
+The user has separately removed a temporary test table in Supabase. This
+repository must not try to re-create it.
 
-- LOC Auth users, Google identities, OAuth clients, Sessions, JWKs and consent are persisted only in the isolated Neon PostgreSQL `loc_auth` schema (plus Better Auth plugin-defined tables).
-- LOC Web owns its Scope, content and `api.manage` business permissions. The website does **not** need to list, mirror, import, or maintain LOC Auth's user records.
-- Having a valid LOC Auth user without a corresponding LOC Web `api.manage` row is **normal**: sign-in, OAuth consent and Auth Session persistence must not depend on a website business row.
-- An already-authenticated identity may be **referenced** when LOC Auth evaluates a specific MCP delegation or when LOC Web authorizes a website data operation. That reference does not merge the two user registries.
-- Delegation defines the authorized Codex operation/scope. A signed-in identity alone does not grant write permission to an unrelated website or external database.
-- Do not copy business `api.manage`, website Scope policy, website database profiles, or SQL Model Gateway logic into LOC Auth. Do not copy Auth's tables into LOC Web.
+The code's **table-name mappings** (not actual SQL tables) are explicitly:
 
-**No recurring Auth queries to website business tables merely to keep a session alive.** Specific delegated operations may consult business authorization as needed, independently from the ability to sign in.
+| Logical model | Proposed PostgreSQL table |
+| --- | --- |
+| Better Auth user | `rainbow_auth` |
+| Better Auth session | `rainbow_session` |
+| Better Auth external account | `rainbow_account` |
+| Better Auth verification | `rainbow_verification` |
+| JWT JWKS | `rainbow_jwks` |
+| OAuth client | `rainbow_oauth_client` |
+| OAuth resource | `rainbow_oauth_resource` |
+| OAuth client-resource link | `rainbow_oauth_client_resource` |
+| OAuth refresh token | `rainbow_oauth_refresh_token` |
+| OAuth access token | `rainbow_oauth_access_token` |
+| OAuth consent | `rainbow_oauth_consent` |
+| OAuth client assertion | `rainbow_oauth_client_assertion` |
 
-## Required bindings
+**No table above has been created by PR #1374.** The exact full model/field
+inventory, constraints, indexes, plugin-specific additions, and **each table's
+RLS SELECT / INSERT / UPDATE / DELETE policy must be reviewed with the user**
+before any production DDL. The above is a code-side naming draft; if a pinned
+plugin uses further models, do not create them automatically. Review the
+vendor model inventory first.
 
-Existing Worker Google bindings may remain: `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
-The existing long-term `LOC_CONTROL_ENCRYPTION_KEY` may seed Better Auth's secret,
-or `BETTER_AUTH_SECRET` may be set instead. These secrets never belong in Git.
+The approved PostgreSQL schema is configured explicitly by
+`LOC_AUTH_SCHEMA` and must not default to a test namespace. For example,
+`silver.rainbow_auth` is possible once `silver` and that precise table have
+been approved. `LOC_AUTH_DATABASE_URL` configures the PostgreSQL connection.
+These are runtime credentials only; never put a schema-owner credential in
+the Worker.
 
-**New:** `LOC_AUTH_DATABASE_URL` is a server-side Neon PostgreSQL URI pointing to the intended LOC database, with the required permissions for the `loc_auth` namespace. Do not reuse `neon_auth` tables.
+**No automatic migrations, ad hoc schema/table creation, implicit RLS grants,
+or SQL RPC.** Auth data read/write uses Better Auth's supported PostgreSQL
+adapter. LOC Auth can share one Neon project with LOC Web while its tables and
+permissions remain separate. The existing Neon's managed Auth tables and LOC
+Web business tables are unrelated and must not be modified for this change.
 
-## Database initialization / release gate
+## Cache and deployment
 
-The `loc_auth` namespace has **four Better Auth core tables**: `user`, `session`, `account`,
-`verification`. OAuth Provider and JWT/JWKS require additional vendor-defined tables.
-Use only Better Auth's generated schema: do not handcraft OAuth, Session or JWK tables.
-The Neon-managed `neon_auth` schema and website `api.manage` are unrelated.
+Keep the user's active Auth Cache and LOC Web ISR configurations unchanged.
+Session state belongs in PostgreSQL. Session Cookie Cache is short-lived;
+deployment-version changes invalidate cached Session values but do not
+delete persisted Sessions. Do not reintroduce a Durable Object identity store.
 
-A server administrator can initialize the isolated LOC Auth schema once with
-`LOC_AUTH_APPLY_SCHEMA=1 node scripts/loc-auth-migrate.mjs`, using the trusted
-`LOC_AUTH_DATABASE_URL` and Better Auth secret in the server environment. This calls
-Better Auth's official `getMigrations` and verifies all four core tables after applying
-its complete core/plugin schema. It is **never invoked by an HTTP request** and never
-configured through LOC website Settings. No migration falls back to Durable Object.
+## Release gate
 
-The production Neon schema and Worker bindings must be verified independently before
-release; adding this script does not mean the migration has already been executed.
-
-## RLS isolation — Auth-only and role-specific
-
-LOC Auth and LOC Web may share the same Neon **project** and even the same
-PostgreSQL **database**. Their tables, user registries and database roles remain
-separate. **Do not re-use the managed `neon_auth` tables or any existing
-test-only `loc_auth` data as production Auth records.**
-
-The draft code currently targets an isolated PostgreSQL schema named
-`loc_auth`. This is a **proposed new runtime namespace**, not an assertion
-that prior test objects are suitable for production. The schema location,
-required tables and database-role creation must be explicitly reviewed and
-approved before applying them to Neon production.
-
-A stable Auth RLS setup requires all of the following:
-- A **migration owner** to perform vendor schema changes only during approved
-  releases, separate from the **LOC Auth runtime login**.
-- A dedicated Auth runtime PostgreSQL role with `NOINHERIT`,
-  `NOSUPERUSER`, `NOBYPASSRLS`, `NOCREATEDB`, `NOCREATEROLE`,
-  and no inherited / SET ROLE memberships.
-- `ENABLE ROW LEVEL SECURITY` **and** `FORCE ROW LEVEL SECURITY`
-  on every Auth table, including JWT and OAuth Provider plugin tables.
-- Exactly one table policy permitting the **dedicated Auth runtime role**
-  full internal Auth CRUD. This is *service-role isolation* rather than
-  per-person row filtering: authentication must resolve sessions for all users.
-- Only `USAGE` on the Auth schema and `SELECT,INSERT,UPDATE,DELETE` on
-  its tables are granted to the Auth runtime. No Auth table access is granted
-  to `PUBLIC` or the LOC Web runtime.
-- LOC Auth must use the **runtime** PostgreSQL credential in its Worker
-  `LOC_AUTH_DATABASE_URL`; the one-time migration tool uses the separate
-  migration-owner credential. Never place a migration-owner secret in the
-  production Auth Worker.
-- Schema alterations remain a **per-change user-approval operation**. Ordinary
-  OAuth, Session, JWKS and MCP operations must not run migrations.
-
-`scripts/loc-auth-migrate.mjs` uses Better Auth's vendor migrations and
-`scripts/loc-auth-rls.mjs` to enforce the above after a preflight. It refuses
-to start migrations if the named runtime role is absent, privileged, or
-inappropriately related to other roles. After vendor DDL it applies the role
-policy on **all** Auth tables in one transaction.
-
-CI runs these steps against a disposable local PostgreSQL instance with
-two distinct test logins (`loc_auth_ci` and `loc_web_ci`), then checks:
-the Auth login can INSERT/SELECT/UPDATE all core tables; RLS is enabled and
-forced on all core/plugin tables; and the unrelated Web role cannot SELECT
-Auth user records. A production Neon RLS verification and real login are
-still required after the exact production migration is approved.
-
-## Verification
-
-The repo's manual workflow `Verify Better Auth LOC rewrite` performs `npm ci`, syntax
-checks, role unit tests, Wrangler dry-run and a disposable PostgreSQL integration test
-that persists all four Better Auth core models. Production acceptance is separate:
-complete a real Google login, OIDC discovery, JWKS retrieval, authorization-code exchange,
-valid owner write to LOC, denied non-owner write, public content read with Auth unavailable,
-and an extension/MCP import with acknowledged UID receipts.
-
-**Do not deploy the Worker, merge the draft PR, or claim writes work until all acceptance
-checks have passed.** The OAuth Provider's official client registration replaces legacy
-`/oauth/register`; clients still needing the retired URL must be updated first.
+The branch is a **draft**, not production accepted. It must not be deployed
+until the specific table models/fields and RLS are approved, the runtime
+database/schema bindings are present, verified Auth SQL read/write succeeds,
+OAuth/Session/JWKS works, and the MCP delegation path is tested.
+Schema creation requires the user's separate explicit approval on every change;
+the previously written test migration scripts have been deleted.
