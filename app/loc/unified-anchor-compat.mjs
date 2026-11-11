@@ -275,7 +275,7 @@ export function unifiedAnchorRelation(schema,spec){
 class UnifiedQuery{
   constructor(schema,spec){
     this.schema=schema;this.spec=spec;this.operation='select';this.fields='*';
-    this.filters=[];this.orders=[];this.offset=0;this.maximum=10000;
+    this.filters=[];this.orders=[];this.offset=0;this.maximum=null;
     this.opts={};this.one='';this.values=null;this.orFilters=[];
     this.abort=null;this.conflict=null;
   }
@@ -344,7 +344,8 @@ class UnifiedQuery{
     // Legacy HTTP query builders support abortSignal; KyselyEdge builders do not.
     // Their fetch already has its own bounded timeout. Never call an absent method.
     if(this.abort&&typeof physical.abortSignal==='function')physical=physical.abortSignal(this.abort);
-    if(includeRange)physical=physical.range(this.offset,this.offset+Math.max(1,this.maximum)-1);
+    if(includeRange&&this.maximum!==null)
+      physical=physical.range(this.offset,this.offset+Math.max(1,this.maximum)-1);
     return {physical,jsonFilters};
   }
   async run(){
@@ -359,24 +360,23 @@ class UnifiedQuery{
       });
       const {physical,jsonFilters}=this.build(query,false);
       if(!jsonFilters.length){
-        const result=await physical.range(this.offset,this.offset+Math.max(1,this.maximum)-1);
+        const result=await (this.maximum===null?physical:
+          physical.range(this.offset,this.offset+Math.max(1,this.maximum)-1));
         return normalizeResult(spec,result,this.fields,this.one);
       }
-      // Small legacy JSONB projections are filtered locally until the
-      // Kysely SQL gateway accepts indexed JSON path predicates.
-      // Bound each scan and fail rather than silently truncate matches.
-      const rows=[],size=1000,cap=10000;
-      for(let start=0;start<cap;start+=size){
+      // Legacy JSONB filters require complete source rows before local evaluation.
+      // Transport pages are not a total-row ceiling.
+      const rows=[],size=1000;
+      for(let start=0;;start+=size){
         const page=await physical.range(start,start+size-1);
         if(page.error)return page;
         rows.push(...(page.data||[]));
         if((page.data||[]).length<size)break;
-        if(start+size===cap)throw Error('Unified anchor JSON filter exceeded bounded scan');
       }
       let filtered=rows.map(r=>fromAnchorRow(spec,r)).filter(row=>jsonFilters.every(f=>evalFilter(row,f)));
       // Preserve caller's requested offset even when JSON filtering.
       const count=filtered.length;
-      filtered=filtered.slice(this.offset,this.offset+this.maximum).map(row=>
+      filtered=filtered.slice(this.offset,this.maximum===null?undefined:this.offset+this.maximum).map(row=>
         this.fields==='*'?row:Object.fromEntries(String(this.fields).split(',').map(key=>[key.trim(),row[key.trim()]])));
       return {data:this.one?(filtered[0]||null):head?null:filtered,
         error:this.one==='single'&&filtered.length!==1?{message:'Single row not found'}:null,
