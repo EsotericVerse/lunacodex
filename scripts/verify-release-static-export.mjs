@@ -22,9 +22,9 @@ const missing=routes.filter(route=>{
   const path=join(root,route,'index.html');
   return !existsSync(path)||!statSync(path).isFile()||statSync(path).size===0;
 });
-// A build can pass while the PWA runtime files are missing from the published
-// artifact. Verify only actual browser entrypoints, not source-code wording.
-const pwaAssets=['sw.js','manifest.webmanifest'];
+// Retain only /sw.js as a retirement tombstone for existing registrations.
+// The PWA manifest has been deliberately removed.
+const pwaAssets=['sw.js'];
 const missingAssets=pwaAssets.filter(file=>{
   const target=join(root,file);
   return !existsSync(target)||!statSync(target).isFile()||statSync(target).size===0;
