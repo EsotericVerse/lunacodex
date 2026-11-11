@@ -1,6 +1,6 @@
 'use client';
 
-import {createContext,createElement,useCallback,useContext,useEffect,useMemo,useRef,useState} from 'react';
+import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import {flashMessage} from '../app/loc/flash-message';
 
 // LOC live read layer — no TanStack, no SWR, no browser cache, no polling.
@@ -243,15 +243,9 @@ export const queryClient={
   }
 };
 
-const QueryClientContext=createContext(queryClient);
-
-// Drop-in replacements so AppShell's provider wiring stays unchanged. There is
-// only ever one shared client; `new QueryClient(...)` returns the singleton.
-export class QueryClient{constructor(){return queryClient;}}
-export function QueryClientProvider({children}){
-  return createElement(QueryClientContext.Provider,{value:queryClient},children);
-}
-export function useQueryClient(){return useContext(QueryClientContext);}
+// All LOC components share the same native client directly; no redundant
+// TanStack-style provider, React context, or client-side query cache.
+export function useQueryClient(){return queryClient;}
 
 export function createResourceCache(client){
   return {
