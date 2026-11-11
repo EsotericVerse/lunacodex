@@ -1,7 +1,6 @@
 name: Verify Better Auth LOC rewrite
 on:
   workflow_dispatch:
-  pull_request:
 permissions:
   contents: read
 jobs:
