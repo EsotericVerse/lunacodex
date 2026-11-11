@@ -384,7 +384,7 @@
   font-size:clamp(1.25rem,2vw,1.65rem);
   font-weight:730;
   letter-spacing:-.04em;
-  color:var(--loc-gold);
+  color:var(--loc-heading);
 }
 .loc-trace-place-journal>span:last-child{
   font-size:.82rem;
