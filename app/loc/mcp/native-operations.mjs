@@ -2,7 +2,7 @@
 // Pages backend. This is NOT a generic SQL endpoint: no caller-provided SQL,
 // relation, database alias, connection URL, or query AST is accepted.
 import {sql} from 'kysely';
-import {jwtVerify,createRemoteJWKSet} from 'jose';
+import {verifyAccessTokenRequest,requestToResourceInput} from 'better-auth/oauth2';
 import {locPermissionsForEmail} from '../permissions/roles.mjs';
 import {authorizeDelegatedShortImport} from '../import/short-edge-authorization.mjs';
 import {processShortImport,portableShortImportStore} from '../import/short-append-service.mjs';
@@ -69,7 +69,6 @@ function reply(payload,status=200){
 // The Auth service only verifies identity/credentials. This business service
 // independently looks up permissions in api.manage after connecting to Neon.
 // No home-made JWT, PKCE, refresh, signing or session implementation.
-const jwks=createRemoteJWKSet(new URL(JWKS));
 async function signedClaims(request,fetchImpl){
   const host=new URL(request.url).hostname;
   if(host===WEB_HOST){
@@ -97,14 +96,17 @@ async function signedClaims(request,fetchImpl){
   if(!bearer)throw refusal('LOC OAuth bearer token required',401);
   let claims;
   try{
-    const verified=await jwtVerify(bearer[1],jwks,{
-      issuer:AUTH+'/api/auth',audience:'https://'+MCP_HOST,
-      typ:'at+jwt'
+    claims=await verifyAccessTokenRequest(requestToResourceInput(request),{
+      jwksUrl:JWKS,
+      verifyOptions:{
+        issuer:AUTH+'/api/auth',audience:'https://'+MCP_HOST,
+        typ:'at+jwt',requiredClaims:['azp']
+      },
+      requiredScopes:['openid']
     });
-    if(typeof verified.payload.sub!=='string'||!verified.payload.sub)
-      throw Error('Missing principal');
-    claims=verified.payload;
-  }catch{throw refusal('LOC OAuth token invalid',401)}
+    if(typeof claims.sub!=='string'||!claims.sub)
+      throw Error('Missing Better Auth resource principal');
+  }catch{throw refusal('LOC OAuth access token invalid',401)}
   const response=await fetchImpl(AUTH+'/api/auth/oauth2/userinfo',{
     method:'GET',headers:{authorization:'Bearer '+bearer[1],accept:'application/json'},
     cache:'no-store',redirect:'manual',signal:AbortSignal.timeout(7000)
