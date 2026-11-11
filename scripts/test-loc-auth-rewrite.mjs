@@ -12,7 +12,20 @@ test('LOC Auth delegates OIDC, OAuth, JWT and storage to Better Auth',()=>{
  assert.match(auth,/PostgresDialect/);
  assert.match(auth,/schemaName:env.LOC_AUTH_SCHEMA/);
  assert.match(auth,/Approved LOC Auth PostgreSQL schema is not configured/);
- assert.doesNotMatch(auth,/schemaName:'loc_auth'|runMigrations|CREATE TABLE/);
+ assert.doesNotMatch(auth,/schemaName:'loc_auth'|runMigrations|CREATE TABLE|LOC_AUTH_SCHEMA_GENERATION/);
+ // All declared Auth storage models are Rainbow-prefixed and never written to
+ // an unreviewed PostgreSQL schema on deployment.
+ const declared=Object.fromEntries([...auth.matchAll(/^  ([A-Za-z]+):'(rainbow_[a-z_]+)',?$/gm)].map(m=>[m[1],m[2]]));
+ for(const key of ['user','session','account','verification','jwks','oauthClient',
+   'oauthResource','oauthClientResource','oauthRefreshToken',
+   'oauthAccessToken','oauthConsent','oauthClientAssertion'])
+   assert.match(declared[key]||'',/^rainbow_/,'missing Rainbow mapping: '+key);
+ assert.match(auth,/user:\{modelName:RAINBOW_TABLES\.user\}/);
+ assert.match(auth,/session:\{modelName:RAINBOW_TABLES\.session/);
+ assert.match(auth,/account:\{modelName:RAINBOW_TABLES\.account/);
+ assert.match(auth,/verification:\{modelName:RAINBOW_TABLES\.verification\}/);
+ assert.match(auth,/schema:\{jwks:\{modelName:RAINBOW_TABLES\.jwks\}\}/);
+ assert.match(auth,/oauthClient:\{modelName:RAINBOW_TABLES\.oauthClient\}/);
  assert.match(entry,/oauthProviderOpenIdConfigMetadata/);
  assert.match(entry,/oauthProviderAuthServerMetadata/);
  assert.doesNotMatch(entry,/native-oauth|runBetterAuthStore|LocAuthorityState|signLocDelegation/);
