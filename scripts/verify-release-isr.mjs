@@ -48,9 +48,13 @@ const cacheMode=read('app/loc/cache-mode-client.mjs');
 if(!cacheMode.includes('cache-policy.config')||!cacheMode.includes('CACHE_POLICY')||
   cacheMode.includes('loc_cache_runtime'))
   throw Error('Public three-mode policy must fail safely without enabling ISR');
+// Browser PWA Service Worker has been retired; remote ISR remains optional.
 const sw=read('public/sw.js');
-if(!sw.includes("runtimeCacheMode==='off'")||!sw.includes('LOC_CACHE_POLICY'))
-  throw Error('SW must preserve its installation but support cache bypass');
+const shell=read('app/AppShell.jsx');
+if(!sw.includes('self.registration.unregister()')||
+   sw.includes("addEventListener('fetch'")||
+   shell.includes('serviceWorker.register('))
+  throw Error('Retired PWA worker must not intercept or re-register');
 const config=read('app/loc/scope-data.js');
 if(!config.includes('PUBLISHED_SITE_BOOTSTRAP')||
   !config.includes('SCOPE_ROUTE_INDEX')||
@@ -65,8 +69,4 @@ if(!publishedBlocks.includes('()=>import('))
 const app=read('app/loc/app-bootstrap.js');
 if(app.includes('locHomeSnapshotDelivered'))
   throw Error('LOC home still consumes site RPC Blocks');
-const worker=read('public/sw.js');
-if(!worker.includes('isStaticAsset(request,url)')||!worker.includes('staticStrategy(event)')||
-   !worker.includes('_next\\/static'))
-  throw Error('Service Worker must cache published Next.js JS/CSS assets');
-console.log('Verified default-off optional ISR, admin-gated public numeric HTTP cache, SW bypass and published JS policy.');
+console.log('Verified default-off optional ISR, admin-gated public numeric HTTP cache, retired PWA worker and published JS policy.');
