@@ -194,3 +194,60 @@
 @media(hover:none){
   [data-public-feature] .loc-public-article-list > :is(.scope-work-list-row,.loc-shared-work-card):hover{box-shadow:none;}
 }
+
+/* Keep feature heroes below the first mobile viewport: content takes priority. */
+.scope-feature-hero{
+  min-height:0;
+  padding:clamp(.85rem,1.8vw,1.4rem);
+}
+.scope-feature-hero>.home-title-row>h1{
+  font-size:clamp(1.6rem,2.8vw,2.4rem)!important;
+  line-height:1.12!important;
+  letter-spacing:-.025em;
+}
+.scope-feature-hero .scope-hero-description{
+  margin-top:.4rem;
+  max-width:64ch;
+}
+.scope-feature-hero .scope-hero-description :where(p,li){
+  margin-block:.25rem;
+}
+.scope-feature-hero .scope-subtitle{font-size:clamp(.9rem,1.2vw,1.1rem)!important;}
+/* Home editorial image/text composition, without rearranging authored blocks. */
+.loc-next-main[data-loc-view="home"] :is(.loc-home-block,.scope-home-section){
+  min-width:0;
+}
+.loc-next-main[data-loc-view="home"] :is(.loc-home-block__body,.scope-home-section) :is(p,li){
+  max-width:70ch;
+  text-wrap:pretty;
+}
+.loc-next-main[data-loc-view="home"] :is(.loc-home-block__body,.scope-home-section) :is(img,video){
+  display:block;
+  max-width:100%;
+  height:auto;
+  object-fit:contain;
+  border-radius:var(--loc-ui-radius-sm,12px);
+}
+@media(max-width:680px){
+  .scope-feature-hero{
+    padding:.8rem .9rem;
+    border-radius:var(--loc-ui-radius-md,16px);
+  }
+  .scope-feature-hero>.home-title-row>h1{font-size:clamp(1.5rem,7vw,2rem)!important;}
+  .scope-feature-hero .scope-hero-description{margin-top:.35rem;}
+  .scope-feature-hero .scope-hero-description :where(p,li){
+    font-size:.9rem!important;
+    line-height:1.5;
+  }
+  .loc-next-main[data-loc-view="home"] :is(.loc-home-block,.scope-home-section){
+    padding-inline:clamp(.75rem,3vw,1rem);
+  }
+  .loc-next-main[data-loc-view="home"] :is(.loc-home-block__header,.home-title-row){
+    min-width:0;
+    flex-wrap:wrap;
+  }
+  .loc-next-main[data-loc-view="home"] :is(.loc-home-block__body,.scope-home-section) :is(img,video){
+    width:auto;
+    max-height:48svh;
+  }
+}
