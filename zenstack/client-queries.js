@@ -86,10 +86,34 @@ export function useAsyncInfiniteResource({
   };
 }
 
+// LOC aggregate consumers use different UI query keys. A committed import
+// invalidates only affected Scope records in the existing QueryClient;
+// page-size/cursor settings and other Scopes remain untouched.
+const SCOPE_DATA_QUERY_PREFIXES=new Set([
+  'scope-overview','scope-others-source-summary','statistics-source-articles',
+  'statistics-source-article-body','statistics-keyword-class',
+  'culture-timeline','loc-culture-density','culture-source-classification',
+  'culture-period-roots','culture-period-source-snapshot','culture-style-filter',
+  'culture-keyword-attributes','culture-keyword-group-catalog',
+  'culture-article-list','scope-search-summary'
+]);
+const matchesScopeDataQuery=(query,id)=>{
+  const key=query.queryKey;
+  return Array.isArray(key)&&SCOPE_DATA_QUERY_PREFIXES.has(key[0])&&
+    key.slice(1).some(part=>part===id);
+};
+
 // All cross-feature invalidation, deduplication, cancellation, stale writes
 // and paginated results are handled by the native QueryClient.
 export function createResourceCache(client){
   return {
+    invalidateScope:async({scopeId})=>{
+      const id=String(scopeId||'');
+      if(!id)return;
+      const predicate=query=>matchesScopeDataQuery(query,id);
+      await client.cancelQueries({predicate});
+      return client.invalidateQueries({predicate});
+    },
     invalidate:async({queryKey})=>{
       await client.cancelQueries({queryKey:keyOf(queryKey)});
       return client.invalidateQueries({queryKey:keyOf(queryKey)});
