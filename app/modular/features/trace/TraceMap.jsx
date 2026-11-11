@@ -90,7 +90,7 @@ const STRINGS={
   }
 };
 
-export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRouteSelect=null,selectedRouteUid='',focusLocation=null,spatialData=null,placeDayRows=null,mapOnly=false,hideRoutePicker=false,publicTrace=false,showAnchorSearch=true,floatingControls=null,children=null,annualGauges=[],annualGaugeOn=false,annualGaugeBusy=false,annualGaugeError=false,onAnnualGaugeToggle=null,onAnnualGaugeVisibleChange=null}){
+export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRouteSelect=null,selectedRouteUid='',focusLocation=null,spatialData=null,placeDayRows=null,mapOnly=false,hideRoutePicker=false,publicTrace=false,showAnchorSearch=true,floatingControls=null,children=null,annualGauges=[],annualGaugeOn=false,annualGaugeBusy=false,annualGaugeError=false,onAnnualGaugeToggle=null,onAnnualGaugeVisibleChange=null,territoryMode=false}){
   const {locale}=useUiLocale();
   const copy=STRINGS[locale]||STRINGS['zh-Hant'];
   const containerRef=useRef(null);
@@ -149,6 +149,7 @@ export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRout
       instance=createTraceMap(containerRef.current,{
         anchors:spatialData?.anchors||[],
         showAnchorPopup:!publicTrace,
+        territoryMode,
         onGaugeVisibilityChange:visible=>{if(active)gaugeVisibleRef.current?.(visible);},
         onSelect:id=>{if(active)setSelected(id);},
         onAnchorSelect:!selectingLocation?anchor=>{if(active)anchorSelectRef.current?.(anchor);}:null,
@@ -366,8 +367,8 @@ export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRout
         </details>:null}
       </div>:null}
       {!selectingLocation?<button type="button" className="loc-button loc-trace-origin-button"
-        disabled={!ready} onClick={()=>mapRef.current?.goOrigin()}>
-        回原點 · 板橋車站
+        disabled={!ready} onClick={()=>territoryMode?mapRef.current?.overview():mapRef.current?.goOrigin()}>
+        {territoryMode?'年度全版圖':'回原點 · 板橋車站'}
       </button>:null}
       <div className={'loc-trace-map-frame'+(expandedMap?' is-mobile-expanded':'')} ref={containerRef}
         role="application" aria-label={selectingLocation?copy.map:'空間定錨點與已儲存痕跡圖地圖'}/>
@@ -379,7 +380,7 @@ export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRout
       {publicTrace&&children?<div className="loc-trace-floating-content">{children}</div>:null}
       {publicTrace&&status!=='ready'?<p className="loc-trace-float-map-status" role="status">{copy.status[status]||copy.status.loading}</p>:null}
     </div>
-    {!selectingLocation&&spatialData&&<div className="loc-trace-time-axis" role="group"
+    {!selectingLocation&&!territoryMode&&spatialData&&<div className="loc-trace-time-axis" role="group"
       aria-label="等比例時間線">
       <div className="loc-trace-time-axis-heading">
         <strong>等比例時間線</strong>
