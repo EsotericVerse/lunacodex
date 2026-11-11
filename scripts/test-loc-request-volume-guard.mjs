@@ -51,6 +51,17 @@ test('Neon does not perform automatic connection retries or timed probes',()=>{
   assert.match(driver,/now\(\)<blockedUntil/);
 });
 
+test('installed ZenStack Cache attaches only to trusted ORM clients with no background fetching',()=>{
+  const model=read('zenstack/client.mjs');
+  const packageJson=JSON.parse(read('package.json'));
+  assert.equal(packageJson.dependencies['@visualbravo/zenstack-cache'],'^1.0.8');
+  assert.equal(packageJson.dependencies['@tanstack/react-query'],undefined);
+  assert.match(model,/defineCachePlugin/);
+  assert.match(model,/MemoryCacheProvider/);
+  assert.match(model,/const provider=new MemoryCacheProvider\(\)/);
+  assert.doesNotMatch(model,/RedisCacheProvider|setInterval\(|setTimeout\(|swr:/);
+});
+
 test('editing keyboard activity checks are local and coalesced at 15 minutes',()=>{
   const dock=read('app/modular/edit-dock.jsx');
   assert.match(dock,/now-lastActivityCheck<15\*60\*1000/);
