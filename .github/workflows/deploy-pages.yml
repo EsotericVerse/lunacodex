@@ -1,23 +1,10 @@
 name: Deploy Main Next to GitHub Pages
 
-# Owner-approved: publish GitHub Pages automatically when main receives a push.
-# The existing concurrency group cancels superseded deployments.
+# Legacy GitHub Pages publishing is manual only. LOC's canonical site is
+# published automatically by Cloudflare Pages from main; running this on
+# every main push duplicates the entire Next.js build and deployment.
+# Keep the manual workflow for an explicitly requested GitHub Pages release.
 on:
-  push:
-    branches:
-      - main
-    # Owner-approved: skip the deploy build when a push to main changes ONLY
-    # docs/agent/hook files. GitHub runs the job only if at least one changed
-    # path is NOT matched below, so mixed code+docs pushes still deploy.
-    paths-ignore:
-      - '**/*.md'
-      - '*.md'
-      - 'AGENTS.md'
-      - '.githooks/**'
-      - '.agents/**'
-      - '.claude/**'
-      - 'node_modules/**'
-      - '.git/**'
   workflow_dispatch:
 
 permissions:
