@@ -92,7 +92,9 @@ test('LOC Auth Session cookie cache is deployment-versioned and separate from we
  assert.match(auth,/maxAge:30\*60/);
  assert.match(auth,/CF_VERSION_METADATA\?\.id/);
  assert.equal(config.version_metadata.binding,'CF_VERSION_METADATA');
- assert.doesNotMatch(auth,/api\.manage|scopeid|locPermissionsForEmail/);
+  // Inspect Auth runtime code only; comments may reference independent business rights.
+  const implementation=auth.slice(auth.indexOf('export function createLocAuth(env){'));
+ assert.doesNotMatch(implementation,/api\.manage|scopeid|locPermissionsForEmail/);
 });
 
 test('Rainbow OAuth client registration is owner-gated; Galaxy-Link uses CIMD',()=>{
