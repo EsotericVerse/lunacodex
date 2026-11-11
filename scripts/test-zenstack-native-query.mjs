@@ -1,13 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {DummyDriver,PostgresAdapter,PostgresIntrospector,PostgresQueryCompiler} from 'kysely';
+import {Kysely,DummyDriver,PostgresAdapter,PostgresIntrospector,PostgresQueryCompiler} from 'kysely';
 import {ZenStackClient} from '@zenstackhq/orm';
 import {PolicyPlugin} from '@zenstackhq/plugin-policy';
 import {schema} from '../zenstack/schema.mjs';
 import {createScopedLocClient} from '../zenstack/client.mjs';
 import {withFixedPolicyRead} from '../zenstack/policy-runtime.mjs';
 import {nativeReadPlan,executeNativeRead} from '../zenstack/native-query.mjs';
+import {zmodelRegistryJoin} from '../zenstack/model-column-guard.mjs';
 
 const simple={kind:'query',operation:'select',schema:'silver',
   table:'test_galaxy',columns:['uid','title'],filters:[
@@ -91,4 +92,25 @@ test('scoped $qb fallback uses mapped ZModel name to preserve SQL namespace',asy
   assert.deepEqual(result,[]);
   assert.equal(executed.length,1);
   assert.match(executed[0].sql,/"silver"."alpha_galaxy"/);
+});
+
+test('ZModel Registry JOIN compiles to the original one-SQL cross-schema join',async()=>{
+  const executed=[],db=new Kysely({dialect:dummyDialect(executed)});
+  const inner=zmodelRegistryJoin(db)
+    .select(['m.id as id','l.display_name as display_name','m.active as active'])
+    .where('m.manage_role','=','scope').where('m.active','=',true)
+    .orderBy('m.sort_order','asc').compile();
+  assert.match(inner.sql,/from "api"."manage" as "m"/i);
+  assert.match(inner.sql,/inner join "silver"."loc" as "l" on "l"."id" = "m"."id"/i);
+  assert.deepEqual(inner.parameters,['scope',true]);
+
+  const left=zmodelRegistryJoin(db,{optionalLoc:true})
+    .select(['m.id as id','l.birthday as birthday'])
+    .where('m.id','=','lo3rwang').compile();
+  assert.match(left.sql,/left join "silver"."loc" as "l" on "l"."id" = "m"."id"/i);
+  assert.deepEqual(left.parameters,['lo3rwang']);
+
+  // No SQL runs during model mapping / query compilation.
+  assert.equal(executed.length,0);
+  await db.destroy();
 });
