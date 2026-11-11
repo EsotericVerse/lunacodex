@@ -8,7 +8,9 @@ export async function readLocEditorGrants(session,{fetchImpl=globalThis.fetch}={
   });
   const data=await response.json().catch(()=>null);
   if(!response.ok||!data?.canWrite||!Array.isArray(data.grants))
-    throw Error(data?.error||'LOC edit permission denied');
+    throw Error((data?.error||'LOC edit permission denied')+
+      ' (HTTP '+response.status+(data?.reason?', '+data.reason:
+        data?'':', non-JSON response')+')');
   if(!Array.isArray(data.roles))throw Error('LOC role response invalid');
   const email=String(data.email||'').trim().toLowerCase();
   return data.roles.filter(row=>
