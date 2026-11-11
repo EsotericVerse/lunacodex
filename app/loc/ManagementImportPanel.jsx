@@ -11,7 +11,7 @@ registerDefaultSection('uiExtra.importUI',importUIZh);
 import {useDeferredValue,useEffect,useMemo,useRef,useState} from 'react';
 import ScopeSourceCorrection from './ScopeSourceCorrection';
 import {refreshScopeSearchSummary} from './scope-search-summary.mjs';
-import {invalidateScopeStatisticsCached} from './scope-statistics-cache.mjs';
+import {notifyScopeDataCommitted} from './scope-statistics-cache.mjs';
 import {insertRows,insertImportRows,dbAuthRelation,dbAuthClient,updateImportRows} from './db-client.mjs';
 import {useAccount} from './use-account';
 import {useAsyncResource,useResourceCache} from './use-async-resource';
@@ -1125,10 +1125,10 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       });
       // Committed import writes change the Scope's time/count aggregates.
       // Invalidate only this Scope; ordinary reads never refresh on a timer.
-      if(!nativeLocal){
-        invalidateScopeStatisticsCached(scopeId);
-        await resourceCache.invalidateScope({scopeId});
-      }
+      if(!nativeLocal)notifyScopeDataCommitted(scopeId,{
+        updatedAt:new Date().toISOString(),
+        counts:{inserted:result.inserted,updated,media:mediaSummary.created}
+      });
       // All article and media writes are finished: now recompute the
       // persisted Search summary once. A summary error must not turn a
       // successful import into a retry-all error.
@@ -1147,11 +1147,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       if(nativeLocal)window.dispatchEvent(new Event('loc-local-data-changed'));
     }catch(error){
       // Earlier batches may have committed even when a later batch failed.
-      if(!nativeLocal){
-        invalidateScopeStatisticsCached(scopeId);
-        // A partially committed import must not leave stale UI aggregates.
-        void resourceCache.invalidateScope({scopeId}).catch(()=>{});
-      }
+      // An earlier batch may have committed even when later work failed.
+      if(!nativeLocal)notifyScopeDataCommitted(scopeId);
       setProgress(null);
       setStatus('匯入在「'+lastImportStage+'」階段失敗；之前成功的批次可能已寫入。原始錯誤：'+
         String(error?.message||error||t('uiExtra.importUI.importFailed'))+
