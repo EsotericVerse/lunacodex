@@ -146,8 +146,9 @@ export function AdminSourceCategories(){
         <div className="scope-management-fields">
           <label><span>來源階層</span>
             <select className="scope-select" value={selected} onChange={e=>{
-              const row=byUid.get(e.target.value);setSelected(e.target.value);
-              if(row)edit(row);else if(canChangeNode())setDraft(null);
+              const row=byUid.get(e.target.value);
+              if(row)edit(row);
+              else if(canChangeNode()){setSelected('');setDraft(null);}
             }}>
               <option value="">選擇來源</option>
               {roots.map(root=><optgroup key={root.uid} label={root.title}>
