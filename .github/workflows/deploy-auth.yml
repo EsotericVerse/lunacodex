@@ -36,7 +36,7 @@ jobs:
         # Metadata-only Cloudflare check. Never print or connect using the secret.
         run: |
           npx --yes wrangler@4.157.0 secret list --config workers/loc-authority/wrangler.jsonc --format json > /tmp/loc-auth-secret-names.json
-          node -e "const fs=require('node:fs');const entries=JSON.parse(fs.readFileSync('/tmp/loc-auth-secret-names.json','utf8'));if(!Array.isArray(entries)||!['LOC_AUTH_DATABASE_URL','LOC_AUTH_SCHEMA'].every(required=>entries.some(s=>s.name===required))){console.error('LOC Auth requires approved PostgreSQL connection and schema bindings before deployment.');process.exit(1)}"
+          node -e "const fs=require('node:fs');const entries=JSON.parse(fs.readFileSync('/tmp/loc-auth-secret-names.json','utf8'));if(!Array.isArray(entries)||!entries.some(s=>s.name==='LOC_AUTH_DATABASE_URL')){console.error('LOC Auth requires the dedicated Neon PostgreSQL connection secret before deployment.');process.exit(1)}"
       - name: Deploy canonical LOC Auth domain
         run: npx --yes wrangler@4.157.0 deploy --config workers/loc-authority/wrangler.jsonc
       - name: Verify issuer metadata (no credentials used)
