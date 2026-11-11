@@ -54,8 +54,33 @@ function buildGraph(items=[],className='',classId='',expandedGroup='',expandedIt
   return {nodes,edges,meta,rootId};
 }
 
+// Reuse the keyword network canvas for LOC's four-level source Anchor tree.
+// Rows contain physical Anchor UIDs, with attr.uid listing child UIDs.
+function buildSourceGraph(sourceNodes=[],selectedRoot=''){
+  const byUid=new Map(sourceNodes.map(row=>[row.uid,row]));
+  const nodes=[],edges=[],meta=new Map();
+  const roots=sourceNodes.filter(row=>row.type==='universe');
+  const included=new Set();
+  const visit=(row,level=0)=>{
+    if(!row||included.has(row.uid))return;
+    included.add(row.uid);
+    const id='source:'+row.uid;
+    nodes.push({id,label:row.title||row.uid,level,kind:'source',shape:level===0?'ellipse':'box'});
+    meta.set(id,{kind:'source',node:{...row,name:row.title||row.uid}});
+    for(const childUid of Array.isArray(row.attr?.uid)?row.attr.uid:[]){
+      const child=byUid.get(childUid);
+      if(!child)continue;
+      visit(child,level+1);
+      edges.push({id:id+'>'+childUid,from:id,to:'source:'+childUid});
+    }
+  };
+  for(const root of roots.filter(row=>!selectedRoot||row.uid===selectedRoot))visit(root);
+  return {nodes,edges,meta,rootId:roots[0]?'source:'+roots[0].uid:''};
+}
+
 export default function KeywordNetworkEditor({
   items=[],
+  sourceNodes=null,
   groups=[],
   className='',
   classId='',
@@ -82,8 +107,9 @@ export default function KeywordNetworkEditor({
   const [error,setError]=useState('');
   const [selectionLabel,setSelectionLabel]=useState('');
   const graph=useMemo(()=>{
-    return buildGraph(items,className,classId,expandedGroup,expandedItemId,groups);
-  },[items,className,classId,expandedGroup,expandedItemId,groups]);
+    return Array.isArray(sourceNodes)?buildSourceGraph(sourceNodes,classId):
+      buildGraph(items,className,classId,expandedGroup,expandedItemId,groups);
+  },[items,sourceNodes,className,classId,expandedGroup,expandedItemId,groups]);
   const graphRef=useRef(graph);
   graphRef.current=graph;
   useEffect(()=>{
@@ -155,7 +181,7 @@ export default function KeywordNetworkEditor({
       if(previousView?.classId===classId){
         network.moveTo({position:previousView.position,scale:previousView.scale,animation:false});
       }else{
-        const firstGroup=graphRef.current.nodes.find(node=>node.kind==='group');
+        const firstGroup=graphRef.current.nodes.find(node=>node.kind==='group'||node.kind==='source');
         if(firstGroup)network.focus(firstGroup.id,{scale:compact?.8:1.05,animation:false});
         else network.fit({animation:false});
       }
@@ -208,17 +234,17 @@ export default function KeywordNetworkEditor({
   useEffect(()=>{if(networkRef.current)refreshGraph(networkRef.current);},[graph]);
 
   useEffect(()=>{
-    const itemNode='item:'+String(selectedId||'');
+    const itemNode=(Array.isArray(sourceNodes)?'source:':'item:')+String(selectedId||'');
     if(selectedId&&graph.meta.has(itemNode)&&networkRef.current){
       networkRef.current.selectNodes([itemNode]);
     }
-  },[selectedId,graph]);
+  },[selectedId,graph,sourceNodes]);
 
   const addChild=()=>{
     const liveSelection=String(networkRef.current?.getSelectedNodes()?.[0]||selectedNodeRef.current||'');
     const selectedMeta=graphRef.current.meta.get(liveSelection);
-    if(selectedMeta?.kind==='source'){
-      handlersRef.current.onNewChild?.(selectedMeta.node);
+    if(isSource){
+      handlersRef.current.onNewChild?.(selectedMeta?.kind==='source'?selectedMeta.node:null);
       return;
     }
     if(selectedMeta?.kind==='class')handlersRef.current.onNewGroup?.();
