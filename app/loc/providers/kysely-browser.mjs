@@ -1,7 +1,6 @@
 // One browser transport for LOC public reads. The existing Pages Function
 // executes every bounded SELECT with the server-owned Kysely SQL dialect.
 // LOC OAuth delegation is still mandatory for all mutations.
-import {queryBatchSize} from '../db-contract.mjs';
 import {withPublicReadBudget} from './kysely-read-budget.mjs';
 
 const IDENT=/^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -17,14 +16,14 @@ class Query {
     this.schema=FIELD(schema);this.table=FIELD(table);
     this.operation='select';this.values=null;this.conflict=null;
     this.columns=['*'];this.filters=[];this.orFilters=[];this.orders=[];
-    this.offset=0;this.rowLimit=queryBatchSize('*');this.count=null;
+    this.offset=0;this.rowLimit=null;this.count=null;
     this.head=false;this.cardinality=null;this.signal=null;this.dbId='';
     this.returning=false;
   }
   select(fields='*',options={}){
     this.returning=true;
     this.columns=String(fields||'*').split(',').map(s=>s.trim()).filter(Boolean);
-    this.rowLimit=queryBatchSize(this.columns);
+    // SQL projection alone has no implicit row-count ceiling.
     this.count=options.count||null;this.head=options.head===true;return this;
   }
   _filter(column,op,value,negate=false){
@@ -47,7 +46,7 @@ class Query {
     this.orders.push({column:FIELD(c),ascending:Boolean(ascending),nullsFirst});return this;
   }
   limit(n){
-    if(!Number.isInteger(n)||n<0||n>5000)throw Error('Invalid LOC read limit');
+    if(!Number.isSafeInteger(n)||n<0)throw Error('Invalid LOC read limit');
     this.rowLimit=n;return this;
   }
   range(start,end){
@@ -174,7 +173,7 @@ export function createKyselyPublicClient({
     const ids=idField?[...new Set(rows.map(row=>row[idField]))]:[];
     if(!ids.length)return {data:[],error:null,count};
     const follow=new Query(read,q.schema,q.table);
-    follow.columns=q.columns;follow.rowLimit=Math.max(1,Math.min(5000,ids.length));
+    follow.columns=q.columns;follow.rowLimit=ids.length;
     follow.in(idField,ids);
     try{const data=await read(follow);return {data:data.data||[],error:null,count}}
     catch(error){return {data:[],error:null,count,readError:String(error.message)}}
