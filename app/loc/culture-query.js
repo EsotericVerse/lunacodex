@@ -702,7 +702,8 @@ export async function selectScopePeriodWorkIndex(scope,{startDate='',endDate=nul
     includeGalaxy?selectRows(scope.galaxy,{
       columns:'uid,title,createtime',
       filters:galaxyFilters,
-      orders:[...(scope.id==='local'?[]:[{column:'date',ascending}]),{column:'createtime',ascending}],
+      orders:[...(scope.id==='local'?[]:[{column:'date',ascending}]),
+        {column:'createtime',ascending},{column:'uid',ascending:true}],
       limit:pageSize,
       offset:galaxyOffset,
       maxLimit:pageSize,
@@ -711,7 +712,7 @@ export async function selectScopePeriodWorkIndex(scope,{startDate='',endDate=nul
     includeMedia?selectRows(scope.galaxyMedia,{
       columns:'uid,createtime',
       filters:mediaFilters,
-      orders:[{column:'createtime',ascending}],
+      orders:[{column:'createtime',ascending},{column:'uid',ascending:true}],
       limit:pageSize,
       offset:mediaOffset,
       maxLimit:pageSize,
