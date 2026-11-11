@@ -24,3 +24,20 @@ export function invalidateScopeStatisticsCached(scopeId){
   for(const [key,entry] of entries)
     if(entry.scopeId===id)entries.delete(key);
 }
+
+/**
+ * Publish a committed data change to existing TanStack/ZenStack consumers.
+ * Updated time and counts are receipt metadata, not a new DB cache table.
+ * No event is emitted for an ordinary SELECT.
+ */
+export function notifyScopeDataCommitted(scopeId,{updatedAt='',counts={}}={}){
+  const id=String(scopeId||'');
+  if(!/^[a-z][a-z0-9]{0,14}$/.test(id))return false;
+  invalidateScopeStatisticsCached(id);
+  if(typeof window!=='undefined'&&typeof window.dispatchEvent==='function'){
+    window.dispatchEvent(new CustomEvent('loc-scope-data-committed',{
+      detail:{scopeId:id,updatedAt:updatedAt||new Date().toISOString(),counts}
+    }));
+  }
+  return true;
+}
