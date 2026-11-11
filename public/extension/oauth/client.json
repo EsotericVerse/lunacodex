@@ -14,5 +14,5 @@
     "code"
   ],
   "token_endpoint_auth_method": "none",
-  "scope": "loc:import offline_access"
+  "scope": "openid email loc:import offline_access"
 }
