@@ -72,9 +72,10 @@ Keep the user's active Auth Cache and LOC Web ISR configurations unchanged.
 Session state belongs in PostgreSQL. Signed Session Cookie Cache is
 **30 minutes**, not a 30-minute polling timer. A new Worker version changes
 the cache version; old cached values then stop being used, but the persisted
-database Session is not deleted. Privileged LOC Web identity checks use
-`get-session?disableCookieCache=true` so Session revocation is not silently
-delayed by the Cookie Cache. Keep existing Auth Cloudflare Cache and LOC Web
+database Session is not deleted. Privileged LOC Web identity checks use Better Auth's existing signed
+Session Cookie Cache rather than disabling it for each operation.
+Server-side business permissions remain independently enforced; revoked
+sessions may remain valid until the signed Cookie Cache window expires. Keep existing Auth Cloudflare Cache and LOC Web
 ISR configurations untouched. Do not reintroduce a Durable Object identity store.
 
 ## QoS, simultaneous requests and signing-key safety
