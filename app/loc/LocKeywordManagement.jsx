@@ -56,7 +56,7 @@ export default function LocKeywordManagement(){
       });
       if(result.error)throw Error(result.error.message);
       if(!result.data?.scope_id)throw Error('資料未更新，請檢查 Admin 權限。');
-      await queryClient.invalidateQueries({queryKey:['loc-keywords-admin']});
+      await queryClient.invalidateQueries({queryKey:['loc-keywords-admin'],refetchType:'none'});
       choose(result.data);
       setNotice('已儲存。');
       return true;
@@ -94,7 +94,7 @@ export default function LocKeywordManagement(){
       });
       if(deleteError)throw Error(deleteError.message);
       if(!removed?.deleted)throw Error('沒有刪除資料，請檢查 Admin 權限。');
-      await queryClient.invalidateQueries({queryKey:['loc-keywords-admin']});
+      await queryClient.invalidateQueries({queryKey:['loc-keywords-admin'],refetchType:'none'});
       choose(null);setNotice('已刪除管理紀錄。');
     }catch(e){setNotice(String(e?.message||e));}
     finally{setBusy(false);}
