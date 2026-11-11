@@ -18,6 +18,7 @@ import {readTraceMapIndex} from '../modular/features/trace/trace-data.js';
 import {isUnifiedAnchorScope} from './unified-anchor-compat.mjs';
 import {GALAXY_ABLE_KEYS,galaxyAble} from './galaxy-able.mjs';
 import {portableContainsTerm} from './providers/portable-search.mjs';
+import {readScopeStatisticsCached} from './scope-statistics-cache.mjs';
 const articlePermissionColumns=()=>GALAXY_ABLE_KEYS;
 const articlePermissionFilter=(_scope,name)=>({
   column:name,operator:'eq',value:true
@@ -79,29 +80,14 @@ function dailyRowsFromCounts(counts){
   }).sort((a,b)=>a.day.localeCompare(b.day)||a.category.localeCompare(b.category));
 }
 
-// A Statistics/Culture page view commonly renders more than one chart for the
-// same Scope + date range in one render pass. Share one short-lived
-// Kysely aggregate request across concurrent charts instead of duplicating SQL.
-function cachedByKey(cache,key,ttlMs,factory){
-  const now=Date.now();
-  const cached=cache.get(key);
-  if(cached&&cached.expires>now)return cached.promise;
-  const promise=factory();
-  cache.set(key,{expires:now+ttlMs,promise});
-  promise.catch(()=>{if(cache.get(key)?.promise===promise)cache.delete(key);});
-  if(cache.size>40)cache.delete(cache.keys().next().value);
-  return promise;
-}
-const scopeStatisticsCache=new Map();
-const scopeCategoryTotalsCache=new Map();
-const STATISTICS_CACHE_TTL_MS=20_000;
+// Scope aggregates are cached by SQL query signature until a committed write
+// explicitly invalidates that Scope, not on a 20-second timer.
 function cachedReadScopeStatistics(id,args){
-  const key=String(id)+'|'+JSON.stringify(args);
-  return cachedByKey(scopeStatisticsCache,key,STATISTICS_CACHE_TTL_MS,()=>readScopeStatistics(id,args));
+  return readScopeStatisticsCached(id,'daily',args,()=>readScopeStatistics(id,args));
 }
 function cachedReadScopeCategoryTotals(id,args){
-  const key=String(id)+'|'+JSON.stringify(args);
-  return cachedByKey(scopeCategoryTotalsCache,key,STATISTICS_CACHE_TTL_MS,()=>readScopeCategoryTotals(id,args));
+  return readScopeStatisticsCached(id,'category-totals',args,
+    ()=>readScopeCategoryTotals(id,args));
 }
 
 // Native Kysely aggregation only. No RPC-existence probe or article-level
