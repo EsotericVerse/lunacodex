@@ -14,10 +14,10 @@ export async function keywordService(operation,args={}){
   if(!SCOPE.test(scope))
     throw Error('Invalid Keyword Scope');
   const write=['analyze','reset','saveItem','deleteItem','syncLibrary'].includes(operation);
-  const token=await locDelegation(scope,write);
+  await locDelegation(scope,write);
   const response=await fetch('/api/keywords',{
-    method:'POST',credentials:'omit',cache:'no-store',
-    headers:{'content-type':'application/json',...(token?{authorization:'Bearer '+token}:{})},
+    method:'POST',credentials:'include',cache:'no-store',
+    headers:{'content-type':'application/json'},
     body:JSON.stringify({operation,args}),signal:AbortSignal.timeout(write?180000:25000)
   });
   const payload=await response.json().catch(()=>null);
