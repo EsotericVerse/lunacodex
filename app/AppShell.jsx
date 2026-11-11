@@ -263,7 +263,7 @@ function NavTarget({href,label,current=false,native=false}){
 export default function AppShell({children}){
   const [client]=useState(()=>new QueryClient({
     defaultOptions:{queries:{
-      staleTime:Infinity,refetchOnMount:false,refetchOnWindowFocus:false,
+      gcTime:2*60*60*1000,staleTime:Infinity,refetchOnMount:false,refetchOnWindowFocus:false,
       refetchOnReconnect:false,refetchInterval:false,retry:false
     }}
   }));
