@@ -2,7 +2,7 @@ import {betterAuth} from 'better-auth';
 import {jwt} from 'better-auth/plugins';
 import {oauthProvider} from '@better-auth/oauth-provider';
 import {PostgresDialect} from 'kysely';
-import {Pool} from 'pg';
+import {Pool, neonConfig} from '@neondatabase/serverless';
 
 // LOC Auth is the issuer. Neon supplies PostgreSQL storage, NOT Neon Auth.
 // Neither website rendering nor business permissions are implemented here.
@@ -66,13 +66,15 @@ export function createLocAuth(env){
   checkLocAuthEnvironment(env);
   // Built-in Kysely PostgreSQL adapter. No hand-written Auth storage, SQL,
   // session table, account linking, signing, PKCE or OAuth state handlers.
+  // Cloudflare Workers cannot open a raw TCP socket to Neon, so node-postgres
+  // hangs on every query. Neon's serverless driver connects over WebSocket and
+  // is pg-pool compatible, so the Kysely PostgresDialect below is unchanged and
+  // TLS is handled by the driver.
+  neonConfig.webSocketConstructor=WebSocket;
   const pool=new Pool({
     connectionString:env.LOC_AUTH_DATABASE_URL,
     // Two connections at most per Worker isolate; never expand the pool for probes.
-    max:2,
-    connectionTimeoutMillis:7000,
-    idleTimeoutMillis:10000,
-    ssl:{rejectUnauthorized:true}
+    max:2
   });
   const auth=betterAuth({
     appName:'LOC Auth',
