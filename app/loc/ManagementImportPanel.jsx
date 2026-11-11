@@ -859,14 +859,20 @@ function UniversalImport({scopeId,format,onFormatChange}) {
             // Every tied row is consumed together, never split by OFFSET.
             const beforeBoundary=page.filter(row=>String(row.createtime)!==boundary);
             append(beforeBoundary);
-            const {data:tied,error:tieError,count:tieCount}=await dbAuthRelation(galaxy)
-              .select('uid,createtime,site_id',{count:'exact'})
-              .ilike('site',site).eq('createtime',boundary)
-              .range(0,MAX_ROWS);
-            if(tieError)throw Error('相同建立時間的文章比對失敗：'+tieError.message);
-            if(!Number.isInteger(tieCount)||tieCount>MAX_ROWS)
-              throw Error('無法完整確認同時文章筆數，已停止匯入避免漏資料');
-            append(tied||[]);
+            // Even thousands of records sharing one timestamp must all be
+            // compared. The 1,000-record write batch is not a SELECT ceiling.
+            const tiePageSize=1000;
+            for(let tieOffset=0;;){
+              const {data:tied,error:tieError}=await dbAuthRelation(galaxy)
+                .select('uid,createtime,site_id')
+                .ilike('site',site).eq('createtime',boundary)
+                .order('uid',{ascending:true})
+                .range(tieOffset,tieOffset+tiePageSize-1);
+              if(tieError)throw Error('相同建立時間的文章比對失敗：'+tieError.message);
+              if(!(tied||[]).length)break;
+              append(tied);
+              tieOffset+=tied.length;
+            }
           }else append(page);
           after=boundary;
           if(found.length<=pageSize)break;
