@@ -1,6 +1,6 @@
 'use client';
 import {useCallback,useEffect,useRef,useState} from 'react';
-import {useQueryClient} from '@tanstack/react-query';
+import {useQueryClient} from '../../../../zenstack/client-queries';
 import dynamic from 'next/dynamic';
 import {invalidateScopeBlockPage,selectLiveScopeBlocks} from '../../scope-data';
 import {HomeBlock} from '../../home-block-model';
