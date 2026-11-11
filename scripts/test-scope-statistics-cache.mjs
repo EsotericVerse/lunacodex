@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readScopeStatisticsCached,invalidateScopeStatisticsCached}
+import {readScopeStatisticsCached,invalidateScopeStatisticsCached,notifyScopeDataCommitted}
   from '../app/loc/scope-statistics-cache.mjs';
 
 test('one Scope and query shape reuses a completed SQL aggregation',async()=>{
@@ -47,4 +47,32 @@ test('late in-flight read cannot refill an invalidated Scope cache',async()=>{
   release({new:false});
   await old;
   assert.deepEqual(await readScopeStatisticsCached('race','daily',{},()=>{throw Error('Unexpected refetch');}),next);
+});
+
+test('commit event invalidates existing SQL aggregate and carries time/count metadata',async()=>{
+  let calls=0;
+  const originalWindow=globalThis.window;
+  const originalCustomEvent=globalThis.CustomEvent;
+  const events=[];
+  try{
+    globalThis.window={dispatchEvent:event=>{events.push(event);return true;}};
+    globalThis.CustomEvent=class{
+      constructor(type,{detail}){this.type=type;this.detail=detail;}
+    };
+    const read=()=>++calls;
+    assert.equal(await readScopeStatisticsCached('revisions','daily',{},read),1);
+    assert.equal(notifyScopeDataCommitted('revisions',{
+      updatedAt:'2026-11-12T00:00:00.000Z',counts:{inserted:20,updated:3}
+    }),true);
+    assert.equal(await readScopeStatisticsCached('revisions','daily',{},read),2);
+    assert.deepEqual(events.map(event=>event.type),['loc-scope-data-committed']);
+    assert.equal(events[0].detail.scopeId,'revisions');
+    assert.equal(events[0].detail.updatedAt,'2026-11-12T00:00:00.000Z');
+    assert.deepEqual(events[0].detail.counts,{inserted:20,updated:3});
+  }finally{
+    if(originalWindow===undefined)delete globalThis.window;
+    else globalThis.window=originalWindow;
+    if(originalCustomEvent===undefined)delete globalThis.CustomEvent;
+    else globalThis.CustomEvent=originalCustomEvent;
+  }
 });
