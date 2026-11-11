@@ -152,21 +152,8 @@ export function useAccount({enabled=true,sessionOnly=false}={}){
     ...(passive?{fallbackData:signedOutState}:{}),
   });
   const state=query.data||emptyState;
-  // A failed network read is not a sign-out. Retry only when the browser
-  // reconnects or the user returns to a tab that failed verification.
-  useEffect(()=>{
-    if(!sessionOnly||!enabled||
-      !/Failed to fetch|連線失敗|NetworkError|Load failed/i.test(String(state.error||'')))
-      return undefined;
-    const recheck=()=>{void query.mutate().catch(()=>{});};
-    const onVisible=()=>{if(document.visibilityState==='visible')recheck();};
-    window.addEventListener('online',recheck);
-    document.addEventListener('visibilitychange',onVisible);
-    return()=>{
-      window.removeEventListener('online',recheck);
-      document.removeEventListener('visibilitychange',onVisible);
-    };
-  },[sessionOnly,enabled,state.error,query.mutate]);
+  // No automatic Auth retries on tab visibility or reconnect. Session is reused;
+  // an explicit editor action can still call refresh().
 
   // Explicit edit entry rechecks LOC Auth; normal mounts reuse the
   // in-memory grant and never query a management table.
@@ -256,7 +243,7 @@ export function usePassiveSessionAccount(){
       if(invalidate){
         // Never put an unverified SDK event user into the verified OAuth cache.
         queryClient.setQueryData(VERIFIED_SESSION_KEY,signedOutState);
-        if(user)void queryClient.invalidateQueries({queryKey:VERIFIED_SESSION_KEY,exact:true});
+        if(user)void queryClient.invalidateQueries({queryKey:VERIFIED_SESSION_KEY,exact:true,refetchType:'none'});
         // Real sign-out or account replacement revokes old management grants.
         // Do not invalidate the active RPC on INITIAL_SESSION hydration.
         queryClient.setQueryData(MANAGEMENT_KEY,signedOutState);
