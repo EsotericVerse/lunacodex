@@ -10,7 +10,9 @@ test('LOC Auth delegates OIDC, OAuth, JWT and storage to Better Auth',()=>{
  assert.match(auth,/oauthProvider\(/);
  assert.match(auth,/jwt\(/);
  assert.match(auth,/PostgresDialect/);
- assert.match(auth,/schemaName:'loc_auth'/);
+ assert.match(auth,/schemaName:env.LOC_AUTH_SCHEMA/);
+ assert.match(auth,/Approved LOC Auth PostgreSQL schema is not configured/);
+ assert.doesNotMatch(auth,/schemaName:'loc_auth'|runMigrations|CREATE TABLE/);
  assert.match(entry,/oauthProviderOpenIdConfigMetadata/);
  assert.match(entry,/oauthProviderAuthServerMetadata/);
  assert.doesNotMatch(entry,/native-oauth|runBetterAuthStore|LocAuthorityState|signLocDelegation/);
@@ -64,6 +66,11 @@ test('rewrite does not restore row-count limits to public reads or calculation',
  assert.match(config,/MAX_ROWS=1000/);
 });
 
+test('LOC Auth never silently creates or adopts a test storage namespace',()=>{
+ const auth=source('workers/loc-authority/auth.mjs');
+ assert.doesNotMatch(auth,/schemaName:\s*['"`]loc_auth['"`]/);
+ assert.match(auth,/LOC_AUTH_SCHEMA/);
+});
 test('LOC Auth Session cookie cache is deployment-versioned and separate from website permissions',()=>{
  const auth=source('workers/loc-authority/auth.mjs');
  const config=JSON.parse(source('workers/loc-authority/wrangler.jsonc'));
