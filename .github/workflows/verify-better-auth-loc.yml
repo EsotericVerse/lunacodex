@@ -9,6 +9,9 @@ on:
       - 'scripts/test-loc-auth-rewrite.mjs'
       - 'scripts/test-auth-request-concurrency.mjs'
       - 'app/loc/mcp/**'
+      - 'app/loc/auth/**'
+      - 'extensions/loc-galaxy-link/**'
+      - 'public/extension/oauth/**'
       - '.github/workflows/verify-better-auth-loc.yml'
 permissions:
   contents: read
@@ -27,6 +30,11 @@ jobs:
         run: |
           node --check workers/loc-authority/index.mjs
           node --check workers/loc-authority/auth.mjs
+          node --check workers/loc-authority/request-concurrency.mjs
+          node --check app/loc/auth/verified-session.mjs
+          node --check app/loc/mcp/native-operations.mjs
+          node --check scripts/test-loc-auth-rewrite.mjs
+          node --check scripts/test-auth-request-concurrency.mjs
           node --check app/loc/mcp/native-operations.mjs
           node --check app/loc/mcp/router.mjs
           node --check app/loc/mcp/private-galaxy.mjs
