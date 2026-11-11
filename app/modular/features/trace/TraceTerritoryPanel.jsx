@@ -85,7 +85,7 @@ export default function TraceTerritoryPanel({scopeId='loc'}){
   const ready=totalsQuery.data!==undefined;
   const totalArticles=regions.reduce((sum,place)=>sum+place.total,0);
   return <div ref={rootRef} className="loc-trace-territory" aria-label="年度文章地點戰略版圖">
-    <TraceMap key="territory" publicTrace territoryMode
+    <TraceMap key="territory" publicTrace territoryMode territoryYear={year}
       spatialData={mapData} selectedRouteUid="" showAnchorSearch={false}
       onAnchorSelect={selectPlace}
       floatingControls={<div className="loc-trace-territory-toolbar">
