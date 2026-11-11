@@ -75,7 +75,7 @@ export function createLocAuth(env){
           rotationInterval:30*86400,
           gracePeriod:30*86400
         },
-        jwt:{issuer:LOC_ISSUER}
+        jwt:{issuer:LOC_ISSUER+'/api/auth'}
       }),
       oauthProvider({
         loginPage:'/login',
