@@ -106,6 +106,12 @@ test('all four LOC Auth core tables persist independently in PostgreSQL',async()
     [['user','session','account','verification']]);
   assert.deepEqual(tableResult.rows.map(row=>row.table_name).sort(),
     ['user','session','account','verification'].sort());
+  // Auth users and website users are separate registries. The isolated Auth
+  // test database deliberately has no LOC Web api.manage relation.
+  const {rows:websiteRelations}=await pool.query(
+    "SELECT to_regclass('api.manage') AS relation");
+  assert.equal(websiteRelations[0]?.relation,null,
+    'Auth must persist even when LOC Web api.manage does not exist');
   const written=[];
   try{
     for(const {model,data} of rows){
@@ -116,6 +122,18 @@ test('all four LOC Auth core tables persist independently in PostgreSQL',async()
       assert.equal(persisted.rows[0]?.id,data.id,
         model+' must be stored in LOC Auth PostgreSQL');
     }
+    // Verify Better Auth can UPDATE a real user record using its own adapter.
+    // This must never query or mutate LOC Web business-user permissions.
+    const updateName='LOC Auth updated independently of LOC Web';
+    const changed=await adapter.update({
+      model:'user',where:[{field:'id',value:userId}],
+      update:{name:updateName,updatedAt:new Date()}
+    });
+    assert.equal(changed?.name,updateName);
+    const {rows:updated}=await pool.query(
+      'SELECT name FROM "loc_auth"."user" WHERE id=$1',[userId]);
+    assert.equal(updated[0]?.name,updateName,
+      'Auth UPDATE must be durably readable from its own PostgreSQL schema');
   }finally{
     for(const {model,id} of written.reverse()){
       await adapter.delete({model,where:[{field:'id',value:id}]});
