@@ -1,8 +1,6 @@
 // This is a Better Auth browser SDK adapter, not an Auth implementation.
 // LOC public pages never contact Auth. Only explicit sign-in, edit and
 // personal-profile actions ask the Better Auth SDK for a verified session.
-import {createAuthClient} from 'better-auth/client';
-
 const ISSUER='https://auth.lo3rwang.cc';
 const DEFAULT_RETURN='/local/settings/';
 function safeReturn(path){
@@ -17,13 +15,16 @@ export function createLocAccountAdapter({
 }={}){
   if(new URL(authorityOrigin).origin!==ISSUER)
     throw Error('Untrusted LOC Auth issuer');
-  const client=createAuthClient({
-    baseURL:ISSUER,basePath:'/api/auth',
-    fetchOptions:{credentials:'include'}
-  });
+  let lazyClient=null;
+  async function client(){
+    if(!lazyClient)lazyClient=import('better-auth/client').then(({createAuthClient})=>
+      createAuthClient({baseURL:ISSUER,basePath:'/api/auth',
+        fetchOptions:{credentials:'include'}}));
+    return lazyClient;
+  }
   const listeners=new Set();
   async function session(){
-    const {data,error}=await client.getSession();
+    const {data,error}=await (await client()).getSession();
     if(error)throw Error(error.message||'LOC Auth session unavailable');
     if(!data?.session||!data?.user||data.user.emailVerified!==true)
       return null;
@@ -54,7 +55,7 @@ export function createLocAccountAdapter({
         return {data:null,error:new Error('LOC Google OAuth is the configured sign-in provider')};
       try{
         const returnTo=safeReturn(options.redirectTo);
-        const response=await client.signIn.social({
+        const response=await (await client()).signIn.social({
           provider:'google',
           callbackURL:new URL(returnTo,'https://loc.lo3rwang.cc').href
         });
@@ -63,7 +64,7 @@ export function createLocAccountAdapter({
     },
     async signOut(){
       try{
-        const result=await client.signOut();
+        const result=await (await client()).signOut();
         await emit();
         return result;
       }catch(error){return {error};}
