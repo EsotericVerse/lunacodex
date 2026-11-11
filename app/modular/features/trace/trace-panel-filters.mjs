@@ -56,14 +56,14 @@ export function traceMediaMatches(articles=[],media=[]){
 }
 
 /** The physical place UID may be four (legacy) or eight characters; preserve case. */
-export function traceArticleIdFilters(placeIds,{startDate='',endDate='',sourceName=''}={}){
+export function traceArticleIdFilters(placeIds,{startDate='',endDate='',sourceName='',allPlacedArticles=false}={}){
   const ids=[...new Set((Array.isArray(placeIds)?placeIds:[])
     .map(id=>String(id||'').trim())
     .filter(id=>/^(?:[A-Za-z0-9]{4}|[A-Za-z0-9]{8})$/.test(id)))];
   if(!ids.length)return [{column:'place_id',operator:'eq',value:'__NO_PLACE_ID__'}];
   return [
     {column:'place_id',operator:ids.length===1?'eq':'in',value:ids.length===1?ids[0]:ids},
-    {column:'trace',operator:'eq',value:'true'},
+    ...(!allPlacedArticles?[{column:'trace',operator:'eq',value:'true'}]:[]),
     ...(sourceName.trim()?[{column:'site',operator:'ilike',value:sourceName.trim()}]:[]),
     ...(startDate?[{column:'date',operator:'gte',value:startDate}]:[]),
     ...(endDate?[{column:'date',operator:'lte',value:endDate}]:[])
