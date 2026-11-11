@@ -125,6 +125,7 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
   let timelineRows=[];
   let annualGaugeMarkers=[];
   let annualGaugeRows=[];
+  let gaugeDetailVisible=false;
   let activeTimePointKeys=new Set();
   let pickedMarker=null;
   let pickedPosition=null;
@@ -168,7 +169,7 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
   function refreshAnnualGauges(){
     annualGaugeMarkers.forEach(marker=>marker.remove());
     annualGaugeMarkers=[];
-    if(!loaded||!annualGaugeRows.length)return;
+    if(!loaded||!annualGaugeRows.length||!gaugeDetailVisible)return;
     const byKey=new globalThis.Map(annualGaugeRows.map(row=>[
       String(row.source_scope||'')+':'+String(row.uid||''),row
     ]));
@@ -183,6 +184,7 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
       element.style.setProperty('--loc-gauge-progress',Math.round(percent*2.7)+'deg');
       element.style.pointerEvents='none';
       element.setAttribute('aria-hidden','true');
+      element.title='近一年文章存在 '+row.days+'/'+row.span+' 日（'+percent+'%）';
       const value=document.createElement('span');
       value.className='loc-trace-annual-gauge__number';
       value.textContent=percent+'%';
@@ -403,6 +405,7 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
   map.once('load',()=>{
     if(removed)return;
     loaded=true;
+    gaugeDetailVisible=map.getZoom()>=10.5;
     refreshTimelineStems();
     refreshAnnualGauges();
     if(canPickLocation){
@@ -469,6 +472,12 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
       paint:{'circle-radius':15,'circle-color':'#ffffff','circle-opacity':0.08,
         'circle-stroke-width':3,'circle-stroke-color':'#6ce4ce','circle-stroke-opacity':0.95}});
     refreshTimeCursor();
+    map.on('zoomend',()=>{
+      const next=map.getZoom()>=10.5;
+      if(next===gaugeDetailVisible)return;
+      gaugeDetailVisible=next;
+      refreshAnnualGauges();
+    });
     // Saved route markers render over the source anchor dots; make either
     // visible geometry selectable and keep the full original anchor data.
     if(typeof onAnchorSelect==='function'){
