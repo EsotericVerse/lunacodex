@@ -56,9 +56,46 @@ Web business tables are unrelated and must not be modified for this change.
 ## Cache and deployment
 
 Keep the user's active Auth Cache and LOC Web ISR configurations unchanged.
-Session state belongs in PostgreSQL. Session Cookie Cache is short-lived;
-deployment-version changes invalidate cached Session values but do not
-delete persisted Sessions. Do not reintroduce a Durable Object identity store.
+Session state belongs in PostgreSQL. Signed Session Cookie Cache is
+**30 minutes**, not a 30-minute polling timer. A new Worker version changes
+the cache version; old cached values then stop being used, but the persisted
+database Session is not deleted. Privileged LOC Web identity checks use
+`get-session?disableCookieCache=true` so Session revocation is not silently
+delayed by the Cookie Cache. Keep existing Auth Cloudflare Cache and LOC Web
+ISR configurations untouched. Do not reintroduce a Durable Object identity store.
+
+## QoS, simultaneous requests and signing-key safety
+
+The Better Auth general rate limit is presently configured as **120 requests
+per 60 seconds**; OAuth Provider uses separate endpoint rules (token: 40,
+authorize: 60, introspection: 100, revoke: 30, registration: 5, client-key
+rotation: 5, UserInfo: 120, each per 60 seconds). These are draft limits
+pending observed traffic and integration testing, not a claim of worldwide
+per-client enforcement.
+
+A new **transport admission gate** counts in-flight Auth requests, not
+physical TCP/TLS sockets or PostgreSQL connections. Within each Worker isolate
+it uses a 128-request total ceiling and separate per-source ceilings:
+OAuth 24, Session 48, public metadata/JWKS 96, other 32. On overload it
+returns HTTP 429 with Retry-After: 2, and releases the slot after every
+completed request. A normal 30-minute Session Cache hit is not a new SQL
+query by definition.
+
+**A Worker isolate's memory counters are NOT global across Cloudflare
+instances, not a permanent blacklist, and not an authorization decision.**
+Do not claim that changing IP, OAuth client, or Worker instance is blocked.
+Globally consistent abuse enforcement and owner-triggered blacklist or
+client/Session revocation require a separately approved shared policy/control
+mechanism and end-to-end tests. Do not silently introduce SQL tables, RPC,
+RLS policies or a new Auth identity store to implement it.
+
+**High request concurrency never invalidates the entire issuer JWKS.** Such
+invalidations would disrupt unrelated valid clients. Better Auth manages
+normal JWKS key rotation (currently 30-day rotation with 30-day previous-key
+grace). A confirmed credential/key compromise calls for the affected
+credential or key to be revoked, and any active token security review must
+account for already-issued stateless JWT validity. Connection storms instead
+receive backpressure / QoS limits, not global signing-key destruction.
 
 ## Release gate
 
