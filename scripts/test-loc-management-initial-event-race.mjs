@@ -36,10 +36,15 @@ test('real logout and account replacement revoke management grants',()=>{
     event:'SIGNED_IN',previousUserId:session.nextUserId,previousEmail:session.nextEmail,
     nextUserId:'user_OTHER123',nextEmail:'other@example.org',hasAuthorization:true
   }),true);
+});
+
+test('an empty INITIAL_SESSION emitted to a late subscriber keeps the verified grant',()=>{
+  // The adapter sends INITIAL_SESSION with no session to every new subscriber,
+  // so a component mounting after verification must not revoke management.
   assert.equal(shouldInvalidateManagementForAuthEvent({
     event:'INITIAL_SESSION',previousUserId:session.nextUserId,previousEmail:session.nextEmail,
     nextUserId:'',nextEmail:'',hasAuthorization:true
-  }),true);
+  }),false);
 });
 
 test('a first identity event with prior permission snapshot still revokes a different user',()=>{
