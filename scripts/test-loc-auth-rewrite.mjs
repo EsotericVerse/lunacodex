@@ -51,3 +51,13 @@ test('Pages routes expose independent permissions and business write handlers',(
    assert.ok(routes.include.includes(path),'missing public Pages handler: '+path);
  assert.equal(routes.include.includes('/api/loc-authority-role'),false);
 });
+
+test('rewrite does not restore row-count limits to public reads or calculation',()=>{
+ const browser=source('app/loc/providers/kysely-browser.mjs');
+ const sqlPublic=source('app/loc/server/native-public-query.mjs');
+ const config=source('app/loc/query-batch-size.mjs');
+ assert.match(browser,/this\.rowLimit=null/);
+ assert.doesNotMatch(browser,/rowLimit=queryBatchSize/);
+ assert.doesNotMatch(sqlPublic,/MAX_PUBLIC_GROUPS|maxPublicGroups/);
+ assert.match(config,/MAX_ROWS=1000/);
+});
