@@ -3,6 +3,22 @@
 **Status: REVIEW ONLY; no database object or permission has been created.**
 This inventory is based on the pinned **better-auth 1.7.18** and **@better-auth/oauth-provider 1.7.18** vendor schemas, not on the temporary Supabase `loc_auth` test table. The model names below are those mapped by `workers/loc-authority/auth.mjs`. The intended namespace is **`silver` only if separately approved**; the runtime refuses to select a namespace until `LOC_AUTH_SCHEMA` is provided.
 
+## Construction status: four core models plus eight extension models
+
+The earlier four-table description covers Better Auth's **core** identity models only:
+`user`, `session`, `account`, `verification`. The current code also declares
+**eight additional** JWT/JWKS and OAuth Provider plugin models. Twelve entries
+are therefore an **in-progress vendor-model inventory**, not evidence of
+12 deployed tables, successful persistence, completed migration, or completed
+MCP SSO integration. Do not truncate the plugin models back to four, and do
+not create any of them until the full approved vendor DDL has been reviewed.
+
+These models may reference one another by subject, session, resource, client,
+and consent identifiers; such references must remain intact. Separately,
+LOC Web business rights (`api.manage`) can be referenced when a **website
+business operation** requires them, but they are not the Auth storage or the
+sole authorizer of Auth-owned or Gateway control-plane writes.
+
 ## Exact logical models and field inventory
 
 Fields are application-level names from the pinned vendor schema, **not yet verified PostgreSQL column DDL**. The Better Auth built-in adapter supplies `id` for every model; core models additionally include `createdAt` and `updatedAt`. For plugin tables these fields appear where specified in the vendor schema, and some adapters supply the implicit primary key.
@@ -40,7 +56,7 @@ Fields are application-level names from the pinned vendor schema, **not yet veri
 2. Validate normal Auth login and `emailVerified`, session creation/refresh/revocation and 30-minute signed Cookie Cache. Privileged LOC Web mutations bypass the Cookie Cache.
 3. Validate OIDC Discovery, authorization code with PKCE S256, consent, token issuance, UserInfo, JWKS rotation and Refresh Token rotation.
 4. Verify the first-party Galaxy-Link's published CIMD Client ID, HTTPS metadata, redirect URI and `loc:import` scope. Open unauthenticated RFC 7591 registration is disabled.
-5. Verify all delegated **MCP writes** require both `loc:import` on the Access Token and the current business `api.manage` authorization; public reads remain independent.
+5. Verify **MCP writes to LOC Web business data** require the applicable OAuth scope and current website business authorization (including `api.manage` where relevant). **Auth-owned and Gateway control-plane writes** are governed by LOC Auth itself and must not fail merely because a website `api.manage` row is absent. Distinct storage and authorizers may still exchange verified references.
 6. Verify QoS / concurrency / platform-failover behavior separately. Per-isolate counters are not cross-isolate abuse control; manual immediate blacklist and stateless JWT revocation still require a reviewed shared design.
 7. The PR is **not deployable** until all gates and a real Auth DB integration test pass. CI and merge conflicts must also be resolved without overwriting unrelated main-branch changes.
 
