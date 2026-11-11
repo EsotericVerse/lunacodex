@@ -33,3 +33,13 @@ jobs:
         run: |
           npm run check:syntax
           npm run build
+      - name: Generate official Better Auth PostgreSQL schema without applying it
+        env:
+          LOC_AUTH_SCHEMA_GENERATION: '1'
+        run: npx --yes auth@1.7.18 generate --config ./scripts/loc-auth.schema-config.mjs --output /tmp/loc-auth-generated.sql --yes
+      - name: Save generated SQL for schema-change review
+        uses: actions/upload-artifact@v4
+        with:
+          name: loc-auth-vendor-generated-sql
+          path: /tmp/loc-auth-generated.sql
+          if-no-files-found: error
