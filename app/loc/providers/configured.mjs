@@ -24,9 +24,10 @@ export function createConfiguredAdapter({
   });
   const publicClient=createKyselyPublicClient({role:'anon',fetch:fetchImpl});
   async function operation(kind,scopeid='',fields={}){
-    // An explicit protected action may check identity. Public reads never call.
-    const user=await identity.auth.getVerifiedSession();
-    if(!user?.user?.id)throw Error('LOC sign-in required');
+    // The website's HttpOnly Session cookie is sent with this request.
+    // Do not preflight getSession(): /api/loc-native verifies the active
+    // Better Auth Session and business write permission on the server.
+    // One Save must not make two independent Auth round trips.
     const response=await fetchImpl('/api/loc-native',{
       method:'POST',
       credentials:'include',
