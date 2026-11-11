@@ -89,5 +89,5 @@ test('Fixed Edit Dock Save protects spatial UID merge and preserves visible RPC 
   assert.match(dock,/editor\.isDirty\?\.\(\)&&editor\.isDestructive\?\.\(\)/);
   assert.match(dock,/請使用固定六鍵的「儲存」確認執行/);
   assert.doesNotMatch(dock,/儲存並切換|saveAndSwitch/);
-  assert.match(dock,/saved!==true\)throw new Error\('部分設定未儲存/);
+  assert.match(dock,/saved!==true\)\{[\s\S]*?setNotice\('部分設定未儲存/);
 });

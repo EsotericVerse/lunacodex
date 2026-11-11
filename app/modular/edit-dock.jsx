@@ -48,7 +48,11 @@ export function EditDockProvider({children}){
     releaseOperation();
     return true;
   },[releaseOperation]);
-  const [notice,setNotice]=useState('');
+  const [notice,setNoticeState]=useState('');
+  // Mirror of the visible notice so a failed editor Save can keep the specific
+  // reason it reported instead of replacing it with a generic line.
+  const noticeRef=useRef('');
+  const setNotice=useCallback(value=>{noticeRef.current=String(value||'');setNoticeState(value);},[]);
   const [switchTarget,setSwitchTarget]=useState('');
   const [switchError,setSwitchError]=useState('');
   const switchDialog=useRef(null);
@@ -206,7 +210,12 @@ export function EditDockProvider({children}){
       for(const editor of editors){
         const saved=await editor.save();
         if(epoch!==operationEpoch.current)return;
-        if(saved!==true)throw new Error('部分設定未儲存，已保留編輯內容。請檢查各區塊提示。');
+        if(saved!==true){
+          // The editor already reported why (e.g. 儲存失敗：…); only fall back
+          // to the generic line when it reported nothing.
+          if(!noticeRef.current)setNotice('部分設定未儲存，已保留編輯內容。請檢查各區塊提示。');
+          return;
+        }
       }
       if(epoch===operationEpoch.current&&dirty.length)
         setNotice('目前修改已儲存。');
