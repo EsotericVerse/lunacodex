@@ -1,10 +1,12 @@
+import {EDIT_OPERATION_TTL_MS} from '../edit-session-ttl.mjs';
+
 // UI-only projection of business permissions. Never makes its own grants.
 // The server verifies Better Auth's opaque cookie, then checks api.manage.
 export async function readLocEditorGrants(session,{fetchImpl=globalThis.fetch}={}){
   if(!session?.user?.id)throw Error('LOC sign-in required');
   const response=await fetchImpl('/api/loc-permissions',{
     method:'GET',credentials:'include',cache:'no-store',
-    headers:{accept:'application/json'},signal:AbortSignal.timeout(20000)
+    headers:{accept:'application/json'},signal:AbortSignal.timeout(EDIT_OPERATION_TTL_MS)
   });
   const data=await response.json().catch(()=>null);
   if(!response.ok||!data?.canWrite||!Array.isArray(data.grants))
