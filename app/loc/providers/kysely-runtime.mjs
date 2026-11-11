@@ -2,7 +2,8 @@ import {sql} from 'kysely';
 import {serializePortableJsonFields,portableRelation} from './sql-engine-ports.mjs';
 import {validateLocRegistryDomain} from './loc-domain.mjs';
 import {portableContainsSpec,parsePortableOrExpression} from './portable-search.mjs';
-import {verifyModeledSqlFields} from '../../../zenstack/model-column-guard.mjs';
+import {verifyModeledSqlFields,normalizeModeledTypeDifferences,
+  normalizeModeledSelectRows} from '../../../zenstack/model-column-guard.mjs';
 
 const identifier=/^[a-z][a-z0-9_]*$/i;
 const schemas=new Set(['silver','api']);
@@ -56,10 +57,11 @@ function validateQuery(input){
   // fallback. Keep existing request/SQL syntax guards for unmodeled tables.
   verifyModeledSqlFields({schema,table,columns,filters,orders,
     values:input.values,onConflict:input.onConflict||[]});
-  return {...input,schema,table,filters,columns,orders,limit,offset,orFilters};
+  const typed=normalizeModeledTypeDifferences({schema,table,filters,orFilters});
+  return {...input,schema,table,filters:typed.filters,columns,orders,limit,offset,
+    orFilters:typed.orFilters};
 }
 
-const GALAXY_BOOLEAN_COLUMNS=new Set(['statics','culture','search','trace','list','keyword','extract','others']);
 function containsPredicate(column,term){
   const {fold,pattern}=portableContainsSpec(term);
   return fold
@@ -69,9 +71,7 @@ function containsPredicate(column,term){
 function applyFilters(query,filters){
   for(const filter of filters){
     const op=operators[filter.operator],column=checkedFilterColumn(filter.column);
-    const value=GALAXY_BOOLEAN_COLUMNS.has(filter.column)&&
-      (filter.value==='true'||filter.value==='false')
-      ?filter.value==='true':filter.value;
+    const value=filter.value;
     if(filter.operator==='in')query=filter.negate?query.where(eb=>eb.not(eb(column,'in',value))):query.where(column,'in',value);
     else if(filter.operator==='ilike')query=query.where(sql`lower(${typeof column==='string'?sql.ref(column):column})`,filter.negate?'not like':'like',String(value).toLowerCase());
     else if(filter.operator==='contains')query=query.where(filter.negate
@@ -201,7 +201,9 @@ export async function executeKyselyQuery(trx,input,{dialect='postgres',namespace
   if(req.operation==='select'){
     const built=buildKyselySelectQuery(trx,input,{dialect,namespace,publicOnly,modelName});
     if(built.countQuery){const row=await built.countQuery.executeTakeFirstOrThrow();count=Number(row.count)}
-    if(built.query)data=await built.query.execute();
+    if(built.query)data=normalizeModeledSelectRows({
+      schema:req.schema,table:req.table,rows:await built.query.execute()
+    });
   }else{
     const built=buildKyselyMutationQuery(trx,input,{dialect,namespace,modelName});
     const result=await built.query.execute();
