@@ -226,7 +226,8 @@ function ImportFormatSettings({format,onChange,disabled=false}){
 // Count and page each query until all matched rows are returned.
 async function readExistingByIds(table,columns,column,values,message,onPage){
   const records=[],orderColumn='uid';
-  const pageSize=Math.min(MAX_ROWS,500);
+  // SELECT comparison pages are independent of the unchanged 1000-row write batch.
+  const pageSize=500;
   for(const batch of urlSafeInBatches(values,column)){
     for(let offset=0;;){
       const {data,error}=await dbAuthRelation(table).select(columns)
@@ -832,7 +833,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         // Strict timestamp cursor: the extra boundary row detects a tied
         // timestamp split across pages. Fetch that entire tie as one group,
         // then advance to the next timestamp. UID is only an identity check.
-        const pageSize=MAX_ROWS-1,rows=[],seenUids=new Set();
+        // Read every matched timestamp window; only the transport page is sized.
+        const pageSize=999,rows=[],seenUids=new Set();
         let after=null;
         const append=page=>{
           for(const row of page){
@@ -918,7 +920,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         readTimestamps:(times,consumePage,site,report)=>readImportCandidatesByTimeWindows(times,{
           readWindow:(start,end)=>readSiteSpan(site,start,end),
           readRowsByUid,consumePage:rows=>consumePage(rows.filter(row=>
-            !reservedSavedUids.has(String(row.uid)))),windowSize:Math.min(MAX_ROWS,10000),concurrency:times.length>=3000?3:1,onWindowDone:report
+            !reservedSavedUids.has(String(row.uid)))),windowSize:1000,concurrency:times.length>=3000?3:1,onWindowDone:report
         })
       }):new Map();
       const existingBySiteId=new Map([...existingByTime,...matchesById]);

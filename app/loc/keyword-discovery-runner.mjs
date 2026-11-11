@@ -4,8 +4,8 @@ import {dbAuthRelation} from './db-client.mjs';
 
 // The owner's explicit action starts the only scan. Never run during render,
 // ordinary Search, Culture navigation or the existing Keyword reanalysis.
+// Transport batches do not cap the total number of scanned articles.
 const PAGE_SIZE=1000;
-const MAX_SAME_DAY_ROWS=10000;
 const ARTICLE_COLUMNS='uid,content,createtime,date';
 const aborted=()=>Object.assign(new Error('已取消關鍵詞建議掃描'),{name:'AbortError'});
 
@@ -108,25 +108,33 @@ export async function suggestNewKeywords({galaxy,existingRows=[],onProgress=()=>
       // Always fetch the entire last-day peer group: PostgreSQL may return
       // pages smaller than LIMIT, and date alone is not a unique cursor.
       const prefix=normalizedPage.filter(row=>row.date!==boundary);
-      const {data:peers,count}=await readPage(relation=>relation
-        .select(ARTICLE_COLUMNS,{count:'exact'}).eq('date',boundary)
-        .limit(MAX_SAME_DAY_ROWS));
-      const normalizedPeers=Array.isArray(peers)?peers.map(row=>({...row,date:normalizeDay(row?.date)})):null;
-      if(!normalizedPeers||(count==null||!Number.isSafeInteger(Number(count)))||
-        Number(count)>=MAX_SAME_DAY_ROWS||normalizedPeers.length!==Number(count)||
-        normalizedPeers.some(row=>row.date!==boundary))
-        throw new Error('Galaxy 同日文章超過掃描上限或資料不完整，未覆寫先前暫存');
+      // Stream the boundary day with stable UID paging. No total-row ceiling,
+      // and no need to hold an entire high-density date in browser memory.
       await consumePage(prefix);
-      await consumePage(normalizedPeers);
+      for(let peerOffset=0;;){
+        const {data}=await readPage(relation=>relation.select(ARTICLE_COLUMNS)
+          .eq('date',boundary).order('uid',{ascending:true})
+          .range(peerOffset,peerOffset+PAGE_SIZE-1));
+        const part=Array.isArray(data)?data:[];
+        if(!part.length)break;
+        const normalized=part.map(row=>({...row,date:normalizeDay(row?.date)}));
+        if(normalized.some(row=>row.date!==boundary))
+          throw new Error('Galaxy 同日文章分頁日期異常，未覆寫先前暫存');
+        await consumePage(normalized);
+        peerOffset+=part.length;
+      }
       after=String(boundary);
     }
-    const {data:undated,count:undatedCount}=await readPage(relation=>relation
-      .select(ARTICLE_COLUMNS,{count:'exact'}).is('date',null)
-      .limit(MAX_SAME_DAY_ROWS));
-    if(!Array.isArray(undated)||(undatedCount==null||!Number.isSafeInteger(Number(undatedCount)))||
-      Number(undatedCount)>=MAX_SAME_DAY_ROWS||undated.length!==Number(undatedCount))
-      throw new Error('Galaxy 無日期文章超過掃描上限或資料不完整，未覆寫先前暫存');
-    await consumePage(undated);
+    // Undated records are scanned completely with no fixed row ceiling.
+    for(let undatedOffset=0;;){
+      const {data}=await readPage(relation=>relation.select(ARTICLE_COLUMNS)
+        .is('date',null).order('uid',{ascending:true})
+        .range(undatedOffset,undatedOffset+PAGE_SIZE-1));
+      const part=Array.isArray(data)?data:[];
+      if(!part.length)break;
+      await consumePage(part);
+      undatedOffset+=part.length;
+    }
     if(completed!==total)throw new Error('文章數量在掃描期間變動，未覆寫先前暫存');
     const done=await send({type:'finish'});
     if(done.type!=='finished'||!done.result)throw new Error('新關鍵詞結果無效');
