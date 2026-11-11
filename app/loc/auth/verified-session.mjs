@@ -50,9 +50,10 @@ export async function verifiedLocWebsiteSession(request,{
 async function verifySessionWithBetterAuth(cookie,fetchImpl){
   let response;
   try{
-    // This verifier is used for privileged website operations; signed
-    // session_data Cookie Cache must not extend access after revocation.
-    response=await fetchImpl(ISSUER+'/api/auth/get-session?disableCookieCache=true',{
+    // Respect Better Auth's signed Session Cookie Cache instead of forcibly
+    // bypassing it on every protected operation. The enclosing verified
+    // identity reuse cache prevents repeat network calls on this isolate.
+    response=await fetchImpl(ISSUER+'/api/auth/get-session',{
       method:'GET',headers:{cookie,accept:'application/json'},
       cache:'no-store',redirect:'manual',signal:AbortSignal.timeout(7000)
     });
