@@ -4,6 +4,8 @@ import {sql} from 'kysely';
 import {keywordPatternItemMetrics,keywordPatternDailySummary} from '../keyword-search-pattern.mjs';
 import {readScopePatternRows} from '../keyword-anchor-index.mjs';
 
+// Statistics never read or filter Galaxy.content: content is touched only by
+// bulk keyword analysis, uid-exact article reads and search.
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
 const MODES=new Set(['loc','daily','overview','earliest','totals','search_summary',
@@ -42,7 +44,7 @@ async function dailyStats(trx,scope,start,end,includeUndated=false){
   const rows=await sql`with s as (
     select coalesce(date::text,'') as d,btrim(coalesce(site,'')) as c
     from ${galaxy}
-    where statics is true and content<>''
+    where statics is true
       and (${includeUndated} or date is not null)
       and (${start}::date is null or date>=${start}::date)
       and (${end}::date is null or date<=${end}::date)
@@ -61,14 +63,14 @@ async function dailyStats(trx,scope,start,end,includeUndated=false){
 async function earliest(trx,scope){
   const galaxy=relation(scope,'galaxy');
   const result=await sql`select min(date) as day from ${galaxy}
-    where statics is true and content<>''`.execute(trx);
+    where statics is true`.execute(trx);
   return result.rows[0]?.day??null;
 }
 async function sourceTotals(trx,scope,start,end){
   const galaxy=relation(scope,'galaxy');
   const response=await sql`select 'source'::text as kind,
       btrim(coalesce(site,'')) as category,count(*)::integer as item_count
-    from ${galaxy} where statics is true and content<>''
+    from ${galaxy} where statics is true
       and (${start}::date is null or date>=${start}::date)
       and (${end}::date is null or date<=${end}::date)
     group by 1,2 order by 1,2`.execute(trx);
@@ -122,7 +124,7 @@ async function tracePlaces(trx,scope,start,end){
   const galaxy=relation(scope,'galaxy');
   const response=await sql`select date::text as day,btrim(location) as category,
     count(*)::bigint as item_count from ${galaxy}
-    where trace is true and content<>'' and date is not null
+    where trace is true and date is not null
       and location is not null and btrim(location)<>''
       and (${start}::date is null or date>=${start}::date)
       and (${end}::date is null or date<=${end}::date)
@@ -467,7 +469,7 @@ function portableDay(value){
   return String(value).slice(0,10);
 }
 function portableStatBase(db,table,start,end,flag='statics',includeUndated=false){
-  let query=db.selectFrom(table).where(flag,'=',true).where('content','!=','');
+  let query=db.selectFrom(table).where(flag,'=',true);
   if(!includeUndated)query=query.where('date','is not',null);
   if(start)query=query.where('date','>=',start);
   if(end)query=query.where('date','<=',end);
@@ -536,7 +538,7 @@ export async function executePortableKyselyAnalytics(db,body,{engine,namespace='
       // absolute earliest qualifying date (same contract as PostgreSQL).
       const oldest=await db.selectFrom(relation)
         .select(eb=>eb.fn.min('date').as('day'))
-        .where('statics','=',true).where('content','!=','')
+        .where('statics','=',true)
         .executeTakeFirst();
       const firstDay=portableDay(oldest?.day);
       if(firstDay&&(!earliest||firstDay<earliest))earliest=firstDay;
@@ -607,7 +609,7 @@ export async function executePortableKyselyAnalytics(db,body,{engine,namespace='
   const first=async()=>{
     const row=await db.selectFrom(galaxy)
       .select(eb=>eb.fn.min('date').as('day'))
-      .where('statics','=',true).where('content','!=','').executeTakeFirst();
+      .where('statics','=',true).executeTakeFirst();
     return row?.day??null;
   };
   let data;
