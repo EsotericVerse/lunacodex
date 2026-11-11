@@ -271,11 +271,28 @@ export default function AppShell({children}){
 function AppShellInner({children}){
   const queryClient=useQueryClient();
   useEffect(()=>{
-    // Public Blocks, images and versioned static assets only. Authenticated
-    // reads, SQL, searches and live statistics never enter the browser cache.
+    // Retire the browser PWA Service Worker. This does not affect the
+    // Cloudflare server Workers, public SQL APIs, or Capacitor native app.
     if(Capacitor.isNativePlatform()||!('serviceWorker' in navigator))return;
-    if(location.protocol!=='https:'&&location.hostname!=='localhost')return;
-    navigator.serviceWorker.register('/sw.js',{scope:'/'}).catch(()=>{});
+    const legacyScript='/sw.js';
+    void navigator.serviceWorker.getRegistrations().then(registrations=>
+      Promise.all(registrations.filter(reg=>{
+        try{
+          const scope=new URL(reg.scope);
+          if(scope.origin!==location.origin)return false;
+          return [reg.active,reg.waiting,reg.installing].some(worker=>{
+            if(!worker?.scriptURL)return false;
+            const script=new URL(worker.scriptURL);
+            return script.origin===location.origin&&script.pathname===legacyScript;
+          });
+        }catch{return false;}
+      }).map(reg=>reg.unregister()))
+    ).catch(()=>{});
+    if('caches' in window){
+      void caches.keys().then(keys=>Promise.all(keys
+        .filter(name=>name.startsWith('loc-public-'))
+        .map(name=>caches.delete(name)))).catch(()=>{});
+    }
   },[]);
   // Administrative Scope metadata updates refresh the shared ZenStack
   // query state consumed by the shell, runtime, and Guest feature pages.
@@ -291,33 +308,6 @@ function AppShellInner({children}){
   },[queryClient]);
   const {scopeId,scope,host,pathname,registryRow,configRow}=useScopeRuntime();
   const protectedEditorRoute=isManagementHref(pathname)||/^\/admin(?:\/|$)/i.test(String(pathname||''));
-  // Reconcile the public three-mode policy on initial load and route changes.
-  // SW remains installed; messages control only its optional response caches.
-  useEffect(()=>{
-    if(Capacitor.isNativePlatform()||!('serviceWorker' in navigator))return undefined;
-    let active=true;
-    let policyModule=null;
-    const send=policy=>{
-      if(!active)return;
-      const message={type:'LOC_CACHE_POLICY',mode:policy.mode,origin:policy.origin||''};
-      navigator.serviceWorker.controller?.postMessage(message);
-      void navigator.serviceWorker.ready.then(reg=>{
-        if(active)reg.active?.postMessage(message);
-      }).catch(()=>{});
-    };
-    const sync=()=>{void import('./loc/cache-mode-client.mjs')
-      .then(module=>{if(!active)return;policyModule=module;return module.loadCachePolicy();})
-      .then(policy=>{if(active&&policy)send(policy);}).catch(()=>send({mode:'off'}));};
-    const change=event=>send(event.detail||{mode:'off'});
-    sync();
-    window.addEventListener('loc-cache-policy-changed',change);
-    navigator.serviceWorker.addEventListener('controllerchange',sync);
-    return ()=>{
-      active=false;
-      window.removeEventListener('loc-cache-policy-changed',change);
-      navigator.serviceWorker.removeEventListener('controllerchange',sync);
-    };
-  },[]);
   const editDock=useEditDock();
   const [restoreHomeEdit,setRestoreHomeEdit]=useState(false);
   const [managementDenied,setManagementDenied]=useState(false);
