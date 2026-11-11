@@ -12,6 +12,20 @@ export const LOC_MCP='https://mcp.lo3rwang.cc';
 export const LOC_IMPORT=LOC_MCP+'/api/loc-native';
 const OWNER_EMAIL='sopa2306@gmail.com';
 
+// Session data is a *short-lived signed cache*, not the Auth source of truth.
+// Cloudflare gives each Worker version a stable ID. A new deployment changes
+// that ID, invalidating old cookie-cache values without deleting SQL Sessions.
+// This is intentionally independent of LOC Web and its api.manage rights.
+export function locAuthSessionCache(env={}){
+  const workerVersion=String(env?.CF_VERSION_METADATA?.id||'').trim();
+  return {
+    enabled:true,
+    maxAge:5*60,
+    strategy:'compact',
+    version:workerVersion||'loc-auth-local'
+  };
+}
+
 export function checkLocAuthEnvironment(env){
   const secret=env?.BETTER_AUTH_SECRET||env?.LOC_CONTROL_ENCRYPTION_KEY;
   const googleId=env?.LOC_GOOGLE_CLIENT_ID||env?.GOOGLE_CLIENT_ID;
@@ -58,7 +72,8 @@ export function createLocAuth(env){
       }
     },
     account:{accountLinking:{enabled:false}},
-    session:{expiresIn:30*86400,updateAge:86400,storeSessionInDatabase:true},
+    session:{expiresIn:30*86400,updateAge:86400,storeSessionInDatabase:true,
+      cookieCache:locAuthSessionCache(env)},
     disabledPaths:['/token'],
     rateLimit:{enabled:true,window:60,max:30},
     advanced:{
