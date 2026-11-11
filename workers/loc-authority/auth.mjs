@@ -31,7 +31,8 @@ export function createLocAuth(env){
   // session table, account linking, signing, PKCE or OAuth state handlers.
   const pool=new Pool({
     connectionString:env.LOC_AUTH_DATABASE_URL,
-    max:5,
+    // Two connections at most per Worker isolate; never expand the pool for probes.
+    max:2,
     connectionTimeoutMillis:7000,
     idleTimeoutMillis:10000,
     ssl:env.LOC_AUTH_SCHEMA_GENERATION==='1'?false:{rejectUnauthorized:true}
