@@ -104,6 +104,18 @@ function compileFixedSchema({schema:namespace,tables}){
       ]
     };
   }
+  // Manage.id and Loc.id already form the control-plane's logical 1:1
+  // registry correspondence. Model it without creating a physical FK or DDL.
+  // Some Manage entries have no Loc row, so both navigations are optional.
+  models.Manage.fields.loc={
+    name:'loc',type:'Loc',optional:true,attributes:[],
+    relation:{name:'LocRegistry',opposite:'manage',fields:['id'],references:['id']}
+  };
+  models.Manage.fields.id.foreignKeyFor=['loc'];
+  models.Loc.fields.manage={
+    name:'manage',type:'Manage',optional:true,attributes:[],
+    relation:{name:'LocRegistry',opposite:'loc'}
+  };
   return {provider:{type:'postgresql',defaultSchema:namespace},models,
     typeDefs:{LocPrincipal:locPrincipal,LocFederatedRef:locFederatedRef,LocAnchorLink:locAnchorLink},
     authType:'LocPrincipal',
