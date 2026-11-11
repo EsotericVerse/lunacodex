@@ -123,6 +123,10 @@ test('ZenStack V3 runtime schema bridge stays in sync with the frozen contract',
       assert.equal(guard.right.value,4);
     }
   }
+  assert.deepEqual(schema.models.Manage.fields.loc.relation.fields,['id']);
+  assert.deepEqual(schema.models.Manage.fields.loc.relation.references,['id']);
+  assert.equal(schema.models.Loc.fields.manage.relation.opposite,'loc');
+  assert.equal(schema.models.Manage.fields.id.foreignKeyFor[0],'loc');
   assert.equal(schema.authType,'LocPrincipal');
   assert.deepEqual(Object.keys(schema.typeDefs.LocPrincipal.fields).sort(),
     ['groupIds','id','role','roleLevel','scopeIds']);
@@ -138,7 +142,9 @@ test('ZenStack V3 runtime schema bridge stays in sync with the frozen contract',
     assert.deepEqual(model.idFields,table.pk);
     for(const keys of table.uniques||[])
       assert.deepEqual(Object.keys(model.uniqueFields[keys.join('_')]).sort(),[...keys].sort());
-    assert.equal(Object.keys(model.fields).length,table.columns.length);
+    // Relation fields are logical ZModel navigation, not physical SQL columns.
+    assert.equal(Object.values(model.fields).filter(field=>!field.relation).length,
+      table.columns.length);
     for(const col of table.columns){
       const field=model.fields[col.name];
       assert.ok(field,'missing generated field '+table.table+'.'+col.name);
