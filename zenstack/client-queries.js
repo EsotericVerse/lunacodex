@@ -25,7 +25,7 @@ export function useAsyncResource(keyOrOptions,fetcherArg,optionsArg={}){
   const queryKey=keyOf(key);
   const client=useQueryClient();
   const query=useQuery({
-    ...defaults,...rest,queryKey,
+    ...rest,...defaults,queryKey,
     enabled:Boolean(enabled)&&typeof fetcher==='function',
     queryFn:typeof fetcher==='function'?async()=>{
       try{return await fetcher();}
