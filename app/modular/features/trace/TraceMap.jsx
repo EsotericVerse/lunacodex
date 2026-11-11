@@ -90,7 +90,7 @@ const STRINGS={
   }
 };
 
-export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRouteSelect=null,selectedRouteUid='',focusLocation=null,spatialData=null,placeDayRows=null,mapOnly=false,hideRoutePicker=false,publicTrace=false,showAnchorSearch=true,floatingControls=null,children=null,annualGauges=[],annualGaugeOn=false,annualGaugeBusy=false,annualGaugeError=false,onAnnualGaugeToggle=null,onAnnualGaugeVisibleChange=null,territoryMode=false}){
+export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRouteSelect=null,selectedRouteUid='',focusLocation=null,spatialData=null,placeDayRows=null,mapOnly=false,hideRoutePicker=false,publicTrace=false,showAnchorSearch=true,floatingControls=null,children=null,annualGauges=[],annualGaugeOn=false,annualGaugeBusy=false,annualGaugeError=false,onAnnualGaugeToggle=null,onAnnualGaugeVisibleChange=null,territoryMode=false,territoryYear=2026}){
   const {locale}=useUiLocale();
   const copy=STRINGS[locale]||STRINGS['zh-Hant'];
   const containerRef=useRef(null);
@@ -224,10 +224,11 @@ export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRout
   useEffect(()=>{
     if(!ready||selectedRouteUid||!spatialData?.anchors?.length)return;
     const scope=spatialData.anchors[0].source_scope||'';
-    if(autoOverviewScopeRef.current===scope)return;
-    autoOverviewScopeRef.current=scope;
+    const overviewKey=territoryMode?'territory:'+territoryYear:scope;
+    if(autoOverviewScopeRef.current===overviewKey)return;
+    autoOverviewScopeRef.current=overviewKey;
     mapRef.current?.overview();
-  },[ready,selectedRouteUid,spatialData?.anchors]);
+  },[ready,selectedRouteUid,spatialData?.anchors,territoryMode,territoryYear]);
   // The visible resize grip lives outside MapLibre's canvas and controls, so
   // its pointer events do not conflict with map pan/rotate or attribution.
   function resizeFrame(width,height){
