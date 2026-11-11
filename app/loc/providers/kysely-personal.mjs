@@ -59,7 +59,7 @@ function projection(query,columns){
   return query.select(cols);
 }
 export async function executeLocPersonal(db,claims,body){
-  if(claims?.provider!=='loc'||claims?.me!==true||
+  if(claims?.provider!=='loc'||claims?.role!=='authenticated'||
     !/^[A-Za-z0-9_-]{8,128}$/.test(String(claims.sub||''))||
     !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(claims.email||'')))
     throw bad('Verified LOC OAuth identity required',403);
@@ -95,6 +95,8 @@ export async function executeLocPersonal(db,claims,body){
     return {data:rows,count:null};
   }
   if(body.kind!=='personal-write')throw bad('Unsupported LOC personal operation');
+  // Business writes are controlled independently by api.manage, not Auth.
+  if(claims.me!==true)throw bad('LOC personal write permission denied',403);
   if(!['insert','upsert','update','delete'].includes(op))
     throw bad('Unsupported personal write');
   if(op==='insert'||op==='upsert'){
