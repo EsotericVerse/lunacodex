@@ -109,6 +109,48 @@
       "skillPath": "skills/modern-web-guidance/SKILL.md",
       "computedHash": "3eeead58b609ef1587927559438a7b54333011f01c7c4f319b3a7c6f0c88f74c"
     },
+    "neon": {
+      "source": "neondatabase/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/neon/SKILL.md",
+      "computedHash": "3cbff48f7ab485a0a4aca5354e4d45bd0ef3213d348e2109682e984ce6a3b4a5"
+    },
+    "neon-ai-gateway": {
+      "source": "neondatabase/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/neon-ai-gateway/SKILL.md",
+      "computedHash": "a92122a1c8f8f795946659f332d82bf6e619a29feb0ee3d487f9a9d3f249e5cb"
+    },
+    "neon-auth": {
+      "source": "neondatabase/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/neon-auth/SKILL.md",
+      "computedHash": "deff3cfe0b4effa7b6e4ae2740089dcd7656405233af7fd6b600b94d19e81cb1"
+    },
+    "neon-functions": {
+      "source": "neondatabase/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/neon-functions/SKILL.md",
+      "computedHash": "0d25fdd47ec620aa8b119b403d0029a3d4fa9e92ac08f2d833bfd805b8a0e41b"
+    },
+    "neon-object-storage": {
+      "source": "neondatabase/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/neon-object-storage/SKILL.md",
+      "computedHash": "b6e81be031233b9aee9f584413b15899d458af12fdda6a8a15cbc6c8cb14e0cb"
+    },
+    "neon-postgres": {
+      "source": "neondatabase/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/neon-postgres/SKILL.md",
+      "computedHash": "eee8c33bd7415280d5afa7920e2b8d91ee9daf0d212fc177cebad06ff22323db"
+    },
+    "neon-realtime": {
+      "source": "neondatabase/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/neon-realtime/SKILL.md",
+      "computedHash": "91233b1b3d124ee12d83d015d33646133be56109ee143669f1c530ea89b06aff"
+    },
     "next-dev-loop": {
       "source": "vercel/next.js",
       "sourceType": "github",
