@@ -1,5 +1,5 @@
 'use client';
-import {useMemo,useState} from 'react';
+import {useMemo,useRef,useState} from 'react';
 import dynamic from 'next/dynamic';
 import {useAsyncResource} from '../../../loc/use-async-resource';
 import {dbPublicClient} from '../../../loc/db-client.mjs';
@@ -25,6 +25,8 @@ export default function TraceTerritoryPanel({scopeId='loc'}){
   const [step,setStep]=useState(1000);
   const [selectedKey,setSelectedKey]=useState('');
   const [search,setSearch]=useState('');
+  const [registerOpen,setRegisterOpen]=useState(false);
+  const rootRef=useRef(null);
   const period=territoryYearWindow(year);
   const scopeQuery=useAsyncResource({
     queryKey:['trace-territory-published-scopes-v1',scopeId],
@@ -63,19 +65,26 @@ export default function TraceTerritoryPanel({scopeId='loc'}){
   const countries=useMemo(()=>territoryWithAnchors(regions,pointsQuery.data||[]),
     [regions,pointsQuery.data]);
   const cutoff=display==='timeline'?dateFromStep(year,step):period.endDate;
-  const active=countries.filter(place=>place.firstDay<=cutoff);
-  const activeByKey=new Map(active.map(place=>[place.source_scope+':'+place.uid,place]));
-  const mapped=active.filter(place=>hasCoordinates(place.point));
+  const active=useMemo(()=>countries.filter(place=>place.firstDay<=cutoff),[countries,cutoff]);
+  const activeByKey=useMemo(()=>new Map(active.map(place=>[place.source_scope+':'+place.uid,place])),[active]);
+  const mapped=useMemo(()=>active.filter(place=>hasCoordinates(place.point)),[active]);
   const mapData=useMemo(()=>({anchors:mapped.map(place=>({
     ...place.point,territory_total:place.total,territory_source:place.sources[0]?.name||''
-  })),maps:[]}),[pointsQuery.data,totalsQuery.data,year,display,step]);
+  })),maps:[]}),[mapped]);
   const chosen=countries.find(place=>place.source_scope+':'+place.uid===selectedKey)||null;
   const selected=chosen&&activeByKey.has(selectedKey)?chosen:null;
   const keyOf=place=>place.source_scope+':'+place.uid;
   const selectPlace=place=>{setSelectedKey(keyOf(place));};
+  const openFromRegister=place=>{
+    selectPlace(place);
+    rootRef.current?.querySelector('.loc-trace-map-shell')?.scrollIntoView({
+      behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',
+      block:'start'
+    });
+  };
   const ready=totalsQuery.data!==undefined;
   const totalArticles=regions.reduce((sum,place)=>sum+place.total,0);
-  return <div className="loc-trace-territory" aria-label="年度文章地點戰略版圖">
+  return <div ref={rootRef} className="loc-trace-territory" aria-label="年度文章地點戰略版圖">
     <TraceMap key="territory" publicTrace territoryMode
       spatialData={mapData} selectedRouteUid="" showAnchorSearch={false}
       onAnchorSelect={selectPlace}
@@ -153,19 +162,19 @@ export default function TraceTerritoryPanel({scopeId='loc'}){
         {ready&&regions.length>mapped.length?<p className="scope-status">
           未具有效座標的據點仍保留在下方名冊，不虛構地理位置。
         </p>:null}
-        <details className="loc-trace-territory-register">
+        <details className="loc-trace-territory-register" onToggle={event=>setRegisterOpen(event.currentTarget.open)}>
           <summary>年度據點名冊 · {active.length} 座</summary>
-          <input type="search" className="scope-select" value={search} placeholder="尋找地點／來源"
+          {registerOpen?<><input type="search" className="scope-select" value={search} placeholder="尋找地點／來源"
             aria-label="搜尋年度據點" onChange={event=>setSearch(event.target.value)}/>
           <div className="loc-trace-territory-register-list">
             {active.filter(place=>(place.title+' '+place.uid+' '+place.sources.map(row=>row.name).join(' '))
               .toLowerCase().includes(search.trim().toLowerCase())).map(place=>
               <button key={keyOf(place)} type="button" className="loc-button"
-                aria-pressed={selectedKey===keyOf(place)} onClick={()=>selectPlace(place)}>
+                aria-pressed={selectedKey===keyOf(place)} onClick={()=>openFromRegister(place)}>
                 <span>{place.title}</span>
                 <small>{place.total} 篇{!hasCoordinates(place.point)?' · 待補座標':''}</small>
               </button>)}
-          </div>
+          </div></>:null}
         </details>
       </section>
   </div>;
