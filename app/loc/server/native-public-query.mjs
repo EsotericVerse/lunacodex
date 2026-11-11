@@ -113,10 +113,10 @@ function normalize(body){
 }
 
 
-// The lossless subset of ordinary public Scope SELECTs uses the ZenStack ORM
-// against the SAME trusted PostgreSQL Kysely dialect. Everything it cannot
-// express without a behavior change (JSON, nullable arrays, SQL dialects,
-// OR/LIKE, user-supplied dates, cardinality) remains on the Kysely path.
+// Kysely handles ordinary public SELECTs. For an actual ZModel type
+// representation mismatch in a supported PostgreSQL Scope query, ZenStack
+// can decode its typed ORM result on the same trusted Kysely dialect.
+// Unsupported operations, lists, JSON, and other dialects stay on Kysely.
 function modeledPublicSelect(selected,query){
   if(selected.engine!=='postgres'||!selected.dialect||query.cardinality)
     return null;
