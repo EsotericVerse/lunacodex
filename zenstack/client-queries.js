@@ -1,139 +1,122 @@
 'use client';
-
-import {useMemo} from 'react';
-import {useQuery,useInfiniteQuery,useQueryClient,skipToken} from '@tanstack/react-query';
+import {createContext,useCallback,useContext,useEffect,useMemo,useRef,useState} from 'react';
 import {flashMessage} from '../app/loc/flash-message';
 
-// ZenStack V3 frontend resource layer. One QueryClient uses the trusted
-// ZenStack/Kysely SQL Gateway. No parallel browser cache or background polling.
+// Only React subscriptions and an event-invalidated resource map.
+// ZModel/Kysely executes the supplied readers; this file never polls, retries,
+// expires cached data on a timer or initiates network work for invalidation.
 const keyOf=key=>Array.isArray(key)?key:[key];
-export const LOC_MIN_CACHE_TTL_MS=2*60*60*1000;
-const defaults={
-  gcTime:LOC_MIN_CACHE_TTL_MS,staleTime:Infinity,refetchOnMount:false,refetchOnWindowFocus:false,
-  refetchOnReconnect:false,refetchInterval:false,retry:false
-};
+const idOf=key=>JSON.stringify(keyOf(key));
+const Context=createContext(null);
+export class LocResourceStore {
+  constructor(){this.rows=new Map();this.subs=new Map();}
+  getRow(key){return this.rows.get(idOf(key));}
+  getQueryData(key){return this.getRow(key)?.data;}
+  on(key,fn){const id=idOf(key),set=this.subs.get(id)||new Set();set.add(fn);this.subs.set(id,set);return ()=>{set.delete(fn);if(!set.size)this.subs.delete(id);};}
+  notify(key){for(const fn of this.subs.get(idOf(key))||[])fn(this.getRow(key));}
+  update(key,change){const id=idOf(key);const row={queryKey:keyOf(key),status:'idle',data:undefined,error:null,invalidated:false,...this.rows.get(id),...change};this.rows.set(id,row);this.notify(key);return row;}
+  setQueryData(key,value){const data=typeof value==='function'?value(this.getQueryData(key)):value;this.update(key,{data,status:'success',error:null,invalidated:false});return data;}
+  async fetchQuery({queryKey,queryFn,force=false}){
+    const old=this.getRow(queryKey);
+    if(old?.promise)return old.promise;
+    if(!force&&old?.status==='success'&&!old.invalidated)return old.data;
+    const promise=Promise.resolve().then(queryFn);
+    this.update(queryKey,{status:'pending',error:null,promise});
+    try{const data=await promise;this.update(queryKey,{data,status:'success',error:null,promise:null});return data;}
+    catch(error){this.update(queryKey,{error,status:'error',promise:null});throw error;}
+  }
+  select({queryKey,predicate,exact=false}={}){
+    const rows=[...this.rows.values()];
+    if(predicate)return rows.filter(row=>predicate({queryKey:row.queryKey}));
+    if(queryKey===undefined)return rows;
+    const prefix=keyOf(queryKey);
+    return rows.filter(row=>exact?idOf(row.queryKey)===idOf(queryKey):
+      prefix.every((part,i)=>JSON.stringify(part)===JSON.stringify(row.queryKey[i])));
+  }
+  invalidateQueries(options={}){for(const row of this.select(options))this.update(row.queryKey,{invalidated:true});return Promise.resolve();}
+  cancelQueries(){return Promise.resolve();}
+  removeQueries(options={}){for(const row of this.select(options)){this.rows.delete(idOf(row.queryKey));this.notify(row.queryKey);}}
+}
+export function LocResourceProvider({children}){
+  const [client]=useState(()=>new LocResourceStore());
+  return <Context.Provider value={client}>{children}</Context.Provider>;
+}
+export function useLocResourceStore(){const client=useContext(Context);if(!client)throw Error('LOC resource provider missing');return client;}
+export const useQueryClient=useLocResourceStore;
 
 export function useAsyncResource(keyOrOptions,fetcherArg,optionsArg={}){
   const legacy=keyOrOptions&&typeof keyOrOptions==='object'&&!Array.isArray(keyOrOptions);
   const key=legacy?keyOrOptions.queryKey:keyOrOptions;
-  const fetcher=legacy?keyOrOptions.queryFn:fetcherArg;
+  const fn=legacy?keyOrOptions.queryFn:fetcherArg;
   const options=legacy?keyOrOptions:optionsArg;
-  const {
-    enabled=true,queryKey:unusedKey,queryFn:unusedFn,fallbackData,
-    revalidateOnFocus,revalidateOnReconnect,revalidateIfStale,
-    onError,...rest
-  }=options;
-  const queryKey=keyOf(key);
-  const client=useQueryClient();
-  const query=useQuery({
-    ...rest,...defaults,queryKey,
-    enabled:Boolean(enabled)&&typeof fetcher==='function',
-    queryFn:typeof fetcher==='function'?async()=>{
-      try{return await fetcher();}
-      catch(error){
-        flashMessage('資料讀取失敗，請稍後再試');
-        onError?.(error,queryKey);
-        throw error;
-      }
-    }:skipToken,
-    ...(fallbackData!==undefined?{placeholderData:fallbackData}:{})
-  });
-  return {
-    ...query,isPending:query.isLoading,isFetching:query.isFetching,
-    isSuccess:query.isSuccess,isError:query.isError,
-    refetch:async()=>{
-      const result=await query.refetch();
-      if(result.error)throw result.error;
-      return result.data;
-    },
-    // Only the existing local-record writer needs this per-resource setter.
-    // It writes into the same native QueryClient, never a parallel cache.
+  const client=useLocResourceStore();
+  const id=key===null||key===undefined?'__disabled__':idOf(key);
+  const stableKey=useMemo(()=>key===null||key===undefined?null:keyOf(key),[id]);
+  const fnRef=useRef(fn);fnRef.current=fn;
+  const [row,setRow]=useState(()=>stableKey?client.getRow(stableKey):null);
+  const enabled=options.enabled!==false&&Boolean(stableKey)&&typeof fn==='function';
+  useEffect(()=>{
+    if(!stableKey){setRow(null);return;}
+    setRow(client.getRow(stableKey)||null);
+    const unsubscribe=client.on(stableKey,setRow);
+    if(enabled&&!client.getRow(stableKey))void client.fetchQuery({
+      queryKey:stableKey,queryFn:()=>fnRef.current()
+    }).catch(error=>{flashMessage('資料讀取失敗，請稍後再試');options.onError?.(error,stableKey);});
+    return unsubscribe;
+  },[client,id,enabled]);
+  const refetch=useCallback(()=>client.fetchQuery({queryKey:stableKey,queryFn:()=>fnRef.current(),force:true}),[client,id]);
+  const status=row?.status||'idle';
+  const data=row?.data??options.fallbackData??options.placeholderData;
+  return {data,error:row?.error||null,isPending:enabled&&(status==='idle'||status==='pending'),
+    isLoading:enabled&&(status==='idle'||status==='pending'),isFetching:status==='pending',
+    isSuccess:status==='success',isError:status==='error',refetch,
     mutate:async(...args)=>{
-      if(!args.length){
-        const result=await query.refetch();
-        if(result.error)throw result.error;
-        return result.data;
-      }
+      if(!args.length)return refetch();
       const [value,config={}]=args;
-      if(value===undefined)client.removeQueries({queryKey,exact:true});
-      else client.setQueryData(queryKey,value);
-      if(config.revalidate!==false)await client.invalidateQueries({queryKey,exact:true,refetchType:'none'});
-      return client.getQueryData(queryKey);
-    }
+      if(value===undefined)client.removeQueries({queryKey:stableKey,exact:true});
+      else client.setQueryData(stableKey,value);
+      if(config.revalidate!==false)await client.invalidateQueries({queryKey:stableKey,exact:true});
+      return client.getQueryData(stableKey);
+    }};
+}
+export function useAsyncInfiniteResource({queryKey,queryFn,enabled=true,initialPageParam=null,getNextPageParam}){
+  const client=useLocResourceStore();
+  const id=idOf(queryKey),key=useMemo(()=>keyOf(queryKey),[id]);
+  const fnRef=useRef(queryFn);fnRef.current=queryFn;
+  const nextRef=useRef(getNextPageParam);nextRef.current=getNextPageParam;
+  const result=useAsyncResource(key,async()=>({pages:[await fnRef.current({pageParam:initialPageParam,signal:undefined})],pageParams:[initialPageParam]}),{enabled});
+  const [isFetchingNextPage,setNext]=useState(false);
+  const pages=result.data?.pages||[];
+  const next=pages.length?nextRef.current?.(pages[pages.length-1]):undefined;
+  const hasNextPage=next!==undefined&&next!==null;
+  const fetchNextPage=async()=>{
+    if(!enabled||!hasNextPage||isFetchingNextPage)return;
+    setNext(true);
+    try{
+      const page=await fnRef.current({pageParam:next,signal:undefined});
+      const current=client.getQueryData(key)||{pages:[],pageParams:[]};
+      client.setQueryData(key,{pages:[...current.pages,page],pageParams:[...current.pageParams,next]});
+      return page;
+    }finally{setNext(false);}
   };
+  return {...result,isFetchingNextPage,hasNextPage,fetchNextPage};
 }
-
-export function useAsyncInfiniteResource({
-  queryKey,queryFn,enabled=true,initialPageParam=null,getNextPageParam
-}){
-  const query=useInfiniteQuery({
-    ...defaults,queryKey:keyOf(queryKey),enabled:Boolean(enabled),
-    initialPageParam,
-    queryFn:({pageParam,signal})=>queryFn({pageParam,signal}),
-    // A valid zero cursor must continue; only null/undefined end paging.
-    getNextPageParam:lastPage=>getNextPageParam?.(lastPage)??undefined
-  });
-  return {
-    ...query,isPending:query.isLoading,isFetching:query.isFetching,
-    isFetchingNextPage:query.isFetchingNextPage,
-    isSuccess:query.isSuccess,isError:query.isError,
-    hasNextPage:Boolean(query.hasNextPage),
-    fetchNextPage:()=>query.fetchNextPage(),
-    refetch:async()=>{
-      const result=await query.refetch();
-      if(result.error)throw result.error;
-      return result.data;
-    }
-  };
+const PREFIXES=new Set(['scope-overview','scope-others-source-summary','statistics-source-articles',
+'statistics-source-article-body','statistics-keyword-class','culture-timeline','loc-culture-density',
+'culture-source-classification','culture-period-roots','culture-period-source-snapshot',
+'culture-style-filter','culture-keyword-attributes','culture-keyword-group-catalog',
+'culture-article-list','scope-search-summary']);
+export function invalidateScopeQueryCache(client,scopeId){
+  const id=String(scopeId||'');if(!id)return Promise.resolve();
+  return client.invalidateQueries({predicate:row=>Array.isArray(row.queryKey)&&PREFIXES.has(row.queryKey[0])
+    &&row.queryKey.slice(1).includes(id)});
 }
-
-// LOC aggregate consumers use different UI query keys. A committed import
-// invalidates only affected Scope records in the existing QueryClient;
-// page-size/cursor settings and other Scopes remain untouched.
-const SCOPE_DATA_QUERY_PREFIXES=new Set([
-  'scope-overview','scope-others-source-summary','statistics-source-articles',
-  'statistics-source-article-body','statistics-keyword-class',
-  'culture-timeline','loc-culture-density','culture-source-classification',
-  'culture-period-roots','culture-period-source-snapshot','culture-style-filter',
-  'culture-keyword-attributes','culture-keyword-group-catalog',
-  'culture-article-list','scope-search-summary'
-]);
-const matchesScopeDataQuery=(query,id)=>{
-  const key=query.queryKey;
-  return Array.isArray(key)&&SCOPE_DATA_QUERY_PREFIXES.has(key[0])&&
-    key.slice(1).some(part=>part===id);
-};
-
-// All cross-feature invalidation, deduplication, cancellation, stale writes
-// and paginated results are handled by the native QueryClient.
-export async function invalidateScopeQueryCache(client,scopeId){
-  const id=String(scopeId||'');
-  if(!id)return;
-  const predicate=query=>matchesScopeDataQuery(query,id);
-  await client.cancelQueries({predicate});
-  return client.invalidateQueries({predicate,refetchType:'none'});
-}
-
-export function createResourceCache(client){
-  return {
-    invalidateScope:({scopeId})=>invalidateScopeQueryCache(client,scopeId),
-    invalidate:async({queryKey})=>{
-      await client.cancelQueries({queryKey:keyOf(queryKey)});
-      return client.invalidateQueries({queryKey:keyOf(queryKey),refetchType:'none'});
-    },
-    revalidate:({queryKey})=>client.invalidateQueries({queryKey:keyOf(queryKey),refetchType:'none'}),
-    getOrLoad:({queryKey,queryFn})=>client.fetchQuery({
-      queryKey:keyOf(queryKey),queryFn,staleTime:Infinity
-    }),
-    set:(key,value)=>client.setQueryData(keyOf(key),value),
-    get:key=>client.getQueryData(keyOf(key)),
-    clear:async({queryKey})=>{
-      await client.cancelQueries({queryKey:keyOf(queryKey)});
-      client.removeQueries({queryKey:keyOf(queryKey)});
-    }
-  };
-}
-export function useResourceCache(){
-  const client=useQueryClient();
-  return useMemo(()=>createResourceCache(client),[client]);
-}
+export function createResourceCache(client){return {
+  invalidateScope:({scopeId})=>invalidateScopeQueryCache(client,scopeId),
+  invalidate:({queryKey})=>client.invalidateQueries({queryKey,exact:true}),
+  revalidate:({queryKey})=>client.invalidateQueries({queryKey,exact:true}),
+  getOrLoad:({queryKey,queryFn})=>client.fetchQuery({queryKey,queryFn}),
+  set:(key,value)=>client.setQueryData(key,value),get:key=>client.getQueryData(key),
+  clear:({queryKey})=>client.removeQueries({queryKey,exact:true})
+};}
+export function useResourceCache(){const client=useLocResourceStore();return useMemo(()=>createResourceCache(client),[client]);}
