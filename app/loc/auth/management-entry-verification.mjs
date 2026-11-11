@@ -1,6 +1,8 @@
+import {EDIT_OPERATION_TTL_MS} from '../edit-session-ttl.mjs';
+
 // A protected entry must settle as verified, denied or failed. Returning a
 // permanently pending client-query state is not a valid authorization outcome.
-export async function verifyManagementEntry(refresh,{timeoutMs=30000}={}){
+export async function verifyManagementEntry(refresh,{timeoutMs=EDIT_OPERATION_TTL_MS}={}){
   if(typeof refresh!=='function')throw Error('管理權限核驗函式不存在');
   let timer;
   try{
