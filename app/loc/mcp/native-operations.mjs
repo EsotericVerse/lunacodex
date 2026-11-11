@@ -315,9 +315,16 @@ export async function handleNativeLocOperation(request,env={},{
     const status=profileFailure
       ?(code==='SQL_VERIFICATION_REQUIRED'||code==='PROFILE_HTTP_423'?423:503)
       :Number(error?.httpStatus)||500;
+    // The client only ever sees the generic message below -- never a raw
+    // connection string. Server logs may safely carry the driver's own
+    // code/message (a Postgres SQLSTATE and its text, e.g. a permission or
+    // RLS denial), which never include connection credentials, so this
+    // failure can be told apart from a connection/config failure after the
+    // fact instead of only ever showing as "database operation unavailable".
     if(status>=500)console.error('[LOC native app operation]',{
       stage:profileFailure?'db_connection':'operation',
-      code:profileFailure?code:'OPERATION_FAILED'
+      code:profileFailure?code:(code||'UNKNOWN'),
+      detail:profileFailure?undefined:String(error?.message||'').slice(0,300)
     });
     const message=profileFailure?'LOC 主要資料庫連線尚未就緒':
       status>=500?'LOC native database operation unavailable':
