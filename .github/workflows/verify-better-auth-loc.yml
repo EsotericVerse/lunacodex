@@ -1,4 +1,4 @@
-name: Verify Better Auth LOC rewrite
+name: Verify LOC Auth code without schema mutations
 on:
   workflow_dispatch:
   pull_request:
@@ -6,10 +6,7 @@ on:
       - main
     paths:
       - 'workers/loc-authority/**'
-      - 'scripts/loc-auth-migrate.mjs'
-      - 'scripts/loc-auth-rls.mjs'
-      - 'scripts/loc-auth-ci-roles.mjs'
-      - 'scripts/test-loc-auth-runtime.mjs'
+      - 'scripts/test-loc-auth-rewrite.mjs'
       - 'app/loc/mcp/**'
       - '.github/workflows/verify-better-auth-loc.yml'
 permissions:
@@ -17,20 +14,6 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-24.04
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: loc_ci
-          POSTGRES_PASSWORD: loc_ci_only
-          POSTGRES_DB: loc_auth_schema
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U loc_ci -d loc_auth_schema"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -53,21 +36,3 @@ jobs:
           npm run test:authority
       - name: Bundle Auth Worker without deployment
         run: npx --yes wrangler@4.157.0 deploy --config workers/loc-authority/wrangler.jsonc --dry-run --outdir /tmp/loc-auth-dry
-      - name: Create isolated CI-only Auth and unrelated Web database roles
-        env:
-          GITHUB_ACTIONS: 'true'
-          LOC_AUTH_SCHEMA_GENERATION: '1'
-          LOC_AUTH_DATABASE_URL: postgresql://loc_ci:loc_ci_only@127.0.0.1:5432/loc_auth_schema
-        run: node scripts/loc-auth-ci-roles.mjs
-      - name: Initialize disposable LOC Auth schema with official Better Auth migrations
-        env:
-          LOC_AUTH_SCHEMA_GENERATION: '1'
-          LOC_AUTH_APPLY_SCHEMA: '1'
-          LOC_AUTH_RLS_ROLE: loc_auth_ci
-          LOC_AUTH_DATABASE_URL: postgresql://loc_ci:loc_ci_only@127.0.0.1:5432/loc_auth_schema
-          BETTER_AUTH_SECRET: disposable-integration-test-secret-not-a-production-key
-        run: node scripts/loc-auth-migrate.mjs
-      - name: Verify four core tables, OAuth Provider, OIDC, JWKS and registration against CI database
-        env:
-          LOC_AUTH_SCHEMA_GENERATION: '1'
-        run: node --test scripts/test-loc-auth-runtime.mjs
