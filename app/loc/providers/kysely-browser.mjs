@@ -72,9 +72,7 @@ export function createKyselyPublicClient({
     if(role==='authenticated'&&q.schema==='api'&&
       ['loc_user','user_settings','user_records'].includes(q.table)&&
       typeof readPrivate==='function'){
-      // The existing personal endpoint has its own pagination contract.
-      // Do not send an absent native LIMIT as an invalid personal request.
-      if(q.rowLimit===null)q.rowLimit=q.cardinality?1:5000;
+      // An omitted page limit remains unbounded, including private reads.
       return readPrivate(q);
     }
     if(q.dbId)throw Error('Selected SQL database requires signed LOC delegation');
