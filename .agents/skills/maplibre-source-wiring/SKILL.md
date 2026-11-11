@@ -2,7 +2,7 @@
 name: maplibre-source-wiring
 description: Getting a MapLibre GL JS source to actually render — TileJSON `url` versus hand-wired `tiles` templates, matching `source-layer` names to the tile schema, layer order and inserting below labels, `promoteId` and the feature ids that feature state needs, and the CORS and glyph failures behind a blank map. Use when a source is configured but nothing is drawing, or when setFeatureState does nothing.
 metadata:
-  status: verified
+  status: provisional
 ---
 
 # MapLibre Source Wiring
@@ -117,7 +117,7 @@ For the fallback's mechanism and its limits (it is GL JS only; Native still need
 
 Two raster-specific pitfalls that wire without error but render wrong or against the wrong assumption:
 
-**`tileSize` defaults to 512; classic OSM tiles are 256.** `tile.openstreetmap.org` and other classic slippy-map tile servers serve 256px tiles, but MapLibre's raster `tileSize` defaults to 512px. Omitting `tileSize: 256` for a 256px source doesn't error — it renders at the wrong effective zoom level, with imagery and labels appearing a zoom level off, with no error or warning:
+**`tileSize` defaults to 512, but classic OSM tiles are 256, so a 256px source left at the default renders a zoom level off (imagery and labels) with no error or warning.** `tile.openstreetmap.org` and other classic slippy-map servers serve 256px tiles. When you recommend `tileSize: 256`, state that consequence before or with the fix:
 
 ```json
 {

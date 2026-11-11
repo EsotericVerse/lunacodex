@@ -1,0 +1,170 @@
+# Zod Skill
+
+Created by **[Anivar Aravind](https://anivar.net)**
+
+An AI agent skill for writing, validating, and debugging Zod schemas with modern best practices, for Zod 4 and for projects still on Zod 3.
+
+## The Problem
+
+AI agents often generate outdated Zod v3 patterns in Zod 4 projects — `z.string().email()` instead of `z.email()`, `z.nativeEnum()` instead of the unified `z.enum()`, `required_error` instead of the `error` parameter — and miss critical parsing pitfalls like using `parse()` instead of `safeParse()`, forgetting `parseAsync` for async refinements, or assuming `z.object()` preserves unknown keys. Some of these no longer compile, some are deprecated, and some compile but misbehave at runtime. The reverse failure is as common: a Zod 4 skill loaded into a Zod 3 project makes the agent write `z.email()`, `error:` and `z.flattenError()` into a codebase where none of them exist.
+
+## This Solution
+
+30 rules with incorrect→correct code examples that teach agents Zod 4's actual API behavior, schema design patterns, error handling, architectural placement, observability, and TypeScript integration. Each rule targets a specific mistake and shows exactly how to fix it. The skill first tells the agent to establish which Zod a file uses, from the import specifier and the installed version; for a Zod 3 file, 27 Zod 3 rule files under `v3/rules/` give the Zod 3 form of each rule whose code differs, and `v3/references/zod-3.md` maps the rest.
+
+## Install
+
+```bash
+npx skills add anivar/zod-skill -g
+```
+
+Testing schemas is covered too, in `references/testing.md`. The
+[zod-testing](https://github.com/anivar/zod-testing) skill carries the same guide,
+generated from these files by `.github/check/sync-testing.ts`.
+
+Or with full URL:
+
+```bash
+npx skills add https://github.com/anivar/zod-skill
+```
+
+## Baseline
+
+- zod ^4.6.0, checked against zod 4.6.7 and the zod.dev pages
+- zod ^3.25.0 for Zod 3 files, checked against zod 3.25.76 (the last Zod 3 release line) and the zod.dev migration guide
+- TypeScript ^5.5
+
+The skill teaches what Zod's documentation commits to. `.apply()`, `.overwrite()`
+and `.register()` are documented and covered. `.slugify()` and `.with()` exist in
+4.6.7 but the zod.dev pages do not mention them, so the skill
+does not teach them.
+
+Every TypeScript block in the skill compiles against the pinned zod and TypeScript,
+and every behaviour claim with a runtime test runs on zod 4.6.7. Every block under `v3/`
+compiles against zod 3.25.76, and every Zod 3 claim runs on it. Run the check with
+`bun install && bun run check` in `.github/check`.
+
+## What's Inside
+
+### 30 Rules Across 9 Categories
+
+| Priority | Category | Rules | Impact |
+|----------|----------|-------|--------|
+| 1 | Parsing & Type Safety | 4 | CRITICAL |
+| 2 | Schema Design | 5 | CRITICAL |
+| 3 | Refinements & Transforms | 3 | HIGH |
+| 4 | Error Handling | 3 | HIGH |
+| 5 | Performance & Composition | 4 | MEDIUM |
+| 6 | v4 Migration | 3 | MEDIUM |
+| 7 | Advanced Patterns | 3 | MEDIUM |
+| 8 | Architecture & Boundaries | 3 | CRITICAL/HIGH |
+| 9 | Observability | 2 | HIGH/MEDIUM |
+
+Each rule file contains:
+- Why it matters
+- Incorrect code with explanation
+- Correct code with explanation
+- Decision tables and additional context
+
+### 15 Deep-Dive References
+
+| Reference | Covers |
+|-----------|--------|
+| `schema-types.md` | Primitives, string formats, numbers, enums, dates, files, JSON, functions, branded types |
+| `parsing-and-inference.md` | parse, safeParse, validate, z.infer, z.input, coercion, Standard Schema |
+| `objects-and-composition.md` | object/strict/loose, optional keys, pick, omit, partial, recursive, unions, tuples, properties |
+| `refinements-and-transforms.md` | refine, superRefine, transform, pipe, defaults, catch |
+| `error-handling.md` | ZodError, flattenError, treeifyError, error customization, i18n |
+| `behaviour-changes.md` | What parses differently in 4.0, 4.4, 4.5 and 4.6, each row tested |
+| `codecs.md` | z.codec, decode and encode, each direction, 16 copy-in recipes |
+| `metadata-and-json-schema.md` | Registries, .meta(), z.toJSONSchema options, z.fromJSONSchema |
+| `compile.md` | z.compile, zod/compile, what does not compile, z.withParser, bundle cost |
+| `anti-patterns.md` | 15 common mistakes with BAD/GOOD examples |
+| `boundary-architecture.md` | Where Zod fits: Express, tRPC, Next.js, React Hook Form, env, external APIs |
+| `linter-and-ci.md` | ESLint rules, CI schema snapshots, unused schema detection, circular deps |
+| `testing.md` | Testing schemas: safeParse assertions, boundary values, mock data, property-based tests |
+| `testing-api.md` | Jest and Vitest patterns for schema tests |
+| `testing-anti-patterns.md` | Testing mistakes with BAD/GOOD examples |
+
+### Zod 3: 27 Zod 3 rule files and 1 reference
+
+| File | Covers |
+|------|--------|
+| `v3/references/zod-3.md` | Which Zod a file uses, the API map by rule, the Zod 3 error model and issue codes, what parses differently (each row tested), the path to Zod 4 |
+| `v3/rules/<rule-id>.md` | The Zod 3 form of a rule, in the same Incorrect→Correct shape; present only where the form differs |
+
+## Structure
+
+```text
+├── SKILL.md                          # Entry point for AI agents; "Which Zod" decides the version per file
+├── AGENTS.md                         # Compiled guide, generated by .github/check/agents.ts
+├── .github/check/                    # Compiles every code block against its Zod; runs the behaviour claims
+├── v3/                               # Zod 3 forms, compiled against zod 3.25.76
+│   ├── AGENTS.md                     # Compiled Zod 3 guide, generated
+│   ├── rules/                        # One file per rule whose Zod 3 form differs, same id
+│   └── references/                   # zod-3.md: version test, API map, error model, behaviour table
+├── rules/                            # Individual rules (Incorrect→Correct)
+│   ├── parse-*                       # Parsing & type safety (CRITICAL)
+│   ├── schema-*                      # Schema design (CRITICAL)
+│   ├── refine-*                      # Refinements & transforms (HIGH)
+│   ├── error-*                       # Error handling (HIGH)
+│   ├── perf-*                        # Performance & composition (MEDIUM)
+│   ├── migrate-*                     # v4 migration (MEDIUM)
+│   ├── pattern-*                     # Advanced patterns (MEDIUM)
+│   ├── arch-*                        # Architecture & boundaries (CRITICAL/HIGH)
+│   └── observe-*                     # Observability (HIGH/MEDIUM)
+└── references/                       # Deep-dive reference docs
+    ├── schema-types.md
+    ├── parsing-and-inference.md
+    ├── objects-and-composition.md
+    ├── refinements-and-transforms.md
+    ├── error-handling.md
+    ├── behaviour-changes.md
+    ├── codecs.md
+    ├── metadata-and-json-schema.md
+    ├── compile.md
+    ├── anti-patterns.md
+    ├── boundary-architecture.md
+    ├── linter-and-ci.md
+    ├── testing.md
+    ├── testing-api.md
+    └── testing-anti-patterns.md
+```
+
+## Ecosystem — Skills by [Anivar Aravind](https://anivar.net)
+
+### Testing Skills
+| Skill | What it covers | Install |
+|-------|---------------|---------|
+| [jest-skill](https://github.com/anivar/jest-skill) | Jest best practices — mock design, async testing, matchers, timers, snapshots | `npx skills add anivar/jest-skill -g` |
+| [zod-testing](https://github.com/anivar/zod-testing) | Zod schema testing — safeParse, mock data, property-based | `npx skills add anivar/zod-testing -g` |
+| [msw-skill](https://github.com/anivar/msw-skill) | MSW 2.0 API mocking — handlers, responses, GraphQL | `npx skills add anivar/msw-skill -g` |
+| [redux-saga-testing](https://github.com/anivar/redux-saga-testing) | Redux-Saga testing — expectSaga, testSaga, providers | `npx skills add anivar/redux-saga-testing -g` |
+
+### Library & Framework Skills
+| Skill | What it covers | Install |
+|-------|---------------|---------|
+| [redux-saga-skill](https://github.com/anivar/redux-saga-skill) | Redux-Saga effects, fork model, channels, RTK | `npx skills add anivar/redux-saga-skill -g` |
+| [msw-skill](https://github.com/anivar/msw-skill) | MSW 2.0 handlers, responses, migration | `npx skills add anivar/msw-skill -g` |
+
+### Engineering Analysis
+| Skill | What it covers | Install |
+|-------|---------------|---------|
+| [contributor-codebase-analyzer](https://github.com/anivar/contributor-codebase-analyzer) | Code analysis, annual reviews, promotion readiness | `npx skills add anivar/contributor-codebase-analyzer -g` |
+
+## Author
+
+**[Anivar Aravind](https://anivar.net)** — Building AI agent skills for modern JavaScript/TypeScript development.
+
+## License
+
+MIT
+
+## If this is useful
+
+A star helps other people find it, and tells me which of these skills are worth
+keeping current as the upstream libraries move.
+
+[Sponsor the work](https://github.com/sponsors/anivar) if you would like more of
+it — these skills are maintained alongside open standards and small-model work
+at [OpenSLM](https://openslm.ai).

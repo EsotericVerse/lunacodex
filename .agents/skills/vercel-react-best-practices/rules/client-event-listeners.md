@@ -1,40 +1,74 @@
 ---
 title: Deduplicate Global Event Listeners
 impact: LOW
-impactDescription: a single listener for multiple components
-tags: client, react, event-listeners, subscription
+impactDescription: single listener for N components
+tags: client, swr, event-listeners, subscription
 ---
 
 ## Deduplicate Global Event Listeners
 
-Keep one browser listener regardless of how many components subscribe.
-The retired data-fetching library is not needed to manage DOM events.
+Use `useSWRSubscription()` to share global event listeners across component instances.
+
+**Incorrect (N instances = N listeners):**
 
 ```tsx
-import {useEffect} from 'react'
-
-const keyCallbacks = new Map<string, Set<() => void>>()
-let subscriptions = 0
-
-function onKeydown(event: KeyboardEvent) {
-  if (!event.metaKey) return
-  for (const callback of keyCallbacks.get(event.key) ?? []) callback()
-}
-
 function useKeyboardShortcut(key: string, callback: () => void) {
   useEffect(() => {
-    const listeners = keyCallbacks.get(key) ?? new Set<() => void>()
-    listeners.add(callback)
-    keyCallbacks.set(key, listeners)
-    if (subscriptions++ === 0) window.addEventListener('keydown', onKeydown)
-    return () => {
-      listeners.delete(callback)
-      if (listeners.size === 0) keyCallbacks.delete(key)
-      if (--subscriptions === 0) window.removeEventListener('keydown', onKeydown)
+    const handler = (e: KeyboardEvent) => {
+      if (e.metaKey && e.key === key) {
+        callback()
+      }
     }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
   }, [key, callback])
 }
 ```
 
-Use stable callbacks where possible. Unsubscribe on unmount; never register
-one global DOM listener per consumer or add a query library solely for events.
+When using the `useKeyboardShortcut` hook multiple times, each instance will register a new listener.
+
+**Correct (N instances = 1 listener):**
+
+```tsx
+import useSWRSubscription from 'swr/subscription'
+
+// Module-level Map to track callbacks per key
+const keyCallbacks = new Map<string, Set<() => void>>()
+
+function useKeyboardShortcut(key: string, callback: () => void) {
+  // Register this callback in the Map
+  useEffect(() => {
+    if (!keyCallbacks.has(key)) {
+      keyCallbacks.set(key, new Set())
+    }
+    keyCallbacks.get(key)!.add(callback)
+
+    return () => {
+      const set = keyCallbacks.get(key)
+      if (set) {
+        set.delete(callback)
+        if (set.size === 0) {
+          keyCallbacks.delete(key)
+        }
+      }
+    }
+  }, [key, callback])
+
+  useSWRSubscription('global-keydown', () => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.metaKey && keyCallbacks.has(e.key)) {
+        keyCallbacks.get(e.key)!.forEach(cb => cb())
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  })
+}
+
+function Profile() {
+  // Multiple shortcuts will share the same listener
+  useKeyboardShortcut('p', () => { /* ... */ }) 
+  useKeyboardShortcut('k', () => { /* ... */ })
+  // ...
+}
+```
