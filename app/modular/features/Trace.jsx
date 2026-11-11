@@ -47,7 +47,8 @@ export default function Trace({scopeId='loc'}){
   const supported=TRACE_SCOPES.includes(scopeId);
   const {settings:userSettings,active:userActive}=useLocFeatureSettings('trace');
   const [selectedPlace,setSelectedPlace]=useState(null);
-  const [mapMode,setMapMode]=useState('routes');
+  // Annual territory is the default; route/index data loads only after choosing the classic map.
+  const [mapMode,setMapMode]=useState('territory');
   const [annualGaugeOn,setAnnualGaugeOn]=useState(true);
   const [annualGaugeDetailVisible,setAnnualGaugeDetailVisible]=useState(false);
   const routeParams=useSearchParams();
@@ -271,10 +272,10 @@ export default function Trace({scopeId='loc'}){
   </>;
   return <FeaturePage featureId="trace">
     <nav className="loc-trace-strategy-tabs" aria-label="痕跡地圖類型">
-      <button type="button" className="loc-button" aria-pressed={mapMode==='routes'}
-        onClick={()=>setMapMode('routes')}>路徑痕跡圖</button>
       <button type="button" className="loc-button" aria-pressed={mapMode==='territory'}
         onClick={()=>setMapMode('territory')}>年度文章地點圖</button>
+      <button type="button" className="loc-button" aria-pressed={mapMode==='routes'}
+        onClick={()=>setMapMode('routes')}>路徑痕跡圖</button>
     </nav>
     {mapMode==='territory'?<TraceTerritoryPanel scopeId={scopeId}/>:
     <TraceMap publicTrace floatingControls={floatingControls} spatialData={demoSpatialData}

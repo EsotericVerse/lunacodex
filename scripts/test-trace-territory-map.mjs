@@ -84,3 +84,22 @@ test('the annual source summary is exposed on existing SQL ports, with no Schema
   assert.match(source('app/modular/features/Trace.jsx'),/路徑痕跡圖/);
   assert.match(source('app/modular/features/Trace.jsx'),/年度文章地點圖/);
 });
+
+test('the single Trace viewport defaults to full-year territories and defers route loads',()=>{
+  const sourceCode=source('app/modular/features/Trace.jsx');
+  assert.match(sourceCode,/useState\('territory'\)/);
+  assert.match(sourceCode,/enabled:supported&&routeListOpen&&mapMode==='routes'/);
+  assert.match(sourceCode,/enabled:isLoc&&supported&&mapMode==='routes'/);
+  assert.match(sourceCode,/enabled:!isLoc&&supported&&mapMode==='routes'/);
+  assert.match(sourceCode,/enabled:mapMode==='routes'&&annualGaugeOn/);
+  assert.match(sourceCode,/mapMode==='territory'\?<TraceTerritoryPanel/);
+  const first=sourceCode.indexOf('>年度文章地點圖</button>');
+  const second=sourceCode.indexOf('>路徑痕跡圖</button>');
+  assert.ok(first>=0&&second>first);
+  const territory=source('app/modular/features/trace/TraceTerritoryPanel.jsx');
+  assert.match(territory,/useState\(2026\)/);
+  assert.match(territory,/p_start:period.startDate,p_end:period.endDate/);
+  assert.doesNotMatch(territory,/setInterval\(/);
+  const query=source('zenstack/client-queries.js');
+  assert.match(query,/no TanStack, no SWR, no browser cache, no polling/);
+});
