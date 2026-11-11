@@ -1,12 +1,25 @@
 name: Verify Better Auth LOC rewrite
 on:
   workflow_dispatch:
-  pull_request:
 permissions:
   contents: read
 jobs:
   verify:
     runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: loc_ci
+          POSTGRES_PASSWORD: loc_ci_only
+          POSTGRES_DB: loc_auth_schema
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U loc_ci -d loc_auth_schema"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
