@@ -1,5 +1,4 @@
 import {sql} from 'kysely';
-import {DB_QUERY_BATCH_SIZE} from '../query-batch-size.mjs';
 import {serializePortableJsonFields,portableRelation} from './sql-engine-ports.mjs';
 import {validateLocRegistryDomain} from './loc-domain.mjs';
 import {portableContainsSpec,parsePortableOrExpression} from './portable-search.mjs';
@@ -44,9 +43,10 @@ function validateQuery(input){
     if(input.operation==='update'&&Array.isArray(input.values))throw new Error('Update values must be an object');
   }
   if(input.operation==='upsert'&&(!Array.isArray(input.onConflict)||!input.onConflict.length||input.onConflict.some(col=>typeof col!=='string'||!identifier.test(col))))throw new Error('Upsert conflict columns are required');
-  const requestedLimit=Number(input.limit);
-  const limit=Number.isFinite(requestedLimit)?Math.max(0,Math.min(DB_QUERY_BATCH_SIZE,Math.floor(requestedLimit))):1000;
-  const offset=Math.max(0,Math.min(10_000_000,Math.floor(Number(input.offset)||0)));
+  const limit=input.limit==null?null:Number(input.limit);
+  const offset=input.offset==null?0:Number(input.offset);
+  if(limit!==null&&(!Number.isSafeInteger(limit)||limit<0)||
+    !Number.isSafeInteger(offset)||offset<0)throw new Error('Invalid SQL page bounds');
   if(input.or!==undefined&&!Array.isArray(input.or))throw new Error('Invalid OR filter');
   if(['insert','upsert'].includes(input.operation)&&(input.or||[]).length)throw new Error('OR filters are not supported for insert or upsert');
   const orFilters=(input.or||[]).map(expr=>{if(typeof expr!=='string')throw new Error('Invalid OR filter');return parsePortableOrExpression(expr)});
@@ -135,7 +135,8 @@ export function buildKyselySelectQuery(trx,input,{dialect='postgres',namespace,p
     query=query.orderBy(sql`case when ${sql.ref(sortColumn)} is null then 1 else 0 end`,'asc');
   }
   for(const order of req.orders)query=query.orderBy(order.column,order.ascending===false?'desc':'asc');
-  query=query.limit(req.limit).offset(req.offset);
+  if(req.limit!==null)query=query.limit(req.limit);
+  query=query.offset(req.offset);
   const countQuery=req.count?publishedOnly(applyOrFilters(applyFilters(
     trx.selectFrom(table).select(trx.fn.countAll().as('count')),req.filters),req.orFilters),
       req.table,publicOnly,req.columns):null;
