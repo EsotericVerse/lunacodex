@@ -50,6 +50,78 @@ Fields are application-level names from the pinned vendor schema, **not yet veri
 - **Only after separate approval**: preflight read-only schema check, then approved DDL under an explicitly authorized schema owner; runtime uses a separate non-DDL role. No RPC, automatic migration or startup schema creation.
 - **Other databases**: Leave existing LOC business tables, Supabase, Neon managed Auth, other schema namespaces, and the removed test table untouched.
 
+## Per-model SQL access decision matrix (proposal, NOT applied)
+
+The Better Auth adapter uses an **Auth service PostgreSQL role**, not a PostgreSQL
+role impersonating each OAuth end user. For this single-purpose Auth namespace,
+the initial recommendation is **no table RLS**; use explicit schema `USAGE`
+and table-level `GRANT` only for the dedicated service role, with no
+`PUBLIC`, `anon`, LOC Web or direct MCP SQL grants. An enabled RLS table
+without a matching runtime policy can deny normal login/session writes, and
+an end-user-email policy cannot work when every request shares one service
+database identity. **This is a permission design recommendation, not approval
+to disable RLS on any existing database object.**
+
+The table-specific operation review below scopes which actions the Auth
+runtime legitimately needs; it does **not** authorize granting these actions
+yet. Better Auth's exact 1.7.18 generated SQL and observed usage on an
+isolated PostgreSQL instance determine the final minimum grants.
+
+| Rainbow table | SELECT | INSERT | UPDATE | DELETE | Why the Auth runtime may need it |
+| --- | --- | --- | --- | --- | --- |
+| `rainbow_auth` | Yes | Yes | Yes | Yes | Identity lookup, profile and verification changes, account deletion |
+| `rainbow_session` | Yes | Yes | Yes | Yes | Session issue, expiry refresh, revocation, cleanup |
+| `rainbow_account` | Yes | Yes | Yes | Yes | OAuth account creation, token refresh and account unlinking |
+| `rainbow_verification` | Yes | Yes | Yes* | Yes | One-time challenges and expiry cleanup; UPDATE only if vendor flow requires |
+| `rainbow_jwks` | Yes | Yes | Yes* | Yes | Key rotation and grace-period cleanup; UPDATE only if vendor flow requires |
+| `rainbow_oauth_client` | Yes | Yes | Yes | Yes | Privileged client creation, key change, disable and removal |
+| `rainbow_oauth_resource` | Yes | Yes | Yes | Yes | Auth-owned resource registration and lifecycle |
+| `rainbow_oauth_client_resource` | Yes | Yes | Yes* | Yes | Resource association changes; UPDATE only if vendor flow requires |
+| `rainbow_oauth_refresh_token` | Yes | Yes | Yes | Yes | Refresh rotation, revoke, expiry cleanup |
+| `rainbow_oauth_access_token` | Yes | Yes | Yes | Yes | Token persistence/revocation and cleanup where used |
+| `rainbow_oauth_consent` | Yes | Yes | Yes | Yes | Grant/revoke user delegation |
+| `rainbow_oauth_client_assertion` | Yes | Yes | No* | Yes | One-time replay guard insert, lookup, expired assertion cleanup |
+
+*Provisional operations. Narrow them after observing the pinned module's
+actual SQL. Avoid prematurely revoking a vendor-required UPDATE or DELETE.
+These are **service-only** privileges, never grants to browser, OAuth clients,
+or MCP agents.
+
+### Mandatory privilege and RLS acceptance checks (isolated PostgreSQL first)
+
+1. Confirm the chosen Neon Auth **database and schema**, object ownership,
+   existing table RLS flags and whether any policies already exist. Do not
+   assume `silver` has been approved or infer that 12 models mean 12 physical
+   tables exist.
+2. Generate exact migrations and FK/unique/index definitions from the pinned
+   vendor package in the isolated environment. Do not generate production DDL
+   from this review's field inventory.
+3. In isolation, use a DDL owner only for the approved creation/migration, and
+   a **different** non-owner runtime role for Better Auth. Confirm `USAGE` on
+   the schema and the minimum table permissions. Explicitly verify that
+   `PUBLIC`, browser, website and direct MCP SQL roles lack table privileges.
+   Check sequence grants if generated DDL requires sequences.
+4. Check `pg_class.relrowsecurity`, `relforcerowsecurity`,
+   `pg_policies`, role ownership and effective grants for **each** Rainbow
+   table. Do not automatically add `ENABLE ROW LEVEL SECURITY`,
+   `DISABLE ROW LEVEL SECURITY`, `FORCE ROW LEVEL SECURITY`,
+   `BYPASSRLS`, or permissive `USING (true)` policies.
+5. With the restricted runtime role on isolated PostgreSQL, test a minimal
+   Better Auth user/account/session create → read → update → revoke/delete;
+   then OAuth code/consent/token, JWKS creation and rotation, and assertion
+   replay prevention. Test denied direct SQL access from a non-Auth role.
+   Distinguish DB authorization errors from absent tables, column drift,
+   transport failure, and OAuth handler bugs.
+6. Only after schema approval and isolation tests, plan a **single controlled**
+   Neon Auth release and functional acceptance. No repeated live probes,
+   stress testing, surprise migrations, automatic RLS changes, or cache-based
+   acceptance.
+
+Auth-owned control-plane writes must not depend on `api.manage`. LOC Web
+business writes may independently require website grants **in addition to**
+a valid LOC Auth OAuth scope. References between systems remain possible and
+verified; the identity and storage authorities stay separate.
+
 ## Security and verification gates
 
 1. Validate exact pinned-vendor DDL, approved column types, indexes and one-table-at-a-time RLS/CRUD permissions.
