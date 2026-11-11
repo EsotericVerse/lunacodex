@@ -113,8 +113,16 @@ async function refresh(){
   '閱讀公開資料不需要登入。';
  return Boolean(verifiedUser);
 }
-refresh().catch(error=>{
- byId('status').textContent=String(error.message||error);
+// Google redirects here after Better Auth finishes its OAuth callback.
+// Confirm the server-side Session before returning to Settings; a redirect
+// alone is never proof that sign-in succeeded.
+const oauthReturn=new URLSearchParams(location.search).get('oauth_return')==='1';
+refresh().then(signedIn=>{
+ if(!oauthReturn)return;
+ if(signedIn){returnToLoc();return;}
+ byId('status').textContent='Google 已返回 LOC，但尚未取得有效的 LOC Auth Session。請重新登入；若持續發生，請檢查 Auth 回呼及 Cookie。';
+}).catch(error=>{
+ byId('status').textContent='LOC Auth Session 核驗失敗：'+String(error.message||error);
  panel.hidden=false;
 });
 </script>
