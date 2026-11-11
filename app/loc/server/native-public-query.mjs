@@ -240,21 +240,25 @@ export async function handleNativePublicQuery(request,env={},{
       selected.namespace||(selected.engine==='postgres'?'silver':'dbo'));
     if(action){
       stage='public-action';
-      const output=await executeKyselyPublicAction(selected.db,action,{
-        engine:selected.engine,namespace:selected.namespace||
-          (selected.engine==='postgres'?'silver':'dbo'),
-        publishedScopeIds:[...SCOPE]
-      });
+      // One request may read multiple modeled relations; pin one SQL connection.
+      const output=await selected.db.connection().execute(db=>
+        executeKyselyPublicAction(db,action,{
+          engine:selected.engine,namespace:selected.namespace||
+            (selected.engine==='postgres'?'silver':'dbo'),
+          publishedScopeIds:[...SCOPE]
+        }));
       return respond({data:output.data,count:output.count??null});
     }
     if(analytics){
       stage='analytics';
       const settings={role:'anon',publishedScopeIds:PUBLIC_SCOPES};
-      const output=selected.engine==='postgres'
-        ?await executeKyselyAnalytics(selected.db,analytics,settings)
-        :await executePortableKyselyAnalytics(selected.db,analytics,{
-          engine:selected.engine,namespace:selected.namespace||'dbo',role:'anon'
-        });
+      // Reuse the acquired connection across all statistics/config reads.
+      const output=await selected.db.connection().execute(db=>
+        selected.engine==='postgres'
+          ?executeKyselyAnalytics(db,analytics,settings)
+          :executePortableKyselyAnalytics(db,analytics,{
+            engine:selected.engine,namespace:selected.namespace||'dbo',role:'anon'
+          }));
       return respond({data:output.data,count:output.count??null});
     }
     stage='select';
@@ -268,18 +272,21 @@ export async function handleNativePublicQuery(request,env={},{
         .select(eb=>eb.fn.countAll().as('count')).executeTakeFirst();
       return respond({data:null,count:Number(result?.count||0)});
     }
-    let query=withFilters(selected.db.selectFrom(table),normalized);
-    query=normalized.columns[0]==='*'?query.selectAll():query.select(normalized.columns);
-    for(const order of normalized.orders)
-      query=query.orderBy(order.column,order.ascending===false?'desc':'asc');
-    // Count=exact is the filtered relation count, NOT the current page size.
-    // Preserve the existing query-builder contract across all SQL dialects.
-    const fullCount=normalized.count==='exact'
-      ?Number((await withFilters(selected.db.selectFrom(table),normalized)
-        .select(eb=>eb.fn.countAll().as('count')).executeTakeFirst())?.count||0)
-      :null;
-    const rawRows=await (normalized.limit===null?query:query.limit(normalized.limit))
-      .offset(normalized.offset).execute();
+    // COUNT and its result SELECT use the same acquired SQL connection.
+    // They remain separate statements so COUNT never inherits page bounds.
+    const {fullCount,rawRows}=await selected.db.connection().execute(async db=>{
+      let query=withFilters(db.selectFrom(table),normalized);
+      query=normalized.columns[0]==='*'?query.selectAll():query.select(normalized.columns);
+      for(const order of normalized.orders)
+        query=query.orderBy(order.column,order.ascending===false?'desc':'asc');
+      const fullCount=normalized.count==='exact'
+        ?Number((await withFilters(db.selectFrom(table),normalized)
+          .select(eb=>eb.fn.countAll().as('count')).executeTakeFirst())?.count||0)
+        :null;
+      const rawRows=await (normalized.limit===null?query:query.limit(normalized.limit))
+        .offset(normalized.offset).execute();
+      return {fullCount,rawRows};
+    });
     const rows=normalizeModeledSelectRows({
       schema:'silver',table:normalized.table,rows:rawRows
     });
