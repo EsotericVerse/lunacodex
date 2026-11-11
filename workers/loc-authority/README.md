@@ -13,6 +13,19 @@ a Kysely SQL gateway, or a handmade OAuth server.
 - Website read/display: independent Cloudflare Pages/Kysely business data
 - Authorization: LOC Auth authenticates users and authorizes its own MCP clients independently; website `api.manage` and Scope authorize website business writes separately, and are never required for an Auth user or Session to exist.
 
+## Independent user registries and optional cross-reference
+
+**LOC Auth (Rainbow / Galaxy-Link)** and **LOC Web (LunaCodex / Language of Codex Framework)** share a source repository, **not** an identity database or a user registry.
+
+- LOC Auth users, Google identities, OAuth clients, Sessions, JWKs and consent are persisted only in the isolated Neon PostgreSQL `loc_auth` schema (plus Better Auth plugin-defined tables).
+- LOC Web owns its Scope, content and `api.manage` business permissions. The website does **not** need to list, mirror, import, or maintain LOC Auth's user records.
+- Having a valid LOC Auth user without a corresponding LOC Web `api.manage` row is **normal**: sign-in, OAuth consent and Auth Session persistence must not depend on a website business row.
+- An already-authenticated identity may be **referenced** when LOC Auth evaluates a specific MCP delegation or when LOC Web authorizes a website data operation. That reference does not merge the two user registries.
+- Delegation defines the authorized Codex operation/scope. A signed-in identity alone does not grant write permission to an unrelated website or external database.
+- Do not copy business `api.manage`, website Scope policy, website database profiles, or SQL Model Gateway logic into LOC Auth. Do not copy Auth's tables into LOC Web.
+
+**No recurring Auth queries to website business tables merely to keep a session alive.** Specific delegated operations may consult business authorization as needed, independently from the ability to sign in.
+
 ## Required bindings
 
 Existing Worker Google bindings may remain: `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
