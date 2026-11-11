@@ -5,7 +5,7 @@ export const LOC_OWNER_EMAIL='sopa2306@gmail.com';
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 export function resolveLocPermissions(email,rows=[]){
   const verified=String(email||'').trim().toLowerCase();
-  const denied={canWrite:false,canManage:false,grants:[]};
+  const denied={canWrite:false,canManage:false,grants:[],roles:[]};
   if(verified!==LOC_OWNER_EMAIL||!Array.isArray(rows))return denied;
   const active=rows.filter(row=>
     row?.active===true&&String(row.email||'').trim().toLowerCase()===verified&&
@@ -16,8 +16,12 @@ export function resolveLocPermissions(email,rows=[]){
     String(row.manage_role||'').toLowerCase())).flatMap(row=>[
       row.id+':manage',row.id+':write',row.id+':read']);
   if(isAdmin)grants.unshift('global:manage');
+  const roles=active.filter(row=>['admin','group','scope'].includes(
+    String(row.manage_role||'').toLowerCase())).map(row=>({
+      id:row.id,email:verified,role:String(row.manage_role).toLowerCase()
+    }));
   return {canWrite:grants.length>0,canManage:isAdmin,
-    grants:[...new Set(grants)]};
+    grants:[...new Set(grants)],roles};
 }
 export async function locPermissionsForEmail(db,verifiedEmail){
   if(!db||typeof db.selectFrom!=='function')
