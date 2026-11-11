@@ -56,6 +56,11 @@ test('role authorization uses only the active existing api.manage rows',()=>{
  assert.equal(resolveLocPermissions('other@example.com',active).canWrite,false);
  assert.equal(resolveLocPermissions('sopa2306@gmail.com',[active[0]]).canWrite,false);
 });
+test('Auth release gate needs dedicated database secret, not redundant schema secret',()=>{
+ const workflow=source('.github/workflows/deploy-auth.yml');
+ assert.match(workflow,/LOC_AUTH_DATABASE_URL/);
+ assert.doesNotMatch(workflow,/\['LOC_AUTH_DATABASE_URL','LOC_AUTH_SCHEMA'\]/);
+});
 test('the Auth Worker has no former Durable Object binding',()=>{
  const config=source('workers/loc-authority/wrangler.jsonc');
  assert.doesNotMatch(config,/LOC_AUTHORITY_STATE|durable_objects/);
