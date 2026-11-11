@@ -61,7 +61,7 @@ test('a single native Kysely SELECT reads the published homepage physical relati
   assert.equal(mock.calls.length,1);
   assert.equal(mock.calls[0].table,'silver.loc_blocks');
   assert.deepEqual(mock.calls[0].where,['page_name','in',['index']]);
-  assert.equal(mock.calls[0].limit,100);
+  assert.equal(mock.calls[0].limit,undefined,'published blocks must not be silently capped');
 });
 
 test('public feature Hero reads two fixed page names in one Kysely query',async()=>{
@@ -201,7 +201,7 @@ test('native Galaxy aggregation and first river are independent; no Manage or UI
   const result=(await response.json()).data;
   assert.deepEqual(result[0],{day:'2026-11-07',site:'threads',item_count:2});
   assert.deepEqual(mock.calls.map(x=>x.table),['silver.lo3rwang_galaxy']);
-  assert.equal(mock.calls[0].limit,20001);
+  assert.equal(mock.calls[0].limit,undefined,'Galaxy daily aggregation must include all groups');
   assert.ok(mock.calls[0].wheres.some(x=>x[0]==='culture'&&x[2]===true));
   assert.ok(mock.calls[0].group);
   assert.ok(!JSON.stringify(result).includes('uid'));
