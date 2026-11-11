@@ -4,11 +4,11 @@ import {oauthProviderAuthServerMetadata,oauthProviderOpenIdConfigMetadata,
   verifyOAuthQueryParams} from '@better-auth/oauth-provider';
 
 // Only transport and OAuth login/consent UI remain here. No custom auth protocol.
-let service;
-function authFor(env){
-  if(!service)service=createLocAuth(env).auth;
-  return service;
-}
+// Build Better Auth fresh per request. Cloudflare Workers forbid reusing a
+// socket opened in one request from another, so a memoized pool would make the
+// Neon serverless WebSocket throw "Cannot perform I/O on behalf of a different
+// request" (surfacing as an uncaught 1101) once an isolate reuses a pooled
+// connection. Each request gets its own pool, closed after the response.
 const EXTENSION='chrome-extension://hiaeafonocnjaclcfgjmdopbcgnafnna';
 const allowed=new Set([LOC_ISSUER,LOC_WEB,EXTENSION]);
 // OAuth clients on OTHER domains exchange their own authorization code using
@@ -59,7 +59,7 @@ function page(title,content,script,signedQuery=''){
 const LOGIN_JS="const status=document.getElementById('status');\nconst params=new URLSearchParams(location.search);\nconst q=OAUTH_QUERY;\nconst requested=params.get('return_to')||'/local/settings/';\nconst safe=requested.startsWith('/')&&!requested.startsWith('//')&&!requested.includes('\\\\')?requested:'/local/settings/';\nconst next=q?location.origin+'/login?'+q:'https://loc.lo3rwang.cc'+safe;\nasync function post(path,body){\n  const res=await fetch('/api/auth/'+path,{method:'POST',credentials:'include',\n    headers:{'content-type':'application/json'},body:JSON.stringify(body)});\n  const data=await res.json().catch(()=>({}));\n  if(!res.ok)throw Error(data.message||data.error||'LOC Auth failed');\n  return data;\n}\ndocument.getElementById('google').onclick=async()=>{\n  try{\n    status.textContent='正在進行 Google OAuth';\n    const data=await post('sign-in/social',{provider:'google',callbackURL:next,\n      ...(q?{oauth_query:q}:{})});\n    if(!data.url)throw Error('Google authorization URL missing');\n    location.assign(data.url);\n  }catch(e){status.textContent=e.message}\n};\ndocument.getElementById('continue').onclick=async()=>{\n  try{\n    if(!q)throw Error('No pending OAuth request');\n    location.assign('/api/auth/oauth2/authorize?'+q);\n  }catch(e){status.textContent=e.message}\n};\ndocument.getElementById('logout').onclick=async()=>{\n  try{await post('sign-out',{});location.reload()}catch(e){status.textContent=e.message}\n};\nfetch('/api/auth/get-session',{credentials:'include'}).then(r=>r.json()).then(data=>{\n  if(!data?.user)return;\n  if(!q){location.assign(next);return;}\n  document.getElementById('identity').textContent=data.user.email||'';\n  document.getElementById('continue').hidden=false;\n}).catch(()=>{});";
 const CONSENT_JS="const q=OAUTH_QUERY,p=new URLSearchParams(q);\nfor(const [id,key] of [['client','client_id'],['scope','scope'],['redirect','redirect_uri']])\n  document.getElementById(id).textContent=p.get(key)||'';\nasync function consent(accept){\n  const status=document.getElementById('status');\n  try{\n    const res=await fetch('/api/auth/oauth2/consent',{method:'POST',credentials:'include',\n      headers:{'content-type':'application/json'},\n      body:JSON.stringify({accept,scope:p.get('scope')||'',oauth_query:q})});\n    const data=await res.json().catch(()=>({}));\n    if(!res.ok||!data.url)throw Error(data.message||data.error||'Consent failed');\n    location.assign(data.url);\n  }catch(e){status.textContent=e.message}\n}\ndocument.getElementById('approve').onclick=()=>consent(true);\ndocument.getElementById('deny').onclick=()=>consent(false);";
 export default {
-  async fetch(request,env){
+  async fetch(request,env,ctx){
     // Bounded in-flight work per isolate, separate from Better Auth's
     // rateLimit and the eventual cross-isolate QoS authority.
     const admitted=authRequestConcurrencyGate.acquire(request);
@@ -68,6 +68,7 @@ export default {
         status:429,headers:{'content-type':'application/json',
           'cache-control':'no-store','retry-after':'2'}
       });
+    let pool;
     try{
     const url=new URL(request.url);
     if(url.hostname!=='auth.lo3rwang.cc')
@@ -86,7 +87,9 @@ export default {
       }}),publicProtocol);
     }
     try{
-      const auth=authFor(env);
+      const created=createLocAuth(env);
+      const auth=created.auth;
+      pool=created.pool;
       if(request.method==='GET'&&(
         url.pathname==='/.well-known/oauth-authorization-server'||
         url.pathname==='/.well-known/oauth-authorization-server/api/auth'||
@@ -135,13 +138,24 @@ export default {
           issuer:LOC_ISSUER}),{headers:{'content-type':'application/json'}});
       return new Response('Not found',{status:404});
     }catch(error){
-      console.error('LOC Auth failed',error?.message||error);
-      return new Response(JSON.stringify({error:'LOC Auth unavailable'}),{
+      console.error('LOC Auth failed',error?.stack||error?.message||error);
+      return new Response(JSON.stringify({error:'LOC Auth unavailable',
+        detail:String(error?.stack||error?.message||error).slice(0,400)}),{
         status:503,headers:{'content-type':'application/json','cache-control':'no-store'}
       });
     }
+    }catch(fatal){
+      console.error('LOC Auth fatal',fatal?.stack||fatal?.message||fatal);
+      return new Response(JSON.stringify({error:'LOC Auth fatal',
+        detail:String(fatal?.stack||fatal?.message||fatal).slice(0,400)}),{
+        status:500,headers:{'content-type':'application/json','cache-control':'no-store'}
+      });
     }finally{
       admitted.release();
+      if(pool){
+        const closing=pool.end().catch(()=>{});
+        if(ctx&&typeof ctx.waitUntil==='function')ctx.waitUntil(closing);
+      }
     }
   }
 };
