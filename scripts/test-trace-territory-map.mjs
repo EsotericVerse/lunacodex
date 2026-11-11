@@ -56,6 +56,16 @@ test('the strategy interior reuses the existing article list with the correct sc
   assert.deepEqual(territory.find(row=>row.column==='place_id').value,'AbCd1234');
   assert.equal(territory.find(row=>row.column==='date'&&row.operator==='lte').value,'2026-12-31');
 });
+test('source names are case-insensitive without losing their visible name',()=>{
+  const rows=territoryRegions([
+    {source_scope:'lo3rwang',place_id:'AbCd1234',day:'2026-01-03',site:'Facebook',item_count:3},
+    {source_scope:'lo3rwang',place_id:'AbCd1234',day:'2026-01-04',site:'facebook',item_count:2},
+    {source_scope:'lo3rwang',place_id:'AbCd1234',day:'2026-01-05',site:'Threads',item_count:5}
+  ],2026);
+  assert.equal(rows.length,1);
+  assert.deepEqual(rows[0].sources.map(row=>[row.name,row.count,row.percent]),
+    [['Facebook',5,50],['Threads',5,50]]);
+});
 test('the annual source summary is exposed on existing SQL ports, with no Schema changes',()=>{
   for(const path of ['app/loc/providers/kysely-analytics.mjs',
     'app/loc/providers/kysely-browser.mjs','app/loc/server/native-public-query.mjs']){
