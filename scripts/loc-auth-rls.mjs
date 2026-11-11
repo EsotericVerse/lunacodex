@@ -17,12 +17,19 @@ export async function assertLocAuthRuntimeRole(pool,runtimeRole){
   const role=String(runtimeRole||'');
   if(!NAME.test(role))throw new Error('LOC Auth dedicated runtime role is required');
   const {rows}=await pool.query(
-    'SELECT rolname,rolsuper,rolbypassrls,rolcanlogin FROM pg_roles WHERE rolname=$1',
+    'SELECT rolname,rolsuper,rolbypassrls,rolcanlogin,rolinherit,rolcreaterole,rolcreatedb FROM pg_roles WHERE rolname=$1',
     [role]);
   assert.equal(rows.length,1,'Dedicated LOC Auth runtime role must exist first');
   assert.equal(rows[0].rolsuper,false,'Auth runtime must not be superuser');
   assert.equal(rows[0].rolbypassrls,false,'Auth runtime must not bypass RLS');
   assert.equal(rows[0].rolcanlogin,true,'Auth runtime must be login-enabled');
+  assert.equal(rows[0].rolinherit,false,'Auth runtime must be NOINHERIT');
+  assert.equal(rows[0].rolcreaterole,false,'Auth runtime must not create roles');
+  assert.equal(rows[0].rolcreatedb,false,'Auth runtime must not create databases');
+  const {rows:memberships}=await pool.query(
+    'SELECT COUNT(*)::int AS count FROM pg_auth_members m JOIN pg_roles r ON r.oid=m.member WHERE r.rolname=$1',
+    [role]);
+  assert.equal(memberships[0].count,0,'Auth runtime must have no inherited or SET ROLE memberships');
   const {rows:owner}=await pool.query('SELECT current_user AS role');
   assert.notEqual(owner[0].role,role,
     'Runtime role and migration owner must be distinct');
@@ -36,13 +43,14 @@ export async function applyLocAuthRls(pool,runtimeRole){
   try{
     await client.query('BEGIN');
     const roles=await client.query(
-      'SELECT rolname,rolsuper,rolbypassrls,rolcanlogin FROM pg_roles WHERE rolname=$1',
+      'SELECT rolname,rolsuper,rolbypassrls,rolcanlogin,rolinherit,rolcreaterole,rolcreatedb FROM pg_roles WHERE rolname=$1',
       [role]);
     assert.equal(roles.rowCount,1,'Dedicated LOC Auth runtime role must exist before migration');
     const r=roles.rows[0];
     assert.equal(r.rolsuper,false,'Auth runtime must not be a PostgreSQL superuser');
     assert.equal(r.rolbypassrls,false,'Auth runtime must not have BYPASSRLS');
     assert.equal(r.rolcanlogin,true,'Auth runtime must be a real login role');
+    assert.equal(r.rolinherit,false,'Auth runtime must be NOINHERIT');
     const {rows:current}=await client.query('SELECT current_user AS name');
     assert.notEqual(current[0].name,role,'Runtime and migration owner must be different roles');
     const {rows:tables}=await client.query(
