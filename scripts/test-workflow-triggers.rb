@@ -28,21 +28,14 @@ class WorkflowTriggerTest < Minitest::Test
     refute check("'on': [workflow_dispatch, push]\n")
   end
 
-  def test_only_main_push_is_allowed_for_pages
-    approved = "on:\n  push:\n    branches: [main]\n  workflow_dispatch:\n"
-    assert check(approved, filename: 'deploy-pages.yml')
-    refute check(approved)
-    refute check(approved, filename: 'publish-loc-rc.yml')
-    refute check("on: [push, workflow_dispatch]\n", filename: 'deploy-pages.yml')
-    refute check("on:\n  push:\n    branches: ['*']\n  workflow_dispatch:\n", filename: 'deploy-pages.yml')
-    refute check("on:\n  push:\n    branches: [main, dev]\n  workflow_dispatch:\n", filename: 'deploy-pages.yml')
-    refute check("on:\n  push:\n    branches: [main]\n    tags: ['*']\n  workflow_dispatch:\n", filename: 'deploy-pages.yml')
-    refute check("on:\n  push:\n    branches: [main]\n  schedule:\n    - cron: '0 0 * * *'\n", filename: 'deploy-pages.yml')
-    # Owner-approved: optional paths-ignore so docs/skill/hook-only pushes skip the deploy.
-    assert check("on:\n  push:\n    branches: [main]\n    paths-ignore: ['**/*.md', '.claude/**']\n  workflow_dispatch:\n", filename: 'deploy-pages.yml')
-    refute check("on:\n  push:\n    branches: [main]\n    paths-ignore: ['**/*.md']\n  workflow_dispatch:\n")
-    refute check("on:\n  push:\n    paths-ignore: ['**/*.md']\n  workflow_dispatch:\n", filename: 'deploy-pages.yml')
-    refute check("on:\n  push:\n    branches: [main]\n    paths: ['app/**']\n  workflow_dispatch:\n", filename: 'deploy-pages.yml')
+  def test_pages_deployment_is_manual_only
+    assert check("on: workflow_dispatch\n", filename: 'deploy-pages.yml')
+    refute check("on:\n  push:\n    branches: [main]\n  workflow_dispatch:\n",
+      filename: 'deploy-pages.yml')
+    refute check("on:\n  pull_request:\n    branches: [main]\n  workflow_dispatch:\n",
+      filename: 'deploy-pages.yml')
+    refute check("on:\n  schedule:\n    - cron: '0 0 * * *'\n  workflow_dispatch:\n",
+      filename: 'deploy-pages.yml')
   end
 
   def test_ambiguous_documents_are_rejected
