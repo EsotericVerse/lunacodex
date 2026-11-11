@@ -60,7 +60,7 @@ function projection(query,columns){
 }
 export async function executeLocPersonal(db,claims,body){
   if(claims?.provider!=='loc'||claims?.me!==true||
-    !/^loc_[A-Za-z0-9_-]{32,80}$/.test(String(claims.sub||''))||
+    !/^[A-Za-z0-9_-]{8,128}$/.test(String(claims.sub||''))||
     !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(claims.email||'')))
     throw bad('Verified LOC OAuth identity required',403);
   const payload=body?.payload||{};
