@@ -13,6 +13,12 @@
       "skillPath": "security/SKILL.md",
       "computedHash": "087c1094fa5f1834af4785c058dcc8c9abe4c1321b853883c76ea46c93a21cfe"
     },
+    "build-actions-generator": {
+      "source": "ionic-team/capacitor-skills",
+      "sourceType": "github",
+      "skillPath": "skills/build-actions-generator/SKILL.md",
+      "computedHash": "1765ba7a7ce1e8ad30e1cfd2a2f0ebd414cb9392b924500243f6d6194106d53f"
+    },
     "chrome-extensions": {
       "source": "GoogleChrome/modern-web-guidance",
       "sourceType": "github",
