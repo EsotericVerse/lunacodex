@@ -10,6 +10,14 @@ function authFor(env){
 }
 const EXTENSION='chrome-extension://hiaeafonocnjaclcfgjmdopbcgnafnna';
 const allowed=new Set([LOC_ISSUER,LOC_WEB,EXTENSION]);
+// OAuth clients on OTHER domains exchange their own authorization code using
+// PKCE. These are standard bearer-based endpoints, never cookie/session APIs.
+const publicOAuthPaths=new Set([
+  '/api/auth/oauth2/register','/api/auth/oauth2/token',
+  '/api/auth/oauth2/revoke','/api/auth/oauth2/userinfo'
+]);
+const isPublicProtocolPath=path=>publicOAuthPaths.has(path)||
+  path.startsWith('/.well-known/');
 
 function cors(request,response,publicMetadata=false){
   const origin=request.headers.get('origin');
@@ -51,15 +59,17 @@ export default {
     if(url.hostname!=='auth.lo3rwang.cc')
       return new Response('Not found',{status:404});
     const origin=request.headers.get('origin');
-    if(origin&&!allowed.has(origin)&&!url.pathname.startsWith('/.well-known/'))
+    const publicProtocol=isPublicProtocolPath(url.pathname);
+    if(origin&&!allowed.has(origin)&&!publicProtocol)
       return new Response('Origin denied',{status:403});
     if(request.method==='OPTIONS'){
-      if(origin&&!allowed.has(origin))return new Response(null,{status:403});
+      if(origin&&!allowed.has(origin)&&!publicProtocol)
+        return new Response(null,{status:403});
       return cors(request,new Response(null,{status:204,headers:{
         'access-control-allow-methods':'GET,POST,OPTIONS',
         'access-control-allow-headers':'authorization,content-type',
         'access-control-max-age':'600'
-      }}));
+      }}),publicProtocol);
     }
     try{
       const auth=authFor(env);
@@ -72,7 +82,7 @@ export default {
         return cors(request,await auth.handler(new Request(to,request)),true);
       }
       if(url.pathname.startsWith('/api/auth/'))
-        return cors(request,await auth.handler(request));
+        return cors(request,await auth.handler(request),publicProtocol);
       // Official plugin validates the OAuth request signature; LOC does not
       // implement a second signature/session/PKCE verification algorithm.
       let signedQuery='';
