@@ -1,4 +1,4 @@
-import {jwtVerify,createRemoteJWKSet} from 'jose';
+import {verifyAccessTokenRequest,requestToResourceInput} from 'better-auth/oauth2';
 import {businessAction} from './business-actions.mjs';
 import {readMemory} from './galaxy-read.mjs';
 import {privateGalaxyLink} from './private-galaxy.mjs';
@@ -41,11 +41,13 @@ function unauthorized(config){
 }
 // Auth protocol is delegated to Better Auth. The standard JOSE implementation
 // checks RFC 9068 resource JWTs; there is no custom JWT decoder or signer.
-const jwks=createRemoteJWKSet(new URL('https://auth.lo3rwang.cc/api/auth/jwks'));
-async function verifyOAuthToken(token,config){
+async function verifyOAuthToken(request,config){
   try{
-    const {payload}=await jwtVerify(token,jwks,{
-      issuer:config.issuer,audience:config.resource,typ:'at+jwt'
+    const payload=await verifyAccessTokenRequest(requestToResourceInput(request),{
+      jwksUrl:'https://auth.lo3rwang.cc/api/auth/jwks',
+      verifyOptions:{issuer:config.issuer,audience:config.resource,
+        typ:'at+jwt',requiredClaims:['azp']},
+      requiredScopes:['openid']
     });
     if(typeof payload.sub!=='string'||!payload.sub)return null;
     return {subject:payload.sub,scopes:String(payload.scope||'')
@@ -103,7 +105,7 @@ export async function handleMcp(request,env={}){
   const match=/^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization')||'');
   if(!match)return unauthorized(config);
   let identity=null;
-  try{identity=await verifyOAuthToken(match[1],config);}catch{return unauthorized(config);}
+  try{identity=await verifyOAuthToken(request,config);}catch{return unauthorized(config);}
   if(!identity)return unauthorized(config);
   if(request.method==='GET')return response({error:'SSE_not_supported',message:'Use Streamable HTTP POST'},405,{Allow:'POST, OPTIONS'});
   let payload;
