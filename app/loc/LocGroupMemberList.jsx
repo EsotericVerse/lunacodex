@@ -1,7 +1,7 @@
 'use client';
 
 import {useState} from 'react';
-import {useQueryClient} from '@tanstack/react-query';
+import {useQueryClient} from './use-async-resource';
 import {useAccount} from './use-account';
 import {useAsyncResource} from './use-async-resource';
 import {dbAuthClient} from './db-client.mjs';
