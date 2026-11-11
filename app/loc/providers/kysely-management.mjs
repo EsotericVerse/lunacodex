@@ -78,11 +78,11 @@ export function managedPrimaryKeyColumns(table,modelName=''){
   if(modelName&&(!idFields||!idFields.length))
     reject('Invalid fixed LOC primary key metadata');
   return idFields||
-    [table==='lrunes_daily'?'record_id':
+    [table==='loc_anchor'?'uid':table==='lrunes_daily'?'record_id':
       SCOPED_SUFFIXES.some(suffix=>table.endsWith(suffix))?'uid':'id'];
 }
 async function authorizeRelation(trx,table,operation,values,filters,rows){
-  if(table==='manage'||table==='loc'){
+  if(table==='manage'||table==='loc'||table==='loc_anchor'){
     if(table==='loc'&&(Object.hasOwn(values||{},'ArticleTag')||rows.some(row=>Object.hasOwn(row,'ArticleTag'))))
       reject('LOC ArticleTag is fixed and cannot be configured',403);
     if(!await canManageLoc(trx,'global'))reject('Global management permission required',403);
