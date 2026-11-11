@@ -111,7 +111,7 @@ function useAdminScopeData(){
     registry,setRegistry,mappings,setMappings,originalMappings,configs,setConfigs,status,setStatus,
     refresh:()=>{
       invalidateAppBootstrapMetadata();
-      void queryClient.invalidateQueries({queryKey:['app-bootstrap']});
+      void queryClient.invalidateQueries({queryKey:['app-bootstrap'],refetchType:'none'});
       setRevision(value=>value+1);
     }
   };
