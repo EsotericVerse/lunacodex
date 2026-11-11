@@ -4,6 +4,7 @@
 import {directMcpKysely} from '../../app/loc/mcp/native-kysely.mjs';
 import {bindLocAuthorization,canManageLoc} from '../../app/loc/providers/loc-authorization.mjs';
 import {verifiedIdentity} from '../_loc-delegation.mjs';
+import {locPermissionsForEmail} from '../../app/loc/permissions/roles.mjs';
 import {
   readKeywordClasses,readKeywordStatistics,readKeywordCatalog,readKeywordDaily,
   suggestKeywordPatterns,analyzeKeywordScope,resetKeywordScope,
@@ -56,6 +57,10 @@ export async function onRequestPost(context){
     // accept a target URL, SQL dialect or credential from HTTP arguments.
     const entry=await directMcpKysely(context.env);
     const db=entry.db;
+    // This is the independent database role decision, not LOC Auth.
+    const rights=await locPermissionsForEmail(db,claims.email);
+    claims.me=rights.canWrite;
+    claims.grants=rights.grants;
     let result;
     if(operation==='suggest'){
       // Management-only suggestion; a single verified Scope.
