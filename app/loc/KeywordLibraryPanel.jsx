@@ -2,7 +2,7 @@
 
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import dynamic from 'next/dynamic';
-import {useQueryClient} from '@tanstack/react-query';
+import {useQueryClient} from './use-async-resource';
 import {useEditDock} from '../modular/edit-dock';
 import {dbAuthRelation,dbPublicClient,dbAuthClient,resetKeywordClassification,updateRows,writeKeywordLibraryItem,copyKeywordLibraryClass} from './db-client.mjs';
 import {indexKeywordTree,descendantsOfKeyword} from './keyword-tree.mjs';
