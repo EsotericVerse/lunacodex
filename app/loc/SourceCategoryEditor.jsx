@@ -59,7 +59,7 @@ export function AdminSourceCategories(){
   },[]);
   useEffect(()=>{void load();},[load]);
   const edit=row=>{
-    if(!row||row.uid!==draft?.uid&&!canChangeNode())return;
+    if(!row||row.uid===draft?.uid||!canChangeNode())return;
     setSelected(row.uid);
     setDraft({uid:row.uid,type:row.type,title:row.title||'',
       description:row.description||''});
