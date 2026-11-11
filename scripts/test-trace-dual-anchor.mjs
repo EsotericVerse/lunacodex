@@ -34,6 +34,6 @@ test('trace data and on-demand reports work without ISR or article preloading',(
   assert.match(report,/enabled:useSummary/);
   assert.match(report,/readPlaceSummary\(targetScope/);
   assert.match(report,/traceArticleFilters\(sourcePlaces,/);
-  assert.match(report,/const PAGE_SIZE=40/);
+  assert.match(report,/const PAGE_SIZE=100/);
   assert.doesNotMatch(route,/\\.select\\('uid,content'\\)/);
 });
