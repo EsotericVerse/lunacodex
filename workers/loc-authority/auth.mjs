@@ -71,7 +71,7 @@ export function createLocAuth(env){
     max:2,
     connectionTimeoutMillis:7000,
     idleTimeoutMillis:10000,
-    ssl:env.LOC_AUTH_SCHEMA_GENERATION==='1'?false:{rejectUnauthorized:true}
+    ssl:{rejectUnauthorized:true}
   });
   const auth=betterAuth({
     appName:'LOC Auth',
