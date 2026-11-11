@@ -6,7 +6,6 @@ import {readLocRuntimeConfig,saveLocRuntimeConfig} from '../../runtime-config.mj
 import {useEditDockForm} from '../../../modular/edit-dock';
 
 const FIELDS=[
-  {key:'maxRows',label:'MaxRows',unit:'筆',min:100},
   {key:'archiveMiB',label:'備份檔案上限',unit:'MiB',min:1},
   {key:'jsonMiB',label:'JSON 檔案上限',unit:'MiB',min:1},
   {key:'documentMiB',label:'文件檔案上限',unit:'MiB',min:1},
