@@ -7,6 +7,7 @@ on:
     paths:
       - 'workers/loc-authority/**'
       - 'scripts/test-loc-auth-rewrite.mjs'
+      - 'scripts/test-auth-request-concurrency.mjs'
       - 'app/loc/mcp/**'
       - '.github/workflows/verify-better-auth-loc.yml'
 permissions:
@@ -34,5 +35,6 @@ jobs:
           node --check app/loc/providers/configured.mjs
           node --check functions/api/loc-permissions.js
           npm run test:authority
+          node --test scripts/test-auth-request-concurrency.mjs
       - name: Bundle Auth Worker without deployment
         run: npx --yes wrangler@4.157.0 deploy --config workers/loc-authority/wrangler.jsonc --dry-run --outdir /tmp/loc-auth-dry
