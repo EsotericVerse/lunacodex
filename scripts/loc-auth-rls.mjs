@@ -11,6 +11,24 @@ const quote=name=>{
   return '"'+name+'"';
 };
 
+// Run before vendor DDL too: no Auth schema may be initialized without a
+// separate non-bypass runtime role ready to receive the mandatory policies.
+export async function assertLocAuthRuntimeRole(pool,runtimeRole){
+  const role=String(runtimeRole||'');
+  if(!NAME.test(role))throw new Error('LOC Auth dedicated runtime role is required');
+  const {rows}=await pool.query(
+    'SELECT rolname,rolsuper,rolbypassrls,rolcanlogin FROM pg_roles WHERE rolname=$1',
+    [role]);
+  assert.equal(rows.length,1,'Dedicated LOC Auth runtime role must exist first');
+  assert.equal(rows[0].rolsuper,false,'Auth runtime must not be superuser');
+  assert.equal(rows[0].rolbypassrls,false,'Auth runtime must not bypass RLS');
+  assert.equal(rows[0].rolcanlogin,true,'Auth runtime must be login-enabled');
+  const {rows:owner}=await pool.query('SELECT current_user AS role');
+  assert.notEqual(owner[0].role,role,
+    'Runtime role and migration owner must be distinct');
+  return role;
+}
+
 export async function applyLocAuthRls(pool,runtimeRole){
   const role=String(runtimeRole||'');
   if(!NAME.test(role))throw new Error('LOC Auth dedicated runtime role is required');
