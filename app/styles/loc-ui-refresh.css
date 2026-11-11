@@ -362,3 +362,36 @@
 @media(prefers-reduced-motion:reduce){
   .loc-trace-annual-gauge{transition:none;}
 }
+
+/* An actual travel record, not a simulated game score or a decorative KPI card. */
+.loc-trace-place-journal{
+  display:flex;
+  align-items:baseline;
+  gap:.35rem .75rem;
+  flex-wrap:wrap;
+  min-width:0;
+  padding:.45rem 0 .6rem;
+  border-block:1px solid var(--loc-line-soft);
+  font-variant-numeric:tabular-nums;
+}
+.loc-trace-place-journal__eyebrow{
+  font-size:.74rem;
+  font-weight:650;
+  letter-spacing:.08em;
+  color:var(--loc-muted);
+}
+.loc-trace-place-journal>strong{
+  font-size:clamp(1.25rem,2vw,1.65rem);
+  font-weight:730;
+  letter-spacing:-.04em;
+  color:var(--loc-gold);
+}
+.loc-trace-place-journal>span:last-child{
+  font-size:.82rem;
+  color:var(--loc-text);
+  line-height:1.45;
+}
+@media(max-width:680px){
+  .loc-trace-place-journal{gap:.25rem .55rem;padding:.4rem 0;}
+  .loc-trace-place-journal__eyebrow{flex-basis:100%;}
+}
