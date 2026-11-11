@@ -1,6 +1,7 @@
 name: Verify Better Auth LOC rewrite
 on:
   workflow_dispatch:
+  pull_request:
 permissions:
   contents: read
 jobs:
@@ -19,6 +20,9 @@ jobs:
           node --check workers/loc-authority/index.mjs
           node --check workers/loc-authority/auth.mjs
           node --check app/loc/mcp/native-operations.mjs
+          node --check app/loc/mcp/router.mjs
+          node --check app/loc/mcp/private-galaxy.mjs
+          node --check extensions/loc-galaxy-link/background.js
           node --check app/loc/mcp/native-kysely.mjs
           node --check app/loc/providers/configured.mjs
           node --check functions/api/loc-permissions.js
