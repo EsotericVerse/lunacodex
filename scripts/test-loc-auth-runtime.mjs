@@ -1,4 +1,6 @@
 import crypto from 'node:crypto';
+import {Pool} from 'pg';
+import {verifyLocAuthRls} from './loc-auth-rls.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createLocAuth,LOC_ISSUER} from '../workers/loc-authority/auth.mjs';
@@ -9,7 +11,7 @@ import {oauthProviderAuthServerMetadata,oauthProviderOpenIdConfigMetadata} from 
 // No production credentials, no Neon schema mutations or live user data.
 const env={
  LOC_AUTH_SCHEMA_GENERATION:'1',
- LOC_AUTH_DATABASE_URL:'postgresql://loc_ci:loc_ci_only@127.0.0.1:5432/loc_auth_schema',
+ LOC_AUTH_DATABASE_URL:'postgresql://loc_auth_ci:loc_auth_ci_only@127.0.0.1:5432/loc_auth_schema',
  BETTER_AUTH_SECRET:'disposable-integration-test-secret-not-a-production-key',
  LOC_GOOGLE_CLIENT_ID:'integration-test-client',
  LOC_GOOGLE_CLIENT_SECRET:'integration-test-secret'
@@ -139,4 +141,28 @@ test('all four LOC Auth core tables persist independently in PostgreSQL',async()
       await adapter.delete({model,where:[{field:'id',value:id}]});
     }
   }
+});
+
+test('LOC Auth RLS is effective for a dedicated non-bypass runtime and denies website role',async()=>{
+ const {rows:identities}=await pool.query(
+   'SELECT current_user AS login, r.rolsuper, r.rolbypassrls FROM pg_roles r WHERE r.rolname=current_user');
+ assert.equal(identities[0].login,'loc_auth_ci');
+ assert.equal(identities[0].rolsuper,false);
+ assert.equal(identities[0].rolbypassrls,false);
+ const models=await verifyLocAuthRls(pool,'loc_auth_ci');
+ for(const table of ['user','session','account','verification'])
+   assert.ok(models.includes(table));
+ const webPool=new Pool({
+   connectionString:'postgresql://loc_web_ci:loc_web_ci_only@127.0.0.1:5432/loc_auth_schema',
+   ssl:false,max:1
+ });
+ try{
+   await assert.rejects(
+     webPool.query('SELECT id FROM "loc_auth"."user" LIMIT 1'),
+     error=>error?.code==='42501',
+     'LOC Web must not read a LOC Auth user even when both are in one database'
+   );
+ }finally{
+   await webPool.end();
+ }
 });
