@@ -56,7 +56,8 @@ export function checkLocAuthEnvironment(env){
   // This is a deployment gate, not a table creator. No storage schema is
   // selected by LOC Auth until its exact tables, columns and grants are
   // individually reviewed. A temporary test-only name is never a default.
-  if(!/^[a-z][a-z0-9_]{0,62}$/.test(String(env.LOC_AUTH_SCHEMA||'')))
+  const namespace=String(env.LOC_AUTH_SCHEMA||'');
+  if(!/^[a-z][a-z0-9_]{0,62}$/.test(namespace)||namespace==='loc_auth')
     throw new Error('Approved LOC Auth PostgreSQL schema is not configured');
   return true;
 }
