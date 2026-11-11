@@ -17,7 +17,7 @@ test.after(async()=>{await pool.end()});
 test('discovery is served by the official OAuth Provider metadata handler',async()=>{
  const fetchAuth=oauthProviderAuthServerMetadata(auth);
  const res=await fetchAuth(new Request(LOC_ISSUER+'/.well-known/oauth-authorization-server'));
- assert.equal(res.status,200,await res.text().catch(()=>'')); 
+ assert.equal(res.status,200); 
  const meta=await res.json();
  assert.ok(meta.authorization_endpoint.endsWith('/oauth2/authorize'));
  assert.ok(meta.token_endpoint.endsWith('/oauth2/token'));
