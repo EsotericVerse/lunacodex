@@ -45,8 +45,7 @@ const jwks=createRemoteJWKSet(new URL('https://auth.lo3rwang.cc/api/auth/jwks'))
 async function verifyOAuthToken(token,config){
   try{
     const {payload}=await jwtVerify(token,jwks,{
-      issuer:config.issuer,audience:config.resource,typ:'at+jwt',
-      requiredClaims:['azp']
+      issuer:config.issuer,audience:config.resource,typ:'at+jwt'
     });
     if(typeof payload.sub!=='string'||!payload.sub)return null;
     return {subject:payload.sub,scopes:String(payload.scope||'')
