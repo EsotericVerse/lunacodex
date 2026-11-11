@@ -204,7 +204,7 @@ export async function selectRows(table,{
   filters=[],
   orFilter='',
   orders=[],
-  limit=20,
+  limit=null,
   offset=0,
   count=null,
   source='auto',
@@ -213,9 +213,13 @@ export async function selectRows(table,{
   expectedDbId=''
 }={}){
   if(!String(columns||'').trim()||String(columns).trim()==='*')throw new Error('DB SELECT requires explicit columns');
-  // An explicit LIMIT controls only this request; never clamp it to a global Max Rows.
-  const safeLimit=Math.max(1,Math.floor(Number(limit)||20));
-  const safeOffset=Math.max(0,Math.floor(Number(offset)||0));
+  // Only an explicit page request may limit an ordinary SQL SELECT.
+  // An absent limit must stay null all the way to Kysely, never become 20.
+  const safeLimit=limit==null?null:Number(limit);
+  const safeOffset=Number(offset);
+  if(safeLimit!==null&&(!Number.isSafeInteger(safeLimit)||safeLimit<0)||
+    !Number.isSafeInteger(safeOffset)||safeOffset<0)
+    throw new Error('Invalid LOC SQL page bounds');
   warnOversizedFilters(table,filters);
   const request=async()=>{
     const {data,count:total,__dataSource}=await executePublicRead(table,relation=>{
@@ -223,7 +227,8 @@ export async function selectRows(table,{
       query=applyFilters(query,filters);
       if(orFilter)query=query.or(orFilter);
       query=applyOrders(query,orders);
-      return query.range(safeOffset,safeOffset+safeLimit-1);
+      if(safeLimit!==null)return query.range(safeOffset,safeOffset+safeLimit-1);
+      return query;
     },{source,authenticated,signal,expectedDbId});
     return {rows:data||[],count:total,dataSource:__dataSource};
   };
