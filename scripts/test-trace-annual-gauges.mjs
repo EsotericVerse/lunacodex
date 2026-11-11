@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {annualGaugeGroups,annualGaugeValues} from '../app/modular/features/trace/trace-annual-gauges.mjs';
 
 test('annual gauge counts distinct article days rather than number of visits or articles',()=>{
@@ -38,4 +39,17 @@ test('untrusted and over-limit identifiers do not expand map queries',()=>{
   assert.deepEqual(annualGaugeGroups(pins,['lo3rwang'],1),[
     {scope:'lo3rwang',ids:['Aaaa1111']}
   ]);
+});
+
+test('annual summary does not query at overview zoom and keeps the map lifecycle',()=>{
+  const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
+  const publicTrace=read('app/modular/features/Trace.jsx');
+  const map=read('app/modular/features/trace/TraceMap.jsx');
+  const engine=read('app/modular/features/trace/trace-map-engine.js');
+  assert.match(publicTrace,/enabled:annualGaugeOn&&annualGaugeDetailVisible&&annualGroups.length>0/);
+  assert.match(publicTrace,/onAnnualGaugeVisibleChange=\{setAnnualGaugeDetailVisible\}/);
+  assert.match(map,/onGaugeVisibilityChange:visible=>/);
+  assert.match(engine,/onGaugeVisibilityChange\(gaugeDetailVisible\)/);
+  assert.match(engine,/map\.on\('zoomend'/);
+  assert.match(engine,/onGaugeVisibilityChange\(next\)/);
 });
