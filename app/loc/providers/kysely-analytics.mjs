@@ -416,12 +416,18 @@ export async function executeKyselyAnalytics(trx,body,{role='anon',publishedScop
   }
   if(mode==='loc'){
     if(scope!=='loc')reject('Invalid LOC statistics Scope');
-    const groups=await trx.selectFrom('api.manage as m')
-      .innerJoin('silver.loc as l','l.id','m.id')
-      .select(['m.id as id','l.display_name as display_name',
-        'm.galaxy_table as galaxy_table','m.anchor_table as anchor_table'])
-      .where('m.manage_role','=','scope').where('m.active','=',true)
-      .orderBy('m.sort_order','asc').orderBy('m.id','asc').execute();
+    if(!dialect)throw new Error('LOC statistics ZModel dialect unavailable');
+    const modeled=await createFixedLocClient({dialect}).manage.findMany({
+      where:{manage_role:'scope',active:true,loc:{isNot:null}},
+      select:{
+        id:true,galaxy_table:true,anchor_table:true,
+        loc:{select:{display_name:true}}
+      },
+      orderBy:[{sort_order:'asc'},{id:'asc'}]
+    });
+    const groups=modeled.map(group=>({
+      ...group,display_name:group.loc?.display_name
+    }));
     const scopes=[],rows=[];let first=null;
     for(const group of groups){
       if(!SCOPE.test(group.id))continue;
