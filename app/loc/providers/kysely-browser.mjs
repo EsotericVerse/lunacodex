@@ -94,9 +94,11 @@ export function createKyselyPublicClient({
     if(!response.ok){
       const code=String(payload?.code||'');
       const stage=String(payload?.stage||'');
+      const reason=String(payload?.reason||'');
       const error=new Error('LOC Kysely '+(stage||'read')+' failed (HTTP '+
-        response.status+(code?', SQLSTATE '+code:'')+')');
-      error.status=response.status;error.code=code;error.stage=stage;throw error;
+        response.status+(code?', SQLSTATE '+code:'')+(reason?', '+reason:'')+')');
+      error.status=response.status;error.code=code;error.stage=stage;
+      error.reason=reason;throw error;
     }
     if(!payload||!Object.hasOwn(payload,'data'))
       throw Error('Invalid LOC Kysely read response');
@@ -132,7 +134,8 @@ export function createKyselyPublicClient({
     if(!response.ok){
       const error=new Error('LOC Kysely analytics '+String(payload?.stage||'read')+
         ' failed (HTTP '+response.status+
-        (payload?.code?', SQLSTATE '+payload.code:'')+')');
+        (payload?.code?', SQLSTATE '+payload.code:'')+
+        (payload?.reason?', '+payload.reason:'')+')');
       error.status=response.status;error.code=payload?.code;throw error;
     }
     if(!payload||!Object.hasOwn(payload,'data'))
