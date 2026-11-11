@@ -36,6 +36,8 @@ test('role authorization uses only the active existing api.manage rows',()=>{
  assert.equal(owner.canManage,true);
  assert.ok(owner.grants.includes('global:manage'));
  assert.ok(owner.grants.includes('lrunes:write'));
+ assert.deepEqual(owner.roles.find(r=>r.id==='lrunes')?.role,'scope');
+ assert.deepEqual(owner.roles.find(r=>r.id==='loc')?.role,'group');
  assert.equal(resolveLocPermissions('other@example.com',active).canWrite,false);
  assert.equal(resolveLocPermissions('sopa2306@gmail.com',[active[0]]).canWrite,false);
 });
