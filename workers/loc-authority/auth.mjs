@@ -102,7 +102,9 @@ export function createLocAuth(env){
 
 
     disabledPaths:['/token'],
-    rateLimit:{enabled:true,window:60,max:30},
+    // Routine Session/OIDC traffic should not exhaust the same tiny 30/min
+    // default budget. Sensitive OAuth operations have narrower native limits.
+    rateLimit:{enabled:true,window:60,max:120},
     advanced:{
       useSecureCookies:true,
       // The LOC website receives the opaque session cookie only for explicit
@@ -123,6 +125,17 @@ export function createLocAuth(env){
         jwt:{issuer:LOC_ISSUER+'/api/auth'}
       }),
       oauthProvider({
+        // Native per-endpoint quotas; retain strong controls over client
+        // registration and key rotation while allowing normal SSO traffic.
+        rateLimit:{
+          token:{window:60,max:40},
+          authorize:{window:60,max:60},
+          introspect:{window:60,max:100},
+          revoke:{window:60,max:30},
+          register:{window:60,max:5},
+          rotateClientKeys:{window:60,max:5},
+          userinfo:{window:60,max:120}
+        },
         schema:{
           oauthClient:{modelName:RAINBOW_TABLES.oauthClient},
           oauthResource:{modelName:RAINBOW_TABLES.oauthResource},
