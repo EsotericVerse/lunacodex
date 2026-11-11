@@ -3,6 +3,7 @@
 // business API; that API validates identity, then queries api.manage for roles.
 import {createLocAccountAdapter} from '../auth/loc-browser.mjs';
 import {createKyselyPublicClient} from './kysely-browser.mjs';
+import {notifyScopeDataCommitted} from '../scope-statistics-cache.mjs';
 
 const AUTH='https://auth.lo3rwang.cc';
 const PERSONAL=new Set(['api.loc_user','api.user_settings','api.user_records']);
@@ -76,7 +77,13 @@ export function createConfiguredAdapter({
   const shortImport=async(scopeid,batch)=>{
     if(!/^[a-z][a-z0-9]{0,14}$/.test(String(scopeid||'')))
       throw Error('Invalid LOC import Scope');
-    return operation('short-import',scopeid,{batch});
+    const result=await operation('short-import',scopeid,{batch});
+    // Browser extension/short imports may return a successful receipt.
+    // Only committed, non-duplicate data invalidates this browser's cache.
+    if(result?.accepted===true&&result?.articles?.some(row=>
+      row&&row.duplicate!==true&&Number(row.appended||0)>0))
+      notifyScopeDataCommitted(scopeid,{updatedAt:new Date().toISOString()});
+    return result;
   };
   const authClient={...authenticatedClient,shortImport,
     schema(name){return {...authenticatedClient.schema(name),
