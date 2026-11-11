@@ -41,3 +41,22 @@ test('native keyword editor reads eight-character Anchor UIDs and writes new UID
   assert.match(db,/scope==='lo3rwang'\?allocateAnchorUid/);
   assert.match(kw,/id="scope-keyword-sections"/);
 });
+
+test('phone management navigation is explicit and source changes save through the six-key dock',()=>{
+  const mobileCss=read('app/styles/loc-ui-refresh.css');
+  assert.match(component,/mobileSelect=false/);
+  assert.match(component,/management-section-nav__mobile-picker/);
+  assert.match(component,/availableSections/);
+  assert.match(mobileCss,/management-section-nav--mobile-select/);
+  assert.match(mobileCss,/min-height:48px/);
+  for(const path of [
+    'app/loc/views/AdminHomeView.jsx',
+    'app/loc/ScopeManagement.jsx',
+    'app/loc/SearchManagement.jsx',
+    'app/loc/GlobalSettings.jsx'
+  ])assert.match(read(path),/mobileSelect/,'missing mobile picker: '+path);
+  const source=read('app/loc/SourceCategoryEditor.jsx');
+  assert.match(source,/useEditDockForm\(\{save,isDirty/);
+  assert.doesNotMatch(source,/onClick=\{save\}/);
+  assert.match(source,/canChangeNode/);
+});
