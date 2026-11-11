@@ -287,20 +287,12 @@ function shiftedDay(day,shift){
   d.setUTCDate(d.getUTCDate()+shift);
   return d.toISOString().slice(0,10);
 }
-// A selected article only needs the lightweight Time graph. Share the
-// canonical Culture range resolution among article reads for a short TTL.
-const articleTimeCache=new Map();
-// Date, period, era and anniversary data share a single Time graph request.
+// Time Anchor reads share the same Scope-scoped query result cache as
+// Culture/Statistics. No 60-second expiration or interval-driven SQL reload.
 async function articleTimeRows(scope){
-  const key=String(scope.id)+'|'+String(scope.time),now=Date.now();
-  const cached=articleTimeCache.get(key);
-  if(cached&&cached.expires>now)return cached.promise;
-  const promise=import('./culture-query')
-    .then(({selectCultureTimeRows})=>selectCultureTimeRows(scope));
-  articleTimeCache.set(key,{expires:now+60_000,promise});
-  promise.catch(()=>{if(articleTimeCache.get(key)?.promise===promise)articleTimeCache.delete(key);});
-  if(articleTimeCache.size>20)articleTimeCache.delete(articleTimeCache.keys().next().value);
-  return promise;
+  return readScopeStatisticsCached(scope.id,'article-time',{table:scope.time},
+    ()=>import('./culture-query')
+      .then(({selectCultureTimeRows})=>selectCultureTimeRows(scope)));
 }
 async function articleTimeContext(scope,day){
   if(!day||!scope.time)return {anchors:[],periods:[],eras:[]};
