@@ -573,38 +573,48 @@ export default function Culture(){
 
   const categoryGroups=sourceRootQuery.data?.groups||sourceSnapshotQuery.data?.groups||EMPTY_CULTURE_GROUPS;
   const groupedSources=useMemo(()=>{
-    const catalog=sourceTaxonomy||{categories:[],aliases:[],groups:[],groupAliases:[]};
-    const system=new Map(catalog.categories.filter(row=>row.enabled!==false)
-      .map(row=>[String(row.category_code),String(row.display_name||row.category_code)]));
-    const custom=new Map(catalog.groups.filter(row=>row.enabled!==false)
-      .map(row=>[String(row.group_code),String(row.display_name||row.group_code)]));
-    const mapped=new Map(catalog.groupAliases.map(row=>[String(row.source_key||'').trim().toLowerCase(),String(row.group_code||'')]));
+    const catalog=sourceTaxonomy||{categories:[],aliases:[]};
+    const byCode=new Map(catalog.categories.map(row=>[row.category_code,row]));
     const index=new Map();
     for(const source of categoryGroups){
+      // Multimedia is now a *source tree Universe*. Legacy media-type rows
+      // cannot become a second source taxonomy or double-count Galaxy.site.
+      if(source.category_type==='media')continue;
       const raw=String(source.site||'');
-      let root='media',code=raw,label=raw.replace(/^媒體 · /u,'');
-      const type=label.toLowerCase();
-      if(type==='music'||type==='audio')label=l.mediaMusic;
-      else if(type==='image'||type==='photo')label=l.mediaImage;
-      else if(type==='video'||type==='movie')label=l.mediaVideo;
-      if(source.category_type!=='media'){
-        const systemCode=assignedSource(raw,catalog.aliases,catalog.categories);
-        root=systemCode==='unclassified'?'custom':'system';
-        code=root==='system'?systemCode:mapped.get(raw.toLowerCase())||'unclassified';
-        label=root==='system'?system.get(code)||code:custom.get(code)||l.other;
-      }
+      const code=assignedSource(raw,catalog.aliases,catalog.categories);
+      const node=byCode.get(code);
+      const root=node?.root||'custom';
+      const label=node?.display_name||l.other;
       const key=root+':'+code;
-      if(!index.has(key))index.set(key,{key,root,label,site:label,sites:[],media_types:[],item_count:0});
+      if(!index.has(key))index.set(key,{key,root,label,site:label,
+        sites:[],media_types:[],item_count:0});
       const group=index.get(key);
       group.item_count+=Number(source.item_count)||0;
       group.sites.push(...(source.sites||[]));
-      group.media_types.push(...(source.media_types||[]));
     }
-    return [...index.values()].map(group=>({...group,sites:[...new Set(group.sites)],media_types:[...new Set(group.media_types)]}));
-  },[categoryGroups,sourceTaxonomy,scopeId,l.other,l.mediaMusic,l.mediaImage,l.mediaVideo]);
-  const selectedGroup=groupedSources.find(item=>item.key===selectedRiverGroup)
-    ||categoryGroups.find(item=>item.category_key===(keywordDrillSource?'source:'+keywordDrillSource:selectedCategory))
-    ||null;
+    return [...index.values()].map(group=>({
+      ...group,sites:[...new Set(group.sites)]
+    }));
+  },[categoryGroups,sourceTaxonomy,l.other]);
+  // Selecting a Domain uses the existing From descendant UID list; it does
+  // not require querying each From or joining article text in the browser.
+  const selectedGroup=useMemo(()=>{
+    const exact=groupedSources.find(item=>item.key===selectedRiverGroup);
+    if(exact)return exact;
+    const option=sourceStyleOptions.find(item=>item.key===selectedRiverGroup);
+    if(option?.type==='domain'){
+      const descendants=new Set((sourceTaxonomy?.tree||[])
+        .filter(node=>node.path.includes(option.code)).map(node=>node.uid));
+      const members=groupedSources.filter(group=>
+        descendants.has(group.key.slice(group.key.indexOf(':')+1)));
+      if(members.length)return {key:option.key,root:option.root,label:option.label,
+        site:option.label,sites:[...new Set(members.flatMap(item=>item.sites))],
+        media_types:[],item_count:members.reduce((n,item)=>n+item.item_count,0)};
+    }
+    return categoryGroups.find(item=>item.category_key===
+      (keywordDrillSource?'source:'+keywordDrillSource:selectedCategory))||null;
+  },[groupedSources,selectedRiverGroup,sourceStyleOptions,sourceTaxonomy,categoryGroups,
+    keywordDrillSource,selectedCategory]);
   const effectiveCategoryKey=selectedGroup?.category_key||selectedGroup?.key||'';
   // Density and Site expansion never load Galaxy IDs. The explicit
   // "顯示文章列表" click is the sole entry to this bounded reader.
@@ -937,10 +947,12 @@ export default function Culture(){
   // vis-timeline chart only when their parent is expanded.
   const showKeywordRiver=styleFilter==='rune66';
   const cultureRiver=useMemo(()=>{
+    const sourceRootLabels=new Map((sourceTaxonomy?.roots||[])
+      .map(node=>[node.root,node.title]));
     const roots=[
-      {id:'system',label:l.system,order:0},
-      {id:'custom',label:l.custom,order:300},
-      {id:'media',label:l.media,order:600}
+      {id:'system',label:sourceRootLabels.get('system')||l.system,order:0},
+      {id:'custom',label:sourceRootLabels.get('custom')||l.custom,order:300},
+      {id:'media',label:sourceRootLabels.get('media')||l.media,order:600}
     ];
     const bySource=new Map();
     for(const group of groupedSources){
