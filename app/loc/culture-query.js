@@ -5,7 +5,7 @@
 import {CultureTimelineModel} from '../modular/modules/culture-timeline/culture-timeline-model';
 import {workDisplayText} from '../modular/work-display-model';
 import {selectScopeDailyCounts} from './galaxy-query';
-import {DB_QUERY_BATCH_SIZE,selectAllRows,selectCount,selectRows} from './db-query.mjs';
+import {selectAllRows,selectCount,selectRows} from './db-query.mjs';
 import {mapBounded} from './bounded-parallel.mjs';
 import {publicContentFilters} from './content-policy';
 import {selectScopeGroupMemberIds,defaultScopeData} from './scope-data';
@@ -29,20 +29,13 @@ export async function selectCultureTimeRows(scope,birthday=''){
   // maps address/anchor_ids to attr.date/attr.uid/attr.period.
   const table=String(scope?.time||'').replace(/_anchor$/,'_time');
   if(!scopeId||!table)throw new Error('Scope data 未解析');
-  // Public Data API imposes a smaller page size than the application's
-  // general 10,000-row I/O ceiling. Query it page by page so Culture neither
-  // throws an Invalid page limit error nor silently omits Time Anchors.
-  const rows=[],pageSize=Math.min(DB_QUERY_BATCH_SIZE,1000),maxRows=10000;
-  for(let offset=0;offset<maxRows;offset+=pageSize){
-    const result=await selectRows(table,{
-      columns:TIME_COLUMNS,
-      filters:[{column:'type',operator:'in',value:['anchor','period','era']}],
-      limit:pageSize,offset,maxLimit:pageSize
-    });
-    rows.push(...result.rows);
-    if(result.rows.length<pageSize)break;
-    if(offset+pageSize>=maxRows)throw new Error('Culture time Anchor limit exceeded');
-  }
+  // Collect every Time Anchor/period/era. Internal transport pagination does
+  // not cap the historical timeline or borrow the old Data API Max Rows limit.
+  const {rows}=await selectAllRows(table,{
+    columns:TIME_COLUMNS,
+    filters:[{column:'type',operator:'in',value:['anchor','period','era']}],
+    orders:[{column:'uid',ascending:true}]
+  });
   const anchors=rows.filter(row=>row.type==='anchor');
   const byUid=new Map(anchors.map(row=>[String(row.uid),row]));
   const normalize=(row,type,eventMap)=>{
@@ -589,10 +582,13 @@ export async function selectCultureArticleListPage(scope,{
     ...(selectedSources.length?[{column:'site',operator:'in',value:selectedSources}]:[])
   ];
   const pageOffset=Math.max(0,Math.floor(Number(offset)||0));
-  const {rows=[]}=await selectRows(scope.galaxy,{
+  const {rows=[],count}=await selectRows(scope.galaxy,{
     columns:scopeId==='local'?'uid,title,createtime,site,able':'uid,date,title,list',
-    filters,orders:[{column:'createtime',ascending:sortDirection==='asc'}],
-    limit:pageSize,offset:pageOffset,maxLimit:pageSize
+    filters,
+    // Deterministic order keeps historical pages stable when dates tie.
+    orders:[{column:'createtime',ascending:sortDirection==='asc'},
+      {column:'uid',ascending:true}],
+    limit:pageSize,offset:pageOffset,count:'exact'
   });
   const normalized=rows.map(row=>{
     const hidden=scopeId==='local'?row.able?.list===false:row.list===false;
@@ -605,9 +601,11 @@ export async function selectCultureArticleListPage(scope,{
       hidden,list:!hidden
     };
   });
+  const hasMore=count==null?rows.length===pageSize:pageOffset+rows.length<Number(count);
   return {
-    rows:normalized,hasMore:rows.length===pageSize,
-    nextCursor:rows.length===pageSize?{offset:pageOffset+rows.length}:null
+    rows:normalized,hasMore,
+    nextCursor:hasMore?{offset:pageOffset+rows.length}:null,
+    totalCount:count==null?null:Number(count)
   };
 }
 
@@ -633,7 +631,7 @@ export async function selectScopePeriodWorkIndex(scope,{startDate='',endDate=nul
     const ascending=sortDirection!=='desc';
     const consumed=pages.map(()=>({galaxy:0,media:0}));
     const keys=new Set();
-    const pageSize=Math.max(1,Math.floor(Number(limit)||10));
+    const pageSize=Math.min(100,Math.max(1,Math.floor(Number(limit)||10)));
     while(out.length<pageSize){
       let chosen=-1;
       for(let i=0;i<pages.length;i++){
@@ -668,7 +666,7 @@ export async function selectScopePeriodWorkIndex(scope,{startDate='',endDate=nul
   // Explicitly requested empty source names are valid (e.g. Statistics · Others).
   const rawSources=[...new Set((sourceNames||[]).map(value=>String(value??'').trim()))];
   const rawMedia=[...new Set((mediaTypes||[]).map(value=>String(value||'').trim()).filter(Boolean))];
-  const pageSize=Math.max(1,Math.floor(Number(limit)||10));
+  const pageSize=Math.min(100,Math.max(1,Math.floor(Number(limit)||10)));
   const ascending=sortDirection!=='desc';
   const baseOffset=Math.max(0,Math.floor(Number(offset)||0));
   const cursorGalaxyOffset=Number(cursor?.galaxyOffset);
