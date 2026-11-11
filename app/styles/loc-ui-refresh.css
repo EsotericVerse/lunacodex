@@ -298,3 +298,100 @@
     padding:clamp(.75rem,3vw,1rem);
   }
 }
+
+/* Trace map / annual article-presence HUD: 270° racing-gauge arc.
+   The remaining 90° is intentionally open; all tones follow active Theme. */
+.loc-trace-annual-gauge{
+  width:58px;
+  height:58px;
+  display:grid;
+  place-items:center;
+  pointer-events:none;
+  isolation:isolate;
+}
+.loc-trace-annual-gauge::before{
+  content:'';
+  position:absolute;
+  inset:0;
+  border-radius:50%;
+  background:conic-gradient(from 225deg,
+    var(--loc-gold) 0deg var(--loc-gauge-progress),
+    var(--loc-line) var(--loc-gauge-progress) 270deg,
+    transparent 270deg 360deg);
+  -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 5px),#000 calc(100% - 4px));
+  mask:radial-gradient(farthest-side,transparent calc(100% - 5px),#000 calc(100% - 4px));
+}
+.loc-trace-annual-gauge__number{
+  display:grid;
+  place-items:center;
+  min-width:38px;
+  min-height:38px;
+  border-radius:50%;
+  border:1px solid var(--loc-line-soft);
+  background:color-mix(in srgb,var(--loc-panel) 90%,transparent);
+  color:var(--loc-heading);
+  font:700 .82rem/1 ui-monospace,SFMono-Regular,Consolas,monospace;
+  letter-spacing:-.03em;
+  font-variant-numeric:tabular-nums;
+}
+.loc-trace-gauge-tools{
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:.4rem .7rem;
+  min-width:0;
+}
+.loc-trace-gauge-tools>.loc-button{
+  min-height:44px;
+  border-radius:var(--loc-ui-radius-sm,12px);
+}
+.loc-trace-gauge-tools>.loc-button[aria-pressed="true"]{
+  border-color:var(--loc-gold-border);
+  background:var(--loc-gold-surface);
+}
+@media(max-width:680px){
+  .loc-trace-gauge-tools{
+    width:100%;
+    gap:.45rem;
+  }
+  .loc-trace-annual-gauge{width:50px;height:50px;}
+  .loc-trace-annual-gauge__number{
+    min-width:34px;min-height:34px;font-size:.72rem;
+  }
+}
+@media(prefers-reduced-motion:reduce){
+  .loc-trace-annual-gauge{transition:none;}
+}
+
+/* An actual travel record, not a simulated game score or a decorative KPI card. */
+.loc-trace-place-journal{
+  display:flex;
+  align-items:baseline;
+  gap:.35rem .75rem;
+  flex-wrap:wrap;
+  min-width:0;
+  padding:.45rem 0 .6rem;
+  border-block:1px solid var(--loc-line-soft);
+  font-variant-numeric:tabular-nums;
+}
+.loc-trace-place-journal__eyebrow{
+  font-size:.74rem;
+  font-weight:650;
+  letter-spacing:.08em;
+  color:var(--loc-muted);
+}
+.loc-trace-place-journal>strong{
+  font-size:clamp(1.25rem,2vw,1.65rem);
+  font-weight:730;
+  letter-spacing:-.04em;
+  color:var(--loc-heading);
+}
+.loc-trace-place-journal>span:last-child{
+  font-size:.82rem;
+  color:var(--loc-text);
+  line-height:1.45;
+}
+@media(max-width:680px){
+  .loc-trace-place-journal{gap:.25rem .55rem;padding:.4rem 0;}
+  .loc-trace-place-journal__eyebrow{flex-basis:100%;}
+}

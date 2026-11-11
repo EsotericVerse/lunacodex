@@ -90,7 +90,7 @@ const STRINGS={
   }
 };
 
-export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRouteSelect=null,selectedRouteUid='',focusLocation=null,spatialData=null,placeDayRows=null,mapOnly=false,hideRoutePicker=false,publicTrace=false,showAnchorSearch=true,floatingControls=null,children=null}){
+export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRouteSelect=null,selectedRouteUid='',focusLocation=null,spatialData=null,placeDayRows=null,mapOnly=false,hideRoutePicker=false,publicTrace=false,showAnchorSearch=true,floatingControls=null,children=null,annualGauges=[],annualGaugeOn=false,annualGaugeBusy=false,annualGaugeError=false,onAnnualGaugeToggle=null}){
   const {locale}=useUiLocale();
   const copy=STRINGS[locale]||STRINGS['zh-Hant'];
   const containerRef=useRef(null);
@@ -179,6 +179,9 @@ export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRout
   useEffect(()=>{
     mapRef.current?.setPlaceTimelines(placeDayRows||[]);
   },[placeDayRows]);
+  useEffect(()=>{
+    mapRef.current?.setAnnualGauges(annualGauges);
+  },[ready,annualGauges]);
 
   useEffect(()=>{
     mapRef.current?.setStemsVisible(stemsVisible);
@@ -344,6 +347,13 @@ export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRout
     </div>:null}
     <div className={"loc-trace-map-shell"+(publicTrace?" is-public-trace":"")}>
       {publicTrace?<div className="loc-trace-float-toolbar">
+        {typeof onAnnualGaugeToggle==='function'?<div className="loc-trace-gauge-tools">
+          <button type="button" className="loc-button" aria-pressed={annualGaugeOn}
+            title="近一年有文章的日期佔全年日期的比例"
+            onClick={onAnnualGaugeToggle}>年度儀表</button>
+          {annualGaugeOn&&annualGaugeBusy?<span className="scope-status" role="status">讀取年度統計中…</span>:null}
+          {annualGaugeOn&&annualGaugeError?<span className="scope-status scope-error" role="alert">年度統計暫時無法顯示</span>:null}
+        </div>:null}
         {floatingControls}
         {showAnchorSearch?<details className="loc-trace-float-search">
           <summary>搜尋地點</summary>

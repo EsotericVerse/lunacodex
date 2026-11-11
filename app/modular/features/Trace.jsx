@@ -14,6 +14,8 @@ import {useAsyncResource} from '../../loc/use-async-resource';
 import {mapBounded} from '../../loc/bounded-parallel.mjs';
 import useLocFeatureSettings from '../../loc/use-loc-feature-settings';
 import {traceWindow} from './trace/trace-panel-filters.mjs';
+import {annualGaugeGroups,annualGaugeValues} from './trace/trace-annual-gauges.mjs';
+import {dbPublicClient} from '../../loc/db-client.mjs';
 import {publicTraceMapChoices,locReferencedPointGroups,clusterLocSharedPoints} from './trace/trace-map-choices.mjs';
 import {pickTraceDemoStop,traceDemoRoute} from './trace/trace-demo-route.mjs';
 import {
@@ -42,6 +44,7 @@ export default function Trace({scopeId='loc'}){
   const supported=TRACE_SCOPES.includes(scopeId);
   const {settings:userSettings,active:userActive}=useLocFeatureSettings('trace');
   const [selectedPlace,setSelectedPlace]=useState(null);
+  const [annualGaugeOn,setAnnualGaugeOn]=useState(true);
   const routeParams=useSearchParams();
   const selectedPlaceUid=String(routeParams?.get('place')||'').trim();
   const selectedMapUid=String(routeParams?.get('map')||'').trim();
@@ -171,6 +174,31 @@ export default function Trace({scopeId='loc'}){
   const demoSpatialData=useMemo(()=>twoPointDemo&&linkedSpatialData
     ?{anchors:linkedSpatialData.anchors,maps:demoRoute?[demoRoute]:[]}
     :linkedSpatialData,[twoPointDemo,linkedSpatialData,demoRoute]);
+  // Aggregate only loaded map pins. No per-pin lookup and no periodic refresh.
+  const annualWindow=useMemo(()=>traceWindow('12m',new Date()),[]);
+  const annualGroups=useMemo(()=>annualGaugeGroups(demoSpatialData?.anchors||[],TRACE_SCOPES),
+    [demoSpatialData?.anchors]);
+  const annualSummary=useAsyncResource({
+    queryKey:['trace-annual-place-days-v1',annualWindow.startDate,annualWindow.endDate,
+      ...annualGroups.map(group=>group.scope+':'+group.ids.join(','))],
+    enabled:annualGaugeOn&&annualGroups.length>0,
+    queryFn:async()=>(await mapBounded(annualGroups,2,async({scope,ids})=>{
+      const {data,error}=await dbPublicClient.schema('silver').analytics({
+        p_scope_id:scope,p_view:'trace_daily',
+        p_start:annualWindow.startDate,p_end:annualWindow.endDate,
+        p_options:{placeIds:ids,source:null}
+      });
+      if(error)throw error;
+      if(!Array.isArray(data))throw new Error('年度地點統計資料格式不正確');
+      return data.map(row=>({...row,source_scope:scope}));
+    })).flat(),
+    revalidateIfStale:false,revalidateOnFocus:false,revalidateOnReconnect:false
+  });
+  const annualGauges=useMemo(()=>annualGaugeOn&&annualSummary.data
+    ?annualGaugeValues(demoSpatialData?.anchors||[],annualGroups,annualSummary.data,
+      annualWindow.startDate,annualWindow.endDate)
+    :[],[annualGaugeOn,annualSummary.data,demoSpatialData?.anchors,annualGroups,annualWindow]);
+
   const chooseMapAnchor=anchor=>{
     if(!twoPointDemo){choosePlace(anchor);return;}
     setDemoStopIds(ids=>pickTraceDemoStop(ids,anchor,periodScopeId));
@@ -182,6 +210,8 @@ export default function Trace({scopeId='loc'}){
       :spatialData?.anchors.some(row=>row.uid===selectedPlace.uid&&row.source_scope===selectedPlace.source_scope))
   );
   const reportPlace=twoPointDemo?null:(selectedAvailable?selectedPlace:null);
+  const reportAnnual=reportPlace?annualGauges.find(row=>
+    row.uid===reportPlace.uid&&row.source_scope===reportPlace.source_scope):null;
   const reportScopeId=isLoc?(reportPlace?.source_scope||periodScopeId):periodScopeId;
 
   const floatingControls=<>
@@ -236,6 +266,10 @@ export default function Trace({scopeId='loc'}){
   </>;
   return <FeaturePage featureId="trace">
     <TraceMap publicTrace floatingControls={floatingControls} spatialData={demoSpatialData}
+       annualGauges={annualGauges} annualGaugeOn={annualGaugeOn}
+       annualGaugeBusy={annualGaugeOn&&annualGroups.length>0&&annualSummary.isPending}
+       annualGaugeError={Boolean(annualSummary.error)}
+       onAnnualGaugeToggle={()=>setAnnualGaugeOn(value=>!value)}
       focusLocation={deepLinkedPlace.data||null} hideRoutePicker
       selectedRouteUid={isLoc?'':twoPointDemo?(demoRoute?.uid||''):(currentMap?.uid||'')}
       showAnchorSearch={!isLoc} onAnchorSelect={chooseMapAnchor}>
@@ -246,6 +280,11 @@ export default function Trace({scopeId='loc'}){
           <button type="button" className="loc-button" aria-label={t("closePlace")}
             onClick={()=>{setSelectedPlace(null);setReportTab(null);}}>×</button>
         </div>
+        {reportAnnual?<div className="loc-trace-place-journal" aria-label="近一年地點文章紀錄">
+          <span className="loc-trace-place-journal__eyebrow">旅程檔案 · 近一年</span>
+          <strong>{reportAnnual.percent}%</strong>
+          <span>{reportAnnual.days} / {reportAnnual.span} 日有文章 · 共 {reportAnnual.articles} 篇</span>
+        </div>:null}
         <div className="loc-trace-float-tabs" role="group" aria-label={t("placeMode")}>
           {[{value:'articles',label:t('articles')},{value:'timeline',label:t('timeline')},{value:'statistics',label:t('charts')}].map(item=>
             <button type="button" key={item.value} className="loc-button"
