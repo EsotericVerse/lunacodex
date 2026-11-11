@@ -6,8 +6,14 @@ Better Auth is the implementation module, **not** the product name.
 The LOC Web (LunaCodex / Language of Codex Framework) shares source code, not
 the Auth user registry. LOC Web owns business tables and `api.manage`. A LOC
 Auth user is valid even if no LOC Web user or `api.manage` record exists.
-Specific delegated business operations may reference website permissions; this
-must not be required for login or Session creation.
+The two systems have independent identity, Session and business-authorization
+stores, but they are **not unrelated**. They may reference each other through
+explicit, narrowly scoped, verified contracts (for example Auth identity ->
+LOC Web `api.manage` when authorizing a website business write, or a website
+resource -> an Auth-issued MCP delegation). Such references never silently
+merge records, make one table authoritative for the other, or require a LOC Web
+record before an Auth identity/Session can exist. Auth-owned persistence and
+MCP Gateway control-plane writes must work independently of `api.manage`.
 
 ## Storage isolation: Rainbow names only
 
@@ -50,8 +56,10 @@ the Worker.
 **No automatic migrations, ad hoc schema/table creation, implicit RLS grants,
 or SQL RPC.** Auth data read/write uses Better Auth's supported PostgreSQL
 adapter. LOC Auth can share one Neon project with LOC Web while its tables and
-permissions remain separate. The existing Neon's managed Auth tables and LOC
-Web business tables are unrelated and must not be modified for this change.
+permissions remain separate. Existing Neon-managed Auth tables and LOC Web business tables remain distinct
+and may be referenced through explicitly verified integration contracts; neither
+becomes LOC Auth's own persistence store. Do not modify those existing tables
+for this change.
 
 ## Cache and deployment
 
