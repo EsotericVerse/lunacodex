@@ -1,6 +1,7 @@
 'use client';
 
 import {cloneElement,useMemo,useState} from 'react';
+import {motion,useReducedMotion} from 'motion/react';
 import {useAsyncResource} from '../../../loc/use-async-resource';
 import {UI_COPY,registerDefaultSection} from '../../../i18n/ui-copy';
 import {RUNE_RANKING_PAGE_SIZE,availableStatisticChartTypes,semanticStatisticChartTypes,preferredStatisticChartType,nonemptySeries,normalizeDistribution,movingAverage,scatterPair,radarPeriodComparison,activePeriodCoverage,number,color,pointColor} from './statistics-time-zoom.mjs';
@@ -54,6 +55,7 @@ export default function StatisticsMultiChart({
   useUiSection('uiExtra.statisticsView');
   useUiSection('uiExtra.chartLabels');
   const {locale}=useUiLocale();
+  const reduceMotion=useReducedMotion();
   const t=useUiText();
   const units={dayUnit:t('uiExtra.chartLabels.dayUnit'),periodUnit:t('uiExtra.chartLabels.periodUnit')};
   const time=Array.isArray(rows)?rows:[];
@@ -166,11 +168,18 @@ export default function StatisticsMultiChart({
   </LineChart>;
   if(!usable.length)return <p className="scope-status">{t('uiExtra.chartLabels.noComparable')}</p>;
   return <div className="scope-multichart" role="group" aria-label={t('uiExtra.chartLabels.chartAria')}>
-    <div style={{height:barLayout==='vertical'?height:`min(${height}px, max(300px, 85vw))`}}>
+    {/* Recharts owns SVG geometry, data animation and hit targets. Motion only
+        fades the stable-size chart surface when its visualization type changes.
+        No overlapping ResponsiveContainers or layout measurements. */}
+    <motion.div key={actual} className="scope-multichart-motion-surface"
+      initial={reduceMotion?false:{opacity:0,y:6}}
+      animate={{opacity:1,y:0}}
+      transition={{duration:reduceMotion?0:.22,ease:'easeOut'}}
+      style={{height:barLayout==='vertical'?height:`min(${height}px, max(300px, 85vw))`}}>
       {actual==='treemap'
         ?<ResponsiveContainer width="100%" height="100%">{chart}</ResponsiveContainer>
         :cloneElement(chart,{responsive:true,style:{width:'100%',height:'100%'}})}
-    </div>
+    </motion.div>
     {foldBlank&&gaps.length?<p className="scope-status" role="note">
       {t('uiExtra.chartLabels.gapLabel')}{gaps.map(g=>g.start+'～'+g.end+'（'+(g.days||g.buckets)+' '+(g.days?units.dayUnit:units.periodUnit)+'）').join(t('uiExtra.chartLabels.gapSeparator'))}
     </p>:null}
