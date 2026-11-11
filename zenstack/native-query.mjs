@@ -27,7 +27,7 @@ function typedValue(field,value){
     const types=new Set((field.attributes||[]).map(attribute=>attribute.name));
     // A PostgreSQL DATE has no time zone. A strict calendar day maps to UTC
     // midnight without accepting JS Date's overflow normalization (Feb 30).
-    if(types.has('@db.Date')&&/^\\d{4}-\\d{2}-\\d{2}$/.test(value)){
+    if(types.has('@db.Date')&&/^\d{4}-\d{2}-\d{2}$/.test(value)){
       const date=new Date(value+'T00:00:00.000Z');
       return !Number.isNaN(date.getTime())&&date.toISOString().slice(0,10)===value
         ?date:UNSUPPORTED;
@@ -35,7 +35,7 @@ function typedValue(field,value){
     // Timestamp with time zone: an explicit offset is mandatory. Untz local
     // timestamps keep the existing Kysely path to preserve their semantics.
     if(types.has('@db.Timestamptz')&&
-      /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,9})?(?:Z|[+-]\\d{2}:\\d{2})$/.test(value)){
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)){
       const date=new Date(value);
       return Number.isNaN(date.getTime())?UNSUPPORTED:date;
     }
