@@ -7,7 +7,7 @@ import {readScopePatternRows} from '../keyword-anchor-index.mjs';
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
 const MODES=new Set(['loc','daily','overview','earliest','totals','search_summary',
-  'trace_places','keyword_summary','keyword_catalog','shared_classes','trace_daily','trace_keywords',
+  'lane_daily','trace_places','keyword_summary','keyword_catalog','shared_classes','trace_daily','trace_keywords',
   'culture_density','culture_anchors','culture_list']);
 function reject(message,status=400){
   const error=new Error(message);error.httpStatus=status;throw error;
@@ -235,6 +235,35 @@ async function traceDaily(trx,scope,places,start,end,source){
     group by 1,2 order by 1,2`.execute(trx);
   return result.rows.map(row=>({...row,item_count:Number(row.item_count||0)}));
 }
+// One GROUP BY returns the per-day count of a single Item Confluence lane.
+// Filters are fixed server-side; callers only choose a media flag, a platform
+// key from LANE_PLATFORMS, or an exact site/type. No row ever leaves the DB.
+const LANE_PLATFORMS=Object.freeze({
+  facebook:['%facebook%','fb'],threads:['%threads%'],
+  instagram:['%instagram%','ig','%reels%']
+});
+async function laneDaily(trx,scope,start,end,options){
+  const media=options.media===true;
+  const exact=options.exact==null||options.exact===''?null:String(options.exact);
+  const platform=options.platform==null||options.platform===''?null:String(options.platform);
+  if(platform&&(!Object.hasOwn(LANE_PLATFORMS,platform)||media||exact))
+    reject('Invalid lane platform');
+  const table=sql.ref('silver.'+scope+(media?'_galaxy_media':'_galaxy'));
+  let where=sql`g.createtime is not null
+    and (${start}::date is null or g.createtime>=
+      (${start}::date::timestamp at time zone 'Asia/Taipei'))
+    and (${end}::date is null or g.createtime<
+      ((${end}::date+1)::timestamp at time zone 'Asia/Taipei'))`;
+  if(!media)where=sql`${where} and g.keyword is true and g.content<>''`;
+  if(exact!==null)where=media
+    ?sql`${where} and g.type=${exact}`:sql`${where} and g.site=${exact}`;
+  if(platform)where=sql`${where} and (${sql.join(LANE_PLATFORMS[platform]
+    .map(pattern=>sql`g.site ilike ${pattern}`),sql` or `)})`;
+  const result=await sql`select to_char((g.createtime at time zone 'Asia/Taipei')::date,
+      'YYYY-MM-DD') as day,count(*)::integer as item_count
+    from ${table} g where ${where} group by 1 order by 1`.execute(trx);
+  return result.rows.map(row=>({day:row.day,item_count:Number(row.item_count||0)}));
+}
 async function traceKeywordGroups(trx,scope,anchor,places,start,end,source,requested,role){
   const info=await keywordClassInfo(trx,scope,anchor,requested,role);
   if(!info?.allowed||!info.ready)return [];
@@ -397,7 +426,8 @@ export async function executeKyselyAnalytics(trx,body,{role='anon',publishedScop
   const galaxy=safeName(reg.galaxy_table,'galaxy'),anchorSuffix=safeName(reg.anchor_table,'anchor');
   if(galaxy!=='galaxy')reject('Unsupported configured Galaxy relation');
   let data;
-  if(mode==='daily')data=await dailyStats(trx,scope,start,end,options.includeUndated===true);
+  if(mode==='lane_daily')data=await laneDaily(trx,scope,start,end,options);
+  else if(mode==='daily')data=await dailyStats(trx,scope,start,end,options.includeUndated===true);
   else if(mode==='earliest')data=await earliest(trx,scope);
   else if(mode==='totals')data=await sourceTotals(trx,scope,start,end);
   else if(mode==='overview')data=await scopeOverview(trx,scope,start,end);
