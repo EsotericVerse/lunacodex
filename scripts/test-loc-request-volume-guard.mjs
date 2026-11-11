@@ -44,3 +44,20 @@ test('editing keyboard activity checks are local and coalesced at 15 minutes',()
   assert.match(dock,/touchEditorSession\(window\.sessionStorage,now\)/);
   assert.doesNotMatch(dock,/setInterval\(/);
 });
+
+test('management cache invalidations never trigger implicit active refetch',()=>{
+  const paths=[
+    'app/loc/LocKeywordManagement.jsx',
+    'app/loc/LocGroupMemberList.jsx',
+    'app/loc/views/admin-panels/FeatureHeroImages.jsx',
+    'app/loc/KeywordLibraryPanel.jsx',
+    'app/loc/views/admin-panels/AdminRegistry.jsx'
+  ];
+  for(const path of paths){
+    const code=read(path);
+    const invalidations=code.match(/queryClient\\.invalidateQueries\\(\\{[^;]*?\\}\\)/gs)||[];
+    assert.ok(invalidations.length>0,path+' missing invalidation coverage');
+    for(const call of invalidations)
+      assert.match(call,/refetchType:'none'/,path+' implicit active refetch');
+  }
+});
