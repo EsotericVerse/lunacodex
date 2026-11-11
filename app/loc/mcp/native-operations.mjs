@@ -4,6 +4,7 @@
 import {sql} from 'kysely';
 import {verifyAccessTokenRequest,requestToResourceInput} from 'better-auth/oauth2';
 import {locPermissionsForEmail} from '../permissions/roles.mjs';
+import {verifiedLocWebsiteSession} from '../auth/verified-session.mjs';
 import {authorizeDelegatedShortImport} from '../import/short-edge-authorization.mjs';
 import {processShortImport,portableShortImportStore} from '../import/short-append-service.mjs';
 import {executePortableMcp} from '../providers/kysely-mcp.mjs';
@@ -72,25 +73,11 @@ function reply(payload,status=200){
 async function signedClaims(request,fetchImpl){
   const host=new URL(request.url).hostname;
   if(host===WEB_HOST){
-    const cookies=request.headers.get('cookie')||'';
-    if(!cookies)throw refusal('LOC sign-in required',401);
-    let response;
-    try{
-      response=await fetchImpl(AUTH+'/api/auth/get-session?disableCookieCache=true',{
-        method:'GET',headers:{cookie:cookies,accept:'application/json'},
-        cache:'no-store',redirect:'manual',signal:AbortSignal.timeout(7000)
-      });
-    }catch{throw refusal('LOC Auth verification unavailable',503)}
-    if(response.status===401||response.status===403)throw refusal('LOC sign-in required',401);
-    if(!response.ok)throw refusal('LOC Auth verification unavailable',503);
-    const data=await response.json().catch(()=>null);
-    const user=data?.user;
-    if(!data?.session||user?.emailVerified!==true||
-       typeof user?.id!=='string'||!user.id||
-       !EMAIL.test(String(user?.email||'')))
-      throw refusal('Verified LOC sign-in required',401);
-    return {provider:'loc',role:'authenticated',sub:user.id,
-      subject:user.id,email:String(user.email).trim().toLowerCase(),
+    // One shared website Session verifier; it respects the signed cookie
+    // cache rather than disabling it on every Save or management action.
+    const identity=await verifiedLocWebsiteSession(request,{fetchImpl});
+    return {provider:'loc',role:'authenticated',sub:identity.userId,
+      subject:identity.userId,email:identity.email,
       me:false,grants:[]};
   }
   const bearer=/^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization')||'');
