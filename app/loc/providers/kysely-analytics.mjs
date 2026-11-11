@@ -243,24 +243,35 @@ const LANE_PLATFORMS=Object.freeze({
   instagram:['%instagram%','ig','%reels%']
 });
 async function laneDaily(trx,scope,start,end,options){
+  // Statistics are always a bounded window of at most one year; never a full scan.
+  if(!start||!end||(Date.parse(end)-Date.parse(start))/864e5>366)
+    reject('Lane statistics need a date range of at most one year');
   const media=options.media===true;
   const exact=options.exact==null||options.exact===''?null:String(options.exact);
   const platform=options.platform==null||options.platform===''?null:String(options.platform);
   if(platform&&(!Object.hasOwn(LANE_PLATFORMS,platform)||media||exact))
     reject('Invalid lane platform');
   const table=sql.ref('silver.'+scope+(media?'_galaxy_media':'_galaxy'));
-  let where=sql`g.createtime is not null
-    and (${start}::date is null or g.createtime>=
-      (${start}::date::timestamp at time zone 'Asia/Taipei'))
-    and (${end}::date is null or g.createtime<
-      ((${end}::date+1)::timestamp at time zone 'Asia/Taipei'))`;
-  if(!media)where=sql`${where} and g.keyword is true and g.content<>''`;
+  // Same convention as galaxy-query dayColumn: Galaxy is read and grouped by its
+  // indexed `date`; only media tables use createtime. No content/keyword filter:
+  // lane counts must never read article text or depend on keyword analysis.
+  let where=media
+    ?sql`g.createtime is not null
+      and (${start}::date is null or g.createtime>=
+        (${start}::date::timestamp at time zone 'Asia/Taipei'))
+      and (${end}::date is null or g.createtime<
+        ((${end}::date+1)::timestamp at time zone 'Asia/Taipei'))`
+    :sql`g.date is not null
+      and (${start}::date is null or g.date>=${start}::date)
+      and (${end}::date is null or g.date<=${end}::date)`;
   if(exact!==null)where=media
     ?sql`${where} and g.type=${exact}`:sql`${where} and g.site=${exact}`;
   if(platform)where=sql`${where} and (${sql.join(LANE_PLATFORMS[platform]
     .map(pattern=>sql`g.site ilike ${pattern}`),sql` or `)})`;
-  const result=await sql`select to_char((g.createtime at time zone 'Asia/Taipei')::date,
-      'YYYY-MM-DD') as day,count(*)::integer as item_count
+  const dayExpr=media
+    ?sql`(g.createtime at time zone 'Asia/Taipei')::date`:sql`g.date`;
+  const result=await sql`select to_char(${dayExpr},'YYYY-MM-DD') as day,
+      count(*)::integer as item_count
     from ${table} g where ${where} group by 1 order by 1`.execute(trx);
   return result.rows.map(row=>({day:row.day,item_count:Number(row.item_count||0)}));
 }
