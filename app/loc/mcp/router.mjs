@@ -1,5 +1,5 @@
 import {jwtVerify,createRemoteJWKSet} from 'jose';
-import {authorityAction} from './authority-client.mjs';
+import {businessAction} from './business-actions.mjs';
 import {readMemory} from './galaxy-read.mjs';
 import {privateGalaxyLink} from './private-galaxy.mjs';
 import {mcpDatabaseConfiguration} from './native-kysely.mjs';
@@ -69,12 +69,12 @@ const TOOLS=[
     },required:['uid'],additionalProperties:false},
     annotations:{readOnlyHint:true,destructiveHint:false}}
 ,
-  {name:'scope_storage',description:'Read the LOC Auth Scope connection status. Scope database URL registration has been retired; database selection is managed by the LOC business backend.',
+  {name:'scope_storage',description:'Read the LOC business Scope status. Scope database URL registration has been retired; database selection is managed by the LOC business backend.',
     inputSchema:{type:'object',properties:{
       scopeid:{type:'string'}
     },required:['scopeid'],additionalProperties:false},
     annotations:{readOnlyHint:true,destructiveHint:false}},
-  {name:'galaxy_link',description:'Galaxy conversation continuity. Search ONLY when the human user explicitly requests a conversation search; never search automatically. PR/GitHub search is forbidden: 請至github頁面找尋PR相關資料！不開放搜尋PR! QoS warns before the limit and enforces a five-minute search interval.',
+  {name:'galaxy_link',description:'Galaxy conversation continuity. Search ONLY when the human user explicitly requests a conversation search; never search automatically. PR/GitHub search is forbidden: 請至github頁面找尋PR相關資料！不開放搜尋PR! The business data service handles authorization and persistence.',
     inputSchema:{type:'object',properties:{
       action:{type:'string',enum:['search','read','check','record']},
       scopeid:{type:'string'},uid:{type:'string',pattern:'^[A-Za-z0-9]{8}$',description:'Known exact Galaxy UID for recorded conversation read'},
@@ -88,33 +88,14 @@ const TOOLS=[
       title:{type:'string',maxLength:350},content:{type:'string',maxLength:125000},
       offset:{type:'integer',minimum:0},max_chars:{type:'integer',minimum:1,maximum:40000}
     },required:['action','scopeid'],additionalProperties:false}},
-  {name:'join_scope_group',description:'Group manager attaches an existing Scope; does not move or copy data.',
-    inputSchema:{type:'object',properties:{groupid:{type:'string'},scopeid:{type:'string'}},
-      required:['groupid','scopeid'],additionalProperties:false}},
-  {name:'grant_scope_access',description:'Only a Scope Group manager may grant LOC subjects read/write/configure/manage rights to the Group or a member Scope.',
-    inputSchema:{type:'object',properties:{groupid:{type:'string'},scopeid:{type:'string'},
-      subject:{type:'string',description:'Verified loc_... identity subject'},
-      actions:{type:'array',items:{type:'string',enum:['read','write','manage','configure']}},
-      days:{type:'integer',minimum:1,maximum:365}},
-      required:['groupid','scopeid','subject','actions'],additionalProperties:false}},
-  {name:'revoke_scope_access',description:'Scope Group manager immediately revokes one member’s LOC access to a Group or member Scope.',
-    inputSchema:{type:'object',properties:{groupid:{type:'string'},scopeid:{type:'string'},
-      subject:{type:'string',description:'Verified loc_... identity subject'}},
-      required:['groupid','scopeid','subject'],additionalProperties:false}},
+
 ];
 function toolResponse(id,value){
  const warning=typeof value?.warning==='string'?value.warning:'';
  return result(id,{content:[{type:'text',text:(warning?warning+'\n':'')+JSON.stringify(value)}],
    structuredContent:value});
 }
-// The public UID reader also uses the global Authority Durable Object quota.
-// Data QoS is owned by the data server. LOC Auth is not a quota service.
-async function withMcpQuota(token,env,action){
-  return action();
-}
-async function qosWarningForDeniedPr(){
-  return '';
-}
+// LOC MCP business operations are independent of Auth-owned rate counters.
 export async function handleMcp(request,env={}){
   const config=mcpConfig(env);
   if(request.method==='OPTIONS')return preflight();
@@ -136,7 +117,7 @@ export async function handleMcp(request,env={}){
       return result(payload.id,{protocolVersion:SUPPORTED_PROTOCOLS.has(proposed)?proposed:DEFAULT_PROTOCOL,
         capabilities:{tools:{listChanged:false}},serverInfo:{name:'loc-mcp',version:'0.2.0',
            ...(proposed==='2025-11-25'?{icons:[{src:'https://loc.lo3rwang.cc/assets/site/icons/loc-favicon.png',mimeType:'image/png'}]}:{})},
-        instructions:'Public Galaxy reads use direct Kysely visibility filters. Private Galaxy read/search use direct Kysely after LOC Auth Scope authorization. Private writes require an independent LOC Auth Scope grant and a configured native Kysely backend. loc_connection_status reports configuration only, not successful database read/write. galaxy_link.search is permitted only by explicit human user request and user_requested=true. 請至github頁面找尋PR相關資料！不開放搜尋PR! QoS warns before the next request reaches a limit; searches have a five-minute gate.'});
+        instructions:'Public Galaxy reads use direct Kysely visibility filters. Private Galaxy reads and writes use direct Kysely after Better Auth identity validation and independent api.manage permissions. loc_connection_status reports configuration only, not successful database read/write. galaxy_link.search is permitted only by explicit human user request and user_requested=true. 請至github頁面找尋PR相關資料！不開放搜尋PR!'});
     }
     case 'ping':return result(payload.id,{});
     case 'tools/list':return result(payload.id,{tools:TOOLS});
@@ -148,9 +129,8 @@ export async function handleMcp(request,env={}){
         return rpcError(payload.id,-32602,'Tool arguments must be an object');
       if(name==='galaxy_link'&&args.action==='search'&&
         /(?:\bPR(?:[\s#:\-]*\d+)?\b|\bpull[ -]?request\b|\bgithub\b|\bcommit\b|合併請求|拉取請求)/i.test(String(args.query||''))){
-        const near=await qosWarningForDeniedPr(match[1],env);
         return result(payload.id,{isError:true,content:[{type:'text',
-          text:PR_SEARCH_WARNING+(near?'\n'+near:'')}]});
+          text:PR_SEARCH_WARNING}]});
       }
       if(name==='galaxy_link'&&args.action==='search'&&args.user_requested!==true)
         return result(payload.id,{isError:true,content:[{type:'text',
@@ -167,11 +147,9 @@ export async function handleMcp(request,env={}){
       try{
         const directPrivate=name==='galaxy_link'&&['read','search'].includes(args.action);
         const value=name==='read_memory'?
-          await withMcpQuota(match[1],env,()=>readMemory(args,env)):
-          directPrivate?await withMcpQuota(match[1],env,
-            ()=>privateGalaxyLink(args,match[1],identity.subject,env),
-            args.action==='search'?'search':'read'):
-          await authorityAction(name,args,match[1],env);
+          await readMemory(args,env):
+          directPrivate?await privateGalaxyLink(args,match[1],identity.subject,env):
+          await businessAction(name,args,match[1],env);
         return toolResponse(payload.id,value);
       }catch(error){
         const validation=error?.code==='INVALID_ARGUMENT';
