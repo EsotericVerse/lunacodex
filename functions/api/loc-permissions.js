@@ -17,6 +17,8 @@ export async function onRequestGet({request,env}){
     const status=Number(error?.httpStatus)||503;
     return response({canWrite:false,canManage:false,grants:[],
       error:status>=500?'LOC permission service unavailable':
-        'LOC permission denied'},status);
+        'LOC permission denied',
+      // Non-secret stage code (e.g. no_cookie, no_session) for diagnosis.
+      reason:error?.reason||'unknown'},status);
   }
 }
