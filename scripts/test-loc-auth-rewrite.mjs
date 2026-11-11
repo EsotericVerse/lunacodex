@@ -44,3 +44,10 @@ test('the Auth Worker has no former Durable Object binding',()=>{
  assert.doesNotMatch(config,/LOC_AUTHORITY_STATE|durable_objects/);
  assert.match(config,/nodejs_compat/);
 });
+
+test('Pages routes expose independent permissions and business write handlers',()=>{
+ const routes=JSON.parse(source('public/_routes.json'));
+ for(const path of ['/api/loc-permissions','/api/loc-native','/api/loc-public-query','/api/loc-public-content'])
+   assert.ok(routes.include.includes(path),'missing public Pages handler: '+path);
+ assert.equal(routes.include.includes('/api/loc-authority-role'),false);
+});
