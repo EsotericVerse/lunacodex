@@ -22,7 +22,7 @@ const ScopeGroupAccessPanel=dynamic(()=>import('./ScopeGroupAccessPanel'),{loadi
 // never changes its Scope ownership, database tables or authorizer.
 export const ARTICLE_CONTROL_SECTIONS=Object.freeze([
   {value:'publish',label:'文章管理',shortLabel:'文章管理'},
-  {value:'blocks',label:'修改建議與治理原則',shortLabel:'區塊修改'},
+  {value:'blocks',label:'頁面區塊與治理',shortLabel:'區塊'},
   {value:'import',label:'匯入',shortLabel:'匯入'}
 ]);
 
@@ -78,7 +78,7 @@ export default function SearchManagement(){
   return <FeaturePage featureId="search">
     <ManagementWorkspaceFrame level={isLocAdmin?'group':'scope'} title="文章管理">
       <ManagementSectionNav id="management-search-sections" title="文章管理"
-        panelId="management-search-panel" items={options}
+        panelId="management-search-panel" items={options} mobileSelect
         value={activeSection} onChange={next=>{
           if(next===activeSection)return;
           if(editDock?.active)editDock.switchSection(next,setSection);
