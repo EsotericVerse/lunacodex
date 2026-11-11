@@ -17,8 +17,12 @@ const publicOAuthPaths=new Set([
   '/api/auth/oauth2/register','/api/auth/oauth2/token',
   '/api/auth/oauth2/revoke','/api/auth/oauth2/userinfo'
 ]);
+// Both RFC 8414 issuer-path metadata and OIDC issuer-local discovery
+// must remain public without sharing browser Session cookies.
 const isPublicProtocolPath=path=>publicOAuthPaths.has(path)||
-  path.startsWith('/.well-known/');
+  path.startsWith('/.well-known/')||
+  path==='/api/auth/.well-known/openid-configuration'||
+  path==='/api/auth/.well-known/oauth-authorization-server';
 
 function cors(request,response,publicMetadata=false){
   const origin=request.headers.get('origin');
@@ -83,9 +87,15 @@ export default {
     }
     try{
       const auth=authFor(env);
-      if(request.method==='GET'&&url.pathname==='/.well-known/oauth-authorization-server')
+      if(request.method==='GET'&&(
+        url.pathname==='/.well-known/oauth-authorization-server'||
+        url.pathname==='/.well-known/oauth-authorization-server/api/auth'||
+        url.pathname==='/api/auth/.well-known/oauth-authorization-server'))
         return cors(request,await oauthProviderAuthServerMetadata(auth)(request),true);
-      if(request.method==='GET'&&url.pathname==='/.well-known/openid-configuration')
+      if(request.method==='GET'&&(
+        url.pathname==='/.well-known/openid-configuration'||
+        url.pathname==='/api/auth/.well-known/openid-configuration'||
+        url.pathname==='/.well-known/openid-configuration/api/auth'))
         return cors(request,await oauthProviderOpenIdConfigMetadata(auth)(request),true);
       if(request.method==='GET'&&url.pathname==='/.well-known/jwks.json'){
         const to=new URL('/api/auth/jwks',LOC_ISSUER);
