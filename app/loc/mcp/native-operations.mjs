@@ -2,7 +2,8 @@
 // Pages backend. This is NOT a generic SQL endpoint: no caller-provided SQL,
 // relation, database alias, connection URL, or query AST is accepted.
 import {sql} from 'kysely';
-import {verifyDelegationBoundary} from '../auth/delegation-contract.mjs';
+import {jwtVerify,createRemoteJWKSet} from 'jose';
+import {locPermissionsForEmail} from '../permissions/roles.mjs';
 import {authorizeDelegatedShortImport} from '../import/short-edge-authorization.mjs';
 import {processShortImport,portableShortImportStore} from '../import/short-append-service.mjs';
 import {executePortableMcp} from '../providers/kysely-mcp.mjs';
@@ -17,7 +18,8 @@ import {withFixedPolicyWrite} from '../../../zenstack/policy-runtime.mjs';
 import {ZenStackClient} from '@zenstackhq/orm';
 import {PolicyPlugin} from '@zenstackhq/plugin-policy';
 
-const JWKS='https://auth.lo3rwang.cc/.well-known/jwks.json';
+const AUTH='https://auth.lo3rwang.cc';
+const JWKS=AUTH+'/api/auth/jwks';
 const MCP_HOST='mcp.lo3rwang.cc';
 const WEB_HOST='loc.lo3rwang.cc';
 const MAX_BYTES=700000;
@@ -57,67 +59,63 @@ async function applyManagedWrite(qb,modelName,payload){
 const headers={'content-type':'application/json; charset=utf-8',
   'cache-control':'no-store','x-content-type-options':'nosniff'};
 const txt=new TextEncoder();
-const utf=new TextDecoder();
-let publicKeys=null;
-let keyExpires=0;
-
 function refusal(message,httpStatus=400){
   return Object.assign(new Error(message),{httpStatus});
 }
 function reply(payload,status=200){
   return new Response(JSON.stringify(payload),{status,headers});
 }
-function bytes(part){
-  if(typeof part!=='string'||!/^[A-Za-z0-9_-]+$/.test(part)||part.length>12000)
-    throw refusal('Invalid LOC delegation encoding',401);
-  const decoded=atob(part.replace(/-/g,'+').replace(/_/g,'/')
-    .padEnd(Math.ceil(part.length/4)*4,'='));
-  return Uint8Array.from(decoded,c=>c.charCodeAt(0));
-}
-function jsonSegment(part){
-  try{return JSON.parse(utf.decode(bytes(part)))}catch{
-    throw refusal('Invalid LOC delegation JSON',401);
+// The Auth service only verifies identity/credentials. This business service
+// independently looks up permissions in api.manage after connecting to Neon.
+// No home-made JWT, PKCE, refresh, signing or session implementation.
+const jwks=createRemoteJWKSet(new URL(JWKS));
+async function signedClaims(request,fetchImpl){
+  const host=new URL(request.url).hostname;
+  if(host===WEB_HOST){
+    const cookies=request.headers.get('cookie')||'';
+    if(!cookies)throw refusal('LOC sign-in required',401);
+    let response;
+    try{
+      response=await fetchImpl(AUTH+'/api/auth/get-session',{
+        method:'GET',headers:{cookie:cookies,accept:'application/json'},
+        cache:'no-store',redirect:'manual',signal:AbortSignal.timeout(7000)
+      });
+    }catch{throw refusal('LOC Auth verification unavailable',503)}
+    if(!response.ok)throw refusal('LOC Auth verification unavailable',503);
+    const data=await response.json().catch(()=>null);
+    const user=data?.user;
+    if(!data?.session||user?.emailVerified!==true||
+       typeof user?.id!=='string'||!user.id||
+       !EMAIL.test(String(user?.email||'')))
+      throw refusal('Verified LOC sign-in required',401);
+    return {provider:'loc',role:'authenticated',sub:user.id,
+      subject:user.id,email:String(user.email).trim().toLowerCase(),
+      me:false,grants:[]};
   }
-}
-async function signingKey(kid,fetchImpl){
-  if(!/^[A-Za-z0-9_-]{1,128}$/.test(String(kid||'')))
-    throw refusal('Invalid LOC signing key',401);
-  const now=Date.now();
-  let keys=publicKeys;
-  if(!keys||now>=keyExpires||!keys.some(k=>k.kid===kid)){
-    const response=await fetchImpl(JWKS,{headers:{accept:'application/json'},
-      redirect:'manual',cache:'no-store',signal:AbortSignal.timeout(7000)});
-    if(!response.ok)throw refusal('LOC Auth signing keys unavailable',503);
-    const jwks=await response.json().catch(()=>null);
-    if(!Array.isArray(jwks?.keys)||jwks.keys.length>20)
-      throw refusal('Invalid LOC Auth signing keys',503);
-    publicKeys=jwks.keys;
-    keyExpires=now+60000;
-    keys=publicKeys;
-  }
-  const jwk=keys.find(k=>k.kid===kid&&k.kty==='RSA'&&k.alg==='RS256'&&
-    k.use==='sig'&&typeof k.n==='string'&&typeof k.e==='string');
-  if(!jwk)throw refusal('LOC delegation signer not trusted',401);
-  return crypto.subtle.importKey('jwk',jwk,
-    {name:'RSASSA-PKCS1-v1_5',hash:'SHA-256'},false,['verify']);
-}
-async function signedClaims(authorization,body,env,fetchImpl){
-  const match=/^Bearer\s+([A-Za-z0-9_.-]{30,8192})$/i.exec(String(authorization||''));
-  if(!match)throw refusal('Signed LOC delegation required',401);
-  const pieces=match[1].split('.');
-  if(pieces.length!==3)throw refusal('Invalid LOC delegation',401);
-  const header=jsonSegment(pieces[0]);
-  if(header?.alg!=='RS256'||header?.typ!=='JWT')
-    throw refusal('Unsupported LOC delegation signature',401);
-  const key=await signingKey(header.kid,fetchImpl);
-  const verified=await crypto.subtle.verify('RSASSA-PKCS1-v1_5',key,
-    bytes(pieces[2]),txt.encode(pieces[0]+'.'+pieces[1]));
-  if(!verified)throw refusal('LOC delegation signature mismatch',401);
-  const payload=jsonSegment(pieces[1]);
-  try{return verifyDelegationBoundary(payload,body,{
-    notBefore:env.LOC_DELEGATION_NOT_BEFORE||'0',
-    revokedSids:env.LOC_DELEGATION_REVOKED_SIDS||''
-  }).claims;}catch{throw refusal('LOC Scope delegation denied or expired',403);}
+  const bearer=/^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization')||'');
+  if(!bearer)throw refusal('LOC OAuth bearer token required',401);
+  let claims;
+  try{
+    const verified=await jwtVerify(bearer[1],jwks,{
+      issuer:AUTH,audience:'https://'+MCP_HOST,
+      typ:'at+jwt',requiredClaims:['azp']
+    });
+    if(typeof verified.payload.sub!=='string'||!verified.payload.sub)
+      throw Error('Missing principal');
+    claims=verified.payload;
+  }catch{throw refusal('LOC OAuth token invalid',401)}
+  const response=await fetchImpl(AUTH+'/api/auth/oauth2/userinfo',{
+    method:'GET',headers:{authorization:'Bearer '+bearer[1],accept:'application/json'},
+    cache:'no-store',redirect:'manual',signal:AbortSignal.timeout(7000)
+  }).catch(()=>null);
+  if(!response?.ok)throw refusal('LOC OAuth UserInfo unavailable',401);
+  const user=await response.json().catch(()=>null);
+  if(user?.sub!==claims.sub||user?.email_verified!==true||
+     !EMAIL.test(String(user.email||'')))
+    throw refusal('Verified LOC OAuth identity required',401);
+  return {provider:'loc',role:'authenticated',sub:claims.sub,
+    subject:claims.sub,email:String(user.email).trim().toLowerCase(),
+    me:false,grants:[]};
 }
 export async function handleNativeLocOperation(request,env={},{
   fetchImpl=globalThis.fetch,database=directMcpKysely
@@ -145,16 +143,12 @@ export async function handleNativeLocOperation(request,env={},{
     if(host===WEB_HOST&&body.kind!=='short-import'&&body.kind!=='managed-write'&&body.kind!=='managed-action'&&body.kind!=='personal-read'&&body.kind!=='personal-write')
       throw refusal('Not found',404);
     // The verified signed claim, not the HTTP body, selects the connection.
-    const claims=await signedClaims(request.headers.get('authorization'),
-      body,env,fetchImpl);
+    const claims=await signedClaims(request,fetchImpl);
     // Only the verified LOC owner can mutate any LOC data. The token's email
     // and grants are signed by LOC Auth, never accepted from the HTTP body.
     const writeKinds=new Set(['short-import','mcp-sync','mcp-append',
       'managed-write','managed-action','personal-write']);
-    if(writeKinds.has(body.kind)&&(
-       claims.provider!=='loc'||claims.me!==true||
-       String(claims.email||'').trim().toLowerCase()!=='sopa2306@gmail.com'))
-      throw refusal('Only the verified LOC owner may write',403);
+    // Write permission is checked after opening the business database.
     // External user-selected connections are READ ONLY, whether they map an
     // existing table or expose the ordinary Scope schema. This includes the
     // extension import path and MCP append/sync. OAuth never changes this.
@@ -173,6 +167,11 @@ export async function handleNativeLocOperation(request,env={},{
     const selected=await database(env,control?'':externalTarget);
     if(!selected?.db||!['postgres','mysql','mssql'].includes(selected.engine))
       throw refusal('LOC native Kysely driver is not configured',503);
+    const permission=await locPermissionsForEmail(selected.db,claims.email);
+    claims.me=permission.canWrite;
+    claims.grants=permission.grants;
+    if(writeKinds.has(body.kind)&&!permission.canWrite)
+      throw refusal('LOC write permission denied',403);
     if(body.kind==='short-import'){
       if(selected.tableName)throw refusal('External mapped tables are read only',403);
       const actor=authorizeDelegatedShortImport(body,claims);
