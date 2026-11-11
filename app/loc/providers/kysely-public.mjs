@@ -87,14 +87,11 @@ export async function executeKyselyPublicAction(trx,body,{engine='postgres',name
         .where('active','=',true).executeTakeFirst()):portable;
     if(!term||scope==='loc'||!registered||!has(scope+'_anchor'))return {data:[],count:null};
     if(portable){
-      // Bounded Kysely pages preserve alias search without vendor-specific JSON RPC.
+      // Complete Point lookup: no arbitrary SQL LIMIT or truncation.
       const found=[],needle=term.toLocaleLowerCase();
-      // A bounded Scope Point scan removes the old UID keyset cursor. UID
-      // remains an identifier but never controls visit or display order.
       const rows=await trx.selectFrom(table(scope+'_anchor'))
         .select(['uid','title','attr']).where('type','=','point')
-        .where('invisible','=',false).limit(10001).execute();
-      if(rows.length>10000)throw new Error('Point lookup exceeds bounded Scope scan');
+        .where('invisible','=',false).execute();
       for(const row of rows){
           const attr=typeof row.attr==='string'?JSON.parse(row.attr||'{}'):row.attr||{};
           const aliases=Array.isArray(attr.location)?attr.location:
