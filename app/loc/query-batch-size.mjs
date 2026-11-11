@@ -1,16 +1,18 @@
-// The database may lower runtime I/O limits, never exceed these safe hard ceilings.
+// Runtime I/O settings configure file sizes only. SQL reads and COUNTs do not have configurable row ceilings.
 const MiB=1048576;
 export const IO_LIMIT_CEILINGS=Object.freeze({
-  maxRows:10000,archiveMiB:1024,jsonMiB:50,documentMiB:128,timelineMiB:200
+  archiveMiB:1024,jsonMiB:50,documentMiB:128,timelineMiB:200
 });
-export let MAX_ROWS=IO_LIMIT_CEILINGS.maxRows;
-export let DB_QUERY_BATCH_SIZE=MAX_ROWS;
+// Import/write operations preserve their existing 1,000-row batches.
+export const MAX_ROWS=1000;
+// Internal read transport chunk only: total SELECT/COUNT results are never capped.
+export const DB_QUERY_BATCH_SIZE=5000;
 export let MAX_ARCHIVE_BYTES=IO_LIMIT_CEILINGS.archiveMiB*MiB;
 export let MAX_JSON_BYTES=IO_LIMIT_CEILINGS.jsonMiB*MiB;
 export let MAX_DOCUMENT_BYTES=IO_LIMIT_CEILINGS.documentMiB*MiB;
 export let MAX_TIMELINE_BYTES=IO_LIMIT_CEILINGS.timelineMiB*MiB;
 export const MAX_DAILY_TRANSFER_BYTES=24*MiB;
-export let TIMELINE_IO=Object.freeze({windowBatch:MAX_ROWS,previewPage:MAX_ROWS,writeBatch:MAX_ROWS});
+export const TIMELINE_IO=Object.freeze({windowBatch:MAX_ROWS,previewPage:MAX_ROWS,writeBatch:MAX_ROWS});
 
 export function applyRuntimeIoLimits(settings={}){
   const bounded=(key,minimum)=> {
@@ -22,17 +24,14 @@ export function applyRuntimeIoLimits(settings={}){
     return number;
   };
   const values={
-    maxRows:bounded('maxRows',100),archiveMiB:bounded('archiveMiB',1),
+    archiveMiB:bounded('archiveMiB',1),
     jsonMiB:bounded('jsonMiB',1),documentMiB:bounded('documentMiB',1),
     timelineMiB:bounded('timelineMiB',1)
   };
-  MAX_ROWS=values.maxRows;
-  DB_QUERY_BATCH_SIZE=MAX_ROWS;
   MAX_ARCHIVE_BYTES=values.archiveMiB*MiB;
   MAX_JSON_BYTES=values.jsonMiB*MiB;
   MAX_DOCUMENT_BYTES=values.documentMiB*MiB;
   MAX_TIMELINE_BYTES=values.timelineMiB*MiB;
-  TIMELINE_IO=Object.freeze({windowBatch:MAX_ROWS,previewPage:MAX_ROWS,writeBatch:MAX_ROWS});
   return values;
 }
 
