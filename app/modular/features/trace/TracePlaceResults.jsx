@@ -57,7 +57,7 @@ function TraceWork({row,scope,timeLabel=''}){
 }
 
 export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId='',period=null,
-  tab='articles',sourceName='',mediaType='',dateRange=null,timeMode='none',defaultSort='desc'}){
+  tab='articles',sourceName='',mediaType='',dateRange=null,timeMode='none',defaultSort='desc',allPlacedArticles=false}){
   const [sort,setSort]=useState(defaultSort);
   useEffect(()=>setSort(defaultSort),[defaultSort]);
   const [chartType,setChartType]=useState('bar');
@@ -106,7 +106,7 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
 
   // One selected resource and one small page at a time. No eager Galaxy scan.
   const list=useAsyncInfiniteResource({
-    queryKey:['trace-articles-v4',targetScope,place?.uid||'',placesKey,startDate,endDate,sourceFilter,sort,
+    queryKey:['trace-articles-v5',allPlacedArticles,targetScope,place?.uid||'',placesKey,startDate,endDate,sourceFilter,sort,
       nearestPlaceIds.join('|')],
     enabled:enabled&&tab==='articles'&&!selectedMediaType,
     initialPageParam:sort==='nearest'?{placeIndex:0,offset:0}:0,
@@ -119,7 +119,7 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
       let offset=nearest?Number(pageParam?.offset)||0:Number(pageParam)||0;
       while(true){
         const selectedIds=nearest?[nearestPlaceIds[placeIndex]]:placeIds;
-        const filters=traceArticleIdFilters(selectedIds,{startDate,endDate,sourceName:sourceFilter});
+        const filters=traceArticleIdFilters(selectedIds,{startDate,endDate,sourceName:sourceFilter,allPlacedArticles});
         const result=await selectRows(scope.galaxy,{
           columns:'uid,title,createtime,date,place_id',
           filters,orders:[{column:'date',ascending:sort==='asc'},{column:'createtime',ascending:sort==='asc'},
@@ -167,7 +167,7 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
       const {rows}=await selectRows(scope.galaxy,{
         columns:'uid,title,createtime,date',
         filters:[
-          ...traceArticleIdFilters(placeIds,{startDate,endDate,sourceName:sourceFilter}),
+          ...traceArticleIdFilters(placeIds,{startDate,endDate,sourceName:sourceFilter,allPlacedArticles}),
           {column:'media_link',operator:'overlaps',value:mediaIds}
         ],
         orders:[{column:'date',ascending:sort==='asc'},{column:'createtime',ascending:sort==='asc'},
