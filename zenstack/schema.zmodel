@@ -188,6 +188,7 @@ model Lo3rwangGalaxy {
 }
 
 model Loc {
+    manage                       Manage?     @relation("LocRegistry")
     id                           String      @id @db.Text
     display_name                 String      @db.Text
     locale                       String      @db.Text @default(dbgenerated())
@@ -312,6 +313,7 @@ model LrunesGalaxy {
 }
 
 model Manage {
+    loc                          Loc?        @relation("LocRegistry", fields: [id], references: [id])
     id                           String      @id @db.Text
     email                        String?     @db.Text
     domain                       String?     @db.Text
