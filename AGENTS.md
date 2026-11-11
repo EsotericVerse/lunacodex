@@ -36,3 +36,9 @@
 - `.github/workflows/workflow-guard.yml` 只在改 Workflow 檔案的 PR 自動檢查觸發政策；唯一正式自動部署例外是已授權的 `deploy-pages.yml`（`main` push 後）。其他工作流程預設僅能 `workflow_dispatch`，未獲同意不能加入自動觸發。
 - 不在多個 workflow 重複執行同一組昂貴測試；正式、昂貴步驟的必要前置驗證以最低成本處理。GitHub Pages 已由 `main` 自動部署，不另行手動觸發；公開 release 或高計費打包仍需使用者明確要求。
 - 完成後只用白話交付：**需求是否達成、原功能是否正常、真正需要使用者配合的事項（如有）**；已完成的工作不持續重複回報。
+
+## Database & ORM Constraints
+- This project uses **ZenStack v3** (`@zenstackhq/orm`) with **Kysely**.
+- **Supported Databases ONLY**: PostgreSQL (`pg`), MySQL (`mysql2`), and SQLite (`better-sqlite3`).
+- **STRICTLY PROHIBITED**: Do NOT add support for MSSQL / SQL Server. Never install `tedious`, `tarn`, `mssql`, or configure `MssqlDialect`.
+- Keep `schema.zmodel` database-agnostic by avoiding dialect-specific attributes (e.g., `@db.VarChar`, `@db.JsonB`) and scalar arrays.
