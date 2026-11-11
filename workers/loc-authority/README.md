@@ -51,6 +51,53 @@ configured through LOC website Settings. No migration falls back to Durable Obje
 The production Neon schema and Worker bindings must be verified independently before
 release; adding this script does not mean the migration has already been executed.
 
+## RLS isolation — Auth-only and role-specific
+
+LOC Auth and LOC Web may share the same Neon **project** and even the same
+PostgreSQL **database**. Their tables, user registries and database roles remain
+separate. **Do not re-use the managed `neon_auth` tables or any existing
+test-only `loc_auth` data as production Auth records.**
+
+The draft code currently targets an isolated PostgreSQL schema named
+`loc_auth`. This is a **proposed new runtime namespace**, not an assertion
+that prior test objects are suitable for production. The schema location,
+required tables and database-role creation must be explicitly reviewed and
+approved before applying them to Neon production.
+
+A stable Auth RLS setup requires all of the following:
+- A **migration owner** to perform vendor schema changes only during approved
+  releases, separate from the **LOC Auth runtime login**.
+- A dedicated Auth runtime PostgreSQL role with `NOINHERIT`,
+  `NOSUPERUSER`, `NOBYPASSRLS`, `NOCREATEDB`, `NOCREATEROLE`,
+  and no inherited / SET ROLE memberships.
+- `ENABLE ROW LEVEL SECURITY` **and** `FORCE ROW LEVEL SECURITY`
+  on every Auth table, including JWT and OAuth Provider plugin tables.
+- Exactly one table policy permitting the **dedicated Auth runtime role**
+  full internal Auth CRUD. This is *service-role isolation* rather than
+  per-person row filtering: authentication must resolve sessions for all users.
+- Only `USAGE` on the Auth schema and `SELECT,INSERT,UPDATE,DELETE` on
+  its tables are granted to the Auth runtime. No Auth table access is granted
+  to `PUBLIC` or the LOC Web runtime.
+- LOC Auth must use the **runtime** PostgreSQL credential in its Worker
+  `LOC_AUTH_DATABASE_URL`; the one-time migration tool uses the separate
+  migration-owner credential. Never place a migration-owner secret in the
+  production Auth Worker.
+- Schema alterations remain a **per-change user-approval operation**. Ordinary
+  OAuth, Session, JWKS and MCP operations must not run migrations.
+
+`scripts/loc-auth-migrate.mjs` uses Better Auth's vendor migrations and
+`scripts/loc-auth-rls.mjs` to enforce the above after a preflight. It refuses
+to start migrations if the named runtime role is absent, privileged, or
+inappropriately related to other roles. After vendor DDL it applies the role
+policy on **all** Auth tables in one transaction.
+
+CI runs these steps against a disposable local PostgreSQL instance with
+two distinct test logins (`loc_auth_ci` and `loc_web_ci`), then checks:
+the Auth login can INSERT/SELECT/UPDATE all core tables; RLS is enabled and
+forced on all core/plugin tables; and the unrelated Web role cannot SELECT
+Auth user records. A production Neon RLS verification and real login are
+still required after the exact production migration is approved.
+
 ## Verification
 
 The repo's manual workflow `Verify Better Auth LOC rewrite` performs `npm ci`, syntax
