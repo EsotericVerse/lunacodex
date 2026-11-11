@@ -1,5 +1,5 @@
 'use client';
 
-// Existing LOC imports keep their public hook contract. The implementation is
-// owned by the ZenStack client-query layer, with a single QueryClient.
-export {useAsyncResource,useAsyncInfiniteResource,useResourceCache} from '../../zenstack/client-queries';
+// LOC resource subscription facade for existing ZenStack/Kysely model readers.
+// No TanStack/SWR provider, periodic refresh or retry worker.
+export {useAsyncResource,useAsyncInfiniteResource,useResourceCache,useQueryClient} from '../../zenstack/client-queries';
