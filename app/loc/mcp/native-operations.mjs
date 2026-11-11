@@ -98,7 +98,7 @@ async function signedClaims(request,fetchImpl){
   try{
     const verified=await jwtVerify(bearer[1],jwks,{
       issuer:AUTH+'/api/auth',audience:'https://'+MCP_HOST,
-      typ:'at+jwt',requiredClaims:['azp']
+      typ:'at+jwt'
     });
     if(typeof verified.payload.sub!=='string'||!verified.payload.sub)
       throw Error('Missing principal');
