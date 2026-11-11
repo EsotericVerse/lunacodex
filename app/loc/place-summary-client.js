@@ -35,7 +35,6 @@ export async function readPlaceSummary(scopeId,{startDate='',endDate=''}={}){
   }
   const filters=[
     {column:'trace',operator:'eq',value:'true'},
-    {column:'content',operator:'neq',value:''},
     ...(startDate?[{column:'createtime',operator:'gte',value:startDate+'T00:00:00+08:00'}]:[]),
     ...(endDate?[{column:'createtime',operator:'lte',value:endDate+'T23:59:59.999+08:00'}]:[])
   ];
