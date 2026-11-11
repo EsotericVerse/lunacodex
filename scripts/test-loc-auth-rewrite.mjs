@@ -121,11 +121,13 @@ test('Rainbow OAuth client registration is owner-gated; Galaxy-Link uses CIMD',(
  assert.ok(!extension.includes('locRegisteredOAuthClient'));
 });
 
-test('privileged business operations bypass Cookie Cache and require import scope',()=>{
+test('privileged business operations reuse verified Session and retain import scope',()=>{
  const native=source('app/loc/mcp/native-operations.mjs');
  const server=source('app/loc/auth/verified-session.mjs');
- assert.ok(native.includes('get-session?disableCookieCache=true'));
- assert.ok(server.includes('get-session?disableCookieCache=true'));
+ assert.ok(native.includes('verifiedLocWebsiteSession(request,{fetchImpl})'));
+ assert.ok(server.includes("ISSUER+'/api/auth/get-session'"));
+ assert.doesNotMatch(native,/disableCookieCache/);
+ assert.doesNotMatch(server,/disableCookieCache/);
  assert.ok(native.includes("delegatedScopes:String(claims.scope||'')"));
  assert.ok(native.includes("!claims.delegatedScopes?.includes('loc:import')"));
  assert.ok(native.includes('writeKinds.has(body.kind)'));
