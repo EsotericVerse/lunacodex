@@ -14,7 +14,7 @@ export default function ManagementSectionNav({id,title,panelId,items,value,onCha
   useEffect(()=>{
     const list=itemsRef.current;
     const active=list?.querySelector('[aria-pressed="true"]');
-    if(!list||!active)return;
+    if(!list||!active||list.clientWidth===0)return;
     // Reveal the selected tab within this strip only; never scroll the page.
     const bounds=list.getBoundingClientRect();
     const target=active.getBoundingClientRect();
