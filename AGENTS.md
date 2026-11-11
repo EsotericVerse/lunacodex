@@ -1,44 +1,16 @@
-# LOC Agent 執行規範（精簡版）
+# LOC Agent 執行規範
 
-## 核心邊界
-- 使用者決定「需求」及「需自行觸發的計費／正式發布時機」；Agent 自行負責程式、驗證、衝突、PR、Galaxy 與清理。不要要求使用者看 code、diff、commit log 或解決技術問題。
-- 以使用者當下明確需求為準；不要為已確定的事情反覆確認、腦力激盪或拆出額外工作。必要的範圍外修改先用白話說明並取得同意。回報結果與真正卡點，不洗版、不宣稱未完成的事情已完成。
-- GitHub Pages 與 Cloudflare Pages 均在 `main` push 後按既有設定自動部署；Agent 不手動觸發正式部署。公開發布與明顯高計費的手動工作流程仍由使用者決定觸發。
+## 核心邊界與事實校準
+使用者決定「需求」及「需自行觸發的計費／正式發布時機」，並且**不做人工 Code Review，也不手動介入中間部署**；Agent 全權負責程式、驗證、衝突、PR 與清理，不要求使用者看 code、diff、commit log 或解決技術問題。專案方向無條件服從使用者當下最新明確指令，最新決定直接覆蓋歷史決策與舊規則，嚴禁為已確定的事情反覆確認、腦力激盪、引用舊規說教，或腦補零機率風險。**涉及任何外部套件前，必先核對 `package.json` 版本並優先讀取本機 `.agents/skills/` 或 `node_modules` 內 `.d.ts` 型別檔；僅當本機無對應資料且確有需求時，才允許前往 `skills.sh` 搜尋相關技能作為「唯讀技術參考」，嚴禁憑舊訓練記憶盲寫，亦嚴禁將外部 Skill 自動寫入本機規則庫或據此擅自安裝未授權套件（永久納入 Skill 須由使用者親自執行）。** 若使用者口誤講錯技術名詞，直接溫和指正並對齊正確寫法，不盲從。完成後只用白話交付需求是否達成、原功能是否正常及真正需配合的事項，不洗版、不重複回報已完成工作，亦不宣稱未完成或未驗證部署為已完成。
 
-## 唯一正常工作流程
-**需求 → 沿用／建立一個工作 Branch → 修改完成 → 開一個 PR → 確認可合併 → Merge → 刪除已合併 Branch。**
+## 唯一工作流程與全自動結案
+所有修改僅在隔離工作區與單一工作分支進行，動工前留可取回的 Git SHA／checkpoint，不碰他人未提交修改，不推半成品到 `main`。接到明確需求後，Agent 必須一氣呵成完成**「沿用或建立單一工作分支 → 修改完成並通過必要驗證 → 開正式 PR → 確認與最新 `main` 無衝突後立即 Merge → 刪除來源分支 → 核對自動部署狀態」**整條流水線。嚴禁開 Draft PR 佔位、嚴禁做完放著發呆或停下來等待確認。同一需求原則上只開一個分支與一個 PR，開工前若遠端已有 Open PR 必須優先沿用或先完成合併，嚴禁另開新 PR；單次任務只做一件事（純刪舊碼或純寫新碼，不留空殼）。多 Agent 協作時避免同時改同檔案，範圍重疊者後進等先進 Merge。**所有 PR、Commit、Diff、AGENTS.md 及版本說明皆統一在 GitHub 頁面查看與原生保存，Galaxy 永久不再開放 PR 功能，嚴禁在 Galaxy 建立任何 PR 副本或重複進度表**，分支刪除失敗不得宣稱結案。
 
-1. 同一需求原則上一個 Branch、一個 PR；優先沿用既有工作分支。不為了分批回報、測試或中斷而增加分支／PR。只有真正互不依賴的需求才分開。改完才開 PR，不用草稿 PR 佔位。
-2. 修改只在隔離工作區與工作分支進行；動工前留可取回的 Git SHA／checkpoint，重要且完整的階段再留還原點。不碰別人的未提交修改，不直接推半成品到 `main`。
-3. 多 Agent 要避免同時修改相同檔案／模組；範圍重疊的後進者先等前者完成並 Merge。工作期間有 `main` 更新就適時同步；**開 PR 前先確認工作完整、必要的功能／回歸驗證、及與最新 `main` 的衝突**。不要等 Merge 失敗才補救。開 PR 後若 `main` 又變動，合併前再核對一次；技術衝突由 Agent 解決。
-4. PR、Commit、Diff 直接以 GitHub 原生紀錄保存交接，不另建 Galaxy PR 副本。Merge 成功後核對合併 SHA 與部署，再刪除來源 Branch；分支刪除失敗不得宣稱結案。受影響的必要技術／使用／版本文件在同一工作內更新，不另立進度流水帳。
-5. Merge、GitHub Actions 通過、實際部署是不同狀態，分別記錄。GitHub Pages 與 Cloudflare Pages 均於 `main` push 後各自自動部署，preview branch 保持停用；獨立 Workers／Edge Functions 須個別確認。不得因 PR 建立、測試或重跑而手動觸發正式部署。
+## 異常處理與驗證紀律
+被使用者中斷或方向被否定時，立即停手並可逆地回到最近一個「正確且完整」的 checkpoint，保留恢復依據後停止等待下一步（若同檔案混合他人工作，僅精準撤銷自身修改），不繼續加工錯誤方向或急送 PR。若無法證實中斷後已完整還原，一律視為不確定狀態，必須執行 `npm run check:syntax` 排除殘缺後才准進 PR（本機 `.githooks/pre-push` 僅做大量刪除或重命名檢查，僅在意外中斷、修改殘缺或實際出現語法錯誤時才執行全專案語法檢查）。正常執行未中斷時，僅針對功能變動做必要驗證（純文件變動不測程式），不重複付費跑已有可信結果的測試；語法錯誤與 Git Merge 衝突須在 Merge 前全數排除。測試或合併失敗先排查原因，同一任務同一 workflow 連續失敗三次即停止無意義重試並簡要告知。
 
-## 唯一異常處理
-- **被使用者中斷或方向被否定**：立即停手 → 可逆地回到最近一個「正確且完整」的 checkpoint → 保留恢復依據 → **停止等待使用者下一步**。不繼續加工錯誤方向、不急著送 PR、不另開分支、不碰其他 Agent 的修改。若同檔案混合其他人的工作，只精準撤銷自己的修改。
-- **無法證實中斷後已完整還原**：視為不確定狀態，保留獨立語法檢查並排除殘缺，不讓半成品進 PR／`main`。不能把「有 checkpoint」當成「一定已還原」。
-- **正常執行且能確認未中斷，或已完整回復且有依據**：不另外重跑獨立語法檢查。功能變動仍做必要、針對性的功能／回歸驗證；純文件變動不測程式。語法錯誤與 Git Merge 衝突分開處理，兩者都應在 Merge 前排除。
-- 本機 `.githooks/pre-push` 正常推送只執行大量刪除／重新命名的安全檢查，不每次掃全專案語法；**只有在意外中斷、修改殘缺或實際出現語法錯誤時**才執行 `npm run check:syntax` 並排除殘缺。不得僅憑旗標認定修復完成。
-- 同一測試已有可信的未受影響結果就不重複付費跑；必要檢查需有實際執行結果，不靠文字宣稱通過。測試／合併失敗先排查原因，同一任務同一 workflow 連續失敗三次即停止無意義重試並簡要告知。
+## 架構鎖死、資料庫與過渡期 MCP 邊界
+系統採控制面（Auth 與系統設定，固定單一主庫）與數據面（客戶業務資料流，動態多 SQL Kysely）實體分庫與邏輯隔離。**目前正處於 LOC Auth 轉型為 LOC MCP (MCP Gateway) 的架構過渡期：LOC Auth 核心由使用者親自掌控，未獲明確逐字授權，Agent 嚴禁擅自修改 LOC Auth 核心邏輯或嘗試呼叫停擺中的 LOC MCP。** 過渡期間暫時開放的 **Supabase MCP 與 Neon MCP** 僅限用於「推進其他業務功能線的唯讀查詢、資料核對與除錯」，嚴禁拿來執行未授權的 DDL 變更、雙寫或擅自切換主庫。**目前資料庫 Schema 已鎖死、RPC = 0、Edge Functions = 0**，未獲授權嚴禁增改資料表、欄位、索引、觸發器、RPC、Edge Functions，或將應可供 `WHERE／JOIN／ORDER BY` 的新結構化資訊偷偷改塞 JSONB key 規避審查（必要變更須先用白話說明 DDL、效能與空間影響並取得同意）。**嚴禁 Agent 以「安全」為由擅自限制公開資料表（如 Routing Table）的匿名讀取（Anonymous Read）或亂加 RLS 導致頁面無法呈現**；所有權限邊界、資料流切分與快取策略完全由使用者定奪，嚴禁擅自將單一查詢拆成多段平行查詢、擅自安裝大型依賴（如未啟用 MSSQL 時不裝驅動）、外部 SaaS 或快取機制。已安裝技能（如 superpowers、ponytail）須實際執行相應流程，不得只宣稱使用。
 
-## Galaxy 與文件
-- Galaxy 保留確有必要的需求、架構決策與作品紀錄；PR、Commit、Diff、AGENTS.md 及版本說明由 GitHub 原生保存，不另建重複進度表或 Galaxy PR 副本。寫入 Galaxy 後核對回傳，能讀回時讀回；失敗明確標「未儲存成功」，不得冒稱已寫入。
-- `site` 代表真正來源，禁止為便於搜尋而偽改；歷史 `site=github` PR 資料只保留既有紀錄，不再新增或更新。Galaxy UID 八字元、大小寫保留，不擅自公開私有架構或對話。
-- 優先用 LOC MCP；必要且有授權時使用現行主庫的可用正式入口，不雙寫、不擅自切換備援。PR 相關操作一律改用 GitHub，不再經 Galaxy PR 工具。
-- 不能把未驗證的部署寫成已上線。歌曲與專輯等作品紀錄須保存實際全文，不能用摘要冒充全文。
-
-## 資料庫／安全硬邊界
-- 未獲授權不得新增資料表、欄位、索引、觸發器、RPC 或修改既有 Schema；確有必要先用白話說明 SQL DDL、效能與空間影響。使用者已明確指定的變更即為授權，不反覆詢問。
-- 禁止把應可供 `WHERE／JOIN／ORDER BY` 的新結構化資訊偷偷改塞新的 JSONB key 來規避 Schema 審查；新 key 若需查詢／關聯／排序或無法判定，先依上述方式取得授權。遵守既定 Scope、UID、Clerk 權限與資料可攜性，不擅自雙寫或更換主庫。
-- 如使用 superpowers、ponytail 等已安裝技能，必須實際執行相應流程，不可只宣稱已使用。除必要決策或真正缺權限外，Agent 自行解決技術問題；卡關只提出使用者能操作的具體配合事項。
-
-## 工作流程與費用
-- `.github/workflows/workflow-guard.yml` 只在改 Workflow 檔案的 PR 自動檢查觸發政策；唯一正式自動部署例外是已授權的 `deploy-pages.yml`（`main` push 後）。其他工作流程預設僅能 `workflow_dispatch`，未獲同意不能加入自動觸發。
-- 不在多個 workflow 重複執行同一組昂貴測試；正式、昂貴步驟的必要前置驗證以最低成本處理。GitHub Pages 已由 `main` 自動部署，不另行手動觸發；公開 release 或高計費打包仍需使用者明確要求。
-- 完成後只用白話交付：**需求是否達成、原功能是否正常、真正需要使用者配合的事項（如有）**；已完成的工作不持續重複回報。
-
-## Database & ORM Constraints
-- This project uses **ZenStack v3** (`@zenstackhq/orm`) with **Kysely**.
-- **Supported Databases ONLY**: PostgreSQL (`pg`), MySQL (`mysql2`), and SQLite (`better-sqlite3`).
-- **STRICTLY PROHIBITED**: Do NOT add support for MSSQL / SQL Server. Never install `tedious`, `tarn`, `mssql`, or configure `MssqlDialect`.
-- Keep `schema.zmodel` database-agnostic by avoiding dialect-specific attributes (e.g., `@db.VarChar`, `@db.JsonB`) and scalar arrays.
+## 部署計費與 Galaxy 紀錄規範
+GitHub Pages 與 Cloudflare Pages 均在 `main` push 後按既有設定各自自動部署，preview branch 保持停用；Merge、Actions 通過與實際部署屬不同狀態須分別記錄，Agent 嚴禁因 PR、測試或重跑而手動觸發正式部署或高計費打包。`.github/workflows/workflow-guard.yml` 僅在改 Workflow 檔案的 PR 檢查觸發政策，除已授權的 `deploy-pages.yml` 外，其餘 workflow 預設僅限 `workflow_dispatch`，未獲同意不得加入自動觸發，亦不在多處重複執行昂貴測試。**PR 狀態與紀錄一律直接於 GitHub 頁面檢視，Galaxy 永久不開放 PR**；Galaxy 僅保留確有必要的需求、架構決策與作品紀錄（歌曲與專輯須保存實際全文，不得用摘要冒充），待 LOC MCP Gateway 正式上線後再恢復透過 LOC MCP 寫入，過渡期間嚴禁雙寫或擅自切換備援。`site` 必須代表真正來源（歷史 `site=github` 舊資料凍結不再增改），Galaxy UID 八字元保留大小寫，不擅自公開私有架構或對話，寫入後須核對回傳並讀回確認，失敗明確標示「未儲存成功」。
