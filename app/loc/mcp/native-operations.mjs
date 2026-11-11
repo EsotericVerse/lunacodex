@@ -2,6 +2,7 @@
 // Pages backend. This is NOT a generic SQL endpoint: no caller-provided SQL,
 // relation, database alias, connection URL, or query AST is accepted.
 import {sql} from 'kysely';
+import {verifiedLocWebsiteSession} from '../auth/verified-session.mjs';
 import {verifyAccessTokenRequest,requestToResourceInput} from 'better-auth/oauth2';
 import {locPermissionsForEmail} from '../permissions/roles.mjs';
 import {authorizeDelegatedShortImport} from '../import/short-edge-authorization.mjs';
@@ -72,25 +73,12 @@ function reply(payload,status=200){
 async function signedClaims(request,fetchImpl){
   const host=new URL(request.url).hostname;
   if(host===WEB_HOST){
-    const cookies=request.headers.get('cookie')||'';
-    if(!cookies)throw refusal('LOC sign-in required',401);
-    let response;
-    try{
-      response=await fetchImpl(AUTH+'/api/auth/get-session?disableCookieCache=true',{
-        method:'GET',headers:{cookie:cookies,accept:'application/json'},
-        cache:'no-store',redirect:'manual',signal:AbortSignal.timeout(7000)
-      });
-    }catch{throw refusal('LOC Auth verification unavailable',503)}
-    if(response.status===401||response.status===403)throw refusal('LOC sign-in required',401);
-    if(!response.ok)throw refusal('LOC Auth verification unavailable',503);
-    const data=await response.json().catch(()=>null);
-    const user=data?.user;
-    if(!data?.session||user?.emailVerified!==true||
-       typeof user?.id!=='string'||!user.id||
-       !EMAIL.test(String(user?.email||'')))
-      throw refusal('Verified LOC sign-in required',401);
-    return {provider:'loc',role:'authenticated',sub:user.id,
-      subject:user.id,email:String(user.email).trim().toLowerCase(),
+    // The same verified Session identity is shared by all website routes
+    // within this worker isolate. Never force another Auth network request
+    // for every Save; server-side api.manage still authorizes each write.
+    const session=await verifiedLocWebsiteSession(request,{fetchImpl});
+    return {provider:'loc',role:'authenticated',sub:session.userId,
+      subject:session.userId,email:session.email,
       me:false,grants:[]};
   }
   const bearer=/^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization')||'');
