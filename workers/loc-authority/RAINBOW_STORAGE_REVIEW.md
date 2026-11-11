@@ -28,6 +28,35 @@ INSERT/SELECT/UPDATE remain **unverified**; catalog privilege checks are
 not proof of successful runtime persistence. Do not deploy until those
 checks pass in a controlled environment.
 
+## Live Worker and build-warning boundary — verified 2026-11-11
+
+A read-only Cloudflare Worker settings inspection confirms the **deployed**
+`auth` Worker is still the **legacy Durable Object** build. Its binding names
+include `LOC_AUTHORITY_STATE`, `LOC_CONTROL_ENCRYPTION_KEY`, Google OAuth
+credentials and legacy LOC/Supabase bindings. It does **not** expose
+`LOC_AUTH_DATABASE_URL` in that Worker settings binding inventory.
+Therefore the deployed Worker **cannot be claimed to use Rainbow PostgreSQL**.
+This is distinct from whether the Rainbow tables themselves are readable.
+
+The actual Cloudflare `loc-isr` failed Build Log for commit `9e1b84e`
+shows **Next.js compilation, TypeScript and 86 static pages succeeded**;
+the deploy command `npx wrangler preview` failed because the configuration
+used by that build has no `previews: {}` block. This warning is an ISR
+**Preview packaging/configuration error**, not proof of a database RLS
+failure or an Auth PostgreSQL 503. A branch setting alone does not repair
+the offending deploy command/configuration pairing. Do not repeatedly
+deploy merely to clear a ticket.
+
+The Rainbow `rainbow_runtime` role has LOGIN and table CRUD grants. Its 48
+policies explicitly target that role. The next acceptance must confirm that
+the **actual Auth database connection authenticates as this role**, targets
+the existing `public` tables, and exercises official Better Auth CRUD in an
+isolated database. The same role on all tables does not imply each end user
+has SQL access: the OAuth/Session API enforces per-user authorization above
+SQL. However, identical broad CRUD policies should not be mistaken for
+least-privilege review of each vendor operation. Do not disable or
+recreate production RLS just to test this hypothesis.
+
 ## Construction status: four core models plus eight extension models
 
 The earlier four-table description covers Better Auth's **core** identity models only:
