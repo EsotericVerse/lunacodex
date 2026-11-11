@@ -4,10 +4,12 @@
 const ISSUER='https://auth.lo3rwang.cc';
 const DEFAULT_RETURN='/local/settings/';
 function safeReturn(path){
-  const text=String(path||DEFAULT_RETURN);
-  if(!text.startsWith('/')||text.startsWith('//')||text.includes('\\'))
+  let parsed;
+  try{parsed=new URL(String(path||DEFAULT_RETURN),'https://loc.lo3rwang.cc');}
+  catch{return DEFAULT_RETURN;}
+  if(parsed.origin!=='https://loc.lo3rwang.cc'||!parsed.pathname.startsWith('/'))
     return DEFAULT_RETURN;
-  return text;
+  return parsed.pathname+parsed.search;
 }
 export function createLocAccountAdapter({
   authorityOrigin=ISSUER,
@@ -74,11 +76,8 @@ export function createLocAccountAdapter({
       listeners.add(callback);
       // Passive website rendering never triggers a session request.
       callback('INITIAL_SESSION',null);
-      const focus=()=>void emit();
-      if(typeof window!=='undefined')window.addEventListener('focus',focus);
       return {data:{subscription:{unsubscribe(){
         listeners.delete(callback);
-        if(typeof window!=='undefined')window.removeEventListener('focus',focus);
       }}}};
     }
   };
