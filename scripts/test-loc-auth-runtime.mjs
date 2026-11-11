@@ -115,7 +115,7 @@ test('all four LOC Auth core tables persist independently in PostgreSQL',async()
   const written=[];
   try{
     for(const {model,data} of rows){
-      await adapter.create({model,data});
+      await adapter.create({model,data,forceAllowId:true});
       written.push({model,id:data.id});
       const persisted=await pool.query(
         'SELECT id FROM "loc_auth"."'+model+'" WHERE id=$1',[data.id]);
