@@ -26,7 +26,7 @@ function cors(request,response,publicMetadata=false){
 }
 function page(title,content,script,signedQuery=''){
   // Inject only the *verified* Better Auth signed query, never arbitrary URLs.
-  const initial='const OAUTH_QUERY='+JSON.stringify(signedQuery).replace(/</g,'\\u003c')+';\\n';
+  const initial='const OAUTH_QUERY='+JSON.stringify(signedQuery).replace(/</g,'\\u003c')+';'+String.fromCharCode(10);
   script=initial+script;
   const html='<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8">'+
     '<meta name="viewport" content="width=device-width,initial-scale=1">'+
