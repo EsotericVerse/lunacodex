@@ -16,6 +16,7 @@ import {featureNavigationHref} from '../../feature-navigation';
 import ScopeLink from '../../ScopeLink';
 import {featureDataErrorMessage} from '../../feature-data-state';
 import {semanticStatisticChartTypes,chartTypeGroups,preferredStatisticChartType,statisticsZoomWindow} from './statistics-time-zoom.mjs';
+import {DEFAULT_YEAR_WINDOW} from '../../../loc/default-year-window.mjs';
 import StatisticsChartFrame from './StatisticsChartFrame';
 import StatisticsDetails from './StatisticsDetails';
 import StatisticsDashboardKpis from './StatisticsDashboardKpis';
@@ -38,10 +39,14 @@ export default function ScopeGroupStatistics({taipeiDateKey,trendBucket,loadGala
   const [memberGraph,setMemberGraph]=useState('line');
   // LOC is a set. ONE request returns every Scope's exact daily totals together with
   // the set's earliest date and Scope list; detail comparisons load only when opened.
-  const endDate=useMemo(()=>taipeiDateKey(),[]);
+  const endDate=DEFAULT_YEAR_WINDOW.endDate;
   const [knownEarliest,setKnownEarliest]=useState('');
-  const zoomRange=useMemo(()=>statisticsZoomWindow(zoomLevel,endDate,knownEarliest),
-    [zoomLevel,endDate,knownEarliest]);
+  const zoomRange=useMemo(()=>{
+    const base=statisticsZoomWindow(zoomLevel,endDate,knownEarliest);
+    return zoomLevel===0?{...base,startDate:DEFAULT_YEAR_WINDOW.startDate,
+      endDate:DEFAULT_YEAR_WINDOW.endDate,bucket:'month',
+      fullHistory:false,canZoomOut:false,canZoomIn:true}:base;
+  },[zoomLevel,endDate,knownEarliest]);
   const {startDate,endDate:rangeEndDate,bucket}=zoomRange;
   const locQuery=useAsyncResource(startDate&&rangeEndDate?['loc-statistics',startDate,rangeEndDate]:null,async()=>{
       const {selectLocStatistics}=await loadGalaxyStatistics();
