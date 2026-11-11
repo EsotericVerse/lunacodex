@@ -19,6 +19,10 @@ import {parsePortableOrExpression,portableContainsSpec}
 const HEADERS={'content-type':'application/json; charset=utf-8',
   'cache-control':'no-store','x-content-type-options':'nosniff'};
 const respond=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:HEADERS});
+// Kysely's connection scope pins a single driver acquisition for related reads.
+// Keep test doubles that expose only selectFrom compatible with this boundary.
+const withConnection=(db,run)=>typeof db.connection==='function'
+  ?db.connection().execute(run):run(db);
 const IDENT=/^[a-z_][a-z0-9_]*$/i;
 const OPERATORS=new Set(['eq','neq','gt','gte','lt','lte','like','ilike','is','in','contains']);
 const SCOPE=new Set(SCOPE_ROUTE_INDEX.filter(row=>row.active!==false).map(row=>row.scope_id));
@@ -241,7 +245,7 @@ export async function handleNativePublicQuery(request,env={},{
     if(action){
       stage='public-action';
       // One request may read multiple modeled relations; pin one SQL connection.
-      const output=await selected.db.connection().execute(db=>
+      const output=await withConnection(selected.db,db=>
         executeKyselyPublicAction(db,action,{
           engine:selected.engine,namespace:selected.namespace||
             (selected.engine==='postgres'?'silver':'dbo'),
@@ -253,7 +257,7 @@ export async function handleNativePublicQuery(request,env={},{
       stage='analytics';
       const settings={role:'anon',publishedScopeIds:PUBLIC_SCOPES};
       // Reuse the acquired connection across all statistics/config reads.
-      const output=await selected.db.connection().execute(db=>
+      const output=await withConnection(selected.db,db=>
         selected.engine==='postgres'
           ?executeKyselyAnalytics(db,analytics,settings)
           :executePortableKyselyAnalytics(db,analytics,{
@@ -274,7 +278,7 @@ export async function handleNativePublicQuery(request,env={},{
     }
     // COUNT and its result SELECT use the same acquired SQL connection.
     // They remain separate statements so COUNT never inherits page bounds.
-    const {fullCount,rawRows}=await selected.db.connection().execute(async db=>{
+    const {fullCount,rawRows}=await withConnection(selected.db,async db=>{
       let query=withFilters(db.selectFrom(table),normalized);
       query=normalized.columns[0]==='*'?query.selectAll():query.select(normalized.columns);
       for(const order of normalized.orders)
