@@ -342,15 +342,8 @@ export default function KeywordLibraryPanel({scopeId,account}){
       if(!controller.signal.aborted){
         setDiscovery(result);
         setDiscoveryPage(1);
-        if(isUnifiedAnchorScope(scopeId)){
-          try{
-            const {writeKeywordSuggestionCache}=await import('./keyword-discovery-cache.mjs');
-            await writeKeywordSuggestionCache(scopeId,configTable,result);
-            setNotice('已完成掃描，建議列表已暫存。');
-          }catch(cacheError){
-            setNotice('已顯示本次建議，但暫存失敗：'+String(cacheError.message||cacheError));
-          }
-        }
+        // Results stay on screen only; reopening the page rescans. Nothing is
+        // staged in the database.
       }
     }catch(e){
       if(controller.signal.aborted)setNotice('已停止新關鍵詞掃描，未修改任何資料。');
@@ -366,20 +359,6 @@ export default function KeywordLibraryPanel({scopeId,account}){
     if(discoveryBusy||busy||loading)return;
     setWorkspace('suggest');setEditor(null);setError('');
     if(discovery)return;
-    if(isUnifiedAnchorScope(scopeId)){
-      setDiscoveryBusy(true);
-      try{
-        const {readKeywordSuggestionCache}=await import('./keyword-discovery-cache.mjs');
-        const cached=await readKeywordSuggestionCache(scopeId);
-        if(cached){
-          setDiscovery(cached);setDiscoveryPage(1);
-          setNotice('已載入上次掃描結果；如需更新，按「重新掃描」。');
-          return;
-        }
-      }catch(e){
-        setNotice('無法讀取上次掃描結果：'+String(e.message||e)+'。可重新掃描。');
-      }finally{setDiscoveryBusy(false);}
-    }
     await discoverNewTerms();
   };
   const lookupPublicClass=async()=>{
