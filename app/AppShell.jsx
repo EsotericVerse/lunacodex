@@ -261,8 +261,8 @@ function NavTarget({href,label,current=false,native=false}){
 export default function AppShell({children}){
   const [client]=useState(()=>new QueryClient({
     defaultOptions:{queries:{
-      staleTime:Infinity,refetchOnWindowFocus:false,
-      refetchOnReconnect:false,retry:false
+      staleTime:Infinity,refetchOnMount:false,refetchOnWindowFocus:false,
+      refetchOnReconnect:false,refetchInterval:false,retry:false
     }}
   }));
   return <QueryClientProvider client={client}><EditDockProvider><AppShellInner>{children}</AppShellInner></EditDockProvider></QueryClientProvider>;
@@ -297,8 +297,8 @@ function AppShellInner({children}){
   // Administrative Scope metadata updates refresh the shared ZenStack
   // query state consumed by the shell, runtime, and Guest feature pages.
   useEffect(()=>{
-    const refresh=()=>queryClient.invalidateQueries({queryKey:['app-bootstrap']});
-    const refreshLocal=()=>queryClient.invalidateQueries({predicate:query=>Array.isArray(query.queryKey)&&query.queryKey.some(part=>part==='local'||(typeof part==='string'&&part.startsWith('silver.local_')))});
+    const refresh=()=>queryClient.invalidateQueries({queryKey:['app-bootstrap'],refetchType:'none'});
+    const refreshLocal=()=>queryClient.invalidateQueries({predicate:query=>Array.isArray(query.queryKey)&&query.queryKey.some(part=>part==='local'||(typeof part==='string'&&part.startsWith('silver.local_'))),refetchType:'none'});
     window.addEventListener('loc-public-scope-metadata-changed',refresh);
     window.addEventListener('loc-local-data-changed',refreshLocal);
     return()=>{
