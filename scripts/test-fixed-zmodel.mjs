@@ -295,3 +295,67 @@ test('live Kysely Scope management uses the fixed ZModel registry column contrac
   assert.doesNotMatch(admin,/LOC_NAME_COLUMNS|create policy|create table|drop table/i);
   assert.equal((admin.match(/\.returning\(REGISTRY_RETURNING\)/g)||[]).length,2);
 });
+
+
+test('ZModel only normalizes exceptional Boolean representations, never generic SQL values',async()=>{
+  const {normalizeModeledTypeDifferences,normalizeModeledSelectRows}=
+    await import('../zenstack/model-column-guard.mjs');
+  const typed=normalizeModeledTypeDifferences({
+    schema:'silver',table:'lo3rwang_galaxy',
+    filters:[
+      {column:'culture',operator:'eq',value:'true'},
+      {column:'title',operator:'eq',value:'true'},
+      {column:'date',operator:'gte',value:'2026-11-11'}
+    ],
+    orFilters:[{type:'or',items:[
+      {column:'search',operator:'eq',value:'false'},
+      {column:'site',operator:'eq',value:'false'}
+    ]}]
+  });
+  assert.deepEqual(typed.filters.map(f=>f.value),[true,'true','2026-11-11']);
+  assert.deepEqual(typed.orFilters[0].items.map(f=>f.value),[false,'false']);
+  assert.deepEqual(normalizeModeledTypeDifferences({
+    schema:'silver',table:'lo3rwang_anchor',
+    filters:[{column:'type',operator:'eq',value:'true'}]
+  }).filters[0].value,'true');
+  const raw=[
+    {uid:'Ab12Cd34',culture:1,search:'false',title:'true',date:'2026-11-11'},
+    {uid:'Ef56Gh78',culture:false,search:true,title:'false'}
+  ];
+  const output=normalizeModeledSelectRows({
+    schema:'silver',table:'lo3rwang_galaxy',rows:raw
+  });
+  assert.deepEqual(output[0],{...raw[0],culture:true,search:false});
+  assert.strictEqual(output[1],raw[1], 'native driver Boolean values stay untouched');
+  assert.deepEqual(raw[0].culture,1,'never mutate source rows');
+});
+
+test('plain Kysely SQL receives only ZModel exceptional filter normalization',async()=>{
+  const {Kysely,DummyDriver,PostgresAdapter,PostgresIntrospector,
+    PostgresQueryCompiler}=await import('kysely');
+  const {buildKyselySelectQuery}=await import('../app/loc/providers/kysely-runtime.mjs');
+  const dialect={createDriver:()=>new DummyDriver(),
+    createAdapter:()=>new PostgresAdapter(),
+    createIntrospector:db=>new PostgresIntrospector(db),
+    createQueryCompiler:()=>new PostgresQueryCompiler()};
+  const db=new Kysely({dialect});
+  try{
+    const request={kind:'query',operation:'select',schema:'silver',
+      table:'lo3rwang_galaxy',columns:['uid','title','culture'],
+      filters:[{column:'culture',operator:'eq',value:'true'},
+        {column:'title',operator:'eq',value:'true'}],
+      orders:[{column:'uid',ascending:true}],limit:100,offset:200,count:true};
+    const built=buildKyselySelectQuery(db,request);
+    const compiled=built.query.compile();
+    assert.match(compiled.sql,/"silver"."lo3rwang_galaxy"/);
+    assert.ok(compiled.parameters.includes(true),
+      'modeled Boolean is bound to Kysely as a real Boolean');
+    assert.ok(compiled.parameters.includes('true'),
+      'ordinary title string is passed through without conversion');
+    assert.ok(compiled.parameters.includes(100),'article list page is 100');
+    assert.ok(compiled.parameters.includes(200),'following page uses next offset');
+    assert.ok(built.countQuery,'exact COUNT is a separate unlimited SQL query');
+    assert.doesNotMatch(built.countQuery.compile().sql,/limit/i,
+      'COUNT cannot inherit any SELECT row limit');
+  }finally{await db.destroy();}
+});
