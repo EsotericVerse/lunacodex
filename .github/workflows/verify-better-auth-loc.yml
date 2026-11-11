@@ -50,6 +50,21 @@ jobs:
         env:
           LOC_AUTH_SCHEMA_GENERATION: '1'
         run: npx --yes auth@1.7.18 generate --config ./scripts/loc-auth.schema-config.mjs --output /tmp/loc-auth-generated.sql --yes
+      - name: Apply vendor SQL to disposable CI PostgreSQL only
+        env:
+          LOC_AUTH_SCHEMA_GENERATION: '1'
+        run: |
+          node --input-type=module -e '
+            import pg from "pg";
+            import {readFileSync} from "node:fs";
+            const pool=new pg.Pool({connectionString:"postgresql://loc_ci:loc_ci_only@127.0.0.1:5432/loc_auth_schema",ssl:false});
+            try { await pool.query(readFileSync("/tmp/loc-auth-generated.sql","utf8")); }
+            finally { await pool.end(); }
+          '
+      - name: Execute OAuth Provider, OIDC, JWKS and self-service registration against CI database
+        env:
+          LOC_AUTH_SCHEMA_GENERATION: '1'
+        run: node --test scripts/test-loc-auth-runtime.mjs
       - name: Save generated SQL for schema-change review
         uses: actions/upload-artifact@v4
         with:
