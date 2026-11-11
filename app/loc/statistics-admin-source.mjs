@@ -12,7 +12,12 @@ function bucket(d,unit){
 }
 export function administrativeSourceTrend(raw=[],taxonomy={},{startDate='',endDate='',unit='day',sourceCategory='',sourceNames=null}={}){
   const start=day(startDate),end=day(endDate);
-  const selectedSource=String(sourceCategory||'').trim().toLowerCase();
+  const selectedSource=String(sourceCategory||'').trim();
+  // A Domain selector includes the From leaves linked by Anchor attr.uid.
+  // No extra SQL/COUNT query is required for an expanded Source selection.
+  const selectedCodes=new Set([selectedSource,...(taxonomy.tree||[])
+    .filter(row=>Array.isArray(row.path)&&row.path.includes(selectedSource))
+    .map(row=>row.uid)]);
   const allowedNames=Array.isArray(sourceNames)?new Set(sourceNames.map(v=>String(v||'').trim().toLowerCase())):null;
   const categories=(taxonomy.categories||[]).filter(c=>c.enabled!==false);
   const aliases=taxonomy.aliases||[];
@@ -20,7 +25,7 @@ export function administrativeSourceTrend(raw=[],taxonomy={},{startDate='',endDa
     return {rows:[],series:[],distribution:[],total:0};
   }
   const keys=new Map(categories.map(c=>[c.category_code,c.display_name]));
-  if(!keys.has('unclassified'))keys.set('unclassified','未分類');
+  if(!keys.has('others'))keys.set('others','未分類');
   const data=new Map(),totals=new Map(),rawRecords=Array.isArray(raw)?raw:[];
   for(let date=new Date(start+'T00:00:00Z'),last=new Date(end+'T00:00:00Z');date<=last;date.setUTCDate(date.getUTCDate()+1)){
     const today=date.toISOString().slice(0,10),group=bucket(today,unit);
@@ -37,7 +42,7 @@ export function administrativeSourceTrend(raw=[],taxonomy={},{startDate='',endDa
     if(record.kind==='total'&&!selectedSource)item.total+=count;
     if(record.kind!=='source')continue;
     const category=assignedSource(record.category,aliases,categories);
-    if(selectedSource&&category!==selectedSource)continue;
+    if(selectedSource&&!selectedCodes.has(category))continue;
     if(allowedNames&&!allowedNames.has(String(record.category||'').trim().toLowerCase()))continue;
     if(selectedSource)item.total+=count;
     const key='category_'+category;

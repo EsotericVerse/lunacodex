@@ -6,11 +6,11 @@ const source=readFileSync(new URL('../app/loc/views/CulturePublicReader.jsx',imp
 
 test('second river offers era selection and custom range independent of first river',()=>{
   assert.match(source,/value=\{densityPeriod\}/);
-  assert.match(source,/<option value='recent'>近一年（預設）<\/option>/);
+  assert.match(source,/<option value='year'>\{DEFAULT_YEAR_WINDOW\.label\}<\/option>/);
   assert.match(source,/eraChoices\.map\(row=><option/);
   assert.match(source,/<option value='custom'>自訂日期<\/option>/);
   assert.match(source,/windowStart=\{rangeStart\} windowEnd=\{rangeEnd\} fixedMin=\{rangeStart\} fixedMax=\{rangeEnd\}/);
-  assert.match(source,/mode='trace' windowStart=\{start\} windowEnd=\{today\}/);
+  assert.match(source,/mode='trace' windowStart=\{start\} windowEnd=\{end\}/);
 });
 test('keyword river displays real dated word-index hits, not invented Anchor weights',()=>{
   assert.match(source,/<option value='keyword'>關鍵詞<\/option>/);

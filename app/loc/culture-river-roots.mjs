@@ -1,5 +1,11 @@
 // Compact, public-only first view. Detail remains on the server until expanded.
 import {assignedSource} from './member-intersection-model.mjs';
+function sourceRootFor(site,taxonomy={}){
+  const categories=taxonomy.categories||[];
+  const code=assignedSource(site,taxonomy.aliases||[],categories);
+  const modeled=categories.find(row=>row.category_code===code);
+  return modeled?.root|| (modeled?'system':'custom');
+}
 export function summarizeCultureRiverRoots(rows=[],taxonomy={}){
   const daily=new Map(),groups=new Map();
   for(const row of rows){
@@ -11,7 +17,7 @@ export function summarizeCultureRiverRoots(rows=[],taxonomy={}){
     // Undated results must not create clickable but empty child lanes.
     if(!/^\d{4}-\d{2}-\d{2}$/.test(day))continue;
     const raw=isMedia?'媒體 · '+category:category;
-    const root=isMedia?'media':assignedSource(category,taxonomy.aliases||[],taxonomy.categories||[])==='unclassified'?'custom':'system';
+    const root=isMedia?'media':sourceRootFor(category,taxonomy);
     const key=(isMedia?'media:':'source:')+category;
     const group=groups.get(key)||{
       category_key:'source:'+raw,category_type:isMedia?'media':'source',site:raw,
@@ -69,7 +75,7 @@ export function selectCultureRiverChildren(rows=[],taxonomy={},roots=[]){
   return rows.filter(row=>{
     if(row?.kind==='media')return wanted.has('media');
     if(row?.kind!=='source')return false;
-    const root=assignedSource(String(row.category||'').trim(),taxonomy.aliases||[],taxonomy.categories||[])==='unclassified'?'custom':'system';
+    const root=sourceRootFor(String(row.category||'').trim(),taxonomy);
     return wanted.has(root);
   });
 }

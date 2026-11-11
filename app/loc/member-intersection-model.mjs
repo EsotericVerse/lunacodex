@@ -6,8 +6,11 @@ const lower=value=>String(value||'').trim().toLowerCase();
 // source names inside Others are counted live from the data, never stored.
 export function assignedSource(value,aliases=[],categories=[]){
   const mapping=aliases.find(row=>lower(row.source_key)===lower(value));
+  // Preserve the existing eight-character Source Anchor UID exactly.
+  // A category code is a ZModel identity, not a lowercased display label.
   const category=lower(mapping?.category_code||'others');
-  return categories.some(row=>row.category_code===category&&row.enabled!==false)?category:'others';
+  const found=categories.find(row=>lower(row.category_code)===category&&row.enabled!==false);
+  return found?.category_code||'others';
 }
 export function availableMemberMeasures(datasets=[],categories=[]){
   const media=new Set();

@@ -107,13 +107,9 @@ function openPeriodRangeFromRows(scopeId,rows=[]){
     derived_from:'era period UID collection of actual anchor dates'};
 }
 
-import {PUBLISHED_LOC_ARTICLE_TAGS} from '../modular/published-source-taxonomy.js';
-const LOC_SOURCE_ORDER=Object.freeze(PUBLISHED_LOC_ARTICLE_TAGS);
-function locSourceCategory(value=''){
- const k=String(value||'').trim().toLowerCase();
- const name=LOC_SOURCE_ORDER.find(tag=>tag.toLowerCase()===k);
- return name||'Others';
-}
+import {assignedSource} from './member-intersection-model.mjs';
+import {readPublicSourceTaxonomy} from './source-catalog-public.mjs';
+
 function buildLocScopeDistribution(rows=[]){
   const combined=new Map();
   for(const row of rows){
@@ -129,47 +125,46 @@ function buildLocScopeDistribution(rows=[]){
     .sort((a,b)=>String(a.scope_id).localeCompare(String(b.scope_id))||String(a.start_date).localeCompare(String(b.start_date)));
 }
 
-function buildLocSourceRiver(rows=[]){
-  const combined=new Map();
-  const totals=new Map(LOC_SOURCE_ORDER.map(category=>[category,0]));
+function buildLocSourceRiver(rows=[],taxonomy={}){
+  const categories=new Map((taxonomy.categories||[]).map(row=>
+    [row.category_code,row]));
+  const combined=new Map(),totals=new Map();
   for(const row of rows){
-    const category=locSourceCategory(row.category);
+    const code=assignedSource(row.category,taxonomy.aliases||[],taxonomy.categories||[]);
+    const category=categories.get(code)?.display_name||'未分類';
     const count=Number(row.item_count)||0;
-    totals.set(category,(totals.get(category)||0)+count);
+    totals.set(code,(totals.get(code)||0)+count);
     const day=String(row.day||'').slice(0,10);
     if(!day)continue;
-    const key=category+'|'+day;
-    const current=combined.get(key)||{category,day,item_count:0};
+    const key=code+'|'+day;
+    const current=combined.get(key)||{code,category,day,item_count:0};
     current.item_count+=count;
     combined.set(key,current);
   }
   const perCategoryMax=new Map();
   let globalMax=0;
   for(const row of combined.values()){
-    perCategoryMax.set(row.category,Math.max(perCategoryMax.get(row.category)||0,row.item_count));
+    perCategoryMax.set(row.code,Math.max(perCategoryMax.get(row.code)||0,row.item_count));
     globalMax=Math.max(globalMax,row.item_count);
   }
   const sourceRiverItems=[...combined.values()].map(row=>({
-    id:'loc-source:'+row.category+':'+row.day,
-    entry_id:'loc-source:'+row.category+':'+row.day,
-    entry_type:'source_density',
-    scope_id:'loc',
-    group_label:row.category,
-    category:row.category,
-    start_date:row.day,
-    item_count:row.item_count,
-    density_ratio:row.item_count/Math.max(1,perCategoryMax.get(row.category)||1),
+    id:'loc-source:'+row.code+':'+row.day,
+    entry_id:'loc-source:'+row.code+':'+row.day,
+    entry_type:'source_density',scope_id:'loc',
+    group_label:row.category,category:row.code,
+    start_date:row.day,item_count:row.item_count,
+    density_ratio:row.item_count/Math.max(1,perCategoryMax.get(row.code)||1),
     global_density_ratio:row.item_count/Math.max(1,globalMax),
     display_label:row.category+' '+row.item_count+' 項',
     title:row.day+' · '+row.category+' · '+row.item_count+' 項'
-  })).sort((a,b)=>String(a.start_date).localeCompare(String(b.start_date))||LOC_SOURCE_ORDER.indexOf(a.category)-LOC_SOURCE_ORDER.indexOf(b.category));
-  const sourceGroups=LOC_SOURCE_ORDER.map(category=>({
-    category_key:'source:'+category,
-    category_type:'source',
-    site:category,
-    display_label:category,
-    item_count:Number(totals.get(category))||0
-  })).filter(row=>row.item_count>0);
+  })).sort((a,b)=>String(a.start_date).localeCompare(String(b.start_date))||
+    a.group_label.localeCompare(b.group_label));
+  const sourceGroups=[...totals].filter(([,count])=>count>0)
+    .map(([code,count])=>({
+      category_key:'source:'+code,category_type:'source',
+      site:code,display_label:categories.get(code)?.display_name||'未分類',
+      item_count:count
+    }));
   return {sourceRiverItems,sourceGroups};
 }
 
@@ -265,24 +260,29 @@ function cultureParts(scopeContext,runtimeId){
 }
 
 // Only the explicitly opened LOC second river reads per-day article/media counts.
-export async function selectLocCultureDensity({scopes=[],intersectionWindows=[],intersectionStart='',intersectionEnd=''}={}){
-  if(!scopes.length||!intersectionWindows.length||!intersectionStart||!intersectionEnd)
+// Aggregate Sources only from Galaxy.site; the Multimedia Universe is part
+// of the same LocAnchor taxonomy, never a second Galaxy Media source stream.
+export async function selectLocCultureDensity({
+  scopes=[],intersectionWindows=[],intersectionStart='',intersectionEnd='',
+  startDate='',endDate=''
+}={}){
+  const start=startDate||intersectionStart,end=endDate||intersectionEnd;
+  if(!scopes.length||!start||!end||start>end)
     return {scopeRanges:[],sourceRiverItems:[],sourceGroups:[]};
   const validDate=row=>{
     const day=String(row.day||'').slice(0,10);
-    return intersectionWindows.some(shared=>day>=shared.startDate&&day<=shared.endDate);
+    return day>=start&&day<=end&&
+      (startDate||!intersectionWindows.length||intersectionWindows.some(shared=>
+        day>=shared.startDate&&day<=shared.endDate));
   };
   const aggregateRows=(await mapBounded(scopes,2,async scope=>{
-    const {text:textDaily,media:mediaDaily}=await selectScopeDailyCounts(scope,{
-      startDate:intersectionStart,endDate:intersectionEnd,
-      includeEmptyMedia:true,requireAggregate:true
+    const {text}=await selectScopeDailyCounts(scope,{
+      startDate:start,endDate:end,requireAggregate:true
     });
-    return [
-      ...textDaily.filter(validDate).map(row=>({...row,scope_id:scope.id})),
-      ...mediaDaily.filter(validDate).map(row=>({...row,scope_id:scope.id}))
-    ];
+    return text.filter(validDate).map(row=>({...row,scope_id:scope.id}));
   })).flat();
-  const built=buildLocSourceRiver(aggregateRows);
+  const taxonomy=await readPublicSourceTaxonomy();
+  const built=buildLocSourceRiver(aggregateRows,taxonomy);
   return {
     scopeRanges:buildLocScopeDistribution(aggregateRows),
     sourceRiverItems:built.sourceRiverItems,
