@@ -107,7 +107,15 @@ export function EditDockProvider({children}){
   },[end]);
   useEffect(()=>{
     if(!scopeId||scopeId==='local')return undefined;
-    const activity=()=>{try{touchEditorSession(window.sessionStorage);}catch{}};
+    // Coalesce local pointer/keyboard activity to one sessionStorage write per
+    // 15 minutes. This never fetches Auth, SQL or any API.
+    let lastActivityCheck=Date.now();
+    const activity=()=>{
+      const now=Date.now();
+      if(now-lastActivityCheck<15*60*1000)return;
+      lastActivityCheck=now;
+      try{touchEditorSession(window.sessionStorage,now);}catch{}
+    };
     window.addEventListener('pointerdown',activity,{passive:true});
     window.addEventListener('keydown',activity,{passive:true});
     return ()=>{
