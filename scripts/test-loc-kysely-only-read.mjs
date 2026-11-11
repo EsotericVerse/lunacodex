@@ -45,8 +45,7 @@ test('anonymous API rejects manage, personal data and arbitrary SQL before datab
     {...query,schema:'api',table:'loc_user'},
     {...query,table:'secret_credential'},
     {...query,table:'lo3rwang_galaxy;drop table api.manage'},
-    {...query,filters:[{column:'uid;delete',op:'eq',value:'x'}]},
-    {...query,offset:10000001}
+    {...query,filters:[{column:'uid;delete',op:'eq',value:'x'}]}
   ]){
     const response=await handleNativePublicQuery(request(entry),{},{
       database:async()=>{called++;throw Error('Unexpected SQL')}
@@ -56,15 +55,15 @@ test('anonymous API rejects manage, personal data and arbitrary SQL before datab
   assert.equal(called,0);
 });
 test('valid public SELECT uses the same fixed loc-main Kysely target',async()=>{
-  let alias='',selectedTable='',selectedColumns;
+  let alias='',selectedTable='',selectedColumns,selectedOffset;
   const qb={
     where(){return this},
     select(columns){selectedColumns=columns;return this},
     selectAll(){selectedColumns='*';return this},
-    orderBy(){return this},limit(){return this},offset(){return this},
+    orderBy(){return this},limit(){return this},offset(value){selectedOffset=value;return this},
     async execute(){return [{uid:'abcdefgh',title:'公開作品'}]}
   };
-  const response=await handleNativePublicQuery(request(query),{},{
+  const response=await handleNativePublicQuery(request({...query,offset:10000001}),{},{
     database:async(_env,id)=>{
       alias=id;
       return {engine:'postgres',namespace:'silver',db:{
@@ -76,6 +75,8 @@ test('valid public SELECT uses the same fixed loc-main Kysely target',async()=>{
   assert.equal(alias,'loc-main');
   assert.equal(selectedTable,'silver.lo3rwang_galaxy');
   assert.deepEqual(selectedColumns,['uid','title']);
+  // Public offset is not silently capped; the SQL engine handles valid offsets.
+  assert.equal(selectedOffset,10000001);
   assert.equal((await response.json()).data[0].title,'公開作品');
 });
 test('backend SQL errors expose only stage and SQLSTATE',async()=>{
