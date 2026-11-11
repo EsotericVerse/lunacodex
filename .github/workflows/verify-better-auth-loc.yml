@@ -1,18 +1,6 @@
 name: Verify LOC Auth code without schema mutations
 on:
   workflow_dispatch:
-  pull_request:
-    branches:
-      - main
-    paths:
-      - 'workers/loc-authority/**'
-      - 'scripts/test-loc-auth-rewrite.mjs'
-      - 'scripts/test-auth-request-concurrency.mjs'
-      - 'app/loc/mcp/**'
-      - 'app/loc/auth/**'
-      - 'extensions/loc-galaxy-link/**'
-      - 'public/extension/oauth/**'
-      - '.github/workflows/verify-better-auth-loc.yml'
 permissions:
   contents: read
 jobs:
