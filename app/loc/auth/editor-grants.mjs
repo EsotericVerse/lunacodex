@@ -4,7 +4,7 @@ export async function readLocEditorGrants(session,{fetchImpl=globalThis.fetch}={
   if(!session?.user?.id)throw Error('LOC sign-in required');
   const response=await fetchImpl('/api/loc-permissions',{
     method:'GET',credentials:'include',cache:'no-store',
-    headers:{accept:'application/json'},signal:AbortSignal.timeout(8000)
+    headers:{accept:'application/json'},signal:AbortSignal.timeout(20000)
   });
   const data=await response.json().catch(()=>null);
   if(!response.ok||!data?.canWrite||!Array.isArray(data.grants))
