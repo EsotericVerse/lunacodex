@@ -12,11 +12,14 @@ export async function verifiedLocWebsiteSession(request,{
   if(!cookie)throw err('LOC sign-in required',401);
   let response;
   try{
-    response=await fetchImpl(ISSUER+'/api/auth/get-session',{
+    // This verifier is used for privileged website operations; signed
+    // session_data Cookie Cache must not extend access after revocation.
+    response=await fetchImpl(ISSUER+'/api/auth/get-session?disableCookieCache=true',{
       method:'GET',headers:{cookie,accept:'application/json'},
       cache:'no-store',redirect:'manual',signal:AbortSignal.timeout(7000)
     });
   }catch{throw err('LOC Auth unavailable',503)}
+  if(response.status===401||response.status===403)throw err('LOC sign-in required',401);
   if(!response.ok)throw err('LOC Auth unavailable',503);
   const data=await response.json().catch(()=>null);
   const user=data?.user;
