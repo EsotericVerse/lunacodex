@@ -33,6 +33,9 @@ const TraceMap=dynamic(()=>import('./trace/TraceMap'),{
   ssr:false,
   loading:()=> <p className="scope-status" role="status"><UiText id="uiExtra.traceUI.loadingMap"/></p>
 });
+const TraceTerritoryPanel=dynamic(()=>import('./trace/TraceTerritoryPanel'),{
+  ssr:false,loading:()=> <p className="scope-status" role="status">載入年度戰略地圖中…</p>
+});
 const TracePlaceResults=dynamic(()=>import('./trace/TracePlaceResults'),{
   loading:()=> <p className="scope-status"><UiText id="uiExtra.traceUI.loadingPlaceResults"/></p>
 });
@@ -44,6 +47,7 @@ export default function Trace({scopeId='loc'}){
   const supported=TRACE_SCOPES.includes(scopeId);
   const {settings:userSettings,active:userActive}=useLocFeatureSettings('trace');
   const [selectedPlace,setSelectedPlace]=useState(null);
+  const [mapMode,setMapMode]=useState('routes');
   const [annualGaugeOn,setAnnualGaugeOn]=useState(true);
   const [annualGaugeDetailVisible,setAnnualGaugeDetailVisible]=useState(false);
   const routeParams=useSearchParams();
@@ -76,7 +80,7 @@ export default function Trace({scopeId='loc'}){
   // Phase 1: load the light index, never all historical check-ins at startup.
   const traceIndex=useAsyncResource({
     queryKey:traceMapIndexKey(scopeId),
-    enabled:supported&&routeListOpen,
+    enabled:supported&&routeListOpen&&mapMode==='routes',
     queryFn:()=>readTraceMapIndex(scopeId),
     revalidateIfStale:false,revalidateOnFocus:false,revalidateOnReconnect:false
   });
@@ -85,7 +89,7 @@ export default function Trace({scopeId='loc'}){
   const locPointGroups=useMemo(()=>isLoc?locReferencedPointGroups(allMaps,50):[],[isLoc,allMaps]);
   const locPointsQuery=useAsyncResource({
     queryKey:['loc-trace-referenced-points-50',...locPointGroups.map(group=>group.scope+':'+group.ids.join(','))],
-    enabled:isLoc&&supported&&traceIndex.data!==undefined,
+    enabled:isLoc&&supported&&mapMode==='routes'&&traceIndex.data!==undefined,
     // Cross-Scope intersections remain bounded even when members grow.
     queryFn:async()=>(await mapBounded(locPointGroups,3,group=>
       readCurrentTraceAnchors(group.scope,group.ids))).flat(),
@@ -104,7 +108,7 @@ export default function Trace({scopeId='loc'}){
   const periodScopeId=isLoc?(currentMap?.source_scope||'loc'):scopeId;
   const deepLinkedPlace=useAsyncResource({
     queryKey:['trace-open-place',periodScopeId,selectedPlaceUid],
-    enabled:supported&&Boolean(selectedPlaceUid)&&TRACE_SCOPES.includes(periodScopeId)&&periodScopeId!=='loc',
+    enabled:supported&&mapMode==='routes'&&Boolean(selectedPlaceUid)&&TRACE_SCOPES.includes(periodScopeId)&&periodScopeId!=='loc',
     queryFn:async()=>(await readCurrentTraceAnchors(periodScopeId,[selectedPlaceUid]))[0]||null,
     revalidateOnFocus:false,revalidateOnReconnect:false
   });
@@ -150,7 +154,7 @@ export default function Trace({scopeId='loc'}){
     queryKey:currentMap
       ?traceCurrentKey(periodScopeId,{...currentMap,anchor_list:members},{nativeOnly:periodScopeId==='loc'})
       :['trace-no-selected-route',periodScopeId],
-    enabled:!isLoc&&supported&&routeListOpen&&traceIndex.data!==undefined&&Boolean(currentMap),
+    enabled:!isLoc&&supported&&mapMode==='routes'&&routeListOpen&&traceIndex.data!==undefined&&Boolean(currentMap),
     queryFn:()=>readCurrentTraceAnchors(periodScopeId,members,
       {nativeOnly:periodScopeId==='loc'}),
     revalidateIfStale:false,revalidateOnFocus:false,revalidateOnReconnect:false
@@ -182,7 +186,7 @@ export default function Trace({scopeId='loc'}){
   const annualSummary=useAsyncResource({
     queryKey:['trace-annual-place-days-v1',annualWindow.startDate,annualWindow.endDate,
       ...annualGroups.map(group=>group.scope+':'+group.ids.join(','))],
-    enabled:annualGaugeOn&&annualGaugeDetailVisible&&annualGroups.length>0,
+    enabled:mapMode==='routes'&&annualGaugeOn&&annualGaugeDetailVisible&&annualGroups.length>0,
     queryFn:async()=>(await mapBounded(annualGroups,2,async({scope,ids})=>{
       const {data,error}=await dbPublicClient.schema('silver').analytics({
         p_scope_id:scope,p_view:'trace_daily',
@@ -266,6 +270,13 @@ export default function Trace({scopeId='loc'}){
     </div>:null}
   </>;
   return <FeaturePage featureId="trace">
+    <nav className="loc-trace-strategy-tabs" aria-label="痕跡地圖類型">
+      <button type="button" className="loc-button" aria-pressed={mapMode==='routes'}
+        onClick={()=>setMapMode('routes')}>路徑痕跡圖</button>
+      <button type="button" className="loc-button" aria-pressed={mapMode==='territory'}
+        onClick={()=>setMapMode('territory')}>年度文章地點圖</button>
+    </nav>
+    {mapMode==='territory'?<TraceTerritoryPanel scopeId={scopeId}/>:
     <TraceMap publicTrace floatingControls={floatingControls} spatialData={demoSpatialData}
        annualGauges={annualGauges} annualGaugeOn={annualGaugeOn}
        annualGaugeBusy={annualGaugeOn&&annualGaugeDetailVisible&&annualGroups.length>0&&annualSummary.isPending}
@@ -336,6 +347,6 @@ export default function Trace({scopeId='loc'}){
           timeMode={userActive?userSettings.time:'none'} defaultSort={userActive?userSettings.sort:'desc'}/>:null}
 
       </div>:null}
-    </TraceMap>
+    </TraceMap>}
   </FeaturePage>;
 }
