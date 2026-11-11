@@ -145,7 +145,7 @@ export default function TraceTerritoryPanel({scopeId='loc'}){
             <div><strong>{source.name}</strong><span>{source.count} 篇 · {source.percent.toFixed(1)}%</span></div>
             <div className="loc-trace-territory-track" role="img"
               aria-label={source.name+' 佔 '+source.percent.toFixed(1)+'%'} >
-              <span style={{width:source.percent+'%',--locLaneIndex:i%5}}/>
+              <span style={{width:source.percent+'%','--loc-lane-index':i%5}}/>
             </div>
           </div>)}
         </div>:<ol className="loc-trace-territory-events" aria-label="文章日期序列">
