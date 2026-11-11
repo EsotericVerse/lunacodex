@@ -34,3 +34,20 @@ test('statistics charts delegate resizing to Recharts except Treemap compatibili
   assert.match(source,/actual==='treemap'/);
   assert.match(source,/<ResponsiveContainer width="100%" height="100%">\{chart\}<\/ResponsiveContainer>/);
 });
+
+test('Motion transitions chart types without taking over Recharts responsive geometry',async()=>{
+  const {readFile}=await import('node:fs/promises');
+  const {parse}=await import('@babel/parser');
+  const source=await readFile(new URL('../app/modular/modules/statistics/StatisticsMultiChart.jsx',import.meta.url),'utf8');
+  const ast=parse(source,{sourceType:'module',plugins:['jsx']});
+  assert.ok(ast.program.body.length>0);
+  assert.match(source,/import \{motion,useReducedMotion\} from 'motion\/react'/);
+  assert.match(source,/<motion\.div key=\{actual\} className="scope-multichart-motion-surface"/);
+  assert.match(source,/initial=\{reduceMotion\?false:\{opacity:0,y:6\}\}/);
+  assert.match(source,/transition=\{\{duration:reduceMotion\?0:\.22,ease:'easeOut'\}\}/);
+  assert.match(source,/cloneElement\(chart,\{responsive:true,style:/);
+  assert.match(source,/<ResponsiveContainer width="100%" height="100%">\{chart\}<\/ResponsiveContainer>/);
+  assert.doesNotMatch(source,/<motion\.(?:Line|Bar|Pie|Area|Radar|Scatter)/);
+  const css=await readFile(new URL('../app/styles/scope-system.css',import.meta.url),'utf8');
+  assert.match(css,/\.scope-multichart-motion-surface\{width:100%;min-width:0;\}/);
+});
