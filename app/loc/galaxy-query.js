@@ -85,7 +85,7 @@ function dailyRowsFromCounts(counts){
 function cachedByKey(cache,key,ttlMs,factory){
   const now=Date.now();
   const cached=cache.get(key);
-  if(cached&&cached.expires>now)return cached.promise;
+  if(cached)return cached.promise;
   const promise=factory();
   cache.set(key,{expires:now+ttlMs,promise});
   promise.catch(()=>{if(cache.get(key)?.promise===promise)cache.delete(key);});
@@ -308,7 +308,7 @@ const articleTimeCache=new Map();
 async function articleTimeRows(scope){
   const key=String(scope.id)+'|'+String(scope.time),now=Date.now();
   const cached=articleTimeCache.get(key);
-  if(cached&&cached.expires>now)return cached.promise;
+  if(cached)return cached.promise;
   const promise=import('./culture-query')
     .then(({selectCultureTimeRows})=>selectCultureTimeRows(scope));
   articleTimeCache.set(key,{expires:now+60_000,promise});
