@@ -18,11 +18,11 @@ import PanelLoading from '../PanelLoading';
 // Admin keeps only privileged registry provisioning and system configuration.
 
 const ADMIN_OPTIONS=Object.freeze([
-  {value:'network',label:'網路設定',shortLabel:'網路',description:'資料庫連線、ISR 快取與認證來源設定。'},
-  {value:'io',label:'系統設定',shortLabel:'系統設定',description:'系統匯入、匯出及批次限制。'},
-  {value:'featureHero',label:'功能區塊設定',shortLabel:'區塊',description:'編輯功能頁 Hero 與展示資源。'},
-  {value:'sources',label:'文章來源',shortLabel:'來源',description:'LOC 系統來源關鍵詞、UID 階層與視覺化編輯。'},
-  {value:'themes',label:'主題顏色設定',shortLabel:'配色',description:'調整網站主題和色彩。'}
+  {value:'sources',label:'文章來源',shortLabel:'來源',description:'來源階層與名稱'},
+  {value:'featureHero',label:'頁面主視覺',shortLabel:'頁面',description:'功能頁圖片與文字'},
+  {value:'themes',label:'主題配色',shortLabel:'配色',description:'主題色彩'},
+  {value:'network',label:'連線與驗證',shortLabel:'連線',description:'資料庫、快取與身分驗證'},
+  {value:'io',label:'匯入與系統工具',shortLabel:'工具',description:'匯入匯出與系統限制'}
 ]);
 const EnterpriseAuthReserved=dynamic(()=>import('./admin-panels/EnterpriseAuthReserved'),{loading:PanelLoading});
 const DatabaseTarget=dynamic(()=>import('./admin-panels/DatabaseTarget'),{loading:PanelLoading});
@@ -98,7 +98,7 @@ export default function AdminHomeView({scopeGroup}){
   return <FeaturePage featureId="admin">
     <ManagementWorkspaceFrame level="admin" title="系統管理">
       <ManagementSectionNav id="admin-sections" title="系統管理" panelId="admin-management-panel"
-        items={ADMIN_OPTIONS} value={section} onChange={switchSection}/>
+        items={ADMIN_OPTIONS} value={section} onChange={switchSection} mobileSelect/>
       <div className="management-workspace-panel" id="admin-management-panel" role="region"
         aria-labelledby={'admin-sections-option-'+selectedOption.value}>
         {section==='network'?<>
