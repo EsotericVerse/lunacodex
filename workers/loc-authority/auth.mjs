@@ -53,12 +53,12 @@ export function checkLocAuthEnvironment(env){
   const url=new URL(env.LOC_AUTH_DATABASE_URL);
   if(!['postgresql:','postgres:'].includes(url.protocol))
     throw new Error('LOC Auth requires a PostgreSQL connection');
-  // This is a deployment gate, not a table creator. No storage schema is
-  // selected by LOC Auth until its exact tables, columns and grants are
-  // individually reviewed. A temporary test-only name is never a default.
-  const namespace=String(env.LOC_AUTH_SCHEMA||'');
-  if(!/^[a-z][a-z0-9_]{0,62}$/.test(namespace)||namespace==='loc_auth')
-    throw new Error('Approved LOC Auth PostgreSQL schema is not configured');
+  // The existing Rainbow tables are in public on the dedicated Neon database.
+  // Do not require an extra schema setting for the already provisioned tables.
+  // Reject wrong or historical namespaces instead of querying missing tables.
+  const namespace=String(env.LOC_AUTH_SCHEMA||'public');
+  if(namespace!=='public')
+    throw new Error('LOC Auth Rainbow tables are in the public PostgreSQL schema');
   return true;
 }
 
@@ -84,7 +84,7 @@ export function createLocAuth(env){
       dialect:new PostgresDialect({pool}),
       type:'postgres',
       // Approved storage namespace only. No automatic DDL or test schema.
-      schemaName:env.LOC_AUTH_SCHEMA
+      schemaName:env.LOC_AUTH_SCHEMA||'public'
     },
     user:{modelName:RAINBOW_TABLES.user},
     session:{modelName:RAINBOW_TABLES.session,
