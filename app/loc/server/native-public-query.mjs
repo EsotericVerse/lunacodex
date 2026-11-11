@@ -9,7 +9,8 @@ import {SCOPE_ROUTE_INDEX} from '../../modular/scope-route-index.js';
 import {directMcpKysely} from '../mcp/native-kysely.mjs';
 import {createScopedLocClient} from '../../../zenstack/client.mjs';
 import {nativeReadPlan,executeNativeRead} from '../../../zenstack/native-query.mjs';
-import {verifyModeledSqlFields} from '../../../zenstack/model-column-guard.mjs';
+import {verifyModeledSqlFields,normalizeModeledTypeDifferences,
+  normalizeModeledSelectRows} from '../../../zenstack/model-column-guard.mjs';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 import {portableRelation} from '../providers/sql-engine-ports.mjs';
 import {parsePortableOrExpression,portableContainsSpec}
@@ -122,12 +123,18 @@ function modeledPublicSelect(selected,query){
   const matched=/^([a-z][a-z0-9]{0,14})_(galaxy|anchor|blocks)$/.exec(query.table);
   if(!matched||!SCOPE.has(matched[1]))return null;
   const modelName=matched[2][0].toUpperCase()+matched[2].slice(1);
+  const ordinaryFilters=query.filters.map(f=>({
+    column:f.column,operator:f.op,value:f.value,negate:f.negate
+  }));
+  const typed=normalizeModeledTypeDifferences({
+    schema:'silver',table:query.table,filters:ordinaryFilters
+  });
+  // Kysely is the default SQL engine. Only an actual ZModel type mismatch
+  // (e.g. browser "true" instead of a Boolean) attempts native ZenStack ORM.
+  if(!ordinaryFilters.some((f,i)=>f.value!==typed.filters[i].value))return null;
   const body={
     kind:'query',operation:'select',schema:'silver',table:query.table,
-    columns:query.columns,
-    filters:query.filters.map(f=>({
-      column:f.column,operator:f.op,value:f.value,negate:f.negate
-    })),
+    columns:query.columns,filters:typed.filters,
     or:query.orFilters,
     orders:query.orders,limit:query.limit,offset:query.offset,
     head:query.head,count:query.head||query.count==='exact'
@@ -192,10 +199,15 @@ function normalizeAnalytics(body){
 }
 
 function withFilters(q,body){
-  for(const f of body.filters)
+  const filters=normalizeModeledTypeDifferences({
+    schema:'silver',table:body.table,filters:body.filters
+  }).filters;
+  for(const f of filters)
     q=q.where(eb=>f.negate===true?eb.not(predicate(eb,f)):predicate(eb,f));
   for(const source of body.orFilters){
-    const ast=parsePortableOrExpression(source);
+    const ast=normalizeModeledTypeDifferences({
+      schema:'silver',table:body.table,orFilters:[parsePortableOrExpression(source)]
+    }).orFilters[0];
     q=q.where(eb=>predicate(eb,ast));
   }
   return q;
@@ -264,8 +276,11 @@ export async function handleNativePublicQuery(request,env={},{
       ?Number((await withFilters(selected.db.selectFrom(table),normalized)
         .select(eb=>eb.fn.countAll().as('count')).executeTakeFirst())?.count||0)
       :null;
-    const rows=await (normalized.limit===null?query:query.limit(normalized.limit))
+    const rawRows=await (normalized.limit===null?query:query.limit(normalized.limit))
       .offset(normalized.offset).execute();
+    const rows=normalizeModeledSelectRows({
+      schema:'silver',table:normalized.table,rows:rawRows
+    });
     if(normalized.cardinality==='single'&&rows.length!==1||
        normalized.cardinality==='maybeSingle'&&rows.length>1)
       return respond({error:'Expected one LOC record',stage:'cardinality'},406);
