@@ -4,7 +4,6 @@
 import {normalizeDatabaseTarget} from './selected-database-target.mjs';
 import {locGlobalUid} from '../../../zenstack/global-identity.mjs';
 import {isTextSearchQuery} from './search-qos.mjs';
-import {canManageDelegation} from '../auth/delegation-contract.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const ID=/^[a-z][a-z0-9_-]{0,63}$/;
@@ -81,7 +80,8 @@ export function publicGalaxyGate(body,role,claims={}){
      body.schema!=='silver'||typeof body.table!=='string')return false;
   const match=body.table.match(/^([a-z][a-z0-9]{0,14})_galaxy$/);
   if(!match)return false;
-  if(role==='authenticated'&&canManageDelegation(claims,'scope',match[1]))
+  if(role==='authenticated'&&claims.me===true&&Array.isArray(claims.grants)&&
+     (claims.grants.includes('global:manage')||claims.grants.includes(match[1]+':manage')))
     return false;
   // Search may reveal a title or permitted excerpt, never an article
   // body when list=false. Apply the same rule even without a databaseId:
