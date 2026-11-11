@@ -232,7 +232,7 @@ async function getConfig(){
 async function exchange(config,body){
  const res=await fetch(config.token_endpoint,{method:'POST',
   headers:{'content-type':'application/x-www-form-urlencoded'},
-  body:new URLSearchParams({...body,client_id:config.client_id}).toString(),
+  body:new URLSearchParams({...body,client_id:config.client_id,resource:config.resource}).toString(),
   redirect:'error',cache:'no-store'});
  if(!res.ok)throw oauthError('Token 交換失敗（HTTP '+res.status+'）');
  const json=await res.json();
