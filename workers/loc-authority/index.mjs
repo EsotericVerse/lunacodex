@@ -1,4 +1,5 @@
 import {createLocAuth,LOC_ISSUER,LOC_WEB} from './auth.mjs';
+import {authRequestConcurrencyGate} from './request-concurrency.mjs';
 import {oauthProviderAuthServerMetadata,oauthProviderOpenIdConfigMetadata,
   verifyOAuthQueryParams} from '@better-auth/oauth-provider';
 
@@ -55,6 +56,15 @@ const LOGIN_JS="const status=document.getElementById('status');\nconst params=ne
 const CONSENT_JS="const q=OAUTH_QUERY,p=new URLSearchParams(q);\nfor(const [id,key] of [['client','client_id'],['scope','scope'],['redirect','redirect_uri']])\n  document.getElementById(id).textContent=p.get(key)||'';\nasync function consent(accept){\n  const status=document.getElementById('status');\n  try{\n    const res=await fetch('/api/auth/oauth2/consent',{method:'POST',credentials:'include',\n      headers:{'content-type':'application/json'},\n      body:JSON.stringify({accept,scope:p.get('scope')||'',oauth_query:q})});\n    const data=await res.json().catch(()=>({}));\n    if(!res.ok||!data.url)throw Error(data.message||data.error||'Consent failed');\n    location.assign(data.url);\n  }catch(e){status.textContent=e.message}\n}\ndocument.getElementById('approve').onclick=()=>consent(true);\ndocument.getElementById('deny').onclick=()=>consent(false);";
 export default {
   async fetch(request,env){
+    // Bounded in-flight work per isolate, separate from Better Auth's
+    // rateLimit and the eventual cross-isolate QoS authority.
+    const admitted=authRequestConcurrencyGate.acquire(request);
+    if(!admitted.allowed)
+      return new Response(JSON.stringify({error:'auth_busy',retry_after:2}),{
+        status:429,headers:{'content-type':'application/json',
+          'cache-control':'no-store','retry-after':'2'}
+      });
+    try{
     const url=new URL(request.url);
     if(url.hostname!=='auth.lo3rwang.cc')
       return new Response('Not found',{status:404});
@@ -119,6 +129,9 @@ export default {
       return new Response(JSON.stringify({error:'LOC Auth unavailable'}),{
         status:503,headers:{'content-type':'application/json','cache-control':'no-store'}
       });
+    }
+    }finally{
+      admitted.release();
     }
   }
 };
