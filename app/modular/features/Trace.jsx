@@ -210,6 +210,8 @@ export default function Trace({scopeId='loc'}){
       :spatialData?.anchors.some(row=>row.uid===selectedPlace.uid&&row.source_scope===selectedPlace.source_scope))
   );
   const reportPlace=twoPointDemo?null:(selectedAvailable?selectedPlace:null);
+  const reportAnnual=reportPlace?annualGauges.find(row=>
+    row.uid===reportPlace.uid&&row.source_scope===reportPlace.source_scope):null;
   const reportScopeId=isLoc?(reportPlace?.source_scope||periodScopeId):periodScopeId;
 
   const floatingControls=<>
@@ -278,6 +280,11 @@ export default function Trace({scopeId='loc'}){
           <button type="button" className="loc-button" aria-label={t("closePlace")}
             onClick={()=>{setSelectedPlace(null);setReportTab(null);}}>×</button>
         </div>
+        {reportAnnual?<div className="loc-trace-place-journal" aria-label="近一年地點文章紀錄">
+          <span className="loc-trace-place-journal__eyebrow">旅程檔案 · 近一年</span>
+          <strong>{reportAnnual.percent}%</strong>
+          <span>{reportAnnual.days} / {reportAnnual.span} 日有文章 · 共 {reportAnnual.articles} 篇</span>
+        </div>:null}
         <div className="loc-trace-float-tabs" role="group" aria-label={t("placeMode")}>
           {[{value:'articles',label:t('articles')},{value:'timeline',label:t('timeline')},{value:'statistics',label:t('charts')}].map(item=>
             <button type="button" key={item.value} className="loc-button"
