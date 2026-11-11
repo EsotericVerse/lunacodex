@@ -1,7 +1,7 @@
 {
-  "issuer": "https://auth.lo3rwang.cc",
-  "resource": "https://auth.lo3rwang.cc/v1/import/short",
+  "issuer": "https://auth.lo3rwang.cc/api/auth",
+  "resource": "https://mcp.lo3rwang.cc",
   "client_id": "https://loc.lo3rwang.cc/extension/oauth/client.json",
-  "scope": "loc:import offline_access",
-  "import_url": "https://auth.lo3rwang.cc/v1/import/short"
+  "scope": "openid email loc:import offline_access",
+  "import_url": "https://mcp.lo3rwang.cc/api/loc-native"
 }
