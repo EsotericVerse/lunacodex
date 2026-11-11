@@ -1,7 +1,32 @@
 # Rainbow Auth storage: schema and grants review (NO DDL)
 
-**Status: REVIEW ONLY; no database object or permission has been created.**
-This inventory is based on the pinned **better-auth 1.7.18** and **@better-auth/oauth-provider 1.7.18** vendor schemas, not on the temporary Supabase `loc_auth` test table. The model names below are those mapped by `workers/loc-authority/auth.mjs`. The intended namespace is **`silver` only if separately approved**; the runtime refuses to select a namespace until `LOC_AUTH_SCHEMA` is provided.
+**Status: REVIEW UPDATE; twelve Rainbow objects and their existing grants/RLS have been verified read-only, not modified by this review.**
+This inventory is based on the pinned **better-auth 1.7.18** and **@better-auth/oauth-provider 1.7.18** vendor schemas, not on the temporary Supabase `loc_auth` test table. The model names below are those mapped by `workers/loc-authority/auth.mjs`. The existing verified Rainbow namespace is **`public`**; this is distinct from the website's database authorization.
+
+## Verified Neon catalog snapshot — 2026-11-11
+
+**The previous "NO DDL / none created" status was stale.** A single bounded,
+read-only Neon catalog inspection of LunaCodex confirmed **all twelve**
+`public.rainbow_*` tables exist, with the column counts in the proposal
+(7, 8, 13, 6, 7, 36, 15, 5, 18, 15, 9, 2 respectively by model order).
+All twelve currently have RLS enabled and four permissive policies per
+table, restricted to PostgreSQL role `rainbow_runtime` for SELECT,
+INSERT, UPDATE and DELETE. The policy expressions are `true`; there
+is no general public/anonymous RLS read/write access. The role exists,
+has LOGIN, public schema USAGE, and verified CRUD table grants on
+all twelve objects. Existing `neon_auth` tables are a separate,
+unmodified managed namespace.
+
+**Consequences:** "ALL NOT READ / ALL NOT WRITE" is not proven by the
+database policy inventory. Suspect connection role/credentials and the
+application's schema selection. The earlier source required
+`LOC_AUTH_SCHEMA` even though the existing Rainbow tables are in
+`public`; the branch now defaults to the verified `public` schema
+and rejects conflicting overrides. No production RLS, GRANT or table
+DDL was executed. Actual Auth Worker credentials and end-to-end
+INSERT/SELECT/UPDATE remain **unverified**; catalog privilege checks are
+not proof of successful runtime persistence. Do not deploy until those
+checks pass in a controlled environment.
 
 ## Construction status: four core models plus eight extension models
 
