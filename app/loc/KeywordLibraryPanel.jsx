@@ -96,7 +96,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
   const invalidate=useCallback(async()=>{
     const {clearKeywordAnalysisCache}=await import('./keyword-analysis');
     clearKeywordAnalysisCache();
-    await queryClient.invalidateQueries({predicate:query=>Array.isArray(query.queryKey)&&/keyword|culture-style-filter|statistics-style-filter/.test(String(query.queryKey[0]||''))});
+    await queryClient.invalidateQueries({predicate:query=>Array.isArray(query.queryKey)&&/keyword|culture-style-filter|statistics-style-filter/.test(String(query.queryKey[0]||'')),refetchType:'none'});
   },[queryClient]);
 
   const load=useCallback(async(preferredUid='')=>{
