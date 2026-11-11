@@ -10,25 +10,15 @@ import {selectCultureArticleListPage} from '../culture-query';
 import {selectGalaxyIdentity} from '../galaxy-query';
 import ScopeLink from '../../modular/ScopeLink';
 import {scopeHref} from '../../modular/scope-registry';
-import {sourceLabelMatchesSite} from '../source-classification.mjs';
-import {publishedSourceTaxonomy} from '../../modular/published-source-taxonomy.js';
+import {assignedSource} from '../member-intersection-model.mjs';
+import {readPublicSourceTaxonomy} from '../source-catalog-public.mjs';
+import {DEFAULT_YEAR_WINDOW} from '../default-year-window.mjs';
 import {indexZModelAnchorHierarchy} from '../../../zenstack/anchor-hierarchy.mjs';
 
 const CultureTimeline=dynamic(()=>import('../../modular/modules/culture-timeline/CultureTimeline'),{loading:()=>null});
 const NO_ITEMS=Object.freeze([]);
 const NO_FOCUS=Object.freeze({});
 const datePart=value=>String(value||'').slice(0,10);
-function todayInTaipei(){
-  const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Taipei',
-    year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
-  const part=key=>parts.find(item=>item.type===key)?.value||'';
-  return part('year')+'-'+part('month')+'-'+part('day');
-}
-function previousYear(today){
-  const d=new Date(today+'T00:00:00Z');
-  d.setUTCFullYear(d.getUTCFullYear()-1);
-  return d.toISOString().slice(0,10);
-}
 function list(value){
   return Array.isArray(value)?value:[];
 }
@@ -119,25 +109,46 @@ function anchorModel(rows,start,end,expanded){
   }
   return {items,groups};
 }
+// Source tree groups use the same LocAnchor UID hierarchy as the management
+// editor and Statistics. Multimedia is a Universe, not a media-type pipeline.
 function sourceModel(rows,taxonomy,expanded,start,end){
-  const names=[...new Set(list(rows).map(row=>String(row.site||'')))];
-  const roots=taxonomy?(taxonomy.categories||[]).map(tag=>({
-    id:'source:'+tag.category_code,label:tag.display_name,
-    sites:names.filter(site=>tag.category_code==='others'
-      ?!(taxonomy.categories||[]).some(other=>other.category_code!=='others'&&sourceLabelMatchesSite(site,other.display_name))
-      :sourceLabelMatchesSite(site,tag.display_name)),labels:new Map()
-  })): [{id:'keyword',label:'關鍵詞',sites:names,labels:new Map()}];
+  const sourceRows=list(rows);
+  const names=[...new Set(sourceRows.map(row=>String(row.site||'')))];
+  const categories=taxonomy?.categories||[],aliases=taxonomy?.aliases||[];
+  const byUid=new Map((taxonomy?.tree||[]).map(row=>[row.uid,row]));
+  const siteCode=site=>assignedSource(site,aliases,categories);
+  const roots=taxonomy?(taxonomy.roots||[]).map(node=>{
+    const descendants=new Set((taxonomy.tree||[])
+      .filter(row=>row.path?.[0]===node.uid).map(row=>row.uid));
+    const sites=names.filter(site=>descendants.has(siteCode(site)));
+    const labels=new Map(sites.map(site=>{
+      const entry=byUid.get(siteCode(site));
+      const parts=entry?.type==='from'?[entry.galaxy,entry.domain,entry.title]:
+        entry?.type==='domain'?[entry.galaxy,entry.title]:[site];
+      return [site,parts.filter(Boolean).join(' / ')];
+    }));
+    return {id:'source:'+node.uid,label:node.title,sites,labels};
+  }).filter(node=>node.sites.length):[
+    {id:'keyword',label:'關鍵詞',sites:names,labels:new Map()}
+  ];
+  if(taxonomy){
+    const claimed=new Set(roots.flatMap(root=>root.sites));
+    const unmatched=names.filter(site=>!claimed.has(site));
+    if(unmatched.length)roots.push({
+      id:'source:others',label:'未分類',sites:unmatched,labels:new Map()
+    });
+  }
   const groups=[],items=[],sites=[];
-  const max=Math.max(1,...rows.map(row=>Number(row.item_count)||0));
+  const max=Math.max(1,...sourceRows.map(row=>Number(row.item_count)||0));
   for(const root of roots){
-    const total=rows.filter(row=>root.sites.includes(row.site))
+    const total=sourceRows.filter(row=>root.sites.includes(String(row.site)))
       .reduce((sum,row)=>sum+Number(row.item_count||0),0);
     const opened=expanded.includes(root.id);
     groups.push({id:'root:'+root.id,label:root.label+' ('+total+')',
       collapsible:true,expanded:opened,order:groups.length});
     if(!opened){
       const daily=new Map();
-      for(const row of rows){
+      for(const row of sourceRows){
         if(!root.sites.includes(String(row.site)))continue;
         daily.set(row.day,(daily.get(row.day)||0)+Number(row.item_count||0));
       }
@@ -152,16 +163,17 @@ function sourceModel(rows,taxonomy,expanded,start,end){
     for(const site of root.sites){
       const label=root.labels.get(site)||site;
       const key=root.id+':'+site;
-      const count=rows.filter(row=>String(row.site)===site)
+      const count=sourceRows.filter(row=>String(row.site)===site)
         .reduce((sum,row)=>sum+Number(row.item_count||0),0);
       groups.push({id:'site:'+key,label:'　'+label+' ('+count+')',
         selectable:true,order:groups.length});
       sites.push({key,site,root:root.id,count,label});
-      for(const row of rows){
+      for(const row of sourceRows){
         if(String(row.site)!==site||row.day<start||row.day>end)continue;
         items.push({id:'site:'+key+':'+row.day,entry_type:'source',
           group_key:'site:'+key,group_label:label,start_date:row.day,
-          item_count:Number(row.item_count||0),density_ratio:Number(row.item_count||0)/max,
+          item_count:Number(row.item_count||0),
+          density_ratio:Number(row.item_count||0)/max,
           display_label:'',title:row.day+' · '+label+' · '+row.item_count});
       }
     }
@@ -175,20 +187,13 @@ async function analytics(scope,view,start,end,options={}){
   if(error)throw new Error(error.message||'文化資料讀取失敗');
   return Array.isArray(data)?data:[];
 }
-async function sourceCatalog(scope){
-  // The published Source ZModel is the same tree used by Statistics and
-  // the authorized management catalog. No private Anchor SELECT on page load.
-  const published=publishedSourceTaxonomy(scope);
-  if(!published)throw new Error('來源分類尚未發布');
-  return published;
-}
 export default function CulturePublicReader(){
   const {scopeId}=useScopeRuntime();
   const scope=useMemo(()=>defaultScopeData(scopeId),[scopeId]);
-  const today=useMemo(todayInTaipei,[]);
-  const start=useMemo(()=>previousYear(today),[today]);
+  const start=DEFAULT_YEAR_WINDOW.startDate;
+  const end=DEFAULT_YEAR_WINDOW.endDate;
   const [anchors,setAnchors]=useState(NO_ITEMS);
-  const [densityPeriod,setDensityPeriod]=useState('recent');
+  const [densityPeriod,setDensityPeriod]=useState('year');
   const [densityMode,setDensityMode]=useState('source');
   const [keywordClass,setKeywordClass]=useState('');
   const [keywordClasses,setKeywordClasses]=useState(NO_ITEMS);
@@ -200,7 +205,7 @@ export default function CulturePublicReader(){
   const [keywordError,setKeywordError]=useState('');
   const [classesLoading,setClassesLoading]=useState(false);
   const [daily,setDaily]=useState(NO_ITEMS);
-  const [catalog,setCatalog]=useState({system:[],personal:[]});
+  const [catalog,setCatalog]=useState({categories:[],aliases:[],tree:[],roots:[]});
   const [error,setError]=useState('');
   const [loading,setLoading]=useState(true);
   const [expandedEras,setExpandedEras]=useState([]);
@@ -220,7 +225,7 @@ export default function CulturePublicReader(){
     .filter(item=>item.entry_type==='era'&&item.start_date&&item.end_date),[anchors]);
   const selectedEra=eraChoices.find(item=>item.uid===densityPeriod)||null;
   const rangeStart=densityPeriod==='custom'?customStart:selectedEra?.start_date||start;
-  const rangeEnd=densityPeriod==='custom'?customEnd:selectedEra?.end_date||today;
+  const rangeEnd=densityPeriod==='custom'?customEnd:selectedEra?.end_date||end;
   const validRange=/^\d{4}-\d{2}-\d{2}$/.test(rangeStart)&&
     /^\d{4}-\d{2}-\d{2}$/.test(rangeEnd)&&rangeStart<=rangeEnd;
   const sequence=useRef(0);
@@ -229,7 +234,7 @@ export default function CulturePublicReader(){
     let cancelled=false;
     setLoading(true);setError('');setAnchors([]);
     Promise.all([analytics(scopeId,'culture_anchors',null,null),
-      sourceCatalog(scopeId)]).then(([time,types])=>{
+      readPublicSourceTaxonomy()]).then(([time,types])=>{
       if(cancelled)return;
       setAnchors(time);setCatalog(types);setLoading(false);
     }).catch(reason=>{if(!cancelled){setError(String(reason?.message||reason));setLoading(false);}});
@@ -283,8 +288,8 @@ export default function CulturePublicReader(){
       .finally(()=>{if(active)setClassesLoading(false);});
     return()=>{active=false;};
   },[scopeId,densityMode]);
-  const anchorRiver=useMemo(()=>anchorModel(anchors,start,today,expandedEras),
-    [anchors,start,today,expandedEras]);
+  const anchorRiver=useMemo(()=>anchorModel(anchors,start,end,expandedEras),
+    [anchors,start,end,expandedEras]);
   const densityRiver=useMemo(()=>densityMode==='keyword'
     ?sourceModel(keywordDaily,null,expandedSources,rangeStart,rangeEnd)
     :sourceModel(daily,catalog,expandedSources,rangeStart,rangeEnd),
@@ -347,14 +352,14 @@ export default function CulturePublicReader(){
     <section className='loc-card scope-feature-card scope-feature-card-wide'>
       <p className='loc-eyebrow'>文化｜時間密度</p>
       <h2>時間長河</h2>
-      <p className='scope-status'>{start} ～ {today}</p>
+      <p className='scope-status'>{start} ～ {end}</p>
       {loading?<p className='scope-status' role='status'>載入時間定錨與每日文章密度…</p>:null}
       {error?<p className='scope-status scope-error' role='alert'>{error}</p>:null}
       {!loading&&!error?<><section className='scope-card scope-culture-structure-river'>
         <div className='scope-culture-structure-toolbar'><h3>時間定錨</h3></div>
         <CultureTimeline items={anchorRiver.items} extraGroups={anchorRiver.groups}
-          focus={NO_FOCUS} mode='trace' windowStart={start} windowEnd={today}
-          fixedMin={start} fixedMax={today}
+          focus={NO_FOCUS} mode='trace' windowStart={start} windowEnd={end}
+          fixedMin={start} fixedMax={end}
           onGroupToggle={group=>{
             const uid=String(group).replace(/^era:/,'');
             if(!String(group).startsWith('era:'))return;
@@ -367,7 +372,7 @@ export default function CulturePublicReader(){
         <div className='scope-culture-river-selectors'>
           <label>時代／時期範圍
             <select className='scope-select' value={densityPeriod} onChange={event=>{setDensityPeriod(event.target.value);resetArticles('');}}>
-              <option value='recent'>近一年（預設）</option>
+              <option value='year'>{DEFAULT_YEAR_WINDOW.label}</option>
               {eraChoices.map(row=><option key={row.uid} value={row.uid}>{row.title}</option>)}
               <option value='custom'>自訂日期</option>
             </select>

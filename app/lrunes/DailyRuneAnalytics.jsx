@@ -17,6 +17,7 @@ const StatisticsMultiChart=dynamic(()=>import('../modular/modules/statistics/Sta
 import StatisticsChartFrame from '../modular/modules/statistics/StatisticsChartFrame';
 import StatisticsDetails from '../modular/modules/statistics/StatisticsDetails';
 import {statisticsZoomWindow} from '../modular/modules/statistics/statistics-time-zoom.mjs';
+import {DEFAULT_YEAR_WINDOW} from '../loc/default-year-window.mjs';
 import {
   DAILY_RUNE_MODES,normalizeDailyDraws,rankDailyDraws,pageDailyRanking,
   summarizeDailyDraws,dailyCategoryTrend,dailyDirectionTrend
@@ -44,6 +45,8 @@ function offsetDate(day,{months=0,days=0}={}){
   return date.toISOString().slice(0,10);
 }
 function resolveRange(mode,customFrom,customTo){
+  if(mode==='year')return {startDate:DEFAULT_YEAR_WINDOW.startDate,
+    endDate:DEFAULT_YEAR_WINDOW.endDate};
   const today=todayInTaipei();
   if(mode==='custom'){
     const from=String(customFrom||'').slice(0,10);
@@ -70,6 +73,7 @@ function RangeControls({mode,setMode,from,setFrom,to,setTo}){
   return <div className="scope-stat-controls">
     <label><span>{text.range}</span>
       <select className="scope-select" value={mode} onChange={event=>setMode(event.target.value)}>
+        <option value="year">{DEFAULT_YEAR_WINDOW.label}</option>
         {Object.entries(TIME_OPTION_KEYS).map(([value,key])=><option key={value} value={value}>{text[key]}</option>)}
       </select>
     </label>
@@ -93,7 +97,7 @@ function riverLabel(row){return String(row?.display_label||'');}
 
 export function LrunesDailyCulturePanel(){
   const text=useFeatureCopy('dailyRune',featureZh);
-  const [mode,setMode]=useState('1m');
+  const [mode,setMode]=useState('year');
   const [from,setFrom]=useState('');
   const [to,setTo]=useState('');
   const [selected,setSelected]=useState(null);
@@ -137,8 +141,12 @@ export function LrunesDailyStatisticsPanel(){
   const today=useMemo(()=>todayInTaipei(),[]);
   const earliest=useAsyncResource(['statistics-history-start','daily-rune'],()=>
     selectFirstDailyRuneDate());
-  const zoomRange=useMemo(()=>statisticsZoomWindow(zoomLevel,today,earliest.data||''),
-    [zoomLevel,today,earliest.data]);
+  const zoomRange=useMemo(()=>{
+    const normal=statisticsZoomWindow(zoomLevel,DEFAULT_YEAR_WINDOW.endDate,earliest.data||'');
+    return zoomLevel===0?{...normal,startDate:DEFAULT_YEAR_WINDOW.startDate,
+      endDate:DEFAULT_YEAR_WINDOW.endDate,bucket:'month',canZoomOut:false,
+      canZoomIn:true}:normal;
+  },[zoomLevel,earliest.data]);
   const [analysisMode,setAnalysisMode]=useState('rune');
   const [page,setPage]=useState(1);
   const [chart,setChart]=useState('bar');

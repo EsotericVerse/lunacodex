@@ -22,6 +22,7 @@ async function groupTraceSources(){
   return allowed.filter(Boolean);
 }
 export const TRACE_SCOPES=Object.freeze(['loc',...TRACE_SOURCE_SCOPES]);
+export const readPublishedTraceSourceScopes=groupTraceSources;
 export const traceKey=(scopeId,{includeHidden=false}={})=>['scope-trace',scopeId,...(includeHidden?['manager']:[])];
 export const traceMapIndexKey=(scopeId,{nativeOnly=false,includeHidden=false}={})=>['trace-map-index',scopeId,...(nativeOnly?['native']:[]),...(includeHidden?['manager']:[])];
 export const traceCurrentKey=(scopeId,route,{nativeOnly=false,includeHidden=false}={})=>

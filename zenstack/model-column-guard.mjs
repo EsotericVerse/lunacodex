@@ -10,6 +10,36 @@ for(const model of Object.values(schema.models)){
   const namespace=attr('@@schema'),table=attr('@@map');
   if(namespace&&table)named.set(namespace+'.'+table,model.fields);
 }
+// The fixed Registry JOIN is model-driven, not a second physical-table map.
+// Kysely still owns execution on the *caller's* trusted transaction/driver:
+// no new connection, ORM fetch, SQL query, policy change or foreign key.
+function fixedModelRelation(name){
+  const model=schema.models[name];
+  const attribute=key=>model?.attributes?.find(item=>item.name===key)
+    ?.args?.[0]?.value?.value;
+  const namespace=attribute('@@schema'),table=attribute('@@map');
+  if(!namespace||!table||model?.idFields?.length!==1)
+    throw new Error('LOC Registry ZModel relation contract missing: '+name);
+  const id=model.idFields[0];
+  if(!model.fields[id])throw new Error('LOC Registry ZModel key missing: '+name);
+  return Object.freeze({table:namespace+'.'+table,id,type:model.fields[id].type});
+}
+const registryModel=fixedModelRelation('Manage');
+const locModel=fixedModelRelation('Loc');
+if(registryModel.type!==locModel.type)
+  throw new Error('Incompatible LOC Registry ZModel JOIN key types');
+
+/** Keeps Registry and LOC directory JOINs mapped by ZModel inside the existing
+ * Kysely transaction. A LEFT JOIN retains Registry rows without LOC config.
+ */
+export function zmodelRegistryJoin(db,{optionalLoc=false}={}){
+  const source=db.selectFrom(registryModel.table+' as m');
+  const joined=locModel.table+' as l';
+  const left='l.'+locModel.id,right='m.'+registryModel.id;
+  return optionalLoc?source.leftJoin(joined,left,right):
+    source.innerJoin(joined,left,right);
+}
+
 const scoped=/^([a-z][a-z0-9]{0,14})_(galaxy|anchor|blocks)$/;
 const kinds={galaxy:'Lo3rwangGalaxy',anchor:'Lo3rwangAnchor',blocks:'Lo3rwangBlocks'};
 

@@ -239,24 +239,22 @@ test('Trace loads only Frame metadata at entry; content modes remain scoped and 
   assert.match(stats,/queryKey:\['culture-time-periods',scopeId\]/);
 });
 
-test('Culture and Statistics share the source projection of Universe Tree',()=>{
-  const catalog=read('app/modular/published-source-taxonomy.js');
+test('Culture and Statistics share the live LocAnchor ZModel source projection',()=>{
   const culture=read('app/modular/features/Culture.jsx');
+  const publicCulture=read('app/loc/views/CulturePublicReader.jsx');
   const stats=read('app/modular/features/Statistics.jsx');
   const sourceNames=read('app/loc/source-classification.mjs');
-  assert.match(catalog,/publishedSourceCategoryCatalog/);
-  assert.match(catalog,/sourceTreeFromArrays/);
-  assert.match(catalog,/sourceSiteKeyForLabel/);
-  assert.doesNotMatch(catalog,/SOURCE_DISPLAY_ALIASES/);
-  assert.match(sourceNames,/sourceTreeFromArrays/);
-  assert.match(sourceNames,/SOURCE_KEYWORD_LEVELS/);
-  assert.match(culture,/const publishedTaxonomy=useMemo\(\(\)=>publishedSourceTaxonomy\(scopeId\),\[scopeId\]\)/);
-  assert.match(culture,/enabled:!publishedTaxonomy/);
-  assert.match(stats,/publishedSourceCategoryCatalog\(scopeId\)/);
-  assert.match(stats,/enabled:sourceChart&&Boolean\(scopeId\)&&!publishedCatalog/);
-  assert.match(stats,/if\(isLrunesDaily\|\|mediaDimension\|\|!sourceCatalog.isSuccess\)return null/);
-  assert.match(sourceNames,/sourceTaxonomyFromArrays/);
-  assert.doesNotMatch(catalog,/statistics_source_categories|statistics_scope_others_groups/);
+  const reader=read('app/loc/source-catalog-public.mjs');
+  assert.match(sourceNames,/sourceTaxonomyFromAnchors/);
+  assert.match(sourceNames,/row\.attr\?\.uid/);
+  assert.match(reader,/\.from\('loc_anchor'\)/);
+  assert.match(reader,/sourceTaxonomyFromAnchors\(data\)/);
+  assert.match(culture,/readPublicSourceTaxonomy\(\)/);
+  assert.match(publicCulture,/readPublicSourceTaxonomy\(\)/);
+  assert.match(stats,/readPublicSourceTaxonomy\(\)/);
+  assert.doesNotMatch(culture,/publishedSourceTaxonomy/);
+  assert.doesNotMatch(stats,/publishedSourceCategoryCatalog/);
+  assert.doesNotMatch(publicCulture,/publishedSourceTaxonomy/);
 });
 
 test('Trace overview computes bounds from saved space_anchor coordinates',()=>{

@@ -1,6 +1,7 @@
 import {canManageLoc} from './loc-authorization.mjs';
 import {portableRelation} from './sql-engine-ports.mjs';
 import {sql} from 'kysely';
+import {zmodelRegistryJoin} from '../../../zenstack/model-column-guard.mjs';
 import {keywordPatternItemMetrics,keywordPatternDailySummary} from '../keyword-search-pattern.mjs';
 import {readScopePatternRows} from '../keyword-anchor-index.mjs';
 
@@ -9,7 +10,7 @@ import {readScopePatternRows} from '../keyword-anchor-index.mjs';
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
 const MODES=new Set(['loc','daily','overview','earliest','totals','search_summary',
-  'lane_daily','trace_places','keyword_summary','keyword_catalog','shared_classes','trace_daily','trace_keywords',
+  'lane_daily','trace_places','trace_territory','keyword_summary','keyword_catalog','shared_classes','trace_daily','trace_keywords',
   'culture_density','culture_anchors','culture_list']);
 function reject(message,status=400){
   const error=new Error(message);error.httpStatus=status;throw error;
@@ -23,8 +24,7 @@ function scopeId(value){const id=String(value||'').trim().toLowerCase();
   if(!SCOPE.test(id))reject('Invalid statistics Scope');return id;
 }
 async function registry(trx,scope){
-  const row=await trx.selectFrom('api.manage as m')
-    .innerJoin('silver.loc as l','l.id','m.id')
+  const row=await zmodelRegistryJoin(trx)
     .select(['m.id as id','m.manage_role as manage_role','m.active as active',
       'l.display_name as display_name','m.anchor_table as anchor_table',
       'm.galaxy_table as galaxy_table','m.sort_order as sort_order'])
@@ -223,6 +223,21 @@ export async function keywordCatalog(trx,scope,anchor,requested,role,{withTotals
   return {class_uid:info.uid,rows:[model(root),...ordered.map(model),
     ...descriptions.map(item=>model(byItem.get(item.uid)))]};
 }
+// A single indexed calendar-year GROUP BY includes every article with a
+// place_id, not just points belonging to the selected route or trace=true.
+// No content, article rows, unlinked source tables or coordinates leave SQL.
+async function traceTerritory(trx,scope,start,end){
+  if(!start||!end)reject('Territory statistics require a bounded period');
+  const galaxy=relation(scope,'galaxy');
+  const response=await sql`select g.place_id::text as place_id,
+      (g.date)::text as day,btrim(coalesce(g.site,'')) as site,
+      count(*)::bigint as item_count
+    from ${galaxy} g
+    where g.place_id is not null and btrim(g.place_id::text)<>''
+      and g.date between ${start}::date and ${end}::date
+    group by 1,2,3 order by 2,1,3`.execute(trx);
+  return response.rows.map(row=>({...row,item_count:Number(row.item_count||0)}));
+}
 async function traceDaily(trx,scope,places,start,end,source){
   const galaxy=relation(scope,'galaxy');
   const result=await sql`select (g.createtime at time zone 'Asia/Taipei')::date as day,
@@ -409,8 +424,7 @@ export async function executeKyselyAnalytics(trx,body,{role='anon',publishedScop
   }
   if(mode==='loc'){
     if(scope!=='loc')reject('Invalid LOC statistics Scope');
-    const groups=await trx.selectFrom('api.manage as m')
-      .innerJoin('silver.loc as l','l.id','m.id')
+    const groups=await zmodelRegistryJoin(trx)
       .select(['m.id as id','l.display_name as display_name',
         'm.galaxy_table as galaxy_table','m.anchor_table as anchor_table'])
       .where('m.manage_role','=','scope').where('m.active','=',true)
@@ -445,6 +459,7 @@ export async function executeKyselyAnalytics(trx,body,{role='anon',publishedScop
   else if(mode==='totals')data=await sourceTotals(trx,scope,start,end);
   else if(mode==='overview')data=await scopeOverview(trx,scope,start,end);
   else if(mode==='trace_places')data=await tracePlaces(trx,scope,start,end);
+  else if(mode==='trace_territory')data=await traceTerritory(trx,scope,start,end);
   else if(mode==='shared_classes')data=await sharedClasses(trx,scope,
     'silver.'+scope+'_'+anchorSuffix,role);
   else if(mode==='keyword_catalog')data=await keywordCatalog(trx,scope,
@@ -644,6 +659,17 @@ export async function executePortableKyselyAnalytics(db,body,{engine,namespace='
       day:portableDay(row.date),category:String(row.location).trim(),
       item_count:Number(row.n)
     }));
+  }else if(mode==='trace_territory'){
+    if(!start||!end)reject('Territory statistics require a bounded period');
+    const rows=await db.selectFrom(galaxy)
+      .select(['place_id','site','date'])
+      .select(eb=>eb.fn.countAll().as('n'))
+      .where('place_id','is not',null).where('place_id','!=','')
+      .where('date','>=',start).where('date','<=',end)
+      .groupBy(['place_id','site','date']).orderBy('date','asc').execute();
+    data=rows.map(row=>({place_id:String(row.place_id||''),
+      site:String(row.site||'').trim(),day:portableDay(row.date),
+      item_count:Number(row.n||0)}));
   }else if(mode==='trace_daily'){
     const ids=options.placeIds;
     if(!Array.isArray(ids)||ids.length<1||ids.length>80||

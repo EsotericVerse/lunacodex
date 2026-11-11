@@ -32,7 +32,6 @@ import {ArticleSortSelect,FeaturePage,IncrementalList,WorkFullText} from '../ui'
 import {workDisplayHeading,workDisplayText} from '../work-display-model';
 import {DEFAULT_LIST_BATCH_SIZE} from '../../loc/db-contract.mjs';
 import {assignedSource} from '../../loc/member-intersection-model.mjs';
-import {publishedSourceCategoryCatalog,publishedSourceTaxonomy} from '../published-source-taxonomy.js';
 import {sourceKeywordOptions} from '../../loc/source-keyword-options.mjs';
 import {administrativeSourceTrend} from '../../loc/statistics-admin-source.mjs';
 import {useAccount} from '../../loc/use-account';
@@ -50,6 +49,7 @@ import StatisticsChartFrame from '../modules/statistics/StatisticsChartFrame';
 import StatisticsDetails from '../modules/statistics/StatisticsDetails';
 import StatisticsDashboardKpis from '../modules/statistics/StatisticsDashboardKpis';
 import {statisticsZoomWindow} from '../modules/statistics/statistics-time-zoom.mjs';
+import {DEFAULT_YEAR_WINDOW} from '../../loc/default-year-window.mjs';
 
 const CHART_TYPES=STAT_VISUAL_TYPES;
 const STAT_TYPES=['total','source','keywords'];
@@ -191,16 +191,6 @@ function SourceArticleList({scope,startDate,endDate,sourceNames=null,defaultSort
     {!worksQuery.isPending&&!worksQuery.error&&!works.length?<p className="scope-status">此區間沒有可顯示的作品。</p>:null}
   </div>;
 }
-// A Scope's subgroups only subdivide the Admin-defined Others total.
-// Load on expansion; never turn small-group aliases into global categories.
-async function readPersonalSourceClasses(scopeId){
-  const {publishedSourceTaxonomy}=await import('../published-source-taxonomy.js');
-  const published=publishedSourceTaxonomy(scopeId);
-  if(published)return {groups:published.groups||[],aliases:published.groupAliases||[]};
-  const {readPublicSourceTaxonomy}=await import('../../loc/source-catalog-public.mjs');
-  const mapped=await readPublicSourceTaxonomy(scopeId);
-  return {groups:mapped.groups||[],aliases:mapped.groupAliases||[]};
-}
 function SummaryList({rankingType,summary,scope,range,filteredSource=false,defaultSort='desc'}){
   const UI_COPY=useUiCopy();
   const rows=rankingType==='total'
@@ -256,13 +246,13 @@ function facetTrend(rows=[],window={},selectedCategories=[]){
   });
 }
 
-function StatisticTypeSelect({scopeId,navigation,types,selectedSource=''}) {
+function StatisticTypeSelect({scopeId,navigation,types,selectedSource='',sourceTaxonomy=null}) {
   const UI_COPY=useUiCopy();
   const t=useUiText();
   const router=useRouter();
   // The Source group is a second selector family; it reuses the existing
   // Source chart and the same published Anchor labels as Culture.
-  const sourceOptions=sourceKeywordOptions(publishedSourceTaxonomy(scopeId));
+  const sourceOptions=sourceKeywordOptions(sourceTaxonomy);
   const requested=String(navigation.rankingType||'');
   const selected=sourceOptions.find(item=>item.code===selectedSource);
   const active=types.includes(requested)
@@ -315,10 +305,10 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     setSelectedKeywordClassUid('');
     setSourceGroup(requested==='source'?String(navigation.source||''):'');
   },[scopeId,navigation.statTab,requested,navigation.source]);
-  // Period is the primary Statistics navigation. Default to the latest
-  // saved Period, not an unnecessary preliminary one-year statistics fetch.
-  const [selectedPeriodKey,setSelectedPeriodKey]=useState('latest');
-  useEffect(()=>{setSelectedPeriodKey('latest');},[scopeId]);
+  // 2025 full calendar year is the initial Statistics window, even when
+  // Era records exist. A saved Era is selected only by an explicit UI action.
+  const [selectedPeriodKey,setSelectedPeriodKey]=useState('year');
+  useEffect(()=>{setSelectedPeriodKey('year');},[scopeId]);
   const queryEndDate=useMemo(()=>taipeiDateKey(),[]);
   // The active route already resolves the requested Scope; no registry-wide SELECT.
   const targetScopes=useMemo(()=>[defaultScopeData(scopeId)].filter(Boolean),[scopeId]);
@@ -351,7 +341,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   // An empty or non-period Scope must not request a nonexistent Period index.
   const requestedStart=dateKey(navigation.from),requestedEnd=dateKey(navigation.to);
   const hasRequestedWindow=Boolean(requestedStart&&requestedEnd&&requestedStart<=requestedEnd);
-  const periodNavigationReady=hasRequestedWindow||scopeId==='local'||scopeId==='loc'||periodQuery.data!==undefined||Boolean(periodQuery.error);
+  const periodNavigationReady=hasRequestedWindow||selectedPeriodKey==='year'||scopeId==='local'||scopeId==='loc'||periodQuery.data!==undefined||Boolean(periodQuery.error);
   const queryRange=useMemo(()=>{
     if(hasRequestedWindow){
       const days=Math.round((Date.parse(requestedEnd+'T00:00:00Z')-Date.parse(requestedStart+'T00:00:00Z'))/86_400_000);
@@ -359,6 +349,10 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
         bucket:defaultTimeUnit==='auto'?(days>180?'month':days>31?'week':'day'):defaultTimeUnit,
         fullHistory:false,canZoomOut:false,canZoomIn:false};
     }
+    if(selectedPeriodKey==='year')return {...customQueryRange,
+      startDate:DEFAULT_YEAR_WINDOW.startDate,endDate:DEFAULT_YEAR_WINDOW.endDate,
+      bucket:defaultTimeUnit==='auto'?'month':defaultTimeUnit,
+      fullHistory:false,canZoomOut:false,canZoomIn:false};
     if(!selectedPeriod)return defaultTimeUnit==='auto'?customQueryRange:{...customQueryRange,bucket:defaultTimeUnit};
     const startDate=String(selectedPeriod.start_date).slice(0,10);
     const endDate=String(selectedPeriod.end_date||queryEndDate).slice(0,10);
@@ -367,7 +361,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     return {...customQueryRange,startDate,endDate,
       bucket:defaultTimeUnit==='auto'?(days>180?'month':days>31?'week':'day'):defaultTimeUnit,
       fullHistory:false,canZoomOut:false,canZoomIn:false};
-  },[selectedPeriod,customQueryRange,queryEndDate,hasRequestedWindow,requestedStart,requestedEnd,defaultTimeUnit]);
+  },[selectedPeriodKey,selectedPeriod,customQueryRange,queryEndDate,hasRequestedWindow,requestedStart,requestedEnd,defaultTimeUnit]);
   // Both editors store flat names. Show one direct source choice, not a group tree.
   const activeSourceSelection=rankingType==='source'?sourceGroup:'';
   const sourceChart=['total','source'].includes(rankingType)&&Boolean(targetScopes.length);
@@ -389,37 +383,25 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   },[overview.data,knownEarliest]);
   const sourceRows={isPending:overview.isPending&&sourceChart,isSuccess:overview.isSuccess,error:overview.error,
     data:overview.data?.rows,dataUpdatedAt:overview.dataUpdatedAt};
-  // Public Scopes have a published JS category snapshot. Reuse it in Culture
-  // and Statistics; never schedule a separate classification request to draw
-  // an already ISR-cached chart. Only an unknown Scope falls back to LOC ArticleTag.
-  const publishedCatalog=useMemo(()=>publishedSourceCategoryCatalog(scopeId),[scopeId]);
-  const othersConfig=useAsyncResource({
-    queryKey:['scope-others-source-summary',scopeId],
-    enabled:sourceChart&&Boolean(scopeId)&&!publishedCatalog,
-    queryFn:async()=>readPersonalSourceClasses(scopeId),
+  // One public model read of the existing 30 LocAnchor source nodes.
+  // The native provider uses the fixed ZenStack LocAnchor model. Do not fall
+  // back to ArticleTag, a hardcoded category snapshot or a media taxonomy.
+  const sourceTaxonomyQuery=useAsyncResource({
+    queryKey:['loc-zmodel-source-taxonomy'],
+    enabled:sourceChart,
+    queryFn:async()=>{
+      const {readPublicSourceTaxonomy}=await import('../../loc/source-catalog-public.mjs');
+      return readPublicSourceTaxonomy();
+    },
     revalidateOnFocus:false,revalidateOnReconnect:false
   });
-  const sourceCatalog=useMemo(()=>{
-    const ready=Boolean(publishedCatalog||othersConfig.isSuccess);
-    const dynamic=othersConfig.data;
-    return {
-      isPending:(overview.isPending||!ready)&&sourceChart,
-      isSuccess:overview.isSuccess&&ready,
-      error:publishedCatalog?null:othersConfig.error,
-      data:overview.data?(publishedCatalog||{
-        categories:[...(overview.data?.categories||[]),
-          ...(dynamic?.groups||[]).map(group=>({
-            category_code:group.group_code,display_name:group.display_name,enabled:true
-          }))],
-        aliases:[...(overview.data?.aliases||[]),
-          ...(dynamic?.aliases||[]).map(item=>({
-            source_key:item.source_key,category_code:item.group_code
-          }))]
-      }):undefined,
-      dataUpdatedAt:Math.max(overview.dataUpdatedAt||0,publishedCatalog?0:othersConfig.dataUpdatedAt||0)
-    };
-  },[publishedCatalog,overview.isPending,overview.isSuccess,overview.data,overview.dataUpdatedAt,
-    othersConfig.isSuccess,othersConfig.data,othersConfig.error,othersConfig.dataUpdatedAt,sourceChart]);
+  const sourceCatalog={
+    isPending:sourceTaxonomyQuery.isPending&&sourceChart,
+    isSuccess:sourceTaxonomyQuery.isSuccess,
+    error:sourceTaxonomyQuery.error,
+    data:sourceTaxonomyQuery.data,
+    dataUpdatedAt:sourceTaxonomyQuery.dataUpdatedAt
+  };
   const selectedRawNames=null;
   // Numeric counts use the existing scoped database query. Category bucketing
   // is tiny synchronous presentation work, not an independent remote resource:
@@ -508,7 +490,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     </header>
     <div className="scope-stat-controls statistics-dashboard__filters">
       <StatisticTypeSelect scopeId={scopeId} navigation={navigation} types={types}
-        selectedSource={activeSourceSelection}/>
+        selectedSource={activeSourceSelection} sourceTaxonomy={sourceCatalog.data}/>
       {keywordDimension?<label>
         <span>關鍵詞組（Class）</span>
         <select className="scope-select" aria-label="關鍵字群組" value={resolvedKeywordClassUid}
@@ -527,7 +509,8 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
         <span>時期</span>
         <select className="scope-select" aria-label="時期" value={selectedPeriodKey}
           onChange={event=>setSelectedPeriodKey(event.target.value)}>
-          <option value="latest">{periods.length?'最新時期':'未設定時期（預設時間）'}</option>
+          <option value="year">{DEFAULT_YEAR_WINDOW.label}</option>
+          <option value="latest">{periods.length?'最新時期':'未設定時期'}</option>
           <option value="">自選時間（原有縮放）</option>
           {periodQuery.isPending?<option disabled value="__loading">正在載入時期…</option>:null}
           {periods.map(period=><option key={period.uid||period.period} value={String(period.period||period.era_id||period.uid)}>
@@ -540,9 +523,11 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
         <select className="scope-select" aria-label="作品／個人分類" value={activeSourceSelection}
           onChange={event=>setSourceGroup(event.target.value)}>
           <option value="">全部來源</option>
-          {(sourceCatalog.data?.categories||[]).filter(row=>row.enabled!==false)
-            .map(source=><option key={source.category_code} value={source.category_code}>{source.display_name}</option>)}
-          <option value="unclassified">未分類</option>
+          {sourceKeywordOptions(sourceCatalog.data).map(source=>
+            <option key={source.code} value={source.code}>
+              {source.domain?source.domain+' / ':''}{source.label}
+            </option>)}
+          <option value="others">未分類</option>
         </select>
       </label>:null}
       {periodQuery.error?<span className="scope-status scope-error">

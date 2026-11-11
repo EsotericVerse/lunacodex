@@ -1,0 +1,86 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {territoryYearWindow,territoryRegions,territoryPointGroups,territoryWithAnchors}
+  from '../app/modular/features/trace/trace-territory.mjs';
+import {traceArticleIdFilters} from '../app/modular/features/trace/trace-panel-filters.mjs';
+
+const source=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
+const sample=[
+  {source_scope:'lo3rwang',place_id:'AbCd1234',day:'2026-01-02',site:'Facebook',item_count:10},
+  {source_scope:'lo3rwang',place_id:'AbCd1234',day:'2026-04-12',site:'Threads',item_count:2},
+  {source_scope:'lo3rwang',place_id:'DdEe5678',day:'2026-04-12',site:'Facebook',item_count:1},
+  {source_scope:'lrunes',place_id:'AbCd1234',day:'2026-10-12',site:'Vocus',item_count:3},
+  {source_scope:'lo3rwang',place_id:'Zzzz9999',day:'2025-12-31',site:'Facebook',item_count:100},
+];
+test('one whole year is used, never an unbounded history',()=>{
+  assert.deepEqual(territoryYearWindow(2026),{startDate:'2026-01-01',endDate:'2026-12-31'});
+  assert.throws(()=>territoryYearWindow('all'));
+  const regions=territoryRegions(sample,2026);
+  assert.equal(regions.length,3);
+  assert.equal(regions.reduce((sum,row)=>sum+row.total,0),16);
+  assert.equal(regions.some(row=>row.uid==='Zzzz9999'),false);
+});
+test('place source shares and article dates remain exact',()=>{
+  const region=territoryRegions(sample,2026).find(row=>
+    row.uid==='AbCd1234'&&row.source_scope==='lo3rwang');
+  assert.equal(region.total,12);
+  assert.deepEqual(region.sources.map(row=>[row.name,row.count]),[
+    ['Facebook',10],['Threads',2]
+  ]);
+  assert.ok(Math.abs(region.sources[0].percent-83.33333333333333)<1e-8);
+  assert.deepEqual(region.timeline,[{day:'2026-01-02',count:10},{day:'2026-04-12',count:2}]);
+});
+test('matching IDs from different Scopes never merge',()=>{
+  const rows=territoryRegions(sample,2026).filter(row=>row.uid==='AbCd1234');
+  assert.equal(rows.length,2);
+  assert.notEqual(rows[0].source_scope,rows[1].source_scope);
+});
+test('every place appears in the register even without geographic coordinates',()=>{
+  const regions=territoryRegions(sample,2026);
+  const result=territoryWithAnchors(regions,[{
+    uid:'AbCd1234',source_scope:'lo3rwang',title:'板橋車站',longitude:121.5,latitude:25.02
+  }]);
+  assert.equal(result.length,3);
+  assert.equal(result.find(row=>row.uid==='DdEe5678').point,null);
+  assert.equal(result.find(row=>row.source_scope==='lo3rwang'&&row.uid==='AbCd1234').title,'板橋車站');
+  assert.deepEqual(territoryPointGroups(regions,1).map(row=>row.ids.length),[1,1,1]);
+});
+test('the strategy interior reuses the existing article list with the correct scope',()=>{
+  const classic=traceArticleIdFilters(['AbCd1234'],{startDate:'2026-01-01',endDate:'2026-12-31'});
+  const territory=traceArticleIdFilters(['AbCd1234'],{
+    startDate:'2026-01-01',endDate:'2026-12-31',allPlacedArticles:true
+  });
+  assert.equal(classic.some(row=>row.column==='trace'),true);
+  assert.equal(territory.some(row=>row.column==='trace'),false);
+  assert.deepEqual(territory.find(row=>row.column==='place_id').value,'AbCd1234');
+  assert.equal(territory.find(row=>row.column==='date'&&row.operator==='lte').value,'2026-12-31');
+});
+test('source names are case-insensitive without losing their visible name',()=>{
+  const rows=territoryRegions([
+    {source_scope:'lo3rwang',place_id:'AbCd1234',day:'2026-01-03',site:'Facebook',item_count:3},
+    {source_scope:'lo3rwang',place_id:'AbCd1234',day:'2026-01-04',site:'facebook',item_count:2},
+    {source_scope:'lo3rwang',place_id:'AbCd1234',day:'2026-01-05',site:'Threads',item_count:5}
+  ],2026);
+  assert.equal(rows.length,1);
+  assert.deepEqual(rows[0].sources.map(row=>[row.name,row.count,row.percent]),
+    [['Facebook',5,50],['Threads',5,50]]);
+});
+test('the annual source summary is exposed on existing SQL ports, with no Schema changes',()=>{
+  for(const path of ['app/loc/providers/kysely-analytics.mjs',
+    'app/loc/providers/kysely-browser.mjs','app/loc/server/native-public-query.mjs']){
+    assert.match(source(path),/trace_territory/,path);
+  }
+  const backend=source('app/loc/providers/kysely-analytics.mjs');
+  assert.match(backend,/groupBy\(\['place_id','site','date'\]\)/);
+  assert.match(backend,/g\.place_id is not null/);
+  const client=source('app/modular/features/trace/TraceTerritoryPanel.jsx');
+  assert.match(client,/p_view:'trace_territory'/);
+  assert.match(client,/queryKey:\['trace-territory-v1',year/);
+  assert.match(client,/onChange=\{event=>\{setStep\(Number\(event\.target\.value\)\)/);
+  assert.match(client,/allPlacedArticles/);
+  assert.match(client,/Number\.isFinite\(Number\(point\.longitude\)\)/);
+  assert.match(client,/point\.longitude!=null&&point\.latitude!=null/);
+  assert.match(source('app/modular/features/Trace.jsx'),/路徑痕跡圖/);
+  assert.match(source('app/modular/features/Trace.jsx'),/年度文章地點圖/);
+});

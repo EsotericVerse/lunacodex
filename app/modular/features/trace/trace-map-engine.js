@@ -100,7 +100,8 @@ function existingAnchorPoints(anchors){
   return {type:'FeatureCollection',features:(Array.isArray(anchors)?anchors:[])
     .filter(isValidSavedAnchor)
     .map((a,i)=>({type:'Feature',id:i,properties:{title:String(a.title||''),address:String(a.postal_address||''),
-        uid:String(a.uid||''),source_scope:String(a.source_scope||'')},
+        uid:String(a.uid||''),source_scope:String(a.source_scope||''),
+        territoryTotal:Number(a.territory_total||0),territorySource:String(a.territory_source||'')},
       geometry:{type:'Point',coordinates:spaceCoordinates(a)}}))};
 }
 function emptyRoute(){
@@ -113,7 +114,7 @@ function routeGeometry(coordinates){
   }]};
 }
 
-export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLocationPick=null,onAnchorSelect=null,anchors=[],showAnchorPopup=true}={}){
+export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLocationPick=null,onAnchorSelect=null,anchors=[],showAnchorPopup=true,onGaugeVisibilityChange=()=>{},territoryMode=false}={}){
   if(!container)throw new Error('找不到地圖容器。');
   const controller=new AbortController();
   let removed=false;
@@ -123,6 +124,9 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
   let markers=[];
   let timelineMarkers=[];
   let timelineRows=[];
+  let annualGaugeMarkers=[];
+  let annualGaugeRows=[];
+  let gaugeDetailVisible=false;
   let activeTimePointKeys=new Set();
   let pickedMarker=null;
   let pickedPosition=null;
@@ -137,6 +141,7 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     map.getSource('loc-trace-saved-anchors')?.setData(existingAnchorPoints(savedAnchors));
     refreshSavedRoute();
     refreshTimelineStems();
+    refreshAnnualGauges();
     refreshTimeCursor();
     // Updating GeoJSON never resets the viewport. Only explicit navigation may.
   }
@@ -161,6 +166,37 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
       timelineMarkers.push(new Marker({element,anchor:'bottom',offset:[0,0]})
         .setLngLat(spaceCoordinates(anchor)).addTo(map));
     }
+  }
+  function refreshAnnualGauges(){
+    annualGaugeMarkers.forEach(marker=>marker.remove());
+    annualGaugeMarkers=[];
+    if(!loaded||!annualGaugeRows.length||!gaugeDetailVisible)return;
+    const byKey=new globalThis.Map(annualGaugeRows.map(row=>[
+      String(row.source_scope||'')+':'+String(row.uid||''),row
+    ]));
+    // One small HUD per saved point, not per article. At zoomed-out scales,
+    // the original MapLibre pin layer remains the lightweight overview.
+    for(const point of savedAnchors.filter(isValidSavedAnchor).slice(0,80)){
+      const row=byKey.get(String(point.source_scope||'')+':'+String(point.uid||''));
+      if(!row||!Number.isFinite(Number(row.percent)))continue;
+      const percent=Math.max(0,Math.min(100,Math.round(Number(row.percent))));
+      const element=document.createElement('div');
+      element.className='loc-trace-annual-gauge';
+      element.style.setProperty('--loc-gauge-progress',Math.round(percent*2.7)+'deg');
+      element.style.pointerEvents='none';
+      element.setAttribute('aria-hidden','true');
+      element.title='近一年文章存在 '+row.days+'/'+row.span+' 日（'+percent+'%）';
+      const value=document.createElement('span');
+      value.className='loc-trace-annual-gauge__number';
+      value.textContent=percent+'%';
+      element.appendChild(value);
+      annualGaugeMarkers.push(new Marker({element,anchor:'center'})
+        .setLngLat(spaceCoordinates(point)).addTo(map));
+    }
+  }
+  function setAnnualGauges(rows){
+    annualGaugeRows=Array.isArray(rows)?rows:[];
+    refreshAnnualGauges();
   }
   function setPlaceTimelines(rows){
     timelineRows=Array.isArray(rows)?rows:[];
@@ -370,7 +406,10 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
   map.once('load',()=>{
     if(removed)return;
     loaded=true;
+    gaugeDetailVisible=map.getZoom()>=10.5;
+    onGaugeVisibilityChange(gaugeDetailVisible);
     refreshTimelineStems();
+    refreshAnnualGauges();
     if(canPickLocation){
       // The Banqiao mock stations belong to the anchor editor only.
       map.addSource('loc-trace-extrusions',{type:'geojson',data:pillarGeojson(EXAMPLE_ANCHORS)});
@@ -381,8 +420,18 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
       });
     }
     map.addSource('loc-trace-saved-anchors',{type:'geojson',data:existingAnchorPoints(savedAnchors)});
+    if(territoryMode)map.addLayer({id:'loc-trace-territory-halo',type:'circle',
+      source:'loc-trace-saved-anchors',paint:{
+        'circle-radius':['step',['get','territoryTotal'],19,3,23,10,29,30,35,100,43],
+        'circle-color':'#ffc979','circle-opacity':0.13,
+        'circle-stroke-width':1,'circle-stroke-color':'#ffc979','circle-stroke-opacity':0.55
+      }});
     map.addLayer({id:'loc-trace-saved-point-layer',type:'circle',source:'loc-trace-saved-anchors',
-      paint:{'circle-radius':6,'circle-color':'#6ce4ce','circle-opacity':0.95,
+      paint:territoryMode?{
+        'circle-radius':['step',['get','territoryTotal'],7,3,10,10,14,30,18,100,23],
+        'circle-color':'#f8b963','circle-opacity':0.91,
+        'circle-stroke-width':2,'circle-stroke-color':'#fff4cd'
+      }:{'circle-radius':6,'circle-color':'#6ce4ce','circle-opacity':0.95,
         'circle-stroke-width':1.5,'circle-stroke-color':'#153739'}});
     map.addLayer({id:'loc-trace-saved-point-labels',type:'symbol',source:'loc-trace-saved-anchors',
       minzoom:12,layout:{'text-field':['get','title'],
@@ -435,6 +484,13 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
       paint:{'circle-radius':15,'circle-color':'#ffffff','circle-opacity':0.08,
         'circle-stroke-width':3,'circle-stroke-color':'#6ce4ce','circle-stroke-opacity':0.95}});
     refreshTimeCursor();
+    map.on('zoomend',()=>{
+      const next=map.getZoom()>=10.5;
+      if(next===gaugeDetailVisible)return;
+      gaugeDetailVisible=next;
+      onGaugeVisibilityChange(next);
+      refreshAnnualGauges();
+    });
     // Saved route markers render over the source anchor dots; make either
     // visible geometry selectable and keep the full original anchor data.
     if(typeof onAnchorSelect==='function'){
@@ -524,10 +580,12 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     markers=[];
     timelineMarkers.forEach(marker=>marker.remove());
     timelineMarkers=[];
+    annualGaugeMarkers.forEach(marker=>marker.remove());
+    annualGaugeMarkers=[];
     pickedMarker?.remove();
     pickedMarker=null;
     map.remove();
   }
-  return {focus,focusCoordinates,centerIfFar,goOrigin,setAnchors,setPlaceTimelines,setStemsVisible,setTimeCursor,setSavedRoute,setSavedGraph,overview,showRoadRoute,
+  return {focus,focusCoordinates,centerIfFar,goOrigin,setAnchors,setPlaceTimelines,setAnnualGauges,setStemsVisible,setTimeCursor,setSavedRoute,setSavedGraph,overview,showRoadRoute,
     resize:()=>{if(!removed)map.resize();},destroy};
 }

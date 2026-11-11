@@ -17,7 +17,6 @@ import PanelLoading from './PanelLoading';
 // The home/account Settings screens never download import or management editors.
 const PrivateLocalFiles=dynamic(()=>import('./PrivateLocalFiles'),{loading:PanelLoading});
 const LocScopeConnections=dynamic(()=>import('./LocScopeConnections'),{loading:PanelLoading});
-const LocDatabaseSwitcher=dynamic(()=>import('./LocDatabaseSwitcher'),{loading:PanelLoading});
 // 每日符文紀錄：沿用既有的獨立頁面元件（/daily/log/），同一份邏輯透過它自己
 // 既有的 embedded 模式嵌入這裡，不複製任何讀寫邏輯。
 const DailyRuneCalendarSettings=dynamic(()=>import('../lrunes/DailyRuneCalendarSettings'),{loading:PanelLoading});
@@ -39,11 +38,11 @@ export default function GlobalSettings({initialSection='home'}={}){
   const [urlResolved,setUrlResolved]=useState(false);
   const [home,setHome]=useState('loc');
   const sections=[
-    option('home',uiT('uiExtra.globalSettings.homeSettings'),uiT('uiExtra.globalSettings.homeSettingsDescription'),uiT('uiExtra.globalSettings.tabHome')),
-    option('features',uiT('uiExtra.globalSettings.featureSettings'),uiT('uiExtra.globalSettings.featureSettingsDescription'),uiT('uiExtra.globalSettings.featureSettingsShort')),
-    option('mcp',uiT('uiExtra.globalSettings.mcpSelfServiceTitle'),uiT('uiExtra.globalSettings.mcpSelfServiceIntro'),uiT('uiExtra.globalSettings.mcpTab')),
-    ...(native?[option('manage',uiT('uiExtra.globalSettings.manageMenu'),uiT('uiExtra.globalSettings.manageMenuDescription'),uiT('uiExtra.globalSettings.tabManage'))]:[]),
-    ...(native||prefs.account.user?[option('dailyRune',uiT('uiExtra.globalSettings.dailyRune'),uiT('uiExtra.globalSettings.dailyRuneDescription'),uiT('uiExtra.globalSettings.tabDailyRune'))]:[]),
+    option('home',uiT('uiExtra.globalSettings.homeSettings'),'',uiT('uiExtra.globalSettings.tabHome')),
+    option('features',uiT('uiExtra.globalSettings.featureSettings'),'',uiT('uiExtra.globalSettings.featureSettingsShort')),
+    ...(native||prefs.account.user?[option('dailyRune',uiT('uiExtra.globalSettings.dailyRune'),'',uiT('uiExtra.globalSettings.tabDailyRune'))]:[]),
+    option('mcp',uiT('uiExtra.globalSettings.mcpSelfServiceTitle'),'',uiT('uiExtra.globalSettings.mcpTab')),
+    ...(native?[option('manage',uiT('uiExtra.globalSettings.manageMenu'),'',uiT('uiExtra.globalSettings.tabManage'))]:[])
   ];
   // favorites is the legacy URL alias for the public home/settings panel.
   const [section,setSection]=useManagementSection(sections,initialSection,{favorites:'home',account:'home'});
@@ -142,7 +141,7 @@ export default function GlobalSettings({initialSection='home'}={}){
   return <FeaturePage featureId="setting">
     <div className="scope-settings-options management-workspace">
       <ManagementSectionNav id="settings-sections" title={uiT('uiExtra.globalSettings.settingsSections')}
-        panelId="settings-management-panel" items={sections} value={activeSection}
+        panelId="settings-management-panel" items={sections} value={activeSection} mobileSelect
         onChange={next=>{setSection(next);setStatus('');}}/>
       <div className="management-workspace-panel" id="settings-management-panel" role="region"
         aria-labelledby={'settings-sections-option-'+activeSection}>
@@ -160,7 +159,6 @@ export default function GlobalSettings({initialSection='home'}={}){
             </button>
           </div>:null}
         </section>
-        {!native&&account.user?<LocDatabaseSwitcher/>:null}
         <section className="loc-card">
         <h2><UiText id="uiExtra.globalSettings.homeSettings"/></h2>
         <form onSubmit={saveHome} className="scope-stat-controls">

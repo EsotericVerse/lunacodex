@@ -42,7 +42,7 @@ export default function FeatureSettingsPage({embedded=false}){
       <header className="loc-card">
         {!embedded?<Link href={settingsHref} className="loc-button">{t(KEY+'featureSettingsBack')}</Link>:null}
         {embedded?<h2>{t(KEY+'featureSettings')}</h2>:<h1>{t(KEY+'featureSettings')}</h1>}
-        <p className="scope-status">{t(KEY+'featureSettingsDescription')}</p>
+        {!embedded?<p className="scope-status">{t(KEY+'featureSettingsDescription')}</p>:null}
       </header>
       <ManagementSectionNav id="feature-settings-sections"
         title={t(KEY+'featureSettingsSections')}
