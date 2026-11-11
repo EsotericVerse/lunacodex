@@ -25,6 +25,7 @@
     "test:federated-search": "node --test scripts/test-loc-federated-galaxy-search.mjs"
   },
   "dependencies": {
+    "@better-auth/oauth-provider": "1.7.18",
     "@blocknote/core": "0.55.0",
     "@blocknote/mantine": "0.55.0",
     "@blocknote/react": "0.55.0",
