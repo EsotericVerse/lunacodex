@@ -8,8 +8,8 @@ import {flashMessage} from '../app/loc/flash-message';
 // ZenStack/Kysely SQL Gateway. No parallel browser cache or background polling.
 const keyOf=key=>Array.isArray(key)?key:[key];
 const defaults={
-  staleTime:Infinity,refetchOnWindowFocus:false,
-  refetchOnReconnect:false,retry:false
+  staleTime:Infinity,refetchOnMount:false,refetchOnWindowFocus:false,
+  refetchOnReconnect:false,refetchInterval:false,retry:false
 };
 
 export function useAsyncResource(keyOrOptions,fetcherArg,optionsArg={}){
@@ -56,7 +56,7 @@ export function useAsyncResource(keyOrOptions,fetcherArg,optionsArg={}){
       const [value,config={}]=args;
       if(value===undefined)client.removeQueries({queryKey,exact:true});
       else client.setQueryData(queryKey,value);
-      if(config.revalidate!==false)await client.invalidateQueries({queryKey,exact:true});
+      if(config.revalidate!==false)await client.invalidateQueries({queryKey,exact:true,refetchType:'none'});
       return client.getQueryData(queryKey);
     }
   };
@@ -110,7 +110,7 @@ export async function invalidateScopeQueryCache(client,scopeId){
   if(!id)return;
   const predicate=query=>matchesScopeDataQuery(query,id);
   await client.cancelQueries({predicate});
-  return client.invalidateQueries({predicate});
+  return client.invalidateQueries({predicate,refetchType:'none'});
 }
 
 export function createResourceCache(client){
@@ -118,9 +118,9 @@ export function createResourceCache(client){
     invalidateScope:({scopeId})=>invalidateScopeQueryCache(client,scopeId),
     invalidate:async({queryKey})=>{
       await client.cancelQueries({queryKey:keyOf(queryKey)});
-      return client.invalidateQueries({queryKey:keyOf(queryKey)});
+      return client.invalidateQueries({queryKey:keyOf(queryKey),refetchType:'none'});
     },
-    revalidate:({queryKey})=>client.invalidateQueries({queryKey:keyOf(queryKey)}),
+    revalidate:({queryKey})=>client.invalidateQueries({queryKey:keyOf(queryKey),refetchType:'none'}),
     getOrLoad:({queryKey,queryFn})=>client.fetchQuery({
       queryKey:keyOf(queryKey),queryFn,staleTime:Infinity
     }),
