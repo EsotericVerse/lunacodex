@@ -63,3 +63,14 @@ test('rewrite does not restore row-count limits to public reads or calculation',
  assert.doesNotMatch(sqlPublic,/MAX_PUBLIC_GROUPS|maxPublicGroups/);
  assert.match(config,/MAX_ROWS=1000/);
 });
+
+test('LOC Auth Session cookie cache is deployment-versioned and separate from website permissions',()=>{
+ const auth=source('workers/loc-authority/auth.mjs');
+ const config=JSON.parse(source('workers/loc-authority/wrangler.jsonc'));
+ assert.match(auth,/cookieCache:locAuthSessionCache\(env\)/);
+ assert.match(auth,/storeSessionInDatabase:true/);
+ assert.match(auth,/maxAge:5\*60/);
+ assert.match(auth,/CF_VERSION_METADATA\?\.id/);
+ assert.equal(config.version_metadata.binding,'CF_VERSION_METADATA');
+ assert.doesNotMatch(auth,/api\.manage|scopeid|locPermissionsForEmail/);
+});
