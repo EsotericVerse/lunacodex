@@ -99,9 +99,9 @@ function ImageSlot({feature,variant,onDirtyChange,pageOverride='',defaultUrl=''}
         throw new Error('儲存後資料庫讀回不一致，請檢查寫入權限。');
       setRows(verified);
       await Promise.all([
-        queryClient.invalidateQueries({queryKey:['scope-blocks','loc',page]}),
-        queryClient.invalidateQueries({queryKey:['scope-blocks-live','loc',page]}),
-        queryClient.invalidateQueries({queryKey:['app-bootstrap','loc',page]})
+        queryClient.invalidateQueries({queryKey:['scope-blocks','loc',page],refetchType:'none'}),
+        queryClient.invalidateQueries({queryKey:['scope-blocks-live','loc',page],refetchType:'none'}),
+        queryClient.invalidateQueries({queryKey:['app-bootstrap','loc',page],refetchType:'none'})
       ]);
       setStatus('首頁圖連結已儲存並讀回確認。');
       setRevision(n=>n+1);
@@ -193,9 +193,9 @@ function ManagementHeroDetails({slot,onDirtyChange}){
         throw new Error('儲存後資料庫讀回不一致，請檢查寫入權限。');
       setRows(verified);
       await Promise.all([
-        queryClient.invalidateQueries({queryKey:['scope-blocks','loc',page]}),
-        queryClient.invalidateQueries({queryKey:['scope-blocks-live','loc',page]}),
-        queryClient.invalidateQueries({queryKey:['app-bootstrap','loc',page]})
+        queryClient.invalidateQueries({queryKey:['scope-blocks','loc',page],refetchType:'none'}),
+        queryClient.invalidateQueries({queryKey:['scope-blocks-live','loc',page],refetchType:'none'}),
+        queryClient.invalidateQueries({queryKey:['app-bootstrap','loc',page],refetchType:'none'})
       ]);
       setStatus('管理區塊已儲存並讀回確認。');
       setRevision(v=>v+1);
