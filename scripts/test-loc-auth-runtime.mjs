@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createLocAuth,LOC_ISSUER} from '../workers/loc-authority/auth.mjs';
+import locAuthWorker from '../workers/loc-authority/index.mjs';
 import {oauthProviderAuthServerMetadata,oauthProviderOpenIdConfigMetadata} from '@better-auth/oauth-provider';
 
 // Executed ONLY against a disposable PostgreSQL service in GitHub Actions.
@@ -62,4 +63,18 @@ test('unauthenticated clients cannot mint LOC credentials without the authorizat
   body:'grant_type=authorization_code&code=invalid&client_id=unregistered&redirect_uri=https%3A%2F%2Floc.lo3rwang.cc%2F'
  }));
  assert.ok(res.status===400||res.status===401);
+});
+
+test('untrusted app domains can exchange OAuth codes but cannot access Better Auth sessions',async()=>{
+ const origin='https://external-client.example';
+ const tokenCors=await locAuthWorker.fetch(new Request(LOC_ISSUER+'/api/auth/oauth2/token',{
+  method:'OPTIONS',headers:{origin,'access-control-request-method':'POST'}
+ }),env);
+ assert.equal(tokenCors.status,204);
+ assert.equal(tokenCors.headers.get('access-control-allow-origin'),'*');
+ assert.equal(tokenCors.headers.get('access-control-allow-credentials'),null);
+ const blocked=await locAuthWorker.fetch(new Request(LOC_ISSUER+'/api/auth/get-session',{
+  method:'OPTIONS',headers:{origin,'access-control-request-method':'GET'}
+ }),env);
+ assert.equal(blocked.status,403);
 });
