@@ -74,7 +74,7 @@ test('import compares every same-timestamp record, including after 1000',async()
     order(k){this.sortField=k;return this;}
     async range(start,end){
       let rows=records.filter(r=>this.predicates.every(p=>p(r)));
-      if(this.sortField)rows=rows.sort((a,b)=>String(a[this.sortField]).localeCompare(String(b[this.sortField]));
+      if(this.sortField)rows=rows.sort((a,b)=>String(a[this.sortField]).localeCompare(String(b[this.sortField])));
       return {data:rows.slice(start,end+1),error:null};
     }
   }
