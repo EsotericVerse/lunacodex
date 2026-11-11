@@ -4,6 +4,7 @@ import {useEffect,useLayoutEffect,useMemo,useRef,useState,useSyncExternalStore} 
 import dynamic from 'next/dynamic';
 import {Capacitor} from '@capacitor/core';
 import {QueryClient,QueryClientProvider,useQueryClient} from '@tanstack/react-query';
+import {invalidateScopeQueryCache} from '../zenstack/client-queries';
 import {translateUiField,UI_COPY,UI_LOCALE_OPTIONS,normalizeUiLocale,uiCopy,registerDefaultSection,isSectionLoaded,loadSection} from './i18n/ui-copy';
 import {UiLocaleProvider,useLoadedUiLocale,useUiLocale,useUiSection} from './i18n/ui-locale';
 import FieldText from './i18n/FieldText';
@@ -299,11 +300,17 @@ function AppShellInner({children}){
   useEffect(()=>{
     const refresh=()=>queryClient.invalidateQueries({queryKey:['app-bootstrap']});
     const refreshLocal=()=>queryClient.invalidateQueries({predicate:query=>Array.isArray(query.queryKey)&&query.queryKey.some(part=>part==='local'||(typeof part==='string'&&part.startsWith('silver.local_')))});
+    const refreshScope=event=>{
+      const scopeId=event.detail?.scopeId;
+      if(scopeId)void invalidateScopeQueryCache(queryClient,scopeId);
+    };
     window.addEventListener('loc-public-scope-metadata-changed',refresh);
     window.addEventListener('loc-local-data-changed',refreshLocal);
+    window.addEventListener('loc-scope-data-committed',refreshScope);
     return()=>{
       window.removeEventListener('loc-public-scope-metadata-changed',refresh);
       window.removeEventListener('loc-local-data-changed',refreshLocal);
+      window.removeEventListener('loc-scope-data-committed',refreshScope);
     };
   },[queryClient]);
   const {scopeId,scope,host,pathname,registryRow,configRow}=useScopeRuntime();
