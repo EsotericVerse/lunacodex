@@ -105,15 +105,17 @@ const matchesScopeDataQuery=(query,id)=>{
 
 // All cross-feature invalidation, deduplication, cancellation, stale writes
 // and paginated results are handled by the native QueryClient.
+export async function invalidateScopeQueryCache(client,scopeId){
+  const id=String(scopeId||'');
+  if(!id)return;
+  const predicate=query=>matchesScopeDataQuery(query,id);
+  await client.cancelQueries({predicate});
+  return client.invalidateQueries({predicate});
+}
+
 export function createResourceCache(client){
   return {
-    invalidateScope:async({scopeId})=>{
-      const id=String(scopeId||'');
-      if(!id)return;
-      const predicate=query=>matchesScopeDataQuery(query,id);
-      await client.cancelQueries({predicate});
-      return client.invalidateQueries({predicate});
-    },
+    invalidateScope:({scopeId})=>invalidateScopeQueryCache(client,scopeId),
     invalidate:async({queryKey})=>{
       await client.cancelQueries({queryKey:keyOf(queryKey)});
       return client.invalidateQueries({queryKey:keyOf(queryKey)});
