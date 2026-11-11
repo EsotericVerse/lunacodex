@@ -89,7 +89,7 @@ test('LOC Auth Session cookie cache is deployment-versioned and separate from we
  const config=JSON.parse(source('workers/loc-authority/wrangler.jsonc'));
  assert.match(auth,/cookieCache:locAuthSessionCache\(env\)/);
  assert.match(auth,/storeSessionInDatabase:true/);
- assert.match(auth,/maxAge:5\*60/);
+ assert.match(auth,/maxAge:30\*60/);
  assert.match(auth,/CF_VERSION_METADATA\?\.id/);
  assert.equal(config.version_metadata.binding,'CF_VERSION_METADATA');
  assert.doesNotMatch(auth,/api\.manage|scopeid|locPermissionsForEmail/);
