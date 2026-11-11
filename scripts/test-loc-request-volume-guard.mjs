@@ -23,19 +23,32 @@ test('browser verified session deduplicates consumers and never polls',()=>{
   assert.doesNotMatch(auth,/setInterval\(|setTimeout\(/);
 });
 
-test('ZModel backed browser query cache retains two hours and disables refetch',()=>{
+test('LOC UI resource state has no TanStack/SWR polling or retry',()=>{
   const resources=read('zenstack/client-queries.js');
   const shell=read('app/AppShell.jsx');
-  assert.match(resources,/LOC_MIN_CACHE_TTL_MS=2\*60\*60\*1000/);
-  assert.match(resources,/gcTime:LOC_MIN_CACHE_TTL_MS,staleTime:Infinity/);
-  assert.match(resources,/\.\.\.rest,\.\.\.defaults,queryKey/);
-  assert.match(shell,/gcTime:2\*60\*60\*1000,staleTime:Infinity/);
-  for(const source of [resources,shell]){
-    assert.match(source,/refetchOnMount:false/);
-    assert.match(source,/refetchOnWindowFocus:false/);
-    assert.match(source,/refetchOnReconnect:false/);
-    assert.match(source,/refetchInterval:false/);
-  }
+  const dependencies=read('package.json');
+  assert.match(resources,/export class LocResourceStore/);
+  assert.match(shell,/LocResourceProvider/);
+  assert.doesNotMatch(resources+shell+dependencies,/@tanstack\\/react-query|from ['"]swr['"]/);
+  assert.doesNotMatch(resources,/setInterval\\(|refetchOnMount|refetchInterval|retryDelay/);
+  assert.match(resources,/invalidateQueries\\(options=\\{\\}\\)/);
+  assert.match(resources,/if\\(!enabled|if\\(enabled&&/);
+});
+test('Save reuses verified Session and never disables Better Auth cookie cache',()=>{
+  const adapter=read('app/loc/providers/configured.mjs');
+  const website=read('app/loc/auth/verified-session.mjs');
+  const native=read('app/loc/mcp/native-operations.mjs');
+  assert.doesNotMatch(adapter,/getVerifiedSession\\(\\)/);
+  assert.match(website,/get-session'/);
+  assert.doesNotMatch(website+native,/disableCookieCache/);
+  assert.match(native,/verifiedLocWebsiteSession\\(request,\\{fetchImpl\\}\\)/);
+  assert.match(native,/locPermissionsForEmail\\(selected.db,claims.email\\)/);
+});
+test('Neon does not perform automatic connection retries or timed probes',()=>{
+  const driver=read('app/loc/mcp/native-kysely.mjs');
+  assert.match(driver,/NEON_CONNECTION_COOLDOWN_MS=5\\*60\\*1000/);
+  assert.doesNotMatch(driver,/attempts=2|delayMs=400|setInterval\\(/);
+  assert.match(driver,/now\\(\\)<blockedUntil/);
 });
 
 test('editing keyboard activity checks are local and coalesced at 15 minutes',()=>{
@@ -45,21 +58,10 @@ test('editing keyboard activity checks are local and coalesced at 15 minutes',()
   assert.doesNotMatch(dock,/setInterval\(/);
 });
 
-test('management cache invalidations never trigger implicit active refetch',()=>{
-  const paths=[
-    'app/loc/LocKeywordManagement.jsx',
-    'app/loc/LocGroupMemberList.jsx',
-    'app/loc/views/admin-panels/FeatureHeroImages.jsx',
-    'app/loc/KeywordLibraryPanel.jsx',
-    'app/loc/views/admin-panels/AdminRegistry.jsx'
-  ];
-  for(const path of paths){
-    const code=read(path);
-    const invalidations=code.match(/queryClient\\.invalidateQueries\\(\\{[^;]*?\\}\\)/gs)||[];
-    assert.ok(invalidations.length>0,path+' missing invalidation coverage');
-    for(const call of invalidations)
-      assert.match(call,/refetchType:'none'/,path+' implicit active refetch');
-  }
+test('management invalidation marks cached data without issuing refetch',()=>{
+  const resources=read('zenstack/client-queries.js');
+  assert.match(resources,/invalidateQueries\\(options=\\{\\}\\)/);
+  assert.doesNotMatch(resources,/invalidateQueries[\\s\\S]*?fetchQuery\\(/);
 });
 
 test('Scope group permission display reuses verified grants without HTTP',()=>{
