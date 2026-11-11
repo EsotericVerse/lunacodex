@@ -174,10 +174,10 @@ export async function selectSourceCatalog(scope,{startDate='',endDate='',limit=2
   const rows=await cachedReadScopeCategoryTotals(current.id,{
     startDate:dateOnly(startDate),endDate:dateOnly(endDate)
   });
-  const safeLimit=Math.max(1,Math.min(DB_QUERY_BATCH_SIZE,Math.floor(Number(limit)||20)));
+  // Return the complete SQL-calculated source catalog and its true total.
   const normalized=rows.filter(row=>row.kind==='source').map(row=>({
     scope_id:current.id,site:String(row.category||''),item_count:Number(row.item_count)||0
-  })).sort((a,b)=>b.item_count-a.item_count||a.site.localeCompare(b.site)).slice(0,safeLimit);
+  })).sort((a,b)=>b.item_count-a.item_count||a.site.localeCompare(b.site));
   return {rows:normalized,totalCount:normalized.length};
 }
 
@@ -218,10 +218,9 @@ async function selectCategoryCountsRaw(table,categoryColumn,{startDate='',endDat
   const rows=await cachedReadScopeCategoryTotals(match[1],{
     startDate:dateOnly(startDate),endDate:dateOnly(endDate)
   });
-  const cap=Math.max(1,Math.min(DB_QUERY_BATCH_SIZE,Math.floor(Number(limit)||20)));
   return rows.filter(row=>row.kind===(media?'media':'source')&&String(row.category||'').trim())
     .map(row=>({term:String(row.category).trim(),item_count:Number(row.item_count)||0}))
-    .sort((a,b)=>b.item_count-a.item_count||a.term.localeCompare(b.term)).slice(0,cap);
+    .sort((a,b)=>b.item_count-a.item_count||a.term.localeCompare(b.term));
 }
 
 function mediaIdsOf(value){
