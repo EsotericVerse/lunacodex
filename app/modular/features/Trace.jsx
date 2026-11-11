@@ -265,7 +265,7 @@ export default function Trace({scopeId='loc'}){
   return <FeaturePage featureId="trace">
     <TraceMap publicTrace floatingControls={floatingControls} spatialData={demoSpatialData}
        annualGauges={annualGauges} annualGaugeOn={annualGaugeOn}
-       annualGaugeBusy={annualGaugeOn&&annualSummary.isPending}
+       annualGaugeBusy={annualGaugeOn&&annualGroups.length>0&&annualSummary.isPending}
        annualGaugeError={Boolean(annualSummary.error)}
        onAnnualGaugeToggle={()=>setAnnualGaugeOn(value=>!value)}
       focusLocation={deepLinkedPlace.data||null} hideRoutePicker
