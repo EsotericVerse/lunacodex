@@ -1,259 +1,51 @@
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
+import {existsSync,readFileSync} from 'node:fs';
 import {test} from 'node:test';
 import vm from 'node:vm';
 
-const source=readFileSync(new URL('../public/sw.js',import.meta.url),'utf8');
+const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
+const source=read('public/sw.js');
 
-function createHarness(){
-  const listeners=new Map();
-  const stored=new Map();
-  const requests=[];
-  const deleted=[];
-  let online=true;
-  let networkHeaders={'content-type':'image/webp'};
-  const makeCache=name=>{
-    if(!stored.has(name))stored.set(name,new Map());
-    const map=stored.get(name);
-    return {
-      match:async request=>map.get(request.url),
-      put:async(request,response)=>{map.set(request.url,response);},
-      keys:async()=>[...map.keys()].map(url=>({url})),
-      delete:async request=>{deleted.push(request.url);return map.delete(request.url);}
-    };
-  };
-  const cacheStorage={
-    open:async name=>makeCache(name),
-    keys:async()=>[...stored.keys()],
-    delete:async name=>stored.delete(name)
-  };
-  const response=(type='basic',headers={})=>({
-    type,ok:true,status:200,redirected:false,headers:{get:name=>headers[name.toLowerCase()]??null},
-    clone(){return response(type,headers);}
-  });
-  const context=vm.createContext({
-    URL,Promise,Request,Response,AbortSignal,caches:cacheStorage,
-    self:{
-      location:{origin:'https://loc.lo3rwang.cc'},
-      addEventListener:(name,fn)=>listeners.set(name,fn),
-      skipWaiting:async()=>{},
-      clients:{claim:async()=>{}}
-    },
-    fetch:async request=>{
-      const url=typeof request==='string'?request:request.url;
-      requests.push(url);
-      if(!online)throw new Error('network unavailable');
-      return response(url.startsWith('https://remote.example')?'opaque':'basic',networkHeaders);
-    }
-  });
-  vm.runInContext(source,context,{filename:'public/sw.js'});
-  // Start each existing cache regression with the Admin-approved 'cache' mode.
-  listeners.get('message')({data:{type:'LOC_CACHE_POLICY',mode:'cache'}});
-  async function dispatch(name,request){
-    const pending=[];
-    let handled;
-    const event={
-      request,data:name==='message'?request:undefined,
-      respondWith:value=>{handled=Promise.resolve(value);},
-      waitUntil:value=>pending.push(Promise.resolve(value))
-    };
-    listeners.get(name)(event);
-    const result=handled?await handled:null;
-    await Promise.all(pending);
-    return {result,handled:Boolean(handled)};
-  }
-  const req=(url,destination='image',method='GET')=>({url,method,destination});
-  return {dispatch,req,requests,stored,deleted,setOnline:value=>{online=value;},
-    setResponseHeaders:value=>{networkHeaders=value;}};
-}
-
-test('off mode bypasses all SW response caching without unregistering the worker',async()=>{
-  const h=createHarness();
-  h.dispatch('message',{type:'LOC_CACHE_POLICY',mode:'off'});
-  for(const request of [
-    h.req('https://loc.lo3rwang.cc/pics/cover.webp'),
-    h.req('https://loc.lo3rwang.cc/_next/static/chunks/hashed.js','script'),
-    {...h.req('https://loc.lo3rwang.cc/','document'),mode:'navigate'}
-  ])assert.equal((await h.dispatch('fetch',request)).handled,false);
-  assert.equal(h.requests.length,0);
-  assert.equal(h.stored.size,0);
-  h.dispatch('message',{type:'LOC_CACHE_POLICY',mode:'cache'});
-  const image=h.req('https://loc.lo3rwang.cc/pics/cover.webp');
-  assert.equal((await h.dispatch('fetch',image)).handled,true);
-  assert.equal((await h.dispatch('fetch',image)).handled,true);
-  assert.equal(h.requests.length,1);
+test('retired PWA Service Worker cannot intercept documents, auth or SQL fetches',()=>{
+ const listeners=new Map();
+ vm.runInNewContext(source,{
+   self:{addEventListener:(name,fn)=>listeners.set(name,fn)},
+   caches:{keys:async()=>[],delete:async()=>true}
+ });
+ assert.equal(listeners.has('fetch'),false);
+ assert.equal(listeners.has('message'),false);
+ assert.equal(listeners.has('install'),true);
+ assert.equal(listeners.has('activate'),true);
 });
-
-test('ISR mode prefers a portable public image edge and falls back to the site when unavailable',async()=>{
-  const h=createHarness();
-  h.dispatch('message',{type:'LOC_CACHE_POLICY',mode:'isr',origin:'https://cache.example.com'});
-  const first='https://loc.lo3rwang.cc/pics/main.webp';
-  await h.dispatch('fetch',h.req(first));
-  await h.dispatch('fetch',h.req(first));
-  assert.deepEqual(h.requests,['https://cache.example.com/pics/main.webp']);
-  const second='https://loc.lo3rwang.cc/pics/second.webp';
-  h.setResponseHeaders({'content-type':'text/plain'});
-  await h.dispatch('fetch',h.req(second));
-  assert.deepEqual(h.requests.slice(1),['https://cache.example.com/pics/second.webp',second]);
+test('old PWA worker removes LOC caches and unregisters',async()=>{
+ const listeners=new Map(),deleted=[];
+ let unregisterCount=0,skipCount=0;
+ vm.runInNewContext(source,{
+   self:{
+     addEventListener:(name,fn)=>listeners.set(name,fn),
+     skipWaiting:async()=>{skipCount++},
+     registration:{unregister:async()=>{unregisterCount++;return true}}
+   },
+   caches:{
+     keys:async()=>['loc-public-images-v1','loc-public-static-v1','other-site'],
+     delete:async(name)=>{deleted.push(name);return true}
+   }
+ });
+ const run=async name=>{
+   const pending=[];
+   listeners.get(name)({waitUntil:promise=>pending.push(promise)});
+   await Promise.all(pending);
+ };
+ await run('install');
+ await run('activate');
+ assert.equal(skipCount,1);
+ assert.equal(unregisterCount,1);
+ assert.deepEqual(deleted.sort(),['loc-public-images-v1','loc-public-static-v1']);
 });
-
-test('ISR image origin offline falls back to primary image without disabling SW',async()=>{
-  const h=createHarness();
-  h.dispatch('message',{type:'LOC_CACHE_POLICY',mode:'isr',origin:'https://unreachable.example'});
-  const target=h.req('https://loc.lo3rwang.cc/pics/fallback.webp');
-  h.setResponseHeaders({'content-type':'text/plain'});
-  const result=await h.dispatch('fetch',target);
-  assert.ok(result.handled);
-  assert.deepEqual(h.requests,[
-    'https://unreachable.example/pics/fallback.webp',
-    'https://loc.lo3rwang.cc/pics/fallback.webp'
-  ]);
-});
-
-test('picture cache: first network hit, repeat without network, and offline reuse',async()=>{
-  const h=createHarness();
-  await h.dispatch('install');
-  await h.dispatch('activate');
-  const url='https://loc.lo3rwang.cc/pics/LOC-PicAll.webp';
-  assert.equal((await h.dispatch('fetch',h.req(url))).handled,true);
-  assert.deepEqual(h.requests,[url]);
-  await h.dispatch('fetch',h.req(url));
-  assert.deepEqual(h.requests,[url]);
-  h.setOnline(false);
-  assert.ok((await h.dispatch('fetch',h.req(url))).result);
-  assert.deepEqual(h.requests,[url]);
-});
-
-test('never intercept documents, SQL/API, or private and signed URLs',async()=>{
-  const h=createHarness();
-  for(const request of [
-    h.req('https://loc.lo3rwang.cc/','document'),
-    h.req('https://loc.lo3rwang.cc/api/loc/site-bootstrap'),
-    h.req('https://loc.lo3rwang.cc/pics/private.webp?token=secret'),
-    h.req('https://loc.lo3rwang.cc/admin/profile.webp'),
-    h.req('https://remote.example/get-image?id=1'),
-    h.req('https://remote.example/image.webp?X-Amz-Signature=secret'),
-    h.req('https://remote.example/private/hidden.webp')
-  ]){
-    assert.equal((await h.dispatch('fetch',request)).handled,false,request.url);
-  }
-  assert.equal(h.requests.length,0);
-});
-
-test('public external HTTPS image URLs can be cached including opaque responses',async()=>{
-  const h=createHarness();
-  const url='https://remote.example/photos/distant.webp';
-  await h.dispatch('fetch',h.req(url));
-  await h.dispatch('fetch',h.req(url));
-  assert.deepEqual(h.requests,[url]);
-});
-
-test('updating the full image URL fetches a new version; other cache entries stay',async()=>{
-  const h=createHarness();
-  const first='https://loc.lo3rwang.cc/pics/cover.webp?v=1';
-  const second='https://loc.lo3rwang.cc/pics/cover.webp?v=2';
-  await h.dispatch('fetch',h.req(first));
-  await h.dispatch('fetch',h.req(second));
-  await h.dispatch('fetch',h.req(first));
-  assert.deepEqual(h.requests,[first,second]);
-});
-
-test('cache limit evicts oldest pictures without intercepting any content request',async()=>{
-  const h=createHarness();
-  for(let i=0;i<203;i++)await h.dispatch('fetch',h.req('https://loc.lo3rwang.cc/pics/'+i+'.webp'));
-  const cache=h.stored.get('loc-public-images-v1');
-  assert.equal(cache.size,200);
-  assert.equal(h.deleted.length,3);
-  assert.equal(cache.has('https://loc.lo3rwang.cc/pics/0.webp'),false);
-});
-
-test('service worker registration only in browser, not Capacitor or HTTP remote',()=>{
-  const shell=readFileSync(new URL('../app/AppShell.jsx',import.meta.url),'utf8');
-  assert.match(shell,/navigator\.serviceWorker\.register\('\/sw\.js',\{scope:'\/'\}\)/);
-  assert.match(shell,/Capacitor\.isNativePlatform\(\)/);
-  assert.match(shell,/location\.protocol!=='https:'/);
-});
-
-test('explicit no-store and private image responses never enter the cache',async()=>{
-  const h=createHarness();
-  const url='https://loc.lo3rwang.cc/pics/cover.webp';
-  for(const policy of ['no-store','private']){
-    h.setResponseHeaders({'content-type':'image/webp','cache-control':policy});
-    await h.dispatch('fetch',h.req(url));
-    await h.dispatch('fetch',h.req(url));
-    assert.equal(h.stored.get('loc-public-images-v1')?.size,0,policy);
-  }
-  assert.deepEqual(h.requests,[url,url,url,url]);
-  // Only a cacheable response may be reused on subsequent navigations.
-  h.setResponseHeaders({'content-type':'image/webp','cache-control':'public, max-age=3600'});
-  await h.dispatch('fetch',h.req(url));
-  h.setOnline(false);
-  assert.ok((await h.dispatch('fetch',h.req(url))).result);
-  assert.equal(h.requests.length,5);
-});
-
-test('published content-hashed JS/CSS is cached without a second fetch',async()=>{
-  const h=createHarness();
-  for(const [path,mime,destination] of [
-    ['/_next/static/chunks/abc123.js','application/javascript','script'],
-    ['/_next/static/css/def456.css','text/css','style']
-  ]){
-    h.setResponseHeaders({'content-type':mime,'cache-control':'public,max-age=31536000,immutable'});
-    const url='https://loc.lo3rwang.cc'+path;
-    await h.dispatch('fetch',h.req(url,destination));
-    await h.dispatch('fetch',h.req(url,destination));
-  }
-  assert.equal(h.requests.length,2);
-  assert.equal(h.stored.get('loc-public-static-v1').size,2);
-});
-test('retired JSON Blocks and Bootstrap URLs no longer intercept',async()=>{
-  const h=createHarness();
-  for(const url of [
-    'https://loc.lo3rwang.cc/_loc/blocks/lo3rwang/index.json',
-    'https://loc.lo3rwang.cc/_loc/config/lo3rwang.json',
-    'https://loc.lo3rwang.cc/_loc/site-bootstrap.json'
-  ])assert.equal((await h.dispatch('fetch',h.req(url,''))).handled,false,url);
-  assert.deepEqual(h.requests,[]);
-});
-test('activation removes legacy JSON Block caches but keeps current static cache',async()=>{
-  const h=createHarness();
-  h.stored.set('loc-public-blocks-v1',new Map());
-  h.stored.set('loc-public-block-age-v1',new Map());
-  h.stored.set('loc-public-static-v1',new Map());
-  await h.dispatch('activate');
-  assert.equal(h.stored.has('loc-public-blocks-v1'),false);
-  assert.equal(h.stored.has('loc-public-block-age-v1'),false);
-  assert.equal(h.stored.has('loc-public-static-v1'),true);
-});
-
-test('public home can work offline, while management and search bypass Service Worker HTML caching',async()=>{
-  const h=createHarness();
-  h.setResponseHeaders({'content-type':'text/html'});
-  const home={...h.req('https://loc.lo3rwang.cc/','document'),mode:'navigate'};
-  const manage={...h.req('https://loc.lo3rwang.cc/manage/manage/','document'),mode:'navigate'};
-  const search={...h.req('https://loc.lo3rwang.cc/search/','document'),mode:'navigate'};
-  assert.equal((await h.dispatch('fetch',home)).handled,true);
-  assert.equal((await h.dispatch('fetch',manage)).handled,false);
-  assert.equal((await h.dispatch('fetch',search)).handled,false);
-  h.setOnline(false);
-  assert.ok((await h.dispatch('fetch',home)).result);
-  assert.equal((await h.dispatch('fetch',manage)).handled,false);
-  assert.equal((await h.dispatch('fetch',search)).handled,false);
-  assert.deepEqual(h.requests,[home.url,home.url]);
-  assert.ok(![...h.stored.values()].some(entries=>entries.has(manage.url)||entries.has(search.url)));
-});
-
-test('search, numeric ISR, authenticated routes and game API are never intercepted',async()=>{
-  const h=createHarness();
-  for(const url of [
-    '/api/loc/scopes/lo3rwang/numeric/statistics',
-    '/rest/v1/rpc/read_scope_statistics',
-    '/search?q=test','/manage/manage',
-    '/lrunes/game/api/room',
-    '/auth/session'
-  ]){
-    const result=await h.dispatch('fetch',h.req('https://loc.lo3rwang.cc'+url,''));
-    assert.equal(result.handled,false,url);
-  }
-  assert.equal(h.requests.length,0);
+test('LOC website does not re-register PWA and manifest no longer enables installation',()=>{
+ const shell=read('app/AppShell.jsx');
+ assert.doesNotMatch(shell,/serviceWorker\.register\s*\(/);
+ assert.match(shell,/serviceWorker\.getRegistrations\s*\(/);
+ assert.match(shell,/reg\.unregister\s*\(/);
+ assert.equal(existsSync(new URL('../app/manifest.js',import.meta.url)),false);
 });
