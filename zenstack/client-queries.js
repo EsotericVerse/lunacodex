@@ -7,8 +7,9 @@ import {flashMessage} from '../app/loc/flash-message';
 // ZenStack V3 frontend resource layer. One QueryClient uses the trusted
 // ZenStack/Kysely SQL Gateway. No parallel browser cache or background polling.
 const keyOf=key=>Array.isArray(key)?key:[key];
+export const LOC_MIN_CACHE_TTL_MS=2*60*60*1000;
 const defaults={
-  staleTime:Infinity,refetchOnMount:false,refetchOnWindowFocus:false,
+  gcTime:LOC_MIN_CACHE_TTL_MS,staleTime:Infinity,refetchOnMount:false,refetchOnWindowFocus:false,
   refetchOnReconnect:false,refetchInterval:false,retry:false
 };
 
