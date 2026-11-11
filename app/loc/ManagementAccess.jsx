@@ -1,5 +1,5 @@
 'use client';
-import {useCallback,useEffect,useState} from 'react';
+import {useCallback,useEffect,useRef,useState} from 'react';
 import {useAccount,readVerifiedManagementEntry} from './use-account';
 import {useEditDock} from '../modular/edit-dock';
 import {FeaturePage} from '../modular/ui';
@@ -20,6 +20,9 @@ export default function ManagementAccess({scopeId,level='scope',featureId='manag
   const account=useAccount({enabled:false}),dock=useEditDock();
   const [verification,setVerification]=useState(pending);
   const [locked,setLocked]=useState(false);
+  // Set once we arrive from the login page; a second denial must show its
+  // reason instead of bouncing back to /login forever.
+  const cameFromLogin=useRef(false);
   const check=useCallback(()=>editorSessionStatus(window.sessionStorage).expired
     ?account.refresh()
     :(readVerifiedManagementEntry()||account.refresh()),[account.refresh]);
@@ -30,7 +33,7 @@ export default function ManagementAccess({scopeId,level='scope',featureId='manag
     // This is only a UX return marker. The Scope permission must still be
     // verified live; it never acts as an authorization credential.
     const fromLogin=window.sessionStorage.getItem(LOGIN_RETURN_KEY)===path;
-    if(fromLogin)window.sessionStorage.removeItem(LOGIN_RETURN_KEY);
+    if(fromLogin){cameFromLogin.current=true;window.sessionStorage.removeItem(LOGIN_RETURN_KEY);}
     setVerification(pending());
     void verifyManagementEntry(fromLogin?account.refresh:check).then(result=>{
       if(!active)return;
@@ -74,7 +77,7 @@ export default function ManagementAccess({scopeId,level='scope',featureId='manag
   // Access failure or expired edit session returns to the full-screen Clerk
   // gateway; never expose a stale/denied editor or show an expiry text panel.
   useEffect(()=>{
-    if(!ready||allowed&&!locked)return;
+    if(!ready||allowed&&!locked||cameFromLogin.current)return;
     window.dispatchEvent(new CustomEvent('loc-management-entry-denied',{detail:{scopeId}}));
     const target=window.location.pathname+window.location.search+window.location.hash;
     window.location.replace('/login/index.html?return_to='+encodeURIComponent(target));
@@ -87,6 +90,17 @@ export default function ManagementAccess({scopeId,level='scope',featureId='manag
     dock?.begin(scopeId,{globalManage:Boolean(verification.authorizer?.canManageGlobalSync())});
   },[allowed,entered,scopeId,dock?.begin,verification.authorizer]);
 
+  if(ready&&(!allowed||locked)&&cameFromLogin.current)return <FeaturePage featureId={featureId}>
+    <section className="loc-card scope-feature-card">
+      <p role="alert">{verification.error||(verification.user
+        ?'LOC 身分已驗證，但這個帳號沒有此範圍的管理權限。'
+        :'登入完成，但讀不到 LOC 身分（Session）。')}</p>
+      <button type="button" onClick={()=>window.location.reload()}>重新驗證</button>{' '}
+      <button type="button" onClick={()=>window.location.replace('/login/index.html?return_to='+
+        encodeURIComponent(window.location.pathname+window.location.search+window.location.hash))}>
+        回登入頁</button>
+    </section>
+  </FeaturePage>;
   if(!ready||!allowed||!entered)return <FeaturePage featureId={featureId}>
     <section className="loc-card scope-feature-card">
       <p role="status">正在開啟 LOC 身分驗證…</p>
