@@ -1705,7 +1705,7 @@ export default function Culture(){
                   {periodWorksPage.loading&&!visibleWorkRows.length?<p role='status' className='scope-status'>{l.loadingPeriodWorks}</p>:null}
                   <IncrementalList
                     items={visibleWorkRows}
-                    batchSize={20}
+                    batchSize={DEFAULT_LIST_BATCH_SIZE}
                     resetKey={classificationWindowStart+'|'+classificationWindowEnd+'|'+selectedCategory+'|'+selectedRiverGroup+'|source|'+articleSort}
                     className='scope-culture-source-work-scroll loc-public-article-list'
                     externalHasMore={periodWorksPage.hasMore}
