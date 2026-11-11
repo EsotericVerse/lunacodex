@@ -174,10 +174,10 @@ export async function selectSourceCatalog(scope,{startDate='',endDate='',limit=2
   const rows=await cachedReadScopeCategoryTotals(current.id,{
     startDate:dateOnly(startDate),endDate:dateOnly(endDate)
   });
-  const safeLimit=Math.max(1,Math.min(DB_QUERY_BATCH_SIZE,Math.floor(Number(limit)||20)));
+  // Return the complete SQL-calculated source catalog and its true total.
   const normalized=rows.filter(row=>row.kind==='source').map(row=>({
     scope_id:current.id,site:String(row.category||''),item_count:Number(row.item_count)||0
-  })).sort((a,b)=>b.item_count-a.item_count||a.site.localeCompare(b.site)).slice(0,safeLimit);
+  })).sort((a,b)=>b.item_count-a.item_count||a.site.localeCompare(b.site));
   return {rows:normalized,totalCount:normalized.length};
 }
 
@@ -218,10 +218,9 @@ async function selectCategoryCountsRaw(table,categoryColumn,{startDate='',endDat
   const rows=await cachedReadScopeCategoryTotals(match[1],{
     startDate:dateOnly(startDate),endDate:dateOnly(endDate)
   });
-  const cap=Math.max(1,Math.min(DB_QUERY_BATCH_SIZE,Math.floor(Number(limit)||20)));
   return rows.filter(row=>row.kind===(media?'media':'source')&&String(row.category||'').trim())
     .map(row=>({term:String(row.category).trim(),item_count:Number(row.item_count)||0}))
-    .sort((a,b)=>b.item_count-a.item_count||a.term.localeCompare(b.term)).slice(0,cap);
+    .sort((a,b)=>b.item_count-a.item_count||a.term.localeCompare(b.term));
 }
 
 function mediaIdsOf(value){
@@ -468,7 +467,7 @@ function makeProvider({id,table,source,scope,idColumn,columns,searchFields,filte
   const outputColumns=Object.freeze(unique(columns));
   const frozenFields=Object.freeze(unique(searchFields));
   const frozenFilters=Object.freeze(filters.map(item=>Object.freeze({...item})));
-  const pageSize=Math.max(1,Math.floor(Number(batchSize)||DEFAULT_LIST_BATCH_SIZE));
+  const pageSize=Math.max(1,Math.min(100,Math.floor(Number(batchSize)||DEFAULT_LIST_BATCH_SIZE)));
   return Object.freeze({
     id,table,source,scope,idColumn,columns:outputColumns,searchFields:frozenFields,filters:frozenFilters,
     async search(query,{cursor=0,startDate='',endDate='',and=[],nor=[],source='auto',browse=false,signal=null,sortDirection='asc'}={}){
@@ -491,7 +490,8 @@ function makeProvider({id,table,source,scope,idColumn,columns,searchFields,filte
       const ascending=sortDirection!=='desc';
       const orders=[
         ...(dateColumn?[{column:dateColumn,ascending}]:[]),
-        // UID is an opaque identity, never a tie-break ordering key.
+        // Opaque UIDs are only a deterministic tie-breaker, never a date.
+        {column:idColumn,ascending:true}
       ];
 
       // The exact COUNT(*) query can time out on ILIKE against article content.
@@ -505,11 +505,12 @@ function makeProvider({id,table,source,scope,idColumn,columns,searchFields,filte
           dataQuery=dataQuery.ilike(exactColumn,exact);
         }else if(!browse)dataQuery=applyParsedTerms(dataQuery,frozenFields,parsed,and,nor);
         dataQuery=applyOrders(dataQuery,orders);
-        return dataQuery.range(offset,offset+pageSize);
+        return dataQuery.range(offset,offset+pageSize-1);
       },{source,authenticated,signal});
       const dataSource=dataResult.__dataSource||source||'auto';
       const found=dataResult.data||[];
-      const hasMore=found.length>pageSize;
+      // A full page may have a successor; only the next requested page probes it.
+      const hasMore=found.length===pageSize;
       const rows=found.slice(0,pageSize).map(row=>recordFor(row,source,id,scope,activeTable));
       const nextOffset=offset+rows.length;
       return {rows,hasMore,nextCursor:hasMore?nextOffset:null,totalCount:null,dataSource};

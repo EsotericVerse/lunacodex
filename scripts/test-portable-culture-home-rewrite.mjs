@@ -36,8 +36,9 @@ test('only explicit article-list request uses bounded 100-row UID query',()=>{
   assert.match(sql,/row\.list===false[\s\S]*?hidden:true/);
   const view=file('app/loc/views/CulturePublicReader.jsx');
   assert.match(view,/onClick=\{\(\)=>openArticles\(item\.site\)\}/);
-  assert.match(view,/setArticleVisible\(20\)/);
-  assert.match(view,/Math\.min\(n\+20,articleRows.length\)/);
+  assert.match(view,/articleRows\.map\(/);
+  assert.match(view,/fetchArticles\(\{append:true,offset:articleOffset\}\)/);
+  assert.doesNotMatch(view,/setArticleVisible/);
 });
 test('opening Culture lists does not preflight management grants; full text enforces list permission on UID SELECT',()=>{
   const culture=file('app/modular/features/Culture.jsx');

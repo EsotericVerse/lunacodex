@@ -516,7 +516,7 @@ test('Admin first tab is People; lists and network consolidate existing secure e
   assert.deepEqual([...menu[1].matchAll(/value:'([^']+)'/g)].map(x=>x[1]),
     ['lists','network','io','featureHero','themes']);
    assert.match(admin,/section==='io'\?<RuntimeIoSettings\/>/);
-   assert.match(read('app/loc/views/admin-panels/RuntimeIoSettings.jsx'),/key:'maxRows'/);
+   assert.doesNotMatch(read('app/loc/views/admin-panels/RuntimeIoSettings.jsx'),/key:'maxRows'/);
   assert.match(admin,/useManagementSection\(ADMIN_OPTIONS,'lists'/);
   for(const [oldId,newId] of Object.entries({
     database:'network',isr:'network',blocklist:'lists'

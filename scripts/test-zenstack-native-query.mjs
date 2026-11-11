@@ -34,6 +34,12 @@ test('native scope select retains columns, filters, order and bounded pagination
   assert.deepEqual(plan.orderBy,[{uid:'desc'}]);
   assert.equal(plan.take,8);assert.equal(plan.skip,2);
 });
+test('unbounded native SELECT does not inherit a Data API Max Rows limit',()=>{
+  const {limit,...all}=simple;
+  const unlimited=nativeReadPlan(all,'Galaxy');
+  assert.equal(Object.hasOwn(unlimited,'take'),false);
+  assert.equal(nativeReadPlan({...simple,limit:15000,offset:10000001},'Galaxy').take,15000);
+});
 test('unsupported filters and coercible column values keep the Kysely path',()=>{
   for(const change of [
     {or:['uid.eq.Ab12Cd34']},{columns:['*']},{columns:['content; DROP TABLE']},{columns:['uid','media_link']},

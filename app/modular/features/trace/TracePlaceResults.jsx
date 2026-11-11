@@ -18,7 +18,7 @@ import {ArticleSortSelect,IncrementalList,WorkFullText} from '../../ui';
 
 const CultureTimeline=dynamic(()=>import('../../modules/culture-timeline/CultureTimeline'),{loading:()=> <p className="scope-status">正在開啟時間長河…</p>});
 const StatisticsMultiChart=dynamic(()=>import('../../modules/statistics/StatisticsMultiChart'),{loading:()=> <p className="scope-status">正在開啟統計圖…</p>});
-const PAGE_SIZE=40;
+const PAGE_SIZE=100;
 const validDate=value=>/^\d{4}-\d{2}-\d{2}$/.test(String(value||''));
 
 function TraceWork({row,scope,timeLabel=''}){
@@ -122,7 +122,8 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
         const filters=traceArticleIdFilters(selectedIds,{startDate,endDate,sourceName:sourceFilter});
         const result=await selectRows(scope.galaxy,{
           columns:'uid,title,createtime,date,place_id',
-          filters,orders:[{column:'date',ascending:sort==='asc'},{column:'createtime',ascending:sort==='asc'}],
+          filters,orders:[{column:'date',ascending:sort==='asc'},{column:'createtime',ascending:sort==='asc'},
+            {column:'uid',ascending:true}],
           limit:PAGE_SIZE,offset,count:offset===0?'exact':null
         });
         const rows=result.rows||[];
@@ -169,7 +170,8 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
           ...traceArticleIdFilters(placeIds,{startDate,endDate,sourceName:sourceFilter}),
           {column:'media_link',operator:'overlaps',value:mediaIds}
         ],
-        orders:[{column:'date',ascending:sort==='asc'},{column:'createtime',ascending:sort==='asc'}],
+        orders:[{column:'date',ascending:sort==='asc'},{column:'createtime',ascending:sort==='asc'},
+            {column:'uid',ascending:true}],
         limit:PAGE_SIZE,maxLimit:PAGE_SIZE,offset:articleOffset
       });
       const moreInMediaPage=rows.length===PAGE_SIZE;

@@ -326,14 +326,14 @@ async function cultureListPage(db,scope,start,end,options,{engine='postgres',nam
   if(!start||!end||start>end)reject('Invalid Culture list dates');
   const site=String(options?.site||'').trim();
   const offset=Number(options?.offset||0);
-  if(!site||site.length>120||!Number.isSafeInteger(offset)||offset<0||offset>100000)
+  if(!site||site.length>120||!Number.isSafeInteger(offset)||offset<0)
     reject('Invalid Culture list selection');
   const table=engine==='postgres'?'silver.'+scope+'_galaxy':
     portableRelation(scope+'_galaxy',engine,namespace);
   const raw=await db.selectFrom(table).select(['uid','date','title','list'])
     .where('date','>=',start).where('date','<=',end)
     .where('site','=',site).where('culture','=',true)
-    .orderBy('createtime','desc').limit(100).offset(offset).execute();
+    .orderBy('createtime','desc').orderBy('uid','asc').limit(100).offset(offset).execute();
   const rows=raw.map(row=>row.list===false
     ?{hidden:true,title:'本文已隱藏',list:false}
     :{uid:String(row.uid),date:portableDay(row.date),

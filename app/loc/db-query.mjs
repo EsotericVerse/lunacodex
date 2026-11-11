@@ -5,10 +5,8 @@ import {coalescePendingPublicRead} from './inflight-public-read.mjs';
 import {mapBounded} from './bounded-parallel.mjs';
 export {DB_QUERY_BATCH_SIZE,queryBatchSize} from './db-contract.mjs';
 
-// Browser public Data API pages are bounded independently of the application's
-// 10,000-row I/O ceiling. Keep paging offsets aligned with actual page sizes
-// and never pass an oversize range to the public query adapter.
-const PUBLIC_DATA_API_PAGE_SIZE=1000;
+// Native Kysely SELECT has no Supabase Data API Max Rows ceiling.
+// Full-result readers use internal transport pages without truncating SQL totals.
 
 import {dbAuthClient,dbBackupPublicClient,dbConfiguredPublicClient,dbPublicClient} from './db-client.mjs';
 import {isDatabaseConnectivityFailure,markPrimaryReadFailed,markPrimaryReadSucceeded,markBackupReadFailed,markBackupReadSucceeded} from './db-source-status.mjs';
@@ -209,15 +207,14 @@ export async function selectRows(table,{
   limit=20,
   offset=0,
   count=null,
-  maxLimit=DB_QUERY_BATCH_SIZE,
   source='auto',
   authenticated=false,
   signal=null,
   expectedDbId=''
 }={}){
   if(!String(columns||'').trim()||String(columns).trim()==='*')throw new Error('DB SELECT requires explicit columns');
-  const safeMaximum=Math.max(1,Math.min(PUBLIC_DATA_API_PAGE_SIZE,queryBatchSize(columns),Math.floor(Number(maxLimit)||DB_QUERY_BATCH_SIZE)));
-  const safeLimit=Math.max(1,Math.min(safeMaximum,Math.floor(Number(limit)||20)));
+  // An explicit LIMIT controls only this request; never clamp it to a global Max Rows.
+  const safeLimit=Math.max(1,Math.floor(Number(limit)||20));
   const safeOffset=Math.max(0,Math.floor(Number(offset)||0));
   warnOversizedFilters(table,filters);
   const request=async()=>{
@@ -246,21 +243,22 @@ export async function selectAllRows(table,{
   pageSize=DB_QUERY_BATCH_SIZE,
   onProgress=null
 }={}){
-  const size=Math.max(1,Math.min(PUBLIC_DATA_API_PAGE_SIZE,queryBatchSize(columns),Math.floor(Number(pageSize)||DB_QUERY_BATCH_SIZE)));
+  const size=Math.max(1,Math.floor(Number(pageSize)||queryBatchSize(columns)));
   const first=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset:0,count:'exact'});
   const rows=[...first.rows];
-  const total=Number(first.count) || rows.length;
+  const total=first.count==null||!Number.isSafeInteger(Number(first.count))?null:Number(first.count);
   const source=first.dataSource||'auto';
   let offset=rows.length;
   onProgress?.({completed:offset,total});
-  while(offset<total){
+  // Missing COUNT never means the first transport page is the whole table.
+  while(total===null||offset<total){
     const page=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset,source});
     if(!page.rows.length)break;
     rows.push(...page.rows);
     offset+=page.rows.length;
     onProgress?.({completed:offset,total});
   }
-  return {rows,count:total,dataSource:source};
+  return {rows,count:total??rows.length,dataSource:source};
 }
 
 // Like selectAllRows, but once the table is bigger than a couple of pages,
@@ -284,10 +282,20 @@ export async function selectAllRowsBounded(table,{
   parallelAfterPages=PARALLEL_SCAN_AFTER_PAGES,
   concurrency=PARALLEL_SCAN_CONCURRENCY
 }={}){
-  const size=Math.max(1,Math.min(PUBLIC_DATA_API_PAGE_SIZE,queryBatchSize(columns),Math.floor(Number(pageSize)||DB_QUERY_BATCH_SIZE)));
+  const size=Math.max(1,Math.floor(Number(pageSize)||queryBatchSize(columns)));
   const first=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset:0,count:'exact',authenticated});
   const rows=[...first.rows];
-  const total=Number(first.count)||rows.length;
+  const total=first.count==null||!Number.isSafeInteger(Number(first.count))?null:Number(first.count);
+  if(total===null||rows.length<Math.min(total,size)){
+    // A missing COUNT or unexpectedly short transport page cannot truncate history.
+    let offset=rows.length;
+    while(total===null||offset<total){
+      const page=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset,authenticated});
+      if(!page.rows.length)break;
+      rows.push(...page.rows);offset+=page.rows.length;
+    }
+    return {rows,count:total??rows.length,dataSource:first.dataSource};
+  }
   if(rows.length>=total)return {rows,count:total,dataSource:first.dataSource};
   const remainingOffsets=[];
   for(let offset=rows.length;offset<total;offset+=size)remainingOffsets.push(offset);
@@ -297,7 +305,7 @@ export async function selectAllRowsBounded(table,{
       const page=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset,authenticated,source});
       rows.push(...page.rows);
     }
-    return {rows,count:total,dataSource:source};
+    return {rows,count:total??rows.length,dataSource:source};
   }
   const pages=await mapBounded(remainingOffsets,concurrency,offset=>
     selectRows(table,{columns,filters,orFilter,orders,limit:size,offset,authenticated}));
@@ -319,13 +327,12 @@ export async function forEachAllRowsPage(table,{
   pausePageMs=STREAM_PAGE_PAUSE_MS,
   signal=null
 }={},onPage){
-  const size=Math.max(1,Math.min(PUBLIC_DATA_API_PAGE_SIZE,queryBatchSize(columns),Math.floor(Number(pageSize)||DB_QUERY_BATCH_SIZE)));
+  const size=Math.max(1,Math.floor(Number(pageSize)||queryBatchSize(columns)));
   let offset=0;
   for(;;){
     const {rows}=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset,signal});
     if(!rows.length)break;
     await onPage(rows);
-    if(rows.length<size)break;
     offset+=rows.length;
     if(pausePageMs>0)await new Promise(resolve=>setTimeout(resolve,pausePageMs));
   }

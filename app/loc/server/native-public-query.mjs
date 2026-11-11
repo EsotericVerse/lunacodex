@@ -93,9 +93,11 @@ function normalize(body){
     if(!order||typeof order!=='object'||Array.isArray(order))throw invalid('Invalid order');
     col(order.column);
   }
-  const limit=Number(body.limit),offset=Number(body.offset);
-  if(!Number.isSafeInteger(limit)||limit<0||limit>5000||
-    !Number.isSafeInteger(offset)||offset<0||offset>10000000)
+  // An omitted LIMIT means a complete SELECT. Article lists explicitly request 100.
+  const limit=body.limit==null?null:Number(body.limit);
+  const offset=body.offset==null?0:Number(body.offset);
+  if((limit!==null&&(!Number.isSafeInteger(limit)||limit<0))||
+    !Number.isSafeInteger(offset)||offset<0)
     throw invalid('Invalid SQL page bounds');
   if(body.cardinality!=null&&!['single','maybeSingle'].includes(body.cardinality))
     throw invalid('Invalid SQL result cardinality');
@@ -262,7 +264,8 @@ export async function handleNativePublicQuery(request,env={},{
       ?Number((await withFilters(selected.db.selectFrom(table),normalized)
         .select(eb=>eb.fn.countAll().as('count')).executeTakeFirst())?.count||0)
       :null;
-    const rows=await query.limit(normalized.limit).offset(normalized.offset).execute();
+    const rows=await (normalized.limit===null?query:query.limit(normalized.limit))
+      .offset(normalized.offset).execute();
     if(normalized.cardinality==='single'&&rows.length!==1||
        normalized.cardinality==='maybeSingle'&&rows.length>1)
       return respond({error:'Expected one LOC record',stage:'cardinality'},406);

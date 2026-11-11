@@ -1,7 +1,7 @@
 'use client';
 
 
-import {DB_QUERY_BATCH_SIZE,selectRows} from './db-query.mjs';
+import {selectAllRows,selectRows} from './db-query.mjs';
 import {scopeConfigColumns,scopeFeatureEnabled} from './scope-config-fields.mjs';
 import {Capacitor} from '@capacitor/core';
 import {SCOPE_ROUTE_INDEX} from '../modular/scope-route-index.js';
@@ -293,9 +293,9 @@ export async function selectLiveScopeBlocks(scopeId,page='index'){
   }
   // Other management pages still need their authenticated read contract;
   // do not expose them through the public Kysely endpoint.
-  const {rows}=await selectRows(`silver.${id}_blocks`,{
+  const {rows}=await selectAllRows(`silver.${id}_blocks`,{
     columns:BLOCK_COLUMNS,filters:[{column:'page_name',operator:'eq',value:name}],
-    limit:DB_QUERY_BATCH_SIZE,offset:0
+    orders:[{column:'block_order',ascending:true}]
   });
   return (rows||[]).sort((a,b)=>Number(a.block_order||0)-Number(b.block_order||0));
 }

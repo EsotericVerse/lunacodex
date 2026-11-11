@@ -209,7 +209,6 @@ export default function CulturePublicReader(){
   const [selectedCategoryKey,setSelectedCategoryKey]=useState('');
   const [articleRows,setArticleRows]=useState([]);
   const [articleOffset,setArticleOffset]=useState(0);
-  const [articleVisible,setArticleVisible]=useState(20);
   const [articleMore,setArticleMore]=useState(false);
   const [articlesOpen,setArticlesOpen]=useState(false);
   const [articlesLoading,setArticlesLoading]=useState(false);
@@ -292,7 +291,7 @@ export default function CulturePublicReader(){
     [densityMode,keywordDaily,daily,catalog,expandedSources,rangeStart,rangeEnd]);
   const resetArticles=(site='',categoryKey='')=>{
     sequence.current+=1;setSelectedSite(site);setSelectedCategoryKey(categoryKey);setArticlesOpen(false);
-    setArticleRows([]);setArticleOffset(0);setArticleVisible(20);
+    setArticleRows([]);setArticleOffset(0);
     setArticleMore(false);setArticleError('');fullSequence.current+=1;
     setFullUid('');setFullText('');setFullError('');
   };
@@ -307,7 +306,6 @@ export default function CulturePublicReader(){
       if(request!==sequence.current)return;
       setArticleRows(old=>append?[...old,...page.rows]:page.rows);
       setArticleOffset(page.nextCursor?.offset||offset+page.rows.length);
-      setArticleVisible(old=>append?old+20:20);
       setArticleMore(page.hasMore);
     }catch(reason){if(request===sequence.current)setArticleError(String(reason?.message||reason));}
     finally{if(request===sequence.current)setArticlesLoading(false);}
@@ -324,13 +322,12 @@ export default function CulturePublicReader(){
     // Any date/filter change invalidates the currently visible list.
     sequence.current+=1;fullSequence.current+=1;
     setArticlesOpen(false);setArticleRows([]);setArticleOffset(0);
-    setArticleVisible(20);setArticleMore(false);setArticleError('');
+    setArticleMore(false);setArticleError('');
     setSelectedSite('');setSelectedCategoryKey('');
     setFullUid('');setFullText('');setFullError('');
   },[scopeId,rangeStart,rangeEnd,densityMode,keywordClass]);
   const loadMore=()=>{
     if(!articlesOpen||!selectedSite)return;
-    if(articleVisible<articleRows.length){setArticleVisible(n=>Math.min(n+20,articleRows.length));return;}
     if(articleMore&&!articlesLoading)fetchArticles({append:true,offset:articleOffset});
   };
   const toggleFull=async row=>{
@@ -421,7 +418,7 @@ export default function CulturePublicReader(){
       {articlesOpen&&densityMode==='source'&&selectedSite?<section className='scope-card scope-culture-source-detail' data-selected-category={selectedCategoryKey}>
         <h3>{selectedSite}｜相關文章列表</h3>
         {articleError?<p role='alert' className='scope-status scope-error'>{articleError}</p>:null}
-        {articleRows.slice(0,articleVisible).map((row,index)=>row.hidden
+        {articleRows.map((row,index)=>row.hidden
           ?<p className='scope-status' key={row.key||index}>本文已隱藏</p>
           :<div className='scope-work-list-row' key={row.key||index}>
             <span>標題：{row.title}　日期：{row.date}　</span>
@@ -440,7 +437,7 @@ export default function CulturePublicReader(){
             </div>:null}
           </div>)}
         {articlesLoading?<p className='scope-status' role='status' aria-live='polite'>載入中請稍後</p>:null}
-        {!articlesLoading&&(articleVisible<articleRows.length||articleMore)
+        {!articlesLoading&&articleMore
           ?<button type='button' className='loc-button' onClick={loadMore}>
             點擊繼續顯示
           </button>:null}
