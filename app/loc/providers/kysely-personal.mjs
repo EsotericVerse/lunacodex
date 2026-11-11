@@ -86,12 +86,13 @@ export async function executeLocPersonal(db,claims,body){
       if(!item||typeof item!=='object')throw bad('Invalid personal sorting');
       query=query.orderBy(name(item.column),item.ascending===false?'desc':'asc');
     }
-    const limit=payload.p_limit??100;
+    const limit=payload.p_limit==null?null:Number(payload.p_limit);
     const offset=payload.p_offset??0;
-    if(!Number.isInteger(limit)||limit<0||limit>5000||
-      !Number.isInteger(offset)||offset<0)
+    if(limit!==null&&(!Number.isSafeInteger(limit)||limit<0)||
+      !Number.isSafeInteger(offset)||offset<0)
       throw bad('Invalid personal pagination');
-    const rows=await query.limit(limit).offset(offset).execute();
+    if(limit!==null)query=query.limit(limit);
+    const rows=await query.offset(offset).execute();
     return {data:rows,count:null};
   }
   if(body.kind!=='personal-write')throw bad('Unsupported LOC personal operation');
