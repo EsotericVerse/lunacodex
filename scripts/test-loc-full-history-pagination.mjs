@@ -44,16 +44,23 @@ test('culture article titles respect dates and fetch exactly 100 new rows per pa
   assert.ok(calls.every(x=>x.limit===100));
 });
 
-test('all-row SELECT continues when backend does not supply count',async()=>{
+test('complete SELECT makes one unbounded SQL request even when COUNT is absent',async()=>{
   const source=read('app/loc/db-query.mjs');
   const section=source.slice(source.indexOf('export async function selectAllRows('),
-    source.indexOf('// Like selectAllRows')).replace('export async function','async function');
+    source.indexOf('// Retain the former entry point')).replace('export async function','async function');
   const values=Array.from({length:2305},(_,i)=>i);let calls=0;
-  const selectRows=async(_table,{offset,limit})=>{calls++;return {rows:values.slice(offset,offset+limit),count:null,dataSource:'primary'};};
-  const readAll=new Function('selectRows','queryBatchSize','DB_QUERY_BATCH_SIZE',
-    section+'\nreturn selectAllRows;')(selectRows,()=>5000,5000);
+  const selectRows=async(_table,{limit,count})=>{
+    calls++;
+    assert.equal(limit,undefined,'no LIMIT for a complete SELECT');
+    assert.equal(count,'exact');
+    return {rows:values,count:null,dataSource:'primary'};
+  };
+  const readAll=new Function('selectRows','DB_QUERY_BATCH_SIZE',
+    section+'\nreturn selectAllRows;')(selectRows,5000);
   const result=await readAll('silver.example',{columns:'uid',pageSize:1000});
-  assert.equal(result.rows.length,2305);assert.equal(result.count,2305);assert.equal(calls,4);
+  assert.equal(result.rows.length,2305);
+  assert.equal(result.count,2305);
+  assert.equal(calls,1);
 });
 
 test('import compares every same-timestamp record, including after 1000',async()=>{
