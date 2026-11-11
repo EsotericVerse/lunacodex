@@ -219,6 +219,8 @@ export async function selectRows(table,{
   if(safeLimit!==null&&(!Number.isSafeInteger(safeLimit)||safeLimit<0)||
     !Number.isSafeInteger(safeOffset)||safeOffset<0)
     throw new Error('Invalid LOC SQL page bounds');
+  if(safeLimit===null&&safeOffset!==0)
+    throw new Error('SQL OFFSET requires explicit article-list pagination');
   warnOversizedFilters(table,filters);
   const request=async()=>{
     const {data,count:total,__dataSource}=await executePublicRead(table,relation=>{
