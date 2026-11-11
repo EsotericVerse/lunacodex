@@ -101,32 +101,6 @@ export default function TraceTerritoryPanel({scopeId='loc'}){
         {scopeQuery.error||totalsQuery.error||pointsQuery.error?
           <span role="alert" className="scope-status scope-error">年度據點資料暫時無法完整載入。</span>:null}
       </div>}>
-      <section className="loc-trace-territory-overview" aria-label="年度版圖情報">
-        <div className="loc-trace-territory-stats">
-          <strong>年度版圖</strong>
-          <span>{active.length} / {regions.length} 座據點</span>
-          <span>{totalArticles.toLocaleString()} 篇年度文章</span>
-          <span>{mapped.length} 座已定錨</span>
-        </div>
-        {ready&&!regions.length?<p className="scope-status">這個年度沒有帶 place_id 的文章。</p>:null}
-        {ready&&regions.length>mapped.length?<p className="scope-status">
-          未具有效座標的據點仍保留在下方名冊，不虛構地理位置。
-        </p>:null}
-        <details className="loc-trace-territory-register">
-          <summary>年度據點名冊 · {active.length} 座</summary>
-          <input type="search" className="scope-select" value={search} placeholder="尋找地點／來源"
-            aria-label="搜尋年度據點" onChange={event=>setSearch(event.target.value)}/>
-          <div className="loc-trace-territory-register-list">
-            {active.filter(place=>(place.title+' '+place.uid+' '+place.sources.map(row=>row.name).join(' '))
-              .toLowerCase().includes(search.trim().toLowerCase())).map(place=>
-              <button key={keyOf(place)} type="button" className="loc-button"
-                aria-pressed={selectedKey===keyOf(place)} onClick={()=>selectPlace(place)}>
-                <span>{place.title}</span>
-                <small>{place.total} 篇{!hasCoordinates(place.point)?' · 待補座標':''}</small>
-              </button>)}
-          </div>
-        </details>
-      </section>
       {selected?<section className="loc-trace-float-report loc-trace-territory-dossier"
         aria-label={selected.title+'年度據點內政'}>
         <header className="loc-trace-float-heading">
@@ -166,5 +140,31 @@ export default function TraceTerritoryPanel({scopeId='loc'}){
         <p className="scope-status">依文章日期排序，不代表實際抵達或行軍路線。</p>
       </section>:null}
     </TraceMap>
+      <section className="loc-trace-territory-overview" aria-label="年度版圖情報">
+        <div className="loc-trace-territory-stats">
+          <strong>年度版圖</strong>
+          <span>{active.length} / {regions.length} 座據點</span>
+          <span>{totalArticles.toLocaleString()} 篇年度文章</span>
+          <span>{mapped.length} 座已定錨</span>
+        </div>
+        {ready&&!regions.length?<p className="scope-status">這個年度沒有帶 place_id 的文章。</p>:null}
+        {ready&&regions.length>mapped.length?<p className="scope-status">
+          未具有效座標的據點仍保留在下方名冊，不虛構地理位置。
+        </p>:null}
+        <details className="loc-trace-territory-register">
+          <summary>年度據點名冊 · {active.length} 座</summary>
+          <input type="search" className="scope-select" value={search} placeholder="尋找地點／來源"
+            aria-label="搜尋年度據點" onChange={event=>setSearch(event.target.value)}/>
+          <div className="loc-trace-territory-register-list">
+            {active.filter(place=>(place.title+' '+place.uid+' '+place.sources.map(row=>row.name).join(' '))
+              .toLowerCase().includes(search.trim().toLowerCase())).map(place=>
+              <button key={keyOf(place)} type="button" className="loc-button"
+                aria-pressed={selectedKey===keyOf(place)} onClick={()=>selectPlace(place)}>
+                <span>{place.title}</span>
+                <small>{place.total} 篇{!hasCoordinates(place.point)?' · 待補座標':''}</small>
+              </button>)}
+          </div>
+        </details>
+      </section>
   </div>;
 }
