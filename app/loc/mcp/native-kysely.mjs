@@ -4,7 +4,9 @@ import {Kysely,PostgresDialect} from 'kysely';
 import pg from 'pg';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 
-const pools=new WeakMap();
+// Cloudflare request env wrappers can have different identities. Keep one
+// trusted business connection per isolate, not a new pool per HTTP request.
+let cachedConnection=null;
 const primary=DATABASE_ACCESS_LIST.find(row=>row.selected===true);
 function unavailable(message){
   return Object.assign(new Error(message),{code:'BACKEND_UNAVAILABLE',httpStatus:503});
@@ -33,16 +35,14 @@ export async function db_connection(env={},verifiedAlias='',{probeTicket=''}={})
     throw unavailable('Additional database connection not configured');
   if(probeTicket)throw unavailable('Manual probe is not a business SQL operation');
   const uri=mainUri(env);
-  let record=pools.get(env);
-  if(record?.uri===uri)return record.connection;
+  if(cachedConnection?.uri===uri)return cachedConnection.connection;
   const pool=new pg.Pool({connectionString:uri,max:3,
     idleTimeoutMillis:12000,connectionTimeoutMillis:7000,
     ssl:{rejectUnauthorized:true}});
   const dialect=new PostgresDialect({pool});
   const connection={db:new Kysely({dialect}),dialect,
     engine:'postgres',namespace:'silver',tableName:'',fieldMap:{}};
-  record={uri,connection};
-  pools.set(env,record);
+  cachedConnection={uri,connection};
   return connection;
 }
 export {db_connection as directMcpKysely};
