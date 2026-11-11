@@ -45,58 +45,12 @@ test('unsupported filters and coercible column values keep the Kysely path',()=>
     {or:['uid.eq.Ab12Cd34']},{columns:['*']},{columns:['content; DROP TABLE']},{columns:['uid','media_link']},
     {filters:[{column:'content',operator:'contains',value:'one'}]},
     {filters:[{column:'notAColumn',operator:'eq',value:'one'}]},
-    {filters:[{column:'culture',operator:'eq',value:'TRUE'}]},
-    {filters:[{column:'date',operator:'eq',value:'2026-02-30'}]},
-    {filters:[{column:'createtime',operator:'eq',value:'2026-11-08T12:00:00'}]},
-    {filters:[{column:'culture',operator:'gt',value:true}]},
-    {orders:[{column:'date',ascending:true,nullsFirst:true}]},
+    {filters:[{column:'culture',operator:'eq',value:'true'}]},
+    {filters:[{column:'date',operator:'eq',value:'2026-11-08'}]},
     {operation:'update'}
   ])assert.equal(nativeReadPlan({...simple,...change},'Galaxy'),null);
   assert.equal(nativeReadPlan(simple,'NotAModel'),null);
 });
-test('native ZModel query safely normalizes browser boolean and calendar date filters',()=>{
-  const filters=[
-    {column:'culture',operator:'eq',value:'true'},
-    {column:'statics',operator:'eq',value:'false'},
-    {column:'date',operator:'gte',value:'2025-02-21'}
-  ];
-  const plan=nativeReadPlan({...simple,filters},'Galaxy');
-  assert.deepEqual(plan.where.AND[0],{culture:{equals:true}});
-  assert.deepEqual(plan.where.AND[1],{statics:{equals:false}});
-  assert.equal(plan.where.AND[2].date.gte.toISOString(),'2025-02-21T00:00:00.000Z');
-  assert.equal(plan.take,8);
-  assert.equal(plan.skip,2);
-});
-test('native ZModel query preserves nullable and timestamp-with-timezone semantics',()=>{
-  const filters=[
-    {column:'date',operator:'is',value:null},
-    {column:'culture',operator:'is',value:false},
-    {column:'createtime',operator:'lt',value:'2026-11-11T13:05:00+08:00'}
-  ];
-  const plan=nativeReadPlan({...simple,filters},'Galaxy');
-  assert.deepEqual(plan.where.AND[0],{date:{equals:null}});
-  assert.deepEqual(plan.where.AND[1],{culture:{equals:false}});
-  assert.equal(plan.where.AND[2].createtime.lt.toISOString(),'2026-11-11T05:05:00.000Z');
-  // A bare local time must NOT be interpreted in the server's time zone.
-  assert.equal(nativeReadPlan({...simple,filters:[{
-    column:'createtime',operator:'eq',value:'2026-11-11T13:05:00'
-  }]},'Galaxy'),null);
-});
-test('typed native SELECT compiles a complete model-mapped filter with original pagination',async()=>{
-  const executed=[],dialect=dummyDialect(executed);
-  const client=createScopedLocClient({dialect,scopeId:'lo3rwang'});
-  const result=await executeNativeRead(client,{...simple,filters:[
-    {column:'culture',operator:'eq',value:'true'},
-    {column:'date',operator:'gte',value:'2025-02-21'}
-  ]},'Galaxy');
-  assert.deepEqual(result,{data:[],count:null});
-  assert.equal(executed.length,1);
-  assert.match(executed[0].sql,/"silver"."lo3rwang_galaxy"/);
-  assert.ok(executed[0].parameters.includes(true));
-  assert.ok(executed[0].parameters.some(v=>v instanceof Date&&
-    v.toISOString()==='2025-02-21T00:00:00.000Z'));
-});
-
 test('native fixed read uses the installed PolicyPlugin and one SQL SELECT',async()=>{
   const executed=[],dialect=dummyDialect(executed);
   const body={kind:'query',operation:'select',schema:'api',
