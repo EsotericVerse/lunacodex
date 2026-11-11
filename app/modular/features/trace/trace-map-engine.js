@@ -113,7 +113,7 @@ function routeGeometry(coordinates){
   }]};
 }
 
-export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLocationPick=null,onAnchorSelect=null,anchors=[],showAnchorPopup=true}={}){
+export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLocationPick=null,onAnchorSelect=null,anchors=[],showAnchorPopup=true,onGaugeVisibilityChange=()=>{}}={}){
   if(!container)throw new Error('找不到地圖容器。');
   const controller=new AbortController();
   let removed=false;
@@ -406,6 +406,7 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     if(removed)return;
     loaded=true;
     gaugeDetailVisible=map.getZoom()>=10.5;
+    onGaugeVisibilityChange(gaugeDetailVisible);
     refreshTimelineStems();
     refreshAnnualGauges();
     if(canPickLocation){
@@ -476,6 +477,7 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
       const next=map.getZoom()>=10.5;
       if(next===gaugeDetailVisible)return;
       gaugeDetailVisible=next;
+      onGaugeVisibilityChange(next);
       refreshAnnualGauges();
     });
     // Saved route markers render over the source anchor dots; make either
