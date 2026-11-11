@@ -1,0 +1,35 @@
+-- LOC system-wide article source anchors. Identity and containment use eight-character UIDs only.
+-- Idempotent seed; do not update existing nodes (titles are editable independently of their UIDs).
+-- attr.uid: child anchor UIDs; attr.counts: cached totals, initially zero per Scope.
+INSERT INTO silver.loc_anchor(uid,type,title,attr) VALUES
+('KRHRwlxI','universe','Mutlimedia','{"uid":["6Uux1N5h"],"counts":{"lrunes":0,"lo3rwang":0}}'::jsonb),
+('OQP27bj0','universe','PastBy','{"uid":["hxhIZtxB"],"counts":{"lrunes":0,"lo3rwang":0}}'::jsonb),
+('itKaEYUy','universe','Words','{"uid":["TyoLbF13","q1FEUuCT"],"counts":{"lrunes":0,"lo3rwang":0}}'::jsonb),
+('q1FEUuCT','galaxy','Article','{"uid":["MCzI6Fzu","dDlnxRgY"],"counts":{"lrunes":0,"lo3rwang":0}}'::jsonb),
+('TyoLbF13','galaxy','CMS','{"uid":["lKHpyq5y","WmjGfZbR"],"counts":{"lrunes":0,"lo3rwang":0}}'::jsonb),
+('hxhIZtxB','galaxy','SeeYou','{"uid":["aFvTLnJc"],"counts":{"lrunes":0,"lo3rwang":0}}'::jsonb),
+('6Uux1N5h','galaxy','Stream','{"uid":["YvfSMof1","thLsvrml"],"counts":{"lrunes":0,"lo3rwang":0}}'::jsonb),
+('MCzI6Fzu','domain','MCP','{"uid":["UGhhCEpO","shxeBpa3","AXyIoDFP"],"counts":{"lrunes":0,"lo3rwang":0}}'::jsonb),
+('lKHpyq5y','domain','Meta','{"uid":["COAzlF1J","u6u9dLcW","mz0XoytN"],"counts":{"lrunes":0,"lo3rwang":0}}'::jsonb),
+('YvfSMof1','domain','Music','{"uid":["2gZPxjs6","oOiXXEYh"],"counts":{"lrunes":0,"lo3rwang":0}}'::jsonb),
+('dDlnxRgY','domain','Post','{"uid":["ckEJRvZI"],"counts":{"lrunes":0,"lo3rwang":0}}'::jsonb),
+('thLsvrml','domain','Video','{"uid":["oDwnlvbh"],"counts":{"lrunes":0,"lo3rwang":0}}'::jsonb),
+('WmjGfZbR','domain','X','{"uid":["bNUR8uQ9"],"counts":{"lrunes":0,"lo3rwang":0}}'::jsonb),
+('aFvTLnJc','domain','Yesterday','{"uid":["6juwe7jC","CLuFopb9","XBbYV2cc","xUcOLmuP","phQ3PPhA"],"counts":{"lrunes":0,"lo3rwang":0}}'::jsonb),
+('shxeBpa3','from','ChatGPT','{"uid":[],"counts":{"lrunes":0,"lo3rwang":0}}'::jsonb),
+('COAzlF1J','from','Facebook','{"uid":[],"counts":{"lrunes":0,"lo3rwang":0}}'::jsonb),
+('UGhhCEpO','from','Github','{"uid":[],"counts":{"lrunes":0,"lo3rwang":0}}'::jsonb),
+('mz0XoytN','from','Instagram','{"uid":[],"counts":{"lrunes":0,"lo3rwang":0}}'::jsonb),
+('phQ3PPhA','from','MSN','{"uid":[],"counts":{"lrunes":0,"lo3rwang":0}}'::jsonb),
+('oOiXXEYh','from','Spotify','{"uid":[],"counts":{"lrunes":0,"lo3rwang":0}}'::jsonb),
+('2gZPxjs6','from','Suno','{"uid":[],"counts":{"lrunes":0,"lo3rwang":0}}'::jsonb),
+('u6u9dLcW','from','Threads','{"uid":[],"counts":{"lrunes":0,"lo3rwang":0}}'::jsonb),
+('ckEJRvZI','from','Vocus','{"uid":[],"counts":{"lrunes":0,"lo3rwang":0}}'::jsonb),
+('bNUR8uQ9','from','X Twitter','{"uid":[],"counts":{"lrunes":0,"lo3rwang":0}}'::jsonb),
+('oDwnlvbh','from','Youtube','{"uid":[],"counts":{"lrunes":0,"lo3rwang":0}}'::jsonb),
+('6juwe7jC','from','kkcity','{"uid":[],"counts":{"lrunes":0,"lo3rwang":0}}'::jsonb),
+('xUcOLmuP','from','pixnet','{"uid":[],"counts":{"lrunes":0,"lo3rwang":0}}'::jsonb),
+('CLuFopb9','from','ptt','{"uid":[],"counts":{"lrunes":0,"lo3rwang":0}}'::jsonb),
+('AXyIoDFP','from','runes','{"uid":[],"counts":{"lrunes":0,"lo3rwang":0}}'::jsonb),
+('XBbYV2cc','from','無名wretch','{"uid":[],"counts":{"lrunes":0,"lo3rwang":0}}'::jsonb)
+ON CONFLICT(uid) DO NOTHING;
