@@ -34,7 +34,13 @@ export function requestScopedPool(options,ClientClass=pg.Client,
   return {
     async connect(){
       if(now()<blockedUntil)throw unavailable('LOC database connection cooling down');
-      if(connecting)return connecting;
+      // Do not give two SQL operations the same pg.Client: transactions and
+      // results would interleave. A simultaneous caller may wait for the
+      // first acquisition outcome, then open its *own* request-scoped client.
+      if(connecting){
+        try{await connecting;}catch{}
+        if(now()<blockedUntil)throw unavailable('LOC database connection cooling down');
+      }
       const attempt=(async()=>{
         const client=new ClientClass(options);
         client.on?.('error',()=>{});
