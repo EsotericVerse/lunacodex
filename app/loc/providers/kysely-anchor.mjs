@@ -68,20 +68,19 @@ async function suggestions(trx,scope,type,attr){
   if(type==='item'){
     const column=await sql`select 1 from information_schema.columns
       where table_schema='silver' and table_name=${scope}
-        and column_name='keyword_suggestions' limit 1`.execute(trx);
+        and column_name='keyword_suggestions'`.execute(trx);
     if(!column.rows.length)return [];
     const row=await trx.selectFrom('silver.'+scope).select('keyword_suggestions')
       .where('id','=',scope).executeTakeFirst();
     return Array.isArray(row?.keyword_suggestions)?row.keyword_suggestions:[];
   }
   if(type!=='point')reject('Suggestions require Point or Item type');
-  const limit=asPositiveInteger(attr.limit,40,500);
   const galaxy=sql.ref('silver.'+scope+'_galaxy');
   const result=await sql`select btrim(location) as name,
     count(*)::integer as article_count from ${galaxy}
     where nullif(btrim(location),'') is not null
     group by btrim(location) order by count(*) desc,btrim(location) asc
-    limit ${limit}`.execute(trx);
+    `.execute(trx);
   return result.rows;
 }
 async function linkPoints(trx,scope,anchor,attr){
@@ -160,7 +159,6 @@ export async function executeKyselyAnchor(trx,body,{role='anon'}={}){
   if(uid!==null&&!uidPattern.test(uid))reject('Invalid Anchor UID');
   if(op==='read'){
     if(!owner&&!publicTypes.has(type))return {data:[],count:null};
-    const limit=asPositiveInteger(attr.limit,100,500);
     const offset=attr.offset===undefined?0:Number(attr.offset);
     if(!Number.isInteger(offset)||offset<0||offset>100000)reject('Invalid Anchor offset');
     if(attr.where!==undefined&&(!attr.where||typeof attr.where!=='object'||Array.isArray(attr.where)))
@@ -171,7 +169,7 @@ export async function executeKyselyAnchor(trx,body,{role='anon'}={}){
     if(uid)query=query.where('uid','=',uid);
     if(!owner)query=query.where('invisible','=',false);
     if(attr.where)query=query.where(sql`attr @> ${JSON.stringify(attr.where)}::jsonb`);
-    const rows=await query.orderBy('createtime','desc').orderBy('title','asc').limit(limit).offset(offset).execute();
+    const rows=await query.orderBy('createtime','desc').orderBy('title','asc').offset(offset).execute();
     return {data:rows,count:null};
   }
   if(!owner)reject('Scope management permission required',403);
@@ -232,7 +230,6 @@ export async function executePortableKyselyAnchor(db,body,{role='anon',engine,na
   const columns=['uid','type','title','description','invisible','attr','createtime'];
   if(op==='read'){
     if(!owner&&!publicTypes.has(type))return {data:[],count:null};
-    const limit=asPositiveInteger(data.limit,100,500);
     const offset=data.offset==null?0:Number(data.offset);
     if(!Number.isInteger(offset)||offset<0||offset>100000)reject('Invalid offset');
     let query=db.selectFrom(table).select(columns).where('type','=',type);
@@ -250,7 +247,7 @@ export async function executePortableKyselyAnchor(db,body,{role='anon',engine,na
           value===null?'is':'=',value===null?null:String(value));
       }
     }
-    return {data:(await query.orderBy('createtime','desc').orderBy('title','asc').limit(limit).offset(offset)
+    return {data:(await query.orderBy('createtime','desc').orderBy('title','asc').offset(offset)
       .execute()).map(portableRow),count:null};
   }
   if(op==='catalog'){
@@ -282,7 +279,7 @@ export async function executePortableKyselyAnchor(db,body,{role='anon',engine,na
       .select(eb=>eb.fn.countAll().as('article_count'))
       .where('location','is not',null).where('location','!=','')
       .groupBy('location').orderBy('article_count','desc')
-      .limit(asPositiveInteger(data.limit,40,500)).execute();
+      .execute();
     return {data:rows.map(row=>({name:String(row.location).trim(),
       article_count:Number(row.article_count)})).filter(row=>row.name),count:null};
   }
