@@ -1,7 +1,6 @@
 // Lossless subset of LOC query/select translated to native ZenStack V3 ORM.
 // Auth/Scope, public visibility, and database selection are checked by Gateway.
 import {schema} from './schema.mjs';
-import {DB_QUERY_BATCH_SIZE} from '../app/loc/query-batch-size.mjs';
 
 const SCOPED={Galaxy:'Lo3rwangGalaxy',Anchor:'Lo3rwangAnchor',Blocks:'Lo3rwangBlocks'};
 const OPS={eq:'equals',neq:'not',gt:'gt',gte:'gte',lt:'lt',lte:'lte',in:'in'};
@@ -46,13 +45,16 @@ export function nativeReadPlan(body,modelName){
   }
   if(body.single!==undefined&&!['single','maybeSingle'].includes(body.single))
     return null;
-  const limit=Number(body.limit);
+  const limit=body.limit==null?null:Number(body.limit);
+  const offset=body.offset==null?0:Number(body.offset);
+  if(limit!==null&&(!Number.isSafeInteger(limit)||limit<0)||
+    !Number.isSafeInteger(offset)||offset<0)return null;
   return {
     select:Object.fromEntries(body.columns.map(c=>[c,true])),
     where:filters.length?{AND:filters}:{},
     orderBy,
-    take:Number.isFinite(limit)?Math.max(0,Math.min(DB_QUERY_BATCH_SIZE,Math.floor(limit))):1000,
-    skip:Math.max(0,Math.min(10_000_000,Math.floor(Number(body.offset)||0))),
+    ...(limit===null?{}:{take:limit}),
+    skip:offset,
     head:Boolean(body.head),count:Boolean(body.count),single:body.single
   };
 }
