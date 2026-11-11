@@ -68,17 +68,21 @@ test('ZenStack V3 dependencies are lockfile-consistent when installed',()=>{
   }
 });
 
-test('SWR is retired; ZenStack client queries share one native QueryClient',()=>{
+test('SWR and TanStack Query are retired; LOC uses one native read layer',()=>{
+  // LOC is a read-only presentation surface: no SWR, no TanStack Query, no
+  // client cache. A single pure-React engine does fresh reads with in-flight
+  // dedup. These assertions are the guard against the fragment layer relapsing.
   assert.equal(manifest.dependencies?.swr,undefined);
   assert.equal(root.dependencies?.swr,undefined);
   assert.equal(lock.packages?.['node_modules/swr'],undefined);
-  assert.equal(manifest.dependencies?.['@tanstack/react-query'],'5.103.1');
-  assert.equal(root.dependencies?.['@tanstack/react-query'],'5.103.1');
-  assert.ok(lock.packages?.['node_modules/@tanstack/react-query']);
-  assert.ok(lock.packages?.['node_modules/@tanstack/query-core']);
+  assert.equal(manifest.dependencies?.['@tanstack/react-query'],undefined);
+  assert.equal(root.dependencies?.['@tanstack/react-query'],undefined);
+  assert.equal(lock.packages?.['node_modules/@tanstack/react-query'],undefined);
+  assert.equal(lock.packages?.['node_modules/@tanstack/query-core'],undefined);
   const source=readFileSync(new URL('../zenstack/client-queries.js',import.meta.url),'utf8');
   assert.doesNotMatch(source,/\bswr\b|useSWR/);
-  assert.match(source,/useInfiniteQuery/);
+  assert.doesNotMatch(source,/@tanstack|\buseInfiniteQuery\b/);
+  assert.match(source,/useAsyncInfiniteResource/);
 });
 
 test('retired SWR cannot be imported by LOC application modules',()=>{

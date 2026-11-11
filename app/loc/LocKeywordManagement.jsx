@@ -2,7 +2,7 @@
 
 import {useEffect,useRef,useState} from 'react';
 import {useAsyncResource} from './use-async-resource';
-import {useQueryClient} from '@tanstack/react-query';
+import {useQueryClient} from '../../zenstack/client-queries';
 import {dbAuthClient} from './db-client.mjs';
 import {useEditDock} from '../modular/edit-dock';
 

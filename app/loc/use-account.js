@@ -1,7 +1,7 @@
 'use client';
 
 import {useCallback,useEffect} from 'react';
-import {useQueryClient} from '@tanstack/react-query';
+import {useQueryClient} from '../../zenstack/client-queries';
 import {getAccountSession,dbAuthEvents,signInWithGoogle,signOutAccount} from './db-client.mjs';
 import {readLocEditorGrants} from './auth/editor-grants.mjs';
 import {SCOPE_ROUTE_INDEX} from '../modular/scope-route-index.js';
