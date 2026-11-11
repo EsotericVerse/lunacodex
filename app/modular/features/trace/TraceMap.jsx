@@ -349,8 +349,8 @@ export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRout
       {publicTrace?<div className="loc-trace-float-toolbar">
         {typeof onAnnualGaugeToggle==='function'?<div className="loc-trace-gauge-tools">
           <button type="button" className="loc-button" aria-pressed={annualGaugeOn}
+            title="近一年有文章的日期佔全年日期的比例"
             onClick={onAnnualGaugeToggle}>年度儀表</button>
-          {annualGaugeOn?<span className="scope-status">近一年有文章日期佔比</span>:null}
           {annualGaugeOn&&annualGaugeBusy?<span className="scope-status" role="status">讀取年度統計中…</span>:null}
           {annualGaugeOn&&annualGaugeError?<span className="scope-status scope-error" role="alert">年度統計暫時無法顯示</span>:null}
         </div>:null}
