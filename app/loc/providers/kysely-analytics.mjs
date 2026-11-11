@@ -1,6 +1,7 @@
 import {canManageLoc} from './loc-authorization.mjs';
 import {portableRelation} from './sql-engine-ports.mjs';
 import {sql} from 'kysely';
+import {createFixedLocClient} from '../../../zenstack/client.mjs';
 import {keywordPatternItemMetrics,keywordPatternDailySummary} from '../keyword-search-pattern.mjs';
 import {readScopePatternRows} from '../keyword-anchor-index.mjs';
 
@@ -22,15 +23,21 @@ function dateOnly(value){
 function scopeId(value){const id=String(value||'').trim().toLowerCase();
   if(!SCOPE.test(id))reject('Invalid statistics Scope');return id;
 }
-async function registry(trx,scope){
-  const row=await trx.selectFrom('api.manage as m')
-    .innerJoin('silver.loc as l','l.id','m.id')
-    .select(['m.id as id','m.manage_role as manage_role','m.active as active',
-      'l.display_name as display_name','m.anchor_table as anchor_table',
-      'm.galaxy_table as galaxy_table','m.sort_order as sort_order'])
-    .where('m.id','=',scope).executeTakeFirst();
-  if(!row||row.manage_role!=='scope'||row.active!==true)reject('Unknown statistics Scope');
-  return row;
+async function registry(scope,dialect){
+  // The Manage -> Loc relation is defined in ZModel; do not hand-write a JOIN.
+  if(!dialect)throw new Error('Statistics ZModel dialect unavailable');
+  const client=createFixedLocClient({dialect});
+  const row=await client.manage.findFirst({
+    where:{id:scope},
+    select:{
+      id:true,manage_role:true,active:true,anchor_table:true,
+      galaxy_table:true,sort_order:true,
+      loc:{select:{display_name:true}}
+    }
+  });
+  if(!row?.loc||row.manage_role!=='scope'||row.active!==true)
+    reject('Unknown statistics Scope');
+  return {...row,display_name:row.loc.display_name};
 }
 function safeName(value,fallback){const name=String(value||fallback);
   if(!/^[a-z][a-z0-9_]*$/.test(name))reject('Invalid registered SQL relation');return name;
@@ -384,7 +391,7 @@ async function cultureListPage(db,scope,start,end,options,{engine='postgres',nam
     nextCursor:raw.length===100?{offset:offset+raw.length}:null};
 }
 
-export async function executeKyselyAnalytics(trx,body,{role='anon',publishedScopeIds=null}={}){
+export async function executeKyselyAnalytics(trx,body,{role='anon',publishedScopeIds=null,dialect=null}={}){
   const args=body?.args??body;
   const mode=String(args.p_view||'').trim().toLowerCase();
   const scope=scopeId(args.p_scope_id);
@@ -435,7 +442,7 @@ export async function executeKyselyAnalytics(trx,body,{role='anon',publishedScop
   }
   const reg=publishedScopeIds?.includes(scope)
     ?{galaxy_table:'galaxy',anchor_table:'anchor'}
-    :await registry(trx,scope);
+    :await registry(scope,dialect);
   const galaxy=safeName(reg.galaxy_table,'galaxy'),anchorSuffix=safeName(reg.anchor_table,'anchor');
   if(galaxy!=='galaxy')reject('Unsupported configured Galaxy relation');
   let data;
