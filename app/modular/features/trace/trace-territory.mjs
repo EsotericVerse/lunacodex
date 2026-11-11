@@ -20,13 +20,14 @@ export function territoryRegions(rows=[],year=2026){
       uid,source_scope:scope,total:0,sourceCounts:new Map(),days:new Map()
     });
     const place=byPlace.get(key),source=String(row.site||'').trim()||'其他來源';
+    const sourceKey=source.toLocaleLowerCase(),old=place.sourceCounts.get(sourceKey);
     place.total+=count;
-    place.sourceCounts.set(source,(place.sourceCounts.get(source)||0)+count);
+    place.sourceCounts.set(sourceKey,{name:old?.name||source,count:(old?.count||0)+count});
     place.days.set(day,(place.days.get(day)||0)+count);
   }
   return [...byPlace.values()].map(place=>({
     uid:place.uid,source_scope:place.source_scope,total:place.total,
-    sources:[...place.sourceCounts].map(([name,count])=>({
+    sources:[...place.sourceCounts.values()].map(({name,count})=>({
       name,count,percent:count/place.total*100
     })).sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name)),
     timeline:[...place.days].sort(([a],[b])=>a.localeCompare(b)).map(([day,count])=>({day,count})),
