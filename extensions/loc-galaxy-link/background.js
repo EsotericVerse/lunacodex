@@ -213,9 +213,9 @@ async function getConfig(){
  if(!metaReply.ok)throw oauthError('找不到 LOC OAuth 伺服器');
  const meta=await metaReply.json();
  if(meta.issuer!==(issuer.href.endsWith('/')?issuer.href.slice(0,-1):issuer.href)||
-    !meta.authorization_endpoint||!meta.token_endpoint||!meta.registration_endpoint)
+    !meta.authorization_endpoint||!meta.token_endpoint)
    throw oauthError('授權伺服器資訊不完整');
- for(const endpoint of [meta.authorization_endpoint,meta.token_endpoint,meta.registration_endpoint]){
+ for(const endpoint of [meta.authorization_endpoint,meta.token_endpoint]){
   const url=new URL(endpoint);
   if(url.protocol!=='https:'||url.origin!==issuer.origin)
    throw oauthError('OAuth 端點必須使用 LOC Auth HTTPS');
@@ -223,7 +223,6 @@ async function getConfig(){
  const config={supports_scope_routing:true,issuer:meta.issuer,client_id:cfg.client_id,import_url:api.href,
    resource:cfg.resource||api.href,
   authorization_endpoint:meta.authorization_endpoint,token_endpoint:meta.token_endpoint,
-  registration_endpoint:meta.registration_endpoint,
   revocation_endpoint:meta.revocation_endpoint||'',
   scope:cfg.scope||'loc:import'};
  await chrome.storage.local.set({locConfig:config});
