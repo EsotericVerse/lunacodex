@@ -108,8 +108,8 @@ test('Statistics uses current source/date ISR snapshot, never requests retired m
   assert.equal(sqlCalls,1);
 });
 
-test('Service Worker and published JS remain independently usable',()=>{
-  assert.match(read('public/sw.js'),/staticStrategy\(event\)/);
+test('Retired PWA worker and published JS remain independently usable',()=>{
+  assert.doesNotMatch(read('public/sw.js'),/addEventListener\(['"]fetch['"]/);
   const site=read('app/loc/scope-data.js');
   assert.match(site,/PUBLISHED_SITE_BOOTSTRAP/);
   assert.match(site,/loadPublishedBlocks\(id,pageName\)/);
