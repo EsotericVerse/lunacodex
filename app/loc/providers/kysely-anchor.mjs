@@ -25,11 +25,6 @@ function reject(message,status=400){
 async function isOwner(trx,scope,role){
   return role==='authenticated'&&await canManageLoc(trx,'scope',scope);
 }
-function asPositiveInteger(value,fallback,max){
-  const number=value===undefined?fallback:Number(value);
-  if(!Number.isInteger(number)||number<1||number>max)reject('Invalid Anchor limit');
-  return number;
-}
 function namesFrom(node){
   return Array.isArray(node?.attr?.uid)?node.attr.uid.filter(uid=>uidPattern.test(uid)):[];
 }
