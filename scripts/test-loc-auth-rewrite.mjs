@@ -95,38 +95,38 @@ test('LOC Auth Session cookie cache is deployment-versioned and separate from we
  assert.doesNotMatch(auth,/api\.manage|scopeid|locPermissionsForEmail/);
 });
 
-test('Rainbow OAuth client registration is owner-gated; Galaxy-Link uses existing CIMD',()=>{
+test('Rainbow OAuth client registration is owner-gated; Galaxy-Link uses CIMD',()=>{
  const auth=source('workers/loc-authority/auth.mjs');
  const extension=source('extensions/loc-galaxy-link/background.js');
  const cfg=JSON.parse(source('public/extension/oauth/config.json'));
  const metadata=JSON.parse(source('public/extension/oauth/client.json'));
- assert.match(auth,/allowDynamicClientRegistration:true/);
- assert.match(auth,/allowUnauthenticatedClientRegistration:false/);
+ assert.ok(auth.includes('allowDynamicClientRegistration:true'));
+ assert.ok(auth.includes('allowUnauthenticatedClientRegistration:false'));
  assert.equal(metadata.client_id,cfg.client_id);
  assert.ok(metadata.redirect_uris.includes(
   'https://hiaeafonocnjaclcfgjmdopbcgnafnna.chromiumapp.org/loc'));
- for(const scope of cfg.scope.split(/\\s+/))
-   assert.ok(metadata.scope.split(/\\s+/).includes(scope),'CIMD missing scope: '+scope);
- assert.match(extension,/cfg\\.client_id=registeredClient\\(cfg,redirect\\)/);
- assert.doesNotMatch(extension,/fetch\\(config\\.registration_endpoint/);
- assert.doesNotMatch(extension,/locRegisteredOAuthClient/);
+ for(const scope of cfg.scope.split(' '))
+   assert.ok(metadata.scope.split(' ').includes(scope),'CIMD missing scope: '+scope);
+ assert.ok(extension.includes('cfg.client_id=registeredClient(cfg,redirect);'));
+ assert.ok(!extension.includes('fetch(config.registration_endpoint'));
+ assert.ok(!extension.includes('locRegisteredOAuthClient'));
 });
 
-test('privileged business operations bypass Cookie Cache and verify write delegation',()=>{
+test('privileged business operations bypass Cookie Cache and require import scope',()=>{
  const native=source('app/loc/mcp/native-operations.mjs');
  const server=source('app/loc/auth/verified-session.mjs');
- assert.match(native,/get-session\\?disableCookieCache=true/);
- assert.match(server,/get-session\\?disableCookieCache=true/);
- assert.match(native,/delegatedScopes:String\\(claims\\.scope\\|\\|''\\)/);
- assert.match(native,/claims\\.delegatedScopes\\?\\.includes\\('loc:import'\\)/);
- assert.match(native,/writeKinds\\.has\\(body\\.kind\\)/);
- assert.match(native,/locPermissionsForEmail\\(selected\\.db,claims\\.email\\)/);
+ assert.ok(native.includes('get-session?disableCookieCache=true'));
+ assert.ok(server.includes('get-session?disableCookieCache=true'));
+ assert.ok(native.includes("delegatedScopes:String(claims.scope||'')"));
+ assert.ok(native.includes("!claims.delegatedScopes?.includes('loc:import')"));
+ assert.ok(native.includes('writeKinds.has(body.kind)'));
+ assert.ok(native.includes('locPermissionsForEmail(selected.db,claims.email)'));
 });
 
-test('OpenID and OAuth discovery serve both root and issuer-path metadata',()=>{
+test('OpenID and OAuth discovery serve root and issuer-path metadata',()=>{
  const entry=source('workers/loc-authority/index.mjs');
- assert.match(entry,/oauth-authorization-server\\/api\\/auth/);
- assert.match(entry,/api\\/auth\\/\\.well-known\\/openid-configuration/);
- assert.match(entry,/oauthProviderAuthServerMetadata\\(auth\\)/);
- assert.match(entry,/oauthProviderOpenIdConfigMetadata\\(auth\\)/);
+ assert.ok(entry.includes("url.pathname==='/.well-known/oauth-authorization-server/api/auth'"));
+ assert.ok(entry.includes("url.pathname==='/api/auth/.well-known/openid-configuration'"));
+ assert.ok(entry.includes('oauthProviderAuthServerMetadata(auth)'));
+ assert.ok(entry.includes('oauthProviderOpenIdConfigMetadata(auth)'));
 });
