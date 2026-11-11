@@ -1,14 +1,5 @@
 name: Verify Better Auth LOC rewrite
 on:
-  pull_request:
-    paths:
-      - 'workers/loc-authority/**'
-      - 'app/loc/**'
-      - 'functions/**'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'scripts/test-loc-auth-rewrite.mjs'
-      - '.github/workflows/verify-better-auth-loc.yml'
   workflow_dispatch:
 permissions:
   contents: read
