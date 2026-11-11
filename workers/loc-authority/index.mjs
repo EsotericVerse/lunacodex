@@ -87,25 +87,29 @@ export default {
       }}),publicProtocol);
     }
     try{
-      const created=createLocAuth(env);
-      const auth=created.auth;
-      pool=created.pool;
+      // Build Better Auth (and its database pool) only for routes that use it,
+      // so /login, /health and 404s never open a database connection.
+      let built;
+      const getAuth=()=>{
+        if(!built){built=createLocAuth(env);pool=built.pool;}
+        return built.auth;
+      };
       if(request.method==='GET'&&(
         url.pathname==='/.well-known/oauth-authorization-server'||
         url.pathname==='/.well-known/oauth-authorization-server/api/auth'||
         url.pathname==='/api/auth/.well-known/oauth-authorization-server'))
-        return cors(request,await oauthProviderAuthServerMetadata(auth)(request),true);
+        return cors(request,await oauthProviderAuthServerMetadata(getAuth())(request),true);
       if(request.method==='GET'&&(
         url.pathname==='/.well-known/openid-configuration'||
         url.pathname==='/api/auth/.well-known/openid-configuration'||
         url.pathname==='/.well-known/openid-configuration/api/auth'))
-        return cors(request,await oauthProviderOpenIdConfigMetadata(auth)(request),true);
+        return cors(request,await oauthProviderOpenIdConfigMetadata(getAuth())(request),true);
       if(request.method==='GET'&&url.pathname==='/.well-known/jwks.json'){
         const to=new URL('/api/auth/jwks',LOC_ISSUER);
-        return cors(request,await auth.handler(new Request(to,request)),true);
+        return cors(request,await getAuth().handler(new Request(to,request)),true);
       }
       if(url.pathname.startsWith('/api/auth/'))
-        return cors(request,await auth.handler(request),publicProtocol);
+        return cors(request,await getAuth().handler(request),publicProtocol);
       // Official plugin validates the OAuth request signature; LOC does not
       // implement a second signature/session/PKCE verification algorithm.
       let signedQuery='';
@@ -113,7 +117,7 @@ export default {
         const allowedKeys=new Set(['sig','ba_param',...url.searchParams.getAll('ba_param')]);
         signedQuery=new URLSearchParams([...url.searchParams].filter(([key])=>
           allowedKeys.has(key))).toString();
-        const context=await auth.$context;
+        const context=await getAuth().$context;
         if(!await verifyOAuthQueryParams(signedQuery,context.secret))
           return new Response('Invalid OAuth request',{status:400});
       }
