@@ -82,26 +82,24 @@ function dailyRowsFromCounts(counts){
 // A Statistics/Culture page view commonly renders more than one chart for the
 // same Scope + date range in one render pass. Share one short-lived
 // Kysely aggregate request across concurrent charts instead of duplicating SQL.
-function cachedByKey(cache,key,ttlMs,factory){
-  const now=Date.now();
+function cachedByKey(cache,key,factory){
   const cached=cache.get(key);
   if(cached)return cached.promise;
   const promise=factory();
-  cache.set(key,{expires:now+ttlMs,promise});
+  cache.set(key,{promise});
   promise.catch(()=>{if(cache.get(key)?.promise===promise)cache.delete(key);});
   if(cache.size>40)cache.delete(cache.keys().next().value);
   return promise;
 }
 const scopeStatisticsCache=new Map();
 const scopeCategoryTotalsCache=new Map();
-const STATISTICS_CACHE_TTL_MS=20_000;
 function cachedReadScopeStatistics(id,args){
   const key=String(id)+'|'+JSON.stringify(args);
-  return cachedByKey(scopeStatisticsCache,key,STATISTICS_CACHE_TTL_MS,()=>readScopeStatistics(id,args));
+  return cachedByKey(scopeStatisticsCache,key,()=>readScopeStatistics(id,args));
 }
 function cachedReadScopeCategoryTotals(id,args){
   const key=String(id)+'|'+JSON.stringify(args);
-  return cachedByKey(scopeCategoryTotalsCache,key,STATISTICS_CACHE_TTL_MS,()=>readScopeCategoryTotals(id,args));
+  return cachedByKey(scopeCategoryTotalsCache,key,()=>readScopeCategoryTotals(id,args));
 }
 
 // Native Kysely aggregation only. No RPC-existence probe or article-level
@@ -302,16 +300,16 @@ function shiftedDay(day,shift){
   return d.toISOString().slice(0,10);
 }
 // A selected article only needs the lightweight Time graph. Share the
-// canonical Culture range resolution among article reads for a short TTL.
+// canonical Culture range resolution among article reads without a time-triggered expiration.
 const articleTimeCache=new Map();
 // Date, period, era and anniversary data share a single Time graph request.
 async function articleTimeRows(scope){
-  const key=String(scope.id)+'|'+String(scope.time),now=Date.now();
+  const key=String(scope.id)+'|'+String(scope.time);
   const cached=articleTimeCache.get(key);
   if(cached)return cached.promise;
   const promise=import('./culture-query')
     .then(({selectCultureTimeRows})=>selectCultureTimeRows(scope));
-  articleTimeCache.set(key,{expires:now+60_000,promise});
+  articleTimeCache.set(key,{promise});
   promise.catch(()=>{if(articleTimeCache.get(key)?.promise===promise)articleTimeCache.delete(key);});
   if(articleTimeCache.size>20)articleTimeCache.delete(articleTimeCache.keys().next().value);
   return promise;
