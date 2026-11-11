@@ -25,7 +25,11 @@ export function createLocAccountAdapter({
     return lazyClient;
   }
   const listeners=new Set();
-  async function session(){
+  // A verified browser Session is reused by all protected UI operations.
+  // Auth changes or an explicit rejection invalidate it; no timers or polling.
+  let verifiedSessionPromise=null;
+  function invalidateSession(){verifiedSessionPromise=null;}
+  async function fetchVerifiedSession(){
     const {data,error}=await (await client()).getSession();
     if(error)throw Error(error.message||'LOC Auth session unavailable');
     if(!data?.session||!data?.user||data.user.emailVerified!==true)
@@ -36,11 +40,19 @@ export function createLocAccountAdapter({
       email:user.email
     }};
   }
-  async function emit(){
-    const value=await session().catch(()=>null);
-    for(const listener of [...listeners]){
-      listener(value?'SIGNED_IN':'SIGNED_OUT',value?.session||null);
+  function session(){
+    if(!verifiedSessionPromise){
+      const pending=fetchVerifiedSession();
+      verifiedSessionPromise=pending;
+      pending.catch(()=>{if(verifiedSessionPromise===pending)invalidateSession();});
     }
+    return verifiedSessionPromise;
+  }
+  async function emit(){
+    invalidateSession();
+    // A successful sign-out should announce the identity transition without
+    // launching another getSession() request.
+    for(const listener of [...listeners])listener('SIGNED_OUT',null);
   }
   const auth={
     getVerifiedSession:session,
@@ -56,6 +68,7 @@ export function createLocAccountAdapter({
       if(provider!=='google')
         return {data:null,error:new Error('LOC Google OAuth is the configured sign-in provider')};
       try{
+        invalidateSession();
         const returnTo=safeReturn(options.redirectTo);
         const response=await (await client()).signIn.social({
           provider:'google',
