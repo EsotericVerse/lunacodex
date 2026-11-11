@@ -55,6 +55,8 @@ jobs:
         env:
           LOC_AUTH_SCHEMA_GENERATION: '1'
           LOC_AUTH_APPLY_SCHEMA: '1'
+          LOC_AUTH_DATABASE_URL: postgresql://loc_ci:loc_ci_only@127.0.0.1:5432/loc_auth_schema
+          BETTER_AUTH_SECRET: disposable-integration-test-secret-not-a-production-key
         run: node scripts/loc-auth-migrate.mjs
       - name: Verify four core tables, OAuth Provider, OIDC, JWKS and registration against CI database
         env:
