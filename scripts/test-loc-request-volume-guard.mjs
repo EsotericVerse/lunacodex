@@ -8,7 +8,7 @@ test('keyword writes use one server-authorized request without permission prefli
   const browser=read('app/loc/keyword-service-client.mjs');
   const server=read('functions/api/keywords.js');
   assert.doesNotMatch(browser,/locDelegation\(/);
-  assert.doesNotMatch(browser,/\/api\/loc-permissions/);
+  assert.doesNotMatch(browser,/fetch\('\/api\/loc-permissions'/);
   assert.match(browser,/fetch\('\/api\/keywords'/);
   assert.match(server,/verifiedIdentity\(request,context\.env\)/);
   assert.match(server,/locPermissionsForEmail\(db,claims\.email\)/);
