@@ -94,3 +94,39 @@ test('LOC Auth Session cookie cache is deployment-versioned and separate from we
  assert.equal(config.version_metadata.binding,'CF_VERSION_METADATA');
  assert.doesNotMatch(auth,/api\.manage|scopeid|locPermissionsForEmail/);
 });
+
+test('Rainbow OAuth client registration is owner-gated; Galaxy-Link uses existing CIMD',()=>{
+ const auth=source('workers/loc-authority/auth.mjs');
+ const extension=source('extensions/loc-galaxy-link/background.js');
+ const cfg=JSON.parse(source('public/extension/oauth/config.json'));
+ const metadata=JSON.parse(source('public/extension/oauth/client.json'));
+ assert.match(auth,/allowDynamicClientRegistration:true/);
+ assert.match(auth,/allowUnauthenticatedClientRegistration:false/);
+ assert.equal(metadata.client_id,cfg.client_id);
+ assert.ok(metadata.redirect_uris.includes(
+  'https://hiaeafonocnjaclcfgjmdopbcgnafnna.chromiumapp.org/loc'));
+ for(const scope of cfg.scope.split(/\\s+/))
+   assert.ok(metadata.scope.split(/\\s+/).includes(scope),'CIMD missing scope: '+scope);
+ assert.match(extension,/cfg\\.client_id=registeredClient\\(cfg,redirect\\)/);
+ assert.doesNotMatch(extension,/fetch\\(config\\.registration_endpoint/);
+ assert.doesNotMatch(extension,/locRegisteredOAuthClient/);
+});
+
+test('privileged business operations bypass Cookie Cache and verify write delegation',()=>{
+ const native=source('app/loc/mcp/native-operations.mjs');
+ const server=source('app/loc/auth/verified-session.mjs');
+ assert.match(native,/get-session\\?disableCookieCache=true/);
+ assert.match(server,/get-session\\?disableCookieCache=true/);
+ assert.match(native,/delegatedScopes:String\\(claims\\.scope\\|\\|''\\)/);
+ assert.match(native,/claims\\.delegatedScopes\\?\\.includes\\('loc:import'\\)/);
+ assert.match(native,/writeKinds\\.has\\(body\\.kind\\)/);
+ assert.match(native,/locPermissionsForEmail\\(selected\\.db,claims\\.email\\)/);
+});
+
+test('OpenID and OAuth discovery serve both root and issuer-path metadata',()=>{
+ const entry=source('workers/loc-authority/index.mjs');
+ assert.match(entry,/oauth-authorization-server\\/api\\/auth/);
+ assert.match(entry,/api\\/auth\\/\\.well-known\\/openid-configuration/);
+ assert.match(entry,/oauthProviderAuthServerMetadata\\(auth\\)/);
+ assert.match(entry,/oauthProviderOpenIdConfigMetadata\\(auth\\)/);
+});
