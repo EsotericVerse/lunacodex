@@ -15,7 +15,7 @@ export function mcpConfig(env={}){
 }
 const PR_SEARCH_WARNING='請至github頁面找尋PR相關資料！不開放搜尋PR!';
 const SEARCH_PERMISSION_WARNING='只有使用者明確要求時，才允許搜尋對話；禁止代理自行搜尋。';
-const SCOPES=['openid','profile','email','offline_access'];
+const SCOPES=['openid','profile','email','offline_access','loc:import'];
 const DEFAULT_PROTOCOL='2025-06-18';
 const SUPPORTED_PROTOCOLS=new Set(['2025-03-26','2025-06-18','2025-11-25']);
 const COMMON_HEADERS={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',
@@ -36,7 +36,7 @@ export function protectedResourceMetadata(env={}){
 function unauthorized(config){
   const resourceMetadata=config.resource+'/.well-known/oauth-protected-resource';
   return response({error:'unauthorized',error_description:'LOC OAuth access token required'},401,{
-    'WWW-Authenticate':'Bearer resource_metadata="'+resourceMetadata+'", scope="'+SCOPES.join(' ')+'"'
+    'WWW-Authenticate':'Bearer resource_metadata="'+resourceMetadata+'", scope="openid"'
   });
 }
 // Auth protocol is delegated to Better Auth. The standard JOSE implementation
