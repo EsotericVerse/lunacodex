@@ -157,6 +157,12 @@
       "skillPath": "skills/next-dev-loop/SKILL.md",
       "computedHash": "b2c9dca003da326ae1345c0d4e87f41089a745c34cd609ec17676b58b3fdb42b"
     },
+    "nextjs-framer-motion-animations": {
+      "source": "tristanmanchester/agent-skills",
+      "sourceType": "github",
+      "skillPath": "nextjs-framer-motion-animations/SKILL.md",
+      "computedHash": "5d163f7ff8400cbcea0dce0b66cf418a6fa5930468b40ee8daf0c89a12b6a739"
+    },
     "organization-best-practices": {
       "source": "better-auth/skills",
       "sourceType": "github",
