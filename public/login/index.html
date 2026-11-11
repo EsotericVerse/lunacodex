@@ -45,137 +45,78 @@
 </div>
 <script type="module">
 const byId=id=>document.getElementById(id);
-const AUTHORITY='https://auth.lo3rwang.cc';
-const LOGIN_RETURN_KEY='loc-management-login-return-v1';
-let verifiedForEditor=false;
-function validReturnPath(){
+const AUTH='https://auth.lo3rwang.cc';
+const RETURN_KEY='loc-management-login-return-v1';
+let verifiedUser=null;
+function returnPath(){
  const value=new URLSearchParams(location.search).get('return_to')||'/local/settings/';
  if(!value.startsWith('/')||value.startsWith('//')||value.includes('\\'))
   return '/local/settings/';
- const parsed=new URL(value,location.origin);
- return parsed.origin===location.origin?parsed.pathname+parsed.search+parsed.hash:'/local/settings/';
+ const url=new URL(value,location.origin);
+ return url.origin===location.origin?url.pathname+url.search:'/local/settings/';
 }
-function isProtectedReturn(path){
- return /\/(?:manage|admin)(?:\/|$)/.test(new URL(path,location.origin).pathname);
-}
-function oauthContinuation(){
- const value=new URLSearchParams(location.search).get('continue');
- if(!value||!value.startsWith('/oauth/authorize?')||value.includes('\\'))return '';
- const url=new URL(value,AUTHORITY);
- return url.origin===AUTHORITY&&url.pathname==='/oauth/authorize'&&!url.hash
-   ?url.pathname+url.search:'';
-}
-function signIn(provider){
- const url=new URL('/oauth/login',AUTHORITY);
- url.searchParams.set('provider',provider);
- const continued=oauthContinuation();
- if(continued)url.searchParams.set('continue',continued);
- else url.searchParams.set('return_to',validReturnPath());
- location.assign(url.href);
-}
-const panel=byId('login-root');
-for(const [provider,text] of [['google','使用 Google 繼續']]){
- const button=document.createElement('button');
- button.type='button';button.className='loc-login-choice';
- button.textContent=text;
- button.addEventListener('click',()=>signIn(provider));
- panel.appendChild(button);
-}
-const divider=document.createElement('p');
-divider.className='native-divider';
-divider.textContent='或';
-panel.appendChild(divider);
-const ssoButton=document.createElement('button');
-ssoButton.type='button';
-ssoButton.id='loc-sso-login';
-ssoButton.className='loc-login-choice';
-ssoButton.textContent='使用 LOC SSO';
-panel.appendChild(ssoButton);
 function returnToLoc(){
- if(!verifiedForEditor)return;
- const path=validReturnPath();
- if(isProtectedReturn(path)){
-  try{sessionStorage.setItem(LOGIN_RETURN_KEY,path);}catch{}
+ if(!verifiedUser)return;
+ const path=returnPath();
+ if(/\/(?:manage|admin)(?:\/|$)/.test(path)){
+  try{sessionStorage.setItem(RETURN_KEY,path)}catch{}
  }
- const continued=oauthContinuation();
- location.assign(continued?AUTHORITY+continued:path);
+ location.assign(path);
 }
-byId('return').addEventListener('click',returnToLoc);
-// SSO reuses the existing LOC Authority session. It does not introduce
-// another identity provider, a password, or a second account registry.
-ssoButton.addEventListener('click',async()=>{
- ssoButton.disabled=true;
- byId('status').textContent='正在確認 LOC SSO Session…';
+function login(){location.assign(AUTH+'/login?return_to='+encodeURIComponent(returnPath()))}
+const panel=byId('login-root');
+const google=document.createElement('button');
+google.type='button';
+google.className='loc-login-choice';
+google.textContent='使用 Google 繼續';
+google.onclick=login;
+panel.appendChild(google);
+const sso=document.createElement('button');
+sso.type='button';sso.id='loc-sso-login';sso.className='loc-login-choice';
+sso.textContent='使用 LOC SSO';
+sso.onclick=async()=>{if(!await refresh())login();else returnToLoc()};
+panel.appendChild(sso);
+byId('return').onclick=returnToLoc;
+byId('copy-loc-subject').onclick=async()=>{
+ if(!verifiedUser)return;
  try{
-  const response=await fetch(AUTHORITY+'/v1/auth/session',{
-   method:'GET',credentials:'include',cache:'no-store',
-   headers:{accept:'application/json'}
+  await navigator.clipboard.writeText(verifiedUser.id);
+  byId('status').textContent='LOC ID 已複製';
+ }catch{byId('status').textContent=verifiedUser.id}
+};
+byId('signout').onclick=async()=>{
+ try{
+  const res=await fetch(AUTH+'/api/auth/sign-out',{
+   method:'POST',credentials:'include',
+   headers:{'content-type':'application/json'},body:'{}'
   });
-  if(!response.ok)throw new Error('LOC SSO 身分確認失敗（HTTP '+response.status+'）');
-  const data=await response.json();
-  const identity=data?.user;
-  const signedIn=Boolean(data?.provider==='loc'&&
-   /^loc_[A-Za-z0-9_-]{32,80}$/.test(String(identity?.id||''))&&
-   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(identity?.email||''))&&
-   typeof data?.session?.access_token==='string');
-  if(!signedIn){
-   signIn('google');
-   return;
-  }
-  verifiedForEditor=true;
-  returnToLoc();
- }catch(error){
-  byId('status').textContent=String(error.message||error);
-  ssoButton.disabled=false;
- }
-});
-// LOC Subject is a non-secret identifier, not an access token. Copying it
-// lets the owner configure one exact root identity without sharing passwords.
-byId('copy-loc-subject').addEventListener('click',async()=>{
- const subject=String(byId('copy-loc-subject').dataset.subject||'');
- if(!/^loc_[A-Za-z0-9_-]{32,80}$/.test(subject))return;
- try{
-  await navigator.clipboard.writeText(subject);
-  byId('status').textContent='LOC ID 已複製。這不是密碼或登入權杖。';
- }catch{
-  byId('status').textContent='LOC ID：'+subject;
- }
-});
-byId('signout').addEventListener('click',async()=>{
- try{
-  const response=await fetch(AUTHORITY+'/oauth/logout',{
-   method:'POST',credentials:'include',cache:'no-store'
-  });
-  if(!response.ok)throw new Error('LOC Auth 登出失敗');
+  if(!res.ok)throw Error('LOC 登出失敗');
   location.reload();
- }catch(error){byId('status').textContent=String(error.message||error);}
-});
-async function initialize(){
- const response=await fetch(AUTHORITY+'/v1/auth/session',{
-  method:'GET',credentials:'include',cache:'no-store',
-  headers:{accept:'application/json'}
+ }catch(error){byId('status').textContent=String(error.message||error)}
+};
+async function refresh(){
+ const res=await fetch(AUTH+'/api/auth/get-session',{
+  credentials:'include',cache:'no-store',headers:{accept:'application/json'}
  });
- if(!response.ok)throw new Error('LOC Auth 暫時無法確認登入狀態（HTTP '+response.status+'）');
- const data=await response.json();
+ if(!res.ok)throw Error('LOC SSO 暫時無法取得登入狀態');
+ const data=await res.json();
  const user=data?.user;
- const signedIn=Boolean(data?.provider==='loc'&&/^loc_[A-Za-z0-9_-]{32,80}$/.test(
-  String(user?.id||''))&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(user?.email||''))&&
-  typeof data?.session?.access_token==='string');
- const choose=new URLSearchParams(location.search).get('force_choose')==='1';
- verifiedForEditor=signedIn;
- panel.hidden=signedIn&&!choose;
- byId('signed-in').hidden=!signedIn;
- byId('return').disabled=!signedIn;
- byId('copy-loc-subject').disabled=!signedIn;
- byId('copy-loc-subject').dataset.subject=signedIn?user.id:'';
- byId('user').textContent=signedIn?user.email:'';
- byId('status').textContent=signedIn
-  ?(isProtectedReturn(validReturnPath())
-   ?'LOC Auth 身分已核驗，返回後將確認編輯權限。'
-   :'LOC Auth 身分已核驗，管理與寫入權限由 LOC 獨立確認。')
-  :'選擇 Google 驗證身分，或使用 LOC SSO。';
+ verifiedUser=data?.session&&user?.emailVerified===true&&
+   typeof user?.id==='string'&&user.id?user:null;
+ panel.hidden=Boolean(verifiedUser);
+ byId('signed-in').hidden=!verifiedUser;
+ byId('return').disabled=!verifiedUser;
+ byId('copy-loc-subject').disabled=!verifiedUser;
+ byId('user').textContent=verifiedUser?.email||'';
+ byId('status').textContent=verifiedUser?
+  'LOC 身分已核驗，編輯權限由網站資料服務檢查。':
+  '閱讀公開資料不需要登入。';
+ return Boolean(verifiedUser);
 }
-initialize().catch(error=>{byId('status').textContent=String(error.message||error);});
+refresh().catch(error=>{
+ byId('status').textContent=String(error.message||error);
+ panel.hidden=false;
+});
 </script>
 </body>
 </html>

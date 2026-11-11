@@ -1,4 +1,4 @@
-name: Verify LOC Auth, MCP, Extension and Portable (no deployment)
+name: Verify LOC Auth and website boundaries
 on:
   workflow_dispatch:
 permissions:
@@ -11,17 +11,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22.23.4'
-      - name: Install exact dependencies
+      - name: Install exact Better Auth dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Verify OAuth Worker syntax and integration contracts
+      - name: Verify Better Auth code and permissions
         run: |
-          node --check workers/loc-authority/index.mjs
-          node --check workers/loc-authority/native-oauth.mjs
-          node --check workers/loc-authority/better-auth-native.mjs
-          node --check workers/loc-authority/better-auth-store.mjs
-          node --check scripts/test-loc-native-oauth.mjs
           npm run test:authority
-      - name: Verify MCP, Extension, Kysely and no SQL Gateway
-        run: |
-          node --test scripts/test-loc-mcp-routing.mjs scripts/test-loc-mcp-native-kysely.mjs scripts/test-loc-mcp-private-direct.mjs scripts/test-loc-mcp-native-access.mjs scripts/test-loc-no-vendor-auth-runtime.mjs scripts/test-portable-driver-without-gateway.mjs scripts/test-kysely-independent-transport.mjs scripts/test-loc-short-edge-authorization.mjs
-          npm run check:loc-vendor-coupling
+          node --check workers/loc-authority/auth.mjs
+          node --check workers/loc-authority/index.mjs
+          node --check app/loc/mcp/native-kysely.mjs
+          node --check app/loc/mcp/native-operations.mjs
+      - name: Validate Cloudflare Worker configuration without deployment
+        run: npx --yes wrangler@4.157.0 deploy --config workers/loc-authority/wrangler.jsonc --dry-run --outdir /tmp/loc-check

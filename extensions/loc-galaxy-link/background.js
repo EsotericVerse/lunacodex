@@ -204,26 +204,25 @@ async function getConfig(){
  const issuer=new URL(cfg.issuer);
  const api=new URL(cfg.import_url);
  if(issuer.protocol!=='https:'||api.protocol!=='https:'||
-    api.origin!==issuer.origin||api.pathname!=='/v1/import/short'||
-    cfg.resource!==api.href||!cfg.client_id||typeof cfg.client_id!=='string'||
-    issuer.origin!=='https://auth.lo3rwang.cc')
+    api.origin!=='https://mcp.lo3rwang.cc'||api.pathname!=='/api/loc-native'||
+    cfg.resource!=='https://mcp.lo3rwang.cc'||!cfg.client_id||typeof cfg.client_id!=='string'||
+    issuer.origin!=='https://auth.lo3rwang.cc'||issuer.pathname!=='/api/auth')
    throw oauthError('LOC 自有認證尚未啟用，不會使用其他平台登入');
  const metaUrl=new URL('/.well-known/oauth-authorization-server',issuer);
  const metaReply=await fetch(metaUrl,{cache:'no-store',redirect:'error'});
  if(!metaReply.ok)throw oauthError('找不到 LOC OAuth 伺服器');
  const meta=await metaReply.json();
  if(meta.issuer!==(issuer.href.endsWith('/')?issuer.href.slice(0,-1):issuer.href)||
-    !meta.authorization_endpoint||!meta.token_endpoint||!meta.registration_endpoint)
+    !meta.authorization_endpoint||!meta.token_endpoint)
    throw oauthError('授權伺服器資訊不完整');
- for(const endpoint of [meta.authorization_endpoint,meta.token_endpoint,meta.registration_endpoint]){
+ for(const endpoint of [meta.authorization_endpoint,meta.token_endpoint]){
   const url=new URL(endpoint);
   if(url.protocol!=='https:'||url.origin!==issuer.origin)
    throw oauthError('OAuth 端點必須使用 LOC Auth HTTPS');
  }
- const config={supports_scope_routing:meta.loc_import_scope_routing==='query-v1',issuer:meta.issuer,client_id:cfg.client_id,import_url:api.href,
+ const config={supports_scope_routing:true,issuer:meta.issuer,client_id:cfg.client_id,import_url:api.href,
    resource:cfg.resource||api.href,
   authorization_endpoint:meta.authorization_endpoint,token_endpoint:meta.token_endpoint,
-  registration_endpoint:meta.registration_endpoint,
   revocation_endpoint:meta.revocation_endpoint||'',
   scope:cfg.scope||'loc:import'};
  await chrome.storage.local.set({locConfig:config});
@@ -232,7 +231,7 @@ async function getConfig(){
 async function exchange(config,body){
  const res=await fetch(config.token_endpoint,{method:'POST',
   headers:{'content-type':'application/x-www-form-urlencoded'},
-  body:new URLSearchParams({...body,client_id:config.client_id}).toString(),
+  body:new URLSearchParams({...body,client_id:config.client_id,resource:config.resource}).toString(),
   redirect:'error',cache:'no-store'});
  if(!res.ok)throw oauthError('Token 交換失敗（HTTP '+res.status+'）');
  const json=await res.json();
@@ -240,28 +239,15 @@ async function exchange(config,body){
   throw oauthError('伺服器未回傳 Bearer Token');
  return json;
 }
-async function registeredClient(config,redirect){
- const {locRegisteredOAuthClient:prior}=await chrome.storage.local.get('locRegisteredOAuthClient');
- if(prior?.issuer===config.issuer&&prior.redirect===redirect&&
-  prior.expires_at>Date.now()+86400000&&/^loc-mcp-[A-Za-z0-9_-]{43}$/.test(prior.client_id))
-  return prior.client_id;
- const reply=await fetch(config.registration_endpoint,{
-  method:'POST',headers:{'content-type':'application/json'},
-  body:JSON.stringify({client_name:'LOC 彩虹橋',
-   redirect_uris:[redirect],response_types:['code'],
-   grant_types:['authorization_code','refresh_token'],
-   token_endpoint_auth_method:'none'}),
-  cache:'no-store',redirect:'error'
- });
- if(!reply.ok)throw oauthError('無法註冊 Chrome OAuth Client（HTTP '+reply.status+'）');
- const saved=await reply.json();
- if(!/^loc-mcp-[A-Za-z0-9_-]{43}$/.test(String(saved.client_id||''))||
-   !saved.redirect_uris?.includes(redirect))
-  throw oauthError('LOC Auth 未確認 Chrome 回呼網址');
- const next={issuer:config.issuer,redirect,client_id:saved.client_id,
-  expires_at:Number(saved.client_id_expires_at||0)*1000||Date.now()+86400000};
- await chrome.storage.local.set({locRegisteredOAuthClient:next});
- return next.client_id;
+// Public PKCE client: use the stable HTTPS Client ID Metadata Document
+// already published by LOC Web, rather than writing a new OAuth client
+// registration on every install or reauthorization.
+function registeredClient(config,redirect){
+ const clientId='https://loc.lo3rwang.cc/extension/oauth/client.json';
+ const callback='https://hiaeafonocnjaclcfgjmdopbcgnafnna.chromiumapp.org/loc';
+ if(config.client_id!==clientId||redirect!==callback)
+  throw oauthError('LOC 彩虹橋 OAuth Client Metadata 與 Chrome 回呼不一致');
+ return clientId;
 }
 async function disconnectLoc(){
  // Keep all pending Queue data even if server-side revocation is unavailable.
@@ -272,7 +258,7 @@ async function disconnectLoc(){
  if(token&&cfg?.client_id&&cfg?.revocation_endpoint){
   try{
    const endpoint=new URL(cfg.revocation_endpoint);
-   if(endpoint.origin===new URL(cfg.issuer).origin&&endpoint.pathname==='/oauth/revoke'){
+   if(endpoint.origin===new URL(cfg.issuer).origin&&endpoint.pathname==='/api/auth/oauth2/revoke'){
     const reply=await fetch(endpoint.href,{method:'POST',redirect:'error',cache:'no-store',
      headers:{'content-type':'application/x-www-form-urlencoded'},
      body:new URLSearchParams({client_id:cfg.client_id,token,
@@ -288,7 +274,7 @@ async function disconnectLoc(){
 async function connectLoc(){
  const cfg=await getConfig();
  const redirect=chrome.identity.getRedirectURL('loc');
- cfg.client_id=await registeredClient(cfg,redirect);
+ cfg.client_id=registeredClient(cfg,redirect);
  await chrome.storage.local.set({locConfig:cfg});
  const verifier=encode64(crypto.getRandomValues(new Uint8Array(32)));
  const digest=new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(verifier)));
@@ -339,9 +325,9 @@ async function sendViaAuth(scopeid,batch,token,config){
  if(!SCOPE.test(scopeid))throw Error('Invalid Scope');
  if(scopeid!=='lo3rwang'&&config.supports_scope_routing!==true)throw contractError('多 Scope 認證尚未啟用；Queue 保留，禁止錯誤寫入');
  const endpoint=new URL(config.import_url||'');
- if(endpoint.origin!=='https://auth.lo3rwang.cc'||endpoint.pathname!=='/v1/import/short')throw contractError('LOC Auth 匯入位址錯誤');
- if(config.supports_scope_routing)endpoint.searchParams.set('scopeid',scopeid);
- const reply=await fetch(endpoint.href,{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify(batch),redirect:'error',cache:'no-store'});
+ if(endpoint.origin!=='https://mcp.lo3rwang.cc'||endpoint.pathname!=='/api/loc-native')throw contractError('LOC MCP 資料寫入位址錯誤');
+ // The Scope is validated by LOC data authorization, not the Auth server.
+ const reply=await fetch(endpoint.href,{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({kind:'short-import',scopeid,batch}),redirect:'error',cache:'no-store'});
  if(!reply.ok){
    let detail='';
    const mime=String(reply.headers?.get?.('content-type')||'').toLowerCase();

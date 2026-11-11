@@ -1,16 +1,11 @@
-name: Deploy auth
-# Deploy the existing auth Worker (auth.lo3rwang.cc); never create a duplicate.
-# Better Auth handles Google OAuth; this workflow is manual, separate from Cloudflare Builds.
+name: Deploy LOC Auth (Better Auth)
 on:
   workflow_dispatch:
-
 permissions:
   contents: read
-
 concurrency:
   group: auth-deploy
   cancel-in-progress: true
-
 jobs:
   auth:
     runs-on: ubuntu-24.04
@@ -22,27 +17,29 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22.23.4'
-      - name: Require deployment authorization before consuming build minutes
+      - name: Check Cloudflare release permissions
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
-            echo "::error title=auth release blocked::Missing GitHub Actions repository secret CLOUDFLARE_API_TOKEN. Existing Cloudflare Worker has NOT been updated."
-            echo "## auth release blocked: deployment credential missing" >> "$GITHUB_STEP_SUMMARY"
-            echo "Set CLOUDFLARE_API_TOKEN with Workers Scripts Edit and required zone route permissions; rerun this job. Do not create another Worker." >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::Missing Cloudflare Worker deployment credential"
             exit 1
           fi
-      - name: Install exact test dependencies
+      - name: Install locked Auth dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Verify auth credentials, Auth Ref, Scope, and mapped SQL contracts
+      - name: Verify Better Auth source and checks
         run: |
-          node --check workers/loc-authority/index.mjs
-          node --check workers/loc-authority/native-oauth.mjs
-          node --check workers/loc-authority/auth-ref.mjs
           npm run test:authority
-          node --test scripts/test-loc-auth-qos.mjs scripts/test-loc-auth-store.mjs
-          npm run check:loc-vendor-coupling
-      - name: Validate auth Worker deployment (dry run)
+          node --check workers/loc-authority/index.mjs
+          node --check workers/loc-authority/auth.mjs
+      - name: Validate Worker without publishing
         run: npx --yes wrangler@4.157.0 deploy --config workers/loc-authority/wrangler.jsonc --dry-run --outdir /tmp/auth-check
-      - name: Deploy auth at auth.lo3rwang.cc
+      - name: Reject deployment without approved Rainbow Auth storage bindings
+        # Metadata-only Cloudflare check. Never print or connect using the secret.
+        run: |
+          npx --yes wrangler@4.157.0 secret list --config workers/loc-authority/wrangler.jsonc --format json > /tmp/loc-auth-secret-names.json
+          node -e "const fs=require('node:fs');const entries=JSON.parse(fs.readFileSync('/tmp/loc-auth-secret-names.json','utf8'));if(!Array.isArray(entries)||!entries.some(s=>s.name==='LOC_AUTH_DATABASE_URL')){console.error('LOC Auth requires the dedicated Neon PostgreSQL connection secret before deployment.');process.exit(1)}"
+      - name: Deploy canonical LOC Auth domain
         run: npx --yes wrangler@4.157.0 deploy --config workers/loc-authority/wrangler.jsonc
-      - name: Verify auth discovery, JWKS and session boundary
-        run: node scripts/probe-loc-native-auth.mjs
+      - name: Verify issuer metadata (no credentials used)
+        run: |
+          curl -fsS https://auth.lo3rwang.cc/.well-known/openid-configuration > /tmp/loc-oidc.json
+          node -e "const j=require('/tmp/loc-oidc.json');if(!j.issuer||!j.authorization_endpoint||!j.jwks_uri)process.exit(1)"

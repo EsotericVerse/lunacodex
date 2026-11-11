@@ -2,6 +2,7 @@ import {sql} from 'kysely';
 import {SCOPE_ROUTE_INDEX} from '../../modular/scope-route-index.js';
 import {portableContainsSpec} from '../providers/portable-search.mjs';
 import {portableRelation} from '../providers/sql-engine-ports.mjs';
+import {directMcpKysely} from './native-kysely.mjs';
 
 // This is a specific read model executed by the trusted MCP application, NOT
 // a generic SQL transport. No HTTP SQL endpoint, provider SDK or DB credential
@@ -17,9 +18,7 @@ function scopeAllowed(value){
   return id;
 }
 async function scopedDatabase(scopeid,env){
-  if(typeof env?.locDirectDatabase!=='function')
-    throw unavailable('LOC MCP direct Kysely database is not configured');
-  const port=await env.locDirectDatabase();
+  const port=await directMcpKysely(env);
   if(!port?.db||typeof port.db.selectFrom!=='function'||
      port.engine!=='postgres')
     throw unavailable('LOC MCP direct SQL driver is unavailable');

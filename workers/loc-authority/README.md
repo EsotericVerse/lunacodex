@@ -1,52 +1,120 @@
-# LOC 自有 OAuth Server：部署與驗收
+# LOC Auth (Rainbow / Galaxy-Link)
 
-這個服務是 LOC 本身的 OAuth 2.1 issuer；並非 Clerk 替代轉送器，也不是 SQL Gateway。網站、MCP、Extension 以 `https://auth.lo3rwang.cc` 為統一 issuer。
+LOC Auth is an independent SSO, OAuth/OIDC, Session and MCP Gateway service.
+Better Auth is the implementation module, **not** the product name.
 
-## 已有原始碼
+The LOC Web (LunaCodex / Language of Codex Framework) shares source code, not
+the Auth user registry. LOC Web owns business tables and `api.manage`. A LOC
+Auth user is valid even if no LOC Web user or `api.manage` record exists.
+The two systems have independent identity, Session and business-authorization
+stores, but they are **not unrelated**. They may reference each other through
+explicit, narrowly scoped, verified contracts (for example Auth identity ->
+LOC Web `api.manage` when authorizing a website business write, or a website
+resource -> an Auth-issued MCP delegation). Such references never silently
+merge records, make one table authoritative for the other, or require a LOC Web
+record before an Auth identity/Session can exist. Auth-owned persistence and
+MCP Gateway control-plane writes must work independently of `api.manage`.
 
-- `native-oauth.mjs`：OAuth Authorization Code + PKCE S256、Session、短效 JWT、Refresh Token rotation、GitHub/OIDC 身分來源。
-- `index.mjs`：RS256 JWKS、Scope 授權及 Durable Object 儲存。LOC Auth 僅簽發授權；業務 SQL 由另一個受信任後端的 Kysely 執行。
-- `wrangler.jsonc`：部署為 `auth`，透過 Cloudflare Workers Custom Domain 綁定 `auth.lo3rwang.cc`；使用獨立 SQLite-backed Durable Object 儲存 OAuth session/grants。這個 Durable Object 不是使用者文章 SQL 資料庫。
+## Storage isolation: Rainbow names only
 
-## 上線條件
+**The old `loc_auth` test objects are not an Auth storage design.** Never
+recreate, import, use, or refer to those test records as the production system.
+The user has separately removed a temporary test table in Supabase. This
+repository must not try to re-create it.
 
-1. Cloudflare Workers 帳戶和 `lo3rwang.cc` zone 已存在（使用 Wrangler 現有設定）。
-2. GitHub Actions repository secret `CLOUDFLARE_API_TOKEN` 有 Worker scripts／custom domains 的寫入權限。預設 workflow 只在主分支更新相關原始碼或手動派發時執行，先做原始碼測試及 Wrangler dry run。
-3. `LOC_CONTROL_ENCRYPTION_KEY` 必須由 Cloudflare Workers Secrets 設置為長期穩定的強隨機值；不可寫入 GitHub、程式碼或客戶端。若以前的 Durable Object 與金鑰已刪除，舊 Session、授權資料和外部 Provider 配置不可假定可恢復。
-4. Google OIDC / GitHub OAuth 使用原始身分提供者註冊的應用憑證，在 LOC Auth 後端受信任環境設定 `client_id`、`client_secret` 和精確 callback URL。**不可把 Clerk 重新接作 OAuth 中介。**
-5. 恢復 Recovery 管理員與各 Scope grant；先驗證 `/.well-known/oauth-authorization-server`、`/.well-known/jwks.json`、`/v1/auth/session`，再逐一驗證真實登入、Scope 授權、MCP 和 Extension 寫入。公開閱讀不應依賴 Auth 服務可用性。
+The code's **table-name mappings** (not actual SQL tables) are explicitly:
 
-沒有 Provider secrets 和 Recovery 授權不能宣稱登入已恢復。切勿為了顯示成功而使用匿名編輯、舊 Clerk token 或任意資料庫權限。
+| Logical model | Proposed PostgreSQL table |
+| --- | --- |
+| Better Auth user | `rainbow_auth` |
+| Better Auth session | `rainbow_session` |
+| Better Auth external account | `rainbow_account` |
+| Better Auth verification | `rainbow_verification` |
+| JWT JWKS | `rainbow_jwks` |
+| OAuth client | `rainbow_oauth_client` |
+| OAuth resource | `rainbow_oauth_resource` |
+| OAuth client-resource link | `rainbow_oauth_client_resource` |
+| OAuth refresh token | `rainbow_oauth_refresh_token` |
+| OAuth access token | `rainbow_oauth_access_token` |
+| OAuth consent | `rainbow_oauth_consent` |
+| OAuth client assertion | `rainbow_oauth_client_assertion` |
 
+**The twelve `public.rainbow_*` tables already exist on Neon, verified by a bounded read-only catalog check on 2026-11-11.** This PR did not create them. All twelve currently have RLS enabled with four permissive CRUD policies restricted to the `rainbow_runtime` PostgreSQL role; that role has LOGIN, public schema USAGE, and CRUD table grants. This establishes the policy/grant configuration, **not** successful Auth Worker connectivity or end-to-end persistence. The exact full model/field
+inventory, constraints, indexes, plugin-specific additions, and **each table's
+RLS SELECT / INSERT / UPDATE / DELETE policy must be reviewed with the user**
+before any production DDL. The above is a code-side naming draft; if a pinned
+plugin uses further models, do not create them automatically. Review the
+vendor model inventory first.
 
-## 2026-11-09：原生 LOC Auth、平行 Auth Ref 與 Kysely SQL Data Method
+**Naming invariant:** `loc_auth` is reserved as a non-LOC-Auth identifier:
+no LOC Auth table, schema, fallback, or automatic migration may adopt it.
+Every LOC Auth-owned table must start with `rainbow_` (including future plugin
+models). Existing objects named `loc_auth` belong to a different context and
+must not be renamed, imported, adopted, or modified as part of this rewrite.
 
-### 身分主權（OAuth Only）
+The verified existing Rainbow PostgreSQL schema is `public`. Auth uses
+`public` by default and refuses a conflicting `LOC_AUTH_SCHEMA`; do not
+point it at `silver` or recreate tables from an obsolete proposal. `LOC_AUTH_DATABASE_URL` configures the PostgreSQL connection.
+These are runtime credentials only; never put a schema-owner credential in
+the Worker.
 
-LOC 不接受公開帳號註冊，也不接受或儲存 LOC 登入密碼。登入頁只提供 Google／GitHub OAuth，完成外部身份核驗後由 `auth.lo3rwang.cc` 簽發 LOC 自己的 Session 與資源限定的 OAuth 授權；原有獨立 Scope 權限檢查不變。
+**No automatic migrations, ad hoc schema/table creation, implicit RLS grants,
+or SQL RPC.** Auth data read/write uses Better Auth's supported PostgreSQL
+adapter. LOC Auth can share one Neon project with LOC Web while its tables and
+permissions remain separate. Existing Neon-managed Auth tables and LOC Web business tables remain distinct
+and may be referenced through explicitly verified integration contracts; neither
+becomes LOC Auth's own persistence store. Do not modify those existing tables
+for this change.
 
-所有 `/api/auth/*` 舊 Email／Password、註冊、密碼重設端點回 HTTP 410，不會建立帳號或寫入密碼憑證。OAuth 2.1 的 `/oauth/register` 僅供 **MCP OAuth Client** 動態註冊，與使用者帳號註冊完全不同，不得刪除。
+## Cache and deployment
 
-### 橫向 Auth Ref（非上級委託）
+Keep the user's active Auth Cache and LOC Web ISR configurations unchanged.
+Session state belongs in PostgreSQL. Signed Session Cookie Cache is
+**30 minutes**, not a 30-minute polling timer. A new Worker version changes
+the cache version; old cached values then stop being used, but the persisted
+database Session is not deleted. Privileged LOC Web identity checks use
+`get-session?disableCookieCache=true` so Session revocation is not silently
+delayed by the Cookie Cache. Keep existing Auth Cloudflare Cache and LOC Web
+ISR configurations untouched. Do not reintroduce a Durable Object identity store.
 
-可選擇 GitHub、OIDC、Microsoft Entra、AD/LDAP（企業自行營運的 OIDC Bridge）、Clerk JWT Ref。各 Provider 的 Issuer、Client ID、Secret 與授權 URL 由管理員設定，不強迫其他使用者啟用。
+## QoS, simultaneous requests and signing-key safety
 
-已登入原生 LOC 帳號後可導航至 /oauth/ref?provider=github|oidc|entra|ad|ldap 進行 OAuth Ref；使用者仍保有原 LOC Subject 和 Session。服務驗證 State、CSRF、Nonce、JWT Signature、Issuer、Audience、有效期限後，記錄短效權限聲明。Clerk 現有 JWT 可透過 /v1/auth/ref/check 獨立核驗；不需安裝 Clerk SDK。Ref 不自動核發 LOC Scope 權限。
+The Better Auth general rate limit is presently configured as **120 requests
+per 60 seconds**; OAuth Provider uses separate endpoint rules (token: 40,
+authorize: 60, introspection: 100, revoke: 30, registration: 5, client-key
+rotation: 5, UserInfo: 120, each per 60 seconds). These are draft limits
+pending observed traffic and integration testing, not a claim of worldwide
+per-client enforcement.
 
-AD 與 LDAP 此版透過 OIDC Bridge 互通，**並非原生 LDAP TCP Bind**。外部來源若不可驗證即拒絕指定 Ref；其他無 Ref 的 LOC 資料來源不受影響。
+A new **transport admission gate** counts in-flight Auth requests, not
+physical TCP/TLS sockets or PostgreSQL connections. Within each Worker isolate
+it uses a 128-request total ceiling and separate per-source ceilings:
+OAuth 24, Session 48, public metadata/JWKS 96, other 32. On overload it
+returns HTTP 429 with Retry-After: 2, and releases the slot after every
+completed request. A normal 30-minute Session Cache hit is not a new SQL
+query by definition.
 
-### Kysely SQL Data Method
+**A Worker isolate's memory counters are NOT global across Cloudflare
+instances, not a permanent blacklist, and not an authorization decision.**
+Do not claim that changing IP, OAuth client, or Worker instance is blocked.
+Globally consistent abuse enforcement and owner-triggered blacklist or
+client/Session revocation require a separately approved shared policy/control
+mechanism and end-to-end tests. Do not silently introduce SQL tables, RPC,
+RLS policies or a new Auth identity store to implement it.
 
-管理頁的資料庫設定可選 postgres、mysql、mssql（T-SQL / SQL Server），並指定 Host／Port／Database／Schema／既有 Table／Logical-to-Physical 欄位映射及可選用的 Auth Ref 與權限 Claim。使用者選擇已授權的資料庫 ID；LOC Auth 在 Delegation 中簽署允許的目標，不把資料庫連線字串、密碼或 SQL 送到瀏覽器。
+**High request concurrency never invalidates the entire issuer JWKS.** Such
+invalidations would disrupt unrelated valid clients. Better Auth manages
+normal JWKS key rotation (currently 30-day rotation with 30-day previous-key
+grace). A confirmed credential/key compromise calls for the affected
+credential or key to be revoked, and any active token security review must
+account for already-issued stateless JWT validity. Connection storms instead
+receive backpressure / QoS limits, not global signing-key destruction.
 
-受信任 LOC 應用後端直接選用 Kysely PostgresDialect、MysqlDialect、MssqlDialect 與各自的驅動程式，無 SQL Gateway，也不由 LOC Auth 執行 SQL。一次性配置 LOC_DB_PROFILE_SERVICE_TOKEN（至少 32 字元）於既有 Authority Worker 和受信任應用程式後端，兩端值相同，才能由後端透過僅提供**連線設定**的內部受保護端點讀到新配置。設定儲存後，後續切換 SQL 類型和既有資料表不需改程式碼或重新部署。
+## Release gate
 
-指定外部 Table 後現有 MCP 文章讀取／搜尋執行唯讀映射，要求 Scope read + manage 權限。其他 Short Import、同步與追加只能寫正式 Galaxy 資料表。公開 LOC 內容只透過固定已發佈的 Scope 表，禁止匿名客戶端任意指定資料庫、Table、SQL。
-
-### 驗證及部署
-
-測試涵蓋原生帳號、Session、PKCE、OAuth Ref 不取代 LOC 主體、簽章／Nonce／權限拒絕、三種 Kysely Dialect 的語法編譯、既有 Table／欄位映射，以及 Cloudflare Wrangler Dry Run。真實 AD/LDAP、Azure SQL、MySQL 仍需要對應外部伺服器和實際權限才能完成連線驗證，模擬測試不能代替生產驗收。合併 main、網站部署與 LOC Auth Worker 發布為不同狀態，須分別確認。
-
-## OAuth-only Google 登入（2026-11-09）
-
-Google 按鈕直接沿用 Supabase 已設定的 Google OAuth，不要求使用者註冊 LOC 或提供密碼。LOC Auth 只接收 Supabase Auth 驗證過的 Google 身分，且僅允許預先綁定的既有管理身分建立 LOC Session。OAuth State 和一次性 CSRF Cookie 檢查完成後，LOC 自行簽發 Session、MCP/Extension Token 與 Scope 授權。使用者的 Supabase Access Token 不儲存。`LOC_RECOVERY_ROOT_LOC_SUBJECTS` 是 Cloudflare Worker Secret，不得暴露在 Git 或網站。GitHub OAuth 需要提供者實際啟用才可運作，不以尚未設定冒充已完成。
+The branch is a **draft**, not production accepted. It must not be deployed
+until the specific table models/fields and RLS are approved, the runtime
+database/schema bindings are present, verified Auth SQL read/write succeeds,
+OAuth/Session/JWKS works, and the MCP delegation path is tested.
+Schema creation requires the user's separate explicit approval on every change;
+the previously written test migration scripts have been deleted.

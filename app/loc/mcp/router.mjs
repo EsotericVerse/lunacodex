@@ -1,4 +1,5 @@
-import {authorityAction} from './authority-client.mjs';
+import {verifyAccessTokenRequest,requestToResourceInput} from 'better-auth/oauth2';
+import {businessAction} from './business-actions.mjs';
 import {readMemory} from './galaxy-read.mjs';
 import {privateGalaxyLink} from './private-galaxy.mjs';
 import {mcpDatabaseConfiguration} from './native-kysely.mjs';
@@ -7,14 +8,14 @@ const PUBLIC_SCOPE_IDS=Object.freeze(SCOPE_ROUTE_INDEX.filter(row=>row.active&&r
   .map(row=>row.scope_id).filter(id=>/^[a-z][a-z0-9]{0,14}$/.test(id)));
 // LOC MCP HTTP entry point. No database write is granted by an OAuth login.
 export const MCP_RESOURCE=(globalThis.process?.env?.LOC_MCP_RESOURCE_URL||'https://mcp.lo3rwang.cc').replace(/\/+$/,'');
-export const LOC_OAUTH_ISSUER='https://auth.lo3rwang.cc';
+export const LOC_OAUTH_ISSUER='https://auth.lo3rwang.cc/api/auth';
 export function mcpConfig(env={}){
   return {resource:String(env.LOC_MCP_RESOURCE_URL||MCP_RESOURCE).replace(/\/+$/,''),
     issuer:LOC_OAUTH_ISSUER};
 }
 const PR_SEARCH_WARNING='請至github頁面找尋PR相關資料！不開放搜尋PR!';
 const SEARCH_PERMISSION_WARNING='只有使用者明確要求時，才允許搜尋對話；禁止代理自行搜尋。';
-const SCOPES=['profile','email','offline_access'];
+const SCOPES=['openid','profile','email','offline_access','loc:import'];
 const DEFAULT_PROTOCOL='2025-06-18';
 const SUPPORTED_PROTOCOLS=new Set(['2025-03-26','2025-06-18','2025-11-25']);
 const COMMON_HEADERS={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',
@@ -35,83 +36,23 @@ export function protectedResourceMetadata(env={}){
 function unauthorized(config){
   const resourceMetadata=config.resource+'/.well-known/oauth-protected-resource';
   return response({error:'unauthorized',error_description:'LOC OAuth access token required'},401,{
-    'WWW-Authenticate':'Bearer resource_metadata="'+resourceMetadata+'", scope="'+SCOPES.join(' ')+'"'
+    'WWW-Authenticate':'Bearer resource_metadata="'+resourceMetadata+'", scope="openid"'
   });
 }
-function base64url(text){
-  const normalized=text.replace(/-/g,'+').replace(/_/g,'/');
-  const bin=atob(normalized);
-  return Uint8Array.from(bin,c=>c.charCodeAt(0));
-}
-function decodeJson(text){return JSON.parse(new TextDecoder().decode(base64url(text)));}
-// JWKS is PUBLIC verification metadata, never a user Session or OAuth grant.
-// Share in-flight fetch per issuer and reuse public keys up to five minutes
-// across isolates when the Cloudflare edge Cache API is available.
-const jwksCache=new Map();
-const jwksPending=new Map();
-async function loadKeys(issuer){
-  const url=issuer+'/.well-known/jwks.json';
-  const edge=globalThis.caches?.default;
-  const cacheRequest=new Request(url,{headers:{accept:'application/json'}});
-  let response=edge?await edge.match(cacheRequest).catch(()=>null):null;
-  const fromEdge=Boolean(response);
-  if(!response){
-    response=await fetch(url,{headers:{accept:'application/json'},
-      signal:AbortSignal.timeout(6500)});
-  }
-  if(!response.ok)throw new Error('LOC JWKS unavailable');
-  const text=await response.text();
-  if(text.length>120000)throw new Error('LOC JWKS response too large');
-  let data;
-  try{data=JSON.parse(text);}catch{throw new Error('Invalid LOC JWKS');}
-  if(!Array.isArray(data?.keys))throw new Error('Invalid LOC JWKS');
-  if(!fromEdge&&edge){
-    const headers=new Headers({'content-type':'application/json',
-      'cache-control':'public, max-age=300'});
-    await edge.put(cacheRequest,new Response(text,{status:200,headers})).catch(()=>{});
-  }
-  jwksCache.set(issuer,{keys:data.keys,expiry:Date.now()+300000});
-  if(jwksCache.size>16)jwksCache.delete(jwksCache.keys().next().value);
-  return data.keys;
-}
-async function getKeys(issuer){
-  const cached=jwksCache.get(issuer);
-  if(cached&&cached.expiry>Date.now())return cached.keys;
-  const ongoing=jwksPending.get(issuer);
-  if(ongoing)return ongoing;
-  const pending=loadKeys(issuer);
-  jwksPending.set(issuer,pending);
-  try{return await pending;}
-  finally{if(jwksPending.get(issuer)===pending)jwksPending.delete(issuer);}
-}
-// Only signed, non-expired OAuth JWTs explicitly bound to this MCP resource are accepted.
-// Session JWTs, arbitrary bearer strings and tokens for other audiences are never accepted.
-async function verifyOAuthToken(token,config){
-  const parts=token.split('.');
-  if(parts.length!==3) return null; // Opaque OAuth tokens are not accepted.
-  const header=decodeJson(parts[0]);
-  const claims=decodeJson(parts[1]);
-  if(header?.alg!=='RS256'||!header?.kid||claims?.iss!==config.issuer||
-    !/^loc_[A-Za-z0-9_-]{32,80}$/.test(String(claims.sub||''))||
-    !/^[A-Za-z0-9_-]{43}$/.test(String(claims.sid||''))||
-    typeof claims.email_verified!=='boolean')return null;
-  const now=Math.floor(Date.now()/1000);
-  if(!Number.isFinite(claims.exp)||claims.exp<=now||
-    !Number.isFinite(claims.iat)||claims.exp-claims.iat>630||
-    (claims.nbf!=null&&(!Number.isFinite(claims.nbf)||claims.nbf>now+60))||
-    (claims.iat!=null&&(!Number.isFinite(claims.iat)||claims.iat>now+60)))return null;
-  const audiences=Array.isArray(claims.aud)?claims.aud:[claims.aud];
-  if(!audiences.includes(config.resource))return null;
-  const keys=await getKeys(config.issuer);
-  const jwk=keys.find(k=>k.kid===header.kid&&k.kty==='RSA'&&
-    (!k.alg||k.alg==='RS256')&&(!k.use||k.use==='sig'));
-  if(!jwk)return null;
-  const key=await crypto.subtle.importKey('jwk',jwk,
-    {name:'RSASSA-PKCS1-v1_5',hash:'SHA-256'},false,['verify']);
-  const good=await crypto.subtle.verify('RSASSA-PKCS1-v1_5',key,base64url(parts[2]),
-    new TextEncoder().encode(parts[0]+'.'+parts[1]));
-  if(!good)return null;
-  return {subject:claims.sub,scopes:String(claims.scope||'').split(/\s+/).filter(Boolean)};
+// Auth protocol is delegated to Better Auth. The standard JOSE implementation
+// checks RFC 9068 resource JWTs; there is no custom JWT decoder or signer.
+async function verifyOAuthToken(request,config){
+  try{
+    const payload=await verifyAccessTokenRequest(requestToResourceInput(request),{
+      jwksUrl:'https://auth.lo3rwang.cc/api/auth/jwks',
+      verifyOptions:{issuer:config.issuer,audience:config.resource,
+        typ:'at+jwt',requiredClaims:['azp']},
+      requiredScopes:['openid']
+    });
+    if(typeof payload.sub!=='string'||!payload.sub)return null;
+    return {subject:payload.sub,scopes:String(payload.scope||'')
+      .split(/\s+/).filter(Boolean)};
+  }catch{return null}
 }
 function result(id,value){return response({jsonrpc:'2.0',id,result:value});}
 function rpcError(id,code,message,httpStatus=200){
@@ -130,12 +71,12 @@ const TOOLS=[
     },required:['uid'],additionalProperties:false},
     annotations:{readOnlyHint:true,destructiveHint:false}}
 ,
-  {name:'scope_storage',description:'Read the LOC Auth Scope connection status. Scope database URL registration has been retired; database selection is managed by LOC Auth.',
+  {name:'scope_storage',description:'Read the LOC business Scope status. Scope database URL registration has been retired; database selection is managed by the LOC business backend.',
     inputSchema:{type:'object',properties:{
       scopeid:{type:'string'}
     },required:['scopeid'],additionalProperties:false},
     annotations:{readOnlyHint:true,destructiveHint:false}},
-  {name:'galaxy_link',description:'Galaxy conversation continuity. Search ONLY when the human user explicitly requests a conversation search; never search automatically. PR/GitHub search is forbidden: 請至github頁面找尋PR相關資料！不開放搜尋PR! QoS warns before the limit and enforces a five-minute search interval.',
+  {name:'galaxy_link',description:'Galaxy conversation continuity. Search ONLY when the human user explicitly requests a conversation search; never search automatically. PR/GitHub search is forbidden: 請至github頁面找尋PR相關資料！不開放搜尋PR! The business data service handles authorization and persistence.',
     inputSchema:{type:'object',properties:{
       action:{type:'string',enum:['search','read','check','record']},
       scopeid:{type:'string'},uid:{type:'string',pattern:'^[A-Za-z0-9]{8}$',description:'Known exact Galaxy UID for recorded conversation read'},
@@ -149,70 +90,14 @@ const TOOLS=[
       title:{type:'string',maxLength:350},content:{type:'string',maxLength:125000},
       offset:{type:'integer',minimum:0},max_chars:{type:'integer',minimum:1,maximum:40000}
     },required:['action','scopeid'],additionalProperties:false}},
-  {name:'join_scope_group',description:'Group manager attaches an existing Scope; does not move or copy data.',
-    inputSchema:{type:'object',properties:{groupid:{type:'string'},scopeid:{type:'string'}},
-      required:['groupid','scopeid'],additionalProperties:false}},
-  {name:'grant_scope_access',description:'Only a Scope Group manager may grant LOC subjects read/write/configure/manage rights to the Group or a member Scope.',
-    inputSchema:{type:'object',properties:{groupid:{type:'string'},scopeid:{type:'string'},
-      subject:{type:'string',description:'Verified loc_... identity subject'},
-      actions:{type:'array',items:{type:'string',enum:['read','write','manage','configure']}},
-      days:{type:'integer',minimum:1,maximum:365}},
-      required:['groupid','scopeid','subject','actions'],additionalProperties:false}},
-  {name:'revoke_scope_access',description:'Scope Group manager immediately revokes one member’s LOC access to a Group or member Scope.',
-    inputSchema:{type:'object',properties:{groupid:{type:'string'},scopeid:{type:'string'},
-      subject:{type:'string',description:'Verified loc_... identity subject'}},
-      required:['groupid','scopeid','subject'],additionalProperties:false}},
+
 ];
 function toolResponse(id,value){
  const warning=typeof value?.warning==='string'?value.warning:'';
  return result(id,{content:[{type:'text',text:(warning?warning+'\n':'')+JSON.stringify(value)}],
    structuredContent:value});
 }
-// The public UID reader also uses the global Authority Durable Object quota.
-async function withMcpQuota(token,env,action,kind='read'){
-  const authority=new URL(String(env.LOC_MCP_AUTHORITY_URL||
-    'https://auth.lo3rwang.cc'));
-  if(authority.protocol!=='https:'||authority.username||authority.password||
-    authority.search||authority.hash||!['','/'].includes(authority.pathname))
-    throw Error('Invalid LOC Authority origin');
-  const endpoint=new URL('/v1/mcp/quota',authority.origin);
-  const request=async payload=>{
-    const res=await fetch(endpoint.href,{
-      method:'POST',headers:{authorization:'Bearer '+token,
-        origin:'https://loc.lo3rwang.cc','content-type':'application/json'},
-      body:JSON.stringify(payload),signal:AbortSignal.timeout(12000),
-      redirect:'manual',cache:'no-store'
-    });
-    if(!res.ok){
-      const err=new Error(res.status===429?'MCP request limit exceeded':'MCP quota unavailable');
-      err.httpStatus=res.status;throw err;
-    }
-    return res.json();
-  };
-  const permit=await request({action:'acquire',kind});
-  try{
-    const data=await action();
-    return permit.warning&&data&&typeof data==='object'&&!Array.isArray(data)
-      ?{...data,warning:permit.warning}:data;
-  }
-  finally{await request({action:'release',lease:permit.lease});}
-}
-async function qosWarningForDeniedPr(token,env={}){
- try{
-  const authority=new URL(String(env.LOC_MCP_AUTHORITY_URL||'https://auth.lo3rwang.cc'));
-  if(authority.protocol!=='https:'||authority.username||authority.password||
-    authority.search||authority.hash||!['','/'].includes(authority.pathname))return '';
-  const res=await fetch(new URL('/v1/mcp/quota',authority.origin),{
-    method:'POST',headers:{authorization:'Bearer '+token,
-      origin:'https://loc.lo3rwang.cc','content-type':'application/json'},
-    body:JSON.stringify({action:'inspect',kind:'search'}),
-    signal:AbortSignal.timeout(5000),redirect:'manual',cache:'no-store'
-  });
-  if(!res.ok)return '';
-  const data=await res.json();
-  return typeof data?.warning==='string'?data.warning.slice(0,200):'';
- }catch{return '';} // Never unblock a prohibited PR search, even if Authority is unavailable.
-}
+// LOC MCP business operations are independent of Auth-owned rate counters.
 export async function handleMcp(request,env={}){
   const config=mcpConfig(env);
   if(request.method==='OPTIONS')return preflight();
@@ -220,7 +105,7 @@ export async function handleMcp(request,env={}){
   const match=/^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization')||'');
   if(!match)return unauthorized(config);
   let identity=null;
-  try{identity=await verifyOAuthToken(match[1],config);}catch{return unauthorized(config);}
+  try{identity=await verifyOAuthToken(request,config);}catch{return unauthorized(config);}
   if(!identity)return unauthorized(config);
   if(request.method==='GET')return response({error:'SSE_not_supported',message:'Use Streamable HTTP POST'},405,{Allow:'POST, OPTIONS'});
   let payload;
@@ -234,7 +119,7 @@ export async function handleMcp(request,env={}){
       return result(payload.id,{protocolVersion:SUPPORTED_PROTOCOLS.has(proposed)?proposed:DEFAULT_PROTOCOL,
         capabilities:{tools:{listChanged:false}},serverInfo:{name:'loc-mcp',version:'0.2.0',
            ...(proposed==='2025-11-25'?{icons:[{src:'https://loc.lo3rwang.cc/assets/site/icons/loc-favicon.png',mimeType:'image/png'}]}:{})},
-        instructions:'Public Galaxy reads use direct Kysely visibility filters. Private Galaxy read/search use direct Kysely after LOC Auth Scope authorization. Private writes require an independent LOC Auth Scope grant and a configured native Kysely backend. loc_connection_status reports configuration only, not successful database read/write. galaxy_link.search is permitted only by explicit human user request and user_requested=true. 請至github頁面找尋PR相關資料！不開放搜尋PR! QoS warns before the next request reaches a limit; searches have a five-minute gate.'});
+        instructions:'Public Galaxy reads use direct Kysely visibility filters. Private Galaxy reads and writes use direct Kysely after Better Auth identity validation and independent api.manage permissions. loc_connection_status reports configuration only, not successful database read/write. galaxy_link.search is permitted only by explicit human user request and user_requested=true. 請至github頁面找尋PR相關資料！不開放搜尋PR!'});
     }
     case 'ping':return result(payload.id,{});
     case 'tools/list':return result(payload.id,{tools:TOOLS});
@@ -246,9 +131,8 @@ export async function handleMcp(request,env={}){
         return rpcError(payload.id,-32602,'Tool arguments must be an object');
       if(name==='galaxy_link'&&args.action==='search'&&
         /(?:\bPR(?:[\s#:\-]*\d+)?\b|\bpull[ -]?request\b|\bgithub\b|\bcommit\b|合併請求|拉取請求)/i.test(String(args.query||''))){
-        const near=await qosWarningForDeniedPr(match[1],env);
         return result(payload.id,{isError:true,content:[{type:'text',
-          text:PR_SEARCH_WARNING+(near?'\n'+near:'')}]});
+          text:PR_SEARCH_WARNING}]});
       }
       if(name==='galaxy_link'&&args.action==='search'&&args.user_requested!==true)
         return result(payload.id,{isError:true,content:[{type:'text',
@@ -265,11 +149,9 @@ export async function handleMcp(request,env={}){
       try{
         const directPrivate=name==='galaxy_link'&&['read','search'].includes(args.action);
         const value=name==='read_memory'?
-          await withMcpQuota(match[1],env,()=>readMemory(args,env)):
-          directPrivate?await withMcpQuota(match[1],env,
-            ()=>privateGalaxyLink(args,match[1],identity.subject,env),
-            args.action==='search'?'search':'read'):
-          await authorityAction(name,args,match[1],env);
+          await readMemory(args,env):
+          directPrivate?await privateGalaxyLink(args,match[1],identity.subject,env):
+          await businessAction(name,args,match[1],env);
         return toolResponse(payload.id,value);
       }catch(error){
         const validation=error?.code==='INVALID_ARGUMENT';
