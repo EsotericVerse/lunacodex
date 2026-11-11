@@ -32,10 +32,11 @@ function typedValue(field,value){
       return !Number.isNaN(date.getTime())&&date.toISOString().slice(0,10)===value
         ?date:UNSUPPORTED;
     }
-    // Timestamp with time zone: an explicit offset is mandatory. Untz local
-    // timestamps keep the existing Kysely path to preserve their semantics.
+    // A timestamp with an explicit offset can be mapped to a JS Date only at
+    // millisecond precision. Microsecond input stays on Kysely unchanged.
+    // Local timestamps without a zone also stay on Kysely.
     if(types.has('@db.Timestamptz')&&
-      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)){
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)){
       const date=new Date(value);
       return Number.isNaN(date.getTime())?UNSUPPORTED:date;
     }
