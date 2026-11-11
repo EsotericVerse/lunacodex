@@ -1,0 +1,253 @@
+/* LOC public readers and management: mobile-first visual refinement.
+   No new palettes: every tone is derived from the active published Theme.
+   Keep the time river, maps, article semantics and user interactions intact. */
+:root{
+  --loc-list-row-odd:color-mix(in srgb,var(--loc-panel) 94%,var(--loc-bg));
+  --loc-list-row-even:color-mix(in srgb,var(--loc-panel) 85%,var(--loc-panel-2));
+}
+/* Zebra rows are subtle enough for all eight themes, including high-chroma themes. */
+[data-public-feature] .loc-public-article-list > :is(.scope-work-list-row,.loc-shared-work-card){
+  background-image:none;
+  border-color:color-mix(in srgb,var(--loc-line) 72%,transparent);
+  border-radius:var(--loc-ui-radius-md,16px);
+  box-shadow:none;
+}
+[data-public-feature] .loc-public-article-list > :is(.scope-work-list-row,.loc-shared-work-card):is(:hover,:focus-within){
+  border-color:var(--loc-accent-border-soft);
+  box-shadow:none;
+}
+[data-public-feature] .loc-public-article-list :is(h2,h3,.scope-article-title-link){
+  overflow-wrap:anywhere;
+  text-wrap:pretty;
+}
+/* Culture: a legible layered archive, led by the existing chronological river. */
+[data-public-feature="culture"] :is(.scope-culture-classification-river,.scope-culture-structure-river,.scope-loc-time-river){
+  position:relative;
+  min-width:0;
+  border:1px solid color-mix(in srgb,var(--loc-accent) 30%,var(--loc-line));
+  border-block-start:3px solid var(--loc-accent);
+  border-radius:var(--loc-ui-radius-lg,22px);
+  background:color-mix(in srgb,var(--loc-panel) 92%,var(--loc-panel-2));
+  box-shadow:none;
+}
+[data-public-feature="culture"] .scope-culture-source-detail{
+  border-radius:var(--loc-ui-radius-md,16px);
+  background:var(--loc-panel);
+}
+[data-public-feature="culture"] .scope-culture-source-button{
+  transition:border-color .18s ease,box-shadow .18s ease,background-color .18s ease;
+}
+[data-public-feature="culture"] .scope-culture-source-button[aria-pressed="true"]{
+  border-color:var(--loc-accent-border);
+  background:color-mix(in srgb,var(--loc-accent) 13%,var(--loc-panel));
+  box-shadow:inset 3px 0 var(--loc-accent);
+}
+/* Search: pronounced query surface and calmer results, not another dashboard. */
+[data-public-feature="search"] .scope-search-form{
+  padding:clamp(.9rem,2vw,1.5rem);
+  border:1px solid var(--loc-accent-border-soft);
+  border-block-start:3px solid var(--loc-accent);
+  background:var(--loc-panel);
+  box-shadow:none;
+}
+[data-public-feature="search"] .scope-search-form input{
+  min-width:0;
+  min-height:48px;
+  background:var(--loc-panel)!important;
+  color:var(--loc-text);
+}
+[data-public-feature="search"] .scope-search-form input:focus-visible{
+  outline:2px solid var(--loc-accent);
+  outline-offset:2px;
+}
+[data-public-feature="search"] :is(.scope-search-filter-panel,.scope-search-workspace){
+  min-width:0;
+}
+[data-public-feature="search"] .scope-search-highlight,
+[data-public-feature="search"] mark{
+  color:var(--loc-heading);
+  background:color-mix(in srgb,var(--loc-gold) 23%,var(--loc-panel));
+  border-radius:.3em;
+}
+/* Trace: reserve a clear frame for expanding maps, routes and linked data. */
+[data-public-feature="trace"] .loc-trace-panel{
+  min-width:0;
+  overflow:hidden;
+  border:1px solid color-mix(in srgb,var(--loc-gold) 32%,var(--loc-line));
+  border-radius:var(--loc-ui-radius-lg,22px);
+  background:var(--loc-panel);
+  box-shadow:none;
+}
+[data-public-feature="trace"] :is(.loc-trace-float-report,.loc-trace-works){
+  min-width:0;
+  border-radius:var(--loc-ui-radius-md,16px);
+}
+[data-public-feature="trace"] :is(.loc-trace-mobile-map-tools,.loc-trace-resize-tools){
+  gap:.6rem;
+  flex-wrap:wrap;
+}
+/* Management: direct labels and compact task controls, without explanation walls. */
+.management-workspace--unified>.management-workspace__header{
+  padding:clamp(.85rem,1.6vw,1.2rem);
+  border-color:color-mix(in srgb,var(--loc-accent) 24%,var(--loc-line));
+  background:var(--loc-panel);
+}
+.management-workspace--unified .management-workspace__heading{
+  font-size:clamp(1.2rem,2vw,1.55rem);
+}
+.management-workspace--unified>.management-section-nav{
+  border-color:var(--loc-line-soft);
+  background:color-mix(in srgb,var(--loc-panel) 92%,var(--loc-panel-2));
+}
+.management-workspace--unified>.management-section-nav .management-section-nav__item[aria-pressed="true"]{
+  border-color:var(--loc-accent-border-soft);
+  background:color-mix(in srgb,var(--loc-accent) 14%,var(--loc-panel));
+  box-shadow:inset 0 -2px var(--loc-accent);
+}
+.management-section-nav__description{display:none;}
+.management-section-nav__item{min-height:44px;}
+/* Personal Settings: keep sections reachable and stable on narrow phones. */
+.scope-settings-options.management-workspace{
+  display:grid;
+  grid-template-columns:minmax(0,1fr);
+  gap:clamp(.65rem,1.5vw,1rem);
+  min-width:0;
+}
+.scope-settings-options>.management-section-nav{
+  min-width:0;
+  padding:.6rem;
+}
+.scope-settings-options>.management-section-nav .management-section-nav__items{
+  display:flex;
+  flex-wrap:nowrap;
+  gap:.4rem;
+  min-width:0;
+  overflow-x:auto;
+  overscroll-behavior-x:contain;
+  scrollbar-width:thin;
+}
+.scope-settings-options>.management-section-nav .management-section-nav__item{
+  flex:0 0 auto;
+  width:auto;
+  min-height:44px;
+  padding:.6rem .85rem;
+  white-space:nowrap;
+  border:1px solid transparent;
+  border-radius:var(--loc-ui-radius-sm,12px);
+  text-align:center;
+}
+.scope-settings-options>.management-section-nav .management-section-nav__item[aria-pressed="true"]{
+  border-color:var(--loc-accent-border-soft);
+  background:var(--loc-accent-surface);
+  box-shadow:inset 0 -2px var(--loc-accent);
+}
+.scope-settings-options>.management-workspace-panel{
+  min-width:0;
+  max-width:100%;
+}
+.scope-settings-options>.management-workspace-panel :is(input,select,textarea){
+  min-width:0;
+  max-width:100%;
+  box-sizing:border-box;
+}
+@media(max-width:680px){
+  [data-public-feature] .loc-public-article-list{
+    gap:.6rem;
+  }
+  [data-public-feature] .loc-public-article-list > :is(.scope-work-list-row,.loc-shared-work-card){
+    padding:.75rem;
+  }
+  [data-public-feature="culture"] :is(.scope-culture-classification-river,.scope-culture-structure-river,.scope-loc-time-river){
+    border-radius:var(--loc-ui-radius-md,16px);
+  }
+  [data-public-feature="search"] .scope-search-form{
+    padding:.85rem;
+  }
+  .scope-settings-options>.management-section-nav .management-section-nav__item{
+    padding:.6rem .72rem;
+  }
+  .management-workspace--unified>.management-workspace__header .management-workspace__description{
+    display:none;
+  }
+}
+@media(prefers-reduced-motion:reduce){
+  [data-public-feature] .loc-public-article-list > :is(.scope-work-list-row,.loc-shared-work-card),
+  [data-public-feature="culture"] .scope-culture-source-button{transition:none;}
+}
+
+/* Editorial-art direction: rhythm, fine rules and whitespace instead of glassy plastic. */
+[data-public-feature="culture"] .scope-culture-source-detail,
+[data-public-feature="search"] .scope-search-form,
+.management-workspace--unified>.management-workspace__header{
+  box-shadow:none;
+}
+[data-public-feature="culture"] :is(.scope-culture-classification-river,.scope-culture-structure-river,.scope-loc-time-river){
+  box-shadow:none;
+}
+[data-public-feature="culture"] .scope-culture-source-groups{
+  gap:clamp(.45rem,1vw,.8rem);
+}
+[data-public-feature="search"] .scope-search-form:focus-within{
+  border-color:var(--loc-accent);
+  box-shadow:inset 0 0 0 1px var(--loc-accent-border-soft);
+}
+@media(hover:none){
+  [data-public-feature] .loc-public-article-list > :is(.scope-work-list-row,.loc-shared-work-card):hover{box-shadow:none;}
+}
+
+/* Keep feature heroes below the first mobile viewport: content takes priority. */
+.scope-feature-hero{
+  min-height:0;
+  padding:clamp(.85rem,1.8vw,1.4rem);
+}
+.scope-feature-hero>.home-title-row>h1{
+  font-size:clamp(1.6rem,2.8vw,2.4rem)!important;
+  line-height:1.12!important;
+  letter-spacing:-.025em;
+}
+.scope-feature-hero .scope-hero-description{
+  margin-top:.4rem;
+  max-width:64ch;
+}
+.scope-feature-hero .scope-hero-description :where(p,li){
+  margin-block:.25rem;
+}
+.scope-feature-hero .scope-subtitle{font-size:clamp(.9rem,1.2vw,1.1rem)!important;}
+/* Home editorial image/text composition, without rearranging authored blocks. */
+.loc-next-main[data-loc-view="home"] :is(.loc-home-block,.scope-home-section){
+  min-width:0;
+}
+.loc-next-main[data-loc-view="home"] :is(.loc-home-block__body,.scope-home-section) :is(p,li){
+  max-width:70ch;
+  text-wrap:pretty;
+}
+.loc-next-main[data-loc-view="home"] :is(.loc-home-block__body,.scope-home-section) :is(img,video){
+  display:block;
+  max-width:100%;
+  height:auto;
+  object-fit:contain;
+  border-radius:var(--loc-ui-radius-sm,12px);
+}
+@media(max-width:680px){
+  .scope-feature-hero{
+    padding:.8rem .9rem;
+    border-radius:var(--loc-ui-radius-md,16px);
+  }
+  .scope-feature-hero>.home-title-row>h1{font-size:clamp(1.5rem,7vw,2rem)!important;}
+  .scope-feature-hero .scope-hero-description{margin-top:.35rem;}
+  .scope-feature-hero .scope-hero-description :where(p,li){
+    font-size:.9rem!important;
+    line-height:1.5;
+  }
+  .loc-next-main[data-loc-view="home"] :is(.loc-home-block,.scope-home-section){
+    padding-inline:clamp(.75rem,3vw,1rem);
+  }
+  .loc-next-main[data-loc-view="home"] :is(.loc-home-block__header,.home-title-row){
+    min-width:0;
+    flex-wrap:wrap;
+  }
+  .loc-next-main[data-loc-view="home"] :is(.loc-home-block__body,.scope-home-section) :is(img,video){
+    width:auto;
+    max-height:48svh;
+  }
+}
