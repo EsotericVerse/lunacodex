@@ -36,6 +36,11 @@ export function checkLocAuthEnvironment(env){
   const url=new URL(env.LOC_AUTH_DATABASE_URL);
   if(!['postgresql:','postgres:'].includes(url.protocol))
     throw new Error('LOC Auth requires a PostgreSQL connection');
+  // This is a deployment gate, not a table creator. No storage schema is
+  // selected by LOC Auth until its exact tables, columns and grants are
+  // individually reviewed. A temporary test-only name is never a default.
+  if(!/^[a-z][a-z0-9_]{0,62}$/.test(String(env.LOC_AUTH_SCHEMA||'')))
+    throw new Error('Approved LOC Auth PostgreSQL schema is not configured');
   return true;
 }
 
@@ -60,8 +65,8 @@ export function createLocAuth(env){
     database:{
       dialect:new PostgresDialect({pool}),
       type:'postgres',
-      // Isolated namespace: never run LOC Auth against Neon-managed neon_auth.
-      schemaName:'loc_auth'
+      // Approved storage namespace only. No automatic DDL or test schema.
+      schemaName:env.LOC_AUTH_SCHEMA
     },
     emailAndPassword:{enabled:false},
     socialProviders:{
