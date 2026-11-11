@@ -149,18 +149,15 @@ export async function handleNativePublicContent(request,env={},{
     if(numeric)return respond({data:await (kind==='loc'?
       readLocGroupNumeric(query,start,end,port):readGalaxyNumeric(query,scope,kind,start,end,port))});
     if(kind==='culture_anchors'){
-      const typed=scopedFor(scope);
-      const rows=typed
-        ?await typed.anchor.findMany({
-            where:{type:{in:['date','period','era']},invisible:false},
-            select:{uid:true,type:true,title:true,attr:true},take:5000
-          })
-        :await query.selectFrom(relation(scope+'_anchor'))
-            .select(['uid','type','title','attr'])
-            .where('type','in',['date','period','era'])
-            .where('invisible','=',false).limit(5000).execute();
-      return respond({data:rows.map(row=>({...row,
-        attr:typeof row.attr==='string'?JSON.parse(row.attr||'{}'):row.attr||{}
+      // Public Culture does not instantiate an Auth principal, a ZenStack
+      // policy session, or any provider-specific gateway. This is one fixed
+      // Kysely SELECT of visible time anchors from the site's own database.
+      const rows=await query.selectFrom(relation(scope+'_anchor'))
+        .select(['uid','type','title','attr'])
+        .where('type','in',['date','period','era'])
+        .where('invisible','=',false).limit(5000).execute();
+      return respond({data:rows.map(row=>({
+        ...row,attr:typeof row.attr==='string'?JSON.parse(row.attr||'{}'):row.attr||{}
       }))});
     }
     if(kind==='config'){
