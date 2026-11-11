@@ -52,13 +52,12 @@ async function selectLaneDailyGrouped({scope,spec,range}){
 async function pageLaneDays({scope,spec,range,totals}){
   const media=spec.source.startsWith('media:');
   const table=media?scope.galaxyMedia:scope.galaxy;
+  // Galaxy is filtered/grouped by its indexed `date`; media by createtime.
+  // Never filter on content or keyword: counting must not read article text.
+  const dayColumn=media?'createtime':'date';
   const filters=[
-    {column:'createtime',operator:'gte',value:range.startDate+'T00:00:00+08:00'},
-    {column:'createtime',operator:'lte',value:range.endDate+'T23:59:59.999+08:00'},
-    ...(media?[]:[
-      {column:'keyword',operator:'eq',value:'true'},
-      {column:'content',operator:'neq',value:''}
-    ]),
+    {column:dayColumn,operator:'gte',value:media?range.startDate+'T00:00:00+08:00':range.startDate},
+    {column:dayColumn,operator:'lte',value:media?range.endDate+'T23:59:59.999+08:00':range.endDate},
     ...(spec.source==='galaxy:exact'?[{column:'site',operator:'eq',value:spec.exact}]:[]),
     ...(spec.source==='media:exact'?[{column:'type',operator:'eq',value:spec.exact}]:[])
   ];
@@ -66,9 +65,9 @@ async function pageLaneDays({scope,spec,range,totals}){
   let offset=0;
   while(true){
     const page=await selectRows(table,{
-      columns:'createtime',
+      columns:dayColumn,
       filters,orFilter,
-      orders:[{column:'createtime',ascending:true}],
+      orders:[{column:dayColumn,ascending:true}],
       limit:PER_PAGE,offset,
       count:offset===0?'exact':null,
       maxLimit:PER_PAGE
@@ -76,7 +75,7 @@ async function pageLaneDays({scope,spec,range,totals}){
     if(offset===0&&Number(page.count)>MAX_LANE_ROWS)
       throw new Error('此河道的三個月紀錄超過 '+MAX_LANE_ROWS.toLocaleString()+' 筆，請縮小日期區間。');
     for(const row of page.rows||[]){
-      const day=taipeiDay(row.createtime);
+      const day=media?taipeiDay(row.createtime):String(row.date||'').slice(0,10);
       if(day<range.startDate||day>range.endDate)continue;
       totals.set(day,(totals.get(day)||0)+1);
     }
