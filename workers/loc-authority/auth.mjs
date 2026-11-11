@@ -152,9 +152,10 @@ export function createLocAuth(env){
         grantTypes:['authorization_code','refresh_token'],
         // PKCE/authorization codes/refresh rotation/OIDC are native modules.
         allowDynamicClientRegistration:true,
-        // Official RFC 7591 DCR is needed by LOC galaxy-link's public PKCE client.
-        // Better Auth limits registration per IP and grants no LOC data write.
-        allowUnauthenticatedClientRegistration:true,
+        // Galaxy-Link uses the existing HTTPS Client ID Metadata Document
+        // (CIMD), so arbitrary anonymous DCR is unnecessary and unsafe.
+        // Other client registrations must authenticate and pass privileges.
+        allowUnauthenticatedClientRegistration:false,
         clientRegistrationDefaultScopes:['openid','profile','email'],
         clientRegistrationAllowedScopes:['offline_access','loc:import'],
         clientRegistrationAllowedResources:[LOC_IMPORT],
