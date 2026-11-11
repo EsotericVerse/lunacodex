@@ -116,6 +116,8 @@
   min-width:0;
 }
 .scope-stat-chart-frame__canvas{min-width:0;width:100%}
+/* Motion only composites the chart surface; Recharts keeps stable dimensions. */
+.scope-multichart-motion-surface{width:100%;min-width:0;}
 .scope-stat-zoom-rail{
   display:flex;
   flex-direction:column;
