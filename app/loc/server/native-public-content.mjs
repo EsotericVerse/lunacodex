@@ -19,9 +19,7 @@ const BLOCK_FIELDS=['uid','page_name','block_eyebrow','block_title','block_subti
 const respond=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:HEADERS});
 const allowedScope=id=>SCOPE_ROUTE_INDEX.some(row=>row.scope_id===id&&row.active!==false);
 const NUMERIC_KINDS=new Set(['culture_density','daily','overview','earliest','totals','loc']);
-// Existing published Galaxy history exceeds 5,000 date/source groups. Bound
-// the result by groups (never article rows) while preserving full-history views.
-const MAX_PUBLIC_GROUPS=20000;
+// Numeric Culture/Statistics queries aggregate the full source: no row-group ceiling.
 const DAY=/^\d{4}-\d{2}-\d{2}$/;
 const day=value=>value instanceof Date?value.toISOString().slice(0,10):String(value??'').slice(0,10);
 const total=value=>Number(value)||0;
@@ -62,8 +60,7 @@ async function readGalaxyNumeric(db,scope,kind,start,end,port){
       .select(eb=>eb.fn.countAll().as('item_count'))
       .where('statics','=',true).where('date','is not',null);
     if(start)query=query.where('date','>=',start).where('date','<=',end);
-    const rows=await query.groupBy('site').orderBy('site','asc').limit(MAX_PUBLIC_GROUPS+1).execute();
-    if(rows.length>MAX_PUBLIC_GROUPS)throw new Error('Too many Galaxy sources');
+    const rows=await query.groupBy('site').orderBy('site','asc').execute();
     return rows.map(row=>({kind:'source',category:String(row.site||''),
       item_count:total(row.item_count)}));
   }
@@ -72,7 +69,7 @@ async function readGalaxyNumeric(db,scope,kind,start,end,port){
     .where(isCulture?'culture':'statics','=',true)
     .where('date','>=',start).where('date','<=',end)
     .where('date','is not',null)
-    .groupBy(['date','site']).orderBy('date','asc').limit(MAX_PUBLIC_GROUPS+1);
+    .groupBy(['date','site']).orderBy('date','asc');
   const [raw,first]=await Promise.all([
     q.execute(),
     kind==='overview'?db.selectFrom(table)
@@ -80,7 +77,6 @@ async function readGalaxyNumeric(db,scope,kind,start,end,port){
       .where('statics','=',true).where('date','is not',null)
       .executeTakeFirst():Promise.resolve(null)
   ]);
-  if(raw.length>MAX_PUBLIC_GROUPS)throw new Error('Too many daily Galaxy groups');
   if(isCulture)return raw.map(row=>({day:day(row.date),
     site:String(row.site||''),item_count:total(row.item_count)}));
   // One grouped SQL query supplies both the Source and Total rows. It is not
@@ -153,12 +149,12 @@ export async function handleNativePublicContent(request,env={},{
       const rows=typed
         ?await typed.anchor.findMany({
             where:{type:{in:['date','period','era']},invisible:false},
-            select:{uid:true,type:true,title:true,attr:true},take:5000
+            select:{uid:true,type:true,title:true,attr:true}
           })
         :await query.selectFrom(relation(scope+'_anchor'))
             .select(['uid','type','title','attr'])
             .where('type','in',['date','period','era'])
-            .where('invisible','=',false).limit(5000).execute();
+            .where('invisible','=',false).execute();
       return respond({data:rows.map(row=>({...row,
         attr:typeof row.attr==='string'?JSON.parse(row.attr||'{}'):row.attr||{}
       }))});
@@ -193,11 +189,11 @@ export async function handleNativePublicContent(request,env={},{
       ?await typed.blocks.findMany({
           where:{page_name:{in:names}},
           select:Object.fromEntries(BLOCK_FIELDS.map(column=>[column,true])),
-          orderBy:{block_order:'asc'},take:100
+          orderBy:{block_order:'asc'}
         })
       :await query.selectFrom(table).select(BLOCK_FIELDS)
           .where('page_name','in',names).orderBy('block_order','asc')
-          .limit(100).execute();
+          .execute();
     return respond({data});
    }catch(error){
     // Categorize the real TCP/TLS/SQL failure without revealing credentials,
