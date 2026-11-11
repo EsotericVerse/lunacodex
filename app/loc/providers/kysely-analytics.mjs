@@ -1,6 +1,7 @@
 import {canManageLoc} from './loc-authorization.mjs';
 import {portableRelation} from './sql-engine-ports.mjs';
 import {sql} from 'kysely';
+import {zmodelRegistryJoin} from '../../../zenstack/model-column-guard.mjs';
 import {keywordPatternItemMetrics,keywordPatternDailySummary} from '../keyword-search-pattern.mjs';
 import {readScopePatternRows} from '../keyword-anchor-index.mjs';
 
@@ -23,8 +24,7 @@ function scopeId(value){const id=String(value||'').trim().toLowerCase();
   if(!SCOPE.test(id))reject('Invalid statistics Scope');return id;
 }
 async function registry(trx,scope){
-  const row=await trx.selectFrom('api.manage as m')
-    .innerJoin('silver.loc as l','l.id','m.id')
+  const row=await zmodelRegistryJoin(trx)
     .select(['m.id as id','m.manage_role as manage_role','m.active as active',
       'l.display_name as display_name','m.anchor_table as anchor_table',
       'm.galaxy_table as galaxy_table','m.sort_order as sort_order'])
@@ -409,8 +409,7 @@ export async function executeKyselyAnalytics(trx,body,{role='anon',publishedScop
   }
   if(mode==='loc'){
     if(scope!=='loc')reject('Invalid LOC statistics Scope');
-    const groups=await trx.selectFrom('api.manage as m')
-      .innerJoin('silver.loc as l','l.id','m.id')
+    const groups=await zmodelRegistryJoin(trx)
       .select(['m.id as id','l.display_name as display_name',
         'm.galaxy_table as galaxy_table','m.anchor_table as anchor_table'])
       .where('m.manage_role','=','scope').where('m.active','=',true)

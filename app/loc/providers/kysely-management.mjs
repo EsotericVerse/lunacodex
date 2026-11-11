@@ -1,6 +1,6 @@
 import {canManageLoc,locManageRows} from './loc-authorization.mjs';
 import {schema as fixedSchema} from '../../../zenstack/schema.mjs';
-import {modelFieldsForSql} from '../../../zenstack/model-column-guard.mjs';
+import {modelFieldsForSql,zmodelRegistryJoin} from '../../../zenstack/model-column-guard.mjs';
 import {validateLocRegistryDomain} from './loc-domain.mjs';
 import {sql} from 'kysely';
 import {saveBlocksKysely} from './kysely-blocks.mjs';
@@ -507,8 +507,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
   if(name==='read_scope_registry_admin'){
     if(!await canManageLoc(trx,'global'))reject('Global administrator required',403);
     await sql`reset role`.execute(trx);
-    const rows=await trx.selectFrom('api.manage as m')
-      .leftJoin('silver.loc as l','l.id','m.id')
+    const rows=await zmodelRegistryJoin(trx,{optionalLoc:true})
       .select(['m.id as id','l.display_name as display_name','m.email as email',
         'm.manage_role as manage_role','m.domain as domain','m.directory as directory',
         'm.parent_scope_id as parent_scope_id','m.active as active',
@@ -540,8 +539,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     const group=validScope(args.p_group_id);
     if(!await canManageLoc(trx,'group',group))reject('Group management permission required',403);
     await sql`reset role`.execute(trx);
-    const rows=await trx.selectFrom('api.manage as m')
-      .innerJoin('silver.loc as l','l.id','m.id')
+    const rows=await zmodelRegistryJoin(trx)
       .select(['m.id as id','l.display_name as display_name',
         'm.parent_scope_id as parent_scope_id','m.active as active',
         'm.sort_order as sort_order'])
