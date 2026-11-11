@@ -186,7 +186,7 @@ export default function Trace({scopeId='loc'}){
       const {data,error}=await dbPublicClient.schema('silver').analytics({
         p_scope_id:scope,p_view:'trace_daily',
         p_start:annualWindow.startDate,p_end:annualWindow.endDate,
-        p_options:{placeIds:ids}
+        p_options:{placeIds:ids,source:null}
       });
       if(error)throw error;
       if(!Array.isArray(data))throw new Error('年度地點統計資料格式不正確');
