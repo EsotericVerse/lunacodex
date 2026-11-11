@@ -44,7 +44,7 @@ export default function LocGroupMemberList({groupId='loc'}){
       }
       setDraft({});
       invalidateAppBootstrapMetadata();
-      await Promise.all([query.refetch(),queryClient.invalidateQueries({queryKey:['app-bootstrap']})]);
+      await Promise.all([query.refetch(),queryClient.invalidateQueries({queryKey:['app-bootstrap'],refetchType:'none'})]);
       setNotice('群組人員資料已更新。');
       return true;
     }catch(error){setNotice(String(error?.message||error));return false;}
