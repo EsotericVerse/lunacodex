@@ -240,28 +240,15 @@ async function exchange(config,body){
   throw oauthError('伺服器未回傳 Bearer Token');
  return json;
 }
-async function registeredClient(config,redirect){
- const {locRegisteredOAuthClient:prior}=await chrome.storage.local.get('locRegisteredOAuthClient');
- if(prior?.issuer===config.issuer&&prior.redirect===redirect&&
-  prior.expires_at>Date.now()+86400000&&/^[A-Za-z0-9_-]{24,128}$/.test(prior.client_id))
-  return prior.client_id;
- const reply=await fetch(config.registration_endpoint,{
-  method:'POST',headers:{'content-type':'application/json'},
-  body:JSON.stringify({client_name:'LOC 彩虹橋',
-   redirect_uris:[redirect],response_types:['code'],
-   grant_types:['authorization_code','refresh_token'],
-   token_endpoint_auth_method:'none'}),
-  cache:'no-store',redirect:'error'
- });
- if(!reply.ok)throw oauthError('無法註冊 Chrome OAuth Client（HTTP '+reply.status+'）');
- const saved=await reply.json();
- if(!/^[A-Za-z0-9_-]{24,128}$/.test(String(saved.client_id||''))||
-   !saved.redirect_uris?.includes(redirect))
-  throw oauthError('LOC Auth 未確認 Chrome 回呼網址');
- const next={issuer:config.issuer,redirect,client_id:saved.client_id,
-  expires_at:Number(saved.client_id_expires_at||0)*1000||Date.now()+365*86400000};
- await chrome.storage.local.set({locRegisteredOAuthClient:next});
- return next.client_id;
+// Public PKCE client: use the stable HTTPS Client ID Metadata Document
+// already published by LOC Web, rather than writing a new OAuth client
+// registration on every install or reauthorization.
+function registeredClient(config,redirect){
+ const clientId='https://loc.lo3rwang.cc/extension/oauth/client.json';
+ const callback='https://hiaeafonocnjaclcfgjmdopbcgnafnna.chromiumapp.org/loc';
+ if(config.client_id!==clientId||redirect!==callback)
+  throw oauthError('LOC 彩虹橋 OAuth Client Metadata 與 Chrome 回呼不一致');
+ return clientId;
 }
 async function disconnectLoc(){
  // Keep all pending Queue data even if server-side revocation is unavailable.
@@ -288,7 +275,7 @@ async function disconnectLoc(){
 async function connectLoc(){
  const cfg=await getConfig();
  const redirect=chrome.identity.getRedirectURL('loc');
- cfg.client_id=await registeredClient(cfg,redirect);
+ cfg.client_id=registeredClient(cfg,redirect);
  await chrome.storage.local.set({locConfig:cfg});
  const verifier=encode64(crypto.getRandomValues(new Uint8Array(32)));
  const digest=new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(verifier)));
