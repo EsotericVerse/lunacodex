@@ -7,7 +7,7 @@ import {useSearchParams} from 'next/navigation';
  * In-page management navigator.
  * In-page horizontal tabs are React selection UI, NOT a Next.js route transition.
  */
-export default function ManagementSectionNav({id,title,panelId,items,value,onChange,showDescriptions=false}){
+export default function ManagementSectionNav({id,title,panelId,items,value,onChange,showDescriptions=false,mobileSelect=false}){
   const activeItem=items.find(item=>item.value===value)||items[0];
   const headingId=id+'-heading';
   const itemsRef=useRef(null);
@@ -21,8 +21,15 @@ export default function ManagementSectionNav({id,title,panelId,items,value,onCha
     if(target.left<bounds.left)list.scrollLeft-=bounds.left-target.left;
     else if(target.right>bounds.right)list.scrollLeft+=target.right-bounds.right;
   },[value]);
-  return <section className="management-section-nav" aria-labelledby={headingId}>
+  return <section className={"management-section-nav"+(mobileSelect?" management-section-nav--mobile-select":"")} aria-labelledby={headingId}>
     <h2 className="management-section-nav__title" id={headingId}>{title}</h2>
+    {mobileSelect?<label className="management-section-nav__mobile-picker">
+      <span>選擇功能</span>
+      <select value={activeItem?.value||''} onChange={event=>onChange(event.target.value)}
+        aria-controls={panelId} aria-label={title}>
+        {items.map(item=><option key={item.value} value={item.value}>{item.label}</option>)}
+      </select>
+    </label>:null}
     <div ref={itemsRef} className="management-section-nav__items" role="group" aria-label={title}>
       {items.map(item=>{
         const selected=item.value===activeItem?.value;
