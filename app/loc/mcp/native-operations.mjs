@@ -76,11 +76,12 @@ async function signedClaims(request,fetchImpl){
     if(!cookies)throw refusal('LOC sign-in required',401);
     let response;
     try{
-      response=await fetchImpl(AUTH+'/api/auth/get-session',{
+      response=await fetchImpl(AUTH+'/api/auth/get-session?disableCookieCache=true',{
         method:'GET',headers:{cookie:cookies,accept:'application/json'},
         cache:'no-store',redirect:'manual',signal:AbortSignal.timeout(7000)
       });
     }catch{throw refusal('LOC Auth verification unavailable',503)}
+    if(response.status===401||response.status===403)throw refusal('LOC sign-in required',401);
     if(!response.ok)throw refusal('LOC Auth verification unavailable',503);
     const data=await response.json().catch(()=>null);
     const user=data?.user;
@@ -118,7 +119,8 @@ async function signedClaims(request,fetchImpl){
     throw refusal('Verified LOC OAuth identity required',401);
   return {provider:'loc',role:'authenticated',sub:claims.sub,
     subject:claims.sub,email:String(user.email).trim().toLowerCase(),
-    me:false,grants:[]};
+    me:false,grants:[],
+    delegatedScopes:String(claims.scope||'').split(/\s+/).filter(Boolean)};
 }
 export async function handleNativeLocOperation(request,env={},{
   fetchImpl=globalThis.fetch,database=directMcpKysely
@@ -152,6 +154,12 @@ export async function handleNativeLocOperation(request,env={},{
     const writeKinds=new Set(['short-import','mcp-sync','mcp-append',
       'managed-write','managed-action','personal-write',
       ...(body.kind==='mcp-conversation'&&body.action==='record'?['mcp-conversation']:[])]);
+    // MCP write requires both an OAuth delegation for importing and the
+    // independently checked LOC business permission. OAuth alone never grants
+    // writing; a read-only token cannot be promoted by a tool payload.
+    if(host===MCP_HOST&&writeKinds.has(body.kind)&&
+       !claims.delegatedScopes?.includes('loc:import'))
+      throw refusal('LOC MCP write delegation scope required',403);
     // Write permission is checked after opening the business database.
     // External user-selected connections are READ ONLY, whether they map an
     // existing table or expose the ordinary Scope schema. This includes the
