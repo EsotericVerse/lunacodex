@@ -21,6 +21,20 @@ function mainUri(env){
     throw unavailable('LOC primary PostgreSQL URI incomplete');
   return value;
 }
+// Pool-shaped adapter for Kysely: one fresh pg.Client per connect(), closed on
+// release. Holds no sockets or waiters between requests.
+export function requestScopedPool(options,ClientClass=pg.Client){
+  return {
+    async connect(){
+      const client=new ClientClass(options);
+      client.on?.('error',()=>{});
+      await client.connect();
+      client.release=()=>{void Promise.resolve(client.end()).catch(()=>{});};
+      return client;
+    },
+    async end(){}
+  };
+}
 export function mcpDatabaseConfiguration(env={}){
   const configured=Boolean(String(env?.LOC_DATABASE_URI||'').trim());
   return {publicReadConfigured:configured,privateReadConfigured:configured,
@@ -36,9 +50,12 @@ export async function db_connection(env={},verifiedAlias='',{probeTicket=''}={})
   if(probeTicket)throw unavailable('Manual probe is not a business SQL operation');
   const uri=mainUri(env);
   if(cachedConnection?.uri===uri)return cachedConnection.connection;
-  const pool=new pg.Pool({connectionString:uri,max:3,
-    idleTimeoutMillis:12000,connectionTimeoutMillis:7000,
-    ssl:{rejectUnauthorized:true}});
+  // Cloudflare forbids using a socket or waiting on a promise that was created
+  // in another request. A shared pg.Pool therefore hangs/crashes (HTTP 500)
+  // when several requests run queries at once. Open a short-lived client per
+  // acquisition instead; it always lives inside the request that uses it.
+  const pool=requestScopedPool({connectionString:uri,
+    connectionTimeoutMillis:7000,ssl:{rejectUnauthorized:true}});
   const dialect=new PostgresDialect({pool});
   const connection={db:new Kysely({dialect}),dialect,
     engine:'postgres',namespace:'silver',tableName:'',fieldMap:{}};
