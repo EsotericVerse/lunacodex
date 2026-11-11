@@ -21,8 +21,8 @@ export function modelFieldsForSql(schemaName,tableName){
 }
 
 // This is column-name contract validation, not permission verification or
-// runtime value coercion. ZenStack ORM performs its own model-input checks;
-// LOC Auth and the trusted SQL Gateway remain responsible for access control.
+// runtime type-difference handling. Normal SQL values stay on Kysely;
+// LOC Auth and the trusted application boundary retain access control.
 export function verifyModeledSqlFields({schema:namespace,table,columns=[],
   filters=[],orders=[],values=null,onConflict=[]}={}){
   const fields=modelFieldsForSql(namespace,table);
@@ -39,4 +39,64 @@ export function verifyModeledSqlFields({schema:namespace,table,columns=[],
     if(typeof column!=='string'||!Object.hasOwn(fields,column))
       throw new TypeError('Column is not defined in the LOC ZModel: '+String(column));
   return true;
+}
+
+
+// Only differences with a known ZModel type are normalized. Ordinary text,
+// numbers, DATE values, JSON and arrays pass unchanged to the SQL driver.
+// This is needed for *raw Kysely* statements: ZenStack ORM's automatic
+// decoding does not automatically run on Kysely's direct query results.
+function modelBoolean(value){
+  if(value===true||value===false||value===null)return value;
+  if(value===1||value==='1'||value==='true')return true;
+  if(value===0||value==='0'||value==='false')return false;
+  return value;
+}
+function normalizedPredicate(node,fields){
+  if(!node||typeof node!=='object')return node;
+  if((node.type==='and'||node.type==='or')&&Array.isArray(node.items)){
+    const items=node.items.map(item=>normalizedPredicate(item,fields));
+    return items.every((item,i)=>item===node.items[i])?node:{...node,items};
+  }
+  if(fields?.[node.column]?.type!=='Boolean'||fields[node.column].array)
+    return node;
+  const value=Array.isArray(node.value)?node.value.map(modelBoolean):modelBoolean(node.value);
+  if(Array.isArray(node.value)){
+    if(node.value.every((v,i)=>v===value[i]))return node;
+  }else if(value===node.value)return node;
+  return {...node,value};
+}
+/** ZModel-informed exceptional type handling; never routes ordinary SQL. */
+export function normalizeModeledTypeDifferences({
+  schema:namespace,table,filters=[],orFilters=[]
+}={}){
+  const fields=modelFieldsForSql(namespace,table);
+  if(!fields)return {filters,orFilters};
+  return {
+    filters:filters.map(node=>normalizedPredicate(node,fields)),
+    orFilters:orFilters.map(node=>normalizedPredicate(node,fields))
+  };
+}
+/** Normalize only non-Boolean driver representations of ZModel Boolean columns. */
+export function normalizeModeledSelectRows({schema:namespace,table,rows}={}){
+  if(!Array.isArray(rows)||!rows.length)return rows;
+  const fields=modelFieldsForSql(namespace,table);
+  if(!fields)return rows;
+  const boolColumns=Object.entries(fields)
+    .filter(([,field])=>field.type==='Boolean'&&!field.array)
+    .map(([name])=>name);
+  if(!boolColumns.length)return rows;
+  return rows.map(row=>{
+    if(!row||typeof row!=='object')return row;
+    let normalized=null;
+    for(const column of boolColumns){
+      if(!Object.hasOwn(row,column))continue;
+      const value=modelBoolean(row[column]);
+      if(value!==row[column]){
+        if(!normalized)normalized={...row};
+        normalized[column]=value;
+      }
+    }
+    return normalized||row;
+  });
 }
