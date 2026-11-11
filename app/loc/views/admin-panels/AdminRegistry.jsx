@@ -3,7 +3,7 @@ import UiText from '../../../i18n/UiText';
 import FieldText from '../../../i18n/FieldText';
 import {normalizeUiLocale,UI_LOCALE_OPTIONS} from '../../../i18n/ui-copy';
 import {useCallback,useEffect,useRef,useState} from 'react';
-import {useQueryClient} from '@tanstack/react-query';
+import {useQueryClient} from '../../use-async-resource';
 import {invalidateAppBootstrapMetadata} from '../../app-bootstrap';
 import {useEditDock,useEditDockForm} from '../../../modular/edit-dock';
 import dynamic from 'next/dynamic';
