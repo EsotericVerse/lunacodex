@@ -7,6 +7,7 @@ registerDefaultSection('uiExtra.cultureTimeline',cultureTimelineZh);
 
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {DataSet,Timeline} from 'vis-timeline/standalone';
+import {AnimatePresence,motion,useReducedMotion} from 'motion/react';
 import {CultureTimelineModel} from './culture-timeline-model';
 import useDefaultTimeUnit from '../../../loc/use-default-time-unit';
 
@@ -177,6 +178,7 @@ export default function CultureTimeline({
   useUiSection('uiExtra.cultureTimeline');
   const {locale,copy}=useUiLocale();
   const defaultTimeUnit=useDefaultTimeUnit();
+  const reduceMotion=useReducedMotion();
   const labels=copy.uiExtra.cultureTimeline;
   const timelineLocale=locale==='zh-Hans'?'zh-cn':locale==='zh-Hant'?'zh-tw':locale;
   const t=text=>translateUiField(locale,text);
@@ -215,6 +217,10 @@ export default function CultureTimeline({
   },[items,extraGroups,heightVariant]);
   const rows=useMemo(()=>timelineRows(visibleItems,labelOf===defaultTimelineLabel?(item,index)=>item?.display_label||item?.name||item?.title||item?.period||labels.item+' '+(index+1):labelOf,focus,labels),[visibleItems,labelOf,focus,labels]);
   const fallbackRows=useMemo(()=>[...rows].sort((a,b)=>String(b.start).localeCompare(String(a.start))),[rows]);
+  const selectedRow=useMemo(()=>rows.find(row=>row.id===selectedRowId)||null,[rows,selectedRowId]);
+  // Keep all camera geometry inside vis-timeline, not Motion; animation applies
+  // only to explicit navigation, never to dragging, date edits, or first paint.
+  const cameraAnimation=reduceMotion?false:{duration:240,easingFunction:'easeInOutQuad'};
   const hasTimeKinds=mode==='overview'&&rows.some(row=>String(row.group||'').startsWith('kind:'));
   // Trace expand/collapse updates datasets in place to preserve pan, zoom
   // and touch position exactly like the lower numeric river.
@@ -523,24 +529,24 @@ export default function CultureTimeline({
   function changeWindow(action){
     const timeline=timelineRef.current;
     if(!timeline)return;
-    if(action==='zoom-in')return timeline.zoomIn(.35,{animation:false});
-    if(action==='zoom-out')return timeline.zoomOut(.35,{animation:false});
+    if(action==='zoom-in')return timeline.zoomIn(.35,{animation:cameraAnimation});
+    if(action==='zoom-out')return timeline.zoomOut(.35,{animation:cameraAnimation});
     if(action==='reset'){
       if(windowStart&&windowEnd&&Number.isFinite(Date.parse(windowStart))&&Number.isFinite(Date.parse(windowEnd))){
-        return timeline.setWindow(windowStart,windowEnd,{animation:false});
+        return timeline.setWindow(windowStart,windowEnd,{animation:cameraAnimation});
       }
-      return timeline.fit({animation:false});
+      return timeline.fit({animation:cameraAnimation});
     }
     const {start,end}=timeline.getWindow();
     const from=start.getTime(),to=end.getTime();
     if(!Number.isFinite(from)||!Number.isFinite(to)||to<=from)return;
     const shift=(to-from)*.35*(action==='later'?1:-1);
-    timeline.setWindow(new Date(from+shift),new Date(to+shift),{animation:false});
+    timeline.setWindow(new Date(from+shift),new Date(to+shift),{animation:cameraAnimation});
   }
   function selectFromList(event){
     const row=rows.find(item=>item.id===event.target.value)||null;
     setSelectedRowId(row?.id||'');
-    if(row)timelineRef.current?.setSelection([row.id],{focus:true,animation:false});
+    if(row)timelineRef.current?.setSelection([row.id],{focus:true,animation:cameraAnimation});
     onSelectRef.current?.(row);
   }
 
@@ -553,6 +559,18 @@ export default function CultureTimeline({
       <button type='button' className='loc-button' aria-label={t('放大時間長河')} disabled={!ready} onClick={()=>changeWindow('zoom-in')}>＋</button>
       <button type='button' className='loc-button' aria-label={t('縮小時間長河')} disabled={!ready} onClick={()=>changeWindow('zoom-out')}>－</button>
       <button type='button' className='loc-button' aria-label={t('重置時間長河視野')} disabled={!ready} onClick={()=>changeWindow('reset')}><FieldText text="重置"/></button>
+      {onSelect&&!editable?<div className='scope-timeline-focus-slot' aria-live='polite'>
+        <AnimatePresence initial={false} mode='wait'>
+          {selectedRow?<motion.output key={selectedRow.id}
+            className='scope-timeline-focus-pill'
+            initial={reduceMotion?false:{opacity:0,x:8}}
+            animate={{opacity:1,x:0}} exit={reduceMotion?{opacity:0}:{opacity:0,x:-8}}
+            transition={{duration:reduceMotion?0:.2,ease:'easeOut'}}>
+            <time dateTime={String(selectedRow.start).slice(0,10)}>{dateLabel(selectedRow.start)}</time>
+            <span>{typeof selectedRow.content==='string'?selectedRow.content:String(selectedRow.title||selectedRow.period||'時間紀錄')}</span>
+          </motion.output>:null}
+        </AnimatePresence>
+      </div>:null}
     </div>
     {onSelect&&mode==='overview'&&rows.length<=250?<label className='scope-timeline-item-picker'>
       <span><FieldText text="選擇河道紀錄"/></span>
@@ -563,12 +581,18 @@ export default function CultureTimeline({
     </label>:null}
     {chartError?<p className='scope-status' role='alert'><FieldText text="河道已有統計資料，但圖表沒有正常繪製；以下保留日期與筆數清單。"/></p>:null}
     <div ref={containerRef} data-anchor-gesture={onTimeClick?'double-tap':'none'} className='scope-period-timeline' role='region' aria-label={t(mode==='overview'?'所有時期與定錨點時間長河':'時間長河')} style={{'--scope-period-timeline-min-height':timelineMinHeight+'px'}}/>
-    {anchorInsight?<aside className='scope-candidate-insight' role='status' aria-live='polite'>
-      <button className='scope-candidate-insight-close' type='button' onClick={onAnchorClose} aria-label={anchorLabels?.close||'Close'}>×</button>
-      <strong>{anchorLabels?.date||'Date'}：{anchorInsight.date}</strong>
-      <div>{anchorLabels?.before||'Before'}：{anchorInsight.before.toLocaleString(locale)} · {anchorLabels?.after||'After'}：{anchorInsight.after.toLocaleString(locale)}</div>
-      {anchorInsight.reason?<p>{anchorLabels?.reason||'Reason'}：{anchorInsight.reason}</p>:null}
-    </aside>:null}
+    <AnimatePresence initial={false}>
+      {anchorInsight?<motion.aside key={anchorInsight.date}
+        className='scope-candidate-insight' role='status' aria-live='polite'
+        initial={reduceMotion?false:{opacity:0,y:8}}
+        animate={{opacity:1,y:0}} exit={reduceMotion?{opacity:0}:{opacity:0,y:-6}}
+        transition={{duration:reduceMotion?0:.23,ease:'easeOut'}}>
+        <button className='scope-candidate-insight-close' type='button' onClick={onAnchorClose} aria-label={anchorLabels?.close||'Close'}>×</button>
+        <strong>{anchorLabels?.date||'Date'}：{anchorInsight.date}</strong>
+        <div>{anchorLabels?.before||'Before'}：{anchorInsight.before.toLocaleString(locale)} · {anchorLabels?.after||'After'}：{anchorInsight.after.toLocaleString(locale)}</div>
+        {anchorInsight.reason?<p>{anchorLabels?.reason||'Reason'}：{anchorInsight.reason}</p>:null}
+      </motion.aside>:null}
+    </AnimatePresence>
     {chartError?<ol className='scope-list'>
       {fallbackRows.map(row=><li key={row.id}><strong>{row.content}</strong>{row.group?<span> · {groupLabel(row.group)}</span>:null}<span> · {dateLabel(row.start)}</span>{row.title?<p>{row.title}</p>:null}</li>)}
     </ol>:null}
