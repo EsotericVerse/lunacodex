@@ -61,3 +61,20 @@ test('management cache invalidations never trigger implicit active refetch',()=>
       assert.match(call,/refetchType:'none'/,path+' implicit active refetch');
   }
 });
+
+test('Scope group permission display reuses verified grants without HTTP',()=>{
+  const panel=read('app/loc/ScopeGroupAccessPanel.jsx');
+  assert.match(panel,/readAuthorization\(\)/);
+  assert.match(panel,/canAuthorizeGroup\(groupId\)/);
+  assert.doesNotMatch(panel,/fetch\(|getSession\(|getVerifiedSession\(/);
+  assert.match(panel,/尚未透過編輯入口驗證權限/);
+});
+
+test('Scope statistics are event-invalidated, not timer-expired',()=>{
+  const statistics=read('app/loc/scope-statistics-cache.mjs');
+  const galaxy=read('app/loc/galaxy-query.js');
+  assert.match(statistics,/readScopeStatisticsCached/);
+  assert.match(statistics,/notifyScopeDataCommitted/);
+  assert.doesNotMatch(statistics,/setInterval\(|setTimeout\(/);
+  assert.doesNotMatch(galaxy,/STATISTICS_CACHE_TTL_MS/);
+});
