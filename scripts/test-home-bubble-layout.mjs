@@ -70,7 +70,7 @@ test('ZModel determines JSONB binding per physical table without treating SQL ar
     .set(postgresManagedJsonbValues({block_entity:entities,page_name:'index'},
       'silver.lo3rwang_blocks'))
     .where('uid','=','ABC12345').compile();
-  assert.match(blocks.sql,/"block_entity" = \\$1::jsonb/);
+  assert.match(blocks.sql,/"block_entity" = \$1::jsonb/);
   assert.deepEqual(blocks.parameters[0],JSON.stringify(entities));
   assert.equal(blocks.parameters[1],'index');
 
@@ -89,9 +89,9 @@ test('ZModel determines JSONB binding per physical table without treating SQL ar
     .where('id','=','lo3rwang').compile();
   const configQuery=db.updateTable('silver.loc').set(config)
     .where('id','=','lo3rwang').compile();
-  assert.match(profileQuery.sql,/"status" = \\$1::jsonb/);
-  assert.doesNotMatch(profileQuery.sql,/"theme" = \\$2::jsonb/);
-  assert.match(configQuery.sql,/"theme" = \\$1::jsonb/);
+  assert.match(profileQuery.sql,/"status" = \$1::jsonb/);
+  assert.doesNotMatch(profileQuery.sql,/"theme" = \$2::jsonb/);
+  assert.match(configQuery.sql,/"theme" = \$1::jsonb/);
   assert.equal(configQuery.parameters[0],JSON.stringify({accent:'moon'}));
   void db.destroy();
 });
