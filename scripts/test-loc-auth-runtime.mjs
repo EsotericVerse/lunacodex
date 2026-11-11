@@ -39,6 +39,23 @@ test('Better Auth JWT plugin persists and exposes a public JWKS',async()=>{
  assert.ok(Array.isArray(body.keys)&&body.keys.length>0);
  assert.ok(body.keys.every(key=>!key.d&&!key.p&&!key.q));
 });
+test('third-party public clients can self-register using official RFC 7591 DCR',async()=>{
+ const res=await auth.handler(new Request(LOC_ISSUER+'/api/auth/oauth2/register',{
+  method:'POST',headers:{'content-type':'application/json'},
+  body:JSON.stringify({
+    client_name:'LOC protocol integration',
+    redirect_uris:['https://integration.example/callback'],
+    token_endpoint_auth_method:'none',
+    grant_types:['authorization_code','refresh_token'],
+    response_types:['code']
+  })
+ }));
+ assert.equal(res.status,201,'Dynamic registration must not need owner manual setup');
+ const data=await res.json();
+ assert.equal(typeof data.client_id,'string');
+ assert.equal(data.token_endpoint_auth_method,'none');
+ assert.ok(data.redirect_uris.includes('https://integration.example/callback'));
+});
 test('unauthenticated clients cannot mint LOC credentials without the authorization flow',async()=>{
  const res=await auth.handler(new Request(LOC_ISSUER+'/api/auth/oauth2/token',{
   method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},
