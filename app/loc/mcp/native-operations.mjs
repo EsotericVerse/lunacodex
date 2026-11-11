@@ -97,7 +97,7 @@ async function signedClaims(request,fetchImpl){
   let claims;
   try{
     const verified=await jwtVerify(bearer[1],jwks,{
-      issuer:AUTH,audience:'https://'+MCP_HOST,
+      issuer:AUTH+'/api/auth',audience:'https://'+MCP_HOST,
       typ:'at+jwt',requiredClaims:['azp']
     });
     if(typeof verified.payload.sub!=='string'||!verified.payload.sub)
