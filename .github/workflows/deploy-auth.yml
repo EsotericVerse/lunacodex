@@ -32,6 +32,11 @@ jobs:
           node --check workers/loc-authority/auth.mjs
       - name: Validate Worker without publishing
         run: npx --yes wrangler@4.157.0 deploy --config workers/loc-authority/wrangler.jsonc --dry-run --outdir /tmp/auth-check
+      - name: Reject deployment without independent LOC Auth PostgreSQL binding
+        # Metadata-only Cloudflare check. Never print or connect using the secret.
+        run: |
+          npx --yes wrangler@4.157.0 secret list --config workers/loc-authority/wrangler.jsonc --format json > /tmp/loc-auth-secret-names.json
+          node -e "const fs=require('node:fs');const entries=JSON.parse(fs.readFileSync('/tmp/loc-auth-secret-names.json','utf8'));if(!Array.isArray(entries)||!entries.some(s=>s.name==='LOC_AUTH_DATABASE_URL')){console.error('LOC Auth PostgreSQL secret is missing; deployment refused without touching the Worker.');process.exit(1)}"
       - name: Deploy canonical LOC Auth domain
         run: npx --yes wrangler@4.157.0 deploy --config workers/loc-authority/wrangler.jsonc
       - name: Verify issuer metadata (no credentials used)
