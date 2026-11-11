@@ -1,13 +1,15 @@
 'use client';
 
-import {selectRows} from './db-query.mjs';
+import {DB_QUERY_BATCH_SIZE,selectRows} from './db-query.mjs';
 import {selectDailyRuneRange} from './daily-runes';
 import {realMoonPhase} from './model/moon-phase';
 import {
   validateItemConfluenceRange,validateItemLane,groupItemConfluenceRunes
 } from './item-confluence-model.mjs';
 
-const PER_PAGE=1000;
+// Read pages use the shared transport chunk (5000), not the 1,000-row write
+// batch, so a 30,000-row lane takes 6 requests instead of 30.
+const PER_PAGE=DB_QUERY_BATCH_SIZE;
 // Guardrail: no full-table reads. Date and source filters are pushed to SQL,
 // pages contain timestamps only; reject excessive windows rather than truncate.
 const MAX_LANE_ROWS=30000;
