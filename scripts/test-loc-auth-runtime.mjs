@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createLocAuth,LOC_ISSUER} from '../workers/loc-authority/auth.mjs';
@@ -77,4 +78,47 @@ test('untrusted app domains can exchange OAuth codes but cannot access Better Au
   method:'OPTIONS',headers:{origin,'access-control-request-method':'GET'}
  }),env);
  assert.equal(blocked.status,403);
+});
+
+test('all four LOC Auth core tables persist independently in PostgreSQL',async()=>{
+  // CI-only database: no live Google accounts, website role rows or Neon Auth tables.
+  const {adapter}=await auth.$context;
+  const suffix=crypto.randomUUID().replaceAll('-','');
+  const now=new Date();
+  const userId='test-user-'+suffix;
+  const rows=[
+    {model:'user',data:{id:userId,name:'LOC Auth storage check',
+      email:'loc-auth-'+suffix+'@example.invalid',emailVerified:true,
+      createdAt:now,updatedAt:now}},
+    {model:'session',data:{id:'test-session-'+suffix,
+      userId,token:'loc-auth-test-token-'+suffix,
+      expiresAt:new Date(now.getTime()+3600000),createdAt:now,updatedAt:now}},
+    {model:'account',data:{id:'test-account-'+suffix,
+      userId,providerId:'storage-test',accountId:'external-'+suffix,
+      createdAt:now,updatedAt:now}},
+    {model:'verification',data:{id:'test-verification-'+suffix,
+      identifier:'test-'+suffix,value:'test-value-'+suffix,
+      expiresAt:new Date(now.getTime()+3600000),createdAt:now,updatedAt:now}}
+  ];
+  const tableResult=await pool.query(
+    "SELECT table_name FROM information_schema.tables "+
+    "WHERE table_schema='loc_auth' AND table_name=ANY($1::text[])",
+    [['user','session','account','verification']]);
+  assert.deepEqual(tableResult.rows.map(row=>row.table_name).sort(),
+    ['user','session','account','verification'].sort());
+  const written=[];
+  try{
+    for(const {model,data} of rows){
+      await adapter.create({model,data});
+      written.push({model,id:data.id});
+      const persisted=await pool.query(
+        'SELECT id FROM "loc_auth"."'+model+'" WHERE id=$1',[data.id]);
+      assert.equal(persisted.rows[0]?.id,data.id,
+        model+' must be stored in LOC Auth PostgreSQL');
+    }
+  }finally{
+    for(const {model,id} of written.reverse()){
+      await adapter.delete({model,where:[{field:'id',value:id}]});
+    }
+  }
 });
