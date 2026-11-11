@@ -10,8 +10,8 @@ test('LOC Auth delegates OIDC, OAuth, JWT and storage to Better Auth',()=>{
  assert.match(auth,/oauthProvider\(/);
  assert.match(auth,/jwt\(/);
  assert.match(auth,/PostgresDialect/);
- assert.match(auth,/schemaName:env.LOC_AUTH_SCHEMA/);
- assert.match(auth,/Approved LOC Auth PostgreSQL schema is not configured/);
+ assert.match(auth,/schemaName:env.LOC_AUTH_SCHEMA\\|\\|'public'/);
+ assert.match(auth,/LOC Auth Rainbow tables are in the public PostgreSQL schema/);
  assert.doesNotMatch(auth,/schemaName:'loc_auth'|runMigrations|CREATE TABLE|LOC_AUTH_SCHEMA_GENERATION/);
  // All declared Auth storage models are Rainbow-prefixed and never written to
  // an unreviewed PostgreSQL schema on deployment.
@@ -83,7 +83,7 @@ test('LOC Auth never silently creates or adopts a test storage namespace',()=>{
  const auth=source('workers/loc-authority/auth.mjs');
  assert.doesNotMatch(auth,/schemaName:\s*['"`]loc_auth['"`]/);
  assert.match(auth,/LOC_AUTH_SCHEMA/);
- assert.match(auth,/namespace==='loc_auth'/);
+ assert.match(auth,/namespace!=='public'/);
  assert.match(auth,/rainbow_auth/);
 });
 test('LOC Auth Session cookie cache is deployment-versioned and separate from website permissions',()=>{
