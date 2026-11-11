@@ -46,6 +46,12 @@ before any production DDL. The above is a code-side naming draft; if a pinned
 plugin uses further models, do not create them automatically. Review the
 vendor model inventory first.
 
+**Naming invariant:** `loc_auth` is reserved as a non-LOC-Auth identifier:
+no LOC Auth table, schema, fallback, or automatic migration may adopt it.
+Every LOC Auth-owned table must start with `rainbow_` (including future plugin
+models). Existing objects named `loc_auth` belong to a different context and
+must not be renamed, imported, adopted, or modified as part of this rewrite.
+
 The approved PostgreSQL schema is configured explicitly by
 `LOC_AUTH_SCHEMA` and must not default to a test namespace. For example,
 `silver.rainbow_auth` is possible once `silver` and that precise table have
