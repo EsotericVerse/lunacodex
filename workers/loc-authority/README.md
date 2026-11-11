@@ -39,7 +39,7 @@ The code's **table-name mappings** (not actual SQL tables) are explicitly:
 | OAuth consent | `rainbow_oauth_consent` |
 | OAuth client assertion | `rainbow_oauth_client_assertion` |
 
-**No table above has been created by PR #1374.** The exact full model/field
+**The twelve `public.rainbow_*` tables already exist on Neon, verified by a bounded read-only catalog check on 2026-11-11.** This PR did not create them. All twelve currently have RLS enabled with four permissive CRUD policies restricted to the `rainbow_runtime` PostgreSQL role; that role has LOGIN, public schema USAGE, and CRUD table grants. This establishes the policy/grant configuration, **not** successful Auth Worker connectivity or end-to-end persistence. The exact full model/field
 inventory, constraints, indexes, plugin-specific additions, and **each table's
 RLS SELECT / INSERT / UPDATE / DELETE policy must be reviewed with the user**
 before any production DDL. The above is a code-side naming draft; if a pinned
@@ -52,10 +52,9 @@ Every LOC Auth-owned table must start with `rainbow_` (including future plugin
 models). Existing objects named `loc_auth` belong to a different context and
 must not be renamed, imported, adopted, or modified as part of this rewrite.
 
-The approved PostgreSQL schema is configured explicitly by
-`LOC_AUTH_SCHEMA` and must not default to a test namespace. For example,
-`silver.rainbow_auth` is possible once `silver` and that precise table have
-been approved. `LOC_AUTH_DATABASE_URL` configures the PostgreSQL connection.
+The verified existing Rainbow PostgreSQL schema is `public`. Auth uses
+`public` by default and refuses a conflicting `LOC_AUTH_SCHEMA`; do not
+point it at `silver` or recreate tables from an obsolete proposal. `LOC_AUTH_DATABASE_URL` configures the PostgreSQL connection.
 These are runtime credentials only; never put a schema-owner credential in
 the Worker.
 
