@@ -14,9 +14,10 @@ const dateFromStep=(year,step)=>{
   const start=Date.UTC(year,0,1),days=(Date.UTC(year+1,0,1)-start)/86400000;
   return new Date(start+Math.floor((days-1)*Number(step)/1000)*86400000).toISOString().slice(0,10);
 };
-const hasCoordinates=point=>point&&Number.isFinite(Number(point.longitude))&&
-  Number.isFinite(Number(point.latitude))&&Math.abs(Number(point.longitude))<=180&&
-  Math.abs(Number(point.latitude))<=90;
+const hasCoordinates=point=>point&&point.longitude!=null&&point.latitude!=null&&
+  String(point.longitude).trim()!==''&&String(point.latitude).trim()!==''&&
+  Number.isFinite(Number(point.longitude))&&Number.isFinite(Number(point.latitude))&&
+  Math.abs(Number(point.longitude))<=180&&Math.abs(Number(point.latitude))<=90;
 
 export default function TraceTerritoryPanel({scopeId='loc'}){
   const [year,setYear]=useState(2026);
@@ -96,7 +97,8 @@ export default function TraceTerritoryPanel({scopeId='loc'}){
           <input type="range" min="0" max="1000" step="1" value={step}
             aria-label="年度文章時間進度" onChange={event=>{setStep(Number(event.target.value));setSelectedKey('');}}/>
         </label>:null}
-        {(totalsQuery.isPending||scopeQuery.isPending||pointsQuery.isPending)&&
+        {(totalsQuery.isPending||scopeId==='loc'&&scopeQuery.isPending||
+          pointGroups.length>0&&pointsQuery.isPending)&&
           <span role="status" className="scope-status">整理年度據點中…</span>}
         {scopeQuery.error||totalsQuery.error||pointsQuery.error?
           <span role="alert" className="scope-status scope-error">年度據點資料暫時無法完整載入。</span>:null}
