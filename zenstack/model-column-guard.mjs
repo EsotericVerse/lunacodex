@@ -8,7 +8,10 @@ for(const model of Object.values(schema.models)){
   const attr=name=>model.attributes?.find(item=>item.name===name)
     ?.args?.[0]?.value?.value;
   const namespace=attr('@@schema'),table=attr('@@map');
-  if(namespace&&table)named.set(namespace+'.'+table,model.fields);
+  // A relation is a modeled navigation, not a physical SELECT column.
+  if(namespace&&table)named.set(namespace+'.'+table,
+    Object.fromEntries(Object.entries(model.fields)
+      .filter(([,field])=>!field.relation)));
 }
 const scoped=/^([a-z][a-z0-9]{0,14})_(galaxy|anchor|blocks)$/;
 const kinds={galaxy:'Lo3rwangGalaxy',anchor:'Lo3rwangAnchor',blocks:'Lo3rwangBlocks'};
