@@ -1,5 +1,6 @@
 import {canManageLoc,locManageRows} from './loc-authorization.mjs';
 import {schema as fixedSchema} from '../../../zenstack/schema.mjs';
+import {modelFieldsForSql} from '../../../zenstack/model-column-guard.mjs';
 import {validateLocRegistryDomain} from './loc-domain.mjs';
 import {sql} from 'kysely';
 import {saveBlocksKysely} from './kysely-blocks.mjs';
@@ -50,17 +51,15 @@ function withFilters(query,filters){
   return query;
 }
 
-// node-postgres serializes a JS array as a PostgreSQL array literal ("{3,...}"),
-// which is invalid for a jsonb column. Keep JSONB values as one explicitly
-// typed JSON document instead; never rewrite the stored bubble structure.
-// Only known JSONB fields are encoded, leaving SQL array columns untouched.
-const MANAGED_JSONB_COLUMNS=new Set([
-  'block_entity','attr','status','theme','keywords',
-  'database','keyword_meta','ArticleTag','search_aliases','caches'
-]);
-export function postgresManagedJsonbValues(values){
+// node-postgres serializes JS arrays as PostgreSQL array literals, not JSON.
+// Consult the existing ZModel field types for the authorized physical relation
+// rather than maintaining a second hand-written JSONB column list. This adds
+// no schema introspection, database call, connection or ORM write path.
+export function postgresManagedJsonbValues(values,relation){
+  const [namespace,table]=String(relation||'').split('.');
+  const fields=namespace&&table?modelFieldsForSql(namespace,table):null;
   return Object.fromEntries(Object.entries(values).map(([key,value])=>[
-    key,MANAGED_JSONB_COLUMNS.has(key)&&value!==null&&typeof value==='object'
+    key,fields?.[key]?.type==='Json'&&value!==null&&typeof value==='object'
       ?sql`${JSON.stringify(value)}::jsonb`:value
   ]));
 }
@@ -192,7 +191,8 @@ export async function executeManagedKyselyWrite(trx,body,{modelName=''}={}){
   // does the existing trusted Kysely connection execute the mutation.
   // This does not introduce a database Auth API or a separate SQL Gateway.
   await sql`reset role`.execute(trx);
-  const name=modelName||(table==='manage'?'api.manage':'silver.'+table);
+  const relation=table==='manage'?'api.manage':'silver.'+table;
+  const name=modelName||relation;
   if(operation==='update'){
     // Every authorized managed relation has a fixed single-column PK:
     // Registry and Scope config -> id; Galaxy/Anchor/Blocks -> uid.
@@ -211,7 +211,7 @@ export async function executeManagedKyselyWrite(trx,body,{modelName=''}={}){
     for(const row of rows){
       if(row[primary]===undefined||row[primary]===null)
         reject('Upsert requires an explicit primary key');
-      const document=postgresManagedJsonbValues(row);
+      const document=postgresManagedJsonbValues(row,relation);
       const updates={...document};delete updates[primary];
       const builder=trx.insertInto(name).values(document);
       const result=await builder.onConflict(oc=>updates&&Object.keys(updates).length
@@ -239,7 +239,7 @@ export async function executeManagedKyselyWrite(trx,body,{modelName=''}={}){
       count+=Number(result.numAffectedRows||0);
     }
   }else{
-    const base=operation==='update'?trx.updateTable(name).set(postgresManagedJsonbValues(values)):trx.deleteFrom(name);
+    const base=operation==='update'?trx.updateTable(name).set(postgresManagedJsonbValues(values,relation)):trx.deleteFrom(name);
     const result=await withFilters(base,filters).execute();
     count=Number(result[0]?.numUpdatedRows??result[0]?.numDeletedRows??result[0]?.numAffectedRows??0);
   }
