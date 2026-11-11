@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import {Capacitor} from '@capacitor/core';
 import {QueryClient,QueryClientProvider,useQueryClient} from '@tanstack/react-query';
 import {invalidateScopeQueryCache} from '../zenstack/client-queries';
+import {invalidateScopeStatisticsCached} from './loc/scope-statistics-cache.mjs';
 import {translateUiField,UI_COPY,UI_LOCALE_OPTIONS,normalizeUiLocale,uiCopy,registerDefaultSection,isSectionLoaded,loadSection} from './i18n/ui-copy';
 import {UiLocaleProvider,useLoadedUiLocale,useUiLocale,useUiSection} from './i18n/ui-locale';
 import FieldText from './i18n/FieldText';
@@ -300,10 +301,21 @@ function AppShellInner({children}){
   useEffect(()=>{
     const refresh=()=>queryClient.invalidateQueries({queryKey:['app-bootstrap']});
     const refreshLocal=()=>queryClient.invalidateQueries({predicate:query=>Array.isArray(query.queryKey)&&query.queryKey.some(part=>part==='local'||(typeof part==='string'&&part.startsWith('silver.local_')))});
+    // Share commit notifications with other tabs on this origin. This is
+    // invalidation only, not a second cache or a DB polling connection.
+    const channel=typeof BroadcastChannel==='function'
+      ?new BroadcastChannel('loc-scope-data-revisions'):null;
+    const refreshCommittedScope=scopeId=>{
+      if(!/^[a-z][a-z0-9]{0,14}$/.test(String(scopeId||'')))return;
+      invalidateScopeStatisticsCached(scopeId);
+      void invalidateScopeQueryCache(queryClient,scopeId);
+    };
     const refreshScope=event=>{
       const scopeId=event.detail?.scopeId;
-      if(scopeId)void invalidateScopeQueryCache(queryClient,scopeId);
+      refreshCommittedScope(scopeId);
+      if(scopeId)channel?.postMessage({scopeId});
     };
+    if(channel)channel.onmessage=event=>refreshCommittedScope(event.data?.scopeId);
     window.addEventListener('loc-public-scope-metadata-changed',refresh);
     window.addEventListener('loc-local-data-changed',refreshLocal);
     window.addEventListener('loc-scope-data-committed',refreshScope);
@@ -311,6 +323,7 @@ function AppShellInner({children}){
       window.removeEventListener('loc-public-scope-metadata-changed',refresh);
       window.removeEventListener('loc-local-data-changed',refreshLocal);
       window.removeEventListener('loc-scope-data-committed',refreshScope);
+      channel?.close();
     };
   },[queryClient]);
   const {scopeId,scope,host,pathname,registryRow,configRow}=useScopeRuntime();
