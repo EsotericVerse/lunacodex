@@ -23,14 +23,28 @@ function mainUri(env){
 }
 // Pool-shaped adapter for Kysely: one fresh pg.Client per connect(), closed on
 // release. Holds no sockets or waiters between requests.
-export function requestScopedPool(options,ClientClass=pg.Client){
+// A Free-plan Neon compute suspends after ~5 minutes idle; the first connection
+// after that can fail while it wakes. Only the connect step is retried (nothing
+// has been sent yet, so it is always safe); queries are never retried.
+export function requestScopedPool(options,ClientClass=pg.Client,
+    {attempts=2,delayMs=400}={}){
   return {
     async connect(){
-      const client=new ClientClass(options);
-      client.on?.('error',()=>{});
-      await client.connect();
-      client.release=()=>{void Promise.resolve(client.end()).catch(()=>{});};
-      return client;
+      let lastError;
+      for(let attempt=1;attempt<=attempts;attempt++){
+        const client=new ClientClass(options);
+        client.on?.('error',()=>{});
+        try{
+          await client.connect();
+          client.release=()=>{void Promise.resolve(client.end()).catch(()=>{});};
+          return client;
+        }catch(error){
+          lastError=error;
+          void Promise.resolve(client.end?.()).catch(()=>{});
+          if(attempt<attempts)await new Promise(resolve=>setTimeout(resolve,delayMs));
+        }
+      }
+      throw lastError;
     },
     async end(){}
   };
@@ -55,7 +69,7 @@ export async function db_connection(env={},verifiedAlias='',{probeTicket=''}={})
   // when several requests run queries at once. Open a short-lived client per
   // acquisition instead; it always lives inside the request that uses it.
   const pool=requestScopedPool({connectionString:uri,
-    connectionTimeoutMillis:7000,ssl:{rejectUnauthorized:true}});
+    connectionTimeoutMillis:3500,ssl:{rejectUnauthorized:true}});
   const dialect=new PostgresDialect({pool});
   const connection={db:new Kysely({dialect}),dialect,
     engine:'postgres',namespace:'silver',tableName:'',fieldMap:{}};
