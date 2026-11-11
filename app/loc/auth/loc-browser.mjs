@@ -1,127 +1,90 @@
-// LOC-owned browser identity adapter. Only LOC Authority signs identity tokens.
-// A verified OAuth session is not itself permission to write to the database.
-const DEFAULT_AUTHORITY='https://auth.lo3rwang.cc';
-const LOC_SUBJECT=/^loc_[A-Za-z0-9_-]{32,80}$/;
-function origin(value){
- const u=new URL(String(value||''));
- if(u.protocol!=='https:'||u.username||u.password||u.search||u.hash||
-  !['','/'].includes(u.pathname))throw new Error('Invalid LOC Auth origin');
- return u.origin;
+// This is a Better Auth browser SDK adapter, not an Auth implementation.
+// LOC public pages never contact Auth. Only explicit sign-in, edit and
+// personal-profile actions ask the Better Auth SDK for a verified session.
+import {createAuthClient} from 'better-auth/client';
+
+const ISSUER='https://auth.lo3rwang.cc';
+const DEFAULT_RETURN='/local/settings/';
+function safeReturn(path){
+  const text=String(path||DEFAULT_RETURN);
+  if(!text.startsWith('/')||text.startsWith('//')||text.includes('\\'))
+    return DEFAULT_RETURN;
+  return text;
 }
-function returnPath(value){
- const path=String(value||'/local/settings/');
- if(!path.startsWith('/')||path.startsWith('//')||path.includes('\\'))
-   return '/local/settings/';
- return path;
-}
-export function createLocAccountAdapter({authorityOrigin=DEFAULT_AUTHORITY,
- fetchImpl=globalThis.fetch,navigate=value=>globalThis.location.assign(value)}={}){
- const authority=origin(authorityOrigin);
- let cached=null,pending=null;
- const listeners=new Set();
- async function verified(force=false){
-  if(!force&&cached&&cached.until>Date.now())return cached.value;
-  if(pending)return pending;
-  pending=(async()=>{
-   const res=await fetchImpl(authority+'/v1/auth/session',{
-    method:'GET',credentials:'include',cache:'no-store',
-    headers:{accept:'application/json'},signal:AbortSignal.timeout(8000)
-   });
-   if(!res.ok)throw new Error('LOC Auth session unavailable (HTTP '+res.status+')');
-   const payload=await res.json();
-   if(!payload?.session)return null;
-   const user=payload.user,session=payload.session;
-   if(!LOC_SUBJECT.test(String(user?.id||''))||
-    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(user.email||''))||
-    user.id!==session.user?.id||
-    typeof session.access_token!=='string'||session.access_token.split('.').length!==3||
-    !Number.isSafeInteger(session.expires_at)||
-    session.expires_at*1000<Date.now()+30000)
-    throw new Error('LOC Auth returned invalid signed session metadata');
-   return {user,session,oauth:{provider:'loc',providerId:user.id,
-    userId:user.id,email:user.email}};
-  })();
-  try{const data=await pending;cached={value:data,
-    until:Date.now()+Math.min(60000,data?Math.max(0,data.session.expires_at*1000-Date.now()-60000):20000)};
-   return data;
-  }finally{pending=null;}
- }
- async function getAccessToken(){
-  const state=await verified();if(!state)throw new Error('LOC login required');
-  return state.session.access_token;
- }
- async function session(){return verified();}
- const auth={
-  getVerifiedSession:session,
-  getAccessToken,
-  async getSession(){
-   try{return {data:{session:(await verified())?.session||null},error:null};}
-   catch(error){return {data:{session:null},error};}
-  },
-  async getUser(token){
-   try{
-    const identity=await verified();
-    if(!identity||identity.session.access_token!==token)
-      throw new Error('LOC OAuth token is not the current verified session');
-    return {data:{user:identity.user},error:null};
-   }catch(error){return {data:{user:null},error};}
-  },
-  async signInWithOAuth({provider,options={}}={}){
-   // Google identity is verified by LOC-hosted Better Auth
-   // provider. Never redirect it to an unrelated, unconfigured OIDC issuer.
-   const selected=['google','github','oidc'].includes(provider)?provider:'';
-   if(!selected)return {data:null,error:new Error('Unsupported OAuth provider')};
-   // A valid LOC-owned session is authoritative for all its applications.
-   // A fresh provider round-trip is not needed just to reopen settings/MCP.
-   const existing=await verified();
-   if(existing)return {data:{session:existing.session},error:null};
-   const link=new URL('/oauth/login',authority);
-   link.searchParams.set('provider',selected);
-   link.searchParams.set('return_to',returnPath(options.redirectTo));
-   navigate(link.href);
-   return {data:{},error:null};
-  },
-  async signOut(){
-   try{
-    const res=await fetchImpl(authority+'/oauth/logout',{
-     method:'POST',credentials:'include',cache:'no-store',
-     headers:{accept:'application/json'},signal:AbortSignal.timeout(8000)
-    });
-    if(!res.ok)throw new Error('LOC Auth sign-out failed');
-    cached=null;
-    for(const listener of [...listeners])listener('SIGNED_OUT',null);
-    return {error:null};
-   }catch(error){return {error};}
-  },
-  onAuthStateChange(callback){
-   if(typeof callback!=='function')throw new Error('Auth callback required');
-   let disposed=false,lastSubject=undefined;
-   listeners.add(callback);
-   const emit=async(initial=false)=>{
-    let identity;
-    try{identity=await verified(!initial);}catch{identity=null;}
-    if(disposed)return;
-    const subject=identity?.user?.id||null;
-    if(initial||subject!==lastSubject){
-     lastSubject=subject;
-     callback(initial?'INITIAL_SESSION':subject?'SIGNED_IN':'SIGNED_OUT',
-       identity?.session||null);
-    }
-   };
-   const focus=()=>void emit().catch(()=>{});
-   if(typeof window!=='undefined'){
-    window.addEventListener('focus',focus);
-    window.addEventListener('pageshow',focus);
-   }
-   void emit(true);
-   return {data:{subscription:{unsubscribe(){
-    disposed=true;listeners.delete(callback);
-    if(typeof window!=='undefined'){
-     window.removeEventListener('focus',focus);
-     window.removeEventListener('pageshow',focus);
-    }
-   }}}};
+export function createLocAccountAdapter({
+  authorityOrigin=ISSUER,
+  navigate=url=>globalThis.location.assign(url)
+}={}){
+  if(new URL(authorityOrigin).origin!==ISSUER)
+    throw Error('Untrusted LOC Auth issuer');
+  const client=createAuthClient({
+    baseURL:ISSUER,basePath:'/api/auth',
+    fetchOptions:{credentials:'include'}
+  });
+  const listeners=new Set();
+  async function session(){
+    const {data,error}=await client.getSession();
+    if(error)throw Error(error.message||'LOC Auth session unavailable');
+    if(!data?.session||!data?.user||data.user.emailVerified!==true)
+      return null;
+    const user=data.user;
+    return {user,session:{...data.session,user},oauth:{
+      provider:'loc',providerId:user.id,userId:user.id,
+      email:user.email
+    }};
   }
- };
- return Object.freeze({auth,getAccessToken});
+  async function emit(){
+    const value=await session().catch(()=>null);
+    for(const listener of [...listeners]){
+      listener(value?'SIGNED_IN':'SIGNED_OUT',value?.session||null);
+    }
+  }
+  const auth={
+    getVerifiedSession:session,
+    async getSession(){
+      try{return {data:{session:(await session())?.session||null},error:null};}
+      catch(error){return {data:{session:null},error};}
+    },
+    async getUser(){
+      try{return {data:{user:(await session())?.user||null},error:null};}
+      catch(error){return {data:{user:null},error};}
+    },
+    async signInWithOAuth({provider,options={}}={}){
+      if(provider!=='google')
+        return {data:null,error:new Error('LOC Google OAuth is the configured sign-in provider')};
+      try{
+        const returnTo=safeReturn(options.redirectTo);
+        const response=await client.signIn.social({
+          provider:'google',
+          callbackURL:new URL(returnTo,'https://loc.lo3rwang.cc').href
+        });
+        return response;
+      }catch(error){return {data:null,error};}
+    },
+    async signOut(){
+      try{
+        const result=await client.signOut();
+        await emit();
+        return result;
+      }catch(error){return {error};}
+    },
+    onAuthStateChange(callback){
+      if(typeof callback!=='function')throw Error('LOC Auth callback required');
+      listeners.add(callback);
+      // Passive website rendering never triggers a session request.
+      callback('INITIAL_SESSION',null);
+      const focus=()=>void emit();
+      if(typeof window!=='undefined')window.addEventListener('focus',focus);
+      return {data:{subscription:{unsubscribe(){
+        listeners.delete(callback);
+        if(typeof window!=='undefined')window.removeEventListener('focus',focus);
+      }}}};
+    }
+  };
+  return Object.freeze({auth,
+    // Resource tokens belong to Better Auth OAuth Provider /oauth2/token.
+    // An opaque browser session must never be repackaged as a signed token.
+    async getAccessToken(){
+      throw Error('LOC Auth OAuth resource client authorization required');
+    }});
 }
