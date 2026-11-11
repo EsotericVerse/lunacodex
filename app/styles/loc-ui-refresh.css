@@ -7,14 +7,14 @@
 }
 /* Zebra rows are subtle enough for all eight themes, including high-chroma themes. */
 [data-public-feature] .loc-public-article-list > :is(.scope-work-list-row,.loc-shared-work-card){
-  background-image:linear-gradient(112deg,color-mix(in srgb,var(--loc-accent) 3%,transparent),transparent 62%);
+  background-image:none;
   border-color:color-mix(in srgb,var(--loc-line) 72%,transparent);
   border-radius:var(--loc-ui-radius-md,16px);
-  box-shadow:0 3px 14px color-mix(in srgb,var(--loc-bg) 14%,transparent);
+  box-shadow:none;
 }
 [data-public-feature] .loc-public-article-list > :is(.scope-work-list-row,.loc-shared-work-card):is(:hover,:focus-within){
   border-color:var(--loc-accent-border-soft);
-  box-shadow:0 7px 24px color-mix(in srgb,var(--loc-accent) 12%,transparent);
+  box-shadow:none;
 }
 [data-public-feature] .loc-public-article-list :is(h2,h3,.scope-article-title-link){
   overflow-wrap:anywhere;
@@ -27,14 +27,12 @@
   border:1px solid color-mix(in srgb,var(--loc-accent) 30%,var(--loc-line));
   border-block-start:3px solid var(--loc-accent);
   border-radius:var(--loc-ui-radius-lg,22px);
-  background:
-    radial-gradient(ellipse at 90% 0%,color-mix(in srgb,var(--loc-accent) 13%,transparent),transparent 58%),
-    linear-gradient(155deg,var(--loc-panel),color-mix(in srgb,var(--loc-panel-2) 24%,var(--loc-panel)));
-  box-shadow:var(--loc-shadow-card);
+  background:color-mix(in srgb,var(--loc-panel) 92%,var(--loc-panel-2));
+  box-shadow:none;
 }
 [data-public-feature="culture"] .scope-culture-source-detail{
   border-radius:var(--loc-ui-radius-md,16px);
-  background:linear-gradient(145deg,var(--loc-panel),color-mix(in srgb,var(--loc-panel-2) 24%,var(--loc-panel)));
+  background:var(--loc-panel);
 }
 [data-public-feature="culture"] .scope-culture-source-button{
   transition:border-color .18s ease,box-shadow .18s ease,background-color .18s ease;
@@ -49,10 +47,8 @@
   padding:clamp(.9rem,2vw,1.5rem);
   border:1px solid var(--loc-accent-border-soft);
   border-block-start:3px solid var(--loc-accent);
-  background:
-    radial-gradient(ellipse at 100% 0%,color-mix(in srgb,var(--loc-accent) 12%,transparent),transparent 68%),
-    var(--loc-panel);
-  box-shadow:var(--loc-shadow-card);
+  background:var(--loc-panel);
+  box-shadow:none;
 }
 [data-public-feature="search"] .scope-search-form input{
   min-width:0;
@@ -80,7 +76,7 @@
   border:1px solid color-mix(in srgb,var(--loc-gold) 32%,var(--loc-line));
   border-radius:var(--loc-ui-radius-lg,22px);
   background:var(--loc-panel);
-  box-shadow:var(--loc-shadow-card);
+  box-shadow:none;
 }
 [data-public-feature="trace"] :is(.loc-trace-float-report,.loc-trace-works){
   min-width:0;
@@ -94,7 +90,7 @@
 .management-workspace--unified>.management-workspace__header{
   padding:clamp(.85rem,1.6vw,1.2rem);
   border-color:color-mix(in srgb,var(--loc-accent) 24%,var(--loc-line));
-  background:linear-gradient(125deg,color-mix(in srgb,var(--loc-accent) 8%,var(--loc-panel)),var(--loc-panel) 70%);
+  background:var(--loc-panel);
 }
 .management-workspace--unified .management-workspace__heading{
   font-size:clamp(1.2rem,2vw,1.55rem);
@@ -177,4 +173,24 @@
 @media(prefers-reduced-motion:reduce){
   [data-public-feature] .loc-public-article-list > :is(.scope-work-list-row,.loc-shared-work-card),
   [data-public-feature="culture"] .scope-culture-source-button{transition:none;}
+}
+
+/* Editorial-art direction: rhythm, fine rules and whitespace instead of glassy plastic. */
+[data-public-feature="culture"] .scope-culture-source-detail,
+[data-public-feature="search"] .scope-search-form,
+.management-workspace--unified>.management-workspace__header{
+  box-shadow:none;
+}
+[data-public-feature="culture"] :is(.scope-culture-classification-river,.scope-culture-structure-river,.scope-loc-time-river){
+  box-shadow:none;
+}
+[data-public-feature="culture"] .scope-culture-source-groups{
+  gap:clamp(.45rem,1vw,.8rem);
+}
+[data-public-feature="search"] .scope-search-form:focus-within{
+  border-color:var(--loc-accent);
+  box-shadow:inset 0 0 0 1px var(--loc-accent-border-soft);
+}
+@media(hover:none){
+  [data-public-feature] .loc-public-article-list > :is(.scope-work-list-row,.loc-shared-work-card):hover{box-shadow:none;}
 }
