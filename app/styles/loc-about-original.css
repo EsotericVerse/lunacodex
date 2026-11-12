@@ -18,6 +18,15 @@
   box-shadow:var(--loc-shadow-card);
   color:var(--loc-text);
 }
+/* Public homepage presentation only. Motion uses opacity/translation on the
+   existing section elements; the BlockNote editor tree is never animated. */
+.loc-home>.loc-home-motion-block{position:relative}
+.loc-home>.loc-home-motion-block .loc-home-motion-hero-line{
+  position:absolute;top:0;left:clamp(1rem,4vw,2rem);right:clamp(1rem,4vw,2rem);
+  height:2px;z-index:2;pointer-events:none;transform-origin:left center;
+  background:linear-gradient(90deg,transparent,var(--loc-accent),var(--loc-gold),transparent);
+  border-radius:999px;
+}
 .loc-home-block__header{
   display:grid;
   /* Eyebrow spans the row; title and plain-text subtitle share the next row. */
