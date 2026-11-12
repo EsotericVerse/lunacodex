@@ -194,3 +194,13 @@ verified; the identity and storage authorities stay separate.
 - [PostgreSQL schemaName behavior](https://better-auth.com/docs/adapters/postgresql)
 
 **This document is an inventory for approval; it is not a migration plan authorization.**
+
+## Auth adapter contract update (2026-11-13)
+
+The read-only Neon column inventory confirms 146 fields across the twelve
+existing Rainbow tables, including the five Better Auth Admin Plugin fields.
+All existing primary keys and unique indexes are represented in the code-only
+ZenStack schema. Better Auth's official ZenStack database adapter replaces the
+old separate SQL adapter; neither the schema snapshot nor the adapter performs
+DDL, grant updates, or RLS alterations. The Auth Worker has not been declared
+end-to-end validated by this inventory alone.
