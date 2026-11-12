@@ -77,7 +77,7 @@ test('mobile Search, Statistics and Trace keep readable controls in constrained 
   assert.match(feature,/\.loc-trace-float-tabs>\.loc-button\{[^}]*min-height:44px;[^}]*white-space:normal;overflow-wrap:anywhere/s);
   assert.match(trace,/className="loc-trace-float-tabs"/);
   // Factual source labels may not disappear behind an ellipsis on phones.
-  assert.match(publicStyles,/@media\(max-width:600px\)\{[\s\S]*?\.statistics-dashboard__breakdown-label>:is\(span,a\)\{[^}]*white-space:normal;overflow:visible;text-overflow:clip/s);
+  assert.match(publicStyles,/@media\(max-width:980px\)\{[\s\S]*?\.statistics-dashboard__breakdown-label>:is\(span,a\)\{[^}]*white-space:normal;overflow:visible;text-overflow:clip/s);
   assert.match(statistics,/className="statistics-dashboard__breakdown-label"/);
   assert.match(traceStyles,/\.loc-trace-territory-toolbar>label select\{min-height:44px;font-size:1rem\}/);
   assert.match(traceStyles,/\.loc-trace-territory-time input\{width:100%;min-height:44px;/);
