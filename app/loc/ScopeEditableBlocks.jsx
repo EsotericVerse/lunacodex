@@ -241,9 +241,13 @@ export default function ScopeEditableBlocks({
         }}
         onDone={(notice,{switching=false}={})=>{
           setMessage(notice);
-          // Real Save never tears down an active Edit Dock or reloads the homepage.
-          // Page switching/canceling remains the Dock's explicit responsibility.
-          if(editDock?.active&&editDock.scopeId===scopeId){
+          // Real Save never tears down an active Edit Dock on a management page,
+          // and page switching/canceling remains the Dock's explicit responsibility.
+          // A homepage entrance is the single carve-out: finishing its Save *is*
+          // the intent, so it leaves edit mode and returns through the Dock below.
+          // Management pages keep their own editors mounted via keepEditorOpen.
+          const finishesHomeEntrance=pageName==='index'&&!keepEditorOpen&&!switching;
+          if(editDock?.active&&editDock.scopeId===scopeId&&!finishesHomeEntrance){
             if(keepEditorOpen&&!switching)onEditorExit?.(notice);
             return;
           }

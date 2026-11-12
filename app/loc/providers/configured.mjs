@@ -58,7 +58,10 @@ export function createConfiguredAdapter({
       error:null,count:result.data.count??null,status:200};
   };
   const managedAction=async(name,args={})=>{
-    const result=await operation('managed-action','',{name,args});
+    // Label the envelope with the Scope this action belongs to. Authorization
+    // still comes from the signed claim, and each handler revalidates its own
+    // args.p_scope_id; naming the Scope here never widens what it may touch.
+    const result=await operation('managed-action',String(args?.p_scope_id||''),{name,args});
     return {data:result?.data,error:null};
   };
   const managedWrite=async payload=>{
