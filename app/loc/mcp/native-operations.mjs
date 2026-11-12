@@ -30,9 +30,9 @@ const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const KINDS=new Set(['mcp-sync','mcp-append','mcp-read','mcp-search','mcp-conversation','mcp-scope-status','short-import','managed-write','managed-action','personal-read','personal-write']);
 // api.manage / silver.loc are the only two fixed ZModel control relations a
 // signed global:manage delegation may UPDATE/DELETE (zenstack/policy-runtime.mjs
-// ADMIN_FIXED_WRITES). No insert, no other table -- the website's own
-// RLS-free database relies entirely on this gate (AGENTS.md 2026-11-09:
-// only the verified LOC owner "me" may INSERT/UPDATE/DELETE).
+// ADMIN_FIXED_WRITES). No insert, no other table. The website retains its
+// separate owner-only editor checks; MCP/Extension use active api.manage
+// roles with exact Scope grants. Neither path grants global Admin by login.
 const FILTER_SQL_OP={eq:'=',neq:'!=',gt:'>',gte:'>=',lt:'<',lte:'<=',
   like:'like',ilike:'ilike',is:'is',in:'in'};
 function withManagedFilters(query,filters){
