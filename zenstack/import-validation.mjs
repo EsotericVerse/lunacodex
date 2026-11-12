@@ -44,7 +44,9 @@ function importModelSchema(modelName){
       overrides[column.name]=field.nullable().optional();
     }
   }
-  const result=Object.keys(overrides).length?base.safeExtend(overrides):base;
+  // Preserve every ZModel-derived field schema, but reject foreign columns
+  // instead of relying on Zod's default unknown-key stripping on writes.
+  const result=z.strictObject({...base.shape,...overrides});
   validators.set(modelName,result);
   return result;
 }
