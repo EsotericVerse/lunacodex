@@ -119,13 +119,14 @@ export function createLocAuth(env){
     // Official Better Auth middleware: high-risk Admin API requests bypass the
     // 30-minute cookie cache once, preventing revoked Sessions from managing
     // Auth accounts. No background polling or extra Session store.
-    hooks:{before:[{
-      // Better Auth's native authoritative reader bypasses a signed Cookie
-      // Cache for OAuth issuance. Initial unauthenticated authorization still
-      // reaches the provider's standard login redirect, without DB polling.
-      matcher:ctx=>['/oauth2/authorize','/oauth2/consent',
-        '/oauth2/continue'].includes(ctx.path),
-      handler:createAuthMiddleware(async ctx=>{
+    hooks:{before:createAuthMiddleware(async ctx=>{
+      // Better Auth's top-level before hook is one native middleware, not an
+      // array of {matcher,handler} entries. Branch here so the published
+      // Better Auth 1.7.x runner receives the callable middleware it expects.
+      if(['/oauth2/authorize','/oauth2/consent','/oauth2/continue'].includes(ctx.path)){
+        // Better Auth's native authoritative reader bypasses a signed Cookie
+        // Cache for OAuth issuance. Initial unauthenticated authorization still
+        // reaches the provider's standard login redirect, without DB polling.
         const token=await ctx.getSignedCookie(
           ctx.context.authCookies.sessionToken.name,ctx.context.secret
         );
@@ -135,17 +136,14 @@ export function createLocAuth(env){
           throw new APIError('UNAUTHORIZED',{
             message:'OAuth Session expired or revoked'
           });
-      })
-    },{
+        return;
+      }
       // has-permission is an introspection endpoint for ordinary users, not
       // an account-management action; leave its native authorization intact.
-      matcher:ctx=>ctx.path?.startsWith('/admin/')===true
-        &&ctx.path!=='/admin/has-permission',
-      handler:createAuthMiddleware(async ctx=>{
-        if(!await activeAuthAdmin(ctx.headers))
-          throw new APIError('FORBIDDEN',{message:'Active administrator session required'});
-      })
-    }]},
+      if(ctx.path?.startsWith('/admin/')===true&&ctx.path!=='/admin/has-permission'&&
+         !await activeAuthAdmin(ctx.headers))
+        throw new APIError('FORBIDDEN',{message:'Active administrator session required'});
+    })},
     // Better Auth validates its own plugin inputs; ZenStack validates ORM
     // writes using the same shared schema, without duplicate custom hooks.
     // Existing Rainbow array-valued fields are JSONB, not PostgreSQL
