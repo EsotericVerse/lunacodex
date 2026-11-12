@@ -163,21 +163,9 @@ export function useAccount({enabled=true,sessionOnly=false}={}){
     ...(passive?{fallbackData:signedOutState}:{}),
   });
   const state=query.data||emptyState;
-  // A failed network read is not a sign-out. Retry only when the browser
-  // reconnects or the user returns to a tab that failed verification.
-  useEffect(()=>{
-    if(!sessionOnly||!enabled||
-      !/Failed to fetch|連線失敗|NetworkError|Load failed/i.test(String(state.error||'')))
-      return undefined;
-    const recheck=()=>{void query.mutate().catch(()=>{});};
-    const onVisible=()=>{if(document.visibilityState==='visible')recheck();};
-    window.addEventListener('online',recheck);
-    document.addEventListener('visibilitychange',onVisible);
-    return()=>{
-      window.removeEventListener('online',recheck);
-      document.removeEventListener('visibilitychange',onVisible);
-    };
-  },[sessionOnly,enabled,state.error,query.mutate]);
+  // Failed Auth reads remain failed until the user explicitly retries
+  // verification, signs in, or a real Auth SDK event updates the identity.
+  // Tab visibility and network reconnect never trigger hidden Auth requests.
 
   // Explicit edit entry rechecks LOC Auth; normal mounts reuse the
   // in-memory grant and never query a management table.
