@@ -1,11 +1,14 @@
 // Public OAuth callback. The one-time PKCE state binds it to a LOC user.
 import {completeUpstreamOAuth} from '../../app/loc/mcp/upstream-oauth.mjs';
 import {verifiedLocWebsiteSession} from '../../app/loc/auth/verified-session.mjs';
+import {authorizeMcpRole} from '../../app/loc/mcp/access-roles.mjs';
 const RETURN='https://loc.lo3rwang.cc/admin/?section=network';
 export async function onRequestGet({request,env}){
   const p=new URL(request.url).searchParams;
   try{
     const session=await verifiedLocWebsiteSession(request);
+    // A revoked api.manage role may not finish linking a provider.
+    await authorizeMcpRole(session.email,env);
     const result=await completeUpstreamOAuth(env,{
       code:p.get('code'),state:p.get('state'),error:p.get('error')},session.userId);
     return Response.redirect(RETURN+'&mcp_provider='+encodeURIComponent(result.provider)+'&connected=1',303);
