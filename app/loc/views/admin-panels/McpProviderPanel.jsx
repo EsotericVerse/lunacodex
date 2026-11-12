@@ -111,7 +111,9 @@ export default function McpProviderPanel(){
       <h3>{current.label} · 函式政策</h3>
       <p className="scope-status">新函式預設禁止；必須明確指定才可執行。</p>
       {tools.map(tool=><div key={tool.name} className="scope-management-fields">
-        <div><strong>{tool.name}</strong><p className="scope-status">{tool.description}</p></div>
+        <div><strong>{tool.name}</strong><p className="scope-status">{tool.description}</p>
+          {!tool.readOnlyHint?<p className="scope-status">此函式未標示唯讀。對不可重複的寫入，請維持「禁止」；KV 尚無跨執行個體的原子核准保證。</p>:null}
+        </div>
         <label><span>執行政策</span>
           <select className="scope-select" disabled={busy}
             value={current.policies?.[tool.name]||'deny'}
