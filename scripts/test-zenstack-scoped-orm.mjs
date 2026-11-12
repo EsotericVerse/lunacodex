@@ -41,6 +41,20 @@ test('two independent databases can project identical scope names without modify
   assert.equal(mapAttr(fixed.models.Lo3rwangGalaxy,'@@schema'),'silver');
 });
 
+test('verified Scope exemplars share one fixed metadata contract without per-Scope rechecks',()=>{
+  const alpha=scopedZModelSchema({scopeId:'alpha',namespace:'silver'});
+  const beta=scopedZModelSchema({scopeId:'beta',namespace:'silver'});
+  for(const kind of ['Galaxy','Anchor','Blocks']){
+    assert.strictEqual(alpha.models[kind].fields,beta.models[kind].fields);
+    assert.notStrictEqual(alpha.models[kind],beta.models[kind]);
+    assert.deepEqual(alpha.models[kind].idFields,beta.models[kind].idFields);
+    assert.equal(mapAttr(alpha.models[kind],'@@schema'),'silver');
+    assert.equal(mapAttr(beta.models[kind],'@@schema'),'silver');
+  }
+  assert.match(source,/const VERIFIED_SCOPE_MODELS=Object.freeze/);
+  assert.doesNotMatch(source,/for\(const \[kind,\[first,second,suffix\]\] of Object.entries\(SOURCES\)\)/);
+});
+
 test('Scope and namespace identifiers are validated before any dialect is instantiated',()=>{
   for(const scopeId of ['', 'LOC','bad.scope','bad_scope','../loc'])
     assert.throws(()=>scopedZModelSchema({scopeId}),/Invalid trusted LOC Scope/);

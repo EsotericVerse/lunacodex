@@ -37,6 +37,14 @@ function equivalentPhysicalFields(left,right,kind){
   return a;
 }
 
+// SchemaDef and its physical column set are frozen. Verify the two existing
+// exemplars once at module initialization, not on every HTTP Scope query.
+const VERIFIED_SCOPE_MODELS=Object.freeze(Object.fromEntries(
+  Object.entries(SOURCES).map(([kind,[first,second,suffix]])=>[
+    kind,Object.freeze({base:equivalentPhysicalFields(first,second,kind),suffix})
+  ])
+));
+
 /**
  * Instantiates only the model *metadata* of a single verified Scope.
  *
@@ -50,8 +58,7 @@ export function scopedZModelSchema({scopeId,namespace='silver'}={}){
      typeof namespace!=='string'||!NAMESPACE.test(namespace))
     throw new TypeError('Invalid trusted LOC Scope schema identifier');
   const models={};
-  for(const [kind,[first,second,suffix]] of Object.entries(SOURCES)){
-    const base=equivalentPhysicalFields(first,second,kind);
+  for(const [kind,{base,suffix}] of Object.entries(VERIFIED_SCOPE_MODELS)){
     models[kind]={
       ...base,
       name:kind,

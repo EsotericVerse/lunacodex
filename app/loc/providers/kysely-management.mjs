@@ -1,6 +1,6 @@
 import {canManageLoc,locManageRows} from './loc-authorization.mjs';
-import {schema as fixedSchema} from '../../../zenstack/schema.mjs';
-import {modelFieldsForSql,modeledBooleanColumns,zmodelRegistryJoin} from '../../../zenstack/model-column-guard.mjs';
+import {modelFieldsForSql,modelNameForSql,modeledPrimaryKeyColumns,
+  modeledBooleanColumns,zmodelRegistryJoin} from '../../../zenstack/model-column-guard.mjs';
 import {validateLocRegistryDomain} from './loc-domain.mjs';
 import {sql} from 'kysely';
 import {saveBlocksKysely} from './kysely-blocks.mjs';
@@ -73,12 +73,20 @@ function scopeFromTable(table){
  * No pg_catalog SELECT: verified against actual Registry/Scope primary keys.
  */
 export function managedPrimaryKeyColumns(table,modelName=''){
-  const idFields=modelName?fixedSchema.models[modelName]?.idFields:null;
-  if(modelName&&(!idFields||!idFields.length))
+  const namespace=table==='manage'?'api':'silver';
+  // The same physical-to-ZModel mapping used by SQL column guards and Zod.
+  // An explicitly bound PolicyPlugin model must match the physical relation.
+  const mapped=modelNameForSql(namespace,table);
+  if(modelName&&mapped!==modelName)
     reject('Invalid fixed LOC primary key metadata');
-  return idFields||
-    [table==='loc_anchor'?'uid':table==='lrunes_daily'?'record_id':
-      SCOPED_SUFFIXES.some(suffix=>table.endsWith(suffix))?'uid':'id'];
+  const keys=modeledPrimaryKeyColumns(namespace,table);
+  if(keys?.length)return keys;
+  if(modelName)reject('Invalid fixed LOC primary key metadata');
+  // Registry-approved custom Scope configurations and nonstandard physical
+  // table names are not in the frozen 17-model snapshot. Preserve their
+  // existing Kysely primary-key behavior after authorizeRelation(), rather
+  // than guessing a ZModel or changing database routing.
+  return [SCOPED_SUFFIXES.some(suffix=>table.endsWith(suffix))?'uid':'id'];
 }
 async function authorizeRelation(trx,table,operation,values,filters,rows){
   if(table==='manage'||table==='loc'||table==='loc_anchor'){
