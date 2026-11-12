@@ -63,6 +63,53 @@ export function modelWriteSchemaForSqlTable(table){
 // Keep the established Galaxy import API; this is the same cached Zod model.
 export {modelWriteSchemaForSqlTable as importSchemaForSqlTable};
 
+// Management Galaxy INSERT/UPSERT and partial UPDATE/UPDATE_BATCH share the
+// import's authoritative ZModel→Zod schema, but retain their existing SQL
+// operations, authorized Scope, and database defaults.
+const partialWriteSchemas=new WeakMap();
+function partialWriteSchema(full){
+  let partial=partialWriteSchemas.get(full);
+  if(!partial){
+    partial=full.partial();
+    partialWriteSchemas.set(full,partial);
+  }
+  return partial;
+}
+
+/** Validate Galaxy writes only; other authorized models keep their own rules.
+ * Returns false for non-Galaxy relations. Input rows are never rewritten.
+ * The server must verify network input even when the import UI prevalidated it.
+ */
+export function assertZModelGalaxyManagedValues(table,operation,values){
+  if(!scopedGalaxy.test(String(table||''))||
+     !['insert','upsert','update','update_batch'].includes(operation))
+    return false;
+  const schema=modelWriteSchemaForSqlTable(table);
+  const partial=operation==='update'||operation==='update_batch';
+  const validator=partial?partialWriteSchema(schema):schema;
+  const rows=operation==='update'?[values]:values;
+  if(!Array.isArray(rows))throw new TypeError('Invalid LOC Galaxy managed rows');
+  for(let i=0;i<rows.length;i++){
+    const row=rows[i];
+    // Batch location enrichment has always treated an empty place as a
+    // no-op; preserve that SQL behavior without relaxing CHAR(8) for real IDs.
+    const check=operation==='update_batch'&&row?.place_id===''?
+      Object.fromEntries(Object.entries(row).filter(([key])=>key!=='place_id')):
+      row;
+    const parsed=validator.safeParse(check);
+    if(parsed.success&&(
+      operation!=='update_batch'||typeof row.uid==='string'&&char8Uid.test(row.uid)
+    ))continue;
+    const first=parsed.success?{path:['uid'],message:'Expected exactly 8 ASCII letters or digits'}:
+      parsed.error.issues[0];
+    const field=first?.path?.join('.')||'(record)';
+    // Field and row index only: never expose personal article text.
+    throw new TypeError('LOC Galaxy ZModel 寫入驗證失敗：第 '+(i+1)+
+      ' 筆 '+field+' — '+(first?.message||'invalid value'));
+  }
+  return true;
+}
+
 export function assertZModelImportRows(table,rows=[],{onProgress}={}){
   if(!scopedGalaxy.test(String(table||'')))throw new TypeError('Invalid LOC Galaxy import table');
   if(!Array.isArray(rows))throw new TypeError('LOC import batch must be an array');
