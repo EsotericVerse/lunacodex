@@ -21,7 +21,13 @@ const nativeAttributes=Object.freeze({
   _int2:'@db.SmallInt',_int4:'@db.Integer'
 });
 const literal=(name,key,value)=>({name,args:[{name:key,value:{kind:'literal',value}}]});
-const PUBLIC_FIXED_READS=new Set(['manage','loc','lo3rwang','lrunes']);
+// Public presentation Blocks are fixed ZModel reads as well as the four
+// control/config models. Hero/page reads can therefore use the same typed
+// delegate without falling back to a second hand-written SQL projection.
+const PUBLIC_FIXED_READS=new Set([
+  'manage','loc','lo3rwang','lrunes',
+  'loc_blocks','lo3rwang_blocks','lrunes_blocks'
+]);
 const PUBLIC_POLICY_ALLOW_READ={
   name:'@@allow',
   args:[

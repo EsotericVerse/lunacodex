@@ -73,6 +73,21 @@ test('public feature Hero reads two fixed page names in one Kysely query',async(
   assert.deepEqual(mock.calls[0].where,['page_name','in',['group_culture','scope_culture']]);
 });
 
+test('public feature Hero uses the fixed Blocks ZModel delegate when PostgreSQL is available',async()=>{
+  const {executed,dialect}=fixedModelDialect();
+  const database=async()=>({engine:'postgres',dialect,db:{selectFrom:()=>{
+    throw new Error('Fixed Blocks must not use the plain Kysely path');
+  }}});
+  const response=await handleNativePublicContent(page('hero','lo3rwang','culture'),{},
+    {database});
+  assert.equal(response.status,200);
+  assert.deepEqual(await response.json(),{data:[]});
+  assert.equal(executed.length,1,'Blocks PolicyPlugin must issue one SELECT');
+  assert.match(executed[0].sql, /"silver"\."loc_blocks"/);
+  assert.ok(executed[0].parameters.includes('group_culture'));
+  assert.ok(executed[0].parameters.includes('scope_culture'));
+});
+
 test('config projects only the public Scope columns, never Manage or secrets, via the real ZenStack PolicyPlugin reader',async()=>{
   // lo3rwang is one of the four fixed public ZModel control models, so
   // 'config' now runs through the real ZenStack+PolicyPlugin $qb on the

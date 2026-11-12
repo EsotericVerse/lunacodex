@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {DummyDriver,PostgresAdapter,PostgresIntrospector,PostgresQueryCompiler} from 'kysely';
 import {createKyselyPublicClient} from '../app/loc/providers/kysely-browser.mjs';
 import {handleNativePublicQuery} from '../app/loc/server/native-public-query.mjs';
 
@@ -11,6 +12,26 @@ const request=value=>new Request(endpoint,{method:'POST',headers:{
 const query={schema:'silver',table:'lo3rwang_galaxy',columns:['uid','title'],
   filters:[{column:'uid',op:'eq',value:'abcdefgh',negate:false}],
   orFilters:[],orders:[],limit:10,offset:0,head:false,count:null,cardinality:null};
+
+function fixedModelDialect(){
+  const executed=[];
+  const driver=new DummyDriver();
+  const acquire=driver.acquireConnection.bind(driver);
+  driver.acquireConnection=async()=>{
+    const connection=await acquire();
+    const execute=connection.executeQuery.bind(connection);
+    connection.executeQuery=async compiled=>{
+      executed.push(compiled);
+      return {rows:[]};
+    };
+    return connection;
+  };
+  return {executed,dialect:{
+    createDriver:()=>driver,createAdapter:()=>new PostgresAdapter(),
+    createIntrospector:db=>new PostgresIntrospector(db),
+    createQueryCompiler:()=>new PostgresQueryCompiler()
+  }};
+}
 
 test('public client uses only the Pages Kysely route, not Supabase Data API',async()=>{
   const calls=[];
@@ -78,6 +99,21 @@ test('valid public SELECT uses the same fixed loc-main Kysely target',async()=>{
   // Public offset is not silently capped; the SQL engine handles valid offsets.
   assert.equal(selectedOffset,10000001);
   assert.equal((await response.json()).data[0].title,'公開作品');
+});
+
+test('public Blocks SELECT uses the fixed Blocks PolicyPlugin delegate',async()=>{
+  const {executed,dialect}=fixedModelDialect();
+  const response=await handleNativePublicQuery(request({
+    schema:'silver',table:'loc_blocks',columns:['uid','page_name'],
+    filters:[{column:'page_name',op:'eq',value:'index',negate:false}],
+    orFilters:[],orders:[{column:'block_order',ascending:true}],limit:10,
+    offset:0,head:false,count:null,cardinality:null
+  }),{}, {database:async()=>({engine:'postgres',namespace:'silver',dialect,
+    db:{selectFrom(){throw Error('Fixed Blocks must not use plain Kysely')}}})});
+  assert.equal(response.status,200);
+  assert.deepEqual(await response.json(),{data:[],count:null});
+  assert.equal(executed.length,1);
+  assert.match(executed[0].sql,/from "silver"\."loc_blocks" as "LocBlocks"/);
 });
 test('backend SQL errors expose only stage and SQLSTATE',async()=>{
   const result=await handleNativePublicQuery(request(query),{},{
