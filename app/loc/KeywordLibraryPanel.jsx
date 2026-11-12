@@ -590,6 +590,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
         <button type="button" className="loc-button" disabled={busy||!activeClass?.uid}
           onClick={()=>run(true)}>清空本群組的分析結果</button>
       </div>
+      {busy&&!progress?<p role="status" className="scope-status"><ActivityMotion kind="keywords"/> 正在解析關鍵詞…</p>:null}
       {progress?<p role="status" className="scope-status">{busy?<ActivityMotion kind="keywords"/>:null} {progress.label||progress.phase}
         {progress.total?' · '+progress.completed+' / '+progress.total:''}</p>:null}
     </section>:null}
