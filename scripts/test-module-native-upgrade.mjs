@@ -129,3 +129,23 @@ test('native Recharts responsive replaces redundant wrappers in Rune views',()=>
     assert.doesNotMatch(source,/ResponsiveContainer/);
   }
 });
+
+test('Vis Network and Timeline reuse existing ESNext vis-data rather than standalone bundles',()=>{
+ const entry='vis-data';
+ assert.equal(manifest.dependencies?.[entry],lock.packages?.['node_modules/'+entry]?.version);
+ assert.equal(root.dependencies?.[entry],manifest.dependencies?.[entry]);
+ const keyword=readFileSync(new URL('../app/loc/KeywordNetworkEditor.jsx',import.meta.url),'utf8');
+ const game=readFileSync(new URL('../app/lrunes/game/GameView.jsx',import.meta.url),'utf8');
+ const timeline=readFileSync(new URL('../app/modular/modules/culture-timeline/CultureTimeline.jsx',import.meta.url),'utf8');
+ assert.match(keyword,/import\\('vis-network\\/esnext'\\)/);
+ assert.match(game,/import\\('vis-network\\/esnext'\\)/);
+ assert.match(game,/import\\('vis-timeline\\/esnext'\\)/);
+ assert.match(game,/import\\('vis-data\\/esnext'\\)/);
+ assert.match(timeline,/from 'vis-data\\/esnext'/);
+ assert.match(timeline,/from 'vis-timeline\\/esnext'/);
+ for(const source of [keyword,game,timeline])
+  assert.doesNotMatch(source,/vis-(?:network|timeline)\\/standalone/);
+ const globalCss=readFileSync(new URL('../app/globals.css',import.meta.url),'utf8');
+ assert.match(globalCss,/vis-network\\/styles/);
+ assert.match(globalCss,/vis-timeline\\/styles/);
+});
