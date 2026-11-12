@@ -1,5 +1,4 @@
 import {createLocAuth,LOC_ISSUER,LOC_WEB} from './auth.mjs';
-import {authRequestConcurrencyGate} from './request-concurrency.mjs';
 import {oauthProviderAuthServerMetadata,oauthProviderOpenIdConfigMetadata,
   verifyOAuthQueryParams} from '@better-auth/oauth-provider';
 
@@ -60,18 +59,6 @@ const LOGIN_JS="const status=document.getElementById('status');\nconst params=ne
 const CONSENT_JS="const q=OAUTH_QUERY,p=new URLSearchParams(q);\nfor(const [id,key] of [['client','client_id'],['scope','scope'],['redirect','redirect_uri']])\n  document.getElementById(id).textContent=p.get(key)||'';\nasync function consent(accept){\n  const status=document.getElementById('status');\n  try{\n    const res=await fetch('/api/auth/oauth2/consent',{method:'POST',credentials:'include',\n      headers:{'content-type':'application/json'},\n      body:JSON.stringify({accept,scope:p.get('scope')||'',oauth_query:q})});\n    const data=await res.json().catch(()=>({}));\n    if(!res.ok||!data.url)throw Error(data.message||data.error||'Consent failed');\n    location.assign(data.url);\n  }catch(e){status.textContent=e.message}\n}\ndocument.getElementById('approve').onclick=()=>consent(true);\ndocument.getElementById('deny').onclick=()=>consent(false);";
 export default {
   async fetch(request,env,ctx){
-    // Bounded in-flight work per isolate, separate from Better Auth's
-    // rateLimit and the eventual cross-isolate QoS authority.
-    const admitted=authRequestConcurrencyGate.acquire(request);
-    if(!admitted.allowed){
-      const retry=admitted.retryAfterSeconds||2;
-      return new Response(JSON.stringify({
-        error:admitted.reason||'auth_busy',retry_after:retry
-      }),{status:429,headers:{
-        'content-type':'application/json','cache-control':'no-store',
-        'retry-after':String(retry)
-      }});
-    }
     let pool;
     try{
     const url=new URL(request.url);
@@ -159,7 +146,6 @@ export default {
         status:500,headers:{'content-type':'application/json','cache-control':'no-store'}
       });
     }finally{
-      admitted.release();
       if(pool){
         const closing=pool.end().catch(()=>{});
         if(ctx&&typeof ctx.waitUntil==='function')ctx.waitUntil(closing);
