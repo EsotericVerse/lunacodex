@@ -315,3 +315,82 @@ test('new keyword discovery retains counts and Unicode normalization across repe
   assert.equal(terms.has('mandopop'),false);
   assert.equal(terms.has('城市記憶'),false);
 });
+
+test('keyword lookahead overlaps Worker parsing with one bounded SQL read',async()=>{
+  const code=readFileSync(new URL('../app/loc/keyword-discovery-runner.mjs',import.meta.url),'utf8')
+    .replace(/^import .*$/gm,'').replaceAll('export async function ','async function ')
+    .replaceAll('import.meta.url',"'file:///test.mjs'");
+  const docs=Array.from({length:36},(_,i)=>({
+    uid:'Ab'+String(i).padStart(6,'0'),date:i<30?'2026-01-01':null,
+    createtime:'2026-01-01',content:'都市牢籠'
+  }));
+  const queries=[],received=[],lookaheadAtBatch=[];
+  let readsInFlight=0,maxReadsInFlight=0,abortedSignals=[];
+  const dbAuthRelation=()=>({
+    select(columns,options={}){
+      const query={columns,options,filters:[],orders:[],or:'',limit:Infinity,signal:null};
+      const builder={
+        gt(k,v){query.filters.push([k,'gt',v]);return builder;},
+        not(k,op,v){query.filters.push([k,'not',op,v]);return builder;},
+        eq(k,v){query.filters.push([k,'eq',v]);return builder;},
+        is(k,v){query.filters.push([k,'is',v]);return builder;},
+        or(value){query.or=value;return builder;},
+        order(k){query.orders.push(k);return builder;},
+        limit(n){query.limit=n;return builder;},
+        abortSignal(v){query.signal=v;abortedSignals.push(v);return builder;},
+        then(resolve,reject){
+          readsInFlight++;maxReadsInFlight=Math.max(maxReadsInFlight,readsInFlight);
+          let rows=docs;
+          for(const [key,operator,value] of query.filters){
+            if(operator==='is')rows=rows.filter(row=>row[key]===null);
+            else if(operator==='not')rows=rows.filter(row=>row[key]!==null);
+            else if(operator==='gt')rows=rows.filter(row=>row[key]>value);
+          }
+          if(query.or){
+            const node=parsePortableOrExpression(query.or);
+            const date=node.items[0].value,uid=node.items[1].items[1].value;
+            rows=rows.filter(row=>row.date>date||row.date===date&&row.uid>uid);
+          }
+          if(query.orders.length)rows=[...rows].sort((a,b)=>{
+            for(const col of query.orders){
+              if(a[col]!==b[col])return a[col]<b[col]?-1:1;
+            }
+            return 0;
+          });
+          return Promise.resolve().then(()=>({
+            data:query.options.head?null:rows.slice(0,Math.min(query.limit,7)),
+            count:query.options.count==='exact'?rows.length:null,error:null
+          })).then(value=>{readsInFlight--;return value},error=>{readsInFlight--;throw error})
+            .then(resolve,reject);
+        }
+      };
+      queries.push(query);
+      return builder;
+    }
+  });
+  const Worker=class{
+    postMessage(data){
+      if(data.type==='batch'){
+        received.push(...data.rows);
+        lookaheadAtBatch.push(queries.filter(query=>query.columns==='uid,content,createtime,date').length);
+      }
+      Promise.resolve().then(()=>this.onmessage({data:
+        data.type==='start'?{type:'ready'}:
+        data.type==='finish'?{type:'finished',result:{read:received.length}}:
+        {type:'progress',withContent:received.length}
+      }));
+    }
+    terminate(){}
+  };
+  const ctx={dbAuthRelation,Worker,URL,AbortController,AbortSignal};
+  runInNewContext(code+';this.suggestNewKeywords=suggestNewKeywords;',ctx);
+  const result=await ctx.suggestNewKeywords({
+    galaxy:'silver.lo3rwang_galaxy',existingRows:[]
+  });
+  assert.equal(result.read,docs.length);
+  assert.equal(new Set(received.map(row=>row.uid)).size,docs.length);
+  assert.ok(lookaheadAtBatch[0]>=2,'next SQL page must start before first Worker batch');
+  assert.ok(maxReadsInFlight<=1,'read requests may not fan out');
+  assert.ok(abortedSignals.length>0&&abortedSignals.every(s=>s.aborted),
+    'read signal must abort in finally');
+});
