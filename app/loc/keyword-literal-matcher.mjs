@@ -21,11 +21,10 @@ export function compileKeywordLiteralMatcher(words=[]){
     matched(text){
       if(!matcher)return new Set();
       if(needsFallback(text))return new Set(literals.filter(word=>text.includes(word)));
+      const counts=matcher.countByPattern(text);
       const found=new Set();
-      for(const hit of matcher.iterate(text)){
-        found.add(hit.pattern);
-        if(found.size===literals.length)break;
-      }
+      for(let index=0;index<counts.length;index++)
+        if(counts[index]>0)found.add(literals[index]);
       return found;
     }
   };
