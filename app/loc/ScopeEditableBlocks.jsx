@@ -7,6 +7,7 @@ import editBlocksZh from '../i18n/sections/uiExtra.editBlocks.zh_tw.js';
 registerDefaultSection('uiExtra.editBlocks',editBlocksZh);
 
 import {useMemo,useState} from 'react';
+import {motion,useReducedMotion} from 'motion/react';
 import {useEditDock} from '../modular/edit-dock';
 import {navigationHref} from '../modular/scope-registry';
 import useNativeNavigation from '../modular/use-native-navigation';
@@ -76,6 +77,7 @@ export default function ScopeEditableBlocks({
   slotId=''
 }){
   useUiSection('uiExtra.editBlocks');
+  const reduceMotion=useReducedMotion();
   const pageName=pageNameOf(page);
   const isScopeHomepageBlock=pageName==='index'||(scopeId==='lrunes'&&pageName==='hero');
   // Public blocks must not preflight silver.loc; protected parent workspaces
@@ -184,6 +186,19 @@ export default function ScopeEditableBlocks({
   }
   const movableSlots=!normalizedOrders.length&&allowDelete?slots.filter(slot=>slot.stored):[];
   const SlotTag=slotTag==='header'?'header':'section';
+  // Only the published LOC/Author homepage receives motion. The unified
+  // BlockNote draft view remains exactly as before, with no animated ancestors.
+  const motionHome=pageName==='index'&&['loc','lo3rwang'].includes(scopeId)&&SlotTag==='section';
+  const HomeDisplayTag=motionHome?motion.section:SlotTag;
+  const homeMotionProps=slot=>!motionHome?{}:{
+    initial:reduceMotion?false:{opacity:slot.order===1?.92:.9,y:slot.order===1?14:10},
+    ...(slot.order===1
+      ?{animate:{opacity:1,y:0}}
+      :{whileInView:{opacity:1,y:0},viewport:{once:true,amount:.12}}),
+    transition:{duration:reduceMotion?0:slot.order===1?.58:.4,
+      delay:reduceMotion?0:slot.order===1?.04:Math.min(Math.max(slot.order-2,0)*.045,.18),
+      ease:[.22,.8,.22,1]}
+  };
 
   // explicitEditButton: one page-level toggle swaps the whole list for the
   // unified draft screen -- no per-block click target, no per-block button.
@@ -249,9 +264,10 @@ export default function ScopeEditableBlocks({
             &&!slot.entities.some(entity=>recommendationTerm(entity.text)))return [];
         const level=Number(headingLevel);
         const Heading=level===1?'h1':level===2?'h2':level===4?'h4':'h3';
-        const node=<SlotTag
+        const node=<HomeDisplayTag
+          {...homeMotionProps(slot)}
           id={slotId||undefined}
-          className={(typeof resolveSlotClassName==='function'?resolveSlotClassName(slot):slotClassName)+' scope-editable-block'+(empty?' is-empty':'')}
+          className={(typeof resolveSlotClassName==='function'?resolveSlotClassName(slot):slotClassName)+' scope-editable-block'+(empty?' is-empty':'')+(motionHome?' loc-home-motion-block':'')}
           style={typeof resolveSlotStyle==='function'?resolveSlotStyle(slot):undefined}
           key={slot.uid||'order:'+slot.order}
           data-page-name={pageName}
@@ -260,6 +276,9 @@ export default function ScopeEditableBlocks({
           ?event=>{if(!isInteractiveContentTarget(event.target))selectSuggestion(slot.text||slot.subtitle||slot.title)}
           :undefined}
         >
+          {motionHome&&slot.order===1&&!empty?<motion.span className="loc-home-motion-hero-line"
+            aria-hidden="true" initial={reduceMotion?false:{scaleX:0}} animate={{scaleX:1}}
+            transition={{duration:reduceMotion?0:.85,delay:reduceMotion?0:.16,ease:[.22,.8,.22,1]}}/>:null}
           {typeof renderDisplay==='function'
             ?renderDisplay(slot)
             :<>
@@ -269,7 +288,7 @@ export default function ScopeEditableBlocks({
               {slot.text?<div className="scope-rich-surface" dangerouslySetInnerHTML={{__html:slot.text}}/>:null}
               {renderEntities(slot.entities,slot.bubbleColumns)}
             </>}
-        </SlotTag>;
+        </HomeDisplayTag>;
         return heroSlotOrder&&slot.order===heroSlotOrder?[node,toggleButton]:[node];
       })}
       {!editing&&message?<p className="scope-status" role="status">{message}</p>:null}
