@@ -27,7 +27,7 @@ const literal=(name,key,value)=>({name,args:[{name:key,value:{kind:'literal',val
 function model(name,table,columns){
   const fields=Object.fromEntries(Object.entries(columns).map(([field,declared])=>[
     field,{
-      name:field,type:declared.replace('?',''),
+      name:field,type:declared.replace('?',''),attributes:[],
       ...(declared.endsWith('?')?{optional:true}:{}),
       ...(field==='id'?{id:true}:{})
     }
