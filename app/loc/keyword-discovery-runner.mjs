@@ -108,6 +108,7 @@ export async function suggestNewKeywords({galaxy,existingRows=[],onProgress=()=>
         ',uid.gt.'+quoted(afterUid)+')');
       return query;
     });
+    let previousDate=null;
     let datedPending=settled(datedPage(null,null));
     for(;;){
       if(signal?.aborted)throw aborted();
@@ -118,12 +119,13 @@ export async function suggestNewKeywords({galaxy,existingRows=[],onProgress=()=>
       if(!page.length)break;
       const normalized=page.map(row=>({...row,date:normalizeDay(row?.date)}));
       if(normalized.some((row,index)=>!row.date||typeof row.uid!=='string'||
-        !row.uid||(afterDate!==null&&row.date<afterDate)||
+        !row.uid||(previousDate!==null&&row.date<previousDate)||
         (index>0&&row.date<normalized[index-1].date)))
         throw new Error('Galaxy 日期／UID 游標資料不完整，未覆寫先前暫存');
       const last=normalized.at(-1);
       datedPending=settled(datedPage(last.date,last.uid));
       await consumePage(normalized);
+      previousDate=last.date;
     }
     // Undated rows also use a bounded UID keyset instead of deep OFFSET.
     // Both scans are complete even when the transport returns a short page.
