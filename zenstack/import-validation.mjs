@@ -110,6 +110,36 @@ export function assertZModelGalaxyManagedValues(table,operation,values){
   return true;
 }
 
+// Share the very same ZModel-derived strict shapes with existing Anchor and
+// Block management writes. A model without a frozen physical SQL contract
+// (for example the independent LOC source catalog) is not silently mapped.
+export function assertZModelAnchorBlockManagedValues(table,operation,values){
+  if(!['insert','upsert','update'].includes(operation))return false;
+  const relation=String(table||'');
+  if(!/^silver\.[a-z][a-z0-9]{0,14}_(?:anchor|blocks)$/.test(relation)||
+     relation==='silver.loc_anchor')return false;
+  const model=modelNameForSql(...relation.split('.'));
+  if(!model||!(model.endsWith('Anchor')||model.endsWith('Blocks')))
+    return false;
+  const full=modelWriteSchemaForSqlTable(relation);
+  const validator=operation==='update'?partialWriteSchema(full):full;
+  const rows=operation==='update'?[values]:values;
+  if(!Array.isArray(rows))
+    throw new TypeError('Invalid LOC Anchor/Block managed rows');
+  for(let i=0;i<rows.length;i++){
+    const parsed=validator.safeParse(rows[i]);
+    if(parsed.success)continue;
+    const issue=parsed.error.issues[0];
+    const field=issue?.path?.join('.')||'(record)';
+    // Reject unknown columns and incompatible values before SQL; never echo
+    // private text, JSON attrs, or caller-supplied values in diagnostics.
+    throw new TypeError('LOC '+(model.endsWith('Anchor')?'Anchor':'Block')+
+      ' ZModel 寫入驗證失敗：第 '+(i+1)+' 筆 '+field+
+      ' — '+(issue?.message||'invalid value'));
+  }
+  return true;
+}
+
 export function assertZModelImportRows(table,rows=[],{onProgress}={}){
   if(!scopedGalaxy.test(String(table||'')))throw new TypeError('Invalid LOC Galaxy import table');
   if(!Array.isArray(rows))throw new TypeError('LOC import batch must be an array');
