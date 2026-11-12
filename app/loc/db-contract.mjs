@@ -64,7 +64,16 @@ export function createDatabaseClient({publicClient,authClient,auth}){
   const insertRows=withWriteNotice(insertRowsUnchecked);
   // Import batch retries handle UID conflicts themselves. Keep auth checks and
   // failures, but do not flash a global notice for every bisected retry.
-  const insertImportRows=insertRowsUnchecked;
+  const insertImportRows=async(table,rows)=>{
+    // Import-only Zod check compiled from the existing ZenStack model. Load
+    // lazily: ordinary reads, editing and the application shell never bundle
+    // the validator. Keep the exact Kysely managed-write/UID retry path.
+    if(isScopedGalaxy(table)){
+      const {assertZModelImportRows}=await import('../../zenstack/import-validation.mjs');
+      assertZModelImportRows(table,prepareGalaxyInsertRows(table,rows));
+    }
+    return insertRowsUnchecked(table,rows);
+  };
   const updateRows=withWriteNotice(updateRowsUnchecked);
   const deleteRows=withWriteNotice(deleteRowsUnchecked);
   // Import can have already committed earlier batches. Preserve the actual
