@@ -54,8 +54,9 @@ test('map unfolds only after real MapLibre ready event, with one canvas at a tim
 test('number wheels, hourglass, incoming packets and keyword glyphs animate only while mounted',()=>{
   const activity=read('app/modular/ActivityMotion.jsx');
   assert.match(activity,/useReducedMotion/);
-  for(const kind of ['numbers','hourglass','import','keywords'])
+  for(const kind of ['numbers','import','keywords'])
     assert.match(activity,new RegExp("kind==='"+kind+"'"));
+  assert.match(activity,/loc-work-activity--hourglass/);
   assert.match(activity,/reduceMotion\?\{duration:0\}/);
   assert.match(activity,/repeat:Infinity/);
   assert.doesNotMatch(activity,/setInterval|setTimeout|fetch\(|useAsyncResource/);
