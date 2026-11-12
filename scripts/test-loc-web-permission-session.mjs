@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {resolveLocPermissions} from '../app/loc/permissions/roles.mjs';
+import {resolveLocPermissions,locPermissionsForEmail} from '../app/loc/permissions/roles.mjs';
 import {enableWebPermissionSession,readWebPermissionSession,clearWebPermissionSession,
   WEB_PERMISSION_IDLE_MS,WEB_PERMISSION_SESSION_MS} from '../app/loc/permissions/web-session.mjs';
 
@@ -60,4 +60,20 @@ test('the Web endpoint uses existing ZenStack PolicyPlugin, without modifying LO
   assert.match(roles,/WebManageRowSchema\.safeParse/);
   assert.match(account,/readWebPermissionSession/);
   assert.match(account,/enableWebPermissionSession/);
+});
+
+test('Web role lookup uses the existing ZenStack Manage model once',async()=>{
+  let queries=0;
+  const owner='sopa2306@gmail.com';
+  const row={id:'lrunes',email:owner,manage_role:'scope',active:true};
+  const client={manage:{async findMany(options){
+    queries++;
+    assert.deepEqual(options.where,{email:owner,active:true});
+    assert.deepEqual(options.select,{id:true,email:true,manage_role:true,active:true});
+    return [row];
+  }}};
+  const db={selectFrom(){throw Error('fallback Kysely lookup must not run')}};
+  const resolved=await locPermissionsForEmail(db,owner,{policyClient:client});
+  assert.equal(queries,1);
+  assert.deepEqual(resolved.roles,[{id:'lrunes',email:owner,role:'scope'}]);
 });
