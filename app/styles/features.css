@@ -276,12 +276,12 @@
 }
 .scope-editable-block:is(.is-editing,.scope-block-draft){padding-top:.85rem}
 .scope-inline-editbar .loc-button{
-  min-height:2rem;
-  padding:.28rem .58rem;
+  min-height:44px;
+  padding:.35rem .58rem;
   font-size:.78rem;
 }
-.scope-editable-block.is-editing,
-.scope-editable-block.scope-block-draft{padding-top:2.7rem}
+/* In-flow editing actions already reserve their own height. The old
+   2.7rem absolute-toolbar spacer is retired. */
 /* Editor-only surface must not expose controls against dark Hero artwork. */
 .scope-editable-block.scope-block-draft{
   background:var(--loc-panel-strong);
@@ -646,7 +646,14 @@
 
 .scope-blocknote-linkbar{display:flex;align-items:center;justify-content:flex-start;gap:.45rem;flex-wrap:wrap;margin:0 0 .45rem}
 .scope-blocknote-linkbar>.loc-button{min-height:44px}
-.scope-inline-save-status{margin-left:.35rem;align-self:center;font-size:.86rem;color:var(--loc-muted)}
+.scope-inline-save-status{
+  min-width:0;
+  margin-left:.35rem;
+  align-self:center;
+  font-size:.86rem;
+  color:var(--loc-muted);
+  overflow-wrap:anywhere;
+}
 .scope-management-disclosure{padding:0;overflow:hidden}
 .scope-management-disclosure>summary{cursor:pointer;list-style:none;padding:1rem 1.1rem;font-weight:800;color:var(--loc-heading)}
 .scope-management-disclosure>summary::-webkit-details-marker{display:none}
@@ -1752,7 +1759,9 @@
    geometry is defined with its original selectors above. */
 @media(max-width:680px){
   .scope-page-editor .scope-frame-field-grid{grid-template-columns:minmax(0,1fr)}
-  .scope-blocknote.is-editable .bn-editor{padding:.75rem}
+  /* iPhone Safari must not zoom the entire editor on editable focus.
+     Keep native BlockNote headings, menus and popover placement unchanged. */
+  .scope-blocknote.is-editable .bn-editor{padding:.75rem;font-size:1rem}
   .scope-frame-image-fields{grid-template-columns:minmax(0,1fr)}
   .scope-editable-block:is(.is-editing,.scope-block-draft) .scope-inline-editbar{
     width:100%;
