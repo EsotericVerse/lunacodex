@@ -54,6 +54,19 @@ test('Karaul adapts all Auth endpoints per source and per route, then recovers',
     {window:60,max:40});
 });
 
+test('ordinary Auth Session traffic is also governed by Karaul, without polling',()=>{
+  let now=0;
+  const rules=createAuthKaraulRateRules({now:()=>now,detect:()=>[12]});
+  const baseline={window:60,max:120};
+  for(let i=0;i<40;i++)
+    assert.deepEqual(rules['/**'](req('/get-session','192.0.2.10'),baseline),baseline);
+  now=5000;
+  assert.deepEqual(rules['/**'](req('/get-session','192.0.2.10'),baseline),
+    {window:30,max:1});
+  assert.deepEqual(rules['/**'](req('/oauth2/token','192.0.2.10'),baseline),
+    {window:60,max:40});
+});
+
 test('Karaul analytics errors retain Better Auth native sign-in protection',()=>{
   let now=0;
   const rules=createAuthKaraulRateRules({now:()=>now,detect:()=>{throw Error('temporary');}});
