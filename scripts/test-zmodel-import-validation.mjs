@@ -147,6 +147,6 @@ test('import progress and server-side Galaxy validation share the ZModel write c
   const manager=readFileSync(new URL(
     '../app/loc/providers/kysely-management.mjs',import.meta.url),'utf8');
   assert.match(manager,/assertZModelGalaxyManagedValues/);
-  assert.match(manager,/values:galaxyValidated\\?null:modelValues/);
+  assert.match(manager,/values:galaxyValidated\|\|anchorBlockValidated\?null:modelValues/);
   assert.doesNotMatch(panel,/from 'tanstack|from 'swr/);
 });
