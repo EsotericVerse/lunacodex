@@ -46,9 +46,11 @@ export async function analyzeIncrementalKeywordPatterns({
   const checked=new Set(),compiledByWords=new Map();
   // A completed word scan is an UpdateTime lower bound. Most unchanged
   // documents can bypass the per-word loop entirely without touching content.
-  const completedTimes=[...scanMs.values()];
-  const earliestComplete=completedTimes.some(value=>value===null)
-    ?null:Math.min(...completedTimes);
+  let earliestComplete=Infinity;
+  for(const completed of scanMs.values()){
+    if(completed===null){earliestComplete=null;break;}
+    earliestComplete=Math.min(earliestComplete,completed);
+  }
   let offset=0,scanned=0,parsed=0,reused=0;
   for(;;){
     const page=await readMetadataPage({offset,limit:pageSize});
