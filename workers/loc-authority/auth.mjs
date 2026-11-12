@@ -119,7 +119,10 @@ export function createLocAuth(env){
     // 30-minute cookie cache once, preventing revoked Sessions from managing
     // Auth accounts. No background polling or extra Session store.
     hooks:{before:[{
-      matcher:ctx=>ctx.path?.startsWith('/admin/')===true,
+      // has-permission is an introspection endpoint for ordinary users, not
+      // an account-management action; leave its native authorization intact.
+      matcher:ctx=>ctx.path?.startsWith('/admin/')===true
+        &&ctx.path!=='/admin/has-permission',
       handler:createAuthMiddleware(async ctx=>{
         if(!await activeAuthAdmin(ctx.headers))
           throw new APIError('FORBIDDEN',{message:'Active administrator session required'});
