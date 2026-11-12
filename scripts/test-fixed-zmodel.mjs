@@ -50,7 +50,10 @@ for(const [,name,body] of blocks){
 test('ZModel maps exactly to the frozen silver physical table and column contract',()=>{
   assert.equal(snapshot.schema,'silver');
   assert.equal(snapshot.tables.length,17);
-  assert.equal(physical.size,snapshot.tables.length);
+  // LocAnchor is also modeled in ZModel but intentionally excluded from the
+  // frozen 17-table runtime snapshot; do not silently drop that declaration.
+  assert.equal(physical.size,snapshot.tables.length+1);
+  assert.ok(physical.has('loc_anchor'),'missing LOC-wide Anchor model');
   let total=0;
   for(const t of snapshot.tables){
     const model=physical.get(t.table);
@@ -97,6 +100,27 @@ test('Anchor remains the extension point; model does not declare migrations or b
   assert.equal((source.match(/^\s*@@allow\s*\(/gm)||[]).length,6);
   assert.match(source,/plugin policy \{/);
   assert.doesNotMatch(source,/^\s*@@deny\s*\(/m);
+});
+
+test('Neon eight-character UID references are CHAR(8) across ZModel and SchemaDef',()=>{
+  const names=new Set(['uid','source_id','ref_id','place_id','current_keyword_class_uid']);
+  let checked=0;
+  for(const table of snapshot.tables){
+    const model=physical.get(table.table);
+    const nativeModel=fixedSchema.models[modelName(table.table)];
+    for(const col of table.columns.filter(column=>names.has(column.name))){
+      checked++;
+      assert.equal(col.format,'bpchar',table.table+'.'+col.name+' SQL type mismatch');
+      assert.match(model.fields.get(col.name)?.attributes||'',/@db\.Char\(8\)/,
+        table.table+'.'+col.name+' ZModel declaration drift');
+      assert.ok(nativeModel.fields[col.name]?.attributes?.some(attr=>attr.name==='@db.Char'),
+        table.table+'.'+col.name+' runtime SchemaDef drift');
+    }
+  }
+  // LocAnchor is declared in ZModel but is not part of the frozen 17-table
+  // runtime snapshot. Its UID still follows the same physical CHAR(8) policy.
+  assert.match(physical.get('loc_anchor')?.fields.get('uid')?.attributes||'',/@db\.Char\(8\)/);
+  assert.ok(checked>=15,'all modeled physical UID columns and references checked');
 });
 
 test('ZenStack V3 runtime schema bridge stays in sync with the frozen contract',async()=>{

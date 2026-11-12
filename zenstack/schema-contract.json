@@ -1,6 +1,6 @@
 {
   "schema": "silver",
-  "source": "read-only physical metadata snapshot, 2026-11-09",
+  "source": "read-only physical metadata snapshot, 2026-11-09; Neon 2026-11-12 UID char(8) alignment",
   "tables": [
     {
       "table": "game",
@@ -453,7 +453,7 @@
         },
         {
           "name": "current_keyword_class_uid",
-          "format": "varchar",
+          "format": "bpchar",
           "nullable": true,
           "hasDefault": false,
           "generated": false
@@ -511,7 +511,7 @@
       "columns": [
         {
           "name": "uid",
-          "format": "varchar",
+          "format": "bpchar",
           "nullable": false,
           "hasDefault": false,
           "generated": false
@@ -725,7 +725,7 @@
         },
         {
           "name": "place_id",
-          "format": "varchar",
+          "format": "bpchar",
           "nullable": true,
           "hasDefault": false,
           "generated": false
@@ -1053,7 +1053,7 @@
         },
         {
           "name": "current_keyword_class_uid",
-          "format": "varchar",
+          "format": "bpchar",
           "nullable": true,
           "hasDefault": false,
           "generated": false
@@ -1104,7 +1104,7 @@
       "columns": [
         {
           "name": "uid",
-          "format": "varchar",
+          "format": "bpchar",
           "nullable": false,
           "hasDefault": false,
           "generated": false
@@ -1381,7 +1381,7 @@
         },
         {
           "name": "place_id",
-          "format": "varchar",
+          "format": "bpchar",
           "nullable": true,
           "hasDefault": false,
           "generated": false
