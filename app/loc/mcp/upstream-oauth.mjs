@@ -135,12 +135,13 @@ function tokenRecord(previous,tokens,tokenEndpoint,client,resource){
       ?Date.now()+Number(tokens.expires_in)*1000:0,
     scope:tokens.scope||previous?.scope||''};
 }
-export async function completeUpstreamOAuth(env,params){
+export async function completeUpstreamOAuth(env,params,expectedSubject){
   const state=String(params.state||'');
   if(!/^[A-Za-z0-9_-]{32,128}$/.test(state))throw new Error('Invalid OAuth state');
   const key='state:'+state;
   const saved=await vaultGet(env,key);
   if(!saved)throw new Error('Expired or unknown OAuth state');
+  if(saved.subject!==expectedSubject)throw new Error('OAuth browser identity mismatch');
   await vaultDelete(env,key);
   if(params.error||!params.code)throw new Error('Upstream OAuth was denied');
   const tokens=await exchange(saved.provider,saved.token_endpoint,{
