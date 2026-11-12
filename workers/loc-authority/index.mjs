@@ -134,15 +134,13 @@ export default {
       return new Response('Not found',{status:404});
     }catch(error){
       console.error('LOC Auth failed',error?.stack||error?.message||error);
-      return new Response(JSON.stringify({error:'LOC Auth unavailable',
-        detail:String(error?.stack||error?.message||error).slice(0,400)}),{
+      return new Response(JSON.stringify({error:'LOC Auth unavailable'}),{
         status:503,headers:{'content-type':'application/json','cache-control':'no-store'}
       });
     }
     }catch(fatal){
       console.error('LOC Auth fatal',fatal?.stack||fatal?.message||fatal);
-      return new Response(JSON.stringify({error:'LOC Auth fatal',
-        detail:String(fatal?.stack||fatal?.message||fatal).slice(0,400)}),{
+      return new Response(JSON.stringify({error:'LOC Auth fatal'}),{
         status:500,headers:{'content-type':'application/json','cache-control':'no-store'}
       });
     }finally{
