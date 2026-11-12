@@ -1295,22 +1295,39 @@
   height:100%;
 }
 .loc-trace-anchor-marker{
-  border:1px solid rgba(255,255,255,.8);
+  border:1px solid var(--loc-accent-border);
   border-radius:999px;
   padding:.4rem .65rem;
   min-height:36px;
-  background:rgba(42,34,78,.95);
-  color:#fff;
+  background:color-mix(in srgb,var(--loc-accent) 22%,var(--loc-panel));
+  color:var(--loc-text);
   font-size:.82rem;
   line-height:1.15;
   letter-spacing:.015em;
   cursor:pointer;
-  box-shadow:0 3px 15px rgba(24,17,53,.55);
+  box-shadow:var(--loc-shadow-card);
   white-space:nowrap;
 }
 .loc-trace-anchor-marker:focus-visible{
-  outline:3px solid #f7ba66;
+  outline:3px solid var(--loc-gold);
   outline-offset:3px;
+}
+/* MapLibre controls are part of the same theme, including dark-mode icons.
+   The geographic tile colors remain the map provider's responsibility. */
+.loc-trace-map-frame .maplibregl-ctrl-group{
+  background:var(--loc-panel-strong);
+  border:1px solid var(--loc-line);
+  box-shadow:var(--loc-shadow-card);
+}
+.loc-trace-map-frame .maplibregl-ctrl-group button{
+  background-color:transparent;
+  border-color:var(--loc-line);
+}
+.loc-trace-map-frame .maplibregl-ctrl-group button:not(:disabled):hover{
+  background-color:var(--loc-accent-surface-strong);
+}
+:root[data-theme="dark"] .loc-trace-map-frame .maplibregl-ctrl-icon{
+  filter:invert(1);
 }
 /* 文化河道掛在痰跡圖的地點上：由地點往上拉出的一條直線時間排列，
    不是座標軸刻度，只是依日期跨度做大致的比例拉伸。 */
