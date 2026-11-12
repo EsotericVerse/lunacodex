@@ -1,5 +1,5 @@
 'use client';
-import {useEffect,useState} from 'react';
+import {useState} from 'react';
 
 // The upstream MCP Provider console is separate from LOC Auth's identity UI.
 // No OAuth credentials are visible or entered in this browser.
@@ -20,6 +20,7 @@ async function providerRequest(action,payload=null){
   return value;
 }
 export default function McpProviderPanel(){
+  const [open,setOpen]=useState(false);
   const [providers,setProviders]=useState([]);
   const [ready,setReady]=useState(false);
   const [selected,setSelected]=useState('');
@@ -31,14 +32,6 @@ export default function McpProviderPanel(){
     const info=await providerRequest('status');
     setProviders(info.providers||[]);setReady(info.ready===true);
   }
-  useEffect(()=>{
-    let active=true;
-    providerRequest('status').then(info=>{
-      if(!active)return;
-      setProviders(info.providers||[]);setReady(info.ready===true);
-    }).catch(error=>{if(active)setMessage(String(error.message||error))});
-    return ()=>{active=false};
-  },[]);
   async function run(label,work){
     if(busy)return;
     setBusy(true);setMessage(label);
@@ -47,6 +40,15 @@ export default function McpProviderPanel(){
     finally{setBusy(false)}
   }
   const current=providers.find(item=>item.id===selected);
+  // No Auth or upstream request on Admin mount. The owner must explicitly
+  // open MCP Provider management before any session check occurs.
+  if(!open)return <section className="loc-card admin-workspace" aria-labelledby="admin-mcp-provider-heading">
+    <h2 id="admin-mcp-provider-heading">LOC MCP · 上游 Provider</h2>
+    <p className="scope-status">獨立管理 Clerk、GitHub、Neon、Supabase 的外部授權和函式政策。此區不自動向 LOC Auth 發送請求。</p>
+    <button className="loc-button" type="button" onClick={()=>{
+      setOpen(true);void run('正在讀取 Provider 狀態…',refresh);
+    }}>開啟 Provider 管理</button>
+  </section>;
   async function connect(id){
     const result=await run('正在建立 '+id+' 授權…',()=>
       providerRequest('connect',{provider:id}));
