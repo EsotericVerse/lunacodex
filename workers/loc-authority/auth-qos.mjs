@@ -68,7 +68,8 @@ export function createAuthKaraulRateRules({now=()=>Date.now(),detect=detectChang
   // Do not throttle issuer metadata, JWKS, consent or Google callbacks here.
   return {
     '/oauth2/*':rule,
-    '/sign-in/social':rule
+    '/sign-in/social':rule,
+    '/jwks':false
   };
 }
 
