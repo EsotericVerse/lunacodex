@@ -5,7 +5,8 @@ import {beginUpstreamOAuth,disconnectUpstream} from '../../app/loc/mcp/upstream-
 import {providerStatuses,setToolPolicy,clearToolPolicies,requestTool,pendingApprovals,
   decideApproval,approvalReceipt} from '../../app/loc/mcp/upstream-policy.mjs';
 import {listUpstreamTools} from '../../app/loc/mcp/upstream-tools.mjs';
-import {upstreamProvider} from '../../app/loc/mcp/upstream-providers.mjs';
+import {upstreamProvider,ProviderControlSchema}
+  from '../../app/loc/mcp/upstream-providers.mjs';
 
 const ORIGIN='https://loc.lo3rwang.cc';
 function json(data,status=200){
@@ -51,8 +52,10 @@ async function handler(context){
     browserConsent(request);
     const raw=await request.text();
     if(raw.length>16000)reject('MCP control request too large',413);
-    let body;try{body=JSON.parse(raw)}catch{reject('Invalid JSON')}
-    if(!body||typeof body!=='object'||Array.isArray(body))reject('Invalid MCP control request');
+    let incoming;try{incoming=JSON.parse(raw)}catch{reject('Invalid JSON')}
+    const validated=ProviderControlSchema.safeParse(incoming);
+    if(!validated.success)reject('Invalid MCP provider operation');
+    const body=validated.data;
     if(body.action==='call')return json(await requestTool(env,subject,
       body.provider,body.tool,body.args||{}));
     switch(body.action){

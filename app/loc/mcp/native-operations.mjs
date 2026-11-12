@@ -4,7 +4,8 @@
 import {sql} from 'kysely';
 import {verifyAccessTokenRequest,requestToResourceInput} from 'better-auth/oauth2';
 import {locPermissionsForEmail} from '../permissions/roles.mjs';
-import {locMcpPermissionsForEmail} from './access-roles.mjs';
+import {locMcpPermissionsForEmail,VerifiedLocUserInfoSchema} from './access-roles.mjs';
+import {MANAGED_FILTER_SQL,managedFiltersValid} from '../../../zenstack/sql-input-shape.mjs';
 import {verifiedLocWebsiteSession} from '../auth/verified-session.mjs';
 import {authorizeDelegatedShortImport} from '../import/short-edge-authorization.mjs';
 import {processShortImport,portableShortImportStore} from '../import/short-append-service.mjs';
@@ -26,19 +27,17 @@ const JWKS=AUTH+'/api/auth/jwks';
 const MCP_HOST='mcp.lo3rwang.cc';
 const WEB_HOST='loc.lo3rwang.cc';
 const MAX_BYTES=700000;
-const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const KINDS=new Set(['mcp-sync','mcp-append','mcp-read','mcp-search','mcp-conversation','mcp-scope-status','short-import','managed-write','managed-action','personal-read','personal-write']);
 // api.manage / silver.loc are the only two fixed ZModel control relations a
 // signed global:manage delegation may UPDATE/DELETE (zenstack/policy-runtime.mjs
 // ADMIN_FIXED_WRITES). No insert, no other table. The website retains its
 // separate owner-only editor checks; MCP/Extension use active api.manage
 // roles with exact Scope grants. Neither path grants global Admin by login.
-const FILTER_SQL_OP={eq:'=',neq:'!=',gt:'>',gte:'>=',lt:'<',lte:'<=',
-  like:'like',ilike:'ilike',is:'is',in:'in'};
 function withManagedFilters(query,filters){
+  if(!managedFiltersValid(filters))throw refusal('Invalid managed write filters',400);
   return filters.reduce((q,filter)=>{
-    const op=FILTER_SQL_OP[filter?.operator];
-    if(!op)throw refusal('Unsupported managed write filter: '+filter?.operator,400);
+    const op=MANAGED_FILTER_SQL[filter.operator];
+    if(!op)throw refusal('Unsupported managed write filter',400);
     return q.where(filter.column,op,filter.value);
   },query);
 }
@@ -101,12 +100,12 @@ async function signedClaims(request,fetchImpl){
     cache:'no-store',redirect:'manual',signal:AbortSignal.timeout(7000)
   }).catch(()=>null);
   if(!response?.ok)throw refusal('LOC OAuth UserInfo unavailable',401);
-  const user=await response.json().catch(()=>null);
-  if(user?.sub!==claims.sub||user?.email_verified!==true||
-     !EMAIL.test(String(user.email||'')))
+  const checked=VerifiedLocUserInfoSchema.safeParse(
+    await response.json().catch(()=>null));
+  if(!checked.success||checked.data.sub!==claims.sub)
     throw refusal('Verified LOC OAuth identity required',401);
   return {provider:'loc',role:'authenticated',sub:claims.sub,
-    subject:claims.sub,email:String(user.email).trim().toLowerCase(),
+    subject:claims.sub,email:checked.data.email.trim().toLowerCase(),
     me:false,grants:[],
     delegatedScopes:String(claims.scope||'').split(/\s+/).filter(Boolean)};
 }
@@ -171,7 +170,7 @@ export async function handleNativeLocOperation(request,env={},{
     // Gateway gate. Website editor grants retain their existing separate policy.
     // Each request performs one active api.manage lookup, never a second probe.
     const permission=host===MCP_HOST
-      ?await locMcpPermissionsForEmail(selected.db,claims.email)
+      ?await locMcpPermissionsForEmail(selected.db,claims.email,{dialect:selected.dialect})
       :await locPermissionsForEmail(selected.db,claims.email);
     claims.me=permission.canWrite;
     claims.grants=permission.grants;
