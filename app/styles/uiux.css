@@ -221,9 +221,24 @@ button,a,.loc-control,.loc-button,
   box-shadow:0 0 0 3px var(--loc-ui-accent-soft);
 }
 
-/* Shared page composition */
+/* Shared page composition: one shrinkable content column across every
+   Scope route. A Grid item's default auto minimum previously allowed long
+   article, chart and editor children to widen their ancestor on desktop;
+   the mobile-only min-width reset did not solve that underlying issue. */
+.loc-next-main,.scope-main,.loc-view,.scope-page,.scope-content{
+  min-width:0;
+  max-width:100%;
+}
 .loc-view,.scope-page,.scope-content{
   gap:clamp(1rem,2.2vw,1.75rem);
+  min-width:0;
+}
+.scope-page,.scope-content{
+  grid-template-columns:minmax(0,1fr);
+}
+:is(.loc-view,.scope-page,.scope-content)>*{
+  min-width:0;
+  max-width:100%;
 }
 
 .loc-hero,.scope-hero{
