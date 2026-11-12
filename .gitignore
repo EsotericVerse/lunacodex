@@ -26,3 +26,7 @@ public/vendor/rune-semantic-icons/
 # Built/published public snapshots are generated, never manually committed.
 /public/_loc/
 /public/_loc-building/
+
+# .claude/skills 由 scripts/link-claude-skills.mjs 產生（Windows 用 junction，其餘用 symlink）
+# 不進版控：committed symlink 在沒開 core.symlinks 的 Windows 會變成純文字檔
+.claude/skills
