@@ -517,8 +517,12 @@
   .loc-trace-strategy-tabs{gap:.3rem}
   .loc-trace-strategy-tabs>.loc-button{font-size:.81rem;padding-inline:.2rem;min-height:46px}
   .loc-trace-territory-dossier{padding:.65rem}
+  /* Preserve the lower-right "年度全版圖" return button. The dossier is
+     above it in stacking order, so they must not occupy the same bottom lane. */
   .loc-trace-territory .loc-trace-floating-content{
-    top:auto;bottom:.35rem;max-height:min(61dvh,620px);
+    top:auto;
+    bottom:calc(3.65rem + env(safe-area-inset-bottom,0px));
+    max-height:min(61dvh,620px);
     width:calc(100% - .7rem);left:.35rem;
   }
   .loc-trace-territory-overview{padding:.6rem}
