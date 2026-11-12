@@ -7,7 +7,7 @@ import {readMemory} from './galaxy-read.mjs';
 import {privateGalaxyLink} from './private-galaxy.mjs';
 import {mcpDatabaseConfiguration} from './native-kysely.mjs';
 import {mcpToolJsonSchema,parseMcpToolArgs,McpRpcSchema} from './tool-contracts.mjs';
-import {readBoundedJson,BodyTooLargeError} from './stream-json.mjs';
+import {handleStatelessMcpPost} from './stateless-transport.mjs';
 // LOC MCP HTTP entry point. No database write is granted by an OAuth login.
 export const MCP_RESOURCE=(globalThis.process?.env?.LOC_MCP_RESOURCE_URL||'https://mcp.lo3rwang.cc').replace(/\/+$/,'');
 export const LOC_OAUTH_ISSUER='https://auth.lo3rwang.cc/api/auth';
@@ -103,22 +103,14 @@ export async function handleMcp(request,env={}){
   try{identity=await verifyOAuthToken(request,config);}catch{return unauthorized(config);}
   if(!identity)return unauthorized(config);
   if(request.method==='GET')return response({error:'SSE_not_supported',message:'Use Streamable HTTP POST'},405,{Allow:'POST, OPTIONS'});
-  let payload;
-  try{payload=await readBoundedJson(request.body,700000)}
-  catch(error){
-    return error instanceof BodyTooLargeError
-      ?rpcError(null,-32600,'MCP request too large',413)
-      :rpcError(null,-32700,'Invalid JSON',400);
-  }
-  const parsedRpc=McpRpcSchema.safeParse(payload);
-  if(!parsedRpc.success)
-    return rpcError(payload?.id??null,-32600,'Invalid JSON-RPC request',400);
-  payload=parsedRpc.data;
-  if(payload.id==null)return response(null,202); // JSON-RPC notifications have no reply.
+  return handleStatelessMcpPost(request,payload=>
+    dispatchMcpPayload(payload,identity,match[1],config,env));
+}
+async function dispatchMcpPayload(payload,identity,bearer,config,env){
   // A valid SSO token identifies a user, but does not grant MCP capacity.
   // api.manage is the sole existing role registry; no MCP application step.
   if(payload.method==='tools/list'||payload.method==='tools/call'){
-    try{await authorizeMcpBearer(match[1],identity.subject,env);}
+    try{await authorizeMcpBearer(bearer,identity.subject,env);}
     catch(error){
       const status=[401,403].includes(error?.httpStatus)?error.httpStatus:503;
       return rpcError(payload.id,-32001,status===403?'LOC MCP role not granted':
@@ -170,8 +162,8 @@ export async function handleMcp(request,env={}){
           await approvalReceipt(env,identity.subject,args.approval_id):
           name==='read_memory'?
           await readMemory(args,env):
-          directPrivate?await privateGalaxyLink(args,match[1],identity.subject,env):
-          await businessAction(name,args,match[1],env);
+          directPrivate?await privateGalaxyLink(args,bearer,identity.subject,env):
+          await businessAction(name,args,bearer,env);
         return toolResponse(payload.id,value);
       }catch(error){
         const validation=error?.code==='INVALID_ARGUMENT';
