@@ -10,6 +10,7 @@ import {Pool, neonConfig} from '@neondatabase/serverless';
 import * as z from 'zod';
 import {RAINBOW_TABLES} from './rainbow-tables.mjs';
 import {rainbowSchema,RAINBOW_MODEL_NAMES} from './rainbow-zmodel.mjs';
+import {authKaraulRateRules} from './auth-qos.mjs';
 
 // LOC Auth is the issuer. Neon supplies PostgreSQL storage, NOT Neon Auth.
 // Neither website rendering nor business permissions are implemented here.
@@ -152,7 +153,11 @@ export function createLocAuth(env){
     disabledPaths:['/token'],
     // Routine Session/OIDC traffic should not exhaust the same tiny 30/min
     // default budget. Sensitive OAuth operations have narrower native limits.
-    rateLimit:{enabled:true,window:60,max:120},
+    rateLimit:{enabled:true,window:60,max:120,
+      // The native Better Auth limiter owns admission, counters and 429s.
+      // Karaul only selects a more restrictive rule for observed traffic shifts.
+      customRules:authKaraulRateRules
+    },
     advanced:{
       useSecureCookies:true,
       // The LOC website receives the opaque session cookie only for explicit

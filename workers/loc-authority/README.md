@@ -87,21 +87,13 @@ rotation: 5, UserInfo: 120, each per 60 seconds). These are draft limits
 pending observed traffic and integration testing, not a claim of worldwide
 per-client enforcement.
 
-A new **transport admission gate** counts in-flight Auth requests, not
-physical TCP/TLS sockets or PostgreSQL connections. Within each Worker isolate
-it uses a 128-request total ceiling and separate per-source ceilings:
-OAuth 24, Session 48, public metadata/JWKS 96, other 32. On overload it
-returns HTTP 429 with Retry-After: 2, and releases the slot after every
-completed request. A normal 30-minute Session Cache hit is not a new SQL
-query by definition.
-
-**A Worker isolate's memory counters are NOT global across Cloudflare
-instances, not a permanent blacklist, and not an authorization decision.**
-Do not claim that changing IP, OAuth client, or Worker instance is blocked.
-Globally consistent abuse enforcement and owner-triggered blacklist or
-client/Session revocation require a separately approved shared policy/control
-mechanism and end-to-end tests. Do not silently introduce SQL tables, RPC,
-RLS policies or a new Auth identity store to implement it.
+Better Auth 1.7.18's upstream `rateLimit.customRules` now provides
+request admission, counters and 429 responses for sensitive Auth endpoints.
+The old bespoke in-flight/HTTP admission gate was removed. Its per-source
+concurrency ceilings are no longer present; the native limiter instead
+enforces per-IP/per-endpoint request-rate budgets. Ordinary Session reads,
+public metadata and JWKS never invoke Karaul analysis. The default memory
+limiter is shared within an isolate but not globally across Cloudflare PoPs.
 
 **High request concurrency never invalidates the entire issuer JWKS.** Such
 invalidations would disrupt unrelated valid clients. Better Auth manages
@@ -142,14 +134,25 @@ Auth roles do not grant LOC Web business privileges. The five Admin fields
 (`role`, `banned`, `banReason`, `banExpires`, `impersonatedBy`) already
 exist on the two core Rainbow tables; the RLS policies are unchanged.
 
-The Worker admission gate feeds bounded 5-second request-count buckets to the
-installed MIT Karaul `PoissonCost` / PELT detector. It only evaluates
-completed buckets with significant volume, with no polling or new persistence.
-A detected source-local surge produces a temporary HTTP 429 with Retry-After;
-expiry is automatic on the next request. This is **per Worker isolate**, not
-a globally synchronized IP blacklist and never a permanent Better Auth user ban.
-Routine public JWKS and issuer metadata remain available. Better Auth retains
-its own native per-route rate limits and permanent account blacklisting.
+Karaul's published `detectChangepoints(series, new PoissonCost())`
+provides a bounded 5-second time-series signal for sensitive OAuth/login
+endpoints. Only completed buckets with substantial traffic invoke PELT.
+On a sustained shift, Better Auth's native `rateLimit.customRules` selects
+a stricter 30-second request-rate budget; Better Auth itself counts and
+sends HTTP 429. Recovery is based on the next request and elapsed window.
+There are no intervals, timers, SQL polls, new stores or separate HTTP
+blacklist/enforcement loops. This is **per Worker isolate**, never a global
+IP blacklist or a permanent user ban. Account bans and Session revocation
+remain entirely inside the native Better Auth Admin Plugin. Public JWKS
+is explicitly exempt from the native rate limiter, as it was from the
+retired admission gate.
+
+Upstream source references: Better Auth 1.7.18
+`packages/better-auth/src/api/rate-limiter/index.ts`; its
+`docs/content/docs/concepts/rate-limit.mdx`; Stratal
+`packages/framework/src/auth/rate-limit-bridge.ts` (native-rule
+integration pattern); Karaul `src/pelt.ts` and `src/costs/poisson.ts`.
+No Stratal framework dependency or alternative identity store was added.
 
 The existing 30-minute signed Session Cookie Cache is unchanged for ordinary
 SSO traffic. Database Session revocation is authoritative when a request
