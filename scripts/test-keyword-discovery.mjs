@@ -3,6 +3,8 @@ import {runInNewContext} from 'node:vm';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createNewKeywordDiscovery,existingKeywordSet,readableKeywordContent} from '../app/loc/keyword-discovery.mjs';
+import {detectChangepoints,PoissonCost} from 'karaul';
+import {detectCountChangepoints} from '../app/loc/karaul-count-changepoints.mjs';
 
 test('discovery only excludes existing Item names and literal Keywords, without mutating them',()=>{
   const rows=[
@@ -142,7 +144,7 @@ test('PELT suggestions use weighted novel hits per article, not a twice-divided 
   };
   const self={postMessage:data=>emitted.push(data)};
   runInNewContext(code,{self,createNewKeywordDiscovery:()=>fakeDiscovery,
-    detectChangepoints:series=>series.length>=4?[2]:[],PoissonCost:class{}});
+    detectCountChangepoints:series=>series.length>=4?[2]:[]});
   self.onmessage({data:{type:'start',existingRows:[]}});
   self.onmessage({data:{type:'batch',rows:[]}});
   self.onmessage({data:{type:'finish'}});
@@ -215,4 +217,48 @@ test('new-term discovery reads dated Galaxy via date cursor, peers and undated e
   assert.ok(queries.some(query=>query.orders.includes('date')));
   assert.ok(queries.every(query=>!query.orders.includes('uid')));
   assert.ok(queries.every(query=>query.limit===Infinity||query.limit<=10000));
+});
+
+test('Karaul exact-count prefix cost preserves native Poisson changepoints',()=>{
+  const sources=[
+    [0,0,0,0],
+    [3,3,3,3,3,3],
+    [0,0,1,2,0,0,0,8,12,11,9,0,0,0],
+    [1,1,1,1,8,8,9,8,0,0,0,0,4,4,4,4],
+    Array.from({length:180},(_,i)=>i>=60&&i<120?10:i%17===0?2:0),
+    Array.from({length:180},()=>0)
+  ];
+  for(const series of sources){
+    assert.deepEqual(detectCountChangepoints(series),
+      detectChangepoints(series,new PoissonCost()),
+      'Native Karaul results must remain unchanged for count data');
+  }
+  // Non-count values preserve the native Karaul cost path.
+  for(const series of [[1,1.5,2,3],[3,-1,4,0]]){
+    assert.deepEqual(detectCountChangepoints(series),
+      detectChangepoints(series,new PoissonCost()));
+  }
+});
+
+test('keyword suggestions run PELT only for the 120 retained candidates',()=>{
+  const code=readFileSync(new URL('../app/loc/keyword-discovery-worker.mjs',import.meta.url),'utf8')
+    .replace(/^import .*$/gm,'');
+  const emitted=[];
+  let calls=0;
+  const monthCoverage=['2026-01','2026-02','2026-03','2026-04']
+    .map(month=>({month,documents:100,existingCovered:0}));
+  const candidates=Array.from({length:240},(_,i)=>({
+    word:'term'+i,documents:4,occurrences:4,
+    months:[['2026-01',1],['2026-02',1],['2026-03',1],['2026-04',1]]
+  }));
+  const self={postMessage:data=>emitted.push(data)};
+  runInNewContext(code,{self,
+    createNewKeywordDiscovery:()=>({consume:()=>({read:4,withContent:4}),
+      finish:()=>({candidates,monthCoverage})}),
+    detectCountChangepoints:()=>{calls++;return [2];}
+  });
+  self.onmessage({data:{type:'start',existingRows:[]}});
+  self.onmessage({data:{type:'finish'}});
+  assert.equal(emitted.at(-1).result.candidates.length,120);
+  assert.equal(calls,121,'1 density scan + 120 retained candidate scans');
 });
