@@ -36,6 +36,18 @@ function importModelSchema(modelName){
       overrides[column.name]=field.refine(value=>value==null||
         (typeof value==='string'&&char8Uid.test(value)),
       {message:'Expected exactly 8 ASCII letters or digits'});
+    }else if(column.format==='int8'){
+      // JSON transports represent PostgreSQL BIGINT as a safe JS number or
+      // decimal string, not a native bigint. Keep the physical 64-bit range
+      // and preserve original values for the existing Kysely JSONB batches.
+      const int8Text=z.string().regex(/^-?\\d+$/).refine(value=>{
+        const n=BigInt(value);
+        return n>=-(1n<<63n)&&n<=(1n<<63n)-1n;
+      });
+      overrides[column.name]=z.union([
+        field,z.number().int().min(Number.MIN_SAFE_INTEGER)
+          .max(Number.MAX_SAFE_INTEGER),int8Text
+      ]);
     }else if(column.format==='date'){
       // PostgreSQL DATE accepts YYYY-MM-DD; native ZModel maps it to DateTime.
       overrides[column.name]=z.union([field,z.iso.date()]).nullable().optional();
