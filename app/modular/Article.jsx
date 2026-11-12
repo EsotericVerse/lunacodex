@@ -41,6 +41,7 @@ function DeferredArticleBody({html}){
     return ()=>observer.disconnect();
   },[]);
   return <div ref={container} className="scope-article-block-display"
+    role="region" aria-label={UI_COPY.common.body}
     style={!visible?{minHeight:'3rem'}:undefined}>
     {visible?<BlockNoteEditor editable={false} initialContent={html}/>:null}
   </div>;
@@ -52,6 +53,9 @@ export default function Article({uid,title,articleHref='',detailReading=false,re
   useUiSection('uiExtra.editBlocks');
   const t=useUiText();
   const richBody=typeof body==='string'&&/<[a-z][^>]*>/i.test(body);
+  // A full article is a BlockNote document even when its stored content is
+  // legacy plain text. Compact list summaries retain their original text path.
+  const documentBody=Boolean(body)&&(detailReading||richBody);
   const onClickCapture=editOnCardClick&&editable&&!editing&&typeof onEdit==='function'?event=>{
     if(!isInteractiveContentTarget(event.target))onEdit(uid);
   }:undefined;
@@ -77,10 +81,10 @@ export default function Article({uid,title,articleHref='',detailReading=false,re
   // Use the existing list row date without fetching its article body.
   const displayDate=String(date||articleDate||articleCreateTime||'').slice(0,10);
   return <WorkSummaryCard title={title} titleHref={articleHref} titleEditor={titleEditor} kicker={styleTag?styleTagKicker:null} source={source} scopeId={scopeId} date={editingReady?'':displayDate} actions={editorActions}
-    body={editingReady||richBody||styleTag?'':body} hidden={hidden} relationLinks={visibleRelations} detailReading={detailReading} relatedMedia={relatedMedia} relatedTime={relatedTime} relatedSpace={relatedSpace} relatedStatistics={relatedStatistics} articleScopeId={articleScopeId} articleDate={articleDate} articleCreateTime={articleCreateTime} tracePlace={tracePlace} traceHref={traceHref} locationName={locationName} links={visibleLinks}
+    body={editingReady||documentBody||styleTag?'':body} hidden={hidden} relationLinks={visibleRelations} detailReading={detailReading} relatedMedia={relatedMedia} relatedTime={relatedTime} relatedSpace={relatedSpace} relatedStatistics={relatedStatistics} articleScopeId={articleScopeId} articleDate={articleDate} articleCreateTime={articleCreateTime} tracePlace={tracePlace} traceHref={traceHref} locationName={locationName} links={visibleLinks}
     destinations={destinations} className={['loc-shared-work-card',styleTag?'scope-article-style-tag-hit':'',detailReading?'scope-article-detail':''].filter(Boolean).join(' ')} onClickCapture={onClickCapture}>
     {styleTag&&!editingReady&&styleIntroText?<div className="scope-style-tag-search-intro">{styleIntroText}</div>:null}
-    {richBody&&!editingReady?<DeferredArticleBody html={body}/>:null}
+    {documentBody&&!editingReady?<DeferredArticleBody html={body}/>:null}
     {editingReady?<ObjectEditor mode="article" draft={editorDraft} onChange={onDraftChange} showHidden={showHidden} attributeFields={attributeFields} showBodyEditor={showBodyEditor} attributeTitle={attributeTitle} mediaHref={mediaScopeId?mediaEditHref:null}/>:null}
     {children}
   </WorkSummaryCard>;

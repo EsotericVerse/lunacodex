@@ -598,7 +598,16 @@
 
 /* Reusable article actions live alongside the heading, not after the full article. */
 .scope-work-summary-actions{display:flex;align-items:center;justify-content:flex-end;gap:.6rem;flex-wrap:wrap}
-.scope-work-fulltext-row{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap}
+.scope-work-fulltext-row{
+  display:grid;
+  grid-template-columns:minmax(0,1fr);
+  align-items:start;
+  gap:.65rem;
+  min-width:0;
+  width:100%;
+}
+.scope-work-fulltext{display:grid;gap:.6rem;min-width:0;width:100%}
+.scope-work-fulltext>button{justify-self:start;min-height:2.75rem}
 
 /* An opened UID is a reading page, not an inline result preview. */
 .scope-article-detail .scope-culture-work-heading .scope-article-title-link,
@@ -624,11 +633,96 @@
   max-width:100%;
   min-width:0;
 }
+/* Lists remain compact summaries; an opened body is its own reading
+   surface, not a second nested .scope-inline-card and not a flex child. */
+.scope-work-summary{
+  min-width:0;
+}
+.scope-work-summary:not(.scope-article-detail)>.scope-culture-work-heading{
+  min-width:0;
+}
+.scope-article-detail>.scope-culture-work-heading{
+  padding-bottom:.85rem;
+  border-bottom:1px solid var(--loc-line-soft);
+}
+.scope-article-block-display{
+  box-sizing:border-box;
+  display:block;
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  margin:.3rem 0 0;
+  padding:clamp(.9rem,2.4vw,1.5rem);
+  border:1px solid color-mix(in srgb,var(--loc-accent) 23%,var(--loc-line));
+  border-radius:var(--loc-ui-radius-md,14px);
+  background:color-mix(in srgb,var(--loc-panel) 88%,var(--loc-bg));
+  color:var(--loc-text);
+  overflow-wrap:anywhere;
+}
 .scope-article-detail .scope-article-block-display{
+  margin-top:.45rem;
+  padding:clamp(1rem,2.6vw,1.75rem);
+  border-color:color-mix(in srgb,var(--loc-accent) 28%,var(--loc-line));
+  box-shadow:none;
+}
+/* The only article body renderer is read-only BlockNote. Fit its editor
+   inside the reading frame; preserve actual document blocks, images,
+   nested lists, quote levels and native links without reconstructing HTML. */
+.scope-article-block-display .scope-blocknote,
+.scope-article-block-display .scope-blocknote .bn-container{
+  box-sizing:border-box;
+  width:100%;
+  max-width:100%;
+  min-width:0;
+}
+.scope-article-block-display .scope-blocknote.is-readonly .bn-editor{
+  width:100%;
+  max-width:min(100%,84ch);
+  min-width:0;
+  min-height:0;
+  margin-inline:auto;
   padding:0;
   border:0;
   background:transparent;
-  box-shadow:none;
+  color:var(--loc-text);
+  font:inherit;
+  line-height:1.85;
+  overflow-wrap:anywhere;
+}
+.scope-article-block-display .bn-editor :is(h1,h2,h3,h4,h5,h6){
+  color:var(--loc-heading);
+  line-height:1.4;
+  text-wrap:pretty;
+  margin-block:1.2em .45em;
+}
+.scope-article-block-display .bn-editor :is(p,li,blockquote){
+  line-height:1.85;
+  overflow-wrap:anywhere;
+}
+.scope-article-block-display .bn-editor :is(img,video,iframe){
+  display:block;
+  max-width:100%;
+  height:auto;
+  border-radius:var(--loc-ui-radius-sm,10px);
+}
+.scope-article-block-display .bn-editor :is(pre,table){
+  max-width:100%;
+  overflow-x:auto;
+}
+.scope-article-block-display .bn-editor blockquote{
+  border-inline-start:3px solid var(--loc-accent-border-soft);
+  padding-inline-start:1rem;
+}
+@media(max-width:680px){
+  .scope-article-block-display,
+  .scope-article-detail .scope-article-block-display{
+    padding:.8rem;
+    margin-top:.35rem;
+  }
+  .scope-article-block-display .scope-blocknote.is-readonly .bn-editor{
+    max-width:100%;
+    line-height:1.75;
+  }
 }
 
 /* Only the opened article shows compact relationship metadata. */
