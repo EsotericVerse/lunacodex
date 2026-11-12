@@ -35,10 +35,13 @@ export function protectedResourceMetadata(env={}){
   return response({resource,authorization_servers:[issuer],
     bearer_methods_supported:['header'],scopes_supported:SCOPES});
 }
+function oauthChallenge(config){
+  return 'Bearer resource_metadata="'+
+    config.resource+'/.well-known/oauth-protected-resource", scope="openid"';
+}
 function unauthorized(config){
-  const resourceMetadata=config.resource+'/.well-known/oauth-protected-resource';
   return response({error:'unauthorized',error_description:'LOC OAuth access token required'},401,{
-    'WWW-Authenticate':'Bearer resource_metadata="'+resourceMetadata+'", scope="openid"'
+    'WWW-Authenticate':oauthChallenge(config)
   });
 }
 // LOC MCP is an independent OAuth resource server, not a Better Auth subsystem.
@@ -58,8 +61,8 @@ export async function verifyOAuthToken(request,config){
   }catch{return null}
 }
 function result(id,value){return response({jsonrpc:'2.0',id,result:value});}
-function rpcError(id,code,message,httpStatus=200){
-  return response({jsonrpc:'2.0',id,error:{code,message}},httpStatus);
+function rpcError(id,code,message,httpStatus=200,headers={}){
+  return response({jsonrpc:'2.0',id,error:{code,message}},httpStatus,headers);
 }
 const TOOLS=[
   {name:'loc_connection_status',description:'Check LOC MCP and LOC OAuth connectivity (read only).',
@@ -112,10 +115,12 @@ async function dispatchMcpPayload(payload,identity,bearer,config,env){
   if(payload.method==='tools/list'||payload.method==='tools/call'){
     try{await authorizeMcpBearer(bearer,identity.subject,env);}
     catch(error){
-      const status=[401,403].includes(error?.httpStatus)?error.httpStatus:503;
+      const status=[401,403,429].includes(error?.httpStatus)?error.httpStatus:503;
       return rpcError(payload.id,-32001,status===403?'LOC MCP role not granted':
         status===401?'Verified LOC OAuth identity required':
-        'LOC MCP role service unavailable',status);
+        status===429?'LOC OAuth UserInfo rate limited':
+        'LOC MCP role service unavailable',status,
+        status===401?{'WWW-Authenticate':oauthChallenge(config)}:{});
     }
   }
   switch(payload.method){
@@ -124,7 +129,7 @@ async function dispatchMcpPayload(payload,identity,bearer,config,env){
       return result(payload.id,{protocolVersion:SUPPORTED_PROTOCOLS.has(proposed)?proposed:DEFAULT_PROTOCOL,
         capabilities:{tools:{listChanged:false}},serverInfo:{name:'loc-mcp',version:'0.2.0',
            ...(proposed==='2025-11-25'?{icons:[{src:'https://loc.lo3rwang.cc/assets/site/icons/loc-favicon.png',mimeType:'image/png'}]}:{})},
-        instructions:'Public Galaxy reads use direct Kysely visibility filters. Private Galaxy reads and writes use direct Kysely after Better Auth identity validation and independent api.manage permissions. loc_connection_status reports configuration only, not successful database read/write. galaxy_link.search is permitted only by explicit human user request and user_requested=true. 請至github頁面找尋PR相關資料！不開放搜尋PR!'});
+        instructions:'Public Galaxy reads use the scoped ZenStack Galaxy ZModel with Kysely visibility filters. Private Galaxy reads use that scoped model after permission checks, while writes retain Kysely after Better Auth identity validation and independent api.manage permissions. loc_connection_status reports configuration only, not successful database read/write. galaxy_link.search is permitted only by explicit human user request and user_requested=true. 請至github頁面找尋PR相關資料！不開放搜尋PR!'});
     }
     case 'ping':return result(payload.id,{});
     case 'tools/list':return result(payload.id,{tools:TOOLS});
