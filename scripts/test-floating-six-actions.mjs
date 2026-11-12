@@ -52,5 +52,7 @@ test('dock links keep immediate routing, focus and 6 columns; editor actions sta
   assert.match(css,/\.scope-feature-dock :is\(a,button\)>\\.scope-dock-motion-icon\{/);
   assert.match(css,/width:24px;height:24px/);
   assert.match(css,/pointer-events:none/);
-  assert.doesNotMatch(shell,/preventDefault\(\)|setTimeout\([^]*?navigationHref/);
+  const normalDock=shell.split(':featureTabs.map(tab=><ScopeLink')[1]?.split('</ScopeLink>)')[0]||'';
+  assert.ok(normalDock,'normal feature links stay intact');
+  assert.doesNotMatch(normalDock,/preventDefault\(|setTimeout\(|window\.location=/);
 });
