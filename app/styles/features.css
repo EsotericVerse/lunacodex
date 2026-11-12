@@ -387,6 +387,16 @@
   border:1px solid var(--loc-ui-hairline);border-radius:var(--loc-ui-radius-sm);
   background:var(--loc-panel);color:var(--loc-text);font:inherit;font-size:.87rem;
 }
+/* iPhone Safari zooms an editable form when a focused field uses a font
+   below 16px. These are application-owned metadata fields, not BlockNote
+   internals or the native search/calendar controls. */
+@media(max-width:760px){
+  .scope-search-attr-item :is(input:not([type="checkbox"]):not([type="radio"]),textarea),
+  :is(.scope-management-fields,.admin-context-panel,.admin-page-copy-fields,.scope-frame-field-grid>.scope-frame-header-field,.scope-frame-image-fields)>label
+    :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),textarea,select){
+    font-size:1rem;
+  }
+}
 .scope-search-attr-boolean{display:flex;align-items:center;gap:.5rem;font-size:.85rem}
 .scope-search-attr-boolean input{accent-color:var(--loc-accent)}
 .scope-search-article-editor{
