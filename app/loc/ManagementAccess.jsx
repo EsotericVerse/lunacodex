@@ -28,7 +28,7 @@ export default function ManagementAccess({scopeId,level='scope',featureId='manag
     let active=true;
     // Only entry or an explicit retry verifies the editing Session.
     setVerification(pending());
-    void verifyManagementEntry(check).then(result=>{
+    void verifyManagementEntry(retryAttempt>0?account.refresh:check).then(result=>{
       if(!active)return;
       if(retryAttempt>0&&result?.user&&granted(result.authorizer,scopeId,level)){
         clearEditorSession(window.sessionStorage);
@@ -43,7 +43,7 @@ export default function ManagementAccess({scopeId,level='scope',featureId='manag
         error:String(cause?.message||cause||'管理權限查詢失敗')});
     });
     return ()=>{active=false;};
-  },[check,scopeId,level,retryAttempt]);
+  },[check,account.refresh,scopeId,level,retryAttempt]);
 
   // A verified account change revokes editing; an initial empty SDK event
   // is not an actual sign-out.
