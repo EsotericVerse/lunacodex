@@ -16,6 +16,7 @@ import {executeManagedKyselyWrite,executeManagedKyselyAction} from '../providers
 import {executeCrossEngineManagedWrite} from '../providers/sql-engine-ports.mjs';
 import {executeLocPersonal} from '../providers/kysely-personal.mjs';
 import {directMcpKysely} from './native-kysely.mjs';
+import {readBoundedJson,BodyTooLargeError} from './stream-json.mjs';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 import {registryRelationForEngine} from '../providers/live-database-target.mjs';
 import {withFixedPolicyWrite} from '../../../zenstack/policy-runtime.mjs';
@@ -60,7 +61,6 @@ async function applyManagedWrite(qb,modelName,payload){
 }
 const headers={'content-type':'application/json; charset=utf-8',
   'cache-control':'no-store','x-content-type-options':'nosniff'};
-const txt=new TextEncoder();
 function refusal(message,httpStatus=400){
   return Object.assign(new Error(message),{httpStatus});
 }
@@ -121,11 +121,12 @@ export async function handleNativeLocOperation(request,env={},{
   if(Number(request.headers.get('content-length')||0)>MAX_BYTES)
     return reply({error:{message:'Payload too large'}},413);
   try{
-    const raw=await request.text();
-    if(txt.encode(raw).byteLength>MAX_BYTES)
-      throw refusal('Payload too large',413);
     let body;
-    try{body=JSON.parse(raw);}catch{throw refusal('Invalid JSON');}
+    try{body=await readBoundedJson(request.body,MAX_BYTES)}
+    catch(error){
+      throw error instanceof BodyTooLargeError
+        ?refusal('Payload too large',413):refusal('Invalid JSON',400);
+    }
     if(!body||typeof body!=='object'||Array.isArray(body)||
       !KINDS.has(body.kind)||typeof body.scopeid!=='string')
       throw refusal('Unsupported LOC business operation');
