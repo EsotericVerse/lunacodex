@@ -278,7 +278,6 @@
   .management-workspace-panel .admin-theme-primary-color-fields,
   .management-workspace-panel .admin-theme-token-grid{grid-template-columns:minmax(0,1fr);}
   .management-workspace-panel .scope-management-fields{padding:.85rem;}
-  .management-workspace-panel .scope-management-fields>.scope-management-wide-field{grid-column:auto;}
 }
 @media(max-width:400px){
   .management-section-nav__items{grid-template-columns:minmax(0,1fr);gap:.35rem;}
@@ -969,10 +968,6 @@
   width:100%;
 }
 @media(max-width:680px){
-  .management-workspace-panel .scope-management-fields>.loc-trace-description-field,
-  .management-workspace-panel .scope-management-fields>.scope-management-wide-field:has(>.scope-blocknote){
-    grid-column:1/-1;
-  }
   .management-hero-copy-editor>.scope-management-wide-field{
     padding-inline:0;
   }
