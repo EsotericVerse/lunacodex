@@ -229,20 +229,10 @@ export async function keywordCatalog(trx,scope,anchor,requested,role,{withTotals
 async function traceTerritory(trx,scope,start,end,{withPoints=false}={}){
   if(!start||!end)reject('Territory statistics require a bounded period');
   const galaxy=relation(scope,'galaxy');
-  // Preserve the original count-only contract for existing analytics readers.
-  if(!withPoints){
-    const response=await sql`select g.place_id::text as place_id,
-        (g.date)::text as day,btrim(coalesce(g.site,'')) as site,
-        count(*)::bigint as item_count
-      from ${galaxy} g
-      where g.place_id is not null and btrim(g.place_id::text)<>''
-        and g.date between ${start}::date and ${end}::date
-      group by 1,2,3 order by 2,1,3`.execute(trx);
-    return response.rows.map(row=>({...row,item_count:Number(row.item_count||0)}));
-  }
-  // Aggregate first, then LEFT JOIN the Point once per grouped place/day/site.
-  // Retain orphan place_ids in the territory register. Only public, visible
-  // Point fields needed by the map are projected; no Anchor.attr leaves SQL.
+  // Count all Galaxy articles linked to a visible Point, regardless of Galaxy
+  // trace/list flags. Anchor.invisible owns the territory visibility boundary.
+  // Group by date/site to support timeline and source shares without fetching
+  // Galaxy articles or constructing a Point UID list in advance.
   const grouped=sql`(
     select g.place_id::text as place_id,
       (g.date)::text as day,btrim(coalesce(g.site,'')) as site,
@@ -252,13 +242,18 @@ async function traceTerritory(trx,scope,start,end,{withPoints=false}={}){
       and g.date between ${start}::date and ${end}::date
     group by 1,2,3
   )`.as('g');
-  const rows=await zmodelGalaxyPointJoin(trx.selectFrom(grouped),{scopeId:scope})
+  // ZModel verifies the Galaxy/Point join, including a.type=point and
+  // a.invisible=false. Reject unmatched/hidden Points from the statistics too.
+  let query=zmodelGalaxyPointJoin(trx.selectFrom(grouped),{scopeId:scope})
+    .where('a.uid','is not',null)
     .select(['g.place_id as place_id','g.day as day','g.site as site',
-      'g.item_count as item_count','a.uid as point_uid',
-      'a.title as point_title',
+      'g.item_count as item_count']);
+  if(withPoints){
+    query=query.select(['a.uid as point_uid','a.title as point_title',
       sql`a.attr->>'longitude'`.as('point_longitude'),
-      sql`a.attr->>'latitude'`.as('point_latitude')])
-    .orderBy('g.day','asc').orderBy('g.place_id','asc')
+      sql`a.attr->>'latitude'`.as('point_latitude')]);
+  }
+  const rows=await query.orderBy('g.day','asc').orderBy('g.place_id','asc')
     .orderBy('g.site','asc').execute();
   return rows.map(row=>({...row,item_count:Number(row.item_count||0)}));
 }
