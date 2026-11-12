@@ -182,7 +182,9 @@ export async function handleMcp(request,env={}){
       }catch(error){
         const validation=error?.code==='INVALID_ARGUMENT';
         return result(payload.id,{isError:true,content:[{type:'text',
-          text:validation?error.message:
+          text:name?.startsWith('provider_')?
+            String(error?.message||'Provider request unavailable').slice(0,180):
+            validation?error.message:
             error?.httpStatus&&error.httpStatus<500?error.message:
             'LOC data service unavailable; please retry later.'}]});
       }
