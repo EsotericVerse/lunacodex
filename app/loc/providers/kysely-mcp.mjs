@@ -75,10 +75,17 @@ function conversationOnly(q){
   ])).where(sql`lower(${sql.ref('title')}) not like ${'%pr #%'}`);
 }
 export async function executePortableMcp(trx,body,claims,{
- engine='postgres',namespace='',tableName='',fieldMap={}
+ engine='postgres',namespace='',tableName='',fieldMap={},scopedZModel=false
 }={}){
   const scope=verifyScope(body,claims);
-  const table=relation(scope,engine,namespace,tableName);
+  const physicalTable=relation(scope,engine,namespace,tableName);
+  if(scopedZModel&&(engine!=='postgres'||tableName||
+    Object.keys(fieldMap||{}).length))
+    reject('Scoped Galaxy ZModel cannot use external SQL mapping',503);
+  // The trusted client maps "Galaxy" using the existing per-Scope ZModel.
+  // SQL expressions and visibility guards below still execute in Kysely;
+  // no row policy is invented or removed by this routing change.
+  const table=scopedZModel?'Galaxy':physicalTable;
   const external=Boolean(tableName);
   // An external existing article table is a read-only projection, never a
   // destination for MCP sync or append. Explicit management rights are needed.
