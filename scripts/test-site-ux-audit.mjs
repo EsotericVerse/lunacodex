@@ -83,3 +83,26 @@ test('mobile Search, Statistics and Trace keep readable controls in constrained 
   assert.match(traceStyles,/\.loc-trace-territory-time input\{width:100%;min-height:44px;/);
   assert.match(territory,/className="loc-trace-territory-time"/);
 });
+
+test('mobile edit dock and Trace territory keep all return/focus targets unobscured',()=>{
+  const dock=read('app/styles/bottom-navigation.css');
+  const territory=read('app/styles/loc-ui-refresh.css');
+  const responsive=read('app/styles/responsive.css');
+  const shell=read('app/AppShell.jsx');
+  const map=read('app/modular/features/trace/TraceMap.jsx');
+  const territoryView=read('app/modular/features/trace/TraceTerritoryPanel.jsx');
+  // The pending edit state renders one span, not six independent actions.
+  assert.match(shell,/editDockPending\?<span role="status" className="scope-edit-dock-pending"/);
+  assert.match(dock,/\.scope-feature-dock \.scope-edit-dock-pending\{[^}]*grid-column:1\/-1;[^}]*min-width:0;[^}]*max-width:100%;/s);
+  // All three scroll/focus surfaces use the same clearance, including notices.
+  assert.match(dock,/html\{[^}]*--loc-dock-clearance:calc\(6\.5rem \+ env\(safe-area-inset-bottom,0px\)\);[^}]*scroll-padding-bottom:var\(--loc-dock-clearance\)/s);
+  assert.match(dock,/html:has\(\.scope-feature-dock \.scope-edit-dock-notice\)\{[^}]*--loc-dock-clearance:calc\(11rem \+ env\(safe-area-inset-bottom,0px\)\)/s);
+  assert.match(dock,/body\{padding-bottom:var\(--loc-dock-clearance\);\}/);
+  assert.match(dock,/:where\(a,button,input,select,textarea,\[tabindex\]\):focus\{[^}]*scroll-margin-bottom:var\(--loc-dock-clearance\)/s);
+  // Both route report and territory dossier leave a lane for the lower-right
+  // map return action instead of allowing the higher z-index report to cover it.
+  assert.match(responsive,/\.loc-trace-map-shell\.is-public-trace \.loc-trace-floating-content\{[^}]*bottom:calc\(3\.65rem \+ env\(safe-area-inset-bottom,0px\)\)/s);
+  assert.match(territory,/@media\(max-width:680px\)\{[\s\S]*?\.loc-trace-territory \.loc-trace-floating-content\{[^}]*top:auto;\s*bottom:calc\(3\.65rem \+ env\(safe-area-inset-bottom,0px\)\)/);
+  assert.match(map,/className="loc-button loc-trace-origin-button"/);
+  assert.match(territoryView,/className="loc-trace-territory"/);
+});

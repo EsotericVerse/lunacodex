@@ -88,6 +88,25 @@
   background:var(--loc-accent);
   box-shadow:0 0 6px var(--loc-accent);
 }
+/* While the editor session is resolving, this is the sole dock child:
+   span all six tracks instead of overflowing the first narrow icon cell. */
+.scope-feature-dock .scope-edit-dock-pending{
+  grid-column:1/-1;
+  justify-self:stretch;
+  display:grid;
+  place-items:center;
+  min-width:0;
+  max-width:100%;
+  min-height:56px;
+  padding:.6rem;
+  color:var(--loc-text);
+  background:var(--loc-panel);
+  border:1px solid var(--loc-accent-border);
+  border-radius:var(--loc-ui-radius-sm,12px);
+  text-align:center;
+  overflow-wrap:anywhere;
+  pointer-events:none;
+}
 /* Keep edit/save/import notices inside the six-feature dock, wrapping
    long messages instead of leaving an unframed paragraph below the bar. */
 .scope-feature-dock .scope-edit-dock-notice{
@@ -98,10 +117,16 @@
   font-size:.83rem;line-height:1.4;text-align:center;
   overflow-wrap:anywhere;white-space:normal;pointer-events:auto;
 }
-body{padding-bottom:calc(6.5rem + env(safe-area-inset-bottom,0px));}
-body:has(.scope-feature-dock .scope-edit-dock-notice){
-  padding-bottom:calc(11rem + env(safe-area-inset-bottom,0px));
+/* One clearance contract for the fixed dock, longer edit notices,
+   bottom-page content and scroll-to-focus. */
+html{
+  --loc-dock-clearance:calc(6.5rem + env(safe-area-inset-bottom,0px));
+  scroll-padding-bottom:var(--loc-dock-clearance);
 }
+html:has(.scope-feature-dock .scope-edit-dock-notice){
+  --loc-dock-clearance:calc(11rem + env(safe-area-inset-bottom,0px));
+}
+body{padding-bottom:var(--loc-dock-clearance);}
 /* Embedded Daily Rune test surface precedes the ordinary Global Settings cards. */
 .scope-settings-daily-test{display:grid;gap:.7rem;min-width:0;}
 .scope-settings-daily-test>h2{margin:0;font-size:var(--loc-type-section-title);font-weight:var(--loc-weight-section-title);}
@@ -126,11 +151,10 @@ body:has(.scope-feature-dock .scope-edit-dock-notice){
 .scope-settings-options .loc-card form{display:grid;justify-items:start;gap:.7rem;margin-top:.65rem;}
 .scope-settings-options input[type='checkbox']{flex:none;}
 
-/* Keep scroll-to-focus targets readable above the fixed feature dock. */
-html{scroll-padding-bottom:calc(6.5rem + env(safe-area-inset-bottom,0px));}
-html:has(.scope-edit-dock-notice){scroll-padding-bottom:calc(11rem + env(safe-area-inset-bottom,0px));}
-:where(a,button,input,select,textarea,[tabindex]):focus-visible{
-  scroll-margin-bottom:calc(6.5rem + env(safe-area-inset-bottom,0px));
+/* Focus on touch devices (including Safari inputs) is not always
+   :focus-visible. Keep either focus mode clear of the fixed action bar. */
+:where(a,button,input,select,textarea,[tabindex]):focus{
+  scroll-margin-bottom:var(--loc-dock-clearance);
 }
 
 .scope-feature-dock button{font-family:inherit;cursor:pointer}
