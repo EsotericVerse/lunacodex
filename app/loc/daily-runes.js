@@ -2,13 +2,14 @@ import {dbAuthRelation} from './db-client.mjs';
 import {selectAllRows,selectRows} from './db-query.mjs';
 import {realMoonPhase} from './model/moon-phase';
 import {revalidateServerMetadata} from './scope-data';
+import {lRunes66ColumnString} from '../../zenstack/lrunes-read-model.mjs';
 
 
 async function attachRuneMeta(rows){
   const source=Array.isArray(rows)?rows:[];
   const ids=[...new Set(source.map(row=>Number(row.rune_number)).filter(number=>Number.isInteger(number)&&number>=0&&number<=66))];
   const runes=ids.length?(await selectRows('silver.runes',{
-    columns:'rune_id,rune_name,english_name,totem,group_name,moon_phase,card_attr,rune_description,archetype,positive_keywords,negative_keywords',
+    columns:lRunes66ColumnString('rune_id','rune_name','english_name','totem','group_name','moon_phase','card_attr','rune_description','archetype','positive_keywords','negative_keywords'),
     filters:[{column:'rune_id',operator:'in',value:ids}],
     limit:ids.length,
     offset:0

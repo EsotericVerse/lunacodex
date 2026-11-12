@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {validatePortableScopeSchema as validate} from '../app/loc/providers/kysely-schema.mjs';
 import {scopedZModelColumns} from '../zenstack/scoped-schema.mjs';
+import {createKyselyDialect,KyselyDialectConstructors} from '../app/loc/providers/kysely-dialects.mjs';
 
 const source=fs.readFileSync('app/loc/providers/kysely-schema.mjs','utf8');
 
@@ -52,4 +53,13 @@ test('the frozen portable adapter cannot create or migrate database objects',()=
   assert.match(source,/export function validatePortableScopeSchema/);
   assert.doesNotMatch(source,/\b(?:ensurePortableScopeSchema|createTable|createIndex|create\s+(?:table|index|policy)|alter\s+table|drop\s+table|grant\s+)\b/i);
   assert.doesNotMatch(source,/\.schema\.(?:createTable|createIndex)/);
+});
+
+test('the installed Kysely package supplies all three dialect constructors',()=>{
+  for(const [engine,name] of [['postgres','PostgresDialect'],['mysql','MysqlDialect'],['mssql','MssqlDialect']]){
+    const config=engine==='mssql'?{tarn:{},tedious:{}}:{pool:{}};
+    const dialect=createKyselyDialect(engine,config);
+    assert.equal(KyselyDialectConstructors[engine].name,name);
+    assert.equal(dialect.constructor.name,name);
+  }
 });

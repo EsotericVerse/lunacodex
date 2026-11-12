@@ -115,6 +115,19 @@ test('public Blocks SELECT uses the fixed Blocks PolicyPlugin delegate',async()=
   assert.equal(executed.length,1);
   assert.match(executed[0].sql,/from "silver"\."loc_blocks" as "LocBlocks"/);
 });
+test('public LocAnchor SELECT uses the fixed PolicyPlugin delegate',async()=>{
+  const {executed,dialect}=fixedModelDialect();
+  const response=await handleNativePublicQuery(request({
+    schema:'silver',table:'loc_anchor',columns:['uid','type','title','attr'],
+    filters:[{column:'type',op:'eq',value:'universe',negate:false}],
+    orFilters:[],orders:[],limit:50,offset:0,head:false,count:null,cardinality:null
+  }),{}, {database:async()=>({engine:'postgres',namespace:'silver',dialect,
+    db:{selectFrom(){throw Error('Fixed LocAnchor must not use plain Kysely')}}})});
+  assert.equal(response.status,200);
+  assert.deepEqual(await response.json(),{data:[],count:null});
+  assert.equal(executed.length,1);
+  assert.match(executed[0].sql,/from "silver"\."loc_anchor" as "LocAnchor"/);
+});
 test('backend SQL errors expose only stage and SQLSTATE',async()=>{
   const result=await handleNativePublicQuery(request(query),{},{
     database:async()=>({engine:'postgres',namespace:'silver',db:{

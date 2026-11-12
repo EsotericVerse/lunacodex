@@ -31,6 +31,7 @@ import {buildEraRiver} from '../../loc/culture-time-trace-river.mjs';
 import {allocateTimeUid,timePeriodContainsDate,timePeriodSortDate} from '../../loc/time-anchor-ranges.mjs';
 
 import {selectGalaxyIdentity,selectScopeDailyCounts} from '../../loc/galaxy-query';
+import {galaxyReadColumnsFor} from '../../../zenstack/galaxy-read-models.mjs';
 import {revalidateServerMetadata} from '../../loc/scope-data';
 
 import {deleteRows,insertRows,updateRows} from '../../loc/db-client.mjs';
@@ -1186,7 +1187,9 @@ export default function Culture(){
       setAuthorizedWorkKey(key);
       if(!scopeData)throw new Error(l.sourceUnresolved);
       const {rows=[]}=await selectRows(scopeData.galaxy,{
-        columns:'uid,title,content,able',
+        // Exact article editing reads use GalaxyUidRead plus the visibility
+        // flags needed by the trusted editor gate. Lists never read content.
+        columns:galaxyReadColumnsFor('GalaxyUidRead','GalaxyAttr').join(','),
         filters:[{column:'uid',operator:'eq',value:uid}],
         limit:1
       });

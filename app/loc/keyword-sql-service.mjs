@@ -8,6 +8,7 @@ import {analyzeIncrementalKeywordPatterns} from './keyword-incremental.mjs';
 import {createIndexedDateKeywordReader} from './keyword-article-reader.mjs';
 import {completeKeywordClass,invalidateKeywordClass} from './keyword-class-state.mjs';
 import {readScopePatternRows,storeScopePatternMatches,ensureScopePatternLibrary,SCOPE_PATTERN_POSTING_KEY,SCOPE_PATTERN_INDEX_VERSION,scopePatternScanClocks} from './keyword-anchor-index.mjs';
+import {galaxyReadColumns,galaxyReadColumnsFor} from '../../zenstack/galaxy-read-models.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[0-9A-Za-z]{8}$/;
@@ -38,6 +39,11 @@ const terms=item=>[String(item.item_name||''),...(Array.isArray(item.keywords)?i
 const anchorName=scope=>'silver.'+checkScope(scope)+'_anchor';
 const galaxyName=scope=>'silver.'+checkScope(scope)+'_galaxy';
 const configName=scope=>'silver.'+checkScope(scope);
+const galaxyListMetadataColumns=Object.freeze([...new Set([
+  ...galaxyReadColumns('GalaxyList'),'UpdateTime'
+])]);
+const galaxyUidContentColumns=Object.freeze(galaxyReadColumnsFor('GalaxyUidRead','GalaxyAttr')
+  .filter(column=>['uid','content','keyword'].includes(column)));
 
 async function configuration(db,scope){
   return await db.selectFrom(configName(scope))
@@ -261,7 +267,7 @@ export async function analyzeKeywordScope(db,scope,classUid,{
   const expectedCount=Number(total?.n??0);
   if(!Number.isSafeInteger(expectedCount)||expectedCount<0)
     fail('Galaxy count out of range');
-  const cols=['uid','date','createtime','UpdateTime','keyword'];
+  const cols=galaxyListMetadataColumns;
   const maximumRows=10000;
   const reader=createIndexedDateKeywordReader({
     maximumRows,
@@ -297,7 +303,7 @@ export async function analyzeKeywordScope(db,scope,classUid,{
     readContent:async uids=>{
       if(!uids.length)return [];
       return db.selectFrom(galaxyName(scope))
-        .select(['uid','content','keyword'])
+        .select(galaxyUidContentColumns)
         .where('uid','in',uids).execute();
     },
     writePatterns:async ({patterns})=>{pending=patterns;},

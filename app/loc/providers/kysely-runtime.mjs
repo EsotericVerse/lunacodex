@@ -6,6 +6,7 @@ import {verifyModeledSqlFields,normalizeModeledTypeDifferences,
   normalizeModeledSelectRows} from '../../../zenstack/model-column-guard.mjs';
 import {assertKyselyQueryShape,QUERY_FILTER_SQL}
   from '../../../zenstack/sql-input-shape.mjs';
+import {ANCHOR_TYPE_GROUPS} from '../../../zenstack/anchor-hierarchy.mjs';
 
 const identifier=/^[a-z][a-z0-9_]*$/i;
 const schemas=new Set(['silver','api']);
@@ -94,7 +95,8 @@ function applyOrFilters(query,groups){
 const PRIVATE_SITES=['messenger','chatgpt','claude','gemini','msn','whatsapp',
   'telegram','discord','line','wechat','teams','copilot','grok','perplexity','meta ai','meta-ai',
   'mcp','github'];
-const PUBLIC_ANCHOR_TYPES=['date','period','era','point','path','trace','image','video','rune','suno'];
+const PUBLIC_ANCHOR_TYPES=[...ANCHOR_TYPE_GROUPS.time,...ANCHOR_TYPE_GROUPS.space,
+  ...ANCHOR_TYPE_GROUPS.media];
 function databaseTable(req,dialect,namespace,modelName=''){
   // ZenStack PolicyPlugin maps a fixed logical model to the physical table.
   if(modelName)return modelName;

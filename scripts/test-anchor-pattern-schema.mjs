@@ -12,8 +12,8 @@ const ddl=readFileSync(
 const uid=s=>String(s).padEnd(8,'0');
 const row=(id,type,attr={})=>({uid:uid(id),type,title:id,attr});
 
-test('only existing Scope Anchor models are in the fixed schema',()=>{
-  assert.equal(schema.models.LocAnchor,undefined);
+test('LOC-wide and Scope Anchor models are in the fixed schema',()=>{
+  assert.equal(schema.models.LocAnchor.fields.num.type,'BigInt');
   for(const name of ['Lo3rwangAnchor','LrunesAnchor'])
     assert.equal(schema.models[name].fields.num.type,'BigInt');
   assert.deepEqual([...scopedZModelColumns({scopeId:'demo'}).anchor].sort(),

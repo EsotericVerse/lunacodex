@@ -43,6 +43,11 @@ import BulkGalaxyVisibility from './BulkGalaxyVisibility';
 import {touchEditorSession} from './edit-session-ttl.mjs';
 import {scopeSourceNames} from './scope-config-fields.mjs';
 import {runeDrawText} from './rune-draw-text.mjs';
+import {galaxyReadColumns,galaxyReadColumnsFor} from '../../zenstack/galaxy-read-models.mjs';
+const GALAXY_IMPORT_TIME_COLUMNS=galaxyReadColumns('GalaxyList')
+  .filter(column=>['uid','createtime','site'].includes(column)).concat('site_id').join(',');
+const GALAXY_IMPORT_UID_COLUMNS=galaxyReadColumnsFor('GalaxyUidRead')
+  .concat(['site_id']).filter((column,index,all)=>all.indexOf(column)===index).join(',');
 const ZIP_LAYOUT_KEYS=Object.freeze({
   'conversation-tree':'conversationTree','message-list':'messageList','post-list':'postList',
   activity:'activity',media:'media',table:'table','structured-records':'records',document:'document'
@@ -851,7 +856,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
           }
         };
         for(;;){
-          let query=dbAuthRelation(galaxy).select('uid,createtime,site_id')
+          let query=dbAuthRelation(galaxy).select(GALAXY_IMPORT_TIME_COLUMNS)
             .ilike('site',site).gte('createtime',start).lte('createtime',end);
           if(after!==null)query=query.gt('createtime',after);
           const {data,error}=await query.order('createtime',{ascending:true})
@@ -872,7 +877,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
             const tiePageSize=1000;
             for(let tieOffset=0;;){
               const {data:tied,error:tieError}=await dbAuthRelation(galaxy)
-                .select('uid,createtime,site_id')
+                .select(GALAXY_IMPORT_TIME_COLUMNS)
                 .ilike('site',site).eq('createtime',boundary)
                 .order('uid',{ascending:true})
                 .range(tieOffset,tieOffset+tiePageSize-1);
@@ -891,7 +896,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         const rows=[];
         for(const batch of urlSafeInBatches(uids,'uid')){
           const {data,error}=await dbAuthRelation(galaxy)
-            .select('uid,createtime,date,content,title,place_id,location,url,site,site_id,source_id,target_id,ref_id')
+            .select(GALAXY_IMPORT_UID_COLUMNS)
             .in('uid',batch);
           if(error)throw Error('uid 比對失敗：'+error.message);
           for(const row of data||[])rows.push(row);
@@ -907,7 +912,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         readSiteIds:async(ids,consumePage,site)=>{
           for(const idsPage of urlSafeInBatches(ids,'site_id')){
             const {data,error}=await dbAuthRelation(galaxy)
-              .select('uid,createtime,date,content,title,place_id,location,url,site,site_id,source_id,target_id,ref_id')
+              .select(GALAXY_IMPORT_UID_COLUMNS)
               .ilike('site',site).in('site_id',idsPage);
             if(error)throw Error('site_id 比對失敗：'+error.message);
             consumePage(data||[]);

@@ -145,8 +145,24 @@ export async function handleNativePublicContent(request,env={},{
     if(numeric)return respond({data:await (kind==='loc'?
       readLocGroupNumeric(query,start,end,port):readGalaxyNumeric(query,scope,kind,start,end,port))});
     if(kind==='culture_anchors'){
+      // The LOC-wide source taxonomy is its own fixed physical model. It is
+      // not a dynamic Scope Anchor projection, so PostgreSQL reads use the
+      // same PolicyPlugin delegate as fixed Blocks.
+      const fixedAnchorModel=port.dialect
+        ?fixedPolicyReadModel({engine:port.engine},{kind:'query',
+          schema:port.namespace||'silver',table:'loc_anchor',operation:'select'})
+        :null;
       const typed=scopedFor(scope);
-      const rows=typed
+      const rows=fixedAnchorModel
+        ?await withFixedPolicyRead(query,{engine:port.engine},{kind:'query',
+            schema:port.namespace||'silver',table:'loc_anchor',operation:'select'},
+            'anon',{}, {dialect:port.dialect,ZenStackClient,PolicyPlugin},
+            (_qb,name,authorized)=>authorized[
+              name[0].toLowerCase()+name.slice(1)].findMany({
+                where:{type:{in:['date','period','era']},invisible:false},
+                select:{uid:true,type:true,title:true,attr:true}
+              }))
+        :typed
         ?await typed.anchor.findMany({
             where:{type:{in:['date','period','era']},invisible:false},
             select:{uid:true,type:true,title:true,attr:true}

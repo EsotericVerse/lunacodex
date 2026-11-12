@@ -129,9 +129,10 @@ function normalize(body){
 function modeledPublicSelect(selected,query){
   if(selected.engine!=='postgres'||!selected.dialect||query.cardinality)
     return null;
+  const fixedLocAnchor=query.table==='loc_anchor';
   const matched=/^([a-z][a-z0-9]{0,14})_(galaxy|anchor|blocks)$/.exec(query.table);
-  if(!matched||!SCOPE.has(matched[1]))return null;
-  const modelName=matched[2][0].toUpperCase()+matched[2].slice(1);
+  if(!fixedLocAnchor&&(!matched||!SCOPE.has(matched[1])))return null;
+  const modelName=fixedLocAnchor?'LocAnchor':matched[2][0].toUpperCase()+matched[2].slice(1);
   const ordinaryFilters=query.filters.map(f=>({
     column:f.column,operator:f.op,value:f.value,negate:f.negate
   }));
@@ -155,6 +156,7 @@ function modeledPublicSelect(selected,query){
     ?fixedPolicyReadModel(selected,fixedBody):null;
   if(fixedModelName)return {fixed:true,body,modelName:fixedModelName,
     policyBody:fixedBody};
+  if(fixedLocAnchor)return null;
   return {client:createScopedLocClient({dialect:selected.dialect,
     namespace:selected.namespace||'silver',scopeId:matched[1]}),body,modelName};
 }

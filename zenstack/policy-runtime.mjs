@@ -6,6 +6,7 @@ const PUBLIC_FIXED_MODELS=Object.freeze({
   'silver.loc':'Loc',
   'silver.lo3rwang':'Lo3rwang',
   'silver.lrunes':'Lrunes',
+  'silver.loc_anchor':'LocAnchor',
   'silver.loc_blocks':'LocBlocks',
   'silver.lo3rwang_blocks':'Lo3rwangBlocks',
   'silver.lrunes_blocks':'LrunesBlocks'
@@ -31,7 +32,7 @@ export function fixedPolicyWriteModel(target,body,role,claims){
 const readers=new WeakMap();
 
 /** Only the designated publicly readable fixed LOC control and presentation
- * relations.
+ * relations, including the LOC-wide source Anchor.
  * The same fixed policy applies to independent PostgreSQL Kysely connections.
  * Dynamic Galaxy, Anchor and other models continue through the existing
  * signed Kysely transaction boundary; non-PostgreSQL dialects use LOC ACL.

@@ -1,5 +1,5 @@
 import {canManageLoc} from './loc-authorization.mjs';
-import {sql} from 'npm:kysely@0.29.8';
+import {sql} from 'kysely';
 import {schema as fixedSchema} from '../../../zenstack/schema.mjs';
 import {normalizeLocDomain} from './loc-domain.mjs';
 

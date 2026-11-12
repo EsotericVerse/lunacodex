@@ -2,14 +2,15 @@
 // Resolve physical Anchor cutover from the Scope ID, not a single owner name.
 // System/legacy Scopes are excluded until their independent migrations finish.
 // No SQL, DDL, table creation, migration or old-data synchronization here.
+import {ANCHOR_TYPE_GROUPS} from '../../zenstack/anchor-hierarchy.mjs';
 const legacyName=/^([a-z][a-z0-9]{0,14})_(time|trace|keywords|galaxy_media)$/;
 const pendingAnchorScopes=new Set(['loc']);
 export const isUnifiedAnchorScope=scopeId=>/^[a-z][a-z0-9]{0,14}$/.test(String(scopeId||''))&&!pendingAnchorScopes.has(String(scopeId));
 const physicalColumns=['uid','type','title','description','invisible','attr','createtime','num'];
 const legacyKinds={time:'time',trace:'trace',keywords:'keywords',galaxy_media:'media'};
 const scopeTypes={
- time:['date','period','era'],trace:['point','path','trace'],
- keywords:['category','class','group','item','pattern'],media:['image','video','rune','suno']
+ time:[...ANCHOR_TYPE_GROUPS.time],trace:[...ANCHOR_TYPE_GROUPS.space],
+ keywords:[...ANCHOR_TYPE_GROUPS.keyword],media:[...ANCHOR_TYPE_GROUPS.media]
 };
 const aliases={
  time:{address:'attr',anchor_ids:'attr',range:'attr'},
@@ -34,7 +35,8 @@ const allowedAttr=Object.freeze({
  date:['date'],period:['uid','date'],era:['period','date'],
  point:['longitude','latitude','location','times'],path:['point'],trace:['point','path'],
  category:['uid'],class:['uid'],group:['uid'],item:['keyword','uid','total'],pattern:[],
- image:['url','date'],video:['url','date'],rune:['url','date'],suno:['url','date']
+  image:['url','date'],video:['url','date'],rune:['url','date'],suno:['url','date'],
+  from:['uid'],domain:['uid'],galaxy:['uid'],universe:['uid']
 });
 const listOf=value=>Array.isArray(value)?value:parseLabelList(value);
 function compactAttr(type,value){

@@ -365,7 +365,7 @@ test('all four article lists show saved dates and shared theme-alternating rows'
   assert.ok(culture.includes('日期：{work.date}'));
   assert.ok(search.includes('date={row.date}'));
   assert.ok(trace.includes('date={row.date||row.createtime||'));
-  assert.ok(trace.includes("columns:'uid,title,createtime,date'"));
+  assert.ok(trace.includes("galaxyReadColumnsFor('GalaxyList')"));
   assert.ok(stripes.includes('.loc-public-article-list > :is(.scope-work-list-row,.loc-shared-work-card):nth-child(odd)'));
   assert.ok(stripes.includes('background:var(--loc-list-row-even)'));
 });

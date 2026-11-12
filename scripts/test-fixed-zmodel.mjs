@@ -49,10 +49,8 @@ for(const [,name,body] of blocks){
 
 test('ZModel maps exactly to the frozen silver physical table and column contract',()=>{
   assert.equal(snapshot.schema,'silver');
-  assert.equal(snapshot.tables.length,17);
-  // LocAnchor is also modeled in ZModel but intentionally excluded from the
-  // frozen 17-table runtime snapshot; do not silently drop that declaration.
-  assert.equal(physical.size,snapshot.tables.length+1);
+  assert.equal(snapshot.tables.length,18);
+  assert.equal(physical.size,snapshot.tables.length);
   assert.ok(physical.has('loc_anchor'),'missing LOC-wide Anchor model');
   let total=0;
   for(const t of snapshot.tables){
@@ -86,7 +84,7 @@ test('ZModel maps exactly to the frozen silver physical table and column contrac
 });
 
 test('Anchor remains the extension point; model does not declare migrations or bypass authorization',()=>{
-  for(const table of ['lo3rwang_anchor','lrunes_anchor']){
+  for(const table of ['loc_anchor','lo3rwang_anchor','lrunes_anchor']){
     const anchor=physical.get(table);
     assert.ok(anchor);
     assert.equal(anchor.fields.get('uid').type,'String');
@@ -97,7 +95,7 @@ test('Anchor remains the extension point; model does not declare migrations or b
     assert.equal(anchor.fields.size,8);
   }
   assert.doesNotMatch(source,/^\s*generator\s+/m);
-  assert.equal((source.match(/^\s*@@allow\s*\(/gm)||[]).length,9);
+  assert.equal((source.match(/^\s*@@allow\s*\(/gm)||[]).length,10);
   assert.match(source,/plugin policy \{/);
   assert.doesNotMatch(source,/^\s*@@deny\s*\(/m);
 });
@@ -117,9 +115,6 @@ test('Neon eight-character UID references are CHAR(8) across ZModel and SchemaDe
         table.table+'.'+col.name+' runtime SchemaDef drift');
     }
   }
-  // LocAnchor is declared in ZModel but is not part of the frozen 17-table
-  // runtime snapshot. Its UID still follows the same physical CHAR(8) policy.
-  assert.match(physical.get('loc_anchor')?.fields.get('uid')?.attributes||'',/@db\.Char\(8\)/);
   assert.ok(checked>=15,'all modeled physical UID columns and references checked');
 });
 
@@ -128,7 +123,7 @@ test('ZenStack V3 runtime schema bridge stays in sync with the frozen contract',
   assert.equal(schema.provider.type,'postgresql');
   assert.equal(schema.provider.defaultSchema,'silver');
   assert.ok(schema.plugins.policy);
-  for(const name of ['Manage','Loc','Lo3rwang','Lrunes',
+  for(const name of ['Manage','Loc','LocAnchor','Lo3rwang','Lrunes',
     'LocBlocks','Lo3rwangBlocks','LrunesBlocks']){
     const model=schema.models[name];
     assert.ok(model,'missing fixed policy model '+name);
@@ -155,7 +150,7 @@ test('ZenStack V3 runtime schema bridge stays in sync with the frozen contract',
   assert.equal(schema.typeDefs.LocPrincipal.fields.scopeIds.array,true);
   assert.equal(schema.typeDefs.LocPrincipal.fields.groupIds.array,true);
   assert.equal(Object.values(schema.models).flatMap(model=>model.attributes)
-    .filter(attr=>attr.name==='@@allow').length,9);
+    .filter(attr=>attr.name==='@@allow').length,10);
   assert.equal(Object.keys(schema.models).length,snapshot.tables.length);
   for(const table of snapshot.tables){
     const model=schema.models[modelName(table.table)];
@@ -235,7 +230,7 @@ test('unprovisioned Local Scope never falls through to remote SQL',()=>{
   assert.match(browser,/function unavailableLocal\(/);
   assert.match(browser,/isUnprovisionedLocal\(table,schemaName\)/);
   assert.doesNotMatch(browser,/createLocalSqliteAdapter|local-sqlite\.mjs/);
-  assert.match(native,/verifyDelegationBoundary/);
+  assert.match(native,/verifyAccessTokenRequest/);
   assert.match(native,/executePortableMcp/);
 });
 

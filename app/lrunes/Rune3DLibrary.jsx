@@ -12,6 +12,7 @@ import {groupImage,runeImage,runeName,runeNumbersForGroup} from './rune-director
 import {navigationHref} from '../modular/scope-registry.js';
 import useNativeNavigation from '../modular/use-native-navigation';
 import ScopeLink from '../modular/ScopeLink';
+import {lRunes66ColumnString} from '../../zenstack/lrunes-read-model.mjs';
 import './skin-lab.css';
 import './visual/rune-art-layout.css';
 import './effekseer/effekseer-stage.css';
@@ -26,7 +27,7 @@ const GROUPS=Object.freeze([
   {id:5,name:'礦物'},{id:6,name:'元素'},{id:7,name:'秩序'},{id:8,name:'無序'},
   {id:9,name:'特殊'}
 ]);
-const RUNE_COLUMNS='rune_id,rune_name,english_name,totem,group_name,moon_phase,card_attr,rune_description,archetype,char_action,positive_keywords,negative_keywords,extra_rules,extra_notes,rune_evolution_history,myth_story,soul_question,practice_challenge,ritual_advice,harmony_advice';
+const RUNE_COLUMNS=lRunes66ColumnString('rune_id','rune_name','english_name','totem','group_name','moon_phase','card_attr','rune_description','archetype','char_action','positive_keywords','negative_keywords','extra_rules','extra_notes','rune_evolution_history','myth_story','soul_question','practice_challenge','ritual_advice','harmony_advice');
 const GROUP_COLUMNS='group_id,english_name,desc,quality,style,runeslist';
 const inGroup=(rune,group)=>group.runeslist.includes(Number(rune.rune_id));
 function cleanse(value){

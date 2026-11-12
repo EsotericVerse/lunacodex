@@ -53,6 +53,232 @@ type LocAnchorLink {
     resolved Boolean
 }
 
+// Persisted Anchor discriminators. The SQL row remains one portable storage
+// envelope; these values select the semantic ZModel payload below. Their
+// article-side carrier mapping is date/createtime, location/place_id,
+// media_link, keyword and site respectively; no extra relation is created.
+enum LocAnchorType {
+    date
+    period
+    era
+    point
+    path
+    trace
+    image
+    video
+    rune
+    suno
+    pattern
+    item
+    group
+    class
+    category
+    from
+    domain
+    galaxy
+    universe
+}
+
+// Semantic ZModel payloads for Anchor.attr. These are nonphysical value types:
+// they do not create tables and are validated through @zenstackhq/zod against
+// the existing Anchor row. Anniversary remains a derived suggestion.
+type DateAnchor {
+    date String
+}
+type PeriodAnchor {
+    uid String[]?
+    date String[]?
+}
+type EraAnchor {
+    period String[]?
+    date String[]?
+}
+type PointAnchor {
+    longitude Float?
+    latitude Float?
+    location String?
+    times String[]?
+}
+type PathAnchor {
+    point String[]?
+}
+type TraceAnchor {
+    point String[]?
+    path String[]?
+}
+type ImageAnchor {
+    url String?
+    date String?
+}
+type VideoAnchor {
+    url String?
+    date String?
+}
+type RuneAnchor {
+    url String?
+    date String?
+}
+type SunoAnchor {
+    url String?
+    date String?
+}
+type PatternAnchor {
+    postings Json?
+}
+type ItemAnchor {
+    keyword String[]?
+    uid String[]?
+    total Int?
+}
+type GroupAnchor {
+    uid String[]?
+}
+type ClassAnchor {
+    uid String[]?
+}
+type CategoryAnchor {
+    uid String[]?
+}
+type FromAnchor {
+    uid String[]?
+}
+type DomainAnchor {
+    uid String[]?
+}
+type GalaxyAnchor {
+    uid String[]?
+}
+type UniverseAnchor {
+    uid String[]?
+}
+type AnniversarySuggestion {
+    date String
+    years Int
+    sourceUid String?
+    title String
+}
+
+// Group models are the public semantic names. Each discriminator is wrapped
+// in its group field and validated against the existing subtype payload; this
+// keeps one strict ZModel boundary without creating one SQL table per type.
+type TimeAnchor {
+    date DateAnchor?
+    period PeriodAnchor?
+    era EraAnchor?
+    anniversary AnniversarySuggestion?
+}
+type LocationAnchor {
+    point PointAnchor?
+    path PathAnchor?
+    trace TraceAnchor?
+}
+type MediaAnchor {
+    images ImageAnchor?
+    video VideoAnchor?
+    suno SunoAnchor?
+    runes RuneAnchor?
+}
+type KeywordAnchor {
+    pattern PatternAnchor?
+    item ItemAnchor?
+    group GroupAnchor?
+    class ClassAnchor?
+    category CategoryAnchor?
+}
+type SiteAnchor {
+    from FromAnchor?
+    domain DomainAnchor?
+    galaxy GalaxyAnchor?
+    universe UniverseAnchor?
+}
+
+// The 66-card rune catalogue is a separate semantic projection. Its physical
+// source remains the existing silver.runes model; it is not an Anchor subtype.
+type LRunes66 {
+    rune_id Int
+    rune_name String?
+    english_name String?
+    totem String?
+    group_name String?
+    moon_phase Int?
+    card_attr Int?
+    rune_description String?
+    archetype String?
+    char_action String?
+    positive_keywords String?
+    negative_keywords String?
+    extra_rules String?
+    extra_notes String?
+    positive_meaning String?
+    half_positive_meaning String?
+    half_reverse_meaning String?
+    reverse_meaning String?
+    rune_evolution_history String?
+    myth_story String?
+    soul_question String?
+    practice_challenge String?
+    ritual_advice String?
+    harmony_advice String?
+    class_enable Boolean?
+}
+
+// Galaxy read projections. These are semantic result types over one physical
+// <scope>_galaxy table; they do not create duplicate tables or JOINs.
+type GalaxyAttr {
+    statics Boolean?
+    culture Boolean?
+    search Boolean?
+    trace Boolean?
+    list Boolean?
+    keyword Boolean?
+    extract Boolean?
+    others Boolean?
+}
+type GalaxyList {
+    uid String
+    title String?
+    createtime DateTime?
+    date DateTime?
+    site String?
+    statics Boolean?
+    culture Boolean?
+    search Boolean?
+    trace Boolean?
+    list Boolean?
+    keyword Boolean?
+    extract Boolean?
+    others Boolean?
+}
+type GalaxyUidRelation {
+    uid String
+    source_id String?
+    target_id String[]?
+    ref_id String?
+}
+type GalaxyUidAnchor {
+    uid String
+    media_link String[]?
+    place_id String?
+    location String?
+    date DateTime?
+    site String?
+}
+type GalaxyUidRead {
+    uid String
+    title String?
+    content String?
+    createtime DateTime?
+    url String?
+    source_id String?
+    target_id String[]?
+    ref_id String?
+    media_link String[]?
+    place_id String?
+    location String?
+    date DateTime?
+    site String?
+}
+
 model Game {
     game_key                     String      @id @db.Text
     record_type                  String      @db.Text
@@ -145,6 +371,7 @@ model LocAnchor {
     attr                         Json        @db.JsonB @default(dbgenerated())
     createtime                   DateTime?   @db.Timestamptz(6) @default(dbgenerated())
     num                          BigInt      @db.BigInt @default(0)
+    @@allow('read', true)
     @@map("loc_anchor")
     @@schema("silver")
 }

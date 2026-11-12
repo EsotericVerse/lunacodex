@@ -13,6 +13,7 @@ import {selectRows} from './db-query.mjs';
 import {createUid8} from './uid';
 import {useAccount} from './use-account';
 import {hasIrrecoverableEncoding,repairMojibakeText} from './content-policy';
+import {galaxyReadColumnsFor} from '../../zenstack/galaxy-read-models.mjs';
 
 const blankMedia=()=>({
   galaxy_link:'',location:'',type:'',title:'',
@@ -70,7 +71,10 @@ export default function ManagementMediaPublisher({scopeId,dockScopeId=scopeId,gl
       if([mediaType,mediaDescription,mediaTitle,sourcePlace].some(hasIrrecoverableEncoding))throw new Error(t('uiExtra.importUI.mediaEncoding'));
       const scope=account.scopeDataFor(scopeId);
       const article=galaxyLink?(await selectRows(scope?.galaxy,{
-        columns:'uid,media_link,createtime',filters:[{column:'uid',operator:'eq',value:galaxyLink}],
+        // The article lookup only needs the canonical anchor context; use the
+        // shared projection instead of a one-off Galaxy column string.
+        columns:galaxyReadColumnsFor('GalaxyList','GalaxyUidAnchor').join(','),
+        filters:[{column:'uid',operator:'eq',value:galaxyLink}],
         limit:1,authenticated:true
       })).rows?.[0]:null;
       if(galaxyLink&&!article)throw new Error('找不到指定的文章 UID。');

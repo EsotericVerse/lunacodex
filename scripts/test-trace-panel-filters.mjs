@@ -74,7 +74,7 @@ test('Trace panel only projects three Galaxy list columns; media type filters us
   assert.match(trace,/\{reportTab\?<TracePlaceResults/);
   assert.match(trace,/sourceName=\{sourceName\} mediaType=\{mediaType\}/);
   assert.match(result,/mediaFiltered=useAsyncInfiniteResource/);
-  assert.match(result,/columns:'uid,title,createtime'/);
+  assert.match(result,/galaxyReadColumnsFor\('GalaxyList'\)/);
   assert.match(result,/columns:'uid'/);
   assert.match(result,/operator:'overlaps'/);
   assert.match(result,/limit:PAGE_SIZE,maxLimit:PAGE_SIZE,offset:articleOffset/);
@@ -98,7 +98,7 @@ test('Culture and Statistics article lists never fetch Galaxy Media without a me
   const culture=read('app/loc/culture-query.js');
   const stat=read('app/modular/features/Statistics.jsx');
   assert.match(culture,/const includeMedia=rawMedia\.length>0;/);
-  assert.match(culture,/columns:'uid,title,createtime'/);
+  assert.match(culture,/galaxyReadColumns\('GalaxyList'\)/);
   assert.match(stat,/全部文章列表/);
   assert.doesNotMatch(stat,/全部作品列表（含多媒體）/);
 });

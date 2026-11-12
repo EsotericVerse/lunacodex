@@ -1,5 +1,6 @@
 import {canManageLoc} from './loc-authorization.mjs';
 import {portableRelation} from './sql-engine-ports.mjs';
+import {galaxyReadColumns} from '../../../zenstack/galaxy-read-models.mjs';
 import {sql} from 'kysely';
 import {zmodelRegistryJoin,zmodelGalaxyPointJoin} from '../../../zenstack/model-column-guard.mjs';
 import {keywordPatternItemMetrics,keywordPatternDailySummary} from '../keyword-search-pattern.mjs';
@@ -406,7 +407,10 @@ async function cultureListPage(db,scope,start,end,options,{engine='postgres',nam
     reject('Invalid Culture list selection');
   const table=engine==='postgres'?'silver.'+scope+'_galaxy':
     portableRelation(scope+'_galaxy',engine,namespace);
-  const raw=await db.selectFrom(table).select(['uid','date','title','list'])
+  // Every article list uses the shared GalaxyList projection. The response
+  // still redacts hidden rows below, but the SQL boundary no longer carries
+  // a second ad-hoc list column set.
+  const raw=await db.selectFrom(table).select(galaxyReadColumns('GalaxyList'))
     .where('date','>=',start).where('date','<=',end)
     .where('site','=',site).where('culture','=',true)
     .orderBy('createtime','desc').orderBy('uid','asc').limit(100).offset(offset).execute();

@@ -11,11 +11,12 @@ const fixed=[
   ['silver','loc','Loc'],
   ['silver','lo3rwang','Lo3rwang'],
   ['silver','lrunes','Lrunes'],
+  ['silver','loc_anchor','LocAnchor'],
   ['silver','loc_blocks','LocBlocks'],
   ['silver','lo3rwang_blocks','Lo3rwangBlocks'],
   ['silver','lrunes_blocks','LrunesBlocks']
 ];
-test('fixed ZModel PolicyPlugin receives control and Blocks SELECTs only',()=>{
+test('fixed ZModel PolicyPlugin receives control, LocAnchor and Blocks SELECTs only',()=>{
   for(const [schema,table,model] of fixed){
     assert.equal(fixedPolicyReadModel(pg,{kind:'query',schema,table,operation:'select'}),model);
     assert.equal(fixedPolicyReadModel(pg,{kind:'query',schema,table,operation:'update'}),null);

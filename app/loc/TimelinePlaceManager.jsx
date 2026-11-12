@@ -9,6 +9,7 @@ import {EDIT_OPERATION_TTL_MS,assertEditorSession} from './edit-session-ttl.mjs'
 import {TIMELINE_IO,MAX_TIMELINE_BYTES} from './query-batch-size.mjs';
 import {saveTimelineReviewSession,loadTimelineReviewSession,clearTimelineReviewSession,timelineReviewCacheOversized} from './timeline-review-session.mjs';
 import {accumulateTimelineArticles,groupTimelineMissingPlaces,selectedTimelineArticleUpdates} from './timeline-place-matcher.mjs';
+import {galaxyReadColumnsFor} from '../../zenstack/galaxy-read-models.mjs';
 
 // Keep request and response sizes bounded during browser-side review.
 const RESULT_PAGE=Math.min(TIMELINE_IO.previewPage,500);
@@ -187,7 +188,7 @@ export default function TimelinePlaceManager({scopeId}){
       while(true){
         if(run!==runRef.current)return;
         const result=await dbAuthClient.schema('silver').from(scopeId+'_galaxy')
-          .select('uid,title,date,createtime,place_id')
+          .select(galaxyReadColumnsFor('GalaxyList','GalaxyUidAnchor').join(','))
           .gte('date',startDate).lt('date',nextDate)
           .order('date',{ascending:true}).order('createtime',{ascending:true})
           .range(offset,offset+RESULT_PAGE-1);
