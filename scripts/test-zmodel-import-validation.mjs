@@ -89,7 +89,7 @@ test('Galaxy import writes validated ZModel rows once and retains ordinary inser
   assert.equal(Object.hasOwn(managed[0].p_rows[0],'able'),false);
   assert.equal(Object.hasOwn(rows[0],'able'),false,'input objects must not mutate');
   await assert.rejects(()=>db.insertImportRows('silver.lo3rwang_galaxy',
-    [{...record,statics:'invalid'}]),/statics/);
+    [{...record,createtime:'not-an-iso-date'}]),/createtime/);
   assert.equal(managed.length,1,'invalid import must not reach managed SQL');
   await db.insertRows('silver.lo3rwang_galaxy',rows);
   assert.equal(managed.length,2,'ordinary insert route remains available');
