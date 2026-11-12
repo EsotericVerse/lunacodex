@@ -114,9 +114,10 @@ export default function TraceRouteManager({scopeId,mode='all'}){
   });
   const allAnchors=anchorIndex.data||[];
   const suggestionRows=useMemo(()=>[
-    ...allAnchors.map(row=>({...row,type:'point'})),
-    ...records.map(row=>({...row,type:row.trace_type}))
-  ],[allAnchors,records]);
+    ...(anchorIndex.data||[]).map(row=>({...row,type:'point'})),
+    ...(index.data||[]).filter(row=>row.source_scope===owner)
+      .map(row=>({...row,type:row.trace_type}))
+  ],[anchorIndex.data,index.data,owner]);
   const anchorMap=useMemo(()=>new Map(allAnchors.map(a=>[a.uid,a])),[allAnchors]);
   const options=useMemo(()=>allAnchors.map(row=>({value:row.uid,label:row.title+(row.postal_address?' · '+row.postal_address:'')})),[allAnchors]);
   const poolOptions=useMemo(()=>spool.map(uid=>anchorMap.get(uid))
@@ -337,7 +338,7 @@ export default function TraceRouteManager({scopeId,mode='all'}){
           <BlockNoteEditor editorKey={'route-note:'+owner+':'+(editingUid||type)}
             content={description} editable={!busy} plainTextOnly canInsertImage={false}
             suggestionKind="spatial" suggestions={suggestionRows}
-            onPlainTextChange={value=>{if(value.length<=2000)setDescription(value);}}/>
+            onPlainTextChange={setDescription}/>
         </div>
         <label>可見性
           <select className="scope-select" value={Number(invisible)} onChange={e=>setInvisible(e.target.value==='1')} disabled={busy}>

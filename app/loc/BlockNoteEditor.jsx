@@ -32,7 +32,10 @@ export default function BlockNoteEditor({
   className=''
 }){
   const source=initialContent===undefined?content:initialContent;
-  const normalized=normalizeBlocks(source);
+  // Plain descriptions must keep literal angle-bracket text, not parse it as HTML.
+  const normalized=plainTextOnly
+    ?plainTextToBlocks(typeof source==='string'?source:blocksToPlainText(source))
+    :normalizeBlocks(source);
   const initialBlocks=Array.isArray(normalized)?normalized:plainTextToBlocks('');
   const initialHtml=Array.isArray(normalized)?'':String(normalized?.html||'');
   const initialMarkdown=!initialHtml&&looksLikeMarkdown(source)?String(source):'';

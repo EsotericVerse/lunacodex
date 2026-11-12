@@ -118,6 +118,7 @@ export default function ArticleTimeAnchorAction({
     try{
       const details=description.trim();
       if(!details)throw new Error('請先填寫時間定錨的敘述。');
+      if(details.length>4000)throw new Error('時間定錨敘述最多 4000 字。');
       if(!validDay(date)||!table)throw new Error('定錨日期或資料表無效。');
       // The dialog may have remained open beyond the idle/session TTL.
       // Never bypass it: re-verify Clerk permission before renewing it.
@@ -179,7 +180,7 @@ export default function ArticleTimeAnchorAction({
             content={description} editable={!saving} plainTextOnly canInsertImage={false}
             suggestionKind="time"
             suggestions={annualSuggestions.map(item=>({type:'aniversary',title:item.title}))}
-            onPlainTextChange={value=>{if(value.length<=4000)setDescription(value);}}/>
+            onPlainTextChange={setDescription}/>
         </div>
         {error?<p className="scope-status scope-error" role="alert">{error}</p>:null}
         <div className="scope-edit-switch-actions">

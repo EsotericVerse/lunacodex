@@ -7,7 +7,7 @@ const TYPE=z.enum(['point','path','trace','date','period','era','aniversary','pa
 const CANDIDATE=z.object({
   type:TYPE,
   title:z.string().trim().min(1).max(240),
-  uid:z.string().regex(/^[A-Za-z0-9]{8}$/).optional()
+  uid:z.string().regex(/^(?:[A-Za-z0-9]{4}|[A-Za-z0-9]{8})$/).optional()
 });
 const QUERY=z.string().trim().max(120);
 const TYPES=Object.freeze({
@@ -23,7 +23,7 @@ export function blockNoteSuggestionItems(kind,rows=[],query='',limit=24){
   const allowed=TYPES[selected.data];
   const search=normalized(term.data),output=[],seen=new Set();
   const cap=Math.min(36,Math.max(1,Number.isInteger(limit)?limit:24));
-  for(const row of rows.slice(0,1000)){
+  for(const row of rows){
     const source=typeof row==='string'?{type:'pattern',title:row}:row;
     if(!source||typeof source!=='object')continue;
     // Legacy time storage uses "anchor"; its *suggestion* is a date.

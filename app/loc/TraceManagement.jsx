@@ -311,7 +311,7 @@ function AnchorEditor({scopeId,spatial,reload}){
         <BlockNoteEditor editorKey={'point-note:'+scopeId+':'+(editingUid||'new')}
           content={description} editable={!busy} plainTextOnly canInsertImage={false}
           suggestionKind="spatial" suggestions={suggestionRows}
-          onPlainTextChange={value=>{if(value.length<=2000)setDescription(value);}}/>
+          onPlainTextChange={setDescription}/>
       </div>
       <label>經度（可留空）<input type="number" min={-180} max={180} step="any"
         value={longitude} onChange={e=>setLongitude(e.target.value)} disabled={busy}/></label>
