@@ -144,7 +144,8 @@ export function WorkFullText({
       {open?(loading?copy.work.loadingBody:copy.work.collapseBody):copy.work.viewBody}
     </button>:null}
     {open&&error?<p className="scope-status scope-error">{error}</p>:null}
-    {open&&!loading&&!error?<div className="scope-inline-card scope-article-block-display">
+    {open&&!loading&&!error?<div className="scope-article-block-display"
+      role="region" aria-label={copy.work.viewBody}>
       <BlockNoteEditor editable={false} initialContent={content||(emptyText??copy.work.noBody)}/>
     </div>:null}
   </div>;
