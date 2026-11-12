@@ -1,5 +1,6 @@
 import {verifyAccessTokenRequest,requestToResourceInput} from 'better-auth/oauth2';
 import {businessAction} from './business-actions.mjs';
+import {authorizeMcpBearer} from './access-roles.mjs';
 import {providerStatuses,requestTool,approvalReceipt} from './upstream-policy.mjs';
 import {listUpstreamTools} from './upstream-tools.mjs';
 import {readMemory} from './galaxy-read.mjs';
@@ -132,6 +133,17 @@ export async function handleMcp(request,env={}){
   if(!payload||Array.isArray(payload)||payload.jsonrpc!=='2.0'||typeof payload.method!=='string')
     return rpcError(payload?.id??null,-32600,'Invalid JSON-RPC request',400);
   if(payload.id==null)return response(null,202); // JSON-RPC notifications have no reply.
+  // A valid SSO token identifies a user, but does not grant MCP capacity.
+  // api.manage is the sole existing role registry; no MCP application step.
+  if(payload.method==='tools/list'||payload.method==='tools/call'){
+    try{await authorizeMcpBearer(match[1],identity.subject,env);}
+    catch(error){
+      const status=[401,403].includes(error?.httpStatus)?error.httpStatus:503;
+      return rpcError(payload.id,-32001,status===403?'LOC MCP role not granted':
+        status===401?'Verified LOC OAuth identity required':
+        'LOC MCP role service unavailable',status);
+    }
+  }
   switch(payload.method){
     case 'initialize':{
       const proposed=payload.params?.protocolVersion;
