@@ -1,5 +1,7 @@
 import {verifyAccessTokenRequest,requestToResourceInput} from 'better-auth/oauth2';
 import {businessAction} from './business-actions.mjs';
+import {providerStatuses,requestTool,approvalReceipt} from './upstream-policy.mjs';
+import {listUpstreamTools} from './upstream-tools.mjs';
 import {readMemory} from './galaxy-read.mjs';
 import {privateGalaxyLink} from './private-galaxy.mjs';
 import {mcpDatabaseConfiguration} from './native-kysely.mjs';
@@ -41,7 +43,7 @@ function unauthorized(config){
 }
 // Auth protocol is delegated to Better Auth. The standard JOSE implementation
 // checks RFC 9068 resource JWTs; there is no custom JWT decoder or signer.
-async function verifyOAuthToken(request,config){
+export async function verifyOAuthToken(request,config){
   try{
     const payload=await verifyAccessTokenRequest(requestToResourceInput(request),{
       jwksUrl:'https://auth.lo3rwang.cc/api/auth/jwks',
@@ -90,6 +92,22 @@ const TOOLS=[
       title:{type:'string',maxLength:350},content:{type:'string',maxLength:125000},
       offset:{type:'integer',minimum:0},max_chars:{type:'integer',minimum:1,maximum:40000}
     },required:['action','scopeid'],additionalProperties:false}},
+  {name:'provider_list',description:'List LOC user-linked upstream MCP providers and their function policies (no credentials).',
+    inputSchema:{type:'object',properties:{},additionalProperties:false},
+    annotations:{readOnlyHint:true,destructiveHint:false}},
+  {name:'provider_tools',description:'Discover tools offered by one already-authorized upstream MCP provider. This does not grant permission to call them.',
+    inputSchema:{type:'object',properties:{provider:{type:'string',enum:['clerk','github','neon','supabase']}},
+      required:['provider'],additionalProperties:false},
+    annotations:{readOnlyHint:true,destructiveHint:false}},
+  {name:'provider_call',description:'Execute a provider MCP function only if LOC policy is auto; ask queues an explicit human approval, deny blocks the call.',
+    inputSchema:{type:'object',properties:{
+      provider:{type:'string',enum:['clerk','github','neon','supabase']},
+      tool:{type:'string'},args:{type:'object'}},
+      required:['provider','tool'],additionalProperties:false}},
+  {name:'provider_receipt',description:'Read the result of an explicitly approved upstream MCP operation using its receipt ID.',
+    inputSchema:{type:'object',properties:{approval_id:{type:'string'}},
+      required:['approval_id'],additionalProperties:false},
+    annotations:{readOnlyHint:true,destructiveHint:false}},
 
 ];
 function toolResponse(id,value){
@@ -148,7 +166,15 @@ export async function handleMcp(request,env={}){
         availableTools:TOOLS.map(tool=>tool.name)});
       try{
         const directPrivate=name==='galaxy_link'&&['read','search'].includes(args.action);
-        const value=name==='read_memory'?
+        const value=name==='provider_list'?
+          await providerStatuses(env,identity.subject):
+          name==='provider_tools'?
+          {provider:args.provider,tools:await listUpstreamTools(env,identity.subject,args.provider)}:
+          name==='provider_call'?
+          await requestTool(env,identity.subject,args.provider,args.tool,args.args||{}):
+          name==='provider_receipt'?
+          await approvalReceipt(env,identity.subject,args.approval_id):
+          name==='read_memory'?
           await readMemory(args,env):
           directPrivate?await privateGalaxyLink(args,match[1],identity.subject,env):
           await businessAction(name,args,match[1],env);
@@ -156,7 +182,9 @@ export async function handleMcp(request,env={}){
       }catch(error){
         const validation=error?.code==='INVALID_ARGUMENT';
         return result(payload.id,{isError:true,content:[{type:'text',
-          text:validation?error.message:
+          text:name?.startsWith('provider_')?
+            String(error?.message||'Provider request unavailable').slice(0,180):
+            validation?error.message:
             error?.httpStatus&&error.httpStatus<500?error.message:
             'LOC data service unavailable; please retry later.'}]});
       }
