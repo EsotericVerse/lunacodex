@@ -261,7 +261,11 @@
   margin:0;
 }
 .scope-editable-block:is(.is-editing,.scope-block-draft) .scope-inline-editbar{
-  max-width:calc(100% - .7rem);
+  position:relative;
+  inset:auto;
+  max-width:100%;
+  width:fit-content;
+  margin:0 0 .75rem auto;
   flex-wrap:wrap;
   justify-content:flex-end;
   padding:.25rem;
@@ -271,6 +275,7 @@
   color:var(--loc-text);
   box-shadow:0 6px 18px rgb(0 0 0 / .22);
 }
+.scope-editable-block:is(.is-editing,.scope-block-draft){padding-top:.85rem}
 .scope-inline-editbar .loc-button{
   min-height:2rem;
   padding:.28rem .58rem;
@@ -334,6 +339,14 @@
 .scope-search-attr-grid{
   display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr));
   gap:.55rem;margin:.85rem 0 0;
+}
+.scope-search-attr-grid>.scope-search-attr-item.is-blocknote-field{
+  grid-column:1/-1;
+  display:grid;
+  align-content:start;
+  gap:.5rem;
+  min-width:0;
+  max-width:100%;
 }
 .scope-management-fields{
   display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr));gap:.55rem;
@@ -513,21 +526,40 @@
 .scope-period-timeline .vis-item.scope-virtual-anchor.is-selected{color:var(--loc-gold)!important;filter:drop-shadow(0 0 12px color-mix(in srgb,var(--loc-gold) 72%,transparent))}
 
 /* BlockNote is the single text/media authoring surface. Media remains URL-backed; rich structure is stored separately. */
-.scope-blocknote{min-width:0}
+.scope-blocknote,
+.scope-blocknote .bn-container{
+  box-sizing:border-box;
+  width:100%;
+  max-width:100%;
+  min-width:0;
+}
 .scope-blocknote .bn-container{background:transparent;color:var(--loc-text);font-family:inherit}
 .scope-blocknote.is-plain-text .bn-editor{min-height:5.2rem;padding:.65rem .8rem}
 .scope-blocknote.is-plain-text .bn-container{width:100%;min-width:0}
 .scope-keyword-management .scope-management-editor .scope-management-fields>.scope-management-wide-field,
 .scope-keyword-network-inspector .scope-management-fields>.scope-management-wide-field{min-width:0;margin:0}
 .scope-management-fields>.scope-management-wide-field .scope-blocknote{min-width:0;width:100%}
-.scope-blocknote .bn-editor{min-height:10rem;padding:1rem;border:1px solid var(--loc-line);border-radius:var(--loc-radius);background:color-mix(in srgb,var(--loc-panel) 86%,transparent);color:var(--loc-text);font-family:inherit}
+.scope-blocknote .bn-editor{
+  box-sizing:border-box;
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  min-height:10rem;
+  padding:1rem;
+  border:1px solid var(--loc-line);
+  border-radius:var(--loc-radius);
+  background:color-mix(in srgb,var(--loc-panel) 86%,transparent);
+  color:var(--loc-text);
+  font-family:inherit;
+  overflow-wrap:anywhere;
+}
 .scope-blocknote.is-readonly .bn-editor{min-height:0;padding:0;border:0;background:transparent}
 .scope-blocknote .bn-editor:focus-within{border-color:var(--loc-accent-border);box-shadow:0 0 0 2px color-mix(in srgb,var(--loc-accent) 16%,transparent)}
 .scope-blocknote .bn-side-menu,.scope-blocknote .bn-formatting-toolbar,.scope-blocknote .bn-link-toolbar,.scope-blocknote .bn-file-panel{font-family:inherit}
 .scope-blocknote a{color:var(--loc-accent);font-weight:700;text-decoration:underline;text-underline-offset:.16em}
 .scope-blocknote a:hover{color:var(--loc-heading)}
 .scope-publisher-main .scope-blocknote .bn-editor{min-height:28rem}
-.scope-editor-blocknote{display:grid;gap:.35rem}
+.scope-editor-blocknote{display:grid;gap:.5rem;width:100%;min-width:0;max-width:100%}
 .scope-editor-blocknote>span{color:var(--loc-muted);font-size:.82rem}
 
 .scope-block-entity-grid{
@@ -600,7 +632,8 @@
 @media(max-width:680px){.scope-block-entity-grid{grid-template-columns:repeat(min(2,var(--loc-bubble-columns,2)),minmax(0,1fr))}}
 @media(max-width:420px){.scope-block-entity-grid{grid-template-columns:minmax(0,1fr)}}
 
-.scope-blocknote-linkbar{display:flex;gap:.45rem;flex-wrap:wrap;margin:0 0 .45rem}
+.scope-blocknote-linkbar{display:flex;align-items:center;justify-content:flex-start;gap:.45rem;flex-wrap:wrap;margin:0 0 .45rem}
+.scope-blocknote-linkbar>.loc-button{min-height:44px}
 .scope-inline-save-status{margin-left:.35rem;align-self:center;font-size:.86rem;color:var(--loc-muted)}
 .scope-management-disclosure{padding:0;overflow:hidden}
 .scope-management-disclosure>summary{cursor:pointer;list-style:none;padding:1rem 1.1rem;font-weight:800;color:var(--loc-heading)}
@@ -917,14 +950,32 @@
 .scope-stat-details>summary:focus-visible{outline:2px solid var(--loc-accent);outline-offset:-2px}
 .scope-stat-details[open]>.scope-ranking,.scope-stat-details[open]>.scope-stat-controls,.scope-stat-details[open]>.scope-result-links{margin:.5rem 1rem 1rem}
 
-/* Compact single-row header editing for all shared Scope page frames. */
+/* The shared editor grid responds to available container width.
+   Long text and image settings occupy complete rows. */
+.scope-page-editor,
+.scope-page-editor .scope-frame-field-grid,
+.scope-management-wide-field{
+  min-width:0;
+  max-width:100%;
+}
 .scope-page-editor .scope-frame-field-grid{
   display:grid;
-  grid-template-columns:minmax(0,1fr) minmax(0,1.1fr) minmax(0,1.6fr);
-  gap:.65rem;
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,27rem),1fr));
+  gap:.75rem;
   align-items:start;
 }
 .scope-page-editor .scope-frame-field-grid>.scope-frame-header-field{min-width:0;margin:0}
+.scope-page-editor .scope-frame-field-grid>.scope-frame-header-field:nth-child(3),
+.scope-page-editor .scope-frame-field-grid>.scope-management-wide-field:not(.scope-frame-header-field){
+  grid-column:1/-1;
+}
+.scope-page-editor .scope-frame-field-grid>.scope-management-wide-field:not(.scope-frame-header-field){
+  display:grid;
+  align-content:start;
+  gap:.5rem;
+  min-width:0;
+  width:100%;
+}
 .scope-page-editor .scope-frame-field-grid>.scope-frame-header-field input{
   width:100%;min-width:0;max-width:100%;box-sizing:border-box;
 }
@@ -939,21 +990,10 @@
 .scope-frame-image-settings legend{font-weight:700}
 .scope-frame-image-preview{display:flex;align-items:center;justify-content:center;width:100%;min-height:6rem;max-height:15rem;margin-bottom:.75rem;background:var(--loc-surface-soft);border-radius:var(--loc-radius-sm);overflow:hidden}
 .scope-frame-image-preview img{display:block;max-width:100%;max-height:15rem;object-fit:contain}
-.scope-frame-image-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.65rem;align-items:end}
+.scope-frame-image-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,21rem),1fr));gap:.65rem;align-items:end}
 .scope-frame-image-fields label{display:grid;gap:.3rem;min-width:0}
 .scope-frame-image-fields input,.scope-frame-image-fields select{width:100%;min-width:0;max-width:100%;box-sizing:border-box}
-.scope-frame-image-fields .scope-frame-image-url{grid-column:span 2}
-@media(max-width:860px){
-  .scope-page-editor .scope-frame-field-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .scope-page-editor .scope-frame-field-grid>.scope-frame-header-field:nth-child(3){grid-column:1/-1}
-  .scope-frame-image-fields{grid-template-columns:repeat(2,minmax(0,1fr))}
-}
-@media(max-width:540px){
-  .scope-page-editor .scope-frame-field-grid,.scope-frame-image-fields{grid-template-columns:minmax(0,1fr)}
-  .scope-page-editor .scope-frame-field-grid>.scope-frame-header-field:nth-child(3),
-  .scope-frame-image-fields .scope-frame-image-url{grid-column:1/-1}
-}
-
+.scope-frame-image-fields .scope-frame-image-url{grid-column:1/-1}
 /* Scope import: file reading and Galaxy saving remain distinct actions. */
 .scope-import-body{
   display:grid;grid-template-columns:minmax(0,1fr);gap:.8rem;
@@ -1690,92 +1730,12 @@
 .scope-bubble-layout-control .scope-select{width:auto;min-width:7rem;min-height:44px}
 
 
-/* BlockNote field placement after the unified editor cutover.
-   Keep its own toolbar/popover positioning; only correct the form grid and
-   minimum widths. No clipping/overflow:hidden on an editing surface. */
-.scope-page-editor,
-.scope-page-editor .scope-frame-field-grid,
-.scope-editor-blocknote,
-.scope-management-wide-field,
-.scope-blocknote,
-.scope-blocknote .bn-container{
-  min-width:0;
-  max-width:100%;
-}
-.scope-blocknote,
-.scope-blocknote .bn-container{
-  width:100%;
-  box-sizing:border-box;
-}
-.scope-blocknote .bn-editor{
-  box-sizing:border-box;
-  width:100%;
-  max-width:100%;
-  overflow-wrap:anywhere;
-}
-/* Reflow by the editor's available width, not the viewport. A management
-   side pane can be narrow on a desktop display; long-text fields still span
-   every track and BlockNote keeps its own popover/toolbar positioning. */
-.scope-page-editor .scope-frame-field-grid{
-  grid-template-columns:repeat(auto-fit,minmax(min(100%,27rem),1fr));
-  align-items:start;
-  gap:.75rem;
-}
-.scope-page-editor .scope-frame-field-grid>.scope-frame-header-field:nth-child(3),
-.scope-page-editor .scope-frame-field-grid>.scope-management-wide-field:not(.scope-frame-header-field){
-  grid-column:1/-1;
-}
-.scope-page-editor .scope-frame-field-grid>.scope-management-wide-field:not(.scope-frame-header-field){
-  display:grid;
-  align-content:start;
-  gap:.5rem;
-  min-width:0;
-  width:100%;
-}
-.scope-search-attr-grid>.scope-search-attr-item.is-blocknote-field{
-  grid-column:1/-1;
-  display:grid;
-  align-content:start;
-  gap:.5rem;
-  min-width:0;
-  max-width:100%;
-}
-.scope-editor-blocknote{
-  width:100%;
-  display:grid;
-  gap:.5rem;
-}
-.scope-blocknote-linkbar{
-  justify-content:flex-start;
-  align-items:center;
-}
-.scope-blocknote-linkbar>.loc-button{min-height:44px}
-/* The image URL is always a full-width row. Spanning two tracks when only
-   one fits creates an implicit column and causes horizontal page drift. */
-.scope-frame-image-fields{
-  grid-template-columns:repeat(auto-fit,minmax(min(100%,21rem),1fr));
-}
-.scope-frame-image-fields .scope-frame-image-url{
-  grid-column:1/-1;
-}
-/* Inline edit actions occupy their own row instead of overlaying an expanded
-   BlockNote field (especially when action buttons wrap on small screens). */
-.scope-editable-block:is(.is-editing,.scope-block-draft) .scope-inline-editbar{
-  position:relative;
-  inset:auto;
-  max-width:100%;
-  width:fit-content;
-  margin:0 0 .75rem auto;
-  justify-content:flex-end;
-}
-.scope-editable-block:is(.is-editing,.scope-block-draft){padding-top:.85rem}
+/* Only phone-width adjustments remain here. Shared DIV/BlockNote
+   geometry is defined with its original selectors above. */
 @media(max-width:680px){
   .scope-page-editor .scope-frame-field-grid{grid-template-columns:minmax(0,1fr)}
-  .scope-page-editor .scope-frame-field-grid>.scope-frame-header-field:nth-child(3),
-  .scope-page-editor .scope-frame-field-grid>.scope-management-wide-field:not(.scope-frame-header-field){grid-column:1/-1}
   .scope-blocknote.is-editable .bn-editor{padding:.75rem}
   .scope-frame-image-fields{grid-template-columns:minmax(0,1fr)}
-  .scope-frame-image-fields .scope-frame-image-url{grid-column:1/-1}
   .scope-editable-block:is(.is-editing,.scope-block-draft) .scope-inline-editbar{
     width:100%;
     justify-content:flex-start;

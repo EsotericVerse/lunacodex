@@ -231,7 +231,6 @@ button,a,.loc-control,.loc-button,
 }
 .loc-view,.scope-page,.scope-content{
   gap:clamp(1rem,2.2vw,1.75rem);
-  min-width:0;
 }
 .scope-page,.scope-content{
   grid-template-columns:minmax(0,1fr);
@@ -1281,26 +1280,11 @@ body{
 
 .scope-stat-data-pending{display:grid;gap:.75rem;min-width:0}
 
-/* Keep management workspace content from widening the shared Hero frame. */
-.scope-main--edit-workspace,
-.scope-main--edit-workspace>.scope-page,
-.scope-main--edit-workspace .scope-content{
-  min-width:0;
-  max-width:100%;
-}
-.scope-main--edit-workspace>.scope-page,
-.scope-main--edit-workspace .scope-content{
-  grid-template-columns:minmax(0,1fr);
-}
-.scope-main--edit-workspace .scope-content>*{
-  min-width:0;
-  max-width:100%;
-}
+/* Management inherits the same root/page/content grid as public routes.
+   Keep only its Hero's dedicated box-size rule. */
 .scope-main--edit-workspace .scope-feature-hero--manage{
   box-sizing:border-box;
   width:100%;
-  min-width:0;
-  max-width:100%;
 }
 .management-hero-copy-editor{display:grid;gap:1rem;min-width:0}
 .management-hero-copy-group{display:grid;gap:.65rem;min-width:0}
