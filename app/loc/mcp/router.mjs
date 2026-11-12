@@ -6,9 +6,7 @@ import {listUpstreamTools} from './upstream-tools.mjs';
 import {readMemory} from './galaxy-read.mjs';
 import {privateGalaxyLink} from './private-galaxy.mjs';
 import {mcpDatabaseConfiguration} from './native-kysely.mjs';
-import {SCOPE_ROUTE_INDEX} from '../../modular/scope-route-index.js';
-const PUBLIC_SCOPE_IDS=Object.freeze(SCOPE_ROUTE_INDEX.filter(row=>row.active&&row.scope_id!=='loc')
-  .map(row=>row.scope_id).filter(id=>/^[a-z][a-z0-9]{0,14}$/.test(id)));
+import {mcpToolJsonSchema,parseMcpToolArgs,McpRpcSchema} from './tool-contracts.mjs';
 // LOC MCP HTTP entry point. No database write is granted by an OAuth login.
 export const MCP_RESOURCE=(globalThis.process?.env?.LOC_MCP_RESOURCE_URL||'https://mcp.lo3rwang.cc').replace(/\/+$/,'');
 export const LOC_OAUTH_ISSUER='https://auth.lo3rwang.cc/api/auth';
@@ -64,51 +62,27 @@ function rpcError(id,code,message,httpStatus=200){
 }
 const TOOLS=[
   {name:'loc_connection_status',description:'Check LOC MCP and LOC OAuth connectivity (read only).',
-    inputSchema:{type:'object',properties:{},additionalProperties:false},
+    inputSchema:mcpToolJsonSchema('loc_connection_status'),
     annotations:{readOnlyHint:true,destructiveHint:false}},
   {name:'read_memory',description:'Read a PUBLIC LOC Galaxy article by exact, case-sensitive UID; supports content paging with offset/max_chars.',
-    inputSchema:{type:'object',properties:{
-      uid:{type:'string',pattern:'^[A-Za-z0-9]{8}$',description:'Exact Galaxy article UID'},
-      scopeid:{type:'string',enum:PUBLIC_SCOPE_IDS},
-      offset:{type:'integer',minimum:0,maximum:1000000},
-      max_chars:{type:'integer',minimum:1,maximum:40000}
-    },required:['uid'],additionalProperties:false},
+    inputSchema:mcpToolJsonSchema('read_memory'),
     annotations:{readOnlyHint:true,destructiveHint:false}}
 ,
   {name:'scope_storage',description:'Read the LOC business Scope status. Scope database URL registration has been retired; database selection is managed by the LOC business backend.',
-    inputSchema:{type:'object',properties:{
-      scopeid:{type:'string'}
-    },required:['scopeid'],additionalProperties:false},
+    inputSchema:mcpToolJsonSchema('scope_storage'),
     annotations:{readOnlyHint:true,destructiveHint:false}},
   {name:'galaxy_link',description:'Galaxy conversation continuity. Search ONLY when the human user explicitly requests a conversation search; never search automatically. PR/GitHub search is forbidden: 請至github頁面找尋PR相關資料！不開放搜尋PR! The business data service handles authorization and persistence.',
-    inputSchema:{type:'object',properties:{
-      action:{type:'string',enum:['search','read','check','record']},
-      scopeid:{type:'string'},uid:{type:'string',pattern:'^[A-Za-z0-9]{8}$',description:'Known exact Galaxy UID for recorded conversation read'},
-      query:{type:'string',minLength:2,maxLength:100},limit:{type:'integer',minimum:1,maximum:5},
-      user_requested:{type:'boolean',description:'True only when the human user explicitly asked to search these conversations. Do not set for autonomous context lookup.'},
-      conversation_id:{type:'string'},updated_at:{type:'string'},created_at:{type:'string'},
-      records:{type:'array',minItems:1,maxItems:100,items:{type:'object',properties:{
-        role:{type:'string',enum:['user','assistant']},kind:{type:'string',enum:['original','advice']},
-        sent_at:{type:'string'},text:{type:'string'},message_id:{type:'string'}
-      },required:['role','kind','sent_at','text','message_id'],additionalProperties:false}},
-      title:{type:'string',maxLength:350},content:{type:'string',maxLength:125000},
-      offset:{type:'integer',minimum:0},max_chars:{type:'integer',minimum:1,maximum:40000}
-    },required:['action','scopeid'],additionalProperties:false}},
+    inputSchema:mcpToolJsonSchema('galaxy_link')},
   {name:'provider_list',description:'List LOC user-linked upstream MCP providers and their function policies (no credentials).',
-    inputSchema:{type:'object',properties:{},additionalProperties:false},
+    inputSchema:mcpToolJsonSchema('provider_list'),
     annotations:{readOnlyHint:true,destructiveHint:false}},
   {name:'provider_tools',description:'Discover tools offered by one already-authorized upstream MCP provider. This does not grant permission to call them.',
-    inputSchema:{type:'object',properties:{provider:{type:'string',enum:['clerk','github','neon','supabase']}},
-      required:['provider'],additionalProperties:false},
+    inputSchema:mcpToolJsonSchema('provider_tools'),
     annotations:{readOnlyHint:true,destructiveHint:false}},
   {name:'provider_call',description:'Execute a provider MCP function only if LOC policy is auto; ask queues an explicit human approval, deny blocks the call.',
-    inputSchema:{type:'object',properties:{
-      provider:{type:'string',enum:['clerk','github','neon','supabase']},
-      tool:{type:'string'},args:{type:'object'}},
-      required:['provider','tool'],additionalProperties:false}},
+    inputSchema:mcpToolJsonSchema('provider_call')},
   {name:'provider_receipt',description:'Read the result of an explicitly approved upstream MCP operation using its receipt ID.',
-    inputSchema:{type:'object',properties:{approval_id:{type:'string'}},
-      required:['approval_id'],additionalProperties:false},
+    inputSchema:mcpToolJsonSchema('provider_receipt'),
     annotations:{readOnlyHint:true,destructiveHint:false}},
 
 ];
@@ -130,8 +104,10 @@ export async function handleMcp(request,env={}){
   if(request.method==='GET')return response({error:'SSE_not_supported',message:'Use Streamable HTTP POST'},405,{Allow:'POST, OPTIONS'});
   let payload;
   try{payload=await request.json();}catch{return rpcError(null,-32700,'Invalid JSON',400);}
-  if(!payload||Array.isArray(payload)||payload.jsonrpc!=='2.0'||typeof payload.method!=='string')
+  const parsedRpc=McpRpcSchema.safeParse(payload);
+  if(!parsedRpc.success)
     return rpcError(payload?.id??null,-32600,'Invalid JSON-RPC request',400);
+  payload=parsedRpc.data;
   if(payload.id==null)return response(null,202); // JSON-RPC notifications have no reply.
   // A valid SSO token identifies a user, but does not grant MCP capacity.
   // api.manage is the sole existing role registry; no MCP application step.
@@ -156,10 +132,9 @@ export async function handleMcp(request,env={}){
     case 'tools/list':return result(payload.id,{tools:TOOLS});
     case 'tools/call':{
       const name=payload.params?.name;
-      const args=payload.params?.arguments??{};
       if(!TOOLS.some(tool=>tool.name===name))return rpcError(payload.id,-32602,'Unknown tool');
-      if(!args||typeof args!=='object'||Array.isArray(args))
-        return rpcError(payload.id,-32602,'Tool arguments must be an object');
+      const args=parseMcpToolArgs(name,payload.params?.arguments??{});
+      if(args===null)return rpcError(payload.id,-32602,'Invalid MCP tool arguments');
       if(name==='galaxy_link'&&args.action==='search'&&
         /(?:\bPR(?:[\s#:\-]*\d+)?\b|\bpull[ -]?request\b|\bgithub\b|\bcommit\b|合併請求|拉取請求)/i.test(String(args.query||''))){
         return result(payload.id,{isError:true,content:[{type:'text',
