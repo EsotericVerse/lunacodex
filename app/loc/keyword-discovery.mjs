@@ -50,8 +50,7 @@ export function readableKeywordContent(raw){
 }
 
 const normalize=value=>String(value??'').normalize('NFKC').trim().toLocaleLowerCase();
-function admissible(token){
-  const value=normalize(token);
+function admissibleNormalized(value){
   if(SOURCE_MARKUP_TERMS.has(value))return false;
   if(HAN.test(value))return [...value].length>=2&&[...value].length<=8&&!IGNORE_ZH.has(value)&&!/(.)\1{2,}/u.test(value);
   if(LATIN.test(value))return value.length>=3&&value.length<=30&&!IGNORE_EN.has(value);
@@ -89,7 +88,7 @@ export function createNewKeywordDiscovery(rows=[]){
   let read=0,withContent=0,limited=false;
   function add(term,seen,month,body,position,length){
     const key=normalize(term);
-    if(!admissible(key)||existing.has(key))return;
+    if(!admissibleNormalized(key)||existing.has(key))return;
     let record=totals.get(key);
     if(!record){
       if(totals.size>=MAX_TERMS){limited=true;return;}
@@ -117,8 +116,10 @@ export function createNewKeywordDiscovery(rows=[]){
       if(/^\d{4}-\d{2}$/.test(month)){
         const item=months.get(month)||{month,documents:0,existingCovered:0};
         item.documents++;
-        const normalized=normalize(body);
-        if(knownMatchers.some(re=>re.test(normalized)))item.existingCovered++;
+        if(knownMatchers.length){
+          const normalized=normalize(body);
+          if(knownMatchers.some(re=>re.test(normalized)))item.existingCovered++;
+        }
         months.set(month,item);
       }
       let prev=null,prev2=null;
