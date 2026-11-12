@@ -130,3 +130,20 @@ test('dated counts derive from word UIDs, not Anchor totals',()=>{
   assert.equal(limited.items[0].hit_count,2);
   assert.equal(limited.items[0].document_count,1);
 });
+
+test('unchanged bulk Galaxy metadata skips every content read after completed scans',async()=>{
+  const many=Array.from({length:250},(_,index)=>({
+    uid:'Kw'+String(index).padStart(6,'0'),date:'2026-11-01',
+    createtime:ts,UpdateTime:ts,keyword:true,content:'清水烈火'
+  }));
+  const first=await run({documents:many});
+  assert.equal(first.contentReads,250);
+  const second=await run({
+    documents:many,existingPatterns:first.saved,
+    patternScans:first.result.patternScans,
+    startedAt:'2026-11-07T01:00:00Z'
+  });
+  assert.equal(second.contentReads,0);
+  assert.equal(second.result.reusedDocuments,250);
+  assert.deepEqual(second.saved,first.saved);
+});

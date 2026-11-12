@@ -262,3 +262,22 @@ test('keyword suggestions run PELT only for the 120 retained candidates',()=>{
   assert.equal(emitted.at(-1).result.candidates.length,120);
   assert.equal(calls,121,'1 density scan + 120 retained candidate scans');
 });
+
+test('new keyword discovery retains counts and Unicode normalization across repeated batches',()=>{
+  const scanner=createNewKeywordDiscovery([
+    {type:'item',name:'ｍａｎｄｏｐｏｐ',lists:['城市記憶']}
+  ]);
+  const article='都市牢籠，都市牢籠，城市記憶，Ｍａｎｄｏｐｏｐ，darkjazz。';
+  for(let index=0;index<100;index++)scanner.consume([{
+    uid:'AA'+String(index).padStart(6,'0'),content:article,
+    createtime:'2026-01-01'
+  }]);
+  const result=scanner.finish();
+  const terms=new Map(result.candidates.map(row=>[row.word,row]));
+  assert.equal(result.read,100);
+  assert.equal(terms.get('都市牢籠').documents,100);
+  assert.equal(terms.get('都市牢籠').occurrences,200);
+  assert.equal(terms.get('darkjazz').documents,100);
+  assert.equal(terms.has('mandopop'),false);
+  assert.equal(terms.has('城市記憶'),false);
+});

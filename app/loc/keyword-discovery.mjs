@@ -86,9 +86,23 @@ export function createNewKeywordDiscovery(rows=[]){
   for(let offset=0;offset<known.length;offset+=100)
     knownMatchers.push(new RegExp(known.slice(offset,offset+100).map(escapeRegex).join('|'),'u'));
   let read=0,withContent=0,limited=false;
+  // Repeated tokens dominate long Galaxy scans. Cache both accepted and
+  // rejected normalized tokens, with bounded memory across large imports.
+  const tokenCache=new Map();
+  const TOKEN_CACHE_LIMIT=16384;
+  function normalizedCandidate(term){
+    const cached=tokenCache.get(term);
+    if(cached!==undefined)return cached;
+    const normalized=normalize(term);
+    const key=admissibleNormalized(normalized)&&!existing.has(normalized)
+      ?normalized:null;
+    if(tokenCache.size>=TOKEN_CACHE_LIMIT)tokenCache.clear();
+    tokenCache.set(term,key);
+    return key;
+  }
   function add(term,seen,month,body,position,length){
-    const key=normalize(term);
-    if(!admissibleNormalized(key)||existing.has(key))return;
+    const key=normalizedCandidate(term);
+    if(key===null)return;
     let record=totals.get(key);
     if(!record){
       if(totals.size>=MAX_TERMS){limited=true;return;}
