@@ -3,6 +3,9 @@ import {jwt} from 'better-auth/plugins';
 import {oauthProvider} from '@better-auth/oauth-provider';
 import {PostgresDialect} from 'kysely';
 import {Pool, neonConfig} from '@neondatabase/serverless';
+import * as z from 'zod';
+import {RAINBOW_TABLES} from './rainbow-tables.mjs';
+import {rainbowDatabaseHooks} from './rainbow-validation.mjs';
 
 // LOC Auth is the issuer. Neon supplies PostgreSQL storage, NOT Neon Auth.
 // Neither website rendering nor business permissions are implemented here.
@@ -13,20 +16,7 @@ export const LOC_IMPORT=LOC_MCP+'/api/loc-native';
 const OWNER_EMAIL='sopa2306@gmail.com';
 // Auth owns only explicitly named Rainbow tables. This is model mapping,
 // NOT SQL DDL. No table or RLS policy is created when this module loads.
-export const RAINBOW_TABLES=Object.freeze({
-  user:'rainbow_auth',
-  session:'rainbow_session',
-  account:'rainbow_account',
-  verification:'rainbow_verification',
-  jwks:'rainbow_jwks',
-  oauthClient:'rainbow_oauth_client',
-  oauthResource:'rainbow_oauth_resource',
-  oauthClientResource:'rainbow_oauth_client_resource',
-  oauthRefreshToken:'rainbow_oauth_refresh_token',
-  oauthAccessToken:'rainbow_oauth_access_token',
-  oauthConsent:'rainbow_oauth_consent',
-  oauthClientAssertion:'rainbow_oauth_client_assertion'
-});
+export {RAINBOW_TABLES} from './rainbow-tables.mjs';
 
 
 // Session data is a *short-lived signed cache*, not the Auth source of truth.
@@ -43,22 +33,30 @@ export function locAuthSessionCache(env={}){
   };
 }
 
+// Validate the Worker boundary once. Do not expose connection strings or
+// OAuth secrets in Zod errors, logs, or HTTP responses.
+const AuthEnvironmentSchema=z.object({
+  connectionString:z.url().refine(value=>
+    ['postgresql:','postgres:'].includes(new URL(value).protocol)),
+  secret:z.string().min(32),
+  googleId:z.string().min(1),
+  googleSecret:z.string().min(1),
+  namespace:z.literal('public')
+});
+
 export function checkLocAuthEnvironment(env){
-  const secret=env?.BETTER_AUTH_SECRET||env?.LOC_CONTROL_ENCRYPTION_KEY;
-  const googleId=env?.LOC_GOOGLE_CLIENT_ID||env?.GOOGLE_CLIENT_ID;
-  const googleSecret=env?.LOC_GOOGLE_CLIENT_SECRET||env?.GOOGLE_CLIENT_SECRET;
-  if(!env?.LOC_AUTH_DATABASE_URL||!secret||!googleId||!googleSecret)
-    throw new Error('LOC Auth needs PostgreSQL and the existing OAuth credentials');
-  if(secret.length<32)throw new Error('LOC Auth secret must be at least 32 characters');
-  const url=new URL(env.LOC_AUTH_DATABASE_URL);
-  if(!['postgresql:','postgres:'].includes(url.protocol))
-    throw new Error('LOC Auth requires a PostgreSQL connection');
-  // The existing Rainbow tables are in public on the dedicated Neon database.
-  // Do not require an extra schema setting for the already provisioned tables.
-  // Reject wrong or historical namespaces instead of querying missing tables.
-  const namespace=String(env.LOC_AUTH_SCHEMA||'public');
-  if(namespace!=='public')
+  const data={
+    connectionString:env?.LOC_AUTH_DATABASE_URL,
+    secret:env?.BETTER_AUTH_SECRET||env?.LOC_CONTROL_ENCRYPTION_KEY,
+    googleId:env?.LOC_GOOGLE_CLIENT_ID||env?.GOOGLE_CLIENT_ID,
+    googleSecret:env?.LOC_GOOGLE_CLIENT_SECRET||env?.GOOGLE_CLIENT_SECRET,
+    namespace:String(env?.LOC_AUTH_SCHEMA||'public')
+  };
+  if(data.namespace!=='public')
     throw new Error('LOC Auth Rainbow tables are in the public PostgreSQL schema');
+  const verified=AuthEnvironmentSchema.safeParse(data);
+  if(!verified.success)
+    throw new Error('LOC Auth requires valid PostgreSQL and OAuth credentials (secret >= 32 characters)');
   return true;
 }
 
@@ -82,6 +80,9 @@ export function createLocAuth(env){
     basePath:'/api/auth',
     secret:env.BETTER_AUTH_SECRET||env.LOC_CONTROL_ENCRYPTION_KEY,
     trustedOrigins:[LOC_ISSUER,LOC_WEB],
+    // ZModel-derived Zod guards run only when Better Auth persists core
+    // models. The native Better Auth/Kysely adapter remains authoritative.
+    databaseHooks:rainbowDatabaseHooks,
     database:{
       dialect:new PostgresDialect({pool}),
       type:'postgres',
