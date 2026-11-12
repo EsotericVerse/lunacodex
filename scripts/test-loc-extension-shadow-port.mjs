@@ -108,12 +108,20 @@ test('LOC port refuses placeholder URLs until the saved conversation ID exists',
 });
 test('2026 search-unit markup is recognized and preserves markdown',()=>{
  const upstream=extractor();
+ const strong={nodeType:1,tagName:'STRONG',childNodes:[
+   {nodeType:3,textContent:'important'}],getAttribute:()=>null};
+ const paragraph={nodeType:1,tagName:'P',childNodes:[
+   {nodeType:3,textContent:'First '},strong],getAttribute:()=>null};
+ const markdown={nodeType:1,tagName:'DIV',childNodes:[paragraph],
+   getAttribute:()=>null};
  const user={
   nodeType:1,tagName:'DIV',innerText:'First user message',
   getAttribute:key=>key==='data-chatgpt-search-unit-key'?'fallback-turn-1:user':null,
   querySelector:s=>s==='[data-user-message-bubble]'?{
     querySelector:()=>null,innerText:'First user message'
-  }:null,querySelectorAll:()=>[],parentElement:null
+  }:null,
+  querySelectorAll:selector=>selector==='[data-markdown-text-style]'?[markdown]:[],
+  parentElement:null
  };
  const {main}=fixture({messages:[]});
  main.querySelectorAll=selector=>selector==='[data-message-author-role]'?[]
@@ -121,5 +129,5 @@ test('2026 search-unit markup is recognized and preserves markdown',()=>{
  const rows=upstream.extractMessages(main);
  assert.equal(rows.length,1);
  assert.equal(rows[0].role,'user');
- assert.equal(rows[0].content,'First user message');
+ assert.equal(rows[0].content,'First **important**');
 });
