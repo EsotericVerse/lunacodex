@@ -435,7 +435,7 @@
 .loc-trace-territory{display:grid;gap:.7rem;min-width:0}
 .loc-trace-territory-toolbar{display:grid;gap:.4rem;min-width:0}
 .loc-trace-territory-toolbar>label{display:grid;gap:.25rem;font-size:.83rem;font-weight:650}
-.loc-trace-territory-toolbar>label select{min-height:44px}
+.loc-trace-territory-toolbar>label select{min-height:44px;font-size:1rem}
 .loc-trace-territory-toolbar>div[role="group"]{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.35rem}
 .loc-trace-territory-toolbar>div[role="group"] button{
   min-width:0;min-height:44px;white-space:normal;font-size:.82rem;
@@ -443,7 +443,7 @@
 .loc-trace-territory-toolbar button[aria-pressed="true"]{
   border-color:var(--loc-gold);background:color-mix(in srgb,var(--loc-gold) 12%,var(--loc-panel));
 }
-.loc-trace-territory-time input{width:100%;min-height:30px;accent-color:var(--loc-gold)}
+.loc-trace-territory-time input{width:100%;min-height:44px;accent-color:var(--loc-gold)}
 .loc-trace-territory-overview{
   display:grid;gap:.35rem;padding:.65rem .75rem;
   background:var(--loc-panel);border:1px solid var(--loc-line);

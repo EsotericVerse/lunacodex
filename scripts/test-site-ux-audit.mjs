@@ -60,3 +60,26 @@ test('iPhone navigation controls are touch-sized and metadata fields do not trig
   assert.match(layout,/viewportFit:'cover'/);
   assert.doesNotMatch(fields,/\.scope-blocknote \.bn-editor\{[^}]*overflow:hidden/s);
 });
+
+test('mobile Search, Statistics and Trace keep readable controls in constrained frames',()=>{
+  const feature=read('app/styles/features.css');
+  const publicStyles=read('app/styles/public-features.css');
+  const traceStyles=read('app/styles/loc-ui-refresh.css');
+  const search=read('app/modular/features/Search.jsx');
+  const statistics=read('app/modular/features/Statistics.jsx');
+  const trace=read('app/modular/features/Trace.jsx');
+  const territory=read('app/modular/features/trace/TraceTerritoryPanel.jsx');
+  // Date controls must reflow from their available panel width, not fixed phone breaks.
+  assert.match(feature,/\.scope-search-date-fields\{grid-template-columns:repeat\(auto-fit,minmax\(min\(100%,16rem\),1fr\)\)\}/);
+  assert.match(search,/className="scope-search-filter-body scope-search-date-fields"/);
+  // All three in-map report tabs stay mounted in a row, but labels can wrap.
+  assert.match(feature,/\.loc-trace-float-tabs\{display:grid;grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
+  assert.match(feature,/\.loc-trace-float-tabs>\.loc-button\{[^}]*min-height:44px;[^}]*white-space:normal;overflow-wrap:anywhere/s);
+  assert.match(trace,/className="loc-trace-float-tabs"/);
+  // Factual source labels may not disappear behind an ellipsis on phones.
+  assert.match(publicStyles,/@media\(max-width:980px\)\{[\s\S]*?\.statistics-dashboard__breakdown-label>:is\(span,a\)\{[^}]*white-space:normal;overflow:visible;text-overflow:clip/s);
+  assert.match(statistics,/className="statistics-dashboard__breakdown-label"/);
+  assert.match(traceStyles,/\.loc-trace-territory-toolbar>label select\{min-height:44px;font-size:1rem\}/);
+  assert.match(traceStyles,/\.loc-trace-territory-time input\{width:100%;min-height:44px;/);
+  assert.match(territory,/className="loc-trace-territory-time"/);
+});
