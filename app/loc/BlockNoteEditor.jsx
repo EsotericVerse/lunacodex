@@ -130,6 +130,7 @@ export function ObjectEditor({
     {renderFields()}
     {mode==='article'&&showBodyEditor?<div className="scope-editor-blocknote"><span>{UI_COPY.common.body}</span>
       <BlockNoteEditor editorKey={'article:'+String(draft.editorKey||'')}
+        ariaLabel={UI_COPY.common.body}
         content={draft.bodyHtml??draft.bodyBlocks}
         onBlocksChange={blocks=>onChange?.(current=>({...current,bodyBlocks:blocks,body:blocksToPlainText(blocks)}))}
         onHtmlChange={html=>onChange?.(current=>({...current,bodyHtml:html}))}/>
@@ -147,7 +148,7 @@ export function ObjectEditor({
           const editValue=key==='content'?t('uiExtra.searchUI.attrShown'):current;
           const setValue=value=>onChange?.(previous=>key==='title'?{...previous,title:value}:{...previous,attrs:{...(previous.attrs||{}),[key]:value}});
           const Wrapper=kind==='multiline'&&!readOnly?'div':'label';
-          return <Wrapper className={'scope-search-attr-item'+(!readOnly?' is-editable':'')} key={key}>
+          return <Wrapper className={'scope-search-attr-item'+(!readOnly?' is-editable':'')+(kind==='multiline'&&!readOnly?' is-blocknote-field':'')} key={key}>
             <span className="scope-search-attr-name">{fieldLabel}</span>
             {readOnly?<span className="scope-search-attr-value">{String(editValue??'')}</span>
               :kind==='boolean'?<span className="scope-search-attr-boolean">

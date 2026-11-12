@@ -1688,3 +1688,85 @@
 
 .scope-bubble-layout-control{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;font-weight:650;color:var(--loc-heading)}
 .scope-bubble-layout-control .scope-select{width:auto;min-width:7rem;min-height:44px}
+
+
+/* BlockNote field placement after the unified editor cutover.
+   Keep its own toolbar/popover positioning; only correct the form grid and
+   minimum widths. No clipping/overflow:hidden on an editing surface. */
+.scope-page-editor,
+.scope-page-editor .scope-frame-field-grid,
+.scope-editor-blocknote,
+.scope-management-wide-field,
+.scope-blocknote,
+.scope-blocknote .bn-container{
+  min-width:0;
+  max-width:100%;
+}
+.scope-blocknote,
+.scope-blocknote .bn-container{
+  width:100%;
+  box-sizing:border-box;
+}
+.scope-blocknote .bn-editor{
+  box-sizing:border-box;
+  width:100%;
+  max-width:100%;
+  overflow-wrap:anywhere;
+}
+.scope-page-editor .scope-frame-field-grid{
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  align-items:start;
+  gap:.75rem;
+}
+.scope-page-editor .scope-frame-field-grid>.scope-frame-header-field:nth-child(3),
+.scope-page-editor .scope-frame-field-grid>.scope-management-wide-field:not(.scope-frame-header-field){
+  grid-column:1/-1;
+}
+.scope-page-editor .scope-frame-field-grid>.scope-management-wide-field:not(.scope-frame-header-field){
+  display:grid;
+  align-content:start;
+  gap:.5rem;
+  min-width:0;
+  width:100%;
+}
+.scope-search-attr-grid>.scope-search-attr-item.is-blocknote-field{
+  grid-column:1/-1;
+  display:grid;
+  align-content:start;
+  gap:.5rem;
+  min-width:0;
+  max-width:100%;
+}
+.scope-editor-blocknote{
+  width:100%;
+  display:grid;
+  gap:.5rem;
+}
+.scope-blocknote-linkbar{
+  justify-content:flex-start;
+  align-items:center;
+}
+.scope-blocknote-linkbar>.loc-button{min-height:44px}
+/* Inline edit actions occupy their own row instead of overlaying an expanded
+   BlockNote field (especially when action buttons wrap on small screens). */
+.scope-editable-block:is(.is-editing,.scope-block-draft) .scope-inline-editbar{
+  position:relative;
+  inset:auto;
+  max-width:100%;
+  width:fit-content;
+  margin:0 0 .75rem auto;
+  justify-content:flex-end;
+}
+.scope-editable-block:is(.is-editing,.scope-block-draft){padding-top:.85rem}
+@media(max-width:680px){
+  .scope-page-editor .scope-frame-field-grid{grid-template-columns:minmax(0,1fr)}
+  .scope-page-editor .scope-frame-field-grid>.scope-frame-header-field:nth-child(3),
+  .scope-page-editor .scope-frame-field-grid>.scope-management-wide-field:not(.scope-frame-header-field){grid-column:1/-1}
+  .scope-blocknote.is-editable .bn-editor{padding:.75rem}
+  .scope-frame-image-fields{grid-template-columns:minmax(0,1fr)}
+  .scope-frame-image-fields .scope-frame-image-url{grid-column:1/-1}
+  .scope-editable-block:is(.is-editing,.scope-block-draft) .scope-inline-editbar{
+    width:100%;
+    justify-content:flex-start;
+  }
+}

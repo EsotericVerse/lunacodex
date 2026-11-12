@@ -926,3 +926,52 @@
   ){grid-template-columns:minmax(0,1fr);}
   .scope-editor-stage{padding:.85rem;}
 }
+
+
+/* Rich fields need their own row in management forms after BlockNote replaces
+   the old compact textarea; keep short native fields in the existing grid. */
+.management-workspace-panel .scope-management-fields>.loc-trace-description-field,
+.management-workspace-panel .scope-management-fields>.scope-management-wide-field:has(>.scope-blocknote){
+  grid-column:1/-1;
+  min-width:0;
+  max-width:100%;
+  width:100%;
+}
+.management-workspace-panel .scope-management-fields>.loc-trace-description-field{
+  display:grid;
+  align-content:start;
+  gap:.5rem;
+}
+.management-workspace-panel .scope-management-fields>.loc-trace-description-field>span,
+.management-hero-copy-editor>.scope-management-wide-field>span{
+  display:block;
+  color:var(--loc-heading);
+  font-size:.92rem;
+  font-weight:650;
+  line-height:1.4;
+}
+.management-hero-copy-editor>.scope-management-wide-field{
+  min-width:0;
+  max-width:100%;
+  width:100%;
+  display:grid;
+  align-content:start;
+  gap:.5rem;
+}
+.scope-block-draft>.scope-editor-stage + .scope-editor-stage{
+  margin-top:.85rem;
+}
+.scope-editor-stage .scope-page-editor,
+.scope-editor-stage .scope-frame-field-grid{
+  min-width:0;
+  width:100%;
+}
+@media(max-width:680px){
+  .management-workspace-panel .scope-management-fields>.loc-trace-description-field,
+  .management-workspace-panel .scope-management-fields>.scope-management-wide-field:has(>.scope-blocknote){
+    grid-column:1/-1;
+  }
+  .management-hero-copy-editor>.scope-management-wide-field{
+    padding-inline:0;
+  }
+}
