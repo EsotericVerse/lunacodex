@@ -3,6 +3,7 @@ import {SCOPE_ROUTE_INDEX} from '../../modular/scope-route-index.js';
 import {portableContainsSpec} from '../providers/portable-search.mjs';
 import {portableRelation} from '../providers/sql-engine-ports.mjs';
 import {scopedZModelSchema} from '../../../zenstack/scoped-schema.mjs';
+import {createScopedLocClient} from '../../../zenstack/client.mjs';
 import {directMcpKysely} from './native-kysely.mjs';
 
 // This is a specific read model executed by the trusted MCP application, NOT
@@ -26,13 +27,21 @@ async function scopedDatabase(scopeid,env){
   const namespace=port.namespace??'silver';
   if(namespace&&!/^[A-Za-z][A-Za-z0-9_]*$/.test(namespace))
     throw unavailable('LOC MCP SQL namespace is invalid');
-  // The Galaxy ZModel is the physical table/column contract. Kysely executes
-  // the same visibility-filtered SQL, so no generic ORM endpoint is exposed.
+  // The existing Galaxy ZModel owns the physical mapping AND column contract.
+  // Use its scoped Kysely-backed query builder when a real trusted dialect is
+  // present; injected test ports without a dialect retain their SQL adapter.
   const galaxy=scopedZModelSchema({scopeId:scopeid,namespace}).models.Galaxy;
+  const required=['uid','title','content','createtime','date','site','url','search','list'];
+  if(required.some(field=>!Object.hasOwn(galaxy.fields,field)))
+    throw unavailable('Galaxy ZModel read contract mismatch');
   const relation=galaxy.attributes.find(attr=>attr.name==='@@map')
     ?.args?.[0]?.value?.value;
   if(typeof relation!=='string'||!relation)
     throw unavailable('Galaxy ZModel table mapping is missing');
+  if(port.dialect){
+    const client=createScopedLocClient({dialect:port.dialect,scopeId:scopeid,namespace});
+    return {db:client.$qb,table:'Galaxy'};
+  }
   return {db:port.db,table:portableRelation(relation,port.engine,namespace)};
 }
 // Private MCP conversations and old PR development records must never leak
