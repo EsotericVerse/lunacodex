@@ -55,7 +55,7 @@ export async function privateGalaxyLink(args={},token,subject,env={},
   const email=await getVerifiedPrincipal(token,subject,fetchImpl);
   const selected=await directMcpKysely(env);
   const {db,engine,namespace}=selected;
-  const rights=await locMcpPermissionsForEmail(db,email);
+  const rights=await locMcpPermissionsForEmail(db,email,{dialect:selected.dialect});
   const canRead=rights.grants.includes('global:manage')||
     rights.grants.includes(scopeid+':read');
   if(!canRead)throw denied('LOC Scope permission denied');
