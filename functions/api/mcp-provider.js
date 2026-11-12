@@ -1,5 +1,6 @@
 // LOC Web control surface for its own MCP upstream client; never a SQL API.
 import {verifiedLocWebsiteSession} from '../../app/loc/auth/verified-session.mjs';
+import {authorizeMcpRole} from '../../app/loc/mcp/access-roles.mjs';
 import {beginUpstreamOAuth,disconnectUpstream} from '../../app/loc/mcp/upstream-oauth.mjs';
 import {providerStatuses,setToolPolicy,clearToolPolicies,requestTool,pendingApprovals,
   decideApproval,approvalReceipt} from '../../app/loc/mcp/upstream-policy.mjs';
@@ -15,11 +16,13 @@ function json(data,status=200){
 function reject(message,status=400){
   throw Object.assign(new Error(message),{status});
 }
-async function identity(request){
+async function identity(request,env){
   const session=await verifiedLocWebsiteSession(request);
   const subject=String(session.userId||'');
   if(!/^loc_[A-Za-z0-9_-]{32,80}$/.test(subject))
     reject('LOC Auth identity required',401);
+  // The Admin UI has no independent MCP role or sign-up authority.
+  await authorizeMcpRole(session.email,env);
   return subject;
 }
 function browserConsent(request){
@@ -29,7 +32,7 @@ function browserConsent(request){
 async function handler(context){
   try{
     const {request,env}=context;
-    const subject=await identity(request);
+    const subject=await identity(request,env);
     const url=new URL(request.url);
     if(request.method==='GET'){
       const action=url.searchParams.get('action')||'status';
