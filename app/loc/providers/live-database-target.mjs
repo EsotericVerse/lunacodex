@@ -46,9 +46,7 @@ export function normalizeLiveTarget(id,profile){
   target:{provider:'custom',engine,connection_alias:id,connection_mode:'direct',
    ...(namespace?{schema_name:namespace}:{}),
    ...(table?{table_name:table}:{}),field_map:fieldMap},
-  profile:{engine,url:url.href,tls:true,authentication,
-   db_type:profile.db_type||'direct',project_id:profile.project_id||'',
-   provider_oauth:profile.provider_oauth||''}
+  profile:{engine,url:url.href,tls:true,authentication}
  };
 }
 export function runtimeTargetId(claims){

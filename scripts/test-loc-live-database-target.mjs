@@ -96,7 +96,7 @@ test('SSO Connection Secret can be rotated without changing the target or Projec
  const ui=readFileSync(new URL('../app/loc/LocDatabaseAdmin.jsx',import.meta.url),'utf8');
  const auth=readFileSync(new URL('../workers/loc-authority/index.mjs',import.meta.url),'utf8');
  assert.match(ui,/主動輪替 Connection Secret/);
- assert.match(ui,/Target ID、Project ID、SQL Type、Domain、Port/);
+ assert.match(ui,/Target ID、SQL Type、Domain、Port/);
  assert.match(ui,/可單獨輪替；留空則沿用既有值/);
  assert.match(ui,/若疑似外洩，請立即更換並撤銷舊憑證/);
  assert.match(ui,/\.\.\.\(form\.password\?\{password:form\.password\}:\{\}\)/);

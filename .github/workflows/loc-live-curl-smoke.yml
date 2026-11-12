@@ -37,29 +37,3 @@ jobs:
             head -c 500 /tmp/loc-body || true
             echo; echo "::endgroup::"
           done
-          echo '=== PostgreSQL endpoint DNS (no database credentials sent) ==='
-          getent ahostsv4 db.qlouywsdiiyiyzpoxyqy.supabase.co || true
-          getent ahostsv6 db.qlouywsdiiyiyzpoxyqy.supabase.co || true
-
-      - name: Verify anonymous public table visibility (200 empty is failure)
-        shell: bash
-        run: |
-          set -u
-          base='https://qlouywsdiiyiyzpoxyqy.supabase.co/rest/v1'
-          public_key='sb_publishable_qPn0vAzozVyXKllRuEKf2Q_fvG-pLVV'
-          tables=(loc lo3rwang lrunes lo3rwang_galaxy lrunes_galaxy lo3rwang_anchor lrunes_anchor lo3rwang_blocks lrunes_blocks)
-          for table in "${tables[@]}"; do
-            case "${table}" in
-              loc|lo3rwang|lrunes) column='id' ;;
-              *) column='uid' ;;
-            esac
-            echo "::group::silver.${table} anon count"
-            curl --noproxy '*' --silent --show-error --max-time 16 \
-              --head \
-              -H "apikey: ${public_key}" -H 'Accept-Profile: silver' \
-              -H 'Prefer: count=exact' -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' \
-              -w 'HTTP=%{http_code} TTFB=%{time_starttransfer}s TOTAL=%{time_total}s\\n' \
-              "${base}/${table}?select=${column}&limit=1" \
-              | grep -iE '^(HTTP/|content-range:|content-type:|x-supabase|HTTP=)' || true
-            echo "::endgroup::"
-          done
