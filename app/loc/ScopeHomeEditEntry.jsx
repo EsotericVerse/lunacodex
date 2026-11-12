@@ -39,9 +39,10 @@ export default function ScopeHomeEditEntry(){
         setMessage({key:'uiExtra.editBlocks.signInToEnterEditMode',showLogin:true});
         return;
       }
-      const allowed=scopeId==='loc'
-        ?result.authorizer?.canManageGlobalSync()
-        :result.authorizer?.canManageScopeSync(scopeId);
+      // The LOC homepage belongs to the LOC Group. Its own active
+      // loc:manage role may edit index Blocks; global Admin is required only
+      // for system-wide settings and non-homepage LOC resources.
+      const allowed=result.authorizer?.canManageScopeSync(scopeId);
       if(!allowed){
         setMessage({key:'uiExtra.editBlocks.editPermissionDenied'});
         return;

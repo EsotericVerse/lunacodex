@@ -27,6 +27,6 @@ public/vendor/rune-semantic-icons/
 /public/_loc/
 /public/_loc-building/
 
-# .claude/skills 由 scripts/link-claude-skills.mjs 產生（Windows 用 junction，其餘用 symlink）
-# 不進版控：committed symlink 在沒開 core.symlinks 的 Windows 會變成純文字檔
+# .claude/skills 由 scripts/sync-claude-skills.mjs 從 .agents/skills 實體複製產生（npm install 的 prepare 會跑）
+# 不進版控：這是產生物，來源是 .agents/skills；改 skill 一律改 .agents，重跑腳本即可同步
 .claude/skills
