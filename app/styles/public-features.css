@@ -329,18 +329,18 @@
 @media(max-width:980px){
   [data-public-feature="statics"] .statistics-dashboard__workspace{grid-template-columns:minmax(0,1fr)}
   [data-public-feature="statics"] .statistics-dashboard__breakdown{max-height:none}
-}
-@media(max-width:600px){
-  [data-public-feature="statics"] .statistics-dashboard__kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
-  [data-public-feature="statics"] .statistics-dashboard__kpi:first-child{grid-column:1/-1}
-  [data-public-feature="statics"] .statistics-dashboard__panel{padding:.75rem}
-  /* Do not replace the names of sources/Scopes with an ellipsis on a
-     narrow phone. Keep each name readable beside its numeric total. */
+  /* In this single-column layout, preserve complete source names,
+     including on a phone rotated into landscape. */
   [data-public-feature="statics"] .statistics-dashboard__breakdown-label{align-items:flex-start}
   [data-public-feature="statics"] .statistics-dashboard__breakdown-label>:is(span,a){
     white-space:normal;overflow:visible;text-overflow:clip;
     overflow-wrap:anywhere;
   }
+}
+@media(max-width:600px){
+  [data-public-feature="statics"] .statistics-dashboard__kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  [data-public-feature="statics"] .statistics-dashboard__kpi:first-child{grid-column:1/-1}
+  [data-public-feature="statics"] .statistics-dashboard__panel{padding:.75rem}
 }
 @media(max-width:380px){
   [data-public-feature="statics"] .statistics-dashboard__kpis{grid-template-columns:minmax(0,1fr)}
