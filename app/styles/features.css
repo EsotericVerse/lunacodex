@@ -114,7 +114,6 @@
 .scope-management-record span{color:var(--loc-muted);font-size:.86rem;overflow-wrap:anywhere}
 .scope-management-record[aria-pressed="true"]{border-color:var(--loc-accent-border);background:var(--loc-ui-accent-soft)}
 .scope-management-editor{position:sticky;top:5.4rem;display:grid;gap:.8rem}
-.scope-management-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(var(--management-min),1fr));gap:.7rem;margin:.8rem 0}
 .scope-management-fields label,.scope-management-wide-field{display:grid;gap:.35rem}
 .scope-management-wide-field{margin:.8rem 0}
 
@@ -349,7 +348,10 @@
   max-width:100%;
 }
 .scope-management-fields{
-  display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr));gap:.55rem;
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr));
+  gap:.55rem;
+  margin-bottom:.8rem;
 }
 .scope-search-attr-item,
 .scope-management-fields>label,.scope-management-fields>.scope-management-wide-field,

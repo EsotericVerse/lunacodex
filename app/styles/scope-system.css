@@ -27,11 +27,8 @@
   font-weight:650;
   opacity:1;
 }
-.scope-nav{overflow-x:auto}
 .scope-nav a,.scope-nav-current{text-decoration:none;white-space:nowrap;border-radius:999px}
 .scope-nav-current{font-weight:700;}
-
-.scope-search input{min-width:0;border-radius:999px;color:var(--scope-text)}
 
 .scope-main{margin:0 auto;}
 .scope-page,.scope-content,.scope-list{display:grid;}

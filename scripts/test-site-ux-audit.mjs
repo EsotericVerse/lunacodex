@@ -26,3 +26,22 @@ test('LOC and author home pages expose a main content landmark',()=>{
   assert.match(app,/role=\{forcedView==='home'&&\['loc','lo3rwang'\]\.includes\(scopeId\)\?'main':undefined\}/);
   assert.match(author,/return <main className="loc-view scope-home-composition">/);
 });
+
+test('Global NAV has one scrolling owner and preserves its normal-flow DOM',()=>{
+  const nav=read('app/styles/nav.css');
+  const ui=read('app/styles/uiux.css');
+  const old=read('app/styles/scope-system.css');
+  const app=read('app/AppShell.jsx');
+  const viewport=read('app/modular/ScrollableScopeNav.jsx');
+  const imports=read('app/globals.css');
+  assert.match(nav,/\.scope-nav\{[\s\S]*?overflow:visible;/);
+  assert.match(nav,/\.scope-nav-viewport\{[\s\S]*?overflow-x:auto;[\s\S]*?overflow-y:hidden;/);
+  assert.doesNotMatch(old,/\.scope-nav\{overflow-x:auto\}/);
+  assert.doesNotMatch(ui,/\.scope-nav::-webkit-scrollbar/);
+  assert.doesNotMatch(ui,/\.scope-search\{/);
+  assert.match(app,/className="scope-global"/);
+  assert.match(app,/className="scope-nav"/);
+  assert.match(viewport,/className="scope-nav-viewport"/);
+  assert.ok(imports.indexOf('@import "./styles/nav.css"')>imports.indexOf('@import "./styles/uiux.css"'));
+  assert.match(nav,/\.scope-global\[data-native="ios"\]/);
+});

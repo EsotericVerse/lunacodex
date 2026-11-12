@@ -77,3 +77,18 @@ test('shared DIV layout has one canonical CSS owner instead of stacked overrides
   assert.match(scope,/<section className="scope-page">/);
   assert.match(scope,/className=\{"scope-content"/);
 });
+
+test('shared management field layout is owned once and shrinks inside the page grid',()=>{
+  const features=source('app/styles/features.css');
+  const components=source('app/styles/components.css');
+  const ui=source('app/styles/uiux.css');
+  const shell=source('app/modular/ui.jsx');
+  assert.equal((features.match(/^\.scope-management-fields\{/gm)||[]).length,1);
+  assert.match(features,/\.scope-management-fields\{\s*display:grid;\s*grid-template-columns:repeat\(auto-fit,minmax\(min\(100%,15rem\),1fr\)\);/);
+  assert.doesNotMatch(components,/\.loc-view\{display:grid;gap:/);
+  assert.match(ui,/\.loc-view,\.scope-page,\.scope-content\{\s*gap:clamp/);
+  assert.match(ui,/\.loc-next-main,\.scope-main,\.loc-view,\.scope-page,\.scope-content\{\s*min-width:0;\s*max-width:100%;/);
+  assert.match(shell,/<section className="scope-page">/);
+  assert.match(shell,/className=\{"scope-content"/);
+  assert.doesNotMatch(ui,/\.scope-main--edit-workspace \.scope-content>\*/);
+});
