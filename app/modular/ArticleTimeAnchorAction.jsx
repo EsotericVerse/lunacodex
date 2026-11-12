@@ -1,6 +1,7 @@
 'use client';
 
 import {useEffect,useId,useRef,useState} from 'react';
+import dynamic from 'next/dynamic';
 import {useAccount} from '../loc/use-account';
 import {selectManagedScope} from '../loc/scope-data';
 import {DB_QUERY_BATCH_SIZE,selectRows} from '../loc/db-query.mjs';
@@ -9,6 +10,7 @@ import {allocateTimeUid} from '../loc/time-anchor-ranges.mjs';
 import {anniversarySuggestionsForDate} from '../loc/anniversary.mjs';
 import {editorSessionStatus,clearEditorSession,touchEditorSession} from '../loc/edit-session-ttl.mjs';
 
+const BlockNoteEditor=dynamic(()=>import('../loc/BlockNoteEditor'),{loading:()=>null});
 const validDay=value=>/^\d{4}-\d{2}-\d{2}$/.test(String(value||''));
 
 async function findDateAnchor(table,date){
@@ -31,6 +33,10 @@ export default function ArticleTimeAnchorAction({
   const [open,setOpen]=useState(false);
   const [table,setTable]=useState('');
   const [description,setDescription]=useState('');
+  const [descriptionRevision,setDescriptionRevision]=useState(0);
+  const applySuggestedDescription=value=>{
+    setDescription(value);setDescriptionRevision(revision=>revision+1);
+  };
   const [annualSuggestions,setAnnualSuggestions]=useState([]);
   const [notice,setNotice]=useState('');
   const [error,setError]=useState('');
@@ -78,7 +84,7 @@ export default function ArticleTimeAnchorAction({
       }
       setTable(target.time);
       const provided=Array.isArray(suggestions)?suggestions.filter(item=>item?.date===date):[];
-      setDescription(provided[0]?.title||'');
+      applySuggestedDescription(provided[0]?.title||'');
       setAnnualSuggestions(provided);
       setOpen(true);
       // Only check other anniversaries after the user explicitly opens
@@ -94,7 +100,7 @@ export default function ArticleTimeAnchorAction({
           birthday:target.birthday
         });
         setAnnualSuggestions(suggested);
-        if(suggested.length)setDescription(suggested[0].title);
+        if(suggested.length)applySuggestedDescription(suggested[0].title);
       }catch{setAnnualSuggestions([]);}
 
     }catch(cause){
@@ -112,6 +118,7 @@ export default function ArticleTimeAnchorAction({
     try{
       const details=description.trim();
       if(!details)throw new Error('請先填寫時間定錨的敘述。');
+      if(details.length>4000)throw new Error('時間定錨敘述最多 4000 字。');
       if(!validDay(date)||!table)throw new Error('定錨日期或資料表無效。');
       // The dialog may have remained open beyond the idle/session TTL.
       // Never bypass it: re-verify Clerk permission before renewing it.
@@ -165,15 +172,16 @@ export default function ArticleTimeAnchorAction({
           {annualSuggestions.map(item=><div key={item.sourceUid+':'+item.date}>
             <span>{item.title}｜原始定錨 {item.sourceDate}</span>
             <button type="button" className="loc-button" disabled={saving}
-              onClick={()=>setDescription(item.title)}>套用建議</button>
+              onClick={()=>applySuggestedDescription(item.title)}>套用建議</button>
           </div>)}
         </div>:null}
-        <label>敘述
-          <textarea className="scope-input" value={description} rows={4}
-            maxLength={4000} autoFocus required disabled={saving}
-            onChange={event=>setDescription(event.target.value)}
-            placeholder="寫下這個日期的重要事件或意義"/>
-        </label>
+        <div className="scope-culture-quick-notes"><span>敘述</span>
+          <BlockNoteEditor editorKey={'inline-time-note:'+scopeId+':'+date+':'+descriptionRevision}
+            content={description} editable={!saving} plainTextOnly canInsertImage={false}
+            suggestionKind="time"
+            suggestions={annualSuggestions.map(item=>({type:'aniversary',title:item.title}))}
+            onPlainTextChange={setDescription}/>
+        </div>
         {error?<p className="scope-status scope-error" role="alert">{error}</p>:null}
         <div className="scope-edit-switch-actions">
           <button type="submit" className="loc-button" disabled={saving||!description.trim()}>

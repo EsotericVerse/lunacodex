@@ -19,6 +19,7 @@ import {
   readDefaultTraceRoute,setDefaultTraceRoute,clearDefaultTraceRoute,chooseDefaultTraceRoute
 } from '../modular/features/trace/trace-route-preference.mjs';
 
+const BlockNoteEditor=dynamic(()=>import('./BlockNoteEditor'),{loading:()=>null});
 const TraceMap=dynamic(()=>import('../modular/features/trace/TraceMap'),{
   ssr:false,loading:()=> <p className="scope-status">正在載入地圖…</p>
 });
@@ -112,6 +113,11 @@ export default function TraceRouteManager({scopeId,mode='all'}){
     revalidateIfStale:false,revalidateOnFocus:false,revalidateOnReconnect:false
   });
   const allAnchors=anchorIndex.data||[];
+  const suggestionRows=useMemo(()=>[
+    ...(anchorIndex.data||[]).map(row=>({...row,type:'point'})),
+    ...(index.data||[]).filter(row=>row.source_scope===owner)
+      .map(row=>({...row,type:row.trace_type}))
+  ],[anchorIndex.data,index.data,owner]);
   const anchorMap=useMemo(()=>new Map(allAnchors.map(a=>[a.uid,a])),[allAnchors]);
   const options=useMemo(()=>allAnchors.map(row=>({value:row.uid,label:row.title+(row.postal_address?' · '+row.postal_address:'')})),[allAnchors]);
   const poolOptions=useMemo(()=>spool.map(uid=>anchorMap.get(uid))
@@ -328,7 +334,12 @@ export default function TraceRouteManager({scopeId,mode='all'}){
       <h4>{editingUid?'編輯':'新增'}{type==='path'?'路線圖':'痕跡圖'}</h4>
       <div className="scope-management-fields">
         <label>名稱<input required maxLength={120} value={title} onChange={e=>setTitle(e.target.value)} disabled={busy}/></label>
-        <label>說明<textarea rows={2} maxLength={2000} value={description} onChange={e=>setDescription(e.target.value)} disabled={busy}/></label>
+        <div className="loc-trace-description-field"><span>說明</span>
+          <BlockNoteEditor editorKey={'route-note:'+owner+':'+(editingUid||type)}
+            content={description} editable={!busy} plainTextOnly canInsertImage={false}
+            suggestionKind="spatial" suggestions={suggestionRows}
+            onPlainTextChange={setDescription}/>
+        </div>
         <label>可見性
           <select className="scope-select" value={Number(invisible)} onChange={e=>setInvisible(e.target.value==='1')} disabled={busy}>
             <option value={0}>顯示</option><option value={1}>隱藏</option>

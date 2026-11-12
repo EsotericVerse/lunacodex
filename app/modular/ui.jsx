@@ -119,7 +119,7 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
           title={managementMode?shared?.title||managementSlot.label:titleOverride||shared?.title||fallbackCopy.title}
           subtitle={managementMode?shared?.subtitle||'':shared?shared.subtitle:fallbackCopy.subtitle}
           description={managementMode?shared?.description||'':shared?shared.description:fallbackCopy.description}
-          rich={Boolean(shared)&&!managementMode}
+          rich={Boolean(shared)&&(!managementMode||/<[a-z][^>]*>/i.test(shared?.description||''))}
         />
       </header>
       <div className={"scope-content"+(publicFeature?" loc-public-content":"")}>

@@ -8,6 +8,7 @@ import {heroImageUrl as imageUrlOf} from '../../hero-image.mjs';
 import {useEditDock,useEditDockForm} from '../../../modular/edit-dock';
 
 const ScopeEditableBlocks=dynamic(()=>import('../../ScopeEditableBlocks'),{loading:()=>null});
+const BlockNoteEditor=dynamic(()=>import('../../BlockNoteEditor'),{loading:()=>null});
 
 // Admin has six feature tabs. Management Heroes are editors INSIDE the
 // corresponding feature panel, not extra navigation items.
@@ -208,6 +209,8 @@ function ManagementHeroDetails({slot,onDirtyChange}){
     return()=>onDirtyChange?.('management-'+page,false);
   },[dirty,page,onDirtyChange]);
   useEditDockForm({save,isBusy:()=>busy,isDirty:()=>dirty});
+  // Preserve the existing UI/UX field order, two-column grid and labels.
+  // Only the body editor switches from a textarea to homepage BlockNote.
   const field=(key,label,maxLength)=><label className="management-hero-copy-row" key={key}>
     <span>{label}</span>
     <input type="text" className="scope-search-input" maxLength={maxLength}
@@ -221,12 +224,13 @@ function ManagementHeroDetails({slot,onDirtyChange}){
       {field('title','中文大標題',64)}
       {field('subtitle','標題說明',128)}
     </div>
-    <label className="scope-management-wide-field">
+    <div className="scope-management-wide-field">
       <span>下方正文</span>
-      <textarea className="scope-search-input" rows={4}
-        disabled={rows===null||busy} value={draft.text}
-        onChange={event=>setDraft(current=>({...current,text:event.target.value}))}/>
-    </label>
+      {rows===null?<p className="scope-status" role="status">正在載入 Hero 文字…</p>:
+        <BlockNoteEditor editorKey={'management-hero:'+page+':'+revision}
+          content={draft.text||''} editable={!busy} canInsertImage={false}
+          onHtmlChange={html=>setDraft(current=>({...current,text:html}))}/>}
+    </div>
     {status?<p className="scope-status" role="status">{status}</p>:null}
     {!inDock?<button className="loc-button primary" type="button" disabled={busy||rows===null||!canSave} onClick={save}>
       {busy?'儲存中…':'儲存管理區塊'}

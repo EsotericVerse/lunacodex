@@ -26,19 +26,26 @@ export default function BlockNoteEditor({
   onPlainTextChange=null,
   onHtmlChange=null,
   canInsertImage=true,
+  suggestionKind='',
+  suggestions=[],
+  plainTextOnly=false,
+  ariaLabel='文字編輯器',
   className=''
 }){
   const source=initialContent===undefined?content:initialContent;
-  const normalized=normalizeBlocks(source);
+  // Plain descriptions must keep literal angle-bracket text, not parse it as HTML.
+  const normalized=plainTextOnly
+    ?plainTextToBlocks(typeof source==='string'?source:blocksToPlainText(source))
+    :normalizeBlocks(source);
   const initialBlocks=Array.isArray(normalized)?normalized:plainTextToBlocks('');
   const initialHtml=Array.isArray(normalized)?'':String(normalized?.html||'');
-  const initialMarkdown=!initialHtml&&looksLikeMarkdown(source)?String(source):'';
+  const initialMarkdown=!plainTextOnly&&!initialHtml&&looksLikeMarkdown(source)?String(source):'';
   const handleChange=blocks=>{
     onChange?.(blocks);
     onBlocksChange?.(blocks);
     onPlainTextChange?.(blocksToPlainText(blocks));
   };
-  return <div className={'scope-blocknote '+(editable?'is-editable ':'is-readonly ')+className}>
+  return <div className={'scope-blocknote '+(editable?'is-editable ':'is-readonly ')+(plainTextOnly?'is-plain-text ':'')+className}>
     <BlockNoteCanvas
       key={editorKey}
       initialBlocks={initialBlocks}
@@ -47,7 +54,11 @@ export default function BlockNoteEditor({
       editable={editable}
       onChange={onChange||onBlocksChange||onPlainTextChange?handleChange:null}
       onHtmlChange={onHtmlChange}
-      canInsertImage={canInsertImage}
+      canInsertImage={canInsertImage&&!plainTextOnly}
+      suggestionKind={suggestionKind}
+      suggestions={suggestions}
+      plainTextOnly={plainTextOnly}
+      ariaLabel={ariaLabel}
     />
   </div>;
 }
@@ -89,7 +100,10 @@ export function ObjectEditor({
     if(field.kind==='rich'){
       const element=<BlockNoteEditor editorKey={field.editorKey} content={field.content}
         onBlocksChange={field.onBlocksChange} onHtmlChange={field.onHtmlChange}
-        onPlainTextChange={field.onPlainTextChange} canInsertImage={field.canInsertImage!==false}/>;
+        onPlainTextChange={field.onPlainTextChange} canInsertImage={field.canInsertImage!==false}
+        editable={field.disabled!==true} plainTextOnly={field.plainTextOnly===true}
+        suggestionKind={field.suggestionKind||''} suggestions={field.suggestions||[]}
+        ariaLabel={field.ariaLabel||'文字編輯器'}/>;
       return field.bare?<Fragment key={field.key}>{element}</Fragment>
         :<div key={field.key} className="scope-management-wide-field">
           {field.label!=null?<span>{field.label}</span>:null}
@@ -132,19 +146,24 @@ export function ObjectEditor({
           const current=key==='title'?draft.title:draft.attrs?.[key];
           const editValue=key==='content'?t('uiExtra.searchUI.attrShown'):current;
           const setValue=value=>onChange?.(previous=>key==='title'?{...previous,title:value}:{...previous,attrs:{...(previous.attrs||{}),[key]:value}});
-          return <label className={'scope-search-attr-item'+(!readOnly?' is-editable':'')} key={key}>
+          const Wrapper=kind==='multiline'&&!readOnly?'div':'label';
+          return <Wrapper className={'scope-search-attr-item'+(!readOnly?' is-editable':'')} key={key}>
             <span className="scope-search-attr-name">{fieldLabel}</span>
             {readOnly?<span className="scope-search-attr-value">{String(editValue??'')}</span>
               :kind==='boolean'?<span className="scope-search-attr-boolean">
                 <input type="checkbox" checked={current===true} onChange={event=>setValue(event.target.checked)}/>
                 <span>{current===true?'true':'false'}</span>
               </span>
-              :kind==='array'||kind==='multiline'?<textarea rows={2} aria-label={fieldLabel}
+              :kind==='multiline'?<BlockNoteEditor
+                editorKey={'article-attribute:'+String(draft.editorKey||'')+':'+key}
+                content={String(current??'')} ariaLabel={fieldLabel}
+                plainTextOnly canInsertImage={false} onPlainTextChange={setValue}/>
+              :kind==='array'?<textarea rows={2} aria-label={fieldLabel}
                 value={String(current??'')} onChange={event=>setValue(event.target.value)}/>
               :<input aria-label={key} type={kind==='date'?'datetime-local':kind==='number'?'number':'text'}
                 value={String(current??'')} onChange={event=>setValue(event.target.value)}/>}
             {key==='media_link'&&mediaHref?String(current||'').split(/[\n,]+/).map(id=>id.trim()).filter(Boolean).map(id=><ScopeLink key={id} href={mediaHref(id)} className="scope-search-media-edit-link">{t('uiExtra.searchUI.editMedia',{id})}</ScopeLink>):null}
-          </label>;
+          </Wrapper>;
         })}
       </div>
     </section>:null}
