@@ -47,7 +47,7 @@ test('management Hero uses shared BlockNote rich editor, no textarea',()=>{
   assert.match(management,/className="management-hero-copy-grid"/);
   assert.match(management,/className="management-hero-copy-row"/);
   assert.match(management,/<BlockNoteEditor editorKey=/);
-  assert.match(management,/onHtmlChange:html=>setDraft/);
+  assert.match(management,/onHtmlChange=\{html=>setDraft/);
   assert.doesNotMatch(management,/<textarea/);
   assert.match(read('app/modular/ui.jsx'),/rich=\{Boolean\(shared\)/);
 });
@@ -63,6 +63,15 @@ test('keyword and source descriptions reuse shared BlockNote with text persisten
   assert.match(keyword,/<textarea rows=\{9\} value=\{keywordText\}/);
   const source=read('app/loc/SourceCategoryEditor.jsx');
   assert.doesNotMatch(source,/<textarea/);
+});
+
+test('freeform multiline attributes use BlockNote while structural arrays stay typed',()=>{
+  const code=read('app/loc/BlockNoteEditor.jsx');
+  assert.match(code,/kind==='multiline'\?<BlockNoteEditor/);
+  assert.match(code,/kind==='array'\?<textarea/);
+  assert.match(code,/const Wrapper=kind==='multiline'/);
+  const css=read('app/styles/features.css');
+  assert.match(css,/\.scope-blocknote\.is-plain-text \.bn-editor/);
 });
 
 test('BlockNote native link controls replace handwritten link buttons',()=>{

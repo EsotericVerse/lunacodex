@@ -146,7 +146,8 @@ export function ObjectEditor({
           const current=key==='title'?draft.title:draft.attrs?.[key];
           const editValue=key==='content'?t('uiExtra.searchUI.attrShown'):current;
           const setValue=value=>onChange?.(previous=>key==='title'?{...previous,title:value}:{...previous,attrs:{...(previous.attrs||{}),[key]:value}});
-          return <label className={'scope-search-attr-item'+(!readOnly?' is-editable':'')} key={key}>
+          const Wrapper=kind==='multiline'&&!readOnly?'div':'label';
+          return <Wrapper className={'scope-search-attr-item'+(!readOnly?' is-editable':'')} key={key}>
             <span className="scope-search-attr-name">{fieldLabel}</span>
             {readOnly?<span className="scope-search-attr-value">{String(editValue??'')}</span>
               :kind==='boolean'?<span className="scope-search-attr-boolean">
@@ -162,7 +163,7 @@ export function ObjectEditor({
               :<input aria-label={key} type={kind==='date'?'datetime-local':kind==='number'?'number':'text'}
                 value={String(current??'')} onChange={event=>setValue(event.target.value)}/>}
             {key==='media_link'&&mediaHref?String(current||'').split(/[\n,]+/).map(id=>id.trim()).filter(Boolean).map(id=><ScopeLink key={id} href={mediaHref(id)} className="scope-search-media-edit-link">{t('uiExtra.searchUI.editMedia',{id})}</ScopeLink>):null}
-          </label>;
+          </Wrapper>;
         })}
       </div>
     </section>:null}
