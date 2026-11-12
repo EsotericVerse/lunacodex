@@ -46,8 +46,8 @@ export async function suggestNewKeywords({galaxy,existingRows=[],onProgress=()=>
     if(countError||count===null||count===undefined||(count==null||!Number.isSafeInteger(Number(count))))
       throw new Error(countError?.message||'無法取得完整文章筆數');
     const total=Number(count);
-    // The existing Galaxy.date B-tree supports a bounded, ascending cursor.
-    // Never use deep OFFSET sorting of all article bodies or SQL UID ordering.
+    // Standard (date, uid) keyset paging retrieves every article once without
+    // a second read of the same boundary date or growing OFFSET scans.
     let completed=0;
     const seen=new Set();
     const readPage=async build=>{
@@ -88,52 +88,50 @@ export async function suggestNewKeywords({galaxy,existingRows=[],onProgress=()=>
       }
       return match[1];
     };
-    let after=null;
+    // One ordered keyset read per page: the final date of a page no longer
+    // needs to be downloaded again through a separate same-day OFFSET scan.
+    // SQL compares DATE and UID using its own ordering/collation.
+    const quoted=value=>'"'+String(value).replace(/\\/g,'\\\\').replace(/"/g,'\\"')+'"';
+    let afterDate=null,afterUid=null;
     for(;;){
       if(signal?.aborted)throw aborted();
       const {data}=await readPage(relation=>{
         let query=relation.select(ARTICLE_COLUMNS).not('date','is',null)
-          .order('date',{ascending:true}).limit(PAGE_SIZE);
-        if(after!==null)query=query.gt('date',after);
+          .order('date',{ascending:true}).order('uid',{ascending:true})
+          .limit(PAGE_SIZE);
+        if(afterDate!==null)query=query.or(
+          'date.gt.'+afterDate+',and(date.eq.'+afterDate+
+          ',uid.gt.'+quoted(afterUid)+')');
         return query;
       });
       const page=Array.isArray(data)?data:[];
       if(!page.length)break;
-      const normalizedPage=page.map(row=>({...row,date:normalizeDay(row?.date)}));
-      const boundary=normalizedPage[normalizedPage.length-1]?.date;
-      if(!boundary||normalizedPage.some((row,index)=>!row.date||
-        (after!==null&&row.date<=after)||row.date>boundary||
-        (index>0&&row.date<normalizedPage[index-1].date)))
-        throw new Error('Galaxy 日期分頁資料不完整（日期游標或格式異常）');
-      // Always fetch the entire last-day peer group: PostgreSQL may return
-      // pages smaller than LIMIT, and date alone is not a unique cursor.
-      const prefix=normalizedPage.filter(row=>row.date!==boundary);
-      // Stream the boundary day with stable UID paging. No total-row ceiling,
-      // and no need to hold an entire high-density date in browser memory.
-      await consumePage(prefix);
-      for(let peerOffset=0;;){
-        const {data}=await readPage(relation=>relation.select(ARTICLE_COLUMNS)
-          .eq('date',boundary).order('uid',{ascending:true})
-          .range(peerOffset,peerOffset+PAGE_SIZE-1));
-        const part=Array.isArray(data)?data:[];
-        if(!part.length)break;
-        const normalized=part.map(row=>({...row,date:normalizeDay(row?.date)}));
-        if(normalized.some(row=>row.date!==boundary))
-          throw new Error('Galaxy 同日文章分頁日期異常，未覆寫先前暫存');
-        await consumePage(normalized);
-        peerOffset+=part.length;
-      }
-      after=String(boundary);
+      const normalized=page.map(row=>({...row,date:normalizeDay(row?.date)}));
+      if(normalized.some((row,index)=>!row.date||typeof row.uid!=='string'||
+        !row.uid||(afterDate!==null&&row.date<afterDate)||
+        (index>0&&row.date<normalized[index-1].date)))
+        throw new Error('Galaxy 日期／UID 游標資料不完整，未覆寫先前暫存');
+      await consumePage(normalized);
+      afterDate=normalized.at(-1).date;
+      afterUid=normalized.at(-1).uid;
     }
-    // Undated records are scanned completely with no fixed row ceiling.
-    for(let undatedOffset=0;;){
-      const {data}=await readPage(relation=>relation.select(ARTICLE_COLUMNS)
-        .is('date',null).order('uid',{ascending:true})
-        .range(undatedOffset,undatedOffset+PAGE_SIZE-1));
+    // Undated rows also use a bounded UID keyset instead of deep OFFSET.
+    // Both scans are complete even when the transport returns a short page.
+    let afterUndatedUid=null;
+    for(;;){
+      if(signal?.aborted)throw aborted();
+      const {data}=await readPage(relation=>{
+        let query=relation.select(ARTICLE_COLUMNS)
+          .is('date',null).order('uid',{ascending:true}).limit(PAGE_SIZE);
+        if(afterUndatedUid!==null)query=query.gt('uid',afterUndatedUid);
+        return query;
+      });
       const part=Array.isArray(data)?data:[];
       if(!part.length)break;
+      if(part.some(row=>row?.date!=null||typeof row.uid!=='string'||!row.uid))
+        throw new Error('Galaxy 未定日期游標資料不完整，未覆寫先前暫存');
       await consumePage(part);
-      undatedOffset+=part.length;
+      afterUndatedUid=part.at(-1).uid;
     }
     if(completed!==total)throw new Error('文章數量在掃描期間變動，未覆寫先前暫存');
     const done=await send({type:'finish'});

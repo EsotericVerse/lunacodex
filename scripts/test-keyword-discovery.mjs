@@ -4,6 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createNewKeywordDiscovery,existingKeywordSet,readableKeywordContent} from '../app/loc/keyword-discovery.mjs';
 import {detectChangepoints,PoissonCost} from 'karaul';
+import {parsePortableOrExpression} from '../app/loc/providers/portable-search.mjs';
 import {detectCountChangepoints} from '../app/loc/karaul-count-changepoints.mjs';
 
 test('discovery only excludes existing Item names and literal Keywords, without mutating them',()=>{
@@ -156,38 +157,65 @@ test('PELT suggestions use weighted novel hits per article, not a twice-divided 
   assert.equal(result.overallExistingRatio,30/220);
 });
 
-test('new-term discovery reads dated Galaxy via date cursor, peers and undated exactly once',async()=>{
+test('new-term discovery uses one-pass date + UID keysets including dense days and undated pages',async()=>{
   const code=readFileSync(new URL('../app/loc/keyword-discovery-runner.mjs',import.meta.url),'utf8')
     .replace(/^import .*$/gm,'').replaceAll('export async function ','async function ')
     .replaceAll('import.meta.url',"'file:///test.mjs'");
-  const docs=Array.from({length:1785},(_,i)=>({
-    uid:'Aa'+String(i).padStart(6,'0'),date:i<1000?'2026-01-01':
-      i<1600?'2026-02-01':i<1783?'2026-03-01':null,
+  // Dense same-date peer groups and missing dates must not trigger rereads.
+  const docs=Array.from({length:4207},(_,i)=>({
+    uid:'Aa'+String(i).padStart(6,'0'),
+    date:i<1550?'2026-01-01':
+      i<2450?'2026-02-01':
+      i<2800?'2026-03-01':null,
     content:'都市牢籠',createtime:'2026-01-01T00:00:00Z'
   }));
   const queries=[],batches=[];
   const dbAuthRelation=()=>({
     select(columns,options={}){
-      const query={columns,options,filters:[],orders:[],limit:Infinity};
+      const query={columns,options,filters:[],orders:[],or:'',limit:Infinity};
       const builder={
         gt(k,v){query.filters.push([k,'gt',v]);return builder;},
         not(k,op,v){query.filters.push([k,'not',op,v]);return builder;},
         eq(k,v){query.filters.push([k,'eq',v]);return builder;},
         is(k,v){query.filters.push([k,'is',v]);return builder;},
+        or(expression){query.or=expression;return builder;},
         order(k){query.orders.push(k);return builder;},
         limit(n){query.limit=n;return builder;},
+        range(){throw new Error('Deep OFFSET must not be used by keyword discovery');},
         then(resolve,reject){
           queries.push(query);
           let rows=docs;
-          for(const f of query.filters){
-            if(f[1]==='gt')rows=rows.filter(row=>row[f[0]]>f[2]);
-            else if(f[1]==='eq')rows=rows.filter(row=>row[f[0]]===f[2]);
-            else if(f[1]==='is')rows=rows.filter(row=>row[f[0]]===null);
-            else if(f[1]==='not')rows=rows.filter(row=>row[f[0]]!==null);
+          for(const [key,op,value] of query.filters){
+            if(op==='gt')rows=rows.filter(row=>row[key]>value);
+            else if(op==='eq')rows=rows.filter(row=>row[key]===value);
+            else if(op==='is')rows=rows.filter(row=>row[key]===null);
+            else if(op==='not')rows=rows.filter(row=>row[key]!==null);
           }
-          if(query.orders.length)rows=[...rows].sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+          if(query.or){
+            const parsed=parsePortableOrExpression(query.or);
+            assert.equal(parsed.items.length,2);
+            const first=parsed.items[0],second=parsed.items[1];
+            assert.equal(first.column,'date');
+            assert.equal(first.operator,'gt');
+            assert.equal(second.type,'and');
+            assert.equal(second.items.length,2);
+            const date=first.value,uid=second.items[1].value;
+            assert.equal(second.items[0].value,date);
+            assert.equal(second.items[1].column,'uid');
+            rows=rows.filter(row=>row.date>date||
+              row.date===date&&row.uid>uid);
+          }
+          if(query.orders.length)rows=[...rows].sort((a,b)=>{
+            for(const field of query.orders){
+              const comparison=String(a[field]).localeCompare(String(b[field]),'en');
+              if(comparison)return comparison;
+            }
+            return 0;
+          });
+          // Emulate a transport which returns less than LIMIT without being done.
+          const cap=Math.min(query.limit,413);
           return Promise.resolve({
-            data:options.head?null:rows.slice(0,query.limit),
+            data:options.head?null:rows.slice(0,cap),
             count:options.count==='exact'?rows.length:null,error:null
           }).then(resolve,reject);
         }
@@ -211,12 +239,18 @@ test('new-term discovery reads dated Galaxy via date cursor, peers and undated e
     galaxy:'silver.lo3rwang_galaxy',existingRows:[],onProgress:()=>{}
   });
   const all=batches.flat().map(row=>row.uid);
-  assert.equal(result.read,1785);
+  assert.equal(result.read,docs.length);
   assert.equal(new Set(all).size,docs.length);
   assert.deepEqual(new Set(all),new Set(docs.map(row=>row.uid)));
-  assert.ok(queries.some(query=>query.orders.includes('date')));
-  assert.ok(queries.every(query=>!query.orders.includes('uid')));
-  assert.ok(queries.every(query=>query.limit===Infinity||query.limit<=10000));
+  assert.ok(queries.some(query=>query.orders.join(',')==='date,uid'));
+  assert.ok(queries.some(query=>query.or.includes('uid.gt.')));
+  assert.ok(queries.some(query=>query.filters.some(([field,op])=>field==='uid'&&op==='gt')));
+  assert.equal(queries.filter(query=>query.options.head).length,1);
+  assert.ok(queries.every(query=>query.limit===Infinity||query.limit<=1000));
+  assert.ok(queries.every(query=>!query.orders.includes('createtime')));
+  // Excluding the initial count query, one scan delivers every body once.
+  const transferred=batches.reduce((sum,batch)=>sum+batch.length,0);
+  assert.equal(transferred,docs.length);
 });
 
 test('Karaul exact-count prefix cost preserves native Poisson changepoints',()=>{
