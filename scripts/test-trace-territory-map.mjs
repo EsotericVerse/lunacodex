@@ -103,7 +103,20 @@ test('the annual source summary is exposed on existing SQL ports, with no Schema
   const client=source('app/modular/features/trace/TraceTerritoryPanel.jsx');
   assert.match(client,/p_view:'trace_territory'/);
   assert.match(client,/p_options:\{withPoints:true\}/);
+  const publicQuery=source('app/loc/server/native-public-query.mjs');
+  assert.ok(publicQuery.includes("'exact','withPoints'"));
+  assert.ok(publicQuery.includes("mode!=='trace_territory'||typeof options.withPoints!=='boolean'"));
+  assert.ok(source('zenstack/model-column-guard.mjs').includes(".on('a.type','=','point').on('a.invisible','=',false)"));
   assert.match(backend,/zmodelGalaxyPointJoin\(trx.selectFrom\(grouped\)/);
+  const territoryQuery=backend.slice(backend.indexOf('async function traceTerritory('),
+    backend.indexOf('async function traceDaily('));
+  assert.match(territoryQuery,/\.where\('a\.uid','is not',null\)/,
+    'hidden or missing Point must not appear in annual counts');
+  assert.match(territoryQuery,/if\(withPoints\)/,
+    'Point projection is optional, Point visibility filtering is not');
+  assert.doesNotMatch(territoryQuery,/g\.trace|g\.list/,
+    'Galaxy article flags must not override Point visibility');
+
   assert.match(backend,/withPoints:options.withPoints===true/);
   assert.match(client,/queryKey:\['trace-territory-v1',year/);
   assert.match(client,/onChange=\{event=>\{setStep\(Number\(event\.target\.value\)\)/);

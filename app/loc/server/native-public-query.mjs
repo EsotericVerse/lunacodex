@@ -163,7 +163,7 @@ function normalizeAction(body){
 
 const PUBLIC_ANALYTICS=new Set(['culture_list','trace_places','trace_territory','trace_daily',
   'trace_keywords','lane_daily','shared_classes','search_summary','keyword_catalog','keyword_summary']);
-const PUBLIC_ANALYTICS_OPTIONS=new Set(['scopeIds','placeIds','classUid','source','site','offset','media','platform','exact']);
+const PUBLIC_ANALYTICS_OPTIONS=new Set(['scopeIds','placeIds','classUid','source','site','offset','media','platform','exact','withPoints']);
 const PUBLIC_SCOPES=[...SCOPE].filter(id=>id!=='loc');
 function normalizeAnalytics(body){
   if(Object.keys(body).some(key=>!['kind','args'].includes(key))||
@@ -180,6 +180,9 @@ function normalizeAnalytics(body){
   if(!options||typeof options!=='object'||Array.isArray(options)||
      Object.keys(options).some(key=>!PUBLIC_ANALYTICS_OPTIONS.has(key)))
     throw invalid('Invalid public analytics options');
+  if(options.withPoints!==undefined&&
+      (mode!=='trace_territory'||typeof options.withPoints!=='boolean'))
+    throw invalid('Invalid Trace territory Point join option');
   const ids=options.scopeIds;
   if(ids!==undefined&&(!Array.isArray(ids)||ids.length>100||
      ids.some(id=>!PUBLIC_SCOPES.includes(id))))
