@@ -53,7 +53,7 @@ test('iPhone navigation controls are touch-sized and metadata fields do not trig
   const layout=read('app/layout.jsx');
   // Favorites scroll within .scope-nav-viewport; outside arrows and LOC return
   // must each remain a full 44px touch target on narrow screens.
-  assert.match(nav,/@media\(max-width:760px\)\{[\s\S]*?\.scope-nav-loc-home\{min-height:44px;[\s\S]*?\.scope-nav-arrow,\.scope-nav-close-folder\{min-width:44px;min-height:44px;/);
+  assert.match(nav,/@media\(max-width:760px\)\{[\s\S]*?\.scope-nav-loc-home\{min-width:44px;min-height:44px;[\s\S]*?\.scope-nav-arrow,\.scope-nav-close-folder\{min-width:44px;min-height:44px;/);
   assert.match(fields,/@media\(max-width:760px\)\{\s*\.scope-search-attr-item :is\(input:not\(\[type="checkbox"\]\):not\(\[type="radio"\]\),textarea\),[\s\S]*?font-size:1rem;/);
   assert.match(dock,/bottom:calc\(\.55rem \+ env\(safe-area-inset-bottom,0px\)\)/);
   assert.match(dock,/grid-template-columns:repeat\(6,minmax\(0,1fr\)\)/);
