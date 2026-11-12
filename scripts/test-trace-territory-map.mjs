@@ -110,7 +110,7 @@ test('Motion changes map modes without mounting two MapLibre canvases together',
   assert.ok(parseJsx(trace,{sourceType:'module',plugins:['jsx']}).program.body.length>0);
   assert.match(trace,/import \{motion,useReducedMotion\} from 'motion\/react'/);
   assert.match(trace,/<div key=\{mapMode\} className="loc-trace-map-transition"/);
-  assert.match(trace,/mapMode==='territory'\?<TraceTerritoryPanel scopeId=\{scopeId\}\/\>:/);
+  assert.match(trace,/mapMode==='territory'\?<TraceTerritoryPanel scopeId=\{scopeId\} onMapReady=/);
   assert.match(trace,/<\/TraceMap>\}/);
   assert.match(trace,/className="loc-trace-map-unfold"/);
   assert.match(trace,/loc-trace-map-unfold__leaf--left/);
