@@ -61,22 +61,6 @@ function rpcError(id,code,message,httpStatus=200){
   return response({jsonrpc:'2.0',id,error:{code,message}},httpStatus);
 }
 const TOOLS=[
-  {name:'provider_list',description:'List LOC user-linked upstream MCP providers and their function policies (no credentials).',
-    inputSchema:{type:'object',properties:{},additionalProperties:false},
-    annotations:{readOnlyHint:true,destructiveHint:false}},
-  {name:'provider_tools',description:'Discover tools offered by one already-authorized upstream MCP provider. This does not grant permission to call them.',
-    inputSchema:{type:'object',properties:{provider:{type:'string',enum:['clerk','github','neon','supabase']}},
-      required:['provider'],additionalProperties:false},
-    annotations:{readOnlyHint:true,destructiveHint:false}},
-  {name:'provider_call',description:'Execute a provider MCP function only if LOC policy is auto; ask queues an explicit human approval, deny blocks the call.',
-    inputSchema:{type:'object',properties:{
-      provider:{type:'string',enum:['clerk','github','neon','supabase']},
-      tool:{type:'string'},args:{type:'object'}},
-      required:['provider','tool'],additionalProperties:false}},
-  {name:'provider_receipt',description:'Read the result of an explicitly approved upstream MCP operation using its receipt ID.',
-    inputSchema:{type:'object',properties:{approval_id:{type:'string'}},
-      required:['approval_id'],additionalProperties:false},
-    annotations:{readOnlyHint:true,destructiveHint:false}},
   {name:'loc_connection_status',description:'Check LOC MCP and LOC OAuth connectivity (read only).',
     inputSchema:{type:'object',properties:{},additionalProperties:false},
     annotations:{readOnlyHint:true,destructiveHint:false}},
@@ -108,6 +92,22 @@ const TOOLS=[
       title:{type:'string',maxLength:350},content:{type:'string',maxLength:125000},
       offset:{type:'integer',minimum:0},max_chars:{type:'integer',minimum:1,maximum:40000}
     },required:['action','scopeid'],additionalProperties:false}},
+  {name:'provider_list',description:'List LOC user-linked upstream MCP providers and their function policies (no credentials).',
+    inputSchema:{type:'object',properties:{},additionalProperties:false},
+    annotations:{readOnlyHint:true,destructiveHint:false}},
+  {name:'provider_tools',description:'Discover tools offered by one already-authorized upstream MCP provider. This does not grant permission to call them.',
+    inputSchema:{type:'object',properties:{provider:{type:'string',enum:['clerk','github','neon','supabase']}},
+      required:['provider'],additionalProperties:false},
+    annotations:{readOnlyHint:true,destructiveHint:false}},
+  {name:'provider_call',description:'Execute a provider MCP function only if LOC policy is auto; ask queues an explicit human approval, deny blocks the call.',
+    inputSchema:{type:'object',properties:{
+      provider:{type:'string',enum:['clerk','github','neon','supabase']},
+      tool:{type:'string'},args:{type:'object'}},
+      required:['provider','tool'],additionalProperties:false}},
+  {name:'provider_receipt',description:'Read the result of an explicitly approved upstream MCP operation using its receipt ID.',
+    inputSchema:{type:'object',properties:{approval_id:{type:'string'}},
+      required:['approval_id'],additionalProperties:false},
+    annotations:{readOnlyHint:true,destructiveHint:false}},
 
 ];
 function toolResponse(id,value){
