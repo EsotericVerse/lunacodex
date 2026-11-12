@@ -47,7 +47,11 @@ export function createAuthKaraulQoS({now=()=>Date.now()}={}){
         // Only invoke the published PELT detector on substantial traffic
         // and when a bucket closes, never once per HTTP request.
         if(volume>=36){
-          const changes=detectChangepoints(completed,KARAUL_COST);
+          // QoS detection is advisory: an analytical failure must never
+          // turn a valid login into an Auth Worker 500.
+          let changes=[];
+          try{changes=detectChangepoints(completed,KARAUL_COST);}
+          catch{return 0;}
           const point=changes.at(-1);
           if(point>=4&&point<=completed.length-2){
             const baseline=completed.slice(0,point);
