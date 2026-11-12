@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
+import {parse} from '@babel/parser';
 import {HomeBlock} from '../app/loc/home-block-model.js';
 
 const blocks=[{order:1,uid:'hero'},{order:2,uid:'second'},{order:3,uid:'third'}];
@@ -165,4 +166,36 @@ test('Article Control name is translated in all four UI dictionaries',()=>{
   assert.match(read('app/AppShell.jsx'),/translateUiField\(activeLocale,'文章控管'\)/);
   for(const locale of ['zh_tw','zh_cn','en','ja'])
     assert.match(read('app/i18n/sections/fields.'+locale+'.js'),/"文章控管":/);
+});
+
+test('LOC and Author homepage entrance Motion animates only public block display, never BlockNote edit tree',()=>{
+  const jsx=readFileSync(new URL('../app/loc/ScopeEditableBlocks.jsx',import.meta.url),'utf8');
+  const style=readFileSync(new URL('../app/styles/loc-about-original.css',import.meta.url),'utf8');
+  assert.ok(parse(jsx,{sourceType:'module',plugins:['jsx']}).program.body.length>0);
+  assert.match(jsx,/import \{motion,useReducedMotion\} from 'motion\/react'/);
+  assert.match(jsx,/const motionHome=pageName==='index'&&\['loc','lo3rwang'\]\.includes\(scopeId\)&&SlotTag==='section'/);
+  assert.match(jsx,/const HomeDisplayTag=motionHome\?motion\.section:SlotTag/);
+  assert.match(jsx,/<HomeDisplayTag[\s\S]*?\.\.\.homeMotionProps\(slot\)/);
+  assert.match(jsx,/slot\.order===1[\s\S]*?whileInView:/);
+  assert.match(jsx,/viewport:\{once:true,amount:\.12\}/);
+  assert.match(jsx,/initial:reduceMotion\?false:/);
+  assert.match(jsx,/className="loc-home-motion-hero-line"/);
+  assert.match(jsx,/<ScopeBlockDraftList/);
+  assert.doesNotMatch(jsx,/<motion\.div[^>]*><ScopeBlockDraftList/);
+  assert.match(style,/\.loc-home>\.loc-home-motion-block\{position:relative\}/);
+  assert.match(style,/\.loc-home-motion-hero-line\{/);
+  assert.match(style,/pointer-events:none/);
+});
+
+test('home entrances preserve sections, database blocks and editor save semantics',()=>{
+  const src=readFileSync(new URL('../app/loc/ScopeEditableBlocks.jsx',import.meta.url),'utf8');
+  assert.match(src,/const blocks=bootstrap\.data\?\.blocks/);
+  assert.match(src,/const contents=<>/);
+  assert.match(src,/return heroSlotOrder&&slot\.order===heroSlotOrder\?\[node,toggleButton\]:\[node\]/);
+  assert.match(src,/Real Save never tears down an active Edit Dock or reloads the homepage/);
+  assert.match(src,/return containerless\?contents:/);
+  const about=readFileSync(new URL('../app/loc/views/AboutView.jsx',import.meta.url),'utf8');
+  const author=readFileSync(new URL('../app/loc/AuthorHomeEditableBlock.jsx',import.meta.url),'utf8');
+  assert.match(about,/renderDisplay=\{LocHomeBlockDisplay\}/);
+  assert.match(author,/renderDisplay=\{AuthorHomeBlockDisplay\}/);
 });
