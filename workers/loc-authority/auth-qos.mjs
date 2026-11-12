@@ -84,9 +84,10 @@ export function createAuthKaraulRateRules({now=()=>Date.now(),detect=detectChang
   }
 
   // Native customRules first-match: exact public JWKS exemption, then catch
-  // every Auth endpoint in one Karaul policy. The native limiter still owns
+  // every nested Auth endpoint in one Karaul policy (Better Auth's '*'
+  // matches only one path segment; '**' covers nested OAuth client routes). The native limiter still owns
   // storage, route evaluation and 429 responses.
-  return {'/jwks':false,'/*':budget};
+  return {'/jwks':false,'/**':budget};
 }
 
 export const authKaraulRatePolicy=Object.freeze({
