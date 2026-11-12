@@ -19,7 +19,8 @@ test('LIKE punctuation is literal, not user-controlled wildcards',()=>{
 });
 test('Native Kysely contains uses parameterized cross-dialect LIKE with explicit ESCAPE',()=>{
   const sql=readFileSync(new URL('../app/loc/providers/kysely-runtime.mjs',import.meta.url),'utf8');
-  assert.match(sql,/contains:'contains'/);
+  const shape=readFileSync(new URL('../zenstack/sql-input-shape.mjs',import.meta.url),'utf8');
+  assert.match(shape,/contains:'contains'/);
   assert.match(sql,/containsPredicate\(column,term\)/);
   assert.match(sql,/sql\`lower\(\$\{sql\.ref\(column\)\}\) like \$\{pattern\} escape '!'/);
   assert.match(sql,/sql\`\$\{sql\.ref\(column\)\} like \$\{pattern\} escape '!'/);
@@ -47,7 +48,7 @@ test('text search remains rate-limited and literal values are not coerced',()=>{
   }
   const runtime=readFileSync(new URL('../app/loc/providers/kysely-runtime.mjs',import.meta.url),'utf8');
   assert.match(runtime,/containsPredicate\(column,value\)/);
-  assert.match(runtime,/const value=GALAXY_BOOLEAN_COLUMNS\.has\(filter\.column\)/);
+  assert.match(runtime,/normalizeModeledTypeDifferences\(/);
 });
 
 
