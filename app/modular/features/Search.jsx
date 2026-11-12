@@ -275,7 +275,10 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   const adminListRequested=Boolean(userActive&&userSettings.list===true);
   const editDock=useEditDock();
   const publicScopeEditing=Boolean(editDock?.active&&editDock.scopeId===scopeId&&scopeId!=='loc');
-  const account=useAccount({enabled:adminListRequested||publicScopeEditing||legacyManagementRoute});
+  // Public Search and personal list preferences never trigger an Auth read.
+  // Only an explicitly entered editor or a protected management route may verify.
+  const account=useAccount({enabled:publicScopeEditing||legacyManagementRoute||
+    Boolean(editDock?.active&&editDock.scopeId===scopeId)});
   // LOC's public Search is global. Only the separate authorized management
   // workspace may narrow the query to a specific Scope.
   const managementAuthorized=Boolean(adminListRequested&&account.user&&!account.loading&&!account.permissionLoading&&

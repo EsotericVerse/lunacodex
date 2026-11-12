@@ -128,9 +128,10 @@ export default function GlobalSettings({initialSection='home'}={}){
     setBusy(true);setStatus('');
     try{
       await account.signOut();
-      if(native)window.location.reload();
-      else window.location.assign(LOC_LOGIN_GATEWAY);
-    }catch(error){setStatus(String(error?.message||error));setBusy(false);}
+      // Signing out is explicit, but never automatically opens the login page.
+      setStatus('已登出 LOC Session');
+    }catch(error){setStatus(String(error?.message||error));}
+    finally{setBusy(false);}
   }
   function login(){
     if(!native){window.location.assign(LOC_LOGIN_GATEWAY);return;}

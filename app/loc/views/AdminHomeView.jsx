@@ -5,7 +5,7 @@ import adminZh from '../../i18n/sections/admin.zh_tw.js';
 import adminViewZh from '../../i18n/sections/uiExtra.adminView.zh_tw.js';
 registerDefaultSection('admin',adminZh);
 registerDefaultSection('uiExtra.adminView',adminViewZh);
-import {useEffect,useRef,useState} from 'react';
+import {useEffect,useState} from 'react';
 import dynamic from 'next/dynamic';
 import {useAccount} from '../use-account';
 import {useEditDock} from '../../modular/edit-dock';
@@ -41,7 +41,7 @@ export default function AdminHomeView({scopeGroup}){
   const editDock=useEditDock();
   const [entryVerified,setEntryVerified]=useState(false);
   const [loginDenied,setLoginDenied]=useState(false);
-  const cameFromLogin=useRef(false);
+  const [retrying,setRetrying]=useState(false);
   const canManage=Boolean(account.user&&!account.loading&&!account.permissionLoading&&account.canManageGlobalSync());
   // Preserve deep links created before the Admin sections were consolidated.
   const [section,setSection]=useManagementSection(ADMIN_OPTIONS,'network',{
@@ -60,36 +60,47 @@ export default function AdminHomeView({scopeGroup}){
   // pass before the edit dock becomes available.
   useEffect(()=>{
     if(account.loading||account.permissionLoading)return;
-    const target=window.location.pathname+window.location.search+window.location.hash;
-    const fromLogin=window.sessionStorage.getItem('loc-management-login-return-v1')===target;
-    if(fromLogin){cameFromLogin.current=true;window.sessionStorage.removeItem('loc-management-login-return-v1');}
-    if(!canManage||!fromLogin&&editorSessionStatus(window.sessionStorage).expired){
+    if(!canManage||editorSessionStatus(window.sessionStorage).expired){
       setEntryVerified(false);
-      // Back from login and still denied: show why instead of looping to /login.
-      if(cameFromLogin.current){setLoginDenied(true);return;}
+      setLoginDenied(true);
       window.dispatchEvent(new CustomEvent('loc-management-entry-denied',{detail:{scopeId:'loc'}}));
-      window.location.replace('/login/index.html?return_to='+encodeURIComponent(target));
       return;
     }
-    if(fromLogin){
-      clearEditorSession(window.sessionStorage);
-      if(!touchEditorSession(window.sessionStorage))return;
-    }
+    setLoginDenied(false);
     setEntryVerified(true);
     editDock?.begin('loc',{globalManage:true});
   },[account.loading,account.permissionLoading,canManage,editDock?.begin]);
+  const retrySession=async()=>{
+    if(retrying)return;
+    setRetrying(true);
+    try{
+      const verified=await account.refresh();
+      if(!verified?.authorizer?.canManageGlobalSync()){
+        setLoginDenied(true);setEntryVerified(false);
+        return;
+      }
+      clearEditorSession(window.sessionStorage);
+      if(!touchEditorSession(window.sessionStorage))
+        throw Error('無法重新啟用編輯 Session');
+      setLoginDenied(false);
+      setEntryVerified(true);
+      editDock?.begin('loc',{globalManage:true});
+    }catch{
+      setLoginDenied(true);setEntryVerified(false);
+    }finally{setRetrying(false);}
+  };
   const selectedOption=ADMIN_OPTIONS.find(option=>option.value===section)||ADMIN_OPTIONS[0];
 
   if(account.loading||account.permissionLoading)return <section className="loc-view"><div className="loc-card">{UI_COPY.admin.checking}</div></section>;
-  if(loginDenied&&!canManage)return <FeaturePage featureId="admin">
+  if(loginDenied||!canManage)return <FeaturePage featureId="admin">
     <section className="loc-card scope-feature-card">
       <p role="alert">{account.error||(account.user
-        ?'LOC 身分已驗證，但這個帳號沒有全域管理權限。'
-        :'登入完成，但讀不到 LOC 身分（Session）。')}</p>
-      <button type="button" onClick={()=>window.location.reload()}>重新驗證</button>{' '}
-      <button type="button" onClick={()=>window.location.replace('/login/index.html?return_to='+
-        encodeURIComponent(window.location.pathname+window.location.search+window.location.hash))}>
-        回登入頁</button>
+        ?'目前沒有有效的編輯 Session，或此帳號沒有全域管理權限。'
+        :'目前沒有有效的 LOC Session，系統管理未啟用。')}</p>
+      <button type="button" onClick={()=>void retrySession()} disabled={retrying}>
+        {retrying?'正在確認 Session…':'重新確認 Session'}
+      </button>{' '}
+      <a href="/local/settings/">前往設定頁</a>
     </section>
   </FeaturePage>;
   if(!canManage||!entryVerified)return <FeaturePage featureId="admin">

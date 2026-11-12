@@ -34,7 +34,7 @@ import {DEFAULT_LIST_BATCH_SIZE} from '../../loc/db-contract.mjs';
 import {assignedSource} from '../../loc/member-intersection-model.mjs';
 import {sourceKeywordOptions} from '../../loc/source-keyword-options.mjs';
 import {administrativeSourceTrend} from '../../loc/statistics-admin-source.mjs';
-import {useAccount} from '../../loc/use-account';
+import {usePassiveSessionAccount} from '../../loc/use-account';
 import {scopeHref} from '../scope-registry';
 import ScopeLink from '../ScopeLink';
 import {STAT_VISUAL_TYPES,semanticStatisticChartTypes,chartTypeGroups,preferredStatisticChartType} from '../modules/statistics/statistics-time-zoom.mjs';
@@ -451,7 +451,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   }),[queryRange.startDate,queryRange.endDate]);
   // Separate the guest/shared directory from the owner's private catalog.
   // Never reuse a one-Class anonymous cache after an authorized sign-in.
-  const keywordAccount=useAccount({enabled:keywordDimension});
+  const keywordAccount=usePassiveSessionAccount();
   const keywordClassQuery=useAsyncResource({
     queryKey:['scope-active-keyword-class-name',scopeId,keywordAccount.user?.id||'guest'],
     // The keyword class is optional; the ordinary Statistics view never queries it.
