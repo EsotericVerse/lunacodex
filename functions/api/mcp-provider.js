@@ -2,7 +2,7 @@
 import {verifyOAuthToken,mcpConfig} from '../../app/loc/mcp/router.mjs';
 import {verifiedLocWebsiteSession} from '../../app/loc/auth/verified-session.mjs';
 import {beginUpstreamOAuth,disconnectUpstream} from '../../app/loc/mcp/upstream-oauth.mjs';
-import {providerStatuses,setToolPolicy,requestTool,pendingApprovals,
+import {providerStatuses,setToolPolicy,clearToolPolicies,requestTool,pendingApprovals,
   decideApproval,approvalReceipt} from '../../app/loc/mcp/upstream-policy.mjs';
 import {listUpstreamTools} from '../../app/loc/mcp/upstream-tools.mjs';
 import {upstreamProvider} from '../../app/loc/mcp/upstream-providers.mjs';
@@ -57,6 +57,7 @@ async function handler(context){
       case 'connect':return json(await beginUpstreamOAuth(env,subject,body.provider));
       case 'disconnect':
         await disconnectUpstream(env,subject,body.provider);
+        await clearToolPolicies(env,subject,body.provider);
         return json({disconnected:true,provider:body.provider});
       case 'policy':return json(await setToolPolicy(env,subject,
         body.provider,body.tool,body.mode));
