@@ -1,1 +1,0 @@
-../../../references/orm/api/group-by.md

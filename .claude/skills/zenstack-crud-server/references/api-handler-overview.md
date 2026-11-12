@@ -1,1 +1,0 @@
-../../../references/service/api-handler/index.md

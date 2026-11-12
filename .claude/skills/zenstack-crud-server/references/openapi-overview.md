@@ -1,1 +1,0 @@
-../../../references/service/openapi/index.md

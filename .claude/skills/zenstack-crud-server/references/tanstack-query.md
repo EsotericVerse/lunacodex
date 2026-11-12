@@ -1,1 +1,0 @@
-../../../references/service/client-sdk/tanstack-query/index.md

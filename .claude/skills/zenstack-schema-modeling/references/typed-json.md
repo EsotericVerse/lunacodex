@@ -1,1 +1,0 @@
-../../../references/modeling/typed-json.md
