@@ -1,6 +1,6 @@
 {
   "name": "loc-framework",
-  "version": "1.1.0-rc.2.1",
+  "version": "1.1.0-rc.3",
   "private": true,
   "scripts": {
     "predev": "node scripts/prepare-effekseer-wasm.mjs && node scripts/prepare-rune-effekseer-assets.mjs && node scripts/prepare-rune-fog-hd.mjs && node scripts/prepare-rune-effekseer-hd256.mjs && node scripts/prepare-rune-effekseer-soft-matte.mjs && node scripts/prepare-rune-semantic-icons.mjs",
