@@ -41,8 +41,9 @@ function unauthorized(config){
     'WWW-Authenticate':'Bearer resource_metadata="'+resourceMetadata+'", scope="openid"'
   });
 }
-// Auth protocol is delegated to Better Auth. The standard JOSE implementation
-// checks RFC 9068 resource JWTs; there is no custom JWT decoder or signer.
+// LOC MCP is an independent OAuth resource server, not a Better Auth subsystem.
+// Here it uses Better Auth's standards-based JOSE helper only to verify
+// LOC Auth-issued RFC 9068 tokens; MCP tools and business policy remain separate.
 export async function verifyOAuthToken(request,config){
   try{
     const payload=await verifyAccessTokenRequest(requestToResourceInput(request),{

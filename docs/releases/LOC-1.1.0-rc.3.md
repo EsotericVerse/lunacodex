@@ -10,11 +10,13 @@
 RC3 以**模組整併、解耦與高效能 Portable 架構**為主軸，依目前專案進度歸納：
 
 - **模組去重**：合併重複實作，減少多套相同功能並存。
-- **解除硬性依賴**：降低核心程式對特定 PostgreSQL 驅動與外部 Auth 提供者的耦合，讓連線與驗證邊界可替換。這不代表已移除 PostgreSQL 或 LOC Auth 功能；目前 `package.json` 仍包含 `pg`、`better-auth` 等套件。
+- **模組與服務分層**：Portable 核心解除對特定 PostgreSQL Driver／外部認證服務的硬性依賴；**Better Auth 保留，作為 LOC Auth 內部的 OAuth／Session 認證模組**，並非待移除的外部服務。`pg` 仍供現有 LOC Auth PostgreSQL 持久化使用，不等同於 Portable 核心必須綁定 PostgreSQL。
 - **套件整理**：更新使用中的 packages、移除多餘依賴與重複安裝項目，並收斂模組責任。
 - **Portable 進度**：目前估計**約 80%**；依現階段架構盤點，目標／狀態為**RPC、Edge、Migration 依賴歸零**。此為目前開發盤點說明，不當成已完成全倉庫零殘留的獨立稽核結果。
 - **模型整合待完成**：`Zod × ZenStack ZModel × Kysely` 還有最後一部分需要對齊，包含資料模型、型別契約與讀寫路徑。
 - **查詢效能優化**：持續移除大量／重複／週期性查詢，降低 Auth 與資料讀取的過度請求，優先使用既有模型與快取機制；實際效能仍需以執行紀錄驗收。
+
+**架構層級：** LOC MCP 是獨立的工具／委託與 Provider 政策層；LOC Auth 使用 Better Auth 核發及驗證 OAuth 身分。MCP 需驗證 LOC Auth 憑證，但不屬於 Better Auth，MCP Tool 政策與 Galaxy Scope 授權亦非由 Better Auth 決定。現行 MCP 仍直接使用 `better-auth/oauth2` 驗證函式，私人讀取仍有 `userinfo` 請求；這是後續效能去重的待檢項，不可誤記為完全解耦。
 
 **RC3 定位：** Portable 架構進入收斂階段的預發布版本；並非宣告上述剩餘整合與效能驗收已全部完成。
 

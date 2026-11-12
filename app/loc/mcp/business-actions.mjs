@@ -1,5 +1,6 @@
-// LOC MCP business data actions. Authentication belongs to Better Auth;
-// writing and scope roles belong to the existing Neon api.manage table.
+// LOC MCP business data actions. LOC Auth issues OAuth identity using the
+// Better Auth module; MCP remains independent. Business writes and Scope roles
+// are decided by LOC business policy via the existing Neon api.manage table.
 const API='https://mcp.lo3rwang.cc/api/loc-native';
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const PR=/(?:\bPR(?:[\s#:\-]*\d+)?\b|\bpull[ -]?request\b|\bgithub\b|\bcommit\b|合併請求|拉取請求)/i;
