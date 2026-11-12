@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {parse as parseJsx} from '@babel/parser';
 import {territoryYearWindow,territoryRegions,territoryPointGroups,territoryWithAnchors}
   from '../app/modular/features/trace/trace-territory.mjs';
 import {traceArticleIdFilters} from '../app/modular/features/trace/trace-panel-filters.mjs';
@@ -93,8 +94,8 @@ test('the single Trace viewport defaults to full-year territories and defers rou
   assert.match(sourceCode,/enabled:!isLoc&&supported&&mapMode==='routes'/);
   assert.match(sourceCode,/enabled:mapMode==='routes'&&annualGaugeOn/);
   assert.match(sourceCode,/mapMode==='territory'\?<TraceTerritoryPanel/);
-  const first=sourceCode.indexOf('>年度文章地點圖</button>');
-  const second=sourceCode.indexOf('>路徑痕跡圖</button>');
+  const first=sourceCode.indexOf('年度文章地點圖');
+  const second=sourceCode.indexOf('路徑痕跡圖');
   assert.ok(first>=0&&second>first);
   const territory=source('app/modular/features/trace/TraceTerritoryPanel.jsx');
   assert.match(territory,/useState\(2026\)/);
@@ -102,4 +103,16 @@ test('the single Trace viewport defaults to full-year territories and defers rou
   assert.doesNotMatch(territory,/setInterval\(/);
   const query=source('zenstack/client-queries.js');
   assert.match(query,/no TanStack, no SWR, no browser cache, no polling/);
+});
+
+test('Motion changes map modes without mounting two MapLibre canvases together',()=>{
+  const trace=source('app/modular/features/Trace.jsx');
+  assert.ok(parseJsx(trace,{sourceType:'module',plugins:['jsx']}).program.body.length>0);
+  assert.match(trace,/import \{motion,useReducedMotion\} from 'motion\/react'/);
+  assert.match(trace,/<motion\.div key=\{mapMode\} className="loc-trace-map-transition"/);
+  assert.match(trace,/mapMode==='territory'\?<TraceTerritoryPanel scopeId=\{scopeId\}\/\>:/);
+  assert.match(trace,/<\/TraceMap>\}\s*<\/motion\.div>/);
+  assert.match(trace,/layoutId=\{'trace-mode-'\+scopeId\}/);
+  assert.match(trace,/initial=\{reduceMotion\?false:/);
+  assert.doesNotMatch(trace,/<AnimatePresence/);
 });
