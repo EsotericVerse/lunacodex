@@ -40,7 +40,7 @@ function importModelSchema(modelName){
       // JSON transports represent PostgreSQL BIGINT as a safe JS number or
       // decimal string, not a native bigint. Keep the physical 64-bit range
       // and preserve original values for the existing Kysely JSONB batches.
-      const int8Text=z.string().regex(/^-?\\d+$/).refine(value=>{
+      const int8Text=z.string().max(20).regex(/^-?[0-9]+$/).refine(value=>{
         const n=BigInt(value);
         return n>=-(1n<<63n)&&n<=(1n<<63n)-1n;
       });
