@@ -1,18 +1,16 @@
 'use client';
 import {useEffect,useState} from 'react';
-import {mcpLocSession} from '../../mcp/loc-access.mjs';
 
 // The upstream MCP Provider console is separate from LOC Auth's identity UI.
 // No OAuth credentials are visible or entered in this browser.
 const API='/api/mcp-provider';
 async function providerRequest(action,payload=null){
-  const {token}=await mcpLocSession();
   const url=API+'?action='+encodeURIComponent(action)+
     (payload?.provider&&action==='tools'?'&provider='+encodeURIComponent(payload.provider):'');
   const response=await fetch(url,{
     method:payload&&action!=='tools'?'POST':'GET',
     credentials:'include',cache:'no-store',redirect:'error',
-    headers:{authorization:'Bearer '+token,accept:'application/json',
+    headers:{accept:'application/json',
       ...(payload&&action!=='tools'?{'content-type':'application/json'}:{})},
     ...(payload&&action!=='tools'?{body:JSON.stringify({action,...payload})}:{}),
     signal:AbortSignal.timeout(20000)
