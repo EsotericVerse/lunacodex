@@ -133,10 +133,10 @@ test('useSyncExternalStore snapshot is stable, local, and event-driven',()=>{
   assert.equal(notices,2);
 });
 
-test('only import insert path uses ZModel check; editor and query stay untouched',()=>{
+test('import progress and server-side Galaxy validation share the ZModel write contract',()=>{
   const client=readFileSync(new URL('../app/loc/db-contract.mjs',import.meta.url),'utf8');
   const panel=readFileSync(new URL('../app/loc/ManagementImportPanel.jsx',import.meta.url),'utf8');
-  assert.match(client,/const insertImportRows=async\(table,rows\)=>/);
+  assert.match(client,/const insertImportRows=async\(table,rows,\{onValidationProgress\}=\{\}\)=>/);
   assert.match(client,/const prepared=prepareGalaxyInsertRows\(table,rows\)/);
   assert.match(client,/return insertRowsUnchecked\(table,prepared,\{normalizedGalaxy:true\}\)/);
   assert.match(client,/assertZModelImportRows\(table,prepared,\{onProgress:onValidationProgress\}\)/);
@@ -144,5 +144,9 @@ test('only import insert path uses ZModel check; editor and query stay untouched
   assert.match(panel,/useSyncExternalStore\(progressStore.subscribe/);
   assert.match(panel,/onValidationProgress:\(\{completed,total\}\)=>setProgress/);
   assert.match(panel,/progress.total>0&&progress.detail/);
+  const manager=readFileSync(new URL(
+    '../app/loc/providers/kysely-management.mjs',import.meta.url),'utf8');
+  assert.match(manager,/assertZModelGalaxyManagedValues/);
+  assert.match(manager,/values:galaxyValidated\|\|anchorBlockValidated\?null:modelValues/);
   assert.doesNotMatch(panel,/from 'tanstack|from 'swr/);
 });

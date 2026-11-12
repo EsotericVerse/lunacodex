@@ -15,11 +15,13 @@ test('LOC Auth delegates OIDC, OAuth, JWT and storage to Better Auth',()=>{
  assert.doesNotMatch(auth,/schemaName:'loc_auth'|runMigrations|CREATE TABLE|LOC_AUTH_SCHEMA_GENERATION/);
  // All declared Auth storage models are Rainbow-prefixed and never written to
  // an unreviewed PostgreSQL schema on deployment.
- const declared=Object.fromEntries([...auth.matchAll(/^  ([A-Za-z]+):'(rainbow_[a-z_]+)',?$/gm)].map(m=>[m[1],m[2]]));
+ const mapping=source('workers/loc-authority/rainbow-tables.mjs');
+ const declared=Object.fromEntries([...mapping.matchAll(/^  ([A-Za-z]+):'(rainbow_[a-z_]+)',?$/gm)].map(m=>[m[1],m[2]]));
  for(const key of ['user','session','account','verification','jwks','oauthClient',
    'oauthResource','oauthClientResource','oauthRefreshToken',
    'oauthAccessToken','oauthConsent','oauthClientAssertion'])
    assert.match(declared[key]||'',/^rainbow_/,'missing Rainbow mapping: '+key);
+ assert.match(auth,/databaseHooks:rainbowDatabaseHooks/);
  assert.match(auth,/user:\{modelName:RAINBOW_TABLES\.user\}/);
  assert.match(auth,/session:\{modelName:RAINBOW_TABLES\.session/);
  assert.match(auth,/account:\{modelName:RAINBOW_TABLES\.account/);
@@ -89,7 +91,7 @@ test('LOC Auth never silently creates or adopts a test storage namespace',()=>{
  assert.doesNotMatch(auth,/schemaName:\s*['"`]loc_auth['"`]/);
  assert.match(auth,/LOC_AUTH_SCHEMA/);
  assert.match(auth,/namespace!=='public'/);
- assert.match(auth,/rainbow_auth/);
+ assert.match(source('workers/loc-authority/rainbow-tables.mjs'),/rainbow_auth/);
 });
 test('LOC Auth Session cookie cache is deployment-versioned and separate from website permissions',()=>{
  const auth=source('workers/loc-authority/auth.mjs');

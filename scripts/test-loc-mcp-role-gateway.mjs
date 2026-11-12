@@ -1,6 +1,9 @@
 import test from 'node:test';
+import {readFileSync} from 'node:fs';
+import {authorizeDelegatedShortImport} from '../app/loc/import/short-edge-authorization.mjs';
 import assert from 'node:assert/strict';
-import {eligibleMcpRoles,authorizeMcpRole,authorizeMcpBearer}
+import {eligibleMcpRoles,authorizeMcpRole,authorizeMcpBearer,
+  locMcpPermissionsForEmail}
   from '../app/loc/mcp/access-roles.mjs';
 
 function fixture(rows,events=[]){
@@ -95,4 +98,52 @@ test('MCP does not allow access if userinfo is unavailable',async()=>{
     fetchImpl:async()=>{throw Error('network down');},
     database:fixture([row()])
   }),error=>error.httpStatus===503);
+});
+
+test('Extension short-import accepts exactly the assigned api.manage Scope grant',async()=>{
+  const db=(await fixture([row('scope')])()).db;
+  const permission=await locMcpPermissionsForEmail(db,email);
+  assert.deepEqual(permission.grants.sort(),
+    ['sample:manage','sample:read','sample:write'].sort());
+  assert.equal(permission.canManage,false,'Scope role is not global Admin');
+  const claims={provider:'loc',me:permission.canWrite,
+    sub:'loc_verified_subject',email,grants:permission.grants};
+  const body={kind:'short-import',scopeid:'sample',batch:{id:'batch-test'}};
+  assert.equal(authorizeDelegatedShortImport(body,claims).scopeid,'sample');
+  assert.throws(()=>authorizeDelegatedShortImport({...body,scopeid:'another'},claims),
+    /Scope write delegation required/);
+});
+
+test('Extension group roles are not promoted to global Admin or unrelated Scope',async()=>{
+  const db=(await fixture([row('group')])()).db;
+  const permission=await locMcpPermissionsForEmail(db,email);
+  assert.equal(permission.canManage,false);
+  assert.ok(!permission.grants.includes('global:manage'));
+  assert.ok(permission.grants.includes('sample:write'));
+  assert.ok(!permission.grants.includes('unrelated:write'));
+});
+
+test('Extension role revocation fails closed before any short-import write',async()=>{
+  for(const roles of [[],[row('scope',{active:false})],
+    [row('scope',{email:'unrelated@example.org'})]]){
+    const db=(await fixture(roles)()).db;
+    await assert.rejects(locMcpPermissionsForEmail(db,email),
+      error=>error.httpStatus===403);
+  }
+});
+
+test('Extension keeps its existing LOC Auth PKCE and Queue; backend shares MCP role gate',()=>{
+  const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
+  const bg=read('extensions/loc-galaxy-link/background.js');
+  const cfg=JSON.parse(read('public/extension/oauth/config.json'));
+  const native=read('app/loc/mcp/native-operations.mjs');
+  const privateLink=read('app/loc/mcp/private-galaxy.mjs');
+  const router=read('app/loc/mcp/router.mjs');
+  assert.equal(cfg.issuer,'https://auth.lo3rwang.cc/api/auth');
+  assert.equal(cfg.import_url,'https://mcp.lo3rwang.cc/api/loc-native');
+  assert.match(bg,/chrome\.identity\.launchWebAuthFlow/);
+  assert.match(bg,/const DB_NAME='loc-channel1-queue'/);
+  assert.match(native,/host===MCP_HOST[\s\S]*?locMcpPermissionsForEmail\(selected\.db,claims\.email,\{dialect:selected\.dialect\}\)/);
+  assert.match(privateLink,/locMcpPermissionsForEmail\(db,email,\{dialect:selected\.dialect\}\)/);
+  assert.match(router,/authorizeMcpBearer\(match\[1\],identity\.subject,env\)/);
 });
