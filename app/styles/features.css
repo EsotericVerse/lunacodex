@@ -831,7 +831,29 @@
 .scope-search-reference-editor>h2{padding:.5rem 0;font-weight:600}
 .scope-search-reference-editor>.scope-search-reference-grid{margin-top:.85rem}
 .scope-search-reference-grid>.scope-edit-mode-toggle{order:2;margin-bottom:0}
-.scope-search-results{scroll-margin-top:5rem}
+.scope-search-results{scroll-margin-top:5rem;position:relative}
+
+/* Stateful activities are purely decorative and mount only while real work
+   is pending; numeric strips never claim to be actual calculated results. */
+.loc-work-activity{display:inline-flex;align-items:center;gap:.12em;
+  vertical-align:middle;white-space:nowrap;font-weight:750;
+  color:var(--loc-accent);font-variant-numeric:tabular-nums;
+}
+.loc-work-activity--numbers{gap:.1em;font-size:1.12em;padding-inline:.2em}
+.loc-work-activity__digit-window{display:inline-block;overflow:hidden;
+  width:.75em;height:1.2em;line-height:1.2em;text-align:center;
+}
+.loc-work-activity__digit-strip{display:flex;flex-direction:column}
+.loc-work-activity__digit-strip>span{display:block;height:1.2em;flex:none}
+.loc-work-activity--hourglass{font-size:1.18em;margin-inline-end:.2em}
+.loc-work-activity--keywords{letter-spacing:.02em;gap:.22em}
+.loc-work-activity--import{gap:.16em}
+.loc-work-activity__packet{display:inline-block}
+
+.scope-search-arrival-indicator{
+  pointer-events:none;position:absolute;top:0;left:0;right:0;height:3px;
+  transform-origin:left center;border-radius:999px;background:var(--loc-accent);
+}
 .scope-editable-block-grid.scope-search-reference-grid{
   display:grid;grid-template-columns:minmax(0,1fr);
   gap:clamp(.75rem,1.5vw,1.15rem);align-items:start;

@@ -70,7 +70,7 @@ test('Trace owns its route and Hero; explanatory Blocks remain in Search',()=>{
   const blocks=read('app/modular/features/TraceBlocks.jsx');
   assert.match(app,/trace:Trace/);
   assert.match(feature,/<FeaturePage featureId="trace">/);
-  assert.match(feature,/<TraceMap publicTrace floatingControls=\{floatingControls\}/);
+  assert.match(feature,/<TraceMap publicTrace onReady=\{\(\)=>setReadyMapMode\('routes'\)\}/);
    assert.match(feature,/onAnchorSelect=\{chooseMapAnchor\}/);
   assert.match(feature,/enabled:supported&&routeListOpen/);
   assert.match(search,/import\('\.\/TraceBlocks'\)/);
@@ -330,7 +330,7 @@ test('Trace only loads article content after a map anchor click and displays rep
   const engine=read('app/modular/features/trace/trace-map-engine.js');
   const styles=read('app/styles/features.css');
   assert.match(page,/const reportPlace=twoPointDemo\?null:\(selectedAvailable\?selectedPlace:null\)/);
-  assert.match(page,/<TraceMap publicTrace floatingControls=\{floatingControls\}/);
+  assert.match(page,/<TraceMap publicTrace onReady=\{\(\)=>setReadyMapMode\('routes'\)\}/);
   assert.match(page,/\{reportPlace\?<div className="loc-trace-float-report"/);
   assert.match(page,/onClick=\{\(\)=>\{setSelectedPlace\(null\);setReportTab\(null\);\}\}>×<\/button>/);
   assert.match(page,/<TracePlaceResults key=\{reportPlace\.source_scope/);

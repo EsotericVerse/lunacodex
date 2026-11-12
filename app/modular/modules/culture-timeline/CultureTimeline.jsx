@@ -580,7 +580,14 @@ export default function CultureTimeline({
       </select>
     </label>:null}
     {chartError?<p className='scope-status' role='alert'><FieldText text="河道已有統計資料，但圖表沒有正常繪製；以下保留日期與筆數清單。"/></p>:null}
-    <div ref={containerRef} data-anchor-gesture={onTimeClick?'double-tap':'none'} className='scope-period-timeline' role='region' aria-label={t(mode==='overview'?'所有時期與定錨點時間長河':'時間長河')} style={{'--scope-period-timeline-min-height':timelineMinHeight+'px'}}/>
+    <div className='scope-river-reveal-shell'>
+      <div ref={containerRef} data-anchor-gesture={onTimeClick?'double-tap':'none'} className='scope-period-timeline' role='region' aria-label={t(mode==='overview'?'所有時期與定錨點時間長河':'時間長河')} style={{'--scope-period-timeline-min-height':timelineMinHeight+'px'}}/>
+      {/* An independent curtain reveals the river from left to right after
+          vis-timeline is ready. Its geometry, gestures and redraw remain intact. */}
+      {ready&&!reduceMotion?<motion.div className='scope-river-unfold-curtain'
+        aria-hidden='true' initial={{scaleX:1}} animate={{scaleX:0}}
+        transition={{duration:.55,ease:[.22,.8,.2,1]}}/>:null}
+    </div>
     <AnimatePresence initial={false}>
       {anchorInsight?<motion.aside key={anchorInsight.date}
         className='scope-candidate-insight' role='status' aria-live='polite'

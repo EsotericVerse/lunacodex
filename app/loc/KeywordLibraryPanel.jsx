@@ -8,6 +8,7 @@ import {dbAuthRelation,dbPublicClient,dbAuthClient,resetKeywordClassification,up
 import {indexKeywordTree,descendantsOfKeyword} from './keyword-tree.mjs';
 import {allocateAnchorUid,isUnifiedAnchorScope} from './unified-anchor-compat.mjs';
 import ManagementSectionNav from '../modular/ManagementSectionNav';
+import ActivityMotion from '../modular/ActivityMotion';
 import {keywordClassState,invalidateKeywordClass} from './keyword-class-state.mjs';
 import {generateKeywordClassUid} from './keyword-uidlist.mjs';
 
@@ -545,7 +546,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
           </div>
           <div className="scope-preview-links">
             <button type="button" className="loc-button" disabled={busy||importBusy}
-              onClick={lookupPublicClass}>{importBusy?'核對中…':'查詢公開科目'}</button>
+              onClick={lookupPublicClass}>{importBusy?<ActivityMotion kind="import"/>:null}{importBusy?'核對中…':'查詢公開科目'}</button>
             {importClass?<button type="button" className="loc-button primary" disabled={busy||importBusy}
               onClick={importPublicClass}>匯入「{importClass.name}」</button>:null}
           </div>
@@ -589,14 +590,15 @@ export default function KeywordLibraryPanel({scopeId,account}){
         <button type="button" className="loc-button" disabled={busy||!activeClass?.uid}
           onClick={()=>run(true)}>清空本群組的分析結果</button>
       </div>
-      {progress?<p role="status" className="scope-status">{progress.label||progress.phase}
+      {busy&&!progress?<p role="status" className="scope-status"><ActivityMotion kind="keywords"/> 正在解析關鍵詞…</p>:null}
+      {progress?<p role="status" className="scope-status">{busy?<ActivityMotion kind="keywords"/>:null} {progress.label||progress.phase}
         {progress.total?' · '+progress.completed+' / '+progress.total:''}</p>:null}
     </section>:null}
     {!loading&&workspace==='suggest'?<section className="loc-card scope-feature-card">
       <h2>建議新增關鍵詞</h2>
       <p className="scope-status">只從目前資料來源的文章內文找出尚未收錄的詞與詞組；不修改既有關鍵詞，也不會自動新增。</p>
       {discoveryBusy?<div className="scope-preview-links">
-        <p className="scope-status" role="status">分析中：{Number(discoveryProgress?.completed||0).toLocaleString()} / {Number(discoveryProgress?.total||0).toLocaleString()} 篇</p>
+        <p className="scope-status" role="status"><ActivityMotion kind="keywords"/> 分析中：{Number(discoveryProgress?.completed||0).toLocaleString()} / {Number(discoveryProgress?.total||0).toLocaleString()} 篇</p>
         <button className="loc-button" type="button" onClick={()=>discoveryAbort.current?.abort()}>停止掃描</button>
       </div>:null}
       {discovery&&!discoveryBusy?<div>

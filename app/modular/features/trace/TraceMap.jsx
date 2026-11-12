@@ -90,11 +90,13 @@ const STRINGS={
   }
 };
 
-export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRouteSelect=null,selectedRouteUid='',focusLocation=null,spatialData=null,placeDayRows=null,mapOnly=false,hideRoutePicker=false,publicTrace=false,showAnchorSearch=true,floatingControls=null,children=null,annualGauges=[],annualGaugeOn=false,annualGaugeBusy=false,annualGaugeError=false,onAnnualGaugeToggle=null,onAnnualGaugeVisibleChange=null,territoryMode=false,territoryYear=2026}){
+export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRouteSelect=null,selectedRouteUid='',focusLocation=null,spatialData=null,placeDayRows=null,mapOnly=false,hideRoutePicker=false,publicTrace=false,showAnchorSearch=true,floatingControls=null,children=null,annualGauges=[],annualGaugeOn=false,annualGaugeBusy=false,annualGaugeError=false,onAnnualGaugeToggle=null,onAnnualGaugeVisibleChange=null,territoryMode=false,territoryYear=2026,onReady=null}){
   const {locale}=useUiLocale();
   const copy=STRINGS[locale]||STRINGS['zh-Hant'];
   const containerRef=useRef(null);
   const mapRef=useRef(null);
+  const onReadyRef=useRef(onReady);
+  onReadyRef.current=onReady;
   const resizeStartRef=useRef(null);
   const locationPickRef=useRef(onLocationPick);
   locationPickRef.current=onLocationPick;
@@ -157,7 +159,10 @@ export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRout
         onStatus:code=>{
           if(!active)return;
           setStatus(code);
-          if(code==='ready')setReady(true);
+          if(code==='ready'){
+            setReady(true);
+            onReadyRef.current?.();
+          }
         }
       });
       mapRef.current=instance;

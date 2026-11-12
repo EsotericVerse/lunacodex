@@ -19,7 +19,7 @@ const hasCoordinates=point=>point&&point.longitude!=null&&point.latitude!=null&&
   Number.isFinite(Number(point.longitude))&&Number.isFinite(Number(point.latitude))&&
   Math.abs(Number(point.longitude))<=180&&Math.abs(Number(point.latitude))<=90;
 
-export default function TraceTerritoryPanel({scopeId='loc'}){
+export default function TraceTerritoryPanel({scopeId='loc',onMapReady=null}){
   const [year,setYear]=useState(2026);
   const [display,setDisplay]=useState('sources');
   const [step,setStep]=useState(1000);
@@ -85,7 +85,7 @@ export default function TraceTerritoryPanel({scopeId='loc'}){
   const ready=totalsQuery.data!==undefined;
   const totalArticles=regions.reduce((sum,place)=>sum+place.total,0);
   return <div ref={rootRef} className="loc-trace-territory" aria-label="年度文章地點戰略版圖">
-    <TraceMap key="territory" publicTrace territoryMode territoryYear={year}
+    <TraceMap key="territory" publicTrace territoryMode territoryYear={year} onReady={onMapReady}
       spatialData={mapData} selectedRouteUid="" showAnchorSearch={false}
       onAnchorSelect={selectPlace}
       floatingControls={<div className="loc-trace-territory-toolbar">

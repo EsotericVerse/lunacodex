@@ -3,6 +3,7 @@
 import {useEffect,useMemo,useState} from 'react';
 import {useSearchParams} from 'next/navigation';
 import dynamic from 'next/dynamic';
+import {motion,useReducedMotion} from 'motion/react';
 import {FeaturePage} from '../ui';
 import UiText,{useUiText} from '../../i18n/UiText';
 import {useUiSection} from '../../i18n/ui-locale';
@@ -42,6 +43,7 @@ const TracePlaceResults=dynamic(()=>import('./trace/TracePlaceResults'),{
 
 export default function Trace({scopeId='loc'}){
   useUiSection('uiExtra.traceUI');
+  const reduceMotion=useReducedMotion();
   const translate=useUiText();
   const t=key=>translate(TEXT+key);
   const supported=TRACE_SCOPES.includes(scopeId);
@@ -49,6 +51,7 @@ export default function Trace({scopeId='loc'}){
   const [selectedPlace,setSelectedPlace]=useState(null);
   // Annual territory is the default; route/index data loads only after choosing the classic map.
   const [mapMode,setMapMode]=useState('territory');
+  const [readyMapMode,setReadyMapMode]=useState('');
   const [annualGaugeOn,setAnnualGaugeOn]=useState(true);
   const [annualGaugeDetailVisible,setAnnualGaugeDetailVisible]=useState(false);
   const routeParams=useSearchParams();
@@ -273,12 +276,20 @@ export default function Trace({scopeId='loc'}){
   return <FeaturePage featureId="trace">
     <nav className="loc-trace-strategy-tabs" aria-label="痕跡地圖類型">
       <button type="button" className="loc-button" aria-pressed={mapMode==='territory'}
-        onClick={()=>setMapMode('territory')}>年度文章地點圖</button>
+        onClick={()=>setMapMode('territory')}>年度文章地點圖{mapMode==='territory'?<motion.span
+          className="loc-trace-strategy-tabs__indicator" layoutId={'trace-mode-'+scopeId}
+          transition={reduceMotion?{duration:0}:{type:'spring',duration:.26,bounce:.1}} aria-hidden="true"/>:null}</button>
       <button type="button" className="loc-button" aria-pressed={mapMode==='routes'}
-        onClick={()=>setMapMode('routes')}>路徑痕跡圖</button>
+        onClick={()=>setMapMode('routes')}>路徑痕跡圖{mapMode==='routes'?<motion.span
+          className="loc-trace-strategy-tabs__indicator" layoutId={'trace-mode-'+scopeId}
+          transition={reduceMotion?{duration:0}:{type:'spring',duration:.26,bounce:.1}} aria-hidden="true"/>:null}</button>
     </nav>
-    {mapMode==='territory'?<TraceTerritoryPanel scopeId={scopeId}/>:
-    <TraceMap publicTrace floatingControls={floatingControls} spatialData={demoSpatialData}
+    {/* Keep exactly one WebGL canvas: the map owns its dimensions and Motion
+        unfolds two paper leaves above it, never transforms the canvas. */}
+    <div key={mapMode} className="loc-trace-map-transition" data-map-mode={mapMode}>
+    {mapMode==='territory'?<TraceTerritoryPanel scopeId={scopeId} onMapReady={()=>setReadyMapMode('territory')}/>:
+    <TraceMap publicTrace onReady={()=>setReadyMapMode('routes')}
+      floatingControls={floatingControls} spatialData={demoSpatialData}
        annualGauges={annualGauges} annualGaugeOn={annualGaugeOn}
        annualGaugeBusy={annualGaugeOn&&annualGaugeDetailVisible&&annualGroups.length>0&&annualSummary.isPending}
        annualGaugeError={Boolean(annualSummary.error)}
@@ -349,5 +360,14 @@ export default function Trace({scopeId='loc'}){
 
       </div>:null}
     </TraceMap>}
+      {readyMapMode===mapMode&&!reduceMotion?<div className="loc-trace-map-unfold" aria-hidden="true">
+        <motion.span className="loc-trace-map-unfold__leaf loc-trace-map-unfold__leaf--left"
+          initial={{scaleX:1}} animate={{scaleX:0}}
+          transition={{duration:.52,ease:[.25,.75,.2,1]}}/>
+        <motion.span className="loc-trace-map-unfold__leaf loc-trace-map-unfold__leaf--right"
+          initial={{scaleX:1}} animate={{scaleX:0}}
+          transition={{duration:.52,ease:[.25,.75,.2,1]}}/>
+      </div>:null}
+    </div>
   </FeaturePage>;
 }

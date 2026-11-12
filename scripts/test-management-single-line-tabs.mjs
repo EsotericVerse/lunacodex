@@ -60,3 +60,33 @@ test('phone management navigation is explicit and source changes save through th
   assert.doesNotMatch(source,/onClick=\{save\}/);
   assert.match(source,/canChangeNode/);
 });
+
+test('Motion highlights the active management section without changing in-page navigation',async()=>{
+  const {parse}=await import('@babel/parser');
+  assert.ok(parse(component,{sourceType:'module',plugins:['jsx']}).program.body.length>0);
+  assert.match(component,/import \{motion,useReducedMotion\} from 'motion\/react'/);
+  assert.match(component,/<motion\.span className="management-section-nav__active-indicator"/);
+  assert.match(component,/layoutId=\{id\+'-selected'\}/);
+  assert.match(component,/transition=\{reduceMotion\?\{duration:0\}:/);
+  assert.match(component,/onClick=\{\(\)=>\{if\(!selected\)onChange\(item\.value\);\}\}/);
+  assert.match(component,/window\.history\.pushState/);
+  assert.doesNotMatch(component,/router\.push\(/);
+  const style=read('app/styles/aimran-inspired.css');
+  assert.match(style,/\.management-section-nav__active-indicator\{/);
+  assert.match(style,/pointer-events:none/);
+});
+
+test('search keeps native smooth scroll and uses only a transient Motion arrival marker',async()=>{
+  const {parse}=await import('@babel/parser');
+  const search=read('app/modular/features/Search.jsx');
+  assert.ok(parse(search,{sourceType:'module',plugins:['jsx']}).program.body.length>0);
+  assert.match(search,/resultsRef\.current\?\.scrollIntoView/);
+  assert.match(search,/behavior:reduceMotion\?'auto':'smooth'/);
+  assert.match(search,/className="scope-search-arrival-indicator"/);
+  assert.match(search,/setArrivalVersion\(version=>version\+1\)/);
+  assert.match(search,/key=\{arrivalVersion\}/);
+  assert.match(search,/initial=\{reduceMotion\?false:/);
+  const styles=read('app/styles/features.css');
+  assert.match(styles,/\.scope-search-arrival-indicator\{/);
+  assert.match(styles,/pointer-events:none/);
+});
