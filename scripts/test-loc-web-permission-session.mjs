@@ -43,7 +43,8 @@ test('Zod rejects invalid business role rows, while original role rules stay int
   const rows=[
     {id:'lrunes',email:owner,manage_role:'scope',active:true},
     {id:'bad id',email:owner,manage_role:'admin',active:true},
-    {id:'loc',email:owner,manage_role:'superadmin',active:true}
+    {id:'loc',email:owner,manage_role:'superadmin',active:true},
+    {id:'admin',email:owner,manage_role:'admin'}
   ];
   const grants=resolveLocPermissions(owner,rows);
   assert.equal(grants.canWrite,true);
