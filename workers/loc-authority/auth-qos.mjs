@@ -64,7 +64,7 @@ export function createAuthKaraulRateRules({now=()=>Date.now(),detect=detectChang
         try{
           const boundaries=detect(completed,poisson);
           const change=boundaries.at(-1);
-          if(change>=4&&change<completed.length-1){
+          if(change>=4&&change<completed.length){
             const baseline=completed.slice(0,change);
             const tail=completed.slice(change);
             const before=baseline.reduce((a,b)=>a+b,0)/baseline.length;
