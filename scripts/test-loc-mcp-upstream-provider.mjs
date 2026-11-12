@@ -73,7 +73,7 @@ test('GitHub first authorization requires external code and does not accept LOC 
 test('function governance defaults to deny; ask requires fresh pending and human decision',async()=>{
   const env=fixture();
   await vaultPut(env,await providerKey(SUBJECT,'clerk'),{
-    access_token:'clerk-token',expires_at:Date.now()+3600000});
+    access_token:'clerk-token',connection_id:'connection-1',expires_at:Date.now()+3600000});
   let status=await providerStatuses(env,SUBJECT);
   assert.equal(status.providers.find(x=>x.id==='clerk').connected,true);
   const blocked=await requestTool(env,SUBJECT,'clerk','create_user',{email:'test@example.com'});
@@ -96,7 +96,7 @@ test('function governance defaults to deny; ask requires fresh pending and human
 test('auto mode sends only provider bearer; never forwards LOC Auth credentials',async()=>{
   const env=fixture();
   await vaultPut(env,await providerKey(SUBJECT,'clerk'),{
-    access_token:'clerk-upstream-token',expires_at:Date.now()+3600000});
+    access_token:'clerk-upstream-token',connection_id:'connection-1',expires_at:Date.now()+3600000});
   await vaultPut(env,'policy:'+await hashValue(SUBJECT)+':clerk',{whoami:'auto'});
   const original=globalThis.fetch;let calls=[];
   globalThis.fetch=async(url,options)=>{
