@@ -175,6 +175,7 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
 
   useEffect(()=>{
     setSelection({scopeId,themeId:SYSTEM_THEME_ID});
+    setAccentPulse(0);
   },[scopeId]);
 
   return <label className="scope-theme-control">
@@ -185,13 +186,14 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
       {accentPulse>0&&!reduceMotion?<motion.span key={scopeId+':'+accentPulse}
         className="scope-theme-control__pulse" aria-hidden="true"
         initial={{opacity:.65,scale:.65}} animate={{opacity:0,scale:1.7}}
+        onAnimationComplete={()=>setAccentPulse(0)}
         transition={{duration:.48,ease:'easeOut'}}/>:null}
     </span>
     <select value={selectedThemeId} onChange={event=>{
       const next=event.target.value;
       if(next===selectedThemeId)return;
       setSelection({scopeId,themeId:next});
-      setAccentPulse(count=>count+1);
+      if(!reduceMotion)setAccentPulse(count=>count+1);
     }} aria-label={copy.common.theme}>
       <option value={SYSTEM_THEME_ID}>{copy.common.systemTheme}</option>
       {themeChoices.map(item=><option value={item.id} key={item.id}>{item.label}</option>)}
