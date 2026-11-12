@@ -36,6 +36,15 @@ export async function setToolPolicy(env,subject,provider,tool,mode){
   await vaultPut(env,key,old);
   return {provider,tool,mode};
 }
+export async function clearToolPolicies(env,subject,provider){
+  const key=await policyKey(subject,provider);
+  await vaultDelete(env,key);
+  const prefix=await pendingPrefix(subject);
+  for(const id of await vaultList(env,prefix,100)){
+    const pending=await vaultGet(env,id);
+    if(pending?.provider===provider)await vaultDelete(env,id);
+  }
+}
 export async function requestTool(env,subject,provider,tool,args){
   upstreamProvider(provider);providerToolName(tool);
   args=providerArguments(args);
