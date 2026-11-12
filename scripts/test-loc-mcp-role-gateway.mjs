@@ -143,7 +143,7 @@ test('Extension keeps its existing LOC Auth PKCE and Queue; backend shares MCP r
   assert.equal(cfg.import_url,'https://mcp.lo3rwang.cc/api/loc-native');
   assert.match(bg,/chrome\.identity\.launchWebAuthFlow/);
   assert.match(bg,/const DB_NAME='loc-channel1-queue'/);
-  assert.match(native,/host===MCP_HOST[\s\S]*?locMcpPermissionsForEmail\(selected\.db,claims\.email\)/);
-  assert.match(privateLink,/locMcpPermissionsForEmail\(db,email\)/);
+  assert.match(native,/host===MCP_HOST[\s\S]*?locMcpPermissionsForEmail\(selected\.db,claims\.email,\{dialect:selected\.dialect\}\)/);
+  assert.match(privateLink,/locMcpPermissionsForEmail\(db,email,\{dialect:selected\.dialect\}\)/);
   assert.match(router,/authorizeMcpBearer\(match\[1\],identity\.subject,env\)/);
 });
