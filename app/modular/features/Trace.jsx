@@ -51,6 +51,7 @@ export default function Trace({scopeId='loc'}){
   const [selectedPlace,setSelectedPlace]=useState(null);
   // Annual territory is the default; route/index data loads only after choosing the classic map.
   const [mapMode,setMapMode]=useState('territory');
+  const [readyMapMode,setReadyMapMode]=useState('');
   const [annualGaugeOn,setAnnualGaugeOn]=useState(true);
   const [annualGaugeDetailVisible,setAnnualGaugeDetailVisible]=useState(false);
   const routeParams=useSearchParams();
@@ -286,8 +287,9 @@ export default function Trace({scopeId='loc'}){
     {/* Keep exactly one WebGL canvas: the map owns its dimensions and Motion
         unfolds two paper leaves above it, never transforms the canvas. */}
     <div key={mapMode} className="loc-trace-map-transition" data-map-mode={mapMode}>
-    {mapMode==='territory'?<TraceTerritoryPanel scopeId={scopeId}/>:
-    <TraceMap publicTrace floatingControls={floatingControls} spatialData={demoSpatialData}
+    {mapMode==='territory'?<TraceTerritoryPanel scopeId={scopeId} onMapReady={()=>setReadyMapMode('territory')}/>:
+    <TraceMap publicTrace onReady={()=>setReadyMapMode('routes')}
+      floatingControls={floatingControls} spatialData={demoSpatialData}
        annualGauges={annualGauges} annualGaugeOn={annualGaugeOn}
        annualGaugeBusy={annualGaugeOn&&annualGaugeDetailVisible&&annualGroups.length>0&&annualSummary.isPending}
        annualGaugeError={Boolean(annualSummary.error)}
@@ -358,7 +360,7 @@ export default function Trace({scopeId='loc'}){
 
       </div>:null}
     </TraceMap>}
-      {!reduceMotion?<div className="loc-trace-map-unfold" aria-hidden="true">
+      {readyMapMode===mapMode&&!reduceMotion?<div className="loc-trace-map-unfold" aria-hidden="true">
         <motion.span className="loc-trace-map-unfold__leaf loc-trace-map-unfold__leaf--left"
           initial={{scaleX:1}} animate={{scaleX:0}}
           transition={{duration:.52,ease:[.25,.75,.2,1]}}/>
