@@ -1,13 +1,19 @@
+import {calendarYearWindow} from '../../../loc/default-year-window.mjs';
+
 // Shared "favorite-frame" filters for a selected Trace place. These filters
 // never change stored anchors, visit timestamps, or the current route.
 const dateISO=date=>date.toISOString().slice(0,10);
 export const TRACE_PANEL_MODES=Object.freeze(['articles','timeline','statistics']);
-export const TRACE_TIME_WINDOWS=Object.freeze(['3m','12m','all','custom']);
+export const TRACE_TIME_WINDOWS=Object.freeze(['year','3m','12m','all','custom']);
 export function traceWindow(window='3m',now=new Date(),custom={}){
   const today=new Date(now);
   // Use Taiwan's civil date, not the browser's locale-dependent date.
   const tw=new Date(today.getTime()+8*3600000);
   const end=dateISO(tw);
+  if(window==='year'){
+    const {startDate,endDate}=calendarYearWindow(today);
+    return {startDate,endDate};
+  }
   if(window==='all')return {startDate:'',endDate:''};
   if(window==='custom'){
     const startDate=String(custom.start||''),endDate=String(custom.end||'');

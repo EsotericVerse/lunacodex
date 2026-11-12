@@ -15,6 +15,7 @@ import {useAsyncResource} from '../../loc/use-async-resource';
 import {mapBounded} from '../../loc/bounded-parallel.mjs';
 import useLocFeatureSettings from '../../loc/use-loc-feature-settings';
 import {traceWindow} from './trace/trace-panel-filters.mjs';
+import {DEFAULT_YEAR_WINDOW} from '../../loc/default-year-window.mjs';
 import {annualGaugeGroups,annualGaugeValues} from './trace/trace-annual-gauges.mjs';
 import {dbPublicClient} from '../../loc/db-client.mjs';
 import {publicTraceMapChoices,locReferencedPointGroups,clusterLocSharedPoints} from './trace/trace-map-choices.mjs';
@@ -65,7 +66,7 @@ export default function Trace({scopeId='loc'}){
   const [currentTraceChoice,setCurrentTraceChoice]=useState('auto');
   const [reportTab,setReportTab]=useState(null);
   // Historical Frames should not default to hiding older check-in articles.
-  const [timeWindow,setTimeWindow]=useState('all');
+  const [timeWindow,setTimeWindow]=useState('year');
   const [customStart,setCustomStart]=useState('');
   const [customEnd,setCustomEnd]=useState('');
   const [sourceDraft,setSourceDraft]=useState('');
@@ -184,7 +185,7 @@ export default function Trace({scopeId='loc'}){
     ?{anchors:linkedSpatialData.anchors,maps:demoRoute?[demoRoute]:[]}
     :linkedSpatialData,[twoPointDemo,linkedSpatialData,demoRoute]);
   // Aggregate only loaded map pins. No per-pin lookup and no periodic refresh.
-  const annualWindow=useMemo(()=>traceWindow('12m',new Date()),[]);
+  const annualWindow=useMemo(()=>traceWindow('year',new Date()),[]);
   const annualGroups=useMemo(()=>annualGaugeGroups(demoSpatialData?.anchors||[],TRACE_SCOPES),
     [demoSpatialData?.anchors]);
   const annualSummary=useAsyncResource({
@@ -321,6 +322,7 @@ export default function Trace({scopeId='loc'}){
       <div className="loc-trace-report-settings">
         <label>{t("time")}
           <select className="scope-select" value={timeWindow} onChange={event=>setTimeWindow(event.target.value)}>
+            <option value="year">{DEFAULT_YEAR_WINDOW.label}</option>
             <option value="3m">{t("lastThreeMonths")}</option>
             <option value="12m">{t("lastYear")}</option>
             <option value="all">{t("allTime")}</option>
@@ -350,7 +352,7 @@ export default function Trace({scopeId='loc'}){
             <option value="rune">{t("runeDraw")}</option>
           </select>
         </label>
-        <p className="scope-status">{t("settingsIntro")} {timeWindow==='3m'?t('lastThreeMonths'):timeWindow==='all'?t('allTime'):t('currentTime')}。</p>
+        <p className="scope-status">{t("settingsIntro")} {timeWindow==='year'?DEFAULT_YEAR_WINDOW.label:timeWindow==='3m'?t('lastThreeMonths'):timeWindow==='all'?t('allTime'):t('currentTime')}。</p>
         </div>
         </details>:null}
         {reportTab?<TracePlaceResults key={reportPlace.source_scope+':'+reportPlace.uid} place={reportPlace}
