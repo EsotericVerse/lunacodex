@@ -93,6 +93,19 @@ test('function governance defaults to deny; ask requires fresh pending and human
   status=await providerStatuses(env,SUBJECT);
   assert.deepEqual(status.providers.find(x=>x.id==='clerk').policies,{});
 });
+test('a pending approval cannot cross a provider account reauthorization',async()=>{
+  const env=fixture();
+  await vaultPut(env,await providerKey(SUBJECT,'clerk'),{
+    access_token:'first-token',connection_id:'first-link',expires_at:Date.now()+3600000});
+  await vaultPut(env,'policy:'+await hashValue(SUBJECT)+':clerk',{create_user:'ask'});
+  const pending=await requestTool(env,SUBJECT,'clerk','create_user',{name:'old'});
+  assert.equal(pending.status,'approval_required');
+  await vaultPut(env,await providerKey(SUBJECT,'clerk'),{
+    access_token:'second-token',connection_id:'second-link',expires_at:Date.now()+3600000});
+  await assert.rejects(()=>decideApproval(env,SUBJECT,pending.approval_id,true),
+    /previous provider authorization/);
+});
+
 test('auto mode sends only provider bearer; never forwards LOC Auth credentials',async()=>{
   const env=fixture();
   await vaultPut(env,await providerKey(SUBJECT,'clerk'),{
