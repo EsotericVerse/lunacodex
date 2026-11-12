@@ -21,7 +21,10 @@ async function getVerifiedPrincipal(token,subject,fetchImpl){
       cache:'no-store',redirect:'manual',signal:AbortSignal.timeout(7000)
     });
   }catch{throw denied('LOC OAuth UserInfo unavailable',503)}
-  if(!res.ok)throw denied('LOC OAuth identity verification failed',401);
+  if(res?.status===429)throw denied('LOC OAuth UserInfo rate limited',429);
+  if(res?.status===401||res?.status===403)
+    throw denied('LOC OAuth identity verification failed',401);
+  if(!res?.ok)throw denied('LOC OAuth UserInfo unavailable',503);
   const checked=VerifiedLocUserInfoSchema.safeParse(await res.json().catch(()=>null));
   if(!checked.success||checked.data.sub!==subject)
     throw denied('LOC verified identity required',401);
