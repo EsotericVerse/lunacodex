@@ -122,12 +122,13 @@ function normalize(body){
 }
 
 
-// Use the existing ZenStack ORM for ordinary model-compatible PostgreSQL
+// Use the existing ZenStack ORM for ordinary model-compatible PostgreSQL/MySQL
 // Scope reads, not only for exceptional Boolean conversions. Fixed Blocks use
 // the PolicyPlugin-wrapped model; dynamic Scope IDs use the verified projection.
 // The public Scope allowlist, exact query boundary and source visibility remain
 // unchanged. Unsupported operators, arrays, raw expressions and other
-// dialects retain their existing Kysely executor. No new connection or polling.
+// MSSQL and unsupported operators retain their existing Kysely executor. No
+// new connection or polling.
 function modeledPublicSelect(selected,query){
   if(!['postgres','mysql'].includes(selected.engine)||!selected.dialect||query.cardinality)
     return null;
