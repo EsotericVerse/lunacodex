@@ -29,6 +29,7 @@ export default function BlockNoteEditor({
   suggestionKind='',
   suggestions=[],
   plainTextOnly=false,
+  ariaLabel='文字編輯器',
   className=''
 }){
   const source=initialContent===undefined?content:initialContent;
@@ -44,7 +45,7 @@ export default function BlockNoteEditor({
     onBlocksChange?.(blocks);
     onPlainTextChange?.(blocksToPlainText(blocks));
   };
-  return <div className={'scope-blocknote '+(editable?'is-editable ':'is-readonly ')+className}>
+  return <div className={'scope-blocknote '+(editable?'is-editable ':'is-readonly ')+(plainTextOnly?'is-plain-text ':'')+className}>
     <BlockNoteCanvas
       key={editorKey}
       initialBlocks={initialBlocks}
@@ -57,6 +58,7 @@ export default function BlockNoteEditor({
       suggestionKind={suggestionKind}
       suggestions={suggestions}
       plainTextOnly={plainTextOnly}
+      ariaLabel={ariaLabel}
     />
   </div>;
 }
@@ -100,7 +102,8 @@ export function ObjectEditor({
         onBlocksChange={field.onBlocksChange} onHtmlChange={field.onHtmlChange}
         onPlainTextChange={field.onPlainTextChange} canInsertImage={field.canInsertImage!==false}
         editable={field.disabled!==true} plainTextOnly={field.plainTextOnly===true}
-        suggestionKind={field.suggestionKind||''} suggestions={field.suggestions||[]}/>;
+        suggestionKind={field.suggestionKind||''} suggestions={field.suggestions||[]}
+        ariaLabel={field.ariaLabel||'文字編輯器'}/>;
       return field.bare?<Fragment key={field.key}>{element}</Fragment>
         :<div key={field.key} className="scope-management-wide-field">
           {field.label!=null?<span>{field.label}</span>:null}
@@ -150,7 +153,11 @@ export function ObjectEditor({
                 <input type="checkbox" checked={current===true} onChange={event=>setValue(event.target.checked)}/>
                 <span>{current===true?'true':'false'}</span>
               </span>
-              :kind==='array'||kind==='multiline'?<textarea rows={2} aria-label={fieldLabel}
+              :kind==='multiline'?<BlockNoteEditor
+                editorKey={'article-attribute:'+String(draft.editorKey||'')+':'+key}
+                content={String(current??'')} ariaLabel={fieldLabel}
+                plainTextOnly canInsertImage={false} onPlainTextChange={setValue}/>
+              :kind==='array'?<textarea rows={2} aria-label={fieldLabel}
                 value={String(current??'')} onChange={event=>setValue(event.target.value)}/>
               :<input aria-label={key} type={kind==='date'?'datetime-local':kind==='number'?'number':'text'}
                 value={String(current??'')} onChange={event=>setValue(event.target.value)}/>}

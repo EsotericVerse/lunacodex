@@ -8,6 +8,7 @@ import {useEditDockForm} from '../modular/edit-dock';
 
 // The very same graph canvas used by the personal Keyword editor.
 const KeywordNetworkEditor=dynamic(()=>import('./KeywordNetworkEditor'),{ssr:false});
+const BlockNoteEditor=dynamic(()=>import('./BlockNoteEditor'),{loading:()=>null});
 const TABLE='silver.loc_anchor';
 const TYPES=['universe','galaxy','domain','from'];
 const NEXT={universe:'galaxy',galaxy:'domain',domain:'from'};
@@ -175,8 +176,14 @@ export function AdminSourceCategories(){
         {draft?<div className="scope-management-fields">
           <p className="scope-status">{byUid.has(draft.uid)?'編輯':'新增'} {draft.type} · UID：<code>{draft.uid}</code></p>
           <label><span>名稱</span><input value={draft.title} onChange={e=>setDraft(v=>({...v,title:e.target.value}))}/></label>
-          <label><span>說明</span><textarea rows={3} value={draft.description}
-            onChange={e=>setDraft(v=>({...v,description:e.target.value}))}/></label>
+          <div className="scope-management-wide-field">
+            <span>說明</span>
+            <BlockNoteEditor editorKey={'source-description:'+draft.uid}
+              content={draft.description||''} editable={!busy} plainTextOnly canInsertImage={false}
+              ariaLabel="來源說明"
+              onPlainTextChange={value=>setDraft(current=>current?.uid===draft.uid
+                ?{...current,description:value}:current)}/>
+          </div>
           <div className="scope-preview-links">
             {current&&current.uid===draft.uid?<button type="button" className="loc-button scope-danger-button"
               disabled={busy||children(current.uid).length>0} onClick={remove}>刪除</button>:null}

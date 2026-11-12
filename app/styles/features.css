@@ -515,6 +515,11 @@
 /* BlockNote is the single text/media authoring surface. Media remains URL-backed; rich structure is stored separately. */
 .scope-blocknote{min-width:0}
 .scope-blocknote .bn-container{background:transparent;color:var(--loc-text);font-family:inherit}
+.scope-blocknote.is-plain-text .bn-editor{min-height:5.2rem;padding:.65rem .8rem}
+.scope-blocknote.is-plain-text .bn-container{width:100%;min-width:0}
+.scope-keyword-management .scope-management-editor .scope-management-fields>.scope-management-wide-field,
+.scope-keyword-network-inspector .scope-management-fields>.scope-management-wide-field{grid-column:1/-1;min-width:0;margin:0}
+.scope-management-fields>.scope-management-wide-field .scope-blocknote{min-width:0;width:100%}
 .scope-blocknote .bn-editor{min-height:10rem;padding:1rem;border:1px solid var(--loc-line);border-radius:var(--loc-radius);background:color-mix(in srgb,var(--loc-panel) 86%,transparent);color:var(--loc-text);font-family:inherit}
 .scope-blocknote.is-readonly .bn-editor{min-height:0;padding:0;border:0;background:transparent}
 .scope-blocknote .bn-editor:focus-within{border-color:var(--loc-accent-border);box-shadow:0 0 0 2px color-mix(in srgb,var(--loc-accent) 16%,transparent)}

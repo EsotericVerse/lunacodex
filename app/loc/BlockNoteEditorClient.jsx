@@ -16,12 +16,13 @@ export default function BlockNoteEditorClient({
   suggestionKind='',
   suggestions=[],
   plainTextOnly=false,
+  ariaLabel='文字編輯器',
   onChange=null,
   onHtmlChange=null
 }){
   const editor=useCreateBlockNote({
     initialContent:canonicalBlockNoteBlocks(initialBlocks),
-    domAttributes:{editor:{'aria-label':editable?'文字編輯器':'文字內容'}}
+    domAttributes:{editor:{'aria-label':editable?ariaLabel:'文字內容'}}
   });
   const hydratedLegacyHtml=useRef(false);
   const htmlEmitVersion=useRef(0);
@@ -68,20 +69,6 @@ export default function BlockNoteEditorClient({
       console.error('BlockNote HTML export failed',error);
     });
   };
-
-  function editLink(event){
-    event?.preventDefault?.();
-    const current=editor.getSelectedLinkUrl?.()||'';
-    const selected=editor.getSelectedText?.()||'';
-    if(!selected&&!current){
-      globalThis.alert?.('請先選取要加上超連結的文字。');
-      return;
-    }
-    const next=globalThis.prompt?.('超連結網址',current||'https://');
-    if(next===null||next===undefined)return;
-    editor.createLink(String(next).trim());
-    emit();
-  }
 
   function insertImageUrl(event){
     event?.preventDefault?.();
@@ -131,16 +118,8 @@ export default function BlockNoteEditorClient({
     }
   }
 
-  function removeLink(event){
-    event?.preventDefault?.();
-    editor.createLink('');
-    emit();
-  }
-
   return <>
-    {editable&&!plainTextOnly?<div className="scope-blocknote-linkbar">
-      <button type="button" className="loc-button" onMouseDown={event=>event.preventDefault()} onClick={editLink}><FieldText text="連結"/></button>
-      <button type="button" className="loc-button" onMouseDown={event=>event.preventDefault()} onClick={removeLink}><FieldText text="移除連結"/></button>
+    {editable&&!plainTextOnly&&canInsertImage?<div className="scope-blocknote-linkbar">
       {canInsertImage?<button type="button" className="loc-button" onMouseDown={event=>event.preventDefault()} onClick={insertImageUrl}><FieldText text="圖片網址"/></button>:null}
     </div>:null}
     <BlockNoteView

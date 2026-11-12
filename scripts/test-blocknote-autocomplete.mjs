@@ -52,6 +52,26 @@ test('management Hero uses shared BlockNote rich editor, no textarea',()=>{
   assert.match(read('app/modular/ui.jsx'),/rich=\{Boolean\(shared\)/);
 });
 
+test('keyword and source descriptions reuse shared BlockNote with text persistence',()=>{
+  for(const file of ['app/loc/KeywordLibraryPanel.jsx','app/loc/SourceCategoryEditor.jsx']){
+    const source=read(file);
+    assert.match(source,/<BlockNoteEditor editorKey=/);
+    assert.match(source,/plainTextOnly canInsertImage=\{false\}/);
+    assert.match(source,/onPlainTextChange=\{value=>/);
+  }
+  const keyword=read('app/loc/KeywordLibraryPanel.jsx');
+  assert.match(keyword,/<textarea rows=\{9\} value=\{keywordText\}/);
+  const source=read('app/loc/SourceCategoryEditor.jsx');
+  assert.doesNotMatch(source,/<textarea/);
+});
+
+test('BlockNote native link controls replace handwritten link buttons',()=>{
+  const editor=read('app/loc/BlockNoteEditorClient.jsx');
+  assert.doesNotMatch(editor,/function editLink\(|function removeLink\(/);
+  assert.match(editor,/<BlockNoteView/);
+  assert.match(editor,/onClick=\{insertImageUrl\}/);
+});
+
 test('native BlockNote menu integrates Zod types in anchor text only',()=>{
   const client=read('app/loc/BlockNoteEditorClient.jsx');
   assert.match(client,/SuggestionMenuController/);

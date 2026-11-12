@@ -12,6 +12,7 @@ import {keywordClassState,invalidateKeywordClass} from './keyword-class-state.mj
 import {generateKeywordClassUid} from './keyword-uidlist.mjs';
 
 const KeywordNetworkEditor=dynamic(()=>import('./KeywordNetworkEditor'),{ssr:false});
+const BlockNoteEditor=dynamic(()=>import('./BlockNoteEditor'),{loading:()=>null});
 const TYPES=['class','group','item'];
 const LABEL={category:'關鍵字目錄',class:'關鍵字群組科目',group:'關鍵字分類群組',item:'關鍵詞分類'};
 const onlyWords=value=>[...new Set(String(value||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean))];
@@ -454,7 +455,14 @@ export default function KeywordLibraryPanel({scopeId,account}){
         <h3>{tree.index.has(draft.uid)?'編輯':'新增'} {LABEL[draft.type]}</h3>
         <div className="scope-management-fields">
           <label><span>名稱</span><input value={draft.name} onChange={e=>setEditor({node:{...draft,name:e.target.value}})}/></label>
-          <label><span>說明</span><textarea rows={2} value={draft.desc} onChange={e=>setEditor({node:{...draft,desc:e.target.value}})}/></label>
+          <div className="scope-management-wide-field">
+            <span>說明</span>
+            <BlockNoteEditor editorKey={'keyword-description:'+scopeId+':'+draft.uid}
+              content={draft.desc||''} editable={!busy} plainTextOnly canInsertImage={false}
+              ariaLabel="關鍵詞說明"
+              onPlainTextChange={value=>setEditor(current=>current?.node?.uid===draft.uid
+                ?{...current,node:{...current.node,desc:value}}:current)}/>
+          </div>
         </div>
         {draft.type==='item'?<label className="scope-management-wide-field">
           <span>Pattern 關鍵詞（一行一詞，規則保留）</span>
