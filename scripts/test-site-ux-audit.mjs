@@ -97,7 +97,7 @@ test('mobile edit dock and Trace territory keep all return/focus targets unobscu
   // All three scroll/focus surfaces use the same clearance, including notices.
   assert.match(dock,/html\{[^}]*--loc-dock-clearance:calc\(6\.5rem \+ env\(safe-area-inset-bottom,0px\)\);[^}]*scroll-padding-bottom:var\(--loc-dock-clearance\)/s);
   assert.match(dock,/html:has\(\.scope-feature-dock \.scope-edit-dock-notice\)\{[^}]*--loc-dock-clearance:calc\(11rem \+ env\(safe-area-inset-bottom,0px\)\)/s);
-  assert.match(dock,/body\{padding-bottom:var\(--loc-dock-clearance\)\}/);
+  assert.match(dock,/body\{padding-bottom:var\(--loc-dock-clearance\);\}/);
   assert.match(dock,/:where\(a,button,input,select,textarea,\[tabindex\]\):focus\{[^}]*scroll-margin-bottom:var\(--loc-dock-clearance\)/s);
   // Both route report and territory dossier leave a lane for the lower-right
   // map return action instead of allowing the higher z-index report to cover it.
