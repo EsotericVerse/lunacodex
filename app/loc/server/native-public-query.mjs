@@ -105,10 +105,14 @@ function normalize(body){
   if(body.count!=null&&body.count!=='exact')
     throw invalid('Invalid SQL count mode');
   if(body.head!=null&&typeof body.head!=='boolean')throw invalid('Invalid SQL HEAD');
-  // Validate known physical column names against the single ZenStack model.
-  // No SQL connection is needed to reject unknown modeled projections.
-  verifyModeledSqlFields({schema:'silver',table,columns,filters,orders});
-  return {table,columns,filters,orFilters,orders,limit,offset,
+  // Parse once at the request boundary, then reuse the identical typed AST
+  // for both ZModel validation and the Kysely fallback SQL predicate.
+  const parsedOrFilters=orFilters.map(parsePortableOrExpression);
+  // No SQL connection is needed to reject unknown modeled columns, even
+  // when they are nested in a grouped AND/OR expression.
+  verifyModeledSqlFields({schema:'silver',table,columns,filters,
+    orFilters:parsedOrFilters,orders});
+  return {table,columns,filters,orFilters:parsedOrFilters,orders,limit,offset,
     head:body.head===true,cardinality:body.cardinality||null,count:body.count||null};
 }
 
@@ -209,7 +213,7 @@ function withFilters(q,body){
     q=q.where(eb=>f.negate===true?eb.not(predicate(eb,f)):predicate(eb,f));
   for(const source of body.orFilters){
     const ast=normalizeModeledTypeDifferences({
-      schema:'silver',table:body.table,orFilters:[parsePortableOrExpression(source)]
+      schema:'silver',table:body.table,orFilters:[source]
     }).orFilters[0];
     q=q.where(eb=>predicate(eb,ast));
   }

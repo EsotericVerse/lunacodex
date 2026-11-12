@@ -75,13 +75,36 @@ export function modeledBooleanColumns(schemaName,tableName){
 // This is column-name contract validation, not permission verification or
 // runtime type-difference handling. Normal SQL values stay on Kysely;
 // LOC Auth and the trusted application boundary retain access control.
+// A parsed, bounded portable OR expression may contain nested AND/OR groups.
+// Model the physical predicates as well as the top-level SELECT/WHERE/ORDER BY
+// columns, rather than making each Kysely entry point maintain a second list.
+// The parser owns grammar/depth/size validation; this only checks ZModel fields.
+function modeledPredicateColumns(nodes){
+  const columns=[];
+  const visit=node=>{
+    if(!node||typeof node!=='object')
+      throw new TypeError('Invalid LOC ZModel SQL predicate');
+    if(node.type==='and'||node.type==='or'){
+      if(!Array.isArray(node.items))
+        throw new TypeError('Invalid LOC ZModel SQL predicate group');
+      for(const item of node.items)visit(item);
+    }else if(node.type==='predicate'){
+      columns.push(node.column);
+    }else{
+      throw new TypeError('Invalid LOC ZModel SQL predicate type');
+    }
+  };
+  for(const node of nodes)visit(node);
+  return columns;
+}
 export function verifyModeledSqlFields({schema:namespace,table,columns=[],
-  filters=[],orders=[],values=null,onConflict=[]}={}){
+  filters=[],orFilters=[],orders=[],values=null,onConflict=[]}={}){
   const fields=modelFieldsForSql(namespace,table);
   if(!fields)return false;
   const requested=[
     ...columns.filter(name=>name!=='*'),
     ...filters.map(item=>item.column),
+    ...modeledPredicateColumns(orFilters),
     ...orders.map(item=>item.column),
     ...onConflict,
     ...(Array.isArray(values)?values.flatMap(row=>Object.keys(row||{})):
