@@ -2,6 +2,7 @@ import {sql} from 'kysely';
 import {SCOPE_ROUTE_INDEX} from '../../modular/scope-route-index.js';
 import {portableContainsSpec} from '../providers/portable-search.mjs';
 import {portableRelation} from '../providers/sql-engine-ports.mjs';
+import {scopedZModelSchema} from '../../../zenstack/scoped-schema.mjs';
 import {directMcpKysely} from './native-kysely.mjs';
 
 // This is a specific read model executed by the trusted MCP application, NOT
@@ -25,7 +26,14 @@ async function scopedDatabase(scopeid,env){
   const namespace=port.namespace??'silver';
   if(namespace&&!/^[A-Za-z][A-Za-z0-9_]*$/.test(namespace))
     throw unavailable('LOC MCP SQL namespace is invalid');
-  return {db:port.db,table:portableRelation(scopeid+'_galaxy',port.engine,namespace)};
+  // The Galaxy ZModel is the physical table/column contract. Kysely executes
+  // the same visibility-filtered SQL, so no generic ORM endpoint is exposed.
+  const galaxy=scopedZModelSchema({scopeId:scopeid,namespace}).models.Galaxy;
+  const relation=galaxy.attributes.find(attr=>attr.name==='@@map')
+    ?.args?.[0]?.value?.value;
+  if(typeof relation!=='string'||!relation)
+    throw unavailable('Galaxy ZModel table mapping is missing');
+  return {db:port.db,table:portableRelation(relation,port.engine,namespace)};
 }
 // Private MCP conversations and old PR development records must never leak
 // from a public Galaxy read even if a historical Boolean was set incorrectly.
