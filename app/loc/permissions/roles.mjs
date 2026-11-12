@@ -1,4 +1,4 @@
-import {WebManageRowSchema} from './web-schema.mjs';
+import {WebManageRowSchema} from './web-manage-schema.mjs';
 
 // LOC authorization is a business-data decision, NOT an Auth subsystem.
 // Better Auth establishes identity; this function reads the existing role
