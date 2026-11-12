@@ -92,7 +92,9 @@ export async function decideApproval(env,subject,id,accept){
     throw new Error('Function approval policy changed; request again');
   try{
     const result=await invokeUpstreamTool(env,subject,item.provider,item.tool,item.args);
-    await vaultPut(env,receiptKey,{status:'executed',result},RECEIPT_TTL);
+    const summary=JSON.stringify(result).length>40000?
+      {status:'executed',result_omitted:true}: {status:'executed',result};
+    await vaultPut(env,receiptKey,summary,RECEIPT_TTL);
     return {status:'executed',result};
   }catch(error){
     await vaultPut(env,receiptKey,{status:'failed',reason:'Provider execution failed'},RECEIPT_TTL);
