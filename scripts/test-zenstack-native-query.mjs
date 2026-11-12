@@ -34,6 +34,21 @@ test('native scope select retains columns, filters, order and bounded pagination
   assert.deepEqual(plan.where,{AND:[{uid:{equals:'Ab12Cd34'}}]});
   assert.deepEqual(plan.orderBy,[{uid:'desc'}]);
   assert.equal(plan.take,8);assert.equal(plan.skip,2);
+  assert.deepEqual(plan.args,{
+    where:{AND:[{uid:{equals:'Ab12Cd34'}}]},
+    select:{uid:true,title:true},skip:2,take:8,
+    orderBy:[{uid:'desc'}]
+  });
+});
+
+test('native plan delegates nullable predicates and scalar shape to the ZModel query schema',()=>{
+  const body={...simple,columns:['uid','date'],filters:[
+    {column:'date',operator:'is',value:null}],orders:[]};
+  const plan=nativeReadPlan(body,'Galaxy');
+  assert.deepEqual(plan.args.where,{AND:[{date:null}]});
+  assert.equal(nativeReadPlan({...body,filters:[
+    {column:'uid',operator:'eq',value:123}]},'Galaxy'),null);
+  assert.equal(nativeReadPlan({...body,columns:['uid','wat']},'Galaxy'),null);
 });
 test('unbounded native SELECT does not inherit a Data API Max Rows limit',()=>{
   const {limit,...all}=simple;
@@ -82,6 +97,17 @@ test('count/head uses the ORM count without loading any article row',async()=>{
   const result=await executeNativeRead(client,{...simple,head:true,count:true},'Galaxy');
   assert.deepEqual(result,{data:null,count:13});
   assert.equal(selected,0);assert.equal(counts,1);
+});
+
+test('native execution forwards the parsed ZModel args directly to the delegate',async()=>{
+  let received;
+  const client={galaxy:{
+    count:async()=>0,
+    findMany:async args=>{received=args;return []}
+  }};
+  const result=await executeNativeRead(client,simple,'Galaxy');
+  assert.deepEqual(result,{data:[],count:null});
+  assert.deepEqual(received,nativeReadPlan(simple,'Galaxy').args);
 });
 
 test('scoped $qb fallback uses mapped ZModel name to preserve SQL namespace',async()=>{

@@ -54,6 +54,8 @@ node --test scripts/test-zenstack-scoped-orm.mjs
 
 `zenstack/native-query.mjs` translates only the lossless subset of LOC `query/select` envelopes to native `findMany` and optional `count`. Explicit ZModel columns, type-compatible AND filters and bounded order/offset/limit are supported. Other operators, raw text search, unknown fields, coercible values and public-only Scope visibility remain on the established Kysely path. The original HTTP response format and `head`/`single` semantics are preserved.
 
+The native plan does not maintain a second hand-written ORM argument validator. It builds only the bounded LOC envelope, then passes `select`, `where`, `orderBy`, `skip` and `take` through the installed ZenStack `createQuerySchemaFactory(schema).makeFindManySchema(...)`. The parsed object is sent unchanged to the model delegate's `findMany`, while the same parsed `where` is used for `count`. LOC-specific guards remain limited to the existing DATE wire-format boundary and nullable list fallback.
+
 The Gateway applies LOC Auth/Scope validation, Session/RLS binding and its existing ACL before private native Scope reads. Four fixed control models use the existing PolicyPlugin-wrapped client. Both paths share the same trusted database dialect and connection pool; no schema, policy, RLS, index, RPC or migration is changed.
 
 The `LocFederatedRef` and `LocAnchorLink` ZModel types remain virtual identifiers and relationships, not physical foreign keys or synchronized data.
