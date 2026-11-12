@@ -1,5 +1,5 @@
 'use client';
-import {useState} from 'react';
+import {useEffect,useState} from 'react';
 
 // The upstream MCP Provider console is separate from LOC Auth's identity UI.
 // No OAuth credentials are visible or entered in this browser.
@@ -28,6 +28,15 @@ export default function McpProviderPanel(){
   const [pending,setPending]=useState([]);
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState('');
+  // The OAuth redirect is an explicit user interaction. Reading its local
+  // status marker never queries Auth or a provider.
+  useEffect(()=>{
+    const params=new URLSearchParams(window.location.search);
+    if(params.get('mcp_provider_error')==='1')
+      setMessage('外部授權失敗或已取消，請重新選擇 Provider。');
+    else if(params.get('connected')==='1')
+      setMessage('外部 OAuth 回呼已完成。開啟管理以核對實際連線狀態。');
+  },[]);
   async function refresh(){
     const info=await providerRequest('status');
     setProviders(info.providers||[]);setReady(info.ready===true);
@@ -45,6 +54,7 @@ export default function McpProviderPanel(){
   if(!open)return <section className="loc-card admin-workspace" aria-labelledby="admin-mcp-provider-heading">
     <h2 id="admin-mcp-provider-heading">LOC MCP · 上游 Provider</h2>
     <p className="scope-status">獨立管理 Clerk、GitHub、Neon、Supabase 的外部授權和函式政策。此區不自動向 LOC Auth 發送請求。</p>
+    {message?<p className="scope-status" role="status">{message}</p>:null}
     <button className="loc-button" type="button" onClick={()=>{
       setOpen(true);void run('正在讀取 Provider 狀態…',refresh);
     }}>開啟 Provider 管理</button>
