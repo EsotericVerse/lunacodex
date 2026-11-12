@@ -1,7 +1,7 @@
 import {canManageLoc} from './loc-authorization.mjs';
 import {portableRelation} from './sql-engine-ports.mjs';
 import {sql} from 'kysely';
-import {zmodelRegistryJoin} from '../../../zenstack/model-column-guard.mjs';
+import {zmodelRegistryJoin,zmodelGalaxyPointJoin} from '../../../zenstack/model-column-guard.mjs';
 import {keywordPatternItemMetrics,keywordPatternDailySummary} from '../keyword-search-pattern.mjs';
 import {readScopePatternRows} from '../keyword-anchor-index.mjs';
 
@@ -226,17 +226,41 @@ export async function keywordCatalog(trx,scope,anchor,requested,role,{withTotals
 // A single indexed calendar-year GROUP BY includes every article with a
 // place_id, not just points belonging to the selected route or trace=true.
 // No content, article rows, unlinked source tables or coordinates leave SQL.
-async function traceTerritory(trx,scope,start,end){
+async function traceTerritory(trx,scope,start,end,{withPoints=false}={}){
   if(!start||!end)reject('Territory statistics require a bounded period');
   const galaxy=relation(scope,'galaxy');
-  const response=await sql`select g.place_id::text as place_id,
+  // Preserve the original count-only contract for existing analytics readers.
+  if(!withPoints){
+    const response=await sql`select g.place_id::text as place_id,
+        (g.date)::text as day,btrim(coalesce(g.site,'')) as site,
+        count(*)::bigint as item_count
+      from ${galaxy} g
+      where g.place_id is not null and btrim(g.place_id::text)<>''
+        and g.date between ${start}::date and ${end}::date
+      group by 1,2,3 order by 2,1,3`.execute(trx);
+    return response.rows.map(row=>({...row,item_count:Number(row.item_count||0)}));
+  }
+  // Aggregate first, then LEFT JOIN the Point once per grouped place/day/site.
+  // Retain orphan place_ids in the territory register. Only public, visible
+  // Point fields needed by the map are projected; no Anchor.attr leaves SQL.
+  const grouped=sql`(
+    select g.place_id::text as place_id,
       (g.date)::text as day,btrim(coalesce(g.site,'')) as site,
       count(*)::bigint as item_count
     from ${galaxy} g
     where g.place_id is not null and btrim(g.place_id::text)<>''
       and g.date between ${start}::date and ${end}::date
-    group by 1,2,3 order by 2,1,3`.execute(trx);
-  return response.rows.map(row=>({...row,item_count:Number(row.item_count||0)}));
+    group by 1,2,3
+  )`.as('g');
+  const rows=await zmodelGalaxyPointJoin(trx.selectFrom(grouped),{scopeId:scope})
+    .select(['g.place_id as place_id','g.day as day','g.site as site',
+      'g.item_count as item_count','a.uid as point_uid',
+      'a.title as point_title',
+      sql`a.attr->>'longitude'`.as('point_longitude'),
+      sql`a.attr->>'latitude'`.as('point_latitude')])
+    .orderBy('g.day','asc').orderBy('g.place_id','asc')
+    .orderBy('g.site','asc').execute();
+  return rows.map(row=>({...row,item_count:Number(row.item_count||0)}));
 }
 async function traceDaily(trx,scope,places,start,end,source){
   const galaxy=relation(scope,'galaxy');
@@ -459,7 +483,9 @@ export async function executeKyselyAnalytics(trx,body,{role='anon',publishedScop
   else if(mode==='totals')data=await sourceTotals(trx,scope,start,end);
   else if(mode==='overview')data=await scopeOverview(trx,scope,start,end);
   else if(mode==='trace_places')data=await tracePlaces(trx,scope,start,end);
-  else if(mode==='trace_territory')data=await traceTerritory(trx,scope,start,end);
+  else if(mode==='trace_territory')data=await traceTerritory(trx,scope,start,end,{
+    withPoints:options.withPoints===true
+  });
   else if(mode==='shared_classes')data=await sharedClasses(trx,scope,
     'silver.'+scope+'_'+anchorSuffix,role);
   else if(mode==='keyword_catalog')data=await keywordCatalog(trx,scope,

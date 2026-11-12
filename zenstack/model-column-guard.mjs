@@ -55,6 +55,26 @@ export function modelFieldsForSql(schemaName,tableName){
   const modelName=modelNameForSql(schemaName,tableName);
   return modelName?schema.models[modelName]?.fields||null:null;
 }
+
+// The Scope relation is logical, not a physical FK or a ZenStack @relation.
+// The source must be a *grouped* Galaxy subquery named g, so joining one
+// Point cannot multiply article rows or expose a hidden Point. All identifiers
+// and join keys are verified against the existing frozen ZModel.
+export function zmodelGalaxyPointJoin(source,{scopeId}={}){
+  if(typeof scopeId!=='string'||!/^[a-z][a-z0-9]{0,14}$/.test(scopeId))
+    throw new TypeError('Invalid LOC Galaxy/Point JOIN Scope');
+  const galaxy=modelFieldsForSql('silver',scopeId+'_galaxy');
+  const anchor=modelFieldsForSql('silver',scopeId+'_anchor');
+  const valid=(field,type)=>field?.type===type&&!field.array;
+  if(!valid(galaxy?.place_id,'String')||!valid(anchor?.uid,'String')||
+     !valid(anchor?.type,'String')||!valid(anchor?.invisible,'Boolean')||
+     !valid(anchor?.title,'String')||!valid(anchor?.attr,'Json'))
+    throw new TypeError('LOC Galaxy/Point ZModel JOIN contract missing');
+  return source.leftJoin('silver.'+scopeId+'_anchor as a',join=>
+    join.onRef('a.uid','=','g.place_id')
+      .on('a.type','=','point').on('a.invisible','=',false));
+}
+
 /** Physical PKs are defined by the same fixed/dynamic ZModel used for SQL
  * field validation and import. Return a copy to keep schema metadata immutable.
  * Unmodeled external tables continue under their existing dialect contract.

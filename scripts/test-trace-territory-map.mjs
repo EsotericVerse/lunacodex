@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {parse as parseJsx} from '@babel/parser';
-import {territoryYearWindow,territoryRegions,territoryPointGroups,territoryWithAnchors}
+import {territoryYearWindow,territoryRegions,territoryPointGroups,territoryPointReadPlan,territoryWithAnchors}
   from '../app/modular/features/trace/trace-territory.mjs';
 import {traceArticleIdFilters} from '../app/modular/features/trace/trace-panel-filters.mjs';
 
@@ -47,6 +47,31 @@ test('every place appears in the register even without geographic coordinates',(
   assert.equal(result.find(row=>row.source_scope==='lo3rwang'&&row.uid==='AbCd1234').title,'板橋車站');
   assert.deepEqual(territoryPointGroups(regions,1).map(row=>row.ids.length),[1,1,1]);
 });
+test('grouped Galaxy/Point JOIN eliminates the second Point request only when covered',()=>{
+  const joined=[
+    {...sample[0],point_uid:'AbCd1234',point_title:'板橋車站',
+      point_longitude:'121.456',point_latitude:'25.01'},
+    {...sample[1],point_uid:'AbCd1234',point_title:'板橋車站',
+      point_longitude:'121.456',point_latitude:'25.01'},
+    {...sample[2],point_uid:null,point_title:null,point_longitude:null,point_latitude:null},
+    {...sample[3],point_uid:'AbCd1234',point_title:'另個 Scope 的地點',
+      point_longitude:'120.8',point_latitude:'22.7'}
+  ];
+  const regions=territoryRegions(joined,2026);
+  const plan=territoryPointReadPlan(joined,regions);
+  assert.equal(plan.groups.length,0,'all PostgreSQL grouped rows include Point join coverage');
+  assert.equal(plan.points.length,2,'Scope+UID keeps same UID in different scopes separate');
+  assert.equal(plan.points.find(x=>x.source_scope==='lo3rwang').longitude,121.456);
+  assert.equal(territoryWithAnchors(regions,plan.points).length,3,
+    'orphan place_id remains in the original territory results');
+  assert.equal(territoryWithAnchors(regions,plan.points)
+    .find(x=>x.uid==='DdEe5678').point,null);
+  const fallback=territoryPointReadPlan(sample.slice(0,4),regions);
+  assert.equal(fallback.groups.length>0,true,'portable SQL retains original Point read');
+  const mixed=territoryPointReadPlan([...joined.slice(0,3),sample[3]],regions);
+  assert.deepEqual(mixed.groups.map(x=>x.scope),['lrunes']);
+});
+
 test('the strategy interior reuses the existing article list with the correct scope',()=>{
   const classic=traceArticleIdFilters(['AbCd1234'],{startDate:'2026-01-01',endDate:'2026-12-31'});
   const territory=traceArticleIdFilters(['AbCd1234'],{
@@ -77,6 +102,9 @@ test('the annual source summary is exposed on existing SQL ports, with no Schema
   assert.match(backend,/g\.place_id is not null/);
   const client=source('app/modular/features/trace/TraceTerritoryPanel.jsx');
   assert.match(client,/p_view:'trace_territory'/);
+  assert.match(client,/p_options:\{withPoints:true\}/);
+  assert.match(backend,/zmodelGalaxyPointJoin\(trx.selectFrom\(grouped\)/);
+  assert.match(backend,/withPoints:options.withPoints===true/);
   assert.match(client,/queryKey:\['trace-territory-v1',year/);
   assert.match(client,/onChange=\{event=>\{setStep\(Number\(event\.target\.value\)\)/);
   assert.match(client,/allPlacedArticles/);
