@@ -1057,7 +1057,10 @@ function UniversalImport({scopeId,format,onFormatChange}) {
             .some(row=>String(row.uid)===uid),
           writeBatch:batch=>insertImportRows(galaxy,batch.map(record=>({
             ...record,place_id:record.place_id??null,media_link:record.media_link??null
-          })))
+          })),{
+            onValidationProgress:({completed,total})=>setProgress(previous=>
+              previous?{...previous,detail:'Galaxy ZModel／Zod 已驗證 '+completed+' / '+total}:previous)
+          })
         });
         result.inserted+=outcome.inserted;
         result.conflicts+=outcome.conflicts;
@@ -1219,6 +1222,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         <progress value={progress.percent} max="100" aria-label={progress.stage+'，已完成 '+progress.percent+'%'}/>}
       {progress.total>0?<p className="scope-status">已處理 {Number(progress.completed).toLocaleString()} / {Number(progress.total).toLocaleString()}（{progress.percent}%）</p>:
         <p className="scope-status">已處理 {Number(progress.completed||0).toLocaleString()} 項{progress.detail?'；'+progress.detail:'；總量仍在確認'}。</p>}
+      {progress.total>0&&progress.detail?<p className="scope-status">{progress.detail}</p>:null}
       {stageEstimate?<p className="scope-import-stage-estimate">{stageEstimate.underMinute
         ?t('uiExtra.importUI.importStageLessThanMinute')
         :t('uiExtra.importUI.importStageRemainingMinutes',{minutes:stageEstimate.minutes})}</p>:null}

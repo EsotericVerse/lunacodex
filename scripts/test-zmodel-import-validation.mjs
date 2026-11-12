@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {assertZModelImportRows,importSchemaForSqlTable} from '../zenstack/import-validation.mjs';
 import {createImportProgressStore} from '../app/loc/import-progress-store.mjs';
+import {createDatabaseClient} from '../app/loc/db-contract.mjs';
 import {modelNameForSql,modelFieldsForSql} from '../zenstack/model-column-guard.mjs';
 
 const record=Object.freeze({uid:'TEST0001',title:'匯入測試',content:'正常資料',
@@ -36,6 +37,64 @@ test('unknown keys and malformed typed fields cannot enter the write batch',()=>
     [{...record,target_id:[123]}]),/target_id/);
 });
 
+test('existing Galaxy ZModel validation exposes bounded progress without extra SQL',()=>{
+  const rows=Array.from({length:513},(_,index)=>({
+    ...record,uid:'U'+String(index).padStart(7,'0')
+  }));
+  const progress=[];
+  assert.equal(assertZModelImportRows('silver.lo3rwang_galaxy',rows,{
+    onProgress:value=>progress.push(value)
+  }),rows);
+  assert.deepEqual(progress,[
+    {completed:256,total:513},
+    {completed:512,total:513},
+    {completed:513,total:513}
+  ]);
+  assert.throws(()=>assertZModelImportRows('silver.lo3rwang_galaxy',
+    [{...record,statics:'invalid'}],{
+      onProgress:value=>progress.push(value)
+    }),/statics/);
+  assert.equal(progress.length,3,'rejected data must not emit success progress');
+});
+
+test('Galaxy import writes validated ZModel rows once and retains ordinary inserts',async()=>{
+  const managed=[];
+  const adapter={
+    publicClient:{schema:()=>({})},
+    authClient:{schema:()=>({
+      managedWrite:async payload=>{
+        managed.push(payload);
+        return {data:{count:payload.p_rows.length},error:null};
+      }
+    })},
+    auth:{
+      getSession:()=>null,getUser:()=>null,
+      signInWithOAuth:async()=>({error:null}),
+      signOut:async()=>({error:null})
+    }
+  };
+  const db=createDatabaseClient(adapter);
+  const progress=[];
+  const rows=[{...record}];
+  const inserted=await db.insertImportRows('silver.lo3rwang_galaxy',rows,{
+    onValidationProgress:value=>progress.push(value)
+  });
+  assert.equal(inserted.count,1);
+  assert.deepEqual(progress,[{completed:1,total:1}]);
+  assert.equal(managed.length,1,'one managed Kysely INSERT without retry');
+  assert.equal(managed[0].p_operation,'insert');
+  assert.equal(managed[0].p_rows[0].uid,record.uid);
+  assert.equal(managed[0].p_rows[0].content,record.content);
+  assert.equal(managed[0].p_rows[0].culture,true);
+  assert.equal(Object.hasOwn(managed[0].p_rows[0],'able'),false);
+  assert.equal(Object.hasOwn(rows[0],'able'),false,'input objects must not mutate');
+  await assert.rejects(()=>db.insertImportRows('silver.lo3rwang_galaxy',
+    [{...record,statics:'invalid'}]),/statics/);
+  assert.equal(managed.length,1,'invalid import must not reach managed SQL');
+  await db.insertRows('silver.lo3rwang_galaxy',rows);
+  assert.equal(managed.length,2,'ordinary insert route remains available');
+});
+
 test('unknown physical tables never create a dynamic validation authority',()=>{
   assert.throws(()=>importSchemaForSqlTable('silver.custom_fake'),/No LOC import ZModel/);
   assert.throws(()=>assertZModelImportRows('api.manage',[]),/Invalid LOC Galaxy import table/);
@@ -63,8 +122,12 @@ test('only import insert path uses ZModel check; editor and query stay untouched
   const client=readFileSync(new URL('../app/loc/db-contract.mjs',import.meta.url),'utf8');
   const panel=readFileSync(new URL('../app/loc/ManagementImportPanel.jsx',import.meta.url),'utf8');
   assert.match(client,/const insertImportRows=async\(table,rows\)=>/);
-  assert.match(client,/assertZModelImportRows\(table,prepareGalaxyInsertRows\(table,rows\)\)/);
-  assert.match(client,/return insertRowsUnchecked\(table,rows\)/);
+  assert.match(client,/const prepared=prepareGalaxyInsertRows\(table,rows\)/);
+  assert.match(client,/return insertRowsUnchecked\(table,prepared,\{normalizedGalaxy:true\}\)/);
+  assert.match(client,/assertZModelImportRows\(table,prepared,\{onProgress:onValidationProgress\}\)/);
+  assert.match(client,/if\(!normalizedGalaxy&&isScopedGalaxy/);
   assert.match(panel,/useSyncExternalStore\(progressStore.subscribe/);
+  assert.match(panel,/onValidationProgress:\(\{completed,total\}\)=>setProgress/);
+  assert.match(panel,/progress.total>0&&progress.detail/);
   assert.doesNotMatch(panel,/from 'tanstack|from 'swr/);
 });
