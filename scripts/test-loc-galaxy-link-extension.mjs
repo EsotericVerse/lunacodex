@@ -61,7 +61,7 @@ test('same-origin and origin-bound capture plus UID receipts prevent data loss',
  assert.match(bg,/sender\.id!==chrome\.runtime\.id/);
  assert.match(bg,/captureSourceMatches\(sender\.tab\.url,item\?\.url\)/);
  assert.match(bg,/if\(!received\.has\(key\)\)throw contractError/);
- assert.match(bg,/await sendViaAuth\(scopeid,batch,token,settings\.locConfig\)/);
+ assert.match(bg,/sendViaAuth\(scopeid,batch,token,settings\.locConfig\)/);
  assert.match(bg,/await removeEvents\(group\)/);
 });
 
@@ -128,8 +128,8 @@ test('HTTP backend errors are visible with redaction and exponential backoff',()
 
 function runtimeCaptureHarness(){
  const state={locImportPaused:true,locTargetScope:'lo3rwang',
-  locConfig:{import_url:'https://auth.lo3rwang.cc/v1/import/short',
-   supports_scope_routing:false}};
+  locConfig:{import_url:'https://mcp.lo3rwang.cc/api/loc-native',
+   supports_scope_routing:true}};
  const saved=[],removed=[],requestLog=[];
  let responder=async()=>Response.json({error:'service unavailable'},{status:500});
  const on=()=>({addListener(){}});
@@ -203,7 +203,7 @@ test('runtime: only fully confirmed UID receipt deletes a Queue record',async()=
  h.state.locImportPaused=false;
  h.respond(async(_url,opts)=>{
   const batch=JSON.parse(opts.body);
-  return Response.json({accepted:true,id:batch.id,
+  return Response.json({accepted:true,id:batch.batch.id,
    articles:[{source_key:source,uid:'ABCDEFGH'}]});
  });
  const done=await h.api('flush')(true);
@@ -258,4 +258,45 @@ test('runtime: ChatGPT DOM captures one turn at a time and never treats AI as us
  assert.match(both[1].content,/^\[assistant\]\nassistant content/);
  assert.equal(api.roleOf(createTurn('user',2,true)),'user');
  assert.equal(api.roleOf(createTurn('assistant',3,true)),'assistant');
+});
+
+
+test('runtime: revoked access token refreshes once; original Queue is acknowledged once',async()=>{
+ const h=runtimeCaptureHarness();
+ const source='https://chatgpt.com/c/early-revoke';
+ await h.api('acceptItems')([{key:'turn',url:source,source_key:source,
+  title:'Chat',content:'Keep until a verified receipt'}]);
+ h.state.locImportPaused=false;
+ let refreshes=0;
+ h.api("activeToken=async(force)=>{if(force){globalThis.testRefreshes++;return 'fresh'}return 'stale'}");
+ h.api("globalThis.testRefreshes=0");
+ h.respond(async(_url,opts)=>{
+  if(opts.headers.authorization==='Bearer stale')
+   return Response.json({error:{message:'Token expired'}},{status:401});
+  const wrapper=JSON.parse(opts.body);
+  return Response.json({accepted:true,id:wrapper.batch.id,
+   articles:[{source_key:source,uid:'ABCDEFGH'}]});
+ });
+ const done=await h.api('flush')(true);
+ assert.equal(done.sent,1);
+ assert.equal(h.api('globalThis.testRefreshes'),1);
+ assert.equal(h.requestLog.length,2);
+ assert.deepEqual(h.requestLog.map(r=>r.opts.headers.authorization),
+  ['Bearer stale','Bearer fresh']);
+ assert.equal(h.saved.length,0);
+ assert.equal(h.removed.length,1);
+});
+test('runtime: denied after retry keeps Queue and pauses instead of looping',async()=>{
+ const h=runtimeCaptureHarness();
+ const source='https://chatgpt.com/c/still-revoked';
+ await h.api('acceptItems')([{key:'turn',url:source,source_key:source,
+  title:'Chat',content:'Must never be deleted on 401'}]);
+ h.state.locImportPaused=false;
+ h.api("activeToken=async(force)=>force?'fresh':'stale'");
+ h.respond(async()=>Response.json({error:{message:'Unauthorized'}},{status:401}));
+ await assert.rejects(h.api('flush')(true),error=>error.httpStatus===401);
+ assert.equal(h.requestLog.length,2,'only one retry is permitted');
+ assert.equal(h.saved.length,1);
+ assert.equal(h.removed.length,0);
+ assert.equal(h.state.locImportPaused,true);
 });

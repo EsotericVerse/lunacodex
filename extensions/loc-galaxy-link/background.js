@@ -297,10 +297,10 @@ async function connectLoc(){
  return {connected:true};
 }
 let refreshFlight=null;
-async function activeToken(){
+async function activeToken(forceRefresh=false){
  const {locOAuth:tokens,locConfig:cfg}=await chrome.storage.local.get(AUTH_KEYS);
  if(!tokens||!cfg)throw oauthError('請先在設定頁連接 LOC');
- if(tokens.access_token&&tokens.expires_at>Date.now())return tokens.access_token;
+ if(!forceRefresh&&tokens.access_token&&tokens.expires_at>Date.now())return tokens.access_token;
  if(!tokens.refresh_token)throw oauthError('授權已過期，請重新連接 LOC');
  if(refreshFlight)return refreshFlight;
  refreshFlight=(async()=>{
@@ -376,7 +376,19 @@ async function flush(force=false){
    for(const scopeid of [...new Set(rows.map(r=>r.scopeid||'lo3rwang'))]){
     for(const group of packet(rows.filter(r=>(r.scopeid||'lo3rwang')===scopeid))){
      const batch={id:await stableUuid(group.map(r=>r.id).sort().join('|')),write_mode:'append',records:group.map(({scopeid:localScope,...record})=>({...record,source_key:record.source_key||normalizedUrl(record.url),write_mode:'append',kind:record.kind||'capture'}))};
-     await sendViaAuth(scopeid,batch,token,settings.locConfig);
+     try{await sendViaAuth(scopeid,batch,token,settings.locConfig)}
+     catch(error){
+       if(error.httpStatus!==401)throw error;
+       // A token can be revoked before its local expiry. Refresh once, then
+       // require the same server-side UID receipt before acknowledging Queue.
+       try{token=await activeToken(true)}
+       catch{
+         const expired=oauthError('授權已失效，請重新連接 LOC');
+         expired.httpStatus=401;
+         throw expired;
+       }
+       await sendViaAuth(scopeid,batch,token,settings.locConfig);
+     }
      await removeEvents(group); // Clear only after complete server-side UID receipts.
      await updateQueueBadge().catch(error=>console.warn('[LOC Queue badge]',String(error)));
      count+=group.length;

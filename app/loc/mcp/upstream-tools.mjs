@@ -2,27 +2,42 @@
 import {upstreamProvider,trustedProviderUrl,providerToolName,providerArguments}
   from './upstream-providers.mjs';
 import {upstreamConnection} from './upstream-oauth.mjs';
+import {readBoundedJson,readBoundedText} from './stream-json.mjs';
+import {z} from 'zod';
 const VERSION='2025-11-25';
-function parseReply(content,type,id){
-  if(content.length>300000)throw new Error('Upstream MCP response too large');
+const UpstreamReplySchema=z.looseObject({
+  jsonrpc:z.literal('2.0'),
+  id:z.union([z.string(),z.number()]),
+  result:z.unknown().optional(),
+  error:z.looseObject({code:z.number(),message:z.string()}).optional()
+}).refine(value=>value.result!==undefined||value.error!==undefined);
+function matchedReply(value,id){
+  const parsed=UpstreamReplySchema.safeParse(value);
+  return parsed.success&&parsed.data.id===id?parsed.data:null;
+}
+// Streaming JSON for regular MCP replies; bounded SSE event bodies for progress.
+export async function parseUpstreamReply(response,id){
+  const type=response.headers.get('content-type')||'application/json';
   if(type.includes('text/event-stream')){
-    // A stream may contain progress notifications before the matching reply.
-    const events=content.split(/\r?\n\r?\n/);
-    for(const item of events){
-      const data=item.split(/\r?\n/).filter(line=>line.startsWith('data:'))
+    const content=await readBoundedText(response.body,300000);
+    for(const event of content.split(/\r?\n\r?\n/)){
+      const data=event.split(/\r?\n/).filter(line=>line.startsWith('data:'))
         .map(line=>line.slice(5).trim()).join('\n');
       if(!data)continue;
-      try{
-        const value=JSON.parse(data);
-        if(value.jsonrpc==='2.0'&&value.id===id)return value;
-      }catch{}
+      let value;
+      try{value=JSON.parse(data)}catch{continue}
+      if(value?.jsonrpc==='2.0'&&value.id===id){
+        const checked=matchedReply(value,id);
+        if(!checked)throw new Error('Invalid upstream MCP response');
+        return checked;
+      }
     }
     throw new Error('Upstream MCP response is missing its request ID');
   }
-  const value=JSON.parse(content);
-  if(value?.jsonrpc!=='2.0'||value.id!==id)
-    throw new Error('Invalid upstream MCP response ID');
-  return value;
+  const value=await readBoundedJson(response.body,300000);
+  const checked=matchedReply(value,id);
+  if(!checked)throw new Error('Invalid upstream MCP response ID');
+  return checked;
 }
 function protocolError(value){
   if(value?.error)throw new Error('Upstream MCP refused the tool ('+
@@ -44,8 +59,7 @@ async function postMcp(provider,access,session,method,params,id){
   if(!response.ok)throw new Error('Upstream MCP unavailable ('+response.status+')');
   if(response.headers.get('mcp-session-id'))session.id=response.headers.get('mcp-session-id');
   if(response.status===202||id==null)return {};
-  return protocolError(parseReply(await response.text(),
-    response.headers.get('content-type')||'application/json',id));
+  return protocolError(await parseUpstreamReply(response,id));
 }
 async function sessionFor(env,subject,provider){
   const entry=await upstreamConnection(env,subject,provider);
