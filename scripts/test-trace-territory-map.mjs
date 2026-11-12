@@ -103,6 +103,10 @@ test('the annual source summary is exposed on existing SQL ports, with no Schema
   const client=source('app/modular/features/trace/TraceTerritoryPanel.jsx');
   assert.match(client,/p_view:'trace_territory'/);
   assert.match(client,/p_options:\{withPoints:true\}/);
+  const publicQuery=source('app/loc/server/native-public-query.mjs');
+  assert.ok(publicQuery.includes("'exact','withPoints'"));
+  assert.ok(publicQuery.includes("mode!=='trace_territory'||typeof options.withPoints!=='boolean'"));
+  assert.ok(source('zenstack/model-column-guard.mjs').includes(".on('a.type','=','point').on('a.invisible','=',false)"));
   assert.match(backend,/zmodelGalaxyPointJoin\(trx.selectFrom\(grouped\)/);
   assert.match(backend,/withPoints:options.withPoints===true/);
   assert.match(client,/queryKey:\['trace-territory-v1',year/);
