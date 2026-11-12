@@ -18,6 +18,7 @@ registerDefaultSection('uiExtra.pagination',paginationZh);
 import {Fragment,useEffect,useMemo,useRef,useState} from 'react';
 import dynamic from 'next/dynamic';
 import {motion,useReducedMotion} from 'motion/react';
+import ActivityMotion from '../ActivityMotion';
 import {publicPatternSuggestions} from '../../loc/public-pattern-suggestions.mjs';
 import {useAsyncResource,useResourceCache} from '../../loc/use-async-resource';
 import {useRouter,useSearchParams} from 'next/navigation';
@@ -1248,7 +1249,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       aria-hidden="true" initial={reduceMotion?false:{opacity:0,scaleX:.25}}
       animate={reduceMotion?{opacity:0}:{opacity:[0,1,0],scaleX:[.25,1,1]}}
       transition={{duration:reduceMotion?0:.9,times:[0,.26,1],ease:'easeOut'}}/>:null}
-    {status&&(!managementMode||status!==UI_COPY.search.start)?<p className="scope-status" role="status" aria-live="polite">{status}</p>:null}
+    {status&&(!managementMode||status!==UI_COPY.search.start)?<p className="scope-status" role="status" aria-live="polite">{status==='搜尋中請稍後'?<ActivityMotion kind="hourglass"/>:null} {status}</p>:null}
     {!managementMode&&results.length>0&&!browseResults&&matchedQueryRef.current?<section className="scope-search-next-step"
       aria-label={t('uiExtra.searchUI.followupSearch')}>
       <p className="scope-status">{t('uiExtra.searchUI.followupSearch')}</p>
