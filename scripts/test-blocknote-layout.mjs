@@ -20,10 +20,12 @@ test('BlockNote sizing uses a shrinkable content column and preserves native pop
   const css=source('app/styles/features.css');
   assert.match(css,/\.scope-blocknote \.bn-editor\{[^}]*box-sizing:border-box;[^}]*width:100%;[^}]*max-width:100%/s);
   assert.match(css,/\.scope-blocknote,\s*\.scope-blocknote \.bn-container\{[^}]*width:100%/s);
-  assert.match(css,/\.scope-page-editor \.scope-frame-field-grid\{[^}]*grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/s);
+  assert.match(css,/\.scope-page-editor \.scope-frame-field-grid\{[^}]*grid-template-columns:repeat\(auto-fit,minmax\(min\(100%,27rem\),1fr\)\)/s);
   assert.match(css,/\.scope-page-editor \.scope-frame-field-grid>\.scope-management-wide-field:not\(\.scope-frame-header-field\)\{[^}]*grid-column:1\/-1/s);
   assert.match(css,/\.scope-search-attr-grid>\.scope-search-attr-item\.is-blocknote-field\{[^}]*grid-column:1\/-1/s);
   assert.match(css,/\.scope-blocknote-linkbar>\.loc-button\{min-height:44px\}/);
+  assert.match(css,/\.scope-frame-image-fields\{[^}]*grid-template-columns:repeat\(auto-fit,minmax\(min\(100%,21rem\),1fr\)\)/s);
+  assert.match(css,/\.scope-frame-image-fields \.scope-frame-image-url\{[^}]*grid-column:1\/-1/s);
   assert.doesNotMatch(css,/\.scope-blocknote \.bn-editor\{[^}]*overflow:hidden/s);
   assert.doesNotMatch(css,/\.scope-blocknote \.bn-container\{[^}]*overflow:hidden/s);
 });
@@ -49,4 +51,11 @@ test('management rich text and spatial descriptions align without touching Block
   assert.match(hero,/<BlockNoteEditor editorKey=\{'management-hero:'/);
   assert.match(spatial,/<div className="loc-trace-description-field">/);
   assert.match(spatial,/onPlainTextChange=\{setDescription\}/);
+});
+
+test('management edit panels reflow from their own width without truncating rich fields',()=>{
+  const css=source('app/styles/settings-select.css');
+  assert.match(css,/\.management-workspace-panel \.scope-management-fields,\s*\.management-workspace-panel \.admin-page-copy-fields\{[^}]*grid-template-columns:repeat\(auto-fit,minmax\(min\(100%,27rem\),1fr\)\)/s);
+  assert.match(css,/\.management-workspace-panel \.scope-management-fields>\.scope-management-wide-field\{grid-column:1\/-1/);
+  assert.match(css,/@container \(max-width: 62rem\)/);
 });

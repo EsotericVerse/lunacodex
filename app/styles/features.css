@@ -1713,8 +1713,11 @@
   max-width:100%;
   overflow-wrap:anywhere;
 }
+/* Reflow by the editor's available width, not the viewport. A management
+   side pane can be narrow on a desktop display; long-text fields still span
+   every track and BlockNote keeps its own popover/toolbar positioning. */
 .scope-page-editor .scope-frame-field-grid{
-  grid-template-columns:repeat(2,minmax(0,1fr));
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,27rem),1fr));
   align-items:start;
   gap:.75rem;
 }
@@ -1747,6 +1750,14 @@
   align-items:center;
 }
 .scope-blocknote-linkbar>.loc-button{min-height:44px}
+/* The image URL is always a full-width row. Spanning two tracks when only
+   one fits creates an implicit column and causes horizontal page drift. */
+.scope-frame-image-fields{
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,21rem),1fr));
+}
+.scope-frame-image-fields .scope-frame-image-url{
+  grid-column:1/-1;
+}
 /* Inline edit actions occupy their own row instead of overlaying an expanded
    BlockNote field (especially when action buttons wrap on small screens). */
 .scope-editable-block:is(.is-editing,.scope-block-draft) .scope-inline-editbar{

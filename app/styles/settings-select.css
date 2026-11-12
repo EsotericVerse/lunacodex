@@ -114,9 +114,11 @@
 .management-workspace-panel h3.admin-workspace-section-heading{grid-column:1/-1;margin:0;}
 
 /* Inputs read as fields inside a group, rather than a stack of miniature cards. */
+/* Shared field panels must reflow inside narrowed desktop workspaces too.
+   Keep at most two columns within the LOC 1280px content frame. */
 .management-workspace-panel .scope-management-fields,
 .management-workspace-panel .admin-page-copy-fields{
-  grid-template-columns:repeat(2,minmax(0,1fr));
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,27rem),1fr));
   gap:1rem 1.15rem;
   margin:.35rem 0;
   padding:1rem;
