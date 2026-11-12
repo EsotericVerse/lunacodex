@@ -22,7 +22,7 @@ test('LOC Auth delegates OIDC, OAuth, JWT and storage to Better Auth',()=>{
    'oauthResource','oauthClientResource','oauthRefreshToken',
    'oauthAccessToken','oauthConsent','oauthClientAssertion'])
    assert.match(declared[key]||'',/^rainbow_/,'missing Rainbow mapping: '+key);
- assert.match(auth,/databaseHooks:rainbowDatabaseHooks/);
+ assert.doesNotMatch(auth,/databaseHooks:rainbowDatabaseHooks/);
  assert.match(auth,/admin\(\{ac:authAc,roles:authRoles/);
  assert.match(auth,/user:\{modelName:RAINBOW_MODEL_NAMES\.user\}/);
  assert.match(auth,/session:\{modelName:RAINBOW_MODEL_NAMES\.session/);
