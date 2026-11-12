@@ -5,17 +5,17 @@ import {usePathname,useRouter} from 'next/navigation';
 import {Capacitor} from '@capacitor/core';
 import {dbAuthEvents} from '../loc/db-client.mjs';
 import {EDIT_OPERATION_TTL_MS,assertEditorSession,touchEditorSession,clearEditorSession} from '../loc/edit-session-ttl.mjs';
-import {clearHomeEditorAccess} from '../loc/home-edit-access.mjs';
 import {isManagementHref} from './ScopeLink';
 
 // UI only: a Scope's permission is checked before entering edit mode,
 // and every write still passes through its existing database authorization.
 const EditDockContext=createContext(null);
 
-export function EditDockProvider({children}){
+export function EditDockProvider({children,scopeId}){
   const router=useRouter();
   const pathname=usePathname();
-  const [scopeId,setScopeId]=useState('');
+  // Route-owned Scope ID is received from AppShell. Only editing is mutable.
+  const [editing,setEditing]=useState(false);
   const [canManageGlobal,setCanManageGlobal]=useState(false);
   const [hasSave,setHasSave]=useState(false);
   const [busy,setBusy]=useState(false);
@@ -77,20 +77,21 @@ export function EditDockProvider({children}){
   },[]);
   const begin=useCallback((id,{globalManage=false}={})=>{
     const idText=String(id||'').trim();
-    if(!idText)return;
+    // Never activate an editor for a different page Scope. No Scope ID copy.
+    if(!idText||idText!==scopeId)return false;
     if(idText!=='local')try{touchEditorSession(window.sessionStorage);}catch{}
-    setScopeId(idText);
+    setEditing(true);
     setCanManageGlobal(Boolean(globalManage));
     setNotice('');
-  },[]);
+    return true;
+  },[scopeId]);
   const end=useCallback(()=>{
-    try{clearHomeEditorAccess(window.sessionStorage);}catch{}
     releaseOperation();
     clearEditor();
     pendingSectionAction.current=null;
     setSwitchTarget('');
     setSwitchError('');
-    setScopeId('');
+    setEditing(false);
     setCanManageGlobal(false);
     setNotice('');
   },[clearEditor,releaseOperation]);
@@ -106,7 +107,7 @@ export function EditDockProvider({children}){
     return ()=>window.removeEventListener('loc-editor-session-expired',expire);
   },[end]);
   useEffect(()=>{
-    if(!scopeId||scopeId==='local')return undefined;
+    if(!editing||!scopeId||scopeId==='local')return undefined;
     const activity=()=>{try{touchEditorSession(window.sessionStorage);}catch{}};
     window.addEventListener('pointerdown',activity,{passive:true});
     window.addEventListener('keydown',activity,{passive:true});
@@ -114,14 +115,13 @@ export function EditDockProvider({children}){
       window.removeEventListener('pointerdown',activity);
       window.removeEventListener('keydown',activity);
     };
-  },[scopeId]);
+  },[editing,scopeId]);
 
   // A Google OAuth account change invalidates all editor UI permissions.
   // The backend still authorizes each write using the active JWT/RLS.
   // Device-local SQLite editing is independent of cloud OAuth.
-  const activeScope=useRef('');
-  activeScope.current=scopeId;
   useEffect(()=>{
+    if(!editing)return undefined;
     let lastIdentity=null;
     const subscription=dbAuthEvents.onAuthStateChange((event,session)=>{
       const userId=String(session?.user?.id||'');
@@ -134,13 +134,13 @@ export function EditDockProvider({children}){
       if(userId)lastIdentity=identity;
       else if(event==='SIGNED_OUT')lastIdentity=null;
       const invalidated=event==='SIGNED_OUT'||identityChanged;
-      if(!invalidated||!activeScope.current)return;
-      if(activeScope.current==='local'&&Capacitor.isNativePlatform())return;
+      if(!invalidated)return;
+      if(scopeId==='local'&&Capacitor.isNativePlatform())return;
       try{clearEditorSession(window.sessionStorage);}catch{}
       end();
     });
     return ()=>subscription.data.subscription.unsubscribe();
-  },[end]);
+  },[end,editing,scopeId]);
 
   // Each mounted editor supplies the *current page's* save function.
   // Unmounting clears it only if no later editor has replaced it.
@@ -185,7 +185,7 @@ export function EditDockProvider({children}){
     navigate(target);
   },[end,navigate]);
   const save=useCallback(async({exitOnSuccess=false}={})=>{
-    if(busy||committing.current)return;
+    if(!editing||busy||committing.current)return;
     // A management section can mount independent Database / ISR / Email
     // editors simultaneously. Save every dirty editor through the existing
     // six-feature Save action; never silently save just the first mounted one.
@@ -231,7 +231,7 @@ export function EditDockProvider({children}){
     }finally{
       finishOperation(epoch);
     }
-  },[busy,scopeId,beginOperation,finishOperation,end]);
+  },[editing,busy,scopeId,beginOperation,finishOperation,end]);
   const dirtyEditors=useCallback(()=>[...registeredEditors.current].filter(editor=>
     typeof editor.isDirty==='function'&&editor.isDirty()
   ),[]);
@@ -300,9 +300,9 @@ export function EditDockProvider({children}){
     else navigate(target,switchHistory.current,switchScroll.current);
   },[busy,switchTarget,clearEditor,navigate]);
   const value=useMemo(()=>({
-    active:Boolean(scopeId),scopeId,canManageGlobal,hasSave,busy,notice,begin,end,
+    active:editing,scopeId,canManageGlobal,hasSave,busy,notice,begin,end,
     register,save,discard,complete,switchTo,switchSection,setNotice
-  }),[scopeId,canManageGlobal,hasSave,busy,notice,begin,end,register,save,discard,complete,switchTo,switchSection]);
+  }),[editing,scopeId,canManageGlobal,hasSave,busy,notice,begin,end,register,save,discard,complete,switchTo,switchSection]);
   return <EditDockContext.Provider value={value}>
     {children}
     <dialog ref={switchDialog} className="scope-edit-switch-dialog" aria-labelledby="scope-edit-switch-title"
