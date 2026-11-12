@@ -47,6 +47,30 @@
     '[data-message-author-role],[data-testid="user-message"],'+
     '[data-testid="assistant-message"],article[aria-label]';
   const CHAT_HOST=/(?:^|\.)chatgpt\.com$|(?:^|\.)chat\.openai\.com$/;
+  // The complete ChatGPT Shadow extractor handles both the legacy author-role
+  // markup and 2026 search-unit turns, including markdown and message IDs.
+  // Only this bridge adapts its records to LOC's existing Queue contract.
+  function shadowConversationTurns(scope,includeAssistant=false){
+    const upstream=globalThis.ChatGPTShadowExtract;
+    if(!upstream)throw Error('ChatGPT Shadow 擷取模組未載入');
+    const threadId=upstream.conversationIdFromUrl(location.href);
+    const pendingId=upstream.localConversationIdFromUrl(location.href);
+    // The URL is the durable Galaxy source identity. Never archive a local
+    // placeholder or attach old DOM turns to the next conversation on SPA nav.
+    if(!threadId||pendingId)return [];
+    const source=normalizeUrl(location.href);
+    if(!source)return [];
+    const streaming=upstream.isStreaming(document);
+    const title=upstream.extractTitle(document);
+    const rows=upstream.messagesForUrl(upstream.extractMessages(scope),location.href);
+    return rows.filter(row=>
+      row.role==='user'||(includeAssistant&&!streaming&&row.role==='assistant'))
+      .filter(row=>typeof row.content==='string'&&row.content.trim())
+      .map(row=>({
+        key:upstream.stableMessageId(threadId,row),source_key:source,url:source,
+        title,content:'['+row.role+']\n'+row.content.slice(0,1400000)
+      }));
+  }
   function roleOf(turn){
     const own=(turn.getAttribute?.('data-message-author-role')||
       turn.getAttribute?.('data-role')||'').toLowerCase();
@@ -134,15 +158,18 @@
   function extract(scope, mode='capture',includeAssistant=state.includeAssistant){
     const doc=scope||document.body;
     const hostname=location.hostname.toLowerCase();
-    if(/(?:chatgpt\.com|claude\.ai|chat\.openai\.com)$/.test(hostname)){
-      // Full-page capture and recording use the full current conversation.
-      // An explicit area selection stays limited to the selected element.
+    if(CHAT_HOST.test(hostname)){
+      // Use the vendored 2026 ChatGPT extractor for every manual/recording
+      // mode; do not run the old ChatGPT fallback in parallel.
       const region=mode==='record'||doc===document.body?
         (doc.closest?.('main')||doc.querySelector?.('main')||doc):doc;
-      const turns=conversationTurns(region,includeAssistant);
-      // Chat exports contain only actually rendered, role-attributed messages.
-      // Never silently archive website navigation or other UI as a conversation.
-      return turns;
+      return shadowConversationTurns(region,includeAssistant);
+    }
+    if(hostname==='claude.ai'){
+      // Claude retains its own role-based extraction path.
+      const region=mode==='record'||doc===document.body?
+        (doc.closest?.('main')||doc.querySelector?.('main')||doc):doc;
+      return conversationTurns(region,includeAssistant);
     }
     // Readability is invoked only for a full-page single capture; avoid destroying
     // the live DOM or re-parsing every MutationObserver notification during recording.

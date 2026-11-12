@@ -25,3 +25,7 @@
 ## v0.2.4：長對話、錄製確認與失敗退避
 
 ChatGPT 巢狀 DOM 以外層訊息 Turn 去重，同一則訊息不再重複入列；已載入超過 100 則的長對話以每次最多 100 則入列，不會整批拒絕。動態錄製對串流內容採 1.25 秒去抖，按停止時等待尚未完成的 Queue 寫入，最後擷取也必須拿到 Queue 回執。HTTP 5xx 顯示可安全揭露的短錯誤原因並採指數退避（上限一小時），避免無效請求；手動傳送仍可重試，429 遵守流量限制。現有 IndexedDB、Queue、已保存 UID、OAuth、Extension ID、Scope ID 均不變。
+
+## v0.2.5：第三方 ChatGPT Shadow 擷取模組完整移植
+
+Apache-2.0 授權的 [ChatGPT Shadow](https://github.com/dialoguesai/chatgpt-shadow-extension) `extract.js` 已完整放入 `vendor/ChatGPTShadowExtract.js`，保留其原始授權文件；由 LOC 原本的 `content.js` 將新版 ChatGPT 的搜尋單元、舊版角色節點、Markdown／程式碼、訊息 ID、串流辨識，統一轉入原有的 `items.captured` 與 IndexedDB Queue。只在明確按右鍵擷取／啟動錄製時注入，不啟用 Shadow 原本的自動常駐同步、週期輪詢、Topos、另一套儲存或第三方登入。串流中的 AI 回覆不寫入；等到內容完成才納入（需原有「包含 AI 回覆」設定開啟）。新對話尚未取得正式 `/c/<id>` 時不冒險以暫存網址建立 Galaxy 來源；不同對話的殘留 DOM 會被丟棄。保留既有 Queue／Scope／OAuth／UID 回執與 Chrome Extension ID。

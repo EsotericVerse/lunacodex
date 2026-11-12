@@ -10,7 +10,7 @@ const content=read(base+'content.js');
 const manifest=JSON.parse(read(base+'manifest.json'));
 test('only one named galaxy-link extension with all right-click actions',()=>{
  assert.equal(manifest.name,'LOC galaxy-link｜LOC 彩虹橋');
- assert.equal(manifest.version,'0.2.4');
+ assert.equal(manifest.version,'0.2.5');
  assert.equal(Object.hasOwn(manifest.action,'default_popup'),false);
  assert.equal(manifest.background.service_worker,'background.js');
  assert.ok(manifest.permissions.includes('identity'));
@@ -20,9 +20,12 @@ test('only one named galaxy-link extension with all right-click actions',()=>{
  assert.equal(existsSync(new URL('../extensions/loc-web-capture-v2/',import.meta.url)),false);
 });
 test('all extension scripts compile and Readability library is included',()=>{
- for(const script of ['background.js','content.js','options.js','vendor/Readability.js'])
+ for(const script of ['background.js','content.js','options.js','vendor/Readability.js','vendor/ChatGPTShadowExtract.js'])
   assert.doesNotThrow(()=>new Script(read(base+script),{filename:script}));
  assert.ok(existsSync(new URL('../'+base+'vendor/LICENSE.md',import.meta.url)));
+ assert.ok(existsSync(new URL('../'+base+'vendor/ChatGPT-Shadow-LICENSE.txt',import.meta.url)));
+ assert.match(bg,/vendor\/ChatGPTShadowExtract\.js/);
+ assert.match(content,/return shadowConversationTurns\(region,includeAssistant\)/);
 });
 test('single LOC Auth PKCE and durable Queue are shared across every capture mode',()=>{
  assert.match(bg,/const DB_NAME='loc-channel1-queue'/);

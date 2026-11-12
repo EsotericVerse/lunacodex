@@ -416,7 +416,9 @@ async function flush(force=false){
 }
 
 async function inject(tabId){
- await chrome.scripting.executeScript({target:{tabId},files:['vendor/Readability.js','content.js']});
+ await chrome.scripting.executeScript({target:{tabId},files:[
+  'vendor/Readability.js','vendor/ChatGPTShadowExtract.js','content.js'
+ ]});
 }
 async function currentTab(){
  const tabs=await chrome.tabs.query({active:true,currentWindow:true});
