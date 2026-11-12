@@ -2,6 +2,7 @@
 
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {useSearchParams} from 'next/navigation';
+import {motion,useReducedMotion} from 'motion/react';
 
 /**
  * In-page management navigator.
@@ -9,6 +10,7 @@ import {useSearchParams} from 'next/navigation';
  */
 export default function ManagementSectionNav({id,title,panelId,items,value,onChange,showDescriptions=false,mobileSelect=false}){
   const activeItem=items.find(item=>item.value===value)||items[0];
+  const reduceMotion=useReducedMotion();
   const headingId=id+'-heading';
   const itemsRef=useRef(null);
   useEffect(()=>{
@@ -44,6 +46,9 @@ export default function ManagementSectionNav({id,title,panelId,items,value,onCha
           aria-controls={panelId}
           onClick={()=>{if(!selected)onChange(item.value);}}
         >
+          {selected?<motion.span className="management-section-nav__active-indicator"
+            layoutId={id+'-selected'} aria-hidden="true"
+            transition={reduceMotion?{duration:0}:{type:'spring',duration:.27,bounce:.12}}/>:null}
           <span className="management-section-nav__label">{item.shortLabel||item.label}</span>
           {showDescriptions&&item.description?<span className="management-section-nav__description">{item.description}</span>:null}
         </button>;
