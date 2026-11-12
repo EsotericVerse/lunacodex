@@ -17,6 +17,7 @@ import {
 } from './trace-bulk-anchor-filter.mjs';
 import {readPlaceSummary} from './place-summary-client';
 
+const BlockNoteEditor=dynamic(()=>import('./BlockNoteEditor'),{loading:()=>null});
 const TraceRouteManager=dynamic(()=>import('./TraceRouteManager'),{
   loading:()=> <p className="scope-status" role="status">正在開啟路線／痕跡圖管理…</p>
 });
@@ -35,6 +36,12 @@ function AnchorEditor({scopeId,spatial,reload}){
     ()=>readPlaceSummary(scopeId,{}),{revalidateOnFocus:false,revalidateOnReconnect:false});
   const ownAnchors=useMemo(()=>(spatial.anchors||[]).filter(row=>row.source_scope===scopeId),
     [spatial.anchors,scopeId]);
+  // Reuse the already authorized Point/Path/Trace rows; no suggestion query.
+  const suggestionRows=useMemo(()=>[
+    ...ownAnchors.map(row=>({...row,type:'point'})),
+    ...(spatial.maps||[]).filter(row=>row.source_scope===scopeId)
+      .map(row=>({...row,type:row.trace_type}))
+  ],[ownAnchors,spatial.maps,scopeId]);
   const [editingUid,setEditingUid]=useState('');
   const [invisible,setInvisible]=useState(false);
   const [bulkUids,setBulkUids]=useState([]);
@@ -300,8 +307,12 @@ function AnchorEditor({scopeId,spatial,reload}){
           <option value={0}>顯示</option><option value={1}>隱藏</option>
         </select>
       </label>
-      <label className="loc-trace-description-field">說明<textarea rows={6} maxLength={2000} value={description}
-        onChange={e=>setDescription(e.target.value)} disabled={busy}/></label>
+      <div className="loc-trace-description-field"><span>說明</span>
+        <BlockNoteEditor editorKey={'point-note:'+scopeId+':'+(editingUid||'new')}
+          content={description} editable={!busy} plainTextOnly canInsertImage={false}
+          suggestionKind="spatial" suggestions={suggestionRows}
+          onPlainTextChange={value=>{if(value.length<=2000)setDescription(value);}}/>
+      </div>
       <label>經度（可留空）<input type="number" min={-180} max={180} step="any"
         value={longitude} onChange={e=>setLongitude(e.target.value)} disabled={busy}/></label>
       <label>緯度（可留空）<input type="number" min={-90} max={90} step="any"

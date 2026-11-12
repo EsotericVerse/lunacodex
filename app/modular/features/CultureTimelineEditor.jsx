@@ -1,5 +1,6 @@
 'use client';
 import {useEffect,useMemo,useRef,useState} from 'react';
+import dynamic from 'next/dynamic';
 
 import ScopeOptionPicker from '../ScopeOptionPicker';
 import {useSearchParams} from 'next/navigation';
@@ -13,6 +14,7 @@ import {decodeTimeSegments,encodeTimeSegment,resolveTimeSegments,isTimeUid,alloc
 import {anniversarySuggestionsForDate} from '../../loc/anniversary.mjs';
 import {planAnniversaryDates,collectTimeDates,collectEraPeriods} from '../../loc/culture-anchor-bulk.mjs';
 import ManagementSectionNav from '../ManagementSectionNav';
+const BlockNoteEditor=dynamic(()=>import('../../loc/BlockNoteEditor'),{loading:()=>null});
 
 const TIME_COLUMNS='uid,type,title,description,address,anchor_ids,range,invisible';
 const TYPES=['anchor','period','era'];
@@ -83,6 +85,10 @@ export default function CultureTimelineEditor({
     !selectedId&&draft.type==='anchor'
       ?anniversarySuggestionsForDate(day(draft.address),anchorChoices,{birthday})
       :[],[selectedId,draft.type,draft.address,anchorChoices,birthday]);
+  const suggestionRows=useMemo(()=>[
+    ...all,
+    ...anniversarySuggestions.map(item=>({type:'aniversary',title:item.title}))
+  ],[all,anniversarySuggestions]);
   const anchorOptions=useMemo(()=>anchorChoices.map(row=>
     ({value:row.uid,label:(day(row.address)?day(row.address)+'｜':'')+row.title})),[anchorChoices]);
   const anchorOptionOf=uid=>anchorOptions.find(option=>option.value===uid)
@@ -550,10 +556,12 @@ export default function CultureTimelineEditor({
           </div>
         </div>:null}
       </div>:null}
-      <label className="scope-culture-quick-notes">說明
-        <textarea className="scope-search-input" rows={3} value={draft.description||''}
-          onChange={event=>change('description',event.target.value)}/>
-      </label>
+      <div className="scope-culture-quick-notes"><span>說明</span>
+        <BlockNoteEditor editorKey={'time-note:'+dataScope+':'+(selectedId||'new:'+draft.type+':'+draft.address)}
+          content={draft.description||''} editable={!busy} plainTextOnly canInsertImage={false}
+          suggestionKind="time" suggestions={suggestionRows}
+          onPlainTextChange={value=>change('description',value)}/>
+      </div>
       {message?<p className="scope-status" role="status" aria-live="polite">{message}</p>:null}
       {selectedId?<div className="scope-culture-quick-actions">
         <button type="button" className="loc-button" onClick={remove} disabled={busy}>刪除</button>

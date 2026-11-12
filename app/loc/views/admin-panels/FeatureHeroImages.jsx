@@ -221,7 +221,7 @@ function ManagementHeroDetails({slot,onDirtyChange}){
           disabled:busy,onChange:value=>setDraft(current=>({...current,subtitle:value}))},
         {key:'body',kind:'rich',label:'下方正文',
           editorKey:'management-hero:'+page+':'+revision,
-          content:draft.text?{html:draft.text}:'',
+          content:draft.text||'',
           disabled:busy,canInsertImage:false,
           onHtmlChange:html=>setDraft(current=>({...current,text:html}))}
       ]}/>}
