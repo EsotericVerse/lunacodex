@@ -64,15 +64,17 @@ export function createDatabaseClient({publicClient,authClient,auth}){
   const insertRows=withWriteNotice(insertRowsUnchecked);
   // Import batch retries handle UID conflicts themselves. Keep auth checks and
   // failures, but do not flash a global notice for every bisected retry.
-  const insertImportRows=async(table,rows)=>{
-    // Import-only Zod check compiled from the existing ZenStack model. Load
-    // lazily: ordinary reads, editing and the application shell never bundle
-    // the validator. Keep the exact Kysely managed-write/UID retry path.
-    if(isScopedGalaxy(table)){
-      const {assertZModelImportRows}=await import('../../zenstack/import-validation.mjs');
-      assertZModelImportRows(table,prepareGalaxyInsertRows(table,rows));
-    }
-    return insertRowsUnchecked(table,rows);
+  const insertImportRows=async(table,rows,{onValidationProgress}={})=>{
+    // Normalize once and validate the EXACT rows that reach Kysely. Legacy
+    // source flags are expanded before the model-derived Zod parse, while
+    // the original authoring/content guard still checks incoming attributes.
+    // The private normalizedGalaxy flag does not cross the HTTP boundary.
+    if(!isScopedGalaxy(table))return insertRowsUnchecked(table,rows);
+    for(const row of rows)validateGalaxyWrite(table,row);
+    const prepared=prepareGalaxyInsertRows(table,rows);
+    const {assertZModelImportRows}=await import('../../zenstack/import-validation.mjs');
+    assertZModelImportRows(table,prepared,{onProgress:onValidationProgress});
+    return insertRowsUnchecked(table,prepared,{normalizedGalaxy:true});
   };
   const updateRows=withWriteNotice(updateRowsUnchecked);
   const deleteRows=withWriteNotice(deleteRowsUnchecked);
@@ -85,10 +87,11 @@ export function createDatabaseClient({publicClient,authClient,auth}){
   const provisionScope=withWriteNotice(provisionScopeUnchecked);
   const manageScopeRegistry=withWriteNotice(manageScopeRegistryUnchecked);
 
-  async function managementWriteUnchecked(payload){
+  async function managementWriteUnchecked(payload,{normalizedGalaxy=false}={}){
     preflightWrite(payload?.p_table);
-    // Persist the eight Galaxy permission booleans, never the removed JSONB column.
-    if(isScopedGalaxy(payload?.p_table)&&payload?.p_operation==='insert')
+    // The import-only caller already normalized and Zod-validated this exact
+    // batch. Other management inserts keep the unchanged normalization path.
+    if(!normalizedGalaxy&&isScopedGalaxy(payload?.p_table)&&payload?.p_operation==='insert')
       payload={...payload,p_rows:prepareGalaxyInsertRows(payload.p_table,payload.p_rows||[])};
     if(isScopedGalaxy(payload?.p_table)&&payload?.p_operation==='update')
       payload={...payload,p_values:prepareGalaxyUpdateValues(payload.p_table,payload.p_values)};
@@ -138,10 +141,12 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     return data||{count:0};
   }
 
-  async function insertRowsUnchecked(table,rows){
+  async function insertRowsUnchecked(table,rows,{normalizedGalaxy=false}={}){
     const list=Array.isArray(rows)?rows:[];
-    // Check every row before starting batch writes; fail without partial import.
-    for(const row of list)validateGalaxyWrite(table,row);
+    // Import rows passed through the original content guard and the strict
+    // model-derived Zod validator before reaching this shared batch writer.
+    if(!normalizedGalaxy)
+      for(const row of list)validateGalaxyWrite(table,row);
     const batchSize=MAX_ROWS;
     let count=0;
     for(let offset=0;offset<list.length;offset+=batchSize){
@@ -152,7 +157,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
         p_rows:batch,
         p_values:null,
         p_filters:[]
-      });
+      },{normalizedGalaxy});
       const affected=Number(result?.count||0);
       if(affected!==batch.length)throw new Error(`DB INSERT ${table} incomplete: expected ${batch.length}, affected ${affected}`);
       count+=affected;

@@ -51,13 +51,20 @@ export function importSchemaForSqlTable(table){
   return importModelSchema(model);
 }
 
-export function assertZModelImportRows(table,rows=[]){
+export function assertZModelImportRows(table,rows=[],{onProgress}={}){
   if(!scopedGalaxy.test(String(table||'')))throw new TypeError('Invalid LOC Galaxy import table');
   if(!Array.isArray(rows))throw new TypeError('LOC import batch must be an array');
   const validator=importSchemaForSqlTable(table);
   for(let index=0;index<rows.length;index++){
     const parsed=validator.safeParse(rows[index]);
-    if(parsed.success)continue;
+    if(parsed.success){
+      // A bounded event callback connects model validation to the existing
+      // import useSyncExternalStore, without querying or polling the database.
+      if(typeof onProgress==='function'&&
+         ((index+1)%256===0||index+1===rows.length))
+        onProgress({completed:index+1,total:rows.length});
+      continue;
+    }
     const first=parsed.error.issues[0];
     const field=first?.path?.join('.')||'(record)';
     // No raw imported text is included in diagnostics.
