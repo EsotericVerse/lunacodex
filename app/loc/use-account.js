@@ -52,7 +52,7 @@ let scopeMetadata=[];
 // navigation within the same verified identity. Explicit refresh stays live.
 let pendingManagementVerification=null;
 
-async function fetchManagementAccount(queryClient,{force=false}={}){
+async function fetchManagementAccount(queryClient){
   const startedAt=authRevision;
   const obsolete=()=>startedAt!==authRevision;
   let verifiedIdentity=null;
@@ -64,7 +64,6 @@ async function fetchManagementAccount(queryClient,{force=false}={}){
     if(obsolete())return signedOutState;
     if(!user){
       clearAuthorization();
-
       scopeMetadata=[];
       authUserId='';
       authEmail='';
@@ -99,7 +98,6 @@ async function fetchManagementAccount(queryClient,{force=false}={}){
     scopeMetadata=[];
     authUserId='';
     authEmail='';
-
     return verifiedIdentity
       ?{...signedOutState,...verifiedIdentity,error:String(error?.message||error)}
       :failedState(error);
@@ -119,7 +117,7 @@ function loadManagementAccount(queryClient,{force=false}={}){
     });
   }
   if(pendingManagementVerification)return pendingManagementVerification;
-  const current=fetchManagementAccount(queryClient,{force});
+  const current=fetchManagementAccount(queryClient);
   pendingManagementVerification=current;
   void current.then(
     ()=>{if(pendingManagementVerification===current)pendingManagementVerification=null;},
@@ -183,7 +181,6 @@ export function useAccount({enabled=true,sessionOnly=false}={}){
     clearAuthorization();
     scopeMetadata=[];
     pendingManagementVerification=null;
-
     await queryClient.cancelQueries({queryKey:['loc-account']});
     queryClient.setQueryData(SESSION_KEY,signedOutState);
     queryClient.setQueryData(VERIFIED_SESSION_KEY,signedOutState);
@@ -239,7 +236,6 @@ export function usePassiveSessionAccount(){
         pendingManagementVerification=null;
         clearAuthorization();
         scopeMetadata=[];
-
       }
       authUserId=nextUserId;
       authEmail=nextEmail;
