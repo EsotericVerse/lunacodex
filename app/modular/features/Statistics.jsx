@@ -48,6 +48,7 @@ const Article=dynamic(()=>import('../Article'),{loading:()=>null});
 import StatisticsChartFrame from '../modules/statistics/StatisticsChartFrame';
 import StatisticsDetails from '../modules/statistics/StatisticsDetails';
 import StatisticsDashboardKpis from '../modules/statistics/StatisticsDashboardKpis';
+import ActivityMotion from '../ActivityMotion';
 import {statisticsZoomWindow} from '../modules/statistics/statistics-time-zoom.mjs';
 import {DEFAULT_YEAR_WINDOW} from '../../loc/default-year-window.mjs';
 
@@ -549,8 +550,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     <>
     {/* Place is a Keyword Category. Do not issue a second place_id/anchor aggregation. */}
     {(sourceChart&&!sourceRows.error&&!sourceCatalog.error&&(sourceRows.isPending||sourceCatalog.isPending||!adminSourceReady))?<div className="scope-stat-data-pending">
-      <p className="scope-status" role="status">統計中請稍後</p>
-      <div className="scope-feature-loading__body" aria-hidden="true"><span/><span/><span/><span/></div>
+      <p className="scope-status" role="status">統計中請稍後 <ActivityMotion kind="numbers"/></p>
     </div>:null}
     {sourceChart&&(sourceRows.error||sourceCatalog.error)?<p className="scope-status scope-error">{featureDataErrorMessage(sourceRows.error||sourceCatalog.error,UI_COPY)}</p>:null}
     {sourceChart&&!sourceRows.isPending&&!sourceCatalog.isPending&&adminSourceReady&&!sourceRows.error&&!sourceCatalog.error?<>
@@ -599,7 +599,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
       {keywordClassQuery.isPending?<p className="scope-status">正在讀取關鍵詞組設定…</p>:null}
       {!keywordClassQuery.isPending&&!keywordClassQuery.error&&!scopedKeywordClasses.length?<p className="scope-status">目前沒有可查看的關鍵詞科目；請先建立或公開科目。</p>:null}
       {resolvedKeywordClassUid?<KeywordPatternSummary scopeId={scopeId} classUid={resolvedKeywordClassUid} range={styleRange}/>:null}
-      {runeQuery.isPending?<p className="scope-status"><UiText id="uiExtra.statisticsUI.loadingKeywordAttrs"/></p>:null}
+      {runeQuery.isPending?<p className="scope-status" role="status"><ActivityMotion kind="numbers"/> <UiText id="uiExtra.statisticsUI.loadingKeywordAttrs"/></p>:null}
       {runeQuery.error?<p className="scope-status scope-error">{featureDataErrorMessage(runeQuery.error)}</p>:null}
       {!runeQuery.isPending&&!runeQuery.error&&runeQuery.data?<Rune66Summary key={resolvedKeywordClassUid} analysis={runeQuery.data} range={queryRange} scopeId={scopeId}/>:null}
       {!runeQuery.isPending&&!runeQuery.error&&runeQuery.data&&!runeQuery.data.staticstime?<p className="scope-status">此 Class 的舊式統計尚未完成；已存詞級結果仍可在上方查看。</p>:null}
