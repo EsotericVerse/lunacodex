@@ -9,8 +9,10 @@ const COMPLEX_GRAPHEME=/[\p{M}\u200c\u200d\u1100-\u11ff\u{1f1e6}-\u{1f1ff}\u{1f3
 export function compileKeywordLiteralMatcher(words=[]){
   const literals=[...new Set(words.filter(word=>typeof word==='string'&&word.length))];
   const matcher=literals.length?new AhoCorasick(literals):null;
-  const complexDictionary=literals.some(word=>COMPLEX_GRAPHEME.test(word));
-  const needsFallback=text=>complexDictionary||COMPLEX_GRAPHEME.test(text)||text.includes('\r\n');
+  // Only the input text needs to be checked: a complex literal cannot match
+  // plain text, so one unusual Keyword should not force every article onto
+  // the slower substring fallback.
+  const needsFallback=text=>COMPLEX_GRAPHEME.test(text)||text.includes('\r\n');
   return {
     contains(text){
       if(!matcher)return false;
