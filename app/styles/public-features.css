@@ -68,6 +68,21 @@
   box-shadow:0 3px 12px color-mix(in srgb,var(--loc-bg) 24%,transparent);
   transition:border-color .18s ease,box-shadow .18s ease;
 }
+/* The compact list card and opened reading card are different states.
+   The article's BlockNote surface remains inside the opened card only. */
+[data-public-feature] .loc-public-article-list > .loc-shared-work-card:not(.scope-article-detail){
+  display:grid;
+  align-content:start;
+  gap:.55rem;
+}
+[data-public-feature] .loc-public-article-list > .loc-shared-work-card.scope-article-detail{
+  display:grid;
+  align-content:start;
+  gap:.75rem;
+}
+[data-public-feature] .loc-public-article-list > .loc-shared-work-card.scope-article-detail>.scope-culture-work-heading{
+  margin-bottom:0;
+}
 [data-public-feature] .loc-public-article-list > .loc-shared-work-card:is(:hover,:focus-within){
   border-color:var(--loc-feature-emphasis);
   box-shadow:0 5px 22px color-mix(in srgb,var(--loc-feature-emphasis) 12%,transparent);
