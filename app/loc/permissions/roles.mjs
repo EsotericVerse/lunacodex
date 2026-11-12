@@ -9,6 +9,9 @@ export function resolveLocPermissions(email,rows=[]){
   const denied={canWrite:false,canManage:false,grants:[],roles:[]};
   if(verified!==LOC_OWNER_EMAIL||!Array.isArray(rows))return denied;
   const active=rows.flatMap(row=>{
+    // A defaulted ZModel Boolean must never turn a missing active flag
+    // into an authorization grant.
+    if(row?.active!==true)return [];
     const validated=WebManageRowSchema.safeParse({
       id:String(row?.id||''),
       email:String(row?.email||'').trim().toLowerCase(),
