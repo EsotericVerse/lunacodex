@@ -283,11 +283,9 @@ export default function Trace({scopeId='loc'}){
           className="loc-trace-strategy-tabs__indicator" layoutId={'trace-mode-'+scopeId}
           transition={reduceMotion?{duration:0}:{type:'spring',duration:.26,bounce:.1}} aria-hidden="true"/>:null}</button>
     </nav>
-    {/* Never overlap the two WebGL maps. The old map unmounts synchronously;
-        Motion provides entrance feedback for the newly selected mode only. */}
-    <motion.div key={mapMode} className="loc-trace-map-transition" data-map-mode={mapMode}
-      initial={reduceMotion?false:{opacity:0,y:6}} animate={{opacity:1,y:0}}
-      transition={{duration:reduceMotion?0:.24,ease:'easeOut'}}>
+    {/* Keep exactly one WebGL canvas: the map owns its dimensions and Motion
+        unfolds two paper leaves above it, never transforms the canvas. */}
+    <div key={mapMode} className="loc-trace-map-transition" data-map-mode={mapMode}>
     {mapMode==='territory'?<TraceTerritoryPanel scopeId={scopeId}/>:
     <TraceMap publicTrace floatingControls={floatingControls} spatialData={demoSpatialData}
        annualGauges={annualGauges} annualGaugeOn={annualGaugeOn}
@@ -360,6 +358,14 @@ export default function Trace({scopeId='loc'}){
 
       </div>:null}
     </TraceMap>}
-    </motion.div>
+      {!reduceMotion?<div className="loc-trace-map-unfold" aria-hidden="true">
+        <motion.span className="loc-trace-map-unfold__leaf loc-trace-map-unfold__leaf--left"
+          initial={{scaleX:1}} animate={{scaleX:0}}
+          transition={{duration:.52,ease:[.25,.75,.2,1]}}/>
+        <motion.span className="loc-trace-map-unfold__leaf loc-trace-map-unfold__leaf--right"
+          initial={{scaleX:1}} animate={{scaleX:0}}
+          transition={{duration:.52,ease:[.25,.75,.2,1]}}/>
+      </div>:null}
+    </div>
   </FeaturePage>;
 }
