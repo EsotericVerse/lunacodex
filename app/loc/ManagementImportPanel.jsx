@@ -13,6 +13,7 @@ import ScopeSourceCorrection from './ScopeSourceCorrection';
 import {refreshScopeSearchSummary} from './scope-search-summary.mjs';
 import {insertRows,insertImportRows,dbAuthRelation,dbAuthClient,updateImportRows} from './db-client.mjs';
 import {useAccount} from './use-account';
+import ActivityMotion from '../modular/ActivityMotion';
 import {useAsyncResource,useResourceCache} from './use-async-resource';
 import {useScopeSourceCategoryRow} from './scope-source-category-row.mjs';
 import {canonicalImportSourceName,inferImportSourceFromFilename} from './source-name.mjs';
@@ -1206,7 +1207,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     {rows.length&&!busy&&!analysisCurrent?<p className="scope-status" role="status">正在更新匯入資料預覽，完成後才能開始匯入。</p>:null}
     {rows.length&&!busy&&analysisCurrent&&!analyzed.valid.length&&!analyzed.mediaOnly.length&&!eligibleArchiveMediaPlan.media.length?<p className="scope-status" role="status">目前沒有可匯入的有效紀錄，請查看上方略過原因。</p>:null}
     {progress?<div role="status" aria-live="polite" aria-atomic="true" className="scope-import-progress">
-      {busy?<p className="scope-status"><strong>{t('uiExtra.importUI.importProcessingWait')}</strong></p>:null}
+      {busy?<p className="scope-status"><ActivityMotion kind="import"/> <strong>{t('uiExtra.importUI.importProcessingWait')}</strong></p>:null}
       <p><strong>{progress.stage}</strong></p>
       {progress.percent===null?<progress max="100" aria-label={progress.stage+'，處理中'}/>:
         <progress value={progress.percent} max="100" aria-label={progress.stage+'，已完成 '+progress.percent+'%'}/>}
