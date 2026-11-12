@@ -1,8 +1,8 @@
 import {WebManageRowSchema} from './web-manage-schema.mjs';
 
 // LOC authorization is a business-data decision, NOT an Auth subsystem.
-// Better Auth establishes identity; this function reads the existing role
-// table with Kysely. Neither the website nor its public readers call it.
+// The Web business database is the role source. Its fixed ZModel and Zod
+// validators are separate from the LOC Auth identity and Session model.
 export const LOC_OWNER_EMAIL='sopa2306@gmail.com';
 export function resolveLocPermissions(email,rows=[]){
   const verified=String(email||'').trim().toLowerCase();
