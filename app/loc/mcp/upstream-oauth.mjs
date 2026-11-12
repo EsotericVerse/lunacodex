@@ -2,7 +2,8 @@
 // Provider-issued tokens are stored separately from LOC-issued identity tokens.
 import {UPSTREAM_PROVIDERS,upstreamProvider,trustedProviderUrl,
   LOC_MCP_CALLBACK,LOC_MCP_CLIENT_DOCUMENT} from './upstream-providers.mjs';
-import {randomValue,hashValue,providerKey,vaultGet,vaultPut,vaultDelete} from './upstream-vault.mjs';
+import {randomValue,hashValue,providerKey,pendingPrefix,vaultList,
+  vaultGet,vaultPut,vaultDelete} from './upstream-vault.mjs';
 
 const OAUTH_TTL=600;
 const form=params=>new URLSearchParams(params).toString();
@@ -151,6 +152,14 @@ export async function completeUpstreamOAuth(env,params,expectedSubject){
     grant_type:'authorization_code',code:String(params.code),
     redirect_uri:LOC_MCP_CALLBACK,code_verifier:saved.verifier,
     ...(saved.provider==='github'?{}:{resource:saved.resource})},saved.client);
+  // A newly authorized account must not silently inherit the old external
+  // account's function policies or the old account's pending approvals.
+  await vaultDelete(env,'policy:'+await hashValue(saved.subject)+':'+saved.provider);
+  const prefix=await pendingPrefix(saved.subject);
+  for(const key of await vaultList(env,prefix,100)){
+    const pending=await vaultGet(env,key);
+    if(pending?.provider===saved.provider)await vaultDelete(env,key);
+  }
   await vaultPut(env,await providerKey(saved.subject,saved.provider),
     tokenRecord(null,tokens,saved.token_endpoint,saved.client,saved.resource));
   return {provider:saved.provider,connected:true};
