@@ -24,7 +24,7 @@ import {useNavigationPreferences} from './loc/use-navigation-preferences';
 import {NavigationPreferences} from './modular/navigation-preferences';
 import {navigationHref} from './modular/scope-registry.js';
 import {recoverChunkOnce} from './loc/chunk-recovery.mjs';
-import BottomNavIcon from './modular/BottomNavIcon';
+import BottomNavIcon,{DockMotionIcon} from './modular/BottomNavIcon';
 import {EditDockProvider,useEditDock} from './modular/edit-dock';
 // Only individual Scope homepages download the opt-in management entry.
 const ScopeHomeEditEntry=dynamic(()=>import('./loc/ScopeHomeEditEntry'),{loading:()=>null});
@@ -377,6 +377,7 @@ function AppShellInner({children}){
     link.href=faviconForScope(scopeId);
   },[scopeId,host]);
   const currentFeature=featureIdForPath(pathname);
+  const [dockActivation,setDockActivation]=useState({id:'',count:0});
   const pageName=currentFeature||'index';
   const isSettings=['/settings','/settings/index.html','/local/setting','/local/setting/index.html','/local/settings','/local/settings/index.html'].includes(normalizePath(pathname));
   const [native,setNative]=useState(false);
@@ -604,9 +605,14 @@ function AppShellInner({children}){
           </button>)
       :editDockPending?<span role="status" className="scope-edit-dock-pending">正在確認編輯介面…</span>
       :featureTabs.map(tab=><ScopeLink key={tab.id} href={tab.href} native={native}
+        onClick={()=>setDockActivation(prev=>({id:tab.id,count:prev.count+1}))}
         aria-current={tab.id==='settings'?isSettings?'page':undefined:
           !isSettings&&(tab.id==='home'?(localWorkspace?(isMyPhone||isScopeHomepage):isScopeHomepage):currentFeature===tab.id)?'page':undefined}>
-        <BottomNavIcon name={tab.icon}/><span>{tab.label}</span>
+        <DockMotionIcon name={tab.icon}
+          active={tab.id==='settings'?isSettings:
+            !isSettings&&(tab.id==='home'?(localWorkspace?(isMyPhone||isScopeHomepage):isScopeHomepage):currentFeature===tab.id)}
+          activation={dockActivation.id===tab.id?dockActivation.count:0}/>
+        <span>{tab.label}</span>
       </ScopeLink>)}
       {editingDockVisible&&editDock.notice?<p className="scope-edit-dock-notice" role="status" aria-live="polite">{editDock.notice}</p>:null}
     </div>
