@@ -3,6 +3,7 @@
 import {useEffect,useLayoutEffect,useMemo,useRef,useState,useSyncExternalStore} from 'react';
 import dynamic from 'next/dynamic';
 import {Capacitor} from '@capacitor/core';
+import {motion,useReducedMotion} from 'motion/react';
 import {useQueryClient} from '../zenstack/client-queries';
 import {translateUiField,UI_COPY,UI_LOCALE_OPTIONS,normalizeUiLocale,uiCopy,registerDefaultSection,isSectionLoaded,loadSection} from './i18n/ui-copy';
 import {UiLocaleProvider,useLoadedUiLocale,useUiLocale,useUiSection} from './i18n/ui-locale';
@@ -108,6 +109,7 @@ function nextThemeChangeDelay(date=new Date()){
 }
 
 function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride='',pageName='index'}){
+  const reduceMotion=useReducedMotion();
   const scope=scopeMeta||getScope(String(scopeId||'').trim());
   // Scope defaults are owned by the Scope config table; the game route alone
   // has its own purpose-built temporary default, never persisted to the DB.
@@ -119,6 +121,9 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
   const configuredTheme=configEnabled?String(bootstrap.data?.config?.theme||'').trim():'';
   const configuredDefaultThemeId=configuredTheme===SYSTEM_THEME_ID?'':configuredTheme;
   const [selection,setSelection]=useState(()=>({scopeId,themeId:SYSTEM_THEME_ID}));
+  // Decorative local feedback only when a person selects a different option.
+  // Theme persistence and actual palette application remain untouched.
+  const [accentPulse,setAccentPulse]=useState(0);
   const [now,setNow]=useState(()=>new Date());
   // Applying a saved Scope default must also clear any temporary footer choice.
   // Otherwise the local preview can mask a successful database update.
@@ -174,7 +179,20 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
 
   return <label className="scope-theme-control">
     <span>{copy.common.theme}</span>
-    <select value={selectedThemeId} onChange={event=>setSelection({scopeId,themeId:event.target.value})} aria-label={copy.common.theme}>
+    <span className="scope-theme-control__swatch" aria-hidden="true">
+      <span className="scope-theme-control__accent"/>
+      <span className="scope-theme-control__gold"/>
+      {accentPulse>0&&!reduceMotion?<motion.span key={scopeId+':'+accentPulse}
+        className="scope-theme-control__pulse" aria-hidden="true"
+        initial={{opacity:.65,scale:.65}} animate={{opacity:0,scale:1.7}}
+        transition={{duration:.48,ease:'easeOut'}}/>:null}
+    </span>
+    <select value={selectedThemeId} onChange={event=>{
+      const next=event.target.value;
+      if(next===selectedThemeId)return;
+      setSelection({scopeId,themeId:next});
+      setAccentPulse(count=>count+1);
+    }} aria-label={copy.common.theme}>
       <option value={SYSTEM_THEME_ID}>{copy.common.systemTheme}</option>
       {themeChoices.map(item=><option value={item.id} key={item.id}>{item.label}</option>)}
     </select>
