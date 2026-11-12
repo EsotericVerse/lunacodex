@@ -330,10 +330,15 @@ export async function selectScopeBlocks(scopeId,page='index'){
   const key=id+':'+name;
   const existing=scopeBlocksRequests.get(key);
   if(existing)return existing;
-  // Guest content is a published JS artifact. It must never wait for a DB
-  // connection. An unpublished page may still use a live editor read.
+  // Homepage edits are live SQL records. A published JS snapshot is only the
+  // offline fallback; reading it first forever hides successfully saved edits
+  // after a hard reload. Make one bounded homepage read per client runtime,
+  // with no polling or session check, and preserve the published fallback.
   const promise=loadPublishedBlocks(id,name)
-    .then(async rows=>rows.length?rows:selectLiveScopeBlocks(id,name))
+    .then(async rows=>name==='index'
+      ?selectLiveScopeBlocks(id,name).then(live=>live.length?live:rows)
+        .catch(()=>rows)
+      :rows.length?rows:selectLiveScopeBlocks(id,name))
     .catch(error=>{scopeBlocksRequests.delete(key);throw error});
   scopeBlocksRequests.set(key,promise);
   return promise;
