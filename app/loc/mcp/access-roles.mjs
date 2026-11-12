@@ -9,7 +9,7 @@ import {resolveManagePermissions} from '../permissions/roles.mjs';
 
 const AUTH_USERINFO='https://auth.lo3rwang.cc/api/auth/oauth2/userinfo';
 const VerifiedEmail=z.email();
-const UserInfoSchema=z.looseObject({
+export const VerifiedLocUserInfoSchema=z.looseObject({
   sub:z.string().min(1).max(128),
   email:VerifiedEmail,
   email_verified:z.literal(true)
@@ -89,7 +89,7 @@ export async function authorizeMcpBearer(token,subject,env={},{
     throw denial('LOC OAuth UserInfo unavailable',503);
   }
   if(!response?.ok)throw denial('LOC OAuth identity verification failed',401);
-  const parsed=UserInfoSchema.safeParse(await response.json().catch(()=>null));
+  const parsed=VerifiedLocUserInfoSchema.safeParse(await response.json().catch(()=>null));
   if(!parsed.success||parsed.data.sub!==subject)
     throw denial('Verified LOC OAuth identity required',401);
   return authorizeMcpRole(parsed.data.email,env,{database});
