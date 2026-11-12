@@ -18,6 +18,7 @@ registerDefaultSection('uiExtra.pagination',paginationZh);
 import {Fragment,useEffect,useMemo,useRef,useState} from 'react';
 import dynamic from 'next/dynamic';
 import {publicPatternSuggestions} from '../../loc/public-pattern-suggestions.mjs';
+import {blockNoteSuggestionItems} from '../../loc/blocknote-suggestions.mjs';
 import {useAsyncResource,useResourceCache} from '../../loc/use-async-resource';
 import {useRouter,useSearchParams} from 'next/navigation';
 
@@ -378,7 +379,8 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   // Public Search: Pattern-only suggestions; management text input: none.
   const patternScopeIds=useMemo(()=>targetScopes.map(item=>item.id),[targetScopes]);
   const patternSuggestions=useMemo(()=>
-    managementMode?[]:publicPatternSuggestions(patternScopeIds,query),
+    managementMode?[]:blockNoteSuggestionItems('pattern',
+      publicPatternSuggestions(patternScopeIds,query),query,36).map(item=>item.title),
     [managementMode,patternScopeIds,query]);
 
   const summaryScopeIds=targetScopes.map(item=>item.id);

@@ -26,6 +26,9 @@ export default function BlockNoteEditor({
   onPlainTextChange=null,
   onHtmlChange=null,
   canInsertImage=true,
+  suggestionKind='',
+  suggestions=[],
+  plainTextOnly=false,
   className=''
 }){
   const source=initialContent===undefined?content:initialContent;
@@ -47,7 +50,10 @@ export default function BlockNoteEditor({
       editable={editable}
       onChange={onChange||onBlocksChange||onPlainTextChange?handleChange:null}
       onHtmlChange={onHtmlChange}
-      canInsertImage={canInsertImage}
+      canInsertImage={canInsertImage&&!plainTextOnly}
+      suggestionKind={suggestionKind}
+      suggestions={suggestions}
+      plainTextOnly={plainTextOnly}
     />
   </div>;
 }
@@ -89,7 +95,9 @@ export function ObjectEditor({
     if(field.kind==='rich'){
       const element=<BlockNoteEditor editorKey={field.editorKey} content={field.content}
         onBlocksChange={field.onBlocksChange} onHtmlChange={field.onHtmlChange}
-        onPlainTextChange={field.onPlainTextChange} canInsertImage={field.canInsertImage!==false}/>;
+        onPlainTextChange={field.onPlainTextChange} canInsertImage={field.canInsertImage!==false}
+        editable={field.disabled!==true} plainTextOnly={field.plainTextOnly===true}
+        suggestionKind={field.suggestionKind||''} suggestions={field.suggestions||[]}/>;
       return field.bare?<Fragment key={field.key}>{element}</Fragment>
         :<div key={field.key} className="scope-management-wide-field">
           {field.label!=null?<span>{field.label}</span>:null}

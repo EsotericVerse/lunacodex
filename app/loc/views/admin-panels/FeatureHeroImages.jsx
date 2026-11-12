@@ -8,6 +8,7 @@ import {heroImageUrl as imageUrlOf} from '../../hero-image.mjs';
 import {useEditDock,useEditDockForm} from '../../../modular/edit-dock';
 
 const ScopeEditableBlocks=dynamic(()=>import('../../ScopeEditableBlocks'),{loading:()=>null});
+const ObjectEditor=dynamic(()=>import('../../BlockNoteEditor').then(mod=>mod.ObjectEditor),{loading:()=>null});
 
 // Admin has six feature tabs. Management Heroes are editors INSIDE the
 // corresponding feature panel, not extra navigation items.
@@ -208,25 +209,22 @@ function ManagementHeroDetails({slot,onDirtyChange}){
     return()=>onDirtyChange?.('management-'+page,false);
   },[dirty,page,onDirtyChange]);
   useEditDockForm({save,isBusy:()=>busy,isDirty:()=>dirty});
-  const field=(key,label,maxLength)=><label className="management-hero-copy-row" key={key}>
-    <span>{label}</span>
-    <input type="text" className="scope-search-input" maxLength={maxLength}
-      disabled={rows===null||busy} value={draft[key]}
-      onChange={event=>setDraft(current=>({...current,[key]:event.target.value}))}/>
-  </label>;
   return <section className="management-hero-copy-editor">
     <p className="scope-status">名稱：{slot.label}</p>
-    <div className="management-hero-copy-grid">
-      {field('eyebrow','英文標題',64)}
-      {field('title','中文大標題',64)}
-      {field('subtitle','標題說明',128)}
-    </div>
-    <label className="scope-management-wide-field">
-      <span>下方正文</span>
-      <textarea className="scope-search-input" rows={4}
-        disabled={rows===null||busy} value={draft.text}
-        onChange={event=>setDraft(current=>({...current,text:event.target.value}))}/>
-    </label>
+    {rows===null?<p className="scope-status" role="status">正在載入 Hero 文字…</p>
+      :<ObjectEditor key={page+':'+revision} mode="scope" fields={[
+        {key:'eyebrow',label:'英文標題',maxLength:64,value:draft.eyebrow,
+          disabled:busy,onChange:value=>setDraft(current=>({...current,eyebrow:value}))},
+        {key:'title',label:'中文大標題',maxLength:64,value:draft.title,
+          disabled:busy,onChange:value=>setDraft(current=>({...current,title:value}))},
+        {key:'subtitle-line',label:'標題說明',maxLength:128,value:draft.subtitle,
+          disabled:busy,onChange:value=>setDraft(current=>({...current,subtitle:value}))},
+        {key:'body',kind:'rich',label:'下方正文',
+          editorKey:'management-hero:'+page+':'+revision,
+          content:draft.text?{html:draft.text}:'',
+          disabled:busy,canInsertImage:false,
+          onHtmlChange:html=>setDraft(current=>({...current,text:html}))}
+      ]}/>}
     {status?<p className="scope-status" role="status">{status}</p>:null}
     {!inDock?<button className="loc-button primary" type="button" disabled={busy||rows===null||!canSave} onClick={save}>
       {busy?'儲存中…':'儲存管理區塊'}

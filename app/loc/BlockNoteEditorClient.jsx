@@ -2,7 +2,8 @@
 import FieldText from '../i18n/FieldText';
 
 import {useEffect,useRef} from 'react';
-import {useCreateBlockNote} from '@blocknote/react';
+import {SuggestionMenuController,useCreateBlockNote} from '@blocknote/react';
+import {blockNoteSuggestionItems} from './blocknote-suggestions.mjs';
 import {BlockNoteView} from '@blocknote/mantine';
 import {canonicalBlockNoteBlocks,canonicalBlockNoteHtml,BlockNoteContent} from './blocknote-content.mjs';
 
@@ -12,6 +13,9 @@ export default function BlockNoteEditorClient({
   initialMarkdown='',
   editable=true,
   canInsertImage=true,
+  suggestionKind='',
+  suggestions=[],
+  plainTextOnly=false,
   onChange=null,
   onHtmlChange=null
 }){
@@ -134,7 +138,7 @@ export default function BlockNoteEditorClient({
   }
 
   return <>
-    {editable?<div className="scope-blocknote-linkbar">
+    {editable&&!plainTextOnly?<div className="scope-blocknote-linkbar">
       <button type="button" className="loc-button" onMouseDown={event=>event.preventDefault()} onClick={editLink}><FieldText text="連結"/></button>
       <button type="button" className="loc-button" onMouseDown={event=>event.preventDefault()} onClick={removeLink}><FieldText text="移除連結"/></button>
       {canInsertImage?<button type="button" className="loc-button" onMouseDown={event=>event.preventDefault()} onClick={insertImageUrl}><FieldText text="圖片網址"/></button>:null}
@@ -143,6 +147,15 @@ export default function BlockNoteEditorClient({
       editor={editor}
       editable={editable}
       onChange={editable?emit:undefined}
-    />
+      formattingToolbar={plainTextOnly?false:undefined}
+      slashMenu={plainTextOnly?false:undefined}
+    >
+      {editable&&suggestionKind?<SuggestionMenuController
+        triggerCharacter="@" minQueryLength={1}
+        getItems={async query=>blockNoteSuggestionItems(suggestionKind,suggestions,query).map(item=>({
+          title:item.title,subtext:item.type+(item.uid?' · '+item.uid:''),
+          onItemClick:()=>editor.insertInlineContent([item.title,' '])
+        }))}/>:null}
+    </BlockNoteView>
   </>;
 }
