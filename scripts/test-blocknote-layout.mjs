@@ -19,7 +19,7 @@ test('BlockNote ObjectEditor keeps native header fields but gives long text a fu
 test('BlockNote sizing uses a shrinkable content column and preserves native popup layout',()=>{
   const css=source('app/styles/features.css');
   assert.match(css,/\.scope-blocknote \.bn-editor\{[^}]*box-sizing:border-box;[^}]*width:100%;[^}]*max-width:100%/s);
-  assert.match(css,/\.scope-blocknote \.bn-container\{[^}]*width:100%/s);
+  assert.match(css,/\.scope-blocknote,\s*\.scope-blocknote \.bn-container\{[^}]*width:100%/s);
   assert.match(css,/\.scope-page-editor \.scope-frame-field-grid\{[^}]*grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/s);
   assert.match(css,/\.scope-page-editor \.scope-frame-field-grid>\.scope-management-wide-field:not\(\.scope-frame-header-field\)\{[^}]*grid-column:1\/-1/s);
   assert.match(css,/\.scope-search-attr-grid>\.scope-search-attr-item\.is-blocknote-field\{[^}]*grid-column:1\/-1/s);
