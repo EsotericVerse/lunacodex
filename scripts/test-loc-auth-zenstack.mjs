@@ -59,3 +59,15 @@ test('Zod validates config without a database connection, migration or network c
   assert.match(auth,/cookieCache:locAuthSessionCache\(env\)/);
   assert.doesNotMatch(auth,/runMigrations|CREATE TABLE|ALTER TABLE|DROP TABLE|createAdapterFactory/);
 });
+
+test('OAuth issuance checks revoked Better Auth Sessions only on demand',()=>{
+  const auth=readFileSync(new URL('../workers/loc-authority/auth.mjs',import.meta.url),'utf8');
+  const entry=readFileSync(new URL('../workers/loc-authority/index.mjs',import.meta.url),'utf8');
+  assert.match(auth,/getAuthoritativeSessionFromCtx/);
+  for(const route of ['/oauth2/authorize','/oauth2/consent','/oauth2/continue'])
+    assert.ok(auth.includes("'"+route+"'"),'OAuth guard missing '+route);
+  assert.match(auth,/if\(!token\)return/);
+  assert.match(auth,/OAuth Session expired or revoked/);
+  assert.doesNotMatch(auth,/setInterval|setTimeout/);
+  assert.doesNotMatch(entry,/detail:String\(error|detail:String\(fatal/);
+});
