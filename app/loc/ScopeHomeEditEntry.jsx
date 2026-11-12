@@ -51,7 +51,8 @@ export default function ScopeHomeEditEntry(){
       clearEditorSession(window.sessionStorage);
       // The route owns Scope ID. Entering edit mode only toggles the Dock;
       // nothing is copied to sessionStorage or saved for later restoration.
-      editDock?.begin(scopeId,{globalManage:Boolean(result.authorizer?.canManageGlobalSync())});
+      if(!editDock?.begin(scopeId,{globalManage:Boolean(result.authorizer?.canManageGlobalSync())}))
+        throw new Error('目前頁面的 Scope ID 不一致，無法啟動編輯。');
     }catch(error){
       setMessage({error:String(error?.message||'編輯權限查詢失敗，請檢查登入或資料庫連線。')});
     }finally{
