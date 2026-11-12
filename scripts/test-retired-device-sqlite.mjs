@@ -32,3 +32,29 @@ test('offline Rune records remain browser-local, remote SQL stays explicit',()=>
   assert.match(client,/function unavailableLocal/);
   assert.doesNotMatch(records,/@capacitor-community\/sqlite|sql\.js|from ['"]kysely/);
 });
+
+
+test('Capacitor iOS platform is native-build-only, while used bridges remain runtime dependencies',()=>{
+  const manifest=JSON.parse(read('package.json'));
+  const lock=JSON.parse(read('package-lock.json'));
+  const runtime=['@capacitor/core','@capacitor/filesystem','@capacitor/share'];
+  assert.equal(manifest.dependencies?.['@capacitor/ios'],undefined);
+  assert.equal(manifest.devDependencies?.['@capacitor/ios'],'8.5.3');
+  assert.equal(lock.packages[''].dependencies?.['@capacitor/ios'],undefined);
+  assert.equal(lock.packages[''].devDependencies?.['@capacitor/ios'],'8.5.3');
+  assert.equal(lock.packages['node_modules/@capacitor/ios'].dev,true);
+  for(const name of runtime){
+    assert.equal(typeof manifest.dependencies?.[name],'string',name+' must be available at runtime');
+    assert.equal(lock.packages[''].dependencies?.[name],manifest.dependencies[name]);
+    assert.notEqual(lock.packages['node_modules/'+name].dev,true); // production runtime node
+  }
+  const localFiles=read('app/loc/PrivateLocalFiles.jsx');
+  const daily=read('app/lrunes/DailyRuneTransfer.jsx');
+  assert.match(localFiles,/import\('@capacitor\/filesystem'\)/);
+  assert.match(localFiles,/import\('@capacitor\/share'\)/);
+  assert.match(daily,/import\('@capacitor\/filesystem'\)/);
+  assert.match(daily,/import\('@capacitor\/share'\)/);
+  const iosWorkflow=read('.github/workflows/ios-device-build.yml');
+  assert.match(iosWorkflow,/npm ci --no-audit --no-fund/);
+  assert.match(iosWorkflow,/"\$RUNNER_TEMP\/loc-capacitor-cli\/node_modules\/\.bin\/cap" add ios/);
+});
