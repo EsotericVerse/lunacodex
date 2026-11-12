@@ -106,3 +106,11 @@ test('mobile edit dock and Trace territory keep all return/focus targets unobscu
   assert.match(map,/className="loc-button loc-trace-origin-button"/);
   assert.match(territoryView,/className="loc-trace-territory"/);
 });
+
+test('BlockNote contenteditable focus inherits dock clearance on iPhone',()=>{
+  const css=read('app/styles/bottom-navigation.css');
+  const editor=read('app/loc/BlockNoteEditorClient.jsx');
+  assert.match(css,/:where\(a,button,input,select,textarea,\[tabindex\],\s*\.scope-blocknote\.is-editable \[contenteditable="true"\]\):focus\{\s*scroll-margin-bottom:var\(--loc-dock-clearance\)/);
+  assert.match(css,/html:has\(\.scope-feature-dock \.scope-edit-dock-notice\)\{[^}]*--loc-dock-clearance:calc\(11rem \+ env\(safe-area-inset-bottom,0px\)\)/s);
+  assert.match(editor,/<BlockNoteView\s+editor=\{editor\}/);
+});
