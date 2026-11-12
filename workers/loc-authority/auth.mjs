@@ -1,10 +1,14 @@
 import {betterAuth} from 'better-auth';
-import {jwt} from 'better-auth/plugins';
+import {admin,jwt} from 'better-auth/plugins';
+import {createAccessControl} from 'better-auth/plugins/access';
+import {ZenStackClient} from '@zenstackhq/orm';
+import {zenstackAdapter} from '@zenstackhq/better-auth';
 import {oauthProvider} from '@better-auth/oauth-provider';
 import {PostgresDialect} from 'kysely';
 import {Pool, neonConfig} from '@neondatabase/serverless';
 import * as z from 'zod';
 import {RAINBOW_TABLES} from './rainbow-tables.mjs';
+import {rainbowSchema,RAINBOW_MODEL_NAMES} from './rainbow-zmodel.mjs';
 import {rainbowDatabaseHooks} from './rainbow-validation.mjs';
 
 // LOC Auth is the issuer. Neon supplies PostgreSQL storage, NOT Neon Auth.
@@ -14,6 +18,16 @@ export const LOC_WEB='https://loc.lo3rwang.cc';
 export const LOC_MCP='https://mcp.lo3rwang.cc';
 export const LOC_IMPORT=LOC_MCP+'/api/loc-native';
 const OWNER_EMAIL='sopa2306@gmail.com';
+// Native Better Auth resource/action permissions. The Auth administrator may
+// ban/unban and revoke sessions, but cannot impersonate, delete accounts or
+// grant itself new roles. LOC Web business rights remain in api.manage.
+const authActions={user:['get','list','ban'],session:['list','revoke','delete']};
+const authAc=createAccessControl(authActions);
+const authRoles={
+  admin:authAc.newRole(authActions),
+  user:authAc.newRole({user:[],session:[]})
+};
+
 // Auth owns only explicitly named Rainbow tables. This is model mapping,
 // NOT SQL DDL. No table or RLS policy is created when this module loads.
 export {RAINBOW_TABLES} from './rainbow-tables.mjs';
@@ -74,6 +88,10 @@ export function createLocAuth(env){
     // Two connections at most per Worker isolate; never expand the pool for probes.
     max:2
   });
+  // Official ZenStack v3 Better Auth adapter delegates all Auth storage CRUD
+  // to ZenStack ORM over the existing Kysely PostgresDialect. No parallel SQL
+  // adapter or runtime schema discovery is introduced.
+  const db=new ZenStackClient(rainbowSchema,{dialect:new PostgresDialect({pool})});
   const auth=betterAuth({
     appName:'LOC Auth',
     baseURL:LOC_ISSUER,
@@ -83,18 +101,15 @@ export function createLocAuth(env){
     // ZModel-derived Zod guards run only when Better Auth persists core
     // models. The native Better Auth/Kysely adapter remains authoritative.
     databaseHooks:rainbowDatabaseHooks,
-    database:{
-      dialect:new PostgresDialect({pool}),
-      type:'postgres',
-      // Approved storage namespace only. No automatic DDL or test schema.
-      schemaName:env.LOC_AUTH_SCHEMA||'public'
-    },
-    user:{modelName:RAINBOW_TABLES.user},
-    session:{modelName:RAINBOW_TABLES.session,
+    // Existing Rainbow array-valued fields are JSONB, not PostgreSQL
+    // native array columns. Let the published adapter serialize them.
+    database:zenstackAdapter(db,{provider:'postgresql',supportsArrays:false}),
+    user:{modelName:RAINBOW_MODEL_NAMES.user},
+    session:{modelName:RAINBOW_MODEL_NAMES.session,
       expiresIn:30*86400,updateAge:86400,storeSessionInDatabase:true,
       cookieCache:locAuthSessionCache(env)},
-    account:{modelName:RAINBOW_TABLES.account,accountLinking:{enabled:false}},
-    verification:{modelName:RAINBOW_TABLES.verification},
+    account:{modelName:RAINBOW_MODEL_NAMES.account,accountLinking:{enabled:false}},
+    verification:{modelName:RAINBOW_MODEL_NAMES.verification},
     emailAndPassword:{enabled:false},
     socialProviders:{
       google:{
@@ -116,12 +131,13 @@ export function createLocAuth(env){
       crossSubDomainCookies:{enabled:true,domain:'lo3rwang.cc'},
       // Schema is verified out of band; skip the per-request introspection
       // query, which otherwise runs on every fresh serverless connection.
-      database:{joins:true,validateSchema:false},
+      database:{joins:false,validateSchema:false},
       ipAddress:{ipAddressHeaders:['cf-connecting-ip']}
     },
     plugins:[
+      admin({ac:authAc,roles:authRoles,defaultRole:'user',adminRoles:['admin']}),
       jwt({
-        schema:{jwks:{modelName:RAINBOW_TABLES.jwks}},
+        schema:{jwks:{modelName:RAINBOW_MODEL_NAMES.jwks}},
         disableSettingJwtHeader:true,
         jwks:{
           keyPairConfig:{alg:'RS256',modulusLength:3072},
@@ -143,13 +159,13 @@ export function createLocAuth(env){
           userinfo:{window:60,max:120}
         },
         schema:{
-          oauthClient:{modelName:RAINBOW_TABLES.oauthClient},
-          oauthResource:{modelName:RAINBOW_TABLES.oauthResource},
-          oauthClientResource:{modelName:RAINBOW_TABLES.oauthClientResource},
-          oauthRefreshToken:{modelName:RAINBOW_TABLES.oauthRefreshToken},
-          oauthAccessToken:{modelName:RAINBOW_TABLES.oauthAccessToken},
-          oauthConsent:{modelName:RAINBOW_TABLES.oauthConsent},
-          oauthClientAssertion:{modelName:RAINBOW_TABLES.oauthClientAssertion}
+          oauthClient:{modelName:RAINBOW_MODEL_NAMES.oauthClient},
+          oauthResource:{modelName:RAINBOW_MODEL_NAMES.oauthResource},
+          oauthClientResource:{modelName:RAINBOW_MODEL_NAMES.oauthClientResource},
+          oauthRefreshToken:{modelName:RAINBOW_MODEL_NAMES.oauthRefreshToken},
+          oauthAccessToken:{modelName:RAINBOW_MODEL_NAMES.oauthAccessToken},
+          oauthConsent:{modelName:RAINBOW_MODEL_NAMES.oauthConsent},
+          oauthClientAssertion:{modelName:RAINBOW_MODEL_NAMES.oauthClientAssertion}
         },
         loginPage:'/login',
         consentPage:'/consent',
