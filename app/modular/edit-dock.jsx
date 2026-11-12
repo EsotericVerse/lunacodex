@@ -128,9 +128,8 @@ export function EditDockProvider({children,scopeId}){
       const email=String(session?.user?.email||'').trim().toLowerCase();
       const identity=userId+'|'+email;
       const identityChanged=Boolean(userId)&&lastIdentity!==null&&lastIdentity!==identity;
-      // An initial unverified/empty SDK event on a fresh HTML page is not a
-      // sign-out from an active editor. Avoid clearing the cross-page editor
-      // entry marker before the first LOC Auth verification can finish.
+      // An initial empty SDK event is not a sign-out from LOC Auth.
+      // Editing ends only on a real sign-out or verified identity change.
       if(userId)lastIdentity=identity;
       else if(event==='SIGNED_OUT')lastIdentity=null;
       const invalidated=event==='SIGNED_OUT'||identityChanged;
