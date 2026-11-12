@@ -394,3 +394,20 @@ test('keyword lookahead overlaps Worker parsing with one bounded SQL read',async
   assert.ok(abortedSignals.length>0&&abortedSignals.every(s=>s.aborted),
     'read signal must abort in finally');
 });
+
+test('Aho coverage respects NFKC, regex punctuation and existing Item words',()=>{
+  const scanner=createNewKeywordDiscovery([
+    {type:'item',name:'c++',lists:['DARK JAZZ','ＭＡＮＤＯＰＯＰ','城市記憶']}
+  ]);
+  scanner.consume([
+    {uid:'Ab000001',content:'c++ 帶來新的語言節奏',createtime:'2026-01-01'},
+    {uid:'Ab000002',content:'DARK JAZZ 與城市記憶',createtime:'2026-01-02'},
+    {uid:'Ab000003',content:'毫無相同關鍵詞的旅行記事',createtime:'2026-02-01'},
+    {uid:'Ab000004',content:'Ｍａｎｄｏｐｏｐ 交錯節拍',createtime:'2026-02-02'}
+  ]);
+  const result=scanner.finish({minDocuments:1});
+  assert.deepEqual(result.monthCoverage,[
+    {month:'2026-01',documents:2,existingCovered:2},
+    {month:'2026-02',documents:2,existingCovered:1}
+  ]);
+});

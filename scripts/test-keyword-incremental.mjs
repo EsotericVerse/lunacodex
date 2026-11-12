@@ -147,3 +147,50 @@ test('unchanged bulk Galaxy metadata skips every content read after completed sc
   assert.equal(second.result.reusedDocuments,250);
   assert.deepEqual(second.saved,first.saved);
 });
+
+test('Aho-Corasick candidate filter retains Item NOR exclusions and unmatched documents',()=>{
+  const rows=[
+    {uid:'CAT00001',type:'category',name:'所有詞',lists:['CL000001']},
+    {uid:'CL000001',type:'class',name:'主分類',lists:['GR000001']},
+    {uid:'GR000001',type:'group',name:'文化',lists:['IT000001']},
+    {uid:'IT000001',type:'item',name:'城市',lists:['星光','星光NOR月亮']}
+  ];
+  const classify=createKeywordUidDocumentClassifier(rows,'CL000001',{
+    collectKeywordTerms:true,selectedTerms:new Set(['城市','星光'])
+  });
+  const result=classify([
+    {uid:'Ab000001',content:'城市星光月亮'},
+    {uid:'Ab000002',content:'星光'},
+    {uid:'Ab000003',content:'未命中的日常生活'},
+    {uid:'Ab000004',content:'星光月亮'}
+  ]);
+  assert.deepEqual(result.classifications.map(row=>row.matched_terms),[
+    ['城市'],['星光'],[],[]
+  ]);
+  assert.deepEqual(result.classifications.map(row=>row.hits.reduce(
+    (sum,hit)=>sum+hit.times,0)),[1,1,0,0]);
+});
+
+test('NAME replacement can create a spaced literal and must not be lost by Aho prefilter',()=>{
+  const rows=[
+    {uid:'CAT00001',type:'category',name:'類',lists:['CL000001']},
+    {uid:'CL000001',type:'class',name:'分類',lists:['GR000001','GR000002']},
+    {uid:'GR000001',type:'group',name:'城市',lists:['IT000001']},
+    {uid:'GR000002',type:'group',name:'資訊',lists:['IT000002']},
+    {uid:'IT000001',type:'item',name:'城市',lists:['dark jazz']},
+    {uid:'IT000002',type:'item',name:'資訊',lists:['noiseNAME']}
+  ];
+  const classify=createKeywordUidDocumentClassifier(rows,'CL000001',{
+    collectKeywordTerms:true,selectedTerms:new Set(['dark jazz'])
+  });
+  const docs=[
+    {uid:'Ab000001',content:'darknoisejazz'},
+    {uid:'Ab000002',content:'dark jazz'},
+    {uid:'Ab000003',content:'without any matching word'}
+  ];
+  const result=classify(docs);
+  assert.deepEqual(result.classifications.map(row=>row.matched_terms),
+    [['dark jazz'],['dark jazz'],[]]);
+  assert.deepEqual(result.classifications.map(row=>row.hits.reduce(
+    (sum,hit)=>sum+hit.times,0)),[1,1,0]);
+});
