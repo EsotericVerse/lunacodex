@@ -92,3 +92,15 @@ test('shared management field layout is owned once and shrinks inside the page g
   assert.match(shell,/className=\{"scope-content"/);
   assert.doesNotMatch(ui,/\.scope-main--edit-workspace \.scope-content>\*/);
 });
+
+test('phone inline editor actions are touch-sized and not offset by the retired absolute bar',()=>{
+  const css=source('app/styles/features.css');
+  const client=source('app/loc/BlockNoteEditorClient.jsx');
+  assert.match(css,/\.scope-inline-editbar \.loc-button\{\s*min-height:44px;/);
+  assert.match(css,/\.scope-editable-block:is\(\.is-editing,\.scope-block-draft\)\{padding-top:\.85rem\}/);
+  assert.doesNotMatch(css,/\.scope-editable-block\.is-editing,\s*\.scope-editable-block\.scope-block-draft\{padding-top:2\.7rem\}/);
+  assert.match(css,/\.scope-inline-save-status\{[^}]*overflow-wrap:anywhere/s);
+  assert.match(css,/@media\(max-width:680px\)\{[\s\S]*?\.scope-blocknote\.is-editable \.bn-editor\{padding:\.75rem;font-size:1rem\}/);
+  assert.match(client,/<BlockNoteView\s+editor=\{editor\}/);
+  assert.doesNotMatch(css,/\.scope-blocknote \.bn-editor\{[^}]*overflow:hidden/s);
+});
