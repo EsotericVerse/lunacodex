@@ -11,6 +11,10 @@ test('default recent three months respects Taiwan civil day and calendar month b
   assert.deepEqual(traceWindow('3m',new Date('2026-10-26T12:00:00Z')),
     {startDate:'2026-07-26',endDate:'2026-10-26'});
   assert.deepEqual(traceWindow('all'),{startDate:'',endDate:''});
+  assert.deepEqual(traceWindow('year',new Date('2026-11-12T01:00:00Z')),
+    {startDate:'2026-01-01',endDate:'2026-12-31'});
+  assert.deepEqual(traceWindow('year',new Date('2026-12-31T16:00:00Z')),
+    {startDate:'2027-01-01',endDate:'2027-12-31'});
   assert.deepEqual(traceWindow('3m',new Date('2026-05-31T08:00:00Z')),
     {startDate:'2026-02-28',endDate:'2026-05-31'});
 });
@@ -64,7 +68,8 @@ test('Trace panel only projects three Galaxy list columns; media type filters us
   assert.match(trace,/queryFn:\(\)=>readTraceMapIndex\(scopeId\)/);
   assert.match(trace,/enabled:supported&&routeListOpen/);
   assert.match(trace,/\[reportTab,setReportTab\]=useState\(null\)/);
-  assert.match(trace,/\[timeWindow,setTimeWindow\]=useState\('all'\)/);
+  assert.match(trace,/\[timeWindow,setTimeWindow\]=useState\('year'\)/);
+  assert.match(trace,/traceWindow\('year',new Date\(\)\)/);
   assert.match(trace,/readCurrentTraceAnchors\(periodScopeId,members,/);
   assert.match(trace,/\{reportTab\?<TracePlaceResults/);
   assert.match(trace,/sourceName=\{sourceName\} mediaType=\{mediaType\}/);
