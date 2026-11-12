@@ -380,6 +380,15 @@
 .scope-loc-time-river{min-width:0;max-width:100%;}
 .scope-loc-time-river .scope-period-timeline-wrap{min-width:0;max-width:100%;overflow:hidden}
 .scope-loc-time-river .scope-period-timeline{min-width:0;max-width:100%}
+
+/* vis-timeline retains its own layout; a compositor-only curtain creates the
+   first-paint river expansion after its real on-mount readiness event. */
+.scope-river-reveal-shell{position:relative;min-width:0;max-width:100%}
+.scope-river-unfold-curtain{
+  position:absolute;inset:0;z-index:3;pointer-events:none;
+  transform-origin:right center;background:var(--loc-panel);
+}
+
 .scope-loc-time-river .vis-panel.vis-left{
   width:clamp(104px,16vw,180px)!important;
   max-width:180px!important;
