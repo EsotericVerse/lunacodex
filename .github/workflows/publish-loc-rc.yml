@@ -22,7 +22,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Validate version, lockfile and release notes
+      - name: Validate version and lockfile
         id: release
         shell: bash
         run: |
@@ -35,15 +35,12 @@ jobs:
           fi
           test "$(node -p "require('./package-lock.json').version")" = "$version"
           test "$(node -p "require('./package-lock.json').packages[''].version")" = "$version"
-          notes="docs/releases/LOC-$version.md"
-          test -s "$notes"
-          printf 'version=%s\nnotes=%s\n' "$version" "$notes" >> "$GITHUB_OUTPUT"
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
       - name: Publish a new GitHub prerelease and immutable tag target
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           LOC_VERSION: ${{ steps.release.outputs.version }}
-          LOC_NOTES: ${{ steps.release.outputs.notes }}
         run: |
           set -euo pipefail
           tag="v$LOC_VERSION"
@@ -58,6 +55,6 @@ jobs:
           gh release create "$tag" \
             --target "$GITHUB_SHA" \
             --title "LOC $LOC_VERSION — Release Candidate" \
-            --notes-file "$LOC_NOTES" \
+            --notes "LOC release candidate. Internal release notes: galaxy:55970CD5 (authorized LOC MCP only)." \
             --prerelease
           gh release view "$tag" --json name,tagName,isPrerelease,htmlUrl

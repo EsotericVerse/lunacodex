@@ -29,6 +29,7 @@ export const MCP_TOOL_INPUTS=Object.freeze({
   scope_storage:z.strictObject({scopeid:SCOPE_ID}),
   galaxy_link:z.strictObject({
     action,scopeid:SCOPE_ID,uid:UID.optional(),
+    site:z.enum(['mcp','LOC']).optional(),
     query:z.string().min(2).max(100).optional(),
     limit:z.int().min(1).max(5).optional(),
     user_requested:z.boolean().optional(),

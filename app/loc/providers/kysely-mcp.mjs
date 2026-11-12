@@ -104,9 +104,13 @@ export async function executePortableMcp(trx,body,claims,{
       if(typeof body.uid!=='string'||body.uid.length<1||body.uid.length>128||
         /[\u0000-\u001f\u007f]/.test(body.uid))reject('Invalid mapped article ID');
     }else validateUid(body.uid);
-    if(body.site!==undefined&&body.site!=='mcp')
-      reject('請至github頁面找尋PR相關資料！不開放搜尋PR!',403);
+    const requestedSite=body.site??'mcp';
+    if(requestedSite!=='mcp'&&requestedSite!=='LOC')
+      reject('Unsupported private Galaxy site',403);
+    if(requestedSite==='LOC'&&(scope!=='lo3rwang'||external))
+      reject('LOC documentation read requires its owning Scope',403);
     const source=external?trx.selectFrom(table):
+      requestedSite==='LOC'?trx.selectFrom(table).where('site','=','LOC'):
       conversationOnly(trx.selectFrom(table));
     // External tables need only the four canonical article fields. Optional
     // date/url columns are selected only when the owner maps them explicitly:
