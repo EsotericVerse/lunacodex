@@ -64,7 +64,10 @@
    Never transitions the entire page, map canvas or text contrast. */
 .scope-theme-control__swatch{
   position:relative;display:inline-flex;align-items:center;justify-content:center;
-  width:24px;height:24px;flex:0 0 24px;pointer-events:none;isolation:isolate;
+  width:30px;height:30px;flex:0 0 30px;pointer-events:none;isolation:isolate;
+  border:1px solid var(--loc-line);
+  border-radius:8px;
+  background:var(--loc-panel);
 }
 .scope-theme-control__accent,.scope-theme-control__gold{
   position:absolute;display:block;border-radius:50%;
@@ -72,12 +75,18 @@
   border:1px solid color-mix(in srgb,var(--loc-line) 70%,transparent);
 }
 .scope-theme-control__accent{
-  left:1px;top:3px;width:16px;height:16px;z-index:1;
+  left:3px;top:3px;width:17px;height:17px;z-index:1;
   background-color:var(--loc-accent);
 }
 .scope-theme-control__gold{
-  right:0;bottom:3px;width:12px;height:12px;z-index:2;
+  right:2px;bottom:3px;width:12px;height:12px;z-index:2;
   background-color:var(--loc-gold);
+}
+/* Sample text tone as well as both accents on the actual panel color. */
+.scope-theme-control__swatch::after{
+  content:"";
+  position:absolute;left:4px;bottom:4px;width:11px;height:2px;
+  background:var(--loc-text);border-radius:2px;
 }
 .scope-theme-control__pulse{
   position:absolute;inset:2px;z-index:0;border:2px solid var(--loc-accent);
