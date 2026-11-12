@@ -6,6 +6,9 @@ export const PRIVATE_FILE_ROOT='loc-private-files/v1';
 export const PRIVATE_FILE_INDEX=PRIVATE_FILE_ROOT+'/index.json';
 export const PRIVATE_FILE_CHUNK_BYTES=256*1024;
 export const PRIVATE_PREVIEW_MAX_BYTES=512*1024;
+// A full File materialization is bounded; large originals remain accessible
+// in place through getUri(), without uploading or copying them to a service.
+export const PRIVATE_FILE_READ_MAX_BYTES=64*1024*1024;
 
 const FILE_ID=/^[a-f0-9]{32}$/;
 const TEXT_FILE=/\.(?:txt|log|json|jsonl|xml|html?|md|csv|tsv|ini|yaml|yml|srt|vtt)$/i;
@@ -104,6 +107,32 @@ export function createPrivateLocalStore(filesystem,directory){
     return (await readIndex()).sort((a,b)=>b.importedAt.localeCompare(a.importedAt));
   }
 
+  async function readBinary(entry){
+    const result=await fs.readFile(options(privateFilePath(entry.id)));
+    if(typeof result?.data!=='string')throw new Error('本機檔案讀取失敗。');
+    let bytes;
+    try{bytes=fromBase64(result.data);}
+    catch{throw new Error('本機檔案二進位資料無法解碼。');}
+    if(bytes.byteLength!==entry.size)throw new Error('本機檔案內容與保存大小不一致。');
+    return bytes;
+  }
+
+  // Reopen the exact original bytes as a browser File. Existing offline
+  // parsers can consume its slice()/arrayBuffer() interface unchanged.
+  async function readFile(id,{maxBytes=PRIVATE_FILE_READ_MAX_BYTES}={}){
+    privateFilePath(id); // Validate before disk access.
+    if(!Number.isSafeInteger(maxBytes)||maxBytes<0||maxBytes>PRIVATE_FILE_READ_MAX_BYTES)
+      throw new Error('無效的本機檔案讀取上限。');
+    const entry=(await list()).find(item=>item.id===id);
+    if(!entry)throw new Error('找不到本機檔案。');
+    if(entry.size>maxBytes)
+      throw new Error('本機檔案過大，請使用 getUri() 直接存取原檔。');
+    const bytes=await readBinary(entry);
+    return new File([bytes],entry.name,{
+      type:entry.type||'',lastModified:entry.lastModified??Date.now()
+    });
+  }
+
   async function importFile(file,onProgress){
     if(!file||typeof file.slice!=='function'||!Number.isSafeInteger(file.size)||file.size<0)
       throw new Error('選擇的檔案無法讀取。');
@@ -157,15 +186,12 @@ export function createPrivateLocalStore(filesystem,directory){
   }
 
   async function preview(id,encoding='auto'){
-    const path=privateFilePath(id);
+    privateFilePath(id);
     const entry=(await list()).find(item=>item.id===id);
     if(!entry)throw new Error('找不到本機檔案。');
     if(!isTextPrivateFile(entry))throw new Error('此格式不提供文字預覽，可以選擇「開啟／分享」交給 iOS。');
     if(entry.size>PRIVATE_PREVIEW_MAX_BYTES)throw new Error('超過 512 KB 的文字檔案請透過「開啟／分享」查看，避免 App 一次載入大量文字。');
-    const result=await fs.readFile(options(path)); // No encoding: exact base64 binary.
-    if(typeof result?.data!=='string')throw new Error('本機檔案讀取失敗。');
-    const bytes=fromBase64(result.data);
-    if(bytes.byteLength!==entry.size)throw new Error('本機檔案內容與保存大小不一致。');
+    const bytes=await readBinary(entry);
     const effective=encoding==='auto'?(entry.detection?.encoding||'utf-8'):encoding;
     return new TextDecoder(effective,{fatal:false}).decode(bytes);
   }
@@ -179,5 +205,5 @@ export function createPrivateLocalStore(filesystem,directory){
     return result.uri;
   }
 
-  return {list,importFile,remove,preview,getUri};
+  return {list,importFile,readFile,remove,preview,getUri};
 }
