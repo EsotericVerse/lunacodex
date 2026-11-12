@@ -347,6 +347,17 @@
   font-weight:720;
   letter-spacing:.01em;
 }
+/* Motion's shared layout indicator remains behind content and never handles
+   navigation, focus, clicks, scroll position, or panel data. */
+.management-section-nav__active-indicator{
+  position:absolute;inset:3px;z-index:0;pointer-events:none;
+  border-radius:9px;background:color-mix(in srgb,var(--loc-accent) 10%,transparent);
+}
+.management-section-nav .management-section-nav__item .management-section-nav__label,
+.management-section-nav .management-section-nav__item .management-section-nav__description{
+  position:relative;z-index:1;
+}
+
 @media(hover:hover) and (pointer:fine){
   .management-section-nav .management-section-nav__item:not([aria-pressed="true"]):not(:disabled):hover{
     border-color:color-mix(in srgb,var(--loc-accent) 28%,var(--loc-line));
