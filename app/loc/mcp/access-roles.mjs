@@ -23,6 +23,34 @@ export function eligibleMcpRoles(email,rows=[]){
   return [...found.values()];
 }
 
+// One bounded role SELECT shared by MCP tools and the Extension import path.
+async function activeMcpRows(db,email){
+  return db.selectFrom('api.manage')
+    .select(['id','email','manage_role','active'])
+    .where(db.fn('lower',['email']),'=',email)
+    .where('active','=',true).execute();
+}
+
+const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
+// Business grants are derived solely from active role rows for the verified
+// identity. Scope/Group never silently inherit global Admin or child Scopes.
+export async function locMcpPermissionsForEmail(db,email){
+  const {roles:assigned}=await authorizeMcpRole(email,{},{
+    database:async()=>({db})
+  });
+  const roles=assigned.filter(row=>SCOPE.test(row.id));
+  if(!roles.length)throw denial('LOC MCP Scope not granted',403);
+  const grants=new Set();
+  for(const {id,role} of roles){
+    if(role==='admin')grants.add('global:manage');
+    grants.add(id+':manage');
+    grants.add(id+':write');
+    grants.add(id+':read');
+  }
+  return {canWrite:true,canManage:grants.has('global:manage'),
+    roles,grants:[...grants]};
+}
+
 // Read the existing role registry only when an MCP tool is actually requested.
 // Fail closed on unavailable SQL, without treating SQL failure as "no role".
 export async function authorizeMcpRole(email,env={},{
@@ -33,10 +61,7 @@ export async function authorizeMcpRole(email,env={},{
   let rows;
   try{
     const {db}=await database(env);
-    rows=await db.selectFrom('api.manage')
-      .select(['id','email','manage_role','active'])
-      .where(db.fn('lower',['email']),'=',verified)
-      .where('active','=',true).execute();
+    rows=await activeMcpRows(db,verified);
   }catch{
     throw denial('LOC MCP role service unavailable',503);
   }

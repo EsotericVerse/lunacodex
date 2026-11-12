@@ -2,7 +2,7 @@
 // All access decisions are made from the existing Neon api.manage table.
 import {executePortableMcp} from '../providers/kysely-mcp.mjs';
 import {directMcpKysely} from './native-kysely.mjs';
-import {locPermissionsForEmail} from '../permissions/roles.mjs';
+import {locMcpPermissionsForEmail} from './access-roles.mjs';
 
 const AUTH='https://auth.lo3rwang.cc';
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
@@ -55,7 +55,7 @@ export async function privateGalaxyLink(args={},token,subject,env={},
   const email=await getVerifiedPrincipal(token,subject,fetchImpl);
   const selected=await directMcpKysely(env);
   const {db,engine,namespace}=selected;
-  const rights=await locPermissionsForEmail(db,email);
+  const rights=await locMcpPermissionsForEmail(db,email);
   const canRead=rights.grants.includes('global:manage')||
     rights.grants.includes(scopeid+':read');
   if(!canRead)throw denied('LOC Scope permission denied');

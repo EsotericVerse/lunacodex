@@ -4,6 +4,7 @@
 import {sql} from 'kysely';
 import {verifyAccessTokenRequest,requestToResourceInput} from 'better-auth/oauth2';
 import {locPermissionsForEmail} from '../permissions/roles.mjs';
+import {locMcpPermissionsForEmail} from './access-roles.mjs';
 import {verifiedLocWebsiteSession} from '../auth/verified-session.mjs';
 import {authorizeDelegatedShortImport} from '../import/short-edge-authorization.mjs';
 import {processShortImport,portableShortImportStore} from '../import/short-append-service.mjs';
@@ -29,9 +30,9 @@ const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const KINDS=new Set(['mcp-sync','mcp-append','mcp-read','mcp-search','mcp-conversation','mcp-scope-status','short-import','managed-write','managed-action','personal-read','personal-write']);
 // api.manage / silver.loc are the only two fixed ZModel control relations a
 // signed global:manage delegation may UPDATE/DELETE (zenstack/policy-runtime.mjs
-// ADMIN_FIXED_WRITES). No insert, no other table -- the website's own
-// RLS-free database relies entirely on this gate (AGENTS.md 2026-11-09:
-// only the verified LOC owner "me" may INSERT/UPDATE/DELETE).
+// ADMIN_FIXED_WRITES). No insert, no other table. The website retains its
+// separate owner-only editor checks; MCP/Extension use active api.manage
+// roles with exact Scope grants. Neither path grants global Admin by login.
 const FILTER_SQL_OP={eq:'=',neq:'!=',gt:'>',gte:'>=',lt:'<',lte:'<=',
   like:'like',ilike:'ilike',is:'is',in:'in'};
 function withManagedFilters(query,filters){
@@ -136,8 +137,8 @@ export async function handleNativeLocOperation(request,env={},{
       throw refusal('Not found',404);
     // The verified signed claim, not the HTTP body, selects the connection.
     const claims=await signedClaims(request,fetchImpl);
-    // Only the verified LOC owner can mutate any LOC data. The token's email
-    // and grants are signed by LOC Auth, never accepted from the HTTP body.
+    // LOC Auth verifies the identity; only active api.manage grants may
+    // authorize MCP/Extension writes, never a role supplied by the request body.
     const writeKinds=new Set(['short-import','mcp-sync','mcp-append',
       'managed-write','managed-action','personal-write',
       ...(body.kind==='mcp-conversation'&&body.action==='record'?['mcp-conversation']:[])]);
@@ -166,7 +167,12 @@ export async function handleNativeLocOperation(request,env={},{
     const selected=await database(env,control?'':externalTarget);
     if(!selected?.db||!['postgres','mysql','mssql'].includes(selected.engine))
       throw refusal('LOC native Kysely driver is not configured',503);
-    const permission=await locPermissionsForEmail(selected.db,claims.email);
+    // Extension imports and direct MCP operations share the same role-based
+    // Gateway gate. Website editor grants retain their existing separate policy.
+    // Each request performs one active api.manage lookup, never a second probe.
+    const permission=host===MCP_HOST
+      ?await locMcpPermissionsForEmail(selected.db,claims.email)
+      :await locPermissionsForEmail(selected.db,claims.email);
     claims.me=permission.canWrite;
     claims.grants=permission.grants;
     if(writeKinds.has(body.kind)&&!permission.canWrite)
@@ -280,8 +286,8 @@ export async function handleNativeLocOperation(request,env={},{
     const runMcp=db=>executePortableMcp(db,body,claims,{
       engine:selected.engine,namespace:selected.namespace,
       tableName:selected.tableName,fieldMap:selected.fieldMap});
-    // The signed LOC Owner delegation is the only write permission. Never
-    // query api.manage merely to authorize the same identity a second time.
+    // Reuse the grants already resolved from api.manage for this request.
+    // Do not fetch the registry again inside each MCP business operation.
     if(body.kind==='mcp-sync'||body.kind==='mcp-append'){
       if(selected.tableName)
         throw refusal('LOC MCP control database is unavailable for writing',503);
