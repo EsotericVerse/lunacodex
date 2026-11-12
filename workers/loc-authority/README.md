@@ -119,3 +119,45 @@ database/schema bindings are present, verified Auth SQL read/write succeeds,
 OAuth/Session/JWKS works, and the MCP delegation path is tested.
 Schema creation requires the user's separate explicit approval on every change;
 the previously written test migration scripts have been deleted.
+
+## LOC Auth native OSS integration (2026-11-13)
+
+The Auth Worker now uses the **published** `@zenstackhq/better-auth@3.10.1`
+adapter as its only Better Auth database adapter, via ZenStack v3 and the
+existing Kysely PostgreSQL dialect. `rainbow-zmodel.mjs` is a static model
+snapshot generated from the 146 existing columns of all twelve
+`public.rainbow_*` tables and their unique indexes; no per-request schema
+query, runtime migration, RLS changes, or new SQL endpoint is introduced.
+The adapter uses `supportsArrays:false` because the existing Rainbow schema
+stores OAuth array-valued fields in PostgreSQL JSONB columns, not native
+PostgreSQL arrays. Zod is supplied by Better Auth's native request validators,
+ZenStack's ORM validators and the existing Auth environment schema; the
+previous duplicate handwritten database validation hooks are removed.
+
+Better Auth's **official Admin Plugin** handles Auth users, bans/unbans,
+Session revocation, and access control. The Auth administrator role is limited
+to user listing/lookup/banning and Session listing/revocation/deletion;
+it has no role escalation, impersonation, or user-deletion capability. These
+Auth roles do not grant LOC Web business privileges. The five Admin fields
+(`role`, `banned`, `banReason`, `banExpires`, `impersonatedBy`) already
+exist on the two core Rainbow tables; the RLS policies are unchanged.
+
+The Worker admission gate feeds bounded 5-second request-count buckets to the
+installed MIT Karaul `PoissonCost` / PELT detector. It only evaluates
+completed buckets with significant volume, with no polling or new persistence.
+A detected source-local surge produces a temporary HTTP 429 with Retry-After;
+expiry is automatic on the next request. This is **per Worker isolate**, not
+a globally synchronized IP blacklist and never a permanent Better Auth user ban.
+Routine public JWKS and issuer metadata remain available. Better Auth retains
+its own native per-route rate limits and permanent account blacklisting.
+
+The existing 30-minute signed Session Cookie Cache is unchanged for ordinary
+SSO traffic. Database Session revocation is authoritative when a request
+bypasses that cache or when the cached session expires. A previously issued
+JWT without an online liveness check remains subject to its normal TTL; this
+Auth-only change does not alter any MCP or website relying-party verifier.
+
+**Release evidence:** Package and schema mappings are committed. Actual Auth
+Worker deployment, live OAuth/Session regression, and production performance
+are separately verifiable release conditions; do not interpret a Pages build
+or a GitHub merge as proof of those behaviors.

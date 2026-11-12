@@ -10,7 +10,8 @@ test('LOC Auth delegates OIDC, OAuth, JWT and storage to Better Auth',()=>{
  assert.match(auth,/oauthProvider\(/);
  assert.match(auth,/jwt\(/);
  assert.match(auth,/PostgresDialect/);
- assert.match(auth,/schemaName:env.LOC_AUTH_SCHEMA\\|\\|'public'/);
+ assert.match(auth,/database:zenstackAdapter\(db,\{provider:'postgresql',supportsArrays:false\}\)/);
+ assert.match(auth,/new ZenStackClient\(rainbowSchema,\{dialect:new PostgresDialect\(\{pool\}\)\}\)/);
  assert.match(auth,/LOC Auth Rainbow tables are in the public PostgreSQL schema/);
  assert.doesNotMatch(auth,/schemaName:'loc_auth'|runMigrations|CREATE TABLE|LOC_AUTH_SCHEMA_GENERATION/);
  // All declared Auth storage models are Rainbow-prefixed and never written to
@@ -21,13 +22,14 @@ test('LOC Auth delegates OIDC, OAuth, JWT and storage to Better Auth',()=>{
    'oauthResource','oauthClientResource','oauthRefreshToken',
    'oauthAccessToken','oauthConsent','oauthClientAssertion'])
    assert.match(declared[key]||'',/^rainbow_/,'missing Rainbow mapping: '+key);
- assert.match(auth,/databaseHooks:rainbowDatabaseHooks/);
- assert.match(auth,/user:\{modelName:RAINBOW_TABLES\.user\}/);
- assert.match(auth,/session:\{modelName:RAINBOW_TABLES\.session/);
- assert.match(auth,/account:\{modelName:RAINBOW_TABLES\.account/);
- assert.match(auth,/verification:\{modelName:RAINBOW_TABLES\.verification\}/);
- assert.match(auth,/schema:\{jwks:\{modelName:RAINBOW_TABLES\.jwks\}\}/);
- assert.match(auth,/oauthClient:\{modelName:RAINBOW_TABLES\.oauthClient\}/);
+ assert.doesNotMatch(auth,/databaseHooks:rainbowDatabaseHooks/);
+ assert.match(auth,/admin\(\{ac:authAc,roles:authRoles/);
+ assert.match(auth,/user:\{modelName:RAINBOW_MODEL_NAMES\.user\}/);
+ assert.match(auth,/session:\{modelName:RAINBOW_MODEL_NAMES\.session/);
+ assert.match(auth,/account:\{modelName:RAINBOW_MODEL_NAMES\.account/);
+ assert.match(auth,/verification:\{modelName:RAINBOW_MODEL_NAMES\.verification\}/);
+ assert.match(auth,/schema:\{jwks:\{modelName:RAINBOW_MODEL_NAMES\.jwks\}\}/);
+ assert.match(auth,/oauthClient:\{modelName:RAINBOW_MODEL_NAMES\.oauthClient\}/);
  assert.match(entry,/oauthProviderOpenIdConfigMetadata/);
  assert.match(entry,/oauthProviderAuthServerMetadata/);
  assert.doesNotMatch(entry,/native-oauth|runBetterAuthStore|LocAuthorityState|signLocDelegation/);

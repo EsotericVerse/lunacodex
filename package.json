@@ -36,6 +36,7 @@
     "@capacitor/share": "8.0.0",
     "@neondatabase/serverless": "^1.2.0",
     "@streamparser/json": "0.0.26",
+    "@zenstackhq/better-auth": "3.10.1",
     "@zenstackhq/orm": "^3.10.1",
     "@zenstackhq/plugin-policy": "3.10.1",
     "@zenstackhq/schema": "^3.10.1",

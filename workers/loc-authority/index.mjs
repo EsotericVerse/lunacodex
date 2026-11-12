@@ -63,11 +63,15 @@ export default {
     // Bounded in-flight work per isolate, separate from Better Auth's
     // rateLimit and the eventual cross-isolate QoS authority.
     const admitted=authRequestConcurrencyGate.acquire(request);
-    if(!admitted.allowed)
-      return new Response(JSON.stringify({error:'auth_busy',retry_after:2}),{
-        status:429,headers:{'content-type':'application/json',
-          'cache-control':'no-store','retry-after':'2'}
-      });
+    if(!admitted.allowed){
+      const retry=admitted.retryAfterSeconds||2;
+      return new Response(JSON.stringify({
+        error:admitted.reason||'auth_busy',retry_after:retry
+      }),{status:429,headers:{
+        'content-type':'application/json','cache-control':'no-store',
+        'retry-after':String(retry)
+      }});
+    }
     let pool;
     try{
     const url=new URL(request.url);
