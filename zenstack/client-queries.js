@@ -216,9 +216,16 @@ export const queryClient={
   refetchQueries:(filter={})=>{forEachMatch(filter,entry=>entry.refetch());return Promise.resolve();},
   cancelQueries:()=>Promise.resolve(),
   setQueryData:(key,value)=>{
-    dataStore.set(serialize(key),value);
-    forEachMatch({queryKey:keyOf(key),exact:true},entry=>entry.setData(value));
-    return value;
+    // Preserve QueryClient's functional-updater contract. Homepage editors
+    // pass previous => ({...previous,blocks:savedRows}); storing that callback
+    // as the data instead of evaluating it blanks every public Home Block.
+    const serializedKey=serialize(key);
+    const previous=dataStore.get(serializedKey);
+    const next=typeof value==='function'?value(previous):value;
+    if(next===undefined)return previous;
+    dataStore.set(serializedKey,next);
+    forEachMatch({queryKey:keyOf(key),exact:true},entry=>entry.setData(next));
+    return next;
   },
   getQueryData:key=>dataStore.get(serialize(key)),
   removeQueries:(filter={})=>{
