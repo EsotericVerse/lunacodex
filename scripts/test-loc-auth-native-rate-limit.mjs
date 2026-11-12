@@ -33,6 +33,17 @@ test('every original OAuth quota now belongs to the Karaul policy',()=>{
   assert.deepEqual({window:authKaraulRatePolicy.window,max:authKaraulRatePolicy.max},normal);
 });
 
+test('native Karaul Poisson detects a latest-completed-bucket surge',()=>{
+  let now=0;
+  const rules=createAuthKaraulRateRules({now:()=>now});
+  const baseline={window:60,max:120};
+  for(let i=0;i<40;i++)
+    rules['/**'](req('/oauth2/token','192.0.2.99'),baseline);
+  now=5000;
+  assert.deepEqual(rules['/**'](req('/oauth2/token','192.0.2.99'),baseline),
+    {window:30,max:1});
+});
+
 test('Karaul adapts all Auth endpoints per source and per route, then recovers',()=>{
   let now=0;
   const rules=createAuthKaraulRateRules({now:()=>now,detect:()=>[12]});
