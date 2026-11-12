@@ -2,11 +2,13 @@ import {canManageLoc} from './loc-authorization.mjs';
 import {portableRelation,serializePortableJsonFields} from './sql-engine-ports.mjs';
 import {sql} from 'npm:kysely@0.29.8';
 import {assertZModelAnchorBlockManagedValues} from '../../../zenstack/import-validation.mjs';
-import {verifyModeledSqlFields} from '../../../zenstack/model-column-guard.mjs';
+import {modelFieldsForSql,verifyModeledSqlFields}
+  from '../../../zenstack/model-column-guard.mjs';
 
 // Model-confirmed Anchor projection; no separate list per SQL entry point.
-const ANCHOR_COLUMNS=Object.freeze(['uid','type','title','description',
-  'invisible','attr','createtime']);
+const ANCHOR_COLUMNS=Object.freeze(Object.keys(
+  modelFieldsForSql('silver','lo3rwang_anchor')
+).filter(column=>column!=='num')); // num is an internal Pattern index, not public read data.
 verifyModeledSqlFields({schema:'silver',table:'lo3rwang_anchor',
   columns:ANCHOR_COLUMNS});
 
