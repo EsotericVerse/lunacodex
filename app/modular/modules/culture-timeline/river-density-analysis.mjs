@@ -45,18 +45,6 @@ function fillRiverDensity(rows=[]){
   return filled;
 }
 
-function nearestPublishedBefore(rows,index){
-  for(let cursor=Math.min(index-1,rows.length-1);cursor>=0;cursor--){
-    if(Number(rows[cursor]?.count)>0)return rows[cursor].date;
-  }
-  return '';
-}
-function nearestPublishedAtOrAfter(rows,index){
-  for(let cursor=Math.max(0,index);cursor<rows.length;cursor++){
-    if(Number(rows[cursor]?.count)>0)return rows[cursor].date;
-  }
-  return '';
-}
 function structuralEmptyRuns(rows,changepoints){
   const changeSet=new Set(changepoints);
   const runs=[];
@@ -78,6 +66,23 @@ export function analyzeRiverDensity(rows=[],anchorDates=[]){
   if(density.length<3)return {density,changepoints:[],hiddenDates:[],suggestions:[]};
 
   const values=density.map(row=>Number(row.count)||0);
+  // Reuse the nearest observed publication day around every candidate,
+  // rather than walking the entire density history for each PELT boundary.
+  const beforePublished=new Array(density.length+1);
+  const afterPublished=new Array(density.length+1);
+  let lastDay='',nextDay='';
+  for(let i=0;i<density.length;i++){
+    beforePublished[i]=lastDay;
+    if(values[i]>0)lastDay=density[i].date;
+  }
+  beforePublished[density.length]=lastDay;
+  afterPublished[density.length]='';
+  for(let i=density.length-1;i>=0;i--){
+    if(values[i]>0)nextDay=density[i].date;
+    afterPublished[i]=nextDay;
+  }
+  const nearestBefore=index=>beforePublished[Math.min(Math.max(0,index),density.length)]||'';
+  const nearestAfter=index=>afterPublished[Math.min(Math.max(0,index),density.length)]||'';
   let changepoints=[];
   try{
     changepoints=detectCountChangepoints(values)
@@ -109,11 +114,22 @@ export function analyzeRiverDensity(rows=[],anchorDates=[]){
     end:segment.endIndex<density.length?density[segment.endIndex].date:dayFromMs(dayMs(density.at(-1).date)+DAY_MS)
   }));
 
-  const existing=(anchorDates||[]).map(dayMs).filter(Number.isFinite);
+  const existing=(anchorDates||[]).map(dayMs).filter(Number.isFinite).sort((a,b)=>a-b);
   const suggestions=new Map();
   const coveredByAnchor=key=>{
     const value=dayMs(key);
-    return Number.isFinite(value)&&existing.some(anchor=>Math.abs(value-anchor)<=ANCHOR_COVER_DAYS*DAY_MS);
+    if(!Number.isFinite(value))return false;
+    // Sorted anchor days allow a two-neighbor check instead of linear scanning
+    // through every existing anchor for every proposed date.
+    let low=0,high=existing.length;
+    while(low<high){
+      const mid=(low+high)>>>1;
+      if(existing[mid]<value)low=mid+1;
+      else high=mid;
+    }
+    const radius=ANCHOR_COVER_DAYS*DAY_MS;
+    return low<existing.length&&Math.abs(existing[low]-value)<=radius
+      ||low>0&&Math.abs(existing[low-1]-value)<=radius;
   };
   const addSuggestion=(date,reason)=>{
     const key=dayKey(date);
@@ -126,12 +142,12 @@ export function analyzeRiverDensity(rows=[],anchorDates=[]){
     if(!supportedBoundaries.has(index))continue;
     const before=Number(density[index-1]?.count)||0;
     const after=Number(density[index]?.count)||0;
-    if(before>0&&after===0)addSuggestion(nearestPublishedBefore(density,index),'change-point');
-    else addSuggestion(nearestPublishedAtOrAfter(density,index),'change-point');
+    if(before>0&&after===0)addSuggestion(nearestBefore(index),'change-point');
+    else addSuggestion(nearestAfter(index),'change-point');
   }
   for(const segment of emptySegments){
-    if(supportedBoundaries.has(segment.startIndex))addSuggestion(nearestPublishedBefore(density,segment.startIndex),'gap-edge');
-    if(supportedBoundaries.has(segment.endIndex))addSuggestion(nearestPublishedAtOrAfter(density,segment.endIndex),'gap-edge');
+    if(supportedBoundaries.has(segment.startIndex))addSuggestion(nearestBefore(segment.startIndex),'gap-edge');
+    if(supportedBoundaries.has(segment.endIndex))addSuggestion(nearestAfter(segment.endIndex),'gap-edge');
   }
 
   const rawSuggestions=[...suggestions.values()].sort((a,b)=>a.date.localeCompare(b.date));
