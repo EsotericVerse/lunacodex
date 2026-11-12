@@ -2,7 +2,10 @@
 import {upstreamProvider,trustedProviderUrl,providerToolName,providerArguments}
   from './upstream-providers.mjs';
 import {upstreamConnection} from './upstream-oauth.mjs';
-import {readBoundedJson,readconst UpstreamReplySchema=z.looseObject({
+import {readBoundedJson,readBoundedText} from './stream-json.mjs';
+import {z} from 'zod';
+const VERSION='2025-11-25';
+const UpstreamReplySchema=z.looseObject({
   jsonrpc:z.literal('2.0'),
   id:z.union([z.string(),z.number()]),
   result:z.unknown().optional(),
@@ -12,15 +15,14 @@ function matchedReply(value,id){
   const parsed=UpstreamReplySchema.safeParse(value);
   return parsed.success&&parsed.data.id===id?parsed.data:null;
 }
-// Parse bytes with the installed streaming JSON module; ignore unrelated SSE
-// progress notifications, but never accept an invalid matching response.
+// Streaming JSON for regular MCP replies; bounded SSE event bodies for progress.
 export async function parseUpstreamReply(response,id){
   const type=response.headers.get('content-type')||'application/json';
   if(type.includes('text/event-stream')){
     const content=await readBoundedText(response.body,300000);
-    for(const event of content.split(/\\r?\\n\\r?\\n/)){
-      const data=event.split(/\\r?\\n/).filter(line=>line.startsWith('data:'))
-        .map(line=>line.slice(5).trim()).join('\\n');
+    for(const event of content.split(/\r?\n\r?\n/)){
+      const data=event.split(/\r?\n/).filter(line=>line.startsWith('data:'))
+        .map(line=>line.slice(5).trim()).join('\n');
       if(!data)continue;
       let value;
       try{value=JSON.parse(data)}catch{continue}
@@ -36,10 +38,6 @@ export async function parseUpstreamReply(response,id){
   const checked=matchedReply(value,id);
   if(!checked)throw new Error('Invalid upstream MCP response ID');
   return checked;
-}
-value.id!==id)
-    throw new Error('Invalid upstream MCP response ID');
-  return value;
 }
 function protocolError(value){
   if(value?.error)throw new Error('Upstream MCP refused the tool ('+
