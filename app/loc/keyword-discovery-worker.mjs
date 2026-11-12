@@ -1,10 +1,10 @@
-import {detectChangepoints,PoissonCost} from 'karaul';
+import {detectCountChangepoints} from './karaul-count-changepoints.mjs';
 import {createNewKeywordDiscovery} from './keyword-discovery.mjs';
 
 let discovery=null;
 function changePoints(values){
   if(values.length<4)return [];
-  try{return detectChangepoints(values,new PoissonCost())
+  try{return detectCountChangepoints(values)
     .filter(index=>Number.isInteger(index)&&index>0&&index<values.length);}
   catch{return [];}
 }
@@ -63,6 +63,9 @@ function denseAndSparse(result){
 function annotateTrend(result){
   const months=result.monthCoverage||[];
   result=denseAndSparse(result);
+  // Rank first and analyze only the 120 candidates retained in the result.
+  // Avoid running PELT on the other 120 candidates that will be discarded.
+  result.candidates=result.candidates.slice(0,120);
   // A high-publication month must not look like a keyword trend merely
   // because more articles were posted. Compare per-article rates.
   for(const item of result.candidates){
@@ -73,7 +76,6 @@ function annotateTrend(result){
     delete item.months;
   }
   delete result.monthCoverage;
-  result.candidates=result.candidates.slice(0,120);
   return result;
 }
 self.onmessage=event=>{

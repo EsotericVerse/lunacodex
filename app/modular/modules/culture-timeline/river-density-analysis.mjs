@@ -1,4 +1,4 @@
-import {detectChangepoints,PoissonCost} from 'karaul';
+import {detectCountChangepoints} from '../../../loc/karaul-count-changepoints.mjs';
 
 const DAY_MS=86400000;
 const ANCHOR_COVER_DAYS=3;
@@ -80,7 +80,7 @@ export function analyzeRiverDensity(rows=[],anchorDates=[]){
   const values=density.map(row=>Number(row.count)||0);
   let changepoints=[];
   try{
-    changepoints=detectChangepoints(values,new PoissonCost())
+    changepoints=detectCountChangepoints(values)
       .filter(index=>Number.isInteger(index)&&index>0&&index<density.length);
   }catch{
     changepoints=[];
