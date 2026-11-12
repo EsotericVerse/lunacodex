@@ -1,12 +1,14 @@
 import {sql} from 'kysely';
 import {buildKyselyUpsertQuery} from './kysely-runtime.mjs';
 import {portableRelation,serializePortableJsonFields} from './sql-engine-ports.mjs';
+import {modelFieldsForSql} from '../../../zenstack/model-column-guard.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const PAGE=/^[A-Za-z][A-Za-z0-9_-]{0,60}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
-const FIELDS=new Set(['uid','page_name','block_eyebrow','block_title','block_subtitle',
-  'block_text','block_order','block_entity','block_image']);
+// The fixed and dynamic Block tables have one frozen ZenStack field contract.
+// Keep the editor's own page/order/UID business rules below.
+const FIELDS=new Set(Object.keys(modelFieldsForSql('silver','lo3rwang_blocks')));
 function reject(message){
   throw Object.assign(new Error(message),{httpStatus:400});
 }
