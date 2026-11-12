@@ -133,6 +133,7 @@ async function exchange(provider,tokenEndpoint,params,client){
 }
 function tokenRecord(previous,tokens,tokenEndpoint,client,resource){
   return {token_endpoint:tokenEndpoint,client,resource,
+    connection_id:previous?.connection_id||randomValue(24),
     access_token:tokens.access_token,
     refresh_token:tokens.refresh_token||previous?.refresh_token||'',
     expires_at:tokens.expires_in!=null&&Number.isFinite(Number(tokens.expires_in))&&
