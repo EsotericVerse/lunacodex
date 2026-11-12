@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LOC galaxy-link｜LOC 彩虹橋",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "單一 LOC 彩虹橋：OAuth PKCE、網頁／選區／對話／動態錄製、離線 Queue 與 Append 匯入",
   "permissions": [
     "contextMenus",
@@ -35,5 +35,6 @@
     "16": "icons/loc-favicon.png",
     "48": "icons/loc-favicon.png",
     "128": "icons/loc-favicon.png"
-  }
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAoE0hSVGOWXA38Fq1SSwSj6k4ClhS+Ag0huhjg7gbfLXZP6KoEeH5q5i3xB8R8wQp775ESRvDCGy/fUMVlTXoQ0ZbEMKH8w9SraWHTSRDcBVX7HhQ0aiFdm1FEWxW8tUZV8klNNOTl64MKK91VXoIwgyIYYE0I2fwfHNC2tfEAvHBlDsMdZVCH9XuMFQsRocfzFWcwiOmjqRkdd0LauDAjvlPnwJ8aaZgfAmK0RZ18I6goGDupik9auieomExGIqQUXAFW9iCpg23wDelehwQN//uOaFKHetYhdXmDk01NeOB87dffrQzP6lxuL+uwmTiGNfOWzWWbqN3vHAeLjSS7QIDAQAB"
 }
