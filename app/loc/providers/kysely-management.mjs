@@ -4,7 +4,7 @@ import {modelFieldsForSql,modelNameForSql,modeledPrimaryKeyColumns,
   from '../../../zenstack/model-column-guard.mjs';
 import {managedRowsIssue,managedUpdateValuesValid,managedFiltersValid,
   MANAGED_FILTER_SQL} from '../../../zenstack/sql-input-shape.mjs';
-import {assertZModelGalaxyManagedValues}
+import {assertZModelGalaxyManagedValues,assertZModelAnchorBlockManagedValues}
   from '../../../zenstack/import-validation.mjs';
 import {validateLocRegistryDomain} from './loc-domain.mjs';
 import {sql} from 'kysely';
@@ -201,9 +201,11 @@ export async function executeManagedKyselyWrite(trx,body,{modelName=''}={}){
   // do not traverse those same row keys again in the generic SQL guard.
   const galaxyValidated=assertZModelGalaxyManagedValues(
     namespace+'.'+table,operation,modelValues);
+  const anchorBlockValidated=!galaxyValidated&&assertZModelAnchorBlockManagedValues(
+    namespace+'.'+table,operation,modelValues);
   verifyModeledSqlFields({
     schema:namespace,table,
-    values:galaxyValidated?null:modelValues,filters
+    values:galaxyValidated||anchorBlockValidated?null:modelValues,filters
   });
   // The signed identity is checked against api.manage above. Only then
   // does the existing trusted Kysely connection execute the mutation.

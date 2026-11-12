@@ -36,6 +36,18 @@ function importModelSchema(modelName){
       overrides[column.name]=field.refine(value=>value==null||
         (typeof value==='string'&&char8Uid.test(value)),
       {message:'Expected exactly 8 ASCII letters or digits'});
+    }else if(column.format==='int8'){
+      // JSON transports represent PostgreSQL BIGINT as a safe JS number or
+      // decimal string, not a native bigint. Keep the physical 64-bit range
+      // and preserve original values for the existing Kysely JSONB batches.
+      const int8Text=z.string().max(20).regex(/^-?[0-9]+$/).refine(value=>{
+        const n=BigInt(value);
+        return n>=-(1n<<63n)&&n<=(1n<<63n)-1n;
+      });
+      overrides[column.name]=z.union([
+        field,z.number().int().min(Number.MIN_SAFE_INTEGER)
+          .max(Number.MAX_SAFE_INTEGER),int8Text
+      ]);
     }else if(column.format==='date'){
       // PostgreSQL DATE accepts YYYY-MM-DD; native ZModel maps it to DateTime.
       overrides[column.name]=z.union([field,z.iso.date()]).nullable().optional();
@@ -106,6 +118,36 @@ export function assertZModelGalaxyManagedValues(table,operation,values){
     // Field and row index only: never expose personal article text.
     throw new TypeError('LOC Galaxy ZModel 寫入驗證失敗：第 '+(i+1)+
       ' 筆 '+field+' — '+(first?.message||'invalid value'));
+  }
+  return true;
+}
+
+// Share the very same ZModel-derived strict shapes with existing Anchor and
+// Block management writes. A model without a frozen physical SQL contract
+// (for example the independent LOC source catalog) is not silently mapped.
+export function assertZModelAnchorBlockManagedValues(table,operation,values){
+  if(!['insert','upsert','update'].includes(operation))return false;
+  const relation=String(table||'');
+  if(!/^silver\.[a-z][a-z0-9]{0,14}_(?:anchor|blocks)$/.test(relation)||
+     relation==='silver.loc_anchor')return false;
+  const model=modelNameForSql(...relation.split('.'));
+  if(!model||!(model.endsWith('Anchor')||model.endsWith('Blocks')))
+    return false;
+  const full=modelWriteSchemaForSqlTable(relation);
+  const validator=operation==='update'?partialWriteSchema(full):full;
+  const rows=operation==='update'?[values]:values;
+  if(!Array.isArray(rows))
+    throw new TypeError('Invalid LOC Anchor/Block managed rows');
+  for(let i=0;i<rows.length;i++){
+    const parsed=validator.safeParse(rows[i]);
+    if(parsed.success)continue;
+    const issue=parsed.error.issues[0];
+    const field=issue?.path?.join('.')||'(record)';
+    // Reject unknown columns and incompatible values before SQL; never echo
+    // private text, JSON attrs, or caller-supplied values in diagnostics.
+    throw new TypeError('LOC '+(model.endsWith('Anchor')?'Anchor':'Block')+
+      ' ZModel 寫入驗證失敗：第 '+(i+1)+' 筆 '+field+
+      ' — '+(issue?.message||'invalid value'));
   }
   return true;
 }

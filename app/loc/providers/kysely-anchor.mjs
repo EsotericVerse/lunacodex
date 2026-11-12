@@ -1,6 +1,16 @@
 import {canManageLoc} from './loc-authorization.mjs';
 import {portableRelation,serializePortableJsonFields} from './sql-engine-ports.mjs';
 import {sql} from 'npm:kysely@0.29.8';
+import {assertZModelAnchorBlockManagedValues} from '../../../zenstack/import-validation.mjs';
+import {modelFieldsForSql,verifyModeledSqlFields}
+  from '../../../zenstack/model-column-guard.mjs';
+
+// Model-confirmed Anchor projection; no separate list per SQL entry point.
+const ANCHOR_COLUMNS=Object.freeze(Object.keys(
+  modelFieldsForSql('silver','lo3rwang_anchor')
+).filter(column=>column!=='num')); // num is an internal Pattern index, not public read data.
+verifyModeledSqlFields({schema:'silver',table:'lo3rwang_anchor',
+  columns:ANCHOR_COLUMNS});
 
 const scopePattern=/^[a-z][a-z0-9]{0,14}$/;
 const uidPattern=/^[A-Za-z0-9]{8}$/;
@@ -166,7 +176,7 @@ export async function executeKyselyAnchor(trx,body,{role='anon'}={}){
     if(attr.where!==undefined&&(!attr.where||typeof attr.where!=='object'||Array.isArray(attr.where)))
       reject('Invalid JSONB Anchor filter');
     let query=trx.selectFrom(anchor)
-      .select(['uid','type','title','description','invisible','attr','createtime'])
+      .select(ANCHOR_COLUMNS)
       .where('type','=',type);
     if(uid)query=query.where('uid','=',uid);
     if(!owner)query=query.where('invisible','=',false);
@@ -191,8 +201,9 @@ export async function executeKyselyAnchor(trx,body,{role='anon'}={}){
     const row={uid,type,title:attr.title??null,description:attr.description??null,
       invisible:attr.invisible??false,attr:attr.data,
       ...(Object.hasOwn(attr,'createtime')?{createtime:anchorTime(attr.createtime)}:{})};
+    assertZModelAnchorBlockManagedValues(anchor,'insert',[row]);
     const inserted=await trx.insertInto(anchor).values(row)
-      .returning(['uid','type','title','description','invisible','attr','createtime']).executeTakeFirst();
+      .returning(ANCHOR_COLUMNS).executeTakeFirst();
     if(!inserted)reject('Anchor insert failed');
     return {data:inserted,count:null};
   }
@@ -201,12 +212,14 @@ export async function executeKyselyAnchor(trx,body,{role='anon'}={}){
   if(Object.hasOwn(attr,'title'))values.title=attr.title;
   if(Object.hasOwn(attr,'description'))values.description=attr.description;
   if(Object.hasOwn(attr,'invisible'))values.invisible=attr.invisible;
-  if(Object.hasOwn(attr,'data'))values.attr=op==='patch'
-    ?sql`attr || ${JSON.stringify(attr.data)}::jsonb`:attr.data;
+  if(Object.hasOwn(attr,'data'))values.attr=attr.data;
   if(!Object.keys(values).length)reject('Empty Anchor update');
+  assertZModelAnchorBlockManagedValues(anchor,'update',values);
+  if(op==='patch'&&Object.hasOwn(values,'attr'))
+    values.attr=sql`attr || ${JSON.stringify(attr.data)}::jsonb`;
   const updated=await trx.updateTable(anchor).set(values)
     .where('uid','=',uid).where('type','=',type)
-    .returning(['uid','type','title','description','invisible','attr','createtime']).executeTakeFirst();
+    .returning(ANCHOR_COLUMNS).executeTakeFirst();
   if(!updated)reject('Anchor row not found');
   return {data:updated,count:null};
 }
@@ -229,7 +242,7 @@ export async function executePortableKyselyAnchor(db,body,{role='anon',engine,na
   if(uid&&!uidPattern.test(uid))reject('Invalid UID');
   const table=portableRelation(scope+'_anchor',engine,namespace);
   const owner=await isOwner(db,scope,role);
-  const columns=['uid','type','title','description','invisible','attr','createtime'];
+  const columns=ANCHOR_COLUMNS;
   if(op==='read'){
     if(!owner&&!publicTypes.has(type))return {data:[],count:null};
     const limit=asPositiveInteger(data.limit,100,500);
@@ -342,13 +355,14 @@ export async function executePortableKyselyAnchor(db,body,{role='anon',engine,na
   if(Object.hasOwn(data,'data'))changes.attr=op==='patch'
     ?{...portableAttr(current.attr),...data.data}:data.data;
   if(op==='insert'){
-    await db.insertInto(table).values(serializePortableJsonFields({
-      uid,type,title:data.title??null,description:data.description??null,
+    const row={uid,type,title:data.title??null,description:data.description??null,
       invisible:data.invisible??false,attr:data.data,
-      ...(Object.hasOwn(data,'createtime')?{createtime:anchorTime(data.createtime)}:{})
-    },engine)).execute();
+      ...(Object.hasOwn(data,'createtime')?{createtime:anchorTime(data.createtime)}:{})};
+    assertZModelAnchorBlockManagedValues('silver.'+scope+'_anchor','insert',[row]);
+    await db.insertInto(table).values(serializePortableJsonFields(row,engine)).execute();
   }else{
     if(!Object.keys(changes).length)reject('Empty update');
+    assertZModelAnchorBlockManagedValues('silver.'+scope+'_anchor','update',changes);
     const result=await db.updateTable(table).set(serializePortableJsonFields(changes,engine))
       .where('uid','=',uid).where('type','=',type).executeTakeFirst();
     if(modified(result)!==1)reject('Anchor update incomplete');

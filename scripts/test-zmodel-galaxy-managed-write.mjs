@@ -103,6 +103,6 @@ test('server validates Galaxy values after authorization, before SQL, without a 
   const model=source.indexOf('verifyModeledSqlFields({',zod);
   const firstSql=source.indexOf('await sql\x60reset role\x60',zod);
   assert.ok(auth!==-1&&auth<zod&&zod<model&&model<firstSql);
-  assert.match(source,/values:galaxyValidated\?null:modelValues,filters/);
+  assert.match(source,/values:galaxyValidated\|\|anchorBlockValidated\?null:modelValues,filters/);
   assert.doesNotMatch(source,/new Pool\(|createConnection\(/);
 });
