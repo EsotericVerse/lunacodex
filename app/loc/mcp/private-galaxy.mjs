@@ -39,14 +39,20 @@ export async function privateGalaxyLink(args={},token,subject,env={},
   let body,offset=0,maxChars=20000;
   if(action==='read'){
     if(!UID.test(String(args.uid||'')))throw invalid('Invalid case-sensitive UID');
-    if(args.site!==undefined&&args.site!=='mcp')throw invalid('PR records must be queried through GitHub');
+    const requestedSite=args.site??'mcp';
+    if(requestedSite!=='mcp'&&requestedSite!=='LOC')
+      throw invalid('Unsupported private Galaxy site');
+    // Project documentation is owned by this Scope, not all Galaxy tables.
+    if(requestedSite==='LOC'&&scopeid!=='lo3rwang')
+      throw invalid('LOC documents require lo3rwang Scope');
     offset=args.offset===undefined?0:Number(args.offset);
     maxChars=args.max_chars===undefined?20000:Number(args.max_chars);
     if(!Number.isInteger(offset)||offset<0||offset>1000000||
        !Number.isInteger(maxChars)||maxChars<1||maxChars>40000)
       throw invalid('Invalid Galaxy read paging');
-    body={kind:'mcp-read',scopeid,uid:args.uid,site:'mcp'};
+    body={kind:'mcp-read',scopeid,uid:args.uid,site:requestedSite};
   }else{
+    if(args.site!==undefined)throw invalid('site is only available for private read');
     if(args.user_requested!==true)throw invalid('Conversation search must be explicitly requested');
     const query=String(args.query||'').trim(),limit=args.limit===undefined?5:Number(args.limit);
     if(PR.test(query))throw invalid('GitHub PR content is not searchable through Galaxy');
