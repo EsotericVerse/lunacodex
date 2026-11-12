@@ -3,19 +3,26 @@ import {upstreamProvider,trustedProviderUrl,providerToolName,providerArguments}
   from './upstream-providers.mjs';
 import {upstreamConnection} from './upstream-oauth.mjs';
 const VERSION='2025-11-25';
-function parseReply(content,type){
+function parseReply(content,type,id){
   if(content.length>300000)throw new Error('Upstream MCP response too large');
   if(type.includes('text/event-stream')){
+    // A stream may contain progress notifications before the matching reply.
     const events=content.split(/\r?\n\r?\n/);
     for(const item of events){
       const data=item.split(/\r?\n/).filter(line=>line.startsWith('data:'))
         .map(line=>line.slice(5).trim()).join('\n');
       if(!data)continue;
-      try{const response=JSON.parse(data);if(response.jsonrpc==='2.0')return response;}catch{}
+      try{
+        const value=JSON.parse(data);
+        if(value.jsonrpc==='2.0'&&value.id===id)return value;
+      }catch{}
     }
-    throw new Error('Unsupported upstream MCP event response');
+    throw new Error('Upstream MCP response is missing its request ID');
   }
-  return JSON.parse(content);
+  const value=JSON.parse(content);
+  if(value?.jsonrpc!=='2.0'||value.id!==id)
+    throw new Error('Invalid upstream MCP response ID');
+  return value;
 }
 function protocolError(value){
   if(value?.error)throw new Error('Upstream MCP refused the tool ('+
@@ -38,7 +45,7 @@ async function postMcp(provider,access,session,method,params,id){
   if(response.headers.get('mcp-session-id'))session.id=response.headers.get('mcp-session-id');
   if(response.status===202||id==null)return {};
   return protocolError(parseReply(await response.text(),
-    response.headers.get('content-type')||'application/json'));
+    response.headers.get('content-type')||'application/json',id));
 }
 async function sessionFor(env,subject,provider){
   const entry=await upstreamConnection(env,subject,provider);
