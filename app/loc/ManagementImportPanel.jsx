@@ -8,7 +8,7 @@ import importUIZh from '../i18n/sections/uiExtra.importUI.zh_tw.js';
 registerDefaultSection('management',managementZh);
 registerDefaultSection('uiExtra.importUI',importUIZh);
 
-import {useDeferredValue,useEffect,useMemo,useRef,useState} from 'react';
+import {useDeferredValue,useEffect,useMemo,useRef,useState,useSyncExternalStore} from 'react';
 import ScopeSourceCorrection from './ScopeSourceCorrection';
 import {refreshScopeSearchSummary} from './scope-search-summary.mjs';
 import {insertRows,insertImportRows,dbAuthRelation,dbAuthClient,updateImportRows} from './db-client.mjs';
@@ -20,6 +20,7 @@ import {canonicalImportSourceName,inferImportSourceFromFilename} from './source-
 import {Capacitor} from '@capacitor/core';
 import {defaultScopeData} from './scope-data';
 import {createUid8} from './uid';
+import {createImportProgressStore} from './import-progress-store.mjs';
 import {remapArchiveArticleUids} from './import-random-uids.mjs';
 import {facebookBackupPlace,facebookBackupPostText,facebookBackupTimestamp} from './facebook-backup-place.mjs';
 import {archiveGalaxyRows} from './archive-caption-rows.mjs';
@@ -458,7 +459,11 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   const [importLocale,setImportLocale]=useState('zh-Hant');
   const [status,setStatus]=useState('');
   const [busy,setBusy]=useState(false);
-  const [progress,setProgress]=useState(null);
+  // One event-driven progress snapshot, no additional query, timer or cache.
+  const [progressStore]=useState(createImportProgressStore);
+  const progress=useSyncExternalStore(progressStore.subscribe,
+    progressStore.getSnapshot,progressStore.getServerSnapshot);
+  const setProgress=progressStore.set;
   const [summaryRefreshing,setSummaryRefreshing]=useState(false);
   const [summaryMessage,setSummaryMessage]=useState('');
   const [summaryError,setSummaryError]=useState(false);
