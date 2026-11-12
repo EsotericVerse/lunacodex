@@ -59,3 +59,21 @@ test('management edit panels reflow from their own width without truncating rich
   assert.match(css,/\.management-workspace-panel \.scope-management-fields>\.scope-management-wide-field\{grid-column:1\/-1/);
   assert.match(css,/@container \(max-width: 62rem\)/);
 });
+
+test('shared DIV layout has one canonical CSS owner instead of stacked overrides',()=>{
+  const css=source('app/styles/features.css');
+  const frame=source('app/styles/uiux.css');
+  const scope=source('app/modular/ui.jsx');
+  // One base declaration plus one phone-specific exception.
+  assert.equal((css.match(/\.scope-page-editor \.scope-frame-field-grid\{/g)||[]).length,2);
+  assert.equal((css.match(/\.scope-frame-image-fields\{/g)||[]).length,2);
+  assert.equal((css.match(/^\.scope-blocknote \.bn-editor\{/gm)||[]).length,1);
+  assert.equal((css.match(/^\.scope-editor-blocknote\{/gm)||[]).length,1);
+  assert.doesNotMatch(css,/grid-template-columns:minmax\(0,1fr\) minmax\(0,1\.1fr\) minmax\(0,1\.6fr\)/);
+  assert.doesNotMatch(css,/\.scope-frame-image-url\{grid-column:span 2/);
+  assert.match(frame,/\.loc-next-main,\.scope-main,\.loc-view,\.scope-page,\.scope-content\{\s*min-width:0;\s*max-width:100%;/);
+  assert.doesNotMatch(frame,/\.scope-main--edit-workspace \.scope-content>\*/);
+  assert.match(scope,/return <main className=\{'scope-main'/);
+  assert.match(scope,/<section className="scope-page">/);
+  assert.match(scope,/className=\{"scope-content"/);
+});
