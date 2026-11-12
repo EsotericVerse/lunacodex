@@ -117,25 +117,35 @@ test('global fixed write uses one existing dialect and one policy transaction',a
 });
 
 test('all managed Registry, Galaxy, Anchor and Blocks updates derive primary keys without SQL',async()=>{
-  const {schema:fixedSchema}=await import('../zenstack/schema.mjs');
+  const {modelNameForSql,modeledPrimaryKeyColumns}=await import('../zenstack/model-column-guard.mjs');
   const management=readFileSync(new URL('../app/loc/providers/kysely-management.mjs',import.meta.url),'utf8');
   const begin=management.indexOf('export function managedPrimaryKeyColumns(');
   const end=management.indexOf('\nasync function authorizeRelation(',begin);
   assert.ok(begin>0&&end>begin);
   const body=management.slice(begin,end).replace('export function','function');
-  const helper=new Function('fixedSchema','SCOPED_SUFFIXES','reject',
-    body+'\nreturn managedPrimaryKeyColumns;')(
-    fixedSchema,['_galaxy','_anchor','_blocks'],m=>{throw new Error(m)});
+  const helper=new Function('modelNameForSql','modeledPrimaryKeyColumns',
+    'SCOPED_SUFFIXES','reject',body+'\nreturn managedPrimaryKeyColumns;')(
+    modelNameForSql,modeledPrimaryKeyColumns,
+    ['_galaxy','_anchor','_blocks'],m=>{throw new Error(m)});
   const cases=[
     ['manage','Manage','id'],['loc','Loc','id'],
     ['lo3rwang','','id'],['lrunes','','id'],
     ['loc_blocks','','uid'],['lo3rwang_galaxy','','uid'],
     ['lrunes_galaxy','','uid'],['lo3rwang_anchor','','uid'],
     ['lrunes_anchor','','uid'],['lo3rwang_blocks','','uid'],
-    ['lrunes_blocks','','uid']
+    ['lrunes_blocks','','uid'],['loc_anchor','','uid'],
+    ['lrunes_daily','','record_id'],
+    ['demo_galaxy','','uid'],['demo_anchor','','uid'],
+    ['demo_blocks','','uid'],['demo','','id']
   ];
   for(const [table,model,key] of cases)
     assert.deepEqual(helper(table,model),[key],table+' PK contract');
+  assert.deepEqual(modeledPrimaryKeyColumns('silver','runes_etc'),
+    ['rune_id','dir','type','current_moon'],'composite physical keys come from ZModel');
+  assert.deepEqual(modeledPrimaryKeyColumns('silver','unknown_external_table'),null);
+  assert.throws(()=>helper('manage','Loc'),/Invalid fixed LOC primary key metadata/);
+  assert.throws(()=>helper('unknown_external_table','Manage'),
+    /Invalid fixed LOC primary key metadata/);
   assert.doesNotMatch(management,/from pg_index/i,
     'no extra SQL catalog read is needed for a managed update');
   assert.match(management,/const keys=managedPrimaryKeyColumns\(table,modelName\)/);

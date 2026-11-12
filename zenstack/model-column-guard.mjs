@@ -55,6 +55,15 @@ export function modelFieldsForSql(schemaName,tableName){
   const modelName=modelNameForSql(schemaName,tableName);
   return modelName?schema.models[modelName]?.fields||null:null;
 }
+/** Physical PKs are defined by the same fixed/dynamic ZModel used for SQL
+ * field validation and import. Return a copy to keep schema metadata immutable.
+ * Unmodeled external tables continue under their existing dialect contract.
+ */
+export function modeledPrimaryKeyColumns(schemaName,tableName){
+  const modelName=modelNameForSql(schemaName,tableName);
+  const ids=modelName?schema.models[modelName]?.idFields:null;
+  return ids?.length?[...ids]:null;
+}
 // SQL Boolean selections and scoped flag mutations share the frozen model.
 // This returns field metadata only, never grants write access or issues SQL.
 export function modeledBooleanColumns(schemaName,tableName){
@@ -123,11 +132,7 @@ export function normalizeModeledTypeDifferences({
 /** Normalize only non-Boolean driver representations of ZModel Boolean columns. */
 export function normalizeModeledSelectRows({schema:namespace,table,rows}={}){
   if(!Array.isArray(rows)||!rows.length)return rows;
-  const fields=modelFieldsForSql(namespace,table);
-  if(!fields)return rows;
-  const boolColumns=Object.entries(fields)
-    .filter(([,field])=>field.type==='Boolean'&&!field.array)
-    .map(([name])=>name);
+  const boolColumns=modeledBooleanColumns(namespace,table);
   if(!boolColumns.length)return rows;
   return rows.map(row=>{
     if(!row||typeof row!=='object')return row;
