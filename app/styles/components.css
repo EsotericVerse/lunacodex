@@ -236,7 +236,7 @@
 @media(max-width:820px){.loc-theme-admin-row{grid-template-columns:1fr}.loc-theme-admin-row .loc-button{justify-self:start}}
 
 .loc-next-main{margin:0 auto;}
-.loc-view{display:grid;gap:1.15rem}
+.loc-view{display:grid}
 .loc-eyebrow{margin:0!important;font-size:.82rem;font-weight:750;}
 .loc-card,.loc-panel,.loc-bubble{padding:1.15rem 1.25rem;}
 .loc-subtitle{
