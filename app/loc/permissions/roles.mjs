@@ -24,15 +24,15 @@ export function resolveManagePermissions(email,rows=[]){
       ?[validated.data]:[];
   });
   if(!active.length)return denied;
-  const isAdmin=active.some(row=>String(row.manage_role||'').toLowerCase()==='admin');
-  const grants=active.filter(row=>['admin','group','scope'].includes(
-    String(row.manage_role||'').toLowerCase())).flatMap(row=>[
-      row.id+':manage',row.id+':write',row.id+':read']);
+  // manage_role has already been narrowed by the generated ZModel/Zod
+  // enum; do not maintain another handwritten list of permitted roles.
+  const isAdmin=active.some(row=>row.manage_role==='admin');
+  const grants=active.flatMap(row=>[
+    row.id+':manage',row.id+':write',row.id+':read']);
   if(isAdmin)grants.unshift('global:manage');
-  const roles=active.filter(row=>['admin','group','scope'].includes(
-    String(row.manage_role||'').toLowerCase())).map(row=>({
-      id:row.id,email:verified,role:String(row.manage_role).toLowerCase()
-    }));
+  const roles=active.map(row=>({
+    id:row.id,email:verified,role:row.manage_role
+  }));
   return {canWrite:grants.length>0,canManage:isAdmin,
     grants:[...new Set(grants)],roles};
 }
