@@ -108,5 +108,5 @@ test('Managed writes use the same ZModel field guard before trusted SQL',()=>{
     '../app/loc/providers/kysely-management.mjs',import.meta.url),'utf8');
   assert.ok(source.indexOf('await authorizeRelation(')<source.indexOf('verifyModeledSqlFields({'));
   assert.ok(source.indexOf('verifyModeledSqlFields({')<source.indexOf('await sql\x60reset role\x60'));
-  assert.match(source,/values:modelValues,filters/);
+  assert.match(source,/values:galaxyValidated\|\|anchorBlockValidated\?null:modelValues,filters/);
 });
