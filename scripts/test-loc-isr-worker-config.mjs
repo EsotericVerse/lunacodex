@@ -8,12 +8,12 @@ const packageJson=JSON.parse(readFileSync(new URL('../package.json',import.meta.
 
 test('loc-isr deployment retains its exact Worker identity and service binding',()=>{
   assert.equal(data.name,'loc-isr');
-  assert.equal(data.main,'.open-next/worker.js');
+  assert.equal(data.main,'../../.open-next/worker.js');
   assert.deepEqual(data.compatibility_flags,['nodejs_compat']);
   assert.deepEqual(data.services,[{
     binding:'WORKER_SELF_REFERENCE',service:'loc-isr',environment:'production'
   }]);
-  assert.deepEqual(data.assets,{directory:'.open-next/assets',binding:'ASSETS'});
+  assert.deepEqual(data.assets,{directory:'../../.open-next/assets',binding:'ASSETS'});
 });
 
 test('no preview / workers.dev or site-wide Cloudflare adapter is introduced',()=>{
