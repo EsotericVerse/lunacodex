@@ -38,7 +38,7 @@ export default function BlockNoteEditor({
     :normalizeBlocks(source);
   const initialBlocks=Array.isArray(normalized)?normalized:plainTextToBlocks('');
   const initialHtml=Array.isArray(normalized)?'':String(normalized?.html||'');
-  const initialMarkdown=!initialHtml&&looksLikeMarkdown(source)?String(source):'';
+  const initialMarkdown=!plainTextOnly&&!initialHtml&&looksLikeMarkdown(source)?String(source):'';
   const handleChange=blocks=>{
     onChange?.(blocks);
     onBlocksChange?.(blocks);

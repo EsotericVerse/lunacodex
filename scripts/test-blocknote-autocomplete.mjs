@@ -44,8 +44,9 @@ test('management Hero uses shared BlockNote rich editor, no textarea',()=>{
   const hero=read('app/loc/views/admin-panels/FeatureHeroImages.jsx');
   const management=hero.split('function ManagementHeroDetails(')[1]
     ?.split('export default function FeatureHeroImages(')[0]||'';
-  assert.match(management,/<ObjectEditor/);
-  assert.match(management,/kind:'rich'/);
+  assert.match(management,/className="management-hero-copy-grid"/);
+  assert.match(management,/className="management-hero-copy-row"/);
+  assert.match(management,/<BlockNoteEditor editorKey=/);
   assert.match(management,/onHtmlChange:html=>setDraft/);
   assert.doesNotMatch(management,/<textarea/);
   assert.match(read('app/modular/ui.jsx'),/rich=\{Boolean\(shared\)/);
