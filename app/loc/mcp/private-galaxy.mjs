@@ -2,7 +2,7 @@
 // All access decisions are made from the existing Neon api.manage table.
 import {executePortableMcp} from '../providers/kysely-mcp.mjs';
 import {directMcpKysely} from './native-kysely.mjs';
-import {locMcpPermissionsForEmail} from './access-roles.mjs';
+import {locMcpPermissionsForEmail,VerifiedLocUserInfoSchema} from './access-roles.mjs';
 
 const AUTH='https://auth.lo3rwang.cc';
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
@@ -21,11 +21,10 @@ async function getVerifiedPrincipal(token,subject,fetchImpl){
     });
   }catch{throw denied('LOC OAuth UserInfo unavailable',503)}
   if(!res.ok)throw denied('LOC OAuth identity verification failed',401);
-  const user=await res.json().catch(()=>null);
-  if(user?.sub!==subject||user?.email_verified!==true||
-     !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(user?.email||'')))
+  const checked=VerifiedLocUserInfoSchema.safeParse(await res.json().catch(()=>null));
+  if(!checked.success||checked.data.sub!==subject)
     throw denied('LOC verified identity required',401);
-  return String(user.email).toLowerCase().trim();
+  return checked.data.email.toLowerCase().trim();
 }
 export async function privateGalaxyLink(args={},token,subject,env={},
   fetchImpl=globalThis.fetch){
