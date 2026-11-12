@@ -4,10 +4,12 @@ import {WebManageRowSchema} from './web-manage-schema.mjs';
 // The Web business database is the role source. Its fixed ZModel and Zod
 // validators are separate from the LOC Auth identity and Session model.
 export const LOC_OWNER_EMAIL='sopa2306@gmail.com';
-export function resolveLocPermissions(email,rows=[]){
+// One existing ZModel-derived Zod role projection for both the website and
+// MCP/Extension. Whether a caller may use it is decided at its own boundary.
+export function resolveManagePermissions(email,rows=[]){
   const verified=String(email||'').trim().toLowerCase();
   const denied={canWrite:false,canManage:false,grants:[],roles:[]};
-  if(verified!==LOC_OWNER_EMAIL||!Array.isArray(rows))return denied;
+  if(!Array.isArray(rows))return denied;
   const active=rows.flatMap(row=>{
     // A defaulted ZModel Boolean must never turn a missing active flag
     // into an authorization grant.
@@ -34,6 +36,14 @@ export function resolveLocPermissions(email,rows=[]){
   return {canWrite:grants.length>0,canManage:isAdmin,
     grants:[...new Set(grants)],roles};
 }
+// The existing website owner-only policy remains unchanged. MCP uses the
+// independently authorized projection above, never this owner-only gate.
+export function resolveLocPermissions(email,rows=[]){
+  const verified=String(email||'').trim().toLowerCase();
+  return verified===LOC_OWNER_EMAIL?resolveManagePermissions(verified,rows):
+    {canWrite:false,canManage:false,grants:[],roles:[]};
+}
+
 export async function locPermissionsForEmail(db,verifiedEmail,{policyClient}={}){
   if((!db||typeof db.selectFrom!=='function')&&!policyClient)
     throw Error('LOC permission database unavailable');
