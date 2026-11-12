@@ -25,6 +25,7 @@ const ADMIN_OPTIONS=Object.freeze([
   {value:'io',label:'匯入與系統工具',shortLabel:'工具',description:'匯入匯出與系統限制'}
 ]);
 const EnterpriseAuthReserved=dynamic(()=>import('./admin-panels/EnterpriseAuthReserved'),{loading:PanelLoading});
+const McpProviderPanel=dynamic(()=>import('./admin-panels/McpProviderPanel'),{loading:PanelLoading});
 const DatabaseTarget=dynamic(()=>import('./admin-panels/DatabaseTarget'),{loading:PanelLoading});
 const IsrDomainTarget=dynamic(()=>import('./admin-panels/IsrDomainTarget'),{loading:PanelLoading});
 const RuntimeIoSettings=dynamic(()=>import('./admin-panels/RuntimeIoSettings'),{loading:PanelLoading});
@@ -105,6 +106,7 @@ export default function AdminHomeView({scopeGroup}){
           <DatabaseTarget scopeGroup={scopeGroup}/>
           <IsrDomainTarget/>
           <EnterpriseAuthReserved/>
+          <McpProviderPanel/>
         </>:null}
         {section==='io'?<RuntimeIoSettings/>:null}
         {section==='featureHero'?<FeatureHeroImages/>:null}
