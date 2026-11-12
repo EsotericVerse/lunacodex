@@ -120,7 +120,7 @@ export function createPrivateLocalStore(filesystem,directory){
   // Reopen the exact original bytes as a browser File. Existing offline
   // parsers can consume its slice()/arrayBuffer() interface unchanged.
   async function readFile(id,{maxBytes=PRIVATE_FILE_READ_MAX_BYTES}={}){
-    const path=privateFilePath(id);
+    privateFilePath(id); // Validate before disk access.
     if(!Number.isSafeInteger(maxBytes)||maxBytes<0||maxBytes>PRIVATE_FILE_READ_MAX_BYTES)
       throw new Error('無效的本機檔案讀取上限。');
     const entry=(await list()).find(item=>item.id===id);
