@@ -2,6 +2,7 @@
 // All access decisions are made from the existing Neon api.manage table.
 import {executePortableMcp} from '../providers/kysely-mcp.mjs';
 import {directMcpKysely} from './native-kysely.mjs';
+import {createScopedLocClient} from '../../../zenstack/client.mjs';
 import {locMcpPermissionsForEmail,VerifiedLocUserInfoSchema} from './access-roles.mjs';
 
 const AUTH='https://auth.lo3rwang.cc';
@@ -20,7 +21,10 @@ async function getVerifiedPrincipal(token,subject,fetchImpl){
       cache:'no-store',redirect:'manual',signal:AbortSignal.timeout(7000)
     });
   }catch{throw denied('LOC OAuth UserInfo unavailable',503)}
-  if(!res.ok)throw denied('LOC OAuth identity verification failed',401);
+  if(res?.status===429)throw denied('LOC OAuth UserInfo rate limited',429);
+  if(res?.status===401||res?.status===403)
+    throw denied('LOC OAuth identity verification failed',401);
+  if(!res?.ok)throw denied('LOC OAuth UserInfo unavailable',503);
   const checked=VerifiedLocUserInfoSchema.safeParse(await res.json().catch(()=>null));
   if(!checked.success||checked.data.sub!==subject)
     throw denied('LOC verified identity required',401);
@@ -59,8 +63,19 @@ export async function privateGalaxyLink(args={},token,subject,env={},
     rights.grants.includes(scopeid+':read');
   if(!canRead)throw denied('LOC Scope permission denied');
   const claims={provider:'loc',sub:subject,email,me:rights.canWrite,grants:rights.grants};
-  const result=await executePortableMcp(db,body,claims,{engine,namespace,
-    tableName:selected.tableName,fieldMap:selected.fieldMap});
+  // Authorization and Scope resolution MUST precede scoped model construction.
+  // Use one already-trusted PostgreSQL dialect for the Galaxy ZModel query
+  // builder; external mapped tables retain the existing direct Kysely path.
+  const hasFieldMap=Boolean(selected.fieldMap&&
+    Object.keys(selected.fieldMap).length);
+  const useScopedZModel=engine==='postgres'&&Boolean(selected.dialect)&&
+    !selected.tableName&&!hasFieldMap;
+  const queryDb=useScopedZModel?
+    createScopedLocClient({dialect:selected.dialect,scopeId:scopeid,
+      namespace:namespace||'silver'}).$qb:db;
+  const result=await executePortableMcp(queryDb,body,claims,{engine,namespace,
+    tableName:selected.tableName,fieldMap:selected.fieldMap,
+    scopedZModel:useScopedZModel});
   const rows=result?.data;
   if(!Array.isArray(rows))throw denied('Invalid native MCP query result',503);
   if(action==='search')return {scopeid,results:rows.map(r=>({
