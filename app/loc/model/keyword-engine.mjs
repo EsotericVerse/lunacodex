@@ -242,11 +242,17 @@ function classifyKeywordDocumentsWithCompiled(documents=[],prepared,collectKeywo
       const words=rune.keywords.map(normalizeText)
         .filter(word=>word&&selectedTerms.has(word));
       if(!words.length)continue;
-      relevantIndices=[];
-      for(let index=0;index<normalizedTexts.length;index++)
-        if(words.some(word=>candidateWordsByDocument[index].has(word)))
-          relevantIndices.push(index);
-      if(!relevantIndices.length)continue;
+      // The existing NAME/NOR/date masking replaces text with spaces. It
+      // can create a newly adjacent *whitespace-containing* literal (e.g.
+      // "dark jazz" from "darknoisejazz"). Such words must be evaluated
+      // by the original classifier even if absent from the raw Aho scan.
+      if(!words.some(word=>/\s/u.test(word))){
+        relevantIndices=[];
+        for(let index=0;index<normalizedTexts.length;index++)
+          if(words.some(word=>candidateWordsByDocument[index].has(word)))
+            relevantIndices.push(index);
+        if(!relevantIndices.length)continue;
+      }
     }
     // NOR excludes the exact combined expression for this Item, across all
     // of its matching words. Other independent occurrences remain countable.
@@ -280,7 +286,8 @@ function classifyKeywordDocumentsWithCompiled(documents=[],prepared,collectKeywo
         :[];
       for(let localIndex=0;localIndex<keywordTexts.length;localIndex+=1){
         const index=relevantIndices?relevantIndices[localIndex]:localIndex;
-        if(selectedTerms&&!candidateWordsByDocument[index].has(normalizedKeyword))continue;
+        if(selectedTerms&&!/\s/u.test(normalizedKeyword)&&
+          !candidateWordsByDocument[index].has(normalizedKeyword))continue;
         if(!states[index])continue;
         let text=keywordTexts[localIndex]||'';
         if(isDayMoonName){
