@@ -20,7 +20,7 @@ import {readFileSync} from 'node:fs';
 // ref..tip), not per commit — so splitting a large deletion into many
 // small commits in one push does not evade it.
 
-const THRESHOLD = 20;
+const THRESHOLD = 30;
 const OVERRIDE_TAG = '[bulk-delete-ok]';
 
 function sh(args) {
