@@ -103,10 +103,10 @@ export default function RuneAppDayNightDashboard({canReadLocal=false,onSelectDra
         </p>
         <div className="scope-rune-daynight-chart" aria-label={'最近'+days+'天抽符次數時間趨勢'}>
           <LineChart responsive style={{width:"100%",height:165}} data={overview?.daily||[]} margin={{top:8,right:8,left:-30,bottom:4}}>
-              <XAxis dataKey="label" interval={days===7?0:'preserveStartEnd'} tick={{fontSize:10,fill:'currentColor'}}/>
-              <YAxis allowDecimals={false} tick={{fontSize:10,fill:'currentColor'}}/>
-              <Tooltip contentStyle={{color:'#17263f'}}/>
-              <Line dataKey="count" name="抽取紀錄" type="monotone" stroke="currentColor" strokeWidth={2} dot={days===7} />
+              <XAxis dataKey="label" interval={days===7?0:'preserveStartEnd'} tick={{fontSize:10,fill:'var(--loc-muted)'}}/>
+              <YAxis allowDecimals={false} tick={{fontSize:10,fill:'var(--loc-muted)'}}/>
+              <Tooltip contentStyle={{color:'var(--loc-text)',backgroundColor:'var(--loc-panel)',borderColor:'var(--loc-line)',borderRadius:'var(--loc-ui-radius-sm)'}}/>
+              <Line dataKey="count" name="抽取紀錄" type="monotone" stroke="var(--rune-app-accent)" strokeWidth={2} dot={days===7} />
             </LineChart>
         </div>
       </div>:<p className="scope-rune-daynight-empty">你可以先體驗抽牌。保存紀錄與專屬趨勢分析僅開放已登入的月之符文 Scope 人員；其他使用者不會建立本機私人紀錄。</p>}
