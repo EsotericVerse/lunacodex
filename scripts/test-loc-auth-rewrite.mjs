@@ -91,7 +91,7 @@ test('LOC Auth never silently creates or adopts a test storage namespace',()=>{
  assert.doesNotMatch(auth,/schemaName:\s*['"`]loc_auth['"`]/);
  assert.match(auth,/LOC_AUTH_SCHEMA/);
  assert.match(auth,/namespace!=='public'/);
- assert.match(auth,/rainbow_auth/);
+ assert.match(source('workers/loc-authority/rainbow-tables.mjs'),/rainbow_auth/);
 });
 test('LOC Auth Session cookie cache is deployment-versioned and separate from website permissions',()=>{
  const auth=source('workers/loc-authority/auth.mjs');
