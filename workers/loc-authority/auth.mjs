@@ -9,7 +9,6 @@ import {Pool, neonConfig} from '@neondatabase/serverless';
 import * as z from 'zod';
 import {RAINBOW_TABLES} from './rainbow-tables.mjs';
 import {rainbowSchema,RAINBOW_MODEL_NAMES} from './rainbow-zmodel.mjs';
-import {rainbowDatabaseHooks} from './rainbow-validation.mjs';
 
 // LOC Auth is the issuer. Neon supplies PostgreSQL storage, NOT Neon Auth.
 // Neither website rendering nor business permissions are implemented here.
@@ -98,9 +97,8 @@ export function createLocAuth(env){
     basePath:'/api/auth',
     secret:env.BETTER_AUTH_SECRET||env.LOC_CONTROL_ENCRYPTION_KEY,
     trustedOrigins:[LOC_ISSUER,LOC_WEB],
-    // ZModel-derived Zod guards run only when Better Auth persists core
-    // models. The native Better Auth/Kysely adapter remains authoritative.
-    databaseHooks:rainbowDatabaseHooks,
+    // Better Auth validates its own plugin inputs; ZenStack validates ORM
+    // writes using the same shared schema, without duplicate custom hooks.
     // Existing Rainbow array-valued fields are JSONB, not PostgreSQL
     // native array columns. Let the published adapter serialize them.
     database:zenstackAdapter(db,{provider:'postgresql',supportsArrays:false}),
