@@ -7,6 +7,7 @@ import {readMemory} from './galaxy-read.mjs';
 import {privateGalaxyLink} from './private-galaxy.mjs';
 import {mcpDatabaseConfiguration} from './native-kysely.mjs';
 import {mcpToolJsonSchema,parseMcpToolArgs,McpRpcSchema} from './tool-contracts.mjs';
+import {readBoundedJson,BodyTooLargeError} from './stream-json.mjs';
 // LOC MCP HTTP entry point. No database write is granted by an OAuth login.
 export const MCP_RESOURCE=(globalThis.process?.env?.LOC_MCP_RESOURCE_URL||'https://mcp.lo3rwang.cc').replace(/\/+$/,'');
 export const LOC_OAUTH_ISSUER='https://auth.lo3rwang.cc/api/auth';
@@ -103,7 +104,12 @@ export async function handleMcp(request,env={}){
   if(!identity)return unauthorized(config);
   if(request.method==='GET')return response({error:'SSE_not_supported',message:'Use Streamable HTTP POST'},405,{Allow:'POST, OPTIONS'});
   let payload;
-  try{payload=await request.json();}catch{return rpcError(null,-32700,'Invalid JSON',400);}
+  try{payload=await readBoundedJson(request.body,700000)}
+  catch(error){
+    return error instanceof BodyTooLargeError
+      ?rpcError(null,-32600,'MCP request too large',413)
+      :rpcError(null,-32700,'Invalid JSON',400);
+  }
   const parsedRpc=McpRpcSchema.safeParse(payload);
   if(!parsedRpc.success)
     return rpcError(payload?.id??null,-32600,'Invalid JSON-RPC request',400);
