@@ -195,6 +195,38 @@ function encode64(bytes){
  return btoa(binary).replaceAll('+','-').replaceAll('/','_').replace(/=+$/,'');
 }
 function oauthError(message){return Error('LOC Auth：'+message);}
+// Better Auth's OAuth provider exposes RFC 8414 and OIDC discovery at the
+// issuer-path and at the backwards-compatible root aliases. Reuse the same
+// ordered candidates as the existing LOC upstream OAuth client instead of
+// assuming one deployment URL.
+function oauthDiscoveryUrls(issuer){
+ const url=new URL(issuer),path=url.pathname.replace(/\/+$/,'');
+ return [
+  url.origin+'/.well-known/oauth-authorization-server'+path,
+  url.origin+'/.well-known/openid-configuration'+path,
+  url.origin+path+'/.well-known/openid-configuration',
+  url.origin+'/.well-known/oauth-authorization-server',
+  url.origin+'/.well-known/openid-configuration'
+ ];
+}
+async function discoverLocOAuth(issuer){
+ const expected=issuer.href.replace(/\/+$/,'');
+ let lastStatus=0;
+ for(const endpoint of [...new Set(oauthDiscoveryUrls(issuer))]){
+  try{
+   const response=await fetch(endpoint,{cache:'no-store',redirect:'error'});
+   lastStatus=response.status;
+   if(!response.ok)continue;
+   const metadata=await response.json();
+   if(metadata?.issuer!==expected||!metadata.authorization_endpoint||!metadata.token_endpoint)
+    continue;
+   return metadata;
+  }catch{}
+ }
+ throw oauthError(lastStatus
+  ?'找不到 LOC OAuth 伺服器（HTTP '+lastStatus+'）'
+  :'找不到 LOC OAuth 伺服器');
+}
 async function getConfig(){
  const res=await fetch(CONFIG_URL,{cache:'no-store',redirect:'error'});
  if(!res.ok)throw oauthError('尚未提供 Extension 認證設定');
@@ -208,13 +240,7 @@ async function getConfig(){
     cfg.resource!=='https://mcp.lo3rwang.cc'||!cfg.client_id||typeof cfg.client_id!=='string'||
     issuer.origin!=='https://auth.lo3rwang.cc'||issuer.pathname!=='/api/auth')
    throw oauthError('LOC 自有認證尚未啟用，不會使用其他平台登入');
- const metaUrl=new URL('/.well-known/oauth-authorization-server',issuer);
- const metaReply=await fetch(metaUrl,{cache:'no-store',redirect:'error'});
- if(!metaReply.ok)throw oauthError('找不到 LOC OAuth 伺服器');
- const meta=await metaReply.json();
- if(meta.issuer!==(issuer.href.endsWith('/')?issuer.href.slice(0,-1):issuer.href)||
-    !meta.authorization_endpoint||!meta.token_endpoint)
-   throw oauthError('授權伺服器資訊不完整');
+ const meta=await discoverLocOAuth(issuer);
  for(const endpoint of [meta.authorization_endpoint,meta.token_endpoint]){
   const url=new URL(endpoint);
   if(url.protocol!=='https:'||url.origin!==issuer.origin)
