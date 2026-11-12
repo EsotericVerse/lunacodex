@@ -1,5 +1,5 @@
 import {betterAuth} from 'better-auth';
-import {APIError,createAuthMiddleware} from 'better-auth/api';
+import {APIError,createAuthMiddleware,getAuthoritativeSessionFromCtx} from 'better-auth/api';
 import {admin,jwt} from 'better-auth/plugins';
 import {createAccessControl} from 'better-auth/plugins/access';
 import {ZenStackClient} from '@zenstackhq/orm';
@@ -120,6 +120,23 @@ export function createLocAuth(env){
     // 30-minute cookie cache once, preventing revoked Sessions from managing
     // Auth accounts. No background polling or extra Session store.
     hooks:{before:[{
+      // Better Auth's native authoritative reader bypasses a signed Cookie
+      // Cache for OAuth issuance. Initial unauthenticated authorization still
+      // reaches the provider's standard login redirect, without DB polling.
+      matcher:ctx=>['/oauth2/authorize','/oauth2/consent',
+        '/oauth2/continue'].includes(ctx.path),
+      handler:createAuthMiddleware(async ctx=>{
+        const token=await ctx.getSignedCookie(
+          ctx.context.authCookies.sessionToken.name,ctx.context.secret
+        );
+        if(!token)return;
+        const active=await getAuthoritativeSessionFromCtx(ctx);
+        if(!active?.session)
+          throw new APIError('UNAUTHORIZED',{
+            message:'OAuth Session expired or revoked'
+          });
+      })
+    },{
       // has-permission is an introspection endpoint for ordinary users, not
       // an account-management action; leave its native authorization intact.
       matcher:ctx=>ctx.path?.startsWith('/admin/')===true
