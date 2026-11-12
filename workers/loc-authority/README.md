@@ -80,19 +80,22 @@ ISR configurations untouched. Do not reintroduce a Durable Object identity store
 
 ## QoS, simultaneous requests and signing-key safety
 
-The Better Auth general rate limit is presently configured as **120 requests
-per 60 seconds**; OAuth Provider uses separate endpoint rules (token: 40,
-authorize: 60, introspection: 100, revoke: 30, registration: 5, client-key
-rotation: 5, UserInfo: 120, each per 60 seconds). These are draft limits
-pending observed traffic and integration testing, not a claim of worldwide
-per-client enforcement.
+Karaul is the **single LOC Auth QoS policy owner**: it preserves the
+existing general budget (**120 requests per 60 seconds**) and all seven
+original OAuth quotas (token 40, authorize 60, introspection 100, revoke
+30, registration 5, client-key rotation 5, UserInfo 120 per 60 seconds).
+All these values now live only in `auth-qos.mjs`, not in Better Auth
+core and OAuth Provider options. These are per-isolate rate limits, not
+globally synchronized per-client enforcement.
 
 Better Auth 1.7.18's upstream `rateLimit.customRules` now provides
-request admission, counters and 429 responses for sensitive Auth endpoints.
+request admission, counters and 429 responses for every Auth endpoint (the `/**` path rule), except JWKS.
 The old bespoke in-flight/HTTP admission gate was removed. Its per-source
 concurrency ceilings are no longer present; the native limiter instead
-enforces per-IP/per-endpoint request-rate budgets. Ordinary Session reads,
-public metadata and JWKS never invoke Karaul analysis. The default memory
+enforces per-IP/per-endpoint request-rate budgets. Session endpoints are
+subject to the same passive policy, but only enough accumulated activity
+triggers Poisson/PELT. Public metadata bypasses the Auth handler; JWKS is
+explicitly exempt. The default memory
 limiter is shared within an isolate but not globally across Cloudflare PoPs.
 
 **High request concurrency never invalidates the entire issuer JWKS.** Such
@@ -135,9 +138,12 @@ Auth roles do not grant LOC Web business privileges. The five Admin fields
 exist on the two core Rainbow tables; the RLS policies are unchanged.
 
 Karaul's published `detectChangepoints(series, new PoissonCost())`
-provides a bounded 5-second time-series signal for sensitive OAuth/login
-endpoints. Only completed buckets with substantial traffic invoke PELT.
-On a sustained shift, Better Auth's native `rateLimit.customRules` selects
+provides a bounded 5-second time-series signal for all Auth endpoints,
+independently per source and normalized route. Only completed buckets with
+substantial traffic invoke PELT. A deep `/**` route matcher is required,
+since Better Auth's shallow `/*` misses nested routes such as
+`/oauth2/client/rotate-keys`.
+On a significant upward change point, Better Auth's native `rateLimit.customRules` selects
 a stricter 30-second request-rate budget; Better Auth itself counts and
 sends HTTP 429. Recovery is based on the next request and elapsed window.
 There are no intervals, timers, SQL polls, new stores or separate HTTP
