@@ -2,7 +2,7 @@ import {sql} from 'kysely';
 import {buildKyselyUpsertQuery} from './kysely-runtime.mjs';
 import {portableRelation,serializePortableJsonFields} from './sql-engine-ports.mjs';
 import {modelFieldsForSql} from '../../../zenstack/model-column-guard.mjs';
-import {importSchemaForSqlTable} from '../../../zenstack/import-validation.mjs';
+import {modelWriteSchemaForSqlTable} from '../../../zenstack/import-validation.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const PAGE=/^[A-Za-z][A-Za-z0-9_-]{0,60}$/;
@@ -26,7 +26,7 @@ export async function saveBlocksKysely(db,args,{engine='postgres',namespace='sil
     portableRelation(tableName,engine,namespace);
   // Reuse the already cached ZenStack→Zod model schema used by Galaxy import.
   // No separate Block field, UID or physical-type validator is maintained here.
-  const blockSchema=importSchemaForSqlTable('silver.'+tableName);
+  const blockSchema=modelWriteSchemaForSqlTable('silver.'+tableName);
   const seen=new Set(),orders=new Set();
   const rows=supplied.map(row=>{
     if(!row||typeof row!=='object'||Array.isArray(row)||
