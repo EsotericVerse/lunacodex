@@ -156,9 +156,9 @@
     padding:max(.35rem,env(safe-area-inset-top)) 0 .3rem;
   }
   .scope-nav{gap:.2rem;}
-  .scope-nav-loc-home{font-size:.76rem;padding:.45rem .4rem;}
+  .scope-nav-loc-home{min-height:44px;font-size:.76rem;padding:.45rem .4rem;}
   .scope-nav-items>a,.scope-nav-items>.scope-nav-current,.scope-nav-folder{font-size:.78rem;padding:.38rem .42rem;min-height:44px;}
-  .scope-nav-arrow,.scope-nav-close-folder{min-width:29px;min-height:44px;padding:.15rem;}
+  .scope-nav-arrow,.scope-nav-close-folder{min-width:44px;min-height:44px;padding:.15rem;}
 }
 
 .scope-global[data-native="ios"]{
