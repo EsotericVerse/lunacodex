@@ -41,6 +41,7 @@ function DeferredArticleBody({html}){
     return ()=>observer.disconnect();
   },[]);
   return <div ref={container} className="scope-article-block-display"
+    role="region" aria-label={UI_COPY.common.body}
     style={!visible?{minHeight:'3rem'}:undefined}>
     {visible?<BlockNoteEditor editable={false} initialContent={html}/>:null}
   </div>;
