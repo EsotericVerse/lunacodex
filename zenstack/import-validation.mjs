@@ -6,12 +6,14 @@ import * as z from 'zod';
 import {schema} from './schema.mjs';
 import physicalContract from './schema-contract.mjs';
 import {modelNameForSql} from './model-column-guard.mjs';
+import {zodValidationAdapter} from './kysera-validation-adapter.mjs';
 import {ANCHOR_GROUP_MODEL_NAMES,ANCHOR_TYPE_GROUP_FIELDS,ANCHOR_TYPE_GROUPS,
   PERSISTED_ANCHOR_TYPES}
   from './anchor-hierarchy.mjs';
 
 const modelFactory=createSchemaFactory(schema);
 const validators=new Map();
+const selectValidators=new Map();
 const scopedGalaxy=/^silver\.[a-z][a-z0-9]{0,14}_galaxy$/;
 const char8Uid=/^[A-Za-z0-9]{8}$/;
 // Anchor.attr validation is derived from the same ZModel value types that
@@ -107,6 +109,54 @@ export function modelWriteSchemaForSqlTable(table){
 }
 // Keep the established Galaxy import API; this is the same cached Zod model.
 export {modelWriteSchemaForSqlTable as importSchemaForSqlTable};
+
+function modelSelectSchemaForSqlTable(table,columns){
+  const relation=String(table||'');
+  const selected=Array.isArray(columns)&&columns.length?columns:['*'];
+  const key=relation+'|'+selected.join(',');
+  if(selectValidators.has(key))return selectValidators.get(key);
+  const full=modelWriteSchemaForSqlTable(relation);
+  if(selected.includes('*')){
+    if(selected.length!==1)throw new TypeError('Invalid LOC ZModel SELECT projection');
+    selectValidators.set(key,full);
+    return full;
+  }
+  const shape={};
+  for(const column of selected){
+    if(typeof column!=='string'||!Object.hasOwn(full.shape,column))
+      throw new TypeError('Column is not defined in the LOC ZModel: '+String(column));
+    shape[column]=true;
+  }
+  const result=full.pick(shape);
+  selectValidators.set(key,result);
+  return result;
+}
+
+/**
+ * Validate rows returned by a direct Kysely SELECT against the same ZModel
+ * schema used for writes.  This is the Kysera safeParse adapter pattern at
+ * the actual database-result boundary: it does not transform or return a
+ * second copy of the row, and it is skipped for unmodeled external tables.
+ */
+export function assertZModelSelectRows(table,columns,rows){
+  const relation=String(table||'');
+  const [namespace,tableName,extra]=relation.split('.');
+  if(!namespace||!tableName||extra)throw new TypeError('Invalid LOC SELECT table');
+  if(!modelNameForSql(namespace,tableName))return rows;
+  if(!Array.isArray(rows))throw new TypeError('LOC SELECT result must be an array');
+  const validator=zodValidationAdapter(modelSelectSchemaForSqlTable(relation,columns));
+  for(let index=0;index<rows.length;index++){
+    const parsed=validator.safeParse(rows[index]);
+    if(parsed.success)continue;
+    const first=parsed.error.issues?.[0];
+    const field=first?.path?.join('.')||'(record)';
+    // Keep diagnostics bounded: do not echo article text, JSON attrs, or SQL.
+    throw new TypeError('LOC '+modelNameForSql(namespace,tableName)+
+      ' ZModel SELECT 驗證失敗：第 '+(index+1)+' 筆 '+field+
+      ' — '+(first?.message||parsed.error.message||'invalid value'));
+  }
+  return rows;
+}
 
 // Management Galaxy INSERT/UPSERT and partial UPDATE/UPDATE_BATCH share the
 // import's authoritative ZModel→Zod schema, but retain their existing SQL

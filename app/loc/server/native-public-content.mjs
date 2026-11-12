@@ -8,6 +8,7 @@ import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 import {portableRelation} from '../providers/sql-engine-ports.mjs';
 import {fixedPolicyReadModel,withFixedPolicyRead} from '../../../zenstack/policy-runtime.mjs';
 import {createScopedLocClient} from '../../../zenstack/client.mjs';
+import {assertZModelSelectRows} from '../../../zenstack/import-validation.mjs';
 import {ZenStackClient} from '@zenstackhq/orm';
 import {PolicyPlugin} from '@zenstackhq/plugin-policy';
 
@@ -139,9 +140,9 @@ export async function handleNativePublicContent(request,env={},{
       port.namespace||(port.engine==='postgres'?'silver':'dbo'));
     // ZenStack V3 shares the existing trusted Kysely dialect/pool; it does
     // not resolve credentials, create a second SQL target, or grant access.
-    const scopedFor=id=>port.engine==='postgres'&&port.dialect
+    const scopedFor=id=>['postgres','mysql'].includes(port.engine)&&port.dialect
       ?createScopedLocClient({dialect:port.dialect,scopeId:id,
-        namespace:port.namespace||'silver'}):null;
+        engine:port.engine,namespace:port.namespace||'silver'}):null;
     if(numeric)return respond({data:await (kind==='loc'?
       readLocGroupNumeric(query,start,end,port):readGalaxyNumeric(query,scope,kind,start,end,port))});
     if(kind==='culture_anchors'){
@@ -152,7 +153,10 @@ export async function handleNativePublicContent(request,env={},{
         ?fixedPolicyReadModel({engine:port.engine},{kind:'query',
           schema:port.namespace||'silver',table:'loc_anchor',operation:'select'})
         :null;
-      const typed=scopedFor(scope);
+      // loc_anchor is the fixed LOC-wide source relation. A MySQL target does
+      // not have the fixed PolicyPlugin route, so use the matching dynamic
+      // ZModel scope rather than accidentally reading <scope>_anchor.
+      const typed=scopedFor('loc');
       const rows=fixedAnchorModel
         ?await withFixedPolicyRead(query,{engine:port.engine},{kind:'query',
             schema:port.namespace||'silver',table:'loc_anchor',operation:'select'},
@@ -171,6 +175,9 @@ export async function handleNativePublicContent(request,env={},{
             .select(['uid','type','title','attr'])
             .where('type','in',['date','period','era'])
             .where('invisible','=',false).execute();
+      if(!fixedAnchorModel&&!typed)
+        assertZModelSelectRows('silver.'+scope+'_anchor',
+          ['uid','type','title','attr'],rows);
       return respond({data:rows.map(row=>({...row,
         attr:typeof row.attr==='string'?JSON.parse(row.attr||'{}'):row.attr||{}
       }))});
@@ -196,6 +203,8 @@ export async function handleNativePublicContent(request,env={},{
               }))
         :await query.selectFrom(relation(scope))
             .select(columns).where('id','=',scope).limit(1).executeTakeFirst();
+      if(!modelName)
+        assertZModelSelectRows('silver.'+scope,columns,row?[row]:[]);
       return respond({data:row||null});
     }
     const table=relation(kind==='hero'?'loc_blocks':scope+'_blocks');
@@ -209,7 +218,7 @@ export async function handleNativePublicContent(request,env={},{
     // not merely a dynamic Scope projection. Use their real PolicyPlugin
     // delegate for Hero/home reads so the common path is typed end-to-end and
     // emits one bounded SELECT. Dynamic Scope IDs retain the verified scoped
-    // model below; other engines retain their existing Kysely adapter.
+    // model below for PostgreSQL/MySQL; MSSQL retains its Kysely adapter.
     const fixedBlockModel=port.dialect
       ?fixedPolicyReadModel({engine:port.engine},{kind:'query',
         schema:port.namespace||'silver',
@@ -228,6 +237,9 @@ export async function handleNativePublicContent(request,env={},{
       :await query.selectFrom(table).select(BLOCK_FIELDS)
           .where('page_name','in',names).orderBy('block_order','asc')
           .execute();
+    if(!fixedBlockModel&&!typed)
+      assertZModelSelectRows('silver.'+(kind==='hero'?'loc_blocks':scope+'_blocks'),
+        BLOCK_FIELDS,data);
     return respond({data});
    }catch(error){
     // Categorize the real TCP/TLS/SQL failure without revealing credentials,

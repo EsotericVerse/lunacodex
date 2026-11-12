@@ -5,7 +5,8 @@
 //
 // Three tables share one schema contract in each Scope: galaxy, anchor, blocks.
 // The scopes' independent data and eight-character UIDs are never merged here.
-// Non-PostgreSQL SQL engines continue to use Kysely's existing dialect adapters.
+// ZenStack V3 can compile PostgreSQL and MySQL providers; MSSQL remains on
+// the shared Kysely path because ZenStack V3 has no MSSQL provider.
 import {schema as fixedSchema} from './schema.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
@@ -15,8 +16,16 @@ const SOURCES=Object.freeze({
   Anchor:['Lo3rwangAnchor','LrunesAnchor','anchor'],
   Blocks:['Lo3rwangBlocks','LrunesBlocks','blocks']
 });
+const ZENSTACK_PROVIDERS=Object.freeze({postgres:'postgresql',mysql:'mysql'});
 const literal=value=>({kind:'literal',value});
 const mapped=(name,value)=>({name,args:[{name:name==='@@schema'?'map':'name',value:literal(value)}]});
+
+export function zenStackProviderForEngine(engine='postgres'){
+  const provider=ZENSTACK_PROVIDERS[String(engine)];
+  if(!provider)
+    throw new TypeError('ZenStack V3 does not support the '+String(engine)+' provider; use native Kysely');
+  return provider;
+}
 
 function equivalentPhysicalFields(left,right,kind){
   const a=fixedSchema.models[left],b=fixedSchema.models[right];
@@ -53,7 +62,7 @@ const VERIFIED_SCOPE_MODELS=Object.freeze(Object.fromEntries(
  * delegation, not on a universal unconditional read policy. The associated
  * ORM client MUST NOT be exposed to public requests or treated as an ACL.
  */
-export function scopedZModelSchema({scopeId,namespace='silver'}={}){
+export function scopedZModelSchema({scopeId,namespace='silver',engine='postgres'}={}){
   if(typeof scopeId!=='string'||!SCOPE.test(scopeId)||
      typeof namespace!=='string'||!NAMESPACE.test(namespace))
     throw new TypeError('Invalid trusted LOC Scope schema identifier');
@@ -70,7 +79,7 @@ export function scopedZModelSchema({scopeId,namespace='silver'}={}){
     };
   }
   return {
-    provider:{type:'postgresql',defaultSchema:namespace},
+    provider:{type:zenStackProviderForEngine(engine),defaultSchema:namespace},
     models,
     typeDefs:fixedSchema.typeDefs,
     authType:fixedSchema.authType,

@@ -14,6 +14,7 @@ import {PolicyPlugin} from '@zenstackhq/plugin-policy';
 import {nativeReadPlan,executeNativeRead} from '../../../zenstack/native-query.mjs';
 import {verifyModeledSqlFields,normalizeModeledTypeDifferences,
   normalizeModeledSelectRows} from '../../../zenstack/model-column-guard.mjs';
+import {assertZModelSelectRows} from '../../../zenstack/import-validation.mjs';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 import {portableRelation} from '../providers/sql-engine-ports.mjs';
 import {parsePortableOrExpression,portableContainsSpec}
@@ -128,7 +129,7 @@ function normalize(body){
 // unchanged. Unsupported operators, arrays, raw expressions and other
 // dialects retain their existing Kysely executor. No new connection or polling.
 function modeledPublicSelect(selected,query){
-  if(selected.engine!=='postgres'||!selected.dialect||query.cardinality)
+  if(!['postgres','mysql'].includes(selected.engine)||!selected.dialect||query.cardinality)
     return null;
   const fixedLocAnchor=query.table==='loc_anchor';
   const matched=/^([a-z][a-z0-9]{0,14})_(galaxy|anchor|blocks)$/.exec(query.table);
@@ -159,7 +160,7 @@ function modeledPublicSelect(selected,query){
     policyBody:fixedBody};
   if(fixedLocAnchor)return null;
   return {client:createScopedLocClient({dialect:selected.dialect,
-    namespace:selected.namespace||'silver',scopeId:matched[1]}),body,modelName};
+    engine:selected.engine,namespace:selected.namespace||'silver',scopeId:matched[1]}),body,modelName};
 }
 
 const PUBLIC_ACTIONS=new Set(['read_app_bootstrap','read_scope_page_copy',
@@ -326,6 +327,7 @@ export async function handleNativePublicQuery(request,env={},{
     const rows=normalizeModeledSelectRows({
       schema:'silver',table:normalized.table,rows:rawRows
     });
+    assertZModelSelectRows('silver.'+normalized.table,normalized.columns,rows);
     if(normalized.cardinality==='single'&&rows.length!==1||
        normalized.cardinality==='maybeSingle'&&rows.length>1)
       return respond({error:'Expected one LOC record',stage:'cardinality'},406);

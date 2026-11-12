@@ -4,6 +4,7 @@ import {validateLocRegistryDomain} from './loc-domain.mjs';
 import {portableContainsSpec,parsePortableOrExpression} from './portable-search.mjs';
 import {verifyModeledSqlFields,normalizeModeledTypeDifferences,
   normalizeModeledSelectRows} from '../../../zenstack/model-column-guard.mjs';
+import {assertZModelSelectRows} from '../../../zenstack/import-validation.mjs';
 import {assertKyselyQueryShape,QUERY_FILTER_SQL}
   from '../../../zenstack/sql-input-shape.mjs';
 import {ANCHOR_TYPE_GROUPS} from '../../../zenstack/anchor-hierarchy.mjs';
@@ -199,9 +200,12 @@ export async function executeKyselyQuery(trx,input,{dialect='postgres',namespace
   if(req.operation==='select'){
     const built=buildKyselySelectQuery(trx,input,{dialect,namespace,publicOnly,modelName});
     if(built.countQuery){const row=await built.countQuery.executeTakeFirstOrThrow();count=Number(row.count)}
-    if(built.query)data=normalizeModeledSelectRows({
-      schema:req.schema,table:req.table,rows:await built.query.execute()
-    });
+    if(built.query){
+      data=normalizeModeledSelectRows({
+        schema:req.schema,table:req.table,rows:await built.query.execute()
+      });
+      data=assertZModelSelectRows(req.schema+'.'+req.table,req.columns,data);
+    }
   }else{
     const built=buildKyselyMutationQuery(trx,input,{dialect,namespace,modelName});
     const result=await built.query.execute();
