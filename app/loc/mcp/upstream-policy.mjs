@@ -56,7 +56,8 @@ export async function requestTool(env,subject,provider,tool,args){
     result:await invokeUpstreamTool(env,subject,provider,tool,args)};
   const id=randomValue(24);
   const key=await pendingPrefix(subject)+id;
-  await vaultPut(env,key,{subject,provider,tool,args,created_at:Date.now(),
+  await vaultPut(env,key,{subject,provider,tool,args,
+    connection_id:linked.connection_id||'',created_at:Date.now(),
     expires_at:Date.now()+PENDING_TTL*1000},PENDING_TTL);
   return {status:'approval_required',provider,tool,approval_id:id,
     message:'This tool requires a fresh human approval in LOC Admin → MCP Providers.'};
@@ -79,6 +80,10 @@ export async function decideApproval(env,subject,id,accept){
   const item=await vaultGet(env,key);
   if(!item||item.subject!==subject||item.expires_at<Date.now())
     throw new Error('Approval expired or not found');
+  const linked=await vaultGet(env,await providerKey(subject,item.provider));
+  if(!linked||!linked.connection_id||
+     linked.connection_id!==item.connection_id)
+    throw new Error('Approval belongs to a previous provider authorization');
   // Remove pending first: failure cannot accidentally repeat a side effect.
   // Cloudflare KV is eventually consistent; this is not a globally atomic
   // exactly-once guarantee. Providers must enforce their own idempotency.
