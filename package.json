@@ -34,7 +34,6 @@
     "@blocknote/react": "0.55.0",
     "@capacitor/core": "8.5.3",
     "@capacitor/filesystem": "8.0.0",
-    "@capacitor/ios": "8.5.3",
     "@capacitor/share": "8.0.0",
     "@neondatabase/serverless": "^1.2.0",
     "@streamparser/json": "0.0.26",
@@ -75,6 +74,7 @@
   },
   "devDependencies": {
     "@babel/parser": "7.29.9",
+    "@capacitor/ios": "8.5.3",
     "@types/node": "26.6.4",
     "typescript": "5.9.3"
   }
