@@ -2,7 +2,7 @@
 
 ## 入口
 
-LOC 系統管理 → **連線與驗證** → **LOC MCP · 上游 Provider**。
+LOC 系統管理 → **連線與驗證** → **LOC MCP · 上游 Provider** → **開啟 Provider 管理**。只有按下「開啟 Provider 管理」才會向 LOC Auth 查詢 Session；掛載 Admin 頁面本身不會觸發上游授權查詢。
 
 此處管理 Clerk、GitHub、Neon、Supabase 的 MCP 委託。LOC Auth 繼續為 LOC Web／MCP 確認身分，**不是** GitHub／Clerk／Neon／Supabase 的 Access Token 發證者。不要把 Admin 認證來源清單或 SQL Database Target 清單當作 MCP 上游 Provider 設定。
 
@@ -40,12 +40,13 @@ OAuth 回呼固定：
 ## 操作與安全
 
 1. 使用者登入 LOC Web，開啟 Admin → MCP Provider，選擇上游。
-2. LOC MCP 使用受信任的 LOC Browser Session 確認身份；上游 OAuth 用 Authorization Code + PKCE S256，原站自己核發上游 Token。
+2. LOC MCP 使用受信任的 LOC Browser Session 確認身份；上游 OAuth 用 Authorization Code + PKCE S256，非 GitHub 的標準 MCP OAuth 在授權與 Token／Refresh Token 請求都帶入 RFC 8707 `resource`，原站自己核發上游 Token。
 3. 外部授權完成後，Callback 驗證隨機 state、PKCE 及當前 LOC Browser Session 綁定的 Subject。上游 Token 加密存入 KV，不給網站或 MCP Client。
 4. 管理員點「管理函式」後才讀取上游 `tools/list`；新函式預設 `deny`，使用者可設 `auto`（自動執行）、`ask`（逐次批准）、`deny`（直接阻擋）。
-5. `ask` 只建立有限時的 Pending 項目；管理員必須在 LOC Web 查看 Provider、函式及參數，按下「同意並執行」。純 MCP Token 持有者不能以自身呼叫代替使用者批准。狀態透過 `provider_receipt` 查詢。
-6. 「中斷 LOC 委託」刪除 LOC 保存的 Token、Policy 及該 Provider 的未核准操作；**供應商端的 Consent 撤銷要在供應商帳戶另外執行**。
-7. 沒有 Cron、背景輪詢或一個函式多次主動查詢 LOC Auth。已授權的 MCP Tool 使用自己的上游 Token。Admin Browser 操作和 OAuth Callback 才會按需查詢 LOC Auth Session。
+5. `ask` 只建立有限時的 Pending 項目；管理員必須在 LOC Web 查看 Provider、函式及參數，按下「同意並執行」。純 MCP Token 持有者不能以自身呼叫代替使用者批准。狀態透過 `provider_receipt` 查詢。**在未完成跨地區強一致原子操作保障前，可能產生不可逆副作用的函式必須維持 `deny`，不能聲稱 `ask` 已能保證 exactly-once。**
+6. 同一 Provider 重新授權另一個外部帳號時，也必須清除前一帳號的函式 Policy 與 Pending 項目，防止既有 `auto` 權限意外沿用。
+7. 「中斷 LOC 委託」刪除 LOC 保存的 Token、Policy 及該 Provider 的未核准操作；**供應商端的 Consent 撤銷要在供應商帳戶另外執行**。
+8. 沒有 Cron、背景輪詢或一個函式多次主動查詢 LOC Auth。已授權的 MCP Tool 使用自己的上游 Token。Admin Browser 操作和 OAuth Callback 才會按需查詢 LOC Auth Session。
 
 ### 部署驗收門檻
 
