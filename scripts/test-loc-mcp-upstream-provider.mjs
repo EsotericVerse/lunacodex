@@ -118,3 +118,57 @@ test('auto mode sends only provider bearer; never forwards LOC Auth credentials'
       ['initialize','notifications/initialized','tools/call']);
   }finally{globalThis.fetch=original}
 });
+
+test('Neon OAuth uses PKCE S256 and audience-bound resource on authorization and token exchange',async()=>{
+  const env=fixture();
+  const original=globalThis.fetch;
+  const seen={};
+  globalThis.fetch=async(address,options={})=>{
+    const url=String(address);
+    if(url==='https://mcp.neon.tech/.well-known/oauth-protected-resource/mcp')
+      return Response.json({resource:'https://mcp.neon.tech/mcp',
+        authorization_servers:['https://oauth2.neon.tech']});
+    if(url==='https://oauth2.neon.tech/.well-known/oauth-authorization-server')
+      return Response.json({authorization_endpoint:'https://oauth2.neon.tech/oauth2/auth',
+        token_endpoint:'https://oauth2.neon.tech/oauth2/token',
+        client_id_metadata_document_supported:true,
+        code_challenge_methods_supported:['S256']});
+    if(url==='https://oauth2.neon.tech/oauth2/token'){
+      seen.token=new URLSearchParams(options.body);
+      return Response.json({access_token:'neon-audience-token',expires_in:3600});
+    }
+    throw Error('Unexpected OAuth endpoint '+url);
+  };
+  try{
+    const {authorize_url}=await beginUpstreamOAuth(env,SUBJECT,'neon');
+    const url=new URL(authorize_url);
+    assert.equal(url.searchParams.get('resource'),'https://mcp.neon.tech/mcp');
+    assert.equal(url.searchParams.get('code_challenge_method'),'S256');
+    const state=url.searchParams.get('state');
+    await vaultPut(env,'policy:'+await hashValue(SUBJECT)+':neon',{dangerous_write:'auto'});
+    await completeUpstreamOAuth(env,{state,code:'code-from-neon'},SUBJECT);
+    assert.equal(seen.token.get('resource'),'https://mcp.neon.tech/mcp');
+    assert.equal(seen.token.get('grant_type'),'authorization_code');
+    assert.ok(seen.token.get('code_verifier'));
+    assert.deepEqual((await providerStatuses(env,SUBJECT)).providers.find(x=>x.id==='neon').policies,{});
+  }finally{globalThis.fetch=original}
+});
+
+test('MCP metadata without S256 is refused, not silently downgraded',async()=>{
+  const env=fixture();const original=globalThis.fetch;
+  globalThis.fetch=async(address)=>{
+    const url=String(address);
+    if(url.includes('oauth-protected-resource'))
+      return Response.json({authorization_servers:['https://oauth2.neon.tech']});
+    if(url.includes('.well-known/oauth-authorization-server')||
+       url.includes('.well-known/openid-configuration'))
+      return Response.json({authorization_endpoint:'https://oauth2.neon.tech/oauth2/auth',
+        token_endpoint:'https://oauth2.neon.tech/oauth2/token',
+        code_challenge_methods_supported:['plain']});
+    throw Error('Unknown URL');
+  };
+  try{
+    await assert.rejects(()=>beginUpstreamOAuth(env,SUBJECT,'neon'),
+      /discovery unavailable/);
+  }finally{globalThis.fetch=original}
+});
