@@ -192,7 +192,11 @@ test('home entrances preserve sections, database blocks and editor save semantic
   assert.match(src,/const blocks=bootstrap\.data\?\.blocks/);
   assert.match(src,/const contents=<>/);
   assert.match(src,/return heroSlotOrder&&slot\.order===heroSlotOrder\?\[node,toggleButton\]:\[node\]/);
-  assert.match(src,/Real Save never tears down an active Edit Dock or reloads the homepage/);
+  assert.match(src,/Real Save never tears down an active Edit Dock on a management page/);
+  // A homepage entrance Save finishes editing and returns through the Dock;
+  // management pages keep their mounted editors. Pin both halves of that rule.
+  assert.match(src,/const finishesHomeEntrance=pageName==='index'&&!keepEditorOpen&&!switching/);
+  assert.match(src,/editDock\?\.active&&editDock\.scopeId===scopeId&&!finishesHomeEntrance/);
   assert.match(src,/return containerless\?contents:/);
   const about=readFileSync(new URL('../app/loc/views/AboutView.jsx',import.meta.url),'utf8');
   const author=readFileSync(new URL('../app/loc/AuthorHomeEditableBlock.jsx',import.meta.url),'utf8');
