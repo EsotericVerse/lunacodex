@@ -1,6 +1,7 @@
 'use client';
 
 import {parseRuneKeywordRuleSentence} from './rune-keyword-rules.mjs';
+import {compileKeywordLiteralMatcher} from '../keyword-literal-matcher.mjs';
 
 function normalizeText(value){
   return String(value??'').normalize('NFKC').toLocaleLowerCase('zh-Hant').trim();
@@ -199,12 +200,14 @@ function specialRuneKeywordTexts(normalizedTexts,runes,rune){
 export function createKeywordDocumentClassifier(catalogRows=[],{collectKeywordTerms=false,selectedTerms=null}={}){
   const prepared=compileCatalog(catalogRows);
   const selected=selectedTerms==null?null:new Set([...selectedTerms].map(normalizeText));
-  return documents=>classifyKeywordDocumentsWithCompiled(documents,prepared,collectKeywordTerms,selected);
+  const literalMatcher=selected?compileKeywordLiteralMatcher([...selected]):null;
+  return documents=>classifyKeywordDocumentsWithCompiled(
+    documents,prepared,collectKeywordTerms,selected,literalMatcher);
 }
 export function classifyKeywordDocuments(documents=[],catalogRows=[]){
   return classifyKeywordDocumentsWithCompiled(documents,compileCatalog(catalogRows));
 }
-function classifyKeywordDocumentsWithCompiled(documents=[],prepared,collectKeywordTerms=false,selectedTerms=null){
+function classifyKeywordDocumentsWithCompiled(documents=[],prepared,collectKeywordTerms=false,selectedTerms=null,literalMatcher=null){
   const source=Array.isArray(documents)?documents:[];
   const {runes,nameToRune,groupOrder,fallbackGroup}=prepared;
   if(!source.length||!runes.length)return {
@@ -220,6 +223,11 @@ function classifyKeywordDocumentsWithCompiled(documents=[],prepared,collectKeywo
   };
 
   const normalizedTexts=source.map(row=>normalizeText(textOf(row)));
+  // Incremental word lookups only need to evaluate articles containing at
+  // least one selected literal. Item NOR/NAME/TO/AND and masking still run
+  // through the original rule-preserving evaluator for those articles.
+  const candidateWordsByDocument=literalMatcher
+    ?normalizedTexts.map(text=>literalMatcher.matched(text)):null;
 
   const states=source.map(()=>createState());
   // Reanalysis optionally collects exactly the literal words that matched
@@ -229,7 +237,17 @@ function classifyKeywordDocumentsWithCompiled(documents=[],prepared,collectKeywo
   const unsupportedRules=[];
 
   for(const rune of runes){
-    if(selectedTerms&&!rune.keywords.some(word=>selectedTerms.has(normalizeText(word))))continue;
+    let relevantIndices=null;
+    if(selectedTerms){
+      const words=rune.keywords.map(normalizeText)
+        .filter(word=>word&&selectedTerms.has(word));
+      if(!words.length)continue;
+      relevantIndices=[];
+      for(let index=0;index<normalizedTexts.length;index++)
+        if(words.some(word=>candidateWordsByDocument[index].has(word)))
+          relevantIndices.push(index);
+      if(!relevantIndices.length)continue;
+    }
     // NOR excludes the exact combined expression for this Item, across all
     // of its matching words. Other independent occurrences remain countable.
     const blockedPhrases=[...new Set(rune.rules
@@ -241,10 +259,11 @@ function classifyKeywordDocumentsWithCompiled(documents=[],prepared,collectKeywo
       for(const phrase of blockedPhrases)value=replaceAllLiteral(value,phrase,' ');
       return value;
     };
-    const keywordTexts=specialRuneKeywordTexts(normalizedTexts,runes,rune)
-      .map(withoutBlockedPhrases);
-    const ruleTexts=normalizedTexts.map(withoutBlockedPhrases);
-    const orderedRules=[...rune.rules].sort((a,b)=>
+    const keywordTexts=specialRuneKeywordTexts(
+      relevantIndices?relevantIndices.map(index=>normalizedTexts[index]):normalizedTexts,
+      runes,rune).map(withoutBlockedPhrases);
+    const ruleTexts=selectedTerms?[]:normalizedTexts.map(withoutBlockedPhrases);
+    const orderedRules=(selectedTerms?[]:[...rune.rules]).sort((a,b)=>
       normalizeText(b.source).length-normalizeText(a.source).length
       ||String(a.token||'').localeCompare(String(b.token||''))
     );
@@ -259,9 +278,11 @@ function classifyKeywordDocumentsWithCompiled(documents=[],prepared,collectKeywo
           .filter(source=>source&&source!==normalizedKeyword&&source.includes(normalizedKeyword))
           .sort((a,b)=>b.length-a.length)
         :[];
-      for(let index=0;index<normalizedTexts.length;index+=1){
+      for(let localIndex=0;localIndex<keywordTexts.length;localIndex+=1){
+        const index=relevantIndices?relevantIndices[localIndex]:localIndex;
+        if(selectedTerms&&!candidateWordsByDocument[index].has(normalizedKeyword))continue;
         if(!states[index])continue;
-        let text=keywordTexts[index]||'';
+        let text=keywordTexts[localIndex]||'';
         if(isDayMoonName){
           for(const source of ownSpecificSources)text=replaceAllLiteral(text,source,' ');
         }
