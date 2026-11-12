@@ -6,7 +6,7 @@ import {assignedSource} from '../app/loc/member-intersection-model.mjs';
 import {sourceKeywordOptions} from '../app/loc/source-keyword-options.mjs';
 import {buildCultureRiverRootPayload,selectCultureRiverChildren} from '../app/loc/culture-river-roots.mjs';
 import {administrativeSourceTrend} from '../app/loc/statistics-admin-source.mjs';
-import {DEFAULT_YEAR_WINDOW} from '../app/loc/default-year-window.mjs';
+import {DEFAULT_YEAR_WINDOW,calendarYearWindow} from '../app/loc/default-year-window.mjs';
 
 const anchor=(uid,type,title,children=[])=>({uid,type,title,invisible:false,attr:{uid:children}});
 const sourceNodes=[
@@ -80,9 +80,14 @@ test('Statistics Domain filter expands only its existing From descendants',()=>{
   assert.deepEqual(music.distribution.map(x=>x.name),['Suno']);
 });
 
-test('Culture and Statistics start on exact 2025 calendar year, independent of saved Era',()=>{
-  assert.deepEqual(DEFAULT_YEAR_WINDOW,{startDate:'2025-01-01',
-    endDate:'2025-12-31',label:'2025 年（全年）'});
+test('Culture and Statistics start on full current Taiwan calendar year independent of saved Era',()=>{
+  assert.deepEqual(calendarYearWindow(new Date('2026-11-12T01:00:00Z')),
+    {startDate:'2026-01-01',endDate:'2026-12-31',label:'2026 年（全年）'});
+  assert.deepEqual(calendarYearWindow(new Date('2026-12-31T15:59:59Z')),
+    {startDate:'2026-01-01',endDate:'2026-12-31',label:'2026 年（全年）'});
+  assert.deepEqual(calendarYearWindow(new Date('2026-12-31T16:00:00Z')),
+    {startDate:'2027-01-01',endDate:'2027-12-31',label:'2027 年（全年）'});
+  assert.deepEqual(DEFAULT_YEAR_WINDOW,calendarYearWindow());
   const sources={
     statistics:'../app/modular/features/Statistics.jsx',
     culture:'../app/modular/features/Culture.jsx',

@@ -6,10 +6,12 @@ import {dbPublicClient} from '../../../loc/db-client.mjs';
 import {mapBounded} from '../../../loc/bounded-parallel.mjs';
 import {readCurrentTraceAnchors,readPublishedTraceSourceScopes} from './trace-data';
 import {territoryYearWindow,territoryRegions,territoryPointReadPlan,territoryWithAnchors} from './trace-territory.mjs';
+import {DEFAULT_YEAR_WINDOW} from '../../../loc/default-year-window.mjs';
 
 const TraceMap=dynamic(()=>import('./TraceMap'),{ssr:false});
 const TracePlaceResults=dynamic(()=>import('./TracePlaceResults'),{ssr:false});
-const years=[2026,2025,2024,2023];
+const currentYear=Number(DEFAULT_YEAR_WINDOW.startDate.slice(0,4));
+const years=[0,1,2,3].map(offset=>currentYear-offset);
 const dateFromStep=(year,step)=>{
   const start=Date.UTC(year,0,1),days=(Date.UTC(year+1,0,1)-start)/86400000;
   return new Date(start+Math.floor((days-1)*Number(step)/1000)*86400000).toISOString().slice(0,10);
@@ -20,7 +22,7 @@ const hasCoordinates=point=>point&&point.longitude!=null&&point.latitude!=null&&
   Math.abs(Number(point.longitude))<=180&&Math.abs(Number(point.latitude))<=90;
 
 export default function TraceTerritoryPanel({scopeId='loc',onMapReady=null}){
-  const [year,setYear]=useState(2026);
+  const [year,setYear]=useState(currentYear);
   const [display,setDisplay]=useState('sources');
   const [step,setStep]=useState(1000);
   const [selectedKey,setSelectedKey]=useState('');

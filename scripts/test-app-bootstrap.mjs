@@ -646,7 +646,9 @@ test('Edit Dock provides one explicit Save and never saves an unchanged editor',
   assert.match(dock,/const editors=dirty;/);
   assert.match(dock,/if\(!editors\.length\)\{\s*setNotice\('目前沒有待儲存的變更。'\)/);
   assert.doesNotMatch(dock,/saveAndSwitch|stayInEditMode|已暫存|儲存並切換/);
-  assert.match(shell,/editDock\.save\(\)/);
+  assert.match(shell,/editDock\.save\(\{exitOnSuccess:isScopeHomepage\}\)/);
+  assert.match(dock,/if\(exitOnSuccess\)\{end\(\);return;\}/);
+  assert.match(dock,/!busy&&dirtyEditors\(\)\.length>0/);
   assert.doesNotMatch(shell,/editDock\.save\(\{stayInEditMode/);
 });
 

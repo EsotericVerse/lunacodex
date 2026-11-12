@@ -184,7 +184,7 @@ export function EditDockProvider({children}){
     end();
     navigate(target);
   },[end,navigate]);
-  const save=useCallback(async()=>{
+  const save=useCallback(async({exitOnSuccess=false}={})=>{
     if(busy||committing.current)return;
     // A management section can mount independent Database / ISR / Email
     // editors simultaneously. Save every dirty editor through the existing
@@ -193,6 +193,9 @@ export function EditDockProvider({children}){
     const editors=dirty;
     if(!editors.length){
       setNotice('目前沒有待儲存的變更。');
+      // On the homepage, Save also finishes editing. An unmounted or
+      // not-yet-registered editor must not be mistaken for a clean form.
+      if(exitOnSuccess&&registeredEditors.current.size>0)end();
       return;
     }
     if(editors.some(editor=>typeof editor.save!=='function')){
@@ -217,21 +220,25 @@ export function EditDockProvider({children}){
           return;
         }
       }
-      if(epoch===operationEpoch.current&&dirty.length)
+      if(epoch===operationEpoch.current&&dirty.length){
+        // Exit only when every dirty form returned confirmed success.
+        // A failed write keeps the user's draft and the Dock on screen.
+        if(exitOnSuccess){end();return;}
         setNotice('目前修改已儲存。');
+      }
     }catch(error){
       if(epoch===operationEpoch.current)setNotice(String(error?.message||'儲存失敗，請檢查內容。'));
     }finally{
       finishOperation(epoch);
     }
-  },[busy,scopeId,beginOperation,finishOperation]);
+  },[busy,scopeId,beginOperation,finishOperation,end]);
   const dirtyEditors=useCallback(()=>[...registeredEditors.current].filter(editor=>
     typeof editor.isDirty==='function'&&editor.isDirty()
   ),[]);
   const discard=useCallback((target,{confirmOnlyWhenDirty=false}={})=>{
     if(!target)return;
     // An explicit Cancel must always escape a stalled Save lock.
-    if(!busy&&(!confirmOnlyWhenDirty||dirtyEditors().length)&&
+    if(!busy&&dirtyEditors().length>0&&
       !window.confirm(confirmOnlyWhenDirty
         ?'確定放棄尚未儲存的變更並返回普通頁面？'
         :'確定放棄尚未儲存的編輯並返回首頁？'))return;

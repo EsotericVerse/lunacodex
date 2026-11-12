@@ -306,7 +306,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     setSelectedKeywordClassUid('');
     setSourceGroup(requested==='source'?String(navigation.source||''):'');
   },[scopeId,navigation.statTab,requested,navigation.source]);
-  // 2025 full calendar year is the initial Statistics window, even when
+  // The current full calendar year is the initial Statistics window, even when
   // Era records exist. A saved Era is selected only by an explicit UI action.
   const [selectedPeriodKey,setSelectedPeriodKey]=useState('year');
   useEffect(()=>{setSelectedPeriodKey('year');},[scopeId]);
@@ -315,7 +315,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   const targetScopes=useMemo(()=>[defaultScopeData(scopeId)].filter(Boolean),[scopeId]);
   const resourceCache=useResourceCache();
   // The earliest date only widens the zoom-out limit. It arrives with the chart data
-  // itself, so the first window (last year) never waits for it.
+  // itself, so the first window never waits for it.
   const [knownEarliest,setKnownEarliest]=useState('');
   const customQueryRange=useMemo(()=>statisticsZoomWindow(zoomLevel,queryEndDate,knownEarliest),
     [zoomLevel,queryEndDate,knownEarliest]);

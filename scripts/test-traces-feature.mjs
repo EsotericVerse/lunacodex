@@ -227,7 +227,7 @@ test('Trace loads only Frame metadata at entry; content modes remain scoped and 
   const stats=read('app/modular/features/Statistics.jsx');
   assert.match(trace,/\[routeListOpen\]=useState\(true\)/);
   assert.match(trace,/enabled:supported&&routeListOpen/);
-  assert.match(trace,/\[timeWindow,setTimeWindow\]=useState\('all'\)/);
+  assert.match(trace,/\[timeWindow,setTimeWindow\]=useState\('year'\)/);
   assert.match(trace,/\[reportTab,setReportTab\]=useState\(null\)/);
   assert.match(trace,/sourceName=\{sourceName\} mediaType=\{mediaType\}/);
   assert.match(filters,/traceWindow\(window='3m'/);
