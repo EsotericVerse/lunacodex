@@ -1,5 +1,4 @@
 // LOC Web control surface for its own MCP upstream client; never a SQL API.
-import {verifyOAuthToken,mcpConfig} from '../../app/loc/mcp/router.mjs';
 import {verifiedLocWebsiteSession} from '../../app/loc/auth/verified-session.mjs';
 import {beginUpstreamOAuth,disconnectUpstream} from '../../app/loc/mcp/upstream-oauth.mjs';
 import {providerStatuses,setToolPolicy,clearToolPolicies,requestTool,pendingApprovals,
@@ -16,21 +15,21 @@ function json(data,status=200){
 function reject(message,status=400){
   throw Object.assign(new Error(message),{status});
 }
-async function identity(request,env){
-  const user=await verifyOAuthToken(request,mcpConfig(env));
-  if(!user||!/^loc_[A-Za-z0-9_-]{32,80}$/.test(user.subject))
-    reject('LOC MCP OAuth identity required',401);
-  return user.subject;
-}
-async function browserConsent(request,subject){
-  if(request.headers.get('origin')!==ORIGIN)reject('LOC browser origin required',403);
+async function identity(request){
   const session=await verifiedLocWebsiteSession(request);
-  if(session.userId!==subject)reject('Browser session does not match MCP identity',403);
+  const subject=String(session.userId||'');
+  if(!/^loc_[A-Za-z0-9_-]{32,80}$/.test(subject))
+    reject('LOC Auth identity required',401);
+  return subject;
+}
+function browserConsent(request){
+  if(request.headers.get('origin')!==ORIGIN)
+    reject('LOC browser origin required',403);
 }
 async function handler(context){
   try{
     const {request,env}=context;
-    const subject=await identity(request,env);
+    const subject=await identity(request);
     const url=new URL(request.url);
     if(request.method==='GET'){
       const action=url.searchParams.get('action')||'status';
@@ -46,13 +45,13 @@ async function handler(context){
       reject('Unknown MCP provider query');
     }
     if(request.method!=='POST')reject('Method not allowed',405);
+    browserConsent(request);
     const raw=await request.text();
     if(raw.length>16000)reject('MCP control request too large',413);
     let body;try{body=JSON.parse(raw)}catch{reject('Invalid JSON')}
     if(!body||typeof body!=='object'||Array.isArray(body))reject('Invalid MCP control request');
     if(body.action==='call')return json(await requestTool(env,subject,
       body.provider,body.tool,body.args||{}));
-    await browserConsent(request,subject);
     switch(body.action){
       case 'connect':return json(await beginUpstreamOAuth(env,subject,body.provider));
       case 'disconnect':
