@@ -10,6 +10,7 @@ import {modelNameForSql} from './model-column-guard.mjs';
 const modelFactory=createSchemaFactory(schema);
 const validators=new Map();
 const scopedGalaxy=/^silver\.[a-z][a-z0-9]{0,14}_galaxy$/;
+const char8Uid=/^[A-Za-z0-9]{8}$/;
 
 // The frozen SQL snapshot is authoritative where ZModel V3 loses a native
 // distinction: DATE vs DateTime, and SQL-nullable PostgreSQL arrays.
@@ -28,7 +29,14 @@ function importModelSchema(modelName){
   for(const column of table.columns){
     const field=base.shape[column.name];
     if(!field)continue;
-    if(column.format==='date'){
+    if(column.format==='bpchar'){
+      // The existing fixed CHAR(8) columns are LOC UIDs/references. The
+      // runtime SchemaDef retains @db.Char but not its length argument.
+      // Reject invalid input before PostgreSQL can pad or truncate it.
+      overrides[column.name]=field.refine(value=>value==null||
+        (typeof value==='string'&&char8Uid.test(value)),
+      {message:'Expected exactly 8 ASCII letters or digits'});
+    }else if(column.format==='date'){
       // PostgreSQL DATE accepts YYYY-MM-DD; native ZModel maps it to DateTime.
       overrides[column.name]=z.union([field,z.iso.date()]).nullable().optional();
     }else if(column.format.startsWith('_')&&column.nullable){

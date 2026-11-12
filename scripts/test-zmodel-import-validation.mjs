@@ -37,6 +37,21 @@ test('unknown keys and malformed typed fields cannot enter the write batch',()=>
     [{...record,target_id:[123]}]),/target_id/);
 });
 
+test('modeled CHAR(8) identifiers reject padding and non-alphanumeric input',()=>{
+  const references=['uid','source_id','ref_id','place_id'];
+  for(const field of references){
+    for(const bad of ['AB12','ABCD123!','ABCDEFGHI']){
+      assert.throws(()=>assertZModelImportRows('silver.demo_galaxy',
+        [{...record,[field]:bad}]),new RegExp(field));
+    }
+  }
+  const valid={...record,source_id:'SOURCE01',ref_id:'REF00001',
+    place_id:'PLACE001'};
+  assert.equal(assertZModelImportRows('silver.demo_galaxy',[valid])[0],valid);
+  assert.equal(assertZModelImportRows('silver.demo_galaxy',
+    [{...record,source_id:null,ref_id:null,place_id:null}]).length,1);
+});
+
 test('existing Galaxy ZModel validation exposes bounded progress without extra SQL',()=>{
   const rows=Array.from({length:513},(_,index)=>({
     ...record,uid:'U'+String(index).padStart(7,'0')
