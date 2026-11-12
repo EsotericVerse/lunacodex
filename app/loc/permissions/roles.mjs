@@ -6,22 +6,26 @@ import {WebManageRowSchema} from './web-manage-schema.mjs';
 export const LOC_OWNER_EMAIL='sopa2306@gmail.com';
 // One existing ZModel-derived Zod role projection for both the website and
 // MCP/Extension. Whether a caller may use it is decided at its own boundary.
-export function resolveManagePermissions(email,rows=[]){
+export function resolveManagePermissions(email,rows=[],{allowVirtualAdmin=false}={}){
   const verified=String(email||'').trim().toLowerCase();
   const denied={canWrite:false,canManage:false,grants:[],roles:[]};
   if(!Array.isArray(rows))return denied;
   const active=rows.flatMap(row=>{
-    // A defaulted ZModel Boolean must never turn a missing active flag
-    // into an authorization grant.
-    if(row?.active!==true)return [];
+    // active controls public Scope publication, not the owner's virtual
+    // System Admin role. Only the website owner path explicitly allows the
+    // reserved admin identity without publishing an Admin directory.
+    // Other inactive roles, missing flags and MCP roles remain denied.
+    const virtualAdmin=allowVirtualAdmin&&row?.id==='admin'&&
+      row?.manage_role==='admin'&&row?.active===false;
+    if(row?.active!==true&&!virtualAdmin)return [];
     const validated=WebManageRowSchema.safeParse({
       id:String(row?.id||''),
       email:String(row?.email||'').trim().toLowerCase(),
       manage_role:String(row?.manage_role||'').trim().toLowerCase(),
       active:row?.active
     });
-    return validated.success&&validated.data.active&&validated.data.email===verified
-      ?[validated.data]:[];
+    return validated.success&&(validated.data.active||virtualAdmin)&&
+      validated.data.email===verified?[validated.data]:[];
   });
   if(!active.length)return denied;
   // manage_role has already been narrowed by the generated ZModel/Zod
@@ -40,7 +44,8 @@ export function resolveManagePermissions(email,rows=[]){
 // independently authorized projection above, never this owner-only gate.
 export function resolveLocPermissions(email,rows=[]){
   const verified=String(email||'').trim().toLowerCase();
-  return verified===LOC_OWNER_EMAIL?resolveManagePermissions(verified,rows):
+  return verified===LOC_OWNER_EMAIL
+    ?resolveManagePermissions(verified,rows,{allowVirtualAdmin:true}):
     {canWrite:false,canManage:false,grants:[],roles:[]};
 }
 
@@ -49,15 +54,16 @@ export async function locPermissionsForEmail(db,verifiedEmail,{policyClient}={})
     throw Error('LOC permission database unavailable');
   if(String(verifiedEmail||'').trim().toLowerCase()!==LOC_OWNER_EMAIL)
     return resolveLocPermissions(verifiedEmail,[]);
+  // Read the owner's roles in one query. The role projector excludes every
+  // inactive Scope/Group but preserves the reserved virtual Admin record.
   const roles=policyClient
     ?await policyClient.manage.findMany({
-      where:{email:LOC_OWNER_EMAIL,active:true},
+      where:{email:LOC_OWNER_EMAIL},
       select:{id:true,email:true,manage_role:true,active:true}
     })
     :await db.selectFrom('api.manage')
       .select(['id','email','manage_role','active'])
       .where('email','=',LOC_OWNER_EMAIL)
-      .where('active','=',true)
       .execute();
   return resolveLocPermissions(verifiedEmail,roles);
 }
