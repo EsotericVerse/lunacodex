@@ -4,11 +4,11 @@
 import {schema} from './schema.mjs';
 
 const named=new Map();
-for(const model of Object.values(schema.models)){
+for(const [modelName,model] of Object.entries(schema.models)){
   const attr=name=>model.attributes?.find(item=>item.name===name)
     ?.args?.[0]?.value?.value;
   const namespace=attr('@@schema'),table=attr('@@map');
-  if(namespace&&table)named.set(namespace+'.'+table,model.fields);
+  if(namespace&&table)named.set(namespace+'.'+table,modelName);
 }
 // The fixed Registry JOIN is model-driven, not a second physical-table map.
 // Kysely still owns execution on the *caller's* trusted transaction/driver:
@@ -43,11 +43,17 @@ export function zmodelRegistryJoin(db,{optionalLoc=false}={}){
 const scoped=/^([a-z][a-z0-9]{0,14})_(galaxy|anchor|blocks)$/;
 const kinds={galaxy:'Lo3rwangGalaxy',anchor:'Lo3rwangAnchor',blocks:'Lo3rwangBlocks'};
 
-export function modelFieldsForSql(schemaName,tableName){
+// Share the identical model resolution with import-time Zod validation.
+// This is metadata only; neither a driver nor a new SQL lookup is created.
+export function modelNameForSql(schemaName,tableName){
   const exact=named.get(String(schemaName)+'.'+String(tableName));
   if(exact)return exact;
   const match=String(schemaName)==='silver'?scoped.exec(String(tableName||'')):null;
-  return match?schema.models[kinds[match[2]]]?.fields||null:null;
+  return match?kinds[match[2]]||null:null;
+}
+export function modelFieldsForSql(schemaName,tableName){
+  const modelName=modelNameForSql(schemaName,tableName);
+  return modelName?schema.models[modelName]?.fields||null:null;
 }
 
 // This is column-name contract validation, not permission verification or
