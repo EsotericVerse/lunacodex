@@ -5,7 +5,8 @@
 // SQL-nullable array columns cannot be modeled as nullable lists in ZModel V3;
 // their null-preserving read/write behavior must stay on the Kysely path.
 // LOC Auth's delegated principal must be verified by the trusted server before DB access.
-// The four public control-plane models use ZenStack PolicyPlugin for SELECT;
+// The public control-plane and presentation models use ZenStack PolicyPlugin
+// for SELECT; Blocks are included so Hero/home reads stay on the typed path.
 // dynamic Scope Galaxy/Anchor row visibility remains in delegated Kysely + RLS.
 
 datasource db {
@@ -171,6 +172,7 @@ model Lo3rwangBlocks {
     block_eyebrow                String      @db.VarChar(64) @default(dbgenerated())
     block_subtitle               String      @db.VarChar(128) @default(dbgenerated())
     block_image                  String?     @db.Text
+    @@allow('read', true)
     @@map("lo3rwang_blocks")
     @@schema("silver")
 }
@@ -230,6 +232,7 @@ model LocBlocks {
     block_eyebrow                String      @db.VarChar(64) @default(dbgenerated())
     block_subtitle               String      @db.VarChar(128) @default(dbgenerated())
     block_image                  String?     @db.Text
+    @@allow('read', true)
     @@map("loc_blocks")
     @@schema("silver")
 }
@@ -282,6 +285,7 @@ model LrunesBlocks {
     block_eyebrow                String      @db.VarChar(64) @default(dbgenerated())
     block_subtitle               String      @db.VarChar(128) @default(dbgenerated())
     block_image                  String?     @db.Text
+    @@allow('read', true)
     @@map("lrunes_blocks")
     @@schema("silver")
 }

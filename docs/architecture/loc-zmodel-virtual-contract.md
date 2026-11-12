@@ -42,7 +42,7 @@ The focused Node tests run on this PR branch passed **55/55**, including Culture
 
 - **LOC Auth:** signed grants, trust and permissions. ZModel types do not issue grants.
 - **SQL Gateway + Kysely:** query routing, PostgreSQL/MySQL/SQL Server dialects, bounded queries, SQL operations and cross-source result merging. ZModel V3's PostgreSQL datasource declaration does not magically provide SQL Server portability.
-- **ZenStack PolicyPlugin:** existing four public fixed control-model reads and two global-admin fixed registry writes. Dynamic Scope Galaxy/Anchor still use already-verified Kysely/Gateway permissions. Raw Kysely `$qb` is not automatically policy enforced.
+- **ZenStack PolicyPlugin:** existing public fixed control/presentation-model reads (including Blocks) and two global-admin fixed registry writes. Dynamic Scope Galaxy/Anchor still use already-verified Kysely/Gateway permissions. Raw Kysely `$qb` is not automatically policy enforced.
 - **FlexSearch / KV indexing:** a separate Agent owns implementation and deciding which virtual projection fields to consume; this PR does not touch it.
 - **Database freeze:** no DDL, migration, RLS/Policy/GRANT edits, schema introspection or automatic table creation.
 

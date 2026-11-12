@@ -161,8 +161,8 @@ export async function handleNativePublicContent(request,env={},{
     }
     if(kind==='config'){
       const columns=scopeConfigColumns(scope).split(',').filter(Boolean);
-      // loc/lo3rwang/lrunes are three of the four fixed public ZModel control
-      // relations (zenstack/policy-runtime.mjs). Route those through the real
+      // loc/lo3rwang/lrunes are fixed public ZModel control relations
+      // (zenstack/policy-runtime.mjs). Route those through the real
       // ZenStack+PolicyPlugin reader -- same Kysely dialect/pool, no second
       // connection -- instead of the hand-rolled selectFrom below. A custom
       // Scope's own config table is not a fixed model, so it keeps the
@@ -184,13 +184,31 @@ export async function handleNativePublicContent(request,env={},{
     }
     const table=relation(kind==='hero'?'loc_blocks':scope+'_blocks');
     const names=kind==='hero'?['group_'+feature,'scope_'+feature]:['index'];
+    const blockArgs={
+      where:{page_name:{in:names}},
+      select:Object.fromEntries(BLOCK_FIELDS.map(column=>[column,true])),
+      orderBy:{block_order:'asc'}
+    };
+    // The three fixed presentation relations are part of the frozen ZModel,
+    // not merely a dynamic Scope projection. Use their real PolicyPlugin
+    // delegate for Hero/home reads so the common path is typed end-to-end and
+    // emits one bounded SELECT. Dynamic Scope IDs retain the verified scoped
+    // model below; other engines retain their existing Kysely adapter.
+    const fixedBlockModel=port.dialect
+      ?fixedPolicyReadModel({engine:port.engine},{kind:'query',
+        schema:port.namespace||'silver',
+        table:kind==='hero'?'loc_blocks':scope+'_blocks',operation:'select'})
+      :null;
     const typed=scopedFor(kind==='hero'?'loc':scope);
-    const data=typed
-      ?await typed.blocks.findMany({
-          where:{page_name:{in:names}},
-          select:Object.fromEntries(BLOCK_FIELDS.map(column=>[column,true])),
-          orderBy:{block_order:'asc'}
-        })
+    const data=fixedBlockModel
+      ?await withFixedPolicyRead(query,{engine:port.engine},{kind:'query',
+          schema:port.namespace||'silver',
+          table:kind==='hero'?'loc_blocks':scope+'_blocks',operation:'select'},
+          'anon',{}, {dialect:port.dialect,ZenStackClient,PolicyPlugin},
+          (_qb,name,authorized)=>authorized[
+            name[0].toLowerCase()+name.slice(1)].findMany(blockArgs))
+      :typed
+      ?await typed.blocks.findMany(blockArgs)
       :await query.selectFrom(table).select(BLOCK_FIELDS)
           .where('page_name','in',names).orderBy('block_order','asc')
           .execute();

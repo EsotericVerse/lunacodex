@@ -49,7 +49,7 @@ test('physical 18-model contract keeps legacy policy boundary',()=>{
   assert.doesNotMatch(zmodel,/^\s*generator\s+\w+/m);
   assert.doesNotMatch(zmodel,/^\s*(?:model|type) (?:LocFederatedRefTable|LocAnchorLinkTable)\b/m);
   const attrs=zmodel.match(/^\s*@@allow\([^\n]*\)\s*$/gm)||[];
-  assert.equal(attrs.length,6,'each policy attribute occupies one line');
+  assert.equal(attrs.length,9,'each policy attribute occupies one line');
   assert.equal((zmodel.match(/^\s*@@allow\('update,delete', auth\(\)\.roleLevel >= 4\)\s*$/gm)||[]).length,2);
   for(const name of ['Lo3rwangGalaxy','LrunesGalaxy','Lo3rwangAnchor','LrunesAnchor']){
     assert.equal(schema.models[name].attributes.some(a=>a.name==='@@allow'),false,

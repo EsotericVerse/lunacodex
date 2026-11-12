@@ -329,8 +329,9 @@ without creating an extra SQL query, and removes the last uncovered dependency.
  
 ## ZenStack PolicyPlugin — live fixed-model read path
 
-The four universal public fixed models (`api.manage`, `silver.loc`,
-`silver.lo3rwang`, `silver.lrunes`) now declare explicit
+The universal public fixed models (`api.manage`, `silver.loc`,
+`silver.lo3rwang`, `silver.lrunes`, and their fixed `*_blocks` presentation
+relations) now declare explicit
 `@@allow('read', true)` rules in ZModel and the checked V3 SchemaDef.
 At the PostgreSQL LOC SQL Gateway, those exact SELECT queries are routed
 through `ZenStackClient.$use(new PolicyPlugin())` and a single
@@ -343,7 +344,7 @@ the browser exposes no raw query endpoint.
 Public unrestricted table reads remain public; private/unknown tables never
 enter this public-model allowlist. Dynamic Galaxy and Anchor, authorization
 for their private writes, and non-PostgreSQL dialects stay on the existing
-delegated Kysely path. The other 13 fixed models remain default-denied by
+delegated Kysely path. The other 10 fixed models remain default-denied by
 ZenStack's policies; they are not silently opted into public reads.
 No extra permission query, connection target, RPC, SQL function or Schema
 Migration is needed for this policy integration.

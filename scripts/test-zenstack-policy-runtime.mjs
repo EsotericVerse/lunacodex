@@ -10,9 +10,12 @@ const fixed=[
   ['api','manage','Manage'],
   ['silver','loc','Loc'],
   ['silver','lo3rwang','Lo3rwang'],
-  ['silver','lrunes','Lrunes']
+  ['silver','lrunes','Lrunes'],
+  ['silver','loc_blocks','LocBlocks'],
+  ['silver','lo3rwang_blocks','Lo3rwangBlocks'],
+  ['silver','lrunes_blocks','LrunesBlocks']
 ];
-test('fixed ZModel PolicyPlugin only receives the four public control SELECTs',()=>{
+test('fixed ZModel PolicyPlugin receives control and Blocks SELECTs only',()=>{
   for(const [schema,table,model] of fixed){
     assert.equal(fixedPolicyReadModel(pg,{kind:'query',schema,table,operation:'select'}),model);
     assert.equal(fixedPolicyReadModel(pg,{kind:'query',schema,table,operation:'update'}),null);
@@ -20,7 +23,7 @@ test('fixed ZModel PolicyPlugin only receives the four public control SELECTs',(
       {kind:'query',schema,table,operation:'select'}),null);
   }
   for(const [schema,table] of [['silver','lo3rwang_galaxy'],['silver','lrunes_anchor'],
-    ['silver','loc_blocks'],['silver','runes'],['api','user_records']]){
+    ['silver','demo_blocks'],['silver','runes'],['api','user_records']]){
     assert.equal(fixedPolicyReadModel(pg,{kind:'query',schema,table,operation:'select'}),null);
   }
   assert.equal(fixedPolicyReadModel(pg,{kind:'managed-write'}),null);

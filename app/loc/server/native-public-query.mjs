@@ -8,6 +8,9 @@ import {executeKyselyPublicAction} from '../providers/kysely-public.mjs';
 import {SCOPE_ROUTE_INDEX} from '../../modular/scope-route-index.js';
 import {directMcpKysely} from '../mcp/native-kysely.mjs';
 import {createScopedLocClient} from '../../../zenstack/client.mjs';
+import {fixedPolicyReadModel,withFixedPolicyRead} from '../../../zenstack/policy-runtime.mjs';
+import {ZenStackClient} from '@zenstackhq/orm';
+import {PolicyPlugin} from '@zenstackhq/plugin-policy';
 import {nativeReadPlan,executeNativeRead} from '../../../zenstack/native-query.mjs';
 import {verifyModeledSqlFields,normalizeModeledTypeDifferences,
   normalizeModeledSelectRows} from '../../../zenstack/model-column-guard.mjs';
@@ -118,10 +121,11 @@ function normalize(body){
 
 
 // Use the existing ZenStack ORM for ordinary model-compatible PostgreSQL
-// Scope reads, not only for exceptional Boolean conversions. The public
-// Scope allowlist, exact query boundary and source visibility remain unchanged.
-// Unsupported operators, arrays, raw expressions and other dialects retain
-// their existing Kysely executor. No new database connection or polling.
+// Scope reads, not only for exceptional Boolean conversions. Fixed Blocks use
+// the PolicyPlugin-wrapped model; dynamic Scope IDs use the verified projection.
+// The public Scope allowlist, exact query boundary and source visibility remain
+// unchanged. Unsupported operators, arrays, raw expressions and other
+// dialects retain their existing Kysely executor. No new connection or polling.
 function modeledPublicSelect(selected,query){
   if(selected.engine!=='postgres'||!selected.dialect||query.cardinality)
     return null;
@@ -145,6 +149,12 @@ function modeledPublicSelect(selected,query){
     head:query.head,count:query.head||query.count==='exact'
   };
   if(!nativeReadPlan(body,modelName))return null;
+  const fixedSchema=selected.namespace||'silver';
+  const fixedBody={kind:'query',operation:'select',schema:fixedSchema,table:query.table};
+  const fixedModelName=fixedSchema==='silver'
+    ?fixedPolicyReadModel(selected,fixedBody):null;
+  if(fixedModelName)return {fixed:true,body,modelName:fixedModelName,
+    policyBody:fixedBody};
   return {client:createScopedLocClient({dialect:selected.dialect,
     namespace:selected.namespace||'silver',scopeId:matched[1]}),body,modelName};
 }
@@ -268,7 +278,11 @@ export async function handleNativePublicQuery(request,env={},{
     stage='select';
     const modeled=modeledPublicSelect(selected,normalized);
     if(modeled){
-      const output=await executeNativeRead(modeled.client,modeled.body,modeled.modelName);
+      const output=modeled.fixed
+        ?await withFixedPolicyRead(selected.db,{engine:selected.engine},modeled.policyBody,
+            'anon',{}, {dialect:selected.dialect,ZenStackClient,PolicyPlugin},
+            (_qb,modelName,authorized)=>executeNativeRead(authorized,modeled.body,modelName))
+        :await executeNativeRead(modeled.client,modeled.body,modeled.modelName);
       return respond({data:output.data,count:output.count??null});
     }
     if(normalized.head){

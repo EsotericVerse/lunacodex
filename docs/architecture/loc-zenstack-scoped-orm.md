@@ -56,7 +56,7 @@ node --test scripts/test-zenstack-scoped-orm.mjs
 
 The native plan does not maintain a second hand-written ORM argument validator. It builds only the bounded LOC envelope, then passes `select`, `where`, `orderBy`, `skip` and `take` through the installed ZenStack `createQuerySchemaFactory(schema).makeFindManySchema(...)`. The parsed object is sent unchanged to the model delegate's `findMany`, while the same parsed `where` is used for `count`. LOC-specific guards remain limited to the existing DATE wire-format boundary and nullable list fallback.
 
-The Gateway applies LOC Auth/Scope validation, Session/RLS binding and its existing ACL before private native Scope reads. Four fixed control models use the existing PolicyPlugin-wrapped client. Both paths share the same trusted database dialect and connection pool; no schema, policy, RLS, index, RPC or migration is changed.
+The Gateway applies LOC Auth/Scope validation, Session/RLS binding and its existing ACL before private native Scope reads. Fixed control and presentation models, including `LocBlocks`, `Lo3rwangBlocks`, and `LrunesBlocks`, use the existing PolicyPlugin-wrapped client. Dynamic Scope IDs still use the verified scoped projection. Both paths share the same trusted database dialect and connection pool; no SQL DDL, RLS, index, RPC or migration is changed.
 
 The `LocFederatedRef` and `LocAnchorLink` ZModel types remain virtual identifiers and relationships, not physical foreign keys or synchronized data.
 
