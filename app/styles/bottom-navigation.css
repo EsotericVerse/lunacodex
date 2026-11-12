@@ -153,7 +153,10 @@ body{padding-bottom:var(--loc-dock-clearance);}
 
 /* Focus on touch devices (including Safari inputs) is not always
    :focus-visible. Keep either focus mode clear of the fixed action bar. */
-:where(a,button,input,select,textarea,[tabindex]):focus{
+/* ProseMirror/BlockNote focuses a contenteditable surface, not a native
+   input. Give that focus target the same clearance as other form controls. */
+:where(a,button,input,select,textarea,[tabindex],
+  .scope-blocknote.is-editable [contenteditable="true"]):focus{
   scroll-margin-bottom:var(--loc-dock-clearance);
 }
 
