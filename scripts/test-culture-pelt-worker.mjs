@@ -46,3 +46,26 @@ test('Worker hook keeps suggestions bounded to their active period',()=>{
   assert.match(hook,/enabled&&settled\?\.rows===rows&&settled\?\.anchorDates===anchorDates/);
   assert.match(hook,/worker\.onerror=/);
 });
+
+test('indexed anchor coverage excludes existing dates while preserving gap-edge suggestions',()=>{
+  const source=read('app/modular/modules/culture-timeline/river-density-analysis.mjs')
+    .replace(/^import .*$/gm,'').replace(/^export /gm,'');
+  const context={detectCountChangepoints:()=>[30,60,90]};
+  vm.runInNewContext(source+';globalThis.analyzeRiverDensity=analyzeRiverDensity;',context);
+  const day=index=>new Date(Date.UTC(2026,0,1+index)).toISOString().slice(0,10);
+  const rows=Array.from({length:120},(_,index)=>({
+    date:day(index),count:index<30?3:index<60?0:index<90?5:1
+  })).filter(row=>row.count>0);
+  const anchors=[day(60),day(29),'2025-01-01'];
+  const copy=[...anchors];
+  const baseline=context.analyzeRiverDensity(rows,[]);
+  const covered=context.analyzeRiverDensity(rows,anchors);
+  assert.deepEqual(anchors,copy,'input anchor dates must remain untouched');
+  assert.deepEqual(JSON.parse(JSON.stringify(baseline.suggestions.map(x=>x.date))),
+    [day(29),day(60),day(90)]);
+  assert.deepEqual(JSON.parse(JSON.stringify(covered.suggestions.map(x=>x.date))),
+    [day(90)]);
+  assert.equal(covered.totalCount,270);
+  assert.deepEqual(JSON.parse(JSON.stringify(covered.hiddenDates)),
+    [{start:day(30),end:day(60)}]);
+});
