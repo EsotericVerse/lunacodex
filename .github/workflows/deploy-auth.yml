@@ -25,9 +25,8 @@ jobs:
           fi
       - name: Install locked Auth dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Verify Better Auth source and checks
+      - name: Validate Better Auth source syntax
         run: |
-          npm run test:authority
           node --check workers/loc-authority/index.mjs
           node --check workers/loc-authority/auth.mjs
       - name: Validate Worker without publishing

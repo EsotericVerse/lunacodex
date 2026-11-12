@@ -161,7 +161,7 @@ export default function KeywordNetworkEditor({
     let observer=null;
     setError('');
     if(!containerRef.current)return undefined;
-    import('vis-network/standalone').then(({Network})=>{
+    import('vis-network/esnext').then(({Network})=>{
       if(cancelled||!containerRef.current)return;
       const compact=containerRef.current.clientWidth<680;
       network=new Network(containerRef.current,themeData(graphRef.current),{

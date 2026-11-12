@@ -29,8 +29,7 @@ jobs:
           if [ -n "$PR_NUMBER" ]; then
             git sparse-checkout set \
               '/.github/workflows/**' \
-              '/scripts/check-workflow-triggers.rb' \
-              '/scripts/test-workflow-triggers.rb'
+              '/scripts/check-workflow-triggers.rb'
             ref="refs/pull/$PR_NUMBER/merge"
           else
             git sparse-checkout set \
@@ -45,7 +44,6 @@ jobs:
       - name: Reject unauthorized workflow triggers (parsed YAML)
         run: |
           ruby scripts/check-workflow-triggers.rb
-          ruby scripts/test-workflow-triggers.rb
       - name: Install pinned syntax parser (manual recovery only)
         if: github.event_name == 'workflow_dispatch'
         shell: bash

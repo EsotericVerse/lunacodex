@@ -104,7 +104,7 @@ function ResonanceNetwork({players=[],active=0,focusPlayer=null,cooperations=[],
         label:'干擾',arrows:'to',dashes:true,width:3,color:{color:gold,highlight:gold},smooth:{type:'curvedCCW',roundness:.14}
       });
     }
-    import('vis-network/standalone').then(({Network})=>{
+    import('vis-network/esnext').then(({Network})=>{
       if(cancelled||!containerRef.current)return;
       network=new Network(containerRef.current,{nodes,edges},{
         autoResize:true,
@@ -157,7 +157,8 @@ function ReplayTimeline({logs=[],selectedLogIndex=null,onSelect=null}){
     setError('');
     const chronological=logs.map((line,logIndex)=>({line,logIndex})).reverse();
     const base=Date.UTC(2000,0,1,0,0,0);
-    import('vis-timeline/standalone').then(({DataSet,Timeline})=>{
+    Promise.all([import('vis-timeline/esnext'),import('vis-data/esnext')])
+      .then(([{Timeline},{DataSet}])=>{
       if(cancelled||!containerRef.current)return;
       const rows=chronological.map((entry,index)=>({
         id:String(entry.logIndex),

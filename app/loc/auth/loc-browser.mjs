@@ -26,10 +26,16 @@ export function createLocAccountAdapter({
   }
   const listeners=new Set();
 
-  // In-memory session cache: one network round-trip per 60 seconds max.
-  // Data updates at most monthly; auth re-verification on every action is wasteful.
-  // signOut / signIn always clear the cache so the next call gets a fresh result.
-  const SESSION_CACHE_TTL_MS=60*1000;
+  // A verified Session is reusable until its authoritative expiresAt.
+  // Checking its expiry is local: no 60-second timed or TTL-driven re-query.
+  // Missing/expired Session data never grants authentication.
+  const SIGNED_OUT_CACHE_MS=60*1000;
+  const sessionExpiresAt=value=>{
+    const raw=value?.session?.expiresAt;
+    const ms=raw instanceof Date?raw.getTime():
+      typeof raw==='number'?raw:Date.parse(String(raw||''));
+    return Number.isFinite(ms)?ms:0;
+  };
   let sessionCache=null; // {value, expiresAt}
   let pendingSession=null; // in-flight promise dedup
 
@@ -44,6 +50,7 @@ export function createLocAccountAdapter({
     if(!data?.session||!data?.user||data.user.emailVerified!==true)
       return null;
     const user=data.user;
+    if(sessionExpiresAt({session:data.session})<=Date.now())return null;
     return {user,session:{...data.session,user},oauth:{
       provider:'loc',providerId:user.id,userId:user.id,
       email:user.email
@@ -58,7 +65,8 @@ export function createLocAccountAdapter({
     }
     const p=fetchSession().then(value=>{
       if(!bypass){
-        sessionCache={value,expiresAt:Date.now()+SESSION_CACHE_TTL_MS};
+        sessionCache={value,expiresAt:value
+          ?sessionExpiresAt(value):Date.now()+SIGNED_OUT_CACHE_MS};
         pendingSession=null;
       }
       return value;
@@ -70,14 +78,6 @@ export function createLocAccountAdapter({
     return p;
   }
 
-  async function emit(){
-    const value=await session({bypass:true}).catch(()=>null);
-    clearSessionCache();
-    sessionCache={value,expiresAt:Date.now()+SESSION_CACHE_TTL_MS};
-    for(const listener of [...listeners]){
-      listener(value?'SIGNED_IN':'SIGNED_OUT',value?.session||null);
-    }
-  }
   const auth={
     getVerifiedSession:()=>session(),
     async getSession(){
@@ -105,7 +105,9 @@ export function createLocAccountAdapter({
       try{
         clearSessionCache();
         const result=await (await client()).signOut();
-        await emit();
+        if(result?.error)return result;
+        sessionCache={value:null,expiresAt:Date.now()+SIGNED_OUT_CACHE_MS};
+        for(const listener of [...listeners])listener('SIGNED_OUT',null);
         return result;
       }catch(error){clearSessionCache();return {error};}
     },

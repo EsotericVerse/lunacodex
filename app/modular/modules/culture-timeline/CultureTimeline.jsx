@@ -6,7 +6,8 @@ import cultureTimelineZh from '../../../i18n/sections/uiExtra.cultureTimeline.zh
 registerDefaultSection('uiExtra.cultureTimeline',cultureTimelineZh);
 
 import {useEffect,useMemo,useRef,useState} from 'react';
-import {DataSet,Timeline} from 'vis-timeline/standalone';
+import {DataSet} from 'vis-data/esnext';
+import {Timeline} from 'vis-timeline/esnext';
 import {AnimatePresence,motion,useReducedMotion} from 'motion/react';
 import {CultureTimelineModel} from './culture-timeline-model';
 import useDefaultTimeUnit from '../../../loc/use-default-time-unit';

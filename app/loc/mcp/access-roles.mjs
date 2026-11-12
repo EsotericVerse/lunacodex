@@ -88,7 +88,10 @@ export async function authorizeMcpBearer(token,subject,env={},{
   }catch{
     throw denial('LOC OAuth UserInfo unavailable',503);
   }
-  if(!response?.ok)throw denial('LOC OAuth identity verification failed',401);
+  if(response?.status===429)throw denial('LOC OAuth UserInfo rate limited',429);
+  if(response?.status===401||response?.status===403)
+    throw denial('LOC OAuth identity verification failed',401);
+  if(!response?.ok)throw denial('LOC OAuth UserInfo unavailable',503);
   const parsed=VerifiedLocUserInfoSchema.safeParse(await response.json().catch(()=>null));
   if(!parsed.success||parsed.data.sub!==subject)
     throw denial('Verified LOC OAuth identity required',401);
