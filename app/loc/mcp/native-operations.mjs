@@ -171,7 +171,7 @@ export async function handleNativeLocOperation(request,env={},{
     // Gateway gate. Website editor grants retain their existing separate policy.
     // Each request performs one active api.manage lookup, never a second probe.
     const permission=host===MCP_HOST
-      ?await locMcpPermissionsForEmail(selected.db,claims.email)
+      ?await locMcpPermissionsForEmail(selected.db,claims.email,{dialect:selected.dialect})
       :await locPermissionsForEmail(selected.db,claims.email);
     claims.me=permission.canWrite;
     claims.grants=permission.grants;
