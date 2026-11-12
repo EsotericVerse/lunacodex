@@ -4,10 +4,12 @@ import {validateLocRegistryDomain} from './loc-domain.mjs';
 import {portableContainsSpec,parsePortableOrExpression} from './portable-search.mjs';
 import {verifyModeledSqlFields,normalizeModeledTypeDifferences,
   normalizeModeledSelectRows} from '../../../zenstack/model-column-guard.mjs';
+import {assertKyselyQueryShape,QUERY_FILTER_SQL}
+  from '../../../zenstack/sql-input-shape.mjs';
 
 const identifier=/^[a-z][a-z0-9_]*$/i;
 const schemas=new Set(['silver','api']);
-const operators={eq:'=',neq:'!=',gt:'>',gte:'>=',lt:'<',lte:'<=',like:'like',ilike:'ilike',contains:'contains',is:'is',in:'in'};
+const operators=QUERY_FILTER_SQL;
 function checkedFilterColumn(value){
   return checkedIdentifier(value,'filter column');
 }
@@ -18,43 +20,37 @@ function checkedIdentifier(value,label){
 }
 
 function validateQuery(input){
-  if(!input||input.kind!=='query')throw new Error('Invalid request kind');
-  const schema=checkedIdentifier(input.schema,'schema');
-  const table=checkedIdentifier(input.table,'table');
+  // One Zod syntax contract is shared with the managed-write boundary.
+  // ZModel then validates actual physical columns; neither grants access.
+  assertKyselyQueryShape(input);
+  const {schema,table}=input;
   if(!schemas.has(schema))throw new Error('Schema is not enabled');
-  if(!['select','insert','update','delete','upsert'].includes(input.operation))throw new Error('Unsupported operation');
-  if(input.filters!==undefined&&!Array.isArray(input.filters))throw new Error('Invalid filters');
   const filters=input.filters||[];
-  for(const filter of filters){
-    if(!filter||typeof filter!=='object'||Array.isArray(filter))throw new Error('Invalid filter');
-    checkedFilterColumn(filter.column);
-    if(!operators[filter.operator]||(filter.operator==='in'&&!Array.isArray(filter.value)))throw new Error('Invalid filter');
-  }
-  if(['update','delete'].includes(input.operation)&&!filters.length)throw new Error('Unfiltered writes are forbidden');
-  if(['insert','upsert'].includes(input.operation)&&filters.length)throw new Error('Filters are not supported for insert or upsert');
-  if(input.columns!==undefined&&!Array.isArray(input.columns))throw new Error('Invalid selected columns');
+  if(filters.some(filter=>filter.operator==='in'&&!Array.isArray(filter.value)))
+    throw new Error('Invalid filter');
+  if(['update','delete'].includes(input.operation)&&!filters.length)
+    throw new Error('Unfiltered writes are forbidden');
+  if(['insert','upsert'].includes(input.operation)&&filters.length)
+    throw new Error('Filters are not supported for insert or upsert');
   const columns=input.columns?.length?input.columns:['*'];
-  if(columns.some(col=>typeof col!=='string'||(col!=='*'&&!identifier.test(col))))throw new Error('Invalid selected column');
-  if(input.orders!==undefined&&!Array.isArray(input.orders))throw new Error('Invalid order');
   const orders=input.orders||[];
-  if(orders.some(order=>!order||typeof order.column!=='string'||!identifier.test(order.column)))throw new Error('Invalid order column');
   if(['insert','update','upsert'].includes(input.operation)){
     const rows=Array.isArray(input.values)?input.values:[input.values];
-    if(!input.values||typeof input.values!=='object'||!rows.length||rows.some(row=>!row||typeof row!=='object'||Array.isArray(row)))throw new Error('Write values are required');
-    if(input.operation==='update'&&Array.isArray(input.values))throw new Error('Update values must be an object');
+    if(!input.values||typeof input.values!=='object'||!rows.length||
+       rows.some(row=>!row||typeof row!=='object'||Array.isArray(row)))
+      throw new Error('Write values are required');
+    if(input.operation==='update'&&Array.isArray(input.values))
+      throw new Error('Update values must be an object');
   }
-  if(input.operation==='upsert'&&(!Array.isArray(input.onConflict)||!input.onConflict.length||input.onConflict.some(col=>typeof col!=='string'||!identifier.test(col))))throw new Error('Upsert conflict columns are required');
+  if(input.operation==='upsert'&&(!Array.isArray(input.onConflict)||!input.onConflict.length||
+    input.onConflict.some(col=>typeof col!=='string'||!identifier.test(col))))
+    throw new Error('Upsert conflict columns are required');
   const limit=input.limit==null?null:Number(input.limit);
   const offset=input.offset==null?0:Number(input.offset);
   if(limit!==null&&(!Number.isSafeInteger(limit)||limit<0)||
-    !Number.isSafeInteger(offset)||offset<0)throw new Error('Invalid SQL page bounds');
-  if(input.or!==undefined&&!Array.isArray(input.or))throw new Error('Invalid OR filter');
-  if(['insert','upsert'].includes(input.operation)&&(input.or||[]).length)throw new Error('OR filters are not supported for insert or upsert');
-  const orFilters=(input.or||[]).map(expr=>{if(typeof expr!=='string')throw new Error('Invalid OR filter');return parsePortableOrExpression(expr)});
-  if(orFilters.length>10)throw new Error('Too many OR filters');
-  if(input.single!==undefined&&!['single','maybeSingle'].includes(input.single))throw new Error('Invalid row cardinality');
-  // ZModel is the shared model contract for the native ORM and Kysely
-  // fallback. Keep existing request/SQL syntax guards for unmodeled tables.
+    !Number.isSafeInteger(offset)||offset<0)
+    throw new Error('Invalid SQL page bounds');
+  const orFilters=(input.or||[]).map(parsePortableOrExpression);
   verifyModeledSqlFields({schema,table,columns,filters,orFilters,orders,
     values:input.values,onConflict:input.onConflict||[]});
   const typed=normalizeModeledTypeDifferences({schema,table,filters,orFilters});
