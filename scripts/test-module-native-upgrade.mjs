@@ -130,22 +130,38 @@ test('native Recharts responsive replaces redundant wrappers in Rune views',()=>
   }
 });
 
-test('Vis Network and Timeline reuse existing ESNext vis-data rather than standalone bundles',()=>{
- const entry='vis-data';
- assert.equal(manifest.dependencies?.[entry],lock.packages?.['node_modules/'+entry]?.version);
- assert.equal(root.dependencies?.[entry],manifest.dependencies?.[entry]);
+test('Vis Network and Timeline reuse already-installed ESNext vis-data',()=>{
+ assert.equal(manifest.dependencies['vis-data'],lock.packages['node_modules/vis-data'].version);
+ assert.equal(root.dependencies['vis-data'],manifest.dependencies['vis-data']);
  const keyword=readFileSync(new URL('../app/loc/KeywordNetworkEditor.jsx',import.meta.url),'utf8');
  const game=readFileSync(new URL('../app/lrunes/game/GameView.jsx',import.meta.url),'utf8');
  const timeline=readFileSync(new URL('../app/modular/modules/culture-timeline/CultureTimeline.jsx',import.meta.url),'utf8');
- assert.match(keyword,/import\\('vis-network\\/esnext'\\)/);
- assert.match(game,/import\\('vis-network\\/esnext'\\)/);
- assert.match(game,/import\\('vis-timeline\\/esnext'\\)/);
- assert.match(game,/import\\('vis-data\\/esnext'\\)/);
- assert.match(timeline,/from 'vis-data\\/esnext'/);
- assert.match(timeline,/from 'vis-timeline\\/esnext'/);
- for(const source of [keyword,game,timeline])
-  assert.doesNotMatch(source,/vis-(?:network|timeline)\\/standalone/);
- const globalCss=readFileSync(new URL('../app/globals.css',import.meta.url),'utf8');
- assert.match(globalCss,/vis-network\\/styles/);
- assert.match(globalCss,/vis-timeline\\/styles/);
+ assert.ok(keyword.includes("import('vis-network/esnext')"));
+ assert.ok(game.includes("import('vis-network/esnext')"));
+ assert.ok(game.includes("import('vis-timeline/esnext')"));
+ assert.ok(game.includes("import('vis-data/esnext')"));
+ assert.ok(timeline.includes("from 'vis-data/esnext'"));
+ assert.ok(timeline.includes("from 'vis-timeline/esnext'"));
+ for(const source of [keyword,game,timeline]){
+  assert.equal(source.includes('vis-network/standalone'),false);
+  assert.equal(source.includes('vis-timeline/standalone'),false);
+ }
+ const css=readFileSync(new URL('../app/globals.css',import.meta.url),'utf8');
+ assert.ok(css.includes('vis-network/styles/'));
+ assert.ok(css.includes('vis-timeline/styles/'));
+});
+
+test('retired Supabase and Neon platform Data APIs are absent from LOC UI and probes',()=>{
+ const ui=readFileSync(new URL('../app/loc/LocDatabaseAdmin.jsx',import.meta.url),'utf8');
+ const target=readFileSync(new URL('../app/loc/providers/live-database-target.mjs',import.meta.url),'utf8');
+ const workflow=readFileSync(new URL('../.github/workflows/loc-live-curl-smoke.yml',import.meta.url),'utf8');
+ for(const value of ['Supabase API','Neon API','provider_oauth','form.project_id']){
+  assert.equal(ui.includes(value),false,value+' retained in database UI');
+ }
+ for(const value of ['provider_oauth','project_id','db_type']){
+  assert.equal(target.includes(value),false,value+' retained in SQL driver profile');
+ }
+ assert.equal(workflow.includes('/rest/v1'),false,'retired Supabase REST probe must not return');
+ assert.ok(ui.includes("db_type:'direct'"),'existing SQL targets remain direct');
+ assert.ok(target.includes("engine,url:url.href,tls:true,authentication"));
 });
