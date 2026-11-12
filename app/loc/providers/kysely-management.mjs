@@ -1,6 +1,7 @@
 import {canManageLoc,locManageRows} from './loc-authorization.mjs';
 import {modelFieldsForSql,modelNameForSql,modeledPrimaryKeyColumns,
-  modeledBooleanColumns,zmodelRegistryJoin} from '../../../zenstack/model-column-guard.mjs';
+  modeledBooleanColumns,zmodelRegistryJoin,verifyModeledSqlFields}
+  from '../../../zenstack/model-column-guard.mjs';
 import {managedRowsIssue,managedUpdateValuesValid,managedFiltersValid,
   MANAGED_FILTER_SQL} from '../../../zenstack/sql-input-shape.mjs';
 import {validateLocRegistryDomain} from './loc-domain.mjs';
@@ -186,6 +187,16 @@ export async function executeManagedKyselyWrite(trx,body,{modelName=''}={}){
       Object.assign(values,validateLocRegistryDomain(values));
   }
   await authorizeRelation(trx,table,operation,values,filters,rows);
+  // Authorized writes now share the exact ZModel column guard already used
+  // by query SELECT/UPDATE. Unmodeled, explicitly authorized custom Scope
+  // relations retain their existing Kysely handling.
+  const modelValues=['insert','upsert'].includes(operation)?rows:
+    operation==='update'?values:
+    operation==='update_batch'?payload.p_rows:null;
+  verifyModeledSqlFields({
+    schema:table==='manage'?'api':'silver',table,
+    values:modelValues,filters
+  });
   // The signed identity is checked against api.manage above. Only then
   // does the existing trusted Kysely connection execute the mutation.
   // This does not introduce a database Auth API or a separate SQL Gateway.

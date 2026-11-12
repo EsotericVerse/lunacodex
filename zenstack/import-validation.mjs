@@ -1,4 +1,4 @@
-// Import-only runtime validation derived from LOC's existing ZenStack SchemaDef.
+// Cached write-time validation derived from LOC's existing ZenStack SchemaDef.
 // No separate hand-maintained Galaxy field schema; no SQL, DDL, auth, driver,
 // database introspection, or validation work on ordinary page reads.
 import {createSchemaFactory} from '@zenstackhq/zod';
@@ -44,25 +44,29 @@ function importModelSchema(modelName){
       overrides[column.name]=field.nullable().optional();
     }
   }
-  const result=Object.keys(overrides).length?base.safeExtend(overrides):base;
+  // Preserve every ZModel-derived field schema, but reject foreign columns
+  // instead of relying on Zod's default unknown-key stripping on writes.
+  const result=z.strictObject({...base.shape,...overrides});
   validators.set(modelName,result);
   return result;
 }
 
-// Other existing models can reuse the same factory if import paths are added.
-// The current writer invokes this only for normalized Galaxy INSERT batches.
-export function importSchemaForSqlTable(table){
+// Galaxy import and Block editing reuse the same model-derived schema, without
+// a second field map, database introspection, or SQL request.
+export function modelWriteSchemaForSqlTable(table){
   const [namespace,tableName,extra]=String(table||'').split('.');
   if(!namespace||!tableName||extra)throw new TypeError('Invalid LOC import table');
   const model=modelNameForSql(namespace,tableName);
   if(!model)throw new TypeError('No LOC import ZModel for '+table);
   return importModelSchema(model);
 }
+// Keep the established Galaxy import API; this is the same cached Zod model.
+export {modelWriteSchemaForSqlTable as importSchemaForSqlTable};
 
 export function assertZModelImportRows(table,rows=[],{onProgress}={}){
   if(!scopedGalaxy.test(String(table||'')))throw new TypeError('Invalid LOC Galaxy import table');
   if(!Array.isArray(rows))throw new TypeError('LOC import batch must be an array');
-  const validator=importSchemaForSqlTable(table);
+  const validator=modelWriteSchemaForSqlTable(table);
   for(let index=0;index<rows.length;index++){
     const parsed=validator.safeParse(rows[index]);
     if(parsed.success){
