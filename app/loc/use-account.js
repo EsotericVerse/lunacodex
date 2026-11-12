@@ -9,6 +9,7 @@ import {readAuthorization,setAuthorization,clearAuthorization,createScopeAuthori
 import {defaultScopeData,scopeDataFromManageRows} from './scope-data';
 import {useAsyncResource} from './use-async-resource';
 import {shouldInvalidateManagementForAuthEvent} from './auth/account-event-guard.mjs';
+import {enableWebPermissionSession,readWebPermissionSession,clearWebPermissionSession} from './permissions/web-session.mjs';
 
 const normalizeAuthEmail=value=>String(value||'').trim().toLowerCase();
 const normalizeScopeId=value=>String(value||'').trim().toLowerCase();
@@ -52,7 +53,7 @@ let scopeMetadata=[];
 // navigation within the same verified identity. Explicit refresh stays live.
 let pendingManagementVerification=null;
 
-async function fetchManagementAccount(queryClient){
+async function fetchManagementAccount(queryClient,{force=false}={}){
   const startedAt=authRevision;
   const obsolete=()=>startedAt!==authRevision;
   let verifiedIdentity=null;
@@ -73,7 +74,12 @@ async function fetchManagementAccount(queryClient){
     // LOC Auth owns signed Scope grants independently of the SQL connection.
     // One self-delegation request is performed only on explicit edit entry.
     verifiedIdentity={user,email:normalizeAuthEmail(session.oauth?.email||user.email),oauth:session.oauth};
-    const permissions=await readLocEditorGrants(session,{
+    // The Web permission Session is separate from LOC Auth's login Session.
+    // Reuse it for navigation only; a fresh edit entry (force) checks the
+    // server again and every write retains its server-side ACL check.
+    const webStorage=typeof window==='undefined'?null:window.sessionStorage;
+    const cached=!force?readWebPermissionSession(webStorage,user):null;
+    const permissions=cached||await readLocEditorGrants(session,{
       authorityOrigin:process.env.NEXT_PUBLIC_LOC_CONTROL_URL||'https://auth.lo3rwang.cc',
       scopeKinds:Object.fromEntries(SCOPE_ROUTE_INDEX.map(row=>[row.scope_id,row.scope_kind]))
     });
@@ -84,6 +90,7 @@ async function fetchManagementAccount(queryClient){
     authUserId=String(user.id);
     authEmail=normalizeAuthEmail(user.email);
     const authorizer=createScopeAuthorizer(user);
+    if(authorizer&&!cached)enableWebPermissionSession(webStorage,user,permissions);
     return authorizer?{...signedOutState,...verifiedIdentity,
       role:authorizer.role,authorizer,scopes:metadata}:signedOutState;
   }catch(error){
@@ -95,6 +102,7 @@ async function fetchManagementAccount(queryClient){
     scopeMetadata=[];
     authUserId='';
     authEmail='';
+    if(typeof window!=='undefined')clearWebPermissionSession(window.sessionStorage);
     return verifiedIdentity
       ?{...signedOutState,...verifiedIdentity,error:String(error?.message||error)}
       :failedState(error);
@@ -114,7 +122,7 @@ function loadManagementAccount(queryClient,{force=false}={}){
     });
   }
   if(pendingManagementVerification)return pendingManagementVerification;
-  const current=fetchManagementAccount(queryClient);
+  const current=fetchManagementAccount(queryClient,{force});
   pendingManagementVerification=current;
   void current.then(
     ()=>{if(pendingManagementVerification===current)pendingManagementVerification=null;},
@@ -128,6 +136,8 @@ function loadManagementAccount(queryClient,{force=false}={}){
 export function readVerifiedManagementEntry(){
   const grant=readAuthorization();
   if(!grant||!authUserId||grant.userId!==authUserId||grant.email!==authEmail)return null;
+  if(typeof window!=='undefined'&&!readWebPermissionSession(
+    window.sessionStorage,{id:authUserId,email:authEmail}))return null;
   const user={id:grant.userId,email:grant.email};
   const authorizer=createScopeAuthorizer(user);
   return authorizer?{user,authorizer}:null;
@@ -190,6 +200,7 @@ export function useAccount({enabled=true,sessionOnly=false}={}){
     clearAuthorization();
     scopeMetadata=[];
     pendingManagementVerification=null;
+    if(typeof window!=='undefined')clearWebPermissionSession(window.sessionStorage);
     await queryClient.cancelQueries({queryKey:['loc-account']});
     queryClient.setQueryData(SESSION_KEY,signedOutState);
     queryClient.setQueryData(VERIFIED_SESSION_KEY,signedOutState);
@@ -245,7 +256,8 @@ export function usePassiveSessionAccount(){
         pendingManagementVerification=null;
         clearAuthorization();
         scopeMetadata=[];
-              }
+        if(typeof window!=='undefined')clearWebPermissionSession(window.sessionStorage);
+      }
       authUserId=nextUserId;
       authEmail=nextEmail;
       // Passive navigation needs only a session ID hint, never an OAuth email.
