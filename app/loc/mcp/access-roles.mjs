@@ -1,7 +1,9 @@
 // LOC MCP access reuses LOC Auth identity and the existing api.manage roles.
 // This is a resource-usage gate, NOT an MCP application or a second role registry.
 import {directMcpKysely} from './native-kysely.mjs';
-
+import {fixedPolicyReader} from '../../../zenstack/policy-runtime.mjs';
+import {ZenStackClient} from '@zenstackhq/orm';
+import {PolicyPlugin} from '@zenstackhq/plugin-policy';
 import {z} from 'zod';
 import {resolveManagePermissions} from '../permissions/roles.mjs';
 
@@ -32,9 +34,9 @@ async function activeMcpRows(db,email){
 }
 
 // Return the shared typed permissions, not another hand-written Grant builder.
-export async function locMcpPermissionsForEmail(db,email){
+export async function locMcpPermissionsForEmail(db,email,{dialect}={}){
   const {permissions}=await authorizeMcpRole(email,{},{
-    database:async()=>({db})
+    database:async()=>({db,dialect})
   });
   return permissions;
 }
@@ -49,8 +51,18 @@ export async function authorizeMcpRole(email,env={},{
     throw denial('Verified LOC identity required',401);
   let rows;
   try{
-    const {db}=await database(env);
-    rows=await activeMcpRows(db,verified);
+    const {db,dialect}=await database(env);
+    if(dialect){
+      // The existing ZModel Manage @@allow('read',true) policy runs through
+      // ZenStack on the same Kysely dialect/pool: no second DB connection.
+      const model=fixedPolicyReader(db,{dialect,ZenStackClient,PolicyPlugin});
+      rows=await model.manage.findMany({
+        where:{email:verified,active:true},
+        select:{id:true,email:true,manage_role:true,active:true}
+      });
+    }else{
+      rows=await activeMcpRows(db,verified);
+    }
   }catch{
     throw denial('LOC MCP role service unavailable',503);
   }
