@@ -5,11 +5,12 @@ import {selectRows} from '../loc/db-query.mjs';
 import {runeImage} from './rune-directory.mjs';
 import RuneCardInfo from './RuneCardInfo';
 import RuneCardEntryBubbles from './RuneCardEntryBubbles';
+import {lRunes66ColumnString} from '../../zenstack/lrunes-read-model.mjs';
 
 export default function RuneIntroSection(){
   const sample=useAsyncResource(['lunarunes-intro-rune',66],async()=>{
       const {rows}=await selectRows('silver.runes',{
-        columns:'rune_id,rune_name,english_name,totem,group_name,moon_phase,card_attr,rune_description,archetype,positive_keywords,negative_keywords',
+        columns:lRunes66ColumnString('rune_id','rune_name','english_name','totem','group_name','moon_phase','card_attr','rune_description','archetype','positive_keywords','negative_keywords'),
         filters:[{column:'rune_id',operator:'eq',value:66}],
         limit:1,offset:0
       });

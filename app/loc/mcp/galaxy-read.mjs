@@ -4,6 +4,7 @@ import {portableContainsSpec} from '../providers/portable-search.mjs';
 import {portableRelation} from '../providers/sql-engine-ports.mjs';
 import {scopedZModelSchema} from '../../../zenstack/scoped-schema.mjs';
 import {directMcpKysely} from './native-kysely.mjs';
+import {galaxyReadColumns} from '../../../zenstack/galaxy-read-models.mjs';
 
 // This is a specific read model executed by the trusted MCP application, NOT
 // a generic SQL transport. No HTTP SQL endpoint, provider SDK or DB credential
@@ -57,14 +58,17 @@ export async function searchMemory(args={},env={}){
   const spec=portableContainsSpec(term);
   const columnLike=column=>sql`${spec.fold?sql`lower(${sql.ref(column)})`:sql.ref(column)} like ${spec.pattern} escape '!'`;
   const rows=await db.selectFrom(table)
-    .select(['uid','title','date','createtime'])
+    .select(galaxyReadColumns('GalaxyList'))
     .where('search','=',true).where(publicSite)
     .where(eb=>eb.or([columnLike('title'),columnLike('content')]))
     .orderBy('date','desc').orderBy('createtime','desc')
     .limit(limit).offset(offset).execute();
   return {scopeid,visibility:'public',query:term,limit,offset,
     results:rows.map(row=>({uid:String(row.uid||'').trim(),title:row.title||'',
-      date:row.date||null,createtime:row.createtime||null})),
+      date:row.date||null,createtime:row.createtime||null,site:row.site||null,
+      statics:row.statics??null,culture:row.culture??null,search:row.search??null,
+      trace:row.trace??null,list:row.list??null,keyword:row.keyword??null,
+      extract:row.extract??null,others:row.others??null})),
     has_more:rows.length===limit};
 }
 export async function readMemory(args={},env={}){
@@ -78,13 +82,16 @@ export async function readMemory(args={},env={}){
     throw bad('max_chars must be 1–40000');
   const {db,table}=await scopedDatabase(scopeid,env);
   const rows=await db.selectFrom(table)
-    .select(['uid','title','content','date','createtime','site','url'])
+    .select(galaxyReadColumns('GalaxyUidRead'))
     .where('uid','=',uid).where('list','=',true).where(publicSite)
     .limit(1).execute();
   if(!rows.length)return {found:false,scopeid,uid,visibility:'public'};
   const row=rows[0],content=String(row.content||'');
   return {found:true,scopeid,visibility:'public',uid:String(row.uid||'').trim(),
     title:row.title||'',date:row.date||null,createtime:row.createtime||null,
-    site:row.site||null,url:row.url||null,content:content.slice(offset,offset+maxChars),
+    site:row.site||null,url:row.url||null,source_id:row.source_id||null,
+    target_id:row.target_id||null,ref_id:row.ref_id||null,
+    media_link:row.media_link||null,place_id:row.place_id||null,
+    location:row.location||null,content:content.slice(offset,offset+maxChars),
     offset,total_chars:content.length,next_offset:offset+maxChars<content.length?offset+maxChars:null};
 }

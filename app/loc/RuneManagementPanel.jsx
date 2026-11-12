@@ -5,6 +5,7 @@ import {selectRows} from './db-query.mjs';
 import {realMoonPhase} from './model/moon-phase';
 import {listRecords,listRuneDrawSlots,putDailyRuneRecord,putRecord,putRuneDrawSlot} from './user-storage';
 import {useAccount} from './use-account';
+import {lRunes66ColumnString} from '../../zenstack/lrunes-read-model.mjs';
 
 const RUNE_DIRECTIONS=Object.freeze(['正位','半正位','半逆位','逆位']);
 
@@ -34,7 +35,7 @@ function makeRuneDrawId(mode='single'){
   return `rune-draw:${mode}:${Date.now()}:${suffix}`;
 }
 
-const RUNE_COLUMNS='rune_id,rune_name,english_name,group_name,moon_phase,card_attr,rune_description,positive_keywords,negative_keywords,extra_rules,extra_notes';
+const RUNE_COLUMNS=lRunes66ColumnString('rune_id','rune_name','english_name','group_name','moon_phase','card_attr','rune_description','positive_keywords','negative_keywords','extra_rules','extra_notes');
 const CARD_ATTR_LABELS=Object.freeze({1:'正面',2:'中平',3:'負面',4:'未知'});
 function cardAttrLabel(value){return CARD_ATTR_LABELS[Number(value)]||'';}
 function directionNo(direction){return RUNE_DIRECTIONS.indexOf(direction)+1;}
@@ -163,7 +164,7 @@ export default function RuneManagementPanel(){
   useEffect(()=>{
     let live=true;
     if(!account.user||!canManage){setLoading(false);return()=>{live=false};}
-    Promise.all([selectRows('silver.runes',{columns:'rune_id,rune_name,card_attr,positive_keywords,negative_keywords',orders:[{column:'rune_id',ascending:true}],limit:67,offset:0}),reloadRecords()])
+    Promise.all([selectRows('silver.runes',{columns:lRunes66ColumnString('rune_id','rune_name','card_attr','positive_keywords','negative_keywords'),orders:[{column:'rune_id',ascending:true}],limit:67,offset:0}),reloadRecords()])
       .then(([result])=>{if(live)setRunes((result.rows||[]).filter(row=>Number(row?.rune_id)>=1&&Number(row?.rune_id)<=66));})
       .catch(error=>{if(live)setStatus(String(error?.message||error));})
       .finally(()=>{if(live)setLoading(false);});

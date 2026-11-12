@@ -22,6 +22,7 @@ import {normalizeRelationIds,requireGalaxyContent,resolveGalaxyTitle} from './co
 import {ObjectEditor} from './BlockNoteEditor';
 import {blocksToPlainText,plainTextToBlocks} from './blocknote-content.mjs';
 import {GALAXY_ABLE_KEYS,galaxyAble,privateGalaxySource} from './galaxy-able.mjs';
+import {galaxyReadColumnsFor} from '../../zenstack/galaxy-read-models.mjs';
 
 const GALAXY_PERMISSION_LABELS=Object.freeze({
   statics:'統計',culture:'文化',search:'搜尋',trace:'痕跡',list:'文章列表',
@@ -109,7 +110,8 @@ export default function ManagementArticlePublisher({scopeId}){
       const {rows}=await selectRows(galaxy,{
         columns:scopeId==='local'
           ?'uid,title,content,site,site_id,createtime,able,url,source_id,target_id,ref_id'
-          :'uid,title,content,site,site_id,createtime,statics,culture,search,trace,list,keyword,others,extract,url,source_id,target_id,ref_id',
+          :galaxyReadColumnsFor('GalaxyUidRead','GalaxyAttr').concat('site_id')
+            .filter((column,index,all)=>all.indexOf(column)===index).join(','),
         filters:[{column:'uid',operator:'eq',value:uid}],limit:1,authenticated:true
       });
       if(!rows?.length)throw new Error(t('uiExtra.publisher.uidNotFound'));

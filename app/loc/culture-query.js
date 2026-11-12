@@ -11,6 +11,7 @@ import {publicContentFilters} from './content-policy';
 import {selectScopeGroupMemberIds,defaultScopeData} from './scope-data';
 import {PUBLISHED_SITE_BOOTSTRAP} from '../modular/published-site-bootstrap.js';
 import {resolveTimeSegments,resolveTimeTrace,timePeriodSortDate,timeDateWindows,timePeriodContainsDate,intersectTimeDateWindows,storedTimeRange} from './time-anchor-ranges.mjs';
+import {galaxyReadColumns} from '../../zenstack/galaxy-read-models.mjs';
 
 
 
@@ -583,7 +584,9 @@ export async function selectCultureArticleListPage(scope,{
   ];
   const pageOffset=Math.max(0,Math.floor(Number(offset)||0));
   const {rows=[],count}=await selectRows(scope.galaxy,{
-    columns:scopeId==='local'?'uid,title,createtime,site,able':'uid,date,title,list',
+    // Every non-local article list has the same GalaxyList shape. The local
+    // compatibility table still exposes its legacy `able` JSON envelope.
+    columns:scopeId==='local'?'uid,title,createtime,site,able':galaxyReadColumns('GalaxyList').join(','),
     filters,
     // Deterministic order keeps historical pages stable when dates tie.
     orders:[{column:'createtime',ascending:sortDirection==='asc'},
@@ -700,7 +703,7 @@ export async function selectScopePeriodWorkIndex(scope,{startDate='',endDate=nul
   const hasCursorCounts=Number.isSafeInteger(cursor?.galaxyCount)&&Number.isSafeInteger(cursor?.mediaCount);
   const [galaxyResult,mediaResult]=await Promise.all([
     includeGalaxy?selectRows(scope.galaxy,{
-      columns:'uid,title,createtime',
+      columns:galaxyReadColumns('GalaxyList').join(','),
       filters:galaxyFilters,
       orders:[...(scope.id==='local'?[]:[{column:'date',ascending}]),
         {column:'createtime',ascending},{column:'uid',ascending:true}],

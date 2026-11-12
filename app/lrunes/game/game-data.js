@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {lRunes66ColumnString} from '../../../zenstack/lrunes-read-model.mjs';
 
 const RuneRow=z.object({
   rune_id:z.coerce.number().int().min(0).max(66),
@@ -102,7 +103,7 @@ function normalizePlayableEvent(input){
   });
 }
 
-const GAME_RUNE_COLUMNS='rune_id,rune_name,english_name,totem,group_name,moon_phase,card_attr,rune_description,archetype,extra_rules,extra_notes';
+const GAME_RUNE_COLUMNS=lRunes66ColumnString('rune_id','rune_name','english_name','totem','group_name','moon_phase','card_attr','rune_description','archetype','extra_rules','extra_notes');
 const GAME_COLUMNS=Object.freeze({
   macro:'game_key,record_type,sort_order,status,is_current,macro_code,macro_group_a,macro_group_b,macro_title,macro_description',
   rune_action:'game_key,record_type,sort_order,status,is_current,rune_id,rune_name,rune_group,rune_action_text,rune_action_kind,rune_action_value',

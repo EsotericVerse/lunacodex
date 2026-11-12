@@ -18,6 +18,7 @@ import {
   updateDailyRuneRecord
 } from '../../loc/daily-runes';
 import {selectRows} from '../../loc/db-query.mjs';
+import {lRunes66ColumnString} from '../../../zenstack/lrunes-read-model.mjs';
 import {useAccount} from '../../loc/use-account';
 import {useResourceCache} from '../../loc/use-async-resource';
 import {listLocalDailyRunes,importLocalDailyTransfer,updateLocalDailyRune,deleteLocalDailyRune} from '../../lrunes/local-rune-records.mjs';
@@ -138,7 +139,7 @@ export default function DailyLogClient({embedded=false}={}){
       const byKey=new Map((result||[]).map(row=>[rowKey(row),row]));
       const runeIds=[...new Set(local.map(row=>Number(row.rune_number)))];
       const runeRows=runeIds.length&&!native?await selectRows('silver.runes',{
-        columns:'rune_id,rune_name,english_name,totem,group_name,moon_phase,card_attr,rune_description,archetype,positive_keywords,negative_keywords',
+        columns:lRunes66ColumnString('rune_id','rune_name','english_name','totem','group_name','moon_phase','card_attr','rune_description','archetype','positive_keywords','negative_keywords'),
         filters:[{column:'rune_id',operator:'in',value:runeIds}],limit:runeIds.length
       }):{rows:[]};
       if(monthRequest.current!==request)return;
@@ -180,7 +181,7 @@ export default function DailyLogClient({embedded=false}={}){
     if(!canViewDetails)return;
     let active=true;
     selectRows('silver.runes',{
-      columns:'rune_id,rune_name',
+      columns:lRunes66ColumnString('rune_id','rune_name'),
       orders:[{column:'rune_id',ascending:true}],
       limit:67,
       offset:0

@@ -7,13 +7,14 @@ import {sql} from 'kysely';
 import {schema as zmodel} from '../../../zenstack/schema.mjs';
 import {portableRelation} from './sql-engine-ports.mjs';
 import {portableContainsSpec} from './portable-search.mjs';
+import {galaxyReadColumns} from '../../../zenstack/galaxy-read-models.mjs';
 
 const SCOPE_MODELS=Object.freeze({lo3rwang:'Lo3rwangGalaxy',lrunes:'LrunesGalaxy'});
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
 const BATCH=/^[0-9a-f]{64}$/;
 
-const FLAGS=['culture','trace','search','statics','list','extract','others','keyword'];
+const FLAGS=galaxyReadColumns('GalaxyAttr');
 function reject(message,status=400){throw Object.assign(new Error(message),{httpStatus:status});}
 function affected(result){
   const item=Array.isArray(result)?result[0]:result;
@@ -107,7 +108,7 @@ export async function executePortableMcp(trx,body,claims,{
     const fields=external?
       ['uid','title','content','createtime',
         ...['date','url'].filter(name=>Object.hasOwn(fieldMap,name))]:
-      ['uid','title','content','date','createtime','site','url'];
+      galaxyReadColumns('GalaxyUidRead');
     return {data:await source.select(columns(fields))
       .where(physical('uid'),'=',body.uid).limit(1).execute()};
   }
@@ -124,7 +125,7 @@ export async function executePortableMcp(trx,body,claims,{
     const source=external?trx.selectFrom(table):
       conversationOnly(trx.selectFrom(table));
     const results=await source
-      .select(columns(['uid','title','createtime']))
+      .select(columns(external?['uid','title','createtime']:galaxyReadColumns('GalaxyList')))
       .where(sql`lower(${sql.ref(physical('content'))}) like ${pattern} escape '!'`)
       .orderBy(physical('createtime'),'desc').limit(limit).execute();
     return {data:results};

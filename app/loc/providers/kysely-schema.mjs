@@ -8,9 +8,10 @@ const effectiveNamespace=(engine,namespace)=>
 // A matching table name is not enough: validate once at onboarding instead
 // of letting every feature fail independently on a missing SQL column.
 export function validatePortableScopeSchema(tables,{engine,namespace='',scopeId}={}){
-  if(!SCOPE.test(String(scopeId||''))||engine!=='postgres')
+  if(!SCOPE.test(String(scopeId||''))||!['postgres','mysql','mssql'].includes(engine))
     throw new Error('Invalid portable LOC Scope');
-  const schema=effectiveNamespace(engine,namespace);
+  const schema=effectiveNamespace(engine,namespace||
+    (engine==='mssql'?'dbo':'public'));
   // The existing frozen ZModel defines the canonical portable field contract.
   // Physical type adaptation remains the responsibility of each Kysely Dialect.
   // No runtime introspection, migration, or extra SQL request is performed.

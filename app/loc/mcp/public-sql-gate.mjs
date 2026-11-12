@@ -1,11 +1,12 @@
 // Public LOC MCP requests are two fixed, bounded projections, not a SQL API.
 // The generic Kysely executor applies publishedOnly once this gate passes.
 import {parsePortableOrExpression} from '../providers/portable-search.mjs';
+import {galaxyReadColumns} from '../../../zenstack/galaxy-read-models.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
-const SEARCH_COLUMNS=['uid','title','date','createtime'];
-const READ_COLUMNS=['uid','title','content','date','createtime','site','url'];
+const SEARCH_COLUMNS=galaxyReadColumns('GalaxyList');
+const READ_COLUMNS=galaxyReadColumns('GalaxyUidRead');
 const FIELDS=new Set(['kind','schema','table','operation','columns','filters',
   'or','orders','limit','offset','target','user_requested']);
 function deny(message){throw Object.assign(new Error(message),{httpStatus:403});}

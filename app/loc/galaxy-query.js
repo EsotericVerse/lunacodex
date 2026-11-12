@@ -16,12 +16,20 @@ import {readLocStatistics,readScopeCategoryTotals,readScopeEarliest,readScopeOve
 import {readNumericIsr,usesNumericIsr} from './numeric-isr-client';
 import {readTraceMapIndex} from '../modular/features/trace/trace-data.js';
 import {isUnifiedAnchorScope} from './unified-anchor-compat.mjs';
-import {GALAXY_ABLE_KEYS,galaxyAble} from './galaxy-able.mjs';
+import {galaxyAble} from './galaxy-able.mjs';
 import {portableContainsTerm} from './providers/portable-search.mjs';
-const articlePermissionColumns=()=>GALAXY_ABLE_KEYS;
+import {galaxyReadColumns} from '../../zenstack/galaxy-read-models.mjs';
+const galaxyListColumns=()=>galaxyReadColumns('GalaxyList');
+const galaxyUidReadColumns=()=>galaxyReadColumns('GalaxyUidRead');
+const galaxyUidReadWithPolicyColumns=()=>unique([
+  ...galaxyUidReadColumns(),...galaxyReadColumns('GalaxyAttr')
+]);
 const articlePermissionFilter=(_scope,name)=>({
   column:name,operator:'eq',value:true
 });
+// Search is a GalaxyAttr flag, but keeping this named predicate explicit makes
+// the policy boundary visible at every search call site.
+const searchPermissionFilter=()=>({column:'search',operator:'eq',value:true});
 
 function unique(values=[]){
   return [...new Set(values.map(value=>String(value||'').trim()).filter(Boolean))];
@@ -268,7 +276,11 @@ export async function selectGalaxyContent(scope,uid,{authenticated=false,dbId=''
   const current=scopeOf(scope);
   const id=String(uid||'').trim();
   if(!id)return null;
-  return selectRowById(current.galaxy,{idColumn:'uid',id,columns:'uid,content',authenticated,expectedDbId:dbId});
+  // A single-article read uses the complete GalaxyUidRead projection. The
+  // caller may still consume only `content`, but relation/anchor context is
+  // no longer silently lost at this boundary.
+  return selectRowById(current.galaxy,{idColumn:'uid',id,
+    columns:galaxyUidReadColumns().join(','),authenticated,expectedDbId:dbId});
 }
 
 async function relatedArticleTitlesFor(scope,row,{includeHidden=false,dbId=''}={}){
@@ -279,7 +291,7 @@ async function relatedArticleTitlesFor(scope,row,{includeHidden=false,dbId=''}={
   for(let i=0;i<ids.length;i+=50)batches.push(ids.slice(i,i+50));
   const pages=await mapBounded(batches,3,async batch=>{
     const {rows=[]}=await selectRows(scope.galaxy,{
-      columns:'uid,title',
+      columns:galaxyListColumns().join(','),
       filters:[{column:'uid',operator:'in',value:batch},
         ...(!includeHidden?[articlePermissionFilter(scope,'list')]:[])],
       orFilter:'',
@@ -395,10 +407,12 @@ export async function selectGalaxyIdentity(scope,uid,{includeHidden=false,dbId='
   const current=scopeOf(scope);
   const id=String(uid||'').trim();
   if(!id)return null;
-  // One exact UID SELECT loads the selected article. The list never reads
-  // content, linked media, references or Trace data.
+  // One exact UID SELECT loads the selected article through GalaxyUidRead;
+  // list paths stay on GalaxyList and never read article content.
   const {rows:articleRows}=await selectRows(current.galaxy,{
-    columns:'uid,title,date,createtime,content,site,url,source_id,target_id,ref_id,media_link,place_id,location,statics,culture,search,trace,list,keyword,others,extract',
+    // GalaxyUidRead is the article detail projection. The separate attr
+    // flags are fetched only as the existing visibility guard's input.
+    columns:galaxyUidReadWithPolicyColumns().join(','),
     filters:[{column:'uid',operator:'eq',value:id},
       ...(!includeHidden?[articlePermissionFilter(current,'list')]:[])],
     orFilter:'',
@@ -573,7 +587,9 @@ function managementArticleProviders(scope,{contentType='',sourceFilter='',source
   ];
   const base={
     table:current.galaxy,source:current.id+' 文章',scope:current,idColumn:'uid',
-    columns:['uid','title','createtime','date',...articlePermissionColumns(current)],dateColumn:dayColumn(current.galaxy),filters,sourceClause:sourceNameClause(selection),
+    // Every article list uses the same ZModel read projection. Visibility
+    // flags are part of GalaxyList, never a second ad-hoc column list.
+    columns:galaxyListColumns().join(','),dateColumn:dayColumn(current.galaxy),filters,sourceClause:sourceNameClause(selection),
     authenticated:true
   };
   if(placeOnly)return [makeProvider({
@@ -596,8 +612,10 @@ function genericScopeProviders(scope,{includeHiddenText=false,contentType='',sou
   ];
   const textFilters=includeHiddenText
     ?kindFilters
-    :publicContentFilters([articlePermissionFilter(current,'search'),...kindFilters]);
-  const textColumns=['uid','title','createtime','date',...articlePermissionColumns(current)];
+    :publicContentFilters([searchPermissionFilter(current),...kindFilters]);
+  // Search rows are still article lists: content is searched server-side but
+  // the returned shape is the same GalaxyList projection.
+  const textColumns=galaxyListColumns();
   // Search uses only the article service: Galaxy.content. Anchor is
   // resolved through article relationships, never queried as a reverse index.
   if(contentType&&!['galaxy','lyrics_work','text_work'].includes(contentType))
@@ -665,7 +683,7 @@ export async function hydrateGalaxySearchRows(entries=[],scopes=[],hiddenScopeId
     const keys=[...ids];
     if(keys.length>DEFAULT_LIST_BATCH_SIZE)throw new Error('Search page exceeds bounded UID limit');
     const {rows}=await selectRows(scope.galaxy,{
-      columns:'uid,title,createtime,url,site',
+      columns:galaxyListColumns().join(','),
       filters:[{column:'uid',operator:'in',value:keys}],
       limit:keys.length,
       authenticated:privateScopes.has(scope.id),

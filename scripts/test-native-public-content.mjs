@@ -88,6 +88,19 @@ test('public feature Hero uses the fixed Blocks ZModel delegate when PostgreSQL 
   assert.ok(executed[0].parameters.includes('scope_culture'));
 });
 
+test('public Culture Anchor reads use the fixed LocAnchor ZModel delegate',async()=>{
+  const {executed,dialect}=fixedModelDialect();
+  const database=async()=>({engine:'postgres',dialect,db:{selectFrom:()=>{
+    throw new Error('Fixed LocAnchor must not use the plain Kysely path');
+  }}});
+  const response=await handleNativePublicContent(page('culture_anchors','loc'),{},
+    {database});
+  assert.equal(response.status,200);
+  assert.deepEqual(await response.json(),{data:[]});
+  assert.equal(executed.length,1);
+  assert.match(executed[0].sql,/"silver"\."loc_anchor"/);
+});
+
 test('config projects only the public Scope columns, never Manage or secrets, via the real ZenStack PolicyPlugin reader',async()=>{
   // lo3rwang is one of the four fixed public ZModel control models, so
   // 'config' now runs through the real ZenStack+PolicyPlugin $qb on the

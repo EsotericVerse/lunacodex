@@ -37,7 +37,7 @@ test('Galaxy, Anchor and Block use the same frozen ZenStack schema factory',()=>
 
 test('Anchor INSERT/UPSERT and partial UPDATE enforce UID, Boolean, JSON and column types',()=>{
   for(const table of ['silver.demo_anchor','silver.lo3rwang_anchor',
-    'silver.lrunes_anchor']){
+    'silver.lrunes_anchor','silver.loc_anchor']){
     assert.equal(assertZModelAnchorBlockManagedValues(table,'insert',[anchor]),true);
     assert.equal(assertZModelAnchorBlockManagedValues(table,'upsert',[anchor]),true);
     assert.equal(assertZModelAnchorBlockManagedValues(table,'update',
@@ -64,6 +64,18 @@ test('Anchor number is accepted as JSON-safe int8 without data transformation',(
   }
 });
 
+test('semantic Anchor payloads use the declared ZModel value type for attr',()=>{
+  assert.equal(assertZModelAnchorBlockManagedValues('silver.loc_anchor','insert',[
+    {uid:'SOURCE01',type:'domain',attr:{uid:['FROM001']}}
+  ]),true);
+  assert.equal(assertZModelAnchorBlockManagedValues('silver.demo_anchor','insert',[
+    {uid:'PAT00001',type:'pattern',attr:{'DB000001':['ARTICLE1']}}
+  ]),true);
+  assert.throws(()=>assertZModelAnchorBlockManagedValues('silver.demo_anchor','insert',[
+    {uid:'POINT001',type:'point',attr:{longitude:'not-a-number'}}
+  ]),/LOC Anchor ZModel payload/);
+});
+
 test('Block INSERT and partial UPDATE reuse ZModel and preserve page business rules',()=>{
   for(const table of ['silver.loc_blocks','silver.lo3rwang_blocks',
     'silver.lrunes_blocks','silver.demo_blocks']){
@@ -87,11 +99,11 @@ test('Galaxy managed updates still use the same strict Zod validator',()=>{
     'update',{private_column:true}),/ZModel 寫入驗證失敗/);
 });
 
-test('unknown model and separate LOC source catalog are not implicitly authorized',()=>{
+test('unknown models are not implicitly authorized while LOC source Anchor is modeled',()=>{
   assert.equal(assertZModelAnchorBlockManagedValues('silver.demo_custom',
     'insert',[anchor]),false);
   assert.equal(assertZModelAnchorBlockManagedValues('silver.loc_anchor',
-    'insert',[anchor]),false);
+    'insert',[anchor]),true);
   assert.equal(assertZModelAnchorBlockManagedValues('api.manage',
     'update',{id:'loc'}),false);
 });

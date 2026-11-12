@@ -1,9 +1,10 @@
 import {canManageLoc} from './loc-authorization.mjs';
 import {portableRelation,serializePortableJsonFields} from './sql-engine-ports.mjs';
-import {sql} from 'npm:kysely@0.29.8';
+import {sql} from 'kysely';
 import {assertZModelAnchorBlockManagedValues} from '../../../zenstack/import-validation.mjs';
 import {modelFieldsForSql,verifyModeledSqlFields}
   from '../../../zenstack/model-column-guard.mjs';
+import {ANCHOR_TYPE_GROUPS} from '../../../zenstack/anchor-hierarchy.mjs';
 
 // Model-confirmed Anchor projection; no separate list per SQL entry point.
 const ANCHOR_COLUMNS=Object.freeze(Object.keys(
@@ -14,12 +15,13 @@ verifyModeledSqlFields({schema:'silver',table:'lo3rwang_anchor',
 
 const scopePattern=/^[a-z][a-z0-9]{0,14}$/;
 const uidPattern=/^[A-Za-z0-9]{8}$/;
-const publicTypes=new Set(['date','period','era','point','path','trace','image','video','rune','suno']);
-const keywordTypes=new Set(['category','class','group','item']);
+const publicTypes=new Set([...ANCHOR_TYPE_GROUPS.time,...ANCHOR_TYPE_GROUPS.space,
+  ...ANCHOR_TYPE_GROUPS.media]);
+const keywordTypes=new Set(ANCHOR_TYPE_GROUPS.keyword);
 // Source classification reuses the existing Anchor tree store and operations.
 // universe -> galaxy -> domain -> from. Names may repeat across levels.
 // Galaxy.site and Galaxy.site_id are unchanged for source matching/import dedupe.
-const sourceTypes=new Set(['from','domain','galaxy','universe']);
+const sourceTypes=new Set(ANCHOR_TYPE_GROUPS.source);
 const allowedFields=new Set(['op','uid','title','description','invisible','data','where',
   'limit','offset','updates','mode','classUid','createtime']);
 const anchorTime=value=>{

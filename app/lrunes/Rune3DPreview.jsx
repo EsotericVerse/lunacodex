@@ -13,13 +13,14 @@ import {randomIndex,loadDrawCards,buildFixedReading} from './rune-draw-core.mjs'
 import {runeImage,runeName,RUNE_CARD_BACK_IMAGE} from './rune-directory.mjs';
 import {runeDrawGroup,runeDrawMotion,runeDrawOrbitGlyphs} from './rune-draw-motion.mjs';
 import RuneCardInfo from './RuneCardInfo';
+import {lRunes66ColumnString} from '../../zenstack/lrunes-read-model.mjs';
 import './skin-lab.css';
 import './effekseer/effekseer-stage.css';
 
 const DIRECTIONS=['正位','半正位','半逆位','逆位'];
 const DAILY_FIELDS=[['sit_q','狀況形容'],['sit_a','狀況表達'],['daily_r','每日占卜提醒'],['daily_g','每日占卜引導'],['daily_b','每日占卜祝福']];
 const GROUP_COLUMNS='group_id,english_name,desc,quality,style,runeslist';
-const RUNE_COLUMNS='rune_id,rune_name,english_name,totem,group_name,moon_phase,card_attr,rune_description,archetype,char_action,positive_keywords,negative_keywords';
+const RUNE_COLUMNS=lRunes66ColumnString('rune_id','rune_name','english_name','totem','group_name','moon_phase','card_attr','rune_description','archetype','char_action','positive_keywords','negative_keywords');
 const GROUP_NAMES=['靈魂','連結','生命','自然','礦物','元素','秩序','無序','特殊'];
 const MODES=[['duel','抽牌'],['daily','每日符文'],['list','符文圖鑑']];
 

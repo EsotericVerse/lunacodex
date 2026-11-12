@@ -4,6 +4,8 @@
 // Only use this from trusted server code after Clerk + LOC Authority checks.
 // SQL-nullable list fields and dynamic Scope/SQL dialects remain on Kysely.
 import contract from './schema-contract.mjs';
+import {PERSISTED_ANCHOR_TYPES,ANCHOR_PAYLOAD_DEFS} from './anchor-hierarchy.mjs';
+import {GALAXY_READ_MODEL_FIELDS} from './galaxy-read-models.mjs';
 
 const formatTypes=Object.freeze({
   text:'String',varchar:'String',bpchar:'String',bool:'Boolean',
@@ -21,12 +23,12 @@ const nativeAttributes=Object.freeze({
   _int2:'@db.SmallInt',_int4:'@db.Integer'
 });
 const literal=(name,key,value)=>({name,args:[{name:key,value:{kind:'literal',value}}]});
-// Public presentation Blocks are fixed ZModel reads as well as the four
-// control/config models. Hero/page reads can therefore use the same typed
-// delegate without falling back to a second hand-written SQL projection.
+// Public presentation Blocks and the LOC-wide source Anchor are fixed ZModel
+// reads alongside the control/config models. Public reads can therefore use
+// the same typed delegate without a second hand-written SQL projection.
 const PUBLIC_FIXED_READS=new Set([
   'manage','loc','lo3rwang','lrunes',
-  'loc_blocks','lo3rwang_blocks','lrunes_blocks'
+  'loc_anchor','loc_blocks','lo3rwang_blocks','lrunes_blocks'
 ]);
 const PUBLIC_POLICY_ALLOW_READ={
   name:'@@allow',
@@ -63,6 +65,14 @@ const plainVirtualType=(name,types)=>({
   ])),
   attributes:[]
 });
+const structuredVirtualType=(name,fields)=>({
+  name,
+  fields:Object.fromEntries(Object.entries(fields).map(([field,spec])=>[
+    field,{name:field,type:spec.type,...(spec.array?{array:true}:{}),
+      ...(spec.optional?{optional:true}:{})}
+  ])),
+  attributes:[]
+});
 const locFederatedRef=plainVirtualType('LocFederatedRef',{
   databaseId:'String',scopeId:'String',uid:'String'
 });
@@ -70,11 +80,17 @@ const locAnchorLink=plainVirtualType('LocAnchorLink',{
   family:'String',fromUid:'String',toUid:'String',
   fromType:'String',toType:'String',attrKey:'String',resolved:'Boolean'
 });
+const anchorTypeDefs=Object.fromEntries(Object.entries(ANCHOR_PAYLOAD_DEFS)
+  .map(([name,fields])=>[name,structuredVirtualType(name,fields)]));
+const galaxyReadTypeDefs=Object.fromEntries(Object.entries(GALAXY_READ_MODEL_FIELDS)
+  .map(([name,fields])=>[name,structuredVirtualType(name,fields)]));
+const anchorTypeEnum={name:'LocAnchorType',values:Object.fromEntries(
+  PERSISTED_ANCHOR_TYPES.map(type=>[type,type]))};
 
 const databaseDefault=Object.freeze({kind:'call',function:'dbgenerated',args:[]});
 const modelName=table=>table.split('_').map(w=>w[0].toUpperCase()+w.slice(1)).join('');
 function compileFixedSchema({schema:namespace,tables}){
-  if(namespace!=='silver'||tables.length!==17)
+  if(namespace!=='silver'||tables.length!==18)
     throw new Error('Invalid fixed LOC schema contract');
   const models={};
   for(const table of tables){
@@ -111,7 +127,9 @@ function compileFixedSchema({schema:namespace,tables}){
     };
   }
   return {provider:{type:'postgresql',defaultSchema:namespace},models,
-    typeDefs:{LocPrincipal:locPrincipal,LocFederatedRef:locFederatedRef,LocAnchorLink:locAnchorLink},
+    enums:{LocAnchorType:anchorTypeEnum},
+    typeDefs:{LocPrincipal:locPrincipal,LocFederatedRef:locFederatedRef,
+      LocAnchorLink:locAnchorLink,...anchorTypeDefs,...galaxyReadTypeDefs},
     authType:'LocPrincipal',
     plugins:{policy:{provider:'@zenstackhq/plugin-policy'}}};
 }

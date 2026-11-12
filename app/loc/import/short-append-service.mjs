@@ -1,11 +1,12 @@
 // LOC 彩虹橋 short-import service. Trusted LOC Auth supplies actor and Scope.
 // One HTTP batch can append into several independent source articles; no UPDATE
 // of existing content, extra tables, RLS changes, or PR-specific Galaxy writes.
+import {galaxyReadColumns} from '../../../zenstack/galaxy-read-models.mjs';
 const UID=/^[0-9A-Za-z]{8}$/;
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SCOPE=/^[a-z][a-z0-9_]{0,63}$/;
 const BASE62='0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
-const FLAGS=['statics','culture','search','trace','list','keyword','extract','others'];
+const FLAGS=galaxyReadColumns('GalaxyAttr');
 const BATCH_BYTES=601024; // allow for the transport envelope around 600 KB of records
 function failure(message,httpStatus=400){return Object.assign(new Error(message),{httpStatus});}
 export function newShortImportUid(cryptoProvider=globalThis.crypto){

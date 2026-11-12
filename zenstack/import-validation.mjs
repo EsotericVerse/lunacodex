@@ -6,11 +6,41 @@ import * as z from 'zod';
 import {schema} from './schema.mjs';
 import physicalContract from './schema-contract.mjs';
 import {modelNameForSql} from './model-column-guard.mjs';
+import {ANCHOR_GROUP_MODEL_NAMES,ANCHOR_TYPE_GROUP_FIELDS,ANCHOR_TYPE_GROUPS,
+  PERSISTED_ANCHOR_TYPES}
+  from './anchor-hierarchy.mjs';
 
 const modelFactory=createSchemaFactory(schema);
 const validators=new Map();
 const scopedGalaxy=/^silver\.[a-z][a-z0-9]{0,14}_galaxy$/;
 const char8Uid=/^[A-Za-z0-9]{8}$/;
+// Anchor.attr validation is derived from the same ZModel value types that
+// describe the semantic discriminator. Pattern is the one intentional
+// exception: its stored JSON object is a dynamic database-UID posting map,
+// so it is wrapped in the PatternAnchor.postings Json field for validation.
+const anchorTypeGroups=Object.fromEntries(Object.entries(ANCHOR_TYPE_GROUPS)
+  .flatMap(([group,types])=>types.map(type=>[type,group])));
+const anchorPayloadValidators=new Map(PERSISTED_ANCHOR_TYPES.map(type=>{
+  const group=anchorTypeGroups[type];
+  if(!group||!ANCHOR_TYPE_GROUP_FIELDS[type]||!ANCHOR_GROUP_MODEL_NAMES[group])
+    throw new Error('LOC Anchor ZModel group mapping missing: '+type);
+  return [type,{field:ANCHOR_TYPE_GROUP_FIELDS[type],
+    validator:modelFactory.makeTypeSchema(ANCHOR_GROUP_MODEL_NAMES[group])}];
+}));
+
+function validateAnchorPayload(type,attr){
+  const entry=anchorPayloadValidators.get(String(type||''));
+  if(!entry||attr===undefined)return;
+  // Pattern postings stay in their existing dynamic object shape, but the
+  // surrounding group model still enforces the discriminator field.
+  const payload=type==='pattern'?{postings:attr}:attr;
+  const parsed=entry.validator.safeParse({[entry.field]:payload});
+  if(parsed.success)return;
+  const issue=parsed.error.issues[0];
+  const field=issue?.path?.join('.')||'(attr)';
+  throw new TypeError('LOC Anchor ZModel payload 驗證失敗：'+field+
+    ' — '+(issue?.message||'invalid value'));
+}
 
 // The frozen SQL snapshot is authoritative where ZModel V3 loses a native
 // distinction: DATE vs DateTime, and SQL-nullable PostgreSQL arrays.
@@ -41,8 +71,11 @@ function importModelSchema(modelName){
       // decimal string, not a native bigint. Keep the physical 64-bit range
       // and preserve original values for the existing Kysely JSONB batches.
       const int8Text=z.string().max(20).regex(/^-?[0-9]+$/).refine(value=>{
-        const n=BigInt(value);
-        return n>=-(1n<<63n)&&n<=(1n<<63n)-1n;
+        if(!/^-?[0-9]+$/.test(value))return false;
+        try{
+          const n=BigInt(value);
+          return n>=-(1n<<63n)&&n<=(1n<<63n)-1n;
+        }catch{return false;}
       });
       overrides[column.name]=z.union([
         field,z.number().int().min(Number.MIN_SAFE_INTEGER)
@@ -123,13 +156,12 @@ export function assertZModelGalaxyManagedValues(table,operation,values){
 }
 
 // Share the very same ZModel-derived strict shapes with existing Anchor and
-// Block management writes. A model without a frozen physical SQL contract
-// (for example the independent LOC source catalog) is not silently mapped.
+// Block management writes. LOC-wide source Anchors use the fixed contract;
+// independently named external relations are not silently mapped.
 export function assertZModelAnchorBlockManagedValues(table,operation,values){
   if(!['insert','upsert','update'].includes(operation))return false;
   const relation=String(table||'');
-  if(!/^silver\.[a-z][a-z0-9]{0,14}_(?:anchor|blocks)$/.test(relation)||
-     relation==='silver.loc_anchor')return false;
+  if(!/^silver\.[a-z][a-z0-9]{0,14}_(?:anchor|blocks)$/.test(relation))return false;
   const model=modelNameForSql(...relation.split('.'));
   if(!model||!(model.endsWith('Anchor')||model.endsWith('Blocks')))
     return false;
@@ -139,15 +171,22 @@ export function assertZModelAnchorBlockManagedValues(table,operation,values){
   if(!Array.isArray(rows))
     throw new TypeError('Invalid LOC Anchor/Block managed rows');
   for(let i=0;i<rows.length;i++){
-    const parsed=validator.safeParse(rows[i]);
-    if(parsed.success)continue;
-    const issue=parsed.error.issues[0];
-    const field=issue?.path?.join('.')||'(record)';
-    // Reject unknown columns and incompatible values before SQL; never echo
-    // private text, JSON attrs, or caller-supplied values in diagnostics.
-    throw new TypeError('LOC '+(model.endsWith('Anchor')?'Anchor':'Block')+
-      ' ZModel 寫入驗證失敗：第 '+(i+1)+' 筆 '+field+
-      ' — '+(issue?.message||'invalid value'));
+    const row=rows[i];
+    const parsed=validator.safeParse(row);
+    if(!parsed.success){
+      const issue=parsed.error.issues[0];
+      const field=issue?.path?.join('.')||'(record)';
+      // Reject unknown columns and incompatible values before SQL; never echo
+      // private text, JSON attrs, or caller-supplied values in diagnostics.
+      throw new TypeError('LOC '+(model.endsWith('Anchor')?'Anchor':'Block')+
+        ' ZModel 寫入驗證失敗：第 '+(i+1)+' 筆 '+field+
+        ' — '+(issue?.message||'invalid value'));
+    }
+    // The discriminator selects the semantic ZModel payload. Updates that
+    // omit `type` cannot be checked without a database read, so they retain
+    // the existing partial-write contract and are validated on the next full
+    // typed write.
+    if(model.endsWith('Anchor'))validateAnchorPayload(row?.type,row?.attr);
   }
   return true;
 }

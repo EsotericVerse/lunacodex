@@ -3,7 +3,12 @@ import {canManageLoc} from './loc-authorization.mjs';
 // Kysely provides dialect-specific SQL generation; connection and security
 // adapters remain on the trusted runtime (never in the browser).
 const ENGINE_DEFINITIONS=[
-  {id:'postgres',label:'PostgreSQL',dialect:'PostgresDialect',driver:'pg',runtime:'edge',namespace:'schema',session:'external-acl',schema:'kysely'},
+  // The dialect names and driver names are Kysely's upstream ports.  Driver
+  // packages are deliberately not pulled into LOC here; a trusted server
+  // connection supplies the matching pool when a portable target is used.
+  {id:'postgres',label:'PostgreSQL',dialect:'PostgresDialect',driver:'pg',runtime:'node',namespace:'schema',session:'external-acl',schema:'kysely'},
+  {id:'mysql',label:'MySQL',dialect:'MysqlDialect',driver:'mysql2',runtime:'node',namespace:'database',session:'external-acl',schema:'kysely'},
+  {id:'mssql',label:'SQL Server',dialect:'MssqlDialect',driver:'tedious',runtime:'node',namespace:'schema',session:'external-acl',schema:'kysely'}
 ];
 export const SQL_ENGINE_PORTS=Object.freeze(ENGINE_DEFINITIONS.map(entry=>Object.freeze(entry)));
 export const SQL_ENGINE_OPTIONS=Object.freeze(SQL_ENGINE_PORTS.map(({id,label})=>Object.freeze({value:id,label})));
@@ -58,8 +63,12 @@ function publicReference(request){
 }
 export function portableRelation(table,engine,namespace=''){
   if(!/^[a-z][a-z0-9_]*$/i.test(table))throw new Error('Invalid SQL relation');
-  if(engine!=='postgres')throw new Error('Unsupported SQL engine');
-  const schema=String(namespace||'public');
+  getSqlEnginePort(engine);
+  // MySQL treats the selected database as the connection namespace; Kysely
+  // therefore addresses a table directly. PostgreSQL and SQL Server use
+  // schema-qualified identifiers.
+  if(engine==='mysql')return table;
+  const schema=String(namespace||(engine==='mssql'?'dbo':'public'));
   if(!/^[a-z][a-z0-9_]*$/i.test(schema))throw new Error('Invalid SQL namespace');
   return schema+'.'+table;
 }
@@ -137,8 +146,20 @@ function managedAffected(result){
   return Number(result?.numInsertedOrUpdatedRows??result?.numUpdatedRows??
     result?.numDeletedRows??result?.numAffectedRows??0);
 }
-function matchingPortableField(_key,incoming,stored){
+function matchingPortableField(key,incoming,stored,engine){
+  if(engine!=='postgres'&&PORTABLE_JSON_COLUMNS.includes(key)){
+    const comparable=value=>value===null||value===undefined||typeof value==='string'
+      ?value:JSON.stringify(value);
+    return comparable(incoming)===comparable(stored);
+  }
   return JSON.stringify(incoming)===JSON.stringify(stored);
+}
+function portableInsertBatchSize(engine,width){
+  // SQL Server's 2,100-parameter ceiling applies to one statement. Keep a
+  // small margin for driver-generated parameters; MySQL/PostgreSQL retain
+  // the existing 50-row batch behavior.
+  if(engine==='mssql')return Math.max(1,Math.min(50,Math.floor(2000/Math.max(1,width))));
+  return 50;
 }
 /**
  * Portable counterpart to the PostgreSQL management write procedure.
@@ -148,6 +169,9 @@ function matchingPortableField(_key,incoming,stored){
 export async function executeCrossEngineManagedWrite(db,body,context){
   const p=body?.payload;
   if(!p||typeof p!=='object'||Array.isArray(p))invalidWrite('Invalid managed payload');
+  const engine=String(context?.engine||'postgres');
+  getSqlEnginePort(engine);
+  const namespace=context?.namespace||'';
   const matched=String(p.p_table||'').match(/^silver\.([a-z][a-z0-9_]*)$/);
   if(!matched)invalidWrite('Invalid managed relation');
   const table=matched[1],operation=String(p.p_operation||'');
@@ -155,7 +179,7 @@ export async function executeCrossEngineManagedWrite(db,body,context){
     invalidWrite('Invalid managed operation');
   await authorizeCrossEngineQuery(db,{kind:'query',schema:'silver',table,
     operation:operation==='update_batch'?'update':operation},context);
-  const name=portableRelation(table,context.engine,context.namespace);
+  const name=portableRelation(table,engine,namespace);
   let count=0;
   if(operation==='insert'){
     const rows=p.p_rows;
@@ -175,13 +199,13 @@ export async function executeCrossEngineManagedWrite(db,body,context){
       group.push(row);groups.set(shape,group);
     }
     const batches=[...groups.values()].map(group=>{
-      const size=50;
+      const size=portableInsertBatchSize(engine,Object.keys(group[0]||{}).length);
       return {group,size};
     });
     for(const {group,size} of batches){
       for(let i=0;i<group.length;i+=size){
         const batch=group.slice(i,i+size);
-        const result=await db.insertInto(name).values(serializePortableJsonFields(batch,context.engine)).executeTakeFirst();
+        const result=await db.insertInto(name).values(serializePortableJsonFields(batch,engine)).executeTakeFirst();
         count+=managedAffected(result);
       }
     }
@@ -214,7 +238,7 @@ export async function executeCrossEngineManagedWrite(db,body,context){
       if(!existing)continue;
       const patch={};
       for(const key of ['title','content','url','media_link']){
-        if(Object.hasOwn(row,key)&&!matchingPortableField(key,row[key],existing[key],context.engine))
+        if(Object.hasOwn(row,key)&&!matchingPortableField(key,row[key],existing[key],engine))
           patch[key]=row[key];
       }
       if(Object.hasOwn(row,'place_id')&&
@@ -231,7 +255,7 @@ export async function executeCrossEngineManagedWrite(db,body,context){
       for(let i=0;i<uids.length;i+=50){
         const batch=uids.slice(i,i+50);
         const values=serializePortableJsonFields(
-          {...patch,UpdateTime:new Date()},context.engine);
+          {...patch,UpdateTime:new Date()},engine);
         // A parallel import cannot overwrite an already-filled place_id.
         // Use Kysely's native CASE expression instead of relying on an
         // earlier SELECT snapshot for this fill-only field.
@@ -256,7 +280,7 @@ export async function executeCrossEngineManagedWrite(db,body,context){
          !Object.keys(values).length||
          Object.keys(values).some(key=>!SAFE_FIELD.test(key)||
            ['id','uid','able'].includes(key)))invalidWrite('Invalid update values');
-      count=managedAffected(await applyKyselyFilters(db.updateTable(name).set(serializePortableJsonFields(values,context.engine)),
+      count=managedAffected(await applyKyselyFilters(db.updateTable(name).set(serializePortableJsonFields(values,engine)),
         filters).executeTakeFirst());
     }else{
       count=managedAffected(await applyKyselyFilters(db.deleteFrom(name),
@@ -271,6 +295,22 @@ export const PORTABLE_JSON_COLUMNS=Object.freeze([
   'keyword_meta','ArticleTag','search_aliases','target_id'
 ]);
 export function serializePortableJsonFields(values,engine){
-  if(engine!=='postgres')throw new Error('Unsupported SQL engine');
-  return values;
+  getSqlEnginePort(engine);
+  if(engine==='postgres')return values;
+  const encode=value=>value===undefined||value===null||typeof value==='string'
+    ?value:JSON.stringify(value);
+  const serializeRow=row=>{
+    if(!row||typeof row!=='object'||Array.isArray(row))return row;
+    let result=null;
+    for(const field of PORTABLE_JSON_COLUMNS){
+      if(!Object.hasOwn(row,field)||row[field]===undefined)continue;
+      const next=encode(row[field]);
+      if(next!==row[field]){
+        if(!result)result={...row};
+        result[field]=next;
+      }
+    }
+    return result||row;
+  };
+  return Array.isArray(values)?values.map(serializeRow):serializeRow(values);
 }

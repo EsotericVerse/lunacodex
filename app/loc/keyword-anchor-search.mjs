@@ -2,6 +2,7 @@
 // All SQL is fixed-purpose, Kysely-built and bounded. No user-supplied SQL,
 // imported schema copying, Article body scans or duplicate search tables.
 import {SCOPE_PATTERN_POSTING_KEY} from './keyword-anchor-index.mjs';
+import {galaxyReadColumnsFor} from '../../zenstack/galaxy-read-models.mjs';
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
 const TYPES=['date','point','item','pattern'];
@@ -101,8 +102,10 @@ export async function queryAnchorArticles(db,{scopeId,uid,type,owner=false,
   if(type==='pattern'||type==='item'){
     if(ids.length>60000)err('Pattern posting list exceeds safe SQL parameter limit',413);
   }
-  const cols=['uid','title','date','createtime','site','url','location','place_id',
-    'search','statics','culture','trace','list','keyword','extract','others'];
+  // Keyword navigation returns an article list plus its anchor context; both
+  // halves come from the shared Galaxy projections rather than a local list.
+  const cols=galaxyReadColumnsFor('GalaxyList','GalaxyUidAnchor')
+    .filter((column,index,all)=>all.indexOf(column)===index);
   let q=db.selectFrom(galaxy).select(cols);
   if(!owner)q=q.where('search','=',true);
   if(type==='date')q=q.where('date','=',current.date);

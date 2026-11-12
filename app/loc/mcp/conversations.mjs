@@ -1,9 +1,11 @@
 // Galaxy conversation persistence belongs to the LOC business database.
 // This module never issues/verifies OAuth tokens or stores Auth sessions.
 // The caller has already resolved Better Auth identity and read api.manage.
+import {galaxyReadColumns} from '../../../zenstack/galaxy-read-models.mjs';
+
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
-const FLAGS=['culture','trace','search','statics','list','extract','others','keyword'];
+const FLAGS=galaxyReadColumns('GalaxyAttr');
 const ALPHABET='0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
 const MAX_CONTENT=2_000_000;
 function fail(message,httpStatus=400){
@@ -60,7 +62,9 @@ async function batchContent(conversationId,rows){
 }
 async function existingConversation(db,table,id){
   return db.selectFrom(table)
-    .select(['uid','title','content','UpdateTime'])
+    // Exact conversation checks are UID reads over the same GalaxyUidRead
+    // contract; UpdateTime is the write-concurrency field outside that view.
+    .select([...galaxyReadColumns('GalaxyUidRead'),'UpdateTime'])
     .where('site','=','mcp').where('site_id','=',id)
     .orderBy('createtime','asc').limit(1).executeTakeFirst();
 }

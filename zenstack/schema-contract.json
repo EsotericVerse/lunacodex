@@ -1,6 +1,6 @@
 {
   "schema": "silver",
-  "source": "read-only physical metadata snapshot, 2026-11-09; Neon 2026-11-12 UID char(8) alignment",
+  "source": "fixed physical metadata contract, 2026-11-12; Neon UID char(8) alignment; LOC Anchor baseline",
   "tables": [
     {
       "table": "game",
@@ -877,6 +877,71 @@
           "format": "date",
           "nullable": true,
           "hasDefault": false,
+          "generated": false
+        }
+      ],
+      "uniques": []
+    },
+    {
+      "table": "loc_anchor",
+      "pk": [
+        "uid"
+      ],
+      "columns": [
+        {
+          "name": "uid",
+          "format": "bpchar",
+          "nullable": false,
+          "hasDefault": false,
+          "generated": false
+        },
+        {
+          "name": "type",
+          "format": "text",
+          "nullable": false,
+          "hasDefault": false,
+          "generated": false
+        },
+        {
+          "name": "title",
+          "format": "text",
+          "nullable": true,
+          "hasDefault": false,
+          "generated": false
+        },
+        {
+          "name": "description",
+          "format": "text",
+          "nullable": true,
+          "hasDefault": false,
+          "generated": false
+        },
+        {
+          "name": "invisible",
+          "format": "bool",
+          "nullable": false,
+          "hasDefault": true,
+          "generated": false
+        },
+        {
+          "name": "attr",
+          "format": "jsonb",
+          "nullable": false,
+          "hasDefault": true,
+          "generated": false
+        },
+        {
+          "name": "createtime",
+          "format": "timestamptz",
+          "nullable": true,
+          "hasDefault": true,
+          "generated": false
+        },
+        {
+          "name": "num",
+          "format": "int8",
+          "nullable": false,
+          "hasDefault": true,
           "generated": false
         }
       ],

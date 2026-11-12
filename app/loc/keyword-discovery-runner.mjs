@@ -1,12 +1,14 @@
 'use client';
 
 import {dbAuthRelation} from './db-client.mjs';
+import {galaxyReadColumns} from '../../zenstack/galaxy-read-models.mjs';
 
 // The owner's explicit action starts the only scan. Never run during render,
 // ordinary Search, Culture navigation or the existing Keyword reanalysis.
 // Transport batches do not cap the total number of scanned articles.
 const PAGE_SIZE=1000;
-const ARTICLE_COLUMNS='uid,content,createtime,date';
+const ARTICLE_COLUMNS=galaxyReadColumns('GalaxyUidRead')
+  .filter(column=>['uid','content','createtime','date'].includes(column));
 const aborted=()=>Object.assign(new Error('已取消關鍵詞建議掃描'),{name:'AbortError'});
 
 export async function suggestNewKeywords({galaxy,existingRows=[],onProgress=()=>{},signal}={}){

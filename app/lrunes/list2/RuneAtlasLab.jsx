@@ -12,9 +12,10 @@ import ScopeLink from '../../modular/ScopeLink';
 import {runeImage,groupImage} from '../rune-directory.mjs';
 import '../skin-lab.css';
 import '../visual/rune-art-layout.css';
+import {lRunes66ColumnString} from '../../../zenstack/lrunes-read-model.mjs';
 
 const GROUP_COLUMNS='group_id,english_name,desc,quality,style,runeslist';
-const DETAIL_COLUMNS='rune_id,rune_name,english_name,totem,group_name,moon_phase,card_attr,rune_description,archetype,char_action,positive_keywords,negative_keywords,extra_rules,extra_notes,rune_evolution_history,myth_story,soul_question,practice_challenge,ritual_advice,harmony_advice';
+const DETAIL_COLUMNS=lRunes66ColumnString('rune_id','rune_name','english_name','totem','group_name','moon_phase','card_attr','rune_description','archetype','char_action','positive_keywords','negative_keywords','extra_rules','extra_notes','rune_evolution_history','myth_story','soul_question','practice_challenge','ritual_advice','harmony_advice');
 const GROUP_NAMES=['靈魂','連結','生命','自然','礦物','元素','秩序','無序','特殊'];
 function cleanse(value){
   return String(value??'').replace(/&#x([0-9a-f]+);/gi,(_,hex)=>String.fromCodePoint(parseInt(hex,16)))

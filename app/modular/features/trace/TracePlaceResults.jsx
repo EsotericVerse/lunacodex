@@ -15,6 +15,7 @@ import Article from '../../Article';
 import {galaxyIdentityHref,galaxyRelationLinks,featureNavigationHref} from '../../feature-navigation';
 import {selectGalaxyIdentity} from '../../../loc/galaxy-query';
 import {ArticleSortSelect,IncrementalList,WorkFullText} from '../../ui';
+import {galaxyReadColumnsFor} from '../../../../zenstack/galaxy-read-models.mjs';
 
 const CultureTimeline=dynamic(()=>import('../../modules/culture-timeline/CultureTimeline'),{loading:()=> <p className="scope-status">正在開啟時間長河…</p>});
 const StatisticsMultiChart=dynamic(()=>import('../../modules/statistics/StatisticsMultiChart'),{loading:()=> <p className="scope-status">正在開啟統計圖…</p>});
@@ -121,7 +122,7 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
         const selectedIds=nearest?[nearestPlaceIds[placeIndex]]:placeIds;
         const filters=traceArticleIdFilters(selectedIds,{startDate,endDate,sourceName:sourceFilter,allPlacedArticles});
         const result=await selectRows(scope.galaxy,{
-          columns:'uid,title,createtime,date,place_id',
+          columns:galaxyReadColumnsFor('GalaxyList','GalaxyUidAnchor').join(','),
           filters,orders:[{column:'date',ascending:sort==='asc'},{column:'createtime',ascending:sort==='asc'},
             {column:'uid',ascending:true}],
           limit:PAGE_SIZE,offset,count:offset===0?'exact':null
@@ -165,7 +166,7 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
       const mediaIds=mediaPage.map(row=>String(row.uid||'').trim()).filter(Boolean);
       if(!mediaIds.length)return {rows:[],nextCursor:null};
       const {rows}=await selectRows(scope.galaxy,{
-        columns:'uid,title,createtime,date',
+        columns:galaxyReadColumnsFor('GalaxyList').join(','),
         filters:[
           ...traceArticleIdFilters(placeIds,{startDate,endDate,sourceName:sourceFilter,allPlacedArticles}),
           {column:'media_link',operator:'overlaps',value:mediaIds}
@@ -252,7 +253,7 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
       for(let offset=0;offset<mediaRows.length;offset+=80){
         const batch=mediaRows.slice(offset,offset+80).map(row=>String(row.uid));
         const {rows}=await selectRows(scope.galaxy,{
-          columns:'uid,date,place_id,trace',
+          columns:galaxyReadColumnsFor('GalaxyUidAnchor','GalaxyAttr').join(','),
           filters:[{column:'uid',operator:'in',value:batch}],
           limit:batch.length,maxLimit:batch.length
         });

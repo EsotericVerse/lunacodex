@@ -1,8 +1,9 @@
 // The LOC business backend opens its own PostgreSQL connection.
 // It never asks LOC Auth for database credentials, profiles, targets or SQL.
-import {Kysely,PostgresDialect} from 'kysely';
+import {Kysely} from 'kysely';
 import pg from 'pg';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
+import {createKyselyDialect} from '../providers/kysely-dialects.mjs';
 
 // Cloudflare request env wrappers can have different identities. Keep one
 // trusted business connection per isolate, not a new pool per HTTP request.
@@ -70,7 +71,10 @@ export async function db_connection(env={},verifiedAlias='',{probeTicket=''}={})
   // acquisition instead; it always lives inside the request that uses it.
   const pool=requestScopedPool({connectionString:uri,
     connectionTimeoutMillis:3500,ssl:{rejectUnauthorized:true}});
-  const dialect=new PostgresDialect({pool});
+  // Use Kysely's upstream dialect factory. LOC's selected primary remains
+  // PostgreSQL today, while the same trusted boundary can compile MySQL or
+  // SQL Server targets when their caller-supplied pool is enabled.
+  const dialect=createKyselyDialect(primary?.engine||'postgres',{pool});
   const connection={db:new Kysely({dialect}),dialect,
     engine:'postgres',namespace:'silver',tableName:'',fieldMap:{}};
   cachedConnection={uri,connection};
