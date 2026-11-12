@@ -31,6 +31,28 @@
   transition:background .16s ease,box-shadow .16s ease,transform .16s ease;
 }
 .scope-feature-dock a svg,.scope-feature-dock button svg{flex:none;width:23px;height:23px;}
+
+/* The six feature-icon motions stay within the 24px pictogram area.
+   No resizing or transform on the floating dock, button or navigation link. */
+.scope-feature-dock :is(a,button)>.scope-dock-motion-icon{
+  display:inline-flex;position:relative;align-items:center;justify-content:center;
+  flex:none;width:24px;height:24px;min-width:24px;max-width:none;line-height:1;
+}
+.scope-dock-motion-icon__glyph{
+  display:inline-flex;align-items:center;justify-content:center;transform-origin:center;
+}
+.scope-dock-motion-icon__home-frame{
+  position:absolute;inset:1px;border:1.5px solid var(--loc-accent);
+  border-radius:5px;pointer-events:none;
+}
+.scope-dock-motion-icon__digits{
+  position:absolute;right:-5px;bottom:-5px;padding:0 1px;
+  font-size:8px;font-weight:850;line-height:1;
+  letter-spacing:-.5px;font-variant-numeric:tabular-nums;
+  background:var(--loc-panel);color:var(--loc-accent);
+  border-radius:2px;pointer-events:none;
+}
+
 .scope-feature-dock :is(a,button)>span{
   display:block;min-width:0;max-width:100%;text-align:center;
   line-height:1.25;overflow-wrap:anywhere;
