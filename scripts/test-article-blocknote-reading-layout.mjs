@@ -15,6 +15,9 @@ test('article list retains compact cards while full body mounts read-only BlockN
   assert.match(article,/IntersectionObserver/);
   assert.match(article,/<BlockNoteEditor editable={false} initialContent={html}/);
   assert.match(article,/detailReading\?'scope-article-detail':''/);
+  assert.match(article,/const documentBody=Boolean\(body\)&&\(detailReading\|\|richBody\)/);
+  assert.match(article,/body=\{editingReady\|\|documentBody\|\|styleTag\?'':body\}/);
+  assert.match(article,/\{documentBody&&!editingReady\?<DeferredArticleBody html=\{body\}\/>:null\}/);
   assert.match(ui,/export function WorkFullText\(/);
   assert.match(ui,/open&&!loading&&!error\?<div className="scope-article-block-display"/);
   assert.match(ui,/role="region" aria-label={copy\.work\.viewBody}/);
