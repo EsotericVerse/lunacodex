@@ -3,6 +3,7 @@
 import {useEffect,useMemo,useState} from 'react';
 import {useSearchParams} from 'next/navigation';
 import dynamic from 'next/dynamic';
+import {motion,useReducedMotion} from 'motion/react';
 import {FeaturePage} from '../ui';
 import UiText,{useUiText} from '../../i18n/UiText';
 import {useUiSection} from '../../i18n/ui-locale';
@@ -42,6 +43,7 @@ const TracePlaceResults=dynamic(()=>import('./trace/TracePlaceResults'),{
 
 export default function Trace({scopeId='loc'}){
   useUiSection('uiExtra.traceUI');
+  const reduceMotion=useReducedMotion();
   const translate=useUiText();
   const t=key=>translate(TEXT+key);
   const supported=TRACE_SCOPES.includes(scopeId);
@@ -273,10 +275,19 @@ export default function Trace({scopeId='loc'}){
   return <FeaturePage featureId="trace">
     <nav className="loc-trace-strategy-tabs" aria-label="痕跡地圖類型">
       <button type="button" className="loc-button" aria-pressed={mapMode==='territory'}
-        onClick={()=>setMapMode('territory')}>年度文章地點圖</button>
+        onClick={()=>setMapMode('territory')}>年度文章地點圖{mapMode==='territory'?<motion.span
+          className="loc-trace-strategy-tabs__indicator" layoutId={'trace-mode-'+scopeId}
+          transition={reduceMotion?{duration:0}:{type:'spring',duration:.26,bounce:.1}} aria-hidden="true"/>:null}</button>
       <button type="button" className="loc-button" aria-pressed={mapMode==='routes'}
-        onClick={()=>setMapMode('routes')}>路徑痕跡圖</button>
+        onClick={()=>setMapMode('routes')}>路徑痕跡圖{mapMode==='routes'?<motion.span
+          className="loc-trace-strategy-tabs__indicator" layoutId={'trace-mode-'+scopeId}
+          transition={reduceMotion?{duration:0}:{type:'spring',duration:.26,bounce:.1}} aria-hidden="true"/>:null}</button>
     </nav>
+    {/* Never overlap the two WebGL maps. The old map unmounts synchronously;
+        Motion provides entrance feedback for the newly selected mode only. */}
+    <motion.div key={mapMode} className="loc-trace-map-transition" data-map-mode={mapMode}
+      initial={reduceMotion?false:{opacity:0,y:6}} animate={{opacity:1,y:0}}
+      transition={{duration:reduceMotion?0:.24,ease:'easeOut'}}>
     {mapMode==='territory'?<TraceTerritoryPanel scopeId={scopeId}/>:
     <TraceMap publicTrace floatingControls={floatingControls} spatialData={demoSpatialData}
        annualGauges={annualGauges} annualGaugeOn={annualGaugeOn}
@@ -349,5 +360,6 @@ export default function Trace({scopeId='loc'}){
 
       </div>:null}
     </TraceMap>}
+    </motion.div>
   </FeaturePage>;
 }
