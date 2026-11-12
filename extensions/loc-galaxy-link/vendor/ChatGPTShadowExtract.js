@@ -4,6 +4,8 @@
  * License: Apache-2.0 (see ChatGPT-Shadow-LICENSE.txt).
  * Unmodified upstream behavior below; LOC adapts only the caller/output mapping.
  */
+// IIFE: chrome.scripting.executeScript can inject this module repeatedly in one tab.
+(() => {
 const ChatGPTShadowExtract = (() => {
   const ROLE_SELECTOR = "[data-message-author-role]";
   // The late-September 2026 ChatGPT front end dropped data-message-author-role.
@@ -618,3 +620,5 @@ const ChatGPTShadowExtract = (() => {
 if (typeof globalThis !== "undefined") {
   globalThis.ChatGPTShadowExtract = ChatGPTShadowExtract;
 }
+
+})();
