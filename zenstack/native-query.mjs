@@ -1,9 +1,12 @@
 // Lossless subset of LOC query/select translated to native ZenStack V3 ORM.
 // Auth/Scope, public visibility, and database selection are checked by Gateway.
+import {createQuerySchemaFactory} from '@zenstackhq/orm';
 import {schema} from './schema.mjs';
 
 const SCOPED={Galaxy:'Lo3rwangGalaxy',Anchor:'Lo3rwangAnchor',Blocks:'Lo3rwangBlocks'};
 const modelForName=name=>schema.models[name]||schema.models[SCOPED[name]];
+const querySchemaFactory=createQuerySchemaFactory(schema);
+const queryModelForName=name=>SCOPED[name]||name;
 // PostgreSQL DATE is returned by Kysely as YYYY-MM-DD but ZenStack V3
 // exposes @db.Date through DateTime. Preserve the existing HTTP value shape
 // instead of silently returning ISO timestamps to Culture/Statistics.
@@ -29,15 +32,38 @@ export function projectNativeSqlDateRows(rows,modelName){
 }
 const OPS={eq:'equals',neq:'not',gt:'gt',gte:'gte',lt:'lt',lte:'lte',in:'in'};
 
-function matchingValue(field,value){
-  if(value===null)return Boolean(field.optional);
+// The ORM's generated query schema is the source of truth for modeled
+// operators, scalar types, nullability and select shape. Keep this small
+// guard only for the two cases where LOC intentionally remains on Kysely:
+// nullable list columns and date strings whose existing wire contract must
+// not be coerced by Zod.
+function nativeFilterValue(field,value){
   if(field.array)return false;
-  if(field.type==='String')return typeof value==='string';
-  if(field.type==='Boolean')return typeof value==='boolean';
-  if(field.type==='Int')return Number.isSafeInteger(value);
-  if(field.type==='BigInt')return typeof value==='bigint';
-  if(field.type==='DateTime')return value instanceof Date&&!Number.isNaN(value.getTime());
-  return false;
+  if(field.type==='DateTime')
+    return value instanceof Date&&!Number.isNaN(value.getTime());
+  return true;
+}
+
+function ormFilter(column,operator,value){
+  if(value===null&&(operator==='is'||operator==='eq'))return {[column]:null};
+  if(value===null&&operator==='neq')return {[column]:{not:null}};
+  return {[column]:{[OPS[operator]]:value}};
+}
+
+function parsedFindManyArgs(modelName,filters,columns,orders,limit,offset){
+  const where=filters.length?{AND:filters.map(item=>
+    ormFilter(item.column,item.operator,item.value))}:{};
+  const orderBy=orders.map(item=>({[item.column]:item.ascending===false?'desc':'asc'}));
+  const input={
+    where,
+    select:Object.fromEntries(columns.map(column=>[column,true])),
+    skip:offset,
+    ...(limit===null?{}:{take:limit}),
+    ...(orderBy.length?{orderBy}: {})
+  };
+  const parsed=querySchemaFactory.makeFindManySchema(queryModelForName(modelName))
+    .safeParse(input);
+  return parsed.success?parsed.data:null;
 }
 export function nativeReadPlan(body,modelName){
   const model=modelForName(modelName);
@@ -56,16 +82,13 @@ export function nativeReadPlan(body,modelName){
       !(item.operator==='is'&&item.value===null||OPS[item.operator]))return null;
     const field=fields[item.column];
     if(item.operator==='in'){
-      if(!Array.isArray(item.value)||item.value.some(v=>v===null||!matchingValue(field,v)))return null;
-    }else if(!matchingValue(field,item.value))return null;
-    filters.push({[item.column]:{
-      [item.operator==='is'?'equals':OPS[item.operator]]:item.value
-    }});
+      if(!Array.isArray(item.value)||item.value.some(v=>v===null||
+        !nativeFilterValue(field,v)))return null;
+    }else if(item.value!==null&&!nativeFilterValue(field,item.value))return null;
+    filters.push(item);
   }
-  const orderBy=[];
   for(const item of body.orders||[]){
     if(!item||!Object.hasOwn(fields,item.column))return null;
-    orderBy.push({[item.column]:item.ascending===false?'desc':'asc'});
   }
   if(body.single!==undefined&&!['single','maybeSingle'].includes(body.single))
     return null;
@@ -73,12 +96,11 @@ export function nativeReadPlan(body,modelName){
   const offset=body.offset==null?0:Number(body.offset);
   if(limit!==null&&(!Number.isSafeInteger(limit)||limit<0)||
     !Number.isSafeInteger(offset)||offset<0)return null;
+  const args=parsedFindManyArgs(modelName,filters,body.columns,body.orders||[],limit,offset);
+  if(!args)return null;
   return {
-    select:Object.fromEntries(body.columns.map(c=>[c,true])),
-    where:filters.length?{AND:filters}:{},
-    orderBy,
-    ...(limit===null?{}:{take:limit}),
-    skip:offset,
+    ...args,
+    args,
     head:Boolean(body.head),count:Boolean(body.count),single:body.single
   };
 }
@@ -93,11 +115,8 @@ export async function executeNativeRead(client,body,modelName){
   const delegate=client?.[modelName[0].toLowerCase()+modelName.slice(1)];
   if(!delegate||typeof delegate.findMany!=='function'||typeof delegate.count!=='function')
     throw new Error('ZenStack native model is unavailable');
-  const count=plan.count?Number(await delegate.count({where:plan.where})):null;
-  const raw=plan.head?null:await delegate.findMany({
-    where:plan.where,select:plan.select,orderBy:plan.orderBy,
-    skip:plan.skip,take:plan.take
-  });
+  const count=plan.count?Number(await delegate.count({where:plan.args.where})):null;
+  const raw=plan.head?null:await delegate.findMany(plan.args);
   const data=projectNativeSqlDateRows(raw,modelName);
   if(!plan.single)return {data,count};
   const rows=data||[];
