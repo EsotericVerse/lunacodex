@@ -10,7 +10,7 @@ export function compileKeywordLiteralMatcher(words=[]){
   const literals=[...new Set(words.filter(word=>typeof word==='string'&&word.length))];
   const matcher=literals.length?new AhoCorasick(literals):null;
   const complexDictionary=literals.some(word=>COMPLEX_GRAPHEME.test(word));
-  const needsFallback=text=>complexDictionary||COMPLEX_GRAPHEME.test(text);
+  const needsFallback=text=>complexDictionary||COMPLEX_GRAPHEME.test(text)||text.includes('\r\n');
   return {
     contains(text){
       if(!matcher)return false;
