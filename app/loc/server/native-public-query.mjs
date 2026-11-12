@@ -18,6 +18,7 @@ import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 import {portableRelation} from '../providers/sql-engine-ports.mjs';
 import {parsePortableOrExpression,portableContainsSpec}
   from '../providers/portable-search.mjs';
+import {isTextSearchQuery,checkSearchQos} from '../providers/search-qos.mjs';
 
 const HEADERS={'content-type':'application/json; charset=utf-8',
   'cache-control':'no-store','x-content-type-options':'nosniff'};
@@ -245,6 +246,24 @@ export async function handleNativePublicQuery(request,env={},{
     else if(body?.kind==='public-action')action=normalizeAction(body);
     else normalized=normalize(body);
   }catch(error){return respond({error:String(error.message)},400)}
+  // Search-only QoS: decide after validated model predicates, before opening
+  // Kysely/ZenStack connections. UID, article lists and analytics bypass it.
+  if(normalized&&isTextSearchQuery({
+    kind:'query',operation:'select',table:normalized.table,
+    filters:normalized.filters,orFilters:normalized.orFilters
+  })){
+    // Cloudflare supplies this header. Never trust browser-supplied IDs or
+    // lump unknown visitors into one globally blocked anonymous identity.
+    const source=request.headers.get('cf-connecting-ip');
+    if(source){
+      const decision=checkSearchQos(source);
+      if(!decision.allowed)return new Response(JSON.stringify({
+        error:'Search request rate limited',code:'SEARCH_RATE_LIMIT',stage:'search'
+      }),{status:429,headers:{...HEADERS,
+        'retry-after':String(Math.max(1,Math.ceil(decision.retryAfterMs/1000)))
+      }});
+    }
+  }
   let stage='driver';
   try{
     // No bearer, email, user-supplied alias, SQL text or table override.
