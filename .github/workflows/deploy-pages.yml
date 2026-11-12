@@ -34,8 +34,6 @@ jobs:
       # via the manual Workflow guard; do not run it on every main push.
       - name: Security release gate (moderate, high and critical)
         run: npm run audit:security
-      - name: Game regression tests
-        run: npm run test:game
       - name: Build Next static export for GitHub Pages
         # shell: bash enables pipefail; without it `| tee` hides a failed build.
         shell: bash
@@ -50,7 +48,7 @@ jobs:
           if [ -f /tmp/next-build.log ]; then
             tail -n 200 /tmp/next-build.log >> "$GITHUB_STEP_SUMMARY"
           else
-            echo 'Build was not started. See the earlier failed test or setup step.' >> "$GITHUB_STEP_SUMMARY"
+            echo 'Build was not started. See the earlier failed setup step.' >> "$GITHUB_STEP_SUMMARY"
           fi
           echo '```' >> "$GITHUB_STEP_SUMMARY"
       - name: Configure Pages

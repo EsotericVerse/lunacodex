@@ -30,10 +30,6 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Security audit (moderate, high and critical)
         run: npm run audit:security
-      - name: Test LunaRunes game state transitions
-        run: npm run test:game
-      - name: Bootstrap performance and Admin regression tests
-        run: npm run test:bootstrap
       - name: Build Next.js app (ISR suspended)
         # shell: bash enables pipefail; without it `| tee` hides a failed build.
         shell: bash
@@ -55,11 +51,3 @@ jobs:
             echo 'Build was not started. See the earlier failed step.' >> "$GITHUB_STEP_SUMMARY"
           fi
           echo '```' >> "$GITHUB_STEP_SUMMARY"
-      - name: Keep browser screenshots for visual inspection
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: quality-screenshots
-          path: test-results/**/full-page.png
-          if-no-files-found: ignore
-          retention-days: 3

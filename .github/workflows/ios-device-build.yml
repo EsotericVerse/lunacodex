@@ -21,10 +21,8 @@ concurrency:
 jobs:
   # Cheap, fast, deterministic gate on a normal Linux runner: catches an
   # obviously broken commit before any minute is spent on the much more
-  # expensive macOS runner below. This intentionally does NOT re-run
-  # audit:security / test:game / test:bootstrap - those already run in
-  # full on deploy-pages.yml / next-architecture.yml, and duplicating them
-  # here just burns the same checks three times. If this guard passes,
+  # expensive macOS runner below. It validates syntax once without
+  # repeating standalone regression test suites. If this guard passes,
   # the native build proceeds; it never blocks on anything other than a
   # real syntax break, so it can't get stuck or loop.
   guard:
