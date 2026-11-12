@@ -1,4 +1,5 @@
 import {betterAuth} from 'better-auth';
+import {APIError,createAuthMiddleware} from 'better-auth/api';
 import {admin,jwt} from 'better-auth/plugins';
 import {createAccessControl} from 'better-auth/plugins/access';
 import {ZenStackClient} from '@zenstackhq/orm';
@@ -91,12 +92,42 @@ export function createLocAuth(env){
   // to ZenStack ORM over the existing Kysely PostgresDialect. No parallel SQL
   // adapter or runtime schema discovery is introduced.
   const db=new ZenStackClient(rainbowSchema,{dialect:new PostgresDialect({pool})});
+  // The OAuth provider delegates client/resource authorization to the
+  // application; it does not automatically apply the Admin Plugin's roles.
+  // Use Better Auth's authoritative on-demand Session check for privileged
+  // management operations only. Ordinary SSO retains the signed cookie cache.
+  const activeAuthAdmin=async (headers)=>{
+    try{
+      const live=await auth.api.getSession({
+        headers,query:{disableCookieCache:true,disableRefresh:true}
+      });
+      return live?.user?.role==='admin'&&live.user.banned!==true
+        &&live.user.emailVerified===true?live.user:null;
+    }catch{return null;}
+  };
+  const ownerPrivilege=async ({headers})=>{
+    const user=await activeAuthAdmin(headers);
+    return Boolean(user&&String(user.email||'').trim().toLowerCase()===OWNER_EMAIL);
+  };
   const auth=betterAuth({
     appName:'LOC Auth',
     baseURL:LOC_ISSUER,
     basePath:'/api/auth',
     secret:env.BETTER_AUTH_SECRET||env.LOC_CONTROL_ENCRYPTION_KEY,
     trustedOrigins:[LOC_ISSUER,LOC_WEB],
+    // Official Better Auth middleware: high-risk Admin API requests bypass the
+    // 30-minute cookie cache once, preventing revoked Sessions from managing
+    // Auth accounts. No background polling or extra Session store.
+    hooks:{before:[{
+      // has-permission is an introspection endpoint for ordinary users, not
+      // an account-management action; leave its native authorization intact.
+      matcher:ctx=>ctx.path?.startsWith('/admin/')===true
+        &&ctx.path!=='/admin/has-permission',
+      handler:createAuthMiddleware(async ctx=>{
+        if(!await activeAuthAdmin(ctx.headers))
+          throw new APIError('FORBIDDEN',{message:'Active administrator session required'});
+      })
+    }]},
     // Better Auth validates its own plugin inputs; ZenStack validates ORM
     // writes using the same shared schema, without duplicate custom hooks.
     // Existing Rainbow array-valued fields are JSONB, not PostgreSQL
@@ -180,12 +211,8 @@ export function createLocAuth(env){
         clientRegistrationAllowedScopes:['offline_access','loc:import'],
         clientRegistrationAllowedResources:[LOC_IMPORT],
         clientRegistrationDefaultResources:[LOC_MCP],
-        clientPrivileges:async ({user})=>
-          user?.emailVerified===true&&
-          String(user.email).trim().toLowerCase()===OWNER_EMAIL,
-        resourcePrivileges:async ({user})=>
-          user?.emailVerified===true&&
-          String(user.email).trim().toLowerCase()===OWNER_EMAIL
+        clientPrivileges:ownerPrivilege,
+        resourcePrivileges:ownerPrivilege
       })
     ]
   });
