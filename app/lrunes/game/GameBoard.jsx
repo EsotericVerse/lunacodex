@@ -1,7 +1,8 @@
 'use client';
 
 // The former MUI/DnD tabletop UI has been retired for a planned rewrite.
-// Domain rules, saved game data, rune assets and WebSocket transport remain.
+// Domain rules, saved game data and rune assets remain; obsolete online
+// WebSocket client code has been removed with the undeployed Worker.
 export default function GameBoard(){
   return <main className="loc-card" role="status" aria-live="polite"
     style={{maxWidth:760,margin:'1.5rem auto',padding:'2rem'}}>
