@@ -14,6 +14,8 @@ export async function suggestNewKeywords({galaxy,existingRows=[],onProgress=()=>
     throw new Error('Galaxy Scope 資料表無效');
   if(signal?.aborted)throw aborted();
   const worker=new Worker(new URL('./keyword-discovery-worker.mjs',import.meta.url),{type:'module'});
+  const readController=new AbortController();
+  const readSignal=signal?AbortSignal.any([signal,readController.signal]):readController.signal;
   const send=data=>new Promise((resolve,reject)=>{
     if(signal?.aborted){reject(aborted());return;}
     const onAbort=()=>reject(aborted());
@@ -40,7 +42,7 @@ export async function suggestNewKeywords({galaxy,existingRows=[],onProgress=()=>
       type:row.type,name:row.name,lists:row.type==='item'?row.lists:[]
     }))});
     let countQuery=dbAuthRelation(galaxy).select('uid',{count:'exact',head:true});
-    if(signal&&typeof countQuery.abortSignal==='function')countQuery=countQuery.abortSignal(signal);
+    if(typeof countQuery.abortSignal==='function')countQuery=countQuery.abortSignal(readSignal);
     const {count,error:countError}=await countQuery;
     if(signal?.aborted)throw aborted();
     if(countError||count===null||count===undefined||(count==null||!Number.isSafeInteger(Number(count))))
@@ -52,7 +54,7 @@ export async function suggestNewKeywords({galaxy,existingRows=[],onProgress=()=>
     const seen=new Set();
     const readPage=async build=>{
       let query=build(dbAuthRelation(galaxy));
-      if(signal&&typeof query.abortSignal==='function')query=query.abortSignal(signal);
+      if(typeof query.abortSignal==='function')query=query.abortSignal(readSignal);
       const reply=await query;
       if(signal?.aborted)throw aborted();
       if(reply.error)throw new Error(reply.error.message||'無法讀取文章內文');
@@ -92,52 +94,66 @@ export async function suggestNewKeywords({galaxy,existingRows=[],onProgress=()=>
     // needs to be downloaded again through a separate same-day OFFSET scan.
     // SQL compares DATE and UID using its own ordering/collation.
     const quoted=value=>'"'+String(value).replace(/\\/g,'\\\\').replace(/"/g,'\\"')+'"';
-    let afterDate=null,afterUid=null;
+    // A single lookahead read overlaps network with Worker CPU without
+    // increasing database concurrency, storing all rows, or skipping pages.
+    // Settle rejections immediately so Worker failures cannot leave an
+    // unhandled pending request; finally aborts the active read.
+    const settled=promise=>promise.then(value=>({value}),error=>({error}));
+    const datedPage=(afterDate,afterUid)=>readPage(relation=>{
+      let query=relation.select(ARTICLE_COLUMNS).not('date','is',null)
+        .order('date',{ascending:true}).order('uid',{ascending:true})
+        .limit(PAGE_SIZE);
+      if(afterDate!==null)query=query.or(
+        'date.gt.'+afterDate+',and(date.eq.'+afterDate+
+        ',uid.gt.'+quoted(afterUid)+')');
+      return query;
+    });
+    let previousDate=null;
+    let datedPending=settled(datedPage(null,null));
     for(;;){
       if(signal?.aborted)throw aborted();
-      const {data}=await readPage(relation=>{
-        let query=relation.select(ARTICLE_COLUMNS).not('date','is',null)
-          .order('date',{ascending:true}).order('uid',{ascending:true})
-          .limit(PAGE_SIZE);
-        if(afterDate!==null)query=query.or(
-          'date.gt.'+afterDate+',and(date.eq.'+afterDate+
-          ',uid.gt.'+quoted(afterUid)+')');
-        return query;
-      });
+      const completedRead=await datedPending;
+      if(completedRead.error)throw completedRead.error;
+      const {data}=completedRead.value;
       const page=Array.isArray(data)?data:[];
       if(!page.length)break;
       const normalized=page.map(row=>({...row,date:normalizeDay(row?.date)}));
       if(normalized.some((row,index)=>!row.date||typeof row.uid!=='string'||
-        !row.uid||(afterDate!==null&&row.date<afterDate)||
+        !row.uid||(previousDate!==null&&row.date<previousDate)||
         (index>0&&row.date<normalized[index-1].date)))
         throw new Error('Galaxy 日期／UID 游標資料不完整，未覆寫先前暫存');
+      const last=normalized.at(-1);
+      datedPending=settled(datedPage(last.date,last.uid));
       await consumePage(normalized);
-      afterDate=normalized.at(-1).date;
-      afterUid=normalized.at(-1).uid;
+      previousDate=last.date;
     }
     // Undated rows also use a bounded UID keyset instead of deep OFFSET.
     // Both scans are complete even when the transport returns a short page.
-    let afterUndatedUid=null;
+    const undatedPage=afterUid=>readPage(relation=>{
+      let query=relation.select(ARTICLE_COLUMNS)
+        .is('date',null).order('uid',{ascending:true}).limit(PAGE_SIZE);
+      if(afterUid!==null)query=query.gt('uid',afterUid);
+      return query;
+    });
+    let undatedPending=settled(undatedPage(null));
     for(;;){
       if(signal?.aborted)throw aborted();
-      const {data}=await readPage(relation=>{
-        let query=relation.select(ARTICLE_COLUMNS)
-          .is('date',null).order('uid',{ascending:true}).limit(PAGE_SIZE);
-        if(afterUndatedUid!==null)query=query.gt('uid',afterUndatedUid);
-        return query;
-      });
+      const completedRead=await undatedPending;
+      if(completedRead.error)throw completedRead.error;
+      const {data}=completedRead.value;
       const part=Array.isArray(data)?data:[];
       if(!part.length)break;
       if(part.some(row=>row?.date!=null||typeof row.uid!=='string'||!row.uid))
         throw new Error('Galaxy 未定日期游標資料不完整，未覆寫先前暫存');
+      undatedPending=settled(undatedPage(part.at(-1).uid));
       await consumePage(part);
-      afterUndatedUid=part.at(-1).uid;
     }
     if(completed!==total)throw new Error('文章數量在掃描期間變動，未覆寫先前暫存');
     const done=await send({type:'finish'});
     if(done.type!=='finished'||!done.result)throw new Error('新關鍵詞結果無效');
     return done.result;
   }finally{
+    readController.abort();
     worker.terminate();
   }
 }
