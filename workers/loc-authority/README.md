@@ -143,7 +143,7 @@ independently per source and normalized route. Only completed buckets with
 substantial traffic invoke PELT. A deep `/**` route matcher is required,
 since Better Auth's shallow `/*` misses nested routes such as
 `/oauth2/client/rotate-keys`.
-On a sustained shift, Better Auth's native `rateLimit.customRules` selects
+On a significant upward change point, Better Auth's native `rateLimit.customRules` selects
 a stricter 30-second request-rate budget; Better Auth itself counts and
 sends HTTP 429. Recovery is based on the next request and elapsed window.
 There are no intervals, timers, SQL polls, new stores or separate HTTP
