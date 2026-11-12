@@ -9,7 +9,6 @@ registerDefaultSection('uiExtra.editBlocks',editBlocksZh);
 import {useScopeRuntime} from '../modular/use-scope-runtime';
 import {useEditDock} from '../modular/edit-dock';
 import {useAccount} from './use-account';
-import {grantHomeEditorAccess} from './home-edit-access.mjs';
 import {clearEditorSession} from './edit-session-ttl.mjs';
 
 // This control is shown only at the bottom of an individual Scope homepage.
@@ -50,11 +49,10 @@ export default function ScopeHomeEditEntry(){
       // A new verified edit entry starts a fresh 30-minute idle / 2-hour
       // edit session; otherwise a previously locked session can never reopen.
       clearEditorSession(window.sessionStorage);
-      grantHomeEditorAccess(window.sessionStorage,scopeId,result.user.id);
-      // The homepage editor is mounted on this same Scope homepage.
-      // Only switch its authorized UI state; never navigate to a new URL.
-      // This also preserves the dynamic Scope shell's existing scopeid query.
-      editDock?.begin(scopeId,{globalManage:Boolean(result.authorizer?.canManageGlobalSync())});
+      // The route owns Scope ID. Entering edit mode only toggles the Dock;
+      // nothing is copied to sessionStorage or saved for later restoration.
+      if(!editDock?.begin(scopeId,{globalManage:Boolean(result.authorizer?.canManageGlobalSync())}))
+        throw new Error('目前頁面的 Scope ID 不一致，無法啟動編輯。');
     }catch(error){
       setMessage({error:String(error?.message||'編輯權限查詢失敗，請檢查登入或資料庫連線。')});
     }finally{

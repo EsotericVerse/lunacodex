@@ -1,6 +1,6 @@
 'use client';
 
-import {useEffect,useLayoutEffect,useMemo,useRef,useState,useSyncExternalStore} from 'react';
+import {useEffect,useMemo,useRef,useState,useSyncExternalStore} from 'react';
 import dynamic from 'next/dynamic';
 import {Capacitor} from '@capacitor/core';
 import {motion,useReducedMotion} from 'motion/react';
@@ -19,7 +19,6 @@ import {useScopeRuntime} from './modular/use-scope-runtime';
 import {faviconForScope} from './site-favicons';
 import {appBootstrapPageCopy,useAppBootstrap} from './loc/app-bootstrap';
 import {getDbSourceStatus,subscribeDbSourceStatus} from './loc/db-source-status.mjs';
-import {readHomeEditorAccess} from './loc/home-edit-access.mjs';
 import {useNavigationPreferences} from './loc/use-navigation-preferences';
 import {NavigationPreferences} from './modular/navigation-preferences';
 import {navigationHref} from './modular/scope-registry.js';
@@ -28,7 +27,6 @@ import BottomNavIcon,{DockMotionIcon} from './modular/BottomNavIcon';
 import {EditDockProvider,useEditDock} from './modular/edit-dock';
 // Only individual Scope homepages download the opt-in management entry.
 const ScopeHomeEditEntry=dynamic(()=>import('./loc/ScopeHomeEditEntry'),{loading:()=>null});
-const HomeEditModeRestore=dynamic(()=>import('./loc/HomeEditModeRestore'),{loading:()=>null});
 import ScrollableScopeNav from './modular/ScrollableScopeNav';
 import ScopeLink,{isManagementHref} from './modular/ScopeLink';
 
@@ -277,10 +275,17 @@ function NavTarget({href,label,current=false,native=false}){
 }
 
 export default function AppShell({children}){
-  return <EditDockProvider><AppShellInner>{children}</AppShellInner></EditDockProvider>;
+  // Resolve Scope exactly once for the Shell and pass the same route identity
+  // to Edit Dock. Admin edits the LOC Group data but never inherits its role.
+  const runtime=useScopeRuntime();
+  const editorScopeId=runtime.pathname.startsWith('/my-phone')||runtime.scopeId==='local'
+    ?'local':runtime.scope?.featureScope||runtime.scopeId;
+  return <EditDockProvider key={runtime.scopeId} scopeId={editorScopeId}>
+    <AppShellInner runtime={runtime}>{children}</AppShellInner>
+  </EditDockProvider>;
 }
 
-function AppShellInner({children}){
+function AppShellInner({children,runtime}){
   const queryClient=useQueryClient();
   useEffect(()=>{
     // Retire the browser PWA Service Worker. This does not affect the
@@ -318,22 +323,10 @@ function AppShellInner({children}){
       window.removeEventListener('loc-local-data-changed',refreshLocal);
     };
   },[queryClient]);
-  const {scopeId,scope,host,pathname,registryRow,configRow}=useScopeRuntime();
+  const {scopeId,scope,host,pathname,registryRow,configRow}=runtime;
   const protectedEditorRoute=isManagementHref(pathname)||/^\/admin(?:\/|$)/i.test(String(pathname||''));
   const editDock=useEditDock();
-  const [restoreHomeEdit,setRestoreHomeEdit]=useState(false);
   const [managementDenied,setManagementDenied]=useState(false);
-  // Check the existing edit marker before paint. Protected management routes
-  // verify via ManagementAccess instead; public pages never preflight roles.
-  useLayoutEffect(()=>{
-    try{
-      const marker=readHomeEditorAccess(window.sessionStorage);
-      setRestoreHomeEdit(!protectedEditorRoute&&marker?.scopeId===scopeId);
-    }catch{setRestoreHomeEdit(false);}
-  },[pathname,scopeId]);
-  useEffect(()=>{
-    if(editDock?.active&&restoreHomeEdit)setRestoreHomeEdit(false);
-  },[editDock?.active,restoreHomeEdit]);
   useEffect(()=>{
     setManagementDenied(false);
     const denied=event=>{
@@ -481,8 +474,7 @@ function AppShellInner({children}){
       encodeURIComponent(key)+'='+encodeURIComponent(value);
   };
   const editingDockVisible=Boolean(editDock?.active&&editDock.scopeId===navScopeId);
-  const editDockPending=!editingDockVisible&&((restoreHomeEdit&&!editDock?.active)||
-    (protectedEditorRoute&&!managementDenied));
+  const editDockPending=!editingDockVisible&&protectedEditorRoute&&!managementDenied;
   const locAdminEdit=navScopeId==='loc';
   const editSegments=String(pathname||'').split('/').filter(Boolean);
   const editSection=typeof window!=='undefined'
@@ -583,7 +575,6 @@ function AppShellInner({children}){
       </div>:null}
     </header>
     {children}
-    {restoreHomeEdit?<HomeEditModeRestore scopeId={scopeId}/>:null}
     <div className="scope-feature-dock scope-floating-edit-buttons" role="toolbar"
       aria-label={translateUiField(activeLocale,editingDockVisible||editDockPending?'編輯功能選單':'Scope 功能選單')}
       data-scope={localWorkspace?'local':scopeId} data-action-count={editingDockVisible?editTabs.length:6}>
