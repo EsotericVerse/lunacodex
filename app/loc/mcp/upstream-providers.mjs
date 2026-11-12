@@ -14,7 +14,10 @@ export const ProviderIdSchema=z.enum(Object.keys(UPSTREAM_PROVIDERS));
 export const ProviderToolSchema=z.string().regex(/^[a-zA-Z][a-zA-Z0-9_-]{0,100}$/);
 export const FunctionPolicySchema=z.enum(FUNCTION_MODES);
 export const ProviderArgumentsSchema=z.looseObject({}).refine(
-  value=>JSON.stringify(value).length<=12000,
+  value=>{
+    try{return JSON.stringify(value).length<=12000}
+    catch{return false}
+  },
   {error:'MCP tool arguments exceed 12 KB'}
 );
 const ApprovalIdSchema=z.string().regex(/^[A-Za-z0-9_-]{25,64}$/);
