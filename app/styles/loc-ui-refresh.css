@@ -417,6 +417,21 @@
   border-radius:999px;background:var(--loc-accent);
 }
 .loc-trace-map-transition{min-width:0;width:100%;}
+
+/* Fold-open map impression: two short-lived paper leaves above the one map,
+   rather than transforming or crossfading multiple GPU canvases. */
+.loc-trace-map-transition{position:relative;isolation:isolate}
+.loc-trace-map-unfold{
+  pointer-events:none;position:absolute;inset:0;z-index:20;
+  display:flex;overflow:hidden;
+}
+.loc-trace-map-unfold__leaf{display:block;flex:0 0 50%;height:100%;
+  background:linear-gradient(135deg,var(--loc-panel),var(--loc-panel-2));
+  border-inline:1px solid color-mix(in srgb,var(--loc-accent) 20%,var(--loc-line));
+}
+.loc-trace-map-unfold__leaf--left{transform-origin:left center}
+.loc-trace-map-unfold__leaf--right{transform-origin:right center}
+
 .loc-trace-territory{display:grid;gap:.7rem;min-width:0}
 .loc-trace-territory-toolbar{display:grid;gap:.4rem;min-width:0}
 .loc-trace-territory-toolbar>label{display:grid;gap:.25rem;font-size:.83rem;font-weight:650}
