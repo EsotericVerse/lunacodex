@@ -51,7 +51,7 @@ export async function vaultPut(env,key,record,ttl){
     {name:'AES-GCM',iv:nonce,additionalData:enc.encode(key)},
     await encryptionKey(env),data);
   await binding(env).put(key,JSON.stringify({v:1,nonce:b64(nonce),value:b64(new Uint8Array(encrypted))}),
-    ...(ttl?{expirationTtl:ttl}:{}));
+    ttl?{expirationTtl:ttl}:undefined);
 }
 export async function vaultGet(env,key){
   const item=await binding(env).get(key);
