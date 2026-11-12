@@ -55,7 +55,7 @@ function validateQuery(input){
   if(input.single!==undefined&&!['single','maybeSingle'].includes(input.single))throw new Error('Invalid row cardinality');
   // ZModel is the shared model contract for the native ORM and Kysely
   // fallback. Keep existing request/SQL syntax guards for unmodeled tables.
-  verifyModeledSqlFields({schema,table,columns,filters,orders,
+  verifyModeledSqlFields({schema,table,columns,filters,orFilters,orders,
     values:input.values,onConflict:input.onConflict||[]});
   const typed=normalizeModeledTypeDifferences({schema,table,filters,orFilters});
   return {...input,schema,table,filters:typed.filters,columns,orders,limit,offset,
