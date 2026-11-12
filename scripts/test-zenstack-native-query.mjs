@@ -7,8 +7,8 @@ import {PolicyPlugin} from '@zenstackhq/plugin-policy';
 import {schema} from '../zenstack/schema.mjs';
 import {createScopedLocClient} from '../zenstack/client.mjs';
 import {withFixedPolicyRead} from '../zenstack/policy-runtime.mjs';
-import {nativeReadPlan,executeNativeRead} from '../zenstack/native-query.mjs';
-import {zmodelRegistryJoin} from '../zenstack/model-column-guard.mjs';
+import {nativeReadPlan,executeNativeRead,projectNativeSqlDateRows} from '../zenstack/native-query.mjs';
+import {modeledBooleanColumns,zmodelRegistryJoin} from '../zenstack/model-column-guard.mjs';
 
 const simple={kind:'query',operation:'select',schema:'silver',
   table:'test_galaxy',columns:['uid','title'],filters:[
@@ -113,4 +113,42 @@ test('ZModel Registry JOIN compiles to the original one-SQL cross-schema join',a
   // No SQL runs during model mapping / query compilation.
   assert.equal(executed.length,0);
   await db.destroy();
+});
+
+test('native public-shaped SELECT uses model fields without a Boolean workaround',async()=>{
+  const executed=[],dialect=dummyDialect(executed);
+  const client=createScopedLocClient({dialect,scopeId:'alpha',namespace:'silver'});
+  const output=await executeNativeRead(client,{
+    kind:'query',operation:'select',schema:'silver',table:'alpha_galaxy',
+    columns:['uid','title','createtime','statics'],filters:[],orders:[],limit:10
+  },'Galaxy');
+  assert.deepEqual(output,{data:[],count:null});
+  assert.equal(executed.length,1,'one modeled native SELECT, not duplicate reads');
+  assert.match(executed[0].sql,/"silver"."alpha_galaxy"/);
+});
+
+test('PostgreSQL native DATE results retain the existing YYYY-MM-DD wire value',async()=>{
+  const original=[{uid:'Ab12Cd34',date:new Date('2026-11-12T00:00:00.000Z')},
+    {uid:'Ab12Cd35',date:null}];
+  const projected=projectNativeSqlDateRows(original,'Galaxy');
+  assert.equal(projected[0].date,'2026-11-12');
+  assert.equal(projected[1],original[1]);
+  assert.equal(original[0].date instanceof Date,true,'do not mutate ORM result');
+  const mock={galaxy:{findMany:async()=>original,count:async()=>{throw Error('Unexpected count')}}};
+  const result=await executeNativeRead(mock,{
+    ...simple,columns:['uid','date'],filters:[]
+  },'Galaxy');
+  assert.deepEqual(result.data.map(row=>row.date),['2026-11-12',null]);
+});
+
+test('Galaxy bulk flag names come from the same ZModel for both Scope exemplars',()=>{
+  const first=modeledBooleanColumns('silver','lo3rwang_galaxy').sort();
+  const second=modeledBooleanColumns('silver','lrunes_galaxy').sort();
+  assert.deepEqual(first,second);
+  assert.deepEqual(first,['culture','extract','keyword','list','others','search','statics','trace']);
+  const source=readFileSync(new URL('../app/loc/providers/kysely-management.mjs',import.meta.url),'utf8');
+  assert.match(source,/GALAXY_BULK_FLAGS=new Set\(modeledBooleanColumns\('silver','lo3rwang_galaxy'\)\)/);
+  const publicSource=readFileSync(new URL('../app/loc/server/native-public-query.mjs',import.meta.url),'utf8');
+  assert.doesNotMatch(publicSource,/if\(!ordinaryFilters.some/);
+  assert.match(publicSource,/if\(!nativeReadPlan\(body,modelName\)\)return null/);
 });

@@ -55,6 +55,13 @@ export function modelFieldsForSql(schemaName,tableName){
   const modelName=modelNameForSql(schemaName,tableName);
   return modelName?schema.models[modelName]?.fields||null:null;
 }
+// SQL Boolean selections and scoped flag mutations share the frozen model.
+// This returns field metadata only, never grants write access or issues SQL.
+export function modeledBooleanColumns(schemaName,tableName){
+  const fields=modelFieldsForSql(schemaName,tableName);
+  return fields?Object.entries(fields).filter(([,field])=>
+    field.type==='Boolean'&&!field.array).map(([name])=>name):[];
+}
 
 // This is column-name contract validation, not permission verification or
 // runtime type-difference handling. Normal SQL values stay on Kysely;

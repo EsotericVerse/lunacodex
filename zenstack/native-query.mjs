@@ -3,6 +3,30 @@
 import {schema} from './schema.mjs';
 
 const SCOPED={Galaxy:'Lo3rwangGalaxy',Anchor:'Lo3rwangAnchor',Blocks:'Lo3rwangBlocks'};
+const modelForName=name=>schema.models[name]||schema.models[SCOPED[name]];
+// PostgreSQL DATE is returned by Kysely as YYYY-MM-DD but ZenStack V3
+// exposes @db.Date through DateTime. Preserve the existing HTTP value shape
+// instead of silently returning ISO timestamps to Culture/Statistics.
+function nativeDateColumns(modelName){
+  const model=modelForName(modelName);
+  return Object.entries(model?.fields||{}).filter(([,field])=>
+    field.attributes?.some(attr=>attr.name==='@db.Date')).map(([key])=>key);
+}
+export function projectNativeSqlDateRows(rows,modelName){
+  if(!Array.isArray(rows)||!rows.length)return rows;
+  const columns=nativeDateColumns(modelName);
+  if(!columns.length)return rows;
+  return rows.map(row=>{
+    let changed=null;
+    for(const name of columns){
+      if(!Object.hasOwn(row,name)||!(row[name] instanceof Date))continue;
+      if(Number.isNaN(row[name].getTime()))continue;
+      if(!changed)changed={...row};
+      changed[name]=row[name].toISOString().slice(0,10);
+    }
+    return changed||row;
+  });
+}
 const OPS={eq:'equals',neq:'not',gt:'gt',gte:'gte',lt:'lt',lte:'lte',in:'in'};
 
 function matchingValue(field,value){
@@ -16,7 +40,7 @@ function matchingValue(field,value){
   return false;
 }
 export function nativeReadPlan(body,modelName){
-  const model=schema.models[modelName]||schema.models[SCOPED[modelName]];
+  const model=modelForName(modelName);
   if(!model||body?.kind!=='query'||body.operation!=='select'||
     !Array.isArray(body.columns)||!body.columns.length||
     !Array.isArray(body.filters??[])||!Array.isArray(body.orders??[])||
@@ -70,10 +94,11 @@ export async function executeNativeRead(client,body,modelName){
   if(!delegate||typeof delegate.findMany!=='function'||typeof delegate.count!=='function')
     throw new Error('ZenStack native model is unavailable');
   const count=plan.count?Number(await delegate.count({where:plan.where})):null;
-  const data=plan.head?null:await delegate.findMany({
+  const raw=plan.head?null:await delegate.findMany({
     where:plan.where,select:plan.select,orderBy:plan.orderBy,
     skip:plan.skip,take:plan.take
   });
+  const data=projectNativeSqlDateRows(raw,modelName);
   if(!plan.single)return {data,count};
   const rows=data||[];
   if(rows.length>1||plan.single==='single'&&rows.length!==1)
