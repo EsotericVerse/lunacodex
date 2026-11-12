@@ -5,7 +5,6 @@ import {UPSTREAM_PROVIDERS,upstreamProvider,trustedProviderUrl,
 import {randomValue,hashValue,providerKey,vaultGet,vaultPut,vaultDelete} from './upstream-vault.mjs';
 
 const OAUTH_TTL=600;
-const text=new TextEncoder();
 const form=params=>new URLSearchParams(params).toString();
 async function safeJson(provider,url,options={}){
   const endpoint=trustedProviderUrl(provider,url);
@@ -31,6 +30,7 @@ function oauthWellKnown(issuer){
   const path=url.pathname.replace(/\/+$/,'');
   return [url.origin+'/.well-known/oauth-authorization-server'+path,
     url.origin+'/.well-known/openid-configuration'+path,
+    url.origin+path+'/.well-known/openid-configuration',
     url.origin+'/.well-known/oauth-authorization-server',
     url.origin+'/.well-known/openid-configuration'];
 }
@@ -48,8 +48,11 @@ async function metadata(provider){
           for(const path of oauthWellKnown(issuer)){
             try{
               const data=await safeJson(provider,path);
-              if(data.authorization_endpoint&&data.token_endpoint)
-                return {data,resource:p.resource||upstreamProvider(provider).url,
+              if(data.authorization_endpoint&&data.token_endpoint&&
+                 Array.isArray(data.code_challenge_methods_supported)&&
+                 data.code_challenge_methods_supported.includes('S256'))
+                return {data,resource:trustedProviderUrl(provider,
+                  p.resource||upstreamProvider(provider).url),
                   scopes:Array.isArray(p.scopes_supported)?p.scopes_supported:[]};
             }catch{}
           }
@@ -131,8 +134,8 @@ function tokenRecord(previous,tokens,tokenEndpoint,client,resource){
   return {token_endpoint:tokenEndpoint,client,resource,
     access_token:tokens.access_token,
     refresh_token:tokens.refresh_token||previous?.refresh_token||'',
-    expires_at:Number.isFinite(Number(tokens.expires_in))
-      ?Date.now()+Number(tokens.expires_in)*1000:0,
+    expires_at:tokens.expires_in!=null&&Number.isFinite(Number(tokens.expires_in))&&
+      Number(tokens.expires_in)>0?Date.now()+Number(tokens.expires_in)*1000:0,
     scope:tokens.scope||previous?.scope||''};
 }
 export async function completeUpstreamOAuth(env,params,expectedSubject){
@@ -146,7 +149,8 @@ export async function completeUpstreamOAuth(env,params,expectedSubject){
   if(params.error||!params.code)throw new Error('Upstream OAuth was denied');
   const tokens=await exchange(saved.provider,saved.token_endpoint,{
     grant_type:'authorization_code',code:String(params.code),
-    redirect_uri:LOC_MCP_CALLBACK,code_verifier:saved.verifier},saved.client);
+    redirect_uri:LOC_MCP_CALLBACK,code_verifier:saved.verifier,
+    ...(saved.provider==='github'?{}:{resource:saved.resource})},saved.client);
   await vaultPut(env,await providerKey(saved.subject,saved.provider),
     tokenRecord(null,tokens,saved.token_endpoint,saved.client,saved.resource));
   return {provider:saved.provider,connected:true};
@@ -159,7 +163,8 @@ export async function upstreamConnection(env,subject,provider){
   if(entry.expires_at&&entry.expires_at<Date.now()+30000){
     if(!entry.refresh_token)throw new Error('Provider OAuth has expired; reconnect');
     const token=await exchange(provider,entry.token_endpoint,{
-      grant_type:'refresh_token',refresh_token:entry.refresh_token},entry.client);
+      grant_type:'refresh_token',refresh_token:entry.refresh_token,
+    ...(provider==='github'?{}:{resource:entry.resource})},entry.client);
     entry=tokenRecord(entry,token,entry.token_endpoint,entry.client,entry.resource);
     await vaultPut(env,key,entry);
   }
