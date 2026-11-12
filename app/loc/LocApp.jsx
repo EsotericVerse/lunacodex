@@ -26,7 +26,14 @@ const AuthorHomeView=dynamic(()=>import('./views/AuthorHomeView'),{loading});
 const AdminHomeView=dynamic(()=>import('./views/AdminHomeView'),{loading});
 const GenericScopeHomeView=dynamic(()=>import('./views/GenericScopeHomeView'),{loading});
 const ScopeGroupOverview=dynamic(()=>import('./ScopeGroupOverview'),{loading});
-const Statistics=dynamic(()=>import('../modular/features/Statistics'),{loading});
+const Statistics=dynamic(()=>import('../modular/features/Statistics').catch(recoverChunkOnce),{
+  // The Statistics chunk can be delayed after leaving Edit Dock. Keep the
+  // public Hero visible during module loading instead of replacing it with
+  // a blank-page placeholder. Recover stale deployment chunks once.
+  loading:()=> <FeaturePage featureId="statics">
+    <div className="loc-loading" role="status"><UiText id="uiExtra.feature.moduleLoading"/></div>
+  </FeaturePage>
+});
 const KeywordSettings=dynamic(()=>import('../modular/features/KeywordSettings'),{loading});
 const Culture=dynamic(()=>import('../modular/features/Culture'),{loading});
 const CulturePublic=dynamic(()=>import('./views/CulturePublicReader'),{loading});
