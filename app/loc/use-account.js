@@ -65,6 +65,7 @@ async function fetchManagementAccount(queryClient,{force=false}={}){
     if(obsolete())return signedOutState;
     if(!user){
       clearAuthorization();
+      if(typeof window!=='undefined')clearWebPermissionSession(window.sessionStorage);
       scopeMetadata=[];
       authUserId='';
       authEmail='';
