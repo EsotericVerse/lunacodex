@@ -113,10 +113,11 @@ function normalize(body){
 }
 
 
-// Kysely handles ordinary public SELECTs. For an actual ZModel type
-// representation mismatch in a supported PostgreSQL Scope query, ZenStack
-// can decode its typed ORM result on the same trusted Kysely dialect.
-// Unsupported operations, lists, JSON, and other dialects stay on Kysely.
+// Use the existing ZenStack ORM for ordinary model-compatible PostgreSQL
+// Scope reads, not only for exceptional Boolean conversions. The public
+// Scope allowlist, exact query boundary and source visibility remain unchanged.
+// Unsupported operators, arrays, raw expressions and other dialects retain
+// their existing Kysely executor. No new database connection or polling.
 function modeledPublicSelect(selected,query){
   if(selected.engine!=='postgres'||!selected.dialect||query.cardinality)
     return null;
@@ -129,9 +130,9 @@ function modeledPublicSelect(selected,query){
   const typed=normalizeModeledTypeDifferences({
     schema:'silver',table:query.table,filters:ordinaryFilters
   });
-  // Kysely is the default SQL engine. Only an actual ZModel type mismatch
-  // (e.g. browser "true" instead of a Boolean) attempts native ZenStack ORM.
-  if(!ordinaryFilters.some((f,i)=>f.value!==typed.filters[i].value))return null;
+  // ZModel already validates the requested columns and field-compatible
+  // predicates. Prefer the native model when the lossless plan is supported,
+  // whether or not Boolean adaptation happened to be necessary.
   const body={
     kind:'query',operation:'select',schema:'silver',table:query.table,
     columns:query.columns,filters:typed.filters,

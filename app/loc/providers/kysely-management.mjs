@@ -1,6 +1,6 @@
 import {canManageLoc,locManageRows} from './loc-authorization.mjs';
 import {schema as fixedSchema} from '../../../zenstack/schema.mjs';
-import {modelFieldsForSql,zmodelRegistryJoin} from '../../../zenstack/model-column-guard.mjs';
+import {modelFieldsForSql,modeledBooleanColumns,zmodelRegistryJoin} from '../../../zenstack/model-column-guard.mjs';
 import {validateLocRegistryDomain} from './loc-domain.mjs';
 import {sql} from 'kysely';
 import {saveBlocksKysely} from './kysely-blocks.mjs';
@@ -266,7 +266,13 @@ export async function executeManagedKyselyWrite(trx,body,{modelName=''}={}){
 }
 
 
-const GALAXY_BULK_FLAGS=new Set(['statics','culture','search','trace','list','keyword','extract','others']);
+// Only existing Galaxy Boolean fields can be bulk-toggled. Read the actual
+// ZModel contract shared by both fixed Scope exemplars; no second flag map.
+const GALAXY_BULK_FLAGS=new Set(modeledBooleanColumns('silver','lo3rwang_galaxy'));
+const runeGalaxyFlags=modeledBooleanColumns('silver','lrunes_galaxy');
+if(!GALAXY_BULK_FLAGS.size||GALAXY_BULK_FLAGS.size!==runeGalaxyFlags.length||
+   runeGalaxyFlags.some(name=>!GALAXY_BULK_FLAGS.has(name)))
+  throw new Error('LOC Galaxy Boolean ZModel contracts differ');
 async function bulkUpdateGalaxyFlags(trx,args){
   const scope=String(args.p_scope_id||'').trim().toLowerCase();
   const site=String(args.p_site||'').trim().toLowerCase();
