@@ -95,11 +95,19 @@ async function signedClaims(request,fetchImpl){
     if(typeof claims.sub!=='string'||!claims.sub)
       throw Error('Missing Better Auth resource principal');
   }catch{throw refusal('LOC OAuth access token invalid',401)}
-  const response=await fetchImpl(AUTH+'/api/auth/oauth2/userinfo',{
-    method:'GET',headers:{authorization:'Bearer '+bearer[1],accept:'application/json'},
-    cache:'no-store',redirect:'manual',signal:AbortSignal.timeout(7000)
-  }).catch(()=>null);
-  if(!response?.ok)throw refusal('LOC OAuth UserInfo unavailable',401);
+  let response;
+  try{
+    response=await fetchImpl(AUTH+'/api/auth/oauth2/userinfo',{
+      method:'GET',headers:{authorization:'Bearer '+bearer[1],accept:'application/json'},
+      cache:'no-store',redirect:'manual',signal:AbortSignal.timeout(7000)
+    });
+  }catch{throw refusal('LOC OAuth UserInfo unavailable',503)}
+  // Auth Worker failures are NOT proof of revoked credentials. Returning 401
+  // would cause the Extension to rotate tokens and pause a durable Queue.
+  if(response?.status===429)throw refusal('LOC OAuth UserInfo rate limited',429);
+  if(response?.status===401||response?.status===403)
+    throw refusal('LOC OAuth identity verification failed',401);
+  if(!response?.ok)throw refusal('LOC OAuth UserInfo unavailable',503);
   const checked=VerifiedLocUserInfoSchema.safeParse(
     await response.json().catch(()=>null));
   if(!checked.success||checked.data.sub!==claims.sub)
