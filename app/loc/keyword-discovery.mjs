@@ -1,3 +1,5 @@
+import {compileKeywordLiteralMatcher} from './keyword-literal-matcher.mjs';
+
 // On-demand, read-only discovery of new literal Keywords from Galaxy content.
 // Existing Keywords are used ONLY as an exclusion set; no classifications are changed.
 const IGNORE_ZH=new Set('我們 你們 他們 這個 那個 這些 那些 自己 可以 可能 沒有 不是 什麼 怎麼 為什麼 因為 所以 如果 然後 但是 不過 已經 還是 真的 覺得 知道 一個 一些 一種 一樣 這樣 那樣 現在 今天 昨天 明天 時候 事情 問題 東西 地方 目前 之後 之前 以及 其中 其他 以上 以下 只是 就是 還有 而且 需要 進行 使用 發現 看到 發生 成為 只有 不能 不會 也許 其實 開始 結果 最後 大家 例如 例如說 文章 內容 發表 動態 分享 連結 標題 時間 日期 發文 網站 網頁 作者 資料 資訊 文字 檢查 進去 出來 回來 什麼樣 都是 也是 這是 那是 這裡 那裡 但是 因此 方法 方式 主要 相關 包含 包括 應該 這麼 那麼 或者 以及 之間 時間點 今天晚上 現在目前'.split(/\s+/u));
@@ -80,11 +82,7 @@ export function createNewKeywordDiscovery(rows=[]){
   // for this estimated ratio, so use terms with >=2 characters.
   const known=[...existing].filter(term=>[...term].length>=2)
     .sort((a,b)=>b.length-a.length);
-  const regexMeta=new Set(['\\','.','*','+','?','^','$','{','}','(',')','|','[',']']);
-  const escapeRegex=term=>[...term].map(char=>regexMeta.has(char)?'\\'+char:char).join('');
-  const knownMatchers=[];
-  for(let offset=0;offset<known.length;offset+=100)
-    knownMatchers.push(new RegExp(known.slice(offset,offset+100).map(escapeRegex).join('|'),'u'));
+  const knownMatcher=compileKeywordLiteralMatcher(known);
   let read=0,withContent=0,limited=false;
   // Repeated tokens dominate long Galaxy scans. Cache both accepted and
   // rejected normalized tokens, with bounded memory across large imports.
@@ -130,10 +128,8 @@ export function createNewKeywordDiscovery(rows=[]){
       if(/^\d{4}-\d{2}$/.test(month)){
         const item=months.get(month)||{month,documents:0,existingCovered:0};
         item.documents++;
-        if(knownMatchers.length){
-          const normalized=normalize(body);
-          if(knownMatchers.some(re=>re.test(normalized)))item.existingCovered++;
-        }
+        if(known.length&&knownMatcher.contains(normalize(body)))
+          item.existingCovered++;
         months.set(month,item);
       }
       let prev=null,prev2=null;
