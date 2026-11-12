@@ -831,7 +831,11 @@
 .scope-search-reference-editor>h2{padding:.5rem 0;font-weight:600}
 .scope-search-reference-editor>.scope-search-reference-grid{margin-top:.85rem}
 .scope-search-reference-grid>.scope-edit-mode-toggle{order:2;margin-bottom:0}
-.scope-search-results{scroll-margin-top:5rem}
+.scope-search-results{scroll-margin-top:5rem;position:relative}
+.scope-search-arrival-indicator{
+  pointer-events:none;position:absolute;top:0;left:0;right:0;height:3px;
+  transform-origin:left center;border-radius:999px;background:var(--loc-accent);
+}
 .scope-editable-block-grid.scope-search-reference-grid{
   display:grid;grid-template-columns:minmax(0,1fr);
   gap:clamp(.75rem,1.5vw,1.15rem);align-items:start;
