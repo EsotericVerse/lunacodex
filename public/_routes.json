@@ -11,7 +11,10 @@
     "/api/loc-permissions",
     "/api/loc-native",
     "/api/loc-auth-connectivity",
-    "/api/keywords"
+    "/api/keywords",
+    "/api/mcp-provider",
+    "/api/mcp-provider-callback",
+    "/.well-known/loc-mcp-client"
   ],
   "exclude": []
 }
