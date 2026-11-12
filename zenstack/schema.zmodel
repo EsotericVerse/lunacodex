@@ -120,7 +120,7 @@ model Lo3rwang {
     search_intro                 String      @db.Text @default(dbgenerated())
     search_aliases               String[]    @db.Text @default(dbgenerated())
     locale                       String      @db.Text @default(dbgenerated())
-    current_keyword_class_uid    String?     @db.VarChar(8)
+    current_keyword_class_uid    String?     @db.Char(8)
     keyword_suggestions          String[]    @db.Text
     status                       Json        @db.JsonB @default(dbgenerated())
     trace                        Boolean      @default(true)
@@ -136,7 +136,7 @@ model Lo3rwang {
 // never by title. attr.counts stores per-Scope cached article counts.
 // Physical schema matches Lo3rwangAnchor; source-specific CHECK constraints live in SQL.
 model LocAnchor {
-    uid                          String      @id @db.VarChar(8)
+    uid                          String      @id @db.Char(8)
     type                         String      @db.Text
     title                        String?     @db.Text
     description                  String?     @db.Text
@@ -149,7 +149,7 @@ model LocAnchor {
 }
 
 model Lo3rwangAnchor {
-    uid                          String      @id @db.VarChar(8)
+    uid                          String      @id @db.Char(8)
     type                         String      @db.Text
     title                        String?     @db.Text
     description                  String?     @db.Text
@@ -187,7 +187,7 @@ model Lo3rwangGalaxy {
     target_id                    String[]    @db.Text
     ref_id                       String?     @db.Char(8)
     site                         String?     @db.Text
-    place_id                     String?     @db.VarChar(8)
+    place_id                     String?     @db.Char(8)
     media_link                   String[]    @db.VarChar
     date                         DateTime?   @db.Date
     site_id                      String?     @db.Text
@@ -248,7 +248,7 @@ model Lrunes {
     keyword_class_share_enabled  Boolean      @default(false)
     keyword_meta                 Json        @db.JsonB @default(dbgenerated())
     staticstime                  DateTime?   @db.Timestamptz(6)
-    current_keyword_class_uid    String?     @db.VarChar(8)
+    current_keyword_class_uid    String?     @db.Char(8)
     status                       Json        @db.JsonB @default(dbgenerated())
     trace                        Boolean      @default(true)
     search                       Boolean      @default(true)
@@ -260,7 +260,7 @@ model Lrunes {
 }
 
 model LrunesAnchor {
-    uid                          String      @id @db.VarChar(8)
+    uid                          String      @id @db.Char(8)
     type                         String      @db.Text
     title                        String?     @db.Text
     description                  String?     @db.Text
@@ -311,7 +311,7 @@ model LrunesGalaxy {
     target_id                    String[]    @db.Text
     ref_id                       String?     @db.Char(8)
     site                         String?     @db.Text
-    place_id                     String?     @db.VarChar(8)
+    place_id                     String?     @db.Char(8)
     media_link                   String[]    @db.VarChar
     date                         DateTime?   @db.Date
     site_id                      String?     @db.Text
