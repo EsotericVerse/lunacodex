@@ -2,10 +2,10 @@ import {sql} from 'kysely';
 import {buildKyselyUpsertQuery} from './kysely-runtime.mjs';
 import {portableRelation,serializePortableJsonFields} from './sql-engine-ports.mjs';
 import {modelFieldsForSql} from '../../../zenstack/model-column-guard.mjs';
+import {importSchemaForSqlTable} from '../../../zenstack/import-validation.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const PAGE=/^[A-Za-z][A-Za-z0-9_-]{0,60}$/;
-const UID=/^[A-Za-z0-9]{8}$/;
 // The fixed and dynamic Block tables have one frozen ZenStack field contract.
 // Keep the editor's own page/order/UID business rules below.
 const FIELDS=new Set(Object.keys(modelFieldsForSql('silver','lo3rwang_blocks')));
@@ -24,10 +24,13 @@ export async function saveBlocksKysely(db,args,{engine='postgres',namespace='sil
   const tableName=scope==='loc'?'loc_blocks':scope+'_blocks';
   const table=engine==='postgres'?'silver.'+tableName:
     portableRelation(tableName,engine,namespace);
+  // Reuse the already cached ZenStack→Zod model schema used by Galaxy import.
+  // No separate Block field, UID or physical-type validator is maintained here.
+  const blockSchema=importSchemaForSqlTable('silver.'+tableName);
   const seen=new Set(),orders=new Set();
   const rows=supplied.map(row=>{
     if(!row||typeof row!=='object'||Array.isArray(row)||
-       Object.keys(row).some(key=>!FIELDS.has(key))||!UID.test(String(row.uid||'')))
+       Object.keys(row).some(key=>!FIELDS.has(key)))
       reject('Invalid Block data');
     const uid=String(row.uid);
     const order=Number(row.block_order);
@@ -38,7 +41,7 @@ export async function saveBlocksKysely(db,args,{engine='postgres',namespace='sil
     if(!Array.isArray(entity)&&(!entity||typeof entity!=='object'))
       reject('Invalid Block entities');
     const image=row.block_image;
-    return {
+    const normalized={
       uid,page_name:type,block_order:order,
       block_eyebrow:String(row.block_eyebrow||''),
       block_title:String(row.block_title||''),
@@ -47,6 +50,9 @@ export async function saveBlocksKysely(db,args,{engine='postgres',namespace='sil
       block_entity:entity,
       block_image:image==null?null:typeof image==='string'?image:JSON.stringify(image)
     };
+    // Validate against the actual ZModel fields before any Kysely SELECT/UPSERT.
+    if(!blockSchema.safeParse(normalized).success)reject('Invalid Block data');
+    return normalized;
   });
   // One SELECT checks existing UIDs and defines the removed rows. It also
   // prevents a batch from replacing a Block belonging to another page.
