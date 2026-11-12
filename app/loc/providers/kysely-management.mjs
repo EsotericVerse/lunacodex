@@ -1,6 +1,8 @@
 import {canManageLoc,locManageRows} from './loc-authorization.mjs';
 import {modelFieldsForSql,modelNameForSql,modeledPrimaryKeyColumns,
   modeledBooleanColumns,zmodelRegistryJoin} from '../../../zenstack/model-column-guard.mjs';
+import {managedRowsIssue,managedUpdateValuesValid,managedFiltersValid,
+  MANAGED_FILTER_SQL} from '../../../zenstack/sql-input-shape.mjs';
 import {validateLocRegistryDomain} from './loc-domain.mjs';
 import {sql} from 'kysely';
 import {saveBlocksKysely} from './kysely-blocks.mjs';
@@ -25,29 +27,19 @@ function tableName(value){
   return match[1];
 }
 function validateRows(value){
-  if(!Array.isArray(value)||!value.length||value.length>10000)reject('Invalid managed rows');
-  for(const row of value){
-    if(!row||typeof row!=='object'||Array.isArray(row)||!Object.keys(row).length||
-       Object.keys(row).some(key=>!ID.test(key)))reject('Invalid managed row');
-  }
+  const issue=managedRowsIssue(value);
+  if(issue)reject(issue==='batch'?'Invalid managed rows':'Invalid managed row');
   return value;
 }
 function validateFilters(value){
-  if(!Array.isArray(value)||!value.length||value.length>20)reject('Managed write requires filters');
-  const operators=new Set(['eq','neq','gt','gte','lt','lte','like','ilike','is','in']);
-  for(const filter of value){
-    if(!filter||typeof filter!=='object'||!ID.test(filter.column)||
-      !operators.has(filter.operator||'eq')||
-      filter.operator==='in'&&(!Array.isArray(filter.value)||filter.value.length>500))
-      reject('Invalid managed filter');
-  }
+  if(!Array.isArray(value)||!value.length||value.length>20)
+    reject('Managed write requires filters');
+  if(!managedFiltersValid(value))reject('Invalid managed filter');
   return value;
 }
 function withFilters(query,filters){
-  const operators={eq:'=',neq:'!=',gt:'>',gte:'>=',lt:'<',lte:'<=',
-    like:'like',ilike:'ilike',is:'is',in:'in'};
   for(const filter of filters)
-    query=query.where(filter.column,operators[filter.operator||'eq'],filter.value);
+    query=query.where(filter.column,MANAGED_FILTER_SQL[filter.operator||'eq'],filter.value);
   return query;
 }
 
@@ -183,8 +175,7 @@ export async function executeManagedKyselyWrite(trx,body,{modelName=''}={}){
   const rows=['insert','upsert'].includes(operation)?validateRows(payload.p_rows):[];
   const values=payload.p_values;
   const filters=['update','delete'].includes(operation)?validateFilters(payload.p_filters):[];
-  if(operation==='update'&&(!values||typeof values!=='object'||Array.isArray(values)||
-    !Object.keys(values).length||Object.keys(values).some(key=>!ID.test(key)||key==='uid'||key==='id')))
+  if(operation==='update'&&!managedUpdateValuesValid(values))
     reject('Invalid managed update values');
   if(operation==='update_batch'&&table.endsWith('_galaxy')===false)
     reject('Article batches must target a Galaxy table');
