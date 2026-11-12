@@ -46,6 +46,35 @@ export function territoryPointGroups(places=[],chunkSize=250){
       scope,ids:ids.slice(index*chunkSize,(index+1)*chunkSize)
     })));
 }
+// PostgreSQL returns Point metadata with the already grouped Galaxy rows.
+// Other SQL dialects continue using the existing bounded Point lookup.
+export function territoryPointReadPlan(rows=[],regions=[]){
+  const covered=new Set(),points=new Map();
+  for(const row of rows){
+    if(!row||!Object.hasOwn(row,'point_uid'))continue;
+    const scope=String(row.source_scope||'');
+    const placeId=String(row.place_id||'');
+    if(!scope||!UID.test(placeId))continue;
+    const key=scope+':'+placeId;
+    covered.add(key);
+    const id=String(row.point_uid||'');
+    if(!UID.test(id)||id!==placeId||points.has(key))continue;
+    const asCoordinate=value=>value==null||String(value).trim()===''?null:
+      Number.isFinite(Number(value))?Number(value):null;
+    points.set(key,{
+      uid:id,source_scope:scope,trace_type:'space_anchor',
+      title:String(row.point_title||'').trim()||'地點 '+id,
+      longitude:asCoordinate(row.point_longitude),
+      latitude:asCoordinate(row.point_latitude)
+    });
+  }
+  return {
+    points:[...points.values()],
+    groups:territoryPointGroups(regions.filter(place=>
+      !covered.has(place.source_scope+':'+place.uid)))
+  };
+}
+
 export function territoryWithAnchors(regions=[],anchors=[]){
   const byId=new Map(anchors.map(point=>[point.source_scope+':'+point.uid,point]));
   return regions.map(place=>{

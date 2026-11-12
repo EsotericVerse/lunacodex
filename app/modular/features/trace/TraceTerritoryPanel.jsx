@@ -5,7 +5,7 @@ import {useAsyncResource} from '../../../loc/use-async-resource';
 import {dbPublicClient} from '../../../loc/db-client.mjs';
 import {mapBounded} from '../../../loc/bounded-parallel.mjs';
 import {readCurrentTraceAnchors,readPublishedTraceSourceScopes} from './trace-data';
-import {territoryYearWindow,territoryRegions,territoryPointGroups,territoryWithAnchors} from './trace-territory.mjs';
+import {territoryYearWindow,territoryRegions,territoryPointReadPlan,territoryWithAnchors} from './trace-territory.mjs';
 
 const TraceMap=dynamic(()=>import('./TraceMap'),{ssr:false});
 const TracePlaceResults=dynamic(()=>import('./TracePlaceResults'),{ssr:false});
@@ -44,7 +44,7 @@ export default function TraceTerritoryPanel({scopeId='loc',onMapReady=null}){
     queryFn:async()=>(await mapBounded(scopes,2,async scope=>{
       const {data,error}=await dbPublicClient.schema('silver').analytics({
         p_scope_id:scope,p_view:'trace_territory',
-        p_start:period.startDate,p_end:period.endDate,p_options:{}
+        p_start:period.startDate,p_end:period.endDate,p_options:{withPoints:true}
       });
       if(error)throw error;
       if(!Array.isArray(data))throw Error('年度來源彙整資料格式錯誤');
@@ -53,7 +53,9 @@ export default function TraceTerritoryPanel({scopeId='loc',onMapReady=null}){
     revalidateIfStale:false,revalidateOnFocus:false,revalidateOnReconnect:false
   });
   const regions=useMemo(()=>territoryRegions(totalsQuery.data||[],year),[totalsQuery.data,year]);
-  const pointGroups=useMemo(()=>territoryPointGroups(regions),[regions]);
+  const pointPlan=useMemo(()=>territoryPointReadPlan(totalsQuery.data||[],regions),
+    [totalsQuery.data,regions]);
+  const pointGroups=pointPlan.groups;
   const pointsQuery=useAsyncResource({
     queryKey:['trace-territory-coordinates-v1',year,scopeId,
       ...pointGroups.map(group=>group.scope+':'+group.ids.join(','))],
@@ -62,8 +64,9 @@ export default function TraceTerritoryPanel({scopeId='loc',onMapReady=null}){
       readCurrentTraceAnchors(group.scope,group.ids))).flat(),
     revalidateIfStale:false,revalidateOnFocus:false,revalidateOnReconnect:false
   });
-  const countries=useMemo(()=>territoryWithAnchors(regions,pointsQuery.data||[]),
-    [regions,pointsQuery.data]);
+  const countries=useMemo(()=>territoryWithAnchors(regions,[
+    ...pointPlan.points,...(pointsQuery.data||[])
+  ]),[regions,pointPlan,pointsQuery.data]);
   const cutoff=display==='timeline'?dateFromStep(year,step):period.endDate;
   const active=useMemo(()=>countries.filter(place=>place.firstDay<=cutoff),[countries,cutoff]);
   const activeByKey=useMemo(()=>new Map(active.map(place=>[place.source_scope+':'+place.uid,place])),[active]);
