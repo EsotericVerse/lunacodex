@@ -46,6 +46,8 @@ const kinds={galaxy:'Lo3rwangGalaxy',anchor:'Lo3rwangAnchor',blocks:'Lo3rwangBlo
 // Share the identical model resolution with import-time Zod validation.
 // This is metadata only; neither a driver nor a new SQL lookup is created.
 export function modelNameForSql(schemaName,tableName){
+  // LOC's former Blocks table is now a semantic LocBlocks type over LocAnchor.
+  if(schemaName==='silver'&&tableName==='loc_blocks')return null;
   const exact=named.get(String(schemaName)+'.'+String(tableName));
   if(exact)return exact;
   const match=String(schemaName)==='silver'?scoped.exec(String(tableName||'')):null;
