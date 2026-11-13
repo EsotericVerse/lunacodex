@@ -215,18 +215,19 @@ export async function executeKyselyPublicAction(trx,body,{engine='postgres',name
     const full=await trx.selectFrom(table(scope))
       .selectAll().where('id','=',scope).executeTakeFirst();
     if(full){const {id:ignore,...rest}=full;config=rest;}
-    const loc=scope==='loc';
-    const blockTable=loc?'loc_anchor':scope+'_blocks';
-    if(await relationAvailable('silver.'+blockTable)){
-      const result=loc
-        ?await trx.selectFrom(table(blockTable)).select(LOC_BLOCK_ANCHOR_FIELDS)
-          .where('type','=',page).where('invisible','=',false)
-          .orderBy('num','asc').execute()
-        :await trx.selectFrom(table(blockTable))
-          .select(['uid','page_name','block_eyebrow','block_title','block_subtitle',
-            'block_text','block_order','block_entity','block_image'])
-          .where('page_name','=',page).orderBy('block_order','asc').execute();
-      blocks=loc?result.map(locAnchorToBlock):result;
+    // LOC has exactly two presentation readers. The legacy bootstrap
+    // assembles its blocks through these functions instead of custom SQL.
+    if(scope==='loc'){
+      blocks=['index','governance'].includes(page)
+        ?(await block_list(trx,scope,{engine,namespace})).filter(row=>row.page_name===page)
+        :await hero_block(trx,page,{engine,namespace});
+    }else if(page==='index'){
+      blocks=await block_list(trx,scope,{engine,namespace});
+    }else if(await relationAvailable('silver.'+scope+'_blocks')){
+      // Other Scope page storage is unchanged.
+      blocks=await trx.selectFrom(table(scope+'_blocks'))
+        .select(BLOCK_COLUMNS).where('page_name','=',page)
+        .orderBy('block_order','asc').execute();
     }
   }
   const root=await trx.selectFrom(table('loc')).select('theme')
