@@ -3,7 +3,8 @@
 // Only use the resulting ORM from a trusted server AFTER LOC Auth/Gateway has
 // verified the requested database, Scope, operation and row visibility.
 //
-// Three tables share one schema contract in each Scope: galaxy, anchor, blocks.
+// Ordinary Scopes share galaxy, anchor and blocks. LOC itself stores its
+// presentation Blocks in loc_anchor, so it does not expose a LOC Blocks table.
 // The scopes' independent data and eight-character UIDs are never merged here.
 // ZenStack V3 can compile PostgreSQL and MySQL providers; MSSQL remains on
 // the shared Kysely path because ZenStack V3 has no MSSQL provider.
@@ -68,6 +69,7 @@ export function scopedZModelSchema({scopeId,namespace='silver',engine='postgres'
     throw new TypeError('Invalid trusted LOC Scope schema identifier');
   const models={};
   for(const [kind,{base,suffix}] of Object.entries(VERIFIED_SCOPE_MODELS)){
+    if(scopeId==='loc'&&kind==='Blocks')continue;
     models[kind]={
       ...base,
       name:kind,
