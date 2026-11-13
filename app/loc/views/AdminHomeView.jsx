@@ -40,6 +40,8 @@ export default function AdminHomeView({scopeGroup}){
   const [entryVerified,setEntryVerified]=useState(false);
   const [loginDenied,setLoginDenied]=useState(false);
   const [retrying,setRetrying]=useState(false);
+  const [signingIn,setSigningIn]=useState(false);
+  const [signInError,setSignInError]=useState('');
   const canManage=Boolean(account.user&&!account.loading&&!account.permissionLoading&&account.canLocAccessSync('global'));
   // Preserve deep links created before the Admin sections were consolidated.
   const [section,setSection]=useManagementSection(ADMIN_OPTIONS,'network',{
@@ -68,6 +70,12 @@ export default function AdminHomeView({scopeGroup}){
     setEntryVerified(true);
     editDock?.begin('loc',{globalManage:true});
   },[account.loading,account.permissionLoading,canManage,editDock?.begin]);
+  const beginAdminSignIn=async()=>{
+    if(signingIn)return;
+    setSigningIn(true);setSignInError('');
+    try{await account.signIn('/admin/');}
+    catch(error){setSignInError(String(error?.message||error));setSigningIn(false);}
+  };
   const retrySession=async()=>{
     if(retrying)return;
     setRetrying(true);
@@ -92,13 +100,15 @@ export default function AdminHomeView({scopeGroup}){
   if(account.loading||account.permissionLoading)return <section className="loc-view"><div className="loc-card">{UI_COPY.admin.checking}</div></section>;
   if(loginDenied||!canManage)return <FeaturePage featureId="admin">
     <section className="loc-card scope-feature-card">
-      <p role="alert">{account.error||(account.user
+      <p role="alert">{signInError||account.error||(account.user
         ?'目前沒有有效的編輯 Session，或此帳號沒有全域管理權限。'
         :'目前沒有有效的 LOC Session，系統管理未啟用。')}</p>
+      {!account.user?<button type="button" onClick={()=>void beginAdminSignIn()} disabled={signingIn}>
+        {signingIn?'正在前往 LOC SSO…':'使用 Cloudflare SSO 登入管理員'}
+      </button>:null}
       <button type="button" onClick={()=>void retrySession()} disabled={retrying}>
         {retrying?'正在確認 Session…':'重新確認 Session'}
-      </button>{' '}
-      <a href="/local/settings/">前往設定頁</a>
+      </button>
     </section>
   </FeaturePage>;
   if(!canManage||!entryVerified)return <FeaturePage featureId="admin">
