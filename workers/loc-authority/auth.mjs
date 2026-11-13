@@ -30,6 +30,11 @@ const authActions={user:['get','list','ban'],session:['list','revoke','delete']}
 const authAc=createAccessControl(authActions);
 const authRoles={
   admin:authAc.newRole(authActions),
+  // Identities that came in through Cloudflare SSO rather than Google. A tier
+  // of its own so its permissions can diverge later; for now it has the same
+  // empty permission set as a plain user, and widening it is a one-line change
+  // here, not a schema change.
+  scope:authAc.newRole({user:[],session:[]}),
   user:authAc.newRole({user:[],session:[]})
 };
 
@@ -199,8 +204,16 @@ export function createLocAuth(env){
     // Cloudflare Access is the intended upstream provider. Google remains
     // available as the recovery path for the already-registered owner account
     // and disappears on its own when its credentials are removed.
+    // disableSignUp makes Google a whitelist, not an open door. Better Auth
+    // only consults this flag when no user with the incoming email exists
+    // (oauth2/link-account.mjs: the check sits in the no-existing-user branch,
+    // after the link branch has already returned). So an address the owner
+    // pre-created through the admin menu still links on first Google login,
+    // while an unknown Gmail is refused instead of silently getting an
+    // account. Admin create-user goes through the admin endpoint, not this
+    // path, so the owner can still add people.
     ...(googleSocialConfig(env)?{socialProviders:{google:{
-      ...googleSocialConfig(env),disableIdTokenSignIn:true
+      ...googleSocialConfig(env),disableIdTokenSignIn:true,disableSignUp:true
     }}}:{}),
     disabledPaths:['/token'],
     // Karaul owns all LOC Auth QoS policy; Better Auth enforces its decision.
