@@ -571,11 +571,30 @@ model Manage {
     anchor_table                 String      @db.Text @default(dbgenerated())
     caches                       Json        @db.JsonB @default(dbgenerated())
     note                         String?     @db.Text
+    updatetime                   DateTime    @db.Timestamptz(6) @default(now()) @updatedAt
     @@map("manage")
     @@schema("api")
     @@allow('read', true)
     @@allow('update,delete', auth().roleLevel >= 4)
 
+}
+
+// One signed-in person's preferences; the physical relation is silver.loc_user.
+// user_setting replaces the separate api.user_settings key/value table.
+// This is not a LOC Auth session issuer or an account-permission registry.
+model LocUser {
+    uid          String   @id @db.VarChar(8) @default(dbgenerated())
+    owner_id     String   @unique @db.Text
+    email        String   @db.Text
+    culture      Json     @db.JsonB @default(dbgenerated())
+    statics      Json     @db.JsonB @default(dbgenerated())
+    trace        Json     @db.JsonB @default(dbgenerated())
+    search       Json     @db.JsonB @default(dbgenerated())
+    keyword      String   @db.Text @default("none")
+    user_setting Json     @db.JsonB @default(dbgenerated())
+    updated_at   DateTime @db.Timestamptz(6) @default(now())
+    @@map("loc_user")
+    @@schema("silver")
 }
 
 model Runes {
