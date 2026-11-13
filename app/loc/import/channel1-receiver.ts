@@ -1,6 +1,6 @@
 // Private, one-way Channel 1 receiver. No user OAuth, scopeid or public database access.
 import {sql,Kysely,PostgresDialect} from "npm:kysely@0.29.8";
-import pg from "npm:pg@8.16.3";
+import pg from "npm:pg@8.23.1";
 
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const encoder=new TextEncoder();
