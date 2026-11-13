@@ -2,7 +2,7 @@
 import {dbAuthRelation} from './db-client.mjs';
 
 const TABLE='silver.loc_user';
-const COLUMNS='uid,owner_id,email,culture,statics,trace,search,keyword,user_setting,updated_at';
+const COLUMNS='uid,userId,email,culture,statics,trace,search,keyword,user_setting,updated_at';
 const UID=/^[A-Za-z0-9]{8}$/;
 const KEYWORD=/^[a-z][a-z0-9]{0,30}:(?:[A-Za-z0-9]{4}|[A-Za-z0-9]{8})$/;
 export const LOC_USER_FIELDS=Object.freeze(['culture','statics','trace','search','keyword']);
@@ -30,7 +30,7 @@ export function normalizeLocUser(row={}){
   const value={
     uid:String(source.uid||''),
     email:normalizeEmail(source.email),
-    owner_id:String(source.owner_id||''),
+    userId:String(source.userId||''),
     updated_at:String(source.updated_at||'')
   };
   for(const field of ['culture','statics','trace','search']){
@@ -62,8 +62,8 @@ export function validateLocUserField(field,value){
   }
   return output;
 }
-// RLS binds SELECT/INSERT/UPDATE to the signed-in JWT subject. Login is
-// performed by the entry page; preferences do not recheck OAuth email.
+// Web personal preferences are not LOC Auth user or session records.
+// Identity checks belong to the existing website request boundary.
 async function selfRow(email){
   const verified=normalizeEmail(email);
   if(!verified)throw new Error('需要已驗證的 OAuth Email');
@@ -89,8 +89,8 @@ export async function saveLocUserField(uid,field,value,email){
     return normalizeLocUser(data[0]);
   }
   // The very first explicit preference change creates the only row.
-  // owner_id is supplied by the database from the authenticated JWT;
-  // email is not used to authorize or identify the owner of preferences.
+  // userId belongs to the website identity boundary, not the Auth issuer.
+  // The server must bind it to the existing website session.
   const created=await dbAuthRelation(TABLE).insert([{[field]:normalized,email:verified}]).select(COLUMNS);
   if(!created.error){
     if(!created.data?.[0])throw new Error('個人設定未能建立');
