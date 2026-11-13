@@ -30,16 +30,14 @@ assert.equal(discovery.jwks_uri,ORIGIN+'/.well-known/jwks.json');
 const jwks=await get('/.well-known/jwks.json');
 assert.ok(Array.isArray(jwks.keys)&&jwks.keys.some(x=>x.alg==='RS256'&&x.kty==='RSA'),
   'LOC native signing keys must be published');
-// This does not authenticate a user. Confirm that Google authorization goes
-// directly to Google with the existing LOC Auth Better Auth callback.
-const start=await fetch(ORIGIN+'/oauth/login?provider=google',{
+// This does not authenticate a user. Confirm that the LOC login surface sends
+// users to the delegated Cloudflare OIDC provider, not to a local password form.
+const start=await fetch(ORIGIN+'/login',{
  method:'GET',redirect:'manual',cache:'no-store',signal:AbortSignal.timeout(12000)
 });
-assert.equal(start.status,302,'Google login must redirect directly to Google');
-const google=new URL(start.headers.get('location'));
-assert.equal(google.origin,'https://accounts.google.com');
-assert.equal(google.searchParams.get('response_type'),'code');
-assert.equal(google.searchParams.get('redirect_uri'),ORIGIN+'/api/auth/callback/google');
+assert.equal(start.status,200,'LOC login page must be available');
+const login=await start.text();
+assert.match(login,/Cloudflare SSO/);
 const guest=await get('/v1/auth/session');
 assert.equal(guest.session,null,'anonymous visitors must not be authenticated');
-console.log('LOC Better Auth Google: no password, direct Google callback, discovery, JWKS, anonymous session verified.');
+console.log('LOC Better Auth Cloudflare SSO: no password form, OIDC login surface, discovery, JWKS, anonymous session verified.');

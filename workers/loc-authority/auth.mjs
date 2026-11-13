@@ -1,6 +1,7 @@
 import {betterAuth} from 'better-auth';
 import {APIError,createAuthMiddleware,getAuthoritativeSessionFromCtx} from 'better-auth/api';
 import {admin,jwt} from 'better-auth/plugins';
+import {sso} from '@better-auth/sso';
 import {createAccessControl} from 'better-auth/plugins/access';
 import {ZenStackClient} from '@zenstackhq/orm';
 import {zenstackAdapter} from '@zenstackhq/better-auth';
@@ -11,9 +12,12 @@ import * as z from 'zod';
 import {RAINBOW_TABLES} from './rainbow-tables.mjs';
 import {rainbowSchema,RAINBOW_MODEL_NAMES} from './rainbow-zmodel.mjs';
 import {authKaraulRatePolicy} from './auth-qos.mjs';
+import {extensionClientDiscovery} from './extension-client.mjs';
 
-// LOC Auth is the issuer. Neon supplies PostgreSQL storage, NOT Neon Auth.
-// Neither website rendering nor business permissions are implemented here.
+// LOC Auth is the issuer. Cloudflare Access is the delegated upstream OIDC
+// provider; it does not own LOC Sessions or LOC OAuth tokens. Neon supplies
+// PostgreSQL storage, NOT Neon Auth. Neither website rendering nor business
+// permissions are implemented here.
 export const LOC_ISSUER='https://auth.lo3rwang.cc';
 export const LOC_WEB='https://loc.lo3rwang.cc';
 export const LOC_MCP='https://mcp.lo3rwang.cc';
@@ -54,17 +58,38 @@ const AuthEnvironmentSchema=z.object({
   connectionString:z.url().refine(value=>
     ['postgresql:','postgres:'].includes(new URL(value).protocol)),
   secret:z.string().min(32),
-  googleId:z.string().min(1),
-  googleSecret:z.string().min(1),
+  cloudflareIssuer:z.url().refine(value=>new URL(value).protocol==='https:'),
+  cloudflareClientId:z.string().min(1),
+  cloudflareClientSecret:z.string().min(1),
   namespace:z.literal('public')
 });
 
+// Google stays configured alongside Cloudflare Access only while the single
+// existing LOC identity is still bound to its Google account. It is optional:
+// once the Cloudflare account is attached, removing the two Google variables
+// disables that button without a code change or a 503.
+export function googleSocialConfig(env={}){
+  const clientId=String(env?.LOC_GOOGLE_CLIENT_ID||env?.GOOGLE_CLIENT_ID||'').trim();
+  const clientSecret=String(env?.LOC_GOOGLE_CLIENT_SECRET||env?.GOOGLE_CLIENT_SECRET||'').trim();
+  return clientId&&clientSecret?{clientId,clientSecret}:null;
+}
+
+export function cloudflareSsoConfig(env={}){
+  return {
+    issuer:String(env.LOC_CLOUDFLARE_SSO_ISSUER||env.CLOUDFLARE_SSO_ISSUER||'').trim(),
+    clientId:String(env.LOC_CLOUDFLARE_SSO_CLIENT_ID||env.CLOUDFLARE_SSO_CLIENT_ID||'').trim(),
+    clientSecret:String(env.LOC_CLOUDFLARE_SSO_CLIENT_SECRET||env.CLOUDFLARE_SSO_CLIENT_SECRET||'').trim()
+  };
+}
+
 export function checkLocAuthEnvironment(env){
+  const cloudflare=cloudflareSsoConfig(env);
   const data={
     connectionString:env?.LOC_AUTH_DATABASE_URL,
     secret:env?.BETTER_AUTH_SECRET||env?.LOC_CONTROL_ENCRYPTION_KEY,
-    googleId:env?.LOC_GOOGLE_CLIENT_ID||env?.GOOGLE_CLIENT_ID,
-    googleSecret:env?.LOC_GOOGLE_CLIENT_SECRET||env?.GOOGLE_CLIENT_SECRET,
+    cloudflareIssuer:cloudflare.issuer,
+    cloudflareClientId:cloudflare.clientId,
+    cloudflareClientSecret:cloudflare.clientSecret,
     namespace:String(env?.LOC_AUTH_SCHEMA||'public')
   };
   if(data.namespace!=='public')
@@ -77,6 +102,7 @@ export function checkLocAuthEnvironment(env){
 
 export function createLocAuth(env){
   checkLocAuthEnvironment(env);
+  const cloudflare=cloudflareSsoConfig(env);
   // Built-in Kysely PostgreSQL adapter. No hand-written Auth storage, SQL,
   // session table, account linking, signing, PKCE or OAuth state handlers.
   // Cloudflare Workers cannot open a raw TCP socket to Neon, so node-postgres
@@ -153,18 +179,22 @@ export function createLocAuth(env){
     session:{modelName:RAINBOW_MODEL_NAMES.session,
       expiresIn:30*86400,updateAge:86400,storeSessionInDatabase:true,
       cookieCache:locAuthSessionCache(env)},
-    account:{modelName:RAINBOW_MODEL_NAMES.account,accountLinking:{enabled:false}},
+    // One LOC identity per verified email address. Linking must be enabled or
+    // Better Auth refuses outright (oauth2/link-account.mjs: a false
+    // `accountLinking.enabled` alone rejects the link), which would strand the
+    // existing owner account on its original provider and leave nobody able to
+    // administer Auth. Different email addresses are still never merged.
+    account:{modelName:RAINBOW_MODEL_NAMES.account,
+      accountLinking:{enabled:true,allowDifferentEmails:false,
+        trustedProviders:['cloudflare-access','google']}},
     verification:{modelName:RAINBOW_MODEL_NAMES.verification},
     emailAndPassword:{enabled:false},
-    socialProviders:{
-      google:{
-        clientId:env.LOC_GOOGLE_CLIENT_ID||env.GOOGLE_CLIENT_ID,
-        clientSecret:env.LOC_GOOGLE_CLIENT_SECRET||env.GOOGLE_CLIENT_SECRET,
-        disableIdTokenSignIn:true
-      }
-    },
-
-
+    // Cloudflare Access is the intended upstream provider. Google remains
+    // available as the recovery path for the already-registered owner account
+    // and disappears on its own when its credentials are removed.
+    ...(googleSocialConfig(env)?{socialProviders:{google:{
+      ...googleSocialConfig(env),disableIdTokenSignIn:true
+    }}}:{}),
     disabledPaths:['/token'],
     // Karaul owns all LOC Auth QoS policy; Better Auth enforces its decision.
     rateLimit:authKaraulRatePolicy,
@@ -208,16 +238,45 @@ export function createLocAuth(env){
         grantTypes:['authorization_code','refresh_token'],
         // PKCE/authorization codes/refresh rotation/OIDC are native modules.
         allowDynamicClientRegistration:true,
-        // Galaxy-Link uses the existing HTTPS Client ID Metadata Document
-        // (CIMD), so arbitrary anonymous DCR is unnecessary and unsafe.
+        // Galaxy-Link is a fixed first-party public client resolved from the
+        // bundled client.json below; arbitrary anonymous DCR remains disabled.
         // Other client registrations must authenticate and pass privileges.
         allowUnauthenticatedClientRegistration:false,
+        enforcePerClientResources:false,
         clientRegistrationDefaultScopes:['openid','profile','email'],
         clientRegistrationAllowedScopes:['offline_access','loc:import'],
         clientRegistrationAllowedResources:[LOC_IMPORT],
         clientRegistrationDefaultResources:[LOC_MCP],
         clientPrivileges:ownerPrivilege,
-        resourcePrivileges:ownerPrivilege
+        resourcePrivileges:ownerPrivilege,
+        extensions:[{clientDiscovery:extensionClientDiscovery()}]
+      }),
+      // Cloudflare Access is the one delegated upstream identity provider.
+      // Better Auth still owns the LOC user/session/account records and all
+      // LOC OAuth issuance. Keeping the provider in defaultSSO avoids a
+      // user-controlled provider registry and does not require a Clerk/Auth0
+      // SDK or an Enterprise SSO plan.
+      sso({
+        providersLimit:0,
+        trustEmailVerified:true,
+        // "No open registration" means a stranger who can authenticate at the
+        // upstream provider still does not become a LOC identity: approval
+        // stays a LOC Web decision. It does NOT mean refusing to attach a new
+        // provider to an account that already exists, which is why account
+        // linking above is enabled. Collapsing the two locks out the owner.
+        disableImplicitSignUp:true,
+        defaultSSO:[{
+          providerId:'cloudflare-access',domain:'cloudflare-access',
+          oidcConfig:{
+            issuer:cloudflare.issuer,
+            discoveryEndpoint:cloudflare.issuer+'/.well-known/openid-configuration',
+            clientId:cloudflare.clientId,
+            clientSecret:cloudflare.clientSecret,
+            pkce:true,
+            scopes:['openid','email','profile'],
+            mapping:{email:'email',emailVerified:'email_verified',name:'name'}
+          }
+        }]
       })
     ]
   });

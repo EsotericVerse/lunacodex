@@ -29,7 +29,7 @@ export default {
   "favorites": "我的最愛",
   "login": "登入",
   "logout": "登出",
-  "switchAccount": "切換 Google 帳號",
+  "switchAccount": "切換 Cloudflare 帳號",
   "manageFeature": "管理功能",
   "openSystemSettings": "開啟系統設定",
   "loading": "載入中…",

@@ -2,6 +2,8 @@
 // Provider-issued tokens are stored separately from LOC-issued identity tokens.
 import {UPSTREAM_PROVIDERS,upstreamProvider,trustedProviderUrl,
   LOC_MCP_CALLBACK,LOC_MCP_CLIENT_DOCUMENT} from './upstream-providers.mjs';
+import {LOC_MCP_EXTENSION_RETURN,normalizeSsoEmail}
+  from './extension-sso.mjs';
 import {randomValue,hashValue,providerKey,pendingPrefix,vaultList,
   vaultGet,vaultPut,vaultDelete} from './upstream-vault.mjs';
 
@@ -102,21 +104,26 @@ async function oauthConfig(env,provider){
     scopes:oauthClientSettings(env,provider).scope||
       (info.scopes.includes('offline_access')?'offline_access':'')};
 }
-export async function beginUpstreamOAuth(env,subject,provider){
+export async function beginUpstreamOAuth(env,subject,provider,request={}){
   upstreamProvider(provider);
-  const options=await oauthConfig(env,provider);
+  const oauth=await oauthConfig(env,provider);
   const verifier=randomValue(48);
   const challenge=await hashValue(verifier);
   const state=randomValue(32);
+  const surface=request.surface==='extension'?'extension':'website';
+  const loginHint=request.email?normalizeSsoEmail(request.email):'';
+  const returnTo=surface==='extension'?LOC_MCP_EXTENSION_RETURN:'';
   await vaultPut(env,'state:'+state,{subject,provider,verifier,
-    token_endpoint:options.token,client:options.client,resource:options.resource},OAUTH_TTL);
-  const query=new URLSearchParams({client_id:options.client.client_id,
+    token_endpoint:oauth.token,client:oauth.client,resource:oauth.resource,
+    surface,return_to:returnTo,login_hint:loginHint},OAUTH_TTL);
+  const query=new URLSearchParams({client_id:oauth.client.client_id,
     response_type:'code',redirect_uri:LOC_MCP_CALLBACK,state,
     code_challenge:challenge,code_challenge_method:'S256'});
-  if(options.scopes)query.set('scope',options.scopes);
+  if(oauth.scopes)query.set('scope',oauth.scopes);
+  if(loginHint)query.set('login_hint',loginHint);
   // RFC 8707 resource hints are used only by MCP servers, not GitHub OAuth.
-  if(provider!=='github')query.set('resource',options.resource);
-  return {authorize_url:options.authorize+'?'+query.toString(),provider};
+  if(provider!=='github')query.set('resource',oauth.resource);
+  return {authorize_url:oauth.authorize+'?'+query.toString(),provider,state};
 }
 async function exchange(provider,tokenEndpoint,params,client){
   const body={...params,client_id:client.client_id};
@@ -146,7 +153,11 @@ export async function completeUpstreamOAuth(env,params,expectedSubject){
   const key='state:'+state;
   const saved=await vaultGet(env,key);
   if(!saved)throw new Error('Expired or unknown OAuth state');
-  if(saved.subject!==expectedSubject)throw new Error('OAuth browser identity mismatch');
+  if(expectedSubject!=null){
+    if(saved.subject!==expectedSubject)throw new Error('OAuth browser identity mismatch');
+  }else if(saved.surface!=='extension'||saved.return_to!==LOC_MCP_EXTENSION_RETURN){
+    throw new Error('OAuth browser identity required');
+  }
   await vaultDelete(env,key);
   if(params.error||!params.code)throw new Error('Upstream OAuth was denied');
   const tokens=await exchange(saved.provider,saved.token_endpoint,{
@@ -163,7 +174,15 @@ export async function completeUpstreamOAuth(env,params,expectedSubject){
   }
   await vaultPut(env,await providerKey(saved.subject,saved.provider),
     tokenRecord(null,tokens,saved.token_endpoint,saved.client,saved.resource));
-  return {provider:saved.provider,connected:true};
+  return {provider:saved.provider,connected:true,state,
+    surface:saved.surface||'website',return_to:saved.return_to||''};
+}
+export async function pendingUpstreamOAuth(env,state){
+  const value=String(state||'');
+  if(!/^[A-Za-z0-9_-]{32,128}$/.test(value))return null;
+  const saved=await vaultGet(env,'state:'+value);
+  return saved?.surface==='extension'&&saved.return_to===LOC_MCP_EXTENSION_RETURN?
+    {provider:saved.provider,return_to:saved.return_to}:null;
 }
 export async function upstreamConnection(env,subject,provider){
   upstreamProvider(provider);

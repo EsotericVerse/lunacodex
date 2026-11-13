@@ -50,8 +50,8 @@ export default function GlobalSettings({initialSection='home'}={}){
   const [busy,setBusy]=useState(false);
   const [status,setStatus]=useState('');
   // LOC Auth owns identity and Scope grants; the trusted application backend checks every signed delegation.
-  const verifiedGoogleAccount=useAccount({enabled:section==='home',sessionOnly:true});
-  const account=section==='home'?verifiedGoogleAccount:prefs.account;
+  const verifiedLocAccount=useAccount({enabled:section==='home',sessionOnly:true});
+  const account=section==='home'?verifiedLocAccount:prefs.account;
 
   useEffect(()=>{
     const isNative=Capacitor.isNativePlatform();
@@ -155,7 +155,7 @@ export default function GlobalSettings({initialSection='home'}={}){
           {account.error?<div className="scope-status scope-error" role="alert">
             <p>{account.error}</p>
             <button type="button" className="loc-button" disabled={busy||account.loading}
-              onClick={()=>void verifiedGoogleAccount.refresh().catch(error=>setStatus(String(error?.message||error)))}>
+              onClick={()=>void verifiedLocAccount.refresh().catch(error=>setStatus(String(error?.message||error)))}>
               重新確認登入狀態
             </button>
           </div>:null}

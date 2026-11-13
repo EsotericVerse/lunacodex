@@ -28,7 +28,7 @@ export default function EnterpriseAuthReserved(){
   return <section className="loc-card admin-workspace" aria-labelledby="admin-auth-heading">
     <h2 id="admin-auth-heading">LOC Auth</h2>
     <p className="scope-status">
-      LOC Auth 由 Better Auth 原生模組提供 Google OAuth、OIDC、SSO、
+      LOC Auth 由 Better Auth 原生模組提供 Cloudflare SSO、OIDC、
       JWT 與 JWKS。資料庫使用 PostgreSQL；網站公開資料與編輯權限由 LOC 自己管理。
     </p>
     <p className="scope-status" role="status">{status}</p>
