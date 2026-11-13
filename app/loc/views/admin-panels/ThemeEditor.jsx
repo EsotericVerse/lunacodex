@@ -82,7 +82,7 @@ export default function ThemeEditor(){
     try{
       const existing=rows.find(row=>row.theme_id===themeId)||null;
       const payload={
-        theme_id:existing?.theme_db_numeric?themeNumber(themeId):themeId,
+        theme_id:String(themeNumber(themeId)),
         theme_name:String(draft.label||themeId).trim(),
         theme_order:Number(existing?.theme_order)||Number(String(themeId).split('-')[1])||1,
         scheme:draft.scheme==='dark'?'dark':'light',
