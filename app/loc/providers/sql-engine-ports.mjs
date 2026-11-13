@@ -52,7 +52,8 @@ const externalPublicReads=new Set(CROSS_ENGINE_PUBLIC_READ_TABLES);
 // data regardless of SQL vendor. Keep private per-article filters separate.
 const externalPublicApi=new Set(['manage','loc_user','user_settings']);
 const externalPublicControl=new Set(['loc','lo3rwang','lrunes']);
-const publicScopeBlocks=/^[a-z][a-z0-9]{0,14}_blocks$/;
+// The retired loc_blocks relation is never a public Scope Blocks table.
+const publicScopeBlocks=/^(?!loc_blocks$)[a-z][a-z0-9]{0,14}_blocks$/;
 const publicScopeData=/^[a-z][a-z0-9]{0,14}_(galaxy|anchor)$/;
 function publicReference(request){
   const table=String(request?.table||'');
@@ -107,6 +108,8 @@ export async function authorizeCrossEngineQuery(db,request,{role='anon',claims={
     error.httpStatus=403;throw error;
   }
   const table=request.table;
+  if(table==='loc_blocks')throw Object.assign(
+    new Error('Retired LOC Blocks relation'),{httpStatus:403});
   if(CROSS_ENGINE_PUBLIC_READ_TABLES.includes(table)&&request.operation==='select')
     return {publicOnly:false};
   if(table==='loc'||table==='manage'){
