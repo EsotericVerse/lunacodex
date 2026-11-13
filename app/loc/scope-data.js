@@ -7,6 +7,7 @@ import {Capacitor} from '@capacitor/core';
 import {SCOPE_ROUTE_INDEX} from '../modular/scope-route-index.js';
 import {PUBLISHED_SITE_BOOTSTRAP} from '../modular/published-site-bootstrap.js';
 import {loadPublishedBlocks} from '../modular/published-blocks/index.js';
+import {LOC_BLOCK_ANCHOR_FIELDS,locAnchorToBlock} from './loc-block-anchor.mjs';
 
 // Public page copy (Title_TW/Desc_TW) now travels inside the shared
 // app-bootstrap request (see app/loc/app-bootstrap.js); there is no
@@ -55,7 +56,7 @@ function buildScopeData(row,id){
     // Compatibility aliases are resolved only by the DB adapter.
     time:`silver.${id}_${anchorSuffix}`,
     keywords:`silver.${id}_keywords`,
-    blocks:`silver.${id}_blocks`
+    blocks:id==='loc'?'silver.loc_anchor':`silver.${id}_blocks`
   };
 }
 
@@ -293,11 +294,20 @@ export async function selectLiveScopeBlocks(scopeId,page='index'){
   }
   // Other management pages still need their authenticated read contract;
   // do not expose them through the public Kysely endpoint.
-  const {rows}=await selectAllRows(`silver.${id}_blocks`,{
-    columns:BLOCK_COLUMNS,filters:[{column:'page_name',operator:'eq',value:name}],
-    orders:[{column:'block_order',ascending:true}]
-  });
-  return (rows||[]).sort((a,b)=>Number(a.block_order||0)-Number(b.block_order||0));
+  const loc=id==='loc';
+  const {rows}=loc
+    ?await selectAllRows('silver.loc_anchor',{
+        columns:LOC_BLOCK_ANCHOR_FIELDS.join(','),
+        filters:[{column:'type',operator:'eq',value:name},
+          {column:'invisible',operator:'eq',value:false}],
+        orders:[{column:'num',ascending:true}]
+      })
+    :await selectAllRows(`silver.${id}_blocks`,{
+        columns:BLOCK_COLUMNS,filters:[{column:'page_name',operator:'eq',value:name}],
+        orders:[{column:'block_order',ascending:true}]
+      });
+  return (loc?(rows||[]).map(locAnchorToBlock):rows||[])
+    .sort((a,b)=>Number(a.block_order||0)-Number(b.block_order||0));
 }
 export async function pageBlocks(scopeId,type='index'){
   const id=String(scopeId||'').trim().toLowerCase();
