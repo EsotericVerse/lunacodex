@@ -11,13 +11,10 @@ function booleanOrUndefined(raw){
   if(raw===0||raw==='0'||String(raw).toLowerCase()==='false')return false;
   return undefined;
 }
-export function legacyGalaxyAble(row={}){
-  const searchable=booleanOrUndefined(row.searchable)!==false;
-  const statistics=booleanOrUndefined(row.statistics_able)!==false;
-  return {statics:statistics,culture:statistics,search:searchable,
-    trace:searchable&&statistics,list:searchable,keyword:searchable&&statistics,
-    extract:true,others:true};
-}
+// New Galaxy records retain the existing publishing defaults. The columns
+// themselves are always the eight fields of the frozen GalaxyAttr ZModel.
+const DEFAULT_GALAXY_ATTR=Object.freeze(Object.fromEntries(
+  GALAXY_ABLE_KEYS.map(key=>[key,true])));
 export function privateGalaxySource(row={}){
   const site=String(row.site||'').trim().toLowerCase();
   if(site==='mcp')return true;
@@ -26,38 +23,32 @@ export function privateGalaxySource(row={}){
     /(?:^|[^0-9])PR\s*#[0-9]+(?:[^0-9]|$)/i.test(String(row.title||''));
 }
 export function galaxyAble(row={}){
-  // A source labelled MCP or GitHub PR must never inherit an old public flag,
-  // even when imported archives explicitly contain legacy `able` values.
+  // Never publish private source content regardless of incoming article flags.
   if(privateGalaxySource(row))return Object.fromEntries(GALAXY_ABLE_KEYS.map(key=>[key,false]));
-  const fallback=legacyGalaxyAble(row);
-  // Legacy archive input only. This object is always expanded to columns.
-  const packed=row.able&&typeof row.able==='object'&&!Array.isArray(row.able)?row.able:{};
-  return Object.fromEntries(GALAXY_ABLE_KEYS.map(key=>{
-    const direct=booleanOrUndefined(row[key]);
-    const imported=booleanOrUndefined(packed[key]??packed[legacyKeys[key]]);
-    return [key,direct??imported??fallback[key]];
-  }));
+  return Object.fromEntries(GALAXY_ABLE_KEYS.map(key=>[
+    key,booleanOrUndefined(row[key])??DEFAULT_GALAXY_ATTR[key]
+  ]));
 }
+
 export function isScopedGalaxy(table){
   return /^silver\.[a-z][a-z0-9]{0,14}_galaxy$/.test(String(table||''));
 }
 export function prepareGalaxyInsertRows(table,rows=[]){
   if(!isScopedGalaxy(table))return rows;
   return rows.map(row=>{
-    const {able,searchable,statistics_able,keywords,game,...fields}=row;
-    return {...fields,...galaxyAble(row)};
+    if(['able','searchable','statistics_able','keywords','game']
+      .some(key=>Object.hasOwn(row,key)))
+      throw new Error('Retired Galaxy fields are not part of the GalaxyAttr ZModel');
+    return {...row,...galaxyAble(row)};
   });
 }
 export function prepareGalaxyUpdateValues(table,values){
   if(!isScopedGalaxy(table))return values;
-  const {able,searchable,statistics_able,keywords,game,...fields}=values||{};
-  // A partial edit must only touch flags explicitly provided. Never reset
-  // other columns or rebuild the old packed "able" payload.
-  const updated={...fields};
-  if(booleanOrUndefined(keywords)!==undefined&&updated.keyword===undefined)
-    updated.keyword=booleanOrUndefined(keywords);
-  if(booleanOrUndefined(game)!==undefined&&updated.others===undefined)
-    updated.others=booleanOrUndefined(game);
+  // A partial edit touches only ZModel fields explicitly supplied by the caller.
+  if(['able','searchable','statistics_able','keywords','game']
+    .some(key=>Object.hasOwn(values||{},key)))
+    throw new Error('Retired Galaxy fields are not part of the GalaxyAttr ZModel');
+  const updated={...(values||{})};
   for(const key of GALAXY_ABLE_KEYS){
     if(Object.hasOwn(updated,key)){
       const normalized=booleanOrUndefined(updated[key]);

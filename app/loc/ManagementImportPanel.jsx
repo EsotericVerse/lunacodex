@@ -148,6 +148,11 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t){
   if(uid.length!==8)return {record:null,error:t('uiExtra.importUI.invalidUid')};
   const visibility=value('searchable');
   const searchable=!(visibility===false||visibility===0||String(visibility).toLowerCase()==='false'||String(visibility)==='0');
+  // Convert external archive flags once at the import boundary.
+  // No legacy Galaxy model or packed able payload reaches the writer.
+  const statisticsEnabled=value('statistics_able')!==false&&
+    String(value('statistics_able')).toLowerCase()!=='false'&&
+    searchable&&!isPureUrlContent(content);
   const record={
     uid,
     // Threads has no native post title; titleless imports use the first 10 Unicode characters.
@@ -164,14 +169,10 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t){
       site:String(source||'').trim(),
       site_id:String(originalSiteId||'').trim(),
       title:rawTitle,
-      searchable,
-      statistics_able:value('statistics_able')!==false&&
-        String(value('statistics_able')).toLowerCase()!=='false'&&
-        searchable&&!isPureUrlContent(content),
-      // Old ZIP archives may contain an able object, which is expanded only
-      // on import; all new article writes use eight separate boolean columns.
-      ...(row?.able&&typeof row.able==='object'&&!Array.isArray(row.able)
-        ?{able:row.able}:{}),
+      statics:statisticsEnabled,culture:statisticsEnabled,
+      search:searchable,trace:searchable&&statisticsEnabled,
+      list:searchable,keyword:searchable&&statisticsEnabled,
+      extract:true,others:true,
       ...Object.fromEntries(['statics','culture','search','trace','list','keyword','extract','others']
         .map(key=>[key,value(key)]).filter(([,v])=>v!==undefined&&v!==null&&v!==''))
     }),
