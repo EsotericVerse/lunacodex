@@ -266,6 +266,19 @@ export function createLocAuth(env){
       sso({
         providersLimit:0,
         trustEmailVerified:true,
+        // Cloudflare Access issues an identity only after its own policy has
+        // authenticated the person, but its ID token carries no
+        // `email_verified` claim, so Better Auth saw an unverified profile and
+        // refused to attach it to the existing owner account: sign-in returned
+        // "account not linked" after an otherwise complete round trip. Marking
+        // the provider authoritative for its own domain supplies the trust
+        // signal that the missing claim cannot.
+        // Scope of that trust: an identity may attach only to a LOC user that
+        // already exists with the same address, because implicit sign-up stays
+        // off below, and only after Cloudflare Access has let it through. The
+        // domain comes from the owner's address, so widen or split it before
+        // admitting anyone whose mailbox is outside the owner's control.
+        domainVerification:{enabled:true},
         // "No open registration" means a stranger who can authenticate at the
         // upstream provider still does not become a LOC identity: approval
         // stays a LOC Web decision. It does NOT mean refusing to attach a new
@@ -273,7 +286,11 @@ export function createLocAuth(env){
         // linking above is enabled. Collapsing the two locks out the owner.
         disableImplicitSignUp:true,
         defaultSSO:[{
-          providerId:'cloudflare-access',domain:'cloudflare-access',
+          // `domain` is matched against the part of the signed-in address
+          // after the @, not against the provider's name, so the previous
+          // 'cloudflare-access' could never match anything.
+          providerId:'cloudflare-access',
+          domain:OWNER_EMAIL.split('@')[1],
           oidcConfig:{
             issuer:cloudflare.issuer,
             discoveryEndpoint:cloudflare.issuer+'/.well-known/openid-configuration',
