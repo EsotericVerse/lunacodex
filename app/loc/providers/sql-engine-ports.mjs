@@ -50,7 +50,7 @@ export const CROSS_ENGINE_PUBLIC_READ_TABLES=Object.freeze([
 const externalPublicReads=new Set(CROSS_ENGINE_PUBLIC_READ_TABLES);
 // LOC's routing, configuration and block presentation are public reference
 // data regardless of SQL vendor. Keep private per-article filters separate.
-const externalPublicApi=new Set(['manage','loc_user','user_settings']);
+const externalPublicApi=new Set(['manage']);
 const externalPublicControl=new Set(['loc','lo3rwang','lrunes']);
 const publicScopeBlocks=/^[a-z][a-z0-9]{0,14}_blocks$/;
 const publicScopeData=/^[a-z][a-z0-9]{0,14}_(galaxy|anchor)$/;
