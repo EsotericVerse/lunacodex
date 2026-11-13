@@ -92,10 +92,9 @@ function ImageSlot({feature,variant,onDirtyChange,pageOverride='',defaultUrl=''}
         const url=new URL(trimmed,window.location.origin);
         if(!['https:','http:'].includes(url.protocol))throw new Error('首頁圖只接受 HTTP(S) 圖片網址。');
       }
-      // silver.loc_blocks.block_image is TEXT carrying JSON, never a raw object.
+      // Anchor attr.image preserves the Block image's TEXT/JSON payload.
       const image=trimmed?JSON.stringify({source:'custom',url:trimmed}):null;
       const fresh=await selectLiveScopeBlocks('loc',page);
-      const row=fresh.find(item=>Number(item.block_order)===1);
       const result=await saveLocHeroPage(page,fresh,{block_image:image});
       if(result?.error)throw new Error(result.error.message||'儲存失敗。');
       invalidateScopeBlockPage('loc',page);
@@ -181,7 +180,6 @@ function ManagementHeroDetails({slot,onDirtyChange}){
         block_subtitle:subtitle,block_text:draft.text
       };
       const fresh=await selectLiveScopeBlocks('loc',page);
-      const found=fresh.find(item=>Number(item.block_order)===1);
       const result=await saveLocHeroPage(page,fresh,fields);
       if(result?.error)throw new Error(result.error.message||'儲存失敗。');
       invalidateScopeBlockPage('loc',page);
