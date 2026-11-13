@@ -277,6 +277,21 @@ export function createLocAuth(env){
           oidcConfig:{
             issuer:cloudflare.issuer,
             discoveryEndpoint:cloudflare.issuer+'/.well-known/openid-configuration',
+            // Naming all three required endpoints makes `needsRuntimeDiscovery`
+            // false, so signing in no longer fetches the discovery document
+            // first. That fetch is the step that currently fails: from this
+            // Worker the connection to the provider's host succeeds in about
+            // half a second on one attempt and never answers on the next, and
+            // the plugin's discovery timeout is a fixed ten seconds, so an
+            // unlucky attempt dies before the user is ever redirected. The
+            // paths are the provider's documented layout and were read twice
+            // from its live discovery document; they are derived from the
+            // configured issuer, so replacing the application stays a
+            // variable change.
+            authorizationEndpoint:cloudflare.issuer+'/authorization',
+            tokenEndpoint:cloudflare.issuer+'/token',
+            jwksEndpoint:cloudflare.issuer+'/jwks',
+            userInfoEndpoint:cloudflare.issuer+'/userinfo',
             clientId:cloudflare.clientId,
             clientSecret:cloudflare.clientSecret,
             pkce:true,
