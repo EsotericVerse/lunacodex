@@ -29,8 +29,3 @@ export function completeKeywordClass(meta={},classUid='',result={},completedAt='
   }};
   return {...source,by_class};
 }
-export function activeKeywordMeta(config={},classUid=''){
-  const record=keywordClassState(config,classUid);
-  return record?{...record,by_class:config.keyword_meta?.by_class||{}}:
-    {by_class:config.keyword_meta?.by_class||{}};
-}

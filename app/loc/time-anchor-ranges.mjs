@@ -35,12 +35,6 @@ export function decodeTimeSegments(value,{legacy=false}={}){
   return [{start:ids[0]||'',end:ids[1]||'',raw:ids.join(','),
     malformed:!valid||ids.length>2||ids[0]===ids[1]}];
 }
-export function previousTimeDay(value){
-  const day=dateOf(value);
-  if(!day)return '';
-  const date=new Date(day+'T00:00:00Z');date.setUTCDate(date.getUTCDate()-1);
-  return date.toISOString().slice(0,10);
-}
 export function resolveTimeSegments(anchorIds,anchors){
   const known=anchors instanceof Map?anchors:new Map((Array.isArray(anchors)?anchors:[])
     .map(row=>[String(row.uid||''),row]));
@@ -89,9 +83,6 @@ export function resolveTimeTrace(periodUids,events){
 }
 export function timePeriodSortDate(period){
   return (period?.ranges||[]).map(x=>x.start_date).filter(Boolean).sort()[0]||'9999-12-31';
-}
-export function timePeriodsWithValidRanges(rows=[]){
-  return rows.filter(row=>row.ranges?.some(range=>range.start_date&&(!range.invalid||range.point)));
 }
 // Merge only overlapping or adjoining valid ranges for efficient SQL selection.
 // Disconnected ranges remain separate and cannot inherit today's date.
