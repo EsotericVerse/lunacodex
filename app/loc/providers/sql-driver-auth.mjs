@@ -12,3 +12,4 @@ export function normalizeSqlDriverAuthentication(engine,input){
   throw Error('Unexpected SQL driver authentication field');
  return {type:'default'};
 }
+export function publicSqlDriverAuthentication(){return {type:'default'};}
