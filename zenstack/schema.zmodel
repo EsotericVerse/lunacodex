@@ -583,8 +583,8 @@ model Manage {
 // user_setting replaces the separate api.user_settings key/value table.
 // This is not a LOC Auth session issuer or an account-permission registry.
 model LocUser {
-    uid          String   @id @db.VarChar(8) @default(dbgenerated())
-    owner_id     String   @unique @db.Text
+    uid          String   @id @db.Char(8) @default(dbgenerated())
+    userId       String   @unique @db.Text
     email        String   @db.Text
     culture      Json     @db.JsonB @default(dbgenerated())
     statics      Json     @db.JsonB @default(dbgenerated())
