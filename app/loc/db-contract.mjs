@@ -600,15 +600,15 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     return auth.getVerifiedSession();
   }
 
-  async function signInWithGoogle(callbackURL){
+  async function signInWithLocSso(callbackURL){
     const target=String(callbackURL||'').trim();
-    if(!target)throw new Error('Google sign-in callback URL is required');
+    if(!target)throw new Error('Cloudflare SSO callback URL is required');
     // Interactive sign-in uses the configured independent identity adapter.
     // The database provider must never own the LOC login session.
     const {error}=await auth.signInWithOAuth({
-      provider:'google',options:{redirectTo:target,queryParams:{prompt:'select_account'}}
+      provider:'cloudflare',options:{redirectTo:target}
     });
-    if(error)throw new Error(error.message||'Google sign-in failed');
+    if(error)throw new Error(error.message||'Cloudflare SSO sign-in failed');
   }
 
   async function signOutAccount(){
@@ -616,7 +616,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     if(error)throw new Error(error.message||'Account sign-out failed');
   }
 
-  return {publicClient,authClient,dbAuthRelation,selectAuthRow,insertRows,insertImportRows,updateRows,deleteRows,updateImportRows,resetKeywordClassification,readKeywordClass,readScopeStatistics,readScopeCategoryTotals,readScopeOverview,readScopeEarliest,readLocStatistics,findGalaxyDuplicates,readKeywordTreeSummary,readKeywordTreeCatalog,readSharedKeywordClasses,writeKeywordLibraryItem,copyKeywordLibraryClass,copyRune66KeywordClass,deleteScope,moveScopeBlock,provisionScope,manageScopeRegistry,getAccountSession,signInWithGoogle,signOutAccount};
+  return {publicClient,authClient,dbAuthRelation,selectAuthRow,insertRows,insertImportRows,updateRows,deleteRows,updateImportRows,resetKeywordClassification,readKeywordClass,readScopeStatistics,readScopeCategoryTotals,readScopeOverview,readScopeEarliest,readLocStatistics,findGalaxyDuplicates,readKeywordTreeSummary,readKeywordTreeCatalog,readSharedKeywordClasses,writeKeywordLibraryItem,copyKeywordLibraryClass,copyRune66KeywordClass,deleteScope,moveScopeBlock,provisionScope,manageScopeRegistry,getAccountSession,signInWithLocSso,signOutAccount};
 }
 
 // One universal hard ceiling for all database read adapters and selected columns.

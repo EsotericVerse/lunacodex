@@ -29,7 +29,7 @@ export default {
   "favorites": "Favorites",
   "login": "Sign in",
   "logout": "Sign out",
-  "switchAccount": "Switch Google account",
+  "switchAccount": "Switch Cloudflare account",
   "manageFeature": "Management feature",
   "openSystemSettings": "Open system settings",
   "loading": "Loading…",

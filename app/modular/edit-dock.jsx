@@ -116,7 +116,7 @@ export function EditDockProvider({children}){
     };
   },[scopeId]);
 
-  // A Google OAuth account change invalidates all editor UI permissions.
+  // A Cloudflare SSO account change invalidates all editor UI permissions.
   // The backend still authorizes each write using the active JWT/RLS.
   // Device-local SQLite editing is independent of cloud OAuth.
   const activeScope=useRef('');
