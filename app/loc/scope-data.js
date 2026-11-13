@@ -7,7 +7,6 @@ import {Capacitor} from '@capacitor/core';
 import {SCOPE_ROUTE_INDEX} from '../modular/scope-route-index.js';
 import {PUBLISHED_SITE_BOOTSTRAP} from '../modular/published-site-bootstrap.js';
 import {loadPublishedBlocks} from '../modular/published-blocks/index.js';
-import {LOC_BLOCK_ANCHOR_FIELDS,locAnchorToBlock} from './loc-block-anchor.mjs';
 
 // Public page copy (Title_TW/Desc_TW) now travels inside the shared
 // app-bootstrap request (see app/loc/app-bootstrap.js); there is no
@@ -130,6 +129,7 @@ export function invalidatePublicScopeMetadata(){
   publicSiteBootstrapRequest=null;
   scopeConfigInFlight.clear();
   scopeBlocksRequests.clear();
+  blockListRequests.clear();
   if(typeof window!=='undefined'){
     window.dispatchEvent(new Event('loc-public-scope-metadata-changed'));
   }
@@ -280,58 +280,49 @@ const scopeBlocksRequests=new Map();
 export function invalidateScopeBlockPage(scopeId,page='index'){
   const id=String(scopeId||'').trim().toLowerCase();
   scopeBlocksRequests.delete(id+':'+String(page||'index').trim().toLowerCase());
+  blockListRequests.delete(id);
 }
 const BLOCK_COLUMNS='uid,page_name,block_eyebrow,block_title,block_subtitle,block_text,block_order,block_entity,block_image';
+const blockListRequests=new Map();
+// LOC returns index+governance; ordinary Scope returns index only.
+export function block_list(scopeid){
+  const id=String(scopeid||'').trim().toLowerCase();
+  if(id==='local'||!SCOPE_ID_PATTERN.test(id))return Promise.resolve([]);
+  if(blockListRequests.has(id))return blockListRequests.get(id);
+  const promise=nativePublicContent('block_list',id)
+    .then(rows=>Array.isArray(rows)?rows:[])
+    .catch(error=>{blockListRequests.delete(id);throw error});
+  blockListRequests.set(id,promise);
+  return promise;
+}
+// Specific LOC Anchor type, optionally a pair of exact types in one SQL read.
+export async function hero_block(specificValue){
+  const types=Array.isArray(specificValue)?specificValue:[specificValue];
+  if(!types.length||types.length>2||new Set(types).size!==types.length||
+    types.some(type=>typeof type!=='string'||
+      !/^[A-Za-z][A-Za-z0-9_-]{0,60}$/.test(type)||
+      ['from','domain','galaxy','universe','index','governance'].includes(type)))
+    return [];
+  const rows=await nativePublicContent('hero_block','loc',types.join(','));
+  return Array.isArray(rows)?rows:[];
+}
 export async function selectLiveScopeBlocks(scopeId,page='index'){
   const id=String(scopeId||'').trim().toLowerCase();
   const name=String(page||'index').trim();
-  if(id==='local'||!SCOPE_ID_PATTERN.test(id)||! /^[A-Za-z0-9_-]+$/.test(name))return [];
-  if(name==='index'){
-    // Live editor read: Kysely SELECT in the trusted LOC Pages application.
-    const rows=await nativePublicContent('blocks',id);
-    return (Array.isArray(rows)?rows:[])
-      .sort((a,b)=>Number(a.block_order||0)-Number(b.block_order||0));
+  if(id==='local'||!SCOPE_ID_PATTERN.test(id)||!/^[A-Za-z0-9_-]+$/.test(name))return [];
+  if(id==='loc'){
+    const rows=['index','governance'].includes(name)
+      ?(await block_list(id)).filter(row=>row.page_name===name)
+      :await hero_block(name);
+    return [...rows].sort((a,b)=>(Number(a.block_order)||0)-(Number(b.block_order)||0));
   }
-  // Other management pages still need their authenticated read contract;
-  // do not expose them through the public Kysely endpoint.
-  const loc=id==='loc';
-  const {rows}=loc
-    ?await selectAllRows('silver.loc_anchor',{
-        columns:LOC_BLOCK_ANCHOR_FIELDS.join(','),
-        filters:[{column:'type',operator:'eq',value:name},
-          {column:'invisible',operator:'eq',value:false}],
-        orders:[{column:'num',ascending:true}]
-      })
-    :await selectAllRows(`silver.${id}_blocks`,{
-        columns:BLOCK_COLUMNS,filters:[{column:'page_name',operator:'eq',value:name}],
-        orders:[{column:'block_order',ascending:true}]
-      });
-  return (loc?(rows||[]).map(locAnchorToBlock):rows||[])
-    .sort((a,b)=>Number(a.block_order||0)-Number(b.block_order||0));
-}
-export async function pageBlocks(scopeId,type='index'){
-  const id=String(scopeId||'').trim().toLowerCase();
-  const name=String(type||'index').trim().toLowerCase().replace(/^home$/,'index');
-  if(!SCOPE_ID_PATTERN.test(id)||! /^[a-z0-9_-]+$/.test(name))return [];
-  // The fixed physical relation is already resolved by selectLiveScopeBlocks.
-  // A bounded SELECT works for the existing public site without any SQL
-  // Gateway, retired RPC, or unsupported public-action transport.
-  return selectLiveScopeBlocks(id,name);
-}
-export async function heroBlocks(scopeId,type){
-  const id=String(scopeId||'').trim().toLowerCase();
-  const name=String(type||'').trim().toLowerCase();
-  if(!SCOPE_ID_PATTERN.test(id)||! /^[a-z][a-z0-9_-]*$/.test(name))return [];
-  // One fixed Kysely business read for both feature Hero slots. Public
-  // presentation must remain available from published modules when offline.
-  const names=['group_'+name,'scope_'+name];
-  const rows=await nativePublicContent('hero',id,name).catch(()=>[]);
-  if(Array.isArray(rows)&&rows.length)
-    return rows.sort((a,b)=>Number(a.block_order||0)-Number(b.block_order||0));
-  const defaults=await Promise.all(names.map(page=>loadPublishedBlocks('loc',page)));
-  return defaults.flatMap((items,index)=>(items||[]).map(row=>({
-    ...row,page_name:names[index]
-  })));
+  if(name==='index')return block_list(id);
+  // Other Scope physical Blocks and extended pages remain untouched.
+  const {rows}=await selectAllRows(`silver.${id}_blocks`,{
+    columns:BLOCK_COLUMNS,filters:[{column:'page_name',operator:'eq',value:name}],
+    orders:[{column:'block_order',ascending:true}]
+  });
+  return (rows||[]).sort((a,b)=>(Number(a.block_order)||0)-(Number(b.block_order)||0));
 }
 export async function selectScopeBlocks(scopeId,page='index'){
   const id=String(scopeId||'').trim().toLowerCase();
@@ -345,7 +336,7 @@ export async function selectScopeBlocks(scopeId,page='index'){
   // after a hard reload. Make one bounded homepage read per client runtime,
   // with no polling or session check, and preserve the published fallback.
   const promise=loadPublishedBlocks(id,name)
-    .then(async rows=>name==='index'
+    .then(async rows=>name==='index'||id==='loc'
       ?selectLiveScopeBlocks(id,name).then(live=>live.length?live:rows)
         .catch(()=>rows)
       :rows.length?rows:selectLiveScopeBlocks(id,name))

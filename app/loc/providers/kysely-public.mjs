@@ -1,7 +1,7 @@
 import {sql} from 'kysely';
 import {SCOPE_ROUTE_INDEX} from '../../modular/scope-route-index.js';
 import {portableRelation} from './sql-engine-ports.mjs';
-import {LOC_BLOCK_ANCHOR_FIELDS,locAnchorToBlock} from '../loc-block-anchor.mjs';
+import {LOC_BLOCK_ANCHOR_FIELDS,locAnchorToBlock,isLocBlockPage} from '../loc-block-anchor.mjs';
 const scopePattern=/^[a-z][a-z0-9]{0,14}$/;
 function id(value){
   const s=String(value||'').trim().toLowerCase();
@@ -11,36 +11,74 @@ function id(value){
 const ACTION_ARGS={
   read_app_bootstrap:['p_scope_id','p_page_name'],
   read_scope_page_copy:['p_scope_id'],
-  page_blocks:['p_scope_id','p_type'],
-  hero_blocks:['p_scope_id','p_type'],
+  block_list:['p_scope_id'],
+  hero_block:['p_type'],
   search_scope_trace_place_names:['p_scope_id','p_term','p_limit']
 };
+// Two LOC presentation read contracts. Public endpoints never accept relation
+// names, SQL, or a caller-selected database. Other Scope tables stay intact.
+const BLOCK_COLUMNS=Object.freeze([
+  'uid','page_name','block_eyebrow','block_title','block_subtitle',
+  'block_text','block_order','block_entity','block_image'
+]);
+const LOC_LIST_TYPES=Object.freeze(['index','governance']);
+const blockRelation=(table,engine,namespace)=>
+  engine==='postgres'?'silver.'+table:portableRelation(table,engine,namespace);
+async function readLocBlockAnchors(trx,types,{
+  engine='postgres',namespace='silver',readLocAnchors=null
+}={}){
+  if(typeof readLocAnchors==='function')return readLocAnchors(types);
+  return trx.selectFrom(blockRelation('loc_anchor',engine,namespace))
+    .select(LOC_BLOCK_ANCHOR_FIELDS)
+    .where('type','in',types).where('invisible','=',false)
+    .orderBy('num','asc').execute();
+}
+export async function block_list(trx,scopeId,options={}){
+  const scope=id(scopeId);
+  if(scope==='loc'){
+    const rows=await readLocBlockAnchors(trx,LOC_LIST_TYPES,options);
+    return rows.map(locAnchorToBlock)
+      .sort((a,b)=>a.page_name.localeCompare(b.page_name)||
+        a.block_order-b.block_order);
+  }
+  if(typeof options.readScopeBlocks==='function')
+    return options.readScopeBlocks(scope);
+  return trx.selectFrom(blockRelation(scope+'_blocks',options.engine||'postgres',
+    options.namespace||'silver'))
+    .select(BLOCK_COLUMNS).where('page_name','=','index')
+    .orderBy('block_order','asc').execute();
+}
+export async function hero_block(trx,specificValue,options={}){
+  const types=Array.isArray(specificValue)?specificValue:[specificValue];
+  if(!types.length||types.length>2||new Set(types).size!==types.length||
+    types.some(type=>!isLocBlockPage(type)||LOC_LIST_TYPES.includes(type)))
+    throw Object.assign(new Error('Invalid specific Hero type'),{httpStatus:400});
+  const rows=await readLocBlockAnchors(trx,types,options);
+  return rows.map(locAnchorToBlock).sort((a,b)=>
+    types.indexOf(a.page_name)-types.indexOf(b.page_name)||
+    a.block_order-b.block_order);
+}
+// One exact type is the ordinary case; a known group+scope pair can be
+// batched as two exact types in one query, not two redundant database trips.
+
 export async function executeKyselyPublicAction(trx,body,{engine='postgres',namespace='silver',publishedScopeIds=null}={}){
   const portable=engine!=='postgres';
   const table=name=>portable?portableRelation(name,engine,namespace):
     name==='manage'?'api.manage':'silver.'+name;
   const action=String(body?.name||'');
-  if(action==='page_blocks'||action==='hero_blocks'){
+  if(action==='block_list'||action==='hero_block'){
     const args=body?.args||{};
-    if(Object.keys(args).some(key=>!['p_scope_id','p_type'].includes(key)))
+    const allowed=ACTION_ARGS[action];
+    if(Object.keys(args).some(key=>!allowed.includes(key)))
       throw Object.assign(new Error('Invalid Block arguments'),{httpStatus:400});
-    const scope=id(args.p_scope_id),kind=String(args.p_type||'').trim();
-    if(!/^[a-z][a-z0-9_-]{0,40}$/.test(kind)||
-       action==='page_blocks'&&kind!=='index'||
-       action==='hero_blocks'&&!['culture','statics','trace','search'].includes(kind))
-      throw Object.assign(new Error('Invalid public Block type'),{httpStatus:400});
-    const loc=action==='hero_blocks'||scope==='loc';
-    const tableName=loc?'loc_anchor':scope+'_blocks';
-    const names=action==='hero_blocks'?['group_'+kind,'scope_'+kind]:[kind];
     if(!portable)await sql`reset role`.execute(trx);
-    const rows=loc
-      ?await trx.selectFrom(table(tableName)).select(LOC_BLOCK_ANCHOR_FIELDS)
-        .where('type','in',names).where('invisible','=',false).execute()
-      :await trx.selectFrom(table(tableName))
-        .select(['uid','page_name','block_eyebrow','block_title','block_subtitle',
-          'block_text','block_order','block_entity','block_image'])
-        .where('page_name','in',names).execute();
-    return {data:loc?rows.map(locAnchorToBlock):rows,count:null};
+    if(action==='block_list'){
+      const scope=id(args.p_scope_id);
+      if(publishedScopeIds!==null&&!publishedScopeIds.includes(scope))
+        throw Object.assign(new Error('Unpublished Scope'),{httpStatus:403});
+      return {data:await block_list(trx,scope,{engine,namespace}),count:null};
+    }
+    return {data:await hero_block(trx,args.p_type,{engine,namespace}),count:null};
   }
   // Reject unsupported actions, arguments and Scope IDs before Kysely
   // introspects the external database. Malformed public requests cost no SQL.
@@ -177,18 +215,19 @@ export async function executeKyselyPublicAction(trx,body,{engine='postgres',name
     const full=await trx.selectFrom(table(scope))
       .selectAll().where('id','=',scope).executeTakeFirst();
     if(full){const {id:ignore,...rest}=full;config=rest;}
-    const loc=scope==='loc';
-    const blockTable=loc?'loc_anchor':scope+'_blocks';
-    if(await relationAvailable('silver.'+blockTable)){
-      const result=loc
-        ?await trx.selectFrom(table(blockTable)).select(LOC_BLOCK_ANCHOR_FIELDS)
-          .where('type','=',page).where('invisible','=',false)
-          .orderBy('num','asc').execute()
-        :await trx.selectFrom(table(blockTable))
-          .select(['uid','page_name','block_eyebrow','block_title','block_subtitle',
-            'block_text','block_order','block_entity','block_image'])
-          .where('page_name','=',page).orderBy('block_order','asc').execute();
-      blocks=loc?result.map(locAnchorToBlock):result;
+    // LOC has exactly two presentation readers. The legacy bootstrap
+    // assembles its blocks through these functions instead of custom SQL.
+    if(scope==='loc'){
+      blocks=['index','governance'].includes(page)
+        ?(await block_list(trx,scope,{engine,namespace})).filter(row=>row.page_name===page)
+        :await hero_block(trx,page,{engine,namespace});
+    }else if(page==='index'){
+      blocks=await block_list(trx,scope,{engine,namespace});
+    }else if(await relationAvailable('silver.'+scope+'_blocks')){
+      // Other Scope page storage is unchanged.
+      blocks=await trx.selectFrom(table(scope+'_blocks'))
+        .select(BLOCK_COLUMNS).where('page_name','=',page)
+        .orderBy('block_order','asc').execute();
     }
   }
   const root=await trx.selectFrom(table('loc')).select('theme')

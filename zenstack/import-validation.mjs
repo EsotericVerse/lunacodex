@@ -214,7 +214,7 @@ export function assertZModelGalaxyManagedValues(table,operation,values){
 export function assertZModelAnchorBlockManagedValues(table,operation,values){
   if(!['insert','upsert','update'].includes(operation))return false;
   const relation=String(table||'');
-  if(!/^silver\.[a-z][a-z0-9]{0,14}_(?:anchor|blocks)$/.test(relation))return false;
+  if(!/^silver\.(?!loc_blocks$)[a-z][a-z0-9]{0,14}_(?:anchor|blocks)$/.test(relation))return false;
   const model=modelNameForSql(...relation.split('.'));
   if(!model||!(model.endsWith('Anchor')||model.endsWith('Blocks')))
     return false;

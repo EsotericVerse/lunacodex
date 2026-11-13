@@ -27,7 +27,7 @@ const respond=(data,status=200)=>new Response(JSON.stringify(data),{status,heade
 const IDENT=/^[a-z_][a-z0-9_]*$/i;
 const OPERATORS=new Set(['eq','neq','gt','gte','lt','lte','like','ilike','is','in','contains']);
 const SCOPE=new Set(SCOPE_ROUTE_INDEX.filter(row=>row.active!==false).map(row=>row.scope_id));
-const TABLE_RE=/^([a-z][a-z0-9]{0,14})_(galaxy|galaxy_media|anchor|blocks|keywords|trace|time)$/;
+const TABLE_RE=/^(?!loc_blocks$)([a-z][a-z0-9]{0,14})_(galaxy|galaxy_media|anchor|blocks|keywords|trace|time)$/;
 const TABLES=new Set(['loc_anchor','runes','runes_etc','runes_group']);
 const invalid=message=>Object.assign(new Error(message),{status:400});
 function col(input){
@@ -133,7 +133,7 @@ function modeledPublicSelect(selected,query){
   if(!['postgres','mysql'].includes(selected.engine)||!selected.dialect||query.cardinality)
     return null;
   const fixedLocAnchor=query.table==='loc_anchor';
-  const matched=/^([a-z][a-z0-9]{0,14})_(galaxy|anchor|blocks)$/.exec(query.table);
+  const matched=/^(?!loc_blocks$)([a-z][a-z0-9]{0,14})_(galaxy|anchor|blocks)$/.exec(query.table);
   if(!fixedLocAnchor&&(!matched||!SCOPE.has(matched[1])))return null;
   const modelName=fixedLocAnchor?'LocAnchor':matched[2][0].toUpperCase()+matched[2].slice(1);
   const ordinaryFilters=query.filters.map(f=>({
@@ -165,11 +165,22 @@ function modeledPublicSelect(selected,query){
 }
 
 const PUBLIC_ACTIONS=new Set(['read_app_bootstrap','read_scope_page_copy',
-  'page_blocks','hero_blocks','search_scope_trace_place_names']);
+  'block_list','hero_block','search_scope_trace_place_names']);
 function normalizeAction(body){
   if(Object.keys(body).some(k=>!['kind','name','args'].includes(k))||
-     !PUBLIC_ACTIONS.has(body.name)||!body.args||typeof body.args!=='object'||
-     Array.isArray(body.args)||!SCOPE.has(String(body.args.p_scope_id||'')))
+      !PUBLIC_ACTIONS.has(body.name)||!body.args||typeof body.args!=='object'||
+      Array.isArray(body.args))
+    throw invalid('Unavailable LOC public action');
+  if(body.name==='hero_block'){
+    // LOC Hero is selected by exact Anchor type, not by physical relation.
+    const values=Array.isArray(body.args.p_type)?body.args.p_type:[body.args.p_type];
+    if(Object.keys(body.args).some(k=>k!=='p_type')||
+      values.length<1||values.length>2||new Set(values).size!==values.length||
+      values.some(t=>typeof t!=='string'||!/^[A-Za-z][A-Za-z0-9_-]{0,60}$/.test(t)||
+        ['from','domain','galaxy','universe','index','governance'].includes(t)))
+      throw invalid('Invalid Hero type');
+  }else if(!SCOPE.has(String(body.args.p_scope_id||''))||
+    body.name==='block_list'&&Object.keys(body.args).some(k=>k!=='p_scope_id'))
     throw invalid('Unavailable LOC public action');
   if(body.name==='search_scope_trace_place_names'&&body.args.p_scope_id==='loc')
     throw invalid('Unavailable Trace Scope');

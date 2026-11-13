@@ -2,7 +2,7 @@ import {flashMessage} from './flash-message.js';
 import {isUnifiedAnchorScope} from './unified-anchor-compat.mjs';
 import {assertPlainGalaxyAttributes} from './content-policy.js';
 import {DB_QUERY_BATCH_SIZE,MAX_ROWS} from './query-batch-size.mjs';
-import {assertAuthorizationForTable,clearAuthorization,readAuthorization} from './authorization-runtime.mjs';
+import {assertAuthorizationForTable,clearAuthorization,readAuthorization,canAuthorizeGroup} from './authorization-runtime.mjs';
 import {assertEditorSession} from './edit-session-ttl.mjs';
 import {unifiedAnchorSpec} from './unified-anchor-compat.mjs';
 import {isScopedGalaxy,prepareGalaxyInsertRows,prepareGalaxyUpdateValues} from './galaxy-able.mjs';
@@ -539,9 +539,13 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     const normalizedPage=scope==='loc'?page:page.toLowerCase();
     const blockUid=String(uid||'').trim();
     if(!scope||!normalizedPage||!(/^[A-Za-z0-9]{8}$/.test(blockUid))||![1,-1].includes(direction))throw new Error('無效的區塊移動參數。');
-    // This is a local group-grant check, not a physical table lookup.
-    // LOC storage now lives in loc_anchor, but group homepage rights remain intact.
-    preflightWrite('silver.'+scope+'_blocks');
+    if(scope==='loc'&&normalizedPage==='index'){
+      // Existing LOC group permission for the homepage is preserved.
+      if(typeof window!=='undefined'){
+        assertEditorSession(window.sessionStorage);
+        if(!canAuthorizeGroup('loc'))throw new Error('LOC 群組首頁編輯權限不足。');
+      }
+    }else preflightWrite(scope==='loc'?'silver.loc_anchor':'silver.'+scope+'_blocks');
     const {data,error}=await authClient.schema('silver').managedAction('move_scope_block',{
       p_scope_id:scope,p_page_name:normalizedPage,p_uid:blockUid,p_direction:direction
     });

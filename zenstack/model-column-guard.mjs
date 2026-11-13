@@ -40,7 +40,7 @@ export function zmodelRegistryJoin(db,{optionalLoc=false}={}){
     source.innerJoin(joined,left,right);
 }
 
-const scoped=/^([a-z][a-z0-9]{0,14})_(galaxy|anchor|blocks)$/;
+const scoped=/^(?!loc_blocks$)([a-z][a-z0-9]{0,14})_(galaxy|anchor|blocks)$/;
 const kinds={galaxy:'Lo3rwangGalaxy',anchor:'Lo3rwangAnchor',blocks:'Lo3rwangBlocks'};
 
 // Share the identical model resolution with import-time Zod validation.
