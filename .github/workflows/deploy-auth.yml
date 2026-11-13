@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22.23.4'
+          node-version: '22.23.5'
       - name: Check Cloudflare release permissions
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
