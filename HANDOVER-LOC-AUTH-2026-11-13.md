@@ -16,8 +16,8 @@
 
 - Repo：`/workspace/moon-runes-pwa`
 - Branch：`codex/loc-auth-mcp-extension-20261113`（由 `work` 建立）
-- HEAD：`3f6a2e40b90da8ab58792cfc8d651fbf9536f842`
-- 建 branch 時 `origin/main` 與基底 HEAD 相同；沒有 merge 到 main。
+- 建立 branch 時的基底 commit：`3f6a2e40b90da8ab58792cfc8d651fbf9536f842`，當時與 `origin/main` 相同。
+- LOC Auth／Extension 工作已提交並推送至此 GitHub branch；`main` 未修改、未 merge。
 - 原有 29 個 tracked 檔案修改與 3 個新增實作檔案，加上本交接文件，放在此分支。
 - `scripts/test-mcp-extension-sso.mjs` 保留在原工作區但不放進本分支；先前的 4 項測試結果是該工作區的歷史紀錄。
 - 使用者明確要求只開 branch，不 merge 到 main。
