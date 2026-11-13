@@ -9,6 +9,7 @@ import {assertZModelGalaxyManagedValues,assertZModelAnchorBlockManagedValues}
 import {validateLocRegistryDomain} from './loc-domain.mjs';
 import {sql} from 'kysely';
 import {saveBlocksKysely} from './kysely-blocks.mjs';
+import {decodeLocCache,encodeLocCache} from '../runtime-cache-fields.mjs';
 import {allocateAnchorUid} from '../unified-anchor-compat.mjs';
 import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
 import {keywordPatternItemMetrics} from '../keyword-search-pattern.mjs';
@@ -739,10 +740,34 @@ async function managedLocSettings(trx,args,claims){
   const operation=String(args.p_operation||'read');
   const key=String(args.p_key??'').trim();
   const value=args.p_value;
-  if(!['theme','keywords'].includes(section))
+  if(!['theme','keywords','runtime'].includes(section))
     reject('Invalid LOC settings section');
-  // Permission was established with the signed Clerk identity; no arbitrary
-  // table is addressable through this route.
+  // Runtime Cache/ISR/IO belongs to the fixed private api.manage admin row.
+  // Reuse this existing global-admin action, not an anonymous SELECT path.
+  if(section==='runtime'){
+    if(key||!['read','update'].includes(operation))reject('Invalid runtime setting operation');
+    const allowed=new Set(['cache_mode','cache_provider','isr_domains','io_limits']);
+    if(operation==='update'&&(!catalogObject(value)||!Object.keys(value).length||
+        Object.keys(value).some(field=>!allowed.has(field))))
+      reject('Invalid runtime setting fields');
+    await sql`reset role`.execute(trx);
+    const row=await trx.selectFrom('api.manage').select('caches')
+      .where('id','=','admin').forUpdate().executeTakeFirst();
+    if(!row)reject('LOC Admin runtime settings unavailable');
+    const previous=decodeLocCache(row.caches);
+    if(operation==='read')return previous;
+    let next;
+    try{next=encodeLocCache({...previous,...value});}
+    catch{reject('Invalid runtime setting values');}
+    const result=await trx.updateTable('api.manage')
+      .set({caches:sql`${JSON.stringify(next)}::jsonb`})
+      .where('id','=','admin').executeTakeFirst();
+    if(Number(result?.numUpdatedRows||0)!==1)
+      reject('LOC Admin runtime settings were not saved');
+    return next;
+  }
+  // Permission was established with the signed LOC business identity;
+  // no arbitrary table is addressable through this route.
   await sql`reset role`.execute(trx);
   const row=await trx.selectFrom('silver.loc')
     .select(['theme','keywords'])
