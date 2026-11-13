@@ -29,8 +29,8 @@ export function setAuthorization(user,permissions={}){
        !['admin','group','scope'].includes(role))return [];
     return [Object.freeze({scopeid,email:recordEmail,role})];
   });
-  if(grants.some(value=>typeof value!=='string'))
-    throw new Error('LOC 管理權限回傳格式不正確。');
+  if(grants.some(value=>typeof value!=='string')||grants.length&&!safeRows.length)
+    throw new Error('LOC 管理權限與已驗證身分不一致。');
   const model=locRolePrincipal({provider:'loc',me:true,sub:id,grants});
   if(grants.length&&!model)throw new Error('LOC 權限主體無效。');
   userId=id;email=verifiedEmail;
