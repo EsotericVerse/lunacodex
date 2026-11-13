@@ -160,8 +160,43 @@ export default {
           probe={reached:false,name:error?.name||'Error',
             message:String(error?.message||error).slice(0,180)};
         }
+        // The plain fetch above already answered 200 in well under a second,
+        // so the destination is reachable and the hang is inside the plugin's
+        // own path. That path adds two things: an SSRF guard that may call
+        // node:dns, and betterFetch instead of fetch. Time both separately so
+        // the next change is aimed at whichever one actually stalls.
+        let dnsProbe;
+        const dnsStarted=Date.now();
+        try{
+          const dns=await import('node:dns/promises');
+          const resolved=await Promise.race([
+            dns.lookup(new URL(target).hostname,{all:true}),
+            new Promise((_,reject)=>setTimeout(()=>reject(new Error('dns.lookup did not settle in 5s')),5000))
+          ]);
+          dnsProbe={ok:true,addresses:(resolved||[]).map(r=>r.address).slice(0,4)};
+        }catch(error){
+          dnsProbe={ok:false,message:String(error?.message||error).slice(0,140)};
+        }
+        dnsProbe.elapsedMs=Date.now()-dnsStarted;
+
+        let pluginProbe;
+        const pluginStarted=Date.now();
+        try{
+          const {discoverOIDCConfig}=await import('@better-auth/sso');
+          const config=await discoverOIDCConfig({issuer,timeout:5000,
+            isTrustedOrigin:()=>true});
+          pluginProbe={ok:true,tokenEndpoint:String(config?.tokenEndpoint||''),
+            jwksEndpoint:String(config?.jwksEndpoint||'')};
+        }catch(error){
+          pluginProbe={ok:false,name:error?.name||'Error',
+            code:String(error?.code||''),
+            message:String(error?.message||error).slice(0,180)};
+        }
+        pluginProbe.elapsedMs=Date.now()-pluginStarted;
+
         return new Response(JSON.stringify({host:new URL(target).host,
-          elapsedMs:Date.now()-started,...probe},null,1),
+          plainFetch:{elapsedMs:Date.now()-started,...probe},
+          dns:dnsProbe,pluginDiscovery:pluginProbe},null,1),
           {headers:{'content-type':'application/json','cache-control':'no-store'}});
       }
       if(request.method==='GET'&&url.pathname==='/health')
