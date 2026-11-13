@@ -1,8 +1,8 @@
 'use client';
 import {dbAuthRelation} from './db-client.mjs';
 
-const TABLE='api.loc_user';
-const COLUMNS='uid,owner_id,email,culture,statics,trace,search,keyword,updated_at';
+const TABLE='silver.loc_user';
+const COLUMNS='uid,owner_id,email,culture,statics,trace,search,keyword,user_setting,updated_at';
 const UID=/^[A-Za-z0-9]{8}$/;
 const KEYWORD=/^[a-z][a-z0-9]{0,30}:(?:[A-Za-z0-9]{4}|[A-Za-z0-9]{8})$/;
 export const LOC_USER_FIELDS=Object.freeze(['culture','statics','trace','search','keyword']);
