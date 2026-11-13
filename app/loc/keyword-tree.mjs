@@ -5,7 +5,6 @@ import {indexZModelAnchorHierarchy} from '../../zenstack/anchor-hierarchy.mjs';
 // Only the canonical eight-character Anchor UID exists in the current ZModel.
 const UID=/^[0-9A-Za-z]{8}$/;
 const ARTICLE_UID=/^[0-9A-Za-z]{8}$/;
-const NEXT={category:'class',class:'group',group:'item'};
 const TYPES=new Set(['category','class','group','item']);
 const array=value=>{
   if(Array.isArray(value))return value;
@@ -98,7 +97,7 @@ export function indexAnchorTree(rows=[],{normalize,rootType}){
     const parents=graph.parentsOf(uid);
     if(parents.length)parent.set(uid,parents[0]);
   }
-  return {index,parent,roots:graph.roots.map(uid=>index.get(uid)).filter(Boolean)};
+  return {index,parent,roots:graph.roots.map(uid=>index.get(uid)).filter(Boolean),graph};
 }
 export function indexKeywordTree(rows=[]){
   return indexAnchorTree(rows,{normalize:normalizeKeywordTreeRow,rootType:'category'});
@@ -106,12 +105,8 @@ export function indexKeywordTree(rows=[]){
 export function descendantsOfKeyword(rows,uid,{type}={}){
   const tree=indexKeywordTree(rows),start=tree.index.get(cleanUid(uid));
   if(!start)throw new Error('Unknown Keywords UID');
-  const result=[],walk=node=>{
-    if(!type||node.type===type)result.push(node);
-    for(const childUid of NEXT[node.type]?node.lists:[])walk(tree.index.get(childUid));
-  };
-  walk(start);
-  return result;
+  return tree.graph.descendants(start.uid,{type}).uids
+    .map(id=>tree.index.get(id)).filter(Boolean);
 }
 export function keywordClassCatalog(rows,classUid){
   const nodes=descendantsOfKeyword(rows,classUid),root=nodes[0];
