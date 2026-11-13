@@ -2,7 +2,7 @@ import {sql} from 'kysely';
 import {buildKyselyUpsertQuery} from './kysely-runtime.mjs';
 import {portableRelation,serializePortableJsonFields} from './sql-engine-ports.mjs';
 import {modelFieldsForSql} from '../../../zenstack/model-column-guard.mjs';
-import {modelWriteSchemaForSqlTable} from '../../../zenstack/import-validation.mjs';
+import {modelWriteSchemaForSqlTable,locBlocksZModelSchema} from '../../../zenstack/import-validation.mjs';
 import {isLocBlockPage,locBlockToAnchor} from '../loc-block-anchor.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
@@ -28,9 +28,10 @@ export async function saveBlocksKysely(db,args,{engine='postgres',namespace='sil
     portableRelation(tableName,engine,namespace);
   // Reuse the already cached ZenStack→Zod model schema used by Galaxy import.
   // No separate Block field, UID or physical-type validator is maintained here.
-  // The LOC Blocks ZModel is a value type projected onto LocAnchor. The
-  // physical Blocks validator remains shared with other Scope Block editors.
-  const blockSchema=modelWriteSchemaForSqlTable('silver.'+(scope==='loc'?'lo3rwang_blocks':tableName));
+  // Validate LOC's own ZModel value type, then persist into LocAnchor.
+  // All non-LOC Scope Blocks retain their unchanged physical-table validator.
+  const blockSchema=scope==='loc'?locBlocksZModelSchema:
+    modelWriteSchemaForSqlTable('silver.'+tableName);
   const seen=new Set(),orders=new Set();
   const rows=supplied.map(row=>{
     if(!row||typeof row!=='object'||Array.isArray(row)||
