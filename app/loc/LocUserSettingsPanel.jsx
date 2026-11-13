@@ -74,7 +74,7 @@ export default function LocUserSettingsPanel({verifiedSubject='',section='filter
   const [keywordError,setKeywordError]=useState('');
 
   useEffect(()=>{
-    const subject=String(verifiedSubject||data?.owner_id||'');
+    const subject=String(verifiedSubject||data?.userId||'');
     if(!subject||activeSubject.current===subject)return;
     const next={
       culture:{...LOC_USER_DEFAULTS.culture,...data.culture},
