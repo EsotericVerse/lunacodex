@@ -91,7 +91,7 @@ export function checkLocAuthEnvironment(env){
   const cloudflare=cloudflareSsoConfig(env);
   const data={
     connectionString:env?.LOC_AUTH_DATABASE_URL,
-    secret:env?.BETTER_AUTH_SECRET||env?.LOC_CONTROL_ENCRYPTION_KEY,
+    secret:env?.LOC_CONTROL_ENCRYPTION_KEY,
     cloudflareIssuer:cloudflare.issuer,
     cloudflareClientId:cloudflare.clientId,
     cloudflareClientSecret:cloudflare.clientSecret,
@@ -145,7 +145,7 @@ export function createLocAuth(env){
     appName:'LOC Auth',
     baseURL:LOC_ISSUER,
     basePath:'/api/auth',
-    secret:env.BETTER_AUTH_SECRET||env.LOC_CONTROL_ENCRYPTION_KEY,
+    secret:env.LOC_CONTROL_ENCRYPTION_KEY,
     // The SSO plugin checks the upstream discovery document, and every
     // endpoint named inside it, against this list before the first redirect
     // (validateDiscoveryUrl / normalizeAndValidateUrl), so the delegated
