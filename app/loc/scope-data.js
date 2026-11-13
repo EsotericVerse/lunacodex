@@ -52,9 +52,9 @@ function buildScopeData(row,id){
     // One physical store for Time, Trace, Keywords and Media.
     anchor:`silver.${id}_${anchorSuffix}`,
     galaxyMedia:galaxy+'_media',
-    // Compatibility aliases are resolved only by the DB adapter.
+    // Time and Keyword share the same typed physical Anchor.
     time:`silver.${id}_${anchorSuffix}`,
-    keywords:`silver.${id}_keywords`,
+    keywords:`silver.${id}_${anchorSuffix}`,
     blocks:id==='loc'?'silver.loc_anchor':`silver.${id}_blocks`
   };
 }
