@@ -1,7 +1,7 @@
 import {allocateAnchorUid} from './uid.js';
-// Canonical three-level Time graph:
-// anchor.address DATE -> period.anchor_ids [startUID, optional endUID]
-// -> era.anchor_ids [period UID, ...].
+// Canonical TimeAnchor graph:
+// date.attr.date -> period.attr.uid [startUID, optional endUID]
+// -> era.attr.period [period UID, ...].
 // A missing endpoint leaves a genuine surviving point; no '0' or now() anchor.
 const UID=/^[A-Za-z0-9]{8}$/;
 const dateOf=value=>{
@@ -9,14 +9,6 @@ const dateOf=value=>{
   return /^\d{4}-\d{2}-\d{2}$/.test(date)?date:'';
 };
 // The persisted Time range is a derived projection, never a replacement for anchor_ids.
-export function storedTimeRange(value){
-  let doc=value;
-  if(typeof doc==='string'){try{doc=JSON.parse(doc)}catch{return null}}
-  if(!doc||typeof doc!=='object'||Array.isArray(doc)||doc.version!==1||!Array.isArray(doc.segments))return null;
-  if(!doc.segments.every(part=>part&&typeof part==='object'&&!Array.isArray(part)&&
-    (part.start_date==null||dateOf(part.start_date))&&(part.end_date==null||dateOf(part.end_date))))return null;
-  return {ranges:doc.segments,invalidPeriodUids:Array.isArray(doc.invalid_period_uids)?doc.invalid_period_uids:[]};
-}
 export function isTimeUid(value){return UID.test(String(value||''));}
 export function allocateTimeUid(rows=[]){
   const occupied=new Set((Array.isArray(rows)?rows:[]).map(row=>String(row?.uid||'')));
