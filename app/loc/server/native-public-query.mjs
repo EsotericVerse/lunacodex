@@ -165,11 +165,22 @@ function modeledPublicSelect(selected,query){
 }
 
 const PUBLIC_ACTIONS=new Set(['read_app_bootstrap','read_scope_page_copy',
-  'page_blocks','hero_blocks','search_scope_trace_place_names']);
+  'block_list','hero_block','search_scope_trace_place_names']);
 function normalizeAction(body){
   if(Object.keys(body).some(k=>!['kind','name','args'].includes(k))||
-     !PUBLIC_ACTIONS.has(body.name)||!body.args||typeof body.args!=='object'||
-     Array.isArray(body.args)||!SCOPE.has(String(body.args.p_scope_id||'')))
+      !PUBLIC_ACTIONS.has(body.name)||!body.args||typeof body.args!=='object'||
+      Array.isArray(body.args))
+    throw invalid('Unavailable LOC public action');
+  if(body.name==='hero_block'){
+    // LOC Hero is selected by exact Anchor type, not by physical relation.
+    const values=Array.isArray(body.args.p_type)?body.args.p_type:[body.args.p_type];
+    if(Object.keys(body.args).some(k=>k!=='p_type')||
+      values.length<1||values.length>2||new Set(values).size!==values.length||
+      values.some(t=>typeof t!=='string'||!/^[A-Za-z][A-Za-z0-9_-]{0,60}$/.test(t)||
+        ['from','domain','galaxy','universe','index','governance'].includes(t)))
+      throw invalid('Invalid Hero type');
+  }else if(!SCOPE.has(String(body.args.p_scope_id||''))||
+    body.name==='block_list'&&Object.keys(body.args).some(k=>k!=='p_scope_id'))
     throw invalid('Unavailable LOC public action');
   if(body.name==='search_scope_trace_place_names'&&body.args.p_scope_id==='loc')
     throw invalid('Unavailable Trace Scope');
