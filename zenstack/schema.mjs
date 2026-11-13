@@ -96,7 +96,7 @@ const anchorTypeEnum={name:'LocAnchorType',values:Object.fromEntries(
 const databaseDefault=Object.freeze({kind:'call',function:'dbgenerated',args:[]});
 const modelName=table=>table.split('_').map(w=>w[0].toUpperCase()+w.slice(1)).join('');
 function compileFixedSchema({schema:namespace,tables}){
-  if(namespace!=='silver'||tables.length!==17)
+  if(namespace!=='silver'||tables.length!==18)
     throw new Error('Invalid fixed LOC schema contract');
   const models={};
   for(const table of tables){
@@ -113,7 +113,8 @@ function compileFixedSchema({schema:namespace,tables}){
         ...(col.nullable&&!col.format.startsWith('_')?{optional:true}:{}),
         ...(col.hasDefault&&!col.generated?{default:databaseDefault}:{}),
         attributes:[...(native?[{name:native}]:[]),
-          ...(col.hasDefault&&!col.generated?[{name:'@default',args:[{name:'value',value:databaseDefault}]}]:[])]
+          ...(col.hasDefault&&!col.generated?[{name:'@default',args:[{name:'value',value:databaseDefault}]}]:[]),
+          ...(table.table==='manage'&&col.name==='updatetime'?[{name:'@updatedAt'}]:[])]
       };
     }
     const uniqueFields=table.pk.length===1
