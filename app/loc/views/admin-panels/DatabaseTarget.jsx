@@ -3,7 +3,6 @@ import {useEffect,useState} from 'react';
 import {DATABASE_ACCESS_LIST} from '../../providers/access.js';
 import {resolveDatabaseRouting} from '../../providers/routing-config.mjs';
 import {dbAuthClient} from '../../db-client.mjs';
-import {readonlyAuthStatus} from '../../providers/auth-status-readonly.mjs';
 
 const FILE_URL='https://github.com/EsotericVerse/moon-runes-pwa/edit/main/app/loc/providers/access.js';
 const ACCESS_FILE='app/loc/providers/access.js';
@@ -11,7 +10,6 @@ const routing=resolveDatabaseRouting();
 
 export default function DatabaseTarget(){
   const [backupHealth,setBackupHealth]=useState({state:'idle'});
-  const [authOverview]=useState(readonlyAuthStatus);
   useEffect(()=>{
     let active=true;
     if(!DATABASE_ACCESS_LIST.some(item=>item.backup_selected===true)){
@@ -55,11 +53,5 @@ export default function DatabaseTarget(){
         backupHealth.state==='online'?'連線與必要表正常':
         backupHealth.state==='schema-error'?'連線正常，但必要表不完整':'連線或驗證失敗'}
     </p>
-    <div className="scope-management-wide-field" aria-label="OAuth 與 Auth 狀態（唯讀）">
-      <h3 className="admin-workspace-section-heading">身分來源與 LOC 授權（唯讀）</h3>
-      <p className="scope-status">目前網站登入：{authOverview.primaryOAuth}</p>
-      <p className="scope-status">授權服務：{authOverview.authorization}</p>
-      <p className="scope-status">資料庫連線不使用託管商的 Auth；登入來源不改變 SQL 授權與 Kysely 操作。</p>
-    </div>
   </section>;
 }
