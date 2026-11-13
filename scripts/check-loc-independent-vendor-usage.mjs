@@ -14,9 +14,20 @@ const rootFiles=['package.json','next.config.mjs','open-next.config.ts',
 const extensions=new Set(['.js','.mjs','.cjs','.jsx','.ts','.tsx',
   '.json','.jsonc','.yml','.yaml','.html','.toml']);
 const skip=/^(?:public\/vendor\/|extensions\/[^/]+\/vendor\/)/;
-// Names of horizontal Auth Ref providers are allowed; their vendor SDKs are not.
+// Reject legacy identity/provider SDK coupling. The Neon serverless package
+// below is a PostgreSQL WebSocket transport, not an identity provider: it is
+// required by the existing Cloudflare LOC Auth Worker and Kysely dialect.
+// The exception is deliberately limited to its exact import and dependency
+// declaration. Any other use of @neondatabase/* remains a failure.
 const coupling=/(@clerk\/|@supabase\/|@neondatabase\/)/ig;
+const allowedPgDriverLines=new Map([
+  ['workers/loc-authority/auth.mjs',
+    /^import\s+\{\s*Pool\s*,\s*neonConfig\s*\}\s+from\s+['"]@neondatabase\/serverless['"];?\s*$/],
+  ['package.json',
+    /^\s*"@neondatabase\/serverless"\s*:\s*"[0-9]+\.[0-9]+\.[0-9]+",?\s*$/]
+]);
 const results=[];
+const approvedPgDriver=[];
 function check(path){
   const relativePath=relative(root,path).replaceAll('\\','/');
   if(skip.test(relativePath))return;
@@ -28,7 +39,12 @@ function check(path){
     if(/^(?:\/\/|\/\*|\*|<!--|#)/.test(line.trimStart()))return;
     coupling.lastIndex=0;
     const matches=[...line.matchAll(coupling)];
-    if(matches.length)results.push({path:relativePath,line:index+1,
+    if(!matches.length)return;
+    if(allowedPgDriverLines.get(relativePath)?.test(line)){
+      approvedPgDriver.push({path:relativePath,line:index+1});
+      return;
+    }
+    results.push({path:relativePath,line:index+1,
       matches:[...new Set(matches.map(match=>match[0].toLowerCase()))]});
   });
 }
@@ -50,4 +66,5 @@ if(results.length){
   if(results.length>250)process.stderr.write('... '+(results.length-250)+' more lines\n');
   process.stderr.write('LOC active-runtime legacy provider coupling: '+results.length+' lines; FAIL\n');
   process.exitCode=1;
-}else process.stdout.write('LOC legacy provider coupling: 0 lines; PASS\n');
+}else process.stdout.write('LOC legacy identity provider coupling: 0 lines; PASS ('+
+  approvedPgDriver.length+' approved PostgreSQL transport declarations)\n');
