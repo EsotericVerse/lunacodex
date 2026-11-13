@@ -49,6 +49,7 @@ const LocalSettingView=dynamic(()=>import('./views/LocalSettingView'),{loading})
 
 const VIEWS={
   game:GameView,
+  admin:AdminHomeView,
   statics:Statistics,
   keywords:KeywordSettings,
   culture:Culture,
@@ -67,6 +68,7 @@ const HOME_VIEWS={loc:AboutView,lrunes:RunesHomeView,lo3rwang:AuthorHomeView,adm
 // instead of after they finish.
 const VIEW_PRELOADERS={
   game:()=>import('../lrunes/game/GameBoard'),
+  admin:()=>import('./views/AdminHomeView'),
   statics:()=>import('../modular/features/Statistics'),
   keywords:()=>import('../modular/features/KeywordSettings'),
   culture:()=>import('../modular/features/Culture'),

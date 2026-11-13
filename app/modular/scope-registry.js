@@ -129,6 +129,12 @@ export function resolveScope(host='',pathname='/'){
   const h=cleanHost(host);
   const path=cleanPath(pathname);
   const segments=path.split('/').filter(Boolean);
+  // System Admin is a protected LOC feature route, not a published Scope.
+  // Keep the same canonical LOC Scope through navigation, hydration and
+  // EditDock; independent global authorization still gates the page.
+  if((path==='/admin'||path.startsWith('/admin/'))&&
+      (!h||h===LOC_FALLBACK_HOST||h==='localhost'||h==='127.0.0.1'))
+    return 'loc';
   // Directory routes MUST precede the parent's catch-all Domain route:
   // loc.lo3rwang.cc/lo3rwang/ is lo3rwang, not loc.
   for(const [id,row] of registryRouteRows){

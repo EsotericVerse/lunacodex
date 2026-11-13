@@ -9,5 +9,6 @@ export const metadata=locMetadata({
 });
 
 export default function AdminPage(){
-  return <LocApp forcedView="home" forcedScope="admin"/>;
+  // Admin is a LOC feature, not an independent URL/data Scope.
+  return <LocApp forcedView="admin"/>;
 }
