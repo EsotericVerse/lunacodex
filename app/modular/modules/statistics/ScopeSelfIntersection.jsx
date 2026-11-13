@@ -91,8 +91,8 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
     ()=>selectScopeSourceBreakdownRows(scope,{startDate:start,endDate:end}));
   const rows=query.data||[];
   const localCatalog=useAsyncResource(valid&&!sharedCatalog?['own-scope-source-catalog',scope?.id]:null,async()=>{
-    const {selectSourceTaxonomy}=await import('../../../loc/galaxy-query');
-    return selectSourceTaxonomy();
+    const {readPublicSourceTaxonomy}=await import('../../../loc/source-catalog-public.mjs');
+    return readPublicSourceTaxonomy();
   });
   const catalog=sharedCatalog||localCatalog;
   const othersConfig=useAsyncResource({
