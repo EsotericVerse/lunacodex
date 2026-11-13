@@ -6,11 +6,10 @@ import {useQueryClient} from '../../zenstack/client-queries';
 import {useEditDock} from '../modular/edit-dock';
 import {dbAuthRelation,dbPublicClient,dbAuthClient,resetKeywordClassification,updateRows,writeKeywordLibraryItem,copyKeywordLibraryClass} from './db-client.mjs';
 import {indexKeywordTree,descendantsOfKeyword} from './keyword-tree.mjs';
-import {allocateAnchorUid,isUnifiedAnchorScope} from './unified-anchor-compat.mjs';
+import {allocateAnchorUid} from './uid.js';
 import ManagementSectionNav from '../modular/ManagementSectionNav';
 import ActivityMotion from '../modular/ActivityMotion';
 import {keywordClassState,invalidateKeywordClass} from './keyword-class-state.mjs';
-import {generateKeywordClassUid} from './keyword-uidlist.mjs';
 
 const KeywordNetworkEditor=dynamic(()=>import('./KeywordNetworkEditor'),{ssr:false});
 const BlockNoteEditor=dynamic(()=>import('./BlockNoteEditor'),{loading:()=>null});
@@ -18,11 +17,9 @@ const TYPES=['class','group','item'];
 const LABEL={category:'關鍵字目錄',class:'關鍵字群組科目',group:'關鍵字分類群組',item:'關鍵詞分類'};
 const onlyWords=value=>[...new Set(String(value||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean))];
 const emptyTree={index:new Map(),parent:new Map(),roots:[]};
-const uidFor=(rows,scopeId)=>isUnifiedAnchorScope(scopeId)
-  ?allocateAnchorUid(new Set(rows.map(row=>String(row.uid))))
-  :generateKeywordClassUid(rows.map(row=>row.uid));
+const uidFor=rows=>allocateAnchorUid(new Set(rows.map(row=>String(row.uid))));
 function freshNode(type,rows,scopeId){
-  return {uid:uidFor(rows,scopeId),type,name:'',desc:'',lists:[],uid_lists:[]};
+  return {uid:uidFor(rows),type,name:'',desc:'',lists:[],uid_lists:[]};
 }
 function childrenOf(tree,uid){
   const parent=tree.index.get(uid);
@@ -35,7 +32,7 @@ function classOf(tree,uid){
   return node;
 }
 export default function KeywordLibraryPanel({scopeId,account}){
-  const scope=account.scopeDataFor(scopeId),table=scope?.keywords||'';
+  const scope=account.scopeDataFor(scopeId),table=scope?.anchor||'';
   const configTable=scope?.config||'';
   const canEdit=account.canLocAccessSync('scope',scopeId)&&Boolean(table&&configTable);
   const dock=useEditDock(),dockActions=useRef(null);
@@ -110,10 +107,15 @@ export default function KeywordLibraryPanel({scopeId,account}){
           const owned=[],size=500;
           for(let offset=0;;offset+=size){
             const {data,error}=await dbAuthRelation(table)
-              .select('uid,type,name,desc,lists,attr,num')
-              .order('name',{ascending:true}).range(offset,offset+size-1);
+              .select('uid,type,title,description,attr,num')
+              .in('type',['category','class','group','item','pattern'])
+              .order('title',{ascending:true}).range(offset,offset+size-1);
             if(error)throw new Error(error.message||'Keywords 讀取失敗');
-            owned.push(...(data||[]));
+            owned.push(...(data||[]).map(row=>({
+              ...row,name:String(row.title||''),desc:String(row.description||''),
+              lists:Array.isArray(row.attr?.[row.type==='item'?'keyword':'uid'])
+                ?row.attr[row.type==='item'?'keyword':'uid']:[],uid_lists:[]
+            })));
             if((data||[]).length<size)break;
           }
           return {rows:owned};
@@ -201,7 +203,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
       if(!TYPES.includes(node.type))throw new Error('Keywords Type 無效');
       const isNew=!tree.index.has(node.uid);
       if(node.type==='category')throw new Error('群組關鍵字目錄請到群組管理頁面編輯。');
-      if(node.type==='item'&&isUnifiedAnchorScope(scopeId)){
+      if(node.type==='item'){
          const {keywordService}=await import('./keyword-service-client.mjs');
          await keywordService('saveItem',{scopeId,item:{
            uid:node.uid,name:node.name,desc:String(node.desc||''),
@@ -234,7 +236,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
     if(!window.confirm('刪除「'+node.name+'」及其下層分類？原始 Galaxy 文章不受影響。'))return;
     setBusy(true);setError('');
     try{
-      if(node.type==='item'&&isUnifiedAnchorScope(scopeId)){
+      if(node.type==='item'){
          const {keywordService}=await import('./keyword-service-client.mjs');
          await keywordService('deleteItem',{scopeId,itemUid:node.uid});
          await load(chosen.group||'');await invalidate();
@@ -264,10 +266,8 @@ export default function KeywordLibraryPanel({scopeId,account}){
           .eq('id',scopeId);
         if(settingsError)throw settingsError;
       }
-      if(isUnifiedAnchorScope(scopeId)){
-         const {keywordService}=await import('./keyword-service-client.mjs');
-         await keywordService('syncLibrary',{scopeId});
-       }
+      const {keywordService}=await import('./keyword-service-client.mjs');
+       await keywordService('syncLibrary',{scopeId});
        await load(parent?.uid||'');await invalidate();
       setNotice('已刪除；不會刪除文章。');
     }catch(e){setError(String(e.message||e));}
@@ -368,8 +368,8 @@ export default function KeywordLibraryPanel({scopeId,account}){
     const from=importScope.trim().toLowerCase(),uid=importUid.trim();
     setImportClass(null);setError('');setNotice('');
     if(!/^[a-z][a-z0-9]{0,14}$/.test(from)||
-      !(isUnifiedAnchorScope(from)?/^[0-9A-Za-z]{8}$/:/^[0-9A-Za-z]{4}$/).test(uid)){
-      setError('請輸入來源資料代碼及公開的群組科目代碼（新版 8 碼、舊版 4 碼）。');return;
+      !/^[0-9A-Za-z]{8}$/.test(uid)){
+      setError('請輸入來源資料代碼及公開的群組科目代碼（8 碼）。');return;
     }
     setImportBusy(true);
     try{
@@ -394,7 +394,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
       const {data,error}=await dbAuthClient.schema('silver').managedAction('import_shared_keyword_class',{
         p_target_scope:scopeId,p_source_scope:from,p_class_uid:uid
       });
-      if(error||!/^[0-9A-Za-z]{4}(?:[0-9A-Za-z]{4})?$/.test(String(data?.uid||'')))
+      if(error||!/^[0-9A-Za-z]{8}$/.test(String(data?.uid||'')))
         throw new Error(error?.message||'匯入尚未完成，未新增關鍵字群組科目');
       await load(data.uid);await invalidate();
       setNotice('已匯入群組科目「'+importClass.name+'」，含 '+Number(data.group_count||0)+' 個分類群組、'+Number(data.item_count||0)+' 個關鍵詞分類。分析結果需在目前資料來源重新計算。');
@@ -541,7 +541,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
       <details className="scope-import-maintenance">
         <summary>關鍵字群組科目匯入</summary>
         <div className="scope-import-maintenance-content">
-          <p className="scope-status">輸入資料來源代碼與公開群組科目代碼（新版 8 碼、舊版 4 碼）。只會匯入分類規則，不會複製文章。</p>
+          <p className="scope-status">輸入資料來源代碼與公開群組科目代碼（8 碼）。只會匯入分類規則，不會複製文章。</p>
           <div className="scope-management-fields">
             <label><span>資料來源代碼（Scope ID）</span>
               <input value={importScope} autoCapitalize="off" spellCheck={false}
