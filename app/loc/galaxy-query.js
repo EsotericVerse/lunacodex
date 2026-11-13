@@ -5,7 +5,7 @@ import {searchOrderedScopeProviders} from './search-ordered-scope-providers.mjs'
 
 
 import {StatisticsFacets} from './statistics-facets';
-import {sourceTaxonomyFromArrays} from './source-classification.mjs';
+import {readPublicSourceTaxonomy} from './source-catalog-public.mjs';
 import {DEFAULT_LIST_BATCH_SIZE} from './db-contract.mjs';
 import {parseSearchQuery} from './search-query.mjs';
 import {normalizeRelationIds,publicContentFilters} from './content-policy';
@@ -170,10 +170,9 @@ export async function selectScopeCategoryTotals(scope,{startDate='',endDate=''}=
 // Shared public taxonomy reader for Statistics and Search. Never requires
 // management authentication or scans article bodies to populate a filter.
 export async function selectSourceTaxonomy(){
-  const {rows}=await selectRows('silver.loc',{
-    columns:'ArticleTag',filters:[{column:'id',operator:'eq',value:'loc'}],limit:1
-  });
-  return sourceTaxonomyFromArrays(rows[0]?.ArticleTag||[]);
+  // SiteAnchor is the one source taxonomy, including Statistics and Search.
+  // The public reader already projects verified silver.loc_anchor links.
+  return readPublicSourceTaxonomy();
 }
 
 export async function selectSourceCatalog(scope,{startDate='',endDate='',limit=20}={}){

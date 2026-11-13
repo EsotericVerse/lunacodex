@@ -26,16 +26,6 @@ export function keywordUidListData(type,value){
   }
   throw new Error('Invalid structured Keywords uid_lists for '+type);
 }
-export function keywordUidListRecord(type,value){
-  const entries=keywordUidListData(type,value);
-  if(type==='group')return {articles:[...entries]};
-  if(type==='item')return {hits:[...entries]};
-  if(type==='class'||type==='category'){
-    if(entries.length)throw new Error('Category and Class cannot persist hits');
-    return {};
-  }
-  throw new Error('Unknown Keywords node type');
-}
 const cleanUid=value=>{
   if(typeof value!=='string'||!UID.test(value))throw new Error('KeywordAnchor UID must be eight case-sensitive Base62 characters');
   return value;
@@ -124,41 +114,4 @@ export function keywordClassCatalog(rows,classUid){
     }
   }
   return {classNode:root,catalog};
-}
-export function rebuildKeywordUidLists(rows,classUid,classifications=[]){
-  const tree=indexKeywordTree(rows),root=tree.index.get(cleanUid(classUid));
-  if(!root||root.type!=='class')throw new Error('Class UID is required');
-  const {catalog}=keywordClassCatalog(rows,classUid);
-  const itemByUid=new Map(catalog.map(item=>[item.uid,item]));
-  const groupByUid=new Map(root.lists.map(uid=>[uid,tree.index.get(uid)]));
-  const perItem=new Map(catalog.map(item=>[item.uid,new Map()]));
-  const perGroup=new Map(root.lists.map(uid=>[uid,new Set()]));
-  const seen=new Set();
-  for(const result of classifications){
-    const uid=result?.uid;
-    if(typeof uid!=='string'||!ARTICLE_UID.test(uid)||seen.has(uid))throw new Error('Invalid or duplicate Galaxy UID');
-    seen.add(uid);
-    const used=new Set();
-    for(const hit of result.hits||[]){
-      const itemUid=cleanUid(hit.uid);
-      if(!itemByUid.has(itemUid)||used.has(itemUid)
-        ||!Number.isSafeInteger(hit.times)||hit.times<0)throw new Error('Invalid Item UID hit');
-      used.add(itemUid);
-      perItem.get(itemUid).set(uid,hit.times);
-    }
-    const chosen=String(result.group_uid||result.classification_group||'');
-    if(chosen){
-      const group=groupByUid.get(chosen);
-      if(!group)throw new Error('Analysis returned an unknown Group UID');
-      perGroup.get(group.uid).add(uid);
-    }
-  }
-  return [...tree.index.values()].filter(row=>
-    row.uid===classUid||perItem.has(row.uid)||perGroup.has(row.uid)
-  ).map(row=>{
-    const uid_lists=row.type==='class' ? [] :
-      row.type==='group' ? [...perGroup.get(row.uid)].sort() :
-      [...perItem.get(row.uid)].sort(([a],[b])=>a<b?-1:a>b?1:0).map(([uid,times])=>({uid,times}));
-    return {...row,uid_lists};
-  });
 }
