@@ -1,14 +1,10 @@
 // LOC OAuth personal preferences and records. Only a verified LOC session can
 // read or change its own owner_id rows; no Admin grant or RLS rule is required.
-const TABLES=new Set(['loc_user','user_settings','user_records']);
+const TABLES=new Set(['loc_user']);
 const COLUMN=/^[A-Za-z_][A-Za-z0-9_]{0,119}$/;
 const OPS={eq:'=',neq:'!=',gt:'>',gte:'>=',lt:'<',lte:'<=',
   like:'like',ilike:'ilike',in:'in',is:'is'};
-const KEY_COLUMNS={
-  loc_user:['owner_id'],
-  user_settings:['owner_id','setting_key'],
-  user_records:['owner_id','id']
-};
+const KEY_COLUMNS={loc_user:['owner_id']};
 function bad(message,status=400){
   return Object.assign(new Error(message),{httpStatus:status});
 }
@@ -65,9 +61,9 @@ export async function executeLocPersonal(db,claims,body){
     throw bad('Verified LOC OAuth identity required',403);
   const payload=body?.payload||{};
   const table=String(payload.p_table||'');
-  if(!table.startsWith('api.')||!TABLES.has(table.slice(4)))
-    throw bad('Personal records require an existing personal relation',403);
-  const tableKey=table.slice(4);
+  if(!table.startsWith('silver.')||!TABLES.has(table.slice(7)))
+    throw bad('Personal settings require silver.loc_user',403);
+  const tableKey=table.slice(7);
   const owner=claims.sub;
   const op=String(payload.p_operation||'');
   const filters=payload.p_filters||[];
@@ -95,15 +91,15 @@ export async function executeLocPersonal(db,claims,body){
     return {data:rows,count:null};
   }
   if(body.kind!=='personal-write')throw bad('Unsupported LOC personal operation');
-  // Business writes are controlled independently by api.manage, not Auth.
-  if(claims.me!==true)throw bad('LOC personal write permission denied',403);
-  if(!['insert','upsert','update','delete'].includes(op))
+  // Personal settings depend on the verified LOC Auth Session/subject,
+  // not an unrelated Scope management grant. The owner ID is server-bound.
+  if(!['insert','upsert','update'].includes(op))
     throw bad('Unsupported personal write');
   if(op==='insert'||op==='upsert'){
     const input=Array.isArray(payload.p_rows)?payload.p_rows:
       payload.p_rows?[payload.p_rows]:[];
     if(!input.length||input.length>500)throw bad('Personal write needs rows');
-    const rows=input.map(row=>({...record(row),owner_id:owner}));
+    const rows=input.map(row=>({...record(row),owner_id:owner,email:claims.email}));
     let query=db.insertInto(table).values(rows);
     if(op==='upsert'){
       const keys=KEY_COLUMNS[tableKey];
@@ -121,6 +117,7 @@ export async function executeLocPersonal(db,claims,body){
   let query;
   if(op==='update'){
     const values=record(payload.p_values);
+    delete values.email;delete values.uid;
     if(!Object.keys(values).length)throw bad('Personal update is empty');
     query=apply(db.updateTable(table).set(values).where('owner_id','=',owner),filters);
   }else{
