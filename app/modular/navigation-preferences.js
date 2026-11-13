@@ -1,4 +1,4 @@
-// Two scalar user_settings.text_value entries, never a JSON/JSONB document.
+// Navigation preferences are individual values in silver.loc_user.user_setting JSONB.
 export const HOME_SETTING_KEY='loc-home-scope-v1';
 export const FAVORITES_SETTING_KEY='loc-favorite-scopes-v1';
 export const DEFAULT_FAVORITES=Object.freeze(['lrunes','lo3rwang','loc']);
@@ -19,7 +19,7 @@ export function homeScopeForAccount(value,account,allowedScopeIds=[]){
   return allowed.has(id)?id:'loc';
 }
 
-// Per-device setting only: never a cloud Scope and never sent to user_settings.
+// Per-device setting only: never a cloud Scope or silver.loc_user setting.
 export const MOBILE_HOME_ID='myphone';
 export const MOBILE_FAVORITE_STORAGE_KEY='loc-device-myphone-favorite-v1';
 export const MOBILE_HOME_STORAGE_KEY='loc-device-home-v1';
@@ -40,7 +40,7 @@ export function mobileHomeHref(native){return native?'/my-phone/index.html':'/';
 export function isMobileHome(id){return String(id)===MOBILE_HOME_ID;}
 
 // Favorite folders are a presentation layer, not Scope Groups or permissions.
-// Stored in one api.user_settings.text_value field as encoded tab-separated rows.
+// Stored as one string value in silver.loc_user.user_setting (encoded tab-separated rows).
 export const FOLDERS_SETTING_KEY='loc-favorite-folders-v1';
 export const MAX_FOLDERS=30;
 const ID=/^[a-z][a-z0-9]{3,35}$/;
