@@ -69,8 +69,8 @@ export function createKyselyPublicClient({
 }={}){
   if(typeof fetchImpl!=='function')throw Error('LOC Kysely fetch is unavailable');
   async function read(q){
-    if(role==='authenticated'&&q.schema==='api'&&
-      ['loc_user','user_settings','user_records'].includes(q.table)&&
+    if(role==='authenticated'&&q.schema==='silver'&&
+      q.table==='loc_user'&&
       typeof readPrivate==='function'){
       // The existing personal endpoint has its own pagination contract.
       // Do not send an absent native LIMIT as an invalid personal request.
