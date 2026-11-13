@@ -10,6 +10,8 @@
 
 **Skill Overview（先選範圍，不是啟動清單）**：工程流程用 `superpowers`（若 Agent 已安裝 Superpowers Plugin 就用現成的，不重複讀本地入口）；SQL／資料／ZModel／ORM 交互用 `sql`；SSO／OAuth／Session 用 `auth`；畫面與互動設計用 `ui-ux-pro-max`；Next.js／React／PWA／Extension 用 `web`；圖表／地圖／3D 用 `visualization`；MCP Server 用 `mcp-builder`；部署／CI／成本用 `deployment`；音樂／影片／圖片用 `media`；安全稽核用 `security-audit`；技能製作用 `skill-creator`；文字規範用 `writing-guidelines`。這是選一條主要工作路徑，**不是將列出的技能全部載入**；無須 Skill 的工作直接執行。
 
+**Skill 主導與衝突處理**：同一任務即使同時符合多份本機或 Plugin Skill，也只由**最直接且足以覆蓋工作目標的一份主 Skill**負責流程；不因某個 Skill 自稱必須先讀、某個模組被引用、或某個工具已安裝，就自動加載其他 Skill、重跑驗證或改由另一份流程接管。跨模組工作仍以一份主 Skill 統合；只有它確實無法涵蓋的**獨立專用需求**，才針對缺口補讀必要的一份專項 Skill 或固定版本參考，讀完返回原工作主線。**可用工具直接按任務呼叫，不必為每個 Plugin 或工具額外載入 Skill。** ChatGPT Plugins 與 Claude 是獨立的能力環境：不為精簡而新增、移除、停用或更改 ChatGPT Plugins；Claude 保持透過 `.claude/skills/` 的 12 個逐項連結發現本機 Skill，不假設能使用 ChatGPT 的 Plugin，也不改動其載入入口與同步行為。若工作指引互相矛盾，以使用者當前要求、本文既定專案邊界與實際程式碼為準；**權限、安全與必要驗收不能因精簡 Skill 而略過**。
+
 **專題知識採連結，不作獨立入口**：被主技能涵蓋的模組單項與父子 Skill 已從頂層移除；僅在目前工作存在主技能明確未涵蓋的專用能力時，查 `.agents/SKILL-LINKS.md` 內的**固定版本連結**。例如資料庫工作先用 `sql`，不能因同時看到 ZenStack、Kysely、Zod、Neon 就讀四份；只有需要某個具體 API 的細節，才單獨查一份。父子參照不自動跳轉；查不到即停止，不重試安裝或掃描全庫。新增依賴只需確認現有框架整合，**不要求人為每個新模組再安裝一份 Skill**。
 
 **目錄與載入邊界**：`.agents/skills/` **只保留 12 個大目標各一份 `SKILL.md` 實體檔案**，不包含附屬腳本、資料、參考文件或模組專屬 Skill 目錄。所有其餘資料以 `.agents/SKILL-LINKS.md` 的 HTTP(S) 固定版本連結按需查閱，**HTTP 連結不是自動載入或必讀清單**，只在當前任務缺少確切細節時開單一連結；執行遠端腳本須先明確取回並核對來源與依賴，不在啟動時下載。 `.claude/skills/` **只建立指向這 12 個來源的逐項目錄連結**，不能複製整套資源，失效的連結／舊目錄由同步腳本清掉，刪連結不得刪到來源。 `skills-lock.json` 不保留已轉成 HTTP 連結或被改寫成專案入口的上游項目；新增 npm 模組不新增 Skill。每個新工作先依 Overview 選範圍，**不是開機預載**；工具呼叫、回覆、模組引用、父子參照均不觸發其他 Skill 載入，不重複熱機、輪詢或掃描全庫。
