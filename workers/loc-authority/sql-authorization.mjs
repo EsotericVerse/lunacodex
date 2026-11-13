@@ -9,6 +9,10 @@ export function classifyPortableSqlRequest(request){
   if(!request||request.kind!=='query'||request.schema!=='silver'||
     !tableId.test(String(request.table||''))||!allowedActions.has(request.operation))
     throw Object.assign(new Error('Unsupported portable SQL request'),{httpStatus:403});
+  // LOC text frames now live only in silver.loc_anchor; fail closed on
+  // the old literal rather than letting the generic _blocks regex admit it.
+  if(request.table==='loc_blocks')
+    throw Object.assign(new Error('Retired LOC Blocks relation'),{httpStatus:403});
   if(publicReferences.has(request.table)&&request.operation==='select')
     return Object.freeze({public:true,scope:null,action:'read',resource:'silver.'+request.table});
   // Only one self-contained scope table family is grant-addressable;
