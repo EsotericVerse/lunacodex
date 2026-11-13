@@ -105,7 +105,7 @@ export function unifiedAnchorSpec(schema,table){
   if(schema!=='silver'||!matched||!isUnifiedAnchorScope(matched[1]))return null;
   return {table:matched[1]+'_anchor',kind:legacyKinds[matched[2]],legacy:matched[2]};
 }
-export function toAnchorRow(spec,row){
+function toAnchorRow(spec,row){
  if(!row||typeof row!=='object'||Array.isArray(row))throw Error('Invalid unified anchor row');
  const data={...row},out={};
  const type=physicalType(data.trace_type||data.type||'');

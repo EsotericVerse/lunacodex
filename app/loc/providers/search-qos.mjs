@@ -31,7 +31,7 @@ export function isTextSearchQuery(body){
 // Use the *same* optimized Karaul/PELT Poisson change-point path already
 // used by LOC keyword discovery. Analyze completed buckets on request only:
 // no timer, new SQL, new store, polling or extra keyword queries.
-export function createSearchQos({now=()=>Date.now(),max=24,windowMs=60000,
+function createSearchQos({now=()=>Date.now(),max=24,windowMs=60000,
   blockMs=120000,maxEntries=4096,detect=detectCountChangepoints}={}){
   const entries=new Map();
   return function check(key){
