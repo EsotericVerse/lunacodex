@@ -15,6 +15,45 @@ merge records, make one table authoritative for the other, or require a LOC Web
 record before an Auth identity/Session can exist. Auth-owned persistence and
 MCP Gateway control-plane writes must work independently of `api.manage`.
 
+## Storage: the existing database connection, nothing new
+
+**Read this before proposing any storage work.** Four separate attempts have
+been lost here, the longest costing three days, each one beginning with an
+agent deciding that the Auth store should be somewhere else.
+
+Storage always uses the database connection this service already has. Today
+that is Neon PostgreSQL, reached through `LOC_AUTH_DATABASE_URL`. It is always
+a database and always SQL. The twelve `public.rainbow_*` tables already exist
+and were verified again on 2026-11-13 against the live catalog; they hold 146
+columns between them, and the JWKS signing key is persisted in `rainbow_jwks`.
+
+Do not introduce a second place to put data. Not D1, not KV, not R2, not a
+Durable Object, not an object store, whatever the apparent fit. D1 is itself
+SQL, so "it is still SQL" does not make it acceptable: the rule is the
+*existing connection*, not the query language. Changing where Auth data lives
+is the user's decision to state explicitly, never an inference from a problem
+that looks storage-shaped.
+
+Two reasons, both of which have already cost real time here.
+
+**Billing.** Every new data space is a new billable resource. Provisioning one
+raises no error and fails no check; it appears quietly on the bill, and the
+person paying it did not ask for it.
+
+**The split.** LOC Auth and LOC Web are deliberately separate. Auth owns
+`public.rainbow_*`; LOC Web owns its own business tables and `api.manage`.
+They share a repository, not a store. That separation exists precisely so that
+work on one side cannot quietly reshape the other, so a storage change on
+either side is never a local decision.
+
+Related rules that have the same root, with the reasoning kept where it is
+useful rather than repeated here: no query of our own at request time (the
+SSO provider is configured through `defaultSSO`, which is resolved in memory
+and reads no `ssoProvider` table), and no shared bearer secret between the two
+sides — identity travels as a Better Auth session verified against the
+published JWKS, which is per-user, revocable and rotating, where one shared
+token is none of those.
+
 ## Storage isolation: Rainbow names only
 
 **The old `loc_auth` test objects are not an Auth storage design.** Never
