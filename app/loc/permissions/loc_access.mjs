@@ -17,11 +17,11 @@ const normalizedEmail=value=>String(value||'').trim().toLowerCase();
 // MCP and every other inactive Scope/Group record remain ungranted.
 export function loc_access(email,rows=[],{website=false}={}){
   const verified=normalizedEmail(email);
-  if(!verified||!Array.isArray(rows)||website&&verified!==LOC_OWNER_EMAIL)
+  if(!verified||!Array.isArray(rows))
     return empty();
   const eligible=[];
   for(const row of rows){
-    const virtualAdmin=website&&row?.id==='admin'&&
+    const virtualAdmin=website&&verified===LOC_OWNER_EMAIL&&row?.id==='admin'&&
       row?.manage_role==='admin'&&row?.active===false;
     if(row?.active!==true&&!virtualAdmin)continue;
     const parsed=LocAccessRowSchema.safeParse({
@@ -37,6 +37,9 @@ export function loc_access(email,rows=[],{website=false}={}){
   const grants=new Set(admin?['global:manage']:[]);
   for(const row of eligible){
     grants.add(row.id+':manage');
+    // Role-qualified grants preserve the ZModel level, not just resource ID.
+    if(row.manage_role==='group'||row.manage_role==='scope')
+      grants.add(row.manage_role+':'+row.id+':manage');
     grants.add(row.id+':write');
     grants.add(row.id+':read');
   }
@@ -52,7 +55,7 @@ export async function readLocAccess(db,email,{dialect,engine='postgres',website=
   if(!db||typeof db.selectFrom!=='function')
     throw new Error('LOC permission database unavailable');
   const verified=normalizedEmail(email);
-  if(!verified||website&&verified!==LOC_OWNER_EMAIL)return empty();
+  if(!verified)return empty();
   // Website PostgreSQL authorization must use the ZModel PolicyPlugin;
   // never silently downgrade to an unchecked SQL read on a missing dialect.
   if(website&&engine==='postgres'&&!dialect)
@@ -84,6 +87,7 @@ export function hasLocAccess(claims,type,id=''){
   const principal=locRolePrincipal(claims);
   if(!principal)return false;
   if(principal.roleLevel>=LOC_ROLE_LEVEL.admin)return true;
-  return kind!=='global'&&Array.isArray(claims.grants)&&
-    claims.grants.includes(scope+':manage');
+  if(kind==='global')return false;
+  return kind==='group'?principal.groupIds.includes(scope):
+    principal.groupIds.includes(scope)||principal.scopeIds.includes(scope);
 }

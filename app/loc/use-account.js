@@ -187,21 +187,7 @@ export function useAccount({enabled=true,sessionOnly=false}={}){
     queryClient.setQueryData(MANAGEMENT_KEY,signedOutState);
   },[queryClient]);
 
-  // The hidden local Scope is device-only and has no cloud management row.
-  const canManageScopeSync=useCallback(
-    scopeId=>normalizeScopeId(scopeId)==='local'||Boolean(state.authorizer?.canManageScopeSync(scopeId)),
-    [state.authorizer]
-  );
-  const canManageGroupSync=useCallback(
-    groupId=>Boolean(state.authorizer?.canManageGroupSync(groupId)),
-    [state.authorizer]
-  );
-  const canManageGlobalSync=useCallback(
-    ()=>Boolean(state.authorizer?.canManageGlobalSync()),
-    [state.authorizer]
-  );
-  // Unified UX preflight with the existing Web editing role snapshot.
-  // Preserve the older methods for callers outside this access refactor.
+  // One in-memory role predicate after the explicit permissions lookup.
   const canLocAccessSync=useCallback((level,scopeId='')=>
     (level==='scope'&&normalizeScopeId(scopeId)==='local')||
     Boolean(state.authorizer?.canLocAccessSync(level,scopeId)),
@@ -211,12 +197,12 @@ export function useAccount({enabled=true,sessionOnly=false}={}){
     const id=normalizeScopeId(scopeId);
     if(id==='local')return defaultScopeData('local');
     return state.scopes.find(scope=>scope.id===id)
-      ||(state.authorizer?.canManageGlobalSync()?defaultScopeData(id):null);
+      ||(state.authorizer?.canLocAccessSync('global')?defaultScopeData(id):null);
   },[state.authorizer,state.scopes]);
 
   return {
     ...state,refresh,signIn,signOut,
-    canManageScopeSync,canManageGroupSync,canManageGlobalSync,canLocAccessSync,scopeDataFor
+    canLocAccessSync,scopeDataFor
   };
 }
 

@@ -2,7 +2,7 @@ import {flashMessage} from './flash-message.js';
 import {isUnifiedAnchorScope} from './unified-anchor-compat.mjs';
 import {assertPlainGalaxyAttributes} from './content-policy.js';
 import {DB_QUERY_BATCH_SIZE,MAX_ROWS} from './query-batch-size.mjs';
-import {assertAuthorizationForTable,clearAuthorization,readAuthorization,canAuthorizeGroup} from './authorization-runtime.mjs';
+import {assertAuthorizationForTable,clearAuthorization,readAuthorization,canAuthorizeLocAccess} from './authorization-runtime.mjs';
 import {assertEditorSession} from './edit-session-ttl.mjs';
 import {unifiedAnchorSpec} from './unified-anchor-compat.mjs';
 import {isScopedGalaxy,prepareGalaxyInsertRows,prepareGalaxyUpdateValues} from './galaxy-able.mjs';
@@ -543,7 +543,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
       // Existing LOC group permission for the homepage is preserved.
       if(typeof window!=='undefined'){
         assertEditorSession(window.sessionStorage);
-        if(!canAuthorizeGroup('loc'))throw new Error('LOC 群組首頁編輯權限不足。');
+        if(!canAuthorizeLocAccess('group','loc'))throw new Error('LOC 群組首頁編輯權限不足。');
       }
     }else preflightWrite(scope==='loc'?'silver.loc_anchor':'silver.'+scope+'_blocks');
     const {data,error}=await authClient.schema('silver').managedAction('move_scope_block',{
