@@ -12,6 +12,9 @@ import {ANCHOR_GROUP_MODEL_NAMES,ANCHOR_TYPE_GROUP_FIELDS,ANCHOR_TYPE_GROUPS,
   from './anchor-hierarchy.mjs';
 
 const modelFactory=createSchemaFactory(schema);
+// LOC-only presentation value type. Its physical storage is LocAnchor,
+// not a separate loc_blocks relation or a second table model.
+export const locBlocksZModelSchema=modelFactory.makeTypeSchema('LocBlocks');
 const validators=new Map();
 const selectValidators=new Map();
 const scopedGalaxy=/^silver\.[a-z][a-z0-9]{0,14}_galaxy$/;
