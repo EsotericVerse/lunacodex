@@ -141,7 +141,14 @@ export function createLocAuth(env){
     baseURL:LOC_ISSUER,
     basePath:'/api/auth',
     secret:env.BETTER_AUTH_SECRET||env.LOC_CONTROL_ENCRYPTION_KEY,
-    trustedOrigins:[LOC_ISSUER,LOC_WEB],
+    // The SSO plugin checks the upstream discovery document, and every
+    // endpoint named inside it, against this list before the first redirect
+    // (validateDiscoveryUrl / normalizeAndValidateUrl), so the delegated
+    // provider's own origin has to be here or sign-in fails with
+    // "Untrusted OIDC discovery URL". It is derived from the configured
+    // issuer rather than hardcoded, so replacing the Cloudflare application
+    // only means changing that variable.
+    trustedOrigins:[LOC_ISSUER,LOC_WEB,new URL(cloudflare.issuer).origin],
     // Official Better Auth middleware: high-risk Admin API requests bypass the
     // 30-minute cookie cache once, preventing revoked Sessions from managing
     // Auth accounts. No background polling or extra Session store.
