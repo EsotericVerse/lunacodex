@@ -81,7 +81,7 @@ async function fetchManagementAccount(queryClient){
       scopeKinds:Object.fromEntries(SCOPE_ROUTE_INDEX.map(row=>[row.scope_id,row.scope_kind]))
     });
     if(obsolete())return signedOutState;
-    const metadata=scopeDataFromManageRows(permissions);
+    const metadata=scopeDataFromManageRows(permissions.roles);
     setAuthorization(user,permissions);
     scopeMetadata=metadata;
     authUserId=String(user.id);

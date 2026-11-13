@@ -1,10 +1,8 @@
 import {flashMessage} from './flash-message.js';
-import {isUnifiedAnchorScope} from './unified-anchor-compat.mjs';
 import {assertPlainGalaxyAttributes} from './content-policy.js';
 import {DB_QUERY_BATCH_SIZE,MAX_ROWS} from './query-batch-size.mjs';
 import {assertAuthorizationForTable,clearAuthorization,readAuthorization,canAuthorizeLocAccess} from './authorization-runtime.mjs';
 import {assertEditorSession} from './edit-session-ttl.mjs';
-import {unifiedAnchorSpec} from './unified-anchor-compat.mjs';
 import {isScopedGalaxy,prepareGalaxyInsertRows,prepareGalaxyUpdateValues} from './galaxy-able.mjs';
 
 // Keyword read, write and reset use the shared MaxRows.
@@ -95,38 +93,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
       payload={...payload,p_rows:prepareGalaxyInsertRows(payload.p_table,payload.p_rows||[])};
     if(isScopedGalaxy(payload?.p_table)&&payload?.p_operation==='update')
       payload={...payload,p_values:prepareGalaxyUpdateValues(payload.p_table,payload.p_values)};
-    // The unified anchor store is already governed by the LOC Auth-verified
-    // authenticated Kysely client and its database RLS. Legacy management
-    // SQL RPCs are never used for this cutover.
-    const parts=String(payload?.p_table||'').split('.');
-    const spec=unifiedAnchorSpec(parts[0],parts[1]);
-    if(spec){
-      const relation=()=>dbAuthRelation(payload.p_table);
-      const filters=Array.isArray(payload.p_filters)?payload.p_filters:[];
-      const op=String(payload.p_operation||'');
-      const filtered=q=>{
-        for(const f of filters){
-          if(!['eq','neq','gt','gte','lt','lte','like','ilike','is','in'].includes(f.operator))
-            throw Error('Unsupported unified write filter: '+f.operator);
-          q=q[f.operator](f.column,f.value);
-        }
-        return q;
-      };
-      if(op==='insert'){
-        const rows=Array.isArray(payload.p_rows)?payload.p_rows:[];
-        const {data,error}=await relation().insert(rows).select('uid');
-        if(error)throw Error(error.message||'Unified insert failed');
-        return {count:data?.length||0};
-      }
-      if(op==='update'||op==='delete'){
-        if(!filters.length)throw Error('Unsafe unfiltered unified write');
-        const q=op==='update'?relation().update(payload.p_values||{}):relation().delete();
-        const {data,error}=await filtered(q).select('uid');
-        if(error)throw Error(error.message||'Unified write failed');
-        return {count:data?.length||0};
-      }
-      throw Error('Unsupported unified operation: '+op);
-    }
+    // ZModel physical relations only; no virtual legacy relation names.
     const {data,error}=await authClient.schema('silver').managedWrite(payload);
     if(error)throw new Error(error.message||'Management write failed');
     if(payload?.p_table==='api.manage'){
@@ -260,15 +227,17 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     const rows=[],size=500;
     for(let offset=0;;offset+=size){
       const {data,error}=await dbAuthRelation(table)
-        .select('uid,type,name,desc,lists')
-        .order('name',{ascending:true}).range(offset,offset+size-1);
-      if(error)throw new Error(error.message||'Cannot read Keywords tree');
-      rows.push(...(data||[]));
+        .select('uid,type,title,description,attr,num').in('type',['category','class','group','item'])
+        .order('title',{ascending:true}).range(offset,offset+size-1);
+      if(error)throw new Error(error.message||'KeywordAnchor read failed');
+      rows.push(...(data||[]).map(row=>({...row,name:String(row.title||''),
+        desc:String(row.description||''),
+        lists:Array.isArray(row.attr?.[row.type==='item'?'keyword':'uid'])
+          ?row.attr[row.type==='item'?'keyword':'uid']:[],uid_lists:[]})));
       if((data||[]).length<size)break;
     }
     return rows;
   }
-
   async function resetKeywordClassification(scopeId,{classUid='',onProgress}={}){
     const scope=normalizeScopeId(scopeId);
     const uid=String(classUid||'');
@@ -310,48 +279,10 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     return privateResult.data;
   }
 
-  async function readUnifiedKeywordCatalog(scope,requestedUid){
-    // Owner-only shortcut: current Keywords content is in the shared Anchor
-    // relation, not in the legacy Keywords table read by the older RPC.
-    // Guests keep the verified public/shared RPC (which redacts private data).
-    if(!isUnifiedAnchorScope(scope)||!await verifiedKeywordOwner())return null;
-    let uid=String(requestedUid||'');
-    if(!uid){
-      const config=await selectAuthRow('silver.'+scope,{
-        idColumn:'id',id:scope,columns:'current_keyword_class_uid'
-      });
-      uid=String(config?.current_keyword_class_uid||'');
-    }
-    if(!/^[A-Za-z0-9]{4}(?:[A-Za-z0-9]{4})?$/.test(uid))return null;
-    const table='silver.'+scope+'_keywords';
-    const {data:classes,error:classError}=await dbAuthRelation(table)
-      .select('uid,type,name,desc,lists').eq('uid',uid).eq('type','class').limit(1);
-    if(classError)throw Error(classError.message||'Unified Class read failed');
-    const klass=classes?.[0];
-    if(!klass)return null; // Not the Scope owner: use public shared RPC.
-    const fetchNodes=async (ids,type)=>{
-      if(!ids.length)return [];
-      const {data,error}=await dbAuthRelation(table)
-        .select('uid,type,name,desc,lists').eq('type',type).in('uid',ids).limit(ids.length);
-      if(error)throw Error(error.message||'Unified Keyword nodes read failed');
-      const byUid=new Map((data||[]).map(row=>[row.uid,row]));
-      return ids.map(id=>byUid.get(id)).filter(Boolean);
-    };
-    const groups=await fetchNodes(klass.lists||[],'group');
-    const items=await fetchNodes([...new Set(groups.flatMap(row=>row.lists||[]))],'item');
-    // The legacy read contract intentionally redacts Item descriptions and
-    // judgement lists. Keep exactly the same response on the new backing table.
-    const view=row=>({uid:row.uid,type:row.type,name:row.name,
-      desc:row.type==='item'?'':String(row.desc||''),
-      lists:row.type==='item'?[]:[...(row.lists||[])],uid_lists:[]});
-    return {class_uid:uid,rows:[klass,...groups,...items].map(view)};
-  }
-
+  // Native KeywordAnchor Kysely analytics replaces the pseudo-Keywords reader.
   async function readKeywordClass(scopeId,classUid){
     const scope=normalizeScopeId(scopeId),uid=String(classUid||'');
     if(!/^[A-Za-z0-9]{4}(?:[A-Za-z0-9]{4})?$/.test(uid))return null;
-    const direct=await readUnifiedKeywordCatalog(scope,uid);
-    if(direct)return direct;
     const data=await keywordRead({p_scope_id:scope,p_view:'keyword_catalog',p_options:{classUid:uid}},{
       isEmpty:result=>!result?.class_uid||!Array.isArray(result.rows)||result.rows.length===0
     });
@@ -370,8 +301,6 @@ export function createDatabaseClient({publicClient,authClient,auth}){
 
   async function readKeywordTreeCatalog(scopeId,{classUid=''}={}){
     const scope=normalizeScopeId(scopeId);
-    const direct=await readUnifiedKeywordCatalog(scope,classUid);
-    if(direct)return direct;
     const data=await keywordRead({
       p_scope_id:scope,p_view:'keyword_catalog',p_options:{classUid:classUid||null}
     },{
@@ -382,21 +311,10 @@ export function createDatabaseClient({publicClient,authClient,auth}){
 
   async function readSharedKeywordClasses(scopeId){
     const scope=normalizeScopeId(scopeId);
-    if(isUnifiedAnchorScope(scope)&&await verifiedKeywordOwner()){
-      const {data,error}=await dbAuthRelation('silver.'+scope+'_keywords')
-        .select('uid,type,name').eq('type','class').order('name',{ascending:true}).limit(500);
-      if(error)throw Error(error.message||'Unified Class directory read failed');
-      if(data?.length)return data.map(row=>({
-        scopeId:scope,classUid:row.uid,name:row.name,category:row.uid
-      }));
-    }
-    // An authenticated caller sees its authorized Classes; guests use the
-    // public reader without requiring a login just to see shared Classes.
     const client=await verifiedKeywordOwner()?authClient:publicClient;
     const data=await analyticsRead(scope,'shared_classes',{},client);
     return Array.isArray(data)?data:[];
   }
-
   async function readScopeStatistics(scopeId,{startDate='',endDate='',includeUndated=false}={}){
     const data=await analyticsRead(normalizeScopeId(scopeId),'daily',{
       startDate,endDate,options:{includeUndated:Boolean(includeUndated)}
@@ -458,36 +376,33 @@ export function createDatabaseClient({publicClient,authClient,auth}){
   }
 
   async function writeKeywordLibraryItem(scopeId,operation,node={}){
-    const scope=normalizeScopeId(scopeId);
-    const table='silver.'+scope+'_keywords';
+    const scope=normalizeScopeId(scopeId),table='silver.'+scope+'_anchor';
     preflightWrite(table);
     const op=String(operation||'').toLowerCase();
-    if(!['insert','update','delete'].includes(op))throw new Error('Unsupported Keywords operation');
-    const {normalizeKeywordTreeRow,keywordUidListRecord}=await import('./keyword-tree.mjs');
-    const normalized=normalizeKeywordTreeRow(node);
-    const relation=dbAuthRelation(table);
+    if(!['insert','update','delete'].includes(op))throw Error('Invalid KeywordAnchor operation');
+    const {normalizeKeywordTreeRow}=await import('./keyword-tree.mjs');
+    const v=normalizeKeywordTreeRow(node),q=dbAuthRelation(table);
+    const field=v.type==='item'?'keyword':'uid';
+    const attr={...(node.attr&&typeof node.attr==='object'?node.attr:{}),[field]:v.lists};
     let query;
-    if(op==='insert')query=relation.insert({...normalized,uid_lists:keywordUidListRecord(normalized.type,normalized.uid_lists)}).select('uid');
-    else if(op==='update')query=relation.update({
-      type:normalized.type,name:normalized.name,desc:normalized.desc,
-      lists:normalized.lists
-    }).eq('uid',normalized.uid).select('uid');
-    else query=relation.delete().eq('uid',normalized.uid).select('uid');
+    if(op==='insert')query=q.insert({uid:v.uid,type:v.type,title:v.name,
+      description:v.desc,attr}).select('uid');
+    else if(op==='update')query=q.update({title:v.name,description:v.desc,attr})
+      .eq('uid',v.uid).eq('type',v.type).select('uid');
+    else query=q.delete().eq('uid',v.uid).eq('type',v.type).select('uid');
     const {data,error}=await query;
-    if(error||data?.length!==1)throw new Error(error?.message||'Keywords write affected no rows');
-    return {uid:normalized.uid,count:1};
+    if(error||data?.length!==1)throw Error(error?.message||'KeywordAnchor write affected no rows');
+    return {uid:v.uid,count:1};
   }
-
   async function copyKeywordLibraryClass(scopeId,sourceClassUid,targetClassName){
     const scope=normalizeScopeId(scopeId),source=String(sourceClassUid||''),
       target=String(targetClassName||'').trim();
-    if(!/^[0-9A-Za-z]{4}(?:[0-9A-Za-z]{4})?$/.test(source)||!target)throw new Error('Keywords Class 識別或名稱不正確');
-    const table='silver.'+scope+'_keywords';
+    if(!/^[0-9A-Za-z]{8}$/.test(source)||!target)throw new Error('Keywords Class 識別或名稱不正確');
+    const table='silver.'+scope+'_anchor';
     preflightWrite(table);
     const data=await readOwnedKeywordNodes(table);
     const {indexKeywordTree,descendantsOfKeyword}=await import('./keyword-tree.mjs');
-    const {generateKeywordClassUid}=await import('./keyword-uidlist.mjs');
-    const {allocateAnchorUid}=await import('./unified-anchor-compat.mjs');
+    const {allocateAnchorUid}=await import('./uid.js');
     const tree=indexKeywordTree(data);
     const original=tree.index.get(source);
     if(!original||original.type!=='class')throw new Error('找不到來源 Class');
@@ -499,8 +414,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     // and sort every Anchor just to allocate new UIDs; the database PK is the
     // authoritative collision check and this batch owns its allocated set.
     for(const node of descendants){
-      const uid=isUnifiedAnchorScope(scope)?allocateAnchorUid(new Set(occupied)):
-        generateKeywordClassUid(occupied);
+      const uid=allocateAnchorUid(new Set(occupied));
       occupied.push(uid);mapping.set(node.uid,uid);
     }
     const saved=[];
@@ -528,8 +442,8 @@ export function createDatabaseClient({publicClient,authClient,auth}){
 
 
   async function copyRune66KeywordClassUnchecked(scopeId,sourceClassUid){
-    const {generateKeywordClassUid}=await import('./keyword-uidlist.mjs');
-    const uid=generateKeywordClassUid();
+    const {allocateAnchorUid}=await import('./uid.js');
+    const uid=allocateAnchorUid();
     return copyKeywordLibraryClass(scopeId,sourceClassUid,'符文66副本-'+uid);
   }
 

@@ -10,7 +10,7 @@ import {validateLocRegistryDomain} from './loc-domain.mjs';
 import {sql} from 'kysely';
 import {saveBlocksKysely} from './kysely-blocks.mjs';
 import {decodeLocCache,encodeLocCache} from '../runtime-cache-fields.mjs';
-import {allocateAnchorUid} from '../unified-anchor-compat.mjs';
+import {allocateAnchorUid} from '../uid.js';
 import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
 import {keywordPatternItemMetrics} from '../keyword-search-pattern.mjs';
 import {readScopePatternRows,storeScopePatternMatches} from '../keyword-anchor-index.mjs';

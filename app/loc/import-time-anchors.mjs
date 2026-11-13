@@ -1,5 +1,5 @@
 import {parseImportCreatedTime} from './import-batch.mjs';
-import {allocateAnchorUid} from './unified-anchor-compat.mjs';
+import {allocateAnchorUid} from './uid.js';
 
 // Importing a known check-in creates its calendar-day Time anchor independently
 // from the spatial anchor's full-precision visit timestamps.

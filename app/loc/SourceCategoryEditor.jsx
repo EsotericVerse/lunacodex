@@ -3,7 +3,8 @@ import {useCallback,useEffect,useMemo,useState} from 'react';
 import dynamic from 'next/dynamic';
 import {useAsyncResource} from './use-async-resource';
 import {dbPublicClient,insertRows,updateRows,deleteRows} from './db-client.mjs';
-import {allocateAnchorUid} from './unified-anchor-compat.mjs';
+import {allocateAnchorUid} from './uid.js';
+import {nextZModelAnchorType} from '../../zenstack/anchor-hierarchy.mjs';
 import {useEditDockForm} from '../modular/edit-dock';
 
 // The very same graph canvas used by the personal Keyword editor.
@@ -11,7 +12,6 @@ const KeywordNetworkEditor=dynamic(()=>import('./KeywordNetworkEditor'),{ssr:fal
 const BlockNoteEditor=dynamic(()=>import('./BlockNoteEditor'),{loading:()=>null});
 const TABLE='silver.loc_anchor';
 const TYPES=['universe','galaxy','domain','from'];
-const NEXT={universe:'galaxy',galaxy:'domain',domain:'from'};
 const EMPTY_COUNTS={lo3rwang:0,lrunes:0};
 const normalized=rows=>(rows||[]).map(row=>({
   ...row,attr:{...(row.attr||{}),uid:Array.isArray(row.attr?.uid)?row.attr.uid:[],
@@ -68,7 +68,7 @@ export function AdminSourceCategories(){
   };
   const create=parent=>{
     if(!canChangeNode())return;
-    const type=parent?NEXT[parent.type]:'universe';
+    const type=parent?nextZModelAnchorType('source',parent.type):'universe';
     if(!type)return;
     const uid=allocateAnchorUid(new Set(nodes.map(row=>row.uid)));
     setSelected('');setPendingParent(parent?.uid||'');
@@ -87,7 +87,7 @@ export function AdminSourceCategories(){
           {column:'uid',operator:'eq',value:draft.uid}]});
       }else{
         const parent=byUid.get(pendingParent);
-        if(draft.type!=='universe'&&(!parent||NEXT[parent.type]!==draft.type))
+        if(draft.type!=='universe'&&(!parent||nextZModelAnchorType('source',parent.type)!==draft.type))
           throw Error('請先選擇正確的上一層來源節點');
         // The new node has its own UID and zeroed Scope counts. No title-based relation.
         await insertRows(TABLE,[{uid:draft.uid,type:draft.type,title,

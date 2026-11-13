@@ -133,6 +133,13 @@ const FAMILY_DEFS=Object.freeze({
   }
 });
 export const ANCHOR_HIERARCHY_FAMILIES=Object.freeze(Object.keys(FAMILY_DEFS));
+// Editor transition checks use the SAME ZModel hierarchy as typed readers.
+export function nextZModelAnchorType(family,type){
+  const edges=FAMILY_DEFS[String(family||'')]?.edges?.[String(type||'')];
+  const next=edges?Object.values(edges):[];
+  return next.length===1?next[0]:null;
+}
+
 
 function attrOf(row){
   const raw=typeof row?.attr==='string'?JSON.parse(row.attr):row?.attr;

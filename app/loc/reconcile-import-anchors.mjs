@@ -1,4 +1,3 @@
-import {isUnifiedAnchorScope} from './unified-anchor-compat.mjs';
 import {prepareImportPlaceAnchors,importedPlaceId,recordImportPlaceVisits} from './import-place-anchors.mjs';
 import {prepareImportTimeAnchors} from './import-time-anchors.mjs';
 
@@ -39,7 +38,7 @@ export async function reconcileExistingImportAnchors({
   });
   const dates=await prepareImportTimeAnchors(candidates,{
     scopeId:scope,timeTable,relation,
-    includeUnifiedUidPool:isUnifiedAnchorScope(scope),onProgress
+    includeUnifiedUidPool:true,onProgress
   });
   let linked=0,unmatched=0,updates=[];
   const visits=[];

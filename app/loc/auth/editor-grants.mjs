@@ -15,8 +15,11 @@ export async function readLocEditorGrants(session,{fetchImpl=globalThis.fetch}={
         data?'':', non-JSON response')+')');
   if(!Array.isArray(data.roles))throw Error('LOC role response invalid');
   const email=String(data.email||'').trim().toLowerCase();
-  return data.roles.filter(row=>
+  const roles=data.roles.filter(row=>
     row?.email===email&&['admin','group','scope'].includes(row.role)&&
     /^[a-z][a-z0-9]{0,14}$/.test(String(row.id||''))
   ).map(row=>({id:row.id,email,role:row.role,manage_role:row.role}));
+  if(data.grants.some(grant=>typeof grant!=='string'))
+    throw Error('LOC role grants response invalid');
+  return {roles,grants:[...data.grants]};
 }

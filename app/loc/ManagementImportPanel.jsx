@@ -31,7 +31,6 @@ import {importTimeRangeWindow,filterImportAnalysisByTime} from './import-time-ra
 import {prepareImportPlaceAnchors,importedPlaceId,recordImportPlaceVisits} from './import-place-anchors.mjs';
 import {prepareImportTimeAnchors} from './import-time-anchors.mjs';
 import {reconcileExistingImportAnchors} from './reconcile-import-anchors.mjs';
-import {isUnifiedAnchorScope} from './unified-anchor-compat.mjs';
 import {extractImportCoordinates,importGeoKey,importMapUrlCoordinates} from './import-geocoordinates.mjs';
 import {isPublicArchiveRecord,filterStandalonePublicRows,assertStandaloneImportDestination} from './archive-import-safety.mjs';
 import {createArchiveEvidenceCollector,prepareArchiveMedia,isArchiveMediaUrl,auditArchiveUrlAttributes} from './archive-media-evidence.mjs';
@@ -148,6 +147,11 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t){
   if(uid.length!==8)return {record:null,error:t('uiExtra.importUI.invalidUid')};
   const visibility=value('searchable');
   const searchable=!(visibility===false||visibility===0||String(visibility).toLowerCase()==='false'||String(visibility)==='0');
+  // Convert external archive flags once at the import boundary.
+  // No legacy Galaxy model or packed able payload reaches the writer.
+  const statisticsEnabled=value('statistics_able')!==false&&
+    String(value('statistics_able')).toLowerCase()!=='false'&&
+    searchable&&!isPureUrlContent(content);
   const record={
     uid,
     // Threads has no native post title; titleless imports use the first 10 Unicode characters.
@@ -164,14 +168,10 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t){
       site:String(source||'').trim(),
       site_id:String(originalSiteId||'').trim(),
       title:rawTitle,
-      searchable,
-      statistics_able:value('statistics_able')!==false&&
-        String(value('statistics_able')).toLowerCase()!=='false'&&
-        searchable&&!isPureUrlContent(content),
-      // Old ZIP archives may contain an able object, which is expanded only
-      // on import; all new article writes use eight separate boolean columns.
-      ...(row?.able&&typeof row.able==='object'&&!Array.isArray(row.able)
-        ?{able:row.able}:{}),
+      statics:statisticsEnabled,culture:statisticsEnabled,
+      search:searchable,trace:searchable&&statisticsEnabled,
+      list:searchable,keyword:searchable&&statisticsEnabled,
+      extract:true,others:true,
       ...Object.fromEntries(['statics','culture','search','trace','list','keyword','extract','others']
         .map(key=>[key,value(key)]).filter(([,v])=>v!==undefined&&v!==null&&v!==''))
     }),
@@ -749,7 +749,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       setStatus('獨立 Facebook 打卡已匯入：空間定錨新增 '+result.created.toLocaleString()+
         '、沿用 '+result.reused.toLocaleString()+'；日期定錨新增 '+
         dates.created.toLocaleString()+'、沿用 '+dates.reused.toLocaleString()+
-        '；'+(isUnifiedAnchorScope(scopeId)?'Point 造訪時間新增 ':'地點打卡時間新增 ')+saved.added.toLocaleString()+
+        '；'+'Point 造訪時間新增 '+saved.added.toLocaleString()+
         '。沒有新增 Galaxy 文章；缺少原始座標的地點不會捏造座標。');
     }catch(error){setStatus('Trace 地點儲存失敗：'+String(error?.message||error));}
     finally{setBusy(false);setProgress(null);}
@@ -774,7 +774,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         result.places.created.toLocaleString()+'、沿用 '+result.places.reused.toLocaleString()+
         '；日期定錨新增 '+result.dates.created.toLocaleString()+'、沿用 '+
         result.dates.reused.toLocaleString()+'；文章地點關聯補齊 '+
-        result.linked.toLocaleString()+'，'+(isUnifiedAnchorScope(scopeId)?'Point 造訪時間新增 ':'打卡時間補入 ')+result.visits.toLocaleString()+
+        result.linked.toLocaleString()+'，'+'Point 造訪時間新增 '+result.visits.toLocaleString()+
         '，未能確定地點 '+result.unmatched.toLocaleString()+' 筆。');
     }catch(error){
       setStatus('既有打卡定錨修復失敗；已完成的部分可能已寫入，重新執行會沿用既有資料。原始錯誤：'+String(error?.message||error));
@@ -1098,7 +1098,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       ];
       let recordedVisits=0;
       if(savedVisits.length){
-        showProgress(isUnifiedAnchorScope(scopeId)?'核對 Point 造訪時間':'記錄定錨打卡時間');
+        showProgress'核對 Point 造訪時間';
         const visitResult=await recordImportPlaceVisits(savedVisits,{
           relation:dbAuthRelation,table:placeAnchors.table,timesByUid:placeAnchors.timesByUid,
           createtimeByUid:placeAnchors.createtimeByUid,attrsByUid:placeAnchors.attrsByUid
@@ -1145,7 +1145,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       showProgress('匯入完成',1,1);
       setStatus(t('uiExtra.importUI.importLinkedComplete',{articles:result.inserted,media:mediaSummary.created,linked:mediaSummary.connected,skipped})+
         (result.conflicts?'；UID 衝突未建立文章／媒體關聯 '+result.conflicts.toLocaleString()+' 筆。':'')+
-        '；已更新既有文章 '+updated.toLocaleString()+' 筆，沿用空間定錨點 '+placeAnchors.reused.toLocaleString()+' 筆，新增空間定錨點 '+placeAnchors.created.toLocaleString()+' 筆，新增日期定錨 '+timeAnchors.created.toLocaleString()+' 筆，沿用日期定錨 '+timeAnchors.reused.toLocaleString()+' 筆，'+(isUnifiedAnchorScope(scopeId)?'Point 造訪時間新增 ':'補入打卡時間 ')+recordedVisits.toLocaleString()+' 筆，未匹配地點 '+placeAnchors.unmatchedCoordinates.toLocaleString()+' 組。'+
+        '；已更新既有文章 '+updated.toLocaleString()+' 筆，沿用空間定錨點 '+placeAnchors.reused.toLocaleString()+' 筆，新增空間定錨點 '+placeAnchors.created.toLocaleString()+' 筆，新增日期定錨 '+timeAnchors.created.toLocaleString()+' 筆，沿用日期定錨 '+timeAnchors.reused.toLocaleString()+' 筆，'+'Point 造訪時間新增 '+recordedVisits.toLocaleString()+' 筆，未匹配地點 '+placeAnchors.unmatchedCoordinates.toLocaleString()+' 組。'+
         (ambiguousGroups.length?'；來源文章 ID 或發文時間對應多篇既有文章，無法唯一比對而暫不匯入 '+
           ambiguousGroups.length.toLocaleString()+' 筆（其他文章繼續處理）。待確認：'+
           ambiguousGroups.slice(0,5).map(group=>group.site+' / '+

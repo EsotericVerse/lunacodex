@@ -3,7 +3,6 @@
 import {createDatabaseClient} from './db-contract.mjs';
 import {createConfiguredAdapter} from './providers/configured.mjs';
 import {configureDbSourceLabels} from './db-source-status.mjs';
-import {unifiedAnchorSpec,unifiedAnchorRelation} from './unified-anchor-compat.mjs';
 
 // Provider construction is the only runtime composition point.
 // The static site reads public records from the owner's existing Data API.
@@ -24,8 +23,7 @@ function routedSchema(schemaName,cloudSchema){
   return {
     from(table){
       if(isUnprovisionedLocal(table,schemaName))return unavailableLocal();
-      const unified=unifiedAnchorSpec(schemaName,table);
-      return unified?unifiedAnchorRelation(cloudSchema,unified):cloudSchema.from(table);
+      return cloudSchema.from(table);
     },
     managedWrite(payload){
       if(isUnprovisionedLocal(payload?.p_table,schemaName))return unavailableLocal();

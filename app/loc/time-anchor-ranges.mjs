@@ -1,4 +1,4 @@
-import {allocateAnchorUid} from './unified-anchor-compat.mjs';
+import {allocateAnchorUid} from './uid.js';
 // Canonical three-level Time graph:
 // anchor.address DATE -> period.anchor_ids [startUID, optional endUID]
 // -> era.anchor_ids [period UID, ...].

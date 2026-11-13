@@ -4,7 +4,6 @@ import {useEffect,useMemo,useState} from 'react';
 import {dbAuthClient} from './db-client.mjs';
 import {reviewPlaceNameGroups,compactPlaceName} from '../modular/features/trace/trace-place-names.mjs';
 import {renameTraceAnchorTitles} from '../modular/features/trace/trace-data';
-import {isUnifiedAnchorScope} from './unified-anchor-compat.mjs';
 
 const canonical=items=>[...items].sort((a,b)=>
   String(a.createtime||a.created_at||'9999').localeCompare(String(b.createtime||b.created_at||'9999'))||
@@ -43,18 +42,15 @@ export default function TraceOrganizer({scopeId,spatial,reload}){
   useEffect(()=>{
     let live=true;
     if(!selectedUid||scopeId==='loc'){setAliases([]);return;}
-    const unified=isUnifiedAnchorScope(scopeId);
-    let query=dbAuthClient.schema('silver').from(scopeId+(unified?'_anchor':'_place'))
-      .select(unified?'attr':'name_lists').eq('uid',selectedUid);
-    if(unified)query=query.eq('type','point');
-    query.maybeSingle().then(({data,error:loadError})=>{
-      if(!live)return;
-      if(loadError){setError(true);setNotice(String(loadError.message||loadError));return;}
-      const location=data?.attr?.location;
-      setAliases(unified
-        ?Array.isArray(location)?location:typeof location==='string'&&location?[location]:[]
-        :data?.name_lists||[]);
-    });
+    dbAuthClient.schema('silver').from(scopeId+'_anchor')
+      .select('attr').eq('uid',selectedUid).eq('type','point').maybeSingle()
+      .then(({data,error:loadError})=>{
+        if(!live)return;
+        if(loadError){setError(true);setNotice(String(loadError.message||loadError));return;}
+        const location=data?.attr?.location;
+        setAliases(Array.isArray(location)?location:
+          typeof location==='string'&&location?[location]:[]);
+      });
     return()=>{live=false;};
   },[scopeId,selectedUid]);
   const saveNames=async()=>{
@@ -62,20 +58,17 @@ export default function TraceOrganizer({scopeId,spatial,reload}){
     const list=[...new Set([...aliases,newAlias.trim()].filter(Boolean))];
     setBusy(true);setError(false);setNotice('');
     try{
-      // The existing RPC updates point.attr.location atomically for the
-      // unified Scope, and keeps legacy name_lists for unconverted Scopes.
+      // The existing authorized action updates PointAnchor.attr.location atomically.
       const {data:written,error:saveError}=await dbAuthClient.schema('silver')
         .managedAction('save_scope_trace_place_names',{p_scope_id:scopeId,p_uid:selectedUid,
           p_names:[...new Set([...list,place?.title].filter(Boolean))]});
       if(saveError||written!==1)throw saveError||Error('名稱對照儲存結果未確認');
-      if(isUnifiedAnchorScope(scopeId)){
-        const {data:current,error:readError}=await dbAuthClient.schema('silver')
-          .from(scopeId+'_anchor').select('attr')
-          .eq('uid',selectedUid).eq('type','point').maybeSingle();
-        if(readError||!current)throw readError||Error('名稱對照讀回未完成');
-        const names=current.attr?.location;
-        setAliases(Array.isArray(names)?names:typeof names==='string'?[names]:[]);
-      }else setAliases(list);
+      const {data:current,error:readError}=await dbAuthClient.schema('silver')
+        .from(scopeId+'_anchor').select('attr')
+        .eq('uid',selectedUid).eq('type','point').maybeSingle();
+      if(readError||!current)throw readError||Error('名稱對照讀回未完成');
+      const names=current.attr?.location;
+      setAliases(Array.isArray(names)?names:typeof names==='string'?[names]:[]);
       setNewAlias('');setNotice('已儲存 '+place.title+' 的名稱對照。');
     }catch(saveError){setError(true);setNotice(String(saveError.message||saveError));}
     finally{setBusy(false);}
