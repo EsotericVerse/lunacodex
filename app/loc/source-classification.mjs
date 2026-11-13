@@ -1,4 +1,6 @@
-// Fixed LOC ArticleTag categories. No Source Anchor hierarchy or editing.
+import {ANCHOR_TYPE_GROUPS,indexZModelAnchorHierarchy} from '../../zenstack/anchor-hierarchy.mjs';
+
+// Public SiteAnchor projection. The ZModel graph owns parent/child semantics.
 export const classNames=values=>[...new Set((Array.isArray(values)?values:[]).map(x=>String(x??'').trim()).filter(Boolean))];
 const norm=value=>String(value??'').normalize('NFKC').trim().toLocaleLowerCase('zh-Hant');
 export function sourceSiteKeyForLabel(value){
@@ -20,7 +22,7 @@ export const sourceTaxonomyFromCatalog=tags=>sourceTaxonomyFromArrays(tags);
 // The source taxonomy is the existing LocAnchor ZModel, not ArticleTag or a
 // second media/platform registry. Anchor attr.uid is the only hierarchy link.
 // Never derive parenthood from matching display titles.
-const SOURCE_LEVELS=Object.freeze(['universe','galaxy','domain','from']);
+const SOURCE_LEVELS=Object.freeze([...ANCHOR_TYPE_GROUPS.source].reverse());
 const sourceRoot=title=>{
   const label=norm(title);
   return label==='mutlimedia'||label==='multimedia'?'media':
@@ -37,7 +39,10 @@ export function sourceTaxonomyFromAnchors(rows=[]){
     allowed.has(row?.type)&&typeof row?.uid==='string'&&row.uid&&
     typeof row?.title==='string'&&row.title.trim()&&row.invisible!==true);
   const byUid=new Map(nodes.map(row=>[row.uid,row]));
-  const roots=nodes.filter(row=>row.type==='universe');
+  // Validate links and read typed children from the existing ZModel hierarchy.
+  // Partial published lists may omit hidden descendants; unresolved IDs are not inferred.
+  const graph=indexZModelAnchorHierarchy(nodes,{family:'source'});
+  const roots=graph.roots.map(uid=>byUid.get(uid)).filter(Boolean);
   const categories=[],aliases=[],tree=[],visited=new Set();
   const uniqueAliases=new Set();
   const walk=(row,parents=[],root='system')=>{
@@ -63,7 +68,7 @@ export function sourceTaxonomyFromAnchors(rows=[]){
         aliases.push({source_key:key,category_code:row.uid});
       }
     }
-    for(const uid of Array.isArray(row.attr?.uid)?row.attr.uid:[]){
+    for(const uid of graph.childrenOf(row.uid)){
       const child=byUid.get(uid);
       if(child&&SOURCE_LEVELS[level+1]===child.type)
         walk(child,path,root);
