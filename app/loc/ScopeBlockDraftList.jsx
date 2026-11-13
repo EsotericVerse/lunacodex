@@ -57,7 +57,6 @@ export default function ScopeBlockDraftList({
   });
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState('');
-  const table=`silver.${scopeId}_blocks`;
 
   async function publishSavedBlocks(rows){
     // The rows were committed by SQL. Update the active viewer from those exact
