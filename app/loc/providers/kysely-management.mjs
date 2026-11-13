@@ -95,22 +95,8 @@ async function authorizeRelation(trx,table,operation,values,filters,rows){
       reject('Daily Rune management permission required',403);
     return;
   }
-  if(table==='loc_blocks'){
-    const global=await canManageLoc(trx,'global');
-    if(global)return;
-    if(!await canManageLoc(trx,'group','loc'))reject('LOC Group management permission required',403);
-    if(operation==='insert'){
-      if(rows.some(row=>row.page_name!=='index'))reject('Group may insert homepage blocks only',403);
-    }else if(operation==='update'||operation==='delete'){
-      if(filters.length!==1||filters[0].column!=='uid'||
-        operation==='update'&&values.page_name!=='index')
-        reject('Group may edit homepage blocks only',403);
-      const existing=await trx.selectFrom('silver.loc_blocks').select('uid')
-        .where('uid','=',filters[0].value).where('page_name','=','index').executeTakeFirst();
-      if(!existing)reject('Group may edit homepage blocks only',403);
-    }else reject('Group blocks do not support this operation',403);
-    return;
-  }
+  // LOC text frames are no longer a managed physical Blocks table.
+  if(table==='loc_blocks')reject('LOC Blocks have moved to loc_anchor; use save_blocks',400);
   const scope=scopeFromTable(table);
   if(!/^[a-z][a-z0-9]{0,14}$/.test(scope)||!await canManageLoc(trx,'scope',scope))
     reject('Scope management permission required',403);
@@ -597,7 +583,8 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     return {data:true,count:null};
   }
   const scope=validScope(args.p_scope_id);
-  const page=String(args.p_page_name||'').trim().toLowerCase();
+  const rawPage=String(args.p_page_name||'').trim();
+  const page=scope==='loc'?rawPage:rawPage.toLowerCase();
   const uid=validUid(args.p_uid);
   const direction=Number(args.p_direction);
   if(!page||page.length>80||![-1,1].includes(direction))
@@ -607,24 +594,26 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     :await canManageLoc(trx,'scope',scope);
   if(!authorized)reject('Block management permission required',403);
   await sql`reset role`.execute(trx);
-  const relation='silver.'+scope+'_blocks';
+  const loc=scope==='loc';
+  const relation=loc?'silver.loc_anchor':'silver.'+scope+'_blocks';
+  const pageField=loc?'type':'page_name',orderField=loc?'num':'block_order';
   await sql`select pg_advisory_xact_lock(hashtext(${scope}),hashtext(${page}))`.execute(trx);
-  const original=await trx.selectFrom(relation).select(['uid','block_order'])
-    .where('uid','=',uid).where('page_name','=',page).executeTakeFirst();
+  const original=await trx.selectFrom(relation).select(['uid',orderField])
+    .where('uid','=',uid).where(pageField,'=',page).executeTakeFirst();
   if(!original)reject('Block not found on this page');
-  let neighbor=trx.selectFrom(relation).select(['uid','block_order'])
-    .where('page_name','=',page)
-    .where('block_order',direction===-1?'<':'>',original.block_order);
-  neighbor=neighbor.orderBy('block_order',direction===-1?'desc':'asc');
+  let neighbor=trx.selectFrom(relation).select(['uid',orderField])
+    .where(pageField,'=',page)
+    .where(orderField,direction===-1?'<':'>',original[orderField]);
+  neighbor=neighbor.orderBy(orderField,direction===-1?'desc':'asc');
   const next=await neighbor.limit(1).executeTakeFirst();
   if(!next)reject('Block is already at the page boundary');
-  const ref=sql.ref(relation);
+  const ref=sql.ref(relation),orderRef=sql.ref(orderField),pageRef=sql.ref(pageField);
   const result=await sql`update ${ref}
-    set block_order=case when uid=${uid} then ${next.block_order} else ${original.block_order} end
-    where page_name=${page} and uid in (${uid},${next.uid})`.execute(trx);
+    set ${orderRef}=case when uid=${uid} then ${next[orderField]} else ${original[orderField]} end
+    where ${pageRef}=${page} and uid in (${uid},${next.uid})`.execute(trx);
   if(Number(result.numAffectedRows||0)!==2)reject('Block order update incomplete');
-  return {data:{uid,block_order:next.block_order,
-    neighbor_uid:next.uid,neighbor_order:original.block_order},count:null};
+  return {data:{uid,block_order:next[orderField],
+    neighbor_uid:next.uid,neighbor_order:original[orderField]},count:null};
 }
 
 async function scopedWrite(trx,input){
