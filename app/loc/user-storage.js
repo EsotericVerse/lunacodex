@@ -2,7 +2,7 @@
 
 // Personal navigation settings are columns of ONE silver.loc_user row.
 // No personal diary, rune-draw archive, or separate user_settings relation.
-import {getAccountSession,dbAuthRelation} from './db-client.mjs';
+import {dbAuthRelation} from './db-client.mjs';
 
 const TABLE='silver.loc_user';
 const NAV_SETTINGS_CACHE_KEY='loc-navigation-setting-snapshot-v1';
@@ -10,7 +10,7 @@ function invalidate(){
   try{if(typeof window!=='undefined')window.sessionStorage.removeItem(NAV_SETTINGS_CACHE_KEY);}catch{}
 }
 async function personalSettingsRow(){
-  // The server's verified LOC OAuth subject always binds the owner_id.
+  // A website-private data request must not fetch or create LOC Auth sessions.
   const {data,error}=await dbAuthRelation(TABLE)
     .select('uid,user_setting,updated_at').limit(1);
   if(error)throw new Error(error.message||'個人設定讀取失敗');
@@ -66,9 +66,6 @@ export async function getSetting(key){
   return valueOf(settingsMap(await personalSettingsRow()),name);
 }
 async function changeSetting(key,operation,value){
-  const session=await getAccountSession();
-  const email=String(session?.user?.email||'').trim().toLowerCase();
-  if(!session?.user?.id||!email)throw new Error('請先登入帳號');
   const name=String(key||'').trim();
   if(!name||name.length>120)throw new Error('設定鍵值無效');
   const checked=operation==='delete'?null:checkedSetting(name,value);
@@ -85,7 +82,7 @@ async function changeSetting(key,operation,value){
     if(!result.error&&!result.data?.length)
       throw new Error('個人設定更新失敗，請重新載入');
   }else if(operation!=='delete'){
-    result=await dbAuthRelation(TABLE).insert([{...values,email}])
+    result=await dbAuthRelation(TABLE).insert([values])
       .select('uid,user_setting');
     // Another tab may create the same owner's row concurrently.
     if(result.error?.code==='23505'){
