@@ -37,7 +37,7 @@ export function keywordUidListRecord(type,value){
   throw new Error('Unknown Keywords node type');
 }
 const cleanUid=value=>{
-  if(typeof value!=='string'||!UID.test(value))throw new Error('Keywords UID must be four or eight case-sensitive Base62 characters');
+  if(typeof value!=='string'||!UID.test(value))throw new Error('KeywordAnchor UID must be eight case-sensitive Base62 characters');
   return value;
 };
 export function normalizeKeywordTreeRow(row){

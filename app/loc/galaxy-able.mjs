@@ -4,7 +4,6 @@
 import {galaxyReadColumns} from '../../zenstack/galaxy-read-models.mjs';
 export const GALAXY_ABLE_KEYS=Object.freeze(galaxyReadColumns('GalaxyAttr'));
 export const GALAXY_ABLE_COLUMNS=GALAXY_ABLE_KEYS.join(',');
-const legacyKeys={keyword:'keywords',others:'game'};
 function booleanOrUndefined(raw){
   if(typeof raw==='boolean')return raw;
   if(raw===1||raw==='1'||String(raw).toLowerCase()==='true')return true;
