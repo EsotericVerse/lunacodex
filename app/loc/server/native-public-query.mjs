@@ -27,7 +27,7 @@ const respond=(data,status=200)=>new Response(JSON.stringify(data),{status,heade
 const IDENT=/^[a-z_][a-z0-9_]*$/i;
 const OPERATORS=new Set(['eq','neq','gt','gte','lt','lte','like','ilike','is','in','contains']);
 const SCOPE=new Set(SCOPE_ROUTE_INDEX.filter(row=>row.active!==false).map(row=>row.scope_id));
-const TABLE_RE=/^([a-z][a-z0-9]{0,14})_(galaxy|galaxy_media|anchor|blocks|keywords|trace|time)$/;
+const TABLE_RE=/^(?!loc_blocks$)([a-z][a-z0-9]{0,14})_(galaxy|galaxy_media|anchor|blocks|keywords|trace|time)$/;
 const TABLES=new Set(['loc_anchor','runes','runes_etc','runes_group']);
 const invalid=message=>Object.assign(new Error(message),{status:400});
 function col(input){
@@ -133,7 +133,7 @@ function modeledPublicSelect(selected,query){
   if(!['postgres','mysql'].includes(selected.engine)||!selected.dialect||query.cardinality)
     return null;
   const fixedLocAnchor=query.table==='loc_anchor';
-  const matched=/^([a-z][a-z0-9]{0,14})_(galaxy|anchor|blocks)$/.exec(query.table);
+  const matched=/^(?!loc_blocks$)([a-z][a-z0-9]{0,14})_(galaxy|anchor|blocks)$/.exec(query.table);
   if(!fixedLocAnchor&&(!matched||!SCOPE.has(matched[1])))return null;
   const modelName=fixedLocAnchor?'LocAnchor':matched[2][0].toUpperCase()+matched[2].slice(1);
   const ordinaryFilters=query.filters.map(f=>({
