@@ -28,7 +28,7 @@ const IDENT=/^[a-z_][a-z0-9_]*$/i;
 const OPERATORS=new Set(['eq','neq','gt','gte','lt','lte','like','ilike','is','in','contains']);
 const SCOPE=new Set(SCOPE_ROUTE_INDEX.filter(row=>row.active!==false).map(row=>row.scope_id));
 const TABLE_RE=/^([a-z][a-z0-9]{0,14})_(galaxy|galaxy_media|anchor|blocks|keywords|trace|time)$/;
-const TABLES=new Set(['loc_blocks','loc_anchor','runes','runes_etc','runes_group']);
+const TABLES=new Set(['loc_anchor','runes','runes_etc','runes_group']);
 const invalid=message=>Object.assign(new Error(message),{status:400});
 function col(input){
   if(typeof input!=='string'||!IDENT.test(input))throw invalid('Invalid selected column');
@@ -38,7 +38,7 @@ function publicRelation(schema,table){
   if(schema!=='silver'||typeof table!=='string')throw invalid('Invalid public relation');
   if(TABLES.has(table)||SCOPE.has(table))return table;
   const matched=TABLE_RE.exec(table);
-  if(matched&&SCOPE.has(matched[1]))return table;
+  if(matched&&matched[1]!=='loc'&&SCOPE.has(matched[1]))return table;
   throw invalid('Public relation unavailable');
 }
 function predicate(eb,node){
