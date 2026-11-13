@@ -5,6 +5,7 @@ export const LOC_ROLE_LEVEL=Object.freeze({guest:0,user:1,scope:2,group:3,admin:
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const SUBJECT=/^[A-Za-z0-9_-]{1,128}$/;
 const MANAGE=/^([a-z][a-z0-9]{0,14}):manage$/;
+const TYPED_MANAGE=/^(group|scope):([a-z][a-z0-9]{0,14}):manage$/;
 const MAX_NODES=4096;
 
 function trustedScopeTree(rows){
@@ -48,6 +49,15 @@ export function locRolePrincipal(claims,{scopeTree=[]}={}){
   const global=grants.includes('global:manage');
   for(const value of grants){
     if(typeof value!=='string')continue;
+    // Explicit ZModel business roles win over legacy ID-only grants.
+    const typed=TYPED_MANAGE.exec(value);
+    if(typed){
+      const kind=typed[1],id=typed[2],node=nodes.get(id);
+      if(node&&(!node.active||node.kind!==kind))continue;
+      if(kind==='group')groupIds.add(id);
+      else scopeIds.add(id);
+      continue;
+    }
     const match=MANAGE.exec(value);
     if(!match||value==='global:manage')continue;
     const id=match[1],node=nodes.get(id);
