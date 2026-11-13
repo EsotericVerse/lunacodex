@@ -21,11 +21,9 @@ const ADMIN_OPTIONS=Object.freeze([
   {value:'sources',label:'文章來源',shortLabel:'來源',description:'來源階層與名稱'},
   {value:'featureHero',label:'頁面主視覺',shortLabel:'頁面',description:'功能頁圖片與文字'},
   {value:'themes',label:'主題配色',shortLabel:'配色',description:'主題色彩'},
-  {value:'network',label:'連線與驗證',shortLabel:'連線',description:'資料庫、快取與身分驗證'},
+  {value:'network',label:'資料庫與快取',shortLabel:'連線',description:'資料庫連線與快取設定'},
   {value:'io',label:'匯入與系統工具',shortLabel:'工具',description:'匯入匯出與系統限制'}
 ]);
-const EnterpriseAuthReserved=dynamic(()=>import('./admin-panels/EnterpriseAuthReserved'),{loading:PanelLoading});
-const McpProviderPanel=dynamic(()=>import('./admin-panels/McpProviderPanel'),{loading:PanelLoading});
 const DatabaseTarget=dynamic(()=>import('./admin-panels/DatabaseTarget'),{loading:PanelLoading});
 const IsrDomainTarget=dynamic(()=>import('./admin-panels/IsrDomainTarget'),{loading:PanelLoading});
 const RuntimeIoSettings=dynamic(()=>import('./admin-panels/RuntimeIoSettings'),{loading:PanelLoading});
@@ -116,8 +114,6 @@ export default function AdminHomeView({scopeGroup}){
         {section==='network'?<>
           <DatabaseTarget scopeGroup={scopeGroup}/>
           <IsrDomainTarget/>
-          <EnterpriseAuthReserved/>
-          <McpProviderPanel/>
         </>:null}
         {section==='io'?<RuntimeIoSettings/>:null}
         {section==='featureHero'?<FeatureHeroImages/>:null}
