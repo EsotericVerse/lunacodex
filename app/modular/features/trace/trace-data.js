@@ -2,7 +2,7 @@
 
 import {dbPublicClient,dbAuthClient} from '../../../loc/db-client.mjs';
 import {findAnchorWriteMatches,organizeAnchorCandidates} from './trace-organizer.mjs';
-import {allocateAnchorUid} from '../../../loc/unified-anchor-compat.mjs';
+import {allocateAnchorUid} from '../../../loc/uid.js';
 import {ANCHOR_TYPE_GROUPS} from '../../../../zenstack/anchor-hierarchy.mjs';
 import {SCOPE_ROUTE_INDEX} from '../../scope-route-index.js';
 import {selectScopeGroupMemberIds,selectScopeConfig} from '../../../loc/scope-data';

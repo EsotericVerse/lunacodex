@@ -1,5 +1,5 @@
 import {importGeoKey} from './import-geocoordinates.mjs';
-import {allocateAnchorUid} from './unified-anchor-compat.mjs';
+import {allocateAnchorUid} from './uid.js';
 
 // An exact coordinate identifies an existing Trace location even if the
 // original place label differs. Without GPS, only unambiguous names are used.

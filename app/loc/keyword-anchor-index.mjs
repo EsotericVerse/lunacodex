@@ -1,6 +1,6 @@
 // Scope-owned Pattern index. Article UID postings remain inside each Scope.
 // No database mapping registry is required for the current database.
-import {allocateAnchorUid} from './unified-anchor-compat.mjs';
+import {allocateAnchorUid} from './uid.js';
 import {parseRuneKeywordRuleSentence} from './model/rune-keyword-rules.mjs';
 
 const UID=/^[A-Za-z0-9]{8}$/;

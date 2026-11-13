@@ -3,7 +3,7 @@ import {useCallback,useEffect,useMemo,useState} from 'react';
 import dynamic from 'next/dynamic';
 import {useAsyncResource} from './use-async-resource';
 import {dbPublicClient,insertRows,updateRows,deleteRows} from './db-client.mjs';
-import {allocateAnchorUid} from './unified-anchor-compat.mjs';
+import {allocateAnchorUid} from './uid.js';
 import {useEditDockForm} from '../modular/edit-dock';
 
 // The very same graph canvas used by the personal Keyword editor.
