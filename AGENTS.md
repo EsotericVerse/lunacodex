@@ -10,7 +10,7 @@
 
 **Skill Overview（按工作選範圍，不是啟動清單）**：① 資料／模型：SQL、Postgres、Kysely、ZenStack、Zod、查詢；② 身分／權限：Auth、SSO、OAuth、Session；③ 網頁／介面／行動端：Next.js、React、PWA、Capacitor、UI/UX、CSS；④ 視覺化／地理：Recharts、vis、MapLibre、圖表與地圖；⑤ 系統整合：MCP、Extension、API、跨服務；⑥ 部署／工程品質：GitHub、CI/CD、Vercel、Cloudflare、測試、效能、安全；⑦ 內容／媒體：文字、文件、圖片、聲音、影音。這些是定位範圍，不是每個分類都要讀、每個模組都要搭配一個 Skill；同一任務可由一份跨模組 Skill 覆蓋。
 
-**Skill 選擇與模組交互**：**先選一份最能覆蓋「當前操作」的主要 Skill，再補缺口，不按提到的模組逐一載入。** 先確認已有 Skill 的能力，足以涵蓋的交互就只讀它；例如 ZenStack V3 的 ORM 查詢、關聯、交易與其 Kysely `$qb` 交互，優先選 `zenstack-querying`，不因出現 Kysely 就再載入 `kysely`；只有獨立 Kysely 方言／查詢建構等超出主要 Skill 的工作才補讀。UI 結構、響應式與圖表呈現可先由 `ui-ux-pro-max` 覆蓋，只有需要 Recharts API 細節才補 `recharts`。新增 MCP server 的工作才考慮 `mcp-builder`，不因同時提及 Auth、資料庫就連帶載入所有相關 Skill。以現有版本與實作確認覆蓋範圍；**選一份是預設，不是遇到必要的第二份也禁止**。增讀前先指出目前 Skill 缺少哪項必需能力；只有切換實質工作內容或發現缺口才重新選。
+**Skill 選擇與模組交互**：**先按當前工作挑最能涵蓋需求的一份 Skill，順便確認它是否已包含相關模組的交互；涵蓋了就只讀這一份，不因模組依賴、import 或 Skill 彼此提及而連動載入其他份。** Skill 是按工作能力選，不是依套件數量逐一配一份。例如 ZenStack V3 查詢、關聯、交易及透過 `$qb` 使用 Kysely，`zenstack-querying` 已提供這條工作路徑；選它即可，**不必再查讀 `kysely` Skill**。只有當實際工作要處理 `zenstack-querying` 未涵蓋的獨立 Kysely 細節，才補選 `kysely`。同理，UI 結構、響應式與一般圖表呈現若由 `ui-ux-pro-max` 足以覆蓋，就不用連帶載入 `recharts` 等各模組 Skill；真正需要某模組特有 API 或限制時才補讀。MCP、Auth、資料庫一起出現在程式裡也不等於需同時載入三類 Skill。**檢查覆蓋只看已選 Skill 的描述與實際必要部分，不為了確認「其他 Skill 是否也需要」而預讀一整串。** 父子 Skill 的參照是補缺口的線索，不是自動依賴；只有當前任務存在具體未覆蓋需求時才增讀第二份，並在補足後停止，不作全套預載。
 
 **Skill 目錄與終止邊界**：`.agents/skills/` 是專案唯一來源，`.claude/skills/` 是對應 Agent 的同步副本，不作另一來源，也不對同一能力重複讀取。父子／交叉 Skill 的「另讀一份」只是索引，不能當成無條件遞迴載入命令；已讀過就略過，缺口已覆蓋就停止。**同一工作階段、同一工作範圍只做必要的一次選擇；每次工具呼叫、動作、回覆都不重新熱機或重新掃描**。查不到相關 Skill 就結束查找、說明缺口並用現有工具完成可做部分；禁止無限跳轉、全庫重掃、為找 Skill 而重裝、輪詢或等待。不假定不同 Agent／獨立工作階段共享載入狀態；目錄同步屬安裝維護，與任務執行分開。
 
