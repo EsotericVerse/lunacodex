@@ -41,6 +41,8 @@ export async function block_list(trx,scopeId,options={}){
       .sort((a,b)=>a.page_name.localeCompare(b.page_name)||
         a.block_order-b.block_order);
   }
+  if(typeof options.readScopeBlocks==='function')
+    return options.readScopeBlocks(scope);
   return trx.selectFrom(blockRelation(scope+'_blocks',options.engine||'postgres',
     options.namespace||'silver'))
     .select(BLOCK_COLUMNS).where('page_name','=','index')
