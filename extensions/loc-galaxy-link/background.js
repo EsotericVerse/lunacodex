@@ -3,12 +3,31 @@ const DB_NAME='loc-channel1-queue';
 const STORE='pending',ACK_STORE='acknowledged';
 const MAX_BATCH=50,MAX_BYTES=600000,AUTO_CAPTURE_COUNT=10;
 const CONFIG_URL='https://loc.lo3rwang.cc/extension/oauth/config.json';
+const MCP_PROVIDER_API='https://loc.lo3rwang.cc/api/mcp-provider-extension';
+const MCP_EXTENSION_RETURN='https://hiaeafonocnjaclcfgjmdopbcgnafnna.chromiumapp.org/mcp';
 const AUTH_KEYS=['locOAuth','locConfig'];
 const MENU_PAGE='loc-page',MENU_SELECTION='loc-selection',MENU_AREA='loc-area',MENU_RECORD='loc-record',MENU_PAUSE='loc-pause',MENU_RESUME='loc-resume',MENU_STOP='loc-stop',MENU_ROOT='loc-galaxy-link';
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const encoder=new TextEncoder();
 const sizeOf=x=>encoder.encode(JSON.stringify(x)).length;
+const DIAGNOSTIC_KEY='locDiagnostics',MAX_DIAGNOSTICS=120;
 let inFlight=null;
+function safeDiagnostic(value){
+ let text;
+ try{text=typeof value==='string'?value:JSON.stringify(value)}catch{text=String(value)}
+ return String(text||'')
+  .replace(/("(?:access_token|refresh_token|code|code_verifier|state|authorization)"\s*:\s*)"[^"]*"/gi,'$1"[redacted]"')
+  .replace(/(?:Bearer\s+|(?:access_token|refresh_token|code_verifier|authorization)=)\S+/gi,'[redacted]')
+  .replace(/\s+/g,' ').slice(0,800);
+}
+async function logDiagnostic(event,detail=''){
+ try{
+  const current=await chrome.storage.local.get(DIAGNOSTIC_KEY);
+  const logs=Array.isArray(current[DIAGNOSTIC_KEY])?current[DIAGNOSTIC_KEY]:[];
+  logs.push({at:new Date().toISOString(),event:String(event),detail:safeDiagnostic(detail)});
+  await chrome.storage.local.set({[DIAGNOSTIC_KEY]:logs.slice(-MAX_DIAGNOSTICS)});
+ }catch{}
+}
 function openDb(){
  return new Promise((resolve,reject)=>{
   const req=indexedDB.open(DB_NAME,2);
@@ -195,6 +214,66 @@ function encode64(bytes){
  return btoa(binary).replaceAll('+','-').replaceAll('/','_').replace(/=+$/,'');
 }
 function oauthError(message){return Error('LOC Auth：'+message);}
+function normalizeSsoEmail(value){
+ const email=String(value??'').trim().toLowerCase();
+ if(email.length>320||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+  throw oauthError('請輸入有效的 SSO Email');
+ return email;
+}
+function parseMcpProviderCallback(returned,expectedState){
+ let url;
+ try{url=new URL(String(returned))}catch{throw oauthError('上游 SSO 回呼無效');}
+ if(url.origin+url.pathname!==MCP_EXTENSION_RETURN)
+  throw oauthError('上游 SSO 回呼位址不符');
+ if(url.searchParams.get('state')!==String(expectedState||''))
+  throw oauthError('上游 SSO state 不符');
+ if(url.searchParams.get('error'))throw oauthError('上游 SSO 授權失敗');
+ const provider=url.searchParams.get('provider')||'';
+ if(!['clerk','github','neon','supabase'].includes(provider)||url.searchParams.get('connected')!=='1')
+  throw oauthError('上游 SSO 授權失敗');
+ return {provider,connected:true};
+}
+async function mcpProviderRequest(method,body=null){
+ const token=await activeToken();
+ const options={method,cache:'no-store',redirect:'error',headers:{authorization:'Bearer '+token,accept:'application/json'}};
+ if(body){options.headers['content-type']='application/json';options.body=JSON.stringify(body)}
+ let response;
+ try{response=await fetch(MCP_PROVIDER_API,options)}catch(error){
+  await logDiagnostic('mcp.provider.error',{message:error?.message||String(error)});
+  throw oauthError('LOC MCP Provider 無法連線');
+ }
+ await logDiagnostic('mcp.provider.response',{action:body?.action||'status',provider:body?.provider||'',status:response.status});
+ const value=await response.json().catch(()=>({}));
+ if(!response.ok)throw oauthError(String(value?.error||'LOC MCP Provider 請求失敗'));
+ return value;
+}
+async function mcpProviderStatus(){return mcpProviderRequest('GET')}
+async function connectMcpProvider(provider){
+ const saved=await chrome.storage.local.get('locSsoEmail');
+ const email=normalizeSsoEmail(saved.locSsoEmail);
+ const result=await mcpProviderRequest('POST',{action:'connect',provider,email});
+ const authorize=new URL(String(result.authorize_url||''));
+ const state=String(result.state||authorize.searchParams.get('state')||'');
+ if(!state)throw oauthError('LOC MCP Provider 未回傳授權 state');
+ const redirect=chrome.identity.getRedirectURL('mcp');
+ if(redirect!==MCP_EXTENSION_RETURN)throw oauthError('Extension 上游 SSO 回呼位址不符');
+ await logDiagnostic('mcp.authorize.start',{provider,authorization_endpoint:authorize.origin+authorize.pathname});
+ let returned;
+ try{returned=await chrome.identity.launchWebAuthFlow({url:authorize.href,interactive:true});}
+ catch(error){
+  await logDiagnostic('mcp.authorize.error',{provider,message:error?.message||String(error)});
+  throw error;
+ }
+ await logDiagnostic('mcp.authorize.callback',{provider,returned:Boolean(returned)});
+ const connected=parseMcpProviderCallback(returned,state);
+ await logDiagnostic('mcp.connected',{provider:connected.provider});
+ return connected;
+}
+async function disconnectMcpProvider(provider){
+ const result=await mcpProviderRequest('POST',{action:'disconnect',provider});
+ await logDiagnostic('mcp.disconnected',{provider});
+ return result;
+}
 // Better Auth's OAuth provider exposes RFC 8414 and OIDC discovery at the
 // issuer-path and at the backwards-compatible root aliases. Reuse the same
 // ordered candidates as the existing LOC upstream OAuth client instead of
@@ -216,63 +295,71 @@ async function discoverLocOAuth(issuer){
   try{
    const response=await fetch(endpoint,{cache:'no-store',redirect:'error'});
    lastStatus=response.status;
+   await logDiagnostic('oauth.discovery.response',{endpoint,status:response.status});
    if(!response.ok)continue;
    const metadata=await response.json();
    if(metadata?.issuer!==expected||!metadata.authorization_endpoint||!metadata.token_endpoint)
     continue;
    return metadata;
-  }catch{}
+  }catch(error){await logDiagnostic('oauth.discovery.error',{endpoint,message:error?.message||String(error)});}
  }
  throw oauthError(lastStatus
   ?'找不到 LOC OAuth 伺服器（HTTP '+lastStatus+'）'
   :'找不到 LOC OAuth 伺服器');
 }
 async function getConfig(){
- const res=await fetch(CONFIG_URL,{cache:'no-store',redirect:'error'});
- if(!res.ok)throw oauthError('尚未提供 Extension 認證設定');
- const cfg=await res.json();
- if(!cfg.issuer||!cfg.import_url||!cfg.client_id)
-  throw oauthError('LOC 自有認證與短匯入 API 尚未啟用');
- const issuer=new URL(cfg.issuer);
- const api=new URL(cfg.import_url);
- if(issuer.protocol!=='https:'||api.protocol!=='https:'||
-    api.origin!=='https://mcp.lo3rwang.cc'||api.pathname!=='/api/loc-native'||
-    cfg.resource!=='https://mcp.lo3rwang.cc'||!cfg.client_id||typeof cfg.client_id!=='string'||
-    issuer.origin!=='https://auth.lo3rwang.cc'||issuer.pathname!=='/api/auth')
-   throw oauthError('LOC 自有認證尚未啟用，不會使用其他平台登入');
- const meta=await discoverLocOAuth(issuer);
- for(const endpoint of [meta.authorization_endpoint,meta.token_endpoint]){
-  const url=new URL(endpoint);
-  if(url.protocol!=='https:'||url.origin!==issuer.origin)
-   throw oauthError('OAuth 端點必須使用 LOC Auth HTTPS');
+ try{
+  const res=await fetch(CONFIG_URL,{cache:'no-store',redirect:'error'});
+  await logDiagnostic('oauth.config.response',{endpoint:CONFIG_URL,status:res.status});
+  if(!res.ok)throw oauthError('尚未提供 Extension 認證設定');
+  const cfg=await res.json();
+  if(!cfg.issuer||!cfg.import_url||!cfg.client_id)
+   throw oauthError('LOC 自有認證與短匯入 API 尚未啟用');
+  const issuer=new URL(cfg.issuer);
+  const api=new URL(cfg.import_url);
+  if(issuer.protocol!=='https:'||api.protocol!=='https:'||
+     api.origin!=='https://mcp.lo3rwang.cc'||api.pathname!=='/api/loc-native'||
+     cfg.resource!=='https://mcp.lo3rwang.cc'||!cfg.client_id||typeof cfg.client_id!=='string'||
+     issuer.origin!=='https://auth.lo3rwang.cc'||issuer.pathname!=='/api/auth')
+    throw oauthError('LOC 自有認證尚未啟用，不會使用其他平台登入');
+  const meta=await discoverLocOAuth(issuer);
+  for(const endpoint of [meta.authorization_endpoint,meta.token_endpoint]){
+   const url=new URL(endpoint);
+   if(url.protocol!=='https:'||url.origin!==issuer.origin)
+    throw oauthError('OAuth 端點必須使用 LOC Auth HTTPS');
+  }
+  const config={supports_scope_routing:true,issuer:meta.issuer,client_id:cfg.client_id,import_url:api.href,
+    resource:cfg.resource||api.href,
+   authorization_endpoint:meta.authorization_endpoint,token_endpoint:meta.token_endpoint,
+   revocation_endpoint:meta.revocation_endpoint||'',
+   scope:cfg.scope||'loc:import'};
+  await chrome.storage.local.set({locConfig:config});
+  await logDiagnostic('oauth.config.ready',{issuer:config.issuer,client_id:config.client_id,
+   authorization_endpoint:config.authorization_endpoint,token_endpoint:config.token_endpoint});
+  return config;
+ }catch(error){
+  await logDiagnostic('oauth.config.error',{endpoint:CONFIG_URL,message:error?.message||String(error)});
+  throw error;
  }
- const config={supports_scope_routing:true,issuer:meta.issuer,client_id:cfg.client_id,import_url:api.href,
-   resource:cfg.resource||api.href,
-  authorization_endpoint:meta.authorization_endpoint,token_endpoint:meta.token_endpoint,
-  revocation_endpoint:meta.revocation_endpoint||'',
-  scope:cfg.scope||'loc:import'};
- await chrome.storage.local.set({locConfig:config});
- return config;
 }
 async function exchange(config,body){
  const res=await fetch(config.token_endpoint,{method:'POST',
   headers:{'content-type':'application/x-www-form-urlencoded'},
   body:new URLSearchParams({...body,client_id:config.client_id,resource:config.resource}).toString(),
   redirect:'error',cache:'no-store'});
+ await logDiagnostic('oauth.token.response',{grant_type:body.grant_type,status:res.status});
  if(!res.ok)throw oauthError('Token 交換失敗（HTTP '+res.status+'）');
  const json=await res.json();
  if(!json.access_token||json.token_type?.toLowerCase()!=='bearer')
   throw oauthError('伺服器未回傳 Bearer Token');
  return json;
 }
-// Public PKCE client: use the stable HTTPS Client ID Metadata Document
-// already published by LOC Web, rather than writing a new OAuth client
-// registration on every install or reauthorization.
+// Public PKCE client: use the fixed first-party LOC Auth client registration.
 function registeredClient(config,redirect){
- const clientId='https://loc.lo3rwang.cc/extension/oauth/client.json';
+ const clientId='loc-galaxy-link';
  const callback='https://hiaeafonocnjaclcfgjmdopbcgnafnna.chromiumapp.org/loc';
  if(config.client_id!==clientId||redirect!==callback)
-  throw oauthError('LOC 彩虹橋 OAuth Client Metadata 與 Chrome 回呼不一致');
+  throw oauthError('LOC 彩虹橋固定 OAuth Client 與 Chrome 回呼不一致');
  return clientId;
 }
 async function disconnectLoc(){
@@ -294,6 +381,7 @@ async function disconnectLoc(){
   }catch{}
  }
  await chrome.storage.local.remove(AUTH_KEYS);
+ await logDiagnostic('oauth.disconnected',{serverRevoked:revoked});
  return {disconnected:true,serverRevoked:revoked,
   ...(token&&!revoked?{warning:'已清除本機授權；伺服器無法確認撤銷，請在連線恢復後重新登入。'}:{})};
 }
@@ -309,7 +397,15 @@ async function connectLoc(){
  for(const [key,val] of Object.entries({response_type:'code',client_id:cfg.client_id,
   redirect_uri:redirect,scope:cfg.scope,resource:cfg.resource,state,code_challenge:encode64(digest),
   code_challenge_method:'S256'}))authorization.searchParams.set(key,val);
- const returned=await chrome.identity.launchWebAuthFlow({url:authorization.href,interactive:true});
+ await logDiagnostic('oauth.authorize.start',{client_id:cfg.client_id,redirect_uri:redirect,
+  authorization_endpoint:cfg.authorization_endpoint,scope:cfg.scope});
+ let returned;
+ try{returned=await chrome.identity.launchWebAuthFlow({url:authorization.href,interactive:true});}
+ catch(error){
+  await logDiagnostic('oauth.authorize.error',{message:error?.message||String(error)});
+  throw error;
+ }
+ await logDiagnostic('oauth.authorize.callback',{returned:Boolean(returned),redirect_uri:redirect});
  if(!returned||!returned.startsWith(redirect+'?'))throw oauthError('授權回呼無效');
  const result=new URL(returned),code=result.searchParams.get('code');
  if(result.searchParams.get('state')!==state||!code||result.searchParams.get('error'))
@@ -320,6 +416,7 @@ async function connectLoc(){
   access_token:tokens.access_token,refresh_token:tokens.refresh_token||null,
   expires_at:Date.now()+Math.max(0,Number(tokens.expires_in||300)-60)*1000}});
  await chrome.storage.local.remove(['locImportPaused','locQueuePaused']);
+ await logDiagnostic('oauth.connected',{client_id:cfg.client_id});
  return {connected:true};
 }
 let refreshFlight=null;
@@ -354,6 +451,7 @@ async function sendViaAuth(scopeid,batch,token,config){
  if(endpoint.origin!=='https://mcp.lo3rwang.cc'||endpoint.pathname!=='/api/loc-native')throw contractError('LOC MCP 資料寫入位址錯誤');
  // The Scope is validated by LOC data authorization, not the Auth server.
  const reply=await fetch(endpoint.href,{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({kind:'short-import',scopeid,batch}),redirect:'error',cache:'no-store'});
+ await logDiagnostic('import.response',{scopeid,status:reply.status,batch_id:batch.id});
  if(!reply.ok){
    let detail='';
    const mime=String(reply.headers?.get?.('content-type')||'').toLowerCase();
@@ -595,6 +693,9 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
   switch(message?.action){
    case 'loc-connect':return connectLoc();
    case 'loc-disconnect':return disconnectLoc();
+   case 'mcp-status':return mcpProviderStatus();
+   case 'mcp-connect':return connectMcpProvider(String(message.provider||''));
+   case 'mcp-disconnect':return disconnectMcpProvider(String(message.provider||''));
    case 'loc-flush':{
     try{const result=await flush(true);await updateQueueBadge();await noteAction('手動傳送',true,result.message);return result;}
     catch(e){await noteAction('手動傳送',false,e?.message||String(e));throw e;}
@@ -608,6 +709,15 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
      nextRetryAt:Number(session.locQueueRetryAfter||0),
      retryReason:session.locQueueRetryType||'',
      consecutiveFailures:Number(session.locQueueFailures||0)};
+   }
+   case 'loc-diagnostics':{
+    const [stored,last]=await Promise.all([
+     chrome.storage.local.get(DIAGNOSTIC_KEY),
+     chrome.storage.local.get('locLastAction')
+    ]);
+    const lastAction=last.locLastAction&&typeof last.locLastAction==='object'?
+     {...last.locLastAction,message:safeDiagnostic(last.locLastAction.message)}:null;
+    return {logs:Array.isArray(stored[DIAGNOSTIC_KEY])?stored[DIAGNOSTIC_KEY]:[],lastAction};
    }
   }
   switch(message?.type){

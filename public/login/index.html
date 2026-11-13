@@ -26,7 +26,7 @@
     <section class="auth-surface" aria-label="LOC 登入與身分核驗">
       <div class="auth-top"><span class="eyebrow">YOUR ACCOUNT</span><p>安全登入，繼續原本的工作。</p></div>
       <div id="login-root">
-        <p class="native-note">Google 驗證身分，或沿用現有的 LOC SSO 登入。</p>
+        <p class="native-note">透過 LOC Auth SSO 登入；需要外部身分驗證時由 LOC Auth 處理。</p>
       </div>
       <div id="signed-in" hidden>
         <h2>身分核驗</h2>
@@ -65,15 +65,9 @@ function returnToLoc(){
 }
 function login(){location.assign(AUTH+'/login?return_to='+encodeURIComponent(returnPath()))}
 const panel=byId('login-root');
-const google=document.createElement('button');
-google.type='button';
-google.className='loc-login-choice';
-google.textContent='使用 Google 繼續';
-google.onclick=login;
-panel.appendChild(google);
 const sso=document.createElement('button');
 sso.type='button';sso.id='loc-sso-login';sso.className='loc-login-choice';
-sso.textContent='使用 LOC SSO';
+sso.textContent='使用 LOC Auth SSO';
 sso.onclick=async()=>{if(!await refresh())login();else returnToLoc()};
 panel.appendChild(sso);
 byId('return').onclick=returnToLoc;
@@ -113,14 +107,14 @@ async function refresh(){
   '閱讀公開資料不需要登入。';
  return Boolean(verifiedUser);
 }
-// Google redirects here after Better Auth finishes its OAuth callback.
+// Cloudflare redirects here after Better Auth finishes its OIDC callback.
 // Confirm the server-side Session before returning to Settings; a redirect
 // alone is never proof that sign-in succeeded.
 const oauthReturn=new URLSearchParams(location.search).get('oauth_return')==='1';
 refresh().then(signedIn=>{
  if(!oauthReturn)return;
  if(signedIn){returnToLoc();return;}
- byId('status').textContent='Google 已返回 LOC，但尚未取得有效的 LOC Auth Session。請重新登入；若持續發生，請檢查 Auth 回呼及 Cookie。';
+ byId('status').textContent='Cloudflare 已返回 LOC，但尚未取得有效的 LOC Auth Session。請重新登入；若持續發生，請檢查 Auth 回呼及 Cookie。';
 }).catch(error=>{
  byId('status').textContent='LOC Auth Session 核驗失敗：'+String(error.message||error);
  panel.hidden=false;

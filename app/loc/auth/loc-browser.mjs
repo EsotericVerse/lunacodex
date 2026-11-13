@@ -89,16 +89,23 @@ export function createLocAccountAdapter({
       catch(error){return {data:{user:null},error};}
     },
     async signInWithOAuth({provider,options={}}={}){
-      if(provider!=='google')
-        return {data:null,error:new Error('LOC Google OAuth is the configured sign-in provider')};
+      if(provider!=='cloudflare')
+        return {data:null,error:new Error('LOC Cloudflare SSO is the configured sign-in provider')};
       try{
         clearSessionCache();
         const returnTo=safeReturn(options.redirectTo);
-        const response=await (await client()).signIn.social({
-          provider:'google',
-          callbackURL:new URL(returnTo,'https://loc.lo3rwang.cc').href
+        const callbackURL=new URL(returnTo,'https://loc.lo3rwang.cc').href;
+        const response=await fetch(ISSUER+'/api/auth/sign-in/sso',{
+          method:'POST',credentials:'include',
+          headers:{'content-type':'application/json'},
+          body:JSON.stringify({providerId:'cloudflare-access',callbackURL,
+            errorCallbackURL:callbackURL})
         });
-        return response;
+        const data=await response.json().catch(()=>({}));
+        if(!response.ok||!data?.url)
+          throw Error(data.message||data.error||'Cloudflare SSO authorization URL missing');
+        navigate(data.url);
+        return {data,error:null};
       }catch(error){clearSessionCache();return {data:null,error};}
     },
     async signOut(){

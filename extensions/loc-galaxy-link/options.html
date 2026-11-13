@@ -24,6 +24,11 @@ small{display:block;color:gray}
 <button id="connect">連接 LOC Auth</button>
 <button id="disconnect">解除連線</button>
 <div id="status" role="status"></div>
+<h2>Neon／Supabase MCP SSO</h2>
+<label for="ssoEmail">SSO Email（只作上游 provider 的登入提示）</label>
+<input type="email" id="ssoEmail" autocomplete="email" placeholder="you@example.com" spellcheck="false">
+<small>第一次連接各 provider 時輸入一次；授權後 token 由 LOC MCP Gateway 加密保存並自動 refresh，不會把 token 存在 extension。</small>
+<div id="mcpProviders" role="status">尚未讀取上游 Provider 狀態。</div>
 <h2>擷取偏好</h2>
 <label for="scope">目的 Scope ID（加入 Queue 時固定，不會事後改目的地）</label>
 <input type="text" id="scope" value="lo3rwang" pattern="[a-z][a-z0-9]{0,14}" maxlength="15" autocomplete="off" spellcheck="false">
@@ -33,6 +38,8 @@ small{display:block;color:gray}
 <h2>最近一次操作與錯誤</h2>
 <p id="lastAction" role="status">目前沒有操作紀錄。</p>
 <small>如果右鍵擷取失敗，將顯示具體原因，不再只在工具列出現不明驚嘆號。</small>
+<button id="diagnostics">複製診斷紀錄</button>
+<small>只包含時間、端點、HTTP 狀態與錯誤摘要；token、授權碼與 verifier 會遮罩。</small>
 <h2>離線 Queue</h2>
 <p id="queue" role="status"></p>
 <button id="flush">手動送出 Queue</button>

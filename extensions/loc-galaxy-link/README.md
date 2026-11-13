@@ -2,10 +2,14 @@
 
 **唯一 Chrome Extension：** 於 `chrome://extensions/` 載入 `extensions/loc-galaxy-link/`。
 
-**v0.2.6 OAuth ID 修復：** 恢復舊版 LOC Galaxy Extension 使用的公開 `manifest.key`，Chrome 將用它固定擴充功能 ID `hiaeafonocnjaclcfgjmdopbcgnafnna`，與現有 LOC Auth OAuth Client Metadata 的 `https://hiaeafonocnjaclcfgjmdopbcgnafnna.chromiumapp.org/loc` 一致；無需另增 OAuth Client 或修改 Auth。這是公開金鑰，**不是私鑰或登入憑證**。載入後應先核對 `chrome://extensions/` 顯示的 ID。**若先前安裝的未封裝版本顯示不同 ID 且仍有待送 Queue，請不要直接移除舊版**：Chrome 會按 Extension ID 隔離 IndexedDB，新增正式 ID 的 Extension 不會自動讀到舊 ID 下的 Queue；應先保留原資料並處理遷移。若原本就是上述正式 ID，可在同一 Chrome 使用者設定檔直接重新載入更新，不會清除 IndexedDB。
+**v0.2.7 OAuth ID／MCP SSO：** 恢復舊版 LOC Galaxy Extension 使用的公開 `manifest.key`，Chrome 將用它固定擴充功能 ID `hiaeafonocnjaclcfgjmdopbcgnafnna`，並使用 LOC Auth 固定 public client `loc-galaxy-link` 與 callback `https://hiaeafonocnjaclcfgjmdopbcgnafnna.chromiumapp.org/loc`；不使用 CIMD、不做匿名動態註冊。載入後應先核對 `chrome://extensions/` 顯示的 ID。**若先前安裝的未封裝版本顯示不同 ID 且仍有待送 Queue，請不要直接移除舊版**：Chrome 會按 Extension ID 隔離 IndexedDB，新增正式 ID 的 Extension 不會自動讀到舊 ID 下的 Queue；應先保留原資料並處理遷移。若原本就是上述正式 ID，可在同一 Chrome 使用者設定檔直接重新載入更新，不會清除 IndexedDB。
 
 
 本擴充功能整合 LOC Auth OAuth + PKCE S256、Readability 一般網頁、選取文字、區域擷取、Instagram／Threads 已載入貼文、ChatGPT／Claude 已載入的逐則對話，以及選區動態錄製／暫停／恢復／停止。右鍵「LOC 彩虹橋｜galaxy-link」即可選擇操作，工具列圖示只開啟設定頁，AI 回覆擷取預設關閉。
+
+若連線或匯入失敗，開啟 extension 設定頁按「複製診斷紀錄」；紀錄只保留端點、HTTP 狀態與遮罩後的錯誤摘要，不包含 access token、refresh token、授權碼或 PKCE verifier。
+
+Neon／Supabase MCP 連線在同一設定頁完成：輸入一次 SSO Email，分別按 provider 的「授權一次」。上游授權完成後由 LOC MCP Gateway 加密保存並 refresh provider token；extension 不保存上游 token，也不會在每次 MCP 呼叫重新登入。
 
 僅使用既有 IndexedDB `loc-channel1-queue` 與 `pending` store，版本 2 新增 `acknowledged` 去重存儲；原有未送 Queue 不清空、不搬移、不換帳號。所有功能共用這一個 Queue、這一組 LOC Auth 與短匯入 API。滿 10 次擷取或累積約 600 KB 送出，手動可提前送出；依擷取當下的 Scope 分批，各篇以來源為單位持續 Append，完整收齊批次／UID 回執後才刪 Queue。禁止匿名、覆寫文章及跨 Scope 混合批次。
 
