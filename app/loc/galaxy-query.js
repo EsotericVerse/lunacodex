@@ -5,7 +5,6 @@ import {searchOrderedScopeProviders} from './search-ordered-scope-providers.mjs'
 
 
 import {StatisticsFacets} from './statistics-facets';
-import {sourceTaxonomyFromArrays} from './source-classification.mjs';
 import {DEFAULT_LIST_BATCH_SIZE} from './db-contract.mjs';
 import {parseSearchQuery} from './search-query.mjs';
 import {normalizeRelationIds,publicContentFilters} from './content-policy';
@@ -165,15 +164,6 @@ export async function selectScopeCategoryTotals(scope,{startDate='',endDate=''}=
     .map(row=>({category:row.category,item_count:Number(row.item_count)||0}))
     .filter(row=>row.item_count>0);
   return {text:pick('source'),media:pick('media')};
-}
-
-// Shared public taxonomy reader for Statistics and Search. Never requires
-// management authentication or scans article bodies to populate a filter.
-export async function selectSourceTaxonomy(){
-  const {rows}=await selectRows('silver.loc',{
-    columns:'ArticleTag',filters:[{column:'id',operator:'eq',value:'loc'}],limit:1
-  });
-  return sourceTaxonomyFromArrays(rows[0]?.ArticleTag||[]);
 }
 
 export async function selectSourceCatalog(scope,{startDate='',endDate='',limit=20}={}){

@@ -13,10 +13,32 @@ import {DB_QUERY_BATCH_SIZE,selectRows} from '../../loc/db-query.mjs';
 import {decodeTimeSegments,encodeTimeSegment,resolveTimeSegments,isTimeUid,allocateTimeUid} from '../../loc/time-anchor-ranges.mjs';
 import {anniversarySuggestionsForDate} from '../../loc/anniversary.mjs';
 import {planAnniversaryDates,collectTimeDates,collectEraPeriods} from '../../loc/culture-anchor-bulk.mjs';
+import {ANCHOR_TYPE_GROUPS} from '../../../zenstack/anchor-hierarchy.mjs';
 import ManagementSectionNav from '../ManagementSectionNav';
 const BlockNoteEditor=dynamic(()=>import('../../loc/BlockNoteEditor'),{loading:()=>null});
 
-const TIME_COLUMNS='uid,type,title,description,address,anchor_ids,range,invisible';
+const TIME_COLUMNS='uid,type,title,description,attr,invisible';
+// Read/write the physical TimeAnchor variant; the editor's 'anchor' label is
+// presentation only and never becomes an SQL relation or persisted type.
+const PERSISTED_TIME_TYPES=ANCHOR_TYPE_GROUPS.time;
+function projectTimeAnchorRow(row){
+  const attr=typeof row?.attr==='string'?JSON.parse(row.attr):row?.attr||{};
+  const type=row.type==='date'?'anchor':row.type;
+  return {...row,type,address:type==='anchor'?String(attr.date||'').slice(0,10):'',
+    anchor_ids:type==='era'?(Array.isArray(attr.period)?attr.period:[]):
+      type==='period'?(Array.isArray(attr.uid)?attr.uid:[]):[]};
+}
+function writeTimeAnchorRow(row,previous=null){
+  const type=row.type==='anchor'?'date':row.type;
+  if(!PERSISTED_TIME_TYPES.includes(type))throw new Error('Unknown TimeAnchor subtype');
+  const previousAttr=previous?.attr&&typeof previous.attr==='object'&&!Array.isArray(previous.attr)?previous.attr:{};
+  const attr={...previousAttr};
+  if(type==='date')attr.date=String(row.address||'').slice(0,10);
+  if(type==='period')attr.uid=Array.isArray(row.anchor_ids)?[...row.anchor_ids]:[];
+  if(type==='era')attr.period=Array.isArray(row.anchor_ids)?[...row.anchor_ids]:[];
+  return {...(row.uid?{uid:row.uid}:{}),type,title:row.title,
+    description:row.description,invisible:Boolean(row.invisible),attr};
+}
 const TYPES=['anchor','period','era'];
 const TYPE_TABS=[...TYPES].reverse();
 const normalizeType=value=>({event:'period'}[value]||value);
@@ -40,9 +62,10 @@ export default function CultureTimelineEditor({
   const routeAnchorDate=String(searchParams?.get?.('anchorDate')||'').slice(0,10);
   const effectiveAnchorDate=day(suggestedAnchorDate||(!selectedRecordId?routeAnchorDate:''));
   const dataScope=String(scopeId||'').trim();
-  // Timeline editor expects legacy Time fields projected from unified Anchor.
-  // Direct *_anchor reads cannot select the removed address/anchor_ids columns.
-  const timeTable=String(providedTimeTable||'').trim().replace(/_anchor$/,'_time');
+  const timeTable=String(providedTimeTable||'').trim();
+  // Only the configured physical Anchor relation is a valid editor target.
+  if(timeTable&&!/^silver\.[a-z][a-z0-9]{0,14}_anchor$/.test(timeTable))
+    throw new Error('TimeAnchor physical relation required');
   const editable=Boolean(dataScope&&dataScope!=='loc'&&timeTable);
   const defaultType=TYPES.includes(normalizeType(defaultRecordType))?normalizeType(defaultRecordType):'anchor';
   const [draft,setDraft]=useState(()=>blank(defaultType));
@@ -69,10 +92,10 @@ export default function CultureTimelineEditor({
     enabled:editable,
     queryFn:async()=>{
       const {rows}=await selectRows(timeTable,{
-        columns:TIME_COLUMNS,filters:[{column:'type',operator:'in',value:TYPES}],
+        columns:TIME_COLUMNS,filters:[{column:'type',operator:'in',value:PERSISTED_TIME_TYPES}],
         limit:DB_QUERY_BATCH_SIZE,offset:0,authenticated:true
       });
-      return rows;
+      return rows.map(projectTimeAnchorRow);
     }
   });
   const all=query.data||[];
@@ -216,10 +239,10 @@ export default function CultureTimelineEditor({
     const gathered=[];
     for(let offset=0;offset<100000;offset+=DB_QUERY_BATCH_SIZE){
       const {rows=[]}=await selectRows(timeTable,{
-        columns:TIME_COLUMNS,filters:[{column:'type',operator:'in',value:TYPES}],
+        columns:TIME_COLUMNS,filters:[{column:'type',operator:'in',value:PERSISTED_TIME_TYPES}],
         limit:DB_QUERY_BATCH_SIZE,offset,authenticated:true
       });
-      gathered.push(...rows);
+      gathered.push(...rows.map(projectTimeAnchorRow));
       if(rows.length<DB_QUERY_BATCH_SIZE)return gathered;
     }
     throw Error('時間紀錄過多，無法確認完整性；已停止寫入。');
@@ -281,7 +304,7 @@ export default function CultureTimelineEditor({
         (plans.length-additions.length)+' 個日期已存在而跳過。確定建立？'))return;
       // Keep the same managed Scope write path and never touch Galaxy.
       for(let i=0;i<additions.length;i+=100)
-        await insertRows(timeTable,additions.slice(i,i+100));
+        await insertRows(timeTable,additions.slice(i,i+100).map(row=>writeTimeAnchorRow(row)));
       refresh();
       await onDataChanged?.();
       setAnnualOpen(false);startNew('anchor');
@@ -361,11 +384,12 @@ export default function CultureTimelineEditor({
           ?[...segments.map(segment=>segment.start),...pairPeriodUids]
           :encodeTimeSegment(segments[0].start,segments[0].end);
       }
-      if(extraPeriodRows.length)await insertRows(timeTable,extraPeriodRows);
+      if(extraPeriodRows.length)await insertRows(timeTable,extraPeriodRows.map(row=>writeTimeAnchorRow(row)));
       if(selectedId){
-        await updateRows(timeTable,payload,{filters:[{column:'uid',operator:'eq',value:selectedId}]});
+        await updateRows(timeTable,writeTimeAnchorRow(payload,all.find(row=>row.uid===selectedId)),
+          {filters:[{column:'uid',operator:'eq',value:selectedId}]});
       }else{
-        await insertRows(timeTable,[{uid:allocateTimeUid([...all,...extraPeriodRows]),...payload}]);
+        await insertRows(timeTable,[writeTimeAnchorRow({uid:allocateTimeUid([...all,...extraPeriodRows]),...payload})]);
       }
       refresh();reset();
       await onDataChanged?.();
@@ -393,8 +417,9 @@ export default function CultureTimelineEditor({
       let count=0;
       for(let i=0;i<visibilitySelection.length;i+=150){
         const ids=visibilitySelection.slice(i,i+150);
-        const {data,error}=await dbAuthClient.schema('silver').from(dataScope+'_time')
-          .update({invisible}).in('uid',ids).select('uid');
+        const {data,error}=await dbAuthClient.schema('silver').from(dataScope+'_anchor')
+          .update({invisible}).in('uid',ids)
+          .in('type',PERSISTED_TIME_TYPES).select('uid');
         if(error)throw error;
         if(data.length!==ids.length)throw Error('部分時間紀錄未成功寫入');
         count+=data.length;

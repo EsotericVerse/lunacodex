@@ -10,12 +10,25 @@ import {mapBounded} from './bounded-parallel.mjs';
 import {publicContentFilters} from './content-policy';
 import {selectScopeGroupMemberIds,defaultScopeData} from './scope-data';
 import {PUBLISHED_SITE_BOOTSTRAP} from '../modular/published-site-bootstrap.js';
-import {resolveTimeSegments,resolveTimeTrace,timePeriodSortDate,timeDateWindows,timePeriodContainsDate,intersectTimeDateWindows,storedTimeRange} from './time-anchor-ranges.mjs';
+import {resolveTimeSegments,resolveTimeTrace,timePeriodSortDate,timeDateWindows,timePeriodContainsDate,intersectTimeDateWindows} from './time-anchor-ranges.mjs';
 import {galaxyReadColumns} from '../../zenstack/galaxy-read-models.mjs';
+import {ANCHOR_TYPE_GROUPS} from '../../zenstack/anchor-hierarchy.mjs';
 
 
 
-const TIME_COLUMNS='uid,type,title,description,address,anchor_ids,range';
+// TimeAnchor: one physical _anchor relation. Legacy UI presentation keys are
+// derived in memory; no _time table, RPC or compatibility writer is consulted.
+const TIME_COLUMNS='uid,type,title,description,attr';
+function projectTimeAnchor(row){
+  const attr=row?.attr&&typeof row.attr==='object'&&!Array.isArray(row.attr)
+    ?row.attr:typeof row?.attr==='string'?JSON.parse(row.attr):{};
+  const type=String(row?.type||'');
+  return {...row,type:type==='date'?'anchor':type,
+    address:type==='date'?String(attr.date||'').slice(0,10):null,
+    anchor_ids:type==='era'?(Array.isArray(attr.period)?attr.period:[]):
+      type==='period'?(Array.isArray(attr.uid)?attr.uid:[]):[],
+  };
+}
 function scopeIdOf(value){return String(value||'').trim();}
 function timeDate(row){return row?.address?String(row.address).slice(0,10):null;}
 function previousDay(value){
@@ -26,29 +39,28 @@ function previousDay(value){
 }
 export async function selectCultureTimeRows(scope,birthday=''){
   const scopeId=scopeIdOf(scope?.id);
-  // Read the legacy Time projection, not native *_anchor columns. The adapter
-  // maps address/anchor_ids to attr.date/attr.uid/attr.period.
-  const table=String(scope?.time||'').replace(/_anchor$/,'_time');
+  // TimeAnchor is stored exclusively in the physical ZModel Anchor relation.
+  const table=String(scope?.anchor||'');
   if(!scopeId||!table)throw new Error('Scope data 未解析');
   // Collect every Time Anchor/period/era. Internal transport pagination does
   // not cap the historical timeline or borrow the old Data API Max Rows limit.
-  const {rows}=await selectAllRows(table,{
+  const result=await selectAllRows(table,{
     columns:TIME_COLUMNS,
-    filters:[{column:'type',operator:'in',value:['anchor','period','era']}],
+    filters:[{column:'type',operator:'in',value:ANCHOR_TYPE_GROUPS.time}],
     orders:[{column:'uid',ascending:true}]
   });
+  const rows=(result.rows||[]).map(projectTimeAnchor);
   const anchors=rows.filter(row=>row.type==='anchor');
   const byUid=new Map(anchors.map(row=>[String(row.uid),row]));
   const normalize=(row,type,eventMap)=>{
     const id=String(row.uid||'');
-    const projected=storedTimeRange(row.range);
-    const ranges=projected?projected.ranges:type==='anchor'?[{
+    const ranges=type==='anchor'?[{
       index:0,start_date:timeDate(row),end_date:timeDate(row),
       start_anchor_id:id,end_anchor_id:null,anchor_ids:[id],point:true,invalid:false
     }]:type==='era'
       ?resolveTimeTrace(row.anchor_ids,eventMap).ranges
       :resolveTimeSegments(row.anchor_ids,byUid,{period:false});
-    const invalidTraceLinks=projected?projected.invalidPeriodUids:type==='era'
+    const invalidTraceLinks=type==='era'
       ?resolveTimeTrace(row.anchor_ids,eventMap).invalidLinks:[];
     const dated=ranges.filter(range=>range.start_date).sort((a,b)=>
       a.start_date.localeCompare(b.start_date)||a.index-b.index);

@@ -5,6 +5,8 @@ import {sql} from 'kysely';
 import {zmodelRegistryJoin,zmodelGalaxyPointJoin} from '../../../zenstack/model-column-guard.mjs';
 import {keywordPatternItemMetrics,keywordPatternDailySummary} from '../keyword-search-pattern.mjs';
 import {readScopePatternRows} from '../keyword-anchor-index.mjs';
+import {sourceTaxonomyFromAnchors} from '../source-classification.mjs';
+import {ANCHOR_TYPE_GROUPS} from '../../../zenstack/anchor-hierarchy.mjs';
 
 // Statistics never read or filter Galaxy.content: content is touched only by
 // bulk keyword analysis, uid-exact article reads and search.
@@ -78,17 +80,17 @@ async function sourceTotals(trx,scope,start,end){
   return response.rows;
 }
 async function scopeOverview(trx,scope,start,end){
-  const [rows,first,loc]=await Promise.all([
+  const [rows,first,sourceAnchors]=await Promise.all([
     dailyStats(trx,scope,start,end),
     earliest(trx,scope),
-    trx.selectFrom('silver.loc').select('ArticleTag')
-      .where('id','=','loc').executeTakeFirst()
+    trx.selectFrom('silver.loc_anchor')
+      .select(['uid','type','title','invisible','attr'])
+      .where('type','in',ANCHOR_TYPE_GROUPS.source)
+      .where('invisible','=',false).execute()
   ]);
-  const list=Array.isArray(loc?.ArticleTag)?loc.ArticleTag:[];
-  const categories=list.map(name=>({category_code:String(name).trim().toLowerCase(),
-    display_name:String(name).trim(),enabled:true}));
-  const aliases=list.map(name=>({source_key:String(name).trim().toLowerCase(),
-    category_code:String(name).trim().toLowerCase()}));
+  // Statistics and Culture use the same UID-linked SiteAnchor hierarchy.
+  // ArticleTag must not be reinterpreted as a second source taxonomy.
+  const {categories,aliases}=sourceTaxonomyFromAnchors(sourceAnchors);
   return {earliest:first,rows,categories,aliases};
 }
 async function searchSummary(trx,options,{publishedScopeIds=null}={}){
