@@ -3,7 +3,6 @@ import UiText,{useUiText} from '../i18n/UiText';
 
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {scopeFeatureEnabled} from '../loc/scope-config-fields.mjs';
-import {isUnifiedAnchorScope} from '../loc/unified-anchor-compat.mjs';
 import dynamic from 'next/dynamic';
 import {usePathname} from 'next/navigation';
 import {useEditDock} from './edit-dock';
@@ -557,7 +556,7 @@ export function ScopeFeatureToggles({value={},onChange,className='scope-editor-o
       ['search','features.search.title'],
       ['statistics_able','features.statics.title'],
       ['culture_able','features.culture.title'],
-      ...(isUnifiedAnchorScope(scopeId)?[['trace','features.trace.title']]:[])
+      ...(scopeId!=='loc'?[['trace','features.trace.title']]:[])
     ].map(([key,label])=><label key={key}>
       <input type="checkbox" checked={scopeFeatureEnabled(value,key)}
         onChange={event=>onChange?.(key,event.target.checked)}/><UiText id={label}/>
