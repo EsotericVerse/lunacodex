@@ -751,8 +751,10 @@ async function managedLocSettings(trx,args,claims){
         Object.keys(value).some(field=>!allowed.has(field))))
       reject('Invalid runtime setting fields');
     await sql`reset role`.execute(trx);
-    const row=await trx.selectFrom('api.manage').select('caches')
-      .where('id','=','admin').forUpdate().executeTakeFirst();
+    let query=trx.selectFrom('api.manage').select('caches')
+      .where('id','=','admin');
+    if(operation==='update')query=query.forUpdate();
+    const row=await query.executeTakeFirst();
     if(!row)reject('LOC Admin runtime settings unavailable');
     const previous=decodeLocCache(row.caches);
     if(operation==='read')return previous;
