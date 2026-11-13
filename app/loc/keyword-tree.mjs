@@ -99,18 +99,6 @@ export function indexAnchorTree(rows=[],{normalize,rootType}){
     if(parents.length)parent.set(uid,parents[0]);
   }
   return {index,parent,roots:graph.roots.map(uid=>index.get(uid)).filter(Boolean)};
-  }
-  for(const row of index.values()){
-    const childType=next[row.type];
-    for(const uid of childType?row.lists:[]){
-      const child=index.get(uid);
-      if(!child)throw new Error('Missing referenced Anchor UID: '+uid);
-      if(child.type!==childType)throw new Error('Invalid Anchor hierarchy: '+row.type+' -> '+child.type);
-      if(parent.has(uid))throw new Error('Anchor node has multiple parents: '+uid);
-      parent.set(uid,row.uid);
-    }
-  }
-  return {index,parent,roots:[...index.values()].filter(row=>row.type===rootType)};
 }
 export function indexKeywordTree(rows=[]){
   return indexAnchorTree(rows,{normalize:normalizeKeywordTreeRow,rootType:'category'});
