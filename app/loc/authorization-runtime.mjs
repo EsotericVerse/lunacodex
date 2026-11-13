@@ -53,6 +53,18 @@ export function canAuthorizeGlobal(){
   return Boolean(email&&entries?.some(row=>row.email===email&&row.role==='admin'));
 }
 
+export function canAuthorizeLocAccess(level,scopeId=''){
+  const kind=String(level||'').toLowerCase();
+  const scope=normalizeScope(scopeId);
+  if(!['global','group','scope'].includes(kind))return false;
+  return Boolean(email&&entries?.some(row=>row.email===email&&(
+    row.role==='admin'||
+    kind!=='global'&&row.scopeid===scope&&(
+      kind==='group'?row.role==='group':
+        row.role==='group'||row.role==='scope')
+  )));
+}
+
 export function createScopeAuthorizer(user){
   const current=readAuthorization();
   if(!current||current.userId!==String(user?.id||'')||
@@ -67,6 +79,7 @@ export function createScopeAuthorizer(user){
     groupIds:Object.freeze(groups),
     canManageGroupSync:canAuthorizeGroup,
     canManageGlobalSync:canAuthorizeGlobal,
+    canLocAccessSync:canAuthorizeLocAccess,
     canManageScopeSync:canAuthorizeScope
   });
 }

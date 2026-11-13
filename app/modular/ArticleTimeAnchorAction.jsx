@@ -65,7 +65,7 @@ export default function ArticleTimeAnchorAction({
       if(!validDay(date)||scopeId==='loc'||scopeId==='local')
         throw new Error('這篇文章沒有可用的時間定錨日期。');
       const verified=await account.refresh({forceVerify:true});
-      if(!verified?.authorizer?.canManageScopeSync(scopeId))
+      if(!verified?.authorizer?.canLocAccessSync('scope',scopeId))
         throw new Error('請先透過 Clerk 登入具有此 Scope 編輯權限的帳號。');
       // Explicit Clerk verification can renew a previously expired editor
       // session, without requiring a separate management-page visit.
@@ -124,7 +124,7 @@ export default function ArticleTimeAnchorAction({
       // Never bypass it: re-verify Clerk permission before renewing it.
       if(editorSessionStatus(window.sessionStorage).expired){
         const verified=await account.refresh({forceVerify:true});
-        if(!verified?.authorizer?.canManageScopeSync(scopeId))
+        if(!verified?.authorizer?.canLocAccessSync('scope',scopeId))
           throw new Error('編輯 Session 已過期，請重新驗證此 Scope 的編輯權限。');
         clearEditorSession(window.sessionStorage);
         if(!touchEditorSession(window.sessionStorage))

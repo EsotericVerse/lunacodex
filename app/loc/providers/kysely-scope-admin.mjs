@@ -1,4 +1,4 @@
-import {canManageLoc} from './loc-authorization.mjs';
+import {canLocAccess} from './loc-authorization.mjs';
 import {sql} from 'kysely';
 import {schema as fixedSchema} from '../../../zenstack/schema.mjs';
 import {normalizeLocDomain} from './loc-domain.mjs';
@@ -20,7 +20,7 @@ function fail(message,status=400){throw Object.assign(new Error(message),{httpSt
 function scope(value){const id=String(value??'').trim().toLowerCase();
   if(!ID.test(id))fail('Invalid Scope ID');return id;}
 async function allowedGlobal(trx){
-  if(!await canManageLoc(trx,'global'))fail('Global administrator permission required',403);
+  if(!await canLocAccess(trx,'global'))fail('Global administrator permission required',403);
 }
 function route(values,existing={}){
   const domain=normalizeLocDomain(values.domain??existing.domain??null)||'';

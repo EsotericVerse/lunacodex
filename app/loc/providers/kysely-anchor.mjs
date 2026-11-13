@@ -1,4 +1,4 @@
-import {canManageLoc} from './loc-authorization.mjs';
+import {canLocAccess} from './loc-authorization.mjs';
 import {portableRelation,serializePortableJsonFields} from './sql-engine-ports.mjs';
 import {sql} from 'kysely';
 import {assertZModelAnchorBlockManagedValues} from '../../../zenstack/import-validation.mjs';
@@ -35,7 +35,7 @@ function reject(message,status=400){
   const error=new Error(message);error.httpStatus=status;throw error;
 }
 async function isOwner(trx,scope,role){
-  return role==='authenticated'&&await canManageLoc(trx,'scope',scope);
+  return role==='authenticated'&&await canLocAccess(trx,'scope',scope);
 }
 function asPositiveInteger(value,fallback,max){
   const number=value===undefined?fallback:Number(value);

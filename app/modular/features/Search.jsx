@@ -78,7 +78,7 @@ function canManageSearchScope(account,scopeId){
   const id=String(scopeId||'').trim();
   const normalized=id.toLowerCase();
   const ownScope=Array.isArray(account.scopes)&&account.scopes.some(scope=>String(scope?.id||'').trim().toLowerCase()===normalized);
-  return Boolean(account.role==='admin'||account.canManageGlobalSync?.()||ownScope||account.canManageScopeSync(id)||account.canManageScopeSync(normalized));
+  return Boolean(account.role==='admin'||account.canLocAccessSync?.('global')||ownScope||account.canLocAccessSync('scope',id)||account.canLocAccessSync('scope',normalized));
 }
 
 async function selectPublicEditableRow(table,idColumn,id,columns,{authenticated=false}={}){
@@ -284,7 +284,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   // LOC's public Search is global. Only the separate authorized management
   // workspace may narrow the query to a specific Scope.
   const managementAuthorized=Boolean(adminListRequested&&account.user&&!account.loading&&!account.permissionLoading&&
-    (scopeId==='loc'?(account.canManageGroupSync('loc')||account.scopes.length>0):canManageSearchScope(account,scopeId)));
+    (scopeId==='loc'?(account.canLocAccessSync('group','loc')||account.scopes.length>0):canManageSearchScope(account,scopeId)));
   const managementMode=Boolean(adminListRequested&&managementAuthorized);
   const locPublicSearch=scopeId==='loc'&&!managementMode;
   const searchParams=useSearchParams();
@@ -725,8 +725,8 @@ export default function Search({managementMode:legacyManagementRoute=false}){
         // Verify the current Scope when the user actually enters its editor.
         const verified=await account.refresh({forceVerify:true});
         const grants=verified?.authorizer;
-        if(!verified?.user||!(grants?.canManageScopeSync(result.scopeId)||
-          grants?.canManageGlobalSync()||grants?.canManageGroupSync('loc')))
+        if(!verified?.user||!(grants?.canLocAccessSync('scope',result.scopeId)||
+          grants?.canLocAccessSync('global')||grants?.canLocAccessSync('group','loc')))
           throw new Error('請先登入具有此 Scope 編輯權限的帳號。');
         setAuthorizedEditingKey(result.key);
       }

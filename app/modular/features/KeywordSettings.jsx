@@ -22,7 +22,7 @@ export default function KeywordSettings(){
   const account=useAccount();
   const editDock=useEditDock();
   const authorized=Boolean(account.user&&editDock?.active&&editDock.scopeId===scopeId&&
-    scopeId!=='loc'&&!scope?.aggregateChildren&&account.canManageScopeSync(scopeId));
+    scopeId!=='loc'&&!scope?.aggregateChildren&&account.canLocAccessSync('scope',scopeId));
   return <FeaturePage featureId="statics">
     <ManagementWorkspaceFrame level="scope" title="關鍵詞管理">
       <div className="management-workspace-panel" role="region" aria-label="關鍵詞管理">

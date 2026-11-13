@@ -1,4 +1,4 @@
-import {canManageLoc} from './loc-authorization.mjs';
+import {canLocAccess} from './loc-authorization.mjs';
 import {portableRelation} from './sql-engine-ports.mjs';
 import {galaxyReadColumns} from '../../../zenstack/galaxy-read-models.mjs';
 import {sql} from 'kysely';
@@ -38,7 +38,7 @@ function safeName(value,fallback){const name=String(value||fallback);
 }
 function relation(scope,suffix){return sql.ref('silver.'+scope+'_'+suffix);}
 async function owns(trx,scope,role){
-  return role==='authenticated'&&await canManageLoc(trx,'scope',scope);
+  return role==='authenticated'&&await canLocAccess(trx,'scope',scope);
 }
 async function dailyStats(trx,scope,start,end,includeUndated=false){
   const galaxy=relation(scope,'galaxy');
@@ -595,7 +595,7 @@ export async function executePortableKyselyAnalytics(db,body,{engine,namespace='
     // The external SQL installation has Galaxy and Anchor, not the
     // historical scope configuration/RPC tables. Private classifications
     // must remain private until the verified owner authorizes them.
-    const owner=role==='authenticated'&&await canManageLoc(db,'scope',scope);
+    const owner=role==='authenticated'&&await canLocAccess(db,'scope',scope);
     if(!owner)return {data:mode==='shared_classes'?[]:{},count:null};
     const table=portableRelation(scope+'_anchor',engine,namespace);
     const parse=row=>({...row,attr:typeof row.attr==='string'

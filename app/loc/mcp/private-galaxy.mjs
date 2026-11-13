@@ -3,7 +3,7 @@
 import {executePortableMcp} from '../providers/kysely-mcp.mjs';
 import {directMcpKysely} from './native-kysely.mjs';
 import {createScopedLocClient} from '../../../zenstack/client.mjs';
-import {locMcpPermissionsForEmail,VerifiedLocUserInfoSchema} from './access-roles.mjs';
+import {loadMcpLocAccess,VerifiedLocUserInfoSchema} from './access-roles.mjs';
 
 const AUTH='https://auth.lo3rwang.cc';
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
@@ -64,7 +64,9 @@ export async function privateGalaxyLink(args={},token,subject,env={},
   const email=await getVerifiedPrincipal(token,subject,fetchImpl);
   const selected=await directMcpKysely(env);
   const {db,engine,namespace}=selected;
-  const rights=await locMcpPermissionsForEmail(db,email,{dialect:selected.dialect});
+  const rights=await loadMcpLocAccess(db,email,{
+    dialect:selected.dialect,engine:selected.engine
+  });
   const canRead=rights.grants.includes('global:manage')||
     rights.grants.includes(scopeid+':read');
   if(!canRead)throw denied('LOC Scope permission denied');

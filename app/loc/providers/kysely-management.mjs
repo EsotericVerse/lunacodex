@@ -1,4 +1,4 @@
-import {canManageLoc,locManageRows} from './loc-authorization.mjs';
+import {canLocAccess,locAccessRows} from './loc-authorization.mjs';
 import {modelFieldsForSql,modelNameForSql,modeledPrimaryKeyColumns,
   modeledBooleanColumns,zmodelRegistryJoin,verifyModeledSqlFields}
   from '../../../zenstack/model-column-guard.mjs';
@@ -87,18 +87,18 @@ async function authorizeRelation(trx,table,operation,values,filters,rows){
   if(table==='manage'||table==='loc'||table==='loc_anchor'){
     if(table==='loc'&&(Object.hasOwn(values||{},'ArticleTag')||rows.some(row=>Object.hasOwn(row,'ArticleTag'))))
       reject('LOC ArticleTag is fixed and cannot be configured',403);
-    if(!await canManageLoc(trx,'global'))reject('Global management permission required',403);
+    if(!await canLocAccess(trx,'global'))reject('Global management permission required',403);
     return;
   }
   if(table==='lrunes_daily'){
-    if(!await canManageLoc(trx,'scope','lrunes'))
+    if(!await canLocAccess(trx,'scope','lrunes'))
       reject('Daily Rune management permission required',403);
     return;
   }
   // LOC text frames are no longer a managed physical Blocks table.
   if(table==='loc_blocks')reject('LOC Blocks have moved to loc_anchor; use save_blocks',400);
   const scope=scopeFromTable(table);
-  if(!/^[a-z][a-z0-9]{0,14}$/.test(scope)||!await canManageLoc(trx,'scope',scope))
+  if(!/^[a-z][a-z0-9]{0,14}$/.test(scope)||!await canLocAccess(trx,'scope',scope))
     reject('Scope management permission required',403);
   // Verify the dynamic registry mapping before escalating to the trusted
   // server connection. Caller input can never pick an arbitrary table.
@@ -291,7 +291,7 @@ async function bulkUpdateGalaxyFlags(trx,args){
     reject('Bulk update requires explicit Galaxy Boolean values');
   if(['mcp','github'].includes(site)&&Object.values(flags).some(Boolean))
     reject('Private MCP and GitHub sources cannot be publicly enabled',403);
-  if(!await canManageLoc(trx,'scope',scope))reject('Scope management permission required',403);
+  if(!await canLocAccess(trx,'scope',scope))reject('Scope management permission required',403);
   // Reuse the Scope Registry. Do not trust user-supplied SQL relation names.
   const registry=await trx.selectFrom('api.manage').select(['manage_role','galaxy_table'])
     .where('id','=',scope).executeTakeFirst();
@@ -338,7 +338,7 @@ const ACTIONS=new Set(['read_group_members','update_group_member_name',
   'move_scope_block',
   'preview_or_fill_galaxy_place','batch_fill_galaxy_location',
   'rename_scope_site_batch','save_scope_trace_place_names','save_blocks','loc_admin_settings',
-  'refresh_scope_search_summary','merge_scope_trace_place_names','import_shared_keyword_class','manage','find_galaxy_duplicates','read_scope_registry_admin','bulk_update_galaxy_able',
+  'refresh_scope_search_summary','merge_scope_trace_place_names','import_shared_keyword_class','loc_access','find_galaxy_duplicates','read_scope_registry_admin','bulk_update_galaxy_able',
   'sync_search_patterns','suggest_search_patterns','keyword_pattern_statistics']);
 function validScope(value){
   const id=String(value||'').trim().toLowerCase();
@@ -354,7 +354,7 @@ function validUid(value){
 
 async function keywordPatternStatistics(trx,args){
   const scope=validScope(args.p_scope_id),classUid=validUid(args.p_class_uid);
-  const owner=await canManageLoc(trx,'scope',scope);
+  const owner=await canLocAccess(trx,'scope',scope);
   await sql`reset role`.execute(trx);
   const config=await trx.selectFrom('silver.'+scope)
     .select('keyword_meta').where('id','=',scope).executeTakeFirst();
@@ -439,7 +439,7 @@ async function suggestSearchPatterns(trx,args){
      query.length>120)reject('Invalid search-pattern request');
   const granted=[];
   for(const id of new Set(requested))
-    if(await canManageLoc(trx,'scope',id))granted.push(id);
+    if(await canLocAccess(trx,'scope',id))granted.push(id);
   if(!granted.length)reject('No authorized Pattern Scope',403);
   await sql`reset role`.execute(trx);
   const found=new Map();
@@ -496,7 +496,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     bulk_update_galaxy_able:['p_scope_id','p_site','p_flags','p_apply','p_expected_count','p_batch_size'],
     merge_scope_trace_place_names:['p_scope_id','p_keep_uid','p_remove_uids'],
     import_shared_keyword_class:['p_target_scope','p_source_scope','p_class_uid'],
-    manage:['p_type','p_id'],
+    loc_access:['p_type','p_id'],
     find_galaxy_duplicates:['p_scope_id'],
     read_scope_registry_admin:[],
     sync_search_patterns:['p_scope_id','p_class_uid','p_patterns','p_final'],
@@ -511,13 +511,13 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     const scope=validScope(args.p_scope_id);
     const page=String(args.p_type||'').trim();
     const authType=scope==='loc'&&page!=='index'?'global':'scope';
-    if(!await canManageLoc(trx,authType,scope))reject('Block write permission denied',403);
+    if(!await canLocAccess(trx,authType,scope))reject('Block write permission denied',403);
     // One verification for the entire page, followed by a transactional batch.
     await sql`reset role`.execute(trx);
     return {data:await saveBlocksKysely(trx,args),count:null};
   }
   if(name==='read_scope_registry_admin'){
-    if(!await canManageLoc(trx,'global'))reject('Global administrator required',403);
+    if(!await canLocAccess(trx,'global'))reject('Global administrator required',403);
     await sql`reset role`.execute(trx);
     const rows=await zmodelRegistryJoin(trx,{optionalLoc:true})
       .select(['m.id as id','l.display_name as display_name','m.email as email',
@@ -531,13 +531,13 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
   }
   if(name==='bulk_update_galaxy_able')return {data:await bulkUpdateGalaxyFlags(trx,args),count:null};
   if(name==='find_galaxy_duplicates')return {data:await findGalaxyDuplicates(trx,args),count:null};
-  if(name==='manage'){
+  if(name==='loc_access'){
     const type=String(args.p_type||'').toLowerCase();
     if(!['self','global','group','scope'].includes(type))reject('Invalid management type');
     const id=type==='self'?null:args.p_id??null;
     if(['group','scope'].includes(type)&&!/^[a-z][a-z0-9]{0,14}$/.test(String(id||'')))
       reject('Invalid management Scope');
-    return {data:await locManageRows(trx,type,id),count:null};
+    return {data:await locAccessRows(trx,type,id),count:null};
   }
   if(name==='merge_scope_trace_place_names')return {data:await mergeScopePoints(trx,args),count:null};
   if(name==='import_shared_keyword_class')return {data:await importSharedKeywordClass(trx,args),count:null};
@@ -549,7 +549,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
   if(name==='save_scope_trace_place_names')return {data:await saveScopePointAliases(trx,args),count:null};
   if(name==='read_group_members'){
     const group=validScope(args.p_group_id);
-    if(!await canManageLoc(trx,'group',group))reject('Group management permission required',403);
+    if(!await canLocAccess(trx,'group',group))reject('Group management permission required',403);
     await sql`reset role`.execute(trx);
     const rows=await zmodelRegistryJoin(trx)
       .select(['m.id as id','l.display_name as display_name',
@@ -564,7 +564,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     const member=validScope(args.p_member_id);
     const title=String(args.p_display_name||'').trim();
     if(!title||title.length>120)reject('Group member name must contain 1–120 characters');
-    if(!await canManageLoc(trx,'group',group))reject('Group management permission required',403);
+    if(!await canLocAccess(trx,'group',group))reject('Group management permission required',403);
     await sql`reset role`.execute(trx);
     const parent=await trx.selectFrom('api.manage').select('id')
       .where('id','=',member).where('parent_scope_id','=',group)
@@ -590,8 +590,8 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
   if(!page||page.length>80||![-1,1].includes(direction))
     reject('Invalid block move');
   const authorized=scope==='loc'
-    ?(await canManageLoc(trx,'global')||(page==='index'&&await canManageLoc(trx,'group','loc')))
-    :await canManageLoc(trx,'scope',scope);
+    ?(await canLocAccess(trx,'global')||(page==='index'&&await canLocAccess(trx,'group','loc')))
+    :await canLocAccess(trx,'scope',scope);
   if(!authorized)reject('Block management permission required',403);
   await sql`reset role`.execute(trx);
   const loc=scope==='loc';
@@ -618,7 +618,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
 
 async function scopedWrite(trx,input){
   const scope=validScope(input);
-  if(!await canManageLoc(trx,'scope',scope))reject('Scope write permission required',403);
+  if(!await canLocAccess(trx,'scope',scope))reject('Scope write permission required',403);
   const registry=await trx.selectFrom('api.manage').select(['id','manage_role','active'])
     .where('id','=',scope).executeTakeFirst();
   if(!registry||!['scope','admin'].includes(registry.manage_role)||registry.active!==true)
@@ -734,7 +734,7 @@ function catalogObject(value){
   return value&&typeof value==='object'&&!Array.isArray(value);
 }
 async function managedLocSettings(trx,args,claims){
-  if(!await canManageLoc(trx,'global'))reject('Global administrator required',403);
+  if(!await canLocAccess(trx,'global'))reject('Global administrator required',403);
   const section=String(args.p_section||'');
   const operation=String(args.p_operation||'read');
   const key=String(args.p_key??'').trim();

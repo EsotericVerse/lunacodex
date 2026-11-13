@@ -58,10 +58,10 @@ export default function TraceRouteManager({scopeId,mode='all'}){
   const [showMap,setShowMap]=useState(false);
   const [savedReceipt,setSavedReceipt]=useState(null);
   const openedFromUrl=useRef('');
-  const own=owner!=='loc'&&account.canManageScopeSync(owner);
+  const own=owner!=='loc'&&account.canLocAccessSync('scope',owner);
   // A LOC Group manager can inspect member maps, but edits still require
   // permission on the actual owner Scope.
-  const canRead=own||(scopeId==='loc'&&account.canManageGroupSync('loc'));
+  const canRead=own||(scopeId==='loc'&&account.canLocAccessSync('group','loc'));
   const index=useAsyncResource({
     queryKey:traceMapIndexKey(owner,{includeHidden:own}),
     enabled:TRACE_SCOPES.includes(owner)&&canRead,

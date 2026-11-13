@@ -42,14 +42,14 @@ export default function ScopeSettingsPanel({scopeId}){
   },[scopeId]);
 
   useEffect(()=>{
-    if(!editDock?.active||editDock.scopeId!==scopeId||!account.canManageScopeSync(scopeId))return undefined;
+    if(!editDock?.active||editDock.scopeId!==scopeId||!account.canLocAccessSync('scope',scopeId))return undefined;
     return editDock.register({
       save:()=>dockActions.current.save(),
       isDirty:()=>dockActions.current.isDirty(),
       isBusy:()=>dockActions.current.isBusy()
     });
   },[editDock?.active,editDock?.scopeId,editDock?.register,scopeId,account.role]);
-  if(!account.canManageScopeSync(scopeId))return null;
+  if(!account.canLocAccessSync('scope',scopeId))return null;
   const table=account.scopeDataFor(scopeId)?.config;
   const change=(key,value)=>setDraft(current=>({...current,[key]:value}));
 

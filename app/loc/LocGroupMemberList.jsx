@@ -17,7 +17,7 @@ export default function LocGroupMemberList({groupId='loc'}){
   const inDock=Boolean(dock?.active&&dock.scopeId===groupId);
   const queryClient=useQueryClient();
   const allowed=Boolean(account.user&&!account.loading&&!account.permissionLoading&&
-    account.canManageGroupSync(groupId));
+    account.canLocAccessSync('group',groupId));
   const [draft,setDraft]=useState({});
   const [busy,setBusy]=useState(false);
   const [notice,setNotice]=useState('');
