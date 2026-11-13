@@ -7,6 +7,7 @@ import {publicNumericSources} from '../app/api/loc/_server.js';
 import {readPublishedBootstrap} from '../app/api/loc/_numeric-failover.mjs';
 import {THEME_TOKEN_KEYS} from '../app/modular/theme-registry.js';
 import {scopeConfigColumns} from '../app/loc/scope-config-fields.mjs';
+import {isLocBlockPage,locAnchorToBlock} from '../app/loc/loc-block-anchor.mjs';
 import {publishPublicFiles} from './publish-public-files.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -38,10 +39,14 @@ for(const row of routes){
   const pageSize=1000;
   for(let start=0;start<65535;start+=pageSize){
     const end=Math.min(65534,start+pageSize-1);
-    const {data:page,error:blocksError}=await db.from(id+'_blocks')
-      .select(cols).order('block_order').order('uid').range(start,end);
+    const loc=id==='loc';
+    const {data:page,error:blocksError}=await db.from(loc?'loc_anchor':id+'_blocks')
+      .select(loc?'uid,type,title,description,invisible,attr,num':cols)
+      .order(loc?'num':'block_order').order('uid').range(start,end);
     if(blocksError)throw Error('Blocks unavailable for '+id+': '+blocksError.message);
-    blocks.push(...(page||[]));
+    blocks.push(...(loc?(page||[])
+      .filter(row=>isLocBlockPage(row.type)&&row.invisible===false)
+      .map(locAnchorToBlock):(page||[])));
     if(!page||page.length<end-start+1)break;
   }
   for(const block of blocks){
