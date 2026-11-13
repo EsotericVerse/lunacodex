@@ -99,7 +99,7 @@ export default function DailyLogClient({embedded=false}={}){
     direction:'正位'
   }));
   const {year,month}=monthParts(monthValue);
-  const canWrite=native||(canViewDetails&&managementAccount.canManageScopeSync('lrunes'));
+  const canWrite=native||(canViewDetails&&managementAccount.canLocAccessSync('scope','lrunes'));
   // Calendar dates remain public in the UI; no rune data is queried without login.
   const visibleRows=canViewDetails?rows:EMPTY_ROWS;
   // Settings and the standalone log must share identical editing permissions.

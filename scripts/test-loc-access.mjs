@@ -5,6 +5,8 @@ import {loc_access,hasLocAccess,LOC_OWNER_EMAIL}
   from '../app/loc/permissions/loc_access.mjs';
 import {bindLocAuthorization,canLocAccess}
   from '../app/loc/providers/loc-authorization.mjs';
+import {setAuthorization,clearAuthorization,canAuthorizeLocAccess,createScopeAuthorizer}
+  from '../app/loc/authorization-runtime.mjs';
 
 const owner=LOC_OWNER_EMAIL;
 const admin={id:'admin',email:owner,manage_role:'admin',active:false};
@@ -55,4 +57,22 @@ bindLocAuthorization(fakeDb,{role:'authenticated',claims:{
 assert.equal(canLocAccess(fakeDb,'group','loc'),true);
 assert.equal(canLocAccess(fakeDb,'global'),false);
 
-console.log('loc_access ZModel roles, virtual Admin, Group/Scope and MCP isolation: OK');
+// Browser checks reuse a single verified role snapshot without SQL or Auth calls.
+const browserUser={id:'local_test_user',email:owner};
+setAuthorization(browserUser,[
+  {id:'loc',email:owner,role:'group'},
+  {id:'lo3rwang',email:owner,role:'scope'}
+]);
+assert.equal(canAuthorizeLocAccess('global'),false);
+assert.equal(canAuthorizeLocAccess('group','loc'),true);
+assert.equal(canAuthorizeLocAccess('scope','loc'),true);
+assert.equal(canAuthorizeLocAccess('group','lo3rwang'),false);
+assert.equal(canAuthorizeLocAccess('scope','lo3rwang'),true);
+assert.equal(canAuthorizeLocAccess('scope','lrunes'),false);
+const browserAuthorizer=createScopeAuthorizer(browserUser);
+assert.equal(typeof browserAuthorizer.canLocAccessSync,'function');
+assert.equal(Object.keys(browserAuthorizer).some(key=>key.startsWith('canManage')),false);
+clearAuthorization();
+assert.equal(canAuthorizeLocAccess('scope','loc'),false);
+
+console.log('loc_access ZModel roles, browser single predicate and MCP isolation: OK');
