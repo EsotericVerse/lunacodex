@@ -71,10 +71,8 @@ assert.equal(canLocAccess(fakeDb,'global'),false);
 
 // Browser checks reuse a single verified role snapshot without SQL or Auth calls.
 const browserUser={id:'local_test_user',email:owner};
-setAuthorization(browserUser,[
-  {id:'loc',email:owner,role:'group'},
-  {id:'lo3rwang',email:owner,role:'scope'}
-]);
+// Browser now consumes the exact server loc_access ZModel grant projection.
+setAuthorization(browserUser,{roles:mcp.roles,grants:mcp.grants});
 assert.equal(canAuthorizeLocAccess('global'),false);
 assert.equal(canAuthorizeLocAccess('group','loc'),true);
 assert.equal(canAuthorizeLocAccess('scope','loc'),true);
