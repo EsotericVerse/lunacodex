@@ -177,40 +177,6 @@ function toResult(row,source,scopeId,copy=UI_COPY){
 }
 
 
-// Only after a real search, and only for current-page article IDs.
-async function loadPageSearchExcerpts(rows,query,scopeById,{authenticated=false,signal}={}){
-  if(!String(query||'').trim())return new Map();
-  const groups=new Map();
-  for(const row of rows){
-    if(row.resourceType!=='galaxy'||!row.resourceId||
-      row.search===false||row.extract===false)continue;
-    if(!groups.has(row.scopeId))groups.set(row.scopeId,new Set());
-    groups.get(row.scopeId).add(row.resourceId);
-  }
-  const snippets=new Map();
-  for(const [scopeId,ids] of groups){
-    if(signal?.aborted)break;
-    const scope=scopeById.get(scopeId);
-    if(!scope?.galaxy)continue;
-    try{
-      const {rows:articles=[]}=await selectRows(scope.galaxy,{
-        // Search excerpts are exact-UID detail reads, not a second list
-        // projection. Keep the same GalaxyUidRead + GalaxyAttr contract.
-        columns:scopeId==='local'?'uid,content,able':galaxyReadColumnsFor('GalaxyUidRead','GalaxyAttr').join(','),
-        filters:[{column:'uid',operator:'in',value:[...ids]}],
-        limit:ids.size,authenticated,signal
-      });
-      for(const article of articles){
-        if(galaxyAble(article).search===false||galaxyAble(article).extract===false)continue;
-        const excerpt=extractSearchContext(article.content,query,10);
-        if(excerpt)snippets.set(scopeId+':'+article.uid,excerpt);
-      }
-    }catch{
-      if(signal?.aborted)break;
-    }
-  }
-  return snippets;
-}
 function uniqueExternalLinks(links=[]){
   const byHref=new Map();
   for(const link of links){
