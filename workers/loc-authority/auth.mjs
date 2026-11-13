@@ -64,6 +64,16 @@ const AuthEnvironmentSchema=z.object({
   namespace:z.literal('public')
 });
 
+// Google stays configured alongside Cloudflare Access only while the single
+// existing LOC identity is still bound to its Google account. It is optional:
+// once the Cloudflare account is attached, removing the two Google variables
+// disables that button without a code change or a 503.
+export function googleSocialConfig(env={}){
+  const clientId=String(env?.LOC_GOOGLE_CLIENT_ID||env?.GOOGLE_CLIENT_ID||'').trim();
+  const clientSecret=String(env?.LOC_GOOGLE_CLIENT_SECRET||env?.GOOGLE_CLIENT_SECRET||'').trim();
+  return clientId&&clientSecret?{clientId,clientSecret}:null;
+}
+
 export function cloudflareSsoConfig(env={}){
   return {
     issuer:String(env.LOC_CLOUDFLARE_SSO_ISSUER||env.CLOUDFLARE_SSO_ISSUER||'').trim(),
@@ -169,9 +179,22 @@ export function createLocAuth(env){
     session:{modelName:RAINBOW_MODEL_NAMES.session,
       expiresIn:30*86400,updateAge:86400,storeSessionInDatabase:true,
       cookieCache:locAuthSessionCache(env)},
-    account:{modelName:RAINBOW_MODEL_NAMES.account,accountLinking:{enabled:false}},
+    // One LOC identity per verified email address. Linking must be enabled or
+    // Better Auth refuses outright (oauth2/link-account.mjs: a false
+    // `accountLinking.enabled` alone rejects the link), which would strand the
+    // existing owner account on its original provider and leave nobody able to
+    // administer Auth. Different email addresses are still never merged.
+    account:{modelName:RAINBOW_MODEL_NAMES.account,
+      accountLinking:{enabled:true,allowDifferentEmails:false,
+        trustedProviders:['cloudflare-access','google']}},
     verification:{modelName:RAINBOW_MODEL_NAMES.verification},
     emailAndPassword:{enabled:false},
+    // Cloudflare Access is the intended upstream provider. Google remains
+    // available as the recovery path for the already-registered owner account
+    // and disappears on its own when its credentials are removed.
+    ...(googleSocialConfig(env)?{socialProviders:{google:{
+      ...googleSocialConfig(env),disableIdTokenSignIn:true
+    }}}:{}),
     disabledPaths:['/token'],
     // Karaul owns all LOC Auth QoS policy; Better Auth enforces its decision.
     rateLimit:authKaraulRatePolicy,
@@ -236,6 +259,12 @@ export function createLocAuth(env){
       sso({
         providersLimit:0,
         trustEmailVerified:true,
+        // "No open registration" means a stranger who can authenticate at the
+        // upstream provider still does not become a LOC identity: approval
+        // stays a LOC Web decision. It does NOT mean refusing to attach a new
+        // provider to an account that already exists, which is why account
+        // linking above is enabled. Collapsing the two locks out the owner.
+        disableImplicitSignUp:true,
         defaultSSO:[{
           providerId:'cloudflare-access',domain:'cloudflare-access',
           oidcConfig:{
