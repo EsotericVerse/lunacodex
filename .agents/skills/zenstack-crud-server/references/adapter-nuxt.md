@@ -1,1 +1,0 @@
-../../../references/reference/server-adapters/nuxt.md

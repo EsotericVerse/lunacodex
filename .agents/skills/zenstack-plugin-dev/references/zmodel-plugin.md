@@ -1,1 +1,0 @@
-../../../references/modeling/plugin.md

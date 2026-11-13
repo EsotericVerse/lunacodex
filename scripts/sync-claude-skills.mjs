@@ -1,88 +1,49 @@
 #!/usr/bin/env node
-// Mirrors .agents/skills into .claude/skills as real files.
-//
-// Why real files and not a link: Claude Code's skill discovery does not
-// traverse a symlinked .claude/skills. Measured on 2026-11-13 — with
-// .claude/skills symlinked to .agents/skills (92 skills on disk), only
-// the 54 that had previously existed as real directories under
-// .claude/skills were registered. Nothing behind the link was ever
-// discovered. A Windows junction may behave differently, but nothing
-// here should depend on that.
-//
-// Source of truth is .agents/skills — the only copy in version control.
-// .claude/skills is gitignored and regenerated, so the two cannot drift.
-//
-// Runs from the `prepare` script on npm install. Must never fail an
-// install: anything unexpected is a warning and exit 0.
+// LOC: .agents/skills holds only selected top-level skills.
+// .claude/skills is an ignored discovery mirror; obsolete skill directories
+// and symlinks must be removed. Detail topics live in .agents/SKILL-LINKS.md.
+// Claude's discovery previously failed to traverse a linked parent folder,
+// so keep this top-level mirror as real directories for reliable discovery.
+// Runs during npm prepare; never scans or installs module-specific skills.
 
-import {cpSync, existsSync, lstatSync, mkdirSync, readdirSync, rmSync, statSync} from 'node:fs';
+import {cpSync, existsSync, lstatSync, mkdirSync, readdirSync, rmSync} from 'node:fs';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const source = join(repoRoot, '.agents', 'skills');
-const dest = join(repoRoot, '.claude', 'skills');
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const source = join(root, '.agents', 'skills');
+const dest = join(root, '.claude', 'skills');
 
-function warn(message) {
-  console.warn(`sync-claude-skills: ${message}`);
-  process.exit(0);
+function stat(path) {
+  try { return lstatSync(path); } catch { return null; }
 }
 
 if (!existsSync(source)) {
-  warn('.agents/skills is missing; nothing to mirror.');
+  console.warn('sync-claude-skills: source missing; skip');
+  process.exit(0);
 }
 
-// Clear whatever is sitting at .claude/skills if it is not a plain
-// directory — a symlink or junction from the previous design, or the
-// text file a symlink becomes when git checks it out without symlink
-// support on Windows.
-let destStat = null;
 try {
-  destStat = lstatSync(dest);
-} catch {}
-
-if (destStat && !destStat.isDirectory()) {
-  rmSync(dest, {force: true});
-  destStat = null;
-} else if (destStat && destStat.isSymbolicLink()) {
-  rmSync(dest, {force: true});
-  destStat = null;
-}
-
-mkdirSync(dest, {recursive: true});
-
-// Copy everything, then drop anything in dest that is no longer in
-// source, so a skill removed upstream does not linger here.
-try {
-  cpSync(source, dest, {recursive: true, force: true});
-} catch (error) {
-  warn(`copy failed (${error.code || error.message}); .claude/skills may be incomplete.`);
-}
-
-let pruned = 0;
-function prune(relative) {
-  const from = join(source, relative);
-  const to = join(dest, relative);
-  for (const entry of readdirSync(to)) {
-    const childRelative = join(relative, entry);
-    if (!existsSync(join(from, entry))) {
-      rmSync(join(to, entry), {recursive: true, force: true});
-      pruned += 1;
-    } else if (statSync(join(to, entry)).isDirectory()) {
-      prune(childRelative);
-    }
+  const existing = stat(dest);
+  if (existing && (!existing.isDirectory() || existing.isSymbolicLink())) {
+    // Unlink only the old alias; never traverse and delete its target.
+    rmSync(dest, {recursive: true, force: true});
   }
-}
+  mkdirSync(dest, {recursive: true});
 
-try {
-  prune('');
+  const wanted = readdirSync(source, {withFileTypes: true})
+    .filter(entry => entry.isDirectory() && existsSync(join(source, entry.name, 'SKILL.md')))
+    .map(entry => entry.name);
+
+  // Remove all previous entries (including stale aliases) before mirroring.
+  for (const name of readdirSync(dest)) {
+    rmSync(join(dest, name), {recursive: true, force: true});
+  }
+  for (const name of wanted) {
+    cpSync(join(source, name), join(dest, name), {recursive: true, force: true, dereference: false});
+  }
+  console.log('sync-claude-skills: mirrored ' + wanted.length + ' top-level skills');
 } catch (error) {
-  warn(`prune failed (${error.code || error.message}); .claude/skills may hold stale files.`);
+  console.warn('sync-claude-skills: ' + String(error?.message || error));
+  // The skill mirror must not block npm install.
 }
-
-const count = readdirSync(dest).length;
-console.log(
-  `sync-claude-skills: .agents/skills -> .claude/skills (${count} skills` +
-    (pruned ? `, ${pruned} stale entries removed` : '') +
-    ')',
-);

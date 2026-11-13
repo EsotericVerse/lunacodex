@@ -1,1 +1,0 @@
-../../../references/orm/cli.md

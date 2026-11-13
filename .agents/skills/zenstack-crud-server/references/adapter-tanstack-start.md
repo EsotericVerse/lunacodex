@@ -1,1 +1,0 @@
-../../../references/reference/server-adapters/tanstack-start.md

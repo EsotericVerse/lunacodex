@@ -1,1 +1,0 @@
-../../../references/orm/inferred-types.md
