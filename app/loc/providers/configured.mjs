@@ -5,7 +5,7 @@ import {createLocAccountAdapter} from '../auth/loc-browser.mjs';
 import {createKyselyPublicClient} from './kysely-browser.mjs';
 
 const AUTH='https://auth.lo3rwang.cc';
-const PERSONAL=new Set(['api.loc_user','api.user_settings','api.user_records']);
+const PERSONAL=new Set(['silver.loc_user']);
 function errorFromResponse(result,response){
   const error=new Error(result?.error?.message||
     'LOC data operation failed (HTTP '+response.status+')');
