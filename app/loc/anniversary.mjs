@@ -11,7 +11,7 @@ const parseDay=value=>{
     return null;
   return {day,year,month,date,monthDay:day.slice(5)};
 };
-export function createAnniversaryLookup(anchors=[],{birthday=''}={}){
+function createAnniversaryLookup(anchors=[],{birthday=''}={}){
   const exactDays=new Set(),byMonthDay=new Map();
   for(const item of Array.isArray(anchors)?anchors:[]){
     if(item?.type!=='anchor'&&item?.entry_type!=='anchor')continue;

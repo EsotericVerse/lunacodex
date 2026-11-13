@@ -17,7 +17,7 @@ export function importTimeRangeWindow(range='year',now=new Date()){
   return {start:start.toISOString(),end:end.toISOString()};
 }
 
-export function importWithinTimeRange(row,window){
+function importWithinTimeRange(row,window){
   if(!window)return true;
   const timestamp=Date.parse(String(row?.createtime??''));
   return Number.isFinite(timestamp)&&timestamp>=Date.parse(window.start)&&

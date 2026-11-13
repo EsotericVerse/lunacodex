@@ -1,4 +1,4 @@
-export const OFFICIAL_SOURCE_LABELS=Object.freeze({facebook:'Facebook',threads:'Threads',instagram:'Instagram'});
+const OFFICIAL_SOURCE_LABELS=Object.freeze({facebook:'Facebook',threads:'Threads',instagram:'Instagram'});
 export function canonicalImportSourceName(value,system=[],personal=[]){
   const name=String(value||'').trim();
   if(!name)return '';

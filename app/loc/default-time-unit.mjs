@@ -1,8 +1,8 @@
 // A display preference, not a database, URL, permission or date mutation.
-export const DEFAULT_TIME_UNIT_KEY='loc-default-time-unit-v1';
+const DEFAULT_TIME_UNIT_KEY='loc-default-time-unit-v1';
 export const DEFAULT_TIME_UNIT_CHANGED='loc-default-time-unit-changed';
 export const DEFAULT_TIME_UNITS=Object.freeze(['auto','day','week','month','year']);
-export function normalizeDefaultTimeUnit(value){
+function normalizeDefaultTimeUnit(value){
   return DEFAULT_TIME_UNITS.includes(value)?value:'auto';
 }
 export function readDefaultTimeUnit(){
