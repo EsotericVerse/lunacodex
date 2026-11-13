@@ -449,19 +449,19 @@ model Loc {
 
 }
 
-model LocBlocks {
-    block_title                  String      @db.VarChar(64) @default(dbgenerated())
-    block_text                   String      @db.Text @default(dbgenerated())
-    block_order                  Int         @db.Integer
-    uid                          String      @id @db.Char(8)
-    page_name                    String      @db.Text
-    block_entity                 Json        @db.JsonB @default(dbgenerated())
-    block_eyebrow                String      @db.VarChar(64) @default(dbgenerated())
-    block_subtitle               String      @db.VarChar(128) @default(dbgenerated())
-    block_image                  String?     @db.Text
-    @@allow('read', true)
-    @@map("loc_blocks")
-    @@schema("silver")
+// Semantic ZModel projection; LOC Blocks are stored in LocAnchor, not a second table.
+// uid=uid, page_name=type, block_title=title, block_text=description,
+// block_order=num, remaining fields live in attr (uidlist/eyebrow/subtitle/image).
+type LocBlocks {
+    uid String
+    page_name String
+    block_title String
+    block_text String
+    block_order Int
+    block_entity Json
+    block_eyebrow String
+    block_subtitle String
+    block_image String?
 }
 
 model Lrunes {
