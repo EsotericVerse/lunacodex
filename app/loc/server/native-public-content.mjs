@@ -14,7 +14,6 @@ import {block_list,hero_block} from '../providers/kysely-public.mjs';
 import {ZenStackClient} from '@zenstackhq/orm';
 import {PolicyPlugin} from '@zenstackhq/plugin-policy';
 
-const FEATURES=new Set(['culture','statics','trace','search']);
 const HEADERS={'content-type':'application/json; charset=utf-8',
   'cache-control':'no-store','x-content-type-options':'nosniff'};
 const BLOCK_FIELDS=['uid','page_name','block_eyebrow','block_title','block_subtitle',
