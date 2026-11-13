@@ -781,7 +781,8 @@ async function managedLocSettings(trx,args,claims){
   let updated=[],column='keywords',returnValue;
   if(section==='theme'){
     if(operation!=='upsert'||!/^[1-8]$/.test(key)||!catalogObject(value)||
-       value.theme_id!==key||!['dark','light'].includes(value.scheme)||
+       !Number.isInteger(value.theme_id)||value.theme_id!==Number(key)||
+       !['dark','light'].includes(value.scheme)||
        !String(value.theme_name||'').trim())reject('Invalid Theme update');
     const previous=saved.find(item=>String(item?.theme_id)===key);
     if(!previous||saved.length!==8||!catalogObject(previous))reject('Theme slot missing');
