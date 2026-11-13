@@ -451,7 +451,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   const [source,setSource]=useState('');
   const [timeRange,setTimeRange]=useState('year');
   const timeWindow=useMemo(()=>importTimeRangeWindow(timeRange),[timeRange,fileName]);
-  const sourceCategoriesEnabled=!nativeLocal&&Boolean(account.user)&&account.canManageScopeSync(scopeId);
+  const sourceCategoriesEnabled=!nativeLocal&&Boolean(account.user)&&account.canLocAccessSync('scope',scopeId);
   const sourceCategoriesSystemRow=useScopeSourceCategoryRow('loc',{enabled:sourceCategoriesEnabled});
 
   const sourceCategories={
@@ -527,7 +527,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       !timeWindow||(time>=timeWindow.start&&time<=timeWindow.end))
   })).filter(place=>place.__importPlaceName&&
     (!timeWindow||place.__importVisitTimes.length>0)),[geoPlaceCandidates,timeWindow]);
-  if(!nativeLocal&&!account.canManageScopeSync(scopeId))return null;
+  if(!nativeLocal&&!account.canLocAccessSync('scope',scopeId))return null;
 
   // Refresh the persisted Search snapshot only after a completed import or
   // an explicit manager click. It is never a dependency of importing rows.

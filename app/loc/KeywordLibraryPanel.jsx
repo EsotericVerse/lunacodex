@@ -37,7 +37,7 @@ function classOf(tree,uid){
 export default function KeywordLibraryPanel({scopeId,account}){
   const scope=account.scopeDataFor(scopeId),table=scope?.keywords||'';
   const configTable=scope?.config||'';
-  const canEdit=account.canManageScopeSync(scopeId)&&Boolean(table&&configTable);
+  const canEdit=account.canLocAccessSync('scope',scopeId)&&Boolean(table&&configTable);
   const dock=useEditDock(),dockActions=useRef(null);
   const inDock=Boolean(dock?.active&&dock.scopeId===scopeId);
   const queryClient=useQueryClient();

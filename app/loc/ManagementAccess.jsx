@@ -8,9 +8,9 @@ import {dbAuthEvents} from './db-client.mjs';
 import {verifyManagementEntry} from './auth/management-entry-verification.mjs';
 
 const granted=(grants,id,level)=>level==='global'
-  ?Boolean(grants?.canManageGlobalSync())
-  :level==='group'?Boolean(grants?.canManageGroupSync(id))
-  :Boolean(grants?.canManageScopeSync(id));
+  ?Boolean(grants?.canLocAccessSync('global'))
+  :level==='group'?Boolean(grants?.canLocAccessSync('group',id))
+  :Boolean(grants?.canLocAccessSync('scope',id));
 const pending=()=>({loading:true,user:null,authorizer:null,error:''});
 
 // Each protected management entry verifies Scope permission before rendering
@@ -78,7 +78,7 @@ export default function ManagementAccess({scopeId,level='scope',featureId='manag
     if(!allowed||entered)return;
     if(editorSessionStatus(window.sessionStorage).expired){setLocked(true);return;}
     setLocked(false);
-    dock?.begin(scopeId,{globalManage:Boolean(verification.authorizer?.canManageGlobalSync())});
+    dock?.begin(scopeId,{globalManage:Boolean(verification.authorizer?.canLocAccessSync('global'))});
   },[allowed,entered,scopeId,dock?.begin,verification.authorizer]);
 
   if(ready&&(!allowed||locked))return <FeaturePage featureId={featureId}>

@@ -42,7 +42,7 @@ export default function SunoImportPanel({scopeId,dockScopeId=scopeId,globalAdmin
     return unregister;
   },[inDock,editDock?.register]);
   if(account.loading||account.permissionLoading)return <p className="scope-status" role="status">正在確認 Suno 管理權限…</p>;
-  if(!account.canManageScopeSync(scopeId)&&!(globalAdmin&&account.canManageGlobalSync()))
+  if(!account.canLocAccessSync('scope',scopeId)&&!(globalAdmin&&account.canLocAccessSync('global')))
     return <p className="scope-status scope-error" role="alert">目前沒有 Suno 音樂寫入權限。</p>;
   const change=(key,value)=>setDraft(current=>({
     ...current,[key]:value,

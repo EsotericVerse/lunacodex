@@ -15,7 +15,7 @@ const ManagementImportPanel=dynamic(()=>import('./ManagementImportPanel'),{loadi
 export default function ManagementContentTarget({scopeId,mode='import',globalAdmin=false}){
   const account=useAccount();
   const targetScopeId=globalAdmin&&scopeId==='loc'?DEFAULT_MANAGED_SCOPE_ID:scopeId;
-  const allowed=Boolean(targetScopeId&&(account.canManageScopeSync(targetScopeId)||(globalAdmin&&account.canManageGlobalSync())));
+  const allowed=Boolean(targetScopeId&&(account.canLocAccessSync('scope',targetScopeId)||(globalAdmin&&account.canLocAccessSync('global'))));
   const scopeData=allowed?(account.scopeDataFor(targetScopeId)||defaultScopeData(targetScopeId)):null;
   const table=mode==='media'?scopeData?.galaxyMedia:scopeData?.galaxy;
   return <section className="loc-card admin-workspace">

@@ -78,7 +78,7 @@ export default function ManagementArticlePublisher({scopeId}){
     return unregister;
   },[inDock,editDock?.register]);
 
-  if(!scopeId||!account.canManageScopeSync(scopeId))return null;
+  if(!scopeId||!account.canLocAccessSync('scope',scopeId))return null;
   const change=(key,value)=>setDraft(current=>({...current,[key]:value}));
   const isDirty=()=>{
     if(editingUid&&loadedBaseline.current){

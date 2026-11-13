@@ -51,7 +51,7 @@ export default function ManagementMediaPublisher({scopeId,dockScopeId=scopeId,gl
     });
   },[inDock,editDock?.register]);
   if(account.loading||account.permissionLoading)return <p className="scope-status" role="status">正在確認多媒體管理權限…</p>;
-  if(!account.canManageScopeSync(scopeId)&&!(globalAdmin&&account.canManageGlobalSync()))
+  if(!account.canLocAccessSync('scope',scopeId)&&!(globalAdmin&&account.canLocAccessSync('global')))
     return <p className="scope-status scope-error" role="alert">目前沒有多媒體寫入權限。</p>;
 
   const change=(key,value)=>setDraft(current=>({...current,[key]:value}));

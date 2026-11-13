@@ -1159,7 +1159,7 @@ export default function Culture(){
       // Only this explicitly requested bulk write needs the extra foreground
       // authorization check. The database RPC remains the final guard.
       const verified=await account.refresh();
-      if(!verified?.authorizer?.canManageScopeSync(scopeId))throw new Error('請先登入具備此 Scope 權限的帳號。');
+      if(!verified?.authorizer?.canLocAccessSync('scope',scopeId))throw new Error('請先登入具備此 Scope 權限的帳號。');
       const used=new Set((query.data?.timelineItems||[]).filter(row=>row?.entry_type==='anchor').map(row=>String(row.uid||'')));
       const payload=dates.map(date=>{
         const uid=allocateTimeUid([...used].map(uid=>({uid})));
@@ -1183,7 +1183,7 @@ export default function Culture(){
       // Editing is offered to every reader, but only an authorized Scope
       // editor may load an editable draft after clicking the button.
       const verified=await account.refresh();
-      if(!verified?.authorizer?.canManageScopeSync(scopeId))throw new Error('請先登入具有此 Scope 編輯權限的帳號。');
+      if(!verified?.authorizer?.canLocAccessSync('scope',scopeId))throw new Error('請先登入具有此 Scope 編輯權限的帳號。');
       setAuthorizedWorkKey(key);
       if(!scopeData)throw new Error(l.sourceUnresolved);
       const {rows=[]}=await selectRows(scopeData.galaxy,{
@@ -1292,7 +1292,7 @@ export default function Culture(){
   if(isTimeEditingView){
     const editorAvailable=Boolean(scopeId&&scopeId!=='loc');
     const permissionPending=account.loading||account.permissionLoading;
-    const editorAuthorized=Boolean(account.user&&account.canManageScopeSync(scopeId));
+    const editorAuthorized=Boolean(account.user&&account.canLocAccessSync('scope',scopeId));
     return <FeaturePage featureId="culture">
       <ManagementWorkspaceFrame level="scope" title="時間定錨管理">
         <section className="management-workspace-panel scope-time-edit-root">

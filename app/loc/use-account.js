@@ -200,6 +200,13 @@ export function useAccount({enabled=true,sessionOnly=false}={}){
     ()=>Boolean(state.authorizer?.canManageGlobalSync()),
     [state.authorizer]
   );
+  // Unified UX preflight with the existing Web editing role snapshot.
+  // Preserve the older methods for callers outside this access refactor.
+  const canLocAccessSync=useCallback((level,scopeId='')=>
+    (level==='scope'&&normalizeScopeId(scopeId)==='local')||
+    Boolean(state.authorizer?.canLocAccessSync(level,scopeId)),
+    [state.authorizer]
+  );
   const scopeDataFor=useCallback(scopeId=>{
     const id=normalizeScopeId(scopeId);
     if(id==='local')return defaultScopeData('local');
@@ -209,7 +216,7 @@ export function useAccount({enabled=true,sessionOnly=false}={}){
 
   return {
     ...state,refresh,signIn,signOut,
-    canManageScopeSync,canManageGroupSync,canManageGlobalSync,scopeDataFor
+    canManageScopeSync,canManageGroupSync,canManageGlobalSync,canLocAccessSync,scopeDataFor
   };
 }
 

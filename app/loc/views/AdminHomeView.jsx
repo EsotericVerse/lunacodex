@@ -42,7 +42,7 @@ export default function AdminHomeView({scopeGroup}){
   const [entryVerified,setEntryVerified]=useState(false);
   const [loginDenied,setLoginDenied]=useState(false);
   const [retrying,setRetrying]=useState(false);
-  const canManage=Boolean(account.user&&!account.loading&&!account.permissionLoading&&account.canManageGlobalSync());
+  const canManage=Boolean(account.user&&!account.loading&&!account.permissionLoading&&account.canLocAccessSync('global'));
   // Preserve deep links created before the Admin sections were consolidated.
   const [section,setSection]=useManagementSection(ADMIN_OPTIONS,'network',{
     registry:'network',members:'network',
@@ -75,7 +75,7 @@ export default function AdminHomeView({scopeGroup}){
     setRetrying(true);
     try{
       const verified=await account.refresh();
-      if(!verified?.authorizer?.canManageGlobalSync()){
+      if(!verified?.authorizer?.canLocAccessSync('global')){
         setLoginDenied(true);setEntryVerified(false);
         return;
       }

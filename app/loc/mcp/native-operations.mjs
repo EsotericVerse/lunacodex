@@ -3,15 +3,15 @@
 // relation, database alias, connection URL, or query AST is accepted.
 import {sql} from 'kysely';
 import {verifyAccessTokenRequest,requestToResourceInput} from 'better-auth/oauth2';
-import {locPermissionsForEmail} from '../permissions/roles.mjs';
-import {locMcpPermissionsForEmail,VerifiedLocUserInfoSchema} from './access-roles.mjs';
+import {readLocAccess} from '../permissions/loc_access.mjs';
+import {loadMcpLocAccess,VerifiedLocUserInfoSchema} from './access-roles.mjs';
 import {MANAGED_FILTER_SQL,managedFiltersValid} from '../../../zenstack/sql-input-shape.mjs';
 import {verifiedLocWebsiteSession} from '../auth/verified-session.mjs';
 import {authorizeDelegatedShortImport} from '../import/short-edge-authorization.mjs';
 import {processShortImport,portableShortImportStore} from '../import/short-append-service.mjs';
 import {executePortableMcp} from '../providers/kysely-mcp.mjs';
 import {executeLocConversation} from './conversations.mjs';
-import {bindLocAuthorization,canManageLoc} from '../providers/loc-authorization.mjs';
+import {bindLocAuthorization,canLocAccess} from '../providers/loc-authorization.mjs';
 import {executeManagedKyselyWrite,executeManagedKyselyAction} from '../providers/kysely-management.mjs';
 import {executeCrossEngineManagedWrite} from '../providers/sql-engine-ports.mjs';
 import {executeLocPersonal} from '../providers/kysely-personal.mjs';
@@ -179,8 +179,8 @@ export async function handleNativeLocOperation(request,env={},{
     // Gateway gate. Website editor grants retain their existing separate policy.
     // Each request performs one active api.manage lookup, never a second probe.
     const permission=host===MCP_HOST
-      ?await locMcpPermissionsForEmail(selected.db,claims.email,{dialect:selected.dialect})
-      :await locPermissionsForEmail(selected.db,claims.email);
+      ?await loadMcpLocAccess(selected.db,claims.email,{dialect:selected.dialect,engine:selected.engine})
+      :await readLocAccess(selected.db,claims.email,{dialect:selected.dialect,engine:selected.engine,website:true});
     claims.me=permission.canWrite;
     claims.grants=permission.grants;
     if(writeKinds.has(body.kind)&&!permission.canWrite)
@@ -244,7 +244,7 @@ export async function handleNativeLocOperation(request,env={},{
           bindLocAuthorization(trx,{role:claims.role,claims,engine:selected.engine});
           if(payload.p_table==='api.manage'){
             if(!claims.grants.includes('global:manage')||
-                !await canManageLoc(trx,'global'))
+                !await canLocAccess(trx,'global'))
               throw refusal('LOC Registry management permission denied',403);
             if(!['update','delete'].includes(payload.p_operation))
               throw refusal('Registry mutation requires a fixed operation',403);
@@ -277,7 +277,7 @@ export async function handleNativeLocOperation(request,env={},{
               // api.manage remains the live source of management rights in
              // the same Kysely transaction as the ZenStack-model write.
              bindLocAuthorization(qb,{role:claims.role,claims});
-             if(!await canManageLoc(qb,'global','','Manage'))
+             if(!await canLocAccess(qb,'global','','Manage'))
                throw refusal('LOC Registry management permission denied',403);
              return applyManagedWrite(qb,modelName,payload);
            });

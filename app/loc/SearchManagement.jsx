@@ -60,7 +60,7 @@ export default function SearchManagement(){
     url.searchParams.set('section','media');
     window.history.replaceState(window.history.state,'',url.pathname+url.search+url.hash);
   },[isLocAdmin,searchParams]);
-  const groupAuthorized=isLocAdmin||account.canManageGroupSync(scopeId);
+  const groupAuthorized=isLocAdmin||account.canLocAccessSync('group',scopeId);
   const options=isLocAdmin?[...LOC_OPTIONS,GROUP_OPTION]
     :groupAuthorized
       ?[...ARTICLE_CONTROL_SECTIONS,SETTINGS_OPTION,GROUP_OPTION]
@@ -120,7 +120,7 @@ export default function SearchManagement(){
           ?<ManagementImportPanel key={scopeId+'-import'} scopeId={scopeId}/>:null}
         {!isLocAdmin&&activeSection==='settings'
           ?<ScopeSettingsPanel key={scopeId+'-settings'} scopeId={scopeId}/>:null}
-        {activeSection==='groupAccess'&&(isLocAdmin||account.canManageGroupSync(scopeId))
+        {activeSection==='groupAccess'&&(isLocAdmin||account.canLocAccessSync('group',scopeId))
           ?<ScopeGroupAccessPanel groupId={scopeId}/>:null}
         {isLocAdmin&&activeSection==='media'
           ?<ManagementContentTarget scopeId={scopeId} mode="media" globalAdmin/>:null}

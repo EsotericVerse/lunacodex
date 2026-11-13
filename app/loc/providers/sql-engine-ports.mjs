@@ -1,4 +1,4 @@
-import {canManageLoc} from './loc-authorization.mjs';
+import {canLocAccess} from './loc-authorization.mjs';
 // Single source of truth for the LOC SQL engine plug-in points.
 // Kysely provides dialect-specific SQL generation; connection and security
 // adapters remain on the trusted runtime (never in the browser).
@@ -113,13 +113,13 @@ export async function authorizeCrossEngineQuery(db,request,{role='anon',claims={
   if(CROSS_ENGINE_PUBLIC_READ_TABLES.includes(table)&&request.operation==='select')
     return {publicOnly:false};
   if(table==='loc'||table==='manage'){
-    if(!await canManageLoc(db,'global'))throw Object.assign(
+    if(!await canLocAccess(db,'global'))throw Object.assign(
       new Error('Global LOC permission denied'),{httpStatus:403});
     return {publicOnly:false};
   }
   const scope=table.match(PRIVATE_RELATION)?.[1];
-  const permitted=await canManageLoc(db,'global')||
-    scope&&SCOPE_ID.test(scope)&&await canManageLoc(db,'scope',scope);
+  const permitted=await canLocAccess(db,'global')||
+    scope&&SCOPE_ID.test(scope)&&await canLocAccess(db,'scope',scope);
   if(permitted)return {publicOnly:false};
   if(request.operation==='select'&&publicScopeData.test(table))
     return {publicOnly:true};

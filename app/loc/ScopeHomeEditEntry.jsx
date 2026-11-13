@@ -41,7 +41,7 @@ export default function ScopeHomeEditEntry(){
       // The LOC homepage belongs to the LOC Group. Its own active
       // loc:manage role may edit index Blocks; global Admin is required only
       // for system-wide settings and non-homepage LOC resources.
-      const allowed=result.authorizer?.canManageScopeSync(scopeId);
+      const allowed=result.authorizer?.canLocAccessSync('scope',scopeId);
       if(!allowed){
         setMessage({key:'uiExtra.editBlocks.editPermissionDenied'});
         return;
@@ -51,7 +51,7 @@ export default function ScopeHomeEditEntry(){
       clearEditorSession(window.sessionStorage);
       // The route owns Scope ID. Entering edit mode only toggles the Dock;
       // nothing is copied to sessionStorage or saved for later restoration.
-      if(!editDock?.begin(scopeId,{globalManage:Boolean(result.authorizer?.canManageGlobalSync())}))
+      if(!editDock?.begin(scopeId,{globalManage:Boolean(result.authorizer?.canLocAccessSync('global'))}))
         throw new Error('目前頁面的 Scope ID 不一致，無法啟動編輯。');
     }catch(error){
       setMessage({error:String(error?.message||'編輯權限查詢失敗，請檢查登入或資料庫連線。')});

@@ -2,9 +2,9 @@
 // database credentials are sent to browsers. Every private request carries
 // a cryptographically verified LOC Auth Scope delegation.
 import {directMcpKysely} from '../../app/loc/mcp/native-kysely.mjs';
-import {bindLocAuthorization,canManageLoc} from '../../app/loc/providers/loc-authorization.mjs';
+import {bindLocAuthorization,canLocAccess} from '../../app/loc/providers/loc-authorization.mjs';
 import {verifiedIdentity} from '../_loc-delegation.mjs';
-import {locPermissionsForEmail} from '../../app/loc/permissions/roles.mjs';
+import {readLocAccess} from '../../app/loc/permissions/loc_access.mjs';
 import {
   readKeywordClasses,readKeywordStatistics,readKeywordCatalog,readKeywordDaily,
   suggestKeywordPatterns,analyzeKeywordScope,resetKeywordScope,
@@ -28,7 +28,7 @@ const error=(message,status=400)=>{
 async function permission(db,role,claims,scope){
   return db.transaction().execute(async trx=>{
     bindLocAuthorization(trx,{role,claims});
-    return canManageLoc(trx,'scope',scope);
+    return canLocAccess(trx,'scope',scope);
   });
 }
 
@@ -58,7 +58,9 @@ export async function onRequestPost(context){
     const entry=await directMcpKysely(context.env);
     const db=entry.db;
     // This is the independent database role decision, not LOC Auth.
-    const rights=await locPermissionsForEmail(db,claims.email);
+    const rights=await readLocAccess(db,claims.email,{
+      dialect:entry.dialect,engine:entry.engine,website:true
+    });
     claims.me=rights.canWrite;
     claims.grants=rights.grants;
     let result;
@@ -75,7 +77,7 @@ export async function onRequestPost(context){
         if(!owner)error('Scope Keyword management permission required',403);
         const authorizeTransaction=async trx=>{
           bindLocAuthorization(trx,{role,claims});
-          if(!await canManageLoc(trx,'scope',scope))
+          if(!await canLocAccess(trx,'scope',scope))
             error('Scope Keyword authorization expired',403);
         };
         if(operation==='reset')

@@ -13,7 +13,7 @@ const EMPTY=()=>Object.fromEntries(FIELDS.map(([key])=>[key,'keep']));
 export default function BulkGalaxyVisibility({scopeId}){
   const account=useAccount();
   const dock=useEditDock();
-  const permitted=Boolean(account.user&&dock?.active&&dock.scopeId===scopeId&&account.canManageScopeSync(scopeId));
+  const permitted=Boolean(account.user&&dock?.active&&dock.scopeId===scopeId&&account.canLocAccessSync('scope',scopeId));
   const [site,setSite]=useState('mcp');
   const [fields,setFields]=useState(EMPTY);
   const [preview,setPreview]=useState(null);

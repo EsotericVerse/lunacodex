@@ -22,7 +22,7 @@ const ITEM=Object.freeze({value:'members',label:'人員作品管理'});
 
 export default function LocSourceManagement(){
   const account=useAccount();
-  const isSystemAdmin=Boolean(account.user&&!account.loading&&!account.permissionLoading&&account.canManageGlobalSync());
+  const isSystemAdmin=Boolean(account.user&&!account.loading&&!account.permissionLoading&&account.canLocAccessSync('global'));
   const sections=isSystemAdmin?[...OPTIONS,SYSTEM_PERSONNEL_OPTION]:OPTIONS;
   const [section,setSection]=useManagementSection(sections,'members');
   const editDock=useEditDock();
