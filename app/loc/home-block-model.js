@@ -127,7 +127,7 @@ export function removeDuplicatedLegacySubtitle(body='',subtitle=''){
   return text.startsWith(heading)?text.slice(heading.length):text;
 }
 
-// Feature headers share LOC-managed Hero rows on silver.loc_blocks,
+// Feature headers share LOC-managed Hero rows on silver.loc_anchor,
 // normally page_name='group_<feature>', block_order always 1. Trace uses group_trace (the same identifier as the feature route).
 // (the same symmetric "<kind>_<feature>" naming already used for the 8
 // feature-hero images, see admin-panels/FeatureHeroImages.jsx). block_order

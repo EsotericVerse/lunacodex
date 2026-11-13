@@ -1,6 +1,7 @@
 import {sql} from 'kysely';
 import {SCOPE_ROUTE_INDEX} from '../../modular/scope-route-index.js';
 import {portableRelation} from './sql-engine-ports.mjs';
+import {LOC_BLOCK_ANCHOR_FIELDS,locAnchorToBlock} from '../loc-block-anchor.mjs';
 const scopePattern=/^[a-z][a-z0-9]{0,14}$/;
 function id(value){
   const s=String(value||'').trim().toLowerCase();
@@ -28,17 +29,18 @@ export async function executeKyselyPublicAction(trx,body,{engine='postgres',name
        action==='page_blocks'&&kind!=='index'||
        action==='hero_blocks'&&!['culture','statics','trace','search'].includes(kind))
       throw Object.assign(new Error('Invalid public Block type'),{httpStatus:400});
-    const tableName=action==='hero_blocks'?'loc_blocks':
-      scope==='loc'?'loc_blocks':scope+'_blocks';
+    const loc=action==='hero_blocks'||scope==='loc';
+    const tableName=loc?'loc_anchor':scope+'_blocks';
     const names=action==='hero_blocks'?['group_'+kind,'scope_'+kind]:[kind];
-    // No registry query, table-introspection query, RLS prerequisite, or
-    // SQL ORDER BY: one bounded presentation query, then client-side sorting.
     if(!portable)await sql`reset role`.execute(trx);
-    const rows=await trx.selectFrom(table(tableName))
-      .select(['uid','page_name','block_eyebrow','block_title','block_subtitle',
-        'block_text','block_order','block_entity','block_image'])
-      .where('page_name','in',names).execute();
-    return {data:rows,count:null};
+    const rows=loc
+      ?await trx.selectFrom(table(tableName)).select(LOC_BLOCK_ANCHOR_FIELDS)
+        .where('type','in',names).where('invisible','=',false).execute()
+      :await trx.selectFrom(table(tableName))
+        .select(['uid','page_name','block_eyebrow','block_title','block_subtitle',
+          'block_text','block_order','block_entity','block_image'])
+        .where('page_name','in',names).execute();
+    return {data:loc?rows.map(locAnchorToBlock):rows,count:null};
   }
   // Reject unsupported actions, arguments and Scope IDs before Kysely
   // introspects the external database. Malformed public requests cost no SQL.
@@ -175,12 +177,18 @@ export async function executeKyselyPublicAction(trx,body,{engine='postgres',name
     const full=await trx.selectFrom(table(scope))
       .selectAll().where('id','=',scope).executeTakeFirst();
     if(full){const {id:ignore,...rest}=full;config=rest;}
-    if(await relationAvailable('silver.'+scope+'_blocks')){
-      const result=await trx.selectFrom(table(scope+'_blocks'))
-        .select(['uid','page_name','block_eyebrow','block_title','block_subtitle',
-          'block_text','block_order','block_entity','block_image'])
-        .where('page_name','=',page).orderBy('block_order','asc').execute();
-      blocks=result;
+    const loc=scope==='loc';
+    const blockTable=loc?'loc_anchor':scope+'_blocks';
+    if(await relationAvailable('silver.'+blockTable)){
+      const result=loc
+        ?await trx.selectFrom(table(blockTable)).select(LOC_BLOCK_ANCHOR_FIELDS)
+          .where('type','=',page).where('invisible','=',false)
+          .orderBy('num','asc').execute()
+        :await trx.selectFrom(table(blockTable))
+          .select(['uid','page_name','block_eyebrow','block_title','block_subtitle',
+            'block_text','block_order','block_entity','block_image'])
+          .where('page_name','=',page).orderBy('block_order','asc').execute();
+      blocks=loc?result.map(locAnchorToBlock):result;
     }
   }
   const root=await trx.selectFrom(table('loc')).select('theme')

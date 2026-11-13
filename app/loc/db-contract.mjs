@@ -535,12 +535,15 @@ export function createDatabaseClient({publicClient,authClient,auth}){
 
   async function moveScopeBlockUnchecked(scopeId,pageName,uid,direction){
     const scope=normalizeScopeId(scopeId);
-    const page=String(pageName||'').trim().toLowerCase();
+    const page=String(pageName||'').trim();
+    const normalizedPage=scope==='loc'?page:page.toLowerCase();
     const blockUid=String(uid||'').trim();
-    if(!scope||!page||!(/^[A-Za-z0-9]{8}$/.test(blockUid))||![1,-1].includes(direction))throw new Error('無效的區塊移動參數。');
+    if(!scope||!normalizedPage||!(/^[A-Za-z0-9]{8}$/.test(blockUid))||![1,-1].includes(direction))throw new Error('無效的區塊移動參數。');
+    // This is a local group-grant check, not a physical table lookup.
+    // LOC storage now lives in loc_anchor, but group homepage rights remain intact.
     preflightWrite('silver.'+scope+'_blocks');
     const {data,error}=await authClient.schema('silver').managedAction('move_scope_block',{
-      p_scope_id:scope,p_page_name:page,p_uid:blockUid,p_direction:direction
+      p_scope_id:scope,p_page_name:normalizedPage,p_uid:blockUid,p_direction:direction
     });
     if(error)throw new Error(error.message||'區塊移動失敗');
     return data||{};

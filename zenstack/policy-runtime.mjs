@@ -7,7 +7,6 @@ const PUBLIC_FIXED_MODELS=Object.freeze({
   'silver.lo3rwang':'Lo3rwang',
   'silver.lrunes':'Lrunes',
   'silver.loc_anchor':'LocAnchor',
-  'silver.loc_blocks':'LocBlocks',
   'silver.lo3rwang_blocks':'Lo3rwangBlocks',
   'silver.lrunes_blocks':'LrunesBlocks'
 });

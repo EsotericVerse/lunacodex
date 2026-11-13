@@ -9,6 +9,7 @@ import {portableRelation} from '../providers/sql-engine-ports.mjs';
 import {fixedPolicyReadModel,withFixedPolicyRead} from '../../../zenstack/policy-runtime.mjs';
 import {createScopedLocClient} from '../../../zenstack/client.mjs';
 import {assertZModelSelectRows} from '../../../zenstack/import-validation.mjs';
+import {LOC_BLOCK_ANCHOR_FIELDS,locAnchorToBlock} from '../loc-block-anchor.mjs';
 import {ZenStackClient} from '@zenstackhq/orm';
 import {PolicyPlugin} from '@zenstackhq/plugin-policy';
 
@@ -207,28 +208,46 @@ export async function handleNativePublicContent(request,env={},{
         assertZModelSelectRows('silver.'+scope,columns,row?[row]:[]);
       return respond({data:row||null});
     }
-    const table=relation(kind==='hero'?'loc_blocks':scope+'_blocks');
+    const loc=kind==='hero'||scope==='loc';
     const names=kind==='hero'?['group_'+feature,'scope_'+feature]:['index'];
+    if(loc){
+      // The LOC Blocks ZModel is a semantic projection of the physical
+      // LocAnchor model. All reads now use the same policy-enforced Anchor.
+      const anchorBody={kind:'query',schema:port.namespace||'silver',
+        table:'loc_anchor',operation:'select'};
+      const fixedAnchor=port.dialect
+        ?fixedPolicyReadModel({engine:port.engine},anchorBody):null;
+      const raw=fixedAnchor
+        ?await withFixedPolicyRead(query,{engine:port.engine},anchorBody,
+            'anon',{}, {dialect:port.dialect,ZenStackClient,PolicyPlugin},
+            (_qb,name,authorized)=>authorized[
+              name[0].toLowerCase()+name.slice(1)].findMany({
+                where:{type:{in:names},invisible:false},
+                select:Object.fromEntries(LOC_BLOCK_ANCHOR_FIELDS.map(field=>[field,true])),
+                orderBy:{num:'asc'}
+              }))
+        :await query.selectFrom(relation('loc_anchor'))
+            .select(LOC_BLOCK_ANCHOR_FIELDS)
+            .where('type','in',names).where('invisible','=',false)
+            .orderBy('num','asc').execute();
+      return respond({data:raw.map(locAnchorToBlock)});
+    }
+    const table=relation(scope+'_blocks');
     const blockArgs={
       where:{page_name:{in:names}},
       select:Object.fromEntries(BLOCK_FIELDS.map(column=>[column,true])),
       orderBy:{block_order:'asc'}
     };
-    // The three fixed presentation relations are part of the frozen ZModel,
-    // not merely a dynamic Scope projection. Use their real PolicyPlugin
-    // delegate for Hero/home reads so the common path is typed end-to-end and
-    // emits one bounded SELECT. Dynamic Scope IDs retain the verified scoped
-    // model below for PostgreSQL/MySQL; MSSQL retains its Kysely adapter.
     const fixedBlockModel=port.dialect
       ?fixedPolicyReadModel({engine:port.engine},{kind:'query',
         schema:port.namespace||'silver',
-        table:kind==='hero'?'loc_blocks':scope+'_blocks',operation:'select'})
+        table:scope+'_blocks',operation:'select'})
       :null;
-    const typed=scopedFor(kind==='hero'?'loc':scope);
+    const typed=scopedFor(scope);
     const data=fixedBlockModel
       ?await withFixedPolicyRead(query,{engine:port.engine},{kind:'query',
           schema:port.namespace||'silver',
-          table:kind==='hero'?'loc_blocks':scope+'_blocks',operation:'select'},
+          table:scope+'_blocks',operation:'select'},
           'anon',{}, {dialect:port.dialect,ZenStackClient,PolicyPlugin},
           (_qb,name,authorized)=>authorized[
             name[0].toLowerCase()+name.slice(1)].findMany(blockArgs))
@@ -238,8 +257,7 @@ export async function handleNativePublicContent(request,env={},{
           .where('page_name','in',names).orderBy('block_order','asc')
           .execute();
     if(!fixedBlockModel&&!typed)
-      assertZModelSelectRows('silver.'+(kind==='hero'?'loc_blocks':scope+'_blocks'),
-        BLOCK_FIELDS,data);
+      assertZModelSelectRows('silver.'+scope+'_blocks',BLOCK_FIELDS,data);
     return respond({data});
    }catch(error){
     // Categorize the real TCP/TLS/SQL failure without revealing credentials,

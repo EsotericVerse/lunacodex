@@ -30,6 +30,23 @@ const PERSONAL_SETTINGS_FEATURE=Object.freeze({
   id:'setting',label:'個人設定',singleSlot:HomeBlock.shouldUseSingleFeatureHeroImage('setting')
 });
 function pageFor(kind,feature){return kind+'_'+feature.id;}
+// LOC text frames are one Anchor-backed page snapshot. Save through the
+// existing authorized save_blocks transaction, not a retired Blocks table.
+async function saveLocHeroPage(page,fresh,changes){
+  const {dbAuthClient}=await import('../../db-client.mjs');
+  const original=fresh.find(row=>Number(row.block_order)===1);
+  const updated=original?{...original,...changes}:{
+    uid:HomeBlock.createUid(),page_name:page,block_order:1,
+    block_entity:[],block_eyebrow:'',block_title:'',block_subtitle:'',
+    block_text:'',block_image:null,...changes
+  };
+  const snapshot=[...fresh.filter(row=>row.uid!==updated.uid),updated];
+  const {data,error}=await dbAuthClient.schema('silver').managedAction('save_blocks',{
+    p_scope_id:'loc',p_type:page,p_rows:snapshot
+  });
+  if(error)throw new Error(error.message||'LOC 文字框儲存失敗');
+  return data||{count:snapshot.length};
+}
 const managementSlotFor=featureId=>HomeBlock.MANAGEMENT_HERO_SLOTS.find(slot=>slot.featureId===featureId);
 const locSlots=HomeBlock.MANAGEMENT_HERO_SLOTS.filter(slot=>slot.audience==='loc'&&slot.key!=='system');
 
@@ -70,28 +87,15 @@ function ImageSlot({feature,variant,onDirtyChange,pageOverride='',defaultUrl=''}
     if(savingNow.current||busy||rows===null)return false;
     savingNow.current=true;setBusy(true);setStatus('');
     try{
-      const {updateRows,insertRows}=await import('../../db-client.mjs');
       const trimmed=value.trim();
       if(trimmed){
         const url=new URL(trimmed,window.location.origin);
         if(!['https:','http:'].includes(url.protocol))throw new Error('首頁圖只接受 HTTP(S) 圖片網址。');
       }
-      // silver.loc_blocks.block_image is TEXT carrying JSON, never a raw object.
+      // Anchor attr.image preserves the Block image's TEXT/JSON payload.
       const image=trimmed?JSON.stringify({source:'custom',url:trimmed}):null;
       const fresh=await selectLiveScopeBlocks('loc',page);
-      const row=fresh.find(item=>Number(item.block_order)===1);
-      let result;
-      if(row?.uid){
-        result=await updateRows('silver.loc_blocks',{block_image:image},
-          {filters:[{column:'uid',operator:'eq',value:row.uid},
-            {column:'page_name',operator:'eq',value:page}]});
-      }else{
-        result=await insertRows('silver.loc_blocks',[{
-          uid:HomeBlock.createUid(),page_name:page,block_order:1,
-          block_entity:[],block_eyebrow:'',block_title:'',block_subtitle:'',
-          block_text:'',block_image:image
-        }]);
-      }
+      const result=await saveLocHeroPage(page,fresh,{block_image:image});
       if(result?.error)throw new Error(result.error.message||'儲存失敗。');
       invalidateScopeBlockPage('loc',page);
       const verified=await selectLiveScopeBlocks('loc',page);
@@ -175,17 +179,8 @@ function ManagementHeroDetails({slot,onDirtyChange}){
         block_eyebrow:eyebrow,block_title:title,
         block_subtitle:subtitle,block_text:draft.text
       };
-      const {updateRows,insertRows}=await import('../../db-client.mjs');
       const fresh=await selectLiveScopeBlocks('loc',page);
-      const found=fresh.find(item=>Number(item.block_order)===1);
-      const result=found?.uid
-        ?await updateRows('silver.loc_blocks',fields,{filters:[
-          {column:'uid',operator:'eq',value:found.uid},
-          {column:'page_name',operator:'eq',value:page}]})
-        :await insertRows('silver.loc_blocks',[{
-          uid:HomeBlock.createUid(),page_name:page,block_order:1,
-          block_entity:[],block_image:null,...fields
-        }]);
+      const result=await saveLocHeroPage(page,fresh,fields);
       if(result?.error)throw new Error(result.error.message||'儲存失敗。');
       invalidateScopeBlockPage('loc',page);
       const verified=await selectLiveScopeBlocks('loc',page);
