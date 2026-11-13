@@ -1,10 +1,10 @@
-// LOC OAuth personal preferences and records. Only a verified LOC session can
-// read or change its own owner_id rows; no Admin grant or RLS rule is required.
+// LOC Auth personal preferences only. A verified Session binds its user.id
+// to silver.loc_user."userId"; uid is an unrelated 8-character row key.
 const TABLES=new Set(['loc_user']);
 const COLUMN=/^[A-Za-z_][A-Za-z0-9_]{0,119}$/;
 const OPS={eq:'=',neq:'!=',gt:'>',gte:'>=',lt:'<',lte:'<=',
   like:'like',ilike:'ilike',in:'in',is:'is'};
-const KEY_COLUMNS={loc_user:['owner_id']};
+const KEY_COLUMNS={loc_user:['userId']};
 function bad(message,status=400){
   return Object.assign(new Error(message),{httpStatus:status});
 }
@@ -17,8 +17,11 @@ function record(value){
   if(!value||typeof value!=='object'||Array.isArray(value))
     throw bad('Invalid personal record');
   const copy={...value};
-  // owner_id must be the signed LOC OAuth subject, never caller-controlled.
+  // Identity and row keys are never caller-controlled.
+  delete copy.userId;
   delete copy.owner_id;
+  delete copy.uid;
+  delete copy.email;
   if(Object.keys(copy).some(key=>!COLUMN.test(key)))
     throw bad('Invalid personal database field');
   return copy;
@@ -30,7 +33,7 @@ function apply(query,filters=[]){
     if(!f||typeof f!=='object'||f.negate||!OPS[f.operator])
       throw bad('Unsupported personal filter');
     const col=name(f.column);
-    if(col==='owner_id')throw bad('The owner is bound to LOC OAuth');
+    if(col==='userId'||col==='owner_id')throw bad('The user is bound to LOC Auth');
     const op=OPS[f.operator];
     if(op==='in'&&(!Array.isArray(f.value)||f.value.length>500))
       throw bad('Invalid personal filter list');
@@ -64,15 +67,15 @@ export async function executeLocPersonal(db,claims,body){
   if(!table.startsWith('silver.')||!TABLES.has(table.slice(7)))
     throw bad('Personal settings require silver.loc_user',403);
   const tableKey=table.slice(7);
-  const owner=claims.sub;
+  const userId=claims.sub;
   const op=String(payload.p_operation||'');
   const filters=payload.p_filters||[];
   const columns=payload.p_columns||['*'];
-  const ownerQuery=()=>db.selectFrom(table).where('owner_id','=',owner);
+  const userQuery=()=>db.selectFrom(table).where('userId','=',userId);
   if(body.kind==='personal-read'){
     if(op!=='select')throw bad('Personal read must be SELECT');
     const head=payload.p_head===true;
-    let query=apply(ownerQuery(),filters);
+    let query=apply(userQuery(),filters);
     if(head){
       const result=await query.select(eb=>eb.fn.countAll().as('count')).executeTakeFirst();
       return {data:null,count:Number(result?.count||0)};
@@ -99,12 +102,12 @@ export async function executeLocPersonal(db,claims,body){
     const input=Array.isArray(payload.p_rows)?payload.p_rows:
       payload.p_rows?[payload.p_rows]:[];
     if(!input.length||input.length>500)throw bad('Personal write needs rows');
-    const rows=input.map(row=>({...record(row),owner_id:owner,email:claims.email}));
+    const rows=input.map(row=>({...record(row),userId,email:claims.email}));
     let query=db.insertInto(table).values(rows);
     if(op==='upsert'){
       const keys=KEY_COLUMNS[tableKey];
       const update={...rows[0]};
-      delete update.owner_id;
+      delete update.userId;
       for(const col of keys)delete update[col];
       query=query.onConflict(oc=>Object.keys(update).length
         ?oc.columns(keys).doUpdateSet(update):oc.columns(keys).doNothing());
@@ -117,11 +120,12 @@ export async function executeLocPersonal(db,claims,body){
   let query;
   if(op==='update'){
     const values=record(payload.p_values);
-    delete values.email;delete values.uid;
+    // Identity fields cannot be changed by clients.
+    delete values.email;delete values.uid;delete values.userId;delete values.owner_id;
     if(!Object.keys(values).length)throw bad('Personal update is empty');
-    query=apply(db.updateTable(table).set(values).where('owner_id','=',owner),filters);
+    query=apply(db.updateTable(table).set(values).where('userId','=',userId),filters);
   }else{
-    query=apply(db.deleteFrom(table).where('owner_id','=',owner),filters);
+    query=apply(db.deleteFrom(table).where('userId','=',userId),filters);
   }
   const saved=await returning(query,columns).execute();
   return {data:saved,count:saved.length};
