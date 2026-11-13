@@ -1,4 +1,4 @@
-import {createLocAuth,LOC_ISSUER,LOC_WEB} from './auth.mjs';
+import {createLocAuth,cloudflareSsoConfig,LOC_ISSUER,LOC_WEB} from './auth.mjs';
 import {oauthProviderAuthServerMetadata,oauthProviderOpenIdConfigMetadata,
   verifyOAuthQueryParams} from '@better-auth/oauth-provider';
 
@@ -129,6 +129,41 @@ export default {
           '<p>OAuth 同意不代表 LOC 內容寫入權限。</p>'+
           '<button id="approve">核准</button><button id="deny">拒絕</button>',
           CONSENT_JS,signedQuery);
+      // TEMPORARY DIAGNOSTIC. Sign-in fails with "OIDC discovery timed out"
+      // after a 10s wall-clock wait and 26ms of CPU, so the Worker's own
+      // subrequest to the delegated provider never answers, while the same
+      // document loads instantly from a browser and Google's token endpoint
+      // is reached normally. This reports what that one subrequest actually
+      // does, instead of guessing at compatibility flags. It opens no
+      // database connection, carries no credential, and returns no secret:
+      // only the public discovery document's own response. Remove it once
+      // the cause is identified.
+      if(request.method==='GET'&&url.pathname==='/health/upstream'){
+        const issuer=String(cloudflareSsoConfig(env).issuer||'').replace(/\/+$/,'');
+        if(!issuer)return new Response(JSON.stringify({error:'No upstream issuer configured'}),
+          {status:503,headers:{'content-type':'application/json','cache-control':'no-store'}});
+        const target=issuer+'/.well-known/openid-configuration';
+        const started=Date.now();
+        let probe;
+        try{
+          const upstream=await fetch(target,{method:'GET',redirect:'manual',
+            headers:{accept:'application/json'},signal:AbortSignal.timeout(5000)});
+          const body=await upstream.text();
+          probe={reached:true,status:upstream.status,
+            server:upstream.headers.get('server')||'',
+            cfRay:upstream.headers.get('cf-ray')||'',
+            cfMitigated:upstream.headers.get('cf-mitigated')||'',
+            location:upstream.headers.get('location')||'',
+            contentType:upstream.headers.get('content-type')||'',
+            bytes:body.length,bodyStart:body.slice(0,180)};
+        }catch(error){
+          probe={reached:false,name:error?.name||'Error',
+            message:String(error?.message||error).slice(0,180)};
+        }
+        return new Response(JSON.stringify({host:new URL(target).host,
+          elapsedMs:Date.now()-started,...probe},null,1),
+          {headers:{'content-type':'application/json','cache-control':'no-store'}});
+      }
       if(request.method==='GET'&&url.pathname==='/health')
         return new Response(JSON.stringify({service:'LOC Auth',module:'better-auth',
           issuer:LOC_ISSUER}),{headers:{'content-type':'application/json'}});
