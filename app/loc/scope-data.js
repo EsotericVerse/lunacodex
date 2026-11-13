@@ -7,7 +7,6 @@ import {Capacitor} from '@capacitor/core';
 import {SCOPE_ROUTE_INDEX} from '../modular/scope-route-index.js';
 import {PUBLISHED_SITE_BOOTSTRAP} from '../modular/published-site-bootstrap.js';
 import {loadPublishedBlocks} from '../modular/published-blocks/index.js';
-import {LOC_BLOCK_ANCHOR_FIELDS,locAnchorToBlock} from './loc-block-anchor.mjs';
 
 // Public page copy (Title_TW/Desc_TW) now travels inside the shared
 // app-bootstrap request (see app/loc/app-bootstrap.js); there is no
