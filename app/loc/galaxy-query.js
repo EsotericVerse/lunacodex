@@ -15,7 +15,6 @@ import {DB_QUERY_BATCH_SIZE,applyFilters,applyOrders,executePublicRead,selectCou
 import {readLocStatistics,readScopeCategoryTotals,readScopeEarliest,readScopeOverview,readScopeStatistics} from './db-client.mjs';
 import {readNumericIsr,usesNumericIsr} from './numeric-isr-client';
 import {readTraceMapIndex} from '../modular/features/trace/trace-data.js';
-import {isUnifiedAnchorScope} from './unified-anchor-compat.mjs';
 import {galaxyAble} from './galaxy-able.mjs';
 import {portableContainsTerm} from './providers/portable-search.mjs';
 import {galaxyReadColumns} from '../../zenstack/galaxy-read-models.mjs';
@@ -350,7 +349,6 @@ async function articleTimeContext(scope,day){
 async function articleSpaceContext(scope,placeId,{authenticated=false}={}){
   if(!/^[A-Za-z0-9]{8}$/.test(placeId)||!scope?.id||scope.id==='loc')
     return {place:null,routes:[],traces:[]};
-  if(isUnifiedAnchorScope(scope.id)){
     // LOC's four legacy relations were consolidated into _anchor. The shared
     // Trace reader projects native attr.point/attr.path without relying on
     // removed trace_type, anchor_list or route_list physical columns.
@@ -372,25 +370,6 @@ async function articleSpaceContext(scope,placeId,{authenticated=false}={}){
       (row.route_list?.routes||[]).some(uid=>routeUids.has(uid))
     )).map(({uid,title})=>({uid,title})).slice(0,100);
     return {place:{uid:place.uid,title:place.title},routes,traces};
-  }
-  // lrunes is not yet physically consolidated. Keep its legacy relation.
-  const table='silver.'+scope.id+'_trace';
-  const [anchor,routesPage]=await Promise.all([
-    selectRows(table,{columns:'uid,title',filters:[
-      {column:'uid',operator:'eq',value:placeId},
-      {column:'trace_type',operator:'eq',value:'space_anchor'}
-    ],limit:1,authenticated}),
-    selectRows(table,{columns:'uid,title',filters:[
-      {column:'trace_type',operator:'eq',value:'path'},
-      {column:'anchor_list',operator:'contains',value:[placeId]}
-    ],limit:100,maxLimit:100,authenticated})
-  ]);
-  const routes=routesPage.rows||[],routeIds=routes.map(row=>String(row.uid)).filter(Boolean);
-  const clauses=['anchor_list.cs.{'+placeId+'}',...routeIds.map(uid=>'route_list.cs.'+JSON.stringify({routes:[uid]}))];
-  const traces=await selectRows(table,{columns:'uid,title',filters:[
-    {column:'trace_type',operator:'eq',value:'trace'}
-  ],orFilter:clauses.join(','),limit:100,maxLimit:100,authenticated});
-  return {place:anchor.rows[0]||null,routes,traces:traces.rows||[]};
 }
 function articleStatisticsContext(scope,day){
   if(!day)return null;
