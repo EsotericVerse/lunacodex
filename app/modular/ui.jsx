@@ -12,7 +12,7 @@ import {UI_COPY} from '../i18n/ui-copy';
 import {useUiCopy,useUiLocale} from '../i18n/ui-locale';
 import {DEFAULT_LIST_BATCH_SIZE,LIST_LOAD_COOLDOWN_MS} from '../loc/db-contract.mjs';
 import {useScopeRuntime} from './use-scope-runtime';
-import {selectScopeBlocks,selectLiveScopeBlocks,heroBlocks} from '../loc/scope-data';
+import {selectScopeBlocks,selectLiveScopeBlocks,hero_block} from '../loc/scope-data';
 import {heroImageUrl as heroImageUrlOf} from '../loc/hero-image.mjs';
 
 import {HomeBlock} from '../loc/home-block-model';
@@ -69,7 +69,7 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
   // One direct Hero SELECT for the public feature (both group and scope
   // artwork slots). Public page rendering never looks up Manage permissions.
   const publicHeroQuery=useAsyncResource(['feature-hero-blocks',scopeId,featureId],
-    ()=>heroBlocks(scopeId,featureId),{
+    ()=>hero_block([groupHeroPage,scopeHeroPage]),{
       enabled:!managementMode&&!adminHero&&(sharedEnabled||hasFeatureHero)
     });
   const adminHeroQuery=useAsyncResource(['scope-blocks-live','loc',groupHeroPage],
