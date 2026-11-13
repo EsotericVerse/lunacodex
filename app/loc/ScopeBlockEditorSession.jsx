@@ -39,7 +39,6 @@ export default function ScopeBlockEditorSession({
   const [draft,setDraft]=useState(()=>({...initial,entities:HomeBlock.normalizeEntities(initial.entities)}));
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState('');
-  const table=`silver.${scopeId}_blocks`;
 
   async function updateBlockCaches(rows){
     invalidateScopeBlockPage(scopeId,pageName);
