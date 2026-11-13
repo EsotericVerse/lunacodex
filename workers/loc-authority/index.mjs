@@ -1,3 +1,5 @@
+// cloudflareSsoConfig is read only by the dormant probe below; it stays
+// imported so re-enabling that block needs no other edit.
 import {createLocAuth,cloudflareSsoConfig,LOC_ISSUER,LOC_WEB} from './auth.mjs';
 import {oauthProviderAuthServerMetadata,oauthProviderOpenIdConfigMetadata,
   verifyOAuthQueryParams} from '@better-auth/oauth-provider';
@@ -129,15 +131,19 @@ export default {
           '<p>OAuth 同意不代表 LOC 內容寫入權限。</p>'+
           '<button id="approve">核准</button><button id="deny">拒絕</button>',
           CONSENT_JS,signedQuery);
-      // TEMPORARY DIAGNOSTIC. Sign-in fails with "OIDC discovery timed out"
-      // after a 10s wall-clock wait and 26ms of CPU, so the Worker's own
-      // subrequest to the delegated provider never answers, while the same
-      // document loads instantly from a browser and Google's token endpoint
-      // is reached normally. This reports what that one subrequest actually
-      // does, instead of guessing at compatibility flags. It opens no
-      // database connection, carries no credential, and returns no secret:
-      // only the public discovery document's own response. Remove it once
-      // the cause is identified.
+      // DORMANT PROBE — kept, not deleted. Uncomment the block below to serve
+      // GET /health/upstream again, which reports what one subrequest to the
+      // delegated provider's discovery document actually does: status,
+      // server, cf-ray, cf-mitigated, location, content type and first bytes,
+      // or the error name, plus a timed node:dns lookup and the plugin's own
+      // discoverOIDCConfig. It answered the question it was built for — the
+      // connection to that host succeeds in about half a second on one
+      // attempt and never answers on the next, which is why sign-in no longer
+      // fetches discovery at all — and it is left here because the same
+      // intermittency can still surface during the token exchange, and
+      // measuring beats guessing. It opens no database connection, carries no
+      // credential, and returns only that public document's own response.
+      /*
       if(request.method==='GET'&&url.pathname==='/health/upstream'){
         const issuer=String(cloudflareSsoConfig(env).issuer||'').replace(/\/+$/,'');
         if(!issuer)return new Response(JSON.stringify({error:'No upstream issuer configured'}),
@@ -199,6 +205,7 @@ export default {
           dns:dnsProbe,pluginDiscovery:pluginProbe},null,1),
           {headers:{'content-type':'application/json','cache-control':'no-store'}});
       }
+      */
       if(request.method==='GET'&&url.pathname==='/health')
         return new Response(JSON.stringify({service:'LOC Auth',module:'better-auth',
           issuer:LOC_ISSUER}),{headers:{'content-type':'application/json'}});
