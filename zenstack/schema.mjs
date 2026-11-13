@@ -28,7 +28,7 @@ const literal=(name,key,value)=>({name,args:[{name:key,value:{kind:'literal',val
 // the same typed delegate without a second hand-written SQL projection.
 const PUBLIC_FIXED_READS=new Set([
   'manage','loc','lo3rwang','lrunes',
-  'loc_anchor','loc_blocks','lo3rwang_blocks','lrunes_blocks'
+  'loc_anchor','lo3rwang_blocks','lrunes_blocks'
 ]);
 const PUBLIC_POLICY_ALLOW_READ={
   name:'@@allow',
@@ -82,6 +82,12 @@ const locAnchorLink=plainVirtualType('LocAnchorLink',{
 });
 const anchorTypeDefs=Object.fromEntries(Object.entries(ANCHOR_PAYLOAD_DEFS)
   .map(([name,fields])=>[name,structuredVirtualType(name,fields)]));
+const locBlocksType=structuredVirtualType('LocBlocks',{
+  uid:{type:'String'},page_name:{type:'String'},block_title:{type:'String'},
+  block_text:{type:'String'},block_order:{type:'Int'},block_entity:{type:'Json'},
+  block_eyebrow:{type:'String'},block_subtitle:{type:'String'},
+  block_image:{type:'String',optional:true}
+});
 const galaxyReadTypeDefs=Object.fromEntries(Object.entries(GALAXY_READ_MODEL_FIELDS)
   .map(([name,fields])=>[name,structuredVirtualType(name,fields)]));
 const anchorTypeEnum={name:'LocAnchorType',values:Object.fromEntries(
@@ -90,7 +96,7 @@ const anchorTypeEnum={name:'LocAnchorType',values:Object.fromEntries(
 const databaseDefault=Object.freeze({kind:'call',function:'dbgenerated',args:[]});
 const modelName=table=>table.split('_').map(w=>w[0].toUpperCase()+w.slice(1)).join('');
 function compileFixedSchema({schema:namespace,tables}){
-  if(namespace!=='silver'||tables.length!==18)
+  if(namespace!=='silver'||tables.length!==17)
     throw new Error('Invalid fixed LOC schema contract');
   const models={};
   for(const table of tables){
@@ -129,7 +135,8 @@ function compileFixedSchema({schema:namespace,tables}){
   return {provider:{type:'postgresql',defaultSchema:namespace},models,
     enums:{LocAnchorType:anchorTypeEnum},
     typeDefs:{LocPrincipal:locPrincipal,LocFederatedRef:locFederatedRef,
-      LocAnchorLink:locAnchorLink,...anchorTypeDefs,...galaxyReadTypeDefs},
+      LocAnchorLink:locAnchorLink,LocBlocks:locBlocksType,
+      ...anchorTypeDefs,...galaxyReadTypeDefs},
     authType:'LocPrincipal',
     plugins:{policy:{provider:'@zenstackhq/plugin-policy'}}};
 }
