@@ -9,7 +9,8 @@ import {portableRelation} from '../providers/sql-engine-ports.mjs';
 import {fixedPolicyReadModel,withFixedPolicyRead} from '../../../zenstack/policy-runtime.mjs';
 import {createScopedLocClient} from '../../../zenstack/client.mjs';
 import {assertZModelSelectRows} from '../../../zenstack/import-validation.mjs';
-import {LOC_BLOCK_ANCHOR_FIELDS,locAnchorToBlock} from '../loc-block-anchor.mjs';
+import {LOC_BLOCK_ANCHOR_FIELDS} from '../loc-block-anchor.mjs';
+import {block_list,hero_block} from '../providers/kysely-public.mjs';
 import {ZenStackClient} from '@zenstackhq/orm';
 import {PolicyPlugin} from '@zenstackhq/plugin-policy';
 
@@ -104,14 +105,18 @@ export async function handleNativePublicContent(request,env={},{
   const kind=url.searchParams.get('kind');
   const scope=String(url.searchParams.get('scope')||'');
   const feature=String(url.searchParams.get('feature')||'');
+  const heroTypes=feature?feature.split(','):[];
+  const validHero=heroTypes.length>0&&heroTypes.length<=2&&
+    new Set(heroTypes).size===heroTypes.length&&heroTypes.every(type=>
+      /^[A-Za-z][A-Za-z0-9_-]{0,60}$/.test(type)&&
+      !['from','domain','galaxy','universe','index','governance'].includes(type));
   const keys=[...url.searchParams.keys()];
   const numeric=NUMERIC_KINDS.has(kind);
   const start=String(url.searchParams.get('start')||'');
   const end=String(url.searchParams.get('end')||'');
-  if(!allowedScope(scope)||!['config','blocks','hero','culture_anchors'].includes(kind)&&!numeric||
+  if(!allowedScope(scope)||!['config','block_list','hero_block','culture_anchors'].includes(kind)&&!numeric||
       keys.some(key=>!['kind','scope','feature','start','end'].includes(key))||
-      (kind==='hero'?!FEATURES.has(feature):Boolean(feature))||
-      (kind==='hero'&&!keys.includes('feature'))||
+      (kind==='hero_block'?scope!=='loc'||!validHero:Boolean(feature))||
       (!numeric&&(url.searchParams.has('start')||url.searchParams.has('end')))||
       (numeric&&((kind==='loc'?scope!=='loc':scope==='loc')||
         (kind!=='earliest'&&kind!=='totals'&&kind!=='loc'&&
@@ -208,57 +213,62 @@ export async function handleNativePublicContent(request,env={},{
         assertZModelSelectRows('silver.'+scope,columns,row?[row]:[]);
       return respond({data:row||null});
     }
-    const loc=kind==='hero'||scope==='loc';
-    const names=kind==='hero'?['group_'+feature,'scope_'+feature]:['index'];
-    if(loc){
-      // The LOC Blocks ZModel is a semantic projection of the physical
-      // LocAnchor model. All reads now use the same policy-enforced Anchor.
-      const anchorBody={kind:'query',schema:port.namespace||'silver',
-        table:'loc_anchor',operation:'select'};
-      const fixedAnchor=port.dialect
-        ?fixedPolicyReadModel({engine:port.engine},anchorBody):null;
-      const raw=fixedAnchor
-        ?await withFixedPolicyRead(query,{engine:port.engine},anchorBody,
-            'anon',{}, {dialect:port.dialect,ZenStackClient,PolicyPlugin},
-            (_qb,name,authorized)=>authorized[
-              name[0].toLowerCase()+name.slice(1)].findMany({
-                where:{type:{in:names},invisible:false},
-                select:Object.fromEntries(LOC_BLOCK_ANCHOR_FIELDS.map(field=>[field,true])),
-                orderBy:{num:'asc'}
-              }))
-        :await query.selectFrom(relation('loc_anchor'))
-            .select(LOC_BLOCK_ANCHOR_FIELDS)
-            .where('type','in',names).where('invisible','=',false)
-            .orderBy('num','asc').execute();
-      return respond({data:raw.map(locAnchorToBlock)});
+    // Only two presentation read contracts remain:
+    // block_list(scopeid) for the homepage / LOC governance sections,
+    // hero_block(exact type) for LOC's individual Hero records.
+    const opts={engine:port.engine,namespace:port.namespace||'silver'};
+    if(kind==='hero_block'||scope==='loc'){
+      opts.readLocAnchors=async types=>{
+        const anchorBody={kind:'query',schema:port.namespace||'silver',
+          table:'loc_anchor',operation:'select'};
+        const fixedAnchor=port.dialect
+          ?fixedPolicyReadModel({engine:port.engine},anchorBody):null;
+        return fixedAnchor
+          ?withFixedPolicyRead(query,{engine:port.engine},anchorBody,
+              'anon',{}, {dialect:port.dialect,ZenStackClient,PolicyPlugin},
+              (_qb,name,authorized)=>authorized[
+                name[0].toLowerCase()+name.slice(1)].findMany({
+                  where:{type:{in:types},invisible:false},
+                  select:Object.fromEntries(LOC_BLOCK_ANCHOR_FIELDS.map(field=>[field,true])),
+                  orderBy:{num:'asc'}
+                }))
+          :query.selectFrom(relation('loc_anchor'))
+              .select(LOC_BLOCK_ANCHOR_FIELDS)
+              .where('type','in',types).where('invisible','=',false)
+              .orderBy('num','asc').execute();
+      };
     }
+    if(kind==='hero_block')
+      return respond({data:await hero_block(query,heroTypes,opts)});
     const table=relation(scope+'_blocks');
     const blockArgs={
-      where:{page_name:{in:names}},
+      where:{page_name:'index'},
       select:Object.fromEntries(BLOCK_FIELDS.map(column=>[column,true])),
       orderBy:{block_order:'asc'}
     };
-    const fixedBlockModel=port.dialect
-      ?fixedPolicyReadModel({engine:port.engine},{kind:'query',
-        schema:port.namespace||'silver',
-        table:scope+'_blocks',operation:'select'})
-      :null;
-    const typed=scopedFor(scope);
-    const data=fixedBlockModel
-      ?await withFixedPolicyRead(query,{engine:port.engine},{kind:'query',
+    opts.readScopeBlocks=async ()=>{
+      const fixedBlockModel=port.dialect
+        ?fixedPolicyReadModel({engine:port.engine},{kind:'query',
           schema:port.namespace||'silver',
-          table:scope+'_blocks',operation:'select'},
-          'anon',{}, {dialect:port.dialect,ZenStackClient,PolicyPlugin},
-          (_qb,name,authorized)=>authorized[
-            name[0].toLowerCase()+name.slice(1)].findMany(blockArgs))
-      :typed
-      ?await typed.blocks.findMany(blockArgs)
-      :await query.selectFrom(table).select(BLOCK_FIELDS)
-          .where('page_name','in',names).orderBy('block_order','asc')
-          .execute();
-    if(!fixedBlockModel&&!typed)
-      assertZModelSelectRows('silver.'+scope+'_blocks',BLOCK_FIELDS,data);
-    return respond({data});
+          table:scope+'_blocks',operation:'select'})
+        :null;
+      const typed=scopedFor(scope);
+      const data=fixedBlockModel
+        ?await withFixedPolicyRead(query,{engine:port.engine},{kind:'query',
+            schema:port.namespace||'silver',
+            table:scope+'_blocks',operation:'select'},
+            'anon',{}, {dialect:port.dialect,ZenStackClient,PolicyPlugin},
+            (_qb,name,authorized)=>authorized[
+              name[0].toLowerCase()+name.slice(1)].findMany(blockArgs))
+        :typed?await typed.blocks.findMany(blockArgs)
+        :await query.selectFrom(table).select(BLOCK_FIELDS)
+            .where('page_name','=','index').orderBy('block_order','asc')
+            .execute();
+      if(!fixedBlockModel&&!typed)
+        assertZModelSelectRows('silver.'+scope+'_blocks',BLOCK_FIELDS,data);
+      return data;
+    };
+    return respond({data:await block_list(query,scope,opts)});
    }catch(error){
     // Categorize the real TCP/TLS/SQL failure without revealing credentials,
     // endpoints, query text or the raw driver error. No new connection attempt.
