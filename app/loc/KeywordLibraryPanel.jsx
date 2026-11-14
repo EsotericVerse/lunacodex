@@ -292,7 +292,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
     finally{setSharingBusy(false);}
   };
   const saveConfig=async()=>{
-    if(busy)return false;
+    if(busy||loading)return false;
     setBusy(true);setError('');
     try{
       const rulesChanged=['keyword_min_chars','keyword_min_documents'].some(key=>Number(config[key])!==Number(savedConfig[key]));
@@ -411,7 +411,8 @@ export default function KeywordLibraryPanel({scopeId,account}){
       ?['current_keyword_class_uid','keyword_min_chars','keyword_min_documents']
         .some(key=>String(config[key]??'')!==String(savedConfig[key]??''))
       :dirty,
-    isBusy:()=>busy||loading||sharingBusy||discoveryBusy
+    // A read or a cancellable discovery scan is not a Save operation.
+    isBusy:()=>busy||sharingBusy
   };
   useEffect(()=>{
     if(!dock?.active||dock.scopeId!==scopeId||!canEdit)return;
@@ -472,6 +473,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
     <ManagementSectionNav id="scope-keyword-sections" title="關鍵詞管理" hideHeading
       panelId="scope-keyword-workspace" items={workspaceOptions}
       value={workspace} onChange={next=>{
+        if(workspace==='analysis'&&discoveryBusy)discoveryAbort.current?.abort();
         setWorkspace(next);setEditor(null);
       }}/>
     <div id="scope-keyword-workspace">
