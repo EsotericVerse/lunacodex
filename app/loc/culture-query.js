@@ -495,7 +495,7 @@ function mediaMetadataDescription(row){
 // Culture article lists are requested only after the visitor explicitly opens
 // "顯示文章列表". The time/density rivers never ask for Galaxy UIDs.
 export async function selectCultureArticleListPage(scope,{
-  startDate='',endDate='',site='',sites=[],offset=0,sortDirection='desc'
+  startDate='',endDate='',site='',sites=[],offset=0,sortDirection='desc',signal=null
 }={}){
   const scopeId=scopeIdOf(scope?.id);
   if(!scopeId)throw new Error('scopeId is required');
@@ -519,7 +519,7 @@ export async function selectCultureArticleListPage(scope,{
     // Deterministic order keeps historical pages stable when dates tie.
     orders:[{column:'createtime',ascending:sortDirection==='asc'},
       {column:'uid',ascending:true}],
-    limit:pageSize,offset:pageOffset,count:'exact'
+    limit:pageSize,offset:pageOffset,count:'exact',signal
   });
   const normalized=rows.map(row=>{
     const hidden=scopeId==='local'?row.able?.list===false:row.list===false;
