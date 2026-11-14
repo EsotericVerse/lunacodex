@@ -494,9 +494,13 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
         {key:'records',label:'作品總數',value:basicTrend
           .reduce((sum,row)=>sum+Number(row.total||0),0).toLocaleString()},
         {key:'active',label:'活躍時段',value:basicTrend
-          .filter(row=>Number(row.total)>0).length.toLocaleString()}
+          .filter(row=>Number(row.total)>0).length.toLocaleString()},
+        {key:'completed',label:'完整觀察時段',value:basicTrend
+          .filter(row=>!row.partial).length.toLocaleString()}
       ]}/>
-      <StatisticsInsightsPanel rows={basicTrend} range={queryRange}/>
+      <StatisticsInsightsPanel rows={basicTrend} range={queryRange}
+        zoomLevel={zoomLevel} onZoomLevelChange={setZoomLevel}
+        idPrefix="scope-stat"/>
       <StatisticsDetails summary="標準統計圖（折線、長條、面積與組合圖）">
         {()=> <section className="statistics-dashboard__panel" style={{display:'grid',gap:12}}>
           <label><span>{UI_COPY.statistics.chart}</span>
