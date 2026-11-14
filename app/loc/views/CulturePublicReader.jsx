@@ -14,6 +14,7 @@ import {assignedSource} from '../member-intersection-model.mjs';
 import {readPublicSourceTaxonomy} from '../source-catalog-public.mjs';
 import {DEFAULT_YEAR_WINDOW} from '../default-year-window.mjs';
 import {ANCHOR_TYPE_GROUPS} from '../../../zenstack/anchor-hierarchy.mjs';
+import {useRiverDensityAnalysis} from '../../modular/modules/culture-timeline/use-river-density-analysis';
 
 const CultureTimeline=dynamic(()=>import('../../modular/modules/culture-timeline/CultureTimeline'),{loading:()=>null});
 const NO_ITEMS=Object.freeze([]);
@@ -199,6 +200,8 @@ export default function CulturePublicReader(){
   const [loading,setLoading]=useState(true);
   const [expandedEras,setExpandedEras]=useState([]);
   const [expandedSources,setExpandedSources]=useState([]);
+  const [anchorSuggestionsOpen,setAnchorSuggestionsOpen]=useState(false);
+  const [focusedSuggestionDate,setFocusedSuggestionDate]=useState('');
   const [selectedSite,setSelectedSite]=useState('');
   const [selectedCategoryKey,setSelectedCategoryKey]=useState('');
   const [articleRows,setArticleRows]=useState([]);
@@ -293,10 +296,46 @@ export default function CulturePublicReader(){
     :end;
   const anchorRiver=useMemo(()=>anchorModel(anchors,structureStart,structureEnd,expandedEras),
     [anchors,structureStart,structureEnd,expandedEras]);
-  const densityRiver=useMemo(()=>densityMode==='keyword'
-    ?sourceModel(keywordDaily,null,expandedSources,rangeStart,rangeEnd)
-    :sourceModel(daily,catalog,expandedSources,rangeStart,rangeEnd),
-    [densityMode,keywordDaily,daily,catalog,expandedSources,rangeStart,rangeEnd]);
+  // Reuse the saved DateAnchor history to exclude already-covered dates.
+  // Suggestions are virtual until explicitly saved in the protected editor.
+  const existingAnchorDates=useMemo(()=>anchors
+    .filter(row=>row.type==='date')
+    .map(row=>datePart(attributes(row).date)).filter(Boolean),[anchors]);
+  const candidateDensityRows=densityMode==='keyword'?keywordDaily:daily;
+  // Run Karaul/PELT only when the visitor opens the permanent suggestion
+  // lane. Reuse the daily rows already fetched for the second river.
+  const suggestionAnalysis=useRiverDensityAnalysis(candidateDensityRows,
+    existingAnchorDates,anchorSuggestionsOpen&&validRange&&candidateDensityRows.length>0);
+  const selectedSuggestion=suggestionAnalysis.suggestions.find(
+    item=>item.date===focusedSuggestionDate)||null;
+  const densityRiver=useMemo(()=>{
+    const base=densityMode==='keyword'
+      ?sourceModel(keywordDaily,null,expandedSources,rangeStart,rangeEnd)
+      :sourceModel(daily,catalog,expandedSources,rangeStart,rangeEnd);
+    const candidateLane={
+      id:'root:anchor-suggestions',label:anchorSuggestionsOpen
+        ?'建議定錨點（'+suggestionAnalysis.suggestions.length+'）':'建議定錨點',
+      order:9999,className:'scope-candidate-lane',
+      collapsible:true,expanded:anchorSuggestionsOpen
+    };
+    const candidates=anchorSuggestionsOpen?suggestionAnalysis.suggestions.map(item=>({
+      id:'suggested-anchor:'+item.date,entry_type:'virtual_anchor',
+      group_key:candidateLane.id,group_label:'建議定錨點',group_order:9999,
+      start_date:item.date,display_label:'◇',title:
+        item.date+' · 前 3 日 '+item.beforeCount+' 篇／後 3 日 '+item.afterCount+' 篇 · '+
+        (item.analysis||[]).join(' '),
+      class_name:'scope-virtual-anchor',
+      virtual_anchor:item
+    })):[];
+    return {...base,groups:[...base.groups,candidateLane],
+      items:[...base.items,...candidates]};
+  },[densityMode,keywordDaily,daily,catalog,expandedSources,rangeStart,rangeEnd,
+    anchorSuggestionsOpen,suggestionAnalysis.suggestions]);
+  useEffect(()=>{
+    // Never keep a date selected when it is no longer a candidate.
+    if(focusedSuggestionDate&&!suggestionAnalysis.suggestions.some(
+      item=>item.date===focusedSuggestionDate))setFocusedSuggestionDate('');
+  },[focusedSuggestionDate,suggestionAnalysis.suggestions]);
   const resetArticles=(site='',categoryKey='')=>{
     sequence.current+=1;setSelectedSite(site);setSelectedCategoryKey(categoryKey);setArticlesOpen(false);
     setArticleRows([]);setArticleOffset(0);
@@ -404,8 +443,24 @@ export default function CulturePublicReader(){
         <CultureTimeline items={densityRiver.items} extraGroups={densityRiver.groups}
           focus={NO_FOCUS} mode='source' heightVariant='double'
           windowStart={rangeStart} windowEnd={rangeEnd} fixedMin={rangeStart} fixedMax={rangeEnd}
+          anchorInsight={selectedSuggestion?{
+            date:selectedSuggestion.date,before:selectedSuggestion.beforeCount,
+            after:selectedSuggestion.afterCount,reason:(selectedSuggestion.analysis||[]).join(' ')
+          }:null}
+          anchorLabels={{date:'建議日期',before:'前三日作品',after:'後三日作品',
+            reason:'分析依據',close:'關閉'}}
+          onAnchorClose={()=>setFocusedSuggestionDate('')}
+          onSelect={row=>{
+            if(row?.entryType==='virtual_anchor')
+              setFocusedSuggestionDate(String(row.start||'').slice(0,10));
+          }}
           onGroupToggle={group=>{
             const name=String(group);
+            if(name==='root:anchor-suggestions'){
+              setAnchorSuggestionsOpen(open=>!open);
+              setFocusedSuggestionDate('');
+              return;
+            }
             if(name.startsWith('root:')){
               // Open/close child labels without requesting article rows.
               const id=name.slice(5);
@@ -418,6 +473,24 @@ export default function CulturePublicReader(){
             const category=densityRiver.sites.find(item=>'site:'+item.key===name);
             if(category)openArticles(category.site,category.key);
           }}/>
+        {anchorSuggestionsOpen?<div className='scope-culture-anchor-actions' role='region'
+          aria-label='建議定錨點分析'>
+          {suggestionAnalysis.error?<p className='scope-status scope-error' role='alert'>
+            {suggestionAnalysis.error}</p>:null}
+          {suggestionAnalysis.suggestions.length?<div className='scope-culture-anchor-choices'>
+            {suggestionAnalysis.suggestions.map(item=><button type='button'
+              key={item.date} className='loc-button'
+              aria-pressed={focusedSuggestionDate===item.date}
+              onClick={()=>setFocusedSuggestionDate(item.date)}>
+              {item.date} · 前三日 {item.beforeCount} 篇／後三日 {item.afterCount} 篇
+            </button>)}
+          </div>:<p className='scope-status' role='status'>
+            {candidateDensityRows.length&&!suggestionAnalysis.error
+              ?'正在分析，或目前沒有符合條件的建議定錨點。'
+              :'目前沒有可分析的每日作品資料。'}
+          </p>}
+          <p className='scope-status'>建議日期僅供參考，不會自動新增或修改時間定錨。</p>
+        </div>:null}
         {densityMode==='keyword'&&keywordClass?<p className='scope-status'>每日關鍵詞密度來自詞級索引的實際 UID 命中，依日期統計並去重文章。</p>:null}
         {densityMode==='keyword'&&classesLoading?<p className='scope-status'>正在載入關鍵詞科目…</p>:null}
         {densityMode==='keyword'&&keywordLoading?<p className='scope-status'>正在載入關鍵詞統計…</p>:null}
