@@ -1410,14 +1410,14 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     if(busy)return;
     const next=event.target.value;
     setImportLocale(next);
-    if(queue.length)await loadQueuedFile(queue[queueIndex],queueIndex,queue.length,next);
+    if(queue[queueIndex])await loadQueuedFile(queue[queueIndex],queueIndex,queue.length,next);
   }
   function changeImportFormat(next){
     if(busy)return;
     onFormatChange(next);
     // A changed record path changes the parsed file, not just field mapping.
     // Reparse the queued file in place instead of resetting the whole import.
-    if(next.recordPath!==format.recordPath&&queue.length)
+    if(next.recordPath!==format.recordPath&&queue[queueIndex])
       void loadQueuedFile(queue[queueIndex],queueIndex,queue.length,importLocale,next.recordPath);
   }
   const pending=queue.length>queueIndex+1;
