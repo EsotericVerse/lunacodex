@@ -25,12 +25,20 @@ function defaultTimelineLabel(item,index){
 function timelineRows(items,labelOf,focus,labels={}){
   const source=Array.isArray(items)?items:[];
   const focusTerms=[focus?.identity,focus?.period,focus?.anchor].filter(Boolean).map(String);
-  const knownTimes=source.flatMap(item=>[
-    item?.start_date,item?.active_from,item?.date,item?.end_date,item?.active_until
-  ]).map(value=>Date.parse(value||'')).filter(Number.isFinite);
+  // Avoid 5× temporary arrays and spread arguments for long source rivers.
+  // A multi-year era can contain thousands of dense daily buckets.
   const today=Date.parse(new Date().toISOString().slice(0,10));
-  const domainStart=knownTimes.length?Math.min(...knownTimes):today;
-  const domainEnd=Math.max(today,...knownTimes);
+  let domainStart=Infinity,domainEnd=today;
+  for(const item of source){
+    for(const value of [item?.start_date,item?.active_from,item?.date,
+      item?.end_date,item?.active_until]){
+      const time=Date.parse(value||'');
+      if(!Number.isFinite(time))continue;
+      if(time<domainStart)domainStart=time;
+      if(time>domainEnd)domainEnd=time;
+    }
+  }
+  if(!Number.isFinite(domainStart))domainStart=today;
   return source.flatMap((item,index)=>{
     const rawStart=item?.start_date||item?.active_from||item?.date;
     const rawEnd=item?.end_date||item?.active_until;
@@ -112,14 +120,20 @@ function settle(handler,item,row,callback,defaultValue=null){
 function makeTimelineGroups(rows,extraGroups,hasTimeKinds,editable,labels,onGroupToggleRef,onGroupSelectRef){
       const timeGroupLabels={anchor:labels.anchor,event:labels.event,period:labels.period};
       const standardTimeKinds=Object.keys(timeGroupLabels);
-      const foundGroups=[...new Set(rows.map(row=>row.group).filter(Boolean))];
+      const membersByGroup=new Map();
+      for(const row of rows){
+        if(!row.group)continue;
+        if(!membersByGroup.has(row.group))membersByGroup.set(row.group,[]);
+        membersByGroup.get(row.group).push(row);
+      }
+      const foundGroups=[...membersByGroup.keys()];
       const additionalGroups=new Map(extraGroups.filter(group=>group?.id).map(group=>[String(group.id),group]));
       const ordinaryGroupIds=hasTimeKinds
         ?[...standardTimeKinds.filter(kind=>!editable||foundGroups.includes('kind:'+kind)).map(kind=>'kind:'+kind),...foundGroups.filter(id=>!String(id).startsWith('kind:'))]
         :foundGroups;
       const groupIds=[...new Set([...ordinaryGroupIds,...additionalGroups.keys()])];
       return groupIds.map((id,index)=>{
-        const members=rows.filter(row=>row.group===id);
+        const members=membersByGroup.get(id)||EMPTY_ITEMS;
         const explicit=members.map(row=>row.groupOrder).filter(Number.isFinite);
         const kind=String(id).startsWith('kind:')?String(id).slice(5):'';
         const defaultOrder=standardTimeKinds.indexOf(kind);
@@ -220,7 +234,11 @@ export default function CultureTimeline({
     });
   },[items,extraGroups,heightVariant]);
   const rows=useMemo(()=>timelineRows(visibleItems,labelOf===defaultTimelineLabel?(item,index)=>item?.display_label||item?.name||item?.title||item?.period||labels.item+' '+(index+1):labelOf,focus,labels),[visibleItems,labelOf,focus,labels]);
-  const fallbackRows=useMemo(()=>[...rows].sort((a,b)=>String(b.start).localeCompare(String(a.start))),[rows]);
+  // The chart-error fallback list is not used during a healthy render.
+  // Avoid cloning and sorting thousands of buckets on every period switch.
+  const fallbackRows=useMemo(()=>chartError
+    ?[...rows].sort((a,b)=>String(b.start).localeCompare(String(a.start)))
+    :EMPTY_ITEMS,[rows,chartError]);
   const selectedRow=useMemo(()=>rows.find(row=>row.id===selectedRowId)||null,[rows,selectedRowId]);
   // Keep all camera geometry inside vis-timeline, not Motion; animation applies
   // only to explicit navigation, never to dragging, date edits, or first paint.
