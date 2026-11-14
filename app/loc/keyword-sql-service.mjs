@@ -249,7 +249,7 @@ async function persistPatterns(trx,scope,classUid,patterns,stats){
 // order only; createIndexedDateKeywordReader retains chronological ordering.
 // The outer analysis verifies the full Galaxy count before writing Pattern
 // postings, so additions/deletions during this scan cannot silently succeed.
-export async function readCompleteKeywordMetadataGroup(db,scope,columns,{
+async function readCompleteKeywordMetadataGroup(db,scope,columns,{
   date=null,maximumRows
 }={}){
   checkScope(scope);
