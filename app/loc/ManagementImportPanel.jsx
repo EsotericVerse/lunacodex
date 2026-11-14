@@ -932,11 +932,23 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         onProgress:p=>showProgress('依來源文章 ID 比對',p.completed,p.total),
         readSiteIds:async(ids,consumePage,site)=>{
           for(const idsPage of urlSafeInBatches(ids,'site_id')){
-            const {data,error}=await dbAuthRelation(galaxy)
-              .select(GALAXY_IMPORT_UID_COLUMNS)
-              .ilike('site',site).in('site_id',idsPage);
-            if(error)throw Error('site_id 比對失敗：'+error.message);
-            consumePage(data||[]);
+            // Page every stored candidate; one platform ID can map to
+            // multiple legacy rows and must remain ambiguous until compared.
+            const pageSize=500;
+            for(let offset=0;;){
+              const {data,error}=await dbAuthRelation(galaxy)
+                .select(GALAXY_IMPORT_UID_COLUMNS)
+                .ilike('site',site).in('site_id',idsPage)
+                .order('uid',{ascending:true})
+                .range(offset,offset+pageSize-1);
+              if(error)throw Error('site_id 比對失敗：'+error.message);
+              const page=data||[];
+              if(!Array.isArray(page))throw Error('site_id 比對回傳格式錯誤');
+              if(!page.length)break;
+              consumePage(page);
+              offset+=page.length;
+              if(page.length<pageSize)break;
+            }
           }
         }
       }):new Map();
@@ -951,8 +963,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         onProgress:p=>showProgress('依網站與發文時間比對',p.completed,p.total),
         readTimestamps:(times,consumePage,site,report)=>readImportCandidatesByTimeWindows(times,{
           readWindow:(start,end)=>readSiteSpan(site,start,end),
-          readRowsByUid,consumePage:rows=>consumePage(rows.filter(row=>
-            !reservedSavedUids.has(String(row.uid)))),windowSize:1000,concurrency:times.length>=3000?3:1,onWindowDone:report
+          readRowsByUid,consumePage,excludeUids:reservedSavedUids,
+          windowSize:1000,concurrency:times.length>=3000?3:1,onWindowDone:report
         })
       }):new Map();
       const existingBySiteId=new Map([...existingByTime,...matchesById]);
