@@ -1,4 +1,4 @@
-// LOC OAuth personal preferences and records. Only a verified LOC session can
+// LOC Session personal preferences and records. Only a verified LOC session can
 // read or change its own owner_id rows; no Admin grant or RLS rule is required.
 const TABLES=new Set(['loc_user','user_settings','user_records']);
 const COLUMN=/^[A-Za-z_][A-Za-z0-9_]{0,119}$/;
@@ -21,7 +21,7 @@ function record(value){
   if(!value||typeof value!=='object'||Array.isArray(value))
     throw bad('Invalid personal record');
   const copy={...value};
-  // owner_id must be the signed LOC OAuth subject, never caller-controlled.
+  // owner_id must be the verified LOC Session subject, never caller-controlled.
   delete copy.owner_id;
   if(Object.keys(copy).some(key=>!COLUMN.test(key)))
     throw bad('Invalid personal database field');
@@ -62,7 +62,7 @@ export async function executeLocPersonal(db,claims,body){
   if(claims?.provider!=='loc'||claims?.role!=='authenticated'||
     !/^[A-Za-z0-9_-]{8,128}$/.test(String(claims.sub||''))||
     !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(claims.email||'')))
-    throw bad('Verified LOC OAuth identity required',403);
+    throw bad('Verified LOC Session required',403);
   const payload=body?.payload||{};
   const table=String(payload.p_table||'');
   if(!table.startsWith('api.')||!TABLES.has(table.slice(4)))
