@@ -213,8 +213,10 @@ export async function executeManagedKyselyWrite(trx,body,{modelName=''}={}){
     if(keys.some(key=>Object.hasOwn(values,key)))
       reject('Primary keys cannot be updated');
   }
-  if(operation==='delete')await repairBeforeUidDelete(trx,{table,filters,
-    serialize:(values,target)=>postgresManagedJsonbValues(values,target)});
+  const dependencyRepair=operation==='delete'
+    ?await repairBeforeUidDelete(trx,{table,filters,
+      serialize:(values,target)=>postgresManagedJsonbValues(values,target)})
+    :null;
   let count=0;
   if(operation==='update_batch')count=await writeBatch(trx,table,payload.p_rows);
   else if(operation==='upsert'){
@@ -256,6 +258,9 @@ export async function executeManagedKyselyWrite(trx,body,{modelName=''}={}){
     const result=await withFilters(base,filters).execute();
     count=Number(result[0]?.numUpdatedRows??result[0]?.numDeletedRows??result[0]?.numAffectedRows??0);
   }
+  // Never commit dependent changes if the final PK DELETE did not complete.
+  if(operation==='delete'&&dependencyRepair?.affected&&count!==1)
+    reject('UID was modified during reference cleanup; DELETE refused',409);
   // The Scope configuration and LOC directory name are one logical write.
   // This is the Kysely replacement for the old database sync trigger.
   if(count>0&&/^[a-z][a-z0-9]{0,14}$/.test(table)&&table!=='loc'&&
