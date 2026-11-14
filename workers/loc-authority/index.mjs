@@ -234,6 +234,57 @@ export default {
           return Response.redirect(LOC_ISSUER+'/login',302);
         return page('使用者管理',ADMIN_CONTENT,ADMIN_JS,'');
       }
+      // One-shot, admin-only Cloudflare Access OIDC credential and reachability check.
+      // Only sanitized status/error codes are returned. No tokens, secrets, or codes are exposed.
+      if(request.method==='GET'&&url.pathname==='/admin/sso-diagnostic'){
+        const check=new Request(new URL('/api/auth/get-session',LOC_ISSUER),{headers:request.headers});
+        const sessionResult=await getAuth().handler(check);
+        const session=await sessionResult.json().catch(()=>null);
+        if(session?.user?.role!=='admin')
+          return new Response('Forbidden',{status:403,headers:{'cache-control':'no-store'}});
+        const provider=cloudflareSsoConfig(env);
+        const issuer=new URL(provider.issuer);
+        const tokenURL=new URL(issuer.pathname.replace(/\\/+$/,'')+'/token',issuer.origin);
+        const test=async mode=>{
+          const data=new URLSearchParams({
+            grant_type:'authorization_code',
+            code:'loc-auth-diagnostic-invalid-code',
+            redirect_uri:LOC_ISSUER+'/api/auth/sso/callback/cloudflare-access'
+          });
+          const headers={'content-type':'application/x-www-form-urlencoded','accept':'application/json'};
+          if(mode==='basic'){
+            headers.authorization='Basic '+btoa(provider.clientId+':'+provider.clientSecret);
+          }else{
+            data.set('client_id',provider.clientId);
+            data.set('client_secret',provider.clientSecret);
+          }
+          const started=Date.now();
+          try{
+            const response=await fetch(tokenURL.toString(),{
+              method:'POST',headers,body:data.toString(),redirect:'manual',
+              signal:AbortSignal.timeout(7000)
+            });
+            const contentType=response.headers.get('content-type')||'';
+            let error='';
+            if(contentType.includes('json')){
+              const payload=await response.json().catch(()=>null);
+              error=typeof payload?.error==='string'?payload.error:'';
+            }
+            return {method:mode,httpStatus:response.status,
+              oauthError:error.slice(0,64),elapsedMs:Date.now()-started,
+              cfRayPresent:!!response.headers.get('cf-ray')};
+          }catch(error){
+            return {method:mode,networkError:String(error?.name||'Error').slice(0,60),
+              elapsedMs:Date.now()-started};
+          }
+        };
+        const basic=await test('basic');
+        const post=basic.httpStatus>=500||basic.networkError?await test('post'):null;
+        return new Response(JSON.stringify({
+          endpointHost:tokenURL.hostname,checks:[basic,...(post?[post]:[])],
+          note:'A valid client with an intentionally invalid code should receive invalid_grant.'
+        }),{headers:{'content-type':'application/json','cache-control':'no-store','x-content-type-options':'nosniff'}});
+      }
       // DORMANT PROBE — kept, not deleted. Uncomment the block below to serve
       // GET /health/upstream again, which reports what one subrequest to the
       // delegated provider's discovery document actually does: status,
