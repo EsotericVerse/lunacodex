@@ -452,9 +452,9 @@ export default function CulturePublicReader(){
         {catalogError&&densityMode==='source'?<p className='scope-status scope-error' role='alert'>
           來源分類暫時無法載入：{catalogError}</p>:null}
         {keywordError?<p className='scope-status scope-error' role='alert'>{keywordError}</p>:null}
-        <div className='scope-culture-double-river'>
+        <div className='scope-culture-double-river scope-public-culture-river'>
         <CultureTimeline items={densityRiver.items} extraGroups={densityRiver.groups}
-          focus={NO_FOCUS} mode='source' heightVariant='double'
+          focus={NO_FOCUS} mode='source' heightVariant='double' compactSourceAxis
           windowStart={rangeStart} windowEnd={rangeEnd} fixedMin={rangeStart} fixedMax={rangeEnd}
           anchorInsight={selectedSuggestion?{
             date:selectedSuggestion.date,before:selectedSuggestion.beforeCount,
@@ -486,18 +486,6 @@ export default function CulturePublicReader(){
             const category=densityRiver.sites.find(item=>'site:'+item.key===name);
             if(category)openArticles(category.site,category.key);
           }}/>
-        </div>
-        {/* Keep candidate access visible at the very bottom even when a large
-            category tree makes vis-timeline scroll internally. It uses the
-            same expansion state/Worker as the actual timeline candidate lane. */}
-        <div className='scope-culture-candidate-footer'>
-          <button type='button' className='scope-river-group-button'
-            aria-controls='public-culture-anchor-analysis'
-            aria-expanded={anchorSuggestionsOpen}
-            onClick={()=>{setAnchorSuggestionsOpen(open=>!open);setFocusedSuggestionDate('');}}>
-            {anchorSuggestionsOpen?'−':'＋'}　建議定錨點
-            {anchorSuggestionsOpen?'（'+suggestionAnalysis.suggestions.length+'）':''}
-          </button>
         </div>
         {anchorSuggestionsOpen?<div id='public-culture-anchor-analysis'
           className='scope-culture-anchor-actions' role='region'
