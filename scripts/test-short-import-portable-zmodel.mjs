@@ -55,7 +55,7 @@ for(const [engine,dialect] of Object.entries(dialects)){
   const append=db.updateTable(model.table)
     .set({
       [model.content]:sql`concat(coalesce(${sql.ref(model.content)},''),${' tail'})`,
-      [model.updatedAt]:new Date('2026-11-14T02:00:00.000Z')
+      [model.updatedAt]:new Date('2026-11-14T02:00:00.000Z').toISOString()
     })
     .where(model.uid,'=',row.uid)
     .where(model.site,'in',['web','mcp'])
