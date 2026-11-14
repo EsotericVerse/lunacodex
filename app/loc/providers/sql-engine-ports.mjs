@@ -1,4 +1,5 @@
 import {canLocAccess} from './loc-authorization.mjs';
+import {repairBeforeUidDelete} from './uid-dependency-before-delete.mjs';
 // Single source of truth for the LOC SQL engine plug-in points.
 // Kysely provides dialect-specific SQL generation; connection and security
 // adapters remain on the trusted runtime (never in the browser).
@@ -286,6 +287,8 @@ export async function executeCrossEngineManagedWrite(db,body,context){
       count=managedAffected(await applyKyselyFilters(db.updateTable(name).set(serializePortableJsonFields(values,engine)),
         filters).executeTakeFirst());
     }else{
+      await repairBeforeUidDelete(db,{table,filters,engine,namespace,
+        serialize:values=>serializePortableJsonFields(values,engine)});
       count=managedAffected(await applyKyselyFilters(db.deleteFrom(name),
         filters).executeTakeFirst());
     }
