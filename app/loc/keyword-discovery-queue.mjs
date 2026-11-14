@@ -43,7 +43,7 @@ export class KeywordDiscoveryQueue{
     const result=batchEnvelope.safeParse({requested,received:rows.length,estimatedBytes:bytes});
     if(!result.success||rows.length>requested)
       throw new Error('Keyword discovery queue received invalid page bounds');
-    this.rows=rows;
+    this.rows=rows.length?rows:null;
     this.cursor=0;
     this.size=rows.length;
     if(!rows.length)return;
