@@ -116,13 +116,6 @@ $('disconnect').addEventListener('click',async()=>{
 $('refresh').addEventListener('click',()=>{
  void show().catch(error=>status.textContent=String(error?.message||error));
 });
-for(const link of document.querySelectorAll('.nav-link')){
- link.addEventListener('click',()=>{
-  for(const nav of document.querySelectorAll('.nav-link')){
-   nav.classList.toggle('nav-active',nav===link);
-  }
- });
-}
 $('ssoEmail').addEventListener('input',()=>{
  if(lastProviderStatus)renderMcpProviders(lastProviderStatus);
 });

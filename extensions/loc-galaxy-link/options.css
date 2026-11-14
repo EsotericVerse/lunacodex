@@ -287,3 +287,10 @@ a:focus-visible, button:focus-visible, input:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }
+
+/* Page-style navigation: one active view, no page reload or duplicate state. */
+.console-page[hidden] { display: none !important; }
+.section-block.console-page { margin-top: 31px; min-height: min(65vh, 560px); }
+@media (max-width: 600px) {
+  .section-block.console-page { margin-top: 23px; min-height: 0; }
+}
