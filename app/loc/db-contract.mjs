@@ -1,7 +1,7 @@
 import {flashMessage} from './flash-message.js';
 import {assertPlainGalaxyAttributes} from './content-policy.js';
 import {DB_QUERY_BATCH_SIZE,MAX_ROWS} from './query-batch-size.mjs';
-import {assertAuthorizationForTable,clearAuthorization,readAuthorization,canAuthorizeLocAccess} from './authorization-runtime.mjs';
+import {clearAuthorization,readAuthorization,canAuthorizeLocAccess} from './authorization-runtime.mjs';
 import {assertEditorSession} from './edit-session-ttl.mjs';
 import {isScopedGalaxy,prepareGalaxyInsertRows,prepareGalaxyUpdateValues} from './galaxy-able.mjs';
 
@@ -35,12 +35,11 @@ export function createDatabaseClient({publicClient,authClient,auth}){
   }
 
   function preflightWrite(table){
-    // JS-only first gate; local SQLite is an independent device-private scope.
-    // The database RPC/RLS is always the second, authoritative gate.
-    if(typeof window!=='undefined'){
-      assertEditorSession(window.sessionStorage);
-      assertAuthorizationForTable(table);
-    }
+    // The local editor's idle lock is UI state only; no browser-made ACL.
+    // Better Auth + ZModel/PolicyPlugin authorize every management write on
+    // the trusted /api/loc-native endpoint and inside its SQL transaction.
+    // Keep this activity guard for the current editing UX, not as identity.
+    if(typeof window!=='undefined')assertEditorSession(window.sessionStorage);
   }
   function invalidateRelevantAuthorization(scopeid,newEmail=''){
     const saved=readAuthorization();
