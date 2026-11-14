@@ -266,11 +266,11 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   const totalDaily=useAsyncResource({
     queryKey:['statistics-total-daily-v1',scopeId,queryRange.startDate,observedEnd],
     enabled:totalChart&&periodNavigationReady&&Boolean(queryRange.startDate&&observedEnd&&queryRange.startDate<=observedEnd),
-    queryFn:async()=>{
+    queryFn:async({signal})=>{
       const {dbPublicClient}=await import('../../loc/db-client.mjs');
       const {data,error}=await dbPublicClient.schema('silver').analytics({
         p_scope_id:scopeId,p_view:'daily_total',
-        p_start:queryRange.startDate,p_end:observedEnd
+        p_start:queryRange.startDate,p_end:observedEnd,signal
       });
       if(error)throw error;
       return data;
@@ -302,9 +302,10 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   const overview=useAsyncResource({
     queryKey:['scope-overview',scopeId,queryRange.startDate,queryRange.endDate],
     enabled:sourceChart&&periodNavigationReady&&Boolean(queryRange.startDate&&queryRange.endDate),
-    queryFn:async()=>{
+    queryFn:async({signal})=>{
       const {selectScopeOverview}=await loadGalaxyStatistics();
-      const data=await selectScopeOverview(targetScopes[0],queryRange);
+      const data=await selectScopeOverview(targetScopes[0],{...queryRange,signal});
+      if(signal.aborted)return data;
       // The self-intersection panel reads the same rows; seed its cache so opening it is free.
       resourceCache.set(['own-scope-source-intersection',scopeId,queryRange.startDate,queryRange.endDate],data.rows);
       return data;
