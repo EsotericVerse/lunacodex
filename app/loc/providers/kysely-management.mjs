@@ -516,9 +516,12 @@ async function syncSearchPatterns(trx,args){
     .where('uid','=',classUid).where('type','=','class').executeTakeFirst();
   if(!klass)reject('Keyword Class is missing');
   for(const row of proposed){
-    if(row?.scopeid!==scope||typeof row?.pattern!=='string'||
-       !Array.isArray(row.uid_list)||row.count!==row.uid_list.length)
-      reject('Invalid Pattern batch row');
+    // A Pattern write always targets its physical UID. The word is a
+    // lexeme for matching documents, not an upsert/lookup identity.
+    if(row?.scopeid!==scope||!UID.test(String(row?.uid||''))||
+       typeof row?.pattern!=='string'||!Array.isArray(row.uid_list)||
+       row.count!==row.uid_list.length)
+      reject('Invalid Pattern UID batch row');
   }
   return storeScopePatternMatches(trx,scope,proposed);
 }
