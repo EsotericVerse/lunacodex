@@ -523,7 +523,7 @@
    The six-key Motion pill owns active-state color and shape; this sheet may
    soften inactive keys but must not paint over that shared selection. */
 .scope-feature-dock > a{
-  border-color:color-mix(in srgb,var(--loc-accent) 16%,var(--loc-line));
+  border-color:var(--loc-line);
   background:var(--loc-dock-idle-surface);
   border-radius:clamp(13px,1.5vw,18px);
   box-shadow:0 3px 12px color-mix(in srgb,var(--loc-craft-ink-shadow) 58%,transparent);
@@ -542,7 +542,7 @@
 @media(hover:hover) and (pointer:fine){
   .scope-feature-dock > a:not([aria-current="page"]):not(:disabled):hover{
     transform:translateY(-2px);
-    background:color-mix(in srgb,var(--loc-accent) 16%,var(--loc-panel));
+    background:var(--loc-panel-2);
     box-shadow:0 6px 16px color-mix(in srgb,var(--loc-craft-ink-shadow) 75%,transparent);
   }
 }
