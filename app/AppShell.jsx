@@ -405,7 +405,7 @@ function AppShellInner({children,runtime}){
   },[localDeadline]);
   const [mobileFavorite,setMobileFavorite]=useState(true);
   const [nativeHomepage,setNativeHomepage]=useState('loc');
-  const preferences=useNavigationPreferences();
+  const preferences=useNavigationPreferences({enabled:!native||!localDeadline});
   const [openFolderId,setOpenFolderId]=useState('');
   // Registry, NAV titles and Themes share one site snapshot across pages.
   // Scope config and page blocks load separately when first needed.
