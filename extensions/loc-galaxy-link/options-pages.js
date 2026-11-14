@@ -1,12 +1,14 @@
-// LOC Galaxy Link: four local views inside one extension options document.
+// LOC Galaxy Link: local views inside one extension options document.
 // No new routes, permissions, OAuth requests or remote dependencies.
 const CONSOLE_PAGES=Object.freeze({
   overview:'總覽',
+  daily:'每日符文',
   providers:'MCP 連線',
-  capture:'擷取設定',
-  activity:'Queue 與紀錄'
+  capture:'擷取',
+  activity:'Queue',
+  settings:'設定'
 });
-const consoleNav=Array.from(document.querySelectorAll('.nav-link'));
+const consoleNav=Array.from(document.querySelectorAll('.nav-link, .remote-dock-link'));
 function selectedConsolePage(){
   const id=window.location.hash.slice(1);
   return Object.hasOwn(CONSOLE_PAGES,id)?id:'overview';
