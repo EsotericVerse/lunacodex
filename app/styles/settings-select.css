@@ -328,7 +328,8 @@
   border-radius:var(--loc-ui-radius-lg,18px);
   background:var(--loc-ui-panel,var(--loc-panel));
 }
-.management-workspace:not(.lrg-home-workspace)>.management-section-nav .management-section-nav__title{
+.management-workspace:not(.lrg-home-workspace)>.management-section-nav .management-section-nav__title,
+.scope-keyword-management>.management-section-nav .management-section-nav__title{
   position:absolute;
   width:1px;
   height:1px;
@@ -682,41 +683,6 @@
   margin-inline:auto;
   box-sizing:border-box;
 }
-.management-workspace--unified>.management-workspace__header{
-  display:grid;
-  align-content:start;
-  gap:.45rem;
-  min-width:0;
-  padding:clamp(1rem,1.5vw,1.5rem);
-  border:1px solid var(--loc-ui-hairline,var(--loc-line));
-  border-radius:var(--loc-ui-radius-lg,18px);
-  background:var(--loc-ui-panel,var(--loc-panel));
-  color:var(--loc-text);
-}
-.management-workspace--unified .management-workspace__level{
-  width:fit-content;
-  margin:0;
-  color:var(--loc-accent);
-  font-size:var(--loc-type-eyebrow,.75rem);
-  font-weight:750;
-  line-height:1.4;
-  letter-spacing:.04em;
-}
-.management-workspace--unified .management-workspace__heading{
-  margin:0;
-  color:var(--loc-heading);
-  font-size:clamp(1.25rem,1.6vw,1.7rem);
-  font-weight:750;
-  line-height:1.35;
-  overflow-wrap:anywhere;
-}
-.management-workspace--unified .management-workspace__description{
-  max-width:72ch;
-  margin:0;
-  color:var(--loc-muted);
-  font-size:var(--loc-type-ui,.9rem);
-  line-height:1.6;
-}
 .management-workspace--unified>.management-section-nav,
 .scope-management-layout .management-workspace--unified>.management-section-nav{
   width:100%;
@@ -831,7 +797,6 @@
 }
 @media(max-width:680px){
   .management-workspace--unified{gap:.75rem;}
-  .management-workspace--unified>.management-workspace__header{padding:1rem;}
   .management-workspace--unified>.management-section-nav,
   .scope-management-layout .management-workspace--unified>.management-section-nav{padding:.5rem;}
   .management-workspace--unified>.management-section-nav .management-section-nav__item{padding:.6rem .75rem;}
