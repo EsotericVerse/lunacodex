@@ -4,12 +4,14 @@
 // A revision must come from the SAME database as the Kysely SELECT. The
 // PostgreSQL statement trigger is the authority, including writes from other
 // processes. Missing revision support means an uncached, live SELECT.
-const MAX_ENTRIES=96;
+const MAX_ENTRIES=80;
 const MAX_RESULT_CHARS=350000;
+const MAX_TOTAL_CHARS=2000000; // Bounded per-isolate memory, not 80 huge rows.
 const MAX_AGE_MS=120000;
 const RELATION=/^silver\.[a-z][a-z0-9]{0,14}_galaxy$/;
 const completed=new Map();
 const pending=new Map();
+let totalChars=0;
 
 function dependencyNames(values){
   if(!Array.isArray(values)||!values.length)return null;
@@ -28,10 +30,16 @@ async function revisionsFor(db,names){
     ?names.map(name=>[name,versions.get(name)]):null;
 }
 
+function discard(key){
+  const old=completed.get(key);
+  if(old){totalChars-=old.json.length;completed.delete(key)}
+}
 function remember(key,json){
-  completed.delete(key);
+  discard(key);
   completed.set(key,{json,expires:Date.now()+MAX_AGE_MS});
-  while(completed.size>MAX_ENTRIES)completed.delete(completed.keys().next().value);
+  totalChars+=json.length;
+  while(completed.size>MAX_ENTRIES||totalChars>MAX_TOTAL_CHARS)
+    discard(completed.keys().next().value);
 }
 
 /**
@@ -58,11 +66,13 @@ export async function withNumericSqlResultCache({
     scope,kind,start,end,vector]);
   const cached=completed.get(key);
   if(cached){
-    completed.delete(key);
     if(cached.expires>Date.now()){
+      // Refresh LRU order without changing its accounted size.
+      completed.delete(key);
       completed.set(key,cached);
       return JSON.parse(cached.json);
     }
+    discard(key);
   }
   const inProgress=pending.get(key);
   if(inProgress)return JSON.parse(await inProgress);
