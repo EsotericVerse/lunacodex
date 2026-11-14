@@ -72,7 +72,7 @@ const palettes=themes.map(theme=>{
       throw Error('Unsafe Theme token '+id+' '+key);
     return '  '+key+':'+value+';';
   });
-  return ':root[data-theme-id="theme-'+id+'"],.game-shell[data-game-theme="theme-'+id+'"]{\n  color-scheme:'+(theme.scheme==='dark'?'dark':'light')+';\n'+declarations.join('\n')+'\n}';
+  return ':root[data-theme-id="theme-'+id+'"]{\n  color-scheme:'+(theme.scheme==='dark'?'dark':'light')+';\n'+declarations.join('\n')+'\n}';
 });
 const themeMeta=themes.map(t=>({theme_id:t.theme_id,theme_name:t.theme_name,theme_order:t.theme_order}));
 const bootstrap={scope_id:'loc',page_name:'index',registry:site.registry,

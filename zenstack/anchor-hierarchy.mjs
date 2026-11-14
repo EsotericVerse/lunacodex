@@ -253,7 +253,11 @@ export function indexZModelAnchorHierarchy(rows,{family,strict=false}={}){
         if(!child){unresolved.push({from:node.uid,uid,type:childType});continue;}
         if(child.type!==childType)
           throw new Error('Invalid Anchor hierarchy ('+family+'): '+node.type+' -> '+child.type);
-        if(family!=='space'&&!(family==='keyword'&&childType==='pattern')&&incoming.has(uid))
+        // TimeAnchor is a DAG: dates/periods may be reused by multiple ranges.
+        // Only strict Keyword/Site hierarchies require unique parents.
+        const sharedChild=family==='space'||family==='time'||
+          (family==='keyword'&&childType==='pattern');
+        if(!sharedChild&&incoming.has(uid))
           throw new Error('Anchor node has multiple parents: '+uid);
         if(!children.has(node.uid))children.set(node.uid,[]);
         children.get(node.uid).push(uid);

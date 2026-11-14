@@ -41,14 +41,12 @@ const Search=dynamic(()=>import('../modular/features/Search').catch(recoverChunk
 const SearchManagement=dynamic(()=>import('./SearchManagement'),{loading});
 const Trace=dynamic(()=>import('../modular/features/Trace'),{loading});
 const RunesHomeView=dynamic(()=>import('../lrunes/RunesClient'),{loading});
-const GameView=dynamic(()=>import('../lrunes/game/GameBoard'),{ssr:false,loading});
 const ManagementView=dynamic(()=>import('./ScopeManagement').catch(recoverChunkOnce),{loading});
 const SourceManagementView=dynamic(()=>import('./LocSourceManagement'),{loading});
 const KeywordManagementView=dynamic(()=>import('./LocKeywordManagementPage'),{loading});
 const LocalSettingView=dynamic(()=>import('./views/LocalSettingView'),{loading});
 
 const VIEWS={
-  game:GameView,
   admin:AdminHomeView,
   statics:Statistics,
   keywords:KeywordSettings,
@@ -67,7 +65,6 @@ const HOME_VIEWS={loc:AboutView,lrunes:RunesHomeView,lo3rwang:AuthorHomeView,adm
 // immediately, in parallel with the registry and FeatureGate config queries,
 // instead of after they finish.
 const VIEW_PRELOADERS={
-  game:()=>import('../lrunes/game/GameBoard'),
   admin:()=>import('./views/AdminHomeView'),
   statics:()=>import('../modular/features/Statistics'),
   keywords:()=>import('../modular/features/KeywordSettings'),
