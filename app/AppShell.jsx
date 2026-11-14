@@ -13,6 +13,7 @@ import dataSourceStatusZh from './i18n/sections/uiExtra.dataSourceStatus.zh_tw.j
 registerDefaultSection('fields',fieldsZh);
 registerDefaultSection('uiExtra.dataSourceStatus',dataSourceStatusZh);
 import {FEATURES,SCOPES,featureIdForPath,getScope} from './modular/scope-registry';
+import {SCOPE_ROUTE_INDEX} from './modular/scope-route-index.js';
 import {applyTheme,themeSignature,THEME_SLOTS} from './modular/theme-registry';
 import {mergeThemeSlot} from './loc/theme-data';
 import {useScopeRuntime} from './modular/use-scope-runtime';
@@ -136,7 +137,12 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
   // page: nothing here issues a second round trip for config or Themes.
   const bootstrap=useAppBootstrap(scopeId,pageName);
   const configEnabled=!fixedDefaultThemeId&&scope.id!=='loc'&&!scope.aggregateChildren&&scope.id!=='admin';
-  const configuredTheme=configEnabled?String(bootstrap.data?.config?.theme||'').trim():'';
+  // A management entry retires its obsolete SQL readers before rendering.
+  // Published route metadata is already available synchronously and prevents
+  // the palette from falling back to day/night while Bootstrap is re-reading.
+  const publishedTheme=SCOPE_ROUTE_INDEX.find(row=>row.scope_id===scopeId)?.config?.theme;
+  const configuredTheme=configEnabled?String(bootstrap.data?.config?.theme||
+    publishedTheme||'').trim():'';
   const configuredDefaultThemeId=configuredTheme===SYSTEM_THEME_ID?'':configuredTheme;
   const [selection,setSelection]=useState(()=>({scopeId,themeId:readUserTheme(scopeId)}));
   // Decorative local feedback only when a person selects a different option.
