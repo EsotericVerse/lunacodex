@@ -119,11 +119,11 @@ export default function StatisticsInsightsPanel({
       </StatisticsChartFrame>
     </section>
     <aside className="statistics-dashboard__panel statistics-dashboard__panel--insights"
-      aria-label="作品總數 Insights">
+      aria-label="作品總數趨勢與極值">
       <header className="statistics-dashboard__panel-heading statistics-dashboard__panel-heading--insights">
         <div className="statistics-dashboard__insights-heading-copy">
-          <h3>Insights</h3>
-          <p>趨勢預估 <span>極值與典型值</span></p>
+          <h3>Trend Outlook</h3>
+          <p>Extremes &amp; Typical Values</p>
         </div>
         <div role="status" aria-live="polite"
           className="scope-status statistics-dashboard__pelt-summary">
