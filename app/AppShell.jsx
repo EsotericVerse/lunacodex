@@ -19,6 +19,7 @@ import {useScopeRuntime} from './modular/use-scope-runtime';
 import {faviconForScope} from './site-favicons';
 import {appBootstrapPageCopy,useAppBootstrap} from './loc/app-bootstrap';
 import {getDbSourceStatus,subscribeDbSourceStatus} from './loc/db-source-status.mjs';
+import {getLocalDeadline,subscribeLocalDeadline,stopLocalDeadline,formatLocalCountdown} from './loc/local-scope-session.mjs';
 import {useNavigationPreferences} from './loc/use-navigation-preferences';
 import {NavigationPreferences} from './modular/navigation-preferences';
 import {navigationHref} from './modular/scope-registry.js';
@@ -388,6 +389,20 @@ function AppShellInner({children,runtime}){
   const pageName=currentFeature||'index';
   const isSettings=['/settings','/settings/index.html','/local/setting','/local/setting/index.html','/local/settings','/local/settings/index.html'].includes(normalizePath(pathname));
   const [native,setNative]=useState(false);
+  const localDeadline=useSyncExternalStore(subscribeLocalDeadline,getLocalDeadline,()=>0);
+  const [localClock,setLocalClock]=useState(0);
+  const lastLocalDeadline=useRef(0);
+  useEffect(()=>{
+    if(!localDeadline)return;
+    const tick=()=>{
+      const now=Date.now();
+      setLocalClock(now);
+      if(now>=localDeadline)stopLocalDeadline();
+    };
+    tick();
+    const timer=setInterval(tick,1000);
+    return()=>clearInterval(timer);
+  },[localDeadline]);
   const [mobileFavorite,setMobileFavorite]=useState(true);
   const [nativeHomepage,setNativeHomepage]=useState('loc');
   const preferences=useNavigationPreferences();
@@ -436,11 +451,23 @@ function AppShellInner({children,runtime}){
     return ()=>{active=false;};
   },[activeLocale]);
   const isMyPhone=native&&['/my-phone','/my-phone/index.html'].includes(normalizePath(pathname));
-  // My Phone and every /local/* route use the same on-device SQLite Scope.
+  // /local and My Phone share the on-device Galaxy IndexedDB core.
   const localWorkspace=native&&(isMyPhone||scopeId==='local');
-  // /local/settings is the public Global Settings URL, not permission to
-  // enter the device-only /local workspace from a Web browser.
-  const navScopeId=!native&&currentScope.nativeOnly?'loc':localWorkspace?'local':currentScope.featureScope||scopeId;
+  const localCoreActive=native&&localDeadline>0;
+  const localNavigation=localWorkspace||localCoreActive;
+  useEffect(()=>{
+    if(!native)return;
+    if(localCoreActive){
+      lastLocalDeadline.current=localDeadline;
+      if(!localWorkspace)window.location.replace('/local/index.html');
+      return;
+    }
+    if(lastLocalDeadline.current){
+      lastLocalDeadline.current=0;
+      if(localWorkspace)window.location.replace('/?loc_direct=1');
+    }
+  },[native,localCoreActive,localDeadline,localWorkspace]);
+  const navScopeId=!native&&currentScope.nativeOnly?'loc':localNavigation?'local':currentScope.featureScope||scopeId;
   const gameThemeDefault=/(^|\/)game\/?$/.test(String(pathname||''))?'theme-4':'';
 
   useEffect(()=>{
@@ -530,14 +557,16 @@ function AppShellInner({children,runtime}){
     {id:'cancel',icon:'cancel',label:translateUiField(activeLocale,'取消'),action:'cancel'}
   ];
   const featureTabs=[
-    {id:'home',icon:localWorkspace?'phone':'home',label:localWorkspace?'使用說明':translateUiField(activeLocale,'首頁'),href:localWorkspace?deviceNavigation.mobileHomeHref(true):navigationHref(navScopeId,'',native)+(native&&navScopeId==='loc'?'?loc_direct=1':'')},
+    {id:'home',icon:'home',label:translateUiField(activeLocale,'首頁'),
+      href:localNavigation?navigationHref('local','',native):
+        navigationHref(navScopeId,'',native)+(native&&navScopeId==='loc'?'?loc_direct=1':'')},
     ...['culture','statics','trace','search'].map(id=>{
       const feature=FEATURES.find(item=>item.id===id);
-      return {id,icon:id==='trace'?(localWorkspace?'settings':'trace'):id,
-        label:localWorkspace&&id==='trace'?'管理':(copy.features?.[id]?.title||feature.label),
-        href:navigationHref(navScopeId,localWorkspace&&id==='trace'?'manage':feature.path,native)};
+      return {id,icon:id,label:copy.features?.[id]?.title||feature.label,
+        href:navigationHref(localNavigation?'local':navScopeId,feature.path,native)};
     }),
-    {id:'settings',icon:'settings',label:copy.common.settings||'設定',href:native?'/local/settings/index.html':'/settings/'}
+    {id:'settings',icon:'settings',label:copy.common.settings||'設定',
+      href:native?'/local/settings/index.html'+(localNavigation?'?section=local':''):'/settings/'}
   ];
 
   useEffect(()=>{
@@ -591,7 +620,8 @@ function AppShellInner({children,runtime}){
     {children}
     <div className="scope-feature-dock scope-floating-edit-buttons" role="toolbar"
       aria-label={translateUiField(activeLocale,editingDockVisible||editDockPending?'編輯功能選單':'Scope 功能選單')}
-      data-scope={localWorkspace?'local':scopeId} data-action-count={editingDockVisible?editTabs.length:6}>
+      data-scope={localNavigation?'local':scopeId} data-local-core={localCoreActive?'active':undefined}
+      data-action-count={editingDockVisible?editTabs.length:6}>
       {editingDockVisible?editTabs.map(tab=>tab.action
         ?<button type="button" key={tab.id} className="scope-edit-dock-action"
           disabled={editDock.busy&&tab.action!=='cancel'}
@@ -619,6 +649,9 @@ function AppShellInner({children,runtime}){
           activation={dockActivation.id===tab.id?dockActivation.count:0}/>
         <span>{tab.label}</span>
       </ScopeLink>)}
+      {localCoreActive?<output className="scope-local-core-timer" aria-label="本機資料庫剩餘時間" aria-live="off">
+        本機資料庫 · {formatLocalCountdown(localDeadline,localClock||Date.now())}
+      </output>:null}
       {editingDockVisible&&editDock.notice?<p className="scope-edit-dock-notice" role="status" aria-live="polite">{editDock.notice}</p>:null}
     </div>
     {showHomeEditEntry?<ScopeHomeEditEntry key={scopeId}/>:null}
@@ -635,7 +668,7 @@ function AppShellInner({children,runtime}){
           {({'zh-Hant':'日期基準','zh-Hans':'日期基准',en:'Date basis',ja:'日付基準'}[activeLocale]||'日期基準')+'：Asia/Taipei (UTC+08:00)'}
         </small>
       </div>
-      <DataSourceStatus local={localWorkspace}/>
+      <DataSourceStatus local={localNavigation}/>
       <FlashMessage/>
     </footer>
   </UiLocaleProvider>;
