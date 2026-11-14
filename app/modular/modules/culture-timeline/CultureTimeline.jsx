@@ -170,6 +170,9 @@ export default function CultureTimeline({
   hiddenDates=EMPTY_HIDDEN_DATES,
   extraGroups=EMPTY_EXTRA_GROUPS,
   heightVariant='default',
+  // Only the author public Culture density river uses a tighter lane/axis
+  // height. Other Timeline consumers keep their established measurements.
+  compactSourceAxis=false,
   onGroupToggle=null,
   onGroupSelect=null,
   anchorInsight=null,
@@ -231,10 +234,14 @@ export default function CultureTimeline({
   // The double river must shrink after zero-count groups disappear.
   // A fixed 320px floor previously left a dark, empty band on 1–2 lanes.
   const timelineMinHeight=heightVariant==='double'
-    ?Math.max(186,110+compactGroupCount*58)
+    ?compactSourceAxis
+      ?Math.max(192,60+compactGroupCount*55)
+      :Math.max(186,110+compactGroupCount*58)
     :Math.max(180,96+compactGroupCount*46);
   const timelineMaxHeight=heightVariant==='double'
-    ?Math.max(timelineMinHeight+28,148+compactGroupCount*72)
+    ?compactSourceAxis
+      ?Math.max(timelineMinHeight+48,92+compactGroupCount*68)
+      :Math.max(timelineMinHeight+28,148+compactGroupCount*72)
     :Math.max(360,Math.min(760,180+compactGroupCount*92));
 
   useEffect(()=>{onSelectRef.current=onSelect},[onSelect]);
@@ -291,6 +298,9 @@ export default function CultureTimeline({
         autoResize:true,
         minHeight:timelineMinHeight+'px',
         maxHeight:timelineMaxHeight+'px',
+        // Explicitly retain a labeled date axis at the bottom of the
+        // public density chart; its lane height must leave room for it.
+        ...(compactSourceAxis?{orientation:{axis:'bottom'},showMinorLabels:true,showMajorLabels:true}:{}),
         verticalScroll:true,
         groupOrder:'order',
         locale:timelineLocale,
@@ -407,7 +417,7 @@ export default function CultureTimeline({
     hasTimeKinds,preserveTimelineInstance?null:timelineMinHeight,
     preserveTimelineInstance?null:timelineMaxHeight,
     Boolean(rows.length||editable||extraGroups.length),
-    heightVariant,mode,windowStart,windowEnd,boundaryStart,boundaryEnd,fixedMin,fixedMax,
+    heightVariant,mode,compactSourceAxis,windowStart,windowEnd,boundaryStart,boundaryEnd,fixedMin,fixedMax,
     preserveTimelineInstance?null:hiddenDates,editable,locale,labels,timelineLocale,defaultTimeUnit]);
 
   // When a group opens, mutate existing datasets instead of destroying and
@@ -462,12 +472,16 @@ export default function CultureTimeline({
         data.update(nextRows);
         timeline.redraw();
       }
+      // An async source-group insertion can leave the axis at the previous
+      // height when redraw preceded setOptions. Apply new bounds first, then
+      // reflow the bottom date axis once for this public reader.
       timeline.setOptions({minHeight:timelineMinHeight+'px',maxHeight:timelineMaxHeight+'px'});
+      if(compactSourceAxis)timeline.redraw();
     }catch(error){
       console.error('Culture river in-place group update failed',error);
       setChartError(true);
     }
-  },[rows,extraGroups,hasTimeKinds,editable,heightVariant,preserveTimelineInstance,ready,timelineMinHeight,timelineMaxHeight,labels]);
+  },[rows,extraGroups,hasTimeKinds,editable,heightVariant,compactSourceAxis,preserveTimelineInstance,ready,timelineMinHeight,timelineMaxHeight,labels]);
 
   // The root total bars arrive after the initial chart has mounted.
   // Repaint the existing chart on the first animation frame after its data update.
