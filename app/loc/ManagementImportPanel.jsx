@@ -1098,9 +1098,35 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       }).rows;
       const resolvedUid=createImportUidResolver(incoming.aliases,existingBySiteId);
       const persistedUids=new Set([...existingBySiteId.values()].map(row=>String(row.uid)));
-      // Only confirmed persisted PKs can correct old nonempty links here.
-      // References to not-yet-inserted articles must await real INSERT receipts.
+      // Before changing any stored nonempty UID, ask PostgreSQL only whether
+      // that exact eight-character PK still exists. An existing PK always
+      // wins over a coincidental incoming archive UID alias. No Galaxy body,
+      // Anchor model, title, location, site or semantic comparison is loaded.
+      const possiblyRebound=new Set();
+      const collectStoredUid=value=>{
+        if(typeof value!=='string'||!/^[A-Za-z0-9]{8}$/.test(value))return;
+        if(resolvedUid(value)!==value)possiblyRebound.add(value);
+      };
+      for(const saved of existingBySiteId.values()){
+        collectStoredUid(saved.source_id);
+        collectStoredUid(saved.ref_id);
+        for(const target of saved.target_id||[])collectStoredUid(target);
+      }
+      const occupiedUids=new Set();
+      for(const batch of urlSafeInBatches([...possiblyRebound],'uid')){
+        const {data,error}=await dbAuthRelation(galaxy).select('uid').in('uid',batch);
+        if(error)throw Error('既有 UID 主鍵核對失敗：'+(error.message||error));
+        const requested=new Set(batch);
+        for(const row of data||[]){
+          const uid=String(row?.uid||'');
+          if(!requested.has(uid))throw Error('UID 主鍵核對回傳不屬於本次 Scope');
+          occupiedUids.add(uid);
+        }
+      }
+      // Only a missing/stale saved UID may follow a proven import alias to a
+      // confirmed saved article. Pending INSERT UIDs cannot replace old links.
       const resolveSavedUid=value=>{
+        if(occupiedUids.has(value))return value;
         const mapped=resolvedUid(value);
         return persistedUids.has(mapped)?mapped:value;
       };
