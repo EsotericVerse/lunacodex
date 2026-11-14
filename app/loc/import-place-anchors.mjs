@@ -1,6 +1,6 @@
 import {importGeoKey} from './import-geocoordinates.mjs';
 import {allocateAnchorUid} from './uid.js';
-import {planImportPointVisitDelta} from './import-point-date-immer.mjs';
+import {planImportPointVisitDelta,planImportPointCreate} from './import-point-date-immer.mjs';
 
 // An exact coordinate identifies an existing Trace location even if the
 // original place label differs. Without GPS, only unambiguous names are used.
@@ -180,14 +180,13 @@ export async function prepareImportPlaceAnchors(records,{
     for(let attempt=0;attempt<4;attempt++){
       rows=chunk.map(place=>{
         const uid=allocateAnchorUid(assigned);assigned.add(uid);
-        return {uid,type:'point',title:place.title,
-        description:JSON.stringify({text:'',address:place.postal||null,
-          ...(place.placeUrl?{url:place.placeUrl}:{})}),
-        attr:place.coordinates
-          ?{longitude:place.address[0],latitude:place.address[1]}:{},
-        ...(place.createtime!==null?{createtime:new Date(place.createtime).toISOString()}:{}),
-        invisible:false
-      };});
+        return planImportPointCreate({
+          uid,title:place.title,
+          description:JSON.stringify({text:'',address:place.postal||null,
+            ...(place.placeUrl?{url:place.placeUrl}:{})}),
+          coordinates:place.coordinates?place.address:null,
+          createtime:place.createtime===null?null:new Date(place.createtime).toISOString()
+        }).row;});
       ({data,error}=await relation(table).insert(rows).select('uid,type,title,attr'));
       if(error?.code==='23505'&&attempt<3)continue;
       break;
