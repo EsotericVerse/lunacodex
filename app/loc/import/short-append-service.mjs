@@ -219,7 +219,7 @@ export function portableShortImportStore(db,sql,{engine='postgres',namespace,onP
     await trx.insertInto(name).values(verified).executeTakeFirstOrThrow();
    },
    async append(uid,id,tail){
-    onPhase?.('append');
+    onPhase?.('append_update');
     const update=await trx.updateTable(name)
      .set({
       [mapping.content]:sql`concat(coalesce(${sql.ref(mapping.content)},''),${tail})`,
@@ -230,6 +230,7 @@ export function portableShortImportStore(db,sql,{engine='postgres',namespace,onP
      })
      .where(mapping.uid,'=',uid).where(mapping.site,'in',['web','mcp'])
      .where(mapping.siteId,'=',id).executeTakeFirstOrThrow();
+    onPhase?.('append_result');
     if(Number(update.numUpdatedRows??update.numAffectedRows??0)!==1)
      throw failure('Galaxy append did not affect one article',409);
    }
@@ -241,7 +242,8 @@ export function portableShortImportStore(db,sql,{engine='postgres',namespace,onP
     onPhase?.('transaction');
     const held=[];
     try{
-     return await conn.transaction().execute(trx=>run(operations(trx,async id=>{
+     return await conn.transaction().execute(async trx=>{
+      const result=await run(operations(trx,async id=>{
       onPhase?.('lock');
       // MySQL named lock keys are limited to 64 characters. SourceSiteId is
       // "gl:" + a 64-character SHA-256, so use the collision-resistant hex.
@@ -252,7 +254,10 @@ export function portableShortImportStore(db,sql,{engine='postgres',namespace,onP
       if(Number(result.rows?.[0]?.acquired)!==1)
        throw failure('Galaxy source is busy; Queue stays intact',409);
       held.push(lockName);
-     })));
+     }));
+      onPhase?.('commit');
+      return result;
+     });
     }finally{
      for(const id of held.reverse())
       await sql`select release_lock(${id})`.execute(conn);
@@ -260,9 +265,9 @@ export function portableShortImportStore(db,sql,{engine='postgres',namespace,onP
    });
   }
   onPhase?.('transaction');
-  return db.transaction().execute(trx=>{
+  return db.transaction().execute(async trx=>{
    let tableLocked=false;
-   return run(operations(trx,async id=>{
+   const result=await run(operations(trx,async id=>{
     onPhase?.('lock');
     if(engine==='postgres'){
      await sql`select pg_advisory_xact_lock(hashtextextended(${id},0))`.execute(trx);
@@ -273,6 +278,8 @@ export function portableShortImportStore(db,sql,{engine='postgres',namespace,onP
      tableLocked=true;
     }
    }));
+   onPhase?.('commit');
+   return result;
   });
  }};
 }
