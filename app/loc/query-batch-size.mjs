@@ -26,17 +26,46 @@ export function normalizeRuntimeIoLimits(settings={}){
   };
   return Object.fromEntries(Object.keys(IO_LIMIT_CEILINGS).map(key=>[key,bounded(key)]));
 }
+// Reserved public-numeric ISR settings for a possible future Vercel runtime.
+// This is only a configuration contract; it is not wired into Pages, Auth or
+// the live SQL reader. The disabled state is enforced even on admin writes.
+// Never store Vercel URLs, tokens, cookies, user data, or SQL credentials here.
+export const RESERVED_ISR_DEFAULTS=Object.freeze({
+  enabled:false,provider:'none',revalidate_seconds:60
+});
+export function normalizeReservedIsr(settings={}){
+  if(!settings||typeof settings!=='object'||Array.isArray(settings))
+    throw new Error('ISR 保留設定格式錯誤');
+  const keys=Object.keys(settings);
+  if(keys.some(key=>!['enabled','provider','revalidate_seconds'].includes(key)))
+    throw new Error('ISR 不接受未開放的設定欄位');
+  if(settings.enabled!==undefined&&settings.enabled!==false)
+    throw new Error('Vercel ISR 尚未開放啟用');
+  const provider=settings.provider??'none';
+  if(!['none','vercel'].includes(provider))
+    throw new Error('未支援的 ISR 提供者');
+  const seconds=settings.revalidate_seconds??RESERVED_ISR_DEFAULTS.revalidate_seconds;
+  if(!Number.isSafeInteger(seconds)||seconds<5||seconds>3600)
+    throw new Error('ISR 重新驗證秒數超出範圍');
+  return {enabled:false,provider,revalidate_seconds:seconds};
+}
+
 export function decodeRuntimeIo(value){
   const c=value&&typeof value==='object'&&!Array.isArray(value)?value:{};
   const v=c.io_limits;
-  return {io_limits:v&&typeof v==='object'&&!Array.isArray(v)?v:{}};
+  let isr;
+  try{isr=normalizeReservedIsr(c.isr??{});}
+  catch{isr={...RESERVED_ISR_DEFAULTS};}
+  return {io_limits:v&&typeof v==='object'&&!Array.isArray(v)?v:{},isr};
 }
 export function encodeRuntimeIo(input){
   const v=input?.io_limits;
   if(!v||typeof v!=='object'||Array.isArray(v))
     throw new Error('I/O 限制設定格式錯誤');
-  // Retired ISR settings are not propagated by any future authorized edit.
-  return {io_limits:normalizeRuntimeIoLimits(v)};
+  // Keep the existing I/O limits, while reserving a disabled, typed ISR slot.
+  // No database migration: the existing api.manage.caches JSON stores this.
+  return {io_limits:normalizeRuntimeIoLimits(v),
+    isr:normalizeReservedIsr(input?.isr??{})};
 }
 export function applyRuntimeIoLimits(settings={}){
   const values=normalizeRuntimeIoLimits(settings);

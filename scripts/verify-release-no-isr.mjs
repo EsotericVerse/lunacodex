@@ -32,10 +32,15 @@ const built=Object.keys(routes).filter(route=>retiredRoutes.includes(route));
 if(built.length)throw Error('Retired ISR route still built: '+built.join(', '));
 const runtime=read('app/loc/runtime-config.mjs');
 const backend=read('app/loc/providers/kysely-management.mjs');
-if(!runtime.includes("const allowed=['io_limits']")||
-   !backend.includes("new Set(['io_limits'])")||
-   !backend.includes('encodeRuntimeIo('))
-  throw Error('Retired ISR configuration is still writable');
+const io=read('app/loc/query-batch-size.mjs');
+// Only the strictly disabled Vercel ISR reservation may coexist with I/O.
+// No legacy ISR endpoint, Worker, route or active switch may be restored.
+if(!runtime.includes("const allowed=['io_limits','isr']")||
+   !backend.includes("new Set(['io_limits','isr'])")||
+   !backend.includes('encodeRuntimeIo(')||
+   !io.includes("if(settings.enabled!==undefined&&settings.enabled!==false)")||
+   !io.includes("throw new Error('Vercel ISR 尚未開放啟用')"))
+  throw Error('Runtime ISR reservation must be disabled and authorized');
 // Browser PWA Service Worker has also been retired.
 const sw=read('public/sw.js');
 const shell=read('app/AppShell.jsx');

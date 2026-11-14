@@ -18,7 +18,7 @@ export async function readLocRuntimeConfig(){
   return runtimeRow(data);
 }
 export async function saveLocRuntimeConfig(fields){
-  const allowed=['io_limits'];
+  const allowed=['io_limits','isr'];
   const changes=Object.fromEntries(Object.entries(fields||{}).filter(([key])=>allowed.includes(key)));
   if(!Object.keys(changes).length)throw new Error('沒有可儲存的系統設定');
   // The backend merges and validates the patch in one authorized transaction.
