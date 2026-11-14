@@ -56,6 +56,22 @@ test('Trace point pairs are removed as segments, not reconnected',()=>{
   assert.deepEqual(trace.attr.point,['DELET001','POINT002','POINT003','POINT004']);
 });
 
+test('Point delete refuses to leave a one-point Path or empty Trace',()=>{
+  const shortPath={uid:'PATH0001',type:'path',attr:{point:['DELET001','POINT002']}};
+  assert.throws(()=>planUidDependencyRepair({deletedUid:deleted,deletedTable:'anchor',
+    deletedType:'point',anchorRows:[shortPath]}),/Path/);
+  const loneTrace={uid:'TRAC0001',type:'trace',
+    attr:{point:['DELET001','POINT002'],path:[]}};
+  assert.throws(()=>planUidDependencyRepair({deletedUid:deleted,deletedTable:'anchor',
+    deletedType:'point',anchorRows:[loneTrace]}),/Trace/);
+  const routedTrace={uid:'TRAC0001',type:'trace',
+    attr:{point:['DELET001','POINT002'],path:['PATH0001']}};
+  const plan=planUidDependencyRepair({deletedUid:deleted,deletedTable:'anchor',
+    deletedType:'point',anchorRows:[routedTrace]});
+  assert.deepEqual(plan.anchorUpdates[0].values.attr.point,[]);
+  assert.deepEqual(plan.anchorUpdates[0].values.attr.path,['PATH0001']);
+});
+
 test('Article deletion corrects relation fields and Pattern postings',()=>{
   const linked={uid:article,source_id:deleted,ref_id:deleted,
     target_id:[deleted,'ARTI0002']};
