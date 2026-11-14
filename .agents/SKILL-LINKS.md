@@ -225,3 +225,14 @@
 - [scripts/reasoning_contract.py](https://github.com/EsotericVerse/moon-runes-pwa/blob/37f76a294203a9d3618b3571b972f5e9e585722c/.agents/skills/ui-ux-pro-max/scripts/reasoning_contract.py)
 - [scripts/search.py](https://github.com/EsotericVerse/moon-runes-pwa/blob/37f76a294203a9d3618b3571b972f5e9e585722c/.agents/skills/ui-ux-pro-max/scripts/search.py)
 - [scripts/validate_data.py](https://github.com/EsotericVerse/moon-runes-pwa/blob/37f76a294203a9d3618b3571b972f5e9e585722c/.agents/skills/ui-ux-pro-max/scripts/validate_data.py)
+
+
+## Impeccable（獨立主 Skill 的官方延伸參考）
+
+- [Impeccable 官方 Skill v4.9.1](https://github.com/pbakaus/impeccable/blob/e1104dd1713c3c7f511a7be8eee78e35e05de33b/.agents/skills/impeccable/SKILL.md)
+- [主題診斷 critique](https://github.com/pbakaus/impeccable/blob/e1104dd1713c3c7f511a7be8eee78e35e05de33b/.agents/skills/impeccable/reference/critique.md)
+- [配色 colorize](https://github.com/pbakaus/impeccable/blob/e1104dd1713c3c7f511a7be8eee78e35e05de33b/.agents/skills/impeccable/reference/colorize.md)
+- [風格強度 bolder](https://github.com/pbakaus/impeccable/blob/e1104dd1713c3c7f511a7be8eee78e35e05de33b/.agents/skills/impeccable/reference/bolder.md)／[quieter](https://github.com/pbakaus/impeccable/blob/e1104dd1713c3c7f511a7be8eee78e35e05de33b/.agents/skills/impeccable/reference/quieter.md)
+- [精修 polish](https://github.com/pbakaus/impeccable/blob/e1104dd1713c3c7f511a7be8eee78e35e05de33b/.agents/skills/impeccable/reference/polish.md)
+
+僅按需求讀取；LOC 沒有安裝 Impeccable CLI、Hook 或二進位執行器。
