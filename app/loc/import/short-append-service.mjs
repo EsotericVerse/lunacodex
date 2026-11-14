@@ -223,7 +223,10 @@ export function portableShortImportStore(db,sql,{engine='postgres',namespace,onP
     const update=await trx.updateTable(name)
      .set({
       [mapping.content]:sql`concat(coalesce(${sql.ref(mapping.content)},''),${tail})`,
-      [mapping.updatedAt]:new Date()
+      // Keep the previously working PostgreSQL/Cloudflare pg wire value.
+      // The ZModel still chooses the physical column; only its bind value
+      // uses ISO text (no extra roundtrip or alternate import logic).
+      [mapping.updatedAt]:new Date().toISOString()
      })
      .where(mapping.uid,'=',uid).where(mapping.site,'in',['web','mcp'])
      .where(mapping.siteId,'=',id).executeTakeFirstOrThrow();
