@@ -330,13 +330,11 @@ export function createLocAuth(env){
             tokenEndpoint:cloudflare.issuer+'/token',
             jwksEndpoint:cloudflare.issuer+'/jwks',
             userInfoEndpoint:cloudflare.issuer+'/userinfo',
-            // Cloudflare Access SaaS app currently enables only authorization_code,
-            // not authorization_code_with_pkce. Authenticate this confidential
-            // server-side client with its secret until PKCE is enabled upstream.
-            tokenEndpointAuthentication:'client_secret_basic',
+            // Restore the PKCE-protected SSO flow used by the confirmed RC1 login.
+            // This is upstream Cloudflare SSO, not LOC's OAuth client registration.
             clientId:cloudflare.clientId,
             clientSecret:cloudflare.clientSecret,
-            pkce:false,
+            pkce:true,
             scopes:['openid','email','profile'],
             mapping:{email:'email',emailVerified:'email_verified',name:'name'}
           }
