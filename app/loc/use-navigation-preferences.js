@@ -8,11 +8,12 @@ const accountNavigation=NavigationPreferences.account;
 
 
 const INITIAL={home:'loc',favorites:[...accountNavigation.DEFAULT_FAVORITES],folders:[],loading:true,error:''};
-export function useNavigationPreferences(){
+export function useNavigationPreferences({enabled=true}={}){
   const account=usePassiveSessionAccount();
   const [preferences,setPreferences]=useState(INITIAL);
   const identity=account.user?.id||account.user?.email||'';
   useEffect(()=>{
+    if(!enabled){setPreferences({...INITIAL,loading:false});return;}
     if(account.loading||account.permissionLoading)return;
     if(!identity){setPreferences({...INITIAL,loading:false});return;}
     let live=true;
@@ -26,7 +27,7 @@ export function useNavigationPreferences(){
       });})
       .catch(error=>{if(live)setPreferences({...INITIAL,loading:false,error:String(error?.message||error)});});
     return()=>{live=false;};
-  },[identity,account.loading,account.permissionLoading]);
+  },[enabled,identity,account.loading,account.permissionLoading]);
   useEffect(()=>{
     const update=event=>setPreferences(current=>({
       ...current,...event.detail,
