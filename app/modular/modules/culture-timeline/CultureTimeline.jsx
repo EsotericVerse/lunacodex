@@ -170,8 +170,8 @@ export default function CultureTimeline({
   hiddenDates=EMPTY_HIDDEN_DATES,
   extraGroups=EMPTY_EXTRA_GROUPS,
   heightVariant='default',
-  // Only the author public Culture density river uses a tighter lane/axis
-  // height. Other Timeline consumers keep their established measurements.
+  // The public Culture source river uses the library's natural content height
+  // with a viewport cap; group count must never determine its container size.
   compactSourceAxis=false,
   onGroupToggle=null,
   onGroupSelect=null,
@@ -233,16 +233,19 @@ export default function CultureTimeline({
   const compactGroupCount=Math.max(1,groupCount||rows.length);
   // The double river must shrink after zero-count groups disappear.
   // A fixed 320px floor previously left a dark, empty band on 1–2 lanes.
+  // This cap is constant regardless of category count. vis-timeline decides
+  // the collapsed natural height; expanded groups scroll INSIDE the bounded
+  // chart so the bottom date axis is not covered or pushed off the page.
+  const PUBLIC_SOURCE_MAX_HEIGHT='440px';
   const timelineMinHeight=heightVariant==='double'
-    ?compactSourceAxis
-      ?Math.max(192,60+compactGroupCount*55)
-      :Math.max(186,110+compactGroupCount*58)
+    ?Math.max(186,110+compactGroupCount*58)
     :Math.max(180,96+compactGroupCount*46);
   const timelineMaxHeight=heightVariant==='double'
-    ?compactSourceAxis
-      ?Math.max(timelineMinHeight+48,92+compactGroupCount*68)
-      :Math.max(timelineMinHeight+28,148+compactGroupCount*72)
+    ?Math.max(timelineMinHeight+28,148+compactGroupCount*72)
     :Math.max(360,Math.min(760,180+compactGroupCount*92));
+  const timelineHeightOptions=compactSourceAxis
+    ?{maxHeight:PUBLIC_SOURCE_MAX_HEIGHT}
+    :{minHeight:timelineMinHeight+'px',maxHeight:timelineMaxHeight+'px'};
 
   useEffect(()=>{onSelectRef.current=onSelect},[onSelect]);
   useEffect(()=>{onGroupToggleRef.current=onGroupToggle},[onGroupToggle]);
@@ -296,8 +299,7 @@ export default function CultureTimeline({
         ...(defaultTimeUnit==='auto'?{}:{timeAxis:{scale:defaultTimeUnit,step:1}}),
         ...(hasSelectedWindow?{start:priorWindow?.start||windowStart,end:priorWindow?.end||windowEnd}:{}),
         autoResize:true,
-        minHeight:timelineMinHeight+'px',
-        maxHeight:timelineMaxHeight+'px',
+        ...timelineHeightOptions,
         // Explicitly retain a labeled date axis at the bottom of the
         // public density chart; its lane height must leave room for it.
         ...(compactSourceAxis?{orientation:{axis:'bottom'},showMinorLabels:true,showMajorLabels:true}:{}),
@@ -472,11 +474,12 @@ export default function CultureTimeline({
         data.update(nextRows);
         timeline.redraw();
       }
-      // An async source-group insertion can leave the axis at the previous
-      // height when redraw preceded setOptions. Apply new bounds first, then
-      // reflow the bottom date axis once for this public reader.
-      timeline.setOptions({minHeight:timelineMinHeight+'px',maxHeight:timelineMaxHeight+'px'});
-      if(compactSourceAxis)timeline.redraw();
+      // Let vis-timeline recompute its natural collapsed height. Expanded
+      // groups only scroll inside the fixed maximum; no group-count formula.
+      if(!compactSourceAxis)
+        timeline.setOptions({minHeight:timelineMinHeight+'px',maxHeight:timelineMaxHeight+'px'});
+      else if(changedGroups.length||changedRows.length||obsoleteRows.length||obsoleteGroups.length)
+        timeline.redraw();
     }catch(error){
       console.error('Culture river in-place group update failed',error);
       setChartError(true);
