@@ -120,24 +120,27 @@ export default function StatisticsInsightsPanel({
     </section>
     <aside className="statistics-dashboard__panel statistics-dashboard__panel--insights"
       aria-label="作品總數 Insights">
-      <header className="statistics-dashboard__panel-heading">
+      <header className="statistics-dashboard__panel-heading statistics-dashboard__panel-heading--insights">
         <h3>Insights</h3>
-        <p>極值與典型值</p>
+        <p>趨勢預估 <span>極值與典型值</span></p>
       </header>
-    <div className="statistics-dashboard__insight-metrics" aria-label="極值與典型值">
-      {metric.map(item=><div key={item.key} className="statistics-dashboard__kpi">
-        <span className="statistics-dashboard__kpi-label">{item.label}</span>
-        <strong className="statistics-dashboard__kpi-value">
-          {item.value===undefined?'—':amount(item.value)}
-        </strong>
-        {item.period?<span className="scope-status">{item.period}</span>:null}
-      </div>)}
-    </div>
-    <div role="status" aria-live="polite" className="scope-status">
-      <strong>PELT Insight · </strong>
-      {pending?'正在分析已載入的時間分布…'
-        :workerError?'變化點分析未完成；平均、中位數和原始圖表仍可使用。'
-        :insightText(insight)}
+    <div className="statistics-dashboard__insight-overview">
+      <div className="statistics-dashboard__insight-metrics" aria-label="極值與典型值">
+        {metric.map(item=><div key={item.key} className="statistics-dashboard__kpi">
+          <span className="statistics-dashboard__kpi-label">{item.label}</span>
+          <strong className="statistics-dashboard__kpi-value">
+            {item.value===undefined?'—':amount(item.value)}
+          </strong>
+          {item.period?<span className="scope-status">{item.period}</span>:null}
+        </div>)}
+      </div>
+      <div role="status" aria-live="polite"
+        className="scope-status statistics-dashboard__pelt-summary">
+        <strong>by PELT</strong>
+        <span>{pending?'正在分析已載入的時間分布…'
+          :workerError?'變化點分析未完成；平均、中位數和原始圖表仍可使用。'
+          :insightText(insight)}</span>
+      </div>
     </div>
     {activeCount>1?<div className="statistics-dashboard__insight-ranking">
       <label style={{display:'grid',gap:8}}>
