@@ -1,0 +1,84 @@
+import {produce} from 'immer';
+import * as z from 'zod';
+import {GALAXY_READ_MODEL_FIELDS} from '../../zenstack/galaxy-read-models.mjs';
+
+// Single bounded FIFO between Galaxy's ZModel read projection and the Worker.
+// Only page metadata goes through Immer: NEVER put article bodies in a draft.
+const MIN_PAGE_ROWS=256;
+const MAX_PAGE_ROWS=8192;
+const INITIAL_PAGE_ROWS=2000;
+const TARGET_QUEUE_BYTES=2*1024*1024;
+const WORKER_BATCH_ROWS=768;
+const WORKER_BATCH_BYTES=256*1024;
+const LOW_WATER_RATIO=0.2;
+const batchEnvelope=z.strictObject({
+  requested:z.number().int().min(MIN_PAGE_ROWS).max(MAX_PAGE_ROWS),
+  received:z.number().int().min(0).max(MAX_PAGE_ROWS),
+  estimatedBytes:z.number().int().nonnegative()
+});
+// Keep the transport field contract owned by GalaxyUidRead, not this queue.
+for(const field of ['uid','content','createtime','date']){
+  if(!GALAXY_READ_MODEL_FIELDS.GalaxyUidRead[field])
+    throw new Error('Galaxy ZModel discovery projection missing '+field);
+}
+const clamp=(value,min,max)=>Math.min(max,Math.max(min,value));
+const rowBytes=row=>String(row?.content??'').length*2+192;
+
+export class KeywordDiscoveryQueue{
+  constructor(){
+    this.rows=null;
+    this.cursor=0;
+    this.size=0;
+    this.meta={pageRows:INITIAL_PAGE_ROWS,averageRowBytes:0,acceptedPages:0};
+  }
+  get readLimit(){return this.meta.pageRows}
+  get remaining(){return this.rows?this.rows.length-this.cursor:0}
+  get nearEmpty(){
+    return this.remaining>0&&
+      this.remaining<=Math.max(1,Math.ceil(this.size*LOW_WATER_RATIO));
+  }
+  accept(rows,requested){
+    if(this.rows!==null)throw new Error('Keyword queue still contains an active page');
+    const bytes=rows.reduce((sum,row)=>sum+rowBytes(row),0);
+    const result=batchEnvelope.safeParse({requested,received:rows.length,estimatedBytes:bytes});
+    if(!result.success||rows.length>requested)
+      throw new Error('Keyword discovery queue received invalid page bounds');
+    this.rows=rows.length?rows:null;
+    this.cursor=0;
+    this.size=rows.length;
+    if(!rows.length)return;
+    // Adaptive page length follows observed payload size, not a fixed row
+    // count. Changes are capped to 2x per page to prevent sudden spikes.
+    const measured=bytes/rows.length;
+    this.meta=produce(this.meta,draft=>{
+      draft.averageRowBytes=draft.acceptedPages===0?measured:
+        draft.averageRowBytes*0.65+measured*0.35;
+      draft.acceptedPages++;
+      const wanted=Math.round(TARGET_QUEUE_BYTES/Math.max(192,draft.averageRowBytes));
+      draft.pageRows=clamp(wanted,MIN_PAGE_ROWS,
+        Math.min(MAX_PAGE_ROWS,draft.pageRows*2));
+    });
+  }
+  take(){
+    if(!this.remaining)return [];
+    const from=this.cursor;
+    let end=from,bytes=0;
+    while(end<this.rows.length&&end-from<WORKER_BATCH_ROWS){
+      const size=rowBytes(this.rows[end]);
+      if(end>from&&bytes+size>WORKER_BATCH_BYTES)break;
+      bytes+=size;end++;
+    }
+    const batch=this.rows.slice(from,end);
+    this.cursor=end;
+    if(this.cursor===this.size){
+      // Release the complete original page as soon as the last slice leaves.
+      this.rows=null;this.cursor=0;this.size=0;
+    }
+    return batch;
+  }
+}
+
+export const keywordDiscoveryQueueLimits=Object.freeze({
+  initialRows:INITIAL_PAGE_ROWS,maxRows:MAX_PAGE_ROWS,
+  targetBytes:TARGET_QUEUE_BYTES,workerBatchRows:WORKER_BATCH_ROWS
+});
