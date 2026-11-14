@@ -326,7 +326,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
       await load(runClassUid);await invalidate();
       setNotice(reset?'已清空此關鍵字群組的分析結果。':'此關鍵字群組已重新分析完成。');
     }catch(e){setError(String(e.message||e));}
-    finally{setBusy(false);}
+    finally{setBusy(false);setProgress(null);}
   };
   const discoverNewTerms=async()=>{
     if(discoveryBusy||busy||loading)return;
@@ -351,6 +351,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
     }finally{
       if(discoveryAbort.current===controller){
         discoveryAbort.current=null;
+        setDiscoveryProgress(null);
         setDiscoveryBusy(false);
       }
     }
@@ -425,10 +426,10 @@ export default function KeywordLibraryPanel({scopeId,account}){
   if(!canEdit)return null;
   const selectedClass=activeClass;
   const allClassNodes=[...tree.index.values()].filter(x=>x.type==='class');
-  const knownTerms=new Set(rows.filter(item=>item.type==='item').flatMap(item=>[
+  const knownTerms=new Set((workspace==='analysis'&&discovery?rows:[]).filter(item=>item.type==='item').flatMap(item=>[
     item.name,...(Array.isArray(item.lists)?item.lists:[])
   ]).map(value=>String(value||'').normalize('NFKC').trim().toLocaleLowerCase()));
-  const suggestedCandidates=(discovery?.candidates||[]).filter(item=>
+  const suggestedCandidates=(workspace==='analysis'?discovery?.candidates||[]:[]).filter(item=>
     !knownTerms.has(String(item.word||'').normalize('NFKC').trim().toLocaleLowerCase()));
   const suggestionPageSize=20;
   const suggestionPages=Math.max(1,Math.ceil(suggestedCandidates.length/suggestionPageSize));
@@ -436,12 +437,12 @@ export default function KeywordLibraryPanel({scopeId,account}){
   const visibleSuggestions=suggestedCandidates.slice(
     (currentSuggestionPage-1)*suggestionPageSize,currentSuggestionPage*suggestionPageSize);
   // Keep vis-network's data stable while typing in the adjacent inspector.
-  const graphItems=useMemo(()=>selectedClass?descendantsOfKeyword(rows,selectedClass.uid,{type:'item'}).map(node=>{
+  const graphItems=useMemo(()=>workspace==='network'&&selectedClass?descendantsOfKeyword(rows,selectedClass.uid,{type:'item'}).map(node=>{
     const group=parentOf(tree,node.uid);
     return {keyword_id:node.uid,item_name:node.name,keywords:node.lists,
       group_uid:group?.uid||'',class_group:group?.name||'',class_name:selectedClass.name};
-  }):[],[rows,tree,selectedClass?.uid]);
-  const graphGroups=useMemo(()=>groups.map(row=>({uid:row.uid,name:row.name})),
+  }):[],[rows,tree,workspace,selectedClass?.uid]);
+  const graphGroups=useMemo(()=>workspace==='network'?groups.map(row=>({uid:row.uid,name:row.name})):[],
     [groups.map(row=>row.uid+'|'+row.name).join('|')]);
   // Reuse exactly the manual editor in the graph's inspector, including the
   // existing authorization, edit dock, stale-analysis and save behavior.
@@ -473,7 +474,11 @@ export default function KeywordLibraryPanel({scopeId,account}){
     <ManagementSectionNav id="scope-keyword-sections" title="關鍵詞管理" hideHeading
       panelId="scope-keyword-workspace" items={workspaceOptions}
       value={workspace} onChange={next=>{
-        if(workspace==='analysis'&&discoveryBusy)discoveryAbort.current?.abort();
+        if(workspace==='analysis'&&next!=='analysis'){
+          if(discoveryBusy)discoveryAbort.current?.abort();
+          // Candidates and progress belong only to the analysis screen.
+          setDiscovery(null);setDiscoveryProgress(null);setDiscoveryPage(1);
+        }
         setWorkspace(next);setEditor(null);
       }}/>
     <div id="scope-keyword-workspace">
