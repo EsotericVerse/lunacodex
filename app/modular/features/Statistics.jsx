@@ -427,8 +427,11 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   });
 
   const sourceBreakdownTotal=sourceSummary.sources.reduce((sum,row)=>sum+(Number(row.item_count)||0),0);
+  const showTotalOverview=totalChart&&!totalDaily.isPending&&!totalDaily.error&&Boolean(totalDaily.data);
   return <section className="scope-stat-section statistics-dashboard">
-    <div className="scope-stat-controls statistics-dashboard__filters">
+    <div className={'scope-stat-controls statistics-dashboard__filters'+
+      (showTotalOverview?' statistics-dashboard__filters--summary':'')}>
+      <div className="statistics-dashboard__filter-fields">
       <StatisticTypeSelect scopeId={scopeId} navigation={navigation} types={types}
         selectedSource={activeSourceSelection} sourceTaxonomy={sourceCatalog.data}/>
       {keywordDimension?<label>
@@ -492,6 +495,15 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
         <input type="checkbox" checked={foldBlank} onChange={event=>setFoldBlank(event.target.checked)}/> <UiText id="uiExtra.statisticsView.foldBlank"/>
       </label>:null}
       </>:null}
+      </div>
+      {showTotalOverview?<StatisticsDashboardKpis label="作品總數" items={[
+        {key:'records',label:'作品總數',value:basicTrend
+          .reduce((sum,row)=>sum+Number(row.total||0),0).toLocaleString()},
+        {key:'active',label:'活躍時段',value:basicTrend
+          .filter(row=>Number(row.total)>0).length.toLocaleString()},
+        {key:'completed',label:'完整觀察時段',value:basicTrend
+          .filter(row=>!row.partial).length.toLocaleString()}
+      ]}/>:null}
     </div>
     <>
     {/* The total-only landing never loads Source taxonomy, article lists or
@@ -502,15 +514,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     {totalChart&&totalDaily.error?<p className="scope-status scope-error" role="alert">
       {featureDataErrorMessage(totalDaily.error,UI_COPY)}
     </p>:null}
-    {totalChart&&!totalDaily.isPending&&!totalDaily.error&&totalDaily.data?<>
-      <StatisticsDashboardKpis label="作品總數" items={[
-        {key:'records',label:'作品總數',value:basicTrend
-          .reduce((sum,row)=>sum+Number(row.total||0),0).toLocaleString()},
-        {key:'active',label:'活躍時段',value:basicTrend
-          .filter(row=>Number(row.total)>0).length.toLocaleString()},
-        {key:'completed',label:'完整觀察時段',value:basicTrend
-          .filter(row=>!row.partial).length.toLocaleString()}
-      ]}/>
+    {showTotalOverview?<>
       <StatisticsInsightsPanel rows={basicTrend} range={queryRange}
         zoomLevel={zoomLevel} onZoomLevelChange={setZoomLevel}
         idPrefix="scope-stat" showMethodologyNote={scopeId!=='lo3rwang'}/>
