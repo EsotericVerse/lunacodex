@@ -3,7 +3,7 @@
 import {useEffect,useMemo,useRef,useState,useSyncExternalStore} from 'react';
 import dynamic from 'next/dynamic';
 import {Capacitor} from '@capacitor/core';
-import {motion,useReducedMotion} from 'motion/react';
+import {LayoutGroup,motion,useReducedMotion} from 'motion/react';
 import {useQueryClient} from '../zenstack/client-queries';
 import {translateUiField,UI_COPY,UI_LOCALE_OPTIONS,normalizeUiLocale,uiCopy,registerDefaultSection,isSectionLoaded,loadSection} from './i18n/ui-copy';
 import {UiLocaleProvider,useLoadedUiLocale,useUiLocale,useUiSection} from './i18n/ui-locale';
@@ -23,7 +23,7 @@ import {useNavigationPreferences} from './loc/use-navigation-preferences';
 import {NavigationPreferences} from './modular/navigation-preferences';
 import {navigationHref} from './modular/scope-registry.js';
 import {recoverChunkOnce} from './loc/chunk-recovery.mjs';
-import BottomNavIcon,{DockMotionIcon} from './modular/BottomNavIcon';
+import BottomNavIcon,{DockMotionIcon,DockActiveIndicator} from './modular/BottomNavIcon';
 import {EditDockProvider,useEditDock} from './modular/edit-dock';
 // Only individual Scope homepages download the opt-in management entry.
 const ScopeHomeEditEntry=dynamic(()=>import('./loc/ScopeHomeEditEntry'),{loading:()=>null});
@@ -589,7 +589,7 @@ function AppShellInner({children,runtime}){
       </div>:null}
     </header>
     {children}
-    <div className="scope-feature-dock scope-floating-edit-buttons" role="toolbar"
+    <motion.div layoutRoot className="scope-feature-dock scope-floating-edit-buttons" role="toolbar"
       aria-label={translateUiField(activeLocale,editingDockVisible||editDockPending?'編輯功能選單':'Scope 功能選單')}
       data-scope={localWorkspace?'local':scopeId} data-action-count={editingDockVisible?editTabs.length:6}>
       {editingDockVisible?editTabs.map(tab=>tab.action
@@ -609,18 +609,24 @@ function AppShellInner({children,runtime}){
             <BottomNavIcon name={tab.icon}/><span>{tab.label}</span>
           </button>)
       :editDockPending?<span role="status" className="scope-edit-dock-pending">正在確認編輯介面…</span>
-      :featureTabs.map(tab=><ScopeLink key={tab.id} href={tab.href} native={native}
-        onClick={()=>setDockActivation(prev=>({id:tab.id,count:prev.count+1}))}
-        aria-current={tab.id==='settings'?isSettings?'page':undefined:
-          !isSettings&&(tab.id==='home'?(localWorkspace?(isMyPhone||isScopeHomepage):isScopeHomepage):currentFeature===tab.id)?'page':undefined}>
-        <DockMotionIcon name={tab.icon}
-          active={tab.id==='settings'?isSettings:
-            !isSettings&&(tab.id==='home'?(localWorkspace?(isMyPhone||isScopeHomepage):isScopeHomepage):currentFeature===tab.id)}
-          activation={dockActivation.id===tab.id?dockActivation.count:0}/>
-        <span>{tab.label}</span>
-      </ScopeLink>)}
+      :<LayoutGroup id={'loc-six-key-dock-'+(localWorkspace?'local':scopeId)}>
+        {featureTabs.map(tab=>{
+          const selected=tab.id==='settings'?isSettings:
+            !isSettings&&(tab.id==='home'
+              ?(localWorkspace?(isMyPhone||isScopeHomepage):isScopeHomepage)
+              :currentFeature===tab.id);
+          return <ScopeLink key={tab.id} href={tab.href} native={native}
+            onClick={()=>setDockActivation(prev=>({id:tab.id,count:prev.count+1}))}
+            aria-current={selected?'page':undefined}>
+            {selected?<DockActiveIndicator/>:null}
+            <DockMotionIcon name={tab.icon} active={selected}
+              activation={dockActivation.id===tab.id?dockActivation.count:0}/>
+            <span>{tab.label}</span>
+          </ScopeLink>;
+        })}
+      </LayoutGroup>}
       {editingDockVisible&&editDock.notice?<p className="scope-edit-dock-notice" role="status" aria-live="polite">{editDock.notice}</p>:null}
-    </div>
+    </motion.div>
     {showHomeEditEntry?<ScopeHomeEditEntry key={scopeId}/>:null}
     <footer className="scope-footer" data-scope={scopeId}>
       <div className="scope-footer-row">

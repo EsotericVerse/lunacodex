@@ -200,7 +200,7 @@
   box-shadow:0 3px 10px var(--loc-craft-ink-shadow);
 }
 @media(hover:hover) and (pointer:fine){
-  .scope-feature-dock :is(a,button):not(:disabled):hover{
+  .scope-feature-dock :is(a:not([aria-current="page"]),button):not(:disabled):hover{
     transform:translateY(-1px);
     box-shadow:0 5px 14px var(--loc-craft-ink-shadow);
   }
