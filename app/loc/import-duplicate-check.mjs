@@ -276,9 +276,11 @@ const importIsoTime=value=>{
 // A timestamp belongs to only one lane. Each lane filters and fetches its own
 // candidate UIDs; the shared comparison spool receives the completed results.
 export async function readImportCandidatesByTimeWindows(times,
-    {readWindow,readRowsByUid,consumePage,windowSize=5000,concurrency=3,onWindowDone}={}){
+    {readWindow,readRowsByUid,consumePage,windowSize=5000,concurrency=3,onWindowDone,
+      excludeUids=new Set()}={}){
   if(typeof readWindow!=='function'||typeof readRowsByUid!=='function'||
       typeof consumePage!=='function')throw Error('缺少時間區間查詢');
+  if(!(excludeUids instanceof Set))throw Error('無效的既有 UID 排除索引');
   if(!Number.isSafeInteger(windowSize)||windowSize<1||windowSize>10000)
     throw Error('無效的比對區間大小');
   if(!Number.isSafeInteger(concurrency)||concurrency<1||concurrency>3)
@@ -302,8 +304,13 @@ export async function readImportCandidatesByTimeWindows(times,
       const saved=await readWindow(part[0],part[part.length-1]);
       if(!Array.isArray(saved))throw Error('時間區間查詢結果無效');
       const uids=new Set();
-      for(const row of saved)
-        if(wanted.has(importIsoTime(row?.createtime)))uids.add(String(row.uid));
+      // The source-ID stage already resolved these rows. Exclude them before
+      // the expensive full-content UID SELECT, not after fetching the body.
+      for(const row of saved){
+        const uid=String(row?.uid||'');
+        if(!excludeUids.has(uid)&&wanted.has(importIsoTime(row?.createtime)))
+          uids.add(uid);
+      }
       if(uids.size){
         const full=await readRowsByUid([...uids]);
         if(!Array.isArray(full))throw Error('UID 查詢結果無效');
