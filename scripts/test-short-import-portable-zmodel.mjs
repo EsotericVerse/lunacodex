@@ -2,6 +2,7 @@
 //   node scripts/test-short-import-portable-zmodel.mjs
 // The same ZModel insert row is compiled by all three installed Kysely dialects.
 import assert from 'node:assert/strict';
+import {ZodError} from 'zod';
 import {Kysely,MssqlDialect,MysqlDialect,PostgresDialect,sql} from 'kysely';
 import {portableGalaxyImportMapping} from '../zenstack/portable-import-mapping.mjs';
 import {galaxyReadColumns} from '../zenstack/galaxy-read-models.mjs';
@@ -74,8 +75,19 @@ for(const [engine,dialect] of Object.entries(dialects)){
   count++;
 }
 const ref=portableGalaxyImportMapping({scopeId:'lo3rwang',engine:'postgres'});
-assert.throws(()=>ref.mapInserts([{...row,createtime:'not-a-date'}]),/datetime/);
-assert.throws(()=>ref.mapInserts([{...row,unknown_column:true}]),/mapping/);
+// Zod is the first validation boundary for mapInserts(). Reject based on
+// structured Zod issues rather than an implementation-dependent error string.
+const rejectedField=field=>error=>error instanceof ZodError&&
+  error.issues.some(issue=>issue.path[0]===field);
+assert.throws(()=>ref.mapInserts([{...row,createtime:'not-a-date'}]),
+  rejectedField('createtime'));
+assert.throws(()=>ref.mapInserts([{...row,site_id:'gl:invalid'}]),
+  rejectedField('site_id'));
+assert.throws(()=>ref.mapInserts([{...row,statics:'false'}]),
+  rejectedField('statics'));
+assert.throws(()=>ref.mapInserts([{...row,unknown_column:true}]),
+  error=>error instanceof ZodError&&error.issues.some(issue=>
+    issue.code==='unrecognized_keys'&&issue.keys?.includes('unknown_column')));
 assert.throws(()=>portableGalaxyImportMapping({scopeId:'lo3rwang;drop',engine:'postgres'}),/Scope/);
 assert.throws(()=>portableGalaxyImportMapping({scopeId:'lo3rwang',engine:'sqlite'}),/SQL engine/);
 console.log('PASS '+count+' dialects; no live DB, DDL, migration or credentials used');
