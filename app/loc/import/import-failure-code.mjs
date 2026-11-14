@@ -26,6 +26,9 @@ export function classifyShortImportFailure(error){
       return 'IMPORT_ZMODEL_MAPPING';
     if(/ZodError/.test(name)||/Short-import.*(Zod|insert)/.test(message))
       return 'IMPORT_INPUT_VALIDATION';
+    if(name==='TypeError')return 'IMPORT_RUNTIME_TYPE';
+    if(name==='ReferenceError')return 'IMPORT_RUNTIME_REFERENCE';
+    if(name==='RangeError')return 'IMPORT_RUNTIME_RANGE';
     current=current.cause;
   }
   return 'IMPORT_UNCLASSIFIED';

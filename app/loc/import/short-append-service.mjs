@@ -176,13 +176,14 @@ export async function processShortImport(batch,actor,{store,cryptoProvider=globa
 // processShortImport remains the only batching, UID and append algorithm.
 /** @param {any} db @param {any} sql
  * @param {{engine?:string, namespace?:string}} [options] */
-export function portableShortImportStore(db,sql,{engine='postgres',namespace}={}){
+export function portableShortImportStore(db,sql,{engine='postgres',namespace,onPhase}={}){
  if(typeof db?.transaction!=='function'||typeof sql!=='function'||!sql.ref||
    !['postgres','mysql','mssql'].includes(engine))
   throw failure('Portable Kysely short-import adapter unavailable',503);
  const schema=namespace===undefined?(engine==='postgres'?'silver':engine==='mssql'?'dbo':''):namespace;
  if(schema&&!/^[a-z][a-z0-9_]*$/i.test(schema))throw failure('Invalid SQL namespace',503);
  return {transaction:(scope,run)=>{
+  onPhase?.('mapping');
   if(!/^[a-z][a-z0-9]{0,14}$/.test(scope))throw failure('Invalid Galaxy Scope',403);
   // Existing ZenStack query + Zod validation remains the authority.
   // This adapter only resolves physical SQL dialect names/DateTime values.
@@ -191,6 +192,7 @@ export function portableShortImportStore(db,sql,{engine='postgres',namespace}={}
   const operations=(trx,lockSource)=>({
    lockSource,
    async lookupMany(ids){
+    onPhase?.('lookup');
     const plan=mapping.lookupPlan(ids);
     let q=trx.selectFrom(name).select(plan.columns)
      .where(mapping.site,'in',plan.sites).where(mapping.siteId,'in',plan.sourceIds)
@@ -199,6 +201,7 @@ export function portableShortImportStore(db,sql,{engine='postgres',namespace}={}
     return q.execute();
    },
    async lookup(id){
+    onPhase?.('lookup');
     const plan=mapping.lookupPlan([id]);
     let q=trx.selectFrom(name).select(plan.columns)
      .where(mapping.site,'in',plan.sites).where(mapping.siteId,'in',plan.sourceIds)
@@ -207,13 +210,16 @@ export function portableShortImportStore(db,sql,{engine='postgres',namespace}={}
     return q.execute();
    },
    async insertMany(rows){
+    onPhase?.('insert');
     await trx.insertInto(name).values(mapping.mapInserts(rows)).execute();
    },
    async insert(row){
+    onPhase?.('insert');
     const [verified]=mapping.mapInserts([row]);
     await trx.insertInto(name).values(verified).executeTakeFirstOrThrow();
    },
    async append(uid,id,tail){
+    onPhase?.('append');
     const update=await trx.updateTable(name)
      .set({
       [mapping.content]:sql`concat(coalesce(${sql.ref(mapping.content)},''),${tail})`,
@@ -229,9 +235,11 @@ export function portableShortImportStore(db,sql,{engine='postgres',namespace}={}
    // GET_LOCK is connection-scoped, so the same connection must retain it
    // until after the transaction commits, then release every source lock.
    return db.connection().execute(async conn=>{
+    onPhase?.('transaction');
     const held=[];
     try{
      return await conn.transaction().execute(trx=>run(operations(trx,async id=>{
+      onPhase?.('lock');
       // MySQL named lock keys are limited to 64 characters. SourceSiteId is
       // "gl:" + a 64-character SHA-256, so use the collision-resistant hex.
       const lockName=String(id).startsWith('gl:')?String(id).slice(3):String(id);
@@ -248,9 +256,11 @@ export function portableShortImportStore(db,sql,{engine='postgres',namespace}={}
     }
    });
   }
+  onPhase?.('transaction');
   return db.transaction().execute(trx=>{
    let tableLocked=false;
    return run(operations(trx,async id=>{
+    onPhase?.('lock');
     if(engine==='postgres'){
      await sql`select pg_advisory_xact_lock(hashtextextended(${id},0))`.execute(trx);
     }else if(!tableLocked){
