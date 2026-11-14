@@ -538,6 +538,8 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
       .orderBy('uid','asc').limit(limit);
     if(after)query=query.where('uid','>',after);
     const rows=await query.execute();
+    if(rows.some(row=>!types.includes(String(row.type))))
+      reject('Anchor import query returned an unexpected ZModel type');
     // Model-generated Zod validates the physical Anchor envelope and UID.
     // Semantic uniqueness is deliberately NOT inferred from the UID PK.
     assertZModelSelectRows('silver.'+scope+'_anchor',ANCHOR_IMPORT_PAGE_COLUMNS,rows);
