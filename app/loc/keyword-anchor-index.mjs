@@ -44,7 +44,7 @@ export const literalItemWords=item=>{
 export async function readScopePatternDirectory(db,scope){
   const rows=await db.selectFrom(scopeAnchor(scope))
     .select(['uid','title','num']).where('type','=','pattern').execute();
-  return patternRowsToIndex(rows.map(row=>({
+  return patternRowsToUidIndex(rows.map(row=>({
     uid:row.uid,pattern:String(row.title||''),num:Number(row.num)||0
   })));
 }
@@ -75,10 +75,27 @@ export async function readScopePatternRows(db,scope,{uids=null}={}){
   // analysis) must share the same semantic uniqueness guard as the writer.
   // A Pattern has a physical UID PK but normalized literal is not UNIQUE.
   // Reuse the existing conflict detector rather than choosing the first UID.
-  patternRowsToIndex(projected);
+  patternRowsToUidIndex(projected);
   return projected;
 }
 
+// Physical Pattern identity is the eight-character UID. The word itself is
+// a searchable value, never a primary key or a substitute for an Item link.
+function patternRowsToUidIndex(rows){
+  const byUid=new Map(),literals=new Map();
+  for(const row of rows){
+    const uid=String(row?.uid||''),key=keywordIdentity(row?.pattern);
+    if(!UID.test(uid)||byUid.has(uid))throw Error('Invalid or duplicate Pattern UID');
+    if(!key)throw Error('Invalid Scope Pattern literal UID: '+uid);
+    if(literals.has(key)&&literals.get(key)!==uid)
+      throw Error('Duplicate Scope Pattern literal '+key+'；候選 UID '+
+        literals.get(key)+','+uid);
+    byUid.set(uid,row);literals.set(key,uid);
+  }
+  return byUid;
+}
+// Literal matching is only for discovering/reconciling NEW words in the
+// editor. Existing Pattern reads and analysis writes must resolve by UID.
 function patternRowsToIndex(rows){
   const out=new Map();
   for(const row of rows){
@@ -97,16 +114,21 @@ function patternRowsToIndex(rows){
 // They are NOT the index; the canonical article UID list lives on Pattern.
 export async function ensureScopePatternLibrary(trx,scope){
   const table=scopeAnchor(scope),rows=await readScopePatternRows(trx,scope);
-  const old=patternRowsToIndex(rows);
+  const old=patternRowsToIndex(rows),oldByUid=patternRowsToUidIndex(rows);
   const items=await trx.selectFrom(table)
     .select(['uid','title','attr']).where('type','=','item').execute();
   const assigned=new Set([...rows.map(row=>row.uid),...items.map(row=>row.uid)]);
   const created=[],updates=[],active=new Set();
   for(const item of items){
     const a=attrs(item.attr),uids=[];
+    const previous=Array.isArray(a.uid)?a.uid:[];
+    const linked=new Map(previous.map(uid=>oldByUid.get(uid)).filter(Boolean)
+      .map(pattern=>[keywordIdentity(pattern.pattern),pattern]));
     for(const name of literalItemWords(item)){
       const key=keywordIdentity(name);
-      let pattern=old.get(key);
+      // Preserve the authoritative physical UID when a linked word is unchanged.
+      // Only a genuinely new literal may be located by normalized word value.
+      let pattern=linked.get(key)||old.get(key);
       if(!pattern){
         const uid=allocateAnchorUid(assigned);
         assigned.add(uid);
@@ -118,7 +140,6 @@ export async function ensureScopePatternLibrary(trx,scope){
       uids.push(pattern.uid);
       active.add(pattern.uid);
     }
-    const previous=Array.isArray(a.uid)?a.uid:[];
     if(JSON.stringify(previous)!==JSON.stringify(uids)){
       updates.push({uid:item.uid,attr:JSON.stringify({...a,uid:uids})});
     }
@@ -142,15 +163,17 @@ export async function storeScopePatternMatches(trx,scope,incoming=[]){
   if(!Array.isArray(incoming))throw Error('Invalid Pattern results');
   const table=scopeAnchor(scope);
   const {patterns}=await ensureScopePatternLibrary(trx,scope);
-  const indexed=patternRowsToIndex(patterns),updates=[],seen=new Set();
+  const byUid=patternRowsToUidIndex(patterns),updates=[],seen=new Set();
   for(const row of incoming){
-    const key=keywordIdentity(row.pattern),old=indexed.get(key),
-      list=row.uid_list;
-    if(!old||seen.has(key)||!Array.isArray(list)||
-      list.some(uid=>!UID.test(String(uid)))||
+    const uid=String(row?.uid||''),old=byUid.get(uid),list=row?.uid_list;
+    // Never update a Pattern row based on title: a renamed word must be
+    // reconciled via its Item UID edges before its postings are committed.
+    if(!old||seen.has(uid)||
+      keywordIdentity(row.pattern)!==keywordIdentity(old.pattern)||
+      !Array.isArray(list)||list.some(id=>!UID.test(String(id)))||
       new Set(list).size!==list.length||list.length!==Number(row.count))
-      throw Error('Pattern analysis is not consistent with the Keyword library');
-    seen.add(key);
+      throw Error('Pattern UID analysis is not consistent with the Keyword library');
+    seen.add(uid);
     const next=[...list].sort();
     const before=[...old.uid_list].sort();
     if(JSON.stringify(next)===JSON.stringify(before))continue;
