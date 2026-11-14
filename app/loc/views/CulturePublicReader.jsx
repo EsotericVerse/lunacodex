@@ -382,7 +382,9 @@ export default function CulturePublicReader(){
         startDate:rangeStart,endDate:rangeEnd,site,offset,sortDirection:'desc'
       });
       if(request!==sequence.current)return;
-      setArticleRows(old=>append?[...old,...page.rows]:page.rows);
+      // One 100-row window at a time. The server cursor retains position;
+      // old article objects are no longer held by this page.
+      setArticleRows(page.rows);
       setArticleOffset(page.nextCursor?.offset||offset+page.rows.length);
       setArticleMore(page.hasMore);
     }catch(reason){if(request===sequence.current)setArticleError(String(reason?.message||reason));}
@@ -448,15 +450,20 @@ export default function CulturePublicReader(){
         <div className='scope-culture-river-toolbar'><h3>文章密度</h3></div>
         <div className='scope-culture-river-selectors'>
           <label>時代／時期範圍
-            <select className='scope-select' value={densityPeriod} onChange={event=>{setDensityPeriod(event.target.value);resetArticles('');}}>
+            <select className='scope-select' value={densityPeriod} onChange={event=>{
+              // Dispose prior Era details at the click boundary, not after the next read.
+              resetArticles();setDaily(NO_ITEMS);setKeywordDaily(NO_ITEMS);
+              setExpandedSources([]);setAnchorSuggestionsOpen(false);
+              setFocusedSuggestionDate('');setDensityPeriod(event.target.value);
+            }}>
               <option value='year'>{DEFAULT_YEAR_WINDOW.label}</option>
               {eraChoices.map(row=><option key={row.uid} value={row.uid}>{row.title}</option>)}
               <option value='custom'>自訂日期</option>
             </select>
           </label>
           {densityPeriod==='custom'?<>
-            <label>起始日 <input type='date' className='scope-select' value={customStart} onChange={event=>setCustomStart(event.target.value)}/></label>
-            <label>結束日 <input type='date' className='scope-select' value={customEnd} onChange={event=>setCustomEnd(event.target.value)}/></label>
+            <label>起始日 <input type='date' className='scope-select' value={customStart} onChange={event=>{resetArticles();setDaily(NO_ITEMS);setCustomStart(event.target.value);}}/></label>
+            <label>結束日 <input type='date' className='scope-select' value={customEnd} onChange={event=>{resetArticles();setDaily(NO_ITEMS);setCustomEnd(event.target.value);}}/></label>
           </>:null}
           <label>分類顯示
             <select className='scope-select' value={densityMode} onChange={event=>{setDensityMode(event.target.value);setExpandedSources([]);resetArticles('');}}>
