@@ -530,3 +530,107 @@
 @media(prefers-reduced-motion:reduce){
   .loc-trace-territory-track>span{transition:none}
 }
+
+/* Subtle LOC floating navigation + personal Settings.
+   Keep hit targets, grid geometry and navigation intact; only soften visual
+   chrome and add a very small content arrival movement. */
+.scope-feature-dock > a{
+  border-color:color-mix(in srgb,var(--loc-accent) 16%,var(--loc-line));
+  background:color-mix(in srgb,var(--loc-accent) 9%,var(--loc-panel));
+  border-radius:clamp(13px,1.5vw,18px);
+  box-shadow:0 3px 12px color-mix(in srgb,var(--loc-craft-ink-shadow) 58%,transparent);
+  transition:background-color .2s ease,border-color .2s ease,
+    box-shadow .2s ease,transform .2s ease;
+}
+.scope-feature-dock > a[aria-current="page"]{
+  border-color:color-mix(in srgb,var(--loc-accent) 46%,var(--loc-line));
+  background:color-mix(in srgb,var(--loc-accent) 14%,var(--loc-panel));
+  box-shadow:0 4px 14px color-mix(in srgb,var(--loc-craft-ink-shadow) 65%,transparent),
+    0 0 10px color-mix(in srgb,var(--loc-accent) 15%,transparent);
+}
+.scope-feature-dock > a[aria-current="page"]::after{
+  width:12px;height:2px;bottom:4px;
+  opacity:.8;box-shadow:none;
+}
+@media(hover:hover) and (pointer:fine){
+  .scope-feature-dock > a:not(:disabled):hover{
+    transform:translateY(-2px);
+    background:color-mix(in srgb,var(--loc-accent) 16%,var(--loc-panel));
+    box-shadow:0 6px 16px color-mix(in srgb,var(--loc-craft-ink-shadow) 75%,transparent);
+  }
+}
+.scope-feature-dock > a:not(:disabled):active{
+  transform:translateY(-1px) scale(.99);
+}
+.scope-settings-options.management-workspace{
+  gap:clamp(.75rem,1.4vw,1.1rem);
+}
+.scope-settings-options.management-workspace>.management-section-nav{
+  border-color:color-mix(in srgb,var(--loc-accent) 14%,var(--loc-line));
+  background:color-mix(in srgb,var(--loc-panel) 92%,var(--loc-bg));
+  box-shadow:0 3px 14px color-mix(in srgb,var(--loc-craft-ink-shadow) 50%,transparent);
+}
+.scope-settings-options.management-workspace>.management-section-nav .management-section-nav__item{
+  border-bottom-width:2px;
+  border-radius:var(--loc-ui-radius-sm,12px);
+  background:transparent;
+  box-shadow:none;
+  transition:transform .22s ease,background .22s ease,border-color .22s ease;
+}
+.scope-settings-options.management-workspace>.management-section-nav .management-section-nav__item[aria-pressed="true"]{
+  border:1px solid var(--loc-accent-border-soft);
+  border-bottom:2px solid var(--loc-accent);
+  background:color-mix(in srgb,var(--loc-accent) 10%,var(--loc-panel));
+  box-shadow:none;
+}
+.scope-settings-options.management-workspace>.management-workspace-panel{
+  border-color:color-mix(in srgb,var(--loc-accent) 12%,var(--loc-line));
+  background:linear-gradient(160deg,
+    color-mix(in srgb,var(--loc-panel-2) 10%,var(--loc-panel)),
+    var(--loc-panel) 62%);
+  box-shadow:0 5px 19px color-mix(in srgb,var(--loc-craft-ink-shadow) 55%,transparent);
+}
+.scope-settings-options .loc-settings-panel-group{
+  gap:clamp(.7rem,1.4vw,1rem);
+}
+.scope-settings-options .loc-settings-panel-group>.loc-card{
+  border-color:color-mix(in srgb,var(--loc-accent) 12%,var(--loc-line));
+  box-shadow:0 2px 10px color-mix(in srgb,var(--loc-craft-ink-shadow) 32%,transparent);
+}
+.scope-settings-options .loc-settings-panel-group>.loc-card:nth-child(2){
+  margin-inline-start:clamp(0px,.75vw,8px);
+  border-inline-start-color:color-mix(in srgb,var(--loc-accent) 38%,var(--loc-line));
+}
+@media(hover:hover) and (pointer:fine){
+  .scope-settings-options.management-workspace>.management-section-nav
+    .management-section-nav__item:not([aria-pressed="true"]):hover{
+    transform:translateY(-1px);
+    border-bottom-color:color-mix(in srgb,var(--loc-accent) 24%,var(--loc-line));
+  }
+}
+@keyframes loc-settings-light-arrive{
+  from{opacity:.88;transform:translate3d(0,4px,0)}
+  to{opacity:1;transform:translate3d(0,0,0)}
+}
+.scope-settings-options.management-workspace>.management-workspace-panel>
+  :is(.loc-settings-panel-group,.scope-settings-options){
+  animation:loc-settings-light-arrive .26s cubic-bezier(.22,.72,.2,1) both;
+}
+@media(max-width:680px){
+  .scope-settings-options .loc-settings-panel-group>.loc-card:nth-child(2){
+    margin-inline-start:0;
+  }
+  .scope-feature-dock > a{
+    border-radius:12px;
+  }
+}
+@media(prefers-reduced-motion:reduce){
+  .scope-feature-dock > a,
+  .scope-settings-options.management-workspace>.management-section-nav .management-section-nav__item{
+    transition:none!important;transform:none!important;
+  }
+  .scope-settings-options.management-workspace>.management-workspace-panel>
+    :is(.loc-settings-panel-group,.scope-settings-options){
+    animation:none!important;
+  }
+}
