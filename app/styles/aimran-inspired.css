@@ -197,16 +197,12 @@
 /* Six independent floating editor controls: never reorder Save/Cancel. */
 .scope-feature-dock :is(a,button){
   border-radius:clamp(14px,1.6vw,19px);
-  box-shadow:
-    0 9px 26px var(--loc-craft-ink-shadow),
-    inset 0 1px 0 color-mix(in srgb,var(--loc-text) 16%,transparent);
+  box-shadow:0 3px 10px var(--loc-craft-ink-shadow);
 }
 @media(hover:hover) and (pointer:fine){
   .scope-feature-dock :is(a,button):not(:disabled):hover{
-    transform:translateY(-4px);
-    box-shadow:
-      0 15px 30px var(--loc-craft-ink-shadow),
-      inset 0 1px 0 color-mix(in srgb,var(--loc-text) 8%,transparent);
+    transform:translateY(-1px);
+    box-shadow:0 5px 14px var(--loc-craft-ink-shadow);
   }
 }
 .scope-feature-dock :is(a,button):not(:disabled):active{transform:translateY(-1px) scale(.965);}
