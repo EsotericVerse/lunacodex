@@ -89,11 +89,34 @@ async function classTree(db,scope,classUid){
 // their large posting arrays loaded; other Classes remain in the tiny
 // Pattern UID/title directory and never enter Galaxy UID follow-up reads.
 // Item supplies ownership, not the canonical article hit index.
-async function classPatternRows(db,scope,items,directory=null){
+async function classPatternRows(db,scope,items,directory=null,itemRows=null){
   const patterns=directory??await readScopePatternDirectory(db,scope);
-  const literals=new Set(items.flatMap(terms));
-  const uids=[...literals].map(key=>patterns.get(key)?.uid).filter(Boolean);
-  return readScopePatternRows(db,scope,{uids});
+  // ZModel PatternAnchor owns the word index: read only physical Pattern UIDs
+  // attached to this Class's Items, not Item-derived posting substitutes.
+  const owners=new Set(items.map(item=>item.uid));
+  const linked=Array.isArray(itemRows)
+    ?itemRows.filter(row=>owners.has(row.uid)):[];
+  if(new Set(linked.map(row=>row.uid)).size!==owners.size)
+    fail('Keyword Item to Pattern relationship incomplete');
+  const links=linked.flatMap(row=>{
+    const raw=attr(row).uid;
+    if(!Array.isArray(raw)||raw.some(uid=>!UID.test(String(uid))))
+      fail('Invalid Item Pattern UID links');
+    return raw;
+  });
+  const uids=[...new Set(links)];
+  const directoryByUid=new Map([...patterns.values()].map(row=>[row.uid,row]));
+  if(uids.some(uid=>!directoryByUid.has(uid)))
+    fail('Unknown Pattern UID attached to Keyword Item');
+  const rows=await readScopePatternRows(db,scope,{uids});
+  // Rules belong to Items, article postings to Patterns. Check the shared
+  // literal contract, never silently analyze an incomplete Pattern graph.
+  const expected=new Set(buildKeywordSearchPatterns(scope,items,[])
+    .map(row=>norm(row.pattern)));
+  const actual=new Set(rows.map(row=>norm(row.pattern)));
+  if(expected.size!==actual.size||[...expected].some(word=>!actual.has(word)))
+    fail('Keyword Pattern UID relations do not match Item literals');
+  return rows;
 }
 
 async function indexRows(db,scope){
@@ -152,7 +175,7 @@ export async function readKeywordStatistics(db,scope,classUid,{
   const [directory,tree]=await Promise.all([
     readScopePatternDirectory(db,scope),classTree(db,scope,classUid)
   ]);
-  const patterns=await classPatternRows(db,scope,tree.items,directory);
+  const patterns=await classPatternRows(db,scope,tree.items,directory,tree.itemRows);
   let permitted=null,daily=[];
   if(start||end||source){
     const matching=await matchingArticleMetadata(db,scope,patterns,{start,end,source});
@@ -211,7 +234,7 @@ export async function readKeywordDaily(db,scope,classUid,{
   const [directory,tree]=await Promise.all([
     readScopePatternDirectory(db,scope),classTree(db,scope,classUid)
   ]);
-  const patterns=await classPatternRows(db,scope,tree.items,directory);
+  const patterns=await classPatternRows(db,scope,tree.items,directory,tree.itemRows);
   const articles=await matchingArticleMetadata(db,scope,patterns,{start,end,source,places});
   return keywordPatternDailySummary(tree.items,patterns,articles);
 }
@@ -269,9 +292,8 @@ async function persistPatterns(trx,scope,classUid,patterns,stats){
     .where('id','=',scope).execute();
 }
 
-// Read a complete calendar-date group (or the undated group) without the
-// former arbitrary 10,000-row cutoff. A stable UID cursor is a *transport*
-// order only; createIndexedDateKeywordReader retains chronological ordering.
+// Read the undated metadata group without an arbitrary cutoff. The dated
+// reader uses a single (date, UID) keyset scan instead of per-day SQL lookups.
 // The outer analysis verifies the full Galaxy count before writing Pattern
 // postings, so additions/deletions during this scan cannot silently succeed.
 async function readCompleteKeywordMetadataGroup(db,scope,columns,{
@@ -326,27 +348,33 @@ export async function analyzeKeywordScope(db,scope,classUid,{
     uid_lists:[]
   }));
   const {catalog}=keywordClassCatalog(treeRows,classUid);
-  const existingPatterns=await classPatternRows(db,scope,catalog,directory);
+  const selectedItemIds=new Set(catalog.map(item=>item.uid));
+  const linkedItems=nativeRows.filter(row=>row.type==='item'&&
+    selectedItemIds.has(row.uid));
+  const existingPatterns=await classPatternRows(db,scope,catalog,directory,linkedItems);
   const total=await db.selectFrom(galaxyName(scope))
     .select(eb=>eb.fn.count('uid').as('n')).executeTakeFirst();
   const expectedCount=Number(total?.n??0);
   if(!Number.isSafeInteger(expectedCount)||expectedCount<0)
     fail('Galaxy count out of range');
   const cols=galaxyListMetadataColumns;
-  // The caller already verified this Scope's complete Galaxy COUNT. Keep the
-  // existing reader's safety boundary, but never truncate a valid same-day
-  // group at an unrelated 10,000-row transport limit.
+  // COUNT is checked before and after scanning; the reader buffers complete
+  // same-day groups and rejects incomplete or inconsistent metadata.
   const maximumRows=Math.max(10000,expectedCount+1);
   const reader=createIndexedDateKeywordReader({
     maximumRows,
-    readDatePage:async({after,limit})=>{
+    readDateBatch:async({afterDate,afterUid,limit})=>{
+      // One (date,UID) keyset scan replaces an extra query for every date.
+      // The reader buffers complete days before time-ordering.
       let q=db.selectFrom(galaxyName(scope)).select(cols)
-        .where('date','is not',null).orderBy('date','asc').limit(limit);
-      if(after!==null)q=q.where('date','>',after);
-      return await q.execute();
+        .where('date','is not',null)
+        .orderBy('date','asc').orderBy('uid','asc').limit(limit);
+      if(afterDate!==null)q=q.where(eb=>eb.or([
+        eb('date','>',afterDate),
+        eb.and([eb('date','=',afterDate),eb('uid','>',afterUid)])
+      ]));
+      return q.execute();
     },
-    readDatePeers:({date,maximumRows})=>readCompleteKeywordMetadataGroup(
-      db,scope,cols,{date,maximumRows}),
     readUndated:({maximumRows})=>readCompleteKeywordMetadataGroup(
       db,scope,cols,{maximumRows})
   });
