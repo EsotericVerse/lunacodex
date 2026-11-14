@@ -1,7 +1,7 @@
 'use client';
 
 import {useEffect,useRef,useState} from 'react';
-import {IO_LIMIT_CEILINGS,applyRuntimeIoLimits} from '../../query-batch-size.mjs';
+import {IO_LIMIT_CEILINGS,applyRuntimeIoLimits,normalizeRuntimeIoLimits} from '../../query-batch-size.mjs';
 import {readLocRuntimeConfig,saveLocRuntimeConfig} from '../../runtime-config.mjs';
 import {useEditDockForm} from '../../../modular/edit-dock';
 
@@ -32,11 +32,8 @@ export default function RuntimeIoSettings(){
     if(!draft||busy)return false;
     setBusy(true);setNotice('');
     try{
-      for(const {key,min} of FIELDS){
-        if(!Number.isSafeInteger(Number(draft[key]))||Number(draft[key])<min||
-          Number(draft[key])>IO_LIMIT_CEILINGS[key])throw Error(key+' 必須介於 '+min+' 到 '+IO_LIMIT_CEILINGS[key]);
-      }
-      const saved=await saveLocRuntimeConfig({io_limits:draft});
+      const settings=normalizeRuntimeIoLimits(draft);
+      const saved=await saveLocRuntimeConfig({io_limits:settings});
       const next=fromRow(saved);
       applyRuntimeIoLimits(next);
       initial.current=JSON.stringify(next);setDraft(next);

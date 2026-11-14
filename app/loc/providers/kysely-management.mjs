@@ -9,7 +9,7 @@ import {assertZModelGalaxyManagedValues,assertZModelAnchorBlockManagedValues}
 import {validateLocRegistryDomain} from './loc-domain.mjs';
 import {sql} from 'kysely';
 import {saveBlocksKysely} from './kysely-blocks.mjs';
-import {decodeLocCache,encodeLocCache} from '../runtime-cache-fields.mjs';
+import {decodeRuntimeIo,encodeRuntimeIo} from '../query-batch-size.mjs';
 import {allocateAnchorUid} from '../uid.js';
 import {ANCHOR_TYPE_GROUPS,mediaAnchorProjection} from '../../../zenstack/anchor-hierarchy.mjs';
 import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
@@ -775,11 +775,11 @@ async function managedLocSettings(trx,args,claims){
   const value=args.p_value;
   if(!['theme','keywords','runtime'].includes(section))
     reject('Invalid LOC settings section');
-  // Runtime Cache/ISR/IO belongs to the fixed private api.manage admin row.
+  // Runtime I/O ceilings belong to the fixed private api.manage admin row.
   // Reuse this existing global-admin action, not an anonymous SELECT path.
   if(section==='runtime'){
     if(key||!['read','update'].includes(operation))reject('Invalid runtime setting operation');
-    const allowed=new Set(['cache_mode','cache_provider','isr_domains','io_limits']);
+    const allowed=new Set(['io_limits']);
     if(operation==='update'&&(!catalogObject(value)||!Object.keys(value).length||
         Object.keys(value).some(field=>!allowed.has(field))))
       reject('Invalid runtime setting fields');
@@ -789,10 +789,10 @@ async function managedLocSettings(trx,args,claims){
     if(operation==='update')query=query.forUpdate();
     const row=await query.executeTakeFirst();
     if(!row)reject('LOC Admin runtime settings unavailable');
-    const previous=decodeLocCache(row.caches);
+    const previous=decodeRuntimeIo(row.caches);
     if(operation==='read')return previous;
     let next;
-    try{next=encodeLocCache({...previous,...value});}
+    try{next=encodeRuntimeIo({...previous,...value});}
     catch{reject('Invalid runtime setting values');}
     const result=await trx.updateTable('api.manage')
       .set({caches:sql`${JSON.stringify(next)}::jsonb`})
