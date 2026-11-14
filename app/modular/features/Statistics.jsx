@@ -16,7 +16,7 @@ import {useEffect,useMemo,useState} from 'react';
 import useLocFeatureSettings from '../../loc/use-loc-feature-settings';
 import dynamic from 'next/dynamic';
 import {useRouter,useSearchParams} from 'next/navigation';
-import {useAsyncResource,useResourceCache} from '../../../zenstack/client-queries';
+import {useAsyncResource,useResourceCache,prepareTransientResourceAction} from '../../../zenstack/client-queries';
 
 // Defer Galaxy's data/query engine until the selected statistics mode needs it.
 const loadGalaxyStatistics=()=>import('../../loc/galaxy-query');
@@ -455,7 +455,13 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
         <span>時期</span>
         <select className="scope-select" aria-label="時期" value={selectedPeriodKey}
           onFocus={()=>setPeriodOptionsRequested(true)}
-          onChange={event=>{setPeriodOptionsRequested(true);setSelectedPeriodKey(event.target.value);}}>
+          onChange={event=>{
+            prepareTransientResourceAction('period',{queryKeys:[
+              ['statistics-total-daily-v1',scopeId],['scope-overview',scopeId],
+              ['statistics-keyword-class',scopeId]
+            ]});
+            setPeriodOptionsRequested(true);setSelectedPeriodKey(event.target.value);
+          }}>
           <option value="year">{DEFAULT_YEAR_WINDOW.label}</option>
           <option value="latest">最新時期</option>
           <option value="">自選時間（原有縮放）</option>
@@ -480,7 +486,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
       {periodQuery.error?<span className="scope-status scope-error">
         時期範圍無法載入，仍可使用自選時間：{featureDataErrorMessage(periodQuery.error,UI_COPY)}
       </span>:null}
-      {sourceChart?<><label><span>{UI_COPY.statistics.chart}</span><select className="scope-select" value={effectiveChartType} onChange={event=>setChartType(event.target.value)}>
+      {sourceChart?<><label><span>{UI_COPY.statistics.chart}</span><select className="scope-select" value={effectiveChartType} onChange={event=>{prepareTransientResourceAction('chart');setChartType(event.target.value);}}>
         {chartGroups.primary.length?<optgroup label={t('uiExtra.statisticsView.chartPrimary')}>
   {chartGroups.primary.map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}
 </optgroup>:null}
@@ -518,7 +524,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
         {()=> <section className="statistics-dashboard__panel" style={{display:'grid',gap:12}}>
           <label><span>{UI_COPY.statistics.chart}</span>
             <select className="scope-select" value={effectiveChartType}
-              onChange={event=>setChartType(event.target.value)}>
+              onChange={event=>{prepareTransientResourceAction('chart');setChartType(event.target.value);}}>
               {chartGroups.primary.map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}
               {chartGroups.advanced.map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}
             </select>
