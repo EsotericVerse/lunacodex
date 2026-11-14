@@ -113,7 +113,7 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
     enabled:enabled&&tab==='articles'&&!selectedMediaType,
     initialPageParam:sort==='nearest'?{placeIndex:0,offset:0}:0,
     getNextPageParam:page=>page.hasMore?page.nextOffset:undefined,
-    queryFn:async({pageParam})=>{
+    queryFn:async({pageParam,signal})=>{
       // Nearest spans the complete selected place spool: exhaust one closest
       // place before paging the next, never sort only a loaded date page.
       const nearest=sort==='nearest'&&nearestPlaceIds.length>0;
@@ -126,7 +126,7 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
           columns:galaxyReadColumnsFor('GalaxyList','GalaxyUidAnchor').join(','),
           filters,orders:[{column:'date',ascending:sort==='asc'},{column:'createtime',ascending:sort==='asc'},
             {column:'uid',ascending:true}],
-          limit:PAGE_SIZE,offset,count:offset===0?'exact':null
+          limit:PAGE_SIZE,offset,count:offset===0?'exact':null,signal
         });
         const rows=result.rows||[];
         const total=offset===0?Number(result.count??rows.length):null;
@@ -154,7 +154,7 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
     enabled:enabled&&Boolean(selectedMediaType)&&Boolean(scope?.anchor),
     initialPageParam:{mediaOffset:0,articleOffset:0},
     getNextPageParam:page=>page.nextCursor||undefined,
-    queryFn:async({pageParam})=>{
+    queryFn:async({pageParam,signal})=>{
       const mediaOffset=Number(pageParam?.mediaOffset)||0;
       const articleOffset=Number(pageParam?.articleOffset)||0;
       const mediaLimit=80;
@@ -164,7 +164,7 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
           {column:'type',operator:'in',value:ANCHOR_TYPE_GROUPS.media},
           {column:'invisible',operator:'eq',value:false}],
         orders:[{column:'type',ascending:true},{column:'uid',ascending:true}],
-        limit:mediaLimit,maxLimit:mediaLimit,offset:mediaOffset
+        limit:mediaLimit,maxLimit:mediaLimit,offset:mediaOffset,signal
       });
       const mediaIds=mediaPage.map(row=>String(row.uid||'').trim()).filter(Boolean);
       if(!mediaIds.length)return {rows:[],nextCursor:null};
@@ -176,7 +176,7 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
         ],
         orders:[{column:'date',ascending:sort==='asc'},{column:'createtime',ascending:sort==='asc'},
             {column:'uid',ascending:true}],
-        limit:PAGE_SIZE,maxLimit:PAGE_SIZE,offset:articleOffset
+        limit:PAGE_SIZE,maxLimit:PAGE_SIZE,offset:articleOffset,signal
       });
       const moreInMediaPage=rows.length===PAGE_SIZE;
       const nextCursor=moreInMediaPage
@@ -200,15 +200,17 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
   const numeric=useAsyncResource({
     queryKey:['trace-place-id-summary-v1',targetScope,placesKey,startDate,endDate,sourceFilter],
     enabled:needsSummary&&!selectedMediaType,
-    queryFn:async()=>{
+    queryFn:async({signal})=>{
       const rows=[];
       // The stored procedure accepts at most 80 place IDs per query.
       // A large disconnected trace may have hundreds of unique spool points.
       for(let i=0;i<placeIds.length;i+=80){
+        signal?.throwIfAborted?.();
         const {data,error}=await dbPublicClient.schema('silver').analytics({
           p_scope_id:targetScope,p_view:'trace_daily',
           p_start:startDate||null,p_end:endDate||null,
-          p_options:{placeIds:placeIds.slice(i,i+80),source:sourceFilter||null}
+          p_options:{placeIds:placeIds.slice(i,i+80),source:sourceFilter||null},
+          signal
         });
         if(error)throw error;
         if(!Array.isArray(data))throw new Error('Invalid Trace place_id density response');
@@ -224,13 +226,15 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
   const keywordGroups=useAsyncResource({
     queryKey:['trace-keyword-groups',targetScope,placesKey,startDate,endDate,sourceFilter],
     enabled:needsSummary&&tab==='statistics'&&!selectedMediaType&&Boolean(scope?.keywords),
-    queryFn:async()=>{
+    queryFn:async({signal})=>{
       const results=[];
       for(let i=0;i<placeIds.length;i+=80){
+        signal?.throwIfAborted?.();
         const {data,error}=await dbPublicClient.schema('silver').analytics({
           p_scope_id:targetScope,p_view:'trace_keywords',
           p_start:startDate||null,p_end:endDate||null,
-          p_options:{placeIds:placeIds.slice(i,i+80),source:sourceFilter||null}
+          p_options:{placeIds:placeIds.slice(i,i+80),source:sourceFilter||null},
+          signal
         });
         if(error)throw error;
         if(!Array.isArray(data))throw new Error('Invalid Keywords Group summary');
@@ -251,14 +255,15 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
   const mediaSummary=useAsyncResource({
     queryKey:['trace-filtered-media-summary-v3',targetScope,mediaRows.map(row=>row.uid).join('|')],
     enabled:needsSummary&&Boolean(selectedMediaType)&&mediaRows.length>0,
-    queryFn:async()=>{
+    queryFn:async({signal})=>{
       const entries=[];
       for(let offset=0;offset<mediaRows.length;offset+=80){
+        signal?.throwIfAborted?.();
         const batch=mediaRows.slice(offset,offset+80).map(row=>String(row.uid));
         const {rows}=await selectRows(scope.galaxy,{
           columns:galaxyReadColumnsFor('GalaxyUidAnchor','GalaxyAttr').join(','),
           filters:[{column:'uid',operator:'in',value:batch}],
-          limit:batch.length,maxLimit:batch.length
+          limit:batch.length,maxLimit:batch.length,signal
         });
         entries.push(...rows);
       }

@@ -161,8 +161,11 @@ export function prepareTransientResourceAction(action,{queryKeys=[]}={}){
   const before=transientResourcePressure();
   const pressure=before.inflightReads>=SPOOL_LIMIT_READS||
     before.spoolRows>=SPOOL_LIMIT_ROWS||before.spoolKeys>=SPOOL_LIMIT_KEYS;
-  // Highest-level feature changes retire the previous view immediately.
-  if(action==='navigation'){
+  // Entering a protected management section has the same full read-reset
+  // contract as switching features: the next editor must start with an empty
+  // transient spool before checking its own grants and re-reading data.
+  // Identity, Session, verified grants and explicit writes stay untouched.
+  if(action==='navigation'||action==='management'){
     releaseTransientPageResources();
     return {priority,pressure,released:true};
   }
@@ -335,6 +338,7 @@ export function useAsyncInfiniteResource({
   const nextParamRef=useRef(undefined);
   const mountedRef=useRef(true);
   const requestEpoch=useRef(0);
+  const nextPageInProgressRef=useRef(false);
 
   const loadFirst=useCallback(async()=>{
     if(!active)return;
@@ -367,6 +371,7 @@ export function useAsyncInfiniteResource({
     // page's rows and cursors *before* fetching the next page. Do not retain
     // a history of pages when the user is viewing only the current 100.
     requestEpoch.current++;
+    nextPageInProgressRef.current=false;
     nextParamRef.current=undefined;
     setPagesKey(serializedKey);
     setPages([]);setPageParams([]);setNextParam(undefined);
@@ -381,7 +386,8 @@ export function useAsyncInfiniteResource({
         setPages([]);setPageParams([]);setNextParam(undefined);
       }
     });
-    return()=>{mountedRef.current=false;requestEpoch.current++;unregister();};
+    return()=>{mountedRef.current=false;requestEpoch.current++;
+      nextPageInProgressRef.current=false;unregister();};
   },[serializedKey,active,loadFirst]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const visiblePage=pagesKey===serializedKey&&active;
@@ -393,25 +399,36 @@ export function useAsyncInfiniteResource({
     isFetchingNextPage,isSuccess:status==='success',isError:status==='error',error,
     hasNextPage,
     fetchNextPage:async()=>{
-      if(!active||nextParamRef.current===undefined||isFetchingNextPage)return;
+      // A ref blocks duplicate clicks before React has committed its next
+      // render. The current 100 rows are retired at the click itself, rather
+      // than being retained behind a loading spinner.
+      if(!active||nextParamRef.current===undefined||nextPageInProgressRef.current)return;
+      nextPageInProgressRef.current=true;
+      prepareTransientResourceAction('page');
+      setPages([]);setPageParams([]);setStatus('pending');setError(null);
       setIsFetchingNextPage(true);
+      const param=nextParamRef.current;
+      const generation=resourceEpoch,request=requestEpoch.current;
       try{
-        const param=nextParamRef.current;
-        const generation=resourceEpoch,request=requestEpoch.current;
         const page=await runFetch('infinite-next:'+serializedKey+':'+JSON.stringify(param),
           ({signal})=>fnRef.current({pageParam:param,signal}),keyOf(queryKey));
         if(!mountedRef.current||generation!==resourceEpoch||
           request!==requestEpoch.current)return;
         const next=getNextPageParam?.(page)??undefined;
         nextParamRef.current=next;
-        // Drop the previous page instead of accumulating all older 100s.
-        setPages([page]);
-        setPageParams([param]);
-        setNextParam(next);
+        // The cursor survives, but the prior page's objects do not.
+        setPages([page]);setPageParams([param]);setNextParam(next);
+        setStatus('success');setError(null);
       }catch(error){
-        if(!isCancelled(error))flashMessage('資料讀取失敗，請稍後再試');
+        if(mountedRef.current&&generation===resourceEpoch&&
+          request===requestEpoch.current&&!isCancelled(error)){
+          flashMessage('資料讀取失敗，請稍後再試');
+          setStatus('error');setError(error);
+        }
       }finally{
-        if(mountedRef.current)setIsFetchingNextPage(false);
+        if(mountedRef.current&&request===requestEpoch.current){
+          nextPageInProgressRef.current=false;setIsFetchingNextPage(false);
+        }
       }
     },
     refetch:async()=>{await loadFirst();}

@@ -644,12 +644,12 @@ export default function Culture(){
     enabled:!isTimeEditingView&&worksOpen&&styleFilter==='none'&&!isLrunesDaily
       &&!isAggregateScope&&Boolean(scopeData)&&Boolean(selectedGroup)
       &&classificationWindowValid,
-    queryFn:async({pageParam})=>{
+    queryFn:async({pageParam,signal})=>{
       const {selectCultureArticleListPage}=await import('../../loc/culture-query');
       return selectCultureArticleListPage(scopeData,{
         startDate:classificationWindowStart,endDate:classificationWindowEnd,
         site:selectedGroup?.site||'',sites:selectedGroup?.sites||[],
-        sortDirection:articleSort,offset:pageParam?.offset||0
+        sortDirection:articleSort,offset:pageParam?.offset||0,signal
       });
     }
   });
