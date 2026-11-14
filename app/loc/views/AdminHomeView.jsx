@@ -14,6 +14,7 @@ import {FeaturePage} from '../../modular/ui';
 import ManagementWorkspaceFrame from '../ManagementWorkspaceFrame';
 import ManagementSectionNav,{useManagementSection} from '../../modular/ManagementSectionNav';
 import PanelLoading from '../PanelLoading';
+import {releaseTransientPageResources} from '../../../zenstack/client-queries';
 // Group member display-name editing lives in the Group People/Works page.
 // Admin keeps only privileged registry provisioning and system configuration.
 
@@ -34,6 +35,9 @@ export default function AdminHomeView({scopeGroup}){
   const UI_COPY=useUiCopy();
   const account=useAccount();
   const editDock=useEditDock();
+  // /admin/ has its own global-permission gate instead of ManagementAccess.
+  // Run the same old-page disposal before loading any admin editor.
+  useEffect(()=>{releaseTransientPageResources();},[]);
   const [entryVerified,setEntryVerified]=useState(false);
   const [loginDenied,setLoginDenied]=useState(false);
   const [retrying,setRetrying]=useState(false);

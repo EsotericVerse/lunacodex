@@ -6,6 +6,7 @@ import {Capacitor} from '@capacitor/core';
 import {dbAuthEvents} from '../loc/db-client.mjs';
 import {EDIT_OPERATION_TTL_MS,assertEditorSession,touchEditorSession,clearEditorSession} from '../loc/edit-session-ttl.mjs';
 import {isManagementHref} from './ScopeLink';
+import {releaseTransientPageResources} from '../../zenstack/client-queries';
 
 // UI only: a Scope's permission is checked before entering edit mode,
 // and every write still passes through its existing database authorization.
@@ -223,50 +224,33 @@ export function EditDockProvider({children,scopeId}){
       finishOperation(epoch);
     }
   },[editing,busy,scopeId,beginOperation,finishOperation,end]);
-  const dirtyEditors=useCallback(()=>[...registeredEditors.current].filter(editor=>
-    typeof editor.isDirty==='function'&&editor.isDirty()
-  ),[]);
-  const discard=useCallback((target,{confirmOnlyWhenDirty=false}={})=>{
+  // Navigation is an explicit discard boundary: never retain a previous
+  // section's draft, editor callbacks, operation lock, or query payloads.
+  // Only pressing Save writes data. No modal or hidden Save queue on exit.
+  const discard=useCallback(target=>{
     if(!target)return;
-    // An explicit Cancel must always escape a stalled Save lock.
-    if(!busy&&dirtyEditors().length>0&&
-      !window.confirm(confirmOnlyWhenDirty
-        ?'確定放棄尚未儲存的變更並返回普通頁面？'
-        :'確定放棄尚未儲存的編輯並返回首頁？'))return;
     const destination=new URL(String(target),window.location.href);
     end();
-    // Leaving a static management entrypoint needs a real document navigation.
-    // App Router replace may update the dock but leave the management page mounted.
+    releaseTransientPageResources();
+    // Static management entrypoints use real HTML navigation.
     window.location.assign(destination.href);
-  },[busy,dirtyEditors,end]);
-  // No page-blocking modal or retained navigation target. Only the
-  // current mounted form has unsaved edits; Cancel never changes its state.
-  const confirmLeavingDirty=useCallback(()=>
-    !dirtyEditors().length||window.confirm(
-      '目前的修改尚未儲存。切換後會直接放棄本次修改，確定繼續？'
-    ),[dirtyEditors]);
+  },[end]);
   const switchTo=useCallback((target,{history='replace',scroll=true}={})=>{
-    if(busy||!target)return;
-    if([...registeredEditors.current].some(editor=>editor.isBusy?.())){
-      setNotice('目前正在儲存，請完成後再切換頁面。');
-      return;
-    }
-    if(!confirmLeavingDirty())return;
+    if(!target)return;
     switchHistory.current=history==='push'?'push':'replace';
     switchScroll.current=scroll!==false;
+    releaseOperation();
     clearEditor();setNotice('');
+    releaseTransientPageResources();
     navigate(target,switchHistory.current,switchScroll.current);
-  },[busy,confirmLeavingDirty,clearEditor,navigate]);
+  },[releaseOperation,clearEditor,navigate]);
   const switchSection=useCallback((next,commit)=>{
-    if(busy||typeof commit!=='function')return;
-    if([...registeredEditors.current].some(editor=>editor.isBusy?.())){
-      setNotice('目前正在儲存，請完成後再切換。');
-      return;
-    }
-    if(!confirmLeavingDirty())return;
+    if(typeof commit!=='function')return;
+    releaseOperation();
     clearEditor();setNotice('');
+    // The section hook disposes the old query generation before it commits.
     commit(next);
-  },[busy,confirmLeavingDirty,clearEditor]);
+  },[releaseOperation,clearEditor]);
   const value=useMemo(()=>({
     active:editing,scopeId,canManageGlobal,hasSave,busy,notice,begin,end,
     register,save,discard,complete,switchTo,switchSection,setNotice
