@@ -244,7 +244,8 @@ export default {
           return new Response('Forbidden',{status:403,headers:{'cache-control':'no-store'}});
         const provider=cloudflareSsoConfig(env);
         const issuer=new URL(provider.issuer);
-        const tokenURL=new URL(issuer.pathname.replace(/\\/+$/,'')+'/token',issuer.origin);
+        const tokenPath=(issuer.pathname.endsWith('/')?issuer.pathname.slice(0,-1):issuer.pathname)+'/token';
+        const tokenURL=new URL(tokenPath,issuer.origin);
         const test=async mode=>{
           const data=new URLSearchParams({
             grant_type:'authorization_code',
