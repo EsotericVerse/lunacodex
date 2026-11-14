@@ -45,3 +45,28 @@ export function explainPeltChange(rows=[],points=[]){
     changePercent:before>0?delta/before*100:null,
     allBoundaries:valid.map(index=>stats.entries[index].period)};
 }
+
+// Rank periods by deviation from their PELT-detected structural segment.
+// When no boundary is detected, the full-series mean is the baseline.
+// The ranking is therefore contextual rather than a rigid total-count chart.
+export function rankInsightPeriods(rows=[],points=[]){
+  const stats=totalPeriodStats(rows);
+  const n=stats.entries.length;
+  const boundaries=[0,...new Set((Array.isArray(points)?points:[])
+    .filter(v=>Number.isInteger(v)&&v>=2&&v<=n-2))].sort((a,b)=>a-b);
+  boundaries.push(n);
+  const scored=[];
+  for(let j=1;j<boundaries.length;j++){
+    const start=boundaries[j-1],end=boundaries[j];
+    const baseline=average(stats.values.slice(start,end));
+    for(let i=start;i<end;i++){
+      const row=stats.entries[i];
+      scored.push({...row,baseline,deviation:row.value-baseline});
+    }
+  }
+  const up=scored.filter(row=>row.deviation>0).sort((a,b)=>
+    b.deviation-a.deviation||a.period.localeCompare(b.period));
+  const down=scored.filter(row=>row.deviation<0).sort((a,b)=>
+    a.deviation-b.deviation||a.period.localeCompare(b.period));
+  return {up,down,segmented:boundaries.length>2};
+}
