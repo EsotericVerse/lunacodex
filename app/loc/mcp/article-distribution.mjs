@@ -66,9 +66,9 @@ export async function articleDistribution(args={},env={},{
   // "loc" uses the website's published, aggregate-only Galaxy statistics.
   // The active api.manage email eligibility is verified once by the caller.
   // No user supplied ScopeID; no private article text or arbitrary SQL.
-  const result=await analytics(db,{args:{
+  const result=await db.transaction().execute(trx=>analytics(trx,{args:{
     p_scope_id:'loc',p_view:'loc',p_start:start,p_end:end,p_options:{}
-  }},{role:'anon'});
+  }},{role:'anon'}));
   const rows=aggregateArticleMonths(months,result?.data?.rows);
   return {function:'analytics.article_distribution',metric:'article_count',
     period,start,end,timezone:'Asia/Taipei',group_by:'month',
