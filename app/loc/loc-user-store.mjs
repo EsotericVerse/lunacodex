@@ -62,44 +62,37 @@ export function validateLocUserField(field,value){
   }
   return output;
 }
-// RLS binds SELECT/INSERT/UPDATE to the signed-in JWT subject. Login is
-// performed by the entry page; preferences do not recheck OAuth email.
-async function selfRow(email){
-  const verified=normalizeEmail(email);
-  if(!verified)throw new Error('需要已驗證的 OAuth Email');
+// The website backend verifies Better Auth Session and binds owner_id on
+// SELECT/INSERT/UPDATE. No management grant or client-side email ACL.
+async function selfRow(){
+  // The signed website session is bound to owner_id on the server.
+  // Email is profile metadata, not a second lookup/authorization key.
   const data=checked(await dbAuthRelation(TABLE).select(COLUMNS)
-    .eq('email',verified).limit(1),'無法讀取 OAuth 個人設定');
+    .limit(1),'無法讀取 OAuth 個人設定');
   return data?.[0]||null;
 }
 // Reading missing preferences is normal. Do not create a row on login or
 // during navigation; an OAuth user may have no stored preferences at all.
-export async function loadOrCreateLocUser(email){
-  return normalizeLocUser(await selfRow(email)||{});
+export async function loadOrCreateLocUser(){
+  return normalizeLocUser(await selfRow()||{});
 }
-export async function saveLocUserField(uid,field,value,email){
-  const verified=normalizeEmail(email);
-  if(!verified)throw new Error('需要已驗證的 OAuth Email');
+export async function saveLocUserField(uid,field,value){
   const normalized=validateLocUserField(field,value);
   if(uid&&!UID.test(String(uid)))throw new Error('個人設定 UID 必須為八碼');
   if(uid){
     const data=checked(await dbAuthRelation(TABLE)
       .update({[field]:normalized,updated_at:new Date().toISOString()})
-      .eq('uid',uid).eq('email',verified).select(COLUMNS),'個人設定儲存失敗');
+      .eq('uid',uid).select(COLUMNS),'個人設定儲存失敗');
     if(!data?.length)throw new Error('個人設定已失效，請重新載入設定');
     return normalizeLocUser(data[0]);
   }
-  // The very first explicit preference change creates the only row.
-  // owner_id is supplied by the database from the authenticated JWT;
-  // email is not used to authorize or identify the owner of preferences.
-  const created=await dbAuthRelation(TABLE).insert([{[field]:normalized,email:verified}]).select(COLUMNS);
-  if(!created.error){
-    if(!created.data?.[0])throw new Error('個人設定未能建立');
-    return normalizeLocUser(created.data[0]);
-  }
-  if(created.error.code!=='23505')
-    throw new Error(created.error.message||'個人設定儲存失敗');
-  // Another tab may have inserted the same owner's first row concurrently.
-  const existing=await selfRow(verified);
-  if(!existing)throw new Error('個人設定建立衝突，請重試');
-  return saveLocUserField(existing.uid,field,normalized,verified);
+  // A verified website Session owns both owner_id and profile email;
+  // neither is provided by the browser. First explicit change creates the row.
+  // Upsert uses the existing owner_id unique constraint. Two tabs racing
+  // to create preferences update only the chosen field, not the entire row.
+  const saved=checked(await dbAuthRelation(TABLE)
+    .upsert([{[field]:normalized,updated_at:new Date().toISOString()}],{onConflict:'owner_id'})
+    .select(COLUMNS),'個人設定儲存失敗');
+  if(!saved?.[0])throw new Error('個人設定未能建立');
+  return normalizeLocUser(saved[0]);
 }

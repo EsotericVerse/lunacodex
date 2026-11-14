@@ -157,7 +157,7 @@ export async function handleNativeLocOperation(request,env={},{
     // LOC Auth verifies the identity; only active api.manage grants may
     // authorize MCP/Extension writes, never a role supplied by the request body.
     const writeKinds=new Set(['short-import','mcp-sync','mcp-append',
-      'managed-write','managed-action','personal-write',
+      'managed-write','managed-action',
       ...(body.kind==='mcp-conversation'&&body.action==='record'?['mcp-conversation']:[])]);
     // MCP write requires both an OAuth delegation for importing and the
     // independently checked LOC business permission. OAuth alone never grants
@@ -185,6 +185,17 @@ export async function handleNativeLocOperation(request,env={},{
     const selected=await database(env,control?'':externalTarget);
     if(!selected?.db||!['postgres','mysql','mssql'].includes(selected.engine))
       throw refusal('LOC native Kysely driver is not configured',503);
+    // Personal preferences are self-service under the verified website Session.
+    // The signed subject is bound to owner_id by executeLocPersonal; no
+    // api.manage role lookup or editor delegation is required for this path.
+    if(body.kind==='personal-read'||body.kind==='personal-write'){
+      if(host!==WEB_HOST)throw refusal('Personal records belong to the LOC website',404);
+      if(selected.tableName||selected.engine!=='postgres')
+        throw refusal('LOC personal database connection unavailable',503);
+      const row=await selected.db.transaction().execute(trx=>
+        executeLocPersonal(trx,claims,body));
+      return reply({data:row});
+    }
     // Extension imports and direct MCP operations share the same role-based
     // Gateway gate. Website editor grants retain their existing separate policy.
     // Each request performs one active api.manage lookup, never a second probe.
@@ -231,16 +242,6 @@ export async function handleNativeLocOperation(request,env={},{
           onPhase:phase=>{importPhase=phase;}})
       });
       return reply(receipt);
-    }
-    if(body.kind==='personal-read'||body.kind==='personal-write'){
-      if(host!==WEB_HOST)throw refusal('Personal records belong to the LOC website',404);
-      if(selected.tableName||selected.engine!=='postgres')
-        throw refusal('LOC personal database connection unavailable',503);
-      // An identity-only signed LOC OAuth delegation has zero management
-      // grants. The Kysely query is constrained to its own owner_id, not RLS.
-      const row=await selected.db.transaction().execute(trx=>
-        executeLocPersonal(trx,claims,body));
-      return reply({data:row});
     }
     if(body.kind==='managed-write'||body.kind==='managed-action'){
       if(selected.tableName)throw refusal('External mapped tables are read only',403);
