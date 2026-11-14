@@ -31,6 +31,24 @@
   transition:background .16s ease,box-shadow .16s ease,transform .16s ease;
 }
 .scope-feature-dock a svg,.scope-feature-dock button svg{flex:none;width:23px;height:23px;}
+/* One selected surface, not six independent filters or glow layers.
+   layoutId moves this actual element between React-preserved destinations. */
+.scope-feature-dock a{position:relative;isolation:isolate;}
+.scope-feature-dock a>.scope-dock-active-pill{
+  position:absolute;inset:1px;z-index:0;
+  border:1px solid var(--loc-accent);
+  border-radius:inherit;
+  background:color-mix(in srgb,var(--loc-accent) 39%,var(--loc-panel));
+  box-shadow:inset 0 -3px 0 var(--loc-accent);
+  pointer-events:none;
+}
+.scope-feature-dock a>.scope-dock-motion-icon,
+.scope-feature-dock a>span:last-child{position:relative;z-index:1;}
+.scope-feature-dock a[aria-current="page"]>.scope-dock-motion-icon,
+.scope-feature-dock a[aria-current="page"]>span:last-child{
+  color:var(--loc-heading);font-weight:750;
+}
+
 
 /* The six feature-icon motions stay within the 24px pictogram area.
    No resizing or transform on the floating dock, button or navigation link. */
@@ -70,10 +88,16 @@
 /* Current destination: an inked position marker instead of permanent glow.
    Keep this visual state separate from editing actions. */
 .scope-feature-dock a[aria-current="page"]{
-  position:relative;
-  border-color:var(--loc-accent);
-  background:color-mix(in srgb,var(--loc-accent) 23%,var(--loc-panel) 77%);
-  box-shadow:inset 0 -2px 0 var(--loc-accent),0 3px 10px color-mix(in srgb,var(--loc-bg) 30%,transparent);
+  position:relative;z-index:1;
+  border-color:transparent;
+  background:transparent;
+  color:var(--loc-heading);
+  box-shadow:none;
+}
+/* Keep the shared surface exposed under hover/focus, while the existing
+   keyboard focus outline remains visible. */
+.scope-feature-dock a[aria-current="page"]:is(:hover,:focus-visible){
+  background:transparent;
 }
 .scope-feature-dock a[aria-current="page"]::after{
   content:'';
