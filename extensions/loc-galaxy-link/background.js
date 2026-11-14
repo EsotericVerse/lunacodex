@@ -244,7 +244,10 @@ async function mcpProviderRequest(method,body=null){
    await logDiagnostic('mcp.provider.error',{message:error?.message||String(error)});
    throw oauthError('LOC MCP Provider 無法連線');
   }
-  await logDiagnostic('mcp.provider.response',{action:body?.action||'status',provider:body?.provider||'',status:response.status});
+  // Routine successful status checks are noise in the diagnostics log.
+  // Keep errors and explicit Provider actions for troubleshooting.
+  if(!response.ok||method!=='GET')
+   await logDiagnostic('mcp.provider.response',{action:body?.action||'status',provider:body?.provider||'',status:response.status});
   return response;
  };
  let response=await request(token);
