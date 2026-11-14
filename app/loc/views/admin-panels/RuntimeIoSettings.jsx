@@ -42,7 +42,8 @@ export default function RuntimeIoSettings(){
     }catch(error){setNotice(String(error?.message||error));return false;}
     finally{setBusy(false);}
   };
-  useEditDockForm({save,isDirty:()=>changed,isBusy:()=>busy||!draft});
+  // Initial config loading is not a save transaction.
+  useEditDockForm({save,isDirty:()=>changed,isBusy:()=>busy});
   return <section className="loc-card scope-feature-card" aria-label="系統設定">
     <h3>系統設定</h3>
     {draft?<div className="scope-management-fields">

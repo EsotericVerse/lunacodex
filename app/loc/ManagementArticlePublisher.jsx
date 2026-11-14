@@ -190,7 +190,8 @@ export default function ManagementArticlePublisher({scopeId}){
     save:()=>save(),
     discard:resetDraft,
     isDirty,
-    isBusy:()=>busy||loadingUid
+    // Loading a draft by UID must not lock navigation as '正在儲存'.
+    isBusy:()=>busy
   };
 
   return <section className="loc-card scope-feature-card"
