@@ -330,6 +330,7 @@ export function createLocAuth(env){
             tokenEndpoint:cloudflare.issuer+'/token',
             jwksEndpoint:cloudflare.issuer+'/jwks',
             userInfoEndpoint:cloudflare.issuer+'/userinfo',
+            tokenEndpointAuthentication:'client_secret_post',
             clientId:cloudflare.clientId,
             clientSecret:cloudflare.clientSecret,
             pkce:true,
