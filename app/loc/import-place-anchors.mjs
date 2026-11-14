@@ -79,8 +79,16 @@ export async function prepareImportPlaceAnchors(records,{
 }={}){
   const {names,missing}=incomingLocations(records);
   const byCoordinate=new Map(),byName=new Map();
-  const unavailable=()=>({byCoordinate,byName,created:0,reused:0,conflicts:[],
-    skipped:missing+names.size,unmatchedCoordinates:names.size});
+  const unavailable=()=>{
+    // Even when every imported article already has place_id, its verified
+    // Point PK is still needed to append visit times. Return the shared
+    // UID-index state instead of dropping it with the empty name list.
+    const indexed=anchorSnapshot?.scopeId===scopeId?anchorSnapshot.place:null;
+    return {byCoordinate,byName,created:0,reused:0,conflicts:[],
+      skipped:missing+names.size,unmatchedCoordinates:names.size,
+      ...(indexed?{timesByUid:indexed.timesByUid,attrsByUid:indexed.attrsByUid,
+        createtimeByUid:indexed.createtimeByUid,table:anchorSnapshot.table}:{})};
+  };
   if((!names.size&&!scanExistingOnEmpty)||scopeId==='local'||scopeId==='loc'||!scopeId)
     return unavailable();
   if(!/^[a-z][a-z0-9]{0,14}$/.test(scopeId))throw Error('空間定錨 Scope 無效');
