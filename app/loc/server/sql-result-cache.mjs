@@ -1,5 +1,5 @@
-// LOC public numeric SQL result cache. Only immutable, server-authorized
-// anonymous projections may use this module; never cache Auth or private reads.
+// LOC public SQL result cache. Only fixed, server-authorized anonymous
+// projections may use this module; never cache Auth, permissions or private reads.
 //
 // A revision must come from the SAME database as the Kysely SELECT. The
 // PostgreSQL statement trigger is the authority, including writes from other
@@ -8,7 +8,7 @@ const MAX_ENTRIES=80;
 const MAX_RESULT_CHARS=350000;
 const MAX_TOTAL_CHARS=2000000; // Bounded per-isolate memory, not 80 huge rows.
 const MAX_AGE_MS=120000;
-const RELATION=/^silver\.[a-z][a-z0-9]{0,14}_galaxy$/;
+const RELATION=/^silver\.[a-z][a-z0-9]{0,14}(?:_galaxy|_anchor|_blocks)?$/;
 const completed=new Map();
 const pending=new Map();
 let totalChars=0;
@@ -16,7 +16,8 @@ let totalChars=0;
 function dependencyNames(values){
   if(!Array.isArray(values)||!values.length)return null;
   const names=[...new Set(values)];
-  if(names.length!==values.length||names.some(name=>typeof name!=='string'||!RELATION.test(name)))
+  if(names.length!==values.length||names.some(name=>typeof name!=='string'||
+    !RELATION.test(name)||name==='silver.loc_blocks'))
     return null;
   return names.sort();
 }
@@ -43,12 +44,13 @@ function remember(key,json){
 }
 
 /**
- * Result reuse for fixed anonymous numeric reads. Only a current revision
- * vector allows a completed result to be reused; no TTL-only correctness.
+ * Result reuse for fixed, public anonymous SELECT projections. A trusted
+ * revision vector allows a completed result to be reused; no TTL-only correctness.
  * Reads on unsupported dialects and unversioned tables remain live.
  */
-export async function withNumericSqlResultCache({
-  env,db,engine,namespace,targetId,scope,kind,start='',end='',dependencies,read
+export async function withPublicSqlResultCache({
+  env,db,engine,namespace,targetId,scope,kind,start='',end='',feature='',
+  dependencies,read
 }){
   if(typeof read!=='function')throw new TypeError('SQL result reader required');
   if(env?.LOC_SQL_RESULT_CACHE!=='1'||engine!=='postgres'||namespace!=='silver')
@@ -62,8 +64,8 @@ export async function withNumericSqlResultCache({
   // The caller has already enforced SCOPE_ROUTE_INDEX and guest feature flags.
   // Policy class, SQL target, scope, normalized parameters and exact database
   // revision vector all participate in the cache key.
-  const key=JSON.stringify(['public-anon-numeric-v1',targetId,engine,namespace,
-    scope,kind,start,end,vector]);
+  const key=JSON.stringify(['public-anon-policy-v2',targetId,engine,namespace,
+    scope,kind,start,end,feature,vector]);
   const cached=completed.get(key);
   if(cached){
     if(cached.expires>Date.now()){
@@ -88,3 +90,6 @@ export async function withNumericSqlResultCache({
     return json===undefined?undefined:JSON.parse(json);
   }finally{if(pending.get(key)===task)pending.delete(key)}
 }
+
+// Retain existing call-sites and test imports; there is only one cache store.
+export const withNumericSqlResultCache=withPublicSqlResultCache;
