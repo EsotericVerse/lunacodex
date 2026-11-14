@@ -25,9 +25,35 @@ function prefixMatch(fullKey,filterKey){
 const registry=new Map(); // id -> {key, refetch, setData, remove}
 let nextId=0;
 const inflight=new Map(); // serializedKey -> Promise  (concurrent dedup)
-const dataStore=new Map(); // serializedKey -> last value (getQueryData/setQueryData only)
-
-function register(entry){const id=++nextId;registry.set(id,entry);return()=>{registry.delete(id);};}
+// Only the three tiny identity states outlive their page. SQL read results
+// must be released when the last mounted consumer of their key disappears.
+const dataStore=new Map();
+const IDENTITY_KEYS=new Set([
+  ['loc-account','session'],['loc-account','verified-loc-sso'],
+  ['loc-account','management']
+].map(serialize));
+function hasReader(serializedKey){
+  for(const entry of registry.values())
+    if(serialize(entry.key)===serializedKey)return true;
+  return false;
+}
+function releaseUnobserved(serializedKey){
+  if(!IDENTITY_KEYS.has(serializedKey)&&!hasReader(serializedKey))
+    dataStore.delete(serializedKey);
+}
+function retainIfObserved(serializedKey,value){
+  if(IDENTITY_KEYS.has(serializedKey)||hasReader(serializedKey))
+    dataStore.set(serializedKey,value);
+  else dataStore.delete(serializedKey);
+}
+function register(entry){
+  const id=++nextId;
+  registry.set(id,entry);
+  return ()=>{
+    registry.delete(id);
+    releaseUnobserved(serialize(entry.key));
+  };
+}
 
 function forEachMatch(filter={},fn){
   for(const entry of registry.values()){
@@ -72,22 +98,29 @@ export function useAsyncResource(keyOrOptions,fetcherArg,optionsArg={}){
   const fetcherRef=useRef(fetcher);fetcherRef.current=fetcher;
   const onErrorRef=useRef(onError);onErrorRef.current=onError;
   const mountedRef=useRef(true);
+  // Same component, new query key: ignore the older request's completion.
+  const currentKeyRef=useRef(serializedKey);
+  currentKeyRef.current=serializedKey;
+  const isCurrent=()=>mountedRef.current&&currentKeyRef.current===serializedKey;
 
   const load=useCallback(async()=>{
     if(!active)return undefined;
     setIsFetching(true);
     try{
       const value=await runFetch(serializedKey,()=>fetcherRef.current());
-      dataStore.set(serializedKey,value);
-      if(mountedRef.current)setState({data:value,status:'success',error:null});
+      // A request may finish after unmount; never revive stale route data.
+      if(isCurrent()){
+        retainIfObserved(serializedKey,value);
+        setState({data:value,status:'success',error:null});
+      }
       return value;
     }catch(error){
       flashMessage('資料讀取失敗，請稍後再試');
       onErrorRef.current?.(error,queryKey);
-      if(mountedRef.current)setState(previous=>({data:previous.data,status:'error',error}));
+      if(isCurrent())setState(previous=>({data:previous.data,status:'error',error}));
       throw error;
     }finally{
-      if(mountedRef.current)setIsFetching(false);
+      if(isCurrent())setIsFetching(false);
     }
   // queryKey is represented by serializedKey; fetcher/onError read from refs.
   },[serializedKey,active]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -99,12 +132,14 @@ export function useAsyncResource(keyOrOptions,fetcherArg,optionsArg={}){
       key:queryKey,
       refetch:()=>{void load().catch(()=>{});},
       setData:value=>{
-        dataStore.set(serializedKey,value);
-        if(mountedRef.current)setState({data:value,status:'success',error:null});
+        if(isCurrent()){
+          retainIfObserved(serializedKey,value);
+          setState({data:value,status:'success',error:null});
+        }
       },
       remove:()=>{
         dataStore.delete(serializedKey);
-        if(mountedRef.current)setState({data:undefined,status:'idle',error:null});
+        if(isCurrent())setState({data:undefined,status:'idle',error:null});
       }
     });
     return()=>{mountedRef.current=false;unregister();};
@@ -122,10 +157,12 @@ export function useAsyncResource(keyOrOptions,fetcherArg,optionsArg={}){
       const [value,config={}]=args;
       if(value===undefined){
         dataStore.delete(serializedKey);
-        if(mountedRef.current)setState({data:undefined,status:'idle',error:null});
+        if(isCurrent())setState({data:undefined,status:'idle',error:null});
       }else{
-        dataStore.set(serializedKey,value);
-        if(mountedRef.current)setState({data:value,status:'success',error:null});
+        if(isCurrent()){
+          retainIfObserved(serializedKey,value);
+          setState({data:value,status:'success',error:null});
+        }
       }
       if(config.revalidate!==false)return load();
       return dataStore.get(serializedKey);
@@ -223,7 +260,7 @@ export const queryClient={
     const previous=dataStore.get(serializedKey);
     const next=typeof value==='function'?value(previous):value;
     if(next===undefined)return previous;
-    dataStore.set(serializedKey,next);
+    retainIfObserved(serializedKey,next);
     forEachMatch({queryKey:keyOf(key),exact:true},entry=>entry.setData(next));
     return next;
   },
@@ -245,7 +282,9 @@ export const queryClient={
   fetchQuery:async({queryKey,queryFn})=>{
     const serializedKey=serialize(queryKey);
     const value=await runFetch(serializedKey,queryFn);
-    dataStore.set(serializedKey,value);
+    // getOrLoad returns its result to the caller, but unmounted panels must
+    // not accumulate their completed pages in the global Map.
+    retainIfObserved(serializedKey,value);
     return value;
   }
 };

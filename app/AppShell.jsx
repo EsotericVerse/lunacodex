@@ -288,6 +288,20 @@ export default function AppShell({children}){
 function AppShellInner({children,runtime}){
   const queryClient=useQueryClient();
   useEffect(()=>{
+    // Retire pre-existing browser copies of unfinished Timeline reviews and
+    // settings snapshots. Do not touch LOC Auth or editor TTL session keys.
+    try{
+      const storage=window.sessionStorage;
+      for(let i=storage.length-1;i>=0;i--){
+        const key=storage.key(i);
+        if(key&&(key.startsWith('loc-timeline-review:')||
+            key==='loc-navigation-setting-snapshot-v1'||
+            key==='loc-public-cache-policy-v1'))
+          storage.removeItem(key);
+      }
+    }catch{}
+  },[]);
+  useEffect(()=>{
     // Retire the browser PWA Service Worker. This does not affect the
     // Cloudflare server Workers, public SQL APIs, or Capacitor native app.
     if(Capacitor.isNativePlatform()||!('serviceWorker' in navigator))return;

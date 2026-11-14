@@ -7,29 +7,7 @@ export const CACHE_POLICY_EVENT='loc-cache-policy-changed';
 const DEFAULT_POLICY=Object.freeze({mode:'off',origin:''});
 const PUBLIC_ORIGIN=/^https:\/\/[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/i;
 let policy=DEFAULT_POLICY;
-const SESSION_POLICY_KEY='loc-public-cache-policy-v1';
 let policyRequest=null;
-// Public, nonsecret settings: a full document navigation must not SELECT
-// silver.loc again merely to reconfigure the Service Worker.
-const publicFields=row=>({
-  cache_mode:row?.cache_mode,
-  cache_provider:row?.cache_provider,
-  isr_domains:Array.isArray(row?.isr_domains)?row.isr_domains:[],
-  io_limits:row?.io_limits||null
-});
-function readSessionPolicy(){
-  try{
-    if(typeof window==='undefined')return null;
-    const saved=JSON.parse(window.sessionStorage.getItem(SESSION_POLICY_KEY)||'null');
-    return saved&&['off','cache','isr'].includes(saved.cache_mode)?saved:null;
-  }catch{return null;}
-}
-function rememberSessionPolicy(record){
-  try{
-    if(typeof window!=='undefined')
-      window.sessionStorage.setItem(SESSION_POLICY_KEY,JSON.stringify(publicFields(record)));
-  }catch{}
-}
 
 export function normalizeCachePolicy(record){
   const mode=['off','cache','isr'].includes(record?.mode)?record.mode:'off';
@@ -59,7 +37,6 @@ export function applyGlobalCacheConfig(record){
     mode:record?.cache_mode||CACHE_POLICY.mode,
     origin:selectedIsrOrigin(record)
   });
-  rememberSessionPolicy(record);
   return next;
 }
 export function loadCachePolicy(){
@@ -69,7 +46,7 @@ export function loadCachePolicy(){
   // SELECT (HTTP 406). Use the same already-published fallback that was
   // previously reached after that failed request.
   policyRequest=Promise.resolve().then(()=>applyGlobalCacheConfig(
-    readSessionPolicy()||{cache_mode:CACHE_POLICY.mode,isr_domains:[]}
+    {cache_mode:CACHE_POLICY.mode,isr_domains:[]}
   ));
   return policyRequest;
 }

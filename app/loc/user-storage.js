@@ -5,11 +5,6 @@ import {applyFilters} from './db-query.mjs';
 
 
 function apiRelation(name){return dbAuthRelation('api.'+name);}
-const NAV_SETTINGS_CACHE_KEY='loc-navigation-setting-snapshot-v1';
-function dropNavigationSettingsCache(){
-  try{if(typeof window!=='undefined')window.sessionStorage.removeItem(NAV_SETTINGS_CACHE_KEY);}catch{}
-}
-
 const RECORD_COLUMNS=[
   'id','record_type','record_kind','source','record_date','scope_id',
   'mode','mode_label','moon_phase','trend','result','guidance','daily_role',
@@ -198,24 +193,15 @@ function settingValue(row,key){
 
 // Account navigation reads the three preferences in a single SQL request.
 // Other setting consumers can continue using getSetting(key) individually.
-export async function getSettings(keys=[],identity=''){
+export async function getSettings(keys=[]){
   const names=[...new Set((Array.isArray(keys)?keys:[]).map(key=>String(key||'').trim()).filter(Boolean))];
   if(!names.length)return {};
-  if(identity&&typeof window!=='undefined')try{
-    const cached=JSON.parse(window.sessionStorage.getItem(NAV_SETTINGS_CACHE_KEY)||'null');
-    if(cached?.identity===identity&&names.every(key=>Object.hasOwn(cached.values||{},key)))
-      return Object.fromEntries(names.map(key=>[key,cached.values[key]]));
-  }catch{}
   const {data,error}=await apiRelation('user_settings')
     .select('setting_key,text_value,integer_value,updated_at')
     .in('setting_key',names);
   if(error)throw new Error(error.message||'個人設定讀取失敗');
   const rows=new Map((data||[]).map(row=>[String(row.setting_key),row]));
-  const values=Object.fromEntries(names.map(key=>[key,settingValue(rows.get(key)||null,key)]));
-  if(identity&&typeof window!=='undefined')try{
-    window.sessionStorage.setItem(NAV_SETTINGS_CACHE_KEY,JSON.stringify({identity,values}));
-  }catch{}
-  return values;
+  return Object.fromEntries(names.map(key=>[key,settingValue(rows.get(key)||null,key)]));
 }
 
 export async function getSetting(key){
@@ -236,7 +222,6 @@ export async function putSetting(key,value){
     .upsert([row],{onConflict:'owner_id,setting_key'})
     .select('setting_key,text_value,integer_value,updated_at');
   if(error)throw new Error(error.message||'個人設定儲存失敗');
-  dropNavigationSettingsCache();
   return settingValue(data?.[0]||row,row.setting_key);
 }
 
@@ -244,7 +229,6 @@ export async function deleteSetting(key){
   await requireUser();
   const {error}=await apiRelation('user_settings').delete().eq('setting_key',String(key));
   if(error)throw new Error(error.message||'個人設定刪除失敗');
-  dropNavigationSettingsCache();
 }
 
 export async function listRuneDrawSlots(){
