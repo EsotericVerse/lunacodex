@@ -87,14 +87,6 @@
   flex-wrap:wrap;
 }
 /* Management: direct labels and compact task controls, without explanation walls. */
-.management-workspace--unified>.management-workspace__header{
-  padding:clamp(.85rem,1.6vw,1.2rem);
-  border-color:color-mix(in srgb,var(--loc-accent) 24%,var(--loc-line));
-  background:var(--loc-panel);
-}
-.management-workspace--unified .management-workspace__heading{
-  font-size:clamp(1.2rem,2vw,1.55rem);
-}
 .management-workspace--unified>.management-section-nav{
   border-color:var(--loc-line-soft);
   background:color-mix(in srgb,var(--loc-panel) 92%,var(--loc-panel-2));
@@ -166,9 +158,6 @@
   .scope-settings-options>.management-section-nav .management-section-nav__item{
     padding:.6rem .72rem;
   }
-  .management-workspace--unified>.management-workspace__header .management-workspace__description{
-    display:none;
-  }
 }
 @media(prefers-reduced-motion:reduce){
   [data-public-feature] .loc-public-article-list > :is(.scope-work-list-row,.loc-shared-work-card),
@@ -177,8 +166,7 @@
 
 /* Editorial-art direction: rhythm, fine rules and whitespace instead of glassy plastic. */
 [data-public-feature="culture"] .scope-culture-source-detail,
-[data-public-feature="search"] .scope-search-form,
-.management-workspace--unified>.management-workspace__header{
+[data-public-feature="search"] .scope-search-form{
   box-shadow:none;
 }
 [data-public-feature="culture"] :is(.scope-culture-classification-river,.scope-culture-structure-river,.scope-loc-time-river){
