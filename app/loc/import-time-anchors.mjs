@@ -1,5 +1,6 @@
 import {parseImportCreatedTime} from './import-batch.mjs';
 import {allocateAnchorUid} from './uid.js';
+import {planImportDateTitleDelta} from './import-point-date-immer.mjs';
 
 // Importing a known check-in creates its calendar-day Time anchor independently
 // from the spatial anchor's full-precision visit timestamps.
@@ -137,9 +138,10 @@ export async function prepareImportTimeAnchors(records,{
   let reused=dates.length-missing.length-conflicts.length,created=0,repaired=0;
   for(const day of dates){
     const old=existingDays.get(day),entry=entryByDate.get(day);
-    if(!old||old.title!==day||String(old.description||'').trim()||
-        !entry||entry.title===day)continue;
-    const update=relation(table).update({title:entry.title,description:entry.description})
+    if(!old||!entry)continue;
+    const plan=planImportDateTitleDelta(old,entry,day);
+    if(!plan.patches.length)continue;
+    const update=relation(table).update(plan.changes)
       .eq('uid',old.uid).eq('type','date').eq('title',day);
     const guarded=old.description==null?update.is('description',null):
       update.eq('description',old.description);
