@@ -18,7 +18,7 @@ import useLocFeatureSettings from '../../loc/use-loc-feature-settings';
 import {cultureDensityByUnit,simpleTimeRiver} from '../../loc/loc-feature-preferences.mjs';
 import dynamic from 'next/dynamic';
 import {usePathname,useSearchParams} from 'next/navigation';
-import {useAsyncResource,useAsyncInfiniteResource,useResourceCache} from '../../../zenstack/client-queries';
+import {useAsyncResource,useAsyncInfiniteResource,useResourceCache,prepareTransientResourceAction} from '../../../zenstack/client-queries';
 import {featureNavigationHref,galaxyIdentityHref,galaxyRelationLinks,readFeatureNavigation} from '../feature-navigation';
 import ScopeLink from '../ScopeLink';
 import {useEditDock} from '../edit-dock';
@@ -1481,6 +1481,11 @@ export default function Culture(){
                   <label><span>{l.timeTrace}</span>
                     <select className='scope-select' aria-label='第一條河道時代選擇'
                       value={activeStructureKey} onChange={event=>{
+                         prepareTransientResourceAction('period',{queryKeys:[
+                           ['culture-article-list',classificationScope],
+                           ['culture-river-root',classificationScope]
+                         ]});
+                         setWorksOpen(false);setSelectedTimelineInfo(null);
                          setStructureWindowKey(event.target.value);
                          setSelectedPeriodKey(event.target.value);
                        }}>
@@ -1524,6 +1529,11 @@ export default function Culture(){
                               if(!keywordCustomStart)setKeywordCustomStart(keywordWindowStart);
                               if(!keywordCustomEnd)setKeywordCustomEnd(keywordWindowEnd);
                             }
+                            prepareTransientResourceAction('period',{queryKeys:[
+                              ['culture-article-list',classificationScope],
+                              ['culture-river-root',classificationScope]
+                            ]});
+                            setWorksOpen(false);
                             setKeywordPeriodKey(next);
 
                           }}>
