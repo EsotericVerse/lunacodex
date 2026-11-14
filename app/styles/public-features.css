@@ -30,7 +30,7 @@
 }
 [data-public-feature] .loc-public-content > .scope-feature-card{
   border-color:var(--loc-feature-hairline);
-  background:linear-gradient(155deg,var(--loc-feature-wash),var(--loc-panel) 32%,var(--loc-panel));
+  background:var(--loc-panel);
   box-shadow:var(--loc-shadow-card);
 }
 [data-public-feature] :is(.scope-stat-controls,.scope-search-form,.scope-culture-source-detail,.loc-trace-works){
@@ -138,7 +138,7 @@
    or article details to load just to decorate the page. */
 [data-public-feature="culture"] :is(.scope-culture-classification-river,.scope-culture-structure-river,.scope-loc-time-river){
   border-block-start:3px solid var(--loc-feature-emphasis);
-  background:linear-gradient(180deg,var(--loc-feature-wash),var(--loc-panel));
+  background:var(--loc-panel);
 }
 [data-public-feature="culture"] .scope-period-timeline .vis-timeline{
   border-color:var(--loc-feature-hairline);

@@ -68,10 +68,7 @@ body{
   min-width:320px;
   min-height:100vh;
   overflow-x:hidden;
-  background:
-    radial-gradient(circle at 12% -8%,color-mix(in srgb,var(--loc-accent) 17%,transparent),transparent 34rem),
-    radial-gradient(circle at 92% 14%,color-mix(in srgb,var(--loc-gold) 10%,transparent),transparent 30rem),
-    linear-gradient(180deg,color-mix(in srgb,var(--loc-bg) 97%,black) 0%,var(--loc-bg) 55%,color-mix(in srgb,var(--loc-bg) 94%,black) 100%);
+  background:var(--loc-bg);
   font-feature-settings:"kern" 1,"liga" 1,"calt" 1;
 }
 
@@ -81,12 +78,7 @@ body::before{
   inset:0;
   z-index:-1;
   pointer-events:none;
-  opacity:.18;
-  background-image:
-    linear-gradient(var(--loc-line-soft) 1px,transparent 1px),
-    linear-gradient(90deg,var(--loc-line-soft) 1px,transparent 1px);
-  background-size:64px 64px;
-  mask-image:linear-gradient(to bottom,black,transparent 72%);
+  display:none; /* Remove the universal grid overlay; preserve illustrated stage textures. */
 }
 
 ::selection{
@@ -212,11 +204,8 @@ button,a,.loc-control,.loc-button,
   padding:clamp(1.5rem,4vw,3.4rem);
   border:1px solid var(--loc-ui-hairline);
   border-radius:var(--loc-ui-radius-xl);
-  background:
-    radial-gradient(circle at 85% 0%,var(--loc-ui-accent-soft),transparent 38%),
-    radial-gradient(circle at 10% 110%,var(--loc-ui-gold-soft),transparent 42%),
-    linear-gradient(145deg,color-mix(in srgb,var(--loc-panel) 94%,transparent),color-mix(in srgb,var(--loc-bg) 78%,transparent));
-  box-shadow:var(--loc-ui-shadow),inset 0 1px 0 rgb(255 255 255 / .04);
+  background:var(--loc-panel);
+  box-shadow:var(--loc-shadow-card);
 }
 
 .loc-hero::after,.scope-hero::after{
@@ -464,8 +453,8 @@ button,a,.loc-control,.loc-button,
 .scope-feature-card,.scope-ranking-chart{
   border:1px solid var(--loc-ui-hairline);
   border-radius:var(--loc-ui-radius-lg);
-  background:linear-gradient(160deg,var(--loc-ui-panel),color-mix(in srgb,var(--loc-panel) 67%,transparent));
-  box-shadow:0 12px 36px rgb(0 0 0 / .09),inset 0 1px 0 rgb(255 255 255 / .025);
+  background:var(--loc-panel);
+  box-shadow:var(--loc-shadow-card);
 }
 
 /* All seven feature Heroes share one compact, content-safe frame.
@@ -585,7 +574,7 @@ button,a,.loc-control,.loc-button,
 .loc-button.primary,.loc-control-primary,
 .scope-tabs button[aria-pressed="true"][aria-current="page"]{
   border-color:color-mix(in srgb,var(--loc-accent) 46%,var(--loc-line));
-  background:linear-gradient(135deg,color-mix(in srgb,var(--loc-accent) 18%,var(--loc-panel)),color-mix(in srgb,var(--loc-gold) 9%,var(--loc-panel)));
+  background:color-mix(in srgb,var(--loc-accent) 16%,var(--loc-panel));
   box-shadow:0 8px 24px color-mix(in srgb,var(--loc-accent) 9%,transparent),inset 0 1px 0 rgb(255 255 255 / .05);
 }
 
@@ -624,8 +613,7 @@ button,a,.loc-control,.loc-button,
 .scope-loc-time-river{
   overflow:hidden;
   border-color:var(--loc-ui-hairline);
-  background:
-    linear-gradient(180deg,color-mix(in srgb,var(--loc-panel) 76%,transparent),color-mix(in srgb,var(--loc-bg) 42%,transparent));
+  background:var(--loc-panel);
 }
 
 .scope-period-timeline{
