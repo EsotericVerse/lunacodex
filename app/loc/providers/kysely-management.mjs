@@ -346,7 +346,7 @@ async function bulkUpdateGalaxyFlags(trx,args){
 // Source-list control uses the existing per-Scope Anchor table, not Galaxy
 // article scans or a new SQL schema. Privileged reads happen only after
 // verifying LOC Group or the requested Scope, never across sibling Scopes.
-const ACTIONS=new Set(['read_group_members','update_group_member_name',
+const ACTIONS=new Set(['read_group_members','read_loc_source_hierarchy','update_group_member_name',
   'move_scope_block',
   'preview_or_fill_galaxy_place','batch_fill_galaxy_location',
   'rename_scope_site_batch','save_scope_trace_place_names','save_blocks','loc_admin_settings',
@@ -530,6 +530,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
   const args=body.args;
   const keys={
     read_group_members:['p_group_id'],
+    read_loc_source_hierarchy:[],
     update_group_member_name:['p_group_id','p_member_id','p_display_name'],
     move_scope_block:['p_scope_id','p_page_name','p_uid','p_direction'],
     save_blocks:['p_scope_id','p_type','p_rows'],
@@ -635,6 +636,19 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     // One verification for the entire page, followed by a transactional batch.
     await sql`reset role`.execute(trx);
     return {data:await saveBlocksKysely(trx,args),count:null};
+  }
+  if(name==='read_loc_source_hierarchy'){
+    // Same privileged, session-verified Kysely gateway used by Admin Registry:
+    // RLS policy alone does not grant the browser's authenticated role SELECT.
+    // Return only the fixed LOC Source hierarchy, never unrestricted anchors.
+    if(!await canLocAccess(trx,'global'))reject('Global administrator required',403);
+    await sql`reset role`.execute(trx);
+    const columns=['uid','type','title','description','invisible','attr','createtime','num'];
+    const rows=await trx.selectFrom('silver.loc_anchor')
+      .select(columns)
+      .where('type','in',ANCHOR_TYPE_GROUPS.source)
+      .orderBy('uid','asc').execute();
+    return {data:rows,count:rows.length};
   }
   if(name==='read_scope_registry_admin'){
     if(!await canLocAccess(trx,'global'))reject('Global administrator required',403);
