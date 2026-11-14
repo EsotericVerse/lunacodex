@@ -7,7 +7,8 @@ const revisions=new Map([
   ['silver.lrunes_blocks','1'],
   ['silver.lo3rwang','7'],
   ['silver.lrunes','7'],
-  ['silver.lo3rwang_galaxy','4']
+  ['silver.lo3rwang_galaxy','4'],
+  ['silver.lrunes_galaxy','3']
 ]);
 let revisionQueries=0;
 let failure=false;
@@ -79,22 +80,45 @@ await execute({kind:'culture_anchors',
   dependencies:['silver.loc_anchor','silver.lo3rwang_anchor']});
 assert.equal(reads,12,'incomplete multi-relation revision cannot cache');
 
+revisions.set('silver.lo3rwang_anchor','5');
+const combinedAnchors={kind:'culture_anchors',
+  dependencies:['silver.loc_anchor','silver.lo3rwang_anchor']};
+await execute(combinedAnchors);
+assert.deepEqual(await execute(combinedAnchors),{value:13},
+  'all recorded relations permit reuse');
+revisions.set('silver.lo3rwang_anchor','6');
+assert.deepEqual(await execute(combinedAnchors),{value:14},
+  'one child revision invalidates whole combined result');
+revisions.set('silver.loc_anchor','12');
+assert.deepEqual(await execute(combinedAnchors),{value:15},
+  'other child revision also invalidates combined result');
+
+const groupOptions={family:'numeric',
+  env:{LOC_SQL_RESULT_CACHE:'1'},scope:'loc',kind:'loc',
+  dependencies:['silver.lrunes_galaxy','silver.lo3rwang_galaxy']};
+await execute(groupOptions);
+assert.deepEqual(await execute(groupOptions),{value:16},
+  'group numeric cache uses a version of every Scope');
+revisions.set('silver.lrunes_galaxy','4');
+assert.deepEqual(await execute(groupOptions),{value:17},
+  'group numeric invalidates when a single Scope changes');
+
 const dbBefore=revisionQueries;
 await execute({...config,env:{}});
-assert.equal(reads,13,'metadata caching is opt-in');
+assert.equal(reads,18,'metadata caching is opt-in');
 assert.equal(revisionQueries,dbBefore,'disabled cache does not inspect revisions');
 
 await execute({...config,engine:'mysql'});
-assert.equal(reads,14,'MySQL retains live Kysely');
+assert.equal(reads,19,'MySQL retains live Kysely');
 await execute({...config,engine:'mssql'});
-assert.equal(reads,15,'MSSQL retains live Kysely');
+assert.equal(reads,20,'MSSQL retains live Kysely');
 
 await execute({kind:'block_list',scope:'loc',dependencies:['silver.loc_blocks']});
-assert.equal(reads,16,'retired LOC Blocks never cache');
+assert.equal(reads,21,'retired LOC Blocks never cache');
 
 failure=true;
 await execute(config);
-assert.equal(reads,17,'revision failure does not serve stale results');
+assert.equal(reads,22,'revision failure does not serve stale results');
 failure=false;
 
 let errorReads=0;
@@ -108,4 +132,4 @@ const parallel={scope:'loc',kind:'hero_block',feature:'parallel',
   dependencies:['silver.loc_anchor'],read:async()=>{errorReads++;return {n:errorReads}}};
 const combined=await Promise.all(Array.from({length:6},()=>execute(parallel)));
 assert.equal(new Set(combined.map(x=>x.n)).size,1,'identical reads coalesce');
-console.log('LOC public metadata SQL cache: 16 assertions groups PASS');
+console.log('LOC public metadata SQL cache: 21 assertion groups PASS');
