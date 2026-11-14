@@ -58,7 +58,9 @@ function importAnchorConflictSummary(...results){
   const conflicts=results.flatMap(result=>Array.isArray(result?.conflicts)?result.conflicts:[]);
   if(!conflicts.length)return '';
   const sample=conflicts.slice(0,5).map(row=>
-    (row.type==='date'?'日期 ':'地點 ')+String(row.date||row.place||'')+
+    (row.type==='date'?'日期 '+String(row.date||''):
+      row.type==='point'?'地點 '+String(row.place||''):
+        '媒體 '+String(row.type||'')+' '+String(row.url||row.uid||'未提供網址'))+
     (row.saved_uids?.length?'，候選 UID '+row.saved_uids.slice(0,5).join(',')+
       (row.saved_uids.length>5?'…':''):'，缺少唯一識別'));
   return '；Anchor 比對衝突 '+conflicts.length.toLocaleString()+
