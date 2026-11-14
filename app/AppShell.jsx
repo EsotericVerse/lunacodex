@@ -15,7 +15,7 @@ registerDefaultSection('uiExtra.dataSourceStatus',dataSourceStatusZh);
 import {FEATURES,SCOPES,featureIdForPath,getScope} from './modular/scope-registry';
 import {SCOPE_ROUTE_INDEX} from './modular/scope-route-index.js';
 import {applyTheme,themeSignature,THEME_SLOTS} from './modular/theme-registry';
-import {mergeThemeSlot} from './loc/theme-data';
+import {mergeThemeSlot,selectThemeOverride} from './loc/theme-data';
 import {useScopeRuntime} from './modular/use-scope-runtime';
 import {faviconForScope} from './site-favicons';
 import {appBootstrapPageCopy,useAppBootstrap} from './loc/app-bootstrap';
@@ -161,27 +161,36 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
   const selectedThemeId=selection.scopeId===scopeId?selection.themeId:SYSTEM_THEME_ID;
   const systemDefaultThemeId=fixedDefaultThemeId||configuredDefaultThemeId||automaticThemeId(now);
   const effectiveThemeId=selectedThemeId===SYSTEM_THEME_ID?systemDefaultThemeId:selectedThemeId;
-  const themeRows=Array.isArray(bootstrap.data?.themes)?bootstrap.data.themes:[];
-  const override=themeRows.find(row=>row.theme_id===effectiveThemeId)||null;
-  const slot=useMemo(
-    ()=>mergeThemeSlot(effectiveThemeId,override),
-    [effectiveThemeId,override]
-  );
-  const themeChoices=themeRows.length
-    ?themeRows.map(row=>({id:row.theme_id,label:row.theme_name||row.theme_id}))
+  const [activePalette,setActivePalette]=useState(null);
+  useEffect(()=>{
+    let live=true;
+    setActivePalette(null);
+    // Only the selected palette is imported; previous async completions may
+    // never replace the newly selected theme.
+    selectThemeOverride(effectiveThemeId).then(row=>{
+      if(live)setActivePalette({id:effectiveThemeId,row});
+    }).catch(()=>{if(live)setActivePalette({id:effectiveThemeId,row:null});});
+    return()=>{live=false;};
+  },[effectiveThemeId]);
+  const themeChoices=(bootstrap.data?.theme_list||[]).length
+    ?bootstrap.data.theme_list.map(row=>({
+      id:row.theme_id,label:row.theme_name||row.theme_id
+    }))
     :THEME_SLOTS.map(item=>({id:item.id,label:item.label}));
+  const slot=useMemo(()=>mergeThemeSlot(effectiveThemeId,
+    activePalette?.id===effectiveThemeId?activePalette.row:null),
+    [effectiveThemeId,activePalette]);
 
   useEffect(()=>{
-    // Show the page as soon as it hydrates, in the built-in day/night palette, and
-    // never wait on the network. The DB palette and the Scope's configured theme
-    // are applied the moment they arrive (slot changes). No palette is stored.
+    // Published CSS already contains the eight canonical palette declarations.
+    // The first paint uses the exact theme ID from the head bootstrap script.
+    // The selected JSON is loaded only for metadata/live override values.
     const root=document.documentElement;
-    if(root.dataset.themeSignature===themeSignature(slot)){
-      delete root.dataset.themeBootstrap;
-      return;
-    }
-    applyTheme(slot);
-  },[slot,scopeId,effectiveThemeId]);
+    if(root.dataset.themeId===effectiveThemeId&&
+      !activePalette?.row&&root.dataset.themeBootstrap!=='scheme-only')return;
+    if(root.dataset.themeSignature!==themeSignature(slot))
+      applyTheme(slot);
+  },[slot,scopeId,effectiveThemeId,activePalette]);
 
   useEffect(()=>{
     if(selectedThemeId!==SYSTEM_THEME_ID||fixedDefaultThemeId||configuredDefaultThemeId)return undefined;
