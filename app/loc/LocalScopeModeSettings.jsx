@@ -61,14 +61,16 @@ export default function LocalScopeModeSettings(){
         {LOCAL_SCOPE_MINUTES.map(value=><option value={value} key={value}>{value} 分鐘</option>)}
       </select>
     </div>}
-    <div className="scope-stat-controls">
-      {deadline?<button type="button" className="loc-button" onClick={disable} disabled={busy}>
-        立即關閉並返回網站
-      </button>:<button type="button" className="loc-button primary"
-        disabled={!native||busy} onClick={enable}>
-        {busy?'正在確認資料庫…':'開啟限時本機模式'}
-      </button>}
-    </div>
+    <label className="loc-local-mode-switch" htmlFor="loc-local-mode-toggle">
+      <span>{deadline?'本機資料庫模式已開啟':'開啟限時本機資料庫模式'}</span>
+      <input id="loc-local-mode-toggle" type="checkbox" role="switch"
+        checked={Boolean(deadline)} disabled={!native||busy}
+        onChange={event=>event.target.checked?void enable():disable()}/>
+    </label>
+    {busy?<p role="status" className="scope-settings-note">正在確認資料庫…</p>:null}
+    {deadline?<button type="button" className="loc-button" onClick={disable} disabled={busy}>
+      立即關閉並返回網站
+    </button>:null}
     {!native?<p className="scope-settings-note">本機資料庫切換僅在 iOS App 提供。</p>:null}
     {error?<p role="alert" className="scope-status scope-error">{error}</p>:null}
   </section>;
