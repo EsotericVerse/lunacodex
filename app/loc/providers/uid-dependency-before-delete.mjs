@@ -1,12 +1,10 @@
-import {planUidDependencyRepair} from '../uid-dependency-immer.mjs';
+import {planUidDependencyRepair,UID_DEPENDENT_ANCHOR_FIELDS} from '../uid-dependency-immer.mjs';
+import {SCOPE_PATTERN_POSTING_KEY} from '../keyword-anchor-index.mjs';
+import {sql} from 'kysely';
 import {PERSISTED_ANCHOR_TYPES} from '../../../zenstack/anchor-hierarchy.mjs';
 
 const UID=/^[A-Za-z0-9]{8}$/;
 const SCOPED=/^([a-z][a-z0-9]{0,14})_(galaxy|anchor)$/;
-const SOURCE_PARENT={from:['domain'],domain:['galaxy'],galaxy:['universe']};
-const PARENTS={date:['period'],period:['era'],point:['path','trace'],
-  path:['trace'],item:['group'],group:['class'],class:['category'],
-  pattern:['item'],...SOURCE_PARENT};
 const MEDIA=new Set(['image','video','rune','suno']);
 
 function failed(){
@@ -24,6 +22,21 @@ function samePkDeletion(filters){
 }
 function typedTable(table,engine,namespace){
   return engine==='mysql'?table:(engine==='postgres'?'silver':namespace)+'.'+table;
+}
+// Exact UID references only. Values and JSON paths are bound as parameters.
+// This intentionally never interpolates caller-supplied SQL or identifiers.
+function listContains(field,uid,engine,path=''){
+  const column=sql.ref(field),jsonPath=path?'$."'+path+'"':'';
+  if(engine==='postgres')
+    return path?sql`(${column}->${path}) ? ${uid}`
+      :sql`${uid} = ANY(${column})`;
+  if(engine==='mysql')
+    return path?sql`JSON_CONTAINS(JSON_EXTRACT(${column}, ${jsonPath}), JSON_QUOTE(${uid}))`
+      :sql`JSON_CONTAINS(${column}, JSON_QUOTE(${uid}))`;
+  if(engine==='mssql')
+    return path?sql`EXISTS (SELECT 1 FROM OPENJSON(${column}, ${jsonPath}) AS entry WHERE entry.value = ${uid})`
+      :sql`EXISTS (SELECT 1 FROM OPENJSON(${column}) AS entry WHERE entry.value = ${uid})`;
+  throw new TypeError('Unsupported SQL engine for UID dependency repair');
 }
 function comparisons(query,expected,serialize,table){
   const values=serialize(expected,table);
@@ -63,21 +76,37 @@ export async function repairBeforeUidDelete(db,{table,filters,engine='postgres',
     ?['uid','source_id','target_id','ref_id']
     :MEDIA.has(deletedType)?['uid','media_link']
       :deletedType==='point'?['uid','place_id']:[];
-  const parentTypes=kind==='galaxy'?['pattern']:(PARENTS[deletedType]||[]);
+  const parentFields=kind==='galaxy'
+    ?{pattern:SCOPE_PATTERN_POSTING_KEY}
+    :UID_DEPENDENT_ANCHOR_FIELDS[deletedType]||{};
+  const parentTypes=Object.keys(parentFields);
   let galaxyRows=[],anchorRows=[];
-  // Two narrow, independent projections at most. No JOIN or body reads.
+  // One narrow SELECT per physical table, only rows mentioning the exact UID.
+  // The deleted article is included in the same result to establish existence.
   if(galaxy&&galaxyColumns.length){
     let query=db.selectFrom(galaxy).select(galaxyColumns);
-    if(deletedType==='point')query=query.where('place_id','=',uid);
+    if(kind==='galaxy'){
+      query=query.where(eb=>eb.or([
+        eb('uid','=',uid),
+        eb('source_id','=',uid),
+        eb('ref_id','=',uid),
+        listContains('target_id',uid,engine)
+      ]));
+    }else if(deletedType==='point'){
+      query=query.where('place_id','=',uid);
+    }else if(MEDIA.has(deletedType)){
+      query=query.where(listContains('media_link',uid,engine));
+    }
     galaxyRows=await query.execute();
   }
-  // The Galaxy projection already contains the deleted article's PK.
-  // Never change other references when the requested article is absent.
   if(kind==='galaxy'&&!galaxyRows.some(row=>row.uid===uid))
     return {affected:0,handled:true};
   if(parentTypes.length){
     anchorRows=await db.selectFrom(anchor).select(['uid','type','attr'])
-      .where('type','in',parentTypes).execute();
+      .where(eb=>eb.or(parentTypes.map(type=>eb.and([
+        eb('type','=',type),
+        listContains('attr',uid,engine,parentFields[type])
+      ])))).execute();
   }
   const plan=planUidDependencyRepair({deletedUid:uid,deletedTable:kind,
     deletedType,galaxyRows,anchorRows});
