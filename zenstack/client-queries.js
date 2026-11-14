@@ -81,6 +81,9 @@ function runFetch(serializedKey,fetcher,key=JSON.parse(serializedKey)){
   }).then(value=>{
     if(controller.signal.aborted)throw abortedRead();
     return value;
+  },error=>{
+    if(controller.signal.aborted)throw abortedRead();
+    throw error;
   }).finally(()=>{
       // Do not delete a newer request started after a page reset.
       if(inflight.get(serializedKey)===entry)inflight.delete(serializedKey);
@@ -141,7 +144,7 @@ export function useAsyncResource(keyOrOptions,fetcherArg,optionsArg={}){
     setIsFetching(true);
     const generation=resourceEpoch;
     try{
-      const value=await runFetch(serializedKey,({signal})=>fetcherRef.current({signal}));
+      const value=await runFetch(serializedKey,()=>fetcherRef.current());
       // A request may finish after unmount; never revive stale route data.
       if(isCurrent()&&generation===resourceEpoch){
         retainIfObserved(serializedKey,value);
@@ -228,8 +231,8 @@ export function useAsyncInfiniteResource({
   const loadFirst=useCallback(async()=>{
     if(!active)return;
     setIsFetching(true);
+    const generation=resourceEpoch;
     try{
-      const generation=resourceEpoch;
       const page=await runFetch('infinite-first:'+serializedKey,
         ({signal})=>fnRef.current({pageParam:initialPageParam,signal}),keyOf(queryKey));
       if(!mountedRef.current||generation!==resourceEpoch)return;
@@ -238,7 +241,7 @@ export function useAsyncInfiniteResource({
       setPages([page]);setPageParams([initialPageParam]);setNextParam(next);
       setStatus('success');setError(null);
     }catch(caught){
-      if(mountedRef.current&&!isCancelled(caught)){
+      if(mountedRef.current&&generation===resourceEpoch&&!isCancelled(caught)){
         flashMessage('資料讀取失敗，請稍後再試');
         setStatus('error');setError(caught);
       }
@@ -325,7 +328,7 @@ export const queryClient={
   fetchQuery:async({queryKey,queryFn})=>{
     const serializedKey=serialize(queryKey);
     const generation=resourceEpoch;
-    const value=await runFetch(serializedKey,({signal})=>queryFn({signal}));
+    const value=await runFetch(serializedKey,()=>queryFn());
     // A previous page must never refill the store after management entry.
     if(generation===resourceEpoch)retainIfObserved(serializedKey,value);
     return value;
