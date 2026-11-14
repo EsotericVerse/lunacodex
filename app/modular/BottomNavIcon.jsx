@@ -53,3 +53,23 @@ export function DockMotionIcon({name,active=false,activation=0}){
       aria-hidden="true">123</motion.span>:null}
   </span>;
 }
+
+
+/* One persistent selection surface for the six feature keys. The shared
+   layoutId animates only on React-preserving routes; on full document loads
+   the selected key enters in place. No perpetual effects or blur filters. */
+export function DockActiveIndicator(){
+  const reduceMotion=useReducedMotion();
+  return <motion.span
+    aria-hidden="true"
+    className="scope-dock-active-pill"
+    layoutId="loc-dock-active-pill"
+    initial={reduceMotion?false:{opacity:0,scale:.88}}
+    animate={{opacity:1,scale:1}}
+    transition={reduceMotion?{duration:0}:{
+      layout:{type:'spring',stiffness:390,damping:29,mass:.78},
+      opacity:{duration:.2},
+      scale:{duration:.3,ease:'easeOut'}
+    }}
+  />;
+}
