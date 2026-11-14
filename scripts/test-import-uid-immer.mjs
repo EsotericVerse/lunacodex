@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import {
   createImportUidResolver,remapImportUidRelations,
-  planExistingImportUidUpdate,planImportMediaUidLinks
+  planExistingImportUidUpdate,planImportPointUidLink,planImportMediaUidLinks
 } from '../app/loc/import-uid-delta.mjs';
 import {
   createImportPlaceIndex,prepareImportPlaceAnchors,
@@ -57,6 +57,12 @@ const noChange=planExistingImportUidUpdate({
 },remapped.rows[0],{placeUid:'POINT001'});
 assert.deepEqual(noChange.changes,{});
 assert.deepEqual(noChange.patches,[]);
+// One pass over existing articles prepares link patches; Point is applied
+// separately after its exact saved PK is resolved.
+assert.deepEqual(planImportPointUidLink('POINT001','POINT001').changes,{});
+assert.deepEqual(planImportPointUidLink(null,'POINT001').changes,
+  {place_id:'POINT001'});
+assert.throws(()=>planImportPointUidLink(null,' POINT001'),/八碼 UID/);
 
 const media=planImportMediaUidLinks(['MEDIA001'],new Set([
   'MEDIA001','MEDIA002','MEDIA003'
