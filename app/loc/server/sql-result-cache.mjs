@@ -24,13 +24,23 @@ function dependencyNames(values){
   return names.sort();
 }
 
+const GENERATION=/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+const REVISION=/^(0|[1-9][0-9]*)$/;
 async function revisionsFor(db,names){
   const rows=await db.selectFrom('api.loc_sql_result_revision')
-    .select(['relation','revision'])
+    .select(['relation','revision','generation'])
     .where('relation','in',names).execute();
-  const versions=new Map(rows.map(row=>[row.relation,String(row.revision)]));
-  return versions.size===names.length&&names.every(name=>versions.has(name))
-    ?names.map(name=>[name,versions.get(name)]):null;
+  if(rows.length!==names.length)return null;
+  const versions=new Map();
+  for(const row of rows){
+    const revision=String(row.revision??'');
+    const generation=String(row.generation??'').toLowerCase();
+    if(typeof row.relation!=='string'||!GENERATION.test(generation)||
+       !REVISION.test(revision)||versions.has(row.relation))return null;
+    versions.set(row.relation,[generation,revision]);
+  }
+  return names.every(name=>versions.has(name))
+    ?names.map(name=>[name,...versions.get(name)]):null;
 }
 
 function discard(key){
@@ -68,6 +78,8 @@ export async function withPublicSqlResultCache({
   try{vector=await revisionsFor(db,names)}
   catch{return read()} // Not migrated / not permitted: never return stale data.
   if(!vector)return read();
+  // A physical database replacement may restart revision counters. Its
+  // independently generated per-relation UUID must also match before reuse.
   // The caller has already enforced SCOPE_ROUTE_INDEX and guest feature flags.
   // Policy class, SQL target, scope, normalized parameters and exact database
   // revision vector all participate in the cache key.
