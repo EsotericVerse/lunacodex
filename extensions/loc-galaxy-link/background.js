@@ -234,17 +234,29 @@ function parseMcpProviderCallback(returned,expectedState){
  return {provider,connected:true};
 }
 async function mcpProviderRequest(method,body=null){
- const token=await activeToken();
- const options={method,cache:'no-store',redirect:'error',headers:{authorization:'Bearer '+token,accept:'application/json'}};
- if(body){options.headers['content-type']='application/json';options.body=JSON.stringify(body)}
- let response;
- try{response=await fetch(MCP_PROVIDER_API,options)}catch(error){
-  await logDiagnostic('mcp.provider.error',{message:error?.message||String(error)});
-  throw oauthError('LOC MCP Provider 無法連線');
+ // Use the existing LOC OAuth access/refresh tokens, never create identities.
+ let token=await activeToken();
+ const request=async bearer=>{
+  const options={method,cache:'no-store',redirect:'error',headers:{authorization:'Bearer '+bearer,accept:'application/json'}};
+  if(body){options.headers['content-type']='application/json';options.body=JSON.stringify(body)}
+  let response;
+  try{response=await fetch(MCP_PROVIDER_API,options)}catch(error){
+   await logDiagnostic('mcp.provider.error',{message:error?.message||String(error)});
+   throw oauthError('LOC MCP Provider 無法連線');
+  }
+  await logDiagnostic('mcp.provider.response',{action:body?.action||'status',provider:body?.provider||'',status:response.status});
+  return response;
+ };
+ let response=await request(token);
+ // A revoked access token can precede its local expiry. Refresh once only;
+ // a 403 Scope denial or a 429/503 service failure must never cause re-login.
+ if(response.status===401){
+  token=await activeToken(true);
+  response=await request(token);
  }
- await logDiagnostic('mcp.provider.response',{action:body?.action||'status',provider:body?.provider||'',status:response.status});
  const value=await response.json().catch(()=>({}));
- if(!response.ok)throw oauthError(String(value?.error||'LOC MCP Provider 請求失敗'));
+ if(!response.ok)throw oauthError('LOC MCP Provider HTTP '+response.status+
+  '：'+String(value?.error||'請求失敗').slice(0,180));
  return value;
 }
 async function mcpProviderStatus(){return mcpProviderRequest('GET')}

@@ -6,11 +6,10 @@ import {beginUpstreamOAuth,disconnectUpstream} from '../../app/loc/mcp/upstream-
 import {providerStatuses,clearToolPolicies} from '../../app/loc/mcp/upstream-policy.mjs';
 import {ProviderIdSchema,upstreamProvider} from '../../app/loc/mcp/upstream-providers.mjs';
 import {normalizeSsoEmail} from '../../app/loc/mcp/extension-sso.mjs';
-import {authorizeMcpRole,VerifiedLocUserInfoSchema}
-  from '../../app/loc/mcp/access-roles.mjs';
+import {verifyAccessTokenRequest,requestToResourceInput} from 'better-auth/oauth2';
+import {authorizeMcpBearer} from '../../app/loc/mcp/access-roles.mjs';
 
 const EXTENSION='chrome-extension://hiaeafonocnjaclcfgjmdopbcgnafnna';
-const AUTH_USERINFO='https://auth.lo3rwang.cc/api/auth/oauth2/userinfo';
 const BodySchema=z.discriminatedUnion('action',[
   z.strictObject({action:z.literal('connect'),provider:ProviderIdSchema,email:z.string().min(1).max(320)}),
   z.strictObject({action:z.literal('disconnect'),provider:ProviderIdSchema})
@@ -34,18 +33,23 @@ function failure(error){
   return {status,message:String(error?.message||'LOC MCP provider request failed').slice(0,180)};
 }
 async function identity(request,env){
-  const header=request.headers.get('authorization')||'';
-  const match=/^Bearer\s+(\S+)$/i.exec(header);
-  if(!match)throw Object.assign(new Error('LOC OAuth access token required'),{httpStatus:401});
-  let response;
-  try{response=await fetch(AUTH_USERINFO,{method:'GET',headers:{authorization:'Bearer '+match[1],accept:'application/json'},
-    cache:'no-store',redirect:'manual',signal:AbortSignal.timeout(7000)})}
-  catch{throw Object.assign(new Error('LOC OAuth UserInfo unavailable'),{httpStatus:503})}
-  if(!response.ok)throw Object.assign(new Error('LOC OAuth identity verification failed'),{httpStatus:401});
-  const parsed=VerifiedLocUserInfoSchema.safeParse(await response.json().catch(()=>null));
-  if(!parsed.success)throw Object.assign(new Error('Verified LOC OAuth identity required'),{httpStatus:401});
-  await authorizeMcpRole(parsed.data.email,env);
-  return {subject:parsed.data.sub,email:parsed.data.email};
+ const match=/^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization')||'');
+ if(!match)throw Object.assign(new Error('LOC OAuth access token required'),{httpStatus:401});
+ let claims;
+ try{
+  claims=await verifyAccessTokenRequest(requestToResourceInput(request),{
+   jwksUrl:'https://auth.lo3rwang.cc/api/auth/jwks',
+   verifyOptions:{issuer:'https://auth.lo3rwang.cc/api/auth',
+    audience:'https://mcp.lo3rwang.cc',typ:'at+jwt',requiredClaims:['azp']},
+   requiredScopes:['openid']
+  });
+ }catch{throw Object.assign(new Error('LOC OAuth access token invalid'),{httpStatus:401})}
+ if(typeof claims?.sub!=='string'||!claims.sub)
+  throw Object.assign(new Error('LOC OAuth subject missing'),{httpStatus:401});
+ // Reuse Gateway's existing UserInfo identity binding and LOC business roles.
+ // Auth does not resolve ScopeID or manage MCP permissions.
+ const permission=await authorizeMcpBearer(match[1],claims.sub,env);
+ return {subject:claims.sub,email:permission.email};
 }
 export async function onRequestOptions({request}){
   if(request.headers.get('origin')!==EXTENSION)return new Response(null,{status:403});
