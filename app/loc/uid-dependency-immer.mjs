@@ -20,7 +20,18 @@ export const UID_DEPENDENT_ANCHOR_FIELDS=Object.freeze({
   pattern:Object.freeze({item:'uid'})
 });
 
-const hasUid=(list,uid)=>Array.isArray(list)&&list.includes(uid);
+// Portable dialects store UID lists as JSON text. Parse only the two
+// modeled array fields; never treat an unreadable list as no references.
+function uidList(value){
+  if(typeof value==='string'){
+    try{value=JSON.parse(value);}catch{throw new TypeError('Malformed UID list JSON');}
+  }
+  if(value===null||value===undefined)return [];
+  if(!Array.isArray(value)||value.some(item=>typeof item!=='string'||!UID.test(item)))
+    throw new TypeError('Malformed UID list');
+  return value;
+}
+const hasUid=(list,uid)=>uidList(list).includes(uid);
 const object=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 function uidOf(value){
   if(typeof value!=='string'||!UID.test(value))
@@ -75,7 +86,10 @@ export function planUidDependencyRepair({deletedUid,deletedTable,deletedType='',
   const point=!isGalaxy&&deletedType==='point';
   const parentFields=isGalaxy?{}:UID_DEPENDENT_ANCHOR_FIELDS[deletedType]||{};
   const galaxyUpdates=[],anchorUpdates=[],galaxySeen=new Set(),anchorSeen=new Set();
-  for(const row of galaxyRows){
+  for(const source of galaxyRows){
+    const row={...source};
+    for(const key of ['target_id','media_link'])
+      if(Object.hasOwn(row,key))row[key]=uidList(row[key]);
     const id=uidOf(row?.uid);
     mark(galaxySeen,id);
     if(isGalaxy&&id===uid)continue;
@@ -95,7 +109,7 @@ export function planUidDependencyRepair({deletedUid,deletedTable,deletedType='',
     for(const key of ['source_id','target_id','ref_id','media_link','place_id']){
       if(next[key]!==row[key]){
         values[key]=next[key];
-        expected[key]=row[key]??null;
+        expected[key]=source[key]??null;
       }
     }
     if(Object.keys(values).length)galaxyUpdates.push({uid:id,values,expected});
