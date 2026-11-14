@@ -27,6 +27,12 @@ export function createImportPlaceIndex(){
     const name=nameKey(anchor?.title),uid=String(anchor?.uid||'');
     if(!VALID_UID.test(uid))return;
     const coordinates=importGeoKey(anchor?.attr);
+    // An exact Point UID can be referenced by many differently named
+    // Galaxy.location values. Keep its PK in the index even if its label or
+    // coordinates are blank; those fields must not decide PK existence.
+    timesByUid.set(uid,Array.isArray(anchor.attr?.times)?anchor.attr.times:[]);
+    attrsByUid.set(uid,anchor.attr||{});
+    createtimeByUid.set(uid,String(anchor.createtime||'')||null);
     if(!name&&!coordinates)return;
     const saved={uid,coordinates};
     if(name){
@@ -37,9 +43,6 @@ export function createImportPlaceIndex(){
       if(!existingByCoordinate.has(coordinates))existingByCoordinate.set(coordinates,[]);
       existingByCoordinate.get(coordinates).push(saved);
     }
-    timesByUid.set(uid,Array.isArray(anchor.attr?.times)?anchor.attr.times:[]);
-    attrsByUid.set(uid,anchor.attr||{});
-    createtimeByUid.set(uid,String(anchor.createtime||'')||null);
   };
   return {accept,existingByCoordinate,existingByName,timesByUid,createtimeByUid,attrsByUid};
 }
