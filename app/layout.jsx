@@ -40,7 +40,8 @@ const INITIAL_THEME_SCRIPT=`(()=>{try{
   const pathname=(window.location.pathname||'/').toLowerCase();
   const hostname=(window.location.hostname||'').toLowerCase();
   const game=/(?:^|\\/)game(?:\\/|$)/.test(pathname);
-  const scope=game?'lrunes':pathname.startsWith('/lo3rwang/')||pathname==='/lo3rwang'
+  const admin=pathname==='/admin'||pathname.startsWith('/admin/');
+  const scope=admin?'admin':game?'lrunes':pathname.startsWith('/lo3rwang/')||pathname==='/lo3rwang'
     ?'lo3rwang':pathname.startsWith('/lrunes/')||pathname==='/lrunes'||hostname.startsWith('lrunes.')
     ?'lrunes':hostname.startsWith('lo3rwang.')?'lo3rwang':'loc';
   let hour=new Date().getHours();
@@ -54,7 +55,7 @@ const INITIAL_THEME_SCRIPT=`(()=>{try{
   let selected='';
   try{
     const prefs=JSON.parse(window.sessionStorage.getItem('loc-user-theme-selection-v1')||'{}');
-    selected=String(prefs?.[scope]||'');
+    selected=String(prefs?.[scope]||(admin?window.sessionStorage.getItem('loc-active-theme-id-v1'):null)||'');
   }catch{}
   if(!Object.hasOwn(schemes,selected))selected='';
   const themeId=selected||(game?'${GAME_BOOTSTRAP_THEME_ID}':defaults[scope]||auto);
