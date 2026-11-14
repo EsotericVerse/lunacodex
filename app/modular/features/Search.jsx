@@ -21,7 +21,7 @@ import {motion,useReducedMotion} from 'motion/react';
 import ActivityMotion from '../ActivityMotion';
 import {publicPatternSuggestions} from '../../loc/public-pattern-suggestions.mjs';
 import {blockNoteSuggestionItems} from '../../loc/blocknote-suggestions.mjs';
-import {useAsyncResource,useResourceCache} from '../../loc/use-async-resource';
+import {useAsyncResource,useResourceCache} from '../../../zenstack/client-queries';
 import {useRouter,useSearchParams} from 'next/navigation';
 
 import {dbAuthClient,dbPublicClient,deleteRows,updateRows} from '../../loc/db-client.mjs';

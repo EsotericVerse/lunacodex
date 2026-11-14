@@ -1,6 +1,6 @@
 'use client';
 
-import {useAsyncResource} from './use-async-resource';
+import {useAsyncResource} from '../../zenstack/client-queries';
 import {useUiText} from '../i18n/UiText';
 import {readScopeSearchSummary,summaryScopeIds} from './scope-search-summary.mjs';
 

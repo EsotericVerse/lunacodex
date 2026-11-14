@@ -14,7 +14,7 @@ import {Capacitor} from '@capacitor/core';
 import {useScopeRuntime} from '../modular/use-scope-runtime';
 import {getScope} from '../modular/scope-registry';
 import ManagementAccess from './ManagementAccess';
-import {useAsyncResource} from './use-async-resource';
+import {useAsyncResource} from '../../zenstack/client-queries';
 import {selectScopeConfig} from './scope-data';
 import {scopeFeatureEnabled} from './scope-config-fields.mjs';
 import {FeaturePage} from '../modular/ui';

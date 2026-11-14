@@ -1,7 +1,7 @@
 'use client';
 
 import {useEffect,useRef,useState} from 'react';
-import {useAsyncResource} from './use-async-resource';
+import {useAsyncResource} from '../../zenstack/client-queries';
 import {useQueryClient} from '../../zenstack/client-queries';
 import {dbAuthClient} from './db-client.mjs';
 import {useEditDock} from '../modular/edit-dock';

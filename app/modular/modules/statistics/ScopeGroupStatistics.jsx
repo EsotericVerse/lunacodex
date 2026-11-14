@@ -1,7 +1,7 @@
 'use client';
 import {useEffect,useMemo,useState} from 'react';
 import dynamic from 'next/dynamic';
-import {useAsyncResource} from '../../../loc/use-async-resource';
+import {useAsyncResource} from '../../../../zenstack/client-queries';
 import {UI_COPY,registerDefaultSection} from '../../../i18n/ui-copy';
 import {useUiCopy,useUiSection} from '../../../i18n/ui-locale';
 import UiText,{useUiText} from '../../../i18n/UiText';

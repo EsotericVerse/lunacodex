@@ -6,7 +6,7 @@ import {scopeFeatureEnabled} from '../loc/scope-config-fields.mjs';
 import dynamic from 'next/dynamic';
 import {usePathname} from 'next/navigation';
 import {useEditDock} from './edit-dock';
-import {useAsyncResource} from '../loc/use-async-resource';
+import {useAsyncResource} from '../../zenstack/client-queries';
 import {UI_COPY} from '../i18n/ui-copy';
 import {useUiCopy,useUiLocale} from '../i18n/ui-locale';
 import {DEFAULT_LIST_BATCH_SIZE,LIST_LOAD_COOLDOWN_MS} from '../loc/db-contract.mjs';

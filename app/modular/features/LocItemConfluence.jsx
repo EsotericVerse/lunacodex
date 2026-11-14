@@ -4,7 +4,7 @@ import {translateUiField} from '../../i18n/ui-copy';
 import featureZh from '../../i18n/feature-sections/itemConfluence.zh_tw.js';
 
 import {useEffect,useMemo,useState} from 'react';
-import {useAsyncResource} from '../../loc/use-async-resource';
+import {useAsyncResource} from '../../../zenstack/client-queries';
 import {selectManagedScopes} from '../../loc/scope-data';
 import {selectLocItemDailySeries} from '../../loc/item-confluence-query';
 import {realMoonPhase} from '../../loc/model/moon-phase';

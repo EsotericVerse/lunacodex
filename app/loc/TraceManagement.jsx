@@ -4,7 +4,7 @@ import {useMemo,useState} from 'react';
 import dynamic from 'next/dynamic';
 import ScopeOptionPicker from '../modular/ScopeOptionPicker';
 import {useEditDockForm} from '../modular/edit-dock';
-import {useAsyncResource,useResourceCache} from './use-async-resource';
+import {useAsyncResource,useResourceCache} from '../../zenstack/client-queries';
 import {revalidateServerMetadata} from './scope-data';
 import {
   TRACE_SCOPES,traceKey,traceAllAnchorsKey,

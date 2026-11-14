@@ -7,7 +7,7 @@ import selfIntersectionZh from '../../../i18n/sections/uiExtra.selfIntersection.
 registerDefaultSection('uiExtra.selfIntersection',selfIntersectionZh);
 
 import {useMemo,useState} from 'react';
-import {useAsyncResource} from '../../../loc/use-async-resource';
+import {useAsyncResource} from '../../../../zenstack/client-queries';
 import {selectScopeSourceBreakdownRows} from '../../../loc/galaxy-query';
 import {assignedSource} from '../../../loc/member-intersection-model.mjs';
 import {semanticStatisticChartTypes,chartTypeGroups} from './statistics-time-zoom.mjs';

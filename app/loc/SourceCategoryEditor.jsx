@@ -1,7 +1,7 @@
 'use client';
 import {useCallback,useEffect,useMemo,useState} from 'react';
 import dynamic from 'next/dynamic';
-import {useAsyncResource} from './use-async-resource';
+import {useAsyncResource} from '../../zenstack/client-queries';
 import {insertRows,updateRows,deleteRows} from './db-client.mjs';
 import {readPublicSourceAnchors} from './source-catalog-public.mjs';
 import {allocateAnchorUid} from './uid.js';
