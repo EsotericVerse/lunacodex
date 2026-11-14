@@ -15,6 +15,7 @@ import {readPublicSourceTaxonomy} from '../source-catalog-public.mjs';
 import {DEFAULT_YEAR_WINDOW} from '../default-year-window.mjs';
 import {ANCHOR_TYPE_GROUPS} from '../../../zenstack/anchor-hierarchy.mjs';
 import {useRiverDensityAnalysis} from '../../modular/modules/culture-timeline/use-river-density-analysis';
+import {prepareTransientResourceAction} from '../../../zenstack/client-queries';
 
 const CultureTimeline=dynamic(()=>import('../../modular/modules/culture-timeline/CultureTimeline'),{loading:()=>null});
 const NO_ITEMS=Object.freeze([]);
@@ -209,6 +210,7 @@ export default function CulturePublicReader(){
   const [keywordGroups,setKeywordGroups]=useState(NO_ITEMS);
   const [keywordDaily,setKeywordDaily]=useState(NO_ITEMS);
   const [keywordLoading,setKeywordLoading]=useState(false);
+  const [keywordReadyKey,setKeywordReadyKey]=useState('');
   const [customStart,setCustomStart]=useState('');
   const [customEnd,setCustomEnd]=useState('');
   const [keywordError,setKeywordError]=useState('');
@@ -245,11 +247,13 @@ export default function CulturePublicReader(){
   const densityKey=[scopeId,rangeStart,rangeEnd].join('|');
   const sourceDensityPending=densityMode==='source'&&validRange&&
     (densityLoading||densityReadyKey!==densityKey);
+  const keywordDensityKey=[scopeId,keywordClass,rangeStart,rangeEnd].join('|');
   const keywordDensityPending=densityMode==='keyword'&&Boolean(keywordClass)&&
-    keywordLoading;
+    (keywordLoading||keywordReadyKey!==keywordDensityKey);
   const riverPending=sourceDensityPending||keywordDensityPending;
   const sequence=useRef(0);
   const fullSequence=useRef(0);
+  const densityAbortRef=useRef(null);
   useEffect(()=>{
     let cancelled=false;
     setLoading(true);setError('');setCatalogError('');setAnchors([]);
@@ -269,13 +273,15 @@ export default function CulturePublicReader(){
   useEffect(()=>{
     let active=true;
     const controller=new AbortController();
+    densityAbortRef.current=controller;
     // A changed Era invalidates the previous SQL read immediately; do not
     // wait for an old fetch to settle while retaining the previous chart.
     setDaily(NO_ITEMS);setDensityReadyKey('');
     setDensityLoading(validRange&&densityMode==='source');
     setKeywordError('');
     if(!validRange||densityMode!=='source')
-      return()=>{active=false;controller.abort();};
+      return()=>{active=false;controller.abort();
+        if(densityAbortRef.current===controller)densityAbortRef.current=null;};
     analytics(scopeId,'culture_density',rangeStart,rangeEnd,{},controller.signal)
       .then(rows=>{
         if(!active||controller.signal.aborted)return;
@@ -286,21 +292,24 @@ export default function CulturePublicReader(){
         setKeywordError(String(error?.message||error));setDensityReadyKey(densityKey);
       })
       .finally(()=>{if(active)setDensityLoading(false);});
-    return()=>{active=false;controller.abort();};
+    return()=>{active=false;controller.abort();
+      if(densityAbortRef.current===controller)densityAbortRef.current=null;};
   },[scopeId,rangeStart,rangeEnd,validRange,densityMode]);
   useEffect(()=>{
     // Release old class snapshots when switching tabs, subjects or dates.
     if(densityMode!=='keyword'||!keywordClass){
-      setKeywordGroups(NO_ITEMS);setKeywordDaily(NO_ITEMS);setKeywordLoading(false);
+      setKeywordGroups(NO_ITEMS);setKeywordDaily(NO_ITEMS);
+      setKeywordReadyKey('');setKeywordLoading(false);
       return undefined;
     }
     let active=true;
+    const controller=new AbortController();
     setKeywordGroups(NO_ITEMS);setKeywordDaily(NO_ITEMS);
-    setKeywordLoading(true);
+    setKeywordReadyKey('');setKeywordLoading(true);
     import('../keyword-service-client.mjs')
       .then(({keywordService})=>keywordService('stats',{
         scopeId,classUid:keywordClass,startDate:rangeStart,endDate:rangeEnd
-      }))
+      },{signal:controller.signal}))
       .then(data=>{
         if(!active)return;
         const groups=Array.isArray(data?.groups)?data.groups:[];
@@ -314,9 +323,15 @@ export default function CulturePublicReader(){
           .map(row=>({day:row.day,site:names.get(String(row.group_uid))||'',
             item_count:Number(row.document_count)||0}))
           .filter(row=>row.site));
-      }).catch(error=>{if(active)setKeywordError(String(error?.message||error));})
+        setKeywordReadyKey(keywordDensityKey);
+      }).catch(error=>{
+        if(active&&!controller.signal.aborted){
+          setKeywordError(String(error?.message||error));
+          setKeywordReadyKey(keywordDensityKey);
+        }
+      })
       .finally(()=>{if(active)setKeywordLoading(false);});
-    return()=>{active=false;};
+    return()=>{active=false;controller.abort();};
   },[scopeId,densityMode,keywordClass,rangeStart,rangeEnd]);
   useEffect(()=>{
     if(densityMode!=='keyword'){
@@ -466,7 +481,10 @@ export default function CulturePublicReader(){
         <div className='scope-culture-river-selectors'>
           <label>時代／時期範圍
             <select className='scope-select' value={densityPeriod} onChange={event=>{
-              // Dispose prior Era details at the click boundary, not after the next read.
+              // The largest action takes priority: abort the old SQL BEFORE
+              // re-render, retire expired spool, and replace the chart with Loading.
+              densityAbortRef.current?.abort();
+              prepareTransientResourceAction('period');
               resetArticles();setDaily(NO_ITEMS);setKeywordDaily(NO_ITEMS);
               setDensityReadyKey('');setExpandedSources([]);setAnchorSuggestionsOpen(false);
               setFocusedSuggestionDate('');setDensityPeriod(event.target.value);
@@ -477,8 +495,8 @@ export default function CulturePublicReader(){
             </select>
           </label>
           {densityPeriod==='custom'?<>
-            <label>起始日 <input type='date' className='scope-select' value={customStart} onChange={event=>{resetArticles();setDaily(NO_ITEMS);setCustomStart(event.target.value);}}/></label>
-            <label>結束日 <input type='date' className='scope-select' value={customEnd} onChange={event=>{resetArticles();setDaily(NO_ITEMS);setCustomEnd(event.target.value);}}/></label>
+            <label>起始日 <input type='date' className='scope-select' value={customStart} onChange={event=>{densityAbortRef.current?.abort();prepareTransientResourceAction('period');resetArticles();setDaily(NO_ITEMS);setDensityReadyKey('');setCustomStart(event.target.value);}}/></label>
+            <label>結束日 <input type='date' className='scope-select' value={customEnd} onChange={event=>{densityAbortRef.current?.abort();prepareTransientResourceAction('period');resetArticles();setDaily(NO_ITEMS);setDensityReadyKey('');setCustomEnd(event.target.value);}}/></label>
           </>:null}
           <label>分類顯示
             <select className='scope-select' value={densityMode} onChange={event=>{setDensityMode(event.target.value);setExpandedSources([]);resetArticles('');}}>
