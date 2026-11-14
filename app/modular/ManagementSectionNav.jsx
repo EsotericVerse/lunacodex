@@ -8,7 +8,7 @@ import {motion,useReducedMotion} from 'motion/react';
  * In-page management navigator.
  * In-page horizontal tabs are React selection UI, NOT a Next.js route transition.
  */
-export default function ManagementSectionNav({id,title,panelId,items,value,onChange,showDescriptions=false,mobileSelect=false}){
+export default function ManagementSectionNav({id,title,panelId,items,value,onChange,showDescriptions=false,mobileSelect=false,hideHeading=false}){
   const activeItem=items.find(item=>item.value===value)||items[0];
   const reduceMotion=useReducedMotion();
   const headingId=id+'-heading';
@@ -23,8 +23,9 @@ export default function ManagementSectionNav({id,title,panelId,items,value,onCha
     if(target.left<bounds.left)list.scrollLeft-=bounds.left-target.left;
     else if(target.right>bounds.right)list.scrollLeft+=target.right-bounds.right;
   },[value]);
-  return <section className={"management-section-nav"+(mobileSelect?" management-section-nav--mobile-select":"")} aria-labelledby={headingId}>
-    <h2 className="management-section-nav__title" id={headingId}>{title}</h2>
+  return <section className={"management-section-nav"+(mobileSelect?" management-section-nav--mobile-select":"")}
+    aria-labelledby={hideHeading?undefined:headingId} aria-label={hideHeading?title:undefined}>
+    {!hideHeading?<h2 className="management-section-nav__title" id={headingId}>{title}</h2>:null}
     {mobileSelect?<label className="management-section-nav__mobile-picker">
       <span>選擇功能</span>
       <select value={activeItem?.value||''} onChange={event=>onChange(event.target.value)}
