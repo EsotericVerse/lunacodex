@@ -452,9 +452,27 @@ async function activeToken(forceRefresh=false){
 function contractError(message){return Object.assign(new Error(message),{code:'LOC_IMPORT_CONTRACT'})}
 function validateArticleReceipts(receipts,records){
  if(!Array.isArray(receipts))throw contractError('LOC 未回傳 UID 回執，Queue 保留');
- const received=new Map();
- for(const r of receipts)if(typeof r?.source_key==='string'&&/^[A-Za-z0-9]{8}$/.test(String(r.uid||'')))received.set(r.source_key,r.uid);
- for(const key of new Set(records.map(r=>r.source_key)))if(!received.has(key))throw contractError('未確認文章 UID：'+key);
+ const expected=new Map();
+ for(const row of records){
+  if(typeof row?.source_key!=='string'||!row.source_key)
+   throw contractError('LOC Queue 來源不完整');
+  expected.set(row.source_key,(expected.get(row.source_key)||0)+1);
+ }
+ // The backend returns exactly one receipt for each unique source, even when
+ // every event was previously imported. Never acknowledge a partial or
+ // contradictory response and silently delete the remaining IndexedDB rows.
+ if(receipts.length!==expected.size)
+  throw contractError('LOC UID 回執數量不符，Queue 保留');
+ const received=new Set();
+ for(const entry of receipts){
+  const key=entry?.source_key,appended=entry?.appended;
+  if(typeof key!=='string'||!expected.has(key)||received.has(key)||
+     !/^[A-Za-z0-9]{8}$/.test(String(entry?.uid||''))||
+     !Number.isSafeInteger(appended)||appended<0||appended>expected.get(key)||
+     entry.duplicate!==(appended===0))
+   throw contractError('LOC UID 回執內容不一致，Queue 保留');
+  received.add(key);
+ }
 }
 async function sendViaAuth(scopeid,batch,token,config){
  if(!SCOPE.test(scopeid))throw Error('Invalid Scope');
