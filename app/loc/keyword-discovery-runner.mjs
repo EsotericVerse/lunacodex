@@ -2,13 +2,18 @@
 
 import {dbAuthRelation} from './db-client.mjs';
 import {galaxyReadColumns} from '../../zenstack/galaxy-read-models.mjs';
+import {KeywordDiscoveryQueue} from './keyword-discovery-queue.mjs';
+import * as z from 'zod';
 
 // The owner's explicit action starts the only scan. Never run during render,
 // ordinary Search, Culture navigation or the existing Keyword reanalysis.
-// Transport batches do not cap the total number of scanned articles.
-// 2,000 short Galaxy rows per page halves round trips on the large author Scope;
-// only this page and one lookahead are held, never the entire article library.
-const PAGE_SIZE=2000;
+// Single bounded FIFO: SQL page size adapts to payload bytes. The Worker
+// receives bounded slices, and only one next-page fetch may be in flight.
+const WORKER_PROGRESS=z.looseObject({
+  type:z.literal('progress'),
+  read:z.number().int().nonnegative(),
+  withContent:z.number().int().nonnegative()
+});
 const ARTICLE_COLUMNS=galaxyReadColumns('GalaxyUidRead')
   .filter(column=>['uid','content','createtime','date'].includes(column));
 const aborted=()=>Object.assign(new Error('已取消關鍵詞建議掃描'),{name:'AbortError'});
@@ -56,28 +61,40 @@ export async function suggestNewKeywords({galaxy,existingRows=[],onProgress=()=>
     // a second read of the same boundary date or growing OFFSET scans.
     let completed=0;
     const seen=new Set();
-    const readPage=async build=>{
+    const queue=new KeywordDiscoveryQueue();
+    // Promise rejections must be observed immediately, including cancellation.
+    const settled=promise=>promise.then(value=>({value}),error=>({error}));
+    const readPage=async (build,requested)=>{
       let query=build(dbAuthRelation(galaxy));
       if(typeof query.abortSignal==='function')query=query.abortSignal(readSignal);
       const reply=await query;
       if(signal?.aborted)throw aborted();
       if(reply.error)throw new Error(reply.error.message||'無法讀取文章內文');
-      return reply;
+      return {...reply,requested};
     };
-    const consumePage=async page=>{
-      for(let index=0;index<page.length;index+=PAGE_SIZE){
+    const consumePage=async (page,requested,nextPage)=>{
+      queue.accept(page,requested);
+      let lookahead=null;
+      while(queue.remaining){
         if(signal?.aborted)throw aborted();
-        const batch=page.slice(index,index+PAGE_SIZE);
+        const batch=queue.take();
         for(const row of batch){
           if(typeof row.uid!=='string'||seen.has(row.uid))
             throw new Error('文章掃描出現重複或無效 UID，未覆寫先前暫存');
           seen.add(row.uid);
         }
+        // Refill the SINGLE queue when it is almost drained, never when
+        // already full. At most one network lookahead runs during Worker CPU.
+        if(!lookahead&&queue.nearEmpty&&typeof nextPage==='function')
+          lookahead=settled(nextPage(queue.readLimit));
         const reply=await send({type:'batch',rows:batch});
-        if(reply.type!=='progress')throw new Error('關鍵詞背景分析回應異常');
+        if(!WORKER_PROGRESS.safeParse(reply).success)
+          throw new Error('關鍵詞背景分析回應異常');
         completed+=batch.length;
-        onProgress({completed,total,withContent:reply.withContent,lanes:1});
+        onProgress({completed,total,withContent:reply.withContent,
+          lanes:1,batchSize:requested,nextPageSize:queue.readLimit});
       }
+      return lookahead;
     };
     onProgress({completed:0,total,lanes:1});
     // Drivers may serialize SQL DATE as midnight UTC / Taipei ISO timestamps.
@@ -107,11 +124,10 @@ export async function suggestNewKeywords({galaxy,existingRows=[],onProgress=()=>
     // increasing database concurrency, storing all rows, or skipping pages.
     // Settle rejections immediately so Worker failures cannot leave an
     // unhandled pending request; finally aborts the active read.
-    const settled=promise=>promise.then(value=>({value}),error=>({error}));
-    const datedPage=(afterDate,afterUid)=>readPage(relation=>{
+    const datedPage=(afterDate,afterUid,limit)=>readPage(relation=>{
       let query=relation.select(ARTICLE_COLUMNS).not('date','is',null)
         .order('date',{ascending:true}).order('uid',{ascending:true})
-        .limit(PAGE_SIZE);
+        .limit(limit);
       if(afterDate!==null){
         // The OR cursor alone caused Postgres to scan/filter all earlier dates
         // (43k rows on a late 2026 page). This redundant AND lower bound is
@@ -122,14 +138,14 @@ export async function suggestNewKeywords({galaxy,existingRows=[],onProgress=()=>
           ',uid.gt.'+quoted(afterUid)+')');
       }
       return query;
-    });
+    },limit);
     let previousDate=null;
-    let datedPending=settled(datedPage(null,null));
+    let datedPending=settled(datedPage(null,null,queue.readLimit));
     for(;;){
       if(signal?.aborted)throw aborted();
       const completedRead=await datedPending;
       if(completedRead.error)throw completedRead.error;
-      const {data}=completedRead.value;
+      const {data,requested}=completedRead.value;
       const page=Array.isArray(data)?data:[];
       if(!page.length)break;
       const normalized=page.map(row=>({...row,date:normalizeDay(row?.date)}));
@@ -138,30 +154,32 @@ export async function suggestNewKeywords({galaxy,existingRows=[],onProgress=()=>
         (index>0&&row.date<normalized[index-1].date)))
         throw new Error('Galaxy 日期／UID 游標資料不完整，未覆寫先前暫存');
       const last=normalized.at(-1);
-      datedPending=settled(datedPage(last.date,last.uid));
-      await consumePage(normalized);
+      datedPending=await consumePage(normalized,requested,
+        limit=>datedPage(last.date,last.uid,limit))||
+        settled(datedPage(last.date,last.uid,queue.readLimit));
       previousDate=last.date;
     }
     // Undated rows also use a bounded UID keyset instead of deep OFFSET.
     // Both scans are complete even when the transport returns a short page.
-    const undatedPage=afterUid=>readPage(relation=>{
+    const undatedPage=(afterUid,limit)=>readPage(relation=>{
       let query=relation.select(ARTICLE_COLUMNS)
-        .is('date',null).order('uid',{ascending:true}).limit(PAGE_SIZE);
+        .is('date',null).order('uid',{ascending:true}).limit(limit);
       if(afterUid!==null)query=query.gt('uid',afterUid);
       return query;
-    });
-    let undatedPending=settled(undatedPage(null));
+    },limit);
+    let undatedPending=settled(undatedPage(null,queue.readLimit));
     for(;;){
       if(signal?.aborted)throw aborted();
       const completedRead=await undatedPending;
       if(completedRead.error)throw completedRead.error;
-      const {data}=completedRead.value;
+      const {data,requested}=completedRead.value;
       const part=Array.isArray(data)?data:[];
       if(!part.length)break;
       if(part.some(row=>row?.date!=null||typeof row.uid!=='string'||!row.uid))
         throw new Error('Galaxy 未定日期游標資料不完整，未覆寫先前暫存');
-      undatedPending=settled(undatedPage(part.at(-1).uid));
-      await consumePage(part);
+      undatedPending=await consumePage(part,requested,
+        limit=>undatedPage(part.at(-1).uid,limit))||
+        settled(undatedPage(part.at(-1).uid,queue.readLimit));
     }
     if(completed!==total)throw new Error('文章數量在掃描期間變動，未覆寫先前暫存');
     const done=await send({type:'finish'});
