@@ -5,7 +5,8 @@ import {useUiSection} from '../i18n/ui-locale';
 import globalSettingsZh from '../i18n/sections/uiExtra.globalSettings.zh_tw.js';
 registerDefaultSection('uiExtra.globalSettings',globalSettingsZh);
 
-import {useEffect,useMemo,useState} from 'react';
+import {useEffect,useMemo,useState,useSyncExternalStore} from 'react';
+import {getLocalDeadline,subscribeLocalDeadline} from './local-scope-session.mjs';
 import {useAsyncResource} from '../../zenstack/client-queries';
 import dynamic from 'next/dynamic';
 import {Capacitor} from '@capacitor/core';
@@ -34,7 +35,8 @@ const LOC_LOGIN_GATEWAY='/login/index.html?return_to=%2Flocal%2Fsettings%2F';
 export default function GlobalSettings({initialSection='home'}={}){
   useUiSection('uiExtra.globalSettings');
   const uiT=useUiText();
-  const prefs=useNavigationPreferences();
+  const localLease=useSyncExternalStore(subscribeLocalDeadline,getLocalDeadline,()=>0);
+  const prefs=useNavigationPreferences({enabled:!localLease});
   const [native,setNative]=useState(false);
   const [urlResolved,setUrlResolved]=useState(false);
   const [home,setHome]=useState('loc');
