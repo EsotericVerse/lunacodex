@@ -667,6 +667,11 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     setReparseRequired(false);
     setFileName(file.name);setStatus('');
     if(file.size>ARCHIVE_MAX_BYTES){
+      // A rejected oversized Blob must not stay pinned in the File queue.
+      setQueue(current=>{
+        const remaining=current.map((item,position)=>position===index?null:item);
+        return remaining.some(Boolean)?remaining:[];
+      });
       setStatus(t('uiExtra.importUI.zipTooLarge'));
       return;
     }
@@ -806,6 +811,14 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       clearDecodedFile();
       setReparseRequired(true);
       const wasBlocked=['LOC_PRIVATE_ARCHIVE_BLOCKED','LOC_UNVERIFIED_ARCHIVE_BLOCKED'].includes(error?.code);
+      if(wasBlocked){
+        // Privacy-rejected archives are not retryable on a public Scope.
+        setReparseRequired(false);
+        setQueue(current=>{
+          const remaining=current.map((item,position)=>position===index?null:item);
+          return remaining.some(Boolean)?remaining:[];
+        });
+      }
       setStatus(wasBlocked
         ?'第 '+(index+1)+' 檔已阻止匯入：'+String(error?.message||error)+'；本次未寫入資料庫。'
         :t('uiExtra.importUI.parseFileFailed',{index:index+1,error:error?.message||error}));
