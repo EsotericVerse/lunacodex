@@ -1,6 +1,8 @@
 'use client';
 
-import {useEffect,useMemo,useState} from 'react';
+import {useEffect,useMemo,useState,useSyncExternalStore} from 'react';
+import {Capacitor} from '@capacitor/core';
+import {getLocalDeadline,subscribeLocalDeadline} from '../loc/local-scope-session.mjs';
 import {usePathname} from 'next/navigation';
 import {featureIdForPath,getScope,isKnownScope,normalizeScopeId,resolveScope} from './scope-registry';
 import {selectScopeRegistryEntry} from '../loc/scope-data';
@@ -16,6 +18,8 @@ function genericRouteScope(pathname,search){
 }
 
 export function useScopeRuntime(){
+  const lease=useSyncExternalStore(subscribeLocalDeadline,getLocalDeadline,()=>0);
+  const localLease=Capacitor.isNativePlatform()&&lease>0;
   const pathname=usePathname()||'/';
   const genericShell=pathname==='/scope-shell'||pathname.startsWith('/scope-shell/');
   const [location,setLocation]=useState({host:'',search:'',mounted:false});
@@ -59,8 +63,8 @@ export function useScopeRuntime(){
       setRegistryRow(null);setRegistryResolved(true);setRegistryError('缺少 Scope ID。');
       return()=>{active=false};
     }
-    if(scopeId==='local'){
-      // Device-local Scope is not registered or authorized through the cloud.
+    if(scopeId==='local'||localLease){
+      // Device-local Scope / active lease never consults cloud Registry.
       setRegistryRow(null);setRegistryResolved(true);setRegistryError('');
       return()=>{active=false};
     }
@@ -80,17 +84,17 @@ export function useScopeRuntime(){
       setRegistryRow(null);setRegistryResolved(true);setRegistryError(String(error?.message||error||'Scope Registry 讀取失敗'));
     });
     return()=>{active=false};
-  },[dynamic,scopeId,location.mounted,metadataRevision]);
+  },[dynamic,scopeId,location.mounted,metadataRevision,localLease]);
 
   const activeRegistryRow=registryRow?.scope_id===scopeId?registryRow:null;
   const base=getScope(scopeId);
   const configEnabled=Boolean(
-    scopeId&&scopeId!=='admin'&&!base.aggregateChildren&&(!dynamic||activeRegistryRow?.scope_kind==='scope')
+    !localLease&&scopeId&&scopeId!=='admin'&&!base.aggregateChildren&&(!dynamic||activeRegistryRow?.scope_kind==='scope')
   );
   // Scope config already belongs to the page's shared bootstrap. Consume the
   // same ZenStack query key as AppShell, ThemeSelect and ScopeEditableBlocks;
   // do not maintain a second cache/effect or a second config SELECT.
-  const bootstrap=useAppBootstrap(scopeId,featureIdForPath(pathname)||'index');
+  const bootstrap=useAppBootstrap(localLease?'local':scopeId,featureIdForPath(pathname)||'index');
   const activeConfigRow=configEnabled&&bootstrap.data?.config?.id===scopeId
     ?bootstrap.data.config:null;
   const structural=activeRegistryRow?{
