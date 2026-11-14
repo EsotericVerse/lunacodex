@@ -853,11 +853,12 @@ async function managedLocSettings(trx,args,claims){
   const value=args.p_value;
   if(!['theme','keywords','runtime'].includes(section))
     reject('Invalid LOC settings section');
-  // Runtime I/O ceilings belong to the fixed private api.manage admin row.
+  // Runtime I/O ceilings and a disabled ISR reservation belong to the
+  // existing private api.manage admin JSON. This does not deploy an ISR route.
   // Reuse this existing global-admin action, not an anonymous SELECT path.
   if(section==='runtime'){
     if(key||!['read','update'].includes(operation))reject('Invalid runtime setting operation');
-    const allowed=new Set(['io_limits']);
+    const allowed=new Set(['io_limits','isr']);
     if(operation==='update'&&(!catalogObject(value)||!Object.keys(value).length||
         Object.keys(value).some(field=>!allowed.has(field))))
       reject('Invalid runtime setting fields');
