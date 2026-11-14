@@ -42,12 +42,12 @@ function renderMcpProviders(result){
    const email=$('ssoEmail').value.trim();
    if(!email){notice.textContent='請先輸入上游服務登入 Email';return;}
    await chrome.storage.local.set({locSsoEmail:email});
-   button.disabled=true;status.textContent='正在連接 '+MCP_LABELS[id]+'…';
+   button.disabled=true;notice.textContent='正在連接 '+MCP_LABELS[id]+'…';
    try{
     const connected=await call('mcp-connect',{provider:id});
-    status.textContent=connected.error||'已連接 '+MCP_LABELS[id]+'；後續由 Gateway 重用授權。';
+    notice.textContent=connected.error||'已連接 '+MCP_LABELS[id]+'；後續由 Gateway 重用授權。';
     await refreshMcp();
-   }catch(error){status.textContent=String(error?.message||error)}
+   }catch(error){notice.textContent=String(error?.message||error)}
    finally{button.disabled=!$('ssoEmail').value.trim();}
   });
   actions.append(button);
@@ -56,12 +56,12 @@ function renderMcpProviders(result){
    disconnect.type='button';disconnect.dataset.action='disconnect';
    disconnect.textContent='解除';
    disconnect.addEventListener('click',async()=>{
-    disconnect.disabled=true;status.textContent='正在解除 '+MCP_LABELS[id]+'…';
+    disconnect.disabled=true;notice.textContent='正在解除 '+MCP_LABELS[id]+'…';
     try{
      await call('mcp-disconnect',{provider:id});
-     status.textContent='已解除 '+MCP_LABELS[id];
+     notice.textContent='已解除 '+MCP_LABELS[id];
      await refreshMcp();
-    }catch(error){status.textContent=String(error?.message||error)}
+    }catch(error){notice.textContent=String(error?.message||error)}
     finally{disconnect.disabled=false;}
    });
    actions.append(disconnect);
@@ -151,12 +151,12 @@ $('diagnostics').addEventListener('click',async()=>{
  }catch(error){notice.textContent='診斷紀錄複製失敗：'+String(error?.message||error);}
 });
 $('flush').addEventListener('click',async()=>{
- status.textContent='正在送出 Queue…';
+ notice.textContent='正在送出 Queue…';
  try{
   const result=await call('loc-flush');
   await show();
-  status.textContent=result.error||result.message||'已處理';
- }catch(error){status.textContent=String(error?.message||error);}
+  notice.textContent=result.error||result.message||'已處理';
+ }catch(error){notice.textContent=String(error?.message||error);}
 });
 chrome.storage.onChanged?.addListener((changes,area)=>{
  if(area==='local'&&changes.locLastAction){
