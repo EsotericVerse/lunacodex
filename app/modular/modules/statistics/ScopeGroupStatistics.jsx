@@ -49,9 +49,11 @@ export default function ScopeGroupStatistics({taipeiDateKey,trendBucket,loadGala
       fullHistory:false,canZoomOut:false,canZoomIn:true}:base;
   },[zoomLevel,endDate,knownEarliest]);
   const {startDate,endDate:rangeEndDate,bucket}=zoomRange;
-  const locQuery=useAsyncResource(startDate&&rangeEndDate?['loc-statistics',startDate,rangeEndDate]:null,async()=>{
+  const observedEnd=rangeEndDate<taipeiDateKey()?rangeEndDate:taipeiDateKey();
+  const locQuery=useAsyncResource(startDate&&observedEnd&&startDate<=observedEnd
+    ?['loc-statistics',startDate,observedEnd]:null,async()=>{
       const {selectLocStatistics}=await loadGalaxyStatistics();
-      return selectLocStatistics({startDate,endDate:rangeEndDate});
+      return selectLocStatistics({startDate,endDate:observedEnd});
   });
   useEffect(()=>{
     const found=locQuery.data?.earliest||'';
@@ -84,12 +86,13 @@ export default function ScopeGroupStatistics({taipeiDateKey,trendBucket,loadGala
     const bucketUnit=bucket;
     const buckets=new Map();
     // Do not treat future dates in the current calendar year as observed zeroes.
-    const observedEnd=rangeEndDate<taipeiDateKey()?rangeEndDate:taipeiDateKey();
     for(let cursor=new Date(startDate+'T00:00:00Z'),end=new Date(observedEnd+'T00:00:00Z');cursor<=end;cursor.setUTCDate(cursor.getUTCDate()+1)){
       const day=cursor.toISOString().slice(0,10);
       const bucket=trendBucket(day,bucketUnit);
       if(!bucket||buckets.has(bucket.key))continue;
-      const row={period:bucket.label,_sort:bucket.key,total:0};
+      const row={period:bucket.label,_sort:bucket.key,total:0,
+        partial:bucket.start<startDate||bucket.end>observedEnd||
+          bucket.end>=taipeiDateKey()};
       for(const id of scopeIds)row[id]=0;
       buckets.set(bucket.key,row);
     }
@@ -105,7 +108,7 @@ export default function ScopeGroupStatistics({taipeiDateKey,trendBucket,loadGala
       buckets.set(bucket.key,row);
     }
     return [...buckets.values()].sort((a,b)=>a._sort.localeCompare(b._sort));
-  },[densityRows,startDate,rangeEndDate,scopeIds,bucket]);
+  },[densityRows,startDate,observedEnd,scopeIds,bucket,taipeiDateKey]);
   const distributionData=totals.map(row=>({term:row.scope_id,value:row.total}));
   // Even when displaying a combined total, its composition is the real
   // set of child Scopes. A single 100% "LOC total" pie is not analytics.
@@ -119,7 +122,9 @@ export default function ScopeGroupStatistics({taipeiDateKey,trendBucket,loadGala
   const chartGroups=chartTypeGroups(locAllowed,aggregateType==='total'
     ?['line','composed','bar']:['line','stacked','pie']);
 
-  const insightRows=trendData.map(row=>({period:row.period,total:row.total}));
+  const insightRows=useMemo(()=>trendData.map(row=>({
+    period:row.period,total:row.total,partial:row.partial
+  })),[trendData]);
   return <section className="scope-stat-section statistics-dashboard">
     <header className="scope-stat-domain-heading statistics-dashboard__heading">
       <div>
