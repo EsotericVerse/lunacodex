@@ -77,9 +77,13 @@ export async function deleteSetting(key){
   const columns=keyColumns(name);
   if(!columns)throw Error('不支援的個人設定項目');
   // Deleting one setting must never delete the entire LOC user record.
+  const {data:existing,error:loadError}=await dbAuthRelation(TABLE)
+    .select('uid').limit(1);
+  if(loadError)throw Error(loadError.message||'個人設定讀取失敗');
+  if(!existing?.[0]?.uid)return;
   const values=Object.fromEntries(columns.map(column=>[column,null]));
   const {error}=await dbAuthRelation(TABLE)
     .update({...values,updated_at:new Date().toISOString()})
-    .select('uid');
+    .eq('uid',existing[0].uid).select('uid');
   if(error)throw Error(error.message||'個人設定刪除失敗');
 }
