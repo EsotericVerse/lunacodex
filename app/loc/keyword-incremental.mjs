@@ -23,7 +23,16 @@ export async function analyzeIncrementalKeywordPatterns({
      typeof writePatterns!=='function'||typeof finalize!=='function')
     throw new TypeError('Invalid incremental Keyword analysis adapters');
   if(isoMillis(startedAt)===null)throw new Error('Invalid analysis start time');
-  const words=buildKeywordSearchPatterns(scopeId,items,[]);
+  // PatternAnchor is the canonical ZModel word-level entry. The Item graph
+  // provides rule/ownership verification only, never an alternate word index.
+  const expected=buildKeywordSearchPatterns(scopeId,items,[]);
+  const expectedKeys=new Set(expected.map(row=>keyOf(row.pattern)));
+  const words=existingPatterns.map(row=>({
+    scopeid:scopeId,pattern:String(row.pattern||''),count:0,uid_list:[]
+  })).sort((a,b)=>a.pattern.localeCompare(b.pattern));
+  if(expectedKeys.size!==words.length||
+    words.some(row=>!expectedKeys.has(keyOf(row.pattern))))
+    throw new Error('Pattern UID index does not match the selected Keyword Class');
   const oldByKey=new Map();
   for(const row of existingPatterns){
     const k=keyOf(row?.pattern);
