@@ -287,10 +287,11 @@ export async function executeCrossEngineManagedWrite(db,body,context){
       count=managedAffected(await applyKyselyFilters(db.updateTable(name).set(serializePortableJsonFields(values,engine)),
         filters).executeTakeFirst());
     }else{
-      await repairBeforeUidDelete(db,{table,filters,engine,namespace,
+      const repaired=await repairBeforeUidDelete(db,{table,filters,engine,namespace,
         serialize:values=>serializePortableJsonFields(values,engine)});
       count=managedAffected(await applyKyselyFilters(db.deleteFrom(name),
         filters).executeTakeFirst());
+      if(repaired.affected&&count!==1)invalidWrite('UID deletion failed after reference repair');
     }
   }
   return {data:{count},count:null};
