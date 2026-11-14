@@ -200,69 +200,69 @@ export async function handleNativePublicContent(request,env={},{
         scope==='loc'?['silver.loc_anchor']:
           ['silver.loc_anchor','silver.'+scope+'_anchor'],
         async()=>{
-      // The LOC-wide source taxonomy is its own fixed physical model. It is
-      // not a dynamic Scope Anchor projection, so PostgreSQL reads use the
-      // same PolicyPlugin delegate as fixed Blocks.
-      const fixedAnchorModel=port.dialect
-        ?fixedPolicyReadModel({engine:port.engine},{kind:'query',
-          schema:port.namespace||'silver',table:'loc_anchor',operation:'select'})
-        :null;
-      // loc_anchor is the fixed LOC-wide source relation. A MySQL target does
-      // not have the fixed PolicyPlugin route, so use the matching dynamic
-      // ZModel scope rather than accidentally reading <scope>_anchor.
-      const typed=scopedFor('loc');
-      const rows=fixedAnchorModel
-        ?await withFixedPolicyRead(query,{engine:port.engine},{kind:'query',
-            schema:port.namespace||'silver',table:'loc_anchor',operation:'select'},
-            'anon',{}, {dialect:port.dialect,ZenStackClient,PolicyPlugin},
-            (_qb,name,authorized)=>authorized[
-              name[0].toLowerCase()+name.slice(1)].findMany({
-                where:{type:{in:['date','period','era']},invisible:false},
-                select:{uid:true,type:true,title:true,attr:true}
-              }))
-        :typed
-        ?await typed.anchor.findMany({
-            where:{type:{in:['date','period','era']},invisible:false},
-            select:{uid:true,type:true,title:true,attr:true}
-          })
-        :await query.selectFrom(relation(scope+'_anchor'))
-            .select(['uid','type','title','attr'])
-            .where('type','in',['date','period','era'])
-            .where('invisible','=',false).execute();
-      if(!fixedAnchorModel&&!typed)
-        assertZModelSelectRows('silver.'+scope+'_anchor',
-          ['uid','type','title','attr'],rows);
-      return rows.map(row=>({...row,
-        attr:typeof row.attr==='string'?JSON.parse(row.attr||'{}'):row.attr||{}
-      }));
+        // The LOC-wide source taxonomy is its own fixed physical model. It is
+        // not a dynamic Scope Anchor projection, so PostgreSQL reads use the
+        // same PolicyPlugin delegate as fixed Blocks.
+        const fixedAnchorModel=port.dialect
+          ?fixedPolicyReadModel({engine:port.engine},{kind:'query',
+            schema:port.namespace||'silver',table:'loc_anchor',operation:'select'})
+          :null;
+        // loc_anchor is the fixed LOC-wide source relation. A MySQL target does
+        // not have the fixed PolicyPlugin route, so use the matching dynamic
+        // ZModel scope rather than accidentally reading <scope>_anchor.
+        const typed=scopedFor('loc');
+        const rows=fixedAnchorModel
+          ?await withFixedPolicyRead(query,{engine:port.engine},{kind:'query',
+              schema:port.namespace||'silver',table:'loc_anchor',operation:'select'},
+              'anon',{}, {dialect:port.dialect,ZenStackClient,PolicyPlugin},
+              (_qb,name,authorized)=>authorized[
+                name[0].toLowerCase()+name.slice(1)].findMany({
+                  where:{type:{in:['date','period','era']},invisible:false},
+                  select:{uid:true,type:true,title:true,attr:true}
+                }))
+          :typed
+          ?await typed.anchor.findMany({
+              where:{type:{in:['date','period','era']},invisible:false},
+              select:{uid:true,type:true,title:true,attr:true}
+            })
+          :await query.selectFrom(relation(scope+'_anchor'))
+              .select(['uid','type','title','attr'])
+              .where('type','in',['date','period','era'])
+              .where('invisible','=',false).execute();
+        if(!fixedAnchorModel&&!typed)
+          assertZModelSelectRows('silver.'+scope+'_anchor',
+            ['uid','type','title','attr'],rows);
+        return rows.map(row=>({...row,
+          attr:typeof row.attr==='string'?JSON.parse(row.attr||'{}'):row.attr||{}
+        }));
       });
       return respond({data});
     }
     if(kind==='config'){
       const data=await metadataResult(['silver.'+scope],async()=>{
-      const columns=scopeConfigColumns(scope).split(',').filter(Boolean);
-      // loc/lo3rwang/lrunes are fixed public ZModel control relations
-      // (zenstack/policy-runtime.mjs). Route those through the real
-      // ZenStack+PolicyPlugin reader -- same Kysely dialect/pool, no second
-      // connection -- instead of the hand-rolled selectFrom below. A custom
-      // Scope's own config table is not a fixed model, so it keeps the
-      // existing plain Kysely path unchanged.
-      const modelName=fixedPolicyReadModel({engine:port.engine},
-        {kind:'query',schema:'silver',table:scope,operation:'select'});
-      const row=modelName
-        ?await withFixedPolicyRead(query,{engine:port.engine},
-            {kind:'query',schema:'silver',table:scope,operation:'select'},
-            'anon',{},{dialect:port.dialect,ZenStackClient,PolicyPlugin},
-            (_qb,name,authorized)=>authorized[
-              name[0].toLowerCase()+name.slice(1)].findFirst({
-                where:{id:scope},
-                select:Object.fromEntries(columns.map(column=>[column,true]))
-              }))
-        :await query.selectFrom(relation(scope))
-            .select(columns).where('id','=',scope).limit(1).executeTakeFirst();
-      if(!modelName)
-        assertZModelSelectRows('silver.'+scope,columns,row?[row]:[]);
-      return row||null;
+        const columns=scopeConfigColumns(scope).split(',').filter(Boolean);
+        // loc/lo3rwang/lrunes are fixed public ZModel control relations
+        // (zenstack/policy-runtime.mjs). Route those through the real
+        // ZenStack+PolicyPlugin reader -- same Kysely dialect/pool, no second
+        // connection -- instead of the hand-rolled selectFrom below. A custom
+        // Scope's own config table is not a fixed model, so it keeps the
+        // existing plain Kysely path unchanged.
+        const modelName=fixedPolicyReadModel({engine:port.engine},
+          {kind:'query',schema:'silver',table:scope,operation:'select'});
+        const row=modelName
+          ?await withFixedPolicyRead(query,{engine:port.engine},
+              {kind:'query',schema:'silver',table:scope,operation:'select'},
+              'anon',{},{dialect:port.dialect,ZenStackClient,PolicyPlugin},
+              (_qb,name,authorized)=>authorized[
+                name[0].toLowerCase()+name.slice(1)].findFirst({
+                  where:{id:scope},
+                  select:Object.fromEntries(columns.map(column=>[column,true]))
+                }))
+          :await query.selectFrom(relation(scope))
+              .select(columns).where('id','=',scope).limit(1).executeTakeFirst();
+        if(!modelName)
+          assertZModelSelectRows('silver.'+scope,columns,row?[row]:[]);
+        return row||null;
       });
       return respond({data});
     }
