@@ -68,7 +68,7 @@ export default function Article({uid,title,articleHref='',detailReading=false,re
     ]} status={editError} statusClassName="scope-error" statusRole="alert"/>:null;
   const titleEditor=editingReady?<input className="scope-article-edit-title" aria-label={UI_COPY.common.title} value={editorDraft.title||''} onChange={event=>onDraftChange(current=>({...current,title:event.target.value}))}/>:null;
   // The same saved media relationship links externally in view mode, but opens
-  // the existing scoped Galaxy Media attribute editor while an article is edited.
+  // the existing scoped MediaAnchor attribute editor while an article is edited.
   const mediaEditHref=id=>managerMode
     ?(mediaScopeId==='loc'?'':scopeHref(mediaScopeId,'search/manage')+'?media='+encodeURIComponent(id))
     :mediaAnchorHref(mediaScopeId,id);

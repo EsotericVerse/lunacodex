@@ -8,6 +8,18 @@ const dateOf=value=>{
   const date=String(value||'').slice(0,10);
   return /^\d{4}-\d{2}-\d{2}$/.test(date)?date:'';
 };
+// Read canonical TimeAnchor date.attr.date first. Some existing presentation
+// readers still supply the flattened address field; both represent the same
+// underlying date and must resolve to identical ranges without another SELECT.
+function timeAnchorDay(row){
+  let attr=row?.attr;
+  if(typeof attr==='string'){
+    try{attr=JSON.parse(attr);}catch{attr=null;}
+  }
+  const typed=attr&&typeof attr==='object'&&!Array.isArray(attr)
+    ?dateOf(attr.date):'';
+  return typed||dateOf(row?.address);
+}
 // The persisted Time range is a derived projection, never a replacement for anchor_ids.
 export function isTimeUid(value){return UID.test(String(value||''));}
 export function allocateTimeUid(rows=[]){
@@ -38,7 +50,7 @@ export function resolveTimeSegments(anchorIds,anchors){
     .map(row=>[String(row.uid||''),row]));
   return decodeTimeSegments(anchorIds).map((ids,index)=>{
     const first=known.get(ids.start),last=ids.end?known.get(ids.end):null;
-    const a=dateOf(first?.address),b=dateOf(last?.address);
+    const a=timeAnchorDay(first),b=timeAnchorDay(last);
     const missing=[ids.start,...(ids.end?[ids.end]:[])]
       .filter(uid=>!known.has(uid));
     const reversed=Boolean(a&&b&&b<a);

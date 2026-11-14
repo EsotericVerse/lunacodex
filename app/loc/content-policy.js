@@ -45,9 +45,9 @@ export function normalizeRelationIds(value){
 export async function requireGalaxyContent(value){
   const content=normalizeGalaxyContent(value);
   const {hasBlockNoteContent}=await import('./blocknote-content.mjs');
-  if(!content||!hasBlockNoteContent(content))throw new Error('Galaxy 文字作品必須有正文；純媒體請寫入 Galaxy Media。');
+  if(!content||!hasBlockNoteContent(content))throw new Error('Galaxy 文字作品必須有正文；純媒體請使用多媒體管理功能。');
   if(hasIrrecoverableEncoding(content))throw new Error('正文含不可逆的編碼錯誤字元，請先還原原始文字再寫入。');
-  if(isPureUrlContent(content))throw new Error('純 URL 不算文字正文；請寫入 Galaxy Media。');
+  if(isPureUrlContent(content))throw new Error('純 URL 不算文字正文；請使用多媒體管理功能。');
   return content;
 }
 

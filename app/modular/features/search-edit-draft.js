@@ -111,7 +111,7 @@ function changedGalaxyAttributes(draft,t){
 
 export class SearchEditDraft{
   static nullableText(value){return nullableText(value);}
-  // Builds the editable draft for a Galaxy (article) or Galaxy Media row.
+  // Builds the editable draft for a Galaxy article or MediaAnchor row.
   static fromRow(resourceType,row,fallbackTitle=''){
     return resourceType==='galaxy'
       ?galaxyDraftFromRow(row,fallbackTitle,plainTextToBlocks)
