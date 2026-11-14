@@ -281,7 +281,8 @@ async function readExistingByIds(table,columns,column,values,message,onPage){
 // All records are bound by original article UID; no full-table scan or recursive discovery.
 async function readImportMediaCandidates(scopeId,anchor,uids=[],urls=[],message='媒體讀取失敗'){
   const ids=[...new Set(uids.map(value=>String(value||'').trim()).filter(Boolean))];
-  const links=[...new Set(urls.map(value=>String(value||'').trim()).filter(Boolean))];
+  // Media URL identity is literal: whitespace is significant.
+  const links=[...new Set(urls.map(value=>String(value??'')).filter(Boolean))];
   if(scopeId==='local'){
     if(links.length)throw new Error('本機媒體 URL 去重尚無 SQL 查詢能力，已停止匯入避免重複資料。');
     const rows=await readExistingByIds(anchor,MEDIA_ANCHOR_COLUMNS,'uid',ids,message);
@@ -357,8 +358,8 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
       const existingMedia=await readImportMediaCandidates(scopeId,mediaAnchor,
         explicitIds,candidateUrls,t('uiExtra.importUI.mediaIdCompareFailed'));
       const mediaKey=row=>{
-        const url=String(row.url||'').trim();
-        return url?JSON.stringify([url,String(row.type||'').trim()])
+        const url=String(row.url??'');
+        return url?JSON.stringify([url,String(row.type??'')])
           :(row.uid?'id:'+row.uid:null);
       };
       const byKey=new Map(),ambiguousMediaKeys=new Map();
