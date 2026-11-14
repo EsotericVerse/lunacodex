@@ -53,7 +53,13 @@ function register(entry){
   registry.set(id,entry);
   return ()=>{
     registry.delete(id);
-    releaseUnobserved(serialize(entry.key));
+    const serializedKey=serialize(entry.key);
+    // Once the last consumer leaves its key, retire any request still running
+    // for that page, including a waiting first/next-page cursor. A second
+    // mounted reader of the same key must not be interrupted.
+    if(!IDENTITY_KEYS.has(serializedKey)&&!hasReader(serializedKey))
+      abortInflight({queryKey:entry.key,exact:true});
+    releaseUnobserved(serializedKey);
   };
 }
 
