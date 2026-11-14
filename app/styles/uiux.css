@@ -1137,17 +1137,17 @@ body{
 .scope-feature-loading__body span:nth-child(3){height:62%}
 .scope-feature-loading__body span:nth-child(4){height:90%}
 .scope-feature-loading__controls span,.scope-feature-loading__body span{
+  border:1px solid var(--loc-line-soft);
   border-radius:var(--loc-ui-radius-sm);
-  background:linear-gradient(110deg,var(--loc-ui-panel-soft),var(--loc-ui-accent-soft),var(--loc-ui-panel-soft));
-  background-size:200% 100%;
-  animation:scope-feature-loading-pulse 2.4s ease-in-out infinite;
+  background:var(--loc-panel-2);
 }
-@keyframes scope-feature-loading-pulse{0%,100%{background-position:100% 50%}50%{background-position:0 50%}}
+/* The visible loading label owns progress feedback; no perpetual shimmer. */
 .scope-feature-loading>.scope-status{border:0;padding:0;color:var(--loc-muted)}
 @media(prefers-reduced-motion:reduce){.scope-feature-loading__controls span,.scope-feature-loading__body span{animation:none}}
 @media(max-width:560px){.scope-feature-loading{min-height:18rem}.scope-feature-loading__body{min-height:9rem;padding:.8rem}}
 
 .scope-stat-data-pending{display:grid;gap:.75rem;min-width:0}
+.scope-stat-data-pending .scope-status{border-inline-start:2px solid var(--loc-accent);padding-inline-start:.75rem}
 
 /* Management inherits the same root/page/content grid as public routes.
    Keep only its Hero's dedicated box-size rule. */

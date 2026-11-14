@@ -75,7 +75,7 @@
     box-shadow 300ms var(--loc-craft-ease);
 }
 .loc-next-main[data-loc-view="home"] :is(.loc-card,.loc-panel,.loc-link-card):is(:hover,:focus-within),
-.scope-main[data-public-feature] :is(.scope-feature-card,.scope-inline-card,.scope-stat-section):is(:hover,:focus-within){
+.scope-main[data-public-feature] :is(.scope-feature-card,.scope-inline-card,.scope-stat-section:not(.statistics-dashboard)):is(:hover,:focus-within){
   border-color:color-mix(in srgb,var(--loc-accent) 36%,var(--loc-line));
   box-shadow:0 3px 14px var(--loc-craft-ink-shadow);
 }
@@ -110,8 +110,8 @@
   .loc-next-main[data-loc-view="home"] :is(a.loc-button,button.loc-button,a.loc-link-card):hover,
   .scope-main[data-public-feature] :is(a.loc-button,button.loc-button,.scope-pagination-button,.scope-search-popular-toggle):not(:disabled):hover,
   .scope-top-feature-nav>a:hover{
-    transform:translateY(-2px);
-    box-shadow:0 10px 26px var(--loc-craft-ink-shadow),0 0 20px var(--loc-craft-glow);
+    transform:translateY(-1px);
+    box-shadow:0 4px 12px var(--loc-craft-ink-shadow);
   }
   .scope-main[data-public-feature] .scope-culture-source-button:not(:disabled):hover{
     transform:translateY(-2px);
@@ -162,8 +162,8 @@
 }
 @media(hover:hover) and (pointer:fine){
   .scope-main[data-public-feature] .loc-public-article-list>.loc-shared-work-card:hover{
-    transform:translateY(-2px);
-    box-shadow:0 10px 30px var(--loc-craft-ink-shadow),0 0 22px var(--loc-craft-glow);
+    transform:translateY(-1px);
+    box-shadow:0 4px 14px var(--loc-craft-ink-shadow);
   }
 }
 .scope-main[data-public-feature="culture"]
@@ -171,7 +171,7 @@
   box-shadow:0 14px 38px var(--loc-craft-ink-shadow),inset 0 1px 0 color-mix(in srgb,var(--loc-text) 8%,transparent);
 }
 .scope-main[data-public-feature="statics"] .scope-ranking-chart{
-  box-shadow:0 12px 35px var(--loc-craft-ink-shadow);
+  box-shadow:none;
 }
 .scope-main[data-public-feature="trace"] .loc-trace-panel{
   box-shadow:0 16px 42px var(--loc-craft-ink-shadow);
@@ -197,17 +197,12 @@
 /* Six independent floating editor controls: never reorder Save/Cancel. */
 .scope-feature-dock :is(a,button){
   border-radius:clamp(14px,1.6vw,19px);
-  box-shadow:
-    0 9px 26px var(--loc-craft-ink-shadow),
-    inset 0 1px 0 color-mix(in srgb,var(--loc-text) 16%,transparent);
+  box-shadow:0 3px 10px var(--loc-craft-ink-shadow);
 }
 @media(hover:hover) and (pointer:fine){
   .scope-feature-dock :is(a,button):not(:disabled):hover{
-    transform:translateY(-4px);
-    box-shadow:
-      0 15px 30px var(--loc-craft-ink-shadow),
-      0 0 23px var(--loc-craft-glow),
-      inset 0 1px 0 color-mix(in srgb,var(--loc-text) 15%,transparent);
+    transform:translateY(-1px);
+    box-shadow:0 5px 14px var(--loc-craft-ink-shadow);
   }
 }
 .scope-feature-dock :is(a,button):not(:disabled):active{transform:translateY(-1px) scale(.965);}

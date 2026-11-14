@@ -24,8 +24,8 @@
   border-radius:clamp(14px,1.7vw,20px);
   background:color-mix(in srgb,var(--loc-accent) 23%,var(--loc-panel) 77%);
   color:var(--loc-text);
-  box-shadow:0 6px 18px rgb(0 0 0 / .24),0 1px 5px color-mix(in srgb,var(--loc-accent) 18%,transparent);
-  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+  box-shadow:0 3px 11px color-mix(in srgb,var(--loc-bg) 32%,transparent);
+  /* The dock is already independent; avoid six simultaneous glass filters. */
   text-decoration:none;font-size:.77rem;font-weight:650;line-height:1.2;
   -webkit-tap-highlight-color:transparent;pointer-events:auto;
   transition:background .16s ease,box-shadow .16s ease,transform .16s ease;
@@ -67,16 +67,13 @@
   background:color-mix(in srgb,var(--loc-accent) 33%,var(--loc-panel) 67%);
   box-shadow:0 8px 17px rgb(0 0 0 / .26);
 }
-/* Current destination: steady glow, a brighter surface and a small
-   position marker. Keep this visual state separate from editing actions. */
+/* Current destination: an inked position marker instead of permanent glow.
+   Keep this visual state separate from editing actions. */
 .scope-feature-dock a[aria-current="page"]{
   position:relative;
   border-color:var(--loc-accent);
   background:color-mix(in srgb,var(--loc-accent) 23%,var(--loc-panel) 77%);
-  box-shadow:
-    0 0 0 1px color-mix(in srgb,var(--loc-accent) 48%,transparent),
-    0 0 20px color-mix(in srgb,var(--loc-accent) 42%,transparent),
-    0 3px 10px rgb(0 0 0 / .16);
+  box-shadow:inset 0 -2px 0 var(--loc-accent),0 3px 10px color-mix(in srgb,var(--loc-bg) 30%,transparent);
 }
 .scope-feature-dock a[aria-current="page"]::after{
   content:'';
@@ -86,7 +83,7 @@
   border-radius:999px;
   bottom:3px;
   background:var(--loc-accent);
-  box-shadow:0 0 6px var(--loc-accent);
+  box-shadow:none;
 }
 /* While the editor session is resolving, this is the sole dock child:
    span all six tracks instead of overflowing the first narrow icon cell. */
