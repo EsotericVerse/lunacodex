@@ -16,6 +16,26 @@ export const ANCHOR_TYPE_GROUPS=Object.freeze({
 // Shared physical MediaAnchor contract. No Galaxy Media SQL relation exists.
 // Consumer projections are kept here beside the frozen ZModel type vocabulary.
 export const MEDIA_ANCHOR_COLUMNS='uid,type,title,description,createtime,attr,invisible';
+// Dynamic posting field in physical Pattern.attr. A virtual ZModel record
+// exposes it as articleUids without creating a second SQL relation.
+export const KEYWORD_PATTERN_POSTINGS_KEY='63ade525';
+export function keywordPatternRecord(row={}){
+  const uid=String(row.uid||''),literal=String(row.title||'');
+  const count=Number(row.num??0);
+  if(!UID.test(uid)||!literal.trim()||!Number.isSafeInteger(count)||count<0)
+    throw new TypeError('Invalid KeywordPatternRecord physical UID/literal/count');
+  let articleUids=[];
+  if(Object.hasOwn(row,'attr')){
+    const raw=typeof row.attr==='string'?JSON.parse(row.attr):row.attr??{};
+    if(!raw||typeof raw!=='object'||Array.isArray(raw))
+      throw new TypeError('Invalid KeywordPatternRecord attr JSON');
+    articleUids=raw[KEYWORD_PATTERN_POSTINGS_KEY]??[];
+    if(!Array.isArray(articleUids)||articleUids.some(id=>!UID.test(id))||
+       new Set(articleUids).size!==articleUids.length||articleUids.length!==count)
+      throw new TypeError('Invalid KeywordPatternRecord posting UID/count');
+  }
+  return {uid,literal,count,articleUids};
+}
 export function canonicalMediaAnchorType(hint='',url=''){
   const type=String(hint||'').trim().toLowerCase();
   const link=String(url||'').trim().toLowerCase();
@@ -137,6 +157,8 @@ export const ANCHOR_PAYLOAD_DEFS=Object.freeze({
   RuneAnchor:{url:{type:'String',optional:true},date:{type:'String',optional:true}},
   SunoAnchor:{url:{type:'String',optional:true},date:{type:'String',optional:true}},
   PatternAnchor:{postings:{type:'Json',optional:true}},
+  KeywordPatternRecord:{uid:{type:'String'},literal:{type:'String'},
+    count:{type:'Int'},articleUids:{type:'String',array:true}},
   ItemAnchor:{keyword:{type:'String',array:true,optional:true},uid:{type:'String',array:true,optional:true},total:{type:'Int',optional:true}},
   GroupAnchor:{uid:{type:'String',array:true,optional:true}},
   ClassAnchor:{uid:{type:'String',array:true,optional:true}},
