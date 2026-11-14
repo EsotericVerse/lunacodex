@@ -1,6 +1,7 @@
 import {prepareImportPlaceAnchors,importedPlaceId,recordImportPlaceVisits} from './import-place-anchors.mjs';
 import {prepareImportTimeAnchors} from './import-time-anchors.mjs';
 import {readImportPointDateAnchors} from './import-anchor-read.mjs';
+import {planImportPointUidLink} from './import-uid-delta.mjs';
 
 // Repair location/date links for articles already in Galaxy, without replaying
 // an archive, creating duplicate posts, or touching unrelated article fields.
@@ -34,8 +35,11 @@ export async function reconcileExistingImportAnchors({
   // another Point for each differently spelled location on a merged place.
   // Still collect those articles' timestamps below, keyed by the saved UID.
   const needingPlace=candidates.filter(row=>!String(row.place_id||'').trim());
+  const savedPointUids=[...new Set(candidates.map(row=>row.place_id).filter(uid=>
+    typeof uid==='string'&&/^[A-Za-z0-9]{8}$/.test(uid)))];
   const anchorSnapshot=await readImportPointDateAnchors({
-    scopeId:scope,pageSize,onProgress
+    scopeId:scope,pageSize,onProgress,
+    ...(needingPlace.length?{}:{pointUids:savedPointUids})
   });
   const places=await prepareImportPlaceAnchors(needingPlace,{
     scopeId:scope,relation,createMissing:true,scanExistingOnEmpty:true,onProgress,anchorSnapshot
@@ -66,8 +70,11 @@ export async function reconcileExistingImportAnchors({
     if(!matched){unmatched++;continue;}
     if(saved&&saved!==matched){unmatched++;continue;}
     if(!saved){
-      updates.push({uid:String(row.uid),place_id:matched});
-      if(updates.length>=200)await flush();
+      const {changes,patches}=planImportPointUidLink(null,matched);
+      if(patches.length){
+        updates.push({uid:String(row.uid),...changes});
+        if(updates.length>=200)await flush();
+      }
     }
     if(row.createtime)visits.push({uid:matched,time:row.createtime});
   }
