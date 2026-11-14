@@ -8,6 +8,7 @@ import {assertZModelGalaxyManagedValues,assertZModelAnchorBlockManagedValues,
   assertZModelSelectRows} from '../../../zenstack/import-validation.mjs';
 import {validateLocRegistryDomain} from './loc-domain.mjs';
 import {sql} from 'kysely';
+import {repairBeforeUidDelete} from './uid-dependency-before-delete.mjs';
 import {saveBlocksKysely} from './kysely-blocks.mjs';
 import {decodeRuntimeIo,encodeRuntimeIo} from '../query-batch-size.mjs';
 import {allocateAnchorUid} from '../uid.js';
@@ -212,6 +213,8 @@ export async function executeManagedKyselyWrite(trx,body,{modelName=''}={}){
     if(keys.some(key=>Object.hasOwn(values,key)))
       reject('Primary keys cannot be updated');
   }
+  if(operation==='delete')await repairBeforeUidDelete(trx,{table,filters,
+    serialize:(values,target)=>postgresManagedJsonbValues(values,target)});
   let count=0;
   if(operation==='update_batch')count=await writeBatch(trx,table,payload.p_rows);
   else if(operation==='upsert'){
