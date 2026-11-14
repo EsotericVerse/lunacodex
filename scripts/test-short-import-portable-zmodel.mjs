@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict';
 import {Kysely,MssqlDialect,MysqlDialect,PostgresDialect,sql} from 'kysely';
 import {portableGalaxyImportMapping} from '../zenstack/portable-import-mapping.mjs';
+import {shortImportAppendExpression} from '../app/loc/import/short-append-service.mjs';
 import {galaxyReadColumns} from '../zenstack/galaxy-read-models.mjs';
 
 const flags=galaxyReadColumns('GalaxyAttr');
@@ -54,7 +55,7 @@ for(const [engine,dialect] of Object.entries(dialects)){
   const insert=db.insertInto(model.table).values(mapped).compile();
   const append=db.updateTable(model.table)
     .set({
-      [model.content]:sql`concat(coalesce(${sql.ref(model.content)},''),${' tail'})`,
+      [model.content]:shortImportAppendExpression(sql,engine,model.content,' tail'),
       [model.updatedAt]:new Date('2026-11-14T02:00:00.000Z').toISOString()
     })
     .where(model.uid,'=',row.uid)
@@ -66,6 +67,16 @@ for(const [engine,dialect] of Object.entries(dialects)){
   }
   assert(insert.sql.includes('UpdateTime'));
   assert(append.sql.includes('UpdateTime'));
+  assert(append.parameters.includes(' tail'),'append tail must stay bound');
+  if(engine==='postgres'){
+    assert.match(append.sql,/coalesce\([\s\S]*\)\s*\|\|\s*\$\d+/i,
+      'PostgreSQL must infer the bound tail as text; no CONCAT($n) error');
+    assert.doesNotMatch(append.sql,/concat\s*\(/i);
+  }else{
+    assert.match(append.sql,/concat\s*\(/i,
+      engine+' retains native CONCAT, not PostgreSQL ||');
+    assert.doesNotMatch(append.sql,/\s\|\|\s/);
+  }
   // MySQL resolves the namespace through its database connection rather than
   // prefixing a schema; the others retain explicit schema qualification.
   if(engine==='mysql')assert(!insert.sql.includes('silver.'));
