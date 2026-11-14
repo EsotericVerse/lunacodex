@@ -33,7 +33,6 @@ const LOC_OPTIONS=Object.freeze([
   {value:'media',label:'發表多媒體',shortLabel:'媒體'},
   {value:'trace',label:'治理原則',shortLabel:'治理原則'}
 ]);
-const SETTINGS_OPTION={value:'settings',label:'主題與資料庫',shortLabel:'設定'};
 const GROUP_OPTION={value:'groupAccess',label:'群組權限',shortLabel:'授權'};
 // LOC no longer has a separate management search. Keep old links functional.
 const OLD_LOC_SECTION_ALIASES=Object.freeze({search:'media'});
@@ -62,18 +61,17 @@ export default function SearchManagement(){
     window.history.replaceState(window.history.state,'',url.pathname+url.search+url.hash);
   },[isLocAdmin,searchParams]);
   const groupAuthorized=isLocAdmin||account.canLocAccessSync('group',scopeId);
+  const authorPage=scopeId==='lo3rwang';
+  const canShowGroupAccess=isLocAdmin||groupAuthorized&&!authorPage;
   const options=isLocAdmin?[...LOC_OPTIONS,GROUP_OPTION]
-    :groupAuthorized
-      ?[...ARTICLE_CONTROL_SECTIONS,SETTINGS_OPTION,GROUP_OPTION]
-      :[...ARTICLE_CONTROL_SECTIONS,SETTINGS_OPTION];
+    :canShowGroupAccess?[...ARTICLE_CONTROL_SECTIONS,GROUP_OPTION]:ARTICLE_CONTROL_SECTIONS;
   const [activeSection,setSection]=useManagementSection(options,'publish',
     isLocAdmin?OLD_LOC_SECTION_ALIASES:OLD_SCOPE_SECTION_ALIASES);
-  // LOC Auth authorization can arrive after the section query is first read.
-  // Restore a bookmarked Group Access tab once its permission is available.
+  // Restore bookmarks only for a Group Access tab that still exists.
   useEffect(()=>{
-    if(groupAuthorized&&searchParams?.get('section')==='groupAccess'&&activeSection!=='groupAccess')
+    if(canShowGroupAccess&&searchParams?.get('section')==='groupAccess'&&activeSection!=='groupAccess')
       setSection('groupAccess');
-  },[groupAuthorized,activeSection,searchParams,setSection]);
+  },[canShowGroupAccess,activeSection,searchParams,setSection]);
   const currentSection=options.find(option=>option.value===activeSection)||options[0];
 
   return <FeaturePage featureId="search">
@@ -99,6 +97,7 @@ export default function SearchManagement(){
         </div>:null}
 
         {!isLocAdmin&&activeSection==='blocks'?<div className="article-control-stacked">
+          <ScopeSettingsPanel key={scopeId+'-theme'} scopeId={scopeId}/>
           <section aria-labelledby="article-control-suggestions-heading">
             <h3 id="article-control-suggestions-heading">建議搜尋</h3>
             <ScopeEditableBlocks key={scopeId+'-suggestions'} scopeId={scopeId} page="search" orders={[1]}
@@ -119,9 +118,7 @@ export default function SearchManagement(){
 
         {!isLocAdmin&&activeSection==='import'
           ?<ManagementImportPanel key={scopeId+'-import'} scopeId={scopeId}/>:null}
-        {!isLocAdmin&&activeSection==='settings'
-          ?<ScopeSettingsPanel key={scopeId+'-settings'} scopeId={scopeId}/>:null}
-        {activeSection==='groupAccess'&&(isLocAdmin||account.canLocAccessSync('group',scopeId))
+        {activeSection==='groupAccess'&&options.some(item=>item.value==='groupAccess')&&(isLocAdmin||account.canLocAccessSync('group',scopeId))
           ?<ScopeGroupAccessPanel groupId={scopeId}/>:null}
         {isLocAdmin&&activeSection==='publish'
           ?<ManagementContentTarget scopeId={scopeId} mode="article" globalAdmin/>:null}
