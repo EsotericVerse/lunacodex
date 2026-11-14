@@ -22,7 +22,7 @@ async function authorizedAnchorPage({scopeId,afterUid,limit}){
 }
 
 export async function readImportPointDateAnchors({
-  scopeId,pageSize=500,onProgress,readPage=authorizedAnchorPage
+  scopeId,pageSize=750,onProgress,readPage=authorizedAnchorPage
 }={}){
   if(!/^[a-z][a-z0-9]{0,14}$/.test(String(scopeId||''))||
       scopeId==='local'||scopeId==='loc'||typeof readPage!=='function')
