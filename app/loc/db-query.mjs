@@ -3,6 +3,7 @@
 import {DB_QUERY_BATCH_SIZE,queryBatchSize} from './db-contract.mjs';
 import {coalescePendingPublicRead} from './inflight-public-read.mjs';
 import {mapBounded} from './bounded-parallel.mjs';
+import {transientReadSignal,transientReadGeneration} from '../../zenstack/transient-read-epoch.mjs';
 export {DB_QUERY_BATCH_SIZE,queryBatchSize} from './db-contract.mjs';
 
 // Native Kysely SELECT has no Supabase Data API Max Rows ceiling.
@@ -74,7 +75,7 @@ function resultError(result,table,source){
 // as a recoverable failure (primary -> backup), not as a user cancellation.
 export const READ_TIMEOUT_MS=8000;
 export async function executePublicRead(table,buildQuery,{source='auto',authenticated=false,signal=null,expectedDbId=''}={}){
-  const cancel=signal;
+  const cancel=transientReadSignal(signal);
   const timeout=AbortSignal.timeout(READ_TIMEOUT_MS);
   signal=cancel?AbortSignal.any([cancel,timeout]):timeout;
   if(cancel?.aborted)throw abortError();
@@ -231,7 +232,7 @@ export async function selectRows(table,{
   // public results are not cached: an editor's next query sees new data.
   if(authenticated||signal||expectedDbId||/^silver\.local(?:_[a-z0-9_]+)?$/.test(table))return request();
   return coalescePendingPublicRead(JSON.stringify([
-    'rows',table,columns,filters,orFilter,orders,safeLimit,safeOffset,count,source
+    'rows',transientReadGeneration(),table,columns,filters,orFilter,orders,safeLimit,safeOffset,count,source
   ]),request);
 }
 
@@ -241,10 +242,12 @@ export async function selectAllRows(table,{
   orFilter='',
   orders=[],
   pageSize=DB_QUERY_BATCH_SIZE,
-  onProgress=null
+  onProgress=null,
+  signal=null
 }={}){
+  const pageSignal=transientReadSignal(signal);
   const size=Math.max(1,Math.floor(Number(pageSize)||queryBatchSize(columns)));
-  const first=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset:0,count:'exact'});
+  const first=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset:0,count:'exact',signal:pageSignal});
   const rows=[...first.rows];
   const total=first.count==null||!Number.isSafeInteger(Number(first.count))?null:Number(first.count);
   const source=first.dataSource||'auto';
@@ -252,7 +255,8 @@ export async function selectAllRows(table,{
   onProgress?.({completed:offset,total});
   // Missing COUNT never means the first transport page is the whole table.
   while(total===null||offset<total){
-    const page=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset,source});
+    if(pageSignal.aborted)throw abortError();
+    const page=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset,source,signal:pageSignal});
     if(!page.rows.length)break;
     rows.push(...page.rows);
     offset+=page.rows.length;
@@ -280,17 +284,19 @@ export async function selectAllRowsBounded(table,{
   pageSize=DB_QUERY_BATCH_SIZE,
   authenticated=false,
   parallelAfterPages=PARALLEL_SCAN_AFTER_PAGES,
-  concurrency=PARALLEL_SCAN_CONCURRENCY
+  concurrency=PARALLEL_SCAN_CONCURRENCY,
+  signal=null
 }={}){
+  const pageSignal=transientReadSignal(signal);
   const size=Math.max(1,Math.floor(Number(pageSize)||queryBatchSize(columns)));
-  const first=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset:0,count:'exact',authenticated});
+  const first=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset:0,count:'exact',authenticated,signal:pageSignal});
   const rows=[...first.rows];
   const total=first.count==null||!Number.isSafeInteger(Number(first.count))?null:Number(first.count);
   if(total===null||rows.length<Math.min(total,size)){
     // A missing COUNT or unexpectedly short transport page cannot truncate history.
     let offset=rows.length;
     while(total===null||offset<total){
-      const page=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset,authenticated});
+      const page=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset,authenticated,signal:pageSignal});
       if(!page.rows.length)break;
       rows.push(...page.rows);offset+=page.rows.length;
     }
@@ -302,13 +308,13 @@ export async function selectAllRowsBounded(table,{
   if(remainingOffsets.length<=parallelAfterPages){
     let source=first.dataSource||'auto';
     for(const offset of remainingOffsets){
-      const page=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset,authenticated,source});
+      const page=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset,authenticated,source,signal:pageSignal});
       rows.push(...page.rows);
     }
     return {rows,count:total??rows.length,dataSource:source};
   }
   const pages=await mapBounded(remainingOffsets,concurrency,offset=>
-    selectRows(table,{columns,filters,orFilter,orders,limit:size,offset,authenticated}));
+    selectRows(table,{columns,filters,orFilter,orders,limit:size,offset,authenticated,signal:pageSignal}));
   for(const page of pages)rows.push(...(page?.rows||[]));
   return {rows,count:total,dataSource:first.dataSource};
 }
@@ -327,9 +333,11 @@ export async function forEachAllRowsPage(table,{
   pausePageMs=STREAM_PAGE_PAUSE_MS,
   signal=null
 }={},onPage){
+  signal=transientReadSignal(signal);
   const size=Math.max(1,Math.floor(Number(pageSize)||queryBatchSize(columns)));
   let offset=0;
   for(;;){
+    if(signal.aborted)throw abortError();
     const {rows}=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset,signal});
     if(!rows.length)break;
     await onPage(rows);

@@ -2,6 +2,7 @@
 // executes every bounded SELECT with the server-owned Kysely SQL dialect.
 // LOC OAuth delegation is still mandatory for all mutations.
 import {withPublicReadBudget} from './kysely-read-budget.mjs';
+import {transientReadSignal} from '../../../zenstack/transient-read-epoch.mjs';
 
 const IDENT=/^[A-Za-z_][A-Za-z0-9_]*$/;
 const FIELD=value=>{
@@ -71,6 +72,8 @@ export function createKyselyPublicClient({
 }={}){
   if(typeof fetchImpl!=='function')throw Error('LOC Kysely fetch is unavailable');
   async function read(q){
+    // Pre-queued public reads and actual browser fetch use the same route epoch.
+    q.signal=transientReadSignal(q.signal);
     if(role==='authenticated'&&q.schema==='api'&&
       ['loc_user','user_settings','user_records'].includes(q.table)&&
       typeof readPrivate==='function'){
@@ -130,7 +133,7 @@ export function createKyselyPublicClient({
         p_scope_id:scope,p_view:view,p_start:start||null,p_end:end||null,
         p_options:args.p_options||{}
       }})}),
-      signal:AbortSignal.timeout(9000)
+      signal:AbortSignal.any([transientReadSignal(),AbortSignal.timeout(9000)])
     });
     const payload=await response.json().catch(()=>null);
     if(!response.ok){
@@ -149,7 +152,7 @@ export function createKyselyPublicClient({
       method:'POST',credentials:'omit',cache:'no-store',redirect:'error',
       headers:{accept:'application/json','content-type':'application/json'},
       body:JSON.stringify({kind:'public-action',name,args}),
-      signal:AbortSignal.timeout(9000)
+      signal:AbortSignal.any([transientReadSignal(),AbortSignal.timeout(9000)])
     });
     const payload=await response.json().catch(()=>null);
     if(!response.ok){
@@ -192,9 +195,10 @@ export function createKyselyPublicClient({
     role,
     schema(schema){
       FIELD(schema);
-      return {from(table){return new Query(q=>role==='anon'?
-        withPublicReadBudget(()=>read(q),q.signal):read(q),schema,table,
-        mutate?write:null)},
+      return {from(table){return new Query(q=>{
+        q.signal=transientReadSignal(q.signal);
+        return role==='anon'?withPublicReadBudget(()=>read(q),q.signal):read(q);
+      },schema,table,mutate?write:null)},
       analytics,managedWrite:noWrite,managedAction:noWrite,
       publicAction,anchor:noWrite};
     },

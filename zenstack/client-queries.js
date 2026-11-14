@@ -2,6 +2,7 @@
 
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import {flashMessage} from '../app/loc/flash-message';
+import {cancelTransientReads} from './transient-read-epoch.mjs';
 
 // LOC live read layer — no TanStack, no SWR, no browser cache, no polling.
 // LOC is a read-only presentation surface over other systems' data, so every
@@ -111,6 +112,9 @@ function abortInflight(filter={}){
 // makes old page query payloads eligible for collection.
 export function releaseTransientPageResources(){
   resourceEpoch++;
+  // Abort HTTP reads and requests waiting in the bounded read queue first.
+  // The active session, permissions, and explicit writes are not affected.
+  cancelTransientReads();
   abortInflight();
   for(const key of [...dataStore.keys()])
     if(!IDENTITY_KEYS.has(key))dataStore.delete(key);

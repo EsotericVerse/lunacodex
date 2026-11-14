@@ -3,9 +3,17 @@
 // business API; that API validates identity, then queries api.manage for roles.
 import {createLocAccountAdapter} from '../auth/loc-browser.mjs';
 import {createKyselyPublicClient} from './kysely-browser.mjs';
+import {transientReadSignal} from '../../../zenstack/transient-read-epoch.mjs';
 
 const AUTH='https://auth.lo3rwang.cc';
 const PERSONAL=new Set(['api.loc_user','api.user_settings','api.user_records']);
+// Only confirmed read actions participate in management-page cancellation.
+// Mutations/import writes are never aborted by a navigation reset.
+const READ_ACTIONS=new Set([
+  'read_group_members','read_loc_source_hierarchy','read_scope_registry_admin',
+  'find_galaxy_duplicates','keyword_pattern_statistics','suggest_search_patterns',
+  'media_anchor_candidates','anchor_import_page','import_site_presence'
+]);
 function errorFromResponse(result,response){
   const error=new Error(result?.error?.message||
     'LOC data operation failed (HTTP '+response.status+')');
@@ -23,15 +31,21 @@ export function createConfiguredAdapter({
   });
   const publicClient=createKyselyPublicClient({role:'anon',fetch:fetchImpl});
   async function operation(kind,scopeid='',fields={}){
-    // Cookie is sent with this write; the business API verifies the Session
-    // and permission once. Never preflight the Auth service from this client.
+    // The same authenticated endpoint serves reads and writes. Only known
+    // reads can inherit the active page's abort signal; never cancel a write.
+    const readOnly=kind==='personal-read'||
+      (kind==='managed-action'&&READ_ACTIONS.has(String(fields.name||'')));
+    const signal=readOnly
+      ?AbortSignal.any([transientReadSignal(),AbortSignal.timeout(30000)])
+      :AbortSignal.timeout(30000);
+    // Cookies still authenticate every request; no extra Auth round-trip.
     const response=await fetchImpl('/api/loc-native',{
       method:'POST',
       credentials:'include',
       cache:'no-store',
       headers:{'content-type':'application/json',accept:'application/json'},
       body:JSON.stringify({kind,scopeid,...fields}),
-      signal:AbortSignal.timeout(30000)
+      signal
     });
     const result=await response.json().catch(()=>null);
     if(!response.ok)throw errorFromResponse(result,response);
