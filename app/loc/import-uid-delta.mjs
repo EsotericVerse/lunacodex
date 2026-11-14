@@ -132,6 +132,18 @@ export function planExistingImportUidUpdate(existing,incoming,{
   return {changes:changedFields(next,patches),patches};
 }
 
+// A Point already selected by the import UID index only needs a tiny
+// single-column patch. Do not re-run the entire article link planner after
+// its source/ref/target changes have already been computed once.
+export function planImportPointUidLink(previousUid,nextUid){
+  if(!nextUid)return {changes:{},patches:[]};
+  const id=checkedUid(nextUid);
+  const [next,patches]=produceWithPatches({place_id:previousUid??null},draft=>{
+    if(draft.place_id!==id)draft.place_id=id;
+  });
+  return {changes:changedFields(next,patches),patches};
+}
+
 // MediaAnchor UID is a separate namespace. This is the only operation which
 // writes media_link: append verified attached IDs to this one saved Galaxy
 // article, no global Anchor scan, no changes when the links already exist.
