@@ -42,7 +42,7 @@ export async function readScopePatternRows(db,scope){
   const rows=await db.selectFrom(scopeAnchor(scope))
     .select(['uid','title','attr','num','createtime'])
     .where('type','=','pattern').execute();
-  return rows.map(row=>{
+  const projected=rows.map(row=>{
     const postings=attrs(row.attr),uid_list=postings[SCOPE_PATTERN_POSTING_KEY]??[];
     if(!Array.isArray(uid_list)||uid_list.some(uid=>!UID.test(String(uid)))||
       new Set(uid_list).size!==uid_list.length)throw Error('Invalid Pattern posting list');
@@ -50,6 +50,12 @@ export async function readScopePatternRows(db,scope){
       uid_list:[...uid_list],num:Number(row.num)||0,
       attr:postings,createtime:row.createtime};
   });
+  // All readers (Statistics, Search, editor and post-import incremental
+  // analysis) must share the same semantic uniqueness guard as the writer.
+  // A Pattern has a physical UID PK but normalized literal is not UNIQUE.
+  // Reuse the existing conflict detector rather than choosing the first UID.
+  patternRowsToIndex(projected);
+  return projected;
 }
 
 function patternRowsToIndex(rows){
