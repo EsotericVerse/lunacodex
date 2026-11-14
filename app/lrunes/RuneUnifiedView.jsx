@@ -2,6 +2,7 @@
 
 import {useEffect,useState} from 'react';
 import dynamic from 'next/dynamic';
+import {prepareTransientResourceAction} from '../../zenstack/client-queries';
 import './rune-presentation-switch.css';
 
 // Keep the canonical 2D original-art module entirely independent of the
@@ -32,6 +33,13 @@ export default function RuneUnifiedView({feature='duel',defaultView='3d'}){
   const allowedViews=Object.keys(VISUALS[selectedFeature]);
   const fallback=canonicalView(defaultView,'3d',allowedViews);
   const [view,setView]=useState(fallback);
+  const [entryReadyFor,setEntryReadyFor]=useState('');
+  // The old page's queries are discarded before the new 2D/3D scene mounts.
+  // An existing draw/game state is never cleared by a background timer.
+  useEffect(()=>{
+    prepareTransientResourceAction('navigation');
+    setEntryReadyFor(selectedFeature);
+  },[selectedFeature]);
   useEffect(()=>{
     const read=()=>{
       const params=new URLSearchParams(window.location.search);
@@ -44,7 +52,10 @@ export default function RuneUnifiedView({feature='duel',defaultView='3d'}){
   },[fallback,selectedFeature]);
 
   const selectView=next=>{
-    if(!allowedViews.includes(next))return;
+    if(!allowedViews.includes(next)||next===view)return;
+    // Old presentation (including GPU textures) unmounts on the key change.
+    // Do not reset the entire page again or delete an in-progress draw.
+    prepareTransientResourceAction('chart');
     setView(next);
     const url=new URL(window.location.href);
     url.searchParams.set('d',next);
@@ -58,6 +69,8 @@ export default function RuneUnifiedView({feature='duel',defaultView='3d'}){
         className="rune-presentation-switch-option" onClick={()=>selectView(key)}>{VIEW_LABELS[key]}</button>)}
     </div>
   </div>;
+  if(entryReadyFor!==selectedFeature)
+    return <main className="loc-next-main"><p className="scope-status" role="status">正在清理舊資源，載入符文場域…</p></main>;
   const Component=VISUALS[selectedFeature][view];
   const extraProps=view==='3d'&&selectedFeature!=='list'?{mode:selectedFeature}:{};
   return <Component key={selectedFeature+'-'+view}

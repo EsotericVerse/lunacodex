@@ -66,9 +66,10 @@ export default function Rune3DLibrary({presentationSwitcher=null}){
   // selected group must not blank the entire atlas.
   useEffect(()=>{
     let active=true;
+    const controller=new AbortController();
     if(groupId===null){
       setAllRunes([]);setStatus('ready');setError('');
-      return()=>{active=false;};
+      return()=>{active=false;controller.abort();};
     }
     const ids=runeNumbersForGroup(groupId);
     setAllRunes([]);setStatus('loading');setError('');
@@ -76,7 +77,7 @@ export default function Rune3DLibrary({presentationSwitcher=null}){
       columns:RUNE_COLUMNS,
       filters:[{column:'rune_id',operator:'in',value:ids}],
       orders:[{column:'rune_id',ascending:true}],
-      limit:ids.length,offset:0
+      limit:ids.length,offset:0,signal:controller.signal
     }).then(({rows})=>{
       if(!active)return;
       const byId=new Map((rows||[]).map(rune=>[Number(rune.rune_id),rune]));
@@ -88,18 +89,19 @@ export default function Rune3DLibrary({presentationSwitcher=null}){
     }).catch(err=>{
       if(active){setError(String(err?.message||err));setStatus('error');}
     });
-    return()=>{active=false;};
+    return()=>{active=false;controller.abort();};
   },[groupId,reload]);
 
   useEffect(()=>{
     let active=true;
-    selectRows('silver.runes_group',{columns:GROUP_COLUMNS,limit:9,offset:0})
+    const controller=new AbortController();
+    selectRows('silver.runes_group',{columns:GROUP_COLUMNS,limit:9,offset:0,signal:controller.signal})
       .then(({rows})=>{
         if(!active)return;
         if((rows||[]).length!==9)throw Error('群組資料不完整：'+(rows||[]).length+' / 9');
         setGroupRows(rows);setGroupError('');
       }).catch(err=>{if(active)setGroupError('群組文字資料暫時無法載入：'+String(err?.message||err));});
-    return()=>{active=false;};
+    return()=>{active=false;controller.abort();};
   },[reload]);
 
   const groups=GROUPS.map(entry=>{

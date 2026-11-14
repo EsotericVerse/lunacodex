@@ -71,7 +71,8 @@ export default function RuneAtlasLab({presentationSwitcher=null}){
   const [error,setError]=useState('');
   useEffect(()=>{
     let active=true;
-    selectRows('silver.runes_group',{columns:GROUP_COLUMNS,limit:9,offset:0})
+    const controller=new AbortController();
+    selectRows('silver.runes_group',{columns:GROUP_COLUMNS,limit:9,offset:0,signal:controller.signal})
       .then(({rows})=>{if(active){
         setGroups((rows||[]).map(row=>({...row,index:groupIndex(row)}))
           .sort((a,b)=>a.index-b.index).map((row,i)=>({
@@ -85,21 +86,24 @@ export default function RuneAtlasLab({presentationSwitcher=null}){
       }})
       .catch(e=>{if(active)setError('群組載入失敗：'+String(e?.message||e));})
       .finally(()=>{if(active)setLoading(false);});
-    return()=>{active=false};
+    return()=>{active=false;controller.abort();};
   },[]);
   useEffect(()=>{
     let active=true;
-    if(!group){setRunes([]);return()=>{active=false;};}
+    const controller=new AbortController();
+    setRunes([]);setDetails(null);
+    if(!group){setLoading(false);return()=>{active=false;controller.abort();};}
     const ids=[...new Set(group.runeslist.map(Number).filter(n=>Number.isInteger(n)&&n>=0))];
-    if(!ids.length){setRunes([]);return()=>{active=false;};}
+    if(!ids.length){setRunes([]);setLoading(false);return()=>{active=false;controller.abort();};}
     setLoading(true);setError('');
     selectRows('silver.runes',{columns:DETAIL_COLUMNS,
       filters:[{column:'rune_id',operator:'in',value:ids}],
-      orders:[{column:'rune_id',ascending:true}],limit:ids.length,offset:0
+      orders:[{column:'rune_id',ascending:true}],limit:ids.length,offset:0,
+      signal:controller.signal
     }).then(({rows})=>{if(active)setRunes(rows||[]);})
       .catch(e=>{if(active)setError('符文讀取失敗：'+String(e?.message||e));})
       .finally(()=>{if(active)setLoading(false);});
-    return()=>{active=false;};
+    return()=>{active=false;controller.abort();};
   },[group]);
   // Direct navigation: group artwork tap enters the group, never opens a preview modal.
   const enterGroup=entry=>{

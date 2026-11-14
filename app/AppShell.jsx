@@ -4,7 +4,7 @@ import {useEffect,useMemo,useRef,useState,useSyncExternalStore} from 'react';
 import dynamic from 'next/dynamic';
 import {Capacitor} from '@capacitor/core';
 import {LayoutGroup,motion,useReducedMotion} from 'motion/react';
-import {useQueryClient,prepareTransientResourceAction} from '../zenstack/client-queries';
+import {useQueryClient} from '../zenstack/client-queries';
 import {translateUiField,UI_COPY,UI_LOCALE_OPTIONS,normalizeUiLocale,uiCopy,registerDefaultSection,isSectionLoaded,loadSection} from './i18n/ui-copy';
 import {UiLocaleProvider,useLoadedUiLocale,useUiLocale,useUiSection} from './i18n/ui-locale';
 import FieldText from './i18n/FieldText';
@@ -13,8 +13,9 @@ import dataSourceStatusZh from './i18n/sections/uiExtra.dataSourceStatus.zh_tw.j
 registerDefaultSection('fields',fieldsZh);
 registerDefaultSection('uiExtra.dataSourceStatus',dataSourceStatusZh);
 import {FEATURES,SCOPES,featureIdForPath,getScope} from './modular/scope-registry';
+import {SCOPE_ROUTE_INDEX} from './modular/scope-route-index.js';
 import {applyTheme,themeSignature,THEME_SLOTS} from './modular/theme-registry';
-import {mergeThemeSlot} from './loc/theme-data';
+import {mergeThemeSlot,selectThemeOverride} from './loc/theme-data';
 import {useScopeRuntime} from './modular/use-scope-runtime';
 import {faviconForScope} from './site-favicons';
 import {appBootstrapPageCopy,useAppBootstrap} from './loc/app-bootstrap';
@@ -107,6 +108,36 @@ function nextThemeChangeDelay(date=new Date()){
   return Math.max(1,boundary-date.getTime()+25);
 }
 
+// A user-selected palette is a preference, not a query payload. It must
+// survive management's mandatory dynamic-read disposal and full static
+// management entry navigation without caching SQL, Session or private data.
+const USER_THEME_SESSION_KEY='loc-user-theme-selection-v1';
+const LAST_ACTIVE_THEME_KEY='loc-active-theme-id-v1';
+function readLastActiveTheme(){
+  try{
+    const candidate=String(window.sessionStorage.getItem(LAST_ACTIVE_THEME_KEY)||'');
+    return THEME_SLOTS.some(slot=>slot.id===candidate)?candidate:'';
+  }catch{return '';}
+}
+function rememberActiveTheme(themeId){
+  if(!THEME_SLOTS.some(slot=>slot.id===themeId))return;
+  try{window.sessionStorage.setItem(LAST_ACTIVE_THEME_KEY,themeId);}catch{}
+}
+function readUserTheme(scopeId){
+  try{
+    const prefs=JSON.parse(window.sessionStorage.getItem(USER_THEME_SESSION_KEY)||'{}');
+    const candidate=String(prefs?.[scopeId]||'');
+    return THEME_SLOTS.some(slot=>slot.id===candidate)?candidate:SYSTEM_THEME_ID;
+  }catch{return SYSTEM_THEME_ID;}
+}
+function rememberUserTheme(scopeId,themeId){
+  try{
+    const prefs=JSON.parse(window.sessionStorage.getItem(USER_THEME_SESSION_KEY)||'{}');
+    if(themeId===SYSTEM_THEME_ID)delete prefs[scopeId];
+    else if(THEME_SLOTS.some(slot=>slot.id===themeId))prefs[scopeId]=themeId;
+    window.sessionStorage.setItem(USER_THEME_SESSION_KEY,JSON.stringify(prefs));
+  }catch{}
+}
 function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride='',pageName='index'}){
   const reduceMotion=useReducedMotion();
   const scope=scopeMeta||getScope(String(scopeId||'').trim());
@@ -117,9 +148,14 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
   // page: nothing here issues a second round trip for config or Themes.
   const bootstrap=useAppBootstrap(scopeId,pageName);
   const configEnabled=!fixedDefaultThemeId&&scope.id!=='loc'&&!scope.aggregateChildren&&scope.id!=='admin';
-  const configuredTheme=configEnabled?String(bootstrap.data?.config?.theme||'').trim():'';
+  // A management entry retires its obsolete SQL readers before rendering.
+  // Published route metadata is already available synchronously and prevents
+  // the palette from falling back to day/night while Bootstrap is re-reading.
+  const publishedTheme=SCOPE_ROUTE_INDEX.find(row=>row.scope_id===scopeId)?.config?.theme;
+  const configuredTheme=configEnabled?String(bootstrap.data?.config?.theme||
+    publishedTheme||'').trim():'';
   const configuredDefaultThemeId=configuredTheme===SYSTEM_THEME_ID?'':configuredTheme;
-  const [selection,setSelection]=useState(()=>({scopeId,themeId:SYSTEM_THEME_ID}));
+  const [selection,setSelection]=useState(()=>({scopeId,themeId:readUserTheme(scopeId)}));
   // Decorative local feedback only when a person selects a different option.
   // Theme persistence and actual palette application remain untouched.
   const [accentPulse,setAccentPulse]=useState(0);
@@ -128,35 +164,48 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
   // Otherwise the local preview can mask a successful database update.
   useEffect(()=>{
     const onSaved=event=>{
-      if(event?.detail?.scopeId===scopeId)setSelection({scopeId,themeId:SYSTEM_THEME_ID});
+      if(event?.detail?.scopeId===scopeId){rememberUserTheme(scopeId,SYSTEM_THEME_ID);setSelection({scopeId,themeId:SYSTEM_THEME_ID});}
     };
     window.addEventListener('loc-scope-theme-saved',onSaved);
     return()=>window.removeEventListener('loc-scope-theme-saved',onSaved);
   },[scopeId]);
   const selectedThemeId=selection.scopeId===scopeId?selection.themeId:SYSTEM_THEME_ID;
-  const systemDefaultThemeId=fixedDefaultThemeId||configuredDefaultThemeId||automaticThemeId(now);
+  const systemDefaultThemeId=fixedDefaultThemeId||configuredDefaultThemeId||
+    (scopeId==='admin'?readLastActiveTheme():'')||automaticThemeId(now);
   const effectiveThemeId=selectedThemeId===SYSTEM_THEME_ID?systemDefaultThemeId:selectedThemeId;
-  const themeRows=Array.isArray(bootstrap.data?.themes)?bootstrap.data.themes:[];
-  const override=themeRows.find(row=>row.theme_id===effectiveThemeId)||null;
-  const slot=useMemo(
-    ()=>mergeThemeSlot(effectiveThemeId,override),
-    [effectiveThemeId,override]
-  );
-  const themeChoices=themeRows.length
-    ?themeRows.map(row=>({id:row.theme_id,label:row.theme_name||row.theme_id}))
+  const [activePalette,setActivePalette]=useState(null);
+  useEffect(()=>{
+    let live=true;
+    setActivePalette(null);
+    // Only the selected palette is imported; previous async completions may
+    // never replace the newly selected theme.
+    selectThemeOverride(effectiveThemeId).then(row=>{
+      if(live)setActivePalette({id:effectiveThemeId,row});
+    }).catch(()=>{if(live)setActivePalette({id:effectiveThemeId,row:null});});
+    return()=>{live=false;};
+  },[effectiveThemeId]);
+  const themeChoices=(bootstrap.data?.theme_list||[]).length
+    ?bootstrap.data.theme_list.map(row=>({
+      id:row.theme_id,label:row.theme_name||row.theme_id
+    }))
     :THEME_SLOTS.map(item=>({id:item.id,label:item.label}));
+  const slot=useMemo(()=>mergeThemeSlot(effectiveThemeId,
+    activePalette?.id===effectiveThemeId?activePalette.row:null),
+    [effectiveThemeId,activePalette]);
 
   useEffect(()=>{
-    // Show the page as soon as it hydrates, in the built-in day/night palette, and
-    // never wait on the network. The DB palette and the Scope's configured theme
-    // are applied the moment they arrive (slot changes). No palette is stored.
+    rememberActiveTheme(effectiveThemeId);
+  },[effectiveThemeId]);
+  useEffect(()=>{
+    // Published CSS already contains the eight canonical palette declarations.
+    // The first paint uses the exact theme ID from the head bootstrap script.
+    // The selected JSON is loaded only for metadata/live override values.
     const root=document.documentElement;
-    if(root.dataset.themeSignature===themeSignature(slot)){
-      delete root.dataset.themeBootstrap;
-      return;
-    }
-    applyTheme(slot);
-  },[slot,scopeId,effectiveThemeId]);
+    if(root.dataset.themeId===effectiveThemeId&&
+      !activePalette?.row&&root.dataset.themeBootstrap!=='scheme-only')return;
+    if(root.dataset.themeSignature!==themeSignature(slot))
+      applyTheme(slot);
+  },[slot,scopeId,effectiveThemeId,activePalette]);
 
   useEffect(()=>{
     if(selectedThemeId!==SYSTEM_THEME_ID||fixedDefaultThemeId||configuredDefaultThemeId)return undefined;
@@ -173,7 +222,9 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
   },[selectedThemeId,fixedDefaultThemeId,configuredDefaultThemeId]);
 
   useEffect(()=>{
-    setSelection({scopeId,themeId:SYSTEM_THEME_ID});
+    // Switching Scope preserves each Scope's own explicitly chosen palette.
+    // Entering /manage must never silently reset that choice to system.
+    setSelection({scopeId,themeId:readUserTheme(scopeId)});
     setAccentPulse(0);
   },[scopeId]);
 
@@ -191,6 +242,7 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
     <select value={selectedThemeId} onChange={event=>{
       const next=event.target.value;
       if(next===selectedThemeId)return;
+      rememberUserTheme(scopeId,next);
       setSelection({scopeId,themeId:next});
       if(!reduceMotion)setAccentPulse(count=>count+1);
     }} aria-label={copy.common.theme}>
@@ -651,9 +703,8 @@ function AppShellInner({children,runtime}){
               :currentFeature===tab.id);
           return <ScopeLink key={tab.id} href={tab.href} native={native}
             onClick={()=>{
-               // Retire the outgoing feature's in-flight reads BEFORE routing.
-               // Identity, grants, unsaved editor drafts and writes are excluded.
-               if(!selected)prepareTransientResourceAction('navigation');
+               // ScopeLink now handles route cleanup once for all links,
+               // including the six-button dock.
                setDockActivation(prev=>({id:tab.id,count:prev.count+1}));
              }}
             aria-current={selected?'page':undefined}>

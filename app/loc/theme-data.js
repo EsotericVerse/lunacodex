@@ -1,6 +1,6 @@
 'use client';
 
-import publishedThemeCatalog from '../modular/published-theme-catalog.json';
+import {PUBLISHED_THEME_META} from '../modular/published-theme-meta.js';
 import {getThemeSlot,THEME_TOKEN_KEYS} from '../modular/theme-registry';
 
 // CSS custom-property names are a fixed renderer contract.
@@ -27,16 +27,33 @@ export function themeNumber(value){
   return id?Number(id.slice(6)):null;
 }
 
+// Lightweight 8-name index. It does not import eight complete palettes.
 export async function selectThemeRegistry(){
-  if(!Array.isArray(publishedThemeCatalog)||publishedThemeCatalog.length!==8)
-    throw Error('Published LOC Theme catalog must contain eight entries');
-  return publishedThemeCatalog.slice().sort((a,b)=>Number(a.theme_order)-Number(b.theme_order))
-    .map(row=>({...row,theme_id:themeUiId(row.theme_id)}));
+  return PUBLISHED_THEME_META.map(([id,name,scheme,styleKey],index)=>({
+    theme_id:id,theme_name:name,scheme,style_key:styleKey,theme_order:index+1
+  }));
 }
 
+// Each JSON is a separate dynamic module. Only the active theme is imported;
+// switching themes retires the previous palette from React state.
+const PALETTE_LOADERS={
+  'theme-1':()=>import('../modular/themes/theme-1.json'),
+  'theme-2':()=>import('../modular/themes/theme-2.json'),
+  'theme-3':()=>import('../modular/themes/theme-3.json'),
+  'theme-4':()=>import('../modular/themes/theme-4.json'),
+  'theme-5':()=>import('../modular/themes/theme-5.json'),
+  'theme-6':()=>import('../modular/themes/theme-6.json'),
+  'theme-7':()=>import('../modular/themes/theme-7.json'),
+  'theme-8':()=>import('../modular/themes/theme-8.json')
+};
 export async function selectThemeOverride(themeId){
   const id=themeUiId(themeId);
-  return id?(await selectThemeRegistry()).find(row=>row.theme_id===id)||null:null;
+  const load=PALETTE_LOADERS[id];
+  if(!load)return null;
+  const module=await load();
+  const row=module.default||module;
+  if(themeUiId(row?.theme_id)!==id)throw Error('Published theme identity mismatch: '+id);
+  return {...row,theme_id:id};
 }
 
 export function mergeThemeSlot(themeId,override=null){

@@ -31,7 +31,7 @@ export async function selectAppBootstrap(scopeId,pageName='index',{configHint=nu
     scope_id:id,page_name:page,config:null,blocks:[],registry:[],
     page_copy:[],theme_list:[],themes:[]
   };
-  const [registry,themes,config,blocks]=await Promise.all([
+  const [registry,themeNames,config,blocks]=await Promise.all([
     id==='local'?Promise.resolve([]):selectScopeRegistry(),
     id==='local'?Promise.resolve([]):selectThemeRegistry(),
     id&&id!=='admin'
@@ -43,10 +43,10 @@ export async function selectAppBootstrap(scopeId,pageName='index',{configHint=nu
   ]);
   return {
     scope_id:id,page_name:page,config,blocks,registry,page_copy:[],
-    theme_list:themes.map(row=>({
+    theme_list:themeNames.map(row=>({
       theme_id:themeUiId(row.theme_id),theme_name:row.theme_name,
       theme_order:row.theme_order
-    })),themes
+    })),themes:[]
   };
 }
 

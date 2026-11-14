@@ -6,7 +6,7 @@ import {Capacitor} from '@capacitor/core';
 import {dbAuthEvents} from '../loc/db-client.mjs';
 import {EDIT_OPERATION_TTL_MS,assertEditorSession,touchEditorSession,clearEditorSession} from '../loc/edit-session-ttl.mjs';
 import {isManagementHref} from './ScopeLink';
-import {releaseTransientPageResources} from '../../zenstack/client-queries';
+import {releaseTransientPageResources,useQueryClient} from '../../zenstack/client-queries';
 
 // UI only: a Scope's permission is checked before entering edit mode,
 // and every write still passes through its existing database authorization.
@@ -15,6 +15,7 @@ const EditDockContext=createContext(null);
 export function EditDockProvider({children,scopeId}){
   const router=useRouter();
   const pathname=usePathname();
+  const queryClient=useQueryClient();
   // Route-owned Scope ID is received from AppShell. Only editing is mutable.
   const [editing,setEditing]=useState(false);
   const [canManageGlobal,setCanManageGlobal]=useState(false);
@@ -213,6 +214,21 @@ export function EditDockProvider({children,scopeId}){
         }
       }
       if(epoch===operationEpoch.current&&dirty.length){
+        // Confirmed Save is a targeted Refresh, not a global page wipe.
+        // Block editors already published their exact saved rows via
+        // setQueryData: never erase those values before React can display
+        // them. Refresh only still-mounted, scope-owned data readers.
+        // QueryClient deduplicates identical keys; no full-page reload.
+        const refreshScope=String(scopeId||'');
+        await queryClient.invalidateQueries({predicate:query=>{
+          const parts=Array.isArray(query.queryKey)?query.queryKey:[];
+          if(!parts.includes(refreshScope))return false;
+          const family=String(parts[0]||'');
+          // Auth, bootstrap (whose Blocks are patched immediately), and
+          // live settings are handled by their own mutation callbacks.
+          return !['app-bootstrap','scope-blocks','loc-account',
+            'public-feature-flags'].includes(family);
+        }});
         // Exit only when every dirty form returned confirmed success.
         // A failed write leaves current in-memory input mounted for correction.
         if(exitOnSuccess){end();return;}
@@ -223,7 +239,7 @@ export function EditDockProvider({children,scopeId}){
     }finally{
       finishOperation(epoch);
     }
-  },[editing,busy,scopeId,beginOperation,finishOperation,end]);
+  },[editing,busy,scopeId,beginOperation,finishOperation,end,queryClient]);
   // Navigation is an explicit discard boundary: never retain a previous
   // section's draft, editor callbacks, operation lock, or query payloads.
   // Only pressing Save writes data. No modal or hidden Save queue on exit.
