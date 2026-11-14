@@ -82,9 +82,8 @@ export function createKyselyPublicClient({
   async function read(q){
     // Pre-queued public reads and actual browser fetch use the same route epoch.
     q.signal=transientReadSignal(q.signal);
-    if(role==='authenticated'&&q.schema==='api'&&
-      ['loc_user','user_settings','user_records'].includes(q.table)&&
-      typeof readPrivate==='function'){
+    if(role==='authenticated'&&q.schema==='silver'&&
+      q.table==='loc_user'&&typeof readPrivate==='function'){
       // The existing personal endpoint has its own pagination contract.
       // Do not send an absent native LIMIT as an invalid personal request.
       if(q.rowLimit===null)q.rowLimit=q.cardinality?1:5000;
@@ -190,7 +189,8 @@ export function createKyselyPublicClient({
     const count=Number(result?.data?.count??result?.count??0);
     if(!Number.isSafeInteger(count)||count<0)throw Error('Invalid LOC write receipt');
     if(!q.returning||!count)return {data:[],error:null,count};
-    if(q.schema==='api'&&Array.isArray(result?.data?.rows))
+    if(q.schema==='silver'&&q.table==='loc_user'&&
+      Array.isArray(result?.data?.rows))
       return {data:result.data.rows,error:null,count};
     if(q.operation==='delete')return {data:[],error:null,count};
     const idField=['uid','record_id','id'].find(field=>
