@@ -8,7 +8,7 @@ LunaRunes（月之符文）提供 66 枚符文圖鑑、抽牌、每日符文與�
 
 LOC 相關架構請以 MCP 參照 `galaxy:55970CD5`（Neon Galaxy，site=LOC）；Repo 的唯一導引文件為 `docs/LOC.md`。
 
-內部架構、資料庫契約、TODO 與歷史設計紀錄統一保存在具權限控管的 LOC Galaxy，不再在公開 Markdown 提供架構全文。公開程式碼、版本記錄和必要的操作文件仍保留於 GitHub。
+LOC 現行架構、功能契約與待辦統一維護於具權限控管的 Galaxy `55970CD5`；歷史設計、過去的文件與工程紀錄由 GitHub PR／Commit 歷史追溯，不在 Galaxy 重複歸檔。公開程式碼、版本記錄和必要操作文件仍保留於 GitHub。
 
 ## 公開瀏覽四大功能
 
