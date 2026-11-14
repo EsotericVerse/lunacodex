@@ -62,17 +62,16 @@ export default function SearchManagement(){
   },[isLocAdmin,searchParams]);
   const groupAuthorized=isLocAdmin||account.canLocAccessSync('group',scopeId);
   const authorPage=scopeId==='lo3rwang';
+  const canShowGroupAccess=isLocAdmin||groupAuthorized&&!authorPage;
   const options=isLocAdmin?[...LOC_OPTIONS,GROUP_OPTION]
-    :groupAuthorized&&!authorPage
-      ?[...ARTICLE_CONTROL_SECTIONS,GROUP_OPTION]
-      :ARTICLE_CONTROL_SECTIONS;
+    :canShowGroupAccess?[...ARTICLE_CONTROL_SECTIONS,GROUP_OPTION]:ARTICLE_CONTROL_SECTIONS;
   const [activeSection,setSection]=useManagementSection(options,'publish',
     isLocAdmin?OLD_LOC_SECTION_ALIASES:OLD_SCOPE_SECTION_ALIASES);
   // Restore bookmarks only for a Group Access tab that still exists.
   useEffect(()=>{
-    if(options.some(item=>item.value==='groupAccess')&&searchParams?.get('section')==='groupAccess'&&activeSection!=='groupAccess')
+    if(canShowGroupAccess&&searchParams?.get('section')==='groupAccess'&&activeSection!=='groupAccess')
       setSection('groupAccess');
-  },[options,activeSection,searchParams,setSection]);
+  },[canShowGroupAccess,activeSection,searchParams,setSection]);
   const currentSection=options.find(option=>option.value===activeSection)||options[0];
 
   return <FeaturePage featureId="search">
