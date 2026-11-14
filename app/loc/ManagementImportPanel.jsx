@@ -410,9 +410,14 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
         const ownerRows=await readExistingByIds(galaxy,'uid,media_link','uid',pendingOwners,
           t('uiExtra.importUI.mediaLinkReadFailed'));
         const linkedUids=[...new Set(ownerRows.flatMap(row=>Array.isArray(row.media_link)?row.media_link:[]))];
-        const linkedMedia=linkedUids.length?await readImportMediaCandidates(
-          scopeId,mediaAnchor,linkedUids,[],t('uiExtra.importUI.mediaIdCompareFailed')):[];
-        const savedMediaByUid=new Map(linkedMedia.map(row=>[String(row.uid),row]));
+        // The explicit UID/URL phase has already verified a portion of these
+        // media PKs. Reuse that in-memory index; query only UID misses, never
+        // rescan previously loaded MediaAnchor rows in this import attempt.
+        const missingLinkedUids=linkedUids.filter(uid=>!byId.has(uid));
+        const linkedMedia=missingLinkedUids.length?await readImportMediaCandidates(
+          scopeId,mediaAnchor,missingLinkedUids,[],t('uiExtra.importUI.mediaIdCompareFailed')):[];
+        const savedMediaByUid=new Map([...byId.values(),...linkedMedia]
+          .map(row=>[String(row.uid),row]));
         for(const article of ownerRows){
           for(const mediaUid of article.media_link||[]){
             const stored=savedMediaByUid.get(String(mediaUid));
