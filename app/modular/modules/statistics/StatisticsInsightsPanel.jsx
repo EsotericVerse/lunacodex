@@ -83,7 +83,7 @@ export default function StatisticsInsightsPanel({
       </header>
       <StatisticsChartFrame level={zoomLevel} onChange={onZoomLevelChange}
         range={range} idPrefix={idPrefix}>
-    {rows.length?<div style={{width:'100%',height:320,minWidth:0}}
+    {rows.length?<div className="statistics-dashboard__trend-plot"
       role="group" aria-label="總數、平均、中位數與變化點折線圖">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={rows.map(row=>({period:row.period,value:Number(row.total)||0}))}
