@@ -1,9 +1,7 @@
 // LOC Local Scope: the same browser-native IndexedDB primitive used by the
 // Galaxy Link Extension, but with a dedicated Galaxy store (NOT its Queue).
 // Nothing here imports cloud authentication, RPC, networking, or SQL drivers.
-import {createSchemaFactory} from '@zenstackhq/zod';
-import {schema} from '../../zenstack/schema.mjs';
-import {galaxyReadColumns} from '../../zenstack/galaxy-read-models.mjs';
+import {modelWriteSchemaForSqlTable} from '../../zenstack/import-validation.mjs';
 import {createUid8} from './uid.js';
 
 export const LOCAL_GALAXY_DB='loc-local-galaxy-v1';
@@ -11,8 +9,11 @@ export const LOCAL_GALAXY_STORE='galaxy';
 export const LOCAL_GALAXY_MAX_JSON_BYTES=16*1024*1024;
 export const LOCAL_GALAXY_MAX_RECORDS=12000;
 const UID=/^[A-Za-z0-9]{8}$/;
-const FIELDS=new Set([...galaxyReadColumns('GalaxyUidRead'),'site_id']);
-const validator=createSchemaFactory(schema).makeTypeSchema('GalaxyUidRead');
+// Use the exact 23-column physical Galaxy ZModel/Zod contract already used
+// by the cloud importer. The local store supplies its own defaults, so the
+// partial writer validates known fields without inventing a second SQL model.
+const validator=modelWriteSchemaForSqlTable('silver.lo3rwang_galaxy').partial();
+const FIELDS=new Set(Object.keys(validator.shape));
 
 function dateValue(value,field){
   if(value==null||value==='')return null;
@@ -39,7 +40,8 @@ export function normalizeLocalGalaxyRow(source={}){
   }
   if(row.site==null||row.site==='')row.site='local';
   row.createtime=dateValue(row.createtime??new Date().toISOString(),'createtime');
-  if(row.date!=null)row.date=dateValue(row.date,'date');
+  if(row.date!=null)row.date=dateValue(row.date,'date').slice(0,10);
+  if(row.UpdateTime!=null)row.UpdateTime=dateValue(row.UpdateTime,'UpdateTime');
   for(const field of ['target_id','media_link']){
     if(row[field]!=null&&(!Array.isArray(row[field])||
         row[field].some(item=>typeof item!=='string'||!UID.test(item))))
@@ -49,7 +51,8 @@ export function normalizeLocalGalaxyRow(source={}){
   // a projection over the same fields, not a second hand-written model.
   const parsed=validator.safeParse({...row,
     createtime:new Date(row.createtime),
-    ...(row.date?{date:new Date(row.date)}:{})
+    ...(row.date?{date:new Date(row.date)}:{}),
+    ...(row.UpdateTime?{UpdateTime:new Date(row.UpdateTime)}:{})
   });
   if(!parsed.success){
     const first=parsed.error.issues[0];
