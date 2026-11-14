@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import {withPublicSqlResultCache} from '../app/loc/server/sql-result-cache.mjs';
 
+const DEFAULT_GENERATION='33333333-3333-4333-8333-333333333333';
+const generationByRelation=new Map();
 const revisions=new Map([
   ['silver.loc_anchor','10'],
   ['silver.lo3rwang_blocks','1'],
@@ -15,7 +17,7 @@ let failure=false;
 const db={selectFrom(relation){
   assert.equal(relation,'api.loc_sql_result_revision');
   return {select(columns){
-    assert.deepEqual(columns,['relation','revision']);
+    assert.deepEqual(columns,['relation','revision','generation']);
     return {where(column,operation,dependencies){
       assert.equal(column,'relation');
       assert.equal(operation,'in');
@@ -23,7 +25,8 @@ const db={selectFrom(relation){
         revisionQueries++;
         if(failure)throw Error('Database revision source unavailable');
         return dependencies.filter(name=>revisions.has(name))
-          .map(relation=>({relation,revision:revisions.get(relation)}));
+          .map(relation=>({relation,revision:revisions.get(relation),
+            generation:generationByRelation.get(relation)||DEFAULT_GENERATION}));
       }};
     }};
   }};
@@ -156,4 +159,32 @@ await execute({...config,env:{LOC_SQL_RESULT_CACHE:'1'}});
 assert.equal(revisionQueries,readBefore,
   'numeric enable flag never implicitly enables metadata caching');
 
-console.log('LOC public metadata SQL cache: 24 assertion groups PASS');
+// A new physical database or reinstalled revision table can restart counters
+// at the same integer. The database-generated UUID must break the cache key.
+const replacement={kind:'config',scope:'physical-switch',
+  dependencies:['silver.lo3rwang']};
+const readCountBeforePhysicalSwitch=reads;
+await execute(replacement);
+assert.equal(reads,readCountBeforePhysicalSwitch+1);
+generationByRelation.set('silver.lo3rwang',
+  '44444444-4444-4444-8444-444444444444');
+await execute(replacement);
+assert.equal(reads,readCountBeforePhysicalSwitch+2,
+  'same revision but changed relation generation cannot reuse old result');
+
+// Corrupt or incomplete revision metadata must always use live SQL results.
+generationByRelation.set('silver.lo3rwang','missing');
+const beforeInvalid=reads;
+await execute(replacement);
+await execute(replacement);
+assert.equal(reads,beforeInvalid+2,'invalid generation fails closed');
+generationByRelation.delete('silver.lo3rwang');
+
+const beforeInvalidRevision=reads;
+revisions.set('silver.lo3rwang','not-an-integer');
+await execute(replacement);
+await execute(replacement);
+assert.equal(reads,beforeInvalidRevision+2,'invalid revision number fails closed');
+revisions.set('silver.lo3rwang','9');
+
+console.log('LOC public metadata SQL cache: 27 assertion groups PASS');
