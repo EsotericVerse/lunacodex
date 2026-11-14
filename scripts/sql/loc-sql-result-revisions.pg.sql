@@ -7,11 +7,19 @@
 -- Statement triggers cover INSERT, UPDATE, DELETE, TRUNCATE, including writes
 -- by importers outside Pages. A transaction commits the data and its epoch
 -- together; a failed/rolled-back write does not advance an epoch.
+-- generation is a per-relation UUID, retained during ordinary mutations and
+-- rotated on installation/reinstallation. It prevents an identical numeric
+-- revision from colliding after a physical SQL target is replaced.
 BEGIN;
 CREATE TABLE IF NOT EXISTS api.loc_sql_result_revision (
   relation text PRIMARY KEY,
-  revision bigint NOT NULL DEFAULT 0 CHECK (revision >= 0)
+  revision bigint NOT NULL DEFAULT 0 CHECK (revision >= 0),
+  generation uuid NOT NULL DEFAULT pg_catalog.gen_random_uuid()
 );
+-- Upgrade an existing revision table without resetting any revision values.
+ALTER TABLE api.loc_sql_result_revision
+  ADD COLUMN IF NOT EXISTS generation uuid NOT NULL
+  DEFAULT pg_catalog.gen_random_uuid();
 
 CREATE OR REPLACE FUNCTION api.bump_loc_sql_result_revision()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
@@ -40,7 +48,8 @@ BEGIN
     INSERT INTO api.loc_sql_result_revision(relation,revision)
       VALUES (item.ns||'.'||item.rel,0)
       ON CONFLICT (relation) DO UPDATE
-        SET revision=api.loc_sql_result_revision.revision+1;
+        SET revision=api.loc_sql_result_revision.revision+1,
+            generation=pg_catalog.gen_random_uuid();
     EXECUTE format('DROP TRIGGER IF EXISTS loc_sql_result_revision ON %I.%I',item.ns,item.rel);
     EXECUTE format('CREATE TRIGGER loc_sql_result_revision
       AFTER INSERT OR UPDATE OR DELETE OR TRUNCATE ON %I.%I
