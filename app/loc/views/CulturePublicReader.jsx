@@ -473,9 +473,6 @@ export default function CulturePublicReader(){
   };
   return <FeaturePage featureId='culture'>
     <section className='loc-card scope-feature-card scope-feature-card-wide'>
-      <p className='loc-eyebrow'>文化｜時間密度</p>
-      <h2>時間長河</h2>
-      <p className='scope-status'>時間定錨預設最近一年（可回溯全部歷史）；文章密度預設：{start} ～ {end}</p>
       <section className='scope-card scope-culture-structure-river'>
         {loading?<p className='scope-status' role='status'>正在載入時間定錨…</p>:null}
         {error?<p className='scope-status scope-error' role='alert'>{error}</p>:null}
