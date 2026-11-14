@@ -59,10 +59,10 @@ function SettingChoices({group,field,value,onChange,disabled,t}){
   </fieldset>;
 }
 
-export default function LocUserSettingsPanel({verifiedSubject='',section='filter'}){
+export default function LocUserSettingsPanel({verifiedSubject='',verifiedEmail='',section='filter'}){
   useUiSection('uiExtra.globalSettings');
   const t=useUiText();
-  const {data,loading,error,ready,update}=useLocUser({verifiedSubject});
+  const {data,loading,error,ready,update}=useLocUser({verifiedSubject,verifiedEmail});
   const [draft,setDraft]=useState(null);
   const draftRef=useRef(null);
   const activeSubject=useRef('');
@@ -74,7 +74,10 @@ export default function LocUserSettingsPanel({verifiedSubject='',section='filter
   const [keywordError,setKeywordError]=useState('');
 
   useEffect(()=>{
-    const subject=String(verifiedSubject||data?.owner_id||'');
+    // The verified Session may arrive before its owner-scoped preferences.
+    // Never dereference an unloaded row or freeze the draft at that point.
+    if(!ready||!data)return;
+    const subject=String(verifiedSubject||data.owner_id||'');
     if(!subject||activeSubject.current===subject)return;
     const next={
       culture:{...LOC_USER_DEFAULTS.culture,...data.culture},
@@ -88,7 +91,7 @@ export default function LocUserSettingsPanel({verifiedSubject='',section='filter
     setDraft(next);
     setStatus('');
     setSaveError('');
-  },[data,verifiedSubject]);
+  },[data,verifiedSubject,ready]);
 
   // Only the Filter section loads Keyword Class options. The other two tabs
   // never issue taxonomy requests simply because the user opened Settings.
