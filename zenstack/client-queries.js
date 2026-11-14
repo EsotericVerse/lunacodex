@@ -24,7 +24,8 @@ function prefixMatch(fullKey,filterKey){
 // re-read (refetch), adopt an imperative value (setQueryData), or clear.
 const registry=new Map(); // id -> {key, refetch, setData, remove}
 let nextId=0;
-const inflight=new Map(); // serializedKey -> Promise  (concurrent dedup)
+const inflight=new Map(); // serializedKey -> {key, controller, promise}
+let resourceEpoch=0; // route-entry generation invalidates old asynchronous completions
 // Only the three tiny identity states outlive their page. SQL read results
 // must be released when the last mounted consumer of their key disappears.
 const dataStore=new Map();
@@ -67,17 +68,43 @@ function forEachMatch(filter={},fn){
   }
 }
 
-// One network round-trip per identical key at a time. This is what collapses
-// the "many consumers of the same (scopeId,pageName)" fan-out into one query.
-function runFetch(serializedKey,fetcher){
+// One network round-trip per identical key. A new management entry must not
+// inherit an unfinished request from a previous page.
+function runFetch(serializedKey,fetcher,key=JSON.parse(serializedKey)){
   const existing=inflight.get(serializedKey);
-  if(existing)return existing;
-  const promise=(async()=>{
-    try{return await fetcher();}
-    finally{inflight.delete(serializedKey);}
-  })();
-  inflight.set(serializedKey,promise);
-  return promise;
+  if(existing)return existing.promise;
+  const controller=new AbortController();
+  const entry={key,controller,promise:null};
+  entry.promise=Promise.resolve().then(()=>fetcher({signal:controller.signal}))
+    .finally(()=>{
+      // Do not delete a newer request started after a page reset.
+      if(inflight.get(serializedKey)===entry)inflight.delete(serializedKey);
+    });
+  inflight.set(serializedKey,entry);
+  return entry.promise;
+}
+function isCancelled(error){return error?.name==='AbortError';}
+function matchesFilter(key,filter={}){
+  if(typeof filter.predicate==='function')return filter.predicate({queryKey:key});
+  if(filter.exact)return serialize(key)===serialize(filter.queryKey);
+  return prefixMatch(key,filter.queryKey??[]);
+}
+function abortInflight(filter={}){
+  for(const [key,entry] of inflight){
+    if(IDENTITY_KEYS.has(serialize(entry.key))||!matchesFilter(entry.key,filter))continue;
+    inflight.delete(key);
+    entry.controller.abort();
+  }
+}
+// Called before each protected management page's first data read and before
+// switching editor sections. Preserve only verified identity/permission data.
+// Browser JS heap collection is managed by GC; dropping all these references
+// makes old page query payloads eligible for collection.
+export function releaseTransientPageResources(){
+  resourceEpoch++;
+  abortInflight();
+  for(const key of [...dataStore.keys()])
+    if(!IDENTITY_KEYS.has(key))dataStore.delete(key);
 }
 
 export function useAsyncResource(keyOrOptions,fetcherArg,optionsArg={}){
@@ -107,20 +134,24 @@ export function useAsyncResource(keyOrOptions,fetcherArg,optionsArg={}){
     if(!active)return undefined;
     setIsFetching(true);
     try{
-      const value=await runFetch(serializedKey,()=>fetcherRef.current());
+      const generation=resourceEpoch;
+      const value=await runFetch(serializedKey,({signal})=>fetcherRef.current({signal}));
       // A request may finish after unmount; never revive stale route data.
-      if(isCurrent()){
+      if(isCurrent()&&generation===resourceEpoch){
         retainIfObserved(serializedKey,value);
         setState({data:value,status:'success',error:null});
       }
       return value;
     }catch(error){
-      flashMessage('資料讀取失敗，請稍後再試');
-      onErrorRef.current?.(error,queryKey);
-      if(isCurrent())setState(previous=>({data:previous.data,status:'error',error}));
+      // An abandoned page is not a failed data read and must not flash an error.
+      if(generation===resourceEpoch&&!isCancelled(error)){
+        flashMessage('資料讀取失敗，請稍後再試');
+        onErrorRef.current?.(error,queryKey);
+        if(isCurrent())setState(previous=>({data:previous.data,status:'error',error}));
+      }
       throw error;
     }finally{
-      if(isCurrent())setIsFetching(false);
+      if(isCurrent()&&generation===resourceEpoch)setIsFetching(false);
     }
   // queryKey is represented by serializedKey; fetcher/onError read from refs.
   },[serializedKey,active]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -192,15 +223,19 @@ export function useAsyncInfiniteResource({
     if(!active)return;
     setIsFetching(true);
     try{
-      const page=await fnRef.current({pageParam:initialPageParam});
-      if(!mountedRef.current)return;
+      const generation=resourceEpoch;
+      const page=await runFetch('infinite-first:'+serializedKey,
+        ({signal})=>fnRef.current({pageParam:initialPageParam,signal}),keyOf(queryKey));
+      if(!mountedRef.current||generation!==resourceEpoch)return;
       const next=getNextPageParam?.(page)??undefined;
       nextParamRef.current=next;
       setPages([page]);setPageParams([initialPageParam]);setNextParam(next);
       setStatus('success');setError(null);
     }catch(caught){
-      flashMessage('資料讀取失敗，請稍後再試');
-      if(mountedRef.current){setStatus('error');setError(caught);}
+      if(mountedRef.current&&!isCancelled(caught)){
+        flashMessage('資料讀取失敗，請稍後再試');
+        setStatus('error');setError(caught);
+      }
     }finally{
       if(mountedRef.current)setIsFetching(false);
     }
@@ -228,15 +263,17 @@ export function useAsyncInfiniteResource({
       setIsFetchingNextPage(true);
       try{
         const param=nextParamRef.current;
-        const page=await fnRef.current({pageParam:param});
-        if(!mountedRef.current)return;
+        const generation=resourceEpoch;
+        const page=await runFetch('infinite-next:'+serializedKey+':'+JSON.stringify(param),
+          ({signal})=>fnRef.current({pageParam:param,signal}),keyOf(queryKey));
+        if(!mountedRef.current||generation!==resourceEpoch)return;
         const next=getNextPageParam?.(page)??undefined;
         nextParamRef.current=next;
         setPages(previous=>[...previous,page]);
         setPageParams(previous=>[...previous,param]);
         setNextParam(next);
-      }catch{
-        flashMessage('資料讀取失敗，請稍後再試');
+      }catch(error){
+        if(!isCancelled(error))flashMessage('資料讀取失敗，請稍後再試');
       }finally{
         if(mountedRef.current)setIsFetchingNextPage(false);
       }
@@ -251,7 +288,7 @@ export function useAsyncInfiniteResource({
 export const queryClient={
   invalidateQueries:(filter={})=>{forEachMatch(filter,entry=>entry.refetch());return Promise.resolve();},
   refetchQueries:(filter={})=>{forEachMatch(filter,entry=>entry.refetch());return Promise.resolve();},
-  cancelQueries:()=>Promise.resolve(),
+  cancelQueries:(filter={})=>{abortInflight(filter);return Promise.resolve();},
   setQueryData:(key,value)=>{
     // Preserve QueryClient's functional-updater contract. Homepage editors
     // pass previous => ({...previous,blocks:savedRows}); storing that callback
@@ -281,10 +318,10 @@ export const queryClient={
   },
   fetchQuery:async({queryKey,queryFn})=>{
     const serializedKey=serialize(queryKey);
-    const value=await runFetch(serializedKey,queryFn);
-    // getOrLoad returns its result to the caller, but unmounted panels must
-    // not accumulate their completed pages in the global Map.
-    retainIfObserved(serializedKey,value);
+    const generation=resourceEpoch;
+    const value=await runFetch(serializedKey,({signal})=>queryFn({signal}));
+    // A previous page must never refill the store after management entry.
+    if(generation===resourceEpoch)retainIfObserved(serializedKey,value);
     return value;
   }
 };
