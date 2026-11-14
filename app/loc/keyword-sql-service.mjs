@@ -39,9 +39,14 @@ const terms=item=>[String(item.item_name||''),...(Array.isArray(item.keywords)?i
 const anchorName=scope=>'silver.'+checkScope(scope)+'_anchor';
 const galaxyName=scope=>'silver.'+checkScope(scope)+'_galaxy';
 const configName=scope=>'silver.'+checkScope(scope);
-const galaxyListMetadataColumns=Object.freeze([...new Set([
-  ...galaxyReadColumns('GalaxyList'),'UpdateTime'
-])]);
+// The first Pattern-index scan touches every Galaxy UID. Its date reader
+// needs only five physical fields; never transfer GalaxyList's presentation
+// title, site or six unrelated feature flags across ~50k metadata records.
+const galaxyListMetadataColumns=Object.freeze([
+  ...galaxyReadColumns('GalaxyList')
+    .filter(name=>['uid','date','createtime','keyword'].includes(name)),
+  'UpdateTime'
+]);
 const galaxyUidContentColumns=Object.freeze(galaxyReadColumnsFor('GalaxyUidRead','GalaxyAttr')
   .filter(column=>['uid','content','keyword'].includes(column)));
 
@@ -223,8 +228,11 @@ export async function suggestKeywordPatterns(db,scopeIds=[],query='',{
   const matches=new Map();
   for(const scope of new Set(scopeIds)){
     if(!ownerScopes.has(scope))continue;
-    const rows=(await indexRows(db,scope))
+    // Suggestions need Pattern literals and maintained hit totals, never
+    // the potentially huge Galaxy UID postings.
+    const rows=[...(await readScopePatternDirectory(db,scope)).values()]
       .filter(row=>!UID.test(String(row.pattern))&&norm(row.pattern).startsWith(prefix))
+      .map(row=>({...row,count:Math.max(0,Number(row.num)||0)}))
       .sort((a,b)=>b.count-a.count||a.pattern.localeCompare(b.pattern)).slice(0,2000);
     for(const row of rows){
       const key=norm(row.pattern);

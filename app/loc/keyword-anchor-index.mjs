@@ -43,9 +43,9 @@ export const literalItemWords=item=>{
 // This also preserves global normalized-word uniqueness for scoped reads.
 export async function readScopePatternDirectory(db,scope){
   const rows=await db.selectFrom(scopeAnchor(scope))
-    .select(['uid','title']).where('type','=','pattern').execute();
+    .select(['uid','title','num']).where('type','=','pattern').execute();
   return patternRowsToIndex(rows.map(row=>({
-    uid:row.uid,pattern:String(row.title||'')
+    uid:row.uid,pattern:String(row.title||''),num:Number(row.num)||0
   })));
 }
 
