@@ -443,7 +443,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
       group_uid:group?.uid||'',class_group:group?.name||'',class_name:selectedClass.name};
   }):[],[rows,tree,workspace,selectedClass?.uid]);
   const graphGroups=useMemo(()=>workspace==='network'?groups.map(row=>({uid:row.uid,name:row.name})):[],
-    [groups.map(row=>row.uid+'|'+row.name).join('|')]);
+    [workspace,groups.map(row=>row.uid+'|'+row.name).join('|')]);
   // Reuse exactly the manual editor in the graph's inspector, including the
   // existing authorization, edit dock, stale-analysis and save behavior.
   const draftEditor=draft?<div className="scope-management-editor">
