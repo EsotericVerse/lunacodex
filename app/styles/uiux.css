@@ -772,34 +772,6 @@ button,a,.loc-control,.loc-button,
   background:var(--loc-ui-panel-soft);
 }
 
-/* Game */
-.loc-game.game-shell{
-  gap:clamp(1rem,2vw,1.6rem);
-}
-
-.game-hero{
-  min-height:clamp(400px,46vw,560px);
-}
-
-.game-preview-board,.game-player,.game-docs,.game-log-card{
-  border-color:var(--loc-ui-hairline);
-  border-radius:var(--loc-ui-radius-lg);
-}
-
-.game-round-node,.game-role-grid article,.game-event-gallery article{
-  border-color:var(--loc-ui-hairline);
-  background:var(--loc-ui-panel-soft);
-}
-
-.game-player.is-turn{
-  border-color:var(--loc-accent-border);
-  box-shadow:0 0 0 1px var(--loc-accent-border),0 24px 70px color-mix(in srgb,var(--loc-accent) 8%,transparent);
-}
-
-.game-resonance-orbit span{
-  box-shadow:0 0 34px color-mix(in srgb,var(--loc-accent) 20%,transparent);
-}
-
 /* Tables, lists and utility surfaces */
 .loc-table{
   border-collapse:separate;
@@ -926,7 +898,6 @@ button,a,.loc-control,.loc-button,
     min-height:3.4rem;
     padding:.7rem .75rem;
   }
-  .game-hand{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 
 /* Shared small-screen reading layout: keep text readable without clamping

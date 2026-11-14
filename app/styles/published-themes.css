@@ -1,5 +1,5 @@
 /* Public themes published explicitly from silver.loc_theme. */
-:root[data-theme-id="theme-1"],.game-shell[data-game-theme="theme-1"]{
+:root[data-theme-id="theme-1"]{
   color-scheme:dark;
   --loc-bg:#05060d;
   --loc-panel:#0b0d18;
@@ -46,7 +46,7 @@
   --loc-shadow-card:0 12px 35px rgba(0,0,0,.20);
 }
 
-:root[data-theme-id="theme-2"],.game-shell[data-game-theme="theme-2"]{
+:root[data-theme-id="theme-2"]{
   color-scheme:light;
   --loc-bg:#eee7f8;
   --loc-panel:#faf7ff;
@@ -93,7 +93,7 @@
   --loc-shadow-card:0 12px 35px rgba(104,72,137,.09);
 }
 
-:root[data-theme-id="theme-3"],.game-shell[data-game-theme="theme-3"]{
+:root[data-theme-id="theme-3"]{
   color-scheme:light;
   --loc-bg:#ff8a00;
   --loc-panel:#fff4e5;
@@ -140,7 +140,7 @@
   --loc-shadow-card:0 12px 35px rgba(153,79,0,.10);
 }
 
-:root[data-theme-id="theme-4"],.game-shell[data-game-theme="theme-4"]{
+:root[data-theme-id="theme-4"]{
   color-scheme:dark;
   --loc-bg:#081b13;
   --loc-panel:#122a20;
@@ -187,7 +187,7 @@
   --loc-shadow-card:0 12px 35px rgba(0,0,0,.23);
 }
 
-:root[data-theme-id="theme-5"],.game-shell[data-game-theme="theme-5"]{
+:root[data-theme-id="theme-5"]{
   color-scheme:light;
   --loc-bg:#fff1b2;
   --loc-panel:#fffbe4;
@@ -234,7 +234,7 @@
   --loc-shadow-card:0 12px 35px rgba(114,90,15,.08);
 }
 
-:root[data-theme-id="theme-6"],.game-shell[data-game-theme="theme-6"]{
+:root[data-theme-id="theme-6"]{
   color-scheme:dark;
   --loc-bg:#240606;
   --loc-panel:#3a0b0b;
@@ -281,7 +281,7 @@
   --loc-shadow-card:0 12px 35px rgba(0,0,0,.22);
 }
 
-:root[data-theme-id="theme-7"],.game-shell[data-game-theme="theme-7"]{
+:root[data-theme-id="theme-7"]{
   color-scheme:light;
   --loc-bg:#ffffff;
   --loc-panel:#ffffff;
@@ -328,7 +328,7 @@
   --loc-shadow-card:0 12px 35px rgba(0,0,0,.06);
 }
 
-:root[data-theme-id="theme-8"],.game-shell[data-game-theme="theme-8"]{
+:root[data-theme-id="theme-8"]{
   color-scheme:dark;
   --loc-bg:#30363b;
   --loc-panel:#444b51;
