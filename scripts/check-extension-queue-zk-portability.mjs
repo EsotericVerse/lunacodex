@@ -134,7 +134,7 @@ for(const engine of ['postgres','mysql','mssql']){
  assert.equal(rows[0].search,false,engine+' public search disabled');
  assert.equal(metrics.queries.every(q=>q.filters.some(f=>
   f.field==='site_id'&&f.operator==='in')),true,engine+' bounded lookup filter');
- for(const stage of ['mapping','transaction','lock','lookup','insert','append'])
+ for(const stage of ['mapping','transaction','lock','lookup','insert','append_update','append_result','commit'])
   assert.ok(phases.includes(stage),engine+' import failure stage '+stage);
  const expectedLock=engine==='postgres'?'pg_advisory_xact_lock':
    engine==='mysql'?'get_lock':'tablockx';
