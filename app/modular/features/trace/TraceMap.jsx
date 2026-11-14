@@ -122,6 +122,7 @@ export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRout
     setAnchorQuery('');setAnchorUid('');
   },[spatialData?.anchors]);
   const autoOverviewScopeRef=useRef('');
+  const lastTerritoryYearRef=useRef(territoryYear);
   const [ready,setReady]=useState(false);
   const [routeVisible,setRouteVisible]=useState(false);
   const [routeBusy,setRouteBusy]=useState(false);
@@ -226,14 +227,25 @@ export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRout
   useEffect(()=>{
     if(ready&&focusLocation)mapRef.current?.focusCoordinates(focusLocation);
   },[ready,focusLocation]);
+  // The annual article map starts at the same Banqiao Station origin as the
+  // terrain map. Loading async yearly anchors must never override that camera.
+  // Changing years intentionally starts a fresh view at the same origin.
   useEffect(()=>{
-    if(!ready||selectedRouteUid||!spatialData?.anchors?.length)return;
+    if(!ready||!territoryMode)return;
+    if(lastTerritoryYearRef.current===territoryYear)return;
+    lastTerritoryYearRef.current=territoryYear;
+    mapRef.current?.goOrigin();
+  },[ready,territoryMode,territoryYear]);
+  // Route maps retain their existing one-time 'all anchors' framing. Only
+  // the annual territory's implicit overview is disabled; its explicit
+  // '年度全版圖' button is still available when requested by the viewer.
+  useEffect(()=>{
+    if(!ready||territoryMode||selectedRouteUid||!spatialData?.anchors?.length)return;
     const scope=spatialData.anchors[0].source_scope||'';
-    const overviewKey=territoryMode?'territory:'+territoryYear:scope;
-    if(autoOverviewScopeRef.current===overviewKey)return;
-    autoOverviewScopeRef.current=overviewKey;
+    if(autoOverviewScopeRef.current===scope)return;
+    autoOverviewScopeRef.current=scope;
     mapRef.current?.overview();
-  },[ready,selectedRouteUid,spatialData?.anchors,territoryMode,territoryYear]);
+  },[ready,selectedRouteUid,spatialData?.anchors,territoryMode]);
   // The visible resize grip lives outside MapLibre's canvas and controls, so
   // its pointer events do not conflict with map pan/rotate or attribution.
   function resizeFrame(width,height){
