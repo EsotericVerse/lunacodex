@@ -10,7 +10,7 @@
 .rune-art-world{position:relative;width:100%;height:100%;min-height:450px;color:var(--rune-ivory);}
 .rune-art-world button{font:inherit;cursor:pointer;touch-action:manipulation;}
 .rune-art-world button:focus-visible{outline:3px solid var(--loc-gold);outline-offset:3px;}
-.rune-art-kicker{font:650 .68rem/1.4 system-ui,sans-serif;letter-spacing:.24em;color:var(--loc-gold);}
+.rune-art-kicker{font:650 .68rem/1.4 system-ui,sans-serif;letter-spacing:.24em;color:var(--loc-text);}
 .rune-art-gallery{position:relative;isolation:isolate;padding:clamp(20px,3.5vw,42px);
   background:radial-gradient(ellipse 63% 40% at 50% -10%,color-mix(in srgb,var(--loc-accent) 27%,transparent),transparent),
   radial-gradient(ellipse 50% 50% at 0 100%,color-mix(in srgb,var(--loc-gold) 17%,transparent),transparent),
@@ -20,7 +20,7 @@
 .rune-art-gallery-intro{text-align:center;position:relative;z-index:1;margin-bottom:clamp(20px,3vw,36px);}
 .rune-art-gallery-intro h2{font:700 clamp(1.8rem,3.2vw,2.8rem)/1.2 "Noto Serif TC","Songti TC",serif;
   letter-spacing:.12em;margin:9px 0;color:var(--loc-heading);text-shadow:0 0 20px color-mix(in srgb,var(--loc-gold) 36%,transparent);}
-.rune-art-gallery-intro p{font-size:.92rem;color:var(--loc-muted);margin:0;}
+.rune-art-gallery-intro p{font-size:.92rem;color:var(--loc-text);margin:0;}
 .rune-art-gallery-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(11px,2.5vw,23px);
   position:relative;z-index:1;max-width:1050px;margin:auto;}
 .rune-art-gallery-tile{min-width:0;position:relative;padding:7px;display:block;width:100%;
@@ -34,7 +34,7 @@
 .rune-art-tile-caption{display:flex;align-items:center;gap:9px;margin:0;padding:12px 9px 7px;
   font-size:clamp(.82rem,1.6vw,1.1rem);line-height:1.35;}
 .rune-art-tile-caption strong{flex:1;letter-spacing:.06em;font-family:"Noto Serif TC","Songti TC",serif;}
-.rune-art-tile-num{font-size:.7rem;letter-spacing:.08em;color:var(--loc-gold);}
+.rune-art-tile-num{font-size:.7rem;letter-spacing:.08em;color:var(--loc-text);}
 
 /* Canonical nine-group metadata: subordinate to the original artwork. */
 .rune-art-group-tile{display:flex;flex-direction:column;
@@ -44,9 +44,9 @@
 .rune-art-group-tile>.rune-art-tile-caption{width:100%;}
 .rune-art-group-summary{display:flex;flex:1;flex-direction:column;gap:9px;
   min-width:0;padding:0 12px 13px;text-align:left;}
-.rune-art-group-english{display:block;color:var(--loc-gold);font-size:.86rem;line-height:1.35;
+.rune-art-group-english{display:block;color:var(--loc-text);font-size:.86rem;line-height:1.35;
   font-weight:650;letter-spacing:.11em;overflow-wrap:anywhere;}
-.rune-art-group-blurb{display:block;color:var(--loc-muted);font-size:.87rem;
+.rune-art-group-blurb{display:block;color:var(--loc-text);font-size:.87rem;
   line-height:1.7;overflow-wrap:anywhere;}
 .rune-art-group-facts{display:flex;align-items:center;gap:6px 8px;flex-wrap:wrap;
   margin-top:auto;padding-top:4px;}
@@ -55,8 +55,8 @@
   border:1px solid var(--loc-gold-border-faint);background:var(--loc-panel-2);color:var(--loc-text);
   font-size:.74rem;line-height:1.4;overflow-wrap:anywhere;}
 .rune-art-group-style-tag{border-color:var(--loc-accent-border-faint);background:var(--loc-accent-surface);color:var(--loc-text);}
-.rune-art-group-count-tag{color:var(--loc-gold);border-color:var(--loc-gold-border-faint);background:var(--loc-gold-surface-soft);}
-.rune-art-fact-label{font-size:.67rem;font-weight:700;color:var(--loc-gold);white-space:nowrap;}
+.rune-art-group-count-tag{color:var(--loc-text);border-color:var(--loc-gold-border-faint);background:var(--loc-gold-surface-soft);}
+.rune-art-fact-label{font-size:.67rem;font-weight:700;color:var(--loc-text);white-space:nowrap;}
 
 .rune-art-ritual{position:relative;isolation:isolate;min-height:clamp(560px,68vh,760px);
   padding:clamp(22px,3vw,46px);display:flex;flex-direction:column;align-items:center;
@@ -101,8 +101,8 @@
   background:radial-gradient(circle,color-mix(in srgb,var(--loc-gold) 20%,transparent),transparent 68%);
   box-shadow:0 0 65px color-mix(in srgb,var(--loc-gold) 23%,transparent),inset 0 0 38px color-mix(in srgb,var(--loc-gold) 13%,transparent);}
 .rune-art-invoke,.rune-art-draw-again{appearance:none;border:1px solid var(--loc-gold-border);border-radius:999px;
-  padding:13px 26px;color:var(--loc-bg)!important;font-weight:750!important;
-  background:linear-gradient(115deg,color-mix(in srgb,var(--loc-gold) 70%,transparent),var(--loc-gold-surface),color-mix(in srgb,var(--loc-gold) 70%,transparent));
+  padding:13px 26px;color:var(--loc-text)!important;font-weight:750!important;
+  background:var(--loc-panel-2);
   box-shadow:0 4px 30px color-mix(in srgb,var(--loc-gold) 34%,transparent);}
 .rune-art-invoke:disabled{opacity:.5;cursor:not-allowed;}
 .rune-art-reveal{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;
@@ -140,7 +140,7 @@
 .rune-art-history-item span{white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis;}
 .rune-art-draw-again{position:relative;z-index:1;margin-top:10px;font-size:.89rem!important;}
 .rune-art-draw-again span{margin-left:7px;}
-.rune-art-stage-label{font-size:.91rem;color:var(--loc-gold);padding:12px 17px;text-align:center;
+.rune-art-stage-label{font-size:.91rem;color:var(--loc-text);padding:12px 17px;text-align:center;
   border-top:1px solid var(--loc-gold-border-faint);background:var(--loc-panel-2);}
 @keyframes rune-art-shine{0%,66%,100%{left:-100%;opacity:0;}73%{opacity:1}90%{left:145%;opacity:0}}
 @media(max-width:760px){
@@ -202,17 +202,17 @@
   color:var(--loc-heading);font-size:clamp(1.02rem,1.5vw,1.3rem)
 }
 .rune-art-rune-detail-tile .home-rune-card-title span,
-.rune-art-rune-detail-tile .home-rune-card-data p{color:var(--loc-muted);line-height:1.7}
+.rune-art-rune-detail-tile .home-rune-card-data p{color:var(--loc-text);line-height:1.7}
 .rune-art-rune-detail-tile .home-rune-keywords{
   border-top:1px solid var(--loc-gold-border-faint);padding:9px 3px;
   color:var(--loc-text)
 }
 .rune-art-rune-detail-tile .home-rune-keywords summary{
-  cursor:pointer;min-height:35px;color:var(--loc-gold);font-weight:650
+  cursor:pointer;min-height:35px;color:var(--loc-text);font-weight:650
 }
 .rune-art-rune-detail-tile .home-rune-keywords p{
   line-height:1.7;white-space:pre-wrap;overflow-wrap:anywhere;
-  color:var(--loc-muted)
+  color:var(--loc-text)
 }
 .rune-art-rune-open-action{
   appearance:none;cursor:pointer;margin-top:auto;width:100%;
