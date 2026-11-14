@@ -121,8 +121,17 @@ export default function StatisticsInsightsPanel({
     <aside className="statistics-dashboard__panel statistics-dashboard__panel--insights"
       aria-label="作品總數 Insights">
       <header className="statistics-dashboard__panel-heading statistics-dashboard__panel-heading--insights">
-        <h3>Insights</h3>
-        <p>趨勢預估 <span>極值與典型值</span></p>
+        <div className="statistics-dashboard__insights-heading-copy">
+          <h3>Insights</h3>
+          <p>趨勢預估 <span>極值與典型值</span></p>
+        </div>
+        <div role="status" aria-live="polite"
+          className="scope-status statistics-dashboard__pelt-summary">
+          <strong>ByPELT · </strong>
+          <span>{pending?'正在分析已載入的時間分布…'
+            :workerError?'變化點分析未完成；平均、中位數和原始圖表仍可使用。'
+            :insightText(insight)}</span>
+        </div>
       </header>
     <div className="statistics-dashboard__insight-overview">
       <div className="statistics-dashboard__insight-metrics" aria-label="極值與典型值">
@@ -133,13 +142,6 @@ export default function StatisticsInsightsPanel({
           </strong>
           {item.period?<span className="scope-status">{item.period}</span>:null}
         </div>)}
-      </div>
-      <div role="status" aria-live="polite"
-        className="scope-status statistics-dashboard__pelt-summary">
-        <strong>by PELT</strong>
-        <span>{pending?'正在分析已載入的時間分布…'
-          :workerError?'變化點分析未完成；平均、中位數和原始圖表仍可使用。'
-          :insightText(insight)}</span>
       </div>
     </div>
     {activeCount>1?<div className="statistics-dashboard__insight-ranking">
