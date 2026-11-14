@@ -39,7 +39,6 @@ export function EditDockProvider({children,scopeId}){
       if(operationEpoch.current!==epoch)return;
       releaseOperation();
       setNotice('儲存操作超過 5 分鐘，操作鎖已解除。請確認資料是否成功寫入。');
-      setSwitchError('儲存操作逾時，尚未確認寫入狀態；可以取消返回。');
     },EDIT_OPERATION_TTL_MS);
     return epoch;
   },[releaseOperation]);
@@ -53,22 +52,18 @@ export function EditDockProvider({children,scopeId}){
   // reason it reported instead of replacing it with a generic line.
   const noticeRef=useRef('');
   const setNotice=useCallback(value=>{noticeRef.current=String(value||'');setNoticeState(value);},[]);
-  const [switchTarget,setSwitchTarget]=useState('');
-  const [switchError,setSwitchError]=useState('');
-  const switchDialog=useRef(null);
   const switchHistory=useRef('replace');
   const switchScroll=useRef(true);
-  // A management selection changes mounted React content, not the URL route.
-  const pendingSectionAction=useRef(null);
   const registeredEditors=useRef(new Set());
   const currentEditor=useRef(null);
-
-  useEffect(()=>{
-    const dialog=switchDialog.current;
-    if(!dialog)return;
-    if(switchTarget&&!dialog.open)dialog.showModal();
-    if(!switchTarget&&dialog.open)dialog.close();
-  },[switchTarget]);
+  useEffect(()=>()=>{ // Provider unmount: release pending work and editor closures.
+    if(operationTimer.current!==null)clearTimeout(operationTimer.current);
+    operationTimer.current=null;
+    operationEpoch.current++;
+    committing.current=false;
+    registeredEditors.current.clear();
+    currentEditor.current=null;
+  },[]);
 
   const clearEditor=useCallback(()=>{
     registeredEditors.current.clear();
@@ -88,9 +83,6 @@ export function EditDockProvider({children,scopeId}){
   const end=useCallback(()=>{
     releaseOperation();
     clearEditor();
-    pendingSectionAction.current=null;
-    setSwitchTarget('');
-    setSwitchError('');
     setEditing(false);
     setCanManageGlobal(false);
     setNotice('');
@@ -170,7 +162,7 @@ export function EditDockProvider({children,scopeId}){
     const url=new URL(String(target),window.location.href);
     // Static management exports need a real HTML entrypoint, not an App Router
     // RSC transition: Cloudflare Pages does not serve that dynamic RSC request.
-    // The authorized editor state is restored from sessionStorage on entry.
+    // Only the edit-session timestamp is stored, never form input or drafts.
     if(url.origin!==window.location.origin||/\/index\.html$/i.test(url.pathname)||
       isManagementHref(url.href)){
       window.location.assign(url.href);
@@ -221,7 +213,7 @@ export function EditDockProvider({children,scopeId}){
       }
       if(epoch===operationEpoch.current&&dirty.length){
         // Exit only when every dirty form returned confirmed success.
-        // A failed write keeps the user's draft and the Dock on screen.
+        // A failed write leaves current in-memory input mounted for correction.
         if(exitOnSuccess){end();return;}
         setNotice('目前修改已儲存。');
       }
@@ -247,77 +239,39 @@ export function EditDockProvider({children,scopeId}){
     // App Router replace may update the dock but leave the management page mounted.
     window.location.assign(destination.href);
   },[busy,dirtyEditors,end]);
-  // Every mounted form reports its own unsaved state; a focused form is not
-  // necessarily the only edited one on a management page.
+  // No page-blocking modal or retained navigation target. Only the
+  // current mounted form has unsaved edits; Cancel never changes its state.
+  const confirmLeavingDirty=useCallback(()=>
+    !dirtyEditors().length||window.confirm(
+      '目前的修改尚未儲存。切換後會直接放棄本次修改，確定繼續？'
+    ),[dirtyEditors]);
   const switchTo=useCallback((target,{history='replace',scroll=true}={})=>{
-    pendingSectionAction.current=null;
     if(busy||!target)return;
     if([...registeredEditors.current].some(editor=>editor.isBusy?.())){
       setNotice('目前正在儲存，請完成後再切換頁面。');
       return;
     }
+    if(!confirmLeavingDirty())return;
     switchHistory.current=history==='push'?'push':'replace';
     switchScroll.current=scroll!==false;
-    if(!dirtyEditors().length){
-      clearEditor();setNotice('');navigate(target,switchHistory.current,switchScroll.current);return;
-    }
-    setSwitchError('');
-    setSwitchTarget(target);
-  },[busy,dirtyEditors,clearEditor,navigate]);
+    clearEditor();setNotice('');
+    navigate(target,switchHistory.current,switchScroll.current);
+  },[busy,confirmLeavingDirty,clearEditor,navigate]);
   const switchSection=useCallback((next,commit)=>{
     if(busy||typeof commit!=='function')return;
     if([...registeredEditors.current].some(editor=>editor.isBusy?.())){
       setNotice('目前正在儲存，請完成後再切換。');
       return;
     }
-    const apply=()=>commit(next);
-    if(!dirtyEditors().length){
-      pendingSectionAction.current=null;
-      clearEditor();setNotice('');
-      apply();
-      return;
-    }
-    // Reuse the existing Save/Discard/Cancel dialog, without router.push.
-    pendingSectionAction.current=apply;
-    setSwitchError('');
-    setSwitchTarget('management-section:'+String(next));
-  },[busy,dirtyEditors,clearEditor]);
-  const cancelSwitch=useCallback(()=>{
-    releaseOperation();
-    pendingSectionAction.current=null;
-    setSwitchTarget('');
-    setSwitchError('');
-  },[releaseOperation]);
-  const discardAndSwitch=useCallback(()=>{
-    if(busy||!switchTarget)return;
-    const target=switchTarget;
-    const action=pendingSectionAction.current;
-    pendingSectionAction.current=null;
-    setSwitchTarget('');setSwitchError('');
+    if(!confirmLeavingDirty())return;
     clearEditor();setNotice('');
-    if(action)action();
-    else navigate(target,switchHistory.current,switchScroll.current);
-  },[busy,switchTarget,clearEditor,navigate]);
+    commit(next);
+  },[busy,confirmLeavingDirty,clearEditor]);
   const value=useMemo(()=>({
     active:editing,scopeId,canManageGlobal,hasSave,busy,notice,begin,end,
     register,save,discard,complete,switchTo,switchSection,setNotice
   }),[editing,scopeId,canManageGlobal,hasSave,busy,notice,begin,end,register,save,discard,complete,switchTo,switchSection]);
-  return <EditDockContext.Provider value={value}>
-    {children}
-    <dialog ref={switchDialog} className="scope-edit-switch-dialog" aria-labelledby="scope-edit-switch-title"
-      aria-describedby="scope-edit-switch-description"
-      onCancel={event=>{event.preventDefault();cancelSwitch();}}>
-      <h2 id="scope-edit-switch-title">有未儲存的編輯內容</h2>
-      <p id="scope-edit-switch-description">有未儲存的變更；請先使用固定六鍵的「儲存」，或選擇放棄變更。</p>
-      {[...registeredEditors.current].some(editor=>editor.isDirty?.()&&editor.isDestructive?.())
-        ?<p className="scope-status" role="status">此儲存包含合併地點或大量可見性更新；合併會將來源地點的文章、路線關聯轉至主要 UID，並刪除來源 UID。請使用固定六鍵的「儲存」確認執行。</p>:null}
-      {switchError?<p role="alert" className="scope-status scope-error">{switchError}</p>:null}
-      <div className="scope-edit-switch-actions">
-        <button type="button" className="loc-button" disabled={busy} onClick={discardAndSwitch}>放棄變更</button>
-        <button type="button" className="loc-button" onClick={cancelSwitch}>取消</button>
-      </div>
-    </dialog>
-  </EditDockContext.Provider>;
+  return <EditDockContext.Provider value={value}>{children}</EditDockContext.Provider>;
 }
 
 export function useEditDock(){return useContext(EditDockContext);}

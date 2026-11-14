@@ -1,13 +1,12 @@
 'use client';
 
 import {useEffect,useMemo,useRef,useState} from 'react';
-import {dbAuthClient,dbAuthEvents} from './db-client.mjs';
+import {dbAuthClient} from './db-client.mjs';
 import {readAllTraceAnchors} from '../modular/features/trace/trace-data';
 import {useAsyncResource,useResourceCache} from './use-async-resource';
 import {revalidateServerMetadata} from './scope-data';
 import {EDIT_OPERATION_TTL_MS,assertEditorSession} from './edit-session-ttl.mjs';
 import {TIMELINE_IO,MAX_TIMELINE_BYTES} from './query-batch-size.mjs';
-import {saveTimelineReviewSession,loadTimelineReviewSession,clearTimelineReviewSession,timelineReviewCacheOversized} from './timeline-review-session.mjs';
 import {accumulateTimelineArticles,groupTimelineMissingPlaces,selectedTimelineArticleUpdates} from './timeline-place-matcher.mjs';
 import {galaxyReadColumnsFor} from '../../zenstack/galaxy-read-models.mjs';
 
@@ -36,10 +35,6 @@ export default function TimelinePlaceManager({scopeId}){
   const [notice,setNotice]=useState('');
   const [writeProgress,setWriteProgress]=useState(null);
   const [completedCount,setCompletedCount]=useState(0);
-  const [sessionEnabled,setSessionEnabled]=useState(false);
-  const [sessionReady,setSessionReady]=useState(false);
-  const [sessionOwner,setSessionOwner]=useState('');
-  const [sessionWarning,setSessionWarning]=useState('');
   const runRef=useRef(0);
   const analyzeTimerRef=useRef(null);
   const workerRef=useRef(null);
@@ -74,44 +69,10 @@ export default function TimelinePlaceManager({scopeId}){
     });
   }
   const cache=useResourceCache();
+  // Clear any prior opt-in review snapshot. No new review data is persisted.
   useEffect(()=>{
-    let active=true;
-    dbAuthEvents.getUser().then(({data})=>{
-      if(!active)return;
-      const owner=data?.user?.id||'';
-      const tooLarge=owner&&timelineReviewCacheOversized(sessionStorage,scopeId);
-      const snapshot=owner&&!tooLarge?loadTimelineReviewSession(sessionStorage,{scopeId,owner}):null;
-      setSessionOwner(owner);
-      if(tooLarge)setSessionWarning('先前的審查暫存過大，已略過自動恢復，原資料未刪除；可以重新選檔分析。');
-      if(snapshot){
-        setAnalysis(snapshot.analysis);
-        setGroupChoices(snapshot.groupChoices||{});
-        setItemChoices(snapshot.itemChoices||{});
-        setExcluded(snapshot.excluded||{});
-        setCompletedCount(snapshot.completedCount||0);
-        setSessionEnabled(true);
-        setNotice('已恢復本分頁暫存的審查結果，請確認地點後再寫入。');
-      }
-      setSessionReady(true);
-    }).catch(()=>{if(active)setSessionReady(true);});
-    return ()=>{active=false;};
+    try{window.sessionStorage.removeItem('loc-timeline-review:'+scopeId);}catch{}
   },[scopeId]);
-  useEffect(()=>{
-    if(!sessionReady)return;
-    if(!sessionEnabled)return;
-    if(!sessionOwner||!analysis)return;
-    const save=setTimeout(()=>{
-      try{
-        const saved=saveTimelineReviewSession(sessionStorage,{scopeId,owner:sessionOwner,analysis,
-          groupChoices,itemChoices,excluded,completedCount});
-        if(!saved)throw Error('審查資料超出安全暫存大小');
-        setSessionWarning('');
-      }catch{
-        setSessionWarning('本次資料超過瀏覽器暫存容量，重新整理仍須重新比對；原始 Timeline 不會上傳。');
-      }
-    },writing?0:400);
-    return ()=>clearTimeout(save);
-  },[scopeId,sessionReady,sessionEnabled,sessionOwner,analysis,groupChoices,itemChoices,excluded,completedCount,writing]);
   const enabled=['lo3rwang','lrunes'].includes(scopeId);
   const anchorQuery=useAsyncResource(['timeline-place-anchors-owner',scopeId],()=>{
     return readAllTraceAnchors(scopeId,{includeHidden:true});
@@ -119,18 +80,9 @@ export default function TimelinePlaceManager({scopeId}){
   const eligible=useMemo(()=>(anchorQuery.data||[]).filter(row=>
     row.trace_type==='space_anchor'&&Array.isArray(row.address)&&row.address.length===2
     &&row.address.every(v=>v!==null&&v!==undefined&&Number.isFinite(Number(v)))),[anchorQuery.data]);
-  function onToggleSessionCache(checked){
-    if(!checked){
-      try{clearTimelineReviewSession(sessionStorage,scopeId);}catch{}
-      setSessionWarning('');
-    }
-    setSessionEnabled(checked);
-  }
   function reset(){
     runRef.current++;
     abortWorker();
-    try{clearTimelineReviewSession(sessionStorage,scopeId);}catch{}
-    setSessionEnabled(false);setSessionWarning('');
     setSelectedFile(null);setAnalysis(null);setGroupChoices({});setBulkPlaceId('');setItemChoices({});setExcluded({});setGroupPages({});setProgress(null);setNotice('');setPage(0);setWriteProgress(null);setCompletedCount(0);
     if(fileRef.current)fileRef.current.value='';
   }
@@ -319,15 +271,15 @@ export default function TimelinePlaceManager({scopeId}){
       <label>選擇 Google Timeline JSON
         <input ref={fileRef} type="file" accept=".json,application/json" disabled={analyzing||writing}
           onChange={e=>{const file=e.currentTarget.files?.[0]||null;
-            runRef.current++;abortWorker();try{clearTimelineReviewSession(sessionStorage,scopeId);}catch{}setSessionEnabled(false);setSessionWarning('');setAnalysis(null);setGroupChoices({});setBulkPlaceId('');setItemChoices({});setExcluded({});setGroupPages({});setProgress(null);setNotice('');setPage(0);setWriteProgress(null);setCompletedCount(0);
+            runRef.current++;abortWorker();setAnalysis(null);setGroupChoices({});setBulkPlaceId('');setItemChoices({});setExcluded({});setGroupPages({});setProgress(null);setNotice('');setPage(0);setWriteProgress(null);setCompletedCount(0);
             setSelectedFile(file);
           }}/>
       </label>
       <label>開始日期（含當日）
-        <input type="date" value={rangeStart} disabled={analyzing||writing} onChange={e=>{setRangeStart(e.target.value);clearTimelineReviewSession(sessionStorage,scopeId);setSessionEnabled(false);setAnalysis(null);}}/>
+        <input type="date" value={rangeStart} disabled={analyzing||writing} onChange={e=>{setRangeStart(e.target.value);setAnalysis(null);}}/>
       </label>
       <label>結束日期（含當日，最多間隔一年）
-        <input type="date" value={rangeEnd} disabled={analyzing||writing} onChange={e=>{setRangeEnd(e.target.value);clearTimelineReviewSession(sessionStorage,scopeId);setSessionEnabled(false);setAnalysis(null);}}/>
+        <input type="date" value={rangeEnd} disabled={analyzing||writing} onChange={e=>{setRangeEnd(e.target.value);setAnalysis(null);}}/>
       </label>
       <p className="scope-status">可比對空間定錨點：{eligible.length.toLocaleString()}；只辨識造訪地點，移動路線不直接視為文章的確定位置。</p>
     </div>
@@ -335,7 +287,7 @@ export default function TimelinePlaceManager({scopeId}){
     <div className="scope-stat-controls">
       <button type="button" className="loc-button" disabled={!selectedFile||!rangeStart||!rangeEnd||analyzing||writing||anchorQuery.isPending||Boolean(anchorQuery.error)}
         onClick={analyze}>{analyzing?'比對中…':'分析 JSON 並預覽'}</button>
-      <button type="button" className="loc-button" disabled={writing} onClick={reset}>清除暫存／重新選檔</button>
+      <button type="button" className="loc-button" disabled={writing} onClick={reset}>清除本次分析／重新選檔</button>
       {analyzing?<button type="button" className="loc-button" onClick={()=>{
         runRef.current++;abortWorker();
         if(analyzeTimerRef.current!==null)clearTimeout(analyzeTimerRef.current);
@@ -353,12 +305,6 @@ export default function TimelinePlaceManager({scopeId}){
         按定錨點審查群組：{reviewGroups.length.toLocaleString()} 組；
         其中有歧義文章 {analysis.disputes.length.toLocaleString()} 篇。
         已有 place_id 的文章不列入；location 不修改。</p>
-      <label className="loc-timeline-review-cache">
-        <input type="checkbox" checked={sessionEnabled} disabled={!sessionReady||!sessionOwner||writing}
-          onChange={e=>onToggleSessionCache(e.target.checked)}/>
-        本分頁暫存審查進度（重新整理免重算；僅本機保存預覽，不保存原始 JSON）
-      </label>
-      {sessionWarning?<p className="scope-status scope-error" role="alert">{sessionWarning}</p>:null}
       <div className="scope-stat-controls" role="group" aria-label="一次選定空間定錨點">
         <label>一次套用空間定錨點（500 公尺內候選）
           <select className="scope-select" value={bulkPlaceId} disabled={writing}
