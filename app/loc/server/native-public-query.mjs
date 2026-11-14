@@ -30,7 +30,15 @@ const IDENT=/^[a-z_][a-z0-9_]*$/i;
 const OPERATORS=new Set(Object.keys(QUERY_FILTER_SQL));
 const SCOPE=new Set(SCOPE_ROUTE_INDEX.filter(row=>row.active!==false).map(row=>row.scope_id));
 const TABLE_RE=/^(?!loc_blocks$)([a-z][a-z0-9]{0,14})_(galaxy|anchor|blocks)$/;
-const TABLES=new Set(['loc_anchor','runes','runes_etc','runes_group']);
+const TABLES=new Set(['loc_anchor','runes','runes_etc','runes_group','lrunes_daily']);
+// The public Daily Rune calendar, culture river, statistics and CSV export
+// share one canonical read-only projection. No user/session/management fields,
+// private record IDs, or unrestricted SQL columns are exposed by this route.
+const DAILY_RUNE_PUBLIC_FIELDS=new Set([
+  'record_date','draw_kind','rune_number','direction','recorded_phase'
+]);
+const DAILY_RUNE_FILTER_FIELDS=new Set(['record_date','draw_kind','rune_number']);
+const DAILY_RUNE_ORDER_FIELDS=new Set(['record_date','draw_kind']);
 const invalid=message=>Object.assign(new Error(message),{status:400});
 function col(input){
   if(typeof input!=='string'||!IDENT.test(input))throw invalid('Invalid selected column');
@@ -91,6 +99,12 @@ function normalize(body){
   // Parse once at the request boundary, then reuse the identical typed AST
   // for both ZModel validation and the Kysely fallback SQL predicate.
   const parsedOrFilters=orFilters.map(parsePortableOrExpression);
+  if(table==='lrunes_daily'&&(
+    columns.some(name=>!DAILY_RUNE_PUBLIC_FIELDS.has(name))||
+    filters.some(filter=>!DAILY_RUNE_FILTER_FIELDS.has(filter.column))||
+    orders.some(order=>!DAILY_RUNE_ORDER_FIELDS.has(order.column))||
+    parsedOrFilters.length>0
+  ))throw invalid('Unavailable public Daily Rune field or filter');
   // No SQL connection is needed to reject unknown modeled columns, even
   // when they are nested in a grouped AND/OR expression.
   verifyModeledSqlFields({schema:'silver',table,columns,filters,
