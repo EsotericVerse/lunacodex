@@ -40,9 +40,10 @@ export async function readImportPointDateAnchors({
       throw Error('共用 Anchor SELECT 回傳格式錯誤');
     for(const row of rows){
       const uid=String(row?.uid||'');
-      if(!/^[A-Za-z0-9]{8}$/.test(uid)||seen.has(uid)||
-         afterUid!==null&&uid<=afterUid)
-        throw Error('Point／Date Anchor UID 重複、無效或游標未遞增：'+uid);
+      // Only SQL may order Base62 under the database collation. JS lexical
+      // comparison is not a valid replacement for the server UID cursor.
+      if(!/^[A-Za-z0-9]{8}$/.test(uid)||seen.has(uid))
+        throw Error('Point／Date Anchor UID 重複或無效：'+uid);
       seen.add(uid);
       afterUid=uid;
       if(row.type==='point')place.accept(row);
