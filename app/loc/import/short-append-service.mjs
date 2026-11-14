@@ -2,6 +2,7 @@
 // One HTTP batch can append into several independent source articles; no UPDATE
 // of existing content, extra tables, RLS changes, or PR-specific Galaxy writes.
 import {galaxyReadColumns} from '../../../zenstack/galaxy-read-models.mjs';
+import {portableGalaxyImportMapping} from '../../../zenstack/portable-import-mapping.mjs';
 const UID=/^[0-9A-Za-z]{8}$/;
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SCOPE=/^[a-z][a-z0-9_]{0,63}$/;
@@ -183,29 +184,40 @@ export function portableShortImportStore(db,sql,{engine='postgres',namespace}={}
  if(schema&&!/^[a-z][a-z0-9_]*$/i.test(schema))throw failure('Invalid SQL namespace',503);
  return {transaction:(scope,run)=>{
   if(!/^[a-z][a-z0-9]{0,14}$/.test(scope))throw failure('Invalid Galaxy Scope',403);
-  const name=(engine==='mysql'||!schema?'':schema+'.')+scope+'_galaxy';
+  // ZModel resolves the same physical columns on all three dialects before
+  // any Kysely statement is built. No alternate batch/UID/permission path.
+  const mapping=portableGalaxyImportMapping({scopeId:scope,engine,namespace:schema});
+  const name=mapping.table;
   const operations=(trx,lockSource)=>({
    lockSource,
    async lookupMany(ids){
-    let q=trx.selectFrom(name).select(['uid','content','site_id'])
-     .where('site','in',['web','mcp']).where('site_id','in',ids).limit(ids.length*2);
+    let q=trx.selectFrom(name).select(mapping.lookup)
+     .where(mapping.site,'in',['web','mcp'])
+     .where(mapping.siteId,'in',ids).limit(ids.length*2);
     if(engine==='postgres')q=q.forUpdate();
     return q.execute();
    },
    async lookup(id){
-    let q=trx.selectFrom(name).select(['uid','content','site_id'])
-     .where('site','in',['web','mcp']).where('site_id','=',id).limit(2);
+    let q=trx.selectFrom(name).select(mapping.lookup)
+     .where(mapping.site,'in',['web','mcp'])
+     .where(mapping.siteId,'=',id).limit(2);
     if(engine==='postgres')q=q.forUpdate();
     return q.execute();
    },
-   async insertMany(rows){await trx.insertInto(name).values(rows).execute();},
-   async insert(row){await trx.insertInto(name).values(row).executeTakeFirstOrThrow();},
+   async insertMany(rows){
+    await trx.insertInto(name).values(mapping.mapInserts(rows)).execute();
+   },
+   async insert(row){
+    await trx.insertInto(name).values(mapping.mapInserts([row])[0]).executeTakeFirstOrThrow();
+   },
    async append(uid,id,tail){
     const update=await trx.updateTable(name)
-     .set({content:sql`concat(coalesce(${sql.ref('content')},''),${tail})`,
-      UpdateTime:new Date().toISOString()})
-     .where('uid','=',uid).where('site','in',['web','mcp'])
-     .where('site_id','=',id).executeTakeFirstOrThrow();
+     .set({
+      [mapping.content]:sql`concat(coalesce(${sql.ref(mapping.content)},''),${tail})`,
+      [mapping.updatedAt]:new Date()
+     })
+     .where(mapping.uid,'=',uid).where(mapping.site,'in',['web','mcp'])
+     .where(mapping.siteId,'=',id).executeTakeFirstOrThrow();
     if(Number(update.numUpdatedRows??update.numAffectedRows??0)!==1)
      throw failure('Galaxy append did not affect one article',409);
    }
