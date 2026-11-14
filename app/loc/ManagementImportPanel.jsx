@@ -21,7 +21,7 @@ import {createUid8} from './uid';
 import {mediaAnchorRecord,mediaAnchorProjection,canonicalMediaAnchorType,MEDIA_ANCHOR_COLUMNS,ANCHOR_TYPE_GROUPS} from '../../zenstack/anchor-hierarchy.mjs';
 import {createImportProgressStore} from './import-progress-store.mjs';
 import {remapArchiveArticleUids} from './import-random-uids.mjs';
-import {createImportUidResolver,remapImportUidRelations,planExistingImportUidUpdate,planImportMediaUidLinks} from './import-uid-delta.mjs';
+import {createImportUidResolver,remapImportUidRelations,planExistingImportUidUpdate,planImportPointUidLink,planImportMediaUidLinks} from './import-uid-delta.mjs';
 import {facebookBackupPlace,facebookBackupPostText,facebookBackupTimestamp} from './facebook-backup-place.mjs';
 import {archiveGalaxyRows} from './archive-caption-rows.mjs';
 import {facebookPostPlace} from './archive-geo-objects.mjs';
@@ -1131,8 +1131,18 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         const mapped=resolvedUid(value);
         return persistedUids.has(mapped)?mapped:value;
       };
+      // Build exact PK-link changes ONCE before any UPDATE, then reuse the
+      // same Immer change set when writing. Content-only no-op logic must not
+      // silently suppress a required dangling-UID repair on reimport.
+      const uidUpdatesByImportUid=new Map();
+      for(const record of unique){
+        const saved=existingBySiteId.get(record.uid);
+        if(!saved)continue;
+        const {changes}=planExistingImportUidUpdate(saved,record,{resolveSavedUid});
+        if(Object.keys(changes).length)uidUpdatesByImportUid.set(record.uid,changes);
+      }
       // Articles with check-ins still need a spatial/date backfill on repeat imports.
-      if(isUnchangedImportBeforeWrite(unique,existingBySiteId,{
+      if(!uidUpdatesByImportUid.size&&isUnchangedImportBeforeWrite(unique,existingBySiteId,{
         hasMedia:Boolean(analyzed.mediaOnly.length||eligibleArchiveEvidence.length||
           eligibleGeoRecords.length||
           analyzed.normalized.some(item=>(item.mediaRecords?.length||0)||
@@ -1165,17 +1175,22 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       // Only an article with a location may contribute its date to Time anchors.
       const checkinAnchorRecords=anchorRecords.filter(record=>
         Boolean(String(record.location||record.__importPlaceName||'').trim()));
+      // UID wins over location text: an existing place_id must not trigger
+      // a name/coordinate re-scan of every Point in the Scope. Resolve saved
+      // PKs directly while reading Date rows only when no new place is needed.
+      const newPlaceCandidates=anchorRecords.filter(record=>
+        !String(existingBySiteId.get(record.uid)?.place_id||'')&&
+        Boolean(record.location||record.__importPlaceName));
+      const needsPointDiscovery=Boolean(newPlaceCandidates.length||geoAnchorRecords.length);
+      const savedPointUids=[...new Set(unique.map(row=>
+        existingBySiteId.get(row.uid)?.place_id).filter(uid=>
+          typeof uid==='string'&&/^[A-Za-z0-9]{8}$/.test(uid)))];
       const anchorSnapshot=!nativeLocal&&scopeId!=='loc'&&
         (checkinAnchorRecords.length||geoAnchorRecords.length)
         ?await readImportPointDateAnchors({scopeId,
+          ...(needsPointDiscovery?{}:{pointUids:savedPointUids}),
           onProgress:p=>showProgress(p.phase,p.completed,p.total||0)})
         :null;
-      // UID wins over location text: a saved Galaxy.place_id is already a
-      // Point relationship even when many original location strings differ.
-      // Never construct another Point merely because a merged place has a
-      // different title in a later import.
-      const newPlaceCandidates=anchorRecords.filter(record=>
-        !String(existingBySiteId.get(record.uid)?.place_id||''));
       const placeAnchors=await prepareImportPlaceAnchors([...newPlaceCandidates,...geoAnchorRecords],{
         scopeId,relation:dbAuthRelation,createMissing:true,anchorSnapshot,
         onProgress:p=>showProgress(p.phase,p.completed,p.total||0)
@@ -1215,9 +1230,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         const restoredPlace=importedPlaceId({incoming:placeRecord,existing,byName:placeAnchors.byName,byCoordinate:placeAnchors.byCoordinate});
         // Immer compares only 8-char UID references. Emit exactly the PK
         // fields changed by this row, then pass them to existing Kysely writer.
-        Object.assign(changes,planExistingImportUidUpdate(existing,record,{
-          placeUid:restoredPlace,resolveSavedUid
-        }).changes);
+        Object.assign(changes,uidUpdatesByImportUid.get(record.uid)||{},
+          planImportPointUidLink(existing.place_id,restoredPlace).changes);
         // Confirm an existing PK directly in the shared Point UID index.
         // Distinct literal locations with the same place_id remain one Point;
         // no title/name/coordinate lookup is necessary for a saved link.
