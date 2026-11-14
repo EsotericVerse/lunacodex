@@ -11,7 +11,12 @@ const EMPTY_ANALYSIS=Object.freeze({
 export function useRiverDensityAnalysis(rows,anchorDates,enabled){
   const [settled,setSettled]=useState(null);
   useEffect(()=>{
-    if(!enabled||!rows?.length)return undefined;
+    if(!enabled||!rows?.length){
+      // A closed suggestion lane must not retain the previous period's daily
+      // arrays and worker analysis in React state. Reopening recomputes lazily.
+      setSettled(null);
+      return undefined;
+    }
     let active=true;
     let worker;
     try{
