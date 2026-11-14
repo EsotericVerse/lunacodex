@@ -14,7 +14,7 @@ const granted=(grants,id,level)=>level==='global'
 const pending=()=>({loading:true,user:null,authorizer:null,error:''});
 
 // Each protected management entry verifies Scope permission before rendering
-// editing controls. A Clerk sign-in alone never grants management access.
+// editing controls. An OAuth session alone never grants LOC Scope access.
 export default function ManagementAccess({scopeId,level='scope',featureId='manage',children}){
   const account=useAccount({enabled:false}),dock=useEditDock();
   const [verification,setVerification]=useState(pending);
