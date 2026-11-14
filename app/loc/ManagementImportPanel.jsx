@@ -579,7 +579,9 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   const [checkpointHint,setCheckpointHint]=useState(null);
   const importOwnerId=String(nativeLocal?'local':account.user?.id||'').trim();
   const checkpointStorage=()=>{
-    try{return window.sessionStorage;}catch{return null;}
+    // Tiny receipts survive an accidental tab/app restart. No article bodies,
+    // tokens, raw ZIP data or file handles are written into browser storage.
+    try{return window.localStorage;}catch{return null;}
   };
   // One event-driven progress snapshot, no additional query, timer or cache.
   const [progressStore]=useState(createImportProgressStore);
