@@ -112,17 +112,31 @@ function anchorModel(rows,start,end,expanded){
 // Source tree groups use the same LocAnchor UID hierarchy as the management
 // editor and Statistics. Multimedia is a Universe, not a media-type pipeline.
 function sourceModel(rows,taxonomy,expanded,start,end){
+  // The database already GROUPs articles by day/source. Keep the browser
+  // aggregation linear in those grouped rows: a long era may contain 10k+
+  // articles, but expanding ONE category must not rescan every other source
+  // once per row or copy the raw article list into memory.
   const sourceRows=list(rows);
-  const names=[...new Set(sourceRows.map(row=>String(row.site||'')))];
+  const bySite=new Map(),countBySite=new Map();
+  let max=1;
+  for(const row of sourceRows){
+    const name=String(row.site||''),count=Number(row.item_count)||0;
+    if(!bySite.has(name))bySite.set(name,[]);
+    bySite.get(name).push(row);
+    countBySite.set(name,(countBySite.get(name)||0)+count);
+    if(count>max)max=count;
+  }
+  const names=[...bySite.keys()];
   const categories=taxonomy?.categories||[],aliases=taxonomy?.aliases||[];
-  const byUid=new Map((taxonomy?.tree||[]).map(row=>[row.uid,row]));
-  const siteCode=site=>assignedSource(site,aliases,categories);
+  const tree=taxonomy?.tree||[];
+  const byUid=new Map(tree.map(row=>[row.uid,row]));
+  const codeBySite=new Map(names.map(name=>[name,assignedSource(name,aliases,categories)]));
   const roots=taxonomy?(taxonomy.roots||[]).map(node=>{
-    const descendants=new Set((taxonomy.tree||[])
+    const descendants=new Set(tree
       .filter(row=>row.path?.[0]===node.uid).map(row=>row.uid));
-    const sites=names.filter(site=>descendants.has(siteCode(site)));
+    const sites=names.filter(site=>descendants.has(codeBySite.get(site)));
     const labels=new Map(sites.map(site=>{
-      const entry=byUid.get(siteCode(site));
+      const entry=byUid.get(codeBySite.get(site));
       const parts=entry?.type==='from'?[entry.galaxy,entry.domain,entry.title]:
         entry?.type==='domain'?[entry.galaxy,entry.title]:[site];
       return [site,parts.filter(Boolean).join(' / ')];
@@ -139,21 +153,18 @@ function sourceModel(rows,taxonomy,expanded,start,end){
     });
   }
   const groups=[],items=[],sites=[];
-  const max=Math.max(1,...sourceRows.map(row=>Number(row.item_count)||0));
   for(const root of roots){
-    const total=sourceRows.filter(row=>root.sites.includes(String(row.site)))
-      .reduce((sum,row)=>sum+Number(row.item_count||0),0);
+    const total=root.sites.reduce((count,site)=>count+(countBySite.get(site)||0),0);
     const opened=expanded.includes(root.id);
     groups.push({id:'root:'+root.id,label:root.label+' ('+total+')',
       collapsible:true,expanded:opened,order:groups.length});
     if(!opened){
       const daily=new Map();
-      for(const row of sourceRows){
-        if(!root.sites.includes(String(row.site)))continue;
+      for(const site of root.sites)for(const row of bySite.get(site)||[]){
+        if(row.day<start||row.day>end)continue;
         daily.set(row.day,(daily.get(row.day)||0)+Number(row.item_count||0));
       }
       for(const [day,count] of daily){
-        if(day<start||day>end)continue;
         items.push({id:'root:'+root.id+':'+day,entry_type:'source_total',
           group_key:'root:'+root.id,group_label:root.label,start_date:day,
           item_count:count,density_ratio:count/max,display_label:'',title:day+' · '+count});
@@ -161,19 +172,16 @@ function sourceModel(rows,taxonomy,expanded,start,end){
       continue;
     }
     for(const site of root.sites){
-      const label=root.labels.get(site)||site;
-      const key=root.id+':'+site;
-      const count=sourceRows.filter(row=>String(row.site)===site)
-        .reduce((sum,row)=>sum+Number(row.item_count||0),0);
+      const label=root.labels.get(site)||site,key=root.id+':'+site;
+      const count=countBySite.get(site)||0;
       groups.push({id:'site:'+key,label:'　'+label+' ('+count+')',
         selectable:true,order:groups.length});
       sites.push({key,site,root:root.id,count,label});
-      for(const row of sourceRows){
-        if(String(row.site)!==site||row.day<start||row.day>end)continue;
+      for(const row of bySite.get(site)||[]){
+        if(row.day<start||row.day>end)continue;
         items.push({id:'site:'+key+':'+row.day,entry_type:'source',
           group_key:'site:'+key,group_label:label,start_date:row.day,
-          item_count:Number(row.item_count||0),
-          density_ratio:Number(row.item_count||0)/max,
+          item_count:Number(row.item_count||0),density_ratio:Number(row.item_count||0)/max,
           display_label:'',title:row.day+' · '+label+' · '+row.item_count});
       }
     }
