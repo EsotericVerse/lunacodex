@@ -255,33 +255,6 @@
   --loc-management-craft-focus:
     color-mix(in srgb,var(--loc-accent) 33%,transparent);
 }
-.management-workspace--unified>.management-workspace__header{
-  position:relative;
-  overflow:hidden;
-  border-color:color-mix(in srgb,var(--loc-gold) 20%,var(--loc-line));
-  border-radius:var(--loc-ui-radius-lg);
-  background:var(--loc-panel);
-  box-shadow:0 3px 14px var(--loc-craft-ink-shadow);
-}
-.management-workspace--unified>.management-workspace__header::after{
-  content:"";
-  position:absolute;
-  inset-inline-start:clamp(1rem,1.5vw,1.5rem);
-  inset-block-end:0;
-  width:min(8rem,32%);
-  height:2px;
-  border-radius:999px;
-  background:var(--loc-accent);
-  pointer-events:none;
-}
-.management-workspace--unified .management-workspace__heading{
-  text-wrap:balance;
-  letter-spacing:-.018em;
-}
-.management-workspace--unified .management-workspace__description{
-  text-wrap:pretty;
-}
-
 /* Section menu is visibly a navigational component, not another editor card.
    Keep one horizontally scrollable row on mobile as required by LOC. */
 .management-workspace:not(.lrg-home-workspace)>.management-section-nav,
