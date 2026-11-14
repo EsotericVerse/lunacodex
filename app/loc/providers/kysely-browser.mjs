@@ -37,6 +37,8 @@ class Query {
   lte(c,v){return this._filter(c,'lte',v)}
   like(c,v){return this._filter(c,'like',v)}
   ilike(c,v){return this._filter(c,'ilike',v)}
+  // Case-folded *equality*, never a SQL LIKE wildcard expression.
+  ieq(c,v){return this._filter(c,'ieq',v)}
   is(c,v){return this._filter(c,'is',v)}
   in(c,v){return this._filter(c,'in',v)}
   contains(c,v){return this._filter(c,'contains',v)}
