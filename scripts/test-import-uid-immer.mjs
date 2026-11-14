@@ -96,7 +96,7 @@ assert.equal(importedPlaceId({incoming:{location:'Another place'},
 let writes=0,latest=null;
 const relation=()=>({update:values=>{
   writes++;latest=values;
-  const request={eq(){return request},select:async()=>({
+  const request={eq(){return request},is(){return request},select:async()=>({
     data:[{uid:'POINT001'}],error:null
   })};
   return request;
@@ -154,7 +154,7 @@ const latestPoint={longitude:122,location:'another alias',
 let collisionCount=0,actualWritten=null;
 const concurrentRelation=()=>({
   update:values=>{
-    const request={eq(){return request},select:async()=>{
+    const request={eq(){return request},is(){return request},select:async()=>{
       collisionCount++;
       if(collisionCount===1)return {data:[],error:null};
       actualWritten=values;
