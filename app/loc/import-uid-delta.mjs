@@ -53,7 +53,7 @@ export function remapImportUidRelations(records=[],{
     const before={
       source_id:row.source_id??null,
       ref_id:row.ref_id??null,
-      target_id:Array.isArray(row.target_id)?row.target_id:null
+      target_id:Array.isArray(row.target_id)?[...row.target_id]:null
     };
     const [next,patches]=produceWithPatches(before,draft=>{
       for(const field of ARTICLE_SCALARS){
@@ -64,20 +64,23 @@ export function remapImportUidRelations(records=[],{
         }
       }
       if(Array.isArray(draft.target_id)){
+        let remapped=false;
         for(let i=0;i<draft.target_id.length;i++){
           const value=draft.target_id[i];
           if(typeof value!=='string'||!UID.test(value))continue;
           const mapped=resolve(value);
-          if(mapped!==value)draft.target_id[i]=mapped;
+          if(mapped!==value){draft.target_id[i]=mapped;remapped=true}
         }
         // Two import aliases can refer to the same persisted article.
         // Preserve link order, remove only post-remap duplicate UIDs.
-        const seen=new Set();
-        const unique=draft.target_id.filter(value=>{
-          if(seen.has(value))return false;
-          seen.add(value);return true;
-        });
-        if(unique.length!==draft.target_id.length)draft.target_id=unique;
+        if(remapped){
+          const seen=new Set();
+          const unique=draft.target_id.filter(value=>{
+            if(seen.has(value))return false;
+            seen.add(value);return true;
+          });
+          if(unique.length!==draft.target_id.length)draft.target_id=unique;
+        }
       }
     });
     if(!patches.length){rows.push(row);continue}
@@ -91,22 +94,34 @@ export function remapImportUidRelations(records=[],{
 // Reimport policy: fill previously empty UID references; do not overwrite
 // curated nonempty links. Spatial Point UID is already resolved by its own
 // import index, so changing it is an exact-PK operation, not a name match.
-export function planExistingImportUidUpdate(existing,incoming,{placeUid=null}={}){
+export function planExistingImportUidUpdate(existing,incoming,{
+  placeUid=null,resolveSavedUid=id=>id
+}={}){
   if(!existing||!incoming)throw new TypeError('匯入 UID 更新缺少資料');
   const before={
     source_id:existing.source_id??null,
     ref_id:existing.ref_id??null,
-    target_id:Array.isArray(existing.target_id)?existing.target_id:[],
+    target_id:Array.isArray(existing.target_id)?[...existing.target_id]:[],
     place_id:existing.place_id??null
   };
   const [next,patches]=produceWithPatches(before,draft=>{
     for(const field of ARTICLE_SCALARS){
-      const requested=incoming[field];
-      if(!String(draft[field]??'').trim()&&requested){
-        draft[field]=checkedUid(requested);
+      const stored=String(draft[field]??'').trim();
+      // Only aliases already resolved to a verified saved PK may rewrite
+      // nonempty persisted references. Other curated links are preserved.
+      if(stored&&UID.test(stored)){
+        const corrected=checkedUid(resolveSavedUid(stored));
+        if(corrected!==stored)draft[field]=corrected;
+      }else if(!stored&&incoming[field]){
+        draft[field]=checkedUid(incoming[field]);
       }
     }
-    if(!draft.target_id.length&&Array.isArray(incoming.target_id)&&incoming.target_id.length)
+    if(draft.target_id.length){
+      const corrected=draft.target_id.map(value=>
+        UID.test(String(value))?checkedUid(resolveSavedUid(value)):value);
+      if(corrected.some((value,i)=>value!==draft.target_id[i]))
+        draft.target_id=[...new Set(corrected)];
+    }else if(Array.isArray(incoming.target_id)&&incoming.target_id.length)
       draft.target_id=[...new Set(incoming.target_id.map(checkedUid))];
     if(placeUid){
       const id=checkedUid(placeUid);
@@ -122,7 +137,7 @@ export function planExistingImportUidUpdate(existing,incoming,{placeUid=null}={}
 export function planImportMediaUidLinks(prior=[],additions=[]){
   if(!Array.isArray(prior))throw new TypeError('媒體 UID 清單不是陣列');
   const known=new Set(prior.map(checkedUid));
-  const before={media_link:prior};
+  const before={media_link:[...prior]};
   const [next,patches]=produceWithPatches(before,draft=>{
     for(const raw of additions){
       const id=checkedUid(raw);
