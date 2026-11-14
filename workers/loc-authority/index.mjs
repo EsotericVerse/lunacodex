@@ -280,7 +280,7 @@ export default {
           }
         };
         const basic=await test('basic');
-        const post=basic.httpStatus>=500||basic.networkError?await test('post'):null;
+        const post=basic.oauthError==='invalid_grant'?null:await test('post');
         return new Response(JSON.stringify({
           endpointHost:tokenURL.hostname,checks:[basic,...(post?[post]:[])],
           note:'A valid client with an intentionally invalid code should receive invalid_grant.'
