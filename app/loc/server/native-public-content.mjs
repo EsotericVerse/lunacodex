@@ -193,7 +193,7 @@ export async function handleNativePublicContent(request,env={},{
       return respond({data});
     }
     if(kind==='culture_anchors')return respond({data:await cachedPublicResult(
-      kind,['silver.loc_anchor'],async()=>{
+      kind,port.dialect?['silver.loc_anchor']:[],async()=>{
       // The LOC-wide source taxonomy is its own fixed physical model. It is
       // not a dynamic Scope Anchor projection, so PostgreSQL reads use the
       // same PolicyPlugin delegate as fixed Blocks.
