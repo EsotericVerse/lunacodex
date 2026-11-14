@@ -39,11 +39,11 @@ export default function FeatureSettingsPage({embedded=false}){
   };
 
   const content=<div className="scope-settings-options management-workspace">
-      <header className="loc-card">
-        {!embedded?<Link href={settingsHref} className="loc-button">{t(KEY+'featureSettingsBack')}</Link>:null}
-        {embedded?<h2>{t(KEY+'featureSettings')}</h2>:<h1>{t(KEY+'featureSettings')}</h1>}
-        {!embedded?<p className="scope-status">{t(KEY+'featureSettingsDescription')}</p>:null}
-      </header>
+      {/* The parent Settings / Feature Hero already names this page.
+          Keep the standalone back link, not a second title card. */}
+      {!embedded?<nav aria-label={t(KEY+'featureSettings')}>
+        <Link href={settingsHref} className="loc-button">{t(KEY+'featureSettingsBack')}</Link>
+      </nav>:null}
       <ManagementSectionNav id="feature-settings-sections"
         title={t(KEY+'featureSettingsSections')}
         panelId="feature-settings-panel"
