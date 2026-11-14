@@ -1,0 +1,93 @@
+/* Local Scope is a data-source mode of the existing six-key LOC App.
+   A quiet rainbow marker distinguishes it without changing normal themes. */
+.loc-local-workspace .scope-page{width:min(100%,1050px);margin-inline:auto}
+.loc-local-hero{
+  --local-line:rgba(199,207,247,.22);
+  display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);
+  align-items:center;gap:clamp(.8rem,3vw,2.5rem);
+  position:relative;overflow:hidden;
+  border:1px solid var(--local-line);border-radius:20px;
+  padding:clamp(1.1rem,3vw,2.2rem);
+  background:linear-gradient(128deg,#111a30 0%,#1c2546 47%,#0a1e2c 100%);
+  color:#f5f6ff;
+  box-shadow:0 18px 48px rgba(7,11,24,.16);
+}
+.loc-local-hero::before{
+  content:"";position:absolute;inset:0 0 auto;height:3px;
+  background:linear-gradient(95deg,#ffb9c9,#f5d49b,#87dacb,#8cbdf9,#d4b0ff);
+}
+.loc-local-hero-copy{position:relative;z-index:1;min-width:0}
+.loc-local-hero .loc-eyebrow{letter-spacing:.14em;color:#a9cfcf}
+.loc-local-hero h1{margin:.25rem 0 .75rem;font-size:clamp(1.6rem,4vw,2.5rem);line-height:1.25}
+.loc-local-hero p:not(.loc-eyebrow){max-width:44ch;color:#c1cce6;line-height:1.75}
+.loc-local-hero img{
+  display:block;width:100%;height:auto;max-height:280px;
+  object-fit:contain;filter:drop-shadow(0 8px 28px rgba(114,198,223,.2))
+}
+.loc-local-heading{padding:.7rem 0 1rem}
+.loc-local-heading h1{margin:.3rem 0}
+.loc-local-heading p:not(.loc-eyebrow){color:var(--loc-muted)}
+.loc-local-overview{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.65rem;margin-block:1rem}
+.loc-local-kpi{
+  display:flex;flex-direction:column;gap:.25rem;padding:.85rem 1rem;
+  border-radius:13px;background:var(--loc-panel);
+  border:1px solid var(--loc-line)
+}
+.loc-local-kpi strong{font-size:1.65rem;line-height:1.2;font-variant-numeric:tabular-nums}
+.loc-local-kpi span{font-size:.78rem;color:var(--loc-muted)}
+.loc-local-transfer{display:grid;gap:.6rem;margin-top:1rem}
+.loc-local-transfer h2{margin:.15rem 0}
+.loc-local-section{display:grid;gap:.65rem;padding-block:1.1rem}
+.loc-local-section h2{margin:0 0 .3rem;font-size:1.1rem}
+.loc-local-section .scope-input{max-width:100%;min-height:44px;padding:.6rem .8rem}
+.loc-local-articles{display:grid;gap:.6rem}
+.loc-local-article{
+  min-width:0;padding:1rem 1.1rem;border:1px solid var(--loc-line);
+  background:var(--loc-panel);border-radius:12px
+}
+.loc-local-article h3{margin:.3rem 0 .55rem;font-size:1rem;overflow-wrap:anywhere}
+.loc-local-article p{margin:.2rem 0 .65rem;white-space:pre-wrap;overflow-wrap:anywhere}
+.loc-local-article small,.loc-local-article-meta{color:var(--loc-muted);font-size:.75rem}
+.loc-local-article-meta{display:flex;flex-wrap:wrap;gap:.5rem 1.25rem}
+.loc-local-stat-row{
+  display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.35rem 1rem;
+  align-items:center;padding:.6rem .75rem;border-bottom:1px solid var(--loc-line)
+}
+.loc-local-stat-row span{overflow-wrap:anywhere}
+.loc-local-stat-row meter{grid-column:1/-1;width:100%;height:8px}
+.loc-local-lease-clock{
+  display:flex;align-items:center;justify-content:space-between;gap:1rem;
+  padding:.8rem 1rem;border-radius:12px;
+  border:1px solid rgba(126,218,208,.45);
+  background:color-mix(in srgb,#78dbd2 11%,var(--loc-panel))
+}
+.loc-local-lease-clock output{font:700 1.45rem/1.2 ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.scope-feature-dock[data-local-core="active"] a{
+  border-color:rgba(130,217,210,.55);
+  background:color-mix(in srgb,#79c9c6 12%,var(--loc-panel));
+  color:var(--loc-text)
+}
+.scope-feature-dock[data-local-core="active"] a:nth-of-type(2){border-color:rgba(248,202,135,.58)}
+.scope-feature-dock[data-local-core="active"] a:nth-of-type(3){border-color:rgba(142,190,252,.58)}
+.scope-feature-dock[data-local-core="active"] a:nth-of-type(4){border-color:rgba(241,157,205,.58)}
+.scope-feature-dock[data-local-core="active"] a:nth-of-type(5){border-color:rgba(185,164,251,.62)}
+.scope-feature-dock[data-local-core="active"] a:nth-of-type(6){border-color:rgba(148,215,183,.62)}
+.scope-local-core-timer{
+  position:absolute;bottom:calc(100% + .4rem);left:50%;transform:translateX(-50%);
+  max-width:calc(100vw - 2rem);padding:.35rem .75rem;border-radius:50px;
+  border:1px solid rgba(134,217,205,.5);
+  background:#112434;color:#d3f4ec;
+  font-size:.76rem;white-space:nowrap;font-variant-numeric:tabular-nums;
+  box-shadow:0 5px 16px #0004;pointer-events:none
+}
+@media(max-width:640px){
+  .loc-local-hero{grid-template-columns:1fr;gap:.2rem}
+  .loc-local-hero img{max-height:160px;margin:auto}
+  .loc-local-overview{gap:.35rem}
+  .loc-local-kpi{padding:.65rem .55rem}
+  .loc-local-kpi strong{font-size:1.35rem}
+  .loc-local-lease-clock{align-items:flex-start;flex-wrap:wrap}
+}
+@media(prefers-reduced-motion:reduce){
+  .loc-local-hero,.scope-feature-dock[data-local-core="active"] a{transition:none}
+}
