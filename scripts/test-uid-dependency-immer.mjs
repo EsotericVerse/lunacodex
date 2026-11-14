@@ -72,6 +72,18 @@ test('Point delete refuses to leave a one-point Path or empty Trace',()=>{
   assert.deepEqual(plan.anchorUpdates[0].values.attr.path,['PATH0001']);
 });
 
+test('Deletion refuses to leave empty Period, Era or route-only Trace',()=>{
+  assert.throws(()=>planUidDependencyRepair({deletedUid:deleted,
+    deletedTable:'anchor',deletedType:'date',
+    anchorRows:[{uid:'PERI0001',type:'period',attr:{uid:[deleted]}}]}),/Period/);
+  assert.throws(()=>planUidDependencyRepair({deletedUid:deleted,
+    deletedTable:'anchor',deletedType:'period',
+    anchorRows:[{uid:'ERAA0001',type:'era',attr:{period:[deleted]}}]}),/Era/);
+  assert.throws(()=>planUidDependencyRepair({deletedUid:deleted,
+    deletedTable:'anchor',deletedType:'path',
+    anchorRows:[{uid:'TRAC0001',type:'trace',attr:{path:[deleted],point:[]}}]}),/Trace/);
+});
+
 test('Article deletion corrects relation fields and Pattern postings',()=>{
   const linked={uid:article,source_id:deleted,ref_id:deleted,
     target_id:[deleted,'ARTI0002']};
