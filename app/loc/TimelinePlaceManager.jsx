@@ -255,7 +255,10 @@ export default function TimelinePlaceManager({scopeId}){
         // into a growing "unchanged" review array in browser memory.
         setAnalysis(previous=>previous?{...previous,
           ready:previous.ready.filter(row=>!resolved.has(row.uid)),
-          disputes:previous.disputes.filter(row=>!resolved.has(row.uid))}:null);
+          disputes:previous.disputes.filter(row=>!resolved.has(row.uid)),
+          // Historical "unchanged" matches are review-only. The persisted
+          // articleCount retains the summary without holding their full rows.
+          unchanged:[]}:null);
         setCompletedCount(count=>count+affected);
         setWriteProgress({done:completed,total:updates.length});
         setNotice('已成功寫入 '+completed+' / '+updates.length+' 篇；已從待處理清單移除。');
