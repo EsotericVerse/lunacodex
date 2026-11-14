@@ -3,7 +3,7 @@
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {useSearchParams} from 'next/navigation';
 import {motion,useReducedMotion} from 'motion/react';
-import {releaseTransientPageResources} from '../../zenstack/client-queries';
+import {prepareTransientResourceAction} from '../../zenstack/client-queries';
 
 /**
  * In-page management navigator.
@@ -84,7 +84,7 @@ export function useManagementSection(items,defaultValue='',aliases={}){
   },[availableSections]);
   useEffect(()=>{
     const sync=()=>{
-      releaseTransientPageResources();
+      prepareTransientResourceAction('management');
       setLocalValue(resolveRef.current(new URL(window.location.href).searchParams.get('section')||''));
     };
     window.addEventListener('popstate',sync);
@@ -94,7 +94,7 @@ export function useManagementSection(items,defaultValue='',aliases={}){
     if(!items.some(item=>item.value===next))return;
     // Before the next editor mounts, free the previous section's in-flight
     // SQL reads and transient data. Auth and grants stay resident.
-    releaseTransientPageResources();
+    prepareTransientResourceAction('management');
     // Update the UI immediately; no router.push/replace, no scroll reset.
     setLocalValue(next);
     const url=new URL(window.location.href);

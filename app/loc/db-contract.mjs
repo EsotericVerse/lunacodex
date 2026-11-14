@@ -259,10 +259,10 @@ export function createDatabaseClient({publicClient,authClient,auth}){
       String(verified.user.email||'').toLowerCase()===String(verified.oauth.email).toLowerCase());
   }
 
-  async function analyticsRead(scope,view,{startDate='',endDate='',options={}}={},client=publicClient){
+  async function analyticsRead(scope,view,{startDate='',endDate='',options={},signal=null}={},client=publicClient){
     const day=value=>/^\d{4}-\d{2}-\d{2}/.test(String(value||''))?String(value).slice(0,10):null;
     const {data,error}=await client.schema('silver').analytics({
-      p_scope_id:scope,p_view:view,p_start:day(startDate),p_end:day(endDate),p_options:options
+      p_scope_id:scope,p_view:view,p_start:day(startDate),p_end:day(endDate),p_options:options,signal
     });
     if(error){const failure=new Error(error.message||'Scope analytics unavailable');failure.code=error.code;throw failure;}
     return data;
@@ -326,8 +326,8 @@ export function createDatabaseClient({publicClient,authClient,auth}){
   }
 
   const dayOrNull=value=>/^\d{4}-\d{2}-\d{2}/.test(String(value||''))?String(value).slice(0,10):null;
-  async function readScopeOverview(scopeId,{startDate='',endDate=''}={}){
-    const data=await analyticsRead(normalizeScopeId(scopeId),'overview',{startDate,endDate});
+  async function readScopeOverview(scopeId,{startDate='',endDate='',signal=null}={}){
+    const data=await analyticsRead(normalizeScopeId(scopeId),'overview',{startDate,endDate,signal});
     return {
       earliest:dayOrNull(data?.earliest)||'',
       rows:Array.isArray(data?.rows)?data.rows:[],

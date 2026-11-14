@@ -814,9 +814,24 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   async function chooseFile(event){
     if(busy)return;
     const files=Array.from(event.target.files||[]);
+    // The browser input is another owner of selected File/ZIP bytes. Drop its
+    // reference once the queue has captured them, so choosing the same file
+    // later also works without retaining the old FileList.
+    event.target.value='';
     if(!files.length)return;
     setQueue(files);setQueueIndex(0);
     await loadQueuedFile(files[0],0,files.length);
+  }
+  function releaseCompletedFile(){
+    // A successful write is the disposal boundary. Retain only *upcoming*
+    // files in a multi-file queue; failures intentionally retain their input
+    // for retry, and persisted database rows are never touched.
+    setRows([]);setArchiveEvidence([]);setGeoPlaceCandidates([]);
+    setArchiveDetection(null);setArchiveSummary(null);setProgress(null);
+    setQueue(current=>{
+      const pendingFiles=current.map((file,index)=>index<=queueIndex?null:file);
+      return pendingFiles.some(Boolean)?pendingFiles:[];
+    });
   }
   async function nextFile(){
     const next=queueIndex+1;
@@ -1159,8 +1174,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         if(!nativeLocal)await refreshImportedSearchSummary();
         setProgress(null);
         setStatus(t('uiExtra.importUI.importNoChanges'));
-        setRows([]);
-        setArchiveEvidence([]);
+        releaseCompletedFile();
         return;
       }
       // Importing an original check-in also restores its spatial anchor.
@@ -1382,7 +1396,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
             (group.saved_uids?.length?'，候選 UID '+group.saved_uids.slice(0,5).join(',')+
               (group.saved_uids.length>5?'…':''):'')).join('、')+
             (ambiguousGroups.length>5?' 等':'')+'。':''));
-      setRows([]);setArchiveEvidence([]);setGeoPlaceCandidates([]);
+      releaseCompletedFile();
       if(nativeLocal)window.dispatchEvent(new Event('loc-local-data-changed'));
     }catch(error){
       setProgress(null);
@@ -1396,14 +1410,14 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     if(busy)return;
     const next=event.target.value;
     setImportLocale(next);
-    if(queue.length)await loadQueuedFile(queue[queueIndex],queueIndex,queue.length,next);
+    if(queue[queueIndex])await loadQueuedFile(queue[queueIndex],queueIndex,queue.length,next);
   }
   function changeImportFormat(next){
     if(busy)return;
     onFormatChange(next);
     // A changed record path changes the parsed file, not just field mapping.
     // Reparse the queued file in place instead of resetting the whole import.
-    if(next.recordPath!==format.recordPath&&queue.length)
+    if(next.recordPath!==format.recordPath&&queue[queueIndex])
       void loadQueuedFile(queue[queueIndex],queueIndex,queue.length,importLocale,next.recordPath);
   }
   const pending=queue.length>queueIndex+1;

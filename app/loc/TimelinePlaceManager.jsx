@@ -80,6 +80,14 @@ export default function TimelinePlaceManager({scopeId}){
   const eligible=useMemo(()=>(anchorQuery.data||[]).filter(row=>
     row.trace_type==='space_anchor'&&Array.isArray(row.address)&&row.address.length===2
     &&row.address.every(v=>v!==null&&v!==undefined&&Number.isFinite(Number(v)))),[anchorQuery.data]);
+  function releaseReview(){
+    // A different time window invalidates the prior Timeline match graph.
+    // Retain the selected File so the user can explicitly re-run the analysis.
+    runRef.current++;abortWorker();
+    setAnalysis(null);setGroupChoices({});setBulkPlaceId('');
+    setItemChoices({});setExcluded({});setGroupPages({});setPage(0);
+    setProgress(null);setWriteProgress(null);setCompletedCount(0);
+  }
   function reset(){
     runRef.current++;
     abortWorker();
@@ -243,11 +251,14 @@ export default function TimelinePlaceManager({scopeId}){
         if(affected!==batch.length)throw Error('資料庫回報的寫入筆數不一致，請重新分析');
         completed+=affected;
         const resolved=new Set(batch.map(row=>row.uid));
+        // Successfully written rows are persisted in SQL. Never copy them
+        // into a growing "unchanged" review array in browser memory.
         setAnalysis(previous=>previous?{...previous,
           ready:previous.ready.filter(row=>!resolved.has(row.uid)),
           disputes:previous.disputes.filter(row=>!resolved.has(row.uid)),
-          unchanged:[...previous.unchanged,...previous.ready.filter(row=>resolved.has(row.uid)),
-            ...previous.disputes.filter(row=>resolved.has(row.uid))]}:null);
+          // Historical "unchanged" matches are review-only. The persisted
+          // articleCount retains the summary without holding their full rows.
+          unchanged:[]}:null);
         setCompletedCount(count=>count+affected);
         setWriteProgress({done:completed,total:updates.length});
         setNotice('已成功寫入 '+completed+' / '+updates.length+' 篇；已從待處理清單移除。');
@@ -276,10 +287,10 @@ export default function TimelinePlaceManager({scopeId}){
           }}/>
       </label>
       <label>開始日期（含當日）
-        <input type="date" value={rangeStart} disabled={analyzing||writing} onChange={e=>{setRangeStart(e.target.value);setAnalysis(null);}}/>
+        <input type="date" value={rangeStart} disabled={analyzing||writing} onChange={e=>{releaseReview();setRangeStart(e.target.value);}}/>
       </label>
       <label>結束日期（含當日，最多間隔一年）
-        <input type="date" value={rangeEnd} disabled={analyzing||writing} onChange={e=>{setRangeEnd(e.target.value);setAnalysis(null);}}/>
+        <input type="date" value={rangeEnd} disabled={analyzing||writing} onChange={e=>{releaseReview();setRangeEnd(e.target.value);}}/>
       </label>
       <p className="scope-status">可比對空間定錨點：{eligible.length.toLocaleString()}；只辨識造訪地點，移動路線不直接視為文章的確定位置。</p>
     </div>

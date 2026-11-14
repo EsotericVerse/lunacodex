@@ -302,6 +302,8 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   const [authorizedEditingKey,setAuthorizedEditingKey]=useState('');
   const [fullTextError,setFullTextError]=useState('');
   const [fullTextLoading,setFullTextLoading]=useState(false);
+  // An old detail request must never put a prior article back after selection.
+  const detailEpoch=useRef(0);
   const searchId=useRef(0);
   const lastTextSearchAt=useRef(0);
   // Anchors the status/results block so a fresh search can scroll the
@@ -432,7 +434,9 @@ export default function Search({managementMode:legacyManagementRoute=false}){
 
     const id=++searchId.current;
     const controller=beginRequest();
-    const timeout=AbortSignal.timeout(25000);
+    // Request admission is already governed by the existing Karaul/PELT QoS.
+    // A 25s client cutoff was interrupting legitimate long-range searches.
+    const timeout=AbortSignal.timeout(60000);
     const signal=AbortSignal.any([controller.signal,timeout]);
     // A hung routing or hydration Promise may never settle on abort. Release
     // the visible loading state when the timeout actually fires.
@@ -461,6 +465,8 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       setLoadingMore(false);
       setLoadMoreError('');
       setEditingKey('');setEditDraft(null);
+      detailEpoch.current++;
+      setFullTextLoading(false);
       setFullTextKey('');setFullText('');setFullTextRow(null);setFullTextError('');
       matchedQueryRef.current='';
       setHasMore(false);
@@ -501,7 +507,9 @@ export default function Search({managementMode:legacyManagementRoute=false}){
         seen.add(result.key);converted.push(result);
       }
       const pageResults=prioritizeStyleTagResults(mergeSummaryResults(converted,UI_COPY));
-      setResults(current=>append?mergeSummaryResults([...current,...pageResults],UI_COPY):pageResults);
+      // A new page replaces the previous 100 results; the cursor, not an
+      // ever-growing browser array, carries the position through the search.
+      setResults(pageResults.slice(0,pageSize));
       setHasMore(Boolean(search.hasMore));
       setNextCursor(search.nextCursor??null);
       const partial=(search.failures?.length)?t('uiExtra.searchUI.partialExtendedData'):'';
@@ -517,7 +525,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           if(signal.aborted||activeSearchOptionsRef.current!==options||!rows?.length)return;
           const additional=rows.map(({row,source})=>toResult(row,source,scopeId,UI_COPY)).filter(Boolean);
           if(!additional.length)return;
-          setResults(current=>prioritizeStyleTagResults(mergeSummaryResults([...additional,...current],UI_COPY)));
+          setResults(current=>prioritizeStyleTagResults(mergeSummaryResults([...additional,...current],UI_COPY)).slice(0,pageSize));
           setStatus(UI_COPY.format.searchResult({
             label:'「'+searchCollectionLabel+'」',query:q,hasMore:search.hasMore,
             partial:search.failures?.length?t('uiExtra.searchUI.partialExtendedData'):''
@@ -572,6 +580,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   }
 
   async function executeIdentity(rawIdentity){
+    detailEpoch.current++;
     const identity=String(rawIdentity||'').trim();
     if(!identity)return;
     const id=++searchId.current;
@@ -606,6 +615,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   }
 
   async function executeMediaIdentity(rawMediaId){
+    detailEpoch.current++;
     const mediaId=String(rawMediaId||'').trim(),id=++searchId.current;
     beginRequest();
     setError('');setStatus('');setResults([]);setEditDraft(null);setEditingKey('');
@@ -655,7 +665,9 @@ export default function Search({managementMode:legacyManagementRoute=false}){
 
 
   async function toggleFullText(result){
+    const request=++detailEpoch.current;
     if(fullTextKey===result.key){
+      setFullTextLoading(false);
       setFullTextKey('');
       setFullText('');
       setFullTextRow(null);
@@ -670,13 +682,15 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     setFullTextLoading(true);
     try{
       const fullRow=await loadGalaxyDetail(result);
+      if(request!==detailEpoch.current)return;
       if(!fullRow)throw new Error(UI_COPY.search.fullTextNotFound);
       setFullText(workDisplayText(fullRow.content||''));
       setFullTextRow(fullRow);
     }catch(exception){
-      setFullTextError(String(exception?.message||exception||UI_COPY.search.fullTextFailed));
+      if(request===detailEpoch.current)
+        setFullTextError(String(exception?.message||exception||UI_COPY.search.fullTextFailed));
     }finally{
-      setFullTextLoading(false);
+      if(request===detailEpoch.current)setFullTextLoading(false);
     }
   }
 
@@ -804,6 +818,9 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   }
 
   function resetSearchState(){
+    ++detailEpoch.current;
+    setFullTextKey('');setFullText('');setFullTextRow(null);
+    setFullTextError('');setFullTextLoading(false);
     ++searchId.current;
     abortRef.current?.abort();
     loadMoreInFlight.current=false;

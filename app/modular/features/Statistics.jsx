@@ -16,7 +16,7 @@ import {useEffect,useMemo,useState} from 'react';
 import useLocFeatureSettings from '../../loc/use-loc-feature-settings';
 import dynamic from 'next/dynamic';
 import {useRouter,useSearchParams} from 'next/navigation';
-import {useAsyncResource,useResourceCache} from '../../../zenstack/client-queries';
+import {useAsyncResource,useResourceCache,prepareTransientResourceAction} from '../../../zenstack/client-queries';
 
 // Defer Galaxy's data/query engine until the selected statistics mode needs it.
 const loadGalaxyStatistics=()=>import('../../loc/galaxy-query');
@@ -266,11 +266,11 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   const totalDaily=useAsyncResource({
     queryKey:['statistics-total-daily-v1',scopeId,queryRange.startDate,observedEnd],
     enabled:totalChart&&periodNavigationReady&&Boolean(queryRange.startDate&&observedEnd&&queryRange.startDate<=observedEnd),
-    queryFn:async()=>{
+    queryFn:async({signal})=>{
       const {dbPublicClient}=await import('../../loc/db-client.mjs');
       const {data,error}=await dbPublicClient.schema('silver').analytics({
         p_scope_id:scopeId,p_view:'daily_total',
-        p_start:queryRange.startDate,p_end:observedEnd
+        p_start:queryRange.startDate,p_end:observedEnd,signal
       });
       if(error)throw error;
       return data;
@@ -302,9 +302,10 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   const overview=useAsyncResource({
     queryKey:['scope-overview',scopeId,queryRange.startDate,queryRange.endDate],
     enabled:sourceChart&&periodNavigationReady&&Boolean(queryRange.startDate&&queryRange.endDate),
-    queryFn:async()=>{
+    queryFn:async({signal})=>{
       const {selectScopeOverview}=await loadGalaxyStatistics();
-      const data=await selectScopeOverview(targetScopes[0],queryRange);
+      const data=await selectScopeOverview(targetScopes[0],{...queryRange,signal});
+      if(signal.aborted)return data;
       // The self-intersection panel reads the same rows; seed its cache so opening it is free.
       resourceCache.set(['own-scope-source-intersection',scopeId,queryRange.startDate,queryRange.endDate],data.rows);
       return data;
@@ -352,17 +353,30 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   const basicTrend=totalChart?totalTrend:resolvedAdminSource.rows;
   const basicSeries=totalChart?[]:resolvedAdminSource.series;
   const basicDistribution=totalChart?[]:resolvedAdminSource.distribution;
+  // One grouped source-name index for the active chart, not one full scan
+  // per category. Rebuild it only when the selected source dataset changes.
+  const sourceNamesByCategory=useMemo(()=>{
+    const names=new Map();
+    if(!sourceChart)return names;
+    const aliases=sourceCatalog.data?.aliases||[];
+    const categories=sourceCatalog.data?.categories||[];
+    for(const entry of sourceRows.data||[]){
+      if(entry.kind!=='source')continue;
+      const category=assignedSource(entry.category,aliases,categories);
+      const name=String(entry.category??'').trim();
+      if(!names.has(category))names.set(category,new Set());
+      names.get(category).add(name);
+    }
+    return new Map([...names].map(([category,sites])=>[category,[...sites]]));
+  },[sourceChart,sourceRows.data,sourceCatalog.data]);
   // The existing source breakdown already drives the chart and its summary.
   // Do not re-scan Galaxy and Galaxy Media in a second trend query.
   const sourceSummary={total:resolvedAdminSource.total,
     sources:resolvedAdminSource.distribution.map((row,index)=>{
       // Category codes and labels share the same order in administrativeSourceTrend.
       const category=String(resolvedAdminSource.series[index]?.key||'').replace(/^category_/,'');
-      const sourceNames=[...new Set((sourceRows.data||[])
-        .filter(entry=>entry.kind==='source'&&assignedSource(entry.category,
-          sourceCatalog.data?.aliases||[],sourceCatalog.data?.categories||[])===category)
-        .map(entry=>String(entry.category??'').trim())
-        .filter(name=>!selectedRawNames||selectedRawNames.includes(name.toLowerCase())))];
+      const sourceNames=(sourceNamesByCategory.get(category)||[])
+        .filter(name=>!selectedRawNames||selectedRawNames.includes(name.toLowerCase()));
       return {term:row.name,item_count:row.value,category,sourceNames};
     }),
     startDate:queryRange.startDate,endDate:queryRange.endDate,
@@ -442,7 +456,13 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
         <span>時期</span>
         <select className="scope-select" aria-label="時期" value={selectedPeriodKey}
           onFocus={()=>setPeriodOptionsRequested(true)}
-          onChange={event=>{setPeriodOptionsRequested(true);setSelectedPeriodKey(event.target.value);}}>
+          onChange={event=>{
+            prepareTransientResourceAction('period',{queryKeys:[
+              ['statistics-total-daily-v1',scopeId],['scope-overview',scopeId],
+              ['statistics-keyword-class',scopeId]
+            ]});
+            setPeriodOptionsRequested(true);setSelectedPeriodKey(event.target.value);
+          }}>
           <option value="year">{DEFAULT_YEAR_WINDOW.label}</option>
           <option value="latest">最新時期</option>
           <option value="">自選時間（原有縮放）</option>
@@ -467,7 +487,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
       {periodQuery.error?<span className="scope-status scope-error">
         時期範圍無法載入，仍可使用自選時間：{featureDataErrorMessage(periodQuery.error,UI_COPY)}
       </span>:null}
-      {sourceChart?<><label><span>{UI_COPY.statistics.chart}</span><select className="scope-select" value={effectiveChartType} onChange={event=>setChartType(event.target.value)}>
+      {sourceChart?<><label><span>{UI_COPY.statistics.chart}</span><select className="scope-select" value={effectiveChartType} onChange={event=>{prepareTransientResourceAction('chart');setChartType(event.target.value);}}>
         {chartGroups.primary.length?<optgroup label={t('uiExtra.statisticsView.chartPrimary')}>
   {chartGroups.primary.map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}
 </optgroup>:null}
@@ -505,14 +525,14 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
         {()=> <section className="statistics-dashboard__panel" style={{display:'grid',gap:12}}>
           <label><span>{UI_COPY.statistics.chart}</span>
             <select className="scope-select" value={effectiveChartType}
-              onChange={event=>setChartType(event.target.value)}>
+              onChange={event=>{prepareTransientResourceAction('chart');setChartType(event.target.value);}}>
               {chartGroups.primary.map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}
               {chartGroups.advanced.map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}
             </select>
           </label>
           <StatisticsChartFrame level={zoomLevel} onChange={setZoomLevel}
             range={queryRange} idPrefix="scope-stat">
-            <StatisticsMultiChart type={effectiveChartType} rows={basicTrend}
+            <StatisticsMultiChart key={'total:'+effectiveChartType} type={effectiveChartType} rows={basicTrend}
               series={[]} totalKey="total" height={420} foldBlank={foldBlank}/>
           </StatisticsChartFrame>
         </section>}
@@ -536,7 +556,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
             <p>{sourceSummary.startDate&&sourceSummary.endDate?sourceSummary.startDate+' ～ '+sourceSummary.endDate:''}</p>
           </header>
           <StatisticsChartFrame level={zoomLevel} onChange={setZoomLevel} range={queryRange} idPrefix="scope-stat">
-            <StatisticsMultiChart type={effectiveChartType} rows={basicTrend}
+            <StatisticsMultiChart key={'source:'+effectiveChartType} type={effectiveChartType} rows={basicTrend}
               series={basicSeries} distribution={basicDistribution}
               totalKey={rankingType==='total'?'total':''}
               foldBlank={foldBlank} height={420}/>

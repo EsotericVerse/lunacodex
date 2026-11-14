@@ -4,7 +4,7 @@
 // Do not preflight /api/loc-permissions and duplicate both network checks.
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 
-export async function keywordService(operation,args={}){
+export async function keywordService(operation,args={},options={}){
   if(!['analyze','reset','classes','catalog','summary','stats','suggest',
       'anchorSearch','saveItem','deleteItem','syncLibrary'].includes(operation))
     throw Error('Unsupported Keyword operation');
@@ -14,10 +14,16 @@ export async function keywordService(operation,args={}){
   if(!SCOPE.test(scope))
     throw Error('Invalid Keyword Scope');
   const write=['analyze','reset','saveItem','deleteItem','syncLibrary'].includes(operation);
+  const readSignal=options?.signal||null;
   const response=await fetch('/api/keywords',{
     method:'POST',credentials:'include',cache:'no-store',
     headers:{'content-type':'application/json'},
-    body:JSON.stringify({operation,args}),signal:AbortSignal.timeout(write?180000:25000)
+    body:JSON.stringify({operation,args}),
+    // Caller-supplied cancellation is for read-only tab/era transitions.
+    // It must never abort an authorized keyword write in progress.
+    signal:!write&&readSignal
+      ?AbortSignal.any([readSignal,AbortSignal.timeout(25000)])
+      :AbortSignal.timeout(write?180000:25000)
   });
   const payload=await response.json().catch(()=>null);
   if(!response.ok)throw Error(payload?.error||'詞級資料讀取失敗（HTTP '+response.status+'）');

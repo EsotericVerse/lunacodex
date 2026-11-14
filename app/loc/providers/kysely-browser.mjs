@@ -133,7 +133,9 @@ export function createKyselyPublicClient({
         p_scope_id:scope,p_view:view,p_start:start||null,p_end:end||null,
         p_options:args.p_options||{}
       }})}),
-      signal:AbortSignal.any([transientReadSignal(),AbortSignal.timeout(9000)])
+      // The calling visualization can cancel its previous window without
+      // aborting unrelated static reads or database writes.
+      signal:AbortSignal.any([transientReadSignal(args.signal||null),AbortSignal.timeout(9000)])
     });
     const payload=await response.json().catch(()=>null);
     if(!response.ok){
