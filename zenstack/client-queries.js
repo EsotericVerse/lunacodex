@@ -112,6 +112,75 @@ function abortInflight(filter={}){
     entry.controller.abort();
   }
 }
+// Semi-dynamic cleanup (ZModel read lifecycle). This is triggered ONLY by
+// explicit actions, never a timer or polling job. Priority belongs to the
+// action, not the particular React page or the user's authorization level.
+// Spool units are approximate record counts, NOT JavaScript heap bytes.
+export const TRANSIENT_ACTION_PRIORITY=Object.freeze({
+  period:3,       // Era / date window: expensive re-aggregation
+  navigation:3,   // leaving a feature: previous view is no longer active
+  management:2,   // changing an editor section
+  chart:1,        // swap only the obsolete chart instance
+  page:1,         // replace one bounded article window
+  selection:0     // ordinary controls need no global eviction
+});
+const SPOOL_LIMIT_ROWS=1500;
+const SPOOL_LIMIT_READS=4;
+const SPOOL_LIMIT_KEYS=20;
+function storedRowUnits(value){
+  if(Array.isArray(value))return value.length;
+  if(value&&typeof value==='object'){
+    if(Array.isArray(value.rows))return value.rows.length;
+    if(Array.isArray(value.pages))
+      return value.pages.reduce((n,page)=>n+storedRowUnits(page),0);
+    if(Array.isArray(value.data))return value.data.length;
+  }
+  return value==null?0:1;
+}
+export function transientResourcePressure(){
+  let spoolRows=0;
+  for(const [key,value] of dataStore){
+    if(!IDENTITY_KEYS.has(key))spoolRows+=storedRowUnits(value);
+  }
+  return Object.freeze({inflightReads:[...inflight.values()].filter(
+    entry=>!IDENTITY_KEYS.has(serialize(entry.key))).length,
+    spoolRows,spoolKeys:[...dataStore.keys()].filter(
+      key=>!IDENTITY_KEYS.has(key)).length});
+}
+function releaseExpiredTransientResources(){
+  let released=0;
+  for(const [key] of dataStore){
+    if(!IDENTITY_KEYS.has(key)&&!hasReader(key)){
+      dataStore.delete(key);released++;
+    }
+  }
+  return released;
+}
+export function prepareTransientResourceAction(action,{queryKeys=[]}={}){
+  const priority=TRANSIENT_ACTION_PRIORITY[action]??0;
+  const before=transientResourcePressure();
+  const pressure=before.inflightReads>=SPOOL_LIMIT_READS||
+    before.spoolRows>=SPOOL_LIMIT_ROWS||before.spoolKeys>=SPOOL_LIMIT_KEYS;
+  // Highest-level feature changes retire the previous view immediately.
+  if(action==='navigation'){
+    releaseTransientPageResources();
+    return {priority,pressure,released:true};
+  }
+  // Large period switches always retire only the outgoing period's query
+  // families; separately mounted identity, time anchors and other panels
+  // must remain available. Their hooks also dispose data on key change.
+  if(priority>=3){
+    for(const prefix of queryKeys)
+      abortInflight({queryKey:keyOf(prefix)});
+    const released=releaseExpiredTransientResources();
+    return {priority,pressure,released:released>0||queryKeys.length>0};
+  }
+  // Other operations scavenge expired resources ONLY when spool pressure
+  // crosses a threshold. Normal buttons never clear a live view's data.
+  const released=pressure?releaseExpiredTransientResources():0;
+  return {priority,pressure,released:released>0};
+}
+
 // Called before each protected management page's first data read and before
 // switching editor sections. Preserve only verified identity/permission data.
 // Browser JS heap collection is managed by GC; dropping all these references
