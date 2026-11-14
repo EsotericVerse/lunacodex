@@ -410,7 +410,7 @@ function AppShellInner({children,runtime}){
   // Registry, NAV titles and Themes share one site snapshot across pages.
   // Scope config and page blocks load separately when first needed.
   // Components using the same (scopeId, pageName) ZenStack query key share one read.
-  const bootstrap=useAppBootstrap(scopeId,pageName);
+  const bootstrap=useAppBootstrap(native&&localDeadline?'local':scopeId,pageName);
   const registryScopes=bootstrap.data?.registry||[];
   const registryLoaded=bootstrap.isSuccess||bootstrap.isError;
   const navDisplayNames=useMemo(()=>{
@@ -661,11 +661,13 @@ function AppShellInner({children,runtime}){
       </output>:null}
       {editingDockVisible&&editDock.notice?<p className="scope-edit-dock-notice" role="status" aria-live="polite">{editDock.notice}</p>:null}
     </div>
-    {showHomeEditEntry?<ScopeHomeEditEntry key={scopeId}/>:null}
+    {showHomeEditEntry&&!localCoreActive?<ScopeHomeEditEntry key={scopeId}/>:null}
     <footer className="scope-footer" data-scope={scopeId}>
       <div className="scope-footer-row">
         <a href="mailto:sopa2306@gmail.com">{copy.nav.contact}</a>
-        <ThemeSelect scopeId={scopeId} scopeMeta={currentScope} copy={copy} defaultThemeIdOverride={gameThemeDefault} pageName={pageName}/>
+        <ThemeSelect scopeId={localNavigation?'local':scopeId}
+          scopeMeta={localNavigation?getScope('local'):currentScope}
+          copy={copy} defaultThemeIdOverride={gameThemeDefault} pageName={pageName}/>
         <LanguageSelect
           locale={activeLocale}
           copy={copy}
