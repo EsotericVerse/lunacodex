@@ -349,6 +349,18 @@ const ACTIONS=new Set(['read_group_members','update_group_member_name',
 const ANCHOR_IMPORT_PAGE_COLUMNS=Object.freeze([
   'uid','type','title','description','attr','createtime'
 ]);
+// Media lookup matches only caller-supplied UID or exact stored URL;
+// a matching URL is not a physical unique key. Read every candidate page.
+const mediaImportCandidateArgsSchema=z.strictObject({
+  p_scope_id:z.string().regex(/^[a-z][a-z0-9]{0,14}$/),
+  p_uids:z.array(z.string().regex(UID)).max(200),
+  p_urls:z.array(z.string().max(2048).regex(/^https?:\/\//i)).max(200),
+  p_after_uid:z.string().regex(UID).nullable().optional(),
+  p_limit:z.number().int().min(1).max(200).default(200)
+});
+const MEDIA_IMPORT_CANDIDATE_COLUMNS=Object.freeze([
+  'uid','type','title','description','attr','createtime','invisible'
+]);
 const anchorImportPageArgsSchema=z.strictObject({
   p_scope_id:z.string().regex(/^[a-z][a-z0-9]{0,14}$/),
   p_types:z.array(z.enum(PERSISTED_ANCHOR_TYPES)).min(1)
@@ -519,7 +531,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     sync_search_patterns:['p_scope_id','p_class_uid','p_patterns','p_final'],
     suggest_search_patterns:['p_scope_ids','p_query'],
     keyword_pattern_statistics:['p_scope_id','p_class_uid','p_start_date','p_end_date','p_source'],
-    media_anchor_candidates:['p_scope_id','p_uids','p_urls'],
+    media_anchor_candidates:['p_scope_id','p_uids','p_urls','p_after_uid','p_limit'],
     anchor_import_page:['p_scope_id','p_types','p_after_uid','p_limit']
   }[name];
   if(Object.keys(args).some(key=>!keys.includes(key)))reject('Unexpected Kysely action argument');
@@ -546,33 +558,32 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     return {data:rows,count:rows.length};
   }
   if(name==='media_anchor_candidates'){
-    // Used ONLY by the website's existing import de-duplication. The Gateway
-    // rejects this action on the MCP hostname before reaching this executor.
-    const scope=validScope(args.p_scope_id);
+    // Website-only, Better Auth verified import read. Authenticated Scope
+    // grants are checked before the trusted PostgreSQL Kysely SELECT.
+    const parsed=mediaImportCandidateArgsSchema.safeParse(args);
+    if(!parsed.success)reject('Invalid Zod MediaAnchor candidate request');
+    const {p_scope_id:scope,p_uids:uids,p_urls:urls,
+      p_after_uid:after,p_limit:limit}=parsed.data;
     if(!await canLocAccess(trx,'scope',scope))
       reject('MediaAnchor import access denied',403);
-    const rawIds=args.p_uids||[],rawUrls=args.p_urls||[];
-    if(!Array.isArray(rawIds)||!Array.isArray(rawUrls)||
-       rawIds.length>200||rawUrls.length>200)
-      reject('MediaAnchor lookup exceeds bounded input');
-    const uids=[...new Set(rawIds.map(v=>String(v||'').trim()))];
-    const urls=[...new Set(rawUrls.map(v=>String(v||'').trim()))];
-    if(uids.some(uid=>!UID.test(uid))||
-       urls.some(url=>!/^https?:\/\//i.test(url)||url.length>2048))
-      reject('Invalid MediaAnchor lookup value');
     if(!uids.length&&!urls.length)return {data:[],count:0};
     await sql`reset role`.execute(trx);
     const conditions=[];
     if(uids.length)conditions.push(eb=>eb('uid','in',uids));
     if(urls.length)conditions.push(eb=>sql`(attr->>'url') in
       (${sql.join(urls.map(url=>sql`${url}`))})`);
-    const query=trx.selectFrom('silver.'+scope+'_anchor')
-      .select(['uid','type','title','description','attr','createtime','invisible'])
+    let query=trx.selectFrom('silver.'+scope+'_anchor')
+      .select(MEDIA_IMPORT_CANDIDATE_COLUMNS)
       .where('type','in',ANCHOR_TYPE_GROUPS.media)
       .where(eb=>eb.or(conditions.map(condition=>condition(eb))))
-      .limit(801);
+      .orderBy('uid','asc').limit(limit);
+    if(after)query=query.where('uid','>',after);
     const matches=await query.execute();
-    if(matches.length>800)reject('MediaAnchor lookup is ambiguous; narrow import batch',409);
+    // Physical ZModel+Zod verifies the selected rows; semantic duplicates
+    // must reach the caller intact rather than fail at an arbitrary row cap.
+    assertZModelSelectRows('silver.'+scope+'_anchor',MEDIA_IMPORT_CANDIDATE_COLUMNS,matches);
+    if(matches.some(row=>!ANCHOR_TYPE_GROUPS.media.includes(row.type)))
+      reject('MediaAnchor lookup returned a non-media type');
     return {data:matches.map(mediaAnchorProjection),count:matches.length};
   }
   if(name==='keyword_pattern_statistics')return {data:await keywordPatternStatistics(trx,args),count:null};
