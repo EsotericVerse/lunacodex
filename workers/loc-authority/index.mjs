@@ -278,7 +278,16 @@ export default {
             if(location){
               try{
                 const destination=new URL(location,tokenURL);
-                redirectTo={host:destination.hostname,path:destination.pathname};
+                // OAuth codes, state and error descriptions must never be echoed.
+                const queryNames=[...new Set(destination.searchParams.keys())].slice(0,12);
+                const rawError=destination.searchParams.get('error');
+                const knownErrors=new Set(['invalid_grant','invalid_client','invalid_request',
+                  'unauthorized_client','access_denied','server_error','login_required']);
+                redirectTo={host:destination.hostname,path:destination.pathname,
+                  queryNames,error:rawError?(knownErrors.has(rawError)?rawError:'other'):null,
+                  hasCode:destination.searchParams.has('code'),
+                  hasState:destination.searchParams.has('state'),
+                  hasErrorDescription:destination.searchParams.has('error_description')};
               }catch{redirectTo={unparseable:true};}
             }
             return {method:mode,httpStatus:response.status,
