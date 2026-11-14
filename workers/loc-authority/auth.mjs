@@ -153,7 +153,15 @@ export function createLocAuth(env){
     // "Untrusted OIDC discovery URL". It is derived from the configured
     // issuer rather than hardcoded, so replacing the Cloudflare application
     // only means changing that variable.
-    trustedOrigins:[LOC_ISSUER,LOC_WEB,new URL(cloudflare.issuer).origin],
+    // Trust only the bundled first-party Chrome Extension for OAuth code exchange.
+    // The Worker CORS allowlist already contains this exact origin; Better Auth
+    // independently checks POST /oauth2/token against trustedOrigins.
+    trustedOrigins:[
+      LOC_ISSUER,
+      LOC_WEB,
+      'chrome-extension://hiaeafonocnjaclcfgjmdopbcgnafnna',
+      new URL(cloudflare.issuer).origin
+    ],
     // Official Better Auth middleware: high-risk Admin API requests bypass the
     // 30-minute cookie cache once, preventing revoked Sessions from managing
     // Auth accounts. No background polling or extra Session store.
