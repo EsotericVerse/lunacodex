@@ -62,8 +62,8 @@ export function validateLocUserField(field,value){
   }
   return output;
 }
-// RLS binds SELECT/INSERT/UPDATE to the signed-in JWT subject. Login is
-// performed by the entry page; preferences do not recheck OAuth email.
+// The website backend verifies Better Auth Session and binds owner_id on
+// SELECT/INSERT/UPDATE. No management grant or client-side email ACL.
 async function selfRow(){
   // The signed website session is bound to owner_id on the server.
   // Email is profile metadata, not a second lookup/authorization key.
@@ -91,7 +91,7 @@ export async function saveLocUserField(uid,field,value){
   // Upsert uses the existing owner_id unique constraint. Two tabs racing
   // to create preferences update only the chosen field, not the entire row.
   const saved=checked(await dbAuthRelation(TABLE)
-    .upsert([{[field]:normalized}],{onConflict:'owner_id'})
+    .upsert([{[field]:normalized,updated_at:new Date().toISOString()}],{onConflict:'owner_id'})
     .select(COLUMNS),'個人設定儲存失敗');
   if(!saved?.[0])throw new Error('個人設定未能建立');
   return normalizeLocUser(saved[0]);
