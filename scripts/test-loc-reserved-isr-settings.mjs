@@ -53,4 +53,4 @@ assert.deepEqual(decodeRuntimeIo({io_limits:{jsonMiB:12},isr:{
 assert.deepEqual(decodeRuntimeIo({io_limits:{jsonMiB:12},isr:{
   enabled:false,provider:'vercel',endpoint:'secret'
 }}),{io_limits:{jsonMiB:12},isr:expected});
-console.log('LOC ISR reservation: 20 disabled/portable compatibility checks PASS');
+console.log('LOC ISR reservation: 23 disabled/portable compatibility checks PASS');
