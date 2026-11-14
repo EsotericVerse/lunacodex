@@ -12,7 +12,7 @@ const row={
   title:'LOC Portable Test',
   content:'[[LOC-Append-Event:abcd]]\nA small test event',
   site:'mcp',
-  site_id:'gl:sample-source',
+  site_id:'gl:'+'a'.repeat(64),
   url:'https://chatgpt.com/c/portable-test',
   createtime:'2026-11-14T01:00:00.000Z',
   UpdateTime:'2026-11-14T01:00:00.000Z',
@@ -50,7 +50,7 @@ for(const [engine,dialect] of Object.entries(dialects)){
   const db=new Kysely({dialect});
   const lookup=db.selectFrom(model.table).select(model.lookup)
     .where(model.site,'in',['web','mcp'])
-    .where(model.siteId,'in',['gl:sample-source']).limit(2).compile();
+    .where(model.siteId,'in',['gl:'+'a'.repeat(64)]).limit(2).compile();
   const insert=db.insertInto(model.table).values(mapped).compile();
   const append=db.updateTable(model.table)
     .set({
