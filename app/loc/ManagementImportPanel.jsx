@@ -29,6 +29,7 @@ import {dedupeIncomingImport,matchExistingImportBySiteId,matchExistingImportByCr
 import {importTimeRangeWindow,filterImportAnalysisByTime} from './import-time-range.mjs';
 import {prepareImportPlaceAnchors,importedPlaceId,recordImportPlaceVisits} from './import-place-anchors.mjs';
 import {prepareImportTimeAnchors} from './import-time-anchors.mjs';
+import {readImportPointDateAnchors} from './import-anchor-read.mjs';
 import {reconcileExistingImportAnchors} from './reconcile-import-anchors.mjs';
 import {extractImportCoordinates,importGeoKey,importMapUrlCoordinates} from './import-geocoordinates.mjs';
 import {isPublicArchiveRecord,filterStandalonePublicRows,assertStandaloneImportDestination} from './archive-import-safety.mjs';
@@ -803,14 +804,18 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     if(!window.confirm('將原始打卡地名及日期匯入空間與時間定錨（已存在的沿用；不新增文章）。確定執行？'))return;
     setBusy(true);setStatus('');setProgress({stage:'核對原始打卡地點',completed:0,total:0,percent:null});
     try{
+      const anchorSnapshot=await readImportPointDateAnchors({
+        scopeId,relation:dbAuthRelation,
+        onProgress:p=>setProgress({stage:p.phase,completed:p.completed,total:0,percent:null})
+      });
       const result=await prepareImportPlaceAnchors(candidates,{
-        scopeId,relation:dbAuthRelation,createMissing:true,
+        scopeId,relation:dbAuthRelation,createMissing:true,anchorSnapshot,
         onProgress:p=>setProgress({stage:p.phase,completed:p.completed,total:p.total||0,
           percent:p.total?Math.round(100*p.completed/p.total):null})
       });
       const dates=await prepareImportTimeAnchors(candidates,{
         scopeId,timeTable:account.scopeDataFor(scopeId)?.time,relation:dbAuthRelation,
-        includeUnifiedUidPool:true,
+        anchorSnapshot,includeUnifiedUidPool:true,
         onProgress:p=>setProgress({stage:p.phase,completed:p.completed,total:p.total||0,
           percent:p.total?Math.round(100*p.completed/p.total):null})
       });
@@ -1080,13 +1085,18 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       // Only an article with a location may contribute its date to Time anchors.
       const checkinAnchorRecords=anchorRecords.filter(record=>
         Boolean(String(record.location||record.__importPlaceName||'').trim()));
+      const anchorSnapshot=!nativeLocal&&scopeId!=='loc'&&
+        (checkinAnchorRecords.length||geoAnchorRecords.length)
+        ?await readImportPointDateAnchors({scopeId,relation:dbAuthRelation,
+          onProgress:p=>showProgress(p.phase,p.completed,p.total||0)})
+        :null;
       const placeAnchors=await prepareImportPlaceAnchors([...anchorRecords,...geoAnchorRecords],{
-        scopeId,relation:dbAuthRelation,createMissing:true,
+        scopeId,relation:dbAuthRelation,createMissing:true,anchorSnapshot,
         onProgress:p=>showProgress(p.phase,p.completed,p.total||0)
       });
       const timeAnchors=await prepareImportTimeAnchors([...checkinAnchorRecords,...geoAnchorRecords],{
         scopeId,timeTable:scope?.time,relation:dbAuthRelation,
-        includeUnifiedUidPool:true,
+        anchorSnapshot,includeUnifiedUidPool:true,
         onProgress:p=>showProgress(p.phase,p.completed,p.total||0)
       });
       const knownArticleIds=new Map();
