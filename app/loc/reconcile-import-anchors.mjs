@@ -1,5 +1,6 @@
 import {prepareImportPlaceAnchors,importedPlaceId,recordImportPlaceVisits} from './import-place-anchors.mjs';
 import {prepareImportTimeAnchors} from './import-time-anchors.mjs';
+import {readImportPointDateAnchors} from './import-anchor-read.mjs';
 
 // Repair location/date links for articles already in Galaxy, without replaying
 // an archive, creating duplicate posts, or touching unrelated article fields.
@@ -33,12 +34,15 @@ export async function reconcileExistingImportAnchors({
   // another Point for each differently spelled location on a merged place.
   // Still collect those articles' timestamps below, keyed by the saved UID.
   const needingPlace=candidates.filter(row=>!String(row.place_id||'').trim());
+  const anchorSnapshot=await readImportPointDateAnchors({
+    scopeId:scope,relation,pageSize,onProgress
+  });
   const places=await prepareImportPlaceAnchors(needingPlace,{
-    scopeId:scope,relation,createMissing:true,scanExistingOnEmpty:true,onProgress
+    scopeId:scope,relation,createMissing:true,scanExistingOnEmpty:true,onProgress,anchorSnapshot
   });
   const dates=await prepareImportTimeAnchors(candidates,{
     scopeId:scope,timeTable,relation,
-    includeUnifiedUidPool:true,onProgress
+    includeUnifiedUidPool:true,onProgress,anchorSnapshot
   });
   let linked=0,unmatched=0,updates=[];
   const visits=[];

@@ -70,8 +70,29 @@ export function importCheckinDates(records=[]){
   return importCheckinDayEntries(records).map(item=>item.date);
 }
 
+// The Date semantic key is attr.date, not the row's physical uid PK.
+// Multiple UIDs for one day remain unresolved instead of selecting one.
+export function createImportDateIndex(){
+  const existingDays=new Map(),conflictingDays=new Map();
+  const accept=row=>{
+    if(row?.type!=='date')throw Error('Date Anchor 索引型別不符');
+    const day=String(row.attr?.date||'').slice(0,10);
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(day))return;
+    if(conflictingDays.has(day)){
+      conflictingDays.get(day).add(String(row.uid));
+      return;
+    }
+    const previous=existingDays.get(day);
+    if(previous&&String(previous.uid)!==String(row.uid)){
+      conflictingDays.set(day,new Set([String(previous.uid),String(row.uid)]));
+      existingDays.delete(day);
+    }else if(!previous)existingDays.set(day,row);
+  };
+  return {accept,existingDays,conflictingDays};
+}
+
 export async function prepareImportTimeAnchors(records,{
-  scopeId,timeTable,relation,pageSize=750,onProgress,
+  scopeId,timeTable,relation,pageSize=750,onProgress,anchorSnapshot=null,
 }={}){
   const entries=importCheckinDayEntries(records);
   const entryByDate=new Map(entries.map(item=>[item.date,item]));
@@ -86,31 +107,24 @@ export async function prepareImportTimeAnchors(records,{
       !logical.startsWith('silver.'+scopeId+'_'))
     throw Error('日期定錨尚未解析正確的 Scope Time 資料表');
   const table='silver.'+scopeId+'_anchor';
-  const existingDays=new Map(),conflictingDays=new Map();
-  onProgress?.({phase:'核對既有日期定錨',completed:0,total:0});
-  for(let offset=0;;offset+=pageSize){
-    const {data,error}=await relation(table).select('uid,type,title,description,attr')
-      .eq('type','date').order('title',{ascending:true})
-      .order('uid',{ascending:true}).range(offset,offset+pageSize-1);
-    if(error)throw Error('讀取日期定錨失敗：'+(error.message||error));
-    const rows=data||[];
-    for(const row of rows){
-      const day=String(row.attr?.date||'').slice(0,10);
-      if(!/^\d{4}-\d{2}-\d{2}$/.test(day))continue;
-      // UID is the physical PK, but attr.date has no uniqueness constraint.
-      // Never adopt the first of several Date anchors for the same day.
-      if(conflictingDays.has(day)){
-        conflictingDays.get(day).add(String(row.uid));
-        continue;
-      }
-      const previous=existingDays.get(day);
-      if(previous&&String(previous.uid)!==String(row.uid)){
-        conflictingDays.set(day,new Set([String(previous.uid),String(row.uid)]));
-        existingDays.delete(day);
-      }else if(!previous)existingDays.set(day,row);
+  if(anchorSnapshot&&
+      (anchorSnapshot.scopeId!==scopeId||anchorSnapshot.table!==table||
+       typeof anchorSnapshot.time?.accept!=='function'))
+    throw Error('日期定錨共用索引 Scope 不符');
+  const index=anchorSnapshot?.time||createImportDateIndex();
+  const {existingDays,conflictingDays}=index;
+  if(!anchorSnapshot){
+    onProgress?.({phase:'核對既有日期定錨',completed:0,total:0});
+    for(let offset=0;;offset+=pageSize){
+      const {data,error}=await relation(table).select('uid,type,title,description,attr')
+        .eq('type','date').order('title',{ascending:true})
+        .order('uid',{ascending:true}).range(offset,offset+pageSize-1);
+      if(error)throw Error('讀取日期定錨失敗：'+(error.message||error));
+      const rows=data||[];
+      for(const row of rows)index.accept(row);
+      onProgress?.({phase:'核對既有日期定錨',completed:offset+rows.length,total:0});
+      if(rows.length<pageSize)break;
     }
-    onProgress?.({phase:'核對既有日期定錨',completed:offset+rows.length,total:0});
-    if(rows.length<pageSize)break;
   }
   // Existing Anchor PK constraints and the 23505 retry below protect against
   // improbable secure Base62 UID collisions without preloading all Anchor UIDs.
