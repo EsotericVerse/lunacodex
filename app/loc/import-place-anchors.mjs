@@ -292,7 +292,11 @@ export async function recordImportPlaceVisits(visits,{relation,table,timesByUid,
             if(Object.hasOwn(plan.changes,'createtime'))
               values.createtime=plan.changes.createtime;
             let request=relation(table).update(values)
-              .eq('uid',uid).eq('type','point').eq('attr',original).select('uid');
+              .eq('uid',uid).eq('type','point').eq('attr',original);
+            // A concurrent writer may have filled createtime without touching
+            // attr. Never overwrite that independent provenance timestamp.
+            if(Object.hasOwn(values,'createtime'))request=request.is('createtime',null);
+            request=request.select('uid');
             if(typeof request.abortSignal==='function'&&
               typeof AbortSignal!=='undefined'&&typeof AbortSignal.timeout==='function')
               request=request.abortSignal(AbortSignal.timeout(PLACE_VISIT_WRITE_TIMEOUT_MS));
