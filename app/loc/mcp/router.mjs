@@ -8,7 +8,7 @@ import {articleDistribution} from './article-distribution.mjs';
 import {privateGalaxyLink} from './private-galaxy.mjs';
 import {mcpDatabaseConfiguration} from './native-kysely.mjs';
 import {mcpToolJsonSchema,parseMcpToolArgs,McpRpcSchema} from './tool-contracts.mjs';
-import {handleStatelessMcpPost} from './stateless-transport.mjs';
+import {handleStatelessMcpPost,streamMcpSseResponse} from './stateless-transport.mjs';
 // LOC MCP HTTP entry point. No database write is granted by an OAuth login.
 export const MCP_RESOURCE=(globalThis.process?.env?.LOC_MCP_RESOURCE_URL||'https://mcp.lo3rwang.cc').replace(/\/+$/,'');
 export const LOC_OAUTH_ISSUER='https://auth.lo3rwang.cc/api/auth';
@@ -110,22 +110,37 @@ export async function handleMcp(request,env={}){
   try{identity=await verifyOAuthToken(request,config);}catch{return unauthorized(config);}
   if(!identity)return unauthorized(config);
   if(request.method==='GET')return response({error:'SSE_not_supported',message:'Use Streamable HTTP POST'},405,{Allow:'POST, OPTIONS'});
-  return handleStatelessMcpPost(request,payload=>
-    dispatchMcpPayload(payload,identity,match[1],config,env));
+  return handleStatelessMcpPost(request,async payload=>{
+    // JSON remains the default for lightweight handshake/list requests.
+    // An MCP tool call can stream its JSON-RPC response over this same POST
+    // when the client advertises text/event-stream (including Accept: both).
+    const stream=payload.method==='tools/call'&&
+      /(?:^|[,\\s])text\\/event-stream(?:[,;\\s]|$)/i.test(request.headers.get('accept')||'');
+    if(stream){
+      // Authorize before opening the 200 SSE response so 401/403/429/503
+      // retain their original HTTP status and WWW-Authenticate semantics.
+      try{await authorizeMcpBearer(match[1],identity.subject,env);}
+      catch(error){return mcpRoleFailure(payload.id,error,config);}
+      return streamMcpSseResponse(()=>
+        dispatchMcpPayload(payload,identity,match[1],config,env,true));
+    }
+    return dispatchMcpPayload(payload,identity,match[1],config,env);
+  });
 }
-async function dispatchMcpPayload(payload,identity,bearer,config,env){
+function mcpRoleFailure(id,error,config){
+  const status=[401,403,429].includes(error?.httpStatus)?error.httpStatus:503;
+  return rpcError(id,-32001,status===403?'LOC MCP role not granted':
+    status===401?'Verified LOC OAuth identity required':
+    status===429?'LOC OAuth UserInfo rate limited':
+    'LOC MCP role service unavailable',status,
+    status===401?{'WWW-Authenticate':oauthChallenge(config)}:{});
+}
+async function dispatchMcpPayload(payload,identity,bearer,config,env,roleVerified=false){
   // A valid SSO token identifies a user, but does not grant MCP capacity.
   // api.manage is the sole existing role registry; no MCP application step.
-  if(payload.method==='tools/list'||payload.method==='tools/call'){
+  if((payload.method==='tools/list'||payload.method==='tools/call')&&!roleVerified){
     try{await authorizeMcpBearer(bearer,identity.subject,env);}
-    catch(error){
-      const status=[401,403,429].includes(error?.httpStatus)?error.httpStatus:503;
-      return rpcError(payload.id,-32001,status===403?'LOC MCP role not granted':
-        status===401?'Verified LOC OAuth identity required':
-        status===429?'LOC OAuth UserInfo rate limited':
-        'LOC MCP role service unavailable',status,
-        status===401?{'WWW-Authenticate':oauthChallenge(config)}:{});
-    }
+    catch(error){return mcpRoleFailure(payload.id,error,config);}
   }
   switch(payload.method){
     case 'initialize':{
