@@ -1358,14 +1358,14 @@ export default function Culture(){
   if(scopeId==='loc'&&!isTimeEditingView)return <FeaturePage featureId="culture">
     <section className='loc-card scope-feature-card scope-feature-card-wide'>
       <h2>近一年文章來源</h2>
-      {query.isPending||locDensityQuery.isPending
+      {query.isPending||Boolean(query.data?.scopes?.length)&&locDensityQuery.isPending
         ?<p className='scope-status' role='status'>{UI_COPY.common.loading}</p>:null}
       {query.error?<p className='scope-status scope-error' role='alert'>
         {featureDataErrorMessage(query.error,UI_COPY)}</p>:null}
       {locDensityQuery.error?<p className='scope-status scope-error' role='alert'>
         {featureDataErrorMessage(locDensityQuery.error,UI_COPY)}</p>:null}
-      {!query.isPending&&!locDensityQuery.isPending&&!query.error&&!locDensityQuery.error
-        &&!locCombinedSourceRiverItems.length
+      {!query.isPending&&(!query.data?.scopes?.length||!locDensityQuery.isPending)
+        &&!query.error&&!locDensityQuery.error&&!locCombinedSourceRiverItems.length
         ?<p className='scope-status'>近一年沒有可顯示的文章來源。</p>:null}
       {locCombinedSourceRiverItems.length?<CultureTimeline
         items={locCombinedSourceRiverItems}
