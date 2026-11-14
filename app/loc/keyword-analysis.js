@@ -49,7 +49,15 @@ export async function runKeywordAnalysisBatch(scopeId,{classUid:requestedClassUi
   if(!/^[0-9A-Za-z]{8}$/.test(classUid))
     throw new Error('尚未指定有效的 Keywords Class');
   reportBatchProgress(onProgress,'reading',0,0,0,'解析關鍵詞中請稍後');
-  const result=await keywordService('analyze',{scopeId:id,classUid});
+  const result=await keywordService('analyze',{scopeId:id,classUid},{
+    onProgress:progress=>reportBatchProgress(onProgress,
+      progress?.phase||'reading',
+      Math.max(0,Number(progress?.completed)||0),
+      Math.max(0,Number(progress?.total)||0),
+      Math.max(0,Number(progress?.percent)||0),
+      String(progress?.label||'正在逐批分析文章'),
+      {parsed:Number(progress?.parsed)||0,reused:Number(progress?.reused)||0})
+  });
   reportBatchProgress(onProgress,'completed',
     Number(result?.analyzedDocuments)||0,
     Number(result?.analyzedDocuments)||0,100,'分析已完成');
