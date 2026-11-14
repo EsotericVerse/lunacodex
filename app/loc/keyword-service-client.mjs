@@ -1,7 +1,7 @@
 // Fixed-purpose Keyword operations on the existing LOC Pages application.
-// No generic SQL Gateway: the browser can request only four bounded Keyword
-// operations, with the same LOC Auth delegation already used by the site.
-import {locDelegation} from './auth/browser-delegation.mjs';
+// Better Auth Session and api.manage ZModel rights are verified once by the
+// destination API, then again only inside the protected write transaction.
+// Do not preflight /api/loc-permissions and duplicate both network checks.
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 
 export async function keywordService(operation,args={}){
@@ -14,7 +14,6 @@ export async function keywordService(operation,args={}){
   if(!SCOPE.test(scope))
     throw Error('Invalid Keyword Scope');
   const write=['analyze','reset','saveItem','deleteItem','syncLibrary'].includes(operation);
-  await locDelegation(scope,write);
   const response=await fetch('/api/keywords',{
     method:'POST',credentials:'include',cache:'no-store',
     headers:{'content-type':'application/json'},

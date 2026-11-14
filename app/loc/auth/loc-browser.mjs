@@ -12,70 +12,47 @@ function safeReturn(path){
   return parsed.pathname+parsed.search;
 }
 export function createLocAccountAdapter({
-  authorityOrigin=ISSUER,
-  navigate=url=>globalThis.location.assign(url)
+  authorityOrigin=ISSUER
 }={}){
   if(new URL(authorityOrigin).origin!==ISSUER)
     throw Error('Untrusted LOC Auth issuer');
   let lazyClient=null;
   async function client(){
-    if(!lazyClient)lazyClient=import('better-auth/client').then(({createAuthClient})=>
-      createAuthClient({baseURL:ISSUER,basePath:'/api/auth',
-        fetchOptions:{credentials:'include'}}));
+    if(!lazyClient)lazyClient=Promise.all([
+      import('better-auth/client'),import('@better-auth/sso/client')
+    ]).then(([{createAuthClient},{ssoClient}])=>createAuthClient({
+      baseURL:ISSUER,basePath:'/api/auth',
+      // Better Auth owns Session state. Protected pages request a Session
+      // explicitly; there are no automatic polls or focus-driven rechecks.
+      sessionOptions:{refetchInterval:0,refetchOnWindowFocus:false,
+        refetchWhenOffline:false},
+      plugins:[ssoClient()],
+      fetchOptions:{credentials:'include'}
+    }));
+
     return lazyClient;
   }
   const listeners=new Set();
 
-  // A verified Session is reusable until its authoritative expiresAt.
-  // Checking its expiry is local: no 60-second timed or TTL-driven re-query.
-  // Missing/expired Session data never grants authentication.
-  const SIGNED_OUT_CACHE_MS=60*1000;
-  const sessionExpiresAt=value=>{
-    const raw=value?.session?.expiresAt;
-    const ms=raw instanceof Date?raw.getTime():
-      typeof raw==='number'?raw:Date.parse(String(raw||''));
-    return Number.isFinite(ms)?ms:0;
-  };
-  let sessionCache=null; // {value, expiresAt}
-  let pendingSession=null; // in-flight promise dedup
-
-  function clearSessionCache(){
-    sessionCache=null;
-    pendingSession=null;
-  }
-
-  async function fetchSession(){
-    const {data,error}=await (await client()).getSession();
-    if(error)throw Error(error.message||'LOC Auth session unavailable');
-    if(!data?.session||!data?.user||data.user.emailVerified!==true)
-      return null;
-    const user=data.user;
-    if(sessionExpiresAt({session:data.session})<=Date.now())return null;
-    return {user,session:{...data.session,user},oauth:{
-      provider:'loc',providerId:user.id,userId:user.id,
-      email:user.email
-    }};
-  }
-
-  async function session({bypass=false}={}){
-    if(!bypass){
-      if(sessionCache&&Date.now()<sessionCache.expiresAt)
-        return sessionCache.value;
-      if(pendingSession)return pendingSession;
-    }
-    const p=fetchSession().then(value=>{
-      if(!bypass){
-        sessionCache={value,expiresAt:value
-          ?sessionExpiresAt(value):Date.now()+SIGNED_OUT_CACHE_MS};
-        pendingSession=null;
-      }
-      return value;
-    },error=>{
-      if(!bypass)pendingSession=null;
-      throw error;
-    });
-    if(!bypass)pendingSession=p;
-    return p;
+  // One in-flight Better Auth getSession() per explicit protected action.
+  // Better Auth owns signed cookie cache, Session expiry and revocation.
+  // No second browser Session TTL or long-lived signed-out cache.
+  let pendingSession=null;
+  async function session(){
+    if(pendingSession)return pendingSession;
+    const task=(async()=>{
+      const {data,error}=await (await client()).getSession();
+      if(error)throw Error(error.message||'LOC Auth session unavailable');
+      if(!data?.session||!data?.user||data.user.emailVerified!==true)
+        return null;
+      const user=data.user;
+      return {user,session:{...data.session,user},oauth:{
+        provider:'loc',providerId:user.id,userId:user.id,email:user.email
+      }};
+    })();
+    pendingSession=task;
+    try{return await task}
+    finally{if(pendingSession===task)pendingSession=null;}
   }
 
   const auth={
@@ -92,31 +69,28 @@ export function createLocAccountAdapter({
       if(provider!=='cloudflare')
         return {data:null,error:new Error('LOC Cloudflare SSO is the configured sign-in provider')};
       try{
-        clearSessionCache();
         const returnTo=safeReturn(options.redirectTo);
         const callbackURL=new URL(returnTo,'https://loc.lo3rwang.cc').href;
-        const response=await fetch(ISSUER+'/api/auth/sign-in/sso',{
-          method:'POST',credentials:'include',
-          headers:{'content-type':'application/json'},
-          body:JSON.stringify({providerId:'cloudflare-access',callbackURL,
-            errorCallbackURL:callbackURL})
+        // The official SSO client plugin owns provider dispatch, redirect,
+        // callback handling and error normalization. Do not hand-roll fetch.
+        const result=await (await client()).signIn.sso({
+          providerId:'cloudflare-access',callbackURL,
+          errorCallbackURL:callbackURL
         });
-        const data=await response.json().catch(()=>({}));
-        if(!response.ok||!data?.url)
-          throw Error(data.message||data.error||'Cloudflare SSO authorization URL missing');
-        navigate(data.url);
-        return {data,error:null};
-      }catch(error){clearSessionCache();return {data:null,error};}
+        if(result?.error)throw Error(result.error.message||
+          'Cloudflare SSO authorization failed');
+        return {data:result?.data??null,error:null};
+      }catch(error){return {data:null,error};}
     },
     async signOut(){
       try{
-        clearSessionCache();
         const result=await (await client()).signOut();
         if(result?.error)return result;
-        sessionCache={value:null,expiresAt:Date.now()+SIGNED_OUT_CACHE_MS};
+        // Only successful Better Auth sign-out invalidates the Web's
+        // in-memory UI grants. Failed network sign-out is not a logout.
         for(const listener of [...listeners])listener('SIGNED_OUT',null);
         return result;
-      }catch(error){clearSessionCache();return {error};}
+      }catch(error){return {error};}
     },
     onAuthStateChange(callback){
       if(typeof callback!=='function')throw Error('LOC Auth callback required');
