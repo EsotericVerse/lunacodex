@@ -190,7 +190,7 @@ test('Before-delete flow reads matching UID references then updates only depende
   const {db,events}=recordingKysely({
     anchorTarget:{uid:deleted,type:'point'},
     galaxyCandidates:[{uid:article,place_id:deleted}],
-    anchorCandidates:[{uid:'PATH0001',type:'path',attr:{point:[deleted,'POINT002']}}]
+    anchorCandidates:[{uid:'PATH0001',type:'path',attr:{point:[deleted,'POINT002','POINT003']}}]
   });
   const outcome=await repairBeforeUidDelete(db,{
     table:'lo3rwang_anchor',filters:[{column:'uid',operator:'eq',value:deleted}]
