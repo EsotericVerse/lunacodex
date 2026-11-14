@@ -112,17 +112,31 @@ function anchorModel(rows,start,end,expanded){
 // Source tree groups use the same LocAnchor UID hierarchy as the management
 // editor and Statistics. Multimedia is a Universe, not a media-type pipeline.
 function sourceModel(rows,taxonomy,expanded,start,end){
+  // The database already GROUPs articles by day/source. Keep the browser
+  // aggregation linear in those grouped rows: a long era may contain 10k+
+  // articles, but expanding ONE category must not rescan every other source
+  // once per row or copy the raw article list into memory.
   const sourceRows=list(rows);
-  const names=[...new Set(sourceRows.map(row=>String(row.site||'')))];
+  const bySite=new Map(),countBySite=new Map();
+  let max=1;
+  for(const row of sourceRows){
+    const name=String(row.site||''),count=Number(row.item_count)||0;
+    if(!bySite.has(name))bySite.set(name,[]);
+    bySite.get(name).push(row);
+    countBySite.set(name,(countBySite.get(name)||0)+count);
+    if(count>max)max=count;
+  }
+  const names=[...bySite.keys()];
   const categories=taxonomy?.categories||[],aliases=taxonomy?.aliases||[];
-  const byUid=new Map((taxonomy?.tree||[]).map(row=>[row.uid,row]));
-  const siteCode=site=>assignedSource(site,aliases,categories);
+  const tree=taxonomy?.tree||[];
+  const byUid=new Map(tree.map(row=>[row.uid,row]));
+  const codeBySite=new Map(names.map(name=>[name,assignedSource(name,aliases,categories)]));
   const roots=taxonomy?(taxonomy.roots||[]).map(node=>{
-    const descendants=new Set((taxonomy.tree||[])
+    const descendants=new Set(tree
       .filter(row=>row.path?.[0]===node.uid).map(row=>row.uid));
-    const sites=names.filter(site=>descendants.has(siteCode(site)));
+    const sites=names.filter(site=>descendants.has(codeBySite.get(site)));
     const labels=new Map(sites.map(site=>{
-      const entry=byUid.get(siteCode(site));
+      const entry=byUid.get(codeBySite.get(site));
       const parts=entry?.type==='from'?[entry.galaxy,entry.domain,entry.title]:
         entry?.type==='domain'?[entry.galaxy,entry.title]:[site];
       return [site,parts.filter(Boolean).join(' / ')];
@@ -139,21 +153,18 @@ function sourceModel(rows,taxonomy,expanded,start,end){
     });
   }
   const groups=[],items=[],sites=[];
-  const max=Math.max(1,...sourceRows.map(row=>Number(row.item_count)||0));
   for(const root of roots){
-    const total=sourceRows.filter(row=>root.sites.includes(String(row.site)))
-      .reduce((sum,row)=>sum+Number(row.item_count||0),0);
+    const total=root.sites.reduce((count,site)=>count+(countBySite.get(site)||0),0);
     const opened=expanded.includes(root.id);
     groups.push({id:'root:'+root.id,label:root.label+' ('+total+')',
       collapsible:true,expanded:opened,order:groups.length});
     if(!opened){
       const daily=new Map();
-      for(const row of sourceRows){
-        if(!root.sites.includes(String(row.site)))continue;
+      for(const site of root.sites)for(const row of bySite.get(site)||[]){
+        if(row.day<start||row.day>end)continue;
         daily.set(row.day,(daily.get(row.day)||0)+Number(row.item_count||0));
       }
       for(const [day,count] of daily){
-        if(day<start||day>end)continue;
         items.push({id:'root:'+root.id+':'+day,entry_type:'source_total',
           group_key:'root:'+root.id,group_label:root.label,start_date:day,
           item_count:count,density_ratio:count/max,display_label:'',title:day+' · '+count});
@@ -161,19 +172,16 @@ function sourceModel(rows,taxonomy,expanded,start,end){
       continue;
     }
     for(const site of root.sites){
-      const label=root.labels.get(site)||site;
-      const key=root.id+':'+site;
-      const count=sourceRows.filter(row=>String(row.site)===site)
-        .reduce((sum,row)=>sum+Number(row.item_count||0),0);
+      const label=root.labels.get(site)||site,key=root.id+':'+site;
+      const count=countBySite.get(site)||0;
       groups.push({id:'site:'+key,label:'　'+label+' ('+count+')',
         selectable:true,order:groups.length});
       sites.push({key,site,root:root.id,count,label});
-      for(const row of sourceRows){
-        if(String(row.site)!==site||row.day<start||row.day>end)continue;
+      for(const row of bySite.get(site)||[]){
+        if(row.day<start||row.day>end)continue;
         items.push({id:'site:'+key+':'+row.day,entry_type:'source',
           group_key:'site:'+key,group_label:label,start_date:row.day,
-          item_count:Number(row.item_count||0),
-          density_ratio:Number(row.item_count||0)/max,
+          item_count:Number(row.item_count||0),density_ratio:Number(row.item_count||0)/max,
           display_label:'',title:row.day+' · '+label+' · '+row.item_count});
       }
     }
@@ -206,6 +214,7 @@ export default function CulturePublicReader(){
   const [keywordError,setKeywordError]=useState('');
   const [classesLoading,setClassesLoading]=useState(false);
   const [daily,setDaily]=useState(NO_ITEMS);
+  const [densityLoading,setDensityLoading]=useState(false);
   const [catalog,setCatalog]=useState({categories:[],aliases:[],tree:[],roots:[]});
   const [error,setError]=useState('');
   const [catalogError,setCatalogError]=useState('');
@@ -252,19 +261,26 @@ export default function CulturePublicReader(){
   },[scopeId]);
   useEffect(()=>{
     let active=true;
-    setDaily([]);setKeywordError('');
-    if(!validRange)return undefined;
-    // Bounded daily density is the single data source for both presentations.
-    // Keyword lanes are equal-proportion projections of the same daily totals,
-    // not the retired article UID-list keyword_summary algorithm.
+    // Free the previous period's daily arrays before starting a new aggregate.
+    // The SQL side returns one row per date/source, never 10k article bodies.
+    setDaily(NO_ITEMS);
+    setDensityLoading(validRange);
+    setKeywordError('');
+    if(!validRange)return()=>{active=false;};
     analytics(scopeId,'culture_density',rangeStart,rangeEnd)
       .then(rows=>{if(active)setDaily(rows);})
-      .catch(error=>{if(active)setKeywordError(String(error?.message||error));});
+      .catch(error=>{if(active)setKeywordError(String(error?.message||error));})
+      .finally(()=>{if(active)setDensityLoading(false);});
     return()=>{active=false;};
   },[scopeId,rangeStart,rangeEnd,validRange]);
   useEffect(()=>{
-    if(densityMode!=='keyword'||!keywordClass){setKeywordGroups([]);return undefined;}
+    // Release old class snapshots when switching tabs, subjects or dates.
+    if(densityMode!=='keyword'||!keywordClass){
+      setKeywordGroups(NO_ITEMS);setKeywordDaily(NO_ITEMS);setKeywordLoading(false);
+      return undefined;
+    }
     let active=true;
+    setKeywordGroups(NO_ITEMS);setKeywordDaily(NO_ITEMS);
     setKeywordLoading(true);
     import('../keyword-service-client.mjs')
       .then(({keywordService})=>keywordService('stats',{
@@ -288,7 +304,10 @@ export default function CulturePublicReader(){
     return()=>{active=false;};
   },[scopeId,densityMode,keywordClass,rangeStart,rangeEnd]);
   useEffect(()=>{
-    if(densityMode!=='keyword')return undefined;
+    if(densityMode!=='keyword'){
+      setKeywordClasses(NO_ITEMS);setClassesLoading(false);
+      return undefined;
+    }
     let active=true;
     setClassesLoading(true);
     import('../keyword-service-client.mjs')
@@ -378,12 +397,15 @@ export default function CulturePublicReader(){
     fetchArticles({site,offset:0});
   };
   useEffect(()=>{
-    // Any date/filter change invalidates the currently visible list.
+    // Any date/filter change invalidates visible details, held text, active
+    // worker results and expanded Source rows from the previous period.
     sequence.current+=1;fullSequence.current+=1;
     setArticlesOpen(false);setArticleRows([]);setArticleOffset(0);
     setArticleMore(false);setArticleError('');
     setSelectedSite('');setSelectedCategoryKey('');
     setFullUid('');setFullText('');setFullError('');
+    setExpandedSources([]);
+    setAnchorSuggestionsOpen(false);setFocusedSuggestionDate('');
   },[scopeId,rangeStart,rangeEnd,densityMode,keywordClass]);
   const loadMore=()=>{
     if(!articlesOpen||!selectedSite)return;
@@ -452,6 +474,11 @@ export default function CulturePublicReader(){
         {catalogError&&densityMode==='source'?<p className='scope-status scope-error' role='alert'>
           來源分類暫時無法載入：{catalogError}</p>:null}
         {keywordError?<p className='scope-status scope-error' role='alert'>{keywordError}</p>:null}
+        {densityLoading?<div className='scope-culture-density-loading' role='status'
+          aria-live='polite' aria-label='正在整理該時期的每日文章密度'>
+          <span className='scope-culture-density-loading__bar' aria-hidden='true'/>
+          <span>正在整理時間河道的每日密度…</span>
+        </div>:null}
         <div className='scope-culture-double-river scope-public-culture-river'>
         <CultureTimeline items={densityRiver.items} extraGroups={densityRiver.groups}
           focus={NO_FOCUS} mode='source' heightVariant='double' naturalSourceHeight
@@ -521,7 +548,12 @@ export default function CulturePublicReader(){
           <p className='scope-status'>點選左側小分類，才會載入該分類文章。</p>:null}
       </section>
       {articlesOpen&&densityMode==='source'&&selectedSite?<section className='scope-card scope-culture-source-detail' data-selected-category={selectedCategoryKey}>
-        <h3>{selectedSite}｜相關文章列表</h3>
+        <div className='scope-culture-source-detail-heading'>
+          <h3>{selectedSite}｜相關文章列表</h3>
+          <button type='button' className='loc-button' onClick={()=>resetArticles()}>
+            關閉並釋放文章列表
+          </button>
+        </div>
         {articleError?<p role='alert' className='scope-status scope-error'>{articleError}</p>:null}
         {articleRows.map((row,index)=>row.hidden
           ?<p className='scope-status' key={row.key||index}>本文已隱藏</p>
