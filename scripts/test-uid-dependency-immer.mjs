@@ -70,6 +70,35 @@ test('Article deletion corrects relation fields and Pattern postings',()=>{
   assert.deepEqual(p.attr['63ade525'],[deleted,'ARTI0002']);
 });
 
+test('Portable SQL JSON strings use exact UID membership, not text substring',()=>{
+  const row={uid:article,source_id:null,ref_id:null,
+    target_id:JSON.stringify([deleted,'ARTI0002'])};
+  const plan=planUidDependencyRepair({deletedUid:deleted,deletedTable:'galaxy',
+    galaxyRows:[row]});
+  assert.equal(plan.affected,1);
+  assert.deepEqual(plan.galaxyUpdates[0].values.target_id,['ARTI0002']);
+  assert.equal(plan.galaxyUpdates[0].expected.target_id,row.target_id);
+  assert.throws(()=>planUidDependencyRepair({deletedUid:deleted,deletedTable:'galaxy',
+    galaxyRows:[{uid:article,target_id:'invalid JSON'}]}));
+});
+
+test('Source Anchor deletion fixes parent UID list but never edits site literals',()=>{
+  const node={uid:'DOMA0001',type:'domain',attr:{uid:[deleted,'FROM0002'],counts:{lrunes:3}}};
+  const plan=planUidDependencyRepair({deletedUid:deleted,deletedTable:'anchor',
+    deletedType:'from',anchorRows:[node],
+    galaxyRows:[{uid:article,site:'Original source literal',site_id:'external-post-123'}]});
+  assert.equal(plan.affected,1);
+  assert.deepEqual(plan.anchorUpdates[0].values.attr.uid,['FROM0002']);
+  assert.deepEqual(plan.anchorUpdates[0].values.attr.counts,{lrunes:3});
+  assert.deepEqual(plan.galaxyUpdates,[]);
+});
+
+test('Deleting an unrelated Anchor does not alter Galaxy article values',()=>{
+  const plan=planUidDependencyRepair({deletedUid:deleted,deletedTable:'anchor',
+    deletedType:'date',galaxyRows:[{uid:article,date:'2026-11-14',
+    location:'Sample location',site:'Sample source'}]});
+  assert.equal(plan.affected,0);
+});
 test('No-op plans do not produce SQL updates',()=>{
   const row={uid:article,media_link:['MEDIA002']};
   const plan=planUidDependencyRepair({deletedUid:deleted,deletedTable:'anchor',
