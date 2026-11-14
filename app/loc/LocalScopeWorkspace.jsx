@@ -22,7 +22,7 @@ function localArticle(row){
       <span>{articleDate(row)}</span><span>{row.site||'local'}</span>
     </div>
     <h3>{row.title||'未命名文章'}</h3>
-    <p>{String(row.content||'').slice(0,320)}</p>
+    <p>{row.list===false?'本文已隱藏':String(row.content||'').slice(0,320)}</p>
     {row.location?<small>地點：{row.location}</small>:null}
   </article>;
 }
@@ -56,15 +56,30 @@ export default function LocalScopeWorkspace({view='home'}){
   useEffect(()=>setVisible(rowsPerPage),[view,term]);
 
   const groups=useMemo(()=>countBy(rows,r=>r.site),[rows]);
-  const dayGroups=useMemo(()=>countBy(rows,articleDate).sort((a,b)=>b[0].localeCompare(a[0])),[rows]);
-  const placeGroups=useMemo(()=>countBy(rows,r=>r.location||''),[rows]);
+  const statisticsRows=useMemo(()=>rows.filter(r=>r.statics!==false),[rows]);
+  const statisticsGroups=useMemo(()=>countBy(statisticsRows,r=>r.site),[statisticsRows]);
+  const dayGroups=useMemo(()=>countBy(statisticsRows,articleDate)
+    .sort((a,b)=>b[0].localeCompare(a[0])),[statisticsRows]);
+  // A saved Point PK wins over literal location aliases. Without a PK,
+  // different location strings stay distinct and are never fuzzy-merged.
+  const traceRows=useMemo(()=>rows.filter(r=>r.trace!==false&&(r.place_id||r.location)),[rows]);
+  const placeGroups=useMemo(()=>countBy(traceRows,r=>
+    r.place_id?'Point '+r.place_id:r.location),[traceRows]);
   const filtered=useMemo(()=>{
-    if(view==='trace')return rows.filter(r=>r.location);
+    if(view==='trace')return traceRows;
+    if(view==='culture')return rows.filter(r=>r.culture!==false);
+    if(view==='search'){
+      const allowed=rows.filter(r=>r.search!==false);
+      if(!term)return allowed;
+      const needle=term.toLocaleLowerCase();
+      return allowed.filter(r=>[r.title,r.content,r.site,r.location].some(v=>
+        String(v||'').toLocaleLowerCase().includes(needle)));
+    }
     if(view!=='search'||!term)return rows;
     const needle=term.toLocaleLowerCase();
     return rows.filter(r=>[r.title,r.content,r.site,r.location].some(v=>
       String(v||'').toLocaleLowerCase().includes(needle)));
-  },[rows,term,view]);
+  },[rows,term,view,traceRows]);
 
   async function handleImport(event){
     const file=event.target.files?.[0];
@@ -154,7 +169,7 @@ export default function LocalScopeWorkspace({view='home'}){
 
     {view==='statics'?<section className="loc-local-section">
       <h2>來源分布</h2>
-      {groups.map(([site,count])=><div className="loc-local-stat-row" key={site}>
+      {statisticsGroups.map(([site,count])=><div className="loc-local-stat-row" key={site}>
         <span>{site}</span><strong>{count}</strong>
         <meter min="0" max={Math.max(1,rows.length)} value={count} aria-label={site+' 文章占比'}/>
       </div>)}
