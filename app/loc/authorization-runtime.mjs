@@ -69,23 +69,3 @@ export function createScopeAuthorizer(user){
   });
 }
 
-export function assertAuthorizationForTable(table){
-  // This is an early UI rejection only. LOC business writes always enforce
-  // loc_access + ZModel policy on the trusted server.
-  const name=String(table||'').trim().toLowerCase();
-  if(name==='silver.local'||name.startsWith('silver.local_'))throw new Error('Local Scope 尚未啟用。');
-  if(name==='silver.loc_anchor'){
-    if(canAuthorizeLocAccess('global'))return;
-    throw new Error('LOC 來源詞庫僅限系統管理員編輯。');
-  }
-  if(name==='api.manage'){
-    if(canAuthorizeLocAccess('global'))return;
-    throw new Error('目前登入帳號沒有全域管理權限。');
-  }
-  if(!name.startsWith('silver.'))throw new Error('未知的資料寫入目標。');
-  const suffix=name.slice(7);
-  if(suffix==='manage')throw new Error('舊管理路由已停用。');
-  const scopeid=suffix==='runes'||suffix.startsWith('runes_')?'lrunes':suffix.split('_')[0];
-  if(canAuthorizeLocAccess(scopeid==='loc'?'group':'scope',scopeid))return;
-  throw new Error('目前登入帳號沒有此 Scope 的寫入權限。');
-}
