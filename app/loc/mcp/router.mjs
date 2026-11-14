@@ -123,7 +123,7 @@ export async function handleMcp(request,env={}){
       try{await authorizeMcpBearer(match[1],identity.subject,env);}
       catch(error){return mcpRoleFailure(payload.id,error,config);}
       return streamMcpSseResponse(()=>
-        dispatchMcpPayload(payload,identity,match[1],config,env,true));
+        dispatchMcpPayload(payload,identity,match[1],config,env,true),payload.id);
     }
     return dispatchMcpPayload(payload,identity,match[1],config,env);
   });
