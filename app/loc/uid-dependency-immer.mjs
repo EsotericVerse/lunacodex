@@ -37,6 +37,20 @@ function withoutUid(list,uid){
     throw new TypeError('Invalid UID list');
   return list.filter(item=>item!==uid);
 }
+// Trace.point is a flat sequence of endpoint PAIRS, not a path list.
+// Dropping one UID must remove its entire segment instead of rewiring
+// the two neighbouring unrelated endpoints into a new segment.
+function withoutTraceSegment(list,uid){
+  if(!Array.isArray(list)||list.length%2!==0||
+      list.some(value=>typeof value!=='string'||!UID.test(value)))
+    throw new TypeError('Invalid Trace point pair list');
+  const next=[];
+  for(let i=0;i<list.length;i+=2){
+    const pair=list.slice(i,i+2);
+    if(!pair.includes(uid))next.push(...pair);
+  }
+  return next;
+}
 function mark(map,uid){
   if(map.has(uid))throw new TypeError('Duplicate candidate UID');
   map.add(uid);
@@ -103,7 +117,10 @@ export function planUidDependencyRepair({deletedUid,deletedTable,deletedType='',
     }
     const field=parentFields[String(row.type||'')];
     if(!field||!hasUid(original[field],uid))continue;
-    const next=produce(original,draft=>{draft[field]=withoutUid(draft[field],uid);});
+    const next=produce(original,draft=>{
+      draft[field]=row.type==='trace'&&field==='point'
+        ?withoutTraceSegment(draft[field],uid):withoutUid(draft[field],uid);
+    });
     anchorUpdates.push({uid:id,type:row.type,values:{attr:next},expected:{attr:original}});
   }
   return {deletedUid:uid,deletedTable,deletedType,galaxyUpdates,anchorUpdates,
