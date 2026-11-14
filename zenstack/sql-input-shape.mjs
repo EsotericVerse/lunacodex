@@ -16,6 +16,45 @@ export const MANAGED_FILTER_SQL=Object.freeze({
   like:'like',ilike:'ilike',is:'is',in:'in'
 });
 
+// Public Pages SELECTs use a smaller transport shape than signed LOC
+// mutations, but share this exact Zod syntax layer and operator vocabulary.
+// The route still owns relation allowlists, source visibility, pagination
+// semantics, SQL predicates and ZModel column authorization.
+const publicName=z.string().regex(/^[a-z_][a-z0-9_]*$/i);
+const publicFilter=z.looseObject({
+  column:publicName,op:z.enum(Object.keys(QUERY_FILTER_SQL))
+});
+const publicOrder=z.looseObject({column:publicName});
+const publicProjection=z.array(z.union([publicName,z.literal('*')]))
+  .min(1).max(48).refine(columns=>columns.length===1||!columns.includes('*'));
+const publicSelect=z.strictObject({
+  schema:z.string(),table:z.string(),columns:publicProjection,
+  filters:z.array(publicFilter).max(30).nullish(),
+  orFilters:z.array(z.string().max(4000)).max(10).nullish(),
+  orders:z.array(publicOrder).max(10).nullish(),
+  // The existing transport accepts decimal numeric strings. Its strict
+  // safe-integer checks remain at the route boundary; no Zod coercion.
+  limit:z.unknown().optional(),offset:z.unknown().optional(),
+  head:z.boolean().nullish(),count:z.literal('exact').nullish(),
+  cardinality:z.enum(['single','maybeSingle']).nullish()
+});
+export function assertPublicKyselyReadShape(input){
+  const checked=publicSelect.safeParse(input);
+  if(checked.success)return input;
+  const first=checked.error.issues[0];
+  if(first?.code==='unrecognized_keys')
+    throw new Error('Unexpected SQL query field');
+  const key=String(first?.path?.[0]||'');
+  const reason={
+    columns:'Invalid public SQL projection',filters:'Invalid filter',
+    orFilters:'Invalid grouped query',orders:'Invalid order',
+    limit:'Invalid SQL page bounds',offset:'Invalid SQL page bounds',
+    head:'Invalid SQL HEAD',count:'Invalid SQL count mode',
+    cardinality:'Invalid SQL result cardinality'
+  }[key]||'Invalid LOC public query';
+  throw new Error(reason);
+}
+
 const queryFilter=z.looseObject({
   column:name,operator:z.enum(Object.keys(QUERY_FILTER_SQL)),
   value:z.unknown().optional()
