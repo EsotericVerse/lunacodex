@@ -5,7 +5,7 @@ import {
   CartesianGrid,Line,LineChart,ReferenceDot,ReferenceLine,
   ResponsiveContainer,Tooltip,XAxis,YAxis
 } from 'recharts';
-import {explainPeltChange,totalPeriodStats} from './statistics-insights.mjs';
+import {explainPeltChange,rankInsightPeriods,totalPeriodStats} from './statistics-insights.mjs';
 
 const amount=value=>Number(value||0).toLocaleString('zh-TW',{
   maximumFractionDigits:1
@@ -21,7 +21,11 @@ const insightText=insight=>{
 };
 
 export default function StatisticsInsightsPanel({rows=[],range={},title='總量趨勢洞察'}){
-  const stats=useMemo(()=>totalPeriodStats(rows),[rows]);
+  // The current/partial bucket is visible on the chart but does not distort
+  // PELT segmentation, median, minima or extrema.
+  const completed=useMemo(()=>rows.filter(row=>row&&!row.partial),[rows]);
+  const hasPartial=completed.length<rows.length;
+  const stats=useMemo(()=>totalPeriodStats(completed),[completed]);
   const [points,setPoints]=useState([]);
   const [pending,setPending]=useState(false);
   const [workerError,setWorkerError]=useState(false);
@@ -50,13 +54,13 @@ export default function StatisticsInsightsPanel({rows=[],range={},title='總量�
     }
     return ()=>{active=false;worker?.terminate();};
   },[stats.values,stats.total]);
-  const insight=useMemo(()=>explainPeltChange(rows,points),[rows,points]);
+  const insight=useMemo(()=>explainPeltChange(completed,points),[completed,points]);
+  const ranked=useMemo(()=>rankInsightPeriods(completed,points),[completed,points]);
   const activeCount=Math.min(10,stats.entries.length);
   const upCount=Math.min(topCount,activeCount);
   const downCount=Math.max(0,activeCount-upCount);
-  const top=stats.top.slice(0,upCount);
-  const topKeys=new Set(top.map(row=>row.period));
-  const bottom=stats.bottom.filter(row=>!topKeys.has(row.period)).slice(0,downCount);
+  const top=ranked.up.slice(0,upCount);
+  const bottom=ranked.down.slice(0,downCount);
   const metric=[
     {key:'highest',label:'最高',value:stats.maximum?.value,period:stats.maximum?.period},
     {key:'lowest',label:'最低',value:stats.minimum?.value,period:stats.minimum?.period},
@@ -79,10 +83,10 @@ export default function StatisticsInsightsPanel({rows=[],range={},title='總量�
         {item.period?<span className="scope-status">{item.period}</span>:null}
       </div>)}
     </div>
-    {stats.entries.length?<div style={{width:'100%',height:320,minWidth:0}}
+    {rows.length?<div style={{width:'100%',height:320,minWidth:0}}
       role="group" aria-label="總數、平均、中位數與變化點折線圖">
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={stats.entries.map(row=>({...row,period:row.period}))}
+        <LineChart data={rows.map(row=>({period:row.period,value:Number(row.total)||0}))}
           margin={{top:18,right:24,bottom:20,left:0}}>
           <CartesianGrid stroke="var(--loc-line)" strokeDasharray="3 3"/>
           <XAxis dataKey="period" stroke="var(--loc-line)"
@@ -102,7 +106,7 @@ export default function StatisticsInsightsPanel({rows=[],range={},title='總量�
             x={insight.boundary} stroke="var(--loc-accent)" strokeWidth={2}
             strokeDasharray="3 4"/>:null}
           <Line type="linear" dataKey="value" name="作品數" stroke="var(--loc-accent)"
-            strokeWidth={3} dot={stats.entries.length<=32} isAnimationActive={false}/>
+            strokeWidth={3} dot={rows.length<=32} isAnimationActive={false}/>
           {stats.maximum?<ReferenceDot x={stats.maximum.period} y={stats.maximum.value}
             r={5} fill="var(--loc-accent)" stroke="var(--loc-panel)"
             label={{value:'最高',position:'top',fill:'var(--loc-text)',fontSize:11}}/>:null}
@@ -120,22 +124,23 @@ export default function StatisticsInsightsPanel({rows=[],range={},title='總量�
     </div>
     {activeCount>1?<div className="statistics-dashboard__panel" style={{display:'grid',gap:12}}>
       <label style={{display:'grid',gap:8}}>
-        <span>極端期間比較：前 {upCount} ／後 {downCount}</span>
+        <span>相對{ranked.segmented?' PELT 區段平均':'整體平均'}：上升 {top.length} ／低於 {bottom.length}</span>
         <input type="range" min="1" max="9" step="1" value={topCount}
           onChange={event=>setTopCount(Number(event.target.value))}
           aria-label="調整最高與最低期間的顯示比例"/>
       </label>
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:14}}>
-        <div><strong>最高期間</strong>
-          <ol>{top.map(row=><li key={row.period}>{row.period} · {amount(row.value)}</li>)}</ol>
+        <div><strong>高於趨勢基準</strong>
+          <ol>{top.map(row=><li key={row.period}>{row.period} · {amount(row.value)}（+{amount(row.deviation)}）</li>)}</ol>
         </div>
-        <div><strong>最低期間</strong>
-          <ol>{bottom.map(row=><li key={row.period}>{row.period} · {amount(row.value)}</li>)}</ol>
+        <div><strong>低於趨勢基準</strong>
+          <ol>{bottom.map(row=><li key={row.period}>{row.period} · {amount(row.value)}（−{amount(-row.deviation)}）</li>)}</ol>
         </div>
       </div>
     </div>:null}
     <p className="scope-status" role="note">
       PELT 偵測的是分布改變，不推測原因；沒有明確切點時不會虛構趨勢。
+      {hasPartial?' 目前尚未結束的時段會顯示在曲線，但不納入峰谷、平均及 PELT 比較。':''}
       統計不載入來源分類、文章本文或多媒體。
     </p>
   </section>;
