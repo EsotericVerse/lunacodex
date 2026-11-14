@@ -9,6 +9,10 @@ import {
   createImportPlaceIndex,prepareImportPlaceAnchors,
   importedPlaceId,recordImportPlaceVisits
 } from '../app/loc/import-place-anchors.mjs';
+import {createImportDateIndex,prepareImportTimeAnchors} from '../app/loc/import-time-anchors.mjs';
+import {
+  planImportPointVisitDelta,planImportDateTitleDelta
+} from '../app/loc/import-point-date-immer.mjs';
 
 const aliases=new Map([
   ['AAA00001','BBB00002'],['BBB00002','CCC00003'],
@@ -119,4 +123,105 @@ const repeat=await recordImportPlaceVisits(visits,{
 assert.equal(repeat.added,0);
 assert.equal(repeat.updated,0);
 assert.equal(writes,1);
-console.log('PASS: Immer UID patches, exact PK, alias chain, merged Point visits and idempotency');
+// Point import must never draft or mutate coordinate/alias payloads.
+const originalPoint={longitude:121.0,latitude:25.0,location:'same place',
+  times:['2026-11-12T08:00:00.000Z']};
+const planned=planImportPointVisitDelta({uid:'POINT001',attr:originalPoint,
+  createtime:'2026-11-12T08:00:00.000Z',
+  visits:['2026-11-12T08:00:00Z','2026-11-14T08:00:00Z']});
+assert.deepEqual(Object.keys(planned.changes),['times']);
+assert.equal(planned.added,1);
+assert.deepEqual(planned.changes.times,[
+  '2026-11-12T08:00:00.000Z','2026-11-14T08:00:00.000Z']);
+assert.equal(originalPoint.times.length,1);
+assert.equal(originalPoint.location,'same place');
+assert.deepEqual(planImportPointVisitDelta({uid:'POINT001',
+  attr:{...originalPoint,times:planned.changes.times},
+  createtime:'2026-11-12T08:00:00.000Z',
+  visits:['2026-11-14T08:00:00Z']}).changes,{});
+assert.deepEqual(planImportPointVisitDelta({uid:'POINT001',
+  attr:{times:[]},createtime:null,visits:['2026-11-12T08:00:00Z']}).changes,{
+  times:['2026-11-12T08:00:00.000Z'],createtime:'2026-11-12T08:00:00.000Z'
+});
+assert.throws(()=>planImportPointVisitDelta({
+  uid:' POINT01',attr:{times:[]},visits:[]}),/UID/);
+
+// CAS conflict: newer Point attr includes another writer's coordinate
+// metadata. Recalculate from their latest row rather than stale attr.
+const latestPoint={longitude:122,location:'another alias',
+  times:['2026-11-13T08:00:00.000Z']};
+let collisionCount=0,actualWritten=null;
+const concurrentRelation=()=>({
+  update:values=>{
+    const request={eq(){return request},select:async()=>{
+      collisionCount++;
+      if(collisionCount===1)return {data:[],error:null};
+      actualWritten=values;
+      return {data:[{uid:'POINT001'}],error:null};
+    }};return request;
+  },
+  select:()=>{const request={eq(){return request},maybeSingle:async()=>({
+    data:{uid:'POINT001',attr:latestPoint,
+      createtime:'2026-11-13T08:00:00.000Z'},error:null
+  })};return request;}
+});
+const concurrentAttrs=new Map([['POINT001',originalPoint]]);
+const concurrentTimes=new Map([['POINT001',originalPoint.times]]);
+const concurrentCreated=new Map([['POINT001','2026-11-12T08:00:00.000Z']]);
+const conflict=await recordImportPlaceVisits([
+  {uid:'POINT001',time:'2026-11-14T08:00:00Z'}],{
+  relation:concurrentRelation,table:'silver.mya_anchor',
+  timesByUid:concurrentTimes,attrsByUid:concurrentAttrs,
+  createtimeByUid:concurrentCreated
+});
+assert.equal(collisionCount,2);
+assert.equal(conflict.updated,1);
+assert.equal(conflict.added,1);
+assert.equal(actualWritten.attr.longitude,122);
+assert.equal(actualWritten.attr.location,'another alias');
+assert.deepEqual(actualWritten.attr.times,[
+  '2026-11-13T08:00:00.000Z','2026-11-14T08:00:00.000Z']);
+
+// Date: only a date-title backfill emits a patch; authored metadata remains
+// untouched and a second import is a no-op.
+const day='2026-11-12';
+const oldDate={uid:'DATE0001',type:'date',title:day,description:'',
+  attr:{date:day}};
+const dateEntry={date:day,title:'原文章',description:'重要大事：原文章'};
+assert.deepEqual(planImportDateTitleDelta(oldDate,dateEntry,day).changes,{
+  title:'原文章',description:'重要大事：原文章'
+});
+assert.equal(oldDate.title,day);
+assert.deepEqual(planImportDateTitleDelta({...oldDate,title:'既有標題'},
+  dateEntry,day).changes,{});
+assert.deepEqual(planImportDateTitleDelta({...oldDate,description:'已整理'},
+  dateEntry,day).patches,[]);
+assert.throws(()=>planImportDateTitleDelta({...oldDate,uid:' DATE001'},
+  dateEntry,day),/UID/);
+const dateIndex=createImportDateIndex();
+dateIndex.accept(oldDate);
+let dateUpdates=0,dateCreates=0;
+const dateTable={
+  update:values=>{
+    dateUpdates++;assert.deepEqual(values,{
+      title:'原文章',description:'重要大事：原文章'
+    });
+    const request={eq(){return request},is(){return request},
+      select:async()=>({data:[{uid:'DATE0001'}],error:null})};
+    return request;
+  },
+  insert:()=>{dateCreates++;throw Error('Duplicate Date INSERT')}
+};
+const timeResult=await prepareImportTimeAnchors([{
+  uid:'POST0001',title:'原文章',location:'原地點',
+  createtime:'2026-11-12T08:00:00Z'
+}],{
+  scopeId:'mya',timeTable:'silver.mya_time',relation:()=>dateTable,
+  anchorSnapshot:{scopeId:'mya',table:'silver.mya_anchor',time:dateIndex}
+});
+assert.equal(timeResult.created,0);
+assert.equal(timeResult.reused,1);
+assert.equal(timeResult.repaired,1);
+assert.equal(dateUpdates,1);
+assert.equal(dateCreates,0);
+console.log('PASS: Immer Galaxy/Point/Date UID deltas, CAS retry and reimport idempotency');
