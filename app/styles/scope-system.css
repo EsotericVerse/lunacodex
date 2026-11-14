@@ -993,7 +993,10 @@
 @media(max-width:900px){.scope-culture-rune-list ul{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:500px){.scope-culture-rune-list ul{grid-template-columns:1fr}}
 
-.scope-culture-double-river .vis-label.scope-candidate-lane,.scope-culture-double-river .vis-group.scope-candidate-lane{background:color-mix(in srgb,var(--loc-accent) 6%,var(--loc-panel))!important;min-height:52px}
+/* Let vis-timeline keep the last candidate label and chart cell at the
+   same computed height. The old min-height forced an oversized blank lane
+   even when the suggestion group was collapsed. */
+.scope-culture-double-river .vis-label.scope-candidate-lane,.scope-culture-double-river .vis-group.scope-candidate-lane{background:color-mix(in srgb,var(--loc-accent) 6%,var(--loc-panel))!important}
 .scope-culture-double-river .vis-label.scope-candidate-lane{border-top:1px solid color-mix(in srgb,var(--loc-accent) 22%,transparent)}
 /* Public Culture groups are normal document-flow rows, not a capped
    internal scroll region. The final suggestion group remains last, with the
