@@ -20,7 +20,8 @@ WITH monitored AS (
 )
 SELECT m.nspname||'.'||m.relname AS relation,
   rev.revision,
-  rev.relation IS NOT NULL AS version_row_present,
+  rev.generation,
+  rev.relation IS NOT NULL AND rev.generation IS NOT NULL AS version_row_present,
   trg.oid IS NOT NULL
     AND trg.tgenabled IN ('O','A')
     AND trg.tgfoid='api.bump_loc_sql_result_revision()'::regprocedure
