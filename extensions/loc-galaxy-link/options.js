@@ -2,6 +2,13 @@ const $=id=>document.getElementById(id);
 const status=$('status'), queue=$('queue'), notice=$('notice');
 const mcpProviders=$('mcpProviders');
 const MCP_LABELS={neon:'Neon MCP',supabase:'Supabase MCP'};
+function formatLocalActionTime(timestamp){
+ const time=new Date(timestamp);
+ if(!Number.isFinite(time.getTime()))return '—';
+ const pad=value=>String(value).padStart(2,'0');
+ return time.getFullYear()+'-'+pad(time.getMonth()+1)+'-'+pad(time.getDate())+
+  ' '+pad(time.getHours())+':'+pad(time.getMinutes())+':'+pad(time.getSeconds());
+}
 function call(action,extra={}){return chrome.runtime.sendMessage({action,...extra});}
 let lastProviderStatus=null;
 function setAuthIndicator(connected){
@@ -89,7 +96,7 @@ async function show(){
   (result.paused?'；自動送出已暫停，原始 Queue 保留':'')+cooldown;
  const last=result.lastAction;
  $('lastAction').textContent=last?
-  (last.ok?'成功':'失敗')+' · '+last.name+' · '+(last.at||'').replace('T',' ').slice(0,19)+'\n'+last.message:
+  (last.ok?'成功':'失敗')+' · '+last.name+' · '+formatLocalActionTime(last.at)+'\n'+last.message:
   '目前沒有操作紀錄。';
  $('scope').value=saved.locTargetScope||'lo3rwang';
  $('includeAI').checked=saved.locIncludeAssistant===true;
