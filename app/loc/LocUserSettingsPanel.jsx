@@ -59,10 +59,10 @@ function SettingChoices({group,field,value,onChange,disabled,t}){
   </fieldset>;
 }
 
-export default function LocUserSettingsPanel({verifiedSubject='',verifiedEmail='',section='filter'}){
+export default function LocUserSettingsPanel({verifiedSubject='',section='filter'}){
   useUiSection('uiExtra.globalSettings');
   const t=useUiText();
-  const {data,loading,error,ready,update}=useLocUser({verifiedSubject,verifiedEmail});
+  const {data,loading,error,ready,update}=useLocUser({verifiedSubject});
   const [draft,setDraft]=useState(null);
   const draftRef=useRef(null);
   const activeSubject=useRef('');
