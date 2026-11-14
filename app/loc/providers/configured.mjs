@@ -6,7 +6,7 @@ import {createKyselyPublicClient} from './kysely-browser.mjs';
 import {transientReadSignal} from '../../../zenstack/transient-read-epoch.mjs';
 
 const AUTH='https://auth.lo3rwang.cc';
-const PERSONAL=new Set(['api.loc_user','api.user_settings','api.user_records']);
+const PERSONAL=new Set(['silver.loc_user']);
 // Only confirmed read actions participate in management-page cancellation.
 // Mutations/import writes are never aborted by a navigation reset.
 const READ_ACTIONS=new Set([
