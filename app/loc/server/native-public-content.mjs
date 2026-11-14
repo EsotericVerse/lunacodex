@@ -34,13 +34,15 @@ async function readLocGroupNumeric(db,start,end,port){
   const scopes=[],rows=[];let earliest='';
   for(const entry of entries){
     const id=entry.scope_id;
-    const [daily,first]=await Promise.all([
-      readGalaxyNumeric(db,id,'daily',start||'0001-01-01',end||'9999-12-31',port),
-      readGalaxyNumeric(db,id,'earliest','','',port)
-    ]);
+    // Reuse the daily TOTAL-only query for the LOC aggregate. No site GROUP
+    // BY, Source taxonomy or Anchor JOIN occurs even for combined scopes.
+    const summary=await readGalaxyNumeric(db,id,'daily_total',
+      start||'0001-01-01',end||'9999-12-31',port);
     scopes.push({scope_id:id,display_name:String(entry.config?.display_name||id)});
-    rows.push(...daily.filter(row=>row.kind==='total')
-      .map(row=>({scope_id:id,day:row.day,item_count:row.item_count})));
+    rows.push(...summary.rows.map(row=>({
+      scope_id:id,day:row.day,item_count:row.item_count
+    })));
+    const first=summary.earliest;
     if(first&&(!earliest||first<earliest))earliest=first;
   }
   return {earliest,scopes,rows};
