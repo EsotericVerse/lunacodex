@@ -213,6 +213,11 @@ export function EditDockProvider({children,scopeId}){
         }
       }
       if(epoch===operationEpoch.current&&dirty.length){
+        // Save is the explicit cleanup boundary. The SQL writes and their
+        // confirmation have all finished successfully; discard stale read
+        // results only now, once for the entire multi-editor Save action.
+        // Preserve Session, authorizations, selected theme and mounted drafts.
+        releaseTransientPageResources();
         // Exit only when every dirty form returned confirmed success.
         // A failed write leaves current in-memory input mounted for correction.
         if(exitOnSuccess){end();return;}
