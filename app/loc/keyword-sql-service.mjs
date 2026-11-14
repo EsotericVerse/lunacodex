@@ -330,7 +330,7 @@ async function readCompleteKeywordMetadataGroup(db,scope,columns,{
 }
 
 export async function analyzeKeywordScope(db,scope,classUid,{
-  authorizeTransaction=()=>{},startedAt=new Date().toISOString()
+  authorizeTransaction=()=>{},startedAt=new Date().toISOString(),onProgress=()=>{}
 }={}){
   checkScope(scope);checkClass(classUid);
   const cfg=await configuration(db,scope);
@@ -384,6 +384,12 @@ export async function analyzeKeywordScope(db,scope,classUid,{
     existingPatterns,patternScans:scopePatternScanClocks(cfg.keyword_meta),
     expectedCount,minChars:Math.max(0,Number(cfg.keyword_min_chars)||0),
     startedAt,pageSize:1000,readMetadataPage:reader,
+    onProgress:({phase,completed=0,parsed=0,reused=0})=>onProgress({
+      phase,total:expectedCount,completed,parsed,reused,
+      percent:phase==='completed'?100:Math.min(99,Math.round(
+        expectedCount?completed/expectedCount*100:0)),
+      label:phase==='completed'?'分析已完成':'正在逐批分析文章'
+    }),
     readContent:async uids=>{
       if(!uids.length)return [];
       return db.selectFrom(galaxyName(scope))
