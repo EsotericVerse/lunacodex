@@ -331,6 +331,13 @@
   [data-public-feature="statics"] .statistics-dashboard__bar span{transition:none}
 }
 [data-public-feature="statics"] .statistics-dashboard__panel--chart .scope-stat-chart-frame{flex:1 1 auto}
+/* The total-trend chart is a research canvas, not a 320px thumbnail.
+   Match the tall Insights rail without forcing phone users to scroll
+   through an oversized graphic. Recharts observes this container size. */
+[data-public-feature="statics"] .statistics-dashboard__trend-plot{
+  width:100%;min-width:0;
+  height:clamp(480px,62vh,560px);
+}
 [data-public-feature="statics"] .statistics-dashboard__panel--insights{overflow:hidden}
 /* Keep PELT in the existing dashboard's right-hand Insights rail.
    The four descriptive measures are compact here; the hero KPI row above
@@ -394,6 +401,7 @@
 }
 [data-public-feature="statics"] .statistics-dashboard__panel--insights>.scope-stat-details{margin-top:auto}
 @media(max-width:980px){
+  [data-public-feature="statics"] .statistics-dashboard__trend-plot{height:440px}
   [data-public-feature="statics"] .statistics-dashboard__workspace{grid-template-columns:minmax(0,1fr)}
   [data-public-feature="statics"] .statistics-dashboard__breakdown{max-height:none}
   /* In this single-column layout, preserve complete source names,
@@ -405,6 +413,7 @@
   }
 }
 @media(max-width:600px){
+  [data-public-feature="statics"] .statistics-dashboard__trend-plot{height:360px}
   [data-public-feature="statics"] .statistics-dashboard__kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
   [data-public-feature="statics"] .statistics-dashboard__kpis>.statistics-dashboard__kpi:first-child{grid-column:1/-1}
   [data-public-feature="statics"] .statistics-dashboard__panel{padding:.75rem}
