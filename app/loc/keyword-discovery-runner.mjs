@@ -82,6 +82,11 @@ export async function suggestNewKeywords({galaxy,existingRows=[],onProgress=()=>
     onProgress({completed:0,total,lanes:1});
     // Drivers may serialize SQL DATE as midnight UTC / Taipei ISO timestamps.
     // Normalize the calendar day before validating or advancing the cursor.
+    // A DATE serialized as Taipei midnight (16:00Z) needs formatting.
+    // Reuse one formatter for all rows instead of constructing it per article.
+    const taipeiDayFormat=new Intl.DateTimeFormat('sv-SE',{
+      timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'
+    });
     const normalizeDay=value=>{
       if(typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value))return value;
       const raw=value instanceof Date?value.toISOString():value;
@@ -90,7 +95,7 @@ export async function suggestNewKeywords({galaxy,existingRows=[],onProgress=()=>
       if(!match)return null;
       if(raw.includes('16:00:00')){
         const instant=new Date(raw);
-        return Number.isFinite(instant.getTime())?new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).format(instant):null;
+        return Number.isFinite(instant.getTime())?taipeiDayFormat.format(instant):null;
       }
       return match[1];
     };
