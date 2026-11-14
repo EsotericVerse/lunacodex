@@ -18,7 +18,6 @@ import PanelLoading from '../PanelLoading';
 // Admin keeps only privileged registry provisioning and system configuration.
 
 const ADMIN_OPTIONS=Object.freeze([
-  {value:'sources',label:'文章來源',shortLabel:'來源',description:'來源階層與名稱'},
   {value:'featureHero',label:'頁面主視覺',shortLabel:'頁面',description:'功能頁圖片與文字'},
   {value:'themes',label:'主題配色',shortLabel:'配色',description:'主題色彩'},
   {value:'network',label:'資料庫連線',shortLabel:'連線',description:'資料庫連線管理'},
@@ -26,7 +25,6 @@ const ADMIN_OPTIONS=Object.freeze([
 ]);
 const DatabaseTarget=dynamic(()=>import('./admin-panels/DatabaseTarget'),{loading:PanelLoading});
 const RuntimeIoSettings=dynamic(()=>import('./admin-panels/RuntimeIoSettings'),{loading:PanelLoading});
-const SourceCategories=dynamic(()=>import('../SourceCategoryEditor').then(m=>m.AdminSourceCategories),{loading:PanelLoading});
 const ThemeEditor=dynamic(()=>import('./admin-panels/ThemeEditor'),{loading:PanelLoading});
 const FeatureHeroImages=dynamic(()=>import('./admin-panels/FeatureHeroImages'),{loading:PanelLoading});
 
@@ -43,8 +41,8 @@ export default function AdminHomeView({scopeGroup}){
   const [signInError,setSignInError]=useState('');
   const canManage=Boolean(account.user&&!account.loading&&!account.permissionLoading&&account.canLocAccessSync('global'));
   // Preserve deep links created before the Admin sections were consolidated.
-  const [section,setSection]=useManagementSection(ADMIN_OPTIONS,'sources',{
-    registry:'network',members:'network',
+  const [section,setSection]=useManagementSection(ADMIN_OPTIONS,'network',{
+    sources:'network',registry:'network',members:'network',
     database:'network',enterpriseAuth:'network',auth:'network',system:'network',
     traceAnchor:'network',traceMap:'network'
   });
@@ -123,7 +121,6 @@ export default function AdminHomeView({scopeGroup}){
         {section==='network'?<DatabaseTarget scopeGroup={scopeGroup}/>:null}
         {section==='io'?<RuntimeIoSettings/>:null}
         {section==='featureHero'?<FeatureHeroImages/>:null}
-        {section==='sources'?<SourceCategories/>:null}
         {section==='themes'?<ThemeEditor/>:null}
 
       </div>
