@@ -1,74 +1,80 @@
+
 name: Deploy Main Next to GitHub Pages
 
-# Legacy GitHub Pages publishing is manual only. LOC's canonical site is
-# published automatically by Cloudflare Pages from main; running this on
-# every main push duplicates the entire Next.js build and deployment.
-# Keep the manual workflow for an explicitly requested GitHub Pages release.
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - main
 
 permissions:
   contents: read
   pages: write
   id-token: write
 
-concurrency:
-  group: "pages"
-  cancel-in-progress: true
-
 jobs:
   build:
-    # See next-architecture.yml for why this is pinned instead of
-    # ubuntu-latest (the same runner-image migration window).
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout main
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: "22.23.5"
+          node-version: '22.23.5'
           cache: npm
+
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
-      # The full Next.js build below parses source files. An independent
-      # full-repository syntax sweep is reserved for interruption recovery
-      # via the manual Workflow guard; do not run it on every main push.
-      - name: Security release gate (moderate, high and critical)
+
+      - name: Security release gate
         run: npm run audit:security
-      - name: Build Next static export for GitHub Pages
-        # shell: bash enables pipefail; without it `| tee` hides a failed build.
+
+      - name: Build static export
         shell: bash
-        run: npm run build:static 2>&1 | tee /tmp/next-build.log
-      - name: Check Guest and Admin static route exports
+        run: |
+          set -o pipefail
+          npm run build:static 2>&1 | tee /tmp/next-build.log
+
+      - name: Verify static export
         run: node scripts/verify-release-static-export.mjs
-      - name: Report build failure to job summary
+
+      - name: Report build failure
         if: failure()
+        shell: bash
         run: |
-          echo '## Build failure output' >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          if [ -f /tmp/next-build.log ]; then
-            tail -n 200 /tmp/next-build.log >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo 'Build was not started. See the earlier failed setup step.' >> "$GITHUB_STEP_SUMMARY"
-          fi
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-      - name: Configure Pages
+          {
+            echo '## Build failure'
+            echo '```'
+            if [ -f /tmp/next-build.log ]; then
+              tail -n 200 /tmp/next-build.log
+            else
+              echo 'Build did not start or failed before logging.'
+            fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
-      - name: Probe out/ with tar
-        if: success()
-        run: |
-          tar -cf /dev/null --dereference --hard-dereference out 2>/tmp/tar.err; RC=$?
-          echo "::notice title=tar-probe::rc=$RC $(head -c 300 /tmp/tar.err | tr '\n' ' ')"
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
         with:
           path: ./out
 
   deploy:
+    if: github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-24.04
-    needs: build
+
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
