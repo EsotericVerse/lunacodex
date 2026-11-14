@@ -478,12 +478,18 @@ export default function CulturePublicReader(){
           {suggestionAnalysis.error?<p className='scope-status scope-error' role='alert'>
             {suggestionAnalysis.error}</p>:null}
           {suggestionAnalysis.suggestions.length?<div className='scope-culture-anchor-choices'>
-            {suggestionAnalysis.suggestions.map(item=><button type='button'
-              key={item.date} className='loc-button'
-              aria-pressed={focusedSuggestionDate===item.date}
-              onClick={()=>setFocusedSuggestionDate(item.date)}>
-              {item.date} · 前三日 {item.beforeCount} 篇／後三日 {item.afterCount} 篇
-            </button>)}
+            {suggestionAnalysis.suggestions.map(item=><div key={item.date}
+              className='scope-status'>
+              <button type='button' className='loc-button'
+                aria-pressed={focusedSuggestionDate===item.date}
+                onClick={()=>setFocusedSuggestionDate(item.date)}>
+                {item.date} · 前三日 {item.beforeCount} 篇／後三日 {item.afterCount} 篇
+              </button>
+              <ScopeLink href={scopeHref(scopeId,'culture/manage')+
+                '?edit=1&anchorDate='+encodeURIComponent(item.date)}>
+                前往時間編輯
+              </ScopeLink>
+            </div>)}
           </div>:<p className='scope-status' role='status'>
             {candidateDensityRows.length&&!suggestionAnalysis.error
               ?'正在分析，或目前沒有符合條件的建議定錨點。'
