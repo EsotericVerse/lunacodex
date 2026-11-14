@@ -13,19 +13,19 @@
   box-shadow:none;
   pointer-events:none;
 }
-/* Published Theme scheme is intentional: four Day palettes are light and
-   four Night palettes stay dark. The dock only adjusts tonal separation
-   inside each scheme; it must never invert the canvas or theme colors. */
+/* The published Theme already defines coordinated Day/Night surfaces and
+   foregrounds. Never synthesize a second dock palette with color-mix(). */
 .scope-feature-dock{
-  /* Day / light: pale inactive surface, deeper (still light) accent selection. */
-  --loc-dock-idle-surface:color-mix(in srgb,var(--loc-panel) 94%,var(--loc-accent));
-  --loc-dock-selected-surface:color-mix(in srgb,var(--loc-accent) 26%,var(--loc-panel));
+  --loc-dock-idle-surface:var(--loc-panel);
+  --loc-dock-selected-surface:var(--loc-panel-2);
 }
-:root[data-theme="dark"] .scope-feature-dock{
-  /* Night / dark: dark inactive surface and a slightly raised dark tone.
-     No white pill, permanent glow, or additional animation. */
-  --loc-dock-idle-surface:color-mix(in srgb,var(--loc-panel) 88%,var(--loc-bg));
-  --loc-dock-selected-surface:color-mix(in srgb,var(--loc-text) 16%,color-mix(in srgb,var(--loc-accent) 7%,var(--loc-panel)));
+:root[data-theme="light"] .scope-feature-dock a>.scope-dock-active-pill{
+  /* Day: light surface, dark theme text, one crisp accent underline. */
+  box-shadow:inset 0 -3px 0 var(--loc-accent);
+}
+:root[data-theme="dark"] .scope-feature-dock a>.scope-dock-active-pill{
+  /* Night: dark surface, light theme text, an extra inset accent keyline. */
+  box-shadow:inset 0 0 0 1px var(--loc-accent),inset 0 -3px 0 var(--loc-accent);
 }
 /* Group managers without global Admin authority see five actions, without an empty sixth cell. */
 .scope-feature-dock[data-action-count="5"]{grid-template-columns:repeat(5,minmax(0,1fr));}
@@ -34,9 +34,9 @@
 .scope-feature-dock a,.scope-feature-dock button{
   display:flex;flex-direction:column;align-items:center;justify-content:center;
   gap:.3rem;min-width:0;min-height:60px;padding:.45rem .2rem;
-  border:1px solid color-mix(in srgb,var(--loc-accent) 27%,var(--loc-line));
+  border:1px solid var(--loc-line);
   border-radius:clamp(14px,1.7vw,20px);
-  background:color-mix(in srgb,var(--loc-accent) 23%,var(--loc-panel) 77%);
+  background:var(--loc-dock-idle-surface);
   color:var(--loc-text);
   box-shadow:0 3px 11px color-mix(in srgb,var(--loc-bg) 32%,transparent);
   /* The dock is already independent; avoid six simultaneous glass filters. */
@@ -91,12 +91,12 @@
 }
 @media(hover:hover) and (pointer:fine){
   .scope-feature-dock a:hover,.scope-feature-dock button:hover:not(:disabled){
-    background:color-mix(in srgb,var(--loc-accent) 33%,var(--loc-panel) 67%);
+    background:var(--loc-panel-2);
     box-shadow:0 8px 17px rgb(0 0 0 / .26);
   }
 }
 .scope-feature-dock :is(a,button):focus-visible{
-  background:color-mix(in srgb,var(--loc-accent) 33%,var(--loc-panel) 67%);
+  background:var(--loc-panel-2);
   box-shadow:0 8px 17px rgb(0 0 0 / .26);
 }
 /* Current destination: an inked position marker instead of permanent glow.
