@@ -346,9 +346,9 @@ export default function Trace({scopeId='loc'}){
           <select className="scope-select" value={mediaType}
             onChange={event=>setMediaType(event.target.value)}>
             <option value="">{t("allMedia")}</option>
-            <option value="音樂">{t("music")}</option>
-            <option value="圖片">{t("image")}</option>
-            <option value="影片">{t("video")}</option>
+            <option value="suno">{t("music")}</option>
+            <option value="image">{t("image")}</option>
+            <option value="video">{t("video")}</option>
             <option value="rune">{t("runeDraw")}</option>
           </select>
         </label>

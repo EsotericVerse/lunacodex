@@ -10,6 +10,7 @@ import importUIZh from '../i18n/sections/uiExtra.importUI.zh_tw.js';
 registerDefaultSection('management',managementZh);
 registerDefaultSection('uiExtra.importUI',importUIZh);
 import {insertRows} from './db-client.mjs';
+import {mediaAnchorRecord} from '../../zenstack/anchor-hierarchy.mjs';
 import {useAccount} from './use-account';
 import {createUid8} from './uid';
 import {hasIrrecoverableEncoding,normalizeGalaxyContent,normalizeRelationIds,repairMojibakeText} from './content-policy';
@@ -70,7 +71,7 @@ export default function SunoImportPanel({scopeId,dockScopeId=scopeId,globalAdmin
       const sourceId=draft.source_id.trim()||(styleUid?draft.ref_id.trim():'')||null;
       const scopeData=account.scopeDataFor(scopeId);
       if(!scopeData)throw new Error(t('uiExtra.importUI.scopeUnresolved'));
-      const {galaxy,galaxyMedia}=scopeData;
+      const {galaxy,anchor}=scopeData;
       if(lyricsUid){
         await insertRows(galaxy,[{
           uid:lyricsUid,
@@ -88,12 +89,10 @@ export default function SunoImportPanel({scopeId,dockScopeId=scopeId,globalAdmin
           statics:false,culture:false,search:false,trace:false,list:false,keyword:false,others:true,extract:true
         }]);
       }
-      await insertRows(galaxyMedia,[{
-        uid:mediaUid,
-        type:'suno',
-        title,url:draft.url.trim()||null,
+      await insertRows(anchor,[mediaAnchorRecord({
+        uid:mediaUid,type:'suno',title,url:draft.url.trim()||null,
         description:description||null,createtime
-      }]);
+      })]);
       setStatus(t('uiExtra.importUI.sunoSaved'));setDraft(freshSunoDraft());
       return true;
     }catch(error){

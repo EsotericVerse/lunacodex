@@ -12,7 +12,7 @@ import {selectScopeGroupMemberIds,defaultScopeData} from './scope-data';
 import {PUBLISHED_SITE_BOOTSTRAP} from '../modular/published-site-bootstrap.js';
 import {resolveTimeSegments,resolveTimeTrace,timePeriodSortDate,timeDateWindows,timePeriodContainsDate,intersectTimeDateWindows} from './time-anchor-ranges.mjs';
 import {galaxyReadColumns} from '../../zenstack/galaxy-read-models.mjs';
-import {ANCHOR_TYPE_GROUPS} from '../../zenstack/anchor-hierarchy.mjs';
+import {ANCHOR_TYPE_GROUPS,MEDIA_ANCHOR_COLUMNS,mediaAnchorProjection} from '../../zenstack/anchor-hierarchy.mjs';
 
 
 
@@ -701,15 +701,17 @@ export async function selectScopePeriodWorkIndex(scope,{startDate='',endDate=nul
     ...dateFilters(startDate,endDate,scope.id==='local'?'createtime':'date'),
     ...(rawSources.length?[{column:'site',operator:'in',value:rawSources}]:[])
   ]);
+  const selectedMedia=rawMedia.filter(type=>ANCHOR_TYPE_GROUPS.media.includes(type));
   const mediaFilters=[
     ...dateFilters(startDate,endDate),
-    ...(rawMedia.length?[{column:'type',operator:'in',value:rawMedia}]:[])
+    {column:'type',operator:'in',value:selectedMedia},
+    {column:'invisible',operator:'eq',value:false}
   ];
 
   // A normal work list is a Galaxy article list, never a merged media feed.
   // Only an explicitly selected media type opens the separate media lane.
   const includeGalaxy=rawSources.length>0||rawMedia.length===0&&(!sourceName||rawSources.length>0);
-  const includeMedia=rawMedia.length>0;
+  const includeMedia=selectedMedia.length>0;
   // The first bounded page can return exact counts with its own SELECT.
   // Keep both totals in the cursor so subsequent pages never repeat COUNTs.
   const hasCursorCounts=Number.isSafeInteger(cursor?.galaxyCount)&&Number.isSafeInteger(cursor?.mediaCount);
@@ -724,7 +726,7 @@ export async function selectScopePeriodWorkIndex(scope,{startDate='',endDate=nul
       maxLimit:pageSize,
       count:hasCursorCounts?null:'exact'
     }):Promise.resolve({rows:[],count:0}),
-    includeMedia?selectRows(scope.galaxyMedia,{
+    includeMedia?selectRows(scope.anchor,{
       columns:'uid,createtime',
       filters:mediaFilters,
       orders:[{column:'createtime',ascending},{column:'uid',ascending:true}],
@@ -739,7 +741,7 @@ export async function selectScopePeriodWorkIndex(scope,{startDate='',endDate=nul
     !includeGalaxy?0:hasCursorCounts?cursor.galaxyCount:
       (galaxyResult.count??selectCount(scope.galaxy,{idColumn:'uid',filters:galaxyFilters})),
     !includeMedia?0:hasCursorCounts?cursor.mediaCount:
-      (mediaResult.count??selectCount(scope.galaxyMedia,{idColumn:'uid',filters:mediaFilters}))
+      (mediaResult.count??selectCount(scope.anchor,{idColumn:'uid',filters:mediaFilters}))
   ]);
 
   const galaxyRows=(galaxyResult.rows||[]).map(row=>({
@@ -799,9 +801,11 @@ export async function selectScopePeriodWorkDetails(scope,{items=[]}={}){
   // Do not SELECT those article UIDs again just to obtain the title.
   const mediaIds=[...new Set(source.filter(row=>row?.entry_type==='media_metadata')
     .map(row=>String(row?.uid||row?.entry_id||'').trim()).filter(Boolean))];
-  const mediaResult=mediaIds.length?await selectRows(scope.galaxyMedia,{
-    columns:'uid,type,title,url,createtime',
-    filters:[{column:'uid',operator:'in',value:mediaIds}],
+  const mediaResult=mediaIds.length?await selectRows(scope.anchor,{
+    columns:MEDIA_ANCHOR_COLUMNS,
+    filters:[{column:'uid',operator:'in',value:mediaIds},
+      {column:'type',operator:'in',value:ANCHOR_TYPE_GROUPS.media},
+      {column:'invisible',operator:'eq',value:false}],
     limit:mediaIds.length
   }):{rows:[]};
   const galaxyById=new Map(source.filter(row=>row.entry_type==='work').map(row=>[String(row.uid),{
@@ -818,11 +822,11 @@ export async function selectScopePeriodWorkDetails(scope,{items=[]}={}){
     scope_id:scopeId,
     links:[]
   }]));
-  const mediaById=new Map((mediaResult.rows||[]).map(row=>{
+  const mediaById=new Map((mediaResult.rows||[]).map(mediaAnchorProjection).map(row=>{
     return [String(row.uid),{
     ...row,
     key:'media:'+row.uid,
-    record_type:'galaxy_media',
+    record_type:'media_anchor',
     site:String(row.type||''),
     entry_id:row.uid,
     entry_type:'media_metadata',

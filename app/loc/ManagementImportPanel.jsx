@@ -20,6 +20,7 @@ import {canonicalImportSourceName,inferImportSourceFromFilename} from './source-
 import {Capacitor} from '@capacitor/core';
 import {defaultScopeData} from './scope-data';
 import {createUid8} from './uid';
+import {mediaAnchorRecord,mediaAnchorProjection,canonicalMediaAnchorType,MEDIA_ANCHOR_COLUMNS,ANCHOR_TYPE_GROUPS} from '../../zenstack/anchor-hierarchy.mjs';
 import {createImportProgressStore} from './import-progress-store.mjs';
 import {remapArchiveArticleUids} from './import-random-uids.mjs';
 import {facebookBackupPlace,facebookBackupPostText,facebookBackupTimestamp} from './facebook-backup-place.mjs';
@@ -254,8 +255,30 @@ async function readExistingByIds(table,columns,column,values,message,onPage){
 
 // Shared idempotent media attachment write for standard file imports.
 // All records are bound by original article UID; no full-table scan or recursive discovery.
-async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],knownArticleIds=new Map(),galaxy,galaxyMedia,t,onProgress}={}){
-      // Media-only imports and embedded media use the same Galaxy Media table.
+async function readImportMediaCandidates(scopeId,anchor,uids=[],urls=[],message='媒體讀取失敗'){
+  const ids=[...new Set(uids.map(value=>String(value||'').trim()).filter(Boolean))];
+  const links=[...new Set(urls.map(value=>String(value||'').trim()).filter(Boolean))];
+  if(scopeId==='local'){
+    if(links.length)throw new Error('本機媒體 URL 去重尚無 SQL 查詢能力，已停止匯入避免重複資料。');
+    const rows=await readExistingByIds(anchor,MEDIA_ANCHOR_COLUMNS,'uid',ids,message);
+    return rows.filter(row=>ANCHOR_TYPE_GROUPS.media.includes(row.type)).map(mediaAnchorProjection);
+  }
+  const out=new Map();
+  for(let offset=0;offset<Math.max(ids.length,links.length);offset+=200){
+    const {data,error}=await dbAuthClient.schema('silver').managedAction(
+      'media_anchor_candidates',{p_scope_id:scopeId,
+        p_uids:ids.slice(offset,offset+200),p_urls:links.slice(offset,offset+200)});
+    if(error)throw new Error(error.message||message);
+    if(!Array.isArray(data))throw new Error('MediaAnchor lookup response invalid');
+    for(const row of data)out.set(String(row.uid),row);
+  }
+  return [...out.values()];
+}
+
+// Existing import idempotency is preserved with one authorized, bounded
+// Kysely lookup for UID and attr.url candidates; no Galaxy Media table.
+async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],knownArticleIds=new Map(),scopeId,galaxy,mediaAnchor,t,onProgress}={}){
+      // Media-only imports and embedded media use the one typed MediaAnchor table.
       // Attach only to article UIDs established by the import plan.
       const originalPlans=normalized.flatMap(item=>{
         const sourceUid=item.record?.uid;
@@ -267,7 +290,7 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
       // Never duplicate the article in Galaxy just to store a card spread.
       const plans=originalPlans.flatMap(source=>{
         const {rune_references,media_type:legacyType,...rest}=source;
-        const record={...rest,type:['rune','runes'].includes(source.type||legacyType)?'rune':(source.type||legacyType)};
+        const record={...rest,type:canonicalMediaAnchorType(source.type||legacyType,source.url)};
         if(rune_references==null||rune_references===''||
             JSON.stringify(rune_references)==='[]'||JSON.stringify(rune_references)==='{}')
           return [record];
@@ -282,12 +305,12 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
         }];
       });
       onProgress?.({stage:'核對既有媒體',completed:0,total:0});
-      const existingMedia=[];
       const explicitIds=[...new Set([...plans.map(record=>record.uid).filter(Boolean),...normalized.flatMap(item=>item.mediaRefs||[])])];
-      existingMedia.push(...await readExistingByIds(galaxyMedia,'uid,url,type','uid',explicitIds,t('uiExtra.importUI.mediaIdCompareFailed')));
-      // Reuse matching media URLs across articles without duplicating media rows.
       const candidateUrls=[...new Set(plans.map(row=>row.url).filter(Boolean))];
-      existingMedia.push(...await readExistingByIds(galaxyMedia,'uid,url,type','url',candidateUrls,t('uiExtra.importUI.mediaUrlCompareFailed')));
+      // One bounded UID-or-URL candidate query per chunk; avoid scanning
+      // the same MediaAnchor twice during a single import plan.
+      const existingMedia=await readImportMediaCandidates(scopeId,mediaAnchor,
+        explicitIds,candidateUrls,t('uiExtra.importUI.mediaIdCompareFailed'));
       const mediaKey=row=>{
         const url=String(row.url||'').trim();
         return url?JSON.stringify([url,String(row.type||'').trim()])
@@ -303,8 +326,7 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
         const title=String(item?.title||'').trim();
         const stamp=Date.parse(String(item?.createtime||''));
         if(!owner||!type||!metadata||!title||!Number.isFinite(stamp))return '';
-        return JSON.stringify([owner,type,title,metadata,new Date(stamp).toISOString(),
-          String(item?.location||'').trim()]);
+        return JSON.stringify([owner,type,title,metadata,new Date(stamp).toISOString()]);
       };
       const pendingOwners=[...new Set(plans.filter(item=>
         !item.uid&&!item.url&&item.__article_uid&&
@@ -316,9 +338,8 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
         const ownerRows=await readExistingByIds(galaxy,'uid,media_link','uid',pendingOwners,
           t('uiExtra.importUI.mediaLinkReadFailed'));
         const linkedUids=[...new Set(ownerRows.flatMap(row=>Array.isArray(row.media_link)?row.media_link:[]))];
-        const linkedMedia=linkedUids.length?await readExistingByIds(
-          galaxyMedia,'uid,type,description,title,createtime,location,url','uid',linkedUids,
-          t('uiExtra.importUI.mediaIdCompareFailed')):[];
+        const linkedMedia=linkedUids.length?await readImportMediaCandidates(
+          scopeId,mediaAnchor,linkedUids,[],t('uiExtra.importUI.mediaIdCompareFailed')):[];
         const savedMediaByUid=new Map(linkedMedia.map(row=>[String(row.uid),row]));
         for(const article of ownerRows){
           for(const mediaUid of article.media_link||[]){
@@ -341,7 +362,7 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
         if(!createMedia.length)return;
         const count=createMedia.length,started=Date.now();
         await writeImportBatches(createMedia,{
-          writeBatch:batch=>insertImportRows(galaxyMedia,batch),
+          writeBatch:batch=>insertImportRows(mediaAnchor,batch.map(mediaAnchorRecord)),
           onProgress:p=>onProgress?.({stage:'新增媒體紀錄',completed:created+p.completed,total:created+count})
         });
         created+=count;
@@ -364,6 +385,8 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
       for(const raw of plans){
         const owner=String(raw.__article_uid||'').trim();
         const record={...raw};delete record.__article_uid;
+        if(String(record.location||'').trim()&&!owner)
+          throw new Error('未連結文章的媒體地點無法儲存到 MediaAnchor；請先建立文章／LocationAnchor。');
         const runeDedupKey=record.type==='rune'&&!record.uid&&!record.url&&owner&&record.description
           ?JSON.stringify([owner,String(record.description)]):'';
         const existingRuneUid=runeDedupKey?existingRuneByArticle.get(runeDedupKey):null;
@@ -812,8 +835,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     showProgress('準備匯入文章');
     try{
       const scope=nativeLocal?defaultScopeData('local'):account.scopeDataFor(scopeId);
-      const galaxy=scope?.galaxy,galaxyMedia=scope?.galaxyMedia;
-      if(!galaxy||!galaxyMedia)throw new Error(t('uiExtra.importUI.scopeUnresolved'));
+      const galaxy=scope?.galaxy,mediaAnchor=scope?.anchor;
+      if(!galaxy||!mediaAnchor)throw new Error(t('uiExtra.importUI.scopeUnresolved'));
       // First narrow all database comparisons to the source site, then timestamp.
       // Check each site's existing data ONCE before creating a comparison pool.
       // If site is empty, the complete file stays in INSERT mode regardless
@@ -1098,7 +1121,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       ];
       let recordedVisits=0;
       if(savedVisits.length){
-        showProgress'核對 Point 造訪時間';
+        showProgress('核對 Point 造訪時間');
         const visitResult=await recordImportPlaceVisits(savedVisits,{
           relation:dbAuthRelation,table:placeAnchors.table,timesByUid:placeAnchors.timesByUid,
           createtimeByUid:placeAnchors.createtimeByUid,attrsByUid:placeAnchors.attrsByUid
@@ -1133,7 +1156,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         normalized:analyzed.normalized,
         mediaOnly:[...safeMediaOnly,...canonicalArchiveMedia],
         extraLinks:archivePlan.mediaLinks,
-        knownArticleIds,galaxy,galaxyMedia,t,
+        knownArticleIds,scopeId,galaxy,mediaAnchor,t,
         onProgress:p=>showProgress(p.stage,p.completed,p.total||0)
       });
       // All article and media writes are finished: now recompute the

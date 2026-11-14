@@ -21,11 +21,10 @@ const ADMIN_OPTIONS=Object.freeze([
   {value:'sources',label:'文章來源',shortLabel:'來源',description:'來源階層與名稱'},
   {value:'featureHero',label:'頁面主視覺',shortLabel:'頁面',description:'功能頁圖片與文字'},
   {value:'themes',label:'主題配色',shortLabel:'配色',description:'主題色彩'},
-  {value:'network',label:'資料庫與快取',shortLabel:'連線',description:'資料庫連線與快取設定'},
+  {value:'network',label:'資料庫連線',shortLabel:'連線',description:'資料庫連線管理'},
   {value:'io',label:'匯入與系統工具',shortLabel:'工具',description:'匯入匯出與系統限制'}
 ]);
 const DatabaseTarget=dynamic(()=>import('./admin-panels/DatabaseTarget'),{loading:PanelLoading});
-const IsrDomainTarget=dynamic(()=>import('./admin-panels/IsrDomainTarget'),{loading:PanelLoading});
 const RuntimeIoSettings=dynamic(()=>import('./admin-panels/RuntimeIoSettings'),{loading:PanelLoading});
 const SourceCategories=dynamic(()=>import('../SourceCategoryEditor').then(m=>m.AdminSourceCategories),{loading:PanelLoading});
 const ThemeEditor=dynamic(()=>import('./admin-panels/ThemeEditor'),{loading:PanelLoading});
@@ -46,7 +45,7 @@ export default function AdminHomeView({scopeGroup}){
   // Preserve deep links created before the Admin sections were consolidated.
   const [section,setSection]=useManagementSection(ADMIN_OPTIONS,'network',{
     registry:'network',members:'network',
-    database:'network',isr:'network',enterpriseAuth:'network',auth:'network',system:'network',
+    database:'network',enterpriseAuth:'network',auth:'network',system:'network',
     traceAnchor:'network',traceMap:'network'
   });
   const switchSection=next=>{
@@ -121,10 +120,7 @@ export default function AdminHomeView({scopeGroup}){
         items={ADMIN_OPTIONS} value={section} onChange={switchSection} mobileSelect/>
       <div className="management-workspace-panel" id="admin-management-panel" role="region"
         aria-labelledby={'admin-sections-option-'+selectedOption.value}>
-        {section==='network'?<>
-          <DatabaseTarget scopeGroup={scopeGroup}/>
-          <IsrDomainTarget/>
-        </>:null}
+        {section==='network'?<DatabaseTarget scopeGroup={scopeGroup}/>:null}
         {section==='io'?<RuntimeIoSettings/>:null}
         {section==='featureHero'?<FeatureHeroImages/>:null}
         {section==='sources'?<SourceCategories/>:null}

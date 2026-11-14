@@ -309,7 +309,8 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   // The current full calendar year is the initial Statistics window, even when
   // Era records exist. A saved Era is selected only by an explicit UI action.
   const [selectedPeriodKey,setSelectedPeriodKey]=useState('year');
-  useEffect(()=>{setSelectedPeriodKey('year');},[scopeId]);
+  const [periodOptionsRequested,setPeriodOptionsRequested]=useState(false);
+  useEffect(()=>{setSelectedPeriodKey('year');setPeriodOptionsRequested(false);},[scopeId]);
   const queryEndDate=useMemo(()=>taipeiDateKey(),[]);
   // The active route already resolves the requested Scope; no registry-wide SELECT.
   const targetScopes=useMemo(()=>[defaultScopeData(scopeId)].filter(Boolean),[scopeId]);
@@ -321,7 +322,9 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     [zoomLevel,queryEndDate,knownEarliest]);
   const periodQuery=useAsyncResource({
     queryKey:['culture-time-periods',scopeId],
-    enabled:scopeId!=='local'&&scopeId!=='loc'&&Boolean(targetScopes[0]),
+    // Default Statistics reads Galaxy counts only. Saved TimeAnchor period
+    // choices load on the user's interaction, never on landing.
+    enabled:periodOptionsRequested&&scopeId!=='local'&&scopeId!=='loc'&&Boolean(targetScopes[0]),
     queryFn:async()=>{
       // Period anchors remain on the independently working direct reader.
       // ISR never becomes a required path when an endpoint is not available.
@@ -509,11 +512,12 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
       <label>
         <span>時期</span>
         <select className="scope-select" aria-label="時期" value={selectedPeriodKey}
-          onChange={event=>setSelectedPeriodKey(event.target.value)}>
+          onFocus={()=>setPeriodOptionsRequested(true)}
+          onChange={event=>{setPeriodOptionsRequested(true);setSelectedPeriodKey(event.target.value);}}>
           <option value="year">{DEFAULT_YEAR_WINDOW.label}</option>
-          <option value="latest">{periods.length?'最新時期':'未設定時期'}</option>
+          <option value="latest">最新時期</option>
           <option value="">自選時間（原有縮放）</option>
-          {periodQuery.isPending?<option disabled value="__loading">正在載入時期…</option>:null}
+          {periodOptionsRequested&&periodQuery.isPending?<option disabled value="__loading">正在載入時期…</option>:null}
           {periods.map(period=><option key={period.uid||period.period} value={String(period.period||period.era_id||period.uid)}>
             {period.title||period.name||period.period}
           </option>)}

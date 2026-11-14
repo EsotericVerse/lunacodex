@@ -69,7 +69,7 @@ export function galaxyIdentityHref(scopeId,uid){
   return featureNavigationHref(targetScope,'search',{identity:id});
 }
 
-export function galaxyMediaHref(scopeId,mediaId){
+export function mediaAnchorHref(scopeId,mediaId){
   const id=valueOf(mediaId);
   if(!id)return '';
   return featureNavigationHref(String(scopeId||'').trim(),'search',{media:id});

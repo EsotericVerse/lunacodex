@@ -12,11 +12,11 @@ import {timePeriodContainsDate} from './time-anchor-ranges.mjs';
 import {anniversarySuggestionsForDate} from './anniversary.mjs';
 import {DB_QUERY_BATCH_SIZE,applyFilters,applyOrders,executePublicRead,selectCount,selectRows} from './db-query.mjs';
 import {readLocStatistics,readScopeCategoryTotals,readScopeEarliest,readScopeOverview,readScopeStatistics} from './db-client.mjs';
-import {readNumericIsr,usesNumericIsr} from './numeric-isr-client';
 import {readTraceMapIndex} from '../modular/features/trace/trace-data.js';
 import {galaxyAble} from './galaxy-able.mjs';
 import {portableContainsTerm} from './providers/portable-search.mjs';
 import {galaxyReadColumns} from '../../zenstack/galaxy-read-models.mjs';
+import {ANCHOR_TYPE_GROUPS,mediaAnchorProjection,MEDIA_ANCHOR_COLUMNS} from '../../zenstack/anchor-hierarchy.mjs';
 const galaxyListColumns=()=>galaxyReadColumns('GalaxyList');
 const galaxyUidReadColumns=()=>galaxyReadColumns('GalaxyUidRead');
 const galaxyUidReadWithPolicyColumns=()=>unique([
@@ -33,7 +33,7 @@ function unique(values=[]){
   return [...new Set(values.map(value=>String(value||'').trim()).filter(Boolean))];
 }
 function scopeOf(scope){
-  if(!scope?.id||!scope?.galaxy||!scope?.galaxyMedia||!scope?.time)throw new Error('Scope data 未解析');
+  if(!scope?.id||!scope?.galaxy||!scope?.anchor)throw new Error('Scope data 未解析');
   return scope;
 }
 function timeFilters(column,startDate,endDate){
@@ -114,10 +114,6 @@ function cachedReadScopeCategoryTotals(id,args){
 // fallback: SQL returns bounded daily totals, not the full Galaxy corpus.
 async function scopeStatisticsRows(scope,{startDate='',endDate='',includeUndated=false}={}){
   const current=scopeOf(scope);
-  if(usesNumericIsr(current.id)){
-    try{return await readNumericIsr(current.id,'culture',{startDate,endDate,includeUndated});}
-    catch{ /* Optional ISR cache failure: query the primary Kysely aggregate. */ }
-  }
   return cachedReadScopeStatistics(current.id,{
     startDate:dateOnly(startDate),endDate:dateOnly(endDate),includeUndated
   });
@@ -192,34 +188,6 @@ export async function selectSourceDaily(scope,{startDate='',endDate=''}={}){
   throw new Error('Source daily statistics aggregate unavailable; full-row fallback disabled');
 }
 
-export async function selectDailyCategoryCounts(table,categoryColumn,{startDate='',endDate='',filters=[],includeEmpty=false,includeUndated=false}={}){
-  const match=String(table||'').match(/^(?:silver\.)?([a-z][a-z0-9]*)_galaxy(_media)?$/);
-  const kind=match?.[2]?'media':'source';
-  if(!match||!(kind==='media'?['type','media_type'].includes(categoryColumn):categoryColumn==='site')||filters.length)
-    throw new Error('Unsupported daily category request; row-streaming fallback is disabled');
-  const rows=await cachedReadScopeStatistics(match[1],{
-    startDate:dateOnly(startDate),endDate:dateOnly(endDate),includeUndated
-  });
-  return rows.filter(item=>item.kind===kind&&(includeEmpty||item.category))
-    .map(item=>({day:String(item.day||''),category:String(item.category||''),
-      item_count:Number(item.item_count)||0}))
-    .sort((a,b)=>a.day.localeCompare(b.day)||a.category.localeCompare(b.category));
-}
-
-async function selectCategoryCountsRaw(table,categoryColumn,{startDate='',endDate='',filters=[],limit=20}={}){
-  // Use the installed DB-side category aggregate; never stream every article.
-  const match=String(table||'').match(/^silver\.([a-z][a-z0-9]*)_galaxy(_media)?$/);
-  const media=Boolean(match?.[2]);
-  if(!match||!(media?['type','media_type'].includes(categoryColumn):categoryColumn==='site')||filters.length)
-    return [];
-  const rows=await cachedReadScopeCategoryTotals(match[1],{
-    startDate:dateOnly(startDate),endDate:dateOnly(endDate)
-  });
-  return rows.filter(row=>row.kind===(media?'media':'source')&&String(row.category||'').trim())
-    .map(row=>({term:String(row.category).trim(),item_count:Number(row.item_count)||0}))
-    .sort((a,b)=>b.item_count-a.item_count||a.term.localeCompare(b.term));
-}
-
 function mediaIdsOf(value){
   return [...new Set((Array.isArray(value)?value:[]).map(item=>String(item||'').trim()).filter(Boolean))];
 }
@@ -230,12 +198,14 @@ async function mediaRowsFor(scope,mediaIds=[],{signal=null,includeLegacyRuneRefs
   const result=[];
   for(let i=0;i<ids.length;i+=40){
     const batch=ids.slice(i,i+40);
-    const page=await selectRows(current.galaxyMedia,{
-      columns:'uid,title,url,type,description',
-      filters:[{column:'uid',operator:'in',value:batch}],
+    const page=await selectRows(current.anchor,{
+      columns:MEDIA_ANCHOR_COLUMNS,
+      filters:[{column:'uid',operator:'in',value:batch},
+        {column:'type',operator:'in',value:ANCHOR_TYPE_GROUPS.media},
+        {column:'invisible',operator:'eq',value:false}],
       limit:batch.length,maxLimit:batch.length,signal
     });
-    result.push(...page.rows);
+    result.push(...page.rows.map(mediaAnchorProjection));
   }
   return result;
 }
@@ -443,7 +413,7 @@ function dateSearchFilters(dateColumn,startDate,endDate){
   return filters;
 }
 function recordFor(row,source,providerId,scope,table){
-  return {row:{...row,scope_id:row?.scope_id||scope.id,__table:table,__galaxy_media_table:scope.galaxyMedia},source,providerId};
+  return {row:{...row,scope_id:row?.scope_id||scope.id,__table:table,__media_anchor_table:scope.anchor},source,providerId};
 }
 
 function makeProvider({id,table,source,scope,idColumn,columns,searchFields,filters=[],dateColumn='',exactColumn='',batchSize=DEFAULT_LIST_BATCH_SIZE,sourceClause='',authenticated=false,uidFastPath=false}){
@@ -680,25 +650,21 @@ async function selectMediaStatisticsFacetRowsRaw(scope,dimension,{startDate='',e
   if(!['media_type','media_platform','media_style'].includes(dimension)){
     throw new Error('Unknown media statistics dimension');
   }
-  // Only the numbers for public charts are persisted in server ISR.
-  // Advanced Style cross-tag relationships still require their own raw metadata.
-  if(usesNumericIsr(current.id)){
-    try{return await readNumericIsr(current.id,'facet',{startDate,endDate,dimension});}
-    catch{ /* Optional ISR failure: aggregate existing metadata. */ }
-  }
-  const filters=timeFilters('createtime',startDate,endDate);
-  const columns='uid,type,url,description,createtime';
-  const orders=[{column:'type',ascending:true}];
+  // Query current typed MediaAnchor metadata; no ISR or stored snapshot.
+  const filters=[...timeFilters('createtime',startDate,endDate),
+    {column:'type',operator:'in',value:ANCHOR_TYPE_GROUPS.media},
+    {column:'invisible',operator:'eq',value:false}];
+  const orders=[{column:'type',ascending:true},{column:'uid',ascending:true}];
   const aggregates=new Map();
   let offset=0,total=null,source='auto';
   while(total===null||offset<total){
-    const page=await selectRows(current.galaxyMedia,{
-      columns,filters,orders,limit:DB_QUERY_BATCH_SIZE,offset,
+    const page=await selectRows(current.anchor,{
+      columns:MEDIA_ANCHOR_COLUMNS,filters,orders,limit:DB_QUERY_BATCH_SIZE,offset,
       count:offset===0?'exact':null,source
     });
     if(offset===0)total=Number.isFinite(Number(page.count))?Number(page.count):page.rows.length;
     source=page.dataSource||source;
-    for(const row of StatisticsFacets.base.mediaFacetDaily(page.rows,dimension)){
+    for(const row of StatisticsFacets.base.mediaFacetDaily(page.rows.map(mediaAnchorProjection),dimension)){
       const key=row.day+'\u0000'+row.category.normalize('NFKC').toLocaleLowerCase();
       const existing=aggregates.get(key);
       if(existing)existing.item_count+=row.item_count;
@@ -716,19 +682,21 @@ async function selectMediaStatisticsFacetRowsRaw(scope,dimension,{startDate='',e
 // Daily facet aggregates cannot reconstruct which tags belonged to the same item.
 export async function selectMediaCrossTagRows(scope,{startDate='',endDate=''}={}){
   const current=scopeOf(scope);
-  const filters=timeFilters('createtime',startDate,endDate);
-  const orders=[{column:'type',ascending:true}];
+  const filters=[...timeFilters('createtime',startDate,endDate),
+    {column:'type',operator:'in',value:ANCHOR_TYPE_GROUPS.media},
+    {column:'invisible',operator:'eq',value:false}];
+  const orders=[{column:'type',ascending:true},{column:'uid',ascending:true}];
   const rows=[];
   let offset=0,total=null,source='auto';
   while(total===null||offset<total){
-    const page=await selectRows(current.galaxyMedia,{
-      columns:'uid,description,createtime',
+    const page=await selectRows(current.anchor,{
+      columns:MEDIA_ANCHOR_COLUMNS,
       filters,orders,limit:DB_QUERY_BATCH_SIZE,offset,
       count:offset===0?'exact':null,source
     });
     if(offset===0)total=Number.isFinite(Number(page.count))?Number(page.count):page.rows.length;
     source=page.dataSource||source;
-    rows.push(...page.rows);
+    rows.push(...page.rows.map(mediaAnchorProjection));
     if(!page.rows.length)break;
     offset+=page.rows.length;
   }
@@ -747,7 +715,9 @@ export async function selectMediaCrossPairWorks(scope,pair,{
   const filters=[
     ...timeFilters('createtime',startDate,endDate),
     {column:'description',operator:'ilike',value:'%'+escapeLike(pair.leftLabel)+'%'},
-    {column:'description',operator:'ilike',value:'%'+escapeLike(pair.rightLabel)+'%'}
+    {column:'description',operator:'ilike',value:'%'+escapeLike(pair.rightLabel)+'%'},
+    {column:'type',operator:'in',value:ANCHOR_TYPE_GROUPS.media},
+    {column:'invisible',operator:'eq',value:false}
   ];
   const left=String(pair.left||'').normalize('NFKC').toLocaleLowerCase();
   const right=String(pair.right||'').normalize('NFKC').toLocaleLowerCase();
@@ -755,14 +725,15 @@ export async function selectMediaCrossPairWorks(scope,pair,{
   let cursor=Math.max(0,Math.floor(Number(offset)||0));
   let source='auto';
   while(true){
-    const page=await selectRows(current.galaxyMedia,{
-      columns:'uid,title,url,description,createtime',
-      filters,orders:[{column:'type',ascending:true}],
+    const page=await selectRows(current.anchor,{
+      columns:MEDIA_ANCHOR_COLUMNS,
+      filters,orders:[{column:'type',ascending:true},{column:'uid',ascending:true}],
       limit:batchSize,offset:cursor,source
     });
     source=page.dataSource||source;
     if(!page.rows.length)return {rows,nextOffset:cursor,hasMore:false};
-    for(const row of page.rows){
+    for(const raw of page.rows){
+      const row=mediaAnchorProjection(raw);
       const rowOffset=cursor++;
       const tags=new Set(StatisticsFacets.base.mediaStyleTags(row.description).map(tag=>tag.normalize('NFKC').toLocaleLowerCase()));
       if(!tags.has(left)||!tags.has(right))continue;
@@ -841,32 +812,13 @@ export async function selectFirstScopeStatisticsDate(scope){
 // serve while the functions are not installed (for example on a backup database).
 async function selectScopeOverviewRaw(scope,{startDate='',endDate=''}={}){
   const current=scopeOf(scope);
-  if(usesNumericIsr(current.id)){
-    try{
-      const snapshot=await readNumericIsr(current.id,'statistics',{startDate,endDate});
-      // Statistics now contains only dated Galaxy source counts. Multimedia is
-      // a Keyword Class, never an additional overview statistic. Accept a
-      // complete current ISR snapshot without triggering duplicate SQL reads.
-      if(typeof snapshot?.earliest==='string'&&Array.isArray(snapshot.rows)&&
-         Array.isArray(snapshot.categories)&&Array.isArray(snapshot.aliases))
-        return snapshot;
-    }catch{ /* Optional ISR cache failure: query Kysely. */ }
-  }
   return readScopeOverview(current.id,{startDate,endDate});
 }
 async function selectScopeEarliestRaw(scope){
   const current=scopeOf(scope);
-  if(usesNumericIsr(current.id)){
-    try{return await readNumericIsr(current.id,'earliest');}
-    catch{ /* Optional ISR cache failure: query Kysely. */ }
-  }
   return readScopeEarliest(current.id);
 }
 async function selectLocStatisticsRaw({startDate='',endDate=''}={}){
-  if(usesNumericIsr('loc')){
-    try{return await readNumericIsr('loc','loc-statistics',{startDate,endDate});}
-    catch{ /* Optional ISR cache failure: query Kysely. */ }
-  }
   return readLocStatistics({startDate,endDate});
 }
 

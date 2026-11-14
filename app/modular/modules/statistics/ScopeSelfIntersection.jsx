@@ -86,7 +86,7 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
   const [chartType,setChartType]=useState('line');
   const [foldBlank,setFoldBlank]=useState(true);
   const start=dateOnly(range?.startDate),end=dateOnly(range?.endDate);
-  const valid=Boolean(scope?.id&&scope.galaxy&&scope.galaxyMedia&&start&&end&&start<=end);
+  const valid=Boolean(scope?.id&&scope.galaxy&&scope.anchor&&start&&end&&start<=end);
   const query=useAsyncResource(valid?['own-scope-source-intersection',scope?.id,start,end]:null,
     ()=>selectScopeSourceBreakdownRows(scope,{startDate:start,endDate:end}));
   const rows=query.data||[];
