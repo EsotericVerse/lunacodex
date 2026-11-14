@@ -18,12 +18,13 @@ export default function BottomNavIcon({name}){
    The original SVG icon remains the same; edit dock buttons never animate.
    No timers, route interception, layout animation, or animation loops. */
 const DOCK_EFFECTS=Object.freeze({
-  home:{initial:{x:-8,y:1,scale:.78},frames:{x:[-8,1.5,0],y:[1,-1,0],scale:[.78,1.09,1]},duration:.48},
-  culture:{initial:{x:-4,rotate:-9},frames:{x:[-4,4,-2,0],rotate:[-9,7,-3,0]},duration:.56},
-  statics:{initial:{y:0,scale:1},frames:{y:[0,-2,2,-1,0],scale:[1,1.08,.98,1.03,1]},duration:.42},
-  trace:{initial:{scaleX:.15,opacity:.65},frames:{scaleX:[.15,1.13,1],opacity:[.65,1,1]},duration:.54},
-  search:{initial:{rotate:-70,scale:.85},frames:{rotate:[-70,210,360],scale:[.85,1.08,1]},duration:.58},
-  settings:{initial:{rotate:0},frames:{rotate:[0,360]},duration:.62}
+  // Quiet, directional motion on navigation only. No spins, loops or large scaling.
+  home:{initial:{x:-2,y:1,scale:.98},frames:{x:[-2,.5,0],y:[1,-.5,0],scale:[.98,1.015,1]},duration:.35},
+  culture:{initial:{x:-2,rotate:-2},frames:{x:[-2,1,0],rotate:[-2,1,0]},duration:.4},
+  statics:{initial:{y:1,scale:.99},frames:{y:[1,-1,0],scale:[.99,1.02,1]},duration:.34},
+  trace:{initial:{x:-2,scaleX:.96,opacity:.88},frames:{x:[-2,.7,0],scaleX:[.96,1.015,1],opacity:[.88,1,1]},duration:.4},
+  search:{initial:{x:-1.5,rotate:-4},frames:{x:[-1.5,.8,0],rotate:[-4,2,0]},duration:.39},
+  settings:{initial:{rotate:-3,y:1},frames:{rotate:[-3,1,0],y:[1,-.5,0]},duration:.36}
 });
 
 export function DockMotionIcon({name,active=false,activation=0}){
@@ -36,19 +37,19 @@ export function DockMotionIcon({name,active=false,activation=0}){
       initial={play?effect.initial:false}
       animate={play?effect.frames:{x:0,y:0,rotate:0,scale:1,scaleX:1,opacity:1}}
       transition={{duration:play?effect.duration:0,ease:'easeOut'}}
-      whileTap={reduceMotion?undefined:{scale:.9}}>
+      whileTap={reduceMotion?undefined:{scale:.98}}>
       <BottomNavIcon name={name}/>
     </motion.span>
     {(name==='home'||name==='phone')&&play?<motion.span
       key={key+':center'} className="scope-dock-motion-icon__home-frame"
-      initial={{opacity:0,scale:1.55,x:-5}}
-      animate={{opacity:[0,.65,0],scale:[1.55,.9,1],x:[-5,0,0]}}
-      transition={{duration:.5,ease:'easeOut'}}/>:null}
+      initial={{opacity:0,scale:1.06,x:-1}}
+      animate={{opacity:[0,.32,0],scale:[1.06,1,1],x:[-1,0,0]}}
+      transition={{duration:.38,ease:'easeOut'}}/>:null}
     {name==='statics'&&play?<motion.span key={key+':digits'}
       className="scope-dock-motion-icon__digits"
       initial={{opacity:0,y:3}}
-      animate={{opacity:[0,1,1,0],x:[0,-2,2,-1,0],y:[3,0,-1,0,0]}}
-      transition={{duration:.5,ease:'easeOut'}}
+      animate={{opacity:[0,.7,.7,0],x:[-1,0,.5,0],y:[1,0,-.5,0]}}
+      transition={{duration:.36,ease:'easeOut'}}
       aria-hidden="true">123</motion.span>:null}
   </span>;
 }
