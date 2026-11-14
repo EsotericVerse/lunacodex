@@ -161,8 +161,11 @@ export function prepareTransientResourceAction(action,{queryKeys=[]}={}){
   const before=transientResourcePressure();
   const pressure=before.inflightReads>=SPOOL_LIMIT_READS||
     before.spoolRows>=SPOOL_LIMIT_ROWS||before.spoolKeys>=SPOOL_LIMIT_KEYS;
-  // Highest-level feature changes retire the previous view immediately.
-  if(action==='navigation'){
+  // Entering a protected management section has the same full read-reset
+  // contract as switching features: the next editor must start with an empty
+  // transient spool before checking its own grants and re-reading data.
+  // Identity, Session, verified grants and explicit writes stay untouched.
+  if(action==='navigation'||action==='management'){
     releaseTransientPageResources();
     return {priority,pressure,released:true};
   }
