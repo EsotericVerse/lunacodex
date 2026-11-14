@@ -77,7 +77,7 @@ export function createImportDateIndex(){
   const accept=row=>{
     if(row?.type!=='date')throw Error('Date Anchor 索引型別不符');
     const day=String(row.attr?.date||'').slice(0,10);
-    if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(day))return;
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(day))return;
     if(conflictingDays.has(day)){
       conflictingDays.get(day).add(String(row.uid));
       return;
