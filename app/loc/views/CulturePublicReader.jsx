@@ -403,7 +403,7 @@ export default function CulturePublicReader(){
     articleAbortRef.current?.abort();articleAbortRef.current=null;
     sequence.current+=1;setSelectedSite(site);setSelectedCategoryKey(categoryKey);setArticlesOpen(false);
     setArticleRows([]);setArticleOffset(0);
-    setArticleMore(false);setArticleError('');fullSequence.current+=1;
+    setArticleMore(false);setArticlesLoading(false);setArticleError('');fullSequence.current+=1;
     setFullUid('');setFullText('');setFullError('');
   };
   const fetchArticles=async({append=false,offset=0,site=selectedSite}={})=>{
@@ -448,7 +448,7 @@ export default function CulturePublicReader(){
     articleAbortRef.current?.abort();articleAbortRef.current=null;
     sequence.current+=1;fullSequence.current+=1;
     setArticlesOpen(false);setArticleRows([]);setArticleOffset(0);
-    setArticleMore(false);setArticleError('');
+    setArticleMore(false);setArticlesLoading(false);setArticleError('');
     setSelectedSite('');setSelectedCategoryKey('');
     setFullUid('');setFullText('');setFullError('');
     setExpandedSources([]);
