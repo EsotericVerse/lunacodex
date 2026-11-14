@@ -21,7 +21,7 @@ import {createUid8} from './uid';
 import {mediaAnchorRecord,mediaAnchorProjection,canonicalMediaAnchorType,MEDIA_ANCHOR_COLUMNS,ANCHOR_TYPE_GROUPS} from '../../zenstack/anchor-hierarchy.mjs';
 import {createImportProgressStore} from './import-progress-store.mjs';
 import {remapArchiveArticleUids} from './import-random-uids.mjs';
-import {remapImportUidRelations,planExistingImportUidUpdate,planImportMediaUidLinks} from './import-uid-delta.mjs';
+import {createImportUidResolver,remapImportUidRelations,planExistingImportUidUpdate,planImportMediaUidLinks} from './import-uid-delta.mjs';
 import {facebookBackupPlace,facebookBackupPostText,facebookBackupTimestamp} from './facebook-backup-place.mjs';
 import {archiveGalaxyRows} from './archive-caption-rows.mjs';
 import {facebookPostPlace} from './archive-geo-objects.mjs';
@@ -1095,6 +1095,14 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       unique=remapImportUidRelations(unique,{
         aliases:incoming.aliases,existingByUid:existingBySiteId
       }).rows;
+      const resolvedUid=createImportUidResolver(incoming.aliases,existingBySiteId);
+      const persistedUids=new Set([...existingBySiteId.values()].map(row=>String(row.uid)));
+      // Only confirmed persisted PKs can correct old nonempty links here.
+      // References to not-yet-inserted articles must await real INSERT receipts.
+      const resolveSavedUid=value=>{
+        const mapped=resolvedUid(value);
+        return persistedUids.has(mapped)?mapped:value;
+      };
       // Articles with check-ins still need a spatial/date backfill on repeat imports.
       if(isUnchangedImportBeforeWrite(unique,existingBySiteId,{
         hasMedia:Boolean(analyzed.mediaOnly.length||eligibleArchiveEvidence.length||
@@ -1174,7 +1182,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         // Immer compares only 8-char UID references. Emit exactly the PK
         // fields changed by this row, then pass them to existing Kysely writer.
         Object.assign(changes,planExistingImportUidUpdate(existing,record,{
-          placeUid:restoredPlace
+          placeUid:restoredPlace,resolveSavedUid
         }).changes);
         const matchedPlace=importedPlaceId({incoming:placeRecord,byName:placeAnchors.byName,byCoordinate:placeAnchors.byCoordinate});
         const visitUid=restoredPlace||(
