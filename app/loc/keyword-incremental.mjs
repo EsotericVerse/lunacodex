@@ -28,8 +28,12 @@ export async function analyzeIncrementalKeywordPatterns({
   const expected=buildKeywordSearchPatterns(scopeId,items,[]);
   const expectedKeys=new Set(expected.map(row=>keyOf(row.pattern)));
   const words=existingPatterns.map(row=>({
-    scopeid:scopeId,pattern:String(row.pattern||''),count:0,uid_list:[]
+    uid:String(row.uid||''),scopeid:scopeId,pattern:String(row.pattern||''),
+    count:0,uid_list:[]
   })).sort((a,b)=>a.pattern.localeCompare(b.pattern));
+  if(words.some(row=>!UID.test(row.uid))||
+     new Set(words.map(row=>row.uid)).size!==words.length)
+    throw new Error('Invalid or duplicated Pattern UID');
   if(expectedKeys.size!==words.length||
     words.some(row=>!expectedKeys.has(keyOf(row.pattern))))
     throw new Error('Pattern UID index does not match the selected Keyword Class');
