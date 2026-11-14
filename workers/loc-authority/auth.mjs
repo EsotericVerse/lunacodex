@@ -13,6 +13,8 @@ import {RAINBOW_TABLES} from './rainbow-tables.mjs';
 import {rainbowSchema,RAINBOW_MODEL_NAMES} from './rainbow-zmodel.mjs';
 import {authKaraulRatePolicy} from './auth-qos.mjs';
 import {extensionClientDiscovery} from './extension-client.mjs';
+import {MCP_SSO_REFERENCE,MCP_SSO_CLAIM,MCP_EMAIL_CLAIM,MCP_SSO_PROVIDER,
+  verifiedSsoSession} from './sso-proof.mjs';
 
 // LOC Auth is the issuer. Cloudflare Access is the delegated upstream OIDC
 // provider; it does not own LOC Sessions or LOC OAuth tokens. Neon supplies
@@ -182,6 +184,14 @@ export function createLocAuth(env){
           throw new APIError('UNAUTHORIZED',{
             message:'OAuth Session expired or revoked'
           });
+        // Existing Google sessions must not approve MCP OAuth consent.
+        // Native authorize redirects through the postLogin SSO gate.
+        if(ctx.path!=='/oauth2/authorize'&&
+           !await verifiedSsoSession(ctx.headers,
+             ctx.context.authCookies.sessionToken.name,ctx.context.secret))
+          throw new APIError('FORBIDDEN',{
+            message:'Cloudflare SSO sign-in required'
+          });
         return;
       }
       // has-permission is an introspection endpoint for ordinary users, not
@@ -261,6 +271,24 @@ export function createLocAuth(env){
         },
         loginPage:'/login',
         consentPage:'/consent',
+        // Native OAuth step. A Google-only session must go to Cloudflare
+        // SSO first; the signed OAuth query is preserved by the plugin.
+        postLogin:{
+          page:'/login',
+          shouldRedirect:async ({headers})=>{
+            const context=await auth.$context;
+            return !await verifiedSsoSession(headers,
+              context.authCookies.sessionToken.name,context.secret);
+          },
+          consentReferenceId:()=>MCP_SSO_REFERENCE
+        },
+        // Claims are signed by Better Auth, retained through refresh grants.
+        customAccessTokenClaims:({user,referenceId})=>
+          referenceId===MCP_SSO_REFERENCE&&user?.emailVerified===true&&
+          typeof user.email==='string'
+            ?{[MCP_SSO_CLAIM]:MCP_SSO_PROVIDER,
+              [MCP_EMAIL_CLAIM]:user.email.trim().toLowerCase()}
+            :{},
         scopes:['openid','profile','email','offline_access','loc:import'],
         resources:[LOC_WEB,LOC_MCP,LOC_IMPORT],
         grantTypes:['authorization_code','refresh_token'],
