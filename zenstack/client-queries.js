@@ -231,6 +231,11 @@ export function useAsyncInfiniteResource({
   queryKey,queryFn,enabled=true,initialPageParam=null,getNextPageParam
 }){
   const serializedKey=serialize(queryKey);
+  // Callers can pass a fresh object literal for the first cursor on every
+  // render. Compare its VALUE rather than object identity, or each render
+  // replaces loadFirst -> re-runs the effect -> launches another SQL request.
+  const initialParamKey=JSON.stringify(initialPageParam??null);
+  const stableInitialParam=useMemo(()=>JSON.parse(initialParamKey),[initialParamKey]);
   const active=Boolean(enabled)&&typeof queryFn==='function';
   const [pages,setPages]=useState([]);
   const [pageParams,setPageParams]=useState([]);
@@ -253,12 +258,12 @@ export function useAsyncInfiniteResource({
     const generation=resourceEpoch;
     try{
       const page=await runFetch('infinite-first:'+serializedKey,
-        ({signal})=>fnRef.current({pageParam:initialPageParam,signal}),keyOf(queryKey));
+        ({signal})=>fnRef.current({pageParam:stableInitialParam,signal}),keyOf(queryKey));
       if(!mountedRef.current||generation!==resourceEpoch||
         request!==requestEpoch.current)return;
       const next=getNextPageParam?.(page)??undefined;
       nextParamRef.current=next;
-      setPages([page]);setPageParams([initialPageParam]);setNextParam(next);
+      setPages([page]);setPageParams([stableInitialParam]);setNextParam(next);
       setStatus('success');setError(null);
     }catch(caught){
       if(mountedRef.current&&generation===resourceEpoch&&
@@ -269,7 +274,7 @@ export function useAsyncInfiniteResource({
     }finally{
       if(mountedRef.current&&request===requestEpoch.current)setIsFetching(false);
     }
-  },[serializedKey,active,initialPageParam]); // eslint-disable-line react-hooks/exhaustive-deps
+  },[serializedKey,active,initialParamKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(()=>{
     mountedRef.current=true;
