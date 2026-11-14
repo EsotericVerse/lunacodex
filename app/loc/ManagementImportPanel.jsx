@@ -578,6 +578,9 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   const [reparseRequired,setReparseRequired]=useState(false);
   const [checkpointHint,setCheckpointHint]=useState(null);
   const importOwnerId=String(nativeLocal?'local':account.user?.id||'').trim();
+  const checkpointStorage=()=>{
+    try{return window.sessionStorage;}catch{return null;}
+  };
   // One event-driven progress snapshot, no additional query, timer or cache.
   const [progressStore]=useState(createImportProgressStore);
   const progress=useSyncExternalStore(progressStore.subscribe,
@@ -668,12 +671,12 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   async function loadQueuedFile(file,index,total,language=importLocale,recordPath=format.recordPath){
     clearDecodedFile();
     setReparseRequired(false);
-    setCheckpointHint(readImportCheckpoint(window.sessionStorage,{
+    setCheckpointHint(readImportCheckpoint(checkpointStorage(),{
       scopeId,ownerId:importOwnerId,file
     }));
     setFileName(file.name);setStatus('');
     if(file.size>ARCHIVE_MAX_BYTES){
-      clearImportCheckpoint(window.sessionStorage,{scopeId,ownerId:importOwnerId,file});
+      clearImportCheckpoint(checkpointStorage(),{scopeId,ownerId:importOwnerId,file});
       setCheckpointHint(null);
       // A rejected oversized Blob must not stay pinned in the File queue.
       setQueue(current=>{
@@ -821,7 +824,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       const wasBlocked=['LOC_PRIVATE_ARCHIVE_BLOCKED','LOC_UNVERIFIED_ARCHIVE_BLOCKED'].includes(error?.code);
       if(wasBlocked){
         // Privacy-rejected archives are not retryable on a public Scope.
-        clearImportCheckpoint(window.sessionStorage,{scopeId,ownerId:importOwnerId,file});
+        clearImportCheckpoint(checkpointStorage(),{scopeId,ownerId:importOwnerId,file});
         setCheckpointHint(null);
         setReparseRequired(false);
         setQueue(current=>{
@@ -851,7 +854,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     // A successful write is the disposal boundary. Retain only *upcoming*
     // files in a multi-file queue; failures intentionally retain their input
     // for retry, and persisted database rows are never touched.
-    clearImportCheckpoint(window.sessionStorage,{
+    clearImportCheckpoint(checkpointStorage(),{
       scopeId,ownerId:importOwnerId,file:queue[queueIndex]
     });
     setCheckpointHint(null);
@@ -874,7 +877,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   }
   function discardFailedFile(){
     if(busy||!reparseRequired)return;
-    clearImportCheckpoint(window.sessionStorage,{
+    clearImportCheckpoint(checkpointStorage(),{
       scopeId,ownerId:importOwnerId,file:queue[queueIndex]
     });
     setCheckpointHint(null);
@@ -1282,7 +1285,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       const placeVisits=[],missingPointUids=new Set();
       const updateSizer=createImportBatchSizer();
       const checkpointBatch=(phase,confirmed,total,inserted=0,conflicts=0)=>{
-        const receipt=writeImportCheckpoint(window.sessionStorage,{
+        const receipt=writeImportCheckpoint(checkpointStorage(),{
           scopeId,ownerId:importOwnerId,file:queue[queueIndex],
           phase,confirmed,total,inserted,conflicts
         });
@@ -1432,8 +1435,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       });
       // Media and article stages are both confirmed, but cleanup still waits
       // for the rest of the import to finish (including Search refresh).
-      checkpointBatch('media',newArticleProcessed,newArticleTotal,
-        result.inserted,result.conflicts);
+      checkpointBatch('media',checkedExisting+newArticleProcessed,
+        existingCount+newArticleTotal,result.inserted+updated,result.conflicts);
       // All article and media writes are finished: now recompute the
       // persisted Search summary once. A summary error must not turn a
       // successful import into a retry-all error.
