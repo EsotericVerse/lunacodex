@@ -41,6 +41,10 @@ export const MCP_TOOL_INPUTS=Object.freeze({
     offset:nonNegative.optional(),
     max_chars:z.int().min(1).max(40000).optional()
   }),
+  article_distribution:z.strictObject({
+    period:z.enum(['calendar_year','rolling_12_months']).optional(),
+    year:z.int().min(2020).max(2100).optional()
+  }),
   provider_list:none,
   provider_tools:z.strictObject({provider:ProviderIdSchema}),
   provider_call:z.strictObject({
