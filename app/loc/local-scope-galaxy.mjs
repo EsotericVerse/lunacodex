@@ -121,7 +121,7 @@ export async function importLocalGalaxy(rows){
   try{return await new Promise((resolve,reject)=>{
     const tx=db.transaction(LOCAL_GALAXY_STORE,'readwrite');
     const store=tx.objectStore(LOCAL_GALAXY_STORE);
-    let updated=0,inserted=0;
+    let updated=0,inserted=0,identityConflict=false;
     // Same-UID reimport updates only when source identity is compatible.
     // A conflicting UID must abort the ENTIRE IndexedDB transaction.
     for(const row of prepared){
@@ -130,6 +130,7 @@ export async function importLocalGalaxy(rows){
         const saved=prior.result;
         if(saved&&((saved.site||'local')!==row.site||
             (saved.site_id||'')!==(row.site_id||''))){
+          identityConflict=true;
           tx.abort();return;
         }
         if(saved)updated++;else inserted++;
@@ -138,7 +139,9 @@ export async function importLocalGalaxy(rows){
     }
     tx.oncomplete=()=>resolve({inserted,updated,total:prepared.length});
     tx.onerror=()=>reject(tx.error||new Error('本機資料庫寫入失敗'));
-    tx.onabort=()=>reject(new Error('UID 已對應其他來源，整批匯入取消；原資料未變更'));
+    tx.onabort=()=>reject(identityConflict
+      ?new Error('UID 已對應其他來源，整批匯入取消；原資料未變更')
+      :(tx.error||new Error('裝置資料庫交易中斷；原資料未變更')));
   });}finally{db.close();}
 }
 
