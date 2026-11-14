@@ -65,8 +65,7 @@ export default function FeatureSettingsPage({embedded=false}){
           <p className="scope-status">{t(KEY+'timeFilterHint')}</p>
           {timeError?<p role="alert" className="scope-status scope-error">{t(KEY+'timeFilterSaveFailed')}</p>:null}
         </section>:null}
-        {account.user?<LocUserSettingsPanel verifiedSubject={account.user.id}
-            verifiedEmail={account.email||account.user.email} section={section}/>
+        {account.user?<LocUserSettingsPanel verifiedSubject={account.user.id} section={section}/>
           :<section className="loc-card">
             <h2>{t(KEY+'featureSettingsSignIn')}</h2>
             <p className="scope-status">{t(KEY+'featureSettingsSignInHint')}</p>
