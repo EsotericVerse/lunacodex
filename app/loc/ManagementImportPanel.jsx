@@ -20,6 +20,7 @@ import {defaultScopeData} from './scope-data';
 import {createUid8} from './uid';
 import {mediaAnchorRecord,mediaAnchorProjection,canonicalMediaAnchorType,MEDIA_ANCHOR_COLUMNS,ANCHOR_TYPE_GROUPS} from '../../zenstack/anchor-hierarchy.mjs';
 import {createImportProgressStore} from './import-progress-store.mjs';
+import {readImportCheckpoint,writeImportCheckpoint,clearImportCheckpoint} from './import-checkpoint.mjs';
 import {remapArchiveArticleUids} from './import-random-uids.mjs';
 import {createImportUidResolver,remapImportUidRelations,planExistingImportUidUpdate,planImportPointUidLink,planImportMediaUidLinks} from './import-uid-delta.mjs';
 import {facebookBackupPlace,facebookBackupPostText,facebookBackupTimestamp} from './facebook-backup-place.mjs';
@@ -572,6 +573,16 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   const [importLocale,setImportLocale]=useState('zh-Hant');
   const [status,setStatus]=useState('');
   const [busy,setBusy]=useState(false);
+  // A failed write must not retain decoded ZIP/JSON article arrays in React.
+  // Keep only the original File reference for an explicit, revalidated retry.
+  const [reparseRequired,setReparseRequired]=useState(false);
+  const [checkpointHint,setCheckpointHint]=useState(null);
+  const importOwnerId=String(nativeLocal?'local':account.user?.id||'').trim();
+  const checkpointStorage=()=>{
+    // Tiny receipts survive an accidental tab/app restart. No article bodies,
+    // tokens, raw ZIP data or file handles are written into browser storage.
+    try{return window.localStorage;}catch{return null;}
+  };
   // One event-driven progress snapshot, no additional query, timer or cache.
   const [progressStore]=useState(createImportProgressStore);
   const progress=useSyncExternalStore(progressStore.subscribe,
@@ -648,9 +659,32 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     }
   }
 
+  function clearDecodedFile(){
+    // Release all large React-owned decoded records and their media/ZIP views.
+    // The browser can GC these after any in-flight stack finishes; the
+    // original File in queue is still available for an explicit retry.
+    setRows([]);
+    setArchiveEvidence([]);
+    setGeoPlaceCandidates([]);
+    setArchiveDetection(null);
+    setArchiveSummary(null);
+    setProgress(null);
+  }
   async function loadQueuedFile(file,index,total,language=importLocale,recordPath=format.recordPath){
-    setFileName(file.name);setRows([]);setArchiveEvidence([]);setGeoPlaceCandidates([]);setArchiveDetection(null);setArchiveSummary(null);setProgress(null);setStatus('');
+    clearDecodedFile();
+    setReparseRequired(false);
+    setCheckpointHint(readImportCheckpoint(checkpointStorage(),{
+      scopeId,ownerId:importOwnerId,file
+    }));
+    setFileName(file.name);setStatus('');
     if(file.size>ARCHIVE_MAX_BYTES){
+      clearImportCheckpoint(checkpointStorage(),{scopeId,ownerId:importOwnerId,file});
+      setCheckpointHint(null);
+      // A rejected oversized Blob must not stay pinned in the File queue.
+      setQueue(current=>{
+        const remaining=current.map((item,position)=>position===index?null:item);
+        return remaining.some(Boolean)?remaining:[];
+      });
       setStatus(t('uiExtra.importUI.zipTooLarge'));
       return;
     }
@@ -787,8 +821,19 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       setStatus(t('uiExtra.importUI.parsedFile',{index:index+1,total,count:list.length.toLocaleString()})+
         (parsed.length!==list.length?'；已略過 '+(parsed.length-list.length).toLocaleString()+' 筆私人紀錄。':''));
     }catch(error){
-      setRows([]);setArchiveEvidence([]);
+      clearDecodedFile();
+      setReparseRequired(true);
       const wasBlocked=['LOC_PRIVATE_ARCHIVE_BLOCKED','LOC_UNVERIFIED_ARCHIVE_BLOCKED'].includes(error?.code);
+      if(wasBlocked){
+        // Privacy-rejected archives are not retryable on a public Scope.
+        clearImportCheckpoint(checkpointStorage(),{scopeId,ownerId:importOwnerId,file});
+        setCheckpointHint(null);
+        setReparseRequired(false);
+        setQueue(current=>{
+          const remaining=current.map((item,position)=>position===index?null:item);
+          return remaining.some(Boolean)?remaining:[];
+        });
+      }
       setStatus(wasBlocked
         ?'第 '+(index+1)+' 檔已阻止匯入：'+String(error?.message||error)+'；本次未寫入資料庫。'
         :t('uiExtra.importUI.parseFileFailed',{index:index+1,error:error?.message||error}));
@@ -811,12 +856,42 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     // A successful write is the disposal boundary. Retain only *upcoming*
     // files in a multi-file queue; failures intentionally retain their input
     // for retry, and persisted database rows are never touched.
-    setRows([]);setArchiveEvidence([]);setGeoPlaceCandidates([]);
-    setArchiveDetection(null);setArchiveSummary(null);setProgress(null);
+    clearImportCheckpoint(checkpointStorage(),{
+      scopeId,ownerId:importOwnerId,file:queue[queueIndex]
+    });
+    setCheckpointHint(null);
+    clearDecodedFile();
+    setReparseRequired(false);
     setQueue(current=>{
       const pendingFiles=current.map((file,index)=>index<=queueIndex?null:file);
       return pendingFiles.some(Boolean)?pendingFiles:[];
     });
+  }
+  async function retryFailedFile(){
+    const file=queue[queueIndex];
+    if(busy||!reparseRequired||!file)return;
+    const selectedSource=source;
+    // Reparse from the original File, then repeat the normal full UID/site
+    // comparison before any new writes. No blind replay of partially
+    // committed SQL batches, and no hidden automatic retries.
+    await loadQueuedFile(file,queueIndex,queue.length,importLocale,format.recordPath);
+    if(selectedSource)setSource(selectedSource);
+  }
+  function discardFailedFile(){
+    if(busy||!reparseRequired)return;
+    clearImportCheckpoint(checkpointStorage(),{
+      scopeId,ownerId:importOwnerId,file:queue[queueIndex]
+    });
+    setCheckpointHint(null);
+    clearDecodedFile();
+    setReparseRequired(false);
+    setFileName('');
+    setSource('');
+    setQueue(current=>{
+      const remaining=current.map((file,index)=>index===queueIndex?null:file);
+      return remaining.some(Boolean)?remaining:[];
+    });
+    setStatus('已釋放本次檔案與解析資料；先前已確認寫入的資料庫紀錄不受影響。');
   }
   async function nextFile(){
     const next=queueIndex+1;
@@ -1211,6 +1286,13 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       let updated=0,checkedExisting=0;
       const placeVisits=[],missingPointUids=new Set();
       const updateSizer=createImportBatchSizer();
+      const checkpointBatch=(phase,confirmed,total,inserted=0,conflicts=0)=>{
+        const receipt=writeImportCheckpoint(checkpointStorage(),{
+          scopeId,ownerId:importOwnerId,file:queue[queueIndex],
+          phase,confirmed,total,inserted,conflicts
+        });
+        if(receipt)setCheckpointHint(receipt);
+      };
       let updateQueue=[];
       const existingCount=existingBySiteId.size;
       if(existingCount)showProgress('更新既有文章',0,existingCount);
@@ -1221,6 +1303,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         updated+=result.count;
         updateQueue=[];
         updateSizer.observe(count,Date.now()-started);
+        // SQL writer has confirmed the batch; persist only a tiny receipt.
+        checkpointBatch('update',updated,existingCount,updated);
       };
       for(const record of unique){
         const existing=existingBySiteId.get(record.uid);
@@ -1287,6 +1371,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         newArticleProcessed+=payload.length;
         payload=[];
         insertSizer.observe(count,Date.now()-started);
+        checkpointBatch('insert',newArticleProcessed,newArticleTotal,
+          result.inserted,result.conflicts);
         showProgress('新增文章',newArticleProcessed,newArticleTotal);
       };
       for(const record of unique){
@@ -1349,6 +1435,10 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         knownArticleIds,scopeId,galaxy,mediaAnchor,t,
         onProgress:p=>showProgress(p.stage,p.completed,p.total||0)
       });
+      // Media and article stages are both confirmed, but cleanup still waits
+      // for the rest of the import to finish (including Search refresh).
+      checkpointBatch('media',checkedExisting+newArticleProcessed,
+        existingCount+newArticleTotal,result.inserted+updated,result.conflicts);
       // All article and media writes are finished: now recompute the
       // persisted Search summary once. A summary error must not turn a
       // successful import into a retry-all error.
@@ -1384,7 +1474,12 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       releaseCompletedFile();
       if(nativeLocal)window.dispatchEvent(new Event('loc-local-data-changed'));
     }catch(error){
-      setProgress(null);
+      // Critical cleanup: SQL/network errors previously left the entire
+      // decoded import in React state until the page was closed. Do not drop
+      // the File handle: allow the user to reparse, inspect and explicitly
+      // rerun the existing deduplicating import.
+      clearDecodedFile();
+      setReparseRequired(true);
       setStatus('匯入在「'+lastImportStage+'」階段失敗；之前成功的批次可能已寫入。原始錯誤：'+
         String(error?.message||error||t('uiExtra.importUI.importFailed'))+
         t('uiExtra.importUI.importRetry'));
@@ -1438,6 +1533,14 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     </div>
     <ImportFormatSettings format={format} onChange={changeImportFormat} disabled={busy}/>
     {fileName?<p><UiText id="uiExtra.importUI.fileLabel"/><strong>{fileName}</strong><UiText id="uiExtra.importUI.fileQueue" params={{index:queueIndex+1,total:queue.length}}/><strong>{archiveDetection?(archiveDetection.sources.map(kind=>ZIP_SOURCE_NAMES[kind]||kind).join(' / ')||t('uiExtra.importUI.zipUnknown')):source||suggested}</strong></p>:null}
+    {checkpointHint&&!busy&&rows.length?<details className="loc-work-subdetails">
+      <summary>上次中斷的檢查點</summary>
+      <p className="scope-status">
+        已確認 {Number(checkpointHint.confirmed).toLocaleString()} / {Number(checkpointHint.total).toLocaleString()} 筆的
+        {checkpointHint.phase==='update'?'文章更新':checkpointHint.phase==='insert'?'文章新增':'文章與媒體階段'}。
+        這是先前的寫入回執，不是續傳游標；重新匯入仍會核對所有來源 UID，不會直接略過。
+      </p>
+    </details>:null}
     {rows.length||eligibleArchiveMediaPlan.media.length?<section className="scope-import-save" aria-label={t('uiExtra.importUI.saveSection')}>
       <button type="button" className="loc-button primary scope-import-save-button"
         disabled={busy||!analysisCurrent||(!analyzed.valid.length&&!analyzed.mediaOnly.length&&!eligibleArchiveMediaPlan.media.length)} onClick={run}>
@@ -1456,12 +1559,22 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         intermediate ZIP/archive detail section below — the user is watching
         here, and a result (success, "no changes", or an error like the
         ambiguous-duplicate abort) buried past a long ZIP summary goes unseen. */}
-    {status&&!busy?<div className="loc-work-status" role={status.startsWith('匯入在「')?'alert':'status'}>
+    {status&&!busy?<div className="loc-work-status" role={reparseRequired?'alert':'status'}>
       <strong>{status.startsWith('匯入在「')?'匯入中斷，請查看原因':'匯入狀態已更新'}</strong>
       <details className="loc-work-subdetails">
         <summary>查看完整結果與處理紀錄</summary>
         <p className="scope-status scope-import-live-status">{status}</p>
       </details>
+    </div>:null}
+    {reparseRequired&&!busy&&queue[queueIndex]?<div className="scope-preview-links" role="group" aria-label="匯入中斷處理">
+      <button type="button" className="loc-button primary" onClick={retryFailedFile}>
+        重新解析原始檔並核對
+      </button>
+      <button type="button" className="loc-button" onClick={discardFailedFile}>
+        釋放原始檔
+      </button>
+      <p className="scope-status">已清空解析後的文章與媒體暫存。重新解析不會自動寫入；
+        確認資料後再匯入，系統會重新比對既有文章。</p>
     </div>:null}
     {!nativeLocal&&scopeId!=='loc'?<div className="scope-import-summary-refresh">
       <button type="button" className="loc-button" disabled={busy||summaryRefreshing}
