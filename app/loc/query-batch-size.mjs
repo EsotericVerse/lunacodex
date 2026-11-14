@@ -14,27 +14,38 @@ export let MAX_TIMELINE_BYTES=IO_LIMIT_CEILINGS.timelineMiB*MiB;
 export const MAX_DAILY_TRANSFER_BYTES=24*MiB;
 export const TIMELINE_IO=Object.freeze({windowBatch:MAX_ROWS,previewPage:MAX_ROWS,writeBatch:MAX_ROWS});
 
-export function applyRuntimeIoLimits(settings={}){
-  const bounded=(key,minimum)=> {
+// One pure IO range contract for both protected writes and browser limits.
+export function normalizeRuntimeIoLimits(settings={}){
+  const bounded=key=>{
     const value=settings?.[key];
     if(value===undefined||value===null)return IO_LIMIT_CEILINGS[key];
     const number=Number(value);
-    if(!Number.isSafeInteger(number)||number<minimum||number>IO_LIMIT_CEILINGS[key])
+    if(!Number.isSafeInteger(number)||number<1||number>IO_LIMIT_CEILINGS[key])
       throw new Error(key+' 超出允許範圍');
     return number;
   };
-  const values={
-    archiveMiB:bounded('archiveMiB',1),
-    jsonMiB:bounded('jsonMiB',1),documentMiB:bounded('documentMiB',1),
-    timelineMiB:bounded('timelineMiB',1)
-  };
+  return Object.fromEntries(Object.keys(IO_LIMIT_CEILINGS).map(key=>[key,bounded(key)]));
+}
+export function decodeRuntimeIo(value){
+  const c=value&&typeof value==='object'&&!Array.isArray(value)?value:{};
+  const v=c.io_limits;
+  return {io_limits:v&&typeof v==='object'&&!Array.isArray(v)?v:{}};
+}
+export function encodeRuntimeIo(input){
+  const v=input?.io_limits;
+  if(!v||typeof v!=='object'||Array.isArray(v))
+    throw new Error('I/O 限制設定格式錯誤');
+  // Retired ISR settings are not propagated by any future authorized edit.
+  return {io_limits:normalizeRuntimeIoLimits(v)};
+}
+export function applyRuntimeIoLimits(settings={}){
+  const values=normalizeRuntimeIoLimits(settings);
   MAX_ARCHIVE_BYTES=values.archiveMiB*MiB;
   MAX_JSON_BYTES=values.jsonMiB*MiB;
   MAX_DOCUMENT_BYTES=values.documentMiB*MiB;
   MAX_TIMELINE_BYTES=values.timelineMiB*MiB;
   return values;
 }
-
 
 // GET .in() filters are URL-encoded, so MaxRows alone cannot bound a request.
 // Keep room for the endpoint, selected columns, authentication gateway and other filters.

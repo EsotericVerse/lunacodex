@@ -595,26 +595,6 @@
 .loc-place-workspace__panel{min-width:0;display:grid;gap:1rem}
 .loc-place-workspace__panel>.loc-card{min-width:0;margin:0}
 
-/* Cache controls: one choice, with destination editing hidden by default. */
-.management-workspace-panel .loc-isr-settings{gap:.9rem;}
-.loc-isr-bar{display:flex;align-items:end;gap:.75rem;flex-wrap:wrap;}
-.loc-isr-bar>label{display:grid;gap:.4rem;flex:1 1 16rem;max-width:34rem;min-width:0;color:var(--loc-heading);font-weight:650;font-size:.92rem;}
-.loc-isr-bar select{width:100%;min-width:0;min-height:2.75rem;padding:.55rem .75rem;border:1px solid var(--loc-line);border-radius:var(--loc-ui-radius-sm,10px);background:var(--loc-panel);color:var(--loc-text);font:inherit;}
-.loc-isr-edit-toggle{min-height:2.75rem;white-space:nowrap;}
-.loc-isr-editor{display:grid;gap:.65rem;padding:1rem;border:1px solid var(--loc-ui-hairline,var(--loc-line));border-radius:var(--loc-ui-radius-md,14px);background:var(--loc-ui-panel-soft,var(--loc-panel-2));}
-.loc-isr-editor-heading,.loc-isr-domain-row{display:grid;grid-template-columns:minmax(8rem,1fr) minmax(12rem,2fr) 2.75rem;align-items:center;gap:.65rem;}
-.loc-isr-editor-heading{padding:0 .1rem;color:var(--loc-heading);font-size:.88rem;font-weight:650;}
-.loc-isr-domain-row input{box-sizing:border-box;width:100%;min-width:0;min-height:2.75rem;padding:.6rem .7rem;border:1px solid var(--loc-line);border-radius:var(--loc-ui-radius-sm,10px);background:var(--loc-panel);color:var(--loc-text);font:inherit;}
-.loc-isr-domain-row .loc-isr-remove{width:2.75rem;min-height:2.75rem;padding:0;font-size:1.35rem;}
-.loc-isr-add{justify-self:start;min-height:2.5rem;}
-@media(max-width:580px){
-  .loc-isr-editor-heading{display:none;}
-  .loc-isr-domain-row{grid-template-columns:minmax(0,1fr) 2.75rem;gap:.45rem;}
-  .loc-isr-domain-row input:first-child{grid-column:1/-1;}
-  .loc-isr-domain-row input[type="url"]{grid-column:1;}
-  .loc-isr-domain-row .loc-isr-remove{grid-column:2;}
-}
-
 /* A single management tab contract for Group/Scope and personal settings.
    Never switch navigation to columns, equal-width buttons, or wrapped rows. */
 .management-section-nav{
