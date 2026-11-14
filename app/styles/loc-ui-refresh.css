@@ -524,7 +524,7 @@
    soften inactive keys but must not paint over that shared selection. */
 .scope-feature-dock > a{
   border-color:color-mix(in srgb,var(--loc-accent) 16%,var(--loc-line));
-  background:color-mix(in srgb,var(--loc-accent) 9%,var(--loc-panel));
+  background:var(--loc-dock-idle-surface);
   border-radius:clamp(13px,1.5vw,18px);
   box-shadow:0 3px 12px color-mix(in srgb,var(--loc-craft-ink-shadow) 58%,transparent);
   transition:background-color .2s ease,border-color .2s ease,
