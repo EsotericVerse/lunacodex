@@ -2,13 +2,14 @@
 // No database mapping registry is required for the current database.
 import {allocateAnchorUid} from './uid.js';
 import {parseRuneKeywordRuleSentence} from './model/rune-keyword-rules.mjs';
+import {KEYWORD_PATTERN_POSTINGS_KEY,keywordPatternRecord} from '../../zenstack/anchor-hierarchy.mjs';
 
 const UID=/^[A-Za-z0-9]{8}$/;
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 // Legacy scan clocks cannot certify newly backfilled empty Scope postings.
 export const SCOPE_PATTERN_INDEX_VERSION='scope_anchor_v1';
 // Existing Pattern.attr key. No registry lookup or database identity query.
-export const SCOPE_PATTERN_POSTING_KEY='63ade525';
+export const SCOPE_PATTERN_POSTING_KEY=KEYWORD_PATTERN_POSTINGS_KEY;
 export function scopePatternScanClocks(metadata={}){
   const meta=typeof metadata==='string'?JSON.parse(metadata):metadata;
   if(!meta||typeof meta!=='object'||Array.isArray(meta)||
@@ -44,9 +45,10 @@ export const literalItemWords=item=>{
 export async function readScopePatternDirectory(db,scope){
   const rows=await db.selectFrom(scopeAnchor(scope))
     .select(['uid','title','num']).where('type','=','pattern').execute();
-  return patternRowsToUidIndex(rows.map(row=>({
-    uid:row.uid,pattern:String(row.title||''),num:Number(row.num)||0
-  })));
+  return patternRowsToUidIndex(rows.map(row=>{
+    const typed=keywordPatternRecord(row);
+    return {uid:typed.uid,pattern:typed.literal,num:typed.count};
+  }));
 }
 
 export async function readScopePatternRows(db,scope,{uids=null}={}){
@@ -64,11 +66,11 @@ export async function readScopePatternRows(db,scope,{uids=null}={}){
       rows.push(...await query().where('uid','in',uids.slice(i,i+500)).execute());
   }
   const projected=rows.map(row=>{
-    const postings=attrs(row.attr),uid_list=postings[SCOPE_PATTERN_POSTING_KEY]??[];
-    if(!Array.isArray(uid_list)||uid_list.some(uid=>!UID.test(String(uid)))||
-      new Set(uid_list).size!==uid_list.length)throw Error('Invalid Pattern posting list');
-    return {uid:row.uid,pattern:String(row.title||''),count:uid_list.length,
-      uid_list:[...uid_list],num:Number(row.num)||0,
+    // ZModel virtual Pattern record holds the physical UID and posting UIDs.
+    // The source table is still the existing Scope Anchor, without any JOIN.
+    const typed=keywordPatternRecord(row),postings=attrs(row.attr);
+    return {uid:typed.uid,pattern:typed.literal,count:typed.articleUids.length,
+      uid_list:typed.articleUids,num:typed.count,
       attr:postings,createtime:row.createtime};
   });
   // All readers (Statistics, Search, editor and post-import incremental
