@@ -497,7 +497,7 @@ function AppShellInner({children,runtime}){
     {id:'members',icon:'culture',label:translateUiField(activeLocale,'人員作品管理'),
       href:editTabHref('culture/manage','edit','1')},
     {id:'suggestions',icon:'search',label:translateUiField(activeLocale,'文章管理'),
-      href:editTabHref('search/manage','section','media')+'&edit=1'}
+      href:editTabHref('search/manage','section','publish')+'&edit=1'}
   ]:[
     {id:'time',icon:'culture',label:translateUiField(activeLocale,'時間定錨'),
       href:editScopeAvailable?editTabHref('culture/manage','edit','1'):''},

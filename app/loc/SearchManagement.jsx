@@ -29,6 +29,7 @@ export const ARTICLE_CONTROL_SECTIONS=Object.freeze([
 // LOC's global management has its own permissions and existing destinations.
 // It must not gain an arbitrary Scope's article or classification editor.
 const LOC_OPTIONS=Object.freeze([
+  {value:'publish',label:'文章管理',shortLabel:'文章'},
   {value:'media',label:'發表多媒體',shortLabel:'媒體'},
   {value:'trace',label:'治理原則',shortLabel:'治理原則'}
 ]);
@@ -65,7 +66,7 @@ export default function SearchManagement(){
     :groupAuthorized
       ?[...ARTICLE_CONTROL_SECTIONS,SETTINGS_OPTION,GROUP_OPTION]
       :[...ARTICLE_CONTROL_SECTIONS,SETTINGS_OPTION];
-  const [activeSection,setSection]=useManagementSection(options,isLocAdmin?'media':'publish',
+  const [activeSection,setSection]=useManagementSection(options,'publish',
     isLocAdmin?OLD_LOC_SECTION_ALIASES:OLD_SCOPE_SECTION_ALIASES);
   // LOC Auth authorization can arrive after the section query is first read.
   // Restore a bookmarked Group Access tab once its permission is available.
@@ -122,6 +123,8 @@ export default function SearchManagement(){
           ?<ScopeSettingsPanel key={scopeId+'-settings'} scopeId={scopeId}/>:null}
         {activeSection==='groupAccess'&&(isLocAdmin||account.canLocAccessSync('group',scopeId))
           ?<ScopeGroupAccessPanel groupId={scopeId}/>:null}
+        {isLocAdmin&&activeSection==='publish'
+          ?<ManagementContentTarget scopeId={scopeId} mode="article" globalAdmin/>:null}
         {isLocAdmin&&activeSection==='media'
           ?<ManagementContentTarget scopeId={scopeId} mode="media" globalAdmin/>:null}
         {isLocAdmin&&activeSection==='trace'?<ScopeEditableBlocks key={scopeId+'-trace'}
