@@ -69,6 +69,8 @@ function predicate(eb,node){
   const operators=QUERY_FILTER_SQL;
   if(op==='ilike')
     return eb(sql`lower(${sql.ref(column)})`,'like',String(value).toLowerCase());
+  if(op==='ieq')
+    return eb(sql`lower(${sql.ref(column)})`,'=',String(value).toLowerCase());
   return eb(column,operators[op],value);
 }
 function normalize(body){

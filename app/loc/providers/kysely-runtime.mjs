@@ -72,6 +72,7 @@ function applyFilters(query,filters){
     const value=filter.value;
     if(filter.operator==='in')query=filter.negate?query.where(eb=>eb.not(eb(column,'in',value))):query.where(column,'in',value);
     else if(filter.operator==='ilike')query=query.where(sql`lower(${typeof column==='string'?sql.ref(column):column})`,filter.negate?'not like':'like',String(value).toLowerCase());
+    else if(filter.operator==='ieq')query=query.where(sql`lower(${sql.ref(column)})`,filter.negate?'!=':'=',String(value).toLowerCase());
     else if(filter.operator==='contains')query=query.where(filter.negate
       ?sql`not (${containsPredicate(column,value)})`:containsPredicate(column,value));
     else if(filter.operator==='is')query=query.where(column,value===null?(filter.negate?'is not':'is'):(filter.negate?'!=':'='),value);
@@ -85,6 +86,7 @@ function applyOrFilters(query,groups){
     if(node.type==='and')return eb.and(node.items.map(item=>predicate(eb,item)));
     if(node.type==='or')return eb.or(node.items.map(item=>predicate(eb,item)));
     if(node.operator==='ilike')return eb(sql`lower(${sql.ref(node.column)})`,'like',String(node.value).toLowerCase());
+    if(node.operator==='ieq')return eb(sql`lower(${sql.ref(node.column)})`,'=',String(node.value).toLowerCase());
     if(node.operator==='contains')return containsPredicate(node.column,node.value);
     if(node.operator==='is'&&node.value!==null)return eb(node.column,'=',node.value);
     return eb(node.column,operators[node.operator],node.value);
