@@ -935,7 +935,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       const siteAvailability=new Map();
       const siteHasArticles=async site=>{
         if(!siteAvailability.has(site)){
-          const {data,error}=await dbAuthRelation(galaxy).select('uid').ilike('site',site).limit(1);
+          const {data,error}=await dbAuthRelation(galaxy).select('uid').ieq('site',site).limit(1);
           if(error)throw Error('網站範圍查詢失敗：'+error.message);
           siteAvailability.set(site,Boolean(data?.length));
         }
@@ -994,7 +994,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         };
         for(;;){
           let query=dbAuthRelation(galaxy).select(GALAXY_IMPORT_TIME_COLUMNS)
-            .ilike('site',site).gte('createtime',start).lte('createtime',end);
+            .ieq('site',site).gte('createtime',start).lte('createtime',end);
           if(after!==null)query=query.gt('createtime',after);
           const {data,error}=await query.order('createtime',{ascending:true})
             .range(0,pageSize); // pageSize rows plus one timestamp probe
@@ -1015,7 +1015,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
             for(let tieOffset=0;;){
               const {data:tied,error:tieError}=await dbAuthRelation(galaxy)
                 .select(GALAXY_IMPORT_TIME_COLUMNS)
-                .ilike('site',site).eq('createtime',boundary)
+                .ieq('site',site).eq('createtime',boundary)
                 .order('uid',{ascending:true})
                 .range(tieOffset,tieOffset+tiePageSize-1);
               if(tieError)throw Error('相同建立時間的文章比對失敗：'+tieError.message);
@@ -1054,7 +1054,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
             for(let offset=0;;){
               const {data,error}=await dbAuthRelation(galaxy)
                 .select(GALAXY_IMPORT_UID_COLUMNS)
-                .ilike('site',site).in('site_id',idsPage)
+                .ieq('site',site).in('site_id',idsPage)
                 .order('uid',{ascending:true})
                 .range(offset,offset+pageSize-1);
               if(error)throw Error('site_id 比對失敗：'+error.message);
