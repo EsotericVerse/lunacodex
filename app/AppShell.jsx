@@ -590,7 +590,9 @@ function AppShellInner({children,runtime}){
 
 
   return <UiLocaleProvider locale={activeLocale}>
-    <ScopePageCopy scopeId={scopeId} display_name={configRow?.display_name||registryRow?.display_name} pageName={pageName}/>
+    <ScopePageCopy scopeId={localNavigation?'local':scopeId}
+      display_name={localNavigation?'本機銀河':configRow?.display_name||registryRow?.display_name}
+      pageName={pageName}/>
     <ScrollProgress/>
     <header className="scope-global" data-native={native?'ios':'web'}>
       <nav className="scope-nav" aria-label={copy.nav.aria}>
