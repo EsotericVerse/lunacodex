@@ -352,17 +352,30 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   const basicTrend=totalChart?totalTrend:resolvedAdminSource.rows;
   const basicSeries=totalChart?[]:resolvedAdminSource.series;
   const basicDistribution=totalChart?[]:resolvedAdminSource.distribution;
+  // One grouped source-name index for the active chart, not one full scan
+  // per category. Rebuild it only when the selected source dataset changes.
+  const sourceNamesByCategory=useMemo(()=>{
+    const names=new Map();
+    if(!sourceChart)return names;
+    const aliases=sourceCatalog.data?.aliases||[];
+    const categories=sourceCatalog.data?.categories||[];
+    for(const entry of sourceRows.data||[]){
+      if(entry.kind!=='source')continue;
+      const category=assignedSource(entry.category,aliases,categories);
+      const name=String(entry.category??'').trim();
+      if(!names.has(category))names.set(category,new Set());
+      names.get(category).add(name);
+    }
+    return new Map([...names].map(([category,sites])=>[category,[...sites]]));
+  },[sourceChart,sourceRows.data,sourceCatalog.data]);
   // The existing source breakdown already drives the chart and its summary.
   // Do not re-scan Galaxy and Galaxy Media in a second trend query.
   const sourceSummary={total:resolvedAdminSource.total,
     sources:resolvedAdminSource.distribution.map((row,index)=>{
       // Category codes and labels share the same order in administrativeSourceTrend.
       const category=String(resolvedAdminSource.series[index]?.key||'').replace(/^category_/,'');
-      const sourceNames=[...new Set((sourceRows.data||[])
-        .filter(entry=>entry.kind==='source'&&assignedSource(entry.category,
-          sourceCatalog.data?.aliases||[],sourceCatalog.data?.categories||[])===category)
-        .map(entry=>String(entry.category??'').trim())
-        .filter(name=>!selectedRawNames||selectedRawNames.includes(name.toLowerCase())))];
+      const sourceNames=(sourceNamesByCategory.get(category)||[])
+        .filter(name=>!selectedRawNames||selectedRawNames.includes(name.toLowerCase()));
       return {term:row.name,item_count:row.value,category,sourceNames};
     }),
     startDate:queryRange.startDate,endDate:queryRange.endDate,
@@ -512,7 +525,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
           </label>
           <StatisticsChartFrame level={zoomLevel} onChange={setZoomLevel}
             range={queryRange} idPrefix="scope-stat">
-            <StatisticsMultiChart type={effectiveChartType} rows={basicTrend}
+            <StatisticsMultiChart key={'total:'+effectiveChartType} type={effectiveChartType} rows={basicTrend}
               series={[]} totalKey="total" height={420} foldBlank={foldBlank}/>
           </StatisticsChartFrame>
         </section>}
@@ -536,7 +549,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
             <p>{sourceSummary.startDate&&sourceSummary.endDate?sourceSummary.startDate+' ～ '+sourceSummary.endDate:''}</p>
           </header>
           <StatisticsChartFrame level={zoomLevel} onChange={setZoomLevel} range={queryRange} idPrefix="scope-stat">
-            <StatisticsMultiChart type={effectiveChartType} rows={basicTrend}
+            <StatisticsMultiChart key={'source:'+effectiveChartType} type={effectiveChartType} rows={basicTrend}
               series={basicSeries} distribution={basicDistribution}
               totalKey={rankingType==='total'?'total':''}
               foldBlank={foldBlank} height={420}/>
