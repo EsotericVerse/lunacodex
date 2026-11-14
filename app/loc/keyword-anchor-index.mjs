@@ -38,10 +38,31 @@ export const literalItemWords=item=>{
   return [...out.values()];
 };
 
-export async function readScopePatternRows(db,scope){
+// Pattern is the canonical ZModel word index. Read its small UID/title
+// directory before loading any potentially large article UID postings.
+// This also preserves global normalized-word uniqueness for scoped reads.
+export async function readScopePatternDirectory(db,scope){
   const rows=await db.selectFrom(scopeAnchor(scope))
-    .select(['uid','title','attr','num','createtime'])
-    .where('type','=','pattern').execute();
+    .select(['uid','title']).where('type','=','pattern').execute();
+  return patternRowsToIndex(rows.map(row=>({
+    uid:row.uid,pattern:String(row.title||'')
+  })));
+}
+
+export async function readScopePatternRows(db,scope,{uids=null}={}){
+  if(uids!==null&&(!Array.isArray(uids)||
+     uids.some(uid=>typeof uid!=='string'||!UID.test(uid))))
+    throw Error('Invalid scoped Pattern UID list');
+  if(uids!==null&&!uids.length)return [];
+  const table=scopeAnchor(scope),rows=[];
+  const query=()=>db.selectFrom(table).select(['uid','title','attr','num','createtime'])
+    .where('type','=','pattern');
+  if(uids===null){
+    rows.push(...await query().execute());
+  }else{
+    for(let i=0;i<uids.length;i+=500)
+      rows.push(...await query().where('uid','in',uids.slice(i,i+500)).execute());
+  }
   const projected=rows.map(row=>{
     const postings=attrs(row.attr),uid_list=postings[SCOPE_PATTERN_POSTING_KEY]??[];
     if(!Array.isArray(uid_list)||uid_list.some(uid=>!UID.test(String(uid)))||

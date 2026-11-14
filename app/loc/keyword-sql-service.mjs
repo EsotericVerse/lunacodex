@@ -7,7 +7,7 @@ import {keywordClassCatalog} from './keyword-tree.mjs';
 import {analyzeIncrementalKeywordPatterns} from './keyword-incremental.mjs';
 import {createIndexedDateKeywordReader} from './keyword-article-reader.mjs';
 import {completeKeywordClass,invalidateKeywordClass} from './keyword-class-state.mjs';
-import {readScopePatternRows,storeScopePatternMatches,ensureScopePatternLibrary,SCOPE_PATTERN_POSTING_KEY,SCOPE_PATTERN_INDEX_VERSION,scopePatternScanClocks} from './keyword-anchor-index.mjs';
+import {readScopePatternRows,readScopePatternDirectory,storeScopePatternMatches,ensureScopePatternLibrary,SCOPE_PATTERN_POSTING_KEY,SCOPE_PATTERN_INDEX_VERSION,scopePatternScanClocks} from './keyword-anchor-index.mjs';
 import {galaxyReadColumns,galaxyReadColumnsFor} from '../../zenstack/galaxy-read-models.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
@@ -77,7 +77,18 @@ async function classTree(db,scope,classUid){
     return {uid,item_name:String(item.title||''),group_uid:group.uid,
       keywords:Array.isArray(attr(item).keyword)?attr(item).keyword:[]};
   }));
-  return {root,groups:ordered,items:words};
+  return {root,groups:ordered,items:words,itemRows:items};
+}
+
+// Pattern -> Item projection. Only the selected Class's literal words get
+// their large posting arrays loaded; other Classes remain in the tiny
+// Pattern UID/title directory and never enter Galaxy UID follow-up reads.
+// Item supplies ownership, not the canonical article hit index.
+async function classPatternRows(db,scope,items,directory=null){
+  const patterns=directory??await readScopePatternDirectory(db,scope);
+  const literals=new Set(items.flatMap(terms));
+  const uids=[...literals].map(key=>patterns.get(key)?.uid).filter(Boolean);
+  return readScopePatternRows(db,scope,{uids});
 }
 
 async function indexRows(db,scope){
@@ -123,7 +134,7 @@ export async function readKeywordClasses(db,scope,{owner=false}={}){
 }
 
 export async function readKeywordStatistics(db,scope,classUid,{
-  owner=false,start='',end='',source=''
+  owner=false,start='',end='',source='',_returnTree=false
 }={}){
   checkScope(scope);checkClass(classUid);
   const cfg=await configuration(db,scope);
@@ -131,8 +142,12 @@ export async function readKeywordStatistics(db,scope,classUid,{
   const meta=attr({attr:cfg.keyword_meta});
   const indexReady=meta.pattern_index_version===SCOPE_PATTERN_INDEX_VERSION&&
     Boolean(meta.by_class?.[classUid]?.completedAt);
-  const tree=await classTree(db,scope,classUid);
-  const patterns=await indexRows(db,scope);
+  // Scope's Pattern directory is the ZModel entry. Resolve this Class's
+  // Item ownership without loading postings belonging to other Classes.
+  const [directory,tree]=await Promise.all([
+    readScopePatternDirectory(db,scope),classTree(db,scope,classUid)
+  ]);
+  const patterns=await classPatternRows(db,scope,tree.items,directory);
   let permitted=null,daily=[];
   if(start||end||source){
     const matching=await matchingArticleMetadata(db,scope,patterns,{start,end,source});
@@ -141,6 +156,7 @@ export async function readKeywordStatistics(db,scope,classUid,{
   }
   const indexed=keywordPatternItemMetrics(tree.items,patterns,{articleUids:permitted});
   return {
+    ...(_returnTree?{_tree:tree}:{}),
     class_uid:classUid,class_name:String(tree.root.title||''),
     completedAt:indexReady?String(meta.by_class[classUid].completedAt):'',
     indexPending:!indexReady,
@@ -158,8 +174,11 @@ export async function readKeywordStatistics(db,scope,classUid,{
 }
 
 export async function readKeywordCatalog(db,scope,classUid,{owner=false}={}){
-  const stats=await readKeywordStatistics(db,scope,classUid,{owner});
-  const tree=await classTree(db,scope,classUid);
+  // Reuse the same tree and the same class-specific Pattern projection.
+  // Do not read Class/Group/Item a second time for the editor catalog.
+  const {_tree:tree,...stats}=await readKeywordStatistics(db,scope,classUid,{
+    owner,_returnTree:true
+  });
   const indexed=new Map(stats.items.map(item=>[item.uid,item]));
   const groups=new Map(stats.groups.map(group=>[group.uid,group]));
   const model=node=>({
@@ -171,11 +190,7 @@ export async function readKeywordCatalog(db,scope,classUid,{owner=false}={}){
       node.type==='group'?groups.get(node.uid)?.hit_count||0:0
   });
   const anchor=anchorName(scope);
-  const itemUids=tree.items.map(item=>item.uid);
-  const itemRows=itemUids.length?await db.selectFrom(anchor)
-    .select(['uid','type','title','description','attr'])
-    .where('uid','in',itemUids).where('type','=','item').execute():[];
-  const itemByUid=new Map(itemRows.map(row=>[row.uid,row]));
+  const itemByUid=new Map(tree.itemRows.map(row=>[row.uid,row]));
   return {class_uid:classUid,rows:[
     model(tree.root),...tree.groups.map(model),
     ...tree.items.map(item=>model(itemByUid.get(item.uid))).filter(Boolean)
@@ -188,8 +203,10 @@ export async function readKeywordDaily(db,scope,classUid,{
   checkScope(scope);checkClass(classUid);
   const cfg=await configuration(db,scope);
   if(!owner&&!shared(cfg,classUid))fail('Keyword Class not published',403);
-  const tree=await classTree(db,scope,classUid);
-  const patterns=await indexRows(db,scope);
+  const [directory,tree]=await Promise.all([
+    readScopePatternDirectory(db,scope),classTree(db,scope,classUid)
+  ]);
+  const patterns=await classPatternRows(db,scope,tree.items,directory);
   const articles=await matchingArticleMetadata(db,scope,patterns,{start,end,source,places});
   return keywordPatternDailySummary(tree.items,patterns,articles);
 }
@@ -288,9 +305,11 @@ export async function analyzeKeywordScope(db,scope,classUid,{
   checkScope(scope);checkClass(classUid);
   const cfg=await configuration(db,scope);
   const anchor=anchorName(scope);
-  const nativeRows=await db.selectFrom(anchor)
-    .select(['uid','type','title','description','attr'])
-    .where('type','in',['category','class','group','item']).execute();
+  const [directory,nativeRows]=await Promise.all([
+    readScopePatternDirectory(db,scope),
+    db.selectFrom(anchor).select(['uid','type','title','description','attr'])
+      .where('type','in',['category','class','group','item']).execute()
+  ]);
   const treeRows=nativeRows.map(row=>({
     uid:row.uid,type:row.type,name:String(row.title||''),
     desc:String(row.description||''),
@@ -299,7 +318,7 @@ export async function analyzeKeywordScope(db,scope,classUid,{
     uid_lists:[]
   }));
   const {catalog}=keywordClassCatalog(treeRows,classUid);
-  const existingPatterns=await indexRows(db,scope);
+  const existingPatterns=await classPatternRows(db,scope,catalog,directory);
   const total=await db.selectFrom(galaxyName(scope))
     .select(eb=>eb.fn.count('uid').as('n')).executeTakeFirst();
   const expectedCount=Number(total?.n??0);
