@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {performance} from 'node:perf_hooks';
 import {planUidDependencyRepair} from '../app/loc/uid-dependency-immer.mjs';
+import {repairBeforeUidDelete} from '../app/loc/providers/uid-dependency-before-delete.mjs';
 
 const deleted='DELET001';
 const article='ARTI0001';
@@ -126,4 +127,68 @@ test('Benchmarks the in-memory plan independently of SQL/network (non-gating)',(
   assert.equal(plan.affected,1);
   console.log('UID dependency Immer 500 rows × 50 runs: '+elapsed.toFixed(2)+' ms total / '+
     (elapsed/50).toFixed(3)+' ms per planning run (SQL excluded)');
+});
+
+// The real Immer module is used here; SQL is intentionally replaced by a
+// recording query interface so these tests cannot mutate the live database.
+function recordingKysely({anchorTarget,galaxyCandidates=[],anchorCandidates=[]}={}){
+  const events=[];
+  function selectFrom(table){
+    const query={table,conditions:[],columns:[],
+      select(cols){this.columns=cols;return this;},
+      where(...args){
+        if(typeof args[0]==='function'){
+          const eb=(...parts)=>({parts});
+          eb.or=items=>({or:items});eb.and=items=>({and:items});
+          this.conditions.push(args[0](eb));
+        }else this.conditions.push(args);
+        return this;
+      },
+      async executeTakeFirst(){
+        events.push({kind:'select',table,columns:this.columns,conditions:this.conditions});
+        return anchorTarget;
+      },
+      async execute(){
+        if(!this.conditions.length)throw Error('Unbounded UID dependency SELECT');
+        events.push({kind:'select',table,columns:this.columns,conditions:this.conditions});
+        return this.columns.includes('type')?anchorCandidates:galaxyCandidates;
+      }
+    };
+    return query;
+  }
+  function updateTable(table){
+    return {
+      set(values){this.values=values;this.conditions=[];return this;},
+      where(...args){this.conditions.push(args);return this;},
+      async executeTakeFirst(){
+        if(!this.conditions.some(args=>args[0]==='uid'))throw Error('Update without UID PK');
+        events.push({kind:'update',table,values:this.values,conditions:this.conditions});
+        return {numUpdatedRows:1n};
+      }
+    };
+  }
+  return {db:{selectFrom,updateTable},events};
+}
+
+test('Before-delete flow reads matching UID references then updates only dependents',async()=>{
+  const {db,events}=recordingKysely({
+    anchorTarget:{uid:deleted,type:'point'},
+    galaxyCandidates:[{uid:article,place_id:deleted}],
+    anchorCandidates:[{uid:'PATH0001',type:'path',attr:{point:[deleted,'POINT002']}}]
+  });
+  const outcome=await repairBeforeUidDelete(db,{
+    table:'lo3rwang_anchor',filters:[{column:'uid',operator:'eq',value:deleted}]
+  });
+  assert.equal(outcome.affected,2);
+  assert.deepEqual(events.map(e=>e.kind),['select','select','select','update','update']);
+  assert.ok(events.filter(e=>e.kind==='select').every(e=>e.conditions.length));
+  assert.ok(events.filter(e=>e.kind==='update').every(e=>
+    e.conditions.some(args=>args[0]==='uid')));
+});
+
+test('Broad deletes are rejected before any dependency SQL read',async()=>{
+  const {db,events}=recordingKysely();
+  await assert.rejects(repairBeforeUidDelete(db,{table:'lo3rwang_galaxy',
+    filters:[{column:'type',operator:'eq',value:'galaxy'}]}));
+  assert.deepEqual(events,[]);
 });
