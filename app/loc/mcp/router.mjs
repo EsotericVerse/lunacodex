@@ -7,6 +7,7 @@ import {readMemory} from './galaxy-read.mjs';
 import {articleDistribution} from './article-distribution.mjs';
 import {privateGalaxyLink} from './private-galaxy.mjs';
 import {mcpDatabaseConfiguration} from './native-kysely.mjs';
+import {checkMcpGatewayQos} from './gateway-qos.mjs';
 import {mcpToolJsonSchema,parseMcpToolArgs,McpRpcSchema} from './tool-contracts.mjs';
 import {handleStatelessMcpPost,streamMcpSseResponse} from './stateless-transport.mjs';
 // LOC MCP HTTP entry point. No database write is granted by an OAuth login.
@@ -110,6 +111,14 @@ export async function handleMcp(request,env={}){
   try{identity=await verifyOAuthToken(request,config);}catch{return unauthorized(config);}
   if(!identity)return unauthorized(config);
   if(request.method==='GET')return response({error:'SSE_not_supported',message:'Use Streamable HTTP POST'},405,{Allow:'POST, OPTIONS'});
+  // One bounded, per-OAuth-subject request budget before reading a JSON-RPC
+  // payload or dispatching any Function. No identity/role/Scope lookup, storage
+  // service, timer, or client-controlled quota configuration is introduced.
+  const qos=checkMcpGatewayQos(identity.subject);
+  if(!qos.allowed)return response({error:'rate_limited',
+    error_description:'LOC MCP request rate limited'},429,{
+    'Retry-After':String(Math.max(1,Math.ceil(qos.retryAfterMs/1000)))
+  });
   return handleStatelessMcpPost(request,async payload=>{
     // JSON remains the default for lightweight handshake/list requests.
     // An MCP tool call can stream its JSON-RPC response over this same POST
