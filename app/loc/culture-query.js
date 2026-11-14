@@ -511,7 +511,10 @@ export async function selectCultureArticleListPage(scope,{
     ...(selectedSources.length?[{column:'site',operator:'in',value:selectedSources}]:[])
   ];
   const pageOffset=Math.max(0,Math.floor(Number(offset)||0));
-  const {rows=[],count}=await selectRows(scope.galaxy,{
+  // Fetch one lookahead row rather than a full COUNT(*) on every page.
+  // Only the current 100 articles are retained/rendered; the 101st row is
+  // merely a hasMore signal and is discarded before returning.
+  const {rows=[]}=await selectRows(scope.galaxy,{
     // Every non-local article list has the same GalaxyList shape. The local
     // compatibility table still exposes its legacy `able` JSON envelope.
     columns:scopeId==='local'?'uid,title,createtime,site,able':galaxyReadColumns('GalaxyList').join(','),
@@ -519,9 +522,9 @@ export async function selectCultureArticleListPage(scope,{
     // Deterministic order keeps historical pages stable when dates tie.
     orders:[{column:'createtime',ascending:sortDirection==='asc'},
       {column:'uid',ascending:true}],
-    limit:pageSize,offset:pageOffset,count:'exact',signal
+    limit:pageSize+1,offset:pageOffset,signal
   });
-  const normalized=rows.map(row=>{
+  const normalized=rows.slice(0,pageSize).map(row=>{
     const hidden=scopeId==='local'?row.able?.list===false:row.list===false;
     return {
       key:'galaxy:'+row.uid,entry_id:String(row.uid||''),uid:String(row.uid||''),
@@ -532,11 +535,11 @@ export async function selectCultureArticleListPage(scope,{
       hidden,list:!hidden
     };
   });
-  const hasMore=count==null?rows.length===pageSize:pageOffset+rows.length<Number(count);
+  const hasMore=rows.length>pageSize;
   return {
     rows:normalized,hasMore,
-    nextCursor:hasMore?{offset:pageOffset+rows.length}:null,
-    totalCount:count==null?null:Number(count)
+    nextCursor:hasMore?{offset:pageOffset+normalized.length}:null,
+    totalCount:null
   };
 }
 
