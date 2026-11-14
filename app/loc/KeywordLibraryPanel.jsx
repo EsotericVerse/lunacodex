@@ -9,6 +9,7 @@ import {indexKeywordTree,descendantsOfKeyword} from './keyword-tree.mjs';
 import {allocateAnchorUid} from './uid.js';
 import ManagementSectionNav from '../modular/ManagementSectionNav';
 import ActivityMotion from '../modular/ActivityMotion';
+import FlowProgress from '../modular/FlowProgress';
 import {keywordClassState,invalidateKeywordClass} from './keyword-class-state.mjs';
 
 const KeywordNetworkEditor=dynamic(()=>import('./KeywordNetworkEditor'),{ssr:false});
@@ -560,8 +561,8 @@ export default function KeywordLibraryPanel({scopeId,account}){
         </div>
       </details>
     </section>:null}
-    {!loading&&workspace==='analysis'?<section className="loc-card scope-feature-card">
-      <h2>基本設定（適用於目前資料來源）</h2>
+    {!loading&&workspace==='analysis'?<details className="loc-card scope-feature-card loc-work-disclosure">
+      <summary>分析基本設定</summary>
       <div className="scope-management-fields">
         <label><span>目前使用的關鍵字群組</span><select className="scope-select" value={config.current_keyword_class_uid||''}
           onChange={e=>setConfig(v=>({...v,current_keyword_class_uid:e.target.value}))}>
@@ -574,7 +575,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
           onChange={e=>setConfig(v=>({...v,keyword_min_documents:e.target.value}))}/></label>
       </div>
       {!inDock?<button type="button" className="loc-button primary" disabled={busy} onClick={saveConfig}>儲存設定</button>:null}
-    </section>:null}
+    </details>:null}
     {!loading&&workspace==='analysis'?<section className="loc-card scope-feature-card">
       <h2>重新分析</h2>
       <label>選擇要解析的關鍵詞科目（Class）
@@ -588,53 +589,69 @@ export default function KeywordLibraryPanel({scopeId,account}){
           </option>)}
         </select>
       </label>
-      <p className="scope-status">所選科目：{activeClass?.name||'尚未選擇'} · 該科目上次解析：{keywordClassState(config,activeClass?.uid)?.completedAt?new Date(keywordClassState(config,activeClass.uid).completedAt).toLocaleString('zh-TW'):'尚未解析'}</p>
-      <p className="scope-status">有效分類文章：{Number(keywordClassState(config,activeClass?.uid)?.matchedDocuments||0).toLocaleString()} 篇</p>
+      <details className="loc-work-subdetails">
+        <summary>上次解析與文章統計</summary>
+        <p className="scope-status">上次解析：{keywordClassState(config,activeClass?.uid)?.completedAt?new Date(keywordClassState(config,activeClass.uid).completedAt).toLocaleString('zh-TW'):'尚未解析'}</p>
+        <p className="scope-status">有效分類文章：{Number(keywordClassState(config,activeClass?.uid)?.matchedDocuments||0).toLocaleString()} 篇</p>
+      </details>
       <div className="scope-preview-links">
         <button type="button" className="loc-button primary" disabled={busy||!activeClass?.uid}
           onClick={()=>run(false)}>重新分析</button>
         <button type="button" className="loc-button" disabled={busy||!activeClass?.uid}
           onClick={()=>run(true)}>清空本群組的分析結果</button>
       </div>
-      {busy&&!progress?<p role="status" className="scope-status"><ActivityMotion kind="keywords"/> 正在解析關鍵詞…</p>:null}
-      {progress?<p role="status" className="scope-status">{busy?<ActivityMotion kind="keywords"/>:null} {progress.label||progress.phase}
-        {progress.total?' · '+progress.completed+' / '+progress.total:''}</p>:null}
+      {busy?<FlowProgress kind="keywords" stage={progress?.label||progress?.phase||'解析關鍵詞'}
+        completed={progress?.completed||0} total={progress?.total||0}/>:null}
     </section>:null}
     {!loading&&workspace==='analysis'?<section className="loc-card scope-feature-card">
       <h2>建議新增關鍵詞</h2>
-      <p className="scope-status">只從目前資料來源的文章內文找出尚未收錄的詞與詞組；不修改既有關鍵詞，也不會自動新增。</p>
-      {discoveryBusy?<div className="scope-preview-links">
-        <p className="scope-status" role="status"><ActivityMotion kind="keywords"/> 分析中：{Number(discoveryProgress?.completed||0).toLocaleString()} / {Number(discoveryProgress?.total||0).toLocaleString()} 篇</p>
+      <details className="loc-work-subdetails"><summary>掃描範圍與安全說明</summary>
+        <p className="scope-status">僅讀取目前資料來源的文章內文，不修改既有關鍵詞，也不會自動新增。</p>
+      </details>
+      {discoveryBusy?<div className="loc-work-running">
+        <FlowProgress kind="keywords" stage="掃描文章與篩選新詞"
+          completed={discoveryProgress?.completed||0} total={discoveryProgress?.total||0}
+          detail={discoveryProgress?.batchSize?'目前批次 '+Number(discoveryProgress.batchSize).toLocaleString()+' 篇':''}/>
         <button className="loc-button" type="button" onClick={()=>discoveryAbort.current?.abort()}>停止掃描</button>
       </div>:null}
       {discovery&&!discoveryBusy?<div>
-        {discovery.cachedOnly?<p className="scope-status" role="status">
-          已載入先前儲存的 {suggestedCandidates.length} 個新詞候選；只有詞語列表，重新掃描才會取得即時篇數與趨勢。
-        </p>:<p className="scope-status" role="status">
-          已掃描 {Number(discovery.read||0).toLocaleString()} 篇；有內文 {Number(discovery.withContent||0).toLocaleString()} 篇；
-          目前 {suggestedCandidates.length} 個未收錄候選。
-        </p>}
-        {discovery.dense?<p className="scope-status">
-          新詞密集段：{discovery.dense.start} 至 {discovery.dense.end} · 平均每篇 {discovery.dense.novelPerArticle.toFixed(2)} 次候選命中
-          {discovery.dense.detectedByPelt?'（PELT 變點）':'（目前未偵測到明顯變點）'}
-        </p>:null}
-        {discovery.sparse?<p className="scope-status">
-          新詞稀疏段：{discovery.sparse.start} 至 {discovery.sparse.end} ·
-          既有關鍵詞字面涵蓋率 {(discovery.sparse.existingRatio*100).toFixed(1)}%
-        </p>:discovery.dense?<p className="scope-status">
-          尚無可辨識的密／空分段；全期既有關鍵詞字面涵蓋率 {(Number(discovery.overallExistingRatio||0)*100).toFixed(1)}%
-        </p>:null}
+        <p className="loc-work-results-head" role="status">
+          <strong>{suggestedCandidates.length.toLocaleString()} 個候選詞</strong>
+          {!discovery.cachedOnly?<span>已掃描 {Number(discovery.read||0).toLocaleString()} 篇文章</span>:null}
+        </p>
+        <details className="loc-work-subdetails">
+          <summary>掃描數據與 PELT 時間分段</summary>
+          {discovery.cachedOnly?<p className="scope-status">
+            目前僅有先前儲存的候選列表，重新掃描後才會更新即時篇數與趨勢。
+          </p>:<p className="scope-status">
+            有內文 {Number(discovery.withContent||0).toLocaleString()} 篇，掃描總數 {Number(discovery.read||0).toLocaleString()} 篇。
+          </p>}
+          {discovery.dense?<p className="scope-status">
+            新詞密集段：{discovery.dense.start} 至 {discovery.dense.end} · 每篇平均 {discovery.dense.novelPerArticle.toFixed(2)} 次候選命中
+            {discovery.dense.detectedByPelt?'（PELT 變點）':'（未偵測到明顯變點）'}
+          </p>:null}
+          {discovery.sparse?<p className="scope-status">
+            新詞稀疏段：{discovery.sparse.start} 至 {discovery.sparse.end} ·
+            既有詞涵蓋率 {(discovery.sparse.existingRatio*100).toFixed(1)}%
+          </p>:discovery.dense?<p className="scope-status">
+            全期既有詞涵蓋率 {(Number(discovery.overallExistingRatio||0)*100).toFixed(1)}%
+          </p>:null}
+        </details>
         {discovery.limited?<p className="scope-status scope-error">不重複候選詞過多，已達分析記憶體上限；列表可能不完整。</p>:null}
         {suggestedCandidates.length?<div>
           <ol className="scope-keyword-discovery-results" start={(currentSuggestionPage-1)*suggestionPageSize+1}>
             {visibleSuggestions.map(term=><li key={term.word}>
               <strong>{term.word}</strong>
-              {!discovery.cachedOnly?<span className="scope-status"> · {Number(term.documents||0).toLocaleString()} 篇文章
-                {term.denseDocuments>0?' · 密集段 '+term.denseDocuments+' 篇':''}
-                · {Number(term.occurrences||0).toLocaleString()} 次出現
-                {term.trendChanges>0?' · PELT 趨勢變化':''}
-              </span>:null}
-              {term.sample?<p className="scope-status">{term.sample}</p>:null}
+              {!discovery.cachedOnly?<span className="scope-status"> · {Number(term.documents||0).toLocaleString()} 篇</span>:null}
+              {(term.sample||!discovery.cachedOnly)?<details className="loc-work-term-details">
+                <summary>詳情</summary>
+                {!discovery.cachedOnly?<p className="scope-status">
+                  {Number(term.occurrences||0).toLocaleString()} 次出現
+                  {term.denseDocuments>0?' · 密集段 '+Number(term.denseDocuments).toLocaleString()+' 篇':''}
+                  {term.trendChanges>0?' · PELT 趨勢變化':''}
+                </p>:null}
+                {term.sample?<p className="scope-status">{term.sample}</p>:null}
+              </details>:null}
             </li>)}
           </ol>
           {suggestionPages>1?<div className="scope-preview-links" role="navigation" aria-label="建議關鍵詞分頁">

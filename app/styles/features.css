@@ -1785,3 +1785,152 @@
     justify-content:flex-start;
   }
 }
+
+
+/* LOC work stream: actual progress moves along a themed silver river.
+   Only CSS transforms/opacity animate; no JS clocks, fake completion or DOM
+   objects per article. All old audit details remain reachable on demand. */
+.loc-flow-progress{
+  --loc-flow-glow:var(--loc-accent);
+  position:relative;isolation:isolate;min-width:0;display:grid;gap:.65rem;
+  padding:clamp(.75rem,2vw,1.05rem);
+  color:var(--loc-text);
+  border:1px solid color-mix(in srgb,var(--loc-accent) 36%,var(--loc-ui-hairline));
+  border-radius:var(--loc-ui-radius-lg);
+  background:linear-gradient(120deg,
+    color-mix(in srgb,var(--loc-flow-glow) 8%,var(--loc-panel)) 0%,
+    var(--loc-panel) 65%);
+}
+.loc-flow-progress--keywords{--loc-flow-glow:var(--loc-gold,var(--loc-accent))}
+.loc-flow-progress__header{
+  display:grid;grid-template-columns:2.7rem minmax(0,1fr) auto;
+  gap:.75rem;align-items:center;min-width:0
+}
+.loc-flow-progress__beacon{
+  position:relative;display:grid;place-items:center;
+  width:2.5rem;height:2.5rem;border:1px solid
+  color-mix(in srgb,var(--loc-flow-glow) 52%,var(--loc-ui-hairline));
+  border-radius:50%;
+  background:radial-gradient(circle,
+    color-mix(in srgb,var(--loc-flow-glow) 25%,transparent),transparent 67%)
+}
+.loc-flow-progress__beacon>span:nth-child(1){
+  width:.75rem;height:.75rem;border:1.5px solid var(--loc-flow-glow);
+  transform:rotate(45deg);
+  box-shadow:0 0 12px color-mix(in srgb,var(--loc-flow-glow) 60%,transparent)
+}
+.loc-flow-progress__beacon>span:nth-child(2),
+.loc-flow-progress__beacon>span:nth-child(3){
+  position:absolute;inset:.2rem;border-radius:50%;
+  border:1px solid color-mix(in srgb,var(--loc-flow-glow) 45%,transparent);
+  animation:loc-flow-beacon 3.3s ease-in-out infinite
+}
+.loc-flow-progress__beacon>span:nth-child(3){animation-delay:1.65s}
+.loc-flow-progress__heading{min-width:0;display:grid;gap:.12rem}
+.loc-flow-progress__heading strong{
+  display:block;min-width:0;line-height:1.3;
+  overflow-wrap:anywhere;font-size:clamp(.95rem,2vw,1.12rem)
+}
+.loc-flow-progress__eyebrow{
+  color:var(--loc-muted);font-size:.72rem;letter-spacing:.1em;
+  font-weight:650
+}
+.loc-flow-progress__count{
+  font-size:.84rem;font-weight:700;white-space:nowrap;
+  font-variant-numeric:tabular-nums;color:var(--loc-text)
+}
+.loc-flow-progress__river{
+  position:relative;min-height:.75rem;overflow:hidden;
+  border-radius:999px;
+  border:1px solid color-mix(in srgb,var(--loc-flow-glow) 23%,var(--loc-ui-hairline));
+  background:linear-gradient(90deg,
+    color-mix(in srgb,var(--loc-flow-glow) 10%,var(--loc-surface-soft)),
+    color-mix(in srgb,var(--loc-flow-glow) 3%,var(--loc-surface-soft)))
+}
+.loc-flow-progress__river-fill{
+  position:absolute;inset:0;transform-origin:left center;
+  transform:scaleX(0);transition:transform .38s ease-out;
+  background:linear-gradient(90deg,
+    color-mix(in srgb,var(--loc-accent) 66%,transparent),
+    color-mix(in srgb,var(--loc-flow-glow) 83%,white) 85%,var(--loc-flow-glow));
+  box-shadow:0 0 11px color-mix(in srgb,var(--loc-flow-glow) 35%,transparent)
+}
+.loc-flow-progress__river-glint{
+  position:absolute;inset:-25% 0;pointer-events:none;
+  background:linear-gradient(105deg,transparent 35%,
+    color-mix(in srgb,var(--loc-flow-glow) 16%,transparent) 49%,
+    color-mix(in srgb,white 22%,transparent) 51%,transparent 65%);
+  animation:loc-flow-river-drift 4s ease-in-out infinite;
+}
+.loc-flow-progress__river.is-indeterminate .loc-flow-progress__river-fill{
+  background:none;box-shadow:none
+}
+.loc-flow-progress__details{min-width:0;color:var(--loc-muted);font-size:.8rem}
+.loc-flow-progress__details summary{
+  display:list-item;width:fit-content;cursor:pointer;
+  padding:.12rem 0;font-weight:650;
+}
+.loc-flow-progress__detail-body{display:grid;gap:.3rem;margin-top:.35rem}
+.loc-flow-progress__detail-body p{margin:0;overflow-wrap:anywhere}
+.loc-work-disclosure{
+  min-width:0;overflow-wrap:anywhere;
+}
+.loc-work-disclosure>summary{
+  cursor:pointer;padding:.4rem 0;font-weight:750;
+  color:var(--loc-text);line-height:1.4
+}
+.loc-work-disclosure[open]>summary{margin-bottom:.65rem}
+.loc-work-subdetails,.loc-work-term-details{min-width:0;color:var(--loc-muted)}
+.loc-work-subdetails>summary,.loc-work-term-details>summary{
+  cursor:pointer;width:fit-content;padding:.2rem 0;
+  color:var(--loc-muted);font-size:.82rem;font-weight:600
+}
+.loc-work-subdetails[open]>summary,.loc-work-term-details[open]>summary{
+  color:var(--loc-text)
+}
+.loc-work-running{display:grid;align-items:start;gap:.65rem;min-width:0}
+.loc-work-running>.loc-button{justify-self:start}
+.loc-work-results-head{
+  display:flex;align-items:baseline;flex-wrap:wrap;
+  gap:.35rem .8rem;margin:.45rem 0;color:var(--loc-text)
+}
+.loc-work-results-head span{font-size:.85rem;color:var(--loc-muted)}
+.loc-work-term-details{margin:.15rem 0 .3rem}
+.loc-work-term-details p{margin:.25rem 0;overflow-wrap:anywhere}
+.loc-work-status{
+  display:grid;gap:.35rem;min-width:0;
+  padding:.65rem .8rem;
+  border-left:3px solid var(--loc-accent);
+  border-radius:var(--loc-ui-radius-sm);
+  background:color-mix(in srgb,var(--loc-accent) 7%,var(--loc-panel))
+}
+.loc-work-status[role=alert]{border-left-color:var(--loc-danger,#c56262)}
+.loc-work-status>.loc-work-subdetails{margin-top:0}
+.loc-work-audit{border:1px solid var(--loc-ui-hairline);padding:.5rem .85rem;border-radius:var(--loc-ui-radius-sm)}
+.loc-work-audit p{margin:.5rem 0}
+.loc-flow-progress :is(summary,button):focus-visible,
+.loc-work-disclosure>summary:focus-visible,
+.loc-work-subdetails>summary:focus-visible,
+.loc-work-term-details>summary:focus-visible{
+  outline:2px solid var(--loc-accent);outline-offset:3px;border-radius:3px
+}
+@keyframes loc-flow-river-drift{
+  from{transform:translateX(-70%)}
+  to{transform:translateX(70%)}
+}
+@keyframes loc-flow-beacon{
+  0%,100%{opacity:.18;transform:scale(.68)}
+  50%{opacity:.72;transform:scale(1.05)}
+}
+@media(max-width:600px){
+  .loc-flow-progress__header{grid-template-columns:2.3rem minmax(0,1fr);gap:.55rem}
+  .loc-flow-progress__beacon{width:2.15rem;height:2.15rem}
+  .loc-flow-progress__count{grid-column:2;justify-self:start;font-size:.78rem}
+  .loc-work-running>.loc-button{min-height:44px}
+}
+@media(prefers-reduced-motion:reduce){
+  .loc-flow-progress__beacon>span:nth-child(2),
+  .loc-flow-progress__beacon>span:nth-child(3),
+  .loc-flow-progress__river-glint{animation:none}
+  .loc-flow-progress__river-fill{transition:none}
+}
