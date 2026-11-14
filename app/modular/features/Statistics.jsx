@@ -262,14 +262,15 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   const sourceChart=rankingType==='source'&&Boolean(targetScopes.length);
   // Statistics landing reads ONLY grouped daily Galaxy totals; it never
   // requests SourceAnchor taxonomy, site grouping or an article list.
+  const observedEnd=queryRange.endDate<queryEndDate?queryRange.endDate:queryEndDate;
   const totalDaily=useAsyncResource({
-    queryKey:['statistics-total-daily-v1',scopeId,queryRange.startDate,queryRange.endDate],
-    enabled:totalChart&&periodNavigationReady&&Boolean(queryRange.startDate&&queryRange.endDate),
+    queryKey:['statistics-total-daily-v1',scopeId,queryRange.startDate,observedEnd],
+    enabled:totalChart&&periodNavigationReady&&Boolean(queryRange.startDate&&observedEnd&&queryRange.startDate<=observedEnd),
     queryFn:async()=>{
       const {dbPublicClient}=await import('../../loc/db-client.mjs');
       const {data,error}=await dbPublicClient.schema('silver').analytics({
         p_scope_id:scopeId,p_view:'daily_total',
-        p_start:queryRange.startDate,p_end:queryRange.endDate
+        p_start:queryRange.startDate,p_end:observedEnd
       });
       if(error)throw error;
       return data;
@@ -278,14 +279,16 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   });
   const totalTrend=useMemo(()=>{
     if(!totalChart||!totalDaily.data)return [];
-    const start=queryRange.startDate,limit=queryRange.endDate<queryEndDate
-      ?queryRange.endDate:queryEndDate;
+    const start=queryRange.startDate,limit=observedEnd;
     if(!start||!limit||start>limit)return [];
     const buckets=new Map();
     for(let cursor=new Date(start+'T00:00:00Z'),last=new Date(limit+'T00:00:00Z');
       cursor<=last;cursor.setUTCDate(cursor.getUTCDate()+1)){
       const slot=trendBucket(cursor.toISOString().slice(0,10),queryRange.bucket);
-      if(slot&&!buckets.has(slot.key))buckets.set(slot.key,{period:slot.label,total:0});
+      if(slot&&!buckets.has(slot.key))buckets.set(slot.key,{
+        period:slot.label,total:0,
+        partial:slot.start<start||slot.end>limit||slot.end>=queryEndDate
+      });
     }
     for(const row of totalDaily.data.rows||[]){
       const slot=trendBucket(row.day,queryRange.bucket);
@@ -293,7 +296,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
       if(entry)entry.total+=Math.max(0,Number(row.item_count)||0);
     }
     return [...buckets.values()];
-  },[totalChart,totalDaily.data,queryRange.startDate,queryRange.endDate,
+  },[totalChart,totalDaily.data,queryRange.startDate,observedEnd,
     queryRange.bucket,queryEndDate]);
   // ONE request per source chart: earliest date + exact daily counts + source taxonomy.
   const overview=useAsyncResource({
