@@ -6,7 +6,7 @@ import {SCOPE_PATTERN_POSTING_KEY} from './keyword-anchor-index.mjs';
 // never replacement UIDs. Do not infer identities from titles or dates.
 const UID=/^[A-Za-z0-9]{8}$/;
 const MEDIA_TYPES=new Set(ANCHOR_TYPE_GROUPS.media);
-const PARENT_LINKS=Object.freeze({
+export const UID_DEPENDENT_ANCHOR_FIELDS=Object.freeze({
   date:Object.freeze({period:'uid'}),
   period:Object.freeze({era:'period'}),
   point:Object.freeze({path:'point',trace:'point'}),
@@ -73,7 +73,7 @@ export function planUidDependencyRepair({deletedUid,deletedTable,deletedType='',
   const isGalaxy=deletedTable==='galaxy';
   const media=!isGalaxy&&MEDIA_TYPES.has(deletedType);
   const point=!isGalaxy&&deletedType==='point';
-  const parentFields=isGalaxy?{}:PARENT_LINKS[deletedType]||{};
+  const parentFields=isGalaxy?{}:UID_DEPENDENT_ANCHOR_FIELDS[deletedType]||{};
   const galaxyUpdates=[],anchorUpdates=[],galaxySeen=new Set(),anchorSeen=new Set();
   for(const row of galaxyRows){
     const id=uidOf(row?.uid);
