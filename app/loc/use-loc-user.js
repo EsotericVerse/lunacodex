@@ -1,7 +1,7 @@
 'use client';
 import {useCallback,useRef} from 'react';
 import {usePassiveSessionAccount} from './use-account';
-import {useAsyncResource} from './use-async-resource';
+import {useAsyncResource} from '../../zenstack/client-queries';
 import {loadOrCreateLocUser,saveLocUserField} from './loc-user-store.mjs';
 
 // Shared per-OAuth ZenStack client resource. Guests make no request; a verified login

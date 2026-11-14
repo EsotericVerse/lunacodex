@@ -9,13 +9,11 @@ registerDefaultSection('management',managementZh);
 registerDefaultSection('uiExtra.importUI',importUIZh);
 
 import {useDeferredValue,useEffect,useMemo,useRef,useState,useSyncExternalStore} from 'react';
-import ScopeSourceCorrection from './ScopeSourceCorrection';
 import {refreshScopeSearchSummary} from './scope-search-summary.mjs';
 import {insertRows,insertImportRows,dbAuthRelation,dbAuthClient,updateImportRows} from './db-client.mjs';
 import {useAccount} from './use-account';
 import ActivityMotion from '../modular/ActivityMotion';
-import {useAsyncResource,useResourceCache} from './use-async-resource';
-import {useScopeSourceCategoryRow} from './scope-source-category-row.mjs';
+import {useAsyncResource,useResourceCache} from '../../zenstack/client-queries';
 import {canonicalImportSourceName,inferImportSourceFromFilename} from './source-name.mjs';
 import {Capacitor} from '@capacitor/core';
 import {defaultScopeData} from './scope-data';
@@ -41,9 +39,15 @@ import {hasIrrecoverableEncoding,isPureUrlContent,normalizeGalaxyContent,normali
 import {galaxyAble} from './galaxy-able.mjs';
 import BulkGalaxyVisibility from './BulkGalaxyVisibility';
 import {touchEditorSession} from './edit-session-ttl.mjs';
-import {scopeSourceNames} from './scope-config-fields.mjs';
+import {PUBLISHED_LOC_ARTICLE_TAGS} from '../modular/published-source-taxonomy.js';
 import {runeDrawText} from './rune-draw-text.mjs';
 import {galaxyReadColumns,galaxyReadColumnsFor} from '../../zenstack/galaxy-read-models.mjs';
+// The published LOC ArticleTag list is already bundled in the static site;
+// never create an async query/resource just to read this in-memory constant.
+// Keep one stable object so import analysis does not re-run on every UI repaint.
+const PUBLISHED_SOURCE_CATEGORIES=Object.freeze({
+  system:PUBLISHED_LOC_ARTICLE_TAGS,personal:Object.freeze([])
+});
 const GALAXY_IMPORT_TIME_COLUMNS=galaxyReadColumns('GalaxyList')
   .filter(column=>['uid','createtime','site'].includes(column)).concat('site_id').join(',');
 const GALAXY_IMPORT_UID_COLUMNS=galaxyReadColumnsFor('GalaxyUidRead')
@@ -475,13 +479,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   const [timeRange,setTimeRange]=useState('year');
   const timeWindow=useMemo(()=>importTimeRangeWindow(timeRange),[timeRange,fileName]);
   const sourceCategoriesEnabled=!nativeLocal&&Boolean(account.user)&&account.canLocAccessSync('scope',scopeId);
-  const sourceCategoriesSystemRow=useScopeSourceCategoryRow('loc',{enabled:sourceCategoriesEnabled});
-
-  const sourceCategories={
-    data:sourceCategoriesSystemRow.data!==undefined
-      ?{system:scopeSourceNames(sourceCategoriesSystemRow.data),personal:[]}
-      :undefined
-  };
+  const sourceCategories={data:sourceCategoriesEnabled?PUBLISHED_SOURCE_CATEGORIES:undefined};
   const sourceOptions=[...new Set([...(sourceCategories.data?.system||[]),...(sourceCategories.data?.personal||[])])];
   const canonicalSource=value=>canonicalImportSourceName(value,sourceCategories.data?.system||[],sourceCategories.data?.personal||[]);
   const [importLocale,setImportLocale]=useState('zh-Hant');
@@ -1375,7 +1373,6 @@ export default function ManagementImportPanel({scopeId}){
       <h2><UiText id="uiExtra.importUI.importTitle"/></h2>
       <UniversalImport scopeId={scopeId} format={format} onFormatChange={setFormat}/>
     </section>
-    <ScopeSourceCorrection scopeId={scopeId}/>
     <BulkGalaxyVisibility scopeId={scopeId}/>
   </div>;
 }

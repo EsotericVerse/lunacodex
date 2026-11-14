@@ -2,7 +2,7 @@
 
 import {useMemo,useState} from 'react';
 import dynamic from 'next/dynamic';
-import {useAsyncResource} from '../../../loc/use-async-resource';
+import {useAsyncResource} from '../../../../zenstack/client-queries';
 import {readPlaceSummary} from '../../../loc/place-summary-client';
 import {placeRiverModel} from '../../../loc/place-statistics.mjs';
 

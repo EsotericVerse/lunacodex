@@ -1,7 +1,7 @@
 'use client';
 import {useMemo,useRef,useState} from 'react';
 import dynamic from 'next/dynamic';
-import {useAsyncResource} from '../../../loc/use-async-resource';
+import {useAsyncResource} from '../../../../zenstack/client-queries';
 import {dbPublicClient} from '../../../loc/db-client.mjs';
 import {mapBounded} from '../../../loc/bounded-parallel.mjs';
 import {readCurrentTraceAnchors,readPublishedTraceSourceScopes} from './trace-data';

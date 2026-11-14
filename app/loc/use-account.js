@@ -7,7 +7,7 @@ import {readLocEditorGrants} from './auth/editor-grants.mjs';
 import {SCOPE_ROUTE_INDEX} from '../modular/scope-route-index.js';
 import {readAuthorization,setAuthorization,clearAuthorization,createScopeAuthorizer} from './authorization-runtime.mjs';
 import {defaultScopeData,scopeDataFromManageRows} from './scope-data';
-import {useAsyncResource} from './use-async-resource';
+import {useAsyncResource} from '../../zenstack/client-queries';
 import {shouldInvalidateManagementForAuthEvent} from './auth/account-event-guard.mjs';
 
 const normalizeAuthEmail=value=>String(value||'').trim().toLowerCase();

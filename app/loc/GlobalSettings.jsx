@@ -6,7 +6,7 @@ import globalSettingsZh from '../i18n/sections/uiExtra.globalSettings.zh_tw.js';
 registerDefaultSection('uiExtra.globalSettings',globalSettingsZh);
 
 import {useEffect,useMemo,useState} from 'react';
-import {useAsyncResource} from './use-async-resource';
+import {useAsyncResource} from '../../zenstack/client-queries';
 import dynamic from 'next/dynamic';
 import {Capacitor} from '@capacitor/core';
 import {useNavigationPreferences} from './use-navigation-preferences';

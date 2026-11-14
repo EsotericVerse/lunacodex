@@ -9,7 +9,7 @@ import {useSearchParams} from 'next/navigation';
 import {useAccount} from './use-account';
 import {SCOPE_ROUTE_INDEX} from '../modular/scope-route-index.js';
 import {useEditDock,useEditDockForm} from '../modular/edit-dock';
-import {useAsyncResource,useResourceCache} from './use-async-resource';
+import {useAsyncResource,useResourceCache} from '../../zenstack/client-queries';
 import {
   TRACE_SCOPES,traceMapIndexKey,traceCurrentKey,traceAllAnchorsKey,
   traceMemberUids,readTraceMapIndex,readCurrentTraceAnchors,readAllTraceAnchors,

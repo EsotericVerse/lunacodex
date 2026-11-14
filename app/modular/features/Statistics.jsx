@@ -16,7 +16,7 @@ import {useEffect,useMemo,useState} from 'react';
 import useLocFeatureSettings from '../../loc/use-loc-feature-settings';
 import dynamic from 'next/dynamic';
 import {useRouter,useSearchParams} from 'next/navigation';
-import {useAsyncResource,useResourceCache} from '../../loc/use-async-resource';
+import {useAsyncResource,useResourceCache} from '../../../zenstack/client-queries';
 
 // Defer Galaxy's data/query engine until the selected statistics mode needs it.
 const loadGalaxyStatistics=()=>import('../../loc/galaxy-query');

@@ -4,7 +4,7 @@ import {useMemo,useState} from 'react';
 import dynamic from 'next/dynamic';
 import {useFeatureCopy} from '../i18n/ui-locale';
 import featureZh from '../i18n/feature-sections/dailyRune.zh_tw.js';
-import {useAsyncResource} from '../loc/use-async-resource';
+import {useAsyncResource} from '../../zenstack/client-queries';
 import {
   Bar,BarChart,CartesianGrid,ComposedChart,LabelList,Line,
   Tooltip,XAxis,YAxis

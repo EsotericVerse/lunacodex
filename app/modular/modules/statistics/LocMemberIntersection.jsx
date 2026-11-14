@@ -6,7 +6,7 @@ import statisticsViewZh from '../../../i18n/sections/uiExtra.statisticsView.zh_t
 registerDefaultSection('uiExtra.statisticsView',statisticsViewZh);
 
 import {useMemo} from 'react';
-import {useAsyncResource,useResourceCache} from '../../../loc/use-async-resource';
+import {useAsyncResource,useResourceCache} from '../../../../zenstack/client-queries';
 import {mapBounded} from '../../../loc/bounded-parallel.mjs';
 import {defaultScopeData} from '../../../loc/scope-data';
 import {selectDailyRuneRange} from '../../../loc/daily-runes';

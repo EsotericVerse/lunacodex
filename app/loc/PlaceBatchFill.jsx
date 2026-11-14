@@ -5,7 +5,7 @@ import {useEditDockForm} from '../modular/edit-dock';
 import {dbAuthClient} from './db-client.mjs';
 import {defaultScopeData,revalidateServerMetadata} from './scope-data';
 import {selectCultureTimeRows} from './culture-query';
-import {useAsyncResource,useResourceCache} from './use-async-resource';
+import {useAsyncResource,useResourceCache} from '../../zenstack/client-queries';
 
 const DATE=/^\d{4}-\d{2}-\d{2}$/;
 function validDate(value){

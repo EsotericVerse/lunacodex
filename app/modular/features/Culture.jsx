@@ -18,7 +18,7 @@ import useLocFeatureSettings from '../../loc/use-loc-feature-settings';
 import {cultureDensityByUnit,simpleTimeRiver} from '../../loc/loc-feature-preferences.mjs';
 import dynamic from 'next/dynamic';
 import {usePathname,useSearchParams} from 'next/navigation';
-import {useAsyncResource,useAsyncInfiniteResource,useResourceCache} from '../../loc/use-async-resource';
+import {useAsyncResource,useAsyncInfiniteResource,useResourceCache} from '../../../zenstack/client-queries';
 import {featureNavigationHref,galaxyIdentityHref,galaxyRelationLinks,readFeatureNavigation} from '../feature-navigation';
 import ScopeLink from '../ScopeLink';
 import {useEditDock} from '../edit-dock';

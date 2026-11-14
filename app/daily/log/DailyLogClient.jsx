@@ -20,7 +20,7 @@ import {
 import {selectRows} from '../../loc/db-query.mjs';
 import {lRunes66ColumnString} from '../../../zenstack/lrunes-read-model.mjs';
 import {useAccount} from '../../loc/use-account';
-import {useResourceCache} from '../../loc/use-async-resource';
+import {useResourceCache} from '../../../zenstack/client-queries';
 import {listLocalDailyRunes,importLocalDailyTransfer,updateLocalDailyRune,deleteLocalDailyRune} from '../../lrunes/local-rune-records.mjs';
 
 const FIRST_MONTH=2026*12+7;

@@ -11,7 +11,7 @@ import {registerDefaultSection} from '../../i18n/ui-copy';
 import traceZh from '../../i18n/sections/uiExtra.traceUI.zh_tw.js';
 registerDefaultSection('uiExtra.traceUI',traceZh);
 const TEXT='uiExtra.traceUI.';
-import {useAsyncResource} from '../../loc/use-async-resource';
+import {useAsyncResource} from '../../../zenstack/client-queries';
 import {mapBounded} from '../../loc/bounded-parallel.mjs';
 import useLocFeatureSettings from '../../loc/use-loc-feature-settings';
 import {traceWindow} from './trace/trace-panel-filters.mjs';

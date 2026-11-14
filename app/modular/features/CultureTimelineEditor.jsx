@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 import ScopeOptionPicker from '../ScopeOptionPicker';
 import {useSearchParams} from 'next/navigation';
 import {useUiCopy,useUiSection} from '../../i18n/ui-locale';
-import {useAsyncResource,useResourceCache} from '../../loc/use-async-resource';
+import {useAsyncResource,useResourceCache} from '../../../zenstack/client-queries';
 import {useEditDock} from '../edit-dock';
 import {dbAuthClient,deleteRows,insertRows,updateRows} from '../../loc/db-client.mjs';
 import {revalidateServerMetadata} from '../../loc/scope-data';
