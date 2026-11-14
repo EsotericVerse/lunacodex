@@ -9,6 +9,15 @@ export function validLocalDeadline(raw,now=Date.now()){
   return Number.isSafeInteger(deadline)&&deadline>now&&
     deadline<=now+LOCAL_SCOPE_MAX_MS?deadline:0;
 }
+export function hasExpiredLocalDeadline(now=Date.now()){
+  if(typeof window==='undefined')return false;
+  try{
+    const raw=window.localStorage.getItem(LOCAL_SCOPE_LEASE_KEY);
+    // An old or clock-skewed lease must NEVER silently re-enable cloud
+    // requests on a device-local URL; return to the website instead.
+    return raw!==null&&!validLocalDeadline(raw,now);
+  }catch{return false;}
+}
 export function getLocalDeadline(){
   if(typeof window==='undefined')return 0;
   try{return validLocalDeadline(window.localStorage.getItem(LOCAL_SCOPE_LEASE_KEY));}
