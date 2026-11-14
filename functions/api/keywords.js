@@ -82,8 +82,47 @@ export async function onRequestPost(context){
         };
         if(operation==='reset')
           result=await resetKeywordScope(db,scope,args.classUid,{authorizeTransaction});
-        else if(operation==='analyze')
+        else if(operation==='analyze'){
+          // Streaming is opt-in: preserve the ordinary JSON contract for all
+          // existing callers. Analysis and authorization still run once.
+          if(request.headers.get('accept')?.includes('application/x-ndjson')){
+            const encoder=new TextEncoder();
+            const stream=new ReadableStream({
+              start(controller){
+                const emit=(kind,data)=>{
+                  try{controller.enqueue(encoder.encode(JSON.stringify({kind,data})+'\n'));}
+                  catch{/* A disconnected reader cannot change authorized writes. */}
+                };
+                void (async()=>{
+                  try{
+                    const analyzed=await analyzeKeywordScope(db,scope,args.classUid,{
+                      authorizeTransaction,onProgress:data=>emit('progress',data)
+                    });
+                    emit('result',analyzed);
+                  }catch(failure){
+                    const status=Number.isInteger(failure?.httpStatus)
+                      ?failure.httpStatus:503;
+                    const code=String(failure?.code||failure?.cause?.code||'UNKNOWN');
+                    console.error('[LOC keyword analysis]',{
+                      code:/^[A-Za-z0-9_]{2,40}$/.test(code)?code:'UNKNOWN',
+                      type:String(failure?.name||'Error').slice(0,40)
+                    });
+                    emit('error',{status,error:status<500
+                      ?String(failure?.message||'分析請求被拒絕')
+                      :'關鍵詞資料來源目前無法處理此請求'});
+                  }finally{
+                    try{controller.close();}catch{}
+                  }
+                })();
+              }
+            });
+            return new Response(stream,{headers:{
+              'content-type':'application/x-ndjson; charset=utf-8',
+              'cache-control':'no-store','x-content-type-options':'nosniff'
+            }});
+          }
           result=await analyzeKeywordScope(db,scope,args.classUid,{authorizeTransaction});
+        }
         else if(operation==='saveItem')
           result=await saveKeywordItem(db,scope,args.item,{authorizeTransaction});
         else if(operation==='deleteItem')
