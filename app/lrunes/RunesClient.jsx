@@ -70,7 +70,8 @@ export default function RunesClient(){
       headingLevel={2}
       slotClassName="loc-card loc-home-block"
       resolveSlotClassName={slot=>Number(slot.order)===1
-        ?"loc-hero runes-home-hero"
+        ?'loc-hero runes-home-hero'+
+          (resolveHomeImage({...slot,order:1},'lrunes').mode==='side'?' runes-home-hero--side':'')
         :locHomeBlockClass(slot,'lrunes')}
       resolveSlotStyle={slot=>homeBlockMediaStyle(slot,'lrunes')}
       editSlotClassName="loc-card loc-home-block"
