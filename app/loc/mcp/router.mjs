@@ -1,8 +1,6 @@
 import {verifyAccessTokenRequest,requestToResourceInput} from 'better-auth/oauth2';
 import {businessAction} from './business-actions.mjs';
 import {authorizeMcpBearer} from './access-roles.mjs';
-import {providerStatuses,requestTool,approvalReceipt} from './upstream-policy.mjs';
-import {listUpstreamTools} from './upstream-tools.mjs';
 import {readMemory} from './galaxy-read.mjs';
 import {articleDistribution} from './article-distribution.mjs';
 import {privateGalaxyLink} from './private-galaxy.mjs';
@@ -82,18 +80,6 @@ const TOOLS=[
   {name:'article_distribution',description:'Get monthly published LOC article-count statistics for a calendar year or rolling 12 months. No SQL or article text; chart-ready numbers.',
     inputSchema:mcpToolJsonSchema('article_distribution'),
     annotations:{readOnlyHint:true,destructiveHint:false}},
-  {name:'provider_list',description:'List LOC user-linked upstream MCP providers and their function policies (no credentials).',
-    inputSchema:mcpToolJsonSchema('provider_list'),
-    annotations:{readOnlyHint:true,destructiveHint:false}},
-  {name:'provider_tools',description:'Discover tools offered by one already-authorized upstream MCP provider. This does not grant permission to call them.',
-    inputSchema:mcpToolJsonSchema('provider_tools'),
-    annotations:{readOnlyHint:true,destructiveHint:false}},
-  {name:'provider_call',description:'Execute a provider MCP function only if LOC policy is auto; ask queues an explicit human approval, deny blocks the call.',
-    inputSchema:mcpToolJsonSchema('provider_call')},
-  {name:'provider_receipt',description:'Read the result of an explicitly approved upstream MCP operation using its receipt ID.',
-    inputSchema:mcpToolJsonSchema('provider_receipt'),
-    annotations:{readOnlyHint:true,destructiveHint:false}},
-
 ];
 function toolResponse(id,value){
  const warning=typeof value?.warning==='string'?value.warning:'';
@@ -188,14 +174,6 @@ async function dispatchMcpPayload(payload,identity,bearer,config,env,roleVerifie
         const directPrivate=name==='galaxy_link'&&['read','search'].includes(args.action);
         const value=name==='article_distribution'?
           await articleDistribution(args,env):
-          name==='provider_list'?
-          await providerStatuses(env,identity.subject):
-          name==='provider_tools'?
-          {provider:args.provider,tools:await listUpstreamTools(env,identity.subject,args.provider)}:
-          name==='provider_call'?
-          await requestTool(env,identity.subject,args.provider,args.tool,args.args||{}):
-          name==='provider_receipt'?
-          await approvalReceipt(env,identity.subject,args.approval_id):
           name==='read_memory'?
           await readMemory(args,env):
           directPrivate?await privateGalaxyLink(args,bearer,identity.subject,env):
@@ -204,9 +182,7 @@ async function dispatchMcpPayload(payload,identity,bearer,config,env,roleVerifie
       }catch(error){
         const validation=error?.code==='INVALID_ARGUMENT';
         return result(payload.id,{isError:true,content:[{type:'text',
-          text:name?.startsWith('provider_')?
-            String(error?.message||'Provider request unavailable').slice(0,180):
-            validation?error.message:
+          text:validation?error.message:
             error?.httpStatus&&error.httpStatus<500?error.message:
             'LOC data service unavailable; please retry later.'}]});
       }
