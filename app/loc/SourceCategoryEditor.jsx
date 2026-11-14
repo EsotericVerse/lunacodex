@@ -2,7 +2,7 @@
 import {useCallback,useEffect,useMemo,useState} from 'react';
 import dynamic from 'next/dynamic';
 import {useAsyncResource} from '../../zenstack/client-queries';
-import {insertRows,updateRows,deleteRows} from './db-client.mjs';
+import {insertRows,updateRows,deleteRows,dbAuthClient} from './db-client.mjs';
 import {readPublicSourceAnchors} from './source-catalog-public.mjs';
 import {allocateAnchorUid} from './uid.js';
 import {nextZModelAnchorType} from '../../zenstack/anchor-hierarchy.mjs';
@@ -25,8 +25,15 @@ const normalized=rows=>(rows||[]).map(row=>{
   return {...row,attr:{...attr,uid:Array.isArray(attr.uid)?attr.uid:[],
     counts:{...EMPTY_COUNTS,...counts}}};
 });
-async function fetchSources(){
-  return normalized(await readPublicSourceAnchors({editor:true}));
+async function fetchSources({editor=false}={}){
+  if(!editor)return normalized(await readPublicSourceAnchors());
+  // Protected management hierarchy must use the trusted LOC Web authorizer,
+  // not a browser SELECT on silver.loc_anchor (RLS is not a SQL GRANT).
+  const {data,error}=await dbAuthClient.schema('silver')
+    .managedAction('read_loc_source_hierarchy',{});
+  if(error)throw new Error(error.message||'LOC 文章來源讀取失敗。');
+  if(!Array.isArray(data))throw new Error('LOC 文章來源資料格式不正確。');
+  return normalized(data);
 }
 // Existing public catalogue hook, now backed by the shared LOC source Anchor.
 export function useSourceCategories(){
@@ -58,7 +65,7 @@ export function AdminSourceCategories(){
   const load=useCallback(async()=>{
     setLoading(true);setError('');
     try{
-      const found=await fetchSources();setNodes(found);
+      const found=await fetchSources({editor:true});setNodes(found);
       setSelected(uid=>found.some(row=>row.uid===uid)?uid:'');
     }catch(e){setError(String(e.message||e));}
     finally{setLoading(false);}
