@@ -112,6 +112,17 @@ function nextThemeChangeDelay(date=new Date()){
 // survive management's mandatory dynamic-read disposal and full static
 // management entry navigation without caching SQL, Session or private data.
 const USER_THEME_SESSION_KEY='loc-user-theme-selection-v1';
+const LAST_ACTIVE_THEME_KEY='loc-active-theme-id-v1';
+function readLastActiveTheme(){
+  try{
+    const candidate=String(window.sessionStorage.getItem(LAST_ACTIVE_THEME_KEY)||'');
+    return THEME_SLOTS.some(slot=>slot.id===candidate)?candidate:'';
+  }catch{return '';}
+}
+function rememberActiveTheme(themeId){
+  if(!THEME_SLOTS.some(slot=>slot.id===themeId))return;
+  try{window.sessionStorage.setItem(LAST_ACTIVE_THEME_KEY,themeId);}catch{}
+}
 function readUserTheme(scopeId){
   try{
     const prefs=JSON.parse(window.sessionStorage.getItem(USER_THEME_SESSION_KEY)||'{}');
@@ -159,7 +170,8 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
     return()=>window.removeEventListener('loc-scope-theme-saved',onSaved);
   },[scopeId]);
   const selectedThemeId=selection.scopeId===scopeId?selection.themeId:SYSTEM_THEME_ID;
-  const systemDefaultThemeId=fixedDefaultThemeId||configuredDefaultThemeId||automaticThemeId(now);
+  const systemDefaultThemeId=fixedDefaultThemeId||configuredDefaultThemeId||
+    (scopeId==='admin'?readLastActiveTheme():'')||automaticThemeId(now);
   const effectiveThemeId=selectedThemeId===SYSTEM_THEME_ID?systemDefaultThemeId:selectedThemeId;
   const [activePalette,setActivePalette]=useState(null);
   useEffect(()=>{
@@ -181,6 +193,9 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
     activePalette?.id===effectiveThemeId?activePalette.row:null),
     [effectiveThemeId,activePalette]);
 
+  useEffect(()=>{
+    rememberActiveTheme(effectiveThemeId);
+  },[effectiveThemeId]);
   useEffect(()=>{
     // Published CSS already contains the eight canonical palette declarations.
     // The first paint uses the exact theme ID from the head bootstrap script.
