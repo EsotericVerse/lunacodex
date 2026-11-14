@@ -188,7 +188,8 @@ export default function LocApp({forcedView='home',forcedSection=null,forcedScope
             title={scopeMeta.label+' · '+t({statics:'features.statics.title',culture:'features.culture.title'}[forcedView])}
             description={t('uiExtra.feature.groupGuide')}
           />
-        </FeaturePage>:managementRoute?<ManagementAccess scopeId={scopeId} level={managementLevel} featureId={managementFeature}>{managementPage}</ManagementAccess>:managementPage}
+        </FeaturePage>:managementRoute?<ManagementAccess key={scopeId+':'+forcedView+':'+runtime.pathname}
+          scopeId={scopeId} level={managementLevel} featureId={managementFeature}>{managementPage}</ManagementAccess>:managementPage}
       </FeatureGate>
     </Suspense>
   </div>;
