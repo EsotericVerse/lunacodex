@@ -25,6 +25,12 @@ export function appBootstrapKey(scopeId,pageName='index'){
 // non-authorizing presentation metadata.
 export async function selectAppBootstrap(scopeId,pageName='index',{configHint=null}={}){
   const [,id,page]=appBootstrapKey(scopeId,pageName);
+  // Local Scope is a native IndexedDB workspace, not a cloud Registry or
+  // Blocks table. Do not issue even an attempted cloud metadata read.
+  if(id==='local')return {
+    scope_id:id,page_name:page,config:null,blocks:[],registry:[],
+    page_copy:[],theme_list:[],themes:[]
+  };
   const [registry,themes,config,blocks]=await Promise.all([
     id==='local'?Promise.resolve([]):selectScopeRegistry(),
     id==='local'?Promise.resolve([]):selectThemeRegistry(),

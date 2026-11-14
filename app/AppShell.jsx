@@ -19,6 +19,7 @@ import {useScopeRuntime} from './modular/use-scope-runtime';
 import {faviconForScope} from './site-favicons';
 import {appBootstrapPageCopy,useAppBootstrap} from './loc/app-bootstrap';
 import {getDbSourceStatus,subscribeDbSourceStatus} from './loc/db-source-status.mjs';
+import {getLocalDeadline,subscribeLocalDeadline,stopLocalDeadline,hasExpiredLocalDeadline} from './loc/local-scope-session.mjs';
 import {useNavigationPreferences} from './loc/use-navigation-preferences';
 import {NavigationPreferences} from './modular/navigation-preferences';
 import {navigationHref} from './modular/scope-registry.js';
@@ -388,13 +389,25 @@ function AppShellInner({children,runtime}){
   const pageName=currentFeature||'index';
   const isSettings=['/settings','/settings/index.html','/local/setting','/local/setting/index.html','/local/settings','/local/settings/index.html'].includes(normalizePath(pathname));
   const [native,setNative]=useState(false);
+  const localDeadline=useSyncExternalStore(subscribeLocalDeadline,getLocalDeadline,()=>0);
+  const lastLocalDeadline=useRef(0);
+  // Phone-only expiry check on app resume and navigation; no background timer.
+  useEffect(()=>{
+    const check=()=>{if(hasExpiredLocalDeadline())stopLocalDeadline();};
+    const onVisible=()=>{if(!document.hidden)check();};
+    window.addEventListener('focus',check);window.addEventListener('pageshow',check);
+    document.addEventListener('visibilitychange',onVisible);check();
+    return()=>{window.removeEventListener('focus',check);window.removeEventListener('pageshow',check);document.removeEventListener('visibilitychange',onVisible);};
+  },[]);
   const [mobileFavorite,setMobileFavorite]=useState(true);
   const [nativeHomepage,setNativeHomepage]=useState('loc');
+  // Existing website Auth, Session and navigation stay connected.
   const preferences=useNavigationPreferences();
   const [openFolderId,setOpenFolderId]=useState('');
   // Registry, NAV titles and Themes share one site snapshot across pages.
   // Scope config and page blocks load separately when first needed.
   // Components using the same (scopeId, pageName) ZenStack query key share one read.
+  // Main online bootstrap is not replaced; device-local routes own the local core.
   const bootstrap=useAppBootstrap(scopeId,pageName);
   const registryScopes=bootstrap.data?.registry||[];
   const registryLoaded=bootstrap.isSuccess||bootstrap.isError;
@@ -436,11 +449,28 @@ function AppShellInner({children,runtime}){
     return ()=>{active=false;};
   },[activeLocale]);
   const isMyPhone=native&&['/my-phone','/my-phone/index.html'].includes(normalizePath(pathname));
-  // My Phone and every /local/* route use the same on-device SQLite Scope.
+  // /local and My Phone share the on-device Galaxy IndexedDB core.
   const localWorkspace=native&&(isMyPhone||scopeId==='local');
-  // /local/settings is the public Global Settings URL, not permission to
-  // enter the device-only /local workspace from a Web browser.
-  const navScopeId=!native&&currentScope.nativeOnly?'loc':localWorkspace?'local':currentScope.featureScope||scopeId;
+  const localCoreActive=native&&localDeadline>0;
+  const localNavigation=localWorkspace||localCoreActive;
+  useEffect(()=>{
+    if(!native)return;
+    if(!localCoreActive&&localWorkspace&&hasExpiredLocalDeadline()){
+      stopLocalDeadline();
+      window.location.replace('/?loc_direct=1');
+      return;
+    }
+    if(localCoreActive){
+      lastLocalDeadline.current=localDeadline;
+      if(!localWorkspace)window.location.replace('/local/index.html');
+      return;
+    }
+    if(lastLocalDeadline.current){
+      lastLocalDeadline.current=0;
+      if(localWorkspace)window.location.replace('/?loc_direct=1');
+    }
+  },[native,localCoreActive,localDeadline,localWorkspace]);
+  const navScopeId=!native&&currentScope.nativeOnly?'loc':localNavigation?'local':currentScope.featureScope||scopeId;
   const gameThemeDefault=/(^|\/)game\/?$/.test(String(pathname||''))?'theme-4':'';
 
   useEffect(()=>{
@@ -479,7 +509,7 @@ function AppShellInner({children,runtime}){
     (homeParts.length===1&&(homeParts[0]===scopeId||homeParts[0]==='scope-shell'));
   // LOC's homepage has its own Admin-only editor; individual Scopes have
   // Scope-only editors. Both entries are visible to guests until clicked.
-  const showHomeEditEntry=isScopeHomepage&&Boolean(scopeId)&&
+  const showHomeEditEntry=isScopeHomepage&&scopeId!=='local'&&Boolean(scopeId)&&
     (scopeId==='loc'||(editScopeAvailable&&(!currentScope.nativeOnly||native)));
   // Keep existing query parameters (especially dynamic scopeid) on iOS and web.
   const editTabHref=(route,key,value)=>{
@@ -530,14 +560,16 @@ function AppShellInner({children,runtime}){
     {id:'cancel',icon:'cancel',label:translateUiField(activeLocale,'取消'),action:'cancel'}
   ];
   const featureTabs=[
-    {id:'home',icon:localWorkspace?'phone':'home',label:localWorkspace?'使用說明':translateUiField(activeLocale,'首頁'),href:localWorkspace?deviceNavigation.mobileHomeHref(true):navigationHref(navScopeId,'',native)+(native&&navScopeId==='loc'?'?loc_direct=1':'')},
+    {id:'home',icon:'home',label:translateUiField(activeLocale,'首頁'),
+      href:localNavigation?navigationHref('local','',native):
+        navigationHref(navScopeId,'',native)+(native&&navScopeId==='loc'?'?loc_direct=1':'')},
     ...['culture','statics','trace','search'].map(id=>{
       const feature=FEATURES.find(item=>item.id===id);
-      return {id,icon:id==='trace'?(localWorkspace?'settings':'trace'):id,
-        label:localWorkspace&&id==='trace'?'管理':(copy.features?.[id]?.title||feature.label),
-        href:navigationHref(navScopeId,localWorkspace&&id==='trace'?'manage':feature.path,native)};
+      return {id,icon:id,label:copy.features?.[id]?.title||feature.label,
+        href:navigationHref(localNavigation?'local':navScopeId,feature.path,native)};
     }),
-    {id:'settings',icon:'settings',label:copy.common.settings||'設定',href:native?'/local/settings/index.html':'/settings/'}
+    {id:'settings',icon:'settings',label:copy.common.settings||'設定',
+      href:native?'/local/settings/index.html'+(localNavigation?'?section=local':''):'/settings/'}
   ];
 
   useEffect(()=>{
@@ -556,7 +588,9 @@ function AppShellInner({children,runtime}){
 
 
   return <UiLocaleProvider locale={activeLocale}>
-    <ScopePageCopy scopeId={scopeId} display_name={configRow?.display_name||registryRow?.display_name} pageName={pageName}/>
+    <ScopePageCopy scopeId={localNavigation?'local':scopeId}
+      display_name={localNavigation?'本機銀河':configRow?.display_name||registryRow?.display_name}
+      pageName={pageName}/>
     <ScrollProgress/>
     <header className="scope-global" data-native={native?'ios':'web'}>
       <nav className="scope-nav" aria-label={copy.nav.aria}>
@@ -588,10 +622,10 @@ function AppShellInner({children,runtime}){
         <button type="button" className="scope-nav-close-folder" aria-label={translateUiField(activeLocale,'收合目錄')} onClick={()=>setOpenFolderId('')}>×</button>
       </div>:null}
     </header>
-    {children}
+    {localCoreActive&&!localWorkspace?<main className="scope-main"><p className="scope-status" role="status">正在切換手機本機資料…</p></main>:children}
     <motion.div layoutRoot className="scope-feature-dock scope-floating-edit-buttons" role="toolbar"
       aria-label={translateUiField(activeLocale,editingDockVisible||editDockPending?'編輯功能選單':'Scope 功能選單')}
-      data-scope={localWorkspace?'local':scopeId} data-action-count={editingDockVisible?editTabs.length:6}>
+      data-scope={localNavigation?'local':scopeId} data-local-core={localCoreActive?'active':undefined} data-action-count={editingDockVisible?editTabs.length:6}>
       {editingDockVisible?editTabs.map(tab=>tab.action
         ?<button type="button" key={tab.id} className="scope-edit-dock-action"
           disabled={editDock.busy&&tab.action!=='cancel'}
@@ -609,7 +643,7 @@ function AppShellInner({children,runtime}){
             <BottomNavIcon name={tab.icon}/><span>{tab.label}</span>
           </button>)
       :editDockPending?<span role="status" className="scope-edit-dock-pending">正在確認編輯介面…</span>
-      :<LayoutGroup id={'loc-six-key-dock-'+(localWorkspace?'local':scopeId)}>
+      :<LayoutGroup id={'loc-six-key-dock-'+(localNavigation?'local':scopeId)}>
         {featureTabs.map(tab=>{
           const selected=tab.id==='settings'?isSettings:
             !isSettings&&(tab.id==='home'
@@ -625,9 +659,10 @@ function AppShellInner({children,runtime}){
           </ScopeLink>;
         })}
       </LayoutGroup>}
+      {localCoreActive?<output className="scope-local-core-timer" aria-live="off">本機資料庫 · 測試中（不倒數）</output>:null}
       {editingDockVisible&&editDock.notice?<p className="scope-edit-dock-notice" role="status" aria-live="polite">{editDock.notice}</p>:null}
     </motion.div>
-    {showHomeEditEntry?<ScopeHomeEditEntry key={scopeId}/>:null}
+    {showHomeEditEntry&&!localCoreActive?<ScopeHomeEditEntry key={scopeId}/>:null}
     <footer className="scope-footer" data-scope={scopeId}>
       <div className="scope-footer-row">
         <a href="mailto:sopa2306@gmail.com">{copy.nav.contact}</a>
@@ -641,7 +676,7 @@ function AppShellInner({children,runtime}){
           {({'zh-Hant':'日期基準','zh-Hans':'日期基准',en:'Date basis',ja:'日付基準'}[activeLocale]||'日期基準')+'：Asia/Taipei (UTC+08:00)'}
         </small>
       </div>
-      <DataSourceStatus local={localWorkspace}/>
+      <DataSourceStatus local={localNavigation}/>
       <FlashMessage/>
     </footer>
   </UiLocaleProvider>;

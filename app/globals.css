@@ -26,6 +26,7 @@
 @import "./styles/public-features.css";
 @import "./styles/aimran-inspired.css";
 @import "./styles/loc-ui-refresh.css";
+@import "./styles/local-scope.css";
 
 html[data-theme-bootstrap="scheme-only"] body{
   visibility:hidden;

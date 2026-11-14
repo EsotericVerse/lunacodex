@@ -16,6 +16,7 @@ import ManagementSectionNav,{useManagementSection} from '../modular/ManagementSe
 import PanelLoading from './PanelLoading';
 // The home/account Settings screens never download import or management editors.
 const PrivateLocalFiles=dynamic(()=>import('./PrivateLocalFiles'),{loading:PanelLoading});
+const LocalScopeModeSettings=dynamic(()=>import('./LocalScopeModeSettings'),{loading:PanelLoading});
 const LocScopeConnections=dynamic(()=>import('./LocScopeConnections'),{loading:PanelLoading});
 // 每日符文紀錄：沿用既有的獨立頁面元件（/daily/log/），同一份邏輯透過它自己
 // 既有的 embedded 模式嵌入這裡，不複製任何讀寫邏輯。
@@ -42,7 +43,10 @@ export default function GlobalSettings({initialSection='home'}={}){
     option('features',uiT('uiExtra.globalSettings.featureSettings'),'',uiT('uiExtra.globalSettings.featureSettingsShort')),
     ...(native||prefs.account.user?[option('dailyRune',uiT('uiExtra.globalSettings.dailyRune'),'',uiT('uiExtra.globalSettings.tabDailyRune'))]:[]),
     option('mcp',uiT('uiExtra.globalSettings.mcpSelfServiceTitle'),'',uiT('uiExtra.globalSettings.mcpTab')),
-    ...(native?[option('manage',uiT('uiExtra.globalSettings.manageMenu'),'',uiT('uiExtra.globalSettings.tabManage'))]:[])
+    ...(native?[
+      option('local','本機資料庫','','本機'),
+      option('manage',uiT('uiExtra.globalSettings.manageMenu'),'',uiT('uiExtra.globalSettings.tabManage'))
+    ]:[])
   ];
   // favorites is the legacy URL alias for the public home/settings panel.
   const [section,setSection]=useManagementSection(sections,initialSection,{favorites:'home',account:'home'});
@@ -182,6 +186,7 @@ export default function GlobalSettings({initialSection='home'}={}){
 
       {activeSection==='features'?<FeatureSettingsPage embedded/>:null}
       {activeSection==='mcp'?<LocScopeConnections availableScopes={choices}/>:null}
+      {native&&activeSection==='local'?<LocalScopeModeSettings/>:null}
 
       {activeSection==='dailyRune'?<DailyRuneCalendarSettings/>:null}
 
