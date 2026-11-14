@@ -125,6 +125,10 @@ for(const engine of ['postgres','mysql','mssql']){
  assert.equal(rows.length,1,engine+' unique source article');
  assert.equal(metrics.inserts,1,engine+' one INSERT');
  assert.equal(metrics.appends,1,engine+' one UPDATE');
+ assert.equal(typeof rows[0].UpdateTime,'string',
+  engine+' append must bind timestamp as ISO text');
+ assert.match(rows[0].UpdateTime,/^\d{4}-\d{2}-\d{2}T/,
+  engine+' append timestamp is ISO 8601');
  assert.equal(rows[0].site,'mcp',engine+' private chat site');
  assert.equal(rows[0].statics,false,engine+' flags remain private');
  assert.equal(rows[0].search,false,engine+' public search disabled');
