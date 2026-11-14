@@ -728,12 +728,22 @@ export default function Culture(){
     }
   };
   const currentStructurePeriod=primaryPeriods.find(item=>periodKey(item)===activeStructureKey)||null;
-  const currentStructureStart=activeStructureKey==='all'?DEFAULT_YEAR_WINDOW.startDate
+  // The "all eras" camera includes actual saved history, not just the
+  // latest year, so valid older time ranges cannot render off-screen.
+  const structureDateBounds=useMemo(()=>{
+    const dates=timelineItems.flatMap(item=>[item?.start_date,item?.end_date])
+      .map(value=>String(value||'').slice(0,10))
+      .filter(value=>/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(value)).sort();
+    const start=dates[0]||DEFAULT_YEAR_WINDOW.startDate;
+    const last=dates.at(-1)||DEFAULT_YEAR_WINDOW.endDate;
+    return {start,end:last>start?last:nextRiverDay(start)};
+  },[timelineItems]);
+  const currentStructureStart=activeStructureKey==='all'?structureDateBounds.start
     :String(currentStructurePeriod?.start_date||'').slice(0,10);
   // A trace stops at its final real anchor; no virtual today endpoint.
   const lastAnchorDate=String(structurePreference.lastAnchor?.start_date||'').slice(0,10);
   const savedTraceEnd=String(currentStructurePeriod?.end_date||'').slice(0,10);
-  const currentStructureEnd=activeStructureKey==='all'?DEFAULT_YEAR_WINDOW.endDate
+  const currentStructureEnd=activeStructureKey==='all'?structureDateBounds.end
     :structureWindowKey===''&&lastAnchorDate>savedTraceEnd?lastAnchorDate:savedTraceEnd;
   // Keep the first river grouped by era UID. A selected trace changes
   // only the camera viewport, never the saved anchor/event/trace graph.
@@ -1479,6 +1489,9 @@ export default function Culture(){
                         </select>
                   </label>
                 </div>
+                {eraRiver.groups.length&&!eraRiver.items.length?<p className='scope-status' role='status'>
+                  時代與定錨紀錄已載入，但沒有有效日期可繪製；請檢查時代、期間與定錨點的連結。
+                </p>:null}
                 {eraRiver.groups.length?<CultureTimeline
                   items={eraRiver.items}
                   extraGroups={eraRiver.groups}

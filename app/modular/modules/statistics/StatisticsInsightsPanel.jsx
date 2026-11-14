@@ -23,7 +23,7 @@ const insightText=insight=>{
 
 export default function StatisticsInsightsPanel({
   rows=[],range={},title='總量趨勢洞察',zoomLevel=0,
-  onZoomLevelChange=null,idPrefix='scope-stat'
+  onZoomLevelChange=null,idPrefix='scope-stat',showMethodologyNote=true
 }){
   // The current/partial bucket is visible on the chart but does not distort
   // PELT segmentation, median, minima or extrema.
@@ -155,11 +155,11 @@ export default function StatisticsInsightsPanel({
         </div>
       </div>
     </div>:null}
-    <p className="scope-status" role="note">
+    {showMethodologyNote?<p className="scope-status" role="note">
       PELT 偵測的是分布改變，不推測原因；沒有明確切點時不會虛構趨勢。
       {hasPartial?' 目前尚未結束的時段會顯示在曲線，但不納入峰谷、平均及 PELT 比較。':''}
       統計不載入來源分類、文章本文或多媒體。
-    </p>
+    </p>:null}
     </aside>
   </div>;
 }

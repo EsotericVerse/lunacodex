@@ -105,7 +105,24 @@ export function buildEraRiver(source=[],expandedEraIds=[],{editorOnly=false}={})
     groups.push({id:groupId,label:text(trace.title)||'時代 '+id,
       collapsible:true,expanded:isExpanded,order:traceIndex*10000,
       className:'scope-time-trace-parent'});
-    const traceAnchors=editorOnly?[]:datedAnchors.filter(anchor=>withinTrace(anchor,trace));
+    // Always paint real era ranges on the parent lane. A collapsed era
+    // previously produced a group without any vis-timeline items.
+    const spans=list(trace.ranges).length?trace.ranges:[trace];
+    for(const [segment,range] of spans.entries()){
+      const from=text(range?.start_date).slice(0,10);
+      const until=text(range?.end_date||range?.start_date).slice(0,10);
+      if(!validDate(from))continue;
+      const hasValidEnd=validDate(until)&&until>from&&!range?.invalid;
+      items.push({id:groupId+':era:'+segment,
+        uid:id,scope_id:scope,entry_type:'era',
+        group_key:groupId,group_label:trace.title||'時代',
+        group_order:traceIndex*10000,start_date:from,
+        ...(hasValidEnd?{end_date:until}:{}),
+        title:trace.title||'時代',
+        display_label:range?.point?'●':'',
+        ...(range?.invalid?{class_name:'scope-time-trace-broken'}:{})});
+    }
+    const traceAnchors=datedAnchors.filter(anchor=>withinTrace(anchor,trace));
     for(const anchor of traceAnchors)assigned.add(scope+':'+text(anchor.uid));
     if(!isExpanded)continue;
     const anchorGroup='trace-anchors:'+scope+':'+id;
@@ -182,13 +199,13 @@ export function buildEraRiver(source=[],expandedEraIds=[],{editorOnly=false}={})
     const isExpanded=expanded.has(groupId);
     groups.push({id:groupId,label,order:traces.length*10000+index+1,
       collapsible:true,expanded:isExpanded,className:'scope-time-anchor-parent'});
-    if(!isExpanded)continue;
+    // Keep standalone DateAnchors visible even before expanding the group.
     for(const anchor of unassigned.filter(row=>text(row.scope_id)===scope)){
       const uid=text(anchor.uid),title=text(anchor.title)||uid;
       items.push({id:groupId+':'+uid,uid,scope_id:scope,entry_type:'anchor',
         group_key:groupId,group_label:label,group_order:traces.length*10000+index+1,
         start_date:text(anchor.start_date).slice(0,10),
-        display_label:'●',title,
+        display_label:isExpanded?title:'●',title,
         class_name:'scope-time-original-anchor',
         description:anchor.summary||anchor.description||''});
     }
