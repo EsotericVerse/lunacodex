@@ -98,7 +98,9 @@ function simulator(){
 for(const engine of ['postgres','mysql','mssql']){
  const {db,sql,metrics,tables}=simulator();
  const namespace=engine==='postgres'?'silver':engine==='mssql'?'dbo':'';
- const store=portableShortImportStore(db,sql,{engine,namespace});
+ const phases=[];
+ const store=portableShortImportStore(db,sql,{engine,namespace,
+  onPhase:phase=>phases.push(phase)});
  const actor={authorized:true,scopeid:'lo3rwang',subject:'loc_verified_test_user'};
  const uids=['abc12XYZ','abc12XY1','abc12XY2'];
  const uidFactory=()=>uids.shift();
@@ -128,6 +130,8 @@ for(const engine of ['postgres','mysql','mssql']){
  assert.equal(rows[0].search,false,engine+' public search disabled');
  assert.equal(metrics.queries.every(q=>q.filters.some(f=>
   f.field==='site_id'&&f.operator==='in')),true,engine+' bounded lookup filter');
+ for(const stage of ['mapping','transaction','lock','lookup','insert','append'])
+  assert.ok(phases.includes(stage),engine+' import failure stage '+stage);
  const expectedLock=engine==='postgres'?'pg_advisory_xact_lock':
    engine==='mysql'?'get_lock':'tablockx';
  assert.ok(metrics.locks.some(x=>x.includes(expectedLock)),engine+' original lock preserved');

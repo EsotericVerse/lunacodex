@@ -161,8 +161,11 @@
         <div class="panel activity-panel">
           <div class="panel-topline"><span class="panel-symbol" aria-hidden="true">◷</span><div><h3>最近一次操作</h3><p>成功、失敗與時間資訊都保留可檢視。</p></div></div>
           <p id="lastAction" class="activity-text" role="status" aria-live="polite">目前沒有操作紀錄。</p>
-          <button id="diagnostics" class="button button-secondary" type="button">複製診斷紀錄 <span aria-hidden="true">↗</span></button>
-          <p class="field-hint">診斷內容僅含端點、時間、HTTP 狀態及錯誤摘要；敏感憑證會遮罩。</p>
+          <div class="diagnostics-actions">
+            <button id="diagnostics" class="button button-secondary" type="button">複製診斷紀錄 <span aria-hidden="true">↗</span></button>
+            <button id="clearDiagnostics" class="button button-ghost" type="button">清理紀錄</button>
+          </div>
+          <p class="field-hint">僅清理本機診斷紀錄與最近一次操作；不會清除待送 Queue、授權或重試設定。</p>
         </div>
       </div>
     </section>

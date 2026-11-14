@@ -244,7 +244,10 @@ async function mcpProviderRequest(method,body=null){
    await logDiagnostic('mcp.provider.error',{message:error?.message||String(error)});
    throw oauthError('LOC MCP Provider 無法連線');
   }
-  await logDiagnostic('mcp.provider.response',{action:body?.action||'status',provider:body?.provider||'',status:response.status});
+  // Routine successful status checks are noise in the diagnostics log.
+  // Keep errors and explicit Provider actions for troubleshooting.
+  if(!response.ok||method!=='GET')
+   await logDiagnostic('mcp.provider.response',{action:body?.action||'status',provider:body?.provider||'',status:response.status});
   return response;
  };
  let response=await request(token);
@@ -739,6 +742,16 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
      nextRetryAt:Number(session.locQueueRetryAfter||0),
      retryReason:session.locQueueRetryType||'',
      consecutiveFailures:Number(session.locQueueFailures||0)};
+   }
+   case 'loc-clear-diagnostics':{
+    // Local-only action from the trusted Extension settings document.
+    // Never touch the IndexedDB Queue, receipts, OAuth tokens, retry budget
+    // or application data.
+    const source=(sender?.url||sender?.documentUrl||'').split('#',1)[0];
+    if(sender?.id!==chrome.runtime.id||source!==chrome.runtime.getURL('options.html'))
+     throw Error('Only Extension settings may clear diagnostics');
+    await chrome.storage.local.remove([DIAGNOSTIC_KEY,'locLastAction']);
+    return {cleared:true};
    }
    case 'loc-diagnostics':{
     const [stored,last]=await Promise.all([

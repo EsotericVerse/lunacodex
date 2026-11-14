@@ -2,6 +2,7 @@
 // Pages backend. This is NOT a generic SQL endpoint: no caller-provided SQL,
 // relation, database alias, connection URL, or query AST is accepted.
 import {sql} from 'kysely';
+import {classifyShortImportFailure} from '../import/import-failure-code.mjs';
 import {verifyAccessTokenRequest,requestToResourceInput} from 'better-auth/oauth2';
 import {readLocAccess} from '../permissions/loc_access.mjs';
 import {loadMcpLocAccess,VerifiedLocUserInfoSchema} from './access-roles.mjs';
@@ -128,6 +129,7 @@ export async function handleNativeLocOperation(request,env={},{
     return reply({error:{message:'JSON body required'}},415);
   if(Number(request.headers.get('content-length')||0)>MAX_BYTES)
     return reply({error:{message:'Payload too large'}},413);
+  let operationKind='',importPhase='request';
   try{
     let body;
     try{body=await readBoundedJson(request.body,MAX_BYTES)}
@@ -138,6 +140,8 @@ export async function handleNativeLocOperation(request,env={},{
     if(!body||typeof body!=='object'||Array.isArray(body)||
       !KINDS.has(body.kind)||typeof body.scopeid!=='string')
       throw refusal('Unsupported LOC business operation');
+    operationKind=body.kind;
+    if(operationKind==='short-import')importPhase='identity';
     // The website exposes only short-import and the fixed-model managed
     // write. MCP business operations remain restricted to the dedicated
     // MCP hostname and their own audience.
@@ -177,12 +181,14 @@ export async function handleNativeLocOperation(request,env={},{
       .includes(body.kind);
     const externalTarget=claims.db_target&&claims.db_target!==primaryId
       ?claims.db_target:'';
+    if(operationKind==='short-import')importPhase='database';
     const selected=await database(env,control?'':externalTarget);
     if(!selected?.db||!['postgres','mysql','mssql'].includes(selected.engine))
       throw refusal('LOC native Kysely driver is not configured',503);
     // Extension imports and direct MCP operations share the same role-based
     // Gateway gate. Website editor grants retain their existing separate policy.
     // Each request performs one active api.manage lookup, never a second probe.
+    if(operationKind==='short-import')importPhase='permission';
     const permission=host===MCP_HOST
       ?await loadMcpLocAccess(selected.db,claims.email,{dialect:selected.dialect,engine:selected.engine})
       :await readLocAccess(selected.db,claims.email,{dialect:selected.dialect,engine:selected.engine,website:true});
@@ -216,10 +222,13 @@ export async function handleNativeLocOperation(request,env={},{
     }
     if(body.kind==='short-import'){
       if(selected.tableName)throw refusal('External mapped tables are read only',403);
+      importPhase='delegation';
       const actor=authorizeDelegatedShortImport(body,claims);
+      importPhase='validation';
       const receipt=await processShortImport(body.batch,actor,{
         store:portableShortImportStore(selected.db,sql,{
-          engine:selected.engine,namespace:selected.namespace})
+          engine:selected.engine,namespace:selected.namespace,
+          onPhase:phase=>{importPhase=phase;}})
       });
       return reply(receipt);
     }
@@ -332,10 +341,14 @@ export async function handleNativeLocOperation(request,env={},{
       code:profileFailure?code:(code||'UNKNOWN'),
       detail:profileFailure?undefined:String(error?.message||'').slice(0,300)
     });
+    const importCode=operationKind==='short-import'&&status>=500
+      ?classifyShortImportFailure(error):'';
     const message=profileFailure?'LOC 主要資料庫連線尚未就緒':
-      status>=500?'LOC native database operation unavailable':
+      status>=500?'LOC native database operation unavailable'+
+        (importCode?' ['+importCode+' / '+importPhase+']':''):
       String(error?.message||'LOC request denied');
     return reply({error:{message,
+      ...(importCode?{code:importCode,stage:importPhase}:{}),
       ...(profileFailure?{code,stage:'db_connection'}:{})}},
       status>=400&&status<=599?status:500);
   }

@@ -143,6 +143,17 @@ $('diagnostics').addEventListener('click',async()=>{
   notice.textContent='診斷紀錄已複製；可直接貼上提供紀錄。';
  }catch(error){notice.textContent='診斷紀錄複製失敗：'+String(error?.message||error);}
 });
+$('clearDiagnostics').addEventListener('click',async()=>{
+ const button=$('clearDiagnostics');
+ button.disabled=true;
+ try{
+  const result=await call('loc-clear-diagnostics');
+  if(result?.cleared!==true)throw Error(result?.error||'無法確認紀錄已清理');
+  $('lastAction').textContent='目前沒有操作紀錄。';
+  notice.textContent='已清理本機診斷紀錄；待送 Queue、授權與重試設定均保留。';
+ }catch(error){notice.textContent='清理紀錄失敗：'+String(error?.message||error)}
+ finally{button.disabled=false}
+});
 $('flush').addEventListener('click',async()=>{
  notice.textContent='正在送出 Queue…';
  try{
@@ -152,7 +163,7 @@ $('flush').addEventListener('click',async()=>{
  }catch(error){notice.textContent=String(error?.message||error);}
 });
 chrome.storage.onChanged?.addListener((changes,area)=>{
- if(area==='local'&&changes.locLastAction){
+ if(area==='local'&&changes.locLastAction?.newValue){
   void show().catch(error=>status.textContent=String(error?.message||error));
  }
 });
