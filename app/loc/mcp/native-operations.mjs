@@ -2,6 +2,7 @@
 // Pages backend. This is NOT a generic SQL endpoint: no caller-provided SQL,
 // relation, database alias, connection URL, or query AST is accepted.
 import {sql} from 'kysely';
+import {classifyShortImportFailure} from '../import/import-failure-code.mjs';
 import {verifyAccessTokenRequest,requestToResourceInput} from 'better-auth/oauth2';
 import {readLocAccess} from '../permissions/loc_access.mjs';
 import {loadMcpLocAccess,VerifiedLocUserInfoSchema} from './access-roles.mjs';
@@ -128,6 +129,7 @@ export async function handleNativeLocOperation(request,env={},{
     return reply({error:{message:'JSON body required'}},415);
   if(Number(request.headers.get('content-length')||0)>MAX_BYTES)
     return reply({error:{message:'Payload too large'}},413);
+  let operationKind='';
   try{
     let body;
     try{body=await readBoundedJson(request.body,MAX_BYTES)}
@@ -138,6 +140,7 @@ export async function handleNativeLocOperation(request,env={},{
     if(!body||typeof body!=='object'||Array.isArray(body)||
       !KINDS.has(body.kind)||typeof body.scopeid!=='string')
       throw refusal('Unsupported LOC business operation');
+    operationKind=body.kind;
     // The website exposes only short-import and the fixed-model managed
     // write. MCP business operations remain restricted to the dedicated
     // MCP hostname and their own audience.
@@ -332,10 +335,14 @@ export async function handleNativeLocOperation(request,env={},{
       code:profileFailure?code:(code||'UNKNOWN'),
       detail:profileFailure?undefined:String(error?.message||'').slice(0,300)
     });
+    const importCode=operationKind==='short-import'&&status>=500
+      ?classifyShortImportFailure(error):'';
     const message=profileFailure?'LOC 主要資料庫連線尚未就緒':
-      status>=500?'LOC native database operation unavailable':
+      status>=500?'LOC native database operation unavailable'+
+        (importCode?' ['+importCode+']':''):
       String(error?.message||'LOC request denied');
     return reply({error:{message,
+      ...(importCode?{code:importCode}:{}),
       ...(profileFailure?{code,stage:'db_connection'}:{})}},
       status>=400&&status<=599?status:500);
   }
