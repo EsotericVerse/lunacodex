@@ -88,15 +88,11 @@ export async function saveLocUserField(uid,field,value){
   }
   // A verified website Session owns both owner_id and profile email;
   // neither is provided by the browser. First explicit change creates the row.
-  const created=await dbAuthRelation(TABLE).insert([{[field]:normalized}]).select(COLUMNS);
-  if(!created.error){
-    if(!created.data?.[0])throw new Error('個人設定未能建立');
-    return normalizeLocUser(created.data[0]);
-  }
-  if(created.error.code!=='23505')
-    throw new Error(created.error.message||'個人設定儲存失敗');
-  // Another tab may have inserted the same owner's first row concurrently.
-  const existing=await selfRow();
-  if(!existing)throw new Error('個人設定建立衝突，請重試');
-  return saveLocUserField(existing.uid,field,normalized);
+  // Upsert uses the existing owner_id unique constraint. Two tabs racing
+  // to create preferences update only the chosen field, not the entire row.
+  const saved=checked(await dbAuthRelation(TABLE)
+    .upsert([{[field]:normalized}],{onConflict:'owner_id'})
+    .select(COLUMNS),'個人設定儲存失敗');
+  if(!saved?.[0])throw new Error('個人設定未能建立');
+  return normalizeLocUser(saved[0]);
 }
