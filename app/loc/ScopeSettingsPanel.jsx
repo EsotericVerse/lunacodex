@@ -81,7 +81,8 @@ export default function ScopeSettingsPanel({scopeId}){
     }
   }
 
-  dockActions.current={save:()=>save(),isDirty:()=>draft.theme!==savedTheme,isBusy:()=>busy||loading};
+  // Loading the current theme is not a pending database write.
+  dockActions.current={save:()=>save(),isDirty:()=>!loading&&draft.theme!==savedTheme,isBusy:()=>busy};
   return <><section className="loc-card scope-feature-card">
     <h3>選擇主題</h3>
     {loading?<p className="scope-status"><UiText id="common.loading"/></p>:null}
