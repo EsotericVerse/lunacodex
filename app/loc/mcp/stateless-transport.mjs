@@ -50,3 +50,43 @@ export async function handleStatelessMcpPost(request,dispatch){
     }});
   return dispatch(payload);
 }
+
+
+/**
+ * Streamable HTTP may respond to a POST with either JSON or SSE.
+ * Streaming is request-scoped: it carries the same JSON-RPC result, never a
+ * second authorization channel, a separate GET endpoint, or a session store.
+ * The callback is called only after the Gateway has verified the MCP role.
+ */
+export function streamMcpSseResponse(execute){
+  const encoder=new TextEncoder();
+  let canceled=false;
+  const stream=new ReadableStream({
+    start(controller){
+      // Open the response immediately; future progress messages can be emitted
+      // before the final JSON-RPC event without changing the route contract.
+      controller.enqueue(encoder.encode(': loc-mcp stream opened\n\n'));
+      Promise.resolve().then(execute).then(async reply=>{
+        const data=await reply.text();
+        if(canceled)return;
+        if(data)controller.enqueue(encoder.encode('data: '+data.replace(/\n/g,'\ndata: ')+'\n\n'));
+        controller.close();
+      }).catch(()=>{
+        if(canceled)return;
+        controller.enqueue(encoder.encode('data: '+JSON.stringify(
+          rpcError(null,-32603,'LOC MCP operation unavailable'))+'\n\n'));
+        controller.close();
+      });
+    },
+    cancel(){canceled=true;}
+  });
+  return new Response(stream,{status:200,headers:{
+    'content-type':'text/event-stream; charset=utf-8',
+    'cache-control':'no-cache, no-transform',
+    'x-content-type-options':'nosniff',
+    'x-accel-buffering':'no',
+    'access-control-allow-origin':'*',
+    'access-control-allow-headers':'Authorization, Content-Type, Accept, MCP-Protocol-Version, MCP-Session-Id',
+    'access-control-allow-methods':'GET, POST, OPTIONS'
+  }});
+}
