@@ -58,7 +58,7 @@ export async function handleStatelessMcpPost(request,dispatch){
  * second authorization channel, a separate GET endpoint, or a session store.
  * The callback is called only after the Gateway has verified the MCP role.
  */
-export function streamMcpSseResponse(execute){
+export function streamMcpSseResponse(execute,requestId=null){
   const encoder=new TextEncoder();
   let canceled=false;
   const stream=new ReadableStream({
@@ -74,7 +74,7 @@ export function streamMcpSseResponse(execute){
       }).catch(()=>{
         if(canceled)return;
         controller.enqueue(encoder.encode('data: '+JSON.stringify(
-          rpcError(null,-32603,'LOC MCP operation unavailable'))+'\n\n'));
+          rpcError(requestId,-32603,'LOC MCP operation unavailable'))+'\n\n'));
         controller.close();
       });
     },
