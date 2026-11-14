@@ -1,6 +1,6 @@
 import {parseImportCreatedTime} from './import-batch.mjs';
 import {allocateAnchorUid} from './uid.js';
-import {planImportDateTitleDelta} from './import-point-date-immer.mjs';
+import {planImportDateTitleDelta,planImportDateCreate} from './import-point-date-immer.mjs';
 
 // Importing a known check-in creates its calendar-day Time anchor independently
 // from the spatial anchor's full-precision visit timestamps.
@@ -159,12 +159,9 @@ export async function prepareImportTimeAnchors(records,{
     for(let attempt=0;attempt<4;attempt++){
       rows=chunk.map(date=>{
         const uid=allocateAnchorUid(occupied);occupied.add(uid);
-        return {uid,type:'date',
-        title:entryByDate.get(date).title,
-        description:entryByDate.get(date).description,
-        ...(entryByDate.get(date).createtime?{createtime:entryByDate.get(date).createtime}:{}),
-        attr:{date},invisible:false
-      };});
+        const entry=entryByDate.get(date);
+        return planImportDateCreate({uid,date,title:entry.title,
+          description:entry.description,createtime:entry.createtime}).row;});
       ({data,error}=await relation(table).insert(rows).select('uid,type,attr'));
       if(error?.code==='23505'&&attempt<3)continue;
       break;
