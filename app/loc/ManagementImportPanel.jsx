@@ -283,14 +283,35 @@ async function readImportMediaCandidates(scopeId,anchor,uids=[],urls=[],message=
     const rows=await readExistingByIds(anchor,MEDIA_ANCHOR_COLUMNS,'uid',ids,message);
     return rows.filter(row=>ANCHOR_TYPE_GROUPS.media.includes(row.type)).map(mediaAnchorProjection);
   }
-  const out=new Map();
+  const out=new Map(),pageSize=200;
   for(let offset=0;offset<Math.max(ids.length,links.length);offset+=200){
-    const {data,error}=await dbAuthClient.schema('silver').managedAction(
-      'media_anchor_candidates',{p_scope_id:scopeId,
-        p_uids:ids.slice(offset,offset+200),p_urls:links.slice(offset,offset+200)});
-    if(error)throw new Error(error.message||message);
-    if(!Array.isArray(data))throw new Error('MediaAnchor lookup response invalid');
-    for(const row of data)out.set(String(row.uid),row);
+    const uidBatch=ids.slice(offset,offset+200);
+    const urlBatch=links.slice(offset,offset+200);
+    let afterUid=null;
+    const seenBatch=new Set();
+    for(;;){
+      const {data,error}=await dbAuthClient.schema('silver').managedAction(
+        'media_anchor_candidates',{p_scope_id:scopeId,p_uids:uidBatch,
+          p_urls:urlBatch,p_after_uid:afterUid,p_limit:pageSize});
+      if(error)throw new Error(error.message||message);
+      if(!Array.isArray(data)||data.length>pageSize)
+        throw new Error('MediaAnchor lookup response invalid');
+      for(const row of data){
+        const uid=String(row?.uid||'');
+        if(!/^[A-Za-z0-9]{8}$/.test(uid)||seenBatch.has(uid)||
+            !ANCHOR_TYPE_GROUPS.media.includes(row?.type))
+          throw new Error('MediaAnchor lookup contains duplicate or invalid UID/type');
+        seenBatch.add(uid);
+        const previous=out.get(uid);
+        if(previous&&JSON.stringify(previous)!==JSON.stringify(row))
+          throw new Error('MediaAnchor candidate changed across import pages; retry safely');
+        out.set(uid,row);
+        afterUid=uid;
+      }
+      // A full page is not the end: read every collision UID, regardless of
+      // how many media records share the same URL and persisted ZModel type.
+      if(data.length<pageSize)break;
+    }
   }
   return [...out.values()];
 }
