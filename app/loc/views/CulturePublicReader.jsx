@@ -422,7 +422,7 @@ export default function CulturePublicReader(){
           }}/>:null}
         {!loading&&!error&&!anchors.length?<p className='scope-status'>目前沒有時間定錨。</p>:null}
       </section>
-      <section className='scope-card scope-culture-classification-river'>
+      <section className='scope-card scope-culture-classification-river scope-public-culture-panel'>
         <div className='scope-culture-river-toolbar'><h3>文章密度</h3></div>
         <div className='scope-culture-river-selectors'>
           <label>時代／時期範圍
@@ -454,7 +454,7 @@ export default function CulturePublicReader(){
         {keywordError?<p className='scope-status scope-error' role='alert'>{keywordError}</p>:null}
         <div className='scope-culture-double-river scope-public-culture-river'>
         <CultureTimeline items={densityRiver.items} extraGroups={densityRiver.groups}
-          focus={NO_FOCUS} mode='source' heightVariant='double' compactSourceAxis
+          focus={NO_FOCUS} mode='source' heightVariant='double' naturalSourceHeight
           windowStart={rangeStart} windowEnd={rangeEnd} fixedMin={rangeStart} fixedMax={rangeEnd}
           anchorInsight={selectedSuggestion?{
             date:selectedSuggestion.date,before:selectedSuggestion.beforeCount,

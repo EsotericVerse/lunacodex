@@ -170,9 +170,9 @@ export default function CultureTimeline({
   hiddenDates=EMPTY_HIDDEN_DATES,
   extraGroups=EMPTY_EXTRA_GROUPS,
   heightVariant='default',
-  // Only the author public Culture density river uses a tighter lane/axis
-  // height. Other Timeline consumers keep their established measurements.
-  compactSourceAxis=false,
+  // The public Culture source river uses the library's natural content height
+  // with a viewport cap; group count must never determine its container size.
+  naturalSourceHeight=false,
   onGroupToggle=null,
   onGroupSelect=null,
   anchorInsight=null,
@@ -233,16 +233,19 @@ export default function CultureTimeline({
   const compactGroupCount=Math.max(1,groupCount||rows.length);
   // The double river must shrink after zero-count groups disappear.
   // A fixed 320px floor previously left a dark, empty band on 1–2 lanes.
-  const timelineMinHeight=heightVariant==='double'
-    ?compactSourceAxis
-      ?Math.max(192,60+compactGroupCount*55)
-      :Math.max(186,110+compactGroupCount*58)
+  // Public Culture must grow in normal document flow: collapsed groups use
+  // their natural height, and opening children adds real rows. The date axis
+  // follows the last row. No group-count sizing or internal scroll cap.
+  // Other Timeline consumers retain their established sizing behavior.
+  const timelineMinHeight=naturalSourceHeight?null:heightVariant==='double'
+    ?Math.max(186,110+compactGroupCount*58)
     :Math.max(180,96+compactGroupCount*46);
-  const timelineMaxHeight=heightVariant==='double'
-    ?compactSourceAxis
-      ?Math.max(timelineMinHeight+48,92+compactGroupCount*68)
-      :Math.max(timelineMinHeight+28,148+compactGroupCount*72)
+  const timelineMaxHeight=naturalSourceHeight?null:heightVariant==='double'
+    ?Math.max(timelineMinHeight+28,148+compactGroupCount*72)
     :Math.max(360,Math.min(760,180+compactGroupCount*92));
+  const timelineHeightOptions=naturalSourceHeight
+    ?{}
+    :{minHeight:timelineMinHeight+'px',maxHeight:timelineMaxHeight+'px'};
 
   useEffect(()=>{onSelectRef.current=onSelect},[onSelect]);
   useEffect(()=>{onGroupToggleRef.current=onGroupToggle},[onGroupToggle]);
@@ -296,12 +299,11 @@ export default function CultureTimeline({
         ...(defaultTimeUnit==='auto'?{}:{timeAxis:{scale:defaultTimeUnit,step:1}}),
         ...(hasSelectedWindow?{start:priorWindow?.start||windowStart,end:priorWindow?.end||windowEnd}:{}),
         autoResize:true,
-        minHeight:timelineMinHeight+'px',
-        maxHeight:timelineMaxHeight+'px',
+        ...timelineHeightOptions,
         // Explicitly retain a labeled date axis at the bottom of the
         // public density chart; its lane height must leave room for it.
-        ...(compactSourceAxis?{orientation:{axis:'bottom'},showMinorLabels:true,showMajorLabels:true}:{}),
-        verticalScroll:true,
+        ...(naturalSourceHeight?{orientation:{axis:'bottom'},showMinorLabels:true,showMajorLabels:true}:{}),
+        verticalScroll:!naturalSourceHeight,
         groupOrder:'order',
         locale:timelineLocale,
         locales:{
@@ -417,7 +419,7 @@ export default function CultureTimeline({
     hasTimeKinds,preserveTimelineInstance?null:timelineMinHeight,
     preserveTimelineInstance?null:timelineMaxHeight,
     Boolean(rows.length||editable||extraGroups.length),
-    heightVariant,mode,compactSourceAxis,windowStart,windowEnd,boundaryStart,boundaryEnd,fixedMin,fixedMax,
+    heightVariant,mode,naturalSourceHeight,windowStart,windowEnd,boundaryStart,boundaryEnd,fixedMin,fixedMax,
     preserveTimelineInstance?null:hiddenDates,editable,locale,labels,timelineLocale,defaultTimeUnit]);
 
   // When a group opens, mutate existing datasets instead of destroying and
@@ -472,16 +474,15 @@ export default function CultureTimeline({
         data.update(nextRows);
         timeline.redraw();
       }
-      // An async source-group insertion can leave the axis at the previous
-      // height when redraw preceded setOptions. Apply new bounds first, then
-      // reflow the bottom date axis once for this public reader.
-      timeline.setOptions({minHeight:timelineMinHeight+'px',maxHeight:timelineMaxHeight+'px'});
-      if(compactSourceAxis)timeline.redraw();
+      // The public river's geometry is owned by vis-timeline itself.
+      // Existing dataset mutations above already trigger redraw as needed.
+      if(!naturalSourceHeight)
+        timeline.setOptions({minHeight:timelineMinHeight+'px',maxHeight:timelineMaxHeight+'px'});
     }catch(error){
       console.error('Culture river in-place group update failed',error);
       setChartError(true);
     }
-  },[rows,extraGroups,hasTimeKinds,editable,heightVariant,compactSourceAxis,preserveTimelineInstance,ready,timelineMinHeight,timelineMaxHeight,labels]);
+  },[rows,extraGroups,hasTimeKinds,editable,heightVariant,naturalSourceHeight,preserveTimelineInstance,ready,timelineMinHeight,timelineMaxHeight,labels]);
 
   // The root total bars arrive after the initial chart has mounted.
   // Repaint the existing chart on the first animation frame after its data update.
@@ -596,7 +597,7 @@ export default function CultureTimeline({
     </label>:null}
     {chartError?<p className='scope-status' role='alert'><FieldText text="河道已有統計資料，但圖表沒有正常繪製；以下保留日期與筆數清單。"/></p>:null}
     <div className='scope-river-reveal-shell'>
-      <div ref={containerRef} data-anchor-gesture={onTimeClick?'double-tap':'none'} className='scope-period-timeline' role='region' aria-label={t(mode==='overview'?'所有時期與定錨點時間長河':'時間長河')} style={{'--scope-period-timeline-min-height':timelineMinHeight+'px'}}/>
+      <div ref={containerRef} data-anchor-gesture={onTimeClick?'double-tap':'none'} className='scope-period-timeline' role='region' aria-label={t(mode==='overview'?'所有時期與定錨點時間長河':'時間長河')} style={naturalSourceHeight?undefined:{'--scope-period-timeline-min-height':timelineMinHeight+'px'}}/>
       {/* An independent curtain reveals the river from left to right after
           vis-timeline is ready. Its geometry, gestures and redraw remain intact. */}
       {ready&&!reduceMotion?<motion.div className='scope-river-unfold-curtain'
