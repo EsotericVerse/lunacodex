@@ -277,10 +277,19 @@ export function useAsyncResource(keyOrOptions,fetcherArg,optionsArg={}){
     return()=>{mountedRef.current=false;unregister();};
   },[serializedKey,active,load]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The render preceding useEffect must not expose the previous Era's
+  // payload while React is scheduling the new query. Loading replaces that
+  // dynamic region immediately, before the old chart can paint again.
+  const stateMatchesKey=previousResourceRef.current.key===serializedKey&&
+    previousResourceRef.current.active===active;
+  const visibleState=stateMatchesKey?state:{
+    data:undefined,status:active?'pending':'idle',error:null
+  };
   return {
-    data:state.data,error:state.error,status:state.status,
-    isPending:state.status==='pending',isLoading:state.status==='pending',
-    isFetching,isSuccess:state.status==='success',isError:state.status==='error',
+    data:visibleState.data,error:visibleState.error,status:visibleState.status,
+    isPending:visibleState.status==='pending',isLoading:visibleState.status==='pending',
+    isFetching:isFetching&&stateMatchesKey,
+    isSuccess:visibleState.status==='success',isError:visibleState.status==='error',
     refetch:async()=>load(),
     // The one remaining imperative setter for the local-record writer. It
     // updates live state directly; nothing is persisted to a parallel cache.
@@ -313,6 +322,7 @@ export function useAsyncInfiniteResource({
   const stableInitialParam=useMemo(()=>JSON.parse(initialParamKey),[initialParamKey]);
   const active=Boolean(enabled)&&typeof queryFn==='function';
   const [pages,setPages]=useState([]);
+  const [pagesKey,setPagesKey]=useState(serializedKey);
   const [pageParams,setPageParams]=useState([]);
   const [status,setStatus]=useState(active?'pending':'idle');
   const [error,setError]=useState(null);
@@ -358,6 +368,7 @@ export function useAsyncInfiniteResource({
     // a history of pages when the user is viewing only the current 100.
     requestEpoch.current++;
     nextParamRef.current=undefined;
+    setPagesKey(serializedKey);
     setPages([]);setPageParams([]);setNextParam(undefined);
     setError(null);setStatus(active?'pending':'idle');
     setIsFetching(false);setIsFetchingNextPage(false);
@@ -373,10 +384,12 @@ export function useAsyncInfiniteResource({
     return()=>{mountedRef.current=false;requestEpoch.current++;unregister();};
   },[serializedKey,active,loadFirst]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const hasNextPage=nextParam!==undefined;
+  const visiblePage=pagesKey===serializedKey&&active;
+  const visibleStatus=visiblePage?status:active?'pending':'idle';
+  const hasNextPage=visiblePage&&nextParam!==undefined;
   return {
-    data:{pages,pageParams},
-    isPending:status==='pending',isLoading:status==='pending',isFetching,
+    data:{pages:visiblePage?pages:[],pageParams:visiblePage?pageParams:[]},
+    isPending:visibleStatus==='pending',isLoading:visibleStatus==='pending',isFetching,
     isFetchingNextPage,isSuccess:status==='success',isError:status==='error',error,
     hasNextPage,
     fetchNextPage:async()=>{
