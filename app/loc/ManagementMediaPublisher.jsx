@@ -27,7 +27,7 @@ function mediaIso(value){
   return Number.isNaN(date.getTime())?null:date.toISOString();
 }
 
-// 新增多媒體 belongs with publishing content (it creates a Galaxy Media
+// 新增多媒體 belongs with publishing content (it creates a MediaAnchor
 // record the same way publishing an article creates a Galaxy record), not
 // with 資料匯入 (batch/file import of existing external data).
 export default function ManagementMediaPublisher({scopeId,dockScopeId=scopeId,globalAdmin=false}){
