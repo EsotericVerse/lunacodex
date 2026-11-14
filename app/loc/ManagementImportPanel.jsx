@@ -8,11 +8,11 @@ import importUIZh from '../i18n/sections/uiExtra.importUI.zh_tw.js';
 registerDefaultSection('management',managementZh);
 registerDefaultSection('uiExtra.importUI',importUIZh);
 
-import {useDeferredValue,useEffect,useMemo,useRef,useState,useSyncExternalStore} from 'react';
+import {useDeferredValue,useMemo,useRef,useState,useSyncExternalStore} from 'react';
 import {refreshScopeSearchSummary} from './scope-search-summary.mjs';
 import {insertRows,insertImportRows,dbAuthRelation,dbAuthClient,updateImportRows} from './db-client.mjs';
 import {useAccount} from './use-account';
-import ActivityMotion from '../modular/ActivityMotion';
+import FlowProgress from '../modular/FlowProgress';
 import {useAsyncResource,useResourceCache} from '../../zenstack/client-queries';
 import {canonicalImportSourceName,inferImportSourceFromFilename} from './source-name.mjs';
 import {Capacitor} from '@capacitor/core';
@@ -37,7 +37,7 @@ import {reconcileExistingImportAnchors} from './reconcile-import-anchors.mjs';
 import {extractImportCoordinates,importGeoKey,importMapUrlCoordinates} from './import-geocoordinates.mjs';
 import {isPublicArchiveRecord,filterStandalonePublicRows,assertStandaloneImportDestination} from './archive-import-safety.mjs';
 import {createArchiveEvidenceCollector,prepareArchiveMedia,isArchiveMediaUrl,auditArchiveUrlAttributes} from './archive-media-evidence.mjs';
-import {ARCHIVE_MAX_BYTES,IMPORT_FIELD_ALIASES,UNIVERSAL_IMPORT_ACCEPT,mappedImportValue,normalizeImportMedia,parseImportCreatedTime,extractImportCreatedAt,writeImportBatches,createImportBatchSizer,estimateImportMinutes,estimateImportStageMinutes} from './import-batch.mjs';
+import {ARCHIVE_MAX_BYTES,IMPORT_FIELD_ALIASES,UNIVERSAL_IMPORT_ACCEPT,mappedImportValue,normalizeImportMedia,parseImportCreatedTime,extractImportCreatedAt,writeImportBatches,createImportBatchSizer} from './import-batch.mjs';
 import {MAX_ROWS,urlSafeInBatches} from './query-batch-size.mjs';
 import {hasIrrecoverableEncoding,isPureUrlContent,normalizeGalaxyContent,normalizeRelationIds,repairMojibakeText,resolveGalaxyTitle} from './content-policy';
 import {galaxyAble} from './galaxy-able.mjs';
@@ -580,12 +580,6 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   const [summaryRefreshing,setSummaryRefreshing]=useState(false);
   const [summaryMessage,setSummaryMessage]=useState('');
   const [summaryError,setSummaryError]=useState(false);
-  const [progressTick,setProgressTick]=useState(0);
-  useEffect(()=>{
-    if(!busy)return undefined;
-    const timer=window.setInterval(()=>setProgressTick(tick=>tick+1),5000);
-    return ()=>window.clearInterval(timer);
-  },[busy]);
   const suggested=useMemo(()=>inferImportSourceFromFilename(fileName),[fileName]);
   const deferredSource=useDeferredValue(source);
   const analysisCurrent=deferredSource===source;
@@ -620,15 +614,6 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   const unidentifiedUndatedCount=useMemo(()=>analyzed.valid.filter(row=>
     !String(row.site_id||'').trim()&&
     !Number.isFinite(Date.parse(String(row.createtime||'')))).length,[analyzed.valid]);
-  const importEstimate=useMemo(()=>{
-    const attachedMedia=analyzed.normalized.reduce((count,item)=>count+(item.mediaRecords?.length||0),0);
-    const media=analyzed.mediaOnly.length+attachedMedia+eligibleArchiveMediaPlan.media.length;
-    return estimateImportMinutes({articles:analyzed.valid.length,media});
-  },[analyzed,eligibleArchiveMediaPlan]);
-  const stageEstimate=useMemo(()=>progress?.stageStartedAt
-    ?estimateImportStageMinutes({completed:progress.completed,total:progress.total,
-      elapsedMs:Date.now()-progress.stageStartedAt})
-    :null,[progress,progressTick]);
   const eligibleGeoRecords=useMemo(()=>geoPlaceCandidates.map(place=>({
     ...place,__importPlaceName:place.location,__importPlaceAddress:place.address,
     __importVisitTimes:(place.__importVisitTimes||[]).filter(time=>
@@ -1460,29 +1445,24 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       </button>
       <div className="scope-import-save-summary">
         {!busy&&analysisCurrent?<p className="scope-import-ready-counts">{t('uiExtra.importUI.importReadyCounts',{articles:analyzed.valid.length.toLocaleString(),media:(analyzed.mediaOnly.length+eligibleArchiveMediaPlan.media.length).toLocaleString()})}</p>:null}
-        {!busy&&analysisCurrent&&importEstimate?<p className="scope-status">{t('uiExtra.importUI.importEstimatedMinutes',importEstimate)}</p>:null}
       </div>
     </section>:null}
     {rows.length&&!busy&&!analysisCurrent?<p className="scope-status" role="status">正在更新匯入資料預覽，完成後才能開始匯入。</p>:null}
     {rows.length&&!busy&&analysisCurrent&&!analyzed.valid.length&&!analyzed.mediaOnly.length&&!eligibleArchiveMediaPlan.media.length?<p className="scope-status" role="status">目前沒有可匯入的有效紀錄，請查看上方略過原因。</p>:null}
-    {busy&&!progress?<p role="status" className="scope-status"><ActivityMotion kind="import"/> 正在處理匯入資料…</p>:null}
-    {progress?<div role="status" aria-live="polite" aria-atomic="true" className="scope-import-progress">
-      {busy?<p className="scope-status"><ActivityMotion kind="import"/> <strong>{t('uiExtra.importUI.importProcessingWait')}</strong></p>:null}
-      <p><strong>{progress.stage}</strong></p>
-      {progress.percent===null?<progress max="100" aria-label={progress.stage+'，處理中'}/>:
-        <progress value={progress.percent} max="100" aria-label={progress.stage+'，已完成 '+progress.percent+'%'}/>}
-      {progress.total>0?<p className="scope-status">已處理 {Number(progress.completed).toLocaleString()} / {Number(progress.total).toLocaleString()}（{progress.percent}%）</p>:
-        <p className="scope-status">已處理 {Number(progress.completed||0).toLocaleString()} 項{progress.detail?'；'+progress.detail:'；總量仍在確認'}。</p>}
-      {progress.total>0&&progress.detail?<p className="scope-status">{progress.detail}</p>:null}
-      {stageEstimate?<p className="scope-import-stage-estimate">{stageEstimate.underMinute
-        ?t('uiExtra.importUI.importStageLessThanMinute')
-        :t('uiExtra.importUI.importStageRemainingMinutes',{minutes:stageEstimate.minutes})}</p>:null}
-    </div>:null}
+    {busy?<FlowProgress kind="import" stage={progress?.stage||'準備匯入資料'}
+      completed={progress?.completed||0} total={progress?.total||0}
+      detail={progress?.detail||''}/>:null}
     {/* Rendered right under the import button/progress area, not after every
         intermediate ZIP/archive detail section below — the user is watching
         here, and a result (success, "no changes", or an error like the
         ambiguous-duplicate abort) buried past a long ZIP summary goes unseen. */}
-    {status&&(!busy||!progress)?<p className="scope-status scope-import-live-status" role="status">{status}</p>:null}
+    {status&&!busy?<div className="loc-work-status" role={status.startsWith('匯入在「')?'alert':'status'}>
+      <strong>{status.startsWith('匯入在「')?'匯入中斷，請查看原因':'匯入狀態已更新'}</strong>
+      <details className="loc-work-subdetails">
+        <summary>查看完整結果與處理紀錄</summary>
+        <p className="scope-status scope-import-live-status">{status}</p>
+      </details>
+    </div>:null}
     {!nativeLocal&&scopeId!=='loc'?<div className="scope-import-summary-refresh">
       <button type="button" className="loc-button" disabled={busy||summaryRefreshing}
         onClick={refreshImportedSearchSummary}>
@@ -1499,7 +1479,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         </button>
       </div>
     </details>:null}
-    {archiveDetection?<section className="scope-import-preview" aria-label={t('uiExtra.importUI.zipDetected')}>
+    {archiveDetection?<details className="scope-import-preview loc-work-disclosure" aria-label={t('uiExtra.importUI.zipDetected')}>
+      <summary>{t('uiExtra.importUI.zipDetected')} · {archiveDetection.sources.map(kind=>ZIP_SOURCE_NAMES[kind]||kind).join(' / ')||t('uiExtra.importUI.zipUnknown')}</summary>
       <dl className="scope-import-facts">
         <div><dt>{t('uiExtra.importUI.zipDetected')}</dt><dd>{archiveDetection.sources.map(kind=>ZIP_SOURCE_NAMES[kind]||kind).join(' / ')||t('uiExtra.importUI.zipUnknown')}</dd></div>
         <div><dt>{t('uiExtra.importUI.zipConfidence')}</dt><dd>{t(archiveDetection.confidence===3?'uiExtra.importUI.zipVerified':archiveDetection.confidence?'uiExtra.importUI.zipPossible':'uiExtra.importUI.zipUnknown')}</dd></div>
@@ -1533,25 +1514,34 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         <p>{t('uiExtra.importUI.zipAuditCaveat')}</p>
       </details>:null}
       <p className="scope-status">{t('uiExtra.importUI.zipReadOnly')}</p>
-    </section>:null}
-    {archiveDetection?.fileInventory?<p className="scope-status" role="status">
+    </details>:null}
+    {archiveDetection?.fileInventory||archiveSummary?<details className="loc-work-disclosure loc-work-audit">
+      <summary>檔案掃描與對帳明細</summary>
+    {archiveDetection?.fileInventory?<p className="scope-status">
       ZIP 完整清點：{archiveDetection.fileInventory.allFiles.toLocaleString()} 個檔案，其中 JSON {archiveDetection.fileInventory.jsonFiles.toLocaleString()} 個（私人對話候選 JSON {archiveDetection.fileInventory.privateJsonFiles.toLocaleString()} 個）。前面的資料結構辨識是抽樣，不代表只掃描這些檔案。
     </p>:null}
-    {archiveSummary?<p className="scope-status" role="status">
+    {archiveSummary?<p className="scope-status">
       JSON 核對：共 {archiveSummary.jsonFilesSeen.toLocaleString()} 個；完成解析 {archiveSummary.jsonFilesParsed.toLocaleString()}、私人對話排除 {archiveSummary.jsonFilesPrivate.toLocaleString()}、格式未辨識 {archiveSummary.jsonFilesUnrecognized.toLocaleString()}、檔案過大 {archiveSummary.jsonFilesOversize.toLocaleString()}、其他不支援 {archiveSummary.jsonFilesUnsupported.toLocaleString()}。
       {archiveDetection?.fileInventory&&archiveDetection.fileInventory.jsonFiles!==archiveSummary.jsonFilesSeen?' ZIP 清點與解析掃描的 JSON 總數不一致，請先核對來源檔案。':''}
       {archiveSummary.jsonFilesSeen!==archiveSummary.jsonFilesParsed+archiveSummary.jsonFilesPrivate+archiveSummary.jsonFilesUnrecognized+archiveSummary.jsonFilesOversize+archiveSummary.jsonFilesUnsupported?' JSON 數量尚未完全對帳，請勿視為完整匯入。':''}
       原始紀錄 {archiveSummary.totalRows.toLocaleString()} 筆，解析接受 {archiveSummary.acceptedRows.toLocaleString()} 筆，解析拒絕 {archiveSummary.rejectedRows.toLocaleString()} 筆；解析接受不等於最終寫入成功。
     </p>:null}
-    {archiveSummary?.urlAudit?<p className="scope-status" role="status">
+    {archiveSummary?.urlAudit?<p className="scope-status">
       原始 JSON 巢狀 url 屬性核對：總計 {archiveSummary.urlAudit.total.toLocaleString()} 個；
       文章候選 {archiveSummary.urlAudit.article.toLocaleString()}、媒體／附件 {archiveSummary.urlAudit.media.toLocaleString()}、
       地點 {archiveSummary.urlAudit.place.toLocaleString()}、其他 {archiveSummary.urlAudit.other.toLocaleString()}。
       這是來源欄位出現次數，不等於已保存的公開 URL。
       {archiveSummary.urlAudit.truncated?' 有 '+archiveSummary.urlAudit.truncated.toLocaleString()+' 筆超過掃描上限；數量為下限。':''}
     </p>:null}
-    {archiveSummary?<p className="scope-status" role="status">文章原始網址 {Number(archiveSummary.articleWithUrl||0).toLocaleString()}／{rows.length.toLocaleString()} 篇；未取得網址的文章不會以 ZIP uri、媒體連結或來源 ID 偽造文章 URL。</p>:null}
-    {archiveSummary?<p className="scope-status" role="status">已清點 {archiveSummary.mediaFiles.toLocaleString()} 個 ZIP 媒體檔；符合文章關聯的媒體候選 {archiveSummary.mediaImportable.toLocaleString()} 筆（有公開網址 {archiveSummary.mediaWithUrl.toLocaleString()} 筆、無公開網址但已確認 ZIP 檔案 {archiveSummary.mediaZipLinked.toLocaleString()} 筆），未匹配或不支援的 ZIP 媒體約 {archiveSummary.mediaZipNotLinked.toLocaleString()} 筆。依目前時間範圍可建立 {eligibleArchiveMediaPlan.media.length.toLocaleString()} 筆媒體紀錄。僅 ZIP 附件會建立 UID 及文章 media_link，URL 保留空值；不會上傳圖片或影片檔案，也不會用 ZIP 路徑冒充播放網址。</p>:null}
+    {archiveSummary?<p className="scope-status">文章原始網址 {Number(archiveSummary.articleWithUrl||0).toLocaleString()}／{rows.length.toLocaleString()} 篇；未取得網址的文章不會以 ZIP uri、媒體連結或來源 ID 偽造文章 URL。</p>:null}
+    {archiveSummary?<p className="scope-status">已清點 {archiveSummary.mediaFiles.toLocaleString()} 個 ZIP 媒體檔；符合文章關聯的媒體候選 {archiveSummary.mediaImportable.toLocaleString()} 筆（有公開網址 {archiveSummary.mediaWithUrl.toLocaleString()} 筆、無公開網址但已確認 ZIP 檔案 {archiveSummary.mediaZipLinked.toLocaleString()} 筆），未匹配或不支援的 ZIP 媒體約 {archiveSummary.mediaZipNotLinked.toLocaleString()} 筆。依目前時間範圍可建立 {eligibleArchiveMediaPlan.media.length.toLocaleString()} 筆媒體紀錄。僅 ZIP 附件會建立 UID 及文章 media_link，URL 保留空值；不會上傳圖片或影片檔案，也不會用 ZIP 路徑冒充播放網址。</p>:null}
+    </details>:null}
+    {archiveSummary&&(
+      (archiveDetection?.fileInventory&&archiveDetection.fileInventory.jsonFiles!==archiveSummary.jsonFilesSeen)||
+      archiveSummary.jsonFilesSeen!==archiveSummary.jsonFilesParsed+archiveSummary.jsonFilesPrivate+
+        archiveSummary.jsonFilesUnrecognized+archiveSummary.jsonFilesOversize+
+        archiveSummary.jsonFilesUnsupported
+    )?<p className="scope-status scope-error" role="alert">檔案數量尚未完全對帳，請展開「檔案掃描與對帳明細」核對。</p>:null}
     {archiveSummary?.geoPlaceObjects?<section className="scope-import-preview" aria-label="Facebook 地點候選">
       <p className="scope-status">Facebook 原始地點物件 {archiveSummary.geoPlaceObjects.toLocaleString()} 筆。匯入時會按原始地名建立缺少的空間定錨與日期定錨；已有的沿用，經緯度不足時不推測。獨立打卡不會轉成 Galaxy 文章。</p>
       {geoPlaceCandidates.length?<ul>{geoPlaceCandidates.slice(0,12).map((place,index)=>
@@ -1570,7 +1560,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     {missingSiteIdCount>0?<p className="scope-status" role="status">
        Facebook／Threads／Instagram 有 {missingSiteIdCount.toLocaleString()} 筆沒有原始 site_id；仍按相同網站與發文時間比對，site_id 不必填寫。
      </p>:null}
-     {rows.length?<section className="scope-import-preview" aria-label={t('uiExtra.importUI.preview')}>
+     {rows.length?<details className="scope-import-preview loc-work-disclosure" aria-label={t('uiExtra.importUI.preview')}>
+      <summary>{t('uiExtra.importUI.preview')} · {analyzed.valid.length.toLocaleString()} 篇</summary>
       <p className="scope-status"><UiText id="uiExtra.importUI.validSkipped" params={{valid:analyzed.valid.length.toLocaleString(),skipped:analyzed.invalid.length.toLocaleString()}}/> 此處為檔案解析結果，不代表本次會新增相同篇數；每次選取檔案都會重新解析，實際新增／更新／略過請以資料庫比對後的匯入結果為準。</p>
       {unidentifiedUndatedCount>0?<p className="scope-status" role="status">
         有 {unidentifiedUndatedCount.toLocaleString()} 筆同時缺少來源文章 ID 與原始發文時間。無法以目前的來源 ID／時間比對保證重匯去重；即使檔名相同也可能再次新增，請核對來源資料。
@@ -1583,7 +1574,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         </article>)}
       </div>
       {analyzed.invalid.length?<p className="scope-status"><UiText id="uiExtra.importUI.skippedReasons"/>{analyzed.invalid.slice(0,5).map(item=>item.error).join('、')}</p>:null}
-    </section>:null}
+    </details>:null}
     {pending&&!rows.length?<div className="scope-tabs"><button type="button" disabled={busy} onClick={nextFile}><UiText id="uiExtra.importUI.nextJson"/></button></div>:null}
   </div>;
 }
