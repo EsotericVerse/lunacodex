@@ -387,66 +387,50 @@
 /* Keep PELT in the existing dashboard's right-hand Insights rail.
    The four descriptive measures are compact here; the hero KPI row above
    remains the original three-column responsive Dashboard component. */
-/* Insights: two-line heading, with the PELT explanation in the unused
-   side area beside the four measures. This lifts the ranking toward the
-   chart rather than adding a full-width text row below the measures. */
+/* Place the entire dynamic PELT sentence in the upper-right blank area
+   of the Insights heading, leaving metrics and ranking on full width below. */
 [data-public-feature="statics"] .statistics-dashboard__panel--insights{
-  gap:clamp(.55rem,.9vw,.8rem);
+  gap:clamp(.45rem,.75vw,.7rem);
 }
 [data-public-feature="statics"] .statistics-dashboard__panel-heading--insights{
-  display:flex;flex-direction:column;align-items:flex-start;gap:.28rem;
+  display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);
+  align-items:start;gap:.5rem .75rem;padding-block-end:.55rem;
+}
+[data-public-feature="statics"] .statistics-dashboard__insights-heading-copy{
+  display:flex;flex-direction:column;gap:.25rem;min-width:0;
 }
 [data-public-feature="statics"] .statistics-dashboard__panel-heading--insights h3{
   font-size:clamp(1.2rem,1.6vw,1.5rem);
 }
 [data-public-feature="statics"] .statistics-dashboard__panel-heading--insights p{
-  margin:0;font-size:clamp(.98rem,1.2vw,1.15rem);
+  margin:0;font-size:clamp(.93rem,1.13vw,1.08rem);
   font-weight:700;line-height:1.25;color:var(--loc-heading);
 }
 [data-public-feature="statics"] .statistics-dashboard__panel-heading--insights p span{
-  margin-inline-start:.45rem;font-weight:600;
-  color:var(--loc-muted);
-}
-[data-public-feature="statics"] .statistics-dashboard__insight-overview{
-  display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);
-  gap:clamp(.6rem,.9vw,.9rem);align-items:start;min-width:0;
-}
-[data-public-feature="statics"] .statistics-dashboard__insight-overview .statistics-dashboard__insight-metrics{
-  gap:.3rem .5rem;
-}
-[data-public-feature="statics"] .statistics-dashboard__insight-overview .statistics-dashboard__kpi{
-  padding:.4rem 0 .5rem;gap:.2rem;
-}
-[data-public-feature="statics"] .statistics-dashboard__insight-overview .statistics-dashboard__kpi-value{
-  font-size:clamp(1.08rem,1.5vw,1.5rem);
+  margin-inline-start:.35rem;font-weight:600;color:var(--loc-muted);
 }
 [data-public-feature="statics"] .statistics-dashboard__pelt-summary{
-  display:flex;flex-direction:column;gap:.3rem;
-  min-width:0;margin:0;padding:.2rem 0 .2rem .65rem;
-  border:0;border-inline-start:1px solid var(--dashboard-stroke);
-  border-radius:0;background:transparent;
-  color:var(--loc-text);font-size:clamp(.72rem,.78vw,.81rem);
+  display:block;min-width:0;margin:0;padding:0;
+  border:0;border-radius:0;background:transparent;
+  color:var(--loc-text);font-size:clamp(.7rem,.78vw,.8rem);
   line-height:1.45;overflow-wrap:anywhere;
 }
 [data-public-feature="statics"] .statistics-dashboard__pelt-summary strong{
-  font-size:.73rem;font-weight:650;letter-spacing:.02em;color:var(--loc-muted);
+  display:inline;font-size:inherit;font-weight:700;letter-spacing:0;
+  color:var(--loc-muted);white-space:nowrap;
 }
-@media(min-width:981px) and (max-width:1100px){
-  [data-public-feature="statics"] .statistics-dashboard__insight-overview{
-    grid-template-columns:minmax(0,1fr);
-  }
+[data-public-feature="statics"] .statistics-dashboard__insight-overview{
+  display:block;min-width:0;
 }
-@media(max-width:980px){
-  [data-public-feature="statics"] .statistics-dashboard__insight-overview{
-    grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);
-  }
+[data-public-feature="statics"] .statistics-dashboard__insight-overview .statistics-dashboard__insight-metrics{
+  gap:.25rem .6rem;
+}
+[data-public-feature="statics"] .statistics-dashboard__insight-overview .statistics-dashboard__kpi{
+  padding:.35rem .2rem .5rem;gap:.2rem;
 }
 @media(max-width:600px){
-  [data-public-feature="statics"] .statistics-dashboard__insight-overview{
+  [data-public-feature="statics"] .statistics-dashboard__panel-heading--insights{
     grid-template-columns:minmax(0,1fr);
-  }
-  [data-public-feature="statics"] .statistics-dashboard__pelt-summary{
-    padding-inline-start:.55rem;
   }
 }
 [data-public-feature="statics"] .statistics-dashboard__insight-metrics{
