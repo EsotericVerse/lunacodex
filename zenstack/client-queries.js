@@ -231,38 +231,53 @@ export function useAsyncInfiniteResource({
   const fnRef=useRef(queryFn);fnRef.current=queryFn;
   const nextParamRef=useRef(undefined);
   const mountedRef=useRef(true);
+  const requestEpoch=useRef(0);
 
   const loadFirst=useCallback(async()=>{
     if(!active)return;
+    const request=++requestEpoch.current;
     setIsFetching(true);
     const generation=resourceEpoch;
     try{
       const page=await runFetch('infinite-first:'+serializedKey,
         ({signal})=>fnRef.current({pageParam:initialPageParam,signal}),keyOf(queryKey));
-      if(!mountedRef.current||generation!==resourceEpoch)return;
+      if(!mountedRef.current||generation!==resourceEpoch||
+        request!==requestEpoch.current)return;
       const next=getNextPageParam?.(page)??undefined;
       nextParamRef.current=next;
       setPages([page]);setPageParams([initialPageParam]);setNextParam(next);
       setStatus('success');setError(null);
     }catch(caught){
-      if(mountedRef.current&&generation===resourceEpoch&&!isCancelled(caught)){
+      if(mountedRef.current&&generation===resourceEpoch&&
+        request===requestEpoch.current&&!isCancelled(caught)){
         flashMessage('資料讀取失敗，請稍後再試');
         setStatus('error');setError(caught);
       }
     }finally{
-      if(mountedRef.current)setIsFetching(false);
+      if(mountedRef.current&&request===requestEpoch.current)setIsFetching(false);
     }
   },[serializedKey,active,initialPageParam]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(()=>{
     mountedRef.current=true;
-    void loadFirst();
+    // Each key/active transition is an ownership boundary: release the old
+    // page's rows and cursors *before* fetching the next page. Do not retain
+    // a history of pages when the user is viewing only the current 100.
+    requestEpoch.current++;
+    nextParamRef.current=undefined;
+    setPages([]);setPageParams([]);setNextParam(undefined);
+    setError(null);setStatus(active?'pending':'idle');
+    setIsFetching(false);setIsFetchingNextPage(false);
+    if(active)void loadFirst();
     const unregister=register({
       key:keyOf(queryKey),
       refetch:()=>{void loadFirst();},
-      setData:()=>{},remove:()=>{}
+      setData:()=>{},remove:()=>{
+        nextParamRef.current=undefined;
+        setPages([]);setPageParams([]);setNextParam(undefined);
+      }
     });
-    return()=>{mountedRef.current=false;unregister();};
+    return()=>{mountedRef.current=false;requestEpoch.current++;unregister();};
   },[serializedKey,active,loadFirst]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const hasNextPage=nextParam!==undefined;
@@ -276,14 +291,16 @@ export function useAsyncInfiniteResource({
       setIsFetchingNextPage(true);
       try{
         const param=nextParamRef.current;
-        const generation=resourceEpoch;
+        const generation=resourceEpoch,request=requestEpoch.current;
         const page=await runFetch('infinite-next:'+serializedKey+':'+JSON.stringify(param),
           ({signal})=>fnRef.current({pageParam:param,signal}),keyOf(queryKey));
-        if(!mountedRef.current||generation!==resourceEpoch)return;
+        if(!mountedRef.current||generation!==resourceEpoch||
+          request!==requestEpoch.current)return;
         const next=getNextPageParam?.(page)??undefined;
         nextParamRef.current=next;
-        setPages(previous=>[...previous,page]);
-        setPageParams(previous=>[...previous,param]);
+        // Drop the previous page instead of accumulating all older 100s.
+        setPages([page]);
+        setPageParams([param]);
         setNextParam(next);
       }catch(error){
         if(!isCancelled(error))flashMessage('資料讀取失敗，請稍後再試');
