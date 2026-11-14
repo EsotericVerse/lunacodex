@@ -1,6 +1,8 @@
 // cloudflareSsoConfig is read only by the dormant probe below; it stays
 // imported so re-enabling that block needs no other edit.
 import {createLocAuth,cloudflareSsoConfig,LOC_ISSUER,LOC_WEB} from './auth.mjs';
+import {isSuccessfulSsoCallback,sessionCookieFromResponse,
+  issueSsoProof,makeSsoProofCookie} from './sso-proof.mjs';
 import {oauthProviderAuthServerMetadata,oauthProviderOpenIdConfigMetadata,
   verifyOAuthQueryParams} from '@better-auth/oauth-provider';
 
@@ -191,8 +193,26 @@ export default {
         const to=new URL('/api/auth/jwks',LOC_ISSUER);
         return cors(request,await getAuth().handler(new Request(to,request)),true);
       }
-      if(url.pathname.startsWith('/api/auth/'))
-        return cors(request,await getAuth().handler(request),publicProtocol);
+      if(url.pathname.startsWith('/api/auth/')){
+        const auth=getAuth();
+        const answer=await auth.handler(request);
+        // Only the completed, validated OIDC callback issues SSO proof.
+        // Failed redirects and old Google sessions cannot manufacture it.
+        if(isSuccessfulSsoCallback(request,answer)){
+          const context=await auth.$context;
+          const sessionToken=sessionCookieFromResponse(answer.headers,
+            context.authCookies.sessionToken.name);
+          if(sessionToken){
+            const proof=await issueSsoProof(context.secret,sessionToken);
+            const headers=new Headers(answer.headers);
+            headers.append('Set-Cookie',makeSsoProofCookie(proof));
+            return cors(request,new Response(answer.body,{
+              status:answer.status,headers
+            }),publicProtocol);
+          }
+        }
+        return cors(request,answer,publicProtocol);
+      }
       // Official plugin validates the OAuth request signature; LOC does not
       // implement a second signature/session/PKCE verification algorithm.
       let signedQuery='';
