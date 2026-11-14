@@ -271,9 +271,21 @@ export default {
               const payload=await response.json().catch(()=>null);
               error=typeof payload?.error==='string'?payload.error:'';
             }
+            // Never expose redirect query values: they may contain auth state.
+            // Only the destination host/path are needed to diagnose HTTP 302.
+            let redirectTo=null;
+            const location=response.headers.get('location');
+            if(location){
+              try{
+                const destination=new URL(location,tokenURL);
+                redirectTo={host:destination.hostname,path:destination.pathname};
+              }catch{redirectTo={unparseable:true};}
+            }
             return {method:mode,httpStatus:response.status,
               oauthError:error.slice(0,64),elapsedMs:Date.now()-started,
-              cfRayPresent:!!response.headers.get('cf-ray')};
+              cfRayPresent:!!response.headers.get('cf-ray'),
+              cfMitigated:response.headers.get('cf-mitigated')||null,
+              redirectTo};
           }catch(error){
             return {method:mode,networkError:String(error?.name||'Error').slice(0,60),
               elapsedMs:Date.now()-started};
