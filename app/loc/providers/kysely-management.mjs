@@ -4,14 +4,16 @@ import {modelFieldsForSql,modelNameForSql,modeledPrimaryKeyColumns,
   from '../../../zenstack/model-column-guard.mjs';
 import {managedRowsIssue,managedUpdateValuesValid,managedFiltersValid,
   MANAGED_FILTER_SQL} from '../../../zenstack/sql-input-shape.mjs';
-import {assertZModelGalaxyManagedValues,assertZModelAnchorBlockManagedValues}
-  from '../../../zenstack/import-validation.mjs';
+import {assertZModelGalaxyManagedValues,assertZModelAnchorBlockManagedValues,
+  assertZModelSelectRows} from '../../../zenstack/import-validation.mjs';
 import {validateLocRegistryDomain} from './loc-domain.mjs';
 import {sql} from 'kysely';
 import {saveBlocksKysely} from './kysely-blocks.mjs';
 import {decodeRuntimeIo,encodeRuntimeIo} from '../query-batch-size.mjs';
 import {allocateAnchorUid} from '../uid.js';
-import {ANCHOR_TYPE_GROUPS,mediaAnchorProjection} from '../../../zenstack/anchor-hierarchy.mjs';
+import {ANCHOR_TYPE_GROUPS,PERSISTED_ANCHOR_TYPES,mediaAnchorProjection}
+  from '../../../zenstack/anchor-hierarchy.mjs';
+import * as z from 'zod';
 import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
 import {keywordPatternItemMetrics} from '../keyword-search-pattern.mjs';
 import {readScopePatternRows,storeScopePatternMatches} from '../keyword-anchor-index.mjs';
@@ -342,7 +344,19 @@ const ACTIONS=new Set(['read_group_members','update_group_member_name',
   'rename_scope_site_batch','save_scope_trace_place_names','save_blocks','loc_admin_settings',
   'refresh_scope_search_summary','merge_scope_trace_place_names','import_shared_keyword_class','loc_access','find_galaxy_duplicates','read_scope_registry_admin','bulk_update_galaxy_able',
   'sync_search_patterns','suggest_search_patterns','keyword_pattern_statistics',
-  'media_anchor_candidates']);
+  'media_anchor_candidates','anchor_import_page']);
+// Use the same 19 ZModel Anchor discriminator values; no shadow model or table.
+const ANCHOR_IMPORT_PAGE_COLUMNS=Object.freeze([
+  'uid','type','title','description','attr','createtime'
+]);
+const anchorImportPageArgsSchema=z.strictObject({
+  p_scope_id:z.string().regex(/^[a-z][a-z0-9]{0,14}$/),
+  p_types:z.array(z.enum(PERSISTED_ANCHOR_TYPES)).min(1)
+    .max(PERSISTED_ANCHOR_TYPES.length)
+    .refine(values=>new Set(values).size===values.length),
+  p_after_uid:z.string().regex(UID).nullable().optional(),
+  p_limit:z.number().int().min(1).max(750)
+});
 function validScope(value){
   const id=String(value||'').trim().toLowerCase();
   if(!/^[a-z][a-z0-9]{0,14}$/.test(id))reject('Invalid Scope ID');
@@ -505,9 +519,32 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     sync_search_patterns:['p_scope_id','p_class_uid','p_patterns','p_final'],
     suggest_search_patterns:['p_scope_ids','p_query'],
     keyword_pattern_statistics:['p_scope_id','p_class_uid','p_start_date','p_end_date','p_source'],
-    media_anchor_candidates:['p_scope_id','p_uids','p_urls']
+    media_anchor_candidates:['p_scope_id','p_uids','p_urls'],
+    anchor_import_page:['p_scope_id','p_types','p_after_uid','p_limit']
   }[name];
   if(Object.keys(args).some(key=>!keys.includes(key)))reject('Unexpected Kysely action argument');
+  if(name==='anchor_import_page'){
+    // LOC Web import only. The native gateway verifies Better Auth Session
+    // and api.manage before this Scope-specific read; this action grants no
+    // insert/update rights and cannot be invoked on the MCP hostname.
+    const parsed=anchorImportPageArgsSchema.safeParse(args);
+    if(!parsed.success)reject('Invalid Zod Anchor import page request');
+    const {p_scope_id:scope,p_types:types,p_after_uid:after,p_limit:limit}=parsed.data;
+    if(scope==='loc'||scope==='local'||!await canLocAccess(trx,'scope',scope))
+      reject('Anchor import Scope access denied',403);
+    await sql`reset role`.execute(trx);
+    let query=trx.selectFrom('silver.'+scope+'_anchor')
+      .select(ANCHOR_IMPORT_PAGE_COLUMNS).where('type','in',types)
+      .orderBy('uid','asc').limit(limit);
+    if(after)query=query.where('uid','>',after);
+    const rows=await query.execute();
+    if(rows.some(row=>!types.includes(String(row.type))))
+      reject('Anchor import query returned an unexpected ZModel type');
+    // Model-generated Zod validates the physical Anchor envelope and UID.
+    // Semantic uniqueness is deliberately NOT inferred from the UID PK.
+    assertZModelSelectRows('silver.'+scope+'_anchor',ANCHOR_IMPORT_PAGE_COLUMNS,rows);
+    return {data:rows,count:rows.length};
+  }
   if(name==='media_anchor_candidates'){
     // Used ONLY by the website's existing import de-duplication. The Gateway
     // rejects this action on the MCP hostname before reaching this executor.
