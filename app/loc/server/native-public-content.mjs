@@ -11,7 +11,6 @@ import {createScopedLocClient} from '../../../zenstack/client.mjs';
 import {assertZModelSelectRows} from '../../../zenstack/import-validation.mjs';
 import {LOC_BLOCK_ANCHOR_FIELDS} from '../loc-block-anchor.mjs';
 import {block_list,hero_block} from '../providers/kysely-public.mjs';
-import {withNumericSqlResultCache,withPublicSqlResultCache} from './sql-result-cache.mjs';
 import {ZenStackClient} from '@zenstackhq/orm';
 import {PolicyPlugin} from '@zenstackhq/plugin-policy';
 
@@ -167,39 +166,14 @@ export async function handleNativePublicContent(request,env={},{
     const scopedFor=id=>['postgres','mysql'].includes(port.engine)&&port.dialect
       ?createScopedLocClient({dialect:port.dialect,scopeId:id,
         engine:port.engine,namespace:port.namespace||'silver'}):null;
-    // Cache only completed public metadata, after existing route validation.
-    // Never cache a PolicyPlugin client or a permission decision.
-    const metadataResult=(dependencies,read,featureKey='')=>
-      withPublicSqlResultCache({
-        env,db:query,engine:port.engine,
-        namespace:port.namespace||(port.engine==='postgres'?'silver':'dbo'),
-        targetId:primary.target_id,scope,kind,feature:featureKey,
-        family:'metadata',dependencies,read
-      });
     if(numeric){
-      // Only the fixed anonymous numeric projections are eligible. Policy and
-      // feature checks above always execute before any possible cache hit.
-      // LOC totals depend on every participating child's Galaxy revision.
-      const scopes=kind==='loc'
-        ?SCOPE_ROUTE_INDEX.filter(row=>row.scope_id!=='loc'&&row.active!==false&&
-          scopeFeatureEnabled(row.config,'statistics_able'))
-          .map(row=>row.scope_id)
-        :[scope];
-      const data=await withNumericSqlResultCache({
-        env,db:query,engine:port.engine,
-        namespace:port.namespace||(port.engine==='postgres'?'silver':'dbo'),
-        targetId:primary.target_id,scope,kind,start,end,
-        dependencies:scopes.map(id=>'silver.'+id+'_galaxy'),
-        read:()=>kind==='loc'?readLocGroupNumeric(query,start,end,port)
-          :readGalaxyNumeric(query,scope,kind,start,end,port)
-      });
+      const data=kind==='loc'
+        ?await readLocGroupNumeric(query,start,end,port)
+        :await readGalaxyNumeric(query,scope,kind,start,end,port);
       return respond({data});
     }
     if(kind==='culture_anchors'){
-      const data=await metadataResult(
-        scope==='loc'?['silver.loc_anchor']:
-          ['silver.loc_anchor','silver.'+scope+'_anchor'],
-        async()=>{
+      const data=await (async()=>{
         // The LOC-wide source taxonomy is its own fixed physical model. It is
         // not a dynamic Scope Anchor projection, so PostgreSQL reads use the
         // same PolicyPlugin delegate as fixed Blocks.
@@ -235,11 +209,11 @@ export async function handleNativePublicContent(request,env={},{
         return rows.map(row=>({...row,
           attr:typeof row.attr==='string'?JSON.parse(row.attr||'{}'):row.attr||{}
         }));
-      });
+      })();
       return respond({data});
     }
     if(kind==='config'){
-      const data=await metadataResult(['silver.'+scope],async()=>{
+      const data=await (async()=>{
         const columns=scopeConfigColumns(scope).split(',').filter(Boolean);
         // loc/lo3rwang/lrunes are fixed public ZModel control relations
         // (zenstack/policy-runtime.mjs). Route those through the real
@@ -263,7 +237,7 @@ export async function handleNativePublicContent(request,env={},{
         if(!modelName)
           assertZModelSelectRows('silver.'+scope,columns,row?[row]:[]);
         return row||null;
-      });
+      })();
       return respond({data});
     }
     // Only two presentation read contracts remain:
@@ -292,8 +266,7 @@ export async function handleNativePublicContent(request,env={},{
       };
     }
     if(kind==='hero_block')
-      return respond({data:await metadataResult(['silver.loc_anchor'],
-        ()=>hero_block(query,heroTypes,opts),heroTypes.join(','))});
+      return respond({data:await hero_block(query,heroTypes,opts)});
     const table=relation(scope+'_blocks');
     const blockArgs={
       where:{page_name:'index'},
@@ -322,9 +295,7 @@ export async function handleNativePublicContent(request,env={},{
         assertZModelSelectRows('silver.'+scope+'_blocks',BLOCK_FIELDS,data);
       return data;
     };
-    return respond({data:await metadataResult(
-      [scope==='loc'?'silver.loc_anchor':'silver.'+scope+'_blocks'],
-      ()=>block_list(query,scope,opts))});
+    return respond({data:await block_list(query,scope,opts)});
    }catch(error){
     // Categorize the real TCP/TLS/SQL failure without revealing credentials,
     // endpoints, query text or the raw driver error. No new connection attempt.
