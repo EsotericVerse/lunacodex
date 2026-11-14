@@ -21,6 +21,7 @@ import {createUid8} from './uid';
 import {mediaAnchorRecord,mediaAnchorProjection,canonicalMediaAnchorType,MEDIA_ANCHOR_COLUMNS,ANCHOR_TYPE_GROUPS} from '../../zenstack/anchor-hierarchy.mjs';
 import {createImportProgressStore} from './import-progress-store.mjs';
 import {remapArchiveArticleUids} from './import-random-uids.mjs';
+import {remapImportUidRelations,planExistingImportUidUpdate,planImportMediaUidLinks} from './import-uid-delta.mjs';
 import {facebookBackupPlace,facebookBackupPostText,facebookBackupTimestamp} from './facebook-backup-place.mjs';
 import {archiveGalaxyRows} from './archive-caption-rows.mjs';
 import {facebookPostPlace} from './archive-geo-objects.mjs';
@@ -524,11 +525,10 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
         t('uiExtra.importUI.mediaLinkReadFailed'),async page=>{
           for(const row of page){
             const uid=String(row.uid||'').trim();
-            const prior=Array.isArray(row.media_link)?row.media_link.map(String):[];
-            const linked=new Set(prior);
-            const additions=[...(related.get(uid)||[])].filter(id=>!linked.has(String(id)));
-            if(additions.length){
-              linkQueue.push({uid,media_link:[...prior,...additions]});
+            const prior=Array.isArray(row.media_link)?row.media_link:[];
+            const delta=planImportMediaUidLinks(prior,related.get(uid)||[]);
+            if(delta.patches.length){
+              linkQueue.push({uid,...delta.changes});
               if(linkQueue.length>=linkSizer.size)await flushMediaLinks();
             }
             checkedLinks++;
@@ -1089,15 +1089,12 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         unique=unique.filter(record=>!ambiguousUids.has(String(record.uid)));
       }
 
-      const finalUid=id=>{
-        const canonical=incoming.aliases.get(String(id))||String(id);
-        return String(existingBySiteId.get(canonical)?.uid||canonical);
-      };
-      unique=unique.map(record=>({
-        ...record,
-        source_id:record.source_id?finalUid(record.source_id):null,
-        target_id:(record.target_id||[]).map(finalUid)
-      }));
+      // Only imported article UIDs and verified persisted PKs participate.
+      // Immer emits narrow patches for source_id / target_id / ref_id before
+      // either UPDATE or INSERT; unrelated rows and article content are untouched.
+      unique=remapImportUidRelations(unique,{
+        aliases:incoming.aliases,existingByUid:existingBySiteId
+      }).rows;
       // Articles with check-ins still need a spatial/date backfill on repeat imports.
       if(isUnchangedImportBeforeWrite(unique,existingBySiteId,{
         hasMedia:Boolean(analyzed.mediaOnly.length||eligibleArchiveEvidence.length||
@@ -1172,13 +1169,13 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         if(!String(existing.location||'').trim()&&String(record.location||'').trim())changes.location=record.location;
         if(!String(existing.site_id||'').trim()&&String(record.site_id||'').trim())changes.site_id=record.site_id;
         if(!String(existing.url||'').trim()&&String(record.url||'').trim())changes.url=record.url;
-        if(!String(existing.ref_id||'').trim()&&String(record.ref_id||'').trim())changes.ref_id=record.ref_id;
-        if(!String(existing.source_id||'').trim()&&String(record.source_id||'').trim())changes.source_id=record.source_id;
-        if(!(Array.isArray(existing.target_id)&&existing.target_id.length)&&record.target_id?.length)
-          changes.target_id=record.target_id;
         const placeRecord=placeRecordByUid.get(String(record.uid))||record;
         const restoredPlace=importedPlaceId({incoming:placeRecord,existing,byName:placeAnchors.byName,byCoordinate:placeAnchors.byCoordinate});
-        if(restoredPlace)changes.place_id=restoredPlace;
+        // Immer compares only 8-char UID references. Emit exactly the PK
+        // fields changed by this row, then pass them to existing Kysely writer.
+        Object.assign(changes,planExistingImportUidUpdate(existing,record,{
+          placeUid:restoredPlace
+        }).changes);
         const matchedPlace=importedPlaceId({incoming:placeRecord,byName:placeAnchors.byName,byCoordinate:placeAnchors.byCoordinate});
         const visitUid=restoredPlace||(
           matchedPlace===String(existing.place_id||'').trim()?matchedPlace:null);
