@@ -8,7 +8,8 @@ const UID=/^[A-Za-z0-9]{8}$/;
 const ARTICLE_SCALARS=Object.freeze(['source_id','ref_id']);
 
 function checkedUid(value){
-  const id=String(value??'').trim();
+  // UID comparison is exact: even one whitespace character is different.
+  const id=typeof value==='string'?value:'';
   if(!UID.test(id))throw new Error('匯入關聯包含無效的八碼 UID：'+id);
   return id;
 }
@@ -106,7 +107,7 @@ export function planExistingImportUidUpdate(existing,incoming,{
   };
   const [next,patches]=produceWithPatches(before,draft=>{
     for(const field of ARTICLE_SCALARS){
-      const stored=String(draft[field]??'').trim();
+      const stored=draft[field]??'';
       // Only aliases already resolved to a verified saved PK may rewrite
       // nonempty persisted references. Other curated links are preserved.
       if(stored&&UID.test(stored)){
