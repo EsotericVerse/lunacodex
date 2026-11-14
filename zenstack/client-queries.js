@@ -75,14 +75,20 @@ function runFetch(serializedKey,fetcher,key=JSON.parse(serializedKey)){
   if(existing)return existing.promise;
   const controller=new AbortController();
   const entry={key,controller,promise:null};
-  entry.promise=Promise.resolve().then(()=>fetcher({signal:controller.signal}))
-    .finally(()=>{
+  entry.promise=Promise.resolve().then(()=>{
+    if(controller.signal.aborted)throw abortedRead();
+    return fetcher({signal:controller.signal});
+  }).then(value=>{
+    if(controller.signal.aborted)throw abortedRead();
+    return value;
+  }).finally(()=>{
       // Do not delete a newer request started after a page reset.
       if(inflight.get(serializedKey)===entry)inflight.delete(serializedKey);
     });
   inflight.set(serializedKey,entry);
   return entry.promise;
 }
+function abortedRead(){const error=new Error('Query superseded by page navigation');error.name='AbortError';return error;}
 function isCancelled(error){return error?.name==='AbortError';}
 function matchesFilter(key,filter={}){
   if(typeof filter.predicate==='function')return filter.predicate({queryKey:key});
@@ -133,8 +139,8 @@ export function useAsyncResource(keyOrOptions,fetcherArg,optionsArg={}){
   const load=useCallback(async()=>{
     if(!active)return undefined;
     setIsFetching(true);
+    const generation=resourceEpoch;
     try{
-      const generation=resourceEpoch;
       const value=await runFetch(serializedKey,({signal})=>fetcherRef.current({signal}));
       // A request may finish after unmount; never revive stale route data.
       if(isCurrent()&&generation===resourceEpoch){
