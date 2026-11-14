@@ -36,9 +36,9 @@
 .scope-feature-dock a{position:relative;isolation:isolate;}
 .scope-feature-dock a>.scope-dock-active-pill{
   position:absolute;inset:1px;z-index:0;
-  border:1px solid var(--loc-accent);
+  border:2px solid var(--loc-accent);
   border-radius:inherit;
-  background:color-mix(in srgb,var(--loc-accent) 39%,var(--loc-panel));
+  background:color-mix(in srgb,var(--loc-accent) 28%,var(--loc-panel));
   box-shadow:inset 0 -3px 0 var(--loc-accent);
   pointer-events:none;
 }
