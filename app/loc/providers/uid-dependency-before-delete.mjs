@@ -71,6 +71,10 @@ export async function repairBeforeUidDelete(db,{table,filters,engine='postgres',
     if(deletedType==='point')query=query.where('place_id','=',uid);
     galaxyRows=await query.execute();
   }
+  // The Galaxy projection already contains the deleted article's PK.
+  // Never change other references when the requested article is absent.
+  if(kind==='galaxy'&&!galaxyRows.some(row=>row.uid===uid))
+    return {affected:0,handled:true};
   if(parentTypes.length){
     anchorRows=await db.selectFrom(anchor).select(['uid','type','attr'])
       .where('type','in',parentTypes).execute();
