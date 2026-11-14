@@ -52,6 +52,19 @@ const GALAXY_IMPORT_TIME_COLUMNS=galaxyReadColumns('GalaxyList')
   .filter(column=>['uid','createtime','site'].includes(column)).concat('site_id').join(',');
 const GALAXY_IMPORT_UID_COLUMNS=galaxyReadColumnsFor('GalaxyUidRead')
   .concat(['site_id']).filter((column,index,all)=>all.indexOf(column)===index).join(',');
+// Imported Anchor keys are semantic matches, not UNIQUE constraints.
+// Report unresolved duplicate UIDs without choosing an arbitrary winner.
+function importAnchorConflictSummary(...results){
+  const conflicts=results.flatMap(result=>Array.isArray(result?.conflicts)?result.conflicts:[]);
+  if(!conflicts.length)return '';
+  const sample=conflicts.slice(0,5).map(row=>
+    (row.type==='date'?'日期 ':'地點 ')+String(row.date||row.place||'')+
+    (row.saved_uids?.length?'，候選 UID '+row.saved_uids.slice(0,5).join(',')+
+      (row.saved_uids.length>5?'…':''):'，缺少唯一識別'));
+  return '；Anchor 比對衝突 '+conflicts.length.toLocaleString()+
+    ' 組，已保留待人工核對：'+sample.join('、')+
+    (conflicts.length>5?' 等':'')+'。';
+}
 const ZIP_LAYOUT_KEYS=Object.freeze({
   'conversation-tree':'conversationTree','message-list':'messageList','post-list':'postList',
   activity:'activity',media:'media',table:'table','structured-records':'records',document:'document'
@@ -771,7 +784,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         '、沿用 '+result.reused.toLocaleString()+'；日期定錨新增 '+
         dates.created.toLocaleString()+'、沿用 '+dates.reused.toLocaleString()+
         '；'+'Point 造訪時間新增 '+saved.added.toLocaleString()+
-        '。沒有新增 Galaxy 文章；缺少原始座標的地點不會捏造座標。');
+        '。沒有新增 Galaxy 文章；缺少原始座標的地點不會捏造座標。'+
+        importAnchorConflictSummary(result,dates));
     }catch(error){setStatus('Trace 地點儲存失敗：'+String(error?.message||error));}
     finally{setBusy(false);setProgress(null);}
   }
@@ -796,7 +810,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         '；日期定錨新增 '+result.dates.created.toLocaleString()+'、沿用 '+
         result.dates.reused.toLocaleString()+'；文章地點關聯補齊 '+
         result.linked.toLocaleString()+'，'+'Point 造訪時間新增 '+result.visits.toLocaleString()+
-        '，未能確定地點 '+result.unmatched.toLocaleString()+' 筆。');
+        '，未能確定地點 '+result.unmatched.toLocaleString()+' 筆。'+
+        importAnchorConflictSummary(result.places,result.dates));
     }catch(error){
       setStatus('既有打卡定錨修復失敗；已完成的部分可能已寫入，重新執行會沿用既有資料。原始錯誤：'+String(error?.message||error));
     }finally{setProgress(null);setBusy(false);}
@@ -1178,7 +1193,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       showProgress('匯入完成',1,1);
       setStatus(t('uiExtra.importUI.importLinkedComplete',{articles:result.inserted,media:mediaSummary.created,linked:mediaSummary.connected,skipped})+
         (result.conflicts?'；UID 衝突未建立文章／媒體關聯 '+result.conflicts.toLocaleString()+' 筆。':'')+
-        '；已更新既有文章 '+updated.toLocaleString()+' 筆，沿用空間定錨點 '+placeAnchors.reused.toLocaleString()+' 筆，新增空間定錨點 '+placeAnchors.created.toLocaleString()+' 筆，新增日期定錨 '+timeAnchors.created.toLocaleString()+' 筆，沿用日期定錨 '+timeAnchors.reused.toLocaleString()+' 筆，'+'Point 造訪時間新增 '+recordedVisits.toLocaleString()+' 筆，未匹配地點 '+placeAnchors.unmatchedCoordinates.toLocaleString()+' 組。'+
+        '；已更新既有文章 '+updated.toLocaleString()+' 筆，沿用空間定錨點 '+placeAnchors.reused.toLocaleString()+' 筆，新增空間定錨點 '+placeAnchors.created.toLocaleString()+' 筆，新增日期定錨 '+timeAnchors.created.toLocaleString()+' 筆，沿用日期定錨 '+timeAnchors.reused.toLocaleString()+' 筆，'+'Point 造訪時間新增 '+recordedVisits.toLocaleString()+' 筆，未匹配地點 '+placeAnchors.unmatchedCoordinates.toLocaleString()+' 組。'+importAnchorConflictSummary(placeAnchors,timeAnchors)+
         (ambiguousGroups.length?'；來源文章 ID 或發文時間對應多篇既有文章，無法唯一比對而暫不匯入 '+
           ambiguousGroups.length.toLocaleString()+' 筆（其他文章繼續處理）。待確認：'+
           ambiguousGroups.slice(0,5).map(group=>'UID '+String(group.uid)+' / '+
