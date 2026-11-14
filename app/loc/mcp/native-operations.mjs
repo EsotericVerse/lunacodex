@@ -176,7 +176,7 @@ export async function handleNativeLocOperation(request,env={},{
       throw refusal('External database connections are read only',403);
     // Personal preferences and Admin settings always use LOC's control
     // database. A user's selected external database is for their Scope data,
-    // never for api.loc_user / api.user_settings / api.manage.
+    // never for silver.loc_user / api.manage.
     const control=['personal-read','personal-write','managed-write','managed-action']
       .includes(body.kind);
     const externalTarget=claims.db_target&&claims.db_target!==primaryId

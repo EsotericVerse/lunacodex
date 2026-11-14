@@ -1,14 +1,13 @@
-// LOC Session personal preferences and records. Only a verified LOC session can
-// read or change its own owner_id rows; no Admin grant or RLS rule is required.
-const TABLES=new Set(['loc_user','user_settings','user_records']);
+// LOC Session owns only its silver.loc_user preferences row. Other business
+// relations, including retired user-record tables, are never personal APIs.
+const TABLE='silver.loc_user';
+const WRITABLE=new Set(['culture','statics','trace','search','keyword',
+  'home_scope','favorite_scopes','favorite_folders',
+  'draw_response','list_page_size','locale','updated_at']);
 const COLUMN=/^[A-Za-z_][A-Za-z0-9_]{0,119}$/;
 const OPS={eq:'=',neq:'!=',gt:'>',gte:'>=',lt:'<',lte:'<=',
   like:'like',ilike:'ilike',in:'in',is:'is'};
-const KEY_COLUMNS={
-  loc_user:['owner_id'],
-  user_settings:['owner_id','setting_key'],
-  user_records:['owner_id','id']
-};
+const KEY_COLUMNS=['owner_id'];
 function bad(message,status=400){
   return Object.assign(new Error(message),{httpStatus:status});
 }
@@ -21,10 +20,9 @@ function record(value){
   if(!value||typeof value!=='object'||Array.isArray(value))
     throw bad('Invalid personal record');
   const copy={...value};
-  // owner_id must be the verified LOC Session subject, never caller-controlled.
-  delete copy.owner_id;
-  if(Object.keys(copy).some(key=>!COLUMN.test(key)))
-    throw bad('Invalid personal database field');
+  // Identity, profile metadata and UID are server-owned, never caller input.
+  if(Object.keys(copy).some(key=>!WRITABLE.has(key)))
+    throw bad('Unsupported LOC personal preference field',403);
   return copy;
 }
 function apply(query,filters=[]){
@@ -34,7 +32,7 @@ function apply(query,filters=[]){
     if(!f||typeof f!=='object'||f.negate||!OPS[f.operator])
       throw bad('Unsupported personal filter');
     const col=name(f.column);
-    if(col==='owner_id')throw bad('The owner is bound to LOC OAuth');
+    if(col==='owner_id')throw bad('The owner is bound to LOC Session');
     const op=OPS[f.operator];
     if(op==='in'&&(!Array.isArray(f.value)||f.value.length>500))
       throw bad('Invalid personal filter list');
@@ -65,9 +63,7 @@ export async function executeLocPersonal(db,claims,body){
     throw bad('Verified LOC Session required',403);
   const payload=body?.payload||{};
   const table=String(payload.p_table||'');
-  if(!table.startsWith('api.')||!TABLES.has(table.slice(4)))
-    throw bad('Personal records require an existing personal relation',403);
-  const tableKey=table.slice(4);
+  if(table!==TABLE)throw bad('Only silver.loc_user is a personal relation',403);
   const owner=claims.sub;
   const op=String(payload.p_operation||'');
   const filters=payload.p_filters||[];
@@ -103,15 +99,10 @@ export async function executeLocPersonal(db,claims,body){
     const input=Array.isArray(payload.p_rows)?payload.p_rows:
       payload.p_rows?[payload.p_rows]:[];
     if(!input.length||input.length>500)throw bad('Personal write needs rows');
-    const rows=input.map(row=>({
-      ...record(row),
-      // Profile metadata also comes from the verified Session, never input.
-      ...(tableKey==='loc_user'?{email:claims.email}:{}),
-      owner_id:owner
-    }));
+    const rows=input.map(row=>({...record(row),email:claims.email,owner_id:owner}));
     let query=db.insertInto(table).values(rows);
     if(op==='upsert'){
-      const keys=KEY_COLUMNS[tableKey];
+      const keys=KEY_COLUMNS;
       const update={...rows[0]};
       delete update.owner_id;
       for(const col of keys)delete update[col];
@@ -127,7 +118,7 @@ export async function executeLocPersonal(db,claims,body){
   if(op==='update'){
     const values=record(payload.p_values);
     if(!Object.keys(values).length)throw bad('Personal update is empty');
-    if(tableKey==='loc_user')values.email=claims.email;
+    values.email=claims.email;
     query=apply(db.updateTable(table).set(values).where('owner_id','=',owner),filters);
   }else{
     query=apply(db.deleteFrom(table).where('owner_id','=',owner),filters);
