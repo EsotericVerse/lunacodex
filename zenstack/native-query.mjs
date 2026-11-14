@@ -30,6 +30,31 @@ export function projectNativeSqlDateRows(rows,modelName){
     return changed||row;
   });
 }
+// Kysely's PostgreSQL int8 transport returns decimal text. ZenStack V3
+// exposes the same physical BIGINT as a native bigint, which JSON.stringify
+// cannot serialize (HTTP 503 without a SQLSTATE). Project *only* modeled
+// BigInt fields back to decimal text, preserving all precision and the
+// established browser wire contract. Do not coerce arbitrary JSON payloads.
+function nativeBigIntColumns(modelName){
+  const model=modelForName(modelName);
+  return Object.entries(model?.fields||{}).filter(([,field])=>
+    field.type==='BigInt'&&!field.array).map(([key])=>key);
+}
+export function projectNativeSqlBigIntRows(rows,modelName){
+  if(!Array.isArray(rows)||!rows.length)return rows;
+  const columns=nativeBigIntColumns(modelName);
+  if(!columns.length)return rows;
+  return rows.map(row=>{
+    let projected=null;
+    for(const name of columns){
+      if(!Object.hasOwn(row,name)||typeof row[name]!=='bigint')continue;
+      if(!projected)projected={...row};
+      projected[name]=row[name].toString();
+    }
+    return projected||row;
+  });
+}
+
 const OPS={eq:'equals',neq:'not',gt:'gt',gte:'gte',lt:'lt',lte:'lte',in:'in'};
 
 // The ORM's generated query schema is the source of truth for modeled
@@ -117,7 +142,7 @@ export async function executeNativeRead(client,body,modelName){
     throw new Error('ZenStack native model is unavailable');
   const count=plan.count?Number(await delegate.count({where:plan.args.where})):null;
   const raw=plan.head?null:await delegate.findMany(plan.args);
-  const data=projectNativeSqlDateRows(raw,modelName);
+  const data=projectNativeSqlBigIntRows(projectNativeSqlDateRows(raw,modelName),modelName);
   if(!plan.single)return {data,count};
   const rows=data||[];
   if(rows.length>1||plan.single==='single'&&rows.length!==1)

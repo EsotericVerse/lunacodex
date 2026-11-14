@@ -2,7 +2,8 @@
 import {useCallback,useEffect,useMemo,useState} from 'react';
 import dynamic from 'next/dynamic';
 import {useAsyncResource} from './use-async-resource';
-import {dbPublicClient,insertRows,updateRows,deleteRows} from './db-client.mjs';
+import {insertRows,updateRows,deleteRows} from './db-client.mjs';
+import {readPublicSourceAnchors} from './source-catalog-public.mjs';
 import {allocateAnchorUid} from './uid.js';
 import {nextZModelAnchorType} from '../../zenstack/anchor-hierarchy.mjs';
 import {useEditDockForm} from '../modular/edit-dock';
@@ -13,15 +14,19 @@ const BlockNoteEditor=dynamic(()=>import('./BlockNoteEditor'),{loading:()=>null}
 const TABLE='silver.loc_anchor';
 const TYPES=['universe','galaxy','domain','from'];
 const EMPTY_COUNTS={lo3rwang:0,lrunes:0};
-const normalized=rows=>(rows||[]).map(row=>({
-  ...row,attr:{...(row.attr||{}),uid:Array.isArray(row.attr?.uid)?row.attr.uid:[],
-    counts:{...EMPTY_COUNTS,...(row.attr?.counts||{})}}
-}));
+const normalized=rows=>(rows||[]).map(row=>{
+  // PostgreSQL Json is an object; portable SQL clients may supply JSON text.
+  const raw=typeof row.attr==='string'?(()=>{
+    try{return JSON.parse(row.attr);}catch{return {};}
+  })():row.attr;
+  const attr=raw&&typeof raw==='object'&&!Array.isArray(raw)?raw:{};
+  const counts=attr.counts&&typeof attr.counts==='object'&&!Array.isArray(attr.counts)
+    ?attr.counts:{};
+  return {...row,attr:{...attr,uid:Array.isArray(attr.uid)?attr.uid:[],
+    counts:{...EMPTY_COUNTS,...counts}}};
+});
 async function fetchSources(){
-  const {data,error}=await dbPublicClient.schema('silver').from('loc_anchor')
-    .select('uid,type,title,description,invisible,attr,createtime,num').limit(200);
-  if(error)throw error;
-  return normalized(data);
+  return normalized(await readPublicSourceAnchors({editor:true}));
 }
 // Existing public catalogue hook, now backed by the shared LOC source Anchor.
 export function useSourceCategories(){

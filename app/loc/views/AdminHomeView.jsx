@@ -43,7 +43,7 @@ export default function AdminHomeView({scopeGroup}){
   const [signInError,setSignInError]=useState('');
   const canManage=Boolean(account.user&&!account.loading&&!account.permissionLoading&&account.canLocAccessSync('global'));
   // Preserve deep links created before the Admin sections were consolidated.
-  const [section,setSection]=useManagementSection(ADMIN_OPTIONS,'network',{
+  const [section,setSection]=useManagementSection(ADMIN_OPTIONS,'sources',{
     registry:'network',members:'network',
     database:'network',enterpriseAuth:'network',auth:'network',system:'network',
     traceAnchor:'network',traceMap:'network'
