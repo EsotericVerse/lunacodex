@@ -280,7 +280,8 @@ async function readExistingByIds(table,columns,column,values,message,onPage){
 // Shared idempotent media attachment write for standard file imports.
 // All records are bound by original article UID; no full-table scan or recursive discovery.
 async function readImportMediaCandidates(scopeId,anchor,uids=[],urls=[],message='媒體讀取失敗'){
-  const ids=[...new Set(uids.map(value=>String(value||'').trim()).filter(Boolean))];
+  // MediaAnchor UID is exact PK data; never normalize a malformed ID.
+  const ids=[...new Set(uids.map(value=>String(value??'')).filter(Boolean))];
   // Media URL identity is literal: whitespace is significant.
   const links=[...new Set(urls.map(value=>String(value??'')).filter(Boolean))];
   if(scopeId==='local'){
