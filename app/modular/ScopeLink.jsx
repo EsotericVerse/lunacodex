@@ -22,7 +22,8 @@ export function isManagementHref(href=''){
 }
 
 function entersHeavyRuneRoute(pathname){
-  return /^\\/(?:lrunes\\/)?(?:card\\/(?:duel|list|daily)|game)\\/?(?:index\\.html)?$/i.test(pathname);
+  const clean=String(pathname||'').replace(/\/index\.html$/i,'').replace(/\/+$/,'');
+  return /^(?:\/lrunes)?\/(?:card\/(?:duel|list|daily)|game)$/i.test(clean);
 }
 // A single click boundary covers ALL ordinary LOC feature links, including
 // non-dock navigation. Heavy Rune/game entrypoints have a pre-mount gate of
