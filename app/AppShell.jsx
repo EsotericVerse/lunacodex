@@ -4,7 +4,7 @@ import {useEffect,useMemo,useRef,useState,useSyncExternalStore} from 'react';
 import dynamic from 'next/dynamic';
 import {Capacitor} from '@capacitor/core';
 import {LayoutGroup,motion,useReducedMotion} from 'motion/react';
-import {useQueryClient} from '../zenstack/client-queries';
+import {useQueryClient,releaseTransientPageResources} from '../zenstack/client-queries';
 import {translateUiField,UI_COPY,UI_LOCALE_OPTIONS,normalizeUiLocale,uiCopy,registerDefaultSection,isSectionLoaded,loadSection} from './i18n/ui-copy';
 import {UiLocaleProvider,useLoadedUiLocale,useUiLocale,useUiSection} from './i18n/ui-locale';
 import FieldText from './i18n/FieldText';
@@ -650,7 +650,12 @@ function AppShellInner({children,runtime}){
               ?(localWorkspace?(isMyPhone||isScopeHomepage):isScopeHomepage)
               :currentFeature===tab.id);
           return <ScopeLink key={tab.id} href={tab.href} native={native}
-            onClick={()=>setDockActivation(prev=>({id:tab.id,count:prev.count+1}))}
+            onClick={()=>{
+               // Retire the outgoing feature's in-flight reads BEFORE routing.
+               // Identity, grants, unsaved editor drafts and writes are excluded.
+               if(!selected)releaseTransientPageResources();
+               setDockActivation(prev=>({id:tab.id,count:prev.count+1}));
+             }}
             aria-current={selected?'page':undefined}>
             {selected?<DockActiveIndicator/>:null}
             <DockMotionIcon name={tab.icon} active={selected}
