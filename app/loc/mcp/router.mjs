@@ -115,7 +115,8 @@ export async function handleMcp(request,env={}){
     // An MCP tool call can stream its JSON-RPC response over this same POST
     // when the client advertises text/event-stream (including Accept: both).
     const stream=payload.method==='tools/call'&&
-      /(?:^|[,\\s])text\\/event-stream(?:[,;\\s]|$)/i.test(request.headers.get('accept')||'');
+      String(request.headers.get('accept')||'').toLowerCase()
+        .split(',').some(type=>type.trim().split(';',1)[0]==='text/event-stream');
     if(stream){
       // Authorize before opening the 200 SSE response so 401/403/429/503
       // retain their original HTTP status and WWW-Authenticate semantics.
