@@ -740,6 +740,16 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
      retryReason:session.locQueueRetryType||'',
      consecutiveFailures:Number(session.locQueueFailures||0)};
    }
+   case 'loc-clear-diagnostics':{
+    // Local-only action from the trusted Extension settings document.
+    // Never touch the IndexedDB Queue, receipts, OAuth tokens, retry budget
+    // or application data.
+    const source=(sender?.url||sender?.documentUrl||'').split('#',1)[0];
+    if(sender?.id!==chrome.runtime.id||source!==chrome.runtime.getURL('options.html'))
+     throw Error('Only Extension settings may clear diagnostics');
+    await chrome.storage.local.remove([DIAGNOSTIC_KEY,'locLastAction']);
+    return {cleared:true};
+   }
    case 'loc-diagnostics':{
     const [stored,last]=await Promise.all([
      chrome.storage.local.get(DIAGNOSTIC_KEY),
