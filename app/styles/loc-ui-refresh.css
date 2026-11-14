@@ -519,9 +519,9 @@
   .loc-trace-territory-track>span{transition:none}
 }
 
-/* Subtle LOC floating navigation + personal Settings.
-   Keep hit targets, grid geometry and navigation intact; only soften visual
-   chrome and add a very small content arrival movement. */
+/* LOC floating navigation + personal Settings.
+   The six-key Motion pill owns active-state color and shape; this sheet may
+   soften inactive keys but must not paint over that shared selection. */
 .scope-feature-dock > a{
   border-color:color-mix(in srgb,var(--loc-accent) 16%,var(--loc-line));
   background:color-mix(in srgb,var(--loc-accent) 9%,var(--loc-panel));
@@ -531,17 +531,16 @@
     box-shadow .2s ease,transform .2s ease;
 }
 .scope-feature-dock > a[aria-current="page"]{
-  border-color:color-mix(in srgb,var(--loc-accent) 46%,var(--loc-line));
-  background:color-mix(in srgb,var(--loc-accent) 14%,var(--loc-panel));
-  box-shadow:0 4px 14px color-mix(in srgb,var(--loc-craft-ink-shadow) 65%,transparent),
-    0 0 10px color-mix(in srgb,var(--loc-accent) 15%,transparent);
+  border-color:transparent;
+  background:transparent;
+  box-shadow:none;
 }
 .scope-feature-dock > a[aria-current="page"]::after{
-  width:12px;height:2px;bottom:4px;
-  opacity:.8;box-shadow:none;
+  width:20px;height:3px;bottom:3px;
+  opacity:1;box-shadow:none;
 }
 @media(hover:hover) and (pointer:fine){
-  .scope-feature-dock > a:not(:disabled):hover{
+  .scope-feature-dock > a:not([aria-current="page"]):not(:disabled):hover{
     transform:translateY(-2px);
     background:color-mix(in srgb,var(--loc-accent) 16%,var(--loc-panel));
     box-shadow:0 6px 16px color-mix(in srgb,var(--loc-craft-ink-shadow) 75%,transparent);
