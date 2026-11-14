@@ -88,8 +88,8 @@ const bootstrap={scope_id:'loc',page_name:'index',registry:site.registry,
 const entries=[
   ['app/modular/scope-route-index.js','// PUBLIC Scope routing + Config; explicit publication only.\nexport const SCOPE_ROUTE_INDEX=Object.freeze('+encode(routeConfigs)+');\n'],
   ['app/modular/published-source-taxonomy.js',"// Fixed LOC ArticleTag; no Source Anchor tree.\\nimport {sourceTaxonomyFromArrays} from '../loc/source-classification.mjs';\\nexport const PUBLISHED_LOC_ARTICLE_TAGS=Object.freeze("+encode(systemNames)+");\\nexport const PUBLISHED_SOURCE_LISTS=Object.freeze({loc:{system:PUBLISHED_LOC_ARTICLE_TAGS,personal:[]}});\\nexport const PUBLISHED_SOURCE_ENTRIES=Object.freeze({});\\nexport const PUBLISHED_SOURCE_DOMAINS=Object.freeze({});\\nconst taxonomy=Object.freeze(sourceTaxonomyFromArrays(PUBLISHED_LOC_ARTICLE_TAGS));\\nexport const publishedSourceTaxonomy=()=>taxonomy;\\nexport const publishedSourceCategoryCatalog=()=>({categories:taxonomy.categories,aliases:taxonomy.aliases});\\n"],
-  ['app/modular/published-theme-catalog.json',JSON.stringify(themes,null,2)+'\n'],
-  ['app/modular/published-site-bootstrap.js','// PUBLIC navigation metadata and published Theme JSON; no visit-time SQL.\nimport publishedThemes from \'./published-theme-catalog.json\';\nexport const PUBLISHED_SITE_BOOTSTRAP=Object.freeze({...'+encode(bootstrap)+',themes:publishedThemes});\n'],
+  ...themes.map(t=>['app/modular/themes/theme-'+t.theme_id+'.json',JSON.stringify(t,null,2)+'\n']),
+  ['app/modular/published-site-bootstrap.js','// PUBLIC navigation metadata; theme palettes are loaded by selected ID only.\nexport const PUBLISHED_SITE_BOOTSTRAP=Object.freeze({...'+encode(bootstrap)+',themes:[]});\n']
   ['app/modular/published-theme-meta.js','// Published Theme metadata (palettes are CSS).\nexport const PUBLISHED_THEME_META='+encode(themes.map(t=>['theme-'+t.theme_id,t.theme_name,t.scheme,t.style_key]))+';\n'],
   ['app/styles/published-themes.css','/* Published Theme palette; explicit publication only. */\n'+palettes.join('\n\n')+'\n']
 ];
