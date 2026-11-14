@@ -226,7 +226,7 @@ export function useAsyncResource(keyOrOptions,fetcherArg,optionsArg={}){
     setIsFetching(true);
     const generation=resourceEpoch;
     try{
-      const value=await runFetch(serializedKey,()=>fetcherRef.current());
+      const value=await runFetch(serializedKey,({signal})=>fetcherRef.current({signal}));
       // A request may finish after unmount; never revive stale route data.
       if(isActiveRead()&&generation===resourceEpoch){
         retainIfObserved(serializedKey,value);
