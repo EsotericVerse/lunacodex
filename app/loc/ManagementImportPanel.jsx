@@ -1142,7 +1142,13 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         ?await readImportPointDateAnchors({scopeId,
           onProgress:p=>showProgress(p.phase,p.completed,p.total||0)})
         :null;
-      const placeAnchors=await prepareImportPlaceAnchors([...anchorRecords,...geoAnchorRecords],{
+      // UID wins over location text: a saved Galaxy.place_id is already a
+      // Point relationship even when many original location strings differ.
+      // Never construct another Point merely because a merged place has a
+      // different title in a later import.
+      const newPlaceCandidates=anchorRecords.filter(record=>
+        !String(existingBySiteId.get(record.uid)?.place_id||''));
+      const placeAnchors=await prepareImportPlaceAnchors([...newPlaceCandidates,...geoAnchorRecords],{
         scopeId,relation:dbAuthRelation,createMissing:true,anchorSnapshot,
         onProgress:p=>showProgress(p.phase,p.completed,p.total||0)
       });
@@ -1153,7 +1159,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       });
       const knownArticleIds=new Map();
       let updated=0,checkedExisting=0;
-      const placeVisits=[];
+      const placeVisits=[],missingPointUids=new Set();
       const updateSizer=createImportBatchSizer();
       let updateQueue=[];
       const existingCount=existingBySiteId.size;
@@ -1184,9 +1190,15 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         Object.assign(changes,planExistingImportUidUpdate(existing,record,{
           placeUid:restoredPlace,resolveSavedUid
         }).changes);
-        const matchedPlace=importedPlaceId({incoming:placeRecord,byName:placeAnchors.byName,byCoordinate:placeAnchors.byCoordinate});
-        const visitUid=restoredPlace||(
-          matchedPlace===String(existing.place_id||'').trim()?matchedPlace:null);
+        // Confirm an existing PK directly in the shared Point UID index.
+        // Distinct literal locations with the same place_id remain one Point;
+        // no title/name/coordinate lookup is necessary for a saved link.
+        const storedPointUid=String(existing.place_id||'');
+        const savedPointExists=storedPointUid&&
+          anchorSnapshot?.place?.timesByUid.has(storedPointUid);
+        if(storedPointUid&&anchorSnapshot&&!savedPointExists)
+          missingPointUids.add(storedPointUid);
+        const visitUid=savedPointExists?storedPointUid:restoredPlace;
         if(visitUid&&record.createtime)placeVisits.push({uid:visitUid,time:record.createtime});
         if(Object.keys(changes).length){
           updateQueue.push({uid:String(existing.uid),...changes});
@@ -1312,6 +1324,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       setStatus(t('uiExtra.importUI.importLinkedComplete',{articles:result.inserted,media:mediaSummary.created,linked:mediaSummary.connected,skipped})+
         (result.conflicts?'；UID 衝突未建立文章／媒體關聯 '+result.conflicts.toLocaleString()+' 筆。':'')+
         '；已更新既有文章 '+updated.toLocaleString()+' 筆，沿用空間定錨點 '+placeAnchors.reused.toLocaleString()+' 筆，新增空間定錨點 '+placeAnchors.created.toLocaleString()+' 筆，新增日期定錨 '+timeAnchors.created.toLocaleString()+' 筆，沿用日期定錨 '+timeAnchors.reused.toLocaleString()+' 筆，'+'Point 造訪時間新增 '+recordedVisits.toLocaleString()+' 筆，未匹配地點 '+placeAnchors.unmatchedCoordinates.toLocaleString()+' 組。'+importAnchorConflictSummary(placeAnchors,timeAnchors,mediaSummary,sourceAudit)+sourceAuditWarning+
+        (missingPointUids.size?'；發現 '+missingPointUids.size.toLocaleString()+' 個既有 place_id 在 Point UID 索引中不存在，未依 location 重建或改指向其他地點。UID：'+[...missingPointUids].slice(0,5).join(',')+(missingPointUids.size>5?' 等':'')+'。':'')+
         (ambiguousGroups.length?'；來源文章 ID 或發文時間對應多篇既有文章，無法唯一比對而暫不匯入 '+
           ambiguousGroups.length.toLocaleString()+' 筆（其他文章繼續處理）。待確認：'+
           ambiguousGroups.slice(0,5).map(group=>'UID '+String(group.uid)+' / '+
