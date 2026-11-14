@@ -8,6 +8,8 @@
 -- covered relation. Other writers are intentionally covered. No Auth tables,
 -- api.manage permission entries or private Personal tables are involved.
 -- Re-run after adding/recreating a Scope table. Never restore loc_blocks.
+-- Reinstall also rotates the generation UUID so replaced tables cannot reuse
+-- a completed cache entry with a coincidentally matching revision number.
 BEGIN;
 DO $loc_metadata_install$
 DECLARE item record;
@@ -37,7 +39,8 @@ BEGIN
     INSERT INTO api.loc_sql_result_revision(relation,revision)
       VALUES (item.ns||'.'||item.rel,0)
       ON CONFLICT (relation) DO UPDATE
-        SET revision=api.loc_sql_result_revision.revision+1;
+        SET revision=api.loc_sql_result_revision.revision+1,
+            generation=pg_catalog.gen_random_uuid();
     EXECUTE format('DROP TRIGGER IF EXISTS loc_sql_result_revision ON %I.%I',
       item.ns,item.rel);
     EXECUTE format(
