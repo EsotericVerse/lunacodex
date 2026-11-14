@@ -572,6 +572,9 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   const [importLocale,setImportLocale]=useState('zh-Hant');
   const [status,setStatus]=useState('');
   const [busy,setBusy]=useState(false);
+  // A failed write must not retain decoded ZIP/JSON article arrays in React.
+  // Keep only the original File reference for an explicit, revalidated retry.
+  const [reparseRequired,setReparseRequired]=useState(false);
   // One event-driven progress snapshot, no additional query, timer or cache.
   const [progressStore]=useState(createImportProgressStore);
   const progress=useSyncExternalStore(progressStore.subscribe,
@@ -648,8 +651,21 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     }
   }
 
+  function clearDecodedFile(){
+    // Release all large React-owned decoded records and their media/ZIP views.
+    // The browser can GC these after any in-flight stack finishes; the
+    // original File in queue is still available for an explicit retry.
+    setRows([]);
+    setArchiveEvidence([]);
+    setGeoPlaceCandidates([]);
+    setArchiveDetection(null);
+    setArchiveSummary(null);
+    setProgress(null);
+  }
   async function loadQueuedFile(file,index,total,language=importLocale,recordPath=format.recordPath){
-    setFileName(file.name);setRows([]);setArchiveEvidence([]);setGeoPlaceCandidates([]);setArchiveDetection(null);setArchiveSummary(null);setProgress(null);setStatus('');
+    clearDecodedFile();
+    setReparseRequired(false);
+    setFileName(file.name);setStatus('');
     if(file.size>ARCHIVE_MAX_BYTES){
       setStatus(t('uiExtra.importUI.zipTooLarge'));
       return;
@@ -787,7 +803,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       setStatus(t('uiExtra.importUI.parsedFile',{index:index+1,total,count:list.length.toLocaleString()})+
         (parsed.length!==list.length?'；已略過 '+(parsed.length-list.length).toLocaleString()+' 筆私人紀錄。':''));
     }catch(error){
-      setRows([]);setArchiveEvidence([]);
+      clearDecodedFile();
+      setReparseRequired(true);
       const wasBlocked=['LOC_PRIVATE_ARCHIVE_BLOCKED','LOC_UNVERIFIED_ARCHIVE_BLOCKED'].includes(error?.code);
       setStatus(wasBlocked
         ?'第 '+(index+1)+' 檔已阻止匯入：'+String(error?.message||error)+'；本次未寫入資料庫。'
@@ -811,12 +828,34 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     // A successful write is the disposal boundary. Retain only *upcoming*
     // files in a multi-file queue; failures intentionally retain their input
     // for retry, and persisted database rows are never touched.
-    setRows([]);setArchiveEvidence([]);setGeoPlaceCandidates([]);
-    setArchiveDetection(null);setArchiveSummary(null);setProgress(null);
+    clearDecodedFile();
+    setReparseRequired(false);
     setQueue(current=>{
       const pendingFiles=current.map((file,index)=>index<=queueIndex?null:file);
       return pendingFiles.some(Boolean)?pendingFiles:[];
     });
+  }
+  async function retryFailedFile(){
+    const file=queue[queueIndex];
+    if(busy||!reparseRequired||!file)return;
+    const selectedSource=source;
+    // Reparse from the original File, then repeat the normal full UID/site
+    // comparison before any new writes. No blind replay of partially
+    // committed SQL batches, and no hidden automatic retries.
+    await loadQueuedFile(file,queueIndex,queue.length,importLocale,format.recordPath);
+    if(selectedSource)setSource(selectedSource);
+  }
+  function discardFailedFile(){
+    if(busy||!reparseRequired)return;
+    clearDecodedFile();
+    setReparseRequired(false);
+    setFileName('');
+    setSource('');
+    setQueue(current=>{
+      const remaining=current.map((file,index)=>index===queueIndex?null:file);
+      return remaining.some(Boolean)?remaining:[];
+    });
+    setStatus('已釋放本次檔案與解析資料；先前已確認寫入的資料庫紀錄不受影響。');
   }
   async function nextFile(){
     const next=queueIndex+1;
@@ -1384,7 +1423,12 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       releaseCompletedFile();
       if(nativeLocal)window.dispatchEvent(new Event('loc-local-data-changed'));
     }catch(error){
-      setProgress(null);
+      // Critical cleanup: SQL/network errors previously left the entire
+      // decoded import in React state until the page was closed. Do not drop
+      // the File handle: allow the user to reparse, inspect and explicitly
+      // rerun the existing deduplicating import.
+      clearDecodedFile();
+      setReparseRequired(true);
       setStatus('匯入在「'+lastImportStage+'」階段失敗；之前成功的批次可能已寫入。原始錯誤：'+
         String(error?.message||error||t('uiExtra.importUI.importFailed'))+
         t('uiExtra.importUI.importRetry'));
@@ -1456,12 +1500,22 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         intermediate ZIP/archive detail section below — the user is watching
         here, and a result (success, "no changes", or an error like the
         ambiguous-duplicate abort) buried past a long ZIP summary goes unseen. */}
-    {status&&!busy?<div className="loc-work-status" role={status.startsWith('匯入在「')?'alert':'status'}>
+    {status&&!busy?<div className="loc-work-status" role={reparseRequired?'alert':'status'}>
       <strong>{status.startsWith('匯入在「')?'匯入中斷，請查看原因':'匯入狀態已更新'}</strong>
       <details className="loc-work-subdetails">
         <summary>查看完整結果與處理紀錄</summary>
         <p className="scope-status scope-import-live-status">{status}</p>
       </details>
+    </div>:null}
+    {reparseRequired&&!busy&&queue[queueIndex]?<div className="scope-preview-links" role="group" aria-label="匯入中斷處理">
+      <button type="button" className="loc-button primary" onClick={retryFailedFile}>
+        重新解析原始檔並核對
+      </button>
+      <button type="button" className="loc-button" onClick={discardFailedFile}>
+        釋放原始檔
+      </button>
+      <p className="scope-status">已清空解析後的文章與媒體暫存。重新解析不會自動寫入；
+        確認資料後再匯入，系統會重新比對既有文章。</p>
     </div>:null}
     {!nativeLocal&&scopeId!=='loc'?<div className="scope-import-summary-refresh">
       <button type="button" className="loc-button" disabled={busy||summaryRefreshing}
