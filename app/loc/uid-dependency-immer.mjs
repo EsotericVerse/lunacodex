@@ -138,6 +138,13 @@ export function planUidDependencyRepair({deletedUid,deletedTable,deletedType='',
     // A dangling UID must not be replaced with a structurally invalid map.
     // Reconciliation may reject the requested deletion; it never silently
     // deletes or invents a related route to make the graph look complete.
+    if(row.type==='period'&&field==='uid'&&next.uid.length===0)
+      throw new Error('Cannot delete Date: the dependent Period would have no endpoints');
+    if(row.type==='era'&&field==='period'&&next.period.length===0)
+      throw new Error('Cannot delete Period: the dependent Era would have no periods');
+    if(row.type==='trace'&&field==='path'&&next.path.length===0&&
+      (!Array.isArray(next.point)||next.point.length===0))
+      throw new Error('Cannot delete Path: the dependent Trace would have no routes or segments');
     if(row.type==='path'&&field==='point'&&next.point.length<2)
       throw new Error('Cannot delete Point: the dependent Path would have fewer than two endpoints');
     if(row.type==='trace'&&field==='point'&&next.point.length===0&&
