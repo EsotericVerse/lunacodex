@@ -19,7 +19,7 @@ import {useScopeRuntime} from './modular/use-scope-runtime';
 import {faviconForScope} from './site-favicons';
 import {appBootstrapPageCopy,useAppBootstrap} from './loc/app-bootstrap';
 import {getDbSourceStatus,subscribeDbSourceStatus} from './loc/db-source-status.mjs';
-import {getLocalDeadline,subscribeLocalDeadline,stopLocalDeadline,formatLocalCountdown} from './loc/local-scope-session.mjs';
+import {getLocalDeadline,subscribeLocalDeadline,stopLocalDeadline,formatLocalCountdown,hasExpiredLocalDeadline} from './loc/local-scope-session.mjs';
 import {useNavigationPreferences} from './loc/use-navigation-preferences';
 import {NavigationPreferences} from './modular/navigation-preferences';
 import {navigationHref} from './modular/scope-registry.js';
@@ -457,6 +457,11 @@ function AppShellInner({children,runtime}){
   const localNavigation=localWorkspace||localCoreActive;
   useEffect(()=>{
     if(!native)return;
+    if(!localCoreActive&&localWorkspace&&hasExpiredLocalDeadline()){
+      stopLocalDeadline();
+      window.location.replace('/?loc_direct=1');
+      return;
+    }
     if(localCoreActive){
       lastLocalDeadline.current=localDeadline;
       if(!localWorkspace)window.location.replace('/local/index.html');
@@ -617,7 +622,9 @@ function AppShellInner({children,runtime}){
         <button type="button" className="scope-nav-close-folder" aria-label={translateUiField(activeLocale,'收合目錄')} onClick={()=>setOpenFolderId('')}>×</button>
       </div>:null}
     </header>
-    {children}
+    {localCoreActive&&!localWorkspace?<main className="scope-main">
+      <p className="scope-status" role="status">正在切換至本機 Galaxy…</p>
+    </main>:children}
     <div className="scope-feature-dock scope-floating-edit-buttons" role="toolbar"
       aria-label={translateUiField(activeLocale,editingDockVisible||editDockPending?'編輯功能選單':'Scope 功能選單')}
       data-scope={localNavigation?'local':scopeId} data-local-core={localCoreActive?'active':undefined}
