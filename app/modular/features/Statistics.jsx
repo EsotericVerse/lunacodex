@@ -500,7 +500,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
       ]}/>
       <StatisticsInsightsPanel rows={basicTrend} range={queryRange}
         zoomLevel={zoomLevel} onZoomLevelChange={setZoomLevel}
-        idPrefix="scope-stat"/>
+        idPrefix="scope-stat" showMethodologyNote={scopeId!=='lo3rwang'}/>
       <StatisticsDetails summary="標準統計圖（折線、長條、面積與組合圖）">
         {()=> <section className="statistics-dashboard__panel" style={{display:'grid',gap:12}}>
           <label><span>{UI_COPY.statistics.chart}</span>
