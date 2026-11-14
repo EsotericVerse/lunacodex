@@ -81,8 +81,13 @@ async function fetchManagementAccount(queryClient){
       scopeKinds:Object.fromEntries(SCOPE_ROUTE_INDEX.map(row=>[row.scope_id,row.scope_kind]))
     });
     if(obsolete())return signedOutState;
-    const metadata=scopeDataFromManageRows(permissions.roles);
+    // UI scope metadata derives from the single validated ZModel role
+    // projection, never from the raw HTTP response.
     setAuthorization(user,permissions);
+    const metadata=scopeDataFromManageRows(
+      (readAuthorization()?.entries||[]).map(({scopeid,role})=>
+        ({id:scopeid,manage_role:role}))
+    );
     scopeMetadata=metadata;
     authUserId=String(user.id);
     authEmail=normalizeAuthEmail(user.email);
@@ -217,6 +222,10 @@ export function usePassiveSessionAccount(){
       const user=session?.user||null;
       const nextUserId=String(user?.id||'');
       const nextEmail=normalizeAuthEmail(user?.email);
+      // Better Auth's adapter emits an empty INITIAL_SESSION to each
+      // subscriber. This is hydration, not a sign-out; do not clobber
+      // verified ZModel grants or identity hints on component remount.
+      if(event==='INITIAL_SESSION'&&!nextUserId&&!nextEmail)return;
       // On a fresh static management page the verified LOC Auth session can
       // arrive while the management RPC is still in flight. Hydration is
       // NOT a sign-out or replacement of an existing authorized identity.
