@@ -810,9 +810,9 @@ export async function selectFirstScopeStatisticsDate(scope){
 // One request per chart. The database returns the earliest date, the exact daily
 // counts and the small source taxonomy together; the row-level readers below only
 // serve while the functions are not installed (for example on a backup database).
-async function selectScopeOverviewRaw(scope,{startDate='',endDate=''}={}){
+async function selectScopeOverviewRaw(scope,{startDate='',endDate='',signal=null}={}){
   const current=scopeOf(scope);
-  return readScopeOverview(current.id,{startDate,endDate});
+  return readScopeOverview(current.id,{startDate,endDate,signal});
 }
 async function selectScopeEarliestRaw(scope){
   const current=scopeOf(scope);
