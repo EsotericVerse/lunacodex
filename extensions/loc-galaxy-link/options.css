@@ -389,3 +389,88 @@ a:focus-visible, button:focus-visible, input:focus-visible {
   .extension-floating-dock .remote-dock-link { transition: none; }
   .extension-floating-dock .remote-dock-link:hover { transform: none; }
 }
+
+/* Mobile-first control shell.
+   Chrome Extension settings and the future phone app share a six-action,
+   one-view-at-a-time interaction contract; this stylesheet remains extension-
+   local (no React, native bridge, or duplicated business logic). */
+:root { --loc-remote-content-width: 820px; }
+.console {
+  display: block;
+  width: 100%;
+  max-width: none;
+  min-height: 100vh;
+}
+.sidebar {
+  position: sticky;
+  top: 0;
+  z-index: 120;
+  display: block;
+  width: 100%;
+  height: auto;
+  padding: max(10px, env(safe-area-inset-top, 0px)) 18px 10px;
+  border-right: 0;
+  border-bottom: 1px solid var(--edge);
+  background: rgba(14, 19, 38, .95);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+/* One navigation system, at every viewport. Sidebar becomes a branded header. */
+.sidebar .side-nav,
+.sidebar .sidebar-divider,
+.sidebar .sidebar-heading,
+.sidebar .sidebar-spacer,
+.sidebar .sidebar-note,
+.sidebar .sidebar-end { display: none; }
+.brand {
+  width: min(100%, var(--loc-remote-content-width));
+  margin: 0 auto;
+  padding: 0;
+}
+.brand-mark { width: 42px; height: 42px; flex-basis: 42px; border-radius: 14px; }
+.brand-mark::before { border-radius: 11px; }
+.brand-mark span { width: 20px; height: 20px; }
+.brand-copy strong { font-size: 18px; }
+.dashboard {
+  width: min(100%, var(--loc-remote-content-width));
+  max-width: var(--loc-remote-content-width);
+  margin-inline: auto;
+  padding: 0 clamp(16px, 3.5vw, 30px) calc(130px + env(safe-area-inset-bottom, 0px));
+}
+.topbar { min-height: 60px; }
+.section-block.console-page { margin-top: 24px; min-height: 0; }
+.provider-grid,
+.capture-grid,
+.activity-grid { grid-template-columns: minmax(0, 1fr); }
+.hero { margin-block: 20px 16px; }
+.hero-content { padding: 27px clamp(21px, 3.5vw, 34px); }
+.metrics { gap: 11px; }
+.metric-card { padding: 18px; }
+.panel { padding: clamp(18px, 3vw, 24px); }
+.extension-floating-dock {
+  /* Same six independent floating keys as LOC's App dock, not a toolbar. */
+  width: min(700px, calc(100vw - 16px - env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px)));
+  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+}
+.extension-floating-dock .remote-dock-link { min-height: 60px; }
+.button,
+.provider-actions button { min-height: 44px; }
+@media (min-width: 700px) {
+  .provider-grid,
+  .capture-grid,
+  .activity-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+  .dashboard { padding-inline: 15px; }
+  .sidebar { padding-inline: 15px; }
+  .hero-content { padding: 24px 21px; }
+  .metrics { gap: 10px; }
+  .metric-card { padding: 16px; }
+  .panel { padding: 19px; }
+  .daily-panel { padding: 19px; }
+  .extension-floating-dock .remote-dock-link { min-height: 61px; }
+}
+@media (max-width: 360px) {
+  .extension-floating-dock .remote-dock-link { gap: 4px; padding-inline: 1px; }
+  .remote-dock-glyph svg { width: 20px; height: 20px; }
+}
