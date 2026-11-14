@@ -1177,9 +1177,12 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         };
       });
       const placeRecordByUid=new Map(anchorRecords.map(row=>[String(row.uid),row]));
-      // Only an article with a location may contribute its date to Time anchors.
+      // A previously linked Point is still a valid UID visit even when its
+      // original Galaxy.location is blank. Date titles still require an
+      // actual place label in importCheckinDayEntries, as before.
       const checkinAnchorRecords=anchorRecords.filter(record=>
-        Boolean(String(record.location||record.__importPlaceName||'').trim()));
+        Boolean(record.location||record.__importPlaceName||
+          existingBySiteId.get(record.uid)?.place_id));
       // UID wins over location text: an existing place_id must not trigger
       // a name/coordinate re-scan of every Point in the Scope. Resolve saved
       // PKs directly while reading Date rows only when no new place is needed.
