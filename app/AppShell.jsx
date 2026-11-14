@@ -4,7 +4,7 @@ import {useEffect,useMemo,useRef,useState,useSyncExternalStore} from 'react';
 import dynamic from 'next/dynamic';
 import {Capacitor} from '@capacitor/core';
 import {LayoutGroup,motion,useReducedMotion} from 'motion/react';
-import {useQueryClient,releaseTransientPageResources} from '../zenstack/client-queries';
+import {useQueryClient,prepareTransientResourceAction} from '../zenstack/client-queries';
 import {translateUiField,UI_COPY,UI_LOCALE_OPTIONS,normalizeUiLocale,uiCopy,registerDefaultSection,isSectionLoaded,loadSection} from './i18n/ui-copy';
 import {UiLocaleProvider,useLoadedUiLocale,useUiLocale,useUiSection} from './i18n/ui-locale';
 import FieldText from './i18n/FieldText';
@@ -653,7 +653,7 @@ function AppShellInner({children,runtime}){
             onClick={()=>{
                // Retire the outgoing feature's in-flight reads BEFORE routing.
                // Identity, grants, unsaved editor drafts and writes are excluded.
-               if(!selected)releaseTransientPageResources();
+               if(!selected)prepareTransientResourceAction('navigation');
                setDockActivation(prev=>({id:tab.id,count:prev.count+1}));
              }}
             aria-current={selected?'page':undefined}>
