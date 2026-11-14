@@ -20,11 +20,11 @@ export function localTabletopRules(){
   const events=HISTORIC_EVENTS.map(e=>({id:e.id,name:e.name,
     description:e.desc,req:[...e.req]}));
   const resultByCoverage=new Map([
-    [0,{code:'fail',label:'失敗',delta:-2,drawCount:0}],
-    [1,{code:'partial',label:'部分回應',delta:-1,drawCount:0}],
-    [2,{code:'neutral',label:'普通',delta:0,drawCount:0}],
-    [3,{code:'success',label:'成功',delta:1,drawCount:0}],
-    [4,{code:'perfect',label:'完美',delta:2,drawCount:0}]
+    [0,{code:'fail',label:'失敗',delta:-2,drawCount:3}],
+    [1,{code:'partial',label:'部分回應',delta:-1,drawCount:3}],
+    [2,{code:'neutral',label:'普通',delta:0,drawCount:3}],
+    [3,{code:'success',label:'成功',delta:1,drawCount:3}],
+    [4,{code:'perfect',label:'完美',delta:2,drawCount:3}]
   ]);
   const rounds=Array.from({length:8},(_,i)=>({
     round:i+1,phase:i%2===0?'event':'resonance'
