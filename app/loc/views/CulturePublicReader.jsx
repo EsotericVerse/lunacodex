@@ -254,6 +254,8 @@ export default function CulturePublicReader(){
   const sequence=useRef(0);
   const fullSequence=useRef(0);
   const densityAbortRef=useRef(null);
+  const articleAbortRef=useRef(null);
+  useEffect(()=>()=>{articleAbortRef.current?.abort();sequence.current++;fullSequence.current++;},[]);
   useEffect(()=>{
     let cancelled=false;
     setLoading(true);setError('');setCatalogError('');setAnchors([]);
@@ -398,6 +400,7 @@ export default function CulturePublicReader(){
       item=>item.date===focusedSuggestionDate))setFocusedSuggestionDate('');
   },[focusedSuggestionDate,suggestionAnalysis.suggestions]);
   const resetArticles=(site='',categoryKey='')=>{
+    articleAbortRef.current?.abort();articleAbortRef.current=null;
     sequence.current+=1;setSelectedSite(site);setSelectedCategoryKey(categoryKey);setArticlesOpen(false);
     setArticleRows([]);setArticleOffset(0);
     setArticleMore(false);setArticleError('');fullSequence.current+=1;
@@ -405,11 +408,17 @@ export default function CulturePublicReader(){
   };
   const fetchArticles=async({append=false,offset=0,site=selectedSite}={})=>{
     if(!scope||!site||densityMode!=='source'||!validRange)return;
+    articleAbortRef.current?.abort();
+    const controller=new AbortController();
+    articleAbortRef.current=controller;
     const request=++sequence.current;
-    setArticlesLoading(true);setArticleError('');
+    // The old 100-row DIV is replaced by Loading before the next page,
+    // freeing the previous article instances while the cursor survives.
+    setArticleRows([]);setArticlesLoading(true);setArticleError('');
     try{
       const page=await selectCultureArticleListPage(scope,{
-        startDate:rangeStart,endDate:rangeEnd,site,offset,sortDirection:'desc'
+        startDate:rangeStart,endDate:rangeEnd,site,offset,sortDirection:'desc',
+        signal:controller.signal
       });
       if(request!==sequence.current)return;
       // One 100-row window at a time. The server cursor retains position;
@@ -417,8 +426,13 @@ export default function CulturePublicReader(){
       setArticleRows(page.rows);
       setArticleOffset(page.nextCursor?.offset||offset+page.rows.length);
       setArticleMore(page.hasMore);
-    }catch(reason){if(request===sequence.current)setArticleError(String(reason?.message||reason));}
-    finally{if(request===sequence.current)setArticlesLoading(false);}
+    }catch(reason){
+      if(request===sequence.current&&!controller.signal.aborted)
+        setArticleError(String(reason?.message||reason));
+    }finally{
+      if(articleAbortRef.current===controller)articleAbortRef.current=null;
+      if(request===sequence.current)setArticlesLoading(false);
+    }
   };
   const openArticles=(site,categoryKey)=>{
     if(densityMode!=='source')return;
@@ -431,6 +445,7 @@ export default function CulturePublicReader(){
   useEffect(()=>{
     // Any date/filter change invalidates visible details, held text, active
     // worker results and expanded Source rows from the previous period.
+    articleAbortRef.current?.abort();articleAbortRef.current=null;
     sequence.current+=1;fullSequence.current+=1;
     setArticlesOpen(false);setArticleRows([]);setArticleOffset(0);
     setArticleMore(false);setArticleError('');
