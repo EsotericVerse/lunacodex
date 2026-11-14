@@ -22,9 +22,10 @@
     <p class="sidebar-heading">CONTROL PANEL</p>
     <nav class="side-nav" aria-label="控制台導覽">
       <a class="nav-link nav-active" href="#overview" aria-current="page"><span class="nav-icon" aria-hidden="true">◈</span><span>總覽</span><span class="nav-number">01</span></a>
-      <a class="nav-link" href="#providers"><span class="nav-icon" aria-hidden="true">⌘</span><span>MCP 連線</span><span class="nav-number">02</span></a>
-      <a class="nav-link" href="#capture"><span class="nav-icon" aria-hidden="true">▤</span><span>擷取設定</span><span class="nav-number">03</span></a>
-      <a class="nav-link" href="#activity"><span class="nav-icon" aria-hidden="true">◷</span><span>Queue 與紀錄</span><span class="nav-number">04</span></a>
+      <a class="nav-link" href="#daily"><span class="nav-icon" aria-hidden="true">◐</span><span>每日符文</span><span class="nav-number">02</span></a>
+      <a class="nav-link" href="#providers"><span class="nav-icon" aria-hidden="true">⌘</span><span>MCP 連線</span><span class="nav-number">03</span></a>
+      <a class="nav-link" href="#capture"><span class="nav-icon" aria-hidden="true">▤</span><span>擷取設定</span><span class="nav-number">04</span></a>
+      <a class="nav-link" href="#activity"><span class="nav-icon" aria-hidden="true">◷</span><span>Queue 與紀錄</span><span class="nav-number">05</span></a>
     </nav>
     <div class="sidebar-spacer"></div>
     <div class="sidebar-note">
@@ -84,9 +85,30 @@
 
     </div>
 
+
+    <section id="daily" class="section-block console-page" aria-labelledby="daily-title" hidden>
+      <div class="section-heading">
+        <div><p class="section-kicker">LUNARUNES / 02</p><h2 id="daily-title">每日符文 · 遠端入口</h2><p>從彩虹控制台開啟既有的每日符文，不複製抽牌核心。</p></div>
+        <span class="section-chip">LIVING DAILY</span>
+      </div>
+      <div class="panel daily-panel">
+        <div class="daily-orbit" aria-hidden="true"><div class="daily-orbit-ring"></div><span class="daily-orbit-moon">◐</span><span class="daily-orbit-star">✦</span></div>
+        <div class="daily-content">
+          <p class="eyebrow"><span class="eyebrow-line"></span> MOONLIGHT GUIDANCE</p>
+          <h3>召喚今日月光，<br>讓符文為你指路。</h3>
+          <p>沿用月之符文原本的 66 枚符文、四種位向、真實月相與指引資料。抽牌及結果展示由既有 LOC 頁面負責，不依賴 Extension SSO。</p>
+          <div class="daily-actions">
+            <a class="button button-primary" href="https://lrunes.lo3rwang.cc/card/daily/?d=3d" target="_blank" rel="noopener noreferrer">開啟 3D 每日符文 <span aria-hidden="true">↗</span></a>
+            <a class="button button-secondary" href="https://lrunes.lo3rwang.cc/card/daily/?d=2d" target="_blank" rel="noopener noreferrer">開啟 2D 原創美術 <span aria-hidden="true">↗</span></a>
+          </div>
+          <p class="daily-explainer">點選後會在新分頁開啟真正的抽牌頁。此控制台不會預先抽牌、不會代替網站儲存結果，也不會自行執行資料庫操作。</p>
+        </div>
+      </div>
+    </section>
+
     <section id="providers" class="section-block console-page" aria-labelledby="providers-title" hidden>
       <div class="section-heading">
-        <div><p class="section-kicker">CONNECTIONS / 02</p><h2 id="providers-title">MCP 服務連線</h2><p>查看已授權的上游服務，必要時進行連接或解除。</p></div>
+        <div><p class="section-kicker">CONNECTIONS / 03</p><h2 id="providers-title">MCP 服務連線</h2><p>查看已授權的上游服務，必要時進行連接或解除。</p></div>
         <span class="section-chip">PROVIDER HUB</span>
       </div>
       <div class="panel">
@@ -107,7 +129,7 @@
 
     <section id="capture" class="section-block console-page" aria-labelledby="capture-title" hidden>
       <div class="section-heading">
-        <div><p class="section-kicker">WORKFLOW / 03</p><h2 id="capture-title">擷取工作流</h2><p>從右鍵選單擷取，再由離線 Queue 安全送出。</p></div>
+        <div><p class="section-kicker">WORKFLOW / 04</p><h2 id="capture-title">擷取工作流</h2><p>從右鍵選單擷取，再由離線 Queue 安全送出。</p></div>
         <span class="section-chip">CAPTURE SETTINGS</span>
       </div>
       <div class="capture-grid">
@@ -138,7 +160,7 @@
 
     <section id="activity" class="section-block console-page" aria-labelledby="activity-title" hidden>
       <div class="section-heading">
-        <div><p class="section-kicker">OPERATIONS / 04</p><h2 id="activity-title">Queue 與操作紀錄</h2><p>掌握送出狀態、最近一次操作與故障摘要。</p></div>
+        <div><p class="section-kicker">OPERATIONS / 05</p><h2 id="activity-title">Queue 與操作紀錄</h2><p>掌握送出狀態、最近一次操作與故障摘要。</p></div>
         <span class="section-chip">ACTIVITY</span>
       </div>
       <div class="activity-grid">
@@ -159,6 +181,28 @@
     <footer class="footer"><span>LOC <strong>GALAXY LINK</strong> <span class="footer-sep">/</span> 彩虹控制台</span><span>工作流動 · 權限清楚</span></footer>
   </main>
 </div>
+
+  <nav class="loc-remote-dock" aria-label="LOC 六鍵浮動功能選單">
+    <a href="https://loc.lo3rwang.cc/" target="_blank" rel="noopener noreferrer" aria-label="開啟 LOC 首頁">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/></svg><span>首頁</span>
+    </a>
+    <a href="https://loc.lo3rwang.cc/culture/" target="_blank" rel="noopener noreferrer" aria-label="開啟 LOC 文化">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12M6 21h12M8 3v4c0 3 4 4 4 5s-4 2-4 5v4M16 3v4c0 3-4 4-4 5s4 2 4 5v4M9 9l3 3 3-3M9 18h6"/></svg><span>文化</span>
+    </a>
+    <a href="https://loc.lo3rwang.cc/statics/" target="_blank" rel="noopener noreferrer" aria-label="開啟 LOC 統計">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10h4v10M10 20V4h4v16M16 20v-7h4v7M3 20h18"/></svg><span>統計</span>
+    </a>
+    <a href="https://loc.lo3rwang.cc/trace/" target="_blank" rel="noopener noreferrer" aria-label="開啟 LOC 痕跡">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3a4.5 4.5 0 0 0-4.5 4.5c0 3.2 4.5 7.6 4.5 7.6s4.5-4.4 4.5-7.6A4.5 4.5 0 0 0 14 3Z"/><circle cx="14" cy="7.5" r="1.5"/><path d="M8 4H5a2 2 0 0 0-2 2v12c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2v-7M6 17h3l2-2h3"/></svg><span>痕跡</span>
+    </a>
+    <a href="https://loc.lo3rwang.cc/search/" target="_blank" rel="noopener noreferrer" aria-label="開啟 LOC 搜尋">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg><span>搜尋</span>
+    </a>
+    <a href="https://loc.lo3rwang.cc/settings/" target="_blank" rel="noopener noreferrer" aria-label="開啟 LOC 設定">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 2.8h3l.5 2.3 1.7.7 2-1.3 2.1 2.1-1.3 2 .7 1.7 2.3.5v3l-2.3.5-.7 1.7 1.3 2-2.1 2.1-2-1.3-1.7.7-.5 2.3h-3l-.5-2.3-1.7-.7-2 1.3-2.1-2.1 1.3-2-.7-1.7-2.3-.5v-3l2.3-.5.7-1.7-1.3-2 2.1-2.1 2 1.3 1.7-.7z"/><circle cx="12" cy="12" r="3"/></svg><span>設定</span>
+    </a>
+  </nav>
+
 <script src="options.js"></script>
 <script src="options-pages.js"></script>
 </body>
