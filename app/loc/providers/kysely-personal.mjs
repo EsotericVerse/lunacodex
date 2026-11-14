@@ -103,7 +103,12 @@ export async function executeLocPersonal(db,claims,body){
     const input=Array.isArray(payload.p_rows)?payload.p_rows:
       payload.p_rows?[payload.p_rows]:[];
     if(!input.length||input.length>500)throw bad('Personal write needs rows');
-    const rows=input.map(row=>({...record(row),owner_id:owner}));
+    const rows=input.map(row=>({
+      ...record(row),
+      // Profile metadata also comes from the verified Session, never input.
+      ...(tableKey==='loc_user'?{email:claims.email}:{}),
+      owner_id:owner
+    }));
     let query=db.insertInto(table).values(rows);
     if(op==='upsert'){
       const keys=KEY_COLUMNS[tableKey];
@@ -122,6 +127,7 @@ export async function executeLocPersonal(db,claims,body){
   if(op==='update'){
     const values=record(payload.p_values);
     if(!Object.keys(values).length)throw bad('Personal update is empty');
+    if(tableKey==='loc_user')values.email=claims.email;
     query=apply(db.updateTable(table).set(values).where('owner_id','=',owner),filters);
   }else{
     query=apply(db.deleteFrom(table).where('owner_id','=',owner),filters);
