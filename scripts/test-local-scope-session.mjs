@@ -52,7 +52,9 @@ const sample={
   uid:'POST0001',site:'example_site',site_id:'external-1',
   title:'原文',content:'文字中的 空白 必須保留',
   location:'不同空格  就是不同地點',
-  createtime:'2026-11-14T08:00:00Z'
+  createtime:'2026-11-14T08:00:00Z',UpdateTime:'2026-11-14T09:00:00Z',
+  date:'2026-11-14',culture:true,statics:true,trace:false,
+  search:true,list:true,keyword:false
 };
 const first=normalizeLocalGalaxyRow(sample);
 assert.equal(first.content,sample.content);
@@ -60,6 +62,11 @@ assert.equal(first.location,sample.location);
 assert.equal(first.site,sample.site);
 assert.equal(first.uid,sample.uid);
 assert.equal(first.createtime,'2026-11-14T08:00:00.000Z');
+assert.equal(first.UpdateTime,'2026-11-14T09:00:00.000Z');
+assert.equal(first.date,'2026-11-14');
+assert.equal(first.culture,true);
+assert.equal(first.statics,true);
+assert.equal(first.trace,false);
 assert.deepEqual(parseLocalGalaxyArchive({records:[sample]}),[first]);
 assert.throws(()=>parseLocalGalaxyArchive({records:[sample,sample]}),/重複 UID/);
 assert.throws(()=>parseLocalGalaxyArchive({records:[{...sample,uid:'BAD UID!'}]}),/八碼/);
