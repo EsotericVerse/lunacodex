@@ -1,0 +1,289 @@
+/* LOC / lo3rwang / LunaRunes — one homepage composition contract.
+   Shared geometry and type hierarchy; NOT one reusable visual template.
+   Actual Hero media and home copy remain owned by their respective DB blocks.
+   Loaded after the ordinary component finishes to prevent style-layer drift. */
+.loc-next-main[data-loc-view="home"]:is(
+  [data-loc-scope="loc"],
+  [data-loc-scope="lo3rwang"],
+  [data-loc-scope="lrunes"]
+){
+  --home-layout-width:1180px;
+  --home-layout-gap:clamp(1.35rem,2.8vw,2.6rem);
+  --home-layout-pad:clamp(1.1rem,2.6vw,2.5rem);
+  --home-heading-face:inherit;
+  width:min(var(--home-layout-width),calc(100% - clamp(1rem,3.2vw,2rem)));
+  margin-inline:auto;
+  padding:clamp(1rem,2.8vw,2.5rem) 0 clamp(4rem,6vw,6.5rem);
+}
+.loc-next-main[data-loc-scope="lo3rwang"][data-loc-view="home"]{
+  --home-heading-face:"Noto Serif TC","Songti TC",serif;
+}
+.loc-next-main[data-loc-scope="lrunes"][data-loc-view="home"]{
+  --home-heading-face:"Noto Serif TC","Songti TC",serif;
+}
+.loc-next-main[data-loc-view="home"]:is(
+  [data-loc-scope="loc"],[data-loc-scope="lo3rwang"],[data-loc-scope="lrunes"]
+)>.loc-home{
+  display:grid;
+  grid-template-columns:minmax(0,1fr);
+  align-content:start;
+  gap:var(--home-layout-gap);
+  min-width:0;
+}
+.loc-next-main[data-loc-view="home"]>.loc-home>*{
+  min-width:0;
+  max-width:100%;
+}
+/* The database-controlled LOC and Author home frames use consistent spacing
+   and a typographic rule instead of repeating an embossed/glossy card. */
+.loc-next-main[data-loc-view="home"]:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"])
+  .loc-home>.loc-home-block:not(.loc-home-block--hero){
+  padding:var(--home-layout-pad);
+  background:var(--loc-panel);
+  border:1px solid var(--loc-line);
+  border-radius:var(--loc-material-radius,var(--loc-ui-radius-md));
+  box-shadow:none;
+}
+.loc-next-main[data-loc-view="home"]:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"])
+  .loc-home>.loc-home-block--with-image:not(.loc-home-block--hero){
+  padding-block:clamp(1.55rem,3vw,2.85rem);
+  border-inline:0;
+  border-block-end:0;
+  border-block-start:1px solid var(--loc-line);
+  border-radius:0;
+  background:transparent;
+}
+.loc-next-main[data-loc-view="home"]:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"])
+  .loc-home-block:not(.loc-home-block--hero) .loc-home-block__header{
+  margin-bottom:clamp(.8rem,1.5vw,1.4rem);
+}
+.loc-next-main[data-loc-view="home"]:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"])
+  .loc-home-block:not(.loc-home-block--hero) .loc-home-block__header>h2{
+  font-family:var(--home-heading-face);
+  font-size:clamp(1.4rem,2.25vw,2.05rem);
+  font-weight:700;
+  letter-spacing:-.02em;
+  padding-bottom:.45rem;
+  border-bottom:2px solid var(--loc-accent);
+  color:var(--loc-heading);
+}
+.loc-next-main[data-loc-view="home"]:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"])
+  .loc-home-block:not(.loc-home-block--hero):not(.loc-home-block--with-image)>.loc-home-block__body{
+  max-width:78ch;
+}
+/* Shared sub-blocks should read like structured notes, not floating acrylic. */
+.loc-next-main[data-loc-view="home"] .loc-home-block__child{
+  background:var(--loc-panel-2);
+  border:1px solid var(--loc-line);
+  box-shadow:none;
+}
+
+/* LunaRunes uses the same homepage frame without loading another main/viewport.
+   Its special art Hero, editing contract and hero-local legibility stay intact. */
+.loc-next-main[data-loc-scope="lrunes"][data-loc-view="home"] .runes-home-hero{
+  margin:0;
+}
+@media(min-width:761px){
+  .loc-next-main[data-loc-scope="lrunes"][data-loc-view="home"] .runes-home-hero:not(.runes-home-hero--side){
+    aspect-ratio:16/9;
+    min-height:clamp(430px,45vw,620px);
+  }
+}
+/* The first task after the Hero is a distinct entry rail, NOT another card. */
+.loc-next-main[data-loc-scope="lrunes"][data-loc-view="home"] .runes-home-entry{
+  padding:clamp(1.1rem,2.2vw,2rem) 0 clamp(.4rem,1vw,.8rem);
+  border-top:3px solid var(--loc-accent);
+  background:transparent;
+}
+.runes-home .runes-home-entry .home-section-heading{
+  margin-bottom:clamp(1rem,2vw,1.65rem);
+}
+.runes-home .runes-home-entry .home-section-heading>h2,
+.runes-home :is(.runes-home-intro,.runes-review-section) .home-section-heading>h2,
+.runes-home .runes-reading-flow>h2,
+.runes-home .runes-home-play-copy>h2{
+  font-family:var(--home-heading-face);
+  font-size:clamp(1.5rem,2.5vw,2.2rem);
+  color:var(--loc-heading);
+  font-weight:700;
+  line-height:1.28;
+  letter-spacing:-.022em;
+}
+.runes-home .runes-home-entry .home-draw-bubbles{
+  margin:0;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:clamp(.55rem,1.2vw,1rem);
+  counter-reset:rune-entry;
+}
+.runes-home .runes-home-entry .home-draw-bubbles>.loc-bubble{
+  counter-increment:rune-entry;
+  display:flex;
+  align-items:flex-start;
+  justify-content:flex-start;
+  min-height:10.5rem;
+  gap:.6rem;
+  padding:clamp(1rem,1.9vw,1.55rem);
+  border:1px solid var(--loc-line);
+  border-radius:var(--loc-material-radius,var(--loc-ui-radius-md));
+  background:var(--loc-panel);
+  box-shadow:none;
+  text-align:left;
+  transition:border-color .18s ease,background-color .18s ease,transform .18s ease;
+}
+.runes-home .runes-home-entry .home-draw-bubbles>.loc-bubble::before{
+  content:"0" counter(rune-entry);
+  display:block;
+  color:var(--loc-accent);
+  font-size:.78rem;
+  font-weight:750;
+  letter-spacing:.11em;
+}
+.runes-home .runes-home-entry .home-draw-bubbles>.loc-bubble strong{
+  color:var(--loc-heading);
+  font-size:clamp(1.05rem,1.6vw,1.35rem);
+  line-height:1.3;
+}
+.runes-home .runes-home-entry .home-draw-bubbles>.loc-bubble>p{
+  margin:0;
+  color:var(--loc-text);
+  font-size:.88rem;
+  line-height:1.65;
+  font-weight:400;
+}
+.runes-home .runes-home-entry .home-draw-bubbles>.loc-bubble:is(:hover,:focus-visible){
+  background:var(--loc-panel-2);
+  border-color:var(--loc-accent);
+  transform:translateY(-2px);
+}
+.runes-home .runes-home-entry .home-draw-bubbles>.loc-bubble:focus-visible{
+  outline:2px solid var(--loc-accent);
+  outline-offset:3px;
+}
+
+/* Show the original Rune card like an exhibit beside the explanatory text,
+   instead of two radial spotlights over a generic glossy background. */
+.runes-home .runes-home-intro{
+  padding:var(--home-layout-pad);
+  border:1px solid var(--loc-line);
+  border-radius:var(--loc-material-radius,var(--loc-ui-radius-md));
+  background:var(--loc-panel);
+  background-image:none;
+  box-shadow:none;
+}
+.runes-home .runes-home-intro-layout{
+  align-items:start;
+  gap:clamp(1.1rem,3vw,2.8rem);
+}
+.runes-home .runes-home-intro-preview{
+  background:var(--loc-panel-2);
+  border-color:var(--loc-line);
+  box-shadow:none;
+}
+.runes-home .runes-home-intro-preview img{box-shadow:none;}
+.runes-home .runes-home-intro-copy{
+  align-content:center;
+  gap:clamp(.6rem,1.2vw,1rem);
+}
+.runes-home .runes-home-intro-copy .runes-hint-seed{border-inline-start-color:var(--loc-accent);}
+
+/* Sequence and evidence sections belong to the same editorial grid,
+   but deliberately do NOT repeat the three entry tiles. */
+.runes-home .runes-reading-flow,
+.runes-home .runes-review-section{
+  padding:var(--home-layout-pad);
+  background:var(--loc-panel);
+  border:1px solid var(--loc-line);
+  border-radius:var(--loc-material-radius,var(--loc-ui-radius-md));
+  box-shadow:none;
+}
+.runes-home .runes-reading-flow .basic-grid{
+  margin-top:.4rem;
+}
+.runes-home .runes-custom-draw-section{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:center;
+  gap:clamp(.85rem,2vw,2rem);
+  padding:clamp(1.15rem,2.6vw,2.3rem);
+  background:var(--loc-panel-2);
+  border:1px solid var(--loc-line);
+  border-inline-start:3px solid var(--loc-accent);
+  border-radius:var(--loc-material-radius,var(--loc-ui-radius-md));
+  box-shadow:none;
+}
+.runes-home .runes-home-play-copy{display:grid;gap:.4rem;min-width:0;}
+.runes-home .runes-home-play-copy>:is(h2,p){margin:0;}
+.runes-home .runes-home-play-copy>.loc-eyebrow{
+  color:var(--loc-accent);
+  font-size:.78rem;
+  letter-spacing:.12em;
+}
+.runes-home .runes-home-play-copy>p:last-child{
+  max-width:65ch;
+  line-height:1.7;
+  color:var(--loc-text);
+}
+.runes-home .runes-custom-draw-section>.loc-button{
+  display:inline-flex;
+  justify-content:center;
+  align-items:center;
+  min-height:48px;
+  width:max-content;
+  max-width:100%;
+  padding:.75rem 1.1rem;
+  border:1px solid var(--loc-accent);
+  background:var(--loc-panel);
+  color:var(--loc-heading);
+  text-decoration:none;
+  text-align:center;
+  box-shadow:none;
+}
+.runes-home .runes-custom-draw-section>.loc-button:is(:hover,:focus-visible){
+  background:var(--loc-panel-2);
+  outline-offset:2px;
+}
+.runes-home .runes-review-grid{
+  margin-top:clamp(.65rem,1.3vw,1.1rem);
+}
+.runes-home .runes-review-item p{color:var(--loc-text);}
+/* Never raise the performance cost of noninteractive home sections on hover. */
+.loc-next-main[data-loc-view="home"] .loc-home :is(
+  .loc-home-block:not(.loc-home-block--hero),.runes-home-intro,
+  .runes-reading-flow,.runes-review-section
+):is(:hover,:focus-within){
+  box-shadow:none;
+}
+@media(max-width:900px){
+  .runes-home .runes-home-entry .home-draw-bubbles{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  .runes-home .runes-custom-draw-section{grid-template-columns:minmax(0,1fr);}
+  .runes-home .runes-custom-draw-section>.loc-button{justify-self:start;}
+}
+@media(max-width:620px){
+  .loc-next-main[data-loc-view="home"]:is(
+    [data-loc-scope="loc"],[data-loc-scope="lo3rwang"],[data-loc-scope="lrunes"]
+  ){
+    --home-layout-gap:clamp(1rem,4vw,1.5rem);
+    --home-layout-pad:clamp(1rem,4.4vw,1.4rem);
+    width:calc(100% - 1rem);
+    padding-top:.6rem;
+  }
+  .runes-home .runes-home-entry .home-draw-bubbles{
+    grid-template-columns:minmax(0,1fr);
+    gap:.65rem;
+  }
+  .runes-home .runes-home-entry .home-draw-bubbles>.loc-bubble{
+    min-height:7.5rem;
+  }
+  .runes-home .runes-custom-draw-section>.loc-button{
+    width:100%;
+    justify-self:stretch;
+  }
+}
+@media(prefers-reduced-motion:reduce){
+  .runes-home .runes-home-entry .home-draw-bubbles>.loc-bubble{
+    transition:none;
+    transform:none!important;
+  }
+}
