@@ -4,6 +4,7 @@ import {authorizeMcpBearer} from './access-roles.mjs';
 import {providerStatuses,requestTool,approvalReceipt} from './upstream-policy.mjs';
 import {listUpstreamTools} from './upstream-tools.mjs';
 import {readMemory} from './galaxy-read.mjs';
+import {articleDistribution} from './article-distribution.mjs';
 import {privateGalaxyLink} from './private-galaxy.mjs';
 import {mcpDatabaseConfiguration} from './native-kysely.mjs';
 import {mcpToolJsonSchema,parseMcpToolArgs,McpRpcSchema} from './tool-contracts.mjs';
@@ -77,6 +78,9 @@ const TOOLS=[
     annotations:{readOnlyHint:true,destructiveHint:false}},
   {name:'galaxy_link',description:'Galaxy conversation continuity. Search ONLY when the human user explicitly requests a conversation search; never search automatically. PR/GitHub search is forbidden: 請至github頁面找尋PR相關資料！不開放搜尋PR! The business data service handles authorization and persistence.',
     inputSchema:mcpToolJsonSchema('galaxy_link')},
+  {name:'article_distribution',description:'Get monthly published LOC article-count statistics for a calendar year or rolling 12 months. No SQL or article text; chart-ready numbers.',
+    inputSchema:mcpToolJsonSchema('article_distribution'),
+    annotations:{readOnlyHint:true,destructiveHint:false}},
   {name:'provider_list',description:'List LOC user-linked upstream MCP providers and their function policies (no credentials).',
     inputSchema:mcpToolJsonSchema('provider_list'),
     annotations:{readOnlyHint:true,destructiveHint:false}},
@@ -157,7 +161,9 @@ async function dispatchMcpPayload(payload,identity,bearer,config,env){
         availableTools:TOOLS.map(tool=>tool.name)});
       try{
         const directPrivate=name==='galaxy_link'&&['read','search'].includes(args.action);
-        const value=name==='provider_list'?
+        const value=name==='article_distribution'?
+          await articleDistribution(args,env):
+          name==='provider_list'?
           await providerStatuses(env,identity.subject):
           name==='provider_tools'?
           {provider:args.provider,tools:await listUpstreamTools(env,identity.subject,args.provider)}:
