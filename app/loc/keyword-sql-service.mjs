@@ -244,6 +244,44 @@ async function persistPatterns(trx,scope,classUid,patterns,stats){
     .where('id','=',scope).execute();
 }
 
+// Read a complete calendar-date group (or the undated group) without the
+// former arbitrary 10,000-row cutoff. A stable UID cursor is a *transport*
+// order only; createIndexedDateKeywordReader retains chronological ordering.
+// The outer analysis verifies the full Galaxy count before writing Pattern
+// postings, so additions/deletions during this scan cannot silently succeed.
+async function readCompleteKeywordMetadataGroup(db,scope,columns,{
+  date=null,maximumRows
+}={}){
+  checkScope(scope);
+  if(date!==null&&!DATE.test(date)||
+     !Number.isSafeInteger(maximumRows)||maximumRows<1||
+     !Array.isArray(columns)||!columns.length)
+    fail('Invalid Keyword metadata group request');
+  const rows=[],seen=new Set();
+  const pageSize=750;
+  let afterUid=null;
+  for(;;){
+    let query=db.selectFrom(galaxyName(scope)).select(columns)
+      .where('date',date===null?'is':'=',date)
+      .orderBy('uid','asc').limit(pageSize+1);
+    if(afterUid!==null)query=query.where('uid','>',afterUid);
+    const page=await query.execute();
+    if(!Array.isArray(page)||page.length>pageSize+1)
+      fail('Keyword metadata cursor returned invalid page');
+    // The extra row is a bounded lookahead, not a discarded article.
+    for(const row of page.slice(0,pageSize)){
+      const uid=String(row?.uid||'');
+      if(!UID.test(uid)||seen.has(uid))
+        fail('Keyword metadata cursor returned duplicate or invalid UID');
+      seen.add(uid);rows.push(row);afterUid=uid;
+      if(rows.length>=maximumRows)
+        fail('Keyword metadata group grew beyond the Galaxy COUNT; retry analysis');
+    }
+    if(page.length<=pageSize)break;
+  }
+  return {rows,count:rows.length};
+}
+
 export async function analyzeKeywordScope(db,scope,classUid,{
   authorizeTransaction=()=>{},startedAt=new Date().toISOString()
 }={}){
@@ -268,7 +306,10 @@ export async function analyzeKeywordScope(db,scope,classUid,{
   if(!Number.isSafeInteger(expectedCount)||expectedCount<0)
     fail('Galaxy count out of range');
   const cols=galaxyListMetadataColumns;
-  const maximumRows=10000;
+  // The caller already verified this Scope's complete Galaxy COUNT. Keep the
+  // existing reader's safety boundary, but never truncate a valid same-day
+  // group at an unrelated 10,000-row transport limit.
+  const maximumRows=Math.max(10000,expectedCount+1);
   const reader=createIndexedDateKeywordReader({
     maximumRows,
     readDatePage:async({after,limit})=>{
@@ -277,22 +318,10 @@ export async function analyzeKeywordScope(db,scope,classUid,{
       if(after!==null)q=q.where('date','>',after);
       return await q.execute();
     },
-    readDatePeers:async({date,maximumRows})=>{
-      const q=db.selectFrom(galaxyName(scope)).where('date','=',date);
-      const [rows,total]=await Promise.all([
-        q.select(cols).limit(maximumRows).execute(),
-        q.select(eb=>eb.fn.count('uid').as('n')).executeTakeFirst()
-      ]);
-      return {rows,count:Number(total?.n??0)};
-    },
-    readUndated:async({maximumRows})=>{
-      const q=db.selectFrom(galaxyName(scope)).where('date','is',null);
-      const [rows,total]=await Promise.all([
-        q.select(cols).limit(maximumRows).execute(),
-        q.select(eb=>eb.fn.count('uid').as('n')).executeTakeFirst()
-      ]);
-      return {rows,count:Number(total?.n??0)};
-    }
+    readDatePeers:({date,maximumRows})=>readCompleteKeywordMetadataGroup(
+      db,scope,cols,{date,maximumRows}),
+    readUndated:({maximumRows})=>readCompleteKeywordMetadataGroup(
+      db,scope,cols,{maximumRows})
   });
   let pending=null;
   const result=await analyzeIncrementalKeywordPatterns({
