@@ -232,7 +232,10 @@ export async function matchExistingImportByCreatedAt(records,{readTimestamps,onP
       const id=String(record.site_id||'').trim();
       const equal=id?(bySiteId.get(id)||[]).filter(row=>!used.has(String(row.uid))):[];
       if(equal.length===1)assign(record,equal[0]);
-      else if(equal.length>1)ambiguous.push({uid:String(record.uid),site:record.site,createtime:record.createtime});
+      else if(equal.length>1)ambiguous.push({
+        uid:String(record.uid),site:record.site,createtime:record.createtime,
+        saved_uids:equal.map(row=>String(row.uid))
+      });
       else unresolved.push(record);
     }
     // Build text groups only when native-ID matching left work to do.
@@ -247,7 +250,10 @@ export async function matchExistingImportByCreatedAt(records,{readTimestamps,onP
       const sameContent=eligible(record,byContent.get(incomingText)||[]);
       if(sameContent.length===1){assign(record,sameContent[0]);continue;}
       if(sameContent.length>1){
-        ambiguous.push({uid:String(record.uid),site:record.site,createtime:record.createtime});
+        ambiguous.push({
+          uid:String(record.uid),site:record.site,createtime:record.createtime,
+          saved_uids:sameContent.map(row=>String(row.uid))
+        });
         continue;
       }
       // A single timestamp on each side also supports an edited article.
