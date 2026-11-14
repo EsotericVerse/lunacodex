@@ -56,7 +56,9 @@ function patternRowsToIndex(rows){
   const out=new Map();
   for(const row of rows){
     const key=keywordIdentity(row.pattern);
-    if(!key||out.has(key))throw Error('Duplicate Scope Pattern literal');
+    if(!key)throw Error('Invalid Scope Pattern literal UID: '+String(row.uid));
+    if(out.has(key))throw Error('Duplicate Scope Pattern literal '+key+
+      '；候選 UID '+String(out.get(key).uid)+','+String(row.uid));
     out.set(key,row);
   }
   return out;

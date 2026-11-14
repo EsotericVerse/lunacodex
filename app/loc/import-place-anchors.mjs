@@ -49,7 +49,7 @@ export async function prepareImportPlaceAnchors(records,{
 }={}){
   const {names,missing}=incomingLocations(records);
   const byCoordinate=new Map(),byName=new Map();
-  const unavailable=()=>({byCoordinate,byName,created:0,reused:0,
+  const unavailable=()=>({byCoordinate,byName,created:0,reused:0,conflicts:[],
     skipped:missing+names.size,unmatchedCoordinates:names.size});
   if((!names.size&&!scanExistingOnEmpty)||scopeId==='local'||scopeId==='loc'||!scopeId)
     return unavailable();
@@ -61,7 +61,8 @@ export async function prepareImportPlaceAnchors(records,{
   for(let offset=0;;offset+=pageSize){
     const {data,error}=await relation(table)
       .select('uid,type,title,attr,createtime').eq('type','point')
-      .order('title',{ascending:true}).range(offset,offset+pageSize-1);
+      .order('title',{ascending:true}).order('uid',{ascending:true})
+      .range(offset,offset+pageSize-1);
     if(error){
       if(allowMissing&&!createMissing&&['42P01','PGRST205'].includes(String(error.code||'')))
         return unavailable();
@@ -70,13 +71,20 @@ export async function prepareImportPlaceAnchors(records,{
     for(const anchor of data||[]){
       const name=nameKey(anchor?.title);
       const uid=String(anchor?.uid||'');
-      if(!name||!VALID_UID.test(uid))continue;
+      if(!VALID_UID.test(uid))continue;
       const coordinates=importGeoKey(anchor?.attr);
+      // A legacy Point can have valid GPS but an empty title. Its identity
+      // still conflicts with another Point at those coordinates.
+      if(!name&&!coordinates)continue;
       const saved={uid,coordinates};
-      if(!existingByName.has(name))existingByName.set(name,[]);
-      existingByName.get(name).push(saved);
-      if(coordinates&&!existingByCoordinate.has(coordinates))
-        existingByCoordinate.set(coordinates,saved);
+      if(name){
+        if(!existingByName.has(name))existingByName.set(name,[]);
+        existingByName.get(name).push(saved);
+      }
+      if(coordinates){
+        if(!existingByCoordinate.has(coordinates))existingByCoordinate.set(coordinates,[]);
+        existingByCoordinate.get(coordinates).push(saved);
+      }
       timesByUid.set(uid,Array.isArray(anchor.attr?.times)?anchor.attr.times:[]);
       attrsByUid.set(uid,anchor.attr||{});
       createtimeByUid.set(uid,String(anchor.createtime||'')||null);
@@ -85,7 +93,7 @@ export async function prepareImportPlaceAnchors(records,{
     if((data||[]).length<pageSize)break;
   }
   let reused=0,created=0;
-  const pending=[],ambiguousNames=new Set();
+  const pending=[],ambiguousNames=new Set(),conflicts=[];
   const register=(place,uid)=>{
     if(place.coordinates)byCoordinate.set(place.coordinates,uid);
     if(ambiguousNames.has(place.name))return;
@@ -106,24 +114,39 @@ export async function prepareImportPlaceAnchors(records,{
   const nameOnlyAliases=[];
   for(const place of ordered){
     const candidates=existingByName.get(place.name)||[];
-    const matched=place.coordinates
-      ?existingByCoordinate.get(place.coordinates)
-      :candidates.length===1?candidates[0]:null;
+    const matches=place.coordinates
+      ?existingByCoordinate.get(place.coordinates)||[]:candidates;
+    const matched=matches.length===1?matches[0]:null;
+    // Point coordinates and normalized titles are semantic keys, not PKs.
+    // If several UIDs claim the same identity, do not pick the first.
+    const conflicting=matches.length>1?matches:
+      (matched?.coordinates&&existingByCoordinate.get(matched.coordinates)?.length>1
+        ?existingByCoordinate.get(matched.coordinates):[]);
+    if(conflicting.length){
+      conflicts.push({type:'point',place:place.title,
+        coordinates:place.coordinates||null,
+        saved_uids:[...new Set(conflicting.map(row=>row.uid))].sort()});
+      continue;
+    }
     if(matched){register(place,matched.uid);reused++;continue;}
     if(!place.coordinates){
-      if(candidates.length>1)continue;
       const peers=coordinatePeers.get(place.name)||[];
       if(!candidates.length&&peers.length===1){
         nameOnlyAliases.push({name:place.name,coordinates:peers[0].coordinates});
         continue;
       }
-      if(peers.length>1)continue;
+      if(peers.length>1){
+        conflicts.push({type:'point',place:place.title,
+          coordinates:null,reason:'multiple incoming coordinates',saved_uids:[]});
+        continue;
+      }
     }
     if(createMissing)pending.push(place);
   }
   // Point identity is an exact GPS pair (or unambiguous name without GPS).
   // Generate native 8-char UIDs and validate by UID, not response order.
-  const assigned=new Set([...existingByName.values()].flat().map(item=>item.uid));
+  const assigned=new Set([...existingByName.values(),...existingByCoordinate.values()]
+    .flat().map(item=>item.uid));
   onProgress?.({phase:'建立原始座標定錨',completed:0,total:pending.length});
   for(let offset=0;offset<pending.length;offset+=80){
     const chunk=pending.slice(offset,offset+80);
@@ -170,7 +193,7 @@ export async function prepareImportPlaceAnchors(records,{
   }
   const unmatchedCoordinates=names.size-reused-created;
   return {byCoordinate,byName,created,reused,timesByUid,attrsByUid,createtimeByUid,table,
-    skipped:missing+unmatchedCoordinates,unmatchedCoordinates};
+    skipped:missing+unmatchedCoordinates,unmatchedCoordinates,conflicts};
 }
 export function importedPlaceId({incoming,existing,byName,byCoordinate}={}){
   if(String(existing?.place_id||'').trim())return null;

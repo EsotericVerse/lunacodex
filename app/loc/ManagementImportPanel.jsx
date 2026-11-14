@@ -52,6 +52,21 @@ const GALAXY_IMPORT_TIME_COLUMNS=galaxyReadColumns('GalaxyList')
   .filter(column=>['uid','createtime','site'].includes(column)).concat('site_id').join(',');
 const GALAXY_IMPORT_UID_COLUMNS=galaxyReadColumnsFor('GalaxyUidRead')
   .concat(['site_id']).filter((column,index,all)=>all.indexOf(column)===index).join(',');
+// Imported Anchor keys are semantic matches, not UNIQUE constraints.
+// Report unresolved duplicate UIDs without choosing an arbitrary winner.
+function importAnchorConflictSummary(...results){
+  const conflicts=results.flatMap(result=>Array.isArray(result?.conflicts)?result.conflicts:[]);
+  if(!conflicts.length)return '';
+  const sample=conflicts.slice(0,5).map(row=>
+    (row.type==='date'?'日期 '+String(row.date||''):
+      row.type==='point'?'地點 '+String(row.place||''):
+        '媒體 '+String(row.type||'')+' '+String(row.url||row.uid||'未提供網址'))+
+    (row.saved_uids?.length?'，候選 UID '+row.saved_uids.slice(0,5).join(',')+
+      (row.saved_uids.length>5?'…':''):'，缺少唯一識別'));
+  return '；Anchor 比對衝突 '+conflicts.length.toLocaleString()+
+    ' 組，已保留待人工核對：'+sample.join('、')+
+    (conflicts.length>5?' 等':'')+'。';
+}
 const ZIP_LAYOUT_KEYS=Object.freeze({
   'conversation-tree':'conversationTree','message-list':'messageList','post-list':'postList',
   activity:'activity',media:'media',table:'table','structured-records':'records',document:'document'
@@ -320,8 +335,25 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
         return url?JSON.stringify([url,String(row.type||'').trim()])
           :(row.uid?'id:'+row.uid:null);
       };
-      const byKey=new Map(existingMedia.map(row=>[mediaKey(row),row]).filter(([key])=>key));
+      const byKey=new Map(),ambiguousMediaKeys=new Map();
       const byId=new Map(existingMedia.map(row=>[String(row.uid),row]));
+      for(const row of existingMedia){
+        const key=mediaKey(row);
+        if(!key)continue;
+        if(ambiguousMediaKeys.has(key)){
+          ambiguousMediaKeys.get(key).add(String(row.uid));
+        }else if(byKey.has(key)&&String(byKey.get(key).uid)!==String(row.uid)){
+          ambiguousMediaKeys.set(key,new Set([String(byKey.get(key).uid),String(row.uid)]));
+          byKey.delete(key);
+        }else byKey.set(key,row);
+      }
+      const mediaConflicts=[],reportedMediaConflicts=new Set();
+      const reportMediaConflict=(key,record,uids)=>{
+        if(reportedMediaConflicts.has(key))return;
+        reportedMediaConflicts.add(key);
+        mediaConflicts.push({type:record.type||null,url:record.url||null,
+          uid:record.uid||null,saved_uids:[...uids].sort()});
+      };
       // URL-less media are reused only when attached to this exact article
       // with a complete, matching source evidence identity.
       const mediaEvidenceKey=(item,owner)=>{
@@ -338,6 +370,14 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
           mediaEvidenceKey(item,String(item.__article_uid))))
         .map(item=>String(item.__article_uid)))];
       const existingRuneByArticle=new Map(),existingOwnerMediaByKey=new Map();
+      const ambiguousRunes=new Map(),ambiguousEvidence=new Map();
+      const trackEvidence=(stored,ambiguous,key,uid)=>{
+        if(!key)return;
+        if(ambiguous.has(key))ambiguous.get(key).add(uid);
+        else if(stored.has(key)&&stored.get(key)!==uid){
+          ambiguous.set(key,new Set([stored.get(key),uid]));stored.delete(key);
+        }else stored.set(key,uid);
+      };
       if(pendingOwners.length){
         const ownerRows=await readExistingByIds(galaxy,'uid,media_link','uid',pendingOwners,
           t('uiExtra.importUI.mediaLinkReadFailed'));
@@ -351,11 +391,11 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
             if(!stored)continue;
             const owner=String(article.uid),uid=String(mediaUid);
             if(stored.type==='rune'&&stored.description)
-              existingRuneByArticle.set(JSON.stringify([owner,String(stored.description)]),uid);
-            if(!stored.url){
-              const key=mediaEvidenceKey(stored,owner);
-              if(key&&!existingOwnerMediaByKey.has(key))existingOwnerMediaByKey.set(key,uid);
-            }
+              trackEvidence(existingRuneByArticle,ambiguousRunes,
+                JSON.stringify([owner,String(stored.description)]),uid);
+            if(!stored.url)
+              trackEvidence(existingOwnerMediaByKey,ambiguousEvidence,
+                mediaEvidenceKey(stored,owner),uid);
           }
         }
       }
@@ -393,13 +433,28 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
           throw new Error('未連結文章的媒體地點無法儲存到 MediaAnchor；請先建立文章／LocationAnchor。');
         const runeDedupKey=record.type==='rune'&&!record.uid&&!record.url&&owner&&record.description
           ?JSON.stringify([owner,String(record.description)]):'';
+        if(runeDedupKey&&ambiguousRunes.has(runeDedupKey)){
+          reportMediaConflict('rune:'+runeDedupKey,record,ambiguousRunes.get(runeDedupKey));
+          continue;
+        }
         const existingRuneUid=runeDedupKey?existingRuneByArticle.get(runeDedupKey):null;
         if(existingRuneUid){attach(owner,existingRuneUid);continue;}
         const evidenceKey=!record.uid&&!record.url?mediaEvidenceKey(record,owner):'';
+        if(evidenceKey&&ambiguousEvidence.has(evidenceKey)){
+          reportMediaConflict('evidence:'+evidenceKey,record,ambiguousEvidence.get(evidenceKey));
+          continue;
+        }
         const storedEvidenceUid=evidenceKey?existingOwnerMediaByKey.get(evidenceKey):null;
         if(storedEvidenceUid){attach(owner,storedEvidenceUid);continue;}
         const key=mediaKey(record);
-        const known=(record.uid?byId.get(String(record.uid)):null)||(key?byKey.get(key):null);
+        // UID is authoritative if it exists; URL+type or article evidence
+        // cannot select one among several persisted MediaAnchor UIDs.
+        const exact=record.uid?byId.get(String(record.uid)):null;
+        if(!exact&&key&&ambiguousMediaKeys.has(key)){
+          reportMediaConflict('url:'+key,record,ambiguousMediaKeys.get(key));
+          continue;
+        }
+        const known=exact||(key?byKey.get(key):null);
         if(known){
           if(record.uid&&String(known.type||'')!==String(record.type||''))
             throw new Error('媒體 UID 已存在，但媒體類型不同：'+record.uid);
@@ -457,7 +512,7 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
         });
       await flushMediaLinks();
 
-  return {created,connected,resolvedIds};
+  return {created,connected,resolvedIds,conflicts:mediaConflicts};
 }
 
 function UniversalImport({scopeId,format,onFormatChange}) {
@@ -771,7 +826,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         '、沿用 '+result.reused.toLocaleString()+'；日期定錨新增 '+
         dates.created.toLocaleString()+'、沿用 '+dates.reused.toLocaleString()+
         '；'+'Point 造訪時間新增 '+saved.added.toLocaleString()+
-        '。沒有新增 Galaxy 文章；缺少原始座標的地點不會捏造座標。');
+        '。沒有新增 Galaxy 文章；缺少原始座標的地點不會捏造座標。'+
+        importAnchorConflictSummary(result,dates));
     }catch(error){setStatus('Trace 地點儲存失敗：'+String(error?.message||error));}
     finally{setBusy(false);setProgress(null);}
   }
@@ -796,7 +852,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         '；日期定錨新增 '+result.dates.created.toLocaleString()+'、沿用 '+
         result.dates.reused.toLocaleString()+'；文章地點關聯補齊 '+
         result.linked.toLocaleString()+'，'+'Point 造訪時間新增 '+result.visits.toLocaleString()+
-        '，未能確定地點 '+result.unmatched.toLocaleString()+' 筆。');
+        '，未能確定地點 '+result.unmatched.toLocaleString()+' 筆。'+
+        importAnchorConflictSummary(result.places,result.dates));
     }catch(error){
       setStatus('既有打卡定錨修復失敗；已完成的部分可能已寫入，重新執行會沿用既有資料。原始錯誤：'+String(error?.message||error));
     }finally{setProgress(null);setBusy(false);}
@@ -932,11 +989,23 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         onProgress:p=>showProgress('依來源文章 ID 比對',p.completed,p.total),
         readSiteIds:async(ids,consumePage,site)=>{
           for(const idsPage of urlSafeInBatches(ids,'site_id')){
-            const {data,error}=await dbAuthRelation(galaxy)
-              .select(GALAXY_IMPORT_UID_COLUMNS)
-              .ilike('site',site).in('site_id',idsPage);
-            if(error)throw Error('site_id 比對失敗：'+error.message);
-            consumePage(data||[]);
+            // Page every stored candidate; one platform ID can map to
+            // multiple legacy rows and must remain ambiguous until compared.
+            const pageSize=500;
+            for(let offset=0;;){
+              const {data,error}=await dbAuthRelation(galaxy)
+                .select(GALAXY_IMPORT_UID_COLUMNS)
+                .ilike('site',site).in('site_id',idsPage)
+                .order('uid',{ascending:true})
+                .range(offset,offset+pageSize-1);
+              if(error)throw Error('site_id 比對失敗：'+error.message);
+              const page=data||[];
+              if(!Array.isArray(page))throw Error('site_id 比對回傳格式錯誤');
+              if(!page.length)break;
+              consumePage(page);
+              offset+=page.length;
+              if(page.length<pageSize)break;
+            }
           }
         }
       }):new Map();
@@ -951,8 +1020,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         onProgress:p=>showProgress('依網站與發文時間比對',p.completed,p.total),
         readTimestamps:(times,consumePage,site,report)=>readImportCandidatesByTimeWindows(times,{
           readWindow:(start,end)=>readSiteSpan(site,start,end),
-          readRowsByUid,consumePage:rows=>consumePage(rows.filter(row=>
-            !reservedSavedUids.has(String(row.uid)))),windowSize:1000,concurrency:times.length>=3000?3:1,onWindowDone:report
+          readRowsByUid,consumePage,excludeUids:reservedSavedUids,
+          windowSize:1000,concurrency:times.length>=3000?3:1,onWindowDone:report
         })
       }):new Map();
       const existingBySiteId=new Map([...existingByTime,...matchesById]);
@@ -1166,11 +1235,14 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       showProgress('匯入完成',1,1);
       setStatus(t('uiExtra.importUI.importLinkedComplete',{articles:result.inserted,media:mediaSummary.created,linked:mediaSummary.connected,skipped})+
         (result.conflicts?'；UID 衝突未建立文章／媒體關聯 '+result.conflicts.toLocaleString()+' 筆。':'')+
-        '；已更新既有文章 '+updated.toLocaleString()+' 筆，沿用空間定錨點 '+placeAnchors.reused.toLocaleString()+' 筆，新增空間定錨點 '+placeAnchors.created.toLocaleString()+' 筆，新增日期定錨 '+timeAnchors.created.toLocaleString()+' 筆，沿用日期定錨 '+timeAnchors.reused.toLocaleString()+' 筆，'+'Point 造訪時間新增 '+recordedVisits.toLocaleString()+' 筆，未匹配地點 '+placeAnchors.unmatchedCoordinates.toLocaleString()+' 組。'+
+        '；已更新既有文章 '+updated.toLocaleString()+' 筆，沿用空間定錨點 '+placeAnchors.reused.toLocaleString()+' 筆，新增空間定錨點 '+placeAnchors.created.toLocaleString()+' 筆，新增日期定錨 '+timeAnchors.created.toLocaleString()+' 筆，沿用日期定錨 '+timeAnchors.reused.toLocaleString()+' 筆，'+'Point 造訪時間新增 '+recordedVisits.toLocaleString()+' 筆，未匹配地點 '+placeAnchors.unmatchedCoordinates.toLocaleString()+' 組。'+importAnchorConflictSummary(placeAnchors,timeAnchors,mediaSummary)+
         (ambiguousGroups.length?'；來源文章 ID 或發文時間對應多篇既有文章，無法唯一比對而暫不匯入 '+
           ambiguousGroups.length.toLocaleString()+' 筆（其他文章繼續處理）。待確認：'+
-          ambiguousGroups.slice(0,5).map(group=>group.site+' / '+
-            (group.site_id||group.createtime)).join('、')+(ambiguousGroups.length>5?' 等':'')+'。':''));
+          ambiguousGroups.slice(0,5).map(group=>'UID '+String(group.uid)+' / '+
+            group.site+' / '+(group.site_id||group.createtime)+
+            (group.saved_uids?.length?'，候選 UID '+group.saved_uids.slice(0,5).join(',')+
+              (group.saved_uids.length>5?'…':''):'')).join('、')+
+            (ambiguousGroups.length>5?' 等':'')+'。':''));
       setRows([]);setArchiveEvidence([]);setGeoPlaceCandidates([]);
       if(nativeLocal)window.dispatchEvent(new Event('loc-local-data-changed'));
     }catch(error){

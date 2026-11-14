@@ -232,7 +232,10 @@ export async function matchExistingImportByCreatedAt(records,{readTimestamps,onP
       const id=String(record.site_id||'').trim();
       const equal=id?(bySiteId.get(id)||[]).filter(row=>!used.has(String(row.uid))):[];
       if(equal.length===1)assign(record,equal[0]);
-      else if(equal.length>1)ambiguous.push({uid:String(record.uid),site:record.site,createtime:record.createtime});
+      else if(equal.length>1)ambiguous.push({
+        uid:String(record.uid),site:record.site,createtime:record.createtime,
+        saved_uids:equal.map(row=>String(row.uid))
+      });
       else unresolved.push(record);
     }
     // Build text groups only when native-ID matching left work to do.
@@ -247,7 +250,10 @@ export async function matchExistingImportByCreatedAt(records,{readTimestamps,onP
       const sameContent=eligible(record,byContent.get(incomingText)||[]);
       if(sameContent.length===1){assign(record,sameContent[0]);continue;}
       if(sameContent.length>1){
-        ambiguous.push({uid:String(record.uid),site:record.site,createtime:record.createtime});
+        ambiguous.push({
+          uid:String(record.uid),site:record.site,createtime:record.createtime,
+          saved_uids:sameContent.map(row=>String(row.uid))
+        });
         continue;
       }
       // A single timestamp on each side also supports an edited article.
@@ -276,9 +282,11 @@ const importIsoTime=value=>{
 // A timestamp belongs to only one lane. Each lane filters and fetches its own
 // candidate UIDs; the shared comparison spool receives the completed results.
 export async function readImportCandidatesByTimeWindows(times,
-    {readWindow,readRowsByUid,consumePage,windowSize=5000,concurrency=3,onWindowDone}={}){
+    {readWindow,readRowsByUid,consumePage,windowSize=5000,concurrency=3,onWindowDone,
+      excludeUids=new Set()}={}){
   if(typeof readWindow!=='function'||typeof readRowsByUid!=='function'||
       typeof consumePage!=='function')throw Error('缺少時間區間查詢');
+  if(!(excludeUids instanceof Set))throw Error('無效的既有 UID 排除索引');
   if(!Number.isSafeInteger(windowSize)||windowSize<1||windowSize>10000)
     throw Error('無效的比對區間大小');
   if(!Number.isSafeInteger(concurrency)||concurrency<1||concurrency>3)
@@ -302,8 +310,13 @@ export async function readImportCandidatesByTimeWindows(times,
       const saved=await readWindow(part[0],part[part.length-1]);
       if(!Array.isArray(saved))throw Error('時間區間查詢結果無效');
       const uids=new Set();
-      for(const row of saved)
-        if(wanted.has(importIsoTime(row?.createtime)))uids.add(String(row.uid));
+      // The source-ID stage already resolved these rows. Exclude them before
+      // the expensive full-content UID SELECT, not after fetching the body.
+      for(const row of saved){
+        const uid=String(row?.uid||'');
+        if(!excludeUids.has(uid)&&wanted.has(importIsoTime(row?.createtime)))
+          uids.add(uid);
+      }
       if(uids.size){
         const full=await readRowsByUid([...uids]);
         if(!Array.isArray(full))throw Error('UID 查詢結果無效');

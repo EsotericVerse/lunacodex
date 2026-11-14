@@ -86,18 +86,28 @@ export async function prepareImportTimeAnchors(records,{
       !logical.startsWith('silver.'+scopeId+'_'))
     throw Error('日期定錨尚未解析正確的 Scope Time 資料表');
   const table='silver.'+scopeId+'_anchor';
-  const existingDays=new Map();
+  const existingDays=new Map(),conflictingDays=new Map();
   onProgress?.({phase:'核對既有日期定錨',completed:0,total:0});
   for(let offset=0;;offset+=pageSize){
     const {data,error}=await relation(table).select('uid,type,title,description,attr')
       .eq('type','date').order('title',{ascending:true})
-      .range(offset,offset+pageSize-1);
+      .order('uid',{ascending:true}).range(offset,offset+pageSize-1);
     if(error)throw Error('讀取日期定錨失敗：'+(error.message||error));
     const rows=data||[];
     for(const row of rows){
       const day=String(row.attr?.date||'').slice(0,10);
-      if(/^\d{4}-\d{2}-\d{2}$/.test(day)&&!existingDays.has(day))
-        existingDays.set(day,row);
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(day))continue;
+      // UID is the physical PK, but attr.date has no uniqueness constraint.
+      // Never adopt the first of several Date anchors for the same day.
+      if(conflictingDays.has(day)){
+        conflictingDays.get(day).add(String(row.uid));
+        continue;
+      }
+      const previous=existingDays.get(day);
+      if(previous&&String(previous.uid)!==String(row.uid)){
+        conflictingDays.set(day,new Set([String(previous.uid),String(row.uid)]));
+        existingDays.delete(day);
+      }else if(!previous)existingDays.set(day,row);
     }
     onProgress?.({phase:'核對既有日期定錨',completed:offset+rows.length,total:0});
     if(rows.length<pageSize)break;
@@ -106,8 +116,11 @@ export async function prepareImportTimeAnchors(records,{
   // improbable secure Base62 UID collisions without preloading all Anchor UIDs.
   const occupied=new Set();
   const dates=[...entryByDate.keys()].sort();
-  const missing=dates.filter(day=>!existingDays.has(day));
-  let reused=dates.length-missing.length,created=0,repaired=0;
+  const missing=dates.filter(day=>!existingDays.has(day)&&!conflictingDays.has(day));
+  const conflicts=dates.filter(day=>conflictingDays.has(day)).map(day=>({
+    type:'date',date:day,saved_uids:[...conflictingDays.get(day)].sort()
+  }));
+  let reused=dates.length-missing.length-conflicts.length,created=0,repaired=0;
   for(const day of dates){
     const old=existingDays.get(day),entry=entryByDate.get(day);
     if(!old||old.title!==day||String(old.description||'').trim()||
@@ -151,5 +164,6 @@ export async function prepareImportTimeAnchors(records,{
     created+=rows.length;
     onProgress?.({phase:'新增缺少的日期定錨',completed:offset+rows.length,total:missing.length});
   }
-  return {created,reused,repaired,skipped:0,anniversaries:0,table};
+  return {created,reused,repaired,skipped:conflicts.length,
+    conflicts,anniversaries:0,table};
 }

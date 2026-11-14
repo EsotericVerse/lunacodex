@@ -73,7 +73,9 @@ export async function reconcileExistingImportAnchors({
     createtimeByUid:places.createtimeByUid,attrsByUid:places.attrsByUid,onProgress
   });
   return {scanned:candidates.length,linked,unmatched,
-    places:{created:places.created,reused:places.reused},
-    dates:{created:dates.created,reused:dates.reused},
+    places:{created:places.created,reused:places.reused,
+      conflicts:places.conflicts||[]},
+    dates:{created:dates.created,reused:dates.reused,
+      conflicts:dates.conflicts||[]},
     visits:recorded.added};
 }
