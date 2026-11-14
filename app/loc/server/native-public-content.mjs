@@ -173,44 +173,25 @@ export async function handleNativePublicContent(request,env={},{
       return respond({data});
     }
     if(kind==='culture_anchors'){
-      const data=await (async()=>{
-        // The LOC-wide source taxonomy is its own fixed physical model. It is
-        // not a dynamic Scope Anchor projection, so PostgreSQL reads use the
-        // same PolicyPlugin delegate as fixed Blocks.
-        const fixedAnchorModel=port.dialect
-          ?fixedPolicyReadModel({engine:port.engine},{kind:'query',
-            schema:port.namespace||'silver',table:'loc_anchor',operation:'select'})
-          :null;
-        // loc_anchor is the fixed LOC-wide source relation. A MySQL target does
-        // not have the fixed PolicyPlugin route, so use the matching dynamic
-        // ZModel scope rather than accidentally reading <scope>_anchor.
-        const typed=scopedFor('loc');
-        const rows=fixedAnchorModel
-          ?await withFixedPolicyRead(query,{engine:port.engine},{kind:'query',
-              schema:port.namespace||'silver',table:'loc_anchor',operation:'select'},
-              'anon',{}, {dialect:port.dialect,ZenStackClient,PolicyPlugin},
-              (_qb,name,authorized)=>authorized[
-                name[0].toLowerCase()+name.slice(1)].findMany({
-                  where:{type:{in:['date','period','era']},invisible:false},
-                  select:{uid:true,type:true,title:true,attr:true}
-                }))
-          :typed
-          ?await typed.anchor.findMany({
-              where:{type:{in:['date','period','era']},invisible:false},
-              select:{uid:true,type:true,title:true,attr:true}
-            })
-          :await query.selectFrom(relation(scope+'_anchor'))
-              .select(['uid','type','title','attr'])
-              .where('type','in',['date','period','era'])
-              .where('invisible','=',false).execute();
-        if(!fixedAnchorModel&&!typed)
-          assertZModelSelectRows('silver.'+scope+'_anchor',
-            ['uid','type','title','attr'],rows);
-        return rows.map(row=>({...row,
-          attr:typeof row.attr==='string'?JSON.parse(row.attr||'{}'):row.attr||{}
-        }));
-      })();
-      return respond({data});
+      // A public Scope's TimeAnchor history belongs to THAT Scope's
+      // <scope>_anchor ZModel. The fixed loc_anchor model is the separate
+      // LOC-wide taxonomy, not the author's TimeAnchor table.
+      // Preserve the trusted published-Scope routing and invisible filter.
+      const typed=scopedFor(scope);
+      const rows=typed
+        ?await typed.anchor.findMany({
+            where:{type:{in:['date','period','era']},invisible:false},
+            select:{uid:true,type:true,title:true,attr:true}
+          })
+        :await query.selectFrom(relation(scope+'_anchor'))
+            .select(['uid','type','title','attr'])
+            .where('type','in',['date','period','era'])
+            .where('invisible','=',false).execute();
+      if(!typed)assertZModelSelectRows('silver.'+scope+'_anchor',
+        ['uid','type','title','attr'],rows);
+      return respond({data:rows.map(row=>({...row,
+        attr:typeof row.attr==='string'?JSON.parse(row.attr||'{}'):row.attr||{}
+      }))});
     }
     if(kind==='config'){
       const data=await (async()=>{
