@@ -143,7 +143,8 @@ export function useAsyncResource(keyOrOptions,fetcherArg,optionsArg={}){
   // Same component, new query key: ignore the older request's completion.
   const currentKeyRef=useRef(serializedKey);
   currentKeyRef.current=serializedKey;
-  const isCurrent=()=>mountedRef.current&&activeRef.current&&currentKeyRef.current===serializedKey;
+  const isCurrent=()=>mountedRef.current&&currentKeyRef.current===serializedKey;
+  const isActiveRead=()=>isCurrent()&&activeRef.current;
 
   const load=useCallback(async()=>{
     if(!active)return undefined;
@@ -152,21 +153,21 @@ export function useAsyncResource(keyOrOptions,fetcherArg,optionsArg={}){
     try{
       const value=await runFetch(serializedKey,()=>fetcherRef.current());
       // A request may finish after unmount; never revive stale route data.
-      if(isCurrent()&&generation===resourceEpoch){
+      if(isActiveRead()&&generation===resourceEpoch){
         retainIfObserved(serializedKey,value);
         setState({data:value,status:'success',error:null});
       }
       return value;
     }catch(error){
       // An abandoned page is not a failed data read and must not flash an error.
-      if(generation===resourceEpoch&&!isCancelled(error)){
+      if(generation===resourceEpoch&&isActiveRead()&&!isCancelled(error)){
         flashMessage('資料讀取失敗，請稍後再試');
         onErrorRef.current?.(error,queryKey);
         if(isCurrent())setState(previous=>({data:previous.data,status:'error',error}));
       }
       throw error;
     }finally{
-      if(isCurrent()&&generation===resourceEpoch)setIsFetching(false);
+      if(isActiveRead()&&generation===resourceEpoch)setIsFetching(false);
     }
   // queryKey is represented by serializedKey; fetcher/onError read from refs.
   },[serializedKey,active]); // eslint-disable-line react-hooks/exhaustive-deps
