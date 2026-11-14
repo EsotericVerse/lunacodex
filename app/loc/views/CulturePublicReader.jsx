@@ -188,9 +188,9 @@ function sourceModel(rows,taxonomy,expanded,start,end){
   }
   return {items,groups,sites};
 }
-async function analytics(scope,view,start,end,options={}){
+async function analytics(scope,view,start,end,options={},signal=null){
   const {data,error}=await dbPublicClient.schema('silver').analytics({
-    p_scope_id:scope,p_view:view,p_start:start,p_end:end,p_options:options
+    p_scope_id:scope,p_view:view,p_start:start,p_end:end,p_options:options,signal
   });
   if(error)throw new Error(error.message||'文化資料讀取失敗');
   return Array.isArray(data)?data:[];
@@ -215,6 +215,7 @@ export default function CulturePublicReader(){
   const [classesLoading,setClassesLoading]=useState(false);
   const [daily,setDaily]=useState(NO_ITEMS);
   const [densityLoading,setDensityLoading]=useState(false);
+  const [densityReadyKey,setDensityReadyKey]=useState('');
   const [catalog,setCatalog]=useState({categories:[],aliases:[],tree:[],roots:[]});
   const [error,setError]=useState('');
   const [catalogError,setCatalogError]=useState('');
@@ -241,6 +242,12 @@ export default function CulturePublicReader(){
   const rangeEnd=densityPeriod==='custom'?customEnd:selectedEra?.end_date||end;
   const validRange=/^\d{4}-\d{2}-\d{2}$/.test(rangeStart)&&
     /^\d{4}-\d{2}-\d{2}$/.test(rangeEnd)&&rangeStart<=rangeEnd;
+  const densityKey=[scopeId,rangeStart,rangeEnd].join('|');
+  const sourceDensityPending=densityMode==='source'&&validRange&&
+    (densityLoading||densityReadyKey!==densityKey);
+  const keywordDensityPending=densityMode==='keyword'&&Boolean(keywordClass)&&
+    keywordLoading;
+  const riverPending=sourceDensityPending||keywordDensityPending;
   const sequence=useRef(0);
   const fullSequence=useRef(0);
   useEffect(()=>{
@@ -261,18 +268,26 @@ export default function CulturePublicReader(){
   },[scopeId]);
   useEffect(()=>{
     let active=true;
-    // Free the previous period's daily arrays before starting a new aggregate.
-    // The SQL side returns one row per date/source, never 10k article bodies.
-    setDaily(NO_ITEMS);
-    setDensityLoading(validRange);
+    const controller=new AbortController();
+    // A changed Era invalidates the previous SQL read immediately; do not
+    // wait for an old fetch to settle while retaining the previous chart.
+    setDaily(NO_ITEMS);setDensityReadyKey('');
+    setDensityLoading(validRange&&densityMode==='source');
     setKeywordError('');
-    if(!validRange)return()=>{active=false;};
-    analytics(scopeId,'culture_density',rangeStart,rangeEnd)
-      .then(rows=>{if(active)setDaily(rows);})
-      .catch(error=>{if(active)setKeywordError(String(error?.message||error));})
+    if(!validRange||densityMode!=='source')
+      return()=>{active=false;controller.abort();};
+    analytics(scopeId,'culture_density',rangeStart,rangeEnd,{},controller.signal)
+      .then(rows=>{
+        if(!active||controller.signal.aborted)return;
+        setDaily(rows);setDensityReadyKey(densityKey);
+      })
+      .catch(error=>{
+        if(!active||controller.signal.aborted||error?.name==='AbortError')return;
+        setKeywordError(String(error?.message||error));setDensityReadyKey(densityKey);
+      })
       .finally(()=>{if(active)setDensityLoading(false);});
-    return()=>{active=false;};
-  },[scopeId,rangeStart,rangeEnd,validRange]);
+    return()=>{active=false;controller.abort();};
+  },[scopeId,rangeStart,rangeEnd,validRange,densityMode]);
   useEffect(()=>{
     // Release old class snapshots when switching tabs, subjects or dates.
     if(densityMode!=='keyword'||!keywordClass){
@@ -453,7 +468,7 @@ export default function CulturePublicReader(){
             <select className='scope-select' value={densityPeriod} onChange={event=>{
               // Dispose prior Era details at the click boundary, not after the next read.
               resetArticles();setDaily(NO_ITEMS);setKeywordDaily(NO_ITEMS);
-              setExpandedSources([]);setAnchorSuggestionsOpen(false);
+              setDensityReadyKey('');setExpandedSources([]);setAnchorSuggestionsOpen(false);
               setFocusedSuggestionDate('');setDensityPeriod(event.target.value);
             }}>
               <option value='year'>{DEFAULT_YEAR_WINDOW.label}</option>
@@ -481,12 +496,12 @@ export default function CulturePublicReader(){
         {catalogError&&densityMode==='source'?<p className='scope-status scope-error' role='alert'>
           來源分類暫時無法載入：{catalogError}</p>:null}
         {keywordError?<p className='scope-status scope-error' role='alert'>{keywordError}</p>:null}
-        {densityLoading?<div className='scope-culture-density-loading' role='status'
+        {riverPending?<div className='scope-culture-density-loading' role='status'
           aria-live='polite' aria-label='正在整理該時期的每日文章密度'>
           <span className='scope-culture-density-loading__bar' aria-hidden='true'/>
           <span>正在整理時間河道的每日密度…</span>
         </div>:null}
-        <div className='scope-culture-double-river scope-public-culture-river'>
+        {!riverPending?<div className='scope-culture-double-river scope-public-culture-river'>
         <CultureTimeline items={densityRiver.items} extraGroups={densityRiver.groups}
           focus={NO_FOCUS} mode='source' heightVariant='double' naturalSourceHeight
           windowStart={rangeStart} windowEnd={rangeEnd} fixedMin={rangeStart} fixedMax={rangeEnd}
@@ -520,8 +535,8 @@ export default function CulturePublicReader(){
             const category=densityRiver.sites.find(item=>'site:'+item.key===name);
             if(category)openArticles(category.site,category.key);
           }}/>
-        </div>
-        {anchorSuggestionsOpen?<div id='public-culture-anchor-analysis'
+        </div>:null}
+        {!riverPending&&anchorSuggestionsOpen?<div id='public-culture-anchor-analysis'
           className='scope-culture-anchor-actions' role='region'
           aria-label='建議定錨點分析'>
           {suggestionAnalysis.error?<p className='scope-status scope-error' role='alert'>
