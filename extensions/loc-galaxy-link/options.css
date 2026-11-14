@@ -294,3 +294,98 @@ a:focus-visible, button:focus-visible, input:focus-visible {
 @media (max-width: 600px) {
   .section-block.console-page { margin-top: 23px; min-height: 0; }
 }
+
+/* Local remote-control views share the original rainbow tokens and controls. */
+.dashboard { padding-bottom: 126px; }
+.console-page { min-width: 0; }
+.daily-panel {
+  position: relative; min-height: 295px; overflow: hidden;
+  display: flex; align-items: center; gap: clamp(20px, 4vw, 54px);
+  background: radial-gradient(circle at 22% 52%, rgba(126, 112, 227, .23), transparent 35%),
+    radial-gradient(circle at 95% 0, rgba(101, 185, 204, .12), transparent 44%),
+    linear-gradient(130deg, rgba(27, 30, 62, .98), rgba(14, 22, 40, .98));
+}
+.daily-panel::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0;
+  height: 3px; background: var(--rainbow); opacity: .85;
+}
+.daily-orbit {
+  position: relative; flex: 0 0 clamp(155px, 23vw, 220px); width: clamp(155px, 23vw, 220px);
+  aspect-ratio: 1; display: grid; place-items: center;
+}
+.daily-orbit-ring { position: absolute; inset: 4px; border: 1px solid rgba(191, 171, 255, .37); border-radius: 50%; }
+.daily-orbit-ring::before { content: ''; position: absolute; inset: 21px; border: 1px dashed rgba(125, 207, 228, .35); border-radius: 50%; }
+.daily-orbit-moon {
+  width: 102px; height: 102px; display: grid; place-items: center; border-radius: 50%;
+  color: #413866; font-size: 71px;
+  background: radial-gradient(circle at 30% 27%, #fff3ff, #c5cbff 39%, #8686ca 74%, #414578);
+  text-shadow: 0 0 8px rgba(249, 240, 255, .85);
+  box-shadow: inset -10px -9px 25px rgba(42, 39, 97, .28), 0 0 40px rgba(157, 133, 245, .33);
+}
+.daily-orbit-star { position: absolute; top: 19px; right: 20px; color: #a1f0e1; font-size: 23px; text-shadow: 0 0 16px #86e7df; }
+.daily-content { position: relative; z-index: 1; min-width: 0; max-width: 650px; padding: 15px 0; }
+.daily-content h3 { margin: 0; font-size: clamp(23px, 2.8vw, 34px); line-height: 1.48; letter-spacing: .03em; }
+.daily-content > p:not(.eyebrow):not(.daily-explainer) { color: #c0c8e1; font-size: 13px; line-height: 1.8; }
+.daily-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 22px 0 14px; }
+.daily-explainer { color: #929fc3; font-size: 11px; line-height: 1.7; margin: 0; }
+
+/* The six controls follow LOC's existing bottom-navigation design.
+   Each key floats independently; there is no solid dock panel. */
+.extension-floating-dock {
+  position: fixed; z-index: 180; left: 50%; bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  width: min(700px, calc(100vw - 16px - env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px)));
+  display: grid; grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: clamp(4px, .75vw, 10px);
+  padding: 0; margin: 0; border: 0; background: transparent;
+  pointer-events: none;
+}
+.extension-floating-dock .remote-dock-link {
+  position: relative; min-width: 0; min-height: 65px; padding: 8px 4px 9px;
+  border: 1px solid rgba(185, 175, 245, .34);
+  border-radius: 17px; background: rgba(40, 42, 75, .88);
+  color: #e4e7fa; box-shadow: 0 8px 22px rgba(0, 0, 0, .32), 0 0 8px rgba(155, 125, 227, .07);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px;
+  text-align: center; font-size: 11px; font-weight: 700; line-height: 1.25;
+  pointer-events: auto; overflow-wrap: anywhere;
+  transition: background .16s ease, transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+}
+.extension-floating-dock .remote-dock-link:hover {
+  transform: translateY(-3px);
+  background: rgba(66, 58, 113, .94); border-color: #a99af3;
+}
+.extension-floating-dock .remote-dock-link:focus-visible { outline-offset: 3px; }
+.extension-floating-dock .remote-dock-link[aria-current="page"] {
+  color: #fff; border-color: #b3a4fc;
+  background: linear-gradient(150deg, rgba(98, 78, 171, .96), rgba(54, 73, 128, .96));
+  box-shadow: 0 0 0 1px rgba(181, 157, 246, .35),
+    0 0 26px rgba(162, 126, 241, .34), 0 8px 22px rgba(0, 0, 0, .29);
+}
+.extension-floating-dock .remote-dock-link[aria-current="page"]::after {
+  content: ''; position: absolute; bottom: 3px;
+  width: 19px; height: 2px; border-radius: 4px;
+  background: #b7f3dd; box-shadow: 0 0 8px #a2e9dd;
+}
+.remote-dock-glyph { display: grid; place-items: center; width: 24px; height: 24px; }
+.remote-dock-glyph svg { width: 23px; height: 23px; }
+@media (max-width: 840px) {
+  .sidebar .side-nav { display: none; }
+}
+@media (max-width: 650px) {
+  .daily-panel { flex-direction: column; text-align: center; padding: 19px; gap: 6px; }
+  .daily-orbit { flex-basis: auto; width: 135px; margin: 0 auto; }
+  .daily-content { padding: 0; }
+  .daily-content .eyebrow, .daily-actions { justify-content: center; }
+  .extension-floating-dock .remote-dock-link {
+    min-height: 61px; border-radius: 12px; padding: 6px 2px 8px;
+    font-size: clamp(9px, 2.55vw, 11px);
+  }
+  .extension-floating-dock { gap: 4px; }
+  .remote-dock-glyph { width: 22px; height: 22px; }
+  .remote-dock-glyph svg { width: 21px; height: 21px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .extension-floating-dock .remote-dock-link { transition: none; }
+  .extension-floating-dock .remote-dock-link:hover { transform: none; }
+}
