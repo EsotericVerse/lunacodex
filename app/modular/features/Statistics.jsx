@@ -428,13 +428,6 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
 
   const sourceBreakdownTotal=sourceSummary.sources.reduce((sum,row)=>sum+(Number(row.item_count)||0),0);
   return <section className="scope-stat-section statistics-dashboard">
-    <header className="scope-stat-domain-heading statistics-dashboard__heading">
-      <div>
-        <span className="statistics-dashboard__eyebrow">LOC / ANALYTICS</span>
-        <h2>{t('uiExtra.statisticsView.dashboardTitle')}</h2>
-        <p>{t('uiExtra.statisticsView.dashboardScopeHelp')}</p>
-      </div>
-    </header>
     <div className="scope-stat-controls statistics-dashboard__filters">
       <StatisticTypeSelect scopeId={scopeId} navigation={navigation} types={types}
         selectedSource={activeSourceSelection} sourceTaxonomy={sourceCatalog.data}/>
