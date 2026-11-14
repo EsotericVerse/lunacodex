@@ -128,23 +128,6 @@ a:focus-visible, button:focus-visible, input:focus-visible {
 .button-secondary:hover:not(:disabled) { border-color: rgba(200, 195, 251, .45); background: rgba(225, 230, 255, .08); }
 .button-ghost { background: transparent; color: #c5c9e6; border-color: transparent; }
 .button-ghost:hover:not(:disabled) { background: rgba(225, 230, 255, .08); }
-.hero-art { position: absolute; z-index: 1; top: 50%; right: 6%; width: 255px; height: 255px; transform: translateY(-50%); }
-.orbit { position: absolute; border-radius: 50%; inset: 0; border: 1px solid rgba(208, 194, 255, .21); }
-.orbit-outer { transform: scale(1.07); border-style: dashed; border-color: rgba(150, 176, 253, .18); }
-.orbit-middle { inset: 22px; border-color: rgba(146, 228, 215, .34); transform: rotate(32deg); }
-.orbit-inner { inset: 54px; border-color: rgba(249, 195, 246, .39); }
-.moon-core {
-  position: absolute; display: grid; place-items: center;
-  width: 100px; height: 100px; top: 50%; left: 50%; transform: translate(-50%, -50%);
-  border-radius: 50%;
-  background: radial-gradient(circle at 32% 27%, #fff7ff 1%, #d7d8ff 23%, #8b89d0 55%, #373e7f 100%);
-  box-shadow: inset -11px -10px 29px rgba(56, 43, 127, .47), 0 0 30px rgba(169, 153, 252, .44), 0 0 85px rgba(95, 185, 213, .17);
-}
-.moon-core span { font-size: 17px; letter-spacing: .18em; font-weight: 850; color: #343665; text-shadow: 0 1px rgba(255,255,255,.4); }
-.orbit-spark { position: absolute; width: 9px; height: 9px; border-radius: 50%; background: #a4eedd; box-shadow: 0 0 15px #8cdce7; }
-.orbit-spark-a { top: 17px; right: 36px; }
-.orbit-spark-b { bottom: 30px; left: 26px; width: 6px; height: 6px; background: #f4bce4; }
-
 /* Core cards */
 .feedback:not(:empty) { border-radius: 11px; padding: 12px 15px; margin: 0 0 20px; color: #e3dafa; border: 1px solid rgba(171, 156, 235, .28); background: rgba(114, 93, 186, .13); font-size: 12px; overflow-wrap: anywhere; }
 .metrics { display: grid; grid-template-columns: 1.24fr 1fr 1fr; gap: 14px; }
@@ -243,7 +226,6 @@ a:focus-visible, button:focus-visible, input:focus-visible {
 @media (max-width: 1120px) {
   .console { grid-template-columns: 211px minmax(0, 1fr); }
   .dashboard { padding-inline: 28px; }
-  .hero-art { right: 0; opacity: .8; }
 }
 @media (max-width: 840px) {
   .console { display: block; }
@@ -261,7 +243,6 @@ a:focus-visible, button:focus-visible, input:focus-visible {
   .dashboard { padding: 0 23px 27px; }
   .hero { min-height: 278px; }
   .hero-content { max-width: 70%; }
-  .hero-art { width: 205px; height: 205px; right: 0; }
 }
 @media (max-width: 600px) {
   .dashboard { padding: 0 15px 24px; }
@@ -271,7 +252,6 @@ a:focus-visible, button:focus-visible, input:focus-visible {
   .hero { margin-top: 18px; min-height: 295px; border-radius: 18px; }
   .hero-content { max-width: 100%; padding: 24px 21px; }
   .hero h1 { font-size: 28px; }
-  .hero-art { opacity: .21; width: 215px; height: 215px; right: -85px; }
   .hero-description { max-width: 330px; }
   .metrics { grid-template-columns: 1fr 1fr; gap: 10px; }
   .metrics .metric-card:first-child { grid-column: 1/-1; min-height: 124px; }
@@ -473,4 +453,52 @@ a:focus-visible, button:focus-visible, input:focus-visible {
 @media (max-width: 360px) {
   .extension-floating-dock .remote-dock-link { gap: 4px; padding-inline: 1px; }
   .remote-dock-glyph svg { width: 20px; height: 20px; }
+}
+
+/* Original LunArcus artwork for the compact Extension hero.
+   Keep the complete gold/blue light anchors, rainbow arch and silver river.
+   No cover-cropping, remote image request, Motion or canvas rendering. */
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, .9fr) minmax(0, 1.15fr);
+  align-items: center;
+  min-height: 225px;
+}
+.hero-lunarcus-art {
+  grid-column: 1;
+  grid-row: 1;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  margin: 0;
+  padding: 12px;
+}
+.hero-lunarcus-art img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 312px;
+  max-height: 212px;
+  object-fit: contain;
+  border-radius: 10px;
+}
+.hero-content {
+  grid-column: 2;
+  grid-row: 1;
+  max-width: 100%;
+  padding: 20px 24px;
+}
+.hero h1 { font-size: clamp(22px, 2.7vw, 31px); }
+.hero-description { margin: 10px 0 14px; }
+@media (max-width: 600px) {
+  .hero { display: flex; flex-direction: column; align-items: stretch; min-height: 0; }
+  .hero-lunarcus-art {
+    order: -1;
+    width: 100%;
+    max-height: 169px;
+    padding: 11px 12px 0;
+  }
+  .hero-lunarcus-art img { width: auto; max-width: 100%; max-height: 158px; }
+  .hero-content { padding: 14px 19px 21px; }
+  .hero h1 { font-size: 24px; }
 }
