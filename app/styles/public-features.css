@@ -406,10 +406,10 @@
 }
 @media(max-width:600px){
   [data-public-feature="statics"] .statistics-dashboard__kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
-  [data-public-feature="statics"] .statistics-dashboard__kpi:first-child{grid-column:1/-1}
+  [data-public-feature="statics"] .statistics-dashboard__kpis>.statistics-dashboard__kpi:first-child{grid-column:1/-1}
   [data-public-feature="statics"] .statistics-dashboard__panel{padding:.75rem}
 }
 @media(max-width:380px){
   [data-public-feature="statics"] .statistics-dashboard__kpis{grid-template-columns:minmax(0,1fr)}
-  [data-public-feature="statics"] .statistics-dashboard__kpi:first-child{grid-column:auto}
+  [data-public-feature="statics"] .statistics-dashboard__kpis>.statistics-dashboard__kpi:first-child{grid-column:auto}
 }
