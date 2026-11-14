@@ -246,8 +246,11 @@ export async function selectAllRows(table,{
   signal=null
 }={}){
   const pageSignal=transientReadSignal(signal);
+  // Default public page scans retain per-epoch query deduplication. An
+  // explicitly supplied AbortSignal keeps independent cancellation behavior.
+  const requestSignal=signal?pageSignal:null;
   const size=Math.max(1,Math.floor(Number(pageSize)||queryBatchSize(columns)));
-  const first=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset:0,count:'exact',signal:pageSignal});
+  const first=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset:0,count:'exact',signal:requestSignal});
   const rows=[...first.rows];
   const total=first.count==null||!Number.isSafeInteger(Number(first.count))?null:Number(first.count);
   const source=first.dataSource||'auto';
@@ -256,7 +259,7 @@ export async function selectAllRows(table,{
   // Missing COUNT never means the first transport page is the whole table.
   while(total===null||offset<total){
     if(pageSignal.aborted)throw abortError();
-    const page=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset,source,signal:pageSignal});
+    const page=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset,source,signal:requestSignal});
     if(!page.rows.length)break;
     rows.push(...page.rows);
     offset+=page.rows.length;
@@ -288,15 +291,19 @@ export async function selectAllRowsBounded(table,{
   signal=null
 }={}){
   const pageSignal=transientReadSignal(signal);
+  // Default public page scans retain per-epoch query deduplication. An
+  // explicitly supplied AbortSignal keeps independent cancellation behavior.
+  const requestSignal=signal?pageSignal:null;
   const size=Math.max(1,Math.floor(Number(pageSize)||queryBatchSize(columns)));
-  const first=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset:0,count:'exact',authenticated,signal:pageSignal});
+  const first=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset:0,count:'exact',authenticated,signal:requestSignal});
   const rows=[...first.rows];
   const total=first.count==null||!Number.isSafeInteger(Number(first.count))?null:Number(first.count);
   if(total===null||rows.length<Math.min(total,size)){
     // A missing COUNT or unexpectedly short transport page cannot truncate history.
     let offset=rows.length;
     while(total===null||offset<total){
-      const page=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset,authenticated,signal:pageSignal});
+      if(pageSignal.aborted)throw abortError();
+      const page=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset,authenticated,signal:requestSignal});
       if(!page.rows.length)break;
       rows.push(...page.rows);offset+=page.rows.length;
     }
@@ -308,13 +315,16 @@ export async function selectAllRowsBounded(table,{
   if(remainingOffsets.length<=parallelAfterPages){
     let source=first.dataSource||'auto';
     for(const offset of remainingOffsets){
-      const page=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset,authenticated,source,signal:pageSignal});
+      if(pageSignal.aborted)throw abortError();
+      const page=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset,authenticated,source,signal:requestSignal});
       rows.push(...page.rows);
     }
     return {rows,count:total??rows.length,dataSource:source};
   }
-  const pages=await mapBounded(remainingOffsets,concurrency,offset=>
-    selectRows(table,{columns,filters,orFilter,orders,limit:size,offset,authenticated,signal:pageSignal}));
+  const pages=await mapBounded(remainingOffsets,concurrency,offset=>{
+    if(pageSignal.aborted)throw abortError();
+    return selectRows(table,{columns,filters,orFilter,orders,limit:size,offset,authenticated,signal:requestSignal});
+  });
   for(const page of pages)rows.push(...(page?.rows||[]));
   return {rows,count:total,dataSource:first.dataSource};
 }
