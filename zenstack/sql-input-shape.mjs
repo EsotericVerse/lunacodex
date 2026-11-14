@@ -9,7 +9,7 @@ const QUERY_OPERATIONS=['select','insert','update','delete','upsert'];
 
 export const QUERY_FILTER_SQL=Object.freeze({
   eq:'=',neq:'!=',gt:'>',gte:'>=',lt:'<',lte:'<=',
-  like:'like',ilike:'ilike',contains:'contains',is:'is',in:'in'
+  like:'like',ilike:'ilike',ieq:'=',contains:'contains',is:'is',in:'in'
 });
 export const MANAGED_FILTER_SQL=Object.freeze({
   eq:'=',neq:'!=',gt:'>',gte:'>=',lt:'<',lte:'<=',
