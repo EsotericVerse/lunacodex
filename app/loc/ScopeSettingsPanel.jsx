@@ -10,7 +10,6 @@ import {dbAuthRelation,updateRows} from './db-client.mjs';
 import {useAccount} from './use-account';
 import {useEditDock} from '../modular/edit-dock';
 import scopeSettingsZh from '../i18n/sections/uiExtra.scopeSettings.zh_tw.js';
-import ScopeDatabasePanel from './ScopeDatabasePanel';
 registerDefaultSection('uiExtra.scopeSettings',scopeSettingsZh);
 
 const EMPTY={theme:'system-default'};
@@ -84,8 +83,7 @@ export default function ScopeSettingsPanel({scopeId}){
 
   dockActions.current={save:()=>save(),isDirty:()=>draft.theme!==savedTheme,isBusy:()=>busy||loading};
   return <><section className="loc-card scope-feature-card">
-    <p className="loc-eyebrow"><UiText id="uiExtra.scopeSettings.personalTitle"/></p>
-    <h2><UiText id="uiExtra.scopeSettings.miscellaneous"/></h2>
+    <h3>選擇主題</h3>
     {loading?<p className="scope-status"><UiText id="common.loading"/></p>:null}
     {!loading?<div>
       <div className="scope-management-fields">
@@ -100,5 +98,5 @@ export default function ScopeSettingsPanel({scopeId}){
 
       {message?<p className="scope-status" role="status">{message}</p>:null}
     </div>:null}
-  </section><ScopeDatabasePanel scopeId={scopeId}/></>;
+  </section></>;
 }
