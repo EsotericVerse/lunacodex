@@ -21,6 +21,7 @@ import {createUid8} from './uid';
 import {mediaAnchorRecord,mediaAnchorProjection,canonicalMediaAnchorType,MEDIA_ANCHOR_COLUMNS,ANCHOR_TYPE_GROUPS} from '../../zenstack/anchor-hierarchy.mjs';
 import {createImportProgressStore} from './import-progress-store.mjs';
 import {remapArchiveArticleUids} from './import-random-uids.mjs';
+import {createImportUidResolver,remapImportUidRelations,planExistingImportUidUpdate,planImportMediaUidLinks} from './import-uid-delta.mjs';
 import {facebookBackupPlace,facebookBackupPostText,facebookBackupTimestamp} from './facebook-backup-place.mjs';
 import {archiveGalaxyRows} from './archive-caption-rows.mjs';
 import {facebookPostPlace} from './archive-geo-objects.mjs';
@@ -279,8 +280,10 @@ async function readExistingByIds(table,columns,column,values,message,onPage){
 // Shared idempotent media attachment write for standard file imports.
 // All records are bound by original article UID; no full-table scan or recursive discovery.
 async function readImportMediaCandidates(scopeId,anchor,uids=[],urls=[],message='媒體讀取失敗'){
-  const ids=[...new Set(uids.map(value=>String(value||'').trim()).filter(Boolean))];
-  const links=[...new Set(urls.map(value=>String(value||'').trim()).filter(Boolean))];
+  // MediaAnchor UID is exact PK data; never normalize a malformed ID.
+  const ids=[...new Set(uids.map(value=>String(value??'')).filter(Boolean))];
+  // Media URL identity is literal: whitespace is significant.
+  const links=[...new Set(urls.map(value=>String(value??'')).filter(Boolean))];
   if(scopeId==='local'){
     if(links.length)throw new Error('本機媒體 URL 去重尚無 SQL 查詢能力，已停止匯入避免重複資料。');
     const rows=await readExistingByIds(anchor,MEDIA_ANCHOR_COLUMNS,'uid',ids,message);
@@ -356,8 +359,8 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
       const existingMedia=await readImportMediaCandidates(scopeId,mediaAnchor,
         explicitIds,candidateUrls,t('uiExtra.importUI.mediaIdCompareFailed'));
       const mediaKey=row=>{
-        const url=String(row.url||'').trim();
-        return url?JSON.stringify([url,String(row.type||'').trim()])
+        const url=String(row.url??'');
+        return url?JSON.stringify([url,String(row.type??'')])
           :(row.uid?'id:'+row.uid:null);
       };
       const byKey=new Map(),ambiguousMediaKeys=new Map();
@@ -524,11 +527,10 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
         t('uiExtra.importUI.mediaLinkReadFailed'),async page=>{
           for(const row of page){
             const uid=String(row.uid||'').trim();
-            const prior=Array.isArray(row.media_link)?row.media_link.map(String):[];
-            const linked=new Set(prior);
-            const additions=[...(related.get(uid)||[])].filter(id=>!linked.has(String(id)));
-            if(additions.length){
-              linkQueue.push({uid,media_link:[...prior,...additions]});
+            const prior=Array.isArray(row.media_link)?row.media_link:[];
+            const delta=planImportMediaUidLinks(prior,related.get(uid)||[]);
+            if(delta.patches.length){
+              linkQueue.push({uid,...delta.changes});
               if(linkQueue.length>=linkSizer.size)await flushMediaLinks();
             }
             checkedLinks++;
@@ -1089,15 +1091,46 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         unique=unique.filter(record=>!ambiguousUids.has(String(record.uid)));
       }
 
-      const finalUid=id=>{
-        const canonical=incoming.aliases.get(String(id))||String(id);
-        return String(existingBySiteId.get(canonical)?.uid||canonical);
+      // Only imported article UIDs and verified persisted PKs participate.
+      // Immer emits narrow patches for source_id / target_id / ref_id before
+      // either UPDATE or INSERT; unrelated rows and article content are untouched.
+      unique=remapImportUidRelations(unique,{
+        aliases:incoming.aliases,existingByUid:existingBySiteId
+      }).rows;
+      const resolvedUid=createImportUidResolver(incoming.aliases,existingBySiteId);
+      const persistedUids=new Set([...existingBySiteId.values()].map(row=>String(row.uid)));
+      // Before changing any stored nonempty UID, ask PostgreSQL only whether
+      // that exact eight-character PK still exists. An existing PK always
+      // wins over a coincidental incoming archive UID alias. No Galaxy body,
+      // Anchor model, title, location, site or semantic comparison is loaded.
+      const possiblyRebound=new Set();
+      const collectStoredUid=value=>{
+        if(typeof value!=='string'||!/^[A-Za-z0-9]{8}$/.test(value))return;
+        if(resolvedUid(value)!==value)possiblyRebound.add(value);
       };
-      unique=unique.map(record=>({
-        ...record,
-        source_id:record.source_id?finalUid(record.source_id):null,
-        target_id:(record.target_id||[]).map(finalUid)
-      }));
+      for(const saved of existingBySiteId.values()){
+        collectStoredUid(saved.source_id);
+        collectStoredUid(saved.ref_id);
+        for(const target of saved.target_id||[])collectStoredUid(target);
+      }
+      const occupiedUids=new Set();
+      for(const batch of urlSafeInBatches([...possiblyRebound],'uid')){
+        const {data,error}=await dbAuthRelation(galaxy).select('uid').in('uid',batch);
+        if(error)throw Error('既有 UID 主鍵核對失敗：'+(error.message||error));
+        const requested=new Set(batch);
+        for(const row of data||[]){
+          const uid=String(row?.uid||'');
+          if(!requested.has(uid))throw Error('UID 主鍵核對回傳不屬於本次 Scope');
+          occupiedUids.add(uid);
+        }
+      }
+      // Only a missing/stale saved UID may follow a proven import alias to a
+      // confirmed saved article. Pending INSERT UIDs cannot replace old links.
+      const resolveSavedUid=value=>{
+        if(occupiedUids.has(value))return value;
+        const mapped=resolvedUid(value);
+        return persistedUids.has(mapped)?mapped:value;
+      };
       // Articles with check-ins still need a spatial/date backfill on repeat imports.
       if(isUnchangedImportBeforeWrite(unique,existingBySiteId,{
         hasMedia:Boolean(analyzed.mediaOnly.length||eligibleArchiveEvidence.length||
@@ -1137,7 +1170,13 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         ?await readImportPointDateAnchors({scopeId,
           onProgress:p=>showProgress(p.phase,p.completed,p.total||0)})
         :null;
-      const placeAnchors=await prepareImportPlaceAnchors([...anchorRecords,...geoAnchorRecords],{
+      // UID wins over location text: a saved Galaxy.place_id is already a
+      // Point relationship even when many original location strings differ.
+      // Never construct another Point merely because a merged place has a
+      // different title in a later import.
+      const newPlaceCandidates=anchorRecords.filter(record=>
+        !String(existingBySiteId.get(record.uid)?.place_id||''));
+      const placeAnchors=await prepareImportPlaceAnchors([...newPlaceCandidates,...geoAnchorRecords],{
         scopeId,relation:dbAuthRelation,createMissing:true,anchorSnapshot,
         onProgress:p=>showProgress(p.phase,p.completed,p.total||0)
       });
@@ -1148,7 +1187,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       });
       const knownArticleIds=new Map();
       let updated=0,checkedExisting=0;
-      const placeVisits=[];
+      const placeVisits=[],missingPointUids=new Set();
       const updateSizer=createImportBatchSizer();
       let updateQueue=[];
       const existingCount=existingBySiteId.size;
@@ -1172,16 +1211,22 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         if(!String(existing.location||'').trim()&&String(record.location||'').trim())changes.location=record.location;
         if(!String(existing.site_id||'').trim()&&String(record.site_id||'').trim())changes.site_id=record.site_id;
         if(!String(existing.url||'').trim()&&String(record.url||'').trim())changes.url=record.url;
-        if(!String(existing.ref_id||'').trim()&&String(record.ref_id||'').trim())changes.ref_id=record.ref_id;
-        if(!String(existing.source_id||'').trim()&&String(record.source_id||'').trim())changes.source_id=record.source_id;
-        if(!(Array.isArray(existing.target_id)&&existing.target_id.length)&&record.target_id?.length)
-          changes.target_id=record.target_id;
         const placeRecord=placeRecordByUid.get(String(record.uid))||record;
         const restoredPlace=importedPlaceId({incoming:placeRecord,existing,byName:placeAnchors.byName,byCoordinate:placeAnchors.byCoordinate});
-        if(restoredPlace)changes.place_id=restoredPlace;
-        const matchedPlace=importedPlaceId({incoming:placeRecord,byName:placeAnchors.byName,byCoordinate:placeAnchors.byCoordinate});
-        const visitUid=restoredPlace||(
-          matchedPlace===String(existing.place_id||'').trim()?matchedPlace:null);
+        // Immer compares only 8-char UID references. Emit exactly the PK
+        // fields changed by this row, then pass them to existing Kysely writer.
+        Object.assign(changes,planExistingImportUidUpdate(existing,record,{
+          placeUid:restoredPlace,resolveSavedUid
+        }).changes);
+        // Confirm an existing PK directly in the shared Point UID index.
+        // Distinct literal locations with the same place_id remain one Point;
+        // no title/name/coordinate lookup is necessary for a saved link.
+        const storedPointUid=String(existing.place_id||'');
+        const savedPointExists=storedPointUid&&
+          anchorSnapshot?.place?.timesByUid.has(storedPointUid);
+        if(storedPointUid&&anchorSnapshot&&!savedPointExists)
+          missingPointUids.add(storedPointUid);
+        const visitUid=savedPointExists?storedPointUid:restoredPlace;
         if(visitUid&&record.createtime)placeVisits.push({uid:visitUid,time:record.createtime});
         if(Object.keys(changes).length){
           updateQueue.push({uid:String(existing.uid),...changes});
@@ -1307,6 +1352,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       setStatus(t('uiExtra.importUI.importLinkedComplete',{articles:result.inserted,media:mediaSummary.created,linked:mediaSummary.connected,skipped})+
         (result.conflicts?'；UID 衝突未建立文章／媒體關聯 '+result.conflicts.toLocaleString()+' 筆。':'')+
         '；已更新既有文章 '+updated.toLocaleString()+' 筆，沿用空間定錨點 '+placeAnchors.reused.toLocaleString()+' 筆，新增空間定錨點 '+placeAnchors.created.toLocaleString()+' 筆，新增日期定錨 '+timeAnchors.created.toLocaleString()+' 筆，沿用日期定錨 '+timeAnchors.reused.toLocaleString()+' 筆，'+'Point 造訪時間新增 '+recordedVisits.toLocaleString()+' 筆，未匹配地點 '+placeAnchors.unmatchedCoordinates.toLocaleString()+' 組。'+importAnchorConflictSummary(placeAnchors,timeAnchors,mediaSummary,sourceAudit)+sourceAuditWarning+
+        (missingPointUids.size?'；發現 '+missingPointUids.size.toLocaleString()+' 個既有 place_id 在 Point UID 索引中不存在，未依 location 重建或改指向其他地點。UID：'+[...missingPointUids].slice(0,5).join(',')+(missingPointUids.size>5?' 等':'')+'。':'')+
         (ambiguousGroups.length?'；來源文章 ID 或發文時間對應多篇既有文章，無法唯一比對而暫不匯入 '+
           ambiguousGroups.length.toLocaleString()+' 筆（其他文章繼續處理）。待確認：'+
           ambiguousGroups.slice(0,5).map(group=>'UID '+String(group.uid)+' / '+
