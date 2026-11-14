@@ -1,16 +1,11 @@
--- Optional PostgreSQL backing for fixed public SQL result cache.
--- Apply to the actual selected SQL database BEFORE setting
--- LOC_SQL_RESULT_CACHE=1 on the Pages runtime. Do not apply to an inactive
--- Supabase mirror. No credential, session, permission or article content is
--- stored here. Future Scope galaxy tables need this trigger before caching.
---
--- Statement triggers cover INSERT, UPDATE, DELETE, TRUNCATE, including writes
--- by importers outside Pages. A transaction commits the data and its epoch
--- together; a failed/rolled-back write does not advance an epoch.
--- Includes existing Galaxy, Scope configuration, Anchor and Blocks relations.
--- Re-run when adding physical Scopes. Reinstall bumps current revisions.
--- Per-relation invalidation; not yet per-UID or per-date invalidation.
--- Do not apply during ongoing bulk-import sessions without coordination.
+-- Optional PostgreSQL backing for LOC's fixed anonymous SQL results.
+-- Apply ONLY to the actual selected primary DB, NOT an inactive mirror.
+-- Never apply during ongoing bulk-import sessions without coordination.
+-- Installation is transactional. Trigger bumps share the writer transaction.
+-- Re-installing bumps existing epochs to invalidate any prior results.
+-- This covers existing Galaxy, Scope Config, Anchor and Blocks relations,
+-- but deliberately excludes retired silver.loc_blocks and api.manage grants.
+-- Invalidation granularity is one physical relation, not one UID or date.
 BEGIN;
 CREATE TABLE IF NOT EXISTS api.loc_sql_result_revision (
   relation text PRIMARY KEY,
@@ -39,46 +34,26 @@ BEGIN
     WHERE n.nspname='silver' AND c.relkind IN ('r','p')
       AND (
         c.relname='loc'
-        OR (c.relname ~ '^[a-z][a-z0-9]{0,14}_(galaxy|anchor|blocks)
+        OR (c.relname ~ '^[a-z][a-z0-9]{0,14}_(galaxy|anchor|blocks)$'
+          AND c.relname<>'loc_blocks')
+        OR c.relname IN (
+          SELECT id FROM api.manage
+          WHERE id ~ '^[a-z][a-z0-9]{0,14}$'
+        )
+      )
   LOOP
     INSERT INTO api.loc_sql_result_revision(relation,revision)
       VALUES (item.ns||'.'||item.rel,0)
       ON CONFLICT (relation) DO UPDATE
         SET revision=api.loc_sql_result_revision.revision+1;
-    EXECUTE format('DROP TRIGGER IF EXISTS loc_sql_result_revision ON %I.%I',item.ns,item.rel);
-    EXECUTE format('CREATE TRIGGER loc_sql_result_revision
-      AFTER INSERT OR UPDATE OR DELETE OR TRUNCATE ON %I.%I
-      FOR EACH STATEMENT EXECUTE FUNCTION api.bump_loc_sql_result_revision()',item.ns,item.rel);
-  END LOOP;
-END
-$loc_install$;
-COMMIT;
-
-            AND c.relname<>'loc_blocks')
-        OR c.relname IN (SELECT id FROM api.manage
-          WHERE id ~ '^[a-z][a-z0-9]{0,14}
-  LOOP
-    INSERT INTO api.loc_sql_result_revision(relation,revision)
-      VALUES (item.ns||'.'||item.rel,0)
-      ON CONFLICT (relation) DO NOTHING;
-    EXECUTE format('DROP TRIGGER IF EXISTS loc_sql_result_revision ON %I.%I',item.ns,item.rel);
-    EXECUTE format('CREATE TRIGGER loc_sql_result_revision
-      AFTER INSERT OR UPDATE OR DELETE OR TRUNCATE ON %I.%I
-      FOR EACH STATEMENT EXECUTE FUNCTION api.bump_loc_sql_result_revision()',item.ns,item.rel);
-  END LOOP;
-END
-$loc_install$;
-COMMIT;
-)
-      )
-  LOOP
-    INSERT INTO api.loc_sql_result_revision(relation,revision)
-      VALUES (item.ns||'.'||item.rel,0)
-      ON CONFLICT (relation) DO NOTHING;
-    EXECUTE format('DROP TRIGGER IF EXISTS loc_sql_result_revision ON %I.%I',item.ns,item.rel);
-    EXECUTE format('CREATE TRIGGER loc_sql_result_revision
-      AFTER INSERT OR UPDATE OR DELETE OR TRUNCATE ON %I.%I
-      FOR EACH STATEMENT EXECUTE FUNCTION api.bump_loc_sql_result_revision()',item.ns,item.rel);
+    EXECUTE format(
+      'DROP TRIGGER IF EXISTS loc_sql_result_revision ON %I.%I',
+      item.ns,item.rel);
+    EXECUTE format(
+      'CREATE TRIGGER loc_sql_result_revision
+        AFTER INSERT OR UPDATE OR DELETE OR TRUNCATE ON %I.%I
+        FOR EACH STATEMENT EXECUTE FUNCTION api.bump_loc_sql_result_revision()',
+      item.ns,item.rel);
   END LOOP;
 END
 $loc_install$;
