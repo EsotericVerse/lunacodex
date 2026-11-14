@@ -214,6 +214,7 @@ export default function CulturePublicReader(){
   const [keywordError,setKeywordError]=useState('');
   const [classesLoading,setClassesLoading]=useState(false);
   const [daily,setDaily]=useState(NO_ITEMS);
+  const [densityLoading,setDensityLoading]=useState(false);
   const [catalog,setCatalog]=useState({categories:[],aliases:[],tree:[],roots:[]});
   const [error,setError]=useState('');
   const [catalogError,setCatalogError]=useState('');
@@ -260,19 +261,26 @@ export default function CulturePublicReader(){
   },[scopeId]);
   useEffect(()=>{
     let active=true;
-    setDaily([]);setKeywordError('');
-    if(!validRange)return undefined;
-    // Bounded daily density is the single data source for both presentations.
-    // Keyword lanes are equal-proportion projections of the same daily totals,
-    // not the retired article UID-list keyword_summary algorithm.
+    // Free the previous period's daily arrays before starting a new aggregate.
+    // The SQL side returns one row per date/source, never 10k article bodies.
+    setDaily(NO_ITEMS);
+    setDensityLoading(validRange);
+    setKeywordError('');
+    if(!validRange)return()=>{active=false;};
     analytics(scopeId,'culture_density',rangeStart,rangeEnd)
       .then(rows=>{if(active)setDaily(rows);})
-      .catch(error=>{if(active)setKeywordError(String(error?.message||error));});
+      .catch(error=>{if(active)setKeywordError(String(error?.message||error));})
+      .finally(()=>{if(active)setDensityLoading(false);});
     return()=>{active=false;};
   },[scopeId,rangeStart,rangeEnd,validRange]);
   useEffect(()=>{
-    if(densityMode!=='keyword'||!keywordClass){setKeywordGroups([]);return undefined;}
+    // Release old class snapshots when switching tabs, subjects or dates.
+    if(densityMode!=='keyword'||!keywordClass){
+      setKeywordGroups(NO_ITEMS);setKeywordDaily(NO_ITEMS);setKeywordLoading(false);
+      return undefined;
+    }
     let active=true;
+    setKeywordGroups(NO_ITEMS);setKeywordDaily(NO_ITEMS);
     setKeywordLoading(true);
     import('../keyword-service-client.mjs')
       .then(({keywordService})=>keywordService('stats',{
@@ -296,7 +304,10 @@ export default function CulturePublicReader(){
     return()=>{active=false;};
   },[scopeId,densityMode,keywordClass,rangeStart,rangeEnd]);
   useEffect(()=>{
-    if(densityMode!=='keyword')return undefined;
+    if(densityMode!=='keyword'){
+      setKeywordClasses(NO_ITEMS);setClassesLoading(false);
+      return undefined;
+    }
     let active=true;
     setClassesLoading(true);
     import('../keyword-service-client.mjs')
@@ -386,12 +397,15 @@ export default function CulturePublicReader(){
     fetchArticles({site,offset:0});
   };
   useEffect(()=>{
-    // Any date/filter change invalidates the currently visible list.
+    // Any date/filter change invalidates visible details, held text, active
+    // worker results and expanded Source rows from the previous period.
     sequence.current+=1;fullSequence.current+=1;
     setArticlesOpen(false);setArticleRows([]);setArticleOffset(0);
     setArticleMore(false);setArticleError('');
     setSelectedSite('');setSelectedCategoryKey('');
     setFullUid('');setFullText('');setFullError('');
+    setExpandedSources([]);
+    setAnchorSuggestionsOpen(false);setFocusedSuggestionDate('');
   },[scopeId,rangeStart,rangeEnd,densityMode,keywordClass]);
   const loadMore=()=>{
     if(!articlesOpen||!selectedSite)return;
@@ -460,6 +474,11 @@ export default function CulturePublicReader(){
         {catalogError&&densityMode==='source'?<p className='scope-status scope-error' role='alert'>
           來源分類暫時無法載入：{catalogError}</p>:null}
         {keywordError?<p className='scope-status scope-error' role='alert'>{keywordError}</p>:null}
+        {densityLoading?<div className='scope-culture-density-loading' role='status'
+          aria-live='polite' aria-label='正在整理該時期的每日文章密度'>
+          <span className='scope-culture-density-loading__bar' aria-hidden='true'/>
+          <span>正在整理時間河道的每日密度…</span>
+        </div>:null}
         <div className='scope-culture-double-river scope-public-culture-river'>
         <CultureTimeline items={densityRiver.items} extraGroups={densityRiver.groups}
           focus={NO_FOCUS} mode='source' heightVariant='double' naturalSourceHeight
@@ -529,7 +548,12 @@ export default function CulturePublicReader(){
           <p className='scope-status'>點選左側小分類，才會載入該分類文章。</p>:null}
       </section>
       {articlesOpen&&densityMode==='source'&&selectedSite?<section className='scope-card scope-culture-source-detail' data-selected-category={selectedCategoryKey}>
-        <h3>{selectedSite}｜相關文章列表</h3>
+        <div className='scope-culture-source-detail-heading'>
+          <h3>{selectedSite}｜相關文章列表</h3>
+          <button type='button' className='loc-button' onClick={()=>resetArticles()}>
+            關閉並釋放文章列表
+          </button>
+        </div>
         {articleError?<p role='alert' className='scope-status scope-error'>{articleError}</p>:null}
         {articleRows.map((row,index)=>row.hidden
           ?<p className='scope-status' key={row.key||index}>本文已隱藏</p>
