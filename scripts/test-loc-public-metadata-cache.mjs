@@ -98,7 +98,8 @@ assert.equal(reads,17,'revision failure does not serve stale results');
 failure=false;
 
 let errorReads=0;
-await assert.rejects(execute({...config,read:async()=>{throw Error('SELECT unavailable')}}),
+await assert.rejects(execute({...config,scope:'failure-retry',
+  read:async()=>{throw Error('SELECT unavailable')}}),
   /SELECT unavailable/);
 const unique={...config,scope:'failure-retry',read:async()=>({n:++errorReads})};
 assert.deepEqual(await execute(unique),{n:1},'failed read never poisons cache');
