@@ -17,7 +17,6 @@ import ScopeLink from '../../ScopeLink';
 import {featureDataErrorMessage} from '../../feature-data-state';
 import {semanticStatisticChartTypes,chartTypeGroups,preferredStatisticChartType,statisticsZoomWindow} from './statistics-time-zoom.mjs';
 import {DEFAULT_YEAR_WINDOW} from '../../../loc/default-year-window.mjs';
-import StatisticsChartFrame from './StatisticsChartFrame';
 import StatisticsDetails from './StatisticsDetails';
 import StatisticsDashboardKpis from './StatisticsDashboardKpis';
 
@@ -146,10 +145,9 @@ export default function ScopeGroupStatistics({taipeiDateKey,trendBucket,loadGala
           {key:'scopes',label:'所屬 Scope 數',value:scopeIds.length.toLocaleString()},
           {key:'active',label:'活躍時段',value:trendData.filter(row=>Number(row.total)>0).length.toLocaleString()}
         ]}/>
-      <StatisticsChartFrame level={zoomLevel} onChange={setZoomLevel}
-        range={zoomRange} idPrefix="loc-stat">
-        <StatisticsInsightsPanel rows={insightRows} range={zoomRange}/>
-      </StatisticsChartFrame>
+      <StatisticsInsightsPanel rows={insightRows} range={zoomRange}
+        zoomLevel={zoomLevel} onZoomLevelChange={setZoomLevel}
+        idPrefix="loc-stat"/>
       <StatisticsDetails summary="標準統計圖（折線、長條、面積與來源比較）">
         {()=> <div className="statistics-dashboard__panel" style={{display:'grid',gap:12}}>
           <div className="scope-stat-controls statistics-dashboard__filters">

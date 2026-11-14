@@ -6,6 +6,7 @@ import {
   ResponsiveContainer,Tooltip,XAxis,YAxis
 } from 'recharts';
 import {explainPeltChange,rankInsightPeriods,totalPeriodStats} from './statistics-insights.mjs';
+import StatisticsChartFrame from './StatisticsChartFrame';
 
 const amount=value=>Number(value||0).toLocaleString('zh-TW',{
   maximumFractionDigits:1
@@ -20,7 +21,10 @@ const insightText=insight=>{
     amount(insight.before)+'，變化後 '+amount(insight.after)+' '+ratio+'。';
 };
 
-export default function StatisticsInsightsPanel({rows=[],range={},title='總量趨勢洞察'}){
+export default function StatisticsInsightsPanel({
+  rows=[],range={},title='總量趨勢洞察',zoomLevel=0,
+  onZoomLevelChange=null,idPrefix='scope-stat'
+}){
   // The current/partial bucket is visible on the chart but does not distort
   // PELT segmentation, median, minima or extrema.
   const completed=useMemo(()=>rows.filter(row=>row&&!row.partial),[rows]);
@@ -67,22 +71,18 @@ export default function StatisticsInsightsPanel({rows=[],range={},title='總量�
     {key:'mean',label:'平均',value:stats.mean},
     {key:'median',label:'中位數',value:stats.median}
   ];
-  return <section className="statistics-dashboard__panel statistics-dashboard__panel--chart"
-    aria-label={title} style={{minWidth:0}}>
-    <header className="statistics-dashboard__panel-heading">
-      <h3>{title}</h3>
-      <p>{range.startDate&&range.endDate
-        ?range.startDate+' ～ '+range.endDate+' · 已完成期間的作品數':'僅分析已取得的總數資料'}</p>
-    </header>
-    <div className="statistics-dashboard__kpis" aria-label="極值與典型值">
-      {metric.map(item=><div key={item.key} className="statistics-dashboard__kpi">
-        <span className="statistics-dashboard__kpi-label">{item.label}</span>
-        <strong className="statistics-dashboard__kpi-value">
-          {item.value===undefined?'—':amount(item.value)}
-        </strong>
-        {item.period?<span className="scope-status">{item.period}</span>:null}
-      </div>)}
-    </div>
+  // Preserve the established Dashboard composition: a main chart and a
+  // separate Insights rail. PELT adds analytical meaning, not a new layout.
+  return <div className="statistics-dashboard__workspace" aria-label="作品總數 Dashboard">
+    <section className="statistics-dashboard__panel statistics-dashboard__panel--chart"
+      aria-label={title}>
+      <header className="statistics-dashboard__panel-heading">
+        <h3>{title}</h3>
+        <p>{range.startDate&&range.endDate
+          ?range.startDate+' ～ '+range.endDate:'僅分析已取得的總數資料'}</p>
+      </header>
+      <StatisticsChartFrame level={zoomLevel} onChange={onZoomLevelChange}
+        range={range} idPrefix={idPrefix}>
     {rows.length?<div style={{width:'100%',height:320,minWidth:0}}
       role="group" aria-label="總數、平均、中位數與變化點折線圖">
       <ResponsiveContainer width="100%" height="100%">
@@ -116,20 +116,37 @@ export default function StatisticsInsightsPanel({rows=[],range={},title='總量�
         </LineChart>
       </ResponsiveContainer>
     </div>:<p className="scope-status">所選時期沒有可分析的作品總數。</p>}
+      </StatisticsChartFrame>
+    </section>
+    <aside className="statistics-dashboard__panel statistics-dashboard__panel--insights"
+      aria-label="作品總數 Insights">
+      <header className="statistics-dashboard__panel-heading">
+        <h3>Insights</h3>
+        <p>極值與典型值</p>
+      </header>
+    <div className="statistics-dashboard__insight-metrics" aria-label="極值與典型值">
+      {metric.map(item=><div key={item.key} className="statistics-dashboard__kpi">
+        <span className="statistics-dashboard__kpi-label">{item.label}</span>
+        <strong className="statistics-dashboard__kpi-value">
+          {item.value===undefined?'—':amount(item.value)}
+        </strong>
+        {item.period?<span className="scope-status">{item.period}</span>:null}
+      </div>)}
+    </div>
     <div role="status" aria-live="polite" className="scope-status">
       <strong>PELT Insight · </strong>
       {pending?'正在分析已載入的時間分布…'
         :workerError?'變化點分析未完成；平均、中位數和原始圖表仍可使用。'
         :insightText(insight)}
     </div>
-    {activeCount>1?<div className="statistics-dashboard__panel" style={{display:'grid',gap:12}}>
+    {activeCount>1?<div className="statistics-dashboard__insight-ranking">
       <label style={{display:'grid',gap:8}}>
         <span>相對{ranked.segmented?' PELT 區段平均':'整體平均'}：上升 {top.length} ／低於 {bottom.length}</span>
         <input type="range" min="1" max="9" step="1" value={topCount}
           onChange={event=>setTopCount(Number(event.target.value))}
           aria-label="調整最高與最低期間的顯示比例"/>
       </label>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:14}}>
+      <div className="statistics-dashboard__insight-ranking-columns">
         <div><strong>高於趨勢基準</strong>
           <ol>{top.map(row=><li key={row.period}>{row.period} · {amount(row.value)}（+{amount(row.deviation)}）</li>)}</ol>
         </div>
@@ -143,5 +160,6 @@ export default function StatisticsInsightsPanel({rows=[],range={},title='總量�
       {hasPartial?' 目前尚未結束的時段會顯示在曲線，但不納入峰谷、平均及 PELT 比較。':''}
       統計不載入來源分類、文章本文或多媒體。
     </p>
-  </section>;
+    </aside>
+  </div>;
 }

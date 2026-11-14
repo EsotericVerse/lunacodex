@@ -304,6 +304,39 @@
 }
 [data-public-feature="statics"] .statistics-dashboard__panel--chart .scope-stat-chart-frame{flex:1 1 auto}
 [data-public-feature="statics"] .statistics-dashboard__panel--insights{overflow:hidden}
+/* Keep PELT in the existing dashboard's right-hand Insights rail.
+   The four descriptive measures are compact here; the hero KPI row above
+   remains the original three-column responsive Dashboard component. */
+[data-public-feature="statics"] .statistics-dashboard__insight-metrics{
+  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:clamp(.45rem,.9vw,.7rem);min-width:0;
+}
+[data-public-feature="statics"] .statistics-dashboard__insight-metrics .statistics-dashboard__kpi{
+  padding:clamp(.6rem,1vw,.85rem);gap:.3rem;box-shadow:none;
+}
+[data-public-feature="statics"] .statistics-dashboard__insight-metrics .statistics-dashboard__kpi-value{
+  font-size:clamp(1.18rem,1.8vw,1.75rem);
+}
+[data-public-feature="statics"] .statistics-dashboard__insight-metrics .scope-status{
+  padding:0;border:0;background:transparent;font-size:.75rem;
+}
+[data-public-feature="statics"] .statistics-dashboard__insight-ranking{
+  display:grid;gap:.75rem;min-width:0;
+}
+[data-public-feature="statics"] .statistics-dashboard__insight-ranking input[type="range"]{
+  width:100%;min-width:0;accent-color:var(--loc-accent);
+}
+[data-public-feature="statics"] .statistics-dashboard__insight-ranking-columns{
+  display:grid;grid-template-columns:minmax(0,1fr);
+  gap:.75rem;min-width:0;max-height:20rem;overflow-y:auto;
+}
+[data-public-feature="statics"] .statistics-dashboard__insight-ranking-columns>div{
+  display:grid;gap:.4rem;min-width:0;
+}
+[data-public-feature="statics"] .statistics-dashboard__insight-ranking-columns ol{
+  margin:0;padding-inline-start:1.4rem;font-size:.84rem;line-height:1.65;
+  font-variant-numeric:tabular-nums;overflow-wrap:anywhere;
+}
 [data-public-feature="statics"] .statistics-dashboard__breakdown{
   display:flex;flex-direction:column;gap:1rem;max-height:31rem;overflow-y:auto;padding-right:.2rem;
 }
