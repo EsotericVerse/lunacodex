@@ -12,6 +12,12 @@ assert.equal(classifyShortImportFailure(new Error('Short-import ZModel lookup re
   'IMPORT_ZMODEL_LOOKUP');
 assert.equal(classifyShortImportFailure(new TypeError('internal mismatch')),'IMPORT_RUNTIME_TYPE');
 assert.equal(classifyShortImportFailure(new ReferenceError('missing symbol')),'IMPORT_RUNTIME_REFERENCE');
+assert.equal(classifyShortImportFailure({code:'40P01'}),'IMPORT_DB_DEADLOCK');
+assert.equal(classifyShortImportFailure({code:'40001'}),'IMPORT_DB_SERIALIZATION');
+assert.equal(classifyShortImportFailure({code:'XX000'}),'IMPORT_SQLSTATE_XX000');
+assert.equal(classifyShortImportFailure({name:'NoResultError'}),'IMPORT_UPDATE_NO_RESULT');
+assert.equal(classifyShortImportFailure({name:'AbortedTransactionError'}),'IMPORT_DB_TRANSACTION_ABORTED');
+assert.equal(classifyShortImportFailure(new Error('connection terminated unexpectedly')),'IMPORT_DB_CONNECTION');
 assert.equal(classifyShortImportFailure({cause:{code:'23514'}}),'IMPORT_SQL_CONSTRAINT');
 assert.equal(classifyShortImportFailure(new Error('sensitive SQL data')),'IMPORT_UNCLASSIFIED');
 const native=readFileSync(new URL('../app/loc/mcp/native-operations.mjs',import.meta.url),'utf8');
