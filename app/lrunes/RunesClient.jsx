@@ -3,6 +3,7 @@ import useNativeNavigation from '../modular/use-native-navigation';
 import {usePassiveSessionAccount} from '../loc/use-account';
 import ScopeLink from '../modular/ScopeLink';
 import RuneIntroSection from './RuneIntroSection';
+import RuneCardEntryBubbles from './RuneCardEntryBubbles';
 import {HomeBlock} from '../loc/home-block-model';
 import {resolveHomeImage,RunesHomeBlockDisplay,locHomeBlockClass,homeBlockMediaStyle} from '../loc/LocHomeBlockDisplay';
 import ScopeEditableBlocks from '../loc/ScopeEditableBlocks';
@@ -58,7 +59,9 @@ export default function RunesClient(){
   const native=useNativeNavigation();
   // Only a signed-in state is needed for the daily log navigation.
   const account=usePassiveSessionAccount();
-  return <main className="loc-next-main"><section className="loc-view">
+  // The outer LocApp already supplies the same scoped homepage canvas as
+  // LOC and lo3rwang. Avoid a second nested loc-next-main / main landmark.
+  return <section className="loc-view loc-home runes-home" aria-label="月之符文首頁">
     <ScopeEditableBlocks
       scopeId="lrunes"
       page="hero"
@@ -80,6 +83,15 @@ export default function RunesClient(){
       </nav>:null}
     />
 
+    <section className="runes-home-entry" aria-labelledby="runes-home-entry-title">
+      <div className="home-section-heading">
+        <p className="loc-eyebrow">Explore LunaRunes</p>
+        <h2 id="runes-home-entry-title">從這裡開始</h2>
+        <p className="loc-subtitle">抽牌、每日符文或圖鑑，選擇你想進入的方式。</p>
+      </div>
+      <RuneCardEntryBubbles />
+    </section>
+
     <RuneIntroSection />
 
     <section className="loc-card rune-basics runes-reading-flow">
@@ -92,10 +104,12 @@ export default function RunesClient(){
       </div>
     </section>
 
-    <section className="loc-card rune-basics runes-custom-draw-section">
-      <h2>符文抽牌</h2>
-      <p>同一個抽牌入口可切換 2D 平面原創卡面與最新 3D 特效，並自由決定抽取 1 至 11 枚。</p>
-      <ScopeLink className="loc-button" href={runeHref('card/duel',native)} native={native}>開始抽牌</ScopeLink>
+    <section className="loc-card rune-basics runes-custom-draw-section" aria-labelledby="runes-home-play-title">
+      <div className="runes-home-play-copy">
+        <p className="loc-eyebrow">Beyond the Draw</p>
+        <h2 id="runes-home-play-title">延伸玩法</h2>
+        <p>想從符文籤詩延伸到互動牌局，也可以進入本機桌遊。</p>
+      </div>
       <ScopeLink className="loc-button" href={runeHref('game',native)} native={native}>進入桌遊 · 本機牌局</ScopeLink>
     </section>
 
@@ -131,5 +145,5 @@ export default function RunesClient(){
         </article>
       </div>
     </section>
-  </section></main>;
+  </section>;
 }
