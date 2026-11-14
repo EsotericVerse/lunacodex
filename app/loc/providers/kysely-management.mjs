@@ -354,7 +354,7 @@ const ANCHOR_IMPORT_PAGE_COLUMNS=Object.freeze([
 const mediaImportCandidateArgsSchema=z.strictObject({
   p_scope_id:z.string().regex(/^[a-z][a-z0-9]{0,14}$/),
   p_uids:z.array(z.string().regex(UID)).max(200),
-  p_urls:z.array(z.string().url().max(2048).refine(url=>/^https?:\/\//i.test(url))).max(200),
+  p_urls:z.array(z.string().max(2048).regex(/^https?:\/\//i)).max(200),
   p_after_uid:z.string().regex(UID).nullable().optional(),
   p_limit:z.number().int().min(1).max(200).default(200)
 });
