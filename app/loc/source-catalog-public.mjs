@@ -1,5 +1,6 @@
-// Shared, typed SiteAnchor source reader. Both Admin and public
-// Culture/Statistics use the *same* canonical source discriminator set.
+// Public, typed SiteAnchor source reader for Culture/Statistics.
+// The protected Admin Source editor uses its own LOC-managed action;
+// both paths share the same canonical Source discriminator set.
 // Pagination uses LOC's existing Kysely read helper: it must not silently
 // truncate the tree at the first 200 unrelated Time/Media/Keyword anchors.
 import {selectAllRows} from './db-query.mjs';
