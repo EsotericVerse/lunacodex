@@ -228,7 +228,8 @@ export default function Culture(){
   const account=useAccount({enabled:isTimeEditingView||canUseScopeEditor});
   const [lrunesView,setLrunesView]=useState('daily');
   const [locCultureView,setLocCultureView]=useState('period');
-  const [locDensityOpen,setLocDensityOpen]=useState(false);
+  // LOC displays the one-year source density river immediately; no first river.
+  const [locDensityOpen,setLocDensityOpen]=useState(true);
   const isLrunesDaily=!isTimeEditingView&&scopeId==='lrunes'&&lrunesView==='daily';
   const isLocItemView=scopeId==='loc'&&locCultureView==='item';
   const resourceCache=useResourceCache();
@@ -290,7 +291,7 @@ export default function Culture(){
 
   useEffect(()=>{
     setStyleFilter('none');
-    setLocDensityOpen(false);
+    setLocDensityOpen(true);
     setSelectedPeriodKey('year');
     setKeywordPeriodKey('year');
     setKeywordCustomStart('');
@@ -312,8 +313,9 @@ export default function Culture(){
   const locRequestedEnd=String(navigation.to||'').slice(0,10);
   const locRequestedValid=/^\d{4}-\d{2}-\d{2}$/.test(locRequestedStart)&&
     /^\d{4}-\d{2}-\d{2}$/.test(locRequestedEnd)&&locRequestedStart<=locRequestedEnd;
-  const locSourceStart=locRequestedValid?locRequestedStart:DEFAULT_YEAR_WINDOW.startDate;
-  const locSourceEnd=locRequestedValid?locRequestedEnd:DEFAULT_YEAR_WINDOW.endDate;
+  // The LOC landing river is always the latest year, not a period intersection.
+  const locSourceStart=DEFAULT_YEAR_WINDOW.startDate;
+  const locSourceEnd=DEFAULT_YEAR_WINDOW.endDate;
   const locDensityQuery=useAsyncResource({
     queryKey:['loc-culture-density','zmodel-source-year',scopeId,locSourceStart,locSourceEnd],
     enabled:!isTimeEditingView&&isAggregateScope&&scopeId==='loc'&&!isLocItemView&&locDensityOpen
@@ -934,8 +936,8 @@ export default function Culture(){
     anchorSuggestOpen&&!isAggregateScope&&!isLrunesDaily&&!isLocItemView&&styleFilter!=='trace'&&Boolean(densityInputBuckets.length));
   const styleRiverAnalysis=useRiverDensityAnalysis(keywordDrillItems,existingAnchorDates,
     anchorSuggestOpen&&styleFilter==='rune66'&&Boolean(keywordDrillItems.length));
-  const locRiverAnalysis=useRiverDensityAnalysis(locCombinedSourceRiverItems,EMPTY_CULTURE_GROUPS,
-    isAggregateScope&&locDensityOpen&&Boolean(locCombinedSourceRiverItems.length));
+  // LOC's single source river has no automatic anchor suggestion/PELT worker.
+  const locRiverAnalysis=useRiverDensityAnalysis(locCombinedSourceRiverItems,EMPTY_CULTURE_GROUPS,false);
   const virtualAnchorItems=useMemo(()=>{
     const total=Math.max(1,Number(riverAnalysis.totalCount)||0);
     return riverAnalysis.suggestions.map(item=>{
@@ -1350,6 +1352,33 @@ export default function Culture(){
       </ManagementWorkspaceFrame>
     </FeaturePage>;
   }
+
+  // LOC Group Culture has exactly one view: the last year's combined
+  // Article Source river. Scope-specific Time/Keyword rivers are not mounted.
+  if(scopeId==='loc'&&!isTimeEditingView)return <FeaturePage featureId="culture">
+    <section className='loc-card scope-feature-card scope-feature-card-wide'>
+      <h2>近一年文章來源</h2>
+      {query.isPending||locDensityQuery.isPending
+        ?<p className='scope-status' role='status'>{UI_COPY.common.loading}</p>:null}
+      {query.error?<p className='scope-status scope-error' role='alert'>
+        {featureDataErrorMessage(query.error,UI_COPY)}</p>:null}
+      {locDensityQuery.error?<p className='scope-status scope-error' role='alert'>
+        {featureDataErrorMessage(locDensityQuery.error,UI_COPY)}</p>:null}
+      {!query.isPending&&!locDensityQuery.isPending&&!query.error&&!locDensityQuery.error
+        &&!locCombinedSourceRiverItems.length
+        ?<p className='scope-status'>近一年沒有可顯示的文章來源。</p>:null}
+      {locCombinedSourceRiverItems.length?<CultureTimeline
+        items={locCombinedSourceRiverItems}
+        labelOf={emptyRiverLabel}
+        focus={EMPTY_RIVER_FOCUS}
+        mode='source'
+        windowStart={locSourceStart}
+        windowEnd={locSourceEnd}
+        fixedMin={locSourceStart}
+        fixedMax={locSourceEnd}
+      />:null}
+    </section>
+  </FeaturePage>;
 
   return <FeaturePage featureId="culture">
     <section className='loc-card scope-feature-card scope-feature-card-wide'>
