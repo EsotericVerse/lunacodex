@@ -20,6 +20,17 @@ const CultureTimeline=dynamic(()=>import('../../modular/modules/culture-timeline
 const NO_ITEMS=Object.freeze([]);
 const NO_FOCUS=Object.freeze({});
 const datePart=value=>String(value||'').slice(0,10);
+// Initial camera is a *rolling* twelve months, not the complete history
+// and not the fixed Jan-Dec interval used by the article-density river.
+// Compute in Taiwan calendar dates so server/browser zones agree.
+export function publicTimeRiverRecentYear(date=new Date()){
+  const now=new Date(date);
+  if(!Number.isFinite(now.getTime()))throw new RangeError('Invalid Time River date');
+  const tw=new Date(now.getTime()+8*60*60*1000);
+  const end=tw.toISOString().slice(0,10);
+  tw.setUTCFullYear(tw.getUTCFullYear()-1);
+  return {start:tw.toISOString().slice(0,10),end};
+}
 function list(value){
   return Array.isArray(value)?value:[];
 }
@@ -181,6 +192,7 @@ export default function CulturePublicReader(){
   const scope=useMemo(()=>defaultScopeData(scopeId),[scopeId]);
   const start=DEFAULT_YEAR_WINDOW.startDate;
   const end=DEFAULT_YEAR_WINDOW.endDate;
+  const recentTimeWindow=useMemo(()=>publicTimeRiverRecentYear(),[]);
   const [anchors,setAnchors]=useState(NO_ITEMS);
   const [densityPeriod,setDensityPeriod]=useState('year');
   const [densityMode,setDensityMode]=useState('source');
@@ -394,15 +406,15 @@ export default function CulturePublicReader(){
     <section className='loc-card scope-feature-card scope-feature-card-wide'>
       <p className='loc-eyebrow'>文化｜時間密度</p>
       <h2>時間長河</h2>
-      <p className='scope-status'>時間定錨：完整歷史；文章密度預設：{start} ～ {end}</p>
+      <p className='scope-status'>時間定錨預設最近一年（可回溯全部歷史）；文章密度預設：{start} ～ {end}</p>
       <section className='scope-card scope-culture-structure-river'>
         {loading?<p className='scope-status' role='status'>正在載入時間定錨…</p>:null}
         {error?<p className='scope-status scope-error' role='alert'>{error}</p>:null}
         <div className='scope-culture-structure-toolbar'><h3>時間定錨</h3>
-          <span className='scope-status'>{structureStart} ～ {structureEnd}</span></div>
+          <span className='scope-status'>{recentTimeWindow.start} ～ {recentTimeWindow.end}（預設視野）</span></div>
         {!loading&&!error?<CultureTimeline items={anchorRiver.items} extraGroups={anchorRiver.groups}
-          focus={NO_FOCUS} mode='trace' windowStart={structureStart} windowEnd={structureEnd}
-          fixedMin={structureStart} fixedMax={structureEnd}
+          focus={NO_FOCUS} mode='trace'
+          windowStart={recentTimeWindow.start} windowEnd={recentTimeWindow.end}
           onGroupToggle={group=>{
             const uid=String(group).replace(/^era:/,'');
             if(!String(group).startsWith('era:'))return;
@@ -440,6 +452,7 @@ export default function CulturePublicReader(){
         {catalogError&&densityMode==='source'?<p className='scope-status scope-error' role='alert'>
           來源分類暫時無法載入：{catalogError}</p>:null}
         {keywordError?<p className='scope-status scope-error' role='alert'>{keywordError}</p>:null}
+        <div className='scope-culture-double-river'>
         <CultureTimeline items={densityRiver.items} extraGroups={densityRiver.groups}
           focus={NO_FOCUS} mode='source' heightVariant='double'
           windowStart={rangeStart} windowEnd={rangeEnd} fixedMin={rangeStart} fixedMax={rangeEnd}
@@ -473,7 +486,21 @@ export default function CulturePublicReader(){
             const category=densityRiver.sites.find(item=>'site:'+item.key===name);
             if(category)openArticles(category.site,category.key);
           }}/>
-        {anchorSuggestionsOpen?<div className='scope-culture-anchor-actions' role='region'
+        </div>
+        {/* Keep candidate access visible at the very bottom even when a large
+            category tree makes vis-timeline scroll internally. It uses the
+            same expansion state/Worker as the actual timeline candidate lane. */}
+        <div className='scope-culture-candidate-footer'>
+          <button type='button' className='scope-river-group-button'
+            aria-controls='public-culture-anchor-analysis'
+            aria-expanded={anchorSuggestionsOpen}
+            onClick={()=>{setAnchorSuggestionsOpen(open=>!open);setFocusedSuggestionDate('');}}>
+            {anchorSuggestionsOpen?'−':'＋'}　建議定錨點
+            {anchorSuggestionsOpen?'（'+suggestionAnalysis.suggestions.length+'）':''}
+          </button>
+        </div>
+        {anchorSuggestionsOpen?<div id='public-culture-anchor-analysis'
+          className='scope-culture-anchor-actions' role='region'
           aria-label='建議定錨點分析'>
           {suggestionAnalysis.error?<p className='scope-status scope-error' role='alert'>
             {suggestionAnalysis.error}</p>:null}

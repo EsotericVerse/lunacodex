@@ -995,6 +995,30 @@
 
 .scope-culture-double-river .vis-label.scope-candidate-lane,.scope-culture-double-river .vis-group.scope-candidate-lane{background:color-mix(in srgb,var(--loc-accent) 6%,var(--loc-panel))!important;min-height:52px}
 .scope-culture-double-river .vis-label.scope-candidate-lane{border-top:1px solid color-mix(in srgb,var(--loc-accent) 22%,transparent)}
+/* The public author reader uses the same candidate lane but also exposes a
+   visible bottom control when vis-timeline's category labels scroll. Keep
+   its tone distinct from ordinary Source rows without a fixed color palette. */
+.scope-culture-classification-river .scope-culture-candidate-footer{
+  margin:.35rem 0 .2rem;
+  border:1px solid color-mix(in srgb,var(--loc-gold,var(--loc-accent)) 35%,var(--loc-line));
+  border-radius:var(--loc-radius-sm);
+  background:color-mix(in srgb,var(--loc-gold,var(--loc-accent)) 12%,var(--loc-panel));
+}
+.scope-culture-classification-river .scope-culture-candidate-footer .scope-river-group-button{
+  appearance:none;display:block;width:100%;min-height:44px;padding:.65rem .85rem;
+  border:0;background:none;color:var(--loc-text);text-align:left;
+  font:inherit;font-weight:700;cursor:pointer
+}
+.scope-culture-classification-river .scope-culture-candidate-footer .scope-river-group-button:focus-visible{
+  outline:2px solid var(--loc-accent);outline-offset:-3px;border-radius:var(--loc-radius-sm)
+}
+.scope-culture-classification-river .scope-culture-double-river .vis-label.scope-candidate-lane,
+.scope-culture-classification-river .scope-culture-double-river .vis-group.scope-candidate-lane{
+  background:color-mix(in srgb,var(--loc-gold,var(--loc-accent)) 12%,var(--loc-panel))!important;
+}
+.scope-culture-classification-river .scope-culture-double-river .vis-label.scope-candidate-lane{
+  border-top:2px solid color-mix(in srgb,var(--loc-gold,var(--loc-accent)) 48%,var(--loc-line))
+}
 .scope-culture-double-river .vis-custom-time{width:1px!important;background:color-mix(in srgb,var(--loc-accent) 52%,transparent)!important;pointer-events:none;z-index:2}
 .scope-culture-double-river .vis-custom-time .vis-custom-time-marker{display:none!important}
 .scope-culture-double-river .scope-period-timeline-wrap{position:relative}
