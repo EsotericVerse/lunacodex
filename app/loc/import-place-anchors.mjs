@@ -71,11 +71,16 @@ export async function prepareImportPlaceAnchors(records,{
     for(const anchor of data||[]){
       const name=nameKey(anchor?.title);
       const uid=String(anchor?.uid||'');
-      if(!name||!VALID_UID.test(uid))continue;
+      if(!VALID_UID.test(uid))continue;
       const coordinates=importGeoKey(anchor?.attr);
+      // A legacy Point can have valid GPS but an empty title. Its identity
+      // still conflicts with another Point at those coordinates.
+      if(!name&&!coordinates)continue;
       const saved={uid,coordinates};
-      if(!existingByName.has(name))existingByName.set(name,[]);
-      existingByName.get(name).push(saved);
+      if(name){
+        if(!existingByName.has(name))existingByName.set(name,[]);
+        existingByName.get(name).push(saved);
+      }
       if(coordinates){
         if(!existingByCoordinate.has(coordinates))existingByCoordinate.set(coordinates,[]);
         existingByCoordinate.get(coordinates).push(saved);
@@ -140,7 +145,8 @@ export async function prepareImportPlaceAnchors(records,{
   }
   // Point identity is an exact GPS pair (or unambiguous name without GPS).
   // Generate native 8-char UIDs and validate by UID, not response order.
-  const assigned=new Set([...existingByName.values()].flat().map(item=>item.uid));
+  const assigned=new Set([...existingByName.values(),...existingByCoordinate.values()]
+    .flat().map(item=>item.uid));
   onProgress?.({phase:'建立原始座標定錨',completed:0,total:pending.length});
   for(let offset=0;offset<pending.length;offset+=80){
     const chunk=pending.slice(offset,offset+80);
