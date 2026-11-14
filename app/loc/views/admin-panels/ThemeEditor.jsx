@@ -18,20 +18,31 @@ export default function ThemeEditor(){
     const current=typeof document==='undefined'?'':String(document.documentElement.dataset.themeId||'');
     return THEME_SLOTS.some(item=>item.id===current)?current:'theme-7';
   });
-  const [draft,setDraft]=useState(null);
+  // The published catalog is the safe read-only display fallback.
+  // Never leave the editor blank while a remote Theme read is pending.
+  const [draft,setDraft]=useState(()=>mergeThemeSlot(themeId,null));
   const [status,setStatus]=useState('');
+  const [readState,setReadState]=useState('loading');
 
   useEffect(()=>{
     let active=true;
     (async()=>{
-      const {data,error}=await dbAuthRelation('silver.loc').select('theme').eq('id','loc').single();
-      if(!active)return;
-      if(error){setStatus(error.message||'Theme 讀取失敗。');return;}
-      setRows((Array.isArray(data?.theme)?data.theme:[]).map(row=>({
-        ...row,
-        theme_id:themeUiId(row.theme_id),
-        theme_db_numeric:typeof row.theme_id==='number'
-      })));
+      try{
+        const {data,error}=await dbAuthRelation('silver.loc').select('theme').eq('id','loc').single();
+        if(!active)return;
+        if(error)throw error;
+        setRows((Array.isArray(data?.theme)?data.theme:[]).map(row=>({
+          ...row,
+          theme_id:themeUiId(row.theme_id),
+          theme_db_numeric:typeof row.theme_id==='number'
+        })));
+        setReadState('ready');
+      }catch(error){
+        if(!active)return;
+        setReadState('error');
+        setStatus('主題資料庫讀取失敗；目前顯示已發布配色，禁止覆寫：'+
+          String(error?.message||error));
+      }
     })();
     return()=>{active=false};
   },[]);
@@ -77,6 +88,10 @@ export default function ThemeEditor(){
 
   async function save(){
     if(!draft)return false;
+    if(readState!=='ready'){
+      setStatus('主題資料庫尚未成功讀取，為避免覆寫既有設定，已停止儲存。');
+      return false;
+    }
     if(!normalizeThemeHex(draft.identityColor)){setStatus('主色請使用 #RRGGBB 格式。');return false;}
     setStatus('');
     try{
@@ -114,6 +129,7 @@ export default function ThemeEditor(){
 
   return <section className="loc-card admin-workspace">
     <h2><UiText id="uiExtra.adminView.themeAppearance"/></h2>
+    {readState==='loading'?<p className="scope-status" role="status">正在讀取主題資料庫設定…</p>:null}
     <div className="admin-inline-select">
       <label htmlFor="admin-theme-select"><UiText id="uiExtra.adminView.editingTheme"/></label>
       <select id="admin-theme-select" className="loc-settings-select" value={themeId}
