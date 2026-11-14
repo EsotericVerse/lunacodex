@@ -3,42 +3,70 @@ const status=$('status'), queue=$('queue'), notice=$('notice');
 const mcpProviders=$('mcpProviders');
 const MCP_LABELS={neon:'Neon MCP',supabase:'Supabase MCP'};
 function call(action,extra={}){return chrome.runtime.sendMessage({action,...extra});}
+let lastProviderStatus=null;
+function setAuthIndicator(connected){
+ const badge=$('authStateBadge');
+ badge.classList.toggle('state-connected',connected);
+ badge.classList.toggle('state-waiting',!connected);
+ badge.replaceChildren(badge.querySelector('.state-light'),
+  document.createTextNode(connected?'已連接':'尚未連接'));
+}
 function renderMcpProviders(result){
- if(result?.error){mcpProviders.textContent=result.error;return;}
- if(result?.ready!==true){mcpProviders.textContent='LOC MCP Provider Vault 尚未啟用。';return;}
+ lastProviderStatus=result;
  mcpProviders.replaceChildren();
+ if(result?.error||result?.ready!==true){
+  const empty=document.createElement('div');
+  empty.className='empty-state';
+  empty.textContent=result?.error||'Gateway Provider Vault 尚未啟用。';
+  mcpProviders.append(empty);
+  return;
+ }
  for(const id of Object.keys(MCP_LABELS)){
   const item=(result.providers||[]).find(row=>row.id===id)||{id,connected:false};
-  const row=document.createElement('p');
-  const label=document.createElement('strong');label.textContent=MCP_LABELS[id]+'：';
-  row.append(label,document.createTextNode(item.connected?'已連接（Gateway 會重用授權）':'尚未連接'));
+  const card=document.createElement('article');card.className='provider-card';
+  const top=document.createElement('div');top.className='provider-card-top';
+  const glyph=document.createElement('div');
+  glyph.className='provider-mark provider-mark--'+id;
+  glyph.setAttribute('aria-hidden','true');glyph.textContent=id==='neon'?'N':'S';
+  const info=document.createElement('div');info.className='provider-info';
+  const title=document.createElement('strong');title.textContent=MCP_LABELS[id];
+  const state=document.createElement('span');
+  state.className='provider-state'+(item.connected?' is-linked':'');
+  state.textContent=item.connected?'已連接 · Gateway 可重用授權':'尚未連接';
+  info.append(title,state);top.append(glyph,info);
+  const actions=document.createElement('div');actions.className='provider-actions';
   const button=document.createElement('button');button.type='button';
   button.textContent=item.connected?'重新授權':'授權一次';
   button.disabled=!$('ssoEmail').value.trim();
   button.addEventListener('click',async()=>{
    const email=$('ssoEmail').value.trim();
-   if(!email){notice.textContent='請先輸入 SSO Email';return;}
+   if(!email){notice.textContent='請先輸入上游服務登入 Email';return;}
    await chrome.storage.local.set({locSsoEmail:email});
    button.disabled=true;status.textContent='正在連接 '+MCP_LABELS[id]+'…';
    try{
     const connected=await call('mcp-connect',{provider:id});
-    status.textContent=connected.error||'已連接 '+MCP_LABELS[id]+'；後續由 LOC MCP Gateway 重用授權。';
+    status.textContent=connected.error||'已連接 '+MCP_LABELS[id]+'；後續由 Gateway 重用授權。';
     await refreshMcp();
    }catch(error){status.textContent=String(error?.message||error)}
-   finally{button.disabled=false}
+   finally{button.disabled=!$('ssoEmail').value.trim();}
   });
-  row.append(document.createTextNode(' '),button);
+  actions.append(button);
   if(item.connected){
-   const disconnect=document.createElement('button');disconnect.type='button';disconnect.textContent='解除';
+   const disconnect=document.createElement('button');
+   disconnect.type='button';disconnect.dataset.action='disconnect';
+   disconnect.textContent='解除';
    disconnect.addEventListener('click',async()=>{
     disconnect.disabled=true;status.textContent='正在解除 '+MCP_LABELS[id]+'…';
-    try{await call('mcp-disconnect',{provider:id});status.textContent='已解除 '+MCP_LABELS[id];await refreshMcp()}
-    catch(error){status.textContent=String(error?.message||error)}
-    finally{disconnect.disabled=false}
+    try{
+     await call('mcp-disconnect',{provider:id});
+     status.textContent='已解除 '+MCP_LABELS[id];
+     await refreshMcp();
+    }catch(error){status.textContent=String(error?.message||error)}
+    finally{disconnect.disabled=false;}
    });
-   row.append(document.createTextNode(' '),disconnect);
+   actions.append(disconnect);
   }
-  mcpProviders.append(row);
+  card.append(top,actions);mcpProviders.append(card);
  }
 }
 async function refreshMcp(){
@@ -51,6 +79,9 @@ async function show(){
   chrome.storage.local.get(['locTargetScope','locIncludeAssistant','locSsoEmail'])
  ]);
  status.textContent=result.error||(result.connected?'已連接 LOC Auth':'尚未連接 LOC Auth');
+ setAuthIndicator(Boolean(result.connected));
+ $('captureCount').textContent=result.error?'—':String(result.pendingCaptures??0);
+ $('itemCount').textContent=result.error?'—':String(result.pending??0);
  const cooldown=result.nextRetryAt>Date.now()?
   (result.retryReason==='server'?'；後端故障，自動重試延後至 ':'；流量管制至 ')+
   new Date(result.nextRetryAt).toLocaleString('zh-TW'):'';
@@ -70,6 +101,7 @@ $('connect').addEventListener('click',async()=>{
  try{
   const result=await call('loc-connect');
   status.textContent=result.error||(result.connected?'已連接 LOC Auth':'LOC 授權未完成');
+  if(!result.error)setAuthIndicator(Boolean(result.connected));
   await refreshMcp();
  }catch(error){status.textContent=String(error?.message||error);}
 });
@@ -78,7 +110,21 @@ $('disconnect').addEventListener('click',async()=>{
   const result=await call('loc-disconnect');
   status.textContent=result.error||result.warning||
    (result.serverRevoked?'已撤銷伺服器授權；Queue 保留':'已解除連線；Queue 保留');
+  if(!result.error)setAuthIndicator(false);
  }catch(error){status.textContent=String(error?.message||error);}
+});
+$('refresh').addEventListener('click',()=>{
+ void show().catch(error=>status.textContent=String(error?.message||error));
+});
+for(const link of document.querySelectorAll('.nav-link')){
+ link.addEventListener('click',()=>{
+  for(const nav of document.querySelectorAll('.nav-link')){
+   nav.classList.toggle('nav-active',nav===link);
+  }
+ });
+}
+$('ssoEmail').addEventListener('input',()=>{
+ if(lastProviderStatus)renderMcpProviders(lastProviderStatus);
 });
 $('ssoEmail').addEventListener('change',async()=>{
  await chrome.storage.local.set({locSsoEmail:$('ssoEmail').value.trim()});
