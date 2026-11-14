@@ -20,6 +20,7 @@ import {defaultScopeData} from './scope-data';
 import {createUid8} from './uid';
 import {mediaAnchorRecord,mediaAnchorProjection,canonicalMediaAnchorType,MEDIA_ANCHOR_COLUMNS,ANCHOR_TYPE_GROUPS} from '../../zenstack/anchor-hierarchy.mjs';
 import {createImportProgressStore} from './import-progress-store.mjs';
+import {readImportCheckpoint,writeImportCheckpoint,clearImportCheckpoint} from './import-checkpoint.mjs';
 import {remapArchiveArticleUids} from './import-random-uids.mjs';
 import {createImportUidResolver,remapImportUidRelations,planExistingImportUidUpdate,planImportPointUidLink,planImportMediaUidLinks} from './import-uid-delta.mjs';
 import {facebookBackupPlace,facebookBackupPostText,facebookBackupTimestamp} from './facebook-backup-place.mjs';
@@ -575,6 +576,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   // A failed write must not retain decoded ZIP/JSON article arrays in React.
   // Keep only the original File reference for an explicit, revalidated retry.
   const [reparseRequired,setReparseRequired]=useState(false);
+  const [checkpointHint,setCheckpointHint]=useState(null);
+  const importOwnerId=String(nativeLocal?'local':account.user?.id||'').trim();
   // One event-driven progress snapshot, no additional query, timer or cache.
   const [progressStore]=useState(createImportProgressStore);
   const progress=useSyncExternalStore(progressStore.subscribe,
@@ -665,8 +668,13 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   async function loadQueuedFile(file,index,total,language=importLocale,recordPath=format.recordPath){
     clearDecodedFile();
     setReparseRequired(false);
+    setCheckpointHint(readImportCheckpoint(window.sessionStorage,{
+      scopeId,ownerId:importOwnerId,file
+    }));
     setFileName(file.name);setStatus('');
     if(file.size>ARCHIVE_MAX_BYTES){
+      clearImportCheckpoint(window.sessionStorage,{scopeId,ownerId:importOwnerId,file});
+      setCheckpointHint(null);
       // A rejected oversized Blob must not stay pinned in the File queue.
       setQueue(current=>{
         const remaining=current.map((item,position)=>position===index?null:item);
@@ -813,6 +821,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       const wasBlocked=['LOC_PRIVATE_ARCHIVE_BLOCKED','LOC_UNVERIFIED_ARCHIVE_BLOCKED'].includes(error?.code);
       if(wasBlocked){
         // Privacy-rejected archives are not retryable on a public Scope.
+        clearImportCheckpoint(window.sessionStorage,{scopeId,ownerId:importOwnerId,file});
+        setCheckpointHint(null);
         setReparseRequired(false);
         setQueue(current=>{
           const remaining=current.map((item,position)=>position===index?null:item);
@@ -841,6 +851,10 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     // A successful write is the disposal boundary. Retain only *upcoming*
     // files in a multi-file queue; failures intentionally retain their input
     // for retry, and persisted database rows are never touched.
+    clearImportCheckpoint(window.sessionStorage,{
+      scopeId,ownerId:importOwnerId,file:queue[queueIndex]
+    });
+    setCheckpointHint(null);
     clearDecodedFile();
     setReparseRequired(false);
     setQueue(current=>{
@@ -860,6 +874,10 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   }
   function discardFailedFile(){
     if(busy||!reparseRequired)return;
+    clearImportCheckpoint(window.sessionStorage,{
+      scopeId,ownerId:importOwnerId,file:queue[queueIndex]
+    });
+    setCheckpointHint(null);
     clearDecodedFile();
     setReparseRequired(false);
     setFileName('');
@@ -1263,6 +1281,13 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       let updated=0,checkedExisting=0;
       const placeVisits=[],missingPointUids=new Set();
       const updateSizer=createImportBatchSizer();
+      const checkpointBatch=(phase,confirmed,total,inserted=0,conflicts=0)=>{
+        const receipt=writeImportCheckpoint(window.sessionStorage,{
+          scopeId,ownerId:importOwnerId,file:queue[queueIndex],
+          phase,confirmed,total,inserted,conflicts
+        });
+        if(receipt)setCheckpointHint(receipt);
+      };
       let updateQueue=[];
       const existingCount=existingBySiteId.size;
       if(existingCount)showProgress('更新既有文章',0,existingCount);
@@ -1273,6 +1298,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         updated+=result.count;
         updateQueue=[];
         updateSizer.observe(count,Date.now()-started);
+        // SQL writer has confirmed the batch; persist only a tiny receipt.
+        checkpointBatch('update',updated,existingCount,updated);
       };
       for(const record of unique){
         const existing=existingBySiteId.get(record.uid);
@@ -1339,6 +1366,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         newArticleProcessed+=payload.length;
         payload=[];
         insertSizer.observe(count,Date.now()-started);
+        checkpointBatch('insert',newArticleProcessed,newArticleTotal,
+          result.inserted,result.conflicts);
         showProgress('新增文章',newArticleProcessed,newArticleTotal);
       };
       for(const record of unique){
@@ -1401,6 +1430,10 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         knownArticleIds,scopeId,galaxy,mediaAnchor,t,
         onProgress:p=>showProgress(p.stage,p.completed,p.total||0)
       });
+      // Media and article stages are both confirmed, but cleanup still waits
+      // for the rest of the import to finish (including Search refresh).
+      checkpointBatch('media',newArticleProcessed,newArticleTotal,
+        result.inserted,result.conflicts);
       // All article and media writes are finished: now recompute the
       // persisted Search summary once. A summary error must not turn a
       // successful import into a retry-all error.
@@ -1495,6 +1528,14 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     </div>
     <ImportFormatSettings format={format} onChange={changeImportFormat} disabled={busy}/>
     {fileName?<p><UiText id="uiExtra.importUI.fileLabel"/><strong>{fileName}</strong><UiText id="uiExtra.importUI.fileQueue" params={{index:queueIndex+1,total:queue.length}}/><strong>{archiveDetection?(archiveDetection.sources.map(kind=>ZIP_SOURCE_NAMES[kind]||kind).join(' / ')||t('uiExtra.importUI.zipUnknown')):source||suggested}</strong></p>:null}
+    {checkpointHint&&!busy&&rows.length?<details className="loc-work-subdetails">
+      <summary>上次中斷的檢查點</summary>
+      <p className="scope-status">
+        已確認 {Number(checkpointHint.confirmed).toLocaleString()} / {Number(checkpointHint.total).toLocaleString()} 筆的
+        {checkpointHint.phase==='update'?'文章更新':checkpointHint.phase==='insert'?'文章新增':'文章與媒體階段'}。
+        這是先前的寫入回執，不是續傳游標；重新匯入仍會核對所有來源 UID，不會直接略過。
+      </p>
+    </details>:null}
     {rows.length||eligibleArchiveMediaPlan.media.length?<section className="scope-import-save" aria-label={t('uiExtra.importUI.saveSection')}>
       <button type="button" className="loc-button primary scope-import-save-button"
         disabled={busy||!analysisCurrent||(!analyzed.valid.length&&!analyzed.mediaOnly.length&&!eligibleArchiveMediaPlan.media.length)} onClick={run}>
