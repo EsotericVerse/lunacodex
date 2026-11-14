@@ -425,3 +425,84 @@
   .management-section-nav .management-section-nav__item,
   .loc-settings-select{transition:none!important;transform:none!important;}
 }
+
+
+/* Impeccable / material language.
+   Each published palette supplies the actual colors. These presentation-only
+   signatures vary edge geometry, density and finish rather than reintroducing
+   the same gradient under eight different hue names. */
+:root{
+  --loc-material-radius:var(--loc-ui-radius-lg,18px);
+  --loc-material-edge:1px;
+  --loc-material-edge-color:var(--loc-line);
+  --loc-material-surface:var(--loc-panel);
+  --loc-material-shadow:none;
+}
+:root[data-theme-id="theme-1"]{ /* Soul: quiet night, a fine violet rule */
+  --loc-material-radius:20px;
+  --loc-material-edge:1px;
+  --loc-material-edge-color:var(--loc-gold-border-faint);
+  --loc-material-surface:var(--loc-panel);
+  --loc-material-shadow:inset 0 1px 0 var(--loc-line-faint);
+}
+:root[data-theme-id="theme-2"]{ /* Connection: pale, open and paper-like */
+  --loc-material-radius:12px;
+  --loc-material-edge:1px;
+  --loc-material-edge-color:var(--loc-line);
+  --loc-material-surface:var(--loc-panel);
+}
+:root[data-theme-id="theme-3"]{ /* Life: a warmer, assertive edge */
+  --loc-material-radius:16px;
+  --loc-material-edge:2px;
+  --loc-material-edge-color:var(--loc-accent-border-soft);
+  --loc-material-surface:var(--loc-panel);
+}
+:root[data-theme-id="theme-4"]{ /* Nature: grounded dark-green relief */
+  --loc-material-radius:22px;
+  --loc-material-edge:1px;
+  --loc-material-edge-color:var(--loc-gold-border-faint);
+  --loc-material-surface:color-mix(in srgb,var(--loc-panel) 92%,var(--loc-panel-2));
+}
+:root[data-theme-id="theme-5"]{ /* Mineral: opaque ivory paper with a clean cut */
+  --loc-material-radius:8px;
+  --loc-material-edge:2px;
+  --loc-material-edge-color:var(--loc-gold-border-soft);
+  --loc-material-surface:var(--loc-panel);
+}
+:root[data-theme-id="theme-6"]{ /* Element: compact, hard red-lacquer outline */
+  --loc-material-radius:10px;
+  --loc-material-edge:2px;
+  --loc-material-edge-color:var(--loc-accent-border-soft);
+  --loc-material-surface:var(--loc-panel);
+}
+:root[data-theme-id="theme-7"]{ /* Order: typographic white pages, crisp lines */
+  --loc-material-radius:4px;
+  --loc-material-edge:1px;
+  --loc-material-edge-color:var(--loc-line);
+  --loc-material-surface:var(--loc-panel);
+}
+:root[data-theme-id="theme-8"]{ /* Disorder: shifting slate without black */
+  --loc-material-radius:14px 6px 18px 9px;
+  --loc-material-edge:1px;
+  --loc-material-edge-color:var(--loc-accent-border-faint);
+  --loc-material-surface:var(--loc-panel);
+}
+
+/* Only content surfaces receive a material signature.
+   Hero art, MapLibre canvas, BlockNote, charts, Motion overlays and
+   interactive selection geometry keep their own contracts. */
+.loc-next-main[data-loc-view="home"] :is(.loc-card,.loc-panel,.loc-link-card),
+.scope-main[data-public-feature] :is(.scope-feature-card,.scope-inline-card),
+.management-workspace--unified>.management-workspace-panel{
+  border:var(--loc-material-edge) solid var(--loc-material-edge-color);
+  border-radius:var(--loc-material-radius);
+  background-color:var(--loc-material-surface);
+  background-image:none;
+  box-shadow:var(--loc-material-shadow);
+}
+/* Distinguish selected navigation by line and ink, not a glossy pill. */
+.scope-main[data-public-feature] .scope-tabs button:is([aria-pressed="true"],.active),
+.management-section-nav .management-section-nav__item[aria-pressed="true"]{
+  border-bottom-color:var(--loc-accent);
+  box-shadow:inset 0 -2px 0 var(--loc-accent);
+}
