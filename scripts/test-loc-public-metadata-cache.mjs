@@ -132,4 +132,28 @@ const parallel={scope:'loc',kind:'hero_block',feature:'parallel',
   dependencies:['silver.loc_anchor'],read:async()=>{errorReads++;return {n:errorReads}}};
 const combined=await Promise.all(Array.from({length:6},()=>execute(parallel)));
 assert.equal(new Set(combined.map(x=>x.n)).size,1,'identical reads coalesce');
-console.log('LOC public metadata SQL cache: 21 assertion groups PASS');
+// Multiple consumers of a SQL projection that returns undefined must not
+// JSON.parse(undefined) while an identical request is still in flight.
+let undefinedReads=0;
+const omitted={...base,scope:'undefined-projection',kind:'hero_block',
+  feature:'missing',dependencies:['silver.loc_anchor'],read:async()=>{
+    undefinedReads++;
+    await new Promise(resolve=>setTimeout(resolve,12));
+    return undefined;
+  }};
+const omittedResults=await Promise.all(
+  Array.from({length:4},()=>withPublicSqlResultCache(omitted)));
+assert.deepEqual(omittedResults,[undefined,undefined,undefined,undefined]);
+assert.equal(undefinedReads,1,'undefined pending readers share the same result');
+
+const targetBefore=reads;
+await execute({...config,targetId:'alternate'});
+assert.equal(reads,targetBefore+1,
+  'cache key includes trusted selected database target');
+
+const readBefore=revisionQueries;
+await execute({...config,env:{LOC_SQL_RESULT_CACHE:'1'}});
+assert.equal(revisionQueries,readBefore,
+  'numeric enable flag never implicitly enables metadata caching');
+
+console.log('LOC public metadata SQL cache: 24 assertion groups PASS');

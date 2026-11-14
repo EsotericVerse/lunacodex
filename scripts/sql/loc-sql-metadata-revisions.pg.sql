@@ -32,9 +32,12 @@ BEGIN
         )
       )
   LOOP
+    -- A trigger reinstall is itself a cache generation change. Reusing an
+    -- old version row here could make a replaced relation look unchanged.
     INSERT INTO api.loc_sql_result_revision(relation,revision)
       VALUES (item.ns||'.'||item.rel,0)
-      ON CONFLICT (relation) DO NOTHING;
+      ON CONFLICT (relation) DO UPDATE
+        SET revision=api.loc_sql_result_revision.revision+1;
     EXECUTE format('DROP TRIGGER IF EXISTS loc_sql_result_revision ON %I.%I',
       item.ns,item.rel);
     EXECUTE format(

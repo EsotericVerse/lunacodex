@@ -184,23 +184,25 @@ export function portableShortImportStore(db,sql,{engine='postgres',namespace}={}
  if(schema&&!/^[a-z][a-z0-9_]*$/i.test(schema))throw failure('Invalid SQL namespace',503);
  return {transaction:(scope,run)=>{
   if(!/^[a-z][a-z0-9]{0,14}$/.test(scope))throw failure('Invalid Galaxy Scope',403);
-  // ZModel resolves the same physical columns on all three dialects before
-  // any Kysely statement is built. No alternate batch/UID/permission path.
+  // Existing ZenStack query + Zod validation remains the authority.
+  // This adapter only resolves physical SQL dialect names/DateTime values.
   const mapping=portableGalaxyImportMapping({scopeId:scope,engine,namespace:schema});
   const name=mapping.table;
   const operations=(trx,lockSource)=>({
    lockSource,
    async lookupMany(ids){
-    let q=trx.selectFrom(name).select(mapping.lookup)
-     .where(mapping.site,'in',['web','mcp'])
-     .where(mapping.siteId,'in',ids).limit(ids.length*2);
+    const plan=mapping.lookupPlan(ids);
+    let q=trx.selectFrom(name).select(plan.columns)
+     .where(mapping.site,'in',plan.sites).where(mapping.siteId,'in',plan.sourceIds)
+     .limit(plan.limit);
     if(engine==='postgres')q=q.forUpdate();
     return q.execute();
    },
    async lookup(id){
-    let q=trx.selectFrom(name).select(mapping.lookup)
-     .where(mapping.site,'in',['web','mcp'])
-     .where(mapping.siteId,'=',id).limit(2);
+    const plan=mapping.lookupPlan([id]);
+    let q=trx.selectFrom(name).select(plan.columns)
+     .where(mapping.site,'in',plan.sites).where(mapping.siteId,'in',plan.sourceIds)
+     .limit(plan.limit);
     if(engine==='postgres')q=q.forUpdate();
     return q.execute();
    },
@@ -208,7 +210,8 @@ export function portableShortImportStore(db,sql,{engine='postgres',namespace}={}
     await trx.insertInto(name).values(mapping.mapInserts(rows)).execute();
    },
    async insert(row){
-    await trx.insertInto(name).values(mapping.mapInserts([row])[0]).executeTakeFirstOrThrow();
+    const [verified]=mapping.mapInserts([row]);
+    await trx.insertInto(name).values(verified).executeTakeFirstOrThrow();
    },
    async append(uid,id,tail){
     const update=await trx.updateTable(name)

@@ -27,6 +27,6 @@ public/vendor/rune-semantic-icons/
 /public/_loc/
 /public/_loc-building/
 
-# .claude/skills 由 scripts/sync-claude-skills.mjs 從 .agents/skills 實體複製產生（npm install 的 prepare 會跑）
+# .claude/skills 由 scripts/sync-claude-skills.mjs 連結至 .agents/skills 的逐項 Junction／Symlink（npm prepare）
 # 不進版控：這是產生物，來源是 .agents/skills；改 skill 一律改 .agents，重跑腳本即可同步
 .claude/skills

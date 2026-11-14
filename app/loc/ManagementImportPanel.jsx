@@ -805,7 +805,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     setBusy(true);setStatus('');setProgress({stage:'核對原始打卡地點',completed:0,total:0,percent:null});
     try{
       const anchorSnapshot=await readImportPointDateAnchors({
-        scopeId,relation:dbAuthRelation,
+        scopeId,
         onProgress:p=>setProgress({stage:p.phase,completed:p.completed,total:0,percent:null})
       });
       const result=await prepareImportPlaceAnchors(candidates,{
@@ -1087,7 +1087,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         Boolean(String(record.location||record.__importPlaceName||'').trim()));
       const anchorSnapshot=!nativeLocal&&scopeId!=='loc'&&
         (checkinAnchorRecords.length||geoAnchorRecords.length)
-        ?await readImportPointDateAnchors({scopeId,relation:dbAuthRelation,
+        ?await readImportPointDateAnchors({scopeId,
           onProgress:p=>showProgress(p.phase,p.completed,p.total||0)})
         :null;
       const placeAnchors=await prepareImportPlaceAnchors([...anchorRecords,...geoAnchorRecords],{

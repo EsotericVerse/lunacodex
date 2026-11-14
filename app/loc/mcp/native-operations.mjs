@@ -145,7 +145,8 @@ export async function handleNativeLocOperation(request,env={},{
       throw refusal('Not found',404);
     // The media importer is a website-only read for existing behavior, NOT an
     // additional MCP/Gateway operation or delegated authorization scope.
-    if(body.kind==='managed-action'&&body.name==='media_anchor_candidates'&&host!==WEB_HOST)
+    if(body.kind==='managed-action'&&
+       ['media_anchor_candidates','anchor_import_page'].includes(body.name)&&host!==WEB_HOST)
       throw refusal('Not found',404);
     // The verified signed claim, not the HTTP body, selects the connection.
     const claims=await signedClaims(request,fetchImpl);
