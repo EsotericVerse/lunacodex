@@ -315,100 +315,16 @@ export async function selectScopeCultureData(scopeId){
     const managedScopes=(PUBLISHED_SITE_BOOTSTRAP.registry||[])
       .filter(entry=>entry.scope_kind==='scope'&&entry.active!==false&&members.has(entry.scope_id))
       .map(entry=>defaultScopeData(entry.scope_id)).filter(Boolean);
-    if(!managedScopes.length){
-      return {
-        scopeId:id,scope:null,eras:{eras:[]},periods:[],openRanges:[],scopeRanges:[],
-        timelineItems:[],sourceRiverItems:[],sourceGroups:[],events:[],trajectories:[],
-        works:[],scopeTimeRanges:[],intersectionStart:''
-      };
-    }
-
-    // A Scope Group may contain many sites; don't open all Time readers together.
-    const bundles=await mapBounded(managedScopes,2,async scope=>{
-      const context=await selectCultureTimeRows(scope,scope.birthday);
-      return {scope,runtimeId:scope.id,context};
-    });
-
-    // Every saved era contributes its actual period intervals.
-    // Merge within each Scope, then intersect the resulting sets across all
-    // Scopes that have defined periods. Never use the nearest trace.
-    const withWindows=bundles.map(bundle=>({
-      bundle,
-      windows:timeDateWindows(bundle.context
-        .filter(row=>row.entry_type==='era')
-        .flatMap(row=>row.ranges||[]))
-    })).filter(item=>item.windows.length>0);
-    const intersectionWindows=intersectTimeDateWindows(withWindows.map(item=>item.windows));
-    const intersectionStart=intersectionWindows[0]?.startDate||'';
-    const intersectionEnd=intersectionWindows.at(-1)?.endDate||'';
-    const intersectionScopeIds=intersectionWindows.length
-      ?withWindows.map(item=>item.bundle.runtimeId):[];
-    const openRanges=withWindows.map(({bundle,windows})=>({
-      scope_id:bundle.runtimeId,
-      start_date:windows[0].startDate,
-      end_date:windows.at(-1).endDate,
-      ranges:windows.map(window=>({
-        start_date:window.startDate,end_date:window.endDate
-      }))
-    }));
-
-    // The LOC timeline itself shows only shared dates. Clipping the visible
-    // per-Scope ranges avoids displaying a union disguised as an intersection.
-    const scopeTimeRanges=bundles.flatMap((bundle,scopeIndex)=>
-      bundle.context.filter(row=>row.entry_type==='era').flatMap(row=>
-        (row.ranges||[])
-          .filter(range=>range.start_date&&(!range.invalid||range.point))
-          .flatMap((range,index)=>intersectionWindows.flatMap((shared,sharedIndex)=>{
-            const startDate=range.start_date>shared.startDate?range.start_date:shared.startDate;
-            const rangeEnd=range.end_date||range.start_date;
-            const endDate=rangeEnd<shared.endDate?rangeEnd:shared.endDate;
-            if(startDate>endDate)return [];
-            return [{
-              id:'loc-time:'+bundle.runtimeId+':'+row.uid+':'+index+':'+sharedIndex,
-              entry_id:'loc-time:'+bundle.runtimeId+':'+row.uid+':'+index+':'+sharedIndex,
-              entry_type:'scope_time_range',
-              scope_id:bundle.runtimeId,
-              group_label:bundle.runtimeId,
-              group_order:scopeIndex,
-              start_date:startDate,end_date:endDate,
-              title:[row.title||'時代',startDate,endDate!==startDate?'～ '+endDate:''].filter(Boolean).join(' · '),
-              display_label:''
-            }];
-          }))
-      )
-    );
-
-    if(!intersectionWindows.length){
-      return {
-        scopeId:id,scope:null,eras:{eras:[]},periods:[],openRanges,scopeRanges:[],
-        timelineItems:[],sourceRiverItems:[],sourceGroups:[],events:[],trajectories:[],
-        works:[],scopeTimeRanges:[],scopes:bundles.map(bundle=>bundle.scope),
-        intersectionStart:'',intersectionEnd:'',intersectionScopeIds:[],
-        intersectionWindows:[]
-      };
-    }
-
-    // Shared time intervals are the first river. Their daily densities are
-    // read only if the visitor expands the second river.
+    // LOC Culture now has ONE river: the previous one-year Source/Article river.
+    // Never read every Scope's Era/Period tables just to construct a first
+    // Time river that is no longer visible. The scoped membership comes from
+    // the existing published registry and group membership boundary.
     return {
-      scopeId:id,
-      scope:null,
-      scopes:withWindows.map(({bundle})=>bundle.scope),
-      eras:{eras:[]},
-      periods:[],
-      openRanges,
-      scopeTimeRanges,
-      scopeRanges:[],
-      timelineItems:[],
-      sourceRiverItems:[],
-      sourceGroups:[],
-      events:[],
-      trajectories:[],
-      works:[],
-      intersectionStart,
-      intersectionEnd,
-      intersectionScopeIds,
-      intersectionWindows
+      scopeId:id,scope:null,scopes:managedScopes,eras:{eras:[]},periods:[],
+      openRanges:[],scopeRanges:[],timelineItems:[],sourceRiverItems:[],
+      sourceGroups:[],events:[],trajectories:[],works:[],
+      scopeTimeRanges:[],intersectionStart:'',intersectionEnd:'',
+      intersectionScopeIds:[],intersectionWindows:[]
     };
   }
 

@@ -117,7 +117,7 @@ export function AdminSourceCategories(){
     finally{setBusy(false);}
   };
   // This editor is mounted only under Admin management. Use the existing six-key Save.
-  useEditDockForm({save,isDirty,isBusy:()=>busy||loading,
+  useEditDockForm({save,isDirty,isBusy:()=>busy,
     discard:()=>{setDraft(null);setError('');}});
   const remove=async()=>{
     if(!current||busy)return;
