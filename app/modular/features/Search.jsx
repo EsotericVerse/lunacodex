@@ -466,6 +466,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       setLoadMoreError('');
       setEditingKey('');setEditDraft(null);
       detailEpoch.current++;
+      setFullTextLoading(false);
       setFullTextKey('');setFullText('');setFullTextRow(null);setFullTextError('');
       matchedQueryRef.current='';
       setHasMore(false);
@@ -666,6 +667,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   async function toggleFullText(result){
     const request=++detailEpoch.current;
     if(fullTextKey===result.key){
+      setFullTextLoading(false);
       setFullTextKey('');
       setFullText('');
       setFullTextRow(null);
