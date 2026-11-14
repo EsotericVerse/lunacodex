@@ -138,10 +138,12 @@ export function useAsyncResource(keyOrOptions,fetcherArg,optionsArg={}){
   const fetcherRef=useRef(fetcher);fetcherRef.current=fetcher;
   const onErrorRef=useRef(onError);onErrorRef.current=onError;
   const mountedRef=useRef(true);
+  const activeRef=useRef(active);activeRef.current=active;
+  const previousResourceRef=useRef({key:serializedKey,active});
   // Same component, new query key: ignore the older request's completion.
   const currentKeyRef=useRef(serializedKey);
   currentKeyRef.current=serializedKey;
-  const isCurrent=()=>mountedRef.current&&currentKeyRef.current===serializedKey;
+  const isCurrent=()=>mountedRef.current&&activeRef.current&&currentKeyRef.current===serializedKey;
 
   const load=useCallback(async()=>{
     if(!active)return undefined;
@@ -171,6 +173,16 @@ export function useAsyncResource(keyOrOptions,fetcherArg,optionsArg={}){
 
   useEffect(()=>{
     mountedRef.current=true;
+    const previous=previousResourceRef.current;
+    if(previous.key!==serializedKey||previous.active!==active){
+      // A selector/tab/period change owns a new read. Let the previous
+      // dataset be garbage-collected instead of retaining it behind a
+      // disabled chart while its old key no longer has a visible consumer.
+      previousResourceRef.current={key:serializedKey,active};
+      setState({data:active?fallbackData:undefined,
+        status:active?'pending':'idle',error:null});
+      setIsFetching(false);
+    }
     if(active)void load().catch(()=>{});
     const unregister=register({
       key:queryKey,
