@@ -17,6 +17,33 @@ const recordPlaceName=record=>safeTitle(record?.__importPlaceName||record?.locat
 const spatialKey=(name,coordinates)=>coordinates?'coordinate:'+coordinates:'name:'+name;
 export const importPlaceNameKey=nameKey;
 
+// One reusable in-memory index for a trusted, Scope-filtered Point result set.
+// This is a semantic lookup, not a new database PK or a second Anchor table.
+export function createImportPlaceIndex(){
+  const existingByCoordinate=new Map(),existingByName=new Map();
+  const timesByUid=new Map(),createtimeByUid=new Map(),attrsByUid=new Map();
+  const accept=anchor=>{
+    if(anchor?.type!=='point')throw Error('Point Anchor 索引型別不符');
+    const name=nameKey(anchor?.title),uid=String(anchor?.uid||'');
+    if(!VALID_UID.test(uid))return;
+    const coordinates=importGeoKey(anchor?.attr);
+    if(!name&&!coordinates)return;
+    const saved={uid,coordinates};
+    if(name){
+      if(!existingByName.has(name))existingByName.set(name,[]);
+      existingByName.get(name).push(saved);
+    }
+    if(coordinates){
+      if(!existingByCoordinate.has(coordinates))existingByCoordinate.set(coordinates,[]);
+      existingByCoordinate.get(coordinates).push(saved);
+    }
+    timesByUid.set(uid,Array.isArray(anchor.attr?.times)?anchor.attr.times:[]);
+    attrsByUid.set(uid,anchor.attr||{});
+    createtimeByUid.set(uid,String(anchor.createtime||'')||null);
+  };
+  return {accept,existingByCoordinate,existingByName,timesByUid,createtimeByUid,attrsByUid};
+}
+
 function incomingLocations(records){
   const names=new Map();let missing=0;
   for(const record of records||[]){
@@ -45,7 +72,7 @@ function incomingLocations(records){
   return {names,missing};
 }
 export async function prepareImportPlaceAnchors(records,{
-  scopeId,relation,pageSize=750,allowMissing=false,createMissing=true,scanExistingOnEmpty=false,onProgress
+  scopeId,relation,pageSize=750,allowMissing=false,createMissing=true,scanExistingOnEmpty=false,onProgress,anchorSnapshot=null
 }={}){
   const {names,missing}=incomingLocations(records);
   const byCoordinate=new Map(),byName=new Map();
@@ -56,41 +83,28 @@ export async function prepareImportPlaceAnchors(records,{
   if(!/^[a-z][a-z0-9]{0,14}$/.test(scopeId))throw Error('空間定錨 Scope 無效');
   if(typeof relation!=='function')throw Error('空間定錨資料庫不存在');
   const table='silver.'+scopeId+'_anchor';
-  const existingByCoordinate=new Map(),existingByName=new Map(),timesByUid=new Map(),createtimeByUid=new Map(),attrsByUid=new Map();
-  onProgress?.({phase:'讀取現有空間定錨',completed:0,total:0});
-  for(let offset=0;;offset+=pageSize){
-    const {data,error}=await relation(table)
-      .select('uid,type,title,attr,createtime').eq('type','point')
-      .order('title',{ascending:true}).order('uid',{ascending:true})
-      .range(offset,offset+pageSize-1);
-    if(error){
-      if(allowMissing&&!createMissing&&['42P01','PGRST205'].includes(String(error.code||'')))
-        return unavailable();
-      throw Error('讀取空間定錨失敗：'+(error.message||error));
-    }
-    for(const anchor of data||[]){
-      const name=nameKey(anchor?.title);
-      const uid=String(anchor?.uid||'');
-      if(!VALID_UID.test(uid))continue;
-      const coordinates=importGeoKey(anchor?.attr);
-      // A legacy Point can have valid GPS but an empty title. Its identity
-      // still conflicts with another Point at those coordinates.
-      if(!name&&!coordinates)continue;
-      const saved={uid,coordinates};
-      if(name){
-        if(!existingByName.has(name))existingByName.set(name,[]);
-        existingByName.get(name).push(saved);
+  if(anchorSnapshot&&
+      (anchorSnapshot.scopeId!==scopeId||anchorSnapshot.table!==table||
+       typeof anchorSnapshot.place?.accept!=='function'))
+    throw Error('空間定錨共用索引 Scope 不符');
+  const index=anchorSnapshot?.place||createImportPlaceIndex();
+  const {existingByCoordinate,existingByName,timesByUid,createtimeByUid,attrsByUid}=index;
+  if(!anchorSnapshot){
+    onProgress?.({phase:'讀取現有空間定錨',completed:0,total:0});
+    for(let offset=0;;offset+=pageSize){
+      const {data,error}=await relation(table)
+        .select('uid,type,title,attr,createtime').eq('type','point')
+        .order('title',{ascending:true}).order('uid',{ascending:true})
+        .range(offset,offset+pageSize-1);
+      if(error){
+        if(allowMissing&&!createMissing&&['42P01','PGRST205'].includes(String(error.code||'')))
+          return unavailable();
+        throw Error('讀取空間定錨失敗：'+(error.message||error));
       }
-      if(coordinates){
-        if(!existingByCoordinate.has(coordinates))existingByCoordinate.set(coordinates,[]);
-        existingByCoordinate.get(coordinates).push(saved);
-      }
-      timesByUid.set(uid,Array.isArray(anchor.attr?.times)?anchor.attr.times:[]);
-      attrsByUid.set(uid,anchor.attr||{});
-      createtimeByUid.set(uid,String(anchor.createtime||'')||null);
+      for(const anchor of data||[])index.accept(anchor);
+      onProgress?.({phase:'讀取現有空間定錨',completed:offset+(data||[]).length,total:0});
+      if((data||[]).length<pageSize)break;
     }
-    onProgress?.({phase:'讀取現有空間定錨',completed:offset+(data||[]).length,total:0});
-    if((data||[]).length<pageSize)break;
   }
   let reused=0,created=0;
   const pending=[],ambiguousNames=new Set(),conflicts=[];
