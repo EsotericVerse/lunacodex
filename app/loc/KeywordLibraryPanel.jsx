@@ -48,10 +48,8 @@ export default function KeywordLibraryPanel({scopeId,account}){
   const [workspace,setWorkspace]=useState('manual');
   const workspaceOptions=[
     {value:'manual',label:'群組對應調整'},
-    {value:'analysis',label:'基本設定'},
-    {value:'run',label:'重新分析'},
-    {value:'network',label:'關聯圖'},
-    {value:'suggest',label:'建議新增關鍵詞'}
+    {value:'analysis',label:'分析處理'},
+    {value:'network',label:'關聯圖'}
   ];
   const [chosen,setChosen]=useState({category:'',class:'',group:'',item:''});
   const [copyName,setCopyName]=useState('');
@@ -334,7 +332,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
     if(discoveryBusy||busy||loading)return;
     const controller=new AbortController();
     discoveryAbort.current=controller;
-    setWorkspace('suggest');setDiscovery(null);setDiscoveryPage(1);setDiscoveryProgress(null);
+    setWorkspace('analysis');setDiscovery(null);setDiscoveryPage(1);setDiscoveryProgress(null);
     setDiscoveryBusy(true);setError('');setNotice('');
     try{
       const {suggestNewKeywords}=await import('./keyword-discovery-runner.mjs');
@@ -356,12 +354,6 @@ export default function KeywordLibraryPanel({scopeId,account}){
         setDiscoveryBusy(false);
       }
     }
-  };
-  const openSuggestedTerms=async()=>{
-    if(discoveryBusy||busy||loading)return;
-    setWorkspace('suggest');setEditor(null);setError('');
-    if(discovery)return;
-    await discoverNewTerms();
   };
   const lookupPublicClass=async()=>{
     if(importBusy||busy)return;
@@ -414,8 +406,8 @@ export default function KeywordLibraryPanel({scopeId,account}){
     finally{setBusy(false);}
   };
   dockActions.current={
-    save:()=>workspace==='suggest'?undefined:workspace==='analysis'?saveConfig():saveNode(),
-    isDirty:()=>workspace==='suggest'?false:workspace==='analysis'
+    save:()=>workspace==='analysis'?saveConfig():saveNode(),
+    isDirty:()=>workspace==='analysis'
       ?['current_keyword_class_uid','keyword_min_chars','keyword_min_documents']
         .some(key=>String(config[key]??'')!==String(savedConfig[key]??''))
       :dirty,
@@ -477,10 +469,9 @@ export default function KeywordLibraryPanel({scopeId,account}){
         </div>
       </div>:null;
   return <div className="scope-keyword-management">
-    <ManagementSectionNav id="scope-keyword-sections" title="關鍵詞管理"
+    <ManagementSectionNav id="scope-keyword-sections" title="關鍵詞管理" hideHeading
       panelId="scope-keyword-workspace" items={workspaceOptions}
       value={workspace} onChange={next=>{
-        if(next==='suggest'){void openSuggestedTerms();return;}
         setWorkspace(next);setEditor(null);
       }}/>
     <div id="scope-keyword-workspace">
@@ -577,7 +568,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
       </div>
       {!inDock?<button type="button" className="loc-button primary" disabled={busy} onClick={saveConfig}>儲存設定</button>:null}
     </section>:null}
-    {!loading&&workspace==='run'?<section className="loc-card scope-feature-card">
+    {!loading&&workspace==='analysis'?<section className="loc-card scope-feature-card">
       <h2>重新分析</h2>
       <label>選擇要解析的關鍵詞科目（Class）
         <select className="scope-select" value={activeClass?.uid||''}
@@ -602,7 +593,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
       {progress?<p role="status" className="scope-status">{busy?<ActivityMotion kind="keywords"/>:null} {progress.label||progress.phase}
         {progress.total?' · '+progress.completed+' / '+progress.total:''}</p>:null}
     </section>:null}
-    {!loading&&workspace==='suggest'?<section className="loc-card scope-feature-card">
+    {!loading&&workspace==='analysis'?<section className="loc-card scope-feature-card">
       <h2>建議新增關鍵詞</h2>
       <p className="scope-status">只從目前資料來源的文章內文找出尚未收錄的詞與詞組；不修改既有關鍵詞，也不會自動新增。</p>
       {discoveryBusy?<div className="scope-preview-links">
@@ -648,7 +639,9 @@ export default function KeywordLibraryPanel({scopeId,account}){
           </div>:null}
         </div>:<p className="scope-status">沒有符合基本出現篇數門檻、且尚未收錄的新詞。</p>}
       </div>:null}
-      {!discoveryBusy&&discovery?<button type="button" className="loc-button" onClick={discoverNewTerms}>重新掃描內文</button>:null}
+      {!discoveryBusy?<button type="button" className="loc-button" onClick={discoverNewTerms}>
+        {discovery?'重新掃描內文':'開始掃描內文'}
+      </button>:null}
     </section>:null}
     {!loading&&workspace==='network'?<section className="loc-card scope-feature-card">
       <h2>關聯圖</h2>
